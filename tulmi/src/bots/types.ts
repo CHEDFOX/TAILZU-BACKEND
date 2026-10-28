@@ -90,9 +90,9 @@ export const LIMITS = {
   history: { turns: 10, chars: 2_000 },
 } as const;
 
-/** Slugs nobody may take: the built-in bots, and words the routes use. */
+/** Slugs nobody may take: the built-in bots, Notes (its own tile on Home), and words the routes use. */
 export const RESERVED_SLUGS: readonly string[] = [
-  "code", "keybot", "plan", "travel", "me", "new", "draft", "approve", "export", "any", "admin", "api", "v1", "bots", "bot", "tailzu", "test", "keys", "memory", "commands",
+  "code", "keybot", "plan", "travel", "notes", "me", "new", "draft", "approve", "export", "any", "admin", "api", "v1", "bots", "bot", "tailzu", "test", "keys", "memory", "commands",
 ];
 
 // ------------------------------------------------------------------ what a message became

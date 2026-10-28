@@ -1,6 +1,6 @@
 /**
- * THE SHELL: Home, and what is around it (Activity, Ask, Search, Tasks, Approve, the system states), and the window's own pages
- * (Today, Meeting notes, a meeting's notes).
+ * THE SHELL: Home, and what is around it (Activity, Ask, Search, Tasks, Approve, the system states), and the window's own page
+ * Today. Notes (the meetings, and one meeting) is its own: screens/notes.ts; Home has its tile.
  *
  * bots.home is the REFERENCE SCREEN (Main.dc.html on the phone, DeskHome.dc.html in the window): copy its shape.
  * Everything it shows is ctx.live (live.ts); its one read is whether the person has done anything yet, so a new person lands
@@ -20,14 +20,22 @@ import {
   open, page, primaryButton, quietButton,
   RADIUS, roundButton, row, rupees, SCREENS, secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title, toTab,
   when, whenEq, type BotsCtx, type LiveBot, type NeedsItem,
-  canHead, headBar, liveMark, writeOn,
+  canHead, headBar, liveMark, writeOn, canStrip,
 } from "../kit.js";
 import type { Mark } from "../glyphs.js";
 import { dayPart } from "../../touches.js";
 import { dayLineAfterGreeting } from "../../settingsWords.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { canRecord, canUpload, listenAction, listening, micBlockedNotice, notListening, uploadChip, uploadPick, voiceBars, writingDown } from "../media.js";
 import { ARRIVAL_PATH, ARRIVAL_STATE, arrivalCard } from "./firstRun.js";
+import { DELETION_PATH, leavingCard, type DeletionState } from "./accountGrace.js";
+import { offlineKept, outboxCard, outboxSection } from "./outbox.js";
+import { hasNotes, notesStrip, notesStripHeight, notesTileSpec, NOTES_STATS_PATH } from "./notes.js";
+import type { NotesStats } from "../../../notes/stats.js";
+import { hasOutbox } from "../kit.js";
+import { PUSH_ASK_PATH, PUSH_STATE, pushAskCard, pushAskDue, withPushCheck } from "./pushAsk.js";
 import { clockOf, dayLabel, longDate, type FeedRow } from "../../../shell/feed.js";
+import { addAction, itemAction } from "./planItem.js";
 import { upiOf } from "../../../shell/parse.js";
 import { qrOf, qrPath } from "../../../shell/qr.js";
 import type { SearchHit, SearchKind, SearchResult } from "../../../shell/search.js";
@@ -91,19 +99,6 @@ function stepDot(n: number): Node {
   });
 }
 
-/** Someone's initials in a circle (a meeting's speakers). */
-function initials(name: string, i: number, size = 24): Node {
-  const letters = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("") || "?";
-  const look = [
-    { bg: C.ink, fg: C.paper, border: undefined }, { bg: C.track, fg: C.ink, border: undefined },
-    { bg: C.paper, fg: C.ink, border: C.ink }, { bg: C.grey70, fg: C.paper, border: undefined },
-  ][i % 4]!;
-  return box([text(letters, { size: size <= 24 ? 11 : 12, weight: 600, color: look.fg, lineHeight: 14, align: "center" })], {
-    width: size, height: size, borderRadius: size / 2, backgroundColor: look.bg, alignItems: "center", justifyContent: "center", flexShrink: 0,
-    ...(look.border ? { borderWidth: 1.5, borderColor: look.border } : {}),
-  });
-}
-
 /** The page's grey error line, with the way to try again. */
 function couldNot(what: string): Node {
   return row([
@@ -160,24 +155,50 @@ function weekRow(ctx: BotsCtx): Node {
 
 /**
  * The tiles: the three bots that matter most right now (needs you, working, then the built-ins), and Make a bot.
- * Living (a tiny Blip in each, playing; BotTiles) where the build draws them, else today's static tiles.
+ * Living (a tiny Blip in each, playing; BotTiles) where the build draws them, else today's static tiles. Under them,
+ * Notes as a full-width strip (screens/notes.ts): in the living grid's own world where the build draws one (canStrip),
+ * else a still strip of its own.
  */
-function tiles(ctx: BotsCtx, columns: number, height: number, padding: number): Node {
+function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats): Node {
   const shown = ctx.live.bots.slice(0, 3);
+  const gap = columns === 4 ? 14 : 12;
+  const withNotes = hasNotes(ctx);
   if (canMove(ctx)) {
-    return botTiles([
+    const strip = withNotes && canStrip(ctx) ? notesTileSpec(ctx, notes) : undefined;
+    const living = botTiles([
       ...shown.map((b) => botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) })),
       makeTileSpec(open(SCREENS.make)),
-    ], { columns, height, padding, gap: columns === 4 ? 14 : 12 });
+    ], { columns, height, padding, gap, ...(strip ? { strip, stripHeight: notesStripHeight(ctx) } : {}) });
+    return withNotes && !strip ? col([living, notesStrip(ctx, notes)], { gap }) : living;
   }
-  return grid([
+  const still = grid([
     ...shown.map((b) => botTile(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug), height, padding })),
     makeBotTile({ onPress: open(SCREENS.make), height, padding }),
-  ], columns, columns === 4 ? 14 : 12);
+  ], columns, gap);
+  return withNotes ? col([still, notesStrip(ctx, notes)], { gap }) : still;
 }
 
 /** What Home's state starts with: the first-arrival card's, when it is due. */
 const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
+
+/** What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due (pushAsk.ts). */
+interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined }
+
+/**
+ * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the
+ * first-arrival card when due; else, on a phone, the notifications ask once something is working or needs them (its header reads
+ * the phone's answer). `state` is what the page starts with.
+ */
+function homeNotices(ctx: BotsCtx, arrival: boolean, more: HomeMore) {
+  const leaving = leavingCard(ctx, more.leaving);
+  const firstRun = arrival && !leaving.length;
+  const push = !leaving.length && !firstRun && pushAskDue(ctx, more.push === true);
+  return {
+    state: { ...homeState(firstRun), ...(push ? PUSH_STATE : {}) },
+    head: (n: Node): Node => (push ? withPushCheck(ctx, n) : n),
+    leaving, arrival: firstRun, push: push ? pushAskCard(ctx, true) : [],
+  };
+}
 
 /**
  * Home's header: the Tailzu mark and the quiet buttons, then the greeting, small ("Good evening, Aanya"), and the old
@@ -210,35 +231,42 @@ function homeHead(ctx: BotsCtx): { head: Node; pinned: Node[] } {
   return { head, pinned: alive ? [bar] : [] };
 }
 
-function homePhone(ctx: BotsCtx, arrival = false) {
+function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const first = ctx.live.needs[0];
   const { head, pinned } = homeHead(ctx);
+  const n = homeNotices(ctx, arrival, more);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: homeState(arrival), pinned,
+    tab: "bots", title: "Your bots", state: n.state, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
     body: [
-      head,
+      n.head(head),
+      ...n.leaving,
       // The first time here: one card for the microphone and the keyboard, over Home.
-      ...(arrival ? arrivalCard(ctx) : []),
+      ...(n.arrival ? arrivalCard(ctx) : []),
       weekRow(ctx),
+      ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
       ...(first ? [needsCard(first)] : []),
-      tiles(ctx, 2, 132, 16),
+      ...n.push,
+      tiles(ctx, 2, 132, 16, more.notes),
     ],
     footer: [askBar("phone")],
   });
 }
 
-function homeDesk(ctx: BotsCtx, arrival = false) {
+function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const first = ctx.live.needs[0];
   const { head, pinned } = homeHead(ctx);
+  const n = homeNotices(ctx, arrival, more);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: homeState(arrival), pinned,
+    tab: "bots", title: "Your bots", state: n.state, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
     body: [
       head,
+      ...n.leaving,
       weekRow(ctx),
+      ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
       // The first time here: one card for this computer's microphone and Accessibility, over Home.
-      ...(arrival ? arrivalCard(ctx) : []),
+      ...(n.arrival ? arrivalCard(ctx) : []),
       ...(first ? [needsCard(first, { layout: "row" })] : []),
-      tiles(ctx, 4, 150, 18),
+      tiles(ctx, 4, 150, 18, more.notes),
     ],
     footer: [askBar("desktop")],
   });
@@ -257,10 +285,15 @@ const IDEAS = [
   { label: "Rent yaad dilana, 1st ko", body: "On the 1st it reminds you and opens UPI with the rent filled in. You press pay.", uses: "Uses Reminders, UPI", icon: "rupee" as const },
 ];
 
-function emptyHome(ctx: BotsCtx, arrival = false) {
+/**
+ * The first day (EmptyHome, DEmptyHome): Home's own living header on top (homeHead: the greeting and the bold time-aware line, the
+ * living mark, the compact bar once scrolled), then Blip saying hello, Keybot already on, and making the first bot.
+ */
+function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const name = firstName(ctx);
   const hi = name ? `Hi ${name}, I'm Blip` : "Hi, I'm Blip";
-  const greet = name ? `${ctx.live.greeting}, ${name}` : ctx.live.greeting;
+  const { head, pinned } = homeHead(ctx);
+  const n = homeNotices(ctx, arrival, more);
   const line = "Every bot here is me, ready for one job. Your first one is already on.";
   const keybot = ctx.live.bots.find((b) => b.slug === "keybot") ?? botLook("keybot");
   const make = (idea?: string) => open(SCREENS.make, idea ? { idea } : undefined);
@@ -270,11 +303,12 @@ function emptyHome(ctx: BotsCtx, arrival = false) {
 
   if (ctx.client === "desktop") {
     return page(ctx, {
-      tab: "bots", title: "Your bots", gap: 20, maxWidth: 1100,
-      state: { draft: "", ...homeState(arrival) },
+      tab: "bots", title: "Your bots", gap: 20, maxWidth: 1100, pinned,
+      state: { draft: "", ...n.state },
       body: [
-        col([text(greet, { size: 14, color: C.meta, lineHeight: 18 }), title("Your bots")], { gap: 4 }),
-        ...(arrival ? arrivalCard(ctx) : []),
+        head,
+        ...n.leaving,
+        ...(n.arrival ? arrivalCard(ctx) : []),
         row([
           col([
             row([blip("hello", 140), col([text(hi, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), text(line, { size: 15, color: C.grey70, lineHeight: 21 })], { gap: 6, flexShrink: 1 })], { gap: 24 }),
@@ -316,16 +350,12 @@ function emptyHome(ctx: BotsCtx, arrival = false) {
   }
 
   return page(ctx, {
-    tab: "bots", title: "Your bots", gap: 16, state: homeState(arrival),
+    tab: "bots", title: "Your bots", gap: 16, state: n.state, pinned,
     body: [
-      row([
-        tailzuMark(34),
-        col([text(greet, { size: 13, color: C.meta, lineHeight: 17 }), text("Your bots", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 })], { gap: 2 }),
-        grow(),
-        roundButton("person", toTab("you"), { size: 44, light: true, label: "Profile and settings" }),
-      ], { gap: 10 }),
-      ...(arrival ? arrivalCard(ctx) : []),
-      col([blip("hello", 172), text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })], { gap: 6, alignItems: "center" }),
+      head,
+      ...n.leaving,
+      ...(n.arrival ? arrivalCard(ctx) : []),
+      col([blip("hello", 132), text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })], { gap: 6, alignItems: "center" }),
       row([
         botAvatar(keybot, 38),
         col([text("Keybot is on", { size: 15, weight: 600, lineHeight: 20 }), meta("Hold the clay key to speak, in any app")], { gap: 2, flexGrow: 1, flexShrink: 1 }),
@@ -532,7 +562,7 @@ function candidates(ctx: BotsCtx): string[] {
 function sendAsk(ctx: BotsCtx): ActionRef {
   const ask = (bot: string): ActionSpec => ({
     kind: "callEndpoint", method: "POST", path: "/v1/shell/ask",
-    body: { message: "$state.ask", bot, device: ctx.client, mode: "text", ...(ctx.params.file ? { attachments: "$state.attach" } : {}) },
+    body: { message: "$state.ask", bot, device: ctx.client, mode: "text", ...(ctx.params.file || canUpload(ctx) ? { attachments: "$state.attach" } : {}) },
     assignTo: "asked",
     onSuccess: seq(
       { kind: "setState", path: "asking", value: false },
@@ -619,7 +649,9 @@ function bars(heights: number[]): Node {
   return row(heights.map((h) => box([], { width: 3, height: h, borderRadius: 2, backgroundColor: C.ink })), { gap: heights.length > 8 ? 3 : 2, height: Math.max(...heights), alignItems: "center" });
 }
 
-function attachTo(kind: "photo" | "file" | "screen"): ActionSpec {
+/** Attach: pick and send it here (a build that can, FileUpload), else the attach screen as before. */
+function attachTo(ctx: BotsCtx, kind: "photo" | "file" | "screen"): ActionSpec {
+  if (canUpload(ctx)) return uploadPick(kind === "screen" ? "screenshot" : kind, "attach");
   return open(SCREENS.attach, { kind, from: "ask", message: "$state.ask" });
 }
 
@@ -629,13 +661,16 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
   const state = {
     ask: message, picking: false, route: pre ?? (ctx.params.bot ? routeFor(ctx, String(ctx.params.bot)) : null),
     ...(ctx.params.file && ctx.params.attachment ? { attach: [ctx.params.attachment] } : {}),
+    // A file on its way and the file sent (media.ts uploadChip); the voice (the phone's mic).
+    ...(canUpload(ctx) ? { up: null, sent: fileName && ctx.params.attachment ? { name: fileName, size: "" } : null } : {}),
+    ...(canRecord(ctx) ? { voice: "idle", level: 0, micBlocked: false } : {}),
   };
   const hint = col([
     when({ falsy: "route.slug" }, meta("Tap once to see who answers, again to send", { size: 13, align: "center" })),
     when({ truthy: "route.slug" }, text("", { size: 13, color: C.meta, lineHeight: 17, align: "center", bind: "route.hint" })),
   ]);
   const asking = when({ truthy: "asking" }, row([statusMark("working", { color: C.ink }), meta("Asking…", { size: 13 })], { gap: 8, justifyContent: "center" }));
-  const fileChip = fileName ? [row([icon("clip", { size: 16 }), text(fileName, { size: 13, lineHeight: 17, lines: 1, style: { flexShrink: 1 } })], {
+  const fileChip = canUpload(ctx) ? [uploadChip("attach")] : fileName ? [row([icon("clip", { size: 16 }), text(fileName, { size: 13, lineHeight: 17, lines: 1, style: { flexShrink: 1 } })], {
     gap: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, backgroundColor: C.surface, alignSelf: "flex-start",
   })] : [];
 
@@ -659,7 +694,7 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
           col([sectionLabel("Who will answer"), row([whoChip(ctx), handTo(ctx)], { gap: 14, flexWrap: "wrap" }), pickList(ctx)], { gap: 10, paddingVertical: 14, paddingHorizontal: 22 }),
           divider(),
           row([
-            sectionLabel("Attach"), attach("Photo", "clip", attachTo("photo")), attach("File", "folder", attachTo("file")), attach("Screen", "computer", attachTo("screen")),
+            sectionLabel("Attach"), attach("Photo", "clip", attachTo(ctx, "photo")), attach("File", "folder", attachTo(ctx, "file")), attach("Screen", "computer", attachTo(ctx, "screen")),
             grow(), attach("Paste", "keyboard", { kind: "readClipboard", assignTo: "ask" }),
           ], { gap: 8, paddingVertical: 12, paddingHorizontal: 22 }),
           divider(),
@@ -681,14 +716,16 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
     box([icon(name, { size: 20 })], { width: 48, height: 48, borderRadius: 24, borderWidth: 1, borderColor: C.line, alignItems: "center", justifyContent: "center" }),
     text(labelText, { size: 12, color: C.grey70, lineHeight: 16 }),
   ], { gap: 6, alignItems: "center", flexGrow: 1, flexBasis: 0 }, a);
+  const voice = askVoice(ctx);
   return page(ctx, {
     title: "Ask any bot", gap: 16, state,
     body: [
       box([box([], { width: 36, height: 5, borderRadius: 3, backgroundColor: C.outline })], { alignItems: "center" }),
       row([text("Ask any bot", { size: 24, weight: 700, tracking: -0.5, lineHeight: 30 }), grow(), labelled(box([icon("close", { size: 22 })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -10 }, back()), "Close")]),
       col([
-        row([bars([6, 12, 16, 9, 13, 5]), meta("Speak or type · Hinglish works", { size: 12 })], { gap: 8 }),
+        voice ? voice.line : row([bars([6, 12, 16, 9, 13, 5]), meta("Speak or type · Hinglish works", { size: 12 })], { gap: 8 }),
         field("ask", "Say what you need", { size: 22, weight: 500, multiline: true }),
+        ...(voice ? [micBlockedNotice()] : []),
         ...fileChip,
       ], { gap: 8 }),
       col([whoChip(ctx), handTo(ctx), pickList(ctx)], { gap: 6 }),
@@ -696,16 +733,52 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
     ],
     footer: [
       row([
-        side("Photo", "clip", attachTo("photo")), side("File", "folder", attachTo("file")),
-        box([labelled(box([icon("send", { size: 30, color: C.paper })], {
+        side("Photo", "clip", attachTo(ctx, "photo")), side("File", "folder", attachTo(ctx, "file")),
+        voice ? voice.big : box([labelled(box([icon("send", { size: 30, color: C.paper })], {
           width: 88, height: 88, borderRadius: 44, backgroundColor: C.ink, alignItems: "center", justifyContent: "center",
         }, goAction(ctx)), "Send")], { width: 108, alignItems: "center", flexShrink: 0 }),
-        side("Screen", "computer", attachTo("screen")), side("Paste", "keyboard", { kind: "readClipboard", assignTo: "ask" }),
+        side("Screen", "computer", attachTo(ctx, "screen")), side("Paste", "keyboard", { kind: "readClipboard", assignTo: "ask" }),
       ], { alignItems: "center" }),
       asking,
-      hint,
+      voice ? voice.hint : hint,
     ],
   });
+}
+
+/**
+ * Speaking in Ask (the phone, a build with VoiceRecord): the line over the field (still bars; listening, the bars follow
+ * the voice; then a moment while the words are written down), the big button (the mic while nothing is said, the mic
+ * with its ring while it listens, a working mark while it writes, send once there are words) and the line under it.
+ * Opened from a mic elsewhere (params voice) it starts listening at once. The words land in the field; who will answer
+ * is checked then, and the next tap sends, as a typed ask does.
+ */
+function askVoice(ctx: BotsCtx): { line: Node; big: Node; hint: Node } | null {
+  if (!canRecord(ctx)) return null;
+  const listen = listenAction("ask", { kind: "condition", if: { falsy: "route.slug" }, then: checkWho });
+  const line: Node = {
+    ...col([
+      when(notListening, row([bars([6, 12, 16, 9, 13, 5]), meta("Speak or type · Hinglish works", { size: 12 })], { gap: 8 })),
+      when(listening, row([voiceBars([6, 12, 16, 9, 13, 5], { live: true }), meta("Listening · Hinglish works", { size: 12 })], { gap: 8, height: 16 })),
+      when(writingDown, row([statusMark("working", { color: C.ink }), meta("Writing down what you said…", { size: 12 })], { gap: 8, height: 16 })),
+    ]),
+    ...(ctx.params.voice ? { on: { onAppear: listen } } : {}),
+  };
+  const disc = (inner: Node, a: ActionRef | undefined, label: string, ring = false): Node => labelled(box([
+    box([inner], { width: 88, height: 88, borderRadius: 44, backgroundColor: C.ink, alignItems: "center", justifyContent: "center" }),
+  ], { width: 104, height: 104, borderRadius: 52, alignItems: "center", justifyContent: "center", backgroundColor: ring ? C.surface : C.paper }, a), label);
+  const big = box([
+    when({ all: [notListening, { falsy: "ask" }] }, disc(icon("mic", { size: 34, color: C.paper }), listen, "Speak")),
+    when(listening, disc(icon("mic", { size: 34, color: C.paper }), listen, "Listening. Tap when you're done", true)),
+    when(writingDown, disc(statusMark("working", { color: C.paper, size: 14 }), undefined, "Writing down what you said")),
+    when({ all: [notListening, { truthy: "ask" }] }, disc(icon("send", { size: 30, color: C.paper }), goAction(ctx), "Send")),
+  ], { width: 108, alignItems: "center", flexShrink: 0 });
+  const hint = col([
+    when(listening, meta("Tap the mic when you're done", { size: 13, align: "center" })),
+    when({ all: [notListening, { falsy: "ask" }] }, meta("Tap the mic and speak, or type", { size: 13, align: "center" })),
+    when({ all: [notListening, { truthy: "ask" }, { falsy: "route.slug" }] }, meta("Tap once to see who answers, again to send", { size: 13, align: "center" })),
+    when({ all: [notListening, { truthy: "ask" }, { truthy: "route.slug" }] }, text("", { size: 13, color: C.meta, lineHeight: 17, align: "center", bind: "route.hint" })),
+  ]);
+  return { line, big, hint };
 }
 
 /** The answer: what was asked, who answered and what came back; a payment it filled in; the bar to ask again. */
@@ -879,7 +952,7 @@ function searchDesk(ctx: BotsCtx, data: SearchResult | undefined) {
 
 interface TasksData {
   rows: FeedRow[];
-  upcoming: { connected: boolean; todos: Array<{ title: string; due?: string; overdue?: boolean; notes?: string }> | null };
+  upcoming: { connected: boolean; todos: Array<{ id?: string; title: string; due?: string; overdue?: boolean; notes?: string }> | null };
   took: number;
   total: number;
   minutesSaved: number;
@@ -912,18 +985,18 @@ function taskRowNode(ctx: BotsCtx, r: FeedRow, size: number): Node {
   ], { gap: 12, ...(ctx.client === "desktop" ? { paddingVertical: 13, paddingHorizontal: 16 } : { alignItems: "flex-start" }) }, openRow(r));
 }
 
+/** The person's own open to-dos for the week (src/calendar): each opens to change or tick it. */
 function upcomingNodes(ctx: BotsCtx, d: TasksData | undefined): Node[] {
   const up = d?.upcoming;
-  if (!up?.connected) {
-    return [emptyState({ pose: "think", title: "See what's coming", body: "Connect Google Tasks and Plan bot shows your week here.", action: { label: "Connect Google Tasks", onPress: open(SCREENS.appConnect, { id: "google-tasks" }) } })];
-  }
-  if (!up.todos) return [couldNot("Google Tasks")];
-  if (!up.todos.length) return [notice("Nothing open in Google Tasks", { mark: "check" })];
+  const add = row([icon("plus", { size: 14 }), text("Add a to-do", { size: 13, weight: 500, lineHeight: 18 })], { gap: 4, minHeight: 36, alignSelf: "flex-start" }, addAction(undefined, "task"));
+  if (!up) return [couldNot("your to-dos")];
+  if (!up.todos) return [couldNot("your to-dos")];
+  if (!up.todos.length) return [notice("Nothing coming up", { mark: "check" }), add];
   return [col(up.todos.slice(0, 12).map((t) => row([
     avatarOf(ctx, "plan", ctx.client === "desktop" ? 32 : 30),
     col([text(t.title, { size: 14, lineHeight: 19, lines: 2 }), meta([t.overdue ? `Overdue since ${t.due}` : t.due ? `Due ${t.due}` : "No date", t.notes].filter(Boolean).join(" · "), { lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
     ...(t.overdue ? [statusMark("needs")] : []),
-  ], { gap: 12, ...(ctx.client === "desktop" ? { paddingVertical: 13, paddingHorizontal: 16 } : {}) })), ctx.client === "desktop" ? { borderRadius: 18, borderWidth: 1, borderColor: C.line } : { gap: 14 })];
+  ], { gap: 12, ...(ctx.client === "desktop" ? { paddingVertical: 13, paddingHorizontal: 16 } : {}) }, t.id ? itemAction("task", t.id) : undefined)), ctx.client === "desktop" ? { borderRadius: 18, borderWidth: 1, borderColor: C.line } : { gap: 14 }), add];
 }
 
 function tasksPhone(ctx: BotsCtx, d: TasksData | undefined) {
@@ -1234,14 +1307,15 @@ function offline(ctx: BotsCtx) {
     field("later", ph, { size: 15, returnKey: "done", onSubmit: seq({ kind: "condition", if: { falsy: "later" }, then: toast("Type the ask first"), else: seq({ kind: "appendState", path: "queued", value: "$state.later", max: 3 }, { kind: "clearState", path: "later" }) }) }),
     roundButton("plus", seq({ kind: "condition", if: { falsy: "later" }, then: toast("Type the ask first"), else: seq({ kind: "appendState", path: "queued", value: "$state.later", max: 3 }, { kind: "clearState", path: "later" }) }), { size: 40, label: "Keep this ask" }),
   ], { gap: 10, borderRadius: 26, borderWidth: 1, borderColor: C.line, paddingVertical: 5, paddingRight: 5, paddingLeft: 18 });
-  const waiting = col([
+  const kept = hasOutbox(ctx);
+  const waiting = kept ? outboxSection(ctx) : col([
     row([icon("send", { size: 16 }), text("Asks wait here until you're back", { size: 15, weight: 600, lineHeight: 20 })], { gap: 8 }),
     when({ truthy: "queued.0" }, col(queued, { borderRadius: 18, borderWidth: 1, borderColor: C.line })),
     add("Ask a bot. It goes out when you are back."),
   ], { gap: 10 });
   const banner = row([
     ...(desk ? [box([wifiOff(18, C.grey70)], { width: 40, height: 40, borderRadius: 20, backgroundColor: C.paper, alignItems: "center", justifyContent: "center" })] : []),
-    col([text("No internet right now", { size: 17, weight: 600, lineHeight: 22 }), text("Nothing is lost. Your asks wait here until you're back.", { size: 14, color: C.grey70, lineHeight: 20 })], { gap: 3, flexGrow: 1, flexShrink: 1 }),
+    col([text("No internet right now", { size: 17, weight: 600, lineHeight: 22 }), text(kept ? "Nothing is lost. Your asks wait here and go out on their own when you're back." : "Nothing is lost. Your asks wait here until you're back.", { size: 14, color: C.grey70, lineHeight: 20 })], { gap: 3, flexGrow: 1, flexShrink: 1 }),
     ...(desk ? [meta(`Last online ${last}`)] : []),
   ], { gap: 16, backgroundColor: C.surface, borderRadius: 18, paddingVertical: 16, paddingHorizontal: desk ? 18 : 16, alignItems: desk ? "center" : "flex-start" });
   const stillOpen = `Your chats, notes and files from this ${desk ? "computer" : "phone"} still open.`;
@@ -1253,7 +1327,7 @@ function offline(ctx: BotsCtx) {
       ...(b.working ? [statusMark("working", { color: b.color })] : []),
     ], { gap: 10, paddingVertical: 12, paddingHorizontal: 14, flexGrow: 1, flexBasis: 0, minWidth: 0 })), { borderRadius: 18, borderWidth: 1, borderColor: C.line });
     return page(ctx, {
-      tab: "bots", title: "Offline", gap: 18, maxWidth: 1100, state: { queued: [], later: "" },
+      tab: "bots", title: "Offline", gap: 18, maxWidth: 1100, state: kept ? { later: "" } : { queued: [], later: "" },
       body: [
         row([col([text(firstName(ctx) ? `${live.greeting}, ${firstName(ctx)}` : live.greeting, { size: 14, color: C.meta, lineHeight: 18 }), title("Your bots")], { gap: 4 }), grow(), pill], { gap: 16 }),
         banner,
@@ -1266,7 +1340,7 @@ function offline(ctx: BotsCtx) {
     });
   }
   return page(ctx, {
-    tab: "bots", title: "Offline", gap: 18, state: { queued: [], later: "" },
+    tab: "bots", title: "Offline", gap: 18, state: kept ? { later: "" } : { queued: [], later: "" },
     body: [
       row([tailzuMark(34), col([text(live.greeting, { size: 13, color: C.meta, lineHeight: 17 }), text("Your bots", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 })], { gap: 2 }), grow(), pill], { gap: 10 }),
       banner,
@@ -1379,10 +1453,12 @@ function today(ctx: BotsCtx, d: TodayData | undefined) {
     row([statusMark("working", { color: live.bots.find((b) => b.working)?.color ?? C.ink }), text(`${live.working.length} working`, { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 6 }),
     row([statusMark("done"), text(`${doneToday} done today`, { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 6 }),
   ], { gap: 16, flexWrap: "wrap" });
+  // The person's own calendar (src/calendar): nothing to connect.
+  const today = new Date(live.now + ctx.tzOffsetMinutes * 60_000).toISOString().slice(0, 10);
   const calendar = !d ? couldNot("today")
-    : !d.calendar.connected ? emptyState({ pose: "think", title: "Your day, laid out", body: "Connect Google Calendar and Plan bot lays out today here.", action: { label: "Connect Google Calendar", onPress: open(SCREENS.appConnect, { id: "google-calendar" }) } })
-      : !d.calendar.events ? notice("Couldn't read your calendar just now")
-        : !d.calendar.events.length ? notice("Nothing on your calendar today", { mark: "check" }) : calendarGrid(ctx, d);
+    : !d.calendar.events ? notice("Couldn't read your calendar just now")
+      : !d.calendar.events.length ? col([notice("Nothing on your calendar today", { mark: "check" }), row([icon("plus", { size: 14 }), text("Add to today", { size: 13, weight: 500, lineHeight: 18 })], { gap: 4, minHeight: 36, alignSelf: "flex-start" }, addAction(today))], { gap: 6 })
+        : col([calendarGrid(ctx, d), row([text("Open Plan", { size: 13, weight: 500, lineHeight: 18 }), icon("chevron", { size: 14 })], { gap: 2, minHeight: 36, alignSelf: "flex-start" }, open(SCREENS.plan, { day: today }))], { gap: 6 });
   const suggests = plan.length ? [col([
     row([avatarOf(ctx, "plan", 30), text("Plan bot suggests", { size: 15, weight: 600, lineHeight: 20 }), grow(), text(plan.length === 1 ? "1 idea for today" : `${plan.length} ideas for today`, { size: 12, weight: 500, color: colorOf(ctx, "plan"), lineHeight: 16 })], { gap: 10 }),
     ...plan.map((n, i) => col([
@@ -1411,177 +1487,26 @@ function today(ctx: BotsCtx, d: TodayData | undefined) {
   });
 }
 
-// ===================================================================== meeting notes (the window's)
-
-interface NoteSummary {
-  id: string; status: "recording" | "organising" | "ready" | "failed"; startedAt: string; endedAt?: string; durationSeconds: number; words: number;
-  title: string; summary: string; people: Array<{ label: string; name?: string }>; organised: boolean;
-}
-interface Note extends NoteSummary { highlights: Array<{ speaker: string; text: string }>; transcript: Array<{ at: number; text: string; speaker?: string }> }
-
-const minutesOf = (s: number) => Math.max(1, Math.round(s / 60));
-const speakerName = (n: Pick<Note, "people">, label?: string): string => {
-  if (!label) return "Someone";
-  if (label === "You") return "You";
-  return n.people.find((p) => p.label === label)?.name ?? label;
-};
-
-function notesLoad(_ctx: BotsCtx, deps: { api<T>(m: "GET", p: string): Promise<T> }) {
-  return deps.api<{ notes: NoteSummary[] }>("GET", "/v1/notes?limit=100");
-}
-
-function notesPage(ctx: BotsCtx, d: { notes: NoteSummary[] } | undefined) {
-  const tz = ctx.tzOffsetMinutes;
-  const q = String(ctx.params.q ?? "").trim().toLowerCase();
-  const all = (d?.notes ?? []).filter((n) => !q || `${n.title} ${n.summary} ${n.people.map((p) => p.name ?? "").join(" ")}`.toLowerCase().includes(q));
-  const weekStart = ctx.live.now - 7 * 86_400_000;
-  const week = (d?.notes ?? []).filter((n) => Date.parse(n.startedAt) >= weekStart);
-  const weekMin = Math.round(week.reduce((s, n) => s + n.durationSeconds, 0) / 60);
-  const desk = ctx.client === "desktop";
-  const status = (n: NoteSummary): Node => n.status === "recording" ? text("Recording now", { size: 13, weight: 500, color: botLook("keybot").color, lineHeight: 17 })
-    : n.status === "organising" ? text("Writing it up", { size: 13, lineHeight: 17 })
-      : n.status === "failed" ? text("Couldn't write it up", { size: 13, lineHeight: 17 }) : text("Summary ready", { size: 13, lineHeight: 17 });
-  const mark = (n: NoteSummary): Node => n.status === "recording" ? statusMark("working", { color: botLook("keybot").color })
-    : n.status === "organising" ? statusMark("waiting") : n.status === "failed" ? statusMark("failed") : statusMark("done");
-  const people = (n: NoteSummary): Node => row([
-    row(n.people.slice(0, 3).map((p, i) => initials(p.name ?? p.label, i)), { gap: 3 }),
-    text(n.people.length ? `${n.people.length} ${n.people.length === 1 ? "speaker" : "speakers"}` : "—", { size: 13, color: C.grey70, lineHeight: 17 }),
-  ], { gap: 8 });
-  const line = (n: NoteSummary): Node => {
-    const at = Date.parse(n.startedAt);
-    const sub = `${dayLabel(at, ctx.live.now, tz) === "Today" ? clockOf(at, tz) : `${dayLabel(at, ctx.live.now, tz)} · ${clockOf(at, tz)}`}${n.summary ? ` · ${n.summary.split(/(?<=[.!?])\s/)[0]!.slice(0, 70)}` : ""}`;
-    const len = n.status === "recording" ? `${minutesOf(n.durationSeconds)} min so far` : `${minutesOf(n.durationSeconds)} min`;
-    if (!desk) {
-      return row([mark(n), col([text(n.title || "Untitled note", { size: 14, weight: 600, lineHeight: 19, lines: 1 }), meta(`${sub} · ${len}`, { lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1 })], { gap: 12, paddingVertical: 12, paddingHorizontal: 16 }, open(SCREENS.note, { id: n.id }));
-    }
-    return row([
-      box([mark(n)], { width: 16 }),
-      col([text(n.title || "Untitled note", { size: 14, weight: 600, lineHeight: 19, lines: 1 }), meta(sub, { lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 }),
-      box([text(len, { size: 13, color: C.grey70, lineHeight: 17 })], { width: 110 }),
-      box([people(n)], { width: 170 }),
-      box([status(n)], { width: 130 }),
-    ], { gap: 14, paddingVertical: 12, paddingHorizontal: 16 }, open(SCREENS.note, { id: n.id }));
-  };
-  const groups: Array<{ label: string; notes: NoteSummary[] }> = [];
-  for (const n of all) {
-    const l = dayLabel(Date.parse(n.startedAt), ctx.live.now, tz);
-    const label = l === "Today" ? "Today" : Date.parse(n.startedAt) >= weekStart ? "This week" : "Earlier";
-    const g = groups.find((x) => x.label === label);
-    if (g) g.notes.push(n); else groups.push({ label, notes: [n] });
-  }
-  const tableOf = (ns: NoteSummary[]) => {
-    const kids: Node[] = [];
-    ns.forEach((n, i) => { if (i) kids.push(divider()); kids.push(line(n)); });
-    return col(kids, { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" });
-  };
-  const header = desk ? row([
-    box([], { width: 16 }), box([sectionLabel("Meeting")], { flexGrow: 1, flexBasis: 0 }), box([sectionLabel("Length")], { width: 110 }),
-    box([sectionLabel("Speakers")], { width: 170 }), box([sectionLabel("Status")], { width: 130 }),
-  ], { gap: 14, paddingHorizontal: 16 }) : null;
-  const search = row([
-    icon("search", { size: 18, color: C.meta }),
-    field("nq", "Search notes, people or something someone said…", { size: 14, onSubmit: { kind: "navigate", screenId: SCREENS.notes, params: { q: "$state.nq" }, replace: true } }),
-    ...(q ? [labelled(box([icon("close", { size: 16 })], { width: 36, height: 36, alignItems: "center", justifyContent: "center" }, { kind: "navigate", screenId: SCREENS.notes, replace: true }), "Clear search")] : []),
-  ], { gap: 10, height: 46, borderRadius: 23, borderWidth: 1, borderColor: C.line, paddingLeft: 16, paddingRight: 6 });
-  const weekLineText = `This week · ${week.length} ${week.length === 1 ? "meeting" : "meetings"}${weekMin ? ` · ${duration(weekMin)}` : ""}`;
-  return page(ctx, {
-    ...(desk ? { nav: "notes" } : { back: true }), title: "Meeting notes", gap: 18, maxWidth: 1000, state: { nq: q },
-    body: [
-      row([
-        col([title("Meeting notes"), meta(weekLineText, { size: 13 })], { gap: 4, flexShrink: 1 }),
-        grow(),
-        ...(desk ? [button("Record a meeting", { kind: "notes.toggle" }, { kind: "primary" })] : []),
-      ], { gap: 16, alignItems: "flex-end" }),
-      search,
-      ...(!d ? [couldNot("your notes")]
-        : !all.length ? [emptyState({
-          pose: q ? "think" : "listen", title: q ? `No notes about “${q}”` : "No meetings yet",
-          body: q ? "Try another word or a name." : desk ? "Press Record a meeting, or the notes key, and Tailzu writes it up when you stop." : "Record meetings from Tailzu on your computer. Their notes show up here.",
-          ...(desk && !q ? { action: { label: "Record a meeting", onPress: { kind: "notes.toggle" } as ActionSpec } } : {}),
-        })]
-          : groups.map((g, i) => col([sectionLabel(g.label), ...(i === 0 && header ? [header] : []), tableOf(g.notes)], { gap: 8 }))),
-      ...(d && all.length ? [meta("Tell everyone on a call that you're taking notes.")] : []),
-    ],
-  });
-}
-
-function noteLoad(ctx: BotsCtx, deps: { api<T>(m: "GET", p: string): Promise<T> }) {
-  return deps.api<{ note: Note }>("GET", `/v1/notes/${encodeURIComponent(String(ctx.params.id ?? ""))}`).then((r) => r.note);
-}
-
-const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-
-function notePage(ctx: BotsCtx, n: Note | undefined) {
-  const desk = ctx.client === "desktop";
-  const backTo = row([icon("back", { size: 22, color: C.grey70 }), text("Meeting notes", { size: 14, color: C.grey70, lineHeight: 18 })], { gap: 2, minHeight: 44, alignSelf: "flex-start" }, open(SCREENS.notes));
-  if (!n) {
-    return page(ctx, { ...(desk ? { nav: "notes" } : { back: true }), title: "Meeting notes", body: [...(desk ? [backTo] : []), emptyState({ pose: "think", title: "Couldn't open this note", body: "It may have been deleted.", action: { label: "All meeting notes", onPress: open(SCREENS.notes) } })] });
-  }
-  const tz = ctx.tzOffsetMinutes;
-  const at = Date.parse(n.startedAt);
-  const speakers = n.people.length;
-  const metaLine = [`${dayLabel(at, ctx.live.now, tz)}, ${clockOf(at, tz)}`, `${minutesOf(n.durationSeconds)} min`, ...(speakers ? [`${speakers} ${speakers === 1 ? "speaker" : "speakers"}`] : []), "recorded on your computer"].join(" · ");
-  const labels = [...new Set([...n.people.map((p) => p.label), ...n.transcript.map((t) => t.speaker ?? "")].filter(Boolean))];
-  const who = (label?: string) => Math.max(0, labels.indexOf(label ?? ""));
-  const copy = [n.title, "", n.summary, "", ...n.highlights.map((h) => `${speakerName(n, h.speaker)}: ${h.text}`)].join("\n").trim();
-  const status = n.status === "recording" ? [notice("Still recording. The notes are written when you stop.", { mark: "mic" })]
-    : n.status === "organising" ? [notice("Writing it up. This takes a minute.")]
-      : n.status === "failed" ? [notice("Couldn't write this one up. The transcript is kept.")] : [];
-  const lines = n.transcript.slice(0, 80);
-  const transcript = col([
-    row([sectionLabel("Transcript"), grow(), meta(`${n.transcript.length} ${n.transcript.length === 1 ? "line" : "lines"}`)], { gap: 8, paddingHorizontal: 2 }),
-    ...(lines.length ? lines.map((t) => {
-      const i = who(t.speaker);
-      const name = speakerName(n, t.speaker);
-      return row([
-        initials(name === "You" ? ctx.user?.name ?? name : name, i, 26),
-        col([row([text(name === "You" && ctx.user?.name ? `${firstName(ctx)} (you)` : name, { size: 13, weight: 600, lineHeight: 17 }), meta(mmss(t.at), { size: 11.5 })], { gap: 8 }), text(t.text, { size: 14, lineHeight: 20 })], { gap: 3, flexShrink: 1 }),
-      ], {
-        gap: 10, alignItems: "flex-start", paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14,
-        ...(i % 2 === 0 ? { backgroundColor: C.surface } : { backgroundColor: C.paper, borderWidth: 1, borderColor: C.line }),
-      });
-    }) : [meta("Nothing was heard.")]),
-    ...(n.transcript.length > lines.length ? [meta(`And ${n.transcript.length - lines.length} more lines`)] : []),
-  ], { gap: 10, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line });
-  const left = col([
-    ...status,
-    col([sectionLabel("Summary"), text(n.summary || "No summary yet.", { size: 15, lineHeight: 23 })], { gap: 8 }),
-    ...(n.highlights.length ? [col([
-      sectionLabel(`What was said · ${n.highlights.length}`),
-      ...n.highlights.map((h, i) => row([meta(String(i + 1).padStart(2, "0"), { size: 12 }), col([text(h.text, { size: 14, lineHeight: 20 }), meta(speakerName(n, h.speaker))], { gap: 2, flexShrink: 1 })], { gap: 12, alignItems: "flex-start" })),
-    ], { gap: 10 })] : []),
-  ], { gap: 20, ...(desk ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 } : {}) });
-  const ask = open(SCREENS.ask, { message: `About my meeting “${n.title}”: ` });
-  const actions = [secondaryButton("Copy notes", { kind: "copyText", text: copy, message: "Notes copied" }, { size: desk ? "lg" : "md" }), primaryButton("Ask a bot about it", ask, { size: desk ? "lg" : "md" })];
-  return page(ctx, {
-    ...(desk ? { nav: "notes" } : { back: true, backTitle: "Meeting notes" }), title: n.title || "Meeting notes", gap: desk ? 14 : 18, maxWidth: 1100,
-    body: [
-      ...(desk ? [backTo] : []),
-      row([
-        col([title(n.title || "Untitled note"), meta(metaLine, { size: 13 })], { gap: 6, flexShrink: 1, flexGrow: 1, flexBasis: 0, minWidth: 0 }),
-        ...(desk ? [row(actions, { gap: 10 })] : []),
-      ], { gap: 16, alignItems: "flex-end" }),
-      ...(desk ? [row([left, box([transcript], { flexGrow: 0.92, flexShrink: 1, flexBasis: 0, minWidth: 0 })], { gap: 28, alignItems: "flex-start" })] : [left, row(actions, { gap: 10, flexWrap: "wrap" }), transcript]),
-    ],
-  });
-}
-
 // ===================================================================== the list
 
 export const shellScreens: BotsScreen[] = [
-  screen<{ started?: boolean; arrival?: boolean }>({
+  screen<{ started?: boolean; arrival?: boolean } & HomeMore>({
     id: SCREENS.home,
-    // Whether they have anything of their own yet, and whether the first-arrival card is due (once, after onboarding).
-    load: async (_ctx, deps) => {
-      const [started, arrival] = await Promise.all([
+    // Whether they have anything of their own yet, whether the first-arrival card is due (once, after onboarding), whether the
+    // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
+    load: async (ctx, deps) => {
+      const [started, arrival, leaving, push, notes] = await Promise.all([
         deps.api<{ started: boolean }>("GET", "/v1/shell/started").catch(() => undefined),
         deps.api<{ due: boolean }>("GET", ARRIVAL_PATH).catch(() => undefined),
+        deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
+        ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
+        hasNotes(ctx) ? deps.api<NotesStats>("GET", NOTES_STATS_PATH).catch(() => undefined) : Promise.resolve(undefined),
       ]);
-      return { ...(started ?? {}), arrival: arrival?.due === true };
+      return { ...(started ?? {}), arrival: arrival?.due === true, leaving, push: push?.due === true, notes };
     },
     build: (ctx, data) => {
-      const arrival = !!data?.arrival;
-      return isNew(ctx, data) ? emptyHome(ctx, arrival) : ctx.client === "desktop" ? homeDesk(ctx, arrival) : homePhone(ctx, arrival);
+      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes };
+      return isNew(ctx, data) ? emptyHome(ctx, arrival, more) : ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
     },
   }),
   screen({ id: SCREENS.empty, build: (ctx) => emptyHome(ctx) }),
@@ -1599,8 +1524,6 @@ export const shellScreens: BotsScreen[] = [
     id: SCREENS.approve, load: approveLoad,
     build: (ctx, d) => (upiOf(ctx.params.upi) ? approvePay(ctx, String(ctx.params.upi)) : ctx.params.receipt ? approveReceipt(ctx, d) : approveTask(ctx, d)),
   }),
-  screen({ id: SCREENS.offline, build: (ctx) => offline(ctx) }),
+  screen({ id: SCREENS.offline, build: (ctx) => offlineKept(ctx, offline(ctx)) }),
   screen<TodayData>({ id: SCREENS.today, load: (ctx, deps) => deps.api<TodayData>("GET", `/v1/shell/today?tz=${ctx.tzOffsetMinutes}`), build: today }),
-  screen<{ notes: NoteSummary[] }>({ id: SCREENS.notes, load: notesLoad, build: notesPage }),
-  screen<Note>({ id: SCREENS.note, load: noteLoad, build: notePage }),
 ];

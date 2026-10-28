@@ -7,12 +7,14 @@
  *   GET  /v1/shell/search?q=&tz=             projects, chats, notes, files and bots that match (src/shell/search.ts)
  *   POST /v1/shell/route { message, bot? }   who will answer, WITHOUT answering: "Ask any bot"'s own pick (the rules, the tiny tier only
  *                                            when unsure, counted on the person's front-door day); `bot` the person chose: echoed back
- *   POST /v1/shell/ask { message, bot?, device?, mode?, attachments? }
- *                                            POST /v1/ask as the person (same guard, same money), and the answer written down for Activity
+ *   POST /v1/shell/ask { message, bot?, device?, mode?, attachments?, projectId?, clientId?, typedAt? }
+ *                                            POST /v1/ask as the person (same guard, same money), and the answer written down for Activity.
+ *                                            With a clientId (an ask from the apps' outbox, typed offline at typedAt) it is answered ONCE:
+ *                                            a retry gets the first answer (idempotent-replayed), one still out is 409 ask_in_flight
  *   POST /v1/shell/receipts { upi, bot?, title? }   the person says they pressed pay in their UPI app: a receipt for Activity. Nothing is paid
  *   GET  /v1/shell/receipts/:id              one receipt
- *   GET  /v1/shell/tasks?tz=                 today's work by bots and what needs the person, and Google Tasks for the week when connected
- *   GET  /v1/shell/today?tz=                 today's calendar (Google Calendar, when connected), Keybot's words by hour and app, the day's work
+ *   GET  /v1/shell/tasks?tz=                 today's work by bots and what needs the person, and their own open to-dos for the week (src/calendar)
+ *   GET  /v1/shell/today?tz=                 today's calendar (their own, src/calendar), Keybot's words by hour and app, the day's work
  *   GET  /v1/shell/started                   whether the person has done anything yet (Home shows the empty home until they have)
  *   GET  /v1/shell/glance?tz=                for the natives (iOS widgets, the live activity): bots and their live state, what needs the
  *                                            person, Keybot's words today, the current Code bot job's stage. Small, no words to translate
@@ -30,10 +32,12 @@ import {
 } from "../shell/feed.js";
 import { upiOf } from "../shell/parse.js";
 import {
-  feedJob, previewOf, readCalendar, readGoogleTasks, readJobs, readProjects, readSearchSources, readTasks, readVoiceRows, routeOf, wordsByDay,
+  feedJob, previewOf, readJobs, readProjects, readSearchSources, readTasks, readVoiceRows, routeOf, wordsByDay,
 } from "../shell/read.js";
 import { searchAll } from "../shell/search.js";
+import { CLIENT_ID, sentAskStore, type Claim, type SentAskStore } from "../shell/sentAsks.js";
 import type { BotsAreaDeps } from "./botsArea.js";
+import { calendar, todayForShell, upcomingForShell } from "../calendar/index.js";
 
 /** Words a minute a person types: the product's standing figure (experience/desk.ts, history/store.ts). */
 const TYPING_WPM = 40;
@@ -47,7 +51,13 @@ export interface ShellRoutesOptions {
   minutesSaved?: (user: AuthedUser, tz: number) => Promise<number>;
   /** Keybot's spoken words since a time (history); tests hand in their own. */
   voiceRows?: (user: AuthedUser, since: number) => Promise<Array<{ at: number; words: number; app?: string }>>;
+  /** The client ids of asks sent from the apps' outbox (src/shell/sentAsks.ts); tests hand in their own. */
+  sentAsks?: SentAskStore;
 }
+
+/** When an outbox ask was typed (ms), if it is a time that can be true: the last 30 days, and not later than now. */
+const typedAtOf = (v: unknown, t: number): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) && v <= t + 5 * 60_000 && v >= t - 30 * 86_400_000 ? Math.round(v) : undefined;
 
 const tzOf = (q: unknown): number => {
   const n = Number((q as { tz?: unknown } | null)?.tz);
@@ -58,6 +68,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
   const RL = { config: deps.rateLimit };
   const now = o.now ?? Date.now;
   const events = (): EventStore => o.events ?? eventStore();
+  const sent = (): SentAskStore => o.sentAsks ?? sentAskStore();
   const saved = o.minutesSaved ?? ((u: AuthedUser, tz: number) => statsForUser(u, "week", tz).then((s) => s.minutesSaved));
   const voice = o.voiceRows ?? readVoiceRows;
   const wroteAny = (u: AuthedUser): Promise<boolean> =>
@@ -140,27 +151,51 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       // A bot only while the bots platform is on; "tailzu" is the front door's own road.
       ...(deps.bots && bot !== "tailzu" ? { bot } : {}),
       ...(Array.isArray(b.attachments) && b.attachments.length ? { attachments: b.attachments.slice(0, 8) } : {}),
+      // The Code bot's own page asks about one project (screens/code.ts codeAsk); POST /v1/ask checks the id.
+      ...(typeof b.projectId === "string" && b.projectId ? { projectId: b.projectId } : {}),
     };
-    const r = await app.inject({
-      method: "POST", url: "/v1/ask", payload: body,
-      headers: { authorization: String(req.headers["authorization"] ?? ""), "content-type": "application/json", ...(req.headers["idempotency-key"] ? { "idempotency-key": String(req.headers["idempotency-key"]) } : {}) },
-    });
+    // An ask from the apps' outbox (typed offline) carries the id it got when it was typed: it is answered once, however often it is sent
+    // (src/shell/sentAsks.ts). A retry of one that was answered gets that answer; one still out is told so (409) and tries again later.
+    const clientId = typeof b.clientId === "string" ? b.clientId : undefined;
+    if (b.clientId !== undefined && !(clientId && CLIENT_ID.test(clientId))) return reply.code(400).send({ code: "bad_request", message: "clientId is 8 to 64 letters, digits, - or _." });
+    const typedAt = typedAtOf(b.typedAt, now());
+    if (clientId) {
+      let c: Claim;
+      try { c = await sent().claim(user.id, clientId, now(), typedAt); } catch (err) {
+        req.log.error(err);
+        return reply.code(503).send({ code: "try_again", message: "Couldn't send that yet. It goes again soon." });
+      }
+      if (c.state === "sent") return reply.header("idempotent-replayed", "true").send(c.reply);
+      if (c.state === "sending") return reply.code(409).send({ code: "ask_in_flight", message: "That ask is already on its way." });
+    }
+    const letGo = async (): Promise<void> => { if (clientId) await sent().release(user.id, clientId).catch((err) => req.log.warn({ err }, "shell: ask id not let go")); };
+    const key = req.headers["idempotency-key"] ? String(req.headers["idempotency-key"]) : clientId ? `ask:${clientId}` : "";
+    let r: Awaited<ReturnType<typeof app.inject>>;
+    try {
+      r = await app.inject({
+        method: "POST", url: "/v1/ask", payload: body,
+        headers: { authorization: String(req.headers["authorization"] ?? ""), "content-type": "application/json", ...(key ? { "idempotency-key": key } : {}) },
+      });
+    } catch (err) { await letGo(); throw err; }
     let j: AskReply;
-    try { j = JSON.parse(r.body) as AskReply; } catch { return reply.code(r.statusCode >= 400 ? r.statusCode : 502).send({ code: "ask_failed", message: "Couldn't answer that" }); }
-    if (r.statusCode < 200 || r.statusCode >= 300) return reply.code(r.statusCode).send(j);
+    try { j = JSON.parse(r.body) as AskReply; } catch { await letGo(); return reply.code(r.statusCode >= 400 ? r.statusCode : 502).send({ code: "ask_failed", message: "Couldn't answer that" }); }
+    if (r.statusCode < 200 || r.statusCode >= 300) { await letGo(); return reply.code(r.statusCode).send(j); }
     const slug = j.bot?.slug ?? (j.result?.job || j.decision?.route === "code" ? "code" : "tailzu");
     const name = j.bot?.name ?? (slug === "code" ? "Code bot" : "Tailzu");
     const upi = (j.answer?.opens ?? []).map((x) => upiOf(x.url)).find((x) => !!x);
     await events().add(user.id, { kind: "ask", bot: slug, title: message, paise: Math.max(0, Math.round(j.result?.paise ?? 0)), amountPaise: 0, payee: "" }, now()).catch((err) => req.log.warn({ err }, "shell: ask not written down"));
     started.add(user.id);
-    return reply.send({
+    const out = {
       ...j,
       shell: {
         bot: { slug, name, color: previewOf(slug, name, "chosen", 1).color }, text: j.result?.text ?? "", paise: j.result?.paise ?? 0,
         needs: j.answer?.approvals?.length ?? 0, ...(upi ? { upi: upi.link } : {}),
         ...(typeof (j.result?.job as { id?: unknown } | undefined)?.id === "string" ? { job: (j.result!.job as { id: string }).id } : {}),
+        ...(clientId ? { clientId, ...(typedAt ? { typedAt } : {}) } : {}),
       },
-    });
+    };
+    if (clientId) await sent().done(user.id, clientId, out, now()).catch((err) => req.log.warn({ err }, "shell: sent ask not kept"));
+    return reply.send(out);
   });
 
   app.post("/v1/shell/receipts", RL, async (req, reply) => {
@@ -193,13 +228,13 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     const tz = tzOf(req.query);
     try {
       const today = dayStartOf(now(), tz);
-      const [{ rows, voiceRows }, google] = await Promise.all([feedFor(user, tz, 1), readGoogleTasks(deps, user.id)]);
+      const [{ rows, voiceRows }, upcoming] = await Promise.all([feedFor(user, tz, 1), upcomingForShell(calendar(), user.id, now(), tz)]);
       const mine = rows.filter((r) => r.type !== "words" && (r.at >= today || r.mark === "needs" || r.mark === "working"));
       const words = voiceRows.filter((v) => v.at >= today).reduce((n, v) => n + v.words, 0);
-      const dueToday = (google.todos ?? []).filter((t) => t.overdue || /^today$/i.test(t.due ?? "")).length;
+      const dueToday = (upcoming.todos ?? []).filter((t) => t.overdue || /^today\b/i.test(t.due ?? "")).length;
       const took = mine.filter((r) => r.mark === "done" || r.mark === "working").length;
       return reply.send({
-        rows: mine, upcoming: google, took, total: mine.length + dueToday, minutesSaved: Math.round(words / TYPING_WPM),
+        rows: mine, upcoming, took, total: mine.length + dueToday, minutesSaved: Math.round(words / TYPING_WPM),
       });
     } catch (err) { return fail(req, reply, err); }
   });
@@ -210,10 +245,10 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     const tz = tzOf(req.query);
     try {
       const today = dayStartOf(now(), tz);
-      const [{ rows, voiceRows }, calendar] = await Promise.all([feedFor(user, tz, 1), readCalendar(deps, user.id)]);
+      const [{ rows, voiceRows }, days] = await Promise.all([feedFor(user, tz, 1), todayForShell(calendar(), user.id, now(), tz)]);
       const day = wordsDay(voiceRows.filter((v) => v.at >= today), tz);
       return reply.send({
-        calendar, rows: rows.filter((r) => r.type !== "words"),
+        calendar: days, rows: rows.filter((r) => r.type !== "words"),
         keybot: { ...day, minutesSaved: Math.round(day.words / TYPING_WPM) },
       });
     } catch (err) { return fail(req, reply, err); }

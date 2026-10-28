@@ -38,6 +38,7 @@ export const SCREENS = {
   billing: "bots.billing",           // Billing / DBilling
   plans: "bots.plans",               // Plans / DPlans
   computer: "bots.computer",         // Devices / DeskComputer ("This computer helps")
+  link: "bots.link",                 // Link a computer: approve a computer's sign-in from the phone (params: l token or c code; screens/link.ts)
   language: "bots.language",         // Language / DLanguage
   notify: "bots.notify",             // Notify / DNotify
   privacy: "bots.privacy",           // Privacy / DPrivacy
@@ -51,11 +52,22 @@ export const SCREENS = {
   edit: "bots.edit",                 // BotEdit / DBotEdit (params: slug)
   keys: "bots.keys",                 // BotKeys / DBotKeys (params: slug)
   store: "bots.store",               // BotStore / DBotStore
-  plan: "bots.plan",                 // PlanBot / DPlanBot
+  plan: "bots.plan",                 // PlanBot / DPlanBot (params: week, day)
+  planItem: "bots.plan.item",        // no board: add or change an event or a to-do on the person's own calendar (screens/planItem.ts; params: kind, id, day)
   travel: "bots.travel",             // TravelBot / DTravelBot
   chat: "bots.chat",                 // Chat (params: slug)
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)
+  // screens/spaces.ts: spaces with family and friends (bots.spaces is built there too), sharing, payments, tasks, messaging
+  spaceMember: "bots.space.member",  // What <name> can do (params: id, member)
+  spaceInvite: "bots.space.invite",  // Invite by link or email (params: id)
+  spaceRoles: "bots.space.roles",    // The space's own roles (params: id, role)
+  spaceItem: "bots.space.item",      // One shared thing (params: item)
+  spacePay: "bots.space.pay",        // Ask for a payment (params: id)
+  spaceTasks: "bots.space.tasks",    // Given to you; a space's tasks; a new task or plan (params: id, new: "task" | "plan")
+  share: "bots.share",               // Share to a space or person (params: kind, ref, title, text, url, bot)
+  chats: "bots.chats",               // Chats (params: id, the open one in the window; new: "group")
+  thread: "bots.thread",             // One chat (params: id, before)
   // screens/keybot.ts
   keybot: "bots.keybot",             // Keybot / DKeybot
   keyOn: "bots.keybot.on",           // KeyOn / DKeyOn

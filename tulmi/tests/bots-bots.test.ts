@@ -6,7 +6,7 @@
  *   - Make a bot: the draft is kept while it is shaped, edited, tried and approved (only then is there a bot)
  *   - Find a bot: a listed bot shows to others, a copy is theirs, unlisting takes it away; ready-made ones are added the same way
  *   - a bot's rules added and removed; what its API keys used this month, counted after the answer went out
- *   - spaces: made, invited to by code, joined, who approves payments (never nobody), bots shared, left
+ *   - spaces: made, invited to by code, joined, who approves payments (the admin always), bots shared, left
  *   - the Plan bot's suggestion: a clash tomorrow, moved only on a yes, kept as it is when asked; trips and packing
  *   - share-in: the front door's pick, and the message composed
  */
@@ -130,7 +130,8 @@ describe("the screens, from the boards' day", () => {
     expect(travel).toEqual(expect.arrayContaining([`PUT ${AREA}/trip/7a1b2c3d-0000-4000-8000-0000000000aa/packing/0`, `POST ${AREA}/trip/7a1b2c3d-0000-4000-8000-0000000000aa/packing`]));
     expect(actions((await build("bots.travel", "phone")).nodes).some((a) => a.kind === "openUrl" && String(a.url).includes("irctc"))).toBe(true);
     const spaces = posts((await build("bots.spaces", "desktop")).nodes);
-    expect(spaces).toEqual(expect.arrayContaining([`POST ${AREA}/spaces`, `POST ${AREA}/spaces/join`, `POST ${AREA}/spaces/s1/invite`, `PUT ${AREA}/spaces/s1/members/m`, `POST ${AREA}/spaces/s1/bots`]));
+    // The rest of Spaces' wiring: tests/spaces-screens.test.ts.
+    expect(spaces).toEqual(expect.arrayContaining([`POST ${AREA}/spaces`, `POST ${AREA}/spaces/join`, `POST ${AREA}/spaces/s1/lists`, `PUT ${AREA}/spaces/s1/payments/p-groceries`, `POST ${AREA}/threads/group`]));
     const share = actions((await build("bots.share-in", "phone", { file: "f-9" })).nodes);
     const ask = share.find((a) => a.kind === "callEndpoint" && a.path === "/v1/ask");
     expect(ask?.body).toMatchObject({ message: "$state.composed.message", bot: "$state.bot", attachments: [{ id: "f-9", sha256: "a".repeat(64) }] });
@@ -277,7 +278,7 @@ describe("the routes", () => {
     let home = (await s.call("GET", `${AREA}/spaces`)).json().spaces[0];
     expect(home.members.map((m: { name: string; canApprove: boolean }) => [m.name, m.canApprove])).toEqual([["Aanya S.", true], ["Rohan", false]]);
     expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${BOB}`, BOB, { canApprove: true })).statusCode).toBe(403);
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${ALICE}`, ALICE, { canApprove: false })).json().code).toBe("last_approver");
+    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${ALICE}`, ALICE, { canApprove: false })).json().code).toBe("is_admin");
     await s.call("PUT", `${AREA}/spaces/${id}/members/${BOB}`, ALICE, { canApprove: true });
     await s.call("POST", `${AREA}/spaces/${id}/bots`, BOB, { slug: "plan" });
     home = (await s.call("GET", `${AREA}/spaces`, BOB)).json().spaces[0];
@@ -290,14 +291,9 @@ describe("the routes", () => {
   });
 
   it("reads tomorrow and the week, suggests one move, makes it only on a yes, and keeps it as it is when asked", async () => {
+    // The move is on the person's own calendar (src/calendar): no connected app, no card; "Move it" is the yes.
     const used: unknown[] = [];
-    const connectors = {
-      tasks: {
-        use: async (_u: string, _r: string, _s: string, line: unknown) => { used.push(line); return { kind: "approval", taskId: "t1", approval: {} }; },
-        approve: async () => ({ status: "ok" }),
-        settle: async () => undefined,
-      },
-    };
+    const connectors = async (_u: string, eventId: string, startMs: number) => { used.push({ eventId, start: startMs }); };
     const s = await served({ connectors });
     s.r.now.t = Date.UTC(2026, 9, 28, 14, 10);
     const read = (await s.call("GET", `${AREA}/plan?tz=330&week=0`)).json();
@@ -307,7 +303,7 @@ describe("the routes", () => {
     expect(read.suggestion).toMatchObject({ eventId: "e11", question: "Move Dentist to Friday 10 am?", fromDay: "Thursday" });
     const moved = await s.call("POST", `${AREA}/plan/move`, ALICE, { eventId: "e11", start: read.suggestion.startIso, said: read.suggestion.question });
     expect(moved.json()).toEqual({ done: true, message: "Moved." });
-    expect(used).toEqual([{ connector: "google-calendar", tool: "move_event", args: { event_id: "e11", start: "2026-10-30T10:00:00+05:30" } }]);
+    expect(used).toEqual([{ eventId: "e11", start: Date.parse("2026-10-30T10:00:00+05:30") }]);
     await s.call("POST", `${AREA}/plan/skip`, ALICE, { key: read.suggestion.key });
     expect((await s.call("GET", `${AREA}/plan?tz=330`)).json().suggestion).toBeNull();
   });
@@ -319,7 +315,7 @@ describe("the routes", () => {
     expect(suggestionFor(busy, tomorrow, 330, new Set())?.eventId).toBe("e12");
   });
 
-  it("says the calendar isn't connected instead of guessing", async () => {
+  it("reads nothing it can't, instead of guessing", async () => {
     const plan = new PlanDays(fakeReader({ calendar: false, tasks: false }), null, () => Date.UTC(2026, 9, 28, 14, 10), new MemoryTable());
     const r = await plan.read(ALICE, { tz: 330 });
     expect(r.connected).toEqual({ calendar: false, tasks: false });

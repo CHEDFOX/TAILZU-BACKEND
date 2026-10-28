@@ -62,7 +62,7 @@ export const READY_MADE: readonly Template[] = [
     id: "tailzu-study", name: "Study bot", colour: "plum", purpose: "Turns Classroom work into a daily plan",
     about: "Turns Classroom work into a daily plan. Good for school, college and exam prep.",
     principles: ["Read new work from Google Classroom each evening.", "Split work into 25-minute blocks before the due date.", "Put the plan in my calendar only after I say yes.", "Never submit work or message my teachers."],
-    skills: skills({ connectors: ["google-classroom", "google-calendar"] }), tone: "encouraging and brief",
+    skills: skills({ connectors: ["google-classroom", "calendar"] }), tone: "encouraging and brief",
     will: "Read Classroom and your calendar", wont: "Submit work or message your teachers",
   },
   {

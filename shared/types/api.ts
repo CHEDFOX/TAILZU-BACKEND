@@ -168,6 +168,13 @@ export interface Personality {
   botsArrivalAt?: string;
 
   /**
+   * When the Bots app's "turn on notifications" card (on a phone's Home, once a bot is working or needs them) was answered:
+   * notifications allowed, or "Not now" (routes/botsPushAsk.ts, PUT /v1/bots/push-ask). Unset: it may still come up.
+   */
+  botsPushAskAt?: string;
+  botsPushAnswer?: "granted" | "dismissed";
+
+  /**
    * A second name of their own for the keyboard, beside Tailzu, which always
    * works too ("Zara, make it formal"). Set in Settings; letters, spaces,
    * apostrophes and hyphens, at most 24 characters (experience/assistantName).
@@ -1321,10 +1328,38 @@ export interface Note {
    * computer could not provide it. Absent on notes from before this was kept.
    */
   systemAudio?: "ok" | "denied" | "unavailable";
+  /** The meeting's to-dos, found once its transcript is final (tulmi/src/notes/extract.ts); ticked off in the app. */
+  todos?: NoteTodo[];
+  /** What was decided, each in a line. */
+  decisions?: string[];
+  /**
+   * When the to-dos and decisions were looked for, and for which transcript (a hash): the same transcript is never
+   * read twice. `ok` false: the look failed and may be tried again later.
+   */
+  found?: { hash: string; at: string; ok: boolean };
 }
 
-/** A note as a list shows it. */
-export type NoteSummary = Pick<Note, "id" | "status" | "startedAt" | "endedAt" | "durationSeconds" | "words" | "title" | "summary" | "people" | "organised" | "systemAudio">;
+/** One to-do from a meeting: what, who (a speaker label or a name), when if it was said, and whether it is done. */
+export interface NoteTodo {
+  /** Stable within its note ("t1", "t2"…). */
+  id: string;
+  text: string;
+  /** A speaker label ("You", "Speaker 2"; Note.people names them) or a name said in the meeting. Absent when nobody was given it. */
+  who?: string;
+  /** When, as it was said ("by Friday", "kal tak"). */
+  when?: string;
+  done: boolean;
+  /** ISO-8601, when it was ticked off. */
+  doneAt?: string;
+}
+
+/** A note as a list shows it, with its to-dos counted. */
+export type NoteSummary = Pick<Note, "id" | "status" | "startedAt" | "endedAt" | "durationSeconds" | "words" | "title" | "summary" | "people" | "organised" | "systemAudio"> & {
+  /** To-dos found, and how many are still open; decisions found. Absent before the meeting was looked at. */
+  todos?: number;
+  openTodos?: number;
+  decisions?: number;
+};
 
 
 /** GET /v1/history response. */

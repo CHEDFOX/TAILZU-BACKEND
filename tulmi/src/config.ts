@@ -871,6 +871,10 @@ const EnvSchema = z.object({
    *   ARTIFACT_SHOT_VIEWER_URL  the address of the viewer kept for screenshots: the same viewer deployed a second time with VIEWER_PARENT_ORIGINS=null
    *                          (viewer/docs/artifact-viewer.md section 14). It is NOT the app's viewer, which refuses the host page of a shot. Screenshots of a design need it
    *   ARTIFACT_SHOT_SECRET   signs the 7-day links to a job's screenshots; CODE_JOBS_SECRET when not set
+   *   ARTIFACT_VIEWER_URL    the viewer the apps run an artifact in (the LiveView on Design and Live preview; src/artifacts/livehost.ts).
+   *                          Not set: those screens draw the artifact's parts, as before
+   *   ARTIFACT_APP_ORIGIN    the https origin the apps' host page runs as; it must be in that viewer's VIEWER_PARENT_ORIGINS
+   *                          (default https://tailzu.space, the viewer's own default)
    */
   CODE_PREVIEW_IDLE_SEC: z.coerce.number().int().min(10).max(3600).default(300),
   PREVIEW_DOMAIN: z.string().trim().toLowerCase().optional(),
@@ -878,6 +882,8 @@ const EnvSchema = z.object({
   CODE_DESIGN_CHECK: bool(true),
   ARTIFACT_SHOT_VIEWER_URL: z.string().trim().optional(),
   ARTIFACT_SHOT_SECRET: z.string().optional(),
+  ARTIFACT_VIEWER_URL: z.string().trim().optional(),
+  ARTIFACT_APP_ORIGIN: z.string().trim().optional(),
   /**
    * WHERE THIS PROCESS RUNS. "node" (default) is the VPS: every setting it needs is
    * checked. "worker" is the Cloudflare jobs Worker, which never transcribes
@@ -958,6 +964,24 @@ const EnvSchema = z.object({
   STACKEXCHANGE_KEY: z.string().trim().optional().transform((v) => v || undefined),
   WEB_SEARCH_DAILY: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(100_000).default(200)),
   WEB_RESEARCH_DAILY: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(100_000).default(30)),
+  /**
+   * PLACES AND WEATHER (src/places/index.ts): the Plan bot's travel times and the Travel bot's weather and stay distances.
+   * PLACES_GEOCODER photon|nominatim|off and PLACES_ROUTER osrm|ors|off are off unless set; each has its address
+   * (PLACES_GEOCODE_URL, PLACES_ROUTE_URL; Nominatim's must be set) so a public server can become our own. PLACES_ROUTE_KEY is
+   * openrouteservice's key, a SECRET (.env only). PLACES_RATE_MS spaces requests (1100 for the public servers, 0 for our own).
+   * PLACES_DRIVE_BUFFER multiplies free-flow drive times. PLACES_CONTACT goes in the User-Agent. WEATHER metno|off (default
+   * metno, MET Norway, no key) and WEATHER_URL.
+   */
+  PLACES_GEOCODER: z.string().trim().toLowerCase().optional().transform((v) => (v === "photon" || v === "nominatim" ? v : "off")),
+  PLACES_GEOCODE_URL: z.string().trim().optional().transform((v) => v || undefined),
+  PLACES_ROUTER: z.string().trim().toLowerCase().optional().transform((v) => (v === "osrm" || v === "ors" ? v : "off")),
+  PLACES_ROUTE_URL: z.string().trim().optional().transform((v) => v || undefined),
+  PLACES_ROUTE_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  PLACES_RATE_MS: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(10_000).default(1100)),
+  PLACES_DRIVE_BUFFER: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().min(1).max(3).default(1.3)),
+  PLACES_CONTACT: z.string().trim().optional().transform((v) => v || undefined),
+  WEATHER: z.string().trim().toLowerCase().optional().transform((v) => (v === "off" ? "off" : "metno")),
+  WEATHER_URL: z.string().trim().optional().transform((v) => v || undefined),
   OPENROUTER_APP_URL: z.string().default("https://tulmi.local"),
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 

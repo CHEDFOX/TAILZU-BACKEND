@@ -338,14 +338,16 @@ describe("the shell's screens", () => {
   });
   it("tasks, today, meeting notes and a meeting draw their data; offline keeps asks for later", async () => {
     const api = {
-      [`GET /v1/shell/tasks?tz=${IST}`]: { rows: feed().filter((r) => r.type !== "words"), upcoming: { connected: false, todos: null }, took: 3, total: 6, minutesSaved: 70 },
+      [`GET /v1/shell/tasks?tz=${IST}`]: { rows: feed().filter((r) => r.type !== "words"), upcoming: { connected: true, todos: [{ id: "c1a2b3c4-0000-4000-8000-000000000001", title: "Renew car insurance", due: "Fri 30 Oct" }] }, took: 3, total: 6, minutesSaved: 70 },
       [`GET /v1/shell/today?tz=${IST}`]: { calendar: { connected: true, events: [{ start: 600, end: 630, title: "Storefront standup", when: "10:00–10:30" }] }, rows: [], keybot: { words: 1284, minutesSaved: 32, byHour: [{ hour: 14, words: 400 }], byApp: [{ app: "Gmail", words: 540 }] } },
       "GET /v1/notes?limit=100": { notes: [{ id: "n1", status: "ready", startedAt: new Date(FIXED_NOW - HOUR).toISOString(), durationSeconds: 2520, words: 1, title: "Salon booking app review", summary: "No-shows.", people: [{ label: "Speaker 1", name: "Kavya Rao" }], organised: true }] },
       "GET /v1/notes/n1": { note: { id: "n1", status: "ready", startedAt: new Date(FIXED_NOW - HOUR).toISOString(), durationSeconds: 2520, words: 1, title: "Salon booking app review", summary: "No-shows.", people: [{ label: "Speaker 1", name: "Kavya Rao" }], organised: true, highlights: [{ speaker: "Speaker 1", text: "Weekends have the most no-shows." }], transcript: [{ at: 42, speaker: "Speaker 1", text: "Weekends pe no-shows." }] } },
     };
     const deps = fakeDeps({ api, tasks: [{ id: "t1", state: "waiting", title: "Move the dentist to Friday 10 am?", approval: { id: "a1", connector: "google-calendar", preview: "Update event: Dentist" }, createdAt: FIXED_NOW - HOUR, updatedAt: FIXED_NOW - HOUR }] });
     const tasks = await buildBotsScreen(req("bots.tasks", "desktop"), deps);
-    expect(texts(tasks.root!)).toEqual(expect.arrayContaining(["Bots took 3 of 6 today · 1 h 10 min saved", "Connect Google Tasks", "Do it for me", "I'll do it"]));
+    // Upcoming is the person's own to-dos (src/calendar): nothing to connect.
+    expect(texts(tasks.root!)).toEqual(expect.arrayContaining(["Bots took 3 of 6 today · 1 h 10 min saved", "Renew car insurance", "Add a to-do", "Do it for me", "I'll do it"]));
+    expect(texts(tasks.root!).some((t) => /connect google/i.test(t))).toBe(false);
     const today = await buildBotsScreen(req("bots.today", "desktop"), deps);
     expect(texts(today.root!)).toEqual(expect.arrayContaining(["Today", "Wednesday, 28 October", "Storefront standup", "1,284", "Gmail"]));
     const notes = await buildBotsScreen(req("bots.notes", "desktop"), deps);

@@ -11,6 +11,7 @@
 import { randomUUID } from "node:crypto";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import type { Note, NoteSegment, NoteStatus, NoteSummary } from "../../../shared/types/api.js";
+import { liveNote } from "../live/writes.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -40,7 +41,7 @@ interface Row {
   words: number;
   title: string;
   summary: string;
-  body: (Partial<Pick<NoteBody, "highlights" | "people">> & { systemAudio?: Note["systemAudio"] }) | null;
+  body: (Partial<Pick<NoteBody, "highlights" | "people">> & Pick<Note, "systemAudio" | "todos" | "decisions" | "found">) | null;
   transcript: NoteSegment[] | null;
   organised: boolean;
   deleted_at: string | null;
@@ -65,6 +66,20 @@ function fromRow(r: Row): Note {
     ...(body.systemAudio ? { systemAudio: body.systemAudio } : {}),
     transcript: arr(r.transcript),
     organised: !!r.organised,
+    ...(Array.isArray(body.todos) ? { todos: body.todos } : {}),
+    ...(Array.isArray(body.decisions) ? { decisions: body.decisions } : {}),
+    ...(body.found && typeof body.found.hash === "string" ? { found: body.found } : {}),
+  };
+}
+
+/** The organised part of a note as the row keeps it (the jsonb `body`): what was said, who, and its to-dos and decisions. */
+function bodyOf(n: Note): NonNullable<Row["body"]> {
+  return {
+    highlights: n.highlights, people: n.people,
+    ...(n.systemAudio ? { systemAudio: n.systemAudio } : {}),
+    ...(n.todos ? { todos: n.todos } : {}),
+    ...(n.decisions ? { decisions: n.decisions } : {}),
+    ...(n.found ? { found: n.found } : {}),
   };
 }
 
@@ -77,6 +92,8 @@ function summaryOf(n: Note): NoteSummary {
     durationSeconds: n.durationSeconds, words: n.words, title: n.title,
     summary: n.summary, people: n.people, organised: n.organised,
     ...(n.systemAudio ? { systemAudio: n.systemAudio } : {}),
+    ...(n.todos ? { todos: n.todos.length, openTodos: n.todos.filter((t) => !t.done).length } : {}),
+    ...(n.decisions ? { decisions: n.decisions.length } : {}),
   };
 }
 
@@ -163,6 +180,7 @@ export async function createNote(user: AuthedUser, startedAt = new Date()): Prom
     if (error) throw new Error(`notes insert failed: ${error.message}`);
   }
   touched.set(note.id, Date.now());
+  liveNote(user.id, note.id);
   return note;
 }
 
@@ -192,7 +210,7 @@ export async function updateNote(
         words: next.words,
         title: next.title,
         summary: next.summary,
-        body: { highlights: next.highlights, people: next.people, ...(next.systemAudio ? { systemAudio: next.systemAudio } : {}) },
+        body: bodyOf(next),
         transcript: next.transcript,
         organised: next.organised,
         updated_at: new Date().toISOString(),
@@ -200,6 +218,7 @@ export async function updateNote(
       if (error) throw new Error(`notes update failed: ${error.message}`);
     }
     touched.set(id, Date.now());
+    liveNote(user.id, id);
     return next;
   });
 }
@@ -213,11 +232,14 @@ export async function deleteNote(user: AuthedUser, id: string): Promise<boolean>
     const i = rows.findIndex((n) => n.id === id);
     if (i < 0) return false;
     rows.splice(i, 1);
+    liveNote(user.id, id);
     return true;
   }
   const { data, error } = await sb.from("notes").update({ deleted_at: new Date().toISOString() })
     .eq("user_id", user.id).eq("id", id).is("deleted_at", null).select("id");
   if (error) throw new Error(`notes delete failed: ${error.message}`);
   touched.delete(id);
-  return (data ?? []).length > 0;
+  const gone = (data ?? []).length > 0;
+  if (gone) liveNote(user.id, id);
+  return gone;
 }

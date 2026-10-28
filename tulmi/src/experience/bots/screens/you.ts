@@ -13,9 +13,11 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
   C, FACE, SCREENS, back, body, botAvatar, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, listCard,
-  listRow, meta, meter, mono, notice, open, page, primaryButton, quietButton, row, rupees, secondaryButton, sectionLabel, seq, shapes,
+  listRow, meta, meter, mono, open, page, primaryButton, quietButton, row, rupees, secondaryButton, sectionLabel, seq, shapes,
   switchMark, switchRow, table, text, title, when, whenEq, type BotsCtx, type IconName,
 } from "../kit.js";
+import { DELETION_PATH, GRACE_DAYS, daysStrip, dayMonthOf, goneAt, keepAccount, scheduleDeletion, type DeletionState } from "./accountGrace.js";
+import { PUSH_STATE, pushOffRow, withPushCheck } from "./pushAsk.js";
 import { screen, type BotsScreen } from "../registry.js";
 
 // ===================================================================== what the routes answer (routes/botsYou.ts)
@@ -303,8 +305,12 @@ function youPhone(ctx: BotsCtx, d: YouData | undefined) {
         m.byBot.length ? monthLegend(ctx, m.byBot) : meta(m.spent > 0 ? leftLine(ctx, d, m) : "Nothing spent yet this month", { size: 12 }),
       ], { gap: 12, padding: 16, onPress: open(SCREENS.budget) }),
       listCard([
+        // Family and friends: spaces, what's shared, tasks, payment requests and chats (screens/spaces.ts).
+        listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
         listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
         listRow({ label: "This computer helps", value: computerLine(d), onPress: open(SCREENS.computer) }),
+        // Sign in on a computer by scanning its code (screens/link.ts).
+        listRow({ label: "Link a computer", value: "Scan to sign in", onPress: open(SCREENS.link) }),
         listRow({ label: "What pings you", value: d ? (d.settings.notify.quiet ? "Quiet hours on" : "Needs you always") : "", onPress: open(SCREENS.notify) }),
         listRow({ label: "Language", value: languageName(d?.language ?? null), onPress: open(SCREENS.language) }),
         listRow({ label: "What bots may do alone", value: d?.apps ? (d.apps.alone ? plural(d.apps.alone, "rule") : "Ask me first") : "", onPress: open(SCREENS.apps) }),
@@ -380,7 +386,7 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
         col([
           row([sectionLabel(`Connected apps · ${(apps?.connected.length ?? 0) + (apps?.github ? 1 : 0)}`), grow(), text("Manage", { size: 13, weight: 500, style: { textDecorationLine: "underline" } })], {}, open(SCREENS.apps)),
           appRows.length ? deskList([...appRows, ...(moreApps > 0 ? [deskRow({ glyphNode: box([]), label: `${plural(moreApps, "more app")}`, onPress: open(SCREENS.apps) })] : [])])
-            : card([meta(apps && !apps.enabled ? "Connected apps aren't on yet." : "No apps connected yet. Your bots can use Calendar, Tasks, GitHub and more.", { size: 13 }), button("Connect an app", open(SCREENS.apps), { kind: "secondary", size: "md" })], { gap: 10 }),
+            : card([meta(apps && !apps.enabled ? "Connected apps aren't on yet." : "No apps connected yet. Your bots can use GitHub, Docs and more.", { size: 13 }), button("Connect an app", open(SCREENS.apps), { kind: "secondary", size: "md" })], { gap: 10 }),
         ], { gap: 8 }),
       ], [
         deskList([
@@ -402,7 +408,7 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
             glyphNode: glyph(G.download, 18), label: "Your data", sub: "Chats, notes and files", chevron: false,
             right: row([button("Download", exportAction(d?.exportUrl ?? null), { kind: "secondary", size: "md" }), button("Delete", open(SCREENS.privacy), { kind: "secondary", size: "md" })], { gap: 8 }),
           }),
-          deskRow({ glyphNode: glyph(G.trash, 18), label: "Delete account", sub: "Everything goes, right away", onPress: open(SCREENS.deleteAccount) }),
+          deskRow({ glyphNode: glyph(G.trash, 18), label: "Delete account", sub: "7 days to change your mind", onPress: open(SCREENS.deleteAccount) }),
         ]),
         deskList(HELP.map((h) => deskRow({ glyphNode: icon(h.url.startsWith("mailto:") ? "send" : "book", { size: 18 }), label: h.label, value: h.value || undefined, onPress: helpAction(h.url) }))),
       ], { rightWidth: 380 }),
@@ -803,9 +809,11 @@ function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
   if (!d) return page(ctx, { back: true, nav: "you", title: "What pings you", body: [title("What pings you"), couldNot("your settings")] });
   const s = d.settings;
   return page(ctx, {
-    back: true, nav: "you", title: "What pings you", gap: 18, state: notifyState(s, ctx),
+    back: true, nav: "you", title: "What pings you", gap: 18, state: { ...notifyState(s, ctx), ...PUSH_STATE },
     body: [
-      title("What pings you"),
+      // While this phone does not allow notifications, it says so first (screens/pushAsk.ts); the title reads the phone's answer.
+      withPushCheck(ctx, title("What pings you")),
+      ...pushOffRow(ctx),
       listCard([
         listRow({ left: box([], { width: 8, height: 8, borderRadius: 4, backgroundColor: C.ink }), label: "Needs you", sub: "A bot is waiting on your answer", right: alwaysOn(), chevron: false }),
         listRow({ left: box([], { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: C.ink }), label: "Done", sub: "Quiet: no sound. Ping: with sound", right: doneSeg(116), chevron: false }),
@@ -948,14 +956,12 @@ function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
 
 // ===================================================================== bots.delete-account
 
-const deleteNow: ActionSpec = {
-  kind: "callEndpoint", method: "DELETE", path: "/v1/account",
-  // signOut only on success: a failed delete must never look like a done one (catalog.ts deleteAccountScreen says why).
-  onSuccess: { kind: "sequence", actions: [{ kind: "toast", message: "Your account has been deleted." }, { kind: "signOut" }] },
-  onError: { kind: "toast", message: "Couldn't delete the account. Try again.", tone: "error" },
-};
+// Asking sets a date seven days out and signs the person out; signing in before it shows the date and Keep my account (accountGrace.ts).
 
-function goesAway(ctx: BotsCtx, d: AccountData): Node[] {
+/** What the page reads: what the account holds (GET /v1/you/account), and whether a date is set (GET /v1/account/deletion). */
+interface DeleteData { account: AccountData | undefined; deletion: DeletionState | undefined }
+
+function goesAway(ctx: BotsCtx, d: AccountData, gone?: string): Node[] {
   const own = d.bots.filter((b) => !b.builtin);
   return [
     listRow({
@@ -965,7 +971,7 @@ function goesAway(ctx: BotsCtx, d: AccountData): Node[] {
     }),
     listRow({ label: plural(d.projects.length, "project"), value: d.projects.length ? (d.projects.length > 1 ? `${d.projects[0]} and ${d.projects.length - 1} more` : d.projects[0]!) : "None" }),
     listRow({ label: plural(d.notes, "note"), value: "and every chat" }),
-    listRow({ label: plural(d.keys, "key"), value: d.keys ? "stop working right away" : "None" }),
+    listRow({ label: plural(d.keys, "key"), value: d.keys ? (gone ? `stop working on ${gone}` : "stop working right away") : "None" }),
   ];
 }
 const planWarning = (ctx: BotsCtx, d: AccountData): Node[] =>
@@ -974,39 +980,82 @@ const planWarning = (ctx: BotsCtx, d: AccountData): Node[] =>
     text("Plan and billing", { size: 13, weight: 500, style: { textDecorationLine: "underline" } }),
   ], { gap: 8, padding: 14, style: { backgroundColor: C.surface, borderWidth: 0 }, onPress: open(SCREENS.billing) })] : [];
 
-function deletePhone(ctx: BotsCtx, d: AccountData | undefined) {
+/** The seven days under their strip: from today (or the day they asked) to the day it goes, and what that means. */
+function graceBlock(ctx: BotsCtx, del: DeletionState | undefined): Node {
+  const s = del?.scheduled;
+  const from = s?.requestedAt ?? ctx.live.now, gone = dayMonthOf(ctx, goneAt(ctx, del));
+  return col([
+    daysStrip(ctx, from),
+    row([meta(`${s ? "Asked on" : "Today,"} ${dayMonthOf(ctx, from)}`, { size: 12 }), grow(), meta(`Gone for good, ${gone}`, { size: 12 })]),
+    text(s ? "Until then everything is here, as it was. Keep your account and nothing is lost."
+      : `You have ${GRACE_DAYS} days to change your mind. Sign in before ${gone} and everything comes back as it was.`, { size: 14, lineHeight: 20 }),
+  ], { gap: 8 });
+}
+
+function deletePhone(ctx: BotsCtx, data: DeleteData | undefined) {
+  const d = data?.account, del = data?.deletion;
+  const gone = dayMonthOf(ctx, goneAt(ctx, del));
+  if (del?.scheduled) {
+    return page(ctx, {
+      back: true, nav: "you", title: "Delete account", gap: 18,
+      body: [
+        heading(ctx, "Delete account", `Your account will be deleted on ${gone}.`),
+        graceBlock(ctx, del),
+        ...(d ? [col([sectionLabel("What goes then"), listCard(goesAway(ctx, d, gone))], { gap: 8 })] : []),
+      ],
+      footer: [primaryButton("Keep my account", keepAccount, { wide: true })],
+    });
+  }
   const holdButton: Node = {
     ...button("Hold to delete", undefined, { wide: true }),
-    on: { onPress: { kind: "toast", message: "Press and hold to delete" }, onLongPress: deleteNow },
+    on: { onPress: { kind: "toast", message: "Press and hold to delete" }, onLongPress: scheduleDeletion(gone) },
   };
   return page(ctx, {
     back: true, nav: "you", title: "Delete account", gap: 18,
     body: [
       heading(ctx, "Delete account", "Here is exactly what happens, so there are no surprises."),
       ...(d ? [
-        col([sectionLabel("What goes away"), listCard(goesAway(ctx, d))], { gap: 8 }),
-        notice("It happens right away, and it can't be undone.", { mark: "lock" }),
+        col([sectionLabel("What goes away"), listCard(goesAway(ctx, d, gone))], { gap: 8 }),
+        graceBlock(ctx, del),
         ...planWarning(ctx, d),
         row([meta("Want a copy first? ", { size: 13 }), text("Download my data", { size: 13, weight: 500, style: { textDecorationLine: "underline" } })], {}, exportAction(d.exportUrl)),
-      ] : [couldNot("what your account holds"), notice("Deleting happens right away, and it can't be undone.", { mark: "lock" })]),
+      ] : [couldNot("what your account holds"), graceBlock(ctx, del)]),
     ],
-    footer: [holdButton, meta("Press and hold. Let go before it starts to stop.", { size: 12, align: "center" }), secondaryButton("Keep my account", back(), { wide: true })],
+    footer: [holdButton, meta("Press and hold. Let go any time to stop.", { size: 12, align: "center" }), secondaryButton("Keep my account", back(), { wide: true })],
   });
 }
 
-function deleteDesk(ctx: BotsCtx, d: AccountData | undefined) {
+function deleteDesk(ctx: BotsCtx, data: DeleteData | undefined) {
+  const d = data?.account, del = data?.deletion, s = del?.scheduled;
+  const gone = dayMonthOf(ctx, goneAt(ctx, del));
+  const days = card([
+    row([sectionLabel(s ? "Until then, nothing is lost" : `${GRACE_DAYS} days to change your mind`), grow(), text(`Gone for good, ${gone}`, { size: 13, weight: 600, lineHeight: 18 })], { gap: 10 }),
+    daysStrip(ctx, s?.requestedAt ?? ctx.live.now, { labels: true }),
+    text(s ? "Everything is here, as it was. Keep your account and nothing changes."
+      : `You have ${GRACE_DAYS} days to change your mind. Sign in before ${gone} and everything comes back as it was.`, { size: 14, lineHeight: 20 }),
+  ], { padding: 20, gap: 12 });
+  const left = [
+    ...(d ? [col([sectionLabel(s ? "What goes then" : "What goes away"), listCard(goesAway(ctx, d, gone))], { gap: 8 })] : [couldNot("what your account holds")]),
+    days,
+  ];
+  if (s) {
+    return page(ctx, {
+      back: true, backTitle: "You", nav: "you", title: "Delete account", maxWidth: 1040, gap: 20,
+      body: [
+        heading(ctx, "Delete account", `Your account will be deleted on ${gone}.`),
+        columns(left, [card([
+          sectionLabel("Changed your mind?"),
+          meta("Keep your account and everything stays as it is: your bots, projects, notes and keys.", { size: 13, lineHeight: 18 }),
+          primaryButton("Keep my account", keepAccount, { wide: true, size: "md" }),
+        ], { padding: 20, gap: 12 })]),
+      ],
+    });
+  }
   return page(ctx, {
     back: true, backTitle: "You", nav: "you", title: "Delete account", maxWidth: 1040, gap: 20, state: { sure: false },
     body: [
       heading(ctx, "Delete account", "Here is exactly what happens, so there are no surprises."),
-      columns([
-        ...(d ? [col([sectionLabel("What goes away"), listCard(goesAway(ctx, d))], { gap: 8 })] : [couldNot("what your account holds")]),
-        card([
-          sectionLabel("When"),
-          text("Right away. It can't be undone.", { size: 15, weight: 600 }),
-          meta("Your bots, projects, notes, chats and keys go the moment you confirm, and you are signed out on every device.", { size: 13, lineHeight: 18 }),
-        ], { padding: 20, gap: 8 }),
-      ], [
+      columns(left, [
         card([
           sectionLabel("Before you go"),
           ...(d ? planWarning(ctx, d) : []),
@@ -1015,8 +1064,8 @@ function deleteDesk(ctx: BotsCtx, d: AccountData | undefined) {
           divider(),
           when({ falsy: "sure" }, primaryButton("Delete account", { kind: "setState", path: "sure", value: true }, { wide: true, size: "md" })),
           when({ truthy: "sure" }, col([
-            text("Delete everything for good?", { size: 14, weight: 600, align: "center" }),
-            primaryButton("Yes, delete my account", deleteNow, { wide: true, size: "md" }),
+            text(`Delete your account on ${gone}?`, { size: 14, weight: 600, align: "center" }),
+            primaryButton("Yes, delete my account", scheduleDeletion(gone), { wide: true, size: "md" }),
           ], { gap: 8 })),
           secondaryButton("Keep my account", back(), { wide: true, size: "md" }),
         ], { padding: 20, gap: 12 }),
@@ -1039,7 +1088,7 @@ function usedByNode(ctx: BotsCtx, names: string[], extra?: string): Node {
 function appsPhone(ctx: BotsCtx, d: AppsData | undefined) {
   const head = [title("Connected apps"), meta("Bots only use what you allowed. Tap one to change it.", { size: 14, color: C.grey70 })];
   if (!d) return page(ctx, { back: true, nav: "you", title: "Connected apps", body: [...head, couldNot("your apps")] });
-  if (!d.enabled) return page(ctx, { back: true, nav: "you", title: "Connected apps", body: [...head, emptyState({ pose: "think", title: "Connected apps aren't on yet", body: "When they are, your bots can use your calendar, tasks and more." })] });
+  if (!d.enabled) return page(ctx, { back: true, nav: "you", title: "Connected apps", body: [...head, emptyState({ pose: "think", title: "Connected apps aren't on yet", body: "When they are, your bots can use GitHub, Docs and more." })] });
   const rows: Node[] = [
     ...(d.github ? [listRow({ left: appIcon("Code"), label: "GitHub", sub: `Used by Code · ${plural(d.github.repos, "repo")}`, onPress: open(SCREENS.code) })] : []),
     ...d.connected.map((a) => row([
@@ -1053,7 +1102,7 @@ function appsPhone(ctx: BotsCtx, d: AppsData | undefined) {
     body: [
       ...head,
       rows.length ? col([sectionLabel(`Connected · ${rows.length}`), listCard(rows)], { gap: 8 })
-        : emptyState({ pose: "hello", title: "No apps yet", body: "Connect one and your bots can plan around your real week." }),
+        : emptyState({ pose: "hello", title: "No apps yet", body: "Connect one and your bots can work in it for you." }),
       ...(d.more.length ? [col([sectionLabel("Connect more"), listCard(d.more.slice(0, 4).map((a) => row([
         appIcon(a.category),
         col([text(a.name, { size: 15 }), meta(a.oneLine, { size: 12, lines: 1 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
@@ -1067,7 +1116,7 @@ function appsPhone(ctx: BotsCtx, d: AppsData | undefined) {
 function appsDesk(ctx: BotsCtx, d: AppsData | undefined) {
   const head = heading(ctx, "Connected apps", "Bots only use what you allowed. Click one to change it.");
   if (!d) return page(ctx, { back: true, backTitle: "You", nav: "you", title: "Connected apps", maxWidth: 1040, body: [head, couldNot("your apps")] });
-  if (!d.enabled) return page(ctx, { back: true, backTitle: "You", nav: "you", title: "Connected apps", maxWidth: 1040, body: [head, emptyState({ pose: "think", title: "Connected apps aren't on yet", body: "When they are, your bots can use your calendar, tasks and more." })] });
+  if (!d.enabled) return page(ctx, { back: true, backTitle: "You", nav: "you", title: "Connected apps", maxWidth: 1040, body: [head, emptyState({ pose: "think", title: "Connected apps aren't on yet", body: "When they are, your bots can use GitHub, Docs and more." })] });
   const list = [
     ...(d.github ? [{ id: "", name: "GitHub", category: "Code", usedBy: ["Code bot"], extra: plural(d.github.repos, "repo"), can: "Read code, open pull requests. Never merges.", last: "", go: open(SCREENS.code) }] : []),
     ...d.connected.map((a) => ({ id: a.id, name: a.name, category: a.category, usedBy: a.usedBy, extra: undefined as string | undefined, can: LEVEL_WORDS[a.level] ?? "Reads only", last: a.needsSignIn ? "Sign in again" : ago(ctx, a.lastUsedAt), go: open(SCREENS.appConnect, { id: a.id }) })),
@@ -1081,7 +1130,7 @@ function appsDesk(ctx: BotsCtx, d: AppsData | undefined) {
           row([appIcon(a.category, 18), text(a.name, { size: 14, weight: 500, style: { flexShrink: 1 } })], { gap: 10 }),
           usedByNode(ctx, a.usedBy, a.extra), a.can, a.last,
         ]), { onRow: (i) => list[i]!.go })
-        : emptyState({ pose: "hello", title: "No apps yet", body: "Connect one and your bots can plan around your real week." }),
+        : emptyState({ pose: "hello", title: "No apps yet", body: "Connect one and your bots can work in it for you." }),
       ...(d.more.length ? [col([sectionLabel("Connect more"), row(d.more.slice(0, 3).map((a) => card([
         row([appIcon(a.category, 18), col([text(a.name, { size: 14, weight: 500 }), meta(a.oneLine, { size: 12, lines: 2 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 })], { gap: 10, alignItems: "flex-start" }),
         button("Connect", open(SCREENS.appConnect, { id: a.id }), { kind: "secondary", size: "md" }),
@@ -1193,6 +1242,7 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
     row([text("Paying", { size: 14 }), grow(), meta(d ? `${d.plan.name} · ${rupees(d.spend.monthPaise)} this month` : "", { size: 13 }), icon("chevron", { size: 16, color: C.meta })], { gap: 8, minHeight: 32 }, open(SCREENS.billing)),
   ], { padding: 18, gap: 12 });
   const yours = listCard([
+    listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
     listRow({ label: "Budget", value: d ? `${rupees(d.spend.monthPaise)} of ${rupees(d.spend.limitPaise)}` : "", onPress: open(SCREENS.budget) }),
     listRow({ label: "What pings you", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
     listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
@@ -1228,7 +1278,17 @@ export const youScreens: BotsScreen[] = [
   screen<ComputersData>({ id: SCREENS.computer, load: (_ctx, deps) => deps.api<ComputersData>("GET", "/v1/you/computers"), build: (ctx, d) => (ctx.client === "desktop" ? computerDesk(ctx, d) : computerPhone(ctx, d)) }),
   screen<NotifyData>({ id: SCREENS.notify, load: (ctx, deps) => deps.api<NotifyData>("GET", `/v1/you/notify?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? notifyDesk(ctx, d) : notifyPhone(ctx, d)) }),
   screen<YouData>({ id: SCREENS.privacy, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? privacyDesk(ctx, d) : privacyPhone(ctx, d)) }),
-  screen<AccountData>({ id: SCREENS.deleteAccount, load: (_ctx, deps) => deps.api<AccountData>("GET", "/v1/you/account"), build: (ctx, d) => (ctx.client === "desktop" ? deleteDesk(ctx, d) : deletePhone(ctx, d)) }),
+  screen<DeleteData>({
+    id: SCREENS.deleteAccount,
+    load: async (_ctx, deps) => {
+      const [account, deletion] = await Promise.all([
+        deps.api<AccountData>("GET", "/v1/you/account").catch(() => undefined),
+        deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
+      ]);
+      return { account, deletion };
+    },
+    build: (ctx, d) => (ctx.client === "desktop" ? deleteDesk(ctx, d) : deletePhone(ctx, d)),
+  }),
   screen<AppsData>({ id: SCREENS.apps, load: (_ctx, deps) => deps.api<AppsData>("GET", "/v1/you/apps"), build: (ctx, d) => (ctx.client === "desktop" ? appsDesk(ctx, d) : appsPhone(ctx, d)) }),
   screen<AppData>({
     id: SCREENS.appConnect,

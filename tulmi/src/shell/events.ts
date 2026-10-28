@@ -1,7 +1,8 @@
 /**
  * WHAT THE BOTS APP WRITES DOWN FOR ACTIVITY: an answer a bot gave through Ask, and a payment the person says they made.
  *
- *   ask    which bot answered, what was asked (cut to 200 characters), and what the answer cost in paise
+ *   ask    which bot answered, what was asked (cut to 200 characters), and what the answer cost in paise: through Ask
+ *          (/v1/shell/ask, which the Code bot's page uses too) or on a bot's own page and chat (routes/botsBots.ts), once each
  *   paid   which bot filled the payment in, what it was for, to whom, how much: the person's own word that they pressed pay
  *          in their UPI app (bots.approve). Tailzu never pays, so this is the receipt of what they did, not proof of a transfer.
  *

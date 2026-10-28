@@ -55,8 +55,10 @@ const DEFS: readonly BotDef[] = [
       "Put a time or a duration on every step that has one.",
       "Say what could go wrong, once, at the end.",
       "Ask one question only when a wrong guess would waste the plan.",
+      "Put on the calendar or the to-do list only what they asked for, and say what you added.",
     ],
-    skills: skills({ artifacts: true, connectors: ["google-calendar", "google-tasks"] }),
+    // Tailzu's own calendar and to-dos (src/calendar/bots.ts): always on, nothing to connect.
+    skills: skills({ artifacts: true, connectors: ["calendar", "tasks"] }),
     knowledge: [], tone: "calm and practical", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 800 },
   },
   {

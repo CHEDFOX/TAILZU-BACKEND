@@ -95,6 +95,18 @@ export const SAMPLES: Sample[] = [
   { id: S.travel, area: "bots", board: "TravelBot", deskBoard: "DTravelBot" },
   { id: S.chat, area: "bots", board: "Chat", params: { slug: "gym-bot" } },
   { id: S.spaces, area: "bots", board: "Spaces", deskBoard: "DSpaces" },
+  // screens/spaces.ts (tests/spaces-data.ts, in the bots area's answers): no boards of their own, drawn in Spaces' look
+  { id: S.spaces, area: "bots", variant: "home", params: { id: "s1" } },
+  { id: S.spaceMember, area: "bots", params: { id: "s1", member: "r" } },
+  { id: S.spaceInvite, area: "bots", params: { id: "s1" } },
+  { id: S.spaceRoles, area: "bots", params: { id: "s1" } },
+  { id: S.spaceItem, area: "bots", params: { item: "i-groceries" } },
+  { id: S.spacePay, area: "bots", params: { id: "s1" } },
+  { id: S.spaceTasks, area: "bots" },
+  { id: S.spaceTasks, area: "bots", variant: "plan", params: { id: "s1", new: "plan" } },
+  { id: S.share, area: "bots", params: { kind: "list", title: "Packing for Pune", items: "Charger\nAadhaar" } },
+  { id: S.chats, area: "bots" },
+  { id: S.thread, area: "bots", params: { id: "th-home" } },
   { id: S.shareIn, area: "bots", board: "ShareIn", deskBoard: "DShareIn", params: { file: "f-9" } },
   { id: S.avatars, area: "bots", board: "Avatars" },
   // screens/keybot.ts

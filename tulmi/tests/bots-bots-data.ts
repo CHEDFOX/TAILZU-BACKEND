@@ -6,6 +6,7 @@
 import { FIXED_NOW, IST } from "../src/experience/bots/fixtures.js";
 import { PlanDays, type PlanEvent, type PlanReader } from "../src/botsBots/plan.js";
 import { MemoryTable } from "../src/botsBots/rows.js";
+import { spacesApi } from "./spaces-data.js";
 
 const A = "/v1/botsapp/bots";
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -49,6 +50,39 @@ export const GYM_TURNS = [
   turn("c5", "bot", "Three sessions, 40 minutes each, none on Thursday (you fly to Pune). Reminders at 9 pm the night before.\n\n- Mon: Legs · 7:00 am\n- Wed: Upper body · 7:00 am\n- Sat: Run + core · 8:30 am", FIXED_NOW - 20 * MIN + 1,
     { approvals: [{ taskId: "a1b2c3d4-0000-4000-8000-0000000000ff", connector: "google-calendar", preview: "Add 3 workouts to your calendar" }] }),
 ];
+
+/** Tomorrow's travel as GET /plan answers it with places set up (src/botsBots/planTravel.ts): home in HSR Layout, the dentist in
+ *  Indiranagar, dinner in Koramangala 35 min away with 15 min between (too short), and 40 min saved by last week's yeses. */
+export const SAMPLE_PLAN_TRAVEL = {
+  on: true, pending: false, home: "HSR Layout", homeFound: true,
+  legs: [
+    { fromId: "home", toId: "e11", to: "Indiranagar", mode: "drive", minutes: 30, leaveBy: ist(10, 29, 17, 30), gapMin: null, tight: false },
+    { fromId: "e11", toId: "e12", to: "Koramangala", mode: "drive", minutes: 35, leaveBy: ist(10, 29, 18, 25), gapMin: 15, tight: true },
+  ],
+  headsUp: [], savedWeekMin: 40,
+  credits: [{ text: "Map data © OpenStreetMap contributors", url: "https://www.openstreetmap.org/copyright" }, { text: "Routes: OSRM", url: "https://project-osrm.org" }],
+};
+
+const stay = (id: string, name: string, area: string, rupees: number, rating: number, reviews: number, url: string, extra: Record<string, unknown>) => ({
+  id, name, area, url, host: new URL(url).hostname.replace(/^www\./, ""), nightPaise: rupees * 100, rating, ratingOf: 5, reviews, by: "web", picked: false, at: FIXED_NOW - HOUR, ...extra,
+});
+/** The Pune trip's weather, places and stays as GET /trip/:id/extras answers them (src/botsBots/tripExtras.ts). */
+export const SAMPLE_TRIP_EXTRAS = {
+  dates: { from: "2026-11-14", to: "2026-11-16", nights: 2 }, where: "Pune",
+  weather: {
+    days: [{ key: "2026-11-14", hiC: 29, loC: 17, sky: "clear", rainMm: 0 }, { key: "2026-11-15", hiC: 30, loC: 16, sky: "clear", rainMm: 0 }, { key: "2026-11-16", hiC: 28, loC: 16, sky: "clear", rainMm: 0 }],
+    line: "Clear days, cool nights", sub: "Sat 29° · Sun 30° · Mon 28° · lows 16°", pack: null, more: null,
+  },
+  weatherNote: null,
+  spots: [{ text: "Sakshi and Arjun's wedding, Koregaon Park", found: true }],
+  main: "the wedding",
+  stays: [
+    stay("s1", "Shanti Residency", "Koregaon Park", 3200, 4.4, 1820, "https://www.booking.com/hotel/in/shanti-residency-pune.html", { label: "Travel bot's pick", minutes: 12, mode: "drive", totalPaise: 640000, stars: 4.4 }),
+    stay("s2", "Deccan Courtyard", "FC Road", 2600, 4.1, 960, "https://www.makemytrip.com/hotels/deccan_courtyard-details-pune.html", { label: "Cheaper", minutes: 28, mode: "drive", totalPaise: 520000, stars: 4.1 }),
+  ],
+  finding: false, searched: null, canFind: true, canMeasure: true, pending: false,
+  credits: [{ text: "Map data © OpenStreetMap contributors", url: "https://www.openstreetmap.org/copyright" }, { text: "Routes: OSRM", url: "https://project-osrm.org" }, { text: "Weather: MET Norway", url: "https://www.met.no/en" }],
+};
 
 export async function samplePlan() {
   const plan = new PlanDays(fakeReader(), null, () => FIXED_NOW, new MemoryTable());
@@ -98,7 +132,7 @@ export async function sampleApi(): Promise<Record<string, unknown>> {
     } },
     [`GET ${A}/store`]: {
       readyMade: [
-        { id: "tailzu-study", kind: "ready", name: "Study bot", colour: "plum", purpose: "Turns Classroom work into a daily plan", by: "Tailzu", adds: 41200, status: null, does: ["Read new work from Google Classroom each evening.", "Split work into 25-minute blocks before the due date.", "Put the plan in my calendar only after I say yes."], will: "Read Classroom and your calendar", wont: "Submit work or message your teachers", apps: ["Google Classroom", "Google Calendar"] },
+        { id: "tailzu-study", kind: "ready", name: "Study bot", colour: "plum", purpose: "Turns Classroom work into a daily plan", by: "Tailzu", adds: 41200, status: null, does: ["Read new work from Google Classroom each evening.", "Split work into 25-minute blocks before the due date.", "Put the plan in my calendar only after I say yes."], will: "Read Classroom and your calendar", wont: "Submit work or message your teachers", apps: ["Google Classroom", "Calendar"] },
         { id: "tailzu-money", kind: "ready", name: "Money bot", colour: "stone", purpose: "Tracks UPI spends, never pays alone", by: "Tailzu", adds: 33000, status: null, does: [], will: "Note your spends and open UPI for you", wont: "Pay or move money by itself", apps: ["UPI"] },
         { id: "tailzu-recipe", kind: "ready", name: "Recipe bot", colour: "sand", purpose: "Cooks from what's in your fridge", by: "Tailzu", adds: 27000, status: null, does: [], will: "Suggest dishes, steps and a shopping list", wont: "Order or buy anything", apps: [] },
       ],
@@ -107,9 +141,10 @@ export async function sampleApi(): Promise<Record<string, unknown>> {
         { id: "l2", kind: "people", slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Plans workouts around your calendar", by: "you", adds: 2140, status: "yours", does: [], will: "Use Google Calendar", wont: "Never plan on days I'm travelling", apps: ["Google Calendar"] },
       ],
     },
-    [`GET ${A}/plan?tz=${IST}&week=0`]: plan,
+    [`GET ${A}/plan?tz=${IST}&week=0`]: { ...plan, travel: SAMPLE_PLAN_TRAVEL },
+    [`GET ${A}/trip/7a1b2c3d-0000-4000-8000-0000000000aa/extras?tz=${IST}`]: { extras: SAMPLE_TRIP_EXTRAS },
     [`GET ${A}/trip`]: {
-      trip: { id: "7a1b2c3d-0000-4000-8000-0000000000aa", place: "Pune", when: "14–16 Nov", who: "You + Rohan", packing: [
+      trip: { id: "7a1b2c3d-0000-4000-8000-0000000000aa", place: "Pune", when: "14–16 Nov", who: "You + Rohan", spots: ["Sakshi and Arjun's wedding, Koregaon Park"], stays: SAMPLE_TRIP_EXTRAS.stays, packing: [
         { text: "Light jacket, 16° nights", done: false }, { text: "Aadhaar for check-in", done: false }, { text: "Snacks for the train", done: false },
         { text: "Clothes for 2 days", done: true }, { text: "Phone charger", done: true }, { text: "Power bank", done: true }, { text: "Rohan's inhaler", done: true }, { text: "Toothbrush kit", done: true },
       ] },
@@ -120,14 +155,8 @@ export async function sampleApi(): Promise<Record<string, unknown>> {
       { id: "f-1", name: "Hotel_Shanti_Residency_booking.pdf", mime: "application/pdf", bytes: 96_000, createdAt: FIXED_NOW - DAY, pages: 1 },
       { id: "f-2", name: "GST_Q2_draft.xlsx", mime: "application/vnd.ms-excel", bytes: 48_000, createdAt: FIXED_NOW - 2 * DAY },
     ] },
-    [`GET ${A}/spaces`]: { you: "Aanya S.", spaces: [
-      { id: "s1", name: "Home", mine: true, invite: null,
-        members: [{ userId: "u", name: "Aanya", you: true, maker: true, canApprove: true, joinedAt: Date.UTC(2026, 7, 4) }, { userId: "m", name: "Mom", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 7, 4) }, { userId: "r", name: "Rohan", you: false, maker: false, canApprove: false, joinedAt: Date.UTC(2026, 7, 4) }],
-        bots: [{ slug: "plan", name: "Plan bot", colour: "sea", addedBy: "Aanya", byYou: true }, { slug: "shop-bot", name: "Shop bot", colour: "sand", addedBy: "Mom", byYou: false }] },
-      { id: "s2", name: "Studio", mine: false, invite: { code: "K7PQ2MXA", expiresAt: FIXED_NOW + 6 * DAY },
-        members: [{ userId: "u", name: "Aanya", you: true, maker: false, canApprove: false, joinedAt: Date.UTC(2026, 8, 1) }, { userId: "d", name: "Dev", you: false, maker: true, canApprove: true, joinedAt: Date.UTC(2026, 7, 20) }, { userId: "i", name: "Ishita", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 8, 3) }, { userId: "k", name: "Kabir", you: false, maker: false, canApprove: false, joinedAt: Date.UTC(2026, 8, 9) }],
-        bots: [{ slug: "code", name: "Code bot", colour: "pine", addedBy: "Dev", byYou: false }] },
-    ] },
+    // Spaces (tests/spaces-data.ts): Home with Mom and Rohan, Dev's Studio, one space whole, the chats.
+    ...spacesApi(),
     "GET /v1/files/f-9": {
       file: { id: "f-9", name: "Ticket_BLR-GOI_14Nov.pdf", mime: "application/pdf", bytes: 182_000, createdAt: FIXED_NOW - 5 * MIN, pages: 1 },
       attachment: { id: "f-9", name: "Ticket_BLR-GOI_14Nov.pdf", mime: "application/pdf", bytes: 182_000, sha256: "a".repeat(64), kind: "pdf" },

@@ -561,6 +561,8 @@ export interface ScreenRequest {
 export interface ScreenResponse {
   schemaVersion: number;
   screenId: string;
+  /** Live topics (backend src/live/bus.ts): when the server says one changed, the open screen reloads itself. */
+  liveTopics?: string[];
   /** Shown in the nav bar; omit for a custom header inside `root`. */
   title?: string;
   /** Per-screen theme overrides merged over the global theme. */
@@ -849,7 +851,7 @@ export interface SvgShape {
 /** Declared in capabilities.components by a build that draws BotTiles and BotCard. */
 export const BOTS_MOTION_CAPABILITY = "BotsMotion";
 
-export type BotTileKind = "code" | "keybot" | "plan" | "travel" | "make" | "custom";
+export type BotTileKind = "code" | "keybot" | "plan" | "travel" | "notes" | "make" | "custom";
 
 /** One tile of a BotTiles grid. */
 export interface BotTileSpec {
@@ -877,7 +879,18 @@ export interface BotTilesProps {
   gap: number;
   /** The Geist faces by weight, as the app registered them. */
   faces: { regular: string; medium: string; semibold: string };
+  /**
+   * One more tile as a full-width row under the grid (Notes): its bot on a stage of its own at the left, its name and
+   * line on the right. The last bot of the grid's world, so its tap is the tiles' moment. Only for a build that
+   * declares BOT_TILES_STRIP; any other ignores it.
+   */
+  strip?: BotTileSpec;
+  /** The strip's height. */
+  stripHeight?: number;
 }
+
+/** A build that draws BotTilesProps.strip (the phone's BotTiles.tsx, the window's sdui.js). */
+export const BOT_TILES_STRIP = "BotTilesStrip";
 
 export interface BotCardProps {
   kind?: BotTileKind;
@@ -964,6 +977,90 @@ export interface LiveMarkProps {
 
 export interface HeadBarProps {
   at: number;
+}
+
+// ---------------------------------------------------------------------------
+// 3d. Media: send a file, speak, play a sound (docs/bots-app.md, "Media")
+// ---------------------------------------------------------------------------
+//
+// Three abilities a build declares by name in capabilities.components (none is a node; each is actions):
+//
+//   FileUpload   uploadFile: pick a photo, a screenshot, a screen recording or any file, send it with progress
+//                (POST multipart, one `file` part: /v1/files), and hand the answer back in state.
+//   AudioPlay    playAudio / stopAudio: one sound at a time, from a server path (fetched with the session) or an
+//                https address; it stops when the screen changes.
+//   VoiceRecord  recordVoice (the phone): record in the app, send it to /v1/transcribe-clean, write the words.
+//
+// A build without one gets the screen without that control (or the old way to do it).
+
+/** Declared by a build that runs uploadFile. */
+export const FILE_UPLOAD_CAPABILITY = "FileUpload";
+/** Declared by a build that runs playAudio and stopAudio. */
+export const AUDIO_PLAY_CAPABILITY = "AudioPlay";
+/** Declared by a build that runs recordVoice. */
+export const VOICE_RECORD_CAPABILITY = "VoiceRecord";
+
+/** What uploadFile asks the person to pick. photo: a picture · screenshot: a picture (the window: drag over an area or a
+ *  window where it can, else a picture file) · video: a video (a screen recording) · file: any file · camera: take one. */
+export type UploadPick = "photo" | "screenshot" | "video" | "file" | "camera";
+
+// ---------------------------------------------------------------------------
+// 3e. A live page, and the outbox (docs/bots-app.md, "Live views" and "Offline")
+// ---------------------------------------------------------------------------
+//
+//   LiveView   a running web page or artifact (LiveViewProps), each in a sandbox of its own: the phone, a WebView with no
+//              storage of the app's; the window, a webview in a session of its own (never the app's origin). From `url`
+//              (http, https, data: or about: only) or `html` the server wrote, run as `origin` (https) or, without one, as an
+//              opaque origin. It stays on its page: a link that leaves it does nothing, or with `allowPopups` is OFFERED to open
+//              in the browser (the person says yes first). No popups, no downloads, no camera, mic or location. A loading
+//              state until it has drawn, an error state with "Try again" if it cannot. The page talks UP with
+//              `window.ReactNativeWebView.postMessage(json)` (phone) or `window.tailzuLive.post(obj)` (window): `{ t: "ready" }`
+//              (drawn), `{ t: "failed", message }`, `{ t: "open", url }` (a link to offer, with allowPopups), anything else
+//              is written to `messagePath` and on.onResult runs (on.onError when it cannot be shown). Every message is
+//              untrusted data. DOWN: `send`, whenever it changes, is handed to the page's `window.tzLive(send)`.
+//   Outbox     not a node: a build that keeps asks typed offline (the `outbox` action), sends them in order when the
+//              connection is back with a client id each (POST /v1/shell/ask answers one id once), and puts in EVERY
+//              screen's state `online` (true/false, the device's reading), `outbox` (OutboxItem[], oldest first) and
+//              `outboxWaiting` (how many are still to go). It also follows the bootstrap's flags `offline.screenId` (shown in
+//              place of a screen in `offline.roots` while offline, and taken away when the connection is back) and
+//              `offline.bar` (the line it shows over any other screen while offline).
+
+/** Declared in capabilities.components by a build that draws LiveView. */
+export const LIVE_VIEW_COMPONENT = "LiveView";
+/** Declared by a build that keeps an outbox (see above). */
+export const OUTBOX_CAPABILITY = "Outbox";
+
+export interface LiveViewProps {
+  url?: string;
+  html?: string;
+  /** The https origin `html` runs as (it must be one the page's own frames accept as their parent). */
+  origin?: string;
+  /** Its height; the page scrolls inside it. */
+  height?: number;
+  allowPopups?: boolean;
+  messagePath?: string;
+  send?: Record<string, unknown>;
+  /** A page that says `{ t: "ready" }` keeps the loading state until it does (up to 15 s, then the error state). */
+  waitForReady?: boolean;
+  loadingText?: string;
+  errorText?: string;
+  retryText?: string;
+  /** The face its own words are set in (the kit's Geist). */
+  fontFamily?: string;
+  /** For a screen reader. */
+  title?: string;
+}
+
+/** One ask in the outbox, as screens read it from `$state.outbox.N`. */
+export interface OutboxItem {
+  id: string;
+  /** What was typed. */
+  label: string;
+  /** The line under it, "{time}" filled in with when it was typed ("Any bot · asked 9:38"). */
+  sub: string;
+  state: "waiting" | "sending" | "sent" | "failed";
+  /** When it was typed (ms). */
+  typedAt: number;
 }
 
 /** Named layouts for `template` + `blocks` screens. */
@@ -1061,6 +1158,32 @@ export type ActionSpec =
   | { kind: "pickImage"; assignTo: string; source?: "library" | "camera"; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "pickDocument"; assignTo: string; types?: string[]; onSuccess?: ActionRef; onError?: ActionRef }
   | { kind: "scanQR"; assignTo: string; onSuccess?: ActionRef; onError?: ActionRef }
+  // --- media: send a file, speak, play (section 3d; each needs its capability) ---
+  /** Pick a file of `pick`'s kind and send it (default path /v1/files, multipart, one `file` part). While it goes,
+   *  `progressTo` holds { name, kind, pct (0-100), percent ("42%"), size ("412 KB") }; it is cleared at the end. The
+   *  answer (/v1/files: { file, attachment, cached }) goes to `assignTo`, then onSuccess. A failure runs onError with
+   *  $event the words to show; nothing picked runs onCancel. `maxBytes` refuses a bigger file before sending it. */
+  | { kind: "uploadFile"; pick: UploadPick; assignTo: string; path?: string; progressTo?: string; maxBytes?: number;
+      onSuccess?: ActionRef; onError?: ActionRef; onCancel?: ActionRef }
+  /** Play one sound: `url` is a server path ("/v1/…", fetched with the session; "$state.x" filled in) or an https
+   *  address. One at a time: another stops what played. While it plays `statePath` holds { id, pct (0-100), at
+   *  ("0:02"), of ("0:05"), time ("0:02 / 0:05") }; it is cleared when it ends, is stopped, or the screen changes.
+   *  onEnd when it played to the end; onError (with $event) when it could not play. */
+  | { kind: "playAudio"; url: string; id?: string; statePath?: string; onEnd?: ActionRef; onError?: ActionRef }
+  | { kind: "stopAudio" }
+  /** The phone: start recording (asking for the microphone first), or, while it records, stop and send it to
+   *  /v1/transcribe-clean; the words go to `assignTo` (after what is there, with `append`). `statePath` holds
+   *  "listening" · "busy" · "idle"; `levelTo` the voice's level (0-1, in tenths) while it listens. onDone with $event
+   *  the words; onError with $event the words to show; onBlocked when the microphone was refused for good (Settings).
+   *  `maxSeconds` stops it by itself (default 120). Leaving the screen throws the recording away. */
+  | { kind: "recordVoice"; assignTo: string; statePath?: string; levelTo?: string; append?: boolean; language?: string;
+      maxSeconds?: number; onDone?: ActionRef; onError?: ActionRef; onBlocked?: ActionRef }
+  // --- the outbox (section 3e; needs OUTBOX_CAPABILITY) ---
+  /** add: keep an ask to send when online (now, if online): `path` (a /v1/ route) and `body` ("$state.x" filled in now),
+   *  `label` and `sub` for the screen ("{time}" in `sub` becomes when it was typed); it goes as POST with the item's id as
+   *  `clientId` and `typedAt`. remove: take item `id` out (not one already sent). retry: send a failed one (`id`) again.
+   *  clear: drop the ones that were sent. */
+  | { kind: "outbox"; op: "add" | "remove" | "retry" | "clear"; path?: string; body?: Record<string, unknown>; label?: string; sub?: string; id?: string }
   // --- permissions ---
   | {
       kind: "requestPermission";

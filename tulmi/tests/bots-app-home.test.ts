@@ -127,6 +127,41 @@ describe("bots.home", () => {
     }
   });
 
+  it("Notes: a full-width strip under the whole grid, in the living grid's world where the build draws one (BotTilesStrip), else still", async () => {
+    const stats = { week: { meetings: 3, seconds: 4440, people: 3 }, openTodos: 2, recording: false, organising: 0 };
+    const deps = () => fakeDeps({ api: { "GET /v1/notes/stats": stats } });
+    for (const [client, cols, h] of [["phone", 2, 100], ["desktop", 4, 112]] as const) {
+      const r = { ...req("bots.home", client), can: new Set(["BotsKit", "BotsMotion", "BotTilesStrip"]) };
+      const s = await buildBotsScreen(r, deps());
+      const grid = walk(s.root!).find((n) => n.type === "BotTiles")!;
+      // The grid is as it was: three bots and Make a bot.
+      expect((grid.props!.tiles as Array<{ slug: string }>).map((t) => t.slug)).toEqual(["code", "keybot", "plan", "make"]);
+      expect(grid.props).toMatchObject({
+        columns: cols, stripHeight: h,
+        strip: { slug: "notes", name: "Notes", kind: "notes", sub: "2 to-dos open", state: "idle", color: "#6E4A6B", action: { kind: "navigate", screenId: "bots.notes" } },
+      });
+      expect(s.liveTopics).toContain("notes");
+      expect(checkTree(s.root!)).toEqual([]);
+      // A meeting being noted: the strip's bot is busy, and says so.
+      const busy = await buildBotsScreen(r, fakeDeps({ api: { "GET /v1/notes/stats": { ...stats, recording: true } } }));
+      expect(walk(busy.root!).find((n) => n.type === "BotTiles")!.props!.strip).toMatchObject({ state: "working", sub: "Taking notes now" });
+      // Living tiles but no strip in this build: the grid alone, and a still strip under it. No living tiles: the same.
+      for (const can of [["BotsKit", "BotsMotion"], ["BotsKit"]]) {
+        const old = await buildBotsScreen({ ...r, can: new Set(can) }, deps());
+        const living = walk(old.root!).find((n) => n.type === "BotTiles");
+        expect(living?.props?.strip).toBeUndefined();
+        const words = [...texts(old.root!), ...((living?.props?.tiles as Array<{ name: string }> | undefined) ?? []).map((t) => t.name)];
+        expect(words).toEqual(expect.arrayContaining(["Plan bot", "Make a bot", "Notes", "2 to-dos open"]));
+        expect(presses(old.root!)).toContainEqual({ kind: "navigate", screenId: "bots.notes" });
+        expect(checkTree(old.root!)).toEqual([]);
+      }
+    }
+    // A window without the note-taker: no strip.
+    const plain = await buildBotsScreen({ ...req("bots.home", "desktop"), can: new Set(["BotsKit", "BotsMotion", "BotTilesStrip"]), desk: { pages: true, notes: false } }, deps());
+    expect(walk(plain.root!).find((n) => n.type === "BotTiles")!.props!.strip).toBeUndefined();
+    expect(JSON.stringify(plain.root)).not.toContain('"screenId":"bots.notes"');
+  });
+
   it("a bot's own tiny bot in its page's header (BotBuddy): its colour and play, small, busy or facing you as the bot is", async () => {
     for (const client of ["phone", "desktop"] as const) {
       for (const [id, slug, look] of [["bots.keybot", "keybot", undefined], ["bots.plan", "plan", "down"]] as const) {

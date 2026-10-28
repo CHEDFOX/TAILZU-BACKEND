@@ -2,7 +2,8 @@
  * Bots app · bots area: the endpoints its screens need beyond the existing routes (src/botsBots, screens in experience/bots/screens/bots.ts).
  *
  *   GET    /v1/botsapp/bots/chat/:slug                 -> { turns }                      the chat with a bot, oldest first
- *   POST   /v1/botsapp/bots/chat/:slug { message }     -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns
+ *   POST   /v1/botsapp/bots/chat/:slug { message }     -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns;
+ *                                                      the answer is written down for Activity, as Ask's are (shell/events.ts)
  *   DELETE /v1/botsapp/bots/chat/:slug                 -> { ok }                          start the chat over
  *   GET    /v1/botsapp/bots/draft                      -> { draft }                       Make a bot: the draft in progress, or null
  *   POST   /v1/botsapp/bots/draft { sentence }         -> { draft }                       Bots.draft, kept while it is shaped (nothing is a bot yet)
@@ -16,12 +17,9 @@
  *   POST   /v1/botsapp/bots/store/:id/add              -> 201 { bot }                     a copy of it, yours
  *   GET|PUT|DELETE /v1/botsapp/bots/listing/:slug      -> { listed }                      your bot in the store (and its public card), or not
  *   GET    /v1/botsapp/bots/keys/:slug/usage           -> { usage, ratePerMin, dayCapPaise, endpoint }   what its keys used this month
- *   GET    /v1/botsapp/bots/spaces                     -> { spaces };  POST { name } -> 201 { id };  PUT/DELETE .../spaces/:id
- *   POST   /v1/botsapp/bots/spaces/:id/invite          -> { code, expiresAt, link };   POST .../spaces/join { code } -> { id, name }
- *   PUT    /v1/botsapp/bots/spaces/:id/members/:member { canApprove };  DELETE .../members/:member
- *   POST   /v1/botsapp/bots/spaces/:id/bots { slug };  DELETE .../spaces/:id/bots/:slug
- *   GET    /v1/botsapp/bots/invite/:code               -> a small page: what the code is for and how to use it (no session)
- *   GET    /v1/botsapp/bots/plan?tz=&week=             -> { connected, today, tomorrow, days, suggestion }   from Google Calendar and Tasks
+ *   /v1/botsapp/bots/spaces..., /shares, /items..., /threads..., /invite/:code   spaces, sharing, payment requests and messaging: routes/botsSpaces.ts
+ *   GET    /v1/botsapp/bots/plan?tz=&week=             -> { connected, today, tomorrow, days, open, suggestion }   from the person's own
+ *                                                      calendar and to-dos (src/calendar; their own routes: /v1/botsapp/calendar..., routes/botsCalendar.ts)
  *   POST   /v1/botsapp/bots/plan/move { eventId, start, said }  -> { done, message } (409 when it could not)
  *   POST   /v1/botsapp/bots/plan/skip { key }          -> { ok }
  *   GET    /v1/botsapp/bots/trip                       -> { trip, facts, bookings };  POST { place, when, who };  PUT/DELETE .../trip/:id
@@ -39,8 +37,12 @@ import { bearerKey, looksLikeKey, maskKey, prefixOf } from "../bots/keys.js";
 import { getConfig } from "../config.js";
 import { defaultGuard } from "../guard/index.js";
 import { botsAreaParts, shareAsk, shareLine, shareMessage, type BotsAreaParts } from "../botsBots/index.js";
+import { eventStore, type EventStore } from "../shell/events.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import { guarded } from "./guarded.js";
+import { registerSpacesRoutes } from "./botsSpaces.js";
+import { registerBotsTripRoutes } from "./botsTrips.js";
+import { registerCalendarRoutes } from "./botsCalendar.js";
 
 export const AREA = "/v1/botsapp/bots";
 
@@ -66,13 +68,15 @@ export function apiOrigin(): string {
   try { return new URL(getConfig().CONNECTOR_REDIRECT_URL).origin; } catch { return "https://api.tailzu.space"; }
 }
 
-const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-
-export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts } = {}): void {
+export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): void {
   const parts = o.parts ?? botsAreaParts({ bots: deps.bots, connectors: deps.connectors });
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
   const guard = () => deps.bots?.guard ?? defaultGuard();
+  // Spaces: members, invites, sharing, payment requests, messaging. A bot shared into a space reads its shared things when a member asks it.
+  const spacesArea = registerSpacesRoutes(app, deps, { spaces: parts.spaces, trips: parts.trips });
+  registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; the Plan bot's home (routes/botsTrips.ts)
+  registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/botsCalendar.ts)
 
   const fail = (req: FastifyRequest, reply: FastifyReply, err: unknown): FastifyReply => {
     if (isBotError(err)) {
@@ -117,7 +121,12 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     if (!s) return reply;
     try {
       return await guarded(guard(), req, reply, s.user, "ask", async (stop) => {
-        const r = await parts.chat!.send(s.user.id, param(req, "slug").toLowerCase(), bodyOf(req.body).message, stop);
+        const slug = param(req, "slug").toLowerCase(), message = bodyOf(req.body).message;
+        const shared = await spacesArea.items.forBot(s.user.id, slug).catch(() => []);
+        const r = await parts.chat!.send(s.user.id, slug, message, stop, shared);
+        // Activity: written down as an answer through Ask is (shell/events.ts), once per answer: a repeat is replayed, not run again.
+        await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: String(message), paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
+          .catch((err) => req.log.warn({ error: (err as Error)?.message }, "bots area: answer not written down"));
         return { status: 200, body: { text: r.answer.text, turns: r.turns, opens: r.answer.opens, approvals: r.answer.approvals, paise: r.answer.paise } };
       }, { replayUnkeyed: false });
     } catch (err) { return fail(req, reply, err); }
@@ -217,35 +226,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     done(null, payload);
   });
 
-  // ------------------------------------------------------------------ spaces
-
-  app.get(`${AREA}/spaces`, RL, run(false, async (user) => ({ spaces: await parts.spaces.list(user.id), you: shownName(user) })));
-  app.post(`${AREA}/spaces`, RL, run(false, async (user, req, reply) => { const r = await parts.spaces.create(user.id, bodyOf(req.body).name, shownName(user)); reply.code(201); return r; }));
-  app.put(`${AREA}/spaces/:id`, RL, run(false, async (user, req) => { await parts.spaces.rename(user.id, param(req, "id"), bodyOf(req.body).name); return { ok: true }; }));
-  app.delete(`${AREA}/spaces/:id`, RL, run(false, async (user, req) => parts.spaces.leave(user.id, param(req, "id"))));
-  app.post(`${AREA}/spaces/:id/invite`, tight(20), run(false, async (user, req) => {
-    const r = await parts.spaces.invite(user.id, param(req, "id"));
-    return { ...r, link: `${apiOrigin()}${AREA}/invite/${r.code}` };
-  }));
-  app.post(`${AREA}/spaces/join`, tight(20), run(false, async (user, req) => parts.spaces.join(user.id, bodyOf(req.body).code, shownName(user))));
-  app.put(`${AREA}/spaces/:id/members/:member`, RL, run(false, async (user, req) => {
-    await parts.spaces.setApprover(user.id, param(req, "id"), param(req, "member"), bodyOf(req.body).canApprove);
-    return { ok: true };
-  }));
-  app.delete(`${AREA}/spaces/:id/members/:member`, RL, run(false, async (user, req) => parts.spaces.leave(user.id, param(req, "id"), param(req, "member"))));
-  app.post(`${AREA}/spaces/:id/bots`, RL, run(false, async (user, req) => { await parts.spaces.addBot(user.id, param(req, "id"), bodyOf(req.body).slug); return { ok: true }; }));
-  app.delete(`${AREA}/spaces/:id/bots/:slug`, RL, run(false, async (user, req) => { await parts.spaces.removeBot(user.id, param(req, "id"), param(req, "slug")); return { ok: true }; }));
-
-  app.get(`${AREA}/invite/:code`, tight(30), async (req, reply) => {
-    const code = param(req, "code").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
-    const s = await parts.spaces.peek(code).catch(() => null);
-    const line = s
-      ? `You're invited to <b>${esc(s.name)}</b> on Tailzu (${s.members} ${s.members === 1 ? "person" : "people"} so far).`
-      : "This invite doesn't work any more. Ask for a new one.";
-    const how = s ? `<p>Open Tailzu, go to <b>You → Spaces</b>, tap <b>Join with a code</b> and enter:</p><p style="font:600 22px ui-monospace,monospace;letter-spacing:2px">${esc(code)}</p>` : "";
-    return reply.header("content-type", "text/html; charset=utf-8").header("cache-control", "no-store")
-      .send(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tailzu space invite</title><body style="font:16px system-ui,sans-serif;max-width:420px;margin:48px auto;padding:0 20px;color:#0a0a0a"><p>${line}</p>${how}</body>`);
-  });
+  // ------------------------------------------------------------------ spaces: family and friends (routes/botsSpaces.ts)
 
   // ------------------------------------------------------------------ the plan bot's days
 

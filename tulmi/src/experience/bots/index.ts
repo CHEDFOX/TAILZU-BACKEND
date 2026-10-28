@@ -21,12 +21,16 @@ import { shellScreens } from "./screens/shell.js";
 import { youScreens } from "./screens/you.js";
 import { codeWorkScreens } from "./screens/codeWork.js";
 import { firstRunScreens } from "./screens/firstRun.js";
+import { linkScreens } from "./screens/link.js";
+import { spacesScreens } from "./screens/spaces.js";
+import { notesScreens } from "./screens/notes.js";
+import { joinTopics, topicsForScreen } from "../../live/topics.js";
 
 export { isBotsScreen, screen, type BotsScreen } from "./registry.js";
 export { botsDepsFor, emptyDeps, type BotsServices } from "./deps.js";
 export { botsFonts } from "./kit.js";
 
-const ALL: BotsScreen[] = [...shellScreens, ...youScreens, ...botsScreens, ...keybotScreens, ...codeScreens, ...codeWorkScreens, ...firstRunScreens];
+const ALL: BotsScreen[] = [...shellScreens, ...youScreens, ...botsScreens, ...keybotScreens, ...codeScreens, ...codeWorkScreens, ...firstRunScreens, ...linkScreens, ...notesScreens, ...spacesScreens];
 
 /** Every registered screen, by id. Two files claiming one id is a mistake caught when the server starts. */
 export const BOTS_SCREENS: ReadonlyMap<string, BotsScreen> = (() => {
@@ -107,5 +111,11 @@ export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise
   const def = BOTS_SCREENS.get(req.screenId);
   if (!def) return comingSoon(ctx);
   const data = def.load ? await def.load(ctx, deps).catch(() => undefined) : undefined;
-  return def.build(ctx, data);
+  return withLiveTopics(await def.build(ctx, data), ctx.params);
+}
+
+/** The topics a screen listens to (live/topics.ts), joined with any its own page() named: a change to one reloads it. */
+function withLiveTopics(s: ScreenResponse, params: Record<string, unknown>): ScreenResponse {
+  const topics = joinTopics(topicsForScreen(s.screenId, params), s.liveTopics);
+  return topics.length ? { ...s, liveTopics: topics } : s;
 }

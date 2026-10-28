@@ -13,6 +13,9 @@
  *   GET    /v1/artifacts/:id?version=                                   -> { artifact, version, content, kit? }  the head, or an earlier version;
  *                                                                          kit is the project's look (protocol.ts DesignKitCss) for a project artifact
  *   GET    /v1/artifacts/:id/versions                                   -> { versions: [{ version, kind, madeBy, note, createdAt, storedBytes }] }
+ *   GET    /v1/artifacts/:id/live?version=&pick=1&theme=                -> { html, origin, version }  the page the apps' LiveView runs it in (the
+ *                                                                          viewer framed, src/artifacts/livehost.ts) and the origin it runs as;
+ *                                                                          404 viewer_off while ARTIFACT_VIEWER_URL is not set
  *   POST   /v1/artifacts/:id/revert { version }                         -> { artifact, version, content, ... }  a NEW version with that one's text
  *   DELETE /v1/artifacts/:id                                            -> { ok }  with its versions and data
  *   POST   /v1/artifacts/:id/edit { instruction, elementId? }           -> { artifact, version, content, paise, totalPaise, how }  a person's edit:
@@ -62,6 +65,7 @@ import { ownProject, workspace, type ProjectDeps } from "../code/projects.js";
 import type { Artifacts, Access } from "../artifacts/index.js";
 import { buildFromArtifact, noCompare, type CompareHook } from "../artifacts/build.js";
 import { componentArtifact, workspaceFiles } from "../artifacts/kit.js";
+import { liveHostHtml, type LiveViewer } from "../artifacts/livehost.js";
 import { LIMITS } from "../artifacts/protocol.js";
 import { isShotId, verifyShotLink } from "../artifacts/shots.js";
 import { ARTIFACT_TYPES, isArtifactError, type Artifact, type Change, type ArtifactType } from "../artifacts/types.js";
@@ -81,6 +85,8 @@ export interface ArtifactRoutesDeps {
   compareHook?: CompareHook;
   /** The overload guards the making routes run under (src/guard); the process's own when not given. */
   guard?: Guard;
+  /** The viewer the apps run an artifact in (GET /v1/artifacts/:id/live); none: that route answers 404 viewer_off. */
+  viewer?: LiveViewer | null;
 }
 
 /** A create carries up to 512 KB of source (JSON-escaped); a component request may carry a picture. */
@@ -215,6 +221,28 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
     if (!s) return reply;
     try {
       return reply.send({ versions: await s.svc.versions(s.user.id, req.params.id) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // The page the apps run the artifact in (their LiveView node): the host page's HTML and the origin it runs as (src/artifacts/livehost.ts).
+  // 404 viewer_off while no viewer is set for the apps (ARTIFACT_VIEWER_URL); the screens then draw the artifact's parts.
+  app.get<{ Params: { id: string }; Querystring: { version?: unknown; pick?: unknown; theme?: unknown } }>("/v1/artifacts/:id/live", RL, async (req, reply) => {
+    const s = await begin(req, reply);
+    if (!s) return reply;
+    if (!deps.viewer) return reply.code(404).send({ code: "viewer_off", message: "No viewer is set up for the apps." });
+    const q = req.query ?? {};
+    let version: number | undefined;
+    if (q.version !== undefined) {
+      version = typeof q.version === "string" && /^\d{1,9}$/.test(q.version) ? Number(q.version) : NaN;
+      if (!Number.isInteger(version)) return reply.code(400).send({ code: "bad_request", message: "version is a whole number." });
+    }
+    try {
+      const v = await s.svc.get(s.user.id, req.params.id, version);
+      const html = liveHostHtml({
+        viewerUrl: deps.viewer.url, artifact: { id: v.artifact.id, type: v.artifact.type, title: v.artifact.title, content: v.content, version: v.version },
+        ...(v.kit ? { kit: v.kit } : {}), ...(q.theme === "dark" || q.theme === "light" ? { theme: q.theme } : {}), pick: q.pick === "1" || q.pick === "true",
+      });
+      return reply.header("cache-control", "private, no-store").send({ html, origin: deps.viewer.appOrigin, version: v.version });
     } catch (err) { return fail(reply, err); }
   });
 

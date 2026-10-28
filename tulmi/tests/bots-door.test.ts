@@ -58,7 +58,8 @@ describe("the rules, for nothing", () => {
 
   it("know what the words can only mean by what the bot can do: an app it was given and the person has connected, a file attached", async () => {
     const calendar = "put the dentist on my calendar for friday at 5pm";
-    const connected = scoreBots(calendar, ALL, none, new Set(["google-calendar"]));
+    // The calendar is Tailzu's own and always there ("calendar"); a bot made with Google's id still does the job.
+    const connected = scoreBots(calendar, ALL, none, new Set(["calendar", "tasks"]));
     expect(slugs(connected.slice(0, 2)).sort()).toEqual(["plan", "workout-buddy"]);
     for (const s of connected.slice(0, 2)) expect(s.reasons).toContain("app:job");
     // an app that is not connected makes no bot a better fit

@@ -139,13 +139,13 @@ describe("the frames", () => {
     const [side, main] = s.root!.children!;
     expect(side!.style).toMatchObject({ width: 240, borderRightWidth: 1 });
     const words = JSON.stringify(side);
-    for (const w of ["Bots", "Activity", "You", "Your bots", "Code bot", "Gym bot", "Make a bot", "Today", "Meeting notes", "This computer helps", "Settings"]) expect(words).toContain(w);
+    for (const w of ["Bots", "Activity", "You", "Your bots", "Code bot", "Gym bot", "Make a bot", "Today", "Notes", "This computer helps", "Settings"]) expect(words).toContain(w);
     expect(words).toContain('"screenId":"desk_settings"');
     expect(main!.style).toMatchObject({ overflowY: "auto", flexGrow: 1 });
     expect(checkTree(s.root!)).toEqual([]);
     // Without the desk's pages there is no Today, and Settings is the app's own.
     const plain = JSON.stringify(deskPage(ctxFor("bots.x", "desktop", live, { desk: { pages: false, notes: false } }), { body: [] }).root);
-    expect(plain).not.toContain("Meeting notes");
+    expect(plain).not.toContain('"screenId":"bots.notes"');
     expect(plain).toContain('"screenId":"settings"');
   });
   it("page() picks the frame by the client", () => {

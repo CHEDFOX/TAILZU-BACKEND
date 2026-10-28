@@ -104,7 +104,10 @@ async function readApp(d: BotsAreaDeps, userId: string, app: string, tool: strin
   return Promise.race([call, late]);
 }
 
-/** Today's calendar: { connected, events } (events null when it could not be read). */
+/**
+ * Today's Google Calendar: { connected, events } (events null when it could not be read). Not used by the Bots app any more: Today reads
+ * the person's own calendar (src/calendar todayForShell). Kept, like the Google connectors, for the old app.
+ */
 export async function readCalendar(d: BotsAreaDeps, userId: string, waitMs = 5000): Promise<{ connected: boolean; events: CalEvent[] | null }> {
   const connected = await hasApp(d, userId, "google-calendar");
   if (!connected) return { connected, events: null };
@@ -112,7 +115,7 @@ export async function readCalendar(d: BotsAreaDeps, userId: string, waitMs = 500
   return { connected, events: text === null ? null : calendarOf(text) };
 }
 
-/** Open Google Tasks for the coming week (and overdue): { connected, todos }. */
+/** Open Google Tasks for the coming week (and overdue): { connected, todos }. Not used by the Bots app any more (src/calendar upcomingForShell). */
 export async function readGoogleTasks(d: BotsAreaDeps, userId: string, waitMs = 5000): Promise<{ connected: boolean; todos: GoogleTodo[] | null }> {
   const connected = await hasApp(d, userId, "google-tasks");
   if (!connected) return { connected, todos: null };

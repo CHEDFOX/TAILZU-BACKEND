@@ -13,6 +13,8 @@ the window (`TAILZU-DESKTOP/sdui.js`) draw them. Design source: `bots-design/` (
 * [7. The render check](#7-the-render-check)
 * [8. The node types the kit adds](#8-the-node-types-the-kit-adds)
 * [9. Rules, and what not to touch](#9-rules-and-what-not-to-touch)
+* [10. Live updates](#10-live-updates)
+* [11. The calendar and to-dos](#11-the-calendar-and-to-dos)
 
 ## 1. The switch
 
@@ -34,7 +36,11 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
   (`GET`/`PUT /v1/bots/first-run/arrival`, personality `botsArrivalAt`) and decides only once the app's readings arrive (Home's
   state starts them as `null`: `keyboardEnabled`, `keyboardReady`, `micGranted`). Keybot carries the same card in the page for
   whatever is still missing (`keybotCard`), and none when all is on. A window asks for its microphone (`DeskMicAsk`) and shows
-  Accessibility (`DeskAskSetup`) only where it declares them.
+  Accessibility (`DeskAskSetup`) only where it declares them; one that declares `DeskAxState` also writes `axGranted` (the
+  Mac's answer, true elsewhere), so the Accessibility step goes and the card closes on its own once it is on.
+* **Signing in on a computer with the phone** (src/auth/deviceLink.ts, routes/deviceLink.ts, migration 0049): the window's
+  sign-in draws a QR and a typed code (`DeskLinkSignIn`, desktop linkSignIn.js); the phone opens `bots.link` (its camera,
+  or You › Link a computer) and approves; the window redeems a one-time sign-in, once.
 * **Existing screens stay reachable** by their ids: `settings`, `keyboard`/keyboard settings, `history`, `paywall`, `personality`…
   and in a window the desk's `desk_today`, `desk_notes`, `desk_settings` (the sidebar links Today, Meeting notes and Settings to them).
   They draw as today, with the app's own chrome.
@@ -52,6 +58,7 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `…/bots/deps.ts` | the real `BotsDeps` (server.ts builds one per request) |
 | `…/bots/registry.ts` | `screen({ id, load?, build })` |
 | `…/bots/screens/{shell,you,bots,keybot,code,firstRun}.ts` | **the screens, one file per area: yours** |
+| `…/bots/screens/planItem.ts` | Plan's add / change an event or a to-do (`bots.plan.item`), registered with bots.ts's list (section 11) |
 | `…/bots/screens/keybot{Stats,You,Parts}.ts` | Keybot's other pages: the old Stats tab's cards (month, day, apps, speak, days), the old You tab's Voice, Haptics and name pages, and Keybot's small parts and charts ([bots-keybot-parity.md](bots-keybot-parity.md)) |
 | `…/bots/index.ts` | joins the screen files, bootstrap nav, the switch, `buildBotsScreen` |
 | `…/bots/fixtures.ts` | fake deps and the boards' sample day (Aanya), for tests and the render check |
@@ -234,6 +241,37 @@ No new node types: the design is expressed with core types plus four extensions,
 * **`Text bind.content`** in the window, and `numberOfLines`; **`navigate` params** resolve `$state.x` in the window.
 * `ScreenResponse.look: "bots"`: the window treats a border width as a solid border on these pages (as the phone does).
 
+**Media** (shared/types/sdui.ts section 3d; parts in `bots/media.ts`): three actions, each declared by name in
+`capabilities.components`, none a node, so `lintTree` is unchanged. **FileUpload** `uploadFile` (pick a photo, a screenshot,
+a video or any file, send it to POST /v1/files with progress in `up`, the answer in `sent`): Ask's Photo / File / Screen and
+Add to chat's pickers. **VoiceRecord** `recordVoice` (the phone: the mic into a field through /v1/transcribe-clean, `voice`
+and `level` in state): Ask's mic. **AudioPlay** `playAudio` / `stopAudio` (one sound at a time, `playing` in state, stopped
+when the screen goes): the voices' samples (GET /v1/keybot/voices/:id/sample). A build without one keeps the screen as before.
+A bar that follows state is plain boxes (`stateBar`): each segment's colour is `{ gte: [path, n], then, else }`.
+
+**Live views** (shared/types/sdui.ts section 3e; kit `liveView`, `canLive`): **LiveView** is a node (in `KIT_TYPES`), a running
+web page or artifact in a sandbox of its own: the phone's `LiveView.tsx` (a WebView, `incognito`), the window's `liveView.js`
+(a `<webview>` in the in-memory session `tz-live`, locked down by `liveViewMain.js`; never the app's origin). From `url` (http,
+https, data:, about: only) or `html` the server wrote, run as `origin`; it stays on its page, has no popups, downloads or
+permissions, and offers a link that leaves only with `allowPopups` and the person's yes. Loading and error states ("Try again")
+are the app's own; `{ t: "ready" }` ends the wait when `waitForReady`. What the page posts goes to `messagePath` and
+`on.onResult` (untrusted data); `send`, bound to state, reaches the page's `window.tzLive`. The Code bot's Design and Live
+preview (`bots.code.design`, `bots.code.preview`) run the artifact this way: GET /v1/artifacts/:id/live answers the host page
+(src/artifacts/livehost.ts: the app's viewer framed, `ARTIFACT_VIEWER_URL`, run as `ARTIFACT_APP_ORIGIN`, which must be in that
+viewer's VIEWER_PARENT_ORIGINS). A tap in "Point to change" picks the part into `sel` / `selName` (as the drawn parts do), "Use
+it" switches that off without a reload (`liveSend.pick`), and an error the viewer reports goes to POST /v1/artifacts/:id/errors.
+No viewer set, or a build without LiveView: the artifact's parts, as before.
+
+**Offline** (section 3e; `bots/screens/outbox.ts`): a build that declares **Outbox** keeps an outbox (the phone's
+`offline.tsx` + `outboxCore.ts`, the window's `outbox.js`) and puts `online`, `outbox` (each ask's `id`, `label`, `sub`, `state`,
+`typedAt`) and `outboxWaiting` in every screen's state. The `outbox` action (kit `keepAsk`) keeps an ask with its own client id
+and when it was typed; once online the asks go in order to POST /v1/shell/ask with `clientId` and `typedAt`, which answers an id
+ONCE (src/shell/sentAsks.ts, migration 0047): a retry gets the first answer, one still out is 409. The bootstrap's flags
+(`BOTS_OFFLINE_FLAGS`) say what happens when the connection drops: Home (`offline.roots`) is shown as `bots.offline` (kept for a
+day, `cacheTtlSeconds`, so it can be drawn without a connection) and comes back when it returns; any other screen gets the line
+`offline.bar`; `offline.sentToast` once kept asks went. The Offline screen lists the asks with their state (Waiting to send,
+Sending…, Sent, Couldn't send · Try again; the window's Edit and Cancel), and Home shows them going out once it is back.
+
 ## 9. Rules, and what not to touch
 
 * **Ids** `bots.<area>[.<thing>]`, lower case, hyphens: take them from `ids.ts`. **Files**: only your `screens/<area>.ts` (and tests).
@@ -248,3 +286,54 @@ No new node types: the design is expressed with core types plus four extensions,
   (₹500) until the Budget screen stores one (`BotsDeps.budgetPaise`); spend counts Code bot jobs' `spentPaise` only; the name-and-gender
   card is asked in the first run (About you), so `profileGate.screenIds` is empty while someone is still in it; someone onboarded
   before that keeps the card on `personality` / `home`.
+
+## 10. Live updates
+
+A change made on one device shows on the other's open screen within about a second.
+
+* **The channel**: `WS /v1/live` (`tulmi/src/routes/live.ts`). Signed in by the first message `{ type: "auth", token }` (or the
+  upgrade's `Authorization`), never a token in the URL; then `{ type: "event", topic, at }` for every change of that person's,
+  pings both ways every 25 s, at most 8 sockets a person (the oldest goes, 4008), renewed every 30 min (4000). One process holds
+  every socket; for several, give `live.setRelay` (`src/live/bus.ts`) a Postgres LISTEN/NOTIFY or Redis fan-out to `bus.deliver`.
+* **Topics** (`src/live/topics.ts`, both tables in one place): `home`, `bots`, `bot:<slug>`, `activity`, `tasks`, `calendar`, `code`,
+  `job:<id>`, `notes`, `note:<id>`, `keybot`, `you`; Spaces and messaging name their own (`space:<id>`, `thread:<id>`, `threads`), and
+  the calendar publishes its own (`calendar`, `tasks`, `bot:plan`) from wherever it changes (section 11).
+* **Publishing**: a 2xx write over HTTP publishes its route's topics after the response (`installLiveWrites`, an onResponse hook,
+  `topicsForWrite`); writes away from a request publish where they happen: the Code bot's job store (`liveJobStore`), meeting notes
+  (`notes/store.ts`), dictation history. `livePublish(userId, topics)` from anywhere else; bursts are folded into one event.
+  A new write route: add it to `topicsForWrite`.
+* **Screens**: every Bots app screen gets its default topics from `topicsForScreen` (added in `buildBotsScreen`); `page(ctx, { live })`
+  adds more. A live session, a training run and the first run have none.
+* **The apps**: the phone (`app/src/sdui/live.ts`, rules in `liveCore.ts`) and the window (`live.js`) keep one socket while signed in
+  and in front, reconnect with backoff, and reload the screen on show quietly when it hears the topic: no spinner, scroll and focus
+  kept, the new state written over the old except what was typed on that screen since it loaded, never while the person is typing,
+  one reload per burst (300 ms). Back in front, the screen on show reloads once. Knobs: `live.enabled`, `live.path`,
+  `live.debounceMs`, `live.typingQuietMs`.
+
+## 11. The calendar and to-dos
+
+Tailzu keeps each person's own calendar and to-do list (`tulmi/src/calendar`, migration `0054_own_calendar.sql`). Nothing is connected:
+the Bots app no longer reads or offers Google Calendar or Google Tasks.
+
+* **The store** (`calendar/store.ts`, `service.ts`): events (what, start and end or all day, place, notes, repeat daily / weekdays /
+  weekly / monthly / yearly with an until and days taken out, a reminder in minutes before) and to-dos (what, notes, a list, a due day
+  and time, done). Each has a `source`: the person, a bot (`"Plan bot"`), someone in a space (theirs to change: the person ticks it or
+  says they can't), or a meeting's to-do. Times are on the person's clock (`tz_min`); `words.ts` reads a line ("Dentist Fri 5 pm at
+  Indiranagar", "remind me to call Nani at 6", "kal subah 7 baje gym"). Memory when there is no Supabase.
+* **Routes** (`routes/botsCalendar.ts`, registered by botsBots.ts): `GET /v1/botsapp/calendar?from=&to=&tz=`, `…/events[/:id]` and
+  `…/tasks[/:id]` (POST, PUT, DELETE; a task's `PUT { done }` ticks it), `POST …/quick { words }`, `POST …/cant/:id` (a space's), and
+  `…/notes/:noteId[/:todoId]` (a meeting's to-dos on the list). `GET /v1/botsapp/bots/plan` reads the same store (`calendarPlanReader`).
+* **Screens**: Plan (`bots.plan`, bots.ts) shows the person's days with nothing to connect: the phone has a week strip (`week`, `day`
+  params; a reminder's tap opens its day) and the day's timeline; the window the week. Each event and to-do opens `bots.plan.item`
+  (screens/planItem.ts: add, change, take out, a series' one day; someone else's shows Done and Can't do it), a to-do's ring ticks it.
+  Today's calendar and Tasks' Upcoming (routes/botsShell.ts) read it too; a meeting's to-do has "Add to my tasks" (screens/notes.ts).
+* **Bots** (`calendar/bots.ts`): "calendar" and "tasks" are two apps every bot can be given, always on (`withOwnDays`, wired in
+  bots/wire.ts over the connected apps). The Plan bot has both, so "add dentist Friday 5 pm" in Ask or its chat adds it (Ask picks the
+  Plan bot by the calendar job, bots/door.ts). A bot made with the old ids (`google-calendar`, `google-tasks`) gets these.
+* **Spaces** (`botsBots/spaceTasks.ts`): a task or a plan given to someone lands on their own days, "From <name>", for everyone; their
+  tick there is Done in the space, "Can't do it" (there or here) takes it off, taken out of the space it goes.
+* **Reminders**: every minute the due ones go through the push engine as `plan_reminder` (push/defaults.ts; You's "What pings you":
+  sent, quietly in quiet hours, not with Plan bot off), claimed by moving the next one on, so two servers never send one twice.
+* **Not offered any more**: Google Calendar and Google Tasks in You › Connected apps (shown only to switch one off if it was
+  connected), the Plan, Today and Tasks prompts, Make a bot's and a bot's Edit list. Their connectors (`src/connectors/google/calendar.ts`,
+  `tasks.ts`) and the old app's routes are left as they were; other Google apps (Docs for meeting notes, Sheets, Forms, Classroom) are unchanged.

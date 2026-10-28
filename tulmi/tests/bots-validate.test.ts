@@ -185,7 +185,8 @@ describe("the four Tailzu ships", () => {
   it("have the skills their purpose needs", () => {
     expect(builtinBot("code")!.skills.code).toBe(true);
     expect(builtinBot("travel")!.skills).toMatchObject({ web: true, research: true, connectors: ["maps", "booking"] });
-    expect(builtinBot("plan")!.skills.connectors).toEqual(["google-calendar", "google-tasks"]);
+    // Tailzu's own calendar and to-dos (src/calendar/bots.ts), not Google's.
+    expect(builtinBot("plan")!.skills.connectors).toEqual(["calendar", "tasks"]);
     expect(builtinBot("keybot")!.skills.web).toBe(false);
   });
 });

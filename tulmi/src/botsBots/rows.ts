@@ -108,6 +108,8 @@ export class SupabaseTable<R extends Row> implements Table<R> {
 export const AREA_TABLES = [
   "bot_chat_turns", "bot_drafts", "bot_listings", "bot_listing_adds", "bot_key_usage",
   "spaces", "space_members", "space_bots", "space_invites", "plan_skips", "trips",
+  // migration 0052: where the Plan bot's day starts, and the travel its moves saved
+  "plan_prefs",
 ] as const;
 export type AreaTable = (typeof AREA_TABLES)[number];
 

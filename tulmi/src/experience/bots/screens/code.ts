@@ -236,13 +236,16 @@ function startTask(projectId: string, task: string, statePath?: string): ActionR
   return statePath ? { kind: "condition", if: { falsy: statePath }, then: toast("Say what you want done first"), else: go } : go;
 }
 
-/** Ask the Code bot (POST /v1/ask, bot "code") and open the answer: a question, "what changed this week?", "explain this change". */
+/**
+ * Ask the Code bot (POST /v1/shell/ask, bot "code": the front door, with the answer written down for Activity as Ask's are) and
+ * open the answer: a question, "what changed this week?", "explain this change".
+ */
 function codeAsk(ctx: BotsCtx, message: string, o: { projectId?: string; statePath?: string } = {}): ActionRef {
   const send: ActionSpec = {
     kind: "sequence", actions: [
       { kind: "setState", path: "asking", value: true },
       {
-        kind: "callEndpoint", method: "POST", path: "/v1/ask",
+        kind: "callEndpoint", method: "POST", path: "/v1/shell/ask",
         body: { message, device: ctx.client, mode: "text", bot: "code", ...(o.projectId ? { projectId: o.projectId } : {}) },
         assignTo: "asked",
         onSuccess: seq(

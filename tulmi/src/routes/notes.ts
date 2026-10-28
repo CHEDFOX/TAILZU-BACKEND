@@ -11,9 +11,14 @@
  *   POST   /v1/notes/:id/finish     stop, and organise (JSON: durationSeconds?)
  *                                   → 202 { note }; the writer runs after
  *   POST   /v1/notes/:id/organise   organise again from the kept transcript
- *   GET    /v1/notes                the list → { notes }
- *   GET    /v1/notes/:id            one note → { note }
+ *   GET    /v1/notes                the list → { notes } (each with its to-dos counted)
+ *   GET    /v1/notes/stats          the week's meetings, hours and people, the open to-dos
+ *   GET    /v1/notes/:id            one note → { note, finding } (finding: its to-dos are being read now)
+ *   POST   /v1/notes/:id/find       read its to-dos and decisions if not yet read for this transcript → { finding }
+ *   POST   /v1/notes/:id/todos/:todo  tick a to-do (JSON: done) → { todo }
  *   DELETE /v1/notes/:id            → { ok }
+ *
+ * A meeting's to-dos and decisions are read once, beside the writer, when it stops (notes/extract.ts).
  *
  * Nothing here is ever typed anywhere: notes are kept, and shown in the app.
  * The words heard count against the same allowance as dictation, a stretch at
@@ -24,6 +29,8 @@ import type { AudioFormat, Note, Personality } from "../../../shared/types/api.j
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { appendHeard, diarize, labelSpeakers, type Track, type Utterance } from "../notes/speakers.js";
 import { organise } from "../notes/organise.js";
+import { findOnce, findingNow, needsFinding, tickTodo } from "../notes/extract.js";
+import { notesStats } from "../notes/stats.js";
 import {
   NotesNeedAccount, createNote, deleteNote, getNote, listNotes, msSinceTouched, updateNote,
 } from "../notes/store.js";
@@ -60,6 +67,8 @@ const SYSTEM_AUDIO = new Set(["ok", "denied", "unavailable"]);
 
 /** A recording note written to this recently is still being recorded. */
 const STILL_RECORDING_MS = 3 * 60_000;
+/** The longest a written-up note waits for its to-dos before it is ready without them (they land when they come). */
+const FIND_WAIT_MS = 60_000;
 /** An "organising" note this quiet lost its writer (a restart). */
 const STUCK_ORGANISING_MS = 10 * 60_000;
 
@@ -90,10 +99,15 @@ async function organiseInBackground(user: AuthedUser, id: string): Promise<void>
       note = (await updateNote(user, id, (n) => ({ ...n, transcript: labelled }))) ?? note;
     }
   }
+  // The transcript is final now: its to-dos and decisions are read beside the writer (notes/extract.ts), once. The
+  // note is ready when both are, so "your notes are ready" has its to-dos; a read slower than FIND_WAIT_MS lands after.
+  const finding = findOnce(user, id);
   const body = await organise(note);
+  await Promise.race([finding, new Promise((r) => setTimeout(r, FIND_WAIT_MS).unref?.())]);
   await updateNote(user, id, (n) => body
     ? { ...n, ...body, status: "ready", organised: true }
     : { ...n, status: n.transcript.length ? "failed" : "ready", organised: false });
+  await finding;
 }
 
 function startWork(user: AuthedUser, id: string) {
@@ -240,7 +254,42 @@ export function registerNotesRoutes(app: FastifyInstance, deps: NotesRouteDeps):
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
     try {
       const note = await getNote(user, req.params.id);
-      return note ? reply.send({ note }) : reply.code(404).send({ code: "not_found", message: "No such note" });
+      return note ? reply.send({ note, finding: findingNow(note.id) }) : reply.code(404).send({ code: "not_found", message: "No such note" });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // The week in numbers and the open to-dos (notes/stats.ts): Home's Notes tile.
+  app.get("/v1/notes/stats", { config: RL }, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+    try {
+      return reply.send(notesStats(await listNotes(user, 200)));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // Look for a finished meeting's to-dos and decisions if they have not been found for its transcript (an older
+  // note, a read that failed a while ago). Once per transcript, whoever asks: the answer says whether a read started.
+  app.post<{ Params: { id: string } }>("/v1/notes/:id/find", { config: RL }, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+    try {
+      const note = await getNote(user, req.params.id);
+      if (!note) return reply.code(404).send({ code: "not_found", message: "No such note" });
+      const go = findingNow(note.id) || needsFinding(note);
+      if (go) void findOnce(user, note.id);
+      return reply.code(go ? 202 : 200).send({ finding: go });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // Tick a to-do off (or back on): every device showing the meeting hears of it (store.ts publishes note:<id>).
+  app.post<{ Params: { id: string; todo: string }; Body: { done?: unknown } }>("/v1/notes/:id/todos/:todo", { config: RL }, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+    const done = (req.body ?? {}).done;
+    if (typeof done !== "boolean") return reply.code(400).send({ code: "bad_request", message: "'done' must be true or false" });
+    try {
+      const todo = await tickTodo(user, req.params.id, req.params.todo, done);
+      return todo ? reply.send({ todo }) : reply.code(404).send({ code: "not_found", message: "No such to-do" });
     } catch (err) { return fail(reply, err); }
   });
 

@@ -31,6 +31,8 @@ import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import transcribeStream from "./routes/transcribe-stream.js";
+import { registerLiveRoutes } from "./routes/live.js";
+import { installLiveWrites, liveJob } from "./live/writes.js";
 import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/media.js";
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
@@ -45,6 +47,7 @@ import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { createArtifacts, deleteViewerData } from "./artifacts/index.js";
 import { registerArtifactRoutes } from "./routes/artifacts.js";
+import { liveViewerOf } from "./artifacts/livehost.js";
 import { AttachmentRegistry, createFront } from "./front/index.js";
 import { createMedia, registerMedia, startMediaSweep } from "./media/index.js";
 import { registerFilesRoutes } from "./routes/files.js";
@@ -64,6 +67,8 @@ import { withKeybotKeyboard } from "./keybot/keyboard.js";
 import { registerBotsCodeRoutes } from "./routes/botsCode.js";
 import { registerBotsCodeWorkRoutes } from "./routes/botsCodeWork.js";
 import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
+import { registerAccountDeletionRoutes } from "./routes/accountDeletion.js";
+import { registerBotsPushAskRoutes } from "./routes/botsPushAsk.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
 import { sessionOffers } from "./code/live/offers.js";
 import { jobStore } from "./code/jobs/store.js";
@@ -84,6 +89,7 @@ import { initControl, registerControlRoutes, requireAdmin, withControl } from ".
 import { initPush, notifyApproval, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/reviewCode.js";
+import { registerDeviceLinkRoutes } from "./routes/deviceLink.js";
 import { getConfig, VERSION } from "./config.js";
 import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { sameSecret } from "./auth/secret.js";
@@ -562,6 +568,10 @@ if (fs.existsSync(ICONS_DIR)) {
 }
 
 await app.register(transcribeStream);
+// Live updates (src/live, docs/bots-app.md "Live updates"): WS /v1/live carries "this changed" to every device a person has
+// open, and every write the Bots app makes over HTTP says which topics it changed, after its response (live/writes.ts).
+registerLiveRoutes(app);
+installLiveWrites(app);
 
 /** The one answer to a request with no valid session. */
 const unauthorized = (reply: FastifyReply) =>
@@ -1096,7 +1106,7 @@ const liveSession = !!(jobsHandoff?.configured && cfg.CODE_LIVE_SESSION);
 const offerSession = liveSession ? sessionOffers({ secret: cfg.CODE_JOBS_SECRET!, jobsUrl: cfg.CODE_JOBS_URL!, idleSec: cfg.CODE_SESSION_IDLE_SEC }) : undefined;
 const githubActions = code ? createGithubActions({ code, log: app.log, ...(offerSession ? { offerSession } : {}) }) : null;
 // A job's news goes to the person (the push engine) and to PR care, which writes the end of a job it started on the pull request.
-const notifyJob: typeof notifyCodeJob = async (userId, kind, data) => { await notifyCodeJob(userId, kind, data); care?.onJobEvent(userId, kind, data); };
+const notifyJob: typeof notifyCodeJob = async (userId, kind, data) => { liveJob(userId, data.jobId); await notifyCodeJob(userId, kind, data); care?.onJobEvent(userId, kind, data); };
 const codeJobs = code ? createJobs({ code, github: githubActions, notify: notifyJob, log: app.log, ...(liveSession ? { actions: true, ...(offerSession ? { offerSession } : {}) } : {}) }) : null;
 // The agent loop (src/code/agent, docs/code-agent.md): the worker that drives a job made through POST /v1/code/jobs
 // from the person's words to a pull request, claiming each job in the database so that no two servers run one, at
@@ -1128,7 +1138,7 @@ registerCodeJobRoutes(app, {
 // sandbox with no network. Off unless ARTIFACTS is true (the routes then answer 404 artifacts_off). With the Code bot on, a project's
 // artifacts look like the project and "build it" makes a job (the routes use `code`, the job router and the agent above).
 const artifacts = createArtifacts({ log: app.log });
-registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJobs, agent: codeAgent });
+registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJobs, agent: codeAgent, viewer: liveViewerOf(cfg) });
 // The front door (src/front, docs/front-door.md): one smart entry point for a message, POST /v1/ask with a `message` (the desktop's old ask,
 // with a `question`, is the route below as it always was). Off unless FRONT_DOOR is true: those bodies are then answered 404 front_door_off.
 // The overload guards (src/guard) are on the routes that spend money either way; GET /v1/admin/guard shows them.
@@ -1154,6 +1164,7 @@ registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
 registerBotsCodeWorkRoutes(app, botsAreaDeps);
 registerBotsFirstRunRoutes(app, botsAreaDeps);
+registerBotsPushAskRoutes(app, botsAreaDeps);
 const frontRoutes = registerFrontRoutes(app, {
   rateLimit: AUTHED_RL, front, bots,
   quota: (user) => enforceQuota(user),
@@ -1200,6 +1211,9 @@ if (connectors) {
 registerReviewCodeRoute(app, {
   rateLimit: { max: 8, timeWindow: 15 * 60_000 },
 });
+// Signing in on a computer with the phone: the window's QR, approved on the phone (routes/deviceLink.ts, migration 0049).
+// Off (link_off) without the service key, which mints the window's session. Its own limits, per address and per person.
+registerDeviceLinkRoutes(app);
 
 app.post("/v1/transcribe-clean", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
@@ -2986,7 +3000,9 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // the app" in today's flows still points (the intro's end, the onboarding's Done). Only for a request the Bots
   // app is on for; any other build is answered exactly as before, and a "bots.*" id it asks for is unknown.
   const botsOn = botsAppOn({ on: cfg.BOTS_APP, testers: cfg.BOTS_APP_TESTERS, email: user?.email, components: body.capabilities?.components });
-  const botsId = botsOn && screenId === "home" ? "bots.home" : screenId;
+  // The window's notes pages (where "Your notes are ready" opens) are Notes' own pages in the Bots app.
+  const botsId = !botsOn ? screenId : screenId === "home" ? "bots.home" : screenId === "desk_notes" ? "bots.notes" : screenId === "desk_note" ? "bots.note" : screenId;
+  const botsParams = screenId === "desk_note" && body.params?.noteId !== undefined ? { ...body.params, id: body.params.noteId } : body.params;
   if (isBotsScreen(botsId)) {
     if (!botsOn) return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });
     const tz = typeof body.tzOffsetMinutes === "number" && Number.isFinite(body.tzOffsetMinutes) ? body.tzOffsetMinutes : 0;
@@ -3000,7 +3016,7 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
         }, user, String(req.headers["authorization"] ?? ""), tz)
       : emptyDeps();
     const screen = await buildBotsScreen({
-      screenId: botsId, client: screenFormFactor, params: body.params, tzOffsetMinutes: tz, can: comps,
+      screenId: botsId, client: screenFormFactor, params: botsParams, tzOffsetMinutes: tz, can: comps,
       user: user ? { id: user.id, ...(profile?.fullName ? { name: profile.fullName } : {}), ...(user.email ? { email: user.email } : {}) } : null,
       desk: { pages: comps.has("DeskShell"), notes: comps.has("DeskNotes") },
     }, deps);
@@ -3336,6 +3352,35 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     });
   }
 
+  const summary = await eraseAccount(admin, user, req);
+
+  // The auth record IS the account. Everything above is data the account
+  // owned; if this one did not go, the account did not go, and the only
+  // honest answer is an error — the app then keeps the user signed in and
+  // tells them it failed, which is recoverable. Reporting success here is
+  // not: it signs them out believing they are gone.
+  if (!summary.authAccount) {
+    req.log.error({ summary }, "account delete: auth record survived");
+    return reply.code(500).send({
+      code: "delete_incomplete",
+      message: "We could not finish deleting the account. Please try again.",
+    });
+  }
+
+  return reply.send({
+    status: "deleted",
+    ...summary,
+    message: "Your account and all associated data have been deleted.",
+  });
+});
+
+/**
+ * EVERYTHING THE ACCOUNT HOLDS, THEN THE ACCOUNT. DELETE /v1/account runs it at
+ * once; the Bots app's Delete account sets a date seven days out and the sweep
+ * runs it on that day (routes/accountDeletion.ts, src/you/deletion.ts). `req`
+ * is only where it logs. `summary.authAccount` says whether the account went.
+ */
+async function eraseAccount(admin: NonNullable<ReturnType<typeof supabase>>, user: { id: string }, req: { log: FastifyRequest["log"] }) {
   // Every table holding this user's rows. Each also cascades from auth.users,
   // but they are cleared first and one at a time, so a table whose foreign key
   // was never given ON DELETE CASCADE cannot make the auth delete below fail.
@@ -3391,24 +3436,20 @@ app.delete("/v1/account", { config: AUTHED_RL }, async (req, reply) => {
     req.log.error({ err }, "delete auth user");
   }
 
-  // The auth record IS the account. Everything above is data the account
-  // owned; if this one did not go, the account did not go, and the only
-  // honest answer is an error — the app then keeps the user signed in and
-  // tells them it failed, which is recoverable. Reporting success here is
-  // not: it signs them out believing they are gone.
-  if (!summary.authAccount) {
-    req.log.error({ summary }, "account delete: auth record survived");
-    return reply.code(500).send({
-      code: "delete_incomplete",
-      message: "We could not finish deleting the account. Please try again.",
-    });
-  }
+  return summary;
+}
 
-  return reply.send({
-    status: "deleted",
-    ...summary,
-    message: "Your account and all associated data have been deleted.",
-  });
+// Delete account with seven days to undo (the Bots app): set the date, read it, keep the account, and the sweep that runs
+// eraseAccount on the day. No service key, no deleting: the ask is refused (503), as DELETE /v1/account is above.
+registerAccountDeletionRoutes(app, {
+  rateLimit: AUTHED_RL,
+  erase: supabase() ? async (userId) => {
+    const admin = supabase();
+    if (!admin) return false;
+    const summary = await eraseAccount(admin, { id: userId }, { log: app.log });
+    if (!summary.authAccount) app.log.error({ summary }, "scheduled account delete: auth record survived");
+    return summary.authAccount;
+  } : null,
 });
 
 // --- Keyboard config (server-driven keyboard; cached by the native shell) ----

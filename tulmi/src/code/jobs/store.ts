@@ -47,6 +47,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../auth/supabase.js";
 import type { RunnerMinutes } from "../live/minutes.js";
 import { CodeNeedsAccount } from "../store.js";
+import { liveJobStore } from "../../live/writes.js";
 import {
   NO_CHECKPOINT, STEPS_MAX, isEnded,
   type Checkpoint, type CodeJob, type ComputeSettings, type ComputeUsage, type JobState, type JobStep, type OverlayFile, type PaidRule,
@@ -590,11 +591,12 @@ export class SupabaseJobStore implements JobStore {
 
 let current: JobStore | null = null;
 
-/** Supabase when the service client exists, else memory (tests, local runs). */
+/** Supabase when the service client exists, else memory (tests, local runs). A job that changes says so to the person's open
+ *  screens (live/writes.ts liveJobStore). */
 export function jobStore(): JobStore {
   if (!current) {
     const sb = supabase();
-    current = sb ? new SupabaseJobStore(sb) : new MemoryJobStore();
+    current = liveJobStore(sb ? new SupabaseJobStore(sb) : new MemoryJobStore());
   }
   return current;
 }
