@@ -435,6 +435,9 @@ export interface AgentState {
     doneSummary?: string;
     /** The model was nudged once to use a tool. */
     nudged?: boolean;
+    /** The model was asked, once, for a focused test of the change before the checks ran (phases.ts testWanted), and what it was told. Cleared once the checks run. */
+    testAsked?: boolean;
+    testFeedback?: string;
     /** What the design check found, for the model to fix: the differences and the fix hints. Data, wrapped when shown. */
     designFeedback?: string;
     /** What a team's reviewer found in this helper's work (code/team): the findings, for the fix round. Data, wrapped when shown. */

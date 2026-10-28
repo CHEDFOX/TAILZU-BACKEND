@@ -27,7 +27,8 @@ import { advanceIntake, checksFor, isEmptyRepo, planMilestones, scaffoldStep, ty
 import {
   ACTIONS, PolicyError, decide, fingerprintOf, gateFree, isWorkflowPath, type ActionId, type Decision, type PolicyCtx,
 } from "../policy.js";
-import { isSecretPath } from "../project/lang.js";
+import { gatherFacts, isConfigPath, missingFacts, withMissing } from "../chat/facts.js";
+import { classOf, isSecretPath, isTestPath } from "../project/lang.js";
 import type { BaselineKind, BaselineStep } from "../project/types.js";
 import { gateBase, repoRef } from "../projects.js";
 import { markReady } from "../pulls.js";
@@ -417,10 +418,50 @@ export async function workPhase(r: Run): Promise<void> {
     }
     if (w.finished) break;
   }
+  // A question is answered from the values the code holds: what it asks about is in the answer, by name and by value.
+  if (s.classification?.type === "question" && r.tools.changes.empty && w.doneSummary) await addMissingValues(r);
   // A merge is a change even when its resolution leaves the files as the branch has them (keeping this branch's side): the commit has two parents.
   // A lead (code/team) has things to do after its own work: the contracts that needed no change hand over to the helpers, and the full check goes on after a fix that changed nothing.
   if (s.team?.stage === "contracts" && r.tools.changes.empty) { await afterContracts(r, { none: true }); return; }
   s.phase = r.tools.changes.empty && !s.merge ? (s.team?.stage === "final" && s.commits.length ? "verify" : "report") : "verify";
+  await r.save();
+}
+
+/** The files the model read, in the order it read them (a read_file call's path; a grep of one file). */
+export function pathsRead(exchanges: ReadonlyArray<Pick<Exchange, "calls">>): string[] {
+  const out: string[] = [];
+  for (const ex of exchanges) {
+    for (const c of ex.calls) {
+      if (c.name !== "read_file" && c.name !== "grep") continue;
+      let path: unknown;
+      try { path = (JSON.parse(c.arguments || "{}") as { path?: unknown }).path; } catch { continue; }
+      if (typeof path === "string" && /\.[A-Za-z0-9]{1,8}$/.test(path) && !isSecretPath(path) && !out.includes(path)) out.push(path);
+    }
+  }
+  return out;
+}
+
+/**
+ * A question's answer is the model's own words, and a model paraphrases: "a 60-second window" for `windowMs: 60000`, the one value the question asked for left
+ * unnamed (the smoke run, twice). The configuration and constants of the files it read, and of the config files those import, are taken (chat/facts.ts); the
+ * ones the question asks about (a name that shares a word with it) and the ones on lines the answer cites must be in the answer, by name and by value. A fact
+ * that is not is added to the answer in a line of its own with its file and line. Nothing is asked of a model.
+ */
+async function addMissingValues(r: Run): Promise<void> {
+  const w = r.state.work;
+  const answer = w.doneSummary ?? "";
+  const read = readOrNull(r);
+  const seen = pathsRead(w.exchanges).slice(0, 6);
+  const imported: string[] = [];
+  for (const p of seen.slice(0, 4)) {
+    const n = await r.brain.neighbors(p).catch(() => null);
+    for (const q of n?.imports ?? []) if (isConfigPath(q)) imported.push(q);
+  }
+  const { facts } = await gatherFacts([...seen.filter(isConfigPath), ...imported, ...seen], read, { files: 6 });
+  const missing = missingFacts(facts, r.state.task, answer);
+  if (!missing.length) return;
+  w.doneSummary = withMissing(answer, missing);
+  await r.log.note(`The answer left out ${missing.map((f) => f.name).join(", ")} from the code, so ${missing.length === 1 ? "it was" : "they were"} added.`);
   await r.save();
 }
 
@@ -617,13 +658,59 @@ export async function runVerify(r: Run, round: number): Promise<{ v: VerifyState
   return { v, ...(feedback ? { feedback } : {}) };
 }
 
+/**
+ * THE FIX IS PROVED BY A TEST OF ITS OWN. A fix that passes the project's checks has only been shown not to break what was already tested; the edge case the task names
+ * (a missing id, an empty list, a boundary) is usually in no test, and it is the case a hidden test asks about (the smoke run: the checks passed, one of four hidden tests
+ * did not). So, once, before the checks run on a change to source with no test staged, the model is asked for one small focused test of the changed behaviour in the
+ * project's own style, and the checks then run with it in. Only where there is a test command to run it with, only for a change that is code, only for a plain job
+ * (not a merge, a PR-care job, a team's part or a new project), and only while the budget has the room for another round; otherwise the checks go ahead as they were.
+ */
+export const TEST_ROUND_MIN_PAISE = 20;
+export const TEST_ROUND_MIN_SHARE = 0.3;
+const TEST_ASK = "Your change is staged and no test covers it. Before the checks run, add or extend ONE focused test for the behaviour you changed: the edge case the task names "
+  + "(a missing or empty value, a boundary, the case that was wrong), in the project's own test files and style. Keep it small, change no other test, then call done again.";
+
+export async function testWanted(r: Run): Promise<boolean> {
+  const s = r.state;
+  const w = s.work;
+  if (w.testAsked || s.merge || s.care || s.team || s.part || s.newProject) return false;
+  if (!(r.deps.proveFix ?? getConfig().CODE_PROVE_FIX)) return false;
+  const type = s.classification?.type;
+  if (type !== "bug_fix" && type !== "feature" && type !== "small_edit") return false;
+  const staged = r.tools.changes.paths();
+  if (staged.some((p) => isTestPath(p))) return false;
+  if (!staged.some((p) => ["source", "markup"].includes(classOf(p)))) return false;
+  if (!(await r.brain.baselinePlan().catch(() => [])).some((x) => x.kind === "test")) return false;
+  const money = await r.money();
+  if (money.remaining < Math.max(TEST_ROUND_MIN_PAISE, TEST_ROUND_MIN_SHARE * money.budget)) return false;
+  return w.turns + 3 <= TURNS_MAX;
+}
+
 export async function verifyPhase(r: Run): Promise<void> {
   const s = r.state;
   const w = s.work;
+  // Asked for a test, and the model has answered: the checks run with it in.
+  w.testFeedback = undefined;
   // A lead whose helpers' parts are all merged has nothing staged and everything to check: the branch is what is verified. With nothing merged into this project there is nothing to check.
   const wholeBranch = s.team?.stage === "final" && s.commits.length > 0;
   if (r.tools.changes.empty && !s.merge && !wholeBranch) {
     s.phase = "report";
+    await r.save();
+    return;
+  }
+  // The fix is proved by a test of its own (testWanted): asked for once, then the checks run with it in.
+  if (await testWanted(r)) {
+    const money = await r.money();
+    w.testAsked = true;
+    w.testFeedback = TEST_ASK;
+    w.finished = false;
+    w.runs = 0;
+    w.nudged = false;
+    w.badTurns = 0;
+    w.roundStartPaise = money.spent;
+    w.roundStartedAt = r.now();
+    await r.log.decision("Before the checks, I asked for one focused test of the behaviour this change touches.");
+    s.phase = "work";
     await r.save();
     return;
   }

@@ -17,6 +17,8 @@
  * call that finishes in the same instant as a paid step's result can be lost
  * from the total. That costs at most one call's price, in the person's favour.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
+import { randomUUID } from "node:crypto";
 import type { JobStore } from "../jobs/store.js";
 import type { CodeJob } from "../jobs/types.js";
 
@@ -49,12 +51,46 @@ export class SpendMeter {
     if (this.by.size > this.max) this.by.delete(this.by.keys().next().value as string);
     return add;
   }
+
+  /** Forgets a scope that is over. A call that settles after this starts the scope's count again, which reads at most one paise high for it. */
+  forget(scope: string): void { this.by.delete(scope); }
 }
 
 let shared = new SpendMeter();
 /** The process's meter, which callModel uses unless it is given its own. */
 export const sharedSpendMeter = (): SpendMeter => shared;
 export function resetSpendMeterForTests(): void { shared = new SpendMeter(); }
+
+/**
+ * A REQUEST'S CALLS ARE ONE SCOPE, ROUNDED UP ONCE, LIKE A JOB'S.
+ *
+ * A code job's calls carry the job id, so the meter above has always had a scope for them. The other things that spend on models are not jobs: a message to the
+ * front door, a research question, an edit or a make of an artifact, a bot's run. Each makes several small calls (the front door's decision, its reply; the
+ * research's plan, its answer), and each call was rounded up to the next paise by itself: three calls of 0.15 paise were charged 3, and the second real-model test
+ * read the front door, research and artifact items 3 to 6 times what the proxy charged (3 paise for 0.5). The job-level fix did not reach them, because they have
+ * no job id to key on.
+ *
+ * `inRequestSpend` makes one request's calls one scope, however deep the calls are made (async local storage: no caller passes a thing). callModel charges the
+ * scope's running total and returns only what brings the whole paise charged up to that total rounded UP, so the sum over the request is never low and never
+ * more than one paise high. A scope that is already open is reused: the front door's research is part of the front door's request, not a second one.
+ */
+const requests = new AsyncLocalStorage<string>();
+
+/** The scope the code now running belongs to, when a request opened one. */
+export const currentSpendScope = (): string | undefined => requests.getStore();
+
+export function inRequestSpend<T>(work: () => Promise<T>): Promise<T> {
+  if (requests.getStore() !== undefined) return work();
+  const scope = `request:${randomUUID()}`;
+  const meter = shared;
+  return requests.run(scope, async () => {
+    try {
+      return await work();
+    } finally {
+      meter.forget(scope);
+    }
+  });
+}
 
 /** Times the compare-and-set is tried before the add is given up on. */
 const ADD_TRIES = 8;

@@ -57,6 +57,7 @@ const tv = await import("../scripts/time-vision.js");
 const { PICTURE_BASE64, PICTURE_HEIGHT, PICTURE_MIME, PICTURE_WIDTH } = await import("../scripts/time-vision-picture.js");
 const { placesNote } = await import("../src/agent/prompt.js");
 const { stableBlock } = await import("../src/principles/roles.js");
+const { REASONING_ALLOWANCE } = await import("../src/agent/reasoning.js");
 const VISION = stableBlock("ask_vision");
 const { resetConfigForTests } = await import("../src/config.js");
 import type { Run } from "../scripts/time-vision.js";
@@ -273,7 +274,8 @@ describe("a whole run, through the server's own planStream", () => {
     // The picture path's request: streamed, its budget, the server's routing.
     for (const c of llm.calls) {
       expect(c.stream).toBe(true);
-      expect(c.max_tokens).toBe(450);
+      // The picture path's limit, and (for a model that must think, gemini 3 and later) the room its thinking takes besides: reasoning.ts.
+      expect(c.max_tokens).toBe(450 + (c.reasoning?.effort && c.reasoning.effort !== "none" ? REASONING_ALLOWANCE[c.reasoning.effort as keyof typeof REASONING_ALLOWANCE] : 0));
       expect(c.provider).toEqual({ data_collection: "deny", sort: "latency" });
       expect(c.messages[1].content[0]).toEqual({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${PICTURE_BASE64}` } });
       expect(c.messages[1].content[1].text.split("\n")[0]).toBe("App: Slack. The picture is one image from the window.");

@@ -42,6 +42,10 @@ process.env.FREE_FOR_ALL = "false";
 // are about the parser (tests/code-project-treesitter*.test.ts) turn it on for themselves.
 process.env.CODE_TREE_SITTER = "false";
 
+// The agent asks once for a focused test of a change before the checks run (agent/phases.ts testWanted, CODE_PROVE_FIX). Most of the agent's tests script a job as
+// "edit, done" and count the model's turns, so they run without the round; tests/code-agent-prove.test.ts turns it on for itself (`proveFix: true`).
+process.env.CODE_PROVE_FIX = "false";
+
 // The brain's circuit breakers (guard/breaker.ts) are the process's, and a test that fails a model on purpose many times would otherwise
 // leave the next one with that model skipped. Every test starts with every breaker closed.
 beforeEach(() => { resetBreakersForTests(); });

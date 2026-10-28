@@ -85,6 +85,8 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   team?: Partial<TeamPorts>;
   /** What becomes of a tool result once it is older than the last six: "mask", "summary" or "hybrid" (agent/mask.ts). Instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
   contextStrategy?: ContextStrategy;
+  /** Ask once for a focused test of the change before the checks run: instead of CODE_PROVE_FIX (agent/phases.ts testWanted). */
+  proveFix?: boolean;
 }
 
 /** The worker, or null when this server cannot run one (no GitHub client, or the project brain is off). */
@@ -104,6 +106,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.live ? { live: o.live } : o.passive || o.remote ? {} : { live: { inbox: new MemoryInbox() } }),
     ...(o.design ? { design: o.design } : {}),
     ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
+    ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
   };
   const orch = new AgentOrchestrator({
     jobs: o.jobs, store, deps, concurrency: o.concurrency ?? getConfig().CODE_AGENT_CONCURRENCY,

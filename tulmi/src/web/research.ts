@@ -52,6 +52,7 @@
  * Nothing here logs. The question and the pages are never written anywhere.
  */
 import { z } from "zod";
+import { inRequestSpend } from "../code/brain/spend.js";
 import type { RoleId } from "../principles/roles.js";
 import { redactUrl } from "./cache.js";
 import { asUntrusted, cutText, type WebPage } from "./reader.js";
@@ -254,7 +255,12 @@ export function splitGaps(reply: string): { body: string; gaps: string[] } {
 
 // ------------------------------------------------------------------- research
 
-export async function research(question: string, opts: ResearchOptions): Promise<ResearchResult> {
+/** One request: the plan, the gaps and the answer are rounded up to the paise once, together (code/brain/spend.ts); under the front door they are part of its message. */
+export function research(question: string, opts: ResearchOptions): Promise<ResearchResult> {
+  return inRequestSpend(() => researchRequest(question, opts));
+}
+
+async function researchRequest(question: string, opts: ResearchOptions): Promise<ResearchResult> {
   const depth = opts.depth;
   const base = DEFAULT_LIMITS[depth];
   const limits: ResearchLimits = {

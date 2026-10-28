@@ -16,6 +16,7 @@ import { z } from "zod";
 import { readIntent, JOB_APPS } from "../connectors/intent.js";
 import { askJson, forModel, oneLine, type CallFn, type ModelCtx } from "../code/work/model.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
+import { inRequestSpend } from "../code/brain/spend.js";
 import { builtinBots } from "./builtin.js";
 import { neutral } from "./prompt.js";
 import type { BotConnectors, ConnectorStatus } from "./ports.js";
@@ -85,7 +86,12 @@ export function connectorHints(sentence: string, known: ReadonlySet<string>): st
 
 const trimTo = (s: string, n: number): string => (s.length > n ? s.slice(0, n).trimEnd() : s);
 
-export async function draftBot(d: BuilderDeps, userId: string, sentenceRaw: string, signal?: AbortSignal): Promise<Draft> {
+/** One request: the draft's model calls are rounded up to the paise once over all of them (code/brain/spend.ts). */
+export function draftBot(d: BuilderDeps, userId: string, sentenceRaw: string, signal?: AbortSignal): Promise<Draft> {
+  return inRequestSpend(() => draftBotRequest(d, userId, sentenceRaw, signal));
+}
+
+async function draftBotRequest(d: BuilderDeps, userId: string, sentenceRaw: string, signal?: AbortSignal): Promise<Draft> {
   const sentence = typeof sentenceRaw === "string" ? sentenceRaw.replace(/\s+/g, " ").trim() : "";
   if (sentence.length < 4) throw new BotError("bad_request", "Say in a sentence what the bot is for.");
   if (sentence.length > SENTENCE_MAX) throw new BotError("too_large", `Keep it to one sentence: ${SENTENCE_MAX} characters at most.`, 413);

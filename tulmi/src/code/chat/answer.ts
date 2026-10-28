@@ -13,6 +13,11 @@
  *   THE PICTURE    when the decision plans a diagram, a flow drawn from the import graph by code (flow.ts): no model, no cost
  *   THE THREAD     one more turn in the conversation's rolling summary, and the files this answer found for a hand-off to a job (threads.ts, handoff.ts)
  *
+ * THE VALUES. A summary says "a fixed-window rate limit"; the question asked for the default limit and window, and they are in a line of config. So the
+ * constants the located files hold (config objects, defaults, default parameters: facts.ts) are read for any question about a value, and for any config file
+ * among the files, even on the fast path, and given to the model beside the facts; and after the answer is written the ones the question asks about, and the
+ * ones on the lines it cites, must be in it, by name and by value, or they are added in a line of their own.
+ *
  * What is sent to the model is fenced as data, the person's words go through the secret scan (forModel), and a file the scan flags is never read for it.
  */
 import { askText, type FrontModel } from "../../front/model.js";
@@ -26,6 +31,7 @@ import { computeImpact, extractCues, fence, forModel, locate, type Located, type
 import { CONFIDENT } from "../work/locate.js";
 import { cut, type ModelCtx } from "../work/model.js";
 import { Anchors, checkCitations, keptLocations } from "./cite.js";
+import { factsBlock, gatherFacts, isConfigPath, missingFacts, withMissing, type Fact } from "./facts.js";
 import { flowDiagram } from "./flow.js";
 import { isFollowUp, readQuestion, type QuestionRead } from "./question.js";
 import { afterTurn, type ChatThread } from "./threads.js";
@@ -48,7 +54,7 @@ export type ChatBrain = Pick<BrainHandle, "status" | "findFiles" | "findSymbols"
 
 export interface ChatPorts {
   brain: ChatBrain;
-  /** A file's text on the branch (GitHub), or null when it cannot be read. Never called on the fast path. */
+  /** A file's text on the branch (GitHub), or null when it cannot be read. Not called on the fast path, except for the constants of a question about a value. */
   read?: (path: string) => Promise<string | null>;
   /** The job's copy of the code, when the person has a job open on this project: read and grep with no GitHub call. */
   files?: Pick<LiveFiles, "read" | "grep"> | null;
@@ -106,7 +112,7 @@ interface Facts {
 }
 
 /** The brain's own facts about the files a question points at, each line with the file:line it can be cited by. Registers what it names as anchors. */
-async function gatherFacts(brain: ChatBrain, located: Located, targets: readonly LocateTarget[], search: string, rq: QuestionRead, anchors: Anchors): Promise<Facts> {
+async function gatherBrainFacts(brain: ChatBrain, located: Located, targets: readonly LocateTarget[], search: string, rq: QuestionRead, anchors: Anchors): Promise<Facts> {
   const lines: string[] = [];
   let rich = targets.length > 0;
   for (const t of targets.slice(0, FACT_FILES)) {
@@ -218,7 +224,56 @@ const ctxOf = (m: FrontModel, maxPaise: number): ModelCtx => ({
 /** The block of the thread's summary the model is shown, as data. */
 const threadBlock = (t: ChatThread | null): string => (t?.summary ? `<thread>\n${fence(forModel(t.summary))}\n</thread>\n\n` : "");
 
-export async function answerCode(input: ChatInput, ports: ChatPorts, model: FrontModel): Promise<ChatAnswer> {
+/** The most files read for their constants, and the most of a file that is taken. */
+const VALUE_FILES = 5;
+const VALUE_FILE_LINES = 400;
+
+/** A file's text, from the job's room when there is one, else from GitHub; null when neither can say. */
+function readerOf(ports: ChatPorts): ((path: string) => Promise<string | null>) | null {
+  const room = ports.files;
+  if (!room && !ports.read) return null;
+  return async (path) => {
+    if (room) {
+      const r = await room.read(path, { offset: 1, limit: VALUE_FILE_LINES }).catch(() => null);
+      if (r?.kind === "ok") return r.out.text;
+    }
+    return ports.read ? ports.read(path).catch(() => null) : null;
+  };
+}
+
+/**
+ * The configuration and constants of the files a question is about: the located files, the files beside them, and the config files they import. Read for a
+ * question that asks for a value, and for any config file among them; a question about where something is, with no config file in sight, reads nothing.
+ */
+async function gatherValues(ports: ChatPorts, located: Located, targets: readonly LocateTarget[], rq: QuestionRead, anchors: Anchors): Promise<Fact[]> {
+  const read = readerOf(ports);
+  if (!read) return [];
+  const near = [...targets.map((t) => t.path), ...located.related.map((r) => r.path)].filter((p) => !isSecretPath(p) && !isTestPath(p));
+  // The config files the located files import: the defaults are rarely in the file that applies them.
+  const imported: string[] = [];
+  for (const t of targets.slice(0, FACT_FILES)) {
+    const n = await ports.brain.neighbors(t.path).catch(() => null);
+    for (const p of n?.imports ?? []) if (isConfigPath(p)) imported.push(p);
+  }
+  const paths = [...new Set([...near, ...imported])];
+  if (!rq.values && !paths.some(isConfigPath)) return [];
+  // The config files first: they are where a default is written.
+  const ordered = [...paths.filter(isConfigPath), ...paths.filter((p) => !isConfigPath(p))].slice(0, VALUE_FILES);
+  const { facts, texts } = await gatherFacts(ordered, read, { files: VALUE_FILES });
+  for (const [path, text] of texts) anchors.read(path, text);
+  return facts;
+}
+
+/** The same ports, with GitHub asked for a file once however many steps want it (the values are read from the files the excerpts are). */
+function cachedPorts(ports: ChatPorts): ChatPorts {
+  const read = ports.read;
+  if (!read) return ports;
+  const seen = new Map<string, Promise<string | null>>();
+  return { ...ports, read: (path) => { let got = seen.get(path); if (!got) { got = read(path); seen.set(path, got); } return got; } };
+}
+
+export async function answerCode(input: ChatInput, given: ChatPorts, model: FrontModel): Promise<ChatAnswer> {
+  const ports = cachedPorts(given);
   const { brain } = ports;
   const anchors = new Anchors();
   const rq = readQuestion(input.question);
@@ -232,12 +287,15 @@ export async function answerCode(input: ChatInput, ports: ChatPorts, model: Fron
 
   let road: Road;
   let facts: Facts = { text: "", rich: false, flow: false };
+  let values: Fact[] = [];
   let excerpts: string[] = [];
   let reads: string[] = [];
   let greps: string[] = [];
   let basis = "";
   if (targets.length) {
-    facts = await gatherFacts(brain, located, targets, input.search, rq, anchors);
+    facts = await gatherBrainFacts(brain, located, targets, input.search, rq, anchors);
+    values = await gatherValues(ports, located, targets, rq, anchors);
+    if (values.length) facts = { ...facts, text: `${facts.text}\nvalues in the code:\n${factsBlock(values)}` };
     // Enough from the brain alone? Sure of the files, the facts say something about each, and the question is not one that needs the code itself.
     const fast = sure && facts.rich && rq.kind !== "why" && !rq.wantsCode && (rq.kind !== "how" || facts.flow);
     if (fast) road = "fast";
@@ -267,12 +325,16 @@ export async function answerCode(input: ChatInput, ports: ChatPorts, model: Fron
   // Every path:line in the answer is something that was seen; the rest is taken out, and the notes say so.
   const checked = checkCitations(r.text, anchors);
   if (checked.dropped.length) notes.push(`I took out ${checked.dropped.length} reference${checked.dropped.length === 1 ? "" : "s"} to code I could not find.`);
-  const cites = keptLocations(checked.kept);
+  // The values the question asks about, and the ones on the lines it cites, are in the answer by name and by value; the ones it left out are added, with where they are.
+  const missing = missingFacts(values, input.question, checked.text);
+  const answerText = withMissing(checked.text, missing);
+  if (missing.length) notes.push(`The answer left out ${missing.length === 1 ? "a value" : `${missing.length} values`} the code holds (${missing.map((f) => f.name).join(", ")}), so ${missing.length === 1 ? "it was" : "they were"} added.`);
+  const cites = [...new Set([...keptLocations(checked.kept), ...missing.map((f) => `${f.path}:${f.line}`)])];
 
   const diagram = input.diagram && targets.length ? (await flowDiagram(brain, targets.map((t) => t.path))) ?? undefined : undefined;
   const slim = trimLocated(located);
   const thread = input.thread ? afterTurn(input.thread, { question: input.question, cites, located: targets.length ? slim : null, now: input.now }) : null;
   return {
-    text: checked.text, paise: r.paise + located.used.paise, notes, ...(diagram ? { diagram } : {}), road, reads, greps, cites, located: slim, thread,
+    text: answerText, paise: r.paise + located.used.paise, notes, ...(diagram ? { diagram } : {}), road, reads, greps, cites, located: slim, thread,
   };
 }

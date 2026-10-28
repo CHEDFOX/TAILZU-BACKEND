@@ -37,6 +37,9 @@ export function scriptOf(text: string): string | undefined {
 }
 export { stripFenceTags };
 
+import type { ChatCompletion } from "openai/resources/chat/completions";
+import { reasoningFor } from "../agent/llm.js";
+import { allowedEffort, EFFORTS, isReasoningRequiredError, learnReasoningRequired, maxTokensWithReasoning, reasoningRequired, type Effort } from "../agent/reasoning.js";
 import { openrouter } from "./openrouter.js";
 export { openrouter };
 
@@ -56,13 +59,45 @@ export { openrouter };
 const REASONING_EFFORT = process.env.LLM_REASONING_EFFORT?.trim() || "none";
 
 /**
- * Params every completion shares. Centralised because there are seven call
- * sites and a latency fix applied to six of them is not a latency fix.
+ * The reasoning every completion is sent, for the model it goes to. LLM_REASONING_EFFORT "none" means as little as the model allows (reasoningFor,
+ * agent/llm.ts): off where it can be turned off, and the model's lowest effort where it cannot. This used to send `{ effort: "none" }` to every model, which
+ * a model that requires reasoning answers with a 400 before a word, so the writer path (assist, replies, edits) failed on exactly the models a ladder is
+ * made of. "default" sends nothing and the provider decides.
  */
-function common(): Record<string, unknown> {
-  return REASONING_EFFORT === "default"
-    ? {}
-    : { reasoning: { effort: REASONING_EFFORT } };
+function reasoningOf(model: string): Record<string, unknown> | undefined {
+  if (REASONING_EFFORT === "default") return undefined;
+  if (REASONING_EFFORT === "none") return { ...reasoningFor(model) };
+  return { effort: (EFFORTS as readonly string[]).includes(REASONING_EFFORT) ? allowedEffort(model, REASONING_EFFORT as Effort) : REASONING_EFFORT };
+}
+
+/**
+ * Every completion here goes through this. Centralised because there are eleven call sites and a latency fix applied to ten of them is not a latency fix.
+ *
+ * It adds the reasoning for the model, and the room for it: a model that must think spends its thinking out of `max_tokens`, so a 512-token cap that fits a
+ * paragraph of answer is gone before the first word (a "length" stop with no content, which every caller here would read as a failed refine). The cap is
+ * raised by an allowance for the effort sent (reasoning.ts), and an answer that still comes back empty for length is asked for once more with a larger one.
+ * A model not known to need reasoning that answers the 400 for "none" is asked again at once at its lowest effort, and remembered.
+ */
+async function complete(body: Record<string, unknown> & { model: string; max_tokens: number }): Promise<ChatCompletion> {
+  const send = async (bigger: boolean): Promise<ChatCompletion> => {
+    const reasoning = reasoningOf(body.model);
+    return (await openrouter().chat.completions.create({
+      ...body,
+      ...(reasoning ? { reasoning } : {}),
+      max_tokens: maxTokensWithReasoning(body.max_tokens, reasoning, { retry: bigger }),
+    } as never)) as ChatCompletion;
+  };
+  let res: ChatCompletion;
+  try {
+    res = await send(false);
+  } catch (err) {
+    if (!isReasoningRequiredError(err) || reasoningRequired(body.model)) throw err;
+    learnReasoningRequired(body.model);
+    res = await send(false);
+  }
+  const choice = res.choices?.[0];
+  if (choice?.finish_reason === "length" && !choice.message?.content?.trim()) res = await send(true);
+  return res;
 }
 
 /**
@@ -1044,8 +1079,7 @@ export async function assist(
   const { message, context, askedLanguage, instructed, piece, toAnAi, tooBig, field, told, userContent } = writerRequest(input, opts);
   const checks = { askedLanguage, instructed, piece, toAnAi, field };
   const write = async (after: Array<{ role: "assistant" | "user"; content: string }> = []) => {
-    const res = await openrouter().chat.completions.create({
-      ...common(),
+    const res = await complete({
       model: getConfig().CLEANUP_MODEL,
       temperature: TEMPERATURE,
       max_tokens: MAX_TOKENS_CLEANUP,
@@ -1195,8 +1229,7 @@ export async function draftReply(
   const head = replyContext(opts, recipient);
   const told = `${stableBlock("writer")}\n${head}`;
   const user = `${head}<around>\n${stripFenceTags(screenContent.trim() || "(none)")}\n</around>\n<said>\n${stripFenceTags(intent.trim())}\n</said>`;
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     model: getConfig().CLEANUP_MODEL,
     temperature: REPLY_TEMPERATURE,
     max_tokens: MAX_TOKENS_REPLY,
@@ -1225,8 +1258,7 @@ async function draftReplyFromFile(
     `MY INTENT (what I want to say back):\n${fence("intent", intent.trim())}`;
 
   const system = buildReplySystem(opts, recipient);
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     model: getConfig().CLEANUP_MODEL,
     temperature: REPLY_TEMPERATURE,
     max_tokens: MAX_TOKENS_REPLY,
@@ -1327,8 +1359,7 @@ export async function editSelection(
 
   const head = editContext(opts, mode);
   const told = `${stableBlock("edit_selection")}\n${head}`;
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     model: getConfig().CLEANUP_MODEL,
     // A transform has one good answer, like a refine — faithfulness, not variety.
     temperature: TEMPERATURE,
@@ -1399,8 +1430,7 @@ export async function answerAbout(
 
   const head = answerAboutContext(_opts.personality);
   const told = `${stableBlock("answer_about")}\n${head}`;
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     model: getConfig().CLEANUP_MODEL,
     // A grounded answer about what is on the screen, not small talk — kept
     // deterministic so the same screen and question give the same answer.
@@ -1464,8 +1494,7 @@ export async function refineVariants(
       // instruction is still executed rather than treated as content to
       // restyle, and the system prompt is the keyboard's own, byte for byte.
       const req = writerRequest(message, { ...opts, variant: brief });
-      const res = await openrouter().chat.completions.create({
-        ...common(),
+      const res = await complete({
         model: getConfig().CLEANUP_MODEL,
         temperature: 0.6, // higher than cleanup: the variants must actually differ
         max_tokens: MAX_TOKENS_CLEANUP,
@@ -1552,8 +1581,7 @@ export async function updateStylePortrait(
       ? `THEY REJECTED:\n${example.rejected.map((r, i) => `${i + 1}. ${r.slice(0, 800)}`).join("\n")}`
       : "",
   ].filter(Boolean).join("\n\n");
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     // The portrait is off the user's path and read by every later refine, so
     // it can afford a stronger model than the one that runs while they wait.
     model: getConfig().PORTRAIT_MODEL || getConfig().CLEANUP_MODEL,
@@ -1666,8 +1694,7 @@ export async function converseTurn(
   const lastTheirs = [...said].reverse().find((t) => t.role === "user")?.text ?? "";
   const note = converseContext(opts.language, lastTheirs);
 
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     model: getConfig().CLEANUP_MODEL,
     temperature: CONVERSE_TEMPERATURE,
     max_tokens: MAX_TOKENS_SPOKEN,
@@ -1774,8 +1801,7 @@ export async function portraitFromUsage(
     })
     .join("\n\n");
 
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     // Off the user's path and read by every later refine — the same reasoning
     // as the other two writers: it can afford the better model.
     model: getConfig().PORTRAIT_MODEL || getConfig().CLEANUP_MODEL,
@@ -1809,8 +1835,7 @@ export async function portraitFromTranscript(
     .map((t) => `${t.role === "user" ? "THEM" : "APP"}: ${t.text.trim().slice(0, 600)}`)
     .join("\n");
 
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     // Off the user's path, and read by every later refine — same reasoning as
     // updateStylePortrait: it can afford the better model.
     model: getConfig().PORTRAIT_MODEL || getConfig().CLEANUP_MODEL,
@@ -1846,8 +1871,7 @@ export async function inferStyle(sample: string): Promise<Partial<Personality>> 
     "customInstructions (concrete style rules you observed, e.g. 'lowercase, few commas, no exclamation marks'), " +
     "dial (an object { formality: 0-100, length: 0-100, warmth: 0-100 } — omit any dial you can't confidently read from the sample). " +
     "No prose, no markdown, no extra keys.";
-  const res = await openrouter().chat.completions.create({
-    ...common(),
+  const res = await complete({
     model: getConfig().CLEANUP_MODEL,
     temperature: LEARN_TEMPERATURE,
     max_tokens: MAX_TOKENS_STYLE,

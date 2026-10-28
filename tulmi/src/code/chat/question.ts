@@ -23,6 +23,8 @@ export interface QuestionRead {
   wantsCode: boolean;
   /** The answer is a path through the code (a flow), so a diagram of it helps. */
   flow: boolean;
+  /** The question asks for a value the code holds (a default, a limit, a window, a timeout, a port, a setting): the answer needs the constants, not a summary. */
+  values: boolean;
 }
 
 const hindi = (words: string[]): RegExp => new RegExp(`(?<![\\p{L}\\p{M}])(?:${words.join("|")})`, "u");
@@ -45,6 +47,9 @@ const WANTS_CODE = /\b(?:show|print|paste|give|display)\s+(?:me\s+)?(?:the\s+)?(
 
 const FLOW = /\bflow\b|\bhow\s+(?:does|do|is|are|did)\b[^.?!\n]{2,60}\b(?:work|works|handled|processed|happen|happens|authenticate|authenticates|get|gets)\b|\bwalk\s+me\s+through\b|\blifecycle\b|\bsequence\b|\brequest\s+path\b|\bpipeline\b|\bkaise\s+(?:kaam|chalta|hota)\b|कैसे\s+काम/i;
 
+/** A question about a number or a setting: what the default is, how many, how long, the limit, the window, the timeout, the port. */
+const VALUES = /\b(?:defaults?|limits?|windows?|time-?outs?|ttl|intervals?|thresholds?|max(?:imum)?|min(?:imum)?|sizes?|ports?|retr(?:y|ies)|attempts?|quota|config(?:uration|ured|s)?|settings?|options?|constants?|how\s+(?:many|long|much|often|big|large|far)|rates?|expir\w*|delays?|durations?|budget)\b|\bkitna\b|\bkitne\b/i;
+
 export function readQuestion(raw: string): QuestionRead {
   const q = raw.trim();
   const impact = IMPACT.test(q) || IMPACT_HI.test(q);
@@ -58,6 +63,7 @@ export function readQuestion(raw: string): QuestionRead {
     deep: impact || (why && DEEP_WHY.test(q)) || (DEEP_WHY.test(q) && /\bwhy\b|\bkyun\b/i.test(q)),
     wantsCode: WANTS_CODE.test(q),
     flow: FLOW.test(q) || kind === "how",
+    values: VALUES.test(q),
   };
 }
 

@@ -18,6 +18,13 @@
  * A model that requires reasoning is sent its LOWEST allowed effort: the lowest of the efforts the catalog lists for it, else "low" (a model that lists no
  * efforts takes OpenRouter's own mapping of one). A model nothing is known about is sent "none" as before, and learns from the 400.
  *
+ * THE THINKING COMES OUT OF THE ANSWER'S TOKEN CAP. `max_tokens` bounds reasoning and answer together, so a model that must think and was given 250 tokens
+ * for a one-line answer spends all of them thinking and ends with `finish_reason: "length"` and no content (the second real-model test: minimax-m3.1-flash
+ * at `low`, the principles probe). Two defences, both here so every caller has the same ones: `maxTokensWithReasoning` adds an allowance for the effort
+ * that is sent, so a small call keeps room to answer; and when an answer still comes back empty for length, `RETRY_FACTOR` times the allowance is given on
+ * one more try. (OpenRouter also takes `reasoning.max_tokens` for some providers, but not together with an effort, and not every provider; the allowance
+ * works for all.)
+ *
  * Nothing here reads a network, a clock or a store.
  */
 
@@ -38,6 +45,11 @@ export interface ReasoningFacts {
 
 const isEffort = (e: unknown): e is Effort => (EFFORTS as readonly string[]).includes(e as string);
 const rank = (e: Effort): number => EFFORTS.indexOf(e);
+
+/** Tokens a call is given on top of its answer's own limit when the model thinks anyway, by the effort sent. Spent only if the model uses them. */
+export const REASONING_ALLOWANCE: Readonly<Record<Effort, number>> = { minimal: 512, low: 1_024, medium: 2_048, high: 4_096, xhigh: 6_144, max: 8_192 };
+/** An answer that ran out of room before a word was written is asked for again with this many times the allowance (at least "low"'s). */
+export const RETRY_FACTOR = 4;
 
 /** The models the first real-model test found refusing "none", with what OpenRouter's list says about their efforts that day. */
 const KNOWN_REQUIRED: Readonly<Record<string, ReasoningFacts>> = {
@@ -130,6 +142,24 @@ export function allowedEffort(model: string, asked: Effort): Effort {
   if (!efforts?.length || efforts.includes(asked)) return asked;
   const up = [...efforts].filter((e) => rank(e) > rank(asked)).sort((a, b) => rank(a) - rank(b))[0];
   return up ?? [...efforts].sort((a, b) => rank(b) - rank(a))[0]!;
+}
+
+// ------------------------------------------------------------- room to think
+
+/** The tokens to add to an answer's limit for the thinking a `reasoning` setting asks for: nothing when it is off. */
+export function reasoningAllowance(reasoning: unknown): number {
+  if (reasoningIsOff(reasoning)) return 0;
+  const effort = (reasoning as { effort?: unknown } | null | undefined)?.effort;
+  return isEffort(effort) ? REASONING_ALLOWANCE[effort] : 0;
+}
+
+/**
+ * The `max_tokens` for a call that asks for `answer` tokens of answer and is sent `reasoning`: the answer and the thinking each get their own room. With
+ * `retry` (the last try came back empty because it ran out of room) the thinking gets RETRY_FACTOR times as much, at least "low"'s, whatever was sent.
+ */
+export function maxTokensWithReasoning(answer: number, reasoning: unknown, o: { retry?: boolean } = {}): number {
+  const room = reasoningAllowance(reasoning);
+  return answer + (o.retry ? Math.max(room, REASONING_ALLOWANCE.low) * RETRY_FACTOR : room);
 }
 
 // ------------------------------------------------------------- the 400

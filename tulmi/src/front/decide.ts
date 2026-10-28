@@ -22,6 +22,7 @@
  */
 import { z } from "zod";
 import { DEFAULT_USD_INR } from "../code/brain/money.js";
+import { inRequestSpend } from "../code/brain/spend.js";
 import { tierTable, type ModelTier, type TierSettings } from "../code/brain/tiers.js";
 import { getConfig } from "../config.js";
 import type { SpendMeter } from "../artifacts/limits.js";
@@ -149,7 +150,12 @@ const clarifyKind = (intent: Intent): ClarifyKind => (intent === "code_task" ? "
 
 // ------------------------------------------------------------------ decide
 
-export async function decide(message: string, ctx: FrontCtx, deps: DecideDeps = {}): Promise<Decision> {
+/** One request: its model calls (the small read of the message) are rounded up to the paise once, together, and with the dispatch's when `ask` joins them (brain/spend.ts). */
+export function decide(message: string, ctx: FrontCtx, deps: DecideDeps = {}): Promise<Decision> {
+  return inRequestSpend(() => decideRequest(message, ctx, deps));
+}
+
+async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): Promise<Decision> {
   const text = message.trim().slice(0, MESSAGE_MAX);
   const tiers = deps.tiers ?? tierTable();
   let fx = deps.fx;

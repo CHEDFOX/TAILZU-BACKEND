@@ -33,6 +33,7 @@
 import { CAP_PAISE } from "../artifacts/types.js";
 import type { SpendMeter } from "../artifacts/limits.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
+import { inRequestSpend } from "../code/brain/spend.js";
 import type { CallFn } from "../code/work/model.js";
 import { TimeoutError, withTimeout } from "../guard/timing.js";
 import type { DataTable } from "../media/types.js";
@@ -90,7 +91,12 @@ function either(a: AbortSignal | undefined, b: AbortSignal): AbortSignal {
   return a ? AbortSignal.any([a, b]) : b;
 }
 
-export async function dispatch(decision: Decision, message: string, ctx: FrontCtx, deps: DispatchDeps, o: DispatchOptions = {}): Promise<{ id: string | null; result: FrontResult }> {
+/** One request: every model call the road makes (the reply, the picture beside it, a research under it) is rounded up to the paise once, over the whole (brain/spend.ts). */
+export function dispatch(decision: Decision, message: string, ctx: FrontCtx, deps: DispatchDeps, o: DispatchOptions = {}): Promise<{ id: string | null; result: FrontResult }> {
+  return inRequestSpend(() => dispatchRequest(decision, message, ctx, deps, o));
+}
+
+async function dispatchRequest(decision: Decision, message: string, ctx: FrontCtx, deps: DispatchDeps, o: DispatchOptions): Promise<{ id: string | null; result: FrontResult }> {
   const now = deps.now ?? Date.now;
   const t0 = now();
   const emit = o.emit ?? (() => undefined);
