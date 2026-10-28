@@ -103,6 +103,30 @@ describe("bots.home", () => {
     expect(checkTree(s.root!)).toEqual([]);
   });
 
+  it("living tiles for a build that draws them (BotsMotion): a tiny bot per tile, its play, its state; else today's tiles", async () => {
+    for (const [client, cols] of [["phone", 2], ["desktop", 4]] as const) {
+      const r = { ...req("bots.home", client), can: new Set(["BotsKit", "BotsMotion"]) };
+      const s = await buildBotsScreen(r, fakeDeps());
+      const grid = walk(s.root!).find((n) => n.type === "BotTiles")!;
+      expect(grid, client).toBeDefined();
+      const tiles = grid.props!.tiles as Array<{ slug: string; name: string; sub: string; color: string; kind: string; state: string; action?: ActionSpec }>;
+      expect(grid.props).toMatchObject({ columns: cols, faces: { semibold: "Tailzu Geist SemiBold" } });
+      expect(tiles).toHaveLength(4);
+      expect(tiles[3]).toMatchObject({ slug: "make", name: "Make a bot", kind: "make", color: "#0a0a0a", action: { kind: "navigate", screenId: "bots.make" } });
+      // The sample day: Code bot both working and waiting on Aanya (needs first), each with its own colour and play.
+      const code = tiles.find((t) => t.slug === "code")!;
+      expect(code).toMatchObject({ kind: "code", color: "#4F7A3A", action: { kind: "navigate" } });
+      expect(["working", "needs"]).toContain(code.state);
+      for (const t of tiles.slice(0, 3)) expect(t.sub.length, t.slug).toBeGreaterThan(0);
+      expect(walk(s.root!).some((n) => n.type === "Grid")).toBe(false);
+      expect(checkTree(s.root!)).toEqual([]);
+      // Without it: the static tiles, as before.
+      const plain = await buildBotsScreen(req("bots.home", client), fakeDeps());
+      expect(walk(plain.root!).some((n) => n.type === "BotTiles")).toBe(false);
+      expect(walk(plain.root!).some((n) => n.type === "Grid" && n.props?.columns === cols)).toBe(true);
+    }
+  });
+
   it("a quiet day: no decision card, and the week says so", async () => {
     const s = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ jobs: [], tasks: [], minutesSaved: 0 }));
     const words = texts(s.root!);
@@ -117,6 +141,9 @@ describe("bots.home", () => {
         const s = await buildBotsScreen(req(id, client), fakeDeps());
         expect(s.screenId).toBe(id);
         expect(checkTree(s.root!), `${id} ${client}`).toEqual([]);
+        // And with the living tiles.
+        const moving = await buildBotsScreen({ ...req(id, client), can: new Set(["BotsKit", "BotsMotion"]) }, fakeDeps());
+        expect(checkTree(moving.root!), `${id} ${client} BotsMotion`).toEqual([]);
       }
     }
   });

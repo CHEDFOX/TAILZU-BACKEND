@@ -106,6 +106,8 @@ export async function buildPhoneBundle(entry = path.join(HERE, "phone/entry.jsx"
     "@supabase/supabase-js": path.join(HERE, "phone/supabase.js"),
     // The microphone's prompt, answered yes (the preview's stand-in for the system's).
     "expo-audio": path.join(HERE, "phone/expo-audio.js"),
+    // Remembers only the living cards' "once", in the page (BotCard).
+    "@react-native-async-storage/async-storage": path.join(HERE, "phone/async-storage.js"),
   };
   const plugin = {
     name: "phone",
@@ -161,7 +163,9 @@ export interface ScreenData {
 }
 
 const USER = { id: "00000000-0000-4000-8000-00000000aaaa", name: "Aanya Sharma", email: "aanya@example.in" };
-export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit"];
+export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion"];
+/** What the phone build declares beyond BotsKit, for the screens drawn here: the living tiles. */
+export const PHONE_COMPONENTS = ["BotsMotion"];
 
 /**
  * The builder the stand-in server uses. `misses` collects the api calls the target screen made that had no answer
@@ -396,7 +400,7 @@ export async function renderClient(browser: any, o: RenderOptions): Promise<Rend
   const build = builder(o.screenId, o, misses);
   const base = path.join(o.out, o.base ?? `${o.screenId}.${o.client}`);
   fs.mkdirSync(o.out, { recursive: true });
-  const screen = await build(o.screenId, o.client, params, o.client === "desktop" ? DESKTOP_COMPONENTS : []);
+  const screen = await build(o.screenId, o.client, params, o.client === "desktop" ? DESKTOP_COMPONENTS : PHONE_COMPONENTS);
   // The window builds the screen again when it asks for it: count the first build's misses only.
   const missed = [...new Set(misses)];
   fs.writeFileSync(`${base}.json`, JSON.stringify(screen, null, 1));

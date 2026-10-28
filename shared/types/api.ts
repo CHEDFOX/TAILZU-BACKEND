@@ -162,6 +162,12 @@ export interface Personality {
   shellSeenAt?: string;
 
   /**
+   * When the Bots app's first-arrival card (the microphone, then the keyboard, over Home) was answered or put off
+   * (routes/botsFirstRun.ts, PUT /v1/bots/first-run/arrival). Unset: it is still due.
+   */
+  botsArrivalAt?: string;
+
+  /**
    * A second name of their own for the keyboard, beside Tailzu, which always
    * works too ("Zara, make it formal"). Set in Settings; letters, spaces,
    * apostrophes and hyphens, at most 24 characters (experience/assistantName).

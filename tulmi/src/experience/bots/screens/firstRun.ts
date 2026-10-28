@@ -42,7 +42,7 @@
 import type { ActionRef, ActionSpec, Condition, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../../../shared/types/sdui.js";
 import {
-  blip, BOTS_THEME, botAvatar, botLook, box, button, C, call, col, divider, FACE, grow, icon, labelled, meta, PALETTE_HEX,
+  blip, BOTS_THEME, botAvatar, botCard, botLook, box, button, C, call, canMove, col, divider, FACE, grow, icon, labelled, meta, PALETTE_HEX,
   primaryButton, row, SCREENS, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title,
   when, type BlipPose, type BotsCtx, type IconName,
 } from "../kit.js";
@@ -1395,95 +1395,200 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   });
 }
 
-// ===================================================================== after onboarding: the keyboard and microphone cards
+// ===================================================================== after onboarding: one card for what Keybot still needs
 
 /**
  * What the app reports into every screen's state: the phone's SduiApp writes keyboardEnabled, keyboardReady (Full
  * Access) and micGranted on a timer and on every return from Settings; a window that declares DeskMicAsk writes
- * micGranted from its own system's answer. Declared as "on" here, so a card never flashes up for someone who has it
- * and then vanishes: it comes in once the app says something is missing, and goes when it is on.
+ * micGranted from its own system's answer. Keybot declares them "on", so its card never flashes up for someone who
+ * has it all and then vanishes: it comes in once the app says something is missing, and goes when it is on.
  */
 export const DEVICE_STATE = { keyboardEnabled: true, keyboardReady: true, micGranted: true };
 
-/** A setup card in Keybot's clay: its head (pressable, to the page that explains), and one clay button. */
-function setupCard(o: { lead: Node; title: string; lines: Node[]; cta: string; onPress: ActionRef; more?: ActionRef; desk: boolean }): Node {
-  const head = row([
-    o.lead,
-    col([text(o.title, { size: 16, weight: 600, lineHeight: 21 }), ...o.lines], { gap: 3, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-    ...(o.more ? [icon("chevron", { size: 16, color: C.meta })] : []),
-  ], { gap: 12, alignItems: "flex-start" }, o.more);
-  const pill = labelled(row([text(o.cta, { size: 15, weight: 600, color: C.paper, lineHeight: 20 })], {
-    height: 44, paddingHorizontal: 22, borderRadius: 22, backgroundColor: CLAY, justifyContent: "center", alignSelf: o.desk ? "flex-start" : "stretch",
-  }, o.onPress), o.cta);
-  return col([head, pill], { padding: 16, gap: 14, borderRadius: 20, borderWidth: 1.5, borderColor: CLAY, backgroundColor: C.paper });
+/**
+ * The first arrival (over Home): unknown until the app's readings come in (null), so the card decides only then;
+ * `micAsked` once the microphone has been asked (allowed or not: either way on to the keyboard), `permitClosed`
+ * once it is answered or put off.
+ */
+export const ARRIVAL_STATE = { keyboardEnabled: null, keyboardReady: null, micGranted: null, micAsked: false, permitClosed: false };
+
+/** The read the first-arrival card is due on (GET /v1/bots/first-run/arrival) and the write that ends it. */
+export const ARRIVAL_PATH = "/v1/bots/first-run/arrival";
+
+const MIC_SETTLED: Condition = { any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] };
+const KEYS_ON: Condition = { all: [{ truthy: "keyboardEnabled" }, { truthy: "keyboardReady" }] };
+const KEYS_MISSING: Condition = { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] };
+const SOMETHING_MISSING: Condition = { any: [{ falsy: "micGranted" }, KEYS_MISSING] };
+
+/** The bot on the permission cards: neutral, ink grey (the cards carry no bot's colour). */
+const CARD_BOT = { color: C.grey70, stageHeight: 128 } as const;
+
+/** One step of the card: monochrome, ink on white; one black pill, and a quiet second choice under it. */
+function permitStep(o: { when: Condition; title: string; lines: Node[]; cta?: { label: string; onPress: ActionRef }; quiet?: { label: string; onPress: ActionRef }; extra?: Node[] }): Node {
+  return when(o.when, col([
+    col([text(o.title, { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), ...o.lines], { gap: 6 }),
+    ...(o.extra ?? []),
+    ...(o.cta || o.quiet ? [col([
+      ...(o.cta ? [primaryButton(o.cta.label, o.cta.onPress, { wide: true })] : []),
+      ...(o.quiet ? [labelled(row([text(o.quiet.label, { size: 15, weight: 500, color: C.meta, lineHeight: 20 })], { minHeight: 44, justifyContent: "center", alignSelf: "stretch" }, o.quiet.onPress), o.quiet.label)] : []),
+    ], { gap: 4, marginTop: 6 })] : []),
+  ], { paddingHorizontal: 22, paddingTop: 16, paddingBottom: o.quiet ? 10 : 22, gap: 12 }));
 }
 
-/**
- * "Turn on full access": on a phone whose keyboard is not added, or added without Full Access. Its one button goes
- * straight to the keyboard's settings ({ kind: "openSettings", target: "keyboard" }): Android's list of input
- * methods, and on an iPhone the app's own page in Settings (which holds Keyboards; iOS has no link to the keyboard
- * list). The card's head opens Turn on Keybot, the steps one by one. In a window it is this computer's Accessibility,
- * on its own card (DeskAskSetup), where the window declares it; it hides itself once allowed.
- */
-export function keyboardCard(ctx: BotsCtx): Node | null {
-  if (ctx.client === "desktop") {
-    if (!ctx.can.has("DeskAskSetup")) return null;
-    return {
-      type: "DeskAskSetup",
-      props: {
-        place: "home", eyebrow: "Keybot", title: "Turn on", titleEm: "Accessibility",
-        lede: "So Keybot can put your words where your cursor is, in any app.",
-        on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
-        rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
-      },
-    };
-  }
+const line = (s: string): Node => text(s, { size: 14, color: C.grey70, lineHeight: 20 });
+
+/** The keyboard step's words: iPhone and Android each say where the switch is. */
+function keyboardLines(): Node[] {
   const android: Condition = { platform: "android" };
-  const missing: Condition = { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] };
-  return when(missing, setupCard({
-    lead: botAvatar(botLook("keybot"), 40),
-    title: "Turn on full access",
-    lines: [
-      when({ not: android }, text("In Settings, open Keyboards, switch on Tailzu, then Allow Full Access.", { size: 13, lineHeight: 18, color: C.grey70 })),
-      when(android, text("Switch on Tailzu in your keyboards, and tap OK.", { size: 13, lineHeight: 18, color: C.grey70 })),
-    ],
-    cta: "Open Settings",
-    onPress: { kind: "openSettings", target: "keyboard" } as ActionSpec,
-    more: go(SCREENS.keyOn),
-    desk: false,
-  }));
+  return [
+    when({ not: android }, line("In Settings, open Keyboards, switch on Tailzu, then Allow Full Access.")),
+    when(android, line("Switch on Tailzu in your keyboards, and tap OK.")),
+  ];
 }
 
 /**
- * "Let Keybot hear you": while the microphone is not allowed. Its button asks for it for real (the phone's
- * requestPermission; a window's own system prompt), and once allowed opens First words to try it. Asked before and
- * refused, the phone opens the app's page in Settings instead. A window shows it only where it declares DeskMicAsk.
+ * THE FIRST ARRIVAL: one card over Home, the first time someone lands in the app (until it is answered or put off;
+ * the server keeps that, GET/PUT /v1/bots/first-run/arrival). Step 1 asks for the microphone, for real; allowed or
+ * not, the same card moves on to step 2, the keyboard (straight to its settings). Once both are on, a small happy
+ * moment and it closes. "Not now" closes it for good. Over a blurred Home (BotCard overlay) where the build draws it,
+ * else a plain card at the top of Home. Nothing at all when there is nothing to ask for.
  */
-export function micCard(ctx: BotsCtx): Node | null {
+export function arrivalCard(ctx: BotsCtx): Node[] {
   const desk = ctx.client === "desktop";
-  if (desk && !ctx.can.has("DeskMicAsk")) return null;
+  const close = seq(setState("permitClosed", true), call("PUT", ARRIVAL_PATH, {}, {}));
+  const notNow = { label: "Not now", onPress: close };
+  const askMic = (onGranted: ActionRef, extra: ActionRef): ActionSpec => ({
+    kind: "requestPermission", permission: "microphone",
+    onGranted, onDenied: extra, onBlocked: extra,
+  } as ActionSpec);
+  const mic = (whenMic: Condition) => permitStep({
+    when: whenMic,
+    title: "Let Tailzu hear you",
+    lines: [line("Allow the microphone for a better experience: talk to any bot, in any app.")],
+    cta: { label: "Allow microphone", onPress: askMic(seq(setState("micGranted", true), setState("micAsked", true)), setState("micAsked", true)) },
+    quiet: notNow,
+  });
+  let steps: Node[], ready: Condition | undefined, done: Condition | undefined;
+  if (desk) {
+    // A window: its microphone (where it can tell) and this computer's Accessibility (where it can show it).
+    const hasMic = ctx.can.has("DeskMicAsk"), hasAx = ctx.can.has("DeskAskSetup");
+    if (!hasMic && !hasAx) return [];
+    steps = [
+      ...(hasMic ? [mic({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] })] : []),
+      ...(hasAx ? [permitStep({
+        when: hasMic ? MIC_SETTLED : { falsy: "permitClosed" },
+        title: "Let Keybot type for you",
+        lines: [line("Allow Accessibility so Keybot can put your words where your cursor is, in any app.")],
+        extra: [{
+          type: "DeskAskSetup",
+          props: {
+            place: "settings", eyebrow: "", title: "", titleEm: "", lede: "",
+            on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
+            rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
+          },
+        }],
+        quiet: { label: "Done", onPress: close },
+      })] : []),
+      ...(hasMic && !hasAx ? [permitStep({ when: MIC_SETTLED, title: "You're all set", lines: [line("Hold the clay key to speak, in any app.")] })] : []),
+    ];
+    ready = hasMic ? { neq: ["micGranted", null] } : undefined;
+    done = hasMic && !hasAx ? MIC_SETTLED : undefined;
+  } else {
+    steps = [
+      mic({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] }),
+      permitStep({
+        when: { all: [MIC_SETTLED, KEYS_MISSING] },
+        title: "Add the Tailzu keyboard",
+        lines: keyboardLines(),
+        cta: { label: "Open Settings", onPress: { kind: "openSettings", target: "keyboard" } as ActionSpec },
+        quiet: notNow,
+      }),
+      permitStep({ when: { all: [MIC_SETTLED, KEYS_ON] }, title: "You're all set", lines: [line("Hold the clay key to speak, in any app.")] }),
+    ];
+    ready = { all: [{ neq: ["micGranted", null] }, { neq: ["keyboardReady", null] }] };
+    done = { all: [MIC_SETTLED, KEYS_ON] };
+  }
+  if (canMove(ctx)) {
+    return [botCard(steps, {
+      ...CARD_BOT, kind: "custom", overlay: true, width: desk ? 360 : 330, label: "Set up Keybot",
+      ...(ready ? { readyWhen: ready } : {}), ...(done ? { doneWhen: done } : {}),
+      closeWhen: { truthy: "permitClosed" }, once: "bots.arrival", doneDelayMs: 1400, onComplete: close,
+    })];
+  }
+  // A build without the living tiles: the same steps in a plain card at the top, gone when answered or all done.
+  const shown: Condition = { all: [{ falsy: "permitClosed" }, ...(ready ? [ready] : []), ...(done ? [{ not: done }] : [])] };
+  return [when(shown, col(steps.filter((st) => !texts(st).includes("You're all set")), { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, paddingTop: 6 }))];
+}
+
+/**
+ * KEYBOT'S CARD: the same card in the page, for what is still missing (the microphone, and on a phone the keyboard
+ * with Full Access); with everything on, no card at all. The microphone is asked for for real, and once allowed
+ * First words opens to try it; refused before, the phone opens the app's page in Settings. A window shows the
+ * microphone where it declares DeskMicAsk; its Accessibility stays on its own card (DeskAskSetup), which hides once on.
+ */
+export function keybotCard(ctx: BotsCtx): Node[] {
+  const desk = ctx.client === "desktop";
   const off = desk
     ? toast("The microphone is off for Tailzu. Turn it on in your computer's Privacy settings.")
     : seq(toast("The microphone is off for Tailzu. Turn it on in Settings."), { kind: "openSettings", target: "app" } as ActionSpec);
   const ask = {
     kind: "requestPermission", permission: "microphone",
     onGranted: seq(setState("micGranted", true), go(SCREENS.firstWords)),
-    onDenied: toast("Keybot can't hear you yet. Allow the microphone to speak."),
-    onBlocked: off,
+    onDenied: seq(setState("micAsked", true), toast("Keybot can't hear you yet. Allow the microphone to speak.")),
+    onBlocked: seq(setState("micAsked", true), off),
   } as ActionSpec;
-  return when({ falsy: "micGranted" }, setupCard({
-    lead: box([icon("mic", { size: 20, color: C.paper })], { width: 40, height: 40, borderRadius: 20, backgroundColor: CLAY, alignItems: "center", justifyContent: "center", flexShrink: 0 }),
-    title: "Let Keybot hear you",
-    lines: [text("Allow the microphone, then say something to try it.", { size: 13, lineHeight: 18, color: C.grey70 })],
-    cta: "Allow microphone",
-    onPress: ask,
-    desk,
-  }));
+  const out: Node[] = [];
+  if (desk) {
+    if (ctx.can.has("DeskMicAsk")) {
+      const steps = [permitStep({
+        when: { falsy: "micGranted" }, title: "Let Keybot hear you",
+        lines: [line("Allow the microphone, then say something to try it.")],
+        cta: { label: "Allow microphone", onPress: ask },
+      })];
+      out.push(when({ falsy: "micGranted" }, canMove(ctx)
+        ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Let Keybot hear you" })
+        : col(steps, { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper })));
+    }
+    if (ctx.can.has("DeskAskSetup")) {
+      out.push({
+        type: "DeskAskSetup",
+        props: {
+          place: "home", eyebrow: "Keybot", title: "Turn on", titleEm: "Accessibility",
+          lede: "So Keybot can put your words where your cursor is, in any app.",
+          on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
+          rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
+        },
+      });
+    }
+    return out;
+  }
+  const steps = [
+    permitStep({
+      // The microphone first; refused, it waits behind the keyboard and comes back once the keyboard is on.
+      when: { all: [{ falsy: "micGranted" }, { any: [{ falsy: "micAsked" }, KEYS_ON] }] },
+      title: "Let Keybot hear you",
+      lines: [line("Allow the microphone, then say something to try it.")],
+      cta: { label: "Allow microphone", onPress: ask },
+    }),
+    permitStep({
+      when: { all: [MIC_SETTLED, KEYS_MISSING] },
+      title: "Turn on full access",
+      lines: keyboardLines(),
+      cta: { label: "Open Settings", onPress: { kind: "openSettings", target: "keyboard" } as ActionSpec },
+      quiet: { label: "Show me how", onPress: go(SCREENS.keyOn) },
+    }),
+  ];
+  return [when(SOMETHING_MISSING, canMove(ctx)
+    ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Set up Keybot" })
+    : col(steps, { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, paddingTop: 6 }))];
 }
 
-/** Both cards, in the order they are owed (the keyboard first), for Bots and Keybot. */
-export function setupCards(ctx: BotsCtx): Node[] {
-  return [keyboardCard(ctx), micCard(ctx)].filter((n): n is Node => !!n);
+/** Every text in a tree. */
+function texts(n: Node): string[] {
+  const out: string[] = [];
+  const visit = (x: Node) => { if (x.type === "Text" && typeof x.props?.content === "string") out.push(x.props.content); (x.children ?? []).forEach(visit); };
+  visit(n);
+  return out;
 }
 
 // ===================================================================== the list

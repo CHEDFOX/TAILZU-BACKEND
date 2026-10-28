@@ -16,8 +16,8 @@
  *   - images are { url } sources inside a sized box (`picture()`), so neither client guesses a size.
  *   - colour is only for bots (palette.ts). Errors, success and links are ink.
  */
-import type { ActionRef, ActionSpec, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
-import { SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, BotCardProps, BotTileKind, BotTileSpec, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
+import { BOTS_MOTION_CAPABILITY, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -273,6 +273,56 @@ export function botTile(bot: LiveBot, o: { idle: string; onPress?: ActionRef; he
     height: o.height ?? 132, padding: o.padding ?? 16, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line,
     justifyContent: "space-between", backgroundColor: C.paper,
   }, o.onPress);
+}
+
+// ---------------------------------------------------------------- the living tiles (capability BotsMotion)
+
+/** A build that draws BotTiles and BotCard (shared/types/sdui.ts, "The living bot tiles"). */
+export const canMove = (ctx: BotsCtx): boolean => ctx.can.has(BOTS_MOTION_CAPABILITY);
+
+/** The words under a bot's name (botLine's, as plain text). */
+export function botLineText(bot: LiveBot, idle: string): string {
+  if (bot.working) return `Working · ${bot.doing ?? "on it"}`;
+  if (bot.needs) return `Needs you · ${bot.needs === 1 ? "1 question" : `${bot.needs} things`}`;
+  return idle;
+}
+
+/** The built-ins have their own play (Code juggles 0s and 1s, Keybot hops keys…); anyone's own bot plays with a ball. */
+export function botKind(slug: string): BotTileKind {
+  return slug === "code" || slug === "keybot" || slug === "plan" || slug === "travel" ? slug : "custom";
+}
+
+/** One living tile for a bot: its name, its line, its colour, its play, its state, where a tap goes. */
+export function botTileSpec(bot: LiveBot, o: { idle: string; onPress?: ActionRef }): BotTileSpec {
+  return {
+    slug: bot.slug, name: bot.name, sub: botLineText(bot, o.idle), color: bot.color, kind: botKind(bot.slug),
+    state: bot.working ? "working" : bot.needs ? "needs" : "idle", ...(o.onPress ? { action: o.onPress } : {}),
+  };
+}
+
+/** The Make a bot tile: a bot putting himself together from loose dots. */
+export function makeTileSpec(onPress?: ActionRef): BotTileSpec {
+  return { slug: "make", name: "Make a bot", sub: "Say what it should do", color: C.ink, kind: "make", state: "idle", ...(onPress ? { action: onPress } : {}) };
+}
+
+/**
+ * Home's grid as living tiles (BotTiles): a tiny Blip per tile, playing on a faint fabric; a tap makes every other bot
+ * look at it before the tile opens. Only for a build that can draw it (canMove); others get botTile / makeBotTile.
+ */
+export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number }): Node {
+  return {
+    type: "BotTiles",
+    props: { tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold } },
+  };
+}
+
+/**
+ * A card with the tiny bot playing across its top (BotCard) and its steps below: each step a node with its own
+ * visibleIf. `onComplete` runs when `doneWhen` holds, after the bot's small happy moment.
+ */
+export function botCard(steps: Node[], o: BotCardProps & { onComplete?: ActionRef }): Node {
+  const { onComplete, ...props } = o;
+  return { type: "BotCard", props: { ...props }, ...(onComplete ? { on: { onComplete } } : {}), children: steps };
 }
 
 /** The dashed "Make a bot" tile. */

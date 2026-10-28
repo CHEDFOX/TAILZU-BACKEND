@@ -297,41 +297,90 @@ describe("the sign-in steps as pages", () => {
   });
 });
 
-describe("after onboarding: the keyboard and microphone cards", () => {
-  const cardOf = (n: Node, title: string) => walk(n).find((x) => x.visibleIf && texts(x).includes(title));
-  it("Bots and Keybot on a phone: Turn on full access (straight to the keyboard's settings) and the microphone (asked for real, then First words)", async () => {
-    for (const id of ["bots.home", "bots.keybot"]) {
-      const s = await build(id, "phone", { api: { ...API, "GET /v1/shell/started": { started: true } } });
-      // Declared on, so neither card flashes: the app's own readings bring them in.
-      expect(s.state).toMatchObject({ keyboardEnabled: true, keyboardReady: true, micGranted: true });
-      const key = cardOf(s.root!, "Turn on full access");
-      expect(key?.visibleIf, id).toEqual({ any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] });
-      expect(actions(key)).toEqual(expect.arrayContaining([
-        { kind: "openSettings", target: "keyboard" },
-        expect.objectContaining({ kind: "navigate", screenId: "bots.keybot.on" }),
-      ]));
-      const mic = cardOf(s.root!, "Let Keybot hear you");
-      expect(mic?.visibleIf).toEqual({ falsy: "micGranted" });
-      const ask = actions(mic).find((x) => x.kind === "requestPermission") as { permission?: string; onGranted?: unknown; onBlocked?: unknown } | undefined;
-      expect(ask?.permission).toBe("microphone");
-      expect(actions(ask!.onGranted)).toEqual(expect.arrayContaining([{ kind: "setState", path: "micGranted", value: true }, expect.objectContaining({ kind: "navigate", screenId: "bots.first-words" })]));
-      expect(actions(ask!.onBlocked)).toEqual(expect.arrayContaining([{ kind: "openSettings", target: "app" }]));
+describe("after onboarding: one card for the microphone and the keyboard", () => {
+  const cardOf = (n: Node) => walk(n).find((x) => x.type === "BotCard");
+  const stepOf = (n: Node, title: string) => walk(n).find((x) => x.type === "Stack" && x.visibleIf && texts(x).includes(title));
+  const MOTION = ["BotsMotion"];
+  const ARRIVE = { ...API, "GET /v1/shell/started": { started: true }, "GET /v1/bots/first-run/arrival": { due: true } };
+  const BOT_COLOURS = /#4F7A3A|#A9573A|#8F6A1F|#3E6E8E/i;
+
+  it("the first arrival on a phone: one card over Home, the microphone asked for real, then the keyboard, then it closes", async () => {
+    for (const started of [true, false]) {
+      // The full Home and the empty one (nothing of their own yet) both carry it.
+      const s = await build("bots.home", "phone", { api: { ...ARRIVE, "GET /v1/shell/started": { started } }, can: MOTION });
+      // Unknown until the app's own readings arrive: the card decides only then.
+      expect(s.state).toMatchObject({ micGranted: null, keyboardEnabled: null, keyboardReady: null, micAsked: false, permitClosed: false });
+      const card = cardOf(s.root!)!;
+      expect(card.props).toMatchObject({
+        overlay: true, once: "bots.arrival", closeWhen: { truthy: "permitClosed" },
+        readyWhen: { all: [{ neq: ["micGranted", null] }, { neq: ["keyboardReady", null] }] },
+      });
+      // Monochrome: white, ink and Geist; the bot in a neutral grey.
+      expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
+      expect(card.props?.color).toBe("#3d3d3d");
+      // Step 1: the microphone, for a better experience; allowed or not, on to step 2.
+      const mic = stepOf(card, "Let Tailzu hear you")!;
+      expect(mic.visibleIf).toEqual({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] });
+      const ask = actions(mic).find((x) => x.kind === "requestPermission") as { permission?: string; onGranted?: unknown; onDenied?: unknown; onBlocked?: unknown };
+      expect(ask.permission).toBe("microphone");
+      expect(actions(ask.onGranted)).toEqual(expect.arrayContaining([{ kind: "setState", path: "micGranted", value: true }, { kind: "setState", path: "micAsked", value: true }]));
+      expect(actions(ask.onDenied)).toEqual([{ kind: "setState", path: "micAsked", value: true }]);
+      expect(actions(ask.onBlocked)).toEqual([{ kind: "setState", path: "micAsked", value: true }]);
+      // Step 2: the keyboard, straight to its settings.
+      const keys = stepOf(card, "Add the Tailzu keyboard")!;
+      expect(keys.visibleIf).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] }] });
+      expect(actions(keys)).toEqual(expect.arrayContaining([{ kind: "openSettings", target: "keyboard" }]));
+      // Both done: a happy moment, then it closes and the server is told; "Not now" does the same, for good.
+      expect(card.props?.doneWhen).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { all: [{ truthy: "keyboardEnabled" }, { truthy: "keyboardReady" }] }] });
+      const closes = [{ kind: "setState", path: "permitClosed", value: true }, expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/first-run/arrival" })];
+      expect(actions(card.on?.onComplete)).toEqual(expect.arrayContaining(closes));
+      const notNow = walk(mic).find((x) => x.on?.onPress && texts(x).includes("Not now"));
+      expect(actions(notNow?.on?.onPress)).toEqual(expect.arrayContaining(closes));
       expect(lintTree(s.root!)).toEqual([]);
+      // The old cards are gone from Home.
+      expect(texts(s.root!)).not.toContain("Turn on full access");
     }
-    // The empty home (nothing of their own yet) has them too.
-    const empty = await build("bots.home", "phone", { api: { ...API, "GET /v1/shell/started": { started: false } } });
-    expect(cardOf(empty.root!, "Turn on full access")).toBeDefined();
+    // Answered before: no card, and Home's state carries nothing for it.
+    const later = await build("bots.home", "phone", { api: { ...ARRIVE, "GET /v1/bots/first-run/arrival": { due: false } }, can: MOTION });
+    expect(cardOf(later.root!)).toBeUndefined();
+    expect(later.state).not.toHaveProperty("permitClosed");
+    expect(texts(later.root!)).not.toContain("Let Tailzu hear you");
+    // A build without the living tiles: the same steps in a plain card at the top, gone once answered or done.
+    const plain = await build("bots.home", "phone", { api: ARRIVE });
+    expect(cardOf(plain.root!)).toBeUndefined();
+    expect(texts(plain.root!)).toContain("Let Tailzu hear you");
+    expect(lintTree(plain.root!)).toEqual([]);
   });
-  it("in a window: this computer's Accessibility card and the microphone card, only where the window declares them", async () => {
-    const plain = await build("bots.home", "desktop", { api: { ...API, "GET /v1/shell/started": { started: true } } });
-    expect(JSON.stringify(plain.root)).not.toContain("DeskAskSetup");
-    expect(cardOf(plain.root!, "Let Keybot hear you")).toBeUndefined();
-    expect(cardOf(plain.root!, "Turn on full access")).toBeUndefined();
-    for (const id of ["bots.home", "bots.keybot"]) {
-      const real = await build(id, "desktop", { api: { ...API, "GET /v1/shell/started": { started: true } }, can: ["DeskAskSetup", "DeskMicAsk"] });
-      expect(walk(real.root!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ place: "home", rows: [{ key: "read" }] });
-      expect(cardOf(real.root!, "Let Keybot hear you")?.visibleIf).toEqual({ falsy: "micGranted" });
-    }
+
+  it("Keybot on a phone: the same card in the page, only for what is missing; nothing once it is all on", async () => {
+    const s = await build("bots.keybot", "phone", { can: MOTION });
+    // Declared on, so the card never flashes: the app's own readings bring it in.
+    expect(s.state).toMatchObject({ keyboardEnabled: true, keyboardReady: true, micGranted: true, micAsked: false });
+    const card = cardOf(s.root!)!;
+    expect(card.props?.overlay).toBeUndefined();
+    expect(card.visibleIf).toEqual({ any: [{ falsy: "micGranted" }, { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] }] });
+    expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
+    const mic = stepOf(card, "Let Keybot hear you")!;
+    const ask = actions(mic).find((x) => x.kind === "requestPermission") as { onGranted?: unknown; onBlocked?: unknown };
+    expect(actions(ask.onGranted)).toEqual(expect.arrayContaining([{ kind: "setState", path: "micGranted", value: true }, expect.objectContaining({ kind: "navigate", screenId: "bots.first-words" })]));
+    expect(actions(ask.onBlocked)).toEqual(expect.arrayContaining([{ kind: "openSettings", target: "app" }]));
+    const keys = stepOf(card, "Turn on full access")!;
+    expect(actions(keys)).toEqual(expect.arrayContaining([{ kind: "openSettings", target: "keyboard" }, expect.objectContaining({ kind: "navigate", screenId: "bots.keybot.on" })]));
+    expect(lintTree(s.root!)).toEqual([]);
+  });
+
+  it("in a window: the microphone and Accessibility, only where the window declares them", async () => {
+    const none = await build("bots.home", "desktop", { api: ARRIVE, can: MOTION });
+    expect(cardOf(none.root!)).toBeUndefined();
+    expect(JSON.stringify(none.root)).not.toContain("DeskAskSetup");
+    const real = await build("bots.home", "desktop", { api: ARRIVE, can: [...MOTION, "DeskAskSetup", "DeskMicAsk"] });
+    const card = cardOf(real.root!)!;
+    expect(card.props).toMatchObject({ overlay: true, readyWhen: { neq: ["micGranted", null] } });
+    expect(stepOf(card, "Let Tailzu hear you")).toBeDefined();
+    expect(walk(stepOf(card, "Let Keybot type for you")!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read" }] });
+    const keybot = await build("bots.keybot", "desktop", { can: [...MOTION, "DeskAskSetup", "DeskMicAsk"] });
+    expect(cardOf(keybot.root!)?.visibleIf).toEqual({ falsy: "micGranted" });
+    expect(walk(keybot.root!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ place: "home" });
   });
 });
 
@@ -380,6 +429,16 @@ describe("the routes", () => {
     expect(me.statusCode).toBe(200);
     expect(me.json()).toMatchObject({ name: "", via: "other", saved: false });
     expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/profile" })).statusCode).toBe(401);
+  });
+  it("the first-arrival card: due until it is answered or put off, then never again", async () => {
+    expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/arrival" })).statusCode).toBe(401);
+    const first = await server.inject({ method: "GET", url: "/v1/bots/first-run/arrival", headers: auth });
+    expect(first.statusCode).toBe(200);
+    expect(first.json()).toEqual({ due: true });
+    const done = await server.inject({ method: "PUT", url: "/v1/bots/first-run/arrival", headers: auth, payload: {} });
+    expect(done.statusCode).toBe(200);
+    expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/arrival", headers: auth })).json()).toEqual({ due: false });
+    expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/arrival", headers: auth, payload: {} })).statusCode).toBe(200);
   });
   it("languages, words and plans, signed in only", async () => {
     const langs = await server.inject({ method: "GET", url: "/v1/bots/first-run/languages", headers: auth });
