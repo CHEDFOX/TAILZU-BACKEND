@@ -6,6 +6,8 @@
  * (not /v1/bots/keybot, which is the built-in bot's own record in routes/bots.ts).
  *
  *   GET  /v1/keybot                 the home page: the week's words by day, minutes saved, by app, a line per page
+ *   GET  /v1/keybot/stats           the old Stats tab's and the desk's Insights' numbers (src/keybot/stats.ts): the month
+ *                                   typed against said, the words left, the last 30 days, each day, each app, how you speak
  *   GET  /v1/keybot/tone            Tone per app
  *   POST /v1/keybot/tone            { group, preset?, noStop?, latin?, signOff? }: kept, and written into personality.appStyles
  *   GET  /v1/keybot/words?q=        Your words: added, learned, how often each was said, where last
@@ -30,6 +32,10 @@ import { getPersonality, updatePersonality } from "../personality/store.js";
 import { getPrefs, mergePrefs, prefsPatchSchema, TONE_GROUPS, updatePrefs, type KeybotPrefs } from "../keybot/prefs.js";
 import { presetById, withGroupStyles } from "../keybot/tones.js";
 import { historyView, homeView, settingsView, toneView, trainView, TRAIN_LINES, voicesView, wordsView } from "../keybot/views.js";
+import { statsView } from "../keybot/stats.js";
+import { allowanceFor, usageSummary } from "../usage/metering.js";
+import { getEntitlement } from "../billing/entitlements.js";
+import { getConfig } from "../config.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 
 /** The clock the person reads their day by: the app sends it (x-tz-offset or ?tz), else their portrait's. */
@@ -78,6 +84,34 @@ export function registerBotsKeybotRoutes(app: FastifyInstance, deps: BotsAreaDep
       const stats = await statsForUser(user, "week", tz).catch(() => undefined);
       return reply.send(homeView({ stats, personality, prefs, now: Date.now(), tzOffsetMinutes: tz }));
     } catch (err) { return failed(req, reply, err, "Couldn't read your week"); }
+  });
+
+  // ------------------------------------------------------------------ the numbers (the old Stats tab, the desk's Insights)
+
+  app.get("/v1/keybot/stats", RL, async (req, reply) => {
+    const user = await who(req, reply);
+    if (!user) return reply;
+    try {
+      const personality = await getPersonality(user);
+      const tz = tzOf(req, personality.stylePortrait?.tzOffsetMinutes);
+      // The reads the old Stats screen made (server.ts, screen "stats"), each with its own failure: a figure not read
+      // is left out of the view, never shown as a zero.
+      const saved = String(personality.vocabulary ?? "").split(/\r?\n/).map((w) => w.trim()).filter(Boolean).slice(0, 500);
+      const [stats, usage, allowance, entitlement] = await Promise.all([
+        statsForUser(user, "month", tz, saved, personality.languages ?? []).catch(() => undefined),
+        usageSummary(user, tz).catch(() => null),
+        allowanceFor(user).catch(() => null),
+        getEntitlement(user).catch(() => null),
+      ]);
+      // The old Stats tab was where the app told us its clock; the portrait keeps it so the hours read true.
+      if (personality.stylePortrait?.tzOffsetMinutes !== tz && (req.query as { tz?: unknown } | undefined)?.tz !== undefined) {
+        void updatePersonality(user, (p) => ({ ...p, stylePortrait: { ...p.stylePortrait, tzOffsetMinutes: tz } })).catch(() => undefined);
+      }
+      return reply.send(statsView({
+        stats, usage, allowance, paid: !!entitlement, free: getConfig().FREE_FOR_ALL === true,
+        personality, now: Date.now(), tzOffsetMinutes: tz,
+      }));
+    } catch (err) { return failed(req, reply, err, "Couldn't read your numbers"); }
   });
 
   // ------------------------------------------------------------------ tone per app

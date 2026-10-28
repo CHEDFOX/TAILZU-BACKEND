@@ -69,6 +69,16 @@ export const SCREENS = {
   keyHistory: "bots.keybot.history", // KeyHistory / DKeyHistory
   keySettings: "bots.keybot.settings", // KeySettings / DKeySettings
   keyPill: "bots.keybot.pill",       // DeskPill
+  // screens/keybotStats.ts and keybotYou.ts: the old Stats tab and You tab, in Keybot (docs/bots-keybot-parity.md).
+  // No boards of their own: drawn in Keybot's look (KeySettings, KeyWords) from the old screens' contents.
+  keyMonth: "bots.keybot.month",     // This month: typed against said, the words left, every day, spoken, all time
+  keyDay: "bots.keybot.day",         // One day (params: day, its place in the last 30; none is today)
+  keyApps: "bots.keybot.apps",       // Where the words went (params: app, one app's page)
+  keySpeak: "bots.keybot.speak",     // How you speak: languages, how the words came, pace, voices, register
+  keyDays: "bots.keybot.days",       // Days and sessions: the streak, the days, sessions, when, how long
+  keyStyle: "bots.keybot.style",     // Voice: the voices it writes in, on the keyboard, made and edited
+  keyHaptics: "bots.keybot.haptics", // Haptics: every key, or keys picked one by one
+  keyName: "bots.keybot.name",       // What you call it: Tailzu, and a name of your own
   // screens/code.ts
   code: "bots.code",                 // CodeHome / DCodeHome, DeskCode
   codeJob: "bots.code.job",          // Job / DeskWork (params: id)

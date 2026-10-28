@@ -4,10 +4,13 @@
  * (experience/bots/screens/keybot.ts) draw them.
  *
  *   home      the week's words by day (history stats, the person's own day, Monday on), the minutes that saved,
- *             the apps they went to, and a line for each page under "Make it yours"
+ *             the apps they went to, a line for each page under "Make it yours", and the old You tab's lines (the voice,
+ *             languages, haptics, what it learned, its name, history kept, spellings, shortcuts)
+ *   (the month's numbers, the old Stats tab's, are src/keybot/stats.ts)
  *   tone      the three kinds of app, the preset and little things chosen for each (prefs.ts)
  *   words     the words added (vocabulary, and the dictionary's "heard as" pairs), the words it learned (the style
- *             portrait's words), how often each was said (stats' dictionary counts) and where it was said last
+ *             portrait's words), how often each was said (stats' dictionary counts) and where it was said last; every
+ *             pair as stored, the shortcuts (snippets), and how the saved words do this month
  *   voices    the read-aloud voices (ttsVoices.ts), the one in use, and the read-aloud choices
  *   train     the ten lines, what was said for each, and what it learned (the portrait's words and modes)
  *   history   what they said (history), newest first, searched
@@ -17,6 +20,8 @@ import type { HistoryEntry, Personality } from "../../../shared/types/api.js";
 import type { StatsForUser } from "../history/store.js";
 import { LANGS } from "../experience/languages.js";
 import { DEFAULT_TTS_VOICE, isValidTtsVoice, TTS_VOICES, ttsVoiceById, type TtsVoice } from "../experience/ttsVoices.js";
+import { applyPresetOverrides } from "../experience/personalityPresets.js";
+import { nicknameOf } from "../experience/assistantName.js";
 import type { KeybotPrefs, ToneGroup } from "./prefs.js";
 import { groupOfApp, presetById, TONE_GROUP_DEFS } from "./tones.js";
 
@@ -46,6 +51,23 @@ export interface KeybotHomeView {
   today: number;
   /** The phone keyboard in a line: "Light keys · haptics on". */
   keyboard: string;
+  // ---- what the old You tab carried (docs/bots-keybot-parity.md)
+  /** The voice it writes in (personality presets, renamed as the person renamed it): "Zu", and what it does. */
+  style: { id: string; name: string; tagline: string };
+  /** The languages they write in, by name, in their order. */
+  languages: string[];
+  /** Key haptics: every key, or how many keys were picked one by one. */
+  haptics: { all: boolean; keys: number };
+  /** What it has learned of them (the style portrait): things it knows, and the sittings it learned them in. */
+  learned: { known: number; sittings: number };
+  /** The name they call it besides Tailzu; null for Tailzu alone. */
+  nickname: string | null;
+  /** What they say is kept, to copy again (history on; on unless they turned it off). */
+  keepHistory: boolean;
+  /** Spellings fixed for them, heard as and written as (the first three, as the old Dictionary card showed). */
+  fixes: Array<{ was: string; word: string }>;
+  /** Shortcuts: say a name, the whole thing is written (personality.snippets). */
+  snippets: number;
 }
 
 type DayBucket = { words: number; apps?: Array<{ app: string; words: number }>; kinds?: { voice: number } };
@@ -104,7 +126,36 @@ export function homeView(o: {
     voice: { label: ttsVoiceById(voiceId)?.label ?? voiceId, speed: speedLabel(o.prefs.read?.speed) },
     today: days.find((d) => d.today)?.words ?? 0,
     keyboard: `${kb.look === "dark" ? "Dark" : "Light"} keys · haptics ${o.personality.hapticsAll ? "on" : "off"}`,
+    ...youOf(o.personality),
   };
+}
+
+/** The old You tab's lines, read from the personality the same way its cards read them. */
+function youOf(p: Personality): Pick<KeybotHomeView, "style" | "languages" | "haptics" | "learned" | "nickname" | "keepHistory" | "fixes" | "snippets"> {
+  const presets = applyPresetOverrides(p.presetOverrides);
+  const active = presets.find((x) => x.id === (p.activePresetId || "signature")) ?? presets[0]!;
+  const sp = p.stylePortrait ?? {};
+  return {
+    style: { id: active.id, name: active.name, tagline: active.tagline ?? "" },
+    languages: (p.languages ?? []).map(String).filter((l) => l && l !== "auto").map(languageLabel),
+    haptics: { all: p.hapticsAll === true, keys: (p.hapticKeys ?? []).length },
+    learned: {
+      known: (sp.words?.length ?? 0) + (sp.styles?.length ?? 0) + (sp.rhythms?.length ?? 0) + Object.keys(sp.tones ?? {}).length,
+      sittings: sp.sessions ?? 0,
+    },
+    nickname: nicknameOf(p) ?? null,
+    keepHistory: p.retainHistory !== false,
+    fixes: (p.dictionary ?? []).filter((d) => d?.word && d?.replacement).slice(0, 3).map((d) => ({ was: String(d.word), word: String(d.replacement) })),
+    snippets: snippetsOf(p).length,
+  };
+}
+
+/** Shortcuts as stored ("my upi = aanya@okhdfc", one a line; a line break inside one is kept as the two characters \n). */
+export function snippetsOf(p: Personality): Array<{ say: string; get: string }> {
+  return String(p.snippets ?? "").split(/\r?\n/).map((l) => {
+    const i = l.indexOf("=");
+    return i > 0 ? { say: l.slice(0, i).trim(), get: l.slice(i + 1).trim().replace(/\\n/g, "\n") } : null;
+  }).filter((x): x is { say: string; get: string } => !!x && !!x.say && !!x.get);
 }
 
 export const speedLabel = (s: string | undefined): string => (!s || s === "1" ? "Normal" : `${s}×`);
@@ -148,6 +199,12 @@ export interface KeybotWordsView {
   /** The search it was made for. */
   q: string;
   total: { added: number; learned: number };
+  /** Every spelling pair as stored (personality.dictionary), unsearched: adding one writes the whole list back. */
+  pairs: Array<{ word: string; replacement: string }>;
+  /** Shortcuts: say a name, get the whole thing (personality.snippets), searched. */
+  snippets: Array<{ say: string; get: string }>;
+  /** How the saved words do this month (stats' dictionary); null when it was not read. */
+  use: null | { saved: number; used: number; unused: number; scanned: number; inUse: number; top: Array<{ word: string; uses: number }>; unusedWords: string[] };
 }
 
 /** What they added: the dictionary's pairs (written as, heard as) and the vocabulary's lines. */
@@ -197,6 +254,13 @@ export function wordsView(o: {
     })),
     q: String(o.q ?? "").trim(),
     total: { added: added.length, learned: learned.length },
+    pairs: (o.personality.dictionary ?? []).filter((d) => d?.word && d?.replacement).map((d) => ({ word: String(d.word), replacement: String(d.replacement) })),
+    snippets: snippetsOf(o.personality).filter((x) => match(x.say, x.get)),
+    use: o.dictionary ? {
+      saved: o.dictionary.saved, used: o.dictionary.used, unused: o.dictionary.unused, scanned: o.dictionary.scanned,
+      inUse: o.dictionary.saved > 0 ? Math.round((o.dictionary.used / o.dictionary.saved) * 100) : 0,
+      top: o.dictionary.top ?? [], unusedWords: o.dictionary.unusedWords ?? [],
+    } : null,
   };
 }
 
