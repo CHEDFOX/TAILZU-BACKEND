@@ -90,7 +90,12 @@ function phoneBundle(): Promise<string> {
   return bundled;
 }
 
-async function buildPhoneBundle(): Promise<string> {
+/**
+ * The phone's renderer bundled from `entry` (default phone/entry.jsx, which draws window.__SCREEN__). preview.ts bundles
+ * phone/preview.jsx, the same renderer with a navigator around it.
+ */
+export async function buildPhoneBundle(entry = path.join(HERE, "phone/entry.jsx")): Promise<string> {
+  ensureDeps();
   const req = createRequire(path.join(DEPS, "node_modules", "x.js"));
   const esbuild = req("esbuild");
   const own: Record<string, string> = {
@@ -98,6 +103,7 @@ async function buildPhoneBundle(): Promise<string> {
     "expo-image": path.join(HERE, "phone/expo-image.jsx"),
     "expo-linear-gradient": path.join(HERE, "phone/views.jsx"),
     "expo-blur": path.join(HERE, "phone/views.jsx"),
+    "@supabase/supabase-js": path.join(HERE, "phone/supabase.js"),
   };
   const plugin = {
     name: "phone",
@@ -124,7 +130,7 @@ async function buildPhoneBundle(): Promise<string> {
     },
   };
   const out = await esbuild.build({
-    entryPoints: [path.join(HERE, "phone/entry.jsx")], bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
+    entryPoints: [entry], bundle: true, write: false, format: "iife", platform: "browser", jsx: "automatic",
     logLevel: "error", alias: { "@app": path.join(APP, "src") }, nodePaths: [path.join(DEPS, "node_modules"), path.join(APP, "node_modules")],
     resolveExtensions: EXT.slice(1), mainFields: ["browser", "module", "main"],
     loader: { ".png": "dataurl", ".jpg": "dataurl", ".gif": "dataurl", ".webp": "dataurl", ".ttf": "empty", ".otf": "empty", ".mp4": "empty", ".mov": "empty", ".wav": "empty", ".mp3": "empty", ".lottie": "empty", ".html": "text" },

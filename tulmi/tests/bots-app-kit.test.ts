@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Node, SvgShape } from "../../shared/types/sdui.js";
 import {
-  botAvatar, button, chips, deskPage, FACE, listCard, listRow, meter, page, phonePage, rupees, duration, segmented,
+  blip, botAvatar, button, chips, deskPage, FACE, listCard, listRow, meter, page, phonePage, rupees, duration, segmented,
   statusMark, switchRow, tabGlyph, text, timeline, title, C,
 } from "../src/experience/bots/kit.js";
 import { ctxFor, sampleLive } from "../src/experience/bots/fixtures.js";
@@ -76,6 +76,17 @@ describe("bots and controls", () => {
     const own = botAvatar(botLook("gym-bot", "pine"), 30);
     expect(own.style?.backgroundColor).toBe("#2F5D50");
     expect(own.children![0]!.props).toMatchObject({ stroke: "#ffffff", d: expect.stringContaining("M6.5 8v8") });
+  });
+  it("Blip moves: each pose is its animated loop, as tall as asked and as wide as the loop", () => {
+    const urlOf = (n: Node) => (n.children![0]!.props!.source as { url: string }).url;
+    expect(urlOf(blip("hello", 140))).toMatch(/\/blip\/wave-l\.webp\?v=\d+$/);
+    expect(urlOf(blip("listen", 120))).toMatch(/\/blip\/listen-s\.webp\?v=\d+$/);
+    expect(urlOf(blip("think", 120))).toMatch(/\/blip\/think-s\.webp\?v=\d+$/);
+    expect(urlOf(blip("needs", 84))).toMatch(/\/blip\/present-s\.webp\?v=\d+$/);
+    expect(urlOf(blip("done", 120))).toMatch(/\/blip\/tada-s\.webp\?v=\d+$/);
+    expect(urlOf(blip("done", 190))).toMatch(/\/blip\/tada-l\.webp\?v=\d+$/);
+    expect(blip("think", 115).style).toMatchObject({ width: 106, height: 115 });
+    expect(blip("hello", 159).style).toMatchObject({ width: 121, height: 159 });
   });
   it("buttons: the primary is the ink pill, a disabled one cannot be pressed", () => {
     const p = button("Go", { kind: "navigateBack" });

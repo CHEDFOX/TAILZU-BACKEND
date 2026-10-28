@@ -267,10 +267,11 @@ export function workLines(entries: WorkEntry[], o: { max: number; waiting?: stri
 }
 
 /** The steps a job ran on a computer, as lines, for a job with no work log (no agent on this server). */
-export function stepLines(steps: StepRow[]): WorkLine[] {
-  return steps.map((s) => ({
+export function stepLines(steps: StepRow[] | null | undefined): WorkLine[] {
+  // A job the router has not given steps to yet (or an older job row) has none: no lines, never a crash.
+  return (steps ?? []).map((s) => ({
     mark: s.status === "done" || s.status === "failed" || s.status === "cancelled" ? "done" as const : s.status === "running" || s.status === "dispatched" ? "working" as const : "waiting" as const,
-    text: s.kind === "edit" ? `Edited ${s.commands.map(fileOf).slice(0, 2).join(", ") || "files"}` : `Ran ${short(s.commands[0] ?? "a step", 50)}`,
+    text: s.kind === "edit" ? `Edited ${(s.commands ?? []).map(fileOf).slice(0, 2).join(", ") || "files"}` : `Ran ${short(s.commands?.[0] ?? "a step", 50)}`,
     ...(s.exitCode !== null && s.exitCode !== 0 ? { sub: `exit ${s.exitCode}` } : {}),
   }));
 }
