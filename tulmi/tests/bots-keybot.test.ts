@@ -145,7 +145,7 @@ describe("the pages", () => {
     }
   });
 
-  it("the home page shows the week, by app and the pages to make it yours", async () => {
+  it("the home page shows the week, by app this week (when the numbers could not be read) and the pages to make it yours", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await buildBotsScreen(req("bots.keybot", client), fakeDeps({ api: api() }));
       const t = texts(s.root!);

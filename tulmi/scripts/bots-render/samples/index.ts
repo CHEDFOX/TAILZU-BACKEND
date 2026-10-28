@@ -10,6 +10,7 @@
  */
 import { sampleApi as botsApi } from "../../../tests/bots-bots-data.js";
 import { CODEWORK_API, PROJECT, JOB_ASK, JOB_LEAD, JOB_DONE, JOB_FAILED, JOB_ANSWER, ART } from "../../../tests/bots-codework-data.js";
+import { keybotApi } from "../../../tests/bots-keybot-data.js";
 import { SAMPLE_BOTS } from "../../../src/experience/bots/fixtures.js";
 import type { FakeOpts } from "../../../src/experience/bots/fixtures.js";
 import { SCREENS } from "../../../src/experience/bots/ids.js";
@@ -108,6 +109,17 @@ export const SAMPLES: Sample[] = [
   { id: S.keyHistory, area: "keybot", board: "KeyHistory", deskBoard: "DKeyHistory" },
   { id: S.keySettings, area: "keybot", board: "KeySettings", deskBoard: "DKeySettings" },
   { id: S.keyPill, area: "keybot", deskBoard: "DeskPill" },
+  // The old Stats and You tabs' pages, in Keybot (no boards of their own; docs/bots-keybot-parity.md).
+  { id: S.keyMonth, area: "keybot" },
+  { id: S.keyDay, area: "keybot" },
+  { id: S.keyDay, variant: "quiet", area: "keybot", params: { day: 19 } },
+  { id: S.keyApps, area: "keybot" },
+  { id: S.keyApps, variant: "gmail", area: "keybot", params: { app: "Gmail" } },
+  { id: S.keySpeak, area: "keybot" },
+  { id: S.keyDays, area: "keybot" },
+  { id: S.keyStyle, area: "keybot" },
+  { id: S.keyHaptics, area: "keybot" },
+  { id: S.keyName, area: "keybot" },
   // screens/code.ts
   { id: S.codeStart, variant: "meet", area: "code", board: "Enter1", deskBoard: "DEnter1", params: { step: "meet" }, api: codeVariant("meet") },
   { id: S.codeStart, variant: "pick", area: "code", board: "Enter2", deskBoard: "DEnter2", params: { step: "pick" } },
@@ -140,10 +152,22 @@ let areas: Promise<Record<Area, Record<string, unknown>>> | undefined;
 /** Every area's answers (built once). */
 export function areaApis(): Promise<Record<Area, Record<string, unknown>>> {
   areas ??= (async () => ({
-    bots: await botsApi(), shell: shellApi(), you: YOU_API, keybot: KEYBOT_API as Record<string, unknown>,
+    bots: await botsApi(), shell: shellApi(), you: YOU_API, keybot: keybotAnswers(),
     firstrun: FIRSTRUN_API as Record<string, unknown>, codework: CODEWORK_API, code: CODE.base as Record<string, unknown>,
   }))();
   return areas;
+}
+
+/**
+ * Keybot's answers: keybot.json (the views as served), with the home, the numbers, the words' spellings, shortcuts
+ * and use, and the personality made from the last 30 days in tests/bots-keybot-data.ts.
+ */
+function keybotAnswers(): Record<string, unknown> {
+  const json = KEYBOT_API as Record<string, unknown>;
+  const made = keybotApi();
+  const words = "GET /v1/keybot/words?tz=330";
+  const { added: _a, learned: _l, q: _q, total: _t, ...extra } = made[words] as Record<string, unknown>;
+  return { ...json, ...made, [words]: { ...(json[words] as Record<string, unknown>), ...extra } };
 }
 
 /** The answers one sample's screen gets: every area's, its own area's over them, its own on top. */
