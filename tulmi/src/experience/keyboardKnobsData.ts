@@ -7,6 +7,8 @@ export const KEYBOARD_KNOBS: {
 } = {
   "ios": {
     "flags": {
+      "kb.accentTray.bg": "",
+      "kb.accentTray.borderAlpha": 0.16,
       "kb.accentTray.cancelDriftPt": 12,
       "kb.accentTray.chipActiveBg": "#007AFF",
       "kb.accentTray.chipFontSize": 22,
@@ -18,6 +20,8 @@ export const KEYBOARD_KNOBS: {
       "kb.accentTray.offsetY": -52,
       "kb.accentTray.padding": 4,
       "kb.accentTray.radius": 8,
+      "kb.accentTray.shadowOpacity": 0.35,
+      "kb.accentTray.shadowRadius": 8,
       "kb.audio.duckOthers": true,
       "kb.audio.voiceProcessing": true,
       "kb.autoCap.enabled": true,
@@ -261,6 +265,7 @@ export const KEYBOARD_KNOBS: {
       "kb.shift.longPressMs": 350,
       "kb.smartPeriod.windowMs": 500,
       "kb.space.languageFallback": "EN",
+      "kb.space.speakHoldMs": 550,
       "kb.stack.defaultGap": 5,
       "kb.status.overlay.bg": "#000000BF",
       "kb.status.overlay.fg": "#FFFFFF",
@@ -386,6 +391,7 @@ export const KEYBOARD_KNOBS: {
       "kb.trackpad.enabled": true,
       "kb.trackpad.longPressMs": 300,
       "kb.trackpad.ptPerChar": 7,
+      "kb.trackpad.startDriftPt": 8,
       "kb.upload.filename": "audio.m4a",
       "kb.upload.mimeType": "audio/m4a",
       "kb.waveform.barCount": 24,
@@ -489,6 +495,8 @@ export const KEYBOARD_KNOBS: {
   },
   "android": {
     "flags": {
+      "kb.accentTray.bg": "",
+      "kb.accentTray.borderAlpha": 0.16,
       "kb.accentTray.cancelDriftPt": 12,
       "kb.accentTray.chipActiveBg": "#007AFF",
       "kb.accentTray.chipFontSize": 22,
@@ -500,6 +508,8 @@ export const KEYBOARD_KNOBS: {
       "kb.accentTray.offsetY": -52,
       "kb.accentTray.padding": 4,
       "kb.accentTray.radius": 8,
+      "kb.accentTray.shadowOpacity": 0.35,
+      "kb.accentTray.shadowRadius": 8,
       "kb.audio.duckOthers": true,
       "kb.audio.voiceProcessing": true,
       "kb.autoCap.enabled": true,
@@ -763,6 +773,7 @@ export const KEYBOARD_KNOBS: {
       "kb.smartPeriod": true,
       "kb.smartPeriod.windowMs": 500,
       "kb.space.languageFallback": "EN",
+      "kb.space.speakHoldMs": 550,
       "kb.stack.defaultGap": 5,
       "kb.status.overlay.bg": "#000000BF",
       "kb.status.overlay.fg": "#FFFFFF",
@@ -893,6 +904,7 @@ export const KEYBOARD_KNOBS: {
       "kb.trackpad.enabled": true,
       "kb.trackpad.longPressMs": 300,
       "kb.trackpad.ptPerChar": 7,
+      "kb.trackpad.startDriftPt": 8,
       "kb.upload.filename": "audio.m4a",
       "kb.upload.mimeType": "audio/m4a",
       "kb.waveform.barCount": 24,

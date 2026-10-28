@@ -15,7 +15,7 @@
  *   sounds     three ways: not chosen sends nothing and each phone does what it did (iOS clicks as its own Keyboard
  *              Feedback → Sound says; Android is quiet). On: kb.key.sound true (iOS still needs its own setting;
  *              Android plays its keypress sounds, not in silent or vibrate). Off: kb.key.sound false, quiet on both.
- *   holdSpace  kb.space.holdToSpeak: holding space starts what a tap on the mic starts, in place of the trackpad.
+ *   holdSpace  kb.space.holdToSpeak: holding space still starts what a tap on the mic starts; sliding still moves the cursor.
  *
  * The three knobs are sent only for a person who chose (absent = as before), and a person with
  * no keyboard choices gets the config exactly as built: the same object, byte for byte.
