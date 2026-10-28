@@ -44,9 +44,9 @@ describe("the bootstrap", () => {
     expect(on.flags?.["desktop.desk"]).toBe(true);
     expect(on.flags?.["desktop.desk.settingsScreenId"]).toBe("desk_settings");
   });
-  it("on, for someone the new onboarding has not finished: the onboarding first", () => {
+  it("on, for someone the new onboarding has not finished: the onboarding first (the Bots app's own, from Languages)", () => {
     const on = buildBootstrap({ onboarded: false, botsApp: true, onboardV2: true, launchCount: 1 });
-    expect(on.initialScreenId).toBe("onboard");
+    expect(on.initialScreenId).toBe("bots.language");
   });
 });
 
@@ -71,8 +71,9 @@ describe("the screen route", () => {
     expect(phone.json()).toMatchObject({ screenId: "bots.home", look: "bots", hideChrome: true });
     expect(phone.body).toContain('"type":"SafeArea"');
     const desk = await post("/v1/app/screen", { screenId: "bots.home", capabilities: caps(["BotsKit", "DeskShell"], "desktop") });
-    expect(desk.body).toContain("What should we do?");
-    expect(desk.body).toContain('"screenId":"desk_today"');
+    // A person who has done nothing yet lands on the empty home (EmptyHome); anyone else on "What should we do?".
+    expect(desk.body).toMatch(/What should we do\?|I'm Blip/);
+    expect(desk.body).toContain('"screenId":"bots.today"');
     const home = await post("/v1/app/screen", { screenId: "home", capabilities: caps(["BotsKit"]) });
     expect(home.json().screenId).toBe("bots.home");
     const old = await post("/v1/app/screen", { screenId: "bots.home", capabilities: caps([]) });

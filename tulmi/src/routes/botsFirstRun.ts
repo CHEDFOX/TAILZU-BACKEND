@@ -1,5 +1,154 @@
-/** Bots app · firstRun area: the endpoints its screens need beyond the existing routes (none yet). */
-import type { FastifyInstance } from "fastify";
+/**
+ * Bots app · first run: what its screens read beyond the existing routes (screens/firstRun.ts).
+ *
+ *   GET /v1/bots/first-run/languages   the Languages step's chips (the onboarding's own list) and what is picked
+ *   GET /v1/bots/first-run/words       the account's spoken words and audio seconds, all time; with ?w=&s= (a baseline
+ *                                      taken when the step opened) also what was said since: First words' numbers
+ *   GET /v1/bots/first-run/plans       Plans' cards: the paywall's own plans (phone, RevenueCat) or the pay page's
+ *                                      Razorpay prices (window), the free words, and whether the account already pays
+ *
+ * Every write the steps make goes to the routes that already own it: PUT /v1/personality (languages, the name),
+ * PUT /v1/profile { onboarded } (the end), and the clients' own purchase actions (iap.*).
+ */
+import type { FastifyInstance, FastifyReply } from "fastify";
+import { resolveUser } from "../auth/supabase.js";
+import { getEntitlement } from "../billing/entitlements.js";
+import { fetchPlan, formatPeriod, formatPrice, planFor, razorpayReady, type Market, type Period } from "../billing/razorpay.js";
+import { getConfig } from "../config.js";
+import { DAILY_LANGUAGES, freeForAll, PAYWALL_CONFIG } from "../experience/catalog.js";
+import { getPersonality } from "../personality/store.js";
+import { TYPING_WORDS_PER_MINUTE } from "../history/store.js";
+import { usageSummary } from "../usage/metering.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 
-export function registerBotsFirstRunRoutes(_app: FastifyInstance, _deps: BotsAreaDeps): void {}
+/** One plan as the Plans step draws it. `buy` is absent when it cannot be bought here and now. */
+export interface FirstRunPlan {
+  id: string;
+  label: string;
+  price: string;
+  per: string;
+  note?: string;
+  badge?: string;
+  /** Free days before the first charge, when the plan's own terms say so ("7 days free, then …"). */
+  trialDays?: number;
+  default?: boolean;
+  /** What the client calls to buy it: the paywall's own (iap.showPaywall / iap.subscribe). */
+  buy?: { kind: "iap.showPaywall"; offeringId: string; packageId?: string } | { kind: "iap.subscribe"; productId: string };
+}
+
+export interface FirstRunPlans {
+  /** Tailzu is free for everyone right now: nothing is sold. */
+  freeForAll: boolean;
+  /** The account already pays (and where). */
+  entitled: boolean;
+  store?: string;
+  /** The free plan's words a month (FREE_MONTHLY_WORDS). */
+  freeWords: number;
+  /** What the paid plans add, in the paywall's own words. */
+  features: string[];
+  plans: FirstRunPlan[];
+}
+
+const unauthorized = (reply: FastifyReply) => reply.code(401).send({ code: "unauthorized", message: "Sign in first" });
+
+/** "7 days free, then billed yearly" → 7. */
+export function trialDaysOf(note: string | undefined): number | undefined {
+  const m = /(\d+)\s*days?\s+free/i.exec(note ?? "");
+  return m ? Number(m[1]) : undefined;
+}
+
+/** First words' numbers: what was said since the baseline, and how long typing it would have taken. */
+export function spokenSince(now: { words: number; audioSeconds: number }, base: { w?: number; s?: number }) {
+  const baseWords = Number.isFinite(base.w) ? Math.max(0, base.w!) : now.words;
+  const baseSeconds = Number.isFinite(base.s) ? Math.max(0, base.s!) : now.audioSeconds;
+  const words = Math.max(0, now.words - baseWords);
+  const seconds = Math.max(0, Math.round((now.audioSeconds - baseSeconds) * 10) / 10);
+  const typingSeconds = Math.round((words / TYPING_WORDS_PER_MINUTE) * 60);
+  return { words, seconds, typingSeconds, totalWords: now.words, totalSeconds: now.audioSeconds };
+}
+
+/** The window's plans: the pay page's own, at Razorpay's prices, for the market its time zone puts it in. */
+async function windowPlans(market: Market): Promise<FirstRunPlan[]> {
+  if (!razorpayReady()) return [];
+  const out: FirstRunPlan[] = [];
+  for (const period of ["annual", "monthly"] as Period[]) {
+    const sellable = planFor(market, period);
+    if (!sellable) continue;
+    const plan = await fetchPlan(sellable.id).catch(() => null);
+    const cfg = PAYWALL_CONFIG.plans.find((p) => p.id === period);
+    out.push({
+      id: period,
+      label: cfg?.label ?? (period === "annual" ? "Yearly" : "Monthly"),
+      price: plan ? formatPrice(plan) : "—",
+      per: plan ? formatPeriod(plan) : "Not available right now",
+      ...(period === "annual" ? { default: true } : {}),
+      // The window has no store: iap.subscribe opens the pay page, signed for this account.
+      ...(plan && cfg?.productId ? { buy: { kind: "iap.subscribe" as const, productId: cfg.productId } } : {}),
+    });
+  }
+  return out;
+}
+
+/** The phone's plans: the paywall's, bought through RevenueCat exactly as the paywall buys them. */
+function phonePlans(): FirstRunPlan[] {
+  return PAYWALL_CONFIG.plans.filter((p) => !p.free).map((p) => ({
+    id: p.id,
+    label: p.label,
+    price: p.price,
+    per: p.period ?? "",
+    ...(p.note ? { note: p.note } : {}),
+    ...(p.badge ? { badge: p.badge } : {}),
+    ...(trialDaysOf(p.note) ? { trialDays: trialDaysOf(p.note) } : {}),
+    ...(p.default ? { default: true } : {}),
+    buy: p.offeringId
+      ? { kind: "iap.showPaywall" as const, offeringId: p.offeringId, ...(p.packageId ? { packageId: p.packageId } : {}) }
+      : { kind: "iap.subscribe" as const, productId: p.productId ?? p.id },
+  }));
+}
+
+export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaDeps): void {
+  const rl = { config: deps.rateLimit };
+
+  app.get("/v1/bots/first-run/languages", rl, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    const personality = await getPersonality(user).catch(() => null);
+    const saved = (personality?.languages ?? []).map(String).filter(Boolean);
+    // The onboarding's chips (India's languages and English), Hinglish, Hindi and English first.
+    const first = ["hinglish", "hi", "en"];
+    const shown = DAILY_LANGUAGES.filter((l) => l.india || l.value === "en")
+      .sort((a, b) => (first.indexOf(a.value) + 1 || 99) - (first.indexOf(b.value) + 1 || 99));
+    return reply.send({
+      options: shown.map((l) => ({ value: l.value, label: l.label })),
+      picked: saved.length ? saved : ["hinglish", "hi", "en"],
+      saved: saved.length > 0,
+    });
+  });
+
+  app.get("/v1/bots/first-run/words", rl, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    const q = (req.query ?? {}) as Record<string, string | undefined>;
+    const num = (v: string | undefined) => (v === undefined || v === "" ? undefined : Number(v));
+    const usage = await usageSummary(user).catch(() => null);
+    if (!usage) return reply.code(503).send({ code: "unavailable", message: "Couldn't read your words" });
+    return reply.send(spokenSince(usage.total, { w: num(q.w), s: num(q.s) }));
+  });
+
+  app.get("/v1/bots/first-run/plans", rl, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    const q = (req.query ?? {}) as Record<string, string | undefined>;
+    const desktop = q.client === "desktop";
+    const ent = await getEntitlement(user).catch(() => null);
+    const body: FirstRunPlans = {
+      freeForAll: freeForAll(),
+      entitled: !!ent,
+      ...(ent?.store ? { store: ent.store } : {}),
+      freeWords: Math.max(0, getConfig().FREE_MONTHLY_WORDS),
+      features: (PAYWALL_CONFIG.features ?? []).filter((f) => !/cancel/i.test(f)).slice(0, 2),
+      plans: freeForAll() ? [] : desktop ? await windowPlans(q.market === "world" ? "world" : "IN") : phonePlans(),
+    };
+    return reply.send(body);
+  });
+}
