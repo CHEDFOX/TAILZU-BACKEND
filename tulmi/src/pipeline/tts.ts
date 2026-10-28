@@ -34,6 +34,23 @@ export interface TtsInput {
   format?: TtsFormat;
   /** Optional style steer, e.g. "warm and upbeat" — derived from personality. */
   instructions?: string;
+  /** How fast to read, 1 = normal (Keybot's Read aloud speed). See paceFor. */
+  speed?: number;
+}
+
+/**
+ * A reading speed in the form the model takes it. tts-1 and tts-1-hd take a rate (`speed`, 0.25 to 4); the gpt-4o
+ * speech models ignore that field ("Does not work with gpt-4o-mini-tts"), so for them the pace goes into the
+ * instructions, which they follow. Normal speed, or none, adds nothing.
+ */
+export function paceFor(model: string, speed: number | undefined, instructions?: string): { speed?: number; instructions?: string } {
+  const keep = instructions ? { instructions } : {};
+  if (speed === undefined || !Number.isFinite(speed) || speed === 1) return keep;
+  const rate = Math.min(4, Math.max(0.25, speed));
+  if (/^tts-1/.test(model)) return { ...keep, speed: rate };
+  const how = rate < 1 ? "a little slower than usual" : rate <= 1.3 ? "a little faster than usual" : "much faster than usual";
+  const pace = `Speak ${how}, at about ${rate}× your normal pace.`;
+  return { instructions: instructions ? `${instructions} ${pace}` : pace };
 }
 
 export interface TtsResult {
@@ -53,7 +70,7 @@ export async function synthesize(input: TtsInput): Promise<TtsResult> {
     voice: input.voice ?? cfg.TTS_VOICE,
     input: input.text,
     response_format: format,
-    ...(input.instructions ? { instructions: input.instructions } : {}),
+    ...paceFor(cfg.OPENAI_TTS_MODEL, input.speed, input.instructions),
   } as unknown as OpenAI.Audio.Speech.SpeechCreateParams;
 
   const res = await openai().audio.speech.create(params);

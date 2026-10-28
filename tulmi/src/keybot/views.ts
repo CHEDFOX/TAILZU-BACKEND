@@ -125,7 +125,7 @@ export function homeView(o: {
     train: { done: Math.min(said, TRAIN_LINES.length), total: TRAIN_LINES.length },
     voice: { label: ttsVoiceById(voiceId)?.label ?? voiceId, speed: speedLabel(o.prefs.read?.speed) },
     today: days.find((d) => d.today)?.words ?? 0,
-    keyboard: `${kb.look === "dark" ? "Dark" : "Light"} keys · haptics ${o.personality.hapticsAll ? "on" : "off"}`,
+    keyboard: `${kb.look === "dark" ? "Dark keys" : kb.look === "light" ? "Light keys" : "Keys like your phone"} · haptics ${o.personality.hapticsAll ? "on" : "off"}`,
     ...youOf(o.personality),
   };
 }
@@ -269,14 +269,14 @@ export function wordsView(o: {
 export interface KeybotVoicesView {
   current: string;
   voices: TtsVoice[];
-  read: { speed: string; driving: boolean; draftBack: boolean };
+  read: { speed: string };
 }
 
 export function voicesView(p: Personality, prefs: KeybotPrefs): KeybotVoicesView {
   return {
     current: isValidTtsVoice(p.ttsVoice) ? p.ttsVoice : DEFAULT_TTS_VOICE,
     voices: TTS_VOICES,
-    read: { speed: prefs.read?.speed ?? "1", driving: !!prefs.read?.driving, draftBack: !!prefs.read?.draftBack },
+    read: { speed: prefs.read?.speed ?? "1" },
   };
 }
 
@@ -342,21 +342,23 @@ export function historyView(entries: HistoryEntry[], p: Personality, q?: string)
 // ------------------------------------------------------------------ settings
 
 export interface KeybotSettingsView {
-  keyboard: { look: "light" | "dark"; haptics: "off" | "light" | "strong"; height: "short" | "normal" | "tall"; sounds: boolean; holdSpace: boolean; keyAt: "left" | "right" | "top" };
+  /** look "phone": nothing picked, so the keyboard follows the phone's light or dark. */
+  keyboard: { look: "light" | "dark" | "phone"; haptics: "off" | "light" | "strong"; height: "short" | "normal" | "tall"; sounds: "on" | "off" | "phone"; holdSpace: boolean; keyAt: "left" | "right" | "top" };
   /** The languages they write in, in their order. */
   languages: Array<{ value: string; label: string }>;
 }
 
-/** The keyboard's choices with their defaults; haptics follows what the keyboard actually reads when not chosen here. */
+/** The keyboard's choices, each defaulting to what the keyboard does when nothing is chosen (keyboard.ts): it follows
+ *  the phone's look, the mic sits in the top row, space holds for the trackpad, and haptics is what it reads. */
 export function keyboardChoices(prefs: KeybotPrefs, p?: Personality): KeybotSettingsView["keyboard"] {
   const k = prefs.keyboard ?? {};
   return {
-    look: k.look ?? "light",
+    look: k.look ?? "phone",
     haptics: k.haptics ?? (p?.hapticsAll ? "light" : "off"),
     height: k.height ?? "normal",
-    sounds: !!k.sounds,
-    holdSpace: k.holdSpace ?? true,
-    keyAt: k.keyAt ?? "left",
+    sounds: k.sounds === true ? "on" : k.sounds === false ? "off" : "phone",
+    holdSpace: k.holdSpace ?? false,
+    keyAt: k.keyAt ?? "top",
   };
 }
 

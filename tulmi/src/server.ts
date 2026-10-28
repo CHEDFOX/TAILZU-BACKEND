@@ -59,6 +59,8 @@ import { registerBotsShellRoutes } from "./routes/botsShell.js";
 import { registerBotsYouRoutes } from "./routes/botsYou.js";
 import { registerBotsBotsRoutes } from "./routes/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/botsKeybot.js";
+import { getPrefs, readSpeed, type KeybotPrefs } from "./keybot/prefs.js";
+import { withKeybotKeyboard } from "./keybot/keyboard.js";
 import { registerBotsCodeRoutes } from "./routes/botsCode.js";
 import { registerBotsCodeWorkRoutes } from "./routes/botsCodeWork.js";
 import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
@@ -2227,8 +2229,10 @@ app.post("/v1/speak", { config: AUTHED_RL }, async (req, reply) => {
   const over = tooLong(body.text) ?? tooLong(body.instructions);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
 
-  const quota = await enforceQuota(user);
+  // How fast to read: the speed they chose on Keybot's Read aloud page (normal when none).
+  const [quota, prefs] = await Promise.all([enforceQuota(user), getPrefs(user).catch(() => ({} as KeybotPrefs))]);
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+  const speed = readSpeed(prefs);
 
   // Which voice to speak in. A voice the client sent is honoured only if it is
   // one of the curated set; anything else (a typo, an unknown OpenAI voice, or
@@ -2250,6 +2254,7 @@ app.post("/v1/speak", { config: AUTHED_RL }, async (req, reply) => {
       voice,
       format: body.format,
       instructions: body.instructions,
+      ...(speed !== 1 ? { speed } : {}),
     });
     await recordUsage({
       user,
@@ -3439,16 +3444,20 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, asy
    * reach for the button, so the keyboard is given the number too.
    */
   let quota: { remaining: number; total: number; entitled: boolean } | undefined;
+  /** What they chose on Keybot's Keyboard page (look, haptics, key height…), laid over the config below. */
+  let keybot: KeybotPrefs["keyboard"];
   try {
     const user = await resolveUser(req.headers["authorization"]);
     if (user) {
       userId = user.id;
-      const [p, entitled, allowance] = await Promise.all([
+      const [p, entitled, allowance, prefs] = await Promise.all([
         getPersonality(user),
         isEntitled(user).catch(() => true),          // unknown → let them through
         allowanceFor(user).catch(() => null),
+        getPrefs(user).catch(() => ({} as KeybotPrefs)),
       ]);
       personality = p;
+      keybot = prefs.keyboard;
       if (allowance) {
         quota = { remaining: allowance.remaining, total: allowance.total, entitled: entitled || cfg.FREE_FOR_ALL };
       }
@@ -3474,11 +3483,13 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, asy
     "keyboard config",
   );
   const isIosStamp = !!stamp && stamp[1]!.toUpperCase() === "K";
-  const kbConfig = buildKeyboardConfig(personality, userId, {
+  // Keybot's keyboard choices go over the built config (nothing chosen → the same config, byte for byte), and
+  // under the control rules below, so the console still has the last word.
+  const kbConfig = withKeybotKeyboard(buildKeyboardConfig(personality, userId, {
     platform: kbPlatform,
     quota,
     ...(isIosStamp ? { kbBuild: Number(stamp![2]) } : {}),
-  });
+  }), keybot, personality);
   return reply.send(withControl(req, reply, kbConfig, {
     surface: "keyboard",
     platform: kbPlatform,

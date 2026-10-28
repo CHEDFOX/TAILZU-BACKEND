@@ -4,9 +4,12 @@
  *
  *   tones      per kind of app (Chats, Mail, Work chat): the preset chosen and its little things. The writer reads
  *              none of this: choosing one compiles it into personality.appStyles (tones.ts), which it does read.
- *   read       read-aloud speed, read new messages while driving, read my draft back
+ *   read       read-aloud speed, which /v1/speak reads at (readSpeed). "Read new messages aloud while driving" and
+ *              "Read my draft back before sending" were here too and are gone: nothing on the phone or the server
+ *              could act on them, so the pages no longer offer them.
  *   keyboard   the phone keyboard's look, haptics strength, key height, key sounds, hold space to speak, where the
- *              Keybot key sits. Haptics on/off is also written to personality.hapticsAll (what the keyboard reads).
+ *              Keybot key sits. Haptics on/off is also written to personality.hapticsAll; the rest reaches the
+ *              keyboard through GET /v1/keyboard/config (keyboard.ts lays it over the config).
  *   train      Teach your style: what they said for each of the ten lines, and the ones they skipped
  *
  * One JSON document per person in `keybot_prefs` (migration 0043), through the person's own token or the service key,
@@ -34,14 +37,13 @@ export const prefsPatchSchema = z.object({
   tones: z.object({ chats: tone.optional(), mail: tone.optional(), work: tone.optional() }).strict().optional(),
   read: z.object({
     speed: z.enum(["0.8", "1", "1.25", "1.5"]).optional(),
-    driving: z.boolean().optional(),
-    draftBack: z.boolean().optional(),
   }).strict().optional(),
   keyboard: z.object({
     look: z.enum(["light", "dark"]).optional(),
     haptics: z.enum(["off", "light", "strong"]).optional(),
     height: z.enum(["short", "normal", "tall"]).optional(),
-    sounds: z.boolean().optional(),
+    /** Not set: the phone decides (keyboard.ts). The page's On / Off arrive as "on" / "off". */
+    sounds: z.preprocess((v) => (v === "on" ? true : v === "off" ? false : v), z.boolean()).optional(),
     holdSpace: z.boolean().optional(),
     keyAt: z.enum(["left", "right", "top"]).optional(),
   }).strict().optional(),
@@ -55,6 +57,12 @@ export interface KeybotPrefs extends PrefsPatch {
   /** The kind of app whose tone was changed last: Tone per app opens on it. */
   toneFocus?: ToneGroup;
   updatedAt?: string;
+}
+
+/** The read-aloud speed as a rate, 1 = normal. */
+export function readSpeed(prefs: KeybotPrefs): number {
+  const n = Number(prefs.read?.speed ?? "1");
+  return Number.isFinite(n) && n > 0 ? n : 1;
 }
 
 /** A patch over what is there, one level into each part (a tone's group two). */

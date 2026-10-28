@@ -302,7 +302,7 @@ function phoneKeys(keyAt: "left" | "right" | "top" = "left", scale = 1): Node {
     box(kids, { flexGrow: grow_, flexBasis: 0, height: Math.round(h * scale), borderRadius: 7 * scale, backgroundColor: bg, alignItems: "center", justifyContent: "center" });
   const mic = icon("mic", { size: Math.round(18 * scale), color: C.paper });
   const top = keyAt === "top"
-    ? row([...Array.from({ length: 9 }, () => k(1, C.paper)), k(1, CLAY, [mic])], { gap: 5 * scale })
+    ? row([k(1, CLAY, [mic]), ...Array.from({ length: 9 }, () => k(1, C.paper))], { gap: 5 * scale })   // the keyboard's mic starts its top row
     : row(Array.from({ length: 10 }, () => k(1, C.paper)), { gap: 5 * scale });
   const bottom = keyAt === "right"
     ? row([k(1.4, C.track, [], 38), k(4, C.paper, [], 38), k(1, CLAY, [mic], 38), k(1.4, C.track, [], 38)], { gap: 5 * scale })
@@ -770,20 +770,16 @@ function voicesPhone(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
     nav: "keybot", title: "Read aloud", gap: 14, state: { voice: d.current, read: d.read },
     body: [
       phoneHead("Read aloud"),
-      text("Pick the voice Keybot uses to read messages and your drafts.", { size: 14, color: C.grey70, lineHeight: 19 }),
+      text("Pick the voice Keybot reads aloud in.", { size: 14, color: C.grey70, lineHeight: 19 }),
       col([sectionLabel("Voices"), ...d.voices.map((v) => voiceCard(v, false))], { gap: 8 }),
       col([sectionLabel("Speed"), segmented(SPEEDS, "read.speed", { onChange: readSave("speed") })], { gap: 8 }),
-      listCard([
-        switchRow("Read new messages aloud while driving", "read.driving", { sub: "Starts when the phone joins your car. Pinned people only.", onChange: readSave("driving") }),
-        switchRow("Read my draft back before sending", "read.draftBack", { onChange: readSave("draftBack") }),
-      ]),
       meta("Keybot reads Ask’s answers to you in this voice.", { size: 12 }),
     ],
   });
 }
 
 function voicesDesk(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
-  const head = deskHead("Read aloud", "Pick the voice Keybot uses to read messages and your drafts.");
+  const head = deskHead("Read aloud", "Pick the voice Keybot reads aloud in.");
   if (!d) return page(ctx, { nav: "keybot", title: "Read aloud", gap: 18, maxWidth: DESK_WIDTH, body: [head, couldntLoad("the voices")] });
   const pairs: Node[] = [];
   for (let i = 0; i < d.voices.length; i += 2) {
@@ -797,8 +793,6 @@ function voicesDesk(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
         col([sectionLabel("Voices"), ...pairs], { gap: 10 }),
         col([sectionLabel("Speed"), segmented(SPEEDS, "read.speed", { onChange: readSave("speed") })], { gap: 8 }),
       ], [
-        deskCard("On this computer", [toggleRow("Read my draft back before sending", "read.draftBack", readSave("draftBack"), "Hear it once before you press send")], { gap: 0 }),
-        deskCard("On your phone", [toggleRow("Read new messages aloud while driving", "read.driving", readSave("driving"), "Starts when the phone joins your car. Pinned people only.")], { gap: 0 }),
         box([text("Keybot reads Ask’s answers to you in this voice, here and on your phone.", { size: 13, color: C.grey70, lineHeight: 18 })],
           { backgroundColor: C.surface, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 }),
       ], { leftWeight: 1.7, rightWeight: 1, gap: 24 }),
@@ -1137,17 +1131,19 @@ function settingsPhone(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
     nav: "keybot", title: "Keyboard", gap: 14, state: { kb: d.keyboard },
     body: [
       phoneHead("Keyboard"),
-      col([sectionLabel("Look"), row([lookCard("light", "Light", "Bright keys"), lookCard("dark", "Dark", "Easy at night")], { gap: 10, alignItems: "stretch" })], { gap: 8 }),
+      col([sectionLabel("Look"), row([lookCard("light", "Light", "Bright keys"), lookCard("dark", "Dark", "Easy at night")], { gap: 10, alignItems: "stretch" }),
+        when({ eq: ["kb.look", "phone"] }, meta("Follows your phone until you pick one.", { size: 12 }))], { gap: 8 }),
       col([sectionLabel("Feel"), box([
         segRow("Haptics", [{ label: "Off", value: "off" }, { label: "Light", value: "light" }, { label: "Strong", value: "strong" }], "kb.haptics", kbSave("haptics")),
         divider(),
         segRow("Key height", [{ label: "Short", value: "short" }, { label: "Normal", value: "normal" }, { label: "Tall", value: "tall" }], "kb.height", kbSave("height"), 210),
         divider(),
-        switchRow("Key sounds", "kb.sounds", { onChange: kbSave("sounds") }),
+        segRow("Key sounds", [{ label: "On", value: "on" }, { label: "Off", value: "off" }], "kb.sounds", kbSave("sounds"), 140),
+        when({ eq: ["kb.sounds", "phone"] }, row([meta("Follows your phone until you pick one.", { size: 12 })], { paddingLeft: 16, paddingRight: 12, paddingBottom: 10 })),
       ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" })], { gap: 8 }),
       listCard([
         listRow({ label: "Languages", value: langs, onPress: open(SCREENS.language) }),
-        switchRow("Hold space to speak", "kb.holdSpace", { sub: "Same as holding the clay key", onChange: kbSave("holdSpace") }),
+        switchRow("Hold space to speak", "kb.holdSpace", { sub: "Starts listening, like the clay key. Space stops sliding the cursor.", onChange: kbSave("holdSpace") }),
       ], { title: "Typing" }),
       col([sectionLabel("Keybot key"), card([
         tight(segmented([{ label: "Left of space", value: "left" }, { label: "Right of space", value: "right" }, { label: "Top row", value: "top" }], "kb.keyAt", { onChange: kbSave("keyAt") })),

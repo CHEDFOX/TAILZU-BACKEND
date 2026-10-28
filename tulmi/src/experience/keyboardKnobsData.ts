@@ -463,6 +463,8 @@ export const KEYBOARD_KNOBS: {
       "kb.haptics.keys",
       "kb.height.byWidth",
       "kb.height.pt",
+      "kb.key.sound",
+      "kb.look.force",
       "kb.mic.deferUntilStop",
       "kb.mic.liveText",
       "kb.personality.activeId",
@@ -475,6 +477,7 @@ export const KEYBOARD_KNOBS: {
       "kb.quota.screenId",
       "kb.smartPeriod",
       "kb.smartPunctuation",
+      "kb.space.holdToSpeak",
       "kb.suggestion.chipBg",
       "kb.suggestion.chipBorder",
       "kb.suggestion.chipFg",
@@ -958,9 +961,12 @@ export const KEYBOARD_KNOBS: {
     "dynamic": [
       "kb.accents",
       "kb.haptics.keys",
+      "kb.key.sound",
+      "kb.look.force",
       "kb.personality.pinned",
       "kb.personality.tones",
       "kb.quota.$k",
+      "kb.space.holdToSpeak",
       "kb.tones",
       "kb.touch.bigrams"
     ]
