@@ -42,6 +42,7 @@ import type {
   TypeRole,
 } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
+import { botsFonts, botsNav, BOTS_WARM_SCREEN_IDS } from "./bots/index.js";
 import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, Note, NoteSummary, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
@@ -2220,14 +2221,22 @@ export function buildBootstrap(
     /** Connected apps are switched on (CONNECTORS). With onboardV2 it decides
      *  whether the flow has its two apps steps, and so how long its bar is. */
     connectorsOn?: boolean;
+    /**
+     * THE BOTS APP (experience/bots, docs/bots-app.md): BOTS_APP is on and the
+     * build draws its kit. Its tabs (Bots, Activity, You) and its Home instead
+     * of today's; a window keeps its desk pages (Today, Notes, its settings)
+     * behind the sidebar. Absent, the bootstrap is exactly today's.
+     */
+    botsApp?: boolean;
   } = {},
 ): BootstrapResponse {
+  const botsApp = opts.botsApp === true;
   const desk = opts.desk === true && opts.formFactor === "desktop";
   const onboardV2 = opts.onboardV2 === true;
   // The one flow either way: which build draws it is only the screen's business.
   const newFlow = onboardV2 || opts.onboardStore === true;
   const setup = setupActivity(opts);
-  const nav = desk ? deskNav(opts.deskNotes === true, opts.deskTasks === true) : navigationFor(!!opts.landedBefore);
+  const nav = botsApp ? botsNav() : desk ? deskNav(opts.deskNotes === true, opts.deskTasks === true) : navigationFor(!!opts.landedBefore);
   return withAppKnobs({
     schemaVersion: SDUI_SCHEMA_VERSION,
     // Opaque cache token — clients invalidate any cached screens when this
@@ -2235,7 +2244,7 @@ export function buildBootstrap(
     cacheVersion: CACHE_VERSION,
     // Typefaces to register at boot. Empty by default; the app falls back to
     // the platform font and nothing waits on the network.
-    ...(Object.keys(FONTS).length ? { fonts: FONTS } : {}),
+    ...(Object.keys(FONTS).length || botsApp ? { fonts: botsApp ? { ...FONTS, ...botsFonts() } : FONTS } : {}),
     theme: THEME,
     navigation: nav,
     // The server owns onboarding AND the intro. Intro plays whenever all 4
@@ -2261,7 +2270,7 @@ export function buildBootstrap(
     //
     // A window that is not onboarded yet starts the new flow first, with the
     // desk behind it; onboarded, it opens on Today as ever.
-    initialScreenId: desk && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
+    initialScreenId: desk && !botsApp && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
       !!opts.onboarded,
       // Uploaded media OR the built-in mark. The intro used to require a file,
       // so out of the box it silently never played — which reads as a broken
@@ -2323,6 +2332,8 @@ export function buildBootstrap(
         // leads — the plan page, not the phone's full-screen paywall.
         // Setup's Live Activity (iOS): the step they left off at, until done.
         ...(setup ? { "liveActivity.setup": setup } : {}),
+        // The Bots app: its pages draw their own tab bar and sidebar.
+        ...(botsApp ? { "bots.app": true } : {}),
         ...(desk ? {
           "desktop.desk": true,
           "desktop.desk.settingsScreenId": "desk_settings",
@@ -2753,7 +2764,7 @@ export function buildBootstrap(
       return card ? { launchCard: card } : {};
     })(),
     cacheTtlSeconds: 300,
-    warmScreenIds: WARM_SCREEN_IDS,
+    warmScreenIds: botsApp ? BOTS_WARM_SCREEN_IDS : WARM_SCREEN_IDS,
   });
 }
 

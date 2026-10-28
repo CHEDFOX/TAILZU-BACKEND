@@ -605,8 +605,12 @@ export interface ScreenResponse {
    * "desk" — a page drawn for the desktop window's own shell (experience/
    * desk.ts), on its paper-and-ink ground. Absent → a phone screen, which a
    * desk window shows in its own dark room.
+   *
+   * "bots" — a page of the Bots app (experience/bots), drawn edge to edge
+   * from the kit. The window treats a border with a width as a solid one on
+   * it, as the phones do; a phone draws it as any other screen.
    */
-  look?: "desk";
+  look?: "desk" | "bots";
 }
 
 // ===========================================================================
@@ -765,6 +769,63 @@ export const CORE_COMPONENTS = [
   "ForEach",          // props.items (state path), children=[template]
   "Portal",           // renders to a named layer (e.g. above toast)
 ] as const;
+
+// ---------------------------------------------------------------------------
+// 3b. The Bots app's kit (tulmi/src/experience/bots, docs/bots-app.md)
+// ---------------------------------------------------------------------------
+//
+// The Bots app is drawn from the core nodes above (Stack, Text, Image, Grid,
+// Screen…) and FOUR EXTENSIONS of existing ones, which a build promises by
+// declaring the capability below in `components`. The server boots the Bots
+// app only for a build that declares it; every other build keeps today's app.
+//
+//   SVG.shapes          several circles and paths in one glyph, each with its
+//                       own fill/stroke/dash, and the kit's three motions:
+//                       "breathe" (a working bot, loops), "pop" (lands once,
+//                       scale 0→1 with overshoot), "draw" (a ring draws to its
+//                       length once). All three stop under Reduce Motion; the
+//                       state still reads, because shape and colour carry it.
+//                       The living tab icons, the status marks and every line
+//                       icon are SVGs with shapes.
+//   SafeArea.edges      pads the listed edges by the device's safe-area insets
+//                       (`inset: "add"` adds them to the node's own padding,
+//                       "max" takes the larger); `barStyle` sets the status
+//                       bar's content colour while the node is up. A window
+//                       has no insets and ignores both.
+//   TextField.onSubmit  the return key (phone) or Enter (window) runs the
+//                       node's `on.onSubmit` with the field's text.
+//   Text bind.content   a Text bound to state shows the state's value (the
+//                       window drew bound text only inside the onboarding).
+//
+// And `navigate` resolves "$state.x" in its params on the window too.
+
+/** Declared in capabilities.components by a build that draws the Bots app's kit. */
+export const BOTS_KIT_CAPABILITY = "BotsKit";
+
+/** One shape of an `SVG` node's `shapes` (Bots kit). A circle or a path. */
+export interface SvgShape {
+  /** cx, cy, r. */
+  circle?: [number, number, number];
+  /** A path, in the node's viewBox. */
+  d?: string;
+  /** Default "none". */
+  fill?: string;
+  stroke?: string;
+  strokeWidth?: number;
+  /** stroke-dasharray, e.g. "20.9 56.55" (a ring filled to 37%) or "1.7 1.7" (a dashed ring). */
+  dash?: string;
+  linecap?: "round" | "butt" | "square";
+  linejoin?: "round" | "miter" | "bevel";
+  opacity?: number;
+  /** Degrees, about the circle's centre (or `origin`): a ring that starts at twelve o'clock is rotate -90. */
+  rotate?: number;
+  /** The point a path rotates and scales about. Defaults to the viewBox's centre. */
+  origin?: [number, number];
+  /** breathe: loops (1.8 s, opacity 1→.5, scale 1→.78). pop: once, scale 0→1. draw: once, the dash grows to its length. */
+  motion?: "breathe" | "pop" | "draw";
+  /** Before a pop or a draw starts (the Bots icon's dots land 60 ms apart). */
+  delayMs?: number;
+}
 
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [
