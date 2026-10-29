@@ -22,7 +22,9 @@ import { z } from "zod";
 
 // "push" is not sent to a client: it is the smart-notification engine's own
 // config (src/push/defaults.ts), edited per person before each plan.
-export const SURFACES = ["bootstrap", "screen", "keyboard", "site", "push"] as const;
+// "widgets" is the config GET /v1/widgets/now and POST /v1/widgets/act read
+// (src/widgets/defaults.ts), edited per person before each answer.
+export const SURFACES = ["bootstrap", "screen", "keyboard", "site", "push", "widgets"] as const;
 export type Surface = (typeof SURFACES)[number];
 
 /** What is known about the request a payload is being built for. */

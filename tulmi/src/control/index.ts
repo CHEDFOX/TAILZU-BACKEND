@@ -22,6 +22,7 @@ import { applyRules, RuleSchema, SURFACES, type Applied, type ControlCtx, type R
 import { ControlStore } from "./store.js";
 import { CONSOLE_HTML } from "./console.js";
 import { PUSH_DEFAULTS } from "../push/defaults.js";
+import { WIDGETS_DEFAULTS } from "../widgets/defaults.js";
 import { getConfig } from "../config.js";
 import { sameSecret } from "../auth/secret.js";
 
@@ -190,9 +191,9 @@ export function registerControlRoutes(app: FastifyInstance, opts: {
     const surface = b.surface;
     if (!surface || !SURFACES.includes(surface)) return reply.code(400).send({ code: "invalid", message: "surface?" });
     const ctx = b.ctx ?? {};
-    // The push engine's config has no route: build it here, as the engine does.
-    if (surface === "push") {
-      const base = structuredClone(PUSH_DEFAULTS);
+    // The push engine's config has no route, nor the widgets' (GET /v1/widgets/now needs a person): build each here, as they do.
+    if (surface === "push" || surface === "widgets") {
+      const base = structuredClone(surface === "push" ? PUSH_DEFAULTS : WIDGETS_DEFAULTS);
       let rules: readonly Rule[] = store!.rules();
       let draftError: string | undefined;
       if (b.draft !== undefined) {
@@ -201,7 +202,7 @@ export function registerControlRoutes(app: FastifyInstance, opts: {
           rules = [...rules.filter((r) => r.id !== d.id), d];
         } catch (e) { draftError = (e as Error).message; }
       }
-      const { payload, applied } = applyRules(structuredClone(base), rules, { ...ctx, surface: "push", signedIn: true });
+      const { payload, applied } = applyRules(structuredClone(base), rules, { ...ctx, surface, signedIn: true });
       return reply.send({ status: 200, base, result: payload, applied, ...(draftError ? { draftError } : {}) });
     }
     const platform = ctx.platform ?? (surface === "site" ? "web" : "ios");

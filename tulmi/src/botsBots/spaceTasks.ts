@@ -50,6 +50,8 @@ export interface TaskView {
   /** Everyone it's for said done. */
   done: boolean;
   canRemove: boolean;
+  /** When it was given (the widgets' "Mom: Call Grandma · 2h"). */
+  givenAt?: number;
 }
 export type TaskNotify = (userId: string, msg: { kind: "space_task" | "space_plan"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<void>;
 
@@ -119,6 +121,7 @@ export class SpaceTasks {
       mine: mine ? { status: mine.status, note: mine.note } : null,
       done: people.length > 0 && people.every((p) => p.status === "done"),
       canRemove: r.set_by === userId || admin,
+      ...(Number.isFinite(Number(r.created_ms)) ? { givenAt: Number(r.created_ms) } : {}),
     };
   }
 

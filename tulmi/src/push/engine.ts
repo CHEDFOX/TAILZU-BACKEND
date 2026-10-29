@@ -19,6 +19,7 @@ import type { PushMessage, PushSender, Ticket } from "./expo.js";
 import { knobsOf, plan, timingKnobs, type Decision, type Facts } from "./plan.js";
 import { isQuiet } from "./timing.js";
 import { tokenHash, type Candidate, type PushStore, type TicketRecord } from "./store.js";
+import { pushItemOf } from "../widgets/items.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -290,6 +291,12 @@ export class PushEngine {
     const id = await this.store.claim({ userId: c.userId, kind: d.kind, periodKey: d.periodKey, plannedAt: d.sendAt });
     if (!id) return null;
     const k = knobsOf(payload);
+    // THE BUTTONS. A kind the server gives a category (push.<kind>.category: the phone registered its buttons from the bootstrap's
+    // push.categories) carries it, and the item those buttons answer (data.item, src/widgets/items.ts) goes with the data. No
+    // category: no buttons, as before. A category id is letters, digits and _ only (iOS and Android both read it).
+    const category = k.flag(`push.${d.kind}.category`, "");
+    const categoryId = /^[A-Za-z0-9_]{1,40}$/.test(category) ? category : "";
+    const item = pushItemOf(d.kind, d.data);
     const messages: PushMessage[] = c.tokens.map((t) => ({
       to: t.token,
       title: d.title,
@@ -303,7 +310,8 @@ export class PushEngine {
       priority: "default",
       // The app opens data.screenId and hands the rest to the screen as its
       // params, so pushId comes back to us with the tap (see markOpened).
-      data: { ...d.data, screenId: d.screenId, pushId: id, kind: d.kind },
+      data: { ...d.data, ...(item ? { item } : {}), screenId: d.screenId, pushId: id, kind: d.kind },
+      ...(categoryId ? { categoryId } : {}),
     }));
     let tickets: Ticket[];
     try {

@@ -181,6 +181,26 @@ export class Threads {
     return { threads: out, unread: out.filter((t) => !t.muted).reduce((n, t) => n + t.unread, 0) };
   }
 
+  /**
+   * The newest message from someone else in each of the person's newest chats, newest first (the "From your people" widget,
+   * src/widgets). Reads only: nothing is marked read. Never their own messages, never someone with a block between them, a muted
+   * chat only when asked for. `chats`: how many chats are looked into.
+   */
+  async recentFrom(userId: string, o: { chats?: number; includeMuted?: boolean } = {}): Promise<Array<{
+    threadId: string; messageId: string; chat: string; chatKind: ThreadRow["kind"]; from: string; text: string; at: number; unread: boolean;
+  }>> {
+    const { threads } = await this.list(userId);
+    const hidden = await this.blocks.hiddenFor(userId);
+    const out: Array<{ threadId: string; messageId: string; chat: string; chatKind: ThreadRow["kind"]; from: string; text: string; at: number; unread: boolean }> = [];
+    for (const t of threads.filter((x) => x.last && (o.includeMuted || !x.muted)).slice(0, Math.max(1, Math.min(o.chats ?? 8, 20)))) {
+      const newest = await this.messages.before({ thread_id: t.id }, "at_ms", null, 10);
+      const m = newest.find((x) => x.sender_id && x.sender_id !== userId && !hidden.has(x.sender_id));
+      if (!m) continue;
+      out.push({ threadId: t.id, messageId: m.id, chat: t.name, chatKind: t.kind, from: m.sender_name, text: lineOf(m), at: Number(m.at_ms), unread: t.unread > 0 });
+    }
+    return out.sort((a, b) => b.at - a.at);
+  }
+
   private async viewOf(userId: string, threadId: string): Promise<ThreadView> {
     const { t, me, members: all } = await this.open(userId, threadId);
     const hidden = await this.blocks.hiddenFor(userId);
