@@ -3251,6 +3251,8 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     os: typeof body.capabilities?.device?.os === "string" ? body.capabilities.device.os : undefined,
     keyboardReady: body.capabilities?.device?.keyboardReady === true,
     locale: typeof body.capabilities?.device?.locale === "string" ? body.capabilities.device.locale.slice(0, 35) : undefined,
+    // The keyboard's handoff screens are drawn in the Bots app's look for it.
+    bots: botsOn,
     can: new Set(
       Array.isArray(body.capabilities?.components)
         ? body.capabilities!.components!.map(String)

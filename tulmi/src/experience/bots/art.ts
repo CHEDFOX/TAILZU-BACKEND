@@ -55,6 +55,14 @@ export function blipLoopFor(pose: BlipPose, height: number): BlipLoop {
   }
 }
 
+/**
+ * The app icon's bot, small, hanging from a piece of its clay bar, on nothing: the phone's launch splash, the same file
+ * (cut by the app repo's tools/media/brand/x0-icon/curious-hang/launch.mjs). 544 px square, drawn at 136 pt.
+ */
+export function hangUrl(): string {
+  return `${origin()}/blip/bots/x0-hang.png?v=${ART_V}`;
+}
+
 /** Blip's whole body in a pose, as a still. */
 export function blipUrl(pose: BlipPose): string {
   return `${origin()}/blip/bots/${pose}.png?v=${ART_V}`;
