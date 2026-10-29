@@ -128,6 +128,14 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_message.enabled": true,
     "push.space_message.screenId": "bots.chats",
 
+    // THE BUTTONS ON A NOTIFICATION (docs/widgets.md): the category each kind carries, one the phone registered from the bootstrap's
+    // push.categories (its buttons, their words, icons, text field, foreground or not, and what each calls). "" or absent: none.
+    // A new category is the bootstrap's; which kind uses it is here. Every kind may have one: push.<kind>.category.
+    "push.space_task.category": "x0_task",
+    "push.space_plan.category": "x0_task",
+    "push.space_message.category": "x0_reply",
+    "push.approval.category": "x0_yesno",
+
     // A reminder the person set on their own calendar or a to-do (src/calendar): the Plan, on that day (data.day).
     "push.plan_reminder.enabled": true,
     "push.plan_reminder.screenId": "bots.plan",

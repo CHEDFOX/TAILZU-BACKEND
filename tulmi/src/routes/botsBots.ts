@@ -46,6 +46,7 @@ import type { BotEvent } from "../bots/types.js";
 import { registerSpacesRoutes } from "./botsSpaces.js";
 import { registerBotsTripRoutes } from "./botsTrips.js";
 import { registerCalendarRoutes } from "./botsCalendar.js";
+import { registerWidgetRoutes } from "./widgets.js";
 
 export const AREA = "/v1/botsapp/bots";
 
@@ -82,6 +83,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   const guard = () => deps.bots?.guard ?? defaultGuard();
   // Spaces: members, invites, sharing, payment requests, messaging. A bot shared into a space reads its shared things when a member asks it.
   const spacesArea = registerSpacesRoutes(app, deps, { spaces: parts.spaces, trips: parts.trips });
+  // The widgets, a notification's buttons and its reply (routes/widgets.ts): they read and answer through Spaces' parts.
+  registerWidgetRoutes(app, deps, spacesArea);
   registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; the Plan bot's home (routes/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/botsCalendar.ts)
 

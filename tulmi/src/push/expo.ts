@@ -19,6 +19,8 @@ export interface PushMessage {
   channelId?: string;
   /** Seconds a push may wait for an offline phone before it is dropped. */
   ttl?: number;
+  /** The notification category the phone registered (its buttons: Reply, Done, Yes / No); push.<kind>.category. */
+  categoryId?: string;
   priority?: "default" | "normal" | "high";
 }
 

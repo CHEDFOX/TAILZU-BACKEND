@@ -17,6 +17,8 @@ the window (`TAILZU-DESKTOP/sdui.js`) draw them. Design source: `bots-design/` (
 * [11. The calendar and to-dos](#11-the-calendar-and-to-dos)
 * [12. Usage, not money](#12-usage-not-money)
 * [13. Looks and moments](#13-looks-and-moments)
+* [14. Pull-a-bot](#14-pull-a-bot)
+* [15. Quick access from outside the app](#15-quick-access-from-outside-the-app)
 
 ## 1. The switch
 
@@ -519,3 +521,20 @@ their recipe names (`sound` tracks: sneeze, fart.small, party, hic, clap). Quiet
 * **Knobs**: `pullBot.sounds.enabled` (true), `pullBot.sounds.volume` (0.7), `pullBot.sounds.rareChance` (0.05),
   `pullBot.sounds.noRepeat` (true), `bots.sounds.moments` (true), `bots.sounds.momentVolume` (0.5), `bots.sounds.players` (8),
   `bots.sounds.sessionIdleMs` (4000).
+
+
+## 15. Quick access from outside the app
+
+Two widgets ("From your people", "Needs you" with buttons), a notification's buttons (Reply, Done, Yes / No) and the app icon's
+long press (Ask, Dictate, New note, Spaces). All of it is decided on the server, and the apps keep today's values as fallbacks.
+**[widgets.md](widgets.md)** has the whole of it.
+
+* GET /v1/widgets/now builds both widgets' rows from the records Home's Needs you card and Spaces read (`src/widgets/now.ts`,
+  `routes/widgets.ts`).
+* POST /v1/widgets/act answers from outside the app, through the same services and checks, once per key.
+* A widget answers with its own narrow token (`src/widgets/token.ts`): it can only answer the person's needs-you and tick their
+  tasks, it runs out in a day, and it is revoked at sign-out.
+* Each push kind's category is `push.<kind>.category`.
+* The config is the control plane's `widgets` surface (`src/widgets/defaults.ts`).
+* Migration 0058 adds `widget_tokens` and `quick_actions`.
+

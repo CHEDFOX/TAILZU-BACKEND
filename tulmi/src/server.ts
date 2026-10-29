@@ -1155,7 +1155,7 @@ const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, l
 // apps (same permission tiers), the files, the artifact core, the Code bot's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
 const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
-const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts };
+const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);

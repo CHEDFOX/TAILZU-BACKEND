@@ -365,6 +365,8 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "pullBot.freshBottom": "{n} new at the bottom",
   "pullBot.freshTop": "{n} new at the top",
   "pullBot.upToDate": "You're up to date",
+  "push.actions.failedBody": "Open X0 Bot to finish it.",
+  "push.actions.failedTitle": "Couldn't do that from here",
   "push.android.channelName": "General",
   "share.adding": "Adding it to X0 Bot…",
   "share.ext.cantTake": "X0 Bot can't take this one.",
@@ -600,6 +602,67 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "app.offline.retryMs": 8000,
   "app.offline.titleGap": 10,
   "app.offline.titleSize": 22,
+  "app.quickActions.android": [
+    {
+      "id": "ask",
+      "title": "Ask",
+      "subtitle": "Ask any bot",
+      "icon": "tailzu_qa_ask",
+      "url": "tulmi://screen/bots.ask"
+    },
+    {
+      "id": "dictate",
+      "title": "Dictate",
+      "subtitle": "Talk to Keybot",
+      "icon": "tailzu_qa_mic",
+      "url": "tulmi://screen/bots.keybot"
+    },
+    {
+      "id": "note",
+      "title": "New note",
+      "icon": "tailzu_qa_note",
+      "url": "tulmi://screen/bots.plan.item?kind=task"
+    },
+    {
+      "id": "spaces",
+      "title": "Spaces",
+      "subtitle": "Family and friends",
+      "icon": "tailzu_qa_spaces",
+      "url": "tulmi://screen/bots.spaces"
+    }
+  ],
+  "app.quickActions.enabled": true,
+  "app.quickActions.ios": [
+    {
+      "id": "ask",
+      "title": "Ask",
+      "subtitle": "Ask any bot",
+      "icon": "sparkles",
+      "url": "tulmi://screen/bots.ask"
+    },
+    {
+      "id": "dictate",
+      "title": "Dictate",
+      "subtitle": "Turn the mic on",
+      "icon": "waveform",
+      "url": "tulmi://screen/bots.keybot",
+      "arm": "screen/flow_arm"
+    },
+    {
+      "id": "note",
+      "title": "New note",
+      "icon": "square.and.pencil",
+      "url": "tulmi://screen/bots.plan.item?kind=task"
+    },
+    {
+      "id": "spaces",
+      "title": "Spaces",
+      "subtitle": "Family and friends",
+      "icon": "person.2.fill",
+      "url": "tulmi://screen/bots.spaces"
+    }
+  ],
+  "app.quickActions.max": 4,
   "app.splash.bg": "#0B0A0D",
   "app.splash.firstRunMediaWaitMs": 4500,
   "app.splash.maxHoldMs": 7000,
@@ -1877,10 +1940,72 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "pullBot.threshold": 60,
   "pullBot.throwBoost": 2.6,
   "pullBot.throwSpeed": 1750,
+  "push.actions.backgroundTask": true,
+  "push.actions.enabled": true,
+  "push.actions.keepHours": 24,
+  "push.actions.maxTries": 5,
+  "push.actions.path": "/v1/widgets/act",
   "push.android.channelId": "default",
   "push.android.channels": [],
   "push.ask": {},
   "push.askDelayMs": 1500,
+  "push.categories": [
+    {
+      "id": "x0_reply",
+      "actions": [
+        {
+          "id": "reply",
+          "title": "Reply",
+          "icon": "arrowshape.turn.up.left",
+          "input": {
+            "placeholder": "Reply…",
+            "send": "Send"
+          },
+          "foreground": false,
+          "destructive": false,
+          "auth": false,
+          "act": "reply"
+        }
+      ]
+    },
+    {
+      "id": "x0_task",
+      "actions": [
+        {
+          "id": "done",
+          "title": "Done",
+          "icon": "checkmark",
+          "foreground": false,
+          "destructive": false,
+          "auth": false,
+          "act": "done"
+        }
+      ]
+    },
+    {
+      "id": "x0_yesno",
+      "actions": [
+        {
+          "id": "yes",
+          "title": "Yes",
+          "icon": "checkmark",
+          "foreground": false,
+          "destructive": false,
+          "auth": true,
+          "act": "yes"
+        },
+        {
+          "id": "no",
+          "title": "No",
+          "icon": "xmark",
+          "foreground": false,
+          "destructive": false,
+          "auth": false,
+          "act": "no"
+        }
+      ]
+    }
+  ],
   "push.foreground.playSound": true,
   "push.foreground.setBadge": true,
   "push.foreground.showAlert": true,
@@ -3021,7 +3146,11 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "widget.month.refreshSec": 3600,
   "widget.month.show.progress": true,
   "widget.month.streak": false,
-  "widget.month.url": "tulmi://screen/stats"
+  "widget.month.url": "tulmi://screen/stats",
+  "widgets.now.enabled": true,
+  "widgets.now.fetchSec": 60,
+  "widgets.now.path": "/v1/widgets/now",
+  "widgets.token.path": "/v1/widgets/token"
 };
 
 /** Knobs whose app-side default comes from other inputs; sent only if set. */
