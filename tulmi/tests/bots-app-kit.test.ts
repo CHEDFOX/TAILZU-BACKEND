@@ -127,7 +127,7 @@ describe("the frames", () => {
   const live = sampleLive();
   it("a phone page: safe-area aware, dark status bar, a scrolling body, the tab bar last", () => {
     const s = phonePage(ctxFor("bots.x", "phone", live), { tab: "you", body: [text("Hi")] });
-    expect(s).toMatchObject({ hideChrome: true, look: "bots", screenId: "bots.x", cacheTtlSeconds: 0 });
+    expect(s).toMatchObject({ hideChrome: true, look: "bots", screenId: "bots.x", cacheTtlSeconds: 1 });
     expect(s.root).toMatchObject({ type: "SafeArea", props: { edges: ["top"], barStyle: "dark-content" } });
     const kids = s.root!.children!;
     expect(kids[0]!.type).toBe("Screen");
