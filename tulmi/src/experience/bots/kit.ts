@@ -20,6 +20,7 @@ import type { ActionRef, ActionSpec, BotBuddyProps, BotCardProps, BotTileKind, B
 import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
+import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -933,6 +934,28 @@ export interface PageOpts {
   pinned?: Node[];
   /** Live topics this screen listens to (src/live/bus.ts): when one changes, the open screen reloads itself. */
   live?: string[];
+  /**
+   * Pull-a-bot on the page's scroll (shared/types/sdui.ts 3g): `top`, `bottom` or both; the list's `items` (ids: after a
+   * refresh, the ones not there before are new); where new ones land (`newAt`, top by default); which bot (`avatar`).
+   * Sent only to a phone whose build pulls a bot (canPullBot); the window and older builds get the page as before.
+   */
+  pullBot?: Omit<PullBotSpec, "font">;
+}
+
+/** A phone whose build pulls a bot in its pull to refresh (PULL_BOT_CAPABILITY). */
+export const canPullBot = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(PULL_BOT_CAPABILITY);
+
+/** The most item ids a screen sends for pull-a-bot to compare (a long feed: its newest). */
+export const PULL_BOT_MAX_ITEMS = 300;
+
+/** A page's pullBot, as the phone gets it: the edges on, its ids once each, its words in the page's own face. Nothing on: none. */
+function pullBotOf(o: NonNullable<PageOpts["pullBot"]>): PullBotSpec | undefined {
+  if (o.top !== true && o.bottom !== true) return undefined;
+  const items = o.items ? [...new Set(o.items.map(String))].slice(0, PULL_BOT_MAX_ITEMS) : undefined;
+  return {
+    ...(o.top ? { top: true } : {}), ...(o.bottom ? { bottom: true } : {}), ...(items ? { items } : {}),
+    ...(o.newAt ? { newAt: o.newAt } : {}), ...(o.avatar !== undefined ? { avatar: o.avatar } : {}), font: FACE.semibold,
+  };
 }
 
 /** A page for whichever client is asking: phonePage or deskPage. Most screens need only this. */
@@ -941,11 +964,13 @@ export function page(ctx: BotsCtx, o: PageOpts): ScreenResponse {
 }
 
 function response(ctx: BotsCtx, o: PageOpts, root: Node): ScreenResponse {
+  const pullBot = o.pullBot && canPullBot(ctx) ? pullBotOf(o.pullBot) : undefined;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION, screenId: ctx.screenId, ...(o.title ? { title: o.title } : {}),
     hideChrome: true, look: "bots", theme: BOTS_THEME, cacheTtlSeconds: 0,
     state: { ask: "", asking: false, ...(o.state ?? {}) }, ...(o.actions ? { actions: o.actions } : {}), root,
     ...(o.live?.length ? { liveTopics: o.live } : {}),
+    ...(pullBot ? { pullBot } : {}),
   };
 }
 

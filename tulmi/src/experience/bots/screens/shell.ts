@@ -34,6 +34,7 @@ import { offlineKept, outboxCard, outboxSection } from "./outbox.js";
 import { hasNotes, notesStrip, notesStripHeight, notesTileSpec, NOTES_STATS_PATH } from "./notes.js";
 import type { NotesStats } from "../../../notes/stats.js";
 import { hasOutbox } from "../kit.js";
+import type { PageOpts } from "../kit.js";
 import { PUSH_ASK_PATH, PUSH_STATE, pushAskCard, pushAskDue, withPushCheck } from "./pushAsk.js";
 import { clockOf, dayLabel, longDate, type FeedRow } from "../../../shell/feed.js";
 import { addAction, itemAction } from "./planItem.js";
@@ -234,12 +235,17 @@ function homeHead(ctx: BotsCtx): { head: Node; pinned: Node[] } {
   return { head, pinned: alive ? [bar] : [] };
 }
 
+/** Pull-a-bot on Home, at both ends: what is new there is a decision, something set working, or a bot. */
+function homePull(ctx: BotsCtx): PageOpts["pullBot"] {
+  return { top: true, bottom: true, items: [...ctx.live.needs.map((n) => n.id), ...ctx.live.working.map((w) => w.id), ...ctx.live.bots.map((b) => `bot:${b.slug}`)] };
+}
+
 function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const first = ctx.live.needs[0];
   const { head, pinned } = homeHead(ctx);
   const n = homeNotices(ctx, arrival, more);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: n.state, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
+    tab: "bots", title: "Your bots", state: n.state, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}), pullBot: homePull(ctx),
     body: [
       n.head(head),
       ...n.leaving,
@@ -353,7 +359,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   }
 
   return page(ctx, {
-    tab: "bots", title: "Your bots", gap: 16, state: n.state, pinned,
+    tab: "bots", title: "Your bots", gap: 16, state: n.state, pinned, pullBot: homePull(ctx),
     body: [
       head,
       ...n.leaving,
@@ -444,6 +450,9 @@ function activityPhone(ctx: BotsCtx, data: ActivityData | undefined) {
   return page(ctx, {
     tab: "activity", title: "Activity", gap: 16,
     state: { show: "all" },
+    // Pull-a-bot at both ends: what is new is a row of the feed or a decision; the newest are at the top. A feed that
+    // could not be read names no items, so the one read after it is not all "new".
+    pullBot: { top: true, bottom: true, ...(data ? { items: [...live.needs.map((x) => x.id), ...rows.map((r) => r.id)] } : {}) },
     body: [
       row([title("Activity"), grow(), roundButton("check", open(SCREENS.tasks), { size: 44, light: true, label: "Tasks" })], { gap: 10 }),
       segmented([

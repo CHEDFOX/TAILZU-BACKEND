@@ -240,6 +240,8 @@ function spacesPhone(ctx: BotsCtx, d: SpacesData) {
   const list = d.spaces ?? [];
   return page(ctx, {
     back: true, title: "Spaces", nav: "you", state: { spaceName: "", code: joinParam(ctx) }, live: ["spaces", "threads", ...list.map((s) => `space:${s.id}`)],
+    // Pull-a-bot at both ends: what is new is a space or something given to you (none named when the spaces couldn't be read).
+    pullBot: { top: true, bottom: true, ...(d.spaces ? { items: [...list.map((s) => `space:${s.id}`), ...(d.given ?? []).map((t) => `task:${t.id}`)] } : {}) },
     body: [
       col([title("Spaces"), meta("Family and friends: share bots, lists and plans, give tasks, ask for payments, and chat.", { size: 13 })], { gap: 4 }),
       ...joinCard(ctx, d),
@@ -419,7 +421,12 @@ function spaceLive(o: OneSpace | undefined, list: Space[]): string[] {
 }
 
 function spaceOnePhone(ctx: BotsCtx, o: OneSpace, d: SpacesData) {
-  return page(ctx, { back: true, title: o.space.name, nav: "you", state: { listName: "", spaceRename: "" }, live: spaceLive(o, []), body: spaceDetail(ctx, o, d.bots), gap: 24 });
+  // Pull-a-bot at both ends: what is new is something shared, a payment asked for, a task, or a line of the space's activity.
+  const items = [
+    ...o.items.map((x) => `item:${x.id}`), ...o.payments.map((p) => `pay:${p.id}`), ...o.tasks.map((t) => `task:${t.id}`),
+    ...(o.space.activity ?? []).map((a) => `act:${a.id}`),
+  ];
+  return page(ctx, { back: true, title: o.space.name, nav: "you", state: { listName: "", spaceRename: "" }, live: spaceLive(o, []), body: spaceDetail(ctx, o, d.bots), gap: 24, pullBot: { top: true, bottom: true, items } });
 }
 
 function spacesDesk(ctx: BotsCtx, d: SpacesData) {
