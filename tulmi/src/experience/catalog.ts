@@ -2276,8 +2276,10 @@ export function buildBootstrap(
     // A window that is not onboarded yet starts the new flow first, with the
     // desk behind it; onboarded, it opens on Today as ever.
     // The Bots app's own first run (Languages, Name, Keybot, First words, Plans) for someone not onboarded yet.
-    initialScreenId: botsApp && !opts.onboarded && opts.isReviewer !== true ? BOTS_FIRST_RUN_SCREEN
-      : desk && !botsApp && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
+    // The Bots app never opens on the old app's screens (the intro film, the microphone and keyboard steps, onboarding v2):
+    // it has its own first run, and Keybot's own screen sets up the microphone and the keyboard. Once through, Home.
+    initialScreenId: botsApp ? (!opts.onboarded && opts.isReviewer !== true ? BOTS_FIRST_RUN_SCREEN : landingScreenId(nav, "home"))
+      : desk && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
       !!opts.onboarded,
       // Uploaded media OR the built-in mark. The intro used to require a file,
       // so out of the box it silently never played — which reads as a broken
