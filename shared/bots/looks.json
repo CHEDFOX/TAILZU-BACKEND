@@ -102,7 +102,7 @@
       { "d": "M -0.13 -0.13 L 0.11 0.09", "stroke": "$paint", "width": 0.022 }
     ] },
     "crown": { "draw": [
-      { "d": "M -0.085 0.01 L -0.1 -0.1 L -0.045 -0.045 L 0 -0.12 L 0.045 -0.045 L 0.1 -0.1 L 0.085 0.01 Z", "fill": "$paint" }
+      { "d": "M -0.085 0.01 L -0.1 -0.1 L -0.045 -0.045 L 0 -0.12 L 0.045 -0.045 L 0.1 -0.1 L 0.085 0.01 Z", "fill": "$paint", "stroke": "ink", "width": 0.014 }
     ] }
   },
   "avatars": {
@@ -161,7 +161,7 @@
     },
     "sage": {
       "extends": "blip", "label": "Sage",
-      "wear": [ { "part": "glasses", "on": "face", "paint": "ink" }, { "part": "beanie", "on": "crown", "y": 0.05, "paint": "#5F6B6E" } ]
+      "wear": [ { "part": "glasses", "on": "face", "paint": "ink" }, { "part": "beanie", "on": "crown", "y": 0.05, "paint": "ink" } ]
     },
     "scout": {
       "extends": "blip", "label": "Scout",

@@ -448,6 +448,14 @@ export function looksFlags(): Record<string, unknown> {
 /** A build that plays the catalog (it declares BotMoments), with the living bots. */
 export const BOT_MOMENTS = "BotMoments";
 
+/** The newest recipe format a build plays: 1 for "BotMoments", n for a later build that also declares "BotMoments<n>"; 0 none. */
+export function playsFormat(can: ReadonlySet<string>): number {
+  if (!can.has(BOT_MOMENTS)) return 0;
+  let f = 1;
+  while (can.has(`${BOT_MOMENTS}${f + 1}`)) f++;
+  return f;
+}
+
 /**
  * A moment for a node (BotBuddy, a tile, BotCard): `{ moment, momentMode }` for a build that plays it, else the recipe's
  * plain act (`{ act }`), which every build has. An id the catalog does not have: nothing.
@@ -456,7 +464,7 @@ export function momentProps(can: ReadonlySet<string>, id: string, mode?: "once" 
   const m = activeLooks()?.moments?.[id];
   if (!m) return {};
   const format = typeof m.format === "number" ? m.format : 1;
-  if (can.has(BOT_MOMENTS) && format <= LOOKS_FORMAT) return { moment: id, ...(mode ? { momentMode: mode } : {}) };
+  if (format <= playsFormat(can)) return { moment: id, ...(mode ? { momentMode: mode } : {}) };
   return { act: (m.fallback as BuddyActName) ?? "play" };
 }
 

@@ -21,7 +21,7 @@ Object.assign(process.env, ENV);
 import { resetConfigForTests } from "../src/config.js";
 // eslint-disable-next-line import/first
 import {
-  activeLooks, checkLooks, checkMomentExpression, dropPushed, fileCatalog, idleSurprises, looksFlags, momentProps, pushLooks, pushedFile,
+  activeLooks, checkLooks, checkMomentExpression, dropPushed, fileCatalog, idleSurprises, looksFlags, momentProps, playsFormat, pushLooks, pushedFile,
   resetLooksForTests, type LooksCatalog,
 } from "../src/experience/bots/looks.js";
 // eslint-disable-next-line import/first
@@ -171,6 +171,8 @@ describe("moments on screens", () => {
     expect(momentProps(new Set(["BotMoments"]), "sleep", "loop")).toEqual({ moment: "sleep", momentMode: "loop" });
     expect(momentProps(new Set(), "sleep")).toEqual({ act: "settle" });
     expect(momentProps(new Set(["BotMoments"]), "moonwalk")).toEqual({});
+    expect(playsFormat(new Set(["BotMoments", "BotMoments2", "BotMoments3"]))).toBe(3);
+    expect(playsFormat(new Set(["BotMoments2"])), "the first name is the promise").toBe(0);
     expect(botMoment(ctx(["BotsKit", "BotsMotion", "BotMoments"]), "celebrate")).toEqual({ moment: "celebrate" });
     expect(botMoment(ctx(["BotsKit", "BotsMotion"]), "celebrate")).toEqual({ act: "wave" });
     expect(botMoment(ctx(["BotsKit", "BotMoments"]), "celebrate"), "moments need the living bots too").toEqual({ act: "wave" });
