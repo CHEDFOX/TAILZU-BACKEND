@@ -38,6 +38,16 @@ describe("the bootstrap", () => {
     expect(Object.keys(on.fonts ?? {})).toEqual(expect.arrayContaining(["Tailzu Geist", "Tailzu Geist SemiBold", "Tailzu Geist Mono"]));
     expect(on.warmScreenIds).toEqual(["bots.home", "bots.activity", "bots.you"]);
   });
+  it("on: opens on Home, never on the old app's screens, even on a fresh install with nothing set up yet", () => {
+    for (const o of [
+      { launchCount: 1, micGranted: false, keyboardReady: false },
+      { launchCount: 1, micGranted: true, keyboardReady: false, onboardV2: true },
+      { launchCount: 5, micGranted: false },
+    ]) {
+      expect(buildBootstrap({ onboarded: true, botsApp: true, ...o }).initialScreenId).toBe("bots.home");
+    }
+    expect(buildBootstrap({ onboarded: true, botsApp: true, isReviewer: true, launchCount: 1 }).initialScreenId).toBe("bots.home");
+  });
   it("on, in a window that has the desk: Home, not Today, and the desk's pages stay reachable", () => {
     const on = buildBootstrap({ onboarded: true, botsApp: true, desk: true, formFactor: "desktop" });
     expect(on.initialScreenId).toBe("bots.home");
