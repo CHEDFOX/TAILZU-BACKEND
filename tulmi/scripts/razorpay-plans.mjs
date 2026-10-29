@@ -7,11 +7,11 @@
  *
  *   cd ~/tulmi
  *   docker compose exec -T backend node - --dry-run \
- *     --in-lite 4799 --in-elite 47999 --world-lite 50 --world-elite 500 \
+ *     --in-lite 5000 --in-elite 50000 --world-lite 50 --world-elite 500 \
  *     < tulmi/scripts/razorpay-plans.mjs
  *
  * Prices are in rupees for IN and US dollars for world, as you want them on
- * the pay page (50 and 500 are the app stores' prices; 4799 and 47999 are them in rupees at ₹95.30 to the dollar, 29 Oct 2026). Drop --dry-run to create them. Either market can be left out
+ * the pay page (50 and 500 are the app stores' prices; 5000 and 50000 are India's, in rupees). Drop --dry-run to create them. Either market can be left out
  * (give neither of its prices). Then put the printed line in tulmi/.env and
  * restart the backend.
  *
