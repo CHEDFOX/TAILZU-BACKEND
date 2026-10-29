@@ -45,6 +45,7 @@ import type {
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import { botsFonts, botsNav, BOTS_WARM_SCREEN_IDS } from "./bots/index.js";
 import { botsAuthTree, BOTS_FIRST_RUN_IDS, BOTS_FIRST_RUN_SCREEN } from "./bots/screens/firstRun.js";
+import { botsFlowArm, botsKeyboardPrimer, botsKeyboardRecord } from "./bots/screens/handoff.js";
 import { BOTS_OFFLINE_FLAGS } from "./bots/screens/outbox.js";
 import { looksFlags } from "./bots/looks.js";
 import { soundsFlags } from "./bots/sounds.js";
@@ -5002,6 +5003,11 @@ export interface ScreenContext {
    */
   keyboardReady?: boolean;
   locale?: string;
+  /**
+   * The Bots app is asking (bots/index.ts botsAppOn). The keyboard's handoff screens keep their ids, which the
+   * keyboard's own config names for every app, and are drawn in the Bots app's look (bots/screens/handoff.ts).
+   */
+  bots?: boolean;
 }
 
 /**
@@ -5223,12 +5229,13 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
     // through to null → 404, which the client surfaces gracefully.
     case "onboarding_keyboard":
       return onboardingKeyboard();
+    // The Bots app draws the same screens in its own look: the same state and actions (bots/screens/handoff.ts).
     case "keyboard_record":
-      return keyboardRecordScreen(ctx);
+      return ctx.bots ? botsKeyboardRecord(keyboardRecordScreen(ctx)) : keyboardRecordScreen(ctx);
     case "keyboard_primer":
-      return keyboardPrimerScreen(ctx);
+      return ctx.bots ? botsKeyboardPrimer(keyboardPrimerScreen(ctx)) : keyboardPrimerScreen(ctx);
     case "flow_arm":
-      return flowArmScreen(ctx);
+      return ctx.bots ? botsFlowArm(flowArmScreen(ctx)) : flowArmScreen(ctx);
     case "intro":
       return introScreen(ctx);
     case "paywall":
