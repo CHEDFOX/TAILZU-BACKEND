@@ -52,8 +52,9 @@ export const SLACK_MS = 24 * 3600_000;
 export const PENDING_GRACE_MS = 7 * 24 * 3600_000;
 
 export type Market = "IN" | "world";
-export type Period = "monthly" | "annual";
-export interface SellablePlan { market: Market; period: Period; id: string }
+/** The plan on sale: Lite or Elite, both billed monthly. */
+export type Tier = "lite" | "elite";
+export interface SellablePlan { market: Market; tier: Tier; id: string }
 
 /** Both keys present and well formed. Without them nothing is sold. */
 export function razorpayReady(): boolean {
@@ -67,7 +68,7 @@ export function testMode(): boolean {
 }
 
 /**
- * The plans on sale, from RAZORPAY_PLANS ("IN:monthly:plan_…,world:annual:…").
+ * The plans on sale, from RAZORPAY_PLANS ("IN:lite:plan_…,IN:elite:plan_…,world:lite:…,world:elite:…").
  * A malformed entry is left out, so a typo takes one plan off sale rather
  * than selling something nobody meant to.
  */
@@ -76,16 +77,17 @@ export function sellablePlans(): SellablePlan[] {
   for (const part of getConfig().RAZORPAY_PLANS.split(",")) {
     const [m, p, id] = part.trim().split(":").map((x) => x.trim());
     const market = m === "IN" ? "IN" : m?.toLowerCase() === "world" ? "world" : null;
-    const period = p === "monthly" ? "monthly" : p === "annual" || p === "yearly" ? "annual" : null;
-    if (market && period && id && PLAN_ID.test(id) && !out.some((x) => x.market === market && x.period === period)) {
-      out.push({ market, period, id });
+    // "monthly" is how a line from before Elite went monthly named Lite; a yearly plan is no longer sold.
+    const tier = p === "lite" || p === "monthly" ? "lite" : p === "elite" ? "elite" : null;
+    if (market && tier && id && PLAN_ID.test(id) && !out.some((x) => x.market === market && x.tier === tier)) {
+      out.push({ market, tier, id });
     }
   }
   return out;
 }
 
-export function planFor(market: Market, period: Period): SellablePlan | undefined {
-  return sellablePlans().find((p) => p.market === market && p.period === period);
+export function planFor(market: Market, tier: Tier): SellablePlan | undefined {
+  return sellablePlans().find((p) => p.market === market && p.tier === tier);
 }
 
 function sellable(planId: string | undefined): SellablePlan | undefined {
@@ -432,6 +434,8 @@ export async function razorpayEntitlement(userId: string): Promise<Entitlement |
   if (!live) return null;
   return {
     entitlement: primaryEntitlement(),
+    // Which plan: Elite's own allowance follows it (you/usage.ts planOf).
+    product: sellable(String(live.plan_id ?? ""))?.tier === "elite" ? "elite" : "lite",
     active: true,
     expiresAt: live.period_end ? String(live.period_end) : undefined,
     store: "razorpay",

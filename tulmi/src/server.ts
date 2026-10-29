@@ -106,7 +106,7 @@ import { applyRevenueCatEvent, getEntitlement, isEntitled } from "./billing/enti
 import {
   RazorpayError, cancelForUser, checkoutSignatureOk, createSubscription, fetchPlan, fetchSubscription,
   formatPeriod, formatPrice, ownerOf, payCaller as payLinkCaller, payLink, planFor, razorpayReady, SUB_ID,
-  syncSubscription, testMode as razorpayTestMode, webhookSignatureOk, type Market, type Period, type RzPlan,
+  syncSubscription, testMode as razorpayTestMode, webhookSignatureOk, type Market, type Tier, type RzPlan,
 } from "./billing/razorpay.js";
 import {
   isDesktopAgent, reportMilestones, reportSubscribe, siteEvent, siteEventsScript, userAgentOf,
@@ -718,33 +718,21 @@ app.get("/pay", async (req, reply) => {
 });
 
 /**
- * The plans the pay page shows, for both markets: each plan on sale, named
- * as the app names it (Elite yearly, Lite monthly) and priced as Razorpay
- * holds it. The saving is worked out per market from those prices, never
- * carried over from the store prices, which may not match.
+ * The plans the pay page shows, for both markets: Elite and Lite, both monthly, named as the app names them and
+ * priced as Razorpay holds them. Lite leads: it is where most people start.
  */
 async function payOffers(): Promise<PayOffer[]> {
-  const label = (period: Period) => PAYWALL_CONFIG.plans.find((p) => p.id === period)?.label ?? period;
-  const perYear = (p: RzPlan | null) =>
-    p ? (p.period === "yearly" ? 1 : p.period === "monthly" ? 12 : 0) / Math.max(1, p.interval) : 0;
+  const label = (tier: Tier) => PAYWALL_CONFIG.plans.find((p) => p.id === tier)?.label ?? tier;
   const offers: PayOffer[] = [];
   for (const market of ["IN", "world"] as Market[]) {
-    const m = planFor(market, "monthly");
-    const a = planFor(market, "annual");
-    const [monthly, annual] = await Promise.all([m ? fetchPlan(m.id) : null, a ? fetchPlan(a.id) : null]);
-    let badge: string | undefined;
-    if (monthly && annual && monthly.item.currency === annual.item.currency && perYear(monthly) && perYear(annual)) {
-      const save = 1 - (annual.item.amount * perYear(annual)) / (monthly.item.amount * perYear(monthly));
-      // To the nearest whole percent: ₹5,999 against twelve of ₹999 is 49.96%,
-      // which is "Save 50%", not the 45% that rounding down to fives said.
-      if (save >= 0.1) badge = `Save ${Math.round(save * 100)}%`;
-    }
-    for (const [period, configured, plan] of [["monthly", m, monthly], ["annual", a, annual]] as const) {
+    for (const tier of ["elite", "lite"] as Tier[]) {
+      const configured = planFor(market, tier);
       if (!configured) continue;
+      const plan: RzPlan | null = await fetchPlan(configured.id);
       offers.push(plan
-        ? { market, period, label: label(period), price: formatPrice(plan), per: formatPeriod(plan), buyable: true,
-            ...(period === "annual" ? { badge, lead: true } : {}) }
-        : { market, period, label: label(period), price: "—", per: "Not available right now", buyable: false });
+        ? { market, tier, label: label(tier), price: formatPrice(plan), per: formatPeriod(plan), buyable: true,
+            ...(tier === "lite" ? { lead: true } : {}) }
+        : { market, tier, label: label(tier), price: "—", per: "Not available right now", buyable: false });
     }
   }
   return offers;
@@ -773,8 +761,10 @@ app.post("/v1/pay/razorpay/subscription", PAY_RL, async (req, reply) => {
   if (!userId) return reply.code(401).send({ code: "link_expired" });
   if (cfg.FREE_FOR_ALL && !payLinkCaller(b)?.test) return reply.code(409).send({ code: "free" });
   const market: Market | null = b.market === "IN" ? "IN" : b.market === "world" ? "world" : null;
-  const period: Period | null = b.period === "monthly" ? "monthly" : b.period === "annual" ? "annual" : null;
-  const plan = market && period ? planFor(market, period) : undefined;
+  // `plan` names Lite or Elite; a page from before sent `period` ("monthly" was Lite).
+  const asked = String(b.plan ?? b.period ?? "");
+  const tier: Tier | null = asked === "elite" ? "elite" : asked === "lite" || asked === "monthly" ? "lite" : null;
+  const plan = market && tier ? planFor(market, tier) : undefined;
   if (!plan) return reply.code(400).send({ code: "no_such_plan" });
   if (await isEntitled({ id: userId } as AuthedUser).catch(() => false)) {
     return reply.code(409).send({ code: "already_subscribed" });

@@ -820,7 +820,9 @@ const EnvSchema = z.object({
    *
    *   USAGE_LIMITS               false: the meter is shown and nothing is refused
    *   USAGE_FREE_MONTH_PAISE     the free plan's month (5,000)
-   *   USAGE_PAID_MONTH_PAISE     a paid plan's month (50,000); everyone's while FREE_FOR_ALL is on
+   *   USAGE_PAID_MONTH_PAISE     a paid plan's month (50,000): Lite's; everyone's while FREE_FOR_ALL is on
+   *   USAGE_ELITE_MONTH_PAISE    Elite's month (500,000: ten Lites, as its price is)
+   *   PLAN_ELITE_PRODUCTS        the products that are Elite: the store product, and "elite" for Razorpay
    *   USAGE_TIERS                each paid tier's own month, by entitlement id: {"pro": 50000, "max": 200000}; a tier not named is PAID's
    *   USAGE_FREE_WINDOWS         the free plan in stretches too (off: one stretch, the month)
    *   USAGE_CARRY_OVER           what a stretch did not use carries into the next (off)
@@ -829,6 +831,8 @@ const EnvSchema = z.object({
   USAGE_LIMITS: bool(true),
   USAGE_FREE_MONTH_PAISE: z.coerce.number().int().min(0).max(100_000_000).default(5000),
   USAGE_PAID_MONTH_PAISE: z.coerce.number().int().min(0).max(100_000_000).default(50_000),
+  USAGE_ELITE_MONTH_PAISE: z.coerce.number().int().min(0).max(1_000_000_000).default(500_000),
+  PLAN_ELITE_PRODUCTS: z.string().default("x0_elite_monthly,elite"),
   USAGE_TIERS: z.string().optional(),
   USAGE_FREE_WINDOWS: bool(false),
   USAGE_CARRY_OVER: bool(false),
@@ -1163,8 +1167,10 @@ const EnvSchema = z.object({
    *   RAZORPAY_PLANS           the plans on sale, each tagged with its market
    *                            and period — exactly what
    *                            scripts/razorpay-plans.mjs prints:
-   *                              IN:monthly:plan_…,IN:annual:plan_…,
-   *                              world:monthly:plan_…,world:annual:plan_…
+   *                              IN:lite:plan_…,IN:elite:plan_…,
+   *                              world:lite:plan_…,world:elite:plan_…
+   *                            (both billed monthly; a line still naming
+   *                            "monthly" sells it as Lite, "annual" is dropped)
    *                            IN is shown to a browser in India's time zone,
    *                            world to every other. Public ids.
    *

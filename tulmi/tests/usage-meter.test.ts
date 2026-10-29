@@ -122,6 +122,15 @@ describe("the plans", () => {
     expect([...tiersOf("not json")]).toEqual([]);
     expect([...tiersOf('{"pro": 1000, "bad": -1}')]).toEqual([["pro", 1000]]);
   });
+
+  it("Elite by the product bought, on either store or Razorpay; Lite and the old yearly plan otherwise", () => {
+    const c = { ...cfg, USAGE_ELITE_MONTH_PAISE: 500_000, PLAN_ELITE_PRODUCTS: "x0_elite_monthly,elite" };
+    const on = (product?: string) => planOf({ entitlement: "TAILZU AIR", active: true, ...(product ? { product } : {}) }, c);
+    for (const p of ["x0_elite_monthly", "x0_elite_monthly:monthly", "elite"]) expect(on(p)).toMatchObject({ id: "elite", name: "Elite", monthPaise: 500_000, paid: true });
+    for (const p of ["TAILZU_MONT", "tailzu_annu", "lite", undefined]) expect(on(p)).toMatchObject({ name: "Lite", monthPaise: 50_000, paid: true });
+    // Without a setting of its own, Elite is ten Lites, as its price is.
+    expect(planOf({ entitlement: "TAILZU AIR", active: true, product: "elite" }, { ...cfg, PLAN_ELITE_PRODUCTS: "elite" }).monthPaise).toBe(500_000);
+  });
 });
 
 describe("the gate Keybot and Ask ask", () => {

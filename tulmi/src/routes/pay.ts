@@ -10,7 +10,7 @@
  * Asia/Kolkata (or its old name, Asia/Calcutta) sees the IN plans, in rupees,
  * everyone else the world plans. A choice asks the server for a subscription,
  * and Razorpay's checkout opens to authorise it. Nothing on the page decides
- * a price or a plan id; it names a market and a period, and the server maps
+ * a price or a plan id; it names a market and a plan (Lite or Elite), and the server maps
  * those to plans it has on sale.
  *
  * Served with a Content-Security-Policy that allows Razorpay (*.razorpay.com)
@@ -23,7 +23,8 @@ import { siteShell } from "./policies/shell.js";
  *  not be read from Razorpay: the card stays, the button does not. */
 export interface PayOffer {
   market: "IN" | "world";
-  period: "monthly" | "annual";
+  /** Lite or Elite, both billed monthly. */
+  tier: "lite" | "elite";
   label: string;
   price: string;
   per: string;
@@ -131,7 +132,7 @@ export function payHtml(opts: {
       <div class="top"><h2>${esc(o.label)}</h2>${o.badge ? `<span class="badge">${esc(o.badge)}</span>` : ""}</div>
       <p class="price">${esc(o.price)}</p>
       <p class="per">${esc(o.per)}</p>
-      ${o.buyable ? `<button type="button" class="btn" data-market="${o.market}" data-period="${o.period}" data-label="${esc(o.label)}" disabled>Choose ${esc(o.label)}</button>` : ""}
+      ${o.buyable ? `<button type="button" class="btn" data-market="${o.market}" data-plan="${o.tier}" data-label="${esc(o.label)}" disabled>Choose ${esc(o.label)}</button>` : ""}
     </section>`).join("");
 
   const config = JSON.stringify({ key }).replace(/</g, "\\u003c");
@@ -219,8 +220,8 @@ ${cards ? `<div class="plans">${cards}\n</div>` : ""}
       b.addEventListener("click", function () {
         set("opening");
         // The server makes the subscription, for the signed caller, from a
-        // plan it has on sale: this page only names a market and a period.
-        post("/v1/pay/razorpay/subscription", { market: market, period: b.getAttribute("data-period") }).then(function (r) {
+        // plan it has on sale: this page only names a market and a plan.
+        post("/v1/pay/razorpay/subscription", { market: market, plan: b.getAttribute("data-plan") }).then(function (r) {
           if (r.code === "already_subscribed") { set("subscribed"); return; }
           if (r.code === "link_expired") { set("nouser"); return; }
           if (!r.subscriptionId) { fail("create", r); return; }

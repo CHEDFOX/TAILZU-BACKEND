@@ -4382,54 +4382,46 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       note: "",
     },
     {
-      id: "annual",
-      // VERIFIED against the RevenueCat dashboard (entitlement "TAILZU AIR",
-      // Associated products): "tailzu_annu" is the exact full identifier.
-      productId: "tailzu_annu",
+      // Both plans are monthly (Elite was yearly until the move to two monthly plans; yearly subscribers keep it, but it
+      // is no longer sold). Elite's own allowance follows its product (you/usage.ts planOf, USAGE_ELITE_MONTH_PAISE).
+      id: "elite",
+      // Made in both stores and in RevenueCat (offering "default", custom package "elite_monthly"), attached to the
+      // same entitlement as Lite.
+      productId: "x0_elite_monthly",
       offeringId: "default",
-      packageId: "$rc_annual",
-      // THE TIER'S NAME, not its billing period.
-      //
-      // "Yearly" said the period twice — the row already carries it in the
-      // price line and again in the commitment note below it — and said the
-      // product's name nowhere. Both stores list these as Elite and Lite, so
-      // a customer who checks their subscriptions sees a name the app never
-      // showed them.
-      //
-      // The period disclosure both stores require is unaffected: it lives in
-      // `period` and `note`, which is why the name could move into `label` at
-      // all. Do not remove either of those to make room for anything.
+      packageId: "elite_monthly",
+      // THE TIER'S NAME. Both stores list these as Elite and Lite, so a customer who checks their subscriptions sees
+      // the names the app showed them. The period disclosure both stores require lives in `period` and `note`: do not
+      // remove either of those to make room for anything.
       label: "Elite",
-      price: "$59.99",
-      period: "$5.00 / mo, billed yearly",
-      periodTemplate: "{price} / mo, billed yearly",
-      // With no confirm button, the ROW is where the commitment gets
-      // disclosed — which is also what the stores require before a purchase.
-      note: "7 days free, then billed yearly",
-      badge: "Save 50%",
-      default: true,
+      price: "$500",
+      period: "per month",
+      // With no confirm button, the ROW is where the commitment gets disclosed, which is also what the stores require
+      // before a purchase.
+      note: "Billed monthly, cancel anytime",
     },
     {
-      id: "monthly",
+      id: "lite",
       // VERIFIED against the RevenueCat dashboard: "TAILZU_MONT" is exact.
       productId: "TAILZU_MONT",
       offeringId: "default",
       packageId: "$rc_monthly",
       label: "Lite",
-      price: "$9.99",
+      price: "$50",
       period: "per month",
       note: "Billed monthly, cancel anytime",
+      // Where most people start: chosen when the paywall opens.
+      default: true,
     },
   ],
   /**
    * NOT DRAWN, and required by the type rather than by the screen.
    *
    * This paywall has no confirm button: tapping a plan row IS the purchase,
-   * which is why each row carries its own commitment line. A single CTA under
-   * the rows would also have had to lie on one of them — "Start free trial"
-   * is true of the annual plan and false of the monthly one.
+   * which is why each row carries its own commitment line. There is no free
+   * trial: the free plan's allowance is the trial.
    */
-  cta: "Start free trial",
+  cta: "Choose a plan",
   restoreLabel: "Restore purchases",
   footnote:
     "Auto-renews unless canceled 24h before period end. Manage in Settings.",
@@ -4440,8 +4432,9 @@ export const PAYWALL_CONFIG: PaywallConfig = {
   // The RevenueCat entitlement IDENTIFIER (case/space-sensitive). The app calls
   // hasEntitlement(this). Per the RevenueCat dashboard the Identifier is
   // "TAILZU AIR" — "ON AIR" is only the Display Name, which the SDK does NOT
-  // match on. Products tailzu_annu (Elite) + TAILZU_MONT (Lite) are attached to
-  // this entitlement, so once a purchase completes the app unlocks.
+  // match on. Products x0_elite_monthly (Elite) + TAILZU_MONT (Lite) are attached
+  // to this entitlement (and tailzu_annu, the yearly plan no longer sold, for
+  // those still on it), so once a purchase completes the app unlocks.
   entitlement: "TAILZU AIR",
 };
 

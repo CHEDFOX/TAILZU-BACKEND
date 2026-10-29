@@ -16,7 +16,8 @@ process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 process.env.RAZORPAY_KEY_ID = "rzp_test_abc123";
 process.env.RAZORPAY_KEY_SECRET = "key-secret";
 process.env.RAZORPAY_WEBHOOK_SECRET = "hook-secret";
-process.env.RAZORPAY_PLANS = "IN:monthly:plan_InM,IN:annual:plan_InY,world:monthly:plan_WoM,world:annual:plan_WoY,bad:entry,IN:weekly:plan_X";
+// "monthly" is a line from before Elite went monthly (it sells Lite); "annual" is no longer sold.
+process.env.RAZORPAY_PLANS = "IN:lite:plan_InM,IN:elite:plan_InY,world:monthly:plan_WoM,world:elite:plan_WoY,world:annual:plan_Old,bad:entry,IN:weekly:plan_X";
 process.env.REVENUECAT_ENTITLEMENT = "TAILZU AIR";
 
 const USER = "11111111-2222-3333-4444-555555555555";
@@ -79,9 +80,9 @@ const rz = vi.hoisted(() => ({
   cancelled: [] as string[],
   plans: {
     plan_InM: { id: "plan_InM", period: "monthly", interval: 1, item: { amount: 19900, currency: "INR" } },
-    plan_InY: { id: "plan_InY", period: "yearly", interval: 1, item: { amount: 149900, currency: "INR" } },
+    plan_InY: { id: "plan_InY", period: "monthly", interval: 1, item: { amount: 149900, currency: "INR" } },
     plan_WoM: { id: "plan_WoM", period: "monthly", interval: 1, item: { amount: 999, currency: "USD" } },
-    plan_WoY: { id: "plan_WoY", period: "yearly", interval: 1, item: { amount: 5999, currency: "USD" } },
+    plan_WoY: { id: "plan_WoY", period: "monthly", interval: 1, item: { amount: 5999, currency: "USD" } },
   } as Record<string, unknown>,
 }));
 const realFetch = globalThis.fetch;
@@ -137,18 +138,18 @@ beforeEach(() => {
 describe("the plans on sale", () => {
   it("are the configured ones, tagged by market, and nothing malformed", () => {
     expect(rzp.sellablePlans()).toEqual([
-      { market: "IN", period: "monthly", id: "plan_InM" },
-      { market: "IN", period: "annual", id: "plan_InY" },
-      { market: "world", period: "monthly", id: "plan_WoM" },
-      { market: "world", period: "annual", id: "plan_WoY" },
+      { market: "IN", tier: "lite", id: "plan_InM" },
+      { market: "IN", tier: "elite", id: "plan_InY" },
+      { market: "world", tier: "lite", id: "plan_WoM" },
+      { market: "world", tier: "elite", id: "plan_WoY" },
     ]);
-    expect(rzp.planFor("world", "annual")?.id).toBe("plan_WoY");
+    expect(rzp.planFor("world", "elite")?.id).toBe("plan_WoY");
   });
 
   it("read like prices", async () => {
     expect(rzp.formatPrice((await rzp.fetchPlan("plan_InY"))!)).toBe("₹1,499");
     expect(rzp.formatPrice((await rzp.fetchPlan("plan_WoM"))!)).toBe("$9.99");
-    expect(rzp.formatPeriod((await rzp.fetchPlan("plan_WoY"))!)).toBe("a year");
+    expect(rzp.formatPeriod((await rzp.fetchPlan("plan_WoY"))!)).toBe("a month");
   });
 });
 
@@ -254,7 +255,7 @@ describe("the routes", () => {
     const r = await app.inject({ method: "GET", url: "/pay" });
     expect(r.statusCode).toBe(200);
     for (const p of ["₹199", "₹1,499", "$9.99", "$59.99"]) expect(r.body).toContain(p);
-    expect(r.body).toContain('data-market="IN" data-period="annual"');
+    expect(r.body).toContain('data-market="IN" data-plan="elite"');
     expect(r.body).toContain('tz === "Asia/Kolkata"');
     const csp = String(r.headers["content-security-policy"]);
     expect(csp).toContain("https://*.razorpay.com");
@@ -265,13 +266,13 @@ describe("the routes", () => {
 
   it("makes the subscription itself, for the signed caller, from a plan on sale", async () => {
     const c = callerOf(USER);
-    const r = await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { ...c, market: "world", period: "annual" } });
+    const r = await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { ...c, market: "world", plan: "elite" } });
     expect(r.statusCode).toBe(200);
-    expect(rz.created[0]).toMatchObject({ plan_id: "plan_WoY", notes: { user_id: USER }, total_count: 10 });
+    expect(rz.created[0]).toMatchObject({ plan_id: "plan_WoY", notes: { user_id: USER }, total_count: 120 });
     expect(row(r.json().subscriptionId)).toMatchObject({ user_id: USER, status: "created", market: "world" });
 
     expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { u: USER, e: c.e, t: "forged", market: "IN", period: "monthly" } })).statusCode).toBe(401);
-    expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { ...c, market: "IN", period: "weekly" } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { ...c, market: "IN", plan: "weekly" } })).statusCode).toBe(400);
 
     await rzp.syncSubscription(sub(), "x");
     const again = await app.inject({ method: "POST", url: "/v1/pay/razorpay/subscription", payload: { ...c, market: "IN", period: "monthly" } });

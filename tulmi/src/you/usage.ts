@@ -207,6 +207,8 @@ export function tiersOf(spec: string | undefined): Map<string, number> {
 export interface PlanConfig {
   USAGE_FREE_MONTH_PAISE: number;
   USAGE_PAID_MONTH_PAISE: number;
+  USAGE_ELITE_MONTH_PAISE?: number;
+  PLAN_ELITE_PRODUCTS?: string;
   USAGE_TIERS?: string;
   USAGE_FREE_WINDOWS: boolean;
   USAGE_CARRY_OVER: boolean;
@@ -214,11 +216,15 @@ export interface PlanConfig {
 }
 
 /** The plan a person is on, from their entitlement (null: free) and our config. */
-export function planOf(entitlement: { entitlement: string; active: boolean } | null, c: PlanConfig): UsagePlan {
+export function planOf(entitlement: { entitlement: string; active: boolean; product?: string } | null, c: PlanConfig): UsagePlan {
   const carryOver = c.USAGE_CARRY_OVER;
   if (entitlement?.active) {
+    // Elite by the product that was bought (Google adds ":<base plan>"); Lite, and a yearly plan from before, otherwise.
+    const product = String(entitlement.product ?? "").split(":")[0]!.trim().toLowerCase();
+    const elite = !!product && String(c.PLAN_ELITE_PRODUCTS ?? "").split(",").map((p) => p.trim().toLowerCase()).includes(product);
+    if (elite) return { id: "elite", name: "Elite", paid: true, monthPaise: c.USAGE_ELITE_MONTH_PAISE ?? c.USAGE_PAID_MONTH_PAISE * 10, windows: true, carryOver, upgrade: false };
     const tier = tiersOf(c.USAGE_TIERS).get(entitlement.entitlement.trim().toLowerCase());
-    return { id: tier !== undefined ? entitlement.entitlement : "paid", name: "Pro", paid: true, monthPaise: tier ?? c.USAGE_PAID_MONTH_PAISE, windows: true, carryOver, upgrade: false };
+    return { id: tier !== undefined ? entitlement.entitlement : "paid", name: "Lite", paid: true, monthPaise: tier ?? c.USAGE_PAID_MONTH_PAISE, windows: true, carryOver, upgrade: false };
   }
   // Free for everyone, for now: everyone has a paid plan's month, and nothing is for sale.
   if (c.FREE_FOR_ALL) return { id: "everyone", name: "Free", paid: false, monthPaise: c.USAGE_PAID_MONTH_PAISE, windows: true, carryOver, upgrade: false };

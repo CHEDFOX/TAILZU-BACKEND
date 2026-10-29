@@ -23,6 +23,9 @@ import { razorpayEntitlement } from "./razorpay.js";
 
 export type Entitlement = {
   entitlement: string;
+  /** The store product that granted it ("x0_elite_monthly", "TAILZU_MONT"; "elite" or "lite" for Razorpay). Elite's
+   *  allowance follows it (you/usage.ts planOf). Absent where it was never recorded. */
+  product?: string;
   active: boolean;
   expiresAt?: string;
   store?: string;
@@ -67,9 +70,10 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
     return rz;
   }
 
+  // Every column, so a database without `product` yet (migration 0056) still answers.
   const { data, error } = await sb
     .from("entitlements")
-    .select("entitlement, active, expires_at, store")
+    .select("*")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -99,6 +103,7 @@ export async function getEntitlement(user: AuthedUser): Promise<Entitlement | nu
   }
   const value: Entitlement = {
     entitlement: String(data.entitlement),
+    ...(data.product ? { product: String(data.product) } : {}),
     active: true,
     expiresAt: data.expires_at ? String(data.expires_at) : undefined,
     store: data.store ? String(data.store) : undefined,
@@ -158,7 +163,7 @@ async function askRevenueCat(userId: string): Promise<Entitlement | null> {
       // window on the next cache miss. Sandbox lives on the subscription, not
       // the entitlement, so it is looked up by the product that granted it.
       if (!allowSandbox && subs[String(e.product_identifier ?? "")]?.is_sandbox) continue;
-      return { entitlement: id, active: true, expiresAt: e.expires_date ?? undefined, store: e.store };
+      return { entitlement: id, ...(e.product_identifier ? { product: e.product_identifier } : {}), active: true, expiresAt: e.expires_date ?? undefined, store: e.store };
     }
     if (live.length) {
       // The likeliest cause is a misconfigured REVENUECAT_ENTITLEMENT, and it
@@ -280,6 +285,10 @@ export type RcEvent = {
   entitlement_id?: string | null;
   entitlement_ids?: string[] | null;
   expiration_at_ms?: number | null;
+  /** The store product bought ("x0_elite_monthly"; on Google "x0_elite_monthly:monthly"). */
+  product_id?: string | null;
+  /** On a PRODUCT_CHANGE, the product switched to. */
+  new_product_id?: string | null;
   store?: string | null;
   /** "SANDBOX" | "PRODUCTION". A sandbox purchase cost nobody anything. */
   environment?: string | null;
@@ -423,10 +432,11 @@ export async function applyRevenueCatEvent(
     }
   }
 
-  const { error } = await sb.from("entitlements").upsert(
-    {
+  const row: Record<string, unknown> = {
       user_id: userId,
       entitlement: String(entitlement),
+      // The product, so Elite gets Elite's allowance (a change of plan names the new one).
+      product: String(ev.new_product_id ?? ev.product_id ?? "") || null,
       active: grants,
       expires_at: ev.expiration_at_ms ? new Date(ev.expiration_at_ms).toISOString() : null,
       store: ev.store ? String(ev.store) : null,
@@ -434,9 +444,13 @@ export async function applyRevenueCatEvent(
       app_id: ev.app_id ? String(ev.app_id) : null,
       last_event: type,
       updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id" },
-  );
+  };
+  let { error } = await sb.from("entitlements").upsert(row, { onConflict: "user_id" });
+  // A database without the `product` column yet (migration 0056) still records the purchase.
+  if (error && /product/i.test(error.message)) {
+    delete row.product;
+    ({ error } = await sb.from("entitlements").upsert(row, { onConflict: "user_id" }));
+  }
   if (error) return { ok: false, reason: error.message, userId };
 
   // The cache is what quota reads. Leaving it would keep a new subscriber

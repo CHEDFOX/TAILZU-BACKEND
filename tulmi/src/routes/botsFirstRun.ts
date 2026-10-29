@@ -19,7 +19,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { getEntitlement } from "../billing/entitlements.js";
-import { fetchPlan, formatPeriod, formatPrice, planFor, razorpayReady, type Market, type Period } from "../billing/razorpay.js";
+import { fetchPlan, formatPeriod, formatPrice, planFor, razorpayReady, type Market, type Tier } from "../billing/razorpay.js";
 import { getConfig } from "../config.js";
 import { DAILY_LANGUAGES, freeForAll, PAYWALL_CONFIG } from "../experience/catalog.js";
 import { getPersonality, updatePersonality } from "../personality/store.js";
@@ -119,17 +119,17 @@ export function spokenSince(now: { words: number; audioSeconds: number }, base: 
 async function windowPlans(market: Market): Promise<FirstRunPlan[]> {
   if (!razorpayReady()) return [];
   const out: FirstRunPlan[] = [];
-  for (const period of ["annual", "monthly"] as Period[]) {
-    const sellable = planFor(market, period);
+  for (const tier of ["elite", "lite"] as Tier[]) {
+    const sellable = planFor(market, tier);
     if (!sellable) continue;
     const plan = await fetchPlan(sellable.id).catch(() => null);
-    const cfg = PAYWALL_CONFIG.plans.find((p) => p.id === period);
+    const cfg = PAYWALL_CONFIG.plans.find((p) => p.id === tier);
     out.push({
-      id: period,
-      label: cfg?.label ?? (period === "annual" ? "Yearly" : "Monthly"),
+      id: tier,
+      label: cfg?.label ?? (tier === "elite" ? "Elite" : "Lite"),
       price: plan ? formatPrice(plan) : "—",
       per: plan ? formatPeriod(plan) : "Not available right now",
-      ...(period === "annual" ? { default: true } : {}),
+      ...(tier === "lite" ? { default: true } : {}),
       // The window has no store: iap.subscribe opens the pay page, signed for this account.
       ...(plan && cfg?.productId ? { buy: { kind: "iap.subscribe" as const, productId: cfg.productId } } : {}),
     });

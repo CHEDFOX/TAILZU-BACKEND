@@ -1,5 +1,5 @@
 /**
- * Create Tailzu's Razorpay plans, once, and print the RAZORPAY_PLANS line.
+ * Create X0 Bot's Razorpay plans, Lite and Elite (both monthly), once, and print the RAZORPAY_PLANS line.
  *
  * Plans are made here and never by hand, so the names, periods, currencies
  * and the line the server reads cannot drift apart. Run inside the backend
@@ -7,11 +7,11 @@
  *
  *   cd ~/tulmi
  *   docker compose exec -T backend node - --dry-run \
- *     --in-monthly RUPEES --in-annual RUPEES --world-monthly 9.99 --world-annual 59.99 \
+ *     --in-lite RUPEES --in-elite RUPEES --world-lite 50 --world-elite 500 \
  *     < tulmi/scripts/razorpay-plans.mjs
  *
  * Prices are in rupees for IN and US dollars for world, as you want them on
- * the pay page (9.99 and 59.99 are the app stores' prices today). Drop --dry-run to create them. Either market can be left out
+ * the pay page (50 and 500 are the app stores' prices). Drop --dry-run to create them. Either market can be left out
  * (give neither of its prices). Then put the printed line in tulmi/.env and
  * restart the backend.
  *
@@ -25,8 +25,8 @@ const MARKETS = [
   { market: "world", currency: "USD" },
 ];
 const PERIODS = [
-  { period: "monthly", razorpay: "monthly", name: "X0 Bot Lite", description: "Unlimited words, billed monthly" },
-  { period: "annual", razorpay: "yearly", name: "X0 Bot Elite", description: "Unlimited words, billed yearly" },
+  { period: "lite", razorpay: "monthly", name: "X0 Bot Lite", description: "Billed monthly" },
+  { period: "elite", razorpay: "monthly", name: "X0 Bot Elite", description: "Billed monthly" },
 ];
 
 function args() {
@@ -35,7 +35,7 @@ function args() {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--dry-run") { out.dryRun = true; continue; }
-    const m = /^--(in|world)-(monthly|annual)$/.exec(a);
+    const m = /^--(in|world)-(lite|elite)$/.exec(a);
     if (!m) throw new Error(`unknown argument ${a}`);
     const v = Number(argv[++i]);
     if (!Number.isFinite(v) || v < 1) throw new Error(`${a} needs a price of at least 1, got ${argv[i]}`);
@@ -55,7 +55,7 @@ async function main() {
   for (const { market, currency } of MARKETS) {
     const want = PERIODS.map((p) => prices[`${market}:${p.period}`]);
     if (want.every((v) => v === undefined)) continue;
-    if (want.some((v) => v === undefined)) throw new Error(`${market} needs both --${market.toLowerCase()}-monthly and --${market.toLowerCase()}-annual`);
+    if (want.some((v) => v === undefined)) throw new Error(`${market} needs both --${market.toLowerCase()}-lite and --${market.toLowerCase()}-elite`);
     PERIODS.forEach((p, i) => plans.push({ market, currency, ...p, amount: Math.round(want[i] * 100) }));
   }
   if (!plans.length) throw new Error("no prices given: see the usage at the top of this script");
@@ -74,7 +74,7 @@ async function main() {
         period: p.razorpay,
         interval: 1,
         item: { name: p.name, amount: p.amount, currency: p.currency, description: p.description },
-        notes: { app: "tailzu", market: p.market, period: p.period },
+        notes: { app: "x0bot", market: p.market, plan: p.period },
       }),
     });
     const json = await res.json().catch(() => ({}));
