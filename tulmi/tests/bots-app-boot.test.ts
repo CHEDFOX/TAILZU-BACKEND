@@ -38,6 +38,16 @@ describe("the bootstrap", () => {
     expect(Object.keys(on.fonts ?? {})).toEqual(expect.arrayContaining(["Tailzu Geist", "Tailzu Geist SemiBold", "Tailzu Geist Mono"]));
     expect(on.warmScreenIds).toEqual(["bots.home", "bots.activity", "bots.you"]);
   });
+  it("on: no start-up setting points at the old app's screens (paywall, settings, profile, the languages prompt)", () => {
+    const on = buildBootstrap({ onboarded: true, botsApp: true, launchCount: 3, languagesSet: false });
+    expect(on.flags?.["paywall.screenId"]).toBe("bots.plans");
+    expect(on.flags?.["nav.settingsScreenId"]).toBe("bots.you");
+    expect(on.flags?.["profile.hostScreenId"]).toBe("bots.you");
+    // A prompt may still come, but only one of the Bots app's own (its name card), never the old Languages screen.
+    expect(String(on.flags?.["promptScreenId"] ?? "bots.")).toMatch(/^bots\./);
+    const off = buildBootstrap({ onboarded: true, launchCount: 3, languagesSet: false });
+    expect(off.flags?.["promptScreenId"]).toBe("languages");
+  });
   it("on: opens on Home, never on the old app's screens, even on a fresh install with nothing set up yet", () => {
     for (const o of [
       { launchCount: 1, micGranted: false, keyboardReady: false },

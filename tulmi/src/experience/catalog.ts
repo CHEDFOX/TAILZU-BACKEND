@@ -2346,7 +2346,11 @@ export function buildBootstrap(
         ...(setup ? { "liveActivity.setup": setup } : {}),
         // The Bots app: its pages draw their own tab bar and sidebar; "bots.looks" names the bots' catalog (bots/looks.ts).
         // "bots.sounds" names the bots' sounds (bots/sounds.ts): pull-a-bot's and the moments'.
-        ...(botsApp ? { "bots.app": true, ...BOTS_OFFLINE_FLAGS, ...looksFlags(), ...soundsFlags() } : {}),
+        ...(botsApp ? {
+          "bots.app": true, ...BOTS_OFFLINE_FLAGS, ...looksFlags(), ...soundsFlags(),
+          // Never the old app's screens: buying goes to the Bots app's Plans, and the settings button and the profile card to You.
+          "paywall.screenId": "bots.plans", "nav.settingsScreenId": "bots.you", "profile.hostScreenId": "bots.you",
+        } : {}),
         ...(desk ? {
           "desktop.desk": true,
           "desktop.desk.settingsScreenId": "desk_settings",
@@ -2501,7 +2505,8 @@ export function buildBootstrap(
         // shape the soft paywall already uses — so it is a card over the app,
         // not a gate in front of it. Any screen id works here; today the only
         // thing worth asking twice is which languages you speak.
-        ...(arrivalPrompt(opts)
+        // (Not in the Bots app: its first run asks the languages, and the prompt was the old app's Languages screen.)
+        ...(arrivalPrompt(opts) && !botsApp
           ? {
               promptScreenId: arrivalPrompt(opts)!,
               // Not at the door. A card that lands the instant the app opens
