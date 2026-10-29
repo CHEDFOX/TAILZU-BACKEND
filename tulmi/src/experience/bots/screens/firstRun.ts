@@ -394,8 +394,8 @@ function signField(mode: Mode, method: "phone" | "email", desktop: boolean): Nod
       props: {
         method, variant: "field", placeholder: method === "phone" ? "Mobile number" : "you@example.com", submitLabel: W.sendCode,
         ...(method === "phone" ? { presetCountry: "IN", dial: "+91" } : {}),
-        height: desktop ? 54 : 56, radius: desktop ? 14 : 16, background: C.paper, borderColor: C.ink, textColor: C.ink,
-        placeholderColor: C.idle, fontSize: 17, buttonBackground: C.ink, buttonTextColor: C.paper, buttonHeight: 54, buttonRadius: 27,
+        height: desktop ? 54 : 48, radius: desktop ? 14 : 16, background: C.paper, borderColor: C.ink, textColor: C.ink,
+        placeholderColor: C.idle, fontSize: 17, buttonBackground: C.ink, buttonTextColor: C.paper, buttonHeight: desktop ? 54 : 48, buttonRadius: desktop ? 27 : 16,
         countryBackground: C.paper, countryBorderColor: C.outline,
       },
     };
@@ -424,24 +424,24 @@ function signField(mode: Mode, method: "phone" | "email", desktop: boolean): Nod
 }
 
 /** Google and Apple: the gate's own controls, or the kit's look of them. */
-function socialButtons(mode: Mode, o: BotsAuthOpts, h: number): Node[] {
-  const label = (p: string) => (h >= 54 ? `Continue with ${p}` : p);
+function socialButtons(mode: Mode, o: BotsAuthOpts, h: number, r = h / 2): Node[] {
+  const label = (p: string) => (h >= 48 ? `Continue with ${p}` : p);
   if (mode === "page") return [outlinePill(googleG(18), label("Google"), signOut, h), outlinePill(appleMark(18), label("Apple"), signOut, h)];
   const google: Node | null = o.googleLink
-    ? row([googleG(18), text(label("Google"), { size: h >= 54 ? 16 : 14, weight: h >= 54 ? 600 : 500, lineHeight: 20 })], {
-        height: h, borderRadius: h / 2, borderWidth: 1, borderColor: C.outline, justifyContent: "center", gap: 10, alignSelf: "stretch",
+    ? row([googleG(18), text(label("Google"), { size: h >= 48 ? 16 : 14, weight: h >= 48 ? 600 : 500, lineHeight: 20 })], {
+        height: h, borderRadius: r, borderWidth: 1.5, borderColor: C.ink, justifyContent: "center", gap: 10, alignSelf: "stretch",
       }, seq(setState("googleStarted", true), { kind: "openUrl", url: o.googleLink, external: true }))
     : o.googleHidden ? null : {
         type: "GoogleSignIn",
         // The window's short pair (beside its QR panel) says just the name, as the board does.
-        props: { size: h, radius: h / 2, background: C.paper, borderWidth: 1, borderColor: C.outline, label: label("Google") },
+        props: { size: h, radius: r, background: C.paper, borderWidth: 1.5, borderColor: C.ink, label: label("Google") },
         style: { width: "100%" },
-        children: [row([googleG(18), text(label("Google"), { size: h >= 54 ? 16 : 14, weight: h >= 54 ? 600 : 500, lineHeight: 20 })], { gap: 10 })],
+        children: [row([googleG(18), text(label("Google"), { size: h >= 48 ? 16 : 14, weight: h >= 48 ? 600 : 500, lineHeight: 20 })], { gap: 10 })],
       };
   // Apple's own control (their guidelines): it draws itself, and hides where it cannot serve.
   const apple: Node | null = o.appleHidden ? null : {
     type: "AppleSignIn",
-    props: { size: h, radius: h / 2, buttonType: "CONTINUE", buttonStyle: "WHITE_OUTLINE", label: label("Apple") },
+    props: { size: h, radius: r, buttonType: "CONTINUE", buttonStyle: "WHITE_OUTLINE", label: label("Apple") },
     style: { width: "100%" },
   };
   return [google, apple].filter((n): n is Node => !!n);
@@ -513,17 +513,15 @@ const headingBeside = (heading: Node, fig: Figure): Node =>
   row([box([heading], { flexGrow: 1, flexShrink: 1, minWidth: 0 }), box([fig("listen", 84)], { marginRight: -12, marginTop: -8, flexShrink: 0 })], { gap: 4, alignItems: "flex-end" });
 
 function signInPhone(mode: Mode, o: BotsAuthOpts, backTo: ActionRef, fig: Figure): Node[] {
-  const social = socialButtons(mode, o, 54);
+  const social = socialButtons(mode, o, 48, 16);
   return [
     chevron(backTo),
     ...byMethod(headingBeside(phoneHeading(W.phoneH, W.phoneP), fig), headingBeside(phoneHeading(W.emailH, W.emailP), fig)),
-    ...byMethod(
-      col([sectionLabel("Mobile number"), signField(mode, "phone", false)], { gap: 8 }),
-      col([sectionLabel("Email"), signField(mode, "email", false)], { gap: 8 }),
-    ),
-    when({ all: [PHONE_ON, { neq: ["method", "email"] }] }, link("Use email instead", setState("method", "email"), { size: 14, center: true })),
-    when({ all: [PHONE_ON, { eq: ["method", "email"] }] }, link("Use your phone number instead", setState("method", "phone"), { size: 14, center: true })),
-    ...(social.length ? [orLine(), col(social, { gap: 10 })] : []),
+    // Every way in on one page, as the earlier sign-in had them: the phone number (when the backend offers it), the email,
+    // then Google and Apple. The phone field picks its country as ever: the one used last, else the phone's region.
+    when(PHONE_ON, col([signField(mode, "phone", false), orLine()], { gap: 8 })),
+    signField(mode, "email", false),
+    ...(social.length ? [orLine(), col(social, { gap: 8 })] : []),
     grow(),
     trustCard(false),
     consent(o.terms, o.privacy),
