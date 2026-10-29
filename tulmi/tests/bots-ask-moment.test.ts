@@ -54,7 +54,7 @@ const CASES: Array<{ name: string; id: string; params: Record<string, string>; a
   { name: "the Code bot's project chat", id: "bots.code.job", params: { project: PROJECT }, api: async () => CODEWORK_API, color: "#4F7A3A", kind: "code", path: "/v1/ask", box: "msg", busy: "asking", old: "Asking Code bot…" },
   { name: "a bot's chat", id: "bots.chat", params: { slug: "gym-bot" }, api: sampleApi, color: "", kind: "custom", path: "/v1/botsapp/bots/chat/gym-bot", box: "say", busy: "sending", old: "Gym bot is on it…" },
   { name: "Ask", id: "bots.ask", params: {}, api: async () => ({}), color: "#0a0a0a", kind: "custom", path: "/v1/shell/ask", box: "ask", busy: "asking", old: "Asking…" },
-  { name: "Home's ask bar", id: "bots.home", params: {}, api: async () => ({}), color: "#0a0a0a", kind: "custom", path: "/v1/ask", box: "ask", busy: "asking", old: "Asking your bots…" },
+  { name: "Home's ask bar", id: "bots.home", params: {}, api: async () => ({}), color: "#0a0a0a", kind: "custom", path: "/v1/shell/ask", box: "ask", busy: "asking", old: "Asking your bots…" },
 ];
 
 describe("the moment an ask is out", () => {

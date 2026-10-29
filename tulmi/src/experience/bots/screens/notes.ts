@@ -430,7 +430,7 @@ function notePage(ctx: BotsCtx, d: NoteData | undefined) {
     ...said,
   ], { gap: 20, ...(desk ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 } : {}) });
   const ask = open(SCREENS.ask, { message: `About my meeting “${n.title}”: ` });
-  const actions = [secondaryButton("Copy notes", { kind: "copyText", text: copy, message: "Notes copied" }, { size: desk ? "lg" : "md" }), shareButton({ kind: "note", ref: n.id, title: n.title, text: copy }, { size: desk ? "lg" : "md" }), primaryButton("Ask a bot about it", ask, { size: desk ? "lg" : "md" })];
+  const actions = [secondaryButton("Copy notes", desk ? { kind: "copyText", text: copy, message: "Notes copied" } : { kind: "copyToClipboard", text: copy, toastMessage: "Notes copied" }, { size: desk ? "lg" : "md" }), shareButton({ kind: "note", ref: n.id, title: n.title, text: copy }, { size: desk ? "lg" : "md" }), primaryButton("Ask a bot about it", ask, { size: desk ? "lg" : "md" })];
   const state = Object.fromEntries(todos.map((t) => [tickPath(t), t.done]));
   return page(ctx, {
     ...(desk ? { nav: "notes" } : { back: true, backTitle: "Notes" }), title: n.title || "Notes", gap: desk ? 14 : 18, maxWidth: 1100, state,

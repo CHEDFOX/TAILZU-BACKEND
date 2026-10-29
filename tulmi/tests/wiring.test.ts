@@ -2,6 +2,11 @@
  * THE WIRING, END TO END: every Bots screen, on the phone and on the computer, built with sample data and every
  * capability on, and every button in it followed. A button that opens a screen must open one that exists (not the
  * "coming soon" page), and a call to the server must reach a route the server has (not Fastify's "Route … not found").
+ *
+ * Twice over: once with no answers to the screens' own reads (the empty states), and once with the render check's samples
+ * (scripts/bots-render/samples: every screen as its boards draw it), since most buttons are only drawn once there is
+ * something to press. And each client is sent only actions it can run: an action the other app alone handles does
+ * nothing at all where it lands (the window's Paste was exactly that, readClipboard with no handler).
  */
 // A route that exists answers anything but Fastify's "Route … not found" (most refuse the empty body); test keys only.
 process.env.DEV_SKIP_AUTH = "true";
@@ -17,6 +22,7 @@ import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/server.js";
 import { BOTS_SCREENS, buildBotsScreen } from "../src/experience/bots/index.js";
 import { IST, fakeDeps } from "../src/experience/bots/fixtures.js";
+import { SAMPLES, apiFor } from "../scripts/bots-render/samples/index.js";
 
 const ALL = { has: () => true } as unknown as Set<string>;
 
@@ -36,6 +42,16 @@ function actions(root: unknown): Array<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * Actions only one app runs (TAILZU-FRONTEND/app/src/sdui/actions.ts, TAILZU-DESKTOP/sdui.js `run`): sent to the other, they do nothing.
+ * The window's own: its clipboard (copyText), dictation, its settings and recorder, its connect flow. The phone's: Settings, the mic into
+ * a field, its clipboard (copyToClipboard), Face ID, the share sheet, the permissions it asks for, a setting kept on the phone.
+ */
+const ONLY: Record<"phone" | "desktop", ReadonlySet<string>> = {
+  desktop: new Set(["copyText", "dictate", "desktop.config", "notes.toggle", "connector.connect", "ask.picturesAll"]),
+  phone: new Set(["openSettings", "recordVoice", "copyToClipboard", "biometricPrompt", "share", "checkPermission", "requestPushPermission", "devicePref"]),
+};
+
 /** A path as the server would see it: template parts ($state.x, {x}) become a plain segment. */
 const concrete = (p: string): string => p.replace(/\$[a-zA-Z_][\w.[\]]*/g, "x").replace(/\{[^}]+\}/g, "x").split("?")[0]!;
 
@@ -48,16 +64,23 @@ describe("the wiring", () => {
     const missingScreens = new Map<string, Set<string>>();
     const missingRoutes = new Map<string, Set<string>>();
     const calls = new Map<string, Set<string>>();
-    for (const id of BOTS_SCREENS.keys()) {
+    // Every screen with no answers to its own reads, then every sample with the answers that draw it.
+    type Build = { id: string; params?: Record<string, string | number | boolean>; deskParams?: Record<string, string | number | boolean>; deps: () => Promise<ReturnType<typeof fakeDeps>> };
+    const builds: Build[] = [
+      ...[...BOTS_SCREENS.keys()].map((id) => ({ id, deps: async () => fakeDeps() })),
+      ...SAMPLES.map((x) => ({ id: x.id, params: x.params, deskParams: x.deskParams, deps: async () => fakeDeps({ ...(x.fake ?? {}), api: await apiFor(x) }) })),
+    ];
+    for (const { id, params, deskParams, deps } of builds) {
       for (const client of ["phone", "desktop"] as const) {
         const s = await buildBotsScreen({
-          screenId: id, client, tzOffsetMinutes: IST, user: { id: "11111111-2222-3333-4444-555555555555", name: "Aanya Rao", email: "aanya@example.in" },
+          screenId: id, client, params: client === "desktop" ? deskParams ?? params : params, tzOffsetMinutes: IST, user: { id: "11111111-2222-3333-4444-555555555555", name: "Aanya Rao", email: "aanya@example.in" },
           can: ALL, desk: { pages: client === "desktop", notes: true },
-        }, fakeDeps()).catch((e: Error) => { throw new Error(`${id} (${client}) failed to build: ${e.message}`); });
+        }, await deps()).catch((e: Error) => { throw new Error(`${id} (${client}) failed to build: ${e.message}`); });
         for (const a of actions(s)) {
-          // Phone-only actions the window has no handler for (TAILZU-DESKTOP/sdui.js) must never be sent to it.
-          if (client === "desktop" && ["openSettings", "recordVoice"].includes(String(a.kind))) {
-            (missingScreens.get(`desktop cannot ${a.kind}`) ?? missingScreens.set(`desktop cannot ${a.kind}`, new Set()).get(`desktop cannot ${a.kind}`)!).add(id);
+          // An action only the other app runs must never be sent to this one.
+          const other = client === "desktop" ? "phone" : "desktop";
+          if (ONLY[other].has(String(a.kind))) {
+            (missingScreens.get(`${client} cannot ${a.kind}`) ?? missingScreens.set(`${client} cannot ${a.kind}`, new Set()).get(`${client} cannot ${a.kind}`)!).add(id);
           }
           if (a.kind === "navigate" && typeof a.screenId === "string" && a.screenId.startsWith("bots.") && !a.screenId.includes("$")) {
             if (!BOTS_SCREENS.has(a.screenId)) (missingScreens.get(a.screenId) ?? missingScreens.set(a.screenId, new Set()).get(a.screenId)!).add(`${id} (${client})`);

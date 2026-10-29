@@ -360,7 +360,7 @@ describe("Offline and the outbox on screen", () => {
     const OFFLINE = { eq: ["online", false] };
     const offline = (root: Node) => actionsOf(root).filter((a) => a.kind === "condition" && json((a as { if?: unknown }).if) === json(OFFLINE)) as Array<ActionSpec & { then: ActionSpec & { actions: ActionSpec[] }; else: ActionSpec }>;
     for (const client of ["phone", "desktop"] as const) {
-      // Home's ask bar (kit askAction): kept for any bot, the field emptied, said so; online, POST /v1/ask as it was.
+      // Home's ask bar (kit askAction): kept for any bot, the field emptied, said so; online, POST /v1/shell/ask as Ask's own send.
       const home = await build("bots.home", client, ["Outbox"]);
       const bar = offline(home.s.root!);
       expect(bar.length, client).toBeGreaterThan(0);
@@ -370,7 +370,7 @@ describe("Offline and the outbox on screen", () => {
           { kind: "clearState", path: "ask" },
           { kind: "toast", message: "Kept. It will send when you're back." },
         ]);
-        expect(json(c.else), client).toContain('"path":"/v1/ask"');
+        expect(json(c.else), client).toContain('"path":"/v1/shell/ask"');
         expect(json(c.then), client).not.toContain("callEndpoint");
       }
       // Ask's own send: for the bot picked (its name on the line), or any; online, who answers and then the send, as before.

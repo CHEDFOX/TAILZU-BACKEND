@@ -81,11 +81,13 @@ describe("bots.home", () => {
     expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.plan" });
     expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.make" });
     expect(acts).toContainEqual({ kind: "switchTab", tabId: "you" });
-    // The ask bar: return or the send button posts to the front door, and the answer opens.
+    // The ask bar: return or the send button asks any bot through the shell's door (written down for Activity), and the answer opens
+    // with who answered and what it handed on, as Ask's own send does.
     const field = walk(s.root!).find((n) => n.type === "TextField")!;
     expect(field.bind).toEqual({ value: "ask" });
     const ask = JSON.stringify(field.on!.onSubmit);
-    expect(ask).toContain('"path":"/v1/ask"');
+    expect(ask).toContain('"path":"/v1/shell/ask"');
+    expect(ask).toContain('"params":{"message":"$state.sent","answer":"$state.asked.shell.text","bot":"$state.asked.shell.bot.slug","upi":"$state.asked.shell.upi","needs":"$state.asked.shell.needs","job":"$state.asked.shell.job"}');
     // The words go up as the person's bubble and the box clears at once; the call sends them from there (askMoment.ts).
     expect(ask).toContain('{"kind":"setState","path":"sent","value":"$state.ask"}');
     expect(ask).toContain('{"kind":"clearState","path":"ask"}');

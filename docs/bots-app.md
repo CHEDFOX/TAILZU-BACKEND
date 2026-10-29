@@ -154,7 +154,7 @@ an automatic charge, and **no amount on any screen** (section 12): not what Tail
 | `timeline(items)` | bead timeline: each row's bead is its status mark |
 | `table(columns, rows)` | the window's tables |
 | `needsCard(item, { layout })` · `needsLabel` · `choiceRow` | a decision, one tap |
-| `askBar(client)` · `askAction(client)` · `keptOffline(client, o, send)` | "Ask any bot…": sends to POST /v1/ask, opens bots.ask with the answer; offline, keeps the ask in the outbox instead |
+| `askBar(client)` · `askAction(client)` · `keptOffline(client, o, send)` | "Ask any bot…": sends to POST /v1/shell/ask (POST /v1/ask, bot "any", written down for Activity), opens bots.ask with the answer and its hand-off; offline, keeps the ask in the outbox instead. A phone page's footer stays above the keyboard while its field has it (`keyboard: "above"`) |
 | `emptyState({ pose, title, body, action })` · `blip(pose, height)` · `notice(text, { ink, mark })` · `infoChip(text)` | moments and states |
 | `icon(name, { size, color, weight })` · `shapes(list)` · `tailzuMark(size)` · `tabGlyph(tab, active, live.tab)` | glyphs (ICONS lists the names) |
 | `tabBar(active, live)` · `sidebar(ctx, active)` | the frames' chrome (page() adds them) |
