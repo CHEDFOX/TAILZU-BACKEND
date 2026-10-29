@@ -72,6 +72,7 @@ import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
 import { registerAccountDeletionRoutes } from "./routes/accountDeletion.js";
 import { registerBotsPushAskRoutes } from "./routes/botsPushAsk.js";
 import { registerBotLooksRoutes } from "./routes/botLooks.js";
+import { registerBotSoundFiles, registerBotSoundsRoutes } from "./routes/botSounds.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
 import { sessionOffers } from "./code/live/offers.js";
 import { jobStore } from "./code/jobs/store.js";
@@ -571,6 +572,11 @@ if (fs.existsSync(ICONS_DIR)) {
     immutable: true,
   });
 }
+
+// --- The bots' sounds ---------------------------------------------------------
+// Pull-a-bot's and the bots' moments' sounds (experience/bots/sounds.ts), made by scripts/make-bot-sounds.py and kept
+// in shared/bots/sounds: served the way the typefaces are, immutable, each URL carrying its file's hash.
+await registerBotSoundFiles(app);
 
 await app.register(transcribeStream);
 // Live updates (src/live, docs/bots-app.md "Live updates"): WS /v1/live carries "this changed" to every device a person has
@@ -1160,6 +1166,7 @@ registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
+registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 const frontRoutes = registerFrontRoutes(app, {
   rateLimit: AUTHED_RL, front, bots,
   // "Ask any bot": a bot shared into a space reads what the space shared, as data, as in its chat.

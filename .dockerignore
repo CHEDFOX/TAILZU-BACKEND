@@ -57,3 +57,6 @@ tulmi/e2e/
 
 # The media worker has its own build context (media-worker/Dockerfile).
 media-worker/
+
+# The bots' sounds' masters (scripts/make-bot-sounds.py): the server serves only the .m4a beside them.
+shared/bots/sounds/masters/

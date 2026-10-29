@@ -14,6 +14,7 @@
  * Built with the kit (../kit.ts) the way screens/shell.ts builds bots.home; one id serves the phone and the window (ctx.client).
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
+import { BOT_SOUNDS_CAPABILITY } from "../../../../../shared/types/sdui.js";
 import {
   C, FACE, SCREENS, back, body, botAvatar, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, listCard,
   listRow, meta, mono, notice, open, page, percent, primaryButton, quietButton, row, secondaryButton, sectionLabel, seq, shapes,
@@ -282,12 +283,25 @@ const pingsLine = (s: Settings | undefined) => {
   return parts.join(" · ");
 };
 
+/**
+ * The phone's Sounds switch (shared/types/sdui.ts 3h): pull-a-bot's and the bots' moments' sounds, on or off. Kept on the
+ * device, not the account (devicePref "sounds"; the phone puts `soundsOn` in the screen's state). Only for a build that
+ * plays them.
+ */
+function soundsCard(ctx: BotsCtx): Node[] {
+  if (ctx.client !== "phone" || !ctx.can.has(BOT_SOUNDS_CAPABILITY)) return [];
+  const keep: ActionSpec = { kind: "devicePref", key: "sounds", value: "$state.soundsOn" };
+  return [listCard([switchRow("Sounds", "soundsOn", { sub: "Little sounds when you pull to refresh, and when your bots play", onChange: keep })])];
+}
+
 function youPhone(ctx: BotsCtx, d: YouData | undefined) {
   const m = meterOf(ctx, d?.usage);
   const line = limitLine(ctx, m);
   const planLine = `${d?.plan.name ?? "Your plan"} · ${plural(ctx.live.bots.length, "bot")}`;
   return page(ctx, {
     tab: "you", title: "You", gap: 18,
+    // On until this phone says otherwise (it writes its own `soundsOn` over this).
+    ...(soundsCard(ctx).length ? { state: { soundsOn: true } } : {}),
     body: [
       row([
         face(ctx, 48),
@@ -307,6 +321,7 @@ function youPhone(ctx: BotsCtx, d: YouData | undefined) {
         listRow({ label: "Language", value: languageName(d?.language ?? null), onPress: open(SCREENS.language) }),
         listRow({ label: "What bots may do alone", value: d?.apps ? (d.apps.alone ? plural(d.apps.alone, "rule") : "Ask me first") : "", onPress: open(SCREENS.apps) }),
       ]),
+      ...soundsCard(ctx),
       listCard([
         listRow({ label: "Plan and billing", value: d?.plan.name ?? "", onPress: open(SCREENS.billing) }),
         listRow({ label: "Your data", value: "Download · Delete", onPress: open(SCREENS.privacy) }),

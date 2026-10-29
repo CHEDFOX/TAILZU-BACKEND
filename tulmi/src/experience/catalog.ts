@@ -47,6 +47,7 @@ import { botsFonts, botsNav, BOTS_WARM_SCREEN_IDS } from "./bots/index.js";
 import { botsAuthTree, BOTS_FIRST_RUN_IDS, BOTS_FIRST_RUN_SCREEN } from "./bots/screens/firstRun.js";
 import { BOTS_OFFLINE_FLAGS } from "./bots/screens/outbox.js";
 import { looksFlags } from "./bots/looks.js";
+import { soundsFlags } from "./bots/sounds.js";
 import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, Note, NoteSummary, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
@@ -2342,7 +2343,8 @@ export function buildBootstrap(
         // Setup's Live Activity (iOS): the step they left off at, until done.
         ...(setup ? { "liveActivity.setup": setup } : {}),
         // The Bots app: its pages draw their own tab bar and sidebar; "bots.looks" names the bots' catalog (bots/looks.ts).
-        ...(botsApp ? { "bots.app": true, ...BOTS_OFFLINE_FLAGS, ...looksFlags() } : {}),
+        // "bots.sounds" names the bots' sounds (bots/sounds.ts): pull-a-bot's and the moments'.
+        ...(botsApp ? { "bots.app": true, ...BOTS_OFFLINE_FLAGS, ...looksFlags(), ...soundsFlags() } : {}),
         ...(desk ? {
           "desktop.desk": true,
           "desktop.desk.settingsScreenId": "desk_settings",
