@@ -48,6 +48,9 @@ tulmi/scripts/
 !tulmi/scripts/speech-check.ts
 # Supabase SQL ships out-of-band via the SQL editor, not in the image.
 tulmi/supabase/
+# The reality-check harness (recorded runs, bake-offs) runs from a laptop, never in the image. Its bake-off reads
+# scripts/eval-prompts.ts, which is left out above, so with it in the context `tsc` failed the image build.
+tulmi/e2e/
 
 # Source maps add weight + leak source paths.
 **/*.map
