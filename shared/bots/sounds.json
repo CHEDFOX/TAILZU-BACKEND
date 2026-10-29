@@ -1,0 +1,196 @@
+{
+  "v": 1,
+  "note": "The bots' sounds (tulmi/scripts/make-bot-sounds.py makes them; docs/bots-app.md \"Sounds\"). Raise v with every change: the apps fetch a new pack when it moves.",
+  "sounds": [
+    {
+      "id": "boing",
+      "file": "boing.m4a",
+      "hash": "705c324930d4",
+      "kind": "throw",
+      "weight": 3,
+      "ms": 420,
+      "label": "Springy boing"
+    },
+    {
+      "id": "pop",
+      "file": "pop.m4a",
+      "hash": "7cc1fe3f2905",
+      "kind": "throw",
+      "weight": 3,
+      "ms": 170,
+      "label": "Bubbly pop"
+    },
+    {
+      "id": "plink",
+      "file": "plink.m4a",
+      "hash": "731941ea9884",
+      "kind": "throw",
+      "weight": 3,
+      "ms": 440,
+      "label": "Soft plink"
+    },
+    {
+      "id": "whee",
+      "file": "whee.m4a",
+      "hash": "08ec63d7cd81",
+      "kind": "throw",
+      "weight": 3,
+      "ms": 420,
+      "label": "Whoosh, whee"
+    },
+    {
+      "id": "squeak",
+      "file": "squeak.m4a",
+      "hash": "33413e6c9e56",
+      "kind": "throw",
+      "weight": 2,
+      "ms": 210,
+      "label": "Toy squeak"
+    },
+    {
+      "id": "tok",
+      "file": "tok.m4a",
+      "hash": "e95a7c8b79d2",
+      "kind": "throw",
+      "weight": 2,
+      "ms": 240,
+      "label": "Wooden tok"
+    },
+    {
+      "id": "ping",
+      "file": "ping.m4a",
+      "hash": "861e2d702ee8",
+      "kind": "throw",
+      "weight": 2,
+      "ms": 450,
+      "label": "Glassy ping"
+    },
+    {
+      "id": "chirp",
+      "file": "chirp.m4a",
+      "hash": "969b943c5178",
+      "kind": "throw",
+      "weight": 3,
+      "ms": 270,
+      "label": "Robot chirp"
+    },
+    {
+      "id": "twang",
+      "file": "twang.m4a",
+      "hash": "6cab16cac305",
+      "kind": "throw",
+      "weight": 2,
+      "ms": 400,
+      "label": "Rubber-band twang"
+    },
+    {
+      "id": "bloop",
+      "file": "bloop.m4a",
+      "hash": "5944a97c8e23",
+      "kind": "throw",
+      "weight": 3,
+      "ms": 200,
+      "label": "Soft bloop"
+    },
+    {
+      "id": "hop",
+      "file": "hop.m4a",
+      "hash": "616a29d20959",
+      "kind": "throw",
+      "weight": 2,
+      "ms": 240,
+      "label": "Bip-boop hop"
+    },
+    {
+      "id": "zip",
+      "file": "zip.m4a",
+      "hash": "9bd956ac9093",
+      "kind": "throw",
+      "weight": 2,
+      "ms": 170,
+      "label": "Quick zip"
+    },
+    {
+      "id": "slide",
+      "file": "slide.m4a",
+      "hash": "87630fe8e583",
+      "kind": "throw",
+      "weight": 1,
+      "ms": 450,
+      "label": "Slide whistle (rare)",
+      "rare": true
+    },
+    {
+      "id": "tick",
+      "file": "tick.m4a",
+      "hash": "3adf8dcbadc6",
+      "kind": "tick",
+      "weight": 1,
+      "ms": 50,
+      "label": "The line"
+    },
+    {
+      "id": "chime",
+      "file": "chime.m4a",
+      "hash": "75c833a1cdda",
+      "kind": "new",
+      "weight": 1,
+      "ms": 450,
+      "label": "Something new"
+    },
+    {
+      "id": "hmm",
+      "file": "hmm.m4a",
+      "hash": "814a55de298a",
+      "kind": "uptodate",
+      "weight": 1,
+      "ms": 400,
+      "label": "Up to date"
+    },
+    {
+      "id": "sneeze",
+      "file": "sneeze.m4a",
+      "hash": "8090364f353d",
+      "kind": "moment",
+      "weight": 1,
+      "ms": 450,
+      "label": "Sneeze"
+    },
+    {
+      "id": "fart.small",
+      "file": "fart.small.m4a",
+      "hash": "37a057f2754d",
+      "kind": "moment",
+      "weight": 1,
+      "ms": 240,
+      "label": "A tiny one"
+    },
+    {
+      "id": "party",
+      "file": "party.m4a",
+      "hash": "8ca83412e089",
+      "kind": "moment",
+      "weight": 1,
+      "ms": 450,
+      "label": "Celebrate"
+    },
+    {
+      "id": "hic",
+      "file": "hic.m4a",
+      "hash": "5d2fa0fee692",
+      "kind": "moment",
+      "weight": 1,
+      "ms": 170,
+      "label": "Hiccup"
+    },
+    {
+      "id": "clap",
+      "file": "clap.m4a",
+      "hash": "8abc8c5f1ddf",
+      "kind": "moment",
+      "weight": 1,
+      "ms": 200,
+      "label": "Clap"
+    }
+  ]
+}

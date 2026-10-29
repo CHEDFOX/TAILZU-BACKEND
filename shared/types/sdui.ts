@@ -1199,6 +1199,46 @@ export interface PullBotSpec {
   font?: string;
 }
 
+// ---------------------------------------------------------------------------
+// 3h. The bots' sounds (docs/bots-app.md, "Sounds")
+// ---------------------------------------------------------------------------
+//
+// Short sounds, made for the bots (tulmi/scripts/make-bot-sounds.py), served as files from /bots/sounds/ (immutable; each
+// URL carries its file's hash) with a catalog at GET /v1/bots/sounds (shared/bots/sounds.json; a pushed one wins while its
+// v is higher). The Bots app's bootstrap names the catalog in the flag "bots.sounds" ({ v, url }); a build that declares
+// BOT_SOUNDS_CAPABILITY fetches it when v moves, keeps the files, and plays: a random "throw" when pull-a-bot throws its
+// bot (never the same twice running, weighted, a `rare` one now and then), the "tick" at the line, "new" when a refresh
+// found something, "uptodate" when it did not, and a "moment" sound by id when a bots' moment names it. Quiet, mixed with
+// other audio, and never when the phone is on silent. The person turns them off on the device (action devicePref
+// "sounds"; a screen whose state names `soundsOn` gets the phone's value); the knobs pullBot.sounds.* tune them.
+
+/** Declared by a build that plays the bots' sounds and runs devicePref "sounds". */
+export const BOT_SOUNDS_CAPABILITY = "BotSounds";
+
+export type BotSoundKind = "throw" | "tick" | "new" | "uptodate" | "moment";
+
+/** One sound as GET /v1/bots/sounds serves it. */
+export interface BotSound {
+  /** For a moment: the name its recipe's `sound` track says ("sneeze"). */
+  id: string;
+  kind: BotSoundKind;
+  /** Where the file is: a path on the API's origin ("/bots/sounds/boing.m4a?h=…") or an https address. */
+  url: string;
+  /** The file's hash (sha-256, its first 12 hex): a changed file is a new one to the apps' caches. */
+  hash: string;
+  /** How often it comes up among its kind (0: never). */
+  weight: number;
+  /** A funny one, rarely (pullBot.sounds.rareChance). */
+  rare?: boolean;
+  ms: number;
+  label?: string;
+}
+
+export interface BotSoundsCatalog {
+  v: number;
+  sounds: BotSound[];
+}
+
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [
   "scroll", "feature", "list", "centered", "detail", "grid", "hero",
@@ -1322,6 +1362,9 @@ export type ActionSpec =
    *  `clientId` and `typedAt`. remove: take item `id` out (not one already sent). retry: send a failed one (`id`) again.
    *  clear: drop the ones that were sent. */
   | { kind: "outbox"; op: "add" | "remove" | "retry" | "clear"; path?: string; body?: Record<string, unknown>; label?: string; sub?: string; id?: string }
+  /** A setting kept on this device, not on the account (section 3h: "sounds", on or off; `value` may be "$state.x").
+   *  Only for a build that declares BOT_SOUNDS_CAPABILITY. */
+  | { kind: "devicePref"; key: "sounds"; value: unknown }
   // --- permissions ---
   | {
       kind: "requestPermission";

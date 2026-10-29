@@ -495,3 +495,27 @@ end: "2 new at the top", which a tap goes to). Let go early: nothing refreshes. 
   `pullBot.checkMinMs` 900, `pullBot.pillMs` 2200, `pullBot.giveUpMs` 15000, `pullBot.pill.*` (colours, size, inset),
   `app.haptics.pullBot` "light"; labels
   `pullBot.checking`, `pullBot.fresh` ("{n} new"), `pullBot.freshTop`, `pullBot.freshBottom`, `pullBot.upToDate`, `pullBot.failed`.
+
+## 15. Sounds
+
+Short sounds made for the bots (shared/types/sdui.ts 3h): Pull-a-bot throws its bot with one (a different one each time), ticks
+at the line, chimes when a refresh found something new and says a small "hmm" when it did not; the bots' moments play the sound
+their recipe names (`sound` tracks: sneeze, fart.small, party, hic, clap). Quiet (about -20 LUFS), mixed with other apps' audio
+(ducking nothing), and never when the phone is on silent.
+
+* **Made here**, from maths only (no samples): `python3 tulmi/scripts/make-bot-sounds.py` (numpy and ffmpeg) writes
+  `shared/bots/sounds/masters/<id>.wav`, `shared/bots/sounds/<id>.m4a` (AAC, 44.1 kHz mono) and `shared/bots/sounds.json` (each
+  sound's id, file, hash, kind `throw | tick | new | uptodate | moment`, weight, `rare`, ms, label), normalised by kind and
+  checked (length <= 450 ms, no clipping, silent ends, no DC). `--check` only checks; `--bump` raises `v`. Same input, same files.
+* **Served**: the files at `/bots/sounds/<id>.m4a?h=<hash>` (routes/botSounds.ts; immutable, a year; never the masters), the
+  catalog at `GET /v1/bots/sounds` (each sound's address), and the Bots app's bootstrap flag `"bots.sounds": { v, url }`.
+* **A new pack** (a seasonal one): make or add the files, raise `v`, deploy; or without a deploy, put the files in the media
+  store and `PUT /v1/admin/bots/sounds` a catalog whose new sounds name their `url` (https), with a higher `v`
+  (`DELETE` takes it back). The phones fetch the catalog and the files they lack when `v` moves, and keep them.
+* **The phone** (a build that declares **`BotSounds`**; `app/src/sdui/sounds.ts`, rules in `soundsCore.ts`): one small player
+  per sound, readied when a finger comes down; the throw picked by weight, never the one before, the `rare` one about 1 in 20.
+  Not while the app's own sound or microphone is on. The **Sounds** switch on the You tab (only for such a build) is kept on the
+  device: action `devicePref` "sounds", and `soundsOn` in the screen's state.
+* **Knobs**: `pullBot.sounds.enabled` (true), `pullBot.sounds.volume` (0.7), `pullBot.sounds.rareChance` (0.05),
+  `pullBot.sounds.noRepeat` (true), `bots.sounds.moments` (true), `bots.sounds.momentVolume` (0.5), `bots.sounds.players` (8),
+  `bots.sounds.sessionIdleMs` (4000).
