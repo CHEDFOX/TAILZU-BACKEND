@@ -16,6 +16,7 @@ the window (`TAILZU-DESKTOP/sdui.js`) draw them. Design source: `bots-design/` (
 * [10. Live updates](#10-live-updates)
 * [11. The calendar and to-dos](#11-the-calendar-and-to-dos)
 * [12. Usage, not money](#12-usage-not-money)
+* [13. Looks and moments](#13-looks-and-moments)
 
 ## 1. The switch
 
@@ -399,4 +400,72 @@ gateway, you_spend, usage_events): the Code bot's jobs, every bot's answers (and
   opens without an amount (`am` is optional, shell/parse.ts `upiOf` drops it): the person types it in their UPI app (migration 0055 lets
   a request carry none). The hand-off tool itself (connectors/handoffs) still takes the amount the person said, for the old app.
 * **Travel**: stays are compared by area, distance and rating (no "Cheaper"), with a link to see prices on the booking site.
+
+## 13. Looks and moments
+
+What the bots look like (**avatars**) and what they do (**moments**) are data on the server, drawn and played by the apps' one
+physics core (`TAILZU-FRONTEND/app/src/botTiles/core.ts`; the window's `botTiles.js` is generated from it). A new look or a new
+moment needs no app update: change the catalog, and every app with the `BotMoments` capability takes it at its next start.
+
+| | |
+| --- | --- |
+| `shared/bots/looks.json` | **the catalog**: `parts`, `avatars`, `moments`, `kinds` (which avatar each kind wears), `idle` (Home's surprises), `v` |
+| `tulmi/src/experience/bots/looks.ts` | `checkLooks` (the apps' rules), `activeLooks`, `pushLooks`, `looksFlags`, `momentProps`, `idleSurprises` |
+| `tulmi/src/routes/botLooks.ts` | `GET /v1/bots/looks`; `PUT` / `DELETE /v1/admin/bots/looks` (ADMIN_SECRET) |
+| kit | `canMoments(ctx)`, `botMoment(ctx, id, mode?)`, `homeSurprises(ctx)`; `botTiles(…, { surprises })` |
+| apps | phone `src/botTiles/looks.ts` (+ `looksStore.ts`, `starter.ts`), window `sdui.js` `btLooks()` (+ `botLooks.js`) |
+
+**Avatars.** A look from parts, sizes in his head's radius (head, eyes, mouth, ears, antennae's places) or in bot heights (the rest):
+`head` { shape round / oval / square, size, w, h, round }, `eyes` { style one / two / dots / visor / none, size, gap, pupil, y },
+`mouth` { style none / line / smile / o / open, size, y }, `antennae` (up to 2: at, up, lean, len, tipLen, bend, tip ball / light /
+star / none, tipSize), `ears` { style none / round / bolt / point, size }, `dots` { pattern hex / grid / none, spacing, size, alpha },
+`body` { top, bottom, round }, `limbs` { arm, leg, neck, hand, antenna }, `paint` { body, dots, eye, pupil, mouth, light, ears } and
+`wear` (up to 6: a part `on` an anchor, x, y, scale, rot, paint, back). `extends` another avatar; its own fields win, lists are whole.
+Every kind wears its own copy of `blip`, whose values are exactly what the core drew before: the phone's tests check today's frames and
+drawing are unchanged, call for call. A node takes `avatar` as an id or a spec of its own (over Blip); none: its kind's.
+
+**Moments.** A recipe: `dur` (seconds), `mode` once / loop, `loopFrom` (what is before plays once: a yawn before the sleep), `bpm`
+(`beat`), `still` (Reduce Motion's pose), `fallback` (the plain act for a build that cannot play it), `react` (only others play it),
+`tracks`, and `end` { dur, tracks } (played on deliver, or a screen's `momentEndWhen`). A track has `do`, `at`, `to` (none: to the end;
+an instant fires once at `at`), `after` (its times count from an event), `if` alone / paired, `chance` (per play), and its own fields.
+Numbers may be expressions in the mic program's language (motionLang.ts; names `t u T D beat k side rnd rnd2 W x px`, its built-ins
+and `sign tri hash`). Every track sets a goal or a force for the physics, never a pose:
+
+* body: `walk` (x of the stage, dx from where he began, or toward peer / away / center / left / right / start), `hop` (h, dx),
+  `crouch`, `sit`, `lean`, `tilt`, `spin` (rate), `shake` (amp, freq, part), `kick` (an impulse on head / body / all / hands / feet);
+* hands: `arm` (front / back / l / r / both to x, y from neck / head / hip / crown / face / body; at the face it is drawn over his head);
+* eyes and looks: `look` (screen, peer, away, point, around, down, up, ahead, drop, last, hand), `face`, `eyes` (rest, open, closed,
+  half, squint, wide, x, happy, spiral), `mouth` (rest, none, line, smile, open, o, wide, wavy), `lid`, `blink`, `glow`;
+* things: `prop` (a part on an anchor while the track lasts; it pops), `emit` (particles: part or parts, from, n, every, vx, vy,
+  spread, g, drag, life, size, grow, spin, paint `$any`, floor; thrown to a hand with `aim`, `flight`, `alt`, `miss` → `onMiss` event,
+  `pause`; circling with `orbit`), `fabric` (a ripple);
+* others: `others` (the nearest `n` bots within `near` play a moment, with him as their partner: lean away, look, laugh, cheer, a high
+  five's other hand), `event` (fires a name), `sound` (a name; the app plays it if it has it), `act` (one of today's acts inside a recipe).
+
+**Parts.** `draw`: up to 12 shapes, each a path `d` (M, L, Q, Z and O cx cy r; bot heights, x forward, y down) with `fill` / `stroke`
+(`$color` the bot's, `$paint` the wearer's or emitter's, ink, paper, #rrggbb), `width`, `alpha`.
+
+**How it reaches the apps.** The Bots app's bootstrap carries `"bots.looks": { v, url }`; an app whose catalog is another `v` fetches
+`GET /v1/bots/looks`, compiles it (one with an error is refused) and keeps it (AsyncStorage / localStorage). Both apps ship a starter
+copy (phone `src/botTiles/starter.ts`, window `botLooks.js`) for the first launch and offline; the core never parses in a frame.
+A node: `BotBuddy` `avatar`, `moment`, `momentMode`, `momentEndWhen`; a tile `avatar`, `moment`, `momentMode`; `BotTiles` `surprises`
+{ every, chance, moments }; `BotCard` `avatar`, `moment`. Build them with `botMoment(ctx, id, mode)`: a build without `BotMoments`
+gets the recipe's `fallback` act instead (and an app that cannot play a recipe, a newer `format`, plays its fallback too).
+
+**Pushing a new avatar or moment.**
+
+1. Edit `shared/bots/looks.json` (add a part, an avatar under `avatars`, a recipe under `moments`; point a kind at a new avatar in
+   `kinds`) and raise `v` by one.
+2. `npx vitest run tests/bots-looks.test.ts` (it runs `checkLooks`: every field, path, expression, reference). Look at it in the
+   showcase page (the frontend's `genDesktop.mjs` builds `botTiles.js`; any page that loads it and the catalog can play it).
+3. Deploy the server. Apps take it on their next start (the bootstrap's flag moved).
+4. Without a deploy: `PUT /v1/admin/bots/looks` with the whole catalog (header `x-admin-secret`; `?dry=1` only checks). It must pass
+   the check and have a higher `v`; it is kept on the control volume (`bot-looks.json`) until a deploy brings a higher `v`, or
+   `DELETE /v1/admin/bots/looks` takes it back (the apps follow the version down).
+5. At the next app release: `node src/botTiles/genStarter.mjs` in `TAILZU-FRONTEND/app` refreshes both starters (the phone's and the
+   window's tests fail while they differ from the server's file).
+
+A new **kind of track or field** is an app update: add it to `core.ts` (and `TRACK_FIELDS` in looks.ts), raise `LOOKS_FORMAT` on both
+sides, have the new build declare `BotMoments2` as well, and give recipes that use it `format: 2`: the kit sends them only to builds that
+declare it (`playsFormat`), and older builds get their fallback act.
 
