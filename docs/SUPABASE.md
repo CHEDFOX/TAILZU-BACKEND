@@ -105,10 +105,12 @@ minted for someone else's account would sign the phone into THAT account
 therefore match the callback WITH a query. Add:
 
 ```
+https://api.x0bot.com/auth/callback**
 https://api.tailzu.space/auth/callback**
 ```
 
-(the host is `PUBLIC_ORIGIN`'s). An exact `…/auth/callback` entry no longer
+(the host is `PUBLIC_ORIGIN`'s; the tailzu.space entry stays for the apps
+already installed, which send their own API address — docs/domain-x0bot.md). An exact `…/auth/callback` entry no longer
 matches, and Supabase then silently sends the user to the Site URL instead —
 Google on Android would land on the wrong page. Add the entry **before** the
 app update and the server that send the state go out.

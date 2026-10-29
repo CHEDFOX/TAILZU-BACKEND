@@ -85,7 +85,7 @@ describe("nothing goes out looking unwritten", () => {
     expect(tidyRaw("how about we meet at five")).toBe("How about we meet at five?");
     expect(tidyRaw("what a day it has been")).toBe("What a day it has been.");
     // No full stop on the end of a link.
-    expect(tidyRaw("the doc is at https://docs.tailzu.space/setup")).toBe("The doc is at https://docs.tailzu.space/setup");
+    expect(tidyRaw("the doc is at https://docs.x0bot.com/setup")).toBe("The doc is at https://docs.x0bot.com/setup");
   });
 });
 

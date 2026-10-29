@@ -15,7 +15,7 @@
  * person's install.
  *
  * `github` also carries WHO THE BOT IS in git (CODE_BOT_NAME and CODE_BOT_EMAIL,
- * "Blip" and "blip@tailzu.space" by default): the author of every commit it
+ * "Blip" and "blip@x0bot.com" by default): the author of every commit it
  * makes, on either way of connecting (access.ts).
  *
  * Tests pass their own store, App config and fake `fetchFn`, so nothing here

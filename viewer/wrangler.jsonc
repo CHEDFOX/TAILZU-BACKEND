@@ -7,7 +7,7 @@
   "compatibility_date": "2026-10-23",
 
   // The viewer must live on its OWN site, never the app's (docs/artifact-viewer.md). *.workers.dev is on the Public Suffix List, so
-  // tailzu-viewer.<your-subdomain>.workers.dev is a different site from tailzu.space until a domain of its own is chosen.
+  // tailzu-viewer.<your-subdomain>.workers.dev is a different site from x0bot.com until a domain of its own is chosen.
   "workers_dev": true,
   "observability": { "enabled": true },
 
@@ -34,7 +34,8 @@
     // "production" turns the /__host test page off. For local work: `wrangler dev --var ENV:development`.
     "ENV": "production",
     // Who may embed the viewer (CSP frame-ancestors) and talk to it (postMessage origin check). Comma-separated; https://*.preview.example
-    // allows every subdomain. Set it to where the app is served.
-    "VIEWER_PARENT_ORIGINS": "https://tailzu.space,https://www.tailzu.space"
+    // allows every subdomain. Set it to where the app is served: x0bot.com, and tailzu.space while the move lasts (the server names
+    // the apps' host page's origin, ARTIFACT_APP_ORIGIN, x0bot.com unless set).
+    "VIEWER_PARENT_ORIGINS": "https://x0bot.com,https://www.x0bot.com,https://tailzu.space,https://www.tailzu.space"
   }
 }

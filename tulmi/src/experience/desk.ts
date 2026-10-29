@@ -2417,7 +2417,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
 
     // ---- Help and about ----------------------------------------------------
     part(say("help.h"), say("help.p"), [
-      defRow("Questions", "support@tailzu.space", link(say("r.mail"), { kind: "openUrl", url: "mailto:support@tailzu.space" })),
+      defRow("Questions", "support@x0bot.com", link(say("r.mail"), { kind: "openUrl", url: "mailto:support@x0bot.com" })),
       ...(legal ? [defRow(say("r.terms"), "The rules of using me", link("Read them", { kind: "openUrl", url: legal.terms }))] : []),
     ], true),
   ], { maxWidth: 820 })], { retainHistory: ctx.personality.retainHistory !== false, ...appsState(ctx.assistant) });
@@ -2864,8 +2864,8 @@ export function deskPlan(ctx: DeskContext): ScreenResponse {
       // The purchase screen: the one place with a price (the stores' and Razorpay's), so the renewal and the terms are said here too.
       text("One subscription covers your phone and your computer. It renews automatically until you cancel. Checkout opens in your browser; payments by Razorpay.", "d-lede", { marginTop: 18 }),
       row([
-        link("Terms", { kind: "openUrl", url: "https://tailzu.space/terms", external: true } as ActionRef),
-        link("Privacy", { kind: "openUrl", url: "https://tailzu.space/privacy", external: true } as ActionRef),
+        link("Terms", { kind: "openUrl", url: "https://x0bot.com/terms", external: true } as ActionRef),
+        link("Privacy", { kind: "openUrl", url: "https://x0bot.com/privacy", external: true } as ActionRef),
       ], { gap: 16, marginTop: 10 }, "d-tools"),
     ]),
   ], { maxWidth: 820 })]);

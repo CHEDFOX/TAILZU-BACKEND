@@ -35,7 +35,7 @@ export function mergeCommands(baseSha: string): string[] {
     // A shallow checkout cannot find a merge base; a complete one says so (and that is fine).
     "git fetch --no-tags --unshallow origin 2>/dev/null || true",
     `git fetch --no-tags origin ${baseSha}`,
-    `git -c user.name=Tailzu -c user.email=noreply@tailzu.space merge --no-commit --no-ff ${baseSha} 2>&1 || true`,
+    `git -c user.name=Tailzu -c user.email=noreply@x0bot.com merge --no-commit --no-ff ${baseSha} 2>&1 || true`,
     "git diff --name-only --diff-filter=U | sed 's/^/TAILZU_CONFLICT /'",
     // The working tree is what is read back: conflicting files with their markers included.
     "git add -A",

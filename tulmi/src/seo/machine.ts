@@ -7,7 +7,7 @@
  *                    Tailzu is, in one paragraph, and where each answer lives
  *   /llms-full.txt   every fact in plain text, so an assistant asked about
  *                    Tailzu can answer from the source rather than a guess
- *   /robots.txt      for api.tailzu.space only. tailzu.space has its own
+ *   /robots.txt      for api.x0bot.com only. x0bot.com has its own
  *                    static file, so the site's crawl rules never depend on
  *                    this server being up.
  *
@@ -163,9 +163,9 @@ ${faqGroups().map((g) => `### ${g.title}\n\n${g.items.map((it) => `**${it.q}**\n
 `;
 }
 
-/** api.tailzu.space is the API and the site's proxy origin, never a place to rank. */
-export const API_ROBOTS = `# api.tailzu.space serves the app and proxies the site's pages.
-# The pages are canonical at https://tailzu.space, which has its own robots.txt.
+/** api.x0bot.com is the API and the site's proxy origin, never a place to rank. */
+export const API_ROBOTS = `# api.x0bot.com serves the app and proxies the site's pages.
+# The pages are canonical at https://x0bot.com, which has its own robots.txt.
 # App-link files and media stay readable for the systems that check them.
 User-agent: *
 Allow: /.well-known/

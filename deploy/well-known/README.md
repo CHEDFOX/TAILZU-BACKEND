@@ -1,49 +1,39 @@
 # Universal Links / App Links — hosted JSON
 
-Put these two files behind `https://tailzu.space/.well-known/` (exact path required):
+The backend serves both files itself (`tulmi/src/server.ts`, any Host header),
+so every host that reaches it answers them, straight, with no redirect:
+
+| host | how it reaches the backend |
+| --- | --- |
+| `app.x0bot.com`, `app.tailzu.space` | the VPS's proxy (nginx, or `deploy/Caddyfile`) |
+| `x0bot.com`, `tailzu.space` | the site on Vercel: `vercel.json` rewrites `/.well-known/*` to the API |
+
+These two files are the same JSON, kept as a reference:
 
 - `apple-app-site-association` — iOS Universal Links. **No `.json` extension.**
-  Must be served over HTTPS with `Content-Type: application/json`.
-- `assetlinks.json` — Android App Links.
+  Served with `Content-Type: application/json`.
+- `assetlinks.json` — Android App Links. The server fills the fingerprint from
+  `ANDROID_SIGNING_SHA256` in `tulmi/.env`.
 
-## Nginx snippet
-
-Add to the `tailzu.space` server block, above any catch-all `location /`:
-
-```nginx
-location = /.well-known/apple-app-site-association {
-    default_type application/json;
-    alias /var/www/tailzu.space/well-known/apple-app-site-association;
-}
-location = /.well-known/assetlinks.json {
-    default_type application/json;
-    alias /var/www/tailzu.space/well-known/assetlinks.json;
-}
-```
-
-Then upload the files:
-
-```bash
-scp deploy/well-known/apple-app-site-association \
-    deploy/well-known/assetlinks.json \
-    root@YOUR_VPS:/var/www/tailzu.space/well-known/
-nginx -t && systemctl reload nginx
-```
+The phone app claims all four hosts (`associatedDomains` and the Android
+`intentFilters` in `app/app.config.ts`); tailzu.space stays for the builds
+already installed (docs/domain-x0bot.md).
 
 ## Verification
 
-```bash
-# iOS
-curl -sI https://tailzu.space/.well-known/apple-app-site-association | head
-curl -s  https://tailzu.space/.well-known/apple-app-site-association | jq .
+Each must be `200` and JSON on the first answer — Apple and Google follow no
+redirect for these files:
 
-# Android
-curl -sI https://tailzu.space/.well-known/assetlinks.json | head
-curl -s  https://tailzu.space/.well-known/assetlinks.json | jq .
+```bash
+for h in app.x0bot.com x0bot.com app.tailzu.space tailzu.space; do
+  curl -s -o /dev/null -w "$h %{http_code} %{content_type}\n" "https://$h/.well-known/apple-app-site-association"
+  curl -s -o /dev/null -w "$h %{http_code} %{content_type}\n" "https://$h/.well-known/assetlinks.json"
+done
 ```
 
-Apple validates automatically on next app install. Google validates via
-`https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://tailzu.space&relation=delegate_permission/common.handle_all_urls`.
+Apple validates automatically on next app install (its CDN:
+`https://app-site-association.cdn-apple.com/a/v1/app.x0bot.com`). Google validates via
+`https://digitalassetlinks.googleapis.com/v1/statements:list?source.web.site=https://app.x0bot.com&relation=delegate_permission/common.handle_all_urls`.
 
 ## Android — filling the SHA-256
 
@@ -60,7 +50,7 @@ entries.
 
 ## Tap flow after this ships
 
-- `https://tailzu.space/s/home` on iOS/Android → opens the app → SduiApp
+- `https://app.x0bot.com/s/home` on iOS/Android → opens the app → SduiApp
   routes to screen `"home"` via `deeplinks/router.ts`.
 - `tulmi://screen/home` (custom scheme) → same routing path.
 - Notification tap with `data.screenId = "history"` → same routing path.

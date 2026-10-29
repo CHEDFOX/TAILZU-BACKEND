@@ -1139,11 +1139,11 @@ describe("who the bot is, from the settings", () => {
     resetConfigForTests();
   });
 
-  it("is Blip <blip@tailzu.space> by default and CODE_BOT_NAME and CODE_BOT_EMAIL when they are set", () => {
+  it("is Blip <blip@x0bot.com> by default and CODE_BOT_NAME and CODE_BOT_EMAIL when they are set", () => {
     delete process.env.CODE_BOT_NAME;
     delete process.env.CODE_BOT_EMAIL;
     resetConfigForTests();
-    expect(botFromEnv()).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(botFromEnv()).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     process.env.CODE_BOT_NAME = "Tailzu Bot";
     process.env.CODE_BOT_EMAIL = "98765+tailzu-bot@users.noreply.github.com";
     resetConfigForTests();
@@ -1151,7 +1151,7 @@ describe("who the bot is, from the settings", () => {
     process.env.CODE_BOT_NAME = "";
     process.env.CODE_BOT_EMAIL = "not an email\nBcc: x@y.z";
     resetConfigForTests();
-    expect(botFromEnv()).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(botFromEnv()).toEqual({ name: "Blip", email: "blip@x0bot.com" });
   });
 
   it("reaches the commits: the client created from the settings has it as its author", async () => {

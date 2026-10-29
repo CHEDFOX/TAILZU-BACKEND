@@ -75,9 +75,13 @@ describe("nothing chosen, nothing changed", () => {
       }
     });
   }
-  it("sends none of the new knobs unless chosen", () => {
+  it("sends none of the new knobs unless chosen; the key click and hold-space are said as each keyboard does today", () => {
     const cfg = build();
-    for (const k of ["kb.look.force", "kb.key.sound", "kb.space.holdToSpeak"]) expect(flag(cfg, k)).toBeUndefined();
+    expect(flag(cfg, "kb.look.force")).toBeUndefined();
+    // Said for everyone now (appLists.ts keyboardLists, the audit's A4): iOS clicks, Android is quiet, neither holds space.
+    expect(flag(cfg, "kb.key.sound")).toBe(true);
+    expect(flag(build("android"), "kb.key.sound")).toBe(false);
+    expect(flag(cfg, "kb.space.holdToSpeak")).toBe(false);
   });
 });
 
@@ -153,9 +157,10 @@ describe("look, key sounds, hold space to speak", () => {
     expect(flag(out, "kb.space.holdToSpeak")).toBe(true);
     expect(flag(withKeybotKeyboard(build(), { look: "light" }, undefined), "kb.look.force")).toBe("light");
   });
-  it("key sounds are three ways: not chosen sends nothing, Off sends false", () => {
+  it("key sounds: not chosen is the keyboard's own way, Off sends false, On sends true", () => {
     expect(flag(withKeybotKeyboard(build(), { sounds: false }, undefined), "kb.key.sound")).toBe(false);
-    expect(flag(withKeybotKeyboard(build("android"), {}, undefined), "kb.key.sound")).toBeUndefined();
+    expect(flag(withKeybotKeyboard(build("android"), {}, undefined), "kb.key.sound")).toBe(false);
+    expect(flag(withKeybotKeyboard(build("android"), { sounds: true }, undefined), "kb.key.sound")).toBe(true);
   });
 });
 

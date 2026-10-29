@@ -5,7 +5,7 @@
  *   bots.link            You › Link a computer: how it goes (the phone's camera opens the computer's QR code), and the
  *                        typed way for a phone that cannot scan: the 8-letter code under the QR. Continue opens the
  *                        page below with that code.
- *   bots.link?l=<token>  where the QR's link lands (https://app.tailzu.space/s/bots.link?l=…, a link the app claims)
+ *   bots.link?l=<token>  where the QR's link lands (https://app.x0bot.com/s/bots.link?l=…, a link the app claims)
  *   bots.link?c=<code>   the same, from the typed code
  *                        "Sign in on <computer>?": which computer, when it asked, which account it signs in as, and
  *                        Approve / Not me. Approved, the computer signs itself in a moment later.

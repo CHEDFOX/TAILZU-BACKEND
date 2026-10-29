@@ -81,8 +81,8 @@ describe("connected apps, switched on", () => {
     expect(res.headers["content-type"]).toContain("application/json");
     expect(res.headers["cache-control"]).toBe("public, max-age=86400");
     expect(res.json()).toMatchObject({
-      client_id: "https://api.tailzu.space/oauth/client-metadata.json",
-      redirect_uris: ["https://api.tailzu.space/v1/connectors/callback"],
+      client_id: "https://api.x0bot.com/oauth/client-metadata.json",
+      redirect_uris: ["https://api.x0bot.com/v1/connectors/callback"],
       token_endpoint_auth_method: "none",
     });
   });

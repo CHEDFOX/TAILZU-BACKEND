@@ -49,7 +49,7 @@ function linkKey(): string | null {
 const sign = (key: string, body: string) => createHmac("sha256", key).update(body).digest("base64url").slice(0, 32);
 
 /** The download link for one person, good for 30 minutes; null when the server has no secret to sign it with. */
-export function exportLink(userId: string, now: number, origin = process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"): { url: string; expiresAt: number } | null {
+export function exportLink(userId: string, now: number, origin = process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"): { url: string; expiresAt: number } | null {
   const key = linkKey();
   if (!key || !UUIDISH.test(userId)) return null;
   const exp = Math.floor((now + LINK_MS) / 1000);

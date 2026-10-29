@@ -46,7 +46,7 @@ describe("the happy path", () => {
     // Nothing was written to the repo while it worked; the one commit is the server's, after the checks.
     const head = r.fake.headCommit(r.repo, branch);
     expect(r.fake.commitCount(r.repo)).toBe(2); // the repo's first, and this one
-    expect(head.author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(head.author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     expect(head.message).toMatch(/Co-authored-by: alice <77\+alice@users\.noreply\.github\.com>\s*$/);
     expect(head.message).toContain("Done by Tailzu");
     expect(r.fake.files(r.repo, branch)["src/util.ts"]).toContain('.replace(/^-+|-+$/g, "")');

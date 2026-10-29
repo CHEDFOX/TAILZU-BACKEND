@@ -104,7 +104,7 @@ describe("the session workflow", () => {
 describe("step.json for a session", () => {
   const base = {
     jobId: "3f9a1c2b-0000-4000-8000-000000000000", stepIdx: 2, epoch: 3, commands: [SESSION_COMMAND], timeoutSec: 1200, baseSha: "a".repeat(40),
-    resultUrl: "https://api.tailzu.space/v1/code/runner/gh-result", audience: "tailzu", discard: true,
+    resultUrl: "https://api.x0bot.com/v1/code/runner/gh-result", audience: "tailzu", discard: true,
   };
   const session = { url: "wss://jobs.example/v1/rooms/3f9a1c2b-0000-4000-8000-000000000000/runner", ticket: ["t1", "claims", "mac"].join("."), idleSec: 120, maxSec: 1200 };
 

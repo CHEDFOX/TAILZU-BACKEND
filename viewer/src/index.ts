@@ -20,7 +20,7 @@ export interface Env {
   ASSETS: { fetch(input: Request | string | URL): Promise<Response> };
   /** "production" turns the test host off. Anything but development / dev / test / local counts as production. */
   ENV?: string;
-  /** Comma-separated origins of the app pages that may embed the viewer: https://tailzu.space,https://*.preview.tailzu.space. `null` is for the viewer kept for screenshots (docs section 14). */
+  /** Comma-separated origins of the app pages that may embed the viewer: https://x0bot.com,https://*.preview.x0bot.com. `null` is for the viewer kept for screenshots (docs section 14). */
   VIEWER_PARENT_ORIGINS?: string;
 }
 

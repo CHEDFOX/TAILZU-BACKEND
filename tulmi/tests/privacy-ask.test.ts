@@ -346,6 +346,6 @@ describe("served at /privacy", () => {
     expect(res.body).toContain("including the Limited Use requirements.");
     expect(res.body).toContain("Effective: October 28, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://tailzu.space/privacy", effective: "October 28, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "October 28, 2026" });
   });
 });

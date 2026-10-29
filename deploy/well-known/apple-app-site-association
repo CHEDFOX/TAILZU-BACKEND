@@ -5,7 +5,7 @@
       {
         "appIDs": ["6552H8HYA4.com.tulmi.app"],
         "components": [
-          { "/": "/s/*", "comment": "SDUI screens: https://tailzu.space/s/<screenId>" },
+          { "/": "/s/*", "comment": "SDUI screens: https://app.x0bot.com/s/<screenId> (and app.tailzu.space, x0bot.com, tailzu.space)" },
           { "/": "/screen/*", "comment": "Alias for /s/" },
           { "/": "/paywall*", "comment": "Marketing paywall link" },
           { "/": "/invite/*", "comment": "Referral / invite links" }

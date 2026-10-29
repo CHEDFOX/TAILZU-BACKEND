@@ -10,6 +10,12 @@ YouTube account. Its YouTube search uses Tailzu's own API key
 (`YOUTUBE_API_KEY`), with no sign-in and no Google permission, so there is no
 YouTube scope to ask for.
 
+> **Addresses moved to x0bot.com (2026-10-29).** Every link below is now on
+> x0bot.com; tailzu.space pages redirect there. If a review was already
+> submitted with tailzu.space on the Branding page, change nothing there until
+> it ends (a branding change cancels it). Then do docs/domain-x0bot.md's
+> Google step.
+
 You need to do four things, in this order:
 
 1. Fix the items in "Before you submit".
@@ -24,14 +30,14 @@ You need to do four things, in this order:
 **Must fix. Google rejects without these.**
 
 1. **Deploy section 11 of the privacy policy and check that it is live.** The
-   live policy at https://www.tailzu.space/privacy is dated October 20, 2026
+   live policy at https://x0bot.com/privacy is dated October 20, 2026
    and has no Google section. The new version is already written in
    `tulmi/src/routes/policies/privacy.ts`, dated October 24, 2026. Its section
    "11. Google apps you connect" carries the anchor `id="google-user-data"`
    and the Limited Use statement with its link.
 
    After the deploy, open
-   **https://www.tailzu.space/privacy#google-user-data** and check two things:
+   **https://x0bot.com/privacy#google-user-data** and check two things:
    it lands on section 11, and the date at the top says October 24, 2026. If
    `SITE_DIR/privacy.html` exists on the server, that file is served instead,
    so update it or remove it.
@@ -102,7 +108,7 @@ You need to do four things, in this order:
 **Should fix. Reviewers or Google's policy can catch these.**
 
 5. **The homepage never mentions the Google apps.** Google says the homepage must
-   describe what the app does. Add one short block to https://www.tailzu.space
+   describe what the app does. Add one short block to https://x0bot.com
    along these lines: "Connected apps: let Tailzu work in Google Calendar, Docs,
    Tasks, Sheets, Forms and Classroom when you ask." Link it to the policy
    section.
@@ -141,23 +147,23 @@ project. In the left menu, open **Google Auth Platform**.
 | Step | Where to click | What to enter or check |
 | --- | --- | --- |
 | 1 | APIs & Services, then **Library** | **Enable** these APIs: Google Calendar API, Google Docs API, Google Drive API, Google Sheets API, Google Forms API, Google Tasks API and Google Classroom API. YouTube Data API v3 also stays on, for the YouTube search key, but it asks for no scope. |
-| 2 | Google Auth Platform, then **Clients** | Open the web client used by Connected apps (often named "Tailzu Connected apps"). Check that it lists `https://api.tailzu.space/v1/connectors/callback` as an authorized redirect URI. Remove test clients that are not used. **Do not touch the sign-in client.** |
+| 2 | Google Auth Platform, then **Clients** | Open the web client used by Connected apps (often named "Tailzu Connected apps"). Check that it lists `https://api.x0bot.com/v1/connectors/callback` as an authorized redirect URI. Remove test clients that are not used. **Do not touch the sign-in client.** |
 | 3 | **Branding** | Fill in the app details (see the list after this table). Then click **Verify branding**, and then **Publish branding** when the status says "Ready to publish". |
-| 4 | Google Search Console (search.google.com/search-console) | Verify that you own **tailzu.space**. Add it as a Domain property and confirm it with the DNS TXT record. Use a Google account that is an Owner or Editor on the Cloud project. |
+| 4 | Google Search Console (search.google.com/search-console) | Verify that you own **x0bot.com**. Add it as a Domain property and confirm it with the DNS TXT record. Use a Google account that is an Owner or Editor on the Cloud project. |
 | 5 | **Audience** | User type: **External**. Publishing status: **In production** (click Publish app). Apps that are still in Testing cannot be verified. |
 | 6 | **Data Access**, then **Add or remove scopes** | Add exactly the scopes Tailzu asks for (see the list after this table). Do not add anything the code does not use, such as Gmail, full Drive or YouTube. |
-| 7 | **Verification Center** | Under Data access, click **Prepare for verification**. Check the details and **Save and continue**. Paste the justifications from section 2. Optionally add up to 3 documentation links: https://www.tailzu.space/privacy#google-user-data and https://www.tailzu.space/faq. Paste the **YouTube link** to the video. Then click **Submit for verification**. |
+| 7 | **Verification Center** | Under Data access, click **Prepare for verification**. Check the details and **Save and continue**. Paste the justifications from section 2. Optionally add up to 3 documentation links: https://x0bot.com/privacy#google-user-data and https://x0bot.com/faq. Paste the **YouTube link** to the video. Then click **Submit for verification**. |
 | 8 | Your inbox | Google writes to the project's Owners and Editors and to the support email. Answer by replying to their latest email. You can also check progress on the Verification Center page. **Do not change branding while the review runs, because that cancels it.** |
 
 **What to fill in on the Branding page (step 3):**
 - **App name:** `Tailzu`
 - **User support email:** pick it from the dropdown (your Google account, or a Google Group you manage).
 - **Logo:** the Tailzu icon.
-- **App home page:** `https://www.tailzu.space`. (`https://tailzu.space` redirects there with a 308, so use the www address everywhere.)
-- **Privacy policy:** `https://www.tailzu.space/privacy`. This must be the same link that the homepage uses, and it does use `/privacy`.
-- **Terms of service:** `https://www.tailzu.space/terms`
-- **Authorized domains:** `tailzu.space`. This one entry covers www and api. Keep any domain that is already listed for Google sign-in.
-- **Developer contact:** `privacy@tailzu.space`, or any address that someone reads every day.
+- **App home page:** `https://x0bot.com`. (`https://x0bot.com` redirects there, so use the bare address everywhere.)
+- **Privacy policy:** `https://x0bot.com/privacy`. This must be the same link that the homepage uses, and it does use `/privacy`.
+- **Terms of service:** `https://x0bot.com/terms`
+- **Authorized domains:** `x0bot.com`. This one entry covers www, api and app. Keep `tailzu.space` and any domain that is already listed for Google sign-in.
+- **Developer contact:** `privacy@x0bot.com`, or any address that someone reads every day.
 
 **The scopes to add on the Data Access page (step 6):**
 - One Calendar scope: `calendar.events.owned` if the swap in item 2 is done,
@@ -254,7 +260,7 @@ do not argue. Make the swap and use the block above.
 > are stored encrypted. Disconnecting an app in Tailzu deletes its token, and
 > when the user disconnects their last Google app, Tailzu asks Google to revoke
 > its access. Full details:
-> https://www.tailzu.space/privacy#google-user-data
+> https://x0bot.com/privacy#google-user-data
 
 Once item 4 is done, you can add: "The AI providers are not allowed to train
 on it." Do not add it before then.
@@ -329,7 +335,7 @@ Changes show a confirm card. Click **Approve**.
 | 9 | 2:36 | **Google Classroom**: Connect (three Classroom lines), and leave it at Can look. Ask "What are my classes?" Ask "What's due?" (the assignment, its due date, turned in or not). Ask "Any new announcements?" Show classroom.google.com side by side. | the 3 Classroom scopes |
 | 10 | 2:58 | **Phone, about 15 seconds**: Settings, then Connected apps (the same apps, Connected). Then Settings, then **Ask me**: type "What's on tomorrow?", tap **Do it**, and the answer appears. Caption: "Same apps and same Google sign-in on the phone." | same flow on the second surface |
 | 11 | 3:13 | **Disconnect**: on the desktop, open each Google app, then **Disconnect [app]**, and it changes to "Not connected". Speed this up with cuts. Then open myaccount.google.com/connections, where Tailzu is gone. Caption: "Disconnecting the last Google app removes Tailzu's access at Google." | revoking access |
-| 12 | 3:33 | End caption: privacy@tailzu.space and https://www.tailzu.space/privacy#google-user-data | contact |
+| 12 | 3:33 | End caption: privacy@x0bot.com and https://x0bot.com/privacy#google-user-data | contact |
 
 ---
 
@@ -354,7 +360,7 @@ Changes show a confirm card. Click **Approve**.
 | Privacy policy does not disclose how Google user data is used, or has no Limited Use statement | Deploy section 11 (item 1) and check that it is live. Reply with the exact link (#google-user-data). |
 | No in-app disclosure before consent | Add the notice on the Connect sheet (item 3). Re-record that part and send the new link. |
 | Homepage does not explain the app, or does not link the policy | Add the Connected-apps block (item 5). The /privacy link is already there. |
-| Domain not verified | Verify tailzu.space in Search Console with an Owner or Editor account. |
+| Domain not verified | Verify x0bot.com in Search Console with an Owner or Editor account. |
 | Demo video: wrong app, consent screen not shown, not in English, client ID not visible, or a scope's feature not shown | Re-record the scene that is missing, following section 3. Send the new unlisted link. |
 | Request a narrower scope | For Calendar, make the swap (item 2) and say so. For the others, quote the "narrower would not work" line from section 2. |
 | Scopes in the request do not match the consent screen or the code | Make the Data Access list exactly match what Tailzu asks for. Remove extras, such as `calendar.readonly` or `youtube` from before. |

@@ -190,7 +190,7 @@ describe("the wildcard address: <token>.<domain>, absolute paths just work", () 
     expect(page.headers.get("x-robots-tag")).toMatch(/noindex/);
     const csp = page.headers.get("content-security-policy")!;
     expect(csp).toContain("default-src 'self'");
-    expect(csp).toContain("frame-ancestors https://tailzu.space https://www.tailzu.space");
+    expect(csp).toContain("frame-ancestors https://x0bot.com https://www.x0bot.com https://tailzu.space https://www.tailzu.space");
     expect(csp).not.toContain("frame-ancestors 'none'");
 
     // The page asks for /src/main.js and that asks for /src/dep.js: the same host, so the absolute paths are served.
@@ -502,8 +502,8 @@ describe("the Worker's fetch: which host is a preview and which is the API", () 
   });
 
   it("takes out a preview site that shares a site with the API or the app (it runs the person's code): the host is the API's again", async () => {
-    // The API is https://jobs.example; the app is https://tailzu.space.
-    for (const bad of [{ PREVIEW_DOMAIN: "preview.jobs.example" }, { PREVIEW_HOST: "p.jobs.example" }, { PREVIEW_DOMAIN: "preview.tailzu.space" }, { PREVIEW_HOST: "www.tailzu.space" }]) {
+    // The API is https://jobs.example; the app is https://x0bot.com (and, from before the move, https://tailzu.space).
+    for (const bad of [{ PREVIEW_DOMAIN: "preview.jobs.example" }, { PREVIEW_HOST: "p.jobs.example" }, { PREVIEW_DOMAIN: "preview.x0bot.com" }, { PREVIEW_HOST: "www.x0bot.com" }, { PREVIEW_DOMAIN: "preview.tailzu.space" }, { PREVIEW_HOST: "www.tailzu.space" }]) {
       const host = bad.PREVIEW_DOMAIN ? `${"a".repeat(61).replace(/./g, "b")}.${bad.PREVIEW_DOMAIN}` : bad.PREVIEW_HOST!;
       const res = await fetchWorker(get(`https://${host}/v1/health`), env(bad), ctx);
       expect(await res.json(), JSON.stringify(bad)).toEqual({ ok: true });

@@ -278,7 +278,7 @@ describe("where a subscription is managed", () => {
     // turns a wrong tap into a support email.
     expect(manageFlags("app_store")["billing.manage.url"]).toContain("apps.apple.com");
     expect(manageFlags("play_store")["billing.manage.url"]).toContain("play.google.com");
-    expect(manageFlags("paddle")["billing.manage.url"]).toContain("support@tailzu.space");
+    expect(manageFlags("paddle")["billing.manage.url"]).toContain("support@x0bot.com");
     expect(manageFlags("promotional")["billing.manage.url"]).toBeUndefined();
   });
 

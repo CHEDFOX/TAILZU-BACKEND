@@ -160,7 +160,7 @@ describe("red CI", () => {
     expect(r.fake.head(r.repo, pr.branch)).not.toBe(head0);
     expect(r.fake.files(r.repo, pr.branch)["src/util.ts"]).toContain("s.trim()");
     expect(r.fake.headCommit(r.repo, pr.branch).parents).toEqual([head0]);
-    expect(r.fake.headCommit(r.repo, pr.branch).author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(r.fake.headCommit(r.repo, pr.branch).author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     expect(r.runner.runs.some((x) => x.wrapped && x.overlay.some((f) => f.path === "src/util.ts"))).toBe(true);
     // The care job did not open a second pull request or rewrite this one's description.
     expect(r.fake.pulls(r.repo)).toHaveLength(1);

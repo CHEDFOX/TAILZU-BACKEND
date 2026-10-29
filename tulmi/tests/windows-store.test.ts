@@ -15,7 +15,7 @@ import { downloadPageHtml } from "../src/routes/download.js";
 import { GETS } from "../src/seo/pages.js";
 
 const ID = "9NBLGGH4NNS1";
-const DL = `https://get.microsoft.com/installer/download/${ID}?referrer=appbadge&source=tailzu.space`;
+const DL = `https://get.microsoft.com/installer/download/${ID}?referrer=appbadge&source=x0bot.com`;
 
 describe("the Store ID", () => {
   it("makes the certified download and the listing from a real Store ID, in any case", () => {

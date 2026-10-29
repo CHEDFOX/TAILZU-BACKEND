@@ -9,6 +9,7 @@
  */
 import { nicknameOf } from "./assistantName.js";
 import { withAppKnobs, withKeyboardKnobs } from "./appKnobs.js";
+import { desktopLists, keyboardLists } from "./appLists.js";
 import { DESK_SCREENS, buildDeskScreen, deskNav } from "./desk.js";
 import type { AssistantView } from "../connectors/list.js";
 import { buildAssistantScreen, youCard } from "./assistant.js";
@@ -45,6 +46,7 @@ import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
 import { botsFonts, botsNav, BOTS_WARM_SCREEN_IDS } from "./bots/index.js";
 import { botsAuthTree, BOTS_FIRST_RUN_IDS, BOTS_FIRST_RUN_SCREEN } from "./bots/screens/firstRun.js";
 import { BOTS_OFFLINE_FLAGS } from "./bots/screens/outbox.js";
+import { looksFlags } from "./bots/looks.js";
 import { applyRollouts, activeRollouts } from "./rollout.js";
 import type { HistoryEntry, Note, NoteSummary, PaywallConfig, PaywallPlan, Personality, StatsResponse, UsageSummary } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
@@ -188,8 +190,8 @@ function mediaSource(url: string, contentType?: string): Record<string, unknown>
  * checks before it will sell on your behalf, so a stale copy is not cosmetic.
  */
 export const POLICY = {
-  privacy: "https://tailzu.space/privacy",
-  terms: "https://tailzu.space/terms",
+  privacy: "https://x0bot.com/privacy",
+  terms: "https://x0bot.com/terms",
 } as const;
 
 /**
@@ -235,11 +237,11 @@ export function windowsStoreUrl(id: string): string {
  */
 export function windowsInstallerUrl(id: string): string {
   const s = storeId(id);
-  return s ? `https://get.microsoft.com/installer/download/${s}?referrer=appbadge&source=tailzu.space` : "";
+  return s ? `https://get.microsoft.com/installer/download/${s}?referrer=appbadge&source=x0bot.com` : "";
 }
 
 /**
- * Every word on tailzu.space. The page is a renderer; this is the writer.
+ * Every word on x0bot.com. The page is a renderer; this is the writer.
  *
  * Served by GET /v1/site, read by the landing page on load with built-in
  * fallbacks for the seconds before the answer lands. A headline change is an
@@ -1501,7 +1503,7 @@ export const THEME: ThemeTokens = {
  * Add an entry and every screen can use it: THEME.font.family for the running
  * text, THEME.font.display for headings, or style.fontFamily on one node.
  *
- *   "Tailzu Display": "https://api.tailzu.space/media/display.ttf"
+ *   "Tailzu Display": "https://api.x0bot.com/media/display.ttf"
  *
  * Serve the file from the media registry (upload it like any other asset) or
  * any https host. The client refuses anything that is not https and does not
@@ -1510,7 +1512,7 @@ export const THEME: ThemeTokens = {
  * blank screen.
  */
 export { PHONE_FONT };
-const FONT_BASE = `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/fonts/`;
+const FONT_BASE = `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/fonts/`;
 export const FONTS: Record<string, string> = {
   // Tailzu's four voices on paper (tulmi/fonts, served by server.ts): the
   // written line, what was said in a hand, the small labels, and the UI.
@@ -2295,19 +2297,22 @@ export function buildBootstrap(
     flags: ((): BootstrapResponse["flags"] => {
       const flags: BootstrapResponse["flags"] = {
         // Policy URLs — Settings screen links open these in-browser.
-        // Served from tailzu.space (proxied to the backend by Caddy — see
+        // Served from x0bot.com (proxied to the backend by Caddy — see
         // deploy/Caddyfile) so the URL a user copies from the address bar looks
         // like a real domain rather than an internal api. host. Same content
         // either way.
         "policy.privacy.url": POLICY.privacy,
         "policy.terms.url": POLICY.terms,
-        "support.url": "mailto:support@tailzu.space",
+        "support.url": "mailto:support@x0bot.com",
 
         // The desktop's chrome — gate, rail, tray, notifications. Sent only to
         // a window that said it was one, because a phone has no tray to label
         // and would carry the whole block on every launch for nothing.
         ...(opts.formFactor === "desktop" ? {
           "desktop.shell": DESKTOP_UI,
+          // The one-key router's lists, Ask's grammar, the tray's tones and the
+          // rest the desktop kept built in (appLists.ts).
+          ...desktopLists({ botsApp }),
           // Closing the window really closes it, so opening it again starts
           // on the landing page with fresh numbers — not on whatever page it
           // was hidden on an hour ago. The tray, the pill and the hotkey live
@@ -2325,7 +2330,7 @@ export function buildBootstrap(
           "desktop.update": ((rel) => ({
             latest: rel.version || DESKTOP_LATEST,
             min: "",
-            url: installerUrl(opts.os) ?? "https://tailzu.space/download",
+            url: installerUrl(opts.os) ?? "https://x0bot.com/download",
             notes: "",
             // For a build that installs its own update: the tray's notice then
             // opens the window's card instead of the browser.
@@ -2336,8 +2341,8 @@ export function buildBootstrap(
         // leads — the plan page, not the phone's full-screen paywall.
         // Setup's Live Activity (iOS): the step they left off at, until done.
         ...(setup ? { "liveActivity.setup": setup } : {}),
-        // The Bots app: its pages draw their own tab bar and sidebar.
-        ...(botsApp ? { "bots.app": true, ...BOTS_OFFLINE_FLAGS } : {}),
+        // The Bots app: its pages draw their own tab bar and sidebar; "bots.looks" names the bots' catalog (bots/looks.ts).
+        ...(botsApp ? { "bots.app": true, ...BOTS_OFFLINE_FLAGS, ...looksFlags() } : {}),
         ...(desk ? {
           "desktop.desk": true,
           "desktop.desk.settingsScreenId": "desk_settings",
@@ -2632,6 +2637,16 @@ export function buildBootstrap(
         // after it in the same launch, while this bootstrap still says the answer is owed. Someone onboarded
         // before the run asked it keeps the card where it has always been.
         if (botsApp && !opts.onboarded) flags["profileGate.screenIds"] = [];
+        // And someone onboarded before the run asked it is asked by the run's own screen, not the native card:
+        // bots.name-it, which for an onboarded account is About you alone and closes once saved. Over Home after
+        // a pause, like any arrival prompt, and only while the answer is owed.
+        if (botsApp && opts.onboarded) {
+          flags["profileGate.screenIds"] = [];
+          if (opts.profileComplete !== true && opts.isReviewer !== true && !flags.promptScreenId) {
+            flags.promptScreenId = BOTS_FIRST_RUN_SCREEN;
+            flags.promptAfterMs = PROMPT_AFTER_MS;
+          }
+        }
       }
 
       /**
@@ -2771,7 +2786,7 @@ export function buildBootstrap(
         // placeholder id000000000 would have done exactly that on the day this
         // gate first fired.
         ...(APP_STORE_ID ? { ios: `https://apps.apple.com/app/id${APP_STORE_ID}` } : {}),
-        default: "https://tailzu.space",
+        default: "https://x0bot.com",
       },
     },
     // The words card wins over a standing announcement. Someone about to be
@@ -4305,6 +4320,21 @@ export const PAYWALL_UI = {
   },
 };
 
+/**
+ * A plan row's `storePrice` (app billing/storePrice.ts): the phone shows the store's own price for the package, in the
+ * person's currency, in place of the words this file holds. With a template, the store's monthly price in that line.
+ */
+export function storePriceOf(
+  plan: { offeringId?: string; packageId?: string }, template?: string,
+): { storePrice?: { packageId: string; offeringId?: string; field?: "perMonth"; template?: string } } {
+  if (!plan.packageId) return {};
+  return { storePrice: {
+    packageId: plan.packageId,
+    ...(plan.offeringId ? { offeringId: plan.offeringId } : {}),
+    ...(template ? { field: "perMonth" as const, template } : {}),
+  } };
+}
+
 export const PAYWALL_CONFIG: PaywallConfig = {
   // Empty on purpose: with no frames the paywall renders BinaryReveal — the
   // wordmark decoding out of 0s and 1s on a loop. Add keys back here and the
@@ -4372,6 +4402,7 @@ export const PAYWALL_CONFIG: PaywallConfig = {
       label: "Elite",
       price: "$59.99",
       period: "$5.00 / mo, billed yearly",
+      periodTemplate: "{price} / mo, billed yearly",
       // With no confirm button, the ROW is where the commitment gets
       // disclosed — which is also what the stores require before a purchase.
       note: "7 days free, then billed yearly",
@@ -4679,10 +4710,11 @@ function paywallScreen(
             type: "Stack",
             style: { alignItems: "flex-end" },
             children: [
-              { type: "Text", props: { content: plan.price },
+              // The store's own price once it answers (in the person's currency); these words until then.
+              { type: "Text", props: { content: plan.price, ...storePriceOf(plan) },
                 style: { fontSize: 15, fontWeight: "600", color: "#FFFFFF" } },
               ...(plan.period
-                ? [{ type: "Text", props: { content: plan.period },
+                ? [{ type: "Text", props: { content: plan.period, ...storePriceOf(plan, plan.periodTemplate) },
                      style: { fontSize: 10, color: "rgba(255,255,255,0.45)", marginTop: 1 } } as Node]
                 : []),
             ],
@@ -9716,7 +9748,7 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
 
         // ---- Help and about -------------------------------------------------
         ...section(sw("help.h"), sw("help.p")),
-        row(sw("r.mail"), { kind: "openUrl", url: "mailto:support@tailzu.space" }, { chevron: false }),
+        row(sw("r.mail"), { kind: "openUrl", url: "mailto:support@x0bot.com" }, { chevron: false }),
         row(sw("r.terms"), "terms"),
       ],
     },
@@ -9754,7 +9786,7 @@ const MANAGE_AT: [string, string[], string, string, string][] = [
   // per-customer URL this server never holds. Support is the one address that
   // is true for every one of them. (Razorpay is not here: it is cancelled in
   // the app — see manageFlags and cancelSubscriptionScreen.)
-  ["web", ["paddle", "stripe", "rc_billing"], "Change or cancel · billed on the web", "mailto:support@tailzu.space", "the web"],
+  ["web", ["paddle", "stripe", "rc_billing"], "Change or cancel · billed on the web", "mailto:support@x0bot.com", "the web"],
 ];
 
 /**
@@ -14059,7 +14091,7 @@ export function buildKeyboardConfig(
         // "kb.mic.recordingIcon": { sf: "pause.fill" },
         // "kb.mic.recordingIcon": { sf: "waveform" },
         // "kb.mic.recordingIcon": { emoji: "⏹" },
-        // "kb.mic.recordingIcon": { url: "https://cdn.tailzu.space/kb/stop.png" },
+        // "kb.mic.recordingIcon": { url: "https://cdn.x0bot.com/kb/stop.png" },
         // "kb.mic.idleIcon": { asset: "TailzuMark" },
         // Recording particle swarm (iOS), OTA-tuned — takes effect on the
         // CURRENT installed build (these keys are read live). Tiny dots (radius
@@ -14980,9 +15012,9 @@ export function buildKeyboardConfig(
         "kb.swipe.trail.color": "#E8A23CD9",   // brand amber, mostly opaque
         "kb.swipe.trail.width": 7,
         "kb.swipe.trail.fadeMs": 260,
-        // OTA lexicon extension — appended to the embedded frequency list.
-        // Push product / domain vocabulary here without a rebuild.
-        "kb.swipe.extraWords": ["tailzu", "tulmi"],
+        // The core lexicon and its extension (product names, Hinglish), and the
+        // key click said for everyone: appLists.ts keyboardLists.
+        ...keyboardLists(opts.platform === "android" ? "android" : "ios"),
         // Shift + layer keys ride the touch plane (K7): shift arms on touch-
         // down and supports slide-to-letter one-shot capitals; 123/#+=/ABC
         // switch instantly on touch-down and support press-slide-release

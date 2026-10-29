@@ -572,8 +572,8 @@ describe("the identity token on a result", () => {
     }
   });
 
-  it("is the right kind of result address by default: PUBLIC_ORIGIN, or api.tailzu.space", () => {
-    expect(runnerResultUrl()).toBe("https://api.tailzu.space/v1/code/runner/gh-result");
+  it("is the right kind of result address by default: PUBLIC_ORIGIN, or api.x0bot.com", () => {
+    expect(runnerResultUrl()).toBe("https://api.x0bot.com/v1/code/runner/gh-result");
     process.env.PUBLIC_ORIGIN = "https://api.example.org/";
     try { expect(runnerResultUrl()).toBe("https://api.example.org/v1/code/runner/gh-result"); } finally { delete process.env.PUBLIC_ORIGIN; }
   });

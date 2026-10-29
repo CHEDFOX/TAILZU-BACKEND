@@ -17,7 +17,7 @@ const OFFERS: PayOffer[] = [
   { market: "world", period: "monthly", label: "Lite", price: "$9.99", per: "a month", buyable: true },
   { market: "world", period: "annual", label: "Elite", price: "$59.99", per: "a year", badge: "Save 50%", lead: true, buyable: true },
 ];
-const LINKS = { pricing: "https://tailzu.space/pricing", terms: POLICY.terms, privacy: POLICY.privacy };
+const LINKS = { pricing: "https://x0bot.com/pricing", terms: POLICY.terms, privacy: POLICY.privacy };
 const page = (offers = OFFERS, keyId = "rzp_live_abc123") => payHtml({ keyId, offers, nonce: "n0nce", ...LINKS });
 
 describe("the pay page", () => {
@@ -92,7 +92,7 @@ describe("when a payment fails", () => {
   it("listens for Razorpay's failure and shows the buyer a code to quote", () => {
     expect(html).toContain('rzp.on("payment.failed"');
     expect(html).toContain('<p class="note failed">');
-    expect(html).toContain("support@tailzu.space with this code: <code></code>");
+    expect(html).toContain("support@x0bot.com with this code: <code></code>");
     expect(html).toContain('#pay[data-state="failed"] .note.failed');
   });
 

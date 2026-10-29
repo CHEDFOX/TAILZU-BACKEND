@@ -15,7 +15,7 @@
  *     root it spares the screen's actions too;
  *   - a label key ("@history.title") or a state reference ("$state.x"),
  *     which are not words yet;
- *   - links, emails and file names (tailzu.space, a@b.c);
+ *   - links, emails and file names (x0bot.com, a@b.c);
  *   - brand words that start small on purpose (iPhone, macOS);
  *   - a unit after a number ("15 min", "6 pm", "2k"), which reads as part of
  *     the number;

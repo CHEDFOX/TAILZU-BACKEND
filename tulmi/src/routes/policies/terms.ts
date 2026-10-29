@@ -26,7 +26,7 @@ const TERMS_BODY = `
 <ul>
   <li>You are responsible for maintaining the confidentiality of your account credentials.</li>
   <li>You are responsible for all activity on your account.</li>
-  <li>Notify us at <a href="mailto:security@tailzu.space">security@tailzu.space</a> of any unauthorized use.</li>
+  <li>Notify us at <a href="mailto:security@x0bot.com">security@x0bot.com</a> of any unauthorized use.</li>
   <li>We may suspend or terminate accounts that violate these Terms or applicable law.</li>
 </ul>
 
@@ -35,7 +35,7 @@ const TERMS_BODY = `
 <h2>3. Subscriptions and billing</h2>
 
 <h3>3.1 Purchase</h3>
-<p>Certain Tailzu features are available only through a paid subscription. In the app, subscriptions are billed through the Apple App Store or Google Play, and you agree to the terms of those stores in addition to these Terms. On the web, subscriptions are bought at <a href="https://tailzu.space/pay">tailzu.space/pay</a>, and payment is processed by <strong>Razorpay</strong>. Web subscriptions bought earlier through Paddle.com remain subject to Paddle's <a href="https://www.paddle.com/legal/checkout-buyer-terms">Buyer Terms</a>.</p>
+<p>Certain Tailzu features are available only through a paid subscription. In the app, subscriptions are billed through the Apple App Store or Google Play, and you agree to the terms of those stores in addition to these Terms. On the web, subscriptions are bought at <a href="https://x0bot.com/pay">x0bot.com/pay</a>, and payment is processed by <strong>Razorpay</strong>. Web subscriptions bought earlier through Paddle.com remain subject to Paddle's <a href="https://www.paddle.com/legal/checkout-buyer-terms">Buyer Terms</a>.</p>
 
 <h3>3.2 Auto-renewal (App Store / Google Play required disclosures)</h3>
 <ul>
@@ -48,7 +48,7 @@ const TERMS_BODY = `
 </ul>
 
 <h3>3.2.1 Current subscription plans</h3>
-<p>The current subscription plans, prices, and durations are listed at <a href="https://tailzu.space/pricing">tailzu.space/pricing</a>, and shown inside the app on the paywall screen and in your device's App Store or Google Play. Plans and prices may change over time; the price you see at purchase is the price you pay.</p>
+<p>The current subscription plans, prices, and durations are listed at <a href="https://x0bot.com/pricing">x0bot.com/pricing</a>, and shown inside the app on the paywall screen and in your device's App Store or Google Play. Plans and prices may change over time; the price you see at purchase is the price you pay.</p>
 
 <h3>3.3 Free trials</h3>
 <p>If we offer a free trial, you will not be charged during the trial period. If you do not cancel before the trial ends, you will be automatically billed for the subscription.</p>
@@ -118,7 +118,7 @@ const TERMS_BODY = `
 
 <h2>12. Termination</h2>
 <ul>
-  <li>You may stop using the Service at any time. To delete your account, open <strong>Delete account</strong> in the app (under You, or in Settings). Your account is deleted 7 days after you ask. Until then nothing is removed, your bots stop working, and you can sign in and choose <strong>Keep my account</strong> to keep everything as it was. After the 7 days the account, the personality it learned, and the usage history are deleted for good, and that cannot be undone. Where the app says deleting cannot be undone, it deletes the account straight away. If you cannot reach the app, email <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a> instead.</li>
+  <li>You may stop using the Service at any time. To delete your account, open <strong>Delete account</strong> in the app (under You, or in Settings). Your account is deleted 7 days after you ask. Until then nothing is removed, your bots stop working, and you can sign in and choose <strong>Keep my account</strong> to keep everything as it was. After the 7 days the account, the personality it learned, and the usage history are deleted for good, and that cannot be undone. Where the app says deleting cannot be undone, it deletes the account straight away. If you cannot reach the app, email <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a> instead.</li>
   <li>We may suspend or terminate your access if you violate these Terms.</li>
   <li>On termination, sections that by their nature should survive (IP, disclaimers, limitations, indemnity, governing law) remain in effect.</li>
 </ul>
@@ -157,7 +157,7 @@ const TERMS_BODY = `
 
 <h3>14.8 Developer contact</h3>
 <p>For questions, complaints, or claims regarding the app, contact:<br>
-XOOTEQ LAB PRIVATE LIMITED (Tailzu) · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
+XOOTEQ LAB PRIVATE LIMITED (Tailzu) · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
 
 <hr>
 
@@ -167,7 +167,7 @@ XOOTEQ LAB PRIVATE LIMITED (Tailzu) · <a href="mailto:support@tailzu.space">sup
 <hr>
 
 <h2>16. Contact</h2>
-<p>Questions about these Terms: <a href="mailto:legal@tailzu.space">legal@tailzu.space</a></p>
+<p>Questions about these Terms: <a href="mailto:legal@x0bot.com">legal@x0bot.com</a></p>
 `;
 
 export const TERMS_HTML = siteShell({

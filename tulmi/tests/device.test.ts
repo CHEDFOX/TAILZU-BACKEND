@@ -296,12 +296,12 @@ describe("the Settings row and the privacy line", () => {
   };
 
   it("Settings carries the folders row under Ask, with the server's words, only where Ask is on", () => {
-    const on = buildDeskScreen("desk_settings", { personality: {} as never, askSetup: { privacyUrl: "https://tailzu.space/privacy", os: "mac", folders: true } })!;
+    const on = buildDeskScreen("desk_settings", { personality: {} as never, askSetup: { privacyUrl: "https://x0bot.com/privacy", os: "mac", folders: true } })!;
     const rows = walk(on.root, "DeskFolders");
     expect(rows).toHaveLength(1);
-    expect(rows[0].props).toMatchObject({ title: "Folders Ask can use", add: "Add a folder", reset: "Back to the usual three", policyUrl: "https://tailzu.space/privacy" });
+    expect(rows[0].props).toMatchObject({ title: "Folders Ask can use", add: "Add a folder", reset: "Back to the usual three", policyUrl: "https://x0bot.com/privacy" });
     expect(rows[0].props.lede).toMatch(/system, app or hidden/);
-    const old = buildDeskScreen("desk_settings", { personality: {} as never, askSetup: { privacyUrl: "https://tailzu.space/privacy", os: "mac" } })!;
+    const old = buildDeskScreen("desk_settings", { personality: {} as never, askSetup: { privacyUrl: "https://x0bot.com/privacy", os: "mac" } })!;
     expect(walk(old.root, "DeskFolders")).toHaveLength(0);
     const off = buildDeskScreen("desk_settings", { personality: {} as never })!;
     expect(walk(off.root, "DeskFolders")).toHaveLength(0);

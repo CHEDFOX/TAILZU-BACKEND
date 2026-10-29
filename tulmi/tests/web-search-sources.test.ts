@@ -94,7 +94,7 @@ describe("the way out (http.ts)", () => {
     const f = fake(() => json({ ok: true }));
     await getJson("https://example.com/x?q=secret-question", { fetchFn: f.fetchFn, headers: { "X-Thing": "1" } });
     expect(f.calls[0]!.headers.get("user-agent")).toBe(getConfig().WEB_BOT_UA);
-    expect(f.calls[0]!.headers.get("user-agent")).toMatch(/TailzuBot.*tailzu\.com\/bot/);
+    expect(f.calls[0]!.headers.get("user-agent")).toMatch(/TailzuBot.*x0bot\.com\/bot/);
     expect(f.calls[0]!.headers.get("x-thing")).toBe("1");
     expect(f.calls[0]!.headers.get("accept")).toBe("application/json");
     expect(f.calls[0]!.headers.get("cookie")).toBeNull();

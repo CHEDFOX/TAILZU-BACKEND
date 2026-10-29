@@ -1,5 +1,5 @@
 /**
- * THE SITE'S OWN ROOM, for every page tailzu.space links to.
+ * THE SITE'S OWN ROOM, for every page x0bot.com links to.
  *
  * The landing page is one hand-built file on Vercel; the pages it links to
  * (/pricing, /pay, /privacy, /terms, /download) are rendered here and served

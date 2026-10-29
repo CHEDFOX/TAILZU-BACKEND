@@ -21,7 +21,7 @@
  *                    0 for our own)
  *   PLACES_DRIVE_BUFFER   drive times are free-flow; this multiplies them (default 1.3) so a "leave by" is not optimistic. Shown as
  *                    "about"; never claimed to be traffic
- *   PLACES_CONTACT   who we are in the User-Agent (default https://tailzu.space; an email works too)
+ *   PLACES_CONTACT   who we are in the User-Agent (default https://x0bot.com; an email works too)
  *   WEATHER          metno | off (default metno: free, commercial use allowed, no key)      WEATHER_URL  its Locationforecast address
  *
  * Caches (memory): places 30 days (not found: 7 days; a failure: 15 minutes; a provider resting: 2), legs 14 days (no route: a day),

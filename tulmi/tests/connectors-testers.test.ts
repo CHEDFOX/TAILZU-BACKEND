@@ -14,14 +14,14 @@ describe("apps held back for testers", () => {
     expect(mayConnect("google-calendar", "a@b.com", cfg("", "x@y.com"))).toBe(true);
   });
   it("shows a held-back app only to a tester, by email without case", () => {
-    const c = cfg("google-calendar, google-tasks", " Owner@Tailzu.space ,qa@tailzu.space");
-    expect(mayConnect("google-calendar", "owner@tailzu.space", c)).toBe(true);
-    expect(mayConnect("Google-Tasks", "QA@tailzu.space", c)).toBe(true);
+    const c = cfg("google-calendar, google-tasks", " Owner@X0bot.com ,qa@x0bot.com");
+    expect(mayConnect("google-calendar", "owner@x0bot.com", c)).toBe(true);
+    expect(mayConnect("Google-Tasks", "QA@x0bot.com", c)).toBe(true);
     expect(mayConnect("google-calendar", "someone@gmail.com", c)).toBe(false);
     expect(mayConnect("google-calendar", undefined, c)).toBe(false);
   });
   it("leaves the apps that are not held back alone", () => {
-    const c = cfg("google-calendar", "owner@tailzu.space");
+    const c = cfg("google-calendar", "owner@x0bot.com");
     expect(mayConnect("google-docs", "someone@gmail.com", c)).toBe(true);
     expect(mayConnect("notion", undefined, c)).toBe(true);
   });

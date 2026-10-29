@@ -65,7 +65,7 @@ describe("a conflict with the default branch", () => {
     // The server's commit: two parents (the branch, then the default branch's commit), the resolved text, the bot as the author.
     const commit = r.fake.headCommit(r.repo, pr.branch);
     expect(r.fake.parentsOf(r.repo, pr.branch)).toEqual([head0, pr.mainSha]);
-    expect(commit.author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(commit.author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     expect(commit.message).toContain("Merge main into");
     expect(r.fake.files(r.repo, pr.branch)["src/util.ts"]).toBe(resolved());
     // The checks ran on the resolved text before it was committed.

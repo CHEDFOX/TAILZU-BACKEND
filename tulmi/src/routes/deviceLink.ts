@@ -21,7 +21,7 @@ import { defaultDeviceLinks, LINK_TTL_MS, showCode, TOKEN_RE, type DeviceLinks, 
 import { qrOf, qrPath } from "../shell/qr.js";
 
 /** Where the QR's link points: a host the phone app claims (associatedDomains, intentFilters), serving /s/* (AASA). */
-export const LINK_ORIGIN = (process.env.DEVICE_LINK_ORIGIN || "https://app.tailzu.space").replace(/\/+$/, "");
+export const LINK_ORIGIN = (process.env.DEVICE_LINK_ORIGIN || "https://app.x0bot.com").replace(/\/+$/, "");
 /** The phone's screen for it (bots.link, ids.ts) and its parameter. */
 const LINK_SCREEN = "bots.link";
 export const linkUrl = (token: string): string => `${LINK_ORIGIN}/s/${LINK_SCREEN}?l=${token}`;
@@ -131,7 +131,7 @@ export function registerDeviceLinkRoutes(app: FastifyInstance, opts: DeviceLinkR
 }
 
 /** Where the app is got (the API's own /download page). */
-const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.tailzu.space").replace(/\/+$/, "")}/download`;
+const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/download`;
 
 /** The browser's page for the QR's link. */
 function linkPage(open: string): string {

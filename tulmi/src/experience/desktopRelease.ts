@@ -23,7 +23,15 @@ const FILES: Record<DesktopOs, string> = {
 };
 
 /** Where the site serves the installers from. */
-const SITE_ORIGIN = "https://tailzu.space";
+const SITE_ORIGIN = "https://x0bot.com";
+
+/**
+ * The last desktop build whose updater takes a build only from tailzu.space (its updater.js trusts no other host,
+ * and follows no redirect off it). Its in-app update is offered there: tailzu.space keeps serving /downloads/* through
+ * the site's proxy, never redirected (docs/domain-x0bot.md). Every later build trusts x0bot.com too.
+ */
+export const LAST_TAILZU_ONLY_BUILD = "0.4.4";
+const LEGACY_SITE_ORIGIN = "https://tailzu.space";
 
 /** "darwin", "win32", "mac", "windows", "Windows_NT" … → one of three. */
 export function desktopOs(os: unknown): DesktopOs | null {
@@ -105,7 +113,8 @@ export function updateFor(appVersion: unknown, os: unknown, fallbackLatest = "")
   // The checksum belongs to the published file, so it only stands for the
   // version that was published with it — never for the fallback number.
   const sha512 = rel.version === latest && rel.sha512 ? rel.sha512 : undefined;
-  return { version: latest, url: `${SITE_ORIGIN}/downloads/${FILES[o]}`, ...(sha512 ? { sha512 } : {}) };
+  const origin = compareVersions(current, LAST_TAILZU_ONLY_BUILD) <= 0 ? LEGACY_SITE_ORIGIN : SITE_ORIGIN;
+  return { version: latest, url: `${origin}/downloads/${FILES[o]}`, ...(sha512 ? { sha512 } : {}) };
 }
 
 /** The direct installer link for this OS, for the tray's notification. */

@@ -41,23 +41,23 @@ const graphOf = (html: string) =>
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/\s+/g, " ");
 
 describe("every page a search engine can reach", () => {
-  it("is in the sitemap, served, and canonical at tailzu.space", async () => {
+  it("is in the sitemap, served, and canonical at x0bot.com", async () => {
     const res = await get("/sitemap.xml");
     expect(res.headers["content-type"]).toMatch(/xml/);
-    for (const p of sitePages()) expect(res.body).toContain(`<loc>https://tailzu.space${p.path === "/" ? "/" : p.path}</loc>`);
+    for (const p of sitePages()) expect(res.body).toContain(`<loc>https://x0bot.com${p.path === "/" ? "/" : p.path}</loc>`);
     for (const path of ["/languages", "/faq", ...LANDING_PATHS(), ...PAGED.map((l) => `/languages/${l.slug}`)]) {
       const page = await get(path);
       expect(page.statusCode).toBe(200);
-      expect(page.body).toContain(`<link rel="canonical" href="https://tailzu.space${path}">`);
+      expect(page.body).toContain(`<link rel="canonical" href="https://x0bot.com${path}">`);
       expect(page.body).toMatch(/<meta name="description" content="[^"]{50,170}">/);
-      expect(page.body).toContain('property="og:image" content="https://tailzu.space/og.png"');
+      expect(page.body).toContain('property="og:image" content="https://x0bot.com/og.png"');
       expect(graphOf(page.body).length).toBeGreaterThan(1);   // parses, and says something
     }
   });
 
   it("the old policy and download pages carry the same head", () => {
     for (const [html, path] of [[PRIVACY_POLICY_HTML, "/privacy"], [TERMS_HTML, "/terms"], [DOWNLOAD_PAGE_HTML, "/download"]] as const) {
-      expect(html).toContain(`<link rel="canonical" href="https://tailzu.space${path}">`);
+      expect(html).toContain(`<link rel="canonical" href="https://x0bot.com${path}">`);
       expect(graphOf(html).some((n: any) => n["@type"] === "BreadcrumbList")).toBe(true);
     }
   });
@@ -243,8 +243,8 @@ describe("the redesigned home page, as a crawler reads it", () => {
     expect(app.featureList.some((f) => f.startsWith("Desktop app for Windows, Mac and Linux"))).toBe(true);
     expect(llmsTxt()).toContain("On Windows, Mac and Linux, tap Ctrl twice");
     expect(llmsTxt()).toContain("Windows, Mac and Linux apps");
-    expect(llmsTxt()).toContain("- [Linux](https://tailzu.space/download)");
-    expect(llmsFullTxt()).toContain("Linux: https://tailzu.space/download");
+    expect(llmsTxt()).toContain("- [Linux](https://x0bot.com/download)");
+    expect(llmsFullTxt()).toContain("Linux: https://x0bot.com/download");
     expect(llmsFullTxt()).toContain("A desktop app for Windows, Mac and Linux");
   });
 
@@ -257,11 +257,11 @@ describe("the redesigned home page, as a crawler reads it", () => {
       expect(v["@type"]).toBe("VideoObject");
       expect(v.name.length, f.id).toBeGreaterThan(0);
       expect(v.description.length, f.id).toBeGreaterThan(0);
-      expect(v.contentUrl).toMatch(/^https:\/\/tailzu\.space\/media\/[a-z0-9-]+\.mp4$/);
+      expect(v.contentUrl).toMatch(/^https:\/\/x0bot\.com\/media\/[a-z0-9-]+\.mp4$/);
       expect(v.thumbnailUrl).toEqual([v.contentUrl.replace(/\.mp4$/, ".webp")]);
       expect(v.uploadDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(v.duration).toMatch(/^PT\d+(\.\d)?S$/);
-      expect(v.publisher).toEqual({ "@id": "https://tailzu.space/#org" });
+      expect(v.publisher).toEqual({ "@id": "https://x0bot.com/#org" });
     }
     // The reel's words are the page's: one source for both.
     for (const it of SITE_UI.films.items) expect(films.find((f) => f.id === it.id)?.line).toBe(it.line);

@@ -34,6 +34,8 @@ export interface FirstRunPlan {
   label: string;
   price: string;
   per: string;
+  /** `per` with "{price}" where the store's monthly price goes (the paywall's periodTemplate). */
+  perTemplate?: string;
   note?: string;
   badge?: string;
   /** Free days before the first charge, when the plan's own terms say so ("7 days free, then …"). */
@@ -142,6 +144,7 @@ function phonePlans(): FirstRunPlan[] {
     label: p.label,
     price: p.price,
     per: p.period ?? "",
+    ...(p.periodTemplate ? { perTemplate: p.periodTemplate } : {}),
     ...(p.note ? { note: p.note } : {}),
     ...(p.badge ? { badge: p.badge } : {}),
     ...(trialDaysOf(p.note) ? { trialDays: trialDaysOf(p.note) } : {}),
@@ -186,6 +189,8 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
       gender,
       // Both answers are what the name and gender card asks for: with both, the step has nothing to ask.
       saved: !!(profile?.fullName?.trim() && gender),
+      // Onboarded before the first run asked it: the screen is then only About you (the bootstrap's promptScreenId).
+      onboarded: profile?.onboarded === true,
     });
   });
 

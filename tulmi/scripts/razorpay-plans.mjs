@@ -25,8 +25,8 @@ const MARKETS = [
   { market: "world", currency: "USD" },
 ];
 const PERIODS = [
-  { period: "monthly", razorpay: "monthly", name: "Tailzu Lite", description: "Unlimited words, billed monthly" },
-  { period: "annual", razorpay: "yearly", name: "Tailzu Elite", description: "Unlimited words, billed yearly" },
+  { period: "monthly", razorpay: "monthly", name: "X0 Bot Lite", description: "Unlimited words, billed monthly" },
+  { period: "annual", razorpay: "yearly", name: "X0 Bot Elite", description: "Unlimited words, billed yearly" },
 ];
 
 function args() {

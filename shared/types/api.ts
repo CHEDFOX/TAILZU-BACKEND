@@ -1173,6 +1173,11 @@ export interface PaywallPlan {
   label: string;                    // "Annual", "Monthly", "Lifetime"
   price: string;                    // "$59.99/yr", "$9.99/mo" — the shown copy
   period?: string;                  // "per year", "per month" — secondary line
+  /**
+   * The period line with "{price}" where the store's own monthly price goes ("{price} / mo, billed yearly"). A phone
+   * shows it once the store answers (app billing/storePrice.ts); `period` stays the words until then, and everywhere else.
+   */
+  periodTemplate?: string;
   perUnit?: string;                 // "$4.99/mo billed annually" — footnote
   /**
    * ONE LINE saying what tapping this row does.

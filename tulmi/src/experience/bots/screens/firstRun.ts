@@ -46,6 +46,7 @@ import {
   primaryButton, row, SCREENS, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title,
   when, type BlipPose, type BotsCtx, type IconName,
 } from "../kit.js";
+import type { TextOpts } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 
 const CLAY = PALETTE_HEX.clay!;
@@ -745,7 +746,7 @@ export const BOTS_FIRST_RUN_IDS: string[] = [SCREENS.nameIt];
 
 // ===================================================================== the pages: Welcome, Sign in, Code
 
-const PAGE_AUTH: BotsAuthOpts = { terms: "https://tailzu.space/terms", privacy: "https://tailzu.space/privacy" };
+const PAGE_AUTH: BotsAuthOpts = { terms: "https://x0bot.com/terms", privacy: "https://x0bot.com/privacy" };
 
 /** One sign-in step as a page of its own, on a stage of its own, so Blip walks between them as he does in the gate. */
 function authPage(ctx: BotsCtx, title: string, step: Node, state: Record<string, unknown> = {}): ScreenResponse {
@@ -857,7 +858,7 @@ function language(ctx: BotsCtx, data: Langs | undefined): ScreenResponse {
 /** GET /v1/personality, as much as this step reads. */
 interface Persona { personality?: { assistantName?: string } }
 /** GET /v1/bots/first-run/profile (routes/botsFirstRun.ts). */
-interface Me { name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null; saved: boolean }
+interface Me { name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null; saved: boolean; onboarded?: boolean }
 interface AfterSignIn { me?: Me; persona?: Persona }
 
 const NAME_IDEAS = ["Tara", "Mitra", "Chotu", "Jarvis"];
@@ -906,15 +907,21 @@ function nameSource(me: Me | undefined): string | null {
   return `From your ${who} account. Change it if you like.`;
 }
 
-/** About you: the person's own name and gender, the name and gender card's question, saved where it saves them. */
-function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined): Node {
+/**
+ * About you: the person's own name and gender, the name and gender card's question, saved where it saves them.
+ * `only`: the whole screen for someone onboarded before the first run asked it (the bootstrap's promptScreenId, in
+ * place of the native card): no steps around it, and saving closes it instead of going on to Name.
+ */
+function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = false): Node {
   const desk = ctx.client === "desktop";
   const save: ActionSpec = {
     kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] },
     // PUT /v1/profile { full_name, gender }: the card's own write, so everything that reads them (the bootstrap's
     // profile.complete, the greeting, the prompt) keeps working, and the card is never asked again.
     then: call("PUT", "/v1/profile", { full_name: "$state.fullName", gender: "$state.gender" }, {
-      ok: seq({ kind: "haptic", style: "selection" } as ActionSpec, setState("step", 1)),
+      ok: only
+        ? seq({ kind: "haptic", style: "success" } as ActionSpec, { kind: "refresh" } as ActionSpec, back)
+        : seq({ kind: "haptic", style: "selection" } as ActionSpec, setState("step", 1)),
       fail: toast(W.saveErr),
     }),
     else: toast(W.youMissing),
@@ -925,10 +932,10 @@ function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined): Node {
 
   if (desk) {
     return gateStep(true, deskBody({
-      title: "About you", right: signedInAs(ctx), current: 1,
+      title: "About you", right: signedInAs(ctx), current: only ? null : 1,
       left: [
         deskFig(fig, "present", 140),
-        deskHeading(`Step 1 of ${STEPS.length - 1}`, W.youH, W.youP),
+        deskHeading(only ? "About you" : `Step 1 of ${STEPS.length - 1}`, W.youH, W.youP),
       ],
       main: [col([
         col([text("Your name", { size: 13, weight: 500, lineHeight: 17 }), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 6 }),
@@ -938,7 +945,7 @@ function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined): Node {
     }), { props: { stepId: "you" } });
   }
   return gateStep(false, [phoneStepBody([
-    phoneTop(1, 2),
+    only ? phoneTop(1, 1, { back }) : phoneTop(1, 2),
     row([fig("present", 116)], { justifyContent: "center" }),
     phoneHeading(W.youH, W.youP),
     col([sectionLabel("Your name"), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 8 }),
@@ -1017,11 +1024,14 @@ function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenRespons
   const fig = figureFor(ctx);
   const me = data?.me;
   const gender = GENDERS.some((g) => g.value === me?.gender) ? me!.gender! : "";
+  // Someone already onboarded is here only for the card's question (the bootstrap's promptScreenId): About you
+  // alone, which closes once saved. Name your Tailzu, and finishing the first run, are not theirs to do again.
+  const only = me?.onboarded === true;
   return stageScreen(ctx, {
-    title: "About you", id: "bots.first", first: 2,
-    steps: [youStep(ctx, fig, me), nameStep(ctx, fig)],
+    title: "About you", id: only ? "bots.about-you" : "bots.first", first: 2,
+    steps: only ? [youStep(ctx, fig, me, true)] : [youStep(ctx, fig, me), nameStep(ctx, fig)],
     state: {
-      step: me?.saved ? 1 : 0,
+      step: me?.saved && !only ? 1 : 0,
       fullName: me?.name ?? "",
       gender,
       name: (data?.persona?.personality?.assistantName ?? "").trim() || "Tailzu",
@@ -1326,7 +1336,7 @@ interface Plans {
   freeWords: number;
   features: string[];
   plans: Array<{
-    id: string; label: string; price: string; per: string; note?: string; badge?: string; trialDays?: number; default?: boolean;
+    id: string; label: string; price: string; per: string; perTemplate?: string; note?: string; badge?: string; trialDays?: number; default?: boolean;
     buy?: { kind: "iap.showPaywall"; offeringId: string; packageId?: string } | { kind: "iap.subscribe"; productId: string };
   }>;
 }
@@ -1370,9 +1380,14 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const feature = (lead: Node, line: string): Node => row([lead, text(line, { size: 14, lineHeight: 19, style: { flexShrink: 1 } })], { gap: 10 });
   const tag = (s: string): Node => box([text(s, { size: 12, weight: 500, lineHeight: 16 })], { backgroundColor: C.surface, borderRadius: 10, paddingVertical: 3, paddingHorizontal: 8 });
   const keyHead = botAvatar(botLook("keybot"), 22);
-  const planCard = (id: string, name: string, price: Node, extra: Node[], per: string, lines: Node[]): Node => col([
+  // A phone's plans carry their store package: the price shows as the store words it once it answers (catalog.ts storePriceOf).
+  const store = (p: Plans["plans"][number], o: { field?: "perMonth"; template?: string } = {}): TextOpts =>
+    p.buy?.kind === "iap.showPaywall" && p.buy.packageId
+      ? { storePrice: { packageId: p.buy.packageId, offeringId: p.buy.offeringId, ...o } }
+      : {};
+  const planCard = (id: string, name: string, price: Node, extra: Node[], per: string, lines: Node[], perOpts: TextOpts = {}): Node => col([
     row([radio(id), text(name, { size: 17, weight: 600, lineHeight: 22 }), ...extra, grow(), price], { gap: 10 }),
-    ...(per ? [meta(per, { size: 12, style: { paddingLeft: 32, marginTop: -8 } })] : []),
+    ...(per ? [meta(per, { size: 12, style: { paddingLeft: 32, marginTop: -8 }, ...perOpts })] : []),
     col(lines, { gap: 8, paddingLeft: 32 }),
   ], {
     paddingVertical: 14, paddingHorizontal: 16, gap: 12, borderRadius: 18, borderWidth: sel(id, 1.5, 1), borderColor: sel(id, C.ink, C.line),
@@ -1380,7 +1395,7 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const tick = (): Node => box([icon("check", { size: 14 })], { width: 22, height: 22, borderRadius: 11, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" });
   const cards = [
     planCard("free", "Free", text("₹0", { size: 17, weight: 700, lineHeight: 22 }), [], "", [feature(tick(), "Every bot, with a smaller allowance each month"), feature(keyHead, freeLine)]),
-    ...paid.map((p) => planCard(p.id, p.label, text(p.price, { size: 17, weight: 700, lineHeight: 22 }), [
+    ...paid.map((p) => planCard(p.id, p.label, text(p.price, { size: 17, weight: 700, lineHeight: 22, ...store(p) }), [
       ...(p.trialDays ? [tag(`${p.trialDays} days free`)] : p.badge ? [tag(p.badge)] : []),
     ], p.per, [
       feature(tick(), "More to use every month, in five stretches"),
@@ -1390,14 +1405,14 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
         ...data.features.map((f) => feature(tick(), f)),
         ...(p.note && !p.trialDays ? [meta(p.note, { size: 12 })] : []),
       ], { gap: 8 })),
-    ])),
+    ], p.perTemplate ? store(p, { field: "perMonth", template: p.perTemplate }) : {})),
   ];
   /** What a trial costs, day by day: nothing today, the price when it ends. */
   const trial = (p: Plans["plans"][number]): Node | null => p.trialDays ? when(isOn(p.id), col([
     text(`Try ${p.label} free for ${p.trialDays} days. Cancel any time before it ends and you pay nothing.`, { size: 14, lineHeight: 20 }),
     row([
       col([meta("Today", { size: 12 }), text("₹0", { size: 13, weight: 600, lineHeight: 17 })], { gap: 2, paddingHorizontal: 14, flexGrow: 1, flexBasis: 0 }),
-      col([meta(dayAfter(ctx.live.now, ctx.tzOffsetMinutes, p.trialDays), { size: 12 }), text(`Then ${p.price}`, { size: 13, weight: 600, lineHeight: 17 })], {
+      col([meta(dayAfter(ctx.live.now, ctx.tzOffsetMinutes, p.trialDays), { size: 12 }), text(`Then ${p.price}`, { size: 13, weight: 600, lineHeight: 17, ...store(p, { template: "Then {price}" }) })], {
         gap: 2, paddingHorizontal: 14, flexGrow: 1, flexBasis: 0, borderLeftWidth: 1, borderLeftColor: C.track,
       }),
     ], { backgroundColor: C.surface, borderRadius: 14, paddingVertical: 10 }),
@@ -1416,7 +1431,7 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const fine = desk
     ? "Renews automatically until you cancel. You pay in your browser, and nothing is charged until you confirm there."
     : "Renews automatically until you cancel. Cancel any time in your store's subscriptions. Your store shows the final price before you pay.";
-  const legal = row([link("Terms", { kind: "openUrl", url: "https://tailzu.space/terms", external: true }, { size: 13, color: C.meta }), link("Privacy", { kind: "openUrl", url: "https://tailzu.space/privacy", external: true }, { size: 13, color: C.meta })], { gap: 18, justifyContent: "center" });
+  const legal = row([link("Terms", { kind: "openUrl", url: "https://x0bot.com/terms", external: true }, { size: 13, color: C.meta }), link("Privacy", { kind: "openUrl", url: "https://x0bot.com/privacy", external: true }, { size: 13, color: C.meta })], { gap: 18, justifyContent: "center" });
   const state = { plan: chosen };
 
   if (desk) {

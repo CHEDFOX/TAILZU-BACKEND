@@ -18,8 +18,13 @@
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
-API="${API:-https://api.tailzu.space}"
 ENV_FILE="${ENV_FILE:-tulmi/.env}"
+# The server's own address: its .env's PUBLIC_ORIGIN once the move is done there (docs/domain-x0bot.md step 9),
+# api.tailzu.space until then (tulmi/src/domainHold.ts keeps the server on it too).
+API="${API:-$(sed -n 's/^PUBLIC_ORIGIN=//p' "$ENV_FILE" 2>/dev/null | tail -n1 | tr -d '"\r')}"
+API="${API:-https://api.tailzu.space}"
+# The address before x0bot.com, which the apps already installed still call (docs/domain-x0bot.md).
+OLD_API="${OLD_API:-https://api.tailzu.space}"
 # The entitlement as the RevenueCat dashboard spells it. The server must agree.
 WANT_ENTITLEMENT="${WANT_ENTITLEMENT:-TAILZU AIR}"
 
@@ -54,6 +59,18 @@ fi
 step "Serving"
 code=$(curl -sS -o /dev/null -w '%{http_code}' "$API/v1/site")
 [ "$code" = "200" ] && ok "site copy" || bad "site copy → $code"
+
+# Both names, the same server: an installed app on the old one must not notice the move.
+code=$(curl -sS -o /dev/null -w '%{http_code}' "$OLD_API/healthz")
+[ "$code" = "200" ] && ok "the old address answers ($OLD_API)" || bad "$OLD_API/healthz → $code — installed apps still call it"
+
+# App links: the file Apple and Google read, straight (a redirect is refused). Only once the server is on x0bot.com.
+case "$API" in *x0bot.com*)
+  for host in https://app.x0bot.com https://x0bot.com; do
+    code=$(curl -sS -o /dev/null -w '%{http_code}' "$host/.well-known/apple-app-site-association")
+    [ "$code" = "200" ] && ok "app links: $host serves the AASA" || bad "app links: $host/.well-known/apple-app-site-association → $code (must be 200, no redirect)"
+  done ;;
+esac
 
 code=$(curl -sS -o /dev/null -w '%{http_code}' -I "$API/downloads/Tailzu-Setup.exe")
 case "$code" in

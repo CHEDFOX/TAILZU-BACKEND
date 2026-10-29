@@ -48,7 +48,7 @@ D=$(boot desktop); P=$(boot phone)
 case "$D" in *'paywall.web.url'*) ok "a desktop is offered a purchase link";;
   *) no "no paywall.web.url — REVENUECAT_WEB_PAYWALL_URL unset, or the container did not restart";; esac
 case "$D" in *'{app_user_id}'*|*'app_user_id='*) ok "the link carries a slot for the user id";;
-  *'"paywall.web.url":"https://tailzu.space/pay'*) ok "the desktop adds ?app_user_id= to tailzu.space/pay, which reads it";;
+  *'"paywall.web.url":"https://x0bot.com/pay'*|*'"paywall.web.url":"https://tailzu.space/pay'*) ok "the desktop adds ?app_user_id= to x0bot.com/pay, which reads it";;
   *) echo "  NOTE  no {app_user_id} in the link: the desktop appends ?app_user_id=, right for a Web Purchase Link, wrong for a hosted paywall link";; esac
 case "$P" in *'paywall.web.url'*) no "a PHONE was offered the link — the anti-steering rule Apple rejects for";;
   *) ok "a phone is not offered it";; esac
@@ -105,9 +105,10 @@ echo; echo "4. the checkout the desktop opens (Razorpay)"
 URL=$(printf '%s' "$D" | grep -o '"paywall.web.url":"[^"]*"' | cut -d'"' -f4)
 echo "  link: ${URL:-none}"
 case "$URL" in
-  https://tailzu.space/pay*) ok "the link is tailzu.space/pay";;
-  "") no "no link at all — set REVENUECAT_WEB_PAYWALL_URL=https://tailzu.space/pay in $ENVF, then: docker compose up -d backend";;
-  *) echo "  NOTE  not our pay page; checks below cover tailzu.space/pay only";;
+  https://x0bot.com/pay*) ok "the link is x0bot.com/pay";;
+  https://tailzu.space/pay*) ok "the link is tailzu.space/pay, the old address (it redirects to x0bot.com/pay): set REVENUECAT_WEB_PAYWALL_URL=https://x0bot.com/pay in $ENVF";;
+  "") no "no link at all — set REVENUECAT_WEB_PAYWALL_URL=https://x0bot.com/pay in $ENVF, then: docker compose up -d backend";;
+  *) echo "  NOTE  not our pay page; checks below cover x0bot.com/pay only";;
 esac
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "$API/pay")
 if [ "$CODE" = 302 ]; then
@@ -168,7 +169,7 @@ cat <<'TXT'
   Settings this script cannot see (each one stops a desktop purchase):
     Razorpay  Subscriptions switched on for the account (Dashboard > Subscriptions)
     Razorpay  The plans, made by tulmi/scripts/razorpay-plans.mjs in the same mode (test/live) as the key
-    Razorpay  Webhook https://api.tailzu.space/v1/billing/razorpay, all subscription.* events,
+    Razorpay  Webhook https://api.x0bot.com/v1/billing/razorpay, all subscription.* events,
               secret = RAZORPAY_WEBHOOK_SECRET
     Razorpay  International cards switched on, to take payments from outside India
 TXT

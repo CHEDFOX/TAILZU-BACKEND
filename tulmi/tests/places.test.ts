@@ -47,7 +47,7 @@ function clock(start = Date.UTC(2026, 9, 28, 20, 45)) {
   return { t, now: () => t.now, sleep: async (ms: number) => { t.now += ms; } };
 }
 
-const line = (fetchFn: ReturnType<typeof fakeFetch>["fetchFn"], c = clock(), minGapMs = 0) => new Polite({ name: "test", minGapMs, userAgent: userAgentFor("support@tailzu.space"), fetchFn, now: c.now, sleep: c.sleep });
+const line = (fetchFn: ReturnType<typeof fakeFetch>["fetchFn"], c = clock(), minGapMs = 0) => new Polite({ name: "test", minGapMs, userAgent: userAgentFor("support@x0bot.com"), fetchFn, now: c.now, sleep: c.sleep });
 
 const PHOTON = {
   type: "FeatureCollection",
@@ -76,7 +76,7 @@ describe("geocoders", () => {
     const u = new URL(f.sent[0]!.url);
     expect(u.origin + u.pathname).toBe("https://photon.example/api/");
     expect(Object.fromEntries(u.searchParams)).toEqual({ q: "Indiranagar", limit: "5", lang: "en", lat: "12.970", lon: "77.590" });
-    expect(f.sent[0]!.headers["user-agent"]).toBe("Tailzu/1.0 (+support@tailzu.space)");
+    expect(f.sent[0]!.headers["user-agent"]).toBe("Tailzu/1.0 (+support@x0bot.com)");
   });
 
   it("asks Nominatim with its country code and a view box, and says why when it fails", async () => {

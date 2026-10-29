@@ -116,6 +116,7 @@ export const KEYBOARD_KNOBS: {
         "decimalPad",
         "asciiCapableNumberPad"
       ],
+      "kb.field.prose": true,
       "kb.flash.maxChars": 40,
       "kb.flow.armGlyph.enabled": false,
       "kb.flow.armScreenId": "flow_arm",
@@ -522,6 +523,17 @@ export const KEYBOARD_KNOBS: {
       "kb.accentTray.radius": 8,
       "kb.accentTray.shadowOpacity": 0.35,
       "kb.accentTray.shadowRadius": 8,
+      "kb.apps.names": [
+        "*whatsapp*=WhatsApp",
+        "*telegram*=Telegram",
+        "*slack*=Slack",
+        "com.google.android.gm=Gmail",
+        "*instagram*=Instagram",
+        "*twitter*=Twitter",
+        "*x.android*=Twitter",
+        "*mms*=Messages",
+        "*messaging*=Messages"
+      ],
       "kb.audio.duckOthers": true,
       "kb.audio.voiceProcessing": true,
       "kb.autoCap.enabled": true,
@@ -632,6 +644,7 @@ export const KEYBOARD_KNOBS: {
       "kb.haptics.enabled": true,
       "kb.haptics.holds": true,
       "kb.haptics.style": "selection",
+      "kb.icons.inset": 10,
       "kb.images.fallbackFrameDelaySec": 0.1,
       "kb.images.maxAgeSec": 0,
       "kb.images.maxEdgePx": 256,
@@ -997,6 +1010,7 @@ export const KEYBOARD_KNOBS: {
     "dynamic": [
       "kb.accents",
       "kb.haptics.keys",
+      "kb.icons",
       "kb.key.sound",
       "kb.look.force",
       "kb.personality.pinned",

@@ -49,8 +49,17 @@ describe("the bootstrap", () => {
     expect(on.initialScreenId).toBe("bots.name-it");
     // The run asks the name and gender card's question itself: the card is not laid over anything meanwhile.
     expect(on.flags?.["profileGate.screenIds"]).toEqual([]);
-    // Onboarded before the run asked it: the card stays where it always was.
-    expect(buildBootstrap({ onboarded: true, botsApp: true }).flags?.["profileGate.screenIds"]).toEqual(["personality", "home"]);
+    // Onboarded before the run asked it: no native card any more. The run's own screen asks, over Home after a
+    // pause (promptScreenId bots.name-it, About you alone for them), only while the answer is owed.
+    const owed = buildBootstrap({ onboarded: true, botsApp: true });
+    expect(owed.flags?.["profileGate.screenIds"]).toEqual([]);
+    expect(owed.flags?.["promptScreenId"]).toBe("bots.name-it");
+    const answered = buildBootstrap({ onboarded: true, botsApp: true, profileComplete: true });
+    expect(answered.flags?.["profileGate.screenIds"]).toEqual([]);
+    expect(answered.flags?.["promptScreenId"]).toBeUndefined();
+    // Never in front of a reviewer, and the old app keeps its card.
+    expect(buildBootstrap({ onboarded: true, botsApp: true, isReviewer: true }).flags?.["promptScreenId"]).toBeUndefined();
+    expect(buildBootstrap({ onboarded: true }).flags?.["profileGate.screenIds"]).toEqual(["personality", "home"]);
   });
 });
 

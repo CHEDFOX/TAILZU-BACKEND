@@ -101,7 +101,7 @@ describe("Ask's one-time setup card on the desk home", () => {
     const s = buildDeskScreen("desk_today", {
       personality: {} as never,
       askSetup: { privacyUrl: POLICY.privacy, os: "mac" },
-      update: { version: "9.9.9", url: "https://tailzu.space/download" },
+      update: { version: "9.9.9", url: "https://x0bot.com/download" },
     })!;
     const types = (s.root.children ?? []).slice(0, 3).map((c) => (c.type === "DeskAskSetup" ? "ask" : String(c.props?.cls ?? c.type)));
     expect(types[1]).toBe("ask");
@@ -173,7 +173,7 @@ describe("the card's words", () => {
   });
 
   it("links the privacy policy where the server serves it", () => {
-    expect(POLICY.privacy).toBe("https://tailzu.space/privacy");
+    expect(POLICY.privacy).toBe("https://x0bot.com/privacy");
     const card = nodesOf(buildScreen("desk_today", ctx(ASK)), "DeskAskSetup")[0]!;
     // The window draws the link only for an https address (sdui.js).
     expect(card.props!.policyUrl).toMatch(/^https:\/\//);

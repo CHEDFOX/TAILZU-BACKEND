@@ -17,7 +17,7 @@ docker compose exec -T backend node -e '
 import("file:///app/tulmi/dist/tulmi/src/billing/razorpay.js").then(async (m) => {
   const id = await m.accountIdFor(process.argv[1]);
   if (!id) { console.error("No Tailzu account with that email."); process.exit(1); }
-  const link = m.payLink("https://tailzu.space/pay", id, Date.now(), true);
+  const link = m.payLink("https://x0bot.com/pay", id, Date.now(), true);
   if (!link) { console.error("No link: RAZORPAY_KEY_SECRET is not set in the running container."); process.exit(1); }
   console.log(link);
 }).catch((e) => { console.error(e.message); process.exit(1); });' "$WHO"

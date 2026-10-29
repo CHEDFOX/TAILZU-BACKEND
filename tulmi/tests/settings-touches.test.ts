@@ -189,7 +189,7 @@ describe("every Settings action still exists, with the same route and id", () =>
     expect(press("Upgrade")).toEqual({ kind: "navigate", screenId: "paywall" });
     expect(press("Change Or Cancel · App Store")).toEqual({ kind: "openUrl", url: "https://apps.apple.com/account/subscriptions" });
     expect(press("Change Or Cancel · Google Play")).toEqual({ kind: "openUrl", url: "https://play.google.com/store/account/subscriptions" });
-    expect(press("Change Or Cancel · Billed On The Web")).toEqual({ kind: "openUrl", url: "mailto:support@tailzu.space" });
+    expect(press("Change Or Cancel · Billed On The Web")).toEqual({ kind: "openUrl", url: "mailto:support@x0bot.com" });
     expect(press("Cancel Subscription · Billed On The Web")).toEqual({ kind: "navigate", screenId: "cancel_subscription" });
     // What it was, in other words.
     expect(press("The Voice I Read In")).toEqual({ kind: "navigate", screenId: "voice_read" });

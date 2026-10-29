@@ -72,7 +72,7 @@
     "CODE_PROJECT_BRAIN": "true",
     "CODE_GITHUB_OAUTH": "false",
     "WEB_BROWSER": "cloudflare",
-    "PUBLIC_ORIGIN": "https://api.tailzu.space",
+    "PUBLIC_ORIGIN": "https://api.x0bot.com",
     "GITHUB_APP_SLUG": "",
     "GITHUB_APP_CLIENT_ID": "",
     "GITHUB_APP_ID": "",
@@ -93,7 +93,7 @@
     // minutes). The design round needs ARTIFACTS, a browser for shots (WEB_BROWSER=cloudflare), and a viewer kept for shots (ARTIFACT_SHOT_VIEWER_URL, viewer/docs section 14).
     "PREVIEW_DOMAIN": "",
     "PREVIEW_HOST": "",
-    "PREVIEW_PARENT_ORIGINS": "https://tailzu.space,https://www.tailzu.space",
+    "PREVIEW_PARENT_ORIGINS": "https://x0bot.com,https://www.x0bot.com,https://tailzu.space,https://www.tailzu.space",
     "CODE_PREVIEW_IDLE_SEC": "300",
     "CODE_DESIGN_CHECK": "true",
     "ARTIFACTS": "false",

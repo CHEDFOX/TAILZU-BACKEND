@@ -365,10 +365,10 @@ To switch it on:
    no key the server refuses to store a token. Changing it later disconnects
    everyone (stored tokens no longer open), so keep it with the other secrets.
 3. **The redirect.** `CONNECTOR_REDIRECT_URL` defaults to
-   `https://api.tailzu.space/v1/connectors/callback`. It must be this server's
+   `https://api.x0bot.com/v1/connectors/callback`. It must be this server's
    `GET /v1/connectors/callback`, reachable from the person's browser.
    **Who Tailzu is to the apps.** `CONNECTOR_CLIENT_METADATA_URL` defaults to
-   `https://api.tailzu.space/oauth/client-metadata.json`, which this server
+   `https://api.x0bot.com/oauth/client-metadata.json`, which this server
    serves (built from the redirect above). An app whose auth server reads client
    documents (Notion and Linear say they do) signs people in with that instead
    of registering a new client each time. A staging server sets its own host
@@ -379,7 +379,7 @@ To switch it on:
    redirect, no login page, no bot challenge in front of it), served as
    `application/json`. It is only served while `CONNECTORS=true`. Check it from
    a machine outside the VPS:
-   `curl -si https://api.tailzu.space/oauth/client-metadata.json | head -5`
+   `curl -si https://api.x0bot.com/oauth/client-metadata.json | head -5`
    should show `200`, `content-type: application/json` and
    `cache-control: public, max-age=86400`, and the body lists
    `CONNECTOR_REDIRECT_URL` exactly in `redirect_uris`. If a CDN or firewall
@@ -478,9 +478,9 @@ not starting.
 What every vendor asks for, the same everywhere:
 
 - **Redirect / callback URL:** exactly `CONNECTOR_REDIRECT_URL`, by default
-  `https://api.tailzu.space/v1/connectors/callback`. Vendors compare it as a
+  `https://api.x0bot.com/v1/connectors/callback`. Vendors compare it as a
   string: no trailing slash, same scheme and host. Staging registers its own.
-- **Name, homepage, logo:** Tailzu, `https://tailzu.space`, the app icon.
+- **Name, homepage, logo:** Tailzu, `https://x0bot.com`, the app icon.
 - **`issuer`:** the vendor's auth server, the first entry of
   `authorization_servers` in its MCP server's metadata:
   `curl -s https://<mcp host>/.well-known/oauth-protected-resource/<mcp path>`
@@ -579,7 +579,7 @@ register with the vendor. Each is off until its id is in
 | `airtable`, `calendly` | live try first | The docs give the URL and registration, not the transport. |
 | `calcom`, `fireflies`, `make`, `composio` | live try first | The docs don't say how a client registers; the live metadata offers registration. Make may hand back a client secret, which would be stored unencrypted with the client id. |
 | `otter`, `pipedream` | live try first | Same, and the docs don't name the transport either. |
-| `atlassian`, `trello` | live try first, likely refused | Atlassian's sign-in offers registration, but only from an allowed domain. Until Atlassian adds `api.tailzu.space` to its own list, each org's admin must add it (Atlassian Administration, Connectors, Atlassian MCP server); a person with no admin cannot connect. |
+| `atlassian`, `trello` | live try first, likely refused | Atlassian's sign-in offers registration, but only from an allowed domain. Until Atlassian adds `api.x0bot.com` to its own list, each org's admin must add it (Atlassian Administration, Connectors, Atlassian MCP server); a person with no admin cannot connect. |
 
 A try that passes means the id can go in. One that fails leaves it out; the
 entry's `notes` say what to look at.
@@ -594,7 +594,8 @@ Connected apps list and use the same asks, approvals and audit.
 **What the owner has already done** (same Google Cloud project as the Google
 sign-in): the Calendar, Drive and Docs APIs are enabled, the web OAuth client
 lists `https://api.tailzu.space/v1/connectors/callback` as an authorized redirect
-URI (it must be exactly `CONNECTOR_REDIRECT_URL`), and the consent screen lists
+URI (it must be exactly `CONNECTOR_REDIRECT_URL`, now
+`https://api.x0bot.com/v1/connectors/callback`: add that one too, docs/domain-x0bot.md), and the consent screen lists
 the scopes `calendar.events`, `calendar.readonly` and `drive.file`. Calendar
 now asks for `calendar.events` only, so take `calendar.readonly` off Data
 Access before Google's review (`docs/google-verification.md` also recommends
@@ -606,7 +607,7 @@ later.
 1. **The two keys**, in `tulmi/.env`: the id and secret of a web OAuth client
    in that same project. Make one of its own: APIs & Services, Credentials,
    Create credentials, OAuth client ID, Web application, named "Tailzu
-   Connected apps", with `https://api.tailzu.space/v1/connectors/callback` as
+   Connected apps", with `https://api.x0bot.com/v1/connectors/callback` as
    its authorized redirect URI. Google shows the secret once, at creation:
    copy it (or download the JSON) then. Do not reset or delete the sign-in
    client's secret: Supabase's Google provider (Authentication, Sign In /
@@ -652,7 +653,7 @@ sign-in uses it. Until Google approves the sensitive scopes:
   that Google data is not used to train models or shown to anyone else
   (Google API Services User Data Policy, Limited Use). It does, in Section 11
   ("Google apps you connect") of `tulmi/src/routes/policies/privacy.ts`,
-  served at tailzu.space/privacy.
+  served at x0bot.com/privacy.
 
 **What to show in Google's review video** (one take, screen recording, English
 narration; show the browser address bar on Google's consent page so the
@@ -928,8 +929,8 @@ approved merge.
    Workflows read/write and Actions read (for GitHub's free computers, step 7),
    events Pull request and Pull request review, installable by any
    account, OAuth during installation on, callback
-   `https://api.tailzu.space/v1/code/github/callback`, webhook
-   `https://api.tailzu.space/v1/code/github/webhook`.
+   `https://api.x0bot.com/v1/code/github/callback`, webhook
+   `https://api.x0bot.com/v1/code/github/webhook`.
 3. **The keys.** In `tulmi/.env`: `GITHUB_APP_SLUG`, `GITHUB_APP_CLIENT_ID`,
    `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_PRIVATE_KEY` (the `.pem`, raw or
    `base64 -w0`), `GITHUB_APP_WEBHOOK_SECRET` and `GITHUB_APP_ID`, then
@@ -961,7 +962,7 @@ approved merge.
    push access re-checked before every write, the token encrypted and revoked on
    disconnect, account delete and after 30 days unused). Run
    `0021_code_oauth.sql`, make the OAuth App (callback
-   `https://api.tailzu.space/v1/code/github/signin/callback`, no device flow),
+   `https://api.x0bot.com/v1/code/github/signin/callback`, no device flow),
    and set `GITHUB_OAUTH_CLIENT_ID`, `GITHUB_OAUTH_CLIENT_SECRET` and
    `CODE_GITHUB_OAUTH=true` (also the kill switch: `false` and a restart and no
    stored token is used). To end every token at once:
@@ -1068,7 +1069,7 @@ one is useful without the next (a PDF with text, a CSV, a zip, a picture and a r
    server allows 100 MB on the free plan.
 5. **Switch it on.** In `tulmi/.env`: `MEDIA_INGEST=true`, then `docker compose up -d --build`. Recordings and the sound of a video need `DEEPGRAM_API_KEY`
    (already used for dictation); pictures need the vision model the front door already uses (`FRONT_DOOR=true`).
-6. **Check.** With a signed-in token: `curl -H "Authorization: Bearer $TOKEN" -F file=@handbook.pdf https://api.tailzu.space/v1/files` answers
+6. **Check.** With a signed-in token: `curl -H "Authorization: Bearer $TOKEN" -F file=@handbook.pdf https://api.x0bot.com/v1/files` answers
    `201 {"file":{...},"attachment":{...}}`, and the same file again `200` with `"cached":true` and nothing read. Then `POST /v1/ask` with the
    `attachment` in `attachments` (without its bytes) and a question. A password-protected file, a zip bomb and a kind we do not read each answer with a
    sentence. Delete it with `DELETE /v1/files/<id>`, and see the object go from the bucket.
@@ -1095,7 +1096,7 @@ the safety model, the endpoint and its limits: `docs/bots.md`.
    The limits (`BOTS_MAX`, `BOT_REQUEST_PAISE`, `BOT_DAILY_PAISE`, `BOT_KEY_RATE_PER_MIN`, `BOT_KEY_DAILY_PAISE`) are in `docs/bots.md` section 10.
 4. **Check.** With a signed-in token: `POST /v1/bots/draft {"sentence":"a bot that plans my workouts"}` answers a draft and saves nothing; `POST /v1/bots/approve`
    with its `definition` saves it; `POST /v1/bots/<slug>/keys` answers the key once; then
-   `curl -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"message":"hi"}' https://api.tailzu.space/v1/bots/<slug>/ask`.
+   `curl -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"message":"hi"}' https://api.x0bot.com/v1/bots/<slug>/ask`.
    The same key at another bot's address is `403`, and after `DELETE /v1/bots/<slug>/keys/<id>` it is `401`.
 5. **The proxy.** Nothing to change for the JSON endpoint. A streamed answer (`"stream": true`) needs the proxy not to buffer: Caddy does not; for **nginx**
    add `proxy_buffering off;` to the `location /` block.

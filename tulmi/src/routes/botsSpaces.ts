@@ -67,7 +67,7 @@ const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;",
 /** An invite's code as typed or linked: letters and digits, upper case. */
 const codeOf = (v: unknown): string => String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
 /** Where the app is got (the API's own /download page). */
-const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.tailzu.space").replace(/\/+$/, "")}/download`;
+const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/download`;
 
 /**
  * An invite opened in a browser instead of the app: what it is for, a button that opens Tailzu at joining (tulmi://, which the apps
@@ -199,7 +199,7 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.delete(`${AREA}/spaces/:id/bots/:slug`, RL, run(async (user, req) => { await spaces.removeBot(user.id, param(req, "id"), param(req, "slug")); return { ok: true }; }));
   app.get(`${AREA}/spaces/:id/activity`, RL, run(async (user, req) => ({ activity: await spaces.activity(user.id, param(req, "id"), Number(queryOf(req).limit) || 50) })));
 
-  // An invite's link (https://app.tailzu.space/s/bots.spaces?join=CODE) opens the app; a browser that has no app to hand it to lands here.
+  // An invite's link (https://app.x0bot.com/s/bots.spaces?join=CODE) opens the app; a browser that has no app to hand it to lands here.
   const sendInvite = async (reply: FastifyReply, raw: unknown) => {
     const code = codeOf(raw);
     const s = code ? await spaces.peek(code).catch(() => null) : null;

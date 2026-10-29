@@ -124,7 +124,7 @@ export function connectorOAuthClients(raw: string | undefined, warn: (line: stri
 }
 
 /** The reader's User-Agent when WEB_BOT_UA is not set (or is not a usable header value). */
-export const DEFAULT_WEB_BOT_UA = "Mozilla/5.0 (compatible; TailzuBot/1.0; +https://tailzu.com/bot)";
+export const DEFAULT_WEB_BOT_UA = "Mozilla/5.0 (compatible; TailzuBot/1.0; +https://x0bot.com/bot)";
 
 const EnvSchema = z.object({
   // --- Speech-to-text provider ---
@@ -476,7 +476,7 @@ const EnvSchema = z.object({
    * of this server's GET /v1/connectors/callback, and must be reachable from
    * their browser; it is what is registered with each vendor.
    */
-  CONNECTOR_REDIRECT_URL: z.string().default("https://api.tailzu.space/v1/connectors/callback"),
+  CONNECTOR_REDIRECT_URL: z.string().default("https://api.x0bot.com/v1/connectors/callback"),
   /**
    * Tailzu's published identity for signing in to MCP apps (a client ID
    * metadata document, "CIMD"): the URL is itself the client id, and an auth
@@ -488,7 +488,7 @@ const EnvSchema = z.object({
    * own host) or "" to switch it off: an auth server only sends people back to
    * a redirect the document lists, exactly.
    */
-  CONNECTOR_CLIENT_METADATA_URL: z.string().default("https://api.tailzu.space/oauth/client-metadata.json"),
+  CONNECTOR_CLIENT_METADATA_URL: z.string().default("https://api.x0bot.com/oauth/client-metadata.json"),
   /**
    * OAuth clients registered with a vendor in advance, for the apps that
    * offer no other way in (GitHub, Asana: catalog entries marked
@@ -597,7 +597,7 @@ const EnvSchema = z.object({
    * connecting, has this name and email as its AUTHOR (the committer stays
    * whoever GitHub says the token is), and its message ends with a
    * Co-authored-by line for the person it worked for. Default "Blip" and
-   * "blip@tailzu.space". For the avatar to show on GitHub, make a GitHub
+   * "blip@x0bot.com". For the avatar to show on GitHub, make a GitHub
    * account for the bot, and use that account's noreply address here
    * (<id>+<login>@users.noreply.github.com): docs/github-app.md. A value that
    * is empty, or has `<`, `>` or a line break in it, is ignored for the default.
@@ -895,7 +895,7 @@ const EnvSchema = z.object({
    *   ARTIFACT_VIEWER_URL    the viewer the apps run an artifact in (the LiveView on Design and Live preview; src/artifacts/livehost.ts).
    *                          Not set: those screens draw the artifact's parts, as before
    *   ARTIFACT_APP_ORIGIN    the https origin the apps' host page runs as; it must be in that viewer's VIEWER_PARENT_ORIGINS
-   *                          (default https://tailzu.space, the viewer's own default)
+   *                          (default https://x0bot.com, the viewer's own default)
    */
   CODE_PREVIEW_IDLE_SEC: z.coerce.number().int().min(10).max(3600).default(300),
   PREVIEW_DOMAIN: z.string().trim().toLowerCase().optional(),
@@ -1143,11 +1143,11 @@ const EnvSchema = z.object({
    */
   REVENUECAT_WEB_PAYWALL_URL: z.string().url().optional(),
   /**
-   * TAILZU'S OWN PAY PAGE (GET /pay, served as tailzu.space/pay): the plans
+   * TAILZU'S OWN PAY PAGE (GET /pay, served as x0bot.com/pay): the plans
    * for the buyer's market, and Razorpay's checkout over them. The desktop's
    * Subscribe opens it, by a link the server signs for the account
    * (razorpay.payLink), when REVENUECAT_WEB_PAYWALL_URL is
-   * https://tailzu.space/pay.
+   * https://x0bot.com/pay (or, from before the move, https://tailzu.space/pay).
    *
    * Razorpay has no RevenueCat integration, so this server is the whole
    * integration (src/billing/razorpay.ts): it creates every subscription,
@@ -1158,7 +1158,7 @@ const EnvSchema = z.object({
    *                            Public: it is in the page that opens checkout.
    *   RAZORPAY_KEY_SECRET      SECRET: .env only.
    *   RAZORPAY_WEBHOOK_SECRET  the secret typed when adding the webhook
-   *                            (https://api.tailzu.space/v1/billing/razorpay).
+   *                            (https://api.x0bot.com/v1/billing/razorpay).
    *                            SECRET: .env only.
    *   RAZORPAY_PLANS           the plans on sale, each tagged with its market
    *                            and period — exactly what
@@ -1201,7 +1201,7 @@ const EnvSchema = z.object({
   /**
    * THE LANDING PAGE'S LIVE DEMO. Off by default, on purpose.
    *
-   * tailzu.space lets a visitor press a mic, talk for a few seconds, and see
+   * x0bot.com lets a visitor press a mic, talk for a few seconds, and see
    * their own words come back clean — no account, no install. That is the
    * whole pitch, and it is also an unauthenticated route that spends real
    * recogniser and model calls. Bounded three ways: a kill switch, a clip
@@ -1253,8 +1253,9 @@ const EnvSchema = z.object({
    */
   DEMO_PER_DAY: z.coerce.number().default(500),
   /** Pages that may spend a demo call, by Origin (comma-separated). The
-   *  API's own PUBLIC_ORIGIN, which serves a copy of the page, is added. */
-  DEMO_ORIGINS: z.string().default("https://tailzu.space,https://www.tailzu.space"),
+   *  API's own PUBLIC_ORIGIN, which serves a copy of the page, is added.
+   *  Both domains while the move to x0bot.com lasts (src/domains.ts). */
+  DEMO_ORIGINS: z.string().default("https://x0bot.com,https://www.x0bot.com,https://tailzu.space,https://www.tailzu.space"),
   /**
    * Where the landing page lives. `index.html` here is served at `/`; absent,
    * `/` sends people to /download so the apex is never a blank page. Bind
@@ -1263,7 +1264,7 @@ const EnvSchema = z.object({
    */
   SITE_DIR: z.string().default("/data/site"),
   /**
-   * WHETHER tailzu.space SHOWS ASK, served as /v1/site's top-level `ask`.
+   * WHETHER x0bot.com SHOWS ASK, served as /v1/site's top-level `ask`.
    *
    *   off   (default) the page keeps an empty #ask shell, no nav entry, no
    *         Alt-twice egg: nothing about an unreleased feature is shown

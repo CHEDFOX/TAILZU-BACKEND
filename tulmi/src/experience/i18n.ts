@@ -223,6 +223,14 @@ const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { 
   DeskFolders: {
     props: ["lede", "usual", "add", "remove", "reset", "none", "refused", "foot", "policyLabel"],
   },
+  // Tailzu Code on this computer's card on bots.computer (screens/you.ts RUNNER_CARD_WORDS): every word it shows.
+  DeskRunner: {
+    props: ["title", "lede", "use", "safetyLead", "safety", "stateOff", "stateSignedOut", "stateConnecting", "stateOnline", "stateWorking",
+      "statePaused", "pausedBattery", "pausedLowPower", "stateLiveOff", "stateReplaced", "workingLine", "stop", "stopNote", "container",
+      "checkDocker", "dockerRunning", "dockerChecking", "dockerDown", "containerNote", "projects", "noProjects", "allow", "deny", "askAgain",
+      "badgeAsk", "badgeAllowed", "badgeDenied", "ran", "nothingYet", "colTime", "colProject", "colCommand", "colExit", "colTook",
+      "devServer", "notRun", "running", "refused", "timedOut", "stopped", "audit", "workspaces"],
+  },
 };
 
 function transformNode(node: Node, fn: StrFn): Node {
@@ -281,10 +289,78 @@ function transformNode(node: Node, fn: StrFn): Node {
   return out;
 }
 
+/**
+ * FLAGS THAT CARRY WORDS. Flags are values, not copy, so the walk above never
+ * looked at them — and these few hold what a person reads: the desktop's tray,
+ * rail, gate and notifications (`desktop.shell`), the tray's tone names, and
+ * the name card's genders. Only the named leaves move; everything beside them
+ * (an id, a layout number, a CSS gradient) is an identifier and stays.
+ * Country names are not here: the runtime names a region in any language
+ * itself (localizeCountries), with no translation to pay for.
+ */
+const SHELL_WORD_SECTIONS = ["gate", "rail", "tray", "notify"] as const;
+const LIST_WORD_FLAGS: Record<string, readonly string[]> = {
+  "desktop.tones": ["label"],
+  "profile.genders": ["label"],
+  // The names Android's settings show for each kind of push (the phone makes these channels).
+  "push.android.channels": ["name", "description"],
+};
+
+function transformWordFlags(flags: Record<string, unknown>, fn: StrFn): Record<string, unknown> {
+  const out = { ...flags };
+  const shell = flags["desktop.shell"];
+  if (shell && typeof shell === "object" && !Array.isArray(shell)) {
+    const s: Record<string, unknown> = { ...(shell as Record<string, unknown>) };
+    for (const section of SHELL_WORD_SECTIONS) {
+      const words = s[section];
+      if (!words || typeof words !== "object" || Array.isArray(words)) continue;
+      s[section] = Object.fromEntries(Object.entries(words as Record<string, unknown>)
+        .map(([k, v]) => [k, typeof v === "string" ? fn(v) : v]));
+    }
+    out["desktop.shell"] = s;
+  }
+  for (const [key, fields] of Object.entries(LIST_WORD_FLAGS)) {
+    const list = flags[key];
+    if (!Array.isArray(list)) continue;
+    out[key] = list.map((item) => {
+      if (!item || typeof item !== "object") return item;
+      const r: Record<string, unknown> = { ...(item as Record<string, unknown>) };
+      for (const f of fields) if (typeof r[f] === "string") r[f] = fn(r[f] as string);
+      return r;
+    });
+  }
+  return out;
+}
+
+/** `auth.countries`' names in the person's language, from the runtime's own region names
+ *  (Intl.DisplayNames), so no translation is paid for. A language it cannot name (Hinglish)
+ *  keeps the English names, which is what those readers use. */
+function localizeCountries(flags: Record<string, unknown> | undefined, code: string): Record<string, unknown> | undefined {
+  const list = flags?.["auth.countries"];
+  if (!flags || !Array.isArray(list)) return flags;
+  let names: Intl.DisplayNames;
+  try { names = new Intl.DisplayNames([code], { type: "region" }); } catch { return flags; }
+  return {
+    ...flags,
+    "auth.countries": list.map((c) => {
+      if (!c || typeof c !== "object") return c;
+      const iso = (c as { iso?: unknown }).iso;
+      if (typeof iso !== "string" || !/^[A-Z]{2}$/.test(iso)) return c;
+      let name: string | undefined;
+      try { name = names.of(iso); } catch { name = undefined; }
+      return name && name !== iso ? { ...(c as Record<string, unknown>), name } : c;
+    }),
+  };
+}
+
 function transformResponse<T extends AnyResponse>(resp: T, fn: StrFn): T {
   // We rebuild a shallow copy and only touch copy-bearing fields. Cast to a
   // loose shape because bootstrap and screen responses share no base type.
   const out = { ...(resp as unknown as Record<string, unknown>) };
+
+  if (out.flags && typeof out.flags === "object" && !Array.isArray(out.flags)) {
+    out.flags = transformWordFlags(out.flags as Record<string, unknown>, fn);
+  }
 
   if (typeof out.title === "string") out.title = fn(out.title);
 
@@ -555,6 +631,10 @@ export async function localize<T extends AnyResponse>(
     const t = map.get(s);
     return typeof t === "string" && t.trim() ? t : s;
   });
+  const withFlags = localized as unknown as { flags?: Record<string, unknown> };
+  if (withFlags.flags && Array.isArray(withFlags.flags["auth.countries"])) {
+    withFlags.flags = localizeCountries(withFlags.flags, info.code);
+  }
 
   // RTL languages: tell the app to flip layout (bootstrap only).
   if (RTL.has(info.code.split("-")[0]!) && "navigation" in (localized as unknown as Record<string, unknown>)) {
@@ -562,4 +642,41 @@ export async function localize<T extends AnyResponse>(
     b.flags = { ...(b.flags ?? {}), textDirection: "rtl" };
   }
   return localized;
+}
+
+/**
+ * THE KEYBOARD'S WORDS in the person's language: `labels` of
+ * GET /v1/keyboard/config ("Out of free words — open Tailzu to get more."),
+ * which went out in English to everyone. Only the labels: the rest of a
+ * keyboard config is keys, and a key's "q" is not a word to translate.
+ *
+ * A keyboard is opened mid-sentence and must not wait on a translator, so a
+ * language's first request waits at most `waitMs`; whatever is not ready by
+ * then goes out in English, the translation finishes behind it, and the next
+ * fetch (the config is asked for again within a minute) has it.
+ */
+export async function localizeKeyboardLabels<T extends { labels?: Record<string, string> }>(
+  config: T,
+  language: string | undefined,
+  waitMs = 1500,
+): Promise<T> {
+  const info = langInfo(language);
+  const labels = config.labels;
+  if (!info || !labels || typeof labels !== "object") return config;
+  const found = [...new Set(Object.values(labels).filter((v): v is string => typeof v === "string" && isTranslatable(v)))];
+  if (!found.length) return config;
+  const pending = ensureTranslations(info.code, info.name, found);
+  pending.catch(() => {});
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const map = await Promise.race([
+    pending,
+    new Promise<Map<string, string>>((resolve) => { timer = setTimeout(() => resolve(memory.get(info.code) ?? new Map()), waitMs); }),
+  ]).catch(() => new Map<string, string>());
+  if (timer) clearTimeout(timer);
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(labels)) {
+    const t = typeof v === "string" ? map.get(v) : undefined;
+    out[k] = typeof t === "string" && t.trim() ? t : v;
+  }
+  return { ...config, labels: out };
 }

@@ -51,7 +51,7 @@ beforeAll(() => {
 afterAll(() => { globalThis.fetch = realFetch; });
 
 const { accountIdFor, payCaller, payLink } = await import("../src/billing/razorpay.js");
-const link = (test: boolean) => new URL(payLink("https://tailzu.space/pay", ME, Date.now(), test)!);
+const link = (test: boolean) => new URL(payLink("https://x0bot.com/pay", ME, Date.now(), test)!);
 const fields = (test: boolean) => Object.fromEntries(link(test).searchParams);
 
 describe("a test link", () => {

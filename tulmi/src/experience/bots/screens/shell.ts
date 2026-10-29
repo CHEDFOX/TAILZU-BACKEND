@@ -20,7 +20,7 @@ import {
   open, page, primaryButton, quietButton,
   percent, RADIUS, roundButton, row, SCREENS, secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title, toTab,
   when, whenEq, type BotsCtx, type LiveBot, type NeedsItem,
-  canHead, headBar, liveMark, writeOn, canStrip,
+  canHead, headBar, liveMark, writeOn, canStrip, homeSurprises,
 } from "../kit.js";
 import type { Mark } from "../glyphs.js";
 import { dayPart } from "../../touches.js";
@@ -166,10 +166,12 @@ function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, n
   const withNotes = hasNotes(ctx);
   if (canMove(ctx)) {
     const strip = withNotes && canStrip(ctx) ? notesTileSpec(ctx, notes) : undefined;
+    // Now and then an idle bot does something of his own (a sneeze, a hiccup…): the catalog's, for a build that plays them.
+    const surprises = homeSurprises(ctx);
     const living = botTiles([
       ...shown.map((b) => botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) })),
       makeTileSpec(open(SCREENS.make)),
-    ], { columns, height, padding, gap, ...(strip ? { strip, stripHeight: notesStripHeight(ctx) } : {}) });
+    ], { columns, height, padding, gap, ...(strip ? { strip, stripHeight: notesStripHeight(ctx) } : {}), ...(surprises ? { surprises } : {}) });
     return withNotes && !strip ? col([living, notesStrip(ctx, notes)], { gap }) : living;
   }
   const still = grid([

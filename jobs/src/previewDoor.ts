@@ -26,7 +26,8 @@ import { applyEnv, type Env } from "./env.js";
 import { roomOf } from "./rooms.js";
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
-const DEFAULT_PARENTS = "https://tailzu.space,https://www.tailzu.space";
+// The app's origins, x0bot.com and, while the move lasts, tailzu.space (tulmi/src/domains.ts).
+const DEFAULT_PARENTS = "https://x0bot.com,https://www.x0bot.com,https://tailzu.space,https://www.tailzu.space";
 
 const hostOf = (v: unknown): string[] => {
   try { return typeof v === "string" && v.trim() ? [new URL(v.includes("://") ? v : `https://${v}`).hostname] : []; } catch { return []; }

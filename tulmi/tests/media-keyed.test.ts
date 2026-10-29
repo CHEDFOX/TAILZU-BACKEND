@@ -25,7 +25,7 @@ beforeAll(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "tz-media-keyed-"));
   await loadMediaRegistry(dir);
   app = Fastify();
-  registerMediaRoutes(app, { mediaDir: dir, publicUrlPrefix: "https://api.tailzu.space/media" });
+  registerMediaRoutes(app, { mediaDir: dir, publicUrlPrefix: "https://api.x0bot.com/media" });
   await app.ready();
 });
 afterAll(async () => { await app.close(); await fs.rm(dir, { recursive: true, force: true }); });
@@ -41,12 +41,12 @@ describe("the email's mark", () => {
 
   it("follows an upload under the key once there is one", async () => {
     await fs.writeFile(path.join(dir, "_registry_v1.json"), JSON.stringify({
-      "email.mark": { url: "https://api.tailzu.space/media/abc.png", contentType: "image/png", size: 10, uploadedAt: 1 },
+      "email.mark": { url: "https://api.x0bot.com/media/abc.png", contentType: "image/png", size: 10, uploadedAt: 1 },
     }));
     await loadMediaRegistry(dir);
     const r = await app.inject({ method: "GET", url: "/media/k/email.mark" });
     expect(r.statusCode).toBe(302);
-    expect(r.headers.location).toBe("https://api.tailzu.space/media/abc.png");
+    expect(r.headers.location).toBe("https://api.x0bot.com/media/abc.png");
   });
 
   it("answers 404 for a key with neither an upload nor a bundled file", async () => {

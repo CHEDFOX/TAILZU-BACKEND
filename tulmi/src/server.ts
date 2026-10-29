@@ -20,6 +20,8 @@
  * Every output is shaped by the user's personality + the target-app context,
  * resolved here on the backend (the app just sends the inputs).
  */
+// First: the addresses a server keeps until its .env says the move to x0bot.com is done (domainHold.ts).
+import "./domainHold.js";
 import fs from "node:fs";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
@@ -69,6 +71,7 @@ import { registerBotsCodeWorkRoutes } from "./routes/botsCodeWork.js";
 import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
 import { registerAccountDeletionRoutes } from "./routes/accountDeletion.js";
 import { registerBotsPushAskRoutes } from "./routes/botsPushAsk.js";
+import { registerBotLooksRoutes } from "./routes/botLooks.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
 import { sessionOffers } from "./code/live/offers.js";
 import { jobStore } from "./code/jobs/store.js";
@@ -141,7 +144,8 @@ import { botsAppOn, botsDepsFor, buildBotsScreen, emptyDeps, isBotsScreen } from
 import { canOnboard, onboardLanguage } from "./experience/onboard.js";
 import { canOnboardStore, onboardMode } from "./experience/onboardStore.js";
 import { hasAlreadyDictated } from "./experience/onboardGuard.js";
-import { localize } from "./experience/i18n.js";
+import { localize, localizeKeyboardLabels } from "./experience/i18n.js";
+import { deskVoices } from "./experience/appLists.js";
 import {
   appendHistoryEntry,
   deleteHistoryEntry,
@@ -174,6 +178,7 @@ import { capSurroundings } from "./pipeline/sensitive.js";
 import { EventSink, audioFormatOf, readPicture, readStepRequest, type AgentImage, type Refusal } from "./agent/protocol.js";
 import { planStream } from "./agent/llm.js";
 import { runStep, type StepResult } from "./agent/run.js";
+import { isOurPayPage } from "./domains.js";
 
 /**
  * Learn from ordinary use, ONCE PER SESSION, off the user's path.
@@ -461,7 +466,7 @@ await app.register(rateLimit, {
 // request. Registered AFTER rate-limit so admin endpoints can be throttled.
 const MEDIA_DIR = process.env.MEDIA_DIR || "/data/media";
 const MEDIA_PUBLIC_URL = process.env.MEDIA_PUBLIC_URL
-  || `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/media`;
+  || `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/media`;
 await loadMediaRegistry(MEDIA_DIR);
 // Let the SDUI catalog reach into the media registry (for e.g. surfacing
 // the "mic.animation" media URL into the keyboard config's flags). Avoids a
@@ -673,7 +678,7 @@ app.get("/terms", async (_req, reply) => {
   return published ?? TERMS_HTML;
 });
 
-// The prices, on a page of their own (tailzu.space/pricing), linked from the
+// The prices, on a page of their own (x0bot.com/pricing), linked from the
 // site's footer rather than set on the landing page. Built from the paywall's
 // plans and the allowance the server enforces, so the three never disagree.
 app.get("/pricing", async (_req, reply) => {
@@ -690,7 +695,7 @@ app.get("/pricing", async (_req, reply) => {
   });
 });
 
-// Tailzu's pay page (tailzu.space/pay): where the desktop's Subscribe
+// Tailzu's pay page (x0bot.com/pay): where the desktop's Subscribe
 // goes. Both markets' plans at Razorpay's prices; the browser picks one.
 app.get("/pay", async (req, reply) => {
   // Nothing is sold while Tailzu is free: the page that would take a
@@ -706,7 +711,7 @@ app.get("/pay", async (req, reply) => {
     keyId: razorpayReady() ? cfg.RAZORPAY_KEY_ID : "",
     offers: await payOffers(),
     nonce,
-    pricing: "https://tailzu.space/pricing",
+    pricing: "https://x0bot.com/pricing",
     terms: POLICY.terms,
     privacy: POLICY.privacy,
   });
@@ -746,7 +751,7 @@ async function payOffers(): Promise<PayOffer[]> {
 }
 
 /** Throttled per address: these are reached from a public page. Loose,
- *  because through tailzu.space the address is the site proxy's, which many
+ *  because through x0bot.com the address is the site proxy's, which many
  *  buyers share. */
 const PAY_RL = { config: { rateLimit: { max: 30, timeWindow: 60_000 } } };
 
@@ -853,7 +858,7 @@ app.post("/v1/pay/report", { config: { rateLimit: { max: 20, timeWindow: 60_000 
   return reply.code(204).send();
 });
 
-// OS-aware desktop-app download page (tailzu.space/download). The page itself
+// OS-aware desktop-app download page (x0bot.com/download). The page itself
 // HEAD-checks /downloads/* so platforms without a published installer show as
 // "coming soon" instead of a dead link.
 app.get("/download", async (_req, reply) => {
@@ -865,11 +870,11 @@ app.get("/download", async (_req, reply) => {
 
 // What search and answer engines read: the language pages, the questions, the
 // sitemap and llms.txt. Served through the site's proxy, canonical at
-// tailzu.space, built from seo/facts.ts like every other page's facts.
+// x0bot.com, built from seo/facts.ts like every other page's facts.
 registerSeoRoutes(app);
 
 // META: the pixel and the server's copy of what it reports (src/ads/meta.ts),
-// for pages opened on api.tailzu.space. On tailzu.space Vercel answers both
+// for pages opened on api.x0bot.com. On x0bot.com Vercel answers both
 // itself (tailzu-web/api), with the dataset id from Vercel's settings. The
 // script is empty while there is no dataset id, so the pages can carry its
 // tag before Meta is set up.
@@ -896,11 +901,9 @@ registerDemoRoutes(app, {
 // --- Universal Links / App Links (AASA + assetlinks) -----------------------
 // Apple + Google fetch these from the naked domain to verify the app owns the
 // URL space. We serve them from the backend and expect Caddy to proxy
-// tailzu.space + app.tailzu.space through to this container — see
-// deploy/Caddyfile. Any Host header works; the content is static.
-//
-// If tailzu.space / app.tailzu.space are hosted elsewhere, mirror these files
-// from deploy/well-known/ into the marketing site's /.well-known/ instead.
+// app.x0bot.com + app.tailzu.space through to this container (deploy/Caddyfile,
+// docs/domain-x0bot.md), and the site on Vercel (x0bot.com, tailzu.space) to
+// proxy /.well-known/* here. Any Host header works; the content is static.
 //
 // AASA must be served with application/json AND no redirect. Cache is short
 // so an app-id or path change goes live within a day.
@@ -960,11 +963,11 @@ app.get("/.well-known/assetlinks.json", async (_req, reply) => {
 app.get("/policies.json", async () => {
   return {
     privacy: {
-      url: "https://tailzu.space/privacy",
+      url: "https://x0bot.com/privacy",
       effective: PRIVACY_POLICY_EFFECTIVE,
     },
     terms: {
-      url: "https://tailzu.space/terms",
+      url: "https://x0bot.com/terms",
       effective: TERMS_EFFECTIVE,
     },
   };
@@ -1165,6 +1168,8 @@ registerBotsCodeRoutes(app, botsAreaDeps);
 registerBotsCodeWorkRoutes(app, botsAreaDeps);
 registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
+// The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
+registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 const frontRoutes = registerFrontRoutes(app, {
   rateLimit: AUTHED_RL, front, bots,
   // "Ask any bot": a bot shared into a space reads what the space shared, as data, as in its chat.
@@ -2829,7 +2834,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // The pay page, signed for this account so its calls can name their
     // caller (razorpay.payLink). Only when it IS our pay page; any other
     // link goes out as configured.
-    payUrl: user && cfg.REVENUECAT_WEB_PAYWALL_URL?.startsWith("https://tailzu.space/pay")
+    payUrl: user && isOurPayPage(cfg.REVENUECAT_WEB_PAYWALL_URL)
       ? payLink(cfg.REVENUECAT_WEB_PAYWALL_URL, user.id) : undefined,
     wordsUsed: usage?.month?.words ?? 0,
     // Setup's Live Activity: its first step is an account, its last a word.
@@ -2864,7 +2869,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // THIS server serves, and it has to be the one Supabase is told about.
     googleWeb: cfg.AUTH_GOOGLE_WEB
       ? {
-          callback: `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/auth/callback`,
+          callback: `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/auth/callback`,
           resume: AUTH_RESUME_SCHEME_URL,
         }
       : null,
@@ -2888,7 +2893,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // returns; the protection itself lives in the updated app.
     googleLink: cfg.AUTH_GOOGLE_WEB && cfg.SUPABASE_URL
       ? `${cfg.SUPABASE_URL.replace(/\/$/, "")}/auth/v1/authorize?provider=google`
-        + `&redirect_to=${encodeURIComponent(`${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/auth/callback?state=${randomBytes(24).toString("base64url")}`)}`
+        + `&redirect_to=${encodeURIComponent(`${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/auth/callback?state=${randomBytes(24).toString("base64url")}`)}`
         + `&prompt=select_account`
       : null,
     micGranted,
@@ -2930,6 +2935,8 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
   // "onboarding.hero.png"); each entry has { url, contentType, size,
   // uploadedAt }. Missing key → clients fall back to bundled default.
   (bootstrap as unknown as { media?: Record<string, unknown> }).media = getMediaRegistry();
+  // The tray's own voices, first beside its tones (appLists.ts deskVoices): per person, so sent here, never a knob.
+  if (isDesktop && bootstrap.flags) bootstrap.flags["desktop.voices"] = deskVoices(personality);
   // META: what a new account has reached since it was made, once each
   // (src/ads/meta.ts): signed up, switched the keyboard on, dictated. A
   // desktop reports it from here; a phone is handed it to log through Meta's
@@ -3495,18 +3502,22 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, asy
   let quota: { remaining: number; total: number; entitled: boolean } | undefined;
   /** What they chose on Keybot's Keyboard page (look, haptics, key height…), laid over the config below. */
   let keybot: KeybotPrefs["keyboard"];
+  /** The language the app is in, so the keyboard's words are in it too (localizeKeyboardLabels). */
+  let language: string | undefined;
   try {
     const user = await resolveUser(req.headers["authorization"]);
     if (user) {
       userId = user.id;
-      const [p, entitled, allowance, prefs] = await Promise.all([
+      const [p, entitled, allowance, prefs, prof] = await Promise.all([
         getPersonality(user),
         isEntitled(user).catch(() => true),          // unknown → let them through
         allowanceFor(user).catch(() => null),
         getPrefs(user).catch(() => ({} as KeybotPrefs)),
+        getProfile(user).catch(() => null),
       ]);
       personality = p;
       keybot = prefs.keyboard;
+      language = prof?.language;
       if (allowance) {
         quota = { remaining: allowance.remaining, total: allowance.total, entitled: entitled || cfg.FREE_FOR_ALL };
       }
@@ -3539,14 +3550,14 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, asy
     quota,
     ...(isIosStamp ? { kbBuild: Number(stamp![2]) } : {}),
   }), keybot, personality);
-  return reply.send(withControl(req, reply, kbConfig, {
+  return reply.send(await localizeKeyboardLabels(withControl(req, reply, kbConfig, {
     surface: "keyboard",
     platform: kbPlatform,
     formFactor: "phone",
     ...(stamp ? { build: Number(stamp[2]) } : {}),
     userId,
     signedIn: !!userId,
-  }));
+  }), language));
 });
 
 // --- Keyboard telemetry ------------------------------------------------------

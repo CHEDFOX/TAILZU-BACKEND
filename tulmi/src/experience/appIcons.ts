@@ -28,7 +28,7 @@ import type { Node } from "../../../shared/types/sdui.js";
 import { APP_ICON_BUILD } from "./appIconData.js";
 
 /** Where the logos are served: the same origin as the typefaces and Blip. */
-const iconBase = (): string => `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/icons/`;
+const iconBase = (): string => `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/icons/`;
 
 /** The ids that have a logo: catalog ids, and the services a hand-off opens (spotify, youtube-music). */
 export const APP_ICON_IDS: readonly string[] = Object.keys(APP_ICON_BUILD.files);

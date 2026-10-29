@@ -236,7 +236,7 @@ describe("Plans: a page from You and Billing now", () => {
 });
 
 describe("the gate: Welcome, Sign in, Code on the sign-in the app already runs", () => {
-  const opts = { terms: "https://tailzu.space/terms", privacy: "https://tailzu.space/privacy" };
+  const opts = { terms: "https://x0bot.com/terms", privacy: "https://x0bot.com/privacy" };
   it("a stage both gates step through, with the gate's own controls, and Blip's spots: wave, listen, wait, think", () => {
     for (const desktop of [false, true]) {
       const t = botsAuthTree({ ...opts, desktop }) as unknown as Node;

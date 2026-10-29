@@ -49,13 +49,13 @@ Pick one of the two ways.
 | Field | Value |
 | --- | --- |
 | GitHub App name | `Tailzu Code`, or any name nobody has taken. The URL name that GitHub makes from it (`github.com/apps/<slug>`) is `GITHUB_APP_SLUG` |
-| Homepage URL | `https://www.tailzu.space` |
-| Callback URL | `https://api.tailzu.space/v1/code/github/callback` |
+| Homepage URL | `https://x0bot.com` |
+| Callback URL | `https://api.x0bot.com/v1/code/github/callback` |
 | Request user authorization (OAuth) during installation | **On** |
 | Expire user authorization tokens | Leave on. The server uses the person's token once, at once |
 | Setup URL | GitHub turns this field off while OAuth during installation is on. The callback URL above is where installs come back |
 | Webhook: Active | On |
-| Webhook URL | `https://api.tailzu.space/v1/code/github/webhook` |
+| Webhook URL | `https://api.x0bot.com/v1/code/github/webhook` |
 | Webhook secret | `openssl rand -hex 32`. This is `GITHUB_APP_WEBHOOK_SECRET` |
 | SSL verification | Enable |
 | Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). **Checks: Read-only** and **Commit statuses: Read-only**, for PR care (`docs/pr-care.md`): they let Tailzu see why a pull request's CI is red (with Actions, for the failing job's log). Nothing else, except, optionally, **Deployments** (**Read-only**), which lets a milestone's pull request show its host's preview link (`docs/code-work.md`, section 8; without it the person gets a one-time tip instead) |
@@ -86,19 +86,19 @@ you are signed in to GitHub, and press the button:
 ```
 
 The manifest (replace `MANIFEST_JSON_FROM_BELOW` above with it; change the
-name if it is taken, and the origin if the API is not at `api.tailzu.space`):
+name if it is taken, and the origin if the API is not at `api.x0bot.com`):
 
 ```json
 {
   "name": "Tailzu Code",
-  "url": "https://www.tailzu.space",
+  "url": "https://x0bot.com",
   "description": "Lets Tailzu's Code bot work in your chosen repos: it commits to its own tailzu/ branches and opens draft pull requests, and asks you before it does anything else.",
   "hook_attributes": {
-    "url": "https://api.tailzu.space/v1/code/github/webhook",
+    "url": "https://api.x0bot.com/v1/code/github/webhook",
     "active": true
   },
-  "redirect_url": "https://api.tailzu.space/v1/code/github/callback",
-  "callback_urls": ["https://api.tailzu.space/v1/code/github/callback"],
+  "redirect_url": "https://api.x0bot.com/v1/code/github/callback",
+  "callback_urls": ["https://api.x0bot.com/v1/code/github/callback"],
   "request_oauth_on_install": true,
   "public": true,
   "default_permissions": {
@@ -198,7 +198,7 @@ In `tulmi/.env` (also listed in `tulmi/.env.example`):
 | `GITHUB_APP_WEBHOOK_SECRET` | The webhook secret. Secret. Use one with no `$` in it (Docker Compose rewrites those in env files) |
 | `CONNECTOR_TOKEN_KEY` | Already set for Connected apps. The Code bot signs the install link's `state` with a key made from it, so without it nothing can be connected |
 | `CODE_BOT_NAME` | Who the bot is in git: the **author name** of every commit it makes. Default `Blip` |
-| `CODE_BOT_EMAIL` | The author email. Default `blip@tailzu.space`. For the bot's avatar to show on GitHub, use a GitHub bot account's noreply address (section 5, "Who commits") |
+| `CODE_BOT_EMAIL` | The author email. Default `blip@x0bot.com`. For the bot's avatar to show on GitHub, use a GitHub bot account's noreply address (section 5, "Who commits") |
 | `CODE_RUNNER_OIDC_AUDIENCE` | The audience of the identity token a step on GitHub's free computers reports with (section 9). Default `tailzu`; any word works, since the server writes it into the step |
 
 None of the secrets is ever logged or sent to a device. The server does not
@@ -475,7 +475,7 @@ freely. Do not add the App to a bypass list.
 
 Every commit the bot makes, through either connection, has the **bot as its
 author**: name `CODE_BOT_NAME` (default `Blip`), email `CODE_BOT_EMAIL` (default
-`blip@tailzu.space`). The **committer** is left for GitHub to fill in, so it is
+`blip@x0bot.com`). The **committer** is left for GitHub to fill in, so it is
 whoever the token is: the App for an install, the person for a sign-in. The
 message ends with a trailer that credits the person, when their GitHub id and
 login are known (the link keeps them):
@@ -484,7 +484,7 @@ login are known (the link keeps them):
 Co-authored-by: <login> <id+login@users.noreply.github.com>
 ```
 
-The old `Co-authored-by: Tailzu <code@tailzu.space>` trailer is gone. Two
+The old `Co-authored-by: Tailzu <code@x0bot.com>` trailer is gone. Two
 things GitHub makes itself and gives no author field for: the **squash-merge**
 commit and a **sync's merge commit**. Those are authored by the token's identity.
 
@@ -617,8 +617,8 @@ account or organisation that should own it):
 | Field | Value |
 | --- | --- |
 | Application name | `Tailzu Code`, or anything people will recognise on GitHub's consent page |
-| Homepage URL | `https://www.tailzu.space` |
-| Authorization callback URL | `https://api.tailzu.space/v1/code/github/signin/callback` |
+| Homepage URL | `https://x0bot.com` |
+| Authorization callback URL | `https://api.x0bot.com/v1/code/github/signin/callback` |
 | Enable Device Flow | **Leave off.** Tailzu uses the web flow only |
 
 Create it, then **Generate a new client secret**. In `tulmi/.env`:
@@ -851,7 +851,7 @@ still put a deny on `runner.shadow` to forbid the whole thing for a project.
 2. Run `tulmi/supabase/migrations/0024_code_github_actions.sql` (or
    `full_schema.sql`): one column, `code_compute_usage.github_exhausted`.
 3. Optionally set `CODE_RUNNER_OIDC_AUDIENCE` (default `tailzu`) and, if the API is
-   not at `api.tailzu.space`, `PUBLIC_ORIGIN`: the script is told to report to
+   not at `api.x0bot.com`, `PUBLIC_ORIGIN`: the script is told to report to
    `$PUBLIC_ORIGIN/v1/code/runner/gh-result`, which must be reachable from GitHub's
    computers.
 4. Add to the privacy policy: Tailzu also keeps, per person and month, whether

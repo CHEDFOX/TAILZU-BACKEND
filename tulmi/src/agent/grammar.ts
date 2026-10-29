@@ -76,6 +76,13 @@ const SHOW_OPENING = /^(?:where|how|what|whats|what's|why|which|who|whose|when|i
 const SHOW_ANYWHERE = /\b(?:kahan|kahaan|kaha|kidhar|kaise|kaisa|kyun|kyu|kaun sa|kaunsa)\b|कहाँ|कहां|किधर|कैसे|क्यों|कौन सा/u;
 const POLITE_REQUEST = /^(?:\W*)(?:hey\s+\S+[\s,]+)?(?:please\s+)?(?:can|could|would|will) (?:you|u)\b/i;
 
+/** The rules above as the desktop's own copy of them takes them (resolver.js, via the bootstrap's
+ *  desktop.agent.grammar), so the two are one source and cannot drift. */
+export const GRAMMAR_RULES = {
+  headFiller: HEAD_FILLER, headAsk: HEAD_ASK, tail: TAIL,
+  showOpening: SHOW_OPENING, showAnywhere: SHOW_ANYWHERE, politeRequest: POLITE_REQUEST,
+} as const;
+
 export function modeOf(said: string, names: string[] = []): "show" | "do" {
   const clean = commandText(said, names);
   if (SHOW_OPENING.test(clean) || SHOW_ANYWHERE.test(clean)) return "show";

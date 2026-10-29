@@ -1,5 +1,5 @@
 /**
- * WHAT A CRAWLER READS BEFORE THE PAGE: the <head> every tailzu.space page
+ * WHAT A CRAWLER READS BEFORE THE PAGE: the <head> every x0bot.com page
  * carries, built in one place.
  *
  * Search engines and answer engines judge a page on a few lines a visitor
@@ -11,9 +11,9 @@
  * Pure: no catalog, no config. The facts it is given are someone else's.
  */
 
-/** The one address every page is canonical to. api.tailzu.space serves the
+/** The one address every page is canonical to. api.x0bot.com serves the
  *  same pages for the site's proxy, and must never be the one that ranks. */
-export const ORIGIN = "https://tailzu.space";
+export const ORIGIN = "https://x0bot.com";
 
 /** The card a shared link unfurls into, and the picture answer engines show
  *  beside a citation. Rendered once (tools/media/og.html) and served by the
@@ -51,7 +51,7 @@ export function ldScript(graph: object[]): string {
 }
 
 export interface HeadOpts {
-  /** The page's path on tailzu.space, "/" for the home page. */
+  /** The page's path on x0bot.com, "/" for the home page. */
   path: string;
   /** The whole <title>, brand included. */
   title: string;
