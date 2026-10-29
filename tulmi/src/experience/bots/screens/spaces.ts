@@ -208,7 +208,7 @@ function spaceSummary(s: Space): Node {
 
 const joinBox = (): Node => col([sectionLabel("Join with a code"), inputBox([field("code", "code", "Invite code", { onSubmit: joinSpace }), button("Join", joinSpace, { kind: "secondary", size: "md" })])], { gap: 8 });
 
-// An invite's link (https://app.tailzu.space/s/bots.spaces?join=CODE, botsBots/spaces.ts inviteLinkOf) opens Spaces with its code: what
+// An invite's link (https://app.x0bot.com/s/bots.spaces?join=CODE, botsBots/spaces.ts inviteLinkOf) opens Spaces with its code: what
 // it is for and Join, at the top. The code is in Join with a code too, as the way that always works.
 
 /** The code an invite's link carried. */

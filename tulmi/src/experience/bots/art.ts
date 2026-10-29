@@ -34,7 +34,7 @@ export type BlipPose = (typeof BLIP_POSES)[number];
 /** The body pictures' own proportions (522 x 600 px). */
 export const BLIP_BODY_RATIO = 522 / 600;
 
-const origin = (): string => process.env.PUBLIC_ORIGIN || "https://api.tailzu.space";
+const origin = (): string => process.env.PUBLIC_ORIGIN || "https://api.x0bot.com";
 
 /** A bot's head, or undefined for a bot that has none (a person's own). */
 export function headUrl(key: string): string | undefined {

@@ -1,5 +1,5 @@
 /**
- * Tailzu's pay page — GET /pay, served as tailzu.space/pay.
+ * Tailzu's pay page — GET /pay, served as x0bot.com/pay.
  *
  * Where the desktop's Subscribe goes, because a window has no App Store to
  * buy through. The desktop opens it by a link the server signed for the
@@ -43,7 +43,7 @@ export function payCsp(nonce: string): string {
     `script-src 'nonce-${nonce}' https://*.razorpay.com`,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src https://fonts.gstatic.com data:",
-    "img-src 'self' data: https://tailzu.space https://*.razorpay.com",
+    "img-src 'self' data: https://x0bot.com https://*.razorpay.com",
     "connect-src 'self' https://*.razorpay.com",
     "frame-src https://*.razorpay.com",
     "form-action 'self' https://*.razorpay.com",
@@ -156,13 +156,13 @@ ${cards ? `<div class="plans">${cards}\n</div>` : ""}
 <p class="note done">Paid. Go back to Tailzu; it unlocks in a moment, on every device you sign in to.</p>
 <p class="note subscribed">This account already has Unlimited. To cancel it, open Tailzu: Settings, then Cancel subscription.</p>
 <p class="note error">Checkout could not load. Check your connection and reload this page.</p>
-<p class="note failed">The payment did not go through. Try again, or write to support@tailzu.space with this code: <code></code></p>
+<p class="note failed">The payment did not go through. Try again, or write to support@x0bot.com with this code: <code></code></p>
 <p class="note off">Web checkout is not open yet. Subscribe in the Tailzu app on iPhone or Android.</p>
 
 <div class="fine">
   <p>Prices are shown in the currency you are charged in. Payments are processed by <strong>Razorpay</strong> for ${SELLER}, which makes Tailzu.</p>
   <p>Plans renew automatically until you cancel. Cancel any time in Tailzu: Settings, then Cancel subscription. You keep access until the end of the period already paid for. Purchases are non-refundable, except where the law requires a refund.</p>
-  <p><a href="${esc(opts.pricing)}">Pricing</a> · <a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
+  <p><a href="${esc(opts.pricing)}">Pricing</a> · <a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
 </div>
 </div>`,
     script: `

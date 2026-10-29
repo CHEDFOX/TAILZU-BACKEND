@@ -38,7 +38,7 @@ const you = {
     ],
   },
   computers: { online: [{ name: "Aanya's MacBook", busy: true, allowRun: true }], offline: 1, helped: { jobs: 6, minutes: 200 } },
-  settings, exportUrl: "https://api.tailzu.space/v1/you/export/file?t=x", language: "hinglish",
+  settings, exportUrl: "https://api.x0bot.com/v1/you/export/file?t=x", language: "hinglish",
 };
 
 const spentByDay = [300, 450, 0, 620, 510, 380, 700, 560, 940, 410, 0, 330, 600, 2100, 800, 450, 520, 300, 710, 640, 380, 560, 1420, 900, 610, 480, 700, 430];
@@ -68,7 +68,7 @@ const builtin = (slug: string, name: string) => ({ slug, name, colour: "", built
 const account = {
   bots: [builtin("code", "Code bot"), builtin("keybot", "Keybot"), builtin("plan", "Plan bot"), builtin("travel", "Travel bot"), { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }],
   projects: ["checkout-web", "salon-booking", "storefront", "diwali-sale"], notes: 212, keys: 3,
-  plan: { active: true, store: "razorpay", renews: true, until: utc(2026, 11, 12, 6) }, exportUrl: "https://api.tailzu.space/v1/you/export/file?t=x",
+  plan: { active: true, store: "razorpay", renews: true, until: utc(2026, 11, 12, 6) }, exportUrl: "https://api.x0bot.com/v1/you/export/file?t=x",
 };
 
 const apps = {

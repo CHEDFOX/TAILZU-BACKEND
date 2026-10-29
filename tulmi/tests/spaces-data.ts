@@ -14,7 +14,7 @@ const ROLES = [
   { id: "family", name: "Family", perms: FAMILY, preset: true }, { id: "kid", name: "Kid", perms: KID, preset: true },
   { id: "guest", name: "Guest", perms: ["bots", "message"], preset: true }, { id: "r-nani", name: "Grandparent", perms: ["share", "bots", "approve", "message"], preset: false },
 ];
-const ISH = "https://api.tailzu.space";
+const ISH = "https://api.x0bot.com";
 
 const HOME = {
   id: "s1", name: "Home", mine: true, me: { admin: true, perms: ALL }, invite: null, roles: ROLES, waiting: 1,

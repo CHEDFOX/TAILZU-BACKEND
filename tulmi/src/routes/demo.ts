@@ -1,7 +1,7 @@
 /**
  * The landing page's words, and the one thing on it that is not a page.
  *
- *   GET  /            → 308 to https://tailzu.space/, where the page lives
+ *   GET  /            → 308 to https://x0bot.com/, where the page lives
  *   GET  /v1/site     → every word on the page, plus what can be downloaded
  *                       and whether Ask is shown
  *   POST /v1/demo/transcribe → a visitor's own voice, written clean
@@ -227,7 +227,7 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
   });
 
   // --- The page ----------------------------------------------------------
-  // THE PAGE LIVES ON tailzu.space, NOT HERE. This used to serve a copy of
+  // THE PAGE LIVES ON x0bot.com, NOT HERE. This used to serve a copy of
   // index.html scp'd into SITE_DIR. The page is now a page and its files —
   // /js/*, /media/*, /demo/* beside it on Vercel — and a copy served from
   // this host would 404 every one of them: a page with no script and no
@@ -248,7 +248,7 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
   });
 
   // --- The words, and what is on the shelf ---------------------------------
-  // READABLE FROM ANYWHERE. On tailzu.space the page and this route are the
+  // READABLE FROM ANYWHERE. On x0bot.com the page and this route are the
   // same server and none of this is needed; a preview of the page hosted
   // anywhere else 404s on its own origin instead, and then runs on its
   // built-in fallbacks — wrong prices, wrong copy, and no way to know the
@@ -301,7 +301,7 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
   // --- The demo ------------------------------------------------------------
   const cfg = getConfig();
   const origins = new Set(
-    [...cfg.DEMO_ORIGINS.split(","), process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"].map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
+    [...cfg.DEMO_ORIGINS.split(","), process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"].map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean),
   );
   app.post("/v1/demo/transcribe", {
     config: { rateLimit: { max: Math.max(1, cfg.DEMO_PER_MINUTE), timeWindow: 60_000, keyGenerator: demoVisitor } },
@@ -314,7 +314,7 @@ export function registerDemoRoutes(app: FastifyInstance, opts: {
     // always sends Origin on a POST, and a script that forges one is held by
     // the rate and the day's budget.
     if (!origins.has(String(req.headers.origin ?? ""))) {
-      return reply.code(403).send({ code: "forbidden", message: "The demo runs on tailzu.space." });
+      return reply.code(403).send({ code: "forbidden", message: "The demo runs on x0bot.com." });
     }
 
     let audio: Buffer | null = null;

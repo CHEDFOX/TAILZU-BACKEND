@@ -731,7 +731,7 @@ describe("committing", () => {
     // The bot is the author; the person is credited at the end of the message; the committer is left for GitHub to fill in.
     expect(commit!.body).toEqual({
       message: "Add b, change the readme, drop a\n\nCo-authored-by: alice <77+alice@users.noreply.github.com>",
-      tree: expect.any(String), parents: [baseSha], author: { name: "Blip", email: "blip@tailzu.space" },
+      tree: expect.any(String), parents: [baseSha], author: { name: "Blip", email: "blip@x0bot.com" },
     });
     expect(commit!.body).not.toHaveProperty("committer");
     expect(patch!.body).toEqual({ sha: r.sha, force: false });
@@ -1244,9 +1244,9 @@ describe("new and empty repos", () => {
     const put = fake.writes()[0]!;
     expect(put.body).toEqual({
       message: "Add README\n\nCo-authored-by: alice <77+alice@users.noreply.github.com>", content: Buffer.from("# Fresh Idea\n").toString("base64"),
-      author: { name: "Blip", email: "blip@tailzu.space" },
+      author: { name: "Blip", email: "blip@x0bot.com" },
     });
-    expect(fake.headCommit(repo, "main").author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(fake.headCommit(repo, "main").author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     // And now it can be worked on.
     const made = await createWorkBranch(d, "alice", project.id, "first task");
     expect(made.baseSha).toBe(r.commitSha);

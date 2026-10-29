@@ -152,7 +152,7 @@ describe("a step that needs a computer", () => {
     // The SERVER committed it, to the work branch, as the bot.
     expect(r.fake.files(r.repo, r.branch)).toMatchObject({ "dist/report.txt": "12 passed\n", "src/a.ts": "export const a = 2;\n" });
     expect(r.fake.head(r.repo, r.branch)).toBe(ack.sha);
-    expect(r.fake.headCommit(r.repo, r.branch).author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(r.fake.headCommit(r.repo, r.branch).author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     const after = await look(r, j.id);
     expect(after.job).toMatchObject({
       state: "running", placement: "none", leaseHolder: null, leaseExpiresAt: null, leaseEpoch: 1,

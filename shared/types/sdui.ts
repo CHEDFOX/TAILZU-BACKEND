@@ -868,7 +868,28 @@ export interface BotTileSpec {
   action?: ActionRef;
   /** For a screen reader; defaults to name and sub. */
   label?: string;
+  /** His look (BOT_MOMENTS_CAPABILITY): an avatar's id in the catalog, or a spec of its own; none: his kind's. */
+  avatar?: BotAvatarRef;
+  /** A moment he plays (BOT_MOMENTS_CAPABILITY; kit momentProps): once, then his own play again, or as a loop. */
+  moment?: string;
+  momentMode?: BotMomentMode;
 }
+
+/**
+ * THE BOTS' LOOKS AND MOMENTS (tulmi/src/experience/bots/looks.ts; docs/bots-app.md "Looks and moments"). The catalog
+ * (shared/bots/looks.json) holds avatars (a bot's look from parts: head, eyes, mouth, antennae, ears, dots, colours, what
+ * he wears), moments (recipes: tracks over time the apps play through their physics: body goals, hands, looks, eyes and
+ * mouth, props, particles, fabric, the other bots' answers, named sounds) and the parts both draw with. The bootstrap of
+ * the Bots app says which version is current (flag "bots.looks": { v, url }, GET /v1/bots/looks); an app keeps the newest
+ * and bundles a starter copy. A build that declares this plays them: `avatar`, `moment`, `momentMode` on a tile, BotBuddy
+ * and BotCard, `momentEndWhen` on BotBuddy, `surprises` on BotTiles. Any other build ignores them; the kit sends it a
+ * moment's plain act (`act`) instead.
+ */
+export const BOT_MOMENTS_CAPABILITY = "BotMoments";
+/** A look: an avatar's id in the catalog, or a spec of its own (over Blip; `extends` an id). */
+export type BotAvatarRef = string | Record<string, unknown>;
+/** once: then back to his own play · loop: until the node changes, or momentEndWhen (its `end` plays, then it is over). */
+export type BotMomentMode = "once" | "loop";
 
 export interface BotTilesProps {
   tiles: BotTileSpec[];
@@ -887,6 +908,11 @@ export interface BotTilesProps {
   strip?: BotTileSpec;
   /** The strip's height. */
   stripHeight?: number;
+  /**
+   * Home's rare idle surprises (BOT_MOMENTS_CAPABILITY): every `every` seconds, with `chance`, one bot at his own idle
+   * play plays one of `moments` once (the bots near him answer as the recipe asks). Never while a tile is tapped.
+   */
+  surprises?: { every: number; chance: number; moments: string[] };
 }
 
 /** A build that draws BotTilesProps.strip (the phone's BotTiles.tsx, the window's sdui.js). */
@@ -911,6 +937,10 @@ export interface BotCardProps {
   /** Once closed on this device, never drawn again (a key). */
   once?: string;
   label?: string;
+  /** The bot's look, and a moment he plays once the card is open (BOT_MOMENTS_CAPABILITY). */
+  avatar?: BotAvatarRef;
+  moment?: string;
+  momentMode?: BotMomentMode;
 }
 
 /**
@@ -956,6 +986,13 @@ export interface BotBuddyProps {
   doneWhen?: Condition;
   lookTo?: "down" | "left" | "right" | "up";
   label?: string;
+  /** His look (BOT_MOMENTS_CAPABILITY): an avatar's id, or a spec of its own; none: his kind's. */
+  avatar?: BotAvatarRef;
+  /** A moment from the catalog (BOT_MOMENTS_CAPABILITY): it holds him while it plays; thinking or carrying stops it. */
+  moment?: string;
+  momentMode?: BotMomentMode;
+  /** When this holds, the moment's end plays (a loop's `end`: a wake-up, a sigh of relief), then it is over. */
+  momentEndWhen?: Condition;
 }
 
 /**

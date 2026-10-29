@@ -17,7 +17,7 @@ person signing in again gets a link.
 
 ## The icon
 
-The `<img>` points at `https://api.tailzu.space/media/k/email.mark`, keyed by
+The `<img>` points at `https://api.x0bot.com/media/k/email.mark`, keyed by
 NAME rather than by content hash. This HTML is pasted into Supabase by hand and
 then sits there for months, so a hash in it would break the day anyone
 re-uploads the icon.
@@ -28,7 +28,7 @@ the first deploy with no upload. To change it, upload under the key, and that
 copy wins from then on:
 
 ```bash
-curl -X POST "https://api.tailzu.space/v1/media/upload?key=email.mark" \
+curl -X POST "https://api.x0bot.com/v1/media/upload?key=email.mark" \
   -H "x-admin-secret: $ADMIN_SECRET" -F "file=@new-mark.png"
 ```
 

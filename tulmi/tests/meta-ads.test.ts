@@ -70,8 +70,8 @@ describe("what identifies a person, as Meta wants it", () => {
 
 describe("the event and the request", () => {
   it("carries the name, id, source and when", () => {
-    const p = eventPayload({ name: "Lead", id: "abc12345", source: "website", url: "https://tailzu.space/", user: {}, data: { content_name: "mac" } }, 1_700_000_000_000);
-    expect(p).toMatchObject({ event_name: "Lead", event_id: "abc12345", action_source: "website", event_time: 1_700_000_000, event_source_url: "https://tailzu.space/", custom_data: { content_name: "mac" } });
+    const p = eventPayload({ name: "Lead", id: "abc12345", source: "website", url: "https://x0bot.com/", user: {}, data: { content_name: "mac" } }, 1_700_000_000_000);
+    expect(p).toMatchObject({ event_name: "Lead", event_id: "abc12345", action_source: "website", event_time: 1_700_000_000, event_source_url: "https://x0bot.com/", custom_data: { content_name: "mac" } });
   });
   it("puts the token in the body, and the test code only when there is one", () => {
     expect(requestBody([])).toMatchObject({ access_token: "test-capi-token" });
@@ -156,7 +156,7 @@ describe("through the server", () => {
     const ok = await app.inject({
       method: "POST", url: "/v1/site/event",
       headers: { "x-vercel-forwarded-for": "198.51.100.7", "user-agent": "Mozilla/5.0 Test", cookie: "_fbp=fb.1.1712345678901.42" },
-      payload: { name: "Lead", id: "evt-123456", kind: "mac", url: "https://tailzu.space/download" },
+      payload: { name: "Lead", id: "evt-123456", kind: "mac", url: "https://x0bot.com/download" },
     });
     expect(ok.statusCode).toBe(204);
     await vi.waitFor(() => expect(events()).toHaveLength(1));

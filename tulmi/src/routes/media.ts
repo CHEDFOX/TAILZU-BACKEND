@@ -460,7 +460,7 @@ export async function loadMediaRegistry(mediaDir: string): Promise<void> {
 
 export function registerMediaRoutes(app: FastifyInstance, opts: {
   mediaDir: string;
-  publicUrlPrefix: string;   // e.g. "https://api.tailzu.space/media"
+  publicUrlPrefix: string;   // e.g. "https://api.x0bot.com/media"
   /** Per-IP rate-limit cap for the admin routes (the app's AUTHED_RL tier). */
   rateLimit?: { max: number; timeWindow: number };
 }): void {

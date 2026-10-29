@@ -16,7 +16,7 @@ const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
 <p class="effective">Effective: ${PRIVACY_POLICY_EFFECTIVE}</p>
 
-<p>Tailzu (also referred to as "we", "our", "us") builds a voice-and-text keyboard that transcribes your speech, refines your writing, and helps you communicate. This Privacy Policy explains what personal information we collect through the Tailzu iOS, Android and desktop apps, the keyboard extension and our website (tailzu.space), how we use it, and the choices you have.</p>
+<p>Tailzu (also referred to as "we", "our", "us") builds a voice-and-text keyboard that transcribes your speech, refines your writing, and helps you communicate. This Privacy Policy explains what personal information we collect through the Tailzu iOS, Android and desktop apps, the keyboard extension and our website (x0bot.com), how we use it, and the choices you have.</p>
 
 <p>By using Tailzu, you agree to this Privacy Policy. If you do not agree, please do not use the app.</p>
 
@@ -74,11 +74,11 @@ const PRIVACY_POLICY_BODY = `
 <h3>1.6 Advertising measurement (Meta)</h3>
 <p>We advertise on Facebook and Instagram, and we tell Meta when someone gets and starts using Tailzu, so we can see which ads work and show them to people likely to find Tailzu useful. What Meta receives:</p>
 <ul>
-  <li><strong>On our website</strong> (Meta's pixel): the pages you visit on tailzu.space, and a click on a download or app-store link, with your IP address, browser, and Meta's cookies (_fbp, _fbc). The pixel does not load if your browser sends Global Privacy Control or Do Not Track, or if your device's clock is set to a European time zone. It never loads on the payment page.</li>
+  <li><strong>On our website</strong> (Meta's pixel): the pages you visit on x0bot.com, and a click on a download or app-store link, with your IP address, browser, and Meta's cookies (_fbp, _fbc). The pixel does not load if your browser sends Global Privacy Control or Do Not Track, or if your device's clock is set to a European time zone. It never loads on the payment page.</li>
   <li><strong>From the phone apps</strong> (Meta's SDK): that the app was installed and opened, and three milestones — that you created an account, switched the keyboard on, and made your first dictation.</li>
-  <li><strong>From our servers</strong> (Meta's Conversions API): for the desktop app, that you created an account and made your first dictation; for any subscription bought on tailzu.space, that it started and its price. These carry your email address and phone number only as one-way SHA-256 hashes, and your account ID hashed the same way, which is how Meta matches them to someone its ads reached.</li>
+  <li><strong>From our servers</strong> (Meta's Conversions API): for the desktop app, that you created an account and made your first dictation; for any subscription bought on x0bot.com, that it started and its price. These carry your email address and phone number only as one-way SHA-256 hashes, and your account ID hashed the same way, which is how Meta matches them to someone its ads reached.</li>
 </ul>
-<p>Each milestone is reported once, and only for accounts in their first week. <strong>Meta never receives anything you say, type or dictate</strong>, nor your history, settings or vocabulary. You can control how Meta uses this in your Facebook or Instagram ad settings, and you can ask us to stop reporting your account at <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>.</p>
+<p>Each milestone is reported once, and only for accounts in their first week. <strong>Meta never receives anything you say, type or dictate</strong>, nor your history, settings or vocabulary. You can control how Meta uses this in your Facebook or Instagram ad settings, and you can ask us to stop reporting your account at <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a>.</p>
 
 <h3>1.7 Non-collection notice</h3>
 <ul>
@@ -195,7 +195,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Complaint</strong> — lodge a complaint with your local data protection supervisory authority if you believe we have not complied with applicable law (GDPR)</li>
 </ul>
 
-<p>To exercise any of these rights, contact us at <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>. We respond within 30 days (45 for CCPA requests, with a possible 45-day extension where permitted). We may request information to verify your identity before processing.</p>
+<p>To exercise any of these rights, contact us at <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a>. We respond within 30 days (45 for CCPA requests, with a possible 45-day extension where permitted). We may request information to verify your identity before processing.</p>
 
 <hr>
 
@@ -308,7 +308,7 @@ const PRIVACY_POLICY_BODY = `
 
 <h3>11.4 What we keep</h3>
 <ul>
-  <li><strong>Your access to each app.</strong> The keys Google gives Tailzu for an app ("tokens") are encrypted (AES-256-GCM) before they are stored, and kept until you disconnect that app or delete your account. If Tailzu stops offering an app you connected, its keys are no longer used, and they are deleted when you delete your account, or sooner if you email <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>.</li>
+  <li><strong>Your access to each app.</strong> The keys Google gives Tailzu for an app ("tokens") are encrypted (AES-256-GCM) before they are stored, and kept until you disconnect that app or delete your account. If Tailzu stops offering an app you connected, its keys are no longer used, and they are deleted when you delete your account, or sooner if you email <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a>.</li>
   <li><strong>Your Tasks list.</strong> For each request that used an app: the first 80 characters of what you asked, and short steps like "Google Calendar: list events", so you can see what Tailzu did. Only you can see it in Tailzu.</li>
   <li><strong>A change waiting for your OK</strong> keeps its details, which can include what Tailzu read in Google to show it to you (an event's title, time and guests, or the name of a task, task list or sheet), until you tap Approve or Not now. Then they are deleted. If you never answer, they stay until you delete your account.</li>
   <li><strong>A record of each action:</strong> which app and action, whether it ran, failed or you said no, and when. It holds nothing that was read or written.</li>
@@ -331,7 +331,7 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li><strong>Disconnect an app</strong> in Connected apps in Tailzu. Tailzu deletes its stored access to that app right away and stops using it.</li>
   <li><strong>At Google's end:</strong> Google keeps one permission for all the Google apps you connect to Tailzu. When you disconnect the last of them, Tailzu also asks Google to revoke it. Until then, Google keeps Tailzu's permission for every Google app you connected, including the one you just disconnected, though Tailzu no longer uses it for that app. You can also remove Tailzu yourself at any time in your Google Account (myaccount.google.com/connections), for example if Google could not be reached when you disconnected.</li>
-  <li><strong>What stays after you disconnect:</strong> your Tasks list, the record of actions, and any change still waiting for your OK (see 11.4). They are kept until you delete your account. To have them deleted sooner, email <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a>.</li>
+  <li><strong>What stays after you disconnect:</strong> your Tasks list, the record of actions, and any change still waiting for your OK (see 11.4). They are kept until you delete your account. To have them deleted sooner, email <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a>.</li>
   <li><strong>Deleting your account</strong> deletes all of it: your access to your Google apps, your Tasks list and the record. It does not tell Google, so disconnect your Google apps first, or remove Tailzu in your Google Account afterwards.</li>
   <li>What Tailzu made or changed in your Google apps (events, Docs, tasks, sheets, forms) is yours. It stays there until you change it in Google.</li>
 </ul>
@@ -344,9 +344,9 @@ const PRIVACY_POLICY_BODY = `
 <hr>
 
 <h2>13. Contact</h2>
-<p>Questions or requests: <a href="mailto:privacy@tailzu.space">privacy@tailzu.space</a></p>
+<p>Questions or requests: <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a></p>
 
-<p style="color:#6b6b6b; font-size:13px; margin-top:40px;">This policy is available at <code>https://tailzu.space/privacy</code>. The version served by the app matches the version linked in App Store Connect.</p>
+<p style="color:#6b6b6b; font-size:13px; margin-top:40px;">This policy is available at <code>https://x0bot.com/privacy</code>. The version served by the app matches the version linked in App Store Connect.</p>
 `;
 
 export const PRIVACY_POLICY_HTML = siteShell({

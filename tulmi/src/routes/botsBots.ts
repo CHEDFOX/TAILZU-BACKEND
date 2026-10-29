@@ -68,7 +68,7 @@ export function shownName(user: Pick<AuthedUser, "email" | "phone">): string {
 
 /** The API's own address, for the keys page and invite links. */
 export function apiOrigin(): string {
-  try { return new URL(getConfig().CONNECTOR_REDIRECT_URL).origin; } catch { return "https://api.tailzu.space"; }
+  try { return new URL(getConfig().CONNECTOR_REDIRECT_URL).origin; } catch { return "https://api.x0bot.com"; }
 }
 
 /**

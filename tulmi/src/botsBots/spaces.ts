@@ -6,7 +6,7 @@
  *   list(user) / detail(user, space)   the spaces the person is in, and one whole (members, roles, invites, activity as they may see them)
  *   create(user, name, me)             a new space; its maker is its admin, for good
  *   invite(user, space, { email?, role?, perms? })   a code and its link, seven days; with an email, bound to that address and mailed.
- *                                      The link opens the app at joining (https://app.tailzu.space/s/bots.spaces?join=CODE, a link
+ *                                      The link opens the app at joining (https://app.x0bot.com/s/bots.spaces?join=CODE, a link
  *                                      the apps claim, as bots.link's does); a browser gets a page that opens it, with the code to type
  *   join(user, code, me)               into the space, with what the invite gave (never more than its maker can still do)
  *   setPerms(user, space, member, { role?, perms? })  what someone may do
@@ -82,7 +82,7 @@ export const INVITE_CODE_RE = /^[A-Z0-9]{6,16}$/;
  * Where an invite's link points: the host the phone app claims for its links (associatedDomains, intentFilters; the AASA serves
  * /s/*), the same one bots.link's QR uses (routes/deviceLink.ts LINK_ORIGIN). Opened there, the app goes straight to joining.
  */
-export const INVITE_ORIGIN = (process.env.DEVICE_LINK_ORIGIN || "https://app.tailzu.space").replace(/\/+$/, "");
+export const INVITE_ORIGIN = (process.env.DEVICE_LINK_ORIGIN || "https://app.x0bot.com").replace(/\/+$/, "");
 /** The screen an invite opens, and its parameter. */
 export const JOIN_SCREEN = "bots.spaces";
 export const inviteLinkOf = (origin: string, code: string): string => `${origin}/s/${JOIN_SCREEN}?join=${code}`;

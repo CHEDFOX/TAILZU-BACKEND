@@ -1,13 +1,13 @@
 /**
  * The pages and files that exist for search and answer engines, served here
  * and through the site's proxy (tailzu-web/vercel.json), so they are
- * canonical at tailzu.space and built from the same facts as everything else
+ * canonical at x0bot.com and built from the same facts as everything else
  * (seo/facts.ts).
  *
  *   /languages, /languages/:slug, /faq   pages, in the site's own room
  *   /ai-keyboard…, /voice-typing…         the search pages (seo/landing.ts)
  *   /sitemap.xml, /llms.txt, /llms-full.txt
- *   /robots.txt                           this host only (api.tailzu.space)
+ *   /robots.txt                           this host only (api.x0bot.com)
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { faqHtml, languagePageHtml, languagesHubHtml } from "../seo/pages.js";
@@ -44,7 +44,7 @@ export function registerSeoRoutes(app: FastifyInstance): void {
   app.get("/sitemap.xml", async (_req, reply) => text(reply, "application/xml", sitemapXml()));
   app.get("/llms.txt", async (_req, reply) => text(reply, "text/plain", llmsTxt()));
   app.get("/llms-full.txt", async (_req, reply) => text(reply, "text/plain", llmsFullTxt()));
-  // tailzu.space serves its own static robots.txt; this one only ever answers
+  // x0bot.com serves its own static robots.txt; this one only ever answers
   // for the API host, which must not rank for the pages it proxies.
   app.get("/robots.txt", async (_req, reply) => text(reply, "text/plain", API_ROBOTS));
 }

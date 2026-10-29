@@ -99,20 +99,20 @@ describe("the address", () => {
   });
 
   it("takes out a preview site that shares a site with the app or the API", () => {
-    const own = ["tailzu.space", "api.tailzu.space", "tailzu-jobs.acct.workers.dev"];
+    const own = ["x0bot.com", "api.x0bot.com", "tailzu-jobs.acct.workers.dev"];
     expect(guardSite({ domain: "tailzu-preview.app" }, own)).toEqual({ site: { domain: "tailzu-preview.app" }, refused: [] });
-    expect(guardSite({ domain: "preview.tailzu.space" }, own).site).toEqual({});
-    expect(guardSite({ host: "www.tailzu.space" }, own).site).toEqual({});
-    expect(guardSite({ domain: "tailzu.space", host: "p.tailzu-preview.app" }, own)).toMatchObject({ site: { host: "p.tailzu-preview.app" } });
+    expect(guardSite({ domain: "preview.x0bot.com" }, own).site).toEqual({});
+    expect(guardSite({ host: "www.x0bot.com" }, own).site).toEqual({});
+    expect(guardSite({ domain: "x0bot.com", host: "p.tailzu-preview.app" }, own)).toMatchObject({ site: { host: "p.tailzu-preview.app" } });
     expect(guardSite({ domain: "a.co.uk" }, ["b.co.uk"]).site).toEqual({ domain: "a.co.uk" });
     expect(guardSite({ domain: "x.a.co.uk" }, ["y.a.co.uk"]).site).toEqual({});
     expect(siteOf("a.b.example.com")).toBe("example.com");
     expect(siteOf("a.b.example.co.uk")).toBe("example.co.uk");
-    expect(guardSite({ domain: "tailzu.space" }, own).refused[0]).toMatch(/PREVIEW_DOMAIN shares a site/);
+    expect(guardSite({ domain: "x0bot.com" }, own).refused[0]).toMatch(/PREVIEW_DOMAIN shares a site/);
   });
 
   it("keeps the app's origins for framing: scheme and host (or one wildcard level), nothing else", () => {
-    expect(previewParents("https://tailzu.space, https://www.tailzu.space/ http://localhost:3000 https://*.preview.tailzu.space")).toEqual(["https://tailzu.space", "https://www.tailzu.space", "http://localhost:3000", "https://*.preview.tailzu.space"]);
+    expect(previewParents("https://x0bot.com, https://www.x0bot.com/ http://localhost:3000 https://*.preview.x0bot.com")).toEqual(["https://x0bot.com", "https://www.x0bot.com", "http://localhost:3000", "https://*.preview.x0bot.com"]);
     expect(previewParents("*, null, https://*.com, https://a.b/path, ftp://x.y, javascript:alert(1)")).toEqual([]);
     expect(previewParents(undefined)).toEqual([]);
   });
@@ -180,12 +180,12 @@ describe("what crosses back to the browser", () => {
   });
 
   it("adds the door's headers: no cache, no sniffing, no referrer, no indexing, framed only by the app", () => {
-    const h = Object.fromEntries(doorHeaders(["https://tailzu.space"]));
+    const h = Object.fromEntries(doorHeaders(["https://x0bot.com"]));
     expect(h["cache-control"]).toBe("no-store");
     expect(h["x-content-type-options"]).toBe("nosniff");
     expect(h["referrer-policy"]).toBe("no-referrer");
     expect(h["x-robots-tag"]).toMatch(/noindex/);
-    expect(h["content-security-policy"]).toBe("frame-ancestors https://tailzu.space");
+    expect(h["content-security-policy"]).toBe("frame-ancestors https://x0bot.com");
     expect(Object.fromEntries(doorHeaders([]))["content-security-policy"]).toBe("frame-ancestors 'none'");
   });
 });

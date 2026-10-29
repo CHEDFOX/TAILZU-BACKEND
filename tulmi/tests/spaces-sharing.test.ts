@@ -205,8 +205,8 @@ describe("invites by link and by email", () => {
     expect((await s.call("GET", `${AREA}/spaces/join/NOPE1234`, R_)).body).toEqual({ invite: null });
     expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, null)).status).toBe(401);
     // Without an origin given, the link is the apps' own host.
-    expect(INVITE_ORIGIN).toBe("https://app.tailzu.space");
-    expect(inviteLinkOf(INVITE_ORIGIN, "QW3RT7YP")).toBe("https://app.tailzu.space/s/bots.spaces?join=QW3RT7YP");
+    expect(INVITE_ORIGIN).toBe("https://app.x0bot.com");
+    expect(inviteLinkOf(INVITE_ORIGIN, "QW3RT7YP")).toBe("https://app.x0bot.com/s/bots.spaces?join=QW3RT7YP");
   });
 
   it("sends queued mail once a mailer is plugged in, retrying a failure", async () => {

@@ -37,7 +37,7 @@ import { supabase } from "../auth/supabase.js";
 import { forgetEntitlement, primaryEntitlement, type Entitlement } from "./entitlements.js";
 
 const API = "https://api.razorpay.com/v1";
-const SITE = "https://tailzu.space";
+const SITE = "https://x0bot.com";
 const TABLE = "razorpay_subscriptions";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const KEY_ID = /^rzp_(?:live|test)_[A-Za-z0-9]+$/;
@@ -460,7 +460,7 @@ export async function cancelForUser(userId: string): Promise<{ ok: boolean; code
 // --- The pay page's caller ----------------------------------------------------
 
 /**
- * The link the desktop opens to pay: tailzu.space/pay, signed for one account
+ * The link the desktop opens to pay: x0bot.com/pay, signed for one account
  * with the key secret and good for about a week. It is what lets the page's
  * calls name their caller — a bare account id in a URL could be anyone's.
  * Rebuilt on every bootstrap, in whole days so it stays the same all day.

@@ -47,7 +47,7 @@ features left out or simplified while building, grouped by what they need. ✓ =
 ## C. Needs a backend feature that doesn't exist yet
 16. ✓ Desktop sign-in by scanning a QR with the phone / approve on the phone (device linking). *The window's sign-in
     has a QR and a typed code (DeskLinkSignIn, desktop linkSignIn.js); the phone's camera opens
-    app.tailzu.space/s/bots.link (or You › Link a computer, the code) and Approve / Not me; the window then redeems a
+    app.x0bot.com/s/bots.link (or You › Link a computer, the code) and Approve / Not me; the window then redeems a
     one-time sign-in, once (src/auth/deviceLink.ts, routes/deviceLink.ts, migration 0049, screens/link.ts).*
 17. ✓ Desktop Keybot key choice (Fn / Right ⌥ / Right ⌘) from the app. *One key on the desktop (desktop oneKey.js): hold to
     talk, tap for hands-free; Fn on a Mac (native/tzkey.swift watches it), Right Ctrl on Windows, picked in Keybot's settings

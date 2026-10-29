@@ -1,5 +1,5 @@
 /**
- * Pricing — served as HTML at /pricing (tailzu.space/pricing).
+ * Pricing — served as HTML at /pricing (x0bot.com/pricing).
  *
  * Its own page under a link, not a section of the landing page: the landing
  * page sells the product, this one states the terms of buying it. It is also
@@ -121,11 +121,11 @@ export function pricingHtml(opts: {
 <div class="facts">
   <section>
     <h2>Currency and tax</h2>
-    <p>App prices are in US dollars; the App Store or Google Play shows the price in your currency. On the web, <a href="https://tailzu.space/pay">tailzu.space/pay</a> shows the price in the currency you are charged in.</p>
+    <p>App prices are in US dollars; the App Store or Google Play shows the price in your currency. On the web, <a href="https://x0bot.com/pay">x0bot.com/pay</a> shows the price in the currency you are charged in.</p>
   </section>
   <section>
     <h2>How you pay</h2>
-    <p>In the app, through the Apple App Store or Google Play. On the web, at <a href="https://tailzu.space/pay">tailzu.space/pay</a>: payments are processed by <strong>Razorpay</strong> for ${SELLER}, which makes Tailzu.</p>
+    <p>In the app, through the Apple App Store or Google Play. On the web, at <a href="https://x0bot.com/pay">x0bot.com/pay</a>: payments are processed by <strong>Razorpay</strong> for ${SELLER}, which makes Tailzu.</p>
   </section>
   <section>
     <h2>Renewal and cancelling</h2>
@@ -137,7 +137,7 @@ export function pricingHtml(opts: {
   </section>
 </div>
 
-<p class="made"><a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
+<p class="made"><a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
 <p class="made">Tailzu is made by ${SELLER}.</p>`,
   });
 }
@@ -181,7 +181,7 @@ function freePricingHtml(opts: { terms: string; privacy: string }): string {
   </section>
 </div>
 
-<p class="made"><a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="mailto:support@tailzu.space">support@tailzu.space</a></p>
+<p class="made"><a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
 <p class="made">Tailzu is made by ${SELLER}.</p>`,
   });
 }

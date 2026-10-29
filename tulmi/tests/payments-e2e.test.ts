@@ -120,7 +120,7 @@ vi.mock("../src/auth/supabase.js", async (importOriginal) => ({
   dataClientFor: () => fakeSupabase(),
   // A real Supabase user id, because the webhook only accepts a UUID —
   // DEV_SKIP_AUTH's "dev-user" would write a row the bootstrap never reads.
-  resolveUser: async () => ({ id: USER, email: "buyer@tailzu.space" }),
+  resolveUser: async () => ({ id: USER, email: "buyer@x0bot.com" }),
 }));
 
 // The pipeline is not on the money path; it only has to import.
@@ -180,7 +180,7 @@ const bootstrap = (device: Record<string, unknown> = {}) =>
 const paywall = () =>
   app.inject({ method: "POST", url: "/v1/app/screen", payload: { screenId: "paywall" } });
 
-const user = { id: USER, email: "buyer@tailzu.space" };
+const user = { id: USER, email: "buyer@x0bot.com" };
 
 describe("payments, end to end", () => {
   it("filters on the entitlement RevenueCat actually grants", async () => {

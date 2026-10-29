@@ -10,7 +10,7 @@ The contract between the app and the viewer is `tulmi/src/artifacts/protocol.ts`
 A second deployment of the same code, kept for the screenshots the agent compares with the approved artifact, is described in [14](#14-shot-mode-the-viewer-kept-for-screenshots).
 
 ```
- app (tailzu.space)                     viewer (its own site)
+ app (x0bot.com)                        viewer (its own site)
  ┌──────────────────────────┐   postMessage   ┌─────────────────────────────────────────────┐
  │ <iframe sandbox=         │ ──────────────▶ │ shell page  GET /                           │
  │   "allow-scripts"        │  load / stream  │   markdown · svg · mermaid · react render   │
@@ -36,9 +36,9 @@ Everything below exists so that hostile code can draw on the screen and ask the 
 **A separate site.** The viewer is served from its own site, never the app's and never a subdomain of it. Cookies, storage and the same-site
 checks of the app's site therefore do not exist for the viewer. Until a domain of its own is chosen it runs on
 `tailzu-viewer.<account>.workers.dev`: `workers.dev` is on the [Public Suffix List](https://publicsuffix.org/), so every account's
-`*.workers.dev` is its own site, different from `tailzu.space`. (It is the *same* site as the other Workers of the same account, e.g.
+`*.workers.dev` is its own site, different from `x0bot.com`. (It is the *same* site as the other Workers of the same account, e.g.
 `tailzu-jobs`; none of them holds a cookie.) When there is a domain: a registrable domain of its own (`tailzuusercontent.example`),
-not `viewer.tailzu.space`, and put it on `routes` in `wrangler.jsonc`.
+not `viewer.x0bot.com`, and put it on `routes` in `wrangler.jsonc`.
 
 **A sandbox, twice.** The app embeds the viewer with `sandbox="allow-scripts"` and no other token (no `allow-same-origin`, so the frame has
 an *opaque origin*: `window.origin === "null"`; no `allow-popups`, `allow-forms`, `allow-top-navigation`, `allow-modals`, `allow-downloads`).
@@ -353,7 +353,7 @@ npx wrangler deploy --dry-run --outdir dist
 
 1. `cd viewer && npm ci && npx wrangler login` (once).
 2. Set the one setting in `wrangler.jsonc` (`vars`) or the dashboard: **`VIEWER_PARENT_ORIGINS`**, the origins of the app pages that embed
-   the viewer, e.g. `https://tailzu.space,https://www.tailzu.space` (that is the default). `ENV` stays `production`.
+   the viewer, e.g. `https://x0bot.com,https://www.x0bot.com,https://tailzu.space,https://www.tailzu.space` (that is the default: x0bot.com, and tailzu.space while the move lasts). `ENV` stays `production`.
 3. `npx wrangler deploy` (runs the build; uploads ~130 static files and a 10 KB Worker). It prints the URL,
    `https://tailzu-viewer.<account>.workers.dev`.
 4. Check: `curl -sI https://tailzu-viewer.<account>.workers.dev/` shows the CSP with your `frame-ancestors`; `/__host` is 404; a file under
@@ -407,7 +407,7 @@ So there is a **second deployment** of the same code, for shots and nothing else
 
 | | normal viewer | shot viewer |
 |---|---|---|
-| `VIEWER_PARENT_ORIGINS` | `https://tailzu.space,https://www.tailzu.space` | `null` |
+| `VIEWER_PARENT_ORIGINS` | `https://x0bot.com,https://www.x0bot.com,https://tailzu.space,https://www.tailzu.space` | `null` |
 | `frame-ancestors` | the list | **not sent** (any page can frame it) |
 | messages believed | from the listed origins | from a parent whose origin is opaque, and nobody else |
 | used by | the app's iframes | `ARTIFACT_SHOT_VIEWER_URL`, in the host page of a shot |

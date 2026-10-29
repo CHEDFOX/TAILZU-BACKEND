@@ -366,7 +366,7 @@ describe("rewind after the commit", () => {
     expect(r.fake.head(r.repo, branch)).toBe(made.sha);
     expect(r.fake.parentsOf(r.repo, branch)).toEqual([head]);
     expect(r.fake.headCommit(r.repo, branch).message).toContain("Go back to step 1");
-    expect(r.fake.headCommit(r.repo, branch).author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(r.fake.headCommit(r.repo, branch).author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     expect(r.fake.calls.filter((c) => c.method === "PATCH" && /\/git\/refs\//.test(c.url.pathname)).every((c) => c.body?.force !== true)).toBe(true);
     // The file written after step 1 is gone; the edit made at step 1 stays.
     expect(r.fake.files(r.repo, branch)["src/new.ts"]).toBeUndefined();

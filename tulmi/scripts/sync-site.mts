@@ -1,7 +1,7 @@
 /**
  * THE LANDING PAGE, AS A MACHINE READS IT.
  *
- * tailzu.space draws its words from GET /v1/site once its script runs. Most
+ * x0bot.com draws its words from GET /v1/site once its script runs. Most
  * of what reads a page does not run scripts: the crawlers behind ChatGPT,
  * Claude and Perplexity, link previews, and a search engine on its first
  * pass. To them the page was a title that said "Tailzu", an empty FAQ and

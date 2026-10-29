@@ -87,8 +87,8 @@ export class Polite {
   }
 }
 
-/** Our User-Agent: the app and how to reach us, as the providers' terms ask ("Tailzu/1.0 (+https://tailzu.space)"). */
+/** Our User-Agent: the app and how to reach us, as the providers' terms ask ("Tailzu/1.0 (+https://x0bot.com)"). */
 export function userAgentFor(contact: string): string {
-  const c = contact.replace(/[^\x20-\x7e]/g, "").trim().slice(0, 120) || "https://tailzu.space";
+  const c = contact.replace(/[^\x20-\x7e]/g, "").trim().slice(0, 120) || "https://x0bot.com";
   return `Tailzu/1.0 (+${c})`;
 }

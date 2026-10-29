@@ -1,7 +1,7 @@
 /**
- * GOOGLE TAG MANAGER on tailzu.space: the marketing team's container, as
+ * GOOGLE TAG MANAGER on x0bot.com: the marketing team's container, as
  * Google hands it over. The first part goes as high in the <head> as it can,
- * the second straight after <body>. tailzu.space's home page
+ * the second straight after <body>. x0bot.com's home page
  * (TAILZU-WEB/index.html) carries the same two, with its Content-Security-
  * Policy (vercel.json) naming Google's hosts; the pages served from here
  * (privacy, terms, pricing, FAQ, languages, the landing pages) get them from

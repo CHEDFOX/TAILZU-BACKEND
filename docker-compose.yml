@@ -6,12 +6,12 @@
 #   Quick public test:        FLOW_BIND=0.0.0.0 docker compose up -d --build
 #                             (reach it at http://YOUR_VPS_IP:8770)
 #   Own HTTPS proxy (only if 80/443 are FREE):
-#                             FLOW_DOMAIN=flow.example.com docker compose --profile https up -d --build
+#                             docker compose --profile https up -d --build
+#                             (its hostnames are in deploy/Caddyfile: api. and app. on x0bot.com and tailzu.space)
 #
 # Tunables (set in your shell or in tulmi/.env):
 #   FLOW_BIND    - host interface to bind (default 127.0.0.1 = localhost only)
 #   FLOW_PORT    - host port (default 8770; change if 8770 is taken)
-#   FLOW_DOMAIN  - public domain for the bundled Caddy (only needed for --profile https)
 #
 # Keys come from tulmi/.env (never commit it). See ../.env.example (canonical).
 
@@ -29,9 +29,9 @@ services:
       MEDIA_DIR: /data/media
       # The control plane's live rules and their history (GET /admin).
       CONTROL_DIR: /data/control
-      # Public URL clients see for uploaded media. Default assumes
-      # api.tailzu.space serves /media/* through your nginx proxy.
-      MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-https://api.tailzu.space/media}
+      # Public URL clients see for uploaded media. Empty: the server's own
+      # PUBLIC_ORIGIN + /media (tulmi/.env), so it moves when that does.
+      MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-}
     # Host-side binding. Default 127.0.0.1:8770 => private to this VPS, no
     # public exposure, no chance of clashing with 80/443 or other backends.
     ports:
@@ -106,15 +106,8 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    environment:
-      # Forwarded to the Caddyfile as {$FLOW_DOMAIN}. We can't use ${...:?err}
-      # here because docker compose evaluates env interpolation for ALL services
-      # at parse time — even when the `https` profile is OFF — so a missing
-      # FLOW_DOMAIN would block plain `docker compose up`/`ps`/`logs`. Empty
-      # default lets the backend start without FLOW_DOMAIN; if someone enables
-      # the https profile without setting it, Caddy fails clearly on its own
-      # parse step (empty hostname is a syntax error).
-      FLOW_DOMAIN: ${FLOW_DOMAIN:-}
+    # The hostnames are written in deploy/Caddyfile (api. and app. on x0bot.com
+    # and on tailzu.space, docs/domain-x0bot.md); nothing to pass in.
     ports:
       - "80:80"
       - "443:443"

@@ -161,9 +161,9 @@ const when2 = (path: string, then: ActionRef, otherwise: ActionRef): ActionSpec 
 const openUrl = (url: string): ActionSpec => ({ kind: "openUrl", url });
 /** Help: the whole app's, kept here (Keybot links nothing account-wide). */
 const HELP = [
-  { label: "Write to us", value: "support@tailzu.space", url: "mailto:support@tailzu.space" },
-  { label: "Privacy policy", value: "", url: "https://tailzu.space/privacy" },
-  { label: "Terms of use", value: "", url: "https://tailzu.space/terms" },
+  { label: "Write to us", value: "support@x0bot.com", url: "mailto:support@x0bot.com" },
+  { label: "Privacy policy", value: "", url: "https://x0bot.com/privacy" },
+  { label: "Terms of use", value: "", url: "https://x0bot.com/terms" },
 ] as const;
 const helpAction = (url: string): ActionSpec => ({ kind: "openUrl", url, external: true });
 
@@ -571,7 +571,7 @@ const statusMark2 = (): Node => box([], { width: 10, height: 10, borderRadius: 5
 
 // ===================================================================== bots.computer
 
-const DOWNLOAD_URL = `${(process.env.PUBLIC_ORIGIN || "https://api.tailzu.space").replace(/\/+$/, "")}/download`;
+const DOWNLOAD_URL = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/download`;
 
 function onlineLine(c: ComputersData["online"][number], working: string | undefined): string {
   if (!c.allowRun) return "Online · not running jobs";
@@ -629,9 +629,70 @@ function computerPhone(ctx: BotsCtx, d: ComputersData | undefined) {
   });
 }
 
+/**
+ * TAILZU CODE ON THIS COMPUTER, the runner's own window drawn here (a window that declares DeskRunner: the
+ * desktop's runnerCard.js): its switch and what it is doing, the safety words, Stop, the container, the projects
+ * and what it ran, as that computer's main process reports them. Every word it shows is one of these props, so
+ * they are the server's and translated (i18n NODE_TYPE_TEXT_PROPS). Turning it on and allowing a project are
+ * asked by the window itself, in its own words, before they happen; the card is never the consent.
+ */
+export const RUNNER_CARD_WORDS = {
+  title: "Tailzu Code on this computer",
+  lede: "Let the Code bot do its work here first: free, and fast, because nothing has to wait for a cloud computer to start.",
+  use: "Use this computer for Tailzu Code",
+  safetyLead: "Off until you turn it on.",
+  safety: "When it is on, and only while Tailzu is open, Tailzu Code can run its commands (tests, builds, installs) on this computer, for the projects you allow below. Each project is asked about the first time. It works in a folder of its own, from a read-only copy of your code, and cannot see your passwords, keys or other files: commands get a clean environment and a private home folder, and things like sudo, git push, publishing or deleting your home folder are refused. It pauses by itself when the battery is under 20% or Low Power Mode is on. Everything it runs is listed below and kept in a log on this computer for 7 days.",
+  stateOff: "Off",
+  stateSignedOut: "Sign in to Tailzu to use this",
+  stateConnecting: "Connecting…",
+  stateOnline: "Online for Tailzu Code",
+  stateWorking: "Working on {project}",
+  statePaused: "Paused",
+  pausedBattery: "Paused: the battery is under 20%",
+  pausedLowPower: "Paused: Low Power Mode is on",
+  stateLiveOff: "Tailzu Code is not on for your account yet",
+  stateReplaced: "Another copy of Tailzu has this computer",
+  workingLine: "Tailzu is working on {project}",
+  stop: "Stop",
+  stopNote: "Stop ends what is running and turns this off until you turn it on again.",
+  container: "Run in a container (Docker)",
+  checkDocker: "Check Docker",
+  dockerRunning: "Docker {version} is running.",
+  dockerChecking: "Checking Docker…",
+  dockerDown: "{reason} Nothing will run until it is available or this is turned off.",
+  containerNote: "Each command runs in a throwaway container (image {image}) with only this project's workspace mounted, so it cannot touch the rest of this computer. Needs Docker installed and running; if it is not, nothing runs here. Off by default.",
+  projects: "Projects",
+  noProjects: "No projects yet. Tailzu Code asks the first time it wants to run one here.",
+  allow: "Allow",
+  deny: "Don't allow",
+  askAgain: "Ask me again",
+  badgeAsk: "Will ask",
+  badgeAllowed: "Allowed",
+  badgeDenied: "Not allowed",
+  ran: "What it ran",
+  nothingYet: "Nothing yet.",
+  colTime: "Time",
+  colProject: "Project",
+  colCommand: "Command",
+  colExit: "Exit",
+  colTook: "Took",
+  devServer: "[dev server]",
+  notRun: "- not run: {why}",
+  running: "running",
+  refused: "refused",
+  timedOut: "(time)",
+  stopped: "(stopped)",
+  audit: "Open the audit log folder",
+  workspaces: "Workspaces: {dir}",
+} as const;
+
+/** The card, for a window that draws it; nothing for any other. */
+const runnerCard = (ctx: BotsCtx): Node[] =>
+  ctx.can.has("DeskRunner") ? [col([sectionLabel("On this computer"), { type: "DeskRunner", props: { ...RUNNER_CARD_WORDS } }], { gap: 8 })] : [];
+
 function computerDesk(ctx: BotsCtx, d: ComputersData | undefined) {
   const head = heading(ctx, "This computer helps", "Your bots can run heavy work on your own computers instead of the cloud. It's free, and your files stay with you.");
-  if (!d) return page(ctx, { back: true, nav: "computer", title: "This computer helps", maxWidth: 1040, body: [head, couldNot("your computers")] });
+  if (!d) return page(ctx, { back: true, nav: "computer", title: "This computer helps", maxWidth: 1040, body: [head, ...runnerCard(ctx), couldNot("your computers")] });
   const w = codeWorking(ctx);
   const busy = d.online.find((c) => c.busy);
   const first = d.online[0];
@@ -640,6 +701,7 @@ function computerDesk(ctx: BotsCtx, d: ComputersData | undefined) {
     back: true, nav: "computer", title: "This computer helps", maxWidth: 1040, gap: 20,
     body: [
       row([col([head], { flexGrow: 1, flexShrink: 1 }), ...(first ? [infoChip(first.allowRun ? "Helping" : "Not helping")] : [])], { gap: 16, alignItems: "flex-start" }),
+      ...runnerCard(ctx),
       columns([
         col([
           sectionLabel("Runner"),

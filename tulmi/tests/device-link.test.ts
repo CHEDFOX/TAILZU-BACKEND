@@ -172,7 +172,7 @@ describe("the routes", () => {
     expect(res.headers["cache-control"]).toBe("no-store");
     const b = res.json();
     expect(b.url).toBe(linkUrl(b.token));
-    expect(b.url).toMatch(/^https:\/\/app\.tailzu\.space\/s\/bots\.link\?l=[A-Za-z0-9_-]{43}$/);
+    expect(b.url).toMatch(/^https:\/\/app\.x0bot\.com\/s\/bots\.link\?l=[A-Za-z0-9_-]{43}$/);
     expect(b.code).toMatch(/^[2-9A-HJ-NP-Z]{4}-[2-9A-HJ-NP-Z]{4}$/);
     expect(b.qr.size).toBeGreaterThan(20);
     expect(b.qr.path).toMatch(/^(M\d+ \d+h\d+v1h-\d+z)+$/);

@@ -433,7 +433,7 @@ The address is made of a token: `jobId (16 bytes) · nonce (6 random bytes) · e
 | --- | --- | --- |
 | `PREVIEW_DOMAIN` | blank | wildcard mode, the registrable domain whose subdomains are previews |
 | `PREVIEW_HOST` | blank | cookie mode, one host. Blank and blank: **previews are off** and nothing else changes |
-| `PREVIEW_PARENT_ORIGINS` | `https://tailzu.space,https://www.tailzu.space` | the app's origins, which alone may frame a preview |
+| `PREVIEW_PARENT_ORIGINS` | `https://x0bot.com,https://www.x0bot.com,https://tailzu.space,https://www.tailzu.space` | the app's origins, which alone may frame a preview |
 | `CODE_PREVIEW_IDLE_SEC` | 300 | no request for this long closes the preview (10 to 3600) |
 | `CODE_DESIGN_CHECK` | true | `false` skips the agent's design round altogether |
 | `ARTIFACTS`, `WEB_BROWSER=cloudflare`, `ARTIFACT_SHOT_VIEWER_URL` | off, `none`, blank | the design round also needs these (`docs/artifacts.md` section 11) |

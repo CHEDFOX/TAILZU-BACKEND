@@ -269,7 +269,7 @@ describe("the routes", () => {
     const id = (await s.call("POST", `${AREA}/spaces`, ALICE, { name: "Home" })).json().id;
     const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`)).json();
     expect(inv.code).toMatch(/^[A-Z0-9]{8}$/);
-    expect(inv.link).toBe(`https://app.tailzu.space/s/bots.spaces?join=${inv.code}`);
+    expect(inv.link).toBe(`https://app.x0bot.com/s/bots.spaces?join=${inv.code}`);
     const page = await s.call("GET", `${AREA}/invite/${inv.code}`, null);
     expect(page.headers["content-type"]).toContain("text/html");
     expect(page.body).toContain("Home");

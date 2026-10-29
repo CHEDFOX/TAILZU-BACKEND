@@ -123,7 +123,7 @@ const sub = (over: Record<string, unknown> = {}) => ({
   current_start: now() - 5 * DAY, current_end: now() + 25 * DAY, notes: { user_id: USER }, ...over,
 });
 const sign = (secret: string, data: string) => createHmac("sha256", secret).update(data).digest("hex");
-const callerOf = (userId: string) => Object.fromEntries(new URL(rzp.payLink("https://tailzu.space/pay", userId)!).searchParams);
+const callerOf = (userId: string) => Object.fromEntries(new URL(rzp.payLink("https://x0bot.com/pay", userId)!).searchParams);
 const row = (id = "sub_A") => db.razorpay_subscriptions.get(id)!;
 const ent = () => { forgetEntitlement(USER); return getEntitlement({ id: USER } as never); };
 
@@ -172,7 +172,7 @@ describe("signatures", () => {
     expect(rzp.payLinkUser(c.u, c.e, c.t)).toBe(USER);
     expect(rzp.payLinkUser(OTHER, c.e, c.t)).toBeNull();
     expect(rzp.payLinkUser(c.u, String(Number(c.e) + DAY), c.t)).toBeNull();
-    const old = Object.fromEntries(new URL(rzp.payLink("https://tailzu.space/pay", USER, Date.now() - 30 * DAY * 1000)!).searchParams);
+    const old = Object.fromEntries(new URL(rzp.payLink("https://x0bot.com/pay", USER, Date.now() - 30 * DAY * 1000)!).searchParams);
     expect(rzp.payLinkUser(old.u, old.e, old.t)).toBeNull();
   });
 });
@@ -350,7 +350,7 @@ describe("the routes", () => {
     expect(store).toContain("Nothing To Cancel Here");
 
     const b = buildBootstrap({ entitled: true, billingStore: "razorpay", billingRenews: false, formFactor: "desktop",
-      payUrl: rzp.payLink("https://tailzu.space/pay", USER) } as never) as { flags: Record<string, unknown> };
+      payUrl: rzp.payLink("https://x0bot.com/pay", USER) } as never) as { flags: Record<string, unknown> };
     expect(b.flags["billing.manage.razorpay"]).toBe(true);
     expect(b.flags["billing.ending"]).toBe(true);
   });

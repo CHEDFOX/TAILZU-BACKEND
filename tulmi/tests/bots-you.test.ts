@@ -57,7 +57,7 @@ const ANSWERS: Record<string, unknown> = {
     usage: USAGE,
     apps: { enabled: true, connected: [{ id: "google-calendar", name: "Google Calendar", usedBy: ["Plan bot", "Gym bot"], lastUsedAt: FIXED_NOW - 2 * MIN }], github: { repos: 2 }, alone: 3 },
     computers: { online: [{ name: "Aanya's MacBook", busy: false, allowRun: true }], offline: 1, helped: { jobs: 6, minutes: 200 } },
-    settings: S, exportUrl: "https://api.tailzu.space/v1/you/export/file?t=x", language: "hinglish",
+    settings: S, exportUrl: "https://api.x0bot.com/v1/you/export/file?t=x", language: "hinglish",
   },
   "GET /v1/you/spend?tz=330": {
     report: {

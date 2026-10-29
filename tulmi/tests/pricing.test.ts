@@ -51,7 +51,7 @@ describe("the terms", () => {
     expect(TERMS_HTML).toContain("Razorpay");
     // Earlier web subscriptions were sold by Paddle, and still are theirs.
     expect(TERMS_HTML).toContain("Paddle.com");
-    expect(TERMS_HTML).toContain("tailzu.space/pricing");
+    expect(TERMS_HTML).toContain("x0bot.com/pricing");
     expect(TERMS_HTML).toMatch(/non-refundable, except where the law requires a refund/);
   });
 });

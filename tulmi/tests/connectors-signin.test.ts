@@ -492,7 +492,7 @@ describe("the routes", () => {
     expect(res.headers["content-type"]).toContain("application/json");
     expect(res.headers["cache-control"]).toBe("public, max-age=86400");
     expect(res.json()).toEqual({
-      client_id: CIMD, client_name: "Tailzu", client_uri: "https://tailzu.space", redirect_uris: [REDIRECT],
+      client_id: CIMD, client_name: "Tailzu", client_uri: "https://x0bot.com", redirect_uris: [REDIRECT],
       grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none",
     });
     expect(clientMetadataDocument({ clientMetadataUrl: CIMD, redirectUrl: REDIRECT })).toEqual(res.json());

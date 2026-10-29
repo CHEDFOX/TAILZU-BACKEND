@@ -15,7 +15,7 @@ import type { MediaPresent } from "../../shared/types/sdui.js";
 // that line: the same file plays edge to edge, in a circle, or in a card,
 // depending only on what a POST to /v1/media/present left on the entry.
 
-const GIF = "https://api.tailzu.space/media/abc.gif";
+const GIF = "https://api.x0bot.com/media/abc.gif";
 
 function withPresent(present?: MediaPresent) {
   setMediaRegistryAccessor(() => ({
@@ -204,7 +204,7 @@ describe("media presentation is registry data", () => {
 function heroOf(screenId: string, key: string, present?: MediaPresent, contentType = "image/jpeg") {
   setMediaRegistryAccessor(() => ({
     [key]: {
-      url: "https://api.tailzu.space/media/x." + (contentType.startsWith("video") ? "mp4" : "jpg"),
+      url: "https://api.x0bot.com/media/x." + (contentType.startsWith("video") ? "mp4" : "jpg"),
       contentType, size: 1, uploadedAt: 1,
       ...(present ? { present } : {}),
     },
@@ -338,7 +338,7 @@ describe("hero slots take their presentation from the registry too", () => {
   it("the flow clip is the FIRST child, so the words paint over it", () => {
     setMediaRegistryAccessor(() => ({
       "hero.flow_arm": {
-        url: "https://api.tailzu.space/media/x.mp4",
+        url: "https://api.x0bot.com/media/x.mp4",
         contentType: "video/mp4", size: 1, uploadedAt: 1,
       },
     }));
@@ -357,7 +357,7 @@ describe("a hero clip plays itself", () => {
   function flowVideo(present?: MediaPresent) {
     setMediaRegistryAccessor(() => ({
       "hero.flow_arm": {
-        url: "https://api.tailzu.space/media/f.mp4",
+        url: "https://api.x0bot.com/media/f.mp4",
         contentType: "video/mp4", size: 1, uploadedAt: 1,
         ...(present ? { present } : {}),
       },
@@ -382,7 +382,7 @@ describe("a hero clip plays itself", () => {
     // no end, so it repeats.
     setMediaRegistryAccessor(() => ({
       "hero.settings": {
-        url: "https://api.tailzu.space/media/h.mp4",
+        url: "https://api.x0bot.com/media/h.mp4",
         contentType: "video/mp4", size: 1, uploadedAt: 1,
       },
     }));

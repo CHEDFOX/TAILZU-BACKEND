@@ -155,7 +155,7 @@ export function languagesHubHtml(): string {
         numberOfItems: india.length + WORLD.length,
         itemListElement: [...india, ...WORLD].map((l, i) => ({
           "@type": "ListItem", position: i + 1, name: l.name,
-          ...(l.page ? { url: `https://tailzu.space/languages/${l.slug}` } : {}),
+          ...(l.page ? { url: `https://x0bot.com/languages/${l.slug}` } : {}),
         })),
       },
     ],

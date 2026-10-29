@@ -27,7 +27,7 @@
  *
  * WHO THE BOT IS. Every commit Tailzu makes has the bot as its AUTHOR: a name
  * and an email from CODE_BOT_NAME and CODE_BOT_EMAIL ("Blip" and
- * "blip@tailzu.space" unless set), whichever way the person connected. The
+ * "blip@x0bot.com" unless set), whichever way the person connected. The
  * COMMITTER is left alone, so GitHub fills it in as whoever the token is. The
  * person the work was for is credited in the message instead, with a trailer
  * that GitHub understands and shows on the commit:
@@ -44,7 +44,7 @@ import type { RepoRef } from "./github.js";
 /** Who the bot is in git: the author of every commit it makes. */
 export interface BotIdentity { name: string; email: string }
 
-export const DEFAULT_BOT: Readonly<BotIdentity> = { name: "Blip", email: "blip@tailzu.space" };
+export const DEFAULT_BOT: Readonly<BotIdentity> = { name: "Blip", email: "blip@x0bot.com" };
 
 /** The person a piece of work was for, as GitHub knows them. */
 export interface Person { id: number; login: string }

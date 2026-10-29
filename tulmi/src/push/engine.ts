@@ -295,7 +295,10 @@ export class PushEngine {
       title: d.title,
       body: d.body,
       sound: verdict === "silent" ? null : "default",
-      channelId: k.flag("push.android.channelId", "default"),
+      // A channel per kind when the server names one (push.<kind>.channelId: the
+      // phone makes the channels push.android.channels lists), so Plan reminders or
+      // Code bot pings can be muted on their own; else the one channel, as ever.
+      channelId: k.flag(`push.${d.kind}.channelId`, k.flag("push.android.channelId", "default")),
       ttl: d.ttlSec,
       priority: "default",
       // The app opens data.screenId and hands the rest to the screen as its

@@ -115,7 +115,7 @@ describe("the workflow", () => {
 describe("step.json and the three files", () => {
   const spec = {
     jobId: "3f9a1c2b-0000-4000-8000-000000000000", stepIdx: 2, epoch: 3, commands: ["npm ci", "npm test"], timeoutSec: 300,
-    baseSha: "a".repeat(40), resultUrl: "https://api.tailzu.space/v1/code/runner/gh-result", audience: "tailzu",
+    baseSha: "a".repeat(40), resultUrl: "https://api.x0bot.com/v1/code/runner/gh-result", audience: "tailzu",
   };
 
   it("step.json holds exactly what the script needs and nothing secret", () => {

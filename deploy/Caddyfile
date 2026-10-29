@@ -1,27 +1,29 @@
 # Automatic HTTPS for the Tulmi backend.
 #
-# 1. Point domains at your VPS via DNS A records:
-#       api.tailzu.space  -> YOUR_VPS_IP   (backend API)
-#       tailzu.space      -> YOUR_VPS_IP   (Universal Links / AASA host)
-#       app.tailzu.space  -> YOUR_VPS_IP   (Universal Links / AASA host)
-# 2. Export the API domain on the host (or set it in tulmi/.env so
-#    docker-compose forwards it into this container):
-#       export FLOW_DOMAIN=api.tailzu.space
-# 3. Deploy with:
+# The hosts (docs/domain-x0bot.md). x0bot.com and www.x0bot.com are the site,
+# on Vercel, which proxies /v1/*, /download, /downloads/*, /privacy, /terms and
+# /.well-known/* to the API below. This file is only the VPS's two names, each
+# on the new domain AND the old one: the apps already installed have
+# tailzu.space built in, so its hosts keep answering here, the same way, with
+# no redirect (a POST does not survive one, and Apple refuses an AASA behind one).
+#
+# 1. DNS A records, all to the VPS (91.108.104.168):
+#       api.x0bot.com    api.tailzu.space    (backend API)
+#       app.x0bot.com    app.tailzu.space    (app links: /s/*, AASA, assetlinks)
+# 2. Deploy with:
 #       docker compose --profile https up -d --build
+#    and after a change to this file:
+#       docker compose --profile https up -d --force-recreate caddy
 #
 # Caddy fetches and renews Let's Encrypt certificates automatically for every
-# hostname listed. {$FLOW_DOMAIN} is Caddy-native env-var interpolation:
-# if FLOW_DOMAIN is unset, Caddy refuses to start (instead of silently trying
-# to issue a cert for "" or a placeholder host and burning a Let's Encrypt
-# rate-limit slot).
+# hostname listed. A name whose DNS does not point here yet only fails its own
+# certificate (Caddy retries); the others are served.
 #
-# The naked apex + app subdomain proxy to the same backend so
+# The app hosts proxy to the same backend so
 # /.well-known/apple-app-site-association is served from every host Apple
-# checks for Universal Links (see backend's associatedDomains in
-# app.config.ts). Everything else on those hosts is proxied too — if you'd
-# rather serve a marketing site there, put it in front and forward
-# /.well-known/* here.
+# checks for Universal Links (associatedDomains in the phone's app.config.ts).
+# Everything else on them is proxied too: /s/<screenId> is the page a link
+# opens in a browser that has no app to hand it to.
 
 # HSTS: these hosts are HTTPS-only, so a browser is told never to try plain
 # HTTP first (where a network could answer for us). No includeSubDomains —
@@ -30,20 +32,18 @@
     header Strict-Transport-Security "max-age=31536000"
 }
 
-{$FLOW_DOMAIN} {
+api.x0bot.com, api.tailzu.space {
     import hsts
     reverse_proxy backend:8080
 }
 
-tailzu.space, app.tailzu.space {
+app.x0bot.com, app.tailzu.space {
     import hsts
     # AASA + assetlinks — always through to the backend, no redirect (Apple
     # rejects Universal Links whose AASA response is a redirect).
     reverse_proxy /.well-known/* backend:8080
     reverse_proxy /apple-app-site-association backend:8080
-    # Everything else on the naked apex / app subdomain also goes to the
-    # backend so /privacy, /terms, /s/<screenId> etc. work from the pretty
-    # hostname. Swap for a `respond` or a redirect if you'd rather host a
-    # marketing site here.
+    # Everything else on the app hosts also goes to the backend, so
+    # /s/<screenId>, /privacy and /terms work from the link's own hostname.
     reverse_proxy backend:8080
 }

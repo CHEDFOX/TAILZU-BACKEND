@@ -66,7 +66,7 @@ export interface CreateGithubActionsOptions {
   store?: JobStore;
   /** Instead of CODE_RUNNER_OIDC_AUDIENCE. */
   audience?: string;
-  /** Where the script reports. Default: PUBLIC_ORIGIN (api.tailzu.space) and /v1/code/runner/gh-result. */
+  /** Where the script reports. Default: PUBLIC_ORIGIN (api.x0bot.com) and /v1/code/runner/gh-result. */
   resultUrl?: string;
   /** The way into a job's room for a live session step: written into the step's `.tailzu/step.json`. */
   offerSession?: OfferSession;
@@ -78,7 +78,7 @@ export interface CreateGithubActionsOptions {
 
 /** Where a step on GitHub reports, on this server. */
 export function runnerResultUrl(): string {
-  return `${(process.env.PUBLIC_ORIGIN || "https://api.tailzu.space").replace(/\/+$/, "")}/v1/code/runner/gh-result`;
+  return `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/v1/code/runner/gh-result`;
 }
 
 /**

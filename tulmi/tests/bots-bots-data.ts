@@ -120,7 +120,7 @@ export async function sampleApi(): Promise<Record<string, unknown>> {
         byKey: { "tzb_3f9a••••": { requests: 1192, paise: 3850, lastAt: FIXED_NOW - 4 * MIN }, "tzb_81c2••••": { requests: 92, paise: 0, lastAt: FIXED_NOW - DAY } },
         days: Array.from({ length: 28 }, (_, i) => ({ day: `2026-10-${String(i + 1).padStart(2, "0")}`, requests: [8, 56, 33, 23, 64, 55, 63, 74, 57, 40, 37, 66, 74, 66, 85, 75, 44, 42, 92, 79, 88, 77, 104, 56, 44, 103, 101, 52][i]! })),
       },
-      ratePerMin: 30, dayCapPaise: 500, endpoint: "https://api.tailzu.space/v1/bots/gym-bot/ask",
+      ratePerMin: 30, dayCapPaise: 500, endpoint: "https://api.x0bot.com/v1/bots/gym-bot/ask",
     },
     [`GET ${A}/draft`]: { draft: {
       sentence: "A bot that plans my workouts around my calendar and reminds me the night before.", updatedAt: FIXED_NOW - 9 * MIN,

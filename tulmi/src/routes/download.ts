@@ -2,7 +2,7 @@
  * The public /download page — OS-aware desktop-app download landing.
  *
  * Served straight from the backend (same pattern as /privacy and /terms) so it
- * works on every host Caddy proxies here, including tailzu.space/download.
+ * works on every host Caddy proxies here, including x0bot.com/download.
  * The installer binaries themselves are static files under /downloads/ (see
  * server.ts) with STABLE names — publishing a new version is just replacing
  * the file on the server; no HTML or link changes:

@@ -303,8 +303,9 @@ what to do"), clears the field and says "Kept. It will send when you're back."; 
   `ids.ts`, `glyphs.ts`, `palette.ts`, `server.ts`, `catalog.ts`, `shared/types/sdui.ts`, the phone and window renderers.
   **Never touch `tulmi/e2e`.**
 * Known gaps: a job's spend counts on the day it was last worked on, whole (a job that runs across two stretches counts in the later);
-  the name-and-gender card is asked in the first run (About you), so `profileGate.screenIds` is empty while someone is still in it; someone onboarded
-  before that keeps the card on `personality` / `home`.
+  the name-and-gender card is asked in the first run (About you), so `profileGate.screenIds` is empty in the Bots app; someone onboarded
+  before that, with no gender, is asked by `bots.name-it` itself (the bootstrap's `promptScreenId`, over Home after a pause), which for an
+  onboarded account is About you alone and closes once saved.
 
 ## 10. Live updates
 

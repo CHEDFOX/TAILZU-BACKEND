@@ -82,18 +82,18 @@ function multipart(blob: Buffer, filename: string): { payload: Buffer; headers: 
   const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
   return {
     payload: Buffer.concat([head, blob, tail]),
-    headers: { "content-type": `multipart/form-data; boundary=${boundary}`, origin: "https://tailzu.space" },
+    headers: { "content-type": `multipart/form-data; boundary=${boundary}`, origin: "https://x0bot.com" },
   };
 }
 
 describe("the landing page", () => {
   it("sends the API's / to the site, for good", async () => {
-    // The page lives on tailzu.space with its /js, /media and /demo files
+    // The page lives on x0bot.com with its /js, /media and /demo files
     // beside it; a copy served from here would 404 every one of them. A
     // 308, so a crawler folds the two addresses into the real one.
     const res = await app.inject({ method: "GET", url: "/" });
     expect(res.statusCode).toBe(308);
-    expect(res.headers.location).toBe("https://tailzu.space/");
+    expect(res.headers.location).toBe("https://x0bot.com/");
   });
 
   it("hands the page every word it will show", async () => {
@@ -544,7 +544,7 @@ describe("the live demo", () => {
     const res = await app.inject({
       method: "POST", url: "/v1/demo/transcribe",
       payload: `--${boundary}\r\nContent-Disposition: form-data; name="note"\r\n\r\nhi\r\n--${boundary}--\r\n`,
-      headers: { "content-type": `multipart/form-data; boundary=${boundary}`, origin: "https://tailzu.space" },
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}`, origin: "https://x0bot.com" },
     });
     expect(res.statusCode).toBe(400);
   });
@@ -552,7 +552,7 @@ describe("the live demo", () => {
   it("is spent only from our own pages", async () => {
     // A form POST needs no CORS permission: without this any site could
     // embed the demo and spend it.
-    for (const [i, origin] of [undefined, "https://evil.example", "https://tailzu.space.evil.example"].entries()) {
+    for (const [i, origin] of [undefined, "https://evil.example", "https://x0bot.com.evil.example"].entries()) {
       const { payload, headers } = multipart(wav(4), "clip.wav");
       // Each from its own visitor, so the per-minute rate is not what refuses it.
       const h: Record<string, string> = { ...headers, "x-vercel-forwarded-for": `192.0.2.${i + 1}` };

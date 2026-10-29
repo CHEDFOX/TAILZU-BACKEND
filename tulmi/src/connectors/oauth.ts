@@ -318,17 +318,38 @@ function inWords(err: unknown, def: ConnectorDef): unknown {
     : err;
 }
 
+/**
+ * Was this kept client made for another of our addresses? A registration lists
+ * the redirects it was made with; a client document's id is the https URL it
+ * was read from. Either, from before CONNECTOR_REDIRECT_URL or
+ * CONNECTOR_CLIENT_METADATA_URL moved (tailzu.space to x0bot.com), would send
+ * the person back to the old callback, or be refused by the app. Only a new
+ * sign-in asks: a refresh needs no redirect, and keeps working on the old one.
+ */
+export function madeForAnotherAddress(info: OAuthClientInformationMixed | undefined, redirect: string, cimdUrl: string | undefined): boolean {
+  if (!info) return false;
+  const uris = (info as { redirect_uris?: unknown }).redirect_uris;
+  if (Array.isArray(uris)) return uris.length > 0 && !uris.includes(redirect);
+  return /^https:\/\//i.test(info.client_id) && info.client_id !== cimdUrl;
+}
+
 /** Step one: the URL on the vendor's side where the person signs in. */
 export async function beginOAuth(d: OAuthDeps, userId: string, def: ConnectorDef): Promise<string> {
   // A vendor that registers no client itself: without ours there is no page to send anyone to.
   if (def.preRegistered && !d.clients?.[def.id]) {
     throw new ConnectorError("not_configured", `${def.name} can't be connected yet: Tailzu's sign-in for it isn't set up.`);
   }
-  const provider = new UserOAuthProvider(d.store, userId, def.id, d.redirectUrl, true, providerOptions(d, def));
+  const opts = providerOptions(d, def);
+  const provider = new UserOAuthProvider(d.store, userId, def.id, d.redirectUrl, true, opts);
   // A fresh sign-in, not a quiet refresh: whatever token there was is let go,
-  // but the registered client is kept so the vendor is not asked to register again.
+  // but the registered client is kept so the vendor is not asked to register again —
+  // unless it was made for another of our addresses (before the move to x0bot.com),
+  // whose callback this sign-in will not come back to.
   await provider.invalidateCredentials("tokens");
   await provider.invalidateCredentials("verifier");
+  if (!opts.staticClient && madeForAnotherAddress(await provider.clientInformation(), d.redirectUrl, opts.cimdUrl)) {
+    await provider.invalidateCredentials("client");
+  }
   const result = await auth(provider, { serverUrl: def.url, fetchFn: d.fetchFn ?? oauthFetch }).catch((err) => { throw inWords(err, def); });
   if (result !== "REDIRECT" || !provider.authUrl) {
     throw new ConnectorError("unsupported", `${def.name} didn't offer a sign-in page. It may not support connecting this way yet.`);

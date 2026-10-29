@@ -28,6 +28,17 @@ export const CATALOG_CONDITIONAL: ReadonlySet<string> = new Set([
 export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags">>(boot: T): T {
   const fill: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(APP_KNOB_FLAGS)) if (!CATALOG_CONDITIONAL.has(k)) fill[k] = v;
+  // The offline card's colours read with the theme's as their fallback (OfflineScreen.tsx), so the manifest has
+  // no value for them and the console could not see them. They are the same bootstrap's theme colours, as the
+  // card would have used: listed, and nothing drawn differently until one is changed.
+  const c = (boot as { theme?: { color?: Record<string, unknown> } }).theme?.color;
+  if (c) {
+    const pick = (v: unknown, fallback: string) => (typeof v === "string" && v ? v : fallback);
+    fill["app.offline.bg"] = pick(c.bg, "#000000");
+    fill["app.offline.text"] = pick(c.text, "#FFFFFF");
+    fill["app.offline.muted"] = pick(c.muted, "#8A857C");
+    fill["app.offline.accent"] = pick(c.primary, "#F3E2C6");
+  }
   return {
     ...boot,
     labels: { ...APP_KNOB_LABELS, ...(boot.labels ?? {}) },

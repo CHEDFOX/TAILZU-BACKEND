@@ -31,7 +31,7 @@ export type BlipLoop = (typeof BLIP_LOOPS)[number];
 export const BLIP_LOOP_MS = 2000;
 
 /** Where the pictures are served: the same origin as the typefaces and the media. */
-const blipBase = (): string => `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/blip/`;
+const blipBase = (): string => `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/blip/`;
 
 export function blipUrl(loop: BlipLoop): string {
   return `${blipBase()}${loop}.webp?v=${BLIP_BUILD.v}`;

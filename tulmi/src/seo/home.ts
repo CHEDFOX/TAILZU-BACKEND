@@ -1,6 +1,6 @@
 /**
  * THE HOME PAGE, AS A MACHINE READS IT: what scripts/sync-site.mts writes
- * into tailzu.space's index.html, kept here so a test can hold every line of
+ * into x0bot.com's index.html, kept here so a test can hold every line of
  * it.
  *
  * The page draws its words from GET /v1/site once its script runs. Most of

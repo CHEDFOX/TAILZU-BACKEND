@@ -5,7 +5,7 @@
  * to be told when it worked. One dataset (META_PIXEL_ID) hears it three ways:
  *
  *   the site's pixel       PageView, ViewContent and Lead, from the browser
- *                          (/site-events.js, served by Vercel on tailzu.space
+ *                          (/site-events.js, served by Vercel on x0bot.com
  *                          with the id from Vercel's settings; siteEventsScript
  *                          below is this server's copy)
  *   this server            what only the server sees: a desktop
@@ -33,6 +33,7 @@ import type { FastifyRequest } from "fastify";
 import type { Personality } from "../../../shared/types/api.js";
 import { supabase, type AuthedUser } from "../auth/supabase.js";
 import { getConfig } from "../config.js";
+import { isSitePage, SITE_ORIGIN } from "../domains.js";
 import { updatePersonality } from "../personality/store.js";
 
 // --- The event, as Meta wants it ------------------------------------------------
@@ -157,7 +158,7 @@ export function sendMetaEvent(ev: MetaEvent): void {
 
 // --- Who is asking --------------------------------------------------------------
 
-/** The visitor's address. Through tailzu.space every request comes from
+/** The visitor's address. Through x0bot.com every request comes from
  *  Vercel, which names the visitor; straight to the API, the connection's
  *  own (trustProxy). */
 export function visitorIp(req: FastifyRequest): string | undefined {
@@ -298,7 +299,7 @@ export async function reportMilestones(o: {
       // One per account and milestone, so a repeat is counted once.
       id: `${m}:${o.user.id}`,
       source: "website",
-      url: "https://tailzu.space/download",
+      url: "https://x0bot.com/download",
       user: {
         email: o.user.email,
         phone: o.user.phone,
@@ -357,7 +358,7 @@ export function reportSubscribe(o: {
       name: "Subscribe",
       id: `subscribe:${o.subscriptionId}`,
       source: "website",
-      url: "https://tailzu.space/pay",
+      url: "https://x0bot.com/pay",
       user: { ...who, ...browser, userId: o.userId },
       data: o.value && o.currency ? { value: o.value, currency: o.currency.toUpperCase() } : {},
     }));
@@ -387,7 +388,7 @@ export function siteEvent(req: FastifyRequest, body: unknown): boolean {
   const kind = String(b.kind ?? "");
   if (!SITE_EVENTS.has(name) || !EVENT_ID.test(id) || !SITE_KINDS.has(kind)) return false;
   const page = String(b.url ?? "");
-  const url = /^https:\/\/tailzu\.space(\/[^\s]*)?$/.test(page) ? page.slice(0, 300) : "https://tailzu.space/";
+  const url = isSitePage(page) ? page.slice(0, 300) : `${SITE_ORIGIN}/`;
   sendMetaEvent({
     name,
     id,
@@ -407,10 +408,10 @@ export function siteEvent(req: FastifyRequest, body: unknown): boolean {
 }
 
 /**
- * The pixel, as a page loads it (/site-events.js). On tailzu.space, every page,
+ * The pixel, as a page loads it (/site-events.js). On x0bot.com, every page,
  * this server's included, gets it from Vercel instead (tailzu-web,
  * api/_meta.js), with the dataset id from Vercel's settings; this copy serves
- * api.tailzu.space and must stay the same script: change one, change both.
+ * api.x0bot.com and must stay the same script: change one, change both.
  * Empty when there is no dataset: the pages carry the tag either way.
  *
  * HELD BACK, with no banner to ask: for a visitor whose browser says not to

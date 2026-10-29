@@ -16,7 +16,7 @@ vi.mock("../src/pipeline/stt.js", () => ({
 
 // eslint-disable-next-line import/first
 import { buildBootstrap, buildScreen } from "../src/experience/catalog.js";
-import { resetPublishedVersions } from "../src/experience/desktopRelease.js";
+import { LAST_TAILZU_ONLY_BUILD, resetPublishedVersions, updateFor } from "../src/experience/desktopRelease.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -150,7 +150,7 @@ describe("the desk is for a window that can draw it", () => {
   it("a closed desktop window opens fresh next time", () => {
     const b = buildBootstrap({ formFactor: "desktop" } as never) as any;
     expect(b.flags["desktop.window.closeAction"]).toBe("close");
-    expect(b.flags["desktop.update"]).toMatchObject({ latest: "0.2.1", url: "https://tailzu.space/download" });
+    expect(b.flags["desktop.update"]).toMatchObject({ latest: "0.2.1", url: "https://x0bot.com/download" });
   });
 
   it("an older desktop, and every phone, keep what they had", () => {
@@ -674,7 +674,7 @@ describe("a newer build, said in the window", () => {
   it("tells the tray's notification the same version, with the installer as its link", () => {
     const b = buildBootstrap({ formFactor: "desktop", desk: true, os: "win32" } as never) as { flags: Record<string, { latest: string; url: string }> };
     expect(b.flags["desktop.update"]!.latest).toBe("0.2.2");
-    expect(b.flags["desktop.update"]!.url).toBe("https://tailzu.space/downloads/Tailzu-Setup.exe");
+    expect(b.flags["desktop.update"]!.url).toBe("https://x0bot.com/downloads/Tailzu-Setup.exe");
   });
 
   describe("installed from the window", () => {
@@ -701,6 +701,19 @@ describe("a newer build, said in the window", () => {
 
     it("an older build keeps the download link", () => {
       expect(card(buildScreen("desk_today", at("0.2.1", "windows")))).toContain('"kind":"openUrl"');
+    });
+
+    it("is fetched from tailzu.space by a build whose updater trusts no other host, and from x0bot.com after it", () => {
+      expect(LAST_TAILZU_ONLY_BUILD).toBe("0.4.4");
+      fs.writeFileSync(path.join(dir, "Tailzu-Setup.exe.version"), "0.4.6\n");
+      resetPublishedVersions();
+      try {
+        expect(updateFor("0.4.4", "windows")).toMatchObject({ version: "0.4.6", url: "https://tailzu.space/downloads/Tailzu-Setup.exe", sha512: sha });
+        expect(updateFor("0.4.5", "windows")).toMatchObject({ version: "0.4.6", url: "https://x0bot.com/downloads/Tailzu-Setup.exe", sha512: sha });
+      } finally {
+        fs.writeFileSync(path.join(dir, "Tailzu-Setup.exe.version"), "0.2.2\n");
+        resetPublishedVersions();
+      }
     });
 
     it("the tray's notification is told there is a checksum, so it can open the card instead", () => {

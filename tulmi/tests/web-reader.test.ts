@@ -156,7 +156,7 @@ describe("the request", () => {
     const s = site(() => html(ARTICLE));
     await readPage("https://example.com/", opts({ fetchFn: s.fetchFn }));
     const h = s.calls[0]!.headers;
-    expect(h.get("user-agent")).toBe("Mozilla/5.0 (compatible; TailzuBot/1.0; +https://tailzu.com/bot)");
+    expect(h.get("user-agent")).toBe("Mozilla/5.0 (compatible; TailzuBot/1.0; +https://x0bot.com/bot)");
     expect(h.get("accept")).toBe("text/html,text/plain,application/json;q=0.9,*/*;q=0.5");
     expect(h.get("cookie")).toBeNull();
     expect(h.get("authorization")).toBeNull();

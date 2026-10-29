@@ -19,8 +19,8 @@ describe("every word starts with a capital", () => {
   });
 
   it("leaves links, brands, units, keys and other scripts alone", () => {
-    expect(titleCase("open tailzu.space now")).toBe("Open tailzu.space Now");
-    expect(titleCase("mail hi@tailzu.space")).toBe("Mail hi@tailzu.space");
+    expect(titleCase("open x0bot.com now")).toBe("Open x0bot.com Now");
+    expect(titleCase("mail hi@x0bot.com")).toBe("Mail hi@x0bot.com");
     expect(titleCase("works on iPhone and macOS")).toBe("Works On iPhone And macOS");
     expect(titleCase("typed, it took 15 min and 1 h 05")).toBe("Typed, It Took 15 min And 1 h 05");
     expect(titleCase("from 9 am")).toBe("From 9 am");

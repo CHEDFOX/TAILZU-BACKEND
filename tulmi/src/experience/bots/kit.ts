@@ -16,8 +16,9 @@
  *   - images are { url } sources inside a sized box (`picture()`), so neither client guesses a size.
  *   - colour is only for bots (palette.ts). Errors, success and links are ink.
  */
-import type { ActionRef, ActionSpec, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
-import { BOT_BUDDY_COMPONENT, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
+import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
+import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
@@ -71,7 +72,7 @@ export const FACE = {
 
 /** The phone loads these at boot (bootstrap `fonts`, only for the Bots app); the window bundles the same faces. */
 export function botsFonts(): Record<string, string> {
-  const base = `${process.env.PUBLIC_ORIGIN || "https://api.tailzu.space"}/fonts/`;
+  const base = `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/fonts/`;
   return {
     [FACE.regular]: `${base}geist.ttf?v=1`,
     [FACE.medium]: `${base}geist-medium.ttf?v=1`,
@@ -113,6 +114,8 @@ export interface TextOpts {
   lines?: number;
   /** Show this state path's value instead of `content` when it has one (Text bind.content). */
   bind?: string;
+  /** A plan's price: the phone shows the store's own words for this package once it answers (catalog.ts storePriceOf). */
+  storePrice?: { packageId: string; offeringId?: string; field?: "price" | "perMonth"; template?: string };
   style?: Style;
 }
 
@@ -126,7 +129,7 @@ export function text(content: string, o: TextOpts = {}): Node {
   const size = o.size ?? 15;
   return {
     type: "Text",
-    props: { content, variant: "bots", ...(o.lines ? { numberOfLines: o.lines } : {}) },
+    props: { content, variant: "bots", ...(o.lines ? { numberOfLines: o.lines } : {}), ...(o.storePrice ? { storePrice: o.storePrice } : {}) },
     ...(o.bind ? { bind: { content: o.bind } } : {}),
     style: {
       fontFamily: face(o.weight ?? 400, !!o.mono), fontWeight: "normal", fontStyle: "normal",
@@ -313,14 +316,36 @@ export function makeTileSpec(onPress?: ActionRef): BotTileSpec {
  * look at it before the tile opens. Only for a build that can draw it (canMove); others get botTile / makeBotTile.
  * `strip`: one more tile as a full-width row under the grid, in the same world (only for canStrip).
  */
-export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number }): Node {
+export function botTiles(tiles: BotTileSpec[], o: { columns: number; height: number; padding: number; gap: number; strip?: BotTileSpec; stripHeight?: number; surprises?: BotTilesProps["surprises"] }): Node {
   return {
     type: "BotTiles",
     props: {
       tiles, columns: o.columns, height: o.height, padding: o.padding, gap: o.gap, faces: { regular: FACE.regular, medium: FACE.medium, semibold: FACE.semibold },
       ...(o.strip ? { strip: o.strip, stripHeight: o.stripHeight ?? 104 } : {}),
+      ...(o.surprises ? { surprises: o.surprises } : {}),
     },
   };
+}
+
+// ---------------------------------------------------------------- looks and moments (capability BotMoments)
+
+/** A build that plays the bots' looks and moments (the catalog, looks.ts), with the living bots. */
+export const canMoments = (ctx: BotsCtx): boolean => canMove(ctx) && ctx.can.has(BOT_MOMENTS_CAPABILITY);
+
+/**
+ * A moment from the catalog (shared/bots/looks.json) for a BotBuddy, a tile or a BotCard, to spread into its props: a
+ * build that plays it gets `{ moment, momentMode }`, any other the recipe's plain act (`{ act }`). An id the catalog does
+ * not have: nothing (the node as it was).
+ *
+ *   botBuddy({ ...props, ...botMoment(ctx, "celebrate") })   { ...botTileSpec(bot, o), ...botMoment(ctx, "dance", "loop") }
+ */
+export function botMoment(ctx: BotsCtx, id: string, mode?: "once" | "loop"): { moment?: string; momentMode?: "once" | "loop"; act?: BuddyAct } {
+  return momentProps(canMoments(ctx) ? ctx.can : new Set<string>(), id, mode);
+}
+
+/** Home's rare idle surprises (BotTiles `surprises`), as the catalog's `idle` sets them, for a build that plays them. */
+export function homeSurprises(ctx: BotsCtx): BotTilesProps["surprises"] {
+  return canMoments(ctx) ? idleSurprises(ctx.can) : undefined;
 }
 
 /** A build that draws a strip under the living grid (BotTilesProps.strip). */

@@ -400,9 +400,9 @@ describe.each(["app", "oauth"] as const)("who commits, through a %s project", (k
     await ws.commit([{ path: "x.txt", content: "x" }], "Add x\n\nWhy.");
     const trailer = `Co-authored-by: ${me.login} <${me.id}+${me.login}@users.noreply.github.com>`;
     expect(r.fake.headMessage(repo, branch)).toBe(`Add x\n\nWhy.\n\n${trailer}`);
-    expect(r.fake.headCommit(repo, branch).author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(r.fake.headCommit(repo, branch).author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     const sent = r.fake.writes().find((c) => c.url.pathname.endsWith("/git/commits"))!;
-    expect(sent.body.author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(sent.body.author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     expect(sent.body).not.toHaveProperty("committer");
     // Never the old "Co-authored-by: Tailzu".
     expect(r.fake.headMessage(repo, branch)).not.toMatch(/Tailzu/);
@@ -429,12 +429,12 @@ describe.each(["app", "oauth"] as const)("who commits, through a %s project", (k
 });
 
 describe("the bot's identity", () => {
-  it("is Blip <blip@tailzu.space> unless set, and a value git couldn't carry is the default", () => {
-    expect(botIdentity()).toEqual({ name: "Blip", email: "blip@tailzu.space" });
-    expect(botIdentity("  ", "")).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+  it("is Blip <blip@x0bot.com> unless set, and a value git couldn't carry is the default", () => {
+    expect(botIdentity()).toEqual({ name: "Blip", email: "blip@x0bot.com" });
+    expect(botIdentity("  ", "")).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     expect(botIdentity(" Tailzu Bot ", " 1+tailzu-bot@users.noreply.github.com ")).toEqual({ name: "Tailzu Bot", email: "1+tailzu-bot@users.noreply.github.com" });
     for (const bad of ["a<b", "a>b", "x\ny", "x\ry", "x".repeat(101)]) expect(botIdentity(bad, null).name, JSON.stringify(bad)).toBe("Blip");
-    for (const bad of ["no-at-sign", "a@b@c", "a b@c.d", "<x@y.z>", "x@y.z\nBcc: z@z.z"]) expect(botIdentity(null, bad).email, JSON.stringify(bad)).toBe("blip@tailzu.space");
+    for (const bad of ["no-at-sign", "a@b@c", "a b@c.d", "<x@y.z>", "x@y.z\nBcc: z@z.z"]) expect(botIdentity(null, bad).email, JSON.stringify(bad)).toBe("blip@x0bot.com");
   });
 
   it("credits the person as GitHub writes a noreply co-author, only when their id and login are known and fit for it", () => {
@@ -773,7 +773,7 @@ describe.each(["app", "oauth"] as const)("the policy holds for a %s project", (k
     // Said yes: it is done, by the bot, on the person's token (sign-in) or the App's.
     const done = await ws.commit([{ path: "a.txt", content: "a" }], "m", { approvalId: (asked as { approvalId: string }).approvalId });
     expect(done).toMatchObject({ sha: r.fake.head(repo, "main"), parentSha: head });
-    expect(r.fake.headCommit(repo, "main").author).toEqual({ name: "Blip", email: "blip@tailzu.space" });
+    expect(r.fake.headCommit(repo, "main").author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
   });
 
   it("never lets a branch name with .. in it, or one git wouldn't take, anywhere near GitHub", async () => {

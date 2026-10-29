@@ -36,6 +36,9 @@ const ROLE_WORDS: Record<string, string[]> = {
   icon: ["button", "image", "link"], dropdown: ["combo", "menu"],
 };
 
+/** The rules above as the desktop's copy takes them (resolver.js, via desktop.agent.grammar). */
+export const RESOLVER_RULES = { pointAsk: POINT_ASK, pressAsk: PRESS_ASK, roleWords: ROLE_WORDS } as const;
+
 export function resolverAsk(clean: string): ResolverAsk | null {
   let verb: ResolverAsk["verb"] | null = null;
   let rest = "";

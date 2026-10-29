@@ -143,7 +143,7 @@ export function liveHostHtml(o: LiveHostOptions): string {
 }
 
 /** The address the apps' host page runs as, when the server names none: the viewer's own default parent (viewer/wrangler.jsonc). */
-export const DEFAULT_APP_ORIGIN = "https://tailzu.space";
+export const DEFAULT_APP_ORIGIN = "https://x0bot.com";
 
 export interface LiveViewer {
   /** The app's viewer. */

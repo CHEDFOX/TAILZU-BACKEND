@@ -39,7 +39,7 @@ const MEDIA_KEYS = [
 setMediaRegistryAccessor(() =>
   Object.fromEntries(
     MEDIA_KEYS.map((k) => [k, {
-      url: `https://media.tailzu.space/${k}`,
+      url: `https://media.x0bot.com/${k}`,
       contentType: k.includes("animation") && !k.endsWith(".mp4") ? "image/gif" : "video/mp4",
       sha256: "0".repeat(64),
       bytes: 0,

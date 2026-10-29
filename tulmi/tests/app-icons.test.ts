@@ -51,7 +51,7 @@ const { APP_ICON_IDS, appIconNode, appIconUrl } = await import("../src/experienc
 const { buildApp } = await import("../src/server.js");
 
 const ICONS = path.join(process.cwd(), "icons");
-const ORIGIN = "https://api.tailzu.space/icons/";
+const ORIGIN = "https://api.x0bot.com/icons/";
 
 type N = { type?: string; props?: Record<string, any>; style?: Record<string, any>; children?: N[] };
 function all(root: unknown, keep: (n: N) => boolean = () => true): N[] {
@@ -280,7 +280,7 @@ describe("an app added by link never gets a logo, and nothing is fetched from an
     for (const s of hand) for (const n of all(s!.root, (x) => x.type === "Image")) urls.add(String(n.props?.source?.url ?? ""));
     const iconUrls = [...urls].filter((u) => u.includes("/icons/"));
     expect(iconUrls.length).toBeGreaterThan(0);
-    for (const u of iconUrls) expect(u).toMatch(/^https:\/\/api\.tailzu\.space\/icons\/[a-z-]+\.png\?v=\d+$/);
+    for (const u of iconUrls) expect(u).toMatch(/^https:\/\/api\.x0bot\.com\/icons\/[a-z-]+\.png\?v=\d+$/);
     expect(JSON.stringify(hand)).not.toContain("example.com/");
   });
 
