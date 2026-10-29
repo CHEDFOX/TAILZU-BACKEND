@@ -141,7 +141,7 @@ const writes = (p: RepoPermission) => p === "write" || p === "admin";
 /** An install on the person's own GitHub account: all of it is theirs. Needs the login kept on the link. */
 const isOwn = (link: CodeInstallation) => link.accountType === "User" && link.githubLogin !== null && same(link.accountLogin, link.githubLogin);
 
-const reconnect = () => new ConnectorError("needs_reconnect", "Connect GitHub again so Tailzu can check what you have access to.");
+const reconnect = () => new ConnectorError("needs_reconnect", "Connect GitHub again so X0 Bot can check what you have access to.");
 
 /**
  * Whether this person may work in a repo of one of their linked installs.
@@ -238,7 +238,7 @@ export async function addProject(d: ProjectDeps, userId: string, repoId: number)
   if (!repo) {
     if (listed.needsReconnect) throw reconnect();
     if (listed.needsSignin) throw new ConnectorError("needs_signin", "Sign in with GitHub again to see your repos.");
-    throw notFound("that repo among the ones you gave Tailzu access to");
+    throw notFound("that repo among the ones you gave X0 Bot access to");
   }
   if ((await d.store.listProjects(userId)).length >= PROJECTS_MAX) {
     throw new ConnectorError("too_many", `You have ${PROJECTS_MAX} projects, which is the most. Remove one first.`);
@@ -269,15 +269,15 @@ export async function assertAccess(d: ProjectDeps, userId: string, p: CodeProjec
     // Through the person's own sign-in: it has to be on and alive, and GitHub has to say they can still push here.
     if (!d.oauth) throw new ConnectorError("oauth_off", "Sign in with GitHub isn't switched on.");
     if (!(await d.oauth.canPush(userId, repoRef(d, userId, p), fresh))) {
-      throw new ConnectorError("no_access", "You don't have write access to that repo on GitHub any more, so Tailzu won't work in it.");
+      throw new ConnectorError("no_access", "You don't have write access to that repo on GitHub any more, so X0 Bot won't work in it.");
     }
     return;
   }
   const link = await d.store.getInstallation(userId, p.installationId);
   if (!link) throw notFound("that project's GitHub install");
-  if (link.suspendedAt !== null) throw new ConnectorError("suspended", "GitHub has suspended Tailzu's access to this account. Unsuspend it on GitHub first.");
+  if (link.suspendedAt !== null) throw new ConnectorError("suspended", "GitHub has suspended X0 Bot's access to this account. Unsuspend it on GitHub first.");
   if (!(await mayUse(d, link, p, fresh))) {
-    throw new ConnectorError("no_access", "You don't have write access to that repo on GitHub any more, so Tailzu won't work in it.");
+    throw new ConnectorError("no_access", "You don't have write access to that repo on GitHub any more, so X0 Bot won't work in it.");
   }
 }
 
@@ -347,7 +347,7 @@ export async function initEmptyRepo(
   const repo = repoRef(d, userId, project);
   const heading = typeof title === "string" && title.trim() ? title : project.fullName.split("/")[1]!;
   if (!(await d.github.repoIsEmpty(repo))) {
-    throw new ConnectorError("repo_not_empty", "This repo already has commits, so Tailzu won't add a first file to its default branch.");
+    throw new ConnectorError("repo_not_empty", "This repo already has commits, so X0 Bot won't add a first file to its default branch.");
   }
   const person = await personOf(d, userId, project);
   return gate({

@@ -648,7 +648,7 @@ describe.each(["app", "oauth"] as const)("on a repo, through a %s project", (kin
       const err = await commitToBranch(r.d, "alice", p.id, "main", [{ path: "x.txt", content: "x" }], "m").catch((e) => e);
       expect(err).toBeInstanceOf(PolicyError);
       expect(err).toMatchObject({ code: "policy_denied", info: { action: "commit.other_branch", reason: "denied_by_grant", branch: "main" } });
-      expect(err.message).toMatch(/told Tailzu not to/);
+      expect(err.message).toMatch(/told X0 Bot not to/);
       expect(r.fake.writes()).toHaveLength(0);
       // The allow still covers the rest.
       await theirBranch(r, repo, "develop");
@@ -1144,10 +1144,10 @@ describe("who the bot is, from the settings", () => {
     delete process.env.CODE_BOT_EMAIL;
     resetConfigForTests();
     expect(botFromEnv()).toEqual({ name: "Blip", email: "blip@x0bot.com" });
-    process.env.CODE_BOT_NAME = "Tailzu Bot";
+    process.env.CODE_BOT_NAME = "X0 Bot Bot";
     process.env.CODE_BOT_EMAIL = "98765+tailzu-bot@users.noreply.github.com";
     resetConfigForTests();
-    expect(botFromEnv()).toEqual({ name: "Tailzu Bot", email: "98765+tailzu-bot@users.noreply.github.com" });
+    expect(botFromEnv()).toEqual({ name: "X0 Bot Bot", email: "98765+tailzu-bot@users.noreply.github.com" });
     process.env.CODE_BOT_NAME = "";
     process.env.CODE_BOT_EMAIL = "not an email\nBcc: x@y.z";
     resetConfigForTests();
@@ -1155,13 +1155,13 @@ describe("who the bot is, from the settings", () => {
   });
 
   it("reaches the commits: the client created from the settings has it as its author", async () => {
-    process.env.CODE_BOT_NAME = "Tailzu Bot";
+    process.env.CODE_BOT_NAME = "X0 Bot Bot";
     process.env.CODE_BOT_EMAIL = "98765+tailzu-bot@users.noreply.github.com";
     resetConfigForTests();
     const { createCode } = await import("../src/code/index.js");
     const fake: Fake = new FakeGithub(KEYS);
     const code = createCode({ store: new MemoryCodeStore(), app: { slug: "s", clientId: fake.appClientId, clientSecret: fake.clientSecret, privateKey: KEYS.privateKeyPem }, oauth: null, webhookSecret: null, fetchFn: fake.fetchFn });
-    expect(code.github!.bot).toEqual({ name: "Tailzu Bot", email: "98765+tailzu-bot@users.noreply.github.com" });
+    expect(code.github!.bot).toEqual({ name: "X0 Bot Bot", email: "98765+tailzu-bot@users.noreply.github.com" });
     expect(createCode({ store: new MemoryCodeStore(), app: null, oauth: { clientId: "c", clientSecret: "s" }, fetchFn: fake.fetchFn, bot: { name: "X", email: "x@y.z" } }).github!.bot).toEqual({ name: "X", email: "x@y.z" });
     // Grants are capped per project, as the routes say.
     expect(GRANTS_MAX).toBe(100);

@@ -40,13 +40,13 @@ export function commitMessage(state: AgentState, o: { conventional?: boolean; jo
   title = cut(title, 72);
   const steps = (state.plan?.steps ?? []).slice(0, 8).map((s) => `- ${safe(s.do, 160)}`);
   const checks = state.verify?.ran ? `Checks: ${state.verify.summary}` : state.verify ? `Checks: not run (${safe(state.verify.note ?? "no computer was free", 100)}).` : "";
-  return [title, "", ...(steps.length ? steps : [`- ${safe(state.task, 160)}`]), ...(checks ? ["", checks] : []), "", `Done by Tailzu (job ${o.jobId.slice(0, 8)}).`].join("\n");
+  return [title, "", ...(steps.length ? steps : [`- ${safe(state.task, 160)}`]), ...(checks ? ["", checks] : []), "", `Done by X0 Bot (job ${o.jobId.slice(0, 8)}).`].join("\n");
 }
 
 // -------------------------------------------------------------- the checks
 
 const STATUS_WORDS: Record<string, string> = {
-  passed: "passed", broke: "failed: this change broke it", already_broken: "failed, and was already failing before Tailzu",
+  passed: "passed", broke: "failed: this change broke it", already_broken: "failed, and was already failing before X0 Bot",
   fixed: "passes now (it was failing before)", unchanged_failing: "failed the same way as before",
 };
 
@@ -59,7 +59,7 @@ function checkLines(checks: readonly CheckSummary[]): string[] {
 export function prTitle(state: AgentState): string {
   const first = (state.work.doneSummary ?? state.task).split(/[.\n]/)[0] ?? state.task;
   const t = safe(first, 90);
-  return cut(t.charAt(0).toUpperCase() + t.slice(1) || "Tailzu change", 70);
+  return cut(t.charAt(0).toUpperCase() + t.slice(1) || "X0 Bot change", 70);
 }
 
 /** A team's part of the pull request (code/team/report.ts): why there is a team, the parts table, what the reviewers found, what is open, and the other projects' pull requests. */
@@ -85,12 +85,12 @@ export function prBody(state: AgentState, o: { worklog: string; jobId: string; s
   else out.push(...checkLines(v.checks).map((l) => `- ${l}`), "", v.summary.charAt(0).toUpperCase() + v.summary.slice(1));
   out.push("");
   if (v?.alreadyBroken.length) {
-    out.push("## Already broken before Tailzu", "", "These were failing before this change, so they are not caused by it and were not fixed here:", ...list(v.alreadyBroken.map((n) => `\`${cut(n, 140)}\``)), "");
+    out.push("## Already broken before X0 Bot", "", "These were failing before this change, so they are not caused by it and were not fixed here:", ...list(v.alreadyBroken.map((n) => `\`${cut(n, 140)}\``)), "");
   }
   if (state.baseline?.status === "unknown" && state.baseline.note) out.push(`> Heads up: ${safe(state.baseline.note, 300)}`, "");
   if (o.design?.length) out.push("## Design check", "", ...o.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (o.worklog.trim()) out.push(o.worklog.trim(), "");
-  out.push("---", `Made by Tailzu (job \`${o.jobId.slice(0, 8)}\`). It is a draft until the checks are green and you say it is ready.`);
+  out.push("---", `Made by X0 Bot (job \`${o.jobId.slice(0, 8)}\`). It is a draft until the checks are green and you say it is ready.`);
   const text = out.join("\n");
   return text.length > 60_000 ? `${text.slice(0, 59_900).trimEnd()}\n\n_(cut: the rest is in the job's work log)_` : text;
 }
@@ -141,7 +141,7 @@ export function reportText(i: ReportInput): string {
     else out.push(...checkLines(v.checks).map((l) => `- ${l}`));
     out.push("");
     if (v.broke.length) out.push("Broken by this change", ...list(v.broke.map((n) => cut(n, 140))), "");
-    if (v.alreadyBroken.length) out.push("Already broken before Tailzu (not caused by this change)", ...list(v.alreadyBroken.map((n) => cut(n, 140))), "");
+    if (v.alreadyBroken.length) out.push("Already broken before X0 Bot (not caused by this change)", ...list(v.alreadyBroken.map((n) => cut(n, 140))), "");
   }
   if (s.baseline?.status === "unknown" && s.baseline.note) out.push(`Note: ${safe(s.baseline.note, 300)}`, "");
   if (i.design?.length) out.push("The design", ...i.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");

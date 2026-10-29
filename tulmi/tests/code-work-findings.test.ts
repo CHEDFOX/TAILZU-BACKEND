@@ -29,11 +29,11 @@ describe("compareToBaseline: tests, by name", () => {
     const c = compareToBaseline(base, [r("test", 1, ["api > deletes a user", "signup > validates the email"])]);
     expect(c.broke.map((f) => f.name)).toEqual(["signup > validates the email"]);
     expect(c.alreadyBroken.map((f) => f.name)).toEqual(["api > deletes a user"]);
-    expect(c.alreadyBroken[0]!.note).toBe("was already broken before Tailzu");
+    expect(c.alreadyBroken[0]!.note).toBe("was already broken before X0 Bot");
     expect(c.fixed.map((f) => f.name)).toEqual(["api > lists users"]);
     expect(c.ok).toBe(false);
     expect(c.checks).toEqual([{ kind: "test", status: "broke", exitCode: 1 }]);
-    expect(c.summary).toBe("1 thing this change broke; 1 already broken before Tailzu; 1 fixed.");
+    expect(c.summary).toBe("1 thing this change broke; 1 already broken before X0 Bot; 1 fixed.");
   });
 
   it("a check that passed and fails now is all ours; a check that failed and passes now is all fixed", () => {
@@ -59,7 +59,7 @@ describe("compareToBaseline: a check that names nothing", () => {
   it("is judged as a whole: red when it was green is ours, red when it was red is not", () => {
     const c = compareToBaseline(baselineOf(r("build", 0), r("typecheck", 2)), [r("build", 1, undefined, "failed to compile"), r("typecheck", 2)]);
     expect(c.broke).toEqual([{ kind: "build", name: "build" }]);
-    expect(c.alreadyBroken).toEqual([{ kind: "typecheck", name: "typecheck", note: "was already broken before Tailzu" }]);
+    expect(c.alreadyBroken).toEqual([{ kind: "typecheck", name: "typecheck", note: "was already broken before X0 Bot" }]);
     expect(c.checks).toEqual([{ kind: "build", status: "broke", exitCode: 1 }, { kind: "typecheck", status: "already_broken", exitCode: 2 }]);
   });
 
@@ -136,7 +136,7 @@ describe("logComparison and flagFinding", () => {
     const findings = all.filter((e) => e.kind === "finding");
     expect(findings.map((e) => e.data?.severity)).toEqual(["risk", "info"]);
     expect(findings[0]!.text).toMatch(/This change broke test: signup > validates/);
-    expect(findings[1]!.text).toMatch(/was already broken before Tailzu/);
+    expect(findings[1]!.text).toMatch(/was already broken before X0 Bot/);
   });
 
   it("flagFinding cleans what the bot noticed, and writes it to the log", async () => {

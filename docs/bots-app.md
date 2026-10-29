@@ -61,6 +61,7 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `…/bots/registry.ts` | `screen({ id, load?, build })` |
 | `…/bots/screens/{shell,you,bots,keybot,code,firstRun}.ts` | **the screens, one file per area: yours** |
 | `…/bots/screens/planItem.ts` | Plan's add / change an event or a to-do (`bots.plan.item`), registered with bots.ts's list (section 11) |
+| `…/bots/screens/safety.ts` | Reporting and blocking in Spaces (App Review 1.2): someone's page (`bots.person`), the report screen (`bots.report`), Blocked people (`bots.blocked`). Rules: `src/botsBots/{blocks,safety}.ts`; routes: `routes/safety.ts` (with the admin's `/v1/admin/reports`, the console's Reports tab); migration 0057 |
 | `…/bots/screens/keybot{Stats,You,Parts}.ts` | Keybot's other pages: the old Stats tab's cards (month, day, apps, speak, days), the old You tab's Voice, Haptics and name pages, and Keybot's small parts and charts ([bots-keybot-parity.md](bots-keybot-parity.md)) |
 | `…/bots/index.ts` | joins the screen files, bootstrap nav, the switch, `buildBotsScreen` |
 | `…/bots/fixtures.ts` | fake deps and the boards' sample day (Aanya), for tests and the render check |

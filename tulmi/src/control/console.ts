@@ -8,7 +8,7 @@ export const CONSOLE_HTML = String.raw`<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tailzu Control</title>
+<title>X0 Bot Control</title>
 <style>
 :root{--bg:#0e0f11;--panel:#16181b;--line:#26292e;--ink:#e9e7e2;--mute:#8d9096;--amber:#E8A23C;--ok:#5fb37a;--bad:#e0605a;
 --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
@@ -43,7 +43,7 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border-bottom:1
 </head>
 <body>
 <div class="gate" id="gate">
-  <h1>Tailzu <span style="color:var(--amber)">Control</span></h1>
+  <h1>X0 Bot <span style="color:var(--amber)">Control</span></h1>
   <p class="note">Change anything any client is sent, live. Paste the server's ADMIN_SECRET. It stays in this tab only.</p>
   <input id="secret" type="password" placeholder="ADMIN_SECRET" autocomplete="off">
   <input id="who" placeholder="Your name, for the history">
@@ -51,7 +51,7 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border-bottom:1
   <div class="msg bad" id="gateMsg"></div>
 </div>
 <div id="app" class="hidden">
-<header><h1>Tailzu <b>Control</b></h1><span class="meta" id="ver"></span><span class="sp"></span>
+<header><h1>X0 Bot <b>Control</b></h1><span class="meta" id="ver"></span><span class="sp"></span>
   <button id="reload">Reload</button><button id="lock">Lock</button></header>
 <main>
 <aside>
@@ -63,7 +63,12 @@ table{border-collapse:collapse;width:100%;font-size:12.5px}td,th{border-bottom:1
   <div id="rules" style="display:grid;gap:8px"></div>
 </aside>
 <section>
-  <div class="tabs"><button data-t="knobs">Knobs</button><button data-t="edit" class="on">Rule</button><button data-t="find">Find a path</button><button data-t="hist">History</button><button data-t="help">How rules work</button></div>
+  <div class="tabs"><button data-t="knobs">Knobs</button><button data-t="edit" class="on">Rule</button><button data-t="find">Find a path</button><button data-t="hist">History</button><button data-t="help">How rules work</button><button data-t="reports">Reports <span id="rp-badge" class="chip off hidden"></span></button></div>
+  <div id="t-reports" class="hidden">
+    <p class="note">What people reported in Spaces (a message, a shared thing, a person). Act on each within 24 hours: take the content out, suspend the account (it can't sign in again), or dismiss it. Each also goes to the support inbox.</p>
+    <div class="bar"><select id="rp-status" aria-label="Which reports"><option value="open">Open</option><option value="actioned">Acted on</option><option value="dismissed">Dismissed</option><option value="all">All</option></select><button id="rp-load">Load</button><span class="msg" id="rp-msg"></span></div>
+    <div id="rp-list" style="display:grid;gap:10px;margin-top:10px"></div>
+  </div>
   <div id="t-knobs" class="hidden">
     <p class="note">Every value a client is sent, as it goes out now. Change one and it is live for that audience at once; clear it and the code's value comes back.</p>
     <div class="bar"><select id="k-src" aria-label="Surface">
@@ -191,7 +196,27 @@ async function editKnob(kind,key,cur,changed){const src=$("#k-src").value;const 
   await load();await loadKnobs()}catch(e){msg($("#k-msg"),e.message,"bad")}}
 $("#k-load").onclick=loadKnobs;$("#k-src").onchange=loadKnobs;$("#k-kind").onchange=drawKnobs;$("#k-q").oninput=drawKnobs;
 function tab(t){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));$("#t-edit").classList.toggle("hidden",t!=="edit");$("#ctxBox").classList.toggle("hidden",!(t==="edit"||t==="find"));$("#t-knobs").classList.toggle("hidden",t!=="knobs");if(t==="knobs"&&!KN)loadKnobs();
- $("#t-hist").classList.toggle("hidden",t!=="hist");$("#t-help").classList.toggle("hidden",t!=="help");if(t==="hist")hist();if(t==="find")$("#onlyChanged").checked=false}
+ $("#t-hist").classList.toggle("hidden",t!=="hist");$("#t-help").classList.toggle("hidden",t!=="help");if(t==="hist")hist();if(t==="find")$("#onlyChanged").checked=false;
+ $("#t-reports").classList.toggle("hidden",t!=="reports");if(t==="reports")loadReports()}
+// Reports (routes/safety.ts): every value is set as text, never as markup; what people wrote is untrusted.
+async function loadReports(){msg($("#rp-msg"),"Loading…");try{const j=await api("GET","/v1/admin/reports?status="+encodeURIComponent($("#rp-status").value));
+ const b=$("#rp-badge");b.textContent=j.open+(j.overdue?" ("+j.overdue+" late)":"");b.classList.toggle("hidden",!j.open);
+ msg($("#rp-msg"),j.open+" open"+(j.overdue?" · "+j.overdue+" past 24 hours":""),j.overdue?"bad":"");const box=$("#rp-list");box.innerHTML="";
+ if(!j.reports.length){box.innerHTML='<p class="note">Nothing here.</p>';return}
+ for(const r of j.reports){const d=document.createElement("div");d.className="rule";d.style.cursor="default";
+  d.innerHTML='<div class="row"><span class="id"></span><span class="chip s"></span><span class="chip"></span></div><div class="note"></div><div class="msg"></div><div class="note"></div><div class="bar"></div>';
+  d.children[0].children[0].textContent=r.what;d.children[0].children[1].textContent=r.reasonWords;d.children[0].children[2].textContent=r.status==="open"?(r.overdue?"LATE · was due ":"due ")+new Date(r.dueBy).toLocaleString():r.status+(r.resolvedBy?" by "+r.resolvedBy:"");
+  if(r.overdue)d.children[0].children[2].classList.add("off");
+  d.children[1].textContent="Reported by "+r.reporter.name+" · "+new Date(r.createdAt).toLocaleString()+" · about "+r.reported.name+(r.reported.id?" ("+r.reported.id+")":"")+(r.note?" · their note: "+r.note:"");
+  const s=r.snapshot||{};d.children[2].textContent=[s.text,s.title,s.url,s.note,(s.files||[]).map(f=>f.name).join(", "),s.file&&s.file.name,(s.list||[]).join("; "),(s.spaces||[]).join(", ")].filter(Boolean).join("\n").slice(0,3000);
+  d.children[3].textContent=r.action?"Done: "+r.action:"";
+  const bar=d.children[4];const act=(label,body,ask)=>{const x=document.createElement("button");x.textContent=label;if(/Suspend/.test(label))x.className="danger";
+   x.onclick=async()=>{if(ask&&!confirm(ask))return;try{await api("PUT","/v1/admin/reports/"+encodeURIComponent(r.id),body);await loadReports()}catch(e){msg($("#rp-msg"),e.message,"bad")}};bar.appendChild(x)};
+  if(r.kind!=="person")act("Take it out",{status:"actioned",remove:true},"Take this "+(r.kind==="message"?"message":"shared thing")+" out for everyone?");
+  if(r.reported.id)act("Take out and suspend",{status:"actioned",remove:r.kind!=="person",suspend:true},"Suspend "+r.reported.name+"'s account? They won't be able to sign in again.");
+  act("Dismiss",{status:"dismissed"});if(r.status!=="open")act("Reopen",{status:"open"});box.appendChild(d)}}
+ catch(e){msg($("#rp-msg"),e.message,"bad")}}
+$("#rp-load").onclick=loadReports;$("#rp-status").onchange=loadReports;
 document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>tab(b.dataset.t));
 $("#reload").onclick=load;$("#lock").onclick=()=>{S.removeItem("sec");location.reload()};
 $("#enter").onclick=async()=>{const sv=$("#secret").value.trim();if(sv)S.setItem("sec",sv);const wv=$("#who").value.trim();if(wv||!S.getItem("who"))S.setItem("who",wv||"admin");try{await load();$("#gate").classList.add("hidden");$("#app").classList.remove("hidden");tab("knobs")}catch(e){msg($("#gateMsg"),e.message,"bad")}};

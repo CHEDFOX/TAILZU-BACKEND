@@ -113,7 +113,7 @@ export async function completeGoogleOAuth(
   const conn = await d.store.getConnection(userId, def.id);
   // Single use, whatever happens next: a code is not retried against this verifier.
   await d.store.upsertConnection(userId, def.id, { verifierEnc: null });
-  if (!conn?.verifierEnc) throw new ConnectorError("bad_state", "That sign-in was already used or never started. Start again from Tailzu.");
+  if (!conn?.verifierEnc) throw new ConnectorError("bad_state", "That sign-in was already used or never started. Start again from X0 Bot.");
   const verifier = decrypt(conn.verifierEnc);
 
   const r = await tokenRequest(d.google, {

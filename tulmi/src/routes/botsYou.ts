@@ -58,7 +58,7 @@ const APP_WORDS: Record<string, { can: string[]; cant: string[] }> = {
   "google-calendar": { can: ["Read your events and free time", "Add or move events, asking you first"], cant: ["Share your calendar", "Change anything you didn't allow"] },
   "google-tasks": { can: ["Read your to-do lists", "Add and tick off tasks, asking you first"], cant: ["Read your other Google data"] },
   "google-docs": { can: ["Make new Docs from your words"], cant: ["Open your other Drive files"] },
-  "google-sheets": { can: ["Make sheets and add rows to them"], cant: ["Open sheets Tailzu didn't make"] },
+  "google-sheets": { can: ["Make sheets and add rows to them"], cant: ["Open sheets X0 Bot didn't make"] },
   "google-forms": { can: ["Make forms and read who answered"], cant: ["Open your other Drive files"] },
   "google-classroom": { can: ["Read classes, homework and due dates"], cant: ["Turn in or change anything"] },
   github: { can: ["Read code and issues you can see", "Open pull requests, asking you first"], cant: ["Merge anything by itself"] },
@@ -325,7 +325,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
       const def = await c.hub.resolve(user.id, req.params.id).catch(() => undefined);
       if (!def || def.hidden || def.kind === "device") return reply.code(404).send({ code: "not_found", message: "No such app." });
       const conn = await c.store.getConnection(user.id, def.id);
-      if (NOT_OFFERED.has(def.id) && !conn?.tokensEnc) return reply.code(404).send({ code: "not_offered", message: "Tailzu has its own calendar and to-dos: they're on your Plan." });
+      if (NOT_OFFERED.has(def.id) && !conn?.tokensEnc) return reply.code(404).send({ code: "not_offered", message: "X0 Bot has its own calendar and to-dos: they're on your Plan." });
       const defs = deps.bots ? await deps.bots.defs(user.id).catch(() => []) : [];
       const bots = defs.filter((d) => d.skills.connectors.includes(def.id))
         .map((d) => ({ slug: d.slug, name: d.name, colour: d.colour, purpose: d.purpose, builtin: d.ownerId === null, linked: true }));
@@ -383,7 +383,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     const userId = exportLinkUser(req.query.t, Date.now());
     if (!userId) {
       return reply.code(410).header("content-type", "text/plain; charset=utf-8")
-        .send("This download link has run out. Open Privacy in Tailzu and tap Download my data again.");
+        .send("This download link has run out. Open Privacy in X0 Bot and tap Download my data again.");
     }
     try { return await sendExport({ id: userId }, reply); } catch (err) { return fail(reply, err); }
   });

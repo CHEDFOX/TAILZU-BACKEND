@@ -70,7 +70,7 @@ const ANSWERS: Record<string, unknown> = {
   "GET /v1/you/billing?tz=330": {
     // The route still carries the price and the invoices' amounts (billing.ts): the screens must not draw them.
     plan: { name: "Pro", active: true, store: "razorpay", renews: true, until: FIXED_NOW + 15 * DAY, since: FIXED_NOW - 100 * DAY, price: "₹299", period: "a month", paidBy: "UPI autopay", cancel: "razorpay", manageUrl: null },
-    invoices: [{ id: "inv_1", number: "TZ-2610-0412", date: FIXED_NOW - 16 * DAY, amountPaise: 29_900, amount: "₹299", status: "paid", url: "https://rzp.io/i/a", what: "Tailzu Pro" }],
+    invoices: [{ id: "inv_1", number: "TZ-2610-0412", date: FIXED_NOW - 16 * DAY, amountPaise: 29_900, amount: "₹299", status: "paid", url: "https://rzp.io/i/a", what: "X0 Pro" }],
     usage: USAGE, email: "aanya@example.in",
   },
   "GET /v1/you/computers": {
@@ -119,6 +119,13 @@ describe("the You screens", () => {
       });
     }
   }
+
+  it("Delete account is reachable from the phone's Privacy page (App Store 5.1.1(v)), and from the computer's", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.privacy", client, ANSWERS);
+      expect(JSON.stringify(s.root)).toContain('"bots.delete-account"');
+    }
+  });
 
   it("You and Usage show the meter the way Claude does, and no screen here shows money", async () => {
     const you = texts((await build("bots.you", "phone", ANSWERS)).root);

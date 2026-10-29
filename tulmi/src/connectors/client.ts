@@ -70,7 +70,7 @@ export function toFail(err: unknown, name: string): Fail {
   if (err instanceof EgressRefused) {
     return err.reason === "too_large"
       ? { code: "failed", message: `${name} sent back more than I can take.` }
-      : { code: "blocked_address", message: `${name} is at an address Tailzu won't connect to.` };
+      : { code: "blocked_address", message: `${name} is at an address X0 Bot won't connect to.` };
   }
   const text = err instanceof Error ? `${err.name} ${err.message} ${String((err as { cause?: unknown }).cause ?? "")}` : String(err);
   const status = (err as { code?: unknown })?.code;
@@ -475,5 +475,5 @@ export async function probeMcp(url: URL, name: string, fetchFn: FetchLike = oaut
   await res.body?.cancel().catch(() => {});
   if (res.status === 401) return "oauth";
   if (res.ok) return "none";
-  throw new ConnectorError("not_mcp", `That address didn't answer like an app Tailzu can connect to.`);
+  throw new ConnectorError("not_mcp", `That address didn't answer like an app X0 Bot can connect to.`);
 }

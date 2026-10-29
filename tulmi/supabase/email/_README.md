@@ -32,7 +32,7 @@ curl -X POST "https://api.x0bot.com/v1/media/upload?key=email.mark" \
   -H "x-admin-secret: $ADMIN_SECRET" -F "file=@new-mark.png"
 ```
 
-The mark stands alone, with `alt="Tailzu"`: most clients block remote images
+The mark stands alone, with `alt="X0 Bot"`: most clients block remote images
 until the reader allows them, and those draw the alt text in the image's place,
 so the mail still says who it is from at the moment it asks for trust.
 

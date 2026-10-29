@@ -119,7 +119,7 @@ export class BotShop {
   private async readyEntry(userId: string, t: Template): Promise<ShopEntry> {
     const adds = await this.addsOf(t.id);
     return {
-      id: t.id, kind: "ready", name: t.name, colour: t.colour, purpose: t.purpose, by: "Tailzu", adds: new Set(adds.map((a) => a.user_id)).size,
+      id: t.id, kind: "ready", name: t.name, colour: t.colour, purpose: t.purpose, by: "X0 Bot", adds: new Set(adds.map((a) => a.user_id)).size,
       status: await this.statusOf(userId, null, adds), does: t.principles.filter((p) => !/^never\b/i.test(p)).slice(0, 3),
       will: t.will, wont: t.wont, apps: t.skills.connectors.map(this.appName),
     };
@@ -177,7 +177,7 @@ export class BotShop {
   async list(userId: string, slug: string, byName: string): Promise<{ listed: true }> {
     const found = await this.bots.resolve(userId, slug);
     if (!found) throw new BotError("not_found", "There is no such bot.", 404);
-    if (!found.stored) throw new BotError("builtin", "Tailzu's own bots are already everyone's.", 403);
+    if (!found.stored) throw new BotError("builtin", "X0 Bot's own bots are already everyone's.", 403);
     await this.bots.update(userId, found.stored.id, { publicCard: true });
     const [have] = await this.listings.select({ bot_id: found.stored.id, owner_id: userId }, { limit: 1 });
     if (!have) await this.listings.insert({ id: randomUUID(), bot_id: found.stored.id, owner_id: userId, by_name: byName.slice(0, 40), listed_ms: this.now() });

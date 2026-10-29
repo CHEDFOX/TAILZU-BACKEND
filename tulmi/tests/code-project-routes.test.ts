@@ -361,7 +361,7 @@ describe("GitHub's push webhook", () => {
     await app.close();
   });
 
-  it("is handled by handleWebhook alone, which only touches Tailzu's own store and the hook it is given", async () => {
+  it("is handled by handleWebhook alone, which only touches X0 Bot's own store and the hook it is given", async () => {
     const r = await projectRig();
     const seen: Array<[string, string]> = [];
     const hooks = { pushed: (p: { id: string }, after: string) => { seen.push([p.id, after]); } };

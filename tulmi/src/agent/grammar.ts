@@ -53,7 +53,8 @@ const TAIL = /\s*\b(?:please|pls|thanks|thank you|for me|now|right now|quickly|o
  */
 export function commandText(said: string, names: string[] = []): string {
   let s = plainWords(said);
-  const named = names.map((n) => plainWords(n)).filter(Boolean).map(escapeRe);
+  // Longest first, so "x0 bot" goes whole rather than leaving "bot" behind "x0".
+  const named = names.map((n) => plainWords(n)).filter(Boolean).sort((a, b) => b.length - a.length).map(escapeRe);
   const NAME = named.length ? new RegExp(`^(?:${named.join("|")})\\b[\\s,]*`) : null;
   for (let i = 0; i < 8; i++) {
     const before = s;
@@ -74,7 +75,8 @@ export function commandText(said: string, names: string[] = []): string {
  */
 const SHOW_OPENING = /^(?:where|how|what|whats|what's|why|which|who|whose|when|is there|are there|is it|is this|is that|does|do i|do you|did|can i|could i|should i|am i|show me|point|find|locate|explain|tell me|help me (?:find|understand)|i can'?t find|i cannot find|i don'?t see|i do not see|look for|wheres|where's|hows|how's)\b/;
 const SHOW_ANYWHERE = /\b(?:kahan|kahaan|kaha|kidhar|kaise|kaisa|kyun|kyu|kaun sa|kaunsa)\b|कहाँ|कहां|किधर|कैसे|क्यों|कौन सा/u;
-const POLITE_REQUEST = /^(?:\W*)(?:hey\s+\S+[\s,]+)?(?:please\s+)?(?:can|could|would|will) (?:you|u)\b/i;
+// "Hey X0 Bot, could you…": a name of two words, the second "bot", is still the name.
+const POLITE_REQUEST = /^(?:\W*)(?:hey\s+\S+(?:\s+bot)?[\s,]+)?(?:please\s+)?(?:can|could|would|will) (?:you|u)\b/i;
 
 /** The rules above as the desktop's own copy of them takes them (resolver.js, via the bootstrap's
  *  desktop.agent.grammar), so the two are one source and cannot drift. */

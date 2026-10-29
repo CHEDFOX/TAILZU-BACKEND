@@ -736,7 +736,7 @@ describe("the routes", () => {
     wantBearer = "access-1";
     const done = await app.inject({ method: "GET", url: `/v1/connectors/callback?code=good&state=${encodeURIComponent(state)}` });
     expect(done.statusCode).toBe(200);
-    expect(done.body).toContain("You can go back to Tailzu");
+    expect(done.body).toContain("You can go back to X0 Bot");
     expect((await store.getConnection("cy", "oapp"))!.tokensEnc).toMatch(/^v1\./);
   });
 

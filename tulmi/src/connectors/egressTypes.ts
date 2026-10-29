@@ -36,10 +36,10 @@ export type RefusedReason =
 const REFUSED_WORDS: Record<RefusedReason, string> = {
   bad_url: "That isn't a web address.",
   not_https: "The address has to start with https://.",
-  bad_port: "That address uses a port Tailzu doesn't connect to.",
+  bad_port: "That address uses a port X0 Bot doesn't connect to.",
   userinfo: "Take the name and password out of the address.",
   fragment: "Take the part after # out of the address.",
-  private_address: "That address points into a private network, so Tailzu won't connect to it.",
+  private_address: "That address points into a private network, so X0 Bot won't connect to it.",
   no_address: "I couldn't find that address.",
   redirects: "That address sent me through too many redirects.",
   too_large: "That app's answer was too big to take.",

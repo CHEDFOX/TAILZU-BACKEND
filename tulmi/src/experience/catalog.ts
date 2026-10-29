@@ -352,14 +352,14 @@ export const SITE_UI = {
    * full stop where a comma would have kept going.
    */
   how: {
-    title: "Talk. Tailzu writes.",
+    title: "Talk. X0 Bot writes.",
     human: "Talk.",
     // Three steps, a title each and nothing under it.
     steps: [
       { title: "You talk." },
       // What it does that typing doesn't: the filler goes, the names stay (the FAQ's "Names and amounts stay").
       { title: "Ums out. Names kept." },
-      { title: "Tailzu writes." },
+      { title: "X0 Bot writes." },
     ],
   },
   // You clean it yourself: the hero's thread, dragged across a real
@@ -482,7 +482,7 @@ export const SITE_UI = {
     human: "So it's in every app.",
     // Full Access, with its reason and what happens to the audio (facts.ts: the keyboard needs it to
     // reach the internet; the FAQ: audio is deleted once it's written), at the moment before an install.
-    lede: "WhatsApp, Gmail, Instagram, ChatGPT. Switch to Tailzu, tap once, talk. On iPhone, allow Full Access: it needs the internet to hear you. Audio is deleted once it's written.",
+    lede: "WhatsApp, Gmail, Instagram, ChatGPT. Switch to X0 Bot, tap once, talk. On iPhone, allow Full Access: it needs the internet to hear you. Audio is deleted once it's written.",
     privacy: "How your voice is handled",
     saboteur: {
       label: "Text Mummy",
@@ -490,7 +490,7 @@ export const SITE_UI = {
       fixes: { haan: "Hand", aa: "as", raha: "rash", khana: "Ghana" },
       say: "Say it instead",
       wrote: "Haan mummy, aa raha hoon. Khana rakh do.",
-      after: "Autocorrect doesn't speak Hinglish. Tailzu does.",
+      after: "Autocorrect doesn't speak Hinglish. X0 Bot does.",
     },
   },
   /*
@@ -544,7 +544,7 @@ export const SITE_UI = {
     hint: "Tap Ctrl twice to talk",
     // On a phone the installers are for later: send the link to the laptop instead.
     share: "Send this to my laptop",
-    shareText: "Tailzu for my laptop",
+    shareText: "X0 Bot for my laptop",
     copied: "Link copied. Open it on your laptop.",
     // Meeting notes (released): Ctrl+Alt+N, ⌘⌥N on a Mac. The lines are the
     // Bleeped film's real meeting (AMI ES2002a, CC BY 4.0: the credit is
@@ -618,7 +618,7 @@ export const SITE_UI = {
    */
   dev: {
     title: "Your hands don't have to be the bottleneck.",
-    lede: "Tailzu puts the instruction where it belongs.",
+    lede: "X0 Bot puts the instruction where it belongs.",
     app: "Cursor",
     file: "auth.ts",
     lang: "TypeScript",
@@ -661,7 +661,7 @@ export const SITE_UI = {
     // the world's" became the languages it means, and the page now says in
     // its own words what the product is.
     items: [
-      { q: "What is Tailzu?", a: "A voice keyboard. Talk in any language, send clean text." },
+      { q: "What is X0 Bot?", a: "A voice keyboard. Talk in any language, send clean text." },
       { q: "Does it work in WhatsApp?", a: "Yes. It's a keyboard, so every app." },
       { q: "Which languages?", a: "All 22 Indian languages, Hinglish, English and 50+ more." },
       { q: "Hinglish?", a: "Native. Two languages stay two." },
@@ -713,7 +713,7 @@ export const SITE_UI = {
    * a site deploy.
    */
   download: {
-    get: "Get Tailzu",
+    get: "Get X0 Bot",
     ios: "Get it on iPhone",
     android: "Get it on Android",
     win: "Download for Windows",
@@ -779,7 +779,7 @@ export const SITE_UI = {
     next: "Next film",
     top: "Back to top",
     skip: "Skip to the page",
-    heroFilm: "A Tailzu film · Heard · speech in 22 scripts",
+    heroFilm: "An X0 Bot film · Heard · speech in 22 scripts",
     platforms: ["iPhone", "Android", "Windows", "Mac", "Linux"],
     made: "Made by Xooteq Lab.",
     // Every film is an iPhone or a Mac; the keyboard on Android does the same.
@@ -1967,7 +1967,7 @@ const DESKTOP_UI = {
     // own: a phone has no room for a heading above the pills and does not draw
     // one. Every label that WAS here — the method tabs, the send button, the
     // two social rows — described a form this window no longer builds.
-    title: "Tailzu",
+    title: "X0 Bot",
     subtitle: "Sign in the same way you do on your phone — your voices, history and words come with you.",
     // NOTHING UNDER THE FORM. The line here said dictation needs an account,
     // under a form whose whole job is asking for one: the same fact twice, and
@@ -2021,7 +2021,7 @@ const DESKTOP_UI = {
   },
   // The rail down the left of the window, and the crumb above the screen.
   rail: {
-    brand: "Tailzu",
+    brand: "X0 Bot",
     dictate: "Dictate now",
     settings: "Settings",
     signOut: "Sign out",
@@ -2033,7 +2033,7 @@ const DESKTOP_UI = {
     dictate: "Dictate",
     listening: "◉ Listening — {key} stops",
     signInToDictate: "Sign in to dictate…",
-    open: "Open Tailzu",
+    open: "Open X0 Bot",
     tone: "Tone",
     toneThisDevice: "this device",
     liveCaptions: "Live captions while dictating",
@@ -2045,20 +2045,20 @@ const DESKTOP_UI = {
     backend: "Backend",
     signedIn: "Signed in — dictation lands on your account",
     editConfig: "Edit config…",
-    quit: "Quit Tailzu",
-    tooltipReady: "Tailzu — ready",
-    tooltipListening: "Tailzu — listening…",
-    tooltipSignIn: "Tailzu — sign in to dictate",
+    quit: "Quit X0 Bot",
+    tooltipReady: "X0 Bot — ready",
+    tooltipListening: "X0 Bot — listening…",
+    tooltipSignIn: "X0 Bot — sign in to dictate",
   },
   // Native notifications and the sentences the recorder shows when capture
   // fails. Every one of these names something the user has to go and do, and
   // every one of them was previously unfixable without a release.
   notify: {
-    title: "Tailzu",
+    title: "X0 Bot",
     signIn: "Sign in to dictate — your words belong to your account.",
     holdUnavailable: "Hold-to-talk unavailable (uiohook-napi didn't load) — using the toggle hotkey.",
     micBlockedWindows: "microphone blocked — Settings → Privacy & security → Microphone → let desktop apps access",
-    micBlockedMac: "microphone blocked — System Settings → Privacy & Security → Microphone → Tailzu",
+    micBlockedMac: "microphone blocked — System Settings → Privacy & Security → Microphone → X0 Bot",
     micMissing: "no microphone found — plug one in, then try again",
     micBusy: "microphone is in use by another app",
     noSpeech: "no speech detected — check your microphone",
@@ -2701,14 +2701,14 @@ export function buildBootstrap(
     // Central copy — every screen can reference these with "@key". On the
     // phone every word starts with a capital (titleCase.ts), like the screens.
     labels: (opts.formFactor === "desktop" ? (l: Record<string, string>) => l : titleCaseLabels)({
-      "app.name": "Tailzu",
+      "app.name": "X0 Bot",
       // The desktop masthead's chip for "no limit": free, not paid, right now.
       ...(freeForAll() ? { "desktop.mast.unlimited": "Free" } : {}),
       "settings.privacyPolicy": "Privacy Policy",
       "settings.termsOfService": "Terms of Service",
       "settings.support": "Contact Support",
-      "onboarding.title": "Welcome To Tailzu",
-      "onboarding.subtitle": "Speak Or Type Rough — Tailzu Makes It Sound Like You.",
+      "onboarding.title": "Welcome To X0 Bot",
+      "onboarding.subtitle": "Speak Or Type Rough — X0 Bot Makes It Sound Like You.",
       "onboarding.cta": "Get Started",
 
       // Stats screen (see statsScreen). Kept as label refs so localisation
@@ -2719,7 +2719,7 @@ export function buildBootstrap(
       "stats.kv.audio": "Audio dictated",
       "stats.kv.saved": "Minutes saved",
       "stats.effort.template":
-        "Your effort: you'd have spent {minutes} minutes typing what Tailzu cleaned up in seconds.",
+        "Your effort: you'd have spent {minutes} minutes typing what X0 Bot cleaned up in seconds.",
       "stats.sparkline.label": "Requests, last 30 days",
       "stats.cta.history": "See history",
 
@@ -2773,8 +2773,8 @@ export function buildBootstrap(
     update: {
       minVersion: "0.5.0",
       latestVersion: "1.0.0",
-      title: "Update Tailzu",
-      message: "A newer version of Tailzu is available with the latest improvements.",
+      title: "Update X0 Bot",
+      message: "A newer version of X0 Bot is available with the latest improvements.",
       cta: "Update now",
       url: {
         android: "https://play.google.com/store/apps/details?id=com.tulmi.app",
@@ -2902,7 +2902,7 @@ export const WORDS_GATE = {
     back: "Back to typing",
   },
   /** What the keyboard's status line says when it cannot open the app. */
-  keyboardStatus: "Out of free words — open Tailzu to get more.",
+  keyboardStatus: "Out of free words — open X0 Bot to get more.",
 };
 
 /**
@@ -4472,7 +4472,7 @@ function subscribedScreen(store?: string, expiresAt?: string, renewing?: boolean
         (() => { const b = blipBox("tada-s", 0.9); return { ...b, style: { ...b.style, marginBottom: 14 } } as Node; })(),
         {
           type: "Text",
-          props: { content: "You're on Tailzu." },
+          props: { content: "You're on X0 Bot." },
           style: { fontSize: 30, fontWeight: "800", color: "$color.text", marginBottom: 10 },
         },
         {
@@ -4767,7 +4767,7 @@ function paywallScreen(
           builtIn: {
             type: "BinaryReveal",
             props: {
-              text: "Tailzu",
+              text: "X0 Bot",
               color: THEME.color.primary,
               background: "#000000",
               flipMs: 36,
@@ -4778,7 +4778,7 @@ function paywallScreen(
             },
             fallback: {
               type: "Heading",
-              props: { content: "Tailzu" },
+              props: { content: "X0 Bot" },
               style: { fontSize: 46, fontWeight: "800", color: THEME.color.primary },
             },
           },
@@ -4842,7 +4842,7 @@ function paywallScreen(
               },
           children: [
             // Not a headline — a label on what is being bought.
-            { type: "Text", props: { content: cfg.title ? "Tailzu Unlimited" : "" },
+            { type: "Text", props: { content: cfg.title ? "X0 Unlimited" : "" },
               style: { fontSize: 9, letterSpacing: 3, textTransform: "uppercase",
                        color: "rgba(255,255,255,0.5)", textAlign: "center", marginBottom: 14 } },
             // PAID FIRST. The free row is the way out, and a way out listed
@@ -5010,9 +5010,9 @@ export interface ScreenContext {
  */
 const SETUP_STEPS = [
   { key: "account", title: "Finish signing up", detail: "About a minute from here to talking in any app.", url: "tulmi://" },
-  { key: "keyboard", title: "Add the Tailzu keyboard", detail: "30 seconds in Settings. Then every app takes your voice.", url: "tulmi://screen/onboarding_keyboard" },
+  { key: "keyboard", title: "Add the X0 Bot keyboard", detail: "30 seconds in Settings. Then every app takes your voice.", url: "tulmi://screen/onboarding_keyboard" },
   { key: "mic", title: "Allow the microphone", detail: "So it can hear you. It listens only when you tap.", url: "tulmi://screen/onboarding" },
-  { key: "first", title: "Say your first sentence", detail: "Tap the mic on the Tailzu keyboard, in any app.", url: "tulmi://" },
+  { key: "first", title: "Say your first sentence", detail: "Tap the mic on the X0 Bot keyboard, in any app.", url: "tulmi://" },
 ] as const;
 
 export function setupActivity(opts: {
@@ -5242,7 +5242,7 @@ function usageOutScreen(screenId: string): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId,
-    title: "Tailzu",
+    title: "X0 Bot",
     root: {
       type: "Screen",
       children: [{
@@ -5263,14 +5263,14 @@ function freeNowScreen(screenId: string): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
     screenId,
-    title: "Tailzu",
+    title: "X0 Bot",
     root: {
       type: "Screen",
       children: [{
         type: "Stack",
         style: { flex: 1, justifyContent: "center", alignItems: "center", gap: 14, padding: 32 },
         children: [
-          { type: "Text", props: { content: "Tailzu is free" }, style: { fontSize: 26, fontWeight: "600", textAlign: "center" } },
+          { type: "Text", props: { content: "X0 Bot is free" }, style: { fontSize: 26, fontWeight: "600", textAlign: "center" } },
           { type: "Text", props: { content: "Every word, on every device. There is no plan to pick and nothing to pay." }, style: { fontSize: 15, textAlign: "center", opacity: 0.75 } },
           { type: "Button", props: { label: "Back" }, on: { onPress: { kind: "navigateBack" } }, style: { marginTop: 10 } },
         ],
@@ -5380,7 +5380,7 @@ const AUTH_SDUI = true;
  * be a sign-in screen. This decides how it LOOKS.
  */
 export const AUTH_UI = {
-  brand: "Tailzu",
+  brand: "X0 Bot",
   tagline: "You talk. It writes.",
 
   /** The window. hideChrome is on, so this padding IS the safe area. */
@@ -9722,7 +9722,7 @@ function settingsScreen(ctx: ScreenContext): ScreenResponse {
         row(sw("r.read"), { kind: "navigate", screenId: "voice_read" }),
         // Its name: Tailzu always, and a name of their own beside it.
         row(sw("r.name"), { kind: "navigate", screenId: "assistant_name" },
-          { value: nicknameOf(ctx.personality) ? `Tailzu, ${nicknameOf(ctx.personality)}` : "Tailzu" }),
+          { value: nicknameOf(ctx.personality) ? `X0, ${nicknameOf(ctx.personality)}` : "X0" }),
 
         // ---- Connected apps -------------------------------------------------
         // What it can reach in the person's apps, and what it is doing there.
@@ -10696,7 +10696,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
     children: [
       label("Remove from history", { color: u.onCardDim }),
       t("Why should it go?", "writtenLight", 22, { marginTop: 12, letterSpacing: -0.3 }),
-      caption("Either way it's gone for good, and Tailzu stops learning from it.",
+      caption("Either way it's gone for good, and X0 Bot stops learning from it.",
         { marginTop: 10, color: "rgba(243,226,198,0.72)" }),
       {
         type: "Stack",
@@ -10927,7 +10927,7 @@ function historyScreen(ctx: ScreenContext): ScreenResponse {
                       bind: { content: "item.input" }, props: { numberOfLines: 3 } },
                     // What the app wrote — marked by weight below, not by
                     // colour: no amber inside History.
-                    label("Tailzu wrote", { color: u.onCardFaint, marginTop: 14 }),
+                    label("X0 Bot wrote", { color: u.onCardFaint, marginTop: 14 }),
                     { ...t("", "written", 16, { color: u.onCard, marginTop: 6 }),
                       bind: { content: "item.output" }, props: { numberOfLines: 6 } },
                     cross,
@@ -11033,7 +11033,7 @@ function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
       micBlocked: {
         kind: "sequence",
         actions: [
-          { kind: "toast", tone: "info", message: "Turn on Microphone for Tailzu, then come back." },
+          { kind: "toast", tone: "info", message: "Turn on Microphone for X0 Bot, then come back." },
           { kind: "openSettings", target: "app" },
         ],
       },
@@ -11071,7 +11071,7 @@ function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
       deniedNext: {
         kind: "sequence",
         actions: [
-          { kind: "toast", tone: "info", message: "You can allow the microphone anytime in Settings → Tailzu." },
+          { kind: "toast", tone: "info", message: "You can allow the microphone anytime in Settings → X0 Bot." },
           { kind: "navigate", screenId: "onboarding_keyboard", replace: true },
         ],
       },
@@ -11205,7 +11205,7 @@ function onboardingKeyboard(): ScreenResponse {
   // what the list under it is for.
   const stepsTitle: Node = {
     type: "Paragraph",
-    props: { content: "A moment in Settings, and Tailzu writes with you in every app." },
+    props: { content: "A moment in Settings, and X0 Bot writes with you in every app." },
     style: { fontSize: 12.5, lineHeight: 18, color: "$color.text", marginBottom: 11 },
   };
   return {
@@ -11255,7 +11255,7 @@ function onboardingKeyboard(): ScreenResponse {
         actions: [
           { kind: "requestPermission", permission: "microphone" },
           { kind: "openUrl", url: "app-settings:", external: true },
-          { kind: "toast", tone: "info", message: "In Settings: General → Keyboard → Keyboards → Add New → Tailzu" },
+          { kind: "toast", tone: "info", message: "In Settings: General → Keyboard → Keyboards → Add New → X0 Bot" },
         ],
       },
       // Android lands the user ON the keyboard list. `openSettings` with
@@ -11266,7 +11266,7 @@ function onboardingKeyboard(): ScreenResponse {
         kind: "sequence",
         actions: [
           { kind: "openSettings", target: "keyboard" },
-          { kind: "toast", tone: "info", message: "Turn on Tailzu, then come back." },
+          { kind: "toast", tone: "info", message: "Turn on X0 Bot, then come back." },
         ],
       },
       // Split the finish flow so `switchTab` only runs after the PUT succeeds.
@@ -11409,11 +11409,11 @@ function onboardingKeyboard(): ScreenResponse {
           { type: "Spacer", style: { height: 10 } },
           step("2", "Tap Keyboard → Keyboards → Add New Keyboard."),
           { type: "Spacer", style: { height: 10 } },
-          step("3", "Choose Tailzu from the list."),
+          step("3", "Choose X0 Bot from the list."),
           { type: "Spacer", style: { height: 10 } },
-          step("4", "Tap Tailzu again and turn on “Allow Full Access”."),
+          step("4", "Tap X0 Bot again and turn on “Allow Full Access”."),
           { type: "Spacer", style: { height: 10 } },
-          step("5", "Return to Tailzu — the globe key switches keyboards."),
+          step("5", "Return to X0 Bot — the globe key switches keyboards."),
         ],
       },
       // Android. The button fires INPUT_METHOD_SETTINGS, which opens the
@@ -11431,11 +11431,11 @@ function onboardingKeyboard(): ScreenResponse {
           stepsTitle,
           step("1", "Tap the button below — it opens your keyboard list."),
           { type: "Spacer", style: { height: 10 } },
-          step("2", "Turn on Tailzu."),
+          step("2", "Turn on X0 Bot."),
           { type: "Spacer", style: { height: 10 } },
           step("3", "Android warns that a keyboard can read what you type. Accept it — that is how every keyboard works."),
           { type: "Spacer", style: { height: 10 } },
-          step("4", "Come back, then tap the globe key to switch to Tailzu."),
+          step("4", "Come back, then tap the globe key to switch to X0 Bot."),
         ],
       },
       // THE WATCHER. Draws nothing; exists to notice.
@@ -11482,7 +11482,7 @@ function onboardingKeyboard(): ScreenResponse {
           },
           // Already done. No ✕ — there is nothing left to decline.
           {
-            ...allowPill("Start using Tailzu", "finish"),
+            ...allowPill("Start using X0 Bot", "finish"),
             visibleIf: { truthy: "keyboardEnabled" },
           },
           ],
@@ -11533,7 +11533,7 @@ function keyboardRecordScreen(ctx: ScreenContext): ScreenResponse {
           { kind: "setState", path: "sending", value: true },
           { kind: "completeKeyboardHandoff" },
           { kind: "haptic", style: "success" },
-          { kind: "toast", tone: "success", message: "Sent to Tailzu keyboard — swipe back to your app." },
+          { kind: "toast", tone: "success", message: "Sent to X0 Bot keyboard — swipe back to your app." },
         ],
       },
       // User bailed — cancel the pending handoff so the keyboard doesn't
@@ -11921,7 +11921,7 @@ function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
       denied: {
         kind: "toast",
         tone: "error",
-        message: "Allow the microphone in Settings → Tailzu, then swipe back and tap the keyboard mic again.",
+        message: "Allow the microphone in Settings → X0 Bot, then swipe back and tap the keyboard mic again.",
       },
       openMainSettings: {
         kind: "openSettings",
@@ -11975,7 +11975,7 @@ function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
         {
           type: "Button",
           visibleIf: { not: { truthy: "micGranted" } },
-          props: { label: "Open Tailzu Settings", variant: "secondary" },
+          props: { label: "Open X0 Bot Settings", variant: "secondary" },
           on: { onPress: "openMainSettings" },
         },
         { type: "Spacer", style: { height: 8 } },
@@ -12111,7 +12111,7 @@ function androidKeyboardArt(): Node {
         row("Samsung Keyboard", false),
         // The one that matters arrives last and from below, so the eye lands
         // on the switch rather than on the list.
-        { type: "Rise", props: { delayMs: 420, fromY: 26 }, children: [row("Tailzu", true, true)] },
+        { type: "Rise", props: { delayMs: 420, fromY: 26 }, children: [row("X0 Bot", true, true)] },
       ] },
       { type: "Stack", style: { flex: 1 } },
       // What Android says next, named rather than left as a surprise — it is
@@ -12202,7 +12202,7 @@ function hapticsScreen(ctx: ScreenContext): ScreenResponse {
         // screen degrades to "less precise" rather than "broken".
         fallback: {
           type: "Paragraph",
-          props: { content: "Update Tailzu to choose keys one by one. \u201cEvery key\u201d above works either way." },
+          props: { content: "Update X0 Bot to choose keys one by one. \u201cEvery key\u201d above works either way." },
           style: { fontSize: 13, color: "$color.muted" },
         },
         // $event is the key's id — the component fires it, so one handler
@@ -12621,18 +12621,18 @@ function assistantNameScreen(ctx: ScreenContext): ScreenResponse {
       type: "Stack",
       style: { flex: 1, backgroundColor: YOU_UI.ground },
       children: [
-        youHead("Its name", nick ? `Tailzu, or ${nick}` : "Tailzu"),
+        youHead("Its name", nick ? `X0, or ${nick}` : "X0"),
         {
           type: "Screen",
           style: { backgroundColor: "transparent", paddingHorizontal: PHONE_LOOK.side, paddingTop: 8, paddingBottom: 40 },
           children: [
-            { type: "Text", props: { content: "Tailzu is its name, and always works. Give it a name of your own too, and call it either while you talk: \u201cZara, make it formal.\u201d" },
+            { type: "Text", props: { content: "X0 is its name, and always works. Give it a name of your own too, and call it either while you talk: \u201cZara, make it formal.\u201d" },
               style: { fontSize: 15, lineHeight: 23, color: PHONE_LOOK.ink2 } },
             gap(20),
             { type: "TextField", bind: { value: "name" }, props: { placeholder: "A name of your own", maxLength: 24, autoCapitalize: "words" } },
             gap(16),
             { type: "Button", props: { label: "Save", variant: "primary" }, on: { onPress: "save" } },
-            ...(nick ? [gap(10), { type: "Button", props: { label: "Tailzu only", variant: "secondary" }, on: { onPress: "clear" } } as Node] : []),
+            ...(nick ? [gap(10), { type: "Button", props: { label: "X0 only", variant: "secondary" }, on: { onPress: "clear" } } as Node] : []),
           ],
         },
       ],
@@ -13384,8 +13384,8 @@ export const SITE_SHAPE = {
   // IS the title a crawler that runs the script reads; the static <head> is
   // written from the same two lines (scripts/sync-site.mts).
   "meta": {
-    "title": "AI Keyboard & Voice Typing in Hindi, Hinglish & 70+ Languages — Tailzu",
-    "description": "Talk. Tailzu writes. An AI keyboard for iPhone, Android, Windows and Mac: speak Hindi, Hinglish, English or any of 74 languages, and clean text lands in any app."
+    "title": "AI Keyboard & Voice Typing in Hindi, Hinglish & 70+ Languages — X0 Bot",
+    "description": "Talk. X0 Bot writes. An AI keyboard for iPhone, Android, Windows and Mac: speak Hindi, Hinglish, English or any of 74 languages, and clean text lands in any app."
   }
 };
 
@@ -14036,7 +14036,7 @@ export function buildKeyboardConfig(
       // The words-out line, under the key both keyboards read it by.
       // While Tailzu is free there are no free words to run out of: a 429 is the usage meter (src/you/usage.ts).
       // Read safely: the keyboard's config is also built where no server config is loaded.
-      words_out_status: (() => { try { return freeForAll(); } catch { return false; } })() ? "Paused for now. Open Tailzu to see when it starts again." : WORDS_GATE.keyboardStatus,
+      words_out_status: (() => { try { return freeForAll(); } catch { return false; } })() ? "Paused for now. Open X0 Bot to see when it starts again." : WORDS_GATE.keyboardStatus,
       language: "Language",
       // Branded, non-technical status text (both keyboards fall back to these
       // exact strings if the backend omits them — editing here re-words them

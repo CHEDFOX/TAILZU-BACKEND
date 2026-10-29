@@ -166,7 +166,7 @@ describe("stopping a part and running it again", () => {
       return t?.parts.find((p) => p.id === 1)?.status === "failed" && t.parts.find((p) => p.id === 2)?.status === "blocked";
     });
     const failed = (await r.stateNow(job.id)).team!.parts.find((p) => p.id === 1)!;
-    expect(failed.reason).toContain("Something went wrong on Tailzu's side three times running");
+    expect(failed.reason).toContain("Something went wrong on X0 Bot's side three times running");
     const res = await req("alice", "POST", `/v1/code/jobs/${job.id}/team/parts/1/rerun`, {});
     expect(res.statusCode, res.body).toBe(200);
     // The person answers the page's question; the lead goes on, and runs part 1 again once there is room.

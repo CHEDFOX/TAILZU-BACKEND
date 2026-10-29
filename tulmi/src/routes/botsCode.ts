@@ -164,7 +164,7 @@ export function registerBotsCodeRoutes(app: FastifyInstance, deps: BotsAreaDeps)
         added.push({ id: r.project.id, fullName: r.project.fullName });
       } catch { failed += 1; }
     }
-    if (!added.length) return reply.code(409).send({ code: "none_added", message: "I couldn't add those. Check Tailzu can see them on GitHub." });
+    if (!added.length) return reply.code(409).send({ code: "none_added", message: "I couldn't add those. Check X0 Bot can see them on GitHub." });
     return reply.send({ added, failed });
   });
 

@@ -75,7 +75,7 @@ describe("connected apps, switched on", () => {
     expect((await app.inject({ method: "POST", url: "/v1/connectors/notion/level", headers: auth, payload: { level: "send" } })).statusCode).toBe(404);
   });
 
-  it("publishes Tailzu's OAuth client document, with no session, built from the config", async () => {
+  it("publishes X0 Bot's OAuth client document, with no session, built from the config", async () => {
     const res = await app.inject({ method: "GET", url: "/oauth/client-metadata.json" });
     expect(res.statusCode).toBe(200);
     expect(res.headers["content-type"]).toContain("application/json");

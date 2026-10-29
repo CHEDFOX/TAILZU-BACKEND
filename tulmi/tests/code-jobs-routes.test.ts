@@ -97,7 +97,7 @@ describe("with the Code bot off, or GitHub not set up, or nobody signed in", () 
 });
 
 describe("jobs", () => {
-  it("are made on a branch Tailzu made, listed newest first, read with their steps, and only the person's own", async () => {
+  it("are made on a branch X0 Bot made, listed newest first, read with their steps, and only the person's own", async () => {
     const r = await rig();
     const s = await server(r);
     const bad = await s.call("alice", "POST", "/v1/code/jobs", { projectId: r.project.id, branch: r.branch });

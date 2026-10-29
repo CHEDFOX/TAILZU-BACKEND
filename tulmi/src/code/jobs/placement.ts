@@ -128,7 +128,7 @@ export function choosePlacement(ctx: PlacementCtx): PlacementChoice {
 
 /** What a provider's short reason for saying no means, in the sentence that explains a wait. */
 const GITHUB_WHY: Record<string, string> = {
-  needs_workflow_permission: "GitHub's free computers need the Tailzu GitHub App to have the Workflows and Actions permissions (or your sign-in to allow workflows)",
+  needs_workflow_permission: "GitHub's free computers need the X0 Bot GitHub App to have the Workflows and Actions permissions (or your sign-in to allow workflows)",
 };
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);

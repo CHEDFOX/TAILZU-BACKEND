@@ -25,7 +25,7 @@ export const OG_IMAGE = {
   url: `${ORIGIN}/og.png`,
   width: 1200,
   height: 630,
-  alt: "Tailzu: “trensfer 2500 rupeez to ramesh tomorow”, said roughly, written clean as “Transfer 2500 rupees to Ramesh tomorrow.”",
+  alt: "X0 Bot: “trensfer 2500 rupeez to ramesh tomorow”, said roughly, written clean as “Transfer 2500 rupees to Ramesh tomorrow.”",
 };
 
 /** The App Store id, for Safari's install banner. */
@@ -80,7 +80,7 @@ export function headTags(o: HeadOpts): string {
       // answer engine that may only quote a line quotes someone else.
       : `<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">\n<link rel="canonical" href="${url}">`,
     `<meta property="og:type" content="website">`,
-    `<meta property="og:site_name" content="Tailzu">`,
+    `<meta property="og:site_name" content="X0 Bot">`,
     `<meta property="og:locale" content="en_IN">`,
     `<meta property="og:url" content="${url}">`,
     `<meta property="og:title" content="${esc(ogTitle)}">`,

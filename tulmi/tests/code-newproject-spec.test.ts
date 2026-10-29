@@ -185,11 +185,11 @@ describe("chooseStack: the rules, in order, each with its reason", () => {
     expect(chooseStack(spec(), { answers: { constraints: "(no preference: you decide)" } }).preference).toBeNull();
   });
 
-  it("a framework Tailzu cannot set up yet is named, and the nearest one is used, said plainly", () => {
+  it("a framework X0 Bot cannot set up yet is named, and the nearest one is used, said plainly", () => {
     const rails = chooseStack(spec({ platforms: ["api"] }), { request: "I want it in Rails" });
     expect(rails.kind).toBe("fastify");
     expect(rails.preference).toMatchObject({ said: "Rails", honoured: false, note: expect.stringMatching(/cannot set up Rails yet/) });
-    expect(rails.reasons[0]).toMatch(/Tailzu cannot set that up yet, so it starts with Fastify/);
+    expect(rails.reasons[0]).toMatch(/X0 Bot cannot set that up yet, so it starts with Fastify/);
     expect(chooseStack(spec(), { request: "use Angular" })).toMatchObject({ kind: "vite-react", preference: { honoured: false } });
     expect(chooseStack(spec({ platforms: ["api"] }), { request: "a Flask app" })).toMatchObject({ kind: "fastapi", preference: { said: "Flask", honoured: false } });
   });
@@ -207,7 +207,7 @@ describe("chooseStack: the rules, in order, each with its reason", () => {
     expect(chooseStack(spec(), { request: "on my own server" }).hosting.name).toBe("your own server");
   });
 
-  it("a database they ask for is theirs, and one Tailzu does not set up is said", () => {
+  it("a database they ask for is theirs, and one X0 Bot does not set up is said", () => {
     const s = chooseStack(spec({ needs: { database: true } }), { request: "with MongoDB" });
     expect(s.parts.find((p) => p.role === "database")).toMatchObject({ name: "MongoDB" });
     expect(s.preference).toMatchObject({ said: "MongoDB", note: "MongoDB is not set up automatically yet" });

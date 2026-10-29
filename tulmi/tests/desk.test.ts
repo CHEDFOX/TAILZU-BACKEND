@@ -90,8 +90,8 @@ const history = [
 ];
 const sampleCtx = {
   personality: {
-    vocabulary: "Tailzu\nKubernetes",
-    dictionary: [{ word: "tail zoo", replacement: "Tailzu" }],
+    vocabulary: "X0 Bot\nKubernetes",
+    dictionary: [{ word: "tail zoo", replacement: "X0 Bot" }],
     snippets: "my email = hello@example.com",
     activePresetId: "signature",
     stylePortrait: { examples: 2, core: "short sentences" },
@@ -339,7 +339,7 @@ describe("the desk pages", () => {
       bestDay: { date: "Oct 3", words: 240 },
       dictionary: {
         saved: 5, used: 3, unused: 2, scanned: 40,
-        top: [{ word: "Tailzu", uses: 12 }, { word: "Kubernetes", uses: 4 }],
+        top: [{ word: "X0 Bot", uses: 12 }, { word: "Kubernetes", uses: 4 }],
         unusedWords: ["Foo", "Bar"],
       },
     },
@@ -388,7 +388,7 @@ describe("the desk pages", () => {
     // the exact reason copy
     expect(s).toContain("Remove from history");
     expect(s).toContain("Why should it go?");
-    expect(s).toContain("Either way it's gone for good, and Tailzu stops learning from it.");
+    expect(s).toContain("Either way it's gone for good, and X0 Bot stops learning from it.");
     expect(s).toContain("It doesn't sound like me");
     expect(s).toContain("Just a clean-up");
     expect(s).toContain("Leave it");
@@ -654,7 +654,7 @@ describe("a newer build, said in the window", () => {
   it("tops every page on an older build, and its button downloads the installer", () => {
     for (const id of DESK_SCREENS) {
       const c = card(buildScreen(id, at("0.2.1", "windows")));
-      expect(c, id).toContain("Tailzu 0.2.2 is ready.");
+      expect(c, id).toContain("X0 Bot 0.2.2 is ready.");
       expect(c, id).toContain('"kind":"openUrl","url":"https://tailzu.space/downloads/Tailzu-Setup.exe"');
     }
   });
@@ -787,8 +787,8 @@ describe("words and snippets, one at a time", () => {
   });
 
   it("removing a proof mark removes its dictionary pair", async () => {
-    await app.inject({ method: "PUT", url: "/v1/personality", payload: { dictionary: [{ word: "tail zoo", replacement: "Tailzu" }, { word: "k eight s", replacement: "K8s" }] } });
-    await app.inject({ method: "POST", url: "/v1/words", payload: { remove: "Tailzu", kind: "pair" } });
+    await app.inject({ method: "PUT", url: "/v1/personality", payload: { dictionary: [{ word: "tail zoo", replacement: "X0 Bot" }, { word: "k eight s", replacement: "K8s" }] } });
+    await app.inject({ method: "POST", url: "/v1/words", payload: { remove: "X0 Bot", kind: "pair" } });
     const d = (await personality()).dictionary ?? [];
     expect(d.map((x: { replacement: string }) => x.replacement)).toEqual(["K8s"]);
   });

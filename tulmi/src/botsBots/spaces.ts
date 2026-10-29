@@ -385,11 +385,11 @@ export class Spaces {
       const from = a.me.name || "Someone";
       await this.outbox.queue({
         to: email, kind: "space_invite", ref: code,
-        subject: `${from} invited you to ${a.s.name} on Tailzu`,
+        subject: `${from} invited you to ${a.s.name} on X0 Bot`,
         text: [
-          `${from} invited you to ${a.s.name} on Tailzu.`,
+          `${from} invited you to ${a.s.name} on X0 Bot.`,
           `Open this link to join (it works for seven days): ${link}`,
-          `Or open Tailzu, go to You, then Spaces, tap Join with a code and enter ${code}.`,
+          `Or open X0 Bot, go to You, then Spaces, tap Join with a code and enter ${code}.`,
           `Sign in with this email address (${email}) to accept. If you weren't expecting this, you can ignore it.`,
         ].join("\n\n"),
       });
@@ -503,7 +503,7 @@ export class Spaces {
     if (!a.admin) throw forbid("Only the admin can make roles.");
     const name = clean(o.name, 30);
     if (!name) throw new BotError("bad_request", "Name the role, like Grandparent or Cook.");
-    if (PRESETS.some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new BotError("bad_request", `${name} is one of Tailzu's roles already. Pick another name.`);
+    if (PRESETS.some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new BotError("bad_request", `${name} is one of X0 Bot's roles already. Pick another name.`);
     const perms = permsOf(o.perms);
     if (typeof o.roleId === "string" && o.roleId) {
       const r = a.roles.find((x) => x.id === o.roleId);

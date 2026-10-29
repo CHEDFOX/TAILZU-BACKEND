@@ -227,7 +227,7 @@ async function planAsks(r: Run, paths: readonly string[]): Promise<PlanAsk> {
   if (denied) {
     const full = ACTIONS[denied.action].label;
     const label = full.charAt(0).toLowerCase() + full.slice(1);
-    return { asking: [], denied: denied.reason === "denied_by_grant" ? `You told Tailzu not to ${label} in this project, so it won't.` : `Tailzu may not ${label} here (${denied.reason.replace(/_/g, " ")}).` };
+    return { asking: [], denied: denied.reason === "denied_by_grant" ? `You told X0 Bot not to ${label} in this project, so it won't.` : `X0 Bot may not ${label} here (${denied.reason.replace(/_/g, " ")}).` };
   }
   return { asking: decisions.filter((x) => x.effect === "ask") };
 }
@@ -705,7 +705,7 @@ export async function runVerify(r: Run, round: number): Promise<{ v: VerifyState
     }
   }
   const checks = await verifyChecks(r);
-  if (!checks.length) return none("The project has no checks Tailzu could find.");
+  if (!checks.length) return none("The project has no checks X0 Bot could find.");
   let overlay;
   try { overlay = r.tools.changes.toOverlay(); } catch (err) {
     if (err instanceof Refused) return none(err.message);
@@ -852,7 +852,7 @@ export class Unverified extends Error {
 function refusalWords(branch: string, err: GithubRefusal): string {
   const said = redactText(err.said || "GitHub gave no reason.", 600);
   return `GitHub refused the push to ${branch}. Exactly what GitHub said: "${said}"${err.links.length ? ` Its link: ${err.links.join(" ")}` : ""} `
-    + "Tailzu does not try to get round a rule like this, and pushed nothing else. Change the rule on GitHub, or take the change through a pull request, then tell me to try again; or stop.";
+    + "X0 Bot does not try to get round a rule like this, and pushed nothing else. Change the rule on GitHub, or take the change through a pull request, then tell me to try again; or stop.";
 }
 
 /**
@@ -876,7 +876,7 @@ export async function commitStaged(r: Run, o: { partial?: boolean } = {}): Promi
     throw new EndJob("failed", `The branch changed while ${merge.base} was being merged into it, so I did not commit over the new work. Nothing was committed; the next check will merge again.`);
   }
   const message = s.commit?.message && !s.commit.sha ? s.commit.message
-    : (merge ? `Merge ${merge.base} into ${r.branch}\n\nThe conflicts were resolved by Tailzu (job ${r.jobId.slice(0, 8)}). ${merge.conflicted.length ? `They were in ${merge.conflicted.slice(0, 6).join(", ")}.` : "There were none."}`
+    : (merge ? `Merge ${merge.base} into ${r.branch}\n\nThe conflicts were resolved by X0 Bot (job ${r.jobId.slice(0, 8)}). ${merge.conflicted.length ? `They were in ${merge.conflicted.slice(0, 6).join(", ")}.` : "There were none."}`
       : commitMessage(s, { conventional: view?.conventions?.commits.style === "conventional", jobId: r.jobId })) + (o.partial ? "\n\nThis is part of the work: the budget ran out before the rest." : "");
   // A commit made just before a crash, and not written down: found on the branch, not made again.
   if (s.commit && !s.commit.sha && s.commit.base !== head && (await alreadyOnBranch(r))) {
@@ -1039,7 +1039,7 @@ export async function newProjectPhase(r: Run): Promise<void> {
       const add = sc.gitignore.filter((l) => !have.has(l));
       if (add.length) files.push({ path: ".gitignore", content: `${cur ? cur.replace(/\n*$/, "\n") : ""}${add.join("\n")}\n` });
     }
-    const message = `Add PLAN.md for ${np.specName ?? "the project"}\n\nThe plan for the first version: what it is, the stack and why, and the milestones.${sc.files.length ? "\nAlso the template files the starter does not write itself." : ""}\n\nDone by Tailzu (job ${r.jobId.slice(0, 8)}).`;
+    const message = `Add PLAN.md for ${np.specName ?? "the project"}\n\nThe plan for the first version: what it is, the stack and why, and the milestones.${sc.files.length ? "\nAlso the template files the starter does not write itself." : ""}\n\nDone by X0 Bot (job ${r.jobId.slice(0, 8)}).`;
     const made = await r.gated("commit", "commit PLAN.md", (id) => r.ws.commit(files, message, id ? { approvalId: id } : {}));
     np.planSha = made.sha;
     s.commits.push(made.sha);
@@ -1071,7 +1071,7 @@ export async function newProjectPhase(r: Run): Promise<void> {
       if (out.status !== "done") {
         s.waiting = {
           kind: "question", from: "scaffold", at: r.now(), options: ["Try again", "Skip the setup"],
-          question: `I could not find a computer to run the project's setup on (${cut(out.reason, 120)}). Turn on running commands in your Tailzu desktop app, or allow GitHub's free computers, and tell me to try again, or skip the setup.`,
+          question: `I could not find a computer to run the project's setup on (${cut(out.reason, 120)}). Turn on running commands in your X0 Bot desktop app, or allow GitHub's free computers, and tell me to try again, or skip the setup.`,
         };
         throw new Park("answer", "The project's setup could not be run: no computer was free.");
       }

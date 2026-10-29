@@ -58,7 +58,7 @@ const TOOLS: NativeTool[] = [
   },
   {
     name: "list_responses", risk: "read", verb: "read",
-    description: "See the answers to a Google Form Tailzu made: how many answered, each choice added up, and the latest answers.",
+    description: "See the answers to a Google Form X0 Bot made: how many answered, each choice added up, and the latest answers.",
     inputSchema: {
       type: "object",
       properties: {

@@ -313,7 +313,7 @@ describe("the contract comes first, and nothing below it can bend it", () => {
     expect(contract).toBeLessThan(p.indexOf("<tone>\n"));
     // First of all: the principles open the block.
     expect(WRITER.startsWith("Principles:\n- ")).toBe(true);
-    expect(WRITER.indexOf("Write only what they gave you")).toBeLessThan(WRITER.indexOf("You are Tailzu"));
+    expect(WRITER.indexOf("Write only what they gave you")).toBeLessThan(WRITER.indexOf("You are X0"));
   });
 
   it("repairs a self-correction for every voice, not only Zu", () => {

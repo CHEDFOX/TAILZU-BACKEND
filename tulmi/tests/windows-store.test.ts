@@ -31,7 +31,7 @@ describe("the Store ID", () => {
     }
   });
 
-  it("is Tailzu's, and feeds the site copy", () => {
+  it("is X0 Bot's, and feeds the site copy", () => {
     expect(WINDOWS_STORE_ID).toBe("9N3GX0XHQ7MX");
     expect(SITE_UI.stores.windowsInstaller).toBe(windowsInstallerUrl(WINDOWS_STORE_ID));
     expect(SITE_UI.stores.windows).toBe(windowsStoreUrl(WINDOWS_STORE_ID));

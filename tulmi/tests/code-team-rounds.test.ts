@@ -293,7 +293,7 @@ describe("the full check", () => {
     expect(r.fake.files(r.repo, branch)["src/api/notes.ts"]).toBe('export const notes = "v1";\n');
   });
 
-  it("does not hold the pull request back for a check that was already failing before Tailzu", async () => {
+  it("does not hold the pull request back for a check that was already failing before X0 Bot", async () => {
     const r = await teamRig();
     allGood(r);
     // The test check failed at the baseline, and fails the same way on the merged branch.
@@ -304,6 +304,6 @@ describe("the full check", () => {
     expect(s.verify!.ok).toBe(true);
     expect(s.verify!.alreadyBroken.length).toBeGreaterThan(0);
     expect(r.fake.pulls(r.repo)).toHaveLength(1);
-    expect(r.fake.pulls(r.repo)[0]!.body).toContain("Already broken before Tailzu");
+    expect(r.fake.pulls(r.repo)[0]!.body).toContain("Already broken before X0 Bot");
   });
 });

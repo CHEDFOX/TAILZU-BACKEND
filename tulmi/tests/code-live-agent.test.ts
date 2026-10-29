@@ -307,7 +307,7 @@ describe("what the person says while the job works", () => {
     await expect(r.orch.message("alice", job.id, "x")).rejects.toMatchObject({ code: "job_over" });
   });
 
-  it("is refused for a job that Tailzu's agent is not running, and where no inbox is switched on", async () => {
+  it("is refused for a job that X0 Bot's agent is not running, and where no inbox is switched on", async () => {
     const { r } = await rigWith();
     const { createWorkBranch: makeBranch } = await import("../src/code/projects.js");
     const plain = await r.jobs.createJob("alice", r.project.id, (await makeBranch(r.d, "alice", r.project.id, "not an agent task")).branch, "t", 0);

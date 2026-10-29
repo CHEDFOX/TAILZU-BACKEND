@@ -40,7 +40,7 @@ export function checkCommand(raw: { name?: unknown; template?: unknown }): Check
   if (inputs > 2) return { ok: false, error: "{{input}} can be used twice at most" };
   if (/\{\{|\}\}/.test(template.replace(PLACEHOLDER, ""))) return { ok: false, error: "a { or } left open: write {{input}} whole" };
   if (forModel(template) !== template) return { ok: false, error: "a command can't hold a secret" };
-  if (inertRules([template]).length) return { ok: false, error: "a command can't tell the bot to ignore Tailzu's own rules" };
+  if (inertRules([template]).length) return { ok: false, error: "a command can't tell the bot to ignore X0 Bot's own rules" };
   return { ok: true, name, template };
 }
 

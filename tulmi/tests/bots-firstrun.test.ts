@@ -125,8 +125,18 @@ describe("About you and Name: the stage after sign-in", () => {
     const answered = await build("bots.name-it", "phone", { api: { ...API, "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "google", source: "saved", gender: "female", saved: true } } });
     expect(answered.state).toMatchObject({ step: 1, fullName: "Aanya Rao", gender: "female" });
     const blank = await build("bots.name-it", "phone", { api: {} });
-    expect(blank.state).toMatchObject({ step: 0, fullName: "", gender: "", name: "Tailzu" });
+    expect(blank.state).toMatchObject({ step: 0, fullName: "", gender: "", name: "X0" });
     expect(lintTree(blank.root!)).toEqual([]);
+  });
+  it("Name asks \"What will you call me?\", starts on X0, and keeps a name they saved before", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.name-it", client, { api: {} });
+      expect(texts(s.root!), client).toContain("What will you call me?");
+      expect(s.state).toMatchObject({ name: "X0" });
+      expect(JSON.stringify(s.root)).toContain('"placeholder":"X0"');
+    }
+    const named = await build("bots.name-it", "phone", { api: { ...API, "GET /v1/personality": { personality: { assistantName: "Zara" } } } });
+    expect(named.state).toMatchObject({ name: "Zara" });
   });
   it("on a build that draws the stage: one stage, Blip presenting About you and cheering on Name", async () => {
     for (const client of ["phone", "desktop"] as const) {
@@ -228,7 +238,7 @@ describe("Plans: a page from You and Billing now", () => {
   });
   it("nothing to sell (free for all, or already paying): say so, and back", async () => {
     const free = await build("bots.plans", "phone", { api: { "GET /v1/bots/first-run/plans?client=phone": { ...PHONE_PLANS, freeForAll: true, plans: [] } } });
-    expect(texts(free.root!)).toContain("Tailzu is free for everyone right now. Nothing to pick, nothing to pay.");
+    expect(texts(free.root!)).toContain("X0 Bot is free for everyone right now. Nothing to pick, nothing to pay.");
     expect(actions(free.root).some((x) => x.kind.startsWith("iap."))).toBe(false);
     expect(finishes(actions(free.root))).toBe(false);
     expect(actions(free.root)).toEqual(expect.arrayContaining([{ kind: "navigateBack" }]));
@@ -252,7 +262,7 @@ describe("the gate: Welcome, Sign in, Code on the sign-in the app already runs",
       expect(types).toEqual(expect.arrayContaining(["SwipePill", "GoogleSignIn", "AppleSignIn", "CodeEntry"]));
       const pills = walk(t).filter((n) => n.type === "SwipePill").map((n) => n.props?.method);
       expect(pills.sort()).toEqual(["email", "phone"]);
-      expect(texts(t)).toEqual(expect.arrayContaining(["Hi, I'm Tailzu.", "Your phone number", "Enter the code"]));
+      expect(texts(t)).toEqual(expect.arrayContaining(["Hi, I'm X0.", "Your phone number", "Enter the code"]));
       // Start shows Sign in; Back returns to Welcome.
       expect(actions(t)).toEqual(expect.arrayContaining([{ kind: "setState", path: "signing", value: true }, { kind: "setState", path: "signing", value: false }]));
     }
@@ -319,7 +329,7 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
       expect(card.props?.color).toBe("#3d3d3d");
       // Step 1: the microphone, for a better experience; allowed or not, on to step 2.
-      const mic = stepOf(card, "Let Tailzu hear you")!;
+      const mic = stepOf(card, "Let X0 Bot hear you")!;
       expect(mic.visibleIf).toEqual({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] });
       const ask = actions(mic).find((x) => x.kind === "requestPermission") as { permission?: string; onGranted?: unknown; onDenied?: unknown; onBlocked?: unknown };
       expect(ask.permission).toBe("microphone");
@@ -327,7 +337,7 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       expect(actions(ask.onDenied)).toEqual([{ kind: "setState", path: "micAsked", value: true }]);
       expect(actions(ask.onBlocked)).toEqual([{ kind: "setState", path: "micAsked", value: true }]);
       // Step 2: the keyboard, straight to its settings.
-      const keys = stepOf(card, "Add the Tailzu keyboard")!;
+      const keys = stepOf(card, "Add the X0 Bot keyboard")!;
       expect(keys.visibleIf).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] }] });
       expect(actions(keys)).toEqual(expect.arrayContaining([{ kind: "openSettings", target: "keyboard" }]));
       // Both done: a happy moment, then it closes and the server is told; "Not now" does the same, for good.
@@ -344,11 +354,11 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
     const later = await build("bots.home", "phone", { api: { ...ARRIVE, "GET /v1/bots/first-run/arrival": { due: false } }, can: MOTION });
     expect(cardOf(later.root!)).toBeUndefined();
     expect(later.state).not.toHaveProperty("permitClosed");
-    expect(texts(later.root!)).not.toContain("Let Tailzu hear you");
+    expect(texts(later.root!)).not.toContain("Let X0 Bot hear you");
     // A build without the living tiles: the same steps in a plain card at the top, gone once answered or done.
     const plain = await build("bots.home", "phone", { api: ARRIVE });
     expect(cardOf(plain.root!)).toBeUndefined();
-    expect(texts(plain.root!)).toContain("Let Tailzu hear you");
+    expect(texts(plain.root!)).toContain("Let X0 Bot hear you");
     expect(lintTree(plain.root!)).toEqual([]);
   });
 
@@ -376,7 +386,7 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
     const real = await build("bots.home", "desktop", { api: ARRIVE, can: [...MOTION, "DeskAskSetup", "DeskMicAsk"] });
     const card = cardOf(real.root!)!;
     expect(card.props).toMatchObject({ overlay: true, readyWhen: { neq: ["micGranted", null] } });
-    expect(stepOf(card, "Let Tailzu hear you")).toBeDefined();
+    expect(stepOf(card, "Let X0 Bot hear you")).toBeDefined();
     expect(walk(stepOf(card, "Let Keybot type for you")!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read" }] });
     const keybot = await build("bots.keybot", "desktop", { can: [...MOTION, "DeskAskSetup", "DeskMicAsk"] });
     expect(cardOf(keybot.root!)?.visibleIf).toEqual({ falsy: "micGranted" });

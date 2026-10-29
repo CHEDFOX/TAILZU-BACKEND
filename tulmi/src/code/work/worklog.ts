@@ -219,7 +219,7 @@ export async function renderWorklog(entriesOrPromise: WorkEntry[] | Promise<Work
     const code = num(d.exitCode);
     const verdict = str(d.verdict);
     const secs = num(d.durationMs) !== undefined ? ` in ${Math.max(0, Math.round(num(d.durationMs)! / 1000))}s` : "";
-    const result = verdict === "already_broken" ? `failed, and was already failing before Tailzu${secs}`
+    const result = verdict === "already_broken" ? `failed, and was already failing before X0 Bot${secs}`
       : verdict === "broke" ? `**failed**: this change broke it${secs}`
         : verdict === "fixed" ? `passes now; it was failing before${secs}`
           : code === 0 ? `passed${secs}` : `failed (exit ${code ?? "?"})${secs}`;

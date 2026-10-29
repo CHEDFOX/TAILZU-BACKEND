@@ -66,7 +66,7 @@ export function weekLine(week: { done: number; minutesSaved: number }): string {
 function nameOf(ctx: BotsCtx, slug: string): string {
   const b = ctx.live.bots.find((x) => x.slug === slug);
   if (b) return b.name;
-  return ({ tailzu: "Tailzu", code: "Code bot", keybot: "Keybot", plan: "Plan bot", travel: "Travel bot", you: "You" } as Record<string, string>)[slug] ?? slug;
+  return ({ tailzu: "X0", code: "Code bot", keybot: "Keybot", plan: "Plan bot", travel: "Travel bot", you: "You" } as Record<string, string>)[slug] ?? slug;
 }
 
 /** A bot's head (or its colour and icon), at a size. */
@@ -548,7 +548,7 @@ const routeFor = (ctx: BotsCtx, slug: string): Route => {
   const name = nameOf(ctx, slug);
   const first: Record<string, string> = {
     travel: "Travel bot shows the plan before it books", plan: "Plan bot asks before it changes your calendar",
-    code: "Code bot shows the plan before it changes code", keybot: "Keybot writes it, you send it", tailzu: "Tailzu answers, or hands it to the right bot",
+    code: "Code bot shows the plan before it changes code", keybot: "Keybot writes it, you send it", tailzu: "X0 answers, or hands it to the right bot",
   };
   return { slug, name, color: colorOf(ctx, slug), say: `${name} will take this`, hint: `Tap to send · ${first[slug] ?? `${name} asks before it does anything`}`, by: "chosen" };
 };
@@ -585,7 +585,7 @@ function sendAsk(ctx: BotsCtx): ActionRef {
 /** Ask who will answer, without answering (decide only). */
 const checkWho: ActionSpec = {
   kind: "callEndpoint", method: "POST", path: "/v1/shell/route", body: { message: "$state.ask" }, assignTo: "route",
-  onError: seq({ kind: "setState", path: "route", value: { slug: "any", name: "Tailzu", say: "Tailzu picks who answers", hint: "Tap to send" } }, toast("Couldn't check who answers. Tap to send anyway.")),
+  onError: seq({ kind: "setState", path: "route", value: { slug: "any", name: "X0 Bot", say: "X0 Bot picks who answers", hint: "Tap to send" } }, toast("Couldn't check who answers. Tap to send anyway.")),
 };
 
 /**
@@ -612,7 +612,7 @@ function whoChip(ctx: BotsCtx): Node {
   const big = ctx.client === "desktop";
   const chipOf = (slug: string, o: { pre?: boolean } = {}) => row([
     avatarOf(ctx, slug, big ? 32 : 30),
-    text(o.pre ? "Tailzu" : nameOf(ctx, slug), { size: 14, weight: 600, lineHeight: 18 }),
+    text(o.pre ? "X0 Bot" : nameOf(ctx, slug), { size: 14, weight: 600, lineHeight: 18 }),
     text(o.pre ? "picks who answers" : "will take this", { size: 14, color: C.meta, lineHeight: 18 }),
     box([], { width: 1, height: 18, backgroundColor: C.line }),
     text(o.pre ? "Check" : "Change", { size: 14, weight: 500, lineHeight: 18 }),
@@ -1190,7 +1190,7 @@ function approvePay(ctx: BotsCtx, link: string) {
               alignSelf: "center", padding: 6, borderRadius: 14, borderWidth: 1, borderColor: C.divider, backgroundColor: C.paper,
             })] : []),
             col([
-              ...[qr ? "Scan with your phone's camera" : "Open Tailzu on your phone", `UPI opens on ${u.name}`, "You type the amount and press pay"]
+              ...[qr ? "Scan with your phone's camera" : "Open X0 Bot on your phone", `UPI opens on ${u.name}`, "You type the amount and press pay"]
                 .map((s, i) => row([stepDot(i + 1), text(s, { size: 13, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 10 })),
             ], { gap: 9 }),
             row([statusMark("waiting"), meta("Waiting for you · then tell us you paid")], { gap: 8 }),

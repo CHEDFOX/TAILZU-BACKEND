@@ -161,7 +161,7 @@ export function scaffoldStep(stack: Pick<Stack, "kind">, o: { name?: string } = 
     commands.push(starter!);
     notes.push("Needs the Flutter SDK on the computer that runs it.");
   } else if (starter === null) {
-    notes.push("There is no official generator for this: Tailzu writes a small template (the files listed), and the commands only install it and prove it works.");
+    notes.push("There is no official generator for this: X0 Bot writes a small template (the files listed), and the commands only install it and prove it works.");
   }
   commands.push(...PROOF[kind]);
 

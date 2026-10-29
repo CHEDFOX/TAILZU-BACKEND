@@ -339,7 +339,7 @@ describe("buildBootstrap", () => {
     // used to disagree — the bar lit one tab while another screen showed.
     expect(b.initialScreenId).toBe("personality");
     // Common labels the app relies on.
-    expect(b.labels?.["app.name"]).toBe("Tailzu");
+    expect(b.labels?.["app.name"]).toBe("X0 Bot");
     // Language list is present.
     expect(Array.isArray(b.languages)).toBe(true);
     expect((b.languages ?? []).length).toBeGreaterThan(5);

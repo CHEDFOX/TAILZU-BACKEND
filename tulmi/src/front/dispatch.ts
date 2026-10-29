@@ -117,7 +117,7 @@ async function dispatchRequest(decision: Decision, message: string, ctx: FrontCt
   }
 
   const left0 = deps.daily ? deps.daily.leftPaise(userId) : Infinity;
-  if (left0 <= 0) throw new FrontError("daily_limit", "You've used what Tailzu may spend on your messages today. It starts again tomorrow.", 429);
+  if (left0 <= 0) throw new FrontError("daily_limit", "You've used what X0 Bot may spend on your messages today. It starts again tomorrow.", 429);
   /** The most one more part may spend: its share of the budget, and what is left of the day. */
   const room = (share: number): number => Math.max(1, Math.min(share, Math.floor(left0 - ownPaise)));
   const visualCap = visualCapOf(decision.intent, decision.shape.visual);

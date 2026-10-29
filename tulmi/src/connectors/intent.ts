@@ -42,6 +42,10 @@
  * Plain patterns: this runs on every step and must be free and the same every
  * time. Which connected app does the job is the router's (router.ts JOB_APPS).
  */
+import { namePattern } from "../experience/assistantName.js";
+
+/** Its own name, however it was heard ("x0", "x zero", "ex oh"…), as a pattern for the lowercased request. */
+const OWN_NAME = namePattern();
 
 export type Job =
   | "calendar" | "booking-links" | "tasks" | "notes" | "wiki" | "docs" | "sheets" | "forms" | "classroom"
@@ -113,7 +117,7 @@ const UPI_ID = /(?:^|[\s,(:])[a-z0-9][a-z0-9._-]*@[a-z]{2,}(?![a-z0-9.@-])/;
 const EMAIL_ADDR = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/g;
 
 /** What a request starts with before its verb: "hey", "please", "can you", "haan,". */
-const LEAD = /^(?:(?:hey|hi|hello|ok|okay|so|and|also|then|now|actually|please|pls|plz|kindly|just|quickly|can you|could you|would you|will you|can u|could u|i want you to|i need you to|i want to|i'd like to|i need to|help me|tailzu|blip|ji|haan|han|ha|yes|yeah|yep|no|nahi|arre|arey|accha|acha|achha|oh|um|uh|bhai|yaar)\b[ ,!.]*)+/;
+const LEAD = new RegExp(`^(?:(?:hey|hi|hello|ok|okay|so|and|also|then|now|actually|please|pls|plz|kindly|just|quickly|can you|could you|would you|will you|can u|could u|i want you to|i need you to|i want to|i'd like to|i need to|help me|${OWN_NAME}|blip|ji|haan|han|ha|yes|yeah|yep|no|nahi|arre|arey|accha|acha|achha|oh|um|uh|bhai|yaar)\\b[ ,!.]*)+`);
 
 // ------------------------------------------------------------------ verbs
 
@@ -443,7 +447,7 @@ function command(t: string): Read | null {
   if (starts(t, new RegExp(`^(?:message|msg|whatsapp|text|ping|tell|inform|reply to|respond to|wish) ${NOT_SAID_TO}`))
     || starts(t, /^let (?!me\b|us\b|it\b)[a-z' ]{1,30}? know\b/) || starts(t, /^drop (?:[a-z]+ )?(?:a )?(?:message|msg|text|line)\b|^drop (?:a )?(?:quick )?note to\b/)
     || starts(t, /^send (?:a |an )?(?:quick |short |small )?(?:message|msg|whatsapp|telegram|slack|dm|text)\b|^send [a-z]+ (?:a |an )?(?:message|msg|text|whatsapp)\b|^send (?:a |an )?(?:quick |short |small )?(?:note|line) to\b/)
-    || starts(t, /^ask (?!(?:me|you|for|about|if|whether|why|how|what|when|where|who|which|google|siri|alexa|chatgpt|claude|tailzu|a|an|questions?)\b)(?:(?:the|my|our) )?[a-z0-9'.-]+(?: [a-z0-9'.-]+)? (?:to|if|whether|for|about|when|ki|ke)\b/)
+    || starts(t, new RegExp(`^ask (?!(?:me|you|for|about|if|whether|why|how|what|when|where|who|which|google|siri|alexa|chatgpt|claude|${OWN_NAME}|a|an|questions?)\\b)(?:(?:the|my|our) )?[a-z0-9'.-]+(?: [a-z0-9'.-]+)? (?:to|if|whether|for|about|when|ki|ke)\\b`))
     || koSay >= 0) {
     return { job: "message", verb: "send", content: contentAt(Math.max(0, koSay)) };
   }

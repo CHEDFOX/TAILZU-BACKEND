@@ -74,7 +74,7 @@ export class AgentJob extends WorkflowEntrypoint<Env, AgentJobParams> {
         a = await step.do(`advance-${n}`, ADVANCE_STEP, async (ctx) => advanceJob(this.env, jobId, `wf-${event.instanceId.slice(0, 8)}-${n}-${ctx.attempt}`));
       } catch (err) {
         // Out of tries: the job is not left running with nobody to drive it.
-        await step.do(`failed-${n}`, SHORT_STEP, async () => (await getWorld(this.env)).agent.abandon(jobId, "Something went wrong on Tailzu's side and it could not be put right. What was committed so far is on the branch; nothing else was changed."));
+        await step.do(`failed-${n}`, SHORT_STEP, async () => (await getWorld(this.env)).agent.abandon(jobId, "Something went wrong on X0 Bot's side and it could not be put right. What was committed so far is on the branch; nothing else was changed."));
         return { ended: `errored: ${(err as Error)?.name ?? "error"}`, advances: n + 1 };
       }
 

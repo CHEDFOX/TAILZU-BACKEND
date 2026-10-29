@@ -70,7 +70,7 @@ describe("a test link", () => {
   });
 });
 
-describe("buying while Tailzu is free", () => {
+describe("buying while X0 Bot is free", () => {
   let app: FastifyInstance;
   beforeAll(async () => {
     const { buildApp } = await import("../src/server.js");

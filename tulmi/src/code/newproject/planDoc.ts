@@ -79,7 +79,7 @@ export function planMilestones(spec: Spec, stack: Stack): PlanMilestone[] {
       `Set up ${stack.label} with its official starter, in this repo.`,
       "Write a README that says how to run it, and keep the project's own checks in scripts (typecheck, lint, test, build).",
       "Add a first test, so the test command has something to run.",
-      "Add a continuous-integration workflow that runs those checks on every pull request. (A workflow file is a change Tailzu asks you to approve.)",
+      "Add a continuous-integration workflow that runs those checks on every pull request. (A workflow file is a change X0 Bot asks you to approve.)",
       `Connect ${host} so every pull request gets a preview link${stack.hosting.tier === "free" ? " (on its free tier)" : ""}.`,
     ],
     acceptance: [
@@ -173,7 +173,7 @@ function buildSettings(kind: StackKind, host: string): string[] {
 function handoff(spec: Spec, stack: Stack): string[] {
   const env = envNames(spec, stack);
   const out: string[] = [
-    "This is how to run the project on your own accounts, with no help from Tailzu. Do it once at the end to be sure it works.",
+    "This is how to run the project on your own accounts, with no help from X0 Bot. Do it once at the end to be sure it works.",
     "",
     "1. **The code is yours.** It is in your GitHub repo. To move it to another account or organisation: Settings, then General, then Transfer.",
     `2. **Make an account on ${stack.hosting.name}** (${stack.hosting.tier === "free" ? "its free tier is enough to start" : "the one you already have"}) and connect this repo.`,
@@ -192,7 +192,7 @@ function handoff(spec: Spec, stack: Stack): string[] {
   out.push(
     "5. **A domain:** buy one from any registrar, add it in the host's settings, and follow the host's steps for the DNS records. HTTPS is automatic.",
     "6. **Rolling back:** every deploy is kept. Re-deploy the previous one from the host's dashboard if a release goes wrong.",
-    "7. **Taking Tailzu's access away:** GitHub, then Settings, then Applications, then uninstall or revoke Tailzu. The code, this plan and the history stay in your repo.",
+    "7. **Taking X0 Bot's access away:** GitHub, then Settings, then Applications, then uninstall or revoke X0 Bot. The code, this plan and the history stay in your repo.",
   );
   return out;
 }
@@ -205,7 +205,7 @@ const bullet = (xs: readonly string[]): string[] => xs.map((x) => `- ${md(x)}`);
 export function planMarkdown(spec: Spec, stack: Stack, o: { date?: string } = {}): string {
   const out: string[] = [];
   out.push(`# ${md(spec.name)}: plan`, "");
-  out.push(`_Written by Tailzu${o.date ? ` on ${o.date}` : ""}${spec.source === "rules" ? ", from your answers alone" : ""}. It is yours: change it, and Tailzu follows what it says now._`, "");
+  out.push(`_Written by X0 Bot${o.date ? ` on ${o.date}` : ""}${spec.source === "rules" ? ", from your answers alone" : ""}. It is yours: change it, and X0 Bot follows what it says now._`, "");
 
   out.push("## Goals", "", md(spec.summary), "");
   if (spec.users.length) out.push(`**Who it is for:** ${spec.users.map(md).join("; ")}.`, "");

@@ -213,7 +213,7 @@ describe("the shell's routes", () => {
   it("route with the bots platform off: the rules alone, for nothing", async () => {
     const { app } = served();
     const r = await app.inject({ method: "POST", url: "/v1/shell/route", headers: who("u1"), payload: { message: "what's a good name for a cat?" } });
-    expect(r.json()).toMatchObject({ slug: "tailzu", name: "Tailzu" });
+    expect(r.json()).toMatchObject({ slug: "tailzu", name: "X0" });
   });
   it("ask: POST /v1/ask as the person, the answer written down for Activity, a payment link handed back", async () => {
     const { app, asked, events } = served({
@@ -328,7 +328,7 @@ describe("the shell's screens", () => {
     }
     expect(texts((await buildBotsScreen(req("bots.search", "phone"), fakeDeps())).root!)).toContain("Search everything");
   });
-  it("approve: you press pay; Tailzu opens UPI and writes a receipt only when told", async () => {
+  it("approve: you press pay; X0 Bot opens UPI and writes a receipt only when told", async () => {
     for (const client of both) {
       const s = await buildBotsScreen(req("bots.approve", client, { upi: UPI, bot: "plan" }), fakeDeps());
       expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay Fresh Basket for this week's groceries?", "You type the amount and press pay in your UPI app. Plan bot never pays on its own."]));

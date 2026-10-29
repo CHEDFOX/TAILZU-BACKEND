@@ -62,9 +62,9 @@ export const page = (title: string, line: string, openApp = true, openUrl = OPEN
   `@media(prefers-color-scheme:dark){body{color:#f2f0ed;background:#16161a}}h1{font-size:22px;margin:0 0 8px}p{margin:0;opacity:.7}` +
   `a{display:inline-block;margin-top:22px;padding:12px 26px;border-radius:999px;background:#1b1b1f;color:#faf8f5;font-weight:600;text-decoration:none}` +
   `@media(prefers-color-scheme:dark){a{background:#f2f0ed;color:#16161a}}</style>` +
-  `<main><h1>${title}</h1><p>${line}</p>${openApp ? `<a href="${openUrl}">Open Tailzu</a>` +
+  `<main><h1>${title}</h1><p>${line}</p>${openApp ? `<a href="${openUrl}">Open X0 Bot</a>` +
     // An older desktop app, or a browser that won't hand the link on, does nothing on a tap.
-    `<p style="margin-top:14px;font-size:14px">Nothing opened? Close this tab and go back to Tailzu.</p>` : ""}</main>`;
+    `<p style="margin-top:14px;font-size:14px">Nothing opened? Close this tab and go back to X0 Bot.</p>` : ""}</main>`;
 
 /** A task as the API sends it: its approval is the plain-words card, never the call's arguments. */
 const taskOut = (t: TaskView): AssistantTask => t as AssistantTask;
@@ -174,9 +174,9 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
       .header("content-security-policy", PAGE_CSP).header("content-type", "text/html; charset=utf-8");
     if (!c) return reply.code(404).send(page("Not available", "Connected apps are not switched on.", false));
     const { code, state, error, iss } = req.query ?? {};
-    if (error) return reply.code(400).send(page("Nothing was connected", "You can go back to Tailzu and try again any time."));
+    if (error) return reply.code(400).send(page("Nothing was connected", "You can go back to X0 Bot and try again any time."));
     if (typeof code !== "string" || typeof state !== "string" || !code || code.length > 4096 || state.length > 4096 || (iss !== undefined && (typeof iss !== "string" || iss.length > 2048))) {
-      return reply.code(400).send(page("That link didn't work", "Go back to Tailzu and start connecting again."));
+      return reply.code(400).send(page("That link didn't work", "Go back to X0 Bot and start connecting again."));
     }
     try {
       // The signed state says whose sign-in and which app this is, and so which sign-in finishes it.
@@ -188,10 +188,10 @@ export function registerConnectorRoutes(app: FastifyInstance, deps: ConnectorRou
         ? await completeGoogleOAuth({ ...deps, google: c.google }, (id) => c.hub.def(id), code, state)
         : await completeOAuth({ ...deps, ...c.signIn }, (id, uid) => c.hub.resolve(uid, id), code, state, iss);
       await c.hub.forget(userId, def.id);
-      return reply.send(page("You're connected", `${def.name} is ready. You can go back to Tailzu.`));
+      return reply.send(page("You're connected", `${def.name} is ready. You can go back to X0 Bot.`));
     } catch (err) {
       req.log.warn({ code: (err as { code?: string })?.code }, "connector callback failed");
-      return reply.code(400).send(page("That didn't work", "Go back to Tailzu and try connecting again."));
+      return reply.code(400).send(page("That didn't work", "Go back to X0 Bot and try connecting again."));
     }
   });
 

@@ -266,7 +266,7 @@ function yoursLines(d: KeybotHomeView | undefined): Line[] {
       onPress: open(SCREENS.keyWords),
     },
     { label: "Languages", value: d ? (d.languages.join(", ") || "Found as you talk") : "", onPress: open(SCREENS.language) },
-    { label: "What you call it", value: d ? (d.nickname ? `Tailzu, or ${d.nickname}` : "Tailzu") : "", onPress: open(SCREENS.keyName) },
+    { label: "What you call it", value: d ? (d.nickname ? `X0, or ${d.nickname}` : "X0") : "", onPress: open(SCREENS.keyName) },
   ];
 }
 
@@ -1021,7 +1021,7 @@ function whyCard(): Node {
   return when({ truthy: "askDelete" }, card([
     text("Forget this line", { size: 11, weight: 600, tracking: 0.4, upper: true, color: C.meta, lineHeight: 15 }),
     text("Why should it go?", { size: 20, weight: 700, tracking: -0.3, lineHeight: 26 }),
-    meta("Either way it's gone for good, and Tailzu stops learning from it.", { size: 13 }),
+    meta("Either way it's gone for good, and X0 Bot stops learning from it.", { size: 13 }),
     col([
       button("It doesn't sound like me", forgetFor("not_me"), { size: "md" }),
       button("Just a clean-up", forgetFor("cleanup"), { kind: "secondary", size: "md" }),

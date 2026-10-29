@@ -194,7 +194,7 @@ describe("worklogMarkdown: the section of the PR body", () => {
     const md = await worklogMarkdown(JOB, { store: await filled() });
     expect(md).toContain("| Command | Result |");
     expect(md).toContain("| `pnpm run test` | passed in 12s: 31 passed |");
-    expect(md).toContain("| `pnpm run lint` | failed, and was already failing before Tailzu in 3s: 2 problems |");
+    expect(md).toContain("| `pnpm run lint` | failed, and was already failing before X0 Bot in 3s: 2 problems |");
     expect(md).toContain("| `pnpm run build` | **failed**: this change broke it in 9s |");
     expect(md).toContain("| `pnpm run typecheck` | passes now; it was failing before in 1s |");
   });

@@ -857,7 +857,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
   ]);
   const trainBlock = section(say("tab.train"), undefined, [
     text(trainLine(ctx.personality), "d-written", { fontSize: 16, lineHeight: "25px", marginTop: 12, marginBottom: 14, maxWidth: 360 }),
-    row([link("Train Tailzu", { kind: "switchTab", tabId: "desk_train" })]),
+    row([link("Train X0 Bot", { kind: "switchTab", tabId: "desk_train" })]),
   ]);
 
   // THE TALKING HISTORY, ONE LINK AWAY. What was said today and before lives
@@ -868,7 +868,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
       stack([
         text("Your dictations", "d-eyebrow"),
         text(dictations
-          ? `${dictations} today${recent > dictations ? `, ${recent} in the last two weeks` : ""} — what you said above what Tailzu wrote.`
+          ? `${dictations} today${recent > dictations ? `, ${recent} in the last two weeks` : ""} — what you said above what X0 Bot wrote.`
           : all.length ? `Nothing today yet. ${recent || all.length} in the last two weeks, said above written.` : "Everything you say shows up here, said above written.",
           "d-written", { fontSize: 17, lineHeight: "25px", marginTop: 8, maxWidth: 560 }),
       ], { flex: 1, minWidth: 0 }),
@@ -893,7 +893,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
 
 function trainLine(p: Personality): string {
   const ex = p.stylePortrait?.examples ?? 0;
-  if (ex <= 0) return "A few minutes of talking, and Tailzu writes more like you.";
+  if (ex <= 0) return "A few minutes of talking, and X0 Bot writes more like you.";
   return `${ex} ${ex === 1 ? "round" : "rounds"} so far. A few more and it knows how you punctuate.`;
 }
 
@@ -954,7 +954,7 @@ function historyRow(it: EntryItem): Node {
         ...stack([
           text("Remove from history", "d-eyebrow"),
           text("Why should it go?", "d-written", { fontSize: 16, lineHeight: "22px", marginTop: 4 }),
-          text("Either way it's gone for good, and Tailzu stops learning from it.", "d-lede", { marginTop: 4 }),
+          text("Either way it's gone for good, and X0 Bot stops learning from it.", "d-lede", { marginTop: 4 }),
           row([
             link("It doesn't sound like me", remove("not_me")),
             link("Just a clean-up", remove("cleanup")),
@@ -1095,7 +1095,7 @@ export function deskInsights(ctx: DeskContext): ScreenResponse {
           text(`${pct(l.words, ltotal)}%`, "d-num"),
         ], { justify: "between", align: "end", gap: 16, paddingTop: 10, paddingBottom: 10 }, "d-rule-bottom");
       }), { marginTop: 12 })]
-    : [text("Talk for a few days and this fills in, read from what Tailzu wrote.", "d-lede", { marginTop: 12 })]);
+    : [text("Talk for a few days and this fills in, read from what X0 Bot wrote.", "d-lede", { marginTop: 12 })]);
 
   const heatBlock = wpd.length
     ? section("Days you talked", `${st?.daysActive ?? activeW} of the last ${wpd.length} days. The longest run was ${st?.bestStreak ?? 0}. Open a day to see it.`,
@@ -1460,7 +1460,7 @@ export function deskWords(ctx: DeskContext): ScreenResponse {
 
   return screen("desk_words", "Words", [page([
     text("Words", "d-eyebrow"),
-    text("What Tailzu knows about your words", "d-h1", { marginTop: 6 }),
+    text("What X0 Bot knows about your words", "d-h1", { marginTop: 6 }),
     row([
       stack([
         text("Spelled your way", "d-h2"),
@@ -1651,7 +1651,7 @@ export function deskTrain(ctx: DeskContext): ScreenResponse {
     stack([
       text(say("tab.train"), "d-eyebrow"),
       text("A few minutes of talking, and it writes like you.", "d-h1", { marginTop: 6, maxWidth: "22ch" }),
-      text("Tailzu asks a few questions and listens to how you answer. What it learns stays with your account, on every device.",
+      text("X0 Bot asks a few questions and listens to how you answer. What it learns stays with your account, on every device.",
         "d-lede", { marginTop: 10, maxWidth: "46ch", color: "rgba(243,226,198,.72)" }),
       row([start], { marginTop: 22 }),
     ], { minWidth: 0 }),
@@ -1927,7 +1927,7 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
   if (!all.length) {
     body.push(stack([
       emptyState("tap-s", say("e.notes")),
-      text("Start it in a meeting, a lecture, or on a walk around your own ideas. Tailzu listens to your microphone and to your computer's sound, tells the voices apart, and keeps it short here: what the meeting was, a paragraph on the whole conversation, and the few things people said that mattered, with who said them.", "d-lede", { marginTop: 0, maxWidth: 560 }),
+      text("Start it in a meeting, a lecture, or on a walk around your own ideas. X0 Bot listens to your microphone and to your computer's sound, tells the voices apart, and keeps it short here: what the meeting was, a paragraph on the whole conversation, and the few things people said that mattered, with who said them.", "d-lede", { marginTop: 0, maxWidth: 560 }),
       ...(ctx.notesHotkey ? [row([link("Start taking notes", startNotes, "d-btn")], { marginTop: 16 })] : []),
     ], { paddingBottom: 26 }));
   } else if (charts.length) {
@@ -1968,11 +1968,11 @@ export function deskNotes(ctx: DeskContext): ScreenResponse {
 function onlyYourSide(canOpen: boolean): Node {
   return stack([
     text("Only your side", "d-eyebrow"),
-    text("Tailzu couldn't hear your computer's sound, so this note has only what your microphone heard.", "d-written", { marginTop: 6, maxWidth: 620 }),
+    text("X0 Bot couldn't hear your computer's sound, so this note has only what your microphone heard.", "d-written", { marginTop: 6, maxWidth: 620 }),
     text("Allow it once, and your next note includes everyone on the call.", "d-lede", { marginTop: 4 }),
     canOpen
       ? row([link("Allow", { kind: "notes.allowSystemAudio" }, "d-btn")], { marginTop: 14 })
-      : text("System Settings → Privacy & Security → Screen & System Audio Recording → turn on Tailzu.", "d-margin", { marginTop: 10 }),
+      : text("System Settings → Privacy & Security → Screen & System Audio Recording → turn on X0 Bot.", "d-margin", { marginTop: 10 }),
   ], { paddingTop: 18, paddingBottom: 20, paddingLeft: 22, paddingRight: 22, marginBottom: 44, radius: 12, background: "var(--d-press)", border: "1px solid var(--d-rule)", maxWidth: NOTE_MEASURE });
 }
 
@@ -2275,7 +2275,7 @@ function askSetupCard(a: NonNullable<DeskContext["askSetup"]>, place: "home" | "
       on: "On",
       allow: "Allow",
       turnOff: "Turn off",
-      restart: "Restart Tailzu to finish",
+      restart: "Restart X0 Bot to finish",
       restartButton: "Restart",
       // "Change these any time in Settings" is the home card's to say: read
       // on the Settings page, it sent you to the page you were on.
@@ -2365,7 +2365,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
         link("Change", { kind: "navigate", screenId: "languages" })),
       defRow(say("r.tone"), say("r.tone.d"), link(say("d.tone.go"), { kind: "switchTab", tabId: "desk_voices" })),
       defRow(say("r.read"), readVoiceLabel, link("Change", { kind: "navigate", screenId: "desk_voice_read" })),
-      defRow(say("r.name"), nick ? `Tailzu, or ${nick}` : "Tailzu",
+      defRow(say("r.name"), nick ? `X0, or ${nick}` : "X0",
         link(nick ? "Change" : say("d.name.give"), { kind: "navigate", screenId: "desk_assistant_name" })),
     ]),
 
@@ -2820,14 +2820,14 @@ export function deskAssistantName(ctx: DeskContext): ScreenResponse {
   } as ActionRef);
   return screen("desk_assistant_name", "Its name", [page([
     text("Its name", "d-eyebrow"),
-    text(nick ? `Tailzu, or ${nick}` : "Tailzu", "d-h1", { marginTop: 6 }),
-    text("Tailzu is its name, and always works. Give it a name of your own too, and call it either while you talk: \u201cZara, make it formal.\u201d",
+    text(nick ? `X0, or ${nick}` : "X0", "d-h1", { marginTop: 6 }),
+    text("X0 is its name, and always works. Give it a name of your own too, and call it either while you talk: \u201cZara, make it formal.\u201d",
       "d-lede", { marginTop: 10, maxWidth: "52ch" }),
     row([
       { type: "TextField", props: { cls: "d-input", placeholder: "A name of your own", maxLength: 24 }, bind: { value: "nick" }, on: { onSubmit: put("$state.nick") } } as Node,
       link("Save", put("$state.nick"), "d-btn"),
     ], { gap: 12, align: "center", marginTop: 26, maxWidth: 520 }),
-    ...(nick ? [row([link("Tailzu only", put(""))], { marginTop: 14 })] : []),
+    ...(nick ? [row([link("X0 only", put(""))], { marginTop: 14 })] : []),
     row([link("Back to Settings", { kind: "navigate", screenId: "desk_settings" })], { marginTop: 28 }, "d-tools"),
   ], { maxWidth: 820 })], { nick: nick ?? "" });
 }
@@ -2837,7 +2837,7 @@ export function deskPlan(ctx: DeskContext): ScreenResponse {
   if (ctx.free) {
     return screen("desk_plan", "Plan", [page([
       text("Plan", "d-eyebrow"),
-      text("Tailzu is free.", "d-h1", { marginTop: 6 }),
+      text("X0 Bot is free.", "d-h1", { marginTop: 6 }),
       text("Every word, on your phone and this computer. There is no plan to pick and nothing to pay.", "d-lede", { marginTop: 8 }),
       row([link("Back to Today", { kind: "switchTab", tabId: "desk_today" })], { marginTop: 18 }),
     ], { maxWidth: 820 })]);
@@ -2898,7 +2898,7 @@ function updateCard(u: { version: string; url: string; sha512?: string }, selfUp
       kind: "installUpdate", version: u.version, url: u.url, sha512: u.sha512,
       words: {
         downloading: "Downloading. {pct}%",
-        installing: "Installing. Tailzu restarts in a moment.",
+        installing: "Installing. X0 Bot restarts in a moment.",
         failed: "The update didn't finish. Try again.",
         manual: "This copy can't update itself. The download is opening in your browser.",
       },
@@ -2907,7 +2907,7 @@ function updateCard(u: { version: string; url: string; sha512?: string }, selfUp
       row([
         stack([
           text("Update", "d-eyebrow"),
-          text(`Tailzu ${u.version} is ready.`, "d-written", { marginTop: 4 }),
+          text(`X0 Bot ${u.version} is ready.`, "d-written", { marginTop: 4 }),
           { ...text("It installs itself and restarts. You stay signed in.", "d-lede", { marginTop: 2 }), bind: { content: "upd.line" } },
         ], { flex: 1, minWidth: 0 }),
         { ...link("Update now", install, "d-btn"), visibleIf: { falsy: "upd.busy" } },
@@ -2918,7 +2918,7 @@ function updateCard(u: { version: string; url: string; sha512?: string }, selfUp
     row([
       stack([
         text("Update", "d-eyebrow"),
-        text(`Tailzu ${u.version} is ready.`, "d-written", { marginTop: 4 }),
+        text(`X0 Bot ${u.version} is ready.`, "d-written", { marginTop: 4 }),
         text("Download it, open it, and this window restarts on the new version.", "d-lede", { marginTop: 2 }),
       ], { flex: 1, minWidth: 0 }),
       link("Download update", { kind: "openUrl", url: u.url }, "d-btn"),

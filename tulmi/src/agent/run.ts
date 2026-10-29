@@ -296,7 +296,7 @@ export interface CommandContext {
 export async function runCommand(c: CommandContext, deps: StepDeps, sink: EventSink): Promise<StepResult> {
   const history = c.history ?? [];
   const req: AgentStepRequest = {
-    runId: c.runId, step: history.length, utterance: c.said, platform: c.platform, app: "Tailzu",
+    runId: c.runId, step: history.length, utterance: c.said, platform: c.platform, app: "X0 Bot",
     screen: { elements: [] }, ...(c.language ? { language: c.language } : {}), ...(history.length ? { history } : {}),
     ...(typeof c.tzOffsetMinutes === "number" ? { tzOffsetMinutes: c.tzOffsetMinutes } : {}),
   };

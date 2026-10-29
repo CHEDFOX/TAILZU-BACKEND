@@ -106,7 +106,7 @@ describe("speaking in Ask (the phone)", () => {
     expect(JSON.stringify(rec[0]!.onDone)).toContain("/v1/shell/route");
     expect(rec[0]!.onBlocked).toEqual({ kind: "setState", path: "micBlocked", value: true });
     expect(s.state).toMatchObject({ voice: "idle", level: 0, micBlocked: false });
-    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Listening · Hinglish works", "Writing down what you said…", "The microphone is off for Tailzu."]));
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Listening · Hinglish works", "Writing down what you said…", "The microphone is off for X0 Bot."]));
     // The bars follow the voice: a height that stands up as `level` grows.
     expect(JSON.stringify(s.root)).toContain('"height":{"gte":["level"');
     // Not started until asked.

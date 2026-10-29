@@ -380,7 +380,7 @@ export async function githubFetch(
 const ORG_BLOCKED = /saml|oauth app access restrictions|third-party application/i;
 export const orgBlocked = () => new ConnectorError(
   "org_blocked",
-  "This organisation hasn't let Tailzu in. An owner can approve Tailzu under the organisation's third-party access settings (or, if it uses SSO, you can authorise Tailzu's sign-in for it on GitHub), or you can install the Tailzu GitHub App on the organisation instead.",
+  "This organisation hasn't let X0 Bot in. An owner can approve X0 Bot under the organisation's third-party access settings (or, if it uses SSO, you can authorise X0 Bot's sign-in for it on GitHub), or you can install the X0 Bot GitHub App on the organisation instead.",
 );
 
 /**
@@ -432,17 +432,17 @@ export function githubError(status: number, json: any, what: string): ConnectorE
   const said = String(json?.message ?? "");
   if (status === 403 && ORG_BLOCKED.test(said)) return orgBlocked();
   if (WORKFLOW_REFUSED.test(saidIn(json))) {
-    return new ConnectorError("needs_workflow_scope", `GitHub wouldn't let Tailzu change a workflow file in ${what}: this connection isn't allowed to. Sign in with GitHub again and allow it, or give the Tailzu GitHub App the Workflows permission.`);
+    return new ConnectorError("needs_workflow_scope", `GitHub wouldn't let X0 Bot change a workflow file in ${what}: this connection isn't allowed to. Sign in with GitHub again and allow it, or give the X0 Bot GitHub App the Workflows permission.`);
   }
   if (isProtectionRefusal(status, json)) {
-    return new GithubRefusal("protected_branch", `GitHub's branch protection (or a rule on the repo) wouldn't allow that on ${what}. Tailzu doesn't try to get round it: make the change through a pull request, or change the rule on GitHub yourself.`, saidText(json), linksIn(json));
+    return new GithubRefusal("protected_branch", `GitHub's branch protection (or a rule on the repo) wouldn't allow that on ${what}. X0 Bot doesn't try to get round it: make the change through a pull request, or change the rule on GitHub yourself.`, saidText(json), linksIn(json));
   }
-  if (status === 401) return new ConnectorError("github_auth", "GitHub turned down Tailzu's access. Try again; if it keeps happening, reconnect GitHub.");
+  if (status === 401) return new ConnectorError("github_auth", "GitHub turned down X0 Bot's access. Try again; if it keeps happening, reconnect GitHub.");
   if (status === 404) return new ConnectorError("not_found", `I couldn't find ${what} on GitHub.`);
   if (status === 429 || (status === 403 && /rate limit|abuse|secondary/i.test(said))) {
     return new ConnectorError("busy", "GitHub is busy right now. Try again in a minute.");
   }
-  if (status === 403) return new ConnectorError("forbidden", `GitHub wouldn't let Tailzu do that to ${what}. The App may not have access to it any more.`);
+  if (status === 403) return new ConnectorError("forbidden", `GitHub wouldn't let X0 Bot do that to ${what}. The App may not have access to it any more.`);
   if (status === 409) return new ConnectorError("conflict", `GitHub can't do that to ${what} right now (it may be empty, or changing).`);
   if (status === 422) return new ConnectorError("rejected", `GitHub didn't accept that for ${what}.`);
   return new ConnectorError("failed", "GitHub ran into a problem. Try again in a moment.");
@@ -703,7 +703,7 @@ export class GithubApp {
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     // GitHub answers 200 with { error } for a code that is used up or wrong.
     if (!res.ok || typeof json.access_token !== "string" || !json.access_token) {
-      throw new ConnectorError("bad_state", "GitHub didn't accept that sign-in. Start again from Tailzu.");
+      throw new ConnectorError("bad_state", "GitHub didn't accept that sign-in. Start again from X0 Bot.");
     }
     return json.access_token;
   }
@@ -1074,7 +1074,7 @@ export class GithubApp {
    */
   async initEmptyRepo(repo: RepoRef, title: string, o: { person?: Person | null } = {}): Promise<{ sha: string }> {
     if (!(await this.repoIsEmpty(repo))) {
-      throw new ConnectorError("repo_not_empty", "This repo already has commits, so Tailzu won't add a first file to its default branch.");
+      throw new ConnectorError("repo_not_empty", "This repo already has commits, so X0 Bot won't add a first file to its default branch.");
     }
     const heading = title.replace(/[\u0000-\u001f\u007f]+/g, " ").trim().slice(0, 100) || repo.fullName.split("/")[1]!;
     const r = await this.rsend(repo, "PUT", `${this.path(repo)}/contents/README.md`, {
@@ -1083,7 +1083,7 @@ export class GithubApp {
     });
     // Someone made the first commit while we were looking: the same refusal.
     if (r.status === 422 || (r.status === 409 && !/empty/i.test(String(r.json?.message ?? "")))) {
-      throw new ConnectorError("repo_not_empty", "This repo already has commits, so Tailzu won't add a first file to its default branch.");
+      throw new ConnectorError("repo_not_empty", "This repo already has commits, so X0 Bot won't add a first file to its default branch.");
     }
     if ((r.status !== 201 && r.status !== 200) || typeof r.json?.commit?.sha !== "string") throw githubError(r.status, r.json, "the first file");
     return { sha: r.json.commit.sha };
@@ -1104,7 +1104,7 @@ export class GithubApp {
     if (r.status === 201) return { status: "merged", ...(typeof r.json?.sha === "string" ? { sha: r.json.sha } : {}) };
     if (r.status === 204) return { status: "up_to_date" };
     if (r.status === 409) {
-      throw new ConnectorError("conflict", `${repo.defaultBranch} has changes that clash with this branch's. Tailzu doesn't resolve conflicts: resolve it on GitHub, or start a new branch.`);
+      throw new ConnectorError("conflict", `${repo.defaultBranch} has changes that clash with this branch's. X0 Bot doesn't resolve conflicts: resolve it on GitHub, or start a new branch.`);
     }
     throw githubError(r.status, r.json, `the branch ${branch}`);
   }

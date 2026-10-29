@@ -52,9 +52,9 @@ export function timeoutMinutes(timeoutSec: number): number {
 export function renderWorkflow(minutes: number): string {
   const lock = LOCKFILES.map((f) => `'${f}'`).join(", ");
   return [
-    "# Written by Tailzu for one step of a coding job. Do not edit: it is replaced for every step.",
+    "# Written by X0 Bot for one step of a coding job. Do not edit: it is replaced for every step.",
     "# It runs only for the throwaway tailzu-run/ branch it was written on, and the branch is deleted afterwards.",
-    "name: Tailzu run",
+    "name: X0 Bot run",
     "on:",
     "  push:",
     "    branches: ['tailzu-run/**']",
@@ -97,9 +97,9 @@ export function renderWorkflow(minutes: number): string {
 export function renderSessionWorkflow(minutes: number): string {
   const lock = LOCKFILES.map((f) => `'${f}'`).join(", ");
   return [
-    "# Written by Tailzu for a live session of a coding job. Do not edit: it is replaced for every session.",
+    "# Written by X0 Bot for a live session of a coding job. Do not edit: it is replaced for every session.",
     "# It runs only for the throwaway tailzu-run/ branch it was written on, and the branch is deleted afterwards.",
-    "name: Tailzu run",
+    "name: X0 Bot run",
     "on:",
     "  push:",
     "    branches: ['tailzu-run/**']",

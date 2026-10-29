@@ -52,11 +52,11 @@ export interface Landing {
 const total = () => INDIA.length + WORLD.length;
 const free = () => plans().free;
 const priceQA = (what: string): QA => free()
-  ? { q: `Is ${what} free?`, a: `Yes. Tailzu is free on iPhone, Android, Windows and Mac, in every language, with no word limit.` }
+  ? { q: `Is ${what} free?`, a: `Yes. X0 Bot is free on iPhone, Android, Windows and Mac, in every language, with no word limit.` }
   : { q: `Is ${what} free?`, a: `Yes, to start: ${plans().freeWords.toLocaleString("en-US")} words a month, free. Paid plans remove the limit.` };
 const privacyQA: QA = {
   q: "What happens to my voice?",
-  a: "Audio is sent for transcription and deleted right after; it is kept only if you turn on session history. Tailzu does not use your data to train third-party AI models.",
+  a: "Audio is sent for transcription and deleted right after; it is kept only if you turn on session history. X0 Bot does not use your data to train third-party AI models.",
 };
 
 /** The site's own sentences, by where it shows them. */
@@ -75,10 +75,10 @@ const dev = (): Example => ({ said: SITE_UI.dev.said, wrote: SITE_UI.dev.wrote, 
 
 const DESKTOP_STEPS = (os: "Windows" | "Mac") => [
   os === "Windows"
-    ? "Download Tailzu for Windows and run the installer."
-    : "Download Tailzu for Mac and drag it into Applications.",
+    ? "Download X0 Bot for Windows and run the installer."
+    : "Download X0 Bot for Mac and drag it into Applications.",
   "Open it and sign in, the same way you do on your phone.",
-  ...(os === "Mac" ? ["Allow the microphone, and allow Tailzu to paste into other apps when macOS asks."] : []),
+  ...(os === "Mac" ? ["Allow the microphone, and allow X0 Bot to paste into other apps when macOS asks."] : []),
   "Click into any app, tap Ctrl twice (or Alt twice) and talk.",
   "Tap twice again. The clean text is pasted where your cursor is.",
 ];
@@ -89,8 +89,8 @@ export function landings(): Landing[] {
     {
       path: "/ai-keyboard",
       name: "AI keyboard",
-      headTitle: "AI Keyboard for iPhone, Android, Windows & Mac — Tailzu",
-      description: `Tailzu is a smart AI keyboard: speak in any of ${n} languages and clean text lands in any app, or ask it to write a short message, reply or email for you.`,
+      headTitle: "AI Keyboard for iPhone, Android, Windows & Mac — X0 Bot",
+      description: `X0 Bot is a smart AI keyboard: speak in any of ${n} languages and clean text lands in any app, or ask it to write a short message, reply or email for you.`,
       eye: "AI keyboard",
       h1: "The AI keyboard that writes what you mean.",
       lede: "Talk in any app. It writes it clean, in your voice. Ask, and it writes it for you.",
@@ -105,19 +105,19 @@ export function landings(): Landing[] {
         ["It knows its job", "Short pieces only: no essays and no code. In ChatGPT or Claude it writes your prompt, never the answer."],
       ],
       faq: [
-        { q: "What is an AI keyboard?", a: `A keyboard that understands what you mean, not only what it hears. Tailzu takes your voice, in any of ${n} languages, and types clean, ready-to-send text into whatever app you are in.` },
-        { q: "Is Tailzu a smart keyboard?", a: "Yes. It removes filler, adds punctuation, repairs misheard words, keeps your names and numbers, and writes a short message for you when you ask." },
-        { q: "Can an AI keyboard write messages for me?", a: "Tailzu can. Say what you want and who it is for, like a birthday wish for your sister or a kind reply to your landlord, and it writes it. It keeps to short pieces: no essays and no code." },
-        { q: "How is it different from Gboard or the iPhone keyboard?", a: "Built-in voice typing types what it hears, ums and all. Tailzu writes what you meant, in the tone you pick, and can write a message for you when you ask." },
+        { q: "What is an AI keyboard?", a: `A keyboard that understands what you mean, not only what it hears. X0 Bot takes your voice, in any of ${n} languages, and types clean, ready-to-send text into whatever app you are in.` },
+        { q: "Is X0 Bot a smart keyboard?", a: "Yes. It removes filler, adds punctuation, repairs misheard words, keeps your names and numbers, and writes a short message for you when you ask." },
+        { q: "Can an AI keyboard write messages for me?", a: "X0 Bot can. Say what you want and who it is for, like a birthday wish for your sister or a kind reply to your landlord, and it writes it. It keeps to short pieces: no essays and no code." },
+        { q: "How is it different from Gboard or the iPhone keyboard?", a: "Built-in voice typing types what it hears, ums and all. X0 Bot writes what you meant, in the tone you pick, and can write a message for you when you ask." },
         { q: "Does it work in WhatsApp, Gmail and Instagram?", a: "Yes. It is a keyboard, so it works in every app you type in." },
-        priceQA("the Tailzu AI keyboard"),
+        priceQA("the X0 Bot AI keyboard"),
         privacyQA,
       ],
     },
     {
       path: "/voice-typing",
       name: "Voice typing",
-      headTitle: "Voice Typing: Speech to Text in Any App — Tailzu",
+      headTitle: "Voice Typing: Speech to Text in Any App — X0 Bot",
       description: `Voice typing that writes what you meant. Speak Hindi, English or any of ${n} languages, and clean, punctuated text lands in WhatsApp, Gmail or any app.`,
       eye: "Voice typing",
       h1: "Voice typing that writes what you meant.",
@@ -127,25 +127,25 @@ export function landings(): Landing[] {
       facts: [
         ["Punctuation, done", "Full stops, commas and question marks arrive on their own. You never say \"comma\"."],
         ["Filler, gone", "Ums, ahs, repeats and false starts are left out. When you correct yourself, only the correction stays."],
-        ["Mishearing, repaired", "Speech recognition slips. Tailzu writes the word you meant, and the names you add to your words come out spelled your way."],
+        ["Mishearing, repaired", "Speech recognition slips. X0 Bot writes the word you meant, and the names you add to your words come out spelled your way."],
         ["Your facts, kept", "Names, numbers, amounts and times stay exactly as you said them. It cleans; it never rewrites."],
         ["Any language", `${n} languages, from Hindi, Tamil and Bengali to Spanish, Arabic and Japanese. It translates only when you ask.`],
         ["Any app, any device", "iPhone, Android, Windows and Mac. Wherever there is a cursor, that is where it types."],
       ],
       faq: [
-        { q: "What is the best way to type with my voice?", a: "Use a keyboard that cleans up as it types. Tailzu turns what you say into finished text, punctuation and all, in whatever app you are using." },
-        { q: "Does Tailzu add punctuation automatically?", a: "Yes. Full stops, commas and question marks are added for you, and filler words are removed." },
-        { q: "How is it different from Google voice typing or Apple dictation?", a: "Built-in dictation types what it hears, ums and all. Tailzu writes what you meant: filler gone, punctuation in, misheard words repaired, and your names and numbers kept exactly." },
+        { q: "What is the best way to type with my voice?", a: "Use a keyboard that cleans up as it types. X0 Bot turns what you say into finished text, punctuation and all, in whatever app you are using." },
+        { q: "Does X0 Bot add punctuation automatically?", a: "Yes. Full stops, commas and question marks are added for you, and filler words are removed." },
+        { q: "How is it different from Google voice typing or Apple dictation?", a: "Built-in dictation types what it hears, ums and all. X0 Bot writes what you meant: filler gone, punctuation in, misheard words repaired, and your names and numbers kept exactly." },
         { q: "Can I voice type in Hindi, Tamil or Bengali?", a: `Yes, in all 22 languages of India, Hinglish, and ${WORLD.length - 1} more languages besides English.` },
-        { q: "Does voice typing work offline?", a: "No. Recognition and cleanup run on servers, so Tailzu needs a connection." },
-        priceQA("Tailzu voice typing"),
+        { q: "Does voice typing work offline?", a: "No. Recognition and cleanup run on servers, so X0 Bot needs a connection." },
+        priceQA("X0 Bot voice typing"),
       ],
     },
     {
       path: "/ai-keyboard/android",
       parents: [["AI keyboard", "/ai-keyboard"]],
       name: "Android",
-      headTitle: "AI Keyboard for Android: Voice Typing in Any App — Tailzu",
+      headTitle: "AI Keyboard for Android: Voice Typing in Any App — X0 Bot",
       description: "An AI keyboard for Android. Tap the mic in WhatsApp, Gmail or any app, talk in any language, and clean, ready-to-send text is typed for you.",
       eye: "Android",
       h1: "The AI keyboard for Android.",
@@ -153,19 +153,19 @@ export function landings(): Landing[] {
       examples: [...field("WhatsApp", 2), ...field("Reminders", 1)],
       factsTitle: "On your Android phone",
       facts: [
-        ["A keyboard of its own", "Tailzu is a full keyboard. Switch to it from any app, and back to your usual one whenever you like."],
+        ["A keyboard of its own", "X0 Bot is a full keyboard. Switch to it from any app, and back to your usual one whenever you like."],
         ["Every app", "WhatsApp, Gmail, Instagram, Slack, ChatGPT: anywhere you can type, you can talk."],
         ["Writes for you", "Ask for a reply or a wish, say who it is for, and it writes it in your voice."],
         [`${n} languages`, "Hindi, Hinglish and every language of India, English, and the world's other major languages."],
       ],
       steps: { title: "Start in a minute", items: [
-        "Install Tailzu from Google Play.",
+        "Install X0 Bot from Google Play.",
         "Open it and sign in.",
-        "Turn on the Tailzu keyboard when the app asks, and choose it.",
+        "Turn on the X0 Bot keyboard when the app asks, and choose it.",
         "In any app, tap the mic and talk.",
       ] },
       faq: [
-        { q: "Does Tailzu replace my Android keyboard?", a: "Only while you use it. It is a keyboard of its own, and you can switch between it and your usual one at any time." },
+        { q: "Does X0 Bot replace my Android keyboard?", a: "Only while you use it. It is a keyboard of its own, and you can switch between it and your usual one at any time." },
         { q: "Does it work in WhatsApp on Android?", a: "Yes. It is a keyboard, so it works in WhatsApp and every other app you type in." },
         { q: "Can it write in Hindi or Hinglish on Android?", a: "Yes. Speak Hindi, Hinglish or any of India's languages; it writes in English letters by default, or in your language's own script when you ask." },
         priceQA("the Android keyboard"),
@@ -176,27 +176,27 @@ export function landings(): Landing[] {
       path: "/ai-keyboard/iphone",
       parents: [["AI keyboard", "/ai-keyboard"]],
       name: "iPhone",
-      headTitle: "AI Keyboard for iPhone: Voice Typing in Any App — Tailzu",
+      headTitle: "AI Keyboard for iPhone: Voice Typing in Any App — X0 Bot",
       description: "An AI keyboard for iPhone. Talk in iMessage, WhatsApp or any app, in any language, and clean, ready-to-send text is typed for you.",
       eye: "iPhone",
       h1: "The AI keyboard for iPhone.",
-      lede: "Switch to Tailzu in any app, tap the mic, talk. It types it clean.",
+      lede: "Switch to X0 Bot in any app, tap the mic, talk. It types it clean.",
       examples: [...field("Mail", 1), ...field("Message", 1), ...field("Notes", 1)],
       factsTitle: "On your iPhone",
       facts: [
-        ["A keyboard of its own", "Tailzu sits beside your usual keyboard. Tap the globe key to switch to it and back."],
+        ["A keyboard of its own", "X0 Bot sits beside your usual keyboard. Tap the globe key to switch to it and back."],
         ["Every app", "iMessage, WhatsApp, Mail, Instagram, ChatGPT: anywhere you can type, you can talk."],
         ["Writes for you", "Ask for a reply or a wish, say who it is for, and it writes it in your voice."],
         [`${n} languages`, "Hindi, Hinglish and every language of India, English, and the world's other major languages."],
       ],
       steps: { title: "Start in a minute", items: [
-        "Install Tailzu from the App Store, open it and sign in.",
-        "Go to Settings, General, Keyboard, Keyboards, Add New Keyboard, and choose Tailzu.",
-        "Tap Tailzu there and turn on Allow Full Access, so it can reach the internet to hear you.",
-        "In any app, tap the globe key to switch to Tailzu, then tap the mic.",
+        "Install X0 Bot from the App Store, open it and sign in.",
+        "Go to Settings, General, Keyboard, Keyboards, Add New Keyboard, and choose X0 Bot.",
+        "Tap X0 Bot there and turn on Allow Full Access, so it can reach the internet to hear you.",
+        "In any app, tap the globe key to switch to X0 Bot, then tap the mic.",
       ] },
       faq: [
-        { q: "Why does the iPhone keyboard ask for Full Access?", a: "An iPhone keyboard cannot reach the internet without it, and Tailzu needs the internet to hear you." },
+        { q: "Why does the iPhone keyboard ask for Full Access?", a: "An iPhone keyboard cannot reach the internet without it, and X0 Bot needs the internet to hear you." },
         { q: "Does it work in iMessage and WhatsApp?", a: "Yes. It is a keyboard, so it works in every app you type in on your iPhone." },
         { q: "Can it write in Hindi or Hinglish on iPhone?", a: "Yes. Speak Hindi, Hinglish or any of India's languages; it writes in English letters by default, or in your language's own script when you ask." },
         priceQA("the iPhone keyboard"),
@@ -207,7 +207,7 @@ export function landings(): Landing[] {
       path: "/voice-typing/windows",
       parents: [["Voice typing", "/voice-typing"]],
       name: "Windows",
-      headTitle: "Voice Typing for Windows 10 and 11 — Tailzu",
+      headTitle: "Voice Typing for Windows 10 and 11 — X0 Bot",
       description: "Voice typing for Windows. Tap Ctrl twice in Word, Outlook, Chrome or any app, talk, and clean text is pasted at your cursor. Meeting notes too.",
       eye: "Windows",
       h1: "Voice typing for Windows.",
@@ -217,15 +217,15 @@ export function landings(): Landing[] {
       facts: [
         ["Any window", "Word, Outlook, Chrome, Slack, Notepad, your code editor: wherever the cursor is, that is where the text lands."],
         ["Two taps, no hotkey to learn", "Tap Ctrl twice, or Alt twice, to start and to stop. Nothing to hold down."],
-        ["Meeting notes", "Press Ctrl+Alt+N and Tailzu listens to you and the call, then gives you a summary, what mattered, and who said what."],
+        ["Meeting notes", "Press Ctrl+Alt+N and X0 Bot listens to you and the call, then gives you a summary, what mattered, and who said what."],
         ["The same account", "Your voice, your words and your languages come with you from your phone."],
       ],
       steps: { title: "Start in a minute", items: DESKTOP_STEPS("Windows") },
       faq: [
-        { q: "Does Tailzu work on Windows 10 and Windows 11?", a: "Yes. Install it, sign in, and tap Ctrl twice in any app to talk." },
+        { q: "Does X0 Bot work on Windows 10 and Windows 11?", a: "Yes. Install it, sign in, and tap Ctrl twice in any app to talk." },
         { q: "Does it work in Word, Outlook and Chrome?", a: "Yes. It types into any window: documents, email, browsers, chat apps and code editors." },
-        { q: "How is it different from Windows voice typing?", a: "Windows voice typing types what it hears. Tailzu writes what you meant, filler gone and punctuation in, in any of its languages, and can take meeting notes." },
-        priceQA("Tailzu for Windows"),
+        { q: "How is it different from Windows voice typing?", a: "Windows voice typing types what it hears. X0 Bot writes what you meant, filler gone and punctuation in, in any of its languages, and can take meeting notes." },
+        priceQA("X0 Bot for Windows"),
         privacyQA,
       ],
     },
@@ -233,7 +233,7 @@ export function landings(): Landing[] {
       path: "/voice-typing/mac",
       parents: [["Voice typing", "/voice-typing"]],
       name: "Mac",
-      headTitle: "Voice Typing for Mac: Dictation in Any App — Tailzu",
+      headTitle: "Voice Typing for Mac: Dictation in Any App — X0 Bot",
       description: "Voice typing for Mac. Tap Control twice in Mail, Notes, Slack or any app, talk, and clean text is pasted at your cursor. Meeting notes too.",
       eye: "Mac",
       h1: "Voice typing for Mac.",
@@ -243,15 +243,15 @@ export function landings(): Landing[] {
       facts: [
         ["Any app", "Mail, Notes, Slack, Chrome, Safari, your code editor: wherever the cursor is, that is where the text lands."],
         ["Two taps", "Tap Control twice, or Option twice, to start and to stop. Nothing to hold down."],
-        ["Meeting notes", "Press Command+Option+N and Tailzu listens to you and the call, then gives you a summary, what mattered, and who said what."],
+        ["Meeting notes", "Press Command+Option+N and X0 Bot listens to you and the call, then gives you a summary, what mattered, and who said what."],
         ["The same account", "Your voice, your words and your languages come with you from your phone."],
       ],
       steps: { title: "Start in a minute", items: DESKTOP_STEPS("Mac") },
       faq: [
-        { q: "How is it different from Mac dictation?", a: "Mac dictation types what it hears. Tailzu writes what you meant, filler gone and punctuation in, in any of its languages, and can take meeting notes." },
+        { q: "How is it different from Mac dictation?", a: "Mac dictation types what it hears. X0 Bot writes what you meant, filler gone and punctuation in, in any of its languages, and can take meeting notes." },
         { q: "Why does it ask to control my Mac?", a: "To paste the text where your cursor is, macOS asks you to allow it once. It types only what you dictate." },
         { q: "Does it work on Apple silicon and Intel Macs?", a: "Yes. The Mac app runs on both." },
-        priceQA("Tailzu for Mac"),
+        priceQA("X0 Bot for Mac"),
         privacyQA,
       ],
     },
@@ -259,8 +259,8 @@ export function landings(): Landing[] {
       path: "/voice-typing/chatgpt",
       parents: [["Voice typing", "/voice-typing"]],
       name: "ChatGPT, Claude and Grok",
-      headTitle: "Talk to ChatGPT, Claude and Grok: Voice Prompts — Tailzu",
-      description: "Say your prompt the way you think it. Tailzu types a clean prompt into ChatGPT, Claude, Grok, Cursor or any AI app, with nothing added you did not say.",
+      headTitle: "Talk to ChatGPT, Claude and Grok: Voice Prompts — X0 Bot",
+      description: "Say your prompt the way you think it. X0 Bot types a clean prompt into ChatGPT, Claude, Grok, Cursor or any AI app, with nothing added you did not say.",
       eye: "AI apps",
       h1: "Say the prompt. Skip the typing.",
       lede: "Talk to ChatGPT, Claude and Grok the way you think. A clean prompt lands in the box.",
@@ -268,16 +268,16 @@ export function landings(): Landing[] {
       factsTitle: "Prompts, spoken",
       facts: [
         ["Say it rough", "Ramble, pause, change your mind. The prompt that lands is clean and complete."],
-        ["Your prompt, not its answer", "In an AI app, Tailzu writes the prompt and leaves the answering to the AI. Nothing is added that you did not say."],
+        ["Your prompt, not its answer", "In an AI app, X0 Bot writes the prompt and leaves the answering to the AI. Nothing is added that you did not say."],
         ["Every AI app", "ChatGPT, Claude, Grok, Gemini, Perplexity: on your phone it is a keyboard, so it works in all of them."],
         ["For developers", "On Windows and Mac it types into Cursor, VS Code or any editor: say the change, and it lands at the cursor."],
       ],
       faq: [
-        { q: "Can I talk to ChatGPT with Tailzu?", a: "Yes. Say your prompt and a clean version is typed into ChatGPT's box, ready to send." },
-        { q: "Does Tailzu answer my prompt itself?", a: "No. In an AI app it writes your prompt, and the AI you are using answers it." },
+        { q: "Can I talk to ChatGPT with X0 Bot?", a: "Yes. Say your prompt and a clean version is typed into ChatGPT's box, ready to send." },
+        { q: "Does X0 Bot answer my prompt itself?", a: "No. In an AI app it writes your prompt, and the AI you are using answers it." },
         { q: "Does it work in Claude, Grok and Gemini?", a: "Yes. It is a keyboard on your phone and types into any window on your computer, so it works in every AI app." },
         { q: "Can developers use it in Cursor or VS Code?", a: "Yes. The desktop app types into any window, so you say the change and it lands where the cursor is." },
-        priceQA("Tailzu"),
+        priceQA("X0 Bot"),
       ],
     },
   ];
@@ -306,7 +306,7 @@ function related(current: string): string {
 export function landingHtml(path: string): string | null {
   const p = landingFor(path);
   if (!p) return null;
-  const trail: Array<[string, string]> = [["Tailzu", "/"], ...(p.parents ?? []), [p.name, p.path]];
+  const trail: Array<[string, string]> = [["X0 Bot", "/"], ...(p.parents ?? []), [p.name, p.path]];
   return siteShell({
     title: p.name,
     headTitle: p.headTitle,

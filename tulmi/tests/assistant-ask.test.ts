@@ -122,7 +122,7 @@ describe("POST /v1/assistant/ask", () => {
     expect(a.sent[0]!.user.split("\n")[0]).toMatch(/^Connected apps\./);
     expect(a.sent[0]!.user).toContain(USE_LINE);
     expect(a.sent[0]!.user).toContain("whatsapp.send_message");
-    expect(a.sent[0]!.user).toContain("Platform: ios. App: Tailzu. Mode: do. Step 1 of at most 1.");
+    expect(a.sent[0]!.user).toContain("Platform: ios. App: X0 Bot. Mode: do. Step 1 of at most 1.");
     expect(a.sent[0]!.user).toContain("(no controls could be read)");
     expect(a.sent[0]!.user).toContain("<said>Tell Mom I'm on my way on WhatsApp</said>");
     expect(a.recorded).toHaveLength(1);

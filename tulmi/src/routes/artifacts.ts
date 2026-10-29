@@ -413,7 +413,7 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
       return await guarded(deps.guard, req, reply, s.user, "artifact", async (stop) => {
         const project = await ownProject(c.d, s.user.id, req.params.id);
         const brain = await c.brain.open(s.user.id, project.id);
-        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." } };
+        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "X0 Bot hasn't read this project yet. Start its brain first." } };
         const ws = await workspace(c.d, s.user.id, project.id, project.defaultBranch);
         const files = workspaceFiles(ws);
         const r = await componentArtifact(
@@ -464,7 +464,7 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
         const artifact = await s.svc.own(s.user.id, req.params.id);
         const project = await ownProject(c.d, s.user.id, b.projectId as string);
         const brain = await c.brain.open(s.user.id, project.id);
-        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." } };
+        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "X0 Bot hasn't read this project yet. Start its brain first." } };
         const ws = await workspace(c.d, s.user.id, project.id, project.defaultBranch);
         const built = await buildFromArtifact(
           {

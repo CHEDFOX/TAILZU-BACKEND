@@ -328,7 +328,7 @@ describe("run.mjs, session mode: against a fake room", () => {
     expect(first.end).toMatchObject({ exitCode: 0 });
     expect(first.output).toContain("export const a = 42;");
     expect(first.output).toContain("new.ts");
-    expect(first.output).toContain("[Tailzu: could not lay .github/workflows/ci.yml]");
+    expect(first.output).toContain("[X0 Bot: could not lay .github/workflows/ci.yml]");
     expect(existsSync(join(s.dir, ".github/workflows/ci.yml"))).toBe(false);
     const second = await s.room.exec("e2", ["cat src/a.ts", "ls src", "cat src/b.ts", "ls node_modules/x"]);
     expect(second.output).toContain("export const a = 1;");
@@ -410,7 +410,7 @@ describe("run.mjs, session mode: against a fake room", () => {
     const end = await s.room.next((f) => f.t === "done" && f.id === "slow");
     expect(Date.now() - t0).toBeLessThan(8000);
     expect(end.exitCode).toBe(130);
-    expect(s.room.output("slow")).toContain("[Tailzu: stopped]");
+    expect(s.room.output("slow")).toContain("[X0 Bot: stopped]");
     expect(s.room.output("second")).toBe("");
     // a cancel for another id does nothing
     const next = await s.room.exec("e3", ["echo fine"]);
@@ -548,7 +548,7 @@ async function wholeRun(o: { identity?: boolean; resultStatus?: number } = {}) {
 }
 
 describe("run.mjs, session mode: the whole script run by node", () => {
-  it("opens the session, runs what the room sends in the checkout, and reports to Tailzu with the identity token when the room closes it", async () => {
+  it("opens the session, runs what the room sends in the checkout, and reports to X0 Bot with the identity token when the room closes it", async () => {
     const r = await wholeRun();
     await r.room.hello();
     const ran = await r.room.exec("e1", ["echo from the live session", "echo written > made.txt"]);
@@ -564,7 +564,7 @@ describe("run.mjs, session mode: the whole script run by node", () => {
     expect(auth).toBe("Bearer fake.oidc.token");
     expect(Object.keys(body).sort()).toEqual(["changes", "epoch", "exitCode", "jobId", "minutes", "outputTail", "stepIdx"]);
     expect(body).toMatchObject({ jobId: "job-1", stepIdx: 5, epoch: 1, exitCode: 0, changes: [] });
-    expect(body.outputTail).toBe("[Tailzu: live session ended (job_end); 1 command(s) run]");
+    expect(body.outputTail).toBe("[X0 Bot: live session ended (job_end); 1 command(s) run]");
     expect(typeof body.minutes).toBe("number");
     expect(body.minutes).toBeGreaterThan(0);
     expect(body.minutes).toBeLessThan(1);

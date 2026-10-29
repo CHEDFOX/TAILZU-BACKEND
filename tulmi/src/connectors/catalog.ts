@@ -142,7 +142,7 @@ export const CATALOG: readonly ConnectorDef[] = [
     aliases: ["jira", "confluence", "atlassian", "ticket", "tickets", "issue", "issues", "epic", "backlog"],
     url: "https://mcp.atlassian.com/v2/mcp", auth: "oauth", verified: false,
     docs: "https://support.atlassian.com/atlassian-rovo-mcp-server/docs/getting-started-with-the-atlassian-remote-mcp-server/",
-    notes: "v2 is the current endpoint (github.com/atlassian/atlassian-mcp-server: new setups should use /v2/mcp); the older /v1/mcp moves to v2 on 2027-03-01 and clients may need to clear cached client ids; /v1/sse ended 2026-06-30. The docs show type http but do not name Streamable HTTP. They say OAuth 2.1 (or an API token, if an admin allows it) but not how a client registers. The v2 authorization server (auth.atlassian.com, named by the 401's resource_metadata) offers both dynamic client registration and CIMD in its live metadata, but sign-in only works from an allowed domain: the default list is Atlassian's own (claude.ai, chatgpt.com, vscode.dev, localhost and others), so until Atlassian puts Tailzu's callback domain on it, each org's admin must add it (support.atlassian.com/security-and-access-policies/docs/available-atlassian-rovo-mcp-server-domains/). Jira Service Management tools take an API token only. Not preRegistered: Atlassian's MCP server does not take a client made in its developer console (jira.atlassian.com/browse/ROVO-870, open as of 2026-07), so Tailzu signs in with its client document (CIMD), else registers itself; the live try is what tells.",
+    notes: "v2 is the current endpoint (github.com/atlassian/atlassian-mcp-server: new setups should use /v2/mcp); the older /v1/mcp moves to v2 on 2027-03-01 and clients may need to clear cached client ids; /v1/sse ended 2026-06-30. The docs show type http but do not name Streamable HTTP. They say OAuth 2.1 (or an API token, if an admin allows it) but not how a client registers. The v2 authorization server (auth.atlassian.com, named by the 401's resource_metadata) offers both dynamic client registration and CIMD in its live metadata, but sign-in only works from an allowed domain: the default list is Atlassian's own (claude.ai, chatgpt.com, vscode.dev, localhost and others), so until Atlassian puts X0 Bot's callback domain on it, each org's admin must add it (support.atlassian.com/security-and-access-policies/docs/available-atlassian-rovo-mcp-server-domains/). Jira Service Management tools take an API token only. Not preRegistered: Atlassian's MCP server does not take a client made in its developer console (jira.atlassian.com/browse/ROVO-870, open as of 2026-07), so X0 Bot signs in with its client document (CIMD), else registers itself; the live try is what tells.",
   },
   {
     id: "asana", name: "Asana", category: "Projects",
@@ -176,7 +176,7 @@ export const CATALOG: readonly ConnectorDef[] = [
     scopes: ["https://www.googleapis.com/auth/drive.file"],
     url: "https://docs.googleapis.com/v1", auth: "oauth", verified: true,
     docs: "https://developers.google.com/workspace/docs/api/reference/rest/v1/documents",
-    notes: "Our own code against Docs API v1 (documents.create and documents:batchUpdate), both of which accept the drive.file scope: Tailzu can only touch the Docs it makes itself, never the rest of the Drive. Same OAuth as Calendar.",
+    notes: "Our own code against Docs API v1 (documents.create and documents:batchUpdate), both of which accept the drive.file scope: X0 Bot can only touch the Docs it makes itself, never the rest of the Drive. Same OAuth as Calendar.",
   },
   {
     id: "google-tasks", name: "Google Tasks", category: "Tasks", kind: "native", provider: "google",
@@ -194,7 +194,7 @@ export const CATALOG: readonly ConnectorDef[] = [
     scopes: ["https://www.googleapis.com/auth/drive.file"],
     url: "https://sheets.googleapis.com/v4", auth: "oauth", verified: true,
     docs: "https://developers.google.com/workspace/sheets/api/reference/rest",
-    notes: "Our own code against Sheets API v4 (spreadsheets.create, spreadsheets.values.append and .get), each of which lists drive.file among its scopes, and Drive API v3 files.list/get to find a sheet by name (drive.file lists only the files Tailzu made). drive.file is non-sensitive. Tailzu can only touch the sheets it made itself. Values go in RAW, never as formulas.",
+    notes: "Our own code against Sheets API v4 (spreadsheets.create, spreadsheets.values.append and .get), each of which lists drive.file among its scopes, and Drive API v3 files.list/get to find a sheet by name (drive.file lists only the files X0 Bot made). drive.file is non-sensitive. X0 Bot can only touch the sheets it made itself. Values go in RAW, never as formulas.",
   },
   {
     id: "google-forms", name: "Google Forms", category: "Docs", kind: "native", provider: "google",
@@ -203,7 +203,7 @@ export const CATALOG: readonly ConnectorDef[] = [
     scopes: ["https://www.googleapis.com/auth/drive.file"],
     url: "https://forms.googleapis.com/v1", auth: "oauth", verified: true,
     docs: "https://developers.google.com/workspace/forms/api/reference/rest",
-    notes: "Our own code against Forms API v1 (forms.create, forms.batchUpdate, forms.setPublishSettings, forms.get, forms.responses.list), every one of which lists drive.file among its scopes, so no Forms scope (forms.body, forms.responses.readonly, both sensitive) is asked. Forms made through the API after 2026-06-30 start unpublished; Tailzu creates with unpublished=true, adds the questions, then publishes. Same Drive lookup as Sheets.",
+    notes: "Our own code against Forms API v1 (forms.create, forms.batchUpdate, forms.setPublishSettings, forms.get, forms.responses.list), every one of which lists drive.file among its scopes, so no Forms scope (forms.body, forms.responses.readonly, both sensitive) is asked. Forms made through the API after 2026-06-30 start unpublished; X0 Bot creates with unpublished=true, adds the questions, then publishes. Same Drive lookup as Sheets.",
   },
   {
     id: "google-classroom", name: "Google Classroom", category: "School", kind: "native", provider: "google",
@@ -231,7 +231,7 @@ export const CATALOG: readonly ConnectorDef[] = [
     aliases: ["todoist", "to doist"],
     url: "https://ai.todoist.net/mcp", auth: "oauth", verified: true,
     docs: "https://developer.todoist.com/api/v1/",
-    notes: "\"Primary URL (Streamable HTTP): https://ai.todoist.net/mcp\". Dynamic client registration is documented (POST https://api.todoist.com/oauth/register, no auth, rate-limited, HTTPS redirect URIs, no review step); the live metadata points at todoist.com/oauth/register, which also exists, and the SDK uses the one it discovers. Registration defaults to client_secret_post, so ask for token_endpoint_auth_method none, as oauth.ts does. Scope data:read_write (deletes are data:delete, not asked). CIMD is documented too. On 2026-10-22 a registration with Tailzu's details came back 201 and /authorize kept our redirect URI; the redirect after a real login was not tried.",
+    notes: "\"Primary URL (Streamable HTTP): https://ai.todoist.net/mcp\". Dynamic client registration is documented (POST https://api.todoist.com/oauth/register, no auth, rate-limited, HTTPS redirect URIs, no review step); the live metadata points at todoist.com/oauth/register, which also exists, and the SDK uses the one it discovers. Registration defaults to client_secret_post, so ask for token_endpoint_auth_method none, as oauth.ts does. Scope data:read_write (deletes are data:delete, not asked). CIMD is documented too. On 2026-10-22 a registration with X0 Bot's details came back 201 and /authorize kept our redirect URI; the redirect after a real login was not tried.",
   },
   {
     id: "calendly", name: "Calendly", category: "Calendar",
@@ -287,7 +287,7 @@ export const CATALOG: readonly ConnectorDef[] = [
     aliases: ["trello"],
     url: "https://mcp.trello.com/v1", auth: "oauth", verified: false,
     docs: "https://support.atlassian.com/trello/docs/connect-trello-to-ai-assistants-with-trello-mcp/",
-    notes: "The docs give the URL, \"Trello MCP uses OAuth 2.0\" and no API tokens for MCP; the transport only as type http in a Cursor link. How a client registers: the docs don't state it; live metadata offers dynamic client registration and CIMD, on the same Atlassian authorization server as Jira (auth.atlassian.com); try once live. The same allowlist applies: \"Access to the domain is restricted\" means an org admin must allow Tailzu's callback domain (Atlassian Administration, Connectors, Atlassian MCP server) until Atlassian adds it for everyone, and a Trello user with no admin cannot. Cards and lists are archived, never deleted.",
+    notes: "The docs give the URL, \"Trello MCP uses OAuth 2.0\" and no API tokens for MCP; the transport only as type http in a Cursor link. How a client registers: the docs don't state it; live metadata offers dynamic client registration and CIMD, on the same Atlassian authorization server as Jira (auth.atlassian.com); try once live. The same allowlist applies: \"Access to the domain is restricted\" means an org admin must allow X0 Bot's callback domain (Atlassian Administration, Connectors, Atlassian MCP server) until Atlassian adds it for everyone, and a Trello user with no admin cannot. Cards and lists are archived, never deleted.",
   },
   {
     id: "calcom", name: "Cal.com", category: "Calendar",
@@ -311,7 +311,7 @@ export const CATALOG: readonly ConnectorDef[] = [
     aliases: ["monday.com", "monday dot com"],
     url: "https://mcp.monday.com/mcp", auth: "oauth", verified: true,
     docs: "https://developer.monday.com/api-reference/docs/mcp-dynamic-client-registration",
-    notes: "\"Supports Streamable HTTP only at https://mcp.monday.com/mcp\" (developer.monday.com/api-reference/docs/integrate-with-monday-mcp; SSE is not supported). CIMD is recommended and dynamic client registration is the documented alternative: \"Any developer can use this path\". The docs name https://mcp.monday.com/register, but discovery gives https://auth.monday.com/oauth_ms/oauth/register, which the SDK uses. Until monday pre-approves Tailzu (its MCP integration form), the consent screen says \"Admin approval required\" and an account admin must approve it and its redirect URI once: a person who is not their account's admin cannot connect before that. A personal API token as a bearer is the other route.",
+    notes: "\"Supports Streamable HTTP only at https://mcp.monday.com/mcp\" (developer.monday.com/api-reference/docs/integrate-with-monday-mcp; SSE is not supported). CIMD is recommended and dynamic client registration is the documented alternative: \"Any developer can use this path\". The docs name https://mcp.monday.com/register, but discovery gives https://auth.monday.com/oauth_ms/oauth/register, which the SDK uses. Until monday pre-approves X0 Bot (its MCP integration form), the consent screen says \"Admin approval required\" and an account admin must approve it and its redirect URI once: a person who is not their account's admin cannot connect before that. A personal API token as a bearer is the other route.",
   },
   {
     id: "make", name: "Make.com", category: "Automation",
@@ -401,7 +401,7 @@ export const ALWAYS_ON: readonly ConnectorDef[] = [
     aliases: ["pay", "upi", "gpay", "google pay", "phonepe", "phone pe", "paytm", "bhim", "send money", "transfer money", "paise bhejo", "pay karo", "payment"],
     url: "upi://pay", verified: true,
     docs: "https://www.npci.org.in/PDF/npci/upi/circular/2017/Circular%20on%20Non-compliance%20of%20UPI%20apps%20to%20Deeplinking%20specs%20Circular%2037-%201.11.2017.pdf",
-    notes: "NPCI's UPI Linking Specification (deep linking; NPCI circular 37 of 2017 holds every UPI app to it): upi://pay?pa=<vpa>&pn=<name>&am=<amount>&cu=INR&tn=<note>, pa and pn required, INR the only currency. The specification is not on a public NPCI page (npci.org.in refuses scripted reads); a copy of its v1.6 draft was read on 2026-10-22. Phone only. Some UPI apps decline a prefilled payment to a personal UPI ID (one that is not a merchant's); the PIN is always the person's own, typed in their UPI app. Tailzu pays nothing.",
+    notes: "NPCI's UPI Linking Specification (deep linking; NPCI circular 37 of 2017 holds every UPI app to it): upi://pay?pa=<vpa>&pn=<name>&am=<amount>&cu=INR&tn=<note>, pa and pn required, INR the only currency. The specification is not on a public NPCI page (npci.org.in refuses scripted reads); a copy of its v1.6 draft was read on 2026-10-22. Phone only. Some UPI apps decline a prefilled payment to a personal UPI ID (one that is not a merchant's); the PIN is always the person's own, typed in their UPI app. X0 Bot pays nothing.",
   }),
   handoff({
     id: "maps", name: "Google Maps", category: "Travel",

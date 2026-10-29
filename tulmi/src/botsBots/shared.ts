@@ -101,6 +101,8 @@ export class SharedItems {
   private async open(userId: string, itemId: string): Promise<{ r: ItemRow; canEdit: boolean; canRemove: boolean }> {
     const [r] = UUID.test(itemId) ? await this.rows.select({ id: itemId }, { limit: 1 }) : [];
     if (!r) throw gone();
+    // What someone shared is unseen by anyone with a block between them (blocks.ts).
+    if (r.shared_by !== userId && (await this.threads.blocks.hiddenFor(userId)).has(r.shared_by)) throw gone();
     const editable = EDITABLE.includes(r.kind) && r.access === "edit";
     if (r.space_id) {
       const perms = await this.spaces.permsFor(userId, r.space_id);
@@ -210,12 +212,29 @@ export class SharedItems {
     if (!perms) throw new BotError("not_found", "That space isn't there any more.", 404);
     const rows = await this.rows.before({ space_id: spaceId }, "updated_ms", null, ITEMS_MAX);
     const may = perms.includes("share");
-    return rows.map((r) => this.view(userId, r, may && r.access === "edit" && EDITABLE.includes(r.kind), r.shared_by === userId || may));
+    const hidden = await this.threads.blocks.hiddenFor(userId);
+    return rows.filter((r) => !hidden.has(r.shared_by))
+      .map((r) => this.view(userId, r, may && r.access === "edit" && EDITABLE.includes(r.kind), r.shared_by === userId || may));
   }
 
   async get(userId: string, itemId: string): Promise<ItemView> {
     const { r, canEdit, canRemove } = await this.open(userId, itemId);
     return this.view(userId, r, canEdit, canRemove);
+  }
+
+  /** The row behind a shared thing, for someone who may see it (a report of it). 404 otherwise. */
+  async rowFor(userId: string, itemId: string): Promise<ItemRow> {
+    return (await this.open(userId, itemId)).r;
+  }
+
+  /** The admin takes a shared thing out (a report acted on), for everyone. */
+  async removeAny(itemId: string): Promise<boolean> {
+    const [r] = UUID.test(itemId) ? await this.rows.select({ id: itemId }, { limit: 1 }) : [];
+    if (!r) return false;
+    await this.rows.remove({ id: r.id });
+    if (r.space_id) await this.spaces.note(r.space_id, null, "unshared", `${r.title} was taken out after a report`);
+    await this.tell(r);
+    return true;
   }
 
   /** The file behind a shared file, for someone who may see it. */
@@ -282,8 +301,9 @@ export class SharedItems {
    */
   async forBot(userId: string, slug: string): Promise<Array<{ name: string; kind: string; text: string }>> {
     const out: Array<{ name: string; kind: string; text: string }> = [];
+    const hidden = await this.threads.blocks.hiddenFor(userId);
     for (const s of (await this.spaces.spacesWithBot(userId, slug)).slice(0, 3)) {
-      const rows = await this.rows.before({ space_id: s.id }, "updated_ms", null, 25);
+      const rows = (await this.rows.before({ space_id: s.id }, "updated_ms", null, 25)).filter((r) => !hidden.has(r.shared_by));
       if (!rows.length) continue;
       const lines = rows.map((r) => {
         const d = r.data ?? {};

@@ -122,7 +122,7 @@ describe("the care routes", () => {
     expect((await s.req("alice", "DELETE", `${url}/0`)).statusCode).toBe(400);
   });
 
-  it("refuse a pull request from a fork, which Tailzu cannot push to, and ignore its events", async () => {
+  it("refuse a pull request from a fork, which X0 Bot cannot push to, and ignore its events", async () => {
     const r = await careRig();
     const s = await jobsServer(r);
     const url = `/v1/code/projects/${r.project.id}/care`;
@@ -169,7 +169,7 @@ describe("GitHub's webhook", () => {
     expect(seen).toEqual([]);
   });
 
-  it("hands a pull request on a branch that is not Tailzu's to PR care too (a handed-over one), while its own bookkeeping stays for \"tailzu/\" branches", async () => {
+  it("hands a pull request on a branch that is not X0 Bot's to PR care too (a handed-over one), while its own bookkeeping stays for \"tailzu/\" branches", async () => {
     const r = await careRig();
     const seen: unknown[] = [];
     const payload = { action: "closed", number: 5, pull_request: { number: 5, merged: true, head: { ref: "feature/x", repo: { id: r.repo.id } } }, repository: { id: r.repo.id } };

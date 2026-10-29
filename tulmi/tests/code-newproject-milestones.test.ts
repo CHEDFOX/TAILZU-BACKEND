@@ -386,7 +386,7 @@ describe("previewSignals (the App's read of a commit)", () => {
 });
 
 describe("startMilestone", () => {
-  it("makes the branch from the default branch and records it as Tailzu's own", async () => {
+  it("makes the branch from the default branch and records it as X0 Bot's own", async () => {
     const { r, s } = await started();
     expect(s).toMatchObject({ branch: BRANCH, existing: false, url: `https://github.com/alice/app/tree/${BRANCH}` });
     expect(r.fake.branches(r.repo)).toContain(BRANCH);
@@ -403,7 +403,7 @@ describe("startMilestone", () => {
     expect(r.fake.branches(r.repo).filter((b) => b === BRANCH)).toHaveLength(1);
   });
 
-  it("leaves a branch of that name that Tailzu did not make alone", async () => {
+  it("leaves a branch of that name that X0 Bot did not make alone", async () => {
     const r = await githubRig();
     await r.d.github.createBranch(repoRef(r.d, "alice", r.project), BRANCH);
     const before = r.fake.head(r.repo, BRANCH);
@@ -483,7 +483,7 @@ describe("openMilestonePr", () => {
     expect(pulls[0]!.merged).toBe(false);
   });
 
-  it("is a branch that Tailzu made, with something on it", async () => {
+  it("is a branch that X0 Bot made, with something on it", async () => {
     const r = await githubRig();
     // never made
     await expect(openMilestonePr(r.d, "alice", r.projectId, M0)).rejects.toMatchObject({ code: "not_found" });

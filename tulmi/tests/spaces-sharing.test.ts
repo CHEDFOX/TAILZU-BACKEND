@@ -181,7 +181,7 @@ describe("invites by link and by email", () => {
     expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code: inv.code })).status).toBe(404);
   });
 
-  it("opens the app straight to joining: the link's page opens Tailzu at Spaces with the code, and keeps the code to type", async () => {
+  it("opens the app straight to joining: the link's page opens X0 Bot at Spaces with the code, and keeps the code to type", async () => {
     const s = await served();
     const id = await s.home();
     const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { role: "family" })).body;
@@ -219,7 +219,7 @@ describe("invites by link and by email", () => {
     expect(await s.outbox.sendDue(mailer)).toBe(0);
     s.clock.t += 2 * 60_000;
     expect(await s.outbox.sendDue(mailer)).toBe(1);
-    expect(sent).toEqual(["x@example.in: Aanya S. invited you to Home on Tailzu"]);
+    expect(sent).toEqual(["x@example.in: Aanya S. invited you to Home on X0 Bot"]);
     expect(await s.outbox.sendDue(mailer)).toBe(0);
   });
 

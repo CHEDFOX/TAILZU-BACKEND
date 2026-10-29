@@ -8,7 +8,7 @@
  *
  * The model is CLEANUP_MODEL (config.ts).
  */
-import { nicknameOf } from "../experience/assistantName.js";
+import { heardNameIn, nicknameOf } from "../experience/assistantName.js";
 import { getConfig } from "../config.js";
 import type { CleanupOptions, Personality } from "../../../shared/types/api.js";
 import { cleanLabel, describeField, fieldKindOf, takesAValue } from "./field.js";
@@ -698,7 +698,7 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
   // this an ask to write a piece for them, or for more than a keyboard
   // writes? Measured on the message, after any "make it sweet" is off it.
   const toAnAi = promptsAnAi(opts.targetApp);
-  const ask = composeAsk(message, opts.targetApp);
+  const ask = composeAsk(message, opts.targetApp, nicknameOf(opts.personality));
   const piece = ask?.kind === "piece" || (!toAnAi && ask?.kind !== "tooBig" && mentionsAPiece(message));
   const earlier = earlierBlock(opts.recent, { tzOffsetMinutes: opts.tzOffsetMinutes, context });
   // A second recognizer's reading, when it disagreed with the first. Kept as
@@ -758,6 +758,7 @@ function writerRequest(input: string, opts: CleanupOptions & WriterExtras): Writ
     hasAlternative,
     compose: ask?.kind,
     promptsAnAi: toAnAi,
+    calledAs: toAnAi ? undefined : heardNameIn(message),
     hasEarlier: !!earlier,
     hasAround: !!around,
     variant: opts.variant,

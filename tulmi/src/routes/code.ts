@@ -312,26 +312,26 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
       if (!k.github || !k.appReady || !stateKeyOk()) return reply.code(503).send(page("Not available", "GitHub isn't set up on this server yet.", false));
       const q = req.query ?? {};
       const again = (title: string, line: string) => page(title, line, true, OPEN_APP);
-      if (q.error) return reply.code(400).send(again("Nothing was connected", "You can go back to Tailzu and try again any time."));
+      if (q.error) return reply.code(400).send(again("Nothing was connected", "You can go back to X0 Bot and try again any time."));
       const text = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : undefined);
       const code = text(q.code, 4096), state = text(q.state, 4096), installationId = text(q.installation_id, 20), setupAction = text(q.setup_action, 32);
       if ((q.code !== undefined && code === undefined) || (q.state !== undefined && state === undefined)) {
-        return reply.code(400).send(again("That link didn't work", "Go back to Tailzu and start connecting again."));
+        return reply.code(400).send(again("That link didn't work", "Go back to X0 Bot and start connecting again."));
       }
       try {
         const r = await completeCallback({ store: k.store, github: k.github }, { code, installationId, setupAction, state });
         if (r.kind === "waiting") {
-          return reply.send(page("Waiting for your organisation's owner to approve Tailzu", "Once they say yes, open Tailzu and connect GitHub again.", false));
+          return reply.send(page("Waiting for your organisation's owner to approve X0 Bot", "Once they say yes, open X0 Bot and connect GitHub again.", false));
         }
-        if (r.kind === "synced") return reply.send(page("GitHub updated", "Tailzu has the latest from GitHub. You can go back to Tailzu.", true, OPEN_APP));
-        return reply.send(page("GitHub connected", "Tailzu can now see the repos you chose. You can go back to Tailzu.", true, OPEN_APP));
+        if (r.kind === "synced") return reply.send(page("GitHub updated", "X0 Bot has the latest from GitHub. You can go back to X0 Bot.", true, OPEN_APP));
+        return reply.send(page("GitHub connected", "X0 Bot can now see the repos you chose. You can go back to X0 Bot.", true, OPEN_APP));
       } catch (err) {
         // The code, the state and the installation are in the address: only what went wrong is logged.
         req.log.warn({ code: (err as { code?: string })?.code }, "github callback failed");
         const notYours = err instanceof ConnectorError && err.code === "not_yours";
         return reply.code(notYours ? 403 : 400).send(again(
           notYours ? "That install isn't yours" : "That didn't work",
-          notYours ? "Your GitHub account can't reach it, so it wasn't connected." : "Go back to Tailzu and try connecting again.",
+          notYours ? "Your GitHub account can't reach it, so it wasn't connected." : "Go back to X0 Bot and try connecting again.",
         ));
       }
     });
@@ -395,21 +395,21 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     if (!k.oauth || !stateKeyOk()) return reply.code(503).send(page("Not available", "GitHub isn't set up on this server yet.", false));
     const again = (title: string, line: string) => page(title, line, true, OPEN_APP);
     const q = req.query ?? {};
-    if (q.error) return reply.code(400).send(again("Nothing was connected", "You can go back to Tailzu and try again any time."));
+    if (q.error) return reply.code(400).send(again("Nothing was connected", "You can go back to X0 Bot and try again any time."));
     const { code, state } = q;
     if (typeof code !== "string" || typeof state !== "string" || !code || code.length > 4096 || state.length > 4096) {
-      return reply.code(400).send(again("That link didn't work", "Go back to Tailzu and start connecting again."));
+      return reply.code(400).send(again("That link didn't work", "Go back to X0 Bot and start connecting again."));
     }
     try {
       await k.oauth.complete(code, state);
-      return reply.send(page("GitHub connected", "You signed in. Add the repos you want Tailzu to work in, and only those are touched. You can go back to Tailzu.", true, OPEN_APP));
+      return reply.send(page("GitHub connected", "You signed in. Add the repos you want X0 Bot to work in, and only those are touched. You can go back to X0 Bot.", true, OPEN_APP));
     } catch (err) {
       // The code and the state are in the address: only what went wrong is logged.
       req.log.warn({ code: (err as { code?: string })?.code }, "github sign-in callback failed");
       const broad = err instanceof ConnectorError && err.code === "scope_too_broad";
       return reply.code(broad ? 403 : 400).send(again(
         broad ? "Nothing was connected" : "That didn't work",
-        broad ? "GitHub gave Tailzu more access than it asked for, so it was revoked." : "Go back to Tailzu and try connecting again.",
+        broad ? "GitHub gave X0 Bot more access than it asked for, so it was revoked." : "Go back to X0 Bot and try connecting again.",
       ));
     }
   });
@@ -506,7 +506,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     try {
       return await guarded(deps.guard, req, reply, s.user, "code", async (stop) => {
         const brain = await s.brain.open(s.user.id, req.params.id);
-        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." } };
+        if ((await brain.status()).status === "none") return { status: 409, body: { code: "brain_not_ready", message: "X0 Bot hasn't read this project yet. Start its brain first." } };
         const project = await ownProject(s.d, s.user.id, req.params.id);
         let ws: Awaited<ReturnType<typeof workspace>> | null = null;
         // Files are read from the default branch, and only when the search was unsure.
@@ -538,7 +538,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     if (!s) return reply;
     try {
       const brain = await s.brain.open(s.user.id, req.params.id);
-      if ((await brain.status()).status === "none") return reply.code(409).send({ code: "brain_not_ready", message: "Tailzu hasn't read this project yet. Start its brain first." });
+      if ((await brain.status()).status === "none") return reply.code(409).send({ code: "brain_not_ready", message: "X0 Bot hasn't read this project yet. Start its brain first." });
       const read = await manifestReader(s.d, s.user.id, req.params.id);
       return reply.send(await auditDeps(brain, read, { ...(s.brain.runtime.fetchFn ? { fetchFn: s.brain.runtime.fetchFn } : {}) }));
     } catch (err) { return fail(reply, err); }
@@ -554,7 +554,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     const answersOk = b.answers === undefined || (typeof b.answers === "object" && b.answers !== null && !Array.isArray(b.answers));
     const answers = b.answers !== undefined && answersOk ? bodyOf(b.answers) : undefined;
     if (request === null || replyText === null || !answersOk || (answers && (Object.keys(answers).length > 10 || Object.values(answers).some((v) => typeof v !== "string" || v.length > INTAKE_ANSWER_MAX))) || (b.proceed !== undefined && typeof b.proceed !== "boolean")) {
-      return reply.code(400).send({ code: "bad_request", message: "Send request (your first message), answers (by question id), reply (a free-text answer) or proceed (true to let Tailzu decide the rest), as text." });
+      return reply.code(400).send({ code: "bad_request", message: "Send request (your first message), answers (by question id), reply (a free-text answer) or proceed (true to let X0 Bot decide the rest), as text." });
     }
     try {
       return await guarded(deps.guard, req, reply, s.user, "code", async (stop) => {

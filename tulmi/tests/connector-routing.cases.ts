@@ -603,7 +603,7 @@ export const REVIEW_2: RoutingCase[] = [
   { said: "Can you please check if I'm free on Thursday after lunch?", connected: G, expect: { app: "google-calendar", tool: "find_free_time" }, kind: "calendar" },
   { said: "what's my day looking like tomorrow", connected: G, expect: { app: "google-calendar", tool: "list_events" }, kind: "calendar" },
   { said: "i have a doctors appt on the 14th at 11, put it in", connected: G, expect: { app: "google-calendar", tool: "create_event" }, kind: "calendar" },
-  { said: "Hey Tailzu, could you set up a quick sync with Neha and Arjun next Wed at 3:30?", connected: G, expect: { app: "google-calendar", tool: "create_event" }, kind: "calendar" },
+  { said: "Hey X0 Bot, could you set up a quick sync with Neha and Arjun next Wed at 3:30?", connected: G, expect: { app: "google-calendar", tool: "create_event" }, kind: "calendar" },
   { said: "lunch w/ priya tmrw 1pm", connected: G, expect: { app: "google-calendar", tool: "create_event" }, kind: "calendar" },
   { said: "kal shaam ko gym jaana hai 6 baje, calendar pe daal do", connected: G, expect: { app: "google-calendar", tool: "create_event" }, kind: "calendar", lang: "hi" },
   { said: "put a 30 min focus block on my cal tomorrow morning", connected: G, expect: { app: "google-calendar", tool: "create_event" }, kind: "calendar" },

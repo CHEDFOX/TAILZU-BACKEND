@@ -254,7 +254,7 @@ describe("somebody else's words", () => {
     expect(r.fake.threadsOf(r.repo, pr.number)[0]!.comments).toHaveLength(1);
   });
 
-  it("from a bot, or Tailzu's own reply, starts nothing and is not even looked into", async () => {
+  it("from a bot, or X0 Bot's own reply, starts nothing and is not even looked into", async () => {
     const r = await careRig();
     const pr = await withThread(r);
     const calls = r.fake.calls.length;
@@ -266,7 +266,7 @@ describe("somebody else's words", () => {
 });
 
 describe("once each", () => {
-  it("a comment already dealt with is not read again, and Tailzu's answer under it does not start a loop", async () => {
+  it("a comment already dealt with is not read again, and X0 Bot's answer under it does not start a loop", async () => {
     const r = await careRig();
     const pr = await withThread(r, "Why is it done this way?");
     r.json.on("care.review", { kind: "question", summary: "Why", reply: "Because the work log says so." });

@@ -112,7 +112,7 @@ describe("the words", () => {
 });
 
 describe("the plans", () => {
-  it("free, paid, a paid tier of its own, and everyone while Tailzu is free", () => {
+  it("free, paid, a paid tier of its own, and everyone while X0 Bot is free", () => {
     expect(planOf(null, cfg)).toMatchObject({ id: "free", monthPaise: 5000, windows: false, upgrade: true });
     expect(planOf(null, { ...cfg, USAGE_FREE_WINDOWS: true }).windows).toBe(true);
     expect(planOf({ entitlement: "TAILZU AIR", active: true }, cfg)).toMatchObject({ id: "paid", paid: true, monthPaise: 50_000, windows: true, upgrade: false });

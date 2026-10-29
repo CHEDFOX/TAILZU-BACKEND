@@ -122,7 +122,7 @@ async function draftBotRequest(d: BuilderDeps, userId: string, sentenceRaw: stri
   }
   throw failed === "budget"
     ? new BotError("budget", "That would cost more than drafting a bot may. Try a shorter sentence.", 402)
-    : new BotError("model_down", "Tailzu couldn't draft that just now. Try again in a moment, or make the bot by hand.", 503);
+    : new BotError("model_down", "X0 Bot couldn't draft that just now. Try again in a moment, or make the bot by hand.", 503);
 }
 
 /** The model's draft made into one that holds up: trimmed to the caps, checked by the same schema as a saved bot, the apps looked up. Null when it cannot be. */
@@ -132,7 +132,7 @@ async function finish(
   const warnings: string[] = [];
   const wanted = [...new Set([...v.connectors.map((c) => c.trim().toLowerCase()), ...connectorHints(sentence, known)])];
   const ids = wanted.filter((id) => known.has(id)).slice(0, 6);
-  for (const id of wanted.filter((x) => x && !known.has(x) && /^[a-z0-9_][a-z0-9._-]*$/.test(x))) warnings.push(`Tailzu has no app called "${id}" yet, so it was left out.`);
+  for (const id of wanted.filter((x) => x && !known.has(x) && /^[a-z0-9_][a-z0-9._-]*$/.test(x))) warnings.push(`X0 Bot has no app called "${id}" yet, so it was left out.`);
 
   const taken = new Set<string>([...builtinBots().map((b) => b.slug)]);
   let slug = slugOf(v.name);
@@ -156,7 +156,7 @@ async function finish(
     return { id, name: s?.name ?? apps.find((a) => a.id === id)?.name ?? id, status: (s?.status ?? (apps.find((a) => a.id === id)?.connected ? "connected" : "not_connected")) as ConnectorStatus };
   });
   const missing = connectors.filter((c) => c.status === "not_connected").map((c) => c.name);
-  if (missing.length) warnings.push(`Not connected yet: ${missing.join(", ")}. The bot works without ${missing.length === 1 ? "it" : "them"}; connect ${missing.length === 1 ? "it" : "them"} in Tailzu to let it use ${missing.length === 1 ? "it" : "them"}.`);
+  if (missing.length) warnings.push(`Not connected yet: ${missing.join(", ")}. The bot works without ${missing.length === 1 ? "it" : "them"}; connect ${missing.length === 1 ? "it" : "them"} in X0 Bot to let it use ${missing.length === 1 ? "it" : "them"}.`);
   warnings.push(...parsed.warnings);
 
   return {

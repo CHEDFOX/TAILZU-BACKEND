@@ -1156,7 +1156,7 @@ const askParts = {
         // onboarding's two buttons.
         type: "VoiceButton", bind: { value: "ask.text" },
         props: {
-          targetApp: "Tailzu", language: "auto", label: en("ask.mic"), stopLabel: en("ask.stop"),
+          targetApp: "X0 Bot", language: "auto", label: en("ask.mic"), stopLabel: en("ask.stop"),
           background: PAPER.surf, recordingColor: "#FFFFFF",
           fontFamily: PHONE_FONT.uiMedium, fontSize: 16, color: PAPER.ink, radius: 16, paddingVertical: 15,
         },
@@ -1170,7 +1170,7 @@ const askParts = {
         // (fontFamily, fontSize and color are drawn by builds from the
         // keyboard-fix update on; an older build keeps its own face.)
         props: {
-          targetApp: "Tailzu", language: "auto", label: en("ask.mic"), stopLabel: en("ask.stop"),
+          targetApp: "X0 Bot", language: "auto", label: en("ask.mic"), stopLabel: en("ask.stop"),
           background: ui.pill.background, recordingColor: "#FFFFFF",
           fontFamily: PHONE_FONT.uiMedium, fontSize: 15, color: ui.text, radius: 999, paddingVertical: 14,
         },

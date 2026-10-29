@@ -341,7 +341,7 @@ async function componentDefault(d: HandlerDeps, c: RouteCall): Promise<{ artifac
   const pd = projectDeps(code);
   const project = await ownProject(pd, c.userId, projectId);
   const brain = await code.brain.open(c.userId, project.id);
-  if ((await brain.status()).status === "none") return page("Tailzu hasn't read this project yet, so this is a page, not a component in its style.");
+  if ((await brain.status()).status === "none") return page("X0 Bot hasn't read this project yet, so this is a page, not a component in its style.");
   const ws = await workspace(pd, c.userId, project.id, project.defaultBranch);
   const r = await componentArtifact(
     { service, kit: { store: service.store, files: workspaceFiles(ws), brain }, brain, call: d.call ?? code.brain.runtime.call, gateway: d.gateway ?? code.brain.runtime.gateway },

@@ -170,7 +170,7 @@ export class Bots {
   private async mine(userId: string, ref: string): Promise<StoredBot> {
     const found = await this.resolve(userId, ref);
     if (!found) throw notFound();
-    if (!found.stored) throw new BotError("builtin", "This is one of Tailzu's own bots. It can't be changed, but you can give it commands and read its memory.", 403);
+    if (!found.stored) throw new BotError("builtin", "This is one of X0 Bot's own bots. It can't be changed, but you can give it commands and read its memory.", 403);
     return found.stored;
   }
 
@@ -218,8 +218,8 @@ export class Bots {
       else {
         const status = await conn.status(userId, apps).catch(() => []);
         for (const s of status) {
-          if (s.status === "unavailable") errors.push(`skills.connectors: Tailzu has no app called "${s.id}"`);
-          else if (s.status === "not_connected") warnings.push(`Not connected yet: ${s.name}. Connect it in Tailzu to let this bot use it.`);
+          if (s.status === "unavailable") errors.push(`skills.connectors: X0 Bot has no app called "${s.id}"`);
+          else if (s.status === "not_connected") warnings.push(`Not connected yet: ${s.name}. Connect it in X0 Bot to let this bot use it.`);
         }
       }
     }

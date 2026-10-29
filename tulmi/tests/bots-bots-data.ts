@@ -132,9 +132,9 @@ export async function sampleApi(): Promise<Record<string, unknown>> {
     } },
     [`GET ${A}/store`]: {
       readyMade: [
-        { id: "tailzu-study", kind: "ready", name: "Study bot", colour: "plum", purpose: "Turns Classroom work into a daily plan", by: "Tailzu", adds: 41200, status: null, does: ["Read new work from Google Classroom each evening.", "Split work into 25-minute blocks before the due date.", "Put the plan in my calendar only after I say yes."], will: "Read Classroom and your calendar", wont: "Submit work or message your teachers", apps: ["Google Classroom", "Calendar"] },
-        { id: "tailzu-money", kind: "ready", name: "Money bot", colour: "stone", purpose: "Tracks UPI spends, never pays alone", by: "Tailzu", adds: 33000, status: null, does: [], will: "Note your spends and open UPI for you", wont: "Pay or move money by itself", apps: ["UPI"] },
-        { id: "tailzu-recipe", kind: "ready", name: "Recipe bot", colour: "sand", purpose: "Cooks from what's in your fridge", by: "Tailzu", adds: 27000, status: null, does: [], will: "Suggest dishes, steps and a shopping list", wont: "Order or buy anything", apps: [] },
+        { id: "tailzu-study", kind: "ready", name: "Study bot", colour: "plum", purpose: "Turns Classroom work into a daily plan", by: "X0 Bot", adds: 41200, status: null, does: ["Read new work from Google Classroom each evening.", "Split work into 25-minute blocks before the due date.", "Put the plan in my calendar only after I say yes."], will: "Read Classroom and your calendar", wont: "Submit work or message your teachers", apps: ["Google Classroom", "Calendar"] },
+        { id: "tailzu-money", kind: "ready", name: "Money bot", colour: "stone", purpose: "Tracks UPI spends, never pays alone", by: "X0 Bot", adds: 33000, status: null, does: [], will: "Note your spends and open UPI for you", wont: "Pay or move money by itself", apps: ["UPI"] },
+        { id: "tailzu-recipe", kind: "ready", name: "Recipe bot", colour: "sand", purpose: "Cooks from what's in your fridge", by: "X0 Bot", adds: 27000, status: null, does: [], will: "Suggest dishes, steps and a shopping list", wont: "Order or buy anything", apps: [] },
       ],
       people: [
         { id: "l1", kind: "people", slug: "shop-bot", name: "Shop bot", colour: "sand", purpose: "Weekly groceries at the best price", by: "Meera R.", adds: 12600, status: "added", does: [], will: "Search the web", wont: "Pay, book or send anything without your yes", apps: [] },

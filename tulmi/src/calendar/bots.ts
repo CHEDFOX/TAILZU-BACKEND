@@ -21,7 +21,7 @@ type OwnApp = (typeof OWN_APPS)[number];
 const ALIAS: Record<string, OwnApp> = { calendar: "calendar", tasks: "tasks", "google-calendar": "calendar", "google-tasks": "tasks" };
 export const ownAppOf = (id: string): OwnApp | null => ALIAS[id] ?? null;
 const NAME: Record<OwnApp, string> = { calendar: "Calendar", tasks: "Tasks" };
-const LINE: Record<OwnApp, string> = { calendar: "Your days in Tailzu: events, with reminders.", tasks: "Your to-do list in Tailzu." };
+const LINE: Record<OwnApp, string> = { calendar: "Your days in X0 Bot: events, with reminders.", tasks: "Your to-do list in X0 Bot." };
 
 const s = (description: string) => ({ type: "string", description });
 const DAY = s("A day: YYYY-MM-DD (preferred), or words like friday, tomorrow, 30 Oct.");
@@ -32,9 +32,9 @@ const REPEAT = { type: "string", enum: ["", "daily", "weekdays", "weekly", "mont
 function calendarTools(today: string): ConnectorToolInfo[] {
   const now = `Today is ${dayWords(today)} ${today.slice(0, 4)} (${today}) in the person's time.`;
   return [
-    { name: "list_events", description: `List what is on the person's calendar in Tailzu between two days. ${now}`, inputSchema: { type: "object", additionalProperties: false, required: ["from"], properties: { from: DAY, to: DAY } } },
+    { name: "list_events", description: `List what is on the person's calendar in X0 Bot between two days. ${now}`, inputSchema: { type: "object", additionalProperties: false, required: ["from"], properties: { from: DAY, to: DAY } } },
     {
-      name: "add_event", description: `Add an event to the person's calendar in Tailzu, when they ask for it. ${now} Give a time, or all_day.`,
+      name: "add_event", description: `Add an event to the person's calendar in X0 Bot, when they ask for it. ${now} Give a time, or all_day.`,
       inputSchema: {
         type: "object", additionalProperties: false, required: ["title", "date"], properties: {
           title: s("What it is, short: Dentist, Dinner with Mom."), date: DAY, time: TIME, end_time: s("When it ends, like 18:30."),
@@ -62,9 +62,9 @@ function calendarTools(today: string): ConnectorToolInfo[] {
 function taskTools(today: string): ConnectorToolInfo[] {
   const now = `Today is ${dayWords(today)} ${today.slice(0, 4)} (${today}) in the person's time.`;
   return [
-    { name: "list_tasks", description: `List the person's to-dos in Tailzu: the open ones, and those due between two days. ${now}`, inputSchema: { type: "object", additionalProperties: false, properties: { from: DAY, to: DAY, include_done: { type: "boolean" } } } },
+    { name: "list_tasks", description: `List the person's to-dos in X0 Bot: the open ones, and those due between two days. ${now}`, inputSchema: { type: "object", additionalProperties: false, properties: { from: DAY, to: DAY, include_done: { type: "boolean" } } } },
     {
-      name: "add_task", description: `Add a to-do to the person's list in Tailzu, when they ask for it. ${now}`,
+      name: "add_task", description: `Add a to-do to the person's list in X0 Bot, when they ask for it. ${now}`,
       inputSchema: {
         type: "object", additionalProperties: false, required: ["title"], properties: {
           title: s("The to-do, short: Pay the electricity bill."), notes: s("Anything else to keep with it."), date: DAY, time: s("A time it's due, like 18:00."),

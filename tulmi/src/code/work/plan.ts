@@ -444,8 +444,8 @@ export async function planChange(task: string, located: Located, brain: PlanBrai
   }
 
   const refused: Record<PathProblem["why"], string> = {
-    missing: "is not a file in this project", workflow: "is a CI workflow, which Tailzu does not change", outside: "is not a path inside the repo",
-    reserved: "is one of Tailzu's own files", secret: "would hold a secret, and secrets never go in git",
+    missing: "is not a file in this project", workflow: "is a CI workflow, which X0 Bot does not change", outside: "is not a path inside the repo",
+    reserved: "is one of X0 Bot's own files", secret: "would hold a secret, and secrets never go in git",
   };
   for (const p of v.problems) notes.push(`Left out ${p.path}: it ${refused[p.why]}.`);
   for (const f of v.fixes) notes.push(`Corrected: ${f}.`);

@@ -208,7 +208,7 @@ describe("saving a subscription's state", () => {
   });
 
   it("refuses a plan not on sale, a subscription with no user_id, and one that changed hands", async () => {
-    expect((await rzp.syncSubscription(sub({ plan_id: "plan_Other" }), "x")).reason).toContain("not a Tailzu plan");
+    expect((await rzp.syncSubscription(sub({ plan_id: "plan_Other" }), "x")).reason).toContain("not an X0 Bot plan");
     expect((await rzp.syncSubscription(sub({ notes: [] }), "x")).ok).toBe(false);
     await rzp.syncSubscription(sub(), "x");
     expect((await rzp.syncSubscription(sub({ notes: { user_id: OTHER } }), "x")).ok).toBe(false);

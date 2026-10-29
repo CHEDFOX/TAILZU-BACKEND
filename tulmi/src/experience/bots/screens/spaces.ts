@@ -335,7 +335,7 @@ function botsCard(s: Space, mineBots: SpacesData["bots"]): Node {
 
 function inviteRows(ctx: BotsCtx, s: Space, mailReady: boolean): Node[] {
   return (s.invites ?? []).map((i) => {
-    const msg = `Join ${s.name} on Tailzu: ${i.link}`;
+    const msg = `Join ${s.name} on X0 Bot: ${i.link}`;
     const mail = !i.email ? `Anyone with the link · good till ${shortDate(ctx, i.expiresAt)}`
       : i.mail === "sent" ? "Email sent" : i.mail === "failed" ? "The email didn't go. Send the link yourself."
         : mailReady ? "Email on its way" : "Email waits to go out (email isn't switched on yet). Send the link yourself meanwhile.";
@@ -490,6 +490,7 @@ function memberPage(ctx: BotsCtx, d: OneSpace | undefined) {
       rowsCard(rows),
       ...(!m.you && canDo(s, "message") ? [secondaryButton(`Message ${m.name}`, messagePerson(m.userId), { size: "md", icon: "send" })] : []),
       ...(remove ? [remove] : []),
+      ...(!m.you ? [quietButton(`Report or block ${m.name}`, open(SCREENS.person, { id: m.userId }), { size: "md", icon: "shield" })] : []),
     ],
   });
 }
@@ -546,14 +547,14 @@ function rolesPage(ctx: BotsCtx, d: OneSpace | undefined) {
     : write("POST", `${A}/spaces/${sid}/roles`, { name: "$state.roleName", perms: permsBody }, { ok: "Role made", then: seq(clearState("roleName"), refresh) }), "Name the role first");
   const roleRow = (r: Role) => row([
     col([text(r.name, { size: 15, weight: 500, lineHeight: 20 }), meta(r.perms.length ? r.perms.map((p) => PERM_WORDS[p].label).join(" · ") : "Look at what's shared, nothing more", { size: 12, lines: 2 }),
-      meta(`${plural(s.members.filter((m) => m.role === r.id).length, "person", "people")}${r.preset ? " · Tailzu's" : ""}`, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      meta(`${plural(s.members.filter((m) => m.role === r.id).length, "person", "people")}${r.preset ? " · X0 Bot's" : ""}`, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     ...(!r.preset && s.me.admin ? [icon("chevron", { size: 16, color: C.meta })] : []),
   ], rowPad, !r.preset && s.me.admin ? open(SCREENS.spaceRoles, { id: s.id, role: r.id }) : undefined);
   return page(ctx, {
     back: true, title: editing ? editing.name : "Roles", nav: "you", maxWidth: 720, live: [`space:${s.id}`],
     state: { roleName: editing?.name ?? "", ...Object.fromEntries(PERMS.map((p) => [`r_${p}`, editing ? editing.perms.includes(p) : false])) },
     body: [
-      col([text(editing ? `Change ${editing.name}` : `Roles in ${s.name}`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(editing ? "Everyone with this role changes with it." : "Family, Kid and Guest are Tailzu's. Make your own for anyone else.", { size: 13 })], { gap: 4 }),
+      col([text(editing ? `Change ${editing.name}` : `Roles in ${s.name}`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(editing ? "Everyone with this role changes with it." : "Family, Kid and Guest are X0 Bot's. Make your own for anyone else.", { size: 13 })], { gap: 4 }),
       ...(!editing ? [rowsCard(s.roles.map(roleRow))] : []),
       ...(s.me.admin ? [section(editing ? "Name and what it can do" : "A new role", [
         inputBox([field("roleName", "roleName", "Name: Grandparent, Cook, Driver…")]),
@@ -597,6 +598,8 @@ function itemPage(ctx: BotsCtx, it: Item | undefined) {
       ...(it.url ? [button(it.kind === "preview" ? "Open the preview" : "Open the link", { kind: "openUrl", url: it.url, external: true }, { kind: "secondary", size: "md", icon: "link" })] : []),
       ...(it.access === "view" && !it.canEdit ? [meta("Shared to look at.", { size: 12 })] : []),
       ...(it.canRemove ? [quietButton("Take it out", call("DELETE", base, undefined, { ok: seq(toast("Taken out"), back()), fail: toast("Couldn't do that. Try again.", true) }), { size: "md" })] : []),
+      // Something someone else shared can be reported (App Review 1.2).
+      ...(!it.byYou ? [quietButton("Report it", open(SCREENS.report, { kind: "item", id: it.id }), { size: "md", icon: "shield" })] : []),
     ],
   });
 }
@@ -618,7 +621,7 @@ function payPage(ctx: BotsCtx, d: OneSpace | undefined) {
       labelledField("What for", field("note", "note", "This week's groceries")),
       labelledField("Pay to (UPI ID)", field("to", "to", "freshbasket@okaxis", { keyboard: "email-address" })),
       labelledField("Their name", field("payee", "payee", "Fresh Basket")),
-      row([icon("lock", { size: 16, color: C.grey70 }), meta("Tailzu never pays by itself. You press pay in your UPI app.", { size: 12 })], { gap: 8 }),
+      row([icon("lock", { size: 16, color: C.grey70 }), meta("X0 Bot never pays by itself. You press pay in your UPI app.", { size: 12 })], { gap: 8 }),
     ],
     footer: [primaryButton("Ask", ask, { wide: !isDesk(ctx) })],
   });
@@ -789,6 +792,7 @@ function chatsPhone(ctx: BotsCtx, d: ChatsData) {
       ...(!list ? [emptyState({ pose: "think", title: "Couldn't load your chats", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : list.length ? [rowsCard(list.map((t) => threadRow(ctx, t)))]
           : [emptyState({ pose: "hello", title: "No chats yet", body: "Message someone in a space you share, or start a group." })]),
+      row([link("Blocked people", open(SCREENS.blocked))], { justifyContent: "center" }),
     ],
   });
 }
@@ -804,7 +808,10 @@ function messageNodes(ctx: BotsCtx, r: ThreadRead): Node[] {
     if (day !== lastDay) { out.push(dayRule(dayWords(ctx, m.at))); lastDay = day; lastFrom = ""; }
     const mine = m.from.you;
     const parts: Node[] = [];
-    if (!mine && r.thread.kind !== "direct" && lastFrom !== (m.from.userId ?? "")) parts.push(meta(m.from.name, { size: 12 }));
+    // A name in a group opens that person's page (bots.person: Message, Report, Block).
+    if (!mine && r.thread.kind !== "direct" && lastFrom !== (m.from.userId ?? "")) {
+      parts.push(m.from.userId ? row([meta(m.from.name, { size: 12 })], { minHeight: 20 }, open(SCREENS.person, { id: m.from.userId })) : meta(m.from.name, { size: 12 }));
+    }
     for (const f of m.files) {
       parts.push(f.mime.startsWith("image/")
         ? box([picture(f.url, desk ? 280 : 220, desk ? 200 : 160, { radius: 14, fit: "cover", background: C.surface, label: f.name })], {}, { kind: "openUrl", url: f.url, external: true })
@@ -817,7 +824,11 @@ function messageNodes(ctx: BotsCtx, r: ThreadRead): Node[] {
         paddingVertical: 10, paddingHorizontal: 14, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomLeftRadius: mine ? 18 : 6, borderBottomRightRadius: mine ? 6 : 18,
       }));
     }
-    parts.push(meta(clockOf(ctx, m.at), { size: 11 }));
+    // Someone else's message can be reported, right under it (App Review 1.2).
+    parts.push(mine ? meta(clockOf(ctx, m.at), { size: 11 }) : row([
+      meta(clockOf(ctx, m.at), { size: 11 }),
+      labelled(row([meta("Report", { size: 11 })], { minHeight: 20, paddingHorizontal: 4 }, open(SCREENS.report, { kind: "message", id: m.id, thread: r.thread.id })), `Report this message from ${m.from.name}`),
+    ], { gap: 6 }));
     out.push(row([col(parts, { gap: 4, maxWidth: desk ? "78%" : "82%", alignItems: mine ? "flex-end" : "flex-start" })], { justifyContent: mine ? "flex-end" : "flex-start" }));
     lastFrom = m.from.userId ?? "";
   }
@@ -843,11 +854,14 @@ function composer(ctx: BotsCtx, t: Thread): Node {
 function threadHead(ctx: BotsCtx, t: Thread): Node {
   const tid = enc(t.id);
   const people = t.kind === "direct" ? (t.spaceName || "One to one") : `${names(t.people.map((p) => (p.you ? "you" : p.name)))}${t.spaceName ? ` · ${t.spaceName}` : ""}`;
+  // One to one: the other person's page, where they can be reported or blocked.
+  const other = t.kind === "direct" ? t.people.find((p) => !p.you) : undefined;
   return row([
     ...(isDesk(ctx) ? [] : [labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back")]),
     threadAvatar(t, 36),
     col([text(t.name, { size: 17, weight: 600, lineHeight: 22, lines: 1 }), meta(people, { size: 12, lines: 1 })], { gap: 1, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     link(t.muted ? "Unmute" : "Mute", write("PUT", `${A}/threads/${tid}`, { muted: !t.muted }, { ok: t.muted ? "Unmuted" : "Muted" })),
+    ...(other ? [iconButton("more", open(SCREENS.person, { id: other.userId }), `Report or block ${other.name}`, 40)] : []),
     ...(t.kind === "group" ? [link("Leave", call("DELETE", `${A}/threads/${tid}`, undefined, { ok: seq(toast("You left the group"), { kind: "navigate", screenId: SCREENS.chats, replace: true }), fail: toast("Couldn't leave. Try again.", true) }))] : []),
   ], { gap: 8 });
 }

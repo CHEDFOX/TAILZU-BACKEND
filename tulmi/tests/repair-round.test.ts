@@ -87,7 +87,7 @@ const toolsOf = (msg: string) => /<tools>\n([\s\S]*?)\n<\/tools>/.exec(msg)?.[1]
 const resultOf = (msg: string) => /<result>\n([\s\S]*?)\n<\/result>/.exec(msg)?.[1] ?? "";
 
 describe("a USE that does not fit its tool", () => {
-  it("runs nothing, and the planner is asked again with what to fix: one of Tailzu's own lines, first in <tools>", async () => {
+  it("runs nothing, and the planner is asked again with what to fix: one of X0 Bot's own lines, first in <tools>", async () => {
     const r = await step([
       'USE google-tasks.add_task {"due":"tomorrow"}',
       'USE google-tasks.add_task {"title":"Gym","due":"tomorrow"}',

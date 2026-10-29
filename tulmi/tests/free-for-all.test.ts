@@ -27,7 +27,7 @@ const PRICE = /\$\d|Lite|Elite|upgrade|See plans|per month|a year/i;
 // a prompt is not "Lite".
 const PRICE_WORDS = /\$|\bLite\b|\bElite\b|\bupgrade\b|See plans|per month|\ba year\b/i;
 
-describe("Tailzu is free for everyone", () => {
+describe("X0 Bot is free for everyone", () => {
   it("nobody is limited", async () => {
     expect(await enforceQuota({ id: "11111111-1111-4111-8111-111111111111", token: "t" } as never)).toBeNull();
   });
@@ -52,7 +52,7 @@ describe("Tailzu is free for everyone", () => {
 
   it("the paywall says it is free; the keyboard's stop screen is the usage meter's (no words to run out of); neither sells", () => {
     const paywall = JSON.stringify(buildScreen("paywall", { personality: {}, language: "en" } as never));
-    expect(paywall).toContain("Tailzu Is Free");
+    expect(paywall).toContain("X0 Bot Is Free");
     const out = JSON.stringify(buildScreen("words_out", { personality: {}, language: "en" } as never));
     expect(out).toContain("You've Reached Your Limit For Now");
     expect(out).toContain("Usage");
@@ -70,7 +70,7 @@ describe("Tailzu is free for everyone", () => {
   it("the desk's plan says free, and its settings sell nothing", () => {
     const can = new Set(["DeskShell"]);
     const plan = JSON.stringify(buildScreen("desk_plan", { personality: {}, language: "en", can } as never));
-    expect(plan).toContain("Tailzu is free.");
+    expect(plan).toContain("X0 Bot is free.");
     expect(plan).not.toMatch(/iap\.subscribe/);
     const st = JSON.stringify(buildScreen("desk_settings", { personality: {}, language: "en", can } as never));
     expect(st).not.toContain("See plans");

@@ -57,7 +57,7 @@ const WORDS = {
   on: "On",
   allow: "Allow",
   turnOff: "Turn off",
-  restart: "Restart Tailzu to finish",
+  restart: "Restart X0 Bot to finish",
   restartButton: "Restart",
   policyLabel: "Privacy policy",
 };

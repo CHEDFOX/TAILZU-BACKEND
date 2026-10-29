@@ -104,7 +104,7 @@ const MARK_DOTS: Array<[number, number, number]> = [
 export function tailzuMark(size = 34): Node {
   return {
     type: "SVG",
-    props: { viewBox: "0 0 34 34", d: MARK_DOTS.map(([x, y, r]) => circ(x, y, r)).join(""), fill: INK, stroke: "none", accessibilityLabel: "Tailzu" },
+    props: { viewBox: "0 0 34 34", d: MARK_DOTS.map(([x, y, r]) => circ(x, y, r)).join(""), fill: INK, stroke: "none", accessibilityLabel: "X0 Bot" },
     style: { width: size, height: size, flexShrink: 0 },
   };
 }

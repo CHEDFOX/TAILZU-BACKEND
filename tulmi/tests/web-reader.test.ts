@@ -101,12 +101,12 @@ describe("the address a page is read from", () => {
   });
 
   it("rewrites a GitHub file page to the raw file, and reads a markdown file as markdown", async () => {
-    const md = "# Tailzu\n\nHello.\n\n## Install\n\n```sh\nnpm i\n```\n";
+    const md = "# X0 Bot\n\nHello.\n\n## Install\n\n```sh\nnpm i\n```\n";
     const s = site(() => new Response(md, { headers: { "content-type": "text/plain; charset=utf-8" } }));
     const page = await readPage("https://github.com/tailzu/tailzu/blob/main/docs/README.md?plain=1#L10", opts({ fetchFn: s.fetchFn }));
     expect(s.calls.map((c) => c.url)).toEqual(["https://raw.githubusercontent.com/tailzu/tailzu/main/docs/README.md"]);
     expect(page.text).toBe(md.trim());
-    expect(page.headings.map((h) => h.text)).toEqual(["Tailzu", "Install"]);
+    expect(page.headings.map((h) => h.text)).toEqual(["X0 Bot", "Install"]);
     expect(page.contentType).toBe("text/plain");
     expect(pageTarget("http://www.github.com/o/r/blob/abc123/a/b.ts").href).toBe("https://raw.githubusercontent.com/o/r/abc123/a/b.ts");
     expect(pageTarget("https://github.com/o/r").href).toBe("https://github.com/o/r");

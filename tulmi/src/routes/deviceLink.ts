@@ -136,11 +136,11 @@ const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").repla
 /** The browser's page for the QR's link. */
 function linkPage(open: string): string {
   const button = open
-    ? `<a class="btn" href="${open}">Open in Tailzu</a><p>Then tap Approve to sign in on your computer.</p>`
+    ? `<a class="btn" href="${open}">Open in X0 Bot</a><p>Then tap Approve to sign in on your computer.</p>`
     : `<p>This link is not complete. Show a new code on your computer and scan it again.</p>`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign in on your computer · Tailzu</title>
+<title>Sign in on your computer · X0 Bot</title>
 <style>body{margin:0;font:16px/1.45 -apple-system,system-ui,sans-serif;color:#0a0a0a;background:#fff}main{max-width:420px;margin:0 auto;padding:56px 20px;display:flex;flex-direction:column;gap:14px}h1{font-size:26px;line-height:31px;margin:0;letter-spacing:-.5px}p{margin:0;color:#3d3d3d;font-size:15px}.btn{display:flex;align-items:center;justify-content:center;height:54px;border-radius:27px;background:#0a0a0a;color:#fff;text-decoration:none;font-weight:600;margin-top:8px}.meta{font-size:13px;color:#5c5c5c}a{color:#0a0a0a}</style></head>
 <body><main><h1>Sign in on your computer</h1>${button}
-<p class="meta">No Tailzu on this phone? <a href="${DOWNLOAD}">Get it here</a>, sign in, and scan the code again.</p></main></body></html>`;
+<p class="meta">No X0 Bot on this phone? <a href="${DOWNLOAD}">Get it here</a>, sign in, and scan the code again.</p></main></body></html>`;
 }

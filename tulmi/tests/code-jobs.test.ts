@@ -40,7 +40,7 @@ async function onPc(r: Rig, o: { commands?: string[]; estimate?: number } = {}) 
 }
 
 describe("making a job", () => {
-  it("starts queued on a branch Tailzu made, with the task cut to 500 characters", async () => {
+  it("starts queued on a branch X0 Bot made, with the task cut to 500 characters", async () => {
     const r = await rig();
     const j = await r.job("x".repeat(900), 250);
     expect(j).toMatchObject({
@@ -51,7 +51,7 @@ describe("making a job", () => {
     expect((await r.jobs.listJobs("alice")).map((x) => x.id)).toEqual([j.id]);
   });
 
-  it("is turned away for a blank task, a bad budget, a branch Tailzu didn't make, a deleted branch, and somebody else's project", async () => {
+  it("is turned away for a blank task, a bad budget, a branch X0 Bot didn't make, a deleted branch, and somebody else's project", async () => {
     const r = await rig();
     await expect(r.jobs.createJob("alice", r.project.id, r.branch, "   ")).rejects.toMatchObject({ code: "bad_request" });
     await expect(r.jobs.createJob("alice", r.project.id, r.branch, "t", -1)).rejects.toMatchObject({ code: "bad_request" });
@@ -763,7 +763,7 @@ describe("changes a runner hands back", () => {
       state: "waiting_for_you", waitingOn: "commit", placement: "none", leaseHolder: null, leaseExpiresAt: null,
       checkpoint: { stepIndex: -1 }, // the step is not finished until its changes are in
     });
-    expect(waiting.reason).toMatch(/need your OK before Tailzu commits them/);
+    expect(waiting.reason).toMatch(/need your OK before X0 Bot commits them/);
     expect(steps[0]).toMatchObject({ status: "blocked", exitCode: 0, outputTail: "built", minutes: 2 });
     expect(r.toldOf("commit_ask")).toHaveLength(1);
     expect(r.toldOf("commit_ask")[0]!.data).toMatchObject({ jobId: job.id, stepIdx: 0, action: "commit.secret" });
@@ -801,7 +801,7 @@ describe("changes a runner hands back", () => {
     await expect(r.jobs.approveCommit("alice", job.id, q.approvalId)).rejects.toMatchObject({ code: "not_waiting" });
   });
 
-  it("to a branch that isn't Tailzu's own (the default branch) wait for the person; a standing permission lets them through", async () => {
+  it("to a branch that isn't X0 Bot's own (the default branch) wait for the person; a standing permission lets them through", async () => {
     const r = await rig();
     await r.beat(LAPTOP);
     // A recorded row for the default branch: it is still never "its own".
@@ -840,7 +840,7 @@ describe("changes a runner hands back", () => {
     expect(r.fake.head(r.repo, r.branch)).toBe(head);
     const first = await look(r, job.id);
     expect(first.steps[0]).toMatchObject({ status: "failed", exitCode: 0 });
-    expect(first.steps[0]!.outputTail).toBe("done\n[Tailzu did not commit the changes: bad_path.]");
+    expect(first.steps[0]!.outputTail).toBe("done\n[X0 Bot did not commit the changes: bad_path.]");
     expect(first.job.checkpoint).toMatchObject({ stepIndex: 0, notes: "Ran npm ci and 1 more; its changes were not committed (bad_path)." });
 
     await r.jobs.requestExec(job.id, ["ci"], 60, 1);

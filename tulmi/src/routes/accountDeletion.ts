@@ -12,9 +12,23 @@
  *
  * DELETE /v1/account (server.ts) still deletes at once, for today's app and anyone who must have it gone now. The sweep that does
  * the real delete on the date runs here, once the server is ready, while the server can delete (`erase`).
+ *
+ * ON THE WEB, WITHOUT THE APP (Google Play's account deletion link; policies/deleteAccount.ts):
+ *
+ *   GET    /delete-account                        the page (x0bot.com/delete-account through the site's proxy)
+ *   POST   /v1/account/deletion/web/code { email, captcha? }   -> { sent: true }   Supabase mails the address a sign-in code, as the
+ *                                                  app's sign-in does, never making an account; the answer is the same whether
+ *                                                  or not an account uses the address
+ *   POST   /v1/account/deletion/web/verify { email, code }     -> { token, expiresIn }   the session's access token, for the page to call
+ *                                                  the three routes above with (it is held in the page's memory only)
  */
+import { randomBytes } from "node:crypto";
+import { createClient } from "@supabase/supabase-js";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser, supabase, type AuthedUser } from "../auth/supabase.js";
+import { cleanEmail } from "../botsBots/mail.js";
+import { getConfig } from "../config.js";
+import { deleteAccountHtml, deletePageCsp } from "./policies/deleteAccount.js";
 import type { AgentOrchestrator } from "../code/agent/orchestrator.js";
 import type { JobRouter } from "../code/jobs/router.js";
 import { isEnded } from "../code/jobs/types.js";
@@ -33,6 +47,40 @@ export interface AccountDeletionDeps {
   /** The Code bot's jobs and the agent that drives them: the person's running jobs are stopped when the date is set. Null: none here. */
   jobs?: Pick<JobRouter, "listJobs" | "cancelJob"> | null;
   agent?: Pick<AgentOrchestrator, "stopJob"> | null;
+  /** Signing in on the web page by a mailed code. Absent: Supabase's (supabaseOtp); null: not possible on this server. */
+  otp?: WebOtp | null;
+  /** The web page's Turnstile site key, for when Supabase's attack protection is on. Absent: from the environment. */
+  captchaKey?: string;
+}
+
+/** The web page's sign-in: a code mailed to an address, and the code traded for a session. */
+export interface WebOtp {
+  /** Mails a code to an existing account's address; never makes an account. Throws on a refusal (the route says nothing of it). */
+  send(email: string, captchaToken?: string): Promise<void>;
+  /** The session's access token, or null when the code is wrong or spent. */
+  verify(email: string, code: string): Promise<{ token: string; expiresIn: number } | null>;
+}
+
+/**
+ * Supabase's own email code, as the app uses it (signInWithOtp / verifyOtp), with the public anon key (or the service key when that
+ * is all there is). A client per call, so no session is ever kept on the server. Null without Supabase.
+ */
+export function supabaseOtp(): WebOtp | null {
+  const cfg = getConfig();
+  const key = cfg.SUPABASE_ANON_KEY ?? cfg.SUPABASE_SERVICE_KEY;
+  if (!cfg.SUPABASE_URL || !key) return null;
+  const client = () => createClient(cfg.SUPABASE_URL!, key, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  return {
+    async send(email, captchaToken) {
+      const { error } = await client().auth.signInWithOtp({ email, options: { shouldCreateUser: false, ...(captchaToken ? { captchaToken } : {}) } });
+      if (error) throw error;
+    },
+    async verify(email, code) {
+      const { data, error } = await client().auth.verifyOtp({ email, token: code, type: "email" });
+      if (error || !data.session) return null;
+      return { token: data.session.access_token, expiresIn: data.session.expires_in };
+    },
+  };
 }
 
 /** How many of a person's jobs are looked at when their bots stop: more than can be going at once (LIVE_JOBS_MAX), helpers included. */
@@ -122,6 +170,45 @@ export function registerAccountDeletionRoutes(app: FastifyInstance, deps: Accoun
       forgetLeaving(user.id, store());
       return reply.send({ ok: true, kept });
     } catch (err) { return fail(reply, err); }
+  });
+
+  // ------------------------------------------------------------------ on the web, without the app
+
+  const otp = deps.otp === undefined ? supabaseOtp() : deps.otp;
+  const captchaKey = (deps.captchaKey ?? process.env.DELETE_PAGE_TURNSTILE_SITE_KEY ?? process.env.TURNSTILE_SITE_KEY ?? "").trim();
+  const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
+  const body = (b: unknown): Record<string, unknown> => (b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {});
+  const noSignIn = (reply: FastifyReply) => reply.code(503).send({ code: "unavailable", message: "Signing in here isn't available right now. Use the app, or email privacy@x0bot.com." });
+
+  app.get("/delete-account", async (_req, reply) => {
+    const nonce = randomBytes(16).toString("base64");
+    return reply.type("text/html; charset=utf-8").header("cache-control", "no-store")
+      .header("content-security-policy", deletePageCsp(nonce, !!captchaKey)).header("referrer-policy", "no-referrer")
+      .send(deleteAccountHtml({ nonce, graceDays: GRACE_DAYS, captchaKey }));
+  });
+
+  app.post("/v1/account/deletion/web/code", tight(5), async (req, reply) => {
+    const b = body(req.body);
+    const email = cleanEmail(b.email);
+    if (!email) return reply.code(400).send({ code: "bad_email", message: "That doesn't look like an email address." });
+    if (!otp) return noSignIn(reply);
+    const captcha = typeof b.captcha === "string" && b.captcha.length <= 4096 ? b.captcha : undefined;
+    try { await otp.send(email, captcha); } catch (err) {
+      // No account, too soon, a captcha: the answer is the same, so it can't tell anyone whether an address has an account.
+      app.log.warn({ error: (err as { name?: string })?.name, status: (err as { status?: number })?.status }, "account deletion: web code not sent");
+    }
+    return reply.header("cache-control", "no-store").send({ sent: true });
+  });
+
+  app.post("/v1/account/deletion/web/verify", tight(10), async (req, reply) => {
+    const b = body(req.body);
+    const email = cleanEmail(b.email);
+    const code = String(b.code ?? "").replace(/\D/g, "");
+    if (!email || code.length < 6 || code.length > 10) return reply.code(400).send({ code: "bad_request", message: "Enter your email address and the code from the email." });
+    if (!otp) return noSignIn(reply);
+    const s = await otp.verify(email, code).catch(() => null);
+    if (!s) return reply.code(401).send({ code: "invalid_code", message: "That code didn't work. Check it, or send a new one." });
+    return reply.header("cache-control", "no-store").send({ token: s.token, expiresIn: s.expiresIn });
   });
 
   const erase = deps.erase;

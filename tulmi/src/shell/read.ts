@@ -214,7 +214,7 @@ export function firstWords(slug: string, name: string): string {
     case "plan": return "Plan bot asks before it changes your calendar";
     case "code": return "Code bot shows the plan before it changes code";
     case "keybot": return "Keybot writes it, you send it";
-    case "tailzu": return "Tailzu answers, or hands it to the right bot";
+    case "tailzu": return "X0 answers, or hands it to the right bot";
     default: return `${name} asks before it does anything`;
   }
 }
@@ -236,19 +236,19 @@ export async function routeOf(d: BotsAreaDeps, userId: string, message: string, 
   if (!d.bots) {
     const rules = readByRules(message, ctx);
     return rules.intent === "code_task" || rules.intent === "code_question"
-      ? previewOf("code", "Code bot", "rules", rules.confidence) : previewOf("tailzu", "Tailzu", "none", rules.confidence);
+      ? previewOf("code", "Code bot", "rules", rules.confidence) : previewOf("tailzu", "X0", "none", rules.confidence);
   }
   if (chosen && chosen !== "any" && chosen !== "tailzu") {
     const b = await d.bots.get(userId, chosen).catch(() => null);
     if (b) return previewOf(b.slug, b.name, "chosen", 1);
   }
-  if (chosen === "tailzu") return previewOf("tailzu", "Tailzu", "chosen", 1);
+  if (chosen === "tailzu") return previewOf("tailzu", "X0", "chosen", 1);
   const daily = defaultGuard().daily;
   if (daily.leftPaise(userId) > 0) {
     const t = await d.bots.target(userId, "any", message, ctx, signal);
     daily.add(userId, t.paise);
-    return t.bot ? previewOf(t.bot.slug, t.bot.name, t.by, t.confidence) : previewOf("tailzu", "Tailzu", "none", t.confidence);
+    return t.bot ? previewOf(t.bot.slug, t.bot.name, t.by, t.confidence) : previewOf("tailzu", "X0", "none", t.confidence);
   }
   const [best] = scoreBots(message, await d.bots.defs(userId), ctx);
-  return best && best.points >= 2 ? previewOf(best.bot.slug, best.bot.name, "rules", 0.6) : previewOf("tailzu", "Tailzu", "none", 0);
+  return best && best.points >= 2 ? previewOf(best.bot.slug, best.bot.name, "rules", 0.6) : previewOf("tailzu", "X0", "none", 0);
 }

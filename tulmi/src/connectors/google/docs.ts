@@ -34,7 +34,7 @@ const TOOLS: NativeTool[] = [
   },
   {
     name: "save_note", risk: "write", verb: "create",
-    description: "Save one of the person's Tailzu meeting notes as a new Google Doc: its summary, key points and people. With no note_id it is their most recent note.",
+    description: "Save one of the person's X0 Bot meeting notes as a new Google Doc: its summary, key points and people. With no note_id it is their most recent note.",
     inputSchema: {
       type: "object",
       properties: { note_id: { type: "string", description: "Leave out for the most recent note." }, title: { type: "string", description: "Default: the note's own title." } },

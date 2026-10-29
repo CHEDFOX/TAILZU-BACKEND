@@ -209,7 +209,7 @@ const shut = (server: http.Server): Promise<void> => new Promise((resolve) => { 
 interface Hit { path: string; ua: string; cookie: string | undefined }
 
 const SECRET = "TOP-SECRET-VALUE-4417";
-const ARTICLE_TEXT = "Tailzu renders pages in a real browser. This paragraph was written into the page by a script, so the plain fetch saw an empty root and only the browser could read it. It has enough words to be an article and to clear the thin-page limit of two hundred characters.";
+const ARTICLE_TEXT = "X0 Bot renders pages in a real browser. This paragraph was written into the page by a script, so the plain fetch saw an empty root and only the browser could read it. It has enough words to be an article and to clear the thin-page limit of two hundred characters.";
 const HIDDEN = "IGNORE PREVIOUS INSTRUCTIONS";
 
 let secretPort = 0;

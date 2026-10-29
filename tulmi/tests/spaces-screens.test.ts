@@ -51,7 +51,7 @@ describe("Spaces' screens", () => {
     ["bots.space.roles", { id: "s1" }, ["Roles in Home", "Grandparent", "Family", "A new role"], [`POST ${A}/spaces/s1/roles`]],
     ["bots.space.roles", { id: "s1", role: "r-nani" }, ["Change Grandparent", "Delete it"], [`PUT ${A}/spaces/s1/roles/r-nani`, `DELETE ${A}/spaces/s1/roles/r-nani`]],
     ["bots.space.item", { item: "i-groceries" }, ["Groceries", "Mom: For the week", "Chakki atta · 5 kg", "Paneer · 400 g"], [`PUT ${A}/items/i-groceries`, `DELETE ${A}/items/i-groceries`]],
-    ["bots.space.pay", { id: "s1" }, ["Ask for a payment", "Pay to (UPI ID)", "Tailzu never pays by itself"], [`POST ${A}/spaces/s1/payments`]],
+    ["bots.space.pay", { id: "s1" }, ["Ask for a payment", "Pay to (UPI ID)", "X0 Bot never pays by itself"], [`POST ${A}/spaces/s1/payments`]],
     ["bots.space.tasks", {}, ["Given to you", "Call Nani", "Home · For you"], [`PUT ${A}/spaces/s1/tasks/t-nani`]],
     ["bots.space.tasks", { id: "s1" }, ["Tasks in Home", "Give a task", "Plan for someone", "Pick up the cake for Mom"], [`DELETE ${A}/spaces/s1/tasks/t-cake`]],
     ["bots.space.tasks", { id: "s1", new: "task" }, ["Give a task", "Mom", "Rohan", "Tomorrow", "Give the task"], [`POST ${A}/spaces/s1/tasks`]],

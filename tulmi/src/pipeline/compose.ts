@@ -25,6 +25,7 @@
  * what occasion it is for, or is said in an app where people write to people.
  * Everything else is left to the writer's own judgement, as before.
  */
+import { addressedByName, namePattern, withoutName } from "../experience/assistantName.js";
 
 /** Small pieces a keyboard can write in one go. */
 const PIECE = [
@@ -48,8 +49,9 @@ const BIG = [
 ].join("|");
 
 const VERB = "(?:write|draft|compose|craft|create|make|prepare|frame|pen|come\\s+up\\s+with|put\\s+together|give\\s+me|help\\s+me\\s+(?:write|with))";
-/** Where an imperative can start: the top, a sentence break, a comma, or a word people open with. */
-const OPENER = "(?:^|[.!?\\n]\\s*|[,;:]\\s*|\\b(?:so|and|then|now|please|pls|plz|just|okay|ok|hey|tailzu|yaar|bro|also)\\s+)";
+/** Where an imperative can start: the top, a sentence break, a comma, or a word people open with (its name among
+ *  them, however it was heard: "hey x zero write…"). */
+const OPENER = `(?:^|[.!?\\n]\\s*|[,;:]\\s*|\\b(?:so|and|then|now|please|pls|plz|just|okay|ok|hey|${namePattern()}|yaar|bro|also)\\s+)`;
 /** Spoken filler between the opening and the ask: "so um write…", "okay please write…". */
 const FILL = "(?:(?:u+m+|u+h+|h+m+|so|like|okay|ok|please|pls)\\s+){0,3}";
 const ASKING = "(?:(?:can|could|would|will)\\s+(?:you|u)\\s+(?:please\\s+)?)";
@@ -88,7 +90,6 @@ const FOR_SOMEONE = new RegExp([
 ].join("|"), "iu");
 /** "…for Priya", "…to Aarav": a name, capitalised by the recognizer, after to/for. */
 const FOR_NAME = /\b(?:to|for)\s+[A-Z][\p{Ll}]+/u;
-const ADDRESSED = /\b(?:hey\s+)?tailzu\b/i;
 
 /** Apps where people write to people, as the clients name them. */
 const PEOPLE_APPS = /\b(?:whatsapp|telegram|signal|slack|teams|discord|messenger|messages|sms|gmail|outlook|e-?mail|mail|instagram|linkedin|twitter|facebook)\b/i;
@@ -115,14 +116,17 @@ export type ComposeAsk = { kind: "piece" } | { kind: "tooBig" };
  *           is part of what they are saying, and is written down as such.
  *   null    anything else, the writer decides as it always has.
  */
-export function composeAsk(text: string, targetApp?: string): ComposeAsk | null {
-  const said = (text ?? "").trim();
-  if (!said || promptsAnAi(targetApp)) return null;
+export function composeAsk(text: string, targetApp?: string, nick?: string | null): ComposeAsk | null {
+  const whole = (text ?? "").trim();
+  if (!whole || promptsAnAi(targetApp)) return null;
+  // Said to it by name ("X zero, write…", "hey Zara, write…"): a request to it, read without the name in front.
+  const addressed = addressedByName(whole, nick);
+  const said = (addressed && withoutName(whole, nick).trim()) || whole;
   if (IMPERATIVE_BIG.test(said) || HI_BIG.test(said) || DEVA_BIG.test(said)) return { kind: "tooBig" };
   const m = IMPERATIVE_PIECE.exec(said);
   const asked = !!m || HI_PIECE.test(said) || DEVA_PIECE.test(said);
   if (!asked) return null;
-  const forSomeone = FOR_SOMEONE.test(said) || FOR_NAME.test(said) || ADDRESSED.test(said);
+  const forSomeone = FOR_SOMEONE.test(said) || FOR_NAME.test(said) || addressed;
   // "Can you write me…" and "write me a text when you land" are how people
   // ask PEOPLE for things. Said that way, only a stated someone or occasion
   // makes it a request to the keyboard; being in a chat app is not enough.

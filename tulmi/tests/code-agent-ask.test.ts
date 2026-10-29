@@ -187,7 +187,7 @@ describe("a plan that needs a yes", () => {
     await r.orch.idle();
     const j = await r.jobNow(job.id);
     expect(j.state).toBe("failed");
-    expect(j.reason).toBe("You told Tailzu not to commit to a branch Tailzu made in this project, so it won't.");
+    expect(j.reason).toBe("You told X0 Bot not to commit to a branch X0 Bot made in this project, so it won't.");
     expect(r.model.turns).toBe(0);
   });
 });
@@ -211,7 +211,7 @@ describe("a commit, or a pull request, the policy asks about", () => {
     // The plan touches something the policy asks about (committing to a branch Tailzu did not make): it waits for a yes.
     let s = await r.stateNow(job.id);
     expect(s.waiting).toMatchObject({ kind: "approval", for: "plan", action: "commit.other_branch" });
-    expect(s.waiting!.kind === "approval" && s.waiting.summary.needs).toEqual([{ action: "commit.other_branch", label: "Commit to a branch Tailzu didn't make", faceId: false }]);
+    expect(s.waiting!.kind === "approval" && s.waiting.summary.needs).toEqual([{ action: "commit.other_branch", label: "Commit to a branch X0 Bot didn't make", faceId: false }]);
     const q = (await r.orch.approve("alice", job.id)) as { approvalId: string };
     await r.orch.approve("alice", job.id, q.approvalId);
     await r.orch.idle();
@@ -257,7 +257,7 @@ describe("a commit, or a pull request, the policy asks about", () => {
     await r.orch.idle();
     const j = await r.jobNow(job.id);
     expect(j.state).toBe("failed");
-    expect(j.reason).toContain("You told Tailzu not to commit to a branch Tailzu made in this project, so it won't. You can take that back in the project's permissions. Nothing was committed.");
+    expect(j.reason).toContain("You told X0 Bot not to commit to a branch X0 Bot made in this project, so it won't. You can take that back in the project's permissions. Nothing was committed.");
     expect(r.fake.commitCount(r.repo)).toBe(1);
     expect(r.fake.pulls(r.repo)).toHaveLength(0);
     expect((await r.stateNow(job.id)).report!.text).toContain("Nothing was committed");

@@ -28,8 +28,8 @@ export type WebErrorCode =
 export function webErrorWords(code: WebErrorCode): string {
   if (code.startsWith("http_")) return `That site answered with an error (${code.slice(5)}).`;
   switch (code) {
-    case "blocked_address": return "That address points into a private network, so Tailzu won't connect to it.";
-    case "bad_url": return "That isn't a web address Tailzu can open.";
+    case "blocked_address": return "That address points into a private network, so X0 Bot won't connect to it.";
+    case "bad_url": return "That isn't a web address X0 Bot can open.";
     case "too_large": return "That page was too big to read.";
     case "timeout": return "That page took too long to answer.";
     case "unsupported_type": return "That isn't a web page or a text file (it may be a PDF, an image or a download).";

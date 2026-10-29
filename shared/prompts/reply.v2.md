@@ -87,7 +87,7 @@ needs but no longer. Don't pad.
 
 Watermark policy: **{{WATERMARK}}**
 
-If "on", append " · Tailzu" at the very end of the reply on a single output
+If "on", append " · X0 Bot" at the very end of the reply on a single output
 line only — never inside an email sign-off block, never in a code fence, and
 skip it if the total reply is under 20 characters.
 

@@ -41,9 +41,9 @@ function scratch(): string {
 // ------------------------------------------------------------ the workflow
 
 /** The workflow for a step that has 12 minutes, written out, as a golden file. */
-const GOLDEN = `# Written by Tailzu for one step of a coding job. Do not edit: it is replaced for every step.
+const GOLDEN = `# Written by X0 Bot for one step of a coding job. Do not edit: it is replaced for every step.
 # It runs only for the throwaway tailzu-run/ branch it was written on, and the branch is deleted afterwards.
-name: Tailzu run
+name: X0 Bot run
 on:
   push:
     branches: ['tailzu-run/**']
@@ -237,7 +237,7 @@ describe("run.mjs: what it prints and keeps", () => {
 });
 
 describe("run.mjs: the overlay", () => {
-  it("allows a path inside the checkout, and not .git, Tailzu's own files, a workflow, an absolute or a parent path", async () => {
+  it("allows a path inside the checkout, and not .git, X0 Bot's own files, a workflow, an absolute or a parent path", async () => {
     const m = await loadScript();
     for (const p of ["src/a.ts", "a.txt", "deep/er/path/file.md", ".env.example", ".github/CODEOWNERS"]) expect(m.overlayPathOk(p), p).toBe(true);
     for (const p of ["", "/etc/passwd", "../x", "a/../../x", "a//b", "./a", ".git/config", "src/.git/hooks/x", ".tailzu/run.mjs", ".TAILZU/step.json", ".github/workflows/ci.yml", ".github/workflows/tailzu-run.yml", "a\\b", 5, null]) {
@@ -364,8 +364,8 @@ describe("run.mjs: what changed", () => {
     expect(cut.skipped[0]).toEqual({ path: "f200.txt", why: "too many files" });
     // The note says how many and which, and is empty when nothing was left out.
     expect(m.skippedNote([])).toBe("");
-    expect(m.skippedNote(cut.skipped)).toMatch(/^\n\[Tailzu: 5 changed files were not sent: f200\.txt \(too many files\), /);
-    expect(m.skippedNote([{ path: "a", why: "w" }])).toBe("\n[Tailzu: 1 changed file was not sent: a (w)]");
+    expect(m.skippedNote(cut.skipped)).toMatch(/^\n\[X0 Bot: 5 changed files were not sent: f200\.txt \(too many files\), /);
+    expect(m.skippedNote([{ path: "a", why: "w" }])).toBe("\n[X0 Bot: 1 changed file was not sent: a (w)]");
     expect(m.skippedNote(Array.from({ length: 12 }, (_, i) => ({ path: `p${i}`, why: "w" })))).toMatch(/, and more\]$/);
   });
 });
@@ -549,7 +549,7 @@ describe("run.mjs, run for real in a git repo", () => {
     expect(r.exit).toBe(0);
     const body = r.seen.results[0]!.body;
     expect(body.exitCode).toBe(0);
-    expect(body.outputTail).toContain("[Tailzu: laid 3 staged file(s) over the checkout; could not lay .github/workflows/ci.yml]");
+    expect(body.outputTail).toContain("[X0 Bot: laid 3 staged file(s) over the checkout; could not lay .github/workflows/ci.yml]");
     expect(body.outputTail).toContain("export const a = 42;");
     expect(body.outputTail).toContain("readme-gone");
     expect(body.changes).toEqual([]);
@@ -604,7 +604,7 @@ describe("run.mjs, run for real in a git repo", () => {
     const r = await runStep({ commands: ["head -c 1100000 /dev/zero | tr '\\0' 'a' > huge.txt", "echo small > small.txt"] });
     const body = r.seen.results[0]!.body;
     expect(body.changes).toEqual([{ path: "small.txt", content: "small\n" }]);
-    expect(body.outputTail).toMatch(/\[Tailzu: 1 changed file was not sent: huge\.txt \(over 1 MB\)\]$/);
+    expect(body.outputTail).toMatch(/\[X0 Bot: 1 changed file was not sent: huge\.txt \(over 1 MB\)\]$/);
   });
 
   it("does not follow a symlink out of the repo, and reports a symlink as left out", async () => {
@@ -684,7 +684,7 @@ describe("the person's own workflows that would also run on a runner push", () =
     expect(t("on:\n  push:\n    paths-ignore: ['docs/**']\n")).toBe(true);
   });
 
-  it("estimates 3 minutes for each workflow that would run, at most 30, ignoring Tailzu's own and files that aren't workflows", () => {
+  it("estimates 3 minutes for each workflow that would run, at most 30, ignoring X0 Bot's own and files that aren't workflows", () => {
     const loud = "name: CI\non: push\njobs: {}\n";
     const quiet = "on:\n  push:\n    branches: [main]\n";
     expect(ciNoiseOf([])).toEqual({ ciNoise: false, extraMinutes: 0, workflows: [] });

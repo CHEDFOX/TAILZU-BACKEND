@@ -186,8 +186,8 @@ export class PrCare {
     const repo = repoRef(d, userId, project);
     const pull = await d.github.getPull(repo, prNumber);
     if (pull.state !== "open") throw new ConnectorError("pr_not_open", "That pull request isn't open.");
-    if (pull.headRepoId !== project.repoId) throw new ConnectorError("bad_request", "That pull request comes from a fork. Tailzu cannot push to a fork, so it cannot look after it.");
-    if (!validBranchName(pull.headRef) || pull.headRef === project.defaultBranch || pull.headRef === pull.baseRef) throw new ConnectorError("bad_request", "Tailzu cannot look after a pull request from the default branch.");
+    if (pull.headRepoId !== project.repoId) throw new ConnectorError("bad_request", "That pull request comes from a fork. X0 Bot cannot push to a fork, so it cannot look after it.");
+    if (!validBranchName(pull.headRef) || pull.headRef === project.defaultBranch || pull.headRef === pull.baseRef) throw new ConnectorError("bad_request", "X0 Bot cannot look after a pull request from the default branch.");
     const kept = await this.store.get(project.id, prNumber);
     if (kept && !kept.endedAt) return kept;
     let branch = await d.store.getBranch(project.id, pull.headRef);
@@ -204,7 +204,7 @@ export class PrCare {
       state: { ...emptyState(), title: pull.title, prUrl: pull.url, head: pull.headSha, handled: [...threads.flatMap((t) => t.comments.map((c) => c.id)), ...convo.map((c) => c.id)].slice(-HANDLED_KEEP) },
       handedAt: now, endedAt: null, createdAt: now, updatedAt: now,
     };
-    this.note(row, "Tailzu is looking after this pull request now.");
+    this.note(row, "X0 Bot is looking after this pull request now.");
     await this.store.put(row);
     this.enqueue(keyOf(project.id, prNumber), "a hand-over", () => this.process(project.id, prNumber, "pull_request", "opened"));
     return row;
@@ -218,7 +218,7 @@ export class PrCare {
     await new Promise<void>((resolve) => this.enqueue(keyOf(project.id, prNumber), "a release", async () => {
       try {
         const live = (await this.store.get(project.id, prNumber)) ?? row;
-        for (const j of live.state.jobs.filter((x) => !x.done)) await this.d.jobs.cancelJob(j.jobId, "You took this pull request back from Tailzu.").catch(() => undefined);
+        for (const j of live.state.jobs.filter((x) => !x.done)) await this.d.jobs.cancelJob(j.jobId, "You took this pull request back from X0 Bot.").catch(() => undefined);
         live.state.ended = "released";
         live.state.jobs.forEach((j) => { j.done = true; });
         live.state.waiting = undefined;
@@ -476,7 +476,7 @@ export class PrCare {
       if (sha) {
         this.note(row, `Pushed a fix for ${names} (${sha7(sha)}). Waiting for the checks to run again.`);
       } else {
-        s.ci = { head: ref.headSha, outcome: "unfixed", checks: ref.refs, note: why ? `Tailzu could not fix it: ${why}` : "Tailzu could not fix it.", at: this.now() };
+        s.ci = { head: ref.headSha, outcome: "unfixed", checks: ref.refs, note: why ? `X0 Bot could not fix it: ${why}` : "X0 Bot could not fix it.", at: this.now() };
         this.note(row, `I could not fix ${names}${why ? `: ${why}` : "."}`);
         await this.tell(c, `I could not fix the failing checks on #${row.prNumber}${why ? `: ${why}` : "."}`);
       }
@@ -488,7 +488,7 @@ export class PrCare {
         s.conflict = { key, outcome: "merged", at: this.now(), note: sha ? `Merged ${ref.refs[0] ?? "the default branch"} into the branch (${sha7(sha)}).` : "Nothing needed merging." };
         this.note(row, s.conflict.note);
       } else {
-        s.conflict = { key, outcome: "failed", at: this.now(), note: `Tailzu could not clear the conflict${why ? `: ${why}` : "."} It is yours to merge.` };
+        s.conflict = { key, outcome: "failed", at: this.now(), note: `X0 Bot could not clear the conflict${why ? `: ${why}` : "."} It is yours to merge.` };
         this.note(row, s.conflict.note);
         await this.tell(c, s.conflict.note);
       }

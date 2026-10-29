@@ -128,7 +128,7 @@ export const AUTH_CALLBACK_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
-<title>Tailzu</title>
+<title>X0 Bot</title>
 <style>
   html { background: #0F0D0B; }
   body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -141,8 +141,8 @@ export const AUTH_CALLBACK_HTML = `<!doctype html>
 </head>
 <body>
 <div class="w">
-  <p id="m">Signed in. Opening Tailzu.</p>
-  <a id="go" href="${AUTH_RESUME_SCHEME_URL}">Open Tailzu</a>
+  <p id="m">Signed in. Opening X0 Bot.</p>
+  <a id="go" href="${AUTH_RESUME_SCHEME_URL}">Open X0 Bot</a>
 </div>
 <script>
 (function () {
@@ -150,7 +150,7 @@ export const AUTH_CALLBACK_HTML = `<!doctype html>
   document.getElementById("go").href = t;
   try { location.replace(t); } catch (e) {}
   setTimeout(function () {
-    document.getElementById("m").textContent = "Tap to return to Tailzu.";
+    document.getElementById("m").textContent = "Tap to return to X0 Bot.";
   }, 1800);
 })();
 </script>
@@ -179,7 +179,7 @@ export const AUTH_CALLBACK_REFUSED_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
-<title>Tailzu</title>
+<title>X0 Bot</title>
 <style>
   html { background: #0F0D0B; }
   body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -190,7 +190,7 @@ export const AUTH_CALLBACK_REFUSED_HTML = `<!doctype html>
 </head>
 <body>
 <div class="w">
-  <p>This sign-in didn't start on this device. Open Tailzu and sign in from there.</p>
+  <p>This sign-in didn't start on this device. Open X0 Bot and sign in from there.</p>
 </div>
 </body>
 </html>

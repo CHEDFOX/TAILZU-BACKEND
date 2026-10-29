@@ -120,7 +120,7 @@ describe("the bake-off scoreboard", () => {
 });
 
 describe("the agent under test", () => {
-  it("is pluggable: Tailzu's flow and the patch applier are registered behind one interface", () => {
+  it("is pluggable: X0 Bot's flow and the patch applier are registered behind one interface", () => {
     expect(Object.keys(AGENTS)).toEqual(expect.arrayContaining(["tailzu", "patch"]));
     const t = agentById("tailzu");
     expect(t.modes).toEqual(expect.arrayContaining(["real", "fake", "oracle"]));

@@ -31,7 +31,7 @@ const screens: Array<[string, Record<string, unknown>]> = [
   ["stats", { personality: {}, language: "en", stats: month,
     usage: { month: { words: 612, audioSeconds: 300, requests: 41 }, total: { words: 900, audioSeconds: 500, requests: 60 }, today: { words: 42, audioSeconds: 38, requests: 3 } },
     allowance: { base: 800, earned: 60, total: 860, used: 612, remaining: 248, streakDays: 1, grants: [], maxed: false, perVisit: [] } }],
-  ["personality", { personality: { activePresetId: "signature", languages: ["hi", "en"], dictionary: [{ word: "tail zoo", replacement: "Tailzu" }] }, language: "en" }],
+  ["personality", { personality: { activePresetId: "signature", languages: ["hi", "en"], dictionary: [{ word: "tail zoo", replacement: "X0 Bot" }] }, language: "en" }],
   ["voices", { personality: { pinnedPresetIds: ["witty"] }, language: "en" }],
   ["dictionary", { personality: {}, language: "en" }],
   ["settings", { personality: {}, language: "en" }],

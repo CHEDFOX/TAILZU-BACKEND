@@ -61,8 +61,8 @@
  *
  * Written in a String.raw template: it must not hold a backtick or "${".
  */
-export const RUN_MJS = String.raw`// Written by Tailzu for one step of a coding job. Do not edit: it is replaced for every step.
-// Runs the commands in .tailzu/step.json, collects what they changed, and reports to Tailzu
+export const RUN_MJS = String.raw`// Written by X0 Bot for one step of a coding job. Do not edit: it is replaced for every step.
+// Runs the commands in .tailzu/step.json, collects what they changed, and reports to X0 Bot
 // with a GitHub OIDC identity token. No dependencies: only Node's own modules.
 import { spawn, execFileSync } from "node:child_process";
 import { readFileSync, lstatSync, realpathSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
@@ -85,7 +85,7 @@ export function isTailzuPath(path) {
 
 // ---------------------------------------------------------------- the overlay
 
-/** A path from step.json that may be written under the checkout: inside it, not .git, not Tailzu's own files, not a workflow. */
+/** A path from step.json that may be written under the checkout: inside it, not .git, not X0 Bot's own files, not a workflow. */
 export function overlayPathOk(path) {
   if (typeof path !== "string" || !path || path.length > PATH_MAX) return false;
   if (path.startsWith("/") || path.includes("\\") || BAD_PATH.test(path)) return false;
@@ -239,17 +239,17 @@ export async function runCommands(commands, timeoutSec, o) {
   for (const command of commands) {
     const left = deadline - now();
     if (left <= 0) {
-      add("\n[Tailzu: the step ran out of time before: " + command + "]\n");
+      add("\n[X0 Bot: the step ran out of time before: " + command + "]\n");
       return { exitCode: 124, output: held };
     }
     add("$ " + command + "\n");
     const r = await runOne(command, left, { cwd: o.cwd, env: o.env, onOutput: add, signal: o.signal });
     if (o.signal && o.signal.aborted) {
-      add("\n[Tailzu: stopped]\n");
+      add("\n[X0 Bot: stopped]\n");
       return { exitCode: 130, output: held };
     }
     if (r.timedOut) {
-      add("\n[Tailzu: stopped after " + timeoutSec + " seconds, the time this step had]\n");
+      add("\n[X0 Bot: stopped after " + timeoutSec + " seconds, the time this step had]\n");
       return { exitCode: 124, output: held };
     }
     if (r.code !== 0) return { exitCode: r.code, output: held };
@@ -313,7 +313,7 @@ export function collectChanges(entries, read, limits) {
 export function skippedNote(skipped) {
   if (!skipped.length) return "";
   const names = skipped.slice(0, 8).map((s) => s.path + " (" + s.why + ")").join(", ");
-  return "\n[Tailzu: " + skipped.length + " changed file" + (skipped.length === 1 ? " was" : "s were") + " not sent: " + names + (skipped.length > 8 ? ", and more" : "") + "]";
+  return "\n[X0 Bot: " + skipped.length + " changed file" + (skipped.length === 1 ? " was" : "s were") + " not sent: " + names + (skipped.length > 8 ? ", and more" : "") + "]";
 }
 
 function git(args, cwd) {
@@ -802,7 +802,7 @@ export async function runSession(spec, o) {
         for (const f of Array.isArray(m.overlay) ? m.overlay : []) if (f && overlayPathOk(f.path)) laid.add(f.path);
         const stream = lineStreamer((data) => send({ t: "out", id: m.id, data }), known);
         const timer = setInterval(() => stream.tick(), 100);
-        if (lay.skipped.length) stream.write("[Tailzu: could not lay " + lay.skipped.slice(0, 5).join(", ") + "]\n");
+        if (lay.skipped.length) stream.write("[X0 Bot: could not lay " + lay.skipped.slice(0, 5).join(", ") + "]\n");
         const ran = await runCommands(Array.isArray(m.commands) ? m.commands : [], Number(m.timeoutSec) > 0 ? Number(m.timeoutSec) : 600, { cwd, env: commandEnv(env), echo: (x) => stream.write(x), signal: abort.signal });
         clearInterval(timer);
         stream.flush();
@@ -823,24 +823,24 @@ export async function runSession(spec, o) {
   return result;
 }
 
-/** A session step: run the session, then report to Tailzu with the identity token, as a step does. */
+/** A session step: run the session, then report to X0 Bot with the identity token, as a step does. */
 export async function sessionMain(spec) {
   const started = Date.now();
   const requestUrl = process.env.ACTIONS_ID_TOKEN_REQUEST_URL;
   const requestToken = process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN;
   const ended = await runSession(spec, {});
   const minutes = Math.round(((Date.now() - started) / 60000) * 1000) / 1000;
-  const note = "[Tailzu: live session ended (" + ended.reason + "); " + ended.commands + " command(s) run]";
+  const note = "[X0 Bot: live session ended (" + ended.reason + "); " + ended.commands + " command(s) run]";
   const body = { jobId: spec.jobId, stepIdx: spec.stepIdx, epoch: spec.epoch, exitCode: ended.exitCode, outputTail: note, minutes, changes: [] };
   if (!requestUrl || !requestToken) {
-    console.error("Tailzu: this run was not given an identity token (the workflow needs id-token: write).");
+    console.error("X0 Bot: this run was not given an identity token (the workflow needs id-token: write).");
     process.exitCode = 1;
     return;
   }
   const token = await oidcToken(requestUrl, requestToken, spec.audience);
   const sent = await postResult(spec.resultUrl, token, body);
   if (!sent.ok && sent.status !== 409) {
-    console.error("Tailzu: could not report the result (" + (sent.status || "no answer") + ").");
+    console.error("X0 Bot: could not report the result (" + (sent.status || "no answer") + ").");
     process.exitCode = 1;
     return;
   }
@@ -863,7 +863,7 @@ export async function main() {
   let laidNote = "";
   if (Array.isArray(spec.overlay) && spec.overlay.length) {
     const laid = applyOverlay(spec.overlay, cwd);
-    laidNote = "[Tailzu: laid " + (laid.written + laid.removed) + " staged file(s) over the checkout" + (laid.skipped.length ? "; could not lay " + laid.skipped.slice(0, 5).join(", ") : "") + "]\n";
+    laidNote = "[X0 Bot: laid " + (laid.written + laid.removed) + " staged file(s) over the checkout" + (laid.skipped.length ? "; could not lay " + laid.skipped.slice(0, 5).join(", ") : "") + "]\n";
     process.stdout.write(laidNote);
   }
 
@@ -877,7 +877,7 @@ export async function main() {
       changes = found.changes;
       note = skippedNote(found.skipped);
     } catch (err) {
-      note = "\n[Tailzu: could not work out what the commands changed: " + String(err && err.message ? err.message : err).slice(0, 200) + "]";
+      note = "\n[X0 Bot: could not work out what the commands changed: " + String(err && err.message ? err.message : err).slice(0, 200) + "]";
     }
   }
   const outputTail = tailOf(redact(laidNote + ran.output, known) + note, TAIL_BYTES);
@@ -887,7 +887,7 @@ export async function main() {
   };
 
   if (!requestUrl || !requestToken) {
-    console.error("Tailzu: this run was not given an identity token (the workflow needs id-token: write).");
+    console.error("X0 Bot: this run was not given an identity token (the workflow needs id-token: write).");
     process.exitCode = 1;
     return;
   }
@@ -895,7 +895,7 @@ export async function main() {
   const sent = await postResult(spec.resultUrl, token, body);
   // 409: the step was given to another computer meanwhile, which is not this run's failure.
   if (!sent.ok && sent.status !== 409) {
-    console.error("Tailzu: could not report the result (" + (sent.status || "no answer") + ").");
+    console.error("X0 Bot: could not report the result (" + (sent.status || "no answer") + ").");
     process.exitCode = 1;
     return;
   }
@@ -908,7 +908,7 @@ function isMain() {
 
 if (isMain()) {
   main().catch((err) => {
-    console.error("Tailzu: " + String(err && err.message ? err.message : err));
+    console.error("X0 Bot: " + String(err && err.message ? err.message : err));
     process.exitCode = 1;
   });
 }

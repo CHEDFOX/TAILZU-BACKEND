@@ -7,18 +7,18 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../seo/head.js";
-export const TERMS_EFFECTIVE = "October 28, 2026";
+export const TERMS_EFFECTIVE = "October 29, 2026";
 
 const TERMS_BODY = `
 <h1>Terms of Service</h1>
 <p class="effective">Effective: ${TERMS_EFFECTIVE}</p>
 
-<p>These Terms of Service ("Terms") govern your use of the Tailzu applications, keyboard extension, and related services (collectively, the "Service"). The Service is provided by XOOTEQ LAB PRIVATE LIMITED ("Tailzu", "we", "us"). By using the Service you agree to these Terms.</p>
+<p>These Terms of Service ("Terms") govern your use of the X0 Bot applications, keyboard extension, and related services (collectively, the "Service"). The Service is provided by XOOTEQ LAB PRIVATE LIMITED ("X0 Bot", "we", "us"). By using the Service you agree to these Terms.</p>
 
 <hr>
 
 <h2>1. Eligibility</h2>
-<p>You must be at least 13 years old to use Tailzu. If you are under the age of majority in your jurisdiction, a parent or guardian must accept these Terms on your behalf.</p>
+<p>You must be at least 13 years old to use X0 Bot. If you are under the age of majority in your jurisdiction, a parent or guardian must accept these Terms on your behalf.</p>
 
 <hr>
 
@@ -35,7 +35,7 @@ const TERMS_BODY = `
 <h2>3. Subscriptions and billing</h2>
 
 <h3>3.1 Purchase</h3>
-<p>Certain Tailzu features are available only through a paid subscription. In the app, subscriptions are billed through the Apple App Store or Google Play, and you agree to the terms of those stores in addition to these Terms. On the web, subscriptions are bought at <a href="https://x0bot.com/pay">x0bot.com/pay</a>, and payment is processed by <strong>Razorpay</strong>. Web subscriptions bought earlier through Paddle.com remain subject to Paddle's <a href="https://www.paddle.com/legal/checkout-buyer-terms">Buyer Terms</a>.</p>
+<p>Certain X0 Bot features are available only through a paid subscription. In the app, subscriptions are billed through the Apple App Store or Google Play, and you agree to the terms of those stores in addition to these Terms. On the web, subscriptions are bought at <a href="https://x0bot.com/pay">x0bot.com/pay</a>, and payment is processed by <strong>Razorpay</strong>. Web subscriptions bought earlier through Paddle.com remain subject to Paddle's <a href="https://www.paddle.com/legal/checkout-buyer-terms">Buyer Terms</a>.</p>
 
 <h3>3.2 Auto-renewal (App Store / Google Play required disclosures)</h3>
 <ul>
@@ -54,7 +54,7 @@ const TERMS_BODY = `
 <p>If we offer a free trial, you will not be charged during the trial period. If you do not cancel before the trial ends, you will be automatically billed for the subscription.</p>
 
 <h3>3.4 Refunds</h3>
-<p>Purchases are non-refundable, except where the law requires a refund. App Store and Google Play purchases are refunded, if at all, by Apple or Google under their own policies; we do not process refunds for them. Web purchases follow our <a href="https://xooteq.com/refunds">Refund Policy</a>. Web subscriptions can be cancelled in Tailzu, under Settings, then Cancel subscription; one bought earlier through Paddle is cancelled from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>. A cancelled subscription stays active until the end of the period already paid for.</p>
+<p>Purchases are non-refundable, except where the law requires a refund. App Store and Google Play purchases are refunded, if at all, by Apple or Google under their own policies; we do not process refunds for them. Web purchases follow our <a href="https://xooteq.com/refunds">Refund Policy</a>. Web subscriptions can be cancelled in X0 Bot, under Settings, then Cancel subscription; one bought earlier through Paddle is cancelled from your Paddle receipt or at <a href="https://paddle.net">paddle.net</a>. A cancelled subscription stays active until the end of the period already paid for.</p>
 
 <h3>3.5 Price changes</h3>
 <p>We may adjust subscription prices from time to time. You will be notified of any material change before it takes effect. Continued use after the change constitutes acceptance.</p>
@@ -73,12 +73,26 @@ const TERMS_BODY = `
   <li>Impersonate any person or entity</li>
 </ul>
 
+<h3 id="objectionable-content">4.1 Spaces, messages and what you share: no objectionable content, no abusive users</h3>
+<p>In Spaces you can message people and share things with them. There is <strong>no tolerance for objectionable content or abusive users</strong>. You must not send or share anything that is:</p>
+<ul>
+  <li>harassing, bullying, threatening, or meant to intimidate or shame someone</li>
+  <li>hateful, or that attacks people for their race, ethnicity, religion, caste, gender, sexual orientation, disability, or any similar trait</li>
+  <li>sexually explicit, or sexual content involving anyone under 18 (which we also report to the authorities)</li>
+  <li>violent or graphic, or that encourages self-harm, suicide, terrorism or violence</li>
+  <li>spam, a scam or fraud, or malware</li>
+  <li>someone else's private information, shared without their permission</li>
+  <li>otherwise unlawful, or infringing on anyone's rights</li>
+</ul>
+<p><strong>Reporting and blocking.</strong> You can report any message, anything shared with you, and any person, from the app: tap <strong>Report</strong> under a message, on a shared thing, or on someone's page (their name in a chat or in a space). You can block anyone, so you no longer see each other's messages and they can no longer message you; unblock them any time in <strong>You, Blocked people</strong>. You can also write to <a href="mailto:support@x0bot.com">support@x0bot.com</a>.</p>
+<p><strong>What we do.</strong> We review every report and act on it <strong>within 24 hours</strong>: we remove content that breaks these Terms, and we <strong>remove users who post it</strong> by suspending or terminating their accounts. The person reported is not told who reported them.</p>
+
 <hr>
 
 <h2>5. Your content</h2>
 <ul>
-  <li>You retain ownership of the content you submit to Tailzu.</li>
-  <li>You grant Tailzu a limited license to process your content solely to provide the Service (transcribing, refining, storing history if you enable it).</li>
+  <li>You retain ownership of the content you submit to X0 Bot.</li>
+  <li>You grant X0 Bot a limited license to process your content solely to provide the Service (transcribing, refining, storing history if you enable it).</li>
   <li>You are responsible for ensuring you have the right to submit any content you input.</li>
   <li>You warrant that your content does not infringe third-party rights.</li>
 </ul>
@@ -86,12 +100,12 @@ const TERMS_BODY = `
 <hr>
 
 <h2>6. Intellectual property</h2>
-<p>Tailzu, including its software, design, and branding, is owned by us. All rights not expressly granted are reserved. You may not copy, modify, distribute, or create derivative works without permission.</p>
+<p>X0 Bot, including its software, design, and branding, is owned by us. All rights not expressly granted are reserved. You may not copy, modify, distribute, or create derivative works without permission.</p>
 
 <hr>
 
 <h2>7. AI-generated output</h2>
-<p>Tailzu uses artificial intelligence to transcribe voice and refine text. AI output may contain errors. You are responsible for reviewing output before relying on it, especially in contexts where accuracy matters (medical, legal, financial). Tailzu does not guarantee that AI output is accurate, complete, or fit for any particular purpose.</p>
+<p>X0 Bot uses artificial intelligence to transcribe voice and refine text. AI output may contain errors. You are responsible for reviewing output before relying on it, especially in contexts where accuracy matters (medical, legal, financial). X0 Bot does not guarantee that AI output is accurate, complete, or fit for any particular purpose.</p>
 
 <hr>
 
@@ -106,20 +120,20 @@ const TERMS_BODY = `
 <hr>
 
 <h2>10. Limitation of liability</h2>
-<p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, TAILZU AND ITS AFFILIATES SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR GOODWILL, ARISING FROM YOUR USE OF THE SERVICE.</p>
+<p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, X0 BOT AND ITS AFFILIATES SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING LOSS OF PROFITS, DATA, OR GOODWILL, ARISING FROM YOUR USE OF THE SERVICE.</p>
 <p>OUR AGGREGATE LIABILITY IN ANY MATTER RELATED TO THE SERVICE SHALL NOT EXCEED THE AMOUNTS YOU PAID US IN THE PRIOR 12 MONTHS OR US$100, WHICHEVER IS GREATER.</p>
 
 <hr>
 
 <h2>11. Indemnification</h2>
-<p>You agree to indemnify and hold Tailzu harmless from any claim arising from (a) your use of the Service in violation of these Terms, (b) content you submit, or (c) your violation of any third-party right.</p>
+<p>You agree to indemnify and hold X0 Bot harmless from any claim arising from (a) your use of the Service in violation of these Terms, (b) content you submit, or (c) your violation of any third-party right.</p>
 
 <hr>
 
 <h2>12. Termination</h2>
 <ul>
-  <li>You may stop using the Service at any time. To delete your account, open <strong>Delete account</strong> in the app (under You, or in Settings). Your account is deleted 7 days after you ask. Until then nothing is removed, your bots stop working, and you can sign in and choose <strong>Keep my account</strong> to keep everything as it was. After the 7 days the account, the personality it learned, and the usage history are deleted for good, and that cannot be undone. Where the app says deleting cannot be undone, it deletes the account straight away. If you cannot reach the app, email <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a> instead.</li>
-  <li>We may suspend or terminate your access if you violate these Terms.</li>
+  <li>You may stop using the Service at any time. To delete your account, open <strong>Delete account</strong> in the app (under You, or in Settings). Your account is deleted 7 days after you ask. Until then nothing is removed, your bots stop working, and you can sign in and choose <strong>Keep my account</strong> to keep everything as it was. After the 7 days the account, the personality it learned, and the usage history are deleted for good, and that cannot be undone. Where the app says deleting cannot be undone, it deletes the account straight away. You can also ask for it without the app, at <a href="https://x0bot.com/delete-account">x0bot.com/delete-account</a>. If you cannot reach either, email <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a> instead.</li>
+  <li>We may suspend or terminate your access if you violate these Terms, including by posting objectionable content or abusing other users (see 4.1).</li>
   <li>On termination, sections that by their nature should survive (IP, disclaimers, limitations, indemnity, governing law) remain in effect.</li>
 </ul>
 
@@ -132,22 +146,22 @@ const TERMS_BODY = `
 <hr>
 
 <h2>14. Apple App Store additional terms</h2>
-<p>If you download Tailzu from the Apple App Store, the following additional terms apply. These terms are between you and Tailzu; Apple is not a party to these Terms but is an intended third-party beneficiary and has the right to enforce them against you.</p>
+<p>If you download X0 Bot from the Apple App Store, the following additional terms apply. These terms are between you and X0 Bot; Apple is not a party to these Terms but is an intended third-party beneficiary and has the right to enforce them against you.</p>
 
 <h3>14.1 Scope of License</h3>
-<p>Tailzu grants you a non-transferable license to use the app on any Apple-branded products that you own or control, and as permitted by the App Store Terms of Service. You may not distribute, network, share, or make the app available for use over a network where it could be used by multiple devices at the same time (except as expressly permitted by Apple).</p>
+<p>X0 Bot grants you a non-transferable license to use the app on any Apple-branded products that you own or control, and as permitted by the App Store Terms of Service. You may not distribute, network, share, or make the app available for use over a network where it could be used by multiple devices at the same time (except as expressly permitted by Apple).</p>
 
 <h3>14.2 Maintenance and support</h3>
-<p>Tailzu is solely responsible for providing any maintenance and support services with respect to the app, as specified in these Terms or as required under applicable law. Apple has no obligation whatsoever to furnish any maintenance and support services with respect to the app.</p>
+<p>X0 Bot is solely responsible for providing any maintenance and support services with respect to the app, as specified in these Terms or as required under applicable law. Apple has no obligation whatsoever to furnish any maintenance and support services with respect to the app.</p>
 
 <h3>14.3 Warranty</h3>
-<p>Tailzu is solely responsible for any product warranties, whether express or implied by law, to the extent not effectively disclaimed. In the event of any failure of the app to conform to any applicable warranty, you may notify Apple, and Apple will refund the purchase price of the app to you. To the maximum extent permitted by applicable law, Apple will have no other warranty obligation whatsoever with respect to the app, and any other claims, losses, liabilities, damages, costs, or expenses attributable to any failure to conform to any warranty will be the sole responsibility of Tailzu.</p>
+<p>X0 Bot is solely responsible for any product warranties, whether express or implied by law, to the extent not effectively disclaimed. In the event of any failure of the app to conform to any applicable warranty, you may notify Apple, and Apple will refund the purchase price of the app to you. To the maximum extent permitted by applicable law, Apple will have no other warranty obligation whatsoever with respect to the app, and any other claims, losses, liabilities, damages, costs, or expenses attributable to any failure to conform to any warranty will be the sole responsibility of X0 Bot.</p>
 
 <h3>14.4 Product claims</h3>
-<p>Tailzu, not Apple, is responsible for addressing any claims by you or any third party relating to the app or your possession or use of the app, including but not limited to: (i) product liability claims; (ii) any claim that the app fails to conform to any applicable legal or regulatory requirement; and (iii) claims arising under consumer protection or similar legislation.</p>
+<p>X0 Bot, not Apple, is responsible for addressing any claims by you or any third party relating to the app or your possession or use of the app, including but not limited to: (i) product liability claims; (ii) any claim that the app fails to conform to any applicable legal or regulatory requirement; and (iii) claims arising under consumer protection or similar legislation.</p>
 
 <h3>14.5 Intellectual property rights</h3>
-<p>In the event of any third-party claim that the app or your possession and use of the app infringes that third party's intellectual property rights, Tailzu, not Apple, will be solely responsible for the investigation, defense, settlement, and discharge of any such intellectual property infringement claim.</p>
+<p>In the event of any third-party claim that the app or your possession and use of the app infringes that third party's intellectual property rights, X0 Bot, not Apple, will be solely responsible for the investigation, defense, settlement, and discharge of any such intellectual property infringement claim.</p>
 
 <h3>14.6 Legal compliance</h3>
 <p>You represent and warrant that (i) you are not located in a country that is subject to a U.S. Government embargo, or that has been designated by the U.S. Government as a "terrorist supporting" country; and (ii) you are not listed on any U.S. Government list of prohibited or restricted parties.</p>
@@ -157,7 +171,7 @@ const TERMS_BODY = `
 
 <h3>14.8 Developer contact</h3>
 <p>For questions, complaints, or claims regarding the app, contact:<br>
-XOOTEQ LAB PRIVATE LIMITED (Tailzu) · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
+XOOTEQ LAB PRIVATE LIMITED (X0 Bot) · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
 
 <hr>
 
@@ -173,10 +187,10 @@ XOOTEQ LAB PRIVATE LIMITED (Tailzu) · <a href="mailto:support@x0bot.com">suppor
 export const TERMS_HTML = siteShell({
   title: "Terms of Service",
   path: "/terms",
-  description: "The terms for using Tailzu, its apps and its keyboard.",
+  description: "The terms for using X0 Bot, its apps and its keyboard.",
   ld: [
-    pageLd("/terms", "Tailzu terms of service", "The terms for using Tailzu, its apps and its keyboard."),
-    crumbsLd([["Tailzu", "/"], ["Terms", "/terms"]]),
+    pageLd("/terms", "X0 Bot terms of service", "The terms for using X0 Bot, its apps and its keyboard."),
+    crumbsLd([["X0 Bot", "/"], ["Terms", "/terms"]]),
   ],
   main: `<article class="prose">\n${TERMS_BODY}\n</article>`,
 });

@@ -128,9 +128,9 @@ export function compareToBaseline(baseline: Baseline | readonly BaselineResult[]
       for (const n of nowNames) {
         const path = pathOfFailure(n);
         const f: Failure = { kind: now.kind, name: n, ...(path ? { path } : {}) };
-        if (wasSet.has(identityOf(now.kind, n))) { alreadyBroken.push({ ...f, note: "was already broken before Tailzu" }); continue; }
+        if (wasSet.has(identityOf(now.kind, n))) { alreadyBroken.push({ ...f, note: "was already broken before X0 Bot" }); continue; }
         if (was && wasFailing && wasNames.length === 0) {
-          alreadyBroken.push({ ...f, note: "was already failing before Tailzu, and what failed was not recorded, so Tailzu cannot tell if its change made it worse" });
+          alreadyBroken.push({ ...f, note: "was already failing before X0 Bot, and what failed was not recorded, so X0 Bot cannot tell if its change made it worse" });
           continue;
         }
         if (scoped && path && !touched.has(path)) { ignored.push({ ...f, note: "in a file this change did not touch" }); continue; }
@@ -146,7 +146,7 @@ export function compareToBaseline(baseline: Baseline | readonly BaselineResult[]
 
     // It failed and named nothing: judge the check as a whole.
     if (wasFailing) {
-      alreadyBroken.push({ kind: now.kind, name: now.kind, note: "was already broken before Tailzu" });
+      alreadyBroken.push({ kind: now.kind, name: now.kind, note: "was already broken before X0 Bot" });
       checks.push({ kind: now.kind, status: "already_broken", exitCode: now.exitCode });
     } else {
       broke.push({ kind: now.kind, name: now.kind, ...(was ? {} : { note: "no baseline was recorded for this check" }) });
@@ -157,7 +157,7 @@ export function compareToBaseline(baseline: Baseline | readonly BaselineResult[]
   const ok = broke.length === 0;
   const parts = [
     broke.length ? `${broke.length} thing${broke.length === 1 ? "" : "s"} this change broke` : "nothing this change broke",
-    ...(alreadyBroken.length ? [`${alreadyBroken.length} already broken before Tailzu`] : []),
+    ...(alreadyBroken.length ? [`${alreadyBroken.length} already broken before X0 Bot`] : []),
     ...(fixed.length ? [`${fixed.length} fixed`] : []),
     ...(ignored.length ? [`${ignored.length} lint problem${ignored.length === 1 ? "" : "s"} in files it did not touch, not counted`] : []),
   ];
@@ -175,7 +175,7 @@ export async function logComparison(log: WorkLog, c: Comparison, results: readon
     });
   }
   for (const f of c.broke.slice(0, 20)) await log.finding({ severity: "risk", path: f.path ?? f.kind, text: `This change broke ${f.kind}: ${cut(f.name, 160)}${f.note ? ` (${f.note})` : ""}` });
-  for (const f of c.alreadyBroken.slice(0, 10)) await log.finding({ severity: "info", path: f.path ?? f.kind, text: `${cut(f.name, 160)} ${f.note ?? "was already broken before Tailzu"}.` });
+  for (const f of c.alreadyBroken.slice(0, 10)) await log.finding({ severity: "info", path: f.path ?? f.kind, text: `${cut(f.name, 160)} ${f.note ?? "was already broken before X0 Bot"}.` });
 }
 
 // ------------------------------------------------------------------- flagging

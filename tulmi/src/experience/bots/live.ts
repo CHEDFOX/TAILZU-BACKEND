@@ -250,7 +250,7 @@ export function liveFrom(i: LiveInput): BotsLive {
     ...i.bots.filter((b) => !BUILTIN_SLUGS.includes(b.slug as (typeof BUILTIN_SLUGS)[number])),
   ];
   const look = (slug: string, colour?: string) => botLook(slug, colour);
-  const nameOf = (slug: string) => bots.find((b) => b.slug === slug)?.name ?? (slug === "tailzu" ? "Tailzu" : slug);
+  const nameOf = (slug: string) => bots.find((b) => b.slug === slug)?.name ?? (slug === "tailzu" ? "X0" : slug);
 
   const needs: NeedsItem[] = [];
   const working: WorkingItem[] = [];

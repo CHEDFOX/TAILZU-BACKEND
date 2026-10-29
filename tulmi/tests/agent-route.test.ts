@@ -275,11 +275,11 @@ describe("refused as an event", () => {
 
 describe("the free paths", () => {
   it("a grammar command is one action, streamed as NDJSON, with no model call", async () => {
-    const res = await post(step({ utterance: "Hey Tailzu, scroll down please" }));
+    const res = await post(step({ utterance: "Hey X0 Bot, scroll down please" }));
     expect(res.status).toBe(200);
     expect(res.type).toMatch(/^application\/x-ndjson/);
     expect(res.evs).toEqual([
-      { t: "heard", text: "Hey Tailzu, scroll down please", mode: "do" },
+      { t: "heard", text: "Hey X0 Bot, scroll down please", mode: "do" },
       { t: "action", kind: "scroll", dir: "down", risk: "free" },
     ]);
     expect(llm.calls).toHaveLength(0);
