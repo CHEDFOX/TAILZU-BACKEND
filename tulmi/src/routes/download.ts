@@ -25,7 +25,7 @@ import { siteShell } from "./policies/shell.js";
 import { crumbsLd, pageLd } from "../seo/head.js";
 import { SITE_UI } from "../experience/catalog.js";
 
-const DESCRIPTION = "Tailzu for Windows and Mac: tap Ctrl twice, talk, and clean text lands wherever your cursor is. Also on iPhone and Android.";
+const DESCRIPTION = "X0 Bot for Windows and Mac: tap Ctrl twice, talk, and clean text lands wherever your cursor is. Also on iPhone and Android.";
 
 
 const CSS = `
@@ -51,17 +51,17 @@ const windowsNote = (winDl: string) => winDl
 export function downloadPageHtml(winDl: string): string {
   return siteShell({
     title: "Download for desktop",
-    headTitle: "Download Tailzu for Windows and Mac — Voice Typing at Your Cursor",
+    headTitle: "Download X0 Bot for Windows and Mac — Voice Typing at Your Cursor",
     path: "/download",
     description: DESCRIPTION,
     ld: [
-      pageLd("/download", "Download Tailzu", DESCRIPTION),
-      crumbsLd([["Tailzu", "/"], ["Download", "/download"]]),
+      pageLd("/download", "Download X0 Bot", DESCRIPTION),
+      crumbsLd([["X0 Bot", "/"], ["Download", "/download"]]),
     ],
     css: CSS,
     main: `
 <p class="eye">Desktop</p>
-<h1>Tailzu for your computer.</h1>
+<h1>X0 Bot for your computer.</h1>
 <p class="lede">Press a hotkey, talk, and clean, polished text lands wherever your cursor is. Works in every app.</p>
 
 <div class="get">

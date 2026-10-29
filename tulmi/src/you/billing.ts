@@ -33,7 +33,7 @@ export interface BillingView {
   invoices: Invoice[];
 }
 
-const STORE_WORDS: Record<string, string> = { app_store: "App Store", mac_app_store: "App Store", play_store: "Google Play", stripe: "Card", promotional: "A gift from Tailzu" };
+const STORE_WORDS: Record<string, string> = { app_store: "App Store", mac_app_store: "App Store", play_store: "Google Play", stripe: "Card", promotional: "A gift from X0 Bot" };
 const STORE_PAGES: Record<string, string> = {
   app_store: "https://apps.apple.com/account/subscriptions", mac_app_store: "https://apps.apple.com/account/subscriptions",
   play_store: "https://play.google.com/store/account/subscriptions",
@@ -75,7 +75,7 @@ async function invoicesOf(subscriptionId: string): Promise<Invoice[]> {
     const paise = Number(i.amount_paid || i.amount || 0);
     return {
       id: i.id, number: i.invoice_number || i.id, date: (i.paid_at || i.date || i.issued_at || 0) * 1000, amountPaise: paise,
-      amount: rupees(paise, i.currency || "INR"), status: i.status ?? "", url: i.short_url || null, what: i.line_items?.[0]?.name || "Tailzu Pro",
+      amount: rupees(paise, i.currency || "INR"), status: i.status ?? "", url: i.short_url || null, what: i.line_items?.[0]?.name || "X0 Pro",
     };
   }).sort((a, b) => b.date - a.date);
   if (r) invoiceCache.set(subscriptionId, { at: Date.now(), list });

@@ -78,7 +78,7 @@ export const OIDC_ISSUER = "https://token.actions.githubusercontent.com";
 export const OIDC_JWKS_URL = `${OIDC_ISSUER}/.well-known/jwks`;
 export const OIDC_AUDIENCE_DEFAULT = "tailzu";
 /** What the commit on a shadow branch says. */
-const SHADOW_MESSAGE = "Tailzu: run a step on GitHub (a temporary branch, deleted when the step is over)";
+const SHADOW_MESSAGE = "X0 Bot: run a step on GitHub (a temporary branch, deleted when the step is over)";
 /** What the install's permissions are kept for, so asking whether the provider is available is not a call to GitHub every time. */
 const PERMS_KEEP_MS = 2 * 60_000;
 /** What a read of the repo's workflows is kept for. */
@@ -321,7 +321,7 @@ export class GithubActionsProvider implements ComputeProvider {
     if (claims.event_name !== "push") throw mismatch("That token is not from a push.");
     if (claims.ref !== `refs/heads/${branch}`) throw mismatch("That token is not from this step's branch.");
     if (typeof claims.workflow_ref !== "string" || !claims.workflow_ref.endsWith(`${SHADOW_WORKFLOW}@refs/heads/${branch}`)) {
-      throw mismatch("That token is not from Tailzu's workflow.");
+      throw mismatch("That token is not from X0 Bot's workflow.");
     }
     // The commit it ran must be the one made for this lease. When the step is no longer out under this epoch there is nothing to compare it to, and the router refuses it (stale) or recognises it (duplicate).
     const held = parseHolder(job.leaseHolder);
@@ -355,7 +355,7 @@ export class GithubActionsProvider implements ComputeProvider {
       });
       return payload;
     } catch {
-      throw badToken("That isn't an identity token GitHub issued for Tailzu, or it has expired.");
+      throw badToken("That isn't an identity token GitHub issued for X0 Bot, or it has expired.");
     }
   }
 

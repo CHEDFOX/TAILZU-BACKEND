@@ -46,7 +46,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 // A Gujarati speaker, with a word of their own.
 vi.mock("../src/personality/store.js", async (orig) => {
   const real = (await orig()) as Record<string, unknown>;
-  return { ...real, getPersonality: async () => ({ languages: ["gu", "en"], vocabulary: "Tailzu" }) };
+  return { ...real, getPersonality: async () => ({ languages: ["gu", "en"], vocabulary: "X0 Bot" }) };
 });
 
 const { buildApp } = await import("../src/server.js");
@@ -102,7 +102,7 @@ describe("audio sent while the session is being verified", () => {
     ws.send(JSON.stringify({ type: "start", token: "t", sampleRate: 16000 }));
     await wait(250);
     expect(opened[0]!.prompt).toContain("હા, કાલે સવારે મળીએ.");
-    expect(opened[0]!.prompt).toContain("Tailzu");
+    expect(opened[0]!.prompt).toContain("X0 Bot");
     ws.close();
   });
 });

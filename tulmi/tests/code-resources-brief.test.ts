@@ -285,7 +285,7 @@ describe("the pieces", () => {
 // ------------------------------------------------------------------ with the real workspace
 
 describe("committed through the real workspace, the policy applies", () => {
-  it("a branch Tailzu made takes the brief at once; the default branch is a question", async () => {
+  it("a branch X0 Bot made takes the brief at once; the default branch is a question", async () => {
     const { createWorkBranch, workspace } = await import("../src/code/projects.js");
     const r = await githubRig();
     const { brain } = await fixtureBrain({ files: [{ path: "README.md" }] });

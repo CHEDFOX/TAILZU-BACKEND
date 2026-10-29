@@ -152,17 +152,17 @@ export function payHtml(opts: {
 
 ${cards ? `<div class="plans">${cards}\n</div>` : ""}
 
-<p class="note nouser">Open this page from Tailzu: Settings, then Subscribe. That is how your payment reaches your account.</p>
+<p class="note nouser">Open this page from X0 Bot: Settings, then Subscribe. That is how your payment reaches your account.</p>
 <p class="note opening">Opening checkout…</p>
-<p class="note done">Paid. Go back to Tailzu; it unlocks in a moment, on every device you sign in to.</p>
-<p class="note subscribed">This account already has Unlimited. To cancel it, open Tailzu: Settings, then Cancel subscription.</p>
+<p class="note done">Paid. Go back to X0 Bot; it unlocks in a moment, on every device you sign in to.</p>
+<p class="note subscribed">This account already has Unlimited. To cancel it, open X0 Bot: Settings, then Cancel subscription.</p>
 <p class="note error">Checkout could not load. Check your connection and reload this page.</p>
 <p class="note failed">The payment did not go through. Try again, or write to support@x0bot.com with this code: <code></code></p>
-<p class="note off">Web checkout is not open yet. Subscribe in the Tailzu app on iPhone or Android.</p>
+<p class="note off">Web checkout is not open yet. Subscribe in the X0 Bot app on iPhone or Android.</p>
 
 <div class="fine">
-  <p>Prices are shown in the currency you are charged in. Payments are processed by <strong>Razorpay</strong> for ${SELLER}, which makes Tailzu.</p>
-  <p>Plans renew automatically until you cancel. Cancel any time in Tailzu: Settings, then Cancel subscription. You keep access until the end of the period already paid for. Purchases are non-refundable, except where the law requires a refund.</p>
+  <p>Prices are shown in the currency you are charged in. Payments are processed by <strong>Razorpay</strong> for ${SELLER}, which makes X0 Bot.</p>
+  <p>Plans renew automatically until you cancel. Cancel any time in X0 Bot: Settings, then Cancel subscription. You keep access until the end of the period already paid for. Purchases are non-refundable, except where the law requires a refund.</p>
   <p><a href="${esc(opts.pricing)}">Pricing</a> · <a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
 </div>
 </div>`,
@@ -229,8 +229,8 @@ ${cards ? `<div class="plans">${cards}\n</div>` : ""}
             var rzp = new Razorpay({
               key: C.key,
               subscription_id: r.subscriptionId,
-              name: "Tailzu",
-              description: b.getAttribute("data-label") || "Tailzu",
+              name: "X0 Bot",
+              description: b.getAttribute("data-label") || "X0 Bot",
               theme: { color: "#F7CF4A" },
               modal: { ondismiss: function () { if (root.dataset.state === "opening") set("pick"); } },
               handler: function (p) {

@@ -232,10 +232,10 @@ export function chooseStack(spec: Spec, intake: Partial<IntakeText> = {}): Stack
 
   if (pref.kind) {
     kind = pref.kind;
-    const note = pref.unsupported ? `Tailzu cannot set up ${pref.unsupported} yet, so ${LABEL[kind].label} is the nearest it can` : undefined;
+    const note = pref.unsupported ? `X0 Bot cannot set up ${pref.unsupported} yet, so ${LABEL[kind].label} is the nearest it can` : undefined;
     preference = { said: pref.said ?? LABEL[kind].label, honoured: !pref.unsupported, ...(note ? { note } : {}) };
     reasons.push(pref.unsupported
-      ? `You said you would like ${pref.unsupported}. Tailzu cannot set that up yet, so it starts with ${LABEL[kind].label}, the nearest it can.`
+      ? `You said you would like ${pref.unsupported}. X0 Bot cannot set that up yet, so it starts with ${LABEL[kind].label}, the nearest it can.`
       : `You said you would like ${pref.said}, so that is what it is built with.`);
     if (mobile && !web && (kind === "next" || kind.startsWith("vite"))) reasons.push("That is a website framework: it will work on phones in the browser. For an installable app on iPhone and Android, Expo would be the next step.");
   } else if (mobile && !web) {
@@ -278,7 +278,7 @@ export function chooseStack(spec: Spec, intake: Partial<IntakeText> = {}): Stack
       if (spec.needs.auth) parts.push({ role: "auth", name: "Supabase Auth", why: "sign-in is already built and safe, so you do not build passwords yourself" });
       reasons.push("Data and sign-in go in Supabase: Postgres and ready-made sign-in on a free tier, with row-level security.");
     } else {
-      parts.push({ role: "database", name: db, why: `you asked for it${["Firebase", "MongoDB", "MySQL"].includes(db) ? "; Tailzu does not set it up for you yet, so that part is wired by hand in a milestone" : ""}` });
+      parts.push({ role: "database", name: db, why: `you asked for it${["Firebase", "MongoDB", "MySQL"].includes(db) ? "; X0 Bot does not set it up for you yet, so that part is wired by hand in a milestone" : ""}` });
       reasons.push(`Data goes in ${db}, as you asked.`);
       if (preference) preference = { ...preference, note: preference.note ?? `${db} is not set up automatically yet` };
       else preference = { said: db, honoured: true, note: `${db} is not set up automatically yet` };
@@ -299,7 +299,7 @@ export function chooseStack(spec: Spec, intake: Partial<IntakeText> = {}): Stack
   } else if (kind.startsWith("vite")) {
     hosting = { name: "Cloudflare Pages", tier: "free", note: "free, with no limit on traffic for a static site, and fine for a business; Netlify's free plan is the same idea" };
   } else if (kind === "expo" || kind === "flutter") {
-    hosting = { name: "Expo EAS (builds) and the app stores", tier: "free", note: "builds are free to start; the stores charge you, not Tailzu: $25 once for Google Play, $99 a year for Apple" };
+    hosting = { name: "Expo EAS (builds) and the app stores", tier: "free", note: "builds are free to start; the stores charge you, not X0 Bot: $25 once for Google Play, $99 a year for Apple" };
   } else {
     hosting = { name: "Render", tier: "free", note: "a free web service that sleeps when nobody is using it and takes a few seconds to wake" };
   }

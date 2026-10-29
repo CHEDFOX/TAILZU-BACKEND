@@ -513,7 +513,7 @@ describe("read_page", () => {
     const tools = makeWebTools({ userId: "u", budget: "none", store: null, cache: null, fetchFn: net.fetchFn, now: () => T0 });
     const missing = await tools.handlers.read_page({ url: secretUrl });
     expect(missing).toEqual({ ok: false, content: "That site answered with an error (404)." });
-    expect((await tools.handlers.read_page({ url: "ftp://x.example.com/a" })).content).toBe("That isn't a web address Tailzu can open.");
+    expect((await tools.handlers.read_page({ url: "ftp://x.example.com/a" })).content).toBe("That isn't a web address X0 Bot can open.");
     expect((await tools.handlers.read_page({ url: "http://localhost:3000/" })).ok).toBe(false);
     expect((await tools.handlers.read_page({})).content).toMatch(/^read_page needs a url/);
     for (const o of [missing]) expect(o.content).not.toMatch(/SUPERSECRET|missing\.example/);

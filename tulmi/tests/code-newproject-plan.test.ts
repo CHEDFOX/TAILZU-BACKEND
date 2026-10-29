@@ -79,7 +79,7 @@ describe("planMarkdown", () => {
     const m0 = md.slice(md.indexOf("### M0:"), md.indexOf("### M1:"));
     expect(m0).toContain("**Scope**");
     expect(m0).toContain("Set up Next.js (App Router, TypeScript) with its official starter, in this repo.");
-    expect(m0).toContain("(A workflow file is a change Tailzu asks you to approve.)");
+    expect(m0).toContain("(A workflow file is a change X0 Bot asks you to approve.)");
     expect(m0).toContain("Connect Vercel so every pull request gets a preview link");
     expect(m0).toContain("**Acceptance criteria**");
     expect(m0).toMatch(/- \[ \] The app starts locally and shows its first page\./);
@@ -87,7 +87,7 @@ describe("planMarkdown", () => {
     for (const c of checksFor("next")) expect(m0).toContain(`- \`${c}\``);
   });
 
-  it("has a definition of done and a hand-off with the host, the build settings, the variables by name, the database, a domain, and how to take Tailzu away", () => {
+  it("has a definition of done and a hand-off with the host, the build settings, the variables by name, the database, a domain, and how to take X0 Bot away", () => {
     const done = md.slice(md.indexOf("## Definition of done"), md.indexOf("## Hand-off"));
     expect(done).toMatch(/- \[ \] Every must-have feature has been accepted\./);
     expect(done).toContain("`npx tsc --noEmit`");
@@ -100,7 +100,7 @@ describe("planMarkdown", () => {
     expect(hand).toContain("- `STRIPE_SECRET_KEY (server only)`");
     expect(hand).toContain("`supabase/migrations`");
     expect(hand).toContain("**A domain:**");
-    expect(hand).toContain("**Taking Tailzu's access away:**");
+    expect(hand).toContain("**Taking X0 Bot's access away:**");
     // never a value, only names
     expect(hand).not.toMatch(/sk_(live|test)|eyJ/);
   });
@@ -210,7 +210,7 @@ describe("scaffoldStep: the official starter, non-interactive, with the exact fl
     expect(dj.gitignore).toEqual([".venv/", "__pycache__/", "db.sqlite3", ".env"]);
   });
 
-  it("FastAPI, Fastify and Express have no official generator: Tailzu writes a minimal template", () => {
+  it("FastAPI, Fastify and Express have no official generator: X0 Bot writes a minimal template", () => {
     const api = scaffoldStep({ kind: "fastapi" }, { name: "Yoga Book" });
     expect(api.starter).toBeNull();
     expect(api.files.map((f) => f.path)).toEqual(["app/__init__.py", "app/main.py", "tests/test_health.py", "requirements.txt", "pytest.ini", ".env.example"]);

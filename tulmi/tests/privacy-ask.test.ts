@@ -50,9 +50,9 @@ const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.i
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Changes to this policy"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day deleting an account was given seven days to undo", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 28, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 28, 2026");
+  it("is effective from the day Spaces got reporting and blocking, and deleting an account a page on the web", () => {
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 29, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 29, 2026");
   });
 
   it("numbers its sections 1 to 13, once each, in order", () => {
@@ -71,7 +71,7 @@ describe("the policy's date and shape", () => {
   it("says, with the terms, that deleting an account waits 7 days, stops the bots, and can be kept until then", async () => {
     const { TERMS_HTML, TERMS_EFFECTIVE } = await import("../src/routes/policies/terms.js");
     const terms = text(TERMS_HTML);
-    expect(TERMS_EFFECTIVE).toBe("October 28, 2026");
+    expect(TERMS_EFFECTIVE).toBe("October 29, 2026");
     for (const words of [policy, terms]) {
       expect(words).toContain("7 days");
       expect(words).toContain("your bots stop working");
@@ -198,7 +198,7 @@ describe("where a picture goes, and what is kept", () => {
   });
 
   it("says the picture is not stored and not logged, and how to turn it off", () => {
-    expect(ask).toContain("Tailzu does not store the picture and does not log it.");
+    expect(ask).toContain("X0 Bot does not store the picture and does not log it.");
     expect(policy).toContain("Ask: what it reads off your screen, and any picture it sends, is not stored.");
     expect(ask).toContain(`"Look at the screen when it's needed"`);
     expect(ask).toContain("Settings under Ask");
@@ -218,13 +218,13 @@ describe("the Google apps section", () => {
   const googleApps = CATALOG.filter((c) => c.provider === "google");
 
   it("carries the Limited Use statement, with its link", () => {
-    expect(google).toContain("Tailzu's use and transfer of information received from Google APIs to any other app will adhere to the Google API Services User Data Policy, including the Limited Use requirements.");
+    expect(google).toContain("X0 Bot's use and transfer of information received from Google APIs to any other app will adhere to the Google API Services User Data Policy, including the Limited Use requirements.");
     expect(PRIVACY_POLICY_HTML).toContain(`<a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>`);
-    expect(google).toContain("Tailzu uses your Google data only to do what you asked, when you ask.");
+    expect(google).toContain("X0 Bot uses your Google data only to do what you asked, when you ask.");
     expect(google).toContain("We never sell it.");
     expect(google).toContain("We never use it for advertising");
-    expect(google).toContain("Tailzu does not use it to create, train or improve AI or machine-learning models.");
-    expect(google).toContain("No one at Tailzu reads it, unless you ask us to");
+    expect(google).toContain("X0 Bot does not use it to create, train or improve AI or machine-learning models.");
+    expect(google).toContain("No one at X0 Bot reads it, unless you ask us to");
   });
 
   it("names every Google app the catalog can connect, and no other", () => {
@@ -234,16 +234,16 @@ describe("the Google apps section", () => {
     for (const c of googleApps) expect(google, c.id).toContain(`${c.name} —`);
   });
 
-  it("says Classroom only reads, and Docs, Sheets and Forms reach only Tailzu's own files, as their scopes allow", () => {
+  it("says Classroom only reads, and Docs, Sheets and Forms reach only X0 Bot's own files, as their scopes allow", () => {
     const scopes = (id: string) => CATALOG.find((c) => c.id === id)!.scopes!;
     expect(scopes("google-classroom").every((s) => s.endsWith(".readonly"))).toBe(true);
     expect(google).toContain("Google Classroom — only reads");
     for (const id of ["google-docs", "google-sheets", "google-forms"]) {
       expect(scopes(id), id).toEqual(["https://www.googleapis.com/auth/drive.file"]);
     }
-    expect(google).toContain("Google lets it reach only the files Tailzu made, never the rest of your Drive.");
-    expect(google).toContain("Google lets it reach only the sheets Tailzu made.");
-    expect(google).toContain("Google lets it reach only the forms Tailzu made.");
+    expect(google).toContain("Google lets it reach only the files X0 Bot made, never the rest of your Drive.");
+    expect(google).toContain("Google lets it reach only the sheets X0 Bot made.");
+    expect(google).toContain("Google lets it reach only the forms X0 Bot made.");
   });
 
   it("says YouTube's search is no connected app: no sign-in and no scope, as the catalog has it", () => {
@@ -252,7 +252,7 @@ describe("the Google apps section", () => {
     expect(yt.scopes).toBeUndefined();
     expect(CATALOG.some((c) => c.id === "google-youtube")).toBe(false);
     expect(google).toContain("YouTube is not a connected app either.");
-    expect(google).toContain("it sends only the words to search for to Google's YouTube Data API, with Tailzu's own key");
+    expect(google).toContain("it sends only the words to search for to Google's YouTube Data API, with X0 Bot's own key");
     expect(google).not.toMatch(/playlist/i);
   });
 
@@ -263,7 +263,7 @@ describe("the Google apps section", () => {
       expect(h.scopes, id).toBeUndefined();
     }
     expect(google).toContain("it opens Gmail's own compose window with the email written");
-    expect(google).toContain("Tailzu has no access to either, and it reads none of your email.");
+    expect(google).toContain("X0 Bot has no access to either, and it reads none of your email.");
   });
 
   it("names the planner's models as the config sends to them, and the cut on what is read", () => {
@@ -278,14 +278,14 @@ describe("the Google apps section", () => {
   });
 
   it("says how to disconnect, the last-Google-app rule, and what stays", () => {
-    expect(google).toContain("Tailzu deletes its stored access to that app right away and stops using it.");
-    expect(google).toContain("When you disconnect the last of them, Tailzu also asks Google to revoke it.");
-    expect(google).toContain("Until then, Google keeps Tailzu's permission for every Google app you connected, including the one you just disconnected");
+    expect(google).toContain("X0 Bot deletes its stored access to that app right away and stops using it.");
+    expect(google).toContain("When you disconnect the last of them, X0 Bot also asks Google to revoke it.");
+    expect(google).toContain("Until then, Google keeps X0 Bot's permission for every Google app you connected, including the one you just disconnected");
     expect(google).toContain("myaccount.google.com/connections");
     expect(google).toContain("What stays after you disconnect: your Tasks list, the record of actions, and any change still waiting for your OK");
     expect(google).toContain("It does not tell Google, so disconnect your Google apps first");
-    expect(policy).toContain("Google apps you connect: what Tailzu reads in them is not stored, except the details of a change waiting for your OK.");
-    expect(google).toContain("Apart from a change waiting for your OK, what Tailzu reads in your Google apps is used for that one request and not stored");
+    expect(policy).toContain("Google apps you connect: what X0 Bot reads in them is not stored, except the details of a change waiting for your OK.");
+    expect(google).toContain("Apart from a change waiting for your OK, what X0 Bot reads in your Google apps is used for that one request and not stored");
   });
 });
 
@@ -300,10 +300,10 @@ describe("the record of requests to Ask", () => {
   it("says how long each of their words is kept, as the sweep keeps them", () => {
     const day = 24 * 3_600_000;
     expect(SWEEP_TIMES).toMatchObject({ titleMs: 30 * day, retryMs: day, followUpMs: 5 * 60_000 });
-    expect(s4).toContain("the first 80 characters of what you asked, for 30 days; your words to try again with, for a day; and a question Tailzu asks you back, with your request, for five minutes.");
+    expect(s4).toContain("the first 80 characters of what you asked, for 30 days; your words to try again with, for a day; and a question X0 Bot asks you back, with your request, for five minutes.");
     expect(google).toContain("The first 80 characters of what you asked and how it ended, for 30 days, shown in Activity on the You tab");
     expect(ask).toContain("It holds nothing you said and nothing from your screen.");
-    expect(google).toContain("The record Tailzu keeps of your requests (see 11.4) says how each one went; it never holds your Google data.");
+    expect(google).toContain("The record X0 Bot keeps of your requests (see 11.4) says how each one went; it never holds your Google data.");
     // Off until it is switched on, once this policy is the one people are shown.
     expect(getConfig().AGENT_RUN_LEDGER).toBe(false);
   });
@@ -344,8 +344,8 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: October 28, 2026");
+    expect(res.body).toContain("Effective: October 29, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "October 28, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "October 29, 2026" });
   });
 });

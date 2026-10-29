@@ -38,7 +38,7 @@ export interface ClientMetadataDeps {
 export function clientMetadataDocument(d: Pick<ClientMetadataDeps, "clientMetadataUrl" | "redirectUrl">) {
   return {
     client_id: d.clientMetadataUrl,
-    client_name: "Tailzu",
+    client_name: "X0 Bot",
     client_uri: SITE_ORIGIN,
     redirect_uris: [d.redirectUrl],
     grant_types: ["authorization_code", "refresh_token"],

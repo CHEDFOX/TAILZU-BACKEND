@@ -338,9 +338,9 @@ describe("the risk of each tool", () => {
     // On offer here, not connected: no tools at all, only the line.
     expect(await tools("write up the launch plan in google docs")).toContain("<tools>\nnot connected: Google Docs\n</tools>");
     // Not on offer here (Todoist, and Slack through Zapier), or no app of Tailzu's (Swiggy).
-    expect(await tools("add buy shoes to todoist")).toContain("<tools>\nnot in Tailzu: Todoist\n</tools>");
-    expect(await tools("message the team on Slack that standup is cancelled")).toContain("<tools>\nnot in Tailzu: Slack\n</tools>");
-    expect(await tools("order biryani from swiggy")).toContain("<tools>\nnot in Tailzu: Swiggy\n</tools>");
+    expect(await tools("add buy shoes to todoist")).toContain("<tools>\nnot in X0 Bot: Todoist\n</tools>");
+    expect(await tools("message the team on Slack that standup is cancelled")).toContain("<tools>\nnot in X0 Bot: Slack\n</tools>");
+    expect(await tools("order biryani from swiggy")).toContain("<tools>\nnot in X0 Bot: Swiggy\n</tools>");
     // The app in front of them is theirs to use on the screen: no line for it.
     expect(await runtime.cards({ app: "Slack" } as any, "post this in slack")).toBeNull();
     // A question that needs no app is the plain prompt.
@@ -484,7 +484,7 @@ describe("Google Sheets", () => {
     expect(out.text).toBe(`Made the Google Sheet "T" but couldn't put the rows in. https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit`);
   });
 
-  it("finds a sheet by name among the ones Tailzu made, and adds rows under the last", async () => {
+  it("finds a sheet by name among the ones X0 Bot made, and adds rows under the last", async () => {
     const { g, call, use } = await setup({ connect: ["google-sheets"] });
     g.to("GET", "/drive/v3/files", files([{ id: SHEET_ID, name: "Expenses Oct" }, { id: "1OtherSheetCCCCCCCCCCCCCCCCCCC", name: "Trip plan" }]));
     g.to("POST", `/v4/spreadsheets/${SHEET_ID}/values/A1:append`, { json: { updates: { updatedRows: 1 } } });
@@ -503,7 +503,7 @@ describe("Google Sheets", () => {
     expect(asked).toMatchObject({ kind: "approval", approval: { risk: "write", preview: 'Add 2 rows to the Google Sheet "Expenses Oct": "24 Oct", "Auto", 80; "25 Oct", "Lunch", 150' } });
   });
 
-  it("opens a link only to a sheet Tailzu made: drive.file sees no other", async () => {
+  it("opens a link only to a sheet X0 Bot made: drive.file sees no other", async () => {
     const { g, call } = await setup({ connect: ["google-sheets"] });
     g.to("GET", `/drive/v3/files/${SHEET_ID}`, { json: { id: SHEET_ID, name: "Expenses Oct", mimeType: "application/vnd.google-apps.spreadsheet", trashed: false } });
     g.to("GET", `/v4/spreadsheets/${SHEET_ID}/values/A1%3AZ200`, { json: { values: [["Item", "Amount"], ["Chai", "20"], [], ["Auto", "80"]] } });

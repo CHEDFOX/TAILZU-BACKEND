@@ -157,7 +157,7 @@ export function validateSplit(
   for (const p of raw) {
     if (p.kind === "files" && p.ownedPaths.length === 0) problems.push(`Part ${p.id} owns no files. Give it the globs of the files it alone changes (a folder as src/api/).`);
     if (p.kind === "files" && p.ownedPaths.some((g) => isWorkflowPath(g.replace(/\*.*$/, "")) || isSecretPath(g))) {
-      problems.push(`Part ${p.id} owns CI configuration or a secrets file, which Tailzu never changes. Leave them out.`);
+      problems.push(`Part ${p.id} owns CI configuration or a secrets file, which X0 Bot never changes. Leave them out.`);
     }
     for (const d of p.dependsOn) {
       if (d === p.id) problems.push(`Part ${p.id} depends on itself.`);

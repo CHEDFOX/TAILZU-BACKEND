@@ -48,7 +48,7 @@ describe("the happy path", () => {
     expect(r.fake.commitCount(r.repo)).toBe(2); // the repo's first, and this one
     expect(head.author).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     expect(head.message).toMatch(/Co-authored-by: alice <77\+alice@users\.noreply\.github\.com>\s*$/);
-    expect(head.message).toContain("Done by Tailzu");
+    expect(head.message).toContain("Done by X0 Bot");
     expect(r.fake.files(r.repo, branch)["src/util.ts"]).toContain('.replace(/^-+|-+$/g, "")');
     expect(r.fake.files(r.repo, "main")["src/util.ts"]).not.toContain("^-+");
 
@@ -60,7 +60,7 @@ describe("the happy path", () => {
     expect(pr!.body).toContain("## Work log");
     expect(pr!.body).toContain("`src/util.ts` (changed)");
     expect(pr!.body).toMatch(/\| `npm test[^`]*` \| passed/);
-    expect(pr!.body).toContain("Made by Tailzu");
+    expect(pr!.body).toContain("Made by X0 Bot");
 
     // Where it is, and the report to the person.
     const s = await r.stateNow(job.id);
@@ -184,7 +184,7 @@ describe("a check this change broke", () => {
     expect(r.model.seen.map((x) => x.tier)).toEqual(["code", "code", "code", "strong", "strong"]);
   });
 
-  it("flags a check that was already failing before Tailzu, and does not block on it", async () => {
+  it("flags a check that was already failing before X0 Bot, and does not block on it", async () => {
     const r = await agentRig();
     const OLD = " FAIL  src/legacy.test.ts > old behaviour > still red";
     // The same test is red before the change and after it.
@@ -200,12 +200,12 @@ describe("a check this change broke", () => {
     expect(s.verify).toMatchObject({ ran: true, ok: true, broke: [], alreadyBroken: ["test: src/legacy.test.ts > old behaviour > still red"] });
     expect(r.fake.commitCount(r.repo)).toBe(2);
     // Said apart from everything else, in the report and in the pull request.
-    expect(s.report!.text).toContain("Already broken before Tailzu (not caused by this change)");
+    expect(s.report!.text).toContain("Already broken before X0 Bot (not caused by this change)");
     expect(s.report!.text).toContain("- test: src/legacy.test.ts > old behaviour > still red");
     expect(s.report!.text).not.toContain("Broken by this change");
-    expect(s.report!.text).toContain("test: failed, and was already failing before Tailzu");
+    expect(s.report!.text).toContain("test: failed, and was already failing before X0 Bot");
     const body = r.fake.pulls(r.repo)[0]!.body;
-    expect(body).toContain("## Already broken before Tailzu");
+    expect(body).toContain("## Already broken before X0 Bot");
     expect(body).toContain("not caused by it");
     expect(r.fake.pulls(r.repo)[0]!.head).toBe(branch);
   });

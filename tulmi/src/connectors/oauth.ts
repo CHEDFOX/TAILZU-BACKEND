@@ -73,7 +73,7 @@ import { ConnectorError, signState, verifyState } from "./state.js";
 export function checkCallbackIssuer(expected: string | undefined, required: boolean, got: unknown): void {
   const iss = typeof got === "string" && got ? got : undefined;
   if (iss === undefined ? required : iss !== expected) {
-    throw new ConnectorError("bad_state", "That sign-in didn't come back from the app it started at. Start again from Tailzu.");
+    throw new ConnectorError("bad_state", "That sign-in didn't come back from the app it started at. Start again from X0 Bot.");
   }
 }
 
@@ -164,7 +164,7 @@ export class UserOAuthProvider implements OAuthClientProvider {
 
   get clientMetadata(): OAuthClientMetadata {
     const meta = {
-      client_name: "Tailzu",
+      client_name: "X0 Bot",
       redirect_uris: [this.redirect],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
@@ -202,10 +202,10 @@ export class UserOAuthProvider implements OAuthClientProvider {
       throw new ConnectorError("unsupported", `${name}'s sign-in server didn't identify itself properly, so I stopped.`);
     }
     if (this.o.expectIssuer !== undefined && issuer !== this.o.expectIssuer) {
-      throw new ConnectorError("bad_state", "That sign-in didn't come back from the app it started at. Start again from Tailzu.");
+      throw new ConnectorError("bad_state", "That sign-in didn't come back from the app it started at. Start again from X0 Bot.");
     }
     if (!m?.code_challenge_methods_supported?.includes("S256")) {
-      if (this.o.strict) throw new ConnectorError("unsupported", `${name}'s sign-in doesn't offer the protection Tailzu needs (PKCE with S256), so I stopped.`);
+      if (this.o.strict) throw new ConnectorError("unsupported", `${name}'s sign-in doesn't offer the protection X0 Bot needs (PKCE with S256), so I stopped.`);
       (this.o.warn ?? ((l: string) => console.warn(l)))(`[connectors] ${this.connectorId}: the auth server ${server} does not list S256 PKCE; going ahead, as it is a catalog app.`);
     }
     this.found = {
@@ -250,7 +250,7 @@ export class UserOAuthProvider implements OAuthClientProvider {
 
   async codeVerifier(): Promise<string> {
     const c = await this.store.getConnection(this.userId, this.connectorId);
-    if (!c?.verifierEnc) throw new ConnectorError("bad_state", "That sign-in was already used or never started. Start again from Tailzu.");
+    if (!c?.verifierEnc) throw new ConnectorError("bad_state", "That sign-in was already used or never started. Start again from X0 Bot.");
     return decrypt(c.verifierEnc);
   }
 
@@ -314,7 +314,7 @@ export function providerOptions(cfg: SignInConfig, def: ConnectorDef): ProviderO
 /** A refusal from egress.ts, in the app's name. Anything else goes on as it was. */
 function inWords(err: unknown, def: ConnectorDef): unknown {
   return err instanceof EgressRefused
-    ? new ConnectorError("blocked_address", err.reason === "too_large" ? `${def.name}'s sign-in sent back more than it should.` : `${def.name}'s sign-in is at an address Tailzu won't connect to.`)
+    ? new ConnectorError("blocked_address", err.reason === "too_large" ? `${def.name}'s sign-in sent back more than it should.` : `${def.name}'s sign-in is at an address X0 Bot won't connect to.`)
     : err;
 }
 
@@ -337,7 +337,7 @@ export function madeForAnotherAddress(info: OAuthClientInformationMixed | undefi
 export async function beginOAuth(d: OAuthDeps, userId: string, def: ConnectorDef): Promise<string> {
   // A vendor that registers no client itself: without ours there is no page to send anyone to.
   if (def.preRegistered && !d.clients?.[def.id]) {
-    throw new ConnectorError("not_configured", `${def.name} can't be connected yet: Tailzu's sign-in for it isn't set up.`);
+    throw new ConnectorError("not_configured", `${def.name} can't be connected yet: X0 Bot's sign-in for it isn't set up.`);
   }
   const opts = providerOptions(d, def);
   const provider = new UserOAuthProvider(d.store, userId, def.id, d.redirectUrl, true, opts);

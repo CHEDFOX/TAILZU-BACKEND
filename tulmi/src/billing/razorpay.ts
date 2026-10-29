@@ -315,7 +315,7 @@ export async function syncSubscription(sub: RzSubscription, source: string): Pro
   const userId = ownerOf(sub);
   if (!userId) return { ok: false, reason: `subscription ${sub.id} carries no user_id` };
   const plan = sellable(sub.plan_id);
-  if (!plan) return { ok: true, reason: `plan ${sub.plan_id} is not a Tailzu plan`, userId };
+  if (!plan) return { ok: true, reason: `plan ${sub.plan_id} is not an X0 Bot plan`, userId };
   const sb = supabase();
   if (!sb) return { ok: false, reason: "no service client", userId };
 

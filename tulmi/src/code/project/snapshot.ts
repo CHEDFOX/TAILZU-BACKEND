@@ -291,10 +291,10 @@ export function stripTop(path: string): string | null {
 function whyNotTarball(err: unknown): string {
   if (err instanceof TarError) {
     return err.code === "compressed_too_large" || err.code === "expanded_too_large"
-      ? "This repo is too big to read in full (over 300 MB), so Tailzu read its structure and its manifests only."
-      : "The download of the code was cut short, so Tailzu read its structure and its manifests only.";
+      ? "This repo is too big to read in full (over 300 MB), so X0 Bot read its structure and its manifests only."
+      : "The download of the code was cut short, so X0 Bot read its structure and its manifests only.";
   }
-  return "GitHub wouldn't hand over the code in one piece, so Tailzu read its structure and its manifests only.";
+  return "GitHub wouldn't hand over the code in one piece, so X0 Bot read its structure and its manifests only.";
 }
 
 export interface FetchOptions {

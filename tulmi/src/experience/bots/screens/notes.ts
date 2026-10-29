@@ -265,8 +265,8 @@ function notesPage(ctx: BotsCtx, d: NotesData | undefined) {
     pose: q || onlyOpen ? "think" : "listen",
     title: q ? `No meetings about “${q}”` : onlyOpen ? "No to-dos open" : "No meetings yet",
     body: q ? "Try another word or a name." : onlyOpen ? "Every to-do from your meetings is ticked off."
-      : desk ? "Press Start notes when a call starts. Tailzu writes it up, with the to-dos, when you stop."
-        : "Take notes from Tailzu on your computer. Each meeting, its to-dos and decisions show up here.",
+      : desk ? "Press Start notes when a call starts. X0 Bot writes it up, with the to-dos, when you stop."
+        : "Take notes from X0 Bot on your computer. Each meeting, its to-dos and decisions show up here.",
     ...(desk && !q && !onlyOpen ? { action: { label: "Start notes", onPress: { kind: "notes.toggle" } as ActionSpec } } : {}),
   });
   return page(ctx, {

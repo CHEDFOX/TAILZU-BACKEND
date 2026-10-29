@@ -338,7 +338,7 @@ export class AgentOrchestrator {
       this.deps.log?.warn({ jobId, error: code }, "code agent: the jobs Worker could not be reached");
       await this.jobs.finishJob(jobId, {
         ok: false,
-        reason: "Tailzu could not hand this job to the machine that runs it, after trying three times. Nothing was changed. Try again in a little while.",
+        reason: "X0 Bot could not hand this job to the machine that runs it, after trying three times. Nothing was changed. Try again in a little while.",
       }).catch(() => undefined);
     }
     return this.store.getJobById(jobId);
@@ -447,7 +447,7 @@ export class AgentOrchestrator {
     const staged = state?.work.staged ?? [];
     const kept = staged.length ? ` The ${staged.length} file${staged.length === 1 ? "" : "s"} I had changed ${staged.length === 1 ? "is" : "are"} kept, uncommitted, with this job.` : "";
     const said = facts.message ? ` The last error said: ${facts.message.slice(0, 160)}.` : "";
-    const reason = `Something went wrong on Tailzu's side three times running (${kindOf(facts)}).${said} What was committed so far is on the branch; nothing else was changed.${kept}`;
+    const reason = `Something went wrong on X0 Bot's side three times running (${kindOf(facts)}).${said} What was committed so far is on the branch; nothing else was changed.${kept}`;
     if (state) {
       state.errors = errors;
       state.waiting = undefined;
@@ -679,7 +679,7 @@ export class AgentOrchestrator {
   private async mine(userId: string, jobId: string): Promise<{ job: CodeJob; state: AgentState }> {
     const job = await this.jobs.job(userId, jobId);
     const state = stateOf(job.checkpoint);
-    if (!state) throw notWaiting("anything from Tailzu's agent");
+    if (!state) throw notWaiting("anything from X0 Bot's agent");
     return { job, state };
   }
 
@@ -814,13 +814,13 @@ export class AgentOrchestrator {
     if (t.length > SAID_MAX_CHARS) throw new ConnectorError("bad_request", `text is at most ${SAID_MAX_CHARS} characters.`);
     const job = await this.jobs.job(userId, jobId);
     if (isEnded(job.state)) throw new ConnectorError("job_over", "That job is over.");
-    if (!job.agent) throw notWaiting("anything from Tailzu's agent");
+    if (!job.agent) throw notWaiting("anything from X0 Bot's agent");
     if (this.remote) {
       if (!this.remote.message) throw new ConnectorError("live_off", "Messages to a working job are not switched on.");
       try {
         await this.remote.message(job.id, t);
       } catch {
-        throw new ConnectorError("unreachable", "Tailzu could not reach the machine that runs this job, so it did not get your message. Try again in a moment.");
+        throw new ConnectorError("unreachable", "X0 Bot could not reach the machine that runs this job, so it did not get your message. Try again in a moment.");
       }
       return { delivered: true };
     }
@@ -865,7 +865,7 @@ export class AgentOrchestrator {
   /** The points a person can rewind a job to: each step of the model's work, oldest first, with a line on what it did and the files staged then. */
   async checkpoints(userId: string, jobId: string): Promise<Array<{ step: number; at: number; note: string; files: string[] }>> {
     const job = await this.jobs.job(userId, jobId);
-    if (!job.agent) throw notWaiting("anything from Tailzu's agent");
+    if (!job.agent) throw notWaiting("anything from X0 Bot's agent");
     return (await this.deps.rewind?.list(job.id)) ?? [];
   }
 
@@ -944,7 +944,7 @@ export class AgentOrchestrator {
       await this.endAfterRewind(job, fenced, state, point.step, null, "The branch already matches that step, so nothing was committed.");
       return { kind: "reverted", step: point.step, sha: null, files: [], job: stripAgent((await this.store.getJobById(job.id)) ?? job) };
     }
-    const message = `Go back to step ${point.step} of Tailzu job ${job.id.slice(0, 8)}\n\nThis is a new commit that returns ${files.length} file${files.length === 1 ? "" : "s"} to how they were at that step, at the person's request. Nothing in the history was rewritten.`;
+    const message = `Go back to step ${point.step} of X0 Bot job ${job.id.slice(0, 8)}\n\nThis is a new commit that returns ${files.length} file${files.length === 1 ? "" : "s"} to how they were at that step, at the person's request. Nothing in the history was rewritten.`;
     const made = await ws.commit(files, message, approvalId ? { approvalId } : {});
     if (isNeedsApproval(made)) {
       // The loop stays fenced and the job as it is; the same call with this id makes the commit.

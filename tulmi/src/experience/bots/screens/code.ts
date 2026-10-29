@@ -232,7 +232,7 @@ function withAside(resp: ScreenResponse, aside: Node[], width = 380): ScreenResp
 function unreachable(ctx: BotsCtx, what: string, o: { nav?: string } = {}): ScreenResponse {
   return page(ctx, {
     back: true, nav: o.nav ?? "code", title: "Code bot",
-    body: [emptyState({ pose: "think", title: `I couldn't open ${what}`, body: "It may have been removed, or Tailzu can't reach GitHub right now.", action: { label: "Try again", onPress: REFRESH } })],
+    body: [emptyState({ pose: "think", title: `I couldn't open ${what}`, body: "It may have been removed, or X0 Bot can't reach GitHub right now.", action: { label: "Try again", onPress: REFRESH } })],
   });
 }
 
@@ -506,13 +506,13 @@ function pickProjects(ctx: BotsCtx, d: PickData | undefined): ScreenResponse {
   const add = call("POST", "/v1/bots/code/projects/add", { picks: "$state.pick" }, {
     assignTo: "made",
     ok: { kind: "navigate", screenId: SCREENS.codeStart, params: { step: "read", project: "$state.made.added.0.id" } },
-    fail: toast("Pick a project first, or check Tailzu can see it on GitHub."),
+    fail: toast("Pick a project first, or check X0 Bot can see it on GitHub."),
   });
   const search = (v: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.codeStart, params: { step: "pick", q: v, vis }, replace: true });
   const manage = d?.gh?.installations[0]?.manageUrl ?? d?.installUrl;
   const missing = row([
     meta("Missing one?", { size: desk ? 13 : 12 }),
-    ...(manage ? [text("Give Tailzu access to it on GitHub.", { size: desk ? 13 : 12, color: C.ink, weight: 500, lineHeight: 17, style: { textDecorationLine: "underline" } })] : []),
+    ...(manage ? [text("Give X0 Bot access to it on GitHub.", { size: desk ? 13 : 12, color: C.ink, weight: 500, lineHeight: 17, style: { textDecorationLine: "underline" } })] : []),
   ], { gap: 4, flexWrap: "wrap" }, manage ? openUrl(manage) : undefined);
   const heading = col([
     row([icon("check", { size: 16 }), text(login ? `GitHub connected · @${login}` : d?.gh?.connected ? "GitHub connected" : "GitHub not connected yet", { size: 13, weight: 500, lineHeight: 17 })], { gap: 8 }),
@@ -527,11 +527,11 @@ function pickProjects(ctx: BotsCtx, d: PickData | undefined): ScreenResponse {
   if (!d?.repos) {
     empty = emptyState({
       pose: "listen", title: d?.gh?.connected ? "I couldn't reach GitHub" : "Connect GitHub first",
-      body: d?.gh?.connected ? "Try again in a moment." : "Once you allow Tailzu on GitHub, your repositories show here.",
+      body: d?.gh?.connected ? "Try again in a moment." : "Once you allow X0 Bot on GitHub, your repositories show here.",
       action: d?.gh?.connected || !d?.installUrl ? { label: "Try again", onPress: REFRESH } : { label: "Connect GitHub", onPress: openUrl(d.installUrl) },
     });
   } else if (!all.length) {
-    empty = emptyState({ pose: "listen", title: "No repositories yet", body: "Give Tailzu access to one on GitHub, then come back.", action: manage ? { label: "Open GitHub", onPress: openUrl(manage) } : { label: "Try again", onPress: REFRESH } });
+    empty = emptyState({ pose: "listen", title: "No repositories yet", body: "Give X0 Bot access to one on GitHub, then come back.", action: manage ? { label: "Open GitHub", onPress: openUrl(manage) } : { label: "Try again", onPress: REFRESH } });
   } else if (!shown.length) {
     empty = emptyState({ pose: "think", title: `Nothing called "${q}"`, action: { label: "Show all", onPress: search("") } });
   }
@@ -1389,7 +1389,7 @@ function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResponse {
   const main = v.project.defaultBranch;
   const set = (rule: RuleId, to: string): ActionRef => call("POST", `/v1/bots/code/projects/${id}/rules`, { rule, to }, { ok: seq(toast("Saved."), REFRESH), fail: toast("Couldn't save that. Try again.") });
   const comp = v.computers[0];
-  const compSub = comp ? `Runs checks on ${comp.name} when awake` : "Runs checks on your computer when the Tailzu app is open";
+  const compSub = comp ? `Runs checks on ${comp.name} when awake` : "Runs checks on your computer when the X0 Bot app is open";
   const disconnect = call("POST", `/v1/bots/code/projects/${id}/disconnect`, {}, {
     ok: seq(toast(`Disconnected ${name}.`), { kind: "navigate", screenId: SCREENS.code, replace: true }),
     fail: toast("Couldn't disconnect it. Try again."),

@@ -66,7 +66,7 @@ export interface ChatRequest {
   onStep?: (stage: string) => void;
 }
 
-const UNREAD = "Tailzu hasn't read this project yet. Start its brain first, then ask again.";
+const UNREAD = "X0 Bot hasn't read this project yet. Start its brain first, then ask again.";
 
 export class CodeChat {
   private readonly threads: ThreadStore;

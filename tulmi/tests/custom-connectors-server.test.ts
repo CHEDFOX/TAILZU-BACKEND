@@ -52,7 +52,7 @@ describe("apps added by link, switched on, through the server", () => {
   it("the phone's Connected apps has Add by link and the search", async () => {
     const r = await screen("assistant_apps", "phone", ["ActionUrl"]);
     expect(r.statusCode).toBe(200);
-    for (const w of ["Add by link", "Tailzu hasn’t checked this app. Only add apps you trust.", '"path":"/v1/connectors/directory?q=$state.q"']) {
+    for (const w of ["Add by link", "X0 Bot hasn’t checked this app. Only add apps you trust.", '"path":"/v1/connectors/directory?q=$state.q"']) {
       expect(r.body, w).toContain(w);
     }
     // An unknown app's page says it cannot reach it, rather than failing.
@@ -64,7 +64,7 @@ describe("apps added by link, switched on, through the server", () => {
   it("the desk's Settings has Add an app by link and More apps", async () => {
     const r = await screen("desk_settings", "desktop", ["DeskShell", "DeskConnectors"]);
     expect(r.statusCode).toBe(200);
-    for (const w of ["Add an app by link", "Apps from the public MCP Registry. Tailzu hasn’t checked them."]) expect(r.body, w).toContain(w);
+    for (const w of ["Add an app by link", "Apps from the public MCP Registry. X0 Bot hasn’t checked them."]) expect(r.body, w).toContain(w);
     expect((await screen("desk_connector", "desktop", ["DeskShell", "DeskConnectors"], { id: "nope" })).statusCode).toBe(200);
   });
 });

@@ -280,7 +280,7 @@ describe("a loop that fails on something unexpected", () => {
     await r.orch.idle();
     j = await r.jobNow(job.id);
     expect(j.state).toBe("failed");
-    expect(j.reason).toContain("Something went wrong on Tailzu's side three times running");
+    expect(j.reason).toContain("Something went wrong on X0 Bot's side three times running");
     expect(r.toldOf("job_failed")).toHaveLength(1);
   });
 

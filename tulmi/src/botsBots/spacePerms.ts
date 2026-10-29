@@ -20,7 +20,7 @@ export const PERM_WORDS: Record<Perm, { label: string; sub: string }> = {
   manage: { label: "Change what others can do", sub: "Only things they can do themselves" },
   share: { label: "Add, edit and remove shared things", sub: "Lists, trips, notes, files and links" },
   bots: { label: "Use the shared bots", sub: "The bots can read what's shared here" },
-  addBots: { label: "Add or take out bots", sub: "Their own bots, or Tailzu's" },
+  addBots: { label: "Add or take out bots", sub: "Their own bots, or X0 Bot's" },
   tasks: { label: "Give tasks to others", sub: "With a due time and a place" },
   plan: { label: "Plan for others", sub: "Put something on someone's day" },
   approve: { label: "Approve payments", sub: "Then they pay in their own UPI app" },

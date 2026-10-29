@@ -72,13 +72,13 @@ describe("paths the agent may not write", () => {
 
     // The first eight of the nine calls were answered, in words for the model; the ninth is over the limit of calls in one turn.
     const second = r.model.seen[1]!.messages;
-    expect(second).toContain("is CI configuration (.github/workflows). Tailzu never changes it.");
+    expect(second).toContain("is CI configuration (.github/workflows). X0 Bot never changes it.");
     expect(second).toContain("is not a path inside the repo");
-    expect(second).toContain("belongs to Tailzu's own runner");
+    expect(second).toContain("belongs to X0 Bot's own runner");
     expect(second).toContain("Not run: at most 8 calls in one turn");
     // Reading is another matter: a workflow is the project's and readable; an env file and a path outside are not.
     const third = r.model.seen[2]!.messages;
-    expect(third).toContain("is the kind of file that holds secrets, so Tailzu does not read it");
+    expect(third).toContain("is the kind of file that holds secrets, so X0 Bot does not read it");
     expect(third).toMatch(/"\.\.\/\.\.\/etc\/passwd" is not a path inside the repo/);
     expect(third).toMatch(/<tool_data tool="read_file" label="\.github\/workflows\/ci\.yml">[\s\S]*name: ci/);
 

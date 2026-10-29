@@ -88,7 +88,7 @@ function howTo(ctx: BotsCtx) {
         text(desk ? "Signing in on another computer is done from your phone." : "Sign in on your computer without typing anything.", { size: 15, lineHeight: 22, color: C.grey70 }),
       ], { gap: 6 }),
       col([
-        step(1, "On the computer, open Tailzu. Its sign-in shows a code."),
+        step(1, "On the computer, open X0 Bot. Its sign-in shows a code."),
         step(2, "Point this phone's camera at the code."),
         step(3, "Tap Approve here. The computer signs itself in."),
       ], { gap: 14 }),
@@ -143,7 +143,7 @@ function approve(ctx: BotsCtx, d: LinkData, ref: { token: string } | { code: str
         ]),
         row([
           icon("shield", { size: 18, color: C.grey70 }),
-          text("Approve only if you're at this computer and signing in right now. Tailzu never asks for this in a message or a call.", {
+          text("Approve only if you're at this computer and signing in right now. X0 Bot never asks for this in a message or a call.", {
             size: 13, lineHeight: 19, color: C.grey70, style: { flexShrink: 1 },
           }),
         ], { gap: 10, alignItems: "flex-start" }),
@@ -174,7 +174,7 @@ function link(ctx: BotsCtx, d: LinkData | undefined) {
   const ref = refOf(ctx);
   if (!ref) return howTo(ctx);
   if (ctx.client === "desktop") {
-    return gone(ctx, "Approve it on your phone", "Signing in on a computer is approved from Tailzu on your phone.");
+    return gone(ctx, "Approve it on your phone", "Signing in on a computer is approved from X0 Bot on your phone.");
   }
   if (!d) {
     return "code" in ref

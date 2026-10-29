@@ -18,6 +18,7 @@
 import type { Personality } from "../../../shared/types/api.js";
 import { GRAMMAR_RULES } from "../agent/grammar.js";
 import { RESOLVER_RULES } from "../agent/resolver.js";
+import { NAME_HEARD, NAME_HEARD_FRONT_ONLY, nameWords } from "./assistantName.js";
 import { applyPresetOverrides, DEFAULT_TONE, MAX_PINNED_PRESETS, TONE_LABELS, type PresetTone } from "./personalityPresets.js";
 
 // ===================================================================== the desktop
@@ -53,9 +54,14 @@ export function deskVoices(personality: Personality | null | undefined): Array<{
  */
 export const DESKTOP_ROUTER = {
   heardAs: [
+    // X0 however the recognizer spells it ("XO", "x o", "X zero", "ex oh", "zero bot", "X0 Bot": assistantName.ts).
+    { name: "x0", heard: NAME_HEARD.map(nameWords).filter((f) => !f.includes("tail")) },
+    // Its old name, so a habit keeps working.
     { name: "tailzu", heard: ["tailzu", "tail zu", "tailzoo", "tail zoo", "tell zu", "tell zoo", "telzu", "tel zu", "taylzu", "tailsu", "tailzoo", "टेलज़ू", "टेलजू", "टेल्ज़ू", "टेल ज़ू"] },
     { name: "blip", heard: ["blip", "blipp", "ब्लिप"] },
   ],
+  // Ways of hearing the name that are ordinary words too ("love you, xo"): the name only at the start, never at the end.
+  frontOnly: [...NAME_HEARD_FRONT_ONLY],
   greetings: [
     "hey", "hi", "hello", "ok", "okay", "o", "oye", "oi", "arre", "are", "arey", "suno", "listen", "yo", "हे", "अरे",
     "सुनो", "ओ", "ओके", "हाय", "हेलो",
@@ -181,8 +187,8 @@ export const DESKTOP_ROUTER = {
   ],
 } as const;
 
-/** The names it answers to, besides the person's own for it (desktop.router.names). */
-export const DESKTOP_WAKE_NAMES = ["Tailzu", "Blip"] as const;
+/** The names it answers to, besides the person's own for it (desktop.router.names): X0, the guide, and its old name. */
+export const DESKTOP_WAKE_NAMES = ["X0", "Blip", "Tailzu"] as const;
 
 /** A pattern as the desktop compiles it: its source and its flags. */
 const pattern = (r: RegExp) => ({ source: r.source, flags: r.flags });

@@ -138,8 +138,8 @@ describe("the frames", () => {
   });
 
   it("read a PC's presence frames", () => {
-    const hello = parseFromDevice('{"t":"hello","v":1,"deviceId":"laptop-0001","name":"  Work laptop ","allowRun":true,"projects":["p1","p2"],"busy":false,"app":"Tailzu 1.2"}');
-    expect(hello).toEqual({ t: "hello", v: 1, deviceId: "laptop-0001", name: "Work laptop", allowRun: true, projects: ["p1", "p2"], busy: false, app: "Tailzu 1.2" });
+    const hello = parseFromDevice('{"t":"hello","v":1,"deviceId":"laptop-0001","name":"  Work laptop ","allowRun":true,"projects":["p1","p2"],"busy":false,"app":"X0 Bot 1.2"}');
+    expect(hello).toEqual({ t: "hello", v: 1, deviceId: "laptop-0001", name: "Work laptop", allowRun: true, projects: ["p1", "p2"], busy: false, app: "X0 Bot 1.2" });
     expect(parseFromDevice('{"t":"hello","v":1,"deviceId":"laptop-0001","allowRun":false,"projects":"all"}')).toMatchObject({ name: "This computer", busy: false, projects: "all" });
     expect(parseFromDevice('{"t":"state","busy":true}')).toEqual({ t: "state", busy: true });
     expect(parseFromDevice('{"t":"state","projects":"all","allowRun":false}')).toEqual({ t: "state", projects: "all", allowRun: false });

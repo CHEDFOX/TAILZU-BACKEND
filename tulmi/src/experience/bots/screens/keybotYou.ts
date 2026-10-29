@@ -248,20 +248,20 @@ function hapticsPage(ctx: BotsCtx, d: PersonalityRead | undefined) {
 function namePage(ctx: BotsCtx, d: PersonalityRead | undefined) {
   const title = "What you call it";
   const p = d?.personality;
-  if (!p) return youPage(ctx, { title, sub: "Tailzu, and a name of your own", left: [couldntLoad("its name")] });
+  if (!p) return youPage(ctx, { title, sub: "X0, and a name of your own", left: [couldntLoad("its name")] });
   const nick = nicknameOf(p);
   const put = (name: string, done: string): ActionSpec => call("PUT", "/v1/personality", { assistantName: name }, {
     ok: seq(toast(done), refresh), fail: oops("A name is letters, spaces, ' and -, up to 24 characters."),
   });
   const saveIt: ActionSpec = { kind: "condition", if: { truthy: "name" }, then: put("$state.name", "Saved. Call it by either name."), else: toast("Type a name first") };
   return youPage(ctx, {
-    title, sub: nick ? `Tailzu, or ${nick}` : "Tailzu",
+    title, sub: nick ? `X0, or ${nick}` : "X0",
     left: [
-      text("Tailzu is its name, and always works. Give it a name of your own too, and call it either while you talk: “Zara, make it formal.”", { size: 15, color: C.grey70, lineHeight: 22 }),
+      text("X0 is its name, and always works. Give it a name of your own too, and call it either while you talk: “Zara, make it formal.”", { size: 15, color: C.grey70, lineHeight: 22 }),
       field("name", "A name of your own", { label: "A name of your own", onSubmit: saveIt }),
       row([
         ...(ctx.client === "desktop" ? [button("Save", saveIt, { size: "md" })] : []),
-        ...(nick ? [quietButton("Tailzu only", put("", "It's Tailzu again"), { size: "md" })] : []),
+        ...(nick ? [quietButton("X0 only", put("", "It's X0 again"), { size: "md" })] : []),
       ], { gap: 8 }),
     ],
     state: { name: nick ?? "" },

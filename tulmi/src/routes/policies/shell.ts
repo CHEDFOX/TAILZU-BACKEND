@@ -126,7 +126,7 @@ export function siteShell(o: {
 ${o.pixel === false ? "" : gtmHead()}<meta name="viewport" content="width=device-width, initial-scale=1">
 ${headTags({
   path: o.path ?? "/",
-  title: o.headTitle ?? `${o.title} — Tailzu`,
+  title: o.headTitle ?? `${o.title} — X0 Bot`,
   description: o.description ?? "",
   noindex: o.noindex || !o.path,
   ld: o.ld,
@@ -138,11 +138,11 @@ ${headTags({
 <style>${CSS}${o.css ?? ""}</style>
 ${o.pixel === false ? "" : `<script src="/site-events.js" async></script>\n`}</head>
 <body>
-${o.pixel === false ? "" : gtmBody()}<header class="mast"><div class="wrap"><a class="mark" href="/" aria-label="Tailzu">${MARK}</a></div></header>
+${o.pixel === false ? "" : gtmBody()}<header class="mast"><div class="wrap"><a class="mark" href="/" aria-label="X0 Bot">${MARK}</a></div></header>
 <main><div class="wrap">
 ${o.main}
 </div></main>
-<footer><div class="wrap"><div class="in"><span>© 2026 Tailzu</span><nav>${nav}</nav></div></div></footer>
+<footer><div class="wrap"><div class="in"><span>© 2026 X0 Bot</span><nav>${nav}</nav></div></div></footer>
 ${o.script ? `<script${o.nonce ? ` nonce="${o.nonce}"` : ""}>${o.script}</script>\n` : ""}</body>
 </html>`;
 }

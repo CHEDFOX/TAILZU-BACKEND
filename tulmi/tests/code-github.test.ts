@@ -1718,7 +1718,7 @@ describe("merging", () => {
     expect(fake.calls.some((c) => c.method === "PUT")).toBe(false);
   });
 
-  it("will only merge a pull request that is one of Tailzu's: from its branch, in this repo, into the default branch", async () => {
+  it("will only merge a pull request that is one of X0 Bot's: from its branch, in this repo, into the default branch", async () => {
     const w = await ready();
     const { github, fake, repo, branch, pr } = w;
     const ref = { installationId: 101, repoId: repo.id, fullName: repo.fullName, defaultBranch: "main" };
@@ -1957,7 +1957,7 @@ describe("access for runners", () => {
     expect((await runnerAccess(d, "alice", project.id, branch, "read")).token).not.toBe(token);
   });
 
-  it("only for a branch Tailzu recorded, for its person, that still exists", async () => {
+  it("only for a branch X0 Bot recorded, for its person, that still exists", async () => {
     const w = await withPr();
     const { d, project, branch } = w;
     for (const [user, b] of [["bob", branch], ["alice", "main"], ["alice", "tailzu/unrecorded-0000"], ["alice", ""]] as const) {

@@ -446,6 +446,9 @@ export interface WriterCall {
   intentStep?: boolean;
   /** Training: the direction of this one version (cleanup.VARIANT_ANGLES). */
   variant?: string;
+  /** Its name as they said it, when the recognizer spelled X0 its own way ("Ex oh, make it formal"):
+   *  assistantName.heardNameIn. Said so, so the name is read as the name and never written. */
+  calledAs?: string;
 }
 
 /** What <around> is, said whenever it is there (writerContext, replyContext). */
@@ -463,6 +466,7 @@ export function writerContext(opts: WriterCall): string {
   const notes: Array<string | null> = [
     // "Tailzu (they also call you Zara)": the second name is theirs, and a name said to the keyboard is part of the request, never written.
     nick ? `They also call you ${nick}.` : null,
+    opts.calledAs ? `"${inlineValue(opts.calledAs, 24)}" in <said> is your name, X0, as the recognizer heard it.` : null,
     // Two recognizers heard the same audio and disagreed. The no-invention
     // clause is the load-bearing half: given two readings a model will happily
     // average them into a fluent third sentence nobody said, which is worse

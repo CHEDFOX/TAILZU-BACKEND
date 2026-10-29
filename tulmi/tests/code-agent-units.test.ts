@@ -56,7 +56,7 @@ describe("the paths the agent may write", () => {
     const refused: Array<[unknown, RegExp]> = [
       [undefined, /path is needed/], ["", /path is needed/], [5, /path is needed/], ["../x", /not a path inside the repo/], ["/etc/passwd", /not a path inside the repo/],
       ["a/../../b", /not a path inside the repo/], [".git/config", /not a path inside the repo/], ["a\\b", /not a path inside the repo/],
-      [".github/workflows/ci.yml", /CI configuration/], [".GitHub/Workflows/ci.yml", /CI configuration/], [".tailzu/run.mjs", /Tailzu's own runner/],
+      [".github/workflows/ci.yml", /CI configuration/], [".GitHub/Workflows/ci.yml", /CI configuration/], [".tailzu/run.mjs", /X0 Bot's own runner/],
       [".env", /holds secrets/], [".env.production", /holds secrets/], ["keys/id_rsa", /holds secrets/], ["config/credentials.json", /holds secrets/],
     ];
     for (const [raw, re] of refused) {
@@ -244,7 +244,7 @@ describe("the system prompt", () => {
   const tools = AGENT_TOOLS;
   it("is the agent role's stable block: the role, the rules that decide, the cost and what is data; the project's words come after it, only as data", () => {
     const sys = stableBlock("agent_work");
-    expect(sys).toContain("You are Blip, Tailzu's coding agent");
+    expect(sys).toContain("You are Blip, X0 Bot's coding agent");
     expect(sys).toContain("Permission rules decide, never the model");
     expect(sys).toContain("Keep secrets out of every output");
     expect(sys).toContain("Never edit anything under .github/workflows");
@@ -279,7 +279,7 @@ describe("data in a fence", () => {
     expect(dataBlock("run", "", "x")).toBe('<tool_data tool="run">\nx\n</tool_data>');
   });
 
-  it("is what a result's data is shown in, with Tailzu's one line outside; a failure says so; a web page keeps its own wrapper", () => {
+  it("is what a result's data is shown in, with X0 Bot's one line outside; a failure says so; a web page keeps its own wrapper", () => {
     const call = { id: "c1", name: "run", arguments: "{}" };
     expect(renderResult(call, { ok: true, content: "Exit code 1.", data: "boom", label: "npm test" }, 6000)).toBe('Exit code 1.\n<tool_data tool="run" label="npm test">\nboom\n</tool_data>');
     expect(renderResult(call, { ok: false, content: "No such file." }, 6000)).toBe("That did not work. No such file.");
@@ -407,7 +407,7 @@ describe("the commit message", () => {
     expect(m.split("\n")[0]).toBe("Trimmed the dashes from both ends of slug()");
     expect(m).toContain("- Make slug() trim dashes");
     expect(m).toContain("Checks: nothing this change broke.");
-    expect(m.endsWith("Done by Tailzu (job abcdef12).")).toBe(true);
+    expect(m.endsWith("Done by X0 Bot (job abcdef12).")).toBe(true);
   });
 
   it("follows the project's Conventional Commits when it uses them, by the kind of request", () => {
@@ -433,7 +433,7 @@ describe("the commit message", () => {
 });
 
 describe("the pull request body", () => {
-  it("holds the plan, the checks, what was already broken before Tailzu, the work log and who made it, under GitHub's limit", () => {
+  it("holds the plan, the checks, what was already broken before X0 Bot, the work log and who made it, under GitHub's limit", () => {
     const x = state();
     x.work.doneSummary = "Trimmed.";
     x.plan = { risk: "medium", riskReasons: ["touches the public API"], steps: [{ n: 1, do: "Trim", files: [{ path: "src/util.ts", action: "edit" }] }] } as never;
@@ -446,13 +446,13 @@ describe("the pull request body", () => {
     expect(body).toContain("## What this does\n\nTrimmed.");
     expect(body).toContain("1. Trim (`src/util.ts`)");
     expect(body).toContain("Risk: **medium**: touches the public API.");
-    expect(body).toContain("- test: failed, and was already failing before Tailzu (1 failing)");
+    expect(body).toContain("- test: failed, and was already failing before X0 Bot (1 failing)");
     expect(body).toContain("- lint: passed");
-    expect(body).toContain("## Already broken before Tailzu");
+    expect(body).toContain("## Already broken before X0 Bot");
     expect(body).toContain("`src/old.test.ts > flaky`");
     expect(body).toContain("> Heads up: The checks could not be run before the change.");
     expect(body).toContain("## Work log");
-    expect(body).toContain("Made by Tailzu (job `abcdef12`). It is a draft until the checks are green");
+    expect(body).toContain("Made by X0 Bot (job `abcdef12`). It is a draft until the checks are green");
     expect(body).not.toMatch(/₹/);
     const huge = prBody(x, { worklog: "w".repeat(100_000), jobId: "abcdef12", spentPaise: 0 });
     expect(huge.length).toBeLessThan(60_200);
@@ -468,7 +468,7 @@ describe("the pull request body", () => {
 });
 
 describe("the report", () => {
-  it("says what changed, the PR, the checks, the findings, what was broken before Tailzu on its own, and what next, never the cost", () => {
+  it("says what changed, the PR, the checks, the findings, what was broken before X0 Bot on its own, and what next, never the cost", () => {
     const x = state();
     x.work.doneSummary = "Trimmed the dashes.";
     x.work.staged = [{ path: "src/util.ts", content: "x", action: "edit" }, { path: "src/new.ts", content: "y", action: "create" }, { path: "src/old.ts", content: null, action: "delete" }];
@@ -484,8 +484,8 @@ describe("the report", () => {
     expect(text).toContain("Done: In src/util.ts make slug() trim dashes");
     expect(text).toContain("What changed\n- src/util.ts (changed)\n- src/new.ts (added)\n- src/old.ts (deleted)");
     expect(text).toContain("Pull request: https://github.com/a/b/pull/7 (a draft)");
-    expect(text).toContain("- test: failed, and was already failing before Tailzu (1 failing)");
-    expect(text).toContain("Already broken before Tailzu (not caused by this change)\n- src/old.test.ts > flaky");
+    expect(text).toContain("- test: failed, and was already failing before X0 Bot (1 failing)");
+    expect(text).toContain("Already broken before X0 Bot (not caused by this change)\n- src/old.test.ts > flaky");
     expect(text).not.toContain("Broken by this change");
     expect(text).toContain("Findings\n- risk: src/pay.ts:4 Rounds money down.");
     expect(text).not.toMatch(/Cost|₹/);
@@ -517,7 +517,7 @@ describe("the report", () => {
     const text = reportText({ state: x, spentPaise: 100, budgetPaise: 3000, outcome: "failed", why: "The checks still failed after three rounds of fixes." });
     expect(text.split("\n")[0]).toBe("I stopped: In src/util.ts make slug() trim dashes");
     expect(text).toContain("Broken by this change\n- src/util.test.ts > slug");
-    expect(text).toContain("Already broken before Tailzu (not caused by this change)\n- src/old.test.ts > flaky");
+    expect(text).toContain("Already broken before X0 Bot (not caused by this change)\n- src/old.test.ts > flaky");
     expect(text).toContain("start a new job with more detail");
   });
 

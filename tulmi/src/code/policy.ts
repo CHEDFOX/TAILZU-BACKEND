@@ -128,14 +128,14 @@ export const ACTIONS = {
   // --- free
   "read": { tier: "free", label: "Read the repo", branchScoped: true },
   "branch.create": { tier: "free", label: "Make a branch", branchScoped: false },
-  "commit.own_branch": { tier: "free", label: "Commit to a branch Tailzu made", branchScoped: true },
+  "commit.own_branch": { tier: "free", label: "Commit to a branch X0 Bot made", branchScoped: true },
   "pr.open_draft": { tier: "free", label: "Open a draft pull request", branchScoped: true },
   "branch.sync": { tier: "free", label: "Bring a branch up to date with the default branch", branchScoped: true, ownOnly: true },
   "pr.comment": { tier: "free", label: "Comment on a pull request", branchScoped: true, ownOnly: true },
   // The server's alone (see runner.shadow above): a throwaway tailzu-run/ branch with three files, to run a step on GitHub's free computers.
   "runner.shadow": { tier: "free", label: "Run a step on GitHub's free computers (a tailzu-run/ branch)", branchScoped: true },
   // --- ask
-  "commit.other_branch": { tier: "ask", label: "Commit to a branch Tailzu didn't make", branchScoped: true },
+  "commit.other_branch": { tier: "ask", label: "Commit to a branch X0 Bot didn't make", branchScoped: true },
   "pr.merge": { tier: "ask", label: "Merge a pull request", branchScoped: true },
   "pr.ready": { tier: "ask", label: "Mark a pull request ready for review", branchScoped: true },
   "pr.close": { tier: "ask", label: "Close a pull request", branchScoped: true },
@@ -150,7 +150,7 @@ export const ACTIONS = {
   // --- never
   "path.escape": { tier: "never", label: "Write outside the repo or inside .git", branchScoped: false },
   "repo.delete": { tier: "never", label: "Delete the repo", branchScoped: false },
-  "runner.reserved": { tier: "never", label: "Write Tailzu's runner files or a tailzu-run/ branch", branchScoped: false },
+  "runner.reserved": { tier: "never", label: "Write X0 Bot's runner files or a tailzu-run/ branch", branchScoped: false },
 } as const satisfies Record<string, ActionDef>;
 
 export type ActionId = keyof typeof ACTIONS;
@@ -213,7 +213,7 @@ export function parseGrant(body: unknown, now = Date.now()): NewCodeGrant {
   if (!isGrantable(action)) {
     throw new ConnectorError(
       "not_grantable",
-      def(action).tier === "never" ? "Tailzu never does that, so there is nothing to allow or forbid." : "That always asks you, with Face ID, every time. It can't be allowed for good.",
+      def(action).tier === "never" ? "X0 Bot never does that, so there is nothing to allow or forbid." : "That always asks you, with Face ID, every time. It can't be allowed for good.",
     );
   }
   const effect = b.effect === undefined ? "allow" : b.effect;
@@ -442,7 +442,7 @@ export function commitFingerprint(files: readonly CommitFile[], message: string,
  * branch. Those are written by the server alone (shadow.ts).
  */
 export function reservedRefusal(): PolicyError {
-  return new PolicyError("never", "Those files and branches belong to Tailzu's own runner, so nothing else can write them.", {
+  return new PolicyError("never", "Those files and branches belong to X0 Bot's own runner, so nothing else can write them.", {
     action: "runner.reserved", tier: "never", reason: "never", faceId: false,
   });
 }
@@ -610,18 +610,18 @@ function refusal(x: Decision, q: { project: CodeProject; branch?: string; summar
   const what = label.charAt(0).toLowerCase() + label.slice(1);
   switch (x.reason) {
     case "needs_you":
-      return new PolicyError("needs_you", `This needs your OK before Tailzu can ${what}, and nobody is here to give it. It's waiting for you.`, { ...info, summary: { ...summaryHead(q, [x]), ...q.summary() } });
+      return new PolicyError("needs_you", `This needs your OK before X0 Bot can ${what}, and nobody is here to give it. It's waiting for you.`, { ...info, summary: { ...summaryHead(q, [x]), ...q.summary() } });
     case "denied_by_grant":
-      return new PolicyError("policy_denied", `You told Tailzu not to ${what} in this project, so it won't. You can take that back in the project's permissions.`, info);
+      return new PolicyError("policy_denied", `You told X0 Bot not to ${what} in this project, so it won't. You can take that back in the project's permissions.`, info);
     case "missing_scope":
       return new PolicyError(
         "needs_workflow_scope",
         q.project.linkKind === "oauth"
           ? "Changing GitHub Actions workflow files needs one more permission from GitHub. Sign in with GitHub again and allow it."
-          : "Changing GitHub Actions workflow files needs the Tailzu GitHub App to have the Workflows permission. Add it in the App's settings and accept the new permission.",
+          : "Changing GitHub Actions workflow files needs the X0 Bot GitHub App to have the Workflows permission. Add it in the App's settings and accept the new permission.",
         info,
       );
     default:
-      return new PolicyError("never", "Tailzu never does that.", info);
+      return new PolicyError("never", "X0 Bot never does that.", info);
   }
 }

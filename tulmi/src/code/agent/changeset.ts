@@ -49,9 +49,9 @@ export function editablePath(raw: unknown): string {
     throw new Refused(`${JSON.stringify(path.slice(0, 80))} is not a path inside the repo. Use a path relative to the repo's root, with no .. and nothing in .git.`);
   }
   if (isWorkflowPath(path)) {
-    throw new Refused(`${path} is CI configuration (.github/workflows). Tailzu never changes it. Leave it as it is, and say in your final answer if the change needs a workflow edit.`);
+    throw new Refused(`${path} is CI configuration (.github/workflows). X0 Bot never changes it. Leave it as it is, and say in your final answer if the change needs a workflow edit.`);
   }
-  if (isReservedPath(path)) throw new Refused(`${path} belongs to Tailzu's own runner, so nothing else can write it.`);
+  if (isReservedPath(path)) throw new Refused(`${path} belongs to X0 Bot's own runner, so nothing else can write it.`);
   if (isSecretPath(path)) throw new Refused(`${path} is the kind of file that holds secrets (an env file, a key, a credentials file), and those never go in git. Put the name of the setting in .env.example instead.`);
   return path;
 }

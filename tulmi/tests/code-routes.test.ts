@@ -235,7 +235,7 @@ describe("connecting GitHub", () => {
     expect(back.headers["content-security-policy"]).toContain("default-src 'none'");
     expect(back.headers["referrer-policy"]).toBe("no-referrer");
     expect(back.body).toContain("<h1>GitHub connected</h1>");
-    expect(back.body).toContain('<a href="tulmi://">Open Tailzu</a>');
+    expect(back.body).toContain('<a href="tulmi://">Open X0 Bot</a>');
     expect(back.body).not.toContain("code-1");
     expect(back.body).not.toContain("gho_");
 
@@ -295,7 +295,7 @@ describe("connecting GitHub", () => {
     const r = await rig();
     const res = await r.app.inject({ method: "GET", url: "/v1/code/github/callback?setup_action=request&state=anything" });
     expect(res.statusCode).toBe(200);
-    expect(res.body).toContain("Waiting for your organisation's owner to approve Tailzu");
+    expect(res.body).toContain("Waiting for your organisation's owner to approve X0 Bot");
     expect(r.fake.calls).toHaveLength(0);
     expect((await r.call("alice", "GET", "/v1/code/github")).json().installations).toEqual([]);
     await r.app.close();
@@ -439,7 +439,7 @@ describe("work branches and draft PRs", () => {
     await r.app.close();
   });
 
-  it("opens a draft PR for a branch Tailzu made, with the branch URL-encoded, and records it", async () => {
+  it("opens a draft PR for a branch X0 Bot made, with the branch URL-encoded, and records it", async () => {
     const r = await rig();
     const { id, repo } = await project(r);
     const { branch } = (await r.call("alice", "POST", `/v1/code/projects/${id}/branches`, { task: "ship it" })).json();
@@ -872,7 +872,7 @@ describe("the project's standing permissions", () => {
     const merge = await r.call("alice", "POST", `${B(id, branch)}/pr/merge`);
     expect(merge.statusCode).toBe(403);
     expect(merge.json()).toMatchObject({ code: "policy_denied", action: "pr.merge", faceId: false });
-    expect(merge.json().message).toMatch(/told Tailzu not to/);
+    expect(merge.json().message).toMatch(/told X0 Bot not to/);
     expect(r.fake.pulls(repo)[0]!.merged).toBe(false);
     // Taking the allow back: it asks again.
     await r.call("alice", "DELETE", `${P(id)}/${allow.id}`);
@@ -1040,7 +1040,7 @@ describe("Sign in with GitHub, over HTTP", () => {
     expect(back.headers["content-type"]).toContain("text/html");
     expect(back.headers["cache-control"]).toBe("no-store");
     expect(back.body).toContain("<h1>GitHub connected</h1>");
-    expect(back.body).toContain('<a href="tulmi://">Open Tailzu</a>');
+    expect(back.body).toContain('<a href="tulmi://">Open X0 Bot</a>');
 
     const status = (await watch(r.call("alice", "GET", "/v1/code/github"))).json();
     expect(status).toMatchObject({ connected: true, installations: [], oauth: { connected: true, login: "alice", status: "active", workflow: false } });

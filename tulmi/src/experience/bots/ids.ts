@@ -69,6 +69,10 @@ export const SCREENS = {
   share: "bots.share",               // Share to a space or person (params: kind, ref, title, text, url, bot)
   chats: "bots.chats",               // Chats (params: id, the open one in the window; new: "group")
   thread: "bots.thread",             // One chat (params: id, before)
+  // screens/safety.ts: reporting and blocking (App Review 1.2), no boards: drawn in Spaces' look
+  person: "bots.person",             // Someone you share a space or a chat with: Message, Report, Block (params: id, the user id)
+  report: "bots.report",             // Report a message, a shared thing or a person (params: kind, id, thread)
+  blocked: "bots.blocked",           // Blocked people, each with Unblock (You › Blocked people)
   // screens/keybot.ts
   keybot: "bots.keybot",             // Keybot / DKeybot
   keyOn: "bots.keybot.on",           // KeyOn / DKeyOn

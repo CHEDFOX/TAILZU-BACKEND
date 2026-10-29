@@ -129,7 +129,7 @@ import {
 } from "./personality/store.js";
 import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
 import { DEFAULT_TTS_VOICE, isValidTtsVoice } from "./experience/ttsVoices.js";
-import { ASSISTANT_NAME, cleanNickname, nicknameOf, vocabularyWithNames } from "./experience/assistantName.js";
+import { ASSISTANT_NAME, cleanNickname, NAME_HEARD, nicknameOf, vocabularyWithNames } from "./experience/assistantName.js";
 import {
   type KeyboardPlatform,
   buildBootstrap,
@@ -2136,7 +2136,7 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
     const nick = nicknameOf(personality);
     result = await runStep(
       {
-        req: step, maxSteps: cfg.AGENT_MAX_STEPS, names: [ASSISTANT_NAME, "Blip", ...(nick ? [nick] : [])],
+        req: step, maxSteps: cfg.AGENT_MAX_STEPS, names: [ASSISTANT_NAME, ...NAME_HEARD, "Blip", ...(nick ? [nick] : [])],
         ...(image ? { image } : {}),
       },
       {

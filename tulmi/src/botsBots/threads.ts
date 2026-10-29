@@ -13,10 +13,15 @@
  * group chats"; one to one needs a space you share in which you may message. A chat with someone you no longer share a space with can
  * still be read, not written to. Someone who leaves a space leaves its chat and its groups. Every write tells the people in the chat
  * (live: "thread:<id>" and "threads"), so an open chat updates by itself.
+ *
+ * BLOCKS (blocks.ts), either way round: the one-to-one chat between the two is gone for both (hidden, closed, 404), neither sees the
+ * other's messages in a group or a space's chat (nor counts them unread, nor is pinged for them), and neither is offered the other
+ * to message or to add to a group.
  */
 import { randomUUID } from "node:crypto";
 import { BotError } from "../bots/index.js";
 import { live } from "../live/bus.js";
+import { Blocks } from "./blocks.js";
 import { signQuery } from "./spaceLinks.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { pickedIds } from "./spacePerms.js";
@@ -65,6 +70,8 @@ const oneLine = (s: string, max: number) => s.replace(/\s+/g, " ").trim().slice(
 const gone = () => new BotError("not_found", "That chat isn't there any more.", 404);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const names = (list: string[]) => (list.length <= 1 ? list[0] ?? "" : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`);
+/** A message as one line (a chat's last line, a report's subject). */
+const lineOf = (m: Pick<MessageRow, "text" | "item" | "files">): string => m.text ? oneLine(m.text, 120) : m.item ? `Shared ${m.item.title}` : (m.files ?? []).length === 1 ? (m.files[0]!.mime.startsWith("image/") ? "Photo" : m.files[0]!.name) : `${(m.files ?? []).length} files`;
 
 export class Threads {
   private readonly threads: PagedTable<ThreadRow>;
@@ -76,6 +83,7 @@ export class Threads {
     private readonly spaces: Spaces,
     private readonly now: () => number = Date.now,
     o: { publish?: Publish; files?: FileLookup | null; filePath?: (threadId: string, messageId: string, fileId: string) => string; notify?: MessageNotify;
+      blocks?: Blocks;
       tables?: { threads?: PagedTable<ThreadRow>; members?: PagedTable<ThreadMemberRow>; messages?: PagedTable<MessageRow> } } = {},
   ) {
     this.threads = o.tables?.threads ?? spaceTable<ThreadRow>("threads");
@@ -85,11 +93,14 @@ export class Threads {
     this.files = o.files ?? null;
     this.filePath = o.filePath ?? ((t, m, f) => `/v1/botsapp/bots/threads/${t}/files/${m}/${f}`);
     this.notify = o.notify ?? (async () => undefined);
+    this.blocks = o.blocks ?? new Blocks(now);
     spaces.onMembers((e) => this.follow(e));
   }
   private readonly files: FileLookup | null;
   private readonly filePath: (threadId: string, messageId: string, fileId: string) => string;
   private readonly notify: MessageNotify;
+  /** Who has blocked whom (blocks.ts): the rules at the top of this file. */
+  readonly blocks: Blocks;
 
   // ------------------------------------------------------------------ who may
 
@@ -110,7 +121,19 @@ export class Threads {
     const me = members.find((m) => m.user_id === userId);
     if (!me) throw gone();
     if (t.space_id && !(await this.spaces.permsFor(userId, t.space_id))) throw gone();
+    // A one-to-one chat with a block between the two is gone for both.
+    if (t.kind === "direct" && (await this.directBlocked(userId, t))) throw gone();
     return { t, me, members };
+  }
+
+  /** The other person in a one-to-one chat (from its key, which outlives their membership). */
+  private otherOf(userId: string, t: ThreadRow): string {
+    return (t.direct_key ?? "").split(":").find((id) => id && id !== userId) ?? "";
+  }
+
+  private async directBlocked(userId: string, t: ThreadRow): Promise<boolean> {
+    const other = this.otherOf(userId, t);
+    return !!other && (await this.blocks.hiddenFor(userId)).has(other);
   }
 
   async canRead(userId: string, threadId: string): Promise<boolean> {
@@ -159,25 +182,37 @@ export class Threads {
   }
 
   private async viewOf(userId: string, threadId: string): Promise<ThreadView> {
-    const { t, me, members } = await this.open(userId, threadId);
+    const { t, me, members: all } = await this.open(userId, threadId);
+    const hidden = await this.blocks.hiddenFor(userId);
+    // Someone with a block between you is left out of a group's people (they are still in it, unseen).
+    const members = all.filter((m) => !hidden.has(m.user_id));
     const spaceName = t.space_id ? await this.spaces.nameOf(t.space_id) : "";
     const others = members.filter((m) => m.user_id !== userId);
-    const post = await this.mayPost(userId, t, members);
+    const post = await this.mayPost(userId, t, all);
     const name = t.kind === "space" ? spaceName : t.kind === "direct" ? (others[0]?.name ?? (await this.people.select({ thread_id: t.id }, { limit: 4 })).find((m) => m.user_id !== userId)?.name ?? "Someone") : (t.name || names(others.map((m) => m.name)));
+    let last = Number(t.last_ms) > Number(t.created_ms) || t.last_text ? { text: t.last_text, at: Number(t.last_ms) } : null;
+    if (last && hidden.size && t.kind !== "direct") {
+      // The chat's last line may be theirs: show the last one you can see instead.
+      const newest = await this.messages.before({ thread_id: t.id }, "at_ms", null, 20);
+      if (newest[0] && newest[0].sender_id && hidden.has(newest[0].sender_id)) {
+        const seen = newest.find((m) => !m.sender_id || !hidden.has(m.sender_id));
+        last = seen ? { text: `${seen.sender_name}: ${lineOf(seen)}`.slice(0, 140), at: Number(seen.at_ms) } : null;
+      }
+    }
     return {
       id: t.id, kind: t.kind, name, spaceId: t.space_id, spaceName,
       people: members.map((m) => ({ userId: m.user_id, name: m.name, you: m.user_id === userId })),
-      last: Number(t.last_ms) > Number(t.created_ms) || t.last_text ? { text: t.last_text, at: Number(t.last_ms) } : null,
-      unread: Math.max(0, Number(me.unread) || 0), muted: me.muted === true, canPost: post.ok, why: post.why,
+      last, unread: Math.max(0, Number(me.unread) || 0), muted: me.muted === true, canPost: post.ok, why: post.why,
     };
   }
 
-  /** Who this person can message (one to one), and where they can start a group. */
+  /** Who this person can message (one to one), and where they can start a group. Nobody with a block between you. */
   async contacts(userId: string): Promise<{ people: Array<{ userId: string; name: string; spaces: string[] }>; groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> }> {
     const people = new Map<string, { userId: string; name: string; spaces: string[] }>();
     const groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> = [];
+    const hidden = await this.blocks.hiddenFor(userId);
     for (const s of await this.spaces.mine(userId)) {
-      const ms = (await this.spaces.membersOf(s.id)).filter((m) => m.userId !== userId);
+      const ms = (await this.spaces.membersOf(s.id)).filter((m) => m.userId !== userId && !hidden.has(m.userId));
       if (s.perms.includes("message")) {
         for (const m of ms) {
           const p = people.get(m.userId) ?? { userId: m.userId, name: m.name, spaces: [] };
@@ -224,6 +259,9 @@ export class Threads {
 
   async direct(userId: string, myName: string, otherId: string): Promise<{ id: string }> {
     if (otherId === userId) throw new BotError("bad_request", "That's you.");
+    if (await this.blocks.between(userId, otherId)) {
+      throw new BotError("blocked", (await this.blocks.byMe(userId, otherId)) ? "You blocked them. Unblock them in You, Blocked people, to message them." : "You can't message them.", 403);
+    }
     if (!(await this.messageable(userId, otherId))) throw new BotError("not_allowed", "You can message people in a space you share, if the space lets you.", 403);
     const key = [userId, otherId].sort().join(":");
     const find = async () => (await this.threads.select({ direct_key: key }, { limit: 1 }))[0];
@@ -259,6 +297,9 @@ export class Threads {
     const chosen = inSpace.filter((m) => picked.includes(m.userId) && m.userId !== userId);
     if (picked.filter((p) => p !== userId).length !== chosen.length) throw new BotError("not_found", `Everyone in a group has to be in ${a.s.name}.`, 404);
     if (!chosen.length) throw new BotError("bad_request", "Pick at least one person.");
+    const hidden = await this.blocks.hiddenFor(userId);
+    const kept = chosen.find((m) => hidden.has(m.userId));
+    if (kept) throw new BotError("blocked", `You can't add ${kept.name} to a group.`, 403);
     const mine = (await this.people.select({ user_id: userId }, { limit: GROUPS_MAX + 40 })).length;
     if (mine >= GROUPS_MAX + 30) throw new BotError("group_limit", "That's a lot of chats. Leave one you don't use first.", 409);
     const at = this.now();
@@ -292,7 +333,69 @@ export class Threads {
       if (Number(me.unread) > 0) this.publish([userId], "threads");
     }
     const thread = await this.viewOf(userId, threadId);
-    return { thread: { ...thread, unread: 0 }, messages: page.reverse().map((r) => this.viewMessage(userId, r)), more: rows.length > limit, before: page.length ? Number(page[0]!.at_ms) : null };
+    // The page is cut before anyone's messages are left out, so the next page starts where this one ended.
+    const hidden = await this.blocks.hiddenFor(userId);
+    const shown = page.filter((r) => !r.sender_id || !hidden.has(r.sender_id));
+    // `page` is newest first: the next page is before its oldest.
+    return { thread: { ...thread, unread: 0 }, messages: shown.reverse().map((r) => this.viewMessage(userId, r)), more: rows.length > limit, before: page.length ? Number(page[page.length - 1]!.at_ms) : null };
+  }
+
+  /** One message, for someone who may read the chat and see it (a report of it): the row and its chat. 404 otherwise. */
+  async messageFor(userId: string, threadId: string, messageId: string): Promise<{ m: MessageRow; t: ThreadRow }> {
+    const { t } = await this.open(userId, threadId);
+    const [m] = UUID.test(messageId) ? await this.messages.select({ id: messageId, thread_id: t.id }, { limit: 1 }) : [];
+    if (!m || (m.sender_id && (await this.blocks.hiddenFor(userId)).has(m.sender_id))) throw new BotError("not_found", "That message isn't there any more.", 404);
+    return { m, t };
+  }
+
+  /** The admin takes a message out (a report acted on): it goes for everyone, and the chat's last line is the one before it. */
+  async removeMessage(threadId: string, messageId: string): Promise<boolean> {
+    if (!UUID.test(threadId) || !UUID.test(messageId)) return false;
+    const n = await this.messages.remove({ id: messageId, thread_id: threadId });
+    if (!n) return false;
+    const [t] = await this.threads.select({ id: threadId }, { limit: 1 });
+    if (t) {
+      const [newest] = await this.messages.before({ thread_id: threadId }, "at_ms", null, 1);
+      await this.threads.update({ id: threadId }, { last_text: newest ? `${newest.sender_name}: ${lineOf(newest)}`.slice(0, 140) : "" });
+    }
+    const ids = (await this.people.select({ thread_id: threadId }, { limit: 60 })).map((m) => m.user_id);
+    this.publish(ids, `thread:${threadId}`);
+    this.publish(ids, "threads");
+    return true;
+  }
+
+  /**
+   * How `userId` knows `otherId`: the spaces they share, and their one-to-one chat; null when they share neither a space nor any chat
+   * (you can only block or report someone you've come across here). Works with a block in place, so the person can still be unblocked.
+   */
+  async acquaintance(userId: string, otherId: string): Promise<{ name: string; spaces: Array<{ id: string; name: string }>; direct: string | null } | null> {
+    if (!UUID.test(otherId) || otherId === userId) return null;
+    const spaces: Array<{ id: string; name: string }> = [];
+    let name = "";
+    for (const s of await this.spaces.mine(userId)) {
+      const m = (await this.spaces.membersOf(s.id)).find((x) => x.userId === otherId);
+      if (m) { spaces.push({ id: s.id, name: s.name }); name ||= m.name; }
+    }
+    const [d] = await this.threads.select({ direct_key: [userId, otherId].sort().join(":") }, { limit: 1 });
+    let met = spaces.length > 0 || !!d;
+    if (d && !name) name = (await this.people.select({ thread_id: d.id, user_id: otherId }, { limit: 1 }))[0]?.name ?? "";
+    if (!met || !name) {
+      // Met in a group chat only (they've since left the space).
+      for (const r of await this.people.select({ user_id: userId }, { limit: GROUPS_MAX + 40 })) {
+        const [o] = await this.people.select({ thread_id: r.thread_id, user_id: otherId }, { limit: 1 });
+        if (o) { met = true; name ||= o.name; break; }
+      }
+    }
+    return met ? { name: name || "Someone", spaces, direct: d?.id ?? null } : null;
+  }
+
+  /** A block was made or taken away between two people: both their chat lists, and every chat they share, redraw. */
+  async blocksChanged(a: string, b: string): Promise<void> {
+    this.publish([a, b], "threads");
+    const theirs = new Set((await this.people.select({ user_id: b }, { limit: GROUPS_MAX + 40 })).map((r) => r.thread_id));
+    for (const r of await this.people.select({ user_id: a }, { limit: GROUPS_MAX + 40 })) {
+      if (theirs.has(r.thread_id)) this.publish([a, b], `thread:${r.thread_id}`);
+    }
   }
 
   /** A message from a person (words and their own files). */
@@ -319,11 +422,13 @@ export class Threads {
     const at = Math.max(this.now(), Number(t.last_ms) + 1);
     const row: MessageRow = { id: randomUUID(), thread_id: t.id, sender_id: userId, sender_name: me.name, text: m.text, files: m.files, item: m.item, at_ms: at };
     await this.messages.insert(row);
-    const line = m.text ? oneLine(m.text, 120) : m.item ? `Shared ${m.item.title}` : m.files.length === 1 ? (m.files[0]!.mime.startsWith("image/") ? "Photo" : m.files[0]!.name) : `${m.files.length} files`;
+    const line = lineOf(m);
     await this.threads.update({ id: t.id }, { last_ms: at, last_text: `${me.name}: ${line}`.slice(0, 140) });
+    // Someone with a block between them and the sender never sees this message: it isn't unread for them, and they aren't pinged.
+    const unseen = await this.blocks.hiddenFor(userId);
     for (const p of members) {
       if (p.user_id === userId) await this.people.update({ thread_id: t.id, user_id: userId }, { last_read_ms: at, unread: 0 });
-      else await this.people.update({ thread_id: t.id, user_id: p.user_id }, { unread: (Number(p.unread) || 0) + 1 });
+      else if (!unseen.has(p.user_id)) await this.people.update({ thread_id: t.id, user_id: p.user_id }, { unread: (Number(p.unread) || 0) + 1 });
     }
     const everyone = members.map((p) => p.user_id);
     this.publish(everyone, `thread:${t.id}`);
@@ -331,8 +436,8 @@ export class Threads {
     // A push to each phone, never with the words; none for a muted chat.
     const chat = t.kind === "direct" ? me.name : t.kind === "space" ? await this.spaces.nameOf(t.space_id ?? "") : (t.name || "Group chat");
     for (const p of members) {
-      if (p.user_id === userId || p.muted === true) continue;
-      await this.notify(p.user_id, { kind: "space_message", key: `${t.id}:${row.id}`, vars: { name: me.name, chat: chat || "Tailzu" }, data: { threadId: t.id } }).catch(() => undefined);
+      if (p.user_id === userId || p.muted === true || unseen.has(p.user_id)) continue;
+      await this.notify(p.user_id, { kind: "space_message", key: `${t.id}:${row.id}`, vars: { name: me.name, chat: chat || "X0 Bot" }, data: { threadId: t.id } }).catch(() => undefined);
     }
     return this.viewMessage(userId, row);
   }
@@ -341,6 +446,7 @@ export class Threads {
   async fileOf(userId: string, threadId: string, messageId: string, fileId: string): Promise<FileRef | null> {
     await this.open(userId, threadId).catch(() => { throw gone(); });
     const [m] = UUID.test(messageId) ? await this.messages.select({ id: messageId, thread_id: threadId }, { limit: 1 }) : [];
+    if (m?.sender_id && (await this.blocks.hiddenFor(userId)).has(m.sender_id)) return null;
     return (m?.files ?? []).find((f) => f.id === fileId) ?? null;
   }
 

@@ -137,7 +137,7 @@ function judgeOne(id: string, closedSource: boolean): LicenceVerdict {
     case "gpl": return closedSource
       ? { spdx: id, level: "strong_warn", note: `${id}: using it can require your own code to be released under the same licence. Check before using it in a closed-source project` }
       : { spdx: id, level: "warn", note: `${id}: your project would need a compatible open licence` };
-    default: return { spdx: id, level: "warn", note: `${id} is not one Tailzu knows. Check what it allows` };
+    default: return { spdx: id, level: "warn", note: `${id} is not one X0 Bot knows. Check what it allows` };
   }
 }
 

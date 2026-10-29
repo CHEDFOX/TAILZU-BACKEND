@@ -209,7 +209,7 @@ describe("through the real routes", () => {
   it("serves the console", async () => {
     const r = await app.inject({ method: "GET", url: "/admin" });
     expect(r.statusCode).toBe(200);
-    expect(r.body).toContain("Tailzu");
+    expect(r.body).toContain("X0 Bot");
     expect(r.body).not.toContain("test-admin-secret-xyz");
   });
 

@@ -70,11 +70,11 @@ function priceLines(): string[] {
 }
 
 export function llmsTxt(): string {
-  return `# Tailzu
+  return `# X0 Bot
 
 > ${DEFINITION}
 
-Tailzu is a keyboard on iPhone and Android, so it works in every app: WhatsApp, Gmail, Instagram, Slack, ChatGPT. On Windows, Mac and Linux, tap Ctrl twice, talk, and the text is pasted at the cursor. It removes filler and adds punctuation but never rewrites: names, numbers and amounts stay exactly as said, and mixed languages stay mixed (Hinglish stays Hinglish). It writes in the native script or in English letters, the way the user types.
+X0 Bot is a keyboard on iPhone and Android, so it works in every app: WhatsApp, Gmail, Instagram, Slack, ChatGPT. On Windows, Mac and Linux, tap Ctrl twice, talk, and the text is pasted at the cursor. It removes filler and adds punctuation but never rewrites: names, numbers and amounts stay exactly as said, and mixed languages stay mixed (Hinglish stays Hinglish). It writes in the native script or in English letters, the way the user types.
 
 ## Pages
 
@@ -82,7 +82,7 @@ Tailzu is a keyboard on iPhone and Android, so it works in every app: WhatsApp, 
 ${landings().map((l) => `- [${l.parents ? `${l.parents[0]![0]} for ${l.name}` : l.name}](${ORIGIN}${l.path}): ${l.description}`).join("\n")}
 - [Languages](${ORIGIN}/languages): all ${INDIA.length + WORLD.length} languages, with real examples of what it writes
 - [FAQ](${ORIGIN}/faq): what it is, languages, apps, privacy and price
-- [Pricing](${ORIGIN}/pricing): ${plans().free ? "Tailzu is free" : "free allowance and paid plans"}
+- [Pricing](${ORIGIN}/pricing): ${plans().free ? "X0 Bot is free" : "free allowance and paid plans"}
 - [Download](${ORIGIN}/download): Windows, Mac and Linux apps
 
 ## Languages
@@ -113,7 +113,7 @@ export function llmsFullTxt(): string {
     return `- ${l.name} (${l.native}, ${l.script})${ex ? `: said "${ex.said}" → written "${ex.wrote}"` : ""}`;
   };
   const hinglish = LANGS.find((l) => l.slug === "hinglish")!;
-  return `# Tailzu — the full reference
+  return `# X0 Bot — the full reference
 
 > ${DEFINITION}
 
@@ -141,7 +141,7 @@ ${priceLines().join("\n")}
 ## Privacy
 
 - Audio is sent for transcription and deleted right after; it is kept only if the user turns on session history.
-- Tailzu does not use user data to train third-party AI models.
+- X0 Bot does not use user data to train third-party AI models.
 - Full policy: ${ORIGIN}/privacy
 
 ## Languages

@@ -137,14 +137,14 @@ export class GithubOAuth implements OAuthTokens {
     if (!this.o.enabled) throw offError();
     const st = await verifyState(stateToken, now);
     if (st.connectorId !== OAUTH_STATE_ID && st.connectorId !== OAUTH_STATE_ID_WORKFLOW) {
-      throw new ConnectorError("bad_state", "That sign-in link has expired or isn't valid. Start again from Tailzu.");
+      throw new ConnectorError("bad_state", "That sign-in link has expired or isn't valid. Start again from X0 Bot.");
     }
     const key = hash(stateToken);
     const pend = this.pending.get(key);
     // Single use, whatever happens next.
     this.pending.delete(key);
     if (!pend || pend.userId !== st.userId || pend.expiresAt <= now) {
-      throw new ConnectorError("bad_state", "That sign-in was already used or never started. Start again from Tailzu.");
+      throw new ConnectorError("bad_state", "That sign-in was already used or never started. Start again from X0 Bot.");
     }
     const token = await this.exchange(code, pend.verifier);
     try {
@@ -156,11 +156,11 @@ export class GithubOAuth implements OAuthTokens {
       const given = [...new Set([...me.scopes, ...scopeList(token.scope)])];
       if (given.some((s) => !asked.has(s))) {
         await this.revokeToken(token.accessToken);
-        throw new ConnectorError("scope_too_broad", "GitHub gave Tailzu more access than it asked for, so I revoked it and connected nothing. Remove Tailzu's authorisation in your GitHub settings and sign in again.");
+        throw new ConnectorError("scope_too_broad", "GitHub gave X0 Bot more access than it asked for, so I revoked it and connected nothing. Remove X0 Bot's authorisation in your GitHub settings and sign in again.");
       }
       if (!given.includes("repo")) {
         await this.revokeToken(token.accessToken);
-        throw new ConnectorError("scope_missing", "GitHub didn't give Tailzu access to your repos, so I connected nothing. Try signing in again.");
+        throw new ConnectorError("scope_missing", "GitHub didn't give X0 Bot access to your repos, so I connected nothing. Try signing in again.");
       }
       const before = await this.o.store.getOAuthLink(st.userId);
       await this.o.store.saveOAuthLink(st.userId, {
@@ -192,7 +192,7 @@ export class GithubOAuth implements OAuthTokens {
     }
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok || typeof json.access_token !== "string" || !json.access_token) {
-      throw new ConnectorError("bad_state", "GitHub didn't accept that sign-in. Start again from Tailzu.");
+      throw new ConnectorError("bad_state", "GitHub didn't accept that sign-in. Start again from X0 Bot.");
     }
     return { accessToken: json.access_token, scope: typeof json.scope === "string" ? json.scope : "" };
   }
@@ -209,7 +209,7 @@ export class GithubOAuth implements OAuthTokens {
     const link = await this.liveLink(userId);
     const project = await this.o.store.findProjectByRepo(userId, repo.repoId);
     if (!project || project.linkKind !== "oauth") {
-      throw new ConnectorError("not_allowed", "Tailzu only works in repos you added as projects. That one isn't.");
+      throw new ConnectorError("not_allowed", "X0 Bot only works in repos you added as projects. That one isn't.");
     }
     return this.open(userId, link);
   }
@@ -316,7 +316,7 @@ export class GithubOAuth implements OAuthTokens {
     if (!link) return { revoked: false };
     if (link.tokenEnc && !(await this.revokeStored(link.tokenEnc))) {
       await this.o.store.setOAuthStatus(userId, "needs_signin");
-      throw new ConnectorError("failed", "I couldn't reach GitHub to revoke Tailzu's access, so nothing was disconnected. Try again in a moment.");
+      throw new ConnectorError("failed", "I couldn't reach GitHub to revoke X0 Bot's access, so nothing was disconnected. Try again in a moment.");
     }
     await this.o.store.deleteOAuthLink(userId);
     this.touched.delete(userId);

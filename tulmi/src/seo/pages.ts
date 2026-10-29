@@ -137,7 +137,7 @@ export function languagesHubHtml(): string {
   const hinglish = LANGS.find((l) => l.slug === "hinglish")!;
   const india = [INDIA[0], hinglish, ...INDIA.slice(1)];
   const total = INDIA.length + WORLD.length;
-  const title = `Voice Typing in ${total} Languages, All 22 Indian Languages — Tailzu`;
+  const title = `Voice Typing in ${total} Languages, All 22 Indian Languages — X0 Bot`;
   const description = `AI keyboard and voice typing in ${total} languages: all 22 of India, Hinglish, English and ${WORLD.length - 1} more. Speak, and clean text lands in any app.`;
   return siteShell({
     title: "Languages",
@@ -148,10 +148,10 @@ export function languagesHubHtml(): string {
     css: CSS,
     ld: [
       pageLd(path, "Voice typing languages", description, { "@type": ["WebPage", "CollectionPage"] }),
-      crumbsLd([["Tailzu", "/"], ["Languages", path]]),
+      crumbsLd([["X0 Bot", "/"], ["Languages", path]]),
       {
         "@type": "ItemList",
-        name: "Languages Tailzu writes",
+        name: "Languages X0 Bot writes",
         numberOfItems: india.length + WORLD.length,
         itemListElement: [...india, ...WORLD].map((l, i) => ({
           "@type": "ListItem", position: i + 1, name: l.name,
@@ -160,7 +160,7 @@ export function languagesHubHtml(): string {
       },
     ],
     main: `
-${crumbs([["Tailzu", "/"], ["Languages", path]])}
+${crumbs([["X0 Bot", "/"], ["Languages", path]])}
 <p class="eye">Voice typing</p>
 <h1>Every language you speak.</h1>
 <p class="lede">All 22 languages of India, Hinglish, English and ${WORLD.length - 1} more. It writes the way you type.</p>
@@ -188,7 +188,7 @@ export function languagePageHtml(slug: string): string | null {
   // THE NATIVE NAME IN THE TITLE: someone searching in their own language
   // types "தமிழ்", not "Tamil", and a title is the strongest thing a page says.
   const latin = l.script === "Latin";
-  const title = `${l.name} Voice Typing & AI Keyboard${l.native !== l.name && !hinglish ? ` (${l.native})` : ""} — Tailzu`;
+  const title = `${l.name} Voice Typing & AI Keyboard${l.native !== l.name && !hinglish ? ` (${l.native})` : ""} — X0 Bot`;
   const description = hinglish
     ? "Hinglish voice typing that keeps both languages. Speak Hindi and English in one breath; clean text lands in WhatsApp, Gmail or any app, spelled your way."
     : `${l.name} voice typing that writes what you meant. Speak ${l.name}${l.mix ? ` or ${l.mix}` : ""}, and clean text lands in WhatsApp, Gmail or any app${latin ? "." : `, in ${l.script} or English letters.`}`;
@@ -211,8 +211,8 @@ export function languagePageHtml(slug: string): string | null {
     // unless the sentence asks for its own script (assistPrompt), and a page
     // that promised the script would be the first thing a reader caught out.
     ["Script", latin
-      ? `<span class="native" lang="${l.code}" dir="auto">${esc(l.native)}</span> is written in Latin letters, and Tailzu writes it that way.`
-      : `<span class="native" lang="${l.code}" dir="auto">${esc(l.native)}</span> is written in ${esc(l.script)}. Tailzu writes it in English letters, the way you would type it, and in ${esc(l.script)} when you say so.`],
+      ? `<span class="native" lang="${l.code}" dir="auto">${esc(l.native)}</span> is written in Latin letters, and X0 Bot writes it that way.`
+      : `<span class="native" lang="${l.code}" dir="auto">${esc(l.native)}</span> is written in ${esc(l.script)}. X0 Bot writes it in English letters, the way you would type it, and in ${esc(l.script)} when you say so.`],
     [l.mix ? l.mix : "With English", `${l.mix ? `${esc(l.mix)} stays ${esc(l.mix)}.` : `${esc(l.name)} and English in one sentence stay as you said them.`} Two languages stay two.`],
     ["Filler out, facts in", "Filler goes and punctuation arrives. Names, amounts and times stay exactly as you said them."],
     ["Every app", "A keyboard on iPhone and Android. On Windows and Mac, tap Ctrl twice and talk."],
@@ -227,11 +227,11 @@ export function languagePageHtml(slug: string): string | null {
     css: CSS,
     ld: [
       pageLd(path, `${l.name} voice typing`, description, { inLanguage: "en", about: [{ "@id": ID.app }, { "@type": "Language", name: l.name, alternateName: l.native, identifier: l.code }] }),
-      crumbsLd([["Tailzu", "/"], ["Languages", "/languages"], [l.name, path]]),
+      crumbsLd([["X0 Bot", "/"], ["Languages", "/languages"], [l.name, path]]),
       faqLd(faq, path),
     ],
     main: `
-${crumbs([["Tailzu", "/"], ["Languages", "/languages"], [l.name, path]])}
+${crumbs([["X0 Bot", "/"], ["Languages", "/languages"], [l.name, path]])}
 <p class="eye">${hinglish ? "Hindi + English" : `<span lang="${l.code}" dir="auto" style="text-transform:none">${esc(l.native)}</span>`}</p>
 <h1>${esc(l.name)} voice typing.</h1>
 <p class="lede">${esc(lede)}</p>
@@ -277,20 +277,20 @@ export function faqHtml(): string {
   const path = "/faq";
   const groups = faqGroups();
   const all = groups.flatMap((g) => g.items);
-  const description = "What Tailzu is, which languages and apps it works in, what happens to your voice, and what it costs. Every question, answered in a breath.";
+  const description = "What X0 Bot is, which languages and apps it works in, what happens to your voice, and what it costs. Every question, answered in a breath.";
   return siteShell({
     title: "FAQ",
-    headTitle: "Tailzu FAQ — Languages, Apps, Privacy and Price",
+    headTitle: "X0 Bot FAQ — Languages, Apps, Privacy and Price",
     path,
     description,
     css: CSS,
     ld: [
-      pageLd(path, "Tailzu FAQ", description),
-      crumbsLd([["Tailzu", "/"], ["FAQ", path]]),
+      pageLd(path, "X0 Bot FAQ", description),
+      crumbsLd([["X0 Bot", "/"], ["FAQ", path]]),
       faqLd(all, path),
     ],
     main: `
-${crumbs([["Tailzu", "/"], ["FAQ", path]])}
+${crumbs([["X0 Bot", "/"], ["FAQ", path]])}
 <p class="eye">Questions</p>
 <h1>Asked, answered.</h1>
 <p class="lede">Everything people ask before they talk to it, answered in a breath.</p>

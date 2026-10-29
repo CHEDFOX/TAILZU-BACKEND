@@ -35,7 +35,7 @@ export function mergeCommands(baseSha: string): string[] {
     // A shallow checkout cannot find a merge base; a complete one says so (and that is fine).
     "git fetch --no-tags --unshallow origin 2>/dev/null || true",
     `git fetch --no-tags origin ${baseSha}`,
-    `git -c user.name=Tailzu -c user.email=noreply@x0bot.com merge --no-commit --no-ff ${baseSha} 2>&1 || true`,
+    `git -c "user.name=X0 Bot" -c user.email=noreply@x0bot.com merge --no-commit --no-ff ${baseSha} 2>&1 || true`,
     "git diff --name-only --diff-filter=U | sed 's/^/TAILZU_CONFLICT /'",
     // The working tree is what is read back: conflicting files with their markers included.
     "git add -A",
@@ -92,7 +92,7 @@ async function runMerge(r: Run, m: MergeState): Promise<void> {
   const changes = out.changes ?? [];
   if (!changes.length && !conflicted.length) { m.stage = "uptodate"; await r.save(); return; }
   if (conflicted.some(isWorkflowPath)) {
-    throw new EndJob("failed", `The conflict is in CI configuration (${conflicted.filter(isWorkflowPath)[0]}), which Tailzu never edits. Resolve it on GitHub, or merge ${m.base} into the branch yourself. Nothing was changed.`);
+    throw new EndJob("failed", `The conflict is in CI configuration (${conflicted.filter(isWorkflowPath)[0]}), which X0 Bot never edits. Resolve it on GitHub, or merge ${m.base} into the branch yourself. Nothing was changed.`);
   }
   try {
     // The merge's result is the staged set: what the model reads and edits, and what the merge commit holds. A file the default branch changed is staged as it is merged
@@ -117,7 +117,7 @@ async function judge(r: Run, m: MergeState): Promise<void> {
   if (w?.kind === "question" && w.from === "merge" && w.answer !== undefined) {
     await r.log.question(w.question, w.answer);
     s.waiting = undefined;
-    if (ANSWER_MYSELF.test(w.answer)) throw new EndJob("failed", "You said you would resolve it yourself, so Tailzu left the branch as it is. Nothing was changed.");
+    if (ANSWER_MYSELF.test(w.answer)) throw new EndJob("failed", "You said you would resolve it yourself, so X0 Bot left the branch as it is. Nothing was changed.");
     m.choice = w.answer.slice(0, 400);
     m.stage = "resolve";
     return;

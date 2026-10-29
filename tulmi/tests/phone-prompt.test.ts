@@ -61,7 +61,7 @@ describe("the planner's block and the phone's note", () => {
   it("with apps: one addendum, the same bytes each time, that teaches USE and bounds what apps may say", () => {
     expect(CONNECTOR_ADDENDUM.startsWith("Connected apps. ")).toBe(true);
     expect(CONNECTOR_ADDENDUM).toContain("\"fix: connector.tool — …\": your last USE of that tool was not run because its arguments did not fit; USE it again with them right, or ASK for a value they did not give. Never make one up.");
-    expect(CONNECTOR_ADDENDUM).toContain("apart from Tailzu's own pick:, not connected:, not in Tailzu: and fix: lines at the top of <tools>.");
+    expect(CONNECTOR_ADDENDUM).toContain("apart from X0 Bot's own pick:, not connected:, not in X0 Bot: and fix: lines at the top of <tools>.");
     // The worked examples it used to carry are fixtures now (evals/ask_planner.jsonl).
     expect(CONNECTOR_ADDENDUM).not.toMatch(/^Example\./m);
   });

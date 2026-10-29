@@ -89,7 +89,7 @@ export function headHtml(withFilms: boolean, withFaq = true): string {
     ogTitle: HOME.ogTitle,
     ogDescription: HOME.ogDescription,
     ld: [
-      orgLd(), websiteLd(), appLd(), pageLd("/", "Tailzu", HOME.description), ...(withFaq ? [faqLd(homeFaq(), "/")] : []),
+      orgLd(), websiteLd(), appLd(), pageLd("/", "X0 Bot", HOME.description), ...(withFaq ? [faqLd(homeFaq(), "/")] : []),
       ...(withFilms ? homeFilms().map(filmLd) : []),
     ],
   });

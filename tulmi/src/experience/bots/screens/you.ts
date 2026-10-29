@@ -121,7 +121,7 @@ function botOf(ctx: BotsCtx, slug: string) {
   const b = ctx.live.bots.find((x) => x.slug === slug);
   if (b) return { slug, name: b.name, short: b.name.replace(/ bot$/i, ""), look: b };
   const look = botLook(slug);
-  const name = slug === "tailzu" ? "Tailzu" : slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+  const name = slug === "tailzu" ? "X0" : slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
   return { slug, name, short: name.replace(/ bot$/i, ""), look };
 }
 const botByName = (ctx: BotsCtx, name: string) => ctx.live.bots.find((b) => b.name === name);
@@ -311,6 +311,8 @@ function youPhone(ctx: BotsCtx, d: YouData | undefined) {
         listRow({ label: "Plan and billing", value: d?.plan.name ?? "", onPress: open(SCREENS.billing) }),
         listRow({ label: "Your data", value: "Download · Delete", onPress: open(SCREENS.privacy) }),
         listRow({ label: "Privacy", onPress: open(SCREENS.privacy) }),
+        // Reporting and blocking in Spaces (screens/safety.ts): who you blocked, each with Unblock.
+        listRow({ label: "Blocked people", onPress: open(SCREENS.blocked) }),
       ]),
       listCard(HELP.map((h) => listRow({ label: h.label, value: h.value || undefined, onPress: helpAction(h.url) })), { title: "Help" }),
     ],
@@ -390,6 +392,7 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
         ]),
         deskList([
           deskRow({ glyphNode: icon("shield", { size: 18 }), label: "Privacy", sub: "What we keep, and for how long", onPress: open(SCREENS.privacy) }),
+          deskRow({ glyphNode: icon("lock", { size: 18 }), label: "Blocked people", sub: "People you blocked in Spaces", onPress: open(SCREENS.blocked) }),
           deskRow({
             glyphNode: glyph(G.download, 18), label: "Your data", sub: "Chats, notes and files", chevron: false,
             right: row([button("Download", exportAction(d?.exportUrl ?? null), { kind: "secondary", size: "md" }), button("Delete", open(SCREENS.privacy), { kind: "secondary", size: "md" })], { gap: 8 }),
@@ -589,12 +592,12 @@ function computerPhone(ctx: BotsCtx, d: ComputersData | undefined) {
   const head = [title("This computer helps"), meta("Your own computers run part of the work, so jobs cost less. It's free, and bots say when they use one.", { size: 14, lineHeight: 20, color: C.grey70 })];
   const add = card([
     text("Add a computer", { size: 15, weight: 600 }),
-    meta("On that computer, get Tailzu, sign in as you, and turn on This computer helps. It shows up here.", { size: 13, lineHeight: 18 }),
-    button("Get Tailzu for computer", openUrl(DOWNLOAD_URL), { kind: "secondary", size: "md" }),
+    meta("On that computer, get X0 Bot, sign in as you, and turn on This computer helps. It shows up here.", { size: 13, lineHeight: 18 }),
+    button("Get X0 Bot for computer", openUrl(DOWNLOAD_URL), { kind: "secondary", size: "md" }),
   ], { gap: 10 });
   if (!d) return page(ctx, { back: true, nav: "computer", title: "This computer helps", body: [...head, couldNot("your computers")] });
   if (!d.online.length && !d.offline.length) {
-    return page(ctx, { back: true, nav: "computer", title: "This computer helps", body: [...head, emptyState({ pose: "think", title: "No computer yet", body: "Your laptop can run tests and builds for Code bot, for free.", action: { label: "Get Tailzu for computer", onPress: openUrl(DOWNLOAD_URL) } })] });
+    return page(ctx, { back: true, nav: "computer", title: "This computer helps", body: [...head, emptyState({ pose: "think", title: "No computer yet", body: "Your laptop can run tests and builds for Code bot, for free.", action: { label: "Get X0 Bot for computer", onPress: openUrl(DOWNLOAD_URL) } })] });
   }
   const w = codeWorking(ctx);
   const first = d.online[0];
@@ -622,7 +625,7 @@ function computerPhone(ctx: BotsCtx, d: ComputersData | undefined) {
           listRow({ label: "Projects", value: projectsLine(first.projects) }),
           listRow({ label: "Can push code", value: "Never", sub: "It gets a read-only copy" }),
         ]),
-        meta("Change these in Tailzu on that computer. Never other folders, passwords, photos or your browser.", { size: 12, lineHeight: 17 }),
+        meta("Change these in X0 Bot on that computer. Never other folders, passwords, photos or your browser.", { size: 12, lineHeight: 17 }),
       ], { gap: 8 })] : []),
       add,
     ],
@@ -637,22 +640,22 @@ function computerPhone(ctx: BotsCtx, d: ComputersData | undefined) {
  * asked by the window itself, in its own words, before they happen; the card is never the consent.
  */
 export const RUNNER_CARD_WORDS = {
-  title: "Tailzu Code on this computer",
+  title: "X0 Code on this computer",
   lede: "Let the Code bot do its work here first: free, and fast, because nothing has to wait for a cloud computer to start.",
-  use: "Use this computer for Tailzu Code",
+  use: "Use this computer for X0 Code",
   safetyLead: "Off until you turn it on.",
-  safety: "When it is on, and only while Tailzu is open, Tailzu Code can run its commands (tests, builds, installs) on this computer, for the projects you allow below. Each project is asked about the first time. It works in a folder of its own, from a read-only copy of your code, and cannot see your passwords, keys or other files: commands get a clean environment and a private home folder, and things like sudo, git push, publishing or deleting your home folder are refused. It pauses by itself when the battery is under 20% or Low Power Mode is on. Everything it runs is listed below and kept in a log on this computer for 7 days.",
+  safety: "When it is on, and only while X0 Bot is open, X0 Code can run its commands (tests, builds, installs) on this computer, for the projects you allow below. Each project is asked about the first time. It works in a folder of its own, from a read-only copy of your code, and cannot see your passwords, keys or other files: commands get a clean environment and a private home folder, and things like sudo, git push, publishing or deleting your home folder are refused. It pauses by itself when the battery is under 20% or Low Power Mode is on. Everything it runs is listed below and kept in a log on this computer for 7 days.",
   stateOff: "Off",
-  stateSignedOut: "Sign in to Tailzu to use this",
+  stateSignedOut: "Sign in to X0 Bot to use this",
   stateConnecting: "Connecting…",
-  stateOnline: "Online for Tailzu Code",
+  stateOnline: "Online for X0 Code",
   stateWorking: "Working on {project}",
   statePaused: "Paused",
   pausedBattery: "Paused: the battery is under 20%",
   pausedLowPower: "Paused: Low Power Mode is on",
-  stateLiveOff: "Tailzu Code is not on for your account yet",
-  stateReplaced: "Another copy of Tailzu has this computer",
-  workingLine: "Tailzu is working on {project}",
+  stateLiveOff: "X0 Code is not on for your account yet",
+  stateReplaced: "Another copy of X0 Bot has this computer",
+  workingLine: "X0 Bot is working on {project}",
   stop: "Stop",
   stopNote: "Stop ends what is running and turns this off until you turn it on again.",
   container: "Run in a container (Docker)",
@@ -662,7 +665,7 @@ export const RUNNER_CARD_WORDS = {
   dockerDown: "{reason} Nothing will run until it is available or this is turned off.",
   containerNote: "Each command runs in a throwaway container (image {image}) with only this project's workspace mounted, so it cannot touch the rest of this computer. Needs Docker installed and running; if it is not, nothing runs here. Off by default.",
   projects: "Projects",
-  noProjects: "No projects yet. Tailzu Code asks the first time it wants to run one here.",
+  noProjects: "No projects yet. X0 Code asks the first time it wants to run one here.",
   allow: "Allow",
   deny: "Don't allow",
   askAgain: "Ask me again",
@@ -724,15 +727,15 @@ function computerDesk(ctx: BotsCtx, d: ComputersData | undefined) {
         })))], { gap: 8 })] : []),
         ...(!d.online.length ? [card([
           text("Add a computer", { size: 15, weight: 600 }),
-          meta("On that computer, get Tailzu, sign in as you, and turn on This computer helps. It shows up here.", { size: 13 }),
-          button("Get Tailzu for computer", openUrl(DOWNLOAD_URL), { kind: "secondary", size: "md" }),
+          meta("On that computer, get X0 Bot, sign in as you, and turn on This computer helps. It shows up here.", { size: 13 }),
+          button("Get X0 Bot for computer", openUrl(DOWNLOAD_URL), { kind: "secondary", size: "md" }),
         ], { gap: 10, padding: 20 })] : []),
       ], [
         card([
           sectionLabel("Guard rails"),
           ...[
             [icon("folder", { size: 18 }), "Runs only projects you allowed", "Nothing else on the computer is shown to bots."],
-            [icon("lock", { size: 18 }), "Never pushes code", "It gets a copy to read. Tailzu commits, through your rules."],
+            [icon("lock", { size: 18 }), "Never pushes code", "It gets a copy to read. X0 Bot commits, through your rules."],
             [icon("shield", { size: 18 }), "Asks before anything risky", "Bots say when they use a computer."],
           ].map(([g, l, s]) => row([g as Node, col([text(l as string, { size: 14, weight: 500 }), meta(s as string, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, alignItems: "flex-start" })),
         ], { padding: 20, gap: 14 }),
@@ -876,7 +879,7 @@ function picturesCard(ctx: BotsCtx): Node {
     ...(ctx.client === "desktop" ? [segments([{ label: "Ask first", value: "ask" }, { label: "Allow", value: "allow" }], "pictures", (v) => seq(
       { kind: "ask.picturesAll", on: v === "allow" } as unknown as ActionSpec,
       save({ privacy: { screenPictures: v } }, v === "allow" ? "Pictures go without asking" : "Ask asks first"),
-    ))] : [meta("Change this in Tailzu on your computer.", { size: 12 })]),
+    ))] : [meta("Change this in X0 Bot on your computer.", { size: 12 })]),
   ], { gap: 10, padding: 16 });
 }
 
@@ -892,6 +895,8 @@ function privacyPhone(ctx: BotsCtx, d: YouData | undefined) {
     footer: [
       secondaryButton("Download my data", exportAction(d?.exportUrl ?? null), { wide: true, icon: undefined }),
       col([quietButton("Delete my data", deleteData, { wide: true }), meta("Chats, notes and files go. Your account and plan stay.", { size: 12, align: "center" })], { gap: 0 }),
+      // The whole account, from the phone too (App Store guideline 5.1.1(v)): You › Your data › Delete account.
+      col([quietButton("Delete account", open(SCREENS.deleteAccount), { wide: true }), meta("Your whole account, with 7 days to change your mind.", { size: 12, align: "center" })], { gap: 0 }),
     ],
   });
 }
@@ -1219,6 +1224,7 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
   ]);
   const privacy = listCard([
     listRow({ label: "Privacy", onPress: open(SCREENS.privacy) }),
+    listRow({ label: "Blocked people", onPress: open(SCREENS.blocked) }),
     listRow({ label: "Download my data", chevron: false, right: glyph(G.download, 18, C.meta), onPress: exportAction(d?.exportUrl ?? null) }),
     listRow({ label: "Delete account", onPress: open(SCREENS.deleteAccount) }),
   ]);
@@ -1230,7 +1236,7 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
   return page(ctx, {
     back: !desk, nav: "settings", title: "Settings", ...(desk ? { maxWidth: 1040 } : {}), gap: 20,
     body: desk
-      ? [heading(ctx, "Settings", "Tailzu for Mac and Windows"), columns([account, col([sectionLabel("Your bots"), yours], { gap: 8 }), col([sectionLabel("Your data"), privacy], { gap: 8 })], [local])]
+      ? [heading(ctx, "Settings", "X0 Bot for Mac and Windows"), columns([account, col([sectionLabel("Your bots"), yours], { gap: 8 }), col([sectionLabel("Your data"), privacy], { gap: 8 })], [local])]
       : [title("Settings"), account, col([sectionLabel("Your bots"), yours], { gap: 8 }), col([sectionLabel("Your data"), privacy], { gap: 8 }), local],
   });
 }

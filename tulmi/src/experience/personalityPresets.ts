@@ -81,7 +81,7 @@ export const PERSONALITY_PRESETS: PersonalityPreset[] = [
     name: "Zu",
     tagline: "Your own voice, learned",
     description:
-      "Tailzu writing as you — your words, your rhythm, your habits. Nothing generic on top, and closer to you every session.",
+      "X0 Bot writing as you — your words, your rhythm, your habits. Nothing generic on top, and closer to you every session.",
     defaultTone: "none",
     promptStyle: "",
   },

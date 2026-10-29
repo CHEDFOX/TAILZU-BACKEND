@@ -67,7 +67,7 @@ describe("the numbers the router goes by", () => {
 // ------------------------------------------------- GitHub's free minutes
 
 describe("GitHub's free minutes", () => {
-  it("are 2,000 a month less a tenth kept back, less what Tailzu used, never below zero", () => {
+  it("are 2,000 a month less a tenth kept back, less what X0 Bot used, never below zero", () => {
     expect(githubMinutesLeft(2000, 0)).toBe(1800);
     expect(githubMinutesLeft(2000, 1)).toBe(1799);
     expect(githubMinutesLeft(2000, 1800)).toBe(0);
@@ -717,7 +717,7 @@ describe("the pushes", () => {
     await notifyCodeJob("user-a", "minutes_low", data({ at: 8000, reason }));
     expect(sent).toHaveLength(1);
     expect(sent[0]!.title).toBe("GitHub minutes running low");
-    expect(sent[0]!.body).toBe("You have used 1612 of your 2000 GitHub Actions minutes this month. Past 95% Tailzu uses your own computer instead, or waits.");
+    expect(sent[0]!.body).toBe("You have used 1612 of your 2000 GitHub Actions minutes this month. Past 95% X0 Bot uses your own computer instead, or waits.");
     expect(sent[0]!.data).toMatchObject({ kind: "code_minutes_low", jobId: "job-1", screenId: "home" });
     await notifyCodeJob("user-a", "minutes_low", data({ at: 8000, reason }));
     expect(sent).toHaveLength(1);

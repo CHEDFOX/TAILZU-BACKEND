@@ -189,7 +189,7 @@ export function registerCustomConnectorRoutes(app: FastifyInstance, deps: Custom
     try {
       const url = await checkPublicUrl(body.url);
       if (credentialParam(url)) {
-        return refuse(reply, { code: "key_in_link", message: "That link has a key or password in it, and Tailzu doesn't keep those in a link, so I didn't add it. Try the app's address without it." });
+        return refuse(reply, { code: "key_in_link", message: "That link has a key or password in it, and X0 Bot doesn't keep those in a link, so I didn't add it. Try the app's address without it." });
       }
       if (body.from) {
         const entry = await c.directory.getDirectory(body.from);

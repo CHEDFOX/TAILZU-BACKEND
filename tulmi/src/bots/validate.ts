@@ -30,7 +30,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const SlugSchema = z.string().trim().toLowerCase()
   .min(LIMITS.slug.min, `slug is at least ${LIMITS.slug.min} characters`).max(LIMITS.slug.max, `slug is ${LIMITS.slug.max} characters at most`)
   .regex(SLUG, "slug is lower-case letters, digits and single hyphens")
-  .refine((s) => !RESERVED_SLUGS.includes(s), "that slug is taken by Tailzu");
+  .refine((s) => !RESERVED_SLUGS.includes(s), "that slug is taken by X0 Bot");
 
 export const ColourSchema = z.enum(PALETTE, { errorMap: () => ({ message: `colour is one of ${PALETTE.join(", ")}` }) });
 
@@ -127,15 +127,15 @@ export function parseBotInput(raw: unknown, limits: Limits = DEFAULT_LIMITS): Pa
 interface Override { re: RegExp; why: string }
 
 const OVERRIDES: readonly Override[] = [
-  { re: /\b(?:ignore|disregard|forget|override|bypass|skip|drop|discard)\b[^.]{0,40}\b(?:previous|prior|above|earlier|preceding|all|any|your|the|these|those|safety|system|every)\b[^.]{0,30}\b(?:rules?|instructions?|prompts?|principles?|polic(?:y|ies)|guidelines?|restrictions?|filters?|limits?|safeguards?)\b/i, why: "it asks the bot to ignore Tailzu's own rules" },
+  { re: /\b(?:ignore|disregard|forget|override|bypass|skip|drop|discard)\b[^.]{0,40}\b(?:previous|prior|above|earlier|preceding|all|any|your|the|these|those|safety|system|every)\b[^.]{0,30}\b(?:rules?|instructions?|prompts?|principles?|polic(?:y|ies)|guidelines?|restrictions?|filters?|limits?|safeguards?)\b/i, why: "it asks the bot to ignore X0 Bot's own rules" },
   { re: /\b(?:reveal|show|print|leak|dump|expose|exfiltrate|share|output|repeat|display|send)\b[^.]{0,40}\b(?:system prompt|your prompt|your instructions|api[\s_-]?keys?|secrets?|tokens?|passwords?|credentials?|private keys?|bot keys?|owner rules)\b/i, why: "it asks the bot to reveal a secret or its own instructions" },
   { re: /\b(?:leak|exfiltrate)\b/i, why: "it asks the bot to leak something" },
   { re: /\b(?:bypass|circumvent|get around|work around|evade)\b[^.]{0,30}\b(?:permissions?|approvals?|rules?|checks?|filters?|safety|polic(?:y|ies)|limits?|restrictions?|safeguards?|confirmations?)\b/i, why: "it asks the bot to get round a permission or a safety check" },
-  { re: /\b(?:jailbreak|do anything now|developer mode|god mode|no restrictions?|without (?:any )?(?:restrictions?|limits?|filters?|rules?)|unrestricted)\b/i, why: "it asks the bot to work without Tailzu's limits" },
+  { re: /\b(?:jailbreak|do anything now|developer mode|god mode|no restrictions?|without (?:any )?(?:restrictions?|limits?|filters?|rules?)|unrestricted)\b/i, why: "it asks the bot to work without X0 Bot's limits" },
   { re: /\b(?:disable|turn off|switch off|remove|stop)\b[^.]{0,20}\b(?:safety|safeguards?|filters?|permissions?|approvals?|confirmations?|policy)\b/i, why: "it asks the bot to switch off a safety check" },
   { re: /\b(?:without|never|don'?t|do not)\b[^.]{0,20}\b(?:ask(?:ing)?|confirm(?:ing)?)\b[^.]{0,30}\b(?:owner|me|permission|approval|first)\b/i, why: "it asks the bot to change things without asking" },
-  { re: /\b(?:pichle|purane|upar ke|saare|sab)\s+(?:rules?|niyam|instructions?)\b[^.]{0,30}\b(?:ignore|bhool|chhod|hata)/i, why: "it asks the bot to ignore Tailzu's own rules" },
-  { re: /\b(?:ignore|bhool jao|ignore karo)\b[^.]{0,20}\b(?:rules?|niyam|instructions?)\b/i, why: "it asks the bot to ignore Tailzu's own rules" },
+  { re: /\b(?:pichle|purane|upar ke|saare|sab)\s+(?:rules?|niyam|instructions?)\b[^.]{0,30}\b(?:ignore|bhool|chhod|hata)/i, why: "it asks the bot to ignore X0 Bot's own rules" },
+  { re: /\b(?:ignore|bhool jao|ignore karo)\b[^.]{0,20}\b(?:rules?|niyam|instructions?)\b/i, why: "it asks the bot to ignore X0 Bot's own rules" },
 ];
 
 /** The owner's rules that try to change Tailzu's own: by index, with why. They stay as typed and never reach a model. */

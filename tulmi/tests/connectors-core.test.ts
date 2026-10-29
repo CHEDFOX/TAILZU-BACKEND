@@ -363,7 +363,7 @@ describe("the push for a task that is waiting", async () => {
     // data.taskId is what the confirm sheet opens on; it can never replace the three keys the app reads.
     expect(await engine.notify("user-a", { kind: "approval", key: "task-1", vars: { app: "Slack" }, data: { taskId: "task-1", screenId: "elsewhere", kind: "x" } })).toMatchObject({ sent: true });
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({ title: "Waiting for your OK", body: "Tailzu needs a yes from you to carry on in Slack.", data: { screenId: "assistant_approve", kind: "approval", taskId: "task-1" } });
+    expect(sent[0]).toMatchObject({ title: "Waiting for your OK", body: "X0 Bot needs a yes from you to carry on in Slack.", data: { screenId: "assistant_approve", kind: "approval", taskId: "task-1" } });
     expect(await engine.notify("user-a", { kind: "approval", key: "task-1", vars: { app: "Slack" } })).toBeNull();
     expect(sent).toHaveLength(1);
     expect(await engine.notify("nobody", { kind: "approval", key: "task-2" })).toBeNull();

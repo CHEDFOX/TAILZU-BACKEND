@@ -131,7 +131,7 @@ describe("Keybot's home", () => {
         "Sessions", "Day streak", "Per session", "Spoken", "Voices", "71%", "Your words", "75%",
         // the You tab's lines
         "Make it yours", "Voice", "Zu", "Tone per app", "Teach your style", "Knows 6 things about how you write, from 3 sittings",
-        "Your words", "Languages", "English, Hindi, Hinglish", "What you call it", "Tailzu, or Zara",
+        "Your words", "Languages", "English, Hindi, Hinglish", "What you call it", "X0, or Zara",
         "Keyboard and voice", "Haptics", "5 keys", "Read aloud", "What you said", "Keep what I say",
         "What the key does", "Good evening. Anything to write up before the day ends?",
       ]) expect(t.some((x) => x === w || x.includes(w)), `${client}: ${w}`).toBe(true);
@@ -253,10 +253,10 @@ describe("the pages", () => {
     expect(j.match(/"body":\{"key":"@"\}/g)).toHaveLength(1);
   });
 
-  it("What you call it: a name of its own, or Tailzu only", async () => {
+  it("What you call it: a name of its own, or X0 only", async () => {
     const s = await build(SCREENS.keyName, "desktop");
     expect(s.state).toMatchObject({ name: "Zara" });
-    expect(texts(s.root!)).toContain("Tailzu, or Zara");
+    expect(texts(s.root!)).toContain("X0, or Zara");
     const j = json(s);
     expect(j).toContain('"path":"/v1/personality","body":{"assistantName":"$state.name"}');
     expect(j).toContain('"path":"/v1/personality","body":{"assistantName":""}');

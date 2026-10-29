@@ -24,11 +24,11 @@ const VISION = stableBlock("ask_vision");
 const { modelLadder, plannerRequest, visionLadder } = await import("../src/agent/llm.js");
 import type { AgentElement, AgentStepRequest } from "../../shared/types/api.js";
 
-const NAMES = ["Tailzu", "Blip", "Zara"];
+const NAMES = ["X0 Bot", "Blip", "Zara"];
 
 describe("commandText and the mode", () => {
   it("takes off fillers, a name it was called by, and politeness", () => {
-    expect(commandText("Hey Tailzu, um, can you scroll down please?", NAMES)).toBe("scroll down");
+    expect(commandText("Hey X0 Bot, um, can you scroll down please?", NAMES)).toBe("scroll down");
     expect(commandText("Zara, go back.", NAMES)).toBe("go back");
     expect(commandText("okay so just undo that, thanks", NAMES)).toBe("undo that");
     expect(commandText("right click the file", NAMES)).toBe("right click the file");
@@ -38,7 +38,7 @@ describe("commandText and the mode", () => {
     for (const q of ["where's export?", "How do I turn on captions", "what does this error mean?", "show me the settings", "point at the send button", "find export", "Is there a dark mode?", "export kahan hai", "help me understand this chart"]) {
       expect(modeOf(q, NAMES), q).toBe("show");
     }
-    for (const c of ["turn on captions", "open #design and tell them the mockups are ready", "Can you turn on captions?", "Hey Tailzu, could you export this?", "scroll down"]) {
+    for (const c of ["turn on captions", "open #design and tell them the mockups are ready", "Can you turn on captions?", "Hey X0 Bot, could you export this?", "scroll down"]) {
       expect(modeOf(c, NAMES), c).toBe("do");
     }
   });
@@ -407,9 +407,9 @@ describe("the prompt", () => {
   });
 
   it("is the same for a computer and a phone: the phone's difference is one line at the head of the message", () => {
-    const req = { runId: "run_p1", step: 0, platform: "ios" as const, app: "Tailzu", screen: { elements: [] } } as AgentStepRequest;
+    const req = { runId: "run_p1", step: 0, platform: "ios" as const, app: "X0 Bot", screen: { elements: [] } } as AgentStepRequest;
     const phone = agentUserMessage(req, "what time is it in london", "do", 1).split("\n");
-    expect(phone[0]).toMatch(/^Platform: ios\. App: Tailzu\. Mode: do\./);
+    expect(phone[0]).toMatch(/^Platform: ios\. App: X0 Bot\. Mode: do\./);
     expect(phone[1]).toBe(PHONE_NOTE);
     expect(PHONE_NOTE).not.toContain("computer screen");
     const desk = agentUserMessage({ ...req, platform: "mac" }, "what time is it in london", "do", 1);

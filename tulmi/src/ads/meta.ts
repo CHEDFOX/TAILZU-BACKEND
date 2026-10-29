@@ -421,7 +421,7 @@ export function siteEvent(req: FastifyRequest, body: unknown): boolean {
 export function siteEventsScript(): string {
   const c = getConfig();
   if (!c.META_PIXEL_ID) return "/* Meta is not set up. */\n";
-  return `/* Tailzu → Meta: the page view, and who goes on to get the app. */
+  return `/* X0 Bot → Meta: the page view, and who goes on to get the app. */
 (function () {
   "use strict";
   var ID = ${JSON.stringify(c.META_PIXEL_ID)};

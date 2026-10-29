@@ -295,7 +295,7 @@ describe("a session step", () => {
     await jobs.heartbeat("alice", { deviceId: LAPTOP, name: "Work laptop", allowRun: true, projects: "all", busy: false });
     const { job, step } = await jobs.requestExec(j.id, [SESSION_COMMAND], 900, 5, { keepChanges: false });
     await jobs.next("alice", LAPTOP);
-    await jobs.submitResult("alice", { jobId: j.id, stepIdx: step.idx, epoch: job.leaseEpoch, exitCode: 0, outputTail: "[Tailzu: live session ended (closed); 3 command(s) run]", minutes: 4 }, "desktop");
+    await jobs.submitResult("alice", { jobId: j.id, stepIdx: step.idx, epoch: job.leaseEpoch, exitCode: 0, outputTail: "[X0 Bot: live session ended (closed); 3 command(s) run]", minutes: 4 }, "desktop");
     const after = await jobs.job("alice", j.id);
     expect(after.checkpoint.notes).toBe("Closed the live session after 4 minutes.");
     expect(after.state).toBe("running");

@@ -135,7 +135,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       return reply.send(await routeOf(deps, user.id, message.slice(0, MESSAGE_MAX), bot));
     } catch {
       // Nobody could be asked: the front door answers it, as it always has.
-      return reply.send(previewOf("tailzu", "Tailzu", "none", 0));
+      return reply.send(previewOf("tailzu", "X0", "none", 0));
     }
   });
 
@@ -183,7 +183,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     try { j = JSON.parse(r.body) as AskReply; } catch { await letGo(); return reply.code(r.statusCode >= 400 ? r.statusCode : 502).send({ code: "ask_failed", message: "Couldn't answer that" }); }
     if (r.statusCode < 200 || r.statusCode >= 300) { await letGo(); return reply.code(r.statusCode).send(j); }
     const slug = j.bot?.slug ?? (j.result?.job || j.decision?.route === "code" ? "code" : "tailzu");
-    const name = j.bot?.name ?? (slug === "code" ? "Code bot" : "Tailzu");
+    const name = j.bot?.name ?? (slug === "code" ? "Code bot" : "X0");
     const upi = (j.answer?.opens ?? []).map((x) => upiOf(x.url)).find((x) => !!x);
     await events().add(user.id, { kind: "ask", bot: slug, title: message, paise: Math.max(0, Math.round(j.result?.paise ?? 0)), amountPaise: 0, payee: "" }, now()).catch((err) => req.log.warn({ err }, "shell: ask not written down"));
     started.add(user.id);

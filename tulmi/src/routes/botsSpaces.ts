@@ -41,14 +41,21 @@
  *   GET    /v1/botsapp/bots/threads/:id/files/:mid/:fid?v=&exp=&sig=   a photo or file in a message (signed, as above)
  *
  * Email goes through the outbox (src/botsBots/mail.ts); with no provider plugged in it waits there and the screens say so.
+ *
+ * Reporting and blocking (routes/safety.ts) are registered here too, on the same parts. A block hides the two from each other in the
+ * lists above as well: a space's members, the people to message or share to (src/botsBots/blocks.ts).
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { isBotError } from "../bots/index.js";
 import { attachmentKindOf, type MediaService } from "../media/index.js";
+import { Blocks } from "../botsBots/blocks.js";
 import { startMailSender } from "../botsBots/mail.js";
 import { Payments } from "../botsBots/payments.js";
+import { Safety } from "../botsBots/safety.js";
 import { SharedItems } from "../botsBots/shared.js";
+import { supabase } from "../auth/supabase.js";
+import { registerSafetyRoutes, suspendWithSupabase } from "./safety.js";
 import { verifyQuery } from "../botsBots/spaceLinks.js";
 import { INVITE_CODE_RE, JOIN_SCREEN, type Spaces } from "../botsBots/spaces.js";
 import { SpaceTasks } from "../botsBots/spaceTasks.js";
@@ -76,15 +83,15 @@ const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").repla
  */
 function invitePage(code: string, s: { name: string; members: number; email: string | null } | null): string {
   const line = s
-    ? `You're invited to <b>${esc(s.name)}</b> on Tailzu (${s.members} ${s.members === 1 ? "person" : "people"} so far).`
+    ? `You're invited to <b>${esc(s.name)}</b> on X0 Bot (${s.members} ${s.members === 1 ? "person" : "people"} so far).`
     : "This invite doesn't work any more. Ask for a new one.";
-  const who = s?.email ? `<p>It's for ${esc(s.email)}: sign in to Tailzu with that email to accept it.</p>` : "";
+  const who = s?.email ? `<p>It's for ${esc(s.email)}: sign in to X0 Bot with that email to accept it.</p>` : "";
   const how = s && INVITE_CODE_RE.test(code)
-    ? `${who}<a class="btn" href="tulmi://screen/${JOIN_SCREEN}?join=${code}">Open in Tailzu</a>`
-      + `<p>Or open Tailzu, go to <b>You → Spaces</b>, tap <b>Join with a code</b> and enter:</p><p class="code">${esc(code)}</p>`
-      + `<p class="meta">No Tailzu yet? <a href="${DOWNLOAD}">Get it here</a>, sign in, and open this link again.</p>`
+    ? `${who}<a class="btn" href="tulmi://screen/${JOIN_SCREEN}?join=${code}">Open in X0 Bot</a>`
+      + `<p>Or open X0 Bot, go to <b>You → Spaces</b>, tap <b>Join with a code</b> and enter:</p><p class="code">${esc(code)}</p>`
+      + `<p class="meta">No X0 Bot yet? <a href="${DOWNLOAD}">Get it here</a>, sign in, and open this link again.</p>`
     : "";
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tailzu space invite</title>
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>X0 Bot space invite</title>
 <style>body{margin:0;font:16px/1.45 -apple-system,system-ui,sans-serif;color:#0a0a0a;background:#fff}main{max-width:420px;margin:0 auto;padding:48px 20px;display:flex;flex-direction:column;gap:14px}p{margin:0}.btn{display:flex;align-items:center;justify-content:center;height:54px;border-radius:27px;background:#0a0a0a;color:#fff;text-decoration:none;font-weight:600;margin-top:4px}.code{font:600 22px ui-monospace,monospace;letter-spacing:2px}.meta{font-size:13px;color:#5c5c5c}a{color:#0a0a0a}</style></head>
 <body><main><p>${line}</p>${how}</main></body></html>`;
 }
@@ -92,7 +99,7 @@ function invitePage(code: string, s: { name: string; members: number; email: str
 /** Shown inline only when it can't run anything: pictures, PDFs, sound and video. Everything else is a download. */
 const INLINE = /^(image\/(png|jpeg|webp|gif|heic|heif)|application\/pdf|audio\/[a-z0-9.+-]+|video\/(mp4|webm|quicktime))$/;
 
-export interface SpaceParts { spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks }
+export interface SpaceParts { spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety }
 
 /** A push to someone's phones (push/defaults.ts space_*): never throws, and says nothing private. */
 const push = async (userId: string, msg: { kind: "space_task" | "space_plan" | "space_message"; key: string; vars: Record<string, string>; data: Record<string, string> }) => {
@@ -100,7 +107,12 @@ const push = async (userId: string, msg: { kind: "space_task" | "space_plan" | "
 };
 
 /** The parts, around one Spaces: chats, shared things and payments ask it who may do what. */
-export function spaceParts(spaces: Spaces, o: { media?: MediaService | null; trips?: Trips | null; now?: () => number; origin?: string } = {}): SpaceParts {
+export function spaceParts(spaces: Spaces, o: {
+  media?: MediaService | null; trips?: Trips | null; now?: () => number; origin?: string;
+  log?: { warn(o: object, m: string): void };
+  /** The admin's suspend (routes/safety.ts); by default Supabase's ban, where this server has the service key. */
+  suspend?: ((userId: string) => Promise<boolean>) | null;
+} = {}): SpaceParts {
   const media = o.media ?? null;
   // Full addresses: a picture is fetched by the app's image component, which knows no base.
   const origin = o.origin ?? apiOrigin();
@@ -112,7 +124,8 @@ export function spaceParts(spaces: Spaces, o: { media?: MediaService | null; tri
     if (!i.keep) await media!.keep(userId, id, true).catch(() => undefined);
     return { id: i.id, name: i.name, mime: i.mime, bytes: i.bytes, kind: attachmentKindOf(i.kind) };
   };
-  const threads = new Threads(spaces, now, { files: { get: fileOf }, notify: push, filePath: (t, m, f) => `${origin}${AREA}/threads/${t}/files/${m}/${f}` });
+  const blocks = new Blocks(now, { log: o.log });
+  const threads = new Threads(spaces, now, { files: { get: fileOf }, notify: push, blocks, filePath: (t, m, f) => `${origin}${AREA}/threads/${t}/files/${m}/${f}` });
   const items = new SharedItems(spaces, threads, now, {
     file: fileOf,
     trip: o.trips ? async (userId, id) => { const t = await o.trips!.current(userId); return t && t.id === id ? t : null; } : undefined,
@@ -120,11 +133,18 @@ export function spaceParts(spaces: Spaces, o: { media?: MediaService | null; tri
   const tasks = new SpaceTasks(spaces, now, { notify: push });
   // Plans and tasks from other people land on the person's own calendar ("From Aanya"); their tick, or no, there is their answer here.
   calendar().onSpaceAnswer((userId, spaceId, taskId, status) => tasks.answer(userId, spaceId, taskId, { status }));
-  return { spaces, threads, items, payments: new Payments(spaces, now), tasks };
+  const safety = new Safety(spaces, threads, items, now, { log: o.log, suspend: o.suspend !== undefined ? o.suspend : supabase() ? suspendWithSupabase : null });
+  return { spaces, threads, items, payments: new Payments(spaces, now), tasks, safety };
+}
+
+/** A space as one person sees it: nobody with a block between them in its members (blocks.ts). */
+async function withoutHidden<S extends { members: Array<{ userId: string }> }>(threads: Threads, userId: string, s: S): Promise<S> {
+  const hidden = await threads.blocks.hiddenFor(userId);
+  return hidden.size ? { ...s, members: s.members.filter((m) => !hidden.has(m.userId)) } : s;
 }
 
 export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { spaces: Spaces; trips?: Trips | null; parts?: SpaceParts }): SpaceParts {
-  const p = o.parts ?? spaceParts(o.spaces, { media: deps.media, trips: o.trips ?? null });
+  const p = o.parts ?? spaceParts(o.spaces, { media: deps.media, trips: o.trips ?? null, log: app.log });
   const { spaces, threads, items, payments, tasks } = p;
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
@@ -164,7 +184,7 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   // ------------------------------------------------------------------ spaces
 
   app.get(`${AREA}/spaces`, RL, run(async (user) => {
-    const list = await spaces.list(user.id);
+    const list = await Promise.all((await spaces.list(user.id)).map((s) => withoutHidden(threads, user.id, s)));
     const withWaiting = await Promise.all(list.map(async (s) => ({ ...s, waiting: await payments.waitingFor(user.id, s.id).catch(() => 0) })));
     const unread = await threads.list(user.id).then((t) => t.unread, () => 0);
     return { spaces: withWaiting, you: shownName(user), unread };
@@ -172,7 +192,7 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.post(`${AREA}/spaces`, RL, run(async (user, req, reply) => { const r = await spaces.create(user.id, bodyOf(req.body).name, shownName(user)); reply.code(201); return r; }));
   app.get(`${AREA}/spaces/:id`, RL, run(async (user, req) => {
     const id = param(req, "id");
-    const space = await spaces.detail(user.id, id);
+    const space = await withoutHidden(threads, user.id, await spaces.detail(user.id, id));
     const [shared, pays, todo] = await Promise.all([items.list(user.id, id).catch(() => []), payments.list(user.id, id).catch(() => []), tasks.list(user.id, id).catch(() => [])]);
     return { space, items: shared, payments: pays, tasks: todo, you: shownName(user), mailReady: spaces.mailer.configured };
   }));
@@ -275,6 +295,10 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
     const f = viewer ? await threads.fileOf(viewer, tid, mid, fid).catch(() => null) : null;
     return serve(reply, f);
   });
+
+  // ------------------------------------------------------------------ reporting and blocking
+
+  registerSafetyRoutes(app, deps, p);
 
   return p;
 }

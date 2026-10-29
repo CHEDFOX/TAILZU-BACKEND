@@ -35,8 +35,11 @@ export class SupabasePaged<R extends Row> extends SupabaseTable<R> implements Pa
   }
 }
 
-/** The tables migration 0051 adds. */
-export const SPACE_TABLES = ["space_roles", "space_activity", "space_items", "space_payments", "space_tasks", "threads", "thread_members", "thread_messages", "mail_outbox"] as const;
+/** The tables migration 0051 adds, and 0057's blocks and reports (botsBots/blocks.ts, safety.ts). */
+export const SPACE_TABLES = [
+  "space_roles", "space_activity", "space_items", "space_payments", "space_tasks", "threads", "thread_members", "thread_messages", "mail_outbox",
+  "user_blocks", "content_reports",
+] as const;
 export type SpaceTableName = (typeof SPACE_TABLES)[number];
 
 const made = new Map<string, PagedTable<Row>>();

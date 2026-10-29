@@ -22,7 +22,7 @@
  *
  *   After the session, bots.name-it is the first screen of someone not onboarded yet (buildBootstrap): About you (the
  *   name and gender card's own question and write, PUT /v1/profile { full_name, gender }, started from the sign-in's
- *   own name), then Name your Tailzu, which saves the boss bot's name and marks the account onboarded (PUT /v1/profile
+ *   own name), then "What will you call me?" (X0 unless they pick their own), which saves the boss bot's name and marks the account onboarded (PUT /v1/profile
  *   { onboarded }, as the onboarding's Done does) and lands on Bots.
  *
  * As screens of their own (bots.welcome, bots.sign-in, bots.sign-code) the three sign-in steps are the same layout
@@ -48,6 +48,7 @@ import {
 } from "../kit.js";
 import type { TextOpts } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { ASSISTANT_NAME } from "../../assistantName.js";
 
 const CLAY = PALETTE_HEX.clay!;
 /** The window's setup steps. */
@@ -58,7 +59,7 @@ type Style = Record<string, unknown>;
 // ===================================================================== words
 
 const W = {
-  welcomeH: "Hi, I'm Tailzu.",
+  welcomeH: "Hi, I'm X0.",
   welcomeP: "Everything here is a bot. Tell them what you need; they do the work.",
   start: "Start",
   haveAccount: "I already have an account",
@@ -78,8 +79,8 @@ const W = {
   youP: "So your bots know what to call you, and how to write for you.",
   youGender: "You are",
   youMissing: "Add your name and pick one.",
-  nameH: "What should I be called?",
-  nameP: "I'm the one in charge. Your other bots report to me and call me by this name.",
+  nameH: "What will you call me?",
+  nameP: "I'm the one in charge. Your other bots report to me and call me by this name. Say it to talk to me.",
   keyH: "Turn on Keybot",
   keyP: "Speak instead of type, in every app",
   wordsH: "Now just talk",
@@ -319,7 +320,7 @@ interface DeskOpts {
 /** The window's header: the mark and Tailzu, and something on the right. */
 function deskHeader(right: Node | null): Node {
   return row([
-    row([tailzuMark(26), text("Tailzu", { size: 17, weight: 700, tracking: -0.3, lineHeight: 22 })], { gap: 10 }),
+    row([tailzuMark(26), text("X0 Bot", { size: 17, weight: 700, tracking: -0.3, lineHeight: 22 })], { gap: 10 }),
     grow(),
     ...(right ? [right] : []),
   ], { minHeight: 44, gap: 12, width: "100%", maxWidth: 1080, alignSelf: "center" });
@@ -456,7 +457,7 @@ function byMethod(phone: Node, email: Node): Node[] {
 function welcomePhone(start: ActionRef, fig: Figure): { body: Node[]; footer: Node[] } {
   return {
     body: [
-      row([tailzuMark(24), text("Tailzu", { size: 16, weight: 700, tracking: -0.3, lineHeight: 20 })], { gap: 8, minHeight: 44 }),
+      row([tailzuMark(24), text("X0 Bot", { size: 16, weight: 700, tracking: -0.3, lineHeight: 20 })], { gap: 8, minHeight: 44 }),
       grow(),
       row([fig("wave", 172)], { justifyContent: "center" }),
       col([
@@ -573,9 +574,9 @@ function linkPanel(): Node {
     props: {
       or: "or",
       title: "Scan with your phone",
-      sub: "Already use Tailzu there? No code to type.",
-      steps: ["Open the camera on your phone", "Point it at this code", "Tap Approve in Tailzu"],
-      typed: "No camera? In Tailzu, go to You, then Link a computer, and type {code}",
+      sub: "Already use X0 Bot there? No code to type.",
+      steps: ["Open the camera on your phone", "Point it at this code", "Tap Approve in X0 Bot"],
+      typed: "No camera? In X0 Bot, go to You, then Link a computer, and type {code}",
       changesIn: "Code changes in {t}",
       loading: "Making a code…",
       approved: "Approved on your phone. Signing you in…",
@@ -654,7 +655,7 @@ function codeDesk(mode: Mode, fig: Figure): DeskOpts {
       }),
     ],
     main: [col([
-      col([text("Type the code", { size: 16, weight: 600, lineHeight: 21 }), meta("It comes by SMS or email, from Tailzu.", { size: 13 })], { gap: 3 }),
+      col([text("Type the code", { size: 16, weight: 600, lineHeight: 21 }), meta("It comes by SMS or email, from X0 Bot.", { size: 13 })], { gap: 3 }),
       codeEntry(mode, true),
       ...(mode === "page" ? [primaryButton("Continue", go(SCREENS.nameIt), { wide: true })] : []),
     ], { padding: 20, gap: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line })],
@@ -953,14 +954,14 @@ function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = false): N
   ], [cont])], { props: { stepId: "you" } });
 }
 
-/** Name your Tailzu: the boss bot's name; saving it finishes onboarding. */
+/** What will you call me? The boss bot's name (X0 unless they pick their own); saving it finishes onboarding. */
 function nameStep(ctx: BotsCtx, fig: Figure): Node {
   const desk = ctx.client === "desktop";
   const save = call("PUT", "/v1/personality", { assistantName: "$state.name" }, {
     ok: finish(),
     fail: toast("A name is letters and spaces, up to 24 characters."),
   });
-  const fieldBox = nameField("name", "Tailzu", save, desk, { label: "name" });
+  const fieldBox = nameField("name", ASSISTANT_NAME, save, desk, { label: "name" });
   const ideas = row([
     meta("Or try", { size: desk ? 13 : 12, style: { marginRight: 2 } }),
     ...NAME_IDEAS.map((n) => row([text(n, { size: desk ? 14 : 13, lineHeight: 17 })], {
@@ -971,7 +972,7 @@ function nameStep(ctx: BotsCtx, fig: Figure): Node {
   const says = (slug: string, line: string, who: string): Node => row([
     botAvatar(botLook(slug), 30),
     col([
-      bound("name", "Tailzu", { size: desk ? 15 : 14, weight: 600, lineHeight: desk ? 22 : 20 }),
+      bound("name", ASSISTANT_NAME, { size: desk ? 15 : 14, weight: 600, lineHeight: desk ? 22 : 20 }),
       text(line, { size: desk ? 15 : 14, lineHeight: desk ? 22 : 20 }),
       meta(who, { size: 12 }),
     ], { gap: 2, flexShrink: 1, minWidth: 0 }),
@@ -980,7 +981,7 @@ function nameStep(ctx: BotsCtx, fig: Figure): Node {
   if (desk) {
     const heads = ctx.live.bots.slice(0, 4);
     return gateStep(true, deskBody({
-      title: "Name your Tailzu", right: signedInAs(ctx), current: 2,
+      title: "What will you call me?", right: signedInAs(ctx), current: 2,
       left: [
         deskFig(fig, "tada", 140),
         deskHeading(`Step 2 of ${STEPS.length - 1}`, W.nameH, W.nameP),
@@ -1025,7 +1026,7 @@ function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenRespons
   const me = data?.me;
   const gender = GENDERS.some((g) => g.value === me?.gender) ? me!.gender! : "";
   // Someone already onboarded is here only for the card's question (the bootstrap's promptScreenId): About you
-  // alone, which closes once saved. Name your Tailzu, and finishing the first run, are not theirs to do again.
+  // alone, which closes once saved. Naming it, and finishing the first run, are not theirs to do again.
   const only = me?.onboarded === true;
   return stageScreen(ctx, {
     title: "About you", id: only ? "bots.about-you" : "bots.first", first: 2,
@@ -1034,7 +1035,7 @@ function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenRespons
       step: me?.saved && !only ? 1 : 0,
       fullName: me?.name ?? "",
       gender,
-      name: (data?.persona?.personality?.assistantName ?? "").trim() || "Tailzu",
+      name: (data?.persona?.personality?.assistantName ?? "").trim() || ASSISTANT_NAME,
     },
   });
 }
@@ -1106,7 +1107,7 @@ function keyOnPhone(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
         ], { paddingTop: 14, paddingHorizontal: 16, paddingBottom: 6, gap: 8 }),
         step(0, { ios: "Open Settings", android: "Open Settings" }),
         divider(),
-        step(1, { ios: "Keyboards, then switch on Tailzu", android: "Switch on Tailzu, and tap OK" }, [when(ios, chipPath("Settings › Tailzu › Keyboards"))]),
+        step(1, { ios: "Keyboards, then switch on X0 Bot", android: "Switch on X0 Bot, and tap OK" }, [when(ios, chipPath("Settings › X0 Bot › Keyboards"))]),
         divider(),
         step(2, { ios: "Allow Full Access", android: "Come back here" }, [
           when(ios, meta("Turn the switch on, then come back here", { size: 12 })),
@@ -1123,7 +1124,7 @@ function keyOnPhone(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
       when({ all: [ios, { not: ready }] }, primaryButton("Open Settings", openIos, { wide: true })),
       when({ all: [android, { not: ready }] }, primaryButton("Open Settings", openAndroid, { wide: true })),
       when(ready, primaryButton("Continue", toFirstWords(w), { wide: true })),
-      when({ all: [ios, { not: ready }] }, meta("Opens Tailzu in Settings. Come back here when it's on.", { size: 12, align: "center" })),
+      when({ all: [ios, { not: ready }] }, meta("Opens X0 Bot in Settings. Come back here when it's on.", { size: 12, align: "center" })),
       when({ all: [android, { not: ready }] }, meta("Opens your keyboards. Come back here when it's on.", { size: 12, align: "center" })),
       when(ready, meta("Keybot is on. Hold its mic key in any app.", { size: 12, align: "center" })),
     ],
@@ -1147,11 +1148,11 @@ function keyOnDesk(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
     ? box([{
         type: "DeskAskSetup",
         props: {
-          place: "settings", on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
+          place: "settings", on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
           rows: [{ key: "read", title: "Accessibility", sub: "So Keybot can put the words where your cursor is, in any app." }],
         },
       }], { paddingHorizontal: 4, paddingBottom: 4 })
-    : permRow("computer", "Accessibility", "If your Mac asks, allow Tailzu in Privacy & Security › Accessibility, so Keybot can type where your cursor is.", null);
+    : permRow("computer", "Accessibility", "If your Mac asks, allow X0 Bot in Privacy & Security › Accessibility, so Keybot can type where your cursor is.", null);
   return deskFrame(ctx, {
     title: W.keyH, current: null,
     right: link("Not now", back, { size: 14, color: C.grey70 }),
@@ -1358,7 +1359,7 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
     ? deskFrame(ctx, { title: W.plansH, right: signedInAs(ctx), current: null, left: doneHeading(h, sub), main: [], foot: deskFoot(deskBack(), [button(cta, done, { size: "lg" })]) })
     : phoneFrame(ctx, { title: W.plansH, body: [...doneHeading(h, sub), row([blip("done", 160)], { justifyContent: "center", paddingTop: 20 })], footer: [primaryButton(cta, done, { wide: true })] });
   if (!data) return simple("Plans", "Plans couldn't load just now. Try again in a moment.", "Done");
-  if (data.freeForAll) return simple("Plans", "Tailzu is free for everyone right now. Nothing to pick, nothing to pay.", "Done");
+  if (data.freeForAll) return simple("Plans", "X0 Bot is free for everyone right now. Nothing to pick, nothing to pay.", "Done");
   if (data.entitled) return simple("You have a plan", "This account already has a plan. It covers your phone and your computer.", "Done");
   const paid = data.plans;
   if (!paid.length) return simple("Plans", "You're on Free. Plans to buy aren't available here yet.", "Done");
@@ -1502,8 +1503,8 @@ const line = (s: string): Node => text(s, { size: 14, color: C.grey70, lineHeigh
 function keyboardLines(): Node[] {
   const android: Condition = { platform: "android" };
   return [
-    when({ not: android }, line("In Settings, open Keyboards, switch on Tailzu, then Allow Full Access.")),
-    when(android, line("Switch on Tailzu in your keyboards, and tap OK.")),
+    when({ not: android }, line("In Settings, open Keyboards, switch on X0 Bot, then Allow Full Access.")),
+    when(android, line("Switch on X0 Bot in your keyboards, and tap OK.")),
   ];
 }
 
@@ -1524,7 +1525,7 @@ export function arrivalCard(ctx: BotsCtx): Node[] {
   } as ActionSpec);
   const mic = (whenMic: Condition) => permitStep({
     when: whenMic,
-    title: "Let Tailzu hear you",
+    title: "Let X0 Bot hear you",
     lines: [line("Allow the microphone for a better experience: talk to any bot, in any app.")],
     cta: { label: "Allow microphone", onPress: askMic(seq(setState("micGranted", true), setState("micAsked", true)), setState("micAsked", true)) },
     quiet: notNow,
@@ -1550,7 +1551,7 @@ export function arrivalCard(ctx: BotsCtx): Node[] {
             type: "DeskAskSetup",
             props: {
               place: "settings", eyebrow: "", title: "", titleEm: "", lede: "",
-              on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
+              on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
               rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
             },
           }],
@@ -1574,7 +1575,7 @@ export function arrivalCard(ctx: BotsCtx): Node[] {
       mic({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] }),
       permitStep({
         when: { all: [MIC_SETTLED, KEYS_MISSING] },
-        title: "Add the Tailzu keyboard",
+        title: "Add the X0 Bot keyboard",
         lines: keyboardLines(),
         cta: { label: "Open Settings", onPress: { kind: "openSettings", target: "keyboard" } as ActionSpec },
         quiet: notNow,
@@ -1605,8 +1606,8 @@ export function arrivalCard(ctx: BotsCtx): Node[] {
 export function keybotCard(ctx: BotsCtx): Node[] {
   const desk = ctx.client === "desktop";
   const off = desk
-    ? toast("The microphone is off for Tailzu. Turn it on in your computer's Privacy settings.")
-    : seq(toast("The microphone is off for Tailzu. Turn it on in Settings."), { kind: "openSettings", target: "app" } as ActionSpec);
+    ? toast("The microphone is off for X0 Bot. Turn it on in your computer's Privacy settings.")
+    : seq(toast("The microphone is off for X0 Bot. Turn it on in Settings."), { kind: "openSettings", target: "app" } as ActionSpec);
   const ask = {
     kind: "requestPermission", permission: "microphone",
     onGranted: seq(setState("micGranted", true), go(SCREENS.firstWords)),
@@ -1631,7 +1632,7 @@ export function keybotCard(ctx: BotsCtx): Node[] {
         props: {
           place: "home", eyebrow: "Keybot", title: "Turn on", titleEm: "Accessibility",
           lede: "So Keybot can put your words where your cursor is, in any app.",
-          on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart Tailzu to finish", restartButton: "Restart",
+          on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
           rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
         },
       });

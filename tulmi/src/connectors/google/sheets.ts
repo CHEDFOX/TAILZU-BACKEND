@@ -52,7 +52,7 @@ const TOOLS: NativeTool[] = [
   },
   {
     name: "append_rows", risk: "write", verb: "append",
-    description: "Add rows under the last row of a Google Sheet Tailzu made (an expenses sheet, a list).",
+    description: "Add rows under the last row of a Google Sheet X0 Bot made (an expenses sheet, a list).",
     inputSchema: {
       type: "object",
       properties: { sheet: { type: "string", description: "The sheet's name (\"Expenses\") or link." }, rows: ROWS },
@@ -62,7 +62,7 @@ const TOOLS: NativeTool[] = [
   },
   {
     name: "read_sheet", risk: "read", verb: "read",
-    description: "Read a Google Sheet Tailzu made, row by row: to answer what is in it or add it up.",
+    description: "Read a Google Sheet X0 Bot made, row by row: to answer what is in it or add it up.",
     inputSchema: { type: "object", properties: { sheet: { type: "string", description: "The sheet's name or link." } }, required: ["sheet"] },
     annotations: { readOnlyHint: true },
   },

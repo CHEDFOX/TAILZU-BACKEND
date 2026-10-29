@@ -321,7 +321,7 @@ describe("the words", () => {
       expect(EN[k], k).toBeTruthy();
       expect(HG[k], k).toBeTruthy();
     }
-    expect(EN["add.trust"]).toBe("Tailzu hasn’t checked this app. Only add apps you trust.");
+    expect(EN["add.trust"]).toBe("X0 Bot hasn’t checked this app. Only add apps you trust.");
     expect(EN["changed.h"]).toBe("This app changed. Have a look.");
     expect(EN["add.at"]).toBe("You’ll sign in at");
     // One English line, one Hinglish line: the translator's seeds are a map.

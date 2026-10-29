@@ -307,7 +307,7 @@ export function appName(app: string | undefined): string {
   if (!app) return "";
   const known: Record<string, string> = {
     whatsapp: "WhatsApp", gmail: "Gmail", email: "Email", slack: "Slack", linkedin: "LinkedIn", twitter: "X", x: "X", notes: "Notes",
-    instagram: "Instagram", telegram: "Telegram", messages: "Messages", sms: "Messages", docs: "Docs", chatgpt: "ChatGPT", tailzu: "Tailzu",
+    instagram: "Instagram", telegram: "Telegram", messages: "Messages", sms: "Messages", docs: "Docs", chatgpt: "ChatGPT", tailzu: "X0 Bot",
   };
   const k = app.toLowerCase().trim();
   if (!k || k === "generic" || k === "default" || k === "other" || k === "auto") return "";

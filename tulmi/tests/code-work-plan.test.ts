@@ -312,7 +312,7 @@ describe("validation: every file in the plan is checked against the brain", () =
     expect(notes).toMatch(/Left out \.\.\/outside\.ts: it is not a path inside the repo/);
     expect(notes).toMatch(/Left out \/etc\/passwd: it is not a path inside the repo/);
     expect(notes).toMatch(/Left out \.git\/config: it is not a path inside the repo/);
-    expect(notes).toMatch(/Left out \.tailzu\/run\.mjs: it is one of Tailzu's own files/);
+    expect(notes).toMatch(/Left out \.tailzu\/run\.mjs: it is one of X0 Bot's own files/);
     expect(notes).toMatch(/Left out \.env: it would hold a secret/);
     expect(notes).toMatch(/Left out certs\/server\.pem: it would hold a secret/);
   });

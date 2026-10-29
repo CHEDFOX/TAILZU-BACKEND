@@ -328,7 +328,7 @@ describe("conventions", () => {
     expect(JSON.stringify(c.commits.examples)).not.toContain("AKIA");
   });
 
-  it("reads how branches are named, leaving out Tailzu's own and dependabot's", () => {
+  it("reads how branches are named, leaving out X0 Bot's own and dependabot's", () => {
     const c = base({ branches: ["main", "feature/login", "feature/cart", "fix/typo", "fix/bug", "tailzu/x-1a2b", "dependabot/npm/y", "release/1.0"] });
     expect(c.branches).toEqual({ default: "main", naming: "feature/<name>, fix/<name>", examples: ["feature/login", "feature/cart", "fix/typo", "fix/bug", "release/1.0"] });
   });

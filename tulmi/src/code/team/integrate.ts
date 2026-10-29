@@ -71,7 +71,7 @@ export async function mergePart(r: Run, p: TeamPart): Promise<MergeOutcome> {
   if (outside.length) return { kind: "refused", why: `Its commits changed files it does not own (${outside.slice(0, 3).join(", ")}), so it was not merged.` };
   if (conflicts.length) return { kind: "conflict", paths: conflicts };
   if (!files.length) return { kind: "nothing" };
-  const message = `Merge part ${p.id} (${p.title}) into ${r.branch}\n\n${files.length} file${files.length === 1 ? "" : "s"} from ${p.branch}, built by a helper of Tailzu's team for job ${r.jobId.slice(0, 8)} and reviewed before this merge.`;
+  const message = `Merge part ${p.id} (${p.title}) into ${r.branch}\n\n${files.length} file${files.length === 1 ? "" : "s"} from ${p.branch}, built by a helper of X0 Bot's team for job ${r.jobId.slice(0, 8)} and reviewed before this merge.`;
   try {
     const made = await r.gated("commit", `merge part ${p.id} (${p.title})`, (id) => r.ws.mergeCommit(files, message, partHead, id ? { approvalId: id } : {}));
     return { kind: "merged", sha: made.sha, files: files.length };

@@ -55,5 +55,5 @@ export function actionsLevel(monthly: number, used: number): ActionsLevel {
 export function minutesLowWords(monthly: number, used: number): string {
   const u = Math.round(clean(used));
   const m = Math.round(clean(monthly, ACTIONS_MONTHLY_MIN_DEFAULT));
-  return `You have used ${u} of your ${m} GitHub Actions minutes this month. Tailzu stops using them at ${stopAtMinutes(m)} so you keep some for your own work, and carries on elsewhere (your own computer, or it waits).`;
+  return `You have used ${u} of your ${m} GitHub Actions minutes this month. X0 Bot stops using them at ${stopAtMinutes(m)} so you keep some for your own work, and carries on elsewhere (your own computer, or it waits).`;
 }

@@ -91,19 +91,19 @@ export function pricingHtml(opts: {
     const monthly = /month/i.test(p.period ?? "") && !/year/i.test(p.period ?? "");
     return `${p.label ?? ""} ${p.price ?? ""}/${monthly ? "mo" : "yr"}`;
   });
-  const description = `Tailzu is free to start with ${n(opts.freeWords)} words a month. ` +
+  const description = `X0 Bot is free to start with ${n(opts.freeWords)} words a month. ` +
     paid.map((p) => {
       const monthly = /month/i.test(p.period ?? "") && !/year/i.test(p.period ?? "");
       return `${p.label} is ${p.price} a ${monthly ? "month" : "year"}`;
     }).join("; ") + ". Both remove the word limit.";
   return siteShell({
     title: "Pricing",
-    headTitle: `Tailzu Pricing — Free, ${priced.join(", ")}`,
+    headTitle: `X0 Bot Pricing — Free, ${priced.join(", ")}`,
     path: "/pricing",
     description,
     ld: [
-      pageLd("/pricing", "Tailzu pricing", description),
-      crumbsLd([["Tailzu", "/"], ["Pricing", "/pricing"]]),
+      pageLd("/pricing", "X0 Bot pricing", description),
+      crumbsLd([["X0 Bot", "/"], ["Pricing", "/pricing"]]),
       appLd(),
     ],
     css: CSS,
@@ -122,11 +122,11 @@ export function pricingHtml(opts: {
   </section>
   <section>
     <h2>How you pay</h2>
-    <p>In the app, through the Apple App Store or Google Play. On the web, at <a href="https://x0bot.com/pay">x0bot.com/pay</a>: payments are processed by <strong>Razorpay</strong> for ${SELLER}, which makes Tailzu.</p>
+    <p>In the app, through the Apple App Store or Google Play. On the web, at <a href="https://x0bot.com/pay">x0bot.com/pay</a>: payments are processed by <strong>Razorpay</strong> for ${SELLER}, which makes X0 Bot.</p>
   </section>
   <section>
     <h2>Renewal and cancelling</h2>
-    <p>Plans renew automatically at the end of each period until you cancel. Cancel an app purchase in your App Store or Google Play subscriptions, and a web purchase in Tailzu: Settings, then Cancel subscription. You keep access until the end of the period already paid for.</p>
+    <p>Plans renew automatically at the end of each period until you cancel. Cancel an app purchase in your App Store or Google Play subscriptions, and a web purchase in X0 Bot: Settings, then Cancel subscription. You keep access until the end of the period already paid for.</p>
   </section>
   <section>
     <h2>Refunds</h2>
@@ -135,7 +135,7 @@ export function pricingHtml(opts: {
 </div>
 
 <p class="made"><a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="https://xooteq.com/refunds">Refunds</a> · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
-<p class="made">Tailzu is made by ${SELLER}.</p>`,
+<p class="made">X0 Bot is made by ${SELLER}.</p>`,
   });
 }
 
@@ -144,15 +144,15 @@ export function pricingHtml(opts: {
  * Someone who subscribed before is told how to stop paying.
  */
 function freePricingHtml(opts: { terms: string; privacy: string }): string {
-  const description = "Tailzu is free: every word, every language, every app, on iPhone, Android, Windows and Mac. There is no plan to pick and nothing to pay.";
+  const description = "X0 Bot is free: every word, every language, every app, on iPhone, Android, Windows and Mac. There is no plan to pick and nothing to pay.";
   return siteShell({
     title: "Pricing",
-    headTitle: "Tailzu Pricing — Free",
+    headTitle: "X0 Bot Pricing — Free",
     path: "/pricing",
     description,
     ld: [
-      pageLd("/pricing", "Tailzu pricing", description),
-      crumbsLd([["Tailzu", "/"], ["Pricing", "/pricing"]]),
+      pageLd("/pricing", "X0 Bot pricing", description),
+      crumbsLd([["X0 Bot", "/"], ["Pricing", "/pricing"]]),
       appLd(),
     ],
     css: CSS,
@@ -163,11 +163,11 @@ function freePricingHtml(opts: { terms: string; privacy: string }): string {
 
 <div class="field"><div class="plans">
     <section class="plan lead">
-      <div class="top"><h2>Tailzu</h2></div>
+      <div class="top"><h2>X0 Bot</h2></div>
       <p class="price">$0</p>
       <p class="per">No word limit</p>
       <ul><li>Every voice, every language, every app.</li><li>iPhone, Android, Windows and Mac.</li><li>Meeting notes on the computer.</li></ul>
-      <a class="btn" href="/download">Get Tailzu</a>
+      <a class="btn" href="/download">Get X0 Bot</a>
     </section>
 </div></div>
 
@@ -179,6 +179,6 @@ function freePricingHtml(opts: { terms: string; privacy: string }): string {
 </div>
 
 <p class="made"><a href="${esc(opts.terms)}">Terms</a> · <a href="${esc(opts.privacy)}">Privacy</a> · <a href="mailto:support@x0bot.com">support@x0bot.com</a></p>
-<p class="made">Tailzu is made by ${SELLER}.</p>`,
+<p class="made">X0 Bot is made by ${SELLER}.</p>`,
   });
 }

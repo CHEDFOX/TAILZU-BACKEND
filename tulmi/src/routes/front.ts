@@ -234,7 +234,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
           if (target.kind === "bot") {
             const daily = front?.guard.daily;
             // The front door's own spend on this person today: the picker's small model and the reading of a file are its own, like its replies are.
-            if (daily && daily.leftPaise(user.id) <= 0) throw new FrontError("daily_limit", "You've used what Tailzu may spend on your messages today. It starts again tomorrow.", 429);
+            if (daily && daily.leftPaise(user.id) <= 0) throw new FrontError("daily_limit", "You've used what X0 Bot may spend on your messages today. It starts again tomorrow.", 429);
             emit({ t: "bot", bot: tagOf(target.bot, target.by) });
             // Files attached to the message are read the front door's way, once, for a bot that can read files; a bot that can't is told so (its note), and nothing is read.
             let read: Awaited<ReturnType<Front["readFiles"]>> | null = null;

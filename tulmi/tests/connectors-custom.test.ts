@@ -496,7 +496,7 @@ describe("adding an app by link", () => {
     // Off is gone from the planner, and asking for it anyway says why; a catalog app's sheet has no per-tool settings.
     expect((await r.connectors.hub.tools("ann", id)).map((t) => t.name)).toEqual(["create_note", "delete_note", "list_tags"]);
     expect(await r.connectors.tasks.use("ann", "run_off1", "acme notes", { connector: id, tool: "search_notes", args: {} }, { allowWrite: true }))
-      .toEqual({ kind: "stopped", message: "search notes is switched off for Acme Notes. You can change that in Tailzu.", code: "blocked" });
+      .toEqual({ kind: "stopped", message: "search notes is switched off for Acme Notes. You can change that in X0 Bot.", code: "blocked" });
     await r.store.upsertConnection("ann", "testapp", { tokensEnc: encrypt(JSON.stringify({ url: `${base}/open/mcp` })), level: "look" });
     expect((await set("search_notes", "off", "ann", "testapp")).json()).toMatchObject({ code: "not_custom" });
     const cat = (await r.app.inject({ method: "GET", url: "/v1/connectors/testapp/tools", headers: who("ann") })).json();
@@ -525,7 +525,7 @@ describe("adding an app by link", () => {
 
     // The planner asking for a held-back tool is told why.
     const held = await r.connectors.tasks.use("ann", "run_held1", "list acme notes tags", { connector: id, tool: "list_tags", args: {} }, { allowWrite: true });
-    expect(held).toEqual({ kind: "stopped", message: "list tags changed in Acme Notes since you approved it. Have a look in Tailzu first.", code: "blocked" });
+    expect(held).toEqual({ kind: "stopped", message: "list tags changed in Acme Notes since you approved it. Have a look in X0 Bot first.", code: "blocked" });
     expect(calls).toEqual([]);
 
     const accept = (version?: string) => r.app.inject({ method: "POST", url: `/v1/connectors/${id}/tools/accept`, headers: who("ann"), payload: version ? { version } : {} });
@@ -684,7 +684,7 @@ describe("adding an app by link", () => {
     expect(await r.store.getCustom("ann", id)).toBeNull();
     expect(await r.store.getConnection("ann", id)).toBeNull();
     expect((await r.connectors.runtimeFor("ann").use("run_gone1", "acme notes", { verb: "USE", connector: id, tool: "search_notes", args: {} }, { allowWrite: true })))
-      .toEqual({ kind: "stopped", message: "That app isn't connected. You can connect it in Tailzu.", code: "not_connected" });
+      .toEqual({ kind: "stopped", message: "That app isn't connected. You can connect it in X0 Bot.", code: "not_connected" });
   });
 });
 
@@ -758,7 +758,7 @@ describe("what adding an app refuses", () => {
       const res = await r.add("ann", { name: "Hosted", url: `${base}/open/mcp?${query}` });
       expect(res.json(), query).toEqual({ refused: {
         code: "key_in_link",
-        message: "That link has a key or password in it, and Tailzu doesn't keep those in a link, so I didn't add it. Try the app's address without it.",
+        message: "That link has a key or password in it, and X0 Bot doesn't keep those in a link, so I didn't add it. Try the app's address without it.",
       } });
     }
     expect(await r.store.listCustom("ann")).toEqual([]);
@@ -777,7 +777,7 @@ describe("what adding an app refuses", () => {
 
   it("refuses what is not an MCP server", async () => {
     r = await rig();
-    expect((await r.add("ann", { name: "Teapot", url: `${base}/teapot` })).json()).toEqual({ refused: { code: "not_mcp", message: "That address didn't answer like an app Tailzu can connect to." } });
+    expect((await r.add("ann", { name: "Teapot", url: `${base}/teapot` })).json()).toEqual({ refused: { code: "not_mcp", message: "That address didn't answer like an app X0 Bot can connect to." } });
     const page = await r.add("ann", { name: "A Page", url: `${base}/html` });
     expect(page.json().refused.code).toBe("failed");
     expect(await r.store.listCustom("ann")).toEqual([]);

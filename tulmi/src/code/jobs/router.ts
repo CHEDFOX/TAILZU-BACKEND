@@ -333,7 +333,7 @@ export function readOverlay(raw: unknown): OverlayFile[] {
     const x = asObject(f);
     if (typeof x.path !== "string") throw bad("Each overlay file has a path.");
     try { assertRepoPath(x.path); } catch { throw bad("An overlay path has to be inside the repo."); }
-    if (isWorkflowPath(x.path) || isReservedPath(x.path)) throw bad("An overlay never holds a workflow or one of Tailzu's runner files.");
+    if (isWorkflowPath(x.path) || isReservedPath(x.path)) throw bad("An overlay never holds a workflow or one of X0 Bot's runner files.");
     if (seen.has(x.path)) throw bad("An overlay names a path once.");
     seen.add(x.path);
     if (x.content !== null && typeof x.content !== "string") throw bad("An overlay file's content is its text, or null to delete it.");
@@ -792,7 +792,7 @@ export class JobRouter {
       // A step asked for as a trial (the agent's checks) has no changes of its own to keep: they are not committed, whatever is sent.
       const wantsCommit = !!r.changes && r.changes.length > 0 && r.exitCode === 0 && !step.discard && !step.capture;
       const files: CommitFile[] = wantsCommit ? r.changes!.map((c) => ({ path: c.path, content: c.content })) : [];
-      const message = `Tailzu: changes from ${brief(step.commands[0] ?? "a command", 60)}\n\nFrom step ${step.idx} of a Tailzu job, run on ${WHERE[via]}.`;
+      const message = `X0 Bot: changes from ${brief(step.commands[0] ?? "a command", 60)}\n\nFrom step ${step.idx} of an X0 Bot job, run on ${WHERE[via]}.`;
 
       let sha: string | undefined;
       let refused: string | undefined;
@@ -818,7 +818,7 @@ export class JobRouter {
       }
       if (via === "paid" && paise > 0) await this.store.addUsage(userId, monthKey(now), { paidPaise: paise });
       const spentPaise = job.spentPaise + paise;
-      const note = refused ? `\n[Tailzu did not commit the changes: ${refused}.]` : "";
+      const note = refused ? `\n[X0 Bot did not commit the changes: ${refused}.]` : "";
       const out = tailBytes(`${tail}${note}`);
       // The files a trial laid over the checkout are not kept once it has run.
       // A captured step keeps what it changed for the agent to read (the person's code: cleared when the agent has it, and when the job ends).
@@ -828,7 +828,7 @@ export class JobRouter {
       if (ask) {
         await this.store.updateStep(job.id, step.idx, { ...base, status: "blocked" });
         this.keepHeld(job.id, { stepIdx: step.idx, files, message, at: now });
-        const reason = brief(`Changes from ${step.commands[0] ?? "a step"} are ready, and need your OK before Tailzu commits them.`, 300);
+        const reason = brief(`Changes from ${step.commands[0] ?? "a step"} are ready, and need your OK before X0 Bot commits them.`, 300);
         const next = await this.store.casJob(job.id, { leaseEpoch: job.leaseEpoch, states: ["running"] }, {
           state: "waiting_for_you", waitingOn: "commit", placement: "none", leaseHolder: null, leaseExpiresAt: null, reason, spentPaise,
         });
@@ -1223,7 +1223,7 @@ export class JobRouter {
     const reassignments = job.reassignments + 1;
     const giveUp = reassignments >= MAX_REASSIGNMENTS;
     const reason = giveUp
-      ? `The computer running this kept going quiet (${reassignments} times), so Tailzu stopped trying. What was committed so far is on the branch.`
+      ? `The computer running this kept going quiet (${reassignments} times), so X0 Bot stopped trying. What was committed so far is on the branch.`
       : "";
     const lost = await this.store.casJob(job.id, {
       leaseEpoch: job.leaseEpoch, states: ["running"], ...(o.force ? { placement: job.placement } : { leaseExpiredBy: now }),
@@ -1303,7 +1303,7 @@ export class JobRouter {
   private async pickup(userId: string, deviceId: string): Promise<RunnerStep | null> {
     const now = this.now();
     const device = this.devices.online(userId, deviceId, now);
-    if (!device) throw new ConnectorError("unknown_device", "Send a heartbeat first, so Tailzu knows this computer is here.");
+    if (!device) throw new ConnectorError("unknown_device", "Send a heartbeat first, so X0 Bot knows this computer is here.");
     if (!device.allowRun) return null;
     return this.lock.run(userId, async () => {
       for (const held of await this.store.findHeld(userId, "desktop", deviceId)) {

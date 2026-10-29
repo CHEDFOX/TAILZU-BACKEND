@@ -434,7 +434,7 @@ describe("signing in, end to end", () => {
 
   it("answers 'not set up yet' for an app that needs a pre-registered client and has none", async () => {
     await expect(beginOAuth({ store: newStore(), redirectUrl: REDIRECT, clients: {} }, "u1", app({ preRegistered: true, name: "GitHub" })))
-      .rejects.toMatchObject({ code: "not_configured", message: "GitHub can't be connected yet: Tailzu's sign-in for it isn't set up." });
+      .rejects.toMatchObject({ code: "not_configured", message: "GitHub can't be connected yet: X0 Bot's sign-in for it isn't set up." });
   });
 
   it("stops before sending anyone anywhere when the auth server's metadata is not its own, or it skips PKCE", async () => {
@@ -471,7 +471,7 @@ describe("the routes", () => {
   it("answers Connect on an app with no client set up with 503 and a plain line", async () => {
     const res = await api.inject({ method: "POST", url: "/v1/connectors/gh/connect", headers: as("ann"), payload: {} });
     expect(res.statusCode).toBe(503);
-    expect(res.json()).toEqual({ code: "not_configured", message: "GitHub can't be connected yet: Tailzu's sign-in for it isn't set up." });
+    expect(res.json()).toEqual({ code: "not_configured", message: "GitHub can't be connected yet: X0 Bot's sign-in for it isn't set up." });
   });
 
   it("passes the callback's iss along, and a wrong one connects nothing", async () => {
@@ -492,7 +492,7 @@ describe("the routes", () => {
     expect(res.headers["content-type"]).toContain("application/json");
     expect(res.headers["cache-control"]).toBe("public, max-age=86400");
     expect(res.json()).toEqual({
-      client_id: CIMD, client_name: "Tailzu", client_uri: "https://x0bot.com", redirect_uris: [REDIRECT],
+      client_id: CIMD, client_name: "X0 Bot", client_uri: "https://x0bot.com", redirect_uris: [REDIRECT],
       grant_types: ["authorization_code", "refresh_token"], response_types: ["code"], token_endpoint_auth_method: "none",
     });
     expect(clientMetadataDocument({ clientMetadataUrl: CIMD, redirectUrl: REDIRECT })).toEqual(res.json());
@@ -515,7 +515,7 @@ describe("the hub's requests", () => {
     const def = app({ id: "z", name: "Zap", auth: "url", url: "https://10.0.0.1/mcp" });
     await store.upsertConnection("u1", "z", { tokensEnc: encrypt(JSON.stringify({ url: "https://10.0.0.1/mcp?token=t" })) });
     const hub = new ConnectorHub({ store, catalog: [def], redirectUrl: REDIRECT });
-    expect((await hub.call("u1", "z", "anything", {})).error).toEqual({ code: "blocked_address", message: "Zap is at an address Tailzu won't connect to." });
+    expect((await hub.call("u1", "z", "anything", {})).error).toEqual({ code: "blocked_address", message: "Zap is at an address X0 Bot won't connect to." });
     await hub.close();
   });
 

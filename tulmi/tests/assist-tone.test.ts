@@ -63,7 +63,7 @@ describe("what the refiner is told it is", () => {
   const sys = () => WRITER;
 
   it("names the product and the surface, so the model knows what it is inside", () => {
-    expect(sys()).toContain("Tailzu");
+    expect(sys()).toContain("X0 Bot");
     expect(sys().toLowerCase()).toContain("keyboard");
   });
 

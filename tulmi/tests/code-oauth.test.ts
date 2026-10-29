@@ -419,12 +419,12 @@ describe.each(["app", "oauth"] as const)("who commits, through a %s project", (k
     const { project: p, repo } = await project(r);
     const custom = new GithubApp(
       { slug: "tailzu-test", clientId: r.fake.appClientId, clientSecret: r.fake.clientSecret, privateKey: KEYS.privateKeyPem },
-      { fetchFn: r.fake.fetchFn, now: () => r.fake.clock.t, bot: botIdentity("Tailzu Bot", "12345+tailzu-bot@users.noreply.github.com") },
+      { fetchFn: r.fake.fetchFn, now: () => r.fake.clock.t, bot: botIdentity("X0 Bot Bot", "12345+tailzu-bot@users.noreply.github.com") },
     );
     const d = { ...r.d, github: custom };
     const { branch } = await createWorkBranch(d, "alice", p.id, "custom");
     await (await workspace(d, "alice", p.id, branch)).commit([{ path: "x.txt", content: "x" }], "Add x");
-    expect(r.fake.headCommit(repo, branch).author).toEqual({ name: "Tailzu Bot", email: "12345+tailzu-bot@users.noreply.github.com" });
+    expect(r.fake.headCommit(repo, branch).author).toEqual({ name: "X0 Bot Bot", email: "12345+tailzu-bot@users.noreply.github.com" });
   });
 });
 
@@ -432,7 +432,7 @@ describe("the bot's identity", () => {
   it("is Blip <blip@x0bot.com> unless set, and a value git couldn't carry is the default", () => {
     expect(botIdentity()).toEqual({ name: "Blip", email: "blip@x0bot.com" });
     expect(botIdentity("  ", "")).toEqual({ name: "Blip", email: "blip@x0bot.com" });
-    expect(botIdentity(" Tailzu Bot ", " 1+tailzu-bot@users.noreply.github.com ")).toEqual({ name: "Tailzu Bot", email: "1+tailzu-bot@users.noreply.github.com" });
+    expect(botIdentity(" X0 Bot Bot ", " 1+tailzu-bot@users.noreply.github.com ")).toEqual({ name: "X0 Bot Bot", email: "1+tailzu-bot@users.noreply.github.com" });
     for (const bad of ["a<b", "a>b", "x\ny", "x\ry", "x".repeat(101)]) expect(botIdentity(bad, null).name, JSON.stringify(bad)).toBe("Blip");
     for (const bad of ["no-at-sign", "a@b@c", "a b@c.d", "<x@y.z>", "x@y.z\nBcc: z@z.z"]) expect(botIdentity(null, bad).email, JSON.stringify(bad)).toBe("blip@x0bot.com");
   });
@@ -627,7 +627,7 @@ describe("revoking the token", () => {
     const err = await createWorkBranch(r.d, "alice", project.id, "blocked").catch((e) => e);
     expect(err).toMatchObject({ code: "org_blocked" });
     expect(err.message).toMatch(/organi[sz]ation/i);
-    expect(err.message).toMatch(/approve|install the Tailzu GitHub App/i);
+    expect(err.message).toMatch(/approve|install the X0 Bot GitHub App/i);
     expect(err.message).not.toMatch(/SAML enforcement|gho_/);
     // That is not a dead token: the link stays alive.
     expect((await r.store.getOAuthLink("alice"))!.status).toBe("active");

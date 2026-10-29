@@ -32,7 +32,7 @@ export const STORE_LINKS: string[] = [STORES.ios, STORES.android, STORES.windows
 
 /** The sentence every engine should be able to lift whole. */
 export const DEFINITION =
-  "Tailzu is an AI keyboard for iPhone, Android, Windows, Mac and Linux. " +
+  "X0 Bot is an AI keyboard for iPhone, Android, Windows, Mac and Linux. " +
   "You speak in Hindi, Hinglish, any of India's 22 scheduled languages, English or 50+ more, " +
   "and clean, ready-to-send text lands in any app: filler gone, punctuation in, " +
   "names and numbers kept exactly as you said them. Ask, and it writes a short message, reply or email for you.";
@@ -42,8 +42,8 @@ export const HOME = {
   description: SITE_SHAPE.meta.description,
   // The link card says the page's own h1 (SITE_UI.apps.title), as the card
   // image does.
-  ogTitle: "Tailzu — talk instead of type",
-  ogDescription: "Talk. Tailzu writes. Your words, spelled the way you type — not translated, not in an alphabet you don't type.",
+  ogTitle: "X0 Bot — talk instead of type",
+  ogDescription: "Talk. X0 Bot writes. Your words, spelled the way you type — not translated, not in an alphabet you don't type.",
 };
 
 // ---------------------------------------------------------------- languages
@@ -128,49 +128,49 @@ export function faqGroups(): QAGroup[] {
     {
       title: "The basics",
       items: [
-        { q: "What is Tailzu?", a: DEFINITION },
-        { q: "What is an AI keyboard?", a: "A keyboard that understands what you mean, not only what it hears. Tailzu takes your voice and types clean, ready-to-send text into whatever app you are in, and writes a short message for you when you ask." },
-        { q: "Can Tailzu write a message for me?", a: "Yes. Say what you want and who it is for, like a birthday wish for your sister or a kind reply to your landlord, and it writes it in your voice. It keeps to short pieces: no essays and no code, and in ChatGPT or Claude it writes your prompt, never the answer." },
-        { q: "How is it different from Gboard voice typing or iPhone dictation?", a: "Built-in dictation types what it hears, ums and all. Tailzu writes what you meant: filler gone, punctuation in, misheard words repaired, and your names, numbers and amounts kept exactly. It can also set the tone of the message." },
-        { q: "Does Tailzu change what I said?", a: "No. It cleans; it never rewrites. Filler words go and punctuation arrives, but your meaning, names and amounts stay as you said them." },
+        { q: "What is X0 Bot?", a: DEFINITION },
+        { q: "What is an AI keyboard?", a: "A keyboard that understands what you mean, not only what it hears. X0 Bot takes your voice and types clean, ready-to-send text into whatever app you are in, and writes a short message for you when you ask." },
+        { q: "Can X0 Bot write a message for me?", a: "Yes. Say what you want and who it is for, like a birthday wish for your sister or a kind reply to your landlord, and it writes it in your voice. It keeps to short pieces: no essays and no code, and in ChatGPT or Claude it writes your prompt, never the answer." },
+        { q: "How is it different from Gboard voice typing or iPhone dictation?", a: "Built-in dictation types what it hears, ums and all. X0 Bot writes what you meant: filler gone, punctuation in, misheard words repaired, and your names, numbers and amounts kept exactly. It can also set the tone of the message." },
+        { q: "Does X0 Bot change what I said?", a: "No. It cleans; it never rewrites. Filler words go and punctuation arrives, but your meaning, names and amounts stay as you said them." },
         { q: "Can I change the tone of my messages?", a: "Yes. Pick one of 16 voices once, from Professional and Friendly to Executive, Shakespeare or Pirate, and every message you speak is written in it." },
       ],
     },
     {
       title: "Languages",
       items: [
-        { q: "Which languages does Tailzu support?", a: `All 22 scheduled languages of India, Hinglish, English and ${others} more, including Spanish, French, Arabic, Japanese, Chinese and Korean.` },
-        { q: "Does Tailzu understand Hinglish?", a: "Natively. Speak Hindi and English in the same sentence and both stay as you said them. Nothing is forced into one language or the other." },
+        { q: "Which languages does X0 Bot support?", a: `All 22 scheduled languages of India, Hinglish, English and ${others} more, including Spanish, French, Arabic, Japanese, Chinese and Korean.` },
+        { q: "Does X0 Bot understand Hinglish?", a: "Natively. Speak Hindi and English in the same sentence and both stay as you said them. Nothing is forced into one language or the other." },
         { q: "Can it write Hindi in English letters?", a: "Yes, and it does by default: Hindi, like every language, comes back in English letters, the way you would type it. Want Devanagari? Say so in the sentence, like \"Hindi mein likho\"." },
-        { q: "Can Tailzu translate while I talk?", a: "Yes, when you ask. Say \"translate to English\" or \"Spanish mein likho\" and the message lands in that language." },
+        { q: "Can X0 Bot translate while I talk?", a: "Yes, when you ask. Say \"translate to English\" or \"Spanish mein likho\" and the message lands in that language." },
       ],
     },
     {
       title: "Apps and devices",
       items: [
-        { q: "Which apps does Tailzu work in?", a: "All of them. On your phone Tailzu is a keyboard, so it works in WhatsApp, Gmail, Instagram, Slack, ChatGPT and anywhere else you can type." },
-        { q: "Does Tailzu work on Windows and Mac?", a: "Yes. Tap Ctrl twice (or Alt twice), talk, and tap twice again. The text is pasted wherever your cursor is." },
-        { q: "Can I use Tailzu to prompt ChatGPT, Claude or Grok?", a: "Yes. Say it rough and a clean, structured prompt lands in the box, with nothing added that you did not say." },
+        { q: "Which apps does X0 Bot work in?", a: "All of them. On your phone X0 Bot is a keyboard, so it works in WhatsApp, Gmail, Instagram, Slack, ChatGPT and anywhere else you can type." },
+        { q: "Does X0 Bot work on Windows and Mac?", a: "Yes. Tap Ctrl twice (or Alt twice), talk, and tap twice again. The text is pasted wherever your cursor is." },
+        { q: "Can I use X0 Bot to prompt ChatGPT, Claude or Grok?", a: "Yes. Say it rough and a clean, structured prompt lands in the box, with nothing added that you did not say." },
         { q: "Can developers use it in Cursor or VS Code?", a: "Yes. The desktop app types into any window, so you say the change and it lands where the cursor is." },
-        { q: "Why does the iPhone keyboard ask for Full Access?", a: "An iPhone keyboard cannot reach the internet without it, and Tailzu needs the internet to hear you." },
-        { q: "Does Tailzu work offline?", a: "No. Recognition and cleanup run on servers, so it needs a connection." },
+        { q: "Why does the iPhone keyboard ask for Full Access?", a: "An iPhone keyboard cannot reach the internet without it, and X0 Bot needs the internet to hear you." },
+        { q: "Does X0 Bot work offline?", a: "No. Recognition and cleanup run on servers, so it needs a connection." },
       ],
     },
     {
       title: "Privacy",
       items: [
-        { q: "Does Tailzu store my voice?", a: "Not by default. Audio is sent for transcription and deleted right after. It is kept only if you turn on session history." },
-        { q: "Is my data used to train AI models?", a: "No. Tailzu does not use your data to train third-party AI models." },
+        { q: "Does X0 Bot store my voice?", a: "Not by default. Audio is sent for transcription and deleted right after. It is kept only if you turn on session history." },
+        { q: "Is my data used to train AI models?", a: "No. X0 Bot does not use your data to train third-party AI models." },
       ],
     },
     {
       title: "Price",
       items: p.free ? [
-        { q: "Is Tailzu free?", a: "Yes. Every word, in every language, on iPhone, Android, Windows and Mac, with no word limit and nothing to pay." },
-        { q: "How much does Tailzu cost?", a: "Nothing. Tailzu is free, and there is no paid plan to pick." },
+        { q: "Is X0 Bot free?", a: "Yes. Every word, in every language, on iPhone, Android, Windows and Mac, with no word limit and nothing to pay." },
+        { q: "How much does X0 Bot cost?", a: "Nothing. X0 Bot is free, and there is no paid plan to pick." },
       ] : [
-        { q: "Is Tailzu free?", a: `Yes, to start: ${num(p.freeWords)} words a month, free.` },
-        { q: "How much does Tailzu cost?", a: `${prices}. Both remove the word limit.` },
+        { q: "Is X0 Bot free?", a: `Yes, to start: ${num(p.freeWords)} words a month, free.` },
+        { q: "How much does X0 Bot cost?", a: `${prices}. Both remove the word limit.` },
         { q: "Can I cancel any time?", a: "Yes. Cancel from the App Store, Google Play or your receipt email; the plan runs to the end of the period you paid for." },
       ],
     },
@@ -187,17 +187,17 @@ export function homeFaq(): QA[] {
 export function langFaq(l: Lang): QA[] {
   const p = plans();
   const script = l.slug === "hinglish"
-    ? { q: "Does Tailzu turn Hinglish into pure Hindi or pure English?", a: "No. Two languages stay two: Hindi words stay Hindi and English words stay English, spelled the way you type." }
+    ? { q: "Does X0 Bot turn Hinglish into pure Hindi or pure English?", a: "No. Two languages stay two: Hindi words stay Hindi and English words stay English, spelled the way you type." }
     : l.india
       ? { q: `Can it write ${l.name} in English letters?`, a: `Yes, and it does by default: ${l.name} comes back in English letters, the way you would type it. Want ${l.script}? Say so in the sentence.` }
       : l.script === "Latin"
         ? { q: `Does it keep ${l.name} as ${l.name}?`, a: `Yes. Say it in ${l.name} and it is written in ${l.name}. It translates only when you ask.` }
         : { q: `Can it write ${l.name} in ${l.script}?`, a: `Yes, when you say so in the sentence. Otherwise it writes your ${l.name} in English letters, the way it is typed on any keyboard. It translates only when you ask.` };
   return [
-    { q: `Can I voice type in ${l.name} on WhatsApp?`, a: `Yes. Tailzu is a keyboard, so ${l.name} voice typing works in WhatsApp, Gmail, Instagram, ChatGPT and every other app you type in.` },
+    { q: `Can I voice type in ${l.name} on WhatsApp?`, a: `Yes. X0 Bot is a keyboard, so ${l.name} voice typing works in WhatsApp, Gmail, Instagram, ChatGPT and every other app you type in.` },
     script,
     p.free
-      ? { q: `Is ${l.name} voice typing free?`, a: `Yes. ${l.name} voice typing in Tailzu is free, with no word limit.` }
+      ? { q: `Is ${l.name} voice typing free?`, a: `Yes. ${l.name} voice typing in X0 Bot is free, with no word limit.` }
       : { q: `Is ${l.name} voice typing free?`, a: `Yes, to start: ${num(p.freeWords)} words a month, free. ${[p.lite?.name, p.elite?.name].filter(Boolean).join(" and ")} remove the limit.` },
   ];
 }
@@ -208,7 +208,7 @@ export function orgLd() {
   return {
     "@type": "Organization",
     "@id": ID.org,
-    name: "Tailzu",
+    name: "X0 Bot",
     url: `${ORIGIN}/`,
     logo: { "@type": "ImageObject", url: `${ORIGIN}/icon-512.png`, width: 512, height: 512 },
     parentOrganization: { "@type": "Organization", name: "Xooteq Lab Private Limited", url: "https://xooteq.com" },
@@ -216,7 +216,7 @@ export function orgLd() {
 }
 
 export function websiteLd() {
-  return { "@type": "WebSite", "@id": ID.site, name: "Tailzu", url: `${ORIGIN}/`, inLanguage: "en", publisher: { "@id": ID.org } };
+  return { "@type": "WebSite", "@id": ID.site, name: "X0 Bot", url: `${ORIGIN}/`, inLanguage: "en", publisher: { "@id": ID.org } };
 }
 
 /**
@@ -237,8 +237,8 @@ export function appLd() {
   return {
     "@type": "SoftwareApplication",
     "@id": ID.app,
-    name: "Tailzu",
-    alternateName: ["Tailzu AI Keyboard", "Tailzu Voice Keyboard"],
+    name: "X0 Bot",
+    alternateName: ["X0 Bot AI Keyboard", "X0 Bot Voice Keyboard"],
     description: DEFINITION,
     url: `${ORIGIN}/`,
     applicationCategory: "UtilitiesApplication",

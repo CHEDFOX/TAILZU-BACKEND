@@ -91,7 +91,7 @@ describe("the lines", () => {
   it("seeds map each English line to its Hinglish, with the slot filled and the flows split into parts", () => {
     const seeds = onboardHinglishSeeds();
     expect(seeds.get("Continue")).toBe("Aage chalo");
-    expect(seeds.get("Hi, I’m Tailzu.")).toBe("Hi, main Tailzu hoon.");
+    expect(seeds.get("Hi, I’m X0.")).toBe("Hi, main X0 hoon.");
     const rest = DAILY_LANGUAGES.length - DAILY_LANGUAGES.filter((l) => l.india || l.value === "en").length;
     expect(seeds.get(`+ ${rest} more`)).toBe(`+ ${rest} aur`);
     expect(seeds.has("+ {n} more")).toBe(false);

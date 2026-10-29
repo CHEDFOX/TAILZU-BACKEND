@@ -270,7 +270,7 @@ describe("add this logo to the project", () => {
     expect(t.fake.files(t.repo, "main")["src/assets/brand-logo.png"]).toBeUndefined();
   });
 
-  it("on a branch that is not Tailzu's it is a question, and the same request with its answer does it", async () => {
+  it("on a branch that is not X0 Bot's it is a question, and the same request with its answer does it", async () => {
     const t = await withProject();
     const asked = await t.s.call("alice", "POST", `/v1/files/${t.f.id}/asset`, { projectId: t.p.id, use: "icon", branch: "main" });
     expect(asked.statusCode).toBe(202);

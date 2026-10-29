@@ -117,7 +117,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
     ...(r.signal ? { signal: r.signal } : {}), record,
   });
   notes.push(...record.notes.splice(0));
-  if (kit.notConnected.length) notes.push(`Not connected yet: ${kit.notConnected.join(", ")}. Connect ${kit.notConnected.length === 1 ? "it" : "them"} in Tailzu to let this bot use ${kit.notConnected.length === 1 ? "it" : "them"}.`);
+  if (kit.notConnected.length) notes.push(`Not connected yet: ${kit.notConnected.join(", ")}. Connect ${kit.notConnected.length === 1 ? "it" : "them"} in X0 Bot to let this bot use ${kit.notConnected.length === 1 ? "it" : "them"}.`);
 
   const user = botUserMessage({
     bot: { ...bot, skills: bot.skills },
@@ -179,7 +179,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const clean = scrub(text);
   if (clean.cleaned) { notes.push("Part of the reply was left out: it looked like it held a secret."); words?.onReset(); }
   text = clean.text;
-  if (record.approvals.length) notes.push(`${record.approvals.length === 1 ? "A change is" : "Changes are"} waiting for your yes in Tailzu.`);
+  if (record.approvals.length) notes.push(`${record.approvals.length === 1 ? "A change is" : "Changes are"} waiting for your yes in X0 Bot.`);
   emit({ t: "text", text });
 
   // What the owner told it, and how the talk is going.

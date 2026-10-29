@@ -126,7 +126,7 @@ export function voiceBars(heights: number[], o: { live?: boolean } = {}): Node {
 export function micBlockedNotice(): Node {
   return when({ truthy: "micBlocked" }, row([
     icon("mic", { size: 16, color: C.meta }),
-    text("The microphone is off for Tailzu.", { size: 13, color: C.grey70, lineHeight: 18, style: { flexShrink: 1 } }),
+    text("The microphone is off for X0 Bot.", { size: 13, color: C.grey70, lineHeight: 18, style: { flexShrink: 1 } }),
     text("Open Settings", { size: 13, weight: 600, lineHeight: 18 }),
   ], { gap: 8, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: C.surface, alignSelf: "flex-start" },
   seq({ kind: "setState", path: "micBlocked", value: false }, { kind: "openSettings" })));

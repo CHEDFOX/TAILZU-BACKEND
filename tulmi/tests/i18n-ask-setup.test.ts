@@ -70,7 +70,7 @@ describe("Ask's setup card for a non-English profile", () => {
       }
       expect(out!.props!.rows).toEqual(card!.props!.rows.map((r: any) => ({ key: r.key, title: "DE:" + r.title, sub: "DE:" + r.sub })));
       // Asked of the translator, the headline's second half and the rows among them.
-      expect(seen.items).toEqual(expect.arrayContaining(["what you see.", "Read the screen", "Allow", "Turn off", "Restart Tailzu to finish"]));
+      expect(seen.items).toEqual(expect.arrayContaining(["what you see.", "Read the screen", "Allow", "Turn off", "Restart X0 Bot to finish"]));
       // The card's own identifiers never are.
       expect(seen.items).not.toContain("read");
       expect(seen.items).not.toContain("pictures");

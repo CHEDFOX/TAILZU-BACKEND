@@ -66,7 +66,7 @@ const sizing = (bytesAt: (maxSide: number) => number) => {
   return { worker, sides };
 };
 
-describe("a logo on a branch Tailzu made", () => {
+describe("a logo on a branch X0 Bot made", () => {
   it("is made fit for a logo, named from its file, put where the project keeps its code's assets, and committed with nothing asked", async () => {
     const t = await project();
     const w = rig.fakeWorker();

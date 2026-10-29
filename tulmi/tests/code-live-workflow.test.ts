@@ -19,9 +19,9 @@ const shadow = await import("../src/code/shadow.js");
 const { SESSION_COMMAND, isSessionCommands } = await import("../src/code/live/protocol.js");
 
 /** The session workflow for a job that may last 20 minutes, written out. */
-const GOLDEN = `# Written by Tailzu for a live session of a coding job. Do not edit: it is replaced for every session.
+const GOLDEN = `# Written by X0 Bot for a live session of a coding job. Do not edit: it is replaced for every session.
 # It runs only for the throwaway tailzu-run/ branch it was written on, and the branch is deleted afterwards.
-name: Tailzu run
+name: X0 Bot run
 on:
   push:
     branches: ['tailzu-run/**']

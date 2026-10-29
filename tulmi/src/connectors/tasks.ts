@@ -179,7 +179,7 @@ export class TaskService {
     const free = def?.auth === "none";
     const conn = def && !free ? await this.o.store.getConnection(userId, line.connector) : null;
     if (!def || (!free && !conn?.tokensEnc)) {
-      return { kind: "stopped", message: `${def?.name ?? "That app"} isn't connected. You can connect it in Tailzu.`, code: "not_connected" };
+      return { kind: "stopped", message: `${def?.name ?? "That app"} isn't connected. You can connect it in X0 Bot.`, code: "not_connected" };
     }
     /** The app could not be asked: its own words and code when it gave them. */
     const trouble = (e: unknown): UseOutcome => e instanceof ConnectorError
@@ -199,8 +199,8 @@ export class TaskService {
       const off = now?.toolPolicy[line.tool] === "off";
       return {
         kind: "stopped",
-        message: changed ? `${human(line.tool)} changed in ${def.name} since you approved it. Have a look in Tailzu first.`
-          : off ? `${human(line.tool)} is switched off for ${def.name}. You can change that in Tailzu.`
+        message: changed ? `${human(line.tool)} changed in ${def.name} since you approved it. Have a look in X0 Bot first.`
+          : off ? `${human(line.tool)} is switched off for ${def.name}. You can change that in X0 Bot.`
             : `${def.name} doesn't have an action called ${clip(line.tool, 40)}.`,
         code: changed || off ? "blocked" : "unknown_tool",
       };
@@ -229,7 +229,7 @@ export class TaskService {
     if (verdict === "block") {
       return {
         kind: "stopped", code: "blocked",
-        message: def.custom ? `${human(info.name)} is switched off for ${def.name}. You can change that in Tailzu.` : blockedMessage(def.name, conn!.level, risk),
+        message: def.custom ? `${human(info.name)} is switched off for ${def.name}. You can change that in X0 Bot.` : blockedMessage(def.name, conn!.level, risk),
       };
     }
     if (verdict === "approve" && !opts.allowWrite) {
@@ -348,6 +348,6 @@ export class TaskService {
 function blockedMessage(app: string, level: Level, risk: Risk): string {
   const what = risk === "send" ? "send things" : risk === "destructive" ? "delete things" : risk === "pay" ? "make payments" : "change things";
   return level === "look"
-    ? `${app} is set to look only, so I can't ${what} there. You can change that in Tailzu.`
-    : `${app} is set to drafts only, so I can't ${what} there. You can change that in Tailzu.`;
+    ? `${app} is set to look only, so I can't ${what} there. You can change that in X0 Bot.`
+    : `${app} is set to drafts only, so I can't ${what} there. You can change that in X0 Bot.`;
 }

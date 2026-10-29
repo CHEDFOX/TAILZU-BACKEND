@@ -61,7 +61,7 @@ describe("words an action shows", () => {
     }
   });
 
-  it("a history card copies what Tailzu wrote, where the build can", () => {
+  it("a history card copies what X0 Bot wrote, where the build can", () => {
     const tap = (can: string[]) => build("history", can).actions.openDetail;
     expect(JSON.stringify(tap(["ActionText"]))).toContain('"text":"$state.item.output"');
     // An older build gets the touch, not a placeholder and not a literal "$state".

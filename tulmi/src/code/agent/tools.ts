@@ -771,6 +771,6 @@ function readablePath(raw: string): string {
   } catch {
     throw new Refused(`${JSON.stringify(short(path, 80))} is not a path inside the repo. Use a path relative to the repo's root, with no .. and nothing in .git.`);
   }
-  if (isSecretPath(path)) throw new Refused(`${path} is the kind of file that holds secrets, so Tailzu does not read it. If you need to know a setting's name, look at .env.example.`);
+  if (isSecretPath(path)) throw new Refused(`${path} is the kind of file that holds secrets, so X0 Bot does not read it. If you need to know a setting's name, look at .env.example.`);
   return path;
 }

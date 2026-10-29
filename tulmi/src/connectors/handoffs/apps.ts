@@ -72,7 +72,7 @@ const given = (v: unknown) => v !== undefined && v !== null && String(v).trim() 
 const str = (description: string) => ({ type: "string", description });
 
 /** "Who it is for", which every message tool takes for what Tailzu says and nothing else. */
-const WHO = str("Who it is for, as they said it (\"Mom\", \"Rahul\"). Only for what Tailzu says; never sent.");
+const WHO = str("Who it is for, as they said it (\"Mom\", \"Rahul\"). Only for what X0 Bot says; never sent.");
 
 function tool(name: string, description: string, properties: Record<string, unknown>, required: string[], phoneOnly = false): NativeTool {
   return { name, risk: "write", description, inputSchema: { type: "object", properties, required }, annotations: {}, ...(phoneOnly ? { phoneOnly } : {}) };
@@ -202,7 +202,7 @@ export function rupees(v: unknown): string | null {
 
 const UPI: Spec[] = [{
   tool: tool("pay",
-    "Open the person's UPI app (Google Pay, PhonePe, Paytm, BHIM) with a payment filled in, for them to check and enter their own PIN. Tailzu pays nothing. Phone only. Needs the payee's UPI ID (name@bank) and the amount in rupees: if they gave no UPI ID, ASK for it, never make one up from a name or a number.",
+    "Open the person's UPI app (Google Pay, PhonePe, Paytm, BHIM) with a payment filled in, for them to check and enter their own PIN. X0 Bot pays nothing. Phone only. Needs the payee's UPI ID (name@bank) and the amount in rupees: if they gave no UPI ID, ASK for it, never make one up from a name or a number.",
     { vpa: str("The payee's UPI ID, like rahul@okhdfcbank, exactly as they gave it."), amount: str("Rupees, like 500 or 1250.50."), name: str("The payee's name, as they said it."), note: str("What it is for, a few words.") },
     ["vpa", "amount"], true),
   make(a) {

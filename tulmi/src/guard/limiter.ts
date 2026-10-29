@@ -58,7 +58,7 @@ export class Overloaded extends Error {
   constructor(readonly reason: OverloadReason, readonly position: number, readonly retryAfterSec: number) {
     super(reason === "user_queue_full"
       ? "You have several of these running already. Wait for one to finish, then try again."
-      : "Tailzu is busy right now. Try again in a moment.");
+      : "X0 Bot is busy right now. Try again in a moment.");
     this.name = "Overloaded";
   }
 }

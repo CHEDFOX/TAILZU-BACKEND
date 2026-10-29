@@ -33,7 +33,7 @@ const oneLine = (s: string, max: number): string => {
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
 };
 
-export const INERT_NOTE = "(ignored: it tried to change Tailzu's own rules)";
+export const INERT_NOTE = "(ignored: it tried to change X0 Bot's own rules)";
 const MEMORY_SHOWN = 20;
 const SUMMARY_SHOWN = 800;
 const HISTORY_SHOWN = 6;

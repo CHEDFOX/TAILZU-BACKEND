@@ -97,7 +97,7 @@ export const INCREMENTAL_BUDGET_SHARE = 0.2;
 /** Words for a person when a build ends badly. Never GitHub's own words, a path or a line of code. */
 export function whyFailed(err: unknown): string {
   if (err instanceof ConnectorError) return err.message;
-  return "Tailzu couldn't finish reading this project. Try again in a moment.";
+  return "X0 Bot couldn't finish reading this project. Try again in a moment.";
 }
 
 const yieldNow = () => new Promise<void>((r) => setImmediate(r));

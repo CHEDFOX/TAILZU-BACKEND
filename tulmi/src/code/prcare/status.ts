@@ -24,8 +24,8 @@ const CI_WORDS: Record<CiOutcome, string> = {
   also_red: "Checks are failing, but not because of this pull request. Nothing was changed.",
   infra: "A check failed, but not because of the code. Nothing was changed.",
   capped: "Checks are still failing after the automatic fixes for today. Waiting for you.",
-  unfixed: "Checks are failing and Tailzu could not fix them. Waiting for you.",
-  blind: "Tailzu cannot read this repository's checks (the GitHub App needs Checks and Commit statuses read access).",
+  unfixed: "Checks are failing and X0 Bot could not fix them. Waiting for you.",
+  blind: "X0 Bot cannot read this repository's checks (the GitHub App needs Checks and Commit statuses read access).",
 };
 
 const time = (at: number): string => new Date(at).toISOString().slice(5, 16).replace("T", " ");
@@ -33,10 +33,10 @@ const time = (at: number): string => new Date(at).toISOString().slice(5, 16).rep
 /** The comment's text for a row. A pure function of the state, so it is the same text twice. */
 export function statusBody(row: Pick<CareRow, "origin" | "state" | "ciRounds">, now: number): string {
   const s: CareState = row.state;
-  const lines: string[] = [STATUS_MARK, "**Tailzu status**", ""];
+  const lines: string[] = [STATUS_MARK, "**X0 Bot status**", ""];
   const open = s.jobs.filter((j) => !j.done);
   if (s.ended) {
-    lines.push(s.ended === "released" ? "Tailzu has stopped looking after this pull request, as you asked." : `This pull request is ${s.ended}. Tailzu has stopped looking after it.`);
+    lines.push(s.ended === "released" ? "X0 Bot has stopped looking after this pull request, as you asked." : `This pull request is ${s.ended}. X0 Bot has stopped looking after it.`);
   } else {
     lines.push(`- **Checks:** ${s.ci ? `${CI_WORDS[s.ci.outcome]}${s.ci.note ? ` ${redactText(s.ci.note, 300)}` : ""}` : "Not looked at yet."}`);
     lines.push(`- **Branch:** ${s.conflict ? `${redactText(s.conflict.note, 300)}` : "No conflict with the default branch."}`);
@@ -46,7 +46,7 @@ export function statusBody(row: Pick<CareRow, "origin" | "state" | "ciRounds">, 
   }
   const notes = s.notes.slice(-NOTES_KEEP);
   if (notes.length) lines.push("", "Latest:", ...notes.map((n) => `- ${time(n.at)} UTC: ${redactText(n.text, 300).replace(/\n+/g, " ")}`));
-  lines.push("", `<sub>${row.origin === "handed" ? "You handed this pull request to Tailzu." : "Tailzu opened this pull request."} This comment is edited in place; Tailzu does not post more. Updated ${time(now)} UTC.</sub>`);
+  lines.push("", `<sub>${row.origin === "handed" ? "You handed this pull request to X0 Bot." : "X0 Bot opened this pull request."} This comment is edited in place; X0 Bot does not post more. Updated ${time(now)} UTC.</sub>`);
   return cut(lines.join("\n"), 8000);
 }
 

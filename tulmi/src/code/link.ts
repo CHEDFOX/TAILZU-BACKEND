@@ -88,16 +88,16 @@ export async function completeCallback(d: LinkDeps, q: CallbackQuery, now = Date
   // An organisation member asked its owner to install: there is nothing of ours to check or keep yet.
   if (q.setupAction === "request") return { kind: "waiting" };
 
-  if (!q.state) throw new ConnectorError("bad_state", "That link has expired or isn't valid. Start again from Tailzu.");
+  if (!q.state) throw new ConnectorError("bad_state", "That link has expired or isn't valid. Start again from X0 Bot.");
   const st = await verifyState(q.state, now);
-  if (st.connectorId !== CODE_STATE_ID) throw new ConnectorError("bad_state", "That link has expired or isn't valid. Start again from Tailzu.");
+  if (st.connectorId !== CODE_STATE_ID) throw new ConnectorError("bad_state", "That link has expired or isn't valid. Start again from X0 Bot.");
   const userId = st.userId;
 
   if (!q.code) return { kind: "synced", count: await resyncInstallations(d, userId) };
 
   const installationId = /^[0-9]{1,15}$/.test(q.installationId ?? "") ? Number(q.installationId) : 0;
   if (!Number.isSafeInteger(installationId) || installationId <= 0) {
-    throw new ConnectorError("bad_request", "GitHub didn't say which install this was. Start again from Tailzu.");
+    throw new ConnectorError("bad_request", "GitHub didn't say which install this was. Start again from X0 Bot.");
   }
   // The person's own GitHub token: used for the installs they reach and for who they are, then gone.
   const userToken = await d.github.exchangeUserCode(q.code);

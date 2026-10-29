@@ -130,7 +130,7 @@ describe("owner only", () => {
     }
   });
 
-  it("lists the four Tailzu ships and then yours, with the palette", async () => {
+  it("lists the four X0 Bot ships and then yours, with the palette", async () => {
     const s = await served();
     await s.post("/v1/bots", ALICE, DEF);
     const res = await s.get("/v1/bots");
@@ -440,7 +440,7 @@ describe("chatting, commands, memory, linked apps, the export", () => {
     expect(linked.statusCode).toBe(200);
     expect(linked.json().bot.skills.connectors).toEqual(["fake-cal"]);
     const both = await s.call("PUT", "/v1/bots/api-bot/connectors/google-calendar", ALICE);
-    expect(both.json().warnings).toContain("Not connected yet: Google Calendar. Connect it in Tailzu to let this bot use it.");
+    expect(both.json().warnings).toContain("Not connected yet: Google Calendar. Connect it in X0 Bot to let this bot use it.");
     expect((await s.get("/v1/bots/api-bot/connectors")).json().connectors).toEqual([
       { id: "fake-cal", name: "Fake Calendar", status: "connected" }, { id: "google-calendar", name: "Google Calendar", status: "not_connected" },
     ]);

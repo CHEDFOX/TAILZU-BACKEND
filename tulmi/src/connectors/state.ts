@@ -51,6 +51,6 @@ export async function verifyState(token: string, now = Date.now(), key = stateKe
     const as = typeof payload.asi === "string" ? { issuer: payload.asi, issRequired: payload.isr === true } : {};
     return { userId: payload.uid, connectorId: payload.cid, ...as };
   } catch {
-    throw new ConnectorError("bad_state", "That sign-in link has expired or isn't valid. Start again from Tailzu.");
+    throw new ConnectorError("bad_state", "That sign-in link has expired or isn't valid. Start again from X0 Bot.");
   }
 }

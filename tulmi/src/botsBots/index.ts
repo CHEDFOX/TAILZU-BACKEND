@@ -106,7 +106,7 @@ export function shareAsk(slug: string, kind: "file" | "link" | "text"): string {
 export function shareLine(slug: string, name: string): string {
   switch (slug) {
     case "travel": return "Travel bot adds the times and booking details to your trip. It won't book or pay for anything.";
-    case "plan": return "Plan bot puts it on your calendar in Tailzu. You can change it or take it out any time.";
+    case "plan": return "Plan bot puts it on your calendar in X0 Bot. You can change it or take it out any time.";
     case "code": return "Code bot reads it and answers. It changes code only through a pull request you approve.";
     case "keybot": return "Keybot writes it in your voice. You send it yourself.";
     default: return `${name} reads it and answers here. It asks before it changes anything or spends money.`;

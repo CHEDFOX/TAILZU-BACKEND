@@ -364,7 +364,7 @@ describe("POST /v1/code/projects/:id/intake", () => {
     await app.close();
   });
 
-  it("answers by question id, or in a free-text reply to the first open question, and 'proceed' lets Tailzu decide the rest", async () => {
+  it("answers by question id, or in a free-text reply to the first open question, and 'proceed' lets X0 Bot decide the rest", async () => {
     const { r, post, app } = await ready();
     const fc = fakeCall();
     fc.on("work.spec", SPEC);

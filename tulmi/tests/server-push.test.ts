@@ -61,9 +61,9 @@ describe("A1: the words the server sent but never translated", () => {
     const boot = buildBootstrap({ onboarded: true, formFactor: "desktop" });
     const f = flagsOf(await localize(boot, "hi"));
     const shell = f["desktop.shell"] as { tray: Record<string, string>; notify: Record<string, string>; gate: Record<string, string>; gateLayout: Record<string, unknown> };
-    expect(shell.tray.quit).toBe("T:Quit Tailzu");
+    expect(shell.tray.quit).toBe("T:Quit X0 Bot");
     expect(shell.notify.micBusy).toBe("T:microphone is in use by another app");
-    expect(shell.gate.title).toBe("Tailzu");                        // the brand is never translated
+    expect(shell.gate.title).toBe("X0 Bot");                        // the brand is never translated
     expect(shell.gateLayout.align).toBe("right");                   // a layout value is not a word
     expect(shell.gateLayout.scrim).toMatch(/^linear-gradient/);
     expect((f["desktop.tones"] as Array<{ id: string; label: string }>)[1]).toEqual({ id: "formal", label: "T:Formal" });
@@ -73,7 +73,7 @@ describe("A1: the words the server sent but never translated", () => {
     expect(india.name).not.toBe("India");                           // the runtime's own name for it, no translation paid
     // English is untouched.
     const en = flagsOf(await localize(buildBootstrap({ onboarded: true, formFactor: "desktop" }), "en"));
-    expect((en["desktop.shell"] as { tray: Record<string, string> }).tray.quit).toBe("Quit Tailzu");
+    expect((en["desktop.shell"] as { tray: Record<string, string> }).tray.quit).toBe("Quit X0 Bot");
   });
 
   it("the keyboard's labels, and nothing else of its config", async () => {
@@ -120,7 +120,7 @@ describe("A2, B1, B4: the desktop's lists", () => {
     for (const p of DESKTOP_ROUTER.screenStrong) expect(() => new RegExp(p, "u")).not.toThrow();
     for (const t of DESKTOP_ROUTER.tasks) expect(new RegExp(t.re, "u").test("")).toBe(false);
     expect(new RegExp(DESKTOP_ROUTER.tasks[0]!.re, "u").test("plan my saturday")).toBe(true);
-    expect(desk["desktop.router.names"]).toEqual(["Tailzu", "Blip"]);
+    expect(desk["desktop.router.names"]).toEqual(["X0", "Blip", "Tailzu"]);
   });
   it("Ask's grammar is the server's own rules, not a copy", () => {
     const g = desk["desktop.agent.grammar"] as Record<string, { source: string; flags: string }>;
@@ -185,11 +185,11 @@ describe("A6: the name card, for someone onboarded before the Bots app asked it"
     "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "email", source: "saved", gender: null, saved: false, onboarded },
     "GET /v1/personality": { personality: { assistantName: "Zara" } },
   });
-  it("bots.name-it is About you alone, which closes once saved: not Name your Tailzu, not the first run's finish", async () => {
+  it("bots.name-it is About you alone, which closes once saved: not Name your X0 Bot, not the first run's finish", async () => {
     const s = await build("bots.name-it", "phone", api(true));
     const t = texts(s.root!);
     expect(t).toContain("What's your name?");
-    expect(t).not.toContain("What should I be called?");
+    expect(t).not.toContain("What will you call me?");
     const kinds = actionKinds(s.root);
     expect(kinds).toContain("navigateBack");
     expect(kinds).not.toContain("switchTab");
@@ -197,11 +197,11 @@ describe("A6: the name card, for someone onboarded before the Bots app asked it"
   it("someone in the first run still gets both steps", async () => {
     const t = texts((await build("bots.name-it", "phone", api(false))).root!);
     expect(t).toContain("What's your name?");
-    expect(t).toContain("What should I be called?");
+    expect(t).toContain("What will you call me?");
   });
 });
 
-describe("B3: Tailzu Code on this computer, drawn on bots.computer", () => {
+describe("B3: X0 Code on this computer, drawn on bots.computer", () => {
   const api = { "GET /v1/you/computers": { online: [], offline: [], helped: { jobs: 0, minutes: 0 } } };
   it("a window that has the card gets it, with every word it shows; any other gets none", async () => {
     const card = walk((await build("bots.computer", "desktop", api, ["DeskRunner"])).root!).find((n) => n.type === "DeskRunner");

@@ -103,7 +103,7 @@ export function createFront(o: FrontOptions = {}): Front | null {
     }, opts),
     // The decision and the road it takes are one message: their model calls are rounded up to the paise once, together (brain/spend.ts).
     ask: (message, ctx, opts = {}) => inRequestSpend(async () => {
-      if (guard.daily.leftPaise(ctx.userId) <= 0) throw new FrontError("daily_limit", "You've used what Tailzu may spend on your messages today. It starts again tomorrow.", 429);
+      if (guard.daily.leftPaise(ctx.userId) <= 0) throw new FrontError("daily_limit", "You've used what X0 Bot may spend on your messages today. It starts again tomorrow.", 429);
       const decision = await front.decide(message, ctx, opts.signal ? { signal: opts.signal } : {});
       return { decision, ...(await front.dispatch(decision, message, ctx, opts)) };
     }),

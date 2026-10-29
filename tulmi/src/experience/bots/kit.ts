@@ -397,7 +397,7 @@ export function writeOn(content: string, o: { size: number; lineHeight: number; 
 
 /** The Tailzu mark, alive (LiveMark): a ring dot lit in each working bot's colour; a tap runs `onPress`. */
 export function liveMark(size: number, lit: string[], onPress?: ActionRef): Node {
-  return { type: "LiveMark", props: { size, lit: lit.slice(0, 8), label: "Tailzu. Ask anything" }, ...(onPress ? { on: { onPress } } : {}) };
+  return { type: "LiveMark", props: { size, lit: lit.slice(0, 8), label: "X0 Bot. Ask anything" }, ...(onPress ? { on: { onPress } } : {}) };
 }
 
 /** A compact bar over the top of the page that comes in once the page has scrolled past `at` (page()'s `pinned`). */
@@ -886,7 +886,7 @@ export function sidebar(ctx: BotsCtx, active?: string): Node {
   });
   const settingsId = ctx.desk.pages ? "desk_settings" : "settings";
   return col([
-    row([tailzuMark(28), text("Tailzu", { size: 17, weight: 700, tracking: -0.3 })], { gap: 10, paddingHorizontal: 8, paddingBottom: 16 }),
+    row([tailzuMark(28), text("X0 Bot", { size: 17, weight: 700, tracking: -0.3 })], { gap: 10, paddingHorizontal: 8, paddingBottom: 16 }),
     ...TABS.map((t) => navItem(t.title, tabGlyph(t.id, active === t.id, live.tab, 22), active === t.id, toTab(t.id), 44)),
     sectionLabel("Your bots", { style: { paddingTop: 16, paddingBottom: 6, paddingHorizontal: 10 } }),
     ...botItems,

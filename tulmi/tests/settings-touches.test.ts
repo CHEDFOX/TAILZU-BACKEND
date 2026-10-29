@@ -692,13 +692,13 @@ describe("the words of Settings", () => {
     expect(seeds.has("Your Account And Your Plan.")).toBe(false);
   });
 
-  it("the voice is Tailzu's: short, warm, honest, and in the first person", () => {
+  it("the voice is X0 Bot's: short, warm, honest, and in the first person", () => {
     const sentences = Object.values(SW).filter((l) => (l as { sentence?: true }).sentence).map((l) => l.en);
     expect(sentences.length).toBeGreaterThan(8);
     for (const s of sentences) expect(s.length, s).toBeLessThan(110);
     const joined = sentences.join(" ");
     expect(joined).toMatch(/\bI\b/);
-    expect(joined).not.toMatch(/\bTailzu\b/);
+    expect(joined).not.toMatch(/\bX0( Bot)?\b|\bTailzu\b/);
   });
 
   it("Settings in Hinglish: the design's words win over the model's old guess, and the model is not asked for them", async () => {

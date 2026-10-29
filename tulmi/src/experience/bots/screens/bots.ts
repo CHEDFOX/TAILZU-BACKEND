@@ -69,7 +69,7 @@ const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowe
 /** "Ready · made by you", "Working · fixing cart", "Needs you". */
 function stateLine(ctx: BotsCtx, bot: { slug: string; builtin: boolean }): string {
   const l = liveOf(ctx, bot.slug);
-  const who = bot.builtin ? "Tailzu's own" : "made by you";
+  const who = bot.builtin ? "X0 Bot's own" : "made by you";
   if (l?.needs) return `Needs you · ${who}`;
   if (l?.working) return `Working · ${l.doing ?? "on it"}`;
   return `Ready · ${who}`;
@@ -282,7 +282,7 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
 
 /** Tailzu's own calendar and to-dos, as a bot's apps (src/calendar/bots.ts); the old Google ids mean them now. */
 const OWN_APP_LINE: Record<string, string> = {
-  calendar: "Your days in Tailzu", tasks: "Your to-dos in Tailzu", "google-calendar": "Your days in Tailzu", "google-tasks": "Your to-dos in Tailzu",
+  calendar: "Your days in X0 Bot", tasks: "Your to-dos in X0 Bot", "google-calendar": "Your days in X0 Bot", "google-tasks": "Your to-dos in X0 Bot",
 };
 /** Not offered in the Bots app: Tailzu keeps its own (routes/botsYou.ts). */
 const NOT_OFFERED_APPS = new Set(["google-calendar", "google-tasks"]);
@@ -658,7 +658,7 @@ function editPhone(ctx: BotsCtx, d: EditData) {
         botAvatar(look, 36), text(bot.builtin ? bot.name : `Edit ${bot.name}`, { size: 19, weight: 600, lineHeight: 24, lines: 1, style: { flexShrink: 1 } }), grow(),
         row([text("Done", { size: 15, weight: 600, lineHeight: 20 })], { minHeight: 44, paddingHorizontal: 4 }, done),
       ], { gap: 10 }),
-      ...(bot.builtin ? [notice("One of Tailzu's own bots: its rules are fixed. What it remembers is yours to forget.")] : [
+      ...(bot.builtin ? [notice("One of X0 Bot's own bots: its rules are fixed. What it remembers is yours to forget.")] : [
         col([sectionLabel("Name"), p.nameField], { gap: 8 }),
         col([sectionLabel("Colour"), p.colours, meta(p.takenLine, { size: 12 })], { gap: 8 }),
       ]),
@@ -693,7 +693,7 @@ function editDesk(ctx: BotsCtx, d: EditData) {
     ...(bot.builtin ? [] : [col([p.del, meta(`Removes its rules and what it remembers. Your apps stay as they are.`, { size: 12 })], { gap: 2, alignItems: "flex-start" })]),
   ], { width: 330, flexShrink: 0, gap: 12 });
   const settings = col([
-    ...(bot.builtin ? [notice("One of Tailzu's own bots: its rules are fixed. What it remembers is yours to forget.")] : [
+    ...(bot.builtin ? [notice("One of X0 Bot's own bots: its rules are fixed. What it remembers is yours to forget.")] : [
       settingRow("Name", "Shown in your bot list and in Spaces.", p.nameField),
       settingRow("Colour", p.takenLine, p.colours),
     ]),
@@ -854,7 +854,7 @@ interface ShopEntry { id: string; kind: "ready" | "people"; slug?: string; name:
 interface Shop { readyMade: ShopEntry[]; people: ShopEntry[] }
 
 const count = (n: number) => (n >= 20_000 ? `${Math.round(n / 1000)}k` : n >= 10_000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : n.toLocaleString("en-IN"));
-const usedBy = (e: ShopEntry) => `${e.by === "you" ? "By you" : e.kind === "ready" ? "Tailzu" : `By ${e.by}`} · ${e.adds ? `${count(e.adds)} use it` : "new"}`;
+const usedBy = (e: ShopEntry) => `${e.by === "you" ? "By you" : e.kind === "ready" ? "X0 Bot" : `By ${e.by}`} · ${e.adds ? `${count(e.adds)} use it` : "new"}`;
 const addEntry = (e: ShopEntry): ActionRef => call("POST", `${A}/store/${enc(e.id)}/add`, {}, { assignTo: "added", ok: seq(toast(`${e.name} added to your bots`), refresh), fail: toast("Couldn't add it. Try again.", true) });
 const shopLook = (e: ShopEntry) => lookOf(e.slug ?? e.name.toLowerCase().replace(/\s+/g, "-"), e.colour);
 function entryAction(e: ShopEntry, wide = false): Node {
@@ -1425,19 +1425,19 @@ function sharePeople(s: ReturnType<typeof sharedOf>): ActionRef {
 
 /** "Ask any bot": the front door gives it to the bot that fits (POST /v1/ask with bot "any"). Always on the list, last unless it is the pick. */
 const ASK_ANY = "any";
-const askAny = (): LiveBot => ({ ...lookOf("tailzu"), slug: ASK_ANY, name: "Ask any bot", builtin: true, state: "idle", working: false, needs: 0, purpose: "Tailzu picks the bot that fits" });
+const askAny = (): LiveBot => ({ ...lookOf("tailzu"), slug: ASK_ANY, name: "Ask any bot", builtin: true, state: "idle", working: false, needs: 0, purpose: "X0 Bot picks the bot that fits" });
 
 const shareLineFor = (slug: string, name: string) => {
   switch (slug) {
-    case ASK_ANY: return "Tailzu gives it to the bot that fits best. It asks before it changes anything or spends money.";
+    case ASK_ANY: return "X0 Bot gives it to the bot that fits best. It asks before it changes anything or spends money.";
     case "travel": return "Travel bot adds the times and booking details to your trip. It won't book or pay for anything.";
-    case "plan": return "Plan bot puts it on your calendar in Tailzu. You can change it or take it out any time.";
+    case "plan": return "Plan bot puts it on your calendar in X0 Bot. You can change it or take it out any time.";
     case "code": return "Code bot reads it and answers. It changes code only through a pull request you approve.";
     case "keybot": return "Keybot writes it in your voice. You send it yourself.";
     default: return `${name} reads it and answers here. It asks before it changes anything or spends money.`;
   }
 };
-const SHARE_LINE: Record<string, string> = { [ASK_ANY]: "Tailzu picks the bot that fits", travel: "Reads tickets, keeps your trips in order", plan: "Calendar and reminders", code: "Projects and code", keybot: "Writes and replies in your voice" };
+const SHARE_LINE: Record<string, string> = { [ASK_ANY]: "X0 Bot picks the bot that fits", travel: "Reads tickets, keeps your trips in order", plan: "Calendar and reminders", code: "Projects and code", keybot: "Writes and replies in your voice" };
 
 function shareSend(ctx: BotsCtx, s: ReturnType<typeof sharedOf>, d: ShareData): ActionRef {
   const names = s.files.map((f) => f.name).join(", ").slice(0, 200);
@@ -1478,14 +1478,14 @@ function sharePhone(ctx: BotsCtx, d: ShareData) {
   });
   const choose = (b: LiveBot) => seq(setState("bot", b.slug), setState("what", "$state.asks." + b.slug));
   if (!s.kind) {
-    return page(ctx, { back: true, title: "Send to Tailzu", nav: "bots", body: [emptyState({ pose: "hello", title: "Nothing to send yet", body: "From any app's Share menu, pick Tailzu, and it lands here with the bot that fits best." })] });
+    return page(ctx, { back: true, title: "Send to X0 Bot", nav: "bots", body: [emptyState({ pose: "hello", title: "Nothing to send yet", body: "From any app's Share menu, pick X0 Bot, and it lands here with the bot that fits best." })] });
   }
   const asks: Record<string, string> = {};
   for (const b of bots) asks[b.slug] = b.slug === pick && d.ask ? d.ask : defaultAsk(b.slug, s.kind);
   return page(ctx, {
-    title: "Send to Tailzu", nav: "bots", state: { bot: pick, what: asks[pick] ?? "", asks },
+    title: "Send to X0 Bot", nav: "bots", state: { bot: pick, what: asks[pick] ?? "", asks },
     body: [
-      row([row([text("Cancel", { size: 15, color: C.grey70, lineHeight: 20 })], { minHeight: 44, paddingRight: 8 }, back()), grow(), text("Send to Tailzu", { size: 16, weight: 600, lineHeight: 21 }), grow(), box([], { width: 50 })]),
+      row([row([text("Cancel", { size: 15, color: C.grey70, lineHeight: 20 })], { minHeight: 44, paddingRight: 8 }, back()), grow(), text("Send to X0 Bot", { size: 16, weight: 600, lineHeight: 21 }), grow(), box([], { width: 50 })]),
       sharedCard(ctx, s),
       col([
         sectionLabel("Send to a bot"),
@@ -1524,7 +1524,7 @@ function shareDesk(ctx: BotsCtx, d: ShareData) {
   const pick = sharePick(ctx, d);
   const bots = shareBots(ctx, pick);
   if (!s.kind) {
-    return page(ctx, { title: "Send to a bot", nav: "bots", body: [title("Send to a bot"), emptyState({ pose: "hello", title: "Nothing to send yet", body: "Drop a file, a link or some text on this window, or pick Tailzu in another app's Share menu. It lands here with the bot that fits best." })] });
+    return page(ctx, { title: "Send to a bot", nav: "bots", body: [title("Send to a bot"), emptyState({ pose: "hello", title: "Nothing to send yet", body: "Drop a file, a link or some text on this window, or pick X0 Bot in another app's Share menu. It lands here with the bot that fits best." })] });
   }
   const asks: Record<string, string> = {};
   for (const b of bots) asks[b.slug] = b.slug === pick && d.ask ? d.ask : defaultAsk(b.slug, s.kind);
@@ -1557,7 +1557,7 @@ function shareDesk(ctx: BotsCtx, d: ShareData) {
 // ===================================================================== bots.avatars
 
 const MOMENTS: Array<{ pose: "hello" | "listen" | "think" | "needs" | "done"; who: string; slug: string; line: string }> = [
-  { pose: "hello", who: "Tailzu · Hello", slug: "tailzu", line: "Ink · no light · home, welcome" },
+  { pose: "hello", who: "X0 Bot · Hello", slug: "tailzu", line: "Ink · no light · home, welcome" },
   { pose: "listen", who: "Keybot · Listening", slug: "keybot", line: "Clay" },
   { pose: "think", who: "Code bot · On it", slug: "code", line: "Moss" },
   { pose: "needs", who: "Plan bot · Needs you", slug: "plan", line: "Ochre" },
@@ -1626,7 +1626,7 @@ export const botsScreens: BotsScreen[] = [
       ]);
       return { bot, keys, usage };
     },
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : d.bot.builtin ? page(ctx, { back: true, title: "Keys", nav: d.bot.slug, body: [emptyState({ pose: "think", title: `${d.bot.name} is Tailzu's own`, body: "Keys are for bots you make. Make one, and your own site or app can ask it.", action: { label: "Make a bot", onPress: open(SCREENS.make) } })] })
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : d.bot.builtin ? page(ctx, { back: true, title: "Keys", nav: d.bot.slug, body: [emptyState({ pose: "think", title: `${d.bot.name} is X0 Bot's own`, body: "Keys are for bots you make. Make one, and your own site or app can ask it.", action: { label: "Make a bot", onPress: open(SCREENS.make) } })] })
       : isDesk(ctx) ? keysDesk(ctx, d) : keysPhone(ctx, d)),
   }),
   screen<Shop>({

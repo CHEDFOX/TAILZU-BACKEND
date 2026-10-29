@@ -24,12 +24,12 @@ describe("sttPrompt", () => {
   });
 
   it("appends the user's terms after the exemplar", () => {
-    const p = sttPrompt("Tailzu\nRohan", "hi")!;
-    expect(p.endsWith("Tailzu, Rohan")).toBe(true);
+    const p = sttPrompt("X0 Bot\nRohan", "hi")!;
+    expect(p.endsWith("X0 Bot, Rohan")).toBe(true);
   });
 
   it("with auto, the terms stand alone", () => {
-    expect(sttPrompt("Tailzu", "auto")).toBe("Tailzu");
+    expect(sttPrompt("X0 Bot", "auto")).toBe("X0 Bot");
   });
 });
 
@@ -56,7 +56,7 @@ describe("sttPrompt with a set of daily languages", () => {
   });
 
   it("still appends the user's terms", () => {
-    expect(sttPrompt("Tailzu", "auto", ["hi"])!.endsWith("Tailzu")).toBe(true);
+    expect(sttPrompt("X0 Bot", "auto", ["hi"])!.endsWith("X0 Bot")).toBe(true);
   });
 });
 
@@ -123,11 +123,11 @@ describe("portraitTerms — the recognizer gets their words, never the prose", (
   it("rides the STT prompt after the user's own dictionary", () => {
     // The dictionary is what they TOLD us to spell right; the portrait terms
     // are what they were observed to say. Told beats observed.
-    const p = sttPrompt("Tailzu\nRahul", "hi", ["hi"], CORE) ?? "";
-    expect(p).toContain("Tailzu, Rahul");
-    expect(p.indexOf("Tailzu")).toBeLessThan(p.indexOf("yaar"));
+    const p = sttPrompt("X0 Bot\nRahul", "hi", ["hi"], CORE) ?? "";
+    expect(p).toContain("X0 Bot, Rahul");
+    expect(p.indexOf("X0 Bot")).toBeLessThan(p.indexOf("yaar"));
     // And the exemplar still leads, because it is what sets the script.
-    expect(p.indexOf("हाँ")).toBeLessThan(p.indexOf("Tailzu"));
+    expect(p.indexOf("हाँ")).toBeLessThan(p.indexOf("X0 Bot"));
   });
 })
 
@@ -154,10 +154,10 @@ describe("the word list is the better source for biasing", () => {
   });
 
   it("reaches the recognizer through the STT prompt", () => {
-    const p = sttPrompt("Tailzu", "hi", ["hi"], undefined, WORDS) ?? "";
+    const p = sttPrompt("X0 Bot", "hi", ["hi"], undefined, WORDS) ?? "";
     expect(p).toContain("yaar, jugaad");
     // Still after the user's own dictionary: told beats observed.
-    expect(p.indexOf("Tailzu")).toBeLessThan(p.indexOf("yaar"));
+    expect(p.indexOf("X0 Bot")).toBeLessThan(p.indexOf("yaar"));
   });
 
   it("caps at eight, list or prose", () => {

@@ -117,7 +117,7 @@ export async function previewFor(github: Pick<GithubApp, "previewSignals">, repo
 }
 
 export const PREVIEW_TIP =
-  "Tip: connect a host to this repo (Vercel, Netlify or Cloudflare Pages, all free to start) and every pull request gets its own preview link, so you can see each milestone running before you merge it. Tailzu shows the link here as soon as there is one.";
+  "Tip: connect a host to this repo (Vercel, Netlify or Cloudflare Pages, all free to start) and every pull request gets its own preview link, so you can see each milestone running before you merge it. X0 Bot shows the link here as soon as there is one.";
 
 /**
  * The preview if there is one; otherwise the tip, once per project (it is remembered, so it is not repeated
@@ -191,7 +191,7 @@ export async function startMilestone(
         return { branch, baseSha, url, existing: false };
       } catch (err) {
         if (err instanceof ConnectorError && err.code === "branch_exists") {
-          throw new ConnectorError("branch_exists", "A branch with that name is already there and Tailzu did not make it, so it was left alone.");
+          throw new ConnectorError("branch_exists", "A branch with that name is already there and X0 Bot did not make it, so it was left alone.");
         }
         throw err;
       }

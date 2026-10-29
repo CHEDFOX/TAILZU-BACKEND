@@ -106,7 +106,7 @@ export async function gatherExport(user: AuthedUser, d: DataDeps, now: number): 
     read("you", () => d.store.exportRows(user.id)),
   ]);
   return {
-    about: "Everything Tailzu holds for you, as of exportedAt. Times are milliseconds since 1970 (UTC) unless written as a date.",
+    about: "Everything X0 Bot holds for you, as of exportedAt. Times are milliseconds since 1970 (UTC) unless written as a date.",
     exportedAt: new Date(now).toISOString(),
     account: { id: user.id, ...(user.email ? { email: user.email } : {}) },
     profile, writingStyle: personality, bots, code: { projects, jobs }, connectedApps: apps, tasks, notes, history, files,
