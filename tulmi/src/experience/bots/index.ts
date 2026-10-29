@@ -85,7 +85,8 @@ export function botsNav(): NavigationShell {
 }
 
 /** Fetched at launch, before they are asked for: the three tab roots. */
-export const BOTS_WARM_SCREEN_IDS = ["bots.home", "bots.activity", "bots.you"];
+// The tabs, then the bots Home leads to: fetched in the background at launch so the first tap on each is instant too.
+export const BOTS_WARM_SCREEN_IDS = ["bots.home", "bots.activity", "bots.you", "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.ask"];
 
 /** What a request says about itself (server.ts fills it in). */
 export interface BotsRequest {

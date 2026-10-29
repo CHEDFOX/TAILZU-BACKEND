@@ -36,7 +36,7 @@ describe("the bootstrap", () => {
     expect(on.initialScreenId).toBe("bots.home");
     expect(on.flags?.["bots.app"]).toBe(true);
     expect(Object.keys(on.fonts ?? {})).toEqual(expect.arrayContaining(["Tailzu Geist", "Tailzu Geist SemiBold", "Tailzu Geist Mono"]));
-    expect(on.warmScreenIds).toEqual(["bots.home", "bots.activity", "bots.you"]);
+    expect(on.warmScreenIds?.slice(0, 3)).toEqual(["bots.home", "bots.activity", "bots.you"]);
   });
   it("on: no start-up setting points at the old app's screens (paywall, settings, profile, the languages prompt)", () => {
     const on = buildBootstrap({ onboarded: true, botsApp: true, launchCount: 3, languagesSet: false });

@@ -963,11 +963,20 @@ export function page(ctx: BotsCtx, o: PageOpts): ScreenResponse {
   return ctx.client === "desktop" ? deskPage(ctx, o) : phonePage(ctx, o);
 }
 
+/**
+ * Pages the phone must never show from what it kept: a decision or a job in flight (an approval, a Code bot job and its
+ * question, a link to approve, the lock), and Offline (which is its own record of what waits).
+ */
+const NEVER_KEPT = /^bots\.(code\.|attach$|done$|failed$|approve$|offline$|link$|lock$)/;
+
 function response(ctx: BotsCtx, o: PageOpts, root: Node): ScreenResponse {
   const pullBot = o.pullBot && canPullBot(ctx) ? pullBotOf(o.pullBot) : undefined;
   return {
     schemaVersion: SDUI_SCHEMA_VERSION, screenId: ctx.screenId, ...(o.title ? { title: o.title } : {}),
-    hideChrome: true, look: "bots", theme: BOTS_THEME, cacheTtlSeconds: 0,
+    // Kept, but stale after a second: a page opened before shows at once from what the phone kept and is fetched again
+    // behind it (SduiApp's show-then-revalidate), so nothing waits on the network twice and nothing stays stale. At 0 the
+    // phone kept nothing, every tap waited on the server, and even the tabs it warmed at launch were thrown away.
+    hideChrome: true, look: "bots", theme: BOTS_THEME, cacheTtlSeconds: NEVER_KEPT.test(ctx.screenId) ? 0 : 1,
     state: { ask: "", asking: false, ...(o.state ?? {}) }, ...(o.actions ? { actions: o.actions } : {}), root,
     ...(o.live?.length ? { liveTopics: o.live } : {}),
     ...(pullBot ? { pullBot } : {}),
