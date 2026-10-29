@@ -91,22 +91,16 @@ const amount = (price: string | undefined) => Number(String(price ?? "").replace
 export function plans() {
   const cfg = getConfig();
   // Free for everyone (FREE_FOR_ALL): no allowance, no paid plans to quote.
-  if (cfg.FREE_FOR_ALL) return { free: true as const, freeWords: 0, earnWords: 0, monthly: undefined, yearly: undefined };
-  const paid = (PAYWALL_CONFIG.plans ?? []).filter((p) => !p.free && p.price);
-  const yearly = paid.find((p) => /year/i.test(p.period ?? "") || /annual/i.test(p.id ?? ""));
-  const monthly = paid.find((p) => p !== yearly);
+  if (cfg.FREE_FOR_ALL) return { free: true as const, freeWords: 0, earnWords: 0, lite: undefined, elite: undefined };
+  // Two plans, both monthly: Lite the cheaper, Elite the other.
+  const paid = (PAYWALL_CONFIG.plans ?? []).filter((p) => !p.free && p.price).sort((a, b) => amount(a.price) - amount(b.price));
+  const one = (p: (typeof paid)[number] | undefined, name: string) => p ? { name: p.label ?? name, price: p.price ?? "", amount: amount(p.price) } : undefined;
   return {
     free: false as const,
     freeWords: Math.max(0, cfg.FREE_MONTHLY_WORDS),
     earnWords: Math.max(0, cfg.EARN_MAX_WORDS),
-    monthly: monthly ? { name: monthly.label ?? "Lite", price: monthly.price ?? "", amount: amount(monthly.price) } : undefined,
-    yearly: yearly ? {
-      name: yearly.label ?? "Elite",
-      price: yearly.price ?? "",
-      amount: amount(yearly.price),
-      perMonth: (yearly.period ?? "").match(/\$[0-9.]+/)?.[0] ?? "",
-      trialDays: Number((yearly.note ?? "").match(/(\d+)\s*days?\s*free/i)?.[1] ?? 0),
-    } : undefined,
+    lite: one(paid[0], "Lite"),
+    elite: one(paid[1], "Elite"),
   };
 }
 
@@ -124,10 +118,10 @@ export interface QAGroup { title: string; items: QA[] }
  */
 export function faqGroups(): QAGroup[] {
   const p = plans();
-  const lite = p.monthly, elite = p.yearly;
+  const { lite, elite } = p;
   const prices = [
     lite ? `${lite.name} is ${lite.price} a month` : "",
-    elite ? `${elite.name} is ${elite.price} a year${elite.perMonth ? ` (${elite.perMonth} a month)` : ""}${elite.trialDays ? `, with the first ${elite.trialDays} days free in the app` : ""}` : "",
+    elite ? `${elite.name} is ${elite.price} a month` : "",
   ].filter(Boolean).join(". ");
   const others = WORLD.length - 1;
   return [
@@ -204,7 +198,7 @@ export function langFaq(l: Lang): QA[] {
     script,
     p.free
       ? { q: `Is ${l.name} voice typing free?`, a: `Yes. ${l.name} voice typing in Tailzu is free, with no word limit.` }
-      : { q: `Is ${l.name} voice typing free?`, a: `Yes, to start: ${num(p.freeWords)} words a month, free. ${[p.monthly?.name, p.yearly?.name].filter(Boolean).join(" and ")} remove the limit.` },
+      : { q: `Is ${l.name} voice typing free?`, a: `Yes, to start: ${num(p.freeWords)} words a month, free. ${[p.lite?.name, p.elite?.name].filter(Boolean).join(" and ")} remove the limit.` },
   ];
 }
 
@@ -235,15 +229,10 @@ export function appLd() {
   const offers: object[] = [
     { "@type": "Offer", name: "Free", price: "0", priceCurrency: "USD", description: p.free ? "No word limit." : `${num(p.freeWords)} words a month.` },
   ];
-  if (p.monthly) offers.push({
-    "@type": "Offer", name: p.monthly.name, price: p.monthly.amount.toFixed(2), priceCurrency: "USD",
-    priceSpecification: { "@type": "UnitPriceSpecification", price: p.monthly.amount.toFixed(2), priceCurrency: "USD", billingDuration: "P1M", unitCode: "MON" },
+  for (const plan of [p.lite, p.elite]) if (plan) offers.push({
+    "@type": "Offer", name: plan.name, price: plan.amount.toFixed(2), priceCurrency: "USD",
+    priceSpecification: { "@type": "UnitPriceSpecification", price: plan.amount.toFixed(2), priceCurrency: "USD", billingDuration: "P1M", unitCode: "MON" },
     description: "Unlimited words, billed monthly.",
-  });
-  if (p.yearly) offers.push({
-    "@type": "Offer", name: p.yearly.name, price: p.yearly.amount.toFixed(2), priceCurrency: "USD",
-    priceSpecification: { "@type": "UnitPriceSpecification", price: p.yearly.amount.toFixed(2), priceCurrency: "USD", billingDuration: "P1Y", unitCode: "ANN" },
-    description: `Unlimited words, billed yearly.${p.yearly.trialDays ? ` ${p.yearly.trialDays} days free in the app.` : ""}`,
   });
   return {
     "@type": "SoftwareApplication",

@@ -65,8 +65,7 @@ function priceLines(): string[] {
   return [
     // The words earned by coming back stay a surprise (see routes/policies/pricing.ts).
     `- Free: ${p.freeWords.toLocaleString("en-US")} words a month.`,
-    ...(p.monthly ? [`- ${p.monthly.name}: ${p.monthly.price} a month, unlimited words, cancel any time.`] : []),
-    ...(p.yearly ? [`- ${p.yearly.name}: ${p.yearly.price} a year${p.yearly.perMonth ? ` (${p.yearly.perMonth} a month)` : ""}, unlimited words${p.yearly.trialDays ? `, first ${p.yearly.trialDays} days free in the app` : ""}.`] : []),
+    ...[p.lite, p.elite].filter((x) => !!x).map((x) => `- ${x!.name}: ${x!.price} a month, unlimited words, cancel any time.`),
   ];
 }
 

@@ -12,10 +12,10 @@ import { payCsp, payHtml, type PayOffer } from "../src/routes/pay.js";
 import { POLICY } from "../src/experience/catalog.js";
 
 const OFFERS: PayOffer[] = [
-  { market: "IN", period: "monthly", label: "Lite", price: "₹199", per: "a month", buyable: true },
-  { market: "IN", period: "annual", label: "Elite", price: "₹1,499", per: "a year", badge: "Save 35%", lead: true, buyable: true },
-  { market: "world", period: "monthly", label: "Lite", price: "$9.99", per: "a month", buyable: true },
-  { market: "world", period: "annual", label: "Elite", price: "$59.99", per: "a year", badge: "Save 50%", lead: true, buyable: true },
+  { market: "IN", tier: "elite", label: "Elite", price: "₹1,499", per: "a month", buyable: true },
+  { market: "IN", tier: "lite", label: "Lite", price: "₹199", per: "a month", lead: true, buyable: true },
+  { market: "world", tier: "elite", label: "Elite", price: "$59.99", per: "a month", buyable: true },
+  { market: "world", tier: "lite", label: "Lite", price: "$9.99", per: "a month", lead: true, buyable: true },
 ];
 const LINKS = { pricing: "https://x0bot.com/pricing", terms: POLICY.terms, privacy: POLICY.privacy };
 const page = (offers = OFFERS, keyId = "rzp_live_abc123") => payHtml({ keyId, offers, nonce: "n0nce", ...LINKS });
@@ -23,9 +23,9 @@ const page = (offers = OFFERS, keyId = "rzp_live_abc123") => payHtml({ keyId, of
 describe("the pay page", () => {
   it("carries both markets at Razorpay's own prices, and opens Razorpay's checkout", () => {
     const html = page();
-    expect(html).toContain('data-market="IN" data-period="monthly"');
-    expect(html).toContain('data-market="world" data-period="annual"');
-    for (const p of ["₹199", "₹1,499", "$9.99", "$59.99", "Save 35%"]) expect(html).toContain(p);
+    expect(html).toContain('data-market="IN" data-plan="lite"');
+    expect(html).toContain('data-market="world" data-plan="elite"');
+    for (const p of ["₹199", "₹1,499", "$9.99", "$59.99"]) expect(html).toContain(p);
     expect(html).toContain('data-state="loading"');
     expect(html).toContain("https://checkout.razorpay.com/v1/checkout.js");
     expect(html).toContain('"/v1/pay/razorpay/subscription"');
@@ -41,10 +41,10 @@ describe("the pay page", () => {
     expect(html).toContain('#pay[data-market="world"] .plan[data-market="IN"]');
   });
 
-  it("names its caller by the signed link, and sends nothing but a market and a period", () => {
+  it("names its caller by the signed link, and sends nothing but a market and a plan", () => {
     const html = page();
     expect(html).toContain('u: q.get("u")');
-    expect(html).toContain("{ market: market, period: b.getAttribute(\"data-period\") }");
+    expect(html).toContain("{ market: market, plan: b.getAttribute(\"data-plan\") }");
     expect(html).not.toContain("plan_");
   });
 
@@ -59,8 +59,8 @@ describe("the pay page", () => {
 
   it("shows a plan whose price could not be read, with no button", () => {
     const html = page([OFFERS[0]!, { ...OFFERS[1]!, price: "—", per: "Not available right now", buyable: false }]);
-    expect(html).toContain('data-market="IN" data-period="monthly"');
-    expect(html).not.toContain('data-market="IN" data-period="annual"');
+    expect(html).toContain('data-market="IN" data-plan="elite"');
+    expect(html).not.toContain('data-market="IN" data-plan="lite"');
   });
 
   it("with no key, or nothing buyable, it says checkout is not open and offers nothing", () => {

@@ -139,8 +139,8 @@ describe("the paywall shows the free tier without selling it", () => {
   it("stands the free tier next to what money buys", () => {
     const { rows } = plans();
     const all = rows.flatMap(textsOf);
-    expect(all).toContain("$59.99");
-    expect(all).toContain("$9.99");
+    expect(all).toContain("$500");
+    expect(all).toContain("$50");
     // Paid first — the free row is the floor, not the offer.
     expect(textsOf(rows[rows.length - 1]).join(" ")).toMatch(/free/i);
   });
@@ -150,7 +150,7 @@ describe("the paywall shows the free tier without selling it", () => {
     // of the user, every time it is pressed.
     const { rows, actions } = plans();
     expect(Object.keys(actions).filter((k) => k.startsWith("buy."))).toEqual(
-      ["buy.annual", "buy.monthly"],
+      ["buy.elite", "buy.lite"],
     );
     // The free row dismisses. It never reaches a purchase.
     expect(rows[rows.length - 1].on.onPress).toBe("dismiss");

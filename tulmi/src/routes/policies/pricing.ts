@@ -81,10 +81,7 @@ export function pricingHtml(opts: {
     const monthly = /month/i.test(p.period ?? "") && !/year/i.test(p.period ?? "");
     return card(p.label ?? "", p.price ?? "", monthly ? "a month" : "a year", [
       "Unlimited words.",
-      ...(monthly ? ["Billed monthly. Cancel any time."] : [
-        `${(p.period ?? "").replace(/,?\s*billed yearly/i, "").trim()}, billed once a year.`,
-        "In the app, the first 7 days are free.",
-      ]),
+      ...(monthly ? ["Billed monthly. Cancel any time."] : [`${(p.period ?? "").replace(/,?\s*billed yearly/i, "").trim()}, billed once a year.`]),
     ], p.default === true, p.badge ?? "");
   });
 
