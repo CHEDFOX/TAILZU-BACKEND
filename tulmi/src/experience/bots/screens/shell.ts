@@ -18,7 +18,7 @@ import {
   askBar, back, blip, body, botAvatar, botLook, botRoute, botTile, botTiles, botTileSpec, box, button, C, call, canMove, card, choiceRow, col,
   divider, duration, emptyState, FACE, grid, grow, icon, keptOffline, labelled, listCard, listRow, makeBotTile, makeTileSpec, meta, mono, needsCard, notice,
   open, page, primaryButton, quietButton,
-  RADIUS, roundButton, row, rupees, SCREENS, secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title, toTab,
+  percent, RADIUS, roundButton, row, SCREENS, secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, tailzuMark, text, title, toTab,
   when, whenEq, type BotsCtx, type LiveBot, type NeedsItem,
   canHead, headBar, liveMark, writeOn, canStrip,
 } from "../kit.js";
@@ -26,6 +26,7 @@ import type { Mark } from "../glyphs.js";
 import { dayPart } from "../../touches.js";
 import { dayLineAfterGreeting } from "../../settingsWords.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { askMoment, failed, SENT_WORDS, start as momentStart, streamed } from "../askMoment.js";
 import { canRecord, canUpload, listenAction, listening, micBlockedNotice, notListening, uploadChip, uploadPick, voiceBars, writingDown } from "../media.js";
 import { ARRIVAL_PATH, ARRIVAL_STATE, arrivalCard } from "./firstRun.js";
 import { DELETION_PATH, leavingCard, type DeletionState } from "./accountGrace.js";
@@ -248,7 +249,7 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...n.push,
       tiles(ctx, 2, 132, 16, more.notes),
     ],
-    footer: [askBar("phone")],
+    footer: [askBar("phone", { ctx })],
   });
 }
 
@@ -268,7 +269,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...(first ? [needsCard(first, { layout: "row" })] : []),
       tiles(ctx, 4, 150, 18, more.notes),
     ],
-    footer: [askBar("desktop")],
+    footer: [askBar("desktop", { ctx })],
   });
 }
 
@@ -455,12 +456,12 @@ function activityPhone(ctx: BotsCtx, data: ActivityData | undefined) {
           avatarOf(ctx, r.bot, 30),
           col([
             text(r.title, { size: 14, lineHeight: 19, lines: 2 }),
-            meta([r.sub, r.money].filter(Boolean).join(" · "), { lines: 1 }),
+            meta(r.sub ?? "", { lines: 1 }),
           ], { gap: 2, flexGrow: 1, flexShrink: 1 }),
           ...(r.mark === "failed" ? [statusMark("failed")] : []),
         ], { gap: 12, alignItems: "flex-start" }, openRow(r))),
       ], { gap: 14 }))),
-      ...(empty && data ? [emptyState({ pose: "hello", title: "Nothing here yet", body: "What your bots do shows up here, with what each thing cost.", action: { label: "Ask a bot", onPress: open(SCREENS.ask) } })] : []),
+      ...(empty && data ? [emptyState({ pose: "hello", title: "Nothing here yet", body: "What your bots do shows up here.", action: { label: "Ask a bot", onPress: open(SCREENS.ask) } })] : []),
     ],
   });
 }
@@ -471,22 +472,21 @@ function activityDesk(ctx: BotsCtx, data: ActivityData | undefined) {
   const tz = ctx.tzOffsetMinutes;
   const week = data?.week;
   const weekWords = week ? [
-    "This week", `${week.done} ${week.done === 1 ? "job" : "jobs"} done`, `${rupees(week.paise)} spent`,
+    "This week", `${week.done} ${week.done === 1 ? "job" : "jobs"} done`,
     ...(week.minutesSaved > 0 ? [`${duration(week.minutesSaved)} saved`] : []),
   ].join(" · ") : "";
-  const COLS = { mark: 12, time: 64, bot: 128, money: 112, proof: 74 };
+  const COLS = { mark: 12, time: 64, bot: 128, proof: 74 };
   const rowCond = (r: FeedRow): Condition => ({ all: [{ in: ["fbot", ["all", r.bot]] }, { in: ["ftype", ["all", KIND_OF[r.type]]] }] });
   const cell = (n: Node, w?: number): Node => box([n], w ? { width: w, flexShrink: 0 } : { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 });
   const head = row([
     cell(box([]), COLS.mark), cell(sectionLabel("Time"), COLS.time), cell(sectionLabel("Bot"), COLS.bot), cell(sectionLabel("What happened")),
-    cell(sectionLabel("₹"), COLS.money), cell(sectionLabel("Proof"), COLS.proof),
+    cell(sectionLabel("Proof"), COLS.proof),
   ], { gap: 14, paddingVertical: 10, paddingHorizontal: 16 });
   const line = (r: FeedRow): Node => when(rowCond(r), row([
     cell(markOf(ctx, r.mark, r.bot), COLS.mark),
     cell(text(clockOf(r.at, tz), { size: 12.5, color: C.meta, lineHeight: 17 }), COLS.time),
     cell(row([avatarOf(ctx, r.bot, 26), text(nameOf(ctx, r.bot), { size: 13, weight: 500, lineHeight: 17, lines: 1, style: { flexShrink: 1 } })], { gap: 8 }), COLS.bot),
     cell(col([text(r.title, { size: 14, lineHeight: 19, lines: 2 }), ...(r.sub ? [meta(r.sub, { lines: 1 })] : [])], { gap: 2 })),
-    cell(text(r.money ?? "—", { size: 13, lineHeight: 17 }), COLS.money),
     cell(r.open ? row([text("Receipt", { size: 13, weight: 500, lineHeight: 17 }), icon("chevron", { size: 14 })], { gap: 2, minHeight: 32 }, openRow(r)) : box([]), COLS.proof),
   ], { gap: 14, paddingVertical: 10, paddingHorizontal: 16 }));
   const days = byDay(rows, data?.now ?? live.now, tz);
@@ -523,7 +523,7 @@ function activityDesk(ctx: BotsCtx, data: ActivityData | undefined) {
           grow(),
           box([segmented([{ label: "All", value: "all" }, { label: "Jobs", value: "jobs" }, { label: "Payments", value: "payments" }, { label: "Words", value: "words" }], "ftype")], { width: 300, flexShrink: 0 }),
         ], { gap: 12, alignItems: "flex-start" }),
-        rows.length ? table : data ? emptyState({ pose: "hello", title: "Nothing here yet", body: "What your bots do shows up here, with what each thing cost.", action: { label: "Ask a bot", onPress: open(SCREENS.ask) } }) : box([]),
+        rows.length ? table : data ? emptyState({ pose: "hello", title: "Nothing here yet", body: "What your bots do shows up here.", action: { label: "Ask a bot", onPress: open(SCREENS.ask) } }) : box([]),
       ], { gap: 10 }),
     ],
   });
@@ -539,7 +539,7 @@ const TRIES: Array<{ bot: string; text: string }> = [
   { bot: "plan", text: "What's on tomorrow?" },
   { bot: "code", text: "What changed in my project this week?" },
   { bot: "keybot", text: "Mummy ko Hindi mein reply likho" },
-  { bot: "travel", text: "Weekend in Goa under ₹15,000?" },
+  { bot: "travel", text: "A weekend in Goa next month?" },
 ];
 
 const routeFor = (ctx: BotsCtx, slug: string): Route => {
@@ -560,21 +560,22 @@ function candidates(ctx: BotsCtx): string[] {
 
 /** Send what is in `ask` to the bot in `route` (or let the front door pick), then open the answer. */
 function sendAsk(ctx: BotsCtx): ActionRef {
-  const ask = (bot: string): ActionSpec => ({
+  // The words go up as the person's bubble and the box clears at once (askMoment.ts); the answer is written in as it comes.
+  const ask = (bot: string): ActionSpec => streamed(ctx, {
     kind: "callEndpoint", method: "POST", path: "/v1/shell/ask",
-    body: { message: "$state.ask", bot, device: ctx.client, mode: "text", ...(ctx.params.file || canUpload(ctx) ? { attachments: "$state.attach" } : {}) },
+    body: { message: SENT_WORDS, bot, device: ctx.client, mode: "text", ...(ctx.params.file || canUpload(ctx) ? { attachments: "$state.attach" } : {}) },
     assignTo: "asked",
     onSuccess: seq(
       { kind: "setState", path: "asking", value: false },
       {
         kind: "navigate", screenId: SCREENS.ask, replace: true,
-        params: { message: "$state.ask", answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi", needs: "$state.asked.shell.needs", job: "$state.asked.shell.job" },
+        params: { message: SENT_WORDS, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi", needs: "$state.asked.shell.needs", job: "$state.asked.shell.job" },
       },
     ),
-    onError: seq({ kind: "setState", path: "asking", value: false }, toast("Couldn't reach your bots. Try again.", "error")),
+    onError: failed({ busy: "asking", from: "ask", then: toast("Couldn't reach your bots. Try again.", "error") }),
   });
   return seq(
-    { kind: "setState", path: "asking", value: true },
+    ...momentStart({ message: "$state.ask", from: "ask", busy: "asking" }),
     { kind: "condition", if: { truthy: "route.slug" }, then: ask("$state.route.slug"), else: ask("any") },
   );
 }
@@ -678,7 +679,8 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
     when({ falsy: "route.slug" }, meta("Tap once to see who answers, again to send", { size: 13, align: "center" })),
     when({ truthy: "route.slug" }, text("", { size: 13, color: C.meta, lineHeight: 17, align: "center", bind: "route.hint" })),
   ]);
-  const asking = when({ truthy: "asking" }, row([statusMark("working", { color: C.ink }), meta("Asking…", { size: 13 })], { gap: 8, justifyContent: "center" }));
+  // The ask out: their words as a bubble, Tailzu carrying it (askMoment.ts).
+  const asking = askMoment(ctx, { slug: "tailzu", color: C.ink, kind: "custom", busy: "asking", line: "Asking…", bubble: "surface" });
   const fileChip = canUpload(ctx) ? [uploadChip("attach")] : fileName ? [row([icon("clip", { size: 16 }), text(fileName, { size: 13, lineHeight: 17, lines: 1, style: { flexShrink: 1 } })], {
     gap: 8, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, backgroundColor: C.surface, alignSelf: "flex-start",
   })] : [];
@@ -713,9 +715,9 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
             row([kbd("Fn"), meta("hold to talk", { size: 12 })], { gap: 6 }),
             grow(),
             when({ truthy: "route.slug" }, text("", { size: 12, color: C.grey70, lineHeight: 16, bind: "route.hint" })),
-            asking,
           ], { gap: 16, paddingVertical: 11, paddingHorizontal: 22, backgroundColor: C.surface }),
         ], { borderRadius: 22, borderWidth: 1, borderColor: C.line, overflow: "hidden", backgroundColor: C.paper }),
+        asking,
         row([primaryButton("Send", goAction(ctx), { size: "md" }), hint], { gap: 14 }),
       ],
     });
@@ -741,6 +743,7 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
       col([sectionLabel("Or try"), ...tries(ctx)], { gap: 0 }),
     ],
     footer: [
+      asking,
       row([
         side("Photo", "clip", attachTo(ctx, "photo")), side("File", "folder", attachTo(ctx, "file")),
         voice ? voice.big : box([labelled(box([icon("send", { size: 30, color: C.paper })], {
@@ -748,7 +751,6 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
         }, goAction(ctx)), "Send")], { width: 108, alignItems: "center", flexShrink: 0 }),
         side("Screen", "computer", attachTo(ctx, "screen")), side("Paste", "keyboard", { kind: "readClipboard", assignTo: "ask" }),
       ], { alignItems: "center" }),
-      asking,
       voice ? voice.hint : hint,
     ],
   });
@@ -815,7 +817,7 @@ function askAnswer(ctx: BotsCtx) {
   if (upi) {
     blocks.push(row([
       icon("rupee", { size: 20 }),
-      col([text(`Pay ${rupees(upi.amountPaise)} to ${upi.name}?`, { size: 15, weight: 600, lineHeight: 20 }), meta("You press pay in your UPI app")], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+      col([text(`Pay ${upi.name}?`, { size: 15, weight: 600, lineHeight: 20 }), meta("You type the amount and press pay in your UPI app")], { gap: 2, flexGrow: 1, flexShrink: 1 }),
       icon("chevron", { size: 16, color: C.meta }),
     ], { gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line }, open(SCREENS.approve, { upi: upi.link, bot: slug || "tailzu" })));
   }
@@ -824,7 +826,7 @@ function askAnswer(ctx: BotsCtx) {
       gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: C.line,
     }, toTab("activity")));
   }
-  return page(ctx, { back: true, backTitle: "Ask", title: "Ask", nav: "bots", body: blocks, footer: [askBar(ctx.client)], gap: 18 });
+  return page(ctx, { back: true, backTitle: "Ask", title: "Ask", nav: "bots", body: blocks, footer: [askBar(ctx.client, { ctx })], gap: 18 });
 }
 
 // ===================================================================== search
@@ -1041,14 +1043,13 @@ function tasksPhone(ctx: BotsCtx, d: TasksData | undefined) {
   });
 }
 
-function taskDetail(ctx: BotsCtx, n: NeedsItem, rows: FeedRow[]): Node {
+function taskDetail(ctx: BotsCtx, n: NeedsItem): Node {
   const [kind] = n.id.split(":");
-  const row0 = rows.find((r) => r.id === n.id);
   const facts: Array<[string, string]> = kind === "job"
-    ? [["Code bot", "is waiting"], [row0?.money ?? rupees(0), "spent so far"], [clockOf(n.at, ctx.tzOffsetMinutes), "waiting since"]]
+    ? [["Code bot", "is waiting"], [percent(ctx.live.usage.used), ctx.live.usage.windows ? "of this stretch used" : "of this month used"], [clockOf(n.at, ctx.tzOffsetMinutes), "waiting since"]]
     : [[n.botName, "will do it"], [clockOf(n.at, ctx.tzOffsetMinutes), "waiting since"], ["1 hour", "the yes holds for"]];
   const willDo = kind === "job" ? ["Goes on with your answer", "Shows you the change before it ships"] : [n.detail ? `Does exactly this: ${n.detail}` : "Does exactly what the card says", "Tells you when it's done"];
-  const wont = kind === "job" ? ["Merge or ship without your yes", "Spend past your job budget"] : ["Pay for you", "Do anything else without asking"];
+  const wont = kind === "job" ? ["Merge or ship without your yes", "Go on past what it was given without asking"] : ["Pay for you", "Do anything else without asking"];
   const list = (head: string, items: string[]) => col([sectionLabel(head), ...items.map((s) => row([text("·", { size: 13, color: C.idle, lineHeight: 18 }), text(s, { size: 13, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 8, alignItems: "flex-start" }))], { gap: 6, flexGrow: 1, flexBasis: 0 });
   return when({ eq: ["sel", n.id] }, col([
     row([
@@ -1099,7 +1100,7 @@ function tasksDesk(ctx: BotsCtx, d: TasksData | undefined) {
           when({ eq: ["tview", "today"] }, col(restList, { gap: 10 })),
           when({ eq: ["tview", "upcoming"] }, col([sectionLabel(`Upcoming · ${upCount}`), ...upcomingNodes(ctx, d)], { gap: 10 })),
         ], { gap: 16, flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 }),
-        col(needs.length ? needs.map((n) => taskDetail(ctx, n, rows)) : [emptyState({ pose: "done", title: "All clear", body: "When a bot needs your yes, it shows up here with what it will and won't do." })], { width: 440, flexShrink: 1 }),
+        col(needs.length ? needs.map((n) => taskDetail(ctx, n)) : [emptyState({ pose: "done", title: "All clear", body: "When a bot needs your yes, it shows up here with what it will and won't do." })], { width: 440, flexShrink: 1 }),
       ], { gap: 24, alignItems: "flex-start" }),
     ],
   });
@@ -1132,9 +1133,9 @@ function approveTop(ctx: BotsCtx, slug: string, mark: Mark | null): Node {
   ], { gap: 8 });
 }
 
-/** "Pay ₹1,240 to Fresh Basket for this week's groceries?" */
-const payQuestion = (u: { amountPaise: number; name: string; note: string }) =>
-  `Pay ${rupees(u.amountPaise)} to ${u.name}${u.note ? ` for ${u.note.charAt(0).toLowerCase()}${u.note.slice(1)}` : ""}?`;
+/** "Pay Fresh Basket for this week's groceries?" No amount: the person types it in their UPI app. */
+const payQuestion = (u: { name: string; note: string }) =>
+  `Pay ${u.name}${u.note ? ` for ${u.note.charAt(0).toLowerCase()}${u.note.slice(1)}` : ""}?`;
 
 function approvePay(ctx: BotsCtx, link: string) {
   const u = upiOf(link)!;
@@ -1151,8 +1152,8 @@ function approvePay(ctx: BotsCtx, link: string) {
     ...(u.note ? [["For", text(u.note, { size: 14, lineHeight: 19, color: C.meta, align: "right", lines: 2, style: { flexShrink: 1 } })] as [string, Node]] : []),
   ];
   const lineRow = ([a, b]: [string, Node]) => row([text(a, { size: 14, lineHeight: 19 }), grow(), b], { gap: 12 });
-  const total = row([text("Total", { size: 15, weight: 600, lineHeight: 20 }), grow(), text(rupees(u.amountPaise), { size: 20, weight: 700, lineHeight: 25 })]);
-  const fine = `You press pay in your UPI app. ${who} never pays on its own.`;
+  const total = row([text("Amount", { size: 15, weight: 600, lineHeight: 20 }), grow(), text("You type it in UPI", { size: 14, lineHeight: 19, color: C.meta, align: "right" })]);
+  const fine = `You type the amount and press pay in your UPI app. ${who} never pays on its own.`;
 
   if (ctx.client === "desktop") {
     const qr = qrOf(u.link);
@@ -1176,8 +1177,7 @@ function approvePay(ctx: BotsCtx, link: string) {
             box([col([
               text(u.name, { size: 14, weight: 600, lineHeight: 19 }),
               mono(`${name ? `For ${name} · ` : ""}${day}`, { size: 11.5, boxed: false, color: C.grey70 }),
-              ...(u.note ? [row([mono(u.note, { size: 11.5, boxed: false, color: C.grey70 }), grow(), mono((u.amountPaise / 100).toFixed(2), { size: 11.5, boxed: false, color: C.grey70 })], { gap: 8 })] : []),
-              row([mono("TOTAL", { size: 11.5, boxed: false }), grow(), mono(rupees(u.amountPaise), { size: 11.5, boxed: false })], { gap: 8 }),
+              ...(u.note ? [mono(u.note, { size: 11.5, boxed: false, color: C.grey70 })] : []),
               mono("Paid by UPI · ref after you pay", { size: 11.5, boxed: false, color: C.meta }),
             ], { gap: 6, backgroundColor: C.paper, borderRadius: 8, padding: 16 })], { backgroundColor: C.surface, borderRadius: 18, padding: 14 }),
             row([icon("check", { size: 14, color: C.meta }), meta("Receipt saves to Activity after you pay")], { gap: 8 }),
@@ -1188,7 +1188,7 @@ function approvePay(ctx: BotsCtx, link: string) {
               alignSelf: "center", padding: 6, borderRadius: 14, borderWidth: 1, borderColor: C.divider, backgroundColor: C.paper,
             })] : []),
             col([
-              ...[qr ? "Scan with your phone's camera" : "Open Tailzu on your phone", `UPI opens with ${rupees(u.amountPaise)} to ${u.name}`, "You press pay"]
+              ...[qr ? "Scan with your phone's camera" : "Open Tailzu on your phone", `UPI opens on ${u.name}`, "You type the amount and press pay"]
                 .map((s, i) => row([stepDot(i + 1), text(s, { size: 13, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 10 })),
             ], { gap: 9 }),
             row([statusMark("waiting"), meta("Waiting for you · then tell us you paid")], { gap: 8 }),
@@ -1258,9 +1258,9 @@ function approveReceipt(ctx: BotsCtx, d: ApproveData | undefined) {
     back: true, backTitle: "Receipt", title: "Receipt", nav: "activity", gap: 18,
     body: [
       row([statusMark("done", { size: 10 }), sectionLabel("Paid")], { gap: 8 }),
-      title(`${rupees(r.amountPaise)} to ${r.payee || "the payee"}`),
+      title(`Paid ${r.payee || "the payee"}`),
       listCard([
-        listRow({ label: "For", value: r.title }), listRow({ label: "Paid to", value: r.payee || "—" }), listRow({ label: "Amount", value: rupees(r.amountPaise) }),
+        listRow({ label: "For", value: r.title }), listRow({ label: "Paid to", value: r.payee || "—" }),
         listRow({ label: "Filled in by", value: nameOf(ctx, r.bot) }), listRow({ label: "When", value: at }),
       ]),
       meta("You pressed pay by UPI. Your UPI app has the bank's reference.", { size: 13 }),
@@ -1446,7 +1446,7 @@ function todayTasks(ctx: BotsCtx, rows: FeedRow[]): Node {
     const act = r.mark === "needs" ? openNeed(ctx.live.needs.find((n) => n.id === r.id)!) : openRow(r);
     kids.push(row([
       box([markOf(ctx, r.mark, r.bot)], { width: 12, alignItems: "center" }),
-      col([text(r.title, { size: 14, lineHeight: 19, lines: 1 }), meta([r.sub, r.mark === "working" ? r.money : undefined].filter(Boolean).join(" · "), { lines: 1 })], { gap: 1, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      col([text(r.title, { size: 14, lineHeight: 19, lines: 1 }), meta(r.sub ?? "", { lines: 1 })], { gap: 1, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
       text(nameOf(ctx, r.bot), { size: 12, color: C.grey70, lineHeight: 16, style: { flexShrink: 0 } }),
     ], { gap: 12, paddingVertical: 9, paddingHorizontal: 16 }, act));
   });

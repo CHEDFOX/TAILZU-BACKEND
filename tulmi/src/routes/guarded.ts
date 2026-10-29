@@ -41,11 +41,13 @@ export const idempotencyHeader = (req: FastifyRequest): string | null => {
  */
 export async function guarded(
   guard: Guard | undefined, req: FastifyRequest, reply: FastifyReply, user: AuthedUser, lane: Lane, work: (stop: AbortSignal) => Promise<Answer>,
-  o: { replayUnkeyed?: boolean } = {},
+  o: { replayUnkeyed?: boolean; signal?: AbortSignal } = {},
 ): Promise<FastifyReply> {
   const g = guard ?? defaultGuard();
   const gone = new AbortController();
   reply.raw.once("close", () => { if (!reply.raw.writableFinished) gone.abort(); });
+  // Stopped by the person (an ask's stop): as if they had gone; the caller answers it.
+  o.signal?.addEventListener("abort", () => gone.abort(), { once: true });
   try {
     const out = await g.run<Answer>({
       userId: user.id, plan: await planOf(user), route: `${req.method} ${req.routeOptions?.url ?? req.url}`,

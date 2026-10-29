@@ -12,7 +12,12 @@
  * tier takes the writer's model too and never picks a model of the writer's own
  * family. Unlike the planner's ladder (agent/llm.ts), nothing here is shown to
  * anyone while it is written, so ANY failure may move on: there is no half a
- * line on a screen to contradict. The answer is read whole, not streamed.
+ * line on a screen to contradict. The answer is read whole, unless the caller
+ * asks for its words as they are written (`onText`): then the call streams, each
+ * piece goes to onText the moment it comes, and if that model fails after words
+ * were shown, `onReset` says they are void before the next model is asked. A
+ * streamed call stopped by its caller is charged for what it used: the prompt and
+ * the words that came (an estimate, as nothing reports the charge of a cut call).
  *
  * ONE TRANSIENT RETRY. A 429 or a 5xx is tried once more on the same model, after
  * a short random wait (jittered, so a burst of jobs does not come back in step).
@@ -122,6 +127,10 @@ export interface CallInput<T = unknown> {
   /** How hard the model thinks, instead of the tier's level (the free-form loop's adaptive effort: agent/effort.ts). */
   reasoning?: Reasoning;
   signal?: AbortSignal;
+  /** Stream: each piece of the answer's words as it is written (not with `json`). */
+  onText?: (piece: string) => void;
+  /** Streaming: the words shown so far are void (that model failed after writing; the next one starts over). */
+  onReset?: () => void;
 }
 
 export interface CallResult<T = unknown> {
@@ -433,6 +442,46 @@ function readCompletion(raw: unknown, asked: string): Completion {
   };
 }
 
+/** A streamed answer read to its end, each piece of its words handed on as it comes, in the shape readCompletion reads. */
+async function drain(stream: AsyncIterable<unknown>, onText: (piece: string) => void): Promise<Record<string, unknown>> {
+  let content = "";
+  let finish: string | undefined;
+  let usage: unknown;
+  let model: unknown;
+  let provider: unknown;
+  let error: unknown;
+  const calls: Array<{ id: string; name: string; args: string }> = [];
+  for await (const chunk of stream) {
+    const c = (chunk ?? {}) as Record<string, any>;
+    if (c.error && typeof c.error === "object") { error = c.error; break; }
+    if (typeof c.model === "string") model = c.model;
+    if (typeof c.provider === "string") provider = c.provider;
+    if (c.usage && typeof c.usage === "object") usage = c.usage;
+    const choice = Array.isArray(c.choices) ? c.choices[0] : undefined;
+    const d = (choice?.delta ?? {}) as Record<string, any>;
+    if (typeof d.content === "string" && d.content) { content += d.content; onText(d.content); }
+    if (Array.isArray(d.tool_calls)) {
+      for (const t of d.tool_calls) {
+        const i = typeof t?.index === "number" ? t.index : calls.length;
+        const cur = (calls[i] ??= { id: "", name: "", args: "" });
+        if (typeof t?.id === "string" && t.id) cur.id = t.id;
+        if (typeof t?.function?.name === "string") cur.name += t.function.name;
+        if (typeof t?.function?.arguments === "string") cur.args += t.function.arguments;
+      }
+    }
+    if (typeof choice?.finish_reason === "string") finish = choice.finish_reason;
+  }
+  return {
+    ...(error ? { error } : {}), ...(model ? { model } : {}), ...(provider ? { provider } : {}), ...(usage ? { usage } : {}),
+    choices: [{
+      message: { content, tool_calls: calls.filter((t) => t.name).map((t) => ({ id: t.id, type: "function", function: { name: t.name, arguments: t.args } })) },
+      ...(finish ? { finish_reason: finish } : {}),
+    }],
+  };
+}
+
+const isStream = (v: unknown): v is AsyncIterable<unknown> => !!v && typeof (v as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function";
+
 // --------------------------------------------------------------- the gateway
 
 interface Plan {
@@ -481,6 +530,9 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
 
   const trail: TrailEntry[] = [];
   const total = { promptTokens: 0, completionTokens: 0, costUsd: 0, paise: 0, calls: 0, allReported: true };
+  // Streaming: only for words (never JSON); `shown` is how much of the current try was handed on.
+  const onText = input.onText && !input.json ? input.onText : null;
+  let shown = 0;
 
   if (!plan.ladder.length) {
     throw new ModelUnavailable(trail, new Error(input.tier === "review" ? "no reviewer of a different family from the writer" : "no model to try"));
@@ -556,12 +608,23 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     });
     const started = clock();
     const rec: CallRecord = { model, outcome: "failed", ms: 0 };
+    // Streaming: the words this request has handed on (what a stopped call is charged for).
+    let heard = "";
     try {
       const pending = (deps.client ?? (openrouter() as unknown as ChatClient)).chat.completions
-        .create(body, { signal: ctrl.signal, timeout: timeoutMs, maxRetries: 0 });
+        .create(onText ? { ...body, stream: true } : body, { signal: ctrl.signal, timeout: timeoutMs, maxRetries: 0 });
+      // The stream is read to its end inside the clock; a client that answered whole is read as it is (its words in one piece).
+      const read = onText
+        ? Promise.resolve(pending).then(async (r) => {
+          if (isStream(r)) return drain(r, (piece) => { if (ctrl.signal.aborted) return; heard += piece; shown += piece.length; onText(piece); });
+          const whole = readCompletion(r, model);
+          if (whole.text) { heard += whole.text; shown += whole.text.length; onText(whole.text); }
+          return r;
+        })
+        : pending;
       // If the clock wins, this one may reject later and nobody is waiting.
-      Promise.resolve(pending).catch(() => undefined);
-      const raw = await Promise.race([pending, clockOut]);
+      Promise.resolve(read).catch(() => undefined);
+      const raw = await Promise.race([read, clockOut]);
       const done = readCompletion(raw, model);
       rec.ms = clock() - started;
       if (done.provider) rec.provider = done.provider;
@@ -607,6 +670,17 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
       if (rec.outcome === "empty" || err instanceof BudgetExceeded) throw err;
       rec.ms = clock() - started;
       if (callerAborted || (input.signal?.aborted && !timedOut)) {
+        // Stopped while it streamed: what it used is charged (the prompt, and the words that came), as an estimate.
+        if (onText && heard) {
+          const usd = usdFor(tokensOfChars(charsOf(messages, input.tools)), tokensOfChars(heard.length), settings);
+          const scope = input.jobId ?? currentSpendScope();
+          const paise = scope ? meter.charge(scope, usd * fx * 100) : usdToPaise(usd, fx);
+          total.costUsd += usd;
+          total.paise += paise;
+          total.allReported = false;
+          rec.outcome = "stopped";
+          await settle(rec, paise).catch(() => undefined);
+        }
         throw abortError();
       }
       const failure = err instanceof CallFailure ? err
@@ -680,6 +754,8 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
         try {
           return await oneCall(model, messages, ticket, how);
         } catch (err) {
+          // Words were shown and this try failed: they are void before anything is tried again.
+          if (shown > 0 && (err as { name?: unknown } | null)?.name !== "AbortError") { shown = 0; input.onReset?.(); }
           if (err instanceof BudgetExceeded && cutShort) throw cutShort;
           // "Reasoning is mandatory for this endpoint": remembered for the life of the process (every later call, of any step, sends this model its lowest effort
           // and not "none"), and asked once more at once with the lowest effort, on this model, instead of the ladder climbing.

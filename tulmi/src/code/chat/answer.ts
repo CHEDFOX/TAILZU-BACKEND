@@ -74,6 +74,11 @@ export interface ChatInput {
   /** The decision plans a diagram: draw the flow from the graph if it shows one. */
   diagram: boolean;
   now: number;
+  /** The answer's words as they are written, and word that the ones so far are void. */
+  onText?: (piece: string) => void;
+  onReset?: () => void;
+  /** What it is doing, as it does it: "code:locate", "code:grep", "code:read:<path>", "code:write". */
+  onStep?: (stage: string) => void;
 }
 
 export interface ChatAnswer {
@@ -180,7 +185,7 @@ export function grepPatterns(search: string): string[] {
 }
 
 /** Reads the located spans (and greps, with a room), registering every line it saw as an anchor. Returns the excerpts. */
-async function readSpans(ports: ChatPorts, targets: readonly LocateTarget[], search: string, anchors: Anchors): Promise<{ excerpts: string[]; reads: string[]; greps: string[] }> {
+async function readSpans(ports: ChatPorts, targets: readonly LocateTarget[], search: string, anchors: Anchors, onStep?: (stage: string) => void): Promise<{ excerpts: string[]; reads: string[]; greps: string[] }> {
   const excerpts: string[] = [];
   const reads: string[] = [];
   const greps: string[] = [];
@@ -188,6 +193,7 @@ async function readSpans(ports: ChatPorts, targets: readonly LocateTarget[], sea
   const room = ports.files;
   if (room) {
     for (const pattern of grepPatterns(search)) {
+      onStep?.("code:grep");
       const r = await room.grep(pattern, { context: 1, maxResults: GREP_HITS_MAX }).catch(() => null);
       if (r?.kind !== "ok" || !r.out.text.trim()) continue;
       greps.push(pattern);
@@ -199,6 +205,7 @@ async function readSpans(ports: ChatPorts, targets: readonly LocateTarget[], sea
   }
   for (const t of targets.slice(0, READ_FILES_MAX)) {
     if (isSecretPath(t.path) || chars >= READ_CHARS_MAX) continue;
+    onStep?.(`code:read:${t.path}`);
     let body: string | null = null;
     if (room) {
       const from = t.lines ? Math.max(1, t.lines[0] - SPAN_AROUND) : 1;
@@ -280,6 +287,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const notes: string[] = [];
 
   // Where it is, from the index alone: no file is read to find out.
+  input.onStep?.("code:locate");
   const located = await locate(input.search, brain, { model: ctxOf(model, Math.max(1, Math.min(LOCATE_PAISE, input.maxPaise))) });
   const targets = located.targets.filter((t) => !isSecretPath(t.path)).slice(0, FACT_FILES);
   const sure = !located.question && located.confidence >= CONFIDENT && targets.length > 0;
@@ -300,7 +308,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     const fast = sure && facts.rich && rq.kind !== "why" && !rq.wantsCode && (rq.kind !== "how" || facts.flow);
     if (fast) road = "fast";
     else {
-      ({ excerpts, reads, greps } = await readSpans(ports, targets, input.search, anchors));
+      ({ excerpts, reads, greps } = await readSpans(ports, targets, input.search, anchors, input.onStep));
       road = "read";
       if (!excerpts.length) notes.push("I could not read the files themselves, so this rests on the project's index.");
     }
@@ -318,8 +326,10 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     ...(facts.text ? [`<facts>\n${fence(forModel(facts.text))}\n</facts>`] : []),
     `<excerpts>\n${fence(forModel(excerpts.length ? excerpts.join("\n\n") : basis || "(none read)"))}\n</excerpts>`,
   ].filter((p) => road !== "fast" || !p.startsWith("<excerpts>")).join("\n\n");
+  input.onStep?.("code:write");
   const r = await askText(model, {
     role: "front_code_answer", tier: input.tier, purpose: "front.code_answer", maxTokens: REPLY_TOKENS[input.length], budget: { maxPaise: left }, user,
+    ...(input.onText ? { onText: input.onText } : {}), ...(input.onReset ? { onReset: input.onReset } : {}),
   });
 
   // Every path:line in the answer is something that was seen; the rest is taken out, and the notes say so.

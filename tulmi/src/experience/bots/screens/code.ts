@@ -26,12 +26,13 @@ import { nextValue, ruleWord, type RuleId, type RuleValue } from "../../../botsC
 import {
   back, bigNumber, blip, body, botAvatar, botLook, box, button, C, call, chips, col, emptyState, grid, grow,
   icon, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, row,
-  rupees, SCREENS, sectionLabel, secondaryButton, segmented, seq, statusMark, stepper, text, title, duration, FACE,
+  percent, SCREENS, sectionLabel, secondaryButton, segmented, seq, statusMark, text, title, duration, FACE, whenEq, whenWords,
   botBuddy, canBuddy, headerBuddy, keptOffline, type BotsCtx, type Mark,
 } from "../kit.js";
 import type { ScreenResponse } from "../../../../../shared/types/sdui.js";
 import type { BotsDeps } from "../live.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { askMoment, failed, SENT_WORDS, start as momentStart, streamed } from "../askMoment.js";
 
 // ===================================================================== what the routes answer (as much as is read)
 
@@ -147,7 +148,22 @@ function head(ctx: BotsCtx, o: { title: string; sub?: Node; right?: Node[]; to?:
   ], { gap: desk ? 12 : 8, alignItems: "center" });
 }
 
-/** A grey tag: "18 of 18 tests pass", "₹6.40". */
+/**
+ * How often a job checks with you before it uses more: three levels, each the share of this stretch a job may use before it asks (ours,
+ * kept as the project's cap: POST /v1/bots/code/projects/:id/cap). No amounts on the screen.
+ */
+const ASK_LEVELS = [{ label: "Often", paise: 1000 }, { label: "Sometimes", paise: 3000 }, { label: "Rarely", paise: 10_000 }] as const;
+const askLevelOf = (capPaise: number): string => String(capPaise <= 1500 ? 1000 : capPaise <= 5000 ? 3000 : 10_000);
+function askLevels(projectId: string): Node {
+  return row(ASK_LEVELS.map((l) => box([text(l.label, { size: 13, weight: 500, lineHeight: 17, align: "center" })], {
+    flexGrow: 1, flexBasis: 0, alignItems: "center", paddingVertical: 7, paddingHorizontal: 10, borderRadius: 10,
+    backgroundColor: whenEq("askLevel", String(l.paise), C.paper, "transparent"),
+  }, seq({ kind: "setState", path: "askLevel", value: String(l.paise) },
+    call("POST", `/v1/bots/code/projects/${projectId}/cap`, { paise: l.paise }, { ok: seq(toast("Saved."), REFRESH), fail: toast("Couldn't save that. Try again.") })))),
+  { padding: 3, borderRadius: 12, backgroundColor: C.surface, gap: 2 });
+}
+
+/** A grey tag: "18 of 18 tests pass", "3 files". */
 const tag = (s: string, o: { mono?: boolean; white?: boolean; weight?: 400 | 500 | 600 } = {}): Node =>
   box([text(s, { size: 12, mono: o.mono, weight: o.weight, lineHeight: 16 })], {
     backgroundColor: o.white ? C.paper : C.surface, borderRadius: o.mono ? 8 : 12, paddingVertical: o.mono ? 4 : 5, paddingHorizontal: o.mono ? 8 : 10, alignSelf: "flex-start", flexShrink: 0,
@@ -224,13 +240,14 @@ function unreachable(ctx: BotsCtx, what: string, o: { nav?: string } = {}): Scre
 
 /** Start a task plan-first in a project (POST /v1/bots/code/start), then open its plan. `task` may be "$state.<path>". */
 function startTask(projectId: string, task: string, statePath?: string): ActionRef {
+  // The words go up as the person's bubble and the box clears at once (askMoment.ts); the call sends them from there.
   const go = seq(
-    { kind: "setState", path: "starting", value: true },
-    call("POST", "/v1/bots/code/start", { projectId, task }, {
+    ...momentStart({ message: task, busy: "starting", ...(statePath ? { from: statePath } : {}) }),
+    call("POST", "/v1/bots/code/start", { projectId, task: SENT_WORDS }, {
       assignTo: "started",
-      ok: seq({ kind: "setState", path: "starting", value: false }, ...(statePath ? [{ kind: "clearState", path: statePath } as ActionSpec] : []),
+      ok: seq({ kind: "setState", path: "starting", value: false },
         { kind: "navigate", screenId: SCREENS.codePlan, params: { id: "$state.started.job.id" } }),
-      fail: seq({ kind: "setState", path: "starting", value: false }, toast("Couldn't start that. Try again.")),
+      fail: failed({ busy: "starting", ...(statePath ? { from: statePath } : {}), then: toast("Couldn't start that. Try again.") }),
     }),
   );
   return statePath ? { kind: "condition", if: { falsy: statePath }, then: toast("Say what you want done first"), else: go } : go;
@@ -244,18 +261,17 @@ function startTask(projectId: string, task: string, statePath?: string): ActionR
 function codeAsk(ctx: BotsCtx, message: string, o: { projectId?: string; statePath?: string } = {}): ActionRef {
   const asked: ActionSpec = {
     kind: "sequence", actions: [
-      { kind: "setState", path: "asking", value: true },
-      {
+      ...momentStart({ message, busy: "asking", ...(o.statePath ? { from: o.statePath } : {}) }),
+      streamed(ctx, {
         kind: "callEndpoint", method: "POST", path: "/v1/shell/ask",
-        body: { message, device: ctx.client, mode: "text", bot: "code", ...(o.projectId ? { projectId: o.projectId } : {}) },
+        body: { message: SENT_WORDS, device: ctx.client, mode: "text", bot: "code", ...(o.projectId ? { projectId: o.projectId } : {}) },
         assignTo: "asked",
         onSuccess: seq(
           { kind: "setState", path: "asking", value: false },
-          { kind: "navigate", screenId: SCREENS.ask, params: { message, answer: "$state.asked.result.text", id: "$state.asked.id" } },
-          ...(o.statePath ? [{ kind: "clearState", path: o.statePath } as ActionSpec] : []),
+          { kind: "navigate", screenId: SCREENS.ask, params: { message: SENT_WORDS, answer: "$state.asked.result.text", id: "$state.asked.id" } },
         ),
-        onError: seq({ kind: "setState", path: "asking", value: false }, toast("Couldn't reach Code bot. Try again.")),
-      },
+        onError: failed({ busy: "asking", ...(o.statePath ? { from: o.statePath } : {}), then: toast("Couldn't reach Code bot. Try again.") }),
+      }),
     ],
   };
   const send: ActionSpec = o.projectId ? asked : keptOffline(ctx.client, { message, bot: "code", who: "Code bot", ...(o.statePath ? { clear: o.statePath } : {}) }, asked);
@@ -267,11 +283,11 @@ function taskBar(ctx: BotsCtx, o: { projectId?: string; placeholder?: string }):
   const send = o.projectId ? startTask(o.projectId, "$state.task", "task") : codeAsk(ctx, "$state.task", { statePath: "task" });
   const desk = ctx.client === "desktop";
   return col([
+    askMoment(ctx, { slug: "code", color: MOSS, kind: "code", busy: o.projectId ? "starting" : "asking", line: o.projectId ? "Making a plan…" : "Asking Code bot…" }),
     row([
       field("task", o.placeholder ?? "Tell Code bot what to do…", { onSubmit: send, size: desk ? 15 : 16, label: "Tell Code bot what to do" }),
       roundInk("send", send, "Send", desk ? 46 : 48),
     ], { gap: 10, borderWidth: 1, borderColor: C.line, borderRadius: desk ? 30 : 28, paddingVertical: 6, paddingRight: 6, paddingLeft: desk ? 20 : 18 }),
-    { ...row([statusMark("working", { color: MOSS }), meta(o.projectId ? "Making a plan…" : "Asking Code bot…", { size: 13 })], { gap: 8, paddingLeft: 18 }), visibleIf: { any: [{ truthy: "starting" }, { truthy: "asking" }] } },
   ], { gap: 8 });
 }
 
@@ -319,12 +335,12 @@ function jobLine(ctx: BotsCtx, j: Job, br: Branch | undefined, o: { money?: bool
   const when = o.when ? ` · ${ago(j.updatedAt, ctx.live.now, ctx.tzOffsetMinutes)}` : "";
   switch (j.state) {
     case "waiting_for_you": {
-      const what = j.waitingOn === "answer" ? "1 question" : j.waitingOn === "budget" ? "more budget" : j.waitingOn === "paid" ? "a paid computer" : "your OK";
+      const what = j.waitingOn === "answer" ? "1 question" : j.waitingOn === "budget" ? "keep going?" : j.waitingOn === "paid" ? "a paid computer" : "your OK";
       return { line: `Needs you · ${what}`, color: C.meta };
     }
     case "running": case "queued": {
       const note = j.checkpoint?.notes ? ` · ${cut(firstLine(j.checkpoint.notes), 40)}` : "";
-      return { line: `Working${note}${o.money && j.spentPaise ? ` · ${rupees(j.spentPaise)} so far` : ""}`, color: MOSS };
+      return { line: `Working${note}`, color: MOSS };
     }
     case "waiting_for_compute": case "paused": return { line: "Waiting for a computer", color: C.meta };
     case "done": return { line: `${br?.state === "merged" ? "Shipped" : "Done"}${pr ? ` · ${pr}` : ""}${when}`, color: C.meta };
@@ -788,7 +804,7 @@ function overview(ctx: BotsCtx, d: OverviewData | undefined, setup = false): Scr
     run ? col([
       col([text(run.task, { size: 15, weight: 600, lineHeight: 20, lines: 2 }),
         row([statusMark("working", { color: MOSS }), text(`${nameOf(run.projectId)} · working · ${duration(Math.max(1, (ctx.live.now - run.createdAt) / 60_000))}`, { size: 12, weight: 500, color: MOSS, lineHeight: 16 })], { gap: 6 })], { gap: 2 }),
-      meter(run.spentPaise, Math.max(run.budgetPaise, 1), { label: "Spent so far", valueText: `${rupees(run.spentPaise)} of ${rupees(run.budgetPaise)}`, color: MOSS, height: 4 }),
+      meter(run.spentPaise, Math.max(run.budgetPaise, 1), { label: "Of what it was given", valueText: `${percent(run.spentPaise / Math.max(run.budgetPaise, 1))} used`, color: MOSS, height: 4 }),
     ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 12 }, open(SCREENS.codeJob, { id: run.id }))
       : meta("Nothing running. Tell me what to do below.", { size: 13 }),
     col(recent.map((j) => row([statusMark("done"), col([text(j.task, { size: 13.5, lineHeight: 18, lines: 1 }), meta(`${nameOf(j.projectId)} · ${ago(j.updatedAt, ctx.live.now, ctx.tzOffsetMinutes)}`)], { gap: 1, flexShrink: 1 })],
@@ -841,6 +857,16 @@ function codeHome(ctx: BotsCtx, d: HomeData | undefined): ScreenResponse {
   if (d.kind === "meet") return meet(ctx, d.meet);
   if (d.kind === "overview") return overview(ctx, d.overview);
   return projectHome(ctx, d);
+}
+
+/** Near the usage limit, or at it: one calm line, a tap to Usage (src/you/usage.ts). Nothing while there is plenty left. */
+function usageNote(ctx: BotsCtx): Node[] {
+  const u = ctx.live.usage;
+  if (u.state === "ok") return [];
+  const span = u.windows ? "this stretch" : "this month";
+  const when = u.resetsAt ? ` It resets ${whenWords(u.resetsAt, ctx.live.now, ctx.tzOffsetMinutes)}.` : "";
+  const words = u.state === "out" ? `You've reached ${span}'s limit.${when}` : `You've used most of ${span}.${when}`;
+  return [row([meta(words, { size: 12, lineHeight: 16, style: { flexShrink: 1 } }), icon("chevron", { size: 14, color: C.meta })], { gap: 6 }, open(SCREENS.usage))];
 }
 
 function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project" }>): ScreenResponse {
@@ -903,6 +929,7 @@ function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project" }>): S
         row([backButton(), col([text("Code bot", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
           ...headerBuddy(ctx, "code", { width: 64, lookTo: "down", thinkWhen: CODE_BUSY }), branchTag, rules], { gap: 8 }),
         readCard,
+        ...usageNote(ctx),
         ...(tasks.length && !building ? [col([sectionLabel("Good first tasks"), ...tasks.map((t, i) => row([
           text(t.sub ? `${t.label} — ${t.sub}` : t.label, { size: 15, lineHeight: 20, style: { flexShrink: 1 } }), grow(), icon("chevron", { size: 16, color: C.meta }),
         ], { height: 52, gap: 8, ...(i < tasks.length - 1 ? { borderBottomWidth: 1, borderBottomColor: C.divider } : {}) }, startTask(p.id, t.task)))], { gap: 4 })] : []),
@@ -967,7 +994,7 @@ function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project" }>): S
       ], { gap: 10 }),
       ...(empty ? [readCard] : [composer,
         { ...row([statusMark("working", { color: MOSS }), meta("Making a plan…", { size: 13 })], { gap: 8 }), visibleIf: { truthy: "starting" } },
-        meta("I plan first and show you. Nothing changes until you press Start.", { size: 12 })]),
+        meta("I plan first and show you. Nothing changes until you press Start.", { size: 12 }), ...usageNote(ctx)]),
       ...(building && !empty ? [readCard] : []),
       row([
         col([
@@ -1277,7 +1304,6 @@ function codePlan(ctx: BotsCtx, d: PlanData | undefined): ScreenResponse {
   const not = untouched(d.brain, files);
   const notNode = not.length ? col([sectionLabel("Not in this plan"), row(not.map((n) => box([text(n, { size: 13, lineHeight: 17 })], { borderWidth: 1, borderColor: desk ? C.outline : C.line, borderRadius: 18, paddingVertical: desk ? 7 : 8, paddingHorizontal: desk ? 12 : 14 })), { gap: 6, flexWrap: "wrap" }),
     ...(desk ? [meta("If a step needs one of these, it shows in the review.", { size: 12 })] : [])], { gap: 8 }) : null;
-  const cap = job.budgetPaise;
   const stepFiles = (s: { files: string[] }) => row(s.files.map((f) => fileOf(f)).map((f) => fileChip(f.path, f.action, { size: desk ? 12 : 11.5 })), { gap: 4, flexWrap: "wrap" });
   const buttons = [primaryButton("Start", startIt, { wide: true }), { ...secondaryButton("Change the plan", { kind: "setState", path: "changing", value: true }, { wide: true }), visibleIf: { falsy: "changing" } }, changeBox];
 
@@ -1290,7 +1316,7 @@ function codePlan(ctx: BotsCtx, d: PlanData | undefined): ScreenResponse {
         col([sectionLabel(`${plural(steps.length, "step")} · ${plural(files.length, "file")}`), col(steps.map((s, i) => row([
           numberDot(s.n, "plain"), col([text(s.do, { size: 14, weight: 500, lineHeight: 19 }), stepFiles(s)], { gap: 4, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
         ], { gap: 12, paddingVertical: 10, paddingHorizontal: 16, alignItems: "flex-start", ...(i < steps.length - 1 ? { borderBottomWidth: 1, borderBottomColor: C.divider } : {}) })), { borderWidth: 1, borderColor: C.line, borderRadius: 18 })], { gap: 8 }),
-        estimateGrid(est, cap, steps.length, files.length),
+        estimateGrid(est, steps.length, files.length),
         ...(notNode ? [notNode] : []),
       ],
       footer: buttons,
@@ -1319,12 +1345,11 @@ function codePlan(ctx: BotsCtx, d: PlanData | undefined): ScreenResponse {
   return withAside(resp, [
     sectionLabel("Estimate"),
     col([
-      row([bigNumber(est ? rupees(est.costPaise) : rupees(cap)), meta(est ? `about · cap ${rupees(cap)}` : "cap for this job", { size: 13 })], { gap: 8, alignItems: "flex-end" }),
-      ...(est ? [meter(est.costPaise, cap, { color: MOSS })] : []),
-      meta(`I stop and ask before going past ${rupees(cap)}.${est ? ` From your last ${est.from} jobs${est.here ? " here" : ""}.` : ""}`, { size: 12, lineHeight: 17 }),
+      row([bigNumber(est ? duration(est.minutes) : plural(steps.length, "step")), meta(est ? "about" : "to do", { size: 13 })], { gap: 8, alignItems: "flex-end" }),
+      meta(`I check with you before this job uses a lot of this stretch.${est ? ` From your last ${est.from} jobs${est.here ? " here" : ""}.` : ""}`, { size: 12, lineHeight: 17 }),
     ], { gap: 8 }),
     row([
-      col([text(est ? duration(est.minutes) : String(steps.length), { size: 24, weight: 700, lineHeight: 30 }), meta(est ? "about" : "steps")], { flexGrow: 1, flexBasis: 0, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 14, gap: 2 }),
+      col([text(String(steps.length), { size: 24, weight: 700, lineHeight: 30 }), meta(steps.length === 1 ? "step" : "steps")], { flexGrow: 1, flexBasis: 0, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 14, gap: 2 }),
       col([text(String(files.length), { size: 24, weight: 700, lineHeight: 30 }), meta("files changed")], { flexGrow: 1, flexBasis: 0, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 14, gap: 2 }),
     ], { gap: 12 }),
     col([sectionLabel("Files it touches"), ...fileRows.map((f) => row([text(f.path, { size: 11.5, mono: true, lineHeight: 16, lines: 1, style: { flexShrink: 1 } }), grow(), meta(f.action === "create" ? "new" : f.action === "delete" ? "removed" : "changed", { size: 11 })], { gap: 10 }))], { gap: 9 }),
@@ -1333,12 +1358,12 @@ function codePlan(ctx: BotsCtx, d: PlanData | undefined): ScreenResponse {
   ]);
 }
 
-/** The phone's estimate strip: three numbers on the surface grey. */
-function estimateGrid(est: ReturnType<typeof estimate>, cap: number, steps: number, files: number): Node {
+/** The phone's estimate strip: three numbers on the surface grey. No money: how long, how many steps, how many files. */
+function estimateGrid(est: ReturnType<typeof estimate>, steps: number, files: number): Node {
   const cell = (big: string, small: string) => col([text(big, { size: 20, weight: 600, lineHeight: 25 }), meta(small)], { gap: 2, flexGrow: 1, flexBasis: 0, minWidth: 0 });
   return row([
-    cell(est ? rupees(est.costPaise) : rupees(cap), est ? `about · cap ${rupees(cap)}` : "cap for this job"),
-    cell(est ? duration(est.minutes) : String(steps), est ? "about" : steps === 1 ? "step" : "steps"),
+    cell(est ? duration(est.minutes) : "—", "about"),
+    cell(String(steps), steps === 1 ? "step" : "steps"),
     cell(String(files), files === 1 ? "file changed" : "files changed"),
   ], { backgroundColor: C.surface, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 8, alignItems: "flex-start" });
 }
@@ -1363,9 +1388,8 @@ function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResponse {
   const name = short(v.project.fullName);
   const main = v.project.defaultBranch;
   const set = (rule: RuleId, to: string): ActionRef => call("POST", `/v1/bots/code/projects/${id}/rules`, { rule, to }, { ok: seq(toast("Saved."), REFRESH), fail: toast("Couldn't save that. Try again.") });
-  const cap = (step: 1 | -1): ActionRef => call("POST", `/v1/bots/code/projects/${id}/cap`, { step }, { ok: REFRESH, fail: toast("Couldn't change the cap. Try again.") });
   const comp = v.computers[0];
-  const compSub = comp ? `Runs checks on ${comp.name} when awake · free` : "Runs checks on your computer when the Tailzu app is open · free";
+  const compSub = comp ? `Runs checks on ${comp.name} when awake` : "Runs checks on your computer when the Tailzu app is open";
   const disconnect = call("POST", `/v1/bots/code/projects/${id}/disconnect`, {}, {
     ok: seq(toast(`Disconnected ${name}.`), { kind: "navigate", screenId: SCREENS.code, replace: true }),
     fail: toast("Couldn't disconnect it. Try again."),
@@ -1373,7 +1397,6 @@ function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResponse {
   const ruleLabel = (r: typeof RULE_ROWS[number]): Node => r.id === "main"
     ? row([text("Push to", { size: 15, lineHeight: 20 }), mono(main, { size: 12 })], { gap: 6 })
     : text(r.label, { size: 15, lineHeight: 20 });
-  const capLine = v.typical ? `Most jobs here cost ${rupees(v.typical[0])}–${rupees(v.typical[1]).replace("₹", "")}` : "";
   const checks = v.checks.length
     ? row(v.checks.slice(0, 8).map((c) => box([text(c, { size: 12, mono: true, lineHeight: 16 })], { backgroundColor: C.surface, borderRadius: 8, paddingVertical: desk ? 6 : 5, paddingHorizontal: desk ? 9 : 8 })), { gap: 6, flexWrap: "wrap" })
     : meta("None found yet. I look for lint, typecheck, test and build scripts.", { size: 12 });
@@ -1395,13 +1418,12 @@ function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResponse {
       box([ruleLabel(r)], { flexGrow: 1, flexShrink: 1 }), text(ruleWord(v.rules[r.id]), { size: 14, color: C.meta, lineHeight: 19 }), icon("chevron", { size: 16, color: C.meta }),
     ], { gap: 8, paddingVertical: 13, paddingHorizontal: 16, minHeight: 48 }, set(r.id, nextValue(r.id, v.rules[r.id]))));
     return page(ctx, {
-      nav: "code", title: "Project rules", state: { confirm: false }, gap: 14,
+      nav: "code", title: "Project rules", state: { confirm: false, askLevel: askLevelOf(v.capPaise) }, gap: 14,
       body: [
         head(ctx, { title: "Project rules", sub: subLine([{ code: name }, "· what Code bot may do"]), to: open(SCREENS.code, { project: id }), right: [botAvatar(CODE, 30)] }),
         col([sectionLabel("On its own"), listCard(ruleRows)], { gap: 8 }),
-        col([sectionLabel("Money and checks"), listCard([
-          row([col([text("Spend cap per job", { size: 15, lineHeight: 20 }), meta(capLine || "Stops and asks before going over")], { gap: 2, flexGrow: 1, flexShrink: 1 }),
-            stepper(rupees(v.capPaise), cap(-1), cap(1))], { gap: 12, paddingVertical: 10, paddingLeft: 16, paddingRight: 10 }),
+        col([sectionLabel("Checking with you"), listCard([
+          col([col([text("Checks with you", { size: 15, lineHeight: 20 }), meta("Before a job uses a lot of this stretch")], { gap: 2 }), askLevels(id)], { gap: 10, paddingVertical: 12, paddingHorizontal: 16 }),
           col([row([text("Checks it runs before each PR", { size: 15, lineHeight: 20 }), grow(), meta(String(v.checks.length), { size: 13 })]), checks], { gap: 10, paddingVertical: 14, paddingHorizontal: 16 }),
         ])], { gap: 8 }),
         col([sectionLabel("How it works"), listCard([
@@ -1423,14 +1445,14 @@ function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResponse {
   ], { gap: 16, paddingVertical: 11, paddingHorizontal: 18, minHeight: 46, ...(i < RULE_ROWS.length - 1 ? { borderBottomWidth: 1, borderBottomColor: C.divider } : {}) }));
   const cardOf = (kids: Node[]) => col(kids, { borderWidth: 1, borderColor: C.line, borderRadius: 18 });
   return page(ctx, {
-    nav: "code", title: "Project rules", maxWidth: 1000, gap: 22, state: { confirm: false, rule: v.rules },
+    nav: "code", title: "Project rules", maxWidth: 1000, gap: 22, state: { confirm: false, rule: v.rules, askLevel: askLevelOf(v.capPaise) },
     body: [
       head(ctx, { title: "Project rules", sub: subLine([{ code: name }, "· what Code bot may do"], 13), to: open(SCREENS.code, { project: id }),
         right: [row([botAvatar(CODE, 26), meta("Saved · applies from the next job", { size: 13 })], { gap: 8 })] }),
       section("On its own", "What Code bot may do without asking. It always works on its own branch, so your code only changes when you say.", cardOf(ruleRows)),
-      section("Money and checks", "A job stops and asks before it spends past the cap. Checks run before every PR, so you only review work that passes.", cardOf([
-        row([col([text("Spend cap per job", { size: 15, lineHeight: 20 }), meta("Stops and asks before going over")], { gap: 2, flexGrow: 1 }),
-          ...(capLine ? [meta(capLine)] : []), stepper(rupees(v.capPaise), cap(-1), cap(1))], { gap: 14, paddingVertical: 11, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: C.divider }),
+      section("Checking with you", "A job checks with you before it uses a lot of this stretch. Checks run before every PR, so you only review work that passes.", cardOf([
+        row([col([text("Checks with you", { size: 15, lineHeight: 20 }), meta("Before a job uses a lot of this stretch")], { gap: 2, flexGrow: 1 }),
+          box([askLevels(id)], { width: 270, flexShrink: 0 })], { gap: 14, paddingVertical: 11, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: C.divider }),
         col([row([text("Checks it runs before each PR", { size: 15, lineHeight: 20 }), grow(), meta(String(v.checks.length), { size: 13 })]), checks], { gap: 10, paddingTop: 12, paddingBottom: 14, paddingHorizontal: 18 }),
       ])),
       section("How it works", "Where the work runs, and how branches are named so you can find them on GitHub.", cardOf([
@@ -1493,7 +1515,6 @@ function codeReview(ctx: BotsCtx, d: ReviewData | undefined): ScreenResponse {
   const tags = [
     ...(verify?.ran ? [cut(firstLine(verify.summary), 34)] : []),
     ...(d.changes ? [plural(d.changes.totals.files, "file")] : []),
-    ...(job?.spentPaise ? [rupees(job.spentPaise)] : []),
   ];
   const explain = (path: string): ActionRef => codeAsk(ctx, `Explain the change to ${path} in "${cut(task, 80)}".`, { projectId });
   const sendChange: ActionRef = {
@@ -1634,7 +1655,6 @@ function prCare(ctx: BotsCtx, d: CareData | undefined): ScreenResponse {
   const ready = open_ && checks.mark === "done" && conflict.mark === "done" && !pull?.waiting && !(pull?.working.length);
   const tags = [
     ...(d.diff ? [plural(d.diff.commits.length, "commit"), plural(d.diff.totals.files, "file")] : []),
-    ...(d.spentPaise ? [`${rupees(d.spentPaise)} in all`] : []),
   ];
   const fixNote = pull?.checks && ["fixing", "unfixed", "capped", "also_red", "infra"].includes(pull.checks.outcome) && pull.checks.note ? pull.checks.note : "";
   const notes = (pull?.notes ?? []).slice(-7);

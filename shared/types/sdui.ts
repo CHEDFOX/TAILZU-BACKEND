@@ -924,8 +924,21 @@ export interface BotCardProps {
  */
 export const BOT_BUDDY_COMPONENT = "BotBuddy";
 
-/** play: his own · wave: hello, then play · survey: looks over a list below him · read: dots and lines flow into him · settle: sits · think: an answer is on its way. */
-export type BuddyAct = "play" | "wave" | "survey" | "read" | "settle" | "think";
+/**
+ * play: his own · wave: hello, then play · survey: looks over a list below him · read: dots and lines flow into him · settle: sits ·
+ * think: an answer is on its way · carry: an answer is on its way, as a load (a build that declares BOT_BUDDY_CARRY).
+ */
+export type BuddyAct = "play" | "wave" | "survey" | "read" | "settle" | "think" | "carry";
+
+/**
+ * Declared by a build whose BotBuddy CARRIES (act "carry", `doneWhen`): the stage is a full-width lane (no `width`) under a
+ * message on its way. A few moments in, the bot comes in from the right with a bag, walks slowly across and out at the left,
+ * and comes again with a heavier one, trip after trip (the bag bigger and fuller, the bot leaning and straining, slower,
+ * a deeper bob; the heaviest from the sixth trip on). When `doneWhen` holds the answer is here: on stage he sets the bag
+ * down and walks off, and the lane folds away once he has gone (at once when he was off stage). Reduce Motion: he stands
+ * still holding the bag, with `label` written beside him. A build without it is sent "Asking…" instead.
+ */
+export const BOT_BUDDY_CARRY = "BotBuddyCarry";
 
 export interface BotBuddyProps {
   kind: BotTileKind;
@@ -939,6 +952,8 @@ export interface BotBuddyProps {
   state: "working" | "needs" | "idle";
   act?: BuddyAct;
   thinkWhen?: Condition;
+  /** Carrying: when this holds the answer is here (BOT_BUDDY_CARRY). */
+  doneWhen?: Condition;
   lookTo?: "down" | "left" | "right" | "up";
   label?: string;
 }
@@ -1063,6 +1078,42 @@ export interface OutboxItem {
   typedAt: number;
 }
 
+// ---------------------------------------------------------------------------
+// 3f. An answer as it is written (docs/bots-app.md, "An answer as it is written")
+// ---------------------------------------------------------------------------
+//
+// A build that declares ASK_STREAM_CAPABILITY runs callEndpoint's `stream`: before the call it makes a stream id (16 to 64
+// letters, digits, - or _), writes `{ id, text: "", step: "" }` (AskStreamState) at the `stream` path, and sends the id as
+// the body's `streamId`. While the call is out, the server says what it is doing and the answer's words as they are written
+// over the live channel (WS /v1/live) to the one person who asked, as events on the topic `ask:<id>` whose `data` is one
+// AskStreamPiece. The build appends `text`, sets `step`, starts the text over on `reset`, and stops listening when the call
+// settles (or on `end`). Pieces arrive in order, numbered (`n` from 0); one missing (a dropped socket) stops the appending, so
+// nothing is ever shown out of place: the call's own answer, whole, follows as before. POST /v1/ask/stop { id } stops the
+// ask (the call then fails with 409 `stopped`). A build without it ignores `stream` and gets the whole answer at the end.
+
+/** Declared by a build that runs callEndpoint's `stream`. */
+export const ASK_STREAM_CAPABILITY = "AskStream";
+
+/** What a `stream` path holds while (and after) the call is out. */
+export interface AskStreamState {
+  id: string;
+  /** The answer's words so far. */
+  text: string;
+  /** What it is doing now, in a few words ("Looking at cart.ts…"), from the server's real steps. */
+  step: string;
+}
+
+/** One live event's `data` on the topic `ask:<id>`. */
+export interface AskStreamPiece {
+  n: number;
+  /** More words, to append (whole words and characters: never half of one). */
+  text?: string;
+  step?: string;
+  /** The words so far are dropped (the bot went to use a tool after writing a little): start over. */
+  reset?: true;
+  end?: true;
+}
+
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [
   "scroll", "feature", "list", "centered", "detail", "grid", "hero",
@@ -1101,6 +1152,8 @@ export type ActionSpec =
       assignTo?: string;
       onSuccess?: ActionRef;
       onError?: ActionRef;
+      /** The state path an answer is written to as it comes (section 3f, ASK_STREAM_CAPABILITY). */
+      stream?: string;
     }
   | { kind: "refresh" }
   // --- local state ---

@@ -1,7 +1,8 @@
 /**
  * READING WHAT OTHER PARTS HAND THE SHELL AS WORDS: a UPI payment link, and the lines a connected Google app answers with.
  *
- *   upiOf(link)        the payee, UPI ID, amount and note of a upi://pay link (NPCI's linking specification), or null
+ *   upiOf(link)        the payee, UPI ID and note of a upi://pay link (NPCI's linking specification), or null; the link re-made without
+ *                      an amount, so the UPI app opens on the payee and the person types the amount there
  *   calendarOf(text)   google-calendar.list_events' lines ("- Today 10:00–10:30, Standup with Rohan (id: …)") as events
  *   googleTasksOf(text) google-tasks.list_tasks' lines ("- Renew car insurance, due Friday (id: …)") as to-dos
  *
@@ -14,9 +15,10 @@ export interface Upi {
   vpa: string;
   /** The payee's name, as the link says it (else the UPI ID). */
   name: string;
+  /** An amount the link carried (0 when none). Ours, for the record: never shown, never passed on. */
   amountPaise: number;
   note: string;
-  /** The link itself, re-made from what was read: what "Open UPI to pay" opens. */
+  /** The link itself, re-made from what was read, without an amount: what "Open UPI to pay" opens. */
   link: string;
 }
 
@@ -26,7 +28,7 @@ const UPI_MAX_PAISE = 100_000 * 100;
 
 const enc = (s: string) => encodeURIComponent(s);
 
-/** A upi://pay link read, or null when it is not one, has no payee or no amount, or the amount is not a sane one. */
+/** A upi://pay link read, or null when it is not one, has no payee, or carries an amount that is not a sane one. */
 export function upiOf(link: unknown): Upi | null {
   if (typeof link !== "string" || link.length > 1000 || !/^upi:\/\/pay\?/i.test(link.trim())) return null;
   let q: URLSearchParams;
@@ -34,18 +36,30 @@ export function upiOf(link: unknown): Upi | null {
   const vpa = (q.get("pa") ?? "").trim();
   if (!VPA.test(vpa)) return null;
   const am = (q.get("am") ?? "").trim();
-  if (!/^\d{1,7}(\.\d{1,2})?$/.test(am)) return null;
-  const amountPaise = Math.round(Number(am) * 100);
-  if (!(amountPaise > 0 && amountPaise <= UPI_MAX_PAISE)) return null;
+  if (am && !/^\d{1,7}(\.\d{1,2})?$/.test(am)) return null;
+  const amountPaise = am ? Math.round(Number(am) * 100) : 0;
+  if (am && !(amountPaise > 0 && amountPaise <= UPI_MAX_PAISE)) return null;
   const cu = (q.get("cu") ?? "INR").trim().toUpperCase();
   if (cu !== "INR") return null;
   const name = (q.get("pn") ?? "").replace(/\s+/g, " ").trim().slice(0, 80) || vpa;
   const note = (q.get("tn") ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-  const amount = (amountPaise / 100).toFixed(2);
   return {
     vpa, name, amountPaise, note,
-    link: `upi://pay?pa=${enc(vpa).replace("%40", "@")}&pn=${enc(name)}&am=${amount}&cu=INR${note ? `&tn=${enc(note)}` : ""}`,
+    link: `upi://pay?pa=${enc(vpa).replace("%40", "@")}&pn=${enc(name)}&cu=INR${note ? `&tn=${enc(note)}` : ""}`,
   };
+}
+
+/** A part of a line that is an amount of money: "₹790", "Rs. 3,200 a night", "INR 99", "$12". */
+const MONEY_PART = /(?:₹|\brs\.?\s?\d|\binr\s?\d|[$€£]\s?\d)/i;
+
+/**
+ * A line without its amounts, for the screens (the app shows no money): "Deccan Queen 12123 · 2 window seats · ₹790" is
+ * "Deccan Queen 12123 · 2 window seats". Only whole " · " parts that hold an amount go; a line that is all amount stays as it was.
+ */
+export function withoutAmounts(line: string): string {
+  const parts = line.split(" · ");
+  const kept = parts.filter((p) => !MONEY_PART.test(p));
+  return kept.length && kept.length < parts.length ? kept.join(" · ") : line;
 }
 
 export interface CalEvent {

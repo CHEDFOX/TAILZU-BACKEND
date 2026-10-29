@@ -86,7 +86,10 @@ describe("bots.home", () => {
     expect(field.bind).toEqual({ value: "ask" });
     const ask = JSON.stringify(field.on!.onSubmit);
     expect(ask).toContain('"path":"/v1/ask"');
-    expect(ask).toContain('"body":{"message":"$state.ask","device":"phone","mode":"text","bot":"any"}');
+    // The words go up as the person's bubble and the box clears at once; the call sends them from there (askMoment.ts).
+    expect(ask).toContain('{"kind":"setState","path":"sent","value":"$state.ask"}');
+    expect(ask).toContain('{"kind":"clearState","path":"ask"}');
+    expect(ask).toContain('"body":{"message":"$state.sent","device":"phone","mode":"text","bot":"any"}');
     expect(ask).toContain('"screenId":"bots.ask"');
     expect(s.state).toMatchObject({ ask: "", asking: false });
     expect(checkTree(s.root!)).toEqual([]);

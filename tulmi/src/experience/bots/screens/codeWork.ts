@@ -3,7 +3,7 @@
  * that could not finish. One id serves the phone and the window (ctx.client); built with the kit like screens/shell.ts.
  *
  *   bots.code.job      Job / DeskWork (params id)        watch it work: the stages, what it did, its one quick question (answer,
- *                                                        yes / no, more money), what it spent, stop. With no job, or a job that
+ *                                                        yes / no, keep going), how much of its share it used, stop. No money. With no job, or a job that
  *                                                        was a question (report "answer"), or after a question (params asked,
  *                                                        answer) it is the Code bot's CHAT (Chat.dc.html; the window draws the
  *                                                        chat beside the live job, DeskWork). Params project, thread, asked,
@@ -14,7 +14,7 @@
  *   bots.code.preview  Preview / DPreview (id | job)     the artifact's parts to point at, its versions, go back to one
  *   bots.attach        Attach / DAttach (id | project)   add a file you already sent, a link or your voice to the chat
  *   bots.done          Done / DDone (id)                 the shipped moment: the pull request, the numbers, what changed
- *   bots.failed        Failed / DFailed (id)             what it tried and spent; try again deeper, tell me more, stop
+ *   bots.failed        Failed / DFailed (id)             what it tried; try again deeper, tell me more, stop
  *
  * Everything is the existing Code bot backend: routes/codeJobs.ts (the job, its log, its team, answer / approve / deny /
  * budget / stop / message), routes/artifacts.ts, routes/files.ts, and the front door (POST /v1/ask with projectId and a
@@ -32,13 +32,14 @@ import {
 } from "../../../botsCodeWork/read.js";
 import {
   back, blip, botAvatar, botLook, box, button, C, call, card, col, divider, duration, emptyState, grow, icon,
-  labelled, meta, meter, mono, open, page, row, rupees, SCREENS, sectionLabel, seq, shapes, stages, statusMark, text, title, when,
+  labelled, meta, meter, mono, open, page, percent, row, SCREENS, sectionLabel, seq, shapes, stages, statusMark, text, title, when,
   whenEq, FACE, RADIUS, type BotsCtx, type Mark,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import { shareButton } from "../shareAction.js";
 import { canUpload, uploadChip, uploadPick } from "../media.js";
 import { canLive, liveView } from "../kit.js";
+import { askMoment, failed, SENT_WORDS, start, streamed } from "../askMoment.js";
 
 const CODE = botLook("code");
 const MOSS = CODE.color;
@@ -172,17 +173,18 @@ function statusLine(job: JobRow, now: number, size = 13, extra = ""): Node {
 function placeLine(job: JobRow): string {
   if (isOver(job.state)) return "";
   switch (job.placement) {
-    case "desktop": return "Running on this computer · free";
+    case "desktop": return "Running on this computer";
     case "github": return "Running on GitHub's free computers";
     case "paid": return "Running on paid compute";
     default: return job.state === "waiting_for_compute" ? job.reason || "Waiting for a computer to run on" : "";
   }
 }
 
+/** How much of what the job was given it has used, as a share: never an amount. */
 function spendMeter(job: JobRow, size = 13): Node {
-  const value = job.budgetPaise > 0 ? `${rupees(job.spentPaise)} of ${rupees(job.budgetPaise)}` : rupees(job.spentPaise);
+  const value = job.budgetPaise > 0 ? `${percent(job.spentPaise / job.budgetPaise)} used` : "";
   return col([
-    row([text("Spent so far", { size, color: C.meta, lineHeight: size + 4 }), grow(), text(value, { size, weight: 600, lineHeight: size + 4 })]),
+    row([text("Of what it was given", { size, color: C.meta, lineHeight: size + 4 }), grow(), text(value, { size, weight: 600, lineHeight: size + 4 })]),
     meter(job.spentPaise, Math.max(job.budgetPaise, job.spentPaise, 1), { height: 6 }),
   ], { gap: 8 });
 }
@@ -191,7 +193,7 @@ const jobPath = (id: string, tail = ""): string => `/v1/code/jobs/${id}${tail}`;
 
 /** Stop: the agent's stop for an agent job, the router's cancel otherwise. */
 const stopJob = (job: JobRow): ActionSpec =>
-  write("POST", jobPath(job.id, job.agent ? "/stop" : "/cancel"), {}, "Stopped. Nothing more is spent.", "Couldn't stop it. Try again.");
+  write("POST", jobPath(job.id, job.agent ? "/stop" : "/cancel"), {}, "Stopped. Nothing more is used.", "Couldn't stop it. Try again.");
 
 // ===================================================================== reading a job
 
@@ -216,7 +218,7 @@ function waitingWords(job: JobRow, agent?: AgentView): string | undefined {
   switch (job.waitingOn) {
     case "answer": return "Waiting for your answer";
     case "approval": return "Waiting for your yes";
-    case "budget": return "Waiting for more money";
+    case "budget": return "Waiting for your yes to keep going";
     case "paid": return "Waiting for your yes to paid compute";
     case "commit": return "Waiting for your yes to commit";
     default: return agent?.waiting ? "Waiting for you" : undefined;
@@ -248,7 +250,7 @@ function phaseWords(phase?: string): string | undefined {
 
 // ===================================================================== the one quick question
 
-/** The decision a waiting job needs: its question, a yes, more money, paid compute, a commit. Null when it needs nothing. */
+/** The decision a waiting job needs: its question, a yes, keep going, paid compute, a commit. Null when it needs nothing. */
 function quickQuestion(_ctx: BotsCtx, d: JobData, o: { compact?: boolean } = {}): Node | null {
   const { job, agent } = d;
   if (job.state !== "waiting_for_you") return null;
@@ -282,8 +284,8 @@ function quickQuestion(_ctx: BotsCtx, d: JobData, o: { compact?: boolean } = {})
   }
   if (job.waitingOn === "budget" || w?.kind === "budget") {
     const more = agent?.report?.continueWithPaise ?? Math.max(1000, Math.round(job.spentPaise / 200) * 100);
-    return shell([label("Out of money for this job"), ask(`It spent ${rupees(job.spentPaise)} of ${rupees(job.budgetPaise)}. Go on with ${rupees(more)} more?`), choices([
-      btn(`Continue with ${rupees(more)}`, write("POST", jobPath(job.id, "/budget"), { addPaise: more }, "Going on", "Couldn't add that. Try again."), "primary"),
+    return shell([label("Needs your yes"), ask("This job has used a lot of this stretch. Keep going?"), choices([
+      btn("Keep going", write("POST", jobPath(job.id, "/budget"), { addPaise: more }, "Going on", "Couldn't go on. Try again."), "primary"),
       btn("Stop here", stopJob(job), "secondary"),
     ])]);
   }
@@ -342,11 +344,12 @@ interface ChatCtx { projectId: string; threadId: string; jobId?: string; project
  * "ok, change it" starts a job). An answer opens the chat with it; a job that started opens the job.
  */
 function askCode(ctx: BotsCtx, c: ChatCtx, message: string, o: { from?: string; attachments?: string } = {}): ActionRef {
-  const said = message;
+  // The words go up as the person's bubble and the box clears at once (askMoment.ts); the call sends them from there.
+  const said = SENT_WORDS;
   const carry = { project: c.projectId, thread: c.threadId, ...(c.jobId ? { id: c.jobId } : {}) };
   return seq(
-    { kind: "setState", path: "asking", value: true },
-    call("POST", "/v1/ask", {
+    ...start({ message, busy: "asking", ...(o.from ? { from: o.from } : {}) }),
+    streamed(ctx, call("POST", "/v1/ask", {
       message: said, projectId: c.projectId, threadId: c.threadId, device: ctx.client, mode: "text",
       ...(o.attachments ? { attachments: o.attachments } : {}),
     }, {
@@ -358,10 +361,9 @@ function askCode(ctx: BotsCtx, c: ChatCtx, message: string, o: { from?: string; 
           then: open(SCREENS.codeJob, { id: "$state.said.result.job.id" }),
           else: open(SCREENS.codeJob, { ...carry, asked: said, answer: "$state.said.result.text", flow: "$state.said.result.artifacts.0.id" }),
         },
-        ...(o.from ? [{ kind: "clearState" as const, path: o.from }] : []),
       ),
-      fail: seq({ kind: "setState", path: "asking", value: false }, oops("Couldn't reach Code bot. Try again.")),
-    }),
+      fail: failed({ busy: "asking", ...(o.from ? { from: o.from } : {}), then: oops("Couldn't reach Code bot. Try again.") }),
+    })),
   );
 }
 
@@ -434,6 +436,7 @@ function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder:
   const attach = labelled(box([icon("clip", { size: 20, color: C.ink })], { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", flexShrink: 0 },
     open(SCREENS.attach, { ...(job ? { id: job.id } : {}), project: c.projectId, thread: c.threadId })), "Add to chat");
   return col([
+    askMoment(ctx, { slug: "code", color: MOSS, kind: "code", busy: "asking", line: "Asking Code bot…" }),
     row([
       attach,
       {
@@ -446,7 +449,6 @@ function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder:
       when({ falsy: "msg" }, labelled(box([icon("mic", { size: 20, color: C.paper })], { width: 46, height: 46, borderRadius: 23, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 },
         ctx.client === "desktop" ? { kind: "dictate" } : open(SCREENS.ask, { voice: true })), "Speak")),
     ], { gap: 6, borderRadius: ctx.client === "desktop" ? 30 : RADIUS.input, borderWidth: 1, borderColor: C.line, paddingVertical: 5, paddingRight: 5, paddingLeft: 8, backgroundColor: C.paper }),
-    when({ truthy: "asking" }, row([statusMark("working", { color: MOSS }), meta("Asking Code bot…", { size: 13 })], { gap: 8, paddingLeft: 16 })),
   ], { gap: 8 });
 }
 
@@ -625,7 +627,7 @@ export function partItems(p: PartRow): TeamItem[] {
   const build: ItemMark = bad ? "failed" : BUILT.includes(p.status) ? "done" : p.status === "running" || p.status === "blocked" ? "working" : "todo";
   const review: ItemMark = p.status === "approved" || p.status === "merged" ? "done" : p.status === "reviewing" || p.status === "fixing" ? "working" : bad && p.review ? "failed" : "todo";
   return [
-    { text: p.title, ...(p.status === "blocked" ? { sub: "Needs you" } : bad ? { sub: p.reason ? firstSentence(p.reason, 60) : p.status === "stopped" ? "You stopped it" : p.status === "exhausted" ? "Ran out of its money" : p.status === "skipped" ? "A part it needs didn't finish" : "Couldn't finish" } : {}), mark: build },
+    { text: p.title, ...(p.status === "blocked" ? { sub: "Needs you" } : bad ? { sub: p.reason ? firstSentence(p.reason, 60) : p.status === "stopped" ? "You stopped it" : p.status === "exhausted" ? "Used its share of the job" : p.status === "skipped" ? "A part it needs didn't finish" : "Couldn't finish" } : {}), mark: build },
     { text: p.review ? (p.review.verdict === "pass" || p.status === "approved" || p.status === "merged" ? "Passed the check" : firstSentence(p.review.summary, 60)) : "Checked by a second bot", ...(p.fixRounds ? { sub: `${p.fixRounds} fix ${p.fixRounds === 1 ? "round" : "rounds"}` } : {}), mark: review },
     { text: "Handed to the lead", mark: p.status === "merged" ? "done" : "todo" },
   ];
@@ -724,11 +726,14 @@ function reviewNote(t: TeamRead["team"]): Node | null {
   ], { gap: 12, backgroundColor: C.surface, borderRadius: 18, padding: 14 });
 }
 
+/** "12% of the job": how much of the job's share a member used. */
+const shareOf = (paise: number, total: number): string => `${percent(paise / Math.max(1, total))} of the job`;
+
 function teamCost(d: TeamData, size = 13): Node {
   const b = d.team.team.budget;
   const bots = 1 + d.team.team.parts.filter((p) => p.id !== 0 && (p.jobId || p.spentPaise > 0)).length;
   return col([
-    row([text(`Cost so far · ${bots} ${bots === 1 ? "bot" : "bots"}`, { size, color: C.meta, lineHeight: size + 4 }), grow(), text(`${rupees(b.spentPaise)} of ${rupees(b.totalPaise)}`, { size, weight: 600, lineHeight: size + 4 })]),
+    row([text(`Used so far · ${bots} ${bots === 1 ? "bot" : "bots"}`, { size, color: C.meta, lineHeight: size + 4 }), grow(), text(`${percent(b.spentPaise / Math.max(1, b.totalPaise))} of its share`, { size, weight: 600, lineHeight: size + 4 })]),
     meter(b.spentPaise, Math.max(1, b.totalPaise, b.spentPaise)),
   ], { gap: 8 });
 }
@@ -760,8 +765,8 @@ function teamPhone(ctx: BotsCtx, d: TeamData) {
     body: [
       head({ title: job.task, size: 24, weight: 700, sub: statusLine(job, ctx.live.now, 12, ` · team of ${helpers.length + 1}`) }),
       progressBlock(t),
-      memberCard({ name: "Code bot · lead", sub: "Splits the job, joins the parts", extra: `${rupees(leadSpent)} so far`, items: leadItems(t) }),
-      ...helpers.map((p) => memberCard({ name: helperName(p), sub: p.ownedPaths[0] ?? p.goal, extra: `${rupees(p.spentPaise)} so far`, items: partItems(p), action: partActions(job, p) })),
+      memberCard({ name: "Code bot · lead", sub: "Splits the job, joins the parts", extra: shareOf(leadSpent, t.budget.totalPaise), items: leadItems(t) }),
+      ...helpers.map((p) => memberCard({ name: helperName(p), sub: p.ownedPaths[0] ?? p.goal, extra: shareOf(p.spentPaise, t.budget.totalPaise), items: partItems(p), action: partActions(job, p) })),
       ...(note ? [note] : []),
     ],
     footer: [teamCost(d), ...(buttons ? [buttons] : [])],
@@ -773,8 +778,8 @@ function teamBoard(d: TeamData): Node {
   const t = d.team.team;
   const helpers = t.parts.filter((p) => p.id !== 0);
   const rowsOf: Array<{ who: Node; items: TeamItem[] }> = [
-    { who: whoCell(botAvatar(CODE, 30), "Code bot · lead", "Splits the job, joins the parts", `${rupees(Math.max(0, t.budget.spentPaise - helpers.reduce((s, p) => s + p.spentPaise, 0)))} so far`), items: leadItems(t) },
-    ...helpers.map((p) => ({ who: whoCell(botAvatar(CODE, 30), helperName(p), p.ownedPaths[0] ?? p.goal, `${rupees(p.spentPaise)} so far`), items: partItems(p).slice(0, 1) })),
+    { who: whoCell(botAvatar(CODE, 30), "Code bot · lead", "Splits the job, joins the parts", shareOf(Math.max(0, t.budget.spentPaise - helpers.reduce((s, p) => s + p.spentPaise, 0)), t.budget.totalPaise)), items: leadItems(t) },
+    ...helpers.map((p) => ({ who: whoCell(botAvatar(CODE, 30), helperName(p), p.ownedPaths[0] ?? p.goal, shareOf(p.spentPaise, t.budget.totalPaise)), items: partItems(p).slice(0, 1) })),
     {
       who: whoCell(box([icon("shield", { size: 15 })], { width: 30, height: 30, borderRadius: 15, backgroundColor: C.surface, borderWidth: 1, borderColor: C.outline, alignItems: "center", justifyContent: "center" }), "Review", "A second bot from another family", "Checks each part"),
       items: helpers.map((p) => ({ text: `Check ${p.title}`, mark: p.status === "approved" || p.status === "merged" ? "done" as const : p.status === "reviewing" || p.status === "fixing" ? "working" as const : "todo" as const, ...(p.review ? { sub: firstSentence(p.review.summary, 50) } : {}) })),
@@ -825,9 +830,9 @@ function teamDesk(ctx: BotsCtx, d: TeamData) {
       teamBoard(d),
       row([
         card([
-          row([sectionLabel(`Cost so far · ${segs.filter((s) => s.paise > 0).length || 1} bots`), grow(), text(`${rupees(b.spentPaise)} `, { size: 14, weight: 600, lineHeight: 18 }), meta(`of ${rupees(b.totalPaise)}`, { size: 14, lineHeight: 18 })]),
+          row([sectionLabel(`Used so far · ${segs.filter((s) => s.paise > 0).length || 1} bots`), grow(), text(`${percent(b.spentPaise / Math.max(1, b.totalPaise))} `, { size: 14, weight: 600, lineHeight: 18 }), meta("of the job's share", { size: 14, lineHeight: 18 })]),
           meter(b.spentPaise, Math.max(1, b.totalPaise, b.spentPaise), { segments: segs.map((s, i) => ({ value: s.paise, color: greys[i % greys.length]! })) }),
-          row(segs.map((s, i) => row([box([], { width: 8, height: 8, borderRadius: 2, backgroundColor: greys[i % greys.length]! }), meta(`${s.name.length > 18 ? s.name.slice(0, 17) + "…" : s.name} ${rupees(s.paise)}`, { size: 12 })], { gap: 6 })), { gap: 14, flexWrap: "wrap" }),
+          row(segs.map((s, i) => row([box([], { width: 8, height: 8, borderRadius: 2, backgroundColor: greys[i % greys.length]! }), meta(`${s.name.length > 18 ? s.name.slice(0, 17) + "…" : s.name} ${percent(s.paise / Math.max(1, b.totalPaise))}`, { size: 12 })], { gap: 6 })), { gap: 14, flexWrap: "wrap" }),
         ], { gap: 12, padding: 16, radius: 18, style: { flexGrow: 1, flexBasis: 0, minWidth: 0 } }),
         card([
           sectionLabel("Branches"),
@@ -1328,7 +1333,6 @@ function doneNumbers(d: JobData): Array<{ value: string; label: string; sub?: st
   if (tests) out.push({ value: String(tests.pass), label: "tests pass", ...(tests.total && tests.total !== tests.pass ? { sub: `of ${tests.total}` } : {}) });
   else if (d.agent?.verify?.ran) out.push({ value: d.agent.verify.ok ? "All" : "Some", label: d.agent.verify.ok ? "checks pass" : "checks fail" });
   out.push({ value: mins < 60 ? `${Math.max(1, mins)}m` : duration(mins), label: "start to end" });
-  out.push({ value: rupees(d.job.spentPaise), label: "cost", ...(d.job.budgetPaise ? { sub: `of your ${rupees(d.job.budgetPaise)} cap` } : {}) });
   return out;
 }
 
@@ -1447,7 +1451,7 @@ const lowerFirst = (s: string): string => (/^[A-Z][a-z]/.test(s) ? s[0]!.toLower
 function failTitle(d: JobData): string {
   const why = lowerFirst(firstSentence(d.job.reason || (d.agent?.report?.outcome === "failed" ? d.agent.report.text : ""), 60));
   if (d.job.state === "cancelled") return why ? `Stopped: ${why}` : "Stopped before it finished";
-  if (d.job.waitingOn === "budget") return "Stopped: it ran out of money";
+  if (d.job.waitingOn === "budget") return "Paused: it has used a lot of this stretch";
   return why ? `Couldn't finish: ${why}` : "Couldn't finish this one";
 }
 
@@ -1459,7 +1463,7 @@ function failWords(d: JobData): string {
 
 const RETRY_PAISE = 1500;
 
-/** Try again, thinking it through first: a new job on the same branch, the reason it failed in its task, ₹15 to spend. */
+/** Try again, thinking it through first: a new job on the same branch, the reason it failed in its task, a small share to use (ours). */
 function retryDeeper(d: JobData): ActionSpec {
   const task = `${d.job.task}\n\nThe last try did not finish: ${(d.job.reason || d.agent?.report?.text || "it stopped").slice(0, 400)}\nThink it through first: find the cause before changing anything, then change as little as needed.`;
   return call("POST", "/v1/code/jobs", { projectId: d.job.projectId, branch: d.job.branch, task, budgetPaise: RETRY_PAISE, mode: "guided", planFirst: false }, {
@@ -1476,12 +1480,12 @@ function failMoves(ctx: BotsCtx, d: JobData): { primary: { label: string; sub: s
   const pr = d.agent?.pr;
   return {
     primary: live && d.job.waitingOn === "budget"
-      ? { label: `Continue with ${rupees(more)} more`, sub: "It goes on from where it stopped, and asks again before spending more.", action: write("POST", jobPath(d.job.id, "/budget"), { addPaise: more }, "Going on", "Couldn't add that. Try again.", open(SCREENS.codeJob, { id: d.job.id })) }
-      : { label: "Try again with deeper thinking", sub: `Up to ${rupees(RETRY_PAISE)} more. It stops and asks before going past that.`, action: retryDeeper(d) },
+      ? { label: "Keep going", sub: "It goes on from where it stopped, and checks with you again before using more.", action: write("POST", jobPath(d.job.id, "/budget"), { addPaise: more }, "Going on", "Couldn't go on. Try again.", open(SCREENS.codeJob, { id: d.job.id })) }
+      : { label: "Try again with deeper thinking", sub: "It checks with you before it uses a lot of this stretch.", action: retryDeeper(d) },
     more: askCode(ctx, c, `Why did "${d.job.task.slice(0, 200)}" not finish? Explain the error in plain words and what you would try next.`),
     stop: {
-      sub: `Nothing more is spent.${pr ? ` PR #${pr.number} stays open for you.` : ""}`,
-      action: live ? seq(write("POST", jobPath(d.job.id, d.job.agent ? "/stop" : "/cancel"), {}, "Stopped. Nothing more is spent."), back()) : seq(toast("Okay. Nothing more is spent."), back()),
+      sub: `Nothing more is used.${pr ? ` PR #${pr.number} stays open for you.` : ""}`,
+      action: live ? seq(write("POST", jobPath(d.job.id, d.job.agent ? "/stop" : "/cancel"), {}, "Stopped. Nothing more is used."), back()) : seq(toast("Okay. Nothing more is used."), back()),
     },
   };
 }
@@ -1495,7 +1499,7 @@ function triedCard(d: JobData, desk: boolean): Node {
     ...(desk ? [meta(`Try ${i + 1}`, { size: 12 })] : []),
   ], { gap: 12, alignItems: "flex-start", paddingVertical: 12, paddingHorizontal: 16 }))
     : linesOf(d, 3).map((l) => row([box([workMark(l.mark, 16)], { height: 20, justifyContent: "center" }), text(l.text, { size: 14, lineHeight: 19, lines: 2, style: { flexShrink: 1 } })], { gap: 12, alignItems: "flex-start", paddingVertical: 12, paddingHorizontal: 16 }));
-  const spent = row([text("What it spent", { size: 14, weight: 600, lineHeight: 19 }), grow(), meta(`${duration(mins)} · `, { size: 14, lineHeight: 19 }), text(rupees(d.job.spentPaise), { size: 14, weight: 600, lineHeight: 19 })], { paddingVertical: 13, paddingHorizontal: 16 });
+  const spent = row([text("How long it worked", { size: 14, weight: 600, lineHeight: 19 }), grow(), text(duration(mins), { size: 14, weight: 600, lineHeight: 19 })], { paddingVertical: 13, paddingHorizontal: 16 });
   const kids: Node[] = [];
   [...rows, spent].forEach((r, i) => { if (i) kids.push(divider()); kids.push(r); });
   return col([
@@ -1551,7 +1555,7 @@ function failedDesk(ctx: BotsCtx, d: JobData) {
       row([
         backButton(), botAvatar(CODE, 36),
         col([title(failTitle(d), { size: 26, lineHeight: 32, lines: 2 }), meta(`Code bot · ${d.job.task}${pr ? ` · PR #${pr.number}` : ""}`, { size: 13, lines: 1 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 4 }),
-        text(`Stopped at ${clock(d.job.updatedAt, ctx.tzOffsetMinutes)} · ${duration(mins)} · ${rupees(d.job.spentPaise)}`, { size: 13, color: C.grey70, lineHeight: 17 }),
+        text(`Stopped at ${clock(d.job.updatedAt, ctx.tzOffsetMinutes)} · ${duration(mins)}`, { size: 13, color: C.grey70, lineHeight: 17 }),
       ], { gap: 12 }),
       row([
         col([text(failWords(d), { size: 15, lineHeight: 22 }), triedCard(d, true)], { width: 372, flexShrink: 0, gap: 18 }),

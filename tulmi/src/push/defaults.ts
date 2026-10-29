@@ -148,7 +148,7 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.approval.title": "Waiting for your OK",
     "push.approval.body": "Tailzu needs a yes from you to carry on in {app}.",
     "push.code_compute_ask.title": "Paid compute needs your OK",
-    "push.code_compute_ask.body": "“{task}” has no free computer to run on. Paid compute would cost about {cost}.",
+    "push.code_compute_ask.body": "“{task}” has no free computer to run on. Say yes to run it on paid compute.",
     "push.code_compute_paused.title": "Waiting for a computer",
     "push.code_compute_paused.body": "“{task}” will carry on by itself when one of your computers is online.",
     "push.code_commit_ask.title": "Changes waiting for your OK",

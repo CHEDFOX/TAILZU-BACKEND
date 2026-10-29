@@ -1,9 +1,8 @@
 /**
  * THE PERSON'S OWN SETTINGS ON THE YOU TAB, AND THE ONE PLACE THEY ARE CHECKED.
  *
- *   monthLimitPaise   the monthly limit (₹500 until they set one: the Budget board's example, live.ts DEFAULT_MONTH_BUDGET_PAISE)
- *   stopAtLimit       off until they turn it on: then a Code bot job is held to what is left of the month (it pauses and asks for more, as it does
- *                     when its own budget runs out) and a bot's answer is refused once the month is used up (limits.ts)
+ *   monthLimitPaise   kept from when a person set their own monthly limit; no screen sets or shows it now. The limits are ours, per plan, and
+ *   stopAtLimit       the person sees only the usage meter (usage.ts, limits.ts). Both stay readable for older clients.
  *   notify            what pings them (push.ts reads it): needs you always does; done "quiet" (sent without a sound) or "ping"; a daily summary at an
  *                     hour; quiet hours, when nothing makes a sound and done waits; bots turned off (their done pings stop; needs you still comes).
  *                     The defaults are what the pushes did before the screen existed: done pings, no summary, no quiet hours.
@@ -37,7 +36,7 @@ export const DEFAULT_SETTINGS: YouSettings = {
   privacy: { screenPictures: "ask" },
 };
 
-/** ₹1,00,000 a month is the most a limit may be. */
+/** 1,00,00,000 paise a month is the most a stored limit may be. */
 export const LIMIT_MAX_PAISE = 10_000_000;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
@@ -75,12 +74,12 @@ export function applyPatch(cur: YouSettings, raw: unknown): Patched {
   const next = structuredClone(cur);
   if (b.monthLimitPaise !== undefined) {
     const v = Number(b.monthLimitPaise);
-    if (!Number.isInteger(v) || v < 100 || v > LIMIT_MAX_PAISE) return { ok: false, message: "The limit is ₹1 to ₹1,00,000 a month." };
+    if (!Number.isInteger(v) || v < 100 || v > LIMIT_MAX_PAISE) return { ok: false, message: "That limit is out of range." };
     next.monthLimitPaise = v;
   }
   if (b.monthLimitRupees !== undefined) {
     const v = Math.round(Number(String(b.monthLimitRupees).replace(/[₹,\s]/g, "")) * 100);
-    if (!Number.isFinite(v) || v < 100 || v > LIMIT_MAX_PAISE) return { ok: false, message: "Type an amount from ₹1 to ₹1,00,000." };
+    if (!Number.isFinite(v) || v < 100 || v > LIMIT_MAX_PAISE) return { ok: false, message: "That limit is out of range." };
     next.monthLimitPaise = v;
   }
   if (b.stopAtLimit !== undefined) {

@@ -40,6 +40,9 @@ import { botsAreaParts, shareAsk, shareLine, shareMessage, type BotsAreaParts } 
 import { eventStore, type EventStore } from "../shell/events.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import { guarded } from "./guarded.js";
+import { openAskStream } from "../live/askStream.js";
+import { scrub } from "../bots/run.js";
+import type { BotEvent } from "../bots/types.js";
 import { registerSpacesRoutes } from "./botsSpaces.js";
 import { registerBotsTripRoutes } from "./botsTrips.js";
 import { registerCalendarRoutes } from "./botsCalendar.js";
@@ -123,17 +126,30 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   app.post(`${AREA}/chat/:slug`, tight(60), async (req, reply) => {
     const s = await withBots(req, reply);
     if (!s) return reply;
+    // An app that listens gets the words as they are written and what the bot is doing, and can stop it (live/askStream.ts).
+    const words = openAskStream(s.user.id, bodyOf(req.body).streamId, { guard: (t) => scrub(t).cleaned });
+    const live = words ? {
+      onText: (piece: string) => words.text(piece), onReset: () => words.reset(),
+      emit: (e: BotEvent) => { if (e.t === "status") words.step(e.stage); else if (e.t === "text") words.whole(e.text); },
+    } : {};
     try {
-      return await guarded(guard(), req, reply, s.user, "ask", async (stop) => {
+      const out = await guarded(guard(), req, reply, s.user, "ask", async (stop) => {
         const slug = param(req, "slug").toLowerCase(), message = bodyOf(req.body).message;
         const shared = await spacesArea.items.forBot(s.user.id, slug).catch(() => []);
-        const r = await parts.chat!.send(s.user.id, slug, message, stop, shared);
+        const r = await parts.chat!.send(s.user.id, slug, message, stop, shared, live);
         // Activity: written down as an answer through Ask is (shell/events.ts), once per answer: a repeat is replayed, not run again.
         await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: String(message), paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
           .catch((err) => req.log.warn({ error: (err as Error)?.message }, "bots area: answer not written down"));
         return { status: 200, body: { text: r.answer.text, turns: r.turns, opens: r.answer.opens, approvals: r.answer.approvals, paise: r.answer.paise } };
-      }, { replayUnkeyed: false });
-    } catch (err) { return fail(req, reply, err); }
+      }, { replayUnkeyed: false, ...(words ? { signal: words.signal } : {}) });
+      if (words?.stopped && !reply.sent) { const said = words.said; words.end(); return reply.code(409).send({ code: "stopped", message: "Stopped.", text: said }); }
+      words?.end();
+      return out;
+    } catch (err) {
+      if (words?.stopped && !reply.sent) { const said = words.said; words.end(); return reply.code(409).send({ code: "stopped", message: "Stopped.", text: said }); }
+      words?.end();
+      return fail(req, reply, err);
+    }
   });
 
   app.delete(`${AREA}/chat/:slug`, RL, run(true, async (user, req) => ({ ok: true, cleared: await parts.chat!.clear(user.id, param(req, "slug")) })));

@@ -61,6 +61,24 @@ export interface UsageSummary {
 }
 
 /**
+ * The usage meter (GET /v1/you/usage, tulmi/src/you/usage.ts): how much of this stretch and this month is used, as fractions (0.64 is
+ * 64%; past 1 is over), and when each resets (epoch ms). A paid month is used in five stretches (days 1–4, 5–9, 10–15, 16–22, 23 to
+ * the end); a plan without them is one stretch, the month. Never an amount: what the use cost is the server's own.
+ */
+export interface UsageMeter {
+  plan: { id: string; name: string; paid: boolean; windows: boolean; carryOver: boolean; upgrade: boolean };
+  stretch: { used: number; startsAt: number; resetsAt: number; n: number; of: number; days: number };
+  month: { used: number; startsAt: number; resetsAt: number; days: number };
+  state: "ok" | "near" | "out";
+}
+
+/** GET /v1/you/usage: the meter, and the lines a screen shows with it (near the limit, at it, how the stretches work). */
+export interface UsageResponse { usage: UsageMeter; near: string | null; out: string | null; how: string }
+
+/** Out of allowance: 429 with this body. `code` is the one every app already opens `quota.screenId` on. */
+export interface UsageRefusalBody { code: "quota_exceeded"; reason: "usage_limit"; message: string; resetsAt: number; upgrade: boolean }
+
+/**
  * Three continuous style dials (0–100). Continuous instead of enum so the
  * keyboard can offer a slider that Actually Feels Like a slider, and so we can
  * A/B different midpoints without a shape change.

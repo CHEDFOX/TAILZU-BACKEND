@@ -1,5 +1,5 @@
 /**
- * WHAT IS GOING ON RIGHT NOW: the person's bots, which are working, what needs them, the week, the month's spend.
+ * WHAT IS GOING ON RIGHT NOW: the person's bots, which are working, what needs them, the week, the usage meter.
  *
  * Every Bots app screen gets this (ctx.live): the tab bar and the sidebar draw it, and Home is mostly it. It is read
  * through BotsDeps, which the server builds per request from the real services (deps.ts) and a test or the render
@@ -11,8 +11,10 @@
  *   working     a Code bot job that is queued / running / waiting for a computer; a connected-app task that is running
  *   needs you   a Code bot job waiting for the person's answer (its question and options) or yes; a task waiting for approval
  *   the week    jobs and tasks that ended done since Monday, and the minutes writing by voice saved (history stats)
- *   spend       what the month's jobs spent, against the monthly limit (DEFAULT_MONTH_BUDGET_PAISE until a Budget screen stores one); with the
- *               You tab's source set (setSpendSource, src/you), the person's own limit and the month over every bot's records
+ *   spend       ours, never drawn: what the month's jobs spent, against DEFAULT_MONTH_BUDGET_PAISE; with the You tab's source set
+ *               (setSpendSource, src/you), the month over every bot's records
+ *   usage       the usage meter (src/you/usage.ts): this stretch and this month as fractions used, near or out, when the stretch resets. The
+ *               You tab's ring draws the stretch. Unknown without the You tab's source (tests, the render check): the jobs' month as a fraction
  */
 import type { ActionSpec } from "../../../../shared/types/sdui.js";
 import type { TabLive } from "./glyphs.js";
@@ -65,7 +67,7 @@ export interface BotsDeps {
   tasks(): Promise<TaskLite[]>;
   /** Minutes writing by voice saved in the last seven days (history stats). 0 when unknown. */
   minutesSaved(): Promise<number>;
-  /** The monthly limit in paise (the person's own once a Budget screen stores it). */
+  /** Ours, in paise: the yardstick for the jobs' month when the usage meter is not known. Never shown. */
   budgetPaise(): Promise<number>;
   now(): number;
   /**
@@ -75,15 +77,18 @@ export interface BotsDeps {
   api<T = unknown>(method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T>;
 }
 
-/** ₹500 a month: the limit until the person sets their own (the Budget board's example). */
+/** 50,000 paise a month: ours, the yardstick for the jobs' month when the usage meter is not known. Never shown. */
 export const DEFAULT_MONTH_BUDGET_PAISE = 50_000;
 
+/** The usage meter, as every screen gets it: fractions used (0.64 is 64%), near or out, and when this stretch resets. Never an amount. */
+export interface UsageLive { used: number; month: number; state: "ok" | "near" | "out"; resetsAt: number | null; windows: boolean }
+
 /**
- * The person's own monthly limit, and the month's spend over every bot (the Code bot's jobs and the other bots' answers), from the You tab's
- * records (src/you; routes/botsYou.ts sets it when the server starts). Read through the person's own `api`. Unset (tests, the render check)
- * or failing: the limit is deps.budgetPaise() and the spend the jobs', as before.
+ * The month over every bot (the Code bot's jobs and the other bots' answers) and the usage meter, from the You tab's records (src/you;
+ * routes/botsYou.ts sets it when the server starts). Read through the person's own `api`. Unset (tests, the render check) or failing: the
+ * jobs' month against deps.budgetPaise(), as before.
  */
-export type SpendSource = (deps: BotsDeps, tzOffsetMinutes: number) => Promise<{ limitPaise: number; monthPaise: number } | null>;
+export type SpendSource = (deps: BotsDeps, tzOffsetMinutes: number) => Promise<{ limitPaise: number; monthPaise: number; usage?: UsageLive } | null>;
 let spendSource: SpendSource | null = null;
 export function setSpendSource(s: SpendSource | null): void { spendSource = s; }
 
@@ -140,7 +145,9 @@ export interface BotsLive {
   needs: NeedsItem[];
   working: WorkingItem[];
   week: { done: number; minutesSaved: number };
+  /** Ours: never drawn (the screens show `usage`). */
   spend: { monthPaise: number; budgetPaise: number };
+  usage: UsageLive;
   /** What the living tab icons and the sidebar show (glyphs.ts). */
   tab: TabLive;
   /** "Good morning" / "Good afternoon" / "Good evening", in the person's own day. */
@@ -228,8 +235,8 @@ export interface LiveInput {
   budgetPaise: number;
   now: number;
   tzOffsetMinutes?: number;
-  /** The person's own limit and the month over every bot (SpendSource), when known: they win over budgetPaise and the jobs' sum. */
-  stored?: { limitPaise: number; monthPaise: number };
+  /** The month over every bot and the usage meter (SpendSource), when known: they win over budgetPaise and the jobs' sum. */
+  stored?: { limitPaise: number; monthPaise: number; usage?: UsageLive };
 }
 
 /** The model from what the deps returned. Pure. */
@@ -293,18 +300,21 @@ export function liveFrom(i: LiveInput): BotsLive {
   const monthPaise = i.stored && Number.isFinite(i.stored.monthPaise) ? Math.max(0, Math.round(i.stored.monthPaise))
     : i.jobs.filter((j) => j.updatedAt >= month).reduce((n, j) => n + Math.max(0, j.spentPaise || 0), 0);
   const budgetPaise = i.stored && i.stored.limitPaise > 0 ? i.stored.limitPaise : i.budgetPaise > 0 ? i.budgetPaise : DEFAULT_MONTH_BUDGET_PAISE;
+  const usage: UsageLive = i.stored?.usage && Number.isFinite(i.stored.usage.used) ? i.stored.usage
+    : { used: monthPaise / budgetPaise, month: monthPaise / budgetPaise, state: monthPaise >= budgetPaise ? "out" : monthPaise >= budgetPaise * 0.8 ? "near" : "ok", resetsAt: null, windows: false };
   // The tab icons' four dots are the first four bots in their own order, so a dot never moves when a bot gets busy.
   const tab: TabLive = {
     dots: bots.slice(0, 4).map((b) => ({ color: look(b.slug, b.colour).color, working: working.some((w) => w.bot === b.slug) })),
     needs: needs.length,
     ...(live.find((b) => b.working) ? { workingColor: live.find((b) => b.working)!.color } : {}),
-    spent: monthPaise / budgetPaise,
+    used: usage.used,
   };
 
   return {
     bots: live, needs, working, tab,
     week: { done, minutesSaved: Math.max(0, Math.round(i.minutesSaved)) },
     spend: { monthPaise, budgetPaise },
+    usage,
     greeting: greetingAt(i.now, tz),
     now: i.now,
   };
@@ -315,7 +325,7 @@ const BUILTIN_LITE: Record<(typeof BUILTIN_SLUGS)[number], { name: string; purpo
   code: { name: "Code bot", purpose: "Reads your projects, answers questions about the code, and changes it through pull requests." },
   keybot: { name: "Keybot", purpose: "Writes, rewrites and replies in your own voice, in any language you mix." },
   plan: { name: "Plan bot", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list." },
-  travel: { name: "Travel bot", purpose: "Plans trips: routes, stays, timings and costs, with sources." },
+  travel: { name: "Travel bot", purpose: "Plans trips: routes, stays and timings, with sources." },
 };
 
 function builtinLite(slug: (typeof BUILTIN_SLUGS)[number]): BotLite {

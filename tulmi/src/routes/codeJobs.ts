@@ -32,7 +32,8 @@
  *                                             ran out and the agent is asking it again
  *   POST   /v1/code/jobs/:id/deny          -> { job }  no. A plan or a commit not approved ends the job; a pull request not marked ready stays a draft
  *   POST   /v1/code/jobs/:id/budget { addPaise }
- *                                          -> { job }  adds to the job's budget; a job that stopped for the money ("continue with ₹X more") goes on
+ *                                          -> { job }  adds to the job's budget (held to what is left of the stretch, you/limits.ts); a job that paused
+ *                                             ("This job has used a lot of this stretch. Keep going?") goes on
  *                                             from where it was. 409 job_over for a job that is over
  *   POST   /v1/code/jobs/:id/stop          -> { job }  stops the job: the agent's loop is told and any step that is out is dropped
  *   POST   /v1/code/jobs/:id/rewind { toStep, approvalId? }

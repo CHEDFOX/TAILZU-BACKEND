@@ -41,7 +41,7 @@ export async function readChild(store: Pick<JobStore, "getJobById">, jobId: stri
     return { ...base, kind: "failed", why: job.reason || state?.report?.text.split("\n")[0] || "It failed." };
   }
   if (job.state === "waiting_for_you") {
-    if (job.waitingOn === "budget") return { ...base, kind: "exhausted", why: job.reason || "It used up its share of the budget." };
+    if (job.waitingOn === "budget") return { ...base, kind: "exhausted", why: job.reason || "It used its share of this job." };
     if (job.waitingOn === "answer" || job.waitingOn === "approval") return { ...base, kind: "blocked", why: job.reason || "It needs you." };
   }
   return { ...base, kind: "active", why: "" };

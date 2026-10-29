@@ -2861,7 +2861,12 @@ export function deskPlan(ctx: DeskContext): ScreenResponse {
       : `${n(q.used)} of ${n(q.of)} free words used this month. They come back on the 1st.`, "d-lede", { marginTop: 8 }),
     ...(q.paid ? [] : [
       row(cards, { gap: 16, marginTop: 36, flexWrap: "wrap" }),
-      text("One subscription covers your phone and your computer. Checkout opens in your browser; payments by Razorpay.", "d-lede", { marginTop: 18 }),
+      // The purchase screen: the one place with a price (the stores' and Razorpay's), so the renewal and the terms are said here too.
+      text("One subscription covers your phone and your computer. It renews automatically until you cancel. Checkout opens in your browser; payments by Razorpay.", "d-lede", { marginTop: 18 }),
+      row([
+        link("Terms", { kind: "openUrl", url: "https://tailzu.space/terms", external: true } as ActionRef),
+        link("Privacy", { kind: "openUrl", url: "https://tailzu.space/privacy", external: true } as ActionRef),
+      ], { gap: 16, marginTop: 10 }, "d-tools"),
     ]),
   ], { maxWidth: 820 })]);
 }

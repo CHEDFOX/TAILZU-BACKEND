@@ -181,6 +181,8 @@ export type FrontEvent =
   | { t: "decision"; decision: Decision }
   | { t: "status"; stage: string }
   | { t: "text"; text: string }
+  /** The words sent so far are void (the model writing them failed; the next one starts over). */
+  | { t: "reset" }
   | { t: "artifact"; artifact: ArtifactRef }
   | { t: "result"; decisionId: string | null; decision: Decision; result: FrontResult }
   | { t: "error"; code: string; message: string };

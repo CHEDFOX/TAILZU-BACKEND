@@ -10,8 +10,8 @@
  *   payment   a payment the person said they made in their UPI app from bots.approve (shell/events.ts): never one we made
  *   words     Keybot: the words they spoke instead of typed on a day (history), and in which apps
  *
- * Money per row: what the bot's work cost (paise), "Free" for Keybot, the amount for a payment ("₹1,840 paid"). A connected
- * app's task has no cost of its own on record, so it shows none rather than a guess.
+ * No money on any row: what a bot's work cost stays ours (`paise`, for the logs; no screen draws it), and a payment says who and
+ * what it was for, never the amount.
  */
 import { CONNECTOR_BOT } from "../experience/bots/live.js";
 
@@ -34,7 +34,7 @@ export interface FeedRow {
   mark: FeedMark;
   /** What the bot's work cost, in paise, when it is known. */
   paise?: number;
-  /** The money column, in words: "₹4.20 so far", "₹1.10", "Free", "₹1,840 paid". */
+  /** No longer filled: the screens show no money. Kept for older readers. */
   money?: string;
   /** A running Code bot job: which of the five stages it is in. */
   stage?: { at: number; of: number; name: string };
@@ -194,12 +194,11 @@ function jobRow(j: FeedJob, i: FeedInput): FeedRow {
   const sub = mark === "working" ? `Doing it for you · step ${stage!.at + 1} of ${stage!.of}${project ? ` · ${project}` : ""}`
     : mark === "needs" ? `Needs you${project ? ` · ${project}` : ""}`
       : j.state === "paused" ? `Paused · ${when}`
-        : j.state === "failed" ? `Couldn't finish · ${when}${spent ? "" : " · nothing spent"}`
+        : j.state === "failed" ? `Couldn't finish · ${when}`
           : j.state === "cancelled" ? `Stopped · ${when}`
             : [project, "On its own", when].filter(Boolean).join(" · ");
   return {
     id: `job:${j.id}`, type: "job", bot: "code", title: clip(j.task, 120), sub, at: j.updatedAt, mark, paise: spent,
-    money: mark === "working" ? `${rupeesOf(spent)} so far` : rupeesOf(spent),
     ...(stage ? { stage } : {}),
     open: { screenId: "bots.code.job", params: { id: j.id } },
   };
@@ -224,13 +223,13 @@ function eventRow(e: FeedEvent, i: FeedInput): FeedRow {
   if (e.kind === "paid") {
     return {
       id: `pay:${e.id}`, type: "payment", bot: e.bot, title: `${clip(e.title, 90)}. You pressed pay by UPI.`,
-      sub: `${e.payee ? `${clip(e.payee, 40)} · ` : ""}${when}`, at: e.at, mark: "done", money: `${rupeesOf(e.amountPaise)} paid`,
+      sub: `${e.payee ? `${clip(e.payee, 40)} · ` : ""}${when}`, at: e.at, mark: "done",
       open: { screenId: "bots.approve", params: { receipt: e.id } },
     };
   }
   return {
     id: `ask:${e.id}`, type: "ask", bot: e.bot, title: `“${clip(e.title, 110)}”`, sub: `You asked · ${when}`, at: e.at, mark: "done",
-    paise: e.paise, money: rupeesOf(e.paise),
+    paise: e.paise,
     open: { screenId: "bots.ask", params: { message: e.title, bot: e.bot } },
   };
 }
@@ -239,7 +238,7 @@ function wordsRow(w: FeedWords): FeedRow {
   const apps = w.apps.slice(0, 2).join(", ");
   return {
     id: `words:${w.day}`, type: "words", bot: "keybot", title: `Wrote ${w.words.toLocaleString("en-IN")} ${w.words === 1 ? "word" : "words"} by voice`,
-    sub: apps ? `Keybot · ${apps}` : "Keybot", at: w.at, mark: "done", money: "Free",
+    sub: apps ? `Keybot · ${apps}` : "Keybot", at: w.at, mark: "done",
     open: { screenId: "bots.keybot.history" },
   };
 }

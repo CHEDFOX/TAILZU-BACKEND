@@ -1,6 +1,7 @@
 /**
- * The You tab (screens/you.ts, routes/botsYou.ts, src/you): its screens on both clients, the month's spend from the real records, the stored
- * limit and the two places it is kept (a job's budget, a bot's answer), what pings the person, the download link, and the tab ring.
+ * The You tab (screens/you.ts, routes/botsYou.ts, src/you): its screens on both clients (no money on any of them), the usage meter from the
+ * real records and the places it is kept (a job's budget and "Keep going", a bot's answer), what pings the person, the download link, and the
+ * tab ring.
  */
 import Fastify from "fastify";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -29,7 +30,7 @@ import { PUSH_DEFAULTS } from "../src/push/defaults.js";
 import { MemoryPushStore } from "../src/push/store.js";
 import { registerBotsYouRoutes } from "../src/routes/botsYou.js";
 import { exportLink, exportLinkUser } from "../src/you/data.js";
-import { Spending, holdJobsToMonth, wrapBots } from "../src/you/limits.js";
+import { Spending, holdJobsToUsage, wrapBots } from "../src/you/limits.js";
 import { summaryLine, verdict } from "../src/you/push.js";
 import { DEFAULT_SETTINGS, applyPatch, cleanSettings, inQuietHours } from "../src/you/settings.js";
 import { spendReport } from "../src/you/spend.js";
@@ -41,10 +42,19 @@ const RESETS = Date.UTC(2026, 10, 1) - IST * MIN;
 const S = structuredClone(DEFAULT_SETTINGS);
 const byBot = [{ bot: "code", paise: 14_200 }, { bot: "keybot", paise: 1800 }, { bot: "plan", paise: 1500 }, { bot: "gym-bot", paise: 900 }];
 
+const USAGE = {
+  plan: { id: "paid", name: "Pro", paid: true, windows: true, carryOver: false, upgrade: false },
+  stretch: { used: 0.64, startsAt: Date.UTC(2026, 9, 23) - IST * MIN, resetsAt: RESETS, n: 5, of: 5, days: 9 },
+  month: { used: 0.4, startsAt: MONTH_START, resetsAt: RESETS, days: 31 },
+  state: "ok",
+};
+const OUT = { ...USAGE, plan: { ...USAGE.plan, id: "free", name: "Free", paid: false, upgrade: true }, stretch: { ...USAGE.stretch, used: 1 }, state: "out" };
+
 const ANSWERS: Record<string, unknown> = {
+  "GET /v1/you/usage?tz=330": { usage: USAGE, near: null, out: null, how: "Each month is used in five stretches: 4, 5, 6 and 7 days, then the rest of the month. Each starts fresh." },
   "GET /v1/you?tz=330": {
     plan: { name: "Pro", active: true },
-    spend: { monthPaise: 18_400, limitPaise: 50_000, leftPaise: 31_600, perDayPaise: 657, resetsAt: RESETS, byBot, stopAtLimit: true },
+    usage: USAGE,
     apps: { enabled: true, connected: [{ id: "google-calendar", name: "Google Calendar", usedBy: ["Plan bot", "Gym bot"], lastUsedAt: FIXED_NOW - 2 * MIN }], github: { repos: 2 }, alone: 3 },
     computers: { online: [{ name: "Aanya's MacBook", busy: false, allowRun: true }], offline: 1, helped: { jobs: 6, minutes: 200 } },
     settings: S, exportUrl: "https://api.tailzu.space/v1/you/export/file?t=x", language: "hinglish",
@@ -58,15 +68,16 @@ const ANSWERS: Record<string, unknown> = {
     settings: S,
   },
   "GET /v1/you/billing?tz=330": {
+    // The route still carries the price and the invoices' amounts (billing.ts): the screens must not draw them.
     plan: { name: "Pro", active: true, store: "razorpay", renews: true, until: FIXED_NOW + 15 * DAY, since: FIXED_NOW - 100 * DAY, price: "₹299", period: "a month", paidBy: "UPI autopay", cancel: "razorpay", manageUrl: null },
     invoices: [{ id: "inv_1", number: "TZ-2610-0412", date: FIXED_NOW - 16 * DAY, amountPaise: 29_900, amount: "₹299", status: "paid", url: "https://rzp.io/i/a", what: "Tailzu Pro" }],
-    month: { monthPaise: 18_400, limitPaise: 50_000 }, email: "aanya@example.in",
+    usage: USAGE, email: "aanya@example.in",
   },
   "GET /v1/you/computers": {
     online: [{ deviceId: "mbp", name: "Aanya's MacBook", os: "darwin", allowRun: true, busy: true, projects: "all", liveOnly: false, container: false }],
     offline: [{ deviceId: "office", name: "Office PC", os: "win32", lastSeen: FIXED_NOW - 2 * DAY }], helped: { jobs: 6, minutes: 200 },
   },
-  "GET /v1/you/notify?tz=330": { settings: S, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you, ₹11 spent." },
+  "GET /v1/you/notify?tz=330": { settings: S, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you." },
   "GET /v1/you/account": {
     bots: [{ slug: "code", name: "Code bot", colour: "", builtin: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }],
     projects: ["checkout-web", "storefront"], notes: 212, keys: 3, plan: { active: true, store: "razorpay", renews: true, until: FIXED_NOW + 15 * DAY }, exportUrl: null,
@@ -84,7 +95,7 @@ const ANSWERS: Record<string, unknown> = {
 };
 
 const IDS: Array<[string, Record<string, string>?]> = [
-  ["bots.you"], ["bots.budget"], ["bots.billing"], ["bots.computer"], ["bots.notify"], ["bots.privacy"], ["bots.delete-account"], ["bots.apps"],
+  ["bots.you"], ["bots.usage"], ["bots.budget"], ["bots.billing"], ["bots.computer"], ["bots.notify"], ["bots.privacy"], ["bots.delete-account"], ["bots.apps"],
   ["bots.app-connect", { id: "google-calendar" }], ["bots.settings"],
 ];
 
@@ -109,14 +120,40 @@ describe("the You screens", () => {
     }
   }
 
-  it("You shows the month by bot from the records, and Budget the limit and the switch", async () => {
+  it("You and Usage show the meter the way Claude does, and no screen here shows money", async () => {
     const you = texts((await build("bots.you", "phone", ANSWERS)).root);
-    expect(you).toContain("₹184 of ₹500");
-    expect(you.some((t) => t.startsWith("Code ₹142"))).toBe(true);
-    const budget = await build("bots.budget", "desktop", ANSWERS);
-    expect(texts(budget.root)).toContain("Stop bots at the limit");
-    expect(texts(budget.root)).toContain("Busiest: ₹21 on 14 Oct");
-    expect(budget.state).toMatchObject({ stop: false, limit: "500" });
+    expect(you).toContain("This stretch");
+    expect(you).toContain("64% used");
+    expect(you).toContain("Resets Sun");
+    for (const client of ["phone", "desktop"] as const) {
+      const usage = texts((await build("bots.usage", client, ANSWERS)).root);
+      expect(usage).toEqual(expect.arrayContaining(["Usage", "This stretch", "64% used", "Resets Sun", "This month", "40% used", "Stretch 5 of 5"]));
+      expect(usage.join(" ")).toContain("five stretches");
+    }
+    // Budget's old link opens Usage.
+    expect(texts((await build("bots.budget", "phone", ANSWERS)).root)).toContain("64% used");
+    for (const [id, params] of IDS) {
+      for (const client of ["phone", "desktop"] as const) {
+        const all = JSON.stringify((await build(id, client, ANSWERS, params)).root);
+        expect(all, `${id} on the ${client}`).not.toMatch(/₹|paise|rupee/i);
+      }
+    }
+    const billing = texts((await build("bots.billing", "desktop", ANSWERS)).root);
+    expect(billing).toEqual(expect.arrayContaining(["Usage", "64% of this stretch", "More to use every month, in five stretches"]));
+  });
+
+  it("near the limit a calm line; at it the sentence, and a plan offered as an action without a price", async () => {
+    const near = { ...ANSWERS, "GET /v1/you/usage?tz=330": { usage: { ...USAGE, stretch: { ...USAGE.stretch, used: 0.85 }, state: "near" }, near: "You've used most of this stretch. It resets Sun.", out: null, how: "" } };
+    expect(texts((await build("bots.usage", "phone", near)).root)).toContain("You've used most of this stretch. It resets Sun.");
+    const out = { ...ANSWERS, "GET /v1/you/usage?tz=330": { usage: OUT, near: null, out: "You've reached this month's limit. It resets Sun.", how: "" } };
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.usage", client, out);
+      expect(texts(s.root)).toContain("You've reached this month's limit. It resets Sun.");
+      expect(JSON.stringify(s)).toContain('"screenId":"bots.plans"');
+      expect(JSON.stringify(s)).not.toMatch(/₹/);
+    }
+    const you = { ...ANSWERS, "GET /v1/you?tz=330": { ...(ANSWERS["GET /v1/you?tz=330"] as object), usage: { ...USAGE, state: "near", stretch: { ...USAGE.stretch, used: 0.9 } } } };
+    expect(texts((await build("bots.you", "phone", you)).root)).toContain("You've used most of this stretch. It resets Sun.");
   });
 
   it("every write goes to a real route", async () => {
@@ -175,7 +212,7 @@ describe("what pings the person", () => {
     expect(verdict(s, "streak", 12 * 60)).toBe("drop");
     expect(verdict(DEFAULT_SETTINGS, "code_job_done", 2 * 60)).toBe("send");
     expect(verdict(DEFAULT_SETTINGS, "bots_summary", 21 * 60)).toBe("drop");
-    expect(summaryLine({ done: 5, needs: 1, spentPaise: 1100 })).toBe("5 things done, 1 needs you, ₹11 spent.");
+    expect(summaryLine({ done: 5, needs: 1, spentPaise: 1100 })).toBe("5 things done, 1 needs you.");
     expect(summaryLine({ done: 0, needs: 0, spentPaise: 0 })).toBeNull();
   });
 
@@ -203,42 +240,76 @@ describe("what pings the person", () => {
   });
 });
 
-describe("the monthly limit, kept", () => {
+describe("the usage limits, kept", () => {
   let store: MemoryYouStore;
-  beforeEach(() => { store = new MemoryYouStore(); });
-
-  const jobsOf = (spent: number) => ({
+  let spent = 0;
+  beforeEach(() => { store = new MemoryYouStore(); spent = 0; });
+  // A paid plan's month is 50,000 paise of ours: this stretch (23 to 31 Oct, on the calendar: the entitlement names no billing day) may use 9/31.
+  const STRETCH = (50_000 * 9) / 31;
+  const jobs = {
     listJobs: async () => [{ id: "j", task: "t", state: "done", spentPaise: spent, createdAt: FIXED_NOW - HOUR, updatedAt: FIXED_NOW - MIN, branch: "b", projectId: "p", budgetPaise: 3000 }],
     defaultBudget: () => 3000,
+  };
+  const make = (words: Array<{ at: number; words: number }> = []) =>
+    new Spending({ store, jobs: jobs as never, now: () => FIXED_NOW, entitlement: async () => ({ entitlement: "pro", active: true }), words: async () => words });
+
+  it("counts the Code bot's jobs, every bot's answers and Keybot's words, and shows only shares and when they reset", async () => {
+    spent = 3000;
+    await store.addSpend(UID, "plan", 1000, FIXED_NOW - 2 * HOUR);
+    const u = await make([{ at: FIXED_NOW - HOUR, words: 50_000 }]).usage(UID, { tz: IST });
+    // 3,000 + 1,000 + 50,000 words at 20 paise a thousand.
+    expect(u.stretch.used).toBeCloseTo(5000 / STRETCH, 3);
+    expect(u.stretch).toMatchObject({ n: 5, of: 5, resetsAt: RESETS });
+    expect(u.plan).toMatchObject({ id: "paid", windows: true, upgrade: false });
   });
 
-  it("a bot's answer is refused once the month is used up, and every answer is written down", async () => {
-    const spending = new Spending({ store, jobs: jobsOf(40_000) as never, now: () => FIXED_NOW });
+  it("a bot's answer is refused once the stretch is used up, with when it resets, and every answer is written down", async () => {
+    spent = 10_000;
+    const spending = make();
     const answer = { bot: { slug: "plan" }, paise: 120 };
     const bots = { ask: async () => answer, test: async () => answer, askWithKey: async () => ({ answer, leftTodayPaise: 0 }), ownerOfKey: async () => UID };
     wrapBots(bots as never, spending);
     await bots.ask(UID, "plan", {} as never);
     expect((await store.spendSince(UID, 0)).map((r) => [r.bot, r.paise])).toEqual([["plan", 120]]);
-    await store.putSettings(UID, { ...DEFAULT_SETTINGS, monthLimitPaise: 40_000, stopAtLimit: true }, FIXED_NOW);
+    spent = 15_000;
     spending.forget(UID);
     await expect(bots.ask(UID, "plan", {} as never)).rejects.toBeInstanceOf(BotError);
-    await expect(bots.askWithKey("Bearer k" as never, "plan", {} as never)).rejects.toMatchObject({ code: "month_limit", status: 429 });
+    await expect(bots.askWithKey("Bearer k" as never, "plan", {} as never)).rejects.toMatchObject({
+      code: "quota_exceeded", status: 429, message: "You've reached this stretch's limit. It resets Sun.",
+    });
   });
 
-  it("a new Code bot job is held to what is left of the month, and not started with nothing left", async () => {
-    const spending = new Spending({ store, jobs: jobsOf(49_000) as never, now: () => FIXED_NOW });
-    await store.putSettings(UID, { ...DEFAULT_SETTINGS, stopAtLimit: true }, FIXED_NOW);
+  it("a new Code bot job, and a Keep going, are held to what is left of the stretch; with nothing left, the refusal", async () => {
+    spent = 13_000;
+    const spending = make();
     const app = Fastify();
     app.post("/v1/code/jobs", async (req) => ({ got: req.body }));
-    holdJobsToMonth(app, spending, jobsOf(49_000) as never);
+    app.post("/v1/code/jobs/:id/budget", async (req) => ({ got: req.body }));
+    holdJobsToUsage(app, spending, jobs as never);
+    const left = Math.floor(STRETCH - 13_000);
     const r = await app.inject({ method: "POST", url: "/v1/code/jobs", headers: { authorization: "Bearer good" }, payload: { task: "x" } });
-    expect(r.json().got.budgetPaise).toBe(1000);
-    await store.putSettings(UID, { ...DEFAULT_SETTINGS, monthLimitPaise: 30_000, stopAtLimit: true }, FIXED_NOW);
+    expect(r.json().got.budgetPaise).toBe(left);
+    const more = await app.inject({ method: "POST", url: "/v1/code/jobs/j/budget", headers: { authorization: "Bearer good" }, payload: { addPaise: 5000 } });
+    expect(more.json().got.addPaise).toBe(left);
+    spent = 15_000;
     spending.forget(UID);
     const stopped = await app.inject({ method: "POST", url: "/v1/code/jobs", headers: { authorization: "Bearer good" }, payload: { task: "x", budgetPaise: 500 } });
     expect(stopped.statusCode).toBe(429);
-    expect(stopped.json().code).toBe("month_limit");
+    expect(stopped.json()).toEqual({ code: "quota_exceeded", reason: "usage_limit", message: "You've reached this stretch's limit. It resets Sun.", resetsAt: RESETS, upgrade: false });
+    expect(stopped.body).not.toMatch(/₹|paise/i);
     await app.close();
+  });
+
+  it("USAGE_LIMITS=false shows the meter and refuses nothing", async () => {
+    vi.stubEnv("USAGE_LIMITS", "false");
+    resetConfigForTests();
+    try {
+      spent = 40_000;
+      const spending = make();
+      expect((await spending.usage(UID)).state).toBe("out");
+      expect(await spending.refusal(UID)).toBeNull();
+      expect(await spending.leftToSpend(UID)).toBeNull();
+    } finally { vi.unstubAllEnvs(); resetConfigForTests(); }
   });
 });
 
@@ -263,11 +334,20 @@ describe("the routes", () => {
     expect((await app.inject({ method: "GET", url: "/v1/you/spend" })).statusCode).toBe(401);
   });
 
-  it("stores a limit, and the month and the tab ring read it", async () => {
-    const put = await app.inject({ method: "PUT", url: "/v1/you/settings", headers: { authorization: "Bearer good" }, payload: { monthLimitRupees: "1000", stopAtLimit: true } });
-    expect(put.json().settings).toMatchObject({ monthLimitPaise: 100_000, stopAtLimit: true });
-    expect((await get("/v1/you/spend?tz=330")).json().report).toMatchObject({ monthPaise: 2500, limitPaise: 100_000, byBot: [{ bot: "code", paise: 2500 }] });
-    expect((await get("/v1/you/live?tz=330")).json()).toEqual({ limitPaise: 100_000, monthPaise: 2500 });
+  it("Usage, the tab ring and the You page carry the meter: shares and times, none of our amounts", async () => {
+    const res = await get("/v1/you/usage?tz=330");
+    expect(res.statusCode, res.body).toBe(200);
+    const u = res.json();
+    // No plan bought (and Tailzu not free for all here): the free plan, its month as one stretch, a plan on offer.
+    expect(u.usage.plan).toMatchObject({ id: "free", windows: false, upgrade: true });
+    expect(u.usage.stretch.used).toBe(0.5);
+    expect(u.usage.stretch.of).toBe(1);
+    expect(u.how).toContain("counted by the month");
+    expect(res.body).not.toMatch(/Paise|₹/);
+    const live = (await get("/v1/you/live?tz=330")).json();
+    expect(live.usage).toMatchObject({ windows: false, state: "ok", used: 0.5, resetsAt: u.usage.stretch.resetsAt });
+    // Ours, for the logs: the month's costs still add up behind the meter.
+    expect((await get("/v1/you/spend?tz=330")).json().report).toMatchObject({ monthPaise: 2500, byBot: [{ bot: "code", paise: 2500 }] });
     expect((await app.inject({ method: "PUT", url: "/v1/you/settings", headers: { authorization: "Bearer good" }, payload: { notify: { done: "loud" } } })).statusCode).toBe(400);
   });
 
@@ -281,7 +361,7 @@ describe("the routes", () => {
     const res = await get("/v1/you?tz=330");
     const r = res.json();
     expect(res.statusCode, res.body).toBe(200);
-    expect(r.spend.monthPaise).toBe(2500);
+    expect(r.usage.stretch.used).toBeGreaterThan(0);
     expect(r.plan).toEqual({ name: "Free", active: false });
     expect(r.settings.monthLimitPaise).toBe(50_000);
   });
@@ -306,14 +386,19 @@ describe("the download link", () => {
 });
 
 describe("the tab ring", () => {
-  it("uses the stored limit and the month over every bot when the You tab's source answers", async () => {
+  it("is how much of this stretch is used, from the usage meter when the You tab's source answers", async () => {
     const base = { bots: [], jobs: [], tasks: [], minutesSaved: 0, budgetPaise: 50_000, now: FIXED_NOW, tzOffsetMinutes: IST };
-    expect(liveFrom({ ...base, stored: { limitPaise: 100_000, monthPaise: 25_000 } }).spend).toEqual({ monthPaise: 25_000, budgetPaise: 100_000 });
-    expect(liveFrom({ ...base, stored: { limitPaise: 100_000, monthPaise: 25_000 } }).tab.spent).toBe(0.25);
+    const usage = { used: 0.64, month: 0.4, state: "ok" as const, resetsAt: RESETS, windows: true };
+    const l = liveFrom({ ...base, stored: { limitPaise: 100_000, monthPaise: 25_000, usage } });
+    expect(l.usage).toEqual(usage);
+    expect(l.tab.used).toBe(0.64);
+    // Without the meter: the jobs' month as a share of our yardstick, never drawn as an amount.
+    expect(liveFrom({ ...base, stored: { limitPaise: 100_000, monthPaise: 25_000 } }).tab.used).toBe(0.25);
     setSpendSource(async (deps) => deps.api("GET", "/v1/you/live?tz=330"));
     try {
-      const live = await loadLive(fakeDeps({ api: { "GET /v1/you/live?tz=330": { limitPaise: 30_000, monthPaise: 3000 } } }), IST);
+      const live = await loadLive(fakeDeps({ api: { "GET /v1/you/live?tz=330": { limitPaise: 30_000, monthPaise: 3000, usage } } }), IST);
       expect(live.spend).toEqual({ monthPaise: 3000, budgetPaise: 30_000 });
+      expect(live.usage.used).toBe(0.64);
       // No answer: as before, the jobs' spend against deps.budgetPaise().
       expect((await loadLive(fakeDeps(), IST)).spend.budgetPaise).toBe(50_000);
     } finally { setSpendSource(null); }

@@ -25,6 +25,7 @@ import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { ToolCall, ToolDef } from "../code/brain/types.js";
 import { makeWebTools, type WebToolDeps } from "../code/webTools.js";
 import type { CallFn } from "../code/work/model.js";
+import { withoutAmounts } from "../shell/parse.js";
 import { retrieve } from "./knowledge.js";
 import type { Meter } from "./meter.js";
 import type { BotPorts } from "./ports.js";
@@ -224,8 +225,9 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
               return { content: `Waiting for the owner's yes, shown to them on a card: ${o.approval.preview}. It has NOT happened. Tell them it is waiting; never say it is done.`, ok: true };
             case "invalid": return { content: `The arguments did not fit ${t.name}: ${o.problems}. Call it again with them right, or ask the person for a value they did not give.`, ok: false };
             case "open":
-              env.record.opens.push({ label: o.label, url: o.url });
-              return { content: `Opened ${s.name} for the person to finish there: ${o.label}.`, ok: true };
+              // The label without its amounts: the app shows no money, and what the model reads it may repeat (shell/parse.ts).
+              env.record.opens.push({ label: withoutAmounts(o.label), url: o.url });
+              return { content: `Opened ${s.name} for the person to finish there: ${withoutAmounts(o.label)}.`, ok: true };
             case "device": return { content: "This computer is not available to bots.", ok: false };
             default: return { content: o.message, ok: false };
           }

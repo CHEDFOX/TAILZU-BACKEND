@@ -73,7 +73,8 @@ describe("a big goal", () => {
     expect(r.fake.pulls(r.repo)).toHaveLength(1);
     const body = r.fake.pulls(r.repo)[0]!.body;
     expect(body).toContain("## The team");
-    expect(body).toContain("| Part | What | Status | Reviewed by | Fix rounds | Cost |");
+    expect(body).toContain("| Part | What | Status | Reviewed by | Fix rounds |");
+    expect(body).not.toMatch(/₹/);
     for (const t of ["Export API", "Note page", "Mail", "Counts and stats"]) expect(body).toContain(t);
     expect(body).toContain("### What the reviewers found");
     expect(body).toContain("## The helpers' work logs");

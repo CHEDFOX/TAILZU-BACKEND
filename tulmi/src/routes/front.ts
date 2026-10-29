@@ -9,6 +9,10 @@
  *                             job that is handed the place the conversation found (docs/code-chat.md). With `bot` ("Ask any bot", or one chosen), a
  *                             bot shared into a space the person is in also reads what that space shared, as data (`sharedFor`), as its chat does.
  *                             403 account_leaving while the person's account waits to be deleted: their bots are stopped (you/deletion.ts).
+ *                          With `streamId` (16 to 64 letters, digits, - or _: the app makes it), the words and what it is doing also go to the person
+ *                          over the live channel as they come (live/askStream.ts, shared/types/sdui.ts 3f), and POST /v1/ask/stop { id: streamId } stops it:
+ *                          the ask then answers 409 `stopped` with the words written so far (`text`). The answer is kept exactly as without it.
+ *   POST /v1/ask/stop { id } -> { stopped }  stop the person's own ask that is out with that stream id (nothing else is touched)
  *   POST /v1/ask/feedback { id, outcome }
  *                          -> { ok: true }  what the person did with an answer: visual_closed, visual_kept, thumbs_up, thumbs_down
  *   GET  /v1/admin/guard   -> the overload guards at a glance: the limiter, the idempotency store, coalescing, and every breaker's state
@@ -39,6 +43,8 @@ import { failCode } from "./code.js";
 import { idempotencyHeader, planOf } from "./guarded.js";
 import { isLeaving, LEAVING_MESSAGE } from "../you/deletion.js";
 import type { Attached } from "../bots/prompt.js";
+import { scrub } from "../bots/run.js";
+import { openAskStream, stopAsk, type AskStream } from "../live/askStream.js";
 
 /** What the route accepts: room for a picture's base64. */
 export const FRONT_BODY_LIMIT = 8 * 1024 * 1024;
@@ -55,8 +61,9 @@ export interface FrontRoutesDeps {
   guard?: Guard;
   /** The monthly allowance, as the server counts it: a sentence when it is spent, else null. */
   quota?: (user: AuthedUser) => Promise<string | null>;
-  /** Written down after an answer (zero words: the model's words are not the person's). */
-  used?: (user: AuthedUser) => Promise<void>;
+  /** Written down after an answer (zero words: the model's words are not the person's), with what the front door's own calls cost (a bot's
+   *  answer is written down by the bots platform itself): the usage meter counts it (src/you/limits.ts). */
+  used?: (user: AuthedUser, paise: number) => Promise<void>;
   /** The bots platform (src/bots), for `bot` in the body ("Ask any bot"). Null or absent while BOTS is off: a body with `bot` is then 404 bots_off. */
   bots?: Bots | null;
   /**
@@ -96,6 +103,7 @@ export function readAsk(body: unknown): AskRead {
   if (b.threadId !== undefined && (typeof b.threadId !== "string" || !UUID.test(b.threadId))) return bad("threadId is an id the app makes for a conversation about a project's code (a uuid).");
   if (b.stream !== undefined && typeof b.stream !== "boolean") return bad("stream is true or false.");
   if (b.bot !== undefined && (typeof b.bot !== "string" || b.bot.length > 40 || !/^(?:any|auto|[a-z0-9]+(?:-[a-z0-9]+)*)$/.test(b.bot))) return bad('bot is "any" or a bot\'s slug.');
+  if (b.streamId !== undefined && (typeof b.streamId !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(b.streamId))) return bad("streamId is 16 to 64 letters, digits, - or _.");
 
   const attachments: AttachmentRef[] = [];
   const data = new Map<string, Buffer>();
@@ -184,6 +192,16 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
     const streaming = input.stream || String(req.headers["accept"] ?? "").includes("application/x-ndjson");
     const gone = new AbortController();
     reply.raw.once("close", () => { if (!reply.raw.writableFinished) gone.abort(); });
+    // The words as they come, to the person who asked, when the app gave this ask a stream id; and the way to stop it.
+    const words: AskStream | null = openAskStream(user.id, (req.body as { streamId?: unknown } | null)?.streamId, { guard: (t) => scrub(t).cleaned });
+    if (words) words.signal.addEventListener("abort", () => gone.abort(), { once: true });
+    /** The front door's events, to the live stream too: its words in pieces, its stages as a short line. */
+    const toWords = (ev: { t: string; text?: unknown; stage?: unknown }): void => {
+      if (!words) return;
+      if (ev.t === "text" && typeof ev.text === "string") words.text(ev.text);
+      else if (ev.t === "reset") words.reset();
+      else if (ev.t === "status" && typeof ev.stage === "string") words.step(ev.stage);
+    };
 
     // The stream starts at its first event, so a request turned away (429) or refused before anything was said is still an ordinary JSON answer.
     const res = reply.raw;
@@ -199,13 +217,17 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
       if (!res.writableEnded && !res.destroyed) res.write(`${JSON.stringify(ev)}\n`);
     };
 
+    /** What the front door's own calls cost this message (a bot's answer is written down by the bots platform). */
+    let own = 0;
     try {
       const out = await (front?.guard ?? deps.guard ?? defaultGuard()).run<Asked>({
         userId: user.id, plan: ctx.plan, route: "POST /v1/ask", lane: "ask", header: idempotencyHeader(req), signal: gone.signal,
         // The key is the person's request, whichever way the client wrote it: the stream flag is part of it, since a stream and a reply are two answers.
         body: req.body,
         ...(streaming ? { onEvent: (ev: unknown) => write(ev as FrontEvent) } : {}),
-      }, async (emit, stop) => {
+      }, async (emitOut, stop) => {
+        own = 0;
+        const emit = (ev: unknown): void => { toWords(ev as { t: string }); emitOut(ev); };
         // "Ask any bot", or a bot the person chose: the front door picks, or is told. The Code bot and "none of them" go down the front door's own roads, unchanged.
         if (bots) {
           const target = await bots.target(user.id, input.bot!, input.message, { ...(ctx.projectId ? { projectId: ctx.projectId } : {}), attachments: ctx.attachments, recent: ctx.recent, mode: ctx.mode }, stop);
@@ -225,11 +247,15 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
             const attached: Attached[] = [...(read?.files ?? []).map((f) => ({ name: f.name, kind: f.kind, text: f.text })), ...shared];
             const answer = await bots.ask(user.id, target.bot.id, {
               message: target.message, signal: stop, pickedBy: target.by, ctx: { attachments: ctx.attachments, recent: ctx.recent, mode: ctx.mode },
-              ...(ctx.projectId ? { projectId: ctx.projectId } : {}), emit: (e) => { if (e.t !== "result") emit(e); },
+              ...(ctx.projectId ? { projectId: ctx.projectId } : {}),
+              // A bot's answer streams through onText; its whole text (the event) goes to the stream only when nothing of it did.
+              emit: (e) => { if (e.t === "result") return; if (e.t === "text") words?.whole(e.text); else toWords(e); emitOut(e); },
+              ...(words ? { onText: (piece: string) => words.text(piece), onReset: () => words.reset() } : {}),
               ...(attached.length ? { attached } : {}), ...(read?.paise ? { extraPaise: read.paise } : {}),
             });
             if (read?.notes.length) answer.notes.push(...read.notes.map((n) => n.note ?? "").filter(Boolean));
             daily?.add(user.id, target.paise + answer.paise);
+            own = target.paise;
             const env = frontEnvelope({ ...answer, paise: answer.paise + target.paise }, target.bot, { by: target.by, confidence: target.confidence, reasons: target.reasons });
             return { id: null, decision: env.decision, result: { ...env.result, ...(read?.files.length ? { files: read.notes } : {}) }, bot: env.bot, answer: env.answer };
           }
@@ -238,12 +264,16 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
           if (tag) emit({ t: "bot", bot: tag });
           // The front door's own events, as they were; the one that ends the stream says which bot it was.
           const r = await front.ask(target.message, ctx, { signal: stop, emit: (ev) => emit(tag && ev.t === "result" ? { ...ev, bot: tag } : ev), attachmentData: input.data });
+          own = target.paise + (r.result?.paise ?? 0);
           return { id: r.id, decision: r.decision, result: r.result, ...(tag ? { bot: tag } : {}) };
         }
         const r = await front!.ask(input.message, ctx, { signal: stop, emit: (ev) => emit(ev), attachmentData: input.data });
+        own = r.result?.paise ?? 0;
         return { id: r.id, decision: r.decision, result: r.result };
       });
-      void deps.used?.(user)?.catch(() => undefined);
+      // A replayed answer was counted the first time.
+      void deps.used?.(user, out.replay ? 0 : own)?.catch(() => undefined);
+      words?.end();
       if (!streaming) {
         if (out.replay) reply.header("idempotent-replayed", "true");
         return reply.send({ id: out.result.id, decision: out.result.decision, result: out.result.result, ...(out.result.bot ? { bot: out.result.bot } : {}), ...(out.result.answer ? { answer: out.result.answer } : {}) });
@@ -253,6 +283,14 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
       res.end();
       return reply;
     } catch (err) {
+      // Stopped by the person (POST /v1/ask/stop): what was written stays theirs to see.
+      if (words?.stopped && (isAbort(err) || gone.signal.aborted)) {
+        const said = words.said;
+        words.end();
+        if (started) { write({ t: "error", code: "stopped", message: "Stopped." }); res.end(); return reply; }
+        return reply.code(409).send({ code: "stopped", message: "Stopped.", text: said });
+      }
+      words?.end();
       if (isAbort(err) && gone.signal.aborted) { if (started) res.end(); return reply; }
       if (!started) return fail(req, reply, err);
       req.log.error(err);
@@ -262,6 +300,14 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
       return reply;
     }
   };
+
+  app.post("/v1/ask/stop", RL, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
+    const id = (req.body && typeof req.body === "object" ? (req.body as { id?: unknown }).id : undefined);
+    if (typeof id !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(id)) return reply.code(400).send({ code: "bad_request", message: "id is the ask's stream id." });
+    return reply.send({ stopped: stopAsk(user.id, id) });
+  });
 
   app.post("/v1/ask/feedback", RL, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);

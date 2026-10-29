@@ -129,15 +129,15 @@ export function statusMark(mark: Mark, o: { color?: string; size?: number; still
 
 // ------------------------------------------------------------------ the living tab icons
 
-/** What the tab icons show: the person's four bots (colour, and whether each is working), what needs them, and the month's spend. */
+/** What the tab icons show: the person's four bots (colour, and whether each is working), what needs them, and how much of this stretch is used. */
 export interface TabLive {
   /** Up to four bots, in their own colours. */
   dots: Array<{ color: string; working: boolean }>;
   needs: number;
   /** The colour of a working bot, when one is. */
   workingColor?: string;
-  /** This month's spend over the limit, 0..1. */
-  spent: number;
+  /** How much of this stretch is used (the usage meter), 0..1. Never an amount. */
+  used: number;
 }
 
 const RING = 2 * Math.PI * 9; // 56.55, the You ring's length
@@ -166,9 +166,9 @@ function activityGlyph(active: boolean, live: TabLive): SvgShape[] {
   ];
 }
 
-/** You: you at the centre, ringed by this month's spend. Open, the ring draws to today's spend. */
+/** You: you at the centre, ringed by how much of this stretch is used. Open, the ring draws to it. */
 function youGlyph(active: boolean, live: TabLive): SvgShape[] {
-  const arc = Math.round(Math.max(0, Math.min(1, live.spent)) * RING * 10) / 10;
+  const arc = Math.round(Math.max(0, Math.min(1, live.used)) * RING * 10) / 10;
   return [
     { circle: [12, 12, 9], stroke: active ? "#e6e6e6" : "#ededed", strokeWidth: 2.2 },
     ...(arc > 0 ? [{

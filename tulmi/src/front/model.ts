@@ -34,6 +34,9 @@ export interface TextAsk {
   maxTokens: number;
   /** The most this call may cost in the worst case, in paise. */
   budget: Budget;
+  /** The words as they are written (the gateway streams), and word that the ones so far are void. */
+  onText?: (piece: string) => void;
+  onReset?: () => void;
 }
 
 export interface Text {
@@ -47,7 +50,7 @@ export async function askText(m: FrontModel, a: TextAsk): Promise<Text> {
   try {
     const r = await call({
       tier: a.tier, messages: compose(a.role, [{ role: "user" as const, content: a.user }]), maxTokens: a.maxTokens, purpose: a.purpose, userId: m.userId,
-      budget: a.budget, ...(m.signal ? { signal: m.signal } : {}),
+      budget: a.budget, ...(m.signal ? { signal: m.signal } : {}), ...(a.onText ? { onText: a.onText } : {}), ...(a.onReset ? { onReset: a.onReset } : {}),
     }, m.gateway);
     return { text: r.text.trim(), paise: r.paise, model: r.model };
   } catch (err) {

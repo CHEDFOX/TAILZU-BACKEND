@@ -147,9 +147,10 @@ describe("choosePlacement: the cheapest place there is", () => {
     });
   }
 
-  it("asks, with the price, when paid is the only place left and the rule or the cap says to", () => {
+  it("asks, never with a price, when paid is the only place left and the rule or the cap says to", () => {
     const ask = choosePlacement(ctx({ paidRule: "ask" }));
-    expect(ask).toEqual({ ask: true, estimatePaise: 500, reason: expect.stringMatching(/Paid compute would cost about ₹5 and you asked to be asked first/) });
+    expect(ask).toEqual({ ask: true, estimatePaise: 500, reason: expect.stringMatching(/Paid compute needs your yes, as you asked\.$/) });
+    expect(ask.reason).not.toMatch(/₹/);
     const over = choosePlacement(ctx({ paidRule: "auto", paidLeftPaise: 499 }));
     expect(over).toEqual({ ask: true, estimatePaise: 500, reason: expect.stringMatching(/go over your monthly automatic limit/) });
     expect(choosePlacement(ctx({ paidRule: "auto", paidLeftPaise: 0 }))).toMatchObject({ ask: true });
@@ -688,7 +689,7 @@ describe("the pushes", () => {
     await notifyCodeJob("user-a", "job_done", data({ at: 5000 }));
     await notifyCodeJob("user-a", "job_failed", data({ at: 6000, reason: "It kept going quiet." }));
     expect(sent.map((m) => [m.title, m.body])).toEqual([
-      ["Paid compute needs your OK", "“make the build pass” has no free computer to run on. Paid compute would cost about ₹12.50."],
+      ["Paid compute needs your OK", "“make the build pass” has no free computer to run on. Say yes to run it on paid compute."],
       ["Waiting for a computer", "“make the build pass” will carry on by itself when one of your computers is online."],
       ["Changes waiting for your OK", "“make the build pass” has changes ready and needs your OK to commit them."],
       ["Moved to another computer", "“make the build pass” is carrying on on GitHub's free computers."],
@@ -702,9 +703,9 @@ describe("the pushes", () => {
     expect(sent).toHaveLength(6);
     await notifyCodeJob("user-a", "compute_paused", data({ at: 9000 }));
     expect(sent).toHaveLength(7);
-    // A whole-rupee price has no paise on it.
+    // No price, whatever the estimate.
     await notifyCodeJob("user-a", "compute_ask", data({ at: 7000, estimatePaise: 500 }));
-    expect(sent.at(-1)!.body).toContain("about ₹5.");
+    expect(sent.at(-1)!.body).not.toMatch(/₹/);
     // Somebody with no phone, or no engine, is nobody's problem.
     await expect(notifyCodeJob("nobody", "job_done", data())).resolves.toBeUndefined();
   });

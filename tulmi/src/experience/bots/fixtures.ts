@@ -2,7 +2,7 @@
  * FAKES FOR THE BOTS APP: deps with the design's own sample day (Aanya, the cart rounding question, Code bot
  * working), for tests and the render check (scripts/bots-render.ts). Nothing here is used by the server.
  *
- *   fakeDeps()                       the boards' day: Code bot asks about rounding, 4 things done, ₹184 of ₹500
+ *   fakeDeps()                       the boards' day: Code bot asks about rounding, 4 things done, a third of the month used
  *   fakeDeps({ jobs: [], tasks: [] }) a quiet day
  *   fakeDeps({ api: { "GET /v1/bots/plan/memory": { facts: [...] } } })  answers for a screen's own `load`
  *   ctxFor("bots.home", "phone", live)   a BotsCtx for a builder
@@ -19,7 +19,7 @@ export const SAMPLE_BOTS: BotLite[] = [
   { slug: "code", name: "Code bot", colour: "pine", purpose: "Reads your projects, answers questions about the code, and changes it through pull requests.", builtin: true },
   { slug: "keybot", name: "Keybot", colour: "ochre", purpose: "Writes, rewrites and replies in your own voice, in any language you mix.", builtin: true },
   { slug: "plan", name: "Plan bot", colour: "sea", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.", builtin: true },
-  { slug: "travel", name: "Travel bot", colour: "clay", purpose: "Plans trips: routes, stays, timings and costs, with sources.", builtin: true },
+  { slug: "travel", name: "Travel bot", colour: "clay", purpose: "Plans trips: routes, stays and timings, with sources.", builtin: true },
   { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Plans your workouts around your week.", builtin: false },
 ];
 
@@ -56,7 +56,7 @@ export interface FakeOpts {
   calls?: Array<{ method: string; path: string; body?: unknown }>;
 }
 
-/** Deps that read from memory. Defaults: the sample day (with 6,200 spent this month, i.e. ₹184 including the rest). */
+/** Deps that read from memory. Defaults: the sample day (with 6,200 paise of jobs this month, ours: never shown). */
 export function fakeDeps(o: FakeOpts = {}): BotsDeps {
   return {
     bots: async () => o.bots ?? SAMPLE_BOTS,

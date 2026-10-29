@@ -242,6 +242,15 @@ export async function usageEventsSince(
  * it possible to exempt more than was meant. An empty or absent list exempts
  * nobody, which is the default.
  */
+/**
+ * The usage meter's answer for a person: its refusal sentence ("You've reached
+ * this stretch's limit. It resets Thu 9 am.") or null. Set by the You routes
+ * (routes/botsYou.ts) over src/you/limits.ts; unset, nothing is asked.
+ */
+export type UsageGate = (userId: string) => Promise<string | null>;
+let usageGate: UsageGate | null = null;
+export function setUsageGate(g: UsageGate | null): void { usageGate = g; }
+
 export function isQuotaExempt(id: string, configured: string | undefined): boolean {
   if (!configured || !id) return false;
   return configured.split(",").some((entry) => entry.trim() === id);
@@ -266,6 +275,14 @@ export async function enforceQuota(
   user: AuthedUser,
   opts: { agentAudio?: boolean; picture?: boolean } = {},
 ): Promise<string | null> {
+  // The usage meter first (src/you/limits.ts): every plan has one, paid and
+  // free-for-all included, and its sentence says when it resets. Operator
+  // tokens skip it as they skip the rest. A meter that cannot be read lets
+  // the request through: it is a guard rail, not a reason for an outage.
+  if (usageGate && !isQuotaExempt(user.id, getConfig().QUOTA_EXEMPT_USER_IDS)) {
+    const out = await usageGate(user.id).catch(() => null);
+    if (out) return out;
+  }
   // Free for everyone (FREE_FOR_ALL): nothing to check, and no read to pay for.
   if (getConfig().FREE_FOR_ALL) return null;
   // Paying users are not metered. This check did not exist, so a subscriber
