@@ -174,6 +174,18 @@ describe("the screens, for the phone and the window", () => {
       expect(read.lint).toEqual([]);
       expect(read.words).toContain("I've read storefront");
     });
+    it(`bots.code.start meet (${client}): Connect GitHub signs in with GitHub where the server offers only that (no App)`, async () => {
+      const authorizeUrl = "https://github.com/login/oauth/authorize?client_id=c&state=s";
+      const oauthOnly = { ...API, "GET /v1/code/github": { configured: true, connected: false, installations: [], oauth: { connected: false } }, "POST /v1/code/github/signin": { authorizeUrl } };
+      const meet = await build("bots.code.start", client, { step: "meet" }, oauthOnly);
+      expect(meet.lint).toEqual([]);
+      expect(meet.json).toContain(authorizeUrl);
+      expect(meet.words).not.toContain("GitHub isn't set up on this server yet.");
+      // Neither way set up: the button is there but can't be pressed, and it says why.
+      const neither = await build("bots.code.start", client, { step: "meet" }, { ...API, "GET /v1/code/github": { configured: true, connected: false, installations: [] } });
+      expect(neither.json).not.toContain("oauth/authorize");
+      expect(neither.words).toContain("GitHub isn't set up on this server yet.");
+    });
     it(`bots.code.start (${client}) with BotBuddy: one Code bot of his own across the steps, in one place, a moment per step`, async () => {
       const BUDDY = ["BotsKit", "BotsMotion", "BotBuddy"];
       const meetApi = { ...API, "GET /v1/code/github": { connected: false, installations: [] } };

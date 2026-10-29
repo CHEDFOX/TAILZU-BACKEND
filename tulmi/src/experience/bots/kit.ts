@@ -717,9 +717,17 @@ export function needsCard(item: NeedsItem, o: { layout?: "column" | "row" } = {}
 // ===================================================================== the ask bar
 
 /**
- * What the ask bar sends: the front door (POST /v1/ask, "Ask any bot"), then the answer opens on the Ask screen. Offline, in a build
- * that keeps an outbox, the ask is kept there instead and goes out once the connection is back (`keptOffline`).
+ * What the ask bar sends: "Ask any bot" through the shell's door (POST /v1/shell/ask: POST /v1/ask as the person, bot "any", with the
+ * answer written down for Activity), then the answer opens on the Ask screen with who answered and what it handed on (a Code bot job,
+ * a UPI payment, a yes waiting), as Ask's own send does. Offline, in a build that keeps an outbox, the ask is kept there instead and
+ * goes out once the connection is back (`keptOffline`).
  */
+const ASK_PATH = "/v1/shell/ask";
+const answerParams = (message: string): Record<string, unknown> => ({
+  message, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi",
+  needs: "$state.asked.shell.needs", job: "$state.asked.shell.job",
+});
+
 export function askAction(client: Client, path = "ask", ctx?: BotsCtx): ActionSpec {
   // Given the screen's ctx: the moment an ask is out (askMoment.ts): the words up as a bubble at once, the box cleared, the answer
   // written in as it comes.
@@ -730,12 +738,12 @@ export function askAction(client: Client, path = "ask", ctx?: BotsCtx): ActionSp
         kind: "sequence", actions: [
           { kind: "setState", path: "asking", value: true },
           {
-            kind: "callEndpoint", method: "POST", path: "/v1/ask",
+            kind: "callEndpoint", method: "POST", path: ASK_PATH,
             body: { message: `$state.${path}`, device: client, mode: "text", bot: "any" },
             assignTo: "asked",
             onSuccess: { kind: "sequence", actions: [
               { kind: "setState", path: "asking", value: false },
-              { kind: "navigate", screenId: SCREENS.ask, params: { message: `$state.${path}`, answer: "$state.asked.result.text", id: "$state.asked.id" } },
+              { kind: "navigate", screenId: SCREENS.ask, params: answerParams(`$state.${path}`) },
               { kind: "clearState", path },
             ] },
             onError: { kind: "sequence", actions: [
@@ -756,12 +764,12 @@ function askMomentAction(ctx: BotsCtx, path: string): ActionSpec {
       kind: "sequence", actions: [
         ...momentStart({ message: `$state.${path}`, from: path, busy: "asking" }),
         momentStreamed(ctx, {
-          kind: "callEndpoint", method: "POST", path: "/v1/ask",
+          kind: "callEndpoint", method: "POST", path: ASK_PATH,
           body: { message: SENT_WORDS, device: ctx.client, mode: "text", bot: "any" },
           assignTo: "asked",
           onSuccess: { kind: "sequence", actions: [
             { kind: "setState", path: "asking", value: false },
-            { kind: "navigate", screenId: SCREENS.ask, params: { message: SENT_WORDS, answer: "$state.asked.result.text", id: "$state.asked.id" } },
+            { kind: "navigate", screenId: SCREENS.ask, params: answerParams(SENT_WORDS) },
           ] },
           onError: momentFailed({ busy: "asking", from: path, then: { kind: "toast", message: "Couldn't reach your bots. Try again.", tone: "error" } }),
         }),
@@ -1003,7 +1011,9 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
         style: { backgroundColor: C.paper, paddingHorizontal: 20, paddingTop: o.back ? 8 : 16, gap: o.gap ?? 22 },
         children: [...backNode(o), ...o.body],
       },
-      ...(o.footer?.length ? [col(o.footer, { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper })] : []),
+      // The footer sits outside the scroll, so nothing moved it for the keyboard: its field (the ask bar, "Tell Code bot what to do")
+      // went under the keyboard as it opened. `keyboard: "above"` keeps it just above the keyboard while one of its fields has it.
+      ...(o.footer?.length ? [{ ...col(o.footer, { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper }), props: { keyboard: "above" } }] : []),
       ...(o.tab ? [tabBar(o.tab, ctx.live)] : []),
     ],
   };

@@ -136,6 +136,16 @@ describe("the frames", () => {
     expect(tabs.map((t) => t.on?.onPress ?? null)).toEqual([{ kind: "switchTab", tabId: "bots" }, { kind: "switchTab", tabId: "activity" }, null]);
     expect(checkTree(s.root!)).toEqual([]);
   });
+  it("a phone page's footer (the ask bar, a composer) stays above the keyboard; the window has none to clear", () => {
+    const field: Node = { type: "TextField", id: "ask", bind: { value: "ask" } };
+    const phone = phonePage(ctxFor("bots.x", "phone", live), { tab: "bots", body: [text("Hi")], footer: [field] });
+    const footer = phone.root!.children!.find((c) => c.children?.includes(field))!;
+    expect(footer).toMatchObject({ type: "Stack", props: { keyboard: "above" } });
+    expect(phone.root!.children!.at(-1)).toMatchObject({ type: "SafeArea", props: { edges: ["bottom"] } });
+    expect(checkTree(phone.root!)).toEqual([]);
+    const desk = deskPage(ctxFor("bots.x", "desktop", live), { tab: "bots", body: [text("Hi")], footer: [field] });
+    expect(JSON.stringify(desk)).not.toContain('"keyboard"');
+  });
   it("a pushed phone page has a back bar and no tab bar", () => {
     const s = phonePage(ctxFor("bots.x", "phone", live), { back: true, backTitle: "Budget", body: [text("Hi")] });
     expect(JSON.stringify(s)).toContain('"kind":"navigateBack"');

@@ -399,13 +399,22 @@ const enterTop = (to: ActionRef, current: number): Node =>
 
 interface MeetData { gh?: Github; installUrl?: string; off?: boolean }
 
+/**
+ * Where "Connect GitHub" goes: the GitHub App's install page; on a server that offers only "Sign in with GitHub" (CODE_GITHUB_OAUTH,
+ * no App), that sign-in. Nothing while GitHub is already connected, or neither way is set up.
+ */
+async function connectUrl(deps: BotsDeps, gh: Github | undefined): Promise<string | undefined> {
+  if (!gh || gh.connected) return undefined;
+  const install = await deps.api<{ installUrl: string }>("POST", "/v1/code/github/connect").then((r) => r.installUrl).catch(() => undefined);
+  if (install || !gh.oauth) return install;
+  return deps.api<{ authorizeUrl: string }>("POST", "/v1/code/github/signin").then((r) => r.authorizeUrl).catch(() => undefined);
+}
+
 async function loadMeet(deps: BotsDeps): Promise<MeetData> {
+  // 404 code_off: the Code bot is off here. 503 not_configured: it is on, but GitHub isn't set up (the notice says which).
   let off = false;
-  const gh = await deps.api<Github>("GET", "/v1/code/github").catch((e: { status?: number }) => { off = e?.status === 404 || e?.status === 503; return undefined; });
-  const installUrl = gh && !gh.connected
-    ? await deps.api<{ installUrl: string }>("POST", "/v1/code/github/connect").then((r) => r.installUrl).catch(() => undefined)
-    : undefined;
-  return { gh, installUrl, off };
+  const gh = await deps.api<Github>("GET", "/v1/code/github").catch((e: { status?: number }) => { off = e?.status === 404; return undefined; });
+  return { gh, installUrl: await connectUrl(deps, gh), off };
 }
 
 /** Enter1 / DEnter1: who Code bot is, and Connect GitHub. */
@@ -481,8 +490,7 @@ async function loadPick(deps: BotsDeps): Promise<PickData> {
     get<PickData["repos"]>(deps, "/v1/code/repos"),
     get<{ projects: Project[] }>(deps, "/v1/code/projects").then((r) => r?.projects),
   ]);
-  const installUrl = gh && !gh.connected ? await deps.api<{ installUrl: string }>("POST", "/v1/code/github/connect").then((r) => r.installUrl).catch(() => undefined) : undefined;
-  return { gh, repos, projects, installUrl };
+  return { gh, repos, projects, installUrl: await connectUrl(deps, gh) };
 }
 
 /** A tick box that follows a state path (not pressable itself: its row is). */
