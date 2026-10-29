@@ -117,6 +117,15 @@ describe("the screens, from the boards' day", () => {
     expect(actions(nodes).some((a) => a.kind === "navigate" && a.screenId === "bots.bot" && (a.params as Record<string, unknown>).slug === "$state.made.bot.slug")).toBe(true);
   });
 
+  it("Make a bot starts from what Home already said: the window's \"A bot that…\" or a first-day idea", async () => {
+    const noDraft = { ...(await sampleApi()), [`GET ${AREA}/draft`]: { draft: null } };
+    const said = await build("bots.make", "desktop", { say: "A bot that reminds me to drink water" }, noDraft);
+    expect(said.s.state).toMatchObject({ sentence: "A bot that reminds me to drink water" });
+    const idea = await build("bots.make", "phone", { idea: "Track my gym days" }, noDraft);
+    expect(idea.s.state).toMatchObject({ sentence: "Track my gym days" });
+    expect((await build("bots.make", "phone", {}, noDraft)).s.state).toMatchObject({ sentence: "" });
+  });
+
   it("wires edit, keys, store, plan, travel, spaces and share-in to their routes", async () => {
     const edit = posts((await build("bots.edit", "phone", { slug: "gym-bot" })).nodes);
     expect(edit).toEqual(expect.arrayContaining(["PUT /v1/bots/gym-bot", `POST ${AREA}/rules/gym-bot`, `DELETE ${AREA}/rules/gym-bot/0`, "DELETE /v1/bots/gym-bot/memory/f0", `DELETE ${AREA}/listing/gym-bot`, "DELETE /v1/bots/gym-bot"]));

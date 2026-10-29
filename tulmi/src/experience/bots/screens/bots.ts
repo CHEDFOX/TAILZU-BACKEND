@@ -525,10 +525,13 @@ function trialPart(ctx: BotsCtx, v: DraftView): Node[] {
   ];
 }
 
+/** What Home already said the bot should do: the window's "A bot that…" (`say`), or an idea tapped on the first day (`idea`). */
+const saidFirst = (ctx: BotsCtx): string => String(ctx.params.say ?? ctx.params.idea ?? "").slice(0, 600);
+
 function makePhone(ctx: BotsCtx, v: DraftView | null | undefined) {
   if (!v) {
     return page(ctx, {
-      back: true, title: "Make a bot", nav: "make", state: { sentence: "" },
+      back: true, title: "Make a bot", nav: "make", state: { sentence: saidFirst(ctx) },
       body: [
         title("Make a bot"),
         meta("Say what it should do. It shows you the plan before it acts.", { size: 14 }),
@@ -584,7 +587,7 @@ function makeDesk(ctx: BotsCtx, v: DraftView | null | undefined) {
     card([meta("Once there's a draft, ask it something here. A trial saves nothing.", { size: 13 })], { dashed: true }),
   ], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 14 });
   return page(ctx, {
-    title: "Make a bot", nav: "make", maxWidth: 1180, state: { sentence: v?.sentence ?? "", ...(d ? { d_web: d.skills.web, d_files: d.skills.files } : {}) },
+    title: "Make a bot", nav: "make", maxWidth: 1180, state: { sentence: v?.sentence ?? saidFirst(ctx), ...(d ? { d_web: d.skills.web, d_files: d.skills.files } : {}) },
     body: [
       row([col([title("Make a bot"), meta("Say what it should do. It shows you the plan before it acts.", { size: 14 })], { gap: 4 }), grow(),
         ...(v ? [meta(`Draft saved · ${clockOf(ctx, v.updatedAt)}`, { size: 12 })] : [])], { alignItems: "flex-end" }),
