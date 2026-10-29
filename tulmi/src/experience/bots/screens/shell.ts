@@ -549,9 +549,20 @@ interface Route { slug: string; name: string; color: string; say: string; hint: 
 const TRIES: Array<{ bot: string; text: string }> = [
   { bot: "plan", text: "What's on tomorrow?" },
   { bot: "code", text: "What changed in my project this week?" },
+  { bot: "keybot", text: "Reply to Sam: running 10 minutes late" },
+  { bot: "travel", text: "A weekend in Lisbon next month?" },
+];
+/** The same, for someone in India (by time zone, as the pay page tells the markets apart): their languages, their trips. */
+const TRIES_IN: Array<{ bot: string; text: string }> = [
+  { bot: "plan", text: "What's on tomorrow?" },
+  { bot: "code", text: "What changed in my project this week?" },
   { bot: "keybot", text: "Mummy ko Hindi mein reply likho" },
   { bot: "travel", text: "A weekend in Goa next month?" },
 ];
+const inIndia = (ctx: BotsCtx): boolean => ctx.tzOffsetMinutes === 330;
+/** Under Ask's box: that any language works, and for India that Hinglish does. */
+const speakLine = (ctx: BotsCtx, listening = false): string =>
+  `${listening ? "Listening" : "Speak or type"} · ${inIndia(ctx) ? "Hinglish works" : "any language works"}`;
 
 const routeFor = (ctx: BotsCtx, slug: string): Route => {
   const name = nameOf(ctx, slug);
@@ -657,7 +668,7 @@ function pickList(ctx: BotsCtx): Node {
 
 function tries(ctx: BotsCtx): Node[] {
   const have = new Set(ctx.live.bots.map((b) => b.slug));
-  return TRIES.filter((t) => have.has(t.bot)).map((t) => row([
+  return (inIndia(ctx) ? TRIES_IN : TRIES).filter((t) => have.has(t.bot)).map((t) => row([
     avatarOf(ctx, t.bot, 26),
     text(t.text, { size: 14, lineHeight: 19, lines: 1, style: { flexGrow: 1, flexShrink: 1 } }),
     meta(nameOf(ctx, t.bot), { size: 12, style: { flexShrink: 0 } }),
@@ -706,7 +717,7 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
           row([
             labelled(roundButton("mic", { kind: "dictate" }, { size: 60 }), "Hold Fn and speak, or click to start"),
             col([
-              row([bars([8, 14, 20, 11, 24, 16, 9, 18, 22, 12, 7, 15]), meta("Speak or type · Hinglish works", { size: 13 })], { gap: 10 }),
+              row([bars([8, 14, 20, 11, 24, 16, 9, 18, 22, 12, 7, 15]), meta(speakLine(ctx), { size: 13 })], { gap: 10 }),
               field("ask", "Ask any bot…", { size: 21, weight: 500, onSubmit: goAction(ctx), returnKey: "send" }),
               ...fileChip,
             ], { gap: 8, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
@@ -745,7 +756,7 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
       box([box([], { width: 36, height: 5, borderRadius: 3, backgroundColor: C.outline })], { alignItems: "center" }),
       row([text("Ask any bot", { size: 24, weight: 700, tracking: -0.5, lineHeight: 30 }), grow(), labelled(box([icon("close", { size: 22 })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -10 }, back()), "Close")]),
       col([
-        voice ? voice.line : row([bars([6, 12, 16, 9, 13, 5]), meta("Speak or type · Hinglish works", { size: 12 })], { gap: 8 }),
+        voice ? voice.line : row([bars([6, 12, 16, 9, 13, 5]), meta(speakLine(ctx), { size: 12 })], { gap: 8 }),
         field("ask", "Say what you need", { size: 22, weight: 500, multiline: true }),
         ...(voice ? [micBlockedNotice()] : []),
         ...fileChip,
@@ -779,8 +790,8 @@ function askVoice(ctx: BotsCtx): { line: Node; big: Node; hint: Node } | null {
   const listen = listenAction("ask", { kind: "condition", if: { falsy: "route.slug" }, then: checkWho });
   const line: Node = {
     ...col([
-      when(notListening, row([bars([6, 12, 16, 9, 13, 5]), meta("Speak or type · Hinglish works", { size: 12 })], { gap: 8 })),
-      when(listening, row([voiceBars([6, 12, 16, 9, 13, 5], { live: true }), meta("Listening · Hinglish works", { size: 12 })], { gap: 8, height: 16 })),
+      when(notListening, row([bars([6, 12, 16, 9, 13, 5]), meta(speakLine(ctx), { size: 12 })], { gap: 8 })),
+      when(listening, row([voiceBars([6, 12, 16, 9, 13, 5], { live: true }), meta(speakLine(ctx, true), { size: 12 })], { gap: 8, height: 16 })),
       when(writingDown, row([statusMark("working", { color: C.ink }), meta("Writing down what you said…", { size: 12 })], { gap: 8, height: 16 })),
     ]),
     ...(ctx.params.voice ? { on: { onAppear: listen } } : {}),
