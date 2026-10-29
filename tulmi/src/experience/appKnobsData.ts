@@ -260,6 +260,7 @@ export const APP_KNOB_LABELS: Record<string, string> = {
   "desktop.toast.copied": "Copied",
   "desktop.toast.copyFailed": "Couldn't copy that",
   "desktop.toast.listening": "Listening — {key} stops",
+  "desktop.toast.pasteFailed": "Couldn't paste that",
   "desktop.toast.settingFailed": "Couldn't change that setting",
   "desktop.toast.yourHotkey": "your hotkey",
   "desktop.tray.ask": "Ask about this screen (tap {key} twice)",
