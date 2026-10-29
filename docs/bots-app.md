@@ -470,3 +470,28 @@ A new **kind of track or field** is an app update: add it to `core.ts` (and `TRA
 sides, have the new build declare `BotMoments2` as well, and give recipes that use it `format: 2`: the kit sends them only to builds that
 declare it (`playsFormat`), and older builds get their fallback act.
 
+
+## 14. Pull-a-bot
+
+Pull to refresh with a bot in it (shared/types/sdui.ts 3g; the phone's `app/src/sdui/PullBot.tsx`, physics in `pullBotCore.ts`).
+Pull the list down at the top and a small bot stands on its top edge, feet first in the gap; pull up at the end and he holds it up,
+head first. Past the line he gets excited and the phone ticks; let go and the list springs back, he rides it and is thrown off as it
+passes its rest (off the top of the screen, or down behind the bar under the list), then the screen is fetched again quietly (the
+live updates' reload: no spinner, its state kept) and a pill says "Checking", then "2 new" / "You're up to date" (from the other
+end: "2 new at the top", which a tap goes to). Let go early: nothing refreshes. Reduce Motion: he is never thrown.
+
+* **On a screen**: `page(ctx, { pullBot: { top: true, bottom: true, items, newAt?, avatar? } })`. It goes out (`ScreenResponse.pullBot`)
+  only to a phone whose build declares **`PullBot`** (`canPullBot`); the window and older builds get the page as before. On now:
+  Home and the first-day Home (decisions, work, bots), Activity (the feed and decisions), a bot's chat (its turns, `newAt: "bottom"`),
+  Spaces and one space (spaces, tasks given to you; what is shared, asked for, given out, its activity).
+* **What is new** is counted on the phone: `items` are the ids of the screen's list (ids the server already has), and after the
+  refresh every id that was not there before is new. A list that could not be read names no `items`, so the next one is not all
+  "new"; no `items` counts none. Ids once each, at most `PULL_BOT_MAX_ITEMS`.
+* **Which bot**: the approved prototype's ("x0") by default; `avatar` (an id, or colours over the default: `shellTop`, `shellBottom`,
+  `body`, `limb`, `visor`, `glow`, `shine`, `accent`), knob `pullBot.avatar` (the default id), knob `pullBot.looks` (looks by id). The
+  looks catalog's avatars (section 13) are Blip's body, a different drawing, so they do not dress this bot.
+* **Knobs** (app-knobs.json, the prototype's values): `pullBot.threshold` 60, `pullBot.rubber` 300, `pullBot.springRate` 17,
+  `pullBot.springDamping` 0.58, `pullBot.throwSpeed` 1750, `pullBot.throwBoost` 2.6, `pullBot.gravity` 2600, `pullBot.scale` 0.5,
+  `pullBot.checkMinMs` 900, `pullBot.pillMs` 2200, `pullBot.giveUpMs` 15000, `pullBot.pill.*` (colours, size, inset),
+  `app.haptics.pullBot` "light"; labels
+  `pullBot.checking`, `pullBot.fresh` ("{n} new"), `pullBot.freshTop`, `pullBot.freshBottom`, `pullBot.upToDate`, `pullBot.failed`.

@@ -613,6 +613,8 @@ export interface ScreenResponse {
    * it, as the phones do; a phone draws it as any other screen.
    */
   look?: "desk" | "bots";
+  /** Pull to refresh with a bot in it, on this screen's scroll (section 3g; only for a build that declares PULL_BOT_CAPABILITY). */
+  pullBot?: PullBotSpec;
 }
 
 // ===========================================================================
@@ -1149,6 +1151,52 @@ export interface AskStreamPiece {
   /** The words so far are dropped (the bot went to use a tool after writing a little): start over. */
   reset?: true;
   end?: true;
+}
+
+// ---------------------------------------------------------------------------
+// 3g. Pull-a-bot (docs/bots-app.md, "Pull-a-bot")
+// ---------------------------------------------------------------------------
+//
+// Pull to refresh with a bot in it. A build that declares PULL_BOT_CAPABILITY draws a screen's Screen with a small bot in
+// its pull: down at the top he stands on the list (feet first), up at the end he holds it up (head first); let go past
+// the line and the list springs back and throws him off, and the screen is fetched again quietly (no spinner, its state
+// kept). A pill says "Checking", then how many are new or "You're up to date". The server turns it on per screen with
+// `ScreenResponse.pullBot` (kit page `pullBot`), only for a build that declares it; every other build gets the screen as
+// before. Its feel (the line, the band, the spring, the throw, which bot) and its words are the app's knobs (pullBot.*).
+//
+// WHAT IS NEW is counted on the phone: `items` names the ids of the screen's list (ids the server already has: a feed
+// row's, a decision's, a chat turn's), and after the refresh every id that was not there before is new. No `items`: it
+// counts none ("You're up to date", which the screen then is).
+
+/** Declared by a build that pulls a bot (see above). */
+export const PULL_BOT_CAPABILITY = "PullBot";
+
+/** The pull bot's colours; any left out are the prototype's ("x0"). */
+export interface PullBotLook {
+  shellTop?: string;
+  shellBottom?: string;
+  body?: string;
+  limb?: string;
+  visor?: string;
+  glow?: string;
+  shine?: string;
+  /** His ears, antenna tip, feet and chest light. */
+  accent?: string;
+}
+
+export interface PullBotSpec {
+  /** Pull down at the top of the list. */
+  top?: boolean;
+  /** Pull up at the end of the list. */
+  bottom?: boolean;
+  /** The ids of the list's items, in any order: after a refresh, those not here before are new. */
+  items?: string[];
+  /** Where new items land ("top" by default): a pull at the other end says where they are ("2 new at the top"), a tap goes there. */
+  newAt?: "top" | "bottom";
+  /** Which bot: a look's id (the app's "x0", "ink", or one in the knob pullBot.looks), or colours over the default. None: knob pullBot.avatar. */
+  avatar?: string | PullBotLook;
+  /** The face the pill's words are set in (the page's own). */
+  font?: string;
 }
 
 /** Named layouts for `template` + `blocks` screens. */

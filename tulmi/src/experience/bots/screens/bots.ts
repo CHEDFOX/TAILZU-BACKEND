@@ -420,6 +420,8 @@ function chatPage(ctx: BotsCtx, d: BotPageData) {
   ], { gap: 6 });
   return page(ctx, {
     back: isDesk(ctx), title: bot.name, nav: bot.slug, ...(isDesk(ctx) ? { maxWidth: 720 } : {}),
+    // Pull-a-bot at both ends: what is new is a turn, and new turns land at the bottom.
+    pullBot: { top: true, bottom: true, newAt: "bottom", ...(d.turns ? { items: d.turns.map((t) => t.id) } : {}) },
     body: [
       ...(isDesk(ctx) ? [head] : [phoneTop]),
       ...(turns.length
