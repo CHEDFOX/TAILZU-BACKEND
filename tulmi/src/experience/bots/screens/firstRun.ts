@@ -1395,7 +1395,8 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   }, setState("plan", id));
   const tick = (): Node => box([icon("check", { size: 14 })], { width: 22, height: 22, borderRadius: 11, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" });
   const cards = [
-    planCard("free", "Free", text("₹0", { size: 17, weight: 700, lineHeight: 22 }), [], "", [feature(tick(), "Every bot, with a smaller allowance each month"), feature(keyHead, freeLine)]),
+    // No price on Free: its name says it, and a currency here would clash with the store's on the paid plans ("₹0" beside "$50").
+    planCard("free", "Free", box([]), [], "", [feature(tick(), "Every bot, with a smaller allowance each month"), feature(keyHead, freeLine)]),
     ...paid.map((p) => planCard(p.id, p.label, text(p.price, { size: 17, weight: 700, lineHeight: 22, ...store(p) }), [
       ...(p.trialDays ? [tag(`${p.trialDays} days free`)] : p.badge ? [tag(p.badge)] : []),
     ], p.per, [
@@ -1412,7 +1413,7 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const trial = (p: Plans["plans"][number]): Node | null => p.trialDays ? when(isOn(p.id), col([
     text(`Try ${p.label} free for ${p.trialDays} days. Cancel any time before it ends and you pay nothing.`, { size: 14, lineHeight: 20 }),
     row([
-      col([meta("Today", { size: 12 }), text("₹0", { size: 13, weight: 600, lineHeight: 17 })], { gap: 2, paddingHorizontal: 14, flexGrow: 1, flexBasis: 0 }),
+      col([meta("Today", { size: 12 }), text("Free", { size: 13, weight: 600, lineHeight: 17 })], { gap: 2, paddingHorizontal: 14, flexGrow: 1, flexBasis: 0 }),
       col([meta(dayAfter(ctx.live.now, ctx.tzOffsetMinutes, p.trialDays), { size: 12 }), text(`Then ${p.price}`, { size: 13, weight: 600, lineHeight: 17, ...store(p, { template: "Then {price}" }) })], {
         gap: 2, paddingHorizontal: 14, flexGrow: 1, flexBasis: 0, borderLeftWidth: 1, borderLeftColor: C.track,
       }),
