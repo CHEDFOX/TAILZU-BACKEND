@@ -153,6 +153,8 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       ...(Array.isArray(b.attachments) && b.attachments.length ? { attachments: b.attachments.slice(0, 8) } : {}),
       // The Code bot's own page asks about one project (screens/code.ts codeAsk); POST /v1/ask checks the id.
       ...(typeof b.projectId === "string" && b.projectId ? { projectId: b.projectId } : {}),
+      // The app's stream id: the words go to it as they come (POST /v1/ask checks it; live/askStream.ts).
+      ...(typeof b.streamId === "string" && b.streamId ? { streamId: b.streamId } : {}),
     };
     // An ask from the apps' outbox (typed offline) carries the id it got when it was typed: it is answered once, however often it is sent
     // (src/shell/sentAsks.ts). A retry of one that was answered gets that answer; one still out is told so (409) and tries again later.

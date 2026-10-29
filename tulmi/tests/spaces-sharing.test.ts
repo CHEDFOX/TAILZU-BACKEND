@@ -304,7 +304,7 @@ describe("sharing", () => {
 });
 
 describe("payment requests", () => {
-  it("asks, is approved by someone else who may, hands the UPI payment over, and is marked paid", async () => {
+  it("asks (what for, to whom, no amount), is approved by someone else who may, hands the UPI payment over without an amount, and is marked paid", async () => {
     const s = await served();
     const id = await s.home();
     await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, A_, { role: "guest" });
@@ -317,14 +317,17 @@ describe("payment requests", () => {
     expect((await s.call("PUT", `${AREA}/spaces/${id}/payments/${p.id}`, R_, { decision: "approve" })).status).toBe(403);
     const yes = (await s.call("PUT", `${AREA}/spaces/${id}/payments/${p.id}`, M_, { decision: "approve" })).body.payment;
     expect(yes).toMatchObject({ status: "approved", canMarkPaid: true });
-    expect(yes.upi).toBe("upi://pay?pa=freshbasket@okaxis&pn=Fresh%20Basket&am=1240.00&cu=INR&tn=This%20week's%20groceries");
+    expect(yes.upi).toBe("upi://pay?pa=freshbasket@okaxis&pn=Fresh%20Basket&cu=INR&tn=This%20week's%20groceries");
     expect((await s.call("PUT", `${AREA}/spaces/${id}/payments/${p.id}`, A_, { decision: "decline" })).body.code).toBe("answered");
     expect((await s.call("PUT", `${AREA}/spaces/${id}/payments/${p.id}`, A_, { paid: true })).status).toBe(403);
     expect((await s.call("PUT", `${AREA}/spaces/${id}/payments/${p.id}`, M_, { paid: true })).body.payment.status).toBe("paid");
     const history = (await s.call("GET", `${AREA}/spaces/${id}/payments`, R_)).body.payments;
     expect(history[0]).toMatchObject({ status: "paid", decidedBy: "Meera S.", upi: null });
     const log = (await s.call("GET", `${AREA}/spaces/${id}/activity`, A_)).body.activity.map((a: { text: string }) => a.text);
-    expect(log.slice(0, 3)).toEqual(["Meera S. paid ₹1,240 to Fresh Basket", "Meera S. approved ₹1,240 to Fresh Basket", "Rohan asked for ₹1,240 to Fresh Basket for This week's groceries"]);
+    expect(log.slice(0, 3)).toEqual(["Meera S. paid Fresh Basket", "Meera S. approved the payment to Fresh Basket", "Rohan asked for a payment to Fresh Basket for This week's groceries"]);
+    // The screens send no amount now: a request is what it's for and to whom.
+    const bare = (await s.call("POST", `${AREA}/spaces/${id}/payments`, R_, { to: "milkman@okaxis", name: "Ramu", note: "Milk for October" })).body.payment;
+    expect(bare).toMatchObject({ amountPaise: 0, payee: "Ramu", note: "Milk for October", status: "waiting" });
   });
 });
 

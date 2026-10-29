@@ -13,7 +13,8 @@
  *   POST /v1/bots/code/projects/:id/rules { rule: prs | merge | main, to: yes | ask | never }
  *                                   -> { rules }  the project's standing permissions set so the rule reads `to` (botsCode/rules.ts)
  *   POST /v1/bots/code/projects/:id/cap { paise? , step? }
- *                                   -> { capPaise }  the spend cap per job (₹10 steps, ₹10 to ₹500), kept in bots_code_rules
+ *                                   -> { capPaise }  how much of the stretch a job may use before it checks with you (ours, in paise: 1,000 steps,
+ *                                      1,000 to 50,000), kept in bots_code_rules; the screen shows it as Often, Sometimes or Rarely
  *   POST /v1/bots/code/projects/:id/disconnect
  *                                   -> { ok, stopped }  stops the project's live jobs, then forgets the project (DELETE /v1/code/projects/:id)
  *   GET  /v1/bots/code/projects/:id/intake

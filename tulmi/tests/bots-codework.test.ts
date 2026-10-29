@@ -62,12 +62,13 @@ describe("bots app · the Code bot at work", () => {
     expect(words.join(" ")).toContain("Couldn't open this job");
   });
 
-  it("watch it work: the stages, what it did, the one quick question that answers the job, what it spent, stop", async () => {
+  it("watch it work: the stages, what it did, the one quick question that answers the job, how much of its share it used (never an amount), stop", async () => {
     const { s, words } = await build("bots.code.job", "phone", { id: JOB_ASK });
     for (const w of ["Fix cart total rounding", "Needs you", "Build", "Read src/cart/total.ts".replace("src/", ""), "Edited cart/total.ts", "Ran 18 tests · 17 pass",
-      "Waiting for your answer", "Quick question", "Round each item's price, or round once at the end? Your invoices round each item.", "Each item", "At the end", "Spent so far", "₹4.20 of ₹30", "Stop"]) {
+      "Waiting for your answer", "Quick question", "Round each item's price, or round once at the end? Your invoices round each item.", "Each item", "At the end", "Of what it was given", "14% used", "Stop"]) {
       expect(words, w).toContain(w);
     }
+    expect(words.join(" ")).not.toMatch(/₹/);
     const p = posts(s.root!);
     expect(p.find((a) => a.path === `/v1/code/jobs/${JOB_ASK}/answer`)?.body).toEqual({ answer: "Each item" });
     expect(p.some((a) => a.path === `/v1/code/jobs/${JOB_ASK}/stop`)).toBe(true);
@@ -75,7 +76,7 @@ describe("bots app · the Code bot at work", () => {
     expect(actionsOf(s.root!).some((a) => a.kind === "refresh")).toBe(true);
   });
 
-  it("a yes, more money, paid compute: each wait has its own choices, and a yes the server asks about is said again with its id", async () => {
+  it("a yes, keep going, paid compute: each wait has its own choices, and a yes the server asks about is said again with its id", async () => {
     const base = CODEWORK_API[`GET /v1/code/jobs/${JOB_ASK}`] as { job: Record<string, unknown>; agent: Record<string, unknown> };
     const variant = (job: Record<string, unknown>, agent: Record<string, unknown>) => ({ ...CODEWORK_API, [`GET /v1/code/jobs/${JOB_ASK}`]: { ...base, job: { ...base.job, ...job }, agent: { ...base.agent, ...agent } } });
     const yes = await build("bots.code.job", "phone", { id: JOB_ASK }, variant({ waitingOn: "approval" }, { phase: "plan", waiting: { kind: "approval", action: "job.plan", summary: {} }, plan: { risk: "low", steps: [{ n: 1, do: "Round each line", files: [] }] } }));
@@ -84,7 +85,8 @@ describe("bots app · the Code bot at work", () => {
     expect(approve.map((a) => a.body)).toEqual([{}, { approvalId: "$state.yes.approvalId" }]);
     expect(posts(yes.s.root!).some((a) => a.path === `/v1/code/jobs/${JOB_ASK}/deny`)).toBe(true);
     const money = await build("bots.code.job", "desktop", { id: JOB_ASK }, variant({ waitingOn: "budget", spentPaise: 3000 }, { waiting: { kind: "budget" }, report: { outcome: "budget", text: "Out of money", costPaise: 3000, continueWithPaise: 1500 } }));
-    expect(money.words).toContain("Continue with ₹15");
+    expect(money.words).toEqual(expect.arrayContaining(["This job has used a lot of this stretch. Keep going?", "Keep going"]));
+    expect(money.words.join(" ")).not.toMatch(/₹/);
     expect(posts(money.s.root!).find((a) => a.path === `/v1/code/jobs/${JOB_ASK}/budget`)?.body).toEqual({ addPaise: 1500 });
     const paid = await build("bots.code.job", "phone", { id: JOB_ASK }, variant({ waitingOn: "paid", reason: "No computer of yours is online." }, { waiting: undefined }));
     expect(paid.words).toContain("No computer of yours is online.");
@@ -94,7 +96,7 @@ describe("bots app · the Code bot at work", () => {
 
   it("the window draws the chat beside the live job; a word to a waiting job is its answer", async () => {
     const { s, words } = await build("bots.code.job", "desktop", { id: JOB_ASK });
-    for (const w of ["storefront", "Fix cart total rounding", "Quick question", "Running on this computer · free"]) expect(words, w).toContain(w);
+    for (const w of ["storefront", "Fix cart total rounding", "Quick question", "Running on this computer"]) expect(words, w).toContain(w);
     const field = walk(s.root!).find((n) => n.type === "TextField" && n.id === "msg")!;
     expect(field.props?.placeholder).toBe("Ask about the code, or tell Code bot what to change…");
     expect(posts(s.root!).some((a) => a.path === `/v1/code/jobs/${JOB_ASK}/answer` && (a.body as Record<string, unknown>).answer === "$state.msg")).toBe(true);
@@ -116,14 +118,16 @@ describe("bots app · the Code bot at work", () => {
     const t = threadFor("00000000-0000-4000-8000-00000000aaaa", PROJECT);
     expect(t).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(threadFor("00000000-0000-4000-8000-00000000aaaa", PROJECT)).toBe(t);
-    expect(posts(s.root!).find((a) => a.path === "/v1/ask")?.body).toMatchObject({ threadId: t, message: "$state.msg" });
+    // The words go up as the person's bubble and the box clears first; the call sends them from there (askMoment.ts).
+    expect(posts(s.root!).find((a) => a.path === "/v1/ask")?.body).toMatchObject({ threadId: t, message: "$state.sent" });
   });
 
-  it("the team: lead and helpers, each part's stop, the cost, stop all", async () => {
+  it("the team: lead and helpers, each part's stop, how much of the job each used (no amounts), stop all", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const { s, words } = await build("bots.code.team", client, { id: JOB_LEAD });
       for (const w of ["Checkout redesign", "Code bot · lead", "Helper · Checkout UI", "Helper · Orders API", "Joining the parts on one branch", "Stop all"]) expect(words, `${client} ${w}`).toContain(w);
-      expect(words.join(" ")).toMatch(/₹18\.60/);
+      expect(words.join(" ")).toMatch(/of the job/);
+      expect(words.join(" ")).not.toMatch(/₹/);
       const p = posts(s.root!);
       expect(p.some((a) => a.path === `/v1/code/jobs/${JOB_LEAD}/stop`)).toBe(true);
       if (client === "phone") expect(p.some((a) => a.path === `/v1/code/jobs/${JOB_LEAD}/team/parts/1/stop`)).toBe(true);
@@ -132,16 +136,19 @@ describe("bots app · the Code bot at work", () => {
 
   it("done: shipped, the pull request, the real numbers, the week", async () => {
     const { s, words } = await build("bots.done", "phone", { id: JOB_DONE });
-    for (const w of ["Shipped.", "PR #128 is ready · all checks pass", "3", "18", "18m", "₹6.40", "Review the PR", "3 shipped this week"]) expect(words, w).toContain(w);
+    for (const w of ["Shipped.", "PR #128 is ready · all checks pass", "3", "18", "18m", "Review the PR", "3 shipped this week"]) expect(words, w).toContain(w);
+    expect(words.join(" ")).not.toMatch(/₹|cost/);
     expect(actionsOf(s.root!).some((a) => a.kind === "openUrl" && a.url === "https://github.com/aanya-sharma/storefront/pull/128")).toBe(true);
     const desk = await build("bots.done", "desktop", { id: JOB_DONE });
-    for (const w of ["What changed", "src/cart/total.ts", "Rounds each line before adding", "of your ₹30 cap"]) expect(desk.words, w).toContain(w);
+    for (const w of ["What changed", "src/cart/total.ts", "Rounds each line before adding"]) expect(desk.words, w).toContain(w);
+    expect(desk.words.join(" ")).not.toMatch(/₹/);
   });
 
-  it("failed: what it tried and spent; try again deeper on the same branch, tell me more, stop here", async () => {
+  it("failed: what it tried and how long; try again deeper on the same branch, tell me more, stop here", async () => {
     const { s, words } = await build("bots.failed", "phone", { id: JOB_FAILED });
     for (const w of ["Couldn't finish: tests fail on Node 18", "What it tried · 3 tries", "Replaced toSorted() with copy and sort", "2 still failing · receipt dates",
-      "What it spent", "₹6.40", "Try again with deeper thinking", "Up to ₹15 more. It stops and asks before going past that.", "Tell me more", "Stop here"]) expect(words, w).toContain(w);
+      "How long it worked", "Try again with deeper thinking", "It checks with you before it uses a lot of this stretch.", "Tell me more", "Stop here"]) expect(words, w).toContain(w);
+    expect(words.join(" ")).not.toMatch(/₹/);
     const retry = posts(s.root!).find((a) => a.path === "/v1/code/jobs")!;
     expect(retry.body).toMatchObject({ projectId: PROJECT, branch: "checkout-redesign", budgetPaise: 1500 });
     expect(String((retry.body as Record<string, unknown>).task)).toContain("Tests fail on Node 18.");

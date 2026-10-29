@@ -59,17 +59,18 @@ const WORDS = [{ day: "2026-10-28", at: FIXED_NOW - 4 * HOUR, words: 412, apps: 
 const feed = () => feedOf({ now: FIXED_NOW, tzOffsetMinutes: IST, jobs: JOBS, tasks: TASKS, events: EVENTS, words: WORDS, projects: { p1: "Storefront" } });
 
 describe("one feed across everything the bots did", () => {
-  it("every kind of record, newest first, money per row, the last week only", () => {
+  it("every kind of record, newest first, no money on any row, the last week only", () => {
     const rows = feed();
     expect(rows.map((r) => r.id)).toEqual(["job:j1", "task:t1", "ask:e1", "words:2026-10-28", "job:j2", "task:t2", "pay:e2"]);
     const by = Object.fromEntries(rows.map((r) => [r.id, r]));
-    expect(by["job:j1"]).toMatchObject({ mark: "working", money: "₹4.20 so far", stage: { at: 2, of: 5, name: "Build" }, sub: "Doing it for you · step 3 of 5 · Storefront", open: { screenId: "bots.code.job", params: { id: "j1" } } });
+    expect(by["job:j1"]).toMatchObject({ mark: "working", stage: { at: 2, of: 5, name: "Build" }, sub: "Doing it for you · step 3 of 5 · Storefront", open: { screenId: "bots.code.job", params: { id: "j1" } } });
+    expect(rows.every((r) => r.money === undefined)).toBe(true);
     expect(by["task:t1"]).toMatchObject({ mark: "needs", bot: "plan", open: { screenId: "bots.approve", params: { task: "t1" } } });
     expect(by["task:t2"]!.bot).toBe("plan");
     expect(by["task:t2"]!.money).toBeUndefined();
-    expect(by["ask:e1"]).toMatchObject({ bot: "travel", money: "₹2.40", type: "ask" });
-    expect(by["pay:e2"]).toMatchObject({ type: "payment", money: "₹1,840 paid", title: "Electricity bill. You pressed pay by UPI.", open: { screenId: "bots.approve", params: { receipt: "e2" } } });
-    expect(by["words:2026-10-28"]).toMatchObject({ bot: "keybot", money: "Free", title: "Wrote 412 words by voice", sub: "Keybot · WhatsApp, Gmail" });
+    expect(by["ask:e1"]).toMatchObject({ bot: "travel", paise: 240, type: "ask" });
+    expect(by["pay:e2"]).toMatchObject({ type: "payment", title: "Electricity bill. You pressed pay by UPI.", open: { screenId: "bots.approve", params: { receipt: "e2" } } });
+    expect(by["words:2026-10-28"]).toMatchObject({ bot: "keybot", title: "Wrote 412 words by voice", sub: "Keybot · WhatsApp, Gmail" });
   });
   it("filters by bot and by type; the week counts what was done and spent", () => {
     const rows = feed();
@@ -108,9 +109,11 @@ describe("search, and reading what other parts hand over", () => {
     expect(snippetOf(`${"word ".repeat(40)}salon ${"tail ".repeat(40)}`, ["salon"], 60)).toMatch(/^….*salon.*…$/);
     expect(turnOf("said: Book the salon | bot: Booked for Sat")).toEqual([{ who: "you", text: "Book the salon" }, { who: "bot", text: "Booked for Sat" }]);
   });
-  it("a UPI link is read whole or not at all", () => {
+  it("a UPI link is read whole or not at all, and handed on without an amount (the person types it in UPI)", () => {
     expect(upiOf(UPI)).toMatchObject({ vpa: "freshbasket@okhdfcbank", name: "Fresh Basket", amountPaise: 124000, note: "This week's groceries" });
-    expect(upiOf(upiOf(UPI)!.link)).toEqual(upiOf(UPI));
+    expect(upiOf(UPI)!.link).toBe("upi://pay?pa=freshbasket@okhdfcbank&pn=Fresh%20Basket&cu=INR&tn=This%20week's%20groceries");
+    expect(upiOf(upiOf(UPI)!.link)).toMatchObject({ vpa: "freshbasket@okhdfcbank", name: "Fresh Basket", amountPaise: 0, note: "This week's groceries", link: upiOf(UPI)!.link });
+    expect(upiOf("upi://pay?pa=ab@okaxis&pn=A")).toMatchObject({ vpa: "ab@okaxis", amountPaise: 0 });
     expect(upiOf("upi://pay?pa=nobody&am=10")).toBeNull();
     expect(upiOf("upi://pay?pa=a@okaxis&am=0")).toBeNull();
     expect(upiOf("upi://pay?pa=a@okaxis&am=10000001")).toBeNull();
@@ -275,14 +278,16 @@ describe("the shell's screens", () => {
       expect(texts((await buildBotsScreen(req("bots.home", client), fakeDeps(quiet))).root!)).not.toContain("Hi Aanya, I'm Blip");
     }
   });
-  it("activity: the feed with money per row, needs-you choices, filters by bot and type", async () => {
+  it("activity: the feed, no money on it, needs-you choices, filters by bot and type", async () => {
     const deps = fakeDeps({ api: { [`GET /v1/shell/activity?tz=${IST}`]: ACTIVITY } });
     const phone = await buildBotsScreen(req("bots.activity", "phone"), deps);
     expect(texts(phone.root!)).toEqual(expect.arrayContaining(["Activity", "Now", "Today", "Code bot needs you", "Wrote 412 words by voice"]));
-    expect(texts(phone.root!).some((t) => t.includes("₹1,840 paid"))).toBe(true);
+    // The person's own words may hold a sum ("under ₹5,000"); what the bots cost and what was paid never shows.
+    expect(json(phone.root)).not.toMatch(/₹1,840|₹4\.20|₹2\.40|₹7\.70|paid"|so far/);
     const desk = await buildBotsScreen(req("bots.activity", "desktop"), deps);
     const words = texts(desk.root!);
-    expect(words).toEqual(expect.arrayContaining(["This week · 4 jobs done · ₹7.70 spent · 2 h saved", "₹4.20 so far", "Free", "₹1,840 paid", "Payments", "All bots"]));
+    expect(words).toEqual(expect.arrayContaining(["This week · 4 jobs done · 2 h saved", "Payments", "All bots"]));
+    expect(json(desk.root)).not.toMatch(/₹1,840|₹4\.20|₹2\.40|₹7\.70|so far/);
     expect(json(desk.root)).toContain('"in":["ftype",["all","payments"]]');
     expect(json(desk.root)).toContain('"/v1/code/jobs/' + SAMPLE_JOBS[0]!.id + '/answer"');
     // Unreadable: says so, and offers to try again.
@@ -305,7 +310,7 @@ describe("the shell's screens", () => {
   });
   it("ask: the answer, and a payment it filled in goes to Approve", async () => {
     const s = await buildBotsScreen(req("bots.ask", "phone", { message: "Pay the grocer", answer: "Filled in ₹1,240.", bot: "plan", upi: UPI, needs: 1 }), fakeDeps());
-    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay the grocer", "Filled in ₹1,240.", "Plan bot answered", "Pay ₹1,240 to Fresh Basket?", "1 change waits for your yes"]));
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay the grocer", "Filled in ₹1,240.", "Plan bot answered", "Pay Fresh Basket?", "You type the amount and press pay in your UPI app", "1 change waits for your yes"]));
     expect(json(s.root)).toContain('"screenId":"bots.approve","params":{"upi":"upi://pay?pa=freshbasket@okhdfcbank');
   });
   it("search: projects, chats, notes, files and bots, each opening its own place", async () => {
@@ -326,8 +331,9 @@ describe("the shell's screens", () => {
   it("approve: you press pay; Tailzu opens UPI and writes a receipt only when told", async () => {
     for (const client of both) {
       const s = await buildBotsScreen(req("bots.approve", client, { upi: UPI, bot: "plan" }), fakeDeps());
-      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay ₹1,240 to Fresh Basket for this week's groceries?", "You press pay in your UPI app. Plan bot never pays on its own."]));
+      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay Fresh Basket for this week's groceries?", "You type the amount and press pay in your UPI app. Plan bot never pays on its own."]));
       const j = json(s.root);
+      expect(j).not.toMatch(/₹|1,240|am=/);
       expect(j).toContain('"path":"/v1/shell/receipts"');
       if (client === "phone") expect(presses(s.root!).some((a) => json(a).includes('"kind":"openUrl","url":"upi://pay?pa=freshbasket@okhdfcbank'))).toBe(true);
       else expect(walk(s.root!).some((n) => n.props?.accessibilityLabel === "UPI payment code")).toBe(true);

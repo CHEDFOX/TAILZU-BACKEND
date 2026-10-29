@@ -50,11 +50,15 @@ describe("Tailzu is free for everyone", () => {
     expect(k.flags["kb.quota.low"]).toBe(false);
   });
 
-  it("the paywall and the out-of-words screen say it is free, and sell nothing", () => {
-    for (const id of ["paywall", "words_out"]) {
-      const j = JSON.stringify(buildScreen(id, { personality: {}, language: "en" } as never));
-      expect(j).toContain("Tailzu Is Free");
+  it("the paywall says it is free; the keyboard's stop screen is the usage meter's (no words to run out of); neither sells", () => {
+    const paywall = JSON.stringify(buildScreen("paywall", { personality: {}, language: "en" } as never));
+    expect(paywall).toContain("Tailzu Is Free");
+    const out = JSON.stringify(buildScreen("words_out", { personality: {}, language: "en" } as never));
+    expect(out).toContain("You've Reached Your Limit For Now");
+    expect(out).toContain("Usage");
+    for (const j of [paywall, out]) {
       expect(j).not.toMatch(/iap\./);
+      expect(j).not.toMatch(/₹|\$\d/);
     }
   });
 

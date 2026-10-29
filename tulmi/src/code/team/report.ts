@@ -3,7 +3,7 @@
  *
  * ONE pull request goes up (one for each project, when the goal spans several), and whoever reviews it was not there. So its body carries what the team did:
  *
- *   the parts table       each part, what it was for, how it ended, who reviewed it (and that it was not the family that wrote it), the fix rounds and what it cost
+ *   the parts table       each part, what it was for, how it ended, who reviewed it (and that it was not the family that wrote it), and the fix rounds
  *   the review summary    what each reviewer found, and what was left open
  *   the combined work log the lead's own log, then each helper's under its part
  *   the links             the other projects' pull requests, in each of them
@@ -15,7 +15,6 @@ import { ConnectorError } from "../../connectors/state.js";
 import { PolicyError, gateFree } from "../policy.js";
 import { gateBase, ownProject, repoRef } from "../projects.js";
 import type { Run } from "../agent/run.js";
-import { rupees } from "../agent/types.js";
 import { redactText, renderWorklog, worklogMarkdown, worklogStore } from "../work/index.js";
 import { cut, oneLine } from "../work/model.js";
 import { unfinished } from "./lead.js";
@@ -42,9 +41,9 @@ export function partsTable(t: TeamState): string {
     const rev = p.reviews.at(-1);
     const who = p.id === 0 ? "the lead" : rev?.family && rev.writerFamily ? `${rev.family} (helper: ${rev.writerFamily})` : rev?.family ?? "—";
     const status = p.noChange ? "merged, no change" : p.status;
-    return `| ${p.id} | ${safe(p.title, 60)} | ${status} | ${esc(who)} | ${p.fixRounds} | ${p.id === 0 ? "the lead's" : rupees(p.spentPaise)} |`;
+    return `| ${p.id} | ${safe(p.title, 60)} | ${status} | ${esc(who)} | ${p.fixRounds} |`;
   });
-  return ["| Part | What | Status | Reviewed by | Fix rounds | Cost |", "| --- | --- | --- | --- | --- | --- |", ...rows].join("\n");
+  return ["| Part | What | Status | Reviewed by | Fix rounds |", "| --- | --- | --- | --- | --- |", ...rows].join("\n");
 }
 
 /** What each reviewer found, in bullets; a part with nothing to say is one line. */

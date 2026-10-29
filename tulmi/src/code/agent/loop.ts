@@ -23,8 +23,9 @@
  * THE BUDGET STOP is the one that takes care. When the money runs out the loop does not simply drop what
  * it has: the checks are run on the staged edits (they cost no model money), and only if they come out no
  * worse than the project was before Tailzu touched it are the edits committed; otherwise they stay
- * staged, in the checkpoint, for the person to go on from. The report says which, and offers "continue
- * with ₹X more" (POST /v1/code/jobs/:id/budget raises the budget and the loop resumes). It is never a
+ * staged, in the checkpoint, for the person to go on from. The report says which, and asks "This job
+ * has used a lot of this stretch. Keep going?" (POST /v1/code/jobs/:id/budget raises the budget, held to
+ * what is left of the stretch, and the loop resumes). It is never a
  * failure, and it never leaves a half-way commit that breaks the project.
  */
 import { BudgetExceeded } from "../brain/gateway.js";
@@ -39,7 +40,7 @@ import { designPhase } from "./design.js";
 import { mergePhase } from "./merge.js";
 import { splitPhase, teamPhase } from "../team/lead.js";
 import { reportText } from "./report.js";
-import { rupees, topUpFor, type Phase } from "./types.js";
+import { topUpFor, type Phase } from "./types.js";
 
 export type LoopEnd = "finished" | "parked" | "lost" | "stopped";
 
@@ -257,34 +258,27 @@ async function budgetStop(r: Run, needPaise: number): Promise<void> {
   const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome: "budget", why, continueWithPaise: top });
   s.report = { at: r.now(), outcome: "budget", text, ...(s.pr ? { prUrl: s.pr.url } : {}), costPaise: money.spent, continueWithPaise: top };
   s.waiting = { kind: "budget", needPaise, at: r.now() };
-  await park(r, new Park("budget", `${short.ask} Continue with ${rupees(top)} more?`));
+  await park(r, new Park("budget", `${short.ask} Keep going?`));
 }
 
 /**
- * Why the money stopped the job, in words that are TRUE: "used up" only when it is, and otherwise what the next step needs and what is left. The gateway and the
- * router refuse a step whose RESERVATION (its input and everything it may write, at the tier's price) is more than what is left, which can happen with most of
- * the budget unspent; telling the person the budget was used up then was a lie that sent them to top up a job that had barely started.
+ * Why the job paused, in words that are TRUE and in usage, never money: "used" only when what it was given is, and otherwise that the next step
+ * needs more than it has left. The gateway and the router refuse a step whose RESERVATION (its input and everything it may write, at the tier's
+ * price) is more than what is left, which can happen with most of the budget unspent; telling the person it was all used then sent them to give
+ * more to a job that had barely started. The amounts stay in the result, for our own logs.
  */
 export function budgetShortfall(money: { spent: number; budget: number }, needPaise: number): { kind: "spent" | "short"; words: string; ask: string; needPaise: number; leftPaise: number } {
   const left = Math.max(0, money.budget - money.spent);
-  const of = `${rupees(money.spent)} of the ${rupees(money.budget)} budget`;
   if (left <= 0 || (needPaise <= 0 && money.spent >= money.budget)) {
     return {
       kind: "spent", needPaise, leftPaise: left,
-      words: `The budget of ${rupees(money.budget)} is used up (${rupees(money.spent)} spent) before the work was finished.`,
-      ask: `Out of budget: ${rupees(money.spent)} of ${rupees(money.budget)} used.`,
-    };
-  }
-  if (needPaise > 0) {
-    return {
-      kind: "short", needPaise, leftPaise: left,
-      words: `The next step needs about ${rupees(needPaise)} and ${rupees(left)} is left (${of} is spent), so I stopped before the work was finished.`,
-      ask: `The next step needs about ${rupees(needPaise)} and ${rupees(left)} is left (${of} spent).`,
+      words: "This job used what it was given of this stretch before the work was finished.",
+      ask: "This job has used a lot of this stretch.",
     };
   }
   return {
     kind: "short", needPaise, leftPaise: left,
-    words: `Only ${rupees(left)} is left of the budget (${of} is spent), which is not enough to pay for the next step, so I stopped before the work was finished.`,
-    ask: `Only ${rupees(left)} is left of the budget (${of} spent), not enough for the next step.`,
+    words: "The next step needs more than this job has left, so I stopped before the work was finished.",
+    ask: "This job's next step needs more of this stretch.",
   };
 }

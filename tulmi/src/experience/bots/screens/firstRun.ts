@@ -1379,11 +1379,12 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   }, setState("plan", id));
   const tick = (): Node => box([icon("check", { size: 14 })], { width: 22, height: 22, borderRadius: 11, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" });
   const cards = [
-    planCard("free", "Free", text("₹0", { size: 17, weight: 700, lineHeight: 22 }), [], "", [feature(keyHead, freeLine)]),
+    planCard("free", "Free", text("₹0", { size: 17, weight: 700, lineHeight: 22 }), [], "", [feature(tick(), "Every bot, with a smaller allowance each month"), feature(keyHead, freeLine)]),
     ...paid.map((p) => planCard(p.id, p.label, text(p.price, { size: 17, weight: 700, lineHeight: 22 }), [
       ...(p.trialDays ? [tag(`${p.trialDays} days free`)] : p.badge ? [tag(p.badge)] : []),
     ], p.per, [
-      feature(keyHead, "Unlimited Keybot"),
+      feature(tick(), "More to use every month, in five stretches"),
+      feature(keyHead, "Keybot without a word limit"),
       // The rest of what it adds, on the plan in hand (the paywall's own words).
       when(isOn(p.id), col([
         ...data.features.map((f) => feature(tick(), f)),
@@ -1410,15 +1411,18 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   ];
   const stay = when({ neq: ["plan", "free"] }, link("Stay on Free", done, { center: true }));
   const sub = "Start today. Switch any time from You.";
+  // THE PURCHASE SCREEN, AND THE ONLY ONE WITH MONEY ON IT: the stores (App Review 3.1.2, Google Play) want the price and its period
+  // shown before someone buys, with the renewal and the terms. Everywhere else the app shows no money.
   const fine = desk
-    ? "You pay in your browser. Nothing is charged until you confirm there."
-    : "Your phone's store shows the final price before you pay.";
+    ? "Renews automatically until you cancel. You pay in your browser, and nothing is charged until you confirm there."
+    : "Renews automatically until you cancel. Cancel any time in your store's subscriptions. Your store shows the final price before you pay.";
+  const legal = row([link("Terms", { kind: "openUrl", url: "https://tailzu.space/terms", external: true }, { size: 13, color: C.meta }), link("Privacy", { kind: "openUrl", url: "https://tailzu.space/privacy", external: true }, { size: 13, color: C.meta })], { gap: 18, justifyContent: "center" });
   const state = { plan: chosen };
 
   if (desk) {
     return deskFrame(ctx, {
       title: W.plansH, right: signedInAs(ctx), current: null, state,
-      left: [...doneHeading(W.plansH, sub), ...(trials.length ? [box(trials, { maxWidth: 400 })] : []), meta(fine, { size: 12, style: { maxWidth: 400 } })],
+      left: [...doneHeading(W.plansH, sub), ...(trials.length ? [box(trials, { maxWidth: 400 })] : []), meta(fine, { size: 12, style: { maxWidth: 400 } }), legal],
       main: [col(cards, { gap: 12 })],
       foot: deskFoot(deskBack(), [stay, ...ctas]),
     });
@@ -1426,7 +1430,7 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   return phoneFrame(ctx, {
     title: W.plansH, state, gap: 16,
     body: [...doneHeading(W.plansH, sub), col(cards, { gap: 12 }), ...trials],
-    footer: [...ctas, stay, meta(fine, { size: 11, align: "center" })],
+    footer: [...ctas, stay, meta(fine, { size: 11, align: "center" }), legal],
   });
 }
 

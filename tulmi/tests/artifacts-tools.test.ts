@@ -62,7 +62,7 @@ describe("artifact_create", () => {
     const { run, service } = await setup();
     const r = await run("artifact_create", { type: "svg", title: "Dot", content: `<svg viewBox="0 0 4 4"><circle r="1"/></svg>` });
     expect(r).toMatchObject({ ok: true, version: 1 });
-    expect(r.content).toMatch(/Made "Dot" \(0\.0 KB\): artifact [0-9a-f-]{36}, now version 1\. It cost 0 paise/);
+    expect(r.content).toMatch(/Made "Dot" \(0\.0 KB\): artifact [0-9a-f-]{36}, now version 1\.$/);
     expect((await service.get("u1", r.artifactId!)).content).toContain("<circle");
   });
 
@@ -148,7 +148,7 @@ describe("artifact_rewrite", () => {
     const next = `<section>\n  <h2>Fresh</h2>\n  <p>A different page entirely.</p>\n</section>\n`;
     const r = await run("artifact_rewrite", { id, content: next });
     expect(r).toMatchObject({ ok: true, version: 2 });
-    expect(r.content).toMatch(/Rewrote "Shop".*It cost 0 paise/);
+    expect(r.content).toMatch(/Rewrote "Shop".*now version/);
     expect(r.content).not.toMatch(/next time/);
     expect((await service.get("u1", id)).content).toBe(next);
   });

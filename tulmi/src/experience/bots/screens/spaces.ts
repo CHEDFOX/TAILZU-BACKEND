@@ -11,7 +11,7 @@ import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sd
 import { PERM_WORDS, PERMS, type Perm } from "../../../botsBots/spacePerms.js";
 import {
   back, botAvatar, botLook, botRoute, box, button, C, call, card, chip, chips, col, divider, emptyState, FACE, grid, grow, icon, labelled,
-  listRow, meta, notice, open, page, picture, primaryButton, quietButton, row, rupees, SCREENS, secondaryButton, sectionLabel, segmented,
+  listRow, meta, notice, open, page, picture, primaryButton, quietButton, row, SCREENS, secondaryButton, sectionLabel, segmented,
   seq, statusMark, switchMark, text, title, toTab, when, type BotsCtx,
 } from "../kit.js";
 import { canUpload, uploadChip, uploadPick } from "../media.js";
@@ -255,7 +255,6 @@ function spacesPhone(ctx: BotsCtx, d: SpacesData) {
 // ===================================================================== one space, whole
 
 function payRow(ctx: BotsCtx, s: Space, p: Payment): Node {
-  const amount = rupees(p.amountPaise);
   const status = p.status === "waiting" ? (p.canDecide ? "Waiting for your yes" : `Waiting for a yes · asked by ${p.askedBy}`)
     : p.status === "approved" ? `${p.decidedBy} said yes · ${p.canMarkPaid ? "you pay in your UPI app" : "to be paid"}`
       : p.status === "paid" ? `Paid by ${p.decidedBy}${p.paidAt ? ` · ${shortDate(ctx, p.paidAt)}` : ""}`
@@ -272,7 +271,7 @@ function payRow(ctx: BotsCtx, s: Space, p: Payment): Node {
     ...(p.canCancel ? [button("Take back", write("DELETE", base, undefined, { ok: "Taken back" }), { kind: "quiet", size: "md" })] : []),
   ];
   return col([
-    row([statusMark(mark), col([text(`${amount} to ${p.payee}`, { size: 15, weight: 500, lineHeight: 20 }), meta([p.note, status].filter(Boolean).join(" · "), { size: 12, lines: 2 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }), meta(shortDate(ctx, p.at), { size: 12 })], { gap: 12, alignItems: "flex-start" }),
+    row([statusMark(mark), col([text(p.note ? `${p.note} · ${p.payee}` : `Pay ${p.payee}`, { size: 15, weight: 500, lineHeight: 20 }), meta(status, { size: 12, lines: 2 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }), meta(shortDate(ctx, p.at), { size: 12 })], { gap: 12, alignItems: "flex-start" }),
     ...(actions.length ? [row(actions, { gap: 8, flexWrap: "wrap", paddingLeft: 20 })] : []),
   ], { ...rowPad, gap: 10 });
 }
@@ -608,18 +607,17 @@ function payPage(ctx: BotsCtx, d: OneSpace | undefined) {
   const s = d?.space;
   if (!s) return failed(ctx, "Payment");
   if (!canDo(s, "askPay")) return page(ctx, { back: true, title: "Ask for a payment", nav: "you", body: [emptyState({ pose: "think", title: `You can't ask for payments in ${s.name}`, body: "Ask the admin to let you." })] });
-  const ask = { kind: "condition", if: { falsy: "amount" }, then: toast("How much?"), else: ifFilled("to", call("POST", `${A}/spaces/${enc(s.id)}/payments`, { amount: "$state.amount", to: "$state.to", name: "$state.payee", note: "$state.note" }, {
-    ok: seq(toast("Asked. Someone who approves will see it"), back()), fail: toast("Couldn't ask. Check the amount and the UPI ID.", true),
+  const ask = { kind: "condition", if: { falsy: "note" }, then: toast("Say what it's for"), else: ifFilled("to", call("POST", `${A}/spaces/${enc(s.id)}/payments`, { to: "$state.to", name: "$state.payee", note: "$state.note" }, {
+    ok: seq(toast("Asked. Someone who approves will see it"), back()), fail: toast("Couldn't ask. Check the UPI ID.", true),
   }), "Type the UPI ID to pay") } as ActionSpec;
   const approvers = s.members.filter((m) => m.canApprove && !m.you).map((m) => m.name);
   return page(ctx, {
-    back: true, title: "Ask for a payment", nav: "you", maxWidth: 640, state: { amount: "", to: "", payee: "", note: "" },
+    back: true, title: "Ask for a payment", nav: "you", maxWidth: 640, state: { to: "", payee: "", note: "" },
     body: [
-      col([text("Ask for a payment", { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(`${approvers.length ? names(approvers) : "Someone who approves"} sees it in ${s.name}. If they say yes, they pay in their own UPI app.`, { size: 13 })], { gap: 4 }),
-      labelledField("How much (₹)", field("amount", "amount", "1,240", { keyboard: "numeric" })),
+      col([text("Ask for a payment", { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(`${approvers.length ? names(approvers) : "Someone who approves"} sees it in ${s.name}. If they say yes, their UPI app opens on the payee and they type the amount there.`, { size: 13 })], { gap: 4 }),
+      labelledField("What for", field("note", "note", "This week's groceries")),
       labelledField("Pay to (UPI ID)", field("to", "to", "freshbasket@okaxis", { keyboard: "email-address" })),
       labelledField("Their name", field("payee", "payee", "Fresh Basket")),
-      labelledField("What for", field("note", "note", "This week's groceries")),
       row([icon("lock", { size: 16, color: C.grey70 }), meta("Tailzu never pays by itself. You press pay in your UPI app.", { size: 12 })], { gap: 8 }),
     ],
     footer: [primaryButton("Ask", ask, { wide: !isDesk(ctx) })],

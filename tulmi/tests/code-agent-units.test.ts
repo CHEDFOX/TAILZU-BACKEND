@@ -452,7 +452,8 @@ describe("the pull request body", () => {
     expect(body).toContain("`src/old.test.ts > flaky`");
     expect(body).toContain("> Heads up: The checks could not be run before the change.");
     expect(body).toContain("## Work log");
-    expect(body).toContain("Made by Tailzu (job `abcdef12`) for ₹12.34. It is a draft until the checks are green");
+    expect(body).toContain("Made by Tailzu (job `abcdef12`). It is a draft until the checks are green");
+    expect(body).not.toMatch(/₹/);
     const huge = prBody(x, { worklog: "w".repeat(100_000), jobId: "abcdef12", spentPaise: 0 });
     expect(huge.length).toBeLessThan(60_200);
     expect(huge).toContain("the rest is in the job's work log");
@@ -467,7 +468,7 @@ describe("the pull request body", () => {
 });
 
 describe("the report", () => {
-  it("says what changed, the PR, the checks, the findings, what was broken before Tailzu on its own, the cost, and what next", () => {
+  it("says what changed, the PR, the checks, the findings, what was broken before Tailzu on its own, and what next, never the cost", () => {
     const x = state();
     x.work.doneSummary = "Trimmed the dashes.";
     x.work.staged = [{ path: "src/util.ts", content: "x", action: "edit" }, { path: "src/new.ts", content: "y", action: "create" }, { path: "src/old.ts", content: null, action: "delete" }];
@@ -487,7 +488,7 @@ describe("the report", () => {
     expect(text).toContain("Already broken before Tailzu (not caused by this change)\n- src/old.test.ts > flaky");
     expect(text).not.toContain("Broken by this change");
     expect(text).toContain("Findings\n- risk: src/pay.ts:4 Rounds money down.");
-    expect(text).toContain("Cost: ₹43.21 of ₹30.");
+    expect(text).not.toMatch(/Cost|₹/);
     expect(text).toContain("mark it ready when you are happy with it");
     expect(text).toContain("worth a job of their own");
     expect(text).toContain("Add tests for src/util.ts: nothing covers it.");
@@ -495,14 +496,15 @@ describe("the report", () => {
     expect(text).not.toMatch(/\n{3,}/);
   });
 
-  it("offers to continue with more money when the budget ran out, and says nothing was lost", () => {
+  it("asks to keep going when the job used what it was given of the stretch, in usage words, and says nothing was lost", () => {
     const x = state();
     x.work.staged = [{ path: "src/util.ts", content: "x", action: "edit" }];
-    const text = reportText({ state: x, spentPaise: 3000, budgetPaise: 3000, outcome: "budget", why: "The budget of ₹30 is used up.", continueWithPaise: 1500 });
-    expect(text.split("\n")[0]).toBe("I ran out of budget: In src/util.ts make slug() trim dashes");
-    expect(text).toContain("The budget of ₹30 is used up.");
+    const text = reportText({ state: x, spentPaise: 3000, budgetPaise: 3000, outcome: "budget", why: "This job used what it was given of this stretch before the work was finished.", continueWithPaise: 1500 });
+    expect(text.split("\n")[0]).toBe("I paused to check with you: In src/util.ts make slug() trim dashes");
+    expect(text).toContain("This job used what it was given of this stretch");
     expect(text).toContain("What I changed but did not commit\n- src/util.ts (changed)");
-    expect(text).toContain("Continue with ₹15 more, and I pick up where I stopped.");
+    expect(text).toContain("Keep going, and I pick up where I stopped.");
+    expect(text).not.toMatch(/₹/);
     expect(text).toContain("nothing has been lost");
   });
 
@@ -825,7 +827,8 @@ describe("budgetShortfall: the words for a budget stop are true", () => {
     const { budgetShortfall } = await import("../src/code/agent/loop.js");
     const spent = budgetShortfall({ spent: 250, budget: 250 }, 0);
     expect(spent).toMatchObject({ kind: "spent" });
-    expect(spent.words).toBe("The budget of ₹2.50 is used up (₹2.50 spent) before the work was finished.");
+    expect(spent.words).toBe("This job used what it was given of this stretch before the work was finished.");
+    expect(spent.ask).toBe("This job has used a lot of this stretch.");
     expect(budgetShortfall({ spent: 300, budget: 250 }, 120).kind).toBe("spent");
   });
 
@@ -833,17 +836,16 @@ describe("budgetShortfall: the words for a budget stop are true", () => {
     const { budgetShortfall } = await import("../src/code/agent/loop.js");
     const r = budgetShortfall({ spent: 3, budget: 250 }, 330);
     expect(r).toMatchObject({ kind: "short", needPaise: 330, leftPaise: 247 });
-    expect(r.words).toBe("The next step needs about ₹3.30 and ₹2.47 is left (₹0.03 of the ₹2.50 budget is spent), so I stopped before the work was finished.");
-    expect(r.words).not.toContain("used up");
-    expect(r.ask).toBe("The next step needs about ₹3.30 and ₹2.47 is left (₹0.03 of the ₹2.50 budget spent).");
+    expect(r.words).toBe("The next step needs more than this job has left, so I stopped before the work was finished.");
+    expect(r.words).not.toContain("used what it was given");
+    expect(r.ask).toBe("This job's next step needs more of this stretch.");
   });
 
   it("does not invent a number it does not have", async () => {
     const { budgetShortfall } = await import("../src/code/agent/loop.js");
     const r = budgetShortfall({ spent: 3, budget: 250 }, 0);
     expect(r.kind).toBe("short");
-    expect(r.words).toContain("Only ₹2.47 is left of the budget");
-    expect(r.words).not.toMatch(/needs about/);
+    expect(r.words).not.toMatch(/₹|paise|about/);
   });
 });
 

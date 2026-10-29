@@ -1,14 +1,16 @@
 /**
  * PLACES TO STAY, SIDE BY SIDE. There is no free hotel data to search, so a trip's stays come from three places, each kept with where
- * it came from, and none is ever booked or paid for here: the screen links out and the person books on that site.
+ * it came from, and none is ever booked or paid for here: the screen links out and the person books on that site. No prices are shown:
+ * stays are compared by area, distance and rating, and the link is where the person sees the price (a price a page or a person gave is
+ * kept on the row, never drawn).
  *
- *   by the person     a name, a link, a price a night, an area, typed or pasted (Trips.addStay)
+ *   by the person     a name, a link, an area, typed or pasted (Trips.addStay)
  *   from the chat     a stay link the Travel bot opened in its chat ("Compare this")
  *   from the web      webStaySource: our web search (src/web/search, the engines it already uses: SearXNG when we run one, then
  *                     DuckDuckGo's page, then Brave with a key), kept to pages that are ONE property on a booking or review site,
  *                     with the price and rating only when the result itself says them. Held to 10 searches a person a day
  *
- *   compareStays(stays, { nights, minutes })   which is Travel bot's pick, which is cheaper, closer, better rated
+ *   compareStays(stays, { nights, minutes })   which is Travel bot's pick, which is closer, which is better rated
  *
  * Distances to the trip's places are worked out by tripExtras.ts with the same routing as the Plan bot.
  */
@@ -189,23 +191,24 @@ export class StaysLimit extends Error {
 
 // ------------------------------------------------------------------ the comparison
 
-export type StayLabel = "Your pick" | "Travel bot's pick" | "Cheaper" | "Closer" | "Better rated" | "";
+export type StayLabel = "Your pick" | "Travel bot's pick" | "Closer" | "Better rated" | "";
 
 export interface StayCompared extends StayRow {
   label: StayLabel;
   /** Minutes to the trip's main place, and how (walk or drive), when known. */
   minutes: number | null;
   mode: "walk" | "drive" | null;
-  /** nightPaise × nights, when both are known. */
+  /** nightPaise × nights, when both are known. Ours: never shown. */
   totalPaise: number | null;
   /** The rating on 5, for comparing. */
   stars: number | null;
 }
 
 /**
- * Travel bot's pick is the best balance of price a night (40%), rating (30%) and time to the main place (30%), each scored against the
- * others on the list; a stay that doesn't say one scores lowest on it (the pick rests on what is known). Then: the cheapest that is not the pick is "Cheaper", the
- * closest "Closer", the best rated "Better rated" (each only when it really is, against the pick). The person's own pick wins the label.
+ * Travel bot's pick is the best balance of rating (50%) and time to the main place (50%), each scored against the others on the list; a stay
+ * that doesn't say one scores lowest on it (the pick rests on what is known). Price plays no part: the app shows none. Then: the closest that
+ * is not the pick is "Closer", the best rated "Better rated" (each only when it really is, against the pick). The person's own pick wins the
+ * label.
  */
 export function compareStays(stays: StayRow[], o: { nights: number | null; minutes: (s: StayRow) => { minutes: number; mode: "walk" | "drive" } | null }): StayCompared[] {
   const rows: StayCompared[] = stays.map((s) => {
@@ -225,9 +228,9 @@ export function compareStays(stays: StayRow[], o: { nights: number | null; minut
     const lo = Math.min(...known), hi = Math.max(...known);
     return vals.map((v) => (v === null ? 0 : hi === lo ? 0.5 : low ? (hi - v) / (hi - lo) : (v - lo) / (hi - lo)));
   };
-  const price = score(rows.map((r) => r.nightPaise), true), stars = score(rows.map((r) => r.stars), false), near = score(rows.map((r) => r.minutes), true);
-  const total = rows.map((_, i) => 0.4 * price[i]! + 0.3 * stars[i]! + 0.3 * near[i]!);
-  const informed = rows.filter((r) => r.nightPaise !== null || r.stars !== null || r.minutes !== null).length;
+  const stars = score(rows.map((r) => r.stars), false), near = score(rows.map((r) => r.minutes), true);
+  const total = rows.map((_, i) => 0.5 * stars[i]! + 0.5 * near[i]!);
+  const informed = rows.filter((r) => r.stars !== null || r.minutes !== null).length;
   const yours = rows.findIndex((r) => r.picked);
   const pick = rows.length >= 2 && informed >= 2 ? total.indexOf(Math.max(...total)) : -1;
   const anchor = yours >= 0 ? yours : pick;
@@ -243,10 +246,8 @@ export function compareStays(stays: StayRow[], o: { nights: number | null; minut
       if (at < 0 || better(v, key(rows[at]!)!)) at = i;
     });
     const av = key(a);
-    return at >= 0 && av !== null && better(key(rows[at]!)!, av) ? at : -1; // "cheaper" than a pick with no price says nothing
+    return at >= 0 && av !== null && better(key(rows[at]!)!, av) ? at : -1; // "closer" than a pick with no distance says nothing
   };
-  const cheaper = best((r) => r.nightPaise, (x, y) => x < y);
-  if (cheaper >= 0) rows[cheaper]!.label = "Cheaper";
   const closer = best((r) => r.minutes, (x, y) => x < y);
   if (closer >= 0) rows[closer]!.label = "Closer";
   const rated = best((r) => r.stars, (x, y) => x > y);

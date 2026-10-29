@@ -85,16 +85,19 @@ const row = (id: string, o: Partial<import("../src/botsBots/stays.js").StayRow> 
 });
 
 describe("stays side by side", () => {
-  it("picks the best balance, then the cheaper and the closer, against the pick; the person's pick wins", () => {
+  it("picks the best balance of rating and distance (never price), then the closer and the better rated, against the pick; the person's pick wins", () => {
     const stays = [
       row("shanti", { nightPaise: 320000, rating: 4.4, ratingOf: 5 }), row("deccan", { nightPaise: 260000, rating: 4.1, ratingOf: 5 }),
       row("hostel", { nightPaise: 90000, rating: 6.2, ratingOf: 10 }),
     ];
     const minutes: Record<string, number> = { shanti: 12, deccan: 28, hostel: 40 };
     const c = compareStays(stays, { nights: 2, minutes: (s) => ({ minutes: minutes[s.id]!, mode: "drive" }) });
-    expect(c.map((s) => [s.id, s.label, s.totalPaise, s.stars])).toEqual([["shanti", "Travel bot's pick", 640000, 4.4], ["deccan", "", 520000, 4.1], ["hostel", "Cheaper", 180000, 3.1]]);
+    expect(c.map((s) => [s.id, s.label, s.totalPaise, s.stars])).toEqual([["shanti", "Travel bot's pick", 640000, 4.4], ["deccan", "", 520000, 4.1], ["hostel", "", 180000, 3.1]]);
+    // The cheapest is not the pick for being cheap: a cheaper, closer, better rated one wins on the last two alone.
+    expect(compareStays([row("a", { nightPaise: 900000, rating: 4.8, ratingOf: 5 }), row("b", { nightPaise: 100000, rating: 3, ratingOf: 5 })], { nights: 1, minutes: () => null })
+      .map((s) => s.label)).toEqual(["Travel bot's pick", ""]);
     const mine = compareStays(stays.map((s) => (s.id === "deccan" ? { ...s, picked: true } : s)), { nights: null, minutes: (s) => ({ minutes: minutes[s.id]!, mode: "drive" }) });
-    expect(mine.map((s) => [s.id, s.label, s.totalPaise])).toEqual([["shanti", "Closer", null], ["deccan", "Your pick", null], ["hostel", "Cheaper", null]]);
+    expect(mine.map((s) => [s.id, s.label, s.totalPaise])).toEqual([["shanti", "Closer", null], ["deccan", "Your pick", null], ["hostel", "", null]]);
     expect(compareStays([row("only", { nightPaise: 100000 })], { nights: 2, minutes: () => null })[0]!.label).toBe("");
     expect(compareStays([row("a"), row("b")], { nights: 2, minutes: () => null }).map((s) => s.label)).toEqual(["", ""]);
   });
@@ -196,7 +199,7 @@ describe("a trip's places and stays", () => {
     expect(read.spots).toEqual([{ text: "Sakshi and Arjun's wedding, Koregaon Park", found: true }]);
     expect(read.main).toBe("Sakshi and Arjun's wedding");
     expect(read.stays.map((s) => [s.name, s.minutes, s.label, s.totalPaise])).toEqual([
-      ["Shanti Residency", 12, "Travel bot's pick", 640000], ["Deccan Courtyard", 27, "", 520000], ["Far Away Inn", null, "Cheaper", 300000],
+      ["Shanti Residency", 12, "Travel bot's pick", 640000], ["Deccan Courtyard", 27, "", 520000], ["Far Away Inn", null, "", 300000],
     ]);
     expect(read.credits.map((c) => c.text)).toEqual(["Map data © OpenStreetMap contributors", "Routes: OSRM", "Weather: MET Norway"]);
   });
@@ -283,10 +286,13 @@ describe("the screens", () => {
       const { s, nodes } = await build("bots.travel", client);
       expect(lintTree(s.root!)).toEqual([]);
       const all = texts(nodes).join("\n");
-      for (const w of ["Stay · 2 options", "Travel bot's pick", "Cheaper", "Shanti Residency", "Koregaon Park", "₹3,200", "Clear days, cool nights", "Sat 29° · Sun 30° · Mon 28° · lows 16°",
-        "Where you'll be", "Sakshi and Arjun's wedding, Koregaon Park", "You book and pay on their site"]) expect(all, w).toContain(w);
+      for (const w of ["Stay · 2 options", "Travel bot's pick", "Shanti Residency", "Koregaon Park", "Clear days, cool nights", "Sat 29° · Sun 30° · Mon 28° · lows 16°",
+        "Where you'll be", "Sakshi and Arjun's wedding, Koregaon Park", "Prices and booking on their site"]) expect(all, w).toContain(w);
+      // Compared by area, distance and rating; the prices are on the booking site, a tap away. No amount, no "Cheaper".
+      expect(all.split("\n").filter((l) => /₹|Cheaper|a night/.test(l))).toEqual([]);
+      expect(all).toContain(client === "phone" ? "See prices" : "Prices on");
       expect(all).toContain(client === "phone" ? "12 min to the wedding" : "12 min");
-      if (client === "desktop") for (const w of ["Trip plan", "Sat 14 Nov", "Go", "Back", "Pick this", "₹6,400", "To the wedding"]) expect(all, w).toContain(w);
+      if (client === "desktop") for (const w of ["Trip plan", "Sat 14 Nov", "Go", "Back", "Pick this", "Rating", "To the wedding"]) expect(all, w).toContain(w);
       expect(s.liveTopics).toEqual(["bot:travel"]);
       const paths = actions(nodes).filter((a) => a.kind === "callEndpoint").map((a) => `${a.method} ${a.path}`);
       const id = "7a1b2c3d-0000-4000-8000-0000000000aa";

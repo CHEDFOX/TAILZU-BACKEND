@@ -15,6 +15,7 @@ the window (`TAILZU-DESKTOP/sdui.js`) draw them. Design source: `bots-design/` (
 * [9. Rules, and what not to touch](#9-rules-and-what-not-to-touch)
 * [10. Live updates](#10-live-updates)
 * [11. The calendar and to-dos](#11-the-calendar-and-to-dos)
+* [12. Usage, not money](#12-usage-not-money)
 
 ## 1. The switch
 
@@ -68,33 +69,32 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 
 ## 3. Adding a screen
 
-1. Find its id in `ids.ts` (`SCREENS.budget` is `bots.budget`, boards Budget / DBudget, file `screens/you.ts`). Link to screens only
+1. Find its id in `ids.ts` (`SCREENS.usage` is `bots.usage`, Budget's place, file `screens/you.ts`). Link to screens only
    through `SCREENS` and `botRoute()`. An id with no screen yet answers an "on its way" page, never a 404.
 2. Add it to your area's list (that file is yours; nothing else changes):
 
 ```ts
 // screens/you.ts
-import { listCard, listRow, meter, page, rupees, SCREENS, title, type BotsCtx } from "../kit.js";
+import { meta, page, title, usageMeter, whenWords, SCREENS, type BotsCtx } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 
-/** GET /v1/code/jobs, as much of it as this screen reads. */
-interface Jobs { jobs: Array<{ id: string; task: string; spentPaise: number }> }
+/** GET /v1/you/usage, as much of it as this screen reads: shares used and when they reset, never an amount. */
+interface Usage { usage: { stretch: { used: number; resetsAt: number }; month: { used: number } }; how: string }
 
-function budget(ctx: BotsCtx, data: Jobs | undefined) {
-  const { monthPaise, budgetPaise } = ctx.live.spend;
-  const biggest = (data?.jobs ?? []).filter((j) => j.spentPaise > 0).sort((a, b) => b.spentPaise - a.spentPaise).slice(0, 3);
+function usage(ctx: BotsCtx, d: Usage | undefined) {
+  const at = (t: number) => `Resets ${whenWords(t, ctx.live.now, ctx.tzOffsetMinutes)}`;
   return page(ctx, {
-    back: true, nav: "you", title: "Budget",
+    back: true, nav: "you", title: "Usage",
     body: [
-      title("Budget"),
-      meter(monthPaise, budgetPaise, { label: "This month", valueText: `${rupees(monthPaise)} of ${rupees(budgetPaise)}` }),
-      listCard(biggest.map((j) => listRow({ label: j.task, value: rupees(j.spentPaise) })), { title: "Biggest jobs" }),
+      title("Usage"),
+      usageMeter("This stretch", d?.usage.stretch.used ?? ctx.live.usage.used, d ? { resets: at(d.usage.stretch.resetsAt) } : {}),
+      ...(d ? [usageMeter("This month", d.usage.month.used), meta(d.how)] : []),
     ],
   });
 }
 
 export const youScreens: BotsScreen[] = [
-  screen<Jobs>({ id: SCREENS.budget, load: (_ctx, deps) => deps.api<Jobs>("GET", "/v1/code/jobs"), build: budget }),
+  screen<Usage>({ id: SCREENS.usage, load: (_ctx, deps) => deps.api<Usage>("GET", "/v1/you/usage"), build: usage }),
 ];
 ```
 
@@ -109,8 +109,9 @@ export const youScreens: BotsScreen[] = [
 
 **`ctx.live`** (no read of yours needed): `bots` (needs-you first, then working, then the built-ins, then the person's own; each with
 `color`, `icon`, `head`, `state`, `working`, `needs`, `doing`), `needs` (each with its question and ready `choices`: label, kind,
-action), `working`, `week` (`done`, `minutesSaved`), `spend` (`monthPaise`, `budgetPaise`), `tab` (what the tab icons show),
-`greeting`. It comes from GET /v1/bots's list (the four built-ins when BOTS is off), the Code bot's jobs (with the agent's waiting
+action), `working`, `week` (`done`, `minutesSaved`), `usage` (the usage meter: `used` this stretch and `month` as fractions, `state`
+ok / near / out, `resetsAt`, `windows`; section 12), `spend` (ours, never drawn), `tab` (what the tab icons show: the You ring is
+`usage.used`), `greeting`. It comes from GET /v1/bots's list (the four built-ins when BOTS is off), the Code bot's jobs (with the agent's waiting
 question), connected-app tasks, history stats; see live.ts's header.
 
 **Your own reads go in `load`**, through `deps.api(method, path, body?)`: the app's own routes, in-process, as the signed-in person
@@ -122,7 +123,7 @@ Builders stay pure: no clock (use `ctx.live.now`), no I/O.
 assignTo })`, `seq(...)`, `botRoute(slug)`. Conventions: a write is `call(...)` then `{ kind: "refresh" }` (the window also refetches on
 its own after a write) and a short ink toast; errors are a toast in plain words ("Couldn't send that. Try again."). State lives in
 `page({ state })` and is read with `"$state.x"` in bodies, paths and navigate params on both clients. Money: "you press pay", never
-an automatic charge.
+an automatic charge, and **no amount on any screen** (section 12): not what Tailzu costs, not a price, not a payment's amount.
 
 ## 5. The kit
 
@@ -144,7 +145,8 @@ an automatic charge.
 | `backBar({ title, onBack, right })` | 44 x 44 chevron |
 | `statusMark("working" \| "needs" \| "done" \| "waiting" \| "failed", { color, size })` | the five marks |
 | `botAvatar(look, size)` · `botChip(bot)` · `botTile(bot, { idle, onPress })` · `makeBotTile()` · `botLine(bot, idle)` | bot identity |
-| `meter(value, max, { label, valueText, segments })` · `stages(names, current, color)` | spend, progress |
+| `meter(value, max, { label, valueText, segments })` · `stages(names, current, color)` | progress |
+| `usageMeter(label, used, { resets })` · `percent(used)` · `whenWords(at, now, tz)` | the usage meter: "This stretch · 64% used · Resets Thu 9 am" (section 12) |
 | `timeline(items)` | bead timeline: each row's bead is its status mark |
 | `table(columns, rows)` | the window's tables |
 | `needsCard(item, { layout })` · `needsLabel` · `choiceRow` | a decision, one tap |
@@ -152,7 +154,7 @@ an automatic charge.
 | `emptyState({ pose, title, body, action })` · `blip(pose, height)` · `notice(text, { ink, mark })` · `infoChip(text)` | moments and states |
 | `icon(name, { size, color, weight })` · `shapes(list)` · `tailzuMark(size)` · `tabGlyph(tab, active, live.tab)` | glyphs (ICONS lists the names) |
 | `tabBar(active, live)` · `sidebar(ctx, active)` | the frames' chrome (page() adds them) |
-| `rupees(paise)` · `duration(minutes)` | "₹6.40", "2 h" |
+| `duration(minutes)` | "2 h". There is no money helper: no screen shows an amount (section 12) |
 | `C` · `PALETTE_HEX` · `botLook(slug, colour)` · `FACE` · `SPACE` · `RADIUS` · `BOTS_THEME` | tokens |
 
 Bot colours are by slug for the built-ins (Code moss, Keybot clay, Plan ochre, Travel sea, per the design) and by palette name for a
@@ -170,10 +172,10 @@ import { buildBotsScreen } from "../src/experience/bots/index.js";
 import { fakeDeps, IST } from "../src/experience/bots/fixtures.js";
 import { lintTree, walk } from "../src/experience/bots/lint.js";
 
-const s = await buildBotsScreen({ screenId: "bots.budget", client: "phone", tzOffsetMinutes: IST, user: { id: "u" },
-  can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps({ api: { "GET /v1/code/jobs": { jobs: [] } } }));
+const s = await buildBotsScreen({ screenId: "bots.usage", client: "phone", tzOffsetMinutes: IST, user: { id: "u" },
+  can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps({ api: { "GET /v1/you/usage?tz=330": { usage, near: null, out: null, how: "" } } }));
 expect(lintTree(s.root!)).toEqual([]);
-expect(walk(s.root!).some((n) => n.props?.content === "Budget")).toBe(true);
+expect(walk(s.root!).some((n) => n.props?.content === "Usage")).toBe(true);
 ```
 
 `fakeDeps({ bots, jobs, tasks, minutesSaved, budgetPaise, now, api, calls })` answers from memory (`calls` records every api call);
@@ -230,6 +232,22 @@ settling. **Home's header** (`writeOn`, `liveMark`, `headBar`, page `pinned`; co
 `canHead`): the greeting, the old app's time-aware line written in by Keybot's caret, the living Tailzu mark (a dot lit
 per working bot, a tap opens Ask) and a compact bar once the header has scrolled away. Older builds get them still.
 
+**The moment an ask is out** (`askMoment.ts`: `askMoment`, `start`, `streamed`, `failed`; `canCarry` = BotBuddy + `BotBuddyCarry`,
+`canStream` = `AskStream`), in the Code bot's project chat and task bar, every bot's chat, Ask and Home's ask bar: the words go up at
+once as the person's bubble (state `sent`) and the box clears; under it a full-width lane (BotBuddy, no `width`, 68 tall) where the
+chat's bot (its colour and look; Tailzu's ink in Ask) carries the ask as a bag (act `carry`): in from the right a moment later,
+slowly across, out at the left, again with a heavier one (bigger, fuller, leaning, slower, a deeper bob; sweat from the fourth
+trip; the heaviest from the sixth on), every trip on the act's own clock (core.ts `CARRY`). Under him what he is really doing, from
+the server's own steps (`reply.step`: "Reading the project…", "Looking at cart.ts…", "Writing it up…"), and Stop. The answer is
+written in as it comes (`reply.text`, callEndpoint `stream`): the first words are `doneWhen`, so he sets the bag down and walks off and
+the lane folds away. What happens once the answer is whole is the chat's own, as before. Stop (POST /v1/ask/stop) keeps what was
+written, marked Stopped; a failure puts the words back in the box. Reduce Motion: he stands still with the bag, "Working on it…"
+beside him. A build without BotBuddyCarry gets today's "Asking…" line; without AskStream, no step line, no Stop, the answer whole.
+**An answer as it is written** (shared/types/sdui.ts 3f, `src/live/askStream.ts`): with a `streamId` in the body, POST /v1/ask and
+POST /v1/botsapp/bots/chat/:slug stream the model's words (the gateway's `onText`) to the asker over the live channel, topic
+`ask:<id>`, whole words at a time (never half a Devanagari word or an emoji), numbered; nothing more once they look like a secret.
+The answer is still kept and returned exactly as before; a stopped stream is charged for what it used.
+
 
 No new node types: the design is expressed with core types plus four extensions, promised by the `BotsKit` capability
 (shared/types/sdui.ts, "The Bots app's kit"; phone types.ts mirror; desktop sdui.js):
@@ -278,15 +296,14 @@ what to do"), clears the field and says "Kept. It will send when you're back."; 
 
 * **Ids** `bots.<area>[.<thing>]`, lower case, hyphens: take them from `ids.ts`. **Files**: only your `screens/<area>.ts` (and tests).
 * **Design**: STYLE.md is the law. White and ink; colour only for bots; status marks by shape; one primary per screen; real numbers
-  from real records; short plain words, India-first (₹, Hinglish, Aanya). Phone boards are 390 x 844, desktop 1280 x 800 fluid.
+  from real records; short plain words, India-first (Hinglish, Aanya); no money (section 12). Phone boards are 390 x 844, desktop 1280 x 800 fluid.
 * **Both clients**: build with the kit, keep `lintTree` clean: no pressable inside a pressable (the window runs both), images as
   `{ url }` in a sized box, text through `text()`. Never `Button`, `Card`, `Row`… (they look different on each client).
 * **Do not edit** without the kit owner: `kit.ts` (additive only, see section 5), `live.ts`, `deps.ts`, `registry.ts`, `index.ts`,
   `ids.ts`, `glyphs.ts`, `palette.ts`, `server.ts`, `catalog.ts`, `shared/types/sdui.ts`, the phone and window renderers.
   **Never touch `tulmi/e2e`.**
-* Known gaps: `bots.activity`, `bots.you` and the rest of `SCREENS` are not built yet; the monthly limit is `DEFAULT_MONTH_BUDGET_PAISE`
-  (₹500) until the Budget screen stores one (`BotsDeps.budgetPaise`); spend counts Code bot jobs' `spentPaise` only; the name-and-gender
-  card is asked in the first run (About you), so `profileGate.screenIds` is empty while someone is still in it; someone onboarded
+* Known gaps: a job's spend counts on the day it was last worked on, whole (a job that runs across two stretches counts in the later);
+  the name-and-gender card is asked in the first run (About you), so `profileGate.screenIds` is empty while someone is still in it; someone onboarded
   before that keeps the card on `personality` / `home`.
 
 ## 10. Live updates
@@ -297,6 +314,9 @@ A change made on one device shows on the other's open screen within about a seco
   upgrade's `Authorization`), never a token in the URL; then `{ type: "event", topic, at }` for every change of that person's,
   pings both ways every 25 s, at most 8 sockets a person (the oldest goes, 4008), renewed every 30 min (4000). One process holds
   every socket; for several, give `live.setRelay` (`src/live/bus.ts`) a Postgres LISTEN/NOTIFY or Redis fan-out to `bus.deliver`.
+* **An answer's words** (`ask:<id>`, `src/live/askStream.ts`): the one topic whose `data` is content, not a hint: the words of an
+  answer as they are written, to the person who asked, under the id their asking screen made. The apps hand it to the call that is
+  listening (the phone's `askStream.ts`, the window's `askStreamTake`) and never reload for it.
 * **Topics** (`src/live/topics.ts`, both tables in one place): `home`, `bots`, `bot:<slug>`, `activity`, `tasks`, `calendar`, `code`,
   `job:<id>`, `notes`, `note:<id>`, `keybot`, `you`; Spaces and messaging name their own (`space:<id>`, `thread:<id>`, `threads`), and
   the calendar publishes its own (`calendar`, `tasks`, `bot:plan`) from wherever it changes (section 11).
@@ -339,3 +359,43 @@ the Bots app no longer reads or offers Google Calendar or Google Tasks.
 * **Not offered any more**: Google Calendar and Google Tasks in You › Connected apps (shown only to switch one off if it was
   connected), the Plan, Today and Tasks prompts, Make a bot's and a bot's Edit list. Their connectors (`src/connectors/google/calendar.ts`,
   `tasks.ts`) and the old app's routes are left as they were; other Google apps (Docs for meeting notes, Sheets, Forms, Classroom) are unchanged.
+
+## 12. Usage, not money
+
+**No screen shows money**: not what Tailzu costs to run, not a hotel's price, not a payment request's amount, not a subscription's price.
+The one exception is the **purchase screen** (the Bots app's Plans, `bots.plans` in screens/firstRun.ts; the old app's paywall; the
+window's `desk_plan`; the web checkout), where Apple (App Review 3.1.2) and Google Play require the price and its period before someone
+buys: there the store's (or Razorpay's) price, the renewal ("Renews automatically until you cancel") and Terms and Privacy are shown.
+Everything else leads there, by what a plan gives.
+
+Instead the person sees a **usage meter**, the way Claude shows it. What is counted is what always was (src/you/spend.ts, the brain's
+gateway, you_spend, usage_events): the Code bot's jobs, every bot's answers (and so Ask's), Keybot's words at
+`USAGE_KEYBOT_PAISE_PER_1000_WORDS`. It stays ours, in paise, for the logs and the admin.
+
+* **The limits** are ours, per plan, in config.ts: `USAGE_FREE_MONTH_PAISE` (5,000), `USAGE_PAID_MONTH_PAISE` (50,000), `USAGE_TIERS`
+  (`{"<entitlement id>": paise}` for a paid tier of its own), `USAGE_FREE_WINDOWS` (false), `USAGE_CARRY_OVER` (false), `USAGE_NEAR`
+  (0.8), `USAGE_LIMITS` (true; false shows the meter and refuses nothing). While `FREE_FOR_ALL` is on everyone has the paid month and
+  nothing is offered to buy.
+* **The stretches** (src/you/usage.ts): a paid month is used in five, days 1–4, 5–9, 10–15, 16–22 and 23 to the end (8 days in a 30-day
+  month, fewer in February). Each may use the month's limit × its days / the month's days; what it did not use is gone when it ends
+  unless `USAGE_CARRY_OVER`. The month is the billing cycle when billing has one (the entitlement's period end: its day and time, month
+  after month), else the calendar month on the person's clock. A free plan is one stretch, the month.
+* **The one answer**: `Spending.usage(userId)` (src/you/limits.ts) gives the stretch and the month as fractions used, when each resets,
+  near (from 80%) or out. `GET /v1/you/usage` serves it to the Usage page with the lines to show (`near`, `out`, `how`); `GET /v1/you/live`
+  to every screen (`ctx.live.usage`, the You tab's ring).
+* **Where it is kept**: a new Code bot job's budget, and "Keep going" (`/budget`, a part's `/rerun`), are held to what is left of the
+  stretch (`holdJobsToUsage`); a bot's answer (`wrapBots`: Bots.ask / test / askWithKey, so Ask's too); Keybot, the old Ask and the
+  front door through `metering.enforceQuota` (`setUsageGate`). Out of allowance is 429 `{ code: "quota_exceeded", reason: "usage_limit",
+  message: "You've reached this stretch's limit. It resets Thu 9 am.", resetsAt, upgrade }`; the apps open the bootstrap's
+  `quota.screenId`, which in the Bots app is `bots.usage`. The keyboard's stop screen (`words_out`) says the same when it was the meter.
+* **The screens**: Usage (`bots.usage`, and `bots.budget` for older links): "This stretch · 64% used · Resets Thu 9 am", "This month ·
+  40% used", which stretch of five, how they work; near the limit a calm line ("You've used most of this stretch. It resets Thu."), at it
+  the sentence and, when a plan is for sale, "Get more with a plan" (opens Plans, whose buttons open the store's own sheet). You, Billing
+  and Settings show the meter's share; the Code bot's home the near / at line; a job asks "This job has used a lot of this stretch. Keep
+  going?" and shows how much of what it was given it used, as a share. Project rules' "Checks with you" (Often, Sometimes, Rarely) sets
+  how much of the stretch a job may use before it asks.
+* **Payments** (a space's requests; Approve, where a bot's UPI hand-off lands): what it is for, who asks, approve or decline. The UPI link
+  opens without an amount (`am` is optional, shell/parse.ts `upiOf` drops it): the person types it in their UPI app (migration 0055 lets
+  a request carry none). The hand-off tool itself (connectors/handoffs) still takes the amount the person said, for the old app.
+* **Travel**: stays are compared by area, distance and rating (no "Cheaper"), with a link to see prices on the booking site.
+

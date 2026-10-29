@@ -322,10 +322,11 @@ describe("the budget", () => {
     expect(r.model.turns).toBe(0);
     const s = await r.stateNow(job.id);
     expect(s.report).toMatchObject({ outcome: "budget", continueWithPaise: 1000 });
-    expect(s.report!.text).toContain("I ran out of budget");
-    expect(s.report!.text).toContain("Continue with ₹10 more");
+    expect(s.report!.text).toContain("I paused to check with you");
+    expect(s.report!.text).toContain("Keep going, and I pick up where I stopped.");
+    expect(s.report!.text).not.toMatch(/₹/);
     expect(r.toldOf("needs_you")).toHaveLength(1);
-    expect(r.toldOf("needs_you")[0]!.data.reason).toBe("Out of budget: ₹0 of ₹0 used. Continue with ₹10 more?");
+    expect(r.toldOf("needs_you")[0]!.data.reason).toBe("This job has used a lot of this stretch. Keep going?");
 
     await expect(r.orch.addBudget("bob", job.id, 1000)).rejects.toMatchObject({ code: "not_found" });
     await expect(r.orch.addBudget("alice", job.id, 0)).rejects.toMatchObject({ code: "bad_request" });
@@ -361,10 +362,10 @@ describe("the budget", () => {
     expect(j.spentPaise).toBe(306);
     const told = r.toldOf("needs_you");
     expect(told).toHaveLength(1);
-    // Honest about why: ₹1.44 is NOT nothing, it is less than the next step's reservation, and the report says so instead of "used up".
-    expect(told[0]!.data.reason).toMatch(/^The next step needs about ₹2\.07 and ₹1\.44 is left \(₹3\.06 of the ₹4\.50 budget spent\)\. Continue with ₹10 more\?$/);
-    expect(s.report!.text).toContain("The next step needs about ₹2.07 and ₹1.44 is left");
-    expect(s.report!.text).not.toContain("is used up");
+    // Honest about why: what is left is NOT nothing, it is less than the next step's reservation, and the report says so, in usage words.
+    expect(told[0]!.data.reason).toBe("This job's next step needs more of this stretch. Keep going?");
+    expect(s.report!.text).toContain("The next step needs more than this job has left");
+    expect(s.report!.text).not.toMatch(/₹|used what it was given/);
 
     // They add budget; the model carries on from the staged edit and mends it.
     r.model.push(call("edit_file", { ...UTIL_EDIT, old: BUG.new }), done("Trimmed."));

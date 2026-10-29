@@ -805,7 +805,7 @@ const EnvSchema = z.object({
    * compute) when it is made WITHOUT a budget: 3,000 paise, thirty rupees, unless
    * set. A budget of 0 sent on purpose still means "no model calls": the default
    * is for a job made with no budget at all. A job that runs out stops cleanly
-   * and offers the person "continue with ₹X more" (POST /v1/code/jobs/:id/budget).
+   * and asks the person "Keep going?" (POST /v1/code/jobs/:id/budget, held to the usage meter: USAGE_* below).
    *
    * CODE_AGENT_CONCURRENCY is how many jobs one server drives at once (4 unless
    * set). A job is run by one server at a time whatever this says: the claim is in
@@ -813,6 +813,27 @@ const EnvSchema = z.object({
    */
   CODE_JOB_DEFAULT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(3000),
   CODE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  /**
+   * THE USAGE METER (src/you/usage.ts, limits.ts): what each plan may use, set by us. The person never sees an amount: only how much of
+   * this stretch and this month is used, and when it resets. Counted in what the use costs us, in paise (the Code bot's jobs, every bot's
+   * answers, and Keybot's words at USAGE_KEYBOT_PAISE_PER_1000_WORDS).
+   *
+   *   USAGE_LIMITS               false: the meter is shown and nothing is refused
+   *   USAGE_FREE_MONTH_PAISE     the free plan's month (5,000)
+   *   USAGE_PAID_MONTH_PAISE     a paid plan's month (50,000); everyone's while FREE_FOR_ALL is on
+   *   USAGE_TIERS                each paid tier's own month, by entitlement id: {"pro": 50000, "max": 200000}; a tier not named is PAID's
+   *   USAGE_FREE_WINDOWS         the free plan in stretches too (off: one stretch, the month)
+   *   USAGE_CARRY_OVER           what a stretch did not use carries into the next (off)
+   *   USAGE_NEAR                 from here "You've used most of this stretch" (0.8)
+   */
+  USAGE_LIMITS: bool(true),
+  USAGE_FREE_MONTH_PAISE: z.coerce.number().int().min(0).max(100_000_000).default(5000),
+  USAGE_PAID_MONTH_PAISE: z.coerce.number().int().min(0).max(100_000_000).default(50_000),
+  USAGE_TIERS: z.string().optional(),
+  USAGE_FREE_WINDOWS: bool(false),
+  USAGE_CARRY_OVER: bool(false),
+  USAGE_NEAR: z.coerce.number().min(0.1).max(1).default(0.8),
+  USAGE_KEYBOT_PAISE_PER_1000_WORDS: z.coerce.number().min(0).max(100_000).default(20),
   /**
    * LEAD AND HELPERS (src/code/team, docs/code-team.md). A goal that is big (a plan over 12 files or 3 features, or one over several projects, or one the
    * person asked a team for) is split into parts with clear file ownership; helpers build the parts in parallel on their own branches, a model of

@@ -1,5 +1,6 @@
 /**
- * The You tab's day (routes/botsYou.ts): ₹184 of ₹500 spent in October, Pro paid by UPI autopay, the MacBook helping, three apps connected.
+ * The You tab's day (routes/botsYou.ts): 64% of this stretch used (40% of October), Pro paid by UPI autopay, the MacBook helping, three apps
+ * connected. No screen draws an amount; the routes' own still carry some (ours), so the screens are seen not to.
  */
 import { FIXED_NOW, IST } from "../../../src/experience/bots/fixtures.js";
 
@@ -17,8 +18,17 @@ const settings = {
 };
 const byBot = [{ bot: "code", paise: 14_200 }, { bot: "keybot", paise: 1800 }, { bot: "plan", paise: 1500 }, { bot: "gym-bot", paise: 900 }];
 
+/** The usage meter: stretch 5 of 5 (23 to 31 Oct), resetting Sun 1 Nov. */
+const usage = {
+  plan: { id: "paid", name: "Pro", paid: true, windows: true, carryOver: false, upgrade: false },
+  stretch: { used: 0.64, startsAt: utc(2026, 10, 23) - IST * MIN, resetsAt: RESETS, n: 5, of: 5, days: 9 },
+  month: { used: 0.4, startsAt: MONTH_START, resetsAt: RESETS, days: 31 },
+  state: "ok",
+};
+
 const you = {
   plan: { name: "Pro", active: true },
+  usage,
   spend: { monthPaise: 18_400, limitPaise: 50_000, leftPaise: 31_600, perDayPaise: 660, resetsAt: RESETS, byBot, stopAtLimit: true },
   apps: {
     enabled: true, github: { repos: 2 }, alone: 3,
@@ -46,7 +56,7 @@ const invoice = (n: number, month: number, id: string) => ({ id: `inv_${n}`, num
 const billing = {
   plan: { name: "Pro", active: true, store: "razorpay", renews: true, until: utc(2026, 11, 12, 6), since: utc(2026, 7, 12, 6), price: "₹299", period: "a month", paidBy: "UPI autopay", cancel: "razorpay", manageUrl: null },
   invoices: [invoice(1, 10, "0412"), invoice(2, 9, "0388"), invoice(3, 8, "0351"), invoice(4, 7, "0297")],
-  month: { monthPaise: 18_400, limitPaise: 50_000 }, email: "aanya.rao@gmail.com",
+  usage, email: "aanya.rao@gmail.com",
 };
 
 const computers = {
@@ -87,9 +97,10 @@ const app = {
 export const YOU_API: Record<string, unknown> = {
   [`GET /v1/you?tz=${IST}`]: you,
   [`GET /v1/you/spend?tz=${IST}`]: { report, settings },
+  [`GET /v1/you/usage?tz=${IST}`]: { usage, near: null, out: null, how: "Each month is used in five stretches: 4, 5, 6 and 7 days, then the rest of the month. Each starts fresh." },
   [`GET /v1/you/billing?tz=${IST}`]: billing,
   "GET /v1/you/computers": computers,
-  [`GET /v1/you/notify?tz=${IST}`]: { settings, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you, ₹11 spent." },
+  [`GET /v1/you/notify?tz=${IST}`]: { settings, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you." },
   "GET /v1/you/account": account,
   "GET /v1/you/apps": apps,
   "GET /v1/you/apps/google-calendar": app,

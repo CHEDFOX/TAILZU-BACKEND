@@ -1158,7 +1158,7 @@ const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts };
 registerBotsShellRoutes(app, botsAreaDeps);
-registerBotsYouRoutes(app, botsAreaDeps);
+const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
@@ -1170,8 +1170,12 @@ const frontRoutes = registerFrontRoutes(app, {
   // "Ask any bot": a bot shared into a space reads what the space shared, as data, as in its chat.
   ...(bots ? { sharedFor: botsArea.sharedFor } : {}),
   quota: (user) => enforceQuota(user),
-  // The model's words are not the person's: recorded at zero words, like the old ask, so the call still shows in usage.
-  used: (user) => recordUsage({ user, source: "rest", audioSeconds: 0, words: 0, model: "front" }),
+  // The model's words are not the person's: recorded at zero words, like the old ask, so the call still shows in usage. What the front
+  // door's own calls cost goes on the usage meter (a bot's answer is written down by the bots platform).
+  used: (user, paise) => {
+    you.spending.record(user.id, "tailzu", paise);
+    return recordUsage({ user, source: "rest", audioSeconds: 0, words: 0, model: "front" });
+  },
 });
 // The Worker's way back to the push engine (the push credentials stay here).
 registerCodeInternalRoutes(app, { rateLimit: AUTHED_RL, secret: jobsHandoff ? cfg.CODE_JOBS_SECRET : null, store: jobStore(), notify: notifyJob });

@@ -74,7 +74,7 @@ describe("the screens, from the boards' day", () => {
     ["bots.chat", { slug: "gym-bot" }, ["Gym bot", "Legs done, 40 minutes"]],
     ["bots.make", {}, ["Make a bot", "Make Gym bot", "Plan my next week"]],
     ["bots.edit", { slug: "gym-bot" }, ["Never plan on days I'm travelling", "In Find a bot", "Delete this bot"]],
-    ["bots.keys", { slug: "gym-bot" }, ["Use it from your app", "1,284", "₹38.50", "Website"]],
+    ["bots.keys", { slug: "gym-bot" }, ["Use it from your app", "1,284", "What it uses", "Website"]],
     ["bots.store", {}, ["Find a bot", "Study bot", "Shop bot", "In Home", "Yours"]],
     ["bots.plan", {}, ["Plan bot", "Move Dentist to Friday 10 am?", "Keep Thursday"]],
     ["bots.travel", { }, ["Travel bot", "Pune · 14–16 Nov", "5 of 8 packed", "Ready to book · you press pay"]],

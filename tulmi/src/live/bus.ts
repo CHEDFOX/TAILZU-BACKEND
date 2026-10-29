@@ -12,7 +12,9 @@
  * "space:<id>", "thread:<id>", "threads", "job:<id>", "notes", "note:<id>",
  * "keybot". An event names its topic and when; `data` is a hint, never the
  * content itself (a screen reloads to get the content, so what a person may
- * see is decided where it always is: the screen's own load).
+ * see is decided where it always is: the screen's own load). The one
+ * exception is `ask:<id>` (askStream.ts): an answer's words as they are
+ * written, to the person who asked, under an id only their screen knows.
  *
  * In-process: one server process holds every live connection. If the
  * backend ever runs as several processes, fan publish() out through

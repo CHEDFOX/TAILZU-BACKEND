@@ -1,20 +1,23 @@
 /**
- * THE YOU TAB AND WHAT HANGS OFF IT: You, Budget, Billing, This computer helps, What pings you, Privacy, Delete account, Connected apps, Connect an
- * app, and the window's Settings (You.dc.html, Budget, Billing, Devices, Notify, Privacy, DeleteAcct, Apps, AppConnect and their D* / Desk*
- * desktop boards). Plans and Language are built in screens/firstRun.ts (once first-run steps, now pages); they are linked, not built, here.
+ * THE YOU TAB AND WHAT HANGS OFF IT: You, Usage, Billing, This computer helps, What pings you, Privacy, Delete account, Connected apps, Connect an
+ * app, and the window's Settings (You.dc.html, Billing, Devices, Notify, Privacy, DeleteAcct, Apps, AppConnect and their D* / Desk* desktop
+ * boards; Usage takes the Budget board's place, at bots.usage and the old bots.budget). Plans and Language are built in screens/firstRun.ts
+ * (once first-run steps, now pages); they are linked, not built, here.
  *
- * Every number is the person's own, from the routes in routes/botsYou.ts (src/you): the month's spend over every bot's records, the stored
- * limit, the plan and invoices from billing, the computers from runner presence, the connected apps from connectors. A read that fails draws
- * the honest empty state (or ctx.live's month), never a sample. Every control writes: PUT /v1/you/settings, the existing connector, job,
- * billing and account routes, then a refresh and a short ink toast.
+ * NO MONEY ON ANY OF THEM: no cost, no price, no amount. Use is the usage meter (src/you/usage.ts), the way Claude shows it: "This stretch ·
+ * 64% used · resets Thu 9 am", "This month · 40% used", a calm line near the limit, and at it a bigger plan offered as an action (the store's
+ * own sheet shows its price). Every number is the person's own, from the routes in routes/botsYou.ts (src/you): the meter, the plan and its
+ * dates from billing, the computers from runner presence, the connected apps from connectors. A read that fails draws the honest empty state
+ * (or ctx.live's meter), never a sample. Every control writes: PUT /v1/you/settings, the existing connector, job, billing and account routes,
+ * then a refresh and a short ink toast.
  *
  * Built with the kit (../kit.ts) the way screens/shell.ts builds bots.home; one id serves the phone and the window (ctx.client).
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
   C, FACE, SCREENS, back, body, botAvatar, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, listCard,
-  listRow, meta, meter, mono, open, page, primaryButton, quietButton, row, rupees, secondaryButton, sectionLabel, seq, shapes,
-  switchMark, switchRow, table, text, title, when, whenEq, type BotsCtx, type IconName,
+  listRow, meta, mono, notice, open, page, percent, primaryButton, quietButton, row, secondaryButton, sectionLabel, seq, shapes,
+  switchMark, switchRow, table, text, title, usageMeter, when, whenEq, whenWords, type BotsCtx, type IconName,
 } from "../kit.js";
 import { DELETION_PATH, GRACE_DAYS, daysStrip, dayMonthOf, goneAt, keepAccount, scheduleDeletion, type DeletionState } from "./accountGrace.js";
 import { PUSH_STATE, pushOffRow, withPushCheck } from "./pushAsk.js";
@@ -28,28 +31,29 @@ interface Settings {
   notify: { done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[] };
   privacy: { screenPictures: "ask" | "allow" };
 }
-interface ByBot { bot: string; paise: number }
+/** The usage meter (GET /v1/you/usage, src/you/usage.ts): fractions used (0.64 is 64%) and when each resets. Never an amount. */
+interface UsageMeter {
+  plan: { id: string; name: string; paid: boolean; windows: boolean; carryOver: boolean; upgrade: boolean };
+  stretch: { used: number; startsAt: number; resetsAt: number; n: number; of: number; days: number };
+  month: { used: number; startsAt: number; resetsAt: number; days: number };
+  state: "ok" | "near" | "out";
+}
+interface UsagePage { usage: UsageMeter; near: string | null; out: string | null; how: string }
 interface YouData {
   plan: { name: string; active: boolean };
-  spend: { monthPaise: number; limitPaise: number; leftPaise: number; perDayPaise: number; resetsAt: number; byBot: ByBot[]; stopAtLimit: boolean };
+  usage: UsageMeter | null;
   apps: { enabled: boolean; connected: Array<{ id: string; name: string; usedBy: string[]; lastUsedAt: number | null }>; github: { repos: number } | null; alone: number } | null;
   computers: { online: Array<{ name: string; busy: boolean; allowRun: boolean }>; offline: number; helped: { jobs: number; minutes: number } } | null;
   settings: Settings;
   exportUrl: string | null;
   language: string | null;
 }
-interface Report {
-  month: string; monthStart: number; resetsAt: number; daysInMonth: number; today: number;
-  monthPaise: number; limitPaise: number; leftPaise: number; stopAtLimit: boolean; perDayPaise: number; projectionPaise: number;
-  byBot: ByBot[]; byDay: number[]; busiest: { day: number; paise: number } | null;
-  biggest: Array<{ id: string; task: string; paise: number; at: number; minutes: number }>;
-}
-interface SpendData { report: Report; settings: Settings }
-interface Invoice { id: string; number: string; date: number; amountPaise: number; amount: string; status: string; url: string | null; what: string }
+/** An invoice, as much as the screens show: when, which, what for, Razorpay's own page. No amount. */
+interface Invoice { id: string; number: string; date: number; status: string; url: string | null; what: string }
 interface BillingData {
-  plan: { name: string; active: boolean; store: string | null; renews: boolean; until: number | null; since: number | null; price: string | null; period: string | null; paidBy: string | null; cancel: "razorpay" | "store" | null; manageUrl: string | null };
+  plan: { name: string; active: boolean; store: string | null; renews: boolean; until: number | null; since: number | null; paidBy: string | null; cancel: "razorpay" | "store" | null; manageUrl: string | null };
   invoices: Invoice[];
-  month: { monthPaise: number; limitPaise: number } | null;
+  usage: UsageMeter | null;
   email: string | null;
 }
 interface ComputersData {
@@ -82,7 +86,6 @@ interface AccountData {
 // ===================================================================== small things
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_MS = 86_400_000;
 
@@ -209,29 +212,17 @@ function segments(options: Array<{ label: string; value: string }>, path: string
   }, seq({ kind: "setState", path, value: opt.value }, onPick(opt.value)))), { padding: 3, borderRadius: 12, backgroundColor: C.surface, gap: 2, ...(width ? { width } : {}) });
 }
 
-/** The month's ring: spend against the limit, with the number in the middle. */
-function ring(spent: number, limit: number, size: number): Node {
-  const r = 15.5, circ = 2 * Math.PI * r, part = Math.max(0, Math.min(1, limit > 0 ? spent / limit : 0));
+/** This stretch's ring: how much of it is used, with the share in the middle. Never an amount. */
+function ring(used: number, size: number, label = "used"): Node {
+  const r = 15.5, circ = 2 * Math.PI * r, part = Math.max(0, Math.min(1, used));
   return box([
     box([shapes([
       { circle: [18, 18, r], stroke: C.divider, strokeWidth: 3 },
       ...(part > 0 ? [{ circle: [18, 18, r] as [number, number, number], stroke: C.ink, strokeWidth: 3, linecap: "round" as const, dash: `${(part * circ).toFixed(2)} ${circ.toFixed(2)}`, rotate: -90 }] : []),
-    ], { size, viewBox: "0 0 36 36", label: `${rupees(spent)} of ${rupees(limit)}` })], { position: "absolute", top: 0, left: 0 }),
-    text(rupees(spent), { size: Math.round(size / 4.6), weight: 700, tracking: -0.6, align: "center" }),
-    meta(`of ${rupees(limit)}`, { size: 12, align: "center" }),
+    ], { size, viewBox: "0 0 36 36", label: `${percent(part)} ${label}` })], { position: "absolute", top: 0, left: 0 }),
+    text(percent(part), { size: Math.round(size / 4.6), weight: 700, tracking: -0.6, align: "center" }),
+    meta(label, { size: 12, align: "center" }),
   ], { width: size, height: size, alignItems: "center", justifyContent: "center", flexShrink: 0 });
-}
-
-/** A day-by-day bar chart: ink for days with spend, a hairline for the quiet ones and the days to come. */
-function bars(byDay: number[], today: number, height: number, gapPx = 2): Node {
-  const max = Math.max(1, ...byDay);
-  return row(byDay.map((v, i) => col([
-    box([], {
-      height: v > 0 ? Math.max(3, Math.round((v / max) * height)) : 2, borderRadius: 2,
-      backgroundColor: i + 1 > today ? C.divider : v > 0 ? C.ink : C.track,
-      ...(i + 1 === today && v > 0 ? { backgroundColor: C.paper, borderWidth: 1.5, borderColor: C.ink } : {}),
-    }),
-  ], { flexGrow: 1, flexBasis: 0, height, justifyContent: "flex-end" })), { gap: gapPx, alignItems: "flex-end", height });
 }
 
 const avatar = (ctx: BotsCtx, slug: string, size = 24): Node => botAvatar(botOf(ctx, slug).look, size);
@@ -254,24 +245,26 @@ const exportAction = (url: string | null): ActionRef => (url ? seq(openUrl(url),
 
 // ===================================================================== bots.you
 
-/** The month by bot: the spend meter in each bot's colour, and its legend. */
-function monthLegend(ctx: BotsCtx, byBot: ByBot[]): Node {
-  return row(byBot.slice(0, 5).map((b) => {
-    const bot = botOf(ctx, b.bot);
-    return row([box([], { width: 7, height: 7, borderRadius: 4, backgroundColor: bot.look.color }), meta(`${bot.short} ${rupees(b.paise)}`, { size: 12 })], { gap: 5 });
-  }), { gap: 12, flexWrap: "wrap", rowGap: 6 });
+/** The meter the You page and Settings show: from the You page's read, else the live one every screen has. */
+function meterOf(ctx: BotsCtx, u: UsageMeter | null | undefined): { used: number; month: number; windows: boolean; resetsAt: number | null; monthResets: number | null; state: UsageMeter["state"] } {
+  if (u) return { used: u.stretch.used, month: u.month.used, windows: u.plan.windows, resetsAt: u.stretch.resetsAt, monthResets: u.month.resetsAt, state: u.state };
+  const l = ctx.live.usage;
+  return { used: l.used, month: l.month, windows: l.windows, resetsAt: l.resetsAt, monthResets: null, state: l.state };
 }
-
-function monthOf(ctx: BotsCtx, d: YouData | undefined) {
-  return d ? { spent: d.spend.monthPaise, limit: d.spend.limitPaise, byBot: d.spend.byBot } : { spent: ctx.live.spend.monthPaise, limit: ctx.live.spend.budgetPaise, byBot: [] as ByBot[] };
+/** "This stretch" or "This month", as the plan is used. */
+const spanLabel = (windows: boolean) => (windows ? "This stretch" : "This month");
+/** "Resets Thu 9 am", on the person's clock. */
+const resetsLine = (ctx: BotsCtx, at: number | null) => (at ? `Resets ${whenWords(at, ctx.live.now, ctx.tzOffsetMinutes)}` : "");
+/** "64% of this stretch". */
+const usedLine = (m: { used: number; windows: boolean }) => `${percent(m.used)} of this ${m.windows ? "stretch" : "month"}`;
+/** Near the limit, or at it: the calm line, else nothing. */
+function limitLine(ctx: BotsCtx, m: ReturnType<typeof meterOf>): string {
+  const span = m.windows ? "this stretch" : "this month";
+  const when = m.resetsAt ? ` It resets ${whenWords(m.resetsAt, ctx.live.now, ctx.tzOffsetMinutes)}.` : "";
+  if (m.state === "out") return `You've reached ${span}'s limit.${when}`;
+  if (m.state === "near") return `You've used most of ${span}.${when}`;
+  return "";
 }
-
-const leftLine = (ctx: BotsCtx, d: YouData | undefined, m: { spent: number; limit: number }) => {
-  const left = Math.max(0, m.limit - m.spent);
-  const parts = [left > 0 ? `${rupees(left)} left` : "Limit reached", ...(d ? [`resets ${dayMonth(ctx, d.spend.resetsAt)}`] : [])];
-  if (d && d.spend.perDayPaise > 0) parts.push(`about ${rupees(d.spend.perDayPaise)} a day`);
-  return parts.join(" · ");
-};
 
 function appsLine(d: YouData | undefined): string {
   const names = [...(d?.apps?.github ? ["GitHub"] : []), ...(d?.apps?.connected ?? []).map((a) => a.name.replace(/^Google /, ""))];
@@ -281,7 +274,7 @@ const computerLine = (d: YouData | undefined) => {
   const c = d?.computers;
   if (!c) return "";
   const on = c.online.filter((x) => x.allowRun);
-  return on.length ? "On · free" : c.online.length ? "Online · not helping" : c.offline ? "Offline" : "Off";
+  return on.length ? "On" : c.online.length ? "Online · not helping" : c.offline ? "Offline" : "Off";
 };
 const pingsLine = (s: Settings | undefined) => {
   if (!s) return "";
@@ -290,7 +283,8 @@ const pingsLine = (s: Settings | undefined) => {
 };
 
 function youPhone(ctx: BotsCtx, d: YouData | undefined) {
-  const m = monthOf(ctx, d);
+  const m = meterOf(ctx, d?.usage);
+  const line = limitLine(ctx, m);
   const planLine = `${d?.plan.name ?? "Your plan"} · ${plural(ctx.live.bots.length, "bot")}`;
   return page(ctx, {
     tab: "you", title: "You", gap: 18,
@@ -300,10 +294,8 @@ function youPhone(ctx: BotsCtx, d: YouData | undefined) {
         col([text(youName(ctx), { size: 20, weight: 600, tracking: -0.3, lineHeight: 25, lines: 1 }), meta(planLine, { size: 13 })], { gap: 2, flexShrink: 1, minWidth: 0 }),
       ], { gap: 12 }, open(SCREENS.billing)),
       card([
-        row([text("This month", { size: 14, weight: 600 }), grow(), text(`${rupees(m.spent)} of ${rupees(m.limit)}`, { size: 14, color: C.grey70 })]),
-        meter(m.spent, m.limit, m.byBot.length ? { segments: m.byBot.map((b) => ({ value: b.paise, color: botOf(ctx, b.bot).look.color })) } : {}),
-        m.byBot.length ? monthLegend(ctx, m.byBot) : meta(m.spent > 0 ? leftLine(ctx, d, m) : "Nothing spent yet this month", { size: 12 }),
-      ], { gap: 12, padding: 16, onPress: open(SCREENS.budget) }),
+        usageMeter(spanLabel(m.windows), m.used, { resets: line || resetsLine(ctx, m.resetsAt) }),
+      ], { gap: 12, padding: 16, onPress: open(SCREENS.usage) }),
       listCard([
         // Family and friends: spaces, what's shared, tasks, payment requests and chats (screens/spaces.ts).
         listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
@@ -338,8 +330,8 @@ function deskRow(o: { glyphNode: Node; label: string; sub?: string; right?: Node
 const deskList = (rows: Node[]): Node => listCard(rows);
 
 function youDesk(ctx: BotsCtx, d: YouData | undefined) {
-  const m = monthOf(ctx, d);
-  const top = m.byBot.length ? Math.max(...m.byBot.map((b) => b.paise)) : 1;
+  const m = meterOf(ctx, d?.usage);
+  const line = limitLine(ctx, m);
   const helped = d?.computers?.helped;
   const online = d?.computers?.online ?? [];
   const apps = d?.apps;
@@ -368,18 +360,12 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
       columns([
         card([
           row([
-            ring(m.spent, m.limit, 132),
+            ring(m.used, 132),
             col([
-              row([text("This month", { size: 14, weight: 600 }), grow(), text("Budget", { size: 13, weight: 500, style: { textDecorationLine: "underline" } })], {}, open(SCREENS.budget)),
-              ...(m.byBot.length ? m.byBot.slice(0, 4).map((b) => {
-                const bot = botOf(ctx, b.bot);
-                return row([
-                  botAvatar(bot.look, 20), text(bot.short, { size: 13, style: { width: 64 } }),
-                  box([meter(b.paise, top, { color: bot.look.color, height: 4 })], { flexGrow: 1, flexShrink: 1 }),
-                  text(rupees(b.paise), { size: 13, weight: 600, align: "right", style: { width: 56 } }),
-                ], { gap: 10 });
-              }) : [meta("Nothing spent yet this month.", { size: 13 })]),
-              meta(leftLine(ctx, d, m), { size: 12 }),
+              row([text(spanLabel(m.windows), { size: 14, weight: 600 }), grow(), text("Usage", { size: 13, weight: 500, style: { textDecorationLine: "underline" } })], {}, open(SCREENS.usage)),
+              meta(resetsLine(ctx, m.resetsAt), { size: 12 }),
+              ...(m.windows ? [usageMeter("This month", m.month, { height: 4 })] : []),
+              ...(line ? [meta(line, { size: 12 })] : []),
             ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 10 }),
           ], { gap: 22, alignItems: "center" }),
         ], { padding: 20 }),
@@ -392,7 +378,7 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
         deskList([
           deskRow({
             glyphNode: icon("computer", { size: 18 }), label: "This computer helps",
-            sub: online.length ? `${computerLine(d)} · ${online[0]!.name}` : "Off · your computers can run jobs for free",
+            sub: online.length ? `${computerLine(d)} · ${online[0]!.name}` : "Off · your computers can run jobs for your bots",
             ...(helped && helped.jobs ? { value: `${plural(helped.jobs, "job")} this month` } : {}),
             onPress: open(SCREENS.computer),
           }),
@@ -416,158 +402,78 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
   });
 }
 
-// ===================================================================== bots.budget
+// ===================================================================== bots.usage (and bots.budget, its old link)
 
-const LIMITS = [{ label: "₹300", value: "300" }, { label: "₹500", value: "500" }, { label: "₹1,000", value: "1000" }, { label: "Other", value: "other" }];
-
-/** "Stop bots at the limit": the switch, saved both ways. */
-function stopRow(limit: number): Node {
-  return switchRow("Stop bots at the limit", "stop", {
-    sub: `They pause and ask before going past ${rupees(limit)}`,
-    onChange: when2("stop", save({ stopAtLimit: true }, `Bots stop at ${rupees(limit)}`), save({ stopAtLimit: false }, "Bots can go past the limit")),
-  });
+/** The five stretches of the month as one bar: each as wide as its days, the ones gone in ink, this one half. */
+function stretchBar(u: UsageMeter): Node {
+  const parts = Array.from({ length: u.stretch.of }, (_, i) => i + 1);
+  const days = (n: number) => (n === u.stretch.of ? Math.max(1, u.month.days - 22) : [4, 5, 6, 7][n - 1] ?? 1);
+  return row(parts.map((n) => box([], {
+    flexGrow: days(n), flexBasis: 0, height: 6, borderRadius: 3,
+    backgroundColor: n < u.stretch.n ? C.ink : n === u.stretch.n ? C.grey70 : C.track,
+  })), { gap: 4 });
 }
 
-/** The limit chooser: ₹300, ₹500, ₹1,000 or another amount; "Set monthly limit" saves it. */
-function limitPicker(): Node {
-  return col([
-    pills(LIMITS, "limit", () => ({ kind: "log", message: "limit picked" })),
-    when({ eq: ["limit", "other"] }, field("otherLimit", "Amount in ₹, like 750", { keyboard: "numeric" })),
-  ], { gap: 10 });
-}
-const setLimit: ActionRef = when2("limit",
-  { kind: "condition", if: { eq: ["limit", "other"] },
-    then: call("PUT", "/v1/you/settings", { monthLimitRupees: "$state.otherLimit" }, { ok: seq(toast("Monthly limit set"), refresh), fail: oops("set that amount") }),
-    else: call("PUT", "/v1/you/settings", { monthLimitRupees: "$state.limit" }, { ok: seq(toast("Monthly limit set"), refresh), fail: oops() }) },
-  toast("Pick a limit first"));
+/** The way out at the limit: a bigger plan, as an action (the store's own sheet shows its price). None while nothing is for sale. */
+const upgradeButton = (u: UsageMeter, o: { wide?: boolean; size?: "md" | "lg" } = {}): Node[] =>
+  u.plan.upgrade ? [primaryButton("Get more with a plan", open(SCREENS.plans), { wide: o.wide ?? true, ...(o.size ? { size: o.size } : {}) })] : [];
 
-const limitState = (limit: number) => {
-  const r = String(Math.round(limit / 100));
-  return LIMITS.some((l) => l.value === r) ? { limit: r, otherLimit: "" } : { limit: "other", otherLimit: r };
-};
-
-function byBotRows(ctx: BotsCtx, rep: Report, desk: boolean): Node[] {
-  const top = rep.byBot.length ? rep.byBot[0]!.paise : 1;
-  return rep.byBot.map((b) => {
-    const bot = botOf(ctx, b.bot);
-    const pct = rep.monthPaise > 0 ? Math.round((b.paise / rep.monthPaise) * 100) : 0;
-    return desk
-      ? col([
-        row([botAvatar(bot.look, 24), text(bot.name, { size: 14, style: { flexShrink: 1 } }), grow(), meta(`${pct}%`, { size: 12 }), text(rupees(b.paise), { size: 14, weight: 600, align: "right", style: { width: 64 } })], { gap: 10 }),
-        meter(b.paise, top, { color: bot.look.color, height: 4 }),
-      ], { gap: 8 })
-      : row([
-        botAvatar(bot.look, 24), text(bot.short, { size: 14, style: { width: 64 } }),
-        box([meter(b.paise, top, { color: bot.look.color, height: 5 })], { flexGrow: 1, flexShrink: 1 }),
-        text(rupees(b.paise), { size: 14, weight: 600, align: "right", style: { width: 60 } }),
-      ], { gap: 10 });
-  });
+function usageBody(ctx: BotsCtx, d: UsagePage): Node[] {
+  const u = d.usage;
+  const stretch = usageMeter(spanLabel(u.plan.windows), u.stretch.used, { resets: resetsLine(ctx, u.stretch.resetsAt) });
+  const month = u.plan.windows ? [usageMeter("This month", u.month.used, { resets: `Starts again ${whenWords(u.month.resetsAt, ctx.live.now, ctx.tzOffsetMinutes)}` })] : [];
+  return [
+    card([stretch, ...month.flatMap((m) => [divider(), m])], { gap: 16, padding: 18 }),
+    ...(d.out ? [notice(d.out, { ink: true })] : d.near ? [notice(d.near)] : []),
+    ...(u.plan.windows ? [col([
+      row([sectionLabel("The month"), grow(), meta(`Stretch ${u.stretch.n} of ${u.stretch.of}`, { size: 12 })]),
+      stretchBar(u),
+    ], { gap: 10 })] : []),
+    meta(d.how, { size: 13, lineHeight: 18 }),
+  ];
 }
 
-const busiestLine = (ctx: BotsCtx, rep: Report) =>
-  rep.busiest ? `Busiest: ${rupees(rep.busiest.paise)} on ${rep.busiest.day} ${MONTHS[local(ctx, rep.monthStart).getUTCMonth()]}` : "No spend yet";
-
-function biggestRows(ctx: BotsCtx, rep: Report): Node[] {
-  return rep.biggest.slice(0, 3).map((j) => row([
-    avatar(ctx, "code", 24),
-    col([text(j.task, { size: 14, lineHeight: 19, lines: 1 }), meta(`${dayMonth(ctx, j.at)} · ${hours(j.minutes)}`, { size: 12 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
-    text(rupees(j.paise), { size: 14, weight: 600 }),
-  ], { gap: 10 }, open(SCREENS.codeJob, { id: j.id })));
-}
-
-function budgetPhone(ctx: BotsCtx, d: SpendData | undefined) {
+function usagePhone(ctx: BotsCtx, d: UsagePage | undefined) {
   if (!d) {
-    const s = ctx.live.spend;
-    return page(ctx, {
-      back: true, nav: "you", title: "Budget",
-      body: [title("Budget"), col([row([text(rupees(s.monthPaise), { size: 34, weight: 700, tracking: -0.8 }), meta(` of ${rupees(s.budgetPaise)} this month`, { size: 14 })], { alignItems: "flex-end", gap: 4 }), meter(s.monthPaise, s.budgetPaise)], { gap: 10 }), couldNot("the month's details")],
-    });
+    const m = meterOf(ctx, null);
+    return page(ctx, { back: true, nav: "you", title: "Usage", body: [title("Usage"), usageMeter(spanLabel(m.windows), m.used, { resets: resetsLine(ctx, m.resetsAt) }), couldNot("your usage")] });
   }
-  const rep = d.report;
   return page(ctx, {
-    back: true, nav: "you", title: "Budget", gap: 20,
-    state: { stop: d.settings.stopAtLimit, ...limitState(d.settings.monthLimitPaise) },
-    body: [
-      title("Budget"),
-      col([
-        row([text(rupees(rep.monthPaise), { size: 34, weight: 700, tracking: -0.8, lineHeight: 40 }), meta(`of ${rupees(rep.limitPaise)} this month`, { size: 14, style: { paddingBottom: 6 } })], { alignItems: "flex-end", gap: 8 }),
-        meter(rep.monthPaise, rep.limitPaise),
-        row([meta(`${rep.leftPaise > 0 ? `${rupees(rep.leftPaise)} left` : "Limit reached"} · resets ${dayMonth(ctx, rep.resetsAt)}`, { size: 12 }), grow(), meta(`About ${rupees(rep.perDayPaise)} a day`, { size: 12 })]),
-      ], { gap: 10 }),
-      ...(rep.byBot.length ? [col([sectionLabel("By bot"), ...byBotRows(ctx, rep, false)], { gap: 12 })] : [meta("Nothing spent yet this month. Your bots' costs show up here as they work.", { size: 14 })]),
-      ...(rep.monthPaise > 0 ? [col([
-        row([sectionLabel("By day"), grow(), meta(busiestLine(ctx, rep), { size: 12 })]),
-        bars(rep.byDay, rep.today, 64),
-        row([meta(`1 ${MONTHS[local(ctx, rep.monthStart).getUTCMonth()]}`, { size: 11 }), grow(), meta("Today", { size: 11 })]),
-      ], { gap: 10 })] : []),
-      ...(rep.biggest.length ? [col([sectionLabel("Biggest jobs"), ...biggestRows(ctx, rep)], { gap: 12 })] : []),
-      col([sectionLabel("Monthly limit"), limitPicker()], { gap: 10 }),
-    ],
-    footer: [box([stopRow(rep.limitPaise)], { marginHorizontal: -16 }), primaryButton("Set monthly limit", setLimit, { wide: true })],
+    back: true, nav: "you", title: "Usage", gap: 18,
+    body: [col([title("Usage"), meta(`${d.usage.plan.name} plan`, { size: 14, color: C.grey70 })], { gap: 4 }), ...usageBody(ctx, d)],
+    ...(d.usage.plan.upgrade && d.usage.state !== "ok" ? { footer: upgradeButton(d.usage) } : {}),
   });
 }
 
-function budgetDesk(ctx: BotsCtx, d: SpendData | undefined) {
-  if (!d) {
-    return page(ctx, { back: true, backTitle: "You", nav: "you", title: "Budget", maxWidth: 1040, body: [heading(ctx, "Budget"), couldNot("the month's details")] });
-  }
-  const rep = d.report;
-  const monthName = MONTHS_LONG[local(ctx, rep.monthStart).getUTCMonth()]!;
-  const lastDay = `${rep.daysInMonth} ${MONTHS[local(ctx, rep.monthStart).getUTCMonth()]}`;
-  const stat = (big: string, line: string) => col([text(big, { size: 16, weight: 600 }), meta(line, { size: 12 })], { gap: 2 });
-  const pace = rep.projectionPaise <= rep.limitPaise ? (rep.projectionPaise < rep.limitPaise * 0.8 ? "well under your limit" : "close to your limit") : "past your limit";
-  const ticks = [1, 7, 14, 21].filter((x) => x < rep.today - 2);
+function usageDesk(ctx: BotsCtx, d: UsagePage | undefined) {
+  if (!d) return page(ctx, { back: true, backTitle: "You", nav: "you", title: "Usage", maxWidth: 1040, body: [heading(ctx, "Usage"), couldNot("your usage")] });
+  const u = d.usage;
   return page(ctx, {
-    back: true, backTitle: "You", nav: "you", title: "Budget", maxWidth: 1040, gap: 20,
-    state: { stop: d.settings.stopAtLimit, ...limitState(d.settings.monthLimitPaise) },
+    back: true, backTitle: "You", nav: "you", title: "Usage", maxWidth: 1040, gap: 20,
     body: [
-      heading(ctx, "Budget", `${monthName} ${rep.month.slice(0, 4)} · what your bots cost`),
-      card([
-        row([
-          row([text(rupees(rep.monthPaise), { size: 34, weight: 700, tracking: -0.8, lineHeight: 40 }), meta(`of ${rupees(rep.limitPaise)} this month`, { size: 13, style: { paddingBottom: 6 } })], { alignItems: "flex-end", gap: 8 }),
-          grow(),
-          stat(rep.leftPaise > 0 ? `${rupees(rep.leftPaise)} left` : "Limit reached", `resets ${dayMonth(ctx, rep.resetsAt)}`),
-          stat(`About ${rupees(rep.perDayPaise)} a day`, `${plural(rep.today, "day")} so far`),
-          stat(`About ${rupees(Math.round(rep.projectionPaise / 100) * 100)} by ${lastDay}`, pace),
-        ], { gap: 36, flexWrap: "wrap", rowGap: 12 }),
-        meter(rep.monthPaise, rep.limitPaise),
-      ], { padding: 20, gap: 16 }),
-      columns([
+      heading(ctx, "Usage", `${u.plan.name} plan · how much of it is used`),
+      columns(usageBody(ctx, d), [
         card([
-          row([sectionLabel("By day"), grow(), meta(busiestLine(ctx, rep), { size: 12 })]),
-          rep.monthPaise > 0 ? bars(rep.byDay, rep.today, 150, 5) : box([meta("Nothing spent yet this month.", { size: 13 })], { height: 150, justifyContent: "center", alignItems: "center" }),
-          row([
-            ...ticks.flatMap((t, i) => [meta(t === 1 ? `1 ${MONTHS[local(ctx, rep.monthStart).getUTCMonth()]}` : String(t), { size: 11 }), ...(i < ticks.length - 1 ? [grow()] : [])]),
-            grow(), meta("Today", { size: 11, weight: 600 }), grow(), meta(String(rep.daysInMonth), { size: 11 }),
-          ]),
+          row([ring(u.stretch.used, 132), col([
+            text(spanLabel(u.plan.windows), { size: 15, weight: 600 }),
+            meta(resetsLine(ctx, u.stretch.resetsAt), { size: 13 }),
+            ...(u.plan.windows ? [meta(`This month · ${percent(u.month.used)} used`, { size: 13 })] : []),
+          ], { gap: 4, flexShrink: 1 })], { gap: 18, alignItems: "center" }),
+          ...(u.plan.upgrade ? [divider(), meta("A plan gives you more to use every month.", { size: 13 }), ...upgradeButton(u, { wide: false, size: "md" })] : []),
         ], { padding: 20, gap: 14 }),
-        card([
-          row([sectionLabel("Biggest jobs")]),
-          rep.biggest.length
-            ? table([{ label: "Job", flex: 3 }, { label: "Date" }, { label: "Time" }, { label: "Cost", align: "right" }],
-              rep.biggest.slice(0, 4).map((j) => [
-                row([avatar(ctx, "code", 24), col([text(j.task, { size: 14, lines: 1 }), meta("Code bot", { size: 12 })], { flexShrink: 1, minWidth: 0, gap: 1 })], { gap: 10 }),
-                dayMonth(ctx, j.at), hours(j.minutes), text(rupees(j.paise), { size: 14, weight: 600 }),
-              ]), { onRow: (i) => open(SCREENS.codeJob, { id: rep.biggest[i]!.id }) })
-            : meta("No Code bot jobs this month.", { size: 13 }),
-        ], { padding: 20, gap: 12 }),
-      ], [
-        card([sectionLabel("By bot"), ...(rep.byBot.length ? byBotRows(ctx, rep, true) : [meta("Nothing spent yet.", { size: 13 })])], { padding: 20, gap: 14 }),
-        card([
-          row([sectionLabel("Monthly limit"), grow(), text(rupees(rep.limitPaise), { size: 20, weight: 700 })]),
-          limitPicker(),
-          box([stopRow(rep.limitPaise)], { marginHorizontal: -16 }),
-          primaryButton("Set monthly limit", setLimit, { wide: true, size: "md" }),
-        ], { padding: 20, gap: 14 }),
-      ]),
+      ], { rightWidth: 360 }),
     ],
   });
 }
 
 // ===================================================================== bots.billing
 
-const billingBody = (b: BillingData["plan"]) =>
-  b.active ? "Unlimited Keybot words, first in line on busy days" : "Keybot with a monthly word allowance, and every bot";
+/** What each plan gives, in words. No price: a store's own sheet shows that when someone buys. */
+const PLAN_GIVES = {
+  free: ["Every bot, with a smaller allowance each month", "Keybot, with a monthly word allowance"],
+  pro: ["More to use every month, in five stretches", "Keybot without a word limit", "First in line on busy days"],
+};
+const billingBody = (b: BillingData["plan"]) => (b.active ? PLAN_GIVES.pro : PLAN_GIVES.free).slice(0, 2).join(". ");
 
 function cancelAction(p: BillingData["plan"]): ActionRef | undefined {
   if (p.cancel === "store" && p.manageUrl) return openUrl(p.manageUrl);
@@ -582,7 +488,7 @@ const cancelLine = (ctx: BotsCtx, p: BillingData["plan"]) =>
 
 function invoiceRows(ctx: BotsCtx, list: Invoice[]): Node[] {
   return list.slice(0, 3).map((i) => listRow({
-    label: fullDate(ctx, i.date), sub: i.what, value: i.amount,
+    label: fullDate(ctx, i.date), sub: i.what,
     ...(i.url ? { right: glyph(G.download, 18, C.meta), chevron: false, onPress: openUrl(i.url) } : {}),
   }));
 }
@@ -597,12 +503,12 @@ function billingPhone(ctx: BotsCtx, d: BillingData | undefined) {
       title("Plan and billing"),
       listCard([
         col([
-          row([text(p.name, { size: 20, weight: 700 }), grow(), ...(p.price ? [text(p.price, { size: 17, weight: 700 }), meta(` / ${(p.period ?? "a month").replace(/^a /, "")}`, { size: 13 })] : p.active ? [] : [text("₹0", { size: 17, weight: 700 })])], { gap: 2 }),
+          text(p.name, { size: 20, weight: 700 }),
           meta(billingBody(p), { size: 13 }),
         ], { gap: 4, paddingVertical: 16, paddingHorizontal: 16 }),
         ...(p.active && p.until ? [listRow({ label: p.renews ? "Renews" : "Ends", value: dayMonth(ctx, p.until) })] : []),
         ...(p.paidBy ? [listRow({ label: "Paid by", value: p.paidBy })] : []),
-        ...(d.month ? [listRow({ label: "Bot use this month", value: `${rupees(d.month.monthPaise)} of ${rupees(d.month.limitPaise)}`, onPress: open(SCREENS.budget) })] : []),
+        ...(d.usage ? [listRow({ label: "Usage", value: usedLine(meterOf(ctx, d.usage)), onPress: open(SCREENS.usage) })] : []),
       ]),
       ...(p.paidBy === "UPI autopay" ? [meta("Your UPI app tells you before each renewal.", { size: 12 })] : []),
       ...(d.invoices.length ? [col([
@@ -622,9 +528,8 @@ function billingDesk(ctx: BotsCtx, d: BillingData | undefined) {
   if (!d) return page(ctx, { back: true, backTitle: "You", nav: "you", title: "Plan and billing", maxWidth: 1040, body: [heading(ctx, "Plan and billing"), couldNot("your plan")] });
   const p = d.plan;
   const cancel = cancelAction(p);
-  const planCard = (name: string, price: string, lines: string[], mine: boolean) => card([
+  const planCard = (name: string, lines: string[], mine: boolean) => card([
     row([text(name, { size: 15, weight: 600 }), grow(), ...(mine ? [box([text("Your plan", { size: 11, weight: 600, color: C.paper })], { backgroundColor: C.ink, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 })] : [])]),
-    row([text(price, { size: 26, weight: 700, tracking: -0.5 }), ...(name === "Pro" && p.period ? [meta(` / ${p.period.replace(/^a /, "")}`, { size: 13 })] : [])], { alignItems: "flex-end" }),
     ...lines.map((l) => row([icon("check", { size: 14 }), meta(l, { size: 12, color: C.grey70 })], { gap: 6 })),
   ], { padding: 16, gap: 8, ...(mine ? { selected: C.ink } : {}), style: { flexGrow: 1, flexBasis: 0 } });
   const sub = [p.active && p.since ? `${p.name} since ${fullDate(ctx, p.since)}` : p.name, ...(p.active && p.until ? [`${p.renews ? "renews" : "ends"} ${dayMonth(ctx, p.until)}`] : [])].join(" · ");
@@ -635,7 +540,7 @@ function billingDesk(ctx: BotsCtx, d: BillingData | undefined) {
       columns([
         card([
           sectionLabel("Plan"),
-          row([planCard("Free", "₹0", ["Keybot, a monthly word allowance", "Every bot, within its daily budget"], !p.active), planCard("Pro", p.price ?? "Pro", ["Unlimited Keybot words", "First in line on busy days"], p.active)], { gap: 12, alignItems: "stretch" }),
+          row([planCard("Free", PLAN_GIVES.free, !p.active), planCard("Pro", PLAN_GIVES.pro, p.active)], { gap: 12, alignItems: "stretch" }),
           row([
             secondaryButton(p.active ? "Change plan" : "See plans", open(SCREENS.plans), { size: "md" }),
             ...(cancel ? [quietButton("Cancel plan", cancel, { size: "md" })] : []),
@@ -647,14 +552,14 @@ function billingDesk(ctx: BotsCtx, d: BillingData | undefined) {
           sectionLabel("Paid by"),
           p.paidBy ? row([glyph(G.card, 20), text(p.paidBy, { size: 15, weight: 500 }), grow(), ...(p.manageUrl ? [button("Change", openUrl(p.manageUrl), { kind: "secondary", size: "md" })] : [])], { gap: 10 })
             : meta("Nothing to pay on the free plan.", { size: 13 }),
-          ...(p.active && p.until ? [row([statusMark2(), col([text(`${dayMonth(ctx, p.until)} · ${p.renews ? `${p.name} renews` : `${p.name} ends`}`, { size: 13, weight: 500 }), meta(p.renews ? [p.price ? `${p.price} for another ${(p.period ?? "a month").replace(/^a /, "")}` : "", p.paidBy === "UPI autopay" ? "your UPI app tells you first" : "cancel any time before"].filter(Boolean).join(" · ") : "Nothing more is taken", { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 10, alignItems: "flex-start" })] : []),
-          ...(d.month ? [box([listRow({ label: "Bot use so far this month", value: `${rupees(d.month.monthPaise)} of ${rupees(d.month.limitPaise)}`, onPress: open(SCREENS.budget) })], { backgroundColor: C.surface, borderRadius: 12, overflow: "hidden" })] : []),
+          ...(p.active && p.until ? [row([statusMark2(), col([text(`${dayMonth(ctx, p.until)} · ${p.renews ? `${p.name} renews` : `${p.name} ends`}`, { size: 13, weight: 500 }), meta(p.renews ? (p.paidBy === "UPI autopay" ? "Your UPI app tells you first" : "Cancel any time before") : "Nothing more is taken", { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 10, alignItems: "flex-start" })] : []),
+          ...(d.usage ? [box([listRow({ label: "Usage", value: usedLine(meterOf(ctx, d.usage)), onPress: open(SCREENS.usage) })], { backgroundColor: C.surface, borderRadius: 12, overflow: "hidden" })] : []),
         ], { padding: 20, gap: 14 }),
       ]),
       ...(d.invoices.length ? [card([
         row([sectionLabel(`Invoices · ${d.invoices.length}`), grow(), meta("From Razorpay", { size: 12 })]),
-        table([{ label: "Date" }, { label: "Invoice" }, { label: "What", flex: 2 }, { label: "Total", align: "right" }, { label: "", align: "right" }],
-          d.invoices.slice(0, 8).map((i) => [fullDate(ctx, i.date), mono(i.number), i.what, text(i.amount, { size: 14, weight: 600 }),
+        table([{ label: "Date" }, { label: "Invoice" }, { label: "What", flex: 2 }, { label: "", align: "right" }],
+          d.invoices.slice(0, 8).map((i) => [fullDate(ctx, i.date), mono(i.number), i.what,
             i.url ? row([glyph(G.download, 14), text("PDF", { size: 12, weight: 500 })], { gap: 4, borderWidth: 1, borderColor: C.outline, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 }) : ""]),
           { onRow: (k) => (d.invoices[k]?.url ? openUrl(d.invoices[k]!.url!) : undefined) }),
       ], { padding: 20, gap: 12 })] : []),
@@ -1240,11 +1145,11 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
     sectionLabel("Account"),
     row([face(ctx, 40), col([text(youName(ctx), { size: 15, weight: 600 }), meta(ctx.user?.email ?? "", { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }), button("Sign out", signOut, { kind: "secondary", size: "md" })], { gap: 12 }),
     divider(),
-    row([text("Paying", { size: 14 }), grow(), meta(d ? `${d.plan.name} · ${rupees(d.spend.monthPaise)} this month` : "", { size: 13 }), icon("chevron", { size: 16, color: C.meta })], { gap: 8, minHeight: 32 }, open(SCREENS.billing)),
+    row([text("Plan", { size: 14 }), grow(), meta(d ? d.plan.name : "", { size: 13 }), icon("chevron", { size: 16, color: C.meta })], { gap: 8, minHeight: 32 }, open(SCREENS.billing)),
   ], { padding: 18, gap: 12 });
   const yours = listCard([
     listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
-    listRow({ label: "Budget", value: d ? `${rupees(d.spend.monthPaise)} of ${rupees(d.spend.limitPaise)}` : "", onPress: open(SCREENS.budget) }),
+    listRow({ label: "Usage", value: usedLine(meterOf(ctx, d?.usage)), onPress: open(SCREENS.usage) }),
     listRow({ label: "What pings you", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
     listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
     listRow({ label: "This computer helps", value: computerLine(d), onPress: open(SCREENS.computer) }),
@@ -1274,7 +1179,7 @@ const tz = (ctx: BotsCtx) => `tz=${Math.round(ctx.tzOffsetMinutes)}`;
 
 export const youScreens: BotsScreen[] = [
   screen<YouData>({ id: SCREENS.you, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? youDesk(ctx, d) : youPhone(ctx, d)) }),
-  screen<SpendData>({ id: SCREENS.budget, load: (ctx, deps) => deps.api<SpendData>("GET", `/v1/you/spend?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? budgetDesk(ctx, d) : budgetPhone(ctx, d)) }),
+  ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({ id, load: (ctx, deps) => deps.api<UsagePage>("GET", `/v1/you/usage?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? usageDesk(ctx, d) : usagePhone(ctx, d)) })),
   screen<BillingData>({ id: SCREENS.billing, load: (ctx, deps) => deps.api<BillingData>("GET", `/v1/you/billing?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? billingDesk(ctx, d) : billingPhone(ctx, d)) }),
   screen<ComputersData>({ id: SCREENS.computer, load: (_ctx, deps) => deps.api<ComputersData>("GET", "/v1/you/computers"), build: (ctx, d) => (ctx.client === "desktop" ? computerDesk(ctx, d) : computerPhone(ctx, d)) }),
   screen<NotifyData>({ id: SCREENS.notify, load: (ctx, deps) => deps.api<NotifyData>("GET", `/v1/you/notify?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? notifyDesk(ctx, d) : notifyPhone(ctx, d)) }),

@@ -1,6 +1,6 @@
 /**
- * WHAT A PERSON'S OWN PAST JOBS SAY: what a job here usually costs and takes, for the plan's estimate and the rules'
- * "Most jobs here cost ₹4–14". Real numbers from their finished jobs only, never a guess: with fewer than MIN_JOBS done
+ * WHAT A PERSON'S OWN PAST JOBS SAY: what a job here usually takes, for the plan's estimate ("about 12 min"), and what it usually costs
+ * (ours: no screen shows it). Real numbers from their finished jobs only, never a guess: with fewer than MIN_JOBS done
  * there is no estimate, and the screens say nothing rather than a made-up figure. Pure.
  */
 

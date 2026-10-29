@@ -70,7 +70,7 @@ describe("the happy path", () => {
     expect(s.report!.text).toContain("Done: In src/util.ts make slug()");
     expect(s.report!.text).toContain("Trimmed the dashes from both ends of slug().");
     expect(s.report!.text).toContain("Pull request: https://github.com/alice/app/pull/1 (ready for review)");
-    expect(s.report!.text).toMatch(/Cost: ₹0\.\d\d of ₹30\./);
+    expect(s.report!.text).not.toMatch(/Cost|₹/);
     expect(s.report!.text).toContain("What next");
     expect(r.toldOf("job_done")).toHaveLength(1);
     // What the person is charged is what the model calls cost, drawn from the job's own budget.

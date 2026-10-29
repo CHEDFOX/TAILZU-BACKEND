@@ -57,6 +57,10 @@ export interface RouteCall {
   maxPaise: number;
   /** A road that streams calls this with each piece of text as it is written. */
   onText?: (piece: string) => void;
+  /** The pieces sent so far are void (a streamed model failed; the next starts over). */
+  onReset?: () => void;
+  /** What it is doing now, as a stage word ("code:read:src/cart.ts"): for the line under the carrying bot. */
+  onStep?: (stage: string) => void;
 }
 
 export interface TextOut { text: string; paise: number }
@@ -104,6 +108,17 @@ export interface HandlerDeps {
   rooms?: (userId: string, projectId: string) => Promise<Pick<LiveFiles, "read" | "grep"> | null>;
 }
 
+/** A road's words streamed as the model writes them, when the caller listens: what to hand the model call, and whether any were sent. */
+function streamed(c: RouteCall): { ask: { onText?: (piece: string) => void; onReset?: () => void }; sent(): boolean } {
+  let sent = false;
+  if (!c.onText) return { ask: {}, sent: () => false };
+  const onText = c.onText;
+  return {
+    ask: { onText: (piece) => { sent = true; onText(piece); }, onReset: () => { sent = false; c.onReset?.(); } },
+    sent: () => sent,
+  };
+}
+
 const model = (d: HandlerDeps, c: RouteCall): FrontModel => ({ ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), userId: c.userId, ...(c.signal ? { signal: c.signal } : {}) });
 const ctxOf = (d: HandlerDeps, c: RouteCall, maxPaise: number): ModelCtx => ({ ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), userId: c.userId, budget: { maxPaise }, ...(c.signal ? { signal: c.signal } : {}) });
 const esc = (s: string): string => s.replace(/["<>\n]/g, " ").slice(0, 120);
@@ -133,10 +148,12 @@ async function replyDefault(d: HandlerDeps, c: RouteCall & { files: ReadFile[] }
     return d.assistant(c);
   }
   const tier = c.decision.tier === "vision" ? "cheap" : c.decision.tier;
+  const words = streamed(c);
   const r = await askText(model(d, c), {
     role: "front_reply", tier, purpose: "front.reply", user: replyUser(c, c.files), maxTokens: REPLY_TOKENS[c.decision.shape.length], budget: { maxPaise: c.maxPaise },
+    ...words.ask,
   });
-  c.onText?.(r.text);
+  if (!words.sent()) c.onText?.(r.text);
   return { text: r.text, paise: r.paise };
 }
 
@@ -168,12 +185,14 @@ function chatOf(d: HandlerDeps, c: RouteCall): { chat: CodeChat; projectId: stri
 async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<CodeAnswerOut> {
   const { chat, projectId } = chatOf(d, c);
   const v = c.decision.shape.visual;
+  const words = streamed(c);
   const out = await chat.answer({
     userId: c.userId, projectId, question: c.said ?? c.message, ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}),
     ...(c.decision.followUp ? { context: c.decision.followUp } : {}), tier: c.decision.tier === "vision" ? "cheap" : c.decision.tier, length: c.decision.shape.length,
     diagram: !!v && v.kind === "diagram" && !v.offer && v.via === "artifact", maxPaise: c.maxPaise, ...(c.signal ? { signal: c.signal } : {}),
+    ...words.ask, ...(c.onStep ? { onStep: c.onStep } : {}),
   });
-  c.onText?.(out.text);
+  if (!words.sent()) c.onText?.(out.text);
   return { text: out.text, paise: out.paise, ...(out.notes.length ? { notes: out.notes } : {}), ...(out.diagram ? { diagram: out.diagram } : {}) };
 }
 

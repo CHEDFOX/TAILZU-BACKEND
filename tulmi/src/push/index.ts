@@ -82,7 +82,7 @@ export async function notifyCodeJob(userId: string, kind: NotifyKind, data: Noti
     await engine?.notify(userId, {
       kind: CODE_PUSH[kind], key: `${data.jobId}:${data.at}`,
       vars: {
-        task: data.task, cost: `₹${((data.estimatePaise ?? 0) / 100).toFixed(2).replace(/\.00$/, "")}`,
+        task: data.task,
         where: MOVED_TO[data.to ?? ""] ?? "somewhere else", reason: pushReason(kind, data.reason),
       },
       data: { jobId: data.jobId },

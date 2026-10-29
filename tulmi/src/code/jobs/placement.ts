@@ -80,7 +80,7 @@ export function githubMinutesLeft(freeMinutes: number, usedMinutes: number, head
   return Math.max(0, Math.floor(free * (1 - headroom)) - used);
 }
 
-/** Paise as rupees for a sentence: 1250 is "₹12.50", 200 is "₹2". */
+/** Paise as rupees, for our own logs (never a person's sentence): 1250 is "₹12.50", 200 is "₹2". */
 export function rupees(paise: number): string {
   const p = Math.max(0, Math.round(paise));
   const whole = Math.floor(p / 100);
@@ -109,15 +109,15 @@ export function choosePlacement(ctx: PlacementCtx): PlacementChoice {
       return {
         placement: "paid",
         reason: ctx.paidRule === "auto"
-          ? `Paid compute is on automatic and this fits your monthly limit (about ${rupees(estimatePaise)}).`
-          : `You said yes to paid compute for this job (about ${rupees(estimatePaise)}).`,
+          ? "Paid compute is on automatic and this fits your monthly limit."
+          : "You said yes to paid compute for this job.",
       };
     }
     return {
       ask: true, estimatePaise,
       reason: ctx.paidRule === "auto"
-        ? `${cap(noPc)} and ${noGithub}, and paid compute (about ${rupees(estimatePaise)}) would go over your monthly automatic limit. It needs your yes.`
-        : `${cap(noPc)} and ${noGithub}. Paid compute would cost about ${rupees(estimatePaise)} and you asked to be asked first.`,
+        ? `${cap(noPc)} and ${noGithub}, and paid compute would go over your monthly automatic limit. It needs your yes.`
+        : `${cap(noPc)} and ${noGithub}. Paid compute needs your yes, as you asked.`,
     };
   }
 

@@ -18,7 +18,7 @@ import type { Connectors } from "../connectors/index.js";
 import type { PushVerdict } from "../push/engine.js";
 import { pushEngine } from "../push/index.js";
 import { clock, inQuietHours, type YouSettings } from "./settings.js";
-import { rupeesOf, type Spending } from "./limits.js";
+import type { Spending } from "./limits.js";
 
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
@@ -57,12 +57,11 @@ export function pushGate(spending: Spending) {
   };
 }
 
-/** "5 jobs done, 1 needs you, ₹11 spent." The day in a line, or null when nothing happened. */
-export function summaryLine(d: { done: number; needs: number; spentPaise: number }): string | null {
+/** "5 things done, 1 needs you." The day in a line, or null when nothing happened. What the day cost is ours: never in the line. */
+export function summaryLine(d: { done: number; needs: number; spentPaise?: number }): string | null {
   const parts: string[] = [];
   if (d.done) parts.push(`${d.done} ${d.done === 1 ? "thing" : "things"} done`);
   if (d.needs) parts.push(`${d.needs} ${d.needs === 1 ? "needs" : "need"} you`);
-  if (d.spentPaise > 0) parts.push(`${rupeesOf(d.spentPaise)} spent`);
   return parts.length ? `${parts.join(", ")}.` : null;
 }
 

@@ -74,7 +74,7 @@ describe("the budget", () => {
     expect(s.report!.costPaise).toBe(end.spentPaise);
   });
 
-  it("asks for more money instead of starting a team the budget cannot pay, and goes on when it comes", async () => {
+  it("asks to keep going instead of starting a team the job cannot pay for, and goes on when told", async () => {
     const r = await teamRig();
     allGood(r);
     // 600 paise: the reserve (120) and 150 for each of four helpers is 720.
@@ -84,7 +84,8 @@ describe("the budget", () => {
     expect(j.waitingOn).toBe("budget");
     const s = await r.stateNow(job.id);
     expect(s.report!.outcome).toBe("budget");
-    expect(s.report!.text).toContain("ran out of budget");
+    expect(s.report!.text).toContain("I paused to check with you");
+    expect(s.report!.text).not.toMatch(/₹/);
     expect(await r.helpers(job.id)).toHaveLength(0);
     expect(s.team!.stage).toBe("run");
     // The split was not asked for again: the team is kept.
@@ -112,7 +113,7 @@ describe("the budget", () => {
     // The others were built, reviewed and merged; the fourth stopped, and says so.
     expect([1, 2, 3].map((n) => by(n).status)).toEqual(["merged", "merged", "merged"]);
     expect(by(4).status).toBe("exhausted");
-    expect(by(4).reason).toContain("used up its share of the budget");
+    expect(by(4).reason).toContain("used its share of this job");
     const stopped = (await r.helpers(job.id)).find((h) => h.state.part!.id === 4)!;
     const sj = await r.jobNow(stopped.id);
     expect(sj.state).toBe("waiting_for_you");

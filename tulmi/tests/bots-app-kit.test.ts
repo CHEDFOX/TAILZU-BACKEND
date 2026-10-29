@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Node, SvgShape } from "../../shared/types/sdui.js";
 import {
-  blip, botAvatar, button, chips, deskPage, FACE, listCard, listRow, meter, page, phonePage, rupees, duration, segmented,
+  blip, botAvatar, button, chips, deskPage, FACE, listCard, listRow, meter, page, percent, phonePage, usageMeter, whenWords, duration, segmented,
   statusMark, switchRow, tabGlyph, text, timeline, title, C,
 } from "../src/experience/bots/kit.js";
 import { ctxFor, sampleLive } from "../src/experience/bots/fixtures.js";
@@ -17,9 +17,16 @@ describe("the kit's text", () => {
     expect(text("x", { mono: true }).style?.fontFamily).toBe(FACE.mono);
     expect(title("Budget").style).toMatchObject({ fontSize: 26, fontFamily: FACE.bold, letterSpacing: -0.5 });
   });
-  it("money and time read as people say them", () => {
-    expect(rupees(18400)).toBe("₹184");
-    expect(rupees(640)).toBe("₹6.40");
+  it("use and time read as people say them, and no money at all", () => {
+    expect(percent(0.64)).toBe("64%");
+    expect(percent(1.7)).toBe("100%");
+    const IST = 330, now = Date.UTC(2026, 9, 28, 6, 0);
+    expect(whenWords(Date.UTC(2026, 9, 29, 18, 30), now, IST)).toBe("Fri");
+    expect(whenWords(Date.UTC(2026, 9, 29, 3, 30), now, IST)).toBe("Thu 9 am");
+    expect(whenWords(Date.UTC(2026, 10, 7, 18, 30), now, IST)).toBe("Sun 8 Nov");
+    const m = JSON.stringify(usageMeter("This stretch", 0.64, { resets: "Resets Thu 9 am" }));
+    expect(m).toContain("64% used");
+    expect(m).not.toMatch(/₹|paise/);
     expect(duration(45)).toBe("45 min");
     expect(duration(124)).toBe("2 h");
     expect(duration(80)).toBe("1 h 20 min");
@@ -58,13 +65,13 @@ describe("the living tab icons", () => {
     expect(calm.slice(1, 4).every((s) => s.fill === "#ffffff")).toBe(true);
     expect(shapesOf(tabGlyph("activity", true, live))[1]!.motion).toBe("pop");
   });
-  it("You: the ring is the month's spend, drawn when the tab opens; at the limit it closes", () => {
-    const rest = shapesOf(tabGlyph("you", false, { ...live, spent: 184 / 500 }));
+  it("You: the ring is how much of this stretch is used, drawn when the tab opens; at the limit it closes", () => {
+    const rest = shapesOf(tabGlyph("you", false, { ...live, used: 184 / 500 }));
     expect(rest[1]).toMatchObject({ dash: "20.8 56.55", rotate: -90, stroke: "#8a8a8a" });
     expect(rest[1]!.motion).toBeUndefined();
-    expect(shapesOf(tabGlyph("you", true, { ...live, spent: 184 / 500 }))[1]).toMatchObject({ motion: "draw", stroke: C.ink });
-    expect(shapesOf(tabGlyph("you", false, { ...live, spent: 3 }))[1]!.dash).toBe("56.5 56.55");
-    expect(shapesOf(tabGlyph("you", false, { ...live, spent: 0 }))).toHaveLength(2);
+    expect(shapesOf(tabGlyph("you", true, { ...live, used: 184 / 500 }))[1]).toMatchObject({ motion: "draw", stroke: C.ink });
+    expect(shapesOf(tabGlyph("you", false, { ...live, used: 3 }))[1]!.dash).toBe("56.5 56.55");
+    expect(shapesOf(tabGlyph("you", false, { ...live, used: 0 }))).toHaveLength(2);
   });
 });
 
@@ -108,7 +115,7 @@ describe("bots and controls", () => {
     expect(checkTree(listCard([r, listRow({ label: "Visuals", value: "Auto" })]))).toEqual([]);
   });
   it("a meter and a timeline", () => {
-    const m = meter(420, 3000, { label: "Spent", valueText: "₹4.20 of ₹30" });
+    const m = meter(420, 3000, { label: "This stretch", valueText: "14% used" });
     expect(m.children![1]!.children![0]!.style!.width).toBe("14.0%");
     const t = timeline([{ mark: "needs", title: "Plan bot needs you" }, { mark: "working", color: "#4F7A3A", title: "Checkout redesign" }]);
     expect(t.children).toHaveLength(2);

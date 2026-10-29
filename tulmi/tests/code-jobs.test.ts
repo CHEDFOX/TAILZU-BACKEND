@@ -473,7 +473,7 @@ describe("paid compute", () => {
     const j = await r.job();
     const { job, step } = await r.jobs.requestExec(j.id, ["pytest"], 600, 5);
     expect(job).toMatchObject({ state: "waiting_for_you", waitingOn: "paid", placement: "none", leaseHolder: null, leaseEpoch: 0 });
-    expect(job.reason).toMatch(/about ₹5 and you asked to be asked first/);
+    expect(job.reason).toMatch(/Paid compute needs your yes, as you asked\.$/);
     expect(step.status).toBe("pending");
     expect(r.toldOf("compute_ask")).toEqual([{
       userId: "alice", kind: "compute_ask",

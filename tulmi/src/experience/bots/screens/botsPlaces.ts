@@ -11,7 +11,7 @@
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
-  botLook, box, button, C, call, card, chip, col, divider, FACE, grid, grow, icon, listCard, listRow, meta, notice, roundButton, row, rupees, sectionLabel,
+  botLook, box, button, C, call, card, chip, col, divider, FACE, grid, grow, icon, listCard, listRow, meta, notice, roundButton, row, sectionLabel,
   seq, statusMark, text, when, type BotsCtx,
 } from "../kit.js";
 
@@ -33,7 +33,7 @@ export interface PlanTravelView {
 export interface StayView {
   id: string; name: string; area: string; url: string; host: string; nightPaise: number | null; rating: number | null; ratingOf: 5 | 10 | null;
   reviews: number | null; by: "you" | "chat" | "web"; picked: boolean;
-  label: "Your pick" | "Travel bot's pick" | "Cheaper" | "Closer" | "Better rated" | ""; minutes: number | null; mode: "walk" | "drive" | null;
+  label: "Your pick" | "Travel bot's pick" | "Closer" | "Better rated" | ""; minutes: number | null; mode: "walk" | "drive" | null;
   totalPaise: number | null; stars: number | null;
 }
 export type Sky = "clear" | "cloudy" | "rain" | "storm" | "snow";
@@ -56,7 +56,7 @@ interface TripLite { id: string; place: string; when: string; packing: Array<{ t
 interface Opened { label: string; url: string; at: number; said: string }
 
 /** The trip screen's own state (forms), to merge into its page state. */
-export const TRIP_STATE = { s_open: false, s_name: "", s_url: "", s_price: "", s_area: "", spot: "" };
+export const TRIP_STATE = { s_open: false, s_name: "", s_url: "", s_area: "", spot: "" };
 /** The plan screen's own state. */
 export const PLAN_STATE = { home_edit: false, home: "" };
 
@@ -225,10 +225,12 @@ export function planFoot(_ctx: BotsCtx, t: PlanTravelView | undefined): Node[] {
 // ===================================================================== the Travel bot
 
 const SEA = () => botLook("travel").color;
-const LABEL_ORDER = ["Your pick", "Travel bot's pick", "Cheaper", "Closer", "Better rated", ""];
+const LABEL_ORDER = ["Your pick", "Travel bot's pick", "Closer", "Better rated", ""];
 const STAYING = /hotel|stay|room|booking\.com|airbnb|hostel|resort|homestay|agoda|goibibo|makemytrip|oyo|treebo/i;
 
-const sortStays = (s: StayView[]) => [...s].sort((a, b) => LABEL_ORDER.indexOf(a.label) - LABEL_ORDER.indexOf(b.label) || (a.nightPaise ?? Infinity) - (b.nightPaise ?? Infinity));
+/** A stay as the screens draw it: a "Cheaper" label from before the app showed no money is no label. */
+const shown = (s: StayView): StayView => ((s.label as string) === "Cheaper" ? { ...s, label: "" } : s);
+const sortStays = (s: StayView[]) => [...s].sort((a, b) => LABEL_ORDER.indexOf(a.label) - LABEL_ORDER.indexOf(b.label) || (a.minutes ?? Infinity) - (b.minutes ?? Infinity));
 const ratingWords = (s: StayView) => (s.rating === null ? null : `${s.ratingOf === 10 ? `${s.rating}/10` : s.rating}${s.reviews ? ` · ${plural(s.reviews, "review")}` : ""}`);
 const minutesWords = (s: StayView, main: string | null) => (s.minutes === null || !main ? null : `${s.minutes} min ${s.mode === "walk" ? "walk " : ""}to ${main}`);
 
@@ -271,11 +273,11 @@ export function spotsPart(_ctx: BotsCtx, trip: TripLite, x: TripExtrasView | und
 }
 
 function stayLines(s: StayView, x: TripExtrasView): string[] {
-  return [
-    ratingWords(s), minutesWords(s, x.main),
-    s.totalPaise !== null && x.dates?.nights ? `${rupees(s.totalPaise)} for ${plural(x.dates.nights, "night")}` : null,
-  ].filter((l): l is string => !!l);
+  return [ratingWords(s), minutesWords(s, x.main)].filter((l): l is string => !!l);
 }
+
+/** Where the price is: on the booking site, never here. */
+const pricesOn = (s: StayView) => (s.host ? `Prices on ${s.host}` : "Prices on their site");
 
 function stayCard(trip: TripLite, s: StayView, x: TripExtrasView): Node {
   const top = s.label === "Your pick" || s.label === "Travel bot's pick";
@@ -288,27 +290,24 @@ function stayCard(trip: TripLite, s: StayView, x: TripExtrasView): Node {
         write("DELETE", `${A}/trip/${enc(trip.id)}/stays/${enc(s.id)}`, undefined, "Removed")),
     ], { alignItems: "flex-start" }),
     col([text(s.name, { size: 14, weight: 600, lineHeight: 19, lines: 2 }), ...(s.area ? [meta(s.area, { size: 12, lines: 1 })] : [])], { gap: 1 }),
-    s.nightPaise !== null
-      ? row([text(rupees(s.nightPaise), { size: 15, weight: 700, lineHeight: 20 }), meta(" a night", { size: 12 })], { alignItems: "flex-end" })
-      : meta("Price on their site", { size: 12 }),
     ...stayLines(s, x).map((l) => text(l, { size: 12, color: C.grey70, lineHeight: 16 })),
     ...(from ? [text(from, { size: 11, color: C.idle, lineHeight: 14, lines: 1 })] : []),
     grow(),
     row([
       chip(s.picked ? "Picked" : "Pick", { selected: s.picked, onPress: write("PUT", `${A}/trip/${enc(trip.id)}/stays/${enc(s.id)}/pick`, undefined, s.picked ? "Not picked" : "Picked") }),
-      ...(s.url ? [chip("Open", { onPress: openUrl(s.url) })] : []),
+      ...(s.url ? [chip("See prices", { onPress: openUrl(s.url) })] : []),
     ], { gap: 6, flexWrap: "wrap" }),
   ], { gap: 6, padding: 12, borderRadius: 18, borderWidth: top ? 1.5 : 1, borderColor: top ? SEA() : C.line, flexGrow: 1 });
 }
 
 function addStayForm(trip: TripLite): Node {
-  const add = ifFilled("s_name", write("POST", `${A}/trip/${enc(trip.id)}/stays`, { name: "$state.s_name", url: "$state.s_url", price: "$state.s_price", area: "$state.s_area" }, "Added",
-    seq(setState("s_open", false), setState("s_name", ""), setState("s_url", ""), setState("s_price", ""), setState("s_area", ""))), "Write the stay's name");
+  const add = ifFilled("s_name", write("POST", `${A}/trip/${enc(trip.id)}/stays`, { name: "$state.s_name", url: "$state.s_url", area: "$state.s_area" }, "Added",
+    seq(setState("s_open", false), setState("s_name", ""), setState("s_url", ""), setState("s_area", ""))), "Write the stay's name");
   return when({ truthy: "s_open" }, card([
     text("Add a stay to compare", { size: 15, weight: 600, lineHeight: 20 }),
     inputBox([field("stay-name", "s_name", "Name: Shanti Residency")]),
     inputBox([field("stay-url", "s_url", "Link (optional)", { keyboard: "url" })]),
-    row([box([inputBox([field("stay-price", "s_price", "₹ a night", { keyboard: "numeric" })])], { flexGrow: 1, flexBasis: 0 }), box([inputBox([field("stay-area", "s_area", "Area")])], { flexGrow: 1, flexBasis: 0 })], { gap: 10 }),
+    inputBox([field("stay-area", "s_area", "Area")]),
     row([button("Add", add, { size: "md" }), button("Cancel", setState("s_open", false), { kind: "quiet", size: "md" })], { gap: 8 }),
   ], { gap: 10 }));
 }
@@ -330,36 +329,33 @@ function searchLine(x: TripExtrasView, place: string): Node[] {
 /** Stays side by side: two cards a row on the phone (TravelBot), the window's table (DTravelBot). */
 export function staysPart(ctx: BotsCtx, trip: TripLite, x: TripExtrasView | undefined, opened: Opened[], o: { desk?: boolean } = {}): Node {
   if (!x) return col([]);
-  const stays = sortStays(x.stays);
+  const stays = sortStays(x.stays.map(shown));
   const find = x.canFind && !x.finding ? write("POST", `${A}/trip/${enc(trip.id)}/stays/find`, undefined, "Looking for stays") : undefined;
   const actions = row([
     ...(find ? [button(stays.length ? "Find more" : `Find stays in ${trip.place}`, find, { kind: stays.length ? "secondary" : "primary", size: "md", icon: "search" })] : []),
     button("Add one", setState("s_open", true), { kind: "secondary", size: "md", icon: "plus" }),
   ], { gap: 8, flexWrap: "wrap" });
-  const head = row([sectionLabel(stays.length ? `Stay · ${plural(stays.length, "option")}` : "Stay"), grow(), meta("You book and pay on their site", { size: 12 })]);
+  const head = row([sectionLabel(stays.length ? `Stay · ${plural(stays.length, "option")}` : "Stay"), grow(), meta("Prices and booking on their site", { size: 12 })]);
   if (!stays.length) {
     return col([head, card([
       text("Nothing to compare yet", { size: 15, weight: 600, lineHeight: 20 }),
-      meta(`Travel bot puts stays side by side: price a night, rating${x.canMeasure ? ", and time to where you'll be" : ""}. It never books or pays.`, { size: 13 }),
+      meta(`Travel bot puts stays side by side: the area, the rating${x.canMeasure ? " and the time to where you'll be" : ""}, with a link to see prices. It never books or pays.`, { size: 13 }),
       actions,
     ], { gap: 10 }), ...fromChat(trip, x, opened), ...searchLine(x, trip.place), addStayForm(trip)], { gap: 8 });
   }
   const body = o.desk ? stayTable(ctx, trip, stays.slice(0, 3), x) : grid(stays.map((s) => stayCard(trip, s, x)), 2, 10);
   const rest = o.desk && stays.length > 3 ? [listCard(stays.slice(3).map((s) => listRow({
-    label: s.name, sub: [s.area, s.nightPaise !== null ? `${rupees(s.nightPaise)} a night` : null, minutesWords(s, x.main)].filter(Boolean).join(" · "),
-    right: row([chip("Pick", { onPress: write("PUT", `${A}/trip/${enc(trip.id)}/stays/${enc(s.id)}/pick`, undefined, "Picked") }), ...(s.url ? [chip("Open", { onPress: openUrl(s.url) })] : [])], { gap: 6 }),
+    label: s.name, sub: [s.area, ratingWords(s), minutesWords(s, x.main)].filter(Boolean).join(" · "),
+    right: row([chip("Pick", { onPress: write("PUT", `${A}/trip/${enc(trip.id)}/stays/${enc(s.id)}/pick`, undefined, "Picked") }), ...(s.url ? [chip("See prices", { onPress: openUrl(s.url) })] : [])], { gap: 6 }),
   })))] : [];
   return col([head, body, ...rest, ...fromChat(trip, x, opened), ...searchLine(x, trip.place), actions, addStayForm(trip)], { gap: 10 });
 }
 
 /** The window's comparison: a column of row names, a column a stay (DTravelBot "Stay · 2 options"). */
 function stayTable(_ctx: BotsCtx, trip: TripLite, stays: StayView[], x: TripExtrasView): Node {
-  const nights = x.dates?.nights ?? 0;
   const rowsOf: Array<{ name: string; value: (s: StayView) => string; strong?: boolean }> = [
     { name: "Area", value: (s) => s.area || "—" },
-    { name: "A night", value: (s) => (s.nightPaise !== null ? rupees(s.nightPaise) : "On their site") },
-    ...(nights ? [{ name: plural(nights, "night"), value: (s: StayView) => (s.totalPaise !== null ? rupees(s.totalPaise) : "—"), strong: true }] : []),
-    { name: "Rating", value: (s) => ratingWords(s) ?? "—" },
+    { name: "Rating", value: (s) => ratingWords(s) ?? "—", strong: true },
     ...(x.main && x.canMeasure ? [{ name: `To ${x.main.length > 14 ? "the place" : x.main}`, value: (s: StayView) => (s.minutes !== null ? `${s.minutes} min${s.mode === "walk" ? " walk" : ""}` : "—") }] : []),
     { name: "Where", value: (s) => s.host || (s.by === "you" ? "Added by you" : "—") },
   ];
@@ -377,7 +373,7 @@ function stayTable(_ctx: BotsCtx, trip: TripLite, stays: StayView[], x: TripExtr
       row([
         button(s.picked ? "Picked" : "Pick this", write("PUT", `${A}/trip/${enc(trip.id)}/stays/${enc(s.id)}/pick`, undefined, s.picked ? "Not picked" : "Picked"), { kind: s.picked ? "primary" : "secondary", size: "md", wide: true }),
       ], { paddingTop: 10 }),
-      ...(s.url ? [row([text("Open their site", { size: 13, weight: 500, lineHeight: 18 })], { minHeight: 32, justifyContent: "center", alignItems: "center" }, openUrl(s.url))] : []),
+      ...(s.url ? [row([text(pricesOn(s), { size: 13, weight: 500, lineHeight: 18, lines: 1 })], { minHeight: 32, justifyContent: "center", alignItems: "center" }, openUrl(s.url))] : []),
     ], { flexGrow: 1, flexBasis: 0, minWidth: 0, borderWidth: top ? 1.5 : 1, borderColor: top ? SEA() : C.line, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14 });
   });
   return row([names, ...columns], { gap: 10, alignItems: "stretch" });
@@ -409,7 +405,7 @@ export function tripPlanPart(ctx: BotsCtx, trip: TripLite, x: TripExtrasView | u
     trip.spots?.forEach((sp, i) => {
       const [name, ...where] = sp.split(",").map((s) => s.trim());
       const near = i === 0 && stay?.minutes !== null && stay?.minutes !== undefined
-        ? [`${stay.minutes} min from ${stay.picked ? "your pick" : "the pick"}`, ...others.slice(0, 1).map((s) => `${s.minutes} from the ${s.label === "Cheaper" ? "cheaper one" : s.name}`)].join(", ")
+        ? [`${stay.minutes} min from ${stay.picked ? "your pick" : "the pick"}`, ...others.slice(0, 1).map((s) => `${s.minutes} from ${s.name}`)].join(", ")
         : null;
       kids.push(row([icon("pin", { size: 16, color: i === 0 ? SEA() : C.meta }), col([text(name ?? sp, { size: 14, lineHeight: 19 }), ...([where.join(", "), near].filter(Boolean).length ? [meta([where.join(", "), near].filter(Boolean).join(" · "), { size: 12 })] : [])], { gap: 2, flexShrink: 1 })], { gap: 10, alignItems: "flex-start" }));
     });

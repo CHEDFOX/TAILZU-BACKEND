@@ -9,7 +9,7 @@
  * answers through the front door (its own page), not here.
  */
 import { randomUUID } from "node:crypto";
-import { BotError, LIMITS, type BotAnswer, type Bots } from "../bots/index.js";
+import { BotError, LIMITS, type AskInput, type BotAnswer, type Bots } from "../bots/index.js";
 import { table, type Table } from "./rows.js";
 
 export interface ChatTurnRow {
@@ -56,7 +56,9 @@ export class BotChat {
   }
 
   /** `attached`: what the person's spaces shared with this bot (shared.ts forBot), read as data. */
-  async send(userId: string, slug: string, message: unknown, signal?: AbortSignal, attached: Array<{ name: string; kind: string; text: string }> = []): Promise<{ answer: BotAnswer; turns: ChatTurn[] }> {
+  /** `live`: the answer's words as they are written and what it is doing (an app that listens: live/askStream.ts). */
+  async send(userId: string, slug: string, message: unknown, signal?: AbortSignal, attached: Array<{ name: string; kind: string; text: string }> = [],
+    live: Pick<AskInput, "onText" | "onReset" | "emit"> = {}): Promise<{ answer: BotAnswer; turns: ChatTurn[] }> {
     if (typeof message !== "string" || !message.trim()) throw new BotError("bad_request", "Type what you want to ask first.");
     if (message.length > LIMITS.message) throw new BotError("too_large", `A message may be ${LIMITS.message} characters at most.`, 413);
     const found = await this.bots.resolve(userId, slug);
@@ -65,7 +67,7 @@ export class BotChat {
     const said = message.trim();
     const before = await this.recent(userId, found.def.slug, LIMITS.history.turns);
     const history = before.map((t) => ({ role: t.role === "me" ? "user" as const : "assistant" as const, content: t.text.slice(0, LIMITS.history.chars) }));
-    const answer = await this.bots.ask(userId, found.def.slug, { message: said, history, ...(signal ? { signal } : {}), ...(attached.length ? { attached } : {}) });
+    const answer = await this.bots.ask(userId, found.def.slug, { message: said, history, ...(signal ? { signal } : {}), ...(attached.length ? { attached } : {}), ...live });
     const at = this.now();
     const mine: ChatTurnRow = { id: randomUUID(), user_id: userId, bot: found.def.slug, role: "me", text: said, extra: {}, at_ms: at };
     const theirs: ChatTurnRow = {

@@ -19,7 +19,7 @@ const PURPOSE = {
   code: "Reads your projects, answers questions about the code, and changes it through pull requests.",
   keybot: "Writes, rewrites and replies in your own voice, in any language you mix.",
   plan: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.",
-  travel: "Plans trips: routes, stays, timings and costs, with sources.",
+  travel: "Plans trips: routes, stays and timings, with sources.",
 } as const;
 
 const DEFS: readonly BotDef[] = [
@@ -65,7 +65,8 @@ const DEFS: readonly BotDef[] = [
     id: "travel", ownerId: null, slug: "travel", name: "Travel bot", colour: "clay",
     purpose: PURPOSE.travel,
     principles: [
-      "Give dates and prices with their source and the day they were read.",
+      "Give dates with their source and the day they were read.",
+      "Never quote prices: compare stays by area, distance and rating, and link to the booking site for prices.",
       "Offer two or three options, not a long list.",
       "Say what needs a visa, a booking or a ticket in advance.",
       "Open maps and booking apps for the person to finish there; never pay for them.",

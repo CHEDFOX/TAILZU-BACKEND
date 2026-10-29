@@ -87,6 +87,9 @@ export interface AskInput {
   /** Files attached to the message, already read, and what that cost (the front door reads them): see run.ts. */
   attached?: Attached[];
   extraPaise?: number;
+  /** The answer's words as they are written, and word that the ones so far are void (run.ts). */
+  onText?: (piece: string) => void;
+  onReset?: () => void;
 }
 
 export interface KeyAnswer {
@@ -328,6 +331,7 @@ export class Bots {
       ...(i.projectId ? { projectId: i.projectId } : {}), ...(i.history?.length ? { history: i.history } : {}), ...(i.signal ? { signal: i.signal } : {}),
       ...(i.emit ? { emit: i.emit } : {}), ...(i.ctx ? { ctx: i.ctx } : {}), ...(i.pickedBy ? { pickedBy: i.pickedBy } : {}),
       ...(i.attached?.length ? { attached: i.attached } : {}), ...(i.extraPaise ? { extraPaise: i.extraPaise } : {}),
+      ...(i.onText ? { onText: i.onText } : {}), ...(i.onReset ? { onReset: i.onReset } : {}),
     };
   }
 

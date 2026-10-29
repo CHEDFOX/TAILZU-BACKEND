@@ -77,7 +77,8 @@ export const REWRITE_SMALL_SHARE = 0.25;
 const receipt = (c: Change, what: string): string => {
   const kb = c.how.artifactChars !== undefined ? ` (${(c.how.artifactChars / 1024).toFixed(1)} KB)` : "";
   const warn = c.how.warnings.length ? ` Warning: ${c.how.warnings.join(" ")}` : "";
-  return `${what} "${c.artifact.title}"${kb}: artifact ${c.artifact.id}, now version ${c.version}. It cost ${c.paise} paise (${c.totalPaise} in all for this artifact).${warn}`;
+  // No cost in it: what the model reads it may say to the person, and the app shows no money.
+  return `${what} "${c.artifact.title}"${kb}: artifact ${c.artifact.id}, now version ${c.version}.${warn}`;
 };
 
 const parsed = (raw: string): Record<string, unknown> | null => {

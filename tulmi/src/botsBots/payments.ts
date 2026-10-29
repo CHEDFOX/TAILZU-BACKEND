@@ -1,7 +1,8 @@
 /**
- * PAYMENT REQUESTS IN A SPACE: someone who may ask ("ask for payments") asks for an amount to a UPI ID; someone who may approve says
- * yes or no. Nothing here moves money: a yes hands the approver the UPI payment, filled in, to check and pay in their own UPI app
- * (bots.approve, the app's one way to pay), and they say when they have.
+ * PAYMENT REQUESTS IN A SPACE: someone who may ask ("ask for payments") asks for a payment to a UPI ID, saying what it is for; someone who
+ * may approve says yes or no. No amount: the app shows no money (migration 0055). Nothing here moves money: a yes hands the approver the UPI
+ * payment, the payee filled in, and their own UPI app asks them the amount and their PIN (bots.approve, the app's one way to pay); they say
+ * when they have paid. An amount an older client sends is kept on record and never shown or passed on.
  *
  *   list(user, space)                        the space's requests, newest first (its history)
  *   ask(user, space, { amount, to, name, note })
@@ -33,7 +34,6 @@ const OPEN_MAX = 30;
 const VPA = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const rupeesOf = (p: number) => `₹${(p / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 
 /** "1240", "1,240.50", "₹ 99": paise, or NaN. */
 export function paiseOf(v: unknown): number {
@@ -43,9 +43,9 @@ export function paiseOf(v: unknown): number {
   return /^\d{1,7}(\.\d{1,2})?$/.test(s) ? Math.round(Number(s) * 100) : NaN;
 }
 
-/** The UPI payment for a request, as bots.approve reads it. */
-export function upiFor(r: Pick<PaymentRow, "payee_vpa" | "payee_name" | "amount_paise" | "note">): string | null {
-  const q = new URLSearchParams({ pa: r.payee_vpa, pn: r.payee_name, am: (r.amount_paise / 100).toFixed(2), cu: "INR", ...(r.note ? { tn: r.note } : {}) });
+/** The UPI payment for a request, as bots.approve reads it: the payee and what for, no amount (the person types it in UPI). */
+export function upiFor(r: Pick<PaymentRow, "payee_vpa" | "payee_name" | "note">): string | null {
+  const q = new URLSearchParams({ pa: r.payee_vpa, pn: r.payee_name, cu: "INR", ...(r.note ? { tn: r.note } : {}) });
   return upiOf(`upi://pay?${q.toString()}`)?.link ?? null;
 }
 
@@ -81,8 +81,8 @@ export class Payments {
 
   async ask(userId: string, spaceId: string, b: Record<string, unknown>): Promise<PaymentView> {
     const a = await this.spaces.need(userId, spaceId, "askPay");
-    const amount = paiseOf(b.amount);
-    if (!(amount > 0 && amount <= PAY_MAX_PAISE)) throw new BotError("bad_amount", "Say how much, up to ₹1,00,000.");
+    const given = b.amount === undefined || b.amount === null || b.amount === "" ? 0 : paiseOf(b.amount);
+    const amount = given > 0 && given <= PAY_MAX_PAISE ? given : 0;
     const vpa = clean(b.to, 320);
     if (!VPA.test(vpa)) throw new BotError("bad_vpa", "That UPI ID doesn't look right. It's like name@okhdfcbank.");
     const name = clean(b.name, 80) || vpa;
@@ -94,7 +94,7 @@ export class Payments {
     };
     if (!upiFor(r)) throw new BotError("bad_vpa", "That UPI ID doesn't look right. It's like name@okhdfcbank.");
     await this.rows.insert(r);
-    await this.spaces.note(spaceId, userId, "pay", `${a.me.name} asked for ${rupeesOf(amount)} to ${name}${note ? ` for ${note}` : ""}`);
+    await this.spaces.note(spaceId, userId, "pay", `${a.me.name} asked for a payment to ${name}${note ? ` for ${note}` : ""}`);
     await this.spaces.changed(spaceId);
     return this.view(userId, r, a.perms.includes("approve"));
   }
@@ -117,7 +117,7 @@ export class Payments {
     if (!(await this.rows.update({ id, space_id: spaceId, status: "waiting" }, { status, decided_by: userId, decided_name: a.me.name, decided_ms: at }))) {
       throw new BotError("answered", "That request has been answered already.", 409);
     }
-    await this.spaces.note(spaceId, userId, "pay", `${a.me.name} ${status === "approved" ? "approved" : "said no to"} ${rupeesOf(Number(r.amount_paise))} to ${r.payee_name}`);
+    await this.spaces.note(spaceId, userId, "pay", `${a.me.name} ${status === "approved" ? "approved" : "said no to"} the payment to ${r.payee_name}`);
     await this.spaces.changed(spaceId);
     return this.view(userId, { ...r, status, decided_by: userId, decided_name: a.me.name, decided_ms: at }, true);
   }
@@ -128,7 +128,7 @@ export class Payments {
     if (r.status !== "approved" || r.decided_by !== userId) throw new BotError("not_allowed", "Only who approved it can say it's paid.", 403);
     const at = this.now();
     await this.rows.update({ id, space_id: spaceId }, { status: "paid", paid_ms: at });
-    await this.spaces.note(spaceId, userId, "pay", `${a.me.name} paid ${rupeesOf(Number(r.amount_paise))} to ${r.payee_name}`);
+    await this.spaces.note(spaceId, userId, "pay", `${a.me.name} paid ${r.payee_name}`);
     await this.spaces.changed(spaceId);
     return this.view(userId, { ...r, status: "paid", paid_ms: at }, a.perms.includes("approve"));
   }
@@ -138,7 +138,7 @@ export class Payments {
     const r = await this.one(spaceId, id);
     if (r.asked_by !== userId) throw new BotError("not_allowed", "Only who asked can take it back.", 403);
     if (!(await this.rows.update({ id, space_id: spaceId, status: "waiting" }, { status: "cancelled" }))) throw new BotError("answered", "That request has been answered already.", 409);
-    await this.spaces.note(spaceId, userId, "pay", `${a.me.name} took back ${rupeesOf(Number(r.amount_paise))} to ${r.payee_name}`);
+    await this.spaces.note(spaceId, userId, "pay", `${a.me.name} took back the payment to ${r.payee_name}`);
     await this.spaces.changed(spaceId);
   }
 }

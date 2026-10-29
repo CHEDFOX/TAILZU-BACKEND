@@ -22,7 +22,7 @@
 import { getConfig } from "../../config.js";
 import type { Run } from "../agent/run.js";
 import { BudgetStop, EndJob, LostClaim, Park, TeamWait } from "../agent/run.js";
-import { rupees, topUpFor, type AgentState } from "../agent/types.js";
+import { topUpFor, type AgentState } from "../agent/types.js";
 import { ownProject, repoRef } from "../projects.js";
 import { cut } from "../work/model.js";
 import type { ChangePlan } from "../work/plan.js";
@@ -230,7 +230,7 @@ async function startRun(r: Run, t: TeamState): Promise<void> {
       const remaining = job.budgetPaise - job.spentPaise;
       const ok = affordable(remaining, t.reservePaise, helpers.length);
       if (!ok.ok) {
-        await r.log.decision(`The budget cannot pay for a team yet: it needs ${rupees(ok.needPaise)} more.`);
+        await r.log.decision("This job has too little of this stretch left for a team yet.");
         throw new BudgetStop(ok.needPaise);
       }
       const pool = Math.max(0, remaining - t.reservePaise);
@@ -241,7 +241,7 @@ async function startRun(r: Run, t: TeamState): Promise<void> {
       await r.save();
       await adjustSpend(r.deps.store, r.jobId, pool);
       t.allocated = true; t.reserving = undefined;
-      await r.log.decision(`Budget: ${rupees(pool)} shared among ${helpers.length} helper${helpers.length === 1 ? "" : "s"}, ${rupees(t.reservePaise)} kept by the lead for the reviews, the merges and the final check.`);
+      await r.log.decision(`What this job may use is shared among ${helpers.length} helper${helpers.length === 1 ? "" : "s"}, with some kept by the lead for the reviews, the merges and the final check.`);
       await r.save();
     }
   }
@@ -276,14 +276,14 @@ async function takeCommands(r: Run, t: TeamState): Promise<void> {
     if (c.addPaise && c.addPaise > 0) { p.budgetPaise += c.addPaise; }
     if (p.status === "exhausted" && p.jobId) {
       // Its helper is parked for money; the person gave it more (and woke it): the lead takes the money into account and goes back to watching.
-      if (!(await ensureHeld(r, p, Math.max(0, p.budgetPaise - p.spentPaise)))) { t.notes.push(`Part ${p.id} could not be given more: the lead's budget is short. Add budget to the job first.`); continue; }
+      if (!(await ensureHeld(r, p, Math.max(0, p.budgetPaise - p.spentPaise)))) { t.notes.push(`Part ${p.id} could not be given more: the lead has too little left. Keep going on the job first.`); continue; }
       p.status = p.fixRounds > 0 ? "fixing" : "running";
       p.reason = undefined;
-      await r.log.decision(`Part ${p.id} (${p.title}) goes on with more budget.`);
+      await r.log.decision(`Part ${p.id} (${p.title}) goes on.`);
       continue;
     }
     const grant = Math.max(0, p.budgetPaise - p.spentPaise);
-    if (grant < PART_PAISE_MIN || !(await ensureHeld(r, p, grant))) { t.notes.push(`Part ${p.id} cannot be run again without more budget: it needs at least ${rupees(PART_PAISE_MIN)}. Send addPaise.`); continue; }
+    if (grant < PART_PAISE_MIN || !(await ensureHeld(r, p, grant))) { t.notes.push(`Part ${p.id} cannot be run again: it has nothing left of this job's share. Keep going first.`); continue; }
     p.attempts = (p.attempts ?? 0) + 1;
     p.fixRounds = 0; p.jobId = undefined; p.reason = undefined; p.noChange = undefined; p.endedAt = undefined;
     p.status = p.dependsOn.every((d) => byId(t, d)?.status === "merged") ? "ready" : "waiting";
@@ -310,7 +310,7 @@ async function observe(r: Run, t: TeamState): Promise<boolean> {
     switch (c.kind) {
       case "active": p.status = back; p.reason = undefined; break;
       case "blocked": p.status = "blocked"; p.reason = cut(c.why, 200); break;
-      case "exhausted": p.status = "exhausted"; p.reason = "It used up its share of the budget and stopped cleanly. What it had was kept on its branch."; break;
+      case "exhausted": p.status = "exhausted"; p.reason = "It used its share of this job and stopped cleanly. What it had was kept on its branch."; break;
       case "done": await harvest(r, t, p, c); break;
       case "failed": p.status = "failed"; p.reason = cut(c.why, 300); await settle(r, p); break;
       case "cancelled": p.status = "stopped"; p.reason = cut(c.why, 200); await settle(r, p); break;
@@ -526,7 +526,7 @@ async function shareTopUp(r: Run, t: TeamState): Promise<void> {
     p.budgetPaise += each;
     if (!(await ensureHeld(r, p, p.budgetPaise - p.spentPaise))) { p.budgetPaise -= each; continue; }
     await r.deps.team?.addBudget?.(r.userId, p.jobId!, each);
-    await r.log.decision(`Part ${p.id} (${p.title}) was given ${rupees(each)} more and goes on.`);
+    await r.log.decision(`Part ${p.id} (${p.title}) was given more and goes on.`);
   }
   await r.save();
 }
@@ -557,9 +557,9 @@ export async function teamPhase(r: Run): Promise<void> {
     const top = topUpFor(stuck.reduce((n, p) => n + p.spentPaise, 0) / stuck.length);
     t.parkedBudgetPaise = job.budgetPaise;
     s.waiting = { kind: "budget", needPaise: top * stuck.length, at: r.now() };
-    await r.log.question(`Part${stuck.length === 1 ? "" : "s"} ${stuck.map((p) => `${p.id} (${p.title})`).join(", ")} used up ${stuck.length === 1 ? "its" : "their"} share of the budget. Add budget to go on, or stop ${stuck.length === 1 ? "it" : "them"}.`);
+    await r.log.question(`Part${stuck.length === 1 ? "" : "s"} ${stuck.map((p) => `${p.id} (${p.title})`).join(", ")} used ${stuck.length === 1 ? "its" : "their"} share of this job. Keep going, or stop ${stuck.length === 1 ? "it" : "them"}.`);
     await r.save();
-    throw new Park("budget", `Part${stuck.length === 1 ? "" : "s"} ${stuck.map((p) => p.id).join(", ")} ran out of budget. Continue with ${rupees(top * stuck.length)} more, or stop ${stuck.length === 1 ? "it" : "them"}?`);
+    throw new Park("budget", `Part${stuck.length === 1 ? "" : "s"} ${stuck.map((p) => p.id).join(", ")} ${stuck.length === 1 ? "has" : "have"} used a lot of this stretch. Keep going, or stop ${stuck.length === 1 ? "it" : "them"}?`);
   }
   await r.save();
   // A helper working, a part to review or merge, or a part that can start: look again soon. Only the person's word to wait for (a question, a yes): not for a while.

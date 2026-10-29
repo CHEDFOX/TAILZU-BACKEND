@@ -62,6 +62,9 @@ export interface RunRequest {
   emit?: (e: BotEvent) => void;
   ctx?: Pick<FrontCtx, "attachments" | "recent" | "mode">;
   pickedBy?: BotAnswer["pickedBy"];
+  /** The answer's words as the model writes them (streamed), and word that the ones so far are void (it went to a tool after all). */
+  onText?: (piece: string) => void;
+  onReset?: () => void;
 }
 
 /** How many turns the model gets: tool rounds, then one to say the answer. */
@@ -126,6 +129,11 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
 
   let text = "";
   let waiting = false;
+  // Streamed words: whether any of this turn's were sent (a turn that goes to a tool after writing a little takes them back).
+  let said = false;
+  const words = r.onText
+    ? { onText: (piece: string) => { said = true; r.onText!(piece); }, onReset: () => { if (said) { said = false; r.onReset?.(); } } }
+    : null;
   try {
     for (let turn = 0; turn < MAX_TURNS; turn += 1) {
       emit({ t: "status", stage: turn === 0 ? "thinking" : "working" });
@@ -135,6 +143,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
         res = await call({
           tier: scope.tier, messages, maxTokens: scope.maxTokens, purpose: "bot.run", userId: r.userId, budget: { maxPaise: Math.max(1, meter.left()) },
           ...(kit.defs.length ? { tools: kit.defs, toolChoice: last ? ("none" as const) : ("auto" as const) } : {}), ...(r.signal ? { signal: r.signal } : {}),
+          ...(words ?? {}),
         }, d.gateway);
       } catch (err) {
         if (isAbort(err)) throw err;
@@ -148,6 +157,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
         break;
       }
       if (!res.toolCalls.length || last) { text = res.text.trim(); break; }
+      words?.onReset();
       messages.push({ role: "assistant", content: res.text || null, tool_calls: res.toolCalls });
       const calls = res.toolCalls.slice(0, CALLS_PER_STEP);
       for (const c of calls) {
@@ -167,7 +177,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
     text = waiting ? "I've put that in front of you to approve. Nothing has happened yet." : "I couldn't put an answer together. Try asking it a little differently.";
   }
   const clean = scrub(text);
-  if (clean.cleaned) notes.push("Part of the reply was left out: it looked like it held a secret.");
+  if (clean.cleaned) { notes.push("Part of the reply was left out: it looked like it held a secret."); words?.onReset(); }
   text = clean.text;
   if (record.approvals.length) notes.push(`${record.approvals.length === 1 ? "A change is" : "Changes are"} waiting for your yes in Tailzu.`);
   emit({ t: "text", text });

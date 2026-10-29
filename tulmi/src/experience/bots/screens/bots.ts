@@ -11,11 +11,14 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
   back, blip, body, botAvatar, botLook, box, button, C, call, card, chip, chips, col, divider, emptyState, FACE, grid, grow, icon,
-  infoChip, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, roundButton, row, rupees, SCREENS,
+  infoChip, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, roundButton, row, SCREENS,
   secondaryButton, sectionLabel, segmented, seq, shapes, statusMark, switchMark, switchRow, text, title, toTab, when, whenEq,
   headerBuddy, type BotsCtx, type LiveBot,
 } from "../kit.js";
+import { withoutAmounts } from "../../../shell/parse.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { askMoment, done as momentDone, failed, SENT_WORDS, start as momentStart, streamed } from "../askMoment.js";
+import { botKind } from "../kit.js";
 import { shareButton, shareTo } from "../shareAction.js";
 import * as places from "./botsPlaces.js";
 import { addAction, itemAction, planItemScreens, tickAction, tickBox } from "./planItem.js";
@@ -230,14 +233,13 @@ function chatTurns(ctx: BotsCtx, bot: { slug: string; colour?: string }, turns: 
 }
 
 /** Sends what is typed at `path` to the bot (POST .../chat/:slug), then shows it. */
-function sendToBot(slug: string, path = "say", then?: ActionRef): ActionRef {
-  return seq(
-    setState("sending", true),
-    call("POST", `${A}/chat/${enc(slug)}`, { message: `$state.${path}` }, {
-      ok: seq(setState("sending", false), clearState(path), then ?? refresh),
-      fail: seq(setState("sending", false), toast("Couldn't send that. Try again.", true)),
-    }),
-  );
+function sendToBot(slug: string, path = "say", then?: ActionRef, ctx?: BotsCtx): ActionRef {
+  // The words go up as the person's bubble and the box clears at once (askMoment.ts); the answer is written in as it comes.
+  const send = call("POST", `${A}/chat/${enc(slug)}`, { message: SENT_WORDS }, {
+    ok: seq(setState("sending", false), then ?? refresh, ...momentDone()),
+    fail: failed({ busy: "sending", from: path, then: toast("Couldn't send that. Try again.", true) }),
+  });
+  return seq(...momentStart({ message: `$state.${path}`, from: path, busy: "sending" }), ctx ? streamed(ctx, send as ActionSpec) : send);
 }
 /** Sends a fixed line (a suggestion chip) and opens the chat with the answer. */
 const askBot = (slug: string, message: string): ActionRef => seq(
@@ -247,8 +249,8 @@ const askBot = (slug: string, message: string): ActionRef => seq(
 
 function chatBar(ctx: BotsCtx, slug: string, name: string, placeholder?: string, then?: ActionRef): Node {
   return col([
-    sendField("say", "say", placeholder ?? (isDesk(ctx) ? `Ask ${name}…  or hold Fn and speak` : `Ask ${name}…`), sendToBot(slug, "say", then), { desk: isDesk(ctx) }),
-    when({ truthy: "sending" }, row([statusMark("working", { color: lookOf(slug).color }), meta(`${name} is on it…`, { size: 13 })], { gap: 8, paddingLeft: 18 })),
+    askMoment(ctx, { slug, color: ctx.live.bots.find((b) => b.slug === slug)?.color ?? lookOf(slug).color, kind: botKind(slug), busy: "sending", line: `${name} is on it…` }),
+    sendField("say", "say", placeholder ?? (isDesk(ctx) ? `Ask ${name}…  or hold Fn and speak` : `Ask ${name}…`), sendToBot(slug, "say", then, ctx), { desk: isDesk(ctx) }),
   ], { gap: 8 });
 }
 
@@ -437,7 +439,7 @@ interface DraftView { sentence: string; draft: Draft; trial: Array<{ said: strin
 
 const EXAMPLES = [
   "A bot that plans my workouts around my calendar and reminds me the night before.",
-  "A bot that plans my meals for the week, vegetarian, under ₹2,000.",
+  "A bot that plans my meals for the week, vegetarian.",
   "A bot that turns my class notes into a short quiz every evening.",
 ];
 const ADD_LINES = ["Ask before it spends money", "Keep answers short", "Reply in Hinglish when I do"];
@@ -725,7 +727,7 @@ interface KeysData { bot?: BotView; keys?: KeyView[]; usage?: Usage }
 
 const snippets = (endpoint: string, ask: string) => ({
   curl: `curl -X POST \\\n  ${endpoint} \\\n  -H "Authorization: Bearer $TZ_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{"message":"${ask}"}'`,
-  js: `const r = await fetch("${endpoint}", {\n  method: "POST",\n  headers: { Authorization: \`Bearer \${process.env.TZ_KEY}\`,\n    "Content-Type": "application/json" },\n  body: JSON.stringify({ message: "${ask}" }),\n});\nconst { text, paise } = await r.json();`,
+  js: `const r = await fetch("${endpoint}", {\n  method: "POST",\n  headers: { Authorization: \`Bearer \${process.env.TZ_KEY}\`,\n    "Content-Type": "application/json" },\n  body: JSON.stringify({ message: "${ask}" }),\n});\nconst { text } = await r.json();`,
   py: `import os, requests\nr = requests.post("${endpoint}",\n  headers={"Authorization": f"Bearer {os.environ['TZ_KEY']}"},\n  json={"message": "${ask}"})\nprint(r.json()["text"])`,
 });
 const copyAction = (ctx: BotsCtx, s: string): ActionSpec => (isDesk(ctx) ? { kind: "copyText", text: s, message: "Copied" } : { kind: "copyToClipboard", text: s, toastMessage: "Copied" });
@@ -735,7 +737,6 @@ function keysParts(ctx: BotsCtx, d: KeysData) {
   const bot = d.bot!;
   const u = d.usage?.usage;
   const keys = (d.keys ?? []).filter((k) => k.active);
-  const each = u && u.requests ? Math.round(u.paise / u.requests) : 0;
   const endpoint = d.usage?.endpoint ?? `/v1/bots/${bot.slug}/ask`;
   const create = seq(
     call("POST", `/v1/bots/${enc(bot.slug)}/keys`, { label: "$state.label" }, { assignTo: "made", ok: seq(toast("Key made. Copy it now."), clearState("label")), fail: toast("Couldn't make a key. Try again.", true) }),
@@ -749,7 +750,7 @@ function keysParts(ctx: BotsCtx, d: KeysData) {
     button("Copy key", copyAction(ctx, "$state.made.key"), { kind: "secondary", size: "md", icon: "check" }),
   ], { gap: 10 }));
   const labelField = inputBox([field("label", "label", "Name it: Website, Testing…", { onSubmit: create })], { radius: 14 });
-  return { bot, u, keys, each, endpoint, create, revoke, keyUse, keyMeta, made, labelField };
+  return { bot, u, keys, endpoint, create, revoke, keyUse, keyMeta, made, labelField };
 }
 
 function keysPhone(ctx: BotsCtx, d: KeysData) {
@@ -764,10 +765,10 @@ function keysPhone(ctx: BotsCtx, d: KeysData) {
       card([
         grid([
           col([text(k.u ? k.u.requests.toLocaleString("en-IN") : "—", { size: 34, weight: 700, lineHeight: 38, tracking: -0.5 }), meta(k.u ? `requests in ${k.u.month}` : "couldn't read usage", { size: 12 })], { gap: 2 }),
-          col([text(k.u ? rupees(k.u.paise) : "—", { size: 34, weight: 700, lineHeight: 38, tracking: -0.5 }), meta(k.u?.requests ? `about ${k.each} paise each` : "nothing spent yet", { size: 12 })], { gap: 2 }),
+          col([text(d.usage ? String(d.usage.ratePerMin) : "—", { size: 34, weight: 700, lineHeight: 38, tracking: -0.5 }), meta("a minute, for each key", { size: 12 })], { gap: 2 }),
         ], 2, 12),
         divider(),
-        row([text("Rate limit", { size: 14, lineHeight: 19 }), grow(), meta(d.usage ? `${d.usage.ratePerMin} a minute · ${rupees(d.usage.dayCapPaise)} a day a key` : "—", { size: 14 })]),
+        row([text("What it uses", { size: 14, lineHeight: 19 }), grow(), meta("Counts toward your plan", { size: 14 })]),
       ], { gap: 14 }),
       k.made,
       col([sectionLabel(`Keys · ${k.keys.length}`), k.keys.length
@@ -780,7 +781,7 @@ function keysPhone(ctx: BotsCtx, d: KeysData) {
       col([row([sectionLabel("Try it"), grow(), link("Copy", copyAction(ctx, snip.curl))]), codeBlock(snip.curl)], { gap: 8 }),
       k.labelField,
     ],
-    footer: [primaryButton("Create key", k.create, { wide: true }), meta("You see a new key once. Bots never spend past your cap.", { size: 12, align: "center" })],
+    footer: [primaryButton("Create key", k.create, { wide: true }), meta("You see a new key once. Each key has a daily limit.", { size: 12, align: "center" })],
   });
 }
 
@@ -798,8 +799,8 @@ function keysDesk(ctx: BotsCtx, d: KeysData) {
   const usage = card([
     grid([
       col([text(k.u ? k.u.requests.toLocaleString("en-IN") : "—", { size: 34, weight: 700, lineHeight: 38, tracking: -0.5 }), meta(k.u ? `requests in ${k.u.month}` : "couldn't read usage", { size: 12 })], { gap: 2 }),
-      col([text(k.u ? rupees(k.u.paise) : "—", { size: 34, weight: 700, lineHeight: 38, tracking: -0.5 }), meta(k.u?.requests ? `about ${k.each} paise each` : "nothing spent yet", { size: 12 })], { gap: 2 }),
-      col([text("Rate limit", { size: 14, weight: 600, lineHeight: 19 }), text(d.usage ? `${d.usage.ratePerMin} a minute` : "—", { size: 13, color: C.grey70, lineHeight: 18 }), meta(d.usage ? `${rupees(d.usage.dayCapPaise)} a day for each key` : "", { size: 12 })], { gap: 4 }),
+      col([text("Rate limit", { size: 14, weight: 600, lineHeight: 19 }), text(d.usage ? `${d.usage.ratePerMin} a minute` : "—", { size: 13, color: C.grey70, lineHeight: 18 }), meta("And a daily limit for each key", { size: 12 })], { gap: 4 }),
+      col([text("What it uses", { size: 14, weight: 600, lineHeight: 19 }), text("Your plan", { size: 13, color: C.grey70, lineHeight: 18 }), meta("It counts toward Usage, in You", { size: 12 })], { gap: 4 }),
     ], 3, 16),
     col([
       row([sectionLabel("Requests a day"), grow(), meta(busiest ? `Busiest: ${Number(busiest.day.slice(8))} ${MONTHS[Number(busiest.day.slice(5, 7)) - 1]}, ${busiest.requests}` : "None yet this month", { size: 12 })]),
@@ -815,7 +816,7 @@ function keysDesk(ctx: BotsCtx, d: KeysData) {
         col([text(key.label || "Key", { size: 14, weight: 600, lineHeight: 19, lines: 1 }), meta(`Made ${shortDate(ctx, key.createdAt)}`, { size: 12, lines: 1 })], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 2 }),
         box([mono(key.masked, { size: 11.5 })], { width: 128 }),
         text(key.lastUsedAt ? ago(ctx, key.lastUsedAt) : "Not yet", { size: 13, color: C.grey70, lineHeight: 18, style: { width: 80 } }),
-        text(use ? `${use.requests.toLocaleString("en-IN")} · ${use.paise ? rupees(use.paise) : "free"}` : "0", { size: 13, color: C.grey70, lineHeight: 18, style: { width: 100 } }),
+        text(use ? use.requests.toLocaleString("en-IN") : "0", { size: 13, color: C.grey70, lineHeight: 18, style: { width: 100 } }),
         row([text("Revoke", { size: 13, color: C.grey70, lineHeight: 18 })], { width: 52, minHeight: 32 }, k.revoke(key)),
       ], { paddingVertical: 12, paddingHorizontal: 16, gap: 12 })];
     }),
@@ -829,7 +830,7 @@ function keysDesk(ctx: BotsCtx, d: KeysData) {
     when({ eq: ["lang", "curl"] }, codeBlock(snip.curl)),
     when({ eq: ["lang", "js"] }, codeBlock(snip.js)),
     when({ eq: ["lang", "py"] }, codeBlock(snip.py)),
-    col([row([sectionLabel("Reply"), grow(), meta("JSON", { size: 12 })]), codeBlock(`{\n  "bot": "${k.bot.slug}",\n  "text": "…its answer…",\n  "paise": 3,\n  "usage": { "leftTodayPaise": ${d.usage?.dayCapPaise ?? 500} }\n}`)], { gap: 8 }),
+    col([row([sectionLabel("Reply"), grow(), meta("JSON", { size: 12 })]), codeBlock(`{\n  "bot": "${k.bot.slug}",\n  "text": "…its answer…"\n}`)], { gap: 8 }),
   ], { gap: 14, style: { width: 390, flexShrink: 0 } });
   return page(ctx, {
     title: "Use it from your app", nav: k.bot.slug, maxWidth: 1120, state: { label: "", lang: "curl" },
@@ -839,7 +840,7 @@ function keysDesk(ctx: BotsCtx, d: KeysData) {
           row([botAvatar(look, 22), text(k.bot.name, { size: 13, color: C.grey70, lineHeight: 18 })], { gap: 8, minHeight: 32 }, back()),
           title("Use it from your app", { size: 26 }), meta(`Your site or app asks ${k.bot.name}. Same rules as here.`, { size: 14 }),
         ], { gap: 4, flexGrow: 1, flexShrink: 1 }),
-        col([row([box([k.labelField], { width: 240 }), button("Create key", k.create, { size: "md" })], { gap: 10 }), meta("You see a new key once. Bots never spend past your cap.", { size: 12 })], { gap: 6, alignItems: "flex-end" }),
+        col([row([box([k.labelField], { width: 240 }), button("Create key", k.create, { size: "md" })], { gap: 10 }), meta("You see a new key once. Each key has a daily limit.", { size: 12 })], { gap: 6, alignItems: "flex-end" }),
       ], { gap: 20, alignItems: "flex-end" }),
       k.made,
       row([col([usage, col([sectionLabel(`Keys · ${k.keys.length}`), keyTable], { gap: 8 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 24 }), tryIt], { gap: 24, alignItems: "flex-start" }),
@@ -1268,7 +1269,7 @@ function bookingCards(ctx: BotsCtx, d: TravelData, place: string): Node[] {
   }
   return opens.slice(0, 3).map((o) => card([
     row([box([icon(STAYING.test(`${o.label} ${o.url}`) ? "today" : "pin", { size: 18 })], { width: 36, height: 36, borderRadius: 10, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" }),
-      col([text(o.label, { size: 15, weight: 600, lineHeight: 20, lines: 2 }), meta(o.said ? `You asked: ${o.said}` : `From your chat · ${shortDate(ctx, o.at)}`, { size: 12, lines: 2 })], { gap: 2, flexShrink: 1, flexGrow: 1 }),
+      col([text(withoutAmounts(o.label), { size: 15, weight: 600, lineHeight: 20, lines: 2 }), meta(o.said ? `You asked: ${o.said}` : `From your chat · ${shortDate(ctx, o.at)}`, { size: 12, lines: 2 })], { gap: 2, flexShrink: 1, flexGrow: 1 }),
       statusMark("needs", { size: 8 })], { gap: 12, alignItems: "flex-start" }),
     row([button("Open to book", { kind: "openUrl", url: o.url, handoff: true }, { size: "md", icon: "link" }), meta("Ready to book · you press pay", { size: 12 })], { gap: 12, flexWrap: "wrap" }),
   ], { gap: 12 }));

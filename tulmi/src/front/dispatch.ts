@@ -136,6 +136,8 @@ async function dispatchRequest(decision: Decision, message: string, ctx: FrontCt
   const call = (maxPaise: number, signal: AbortSignal, message2 = message): RouteCall => ({
     userId, message: decision.followUp ? `${decision.followUp}. ${message2}` : message2, said: message2, ctx, decision, signal, maxPaise,
     onText: (piece) => { streamed = true; emit({ t: "text", text: piece }); },
+    onReset: () => { streamed = false; emit({ t: "reset" }); },
+    onStep: (stage) => emit({ t: "status", stage }),
   });
   const text = (t: string): void => { result.text = t; if (!streamed) emit({ t: "text", text: t }); };
 

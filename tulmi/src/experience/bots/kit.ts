@@ -25,11 +25,13 @@ import { icon, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type 
 import type { BotsLive, LiveBot, NeedsItem } from "./live.js";
 import { C, botLook, type BotLook } from "./palette.js";
 import { botRoute, SCREENS } from "./ids.js";
+import { askMoment, failed as momentFailed, SENT_WORDS, start as momentStart, streamed as momentStreamed } from "./askMoment.js";
 
 export { C, PALETTE_HEX, botLook, BUILTIN_SLUGS, type BotLook } from "./palette.js";
 export { icon, shapes, statusMark, tabGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
 export { blipUrl, headUrl, BLIP_POSES, type BlipPose } from "./art.js";
 export { SCREENS, botRoute } from "./ids.js";
+export { percent, whenWords } from "../../you/usage.js";
 
 type Style = Record<string, unknown>;
 
@@ -154,7 +156,7 @@ export const body = (content: string, o: TextOpts = {}): Node => text(content, {
 export const meta = (content: string, o: TextOpts = {}): Node =>
   text(content, { size: 12, color: C.meta, lineHeight: 16, ...o });
 
-/** Big number: 34/700 ("₹184", "Shipped."). */
+/** Big number: 34/700 ("64%", "Shipped."). */
 export const bigNumber = (content: string, o: TextOpts = {}): Node =>
   text(content, { size: 34, weight: 700, tracking: -0.8, lineHeight: 40, ...o });
 
@@ -545,7 +547,7 @@ export function switchRow(labelText: string, path: string, o: { sub?: string; on
 }
 
 /**
- * A stepper (Kit1: "Job budget  −  ₹30  +"). The server knows the value, so each side runs its own action (save the
+ * A stepper (Kit1: "Reviewers  −  2  +"). The server knows the value, so each side runs its own action (save the
  * value one step down or up, then refresh); nothing is counted on the device.
  */
 export function stepper(value: string, onMinus: ActionRef | undefined, onPlus: ActionRef | undefined): Node {
@@ -692,7 +694,10 @@ export function needsCard(item: NeedsItem, o: { layout?: "column" | "row" } = {}
  * What the ask bar sends: the front door (POST /v1/ask, "Ask any bot"), then the answer opens on the Ask screen. Offline, in a build
  * that keeps an outbox, the ask is kept there instead and goes out once the connection is back (`keptOffline`).
  */
-export function askAction(client: Client, path = "ask"): ActionSpec {
+export function askAction(client: Client, path = "ask", ctx?: BotsCtx): ActionSpec {
+  // Given the screen's ctx: the moment an ask is out (askMoment.ts): the words up as a bubble at once, the box cleared, the answer
+  // written in as it comes.
+  if (ctx) return askMomentAction(ctx, path);
   return {
     kind: "sequence", actions: [
       { kind: "condition", if: { falsy: path }, then: { kind: "toast", message: "Type what you need first" }, else: keptOffline(client, { message: `$state.${path}`, clear: path }, {
@@ -715,6 +720,27 @@ export function askAction(client: Client, path = "ask"): ActionSpec {
         ],
       }) },
     ],
+  };
+}
+
+/** askAction, the moment's way (askMoment.ts): the same call and answer, the words up as a bubble first, the answer streamed. */
+function askMomentAction(ctx: BotsCtx, path: string): ActionSpec {
+  return {
+    kind: "condition", if: { falsy: path }, then: { kind: "toast", message: "Type what you need first" }, else: keptOffline(ctx.client, { message: `$state.${path}`, clear: path }, {
+      kind: "sequence", actions: [
+        ...momentStart({ message: `$state.${path}`, from: path, busy: "asking" }),
+        momentStreamed(ctx, {
+          kind: "callEndpoint", method: "POST", path: "/v1/ask",
+          body: { message: SENT_WORDS, device: ctx.client, mode: "text", bot: "any" },
+          assignTo: "asked",
+          onSuccess: { kind: "sequence", actions: [
+            { kind: "setState", path: "asking", value: false },
+            { kind: "navigate", screenId: SCREENS.ask, params: { message: SENT_WORDS, answer: "$state.asked.result.text", id: "$state.asked.id" } },
+          ] },
+          onError: momentFailed({ busy: "asking", from: path, then: { kind: "toast", message: "Couldn't reach your bots. Try again.", tone: "error" } }),
+        }),
+      ],
+    }),
   };
 }
 
@@ -747,9 +773,9 @@ export function keptOffline(client: Client, o: { message: string; bot?: string; 
  * The ask bar (Kit2): "Ask any bot…" with the mic, or send once something is typed. Enter / return sends. The
  * phone's mic opens the Ask screen listening; the window's starts dictation (hold Fn and speak).
  */
-export function askBar(client: Client, o: { placeholder?: string; path?: string } = {}): Node {
+export function askBar(client: Client, o: { placeholder?: string; path?: string; ctx?: BotsCtx } = {}): Node {
   const path = o.path ?? "ask";
-  const send = askAction(client, path);
+  const send = askAction(client, path, o.ctx);
   const mic: ActionRef = client === "desktop" ? { kind: "dictate" } : { kind: "navigate", screenId: SCREENS.ask, params: { voice: true } };
   return col([
     row([
@@ -769,7 +795,9 @@ export function askBar(client: Client, o: { placeholder?: string; path?: string 
       when({ truthy: path }, roundButton("send", send, { label: "Send" })),
       when({ falsy: path }, roundButton("mic", mic, { label: "Speak" })),
     ], { gap: 10, borderRadius: client === "desktop" ? 30 : RADIUS.input, borderWidth: 1, borderColor: C.line, paddingVertical: 6, paddingRight: 6, paddingLeft: client === "desktop" ? 22 : 18, backgroundColor: C.paper }),
-    when({ truthy: "asking" }, row([statusMark("working", { color: C.ink }), meta("Asking your bots…", { size: 13 })], { gap: 8, paddingLeft: 18 })),
+    o.ctx
+      ? askMoment(o.ctx, { slug: "tailzu", color: C.ink, kind: "custom", busy: "asking", line: "Asking your bots…", bubble: "surface" })
+      : when({ truthy: "asking" }, row([statusMark("working", { color: C.ink }), meta("Asking your bots…", { size: 13 })], { gap: 8, paddingLeft: 18 })),
   ], { gap: 8 });
 }
 
@@ -949,10 +977,19 @@ export function comingSoon(ctx: BotsCtx): ScreenResponse {
   });
 }
 
-/** Money as a person reads it: "₹184", "₹6.40". */
-export function rupees(paise: number): string {
-  const r = Math.round(paise) / 100;
-  return `₹${Number.isInteger(r) ? r.toLocaleString("en-IN") : r.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/**
+ * No money on any screen: what Tailzu costs, a price, an amount. Use is shown the way the usage meter shows it (src/you/usage.ts):
+ * `usageMeter`, `percent` ("64%") and `whenWords` ("Thu 9 am").
+ */
+
+/** A usage meter: "This stretch · 64% used", its bar, and when it resets. `used` is a fraction (0.64); never an amount. */
+export function usageMeter(label: string, used: number, o: { resets?: string; color?: string; height?: number } = {}): Node {
+  const part = Math.max(0, Math.min(1, used));
+  return col([
+    row([text(label, { size: 14, weight: 600 }), grow(), text(`${Math.round(part * 100)}% used`, { size: 14, color: C.grey70 })]),
+    meter(part, 1, { color: o.color ?? C.ink, height: o.height ?? 6 }),
+    ...(o.resets ? [meta(o.resets, { size: 12 })] : []),
+  ], { gap: 8 });
 }
 
 /** Minutes as a person reads them: "45 min", "2 h", "1 h 20 min". */

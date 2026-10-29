@@ -8,7 +8,7 @@
  *                   broken before Tailzu, and the whole work log (work/worklog.ts); GitHub's limit is
  *                   65,536 characters and this stays under 60,000
  *   reportText      the final message to the person: what changed, the PR link, the checks, the
- *                   findings, the cost in rupees, and what to do next. "Already broken before
+ *                   findings, and what to do next (never what it cost: that is ours). "Already broken before
  *                   Tailzu" is its own list, so that nobody reads a red check that was never
  *                   theirs as a failure of the change.
  *
@@ -19,7 +19,7 @@
  */
 import { redactText } from "../work/index.js";
 import { cut, oneLine } from "../work/model.js";
-import { ANSWER_MAX_CHARS, rupees, type AgentState, type CheckSummary } from "./types.js";
+import { ANSWER_MAX_CHARS, type AgentState, type CheckSummary } from "./types.js";
 
 const safe = (s: string, n: number): string => redactText(oneLine(s, n), n);
 const list = (items: readonly string[], max = 15): string[] => items.slice(0, max).map((i) => `- ${i}`).concat(items.length > max ? [`- and ${items.length - max} more`] : []);
@@ -90,7 +90,7 @@ export function prBody(state: AgentState, o: { worklog: string; jobId: string; s
   if (state.baseline?.status === "unknown" && state.baseline.note) out.push(`> Heads up: ${safe(state.baseline.note, 300)}`, "");
   if (o.design?.length) out.push("## Design check", "", ...o.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (o.worklog.trim()) out.push(o.worklog.trim(), "");
-  out.push("---", `Made by Tailzu (job \`${o.jobId.slice(0, 8)}\`) for ${rupees(o.spentPaise)}. It is a draft until the checks are green and you say it is ready.`);
+  out.push("---", `Made by Tailzu (job \`${o.jobId.slice(0, 8)}\`). It is a draft until the checks are green and you say it is ready.`);
   const text = out.join("\n");
   return text.length > 60_000 ? `${text.slice(0, 59_900).trimEnd()}\n\n_(cut: the rest is in the job's work log)_` : text;
 }
@@ -121,7 +121,7 @@ export function reportText(i: ReportInput): string {
   const files = s.team && !s.work.staged.length ? (s.committedPaths ?? []).map((p) => `${p} (changed)`)
     : s.commit?.files?.length ? s.commit.files : s.work.staged.map((f) => `${f.path} (${f.action === "delete" ? "deleted" : f.action === "create" ? "added" : "changed"})`);
   const headline = {
-    done: `Done: ${task}`, failed: `I stopped: ${task}`, budget: `I ran out of budget: ${task}`, answer: `Here is the answer: ${task}`,
+    done: `Done: ${task}`, failed: `I stopped: ${task}`, budget: `I paused to check with you: ${task}`, answer: `Here is the answer: ${task}`,
   }[i.outcome];
   out.push(headline, "");
   if (i.outcome === "failed" || i.outcome === "budget") {
@@ -149,7 +149,6 @@ export function reportText(i: ReportInput): string {
   if (s.findings.length) out.push("Findings", ...list(s.findings.map((f) => `${f.severity}: ${f.path}${f.line ? `:${f.line}` : ""} ${cut(f.text, 160)}`), 10), "");
   for (const n of s.notes.slice(0, 6)) out.push(`Note: ${safe(n, 300)}`);
   if (s.notes.length) out.push("");
-  out.push(`Cost: ${rupees(i.spentPaise)} of ${rupees(i.budgetPaise)}.`, "");
   const next = nextSteps(i);
   if (next.length) out.push("What next", ...list(next, 6));
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -159,7 +158,7 @@ function nextSteps(i: ReportInput): string[] {
   const s = i.state;
   const next: string[] = [];
   if (i.outcome === "budget") {
-    next.push(`Continue with ${rupees(i.continueWithPaise ?? 1000)} more, and I pick up where I stopped.`);
+    next.push("Keep going, and I pick up where I stopped.");
     next.push("Or stop here: nothing has been lost, the work so far is saved.");
     return next;
   }

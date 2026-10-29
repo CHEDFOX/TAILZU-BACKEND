@@ -60,6 +60,10 @@ export interface ChatRequest {
   maxPaise: number;
   /** The default branch is read. */
   signal?: AbortSignal;
+  /** The answer's words as they are written, word that they are void, and what it is doing (answer.ts ChatInput). */
+  onText?: (piece: string) => void;
+  onReset?: () => void;
+  onStep?: (stage: string) => void;
 }
 
 const UNREAD = "Tailzu hasn't read this project yet. Start its brain first, then ask again.";
@@ -103,6 +107,7 @@ export class CodeChat {
     const out = await answerCode({
       userId: r.userId, projectId: project.id, question: r.question, search: r.context ? `${r.context}. ${r.question}` : searchFor(r.question, thread), tier: r.tier, length: r.length,
       maxPaise: r.maxPaise, thread, diagram: r.diagram, now: this.now(),
+      ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
     }, { brain, read, files }, this.model(r.userId, r.signal));
     if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
     return out;

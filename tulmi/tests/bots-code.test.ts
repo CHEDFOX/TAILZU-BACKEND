@@ -219,7 +219,8 @@ describe("the screens, for the phone and the window", () => {
     it(`bots.code.rules (${client}): the rules, the cap and disconnect`, async () => {
       const { words, json, lint } = await build("bots.code.rules", client, { project: P });
       expect(lint).toEqual([]);
-      expect(words).toContain("₹40");
+      expect(words).toEqual(expect.arrayContaining(["Checks with you", "Often", "Sometimes", "Rarely"]));
+      expect(words.join(" ")).not.toMatch(/₹/);
       expect(words).toContain("pnpm lint");
       expect(json).toContain(`/v1/bots/code/projects/${P}/cap`);
       expect(json).toContain(`/v1/bots/code/projects/${P}/disconnect`);
@@ -300,7 +301,7 @@ describe("Tell Code bot what to do, offline", () => {
     for (const client of ["phone", "desktop"] as const) {
       const { json, lint } = await build("bots.code", client, {}, two);
       expect(lint, client).toEqual([]);
-      expect(json, client).toContain('"if":{"eq":["online",false]},"then":{"kind":"sequence","actions":[{"kind":"outbox","op":"add","path":"/v1/shell/ask","body":{"message":"$state.task","bot":"code","device":"' + client + '","mode":"text"},"label":"$state.task","sub":"Code bot · asked {time}"},{"kind":"clearState","path":"task"},{"kind":"toast","message":"Kept. It will send when you\'re back."}]},"else":{"kind":"sequence","actions":[{"kind":"setState","path":"asking","value":true},{"kind":"callEndpoint","method":"POST","path":"/v1/shell/ask"');
+      expect(json, client).toContain('"if":{"eq":["online",false]},"then":{"kind":"sequence","actions":[{"kind":"outbox","op":"add","path":"/v1/shell/ask","body":{"message":"$state.task","bot":"code","device":"' + client + '","mode":"text"},"label":"$state.task","sub":"Code bot · asked {time}"},{"kind":"clearState","path":"task"},{"kind":"toast","message":"Kept. It will send when you\'re back."}]},"else":{"kind":"sequence","actions":[{"kind":"setState","path":"sent","value":"$state.task"},{"kind":"setState","path":"stopped","value":false},{"kind":"setState","path":"reply","value":null},{"kind":"clearState","path":"task"},{"kind":"setState","path":"asking","value":true},{"kind":"callEndpoint","method":"POST","path":"/v1/shell/ask"');
     }
     // In a project the bar starts a plan, which is not an ask: nothing is kept for it.
     const inProject = await build("bots.code", "phone", { project: P });

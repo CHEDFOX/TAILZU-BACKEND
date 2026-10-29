@@ -2,14 +2,17 @@
  * Bots app · you area (screens/you.ts): what the You tab and its settings read and write beyond the existing routes. Everything is the signed-in
  * person's own; another person's anything is never named. `tz` (minutes from UTC) is the person's own day, as the screens send it.
  *
- *   GET    /v1/you?tz=                  -> the You page: plan, the month's spend by bot, connected apps, computers, settings, the download link
- *   GET    /v1/you/live?tz=             -> { limitPaise, monthPaise }  the tab ring's numbers (live.ts SpendSource), from a 30 s cache
- *   GET    /v1/you/spend?tz=            -> { report, settings }  the month by bot and by day, the biggest jobs (src/you/spend.ts)
+ *   GET    /v1/you?tz=                  -> the You page: plan, the usage meter, connected apps, computers, settings, the download link
+ *   GET    /v1/you/usage?tz=            -> { usage, near, out, how }  the Usage page: this stretch and this month as fractions used, when each
+ *                                          resets, the line near or at the limit, how the stretches work (src/you/usage.ts). Never an amount
+ *   GET    /v1/you/live?tz=             -> { limitPaise, monthPaise, usage }  the tab ring's numbers (live.ts SpendSource), from a 30 s cache
+ *   GET    /v1/you/spend?tz=            -> { report, settings }  ours: the month's costs by bot and by day, the biggest jobs (src/you/spend.ts).
+ *                                          No screen shows it any more
  *   GET    /v1/you/settings             -> { settings }
  *   GET    /v1/you/notify?tz=           -> { settings, today: { done, needs, spentPaise }, line }  "What pings you", with today's summary as it would read
  *   PUT    /v1/you/settings { monthLimitPaise? | monthLimitRupees?, stopAtLimit?, notify?: { done?, summary?, summaryAt?, quiet?, quietFrom?,
  *                                         quietTo?, bot?, on? }, privacy?: { screenPictures? } }  -> { settings }  only what was sent changes
- *   GET    /v1/you/billing              -> { plan, invoices, month }  (src/you/billing.ts)
+ *   GET    /v1/you/billing              -> { plan, invoices, usage }  (src/you/billing.ts; the screens show no price and no amount)
  *   GET    /v1/you/computers            -> { online, offline, helped }  the person's computers (runner presence, and the ones seen before)
  *   DELETE /v1/you/computers/:id        -> { ok }  forgets an offline computer (it comes back if it sends a heartbeat again)
  *   GET    /v1/you/apps                 -> { enabled, connected, more, github }  the connected apps with the bots that use each and when last used
@@ -19,19 +22,21 @@
  *   GET    /v1/you/export/file?t=       -> the same, for the browser: the signed link from GET /v1/you (no session; 30 minutes)
  *   POST   /v1/you/data/delete          -> { ok, cleared }  chats, notes and files go; the account, plan, bots and projects stay
  *
- * Plugged in here too, on the services the server already made (src/you/limits.ts, push.ts): the monthly limit on the Code bot's job route and on
- * the bots platform's answers, every bot answer's cost written down, the push engine's gate for "What pings you" and the daily summary, a
- * computer remembered when it sends a heartbeat, and the tab ring's numbers (live.ts setSpendSource).
+ * Plugged in here too, on the services the server already made (src/you/limits.ts, push.ts): the usage limits on the Code bot's job routes, on
+ * the bots platform's answers and on Keybot and Ask (metering.setUsageGate), every bot answer's cost written down, the push engine's gate for
+ * "What pings you" and the daily summary, a computer remembered when it sends a heartbeat, and the tab ring's numbers (live.ts setSpendSource).
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { getEntitlement } from "../billing/entitlements.js";
-import { setSpendSource } from "../experience/bots/live.js";
+import { setSpendSource, type UsageLive as LiveUsage } from "../experience/bots/live.js";
 import { listNotes } from "../notes/store.js";
 import { setPushGate } from "../push/engine.js";
 import { billingView } from "../you/billing.js";
 import { deleteMyData, exportLink, exportLinkUser, gatherExport } from "../you/data.js";
-import { holdJobsToMonth, Spending, wrapBots } from "../you/limits.js";
+import { holdJobsToUsage, Spending, wrapBots } from "../you/limits.js";
+import { setUsageGate } from "../usage/metering.js";
+import { howLine, nearLine, outLine, type UsageNow } from "../you/usage.js";
 import { getProfile } from "../profile/store.js";
 import { dayOf, pushGate, startSummaries, summaryLine } from "../you/push.js";
 import { applyPatch } from "../you/settings.js";
@@ -60,7 +65,8 @@ const APP_WORDS: Record<string, { can: string[]; cant: string[] }> = {
 };
 
 
-export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps): void {
+/** The You routes, and the meter they keep (server.ts hands the front door's own costs to it). */
+export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps): { spending: Spending } {
   const RL = { config: deps.rateLimit };
   const store = youStore();
   const spending = new Spending({ store, jobs: deps.jobs });
@@ -68,11 +74,12 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
   // ------------------------------------------------------------ plugged in
 
   if (deps.bots) wrapBots(deps.bots, spending);
-  if (deps.jobs) holdJobsToMonth(app, spending, deps.jobs);
+  if (deps.jobs) holdJobsToUsage(app, spending, deps.jobs);
+  setUsageGate(async (userId) => (await spending.refusal(userId))?.message ?? null);
   setPushGate(pushGate(spending));
-  setSpendSource(async (botsDeps, tz) => botsDeps.api<{ limitPaise: number; monthPaise: number }>("GET", `/v1/you/live?tz=${Math.round(tz)}`));
+  setSpendSource(async (botsDeps, tz) => botsDeps.api<{ limitPaise: number; monthPaise: number; usage?: LiveUsage }>("GET", `/v1/you/live?tz=${Math.round(tz)}`));
   const stopSummaries = startSummaries({ spending, jobs: deps.jobs, connectors: deps.connectors, log: app.log });
-  app.addHook("onClose", async () => { stopSummaries(); });
+  app.addHook("onClose", async () => { stopSummaries(); setUsageGate(null); });
 
   // A computer's heartbeat: remembered (name, when last seen) at most every ten minutes, so an offline one can still be listed.
   const seen = new Map<string, number>();
@@ -102,6 +109,9 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     return reply.code(500).send({ code: "internal", message: "That didn't work. Try again." });
   };
   const tzOf = (userId: string, q: unknown) => spending.noteTz(userId, (q as { tz?: unknown } | undefined)?.tz);
+  /** The meter as the screens get it: fractions used and when each resets, the plan's name. None of our amounts. */
+  const meterOf = (u: UsageNow) => ({ plan: u.plan, stretch: u.stretch, month: u.month, state: u.state });
+  const liveOf = (u: UsageNow): LiveUsage => ({ used: u.stretch.used, month: u.month.used, state: u.state, resetsAt: u.stretch.resetsAt, windows: u.plan.windows });
 
   /** Which bots use which app: the person's own bots' skills, and the built-ins'. */
   const usedBy = async (userId: string): Promise<Map<string, string[]>> => {
@@ -176,8 +186,9 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     if (!user) return reply;
     try {
       const tz = tzOf(user.id, req.query);
-      const [{ report, settings }, ent, apps, computers, profile] = await Promise.all([
+      const [{ report, settings }, usage, ent, apps, computers, profile] = await Promise.all([
         spending.report(user.id, tz),
+        spending.usage(user.id, { tz, fresh: true }).catch(() => null),
         getEntitlement(user).catch(() => null),
         appsView(user).catch(() => null),
         computersView(user).catch(() => null),
@@ -189,6 +200,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
           monthPaise: report.monthPaise, limitPaise: report.limitPaise, leftPaise: report.leftPaise, perDayPaise: report.perDayPaise,
           resetsAt: report.resetsAt, byBot: report.byBot, stopAtLimit: report.stopAtLimit,
         },
+        usage: usage ? meterOf(usage) : null,
         apps: apps ? { enabled: apps.enabled, connected: apps.connected.map((a) => ({ id: a.id, name: a.name, usedBy: a.usedBy, lastUsedAt: a.lastUsedAt })), github: apps.github, alone: apps.alone } : null,
         language: profile?.language ?? null,
         computers: computers ? { online: computers.online.map((c) => ({ name: c.name, busy: c.busy, allowRun: c.allowRun })), offline: computers.offline.length, helped: computers.helped } : null,
@@ -203,8 +215,23 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     if (!user) return reply;
     tzOf(user.id, req.query);
     try {
-      const { report, settings } = await spending.month(user.id);
-      return reply.send({ limitPaise: settings.monthLimitPaise, monthPaise: report.monthPaise });
+      const [{ report, settings }, usage] = await Promise.all([spending.month(user.id), spending.usage(user.id).catch(() => null)]);
+      return reply.send({ limitPaise: settings.monthLimitPaise, monthPaise: report.monthPaise, ...(usage ? { usage: liveOf(usage) } : {}) });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // ------------------------------------------------------------ usage
+
+  app.get("/v1/you/usage", RL, async (req, reply) => {
+    const user = await who(req.headers["authorization"], reply);
+    if (!user) return reply;
+    try {
+      const tz = tzOf(user.id, req.query);
+      const u = await spending.usage(user.id, { tz, fresh: true });
+      const now = spending.now();
+      return reply.header("cache-control", "no-store").send({
+        usage: meterOf(u), near: nearLine(u, now, tz), out: u.state === "out" ? outLine(u, now, tz) : null, how: howLine(u),
+      });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -255,8 +282,9 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     const user = await who(req.headers["authorization"], reply);
     if (!user) return reply;
     try {
-      const [view, month] = await Promise.all([billingView(user), spending.report(user.id, tzOf(user.id, req.query)).then((r) => r.report, () => null)]);
-      return reply.header("cache-control", "no-store").send({ ...view, month: month ? { monthPaise: month.monthPaise, limitPaise: month.limitPaise } : null, email: user.email ?? null });
+      const tz = tzOf(user.id, req.query);
+      const [view, usage] = await Promise.all([billingView(user), spending.usage(user.id, { tz }).catch(() => null)]);
+      return reply.header("cache-control", "no-store").send({ ...view, usage: usage ? meterOf(usage) : null, email: user.email ?? null });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -370,4 +398,5 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     } catch (err) { return fail(reply, err); }
   });
 
+  return { spending };
 }

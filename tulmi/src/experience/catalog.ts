@@ -2346,6 +2346,9 @@ export function buildBootstrap(
           // in pixels, and the tabs in the middle of the window.
           "desktop.mast": { logo: 19, brand: 18, tabs: "center" },
         } : {}),
+        // In the Bots app, a refusal for the usage limit (or the free words)
+        // opens Usage: how much is used, when it resets, and a bigger plan.
+        ...(botsApp ? { "quota.screenId": "bots.usage" } : {}),
 
         // HOW A WINDOW PAYS.
         //
@@ -5139,7 +5142,9 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
     case "cancel_subscription":
       return cancelSubscriptionScreen(ctx);
     case WORDS_GATE.outScreenId:
-      return freeForAll() ? freeNowScreen(WORDS_GATE.outScreenId) : wordsOutScreen(ctx);
+      // The free words, or the usage meter: while Tailzu is free, for someone who pays (no words to run out of), or when the words
+      // are not the ones used up, it was the meter.
+      return freeForAll() || ctx.entitlement || (ctx.allowance && ctx.allowance.used < ctx.allowance.total) ? usageOutScreen(WORDS_GATE.outScreenId) : wordsOutScreen(ctx);
     case "reply":
       return replyScreen();
     case "personality":
@@ -5204,6 +5209,31 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
 }
 
 /** What the paywall and the out-of-words screen say while Tailzu is free. */
+/**
+ * Keybot stopped by the usage meter (src/you/usage.ts), not by the free words: what it means, and where to see when it starts again.
+ * No number of money, and nothing to buy here (Usage, in the app, offers a plan when one is for sale).
+ */
+function usageOutScreen(screenId: string): ScreenResponse {
+  return {
+    schemaVersion: SDUI_SCHEMA_VERSION,
+    screenId,
+    title: "Tailzu",
+    root: {
+      type: "Screen",
+      children: [{
+        type: "Stack",
+        style: { flex: 1, justifyContent: "center", alignItems: "center", gap: 14, padding: 32 },
+        children: [
+          { type: "Text", props: { content: "You've reached your limit for now" }, style: { fontSize: 26, fontWeight: "600", textAlign: "center" } },
+          { type: "Text", props: { content: "The keyboard still types. Keybot writes for you again when your stretch resets: see when in You, under Usage." }, style: { fontSize: 15, textAlign: "center", opacity: 0.75 } },
+          { type: "Button", props: { label: "Back" }, on: { onPress: { kind: "navigateBack" } }, style: { marginTop: 10 } },
+        ],
+      }],
+    },
+    cacheTtlSeconds: 0,
+  };
+}
+
 function freeNowScreen(screenId: string): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION,
@@ -13979,7 +14009,9 @@ export function buildKeyboardConfig(
       // The iOS keyboard reads the same message under this key.
       full_access_required: "Enable Full Access to use voice + Refine.",
       // The words-out line, under the key both keyboards read it by.
-      words_out_status: WORDS_GATE.keyboardStatus,
+      // While Tailzu is free there are no free words to run out of: a 429 is the usage meter (src/you/usage.ts).
+      // Read safely: the keyboard's config is also built where no server config is loaded.
+      words_out_status: (() => { try { return freeForAll(); } catch { return false; } })() ? "Paused for now. Open Tailzu to see when it starts again." : WORDS_GATE.keyboardStatus,
       language: "Language",
       // Branded, non-technical status text (both keyboards fall back to these
       // exact strings if the backend omits them — editing here re-words them

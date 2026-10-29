@@ -34,7 +34,8 @@ export const SCREENS = {
   note: "bots.note",                 // DeskNote (one meeting's notes; params: id)
   // screens/you.ts: You and its settings
   you: "bots.you",                   // You / DYou
-  budget: "bots.budget",             // Budget / DBudget
+  usage: "bots.usage",               // Usage: this stretch and this month as meters, when each resets (no board; Budget's place)
+  budget: "bots.budget",             // Budget / DBudget: now the Usage page too (older links)
   billing: "bots.billing",           // Billing / DBilling
   plans: "bots.plans",               // Plans / DPlans
   computer: "bots.computer",         // Devices / DeskComputer ("This computer helps")
