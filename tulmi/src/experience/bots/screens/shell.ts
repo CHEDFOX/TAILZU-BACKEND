@@ -250,8 +250,8 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     body: [
       n.head(head),
       ...n.leaving,
-      // The first time here: one card for the microphone and the keyboard, over Home.
-      ...(n.arrival ? arrivalCard(ctx) : []),
+      // The first time here: one card for the microphone and the keyboard, over Home, and the bot saying hello.
+      ...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []),
       weekRow(ctx),
       ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
       ...(first ? [needsCard(first)] : []),
@@ -273,8 +273,8 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...n.leaving,
       weekRow(ctx),
       ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
-      // The first time here: one card for this computer's microphone and Accessibility, over Home.
-      ...(n.arrival ? arrivalCard(ctx) : []),
+      // The first time here: one card for this computer's microphone and Accessibility, over Home, and the bot saying hello.
+      ...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []),
       ...(first ? [needsCard(first, { layout: "row" })] : []),
       tiles(ctx, 4, 150, 18, more.notes),
     ],
@@ -282,9 +282,14 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   });
 }
 
-/** Nothing of their own yet: no bot they made, nothing working or waiting, nothing ever done (GET /v1/shell/started). */
-function isNew(ctx: BotsCtx, data: { started?: boolean } | undefined): boolean {
-  return data?.started === false && !ctx.live.bots.some((b) => !b.builtin) && !ctx.live.needs.length && !ctx.live.working.length && !ctx.live.week.done;
+/** The bot waving hello by the name they gave it (else X0's): on Home only the first visit after onboarding, while the first-arrival card is due. */
+function hello(ctx: BotsCtx, more: HomeMore): Node {
+  const name = firstName(ctx), me = more.botName || ASSISTANT_NAME;
+  const hi = name ? `Hi ${name}, I'm ${me}` : `Hi, I'm ${me}`;
+  const line = "Every bot here is me, ready for one job. Your first one is already on.";
+  return ctx.client === "desktop"
+    ? row([blip("hello", 140), col([text(hi, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), text(line, { size: 15, color: C.grey70, lineHeight: 21 })], { gap: 6, flexShrink: 1 })], { gap: 24 })
+    : col([blip("hello", 132), text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })], { gap: 6, alignItems: "center" });
 }
 
 // ===================================================================== the empty home
@@ -300,13 +305,8 @@ const IDEAS = [
  * living mark, the compact bar once scrolled), then Blip saying hello, Keybot already on, and making the first bot.
  */
 function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
-  const name = firstName(ctx);
-  // The name they gave their bot when they named it, else X0's own.
-  const me = more.botName || ASSISTANT_NAME;
-  const hi = name ? `Hi ${name}, I'm ${me}` : `Hi, I'm ${me}`;
   const { head, pinned } = homeHead(ctx);
   const n = homeNotices(ctx, arrival, more);
-  const line = "Every bot here is me, ready for one job. Your first one is already on.";
   const keybot = ctx.live.bots.find((b) => b.slug === "keybot") ?? botLook("keybot");
   const make = (idea?: string) => open(SCREENS.make, idea ? { idea } : undefined);
   const fnKey = (w: number, h: number, size: number) => box([text("Fn", { size, weight: 500, color: botLook("keybot").color, lineHeight: size + 4, align: "center" })], {
@@ -323,7 +323,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
         ...(n.arrival ? arrivalCard(ctx) : []),
         row([
           col([
-            row([blip("hello", 140), col([text(hi, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), text(line, { size: 15, color: C.grey70, lineHeight: 21 })], { gap: 6, flexShrink: 1 })], { gap: 24 }),
+            hello(ctx, more),
             card([
               col([text("Make your first bot", { size: 18, weight: 600, lineHeight: 23 }), meta("Say what it should do. It shows you the plan before it acts.", { size: 14, lineHeight: 19 })], { gap: 3 }),
               row([
@@ -367,7 +367,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       head,
       ...n.leaving,
       ...(n.arrival ? arrivalCard(ctx) : []),
-      col([blip("hello", 132), text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })], { gap: 6, alignItems: "center" }),
+      hello(ctx, more),
       // The bots they already have (Keybot, Code, Plan, Travel), as Home shows them once they've started.
       tiles(ctx, 2, 132, 16, more.notes),
       col([
@@ -1521,13 +1521,12 @@ function today(ctx: BotsCtx, d: TodayData | undefined) {
 // ===================================================================== the list
 
 export const shellScreens: BotsScreen[] = [
-  screen<{ started?: boolean; arrival?: boolean } & HomeMore>({
+  screen<{ arrival?: boolean } & HomeMore>({
     id: SCREENS.home,
-    // Whether they have anything of their own yet, whether the first-arrival card is due (once, after onboarding), whether the
+    // Whether the first-arrival card (and the bot's hello) is due (once, after onboarding), the name they gave their bot, whether the
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
-      const [started, arrival, leaving, push, notes, persona] = await Promise.all([
-        deps.api<{ started: boolean }>("GET", "/v1/shell/started").catch(() => undefined),
+      const [arrival, leaving, push, notes, persona] = await Promise.all([
         deps.api<{ due: boolean }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
@@ -1535,11 +1534,12 @@ export const shellScreens: BotsScreen[] = [
         // The name they gave their bot, for the first day's hello.
         deps.api<{ personality?: { assistantName?: string } }>("GET", "/v1/personality").catch(() => undefined),
       ]);
-      return { ...(started ?? {}), arrival: arrival?.due === true, leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality) };
+      return { arrival: arrival?.due === true, leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality) };
     },
     build: (ctx, data) => {
       const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName };
-      return isNew(ctx, data) ? emptyHome(ctx, arrival, more) : ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
+      // One Home for everyone, new or not; the bot's hello on top only the first time.
+      return ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
     },
   }),
   screen({ id: SCREENS.empty, build: (ctx) => emptyHome(ctx) }),

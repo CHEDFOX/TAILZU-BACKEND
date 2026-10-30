@@ -266,21 +266,26 @@ const presses = (n: Node): ActionSpec[] => walk(n).flatMap((x) => [x.on?.onPress
 const both = ["phone", "desktop"] as const;
 
 describe("the shell's screens", () => {
-  it("home: a person with nothing of their own and nothing done lands on the empty home", async () => {
+  it("home: one Home for everyone; the bot waves hello only on the first visit after onboarding", async () => {
     const quiet = { bots: SAMPLE_BOTS.filter((b) => b.builtin), jobs: [], tasks: [] };
+    const FIRST = { "GET /v1/bots/first-run/arrival": { due: true } };
     for (const client of both) {
-      const fresh = await buildBotsScreen(req("bots.home", client), fakeDeps({ ...quiet, api: { "GET /v1/shell/started": { started: false } } }));
-      expect(texts(fresh.root!)).toContain("Hi Aanya, I'm X0");
-      expect(json(fresh.root)).toContain('"screenId":"bots.make"');
-      const going = await buildBotsScreen(req("bots.home", client), fakeDeps({ ...quiet, api: { "GET /v1/shell/started": { started: true } } }));
-      expect(texts(going.root!)).not.toContain("Hi Aanya, I'm X0");
-      // A read that fails is never taken as "new".
+      const first = await buildBotsScreen(req("bots.home", client), fakeDeps({ ...quiet, api: FIRST }));
+      expect(texts(first.root!)).toContain("Hi Aanya, I'm X0");
+      const later = await buildBotsScreen(req("bots.home", client), fakeDeps({ ...quiet, api: { "GET /v1/bots/first-run/arrival": { due: false } } }));
+      expect(texts(later.root!)).not.toContain("Hi Aanya, I'm X0");
+      // Their bots and Make are there either way, the same as for anyone.
+      for (const s of [first, later]) {
+        expect(json(s.root)).toContain('"screenId":"bots.make"');
+        for (const b of quiet.bots.slice(0, 3)) expect(json(s.root)).toContain(`"${b.name}"`);
+        expect(texts(s.root!)).not.toContain("Keybot is on");
+      }
+      // A read that fails is never taken as the first visit.
       expect(texts((await buildBotsScreen(req("bots.home", client), fakeDeps(quiet))).root!)).not.toContain("Hi Aanya, I'm X0");
     }
-    // The name they gave their bot says hello, and on a phone their bots are there from the first day.
-    const named = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ ...quiet, api: { "GET /v1/shell/started": { started: false }, "GET /v1/personality": { personality: { assistantName: "Tara" } } } }));
+    // The name they gave their bot says hello.
+    const named = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ ...quiet, api: { ...FIRST, "GET /v1/personality": { personality: { assistantName: "Tara" } } } }));
     expect(texts(named.root!)).toContain("Hi Aanya, I'm Tara");
-    for (const b of quiet.bots.slice(0, 3)) expect(json(named.root)).toContain(`"${b.name}"`);
   });
   it("activity: the feed, no money on it, needs-you choices, filters by bot and type", async () => {
     const deps = fakeDeps({ api: { [`GET /v1/shell/activity?tz=${IST}`]: ACTIVITY } });
