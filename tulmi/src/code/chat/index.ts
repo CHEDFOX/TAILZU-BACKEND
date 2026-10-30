@@ -101,7 +101,7 @@ export class CodeChat {
     if (status.status === "none") {
       return {
         text: UNREAD, paise: 0, notes: ["The project has not been read."], road: "overview", reads: [], greps: [], cites: [],
-        located: { targets: [], related: [], tests: [], confidence: 0, used: { expanded: false, picked: false, paise: 0 } }, thread,
+        located: { targets: [], related: [], tests: [], confidence: 0, used: { expanded: false, picked: false, paise: 0 } }, thread, next: [],
       };
     }
     let ws: Awaited<ReturnType<typeof workspace>> | null = null;

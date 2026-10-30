@@ -117,7 +117,7 @@ describe("bots app · Xode at work", () => {
 
   it("a job that was a question is the chat: the answer, the files and lines it rests on, change it, ask again through the front door", async () => {
     const { s, words } = await build("bots.code.job", "phone", { id: JOB_ANSWER, asked: "Where is the cookie set?", answer: "In `lib/session.ts:42`." });
-    for (const w of ["Xode", "storefront", "How does sign-in work here?", "app/api/auth/route.ts:9", "lib/session.ts:42", "Where is the cookie set?", "Change something here", "Show the code"]) {
+    for (const w of ["Xode", "storefront", "How does sign-in work here?", "app/api/auth/route.ts:9", "lib/session.ts:42", "Where is the cookie set?"]) {
       expect(words, w).toContain(w);
     }
     const ask = posts(s.root!).filter((a) => a.path === "/v1/ask");
@@ -155,13 +155,19 @@ describe("bots app · Xode at work", () => {
 
   it("a project's chat keeps what came before: the last turns in full, the older ones folded, a new chat on its own thread", async () => {
     const LATEST = "12121212-1212-4212-8212-121212121212";
-    const turns = Array.from({ length: 6 }, (_, i) => ({ q: `Question ${i}`, a: `## Answer ${i}\n- point ${i}`, at: i }));
+    const turns = Array.from({ length: 6 }, (_, i) => ({ q: `Question ${i}`, a: `## Answer ${i}\n- point ${i}`, at: i, ...(i === 5 ? { n: ["Where is point 5 set?", "What calls it?"] } : { n: ["An old suggestion"] }) }));
     const api = { ...CODEWORK_API, [`GET /v1/code/projects/${PROJECT}/chat`]: { thread: LATEST, turns } };
     for (const client of ["phone", "desktop"] as const) {
       // Back on the chat, the earlier questions are there: the last four in full, the two before them behind "Show 2 earlier questions".
       const { s, words } = await build("bots.code.job", client, { project: PROJECT, asked: "Question 5", answer: "## Answer 5\n- point 5" }, api);
       for (const w of ["Question 2", "Answer 3", "· point 4", "Question 5", "Show 2 earlier questions", "Question 0", "New chat"]) expect(words, `${client} ${w}`).toContain(w);
       expect(words.filter((w) => w === "Question 5"), "the turn just asked is drawn once").toHaveLength(1);
+      // Under the last answer, the questions that answer suggested, each one tap to ask; no fixed buttons, and no older answer's suggestions.
+      for (const w of ["Where is point 5 set?", "What calls it?"]) expect(words, `${client} ${w}`).toContain(w);
+      expect(words).not.toContain("An old suggestion");
+      expect(words).not.toContain("Change something here");
+      expect(posts(s.root!).some((a) => a.path === "/v1/ask" && (a.body as Record<string, unknown>).message === "$state.sent")).toBe(true);
+      expect(actionsOf(s.root!).some((a) => a.kind === "setState" && (a as { value?: unknown }).value === "What calls it?")).toBe(true);
       // The chat goes on in the latest thread, and "New chat" opens a thread of its own.
       expect(posts(s.root!).find((a) => a.path === "/v1/ask")?.body).toMatchObject({ threadId: LATEST });
       const fresh = actionsOf(s.root!).find((a) => a.kind === "navigate" && (a as { params?: Record<string, string> }).params?.thread && (a as { params?: Record<string, string> }).params!.thread !== LATEST);

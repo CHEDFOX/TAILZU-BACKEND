@@ -35,7 +35,11 @@ export const HISTORY_TURNS = 30;
 const ANSWER_KEEP = 4_000;
 
 /** One question and its answer, as the chat shows them. */
-export interface ChatTurn { q: string; a: string; at: number }
+export interface ChatTurn {
+  q: string; a: string; at: number;
+  /** What the answer suggested asking next (code/chat/answer.ts splitNext): the chat's buttons under its last answer. */
+  n?: string[];
+}
 
 export interface ChatThread {
   id: string;
@@ -89,8 +93,11 @@ export function rollSummary(summary: string, question: string, cites: readonly s
 }
 
 /** A thread after a turn. */
-export function afterTurn(t: ChatThread, o: { question: string; shown?: string; cites: readonly string[]; located: Located | null; now: number; answer?: string }): ChatThread {
-  const turn: ChatTurn = { q: (o.shown ?? o.question).trim().slice(0, QUESTION_MAX), a: (o.answer ?? "").trim().slice(0, ANSWER_KEEP), at: o.now };
+export function afterTurn(t: ChatThread, o: { question: string; shown?: string; cites: readonly string[]; located: Located | null; now: number; answer?: string; next?: readonly string[] }): ChatThread {
+  const turn: ChatTurn = {
+    q: (o.shown ?? o.question).trim().slice(0, QUESTION_MAX), a: (o.answer ?? "").trim().slice(0, ANSWER_KEEP), at: o.now,
+    ...(o.next?.length ? { n: o.next.slice(0, 3).map((q) => q.slice(0, 90)) } : {}),
+  };
   return {
     ...t,
     summary: rollSummary(t.summary, o.question, o.cites),
@@ -157,7 +164,10 @@ function lastOf(v: unknown): { located: Located | null; history: ChatTurn[] } {
   const o = v as { located?: unknown; history?: unknown };
   if (!Array.isArray(o.history)) return { located: v as Located, history: [] };
   const history = o.history.filter((h): h is ChatTurn => !!h && typeof h === "object" && typeof (h as ChatTurn).q === "string" && typeof (h as ChatTurn).a === "string")
-    .map((h) => ({ q: h.q, a: h.a, at: typeof h.at === "number" ? h.at : 0 }));
+    .map((h) => {
+      const n = Array.isArray(h.n) ? h.n.filter((q): q is string => typeof q === "string").slice(0, 3) : [];
+      return { q: h.q, a: h.a, at: typeof h.at === "number" ? h.at : 0, ...(n.length ? { n } : {}) };
+    });
   return { located: o.located && typeof o.located === "object" ? (o.located as Located) : null, history };
 }
 

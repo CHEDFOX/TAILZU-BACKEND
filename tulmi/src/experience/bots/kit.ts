@@ -949,6 +949,11 @@ export interface PageOpts {
   gap?: number;
   /** The window's main column at most this wide (880). */
   maxWidth?: number;
+  /**
+   * The window's page fills the window and does not scroll as a whole: the body scrolls inside itself (a chat, whose message box stays put
+   * under its messages). The phone's page is unchanged.
+   */
+  fixed?: boolean;
   /** Over the top of the page, outside its scroll (a HeadBar): before the phone's Screen, before the window's column. */
   pinned?: Node[];
   /** Live topics this screen listens to (src/live/bus.ts): when one changes, the open screen reloads itself. */
@@ -1049,8 +1054,8 @@ export function deskPage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
       ...backNode(o),
       ...o.body,
       ...(o.footer?.length ? [grow(), ...o.footer] : []),
-    ], { maxWidth: o.maxWidth ?? 880, width: "100%", flexGrow: 1, gap: o.gap ?? 28 }),
-  ], { flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%", overflowY: "auto", paddingTop: 40, paddingHorizontal: 48, paddingBottom: 32 });
+    ], { maxWidth: o.maxWidth ?? 880, width: "100%", flexGrow: 1, gap: o.gap ?? 28, ...(o.fixed ? { flexShrink: 1, minHeight: 0 } : {}) }),
+  ], { flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%", overflowY: o.fixed ? "hidden" : "auto", paddingTop: 40, paddingHorizontal: 48, paddingBottom: 32 });
   // Pinned (a HeadBar): just before the column that scrolls, in a frame of their own, so they stay over its top.
   const column = o.pinned?.length ? col([...o.pinned, main], { flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%", position: "relative" }) : main;
   const root = row([sidebar(ctx, o.tab ?? o.nav), column], { height: "100%", minHeight: 600, alignItems: "stretch", backgroundColor: C.paper });

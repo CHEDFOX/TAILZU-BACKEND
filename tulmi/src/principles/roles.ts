@@ -357,7 +357,7 @@ const ROLE_TABLE = {
     principles: ["core.facts", "core.unsure", "core.lang", "safe.data", "safe.secrets", "eff.part", "code.cite", "code.impact", "out.short"],
     contract: "Markdown in the person's language. Cite path:line beside each claim, copied from <facts> or <excerpts>; no other line numbers, no file list at the end. "
       + "Broad question: 2 to 4 plain sentences, then short bullets; narrow: exact names and values. Say in a line what they do not show. "
-      + "Change nothing; propose no edit unless asked. For what a change would break, list who uses it and which tests cover it.",
+      + "Change nothing; propose no edit unless asked. Last line: Next: two short questions they could ask next, split by |.",
   },
   front_diagram: {
     identity: "You draw one Mermaid diagram of the answer you are given, so it can be seen at a glance.",
