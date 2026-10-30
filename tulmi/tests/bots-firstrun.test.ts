@@ -351,7 +351,8 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       // Waved (helloSeen): he walks off as the card comes in (a build without BlipWalkOut slides him off, MorphOut), then
       // helloGone; Home rises in once he is gone, never waiting on the card (it is an overlay over Home).
       expect(walk(helloNode).find((x) => x.type === "MorphOut")?.bind).toEqual({ active: "helloSeen" });
-      expect(nodes.some((x) => x.visibleIf && JSON.stringify(x.visibleIf) === '{"truthy":"helloSeen"}' && JSON.stringify(x.on?.onAppear).includes("helloGone"))).toBe(true);
+      // One chain on the hello: waved (helloSeen), then gone (helloGone), so nothing waits on a second node appearing.
+      expect(JSON.stringify(helloNode.on?.onAppear)).toMatch(/"path":"helloSeen".*"kind":"delay".*"path":"helloGone"/);
       const home = { truthy: "helloGone" };
       expect(nodes.filter((x) => x.type === "Rise" && JSON.stringify(x.visibleIf) === JSON.stringify(home)).length).toBeGreaterThan(2);
       // A build that draws him walking gets that instead.

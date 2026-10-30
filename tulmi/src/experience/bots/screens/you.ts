@@ -17,7 +17,7 @@ import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sd
 import { BOT_SOUNDS_CAPABILITY } from "../../../../../shared/types/sdui.js";
 import {
   C, FACE, SCREENS, back, body, botAvatar, botRoute, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, listCard,
-  listRow, meta, mono, notice, open, page, percent, primaryButton, quietButton, row, secondaryButton, sectionLabel, seq, shapes,
+  listRow, meta, notice, open, page, percent, primaryButton, quietButton, row, secondaryButton, sectionLabel, seq, shapes,
   switchMark, switchRow, table, text, title, usageMeter, when, whenEq, whenWords, type BotsCtx, type IconName,
 } from "../kit.js";
 import { DELETION_PATH, GRACE_DAYS, daysStrip, dayMonthOf, goneAt, keepAccount, scheduleDeletion, type DeletionState } from "./accountGrace.js";
@@ -93,8 +93,6 @@ const DAY_MS = 86_400_000;
 const local = (ctx: BotsCtx, t: number) => new Date(t + ctx.tzOffsetMinutes * 60_000);
 /** "14 Oct" */
 const dayMonth = (ctx: BotsCtx, t: number) => { const d = local(ctx, t); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
-/** "12 Oct 2026" */
-const fullDate = (ctx: BotsCtx, t: number) => { const d = local(ctx, t); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
 const hhmm = (ctx: BotsCtx, t: number) => { const d = local(ctx, t); return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`; };
 /** "In use now", "2 min ago", "Today 10:40", "Yesterday", "Mon", "14 Oct". */
 function ago(ctx: BotsCtx, t: number | null): string {
@@ -423,14 +421,6 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
 // ===================================================================== bots.usage (and bots.budget, its old link)
 
 /** The five stretches of the month as one bar: each as wide as its days, the ones gone in ink, this one half. */
-function stretchBar(u: UsageMeter): Node {
-  const parts = Array.from({ length: u.stretch.of }, (_, i) => i + 1);
-  const days = (n: number) => (n === u.stretch.of ? Math.max(1, u.month.days - 22) : [4, 5, 6, 7][n - 1] ?? 1);
-  return row(parts.map((n) => box([], {
-    flexGrow: days(n), flexBasis: 0, height: 6, borderRadius: 3,
-    backgroundColor: n < u.stretch.n ? C.ink : n === u.stretch.n ? C.grey70 : C.track,
-  })), { gap: 4 });
-}
 
 /** The way out at the limit: a bigger plan, as an action (the store's own sheet shows its price). None while nothing is for sale. */
 const upgradeButton = (u: UsageMeter, o: { wide?: boolean; size?: "md" | "lg" } = {}): Node[] =>
@@ -440,14 +430,10 @@ function usageBody(ctx: BotsCtx, d: UsagePage): Node[] {
   const u = d.usage;
   const stretch = usageMeter(spanLabel(u.plan.windows), u.stretch.used, { resets: resetsLine(ctx, u.stretch.resetsAt) });
   const month = u.plan.windows ? [usageMeter("This month", u.month.used, { resets: `Starts again ${whenWords(u.month.resetsAt, ctx.live.now, ctx.tzOffsetMinutes)}` })] : [];
+  // The meters, and a word when it is nearly or all used. Nothing explaining how it works: the meters say it.
   return [
     card([stretch, ...month.flatMap((m) => [divider(), m])], { gap: 16, padding: 18 }),
     ...(d.out ? [notice(d.out, { ink: true })] : d.near ? [notice(d.near)] : []),
-    ...(u.plan.windows ? [col([
-      row([sectionLabel("The month"), grow(), meta(`Stretch ${u.stretch.n} of ${u.stretch.of}`, { size: 12 })]),
-      stretchBar(u),
-    ], { gap: 10 })] : []),
-    meta(d.how, { size: 13, lineHeight: 18 }),
   ];
 }
 
@@ -477,7 +463,7 @@ function usageDesk(ctx: BotsCtx, d: UsagePage | undefined) {
             meta(resetsLine(ctx, u.stretch.resetsAt), { size: 13 }),
             ...(u.plan.windows ? [meta(`This month · ${percent(u.month.used)} used`, { size: 13 })] : []),
           ], { gap: 4, flexShrink: 1 })], { gap: 18, alignItems: "center" }),
-          ...(u.plan.upgrade ? [divider(), meta("A plan gives you more to use every month.", { size: 13 }), ...upgradeButton(u, { wide: false, size: "md" })] : []),
+          ...(u.plan.upgrade ? [divider(), ...upgradeButton(u, { wide: false, size: "md" })] : []),
         ], { padding: 20, gap: 14 }),
       ], { rightWidth: 360 }),
     ],
@@ -485,14 +471,6 @@ function usageDesk(ctx: BotsCtx, d: UsagePage | undefined) {
 }
 
 // ===================================================================== bots.billing
-
-/** What each plan gives, in words. No price: a store's own sheet shows that when someone buys. */
-// The same for every bot, like the plans screen: nothing bot-specific.
-const PLAN_GIVES = {
-  free: ["A monthly allowance for all your bots"],
-  pro: ["More every month, for all your bots"],
-};
-const billingBody = (b: BillingData["plan"]) => (b.active ? PLAN_GIVES.pro : PLAN_GIVES.free).join(". ");
 
 function cancelAction(p: BillingData["plan"]): ActionRef | undefined {
   if (p.cancel === "store" && p.manageUrl) return openUrl(p.manageUrl);
@@ -505,36 +483,22 @@ const cancelLine = (ctx: BotsCtx, p: BillingData["plan"]) =>
   p.cancel === "store" ? `Cancel in ${p.paidBy ?? "your app store"}. Your bots and projects stay.`
     : `Two taps. ${p.until ? `${p.name} stays till ${dayMonth(ctx, p.until)}, ` : ""}your bots and projects stay too.`;
 
-function invoiceRows(ctx: BotsCtx, list: Invoice[]): Node[] {
-  return list.slice(0, 3).map((i) => listRow({
-    label: fullDate(ctx, i.date), sub: i.what,
-    ...(i.url ? { right: glyph(G.download, 18, C.meta), chevron: false, onPress: openUrl(i.url) } : {}),
-  }));
-}
 
 function billingPhone(ctx: BotsCtx, d: BillingData | undefined) {
   if (!d) return page(ctx, { back: true, nav: "you", title: "Plan and billing", body: [title("Plan and billing"), couldNot("your plan")] });
   const p = d.plan;
   const cancel = cancelAction(p);
+  // The least there is: the plan, when it renews, how much is used. Receipts and reminders come from whoever took the
+  // payment (the App Store, Google Play, Razorpay, the UPI app), so none of that is repeated here.
   return page(ctx, {
     back: true, nav: "you", title: "Plan and billing", gap: 18, state: { cancelSure: false },
     body: [
       title("Plan and billing"),
       listCard([
-        col([
-          text(p.name, { size: 20, weight: 700 }),
-          meta(billingBody(p), { size: 13 }),
-        ], { gap: 4, paddingVertical: 16, paddingHorizontal: 16 }),
+        listRow({ label: "Plan", value: p.name }),
         ...(p.active && p.until ? [listRow({ label: p.renews ? "Renews" : "Ends", value: dayMonth(ctx, p.until) })] : []),
-        ...(p.paidBy ? [listRow({ label: "Paid by", value: p.paidBy })] : []),
         ...(d.usage ? [listRow({ label: "Usage", value: usedLine(meterOf(ctx, d.usage)), onPress: open(SCREENS.usage) })] : []),
       ]),
-      ...(p.paidBy === "UPI autopay" ? [meta("Your UPI app tells you before each renewal.", { size: 12 })] : []),
-      ...(d.invoices.length ? [col([
-        row([sectionLabel("Invoices"), grow(), meta(plural(d.invoices.length, "invoice"), { size: 12 })]),
-        listCard(invoiceRows(ctx, d.invoices)),
-        meta("From Razorpay. Tap one to open it.", { size: 12 }),
-      ], { gap: 8 })] : p.active && p.store && p.store !== "razorpay" ? [meta(`Your receipts are in ${p.paidBy ?? "your app store"}.`, { size: 13 })] : []),
     ],
     footer: [
       primaryButton(p.active ? "Change plan" : "See plans", open(SCREENS.plans), { wide: true }),
@@ -547,46 +511,24 @@ function billingDesk(ctx: BotsCtx, d: BillingData | undefined) {
   if (!d) return page(ctx, { back: true, backTitle: "You", nav: "you", title: "Plan and billing", maxWidth: 1040, body: [heading(ctx, "Plan and billing"), couldNot("your plan")] });
   const p = d.plan;
   const cancel = cancelAction(p);
-  const planCard = (name: string, lines: string[], mine: boolean) => card([
-    row([text(name, { size: 15, weight: 600 }), grow(), ...(mine ? [box([text("Your plan", { size: 11, weight: 600, color: C.paper })], { backgroundColor: C.ink, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 })] : [])]),
-    ...lines.map((l) => row([icon("check", { size: 14 }), meta(l, { size: 12, color: C.grey70 })], { gap: 6 })),
-  ], { padding: 16, gap: 8, ...(mine ? { selected: C.ink } : {}), style: { flexGrow: 1, flexBasis: 0 } });
-  const sub = [p.active && p.since ? `${p.name} since ${fullDate(ctx, p.since)}` : p.name, ...(p.active && p.until ? [`${p.renews ? "renews" : "ends"} ${dayMonth(ctx, p.until)}`] : [])].join(" · ");
+  // As on the phone: the plan, when it renews, how much is used; change it or cancel it. Receipts are Razorpay's.
   return page(ctx, {
-    back: true, backTitle: "You", nav: "you", title: "Plan and billing", maxWidth: 1040, gap: 20, state: { cancelSure: false },
+    back: true, backTitle: "You", nav: "you", title: "Plan and billing", maxWidth: 640, gap: 20, state: { cancelSure: false },
     body: [
-      heading(ctx, "Plan and billing", sub),
-      columns([
-        card([
-          sectionLabel("Plan"),
-          row([planCard("Free", PLAN_GIVES.free, !p.active), planCard(p.active ? p.name : "Lite or Elite", PLAN_GIVES.pro, p.active)], { gap: 12, alignItems: "stretch" }),
-          row([
-            secondaryButton(p.active ? "Change plan" : "See plans", open(SCREENS.plans), { size: "md" }),
-            ...(cancel ? [quietButton("Cancel plan", cancel, { size: "md" })] : []),
-            ...(cancel ? [meta(cancelLine(ctx, p), { size: 12, style: { flexShrink: 1 } })] : []),
-          ], { gap: 10 }),
-        ], { padding: 20, gap: 14 }),
-      ], [
-        card([
-          sectionLabel("Paid by"),
-          p.paidBy ? row([glyph(G.card, 20), text(p.paidBy, { size: 15, weight: 500 }), grow(), ...(p.manageUrl ? [button("Change", openUrl(p.manageUrl), { kind: "secondary", size: "md" })] : [])], { gap: 10 })
-            : meta("Nothing to pay on the free plan.", { size: 13 }),
-          ...(p.active && p.until ? [row([statusMark2(), col([text(`${dayMonth(ctx, p.until)} · ${p.renews ? `${p.name} renews` : `${p.name} ends`}`, { size: 13, weight: 500 }), meta(p.renews ? (p.paidBy === "UPI autopay" ? "Your UPI app tells you first" : "Cancel any time before") : "Nothing more is taken", { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 10, alignItems: "flex-start" })] : []),
-          ...(d.usage ? [box([listRow({ label: "Usage", value: usedLine(meterOf(ctx, d.usage)), onPress: open(SCREENS.usage) })], { backgroundColor: C.surface, borderRadius: 12, overflow: "hidden" })] : []),
-        ], { padding: 20, gap: 14 }),
+      heading(ctx, "Plan and billing"),
+      listCard([
+        listRow({ label: "Plan", value: p.name }),
+        ...(p.active && p.until ? [listRow({ label: p.renews ? "Renews" : "Ends", value: dayMonth(ctx, p.until) })] : []),
+        ...(d.usage ? [listRow({ label: "Usage", value: usedLine(meterOf(ctx, d.usage)), onPress: open(SCREENS.usage) })] : []),
       ]),
-      ...(d.invoices.length ? [card([
-        row([sectionLabel(`Invoices · ${d.invoices.length}`), grow(), meta("From Razorpay", { size: 12 })]),
-        table([{ label: "Date" }, { label: "Invoice" }, { label: "What", flex: 2 }, { label: "", align: "right" }],
-          d.invoices.slice(0, 8).map((i) => [fullDate(ctx, i.date), mono(i.number), i.what,
-            i.url ? row([glyph(G.download, 14), text("PDF", { size: 12, weight: 500 })], { gap: 4, borderWidth: 1, borderColor: C.outline, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 4 }) : ""]),
-          { onRow: (k) => (d.invoices[k]?.url ? openUrl(d.invoices[k]!.url!) : undefined) }),
-      ], { padding: 20, gap: 12 })] : []),
+      row([
+        secondaryButton(p.active ? "Change plan" : "See plans", open(SCREENS.plans), { size: "md" }),
+        ...(cancel ? [quietButton("Cancel plan", cancel, { size: "md" })] : []),
+        ...(cancel ? [meta(cancelLine(ctx, p), { size: 12, style: { flexShrink: 1 } })] : []),
+      ], { gap: 10 }),
     ],
   });
 }
-/** A hollow ring: a date to come. */
-const statusMark2 = (): Node => box([], { width: 10, height: 10, borderRadius: 5, borderWidth: 1.5, borderColor: C.ink, marginTop: 4 });
 
 // ===================================================================== bots.computer
 

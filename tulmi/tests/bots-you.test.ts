@@ -134,8 +134,9 @@ describe("the You screens", () => {
     expect(you).toContain("Resets Sun");
     for (const client of ["phone", "desktop"] as const) {
       const usage = texts((await build("bots.usage", client, ANSWERS)).root);
-      expect(usage).toEqual(expect.arrayContaining(["Usage", "This stretch", "64% used", "Resets Sun", "This month", "40% used", "Stretch 5 of 5"]));
-      expect(usage.join(" ")).toContain("five stretches");
+      expect(usage).toEqual(expect.arrayContaining(["Usage", "This stretch", "64% used", "Resets Sun", "This month", "40% used"]));
+      // The meters say it: no line explaining how the stretches work.
+      expect(usage.join(" ")).not.toContain("five stretches");
     }
     // Budget's old link opens Usage.
     expect(texts((await build("bots.budget", "phone", ANSWERS)).root)).toContain("64% used");
@@ -145,8 +146,13 @@ describe("the You screens", () => {
         expect(all, `${id} on the ${client}`).not.toMatch(/₹|paise|rupee/i);
       }
     }
-    const billing = texts((await build("bots.billing", "desktop", ANSWERS)).root);
-    expect(billing).toEqual(expect.arrayContaining(["Usage", "64% of this stretch", "More every month, for all your bots"]));
+    // Plan and billing, the least there is: the plan, when it renews, usage. Receipts and renewal reminders are the store's,
+    // Razorpay's and the UPI app's, so no invoices, no "Paid by", no plan blurb.
+    for (const client of ["phone", "desktop"] as const) {
+      const billing = texts((await build("bots.billing", client, ANSWERS)).root);
+      expect(billing).toEqual(expect.arrayContaining(["Plan", "Pro", "Renews", "Usage", "64% of this stretch", "Change plan", "Cancel plan"]));
+      for (const gone of ["Invoices", "Paid by", "UPI autopay", "Your UPI app tells you before each renewal.", "TZ-2610-0412", "More every month, for all your bots"]) expect(billing, client).not.toContain(gone);
+    }
   });
 
   it("near the limit a calm line; at it the sentence, and a plan offered as an action without a price", async () => {
@@ -180,10 +186,10 @@ describe("the You screens", () => {
     };
     for (const client of ["phone", "desktop"] as const) {
       const usage = texts((await build("bots.usage", client, free)).root);
-      expect(usage).toEqual(expect.arrayContaining(["This month", "64% used", "Resets Sun", how]));
+      expect(usage).toEqual(expect.arrayContaining(["This month", "64% used", "Resets Sun"]));
+      expect(usage).not.toContain(how);
       for (const id of ["bots.usage", "bots.you", "bots.billing", "bots.settings"]) {
-        // Billing may set the paid plans beside the free one ("More every month, for all your bots"): that is theirs, not this meter.
-        const words = texts((await build(id, client, free)).root).filter((w) => w !== "More every month, for all your bots");
+        const words = texts((await build(id, client, free)).root);
         expect(words.join(" "), `${id} on the ${client}`).not.toMatch(/stretch/i);
       }
     }

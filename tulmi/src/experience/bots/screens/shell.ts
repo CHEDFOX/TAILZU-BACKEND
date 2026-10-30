@@ -273,10 +273,12 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ? [
         {
           ...col([hello(ctx, more, { walkOut: true })], { paddingTop: 150 }), visibleIf: { falsy: "helloGone" },
-          on: { onAppear: seq({ kind: "delay", ms: HELLO_MS }, { kind: "setState", path: "helloSeen", value: true }) },
+          // The whole welcome in one run: he waves (helloSeen at HELLO_MS), walks off, and is gone (helloGone WALK_MS later),
+          // so Home comes in. One chain, written to one Store: it used to be two (the second fired when helloSeen made a
+          // hidden node appear), and when the app swapped in a fresh copy of Home between the two, the second never ran
+          // and Home never came.
+          on: { onAppear: seq({ kind: "delay", ms: HELLO_MS }, { kind: "setState", path: "helloSeen", value: true }, { kind: "delay", ms: WALK_MS }, { kind: "setState", path: "helloGone", value: true }) },
         },
-        // He has waved: his walk off, then he is gone.
-        { ...box([], { height: 0 }), visibleIf: { truthy: "helloSeen" }, on: { onAppear: seq({ kind: "delay", ms: WALK_MS }, { kind: "setState", path: "helloGone", value: true }) } },
         ...arrivalCard(ctx, { after: "helloSeen" }),
         ...home.map(arrive),
       ]
