@@ -22,15 +22,15 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { botsAuthTree, BOTS_FIRST_RUN_IDS } = await import("../src/experience/bots/screens/firstRun.js");
-const { nameFromEmail, signedInVia, spokenSince, startingName, trialDaysOf } = await import("../src/routes/botsFirstRun.js");
+const { nameFromEmail, planLine, signedInVia, spokenSince, startingName, trialDaysOf } = await import("../src/routes/botsFirstRun.js");
 
 const LANGS = { options: [{ value: "hinglish", label: "Hinglish" }, { value: "hi", label: "Hindi" }, { value: "en", label: "English" }, { value: "ta", label: "Tamil" }], picked: ["ta", "en"] };
 const WORDS = { words: 0, seconds: 0, typingSeconds: 0, totalWords: 5210, totalSeconds: 1880 };
 const PHONE_PLANS = {
   freeForAll: false, entitled: false, freeWords: 2000, features: ["Unlimited voice-to-text refinement"],
   plans: [
-    { id: "annual", label: "Elite", price: "$59.99", per: "$5.00 / mo, billed yearly", trialDays: 7, default: true, buy: { kind: "iap.showPaywall", offeringId: "default", packageId: "$rc_annual" } },
-    { id: "monthly", label: "Lite", price: "$9.99", per: "per month", buy: { kind: "iap.showPaywall", offeringId: "default", packageId: "$rc_monthly" } },
+    { id: "annual", label: "Elite", price: "$59.99", per: "$5.00 / mo, billed yearly", trialDays: 7, default: true, line: "100× more every month, for all your bots", buy: { kind: "iap.showPaywall", offeringId: "default", packageId: "$rc_annual" } },
+    { id: "monthly", label: "Lite", price: "$9.99", per: "per month", line: "10× more every month, for all your bots", buy: { kind: "iap.showPaywall", offeringId: "default", packageId: "$rc_monthly" } },
   ],
 };
 const API: Record<string, unknown> = {
@@ -213,6 +213,10 @@ describe("Turn on Keybot, First words", () => {
   it("spokenSince and the typing estimate", () => {
     expect(spokenSince({ words: 120, audioSeconds: 40 }, { w: 100, s: 32 })).toEqual({ words: 20, seconds: 8, typingSeconds: 30, totalWords: 120, totalSeconds: 40 });
     expect(spokenSince({ words: 120, audioSeconds: 40 }, {})).toMatchObject({ words: 0, seconds: 0 });
+    const cfg = { USAGE_FREE_MONTH_PAISE: 5000, USAGE_PAID_MONTH_PAISE: 50_000, USAGE_ELITE_MONTH_PAISE: 500_000 } as never;
+    expect(planLine("lite", cfg)).toBe("10× more every month, for all your bots");
+    expect(planLine("elite", cfg)).toBe("100× more every month, for all your bots");
+    expect(planLine("lite", { USAGE_FREE_MONTH_PAISE: 0, USAGE_PAID_MONTH_PAISE: 50_000, USAGE_ELITE_MONTH_PAISE: 0 } as never)).toBe("More every month, for all your bots");
     expect(trialDaysOf("7 days free, then billed yearly")).toBe(7);
     expect(trialDaysOf("Billed monthly")).toBeUndefined();
   });
@@ -220,10 +224,12 @@ describe("Turn on Keybot, First words", () => {
 
 describe("Plans: a page from You and Billing now", () => {
   const finishes = (a: ActionSpec[]) => a.some((x) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/profile");
-  it("phone: the paywall's plans, bought as the paywall buys them; buying or staying free goes back, and onboarding is not touched", async () => {
+  it("phone: the paywall's plans, bought as the paywall buys them; buying or Not now goes back, and onboarding is not touched", async () => {
     const s = await build("bots.plans", "phone");
     expect(s.state?.plan).toBe("annual");
-    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Free", "Elite", "$59.99", "Lite", "Start free week", "Stay on Free", "Keybot, 2,000 words a month"]));
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Elite", "$59.99", "Lite", "Start free week", "Not now", "100× more every month, for all your bots", "10× more every month, for all your bots"]));
+    // Minimal and the same for every bot: no Free card, no bot-specific lines, no feature list.
+    for (const gone of ["Stay on Free", "Keybot, 2,000 words a month", "Keybot without a word limit", "Unlimited voice-to-text refinement"]) expect(texts(s.root!)).not.toContain(gone);
     const all = actions(s.root);
     const buy = all.find((x) => x.kind === "iap.showPaywall" && (x as { packageId?: string }).packageId === "$rc_annual") as { onSuccess?: unknown } | undefined;
     expect(buy).toBeDefined();

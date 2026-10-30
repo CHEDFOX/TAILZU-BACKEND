@@ -1335,7 +1335,7 @@ interface Plans {
   freeWords: number;
   features: string[];
   plans: Array<{
-    id: string; label: string; price: string; per: string; perTemplate?: string; note?: string; badge?: string; trialDays?: number; default?: boolean;
+    id: string; label: string; price: string; per: string; perTemplate?: string; note?: string; badge?: string; trialDays?: number; default?: boolean; line?: string;
     buy?: { kind: "iap.showPaywall"; offeringId: string; packageId?: string } | { kind: "iap.subscribe"; productId: string };
   }>;
 }
@@ -1365,7 +1365,6 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const chosen = (paid.find((p) => p.default) ?? paid[0]!).id;
   const isOn = (id: string): Condition => ({ eq: ["plan", id] });
   const sel = (id: string, then: unknown, otherwise: unknown) => ({ ...isOn(id), then, else: otherwise });
-  const freeLine = `Keybot, ${data.freeWords.toLocaleString("en-IN")} words a month`;
   const buyAction = (p: Plans["plans"][number]): ActionRef | undefined => {
     if (!p.buy) return undefined;
     const failed = toast("Couldn't complete the purchase. Nothing was charged.");
@@ -1376,37 +1375,27 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const radio = (id: string): Node => box([when(isOn(id), box([], { width: 10, height: 10, borderRadius: 5, backgroundColor: C.ink }))], {
     width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: sel(id, C.ink, C.outline), alignItems: "center", justifyContent: "center", flexShrink: 0,
   });
-  const feature = (lead: Node, line: string): Node => row([lead, text(line, { size: 14, lineHeight: 19, style: { flexShrink: 1 } })], { gap: 10 });
   const tag = (s: string): Node => box([text(s, { size: 12, weight: 500, lineHeight: 16 })], { backgroundColor: C.surface, borderRadius: 10, paddingVertical: 3, paddingHorizontal: 8 });
-  const keyHead = botAvatar(botLook("keybot"), 22);
   // A phone's plans carry their store package: the price shows as the store words it once it answers (catalog.ts storePriceOf).
   const store = (p: Plans["plans"][number], o: { field?: "perMonth"; template?: string } = {}): TextOpts =>
     p.buy?.kind === "iap.showPaywall" && p.buy.packageId
       ? { storePrice: { packageId: p.buy.packageId, offeringId: p.buy.offeringId, ...o } }
       : {};
-  const planCard = (id: string, name: string, price: Node, extra: Node[], per: string, lines: Node[], perOpts: TextOpts = {}): Node => col([
-    row([radio(id), text(name, { size: 17, weight: 600, lineHeight: 22 }), ...extra, grow(), price], { gap: 10 }),
-    ...(per ? [meta(per, { size: 12, style: { paddingLeft: 32, marginTop: -8 }, ...perOpts })] : []),
-    col(lines, { gap: 8, paddingLeft: 32 }),
-  ], {
-    paddingVertical: 14, paddingHorizontal: 16, gap: 12, borderRadius: 18, borderWidth: sel(id, 1.5, 1), borderColor: sel(id, C.ink, C.line),
-  }, setState("plan", id));
-  const tick = (): Node => box([icon("check", { size: 14 })], { width: 22, height: 22, borderRadius: 11, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" });
-  const cards = [
-    // No price on Free: its name says it, and a currency here would clash with the store's on the paid plans ("₹0" beside "$50").
-    planCard("free", "Free", box([]), [], "", [feature(tick(), "Every bot, with a smaller allowance each month"), feature(keyHead, freeLine)]),
-    ...paid.map((p) => planCard(p.id, p.label, text(p.price, { size: 17, weight: 700, lineHeight: 22, ...store(p) }), [
+  // A plan is its name, its price and period, and one line that is the same for every bot. The selected one shows its
+  // billing terms too (the stores want the commitment before the purchase).
+  const planCard = (p: Plans["plans"][number]): Node => col([
+    row([radio(p.id), text(p.label, { size: 17, weight: 600, lineHeight: 22 }),
       ...(p.trialDays ? [tag(`${p.trialDays} days free`)] : p.badge ? [tag(p.badge)] : []),
-    ], p.per, [
-      feature(tick(), "More to use every month, in five stretches"),
-      feature(keyHead, "Keybot without a word limit"),
-      // The rest of what it adds, on the plan in hand (the paywall's own words).
-      when(isOn(p.id), col([
-        ...data.features.map((f) => feature(tick(), f)),
-        ...(p.note && !p.trialDays ? [meta(p.note, { size: 12 })] : []),
-      ], { gap: 8 })),
-    ], p.perTemplate ? store(p, { field: "perMonth", template: p.perTemplate }) : {})),
-  ];
+      grow(), text(p.price, { size: 17, weight: 700, lineHeight: 22, ...store(p) })], { gap: 10 }),
+    col([
+      ...(p.per ? [meta(p.per, { size: 12, ...(p.perTemplate ? store(p, { field: "perMonth", template: p.perTemplate }) : {}) })] : []),
+      ...(p.line ? [text(p.line, { size: 14, lineHeight: 19 })] : []),
+      ...(p.note && !p.trialDays ? [when(isOn(p.id), meta(p.note, { size: 12 }))] : []),
+    ], { gap: 6, paddingLeft: 32, marginTop: -6 }),
+  ], {
+    paddingVertical: 14, paddingHorizontal: 16, gap: 10, borderRadius: 18, borderWidth: sel(p.id, 1.5, 1), borderColor: sel(p.id, C.ink, C.line),
+  }, setState("plan", p.id));
+  const cards = paid.map(planCard);
   /** What a trial costs, day by day: nothing today, the price when it ends. */
   const trial = (p: Plans["plans"][number]): Node | null => p.trialDays ? when(isOn(p.id), col([
     text(`Try ${p.label} free for ${p.trialDays} days. Cancel any time before it ends and you pay nothing.`, { size: 14, lineHeight: 20 }),
@@ -1421,10 +1410,9 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   const ctaFor = (p: Plans["plans"][number]): string =>
     p.trialDays ? (p.trialDays === 7 ? "Start free week" : `Start ${p.trialDays} free days`) : `Choose ${p.label}`;
   const ctas: Node[] = [
-    when(isOn("free"), button("Stay on Free", done, { size: "lg", wide: !desk })),
     ...paid.map((p) => when(isOn(p.id), button(ctaFor(p), buyAction(p), { size: "lg", wide: !desk, ...(p.buy ? {} : { kind: "disabled" }) }))),
   ];
-  const stay = when({ neq: ["plan", "free"] }, link("Stay on Free", done, { center: true }));
+  const stay = link("Not now", done, { center: true });
   const sub = "Start today. Switch any time from You.";
   // THE PURCHASE SCREEN, AND THE ONLY ONE WITH MONEY ON IT: the stores (App Review 3.1.2, Google Play) want the price and its period
   // shown before someone buys, with the renewal and the terms. Everywhere else the app shows no money.

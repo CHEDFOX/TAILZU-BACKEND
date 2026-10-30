@@ -44,6 +44,8 @@ export interface FirstRunPlan {
   /** Free days before the first charge, when the plan's own terms say so ("7 days free, then …"). */
   trialDays?: number;
   default?: boolean;
+  /** The plan in one line, the same for every bot: how much more it gives each month (planLine). */
+  line?: string;
   /** What the client calls to buy it: the paywall's own (iap.showPaywall / iap.subscribe). */
   buy?: { kind: "iap.showPaywall"; offeringId: string; packageId?: string } | { kind: "iap.subscribe"; productId: string };
 }
@@ -118,6 +120,17 @@ export function spokenSince(now: { words: number; audioSeconds: number }, base: 
   return { words, seconds, typingSeconds, totalWords: now.words, totalSeconds: now.audioSeconds };
 }
 
+/**
+ * A plan in one line, the same for every bot: how many times the free month it gives, from the allowances the meter
+ * enforces (USAGE_*_MONTH_PAISE), so the line can never promise more than the server allows.
+ */
+export function planLine(tier: string, cfg = getConfig()): string {
+  const free = cfg.USAGE_FREE_MONTH_PAISE;
+  const month = tier === "elite" ? cfg.USAGE_ELITE_MONTH_PAISE : cfg.USAGE_PAID_MONTH_PAISE;
+  const times = free > 0 ? Math.floor(month / free) : 0;
+  return times >= 2 ? `${times.toLocaleString("en-IN")}× more every month, for all your bots` : "More every month, for all your bots";
+}
+
 /** The window's plans: the pay page's own, at Razorpay's prices, for the market its time zone puts it in. */
 async function windowPlans(market: Market): Promise<FirstRunPlan[]> {
   if (!razorpayReady()) return [];
@@ -132,6 +145,7 @@ async function windowPlans(market: Market): Promise<FirstRunPlan[]> {
       label: cfg?.label ?? (tier === "elite" ? "Elite" : "Lite"),
       price: plan ? formatPrice(plan) : "—",
       per: plan ? formatPeriod(plan) : "Not available right now",
+      line: planLine(tier),
       ...(tier === "lite" ? { default: true } : {}),
       // The window has no store: iap.subscribe opens the pay page, signed for this account.
       ...(plan && cfg?.productId ? { buy: { kind: "iap.subscribe" as const, productId: cfg.productId } } : {}),
@@ -152,6 +166,7 @@ function phonePlans(): FirstRunPlan[] {
     ...(p.badge ? { badge: p.badge } : {}),
     ...(trialDaysOf(p.note) ? { trialDays: trialDaysOf(p.note) } : {}),
     ...(p.default ? { default: true } : {}),
+    line: planLine(p.id),
     buy: p.offeringId
       ? { kind: "iap.showPaywall" as const, offeringId: p.offeringId, ...(p.packageId ? { packageId: p.packageId } : {}) }
       : { kind: "iap.subscribe" as const, productId: p.productId ?? p.id },
