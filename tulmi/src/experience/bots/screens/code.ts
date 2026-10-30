@@ -27,7 +27,7 @@ import {
   back, bigNumber, blip, body, botAvatar, botLook, box, button, C, call, chips, col, emptyState, grid, grow,
   icon, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, row,
   percent, SCREENS, sectionLabel, secondaryButton, segmented, seq, statusMark, text, title, duration, FACE, whenEq, whenWords,
-  botBuddy, canBuddy, headerBuddy, keptOffline, type BotsCtx, type Mark,
+  botBuddy, canBuddy, headerBuddy, keptOffline, spanOf, type BotsCtx, type Mark,
 } from "../kit.js";
 import type { ScreenResponse } from "../../../../../shared/types/sdui.js";
 import type { BotsDeps } from "../live.js";
@@ -149,7 +149,7 @@ function head(ctx: BotsCtx, o: { title: string; sub?: Node; right?: Node[]; to?:
 }
 
 /**
- * How often a job checks with you before it uses more: three levels, each the share of this stretch a job may use before it asks (ours,
+ * How often a job checks with you before it uses more: three levels, each the share of this stretch (the free plan: this month) a job may use before it asks (ours,
  * kept as the project's cap: POST /v1/bots/code/projects/:id/cap). No amounts on the screen.
  */
 const ASK_LEVELS = [{ label: "Often", paise: 1000 }, { label: "Sometimes", paise: 3000 }, { label: "Rarely", paise: 10_000 }] as const;
@@ -871,7 +871,7 @@ function codeHome(ctx: BotsCtx, d: HomeData | undefined): ScreenResponse {
 function usageNote(ctx: BotsCtx): Node[] {
   const u = ctx.live.usage;
   if (u.state === "ok") return [];
-  const span = u.windows ? "this stretch" : "this month";
+  const span = spanOf(ctx);
   const when = u.resetsAt ? ` It resets ${whenWords(u.resetsAt, ctx.live.now, ctx.tzOffsetMinutes)}.` : "";
   const words = u.state === "out" ? `You've reached ${span}'s limit.${when}` : `You've used most of ${span}.${when}`;
   return [row([meta(words, { size: 12, lineHeight: 16, style: { flexShrink: 1 } }), icon("chevron", { size: 14, color: C.meta })], { gap: 6 }, open(SCREENS.usage))];
@@ -1360,7 +1360,7 @@ function codePlan(ctx: BotsCtx, d: PlanData | undefined): ScreenResponse {
     sectionLabel("Estimate"),
     col([
       row([bigNumber(est ? duration(est.minutes) : plural(steps.length, "step")), meta(est ? "about" : "to do", { size: 13 })], { gap: 8, alignItems: "flex-end" }),
-      meta(`I check with you before this job uses a lot of this stretch.${est ? ` From your last ${est.from} jobs${est.here ? " here" : ""}.` : ""}`, { size: 12, lineHeight: 17 }),
+      meta(`I check with you before this job uses a lot of ${spanOf(ctx)}.${est ? ` From your last ${est.from} jobs${est.here ? " here" : ""}.` : ""}`, { size: 12, lineHeight: 17 }),
     ], { gap: 8 }),
     row([
       col([text(String(steps.length), { size: 24, weight: 700, lineHeight: 30 }), meta(steps.length === 1 ? "step" : "steps")], { flexGrow: 1, flexBasis: 0, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line, borderRadius: 18, paddingVertical: 12, paddingHorizontal: 14, gap: 2 }),
@@ -1437,7 +1437,7 @@ function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResponse {
         head(ctx, { title: "Project rules", sub: subLine([{ code: name }, "· what Code bot may do"]), to: open(SCREENS.code, { project: id }), right: [botAvatar(CODE, 30)] }),
         col([sectionLabel("On its own"), listCard(ruleRows)], { gap: 8 }),
         col([sectionLabel("Checking with you"), listCard([
-          col([col([text("Checks with you", { size: 15, lineHeight: 20 }), meta("Before a job uses a lot of this stretch")], { gap: 2 }), askLevels(id)], { gap: 10, paddingVertical: 12, paddingHorizontal: 16 }),
+          col([col([text("Checks with you", { size: 15, lineHeight: 20 }), meta(`Before a job uses a lot of ${spanOf(ctx)}`)], { gap: 2 }), askLevels(id)], { gap: 10, paddingVertical: 12, paddingHorizontal: 16 }),
           col([row([text("Checks it runs before each PR", { size: 15, lineHeight: 20 }), grow(), meta(String(v.checks.length), { size: 13 })]), checks], { gap: 10, paddingVertical: 14, paddingHorizontal: 16 }),
         ])], { gap: 8 }),
         col([sectionLabel("How it works"), listCard([
@@ -1464,8 +1464,8 @@ function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResponse {
       head(ctx, { title: "Project rules", sub: subLine([{ code: name }, "· what Code bot may do"], 13), to: open(SCREENS.code, { project: id }),
         right: [row([botAvatar(CODE, 26), meta("Saved · applies from the next job", { size: 13 })], { gap: 8 })] }),
       section("On its own", "What Code bot may do without asking. It always works on its own branch, so your code only changes when you say.", cardOf(ruleRows)),
-      section("Checking with you", "A job checks with you before it uses a lot of this stretch. Checks run before every PR, so you only review work that passes.", cardOf([
-        row([col([text("Checks with you", { size: 15, lineHeight: 20 }), meta("Before a job uses a lot of this stretch")], { gap: 2, flexGrow: 1 }),
+      section("Checking with you", `A job checks with you before it uses a lot of ${spanOf(ctx)}. Checks run before every PR, so you only review work that passes.`, cardOf([
+        row([col([text("Checks with you", { size: 15, lineHeight: 20 }), meta(`Before a job uses a lot of ${spanOf(ctx)}`)], { gap: 2, flexGrow: 1 }),
           box([askLevels(id)], { width: 270, flexShrink: 0 })], { gap: 14, paddingVertical: 11, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: C.divider }),
         col([row([text("Checks it runs before each PR", { size: 15, lineHeight: 20 }), grow(), meta(String(v.checks.length), { size: 13 })]), checks], { gap: 10, paddingTop: 12, paddingBottom: 14, paddingHorizontal: 18 }),
       ])),

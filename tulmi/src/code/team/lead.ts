@@ -20,6 +20,7 @@
  * when only exhausted parts are left it parks for the person: more budget goes to them, or they are stopped.
  */
 import { getConfig } from "../../config.js";
+import { usageSpanWords } from "../../you/span.js";
 import type { Run } from "../agent/run.js";
 import { BudgetStop, EndJob, LostClaim, Park, TeamWait } from "../agent/run.js";
 import { topUpFor, type AgentState } from "../agent/types.js";
@@ -230,7 +231,8 @@ async function startRun(r: Run, t: TeamState): Promise<void> {
       const remaining = job.budgetPaise - job.spentPaise;
       const ok = affordable(remaining, t.reservePaise, helpers.length);
       if (!ok.ok) {
-        await r.log.decision("This job has too little of this stretch left for a team yet.");
+        const span = await usageSpanWords(r.userId);
+        await r.log.decision(span ? `This job has too little of ${span} left for a team yet.` : "This job has too little left for a team yet.");
         throw new BudgetStop(ok.needPaise);
       }
       const pool = Math.max(0, remaining - t.reservePaise);
@@ -559,7 +561,9 @@ export async function teamPhase(r: Run): Promise<void> {
     s.waiting = { kind: "budget", needPaise: top * stuck.length, at: r.now() };
     await r.log.question(`Part${stuck.length === 1 ? "" : "s"} ${stuck.map((p) => `${p.id} (${p.title})`).join(", ")} used ${stuck.length === 1 ? "its" : "their"} share of this job. Keep going, or stop ${stuck.length === 1 ? "it" : "them"}.`);
     await r.save();
-    throw new Park("budget", `Part${stuck.length === 1 ? "" : "s"} ${stuck.map((p) => p.id).join(", ")} ${stuck.length === 1 ? "has" : "have"} used a lot of this stretch. Keep going, or stop ${stuck.length === 1 ? "it" : "them"}?`);
+    // "this month" on the free plan, which has no stretches (you/span.ts); what is true for every plan when it cannot be known.
+    const span = await usageSpanWords(r.userId);
+    throw new Park("budget", `Part${stuck.length === 1 ? "" : "s"} ${stuck.map((p) => p.id).join(", ")} ${stuck.length === 1 ? "has" : "have"} used ${span ? `a lot of ${span}` : `${stuck.length === 1 ? "its" : "their"} share`}. Keep going, or stop ${stuck.length === 1 ? "it" : "them"}?`);
   }
   await r.save();
   // A helper working, a part to review or merge, or a part that can start: look again soon. Only the person's word to wait for (a question, a yes): not for a while.

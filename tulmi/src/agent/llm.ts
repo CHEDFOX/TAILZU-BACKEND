@@ -56,6 +56,7 @@
  */
 import { getConfig } from "../config.js";
 import { openrouter } from "../pipeline/openrouter.js";
+import { addCostUsd, openRouterUsd } from "../usage/cost.js";
 import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, maxTokensWithReasoning, reasoningRequired, type Effort } from "./reasoning.js";
 
 export const AGENT_MAX_TOKENS = 300;
@@ -387,6 +388,8 @@ export async function* planStream(system: SystemPrompt, user: UserPrompt, opts: 
       opts.signal?.removeEventListener("abort", cancel);
       ctrl.abort();
       call.ms = Date.now() - t0;
+      // What it cost, on the request's tally for the usage meter (usage/cost.ts): OpenRouter's charge, else its tokens, estimated.
+      addCostUsd(call.costUsd ?? openRouterUsd({ usage: { prompt_tokens: call.promptTokens, completion_tokens: call.completionTokens } }, { where: "ask", model }));
       opts.log?.(call);
     }
   }

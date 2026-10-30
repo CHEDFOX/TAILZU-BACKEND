@@ -2,16 +2,22 @@
  * The Code bot at work in the Bots app (screens/codeWork.ts): the live job and its chat, the team, a design and its preview,
  * attaching, done and failed, on the routes' own answers (bots-codework-data.ts), for the phone and the window.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { ActionSpec, Node } from "../shared/types/sdui.js";
 import { buildBotsScreen } from "../src/experience/bots/index.js";
 import { fakeDeps, IST } from "../src/experience/bots/fixtures.js";
+import { setSpendSource } from "../src/experience/bots/live.js";
 import { lintTree, walk } from "../src/experience/bots/lint.js";
 import { threadFor } from "../src/experience/bots/screens/codeWork.js";
 import { citations, flowOf, outline, plainWords, stageOf, testCount, tries, visibleParts, workLines } from "../src/botsCodeWork/read.js";
 import { ART, CODEWORK_API, JOB_ANSWER, JOB_ASK, JOB_DONE, JOB_FAILED, JOB_LEAD, PROJECT } from "./bots-codework-data.js";
 
 type Client = "phone" | "desktop";
+
+/** The usage meter every screen reads (ctx.live.usage): Lite or Elite, used in stretches, or the free plan's month with none. */
+const meter = (windows: boolean) =>
+  setSpendSource(async () => ({ limitPaise: 50_000, monthPaise: 1000, usage: { used: 0.1, month: 0.05, state: "ok" as const, resetsAt: null, windows } }));
+afterEach(() => setSpendSource(null));
 
 async function build(screenId: string, client: Client, params: Record<string, string> = {}, api: Record<string, unknown> = CODEWORK_API) {
   const calls: Array<{ method: string; path: string }> = [];
@@ -84,8 +90,15 @@ describe("bots app · the Code bot at work", () => {
     const approve = posts(yes.s.root!).filter((a) => a.path === `/v1/code/jobs/${JOB_ASK}/approve`);
     expect(approve.map((a) => a.body)).toEqual([{}, { approvalId: "$state.yes.approvalId" }]);
     expect(posts(yes.s.root!).some((a) => a.path === `/v1/code/jobs/${JOB_ASK}/deny`)).toBe(true);
-    const money = await build("bots.code.job", "desktop", { id: JOB_ASK }, variant({ waitingOn: "budget", spentPaise: 3000 }, { waiting: { kind: "budget" }, report: { outcome: "budget", text: "Out of money", costPaise: 3000, continueWithPaise: 1500 } }));
+    const budget = variant({ waitingOn: "budget", spentPaise: 3000 }, { waiting: { kind: "budget" }, report: { outcome: "budget", text: "Out of money", costPaise: 3000, continueWithPaise: 1500 } });
+    meter(true);
+    const money = await build("bots.code.job", "desktop", { id: JOB_ASK }, budget);
     expect(money.words).toEqual(expect.arrayContaining(["This job has used a lot of this stretch. Keep going?", "Keep going"]));
+    // The free plan has no stretches: the same ask says this month, and nothing on the screen says stretch.
+    meter(false);
+    const free = await build("bots.code.job", "desktop", { id: JOB_ASK }, budget);
+    expect(free.words).toEqual(expect.arrayContaining(["This job has used a lot of this month. Keep going?", "Keep going"]));
+    expect(free.words.join(" ")).not.toMatch(/stretch/i);
     expect(money.words.join(" ")).not.toMatch(/₹/);
     expect(posts(money.s.root!).find((a) => a.path === `/v1/code/jobs/${JOB_ASK}/budget`)?.body).toEqual({ addPaise: 1500 });
     const paid = await build("bots.code.job", "phone", { id: JOB_ASK }, variant({ waitingOn: "paid", reason: "No computer of yours is online." }, { waiting: undefined }));
@@ -145,6 +158,9 @@ describe("bots app · the Code bot at work", () => {
   });
 
   it("failed: what it tried and how long; try again deeper on the same branch, tell me more, stop here", async () => {
+    meter(false);
+    expect((await build("bots.failed", "phone", { id: JOB_FAILED })).words).toContain("It checks with you before it uses a lot of this month.");
+    meter(true);
     const { s, words } = await build("bots.failed", "phone", { id: JOB_FAILED });
     for (const w of ["Couldn't finish: tests fail on Node 18", "What it tried · 3 tries", "Replaced toSorted() with copy and sort", "2 still failing · receipt dates",
       "How long it worked", "Try again with deeper thinking", "It checks with you before it uses a lot of this stretch.", "Tell me more", "Stop here"]) expect(words, w).toContain(w);

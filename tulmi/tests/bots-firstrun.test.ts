@@ -213,10 +213,14 @@ describe("Turn on Keybot, First words", () => {
   it("spokenSince and the typing estimate", () => {
     expect(spokenSince({ words: 120, audioSeconds: 40 }, { w: 100, s: 32 })).toEqual({ words: 20, seconds: 8, typingSeconds: 30, totalWords: 120, totalSeconds: 40 });
     expect(spokenSince({ words: 120, audioSeconds: 40 }, {})).toMatchObject({ words: 0, seconds: 0 });
-    const cfg = { USAGE_FREE_MONTH_PAISE: 5000, USAGE_PAID_MONTH_PAISE: 50_000, USAGE_ELITE_MONTH_PAISE: 500_000 } as never;
-    expect(planLine("lite", cfg)).toBe("10× more every month, for all your bots");
-    expect(planLine("elite", cfg)).toBe("100× more every month, for all your bots");
-    expect(planLine("lite", { USAGE_FREE_MONTH_PAISE: 0, USAGE_PAID_MONTH_PAISE: 50_000, USAGE_ELITE_MONTH_PAISE: 0 } as never)).toBe("More every month, for all your bots");
+    // The owner's limits, from the config the meter enforces: Free $3 a month, Lite $35 (35 / 3 → 11×), Elite $450 (450 / 3 → 150×).
+    expect(planLine("lite")).toBe("11× more every month, for all your bots");
+    expect(planLine("elite")).toBe("150× more every month, for all your bots");
+    const cfg = { USAGE_FREE_MONTH_USD: 3, USAGE_LITE_STRETCHES_USD: [4, 8, 6, 10, 7], USAGE_ELITE_STRETCHES_USD: [50, 70, 80, 100, 150] };
+    expect(planLine("monthly", cfg)).toBe("11× more every month, for all your bots");
+    expect(planLine("elite", { ...cfg, USAGE_ELITE_STRETCHES_USD: [6, 6, 6, 6, 6] })).toBe("10× more every month, for all your bots");
+    expect(planLine("lite", { ...cfg, USAGE_FREE_MONTH_USD: 30 })).toBe("More every month, for all your bots");
+    for (const tier of ["lite", "elite"]) expect(planLine(tier)).not.toMatch(/₹|\$|paise|dollar/);
     expect(trialDaysOf("7 days free, then billed yearly")).toBe(7);
     expect(trialDaysOf("Billed monthly")).toBeUndefined();
   });

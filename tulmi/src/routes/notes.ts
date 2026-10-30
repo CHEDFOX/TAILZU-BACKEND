@@ -36,6 +36,7 @@ import {
 } from "../notes/store.js";
 import { getPersonality } from "../personality/store.js";
 import { estimateDurationSeconds, transcribe } from "../pipeline/stt.js";
+import { chargedTo } from "../usage/cost.js";
 import { enforceQuota, recordUsage } from "../usage/metering.js";
 
 export interface NotesRouteDeps {
@@ -111,7 +112,8 @@ async function organiseInBackground(user: AuthedUser, id: string): Promise<void>
 }
 
 function startWork(user: AuthedUser, id: string) {
-  const job = organiseInBackground(user, id)
+  // After the request has answered: what organising cost goes on the person's meter when it is done (usage/cost.ts).
+  const job = chargedTo(user.id, "keybot", () => organiseInBackground(user, id))
     .catch(async () => {
       await updateNote(user, id, (n) => ({ ...n, status: "failed" })).catch(() => {});
     })
@@ -171,7 +173,8 @@ export function registerNotesRoutes(app: FastifyInstance, deps: NotesRouteDeps):
       const words = kept ? countWords(text) : 0;
       // Words count like dictation's; an echo dropped here costs nothing. Time
       // is the microphone's alone: both tracks cover the same minutes.
-      await recordUsage({ user, source: "rest", audioSeconds: track === "mic" ? seconds : 0, words, model: "notes" });
+      // Both tracks were heard by the engines, and both cost what they cost.
+      await recordUsage({ user, source: "rest", audioSeconds: track === "mic" ? seconds : 0, sttSeconds: seconds, words, model: "notes" });
       return reply.send({ kept, words });
     } catch (err) { return fail(reply, err); }
   });

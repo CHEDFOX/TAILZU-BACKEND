@@ -2,35 +2,57 @@
  * THE USAGE METER, THE WAY THE PERSON SEES IT: how much of this stretch and of this month is used, and when each starts again. Never an
  * amount: what the use cost us stays ours (spend.ts, the admin's logs); the person sees "This stretch · 64% used · resets Thu 9 am".
  *
- *   the plan       ours, per plan (config.ts USAGE_*): the free plan's month, a paid plan's (or a paid tier's own, USAGE_TIERS). While
- *                  FREE_FOR_ALL is on, everyone has a paid plan's month and nothing is offered to buy.
+ *   the plan       ours, per plan (config.ts USAGE_*), in US dollars of what the use really costs us: the free plan's month ($3), Lite's five
+ *                  stretches ($4, $8, $6, $10, $7: $35), Elite's ($50, $70, $80, $100, $150: $450), or a paid tier's own (USAGE_TIERS).
+ *                  Turned into paise at CODE_USD_INR, the rate the records' paise were counted at, so the meter counts dollars. While
+ *                  FREE_FOR_ALL is on, everyone has Lite's stretches and nothing is offered to buy.
  *   the month      from the person's billing cycle when billing has one (the day and time their paid period turns over), else the
  *                  calendar month on their own clock
  *   the stretches  a paid month is used in five: days 1–4, 5–9, 10–15, 16–22, and 23 to the month's end (8 days in a 30-day month,
- *                  fewer in February). Each may use the month's limit × its days / the month's days. What a stretch did not use is
- *                  gone when it ends, unless USAGE_CARRY_OVER is on (then the month's allowance so far, less what was used before it).
- *                  The free plan is one stretch, the month, unless USAGE_FREE_WINDOWS is on.
+ *                  fewer in February). Each may use its own amount from the plan, whatever its length. What a stretch did not use is
+ *                  gone when it ends, unless USAGE_CARRY_OVER is on (then the amounts of the stretches so far, less what was used before
+ *                  it). The month may use the sum of the five.
+ *   the free plan  no stretches: one allowance for the month, which starts again when the month does. Every line it gets says "this month".
  *   near, out      near from USAGE_NEAR (80%) of the stretch or the month; out at all of either.
  *
  * Pure: limits.ts (Spending) reads the records and the entitlement, this adds them up. The words every screen says are here too, so the
  * refusal a job gets and the line the Usage page shows can never disagree.
  */
 
+import { z } from "zod";
 import type { UsageRefusalBody } from "../../../shared/types/api.js";
+
+/**
+ * A plan's five stretches in US dollars, as written ("4,8,6,10,7"): exactly five positive amounts, in order. config.ts validates the
+ * settings with it, so a list that is not five positive amounts stops the boot with the setting named, never a quiet default: these are
+ * what every person may use.
+ */
+export const StretchesUsd = z
+  .string()
+  .transform((v) => v.split(",").map((x) => x.trim()))
+  .pipe(z.array(z.coerce.number().finite().positive().max(1_000_000)).length(5, "five amounts, one per stretch"));
+
+/** Five stretch amounts, or null when `v` is not them. */
+export function parseStretchesUsd(v: unknown): number[] | null {
+  const r = StretchesUsd.safeParse(v);
+  return r.success ? r.data : null;
+}
 
 export const DAY_MS = 86_400_000;
 /** Where each stretch starts, in days from the month's start: days 1–4, 5–9, 10–15, 16–22, 23 to the end. */
 export const STRETCH_STARTS = [0, 4, 9, 15, 22] as const;
 
 export interface UsagePlan {
-  /** "free", "paid", or a paid tier's entitlement id. */
+  /** "free", "paid", "elite", "everyone", or a paid tier's entitlement id. */
   id: string;
   /** What the screens call it. */
   name: string;
   paid: boolean;
-  /** The month's limit, in paise of what the use costs us. Never shown. */
+  /** The month's limit, in paise of what the use costs us: the sum of the stretches when there are any. Never shown. */
   monthPaise: number;
-  /** Used in stretches (paid), or as one month. */
+  /** What each of the five stretches may use, in paise, in order; null when the month is one allowance (the free plan). Never shown. */
+  stretchPaise: number[] | null;
+  /** Used in stretches (Lite, Elite), or as one month (Free). */
   windows: boolean;
   carryOver: boolean;
   /** A bigger plan can be bought from here (the free plan, while something is for sale). */
@@ -86,12 +108,24 @@ export function stretchesOf(startsAt: number, endsAt: number, windows = true): S
   });
 }
 
+/**
+ * What stretch `n` (1-based) of `count` may use, and what the stretches up to and including it may use together, from the plan's amounts.
+ * The last stretch of the month takes whatever amounts are left (five in every real month: a month is never shorter than 23 days).
+ */
+export function stretchAmounts(amounts: readonly number[], n: number, count: number): { own: number; through: number } {
+  const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0);
+  const i = Math.max(0, Math.min(n, count) - 1);
+  const last = i + 1 >= count;
+  return { own: last ? sum(amounts.slice(i)) : amounts[i] ?? 0, through: last ? sum(amounts) : sum(amounts.slice(0, i + 1)) };
+}
+
 /** The meter for one person now. Pure. */
 export function usageNow(i: { events: UsageEvent[]; now: number; tzOffsetMinutes: number; anchor?: number | null; plan: UsagePlan; nearAt?: number }): UsageNow {
   const { plan } = i;
   const cycle = cycleOf(i.now, i.tzOffsetMinutes, i.anchor);
   const monthDays = Math.max(1, Math.round((cycle.endsAt - cycle.startsAt) / DAY_MS));
-  const all = stretchesOf(cycle.startsAt, cycle.endsAt, plan.windows);
+  const windows = plan.windows && !!plan.stretchPaise?.length;
+  const all = stretchesOf(cycle.startsAt, cycle.endsAt, windows);
   const cur = all.find((s) => i.now >= s.startsAt && i.now < s.endsAt) ?? all[all.length - 1]!;
   let usedMonth = 0, usedStretch = 0, usedBefore = 0;
   for (const e of i.events) {
@@ -100,17 +134,16 @@ export function usageNow(i: { events: UsageEvent[]; now: number; tzOffsetMinutes
     if (e.at >= cur.startsAt && e.at < cur.endsAt) usedStretch += e.paise;
     else if (e.at < cur.startsAt) usedBefore += e.paise;
   }
-  const own = (plan.monthPaise * cur.days) / monthDays;
-  // Carried over: the month's allowance up to this stretch's end, less what the stretches before it used.
-  const daysThrough = Math.round((cur.endsAt - cycle.startsAt) / DAY_MS);
-  const allowance = Math.max(0, plan.carryOver && plan.windows ? (plan.monthPaise * daysThrough) / monthDays - usedBefore : own);
+  // Each stretch its own amount; carried over, the amounts of the stretches so far, less what the ones before it used. No stretches: the month.
+  const amounts = windows ? stretchAmounts(plan.stretchPaise!, cur.n, all.length) : null;
+  const allowance = Math.max(0, !amounts ? plan.monthPaise : plan.carryOver ? amounts.through - usedBefore : amounts.own);
   const frac = (used: number, of: number) => (of > 0 ? used / of : used > 0 ? 1 : 0);
   const stretchUsed = frac(usedStretch, allowance);
   const monthUsed = frac(usedMonth, plan.monthPaise);
   const near = i.nearAt ?? 0.8;
   const state = stretchUsed >= 1 || monthUsed >= 1 ? "out" : stretchUsed >= near || monthUsed >= near ? "near" : "ok";
   return {
-    plan: { id: plan.id, name: plan.name, paid: plan.paid, windows: plan.windows, carryOver: plan.carryOver, upgrade: plan.upgrade },
+    plan: { id: plan.id, name: plan.name, paid: plan.paid, windows, carryOver: plan.carryOver, upgrade: plan.upgrade },
     stretch: { used: round(stretchUsed), startsAt: cur.startsAt, resetsAt: cur.endsAt, n: cur.n, of: all.length, days: cur.days },
     month: { used: round(monthUsed), startsAt: cycle.startsAt, resetsAt: cycle.endsAt, days: monthDays },
     state,
@@ -188,16 +221,22 @@ export function refusalOf(u: UsageNow, now: number, tzOffsetMinutes: number): Us
 
 // ===================================================================== the plans
 
-/** USAGE_TIERS as written: {"pro": 50000}. Anything else is no tiers. */
-export function tiersOf(spec: string | undefined): Map<string, number> {
-  const out = new Map<string, number>();
+/** US dollars of what the use costs us, as the paise the records keep: at CODE_USD_INR, the rate those paise were counted at. */
+export const usdToMeterPaise = (usd: number, usdInr: number): number => Math.round(usd * usdInr * 100);
+
+/**
+ * USAGE_TIERS as written: {"pro": "4,8,6,10,7"} (or [4, 8, 6, 10, 7]), a paid tier's five stretches in US dollars, by entitlement id.
+ * A tier that is not five positive amounts is no tier (it is Lite's), and anything that is not JSON is no tiers.
+ */
+export function tiersOf(spec: string | undefined): Map<string, number[]> {
+  const out = new Map<string, number[]>();
   if (!spec) return out;
   try {
     const raw = JSON.parse(spec) as unknown;
     if (raw && typeof raw === "object" && !Array.isArray(raw)) {
       for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-        const n = Number(v);
-        if (k.trim() && Number.isFinite(n) && n >= 0) out.set(k.trim().toLowerCase(), Math.round(n));
+        const amounts = parseStretchesUsd(Array.isArray(v) ? v.join(",") : v);
+        if (k.trim() && amounts) out.set(k.trim().toLowerCase(), amounts);
       }
     }
   } catch { /* not JSON: no tiers */ }
@@ -205,28 +244,47 @@ export function tiersOf(spec: string | undefined): Map<string, number> {
 }
 
 export interface PlanConfig {
-  USAGE_FREE_MONTH_PAISE: number;
-  USAGE_PAID_MONTH_PAISE: number;
-  USAGE_ELITE_MONTH_PAISE?: number;
+  /** The free plan's month, in US dollars: one allowance, no stretches. */
+  USAGE_FREE_MONTH_USD: number;
+  /** Lite's five stretches, in US dollars. */
+  USAGE_LITE_STRETCHES_USD: number[];
+  /** Elite's five stretches, in US dollars. */
+  USAGE_ELITE_STRETCHES_USD: number[];
   PLAN_ELITE_PRODUCTS?: string;
   USAGE_TIERS?: string;
-  USAGE_FREE_WINDOWS: boolean;
   USAGE_CARRY_OVER: boolean;
   FREE_FOR_ALL: boolean;
+  /** Rupees to the dollar: the one rate the records' paise were counted at (the gateway's). */
+  CODE_USD_INR: number;
 }
 
 /** The plan a person is on, from their entitlement (null: free) and our config. */
 export function planOf(entitlement: { entitlement: string; active: boolean; product?: string } | null, c: PlanConfig): UsagePlan {
   const carryOver = c.USAGE_CARRY_OVER;
+  const paise = (usd: number) => usdToMeterPaise(usd, c.CODE_USD_INR);
+  const inStretches = (usd: readonly number[]) => {
+    const stretchPaise = usd.map(paise);
+    return { stretchPaise, monthPaise: stretchPaise.reduce((a, b) => a + b, 0), windows: true };
+  };
   if (entitlement?.active) {
     // Elite by the product that was bought (Google adds ":<base plan>"); Lite, and a yearly plan from before, otherwise.
     const product = String(entitlement.product ?? "").split(":")[0]!.trim().toLowerCase();
     const elite = !!product && String(c.PLAN_ELITE_PRODUCTS ?? "").split(",").map((p) => p.trim().toLowerCase()).includes(product);
-    if (elite) return { id: "elite", name: "Elite", paid: true, monthPaise: c.USAGE_ELITE_MONTH_PAISE ?? c.USAGE_PAID_MONTH_PAISE * 10, windows: true, carryOver, upgrade: false };
+    if (elite) return { id: "elite", name: "Elite", paid: true, ...inStretches(c.USAGE_ELITE_STRETCHES_USD), carryOver, upgrade: false };
     const tier = tiersOf(c.USAGE_TIERS).get(entitlement.entitlement.trim().toLowerCase());
-    return { id: tier !== undefined ? entitlement.entitlement : "paid", name: "Lite", paid: true, monthPaise: tier ?? c.USAGE_PAID_MONTH_PAISE, windows: true, carryOver, upgrade: false };
+    return { id: tier ? entitlement.entitlement : "paid", name: "Lite", paid: true, ...inStretches(tier ?? c.USAGE_LITE_STRETCHES_USD), carryOver, upgrade: false };
   }
-  // Free for everyone, for now: everyone has a paid plan's month, and nothing is for sale.
-  if (c.FREE_FOR_ALL) return { id: "everyone", name: "Free", paid: false, monthPaise: c.USAGE_PAID_MONTH_PAISE, windows: true, carryOver, upgrade: false };
-  return { id: "free", name: "Free", paid: false, monthPaise: c.USAGE_FREE_MONTH_PAISE, windows: c.USAGE_FREE_WINDOWS, carryOver, upgrade: true };
+  // Free for everyone, for now: everyone has Lite's stretches, and nothing is for sale.
+  if (c.FREE_FOR_ALL) return { id: "everyone", name: "Free", paid: false, ...inStretches(c.USAGE_LITE_STRETCHES_USD), carryOver, upgrade: false };
+  // The free plan: one allowance for the month, no stretches.
+  return { id: "free", name: "Free", paid: false, monthPaise: paise(c.USAGE_FREE_MONTH_USD), stretchPaise: null, windows: false, carryOver, upgrade: true };
+}
+
+/** How many times the free month a plan's month is, from the config the meter enforces: Lite 35 / 3 → 11, Elite 450 / 3 → 150. */
+export function timesFree(tier: string, c: Pick<PlanConfig, "USAGE_FREE_MONTH_USD" | "USAGE_LITE_STRETCHES_USD" | "USAGE_ELITE_STRETCHES_USD">): number {
+  const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0);
+  const month = tier === "elite" ? sum(c.USAGE_ELITE_STRETCHES_USD) : sum(c.USAGE_LITE_STRETCHES_USD);
+  // Cents, so 35 / 3 is not 11.999… and 0.1 + 0.2 is not a hair under a whole time.
+  const free = Math.round(c.USAGE_FREE_MONTH_USD * 100);
+  return free > 0 ? Math.floor(Math.round(month * 100) / free) : 0;
 }

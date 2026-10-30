@@ -33,7 +33,7 @@ import {
 import {
   back, blip, botAvatar, botLook, box, button, C, call, card, col, divider, duration, emptyState, grow, icon,
   labelled, meta, meter, mono, open, page, percent, row, SCREENS, sectionLabel, seq, shapes, stages, statusMark, text, title, when,
-  whenEq, FACE, RADIUS, type BotsCtx, type Mark,
+  whenEq, FACE, RADIUS, spanOf, type BotsCtx, type Mark,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import { shareButton } from "../shareAction.js";
@@ -251,7 +251,7 @@ function phaseWords(phase?: string): string | undefined {
 // ===================================================================== the one quick question
 
 /** The decision a waiting job needs: its question, a yes, keep going, paid compute, a commit. Null when it needs nothing. */
-function quickQuestion(_ctx: BotsCtx, d: JobData, o: { compact?: boolean } = {}): Node | null {
+function quickQuestion(ctx: BotsCtx, d: JobData, o: { compact?: boolean } = {}): Node | null {
   const { job, agent } = d;
   if (job.state !== "waiting_for_you") return null;
   const small = !!o.compact;
@@ -284,7 +284,7 @@ function quickQuestion(_ctx: BotsCtx, d: JobData, o: { compact?: boolean } = {})
   }
   if (job.waitingOn === "budget" || w?.kind === "budget") {
     const more = agent?.report?.continueWithPaise ?? Math.max(1000, Math.round(job.spentPaise / 200) * 100);
-    return shell([label("Needs your yes"), ask("This job has used a lot of this stretch. Keep going?"), choices([
+    return shell([label("Needs your yes"), ask(`This job has used a lot of ${spanOf(ctx)}. Keep going?`), choices([
       btn("Keep going", write("POST", jobPath(job.id, "/budget"), { addPaise: more }, "Going on", "Couldn't go on. Try again."), "primary"),
       btn("Stop here", stopJob(job), "secondary"),
     ])]);
@@ -1448,10 +1448,10 @@ function clock(ms: number, tzOffsetMinutes: number): string {
 /** "Tests fail on Node 18." → "tests fail on Node 18" (after a colon), leaving a name or an acronym as it is. */
 const lowerFirst = (s: string): string => (/^[A-Z][a-z]/.test(s) ? s[0]!.toLowerCase() + s.slice(1) : s).replace(/\.$/, "");
 
-function failTitle(d: JobData): string {
+function failTitle(ctx: BotsCtx, d: JobData): string {
   const why = lowerFirst(firstSentence(d.job.reason || (d.agent?.report?.outcome === "failed" ? d.agent.report.text : ""), 60));
   if (d.job.state === "cancelled") return why ? `Stopped: ${why}` : "Stopped before it finished";
-  if (d.job.waitingOn === "budget") return "Paused: it has used a lot of this stretch";
+  if (d.job.waitingOn === "budget") return `Paused: it has used a lot of ${spanOf(ctx)}`;
   return why ? `Couldn't finish: ${why}` : "Couldn't finish this one";
 }
 
@@ -1481,7 +1481,7 @@ function failMoves(ctx: BotsCtx, d: JobData): { primary: { label: string; sub: s
   return {
     primary: live && d.job.waitingOn === "budget"
       ? { label: "Keep going", sub: "It goes on from where it stopped, and checks with you again before using more.", action: write("POST", jobPath(d.job.id, "/budget"), { addPaise: more }, "Going on", "Couldn't go on. Try again.", open(SCREENS.codeJob, { id: d.job.id })) }
-      : { label: "Try again with deeper thinking", sub: "It checks with you before it uses a lot of this stretch.", action: retryDeeper(d) },
+      : { label: "Try again with deeper thinking", sub: `It checks with you before it uses a lot of ${spanOf(ctx)}.`, action: retryDeeper(d) },
     more: askCode(ctx, c, `Why did "${d.job.task.slice(0, 200)}" not finish? Explain the error in plain words and what you would try next.`),
     stop: {
       sub: `Nothing more is used.${pr ? ` PR #${pr.number} stays open for you.` : ""}`,
@@ -1529,7 +1529,7 @@ function failedPhone(ctx: BotsCtx, d: JobData) {
       head({ title: "Code bot", size: 17, avatar: true, sub: meta(`${d.job.task}${pr ? ` · PR #${pr.number}` : ""}`, { size: 12, lines: 1 }) }),
       col([
         labelled(box([glyph(G.failed, { size: 20, weight: 2 })], { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: C.ink, alignItems: "center", justifyContent: "center" }), "Failed"),
-        text(failTitle(d), { size: 25, weight: 700, lineHeight: 31, tracking: -0.5 }),
+        text(failTitle(ctx, d), { size: 25, weight: 700, lineHeight: 31, tracking: -0.5 }),
         text(failWords(d), { size: 14, color: C.grey70, lineHeight: 20 }),
       ], { gap: 12 }),
       triedCard(d, false),
@@ -1554,7 +1554,7 @@ function failedDesk(ctx: BotsCtx, d: JobData) {
     body: [
       row([
         backButton(), botAvatar(CODE, 36),
-        col([title(failTitle(d), { size: 26, lineHeight: 32, lines: 2 }), meta(`Code bot · ${d.job.task}${pr ? ` · PR #${pr.number}` : ""}`, { size: 13, lines: 1 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 4 }),
+        col([title(failTitle(ctx, d), { size: 26, lineHeight: 32, lines: 2 }), meta(`Code bot · ${d.job.task}${pr ? ` · PR #${pr.number}` : ""}`, { size: 13, lines: 1 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 4 }),
         text(`Stopped at ${clock(d.job.updatedAt, ctx.tzOffsetMinutes)} · ${duration(mins)}`, { size: 13, color: C.grey70, lineHeight: 17 }),
       ], { gap: 12 }),
       row([

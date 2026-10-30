@@ -101,6 +101,7 @@ import { resolveUser, supabase, type AuthedUser } from "./auth/supabase.js";
 import { sameSecret } from "./auth/secret.js";
 import { localUserId } from "./auth/jwt.js";
 import { allowanceFor, enforceQuota, recordPicture, recordUsage, usageSummary } from "./usage/metering.js";
+import { addCostUsd, costTallyHook, settleCostTally, ttsUsd } from "./usage/cost.js";
 import { recordKeyboardTelemetry } from "./usage/telemetry.js";
 import { activeRollouts, bucketFor } from "./experience/rollout.js";
 import { captureException, fastifyLoggerOptions, initSentry } from "./observability.js";
@@ -358,6 +359,12 @@ app.setErrorHandler((err, req, reply) => {
   req.log.error({ err }, "request failed");
   return reply.code(500).send({ code: "internal", message: "Something went wrong. Try again in a moment." });
 });
+
+// What each request really cost us, for the usage meter (usage/cost.ts): a tally of its own that the calls it makes outside the brain's
+// gateway add OpenRouter's charge to (Keybot's rewrites, the old Ask), written to the meter with its usage row; what is left when the
+// response goes (a request that failed after a model answered) is charged to whoever enforceQuota said it was for.
+app.addHook("preHandler", costTallyHook);
+app.addHook("onResponse", async (req) => { await settleCostTally(req); });
 
 // Every HTML page this server renders (the site, the policies, the SEO pages,
 // the auth callback, the admin console) goes out with the headers that stop
@@ -2290,6 +2297,8 @@ app.post("/v1/speak", { config: AUTHED_RL }, async (req, reply) => {
       instructions: body.instructions,
       ...(speed !== 1 ? { speed } : {}),
     });
+    // What reading it aloud cost, on the request's tally for the usage meter (usage/cost.ts): the row below writes it.
+    addCostUsd(ttsUsd(body.text.length + (body.instructions?.length ?? 0)));
     await recordUsage({
       user,
       source: "rest",

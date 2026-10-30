@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { z } from "zod";
+import { StretchesUsd } from "./you/usage.js";
 
 /**
  * Whether this is the Cloudflare jobs Worker (jobs/), not the VPS. On a Worker
@@ -85,6 +86,9 @@ const bool = (def: boolean) =>
     .string()
     .optional()
     .transform((v) => (v == null ? def : v.toLowerCase() === "true"));
+
+/** A plan's five stretches in US dollars, as written ("4,8,6,10,7"): five positive amounts, or the config fails at boot with the setting named. */
+const stretchesUsd = (def: string) => z.preprocess((v) => (v == null || String(v).trim() === "" ? def : v), StretchesUsd);
 
 /** ASK_SITE as the site reads it: "soon" or "live", and "off" for anything else. */
 export function askSite(v: unknown): "off" | "soon" | "live" {
@@ -649,7 +653,9 @@ const EnvSchema = z.object({
    * tier is the cheap tier's ladder. CODE_MODEL_TIERS still wins over it.
    *
    * CODE_USD_INR turns what OpenRouter charges (US dollars) into the paise a job
-   * is budgeted in: 88 rupees to the dollar unless set.
+   * is budgeted in: 88 rupees to the dollar unless set. It is THE rate: the usage
+   * meter turns the plans' dollars (USAGE_*_USD) into paise with it too, so the
+   * meter counts dollars whatever it is set to.
    */
   CODE_MODEL_TIERS: z.string().optional(),
   CODE_INDIC_MODEL: z.string().trim().optional(),
@@ -814,30 +820,39 @@ const EnvSchema = z.object({
   CODE_JOB_DEFAULT_BUDGET_PAISE: z.coerce.number().int().min(0).max(1_000_000).default(3000),
   CODE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
   /**
-   * THE USAGE METER (src/you/usage.ts, limits.ts): what each plan may use, set by us. The person never sees an amount: only how much of
-   * this stretch and this month is used, and when it resets. Counted in what the use costs us, in paise (the Code bot's jobs, every bot's
-   * answers, and Keybot's words at USAGE_KEYBOT_PAISE_PER_1000_WORDS).
+   * THE USAGE METER (src/you/usage.ts, limits.ts): what each plan may use, set by us, in US DOLLARS of what the use really costs us. The person
+   * never sees an amount: only how much of this stretch (or, on the free plan, this month) is used, and when it resets. Counted from the real
+   * records (the Code bot's jobs, every bot's answers, Keybot's dictations and rewrites: src/usage/cost.ts), which keep paise as they always
+   * have; dollars become paise at CODE_USD_INR, the same rate the brain's gateway turns OpenRouter's dollars into paise with, so the rate
+   * cancels out and a $4 stretch is $4 of what OpenRouter (and the speech engines) charged.
    *
    *   USAGE_LIMITS               false: the meter is shown and nothing is refused
-   *   USAGE_FREE_MONTH_PAISE     the free plan's month (5,000)
-   *   USAGE_PAID_MONTH_PAISE     a paid plan's month (50,000): Lite's; everyone's while FREE_FOR_ALL is on
-   *   USAGE_ELITE_MONTH_PAISE    Elite's month (500,000: ten Lites, as its price is)
+   *   USAGE_FREE_MONTH_USD       the free plan's month, one allowance with no stretches ($3)
+   *   USAGE_LITE_STRETCHES_USD   Lite's month as its five stretches, in order ("4,8,6,10,7": $35); everyone's while FREE_FOR_ALL is on
+   *   USAGE_ELITE_STRETCHES_USD  Elite's five stretches ("50,70,80,100,150": $450)
    *   PLAN_ELITE_PRODUCTS        the products that are Elite: the store product, and "elite" for Razorpay
-   *   USAGE_TIERS                each paid tier's own month, by entitlement id: {"pro": 50000, "max": 200000}; a tier not named is PAID's
-   *   USAGE_FREE_WINDOWS         the free plan in stretches too (off: one stretch, the month)
+   *   USAGE_TIERS                a paid tier's own five stretches, by entitlement id: {"pro": "4,8,6,10,7"}; a tier not named is Lite's
    *   USAGE_CARRY_OVER           what a stretch did not use carries into the next (off)
    *   USAGE_NEAR                 from here "You've used most of this stretch" (0.8)
+   *
+   * A plan's month is the sum of its stretches. The stretches keep their days (4, 5, 6 and 7 days, then the rest of the month); each may use
+   * its own amount, whatever its length. A list that is not five positive amounts stops the server at boot, with the setting named.
+   *
+   * What the speech engines and the voice cost us, which no engine reports per request (OpenRouter does: usage.cost), at their list prices:
+   *   USAGE_STT_USD_PER_MINUTE   a minute of audio heard, per engine, merged over the defaults (src/usage/cost.ts STT_USD_PER_MINUTE):
+   *                              {"groq":0.000667,"openai":0.003,"deepgram":0.0058,"sarvam":0.0058}. Every engine that hears a clip is counted.
+   *   USAGE_TTS_USD_PER_1M_CHARS a million characters read aloud (15)
    */
   USAGE_LIMITS: bool(true),
-  USAGE_FREE_MONTH_PAISE: z.coerce.number().int().min(0).max(100_000_000).default(5000),
-  USAGE_PAID_MONTH_PAISE: z.coerce.number().int().min(0).max(100_000_000).default(50_000),
-  USAGE_ELITE_MONTH_PAISE: z.coerce.number().int().min(0).max(1_000_000_000).default(500_000),
+  USAGE_FREE_MONTH_USD: z.coerce.number().positive().max(100_000).default(3),
+  USAGE_LITE_STRETCHES_USD: stretchesUsd("4,8,6,10,7"),
+  USAGE_ELITE_STRETCHES_USD: stretchesUsd("50,70,80,100,150"),
   PLAN_ELITE_PRODUCTS: z.string().default("x0_elite_monthly,elite"),
   USAGE_TIERS: z.string().optional(),
-  USAGE_FREE_WINDOWS: bool(false),
   USAGE_CARRY_OVER: bool(false),
   USAGE_NEAR: z.coerce.number().min(0.1).max(1).default(0.8),
-  USAGE_KEYBOT_PAISE_PER_1000_WORDS: z.coerce.number().min(0).max(100_000).default(20),
+  USAGE_STT_USD_PER_MINUTE: z.string().optional(),
+  USAGE_TTS_USD_PER_1M_CHARS: z.coerce.number().min(0).max(10_000).default(15),
   /**
    * LEAD AND HELPERS (src/code/team, docs/code-team.md). A goal that is big (a plan over 12 files or 3 features, or one over several projects, or one the
    * person asked a team for) is split into parts with clear file ownership; helpers build the parts in parallel on their own branches, a model of
