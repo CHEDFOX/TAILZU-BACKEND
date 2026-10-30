@@ -66,6 +66,7 @@ export function topicsForWrite(method: string, route: string, params: Record<str
   if (p.startsWith(`${AREA}/spaces`)) return [];                     // Spaces and messaging publish their own
   if (p.startsWith("/v1/botsapp/calendar")) return [];                 // and so does the calendar (src/calendar/service.ts)
   if (p === "/v1/shell/ask" || p === "/v1/shell/receipts" || p === "/v1/ask") add(activity, home);
+  else if (p === "/v1/shell/activity/clear") add(activity);
   else if (p.startsWith(`${AREA}/chat/`)) add(activity, home, botTopic(params.slug));
   else if (p.startsWith(`${AREA}/rules/`)) add(botTopic(params.slug));
   else if (p.startsWith(`${AREA}/store/`) || p === `${AREA}/draft/approve`) add(bots, home);

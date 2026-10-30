@@ -26,7 +26,8 @@ export interface YouSettings {
   monthLimitPaise: number;
   stopAtLimit: boolean;
   notify: NotifySettings;
-  privacy: { screenPictures: "ask" | "allow" };
+  /** cleared: Activity rows the person took off their list ("job:<id>", "words:<day>"), newest last. Kept in the privacy column. */
+  privacy: { screenPictures: "ask" | "allow"; cleared?: string[] };
 }
 
 export const DEFAULT_SETTINGS: YouSettings = {
@@ -66,8 +67,23 @@ export function cleanSettings(raw: unknown): YouSettings {
       quietTo: minuteOfDay(n.quietTo, d.notify.quietTo),
       botsOff: Array.isArray(n.botsOff) ? [...new Set(n.botsOff.filter((s): s is string => typeof s === "string" && SLUG.test(s) && s.length <= 64))].slice(0, 50) : [],
     },
-    privacy: { screenPictures: p.screenPictures === "allow" ? "allow" : "ask" },
+    privacy: {
+      screenPictures: p.screenPictures === "allow" ? "allow" : "ask",
+      ...(Array.isArray(p.cleared) ? { cleared: cleanCleared(p.cleared) } : {}),
+    },
   };
+}
+
+/** The most Activity rows a person's cleared list keeps: the oldest drop off (by then they are past the feed's days anyway). */
+export const CLEARED_MAX = 600;
+const FEED_ID = /^(job|task|ask|pay|words):[A-Za-z0-9_.:-]{1,80}$/;
+const cleanCleared = (v: unknown[]): string[] => [...new Set(v.filter((x): x is string => typeof x === "string" && FEED_ID.test(x)))].slice(-CLEARED_MAX);
+
+/** One more Activity row cleared from the list; null when the id isn't one. */
+export function withCleared(s: YouSettings, id: unknown): YouSettings | null {
+  if (typeof id !== "string" || !FEED_ID.test(id)) return null;
+  const cleared = cleanCleared([...(s.privacy.cleared ?? []).filter((x) => x !== id), id]);
+  return { ...s, privacy: { ...s.privacy, cleared } };
 }
 
 export type Patched = { ok: true; settings: YouSettings } | { ok: false; message: string };
