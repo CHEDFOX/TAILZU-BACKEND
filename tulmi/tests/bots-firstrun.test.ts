@@ -172,16 +172,42 @@ describe("Turn on Keybot, First words", () => {
     expect(actions(s.root)).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "openUrl", url: "app-settings:" }),
       expect.objectContaining({ kind: "openSettings", target: "keyboard" }),
-      expect.objectContaining({ kind: "navigate", screenId: "bots.first-words", params: { w: 5210, s: 1880 } }),
+      // In place of this page, so First words' Done leaves the setup rather than coming back into it.
+      expect.objectContaining({ kind: "navigate", screenId: "bots.first-words", params: { w: 5210, s: 1880 }, replace: true }),
     ]));
     // Out of the run: Not now goes back to where it was opened from, never on to Plans.
     expect(JSON.stringify(s.root)).not.toContain('"screenId":"bots.plans"');
     expect(texts(s.root!)).toContain("Not now");
     expect(texts(s.root!).some((t) => / of 5$/.test(t))).toBe(false);
-    // Continue never waits on Full Access alone: an iPhone reads it only after the keyboard has run, so there the keyboard
-    // being switched on is enough.
-    const cont = walk(s.root!).find((x) => x.visibleIf && texts(x).includes("Continue"))!;
-    expect(cont.visibleIf).toEqual({ any: [{ truthy: "keyboardReady" }, { all: [{ not: { platform: "android" } }, { truthy: "keyboardEnabled" }] }] });
+    // The phone's mic key is tapped, not held.
+    expect(texts(s.root!).some((t) => /\bhold\b/i.test(t))).toBe(false);
+    expect(texts(s.root!)).toContain("It only takes your words after you tap its mic key.");
+    // One button, Continue: it opens Settings until the phone says Keybot is on, then goes on to First words. That never
+    // waits on Full Access alone: an iPhone reads it only after the keyboard has run, so there the keyboard being
+    // switched on is enough.
+    const conts = walk(s.root!).filter((x) => x.visibleIf && x.type !== "Text" && texts(x).join("") === "Continue");
+    const goes = conts.find((x) => JSON.stringify(x).includes('"screenId":"bots.first-words"'))!;
+    expect(goes.visibleIf).toEqual({ any: [{ truthy: "keyboardReady" }, { all: [{ not: { platform: "android" } }, { truthy: "keyboardEnabled" }] }] });
+    expect(conts.filter((x) => JSON.stringify(x).includes("app-settings:") || JSON.stringify(x).includes('"target":"keyboard"'))).toHaveLength(2);
+  });
+  it("its ways out work wherever it was opened from: back to the page in the app, or Home when a link opened it", async () => {
+    // A link (the keyboard's "Tap to set it up", a widget) makes it the app's only page: back would have nowhere to go.
+    const linked = await build("bots.keybot.on", "phone");
+    const outs = (r: Node) => walk(r)
+      .filter((x) => x.on?.onPress && (texts(x).join("") === "Not now" || x.props?.accessibilityLabel === "Back"))
+      .map((x) => x.on!.onPress);
+    expect(outs(linked.root!)).toEqual([{ kind: "navigate", screenId: "bots.home", replace: true }, { kind: "navigate", screenId: "bots.home", replace: true }]);
+    const inApp = await build("bots.keybot.on", "phone", { params: { from: "app" } });
+    expect(outs(inApp.root!)).toEqual([{ kind: "navigateBack" }, { kind: "navigateBack" }]);
+    expect(actions(inApp.root)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "navigate", screenId: "bots.first-words", params: { w: 5210, s: 1880, from: "app" }, replace: true }),
+    ]));
+    // First words is the same: Done never lands back on Turn on Keybot.
+    const words = await build("bots.first-words", "phone");
+    const done = walk(words.root!).find((x) => x.on?.onPress && texts(x).join("") === "Done")!;
+    expect(actions(done)[0]).toEqual({ kind: "navigate", screenId: "bots.home", replace: true });
+    const wordsIn = await build("bots.first-words", "phone", { params: { from: "app" } });
+    expect(actions(walk(wordsIn.root!).find((x) => x.on?.onPress && texts(x).join("") === "Done")!)[0]).toEqual({ kind: "navigateBack" });
   });
   it("window: this computer's own Accessibility card when it has one", async () => {
     const plain = await build("bots.keybot.on", "desktop");
@@ -201,13 +227,17 @@ describe("Turn on Keybot, First words", () => {
     expect(actions(s.root)).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "navigate", screenId: "bots.first-words", replace: true, params: { w: 5196, s: 1876, said: "$state.said" } }),
     ]));
-    // A phone that has the app's own hold-to-speak button: the clay key is it, and its words are counted at once.
+    // A phone that has the app's own speak button: the clay key is it, tapped on and off as the keyboard's mic key is,
+    // and its words are counted at once.
     const phone = await buildBotsScreen({
       screenId: "bots.first-words", client: "phone", params: { w: 5196, s: 1876 }, tzOffsetMinutes: IST, user: { id: "u1" },
       can: new Set(["BotsKit", "VoiceButton"]), desk: { pages: false, notes: false },
     }, fakeDeps({ api: API }));
     const mic = walk(phone.root!).find((n) => n.type === "VoiceButton");
-    expect(mic).toMatchObject({ bind: { value: "said" }, props: { hold: true }, on: { onChange: { kind: "navigate", screenId: "bots.first-words", replace: true } } });
+    expect(mic).toMatchObject({ bind: { value: "said", state: "mic" }, on: { onChange: { kind: "navigate", screenId: "bots.first-words", replace: true } } });
+    expect(mic!.props?.hold).toBeUndefined();
+    expect(JSON.stringify(mic)).toContain(JSON.stringify({ eq: ["mic", "recording"] }));
+    expect(texts(phone.root!).some((t) => /\bhold\b/i.test(t))).toBe(false);
     const quiet = await build("bots.first-words", "desktop");
     expect(texts(quiet.root!).some((t) => /^\d[\d,]* words?$/.test(t))).toBe(false);
     // Done goes back (to Bots, or Keybot), not on to Plans.

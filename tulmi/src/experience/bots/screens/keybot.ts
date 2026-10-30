@@ -69,16 +69,19 @@ const loadHome = async (ctx: BotsCtx, deps: Pick<BotsDeps, "api">): Promise<Home
 };
 
 const MODES = [
-  { name: "Speak", blurb: "Hold and talk, clean text comes out" },
+  { name: "Speak", blurb: "Tap and talk, clean text comes out" },
   { name: "Rewrite", blurb: "Select text, say how to change it" },
   { name: "Translate", blurb: "Hindi, Hinglish, English" },
   { name: "Reply", blurb: "Drafts an answer in your tone" },
 ];
 
-function modeCard(m: (typeof MODES)[number], i: number, hint?: Node): Node {
+/** The phone's mic key is tapped (on, then off); the computer's key is held. */
+const speakVerb = (desk: boolean): string => (desk ? "Hold" : "Tap");
+
+function modeCard(m: (typeof MODES)[number], i: number, hint?: Node, desk = false): Node {
   return card([
     text(m.name, { size: 15, weight: 600, lineHeight: 20 }),
-    meta(m.blurb, { size: 12 }),
+    meta(i === 0 && desk ? m.blurb.replace("Tap", "Hold") : m.blurb, { size: 12 }),
     ...(hint ? [hint] : []),
   ], { gap: 6, padding: 14, radius: 18, ...(i === 0 ? { selected: CLAY } : {}) });
 }
@@ -138,13 +141,13 @@ function weekBars(days: KeybotHomeView["week"]["days"]): Node {
 }
 
 /** "3,240 words" this week and what it saved; the honest zero when nothing was said yet. Opens Days and sessions. */
-function weekCard(w: KeybotHomeView["week"]): Node {
+function weekCard(w: KeybotHomeView["week"], desk = false): Node {
   const said = w.words > 0 && w.spoken >= w.words * 0.9 ? "spoken this week instead of typed" : "written with Keybot this week";
   return card([
     sectionHead("This week"),
     col([
       text(plural(w.words, "word", "words"), { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }),
-      meta(w.words > 0 ? `${said} · about ${plural(w.minutesSaved, "minute", "minutes")} saved` : "Hold the Keybot key and speak in any app. Your week fills in here.", { size: 13, lineHeight: 18 }),
+      meta(w.words > 0 ? `${said} · about ${plural(w.minutesSaved, "minute", "minutes")} saved` : `${speakVerb(desk)} the Keybot key and speak in any app. Your week fills in here.`, { size: 13, lineHeight: 18 }),
     ], { gap: 2 }),
     weekBars(w.days),
   ], { gap: 12, radius: 18, onPress: open(SCREENS.keyDays) });
@@ -441,7 +444,7 @@ function keybotDesk(ctx: BotsCtx, d: HomeData | undefined) {
       // This computer's Accessibility and microphone, where the window can tell, until they are on.
       ...keybotCard(ctx),
       // ---- the numbers (the old Stats tab, the desk's Insights)
-      twoCols([s ? monthCard(s) : couldntLoad("your numbers")], [home ? weekCard(home.week) : couldntLoad("your week")], { gap: 16 }),
+      twoCols([s ? monthCard(s) : couldntLoad("your numbers")], [home ? weekCard(home.week, true) : couldntLoad("your week")], { gap: 16 }),
       ...(s ? [
         twoCols([todayCard(ctx, s), speakCard(s)], [appsCard(s, home)], { gap: 16 }),
         twoCols([daysCard(s, 44)], [col([sectionLabel(`The last ${s.window.days} days`), figures(figureTiles(s), 2)], { gap: 10 })], { gap: 16 }),
@@ -459,7 +462,7 @@ function keybotDesk(ctx: BotsCtx, d: HomeData | undefined) {
           keyList(),
         ], { gap: 10, radius: 18 }),
       ], { gap: 16 }),
-      col([sectionLabel("What the key does"), row(MODES.map((m, i) => box([modeCard(m, i, hints[i])], { flexGrow: 1, flexBasis: 0, minWidth: 0 })), { gap: 12, alignItems: "stretch" })], { gap: 10 }),
+      col([sectionLabel("What the key does"), row(MODES.map((m, i) => box([modeCard(m, i, hints[i], true)], { flexGrow: 1, flexBasis: 0, minWidth: 0 })), { gap: 12, alignItems: "stretch" })], { gap: 10 }),
     ],
   });
 }
@@ -1061,13 +1064,13 @@ function clearConfirm(): Node {
   ], { gap: 10, padding: 14, radius: 18 }));
 }
 
-function historyEmpty(d: KeybotHistoryView): Node {
+function historyEmpty(d: KeybotHistoryView, desk = false): Node {
   if (d.off) {
     return emptyState({ pose: "think", title: "Nothing is kept", body: "History is off, so what you say isn't saved anywhere. Turn it on to copy things you said before.",
       action: { label: "Keep what I say", onPress: write("PUT", "/v1/personality", { retainHistory: true }, "History is on") } });
   }
   if (d.q) return meta("Nothing you said matches that.", { size: 14 });
-  return emptyState({ pose: "listen", title: "Nothing here yet", body: "Hold the Keybot key and speak in any app. What you said shows up here, to copy again." });
+  return emptyState({ pose: "listen", title: "Nothing here yet", body: `${speakVerb(desk)} the Keybot key and speak in any app. What you said shows up here, to copy again.` });
 }
 
 function historyPhone(ctx: BotsCtx, d: KeybotHistoryView | undefined) {
@@ -1082,7 +1085,7 @@ function historyPhone(ctx: BotsCtx, d: KeybotHistoryView | undefined) {
       searchField(SCREENS.keyHistory, "Search what you said"),
       ...(q ? [searchLine(SCREENS.keyHistory, q)] : []),
       ...(d.entries.length ? [historyChips()] : []),
-      ...(!d.entries.length ? [historyEmpty(d)] : days.map((g) => col([
+      ...(!d.entries.length ? [historyEmpty(d, ctx.client === "desktop")] : days.map((g) => col([
         row([sectionLabel(g.label), grow(), meta(plural(g.words, "word", "words"), { size: 12 })]),
         box(g.entries.flatMap((e, i) => [
           ...(i ? [when(shownFor(e), divider())] : []),
@@ -1138,7 +1141,7 @@ function historyDesk(ctx: BotsCtx, d: KeybotHistoryView | undefined) {
       clearConfirm(),
       row([box([searchField(SCREENS.keyHistory, "Search what you said")], { flexGrow: 1, flexShrink: 1, flexBasis: 300, minWidth: 220 }), ...(d.entries.length ? [historyChips()] : [])], { gap: 8, flexWrap: "wrap" }),
       ...(q ? [searchLine(SCREENS.keyHistory, q)] : []),
-      ...(!d.entries.length ? [historyEmpty(d)] : [
+      ...(!d.entries.length ? [historyEmpty(d, ctx.client === "desktop")] : [
         box([
           row(COLS.map((c, j) => cell(j, sectionLabel(c.label, { size: 10.5 }))), { gap: 12, paddingTop: 10, paddingBottom: 8, paddingLeft: 16, paddingRight: 12 }),
           ...days.flatMap((g) => [
