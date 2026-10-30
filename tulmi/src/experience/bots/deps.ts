@@ -10,7 +10,8 @@ import type { AuthedUser } from "../../auth/supabase.js";
 import type { Bots } from "../../bots/index.js";
 import { stateOf } from "../../code/agent/types.js";
 import type { JobRouter } from "../../code/jobs/router.js";
-import type { CodeJob } from "../../code/jobs/types.js";
+import { isHelperJob, type CodeJob } from "../../code/jobs/types.js";
+import { needsWords } from "../../widgets/botWords.js";
 import type { Connectors } from "../../connectors/index.js";
 import type { BotLite, BotsDeps, JobLite, TaskLite } from "./live.js";
 import { DEFAULT_MONTH_BUDGET_PAISE } from "./live.js";
@@ -25,15 +26,26 @@ export interface BotsServices {
   inject?: (o: { method: string; url: string; payload?: unknown; headers: Record<string, string> }) => Promise<{ statusCode: number; body: string }>;
 }
 
-/** A job as the Bots app reads it: its state, and the question or yes its agent is waiting on. */
+/**
+ * A job as the Bots app reads it: its state, the question or yes its agent is waiting on, and what the X0 widget and the Live Activity show
+ * of it (its phase, when it started, its pull request, its own short words, why it stopped).
+ */
 export function jobLite(j: CodeJob): JobLite {
   const s = stateOf(j.checkpoint);
   const w = s?.waiting;
+  const widget = w?.kind === "question" ? needsWords(w.widget) : undefined;
+  const pr = s?.pr;
   return {
     id: j.id, task: j.task, state: j.state, waitingOn: j.waitingOn,
-    ...(w?.kind === "question" ? { question: { text: w.question, ...(w.options?.length ? { options: [...w.options] } : {}) } } : {}),
+    ...(w?.kind === "question" ? { question: { text: w.question, ...(w.options?.length ? { options: [...w.options] } : {}), ...(widget ? { widget } : {}) } } : {}),
     ...(w?.kind === "approval" ? { approval: { summary: approvalLine(w.action, w.summary) } } : {}),
     spentPaise: j.spentPaise, createdAt: j.createdAt, updatedAt: j.updatedAt,
+    ...(s?.phase ? { phase: s.phase } : {}),
+    ...(typeof s?.startedAt === "number" && s.startedAt > 0 ? { startedAt: s.startedAt } : {}),
+    ...(pr && typeof pr.number === "number" && typeof pr.url === "string" && pr.url ? { pr: { number: pr.number, url: pr.url } } : {}),
+    ...(typeof s?.work?.doneResult === "string" && s.work.doneResult ? { result: s.work.doneResult } : {}),
+    ...(j.reason ? { reason: j.reason } : {}),
+    ...(isHelperJob(j) ? { helper: true } : {}),
   };
 }
 

@@ -238,6 +238,8 @@ export type Waiting =
     /** The model's call to answer with the person's words (from "model"). */
     callId?: string;
     answer?: string;
+    /** The question's own short words for the X0 widget (ask_user short / short_options), checked (widgets/botWords.ts). */
+    widget?: { question?: string; choices?: string[]; private?: boolean };
     at: number;
   }
   | {
@@ -479,6 +481,8 @@ export interface AgentState {
     roundStartedAt?: number;
     finished?: boolean;
     doneSummary?: string;
+    /** What it finished, in its own short words for the X0 widget (done{short}, 40 characters at most). */
+    doneResult?: string;
     /** The model was nudged once to use a tool. */
     nudged?: boolean;
     /** The model was asked, once, for a focused test of the change before the checks ran (phases.ts testWanted), and what it was told. Cleared once the checks run. */

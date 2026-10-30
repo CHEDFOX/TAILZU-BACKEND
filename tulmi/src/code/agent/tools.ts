@@ -16,8 +16,8 @@
  *   find_resources {need}              layer 6: the library shortlist
  *   flag_finding {severity, path, line?, text}   something noticed in code it was not asked about
  *   note {text}                        a line for the work log
- *   ask_user {question, options?}      the job waits for the person
- *   done {summary}                     the work is finished
+ *   ask_user {question, options?, short?, short_options?}   the job waits for the person (short*: its words on their phone, widgets/botWords.ts)
+ *   done {summary, short?}             the work is finished (short: what it finished, on their phone)
  *
  * read_file, list_dir, grep and glob are answered from the job's COPY OF THE CODE when it has one (code/live: the room, a Durable Object, filled
  * from one tarball) and instantly; without one, or when the copy says it cannot (a repo too big for a copy, a file it does not hold), read_file
@@ -54,12 +54,13 @@ import { findResources } from "../resources/finder.js";
 import { WEB_TOOLS, type WebTools } from "../webTools.js";
 import { cleanFinding, redactText, type WorkLog } from "../work/index.js";
 import { fusedFor } from "../work/locate.js";
+import { needsWords, widgetWords, type NeedsWords } from "../../widgets/botWords.js";
 import { Changeset, Refused, checkedText, editablePath, replaceOnce } from "./changeset.js";
 import type { PathGuard } from "../team/guard.js";
 import type { RunOutcome, RunSpec } from "./runner.js";
 import { FINDINGS_MAX, FREEFORM_RUNS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_DEFAULT_SEC, RUN_MIN_SEC, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
 
-export type ToolControl = { type: "done"; summary: string } | { type: "ask"; question: string; options?: string[] };
+export type ToolControl = { type: "done"; summary: string; result?: string } | { type: "ask"; question: string; options?: string[]; widget?: NeedsWords };
 export interface ToolOutcome extends ResultRecord { control?: ToolControl }
 
 export const AGENT_TOOL_NAMES = [
@@ -156,15 +157,18 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "ask_user",
-    description: "Ask the person a question, only when you cannot go on without the answer; the job waits. Give `options` (up to 4 short choices) when you can.",
+    description: "Ask the person a question, only when you cannot go on without the answer; the job waits. Give `options` (up to 4 short choices) when you can. "
+      + "For their phone: short (≤80 characters) and short_options (≤14 each, same order).",
     parameters: obj({
       question: { type: "string", minLength: 3, maxLength: 600 }, options: { type: "array", maxItems: 4, items: { type: "string", maxLength: 120 } },
+      short: { type: "string" }, short_options: { type: "array", maxItems: 3, items: { type: "string" } },
     }, ["question"]),
   },
   {
     name: "done",
-    description: "The work is finished, or nothing needed changing (then `summary` is your whole answer). The server then runs the checks on your staged edits and commits them. `summary` is what the person reads first: what you did and why.",
-    parameters: obj({ summary: { type: "string", minLength: 3, maxLength: 8000 } }, ["summary"]),
+    description: "The work is finished, or nothing needed changing (then `summary` is your whole answer). The server then runs the checks on your staged edits and commits them. `summary` is what the person reads first: what you did and why. "
+      + "short: it in ≤40 characters.",
+    parameters: obj({ summary: { type: "string", minLength: 3, maxLength: 8000 }, short: { type: "string" } }, ["summary"]),
   },
 ];
 
@@ -390,14 +394,17 @@ export class Tools {
         const question = str(a.question)?.trim();
         if (!question) throw new Refused("question is needed.");
         const options = Array.isArray(a.options) ? a.options.filter((o): o is string => typeof o === "string" && !!o.trim()).slice(0, 4).map((o) => short(o.trim(), 120)) : undefined;
+        // Its words for the person's phone (the X0 widget): checked, cut at a word, never a reason to refuse the question.
+        const widget = needsWords({ question: a.short, choices: Array.isArray(a.short_options) && options?.length ? a.short_options.slice(0, options.length) : undefined });
         await this.log(call, "question", question);
-        return { ok: true, content: "Asked the person.", control: { type: "ask", question: short(question, 600), ...(options?.length ? { options } : {}) } };
+        return { ok: true, content: "Asked the person.", control: { type: "ask", question: short(question, 600), ...(options?.length ? { options } : {}), ...(widget ? { widget } : {}) } };
       }
       case "done": {
         const summary = str(a.summary)?.trim();
         if (!summary) throw new Refused("summary is needed: what you did, in a few sentences.");
         await this.log(call, "decision", `Finished: ${short(summary, 300)}`);
-        return { ok: true, content: "Done.", control: { type: "done", summary: short(summary, 8000) } };
+        const result = widgetWords({ result: a.short }).result;
+        return { ok: true, content: "Done.", control: { type: "done", summary: short(summary, 8000), ...(result ? { result } : {}) } };
       }
     }
   }

@@ -45,6 +45,7 @@ const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
+const { DigestReply } = await import("../src/widgets/digest.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
 
@@ -283,6 +284,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   bot_pick: 809, // 736 measured
   bot_run: 1516, // 1379 measured
   bot_memory: 1163, // 1058 measured
+  widget_digest: 853, // 776 measured
   ask_planner: 4904, // 4458 measured
   ask_vision: 4519, // 4108 measured
   writer: 4322, // 3929 measured
@@ -359,6 +361,7 @@ describe("the contracts say what the parsers read", () => {
     ["bot_builder", BotDraftReply],
     ["bot_pick", BotPickReply],
     ["bot_memory", BotMemoryReply],
+    ["widget_digest", DigestReply],
   ];
 
   it("name every field of the schema the answer is read with", () => {

@@ -14,6 +14,7 @@
  * what it was for, never the amount.
  */
 import { CONNECTOR_BOT } from "../experience/bots/live.js";
+import type { NeedsWords } from "../widgets/botWords.js";
 
 export type FeedType = "job" | "task" | "ask" | "payment" | "words";
 export type FeedMark = "working" | "needs" | "done" | "failed" | "waiting";
@@ -60,7 +61,8 @@ export interface FeedTask {
   state: "running" | "waiting" | "done" | "failed" | "cancelled";
   title: string;
   steps: Array<{ at: number; text: string }>;
-  approval: { id: string; connector: string; preview: string } | null;
+  /** `risk` and `widget` (the asking bot's own short words): what the X0 widget reads to answer it in place (widgets/glance.ts). */
+  approval: { id: string; connector: string; preview: string; risk?: string; widget?: NeedsWords } | null;
   createdAt: number;
   updatedAt: number;
 }

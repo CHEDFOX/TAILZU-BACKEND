@@ -9,7 +9,8 @@
  *   code       code_ask                         the Code bot's answer about the person's project (code/chat), read-only. A change to the code is the Code
  *                                               bot's own flow: the bot tells the person to ask it, and nothing here starts a job
  *   files      search_knowledge                 the bot's own files, by the question's words (knowledge.ts)
- *   connectors <app>__<tool> for each tool of each connected app the owner gave the bot, through connectors/tasks.ts use(): the assistant's own permission tiers
+ *   connectors <app>__<tool> for each tool of each connected app the owner gave the bot, through connectors/tasks.ts use(): the assistant's own permission tiers;
+ *                                               each may carry x0_widget {question, private}: the bot's own words for the yes on the owner's phone
  *
  * THE SKILLS ARE THE GATE. The model is offered exactly these definitions, and run() refuses a call to any other name: a model that makes up a tool
  * (because a rule, a file or a page told it to) gets "there is no such tool" and nothing runs. The owner's rules cannot add one.
@@ -66,6 +67,19 @@ export interface ToolKit {
   /** Names of the connected apps the owner gave the bot that this person has not connected yet. */
   notConnected: string[];
   settled(): Promise<void>;
+}
+
+/**
+ * A change a bot calls may carry its own short words for the owner's phone (the X0 widget, docs/widget-glance-v2.md section 1): the yes it
+ * asks, 80 characters at most, and whether it is private. Added to every app tool's schema (an app that already has a field of that name
+ * keeps its own), taken off the call before the app reads it, and checked where the approval is made (widgets/botWords.ts). Never required.
+ */
+export const X0_WIDGET = "x0_widget";
+const WIDGET_PARAM = { type: "object", properties: { question: { type: "string", maxLength: 80 }, private: { type: "boolean" } } } as const;
+function withWidget(schema: Record<string, unknown>): Record<string, unknown> {
+  const props = (schema.properties && typeof schema.properties === "object" ? schema.properties : {}) as Record<string, unknown>;
+  if (X0_WIDGET in props) return schema;
+  return { ...schema, properties: { ...props, [X0_WIDGET]: WIDGET_PARAM } };
 }
 
 const RESULT_MAX = 6_000;
@@ -215,9 +229,14 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
         const name = toolName(s.id, t.name, taken);
         taken.add(name);
         const schema = t.inputSchema && typeof t.inputSchema === "object" && t.inputSchema.type === "object" ? t.inputSchema : { type: "object", properties: {} };
-        defs.push({ name, description: oneLine(`${s.name}: ${firstSentence(t.description, 200) || t.name}`, 260), parameters: schema });
-        handlers.set(name, async (args) => {
-          const o = await conn.use(userId, env.runId, `${bot.name} bot`, { connector: s.id, tool: t.name, args }, { allowWrite: true });
+        const parameters = withWidget(schema);
+        const ours = parameters !== schema;
+        defs.push({ name, description: oneLine(`${s.name}: ${firstSentence(t.description, 200) || t.name}`, 260), parameters });
+        handlers.set(name, async (raw) => {
+          // The bot's words for the owner's phone are ours, never the app's: taken off before the app's own schema reads the call.
+          const { [X0_WIDGET]: widget, ...rest } = raw;
+          const args = ours ? rest : raw;
+          const o = await conn.use(userId, env.runId, `${bot.name} bot`, { connector: s.id, tool: t.name, args }, { allowWrite: true, ...(ours && widget !== undefined ? { widget } : {}) });
           switch (o.kind) {
             case "result": return { content: appResult(s.name, o.text), ok: true };
             case "approval":

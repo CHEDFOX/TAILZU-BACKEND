@@ -20,6 +20,7 @@ import type { ActionSpec } from "../../../../shared/types/sdui.js";
 import type { TabLive } from "./glyphs.js";
 import { SCREENS } from "./ids.js";
 import { BUILTIN_SLUGS, botLook, type BotLook } from "./palette.js";
+import { WIDGET_LIMITS, clauseOf, cutAtWord, type NeedsWords } from "../../widgets/botWords.js";
 
 // ------------------------------------------------------------------ what the deps return
 
@@ -38,7 +39,20 @@ export interface JobLite {
   task: string;
   state: "queued" | "running" | "waiting_for_compute" | "waiting_for_you" | "paused" | "done" | "failed" | "cancelled";
   waitingOn: "paid" | "commit" | "answer" | "approval" | "budget" | null;
-  question?: { text: string; options?: string[] };
+  /** `widget`: the question's own short words for the X0 widget (ask_user short / short_options), checked (widgets/botWords.ts). */
+  question?: { text: string; options?: string[]; widget?: NeedsWords };
+  /** The agent's phase (code/agent/types.ts PHASES), when it has one: the stage the widget and the Live Activity show. */
+  phase?: string;
+  /** When the agent was handed the job (epoch ms). */
+  startedAt?: number;
+  /** The pull request it opened. */
+  pr?: { number: number; url: string };
+  /** What it finished, in its own short words (done{short}), for the widget. */
+  result?: string;
+  /** In plain words, why it is waiting or why it ended badly. */
+  reason?: string;
+  /** A helper of a team's lead (code/team): its lead is the job a person follows. */
+  helper?: boolean;
   /** The approval waiting on a yes (a plan, a commit): what it is about, in a line. */
   approval?: { summary: string };
   spentPaise: number;
@@ -175,11 +189,12 @@ export const CONNECTOR_BOT: Record<string, string> = {
   "google-calendar": "plan", "google-tasks": "plan", maps: "travel", booking: "travel",
 };
 
-/** A job's task, as a short "doing" line: the first clause, lower-cased, at most 28 characters. */
+/**
+ * A job's task, as a short "doing" line: the first clause, lower-cased, at most 28 characters, cut at a word ("…" only when cut; the widget
+ * contract, widgets/botWords.ts). A first clause that is one word longer than that reads whole words or nothing: "" (the caller's fill-in).
+ */
 export function doingLine(task: string): string {
-  const first = task.split(/[.\n]/)[0]!.trim();
-  const s = first.charAt(0).toLowerCase() + first.slice(1);
-  return s.length > 28 ? s.slice(0, 27).trimEnd() + "…" : s;
+  return cutAtWord(clauseOf(task), WIDGET_LIMITS.doing);
 }
 
 /** Monday 00:00 of the person's week, and the 1st of their month, as epoch ms. */
@@ -289,7 +304,7 @@ export function liveFrom(i: LiveInput): BotsLive {
     return {
       ...look(b.slug, b.colour), slug: b.slug, name: b.name, builtin: b.builtin, state, purpose: b.purpose,
       working: !!w, needs: needs.filter((n) => n.bot === b.slug).length,
-      ...(w ? { doing: doingLine(w.title) } : {}),
+      ...(w && doingLine(w.title) ? { doing: doingLine(w.title) } : {}),
     };
   });
   const rank = (b: LiveBot) => (b.state === "needs" ? 0 : b.state === "working" ? 1 : 2);

@@ -62,6 +62,7 @@ import { createBots } from "./bots/index.js";
 import { botPorts } from "./bots/wire.js";
 import { registerBotRoutes } from "./routes/bots.js";
 import { registerBotsShellRoutes } from "./routes/botsShell.js";
+import { markSeen } from "./widgets/glanceStore.js";
 import { registerBotsYouRoutes } from "./routes/botsYou.js";
 import { registerBotsBotsRoutes } from "./routes/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/botsKeybot.js";
@@ -3030,6 +3031,9 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   const botsParams = screenId === "desk_note" && body.params?.noteId !== undefined ? { ...body.params, id: body.params.noteId } : body.params;
   if (isBotsScreen(botsId)) {
     if (!botsOn) return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });
+    // The X0 widget's "last thing done" is news until it is opened: its job's page, or Activity (everything until now). Never in the way.
+    if (user && botsId === "bots.code.job" && typeof botsParams?.id === "string") void markSeen(user.id, { ids: [botsParams.id] });
+    else if (user && botsId === "bots.activity") void markSeen(user.id, { all: true });
     const tz = typeof body.tzOffsetMinutes === "number" && Number.isFinite(body.tzOffsetMinutes) ? body.tzOffsetMinutes : 0;
     const comps = new Set(Array.isArray(body.capabilities?.components) ? body.capabilities!.components!.map(String) : []);
     const deps = user
