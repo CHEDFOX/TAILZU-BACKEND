@@ -2,7 +2,7 @@
  * SEED OUR CODING INDEX FROM OFFICIAL DOCUMENTATION SITEMAPS.
  *
  * The index (src/web/search/index.ts, migration 0027) fills itself with the
- * documentation pages the Code bot reads. This fills it ahead of time with a
+ * documentation pages Xode reads. This fills it ahead of time with a
  * short list of official sites (catalog.ts SEED_SITES), so a first question
  * about Vue, Next.js, Vite, Prisma, Expo, Supabase, FastAPI, Django or
  * MDN is answered from the index.

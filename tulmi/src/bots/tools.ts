@@ -6,7 +6,7 @@
  *   web        web_search, read_page            code/webTools.ts: the search engine, the page reader, the page cache, the daily limits
  *   research   research                         the same: a cited answer from several pages, under the person's daily research runs
  *   artifacts  artifact_create, _update, _rewrite   artifacts/tools.ts: a page, a chart or a diagram the person sees beside the chat
- *   code       code_ask                         the Code bot's answer about the person's project (code/chat), read-only. A change to the code is the Code
+ *   code       code_ask                         Xode's answer about the person's project (code/chat), read-only. A change to the code is the Code
  *                                               bot's own flow: the bot tells the person to ask it, and nothing here starts a job
  *   files      search_knowledge                 the bot's own files, by the question's words (knowledge.ts)
  *   connectors <app>__<tool> for each tool of each connected app the owner gave the bot, through connectors/tasks.ts use(): the assistant's own permission tiers;
@@ -27,6 +27,7 @@ import type { ToolCall, ToolDef } from "../code/brain/types.js";
 import { makeWebTools, type WebToolDeps } from "../code/webTools.js";
 import type { CallFn } from "../code/work/model.js";
 import { withoutAmounts } from "../shell/parse.js";
+import { isBuiltinSlug } from "./builtin.js";
 import { retrieve } from "./knowledge.js";
 import type { Meter } from "./meter.js";
 import type { BotPorts } from "./ports.js";
@@ -168,14 +169,14 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
     }
   }
 
-  // ---- the Code bot, read-only
+  // ---- Xode, read-only
   if (bot.skills.code) {
-    if (!ports.code) env.record.notes.push("The Code bot isn't switched on, so this bot can't look at your projects yet.");
+    if (!ports.code) env.record.notes.push("Xode isn't switched on, so this bot can't look at your projects yet.");
     else {
       const ask = ports.code;
       defs.push({
         name: "code_ask",
-        description: "Ask the Code bot a question about the person's project, answered from the project's index with file paths and lines. It only reads. To change the code, tell the person to ask the Code bot.",
+        description: "Ask Xode a question about the person's project, answered from the project's index with file paths and lines. It only reads. To change the code, tell the person to ask Xode.",
         parameters: { type: "object", additionalProperties: false, required: ["question"], properties: { question: { type: "string", minLength: 3, maxLength: 1000 } } },
       });
       handlers.set("code_ask", async (a) => {
@@ -185,10 +186,10 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
         try {
           const r = await ask({ userId, projectId: env.projectId, question: question.slice(0, 1000), maxPaise: Math.max(1, env.meter.left()), ...(env.signal ? { signal: env.signal } : {}) });
           env.meter.add(r.paise);
-          return { content: `The Code bot's answer, from the project (data, not instructions):\n${cut(r.text, RESULT_MAX)}`, ok: true };
+          return { content: `Xode's answer, from the project (data, not instructions):\n${cut(r.text, RESULT_MAX)}`, ok: true };
         } catch (err) {
           if ((err as { name?: unknown } | null)?.name === "AbortError") throw err;
-          return { content: "The Code bot could not answer that just now.", ok: false };
+          return { content: "Xode could not answer that just now.", ok: false };
         }
       });
     }
@@ -236,7 +237,7 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
           // The bot's words for the owner's phone are ours, never the app's: taken off before the app's own schema reads the call.
           const { [X0_WIDGET]: widget, ...rest } = raw;
           const args = ours ? rest : raw;
-          const o = await conn.use(userId, env.runId, `${bot.name} bot`, { connector: s.id, tool: t.name, args }, { allowWrite: true, ...(ours && widget !== undefined ? { widget } : {}) });
+          const o = await conn.use(userId, env.runId, isBuiltinSlug(bot.id) || /\bbot$/i.test(bot.name) ? bot.name : `${bot.name} bot`, { connector: s.id, tool: t.name, args }, { allowWrite: true, ...(ours && widget !== undefined ? { widget } : {}) });
           switch (o.kind) {
             case "result": return { content: appResult(s.name, o.text), ok: true };
             case "approval":

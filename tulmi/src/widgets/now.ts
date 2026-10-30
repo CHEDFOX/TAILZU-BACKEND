@@ -52,7 +52,7 @@ export interface NowRow {
   /** The item a button acts on (items.ts); opaque to the apps. */
   id: string;
   kind: string;
-  /** Who it is from: "Riya", "Plan bot". */
+  /** Who it is from: "Riya", "Plan Ease". */
   who: string;
   /** Their first letter, for a widget that draws a mark. */
   initial: string;

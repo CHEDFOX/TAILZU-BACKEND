@@ -3,14 +3,14 @@
  * matters most right now (`case`): something needs the person, else a bot finished something they have not seen, else bots are working,
  * else quiet.
  *
- * Pure: routes/botsShell.ts reads the records (the Code bot's jobs, the connected apps' tasks, the bots, the week's minutes, what the person
+ * Pure: routes/botsShell.ts reads the records (Xode's jobs, the connected apps' tasks, the bots, the week's minutes, what the person
  * has seen) and hands them in; every word and limit is a knob of the "widgets" surface (defaults.ts, x0.*), in English or Hinglish. It is the
  * same live state Home draws (experience/bots/live.ts liveFrom), so the widget and Home never disagree about who is working or what waits.
  *
  * WHAT NEEDS THE PERSON is answered from the widget through the existing door: an item's `id` and `kind` are exactly a /v1/widgets/now row's
  * (items.ts: job:<id>:<q> "question", task:<id>:<approval> "approval"), and a choice's `id` is the action POST /v1/widgets/act takes (a0, a1,
  * a2 for a question's answers in order; yes / no for a connected app's call). An item that cannot be answered in place (more answers than
- * fit, a risk the server keeps in the app, a yes to a Code bot's plan) has no choices and `answerable: false`: the widget opens decideLink.
+ * fit, a risk the server keeps in the app, a yes to a Xode's plan) has no choices and `answerable: false`: the widget opens decideLink.
  *
  * PRIVATE-SAFE. A question the bot marked private, and every kind in x0.needs.private (a connected app's yes, by default), never puts its
  * words where a locked phone shows them: `lock` says only that a bot needs the person, and the AI digest is never given them (digest.ts).
@@ -178,7 +178,7 @@ function inPlace(k: WidgetKnobs, kind: string): boolean {
 }
 
 /**
- * A Code bot job's question or yes as a needs item, or null when it waits for neither. The id is the /v1/widgets row's (a question's
+ * A Xode job's question or yes as a needs item, or null when it waits for neither. The id is the /v1/widgets row's (a question's
  * fingerprint, so a stale button never answers the next one); a yes to a plan has no row there, and is open-only here.
  */
 export function jobNeedsItem(j: JobLite, w: X0Words, botName: string, link: string): GlanceNeedsItem | null {
@@ -283,7 +283,7 @@ export function glanceV2Of(i: GlanceInput, payload: WidgetsPayload): GlanceV2 {
     ...(last.pr ? { pr: last.pr } : {}), link: linkOf(k, "question", { jobId: last.id }), ...(last.state === "failed" ? { failed: true as const } : {}),
   } : undefined;
 
-  // The Code bot job a person follows now: one at work, else one waiting for them.
+  // Xode job a person follows now: one at work, else one waiting for them.
   const open = jobs.filter((j) => !j.helper && (ACTIVE.has(j.state) || j.state === "waiting_for_you")).sort((a, b) => b.updatedAt - a.updatedAt);
   const now = open.find((j) => ACTIVE.has(j.state)) ?? open[0];
   const stage = now ? stageOf(now.phase) : null;

@@ -1,5 +1,5 @@
 /**
- * WHAT THE BOTS COST THIS MONTH, FROM THE REAL RECORDS: the Code bot's jobs (code_jobs.spent_paise, the brain's gateway adds to it after every model
+ * WHAT THE BOTS COST THIS MONTH, FROM THE REAL RECORDS: Xode's jobs (code_jobs.spent_paise, the brain's gateway adds to it after every model
  * call) and every other bot's answers (you_spend: one row per answer, written when the answer comes back, see limits.ts). Pure: the route reads the
  * records, this adds them up in the person's own days.
  *

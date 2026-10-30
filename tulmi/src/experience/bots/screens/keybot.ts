@@ -1,10 +1,10 @@
 /**
  * KEYBOT: the keyboard bot's pages, for the phone and the window (one id each, ctx.client picks the layout).
  *
- *   bots.keybot            Keybot / DKeybot         everything the old Stats and You tabs had, in Keybot's look
+ *   bots.keybot            Keylessbord / DKeybot         everything the old Stats and You tabs had, in Keylessbord's look
  *                          (docs/bots-keybot-parity.md): the month typed against said, the words left, the week, today,
  *                          where the words went, how you speak, the days, six figures; then the You tab's lines in
- *                          groups (Make it yours, Keyboard and voice, What you said); what the key does. Account and help live in the You tab: Keybot is part of the app, not an app of its own
+ *                          groups (Make it yours, Keyboard and voice, What you said); what the key does. Account and help live in the You tab: Keylessbord is part of the app, not an app of its own
  *   bots.keybot.tone       KeyTone / DKeyTone       a tone for each kind of app (Chats, Mail, Work chat)
  *   bots.keybot.words      KeyWords / DKeyWords     the words it spells your way: added, learned, how often said
  *   bots.keybot.voices     KeyVoices / DKeyVoices   the read-aloud voice, speed, when it reads
@@ -18,9 +18,9 @@
  * A failed read draws the page's honest "couldn't load" state, never a made-up number.
  *
  * The numbers' own pages are screens/keybotStats.ts (month, day, apps, speak, days), the old You tab's that had no
- * Keybot page are screens/keybotYou.ts (style, haptics, name); the small parts and the charts, screens/keybotParts.ts.
+ * Keylessbord page are screens/keybotYou.ts (style, haptics, name); the small parts and the charts, screens/keybotParts.ts.
  *
- * Not here: bots.keybot.on and the keyboard and microphone cards shown on Keybot (screens/firstRun.ts). bots.keybot.pill / .reply / .rewrite are the desktop's
+ * Not here: bots.keybot.on and the keyboard and microphone cards shown on Keylessbord (screens/firstRun.ts). bots.keybot.pill / .reply / .rewrite are the desktop's
  * own windows (TAILZU-DESKTOP pill.html and guide.html, behind the same switch), and the phone keyboard's KeyLive,
  * KeyReply and KeyRewrite are the keyboard extension itself: neither is a server-drawn screen.
  */
@@ -53,7 +53,7 @@ import { keybotYouScreens } from "./keybotYou.js";
 // ===================================================================== bots.keybot
 
 /**
- * Keybot's home carries what the old Stats and You tabs had (docs/bots-keybot-parity.md): the numbers up top (the
+ * Keylessbord's home carries what the old Stats and You tabs had (docs/bots-keybot-parity.md): the numbers up top (the
  * month, the words left, the week, today, where the words went, how you speak, the days, six figures), then the old
  * You tab's lines in groups, each opening its page, then what the key does. Two reads, each with its own honest state:
  * GET /v1/keybot (the week, and a line for each page) and GET /v1/keybot/stats (the numbers).
@@ -142,12 +142,12 @@ function weekBars(days: KeybotHomeView["week"]["days"]): Node {
 
 /** "3,240 words" this week and what it saved; the honest zero when nothing was said yet. Opens Days and sessions. */
 function weekCard(w: KeybotHomeView["week"], desk = false): Node {
-  const said = w.words > 0 && w.spoken >= w.words * 0.9 ? "spoken this week instead of typed" : "written with Keybot this week";
+  const said = w.words > 0 && w.spoken >= w.words * 0.9 ? "spoken this week instead of typed" : "written with Keylessbord this week";
   return card([
     sectionHead("This week"),
     col([
       text(plural(w.words, "word", "words"), { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }),
-      meta(w.words > 0 ? `${said} · about ${plural(w.minutesSaved, "minute", "minutes")} saved` : `${speakVerb(desk)} the Keybot key and speak in any app. Your week fills in here.`, { size: 13, lineHeight: 18 }),
+      meta(w.words > 0 ? `${said} · about ${plural(w.minutesSaved, "minute", "minutes")} saved` : `${speakVerb(desk)} the Keylessbord key and speak in any app. Your week fills in here.`, { size: 13, lineHeight: 18 }),
     ], { gap: 2 }),
     weekBars(w.days),
   ], { gap: 12, radius: 18, onPress: open(SCREENS.keyDays) });
@@ -193,7 +193,7 @@ function appsCard(s: KeybotStatsView, home: KeybotHomeView | undefined): Node {
   ], { gap: 8, radius: 18 });
 }
 
-/** The week's apps, when the month's numbers could not be read (Keybot's own by-app card). */
+/** The week's apps, when the month's numbers could not be read (Keylessbord's own by-app card). */
 function weekAppsCard(d: KeybotHomeView): Node {
   return card([
     sectionHead("By app · this week", { label: "Tone per app", onPress: open(SCREENS.keyTone) }),
@@ -210,7 +210,7 @@ function speakCard(s: KeybotStatsView): Node {
   return card([
     sectionHead(s.languages.length ? `How you speak · ${plural(s.languages.length, "language", "languages")}` : "How you speak"),
     hbars(s.languages.slice(0, 3).map((l) => ({ label: l.label, value: l.words, text: `${pct(l.words, lt)}%` })),
-      { empty: "Talk for a few days and this fills in, read from what Keybot wrote." }),
+      { empty: "Talk for a few days and this fills in, read from what Keylessbord wrote." }),
     ...(k && kt ? [sectionLabel("How the words came"), hbars([
       { label: "Said", value: k.said, text: `${pct(k.said, kt)}%` },
       { label: "Typed", value: k.typed, text: `${pct(k.typed, kt)}%` },
@@ -252,7 +252,7 @@ function figureTiles(s: KeybotStatsView): Node[] {
 
 interface Line { label: string; value?: string; sub?: string; onPress: ActionRef; right?: Node }
 
-/** Make it yours: how Keybot writes for you. */
+/** Make it yours: how Keylessbord writes for you. */
 function yoursLines(d: KeybotHomeView | undefined): Line[] {
   const fix = d?.fixes[0];
   return [
@@ -335,12 +335,12 @@ function keybotPhone(ctx: BotsCtx, d: HomeData | undefined) {
   const head = row([
     box([icon("back", { size: 24, label: "Back" })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()),
     botAvatar(KEYBOT, 40),
-    col([text("Keybot", { size: 19, weight: 600, lineHeight: 24 }), meta("Your keyboard, in every app")], { gap: 2, flexShrink: 1 }),
-    // Keybot's own tiny bot, hopping his keys at the head's right end (where the build draws it).
+    col([text("Keylessbord", { size: 19, weight: 600, lineHeight: 24 }), meta("Your keyboard, in every app")], { gap: 2, flexShrink: 1 }),
+    // Keylessbord's own tiny bot, hopping his keys at the head's right end (where the build draws it).
     ...headerBuddy(ctx, "keybot").flatMap((b) => [grow(), b]),
   ], { gap: 10 });
   return page(ctx, {
-    back: false, nav: "keybot", title: "Keybot", gap: 18, state: homeState(d),
+    back: false, nav: "keybot", title: "Keylessbord", gap: 18, state: homeState(d),
     body: [
       head,
       text(dayLine(ctx), { size: 14, color: C.grey70, lineHeight: 20 }),
@@ -365,7 +365,7 @@ function keybotPhone(ctx: BotsCtx, d: HomeData | undefined) {
         row([modeCard(MODES[0]!, 0), modeCard(MODES[1]!, 1)].map((c) => box([c], { flexGrow: 1, flexBasis: 0 })), { gap: 10, alignItems: "stretch" }),
         row([modeCard(MODES[2]!, 2), modeCard(MODES[3]!, 3)].map((c) => box([c], { flexGrow: 1, flexBasis: 0 })), { gap: 10, alignItems: "stretch" }),
       ], { gap: 10 })], { gap: 10 }),
-      col([phoneKeys(), meta("The X0 key, top left, is Keybot. Tap it and speak; tap it again when you're done, and Keybot tidies your words and types them in. The pill on the right sets the tone.", { size: 12, lineHeight: 17 })], { gap: 10 }),
+      col([phoneKeys(), meta("The X0 key, top left, is Keylessbord. Tap it and speak; tap it again when you're done, and Keylessbord tidies your words and types them in. The pill on the right sets the tone.", { size: 12, lineHeight: 17 })], { gap: 10 }),
     ],
   });
 }
@@ -378,7 +378,7 @@ const KEY_AT: Array<{ id: string; row: Array<[string, number]>; at: number }> = 
   { id: "rightCtrl", row: PC_ROW, at: 5 }, { id: "rightAlt", row: PC_ROW, at: 4 },
 ];
 
-/** The laptop's bottom row, the Keybot key in clay where the chosen key is, named as this computer has it bound. A window
+/** The laptop's bottom row, the Keylessbord key in clay where the chosen key is, named as this computer has it bound. A window
  *  from before the one key (no desktop.oneKey), or Fn: the Mac's row with Fn in clay. */
 function laptopKeys(): Node {
   const k = (f: number, label: string, clay: boolean): Node => box([
@@ -413,7 +413,7 @@ function keyChoice(): Node[] {
   return [
     when({ all: [has, { eq: ["desktop.os", "mac"] }] }, segmented(MAC_KEYS, "desktop.oneKey", { onChange: pick })),
     when({ all: [has, { eq: ["desktop.os", "windows"] }] }, segmented(PC_KEYS, "desktop.oneKey", { onChange: pick })),
-    when({ all: [has, { falsy: "desktop.oneKeyOn" }] }, meta("This key can't be used on this computer right now, so Keybot listens on the key above.", { size: 12 })),
+    when({ all: [has, { falsy: "desktop.oneKeyOn" }] }, meta("This key can't be used on this computer right now, so Keylessbord listens on the key above.", { size: 12 })),
     when({ eq: ["desktop.oneKey", "fn"] }, meta("If Fn opens emoji, set “Press 🌐 key to” to “Do Nothing” in Keyboard settings.", { size: 12 })),
   ];
 }
@@ -431,11 +431,11 @@ function keybotDesk(ctx: BotsCtx, d: HomeData | undefined) {
     text("Speak in the reply box", { size: 12, color: C.grey70, lineHeight: 16 }),
   ];
   return page(ctx, {
-    nav: "keybot", title: "Keybot", gap: 18, maxWidth: DESK_WIDTH, state: homeState(d),
+    nav: "keybot", title: "Keylessbord", gap: 18, maxWidth: DESK_WIDTH, state: homeState(d),
     body: [
       row([
         botAvatar(KEYBOT, 48),
-        col([title("Keybot", { size: 26 }), text(`Your keyboard, in every app. ${dayLine(ctx)}`, { size: 14, color: C.grey70, lineHeight: 19 })], { gap: 3, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+        col([title("Keylessbord", { size: 26 }), text(`Your keyboard, in every app. ${dayLine(ctx)}`, { size: 14, color: C.grey70, lineHeight: 19 })], { gap: 3, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
         ...headerBuddy(ctx, "keybot"),
         when({ truthy: "desktop.hold" }, row([kbd("Fn", "desktop.holdKey"), text("Hold to speak in any app", { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 8 })),
         when({ falsy: "desktop.hold" }, row([kbd("Ctrl+Space", "desktop.hotkey"), text("Press to speak in any app", { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 8 })),
@@ -457,8 +457,8 @@ function keybotDesk(ctx: BotsCtx, d: HomeData | undefined) {
         lines("Keyboard and voice", keyboardLines(home, true)),
         card([
           sectionLabel("Shortcut keys"), laptopKeys(),
-          when({ truthy: "desktop.oneKey" }, meta("The clay key is Keybot. Hold to talk, tap to keep listening. Ask, notes and your bots are on it too: just say so.", { size: 12 })),
-          when({ falsy: "desktop.oneKey" }, meta("The clay key is Keybot. Hold to speak, tap twice to keep listening.", { size: 12 })),
+          when({ truthy: "desktop.oneKey" }, meta("The clay key is Keylessbord. Hold to talk, tap to keep listening. Ask, notes and your bots are on it too: just say so.", { size: 12 })),
+          when({ falsy: "desktop.oneKey" }, meta("The clay key is Keylessbord. Hold to speak, tap twice to keep listening.", { size: 12 })),
           keyList(),
         ], { gap: 10, radius: 18 }),
       ], { gap: 16 }),
@@ -529,7 +529,7 @@ function tonePhone(ctx: BotsCtx, d: KeybotToneView | undefined) {
     nav: "keybot", title: "Tone per app", gap: 14, state: toneState(d),
     body: [
       phoneHead("Tone per app"),
-      text("Keybot writes like you, a bit different per app.", { size: 14, color: C.grey70, lineHeight: 19 }),
+      text("Keylessbord writes like you, a bit different per app.", { size: 14, color: C.grey70, lineHeight: 19 }),
       box(d.groups.flatMap((g, i) => [...(i ? [divider()] : []), groupRow(g, false)]), { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" }),
       ...TONE_GROUP_DEFS.map((g) => when({ eq: ["group", g.id] }, col([sectionLabel(`Presets for ${g.label}`), presetGrid(g.id)], { gap: 10 }))),
       col([sectionLabel("One line, each tone"), box([
@@ -537,14 +537,14 @@ function tonePhone(ctx: BotsCtx, d: KeybotToneView | undefined) {
         ...TONE_GROUP_DEFS.flatMap((g) => [divider(), col(sampleFor(g.id, false), { paddingVertical: 10, paddingHorizontal: 16 })]),
       ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" })], { gap: 10 }),
     ],
-    footer: [row([text(`Teach Keybot your style · ${d.train.done} of ${d.train.total} done`, { size: 14, weight: 500, lineHeight: 18 }), icon("chevron", { size: 16 })],
+    footer: [row([text(`Teach Keylessbord your style · ${d.train.done} of ${d.train.total} done`, { size: 14, weight: 500, lineHeight: 18 }), icon("chevron", { size: 16 })],
       { gap: 8, justifyContent: "center", minHeight: 44 }, open(SCREENS.keyTrain))],
   });
 }
 
 function toneDesk(ctx: BotsCtx, d: KeybotToneView | undefined) {
-  const head = deskHead("Tone per app", "Keybot writes like you, a bit different per app.", d
-    ? [button(`Teach Keybot your style · ${d.train.done} of ${d.train.total} done`, open(SCREENS.keyTrain), { kind: "secondary", size: "md" })] : []);
+  const head = deskHead("Tone per app", "Keylessbord writes like you, a bit different per app.", d
+    ? [button(`Teach Keylessbord your style · ${d.train.done} of ${d.train.total} done`, open(SCREENS.keyTrain), { kind: "secondary", size: "md" })] : []);
   if (!d) return page(ctx, { nav: "keybot", title: "Tone per app", gap: 18, maxWidth: DESK_WIDTH, body: [head, couldntLoad("your tones")] });
   const little = (g: (typeof TONE_GROUP_DEFS)[number]) => when({ eq: ["group", g.id] }, deskCard(`Little things in ${g.label}`, [
     toggleRow("Skip the full stop at the end", `little.${g.id}.noStop`, save("POST", "/v1/keybot/tone", { group: g.id, noStop: `$state.little.${g.id}.noStop` }), "No full stop to end a message"),
@@ -567,7 +567,7 @@ function toneDesk(ctx: BotsCtx, d: KeybotToneView | undefined) {
             borderColor: whenEq("group", g.id, CLAY, C.line),
           })), { gap: 10, alignItems: "stretch" }),
         ], { gap: 12, radius: 18 })], { gap: 8 }),
-        meta("Keybot picks the tone from the app you’re in. Say “make it formal” any time to change just one message.", { size: 12 }),
+        meta("Keylessbord picks the tone from the app you’re in. Say “make it formal” any time to change just one message.", { size: 12 }),
       ], { left: 330, gap: 24 }),
     ],
   });
@@ -600,11 +600,11 @@ function badge(source: "added" | "learned"): Node {
     : row([text("Learned from you", { size: 12, color: C.grey70, lineHeight: 16 })], { paddingVertical: 4, paddingHorizontal: 9, borderRadius: 10, backgroundColor: C.surface, flexShrink: 0 });
 }
 
-/** Adding a word: Enter or Add saves it (POST /v1/words), and Keybot spells it that way from then on. */
+/** Adding a word: Enter or Add saves it (POST /v1/words), and Keylessbord spells it that way from then on. */
 const addWord: ActionSpec = {
   kind: "condition", if: { falsy: "newWord" }, then: toast("Type the word first"),
   else: call("POST", "/v1/words", { add: "$state.newWord" }, {
-    ok: seq({ kind: "clearState", path: "newWord" }, { kind: "setState", path: "adding", value: false }, toast("Added. Keybot spells it your way now."), { kind: "refresh" }),
+    ok: seq({ kind: "clearState", path: "newWord" }, { kind: "setState", path: "adding", value: false }, toast("Added. Keylessbord spells it your way now."), { kind: "refresh" }),
     fail: oops("Couldn't add that word. Try again."),
   }),
 };
@@ -644,12 +644,12 @@ function wordUse(d: KeybotWordsView): Node | null {
   ], { gap: 10, radius: 18 });
 }
 
-/** A spelling: when Keybot hears this, it writes that (the old Dictionary's pairs). The whole list goes back, with the new one. */
+/** A spelling: when Keylessbord hears this, it writes that (the old Dictionary's pairs). The whole list goes back, with the new one. */
 function addSpelling(d: KeybotWordsView): ActionSpec {
   return {
     kind: "condition", if: { any: [{ falsy: "heard" }, { falsy: "writeAs" }] }, then: toast("Say what it hears, and how to write it"),
     else: call("PUT", "/v1/profile", { dictionary: [...d.pairs, { word: "$state.heard", replacement: "$state.writeAs" }] }, {
-      ok: seq({ kind: "clearState", path: "heard" }, { kind: "clearState", path: "writeAs" }, toast("Added. Keybot writes it your way now."), { kind: "refresh" }),
+      ok: seq({ kind: "clearState", path: "heard" }, { kind: "clearState", path: "writeAs" }, toast("Added. Keylessbord writes it your way now."), { kind: "refresh" }),
       fail: oops("Couldn't add that spelling. Try again."),
     }),
   };
@@ -659,7 +659,7 @@ function addSpelling(d: KeybotWordsView): ActionSpec {
 function spellingsCard(d: KeybotWordsView): Node {
   return card([
     sectionHead("Spellings"),
-    meta("When Keybot hears one thing, it writes another: a name it mishears, a short form you want written out.", { size: 13, lineHeight: 18 }),
+    meta("When Keylessbord hears one thing, it writes another: a name it mishears, a short form you want written out.", { size: 13, lineHeight: 18 }),
     field("heard", "When I say, like “sarvari”", { label: "When I say" }),
     field("writeAs", "Write it as, like “Sharvari”", { label: "Write it as", onSubmit: addSpelling(d) }),
     button("Add the spelling", addSpelling(d), { kind: "secondary", size: "md" }),
@@ -723,12 +723,12 @@ function wordsPhone(ctx: BotsCtx, d: KeybotWordsView | undefined) {
     body: [
       phoneHead("Your words"),
       col([text(plural(total, "word", "words"), { size: 34, weight: 700, tracking: -0.8, lineHeight: 40 }),
-        meta(`Keybot knows now · ${n(d.total.learned)} learned from you`, { size: 13 })], { gap: 2 }),
+        meta(`Keylessbord knows now · ${n(d.total.learned)} learned from you`, { size: 13 })], { gap: 2 }),
       searchField(SCREENS.keyWords, "Search names, places, work words"),
       ...(q ? [searchLine(SCREENS.keyWords, q)] : []),
       ...(total ? [wordsChips(d)] : []),
       ...(!total
-        ? [emptyState({ pose: "hello", title: "No words yet", body: "Names, places, the words only your team uses. Add one and Keybot spells it your way, everywhere." })]
+        ? [emptyState({ pose: "hello", title: "No words yet", body: "Names, places, the words only your team uses. Add one and Keylessbord spells it your way, everywhere." })]
         : !rows.length ? [meta("No word matches that. Try fewer letters.", { size: 14 })]
         : [section("added", "Added by you"), section("learned", "Learned from you")]),
       ...(wordUse(d) ? [wordUse(d)!] : []),
@@ -744,7 +744,7 @@ function wordsPhone(ctx: BotsCtx, d: KeybotWordsView | undefined) {
 
 function wordsDesk(ctx: BotsCtx, d: KeybotWordsView | undefined) {
   const q = String(ctx.params.q ?? "");
-  const head = deskHead("Your words", d ? `${plural(d.total.added + d.total.learned, "word", "words")} Keybot knows now · ${n(d.total.learned)} learned from you` : "The words Keybot spells your way",
+  const head = deskHead("Your words", d ? `${plural(d.total.added + d.total.learned, "word", "words")} Keylessbord knows now · ${n(d.total.learned)} learned from you` : "The words Keylessbord spells your way",
     [when({ falsy: "adding" }, button("Add a word", { kind: "setState", path: "adding", value: true }, { size: "md", icon: "plus" }))]);
   if (!d) return page(ctx, { nav: "keybot", title: "Your words", gap: 18, maxWidth: DESK_WIDTH, body: [head, couldntLoad("your words")] });
   const rows = wordRows(d).slice(0, 80);
@@ -769,7 +769,7 @@ function wordsDesk(ctx: BotsCtx, d: KeybotWordsView | undefined) {
       meta(`${r.kind} · ${r.source === "added" ? "Added by you" : "Learned from you"}`, { size: 12 })], { gap: 2 }),
     col([
       ...(r.heard ? [row([meta(r.source === "learned" ? "Means" : "Heard", { size: 13 }), grow(), text(r.heard, { size: 13, lineHeight: 17, align: "right", style: { flexShrink: 1 } })], { gap: 10, paddingVertical: 8 })] : []),
-      ...(r.was ? [divider(), row([meta("Keybot writes it as", { size: 13 }), grow(), text(r.word, { size: 13, weight: 600, lineHeight: 17 })], { gap: 10, paddingVertical: 8 })] : []),
+      ...(r.was ? [divider(), row([meta("Keylessbord writes it as", { size: 13 }), grow(), text(r.word, { size: 13, weight: 600, lineHeight: 17 })], { gap: 10, paddingVertical: 8 })] : []),
     ]),
     ...(r.recent ? [col([meta("Recently said", { size: 13 }), col([
       text(`“${r.recent.text}”`, { size: 13, lineHeight: 18, lines: 3 }),
@@ -788,7 +788,7 @@ function wordsDesk(ctx: BotsCtx, d: KeybotWordsView | undefined) {
       !rows.length
         ? (d.total.added + d.total.learned
           ? meta("No word matches that. Try fewer letters.", { size: 14 })
-          : emptyState({ pose: "hello", title: "No words yet", body: "Names, places, the words only your team uses. Add one and Keybot spells it your way, everywhere.", action: { label: "Add a word", onPress: { kind: "setState", path: "adding", value: true } } }))
+          : emptyState({ pose: "hello", title: "No words yet", body: "Names, places, the words only your team uses. Add one and Keylessbord spells it your way, everywhere.", action: { label: "Add a word", onPress: { kind: "setState", path: "adding", value: true } } }))
         : twoCols([
           box([headRow, divider(), ...group("added", "Added by you"), ...group("learned", "Learned from you")], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden", paddingBottom: 6 }),
         ], [
@@ -837,16 +837,16 @@ function voicesPhone(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
     nav: "keybot", title: "Read aloud", gap: 14, state: { voice: d.current, read: d.read, playing: null },
     body: [
       phoneHead("Read aloud"),
-      text("Pick the voice Keybot reads aloud in.", { size: 14, color: C.grey70, lineHeight: 19 }),
+      text("Pick the voice Keylessbord reads aloud in.", { size: 14, color: C.grey70, lineHeight: 19 }),
       col([sectionLabel("Voices"), ...d.voices.map((v) => voiceCard(v, false, canPlay(ctx)))], { gap: 8 }),
       col([sectionLabel("Speed"), segmented(SPEEDS, "read.speed", { onChange: readSave("speed") })], { gap: 8 }),
-      meta("Keybot reads Ask’s answers to you in this voice.", { size: 12 }),
+      meta("Keylessbord reads Ask’s answers to you in this voice.", { size: 12 }),
     ],
   });
 }
 
 function voicesDesk(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
-  const head = deskHead("Read aloud", "Pick the voice Keybot reads aloud in.");
+  const head = deskHead("Read aloud", "Pick the voice Keylessbord reads aloud in.");
   if (!d) return page(ctx, { nav: "keybot", title: "Read aloud", gap: 18, maxWidth: DESK_WIDTH, body: [head, couldntLoad("the voices")] });
   const pairs: Node[] = [];
   for (let i = 0; i < d.voices.length; i += 2) {
@@ -860,7 +860,7 @@ function voicesDesk(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
         col([sectionLabel("Voices"), ...pairs], { gap: 10 }),
         col([sectionLabel("Speed"), segmented(SPEEDS, "read.speed", { onChange: readSave("speed") })], { gap: 8 }),
       ], [
-        box([text("Keybot reads Ask’s answers to you in this voice, here and on your phone.", { size: 13, color: C.grey70, lineHeight: 18 })],
+        box([text("Keylessbord reads Ask’s answers to you in this voice, here and on your phone.", { size: 13, color: C.grey70, lineHeight: 18 })],
           { backgroundColor: C.surface, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14 }),
       ], { leftWeight: 1.7, rightWeight: 1, gap: 24 }),
     ],
@@ -869,7 +869,7 @@ function voicesDesk(ctx: BotsCtx, d: KeybotVoicesView | undefined) {
 
 // ===================================================================== bots.keybot.train
 
-/** Keybot's turn: its face, what it says, and the line to say (in clay when it is the one now). */
+/** Keylessbord's turn: its face, what it says, and the line to say (in clay when it is the one now). */
 function botTurn(says: string, line: string, now: boolean): Node {
   return row([
     botAvatar(KEYBOT, 30),
@@ -937,7 +937,7 @@ function trainActions(d: KeybotTrainView, client: "phone" | "desktop"): Node[] {
   };
   const skip = write("POST", "/v1/keybot/train/skip", { line: d.current }, undefined, "Couldn't skip it. Try again.");
   return [
-    field("said", client === "desktop" ? "Type it, or hold your Keybot key and say it" : "Type it, or tap the X0 key and say it", { onSubmit: next, label: "Your way", returnKey: "send" }),
+    field("said", client === "desktop" ? "Type it, or hold your Keylessbord key and say it" : "Type it, or tap the X0 key and say it", { onSubmit: next, label: "Your way", returnKey: "send" }),
     row([
       box([button("Skip", skip, { kind: "secondary", wide: true, size: client === "desktop" ? "md" : "lg" })], { flexGrow: 1, flexBasis: 0 }),
       box([button("That's how I say it", next, { wide: true, icon: "check", size: client === "desktop" ? "md" : "lg" })], { flexGrow: 2.4, flexBasis: 0 }),
@@ -949,7 +949,7 @@ function trainDone(): Node {
   return col([
     blip("done", 140),
     text("All ten done", { size: 18, weight: 600, lineHeight: 24, align: "center" }),
-    meta("Keybot writes more like you now. It keeps learning from what you say.", { size: 13, align: "center" }),
+    meta("Keylessbord writes more like you now. It keeps learning from what you say.", { size: 13, align: "center" }),
     button("Start again", write("POST", "/v1/keybot/train/restart", undefined, undefined, "Couldn't start again. Try again."), { kind: "secondary", size: "md" }),
   ], { gap: 10, alignItems: "center", paddingVertical: 8 });
 }
@@ -969,7 +969,7 @@ function trainPhone(ctx: BotsCtx, d: KeybotTrainView | undefined) {
 }
 
 function trainDesk(ctx: BotsCtx, d: KeybotTrainView | undefined) {
-  const head = deskHead("Teach your style", "Say 10 everyday lines your way. Keybot picks up how you really talk.");
+  const head = deskHead("Teach your style", "Say 10 everyday lines your way. Keylessbord picks up how you really talk.");
   if (!d) return page(ctx, { nav: "keybot", title: "Teach your style", gap: 18, maxWidth: DESK_WIDTH, body: [head, couldntLoad("your lines")] });
   const lastDone = d.lines.reduce((m, l, i) => (l.said || l.skipped ? i + 1 : m), 0);
   const lineRow = (l: KeybotTrainView["lines"][number], i: number): Node => row([
@@ -1070,7 +1070,7 @@ function historyEmpty(d: KeybotHistoryView, desk = false): Node {
       action: { label: "Keep what I say", onPress: write("PUT", "/v1/personality", { retainHistory: true }, "History is on") } });
   }
   if (d.q) return meta("Nothing you said matches that.", { size: 14 });
-  return emptyState({ pose: "listen", title: "Nothing here yet", body: `${speakVerb(desk)} the Keybot key and speak in any app. What you said shows up here, to copy again.` });
+  return emptyState({ pose: "listen", title: "Nothing here yet", body: `${speakVerb(desk)} the Keylessbord key and speak in any app. What you said shows up here, to copy again.` });
 }
 
 function historyPhone(ctx: BotsCtx, d: KeybotHistoryView | undefined) {
@@ -1212,7 +1212,7 @@ function settingsPhone(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
         listRow({ label: "Languages", value: langs, onPress: open(SCREENS.language) }),
         switchRow("Hold space to speak", "kb.holdSpace", { sub: "Hold still to speak, like a tap on the X0 key. Slide to move the cursor.", onChange: kbSave("holdSpace") }),
       ], { title: "Typing" }),
-      col([sectionLabel("Keybot key"), card([
+      col([sectionLabel("Keylessbord key"), card([
         tight(segmented([{ label: "Left of space", value: "left" }, { label: "Right of space", value: "right" }, { label: "Top row", value: "top" }], "kb.keyAt", { onChange: kbSave("keyAt") })),
         ...(["left", "right", "top"] as const).map((at) => when({ eq: ["kb.keyAt", at] }, phoneKeys(at, 0.9))),
       ], { gap: 10, padding: 12, radius: 18 })], { gap: 8 }),
@@ -1245,10 +1245,10 @@ function settingsDesk(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
   return page(ctx, {
     nav: "keybot", title: "Keyboard", gap: 18, maxWidth: DESK_WIDTH,
     body: [
-      deskHead("Keyboard", "How Keybot listens and shows up on this computer."),
+      deskHead("Keyboard", "How Keylessbord listens and shows up on this computer."),
       twoCols([
         deskCard("Shortcut", [
-          row([text("Keybot key", { size: 14, lineHeight: 19 }), grow(),
+          row([text("Keylessbord key", { size: 14, lineHeight: 19 }), grow(),
             when({ truthy: "desktop.hold" }, kbd("Fn", "desktop.holdKey")), when({ falsy: "desktop.hold" }, kbd("Ctrl+Space", "desktop.hotkey"))], { gap: 12, minHeight: 32 }),
           // The one key (gap 17): picked here, on a window that has it.
           ...keyChoice(),
@@ -1257,7 +1257,7 @@ function settingsDesk(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
           divider(),
           when({ truthy: "desktop.oneKey" }, deskToggle("Tap to keep listening", "tap", "Hands free. Tap the key again to stop.")),
           when({ falsy: "desktop.oneKey" }, deskToggle("Tap twice to keep listening", "tap", "Hands free. Tap the key again to stop.")),
-          when({ truthy: "desktop.oneKey" }, meta("One key for everything. Keybot types it, Ask answers it, “take notes” starts notes, and a task goes to the right bot.", { size: 12 })),
+          when({ truthy: "desktop.oneKey" }, meta("One key for everything. Keylessbord types it, Ask answers it, “take notes” starts notes, and a task goes to the right bot.", { size: 12 })),
           when({ falsy: "desktop.oneKey" }, row([meta("Change these keys in Settings.", { size: 12 }), grow(),
             quietButton("Open Settings", open(ctx.desk.pages ? "desk_settings" : "settings"), { size: "md" })], { gap: 8 })),
         ]),
@@ -1265,12 +1265,12 @@ function settingsDesk(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
           row([...langChips, row([text("+ Add a language", { size: 13, color: C.meta, lineHeight: 17 })], {
             paddingVertical: 8, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: C.outline, borderStyle: "dashed",
           }, open(SCREENS.language))], { gap: 6, flexWrap: "wrap", paddingTop: 2, paddingBottom: 4 }),
-          meta("Keybot hears and writes these, and switches mid-sentence, like you do.", { size: 12 }),
+          meta("Keylessbord hears and writes these, and switches mid-sentence, like you do.", { size: 12 }),
         ] : [couldntLoad("your languages")]),
       ], [
         deskCard("Pill", [
           pillPreview,
-          deskToggle("Show the pill", "pill", "By your text cursor while Keybot listens"),
+          deskToggle("Show the pill", "pill", "By your text cursor while Keylessbord listens"),
           deskToggle("Show the words as I speak", "live", "A line of what it heard, as you say it"),
         ]),
         deskCard("Listening", [

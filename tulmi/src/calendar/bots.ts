@@ -3,8 +3,8 @@
  *
  *   withOwnDays(base, calendar) -> BotConnectors   the connected apps a bot sees (bots/ports.ts), with these two in front
  *
- * A bot given "calendar" or "tasks" (the Plan bot is; a person's own bot can be) gets tools that read and write the person's own days
- * (service.ts): list, add, change, remove, tick. What it adds says it came from that bot ("Plan bot"). The old Google ids a bot may
+ * A bot given "calendar" or "tasks" (Plan Ease is; a person's own bot can be) gets tools that read and write the person's own days
+ * (service.ts): list, add, change, remove, tick. What it adds says it came from that bot ("Plan Ease"). The old Google ids a bot may
  * still name ("google-calendar", "google-tasks") mean these now: the Bots app no longer offers Google Calendar or Google Tasks.
  *
  * The person's words are their yes: "add dentist Friday 5 pm" adds it, and the answer says so. Nothing here leaves Tailzu, and

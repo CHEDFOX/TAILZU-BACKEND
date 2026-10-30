@@ -1,7 +1,7 @@
 /**
  * THE ONE WAY THE FRONT DOOR ASKS A MODEL FOR PROSE: A ROLE, A TIER, A CAP.
  *
- * The JSON roles (front_decide, front_plan) go through askJson (code/work/model.ts), like every other JSON question the Code bot asks. The
+ * The JSON roles (front_decide, front_plan) go through askJson (code/work/model.ts), like every other JSON question Xode asks. The
  * roles whose answer is plain text (front_reply, front_code_answer, front_look) come through here, and it is nothing but callModel:
  * the model is told what compose(role) says (the principles, who it is, the output contract), and what it is sent is the dynamic
  * context, after it. A call the person's money or the request's cap cannot cover is refused by the gateway before it is made;

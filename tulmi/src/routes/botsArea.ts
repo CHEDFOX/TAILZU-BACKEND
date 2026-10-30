@@ -1,5 +1,5 @@
 /**
- * The services every Bots app area's routes may use (routes/bots{Shell,You,Bots,Keybot,Code}.ts).
+ * The services every Bots app area's routes may use (routes/bots{Shell,You,Bots,Keylessbord,Code}.ts).
  * Each area registers its own endpoints in its own file; server.ts already calls all five, so an area never edits server.ts.
  */
 import type { Artifacts } from "../artifacts/index.js";
@@ -18,6 +18,6 @@ export interface BotsAreaDeps {
   connectors: Connectors | null;
   media: MediaService | null;
   artifacts: Artifacts | null;
-  /** The Code bot's agent: its answer to a job's question (the widgets' and notifications' quick answers, routes/widgets.ts). Optional. */
+  /** Xode's agent: its answer to a job's question (the widgets' and notifications' quick answers, routes/widgets.ts). Optional. */
   agent?: { answer(userId: string, jobId: string, answer: unknown): Promise<unknown> } | null;
 }

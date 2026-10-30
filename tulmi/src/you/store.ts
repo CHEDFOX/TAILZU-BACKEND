@@ -153,7 +153,7 @@ export function setYouStoreForTests(s: YouStore | null): void { current = s; }
 // -------------------------------------------------------------------- signed-in desktops
 
 /**
- * A COMPUTER SIGNED IN AS THE PERSON, before its X0 Code runner is on. The runner (off until they turn it on) is the
+ * A COMPUTER SIGNED IN AS THE PERSON, before its Xode runner is on. The runner (off until they turn it on) is the
  * only thing that reported a computer, so someone signed in on their Mac saw "No computer yet". The desktop app's own
  * screen requests say what it is (formFactor "desktop", its os), so each one is kept as a row "app:<os>", one per kind
  * of computer (the window sends no name of its own), written at most every few minutes per person.

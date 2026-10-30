@@ -298,7 +298,7 @@ export function botLineText(bot: LiveBot, idle: string): string {
   return idle;
 }
 
-/** The built-ins have their own play (Code juggles 0s and 1s, Keybot hops keys…); anyone's own bot plays with a ball. */
+/** The built-ins have their own play (Code juggles 0s and 1s, Keylessbord hops keys…); anyone's own bot plays with a ball. */
 export function botKind(slug: string): BotTileKind {
   return slug === "code" || slug === "keybot" || slug === "plan" || slug === "travel" || slug === "notes" ? slug : "custom";
 }
@@ -392,7 +392,7 @@ export function headerBuddy(ctx: BotsCtx, slug: string, o: { color?: string; loo
 /** A build that draws Home's header alive (WriteOn, LiveMark, HeadBar, with BotsMotion). */
 export const canHead = (ctx: BotsCtx): boolean => canMove(ctx) && HOME_HEAD_COMPONENTS.every((c) => ctx.can.has(c));
 
-/** A bold line that writes itself in, with Keybot's caret (WriteOn); once per app open and `once`. */
+/** A bold line that writes itself in, with Keylessbord's caret (WriteOn); once per app open and `once`. */
 export function writeOn(content: string, o: { size: number; lineHeight: number; tracking?: number; once: string; color?: string }): Node {
   return {
     type: "WriteOn",
@@ -728,7 +728,7 @@ export function needsCard(item: NeedsItem, o: { layout?: "column" | "row" } = {}
 
 /**
  * What the ask bar sends: "Ask any bot" through the shell's door (POST /v1/shell/ask: POST /v1/ask as the person, bot "any", with the
- * answer written down for Activity), then the answer opens on the Ask screen with who answered and what it handed on (a Code bot job,
+ * answer written down for Activity), then the answer opens on the Ask screen with who answered and what it handed on (a Xode job,
  * a UPI payment, a yes waiting), as Ask's own send does. Offline, in a build that keeps an outbox, the ask is kept there instead and
  * goes out once the connection is back (`keptOffline`).
  */
@@ -800,7 +800,7 @@ export const KEPT_OFFLINE = "Kept. It will send when you're back.";
 /**
  * AN ASK BAR, OFFLINE: what was typed goes into the outbox (keepAsk, as the Offline screen's field does: POST /v1/shell/ask, once, in
  * order, when the connection is back), the field (`clear`) is emptied, and a short line says so. Online, `send` runs as it always did.
- * `who` is the line's bot ("Code bot · asked 9:38"), `bot` the slug it goes to.
+ * `who` is the line's bot ("Xode · asked 9:38"), `bot` the slug it goes to.
  */
 export function keptOffline(client: Client, o: { message: string; bot?: string; who?: string; clear?: string }, send: ActionRef): ActionSpec {
   const keep: ActionSpec = {
@@ -983,7 +983,7 @@ export function page(ctx: BotsCtx, o: PageOpts): ScreenResponse {
 }
 
 /**
- * Pages the phone must never show from what it kept: a decision or a job in flight (an approval, a Code bot job and its
+ * Pages the phone must never show from what it kept: a decision or a job in flight (an approval, a Xode job and its
  * question, a link to approve, the lock), and Offline (which is its own record of what waits).
  */
 const NEVER_KEPT = /^bots\.(code\.|attach$|done$|failed$|approve$|offline$|link$|lock$)/;
@@ -1022,7 +1022,7 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
         style: { backgroundColor: C.paper, paddingHorizontal: 20, paddingTop: o.back ? 8 : 16, gap: o.gap ?? 22 },
         children: [...backNode(o), ...o.body],
       },
-      // The footer sits outside the scroll, so nothing moved it for the keyboard: its field (the ask bar, "Tell Code bot what to do")
+      // The footer sits outside the scroll, so nothing moved it for the keyboard: its field (the ask bar, "Tell Xode what to do")
       // went under the keyboard as it opened. `keyboard: "above"` keeps it just above the keyboard while one of its fields has it.
       ...(o.footer?.length ? [{ ...col(o.footer, { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper }), props: { keyboard: "above" } }] : []),
       ...(o.tab ? [tabBar(o.tab, ctx.live)] : []),

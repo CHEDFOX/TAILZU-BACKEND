@@ -36,10 +36,10 @@ export function deletePageCsp(nonce: string, captcha: boolean): string {
 /** What goes, and what stays: the same account as the app's Delete account (server.ts eraseAccount). */
 export const DELETED = [
   "Your account and how you sign in to it (your email address or phone number, and your name)",
-  "Your profile and settings, the personality and words Keybot learned, and your dictation history",
+  "Your profile and settings, the personality and words Keylessbord learned, and your dictation history",
   "Your bots, what they remember, their keys, and your chats with them",
   "Your calendar, to-dos, meeting notes, and the files, photos and videos you uploaded or made",
-  "Your Code bot projects, and your links to GitHub and to the apps you connected",
+  "Your Xode projects, and your links to GitHub and to the apps you connected",
   "The spaces you made, with everything in them; your place in other spaces, and everything you shared in them",
   "Your usage records, notification tokens and the record of your purchases on our side",
 ];

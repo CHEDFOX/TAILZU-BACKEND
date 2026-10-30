@@ -3,7 +3,7 @@
  *
  *   POST   /v1/account/deletion   -> 202 { scheduled: { requestedAt, deleteAt }, graceDays }   the date is set (asking twice keeps the
  *                                    first), the person is signed out everywhere and their pings stop (push tokens go; signing in
- *                                    brings them back). Their bots stop right away: the Code bot jobs that are running are stopped
+ *                                    brings them back). Their bots stop right away: Xode jobs that are running are stopped
  *                                    (as Stop job does), and while the date stands no job or bot answer starts and their bots' API
  *                                    keys do not work (you/deletion.ts isLeaving). 503 delete_unavailable when this server cannot
  *                                    delete anyone (no service key): a deletion that could never run must not be promised.
@@ -44,7 +44,7 @@ export interface AccountDeletionDeps {
   sweepEveryMs?: number | null;
   /** After the date is set: sign out everywhere and stop pings. Tests hand in their own. */
   leave?: (user: AuthedUser) => Promise<void>;
-  /** The Code bot's jobs and the agent that drives them: the person's running jobs are stopped when the date is set. Null: none here. */
+  /** Xode's jobs and the agent that drives them: the person's running jobs are stopped when the date is set. Null: none here. */
   jobs?: Pick<JobRouter, "listJobs" | "cancelJob"> | null;
   agent?: Pick<AgentOrchestrator, "stopJob"> | null;
   /** Signing in on the web page by a mailed code. Absent: Supabase's (supabaseOtp); null: not possible on this server. */

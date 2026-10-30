@@ -1,7 +1,7 @@
 /**
- * BOTS APP · CODE AREA: the endpoints the Code bot's screens need beyond the existing Code bot routes (routes/code.ts,
+ * BOTS APP · CODE AREA: the endpoints Xode's screens need beyond the existing Xode routes (routes/code.ts,
  * routes/codeJobs.ts). Each is a thin door: what it can, it does through those routes in-process (app.inject, as the
- * same person, through the same checks, the policy and its questions); the rest reads the Code bot's own stores.
+ * same person, through the same checks, the policy and its questions); the rest reads Xode's own stores.
  *
  *   POST /v1/bots/code/start { projectId, task, planFirst? }
  *                                   -> { job, branch }  a work branch for the task, then a job on it that shows its plan first
@@ -36,7 +36,7 @@
  *   POST /v1/bots/code/jobs/:id/change { text }
  *                                   -> { job, delivered? }  "Ask for a change": to a job that is working, a message; otherwise a new job on the same branch
  *
- * Off (the Code bot is not on): 404 code_off, as its own routes. Every route is the signed-in person's own; another's is 404.
+ * Off (Xode is not on): 404 code_off, as its own routes. Every route is the signed-in person's own; another's is 404.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser } from "../auth/supabase.js";
@@ -74,9 +74,9 @@ export function registerBotsCodeRoutes(app: FastifyInstance, deps: BotsAreaDeps)
   const RL = { config: deps.rateLimit };
   const rules = () => codeRulesStore();
 
-  /** The Code bot is on and someone is signed in; else the answer has been sent. */
+  /** Xode is on and someone is signed in; else the answer has been sent. */
   const who = async (req: FastifyRequest, reply: FastifyReply) => {
-    if (!deps.code) { reply.code(404).send({ code: "code_off", message: "The Code bot is not switched on." }); return null; }
+    if (!deps.code) { reply.code(404).send({ code: "code_off", message: "Xode is not switched on." }); return null; }
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) { reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" }); return null; }
     return { user, code: deps.code };

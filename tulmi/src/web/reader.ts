@@ -1,7 +1,7 @@
 /**
  * THE PAGE READER: AN ADDRESS IN, WHAT THE PAGE SAYS OUT.
  *
- * readPage(url) is the one door. It is shared code, not the Code bot's: the
+ * readPage(url) is the one door. It is shared code, not Xode's: the
  * search tools (layer 3), the agent loop and, later, anything Tailzu does on the
  * web for a person all call it, and it has no routes of its own. It never
  * returns HTML; it returns what extract.ts made of it.

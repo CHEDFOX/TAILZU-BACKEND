@@ -1,5 +1,5 @@
 /**
- * "Sign in with GitHub" for the Code bot, against a fake GitHub
+ * "Sign in with GitHub" for Xode, against a fake GitHub
  * (tests/github-fake.ts): the second way to connect, a classic OAuth App whose
  * token reaches all of a person's repos, and the limits Tailzu puts on it.
  *

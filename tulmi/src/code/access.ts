@@ -1,7 +1,7 @@
 /**
  * WHERE THE TOKEN FOR A GITHUB CALL COMES FROM, AND WHO THE BOT SIGNS COMMITS AS.
  *
- * Everything the Code bot does to a repo (read a branch, commit, open or merge
+ * Everything Xode does to a repo (read a branch, commit, open or merge
  * a pull request) is one set of calls in github.ts, behind one set of rules
  * (policy.ts: what is free, what asks, what never happens). The only thing that
  * differs between the two ways a person can connect GitHub is which token those

@@ -3,11 +3,11 @@
  *
  * The meter counts what each use costs us, from where the cost is known:
  *
- *   the brain's gateway   every call of the Code bot, the bots, the front door, research and artifacts (code/brain/gateway.ts): the charge
+ *   the brain's gateway   every call of Xode, the bots, the front door, research and artifacts (code/brain/gateway.ts): the charge
  *                         OpenRouter reports for the generation (usage.cost, asked for with `usage: { include: true }`), else an estimate from
  *                         the tokens it reports. Those land on the meter as a job's spent_paise, a bot answer's you_spend row, the front door's
  *                         row. Nothing here touches them.
- *   everything else       Keybot's rewrites (pipeline/cleanup.ts), a note's organising (notes/organise.ts), the old Ask's planner
+ *   everything else       Keylessbord's rewrites (pipeline/cleanup.ts), a note's organising (notes/organise.ts), the old Ask's planner
  *                         (agent/llm.ts) call OpenRouter without the gateway. Each adds what OpenRouter reported to the REQUEST'S TALLY here
  *                         (addCostUsd), and the request's usage row (metering.recordUsage) writes the tally to the meter with what its
  *                         speech cost.

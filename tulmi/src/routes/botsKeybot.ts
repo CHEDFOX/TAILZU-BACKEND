@@ -1,5 +1,5 @@
 /**
- * Bots app · keybot area: what the Keybot pages read and write beyond the existing routes.
+ * Bots app · keybot area: what the Keylessbord pages read and write beyond the existing routes.
  *
  * The pages also use the routes that were already there: PUT /v1/personality (the read-aloud voice), POST /v1/words
  * (add or forget a word), DELETE /v1/history/:id. Everything here is the signed-in person's own, under /v1/keybot
@@ -22,7 +22,7 @@
  *   POST /v1/keybot/history/clear   every line of it, gone
  *   GET  /v1/keybot/settings        the phone keyboard's choices, the languages
  *   POST /v1/keybot/language        { value, on }: one language in or out of personality.languages
- *   GET  /v1/keybot/prefs           the whole Keybot document (prefs.ts), for a client to follow
+ *   GET  /v1/keybot/prefs           the whole Keylessbord document (prefs.ts), for a client to follow
  *   PUT  /v1/keybot/prefs           any part of it; keyboard.haptics also switches personality.hapticsAll
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -303,7 +303,7 @@ export function registerBotsKeybotRoutes(app: FastifyInstance, deps: BotsAreaDep
     const user = await who(req, reply);
     if (!user) return reply;
     const parsed = prefsPatchSchema.safeParse(req.body ?? {});
-    if (!parsed.success) return bad(reply, "That isn't a Keybot setting");
+    if (!parsed.success) return bad(reply, "That isn't a Keylessbord setting");
     if (parsed.data.tones) return bad(reply, "Tones change through POST /v1/keybot/tone");
     try {
       const prefs: KeybotPrefs = await updatePrefs(user, (cur) => mergePrefs(cur, parsed.data));

@@ -7,8 +7,8 @@
  * on the empty home (EmptyHome) instead of four idle tiles. Its actions are real: a bot's tile opens the bot, the needs-you
  * choices answer the job (POST /v1/code/jobs/:id/answer) or the task, the ask bar sends to the front door (POST /v1/ask).
  *
- * What the other screens read is the shell's own routes (routes/botsShell.ts, src/shell): one feed across Code bot jobs, answers
- * bots gave, payments, Keybot's words and connected-app tasks (/v1/shell/activity), search across projects, chats, notes, files
+ * What the other screens read is the shell's own routes (routes/botsShell.ts, src/shell): one feed across Xode jobs, answers
+ * bots gave, payments, Keylessbord's words and connected-app tasks (/v1/shell/activity), search across projects, chats, notes, files
  * and bots (/v1/shell/search), who will answer without answering (/v1/shell/route), today's calendar and words (/v1/shell/today),
  * today's tasks (/v1/shell/tasks), and receipts. Money is always "you press pay": bots.approve opens the person's UPI app with the
  * payment the bot filled in (the UPI hand-off), and writes a receipt only when they say they paid.
@@ -68,7 +68,7 @@ export function weekLine(week: { done: number; minutesSaved: number }): string {
 function nameOf(ctx: BotsCtx, slug: string): string {
   const b = ctx.live.bots.find((x) => x.slug === slug);
   if (b) return b.name;
-  return ({ tailzu: "X0", code: "Code bot", keybot: "Keybot", plan: "Plan bot", travel: "Travel bot", you: "You" } as Record<string, string>)[slug] ?? slug;
+  return ({ tailzu: "X0", code: "Xode", keybot: "Keylessbord", plan: "Plan Ease", travel: "Travel bot", you: "You" } as Record<string, string>)[slug] ?? slug;
 }
 
 /** A bot's head (or its colour and icon), at a size. */
@@ -210,7 +210,7 @@ function homeNotices(ctx: BotsCtx, arrival: boolean, more: HomeMore) {
  * app's time-aware line under it, big and bold ("Anything to write up before the day ends?"; its own "Good evening."
  * dropped, the night's line whole; Hinglish through i18n's Home seeds), with room around them: on the phone it owns
  * about the top third of the first screen. Where the build draws it alive (canHead): the line writes itself in with
- * Keybot's caret, once per app open and part of the day; the mark lives (its eyes on the finger, a dot lit in each
+ * Keylessbord's caret, once per app open and part of the day; the mark lives (its eyes on the finger, a dot lit in each
  * working bot's colour; a tap opens Ask); and once the header has scrolled away, a compact bar (the mark, "Your bots")
  * takes the top, until the page is back at its top (`pinned`). Else the same header, still.
  */
@@ -353,7 +353,7 @@ const IDEAS = [
 
 /**
  * The first day (EmptyHome, DEmptyHome): Home's own living header on top (homeHead: the greeting and the bold time-aware line, the
- * living mark, the compact bar once scrolled), then Blip saying hello, Keybot already on, and making the first bot.
+ * living mark, the compact bar once scrolled), then Blip saying hello, Keylessbord already on, and making the first bot.
  */
 function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const { head, pinned } = homeHead(ctx);
@@ -395,7 +395,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
           ], { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, gap: 20 }),
           col([
             card([
-              row([botAvatar(keybot, 36), col([text("Keybot is on", { size: 15, weight: 600, lineHeight: 20 }), meta("Your first bot · free")], { gap: 2 })], { gap: 12 }),
+              row([botAvatar(keybot, 36), col([text("Keylessbord is on", { size: 15, weight: 600, lineHeight: 20 }), meta("Your first bot · free")], { gap: 2 })], { gap: 12 }),
               col([fnKey(64, 56, 17), text("Hold Fn to speak, in any app", { size: 14, weight: 500, lineHeight: 19, align: "center" })], {
                 gap: 10, padding: 18, borderRadius: 14, backgroundColor: C.surface, alignItems: "center",
               }),
@@ -419,7 +419,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...n.leaving,
       ...(n.arrival ? arrivalCard(ctx) : []),
       hello(ctx, more),
-      // The bots they already have (Keybot, Code, Plan, Travel), as Home shows them once they've started.
+      // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started.
       tiles(ctx, 2, 132, 16, more.notes),
       col([
         row([
@@ -618,8 +618,8 @@ const speakLine = (ctx: BotsCtx, listening = false): string =>
 const routeFor = (ctx: BotsCtx, slug: string): Route => {
   const name = nameOf(ctx, slug);
   const first: Record<string, string> = {
-    travel: "Travel bot shows the plan before it books", plan: "Plan bot asks before it changes your calendar",
-    code: "Code bot shows the plan before it changes code", keybot: "Keybot writes it, you send it", tailzu: "X0 answers, or hands it to the right bot",
+    travel: "Travel bot shows the plan before it books", plan: "Plan Ease asks before it changes your calendar",
+    code: "Xode shows the plan before it changes code", keybot: "Keylessbord writes it, you send it", tailzu: "X0 answers, or hands it to the right bot",
   };
   return { slug, name, color: colorOf(ctx, slug), say: `${name} will take this`, hint: `Tap to send · ${first[slug] ?? `${name} asks before it does anything`}`, by: "chosen" };
 };
@@ -883,7 +883,7 @@ function askAnswer(ctx: BotsCtx) {
     ...(answer ? [body(answer, { lineHeight: 22 })] : []),
   ], { gap: 8 }));
   if (job) {
-    blocks.push(row([statusMark("working", { color: colorOf(ctx, "code") }), text("Code bot is on it", { size: 14, lineHeight: 19 }), grow(), text("Watch", { size: 14, weight: 500, lineHeight: 19 }), icon("chevron", { size: 16 })], {
+    blocks.push(row([statusMark("working", { color: colorOf(ctx, "code") }), text("Xode is on it", { size: 14, lineHeight: 19 }), grow(), text("Watch", { size: 14, weight: 500, lineHeight: 19 }), icon("chevron", { size: 16 })], {
       gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: C.line,
     }, open(SCREENS.codeJob, { id: job })));
   }
@@ -1119,7 +1119,7 @@ function tasksPhone(ctx: BotsCtx, d: TasksData | undefined) {
 function taskDetail(ctx: BotsCtx, n: NeedsItem): Node {
   const [kind] = n.id.split(":");
   const facts: Array<[string, string]> = kind === "job"
-    ? [["Code bot", "is waiting"], [percent(ctx.live.usage.used), ctx.live.usage.windows ? "of this stretch used" : "of this month used"], [clockOf(n.at, ctx.tzOffsetMinutes), "waiting since"]]
+    ? [["Xode", "is waiting"], [percent(ctx.live.usage.used), ctx.live.usage.windows ? "of this stretch used" : "of this month used"], [clockOf(n.at, ctx.tzOffsetMinutes), "waiting since"]]
     : [[n.botName, "will do it"], [clockOf(n.at, ctx.tzOffsetMinutes), "waiting since"], ["1 hour", "the yes holds for"]];
   const willDo = kind === "job" ? ["Goes on with your answer", "Shows you the change before it ships"] : [n.detail ? `Does exactly this: ${n.detail}` : "Does exactly what the card says", "Tells you when it's done"];
   const wont = kind === "job" ? ["Merge or ship without your yes", "Go on past what it was given without asking"] : ["Pay for you", "Do anything else without asking"];
@@ -1362,7 +1362,7 @@ function offline(ctx: BotsCtx) {
   const keyCard = col([
     row([
       botAvatar(keybot, 38),
-      col([text("Keybot · basic mode", { size: 15, weight: 600, lineHeight: 20 }), meta(`Speak and it types, right on this ${desk ? "computer" : "phone"}`)], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+      col([text("Keylessbord · basic mode", { size: 15, weight: 600, lineHeight: 20 }), meta(`Speak and it types, right on this ${desk ? "computer" : "phone"}`)], { gap: 2, flexGrow: 1, flexShrink: 1 }),
       box([icon("mic", { size: 18, color: C.paper })], { width: 40, height: 34, borderRadius: 9, backgroundColor: botLook("keybot").color, alignItems: "center", justifyContent: "center" }),
     ], { gap: 12 }),
     col([
@@ -1373,7 +1373,7 @@ function offline(ctx: BotsCtx) {
   ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }, botRoute("keybot"));
   const codeLine = code?.working ? [row([
     avatarOf(ctx, "code", 30),
-    col([text("Code bot keeps working in the cloud", { size: 14, lineHeight: 19 }), meta(`Last heard ${last} · ${code.doing ?? "on it"} · catches you up`)], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+    col([text("Xode keeps working in the cloud", { size: 14, lineHeight: 19 }), meta(`Last heard ${last} · ${code.doing ?? "on it"} · catches you up`)], { gap: 2, flexGrow: 1, flexShrink: 1 }),
     statusMark("working", { color: code.color }),
   ], { gap: 12, paddingHorizontal: 4 })] : [];
   // The asks typed while offline: kept in this page's state (three at most), sent when the person is back.
@@ -1494,7 +1494,7 @@ function keybotToday(ctx: BotsCtx, d: TodayData | undefined): Node {
     ], { gap: 5, flexGrow: 1, flexBasis: 0, alignItems: "center" });
   }), { gap: 5, alignItems: "flex-end" });
   return col([
-    row([botAvatar(keybot, 30), text("Keybot", { size: 15, weight: 600, lineHeight: 20 })], { gap: 10 }, botRoute("keybot")),
+    row([botAvatar(keybot, 30), text("Keylessbord", { size: 15, weight: 600, lineHeight: 20 })], { gap: 10 }, botRoute("keybot")),
     ...(k ? [
       col([
         text(k.words.toLocaleString("en-IN"), { size: 34, weight: 700, tracking: -0.8, lineHeight: 40 }),
@@ -1542,7 +1542,7 @@ function today(ctx: BotsCtx, d: TodayData | undefined) {
       : !d.calendar.events.length ? col([notice("Nothing on your calendar today", { mark: "check" }), row([icon("plus", { size: 14 }), text("Add to today", { size: 13, weight: 500, lineHeight: 18 })], { gap: 4, minHeight: 36, alignSelf: "flex-start" }, addAction(today))], { gap: 6 })
         : col([calendarGrid(ctx, d), row([text("Open Plan", { size: 13, weight: 500, lineHeight: 18 }), icon("chevron", { size: 14 })], { gap: 2, minHeight: 36, alignSelf: "flex-start" }, open(SCREENS.plan, { day: today }))], { gap: 6 });
   const suggests = plan.length ? [col([
-    row([avatarOf(ctx, "plan", 30), text("Plan bot suggests", { size: 15, weight: 600, lineHeight: 20 }), grow(), text(plan.length === 1 ? "1 idea for today" : `${plan.length} ideas for today`, { size: 12, weight: 500, color: colorOf(ctx, "plan"), lineHeight: 16 })], { gap: 10 }),
+    row([avatarOf(ctx, "plan", 30), text("Plan Ease suggests", { size: 15, weight: 600, lineHeight: 20 }), grow(), text(plan.length === 1 ? "1 idea for today" : `${plan.length} ideas for today`, { size: 12, weight: 500, color: colorOf(ctx, "plan"), lineHeight: 16 })], { gap: 10 }),
     ...plan.map((n, i) => col([
       row([statusMark("needs"), col([text(n.question, { size: 14, weight: 600, lineHeight: 19 }), ...(n.detail ? [text(n.detail, { size: 14, lineHeight: 19, color: C.grey70 })] : [])], { gap: 2, flexShrink: 1 })], { gap: 10, alignItems: "flex-start" }),
       choiceRow(n),

@@ -1,7 +1,7 @@
 /**
  * EVERY BOT GIVES ITS OWN WIDGET WORDS (docs/widget-glance-v2.md section 1), and none is ever refused for them:
  *
- *   - the Code bot: ask_user's short / short_options are the question's words for the phone, kept with the job's question (and read by
+ *   - Xode: ask_user's short / short_options are the question's words for the phone, kept with the job's question (and read by
  *     jobLite, so the widget and the Live Activity show them); done's short is what it finished. Too long: cut at a word. Wrong: dropped.
  *   - a person's bot: a change it calls carries x0_widget {question, private}, the yes for the owner's phone. It is kept on the approval,
  *     never handed to the app, and is in the tool's schema the bot is given; the bots' contract says so
@@ -24,7 +24,7 @@ const { jobLite } = await import("../src/experience/bots/deps.js");
 const { AGENT_TOOLS } = await import("../src/code/agent/tools.js");
 const { stableBlock } = await import("../src/principles/roles.js");
 
-describe("the Code bot's words for the phone", () => {
+describe("Xode's words for the phone", () => {
   it("are in its tools, never required", () => {
     const ask = AGENT_TOOLS.find((t) => t.name === "ask_user")!;
     const done = AGENT_TOOLS.find((t) => t.name === "done")!;

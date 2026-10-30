@@ -12,7 +12,7 @@
  *
  *   compareStays(stays, { nights, minutes })   which is Travel bot's pick, which is closer, which is better rated
  *
- * Distances to the trip's places are worked out by tripExtras.ts with the same routing as the Plan bot.
+ * Distances to the trip's places are worked out by tripExtras.ts with the same routing as Plan Ease.
  */
 import { search, type SearchOptions } from "../web/search/engine.js";
 import type { SearchPlan } from "../web/search/types.js";

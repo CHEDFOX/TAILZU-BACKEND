@@ -4,11 +4,11 @@
  *   feedOf(input) -> FeedRow[]      newest first: what needs them and what is working is the screen's to lift to the top
  *
  * Every row is a real record, read by routes/botsShell.ts and handed in here, so this file is pure and tested directly:
- *   job       a Code bot job (code/jobs): its task, its state, the stage its agent is in, what it spent
+ *   job       a Xode job (code/jobs): its task, its state, the stage its agent is in, what it spent
  *   task      a connected-app task (connectors/tasks.ts): a change waiting for a yes, running, done, refused
  *   ask       an answer a bot gave through the Bots app's Ask (shell/events.ts): which bot, what was asked, what it cost
  *   payment   a payment the person said they made in their UPI app from bots.approve (shell/events.ts): never one we made
- *   words     Keybot: the words they spoke instead of typed on a day (history), and in which apps
+ *   words     Keylessbord: the words they spoke instead of typed on a day (history), and in which apps
  *
  * No money on any row: what a bot's work cost stays ours (`paise`, for the logs; no screen draws it), and a payment says who and
  * what it was for, never the amount.
@@ -37,12 +37,12 @@ export interface FeedRow {
   paise?: number;
   /** No longer filled: the screens show no money. Kept for older readers. */
   money?: string;
-  /** A running Code bot job: which of the five stages it is in. */
+  /** A running Xode job: which of the five stages it is in. */
   stage?: { at: number; of: number; name: string };
   open?: FeedOpen;
 }
 
-/** A Code bot job, as much as the feed reads (code/jobs/types.ts CodeJob, with its agent's phase read out). */
+/** A Xode job, as much as the feed reads (code/jobs/types.ts CodeJob, with its agent's phase read out). */
 export interface FeedJob {
   id: string;
   task: string;
@@ -79,7 +79,7 @@ export interface FeedEvent {
   at: number;
 }
 
-/** Keybot on one day: the words spoken and the apps they went into (history). */
+/** Keylessbord on one day: the words spoken and the apps they went into (history). */
 export interface FeedWords { day: string; at: number; words: number; apps: string[] }
 
 export interface FeedInput {
@@ -240,7 +240,7 @@ function wordsRow(w: FeedWords): FeedRow {
   const apps = w.apps.slice(0, 2).join(", ");
   return {
     id: `words:${w.day}`, type: "words", bot: "keybot", title: `Wrote ${w.words.toLocaleString("en-IN")} ${w.words === 1 ? "word" : "words"} by voice`,
-    sub: apps ? `Keybot · ${apps}` : "Keybot", at: w.at, mark: "done",
+    sub: apps ? `Keylessbord · ${apps}` : "Keylessbord", at: w.at, mark: "done",
     open: { screenId: "bots.keybot.history" },
   };
 }
@@ -282,7 +282,7 @@ export function filterFeed(rows: readonly FeedRow[], o: { bot?: string; kind?: s
   return rows.filter((r) => (!o.bot || o.bot === "all" || r.bot === o.bot) && (!kinds || kinds.includes(r.type)));
 }
 
-/** Keybot's day from the history rows of that day: words, by hour, by app (the words a row wrote, out). */
+/** Keylessbord's day from the history rows of that day: words, by hour, by app (the words a row wrote, out). */
 export function wordsDay(rows: ReadonlyArray<{ at: number; words: number; app?: string }>, tzOffsetMinutes: number): {
   words: number; byHour: Array<{ hour: number; words: number }>; byApp: Array<{ app: string; words: number }>;
 } {

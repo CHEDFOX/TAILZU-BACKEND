@@ -1,6 +1,6 @@
 /**
  * THE X0 WIDGET'S AI DIGEST (docs/widget-glance-v2.md section 4): when three or more things changed since the person last looked, one
- * short line that sums them up ("Cart fix shipped; Plan bot needs your yes"), in place of the situation line (situation.ts).
+ * short line that sums them up ("Cart fix shipped; Plan Ease needs your yes"), in place of the situation line (situation.ts).
  *
  * Off unless WIDGET_DIGEST is on (config.ts). When on:
  *

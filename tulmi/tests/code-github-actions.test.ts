@@ -1052,7 +1052,7 @@ describe("the routes", () => {
     await app.close();
   });
 
-  it("answers 404 code_off with the Code bot off, and 503 not_configured when this server has no GitHub provider", async () => {
+  it("answers 404 code_off with Xode off, and 503 not_configured when this server has no GitHub provider", async () => {
     const r = await rig({ actions: true });
     const off = await server(r, { code: false });
     expect((await off.inject({ method: "POST", url: "/v1/code/runner/gh-result", payload: {} })).statusCode).toBe(404);

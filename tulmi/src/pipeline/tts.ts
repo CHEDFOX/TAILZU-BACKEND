@@ -34,7 +34,7 @@ export interface TtsInput {
   format?: TtsFormat;
   /** Optional style steer, e.g. "warm and upbeat" — derived from personality. */
   instructions?: string;
-  /** How fast to read, 1 = normal (Keybot's Read aloud speed). See paceFor. */
+  /** How fast to read, 1 = normal (Keylessbord's Read aloud speed). See paceFor. */
   speed?: number;
 }
 

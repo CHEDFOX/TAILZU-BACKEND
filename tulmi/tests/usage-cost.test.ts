@@ -73,7 +73,7 @@ describe("OpenRouter's charge", () => {
     expect(lines).toHaveLength(3);
   });
 
-  it("Keybot's rewrites ask for it and put it on the request's tally", async () => {
+  it("Keylessbord's rewrites ask for it and put it on the request's tally", async () => {
     router.answer(() => ({ choices: [{ message: { content: "Sounds good, see you at 6." }, finish_reason: "stop" }], usage: { prompt_tokens: 800, completion_tokens: 12, cost: 0.00021 } }));
     const usd = await inCostTally(async () => {
       await draftReply("Are we still on for 6?", "say yes");
@@ -133,7 +133,7 @@ describe("speech and the voice, at their list prices", () => {
 });
 
 describe("the request's tally, written to the meter", () => {
-  it("a dictation's row writes what its rewrite was charged and what its speech cost, under Keybot", async () => {
+  it("a dictation's row writes what its rewrite was charged and what its speech cost, under Keylessbord", async () => {
     await inCostTally(async () => {
       addCostUsd(0.0003);
       await recordUsage({ user, source: "rest", audioSeconds: 30, words: 40, model: "m" });
@@ -195,7 +195,7 @@ describe("on the meter, and refused before the next paid call", () => {
     expect((await store.spendSince(UID, 0)).reduce((n, r) => n + r.paise, 0)).toBe(9);
   });
 
-  it("a free account is refused once its $3 month is used, with the month's words, before Keybot calls anything", async () => {
+  it("a free account is refused once its $3 month is used, with the month's words, before Keylessbord calls anything", async () => {
     vi.stubEnv("FREE_FOR_ALL", "false");
     resetConfigForTests();
     const store = new MemoryYouStore();

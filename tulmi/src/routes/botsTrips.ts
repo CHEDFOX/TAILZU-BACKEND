@@ -1,5 +1,5 @@
 /**
- * Bots app · the Plan and Travel bots' outside data: a trip's weather, main places and stays compared, and where the Plan bot's day starts
+ * Bots app · the Plan and Travel bots' outside data: a trip's weather, main places and stays compared, and where Plan Ease's day starts
  * (src/botsBots/tripExtras.ts, trips.ts, planTravel.ts; src/places for the providers). Registered by routes/botsBots.ts with its parts.
  *
  *   GET    /v1/botsapp/bots/trip/:id/extras?tz=        -> { extras }        dates, weather, places, stays compared; from memory at once, the

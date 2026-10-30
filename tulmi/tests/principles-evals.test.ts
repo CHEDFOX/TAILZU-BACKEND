@@ -286,7 +286,7 @@ describe("a known-good answer for each role", () => {
       text: '{"add":["Trains at 6am on weekdays.","Is vegetarian."],"drop":[],"summary":"Planning workouts around a 6am weekday routine and a vegetarian diet."}',
       reads: (t) => BotMemoryReply.parse(JSON.parse(t)),
     },
-    widget_digest: { text: '{"line":"Code bot finished the cart fix; Plan bot needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
+    widget_digest: { text: '{"line":"Xode finished the cart fix; Plan Ease needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
     ask_planner: {
       text: "SAY Captions is this switch on the right.\nPOINT e40 | Captions\nDONE",

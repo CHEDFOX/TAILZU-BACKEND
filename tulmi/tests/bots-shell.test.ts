@@ -1,7 +1,7 @@
 /**
  * THE BOTS APP'S SHELL (screens/shell.ts, routes/botsShell.ts, src/shell):
  *
- *   - one feed across Code bot jobs, answers bots gave, payments, Keybot's words and connected-app tasks, money per row, by bot and type
+ *   - one feed across Xode jobs, answers bots gave, payments, Keylessbord's words and connected-app tasks, money per row, by bot and type
  *   - search across projects, chats, notes, files and bots; a UPI link read, never trusted when it cannot be read whole; Google's lines read
  *   - a QR code for the window's "pay on your phone", matching a reference encoder
  *   - the routes: the person's own, the routing preview answers without answering, an ask is written down, a receipt only when they paid
@@ -70,7 +70,7 @@ describe("one feed across everything the bots did", () => {
     expect(by["task:t2"]!.money).toBeUndefined();
     expect(by["ask:e1"]).toMatchObject({ bot: "travel", paise: 240, type: "ask" });
     expect(by["pay:e2"]).toMatchObject({ type: "payment", title: "Electricity bill. You pressed pay by UPI.", open: { screenId: "bots.approve", params: { receipt: "e2" } } });
-    expect(by["words:2026-10-28"]).toMatchObject({ bot: "keybot", title: "Wrote 412 words by voice", sub: "Keybot · WhatsApp, Gmail" });
+    expect(by["words:2026-10-28"]).toMatchObject({ bot: "keybot", title: "Wrote 412 words by voice", sub: "Keylessbord · WhatsApp, Gmail" });
   });
   it("filters by bot and by type; the week counts what was done and spent", () => {
     const rows = feed();
@@ -80,7 +80,7 @@ describe("one feed across everything the bots did", () => {
     expect(filterFeed(rows, { bot: "all", kind: "all" })).toHaveLength(rows.length);
     expect(weekOf(rows, FIXED_NOW - 2 * DAY, 125)).toEqual({ done: 4, paise: 420 + 240 + 110, minutesSaved: 125 });
   });
-  it("stages, days, clocks and Keybot's day in the person's own time", () => {
+  it("stages, days, clocks and Keylessbord's day in the person's own time", () => {
     expect(stageOf("verify")).toEqual({ at: 3, of: 5, name: "Check" });
     expect(stageOf(undefined).name).toBe("Understand");
     expect(clockOf(FIXED_NOW, IST)).toBe("7:40 pm");
@@ -182,7 +182,7 @@ describe("the shell's routes", () => {
       expect((await app.inject({ method, url })).statusCode).toBe(401);
     }
   });
-  it("activity: jobs, tasks and Keybot's words in one list, filtered on request, with the week", async () => {
+  it("activity: jobs, tasks and Keylessbord's words in one list, filtered on request, with the week", async () => {
     const { app } = served();
     const r = await app.inject({ method: "GET", url: `/v1/shell/activity?tz=${IST}`, headers: who("u1") });
     expect(r.statusCode).toBe(200);
@@ -198,7 +198,7 @@ describe("the shell's routes", () => {
     const calls: string[] = [];
     const bots = {
       target: async (_u: string, bot: string) => { calls.push(`target:${bot}`); return { kind: "bot", bot: { slug: "travel", name: "Travel bot" }, by: "rules", confidence: 0.9, paise: 0, message: "", reasons: [] }; },
-      get: async (_u: string, slug: string) => { calls.push(`get:${slug}`); return { slug, name: "Plan bot" }; },
+      get: async (_u: string, slug: string) => { calls.push(`get:${slug}`); return { slug, name: "Plan Ease" }; },
       ask: async () => { calls.push("ask"); throw new Error("must not answer"); },
     };
     const { app, asked } = served({ bots });
@@ -245,10 +245,10 @@ describe("the shell's routes", () => {
     expect((await app.inject({ method: "GET", url: `/v1/shell/receipts/${receipt.id}`, headers: who("u1") })).statusCode).toBe(404);
     expect((await app.inject({ method: "GET", url: "/v1/shell/started", headers: who("u2") })).json()).toEqual({ started: true });
   });
-  it("glance: bots and their state, what needs the person, Keybot's words today, the job working now", async () => {
+  it("glance: bots and their state, what needs the person, Keylessbord's words today, the job working now", async () => {
     const { app } = served();
     const g = (await app.inject({ method: "GET", url: `/v1/shell/glance?tz=${IST}`, headers: who("u1") })).json();
-    expect(g).toMatchObject({ v: 1, needs: 1, ask: { bot: "Plan bot", question: "Move the dentist to Friday 10 am?" }, keybot: { wordsToday: 300 }, job: { id: SAMPLE_JOBS[1]!.id, stage: 4, of: 5, stageName: "Check" } });
+    expect(g).toMatchObject({ v: 1, needs: 1, ask: { bot: "Plan Ease", question: "Move the dentist to Friday 10 am?" }, keybot: { wordsToday: 300 }, job: { id: SAMPLE_JOBS[1]!.id, stage: 4, of: 5, stageName: "Check" } });
     expect(g.bots.find((b: { slug: string }) => b.slug === "code")).toMatchObject({ state: "working", color: "#4F7A3A" });
     expect(g.bots[0]).toMatchObject({ slug: "plan", state: "needs" });
     expect(glanceOf({ now: FIXED_NOW, tz: IST, jobs: [], tasks: [], bots: [], words: 0 })).toMatchObject({ needs: 0, job: null, keybot: { wordsToday: 0 } });
@@ -278,7 +278,7 @@ describe("the shell's screens", () => {
       for (const s of [first, later]) {
         expect(json(s.root)).toContain('"screenId":"bots.make"');
         for (const b of quiet.bots.slice(0, 3)) expect(json(s.root)).toContain(`"${b.name}"`);
-        expect(texts(s.root!)).not.toContain("Keybot is on");
+        expect(texts(s.root!)).not.toContain("Keylessbord is on");
       }
       // A read that fails is never taken as the first visit.
       expect(texts((await buildBotsScreen(req("bots.home", client), fakeDeps(quiet))).root!)).not.toContain("Hi Aanya, I'm X0");
@@ -293,7 +293,7 @@ describe("the shell's screens", () => {
   it("activity: the feed, no money on it, needs-you choices, filters by bot and type", async () => {
     const deps = fakeDeps({ api: { [`GET /v1/shell/activity?tz=${IST}`]: ACTIVITY } });
     const phone = await buildBotsScreen(req("bots.activity", "phone"), deps);
-    expect(texts(phone.root!)).toEqual(expect.arrayContaining(["Activity", "Now", "Today", "Code bot needs you", "Wrote 412 words by voice"]));
+    expect(texts(phone.root!)).toEqual(expect.arrayContaining(["Activity", "Now", "Today", "Xode needs you", "Wrote 412 words by voice"]));
     // The person's own words may hold a sum ("under ₹5,000"); what the bots cost and what was paid never shows.
     expect(json(phone.root)).not.toMatch(/₹1,840|₹4\.20|₹2\.40|₹7\.70|paid"|so far/);
     const desk = await buildBotsScreen(req("bots.activity", "desktop"), deps);
@@ -322,7 +322,7 @@ describe("the shell's screens", () => {
   });
   it("ask: the answer, and a payment it filled in goes to Approve", async () => {
     const s = await buildBotsScreen(req("bots.ask", "phone", { message: "Pay the grocer", answer: "Filled in ₹1,240.", bot: "plan", upi: UPI, needs: 1 }), fakeDeps());
-    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay the grocer", "Filled in ₹1,240.", "Plan bot answered", "Pay Fresh Basket?", "You type the amount and press pay in your UPI app", "1 change waits for your yes"]));
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay the grocer", "Filled in ₹1,240.", "Plan Ease answered", "Pay Fresh Basket?", "You type the amount and press pay in your UPI app", "1 change waits for your yes"]));
     expect(json(s.root)).toContain('"screenId":"bots.approve","params":{"upi":"upi://pay?pa=freshbasket@okhdfcbank');
   });
   it("search: projects, chats, notes, files and bots, each opening its own place", async () => {
@@ -343,7 +343,7 @@ describe("the shell's screens", () => {
   it("approve: you press pay; X0 Bot opens UPI and writes a receipt only when told", async () => {
     for (const client of both) {
       const s = await buildBotsScreen(req("bots.approve", client, { upi: UPI, bot: "plan" }), fakeDeps());
-      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay Fresh Basket for this week's groceries?", "You type the amount and press pay in your UPI app. Plan bot never pays on its own."]));
+      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Pay Fresh Basket for this week's groceries?", "You type the amount and press pay in your UPI app. Plan Ease never pays on its own."]));
       const j = json(s.root);
       expect(j).not.toMatch(/₹|1,240|am=/);
       expect(j).toContain('"path":"/v1/shell/receipts"');
@@ -374,7 +374,7 @@ describe("the shell's screens", () => {
     const note = await buildBotsScreen(req("bots.note", "desktop", { id: "n1" }), deps);
     expect(texts(note.root!)).toEqual(expect.arrayContaining(["Weekends have the most no-shows.", "Kavya Rao", "00:42"]));
     const off = await buildBotsScreen(req("bots.offline", "phone"), deps);
-    expect(texts(off.root!)).toEqual(expect.arrayContaining(["No internet right now", "Keybot · basic mode"]));
+    expect(texts(off.root!)).toEqual(expect.arrayContaining(["No internet right now", "Keylessbord · basic mode"]));
     expect(json(off.root)).toContain('"kind":"appendState","path":"queued"');
     // The window's sidebar takes Today and Meeting notes to these pages.
     expect(json(today.root)).toContain('"screenId":"bots.notes"');

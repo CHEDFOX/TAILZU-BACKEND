@@ -7,7 +7,7 @@
  *   - the endpoint for a person's own apps: a key in Authorization, JSON or a stream, a key for another bot refused, revoked refused, rate-limited with Retry-After
  *   - request bodies are never logged
  *   - the public card, commands, memory, linked apps, the export
- *   - "Ask any bot": the front door picks, shows which bot answered, and sends the Code bot and "none of them" down its own roads
+ *   - "Ask any bot": the front door picks, shows which bot answered, and sends Xode and "none of them" down its own roads
  *   - a bot shared into a space reads what the space shared, as data, as in its chat; nothing is asked while the account waits to be deleted
  */
 import { describe, expect, it, vi } from "vitest";
@@ -474,7 +474,7 @@ describe("Ask any bot (POST /v1/ask with a bot)", () => {
     const res = await s.post("/v1/ask", ALICE, { ...BODY, message: "Neha ko reply likh do ki main late hoon", bot: "any" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.bot).toEqual({ slug: "keybot", name: "Keybot", colour: "ochre", builtin: true, pickedBy: "rules" });
+    expect(body.bot).toEqual({ slug: "keybot", name: "Keylessbord", colour: "ochre", builtin: true, pickedBy: "rules" });
     expect(body.result.text).toBe("Reply drafted.");
     expect(body.id).toBeNull();
     expect(body.decision).toMatchObject({ intent: "answer", route: "reply", reasons: expect.arrayContaining(["bot:keybot", "keybot:write"]) });
@@ -494,7 +494,7 @@ describe("Ask any bot (POST /v1/ask with a bot)", () => {
     expect(bob.json().bot?.slug).not.toBe("gym-buddy");
   });
 
-  it("sends the Code bot and 'none of them' down the front door's own roads, as they always were", async () => {
+  it("sends Xode and 'none of them' down the front door's own roads, as they always were", async () => {
     const s = await served();
     const code = await s.post("/v1/ask", ALICE, { ...BODY, message: "where is the session cookie set?", projectId: PROJECT, bot: "any" });
     expect(code.statusCode).toBe(200);
@@ -571,11 +571,11 @@ describe("Ask any bot (POST /v1/ask with a bot)", () => {
     expect(s.r.model.of("bot.run")[0]!.tools).toEqual([]);
   });
 
-  it("streams a bot's answer after telling which bot it is, and the Code bot's before its own events", async () => {
+  it("streams a bot's answer after telling which bot it is, and Xode's before its own events", async () => {
     const s = await served({ answer: (x) => (x.purpose === "bot.run" ? "Reply drafted." : "ok") });
     const res = await s.post("/v1/ask", ALICE, { ...BODY, message: "Neha ko reply likh do ki main late hoon", bot: "any", stream: true });
     const events = lines(res.body);
-    expect(events[0]).toMatchObject({ t: "bot", bot: { slug: "keybot", name: "Keybot" } });
+    expect(events[0]).toMatchObject({ t: "bot", bot: { slug: "keybot", name: "Keylessbord" } });
     expect(events.map((e) => e.t)).toEqual(["bot", "status", "status", "text", "result"]);
     expect(events.at(-1)).toMatchObject({ t: "result", bot: { slug: "keybot" }, result: { text: "Reply drafted." } });
     const code = await s.post("/v1/ask", ALICE, { ...BODY, message: "where is the session cookie set?", projectId: PROJECT, bot: "any", stream: true });

@@ -254,7 +254,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   const RL = { config: deps.rateLimit };
   const k = deps.code;
 
-  const off = (reply: FastifyReply) => reply.code(404).send({ code: "code_off", message: "The Code bot is not switched on." });
+  const off = (reply: FastifyReply) => reply.code(404).send({ code: "code_off", message: "Xode is not switched on." });
   const notConfigured = (reply: FastifyReply) => reply.code(503).send({ code: "not_configured", message: "GitHub isn't set up on this server yet." });
   const noSession = (reply: FastifyReply) => reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
   const fail = failCode;
@@ -269,7 +269,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   const stateKeyOk = () => { try { tokenKey(); return true; } catch { return false; } };
 
   /**
-   * The Code bot, when it is on and whole. Otherwise the answer has been sent, and this is null.
+   * Xode, when it is on and whole. Otherwise the answer has been sent, and this is null.
    * `need` "app" is for what only the GitHub App does (the install flow).
    */
   const ready = (reply: FastifyReply, need: "any" | "app" = "any") => {
@@ -309,7 +309,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     "/v1/code/github/callback", RL, async (req, reply) => {
       reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer")
         .header("content-security-policy", PAGE_CSP).header("content-type", "text/html; charset=utf-8");
-      if (!k) return reply.code(404).send(page("Not available", "The Code bot is not switched on.", false));
+      if (!k) return reply.code(404).send(page("Not available", "Xode is not switched on.", false));
       if (!k.github || !k.appReady || !stateKeyOk()) return reply.code(503).send(page("Not available", "GitHub isn't set up on this server yet.", false));
       const q = req.query ?? {};
       const again = (title: string, line: string) => page(title, line, true, OPEN_APP);
@@ -381,7 +381,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   });
 
   // --- Sign in with GitHub (code/oauth.ts): off unless CODE_GITHUB_OAUTH, and not set up without the OAuth App's id and secret.
-  /** The sign-in, when the Code bot is on and it is offered and whole. Otherwise the answer has been sent, and this is null. */
+  /** The sign-in, when Xode is on and it is offered and whole. Otherwise the answer has been sent, and this is null. */
   const signinReady = (reply: FastifyReply, o: { switchOff?: boolean } = {}) => {
     if (!k) { off(reply); return null; }
     // Disconnecting (revoking) still works with the switch off; everything else says it is off.
@@ -406,7 +406,7 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   app.get<{ Querystring: { code?: unknown; state?: unknown; error?: unknown } }>("/v1/code/github/signin/callback", RL, async (req, reply) => {
     reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer")
       .header("content-security-policy", PAGE_CSP).header("content-type", "text/html; charset=utf-8");
-    if (!k) return reply.code(404).send(page("Not available", "The Code bot is not switched on.", false));
+    if (!k) return reply.code(404).send(page("Not available", "Xode is not switched on.", false));
     if (!k.oauthWanted) return reply.code(404).send(page("Not available", "Sign in with GitHub isn't switched on.", false));
     if (!k.oauth || !stateKeyOk()) return reply.code(503).send(page("Not available", "GitHub isn't set up on this server yet.", false));
     const again = (title: string, line: string) => page(title, line, true, OPEN_APP);

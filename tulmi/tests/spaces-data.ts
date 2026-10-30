@@ -23,7 +23,7 @@ const HOME = {
     { userId: "m", name: "Mom", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: [...FAMILY, "approve"], role: null, roleName: "Just for them" },
     { userId: "r", name: "Rohan", you: false, maker: false, canApprove: false, joinedAt: Date.UTC(2026, 7, 4), perms: KID, role: "kid", roleName: "Kid" },
   ],
-  bots: [{ slug: "plan", name: "Plan bot", colour: "sea", addedBy: "Aanya", byYou: true }, { slug: "shop-bot", name: "Shop bot", colour: "sand", addedBy: "Mom", byYou: false }],
+  bots: [{ slug: "plan", name: "Plan Ease", colour: "sea", addedBy: "Aanya", byYou: true }, { slug: "shop-bot", name: "Shop bot", colour: "sand", addedBy: "Mom", byYou: false }],
 };
 const STUDIO = {
   id: "s2", name: "Studio", mine: false, me: { admin: false, perms: FAMILY }, invite: { code: "K7PQ2MXA", expiresAt: FIXED_NOW + 6 * DAY }, roles: ROLES.slice(0, 3), waiting: 0,
@@ -33,7 +33,7 @@ const STUDIO = {
     { userId: "i", name: "Ishita", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 8, 3), perms: [...FAMILY, "approve"], role: null, roleName: "Just for them" },
     { userId: "k", name: "Kabir", you: false, maker: false, canApprove: false, joinedAt: Date.UTC(2026, 8, 9), perms: FAMILY, role: "family", roleName: "Family" },
   ],
-  bots: [{ slug: "code", name: "Code bot", colour: "pine", addedBy: "Dev", byYou: false }],
+  bots: [{ slug: "code", name: "Xode", colour: "pine", addedBy: "Dev", byYou: false }],
 };
 
 const GROCERIES = {

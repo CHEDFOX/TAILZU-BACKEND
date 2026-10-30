@@ -5,7 +5,7 @@
  *   bots.code.job      Job / DeskWork (params id)        watch it work: the stages, what it did, its one quick question (answer,
  *                                                        yes / no, keep going), how much of its share it used, stop. No money. With no job, or a job that
  *                                                        was a question (report "answer"), or after a question (params asked,
- *                                                        answer) it is the Code bot's CHAT (Chat.dc.html; the window draws the
+ *                                                        answer) it is Xode's CHAT (Chat.dc.html; the window draws the
  *                                                        chat beside the live job, DeskWork). Params project, thread, asked,
  *                                                        answer, flow (the answer's diagram artifact)
  *   bots.code.team     TeamBoard / DTeamBoard (id)       a lead and its helpers: GET /v1/code/jobs/:id/team, stop or re-run a part
@@ -16,7 +16,7 @@
  *   bots.done          Done / DDone (id)                 the shipped moment: the pull request, the numbers, what changed
  *   bots.failed        Failed / DFailed (id)             what it tried; try again deeper, tell me more, stop
  *
- * Everything is the existing Code bot backend: routes/codeJobs.ts (the job, its log, its team, answer / approve / deny /
+ * Everything is the existing Xode backend: routes/codeJobs.ts (the job, its log, its team, answer / approve / deny /
  * budget / stop / message), routes/artifacts.ts, routes/files.ts, and the front door (POST /v1/ask with projectId and a
  * threadId, docs/code-chat.md) for the chat. Live: the screens are never cached (cacheTtlSeconds 0), every write refreshes
  * the screen, the phone refreshes open screens on its own tick and when it comes back to the front, the window when it
@@ -263,9 +263,9 @@ function quickQuestion(ctx: BotsCtx, d: JobData, o: { compact?: boolean } = {}):
   const w = agent?.waiting;
 
   if (job.waitingOn === "answer" || w?.kind === "question") {
-    const q = w?.question ?? job.reason ?? "Code bot has a question.";
+    const q = w?.question ?? job.reason ?? "Xode has a question.";
     const opts = (w?.options ?? []).filter((x) => x.trim()).slice(0, 3);
-    const answer = (s: string) => write("POST", jobPath(job.id, "/answer"), { answer: s }, "Sent to Code bot", "Couldn't send that. Try again.");
+    const answer = (s: string) => write("POST", jobPath(job.id, "/answer"), { answer: s }, "Sent to Xode", "Couldn't send that. Try again.");
     if (opts.length) {
       return shell([label("Quick question"), ask(q), choices([
         ...opts.map((x, i) => btn(x, answer(x), i === 0 ? "primary" : "secondary")),
@@ -279,7 +279,7 @@ function quickQuestion(ctx: BotsCtx, d: JobData, o: { compact?: boolean } = {}):
     const plan = agent?.plan?.steps.slice(0, 3).map((s) => `${s.n}. ${s.do}`) ?? [];
     return shell([label("Needs your yes"), ask(what), ...plan.map((p) => meta(p, { size: 13, lines: 2 })), choices([
       btn("Yes, go ahead", twoStep(jobPath(job.id, "/approve"), "Going ahead"), "primary"),
-      btn("No", write("POST", jobPath(job.id, "/deny"), {}, "Told Code bot no"), "secondary"),
+      btn("No", write("POST", jobPath(job.id, "/deny"), {}, "Told Xode no"), "secondary"),
     ])]);
   }
   if (job.waitingOn === "budget" || w?.kind === "budget") {
@@ -340,7 +340,7 @@ export function threadFor(userId: string, projectId: string): string {
 interface ChatCtx { projectId: string; threadId: string; jobId?: string; projectName: string }
 
 /**
- * Ask the Code bot about the project (the front door with projectId and threadId: code/chat answers with path:line, or
+ * Ask Xode about the project (the front door with projectId and threadId: code/chat answers with path:line, or
  * "ok, change it" starts a job). An answer opens the chat with it; a job that started opens the job.
  */
 function askCode(ctx: BotsCtx, c: ChatCtx, message: string, o: { from?: string; attachments?: string } = {}): ActionRef {
@@ -362,7 +362,7 @@ function askCode(ctx: BotsCtx, c: ChatCtx, message: string, o: { from?: string; 
           else: open(SCREENS.codeJob, { ...carry, asked: said, answer: "$state.said.result.text", flow: "$state.said.result.artifacts.0.id" }),
         },
       ),
-      fail: failed({ busy: "asking", ...(o.from ? { from: o.from } : {}), then: oops("Couldn't reach Code bot. Try again.") }),
+      fail: failed({ busy: "asking", ...(o.from ? { from: o.from } : {}), then: oops("Couldn't reach Xode. Try again.") }),
     })),
   );
 }
@@ -374,7 +374,7 @@ function mine(s: string, size = 15): Node {
   })], { justifyContent: "flex-end" });
 }
 
-/** The Code bot's words: paragraphs, code in mono, the flow it drew, and the files and lines it rests on. */
+/** Xode's words: paragraphs, code in mono, the flow it drew, and the files and lines it rests on. */
 function theirs(s: string, o: { flow?: string[]; size?: number } = {}): Node {
   const size = o.size ?? 15;
   const blocks = plainWords(s);
@@ -418,7 +418,7 @@ function conversation(d: JobData | undefined, p: { asked?: string; answer?: stri
   }
   if (p.asked) {
     out.push(mine(p.asked, size));
-    out.push(p.answer ? theirs(p.answer, { size, ...(p.flow ? { flow: p.flow } : {}) }) : meta("Code bot didn't send words back. Ask again?", { size: 13 }));
+    out.push(p.answer ? theirs(p.answer, { size, ...(p.flow ? { flow: p.flow } : {}) }) : meta("Xode didn't send words back. Ask again?", { size: 13 }));
   }
   return out;
 }
@@ -429,14 +429,14 @@ function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder:
   const live = job && !isOver(job.state);
   const send: ActionRef = live
     ? job!.waitingOn === "answer"
-      ? seq(write("POST", jobPath(job!.id, "/answer"), { answer: "$state.msg" }, "Sent to Code bot"), { kind: "clearState", path: "msg" })
-      : seq(write("POST", jobPath(job!.id, "/message"), { text: "$state.msg" }, "Code bot will read it next"), { kind: "clearState", path: "msg" })
+      ? seq(write("POST", jobPath(job!.id, "/answer"), { answer: "$state.msg" }, "Sent to Xode"), { kind: "clearState", path: "msg" })
+      : seq(write("POST", jobPath(job!.id, "/message"), { text: "$state.msg" }, "Xode will read it next"), { kind: "clearState", path: "msg" })
     : askCode(ctx, c, "$state.msg", { from: "msg" });
   const guarded: ActionSpec = { kind: "condition", if: { falsy: "msg" }, then: toast("Type what you need first"), else: send };
   const attach = labelled(box([icon("clip", { size: 20, color: C.ink })], { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", flexShrink: 0 },
     open(SCREENS.attach, { ...(job ? { id: job.id } : {}), project: c.projectId, thread: c.threadId })), "Add to chat");
   return col([
-    askMoment(ctx, { slug: "code", color: MOSS, kind: "code", busy: "asking", line: "Asking Code bot…" }),
+    askMoment(ctx, { slug: "code", color: MOSS, kind: "code", busy: "asking", line: "Asking Xode…" }),
     row([
       attach,
       {
@@ -481,9 +481,9 @@ function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
   const p = askedOf(ctx);
   const talk = conversation(data?.job, { ...p, ...(data?.flow ? { flow: data.flow } : {}) }, 15);
   return page(ctx, {
-    nav: "code", title: "Code bot", gap: 18,
+    nav: "code", title: "Xode", gap: 18,
     body: [
-      head({ title: "Code bot", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true }),
+      head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true }),
       ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 16, weight: 500, lineHeight: 22 }), meta("Where something is, how it works, what would break. I answer with the files and lines, and change it when you say so.", { size: 13, lineHeight: 18 })], { gap: 6, paddingTop: 8 })]),
       ...(p.answer ? [nextMoves(ctx, c)] : []),
     ],
@@ -494,17 +494,17 @@ function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
 
 function noProject(ctx: BotsCtx) {
   return page(ctx, {
-    back: true, nav: "code", title: "Code bot",
-    body: [emptyState({ pose: "think", title: "Which project?", body: "Open a project first, then ask about its code or tell Code bot what to change.", action: { label: "Your projects", onPress: open(SCREENS.code) } })],
+    back: true, nav: "code", title: "Xode",
+    body: [emptyState({ pose: "think", title: "Which project?", body: "Open a project first, then ask about its code or tell Xode what to change.", action: { label: "Your projects", onPress: open(SCREENS.code) } })],
   });
 }
 
 // ===================================================================== bots.code.job: watch it work
 
-function nothingHere(ctx: BotsCtx, what: string, body = "It may have been removed, or it's someone else's. Your other jobs are on Code bot's page.") {
+function nothingHere(ctx: BotsCtx, what: string, body = "It may have been removed, or it's someone else's. Your other jobs are on Xode's page.") {
   return page(ctx, {
     back: true, nav: "code", title: what,
-    body: [emptyState({ pose: "think", title: `Couldn't open this ${what.toLowerCase()}`, body, action: { label: "Go to Code bot", onPress: open(SCREENS.code) } })],
+    body: [emptyState({ pose: "think", title: `Couldn't open this ${what.toLowerCase()}`, body, action: { label: "Go to Xode", onPress: open(SCREENS.code) } })],
   });
 }
 
@@ -571,10 +571,10 @@ function chatPane(ctx: BotsCtx, data: ChatData, c: ChatCtx): Node {
       ...(d ? [box([text(d.job.branch, { size: 12, lineHeight: 16, mono: true, lines: 1 })], { borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 3, paddingHorizontal: 9, maxWidth: 260 })] : []),
       ...(pr ? [meta(`PR #${pr.number}${pr.ready ? " · ready" : " · draft"}`, { size: 12 })] : []),
     ], { gap: 10, flexWrap: "wrap" }),
-    ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 18, weight: 500, lineHeight: 24 }), meta("Where something is, how it works, what would break. Code bot answers with the files and lines, and changes it when you say so.", { size: 14, lineHeight: 20 })], { gap: 6 })]),
+    ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 18, weight: 500, lineHeight: 24 }), meta("Where something is, how it works, what would break. Xode answers with the files and lines, and changes it when you say so.", { size: 14, lineHeight: 20 })], { gap: 6 })]),
     ...(p.answer ? [nextMoves(ctx, c)] : []),
     grow(),
-    composer(ctx, c, d, "Ask about the code, or tell Code bot what to change…"),
+    composer(ctx, c, d, "Ask about the code, or tell Xode what to change…"),
   ], { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, gap: 20, paddingRight: 32 });
 }
 
@@ -582,7 +582,7 @@ function jobDesk(ctx: BotsCtx, data: ChatData) {
   const c = chatCtx(ctx, data);
   if (!c) return noProject(ctx);
   return page(ctx, {
-    nav: "code", title: data.job?.job.task ?? "Code bot", maxWidth: 1400,
+    nav: "code", title: data.job?.job.task ?? "Xode", maxWidth: 1400,
     body: [row([chatPane(ctx, data, c), ...(data.job && data.job.agent?.report?.outcome !== "answer" ? [jobAside(ctx, data.job)] : [])], { alignItems: "stretch", flexGrow: 1, minHeight: 600 })],
     state: { msg: "", said: null },
   });
@@ -765,7 +765,7 @@ function teamPhone(ctx: BotsCtx, d: TeamData) {
     body: [
       head({ title: job.task, size: 24, weight: 700, sub: statusLine(job, ctx.live.now, 12, ` · team of ${helpers.length + 1}`) }),
       progressBlock(t),
-      memberCard({ name: "Code bot · lead", sub: "Splits the job, joins the parts", extra: shareOf(leadSpent, t.budget.totalPaise), items: leadItems(t) }),
+      memberCard({ name: "Xode · lead", sub: "Splits the job, joins the parts", extra: shareOf(leadSpent, t.budget.totalPaise), items: leadItems(t) }),
       ...helpers.map((p) => memberCard({ name: helperName(p), sub: p.ownedPaths[0] ?? p.goal, extra: shareOf(p.spentPaise, t.budget.totalPaise), items: partItems(p), action: partActions(job, p) })),
       ...(note ? [note] : []),
     ],
@@ -778,7 +778,7 @@ function teamBoard(d: TeamData): Node {
   const t = d.team.team;
   const helpers = t.parts.filter((p) => p.id !== 0);
   const rowsOf: Array<{ who: Node; items: TeamItem[] }> = [
-    { who: whoCell(botAvatar(CODE, 30), "Code bot · lead", "Splits the job, joins the parts", shareOf(Math.max(0, t.budget.spentPaise - helpers.reduce((s, p) => s + p.spentPaise, 0)), t.budget.totalPaise)), items: leadItems(t) },
+    { who: whoCell(botAvatar(CODE, 30), "Xode · lead", "Splits the job, joins the parts", shareOf(Math.max(0, t.budget.spentPaise - helpers.reduce((s, p) => s + p.spentPaise, 0)), t.budget.totalPaise)), items: leadItems(t) },
     ...helpers.map((p) => ({ who: whoCell(botAvatar(CODE, 30), helperName(p), p.ownedPaths[0] ?? p.goal, shareOf(p.spentPaise, t.budget.totalPaise)), items: partItems(p).slice(0, 1) })),
     {
       who: whoCell(box([icon("shield", { size: 15 })], { width: 30, height: 30, borderRadius: 15, backgroundColor: C.surface, borderWidth: 1, borderColor: C.outline, alignItems: "center", justifyContent: "center" }), "Review", "A second bot from another family", "Checks each part"),
@@ -821,7 +821,7 @@ function teamDesk(ctx: BotsCtx, d: TeamData) {
       row([
         backButton(),
         col([
-          meta(`Code bot · a lead and ${helpers.length} ${helpers.length === 1 ? "helper" : "helpers"} · ${projectName(d.job.project)}`, { size: 13 }),
+          meta(`Xode · a lead and ${helpers.length} ${helpers.length === 1 ? "helper" : "helpers"} · ${projectName(d.job.project)}`, { size: 13 }),
           title(job.task, { size: 26, lineHeight: 32, lines: 2 }),
           statusLine(job, ctx.live.now, 13, ` · team of ${helpers.length + 1}`),
         ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 4 }),
@@ -983,12 +983,12 @@ function changeAction(art: ArtifactRead): ActionSpec {
 
 const changing = (): Node => when({ truthy: "changing" }, row([statusMark("working", { color: MOSS }), meta("Changing it…", { size: 13 })], { gap: 8 }));
 
-/** Build the approved version into the project (a Code bot job whose spec it is), then watch it work. */
+/** Build the approved version into the project (a Xode job whose spec it is), then watch it work. */
 function buildAction(art: ArtifactRead): ActionSpec | null {
   if (!art.artifact.projectId) return null;
   return call("POST", `/v1/artifacts/${art.artifact.id}/build`, { projectId: art.artifact.projectId, version: art.version }, {
     assignTo: "built",
-    ok: seq(toast("Code bot is building it"), open(SCREENS.codeJob, { id: "$state.built.job.id" })),
+    ok: seq(toast("Xode is building it"), open(SCREENS.codeJob, { id: "$state.built.job.id" })),
     fail: oops("Couldn't start the build. Try again."),
   });
 }
@@ -1030,7 +1030,7 @@ function builtSide(ctx: BotsCtx, d: ArtData): Node {
       sectionLabel("Your real app"),
       card([
         text("Not built yet", { size: 16, weight: 600, lineHeight: 21 }),
-        meta("Code bot builds this version into your project with your own components, runs the app, puts it next to the design and fixes any difference before it asks you to review.", { size: 13, lineHeight: 18 }),
+        meta("Xode builds this version into your project with your own components, runs the app, puts it next to the design and fixes any difference before it asks you to review.", { size: 13, lineHeight: 18 }),
         ...(build ? [button("Build it into my app", build, { kind: "primary", size: "md" })] : [meta("This design isn't part of a project yet.", { size: 13 })]),
       ], { gap: 12, padding: 18 }),
     ], { gap: 10, flexGrow: 1, flexBasis: 0, minWidth: 0 });
@@ -1084,7 +1084,7 @@ function versionRows(ctx: BotsCtx, d: ArtData): Node[] {
     return row([
       col([
         text(`v${v.version}${now ? " · now" : ""}`, { size: 13, weight: now ? 600 : 500, lineHeight: 17 }),
-        meta(v.note || (v.madeBy === "person" ? "Your change" : "Code bot's change"), { size: 12, lines: 1 }),
+        meta(v.note || (v.madeBy === "person" ? "Your change" : "Xode's change"), { size: 12, lines: 1 }),
         meta(ago(v.createdAt, ctx.live.now), { size: 11.5 }),
       ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 1 }),
       ...(now ? [] : [labelled(box([text("Go back", { size: 12, weight: 500, lineHeight: 16 })], { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 14, borderWidth: 1, borderColor: C.outline },
@@ -1118,7 +1118,7 @@ function phoneFrame(inner: Node, width: number): Node {
 }
 
 /** Share the preview with a space or a person: its name and version, as a card (screens/spaces.ts bots.share). */
-const previewShare = (art: ArtifactRead): Node => shareButton({ kind: "preview", ref: art.artifact.id, title: art.artifact.title, text: `A live preview Code bot made: ${art.artifact.title}, version ${art.version}.` });
+const previewShare = (art: ArtifactRead): Node => shareButton({ kind: "preview", ref: art.artifact.id, title: art.artifact.title, text: `A live preview Xode made: ${art.artifact.title}, version ${art.version}.` });
 
 function previewPhone(ctx: BotsCtx, d: ArtData) {
   const { art } = d;
@@ -1178,7 +1178,7 @@ function previewDesk(ctx: BotsCtx, d: ArtData) {
           changing(),
           meta(`Only that part changes. v${head0} stays, so you can go back.`, { size: 12, lineHeight: 17 }),
           card([
-            row([botAvatar(CODE, 24), text("Before Code bot acts", { size: 13, weight: 600, lineHeight: 17 })], { gap: 8 }),
+            row([botAvatar(CODE, 24), text("Before Xode acts", { size: 13, weight: 600, lineHeight: 17 })], { gap: 8 }),
             row([meta("Changes", { size: 12 }), grow(), text("Only the part you picked", { size: 12, lineHeight: 16 })]),
             row([meta("Leaves alone", { size: 12 }), grow(), text("The rest of the page", { size: 12, lineHeight: 16 })]),
             row([meta("Keeps", { size: 12 }), grow(), text(`v${head0}, to go back to`, { size: 12, lineHeight: 16 })]),
@@ -1196,7 +1196,7 @@ function artScreen(kind: "design" | "preview") {
     if (!d) {
       return page(ctx, {
         back: true, nav: "code", title: kind === "design" ? "Design" : "Live preview",
-        body: [emptyState({ pose: "think", title: "Nothing to preview yet", body: "When Code bot makes a design or a component for your project, it shows here, and you can point at any part to change it.", action: { label: "Go to Code bot", onPress: open(SCREENS.code) } })],
+        body: [emptyState({ pose: "think", title: "Nothing to preview yet", body: "When Xode makes a design or a component for your project, it shows here, and you can point at any part to change it.", action: { label: "Go to Xode", onPress: open(SCREENS.code) } })],
       });
     }
     if (kind === "design") return ctx.client === "desktop" ? designDesk(ctx, d) : designPhone(ctx, d);
@@ -1273,15 +1273,15 @@ function attachScreen(ctx: BotsCtx, d: AttachData | undefined) {
     ? col([sectionLabel("Recent"), row(files.map((f) => fileTile(f, ctx)), { gap: 10, alignItems: "flex-start" })], { gap: 10 })
     : card([text("Nothing sent yet", { size: 14, weight: 600, lineHeight: 19 }), meta("Files you send to your bots show here, ready to add to any chat. Paste a link below, or say it.", { size: 13, lineHeight: 18 })], { dashed: true, gap: 6, padding: 16 });
   const box1 = col([
-    when({ truthy: "linkHint" }, meta("Paste the link in the message. Code bot opens it and reads it.", { size: 12 })),
+    when({ truthy: "linkHint" }, meta("Paste the link in the message. Xode opens it and reads it.", { size: 12 })),
     ...sentChip,
-    field("msg", "Message Code bot", send, { compact: desk }),
-    when({ truthy: "asking" }, row([statusMark("working", { color: MOSS }), meta("Sending to Code bot…", { size: 13 })], { gap: 8 })),
+    field("msg", "Message Xode", send, { compact: desk }),
+    when({ truthy: "asking" }, row([statusMark("working", { color: MOSS }), meta("Sending to Xode…", { size: 13 })], { gap: 8 })),
   ], { gap: 8 });
-  const reads = row([botAvatar(CODE, 24), col([text("Code bot reads designs, PDFs and videos", { size: 13, color: C.grey70, lineHeight: 18 }),
+  const reads = row([botAvatar(CODE, 24), col([text("Xode reads designs, PDFs and videos", { size: 13, color: C.grey70, lineHeight: 18 }),
     ...(desk ? [meta(`It uses them only for this chat and never shares them outside ${c.projectName}.`, { size: 12 })] : [])], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 1 })], { gap: 10 });
   const context: Node[] = [
-    head({ title: "Code bot", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true }),
+    head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true }),
     ...(d?.job ? [mine(d.job.job.task), ...(d.job.agent?.waiting?.question ? [theirs(d.job.agent.waiting.question)] : [])] : []),
   ];
   if (desk) {
@@ -1367,7 +1367,7 @@ function noteBox(d: JobData): Node | null {
   return row([icon("spark", { size: 18, color: C.grey70 }), text(note, { size: 13, color: C.grey70, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 10, alignItems: "flex-start", backgroundColor: C.surface, borderRadius: 16, padding: 14 });
 }
 
-/** The quiet moment: the Tailzu mark with a few dots in the Code bot's colour around it (Done.dc.html). */
+/** The quiet moment: the Tailzu mark with a few dots in Xode's colour around it (Done.dc.html). */
 const doneMark = (size: number): Node => shapes([
   ...([[17, 4, 2], [26, 7, 2], [30, 16, 2], [27, 25, 2], [17, 30, 2], [7, 25, 2], [4, 16, 2], [8, 7, 2], [13, 15, 2.6], [21, 15, 2.6]] as Array<[number, number, number]>)
     .map(([x, y, r]) => ({ circle: [x + 8, y + 8, r] as [number, number, number], fill: C.ink, motion: "pop" as const })),
@@ -1526,7 +1526,7 @@ function failedPhone(ctx: BotsCtx, d: JobData) {
   return page(ctx, {
     nav: "code", title: "Couldn't finish", gap: 22,
     body: [
-      head({ title: "Code bot", size: 17, avatar: true, sub: meta(`${d.job.task}${pr ? ` · PR #${pr.number}` : ""}`, { size: 12, lines: 1 }) }),
+      head({ title: "Xode", size: 17, avatar: true, sub: meta(`${d.job.task}${pr ? ` · PR #${pr.number}` : ""}`, { size: 12, lines: 1 }) }),
       col([
         labelled(box([glyph(G.failed, { size: 20, weight: 2 })], { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, borderColor: C.ink, alignItems: "center", justifyContent: "center" }), "Failed"),
         text(failTitle(ctx, d), { size: 25, weight: 700, lineHeight: 31, tracking: -0.5 }),
@@ -1554,7 +1554,7 @@ function failedDesk(ctx: BotsCtx, d: JobData) {
     body: [
       row([
         backButton(), botAvatar(CODE, 36),
-        col([title(failTitle(ctx, d), { size: 26, lineHeight: 32, lines: 2 }), meta(`Code bot · ${d.job.task}${pr ? ` · PR #${pr.number}` : ""}`, { size: 13, lines: 1 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 4 }),
+        col([title(failTitle(ctx, d), { size: 26, lineHeight: 32, lines: 2 }), meta(`Xode · ${d.job.task}${pr ? ` · PR #${pr.number}` : ""}`, { size: 13, lines: 1 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 4 }),
         text(`Stopped at ${clock(d.job.updatedAt, ctx.tzOffsetMinutes)} · ${duration(mins)}`, { size: 13, color: C.grey70, lineHeight: 17 }),
       ], { gap: 12 }),
       row([
@@ -1568,7 +1568,7 @@ function failedDesk(ctx: BotsCtx, d: JobData) {
       ], { gap: 28, alignItems: "flex-start" }),
       labelled(row([
         col([button(m.primary.label, m.primary.action, { kind: "primary", size: "md", wide: true }), meta(m.primary.sub, { size: 12.5, lineHeight: 17 })], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 8 }),
-        col([button("Tell me more", m.more, { kind: "secondary", size: "md", wide: true }), meta("Code bot explains the error in plain words and what it would try next.", { size: 12.5, lineHeight: 17 })], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 8 }),
+        col([button("Tell me more", m.more, { kind: "secondary", size: "md", wide: true }), meta("Xode explains the error in plain words and what it would try next.", { size: 12.5, lineHeight: 17 })], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 8 }),
         col([button("Stop here", m.stop.action, { kind: "secondary", size: "md", wide: true }), meta(m.stop.sub, { size: 12.5, lineHeight: 17 })], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 8 }),
       ], { gap: 18, alignItems: "flex-start" }), "What next"),
     ],

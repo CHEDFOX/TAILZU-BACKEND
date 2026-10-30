@@ -1,6 +1,6 @@
 /**
  * FIRST RUN: WELCOME, SIGN IN, CODE, ABOUT YOU, NAME (Welcome, SignIn, SignCode, NameIt and their D* boards), and the
- * pages that used to follow them and are now reached from the app: Language (from You), Turn on Keybot (from the
+ * pages that used to follow them and are now reached from the app: Language (from You), Turn on Keylessbord (from the
  * keyboard card), First words (after the microphone card) and Plans (from You and Billing). One id serves the phone
  * and the window (ctx.client).
  *
@@ -30,7 +30,7 @@
  * already signed in, so Google and Apple lead to the gate (sign out), and Send code and Continue walk on through the
  * Code page to About you without sending anything. A build without the stage gets each step as a page.
  *
- * AFTER ONBOARDING, two cards on Bots (and on Keybot) ask for what Keybot still lacks: the keyboard with Full Access
+ * AFTER ONBOARDING, two cards on Bots (and on Keylessbord) ask for what Keylessbord still lacks: the keyboard with Full Access
  * (opens the keyboard's settings) and the microphone (asks for it, then opens First words). Each is drawn from what
  * the app itself reports into the screen's state (keyboardEnabled, keyboardReady, micGranted) and goes once it is on.
  *
@@ -74,14 +74,14 @@ const W = {
   codeNote: "Nothing else in your messages is read.",
   langH: "Which languages do you speak?",
   langP: "Pick every one you use, at home, at work, with friends.",
-  langMix: "Mix them freely. Keybot follows how you talk.",
+  langMix: "Mix them freely. Keylessbord follows how you talk.",
   youH: "What's your name?",
   youP: "So your bots know what to call you, and how to write for you.",
   youGender: "You are",
   youMissing: "Add your name and pick one.",
   nameH: "What will you call me?",
   nameP: "I'm the one in charge. Your other bots report to me and call me by this name. Say it to talk to me.",
-  keyH: "Turn on Keybot",
+  keyH: "Turn on Keylessbord",
   keyP: "Speak instead of type, in every app",
   wordsH: "Now just talk",
   plansH: "Pick a plan",
@@ -169,7 +169,7 @@ const deskBlip = (pose: BlipPose, h: number): Node => box([blip(pose, h)], { ali
 function fourDots(): Node {
   const dots = [PALETTE_HEX.moss!, CLAY, PALETTE_HEX.ochre!, PALETTE_HEX.sea!];
   return shapes(dots.map((fill, i) => ({ circle: [4 + i * 14, 4, 4] as [number, number, number], fill, motion: "pop" as const, delayMs: i * 90 })), {
-    viewBox: "0 0 50 8", width: 50, height: 8, label: "Your first bots: Code bot, Keybot, Plan bot and Travel bot",
+    viewBox: "0 0 50 8", width: 50, height: 8, label: "Your first bots: Xode, Keylessbord, Plan Ease and Travel bot",
   });
 }
 
@@ -472,9 +472,9 @@ function welcomePhone(start: ActionRef, fig: Figure): { body: Node[]; footer: No
 }
 
 const FIRST_BOTS: Array<{ slug: string; name: string; line: string }> = [
-  { slug: "code", name: "Code bot", line: "Fixes bugs in your code, and asks before anything ships." },
-  { slug: "keybot", name: "Keybot", line: "Speak instead of type, in every app." },
-  { slug: "plan", name: "Plan bot", line: "Plans your day. Moves things only when you say yes." },
+  { slug: "code", name: "Xode", line: "Fixes bugs in your code, and asks before anything ships." },
+  { slug: "keybot", name: "Keylessbord", line: "Speak instead of type, in every app." },
+  { slug: "plan", name: "Plan Ease", line: "Plans your day. Moves things only when you say yes." },
   { slug: "travel", name: "Travel bot", line: "Tickets, refunds and the waiting on hold." },
 ];
 
@@ -801,7 +801,7 @@ function language(ctx: BotsCtx, data: Langs | undefined): ScreenResponse {
   const desk = ctx.client === "desktop";
   const options = data?.options?.length ? data.options : FALLBACK_LANGS;
   const picked = data?.picked?.length ? data.picked : ["hinglish", "hi", "en"];
-  // Reached from You (and Keybot's settings): saved, and back to where it was opened from.
+  // Reached from You (and Keylessbord's settings): saved, and back to where it was opened from.
   const next = call("PUT", "/v1/personality", { languages: "$state.langs" }, { ok: seq(saved("Saved"), back), fail: toast(W.saveErr) });
   const cont: ActionRef = { kind: "condition", if: { truthy: "langs" }, then: next, else: toast("Pick at least one language.") } as ActionSpec;
   const chips = row(options.map((l) => langChip(l, desk)), { gap: 8, flexWrap: "wrap" });
@@ -995,7 +995,7 @@ function nameStep(ctx: BotsCtx, fig: Figure): Node {
         ], { padding: 16, gap: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
         col([
           row([sectionLabel("How your bots will say it"), grow(), meta("Updates as you type", { size: 12 })], { paddingTop: 14, paddingHorizontal: 16, paddingBottom: 2, gap: 10 }),
-          box([says("plan", "the dentist can do Friday 10 am. Should I book it?", "Plan bot, reporting to the one in charge")], { paddingVertical: 14, paddingHorizontal: 16 }),
+          box([says("plan", "the dentist can do Friday 10 am. Should I book it?", "Plan Ease, reporting to the one in charge")], { paddingVertical: 14, paddingHorizontal: 16 }),
           divider(),
           box([says("travel", "the Goa refund is still with the airline. I'll ask again on Friday.", "Travel bot, in Activity")], { paddingVertical: 14, paddingHorizontal: 16 }),
         ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" }),
@@ -1009,7 +1009,7 @@ function nameStep(ctx: BotsCtx, fig: Figure): Node {
     row([fig("tada", 128)], { justifyContent: "center" }),
     phoneHeading(W.nameH, W.nameP),
     col([sectionLabel("Name"), fieldBox, ideas], { gap: 8 }),
-    col([sectionLabel("How your bots will say it"), says("plan", "the dentist can do Friday 10 am. Should I book it?", "Plan bot, reporting to the one in charge")], {
+    col([sectionLabel("How your bots will say it"), says("plan", "the dentist can do Friday 10 am. Should I book it?", "Plan Ease, reporting to the one in charge")], {
       backgroundColor: C.surface, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 10,
     }),
   ], [primaryButton("That's my name", save, { wide: true })])], { props: { stepId: "name" } });
@@ -1038,24 +1038,24 @@ function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenRespons
   });
 }
 
-// ===================================================================== Turn on Keybot
+// ===================================================================== Turn on Keylessbord
 
 /** GET /v1/bots/first-run/words: the account's words and audio seconds, all time; with a baseline, what came since. */
 interface Words { words: number; seconds: number; typingSeconds: number; totalWords: number; totalSeconds: number }
 
-/** Said by the pages in the app that open Keybot's setup, so its way out can be back to them (`leave`). */
+/** Said by the pages in the app that open Keylessbord's setup, so its way out can be back to them (`leave`). */
 const FROM_APP = { from: "app" } as const;
 const fromApp = (ctx: BotsCtx): boolean => ctx.params.from === "app";
 
 /**
- * Out of Keybot's setup (Turn on Keybot, then Now just talk): back to the page in the app that opened it. Opened by a
+ * Out of Keylessbord's setup (Turn on Keylessbord, then Now just talk): back to the page in the app that opened it. Opened by a
  * link instead (the keyboard's "Tap to set it up", a widget, the setup list) it is the app's only page, and back has
  * nowhere to go: so it is Home.
  */
 const leave = (ctx: BotsCtx): ActionSpec => (fromApp(ctx) ? back : go(SCREENS.home, undefined, true));
 
 /**
- * On to First words, in place of Turn on Keybot (so its Done leaves the setup, not back into it), with what has been
+ * On to First words, in place of Turn on Keylessbord (so its Done leaves the setup, not back into it), with what has been
  * said so far, so First words can count only what is said there.
  */
 const toFirstWords = (ctx: BotsCtx, w: Words | undefined): ActionSpec =>
@@ -1126,23 +1126,23 @@ function keyOnPhone(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
         divider(),
         step(2, { ios: "Allow Full Access", android: "Come back here" }, [
           when(ios, meta("Turn the switch on, then come back here", { size: 12 })),
-          when(android, meta("Keybot takes it from there", { size: 12 })),
+          when(android, meta("Keylessbord takes it from there", { size: 12 })),
         ]),
       ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" }),
       when(ios, col([
         text("Why full access?", { size: 14, weight: 600, lineHeight: 19 }),
-        row([icon("mic", { size: 16, color: C.grey70 }), text("Keybot needs the internet to turn your voice into text. Full Access is what lets a keyboard reach it.", { size: 13, lineHeight: 19, color: C.grey70, style: { flexShrink: 1 } })], { gap: 10, alignItems: "flex-start" }),
+        row([icon("mic", { size: 16, color: C.grey70 }), text("Keylessbord needs the internet to turn your voice into text. Full Access is what lets a keyboard reach it.", { size: 13, lineHeight: 19, color: C.grey70, style: { flexShrink: 1 } })], { gap: 10, alignItems: "flex-start" }),
         row([icon("lock", { size: 16, color: C.grey70 }), text("It only takes your words after you tap its mic key.", { size: 13, lineHeight: 19, color: C.grey70, style: { flexShrink: 1 } })], { gap: 10, alignItems: "flex-start" }),
       ], { backgroundColor: C.surface, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 10 })),
     ],
-    // One button: Continue opens Settings until the phone says Keybot is on, then goes on to try it.
+    // One button: Continue opens Settings until the phone says Keylessbord is on, then goes on to try it.
     footer: [
       when({ all: [ios, { not: ready }] }, primaryButton("Continue", openIos, { wide: true })),
       when({ all: [android, { not: ready }] }, primaryButton("Continue", openAndroid, { wide: true })),
       when(ready, primaryButton("Continue", toFirstWords(ctx, w), { wide: true })),
       when({ all: [ios, { not: ready }] }, meta("Opens X0 Bot in Settings. Come back here when it's on.", { size: 12, align: "center" })),
       when({ all: [android, { not: ready }] }, meta("Opens your keyboards. Come back here when it's on.", { size: 12, align: "center" })),
-      when(ready, meta("Keybot is on. Tap its mic key in any app.", { size: 12, align: "center" })),
+      when(ready, meta("Keylessbord is on. Tap its mic key in any app.", { size: 12, align: "center" })),
     ],
   });
 }
@@ -1165,26 +1165,26 @@ function keyOnDesk(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
         type: "DeskAskSetup",
         props: {
           place: "settings", on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
-          rows: [{ key: "read", title: "Accessibility", sub: "So Keybot can put the words where your cursor is, in any app." }],
+          rows: [{ key: "read", title: "Accessibility", sub: "So Keylessbord can put the words where your cursor is, in any app." }],
         },
       }], { paddingHorizontal: 4, paddingBottom: 4 })
-    : permRow("computer", "Accessibility", "If your Mac asks, allow X0 Bot in Privacy & Security › Accessibility, so Keybot can type where your cursor is.", null);
+    : permRow("computer", "Accessibility", "If your Mac asks, allow X0 Bot in Privacy & Security › Accessibility, so Keylessbord can type where your cursor is.", null);
   return deskFrame(ctx, {
     title: W.keyH, current: null,
     right: link("Not now", leave(ctx), { size: 14, color: C.grey70 }),
     left: [
       deskBlip("needs", 140),
-      deskHeading("Keybot", W.keyH, "Speak instead of type, in every app."),
+      deskHeading("Keylessbord", W.keyH, "Speak instead of type, in every app."),
       col([
         text("Why these two?", { size: 14, weight: 600, lineHeight: 19 }),
         why("mic", "The mic is on only while you hold the key. It never listens otherwise."),
-        why("lock", "Keybot types only where your cursor is, and only what you said."),
+        why("lock", "Keylessbord types only where your cursor is, and only what you said."),
       ], { backgroundColor: C.surface, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 16, gap: 10, maxWidth: 400 }),
     ],
     main: [
       col([
         box([meta("In this computer's settings", { size: 12 })], { paddingTop: 14, paddingHorizontal: 16, paddingBottom: 4 }),
-        permRow("mic", "Microphone", "So Keybot hears you while you hold the key. Your computer asks the first time.", null),
+        permRow("mic", "Microphone", "So Keylessbord hears you while you hold the key. Your computer asks the first time.", null),
         divider(),
         access,
       ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" }),
@@ -1192,7 +1192,7 @@ function keyOnDesk(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
         row([sectionLabel("Key to hold while you speak"), grow(), meta("Change it later in Settings", { size: 12 })], { gap: 10 }),
         keys
           ? row([{ type: "Keys", props: { source: "hotkey" } }, text("Hold it in any app, speak, let go.", { size: 14, lineHeight: 19, color: C.grey70 })], { gap: 12, flexWrap: "wrap" })
-          : text("Hold your Keybot key in any app, speak, let go.", { size: 14, lineHeight: 19, color: C.grey70 }),
+          : text("Hold your Keylessbord key in any app, speak, let go.", { size: 14, lineHeight: 19, color: C.grey70 }),
       ], { padding: 16, gap: 12, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
     ],
     foot: deskFoot(deskBack(leave(ctx)), [
@@ -1230,7 +1230,7 @@ function spoken(w: Words | undefined, desk: boolean): Node | null {
   ], { gap: 10 });
 }
 
-/** The practice box: whatever Keybot writes into it stays on this page. */
+/** The practice box: whatever Keylessbord writes into it stays on this page. */
 function practiceField(desk: boolean): Node {
   return {
     type: "TextField", id: "said", bind: { value: "said" },
@@ -1247,7 +1247,7 @@ function practiceField(desk: boolean): Node {
 }
 
 /**
- * The keyboard of the phone's board, with Keybot's clay key. On a phone that has it, the clay key IS the mic, and works
+ * The keyboard of the phone's board, with Keylessbord's clay key. On a phone that has it, the clay key IS the mic, and works
  * as the real keyboard's does: tap it and speak, tap it again (the app's own VoiceButton: /v1/transcribe-clean, which
  * counts the words and the seconds), and the words land in the box above; then the numbers are worked out again.
  */
@@ -1263,7 +1263,7 @@ function keyboardArt(mic: Node | null): Node {
       row(wave.map((h) => box([], { width: 3, height: h, borderRadius: 2, backgroundColor: CLAY })), { height: 38, borderRadius: 7, backgroundColor: C.paper, flexGrow: 4, flexBasis: 0, gap: 3, justifyContent: "center" }),
       key({ height: 38, backgroundColor: C.track, flexGrow: 1.4 }),
     ], { gap: 5 }),
-  ], { backgroundColor: C.surface, borderRadius: 22, paddingTop: 10, paddingHorizontal: 8, paddingBottom: 12, gap: 8 }), mic ? "Keyboard: tap the clay key to speak" : "Keyboard with the clay Keybot mic key");
+  ], { backgroundColor: C.surface, borderRadius: 22, paddingTop: 10, paddingHorizontal: 8, paddingBottom: 12, gap: 8 }), mic ? "Keyboard: tap the clay key to speak" : "Keyboard with the clay Keylessbord mic key");
 }
 
 /**
@@ -1299,7 +1299,7 @@ function firstWords(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
     meta("Your words, and how long they took, show here once you've spoken.", { size: 13, lineHeight: 18 }),
     when({ truthy: "said" }, button("How fast was that?", check, { kind: "secondary", size: "md" })),
   ], { gap: 10 });
-  // Out of the setup, to where it was opened from (Turn on Keybot is no longer under it), or Home.
+  // Out of the setup, to where it was opened from (Turn on Keylessbord is no longer under it), or Home.
   const next = button(result ? "Nice, done" : "Done", leave(ctx), { size: "lg", wide: !desk });
   const state = { said, mic: "idle" };
 
@@ -1308,7 +1308,7 @@ function firstWords(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
       title: W.wordsH, right: signedInAs(ctx), current: null, state,
       left: [
         deskBlip("listen", 140),
-        deskHeading("Keybot", W.wordsH, "Hold your key and say anything, in any mix."),
+        deskHeading("Keylessbord", W.wordsH, "Hold your key and say anything, in any mix."),
         box([result ?? nothingYet], { maxWidth: 400 }),
       ],
       main: [col([
@@ -1317,7 +1317,7 @@ function firstWords(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
           grow(), meta("Try it here", { size: 13 }), grow(), box([], { width: 47 }),
         ], { height: 40, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: C.divider }),
         col([
-          meta("Just for practice. Keybot writes what you say here.", { size: 12 }),
+          meta("Just for practice. Keylessbord writes what you say here.", { size: 12 }),
           box([practiceField(true)], { borderWidth: 1.5, borderColor: C.ink, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 16, minHeight: 118 }),
           ctx.can.has("DeskShell")
             ? row([{ type: "Keys", props: { source: "hotkey" } }, meta("Hold, speak, let go to drop the words in.", { size: 12 })], { gap: 8, justifyContent: "center", flexWrap: "wrap" })
@@ -1338,7 +1338,7 @@ function firstWords(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
         col([
           row([
             icon("mic", { size: 14, color: CLAY }),
-            when({ eq: ["mic", "idle"] }, meta("Keybot writes here", { size: 12 })),
+            when({ eq: ["mic", "idle"] }, meta("Keylessbord writes here", { size: 12 })),
             when({ eq: ["mic", "recording"] }, meta("Listening. Tap the clay key again when you're done.", { size: 12, color: CLAY })),
             when({ eq: ["mic", "busy"] }, meta("Writing it down…", { size: 12 })),
           ], { gap: 8 }),
@@ -1465,13 +1465,13 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   });
 }
 
-// ===================================================================== after onboarding: one card for what Keybot still needs
+// ===================================================================== after onboarding: one card for what Keylessbord still needs
 
 /**
  * What the app reports into every screen's state: the phone's SduiApp writes keyboardEnabled, keyboardReady (Full
  * Access) and micGranted on a timer and on every return from Settings; a window that declares DeskMicAsk writes
  * micGranted from its own system's answer, and one that declares DeskAxState writes axGranted (the Mac's Accessibility
- * for Tailzu; any other system has none to give, so true) on each paint and each return to the window. Keybot
+ * for Tailzu; any other system has none to give, so true) on each paint and each return to the window. Keylessbord
  * declares them "on", so its card never flashes up for someone who has it all and then vanishes: it comes in once the
  * app says something is missing, and goes when it is on.
  */
@@ -1567,15 +1567,15 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
       ...(hasMic ? [mic({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] })] : []),
       ...(hasAx ? [permitStep({
         when: axRead ? { all: [axTurn, { falsy: "axGranted" }] } : axTurn,
-        title: "Let Keybot type for you",
-        lines: [line("Allow Accessibility so Keybot can put your words where your cursor is, in any app.")],
+        title: "Let Keylessbord type for you",
+        lines: [line("Allow Accessibility so Keylessbord can put your words where your cursor is, in any app.")],
         ...(askCard ? {
           extra: [{
             type: "DeskAskSetup",
             props: {
               place: "settings", eyebrow: "", title: "", titleEm: "", lede: "",
               on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
-              rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
+              rows: [{ key: "read", title: "Accessibility", sub: "Lets Keylessbord type what you said into the app you're in." }],
             },
           }],
         } : {
@@ -1615,7 +1615,7 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
     // closing then, so it is not also kept per device: a second account on the same phone still gets it.
     const wait: Condition | undefined = o.after ? (ready ? { all: [ready, { truthy: o.after }] } : { truthy: o.after }) : ready;
     return [botCard(steps, {
-      ...CARD_BOT, kind: "custom", overlay: true, width: desk ? 360 : 330, label: "Set up Keybot",
+      ...CARD_BOT, kind: "custom", overlay: true, width: desk ? 360 : 330, label: "Set up Keylessbord",
       ...(wait ? { readyWhen: wait } : {}), ...(done ? { doneWhen: done } : {}),
       closeWhen: { truthy: "permitClosed" }, ...(o.after ? {} : { once: "bots.arrival" }), doneDelayMs: CHEER_MS, onComplete: close,
     })];
@@ -1639,40 +1639,40 @@ export function keybotCard(ctx: BotsCtx): Node[] {
   const ask = {
     kind: "requestPermission", permission: "microphone",
     onGranted: seq(setState("micGranted", true), go(SCREENS.firstWords, FROM_APP)),
-    onDenied: seq(setState("micAsked", true), toast("Keybot can't hear you yet. Allow the microphone to speak.")),
+    onDenied: seq(setState("micAsked", true), toast("Keylessbord can't hear you yet. Allow the microphone to speak.")),
     onBlocked: seq(setState("micAsked", true), off),
   } as ActionSpec;
   const out: Node[] = [];
   if (desk) {
     if (ctx.can.has("DeskMicAsk")) {
       const steps = [permitStep({
-        when: { falsy: "micGranted" }, title: "Let Keybot hear you",
+        when: { falsy: "micGranted" }, title: "Let Keylessbord hear you",
         lines: [line("Allow the microphone, then say something to try it.")],
         cta: { label: "Allow microphone", onPress: ask },
       })];
       out.push(when({ falsy: "micGranted" }, canMove(ctx)
-        ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Let Keybot hear you" })
+        ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Let Keylessbord hear you" })
         : col(steps, { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper })));
     }
     if (ctx.can.has("DeskAskSetup")) {
       out.push({
         type: "DeskAskSetup",
         props: {
-          place: "home", eyebrow: "Keybot", title: "Turn on", titleEm: "Accessibility",
-          lede: "So Keybot can put your words where your cursor is, in any app.",
+          place: "home", eyebrow: "Keylessbord", title: "Turn on", titleEm: "Accessibility",
+          lede: "So Keylessbord can put your words where your cursor is, in any app.",
           on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
-          rows: [{ key: "read", title: "Accessibility", sub: "Lets Keybot type what you said into the app you're in." }],
+          rows: [{ key: "read", title: "Accessibility", sub: "Lets Keylessbord type what you said into the app you're in." }],
         },
       });
     } else if (ctx.can.has(AX_STATE)) {
       // No Ask card here: the same step as the arrival's, while this computer says Accessibility is off.
       const steps = [permitStep({
-        when: { falsy: "axGranted" }, title: "Let Keybot type for you",
-        lines: [line("Allow Accessibility so Keybot can put your words where your cursor is, in any app.")],
+        when: { falsy: "axGranted" }, title: "Let Keylessbord type for you",
+        lines: [line("Allow Accessibility so Keylessbord can put your words where your cursor is, in any app.")],
         cta: { label: "Open Settings", onPress: OPEN_AX },
       })];
       out.push(when({ falsy: "axGranted" }, canMove(ctx)
-        ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Let Keybot type for you" })
+        ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Let Keylessbord type for you" })
         : col(steps, { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper })));
     }
     return out;
@@ -1681,7 +1681,7 @@ export function keybotCard(ctx: BotsCtx): Node[] {
     permitStep({
       // The microphone first; refused, it waits behind the keyboard and comes back once the keyboard is on.
       when: { all: [{ falsy: "micGranted" }, { any: [{ falsy: "micAsked" }, KEYS_ON] }] },
-      title: "Let Keybot hear you",
+      title: "Let Keylessbord hear you",
       lines: [line("Allow the microphone, then say something to try it.")],
       cta: { label: "Allow microphone", onPress: ask },
     }),
@@ -1696,7 +1696,7 @@ export function keybotCard(ctx: BotsCtx): Node[] {
   // Drawn once the app says something is missing; when it is all on, the bot cheers on "X0 got you!" and the card goes.
   if (canMove(ctx)) {
     return [botCard([...steps, gotYou({ not: SOMETHING_MISSING })], {
-      ...CARD_BOT, kind: "custom", label: "Set up Keybot",
+      ...CARD_BOT, kind: "custom", label: "Set up Keylessbord",
       readyWhen: SOMETHING_MISSING, doneWhen: { not: SOMETHING_MISSING }, closeWhen: { truthy: "keybotSet" },
       doneDelayMs: CHEER_MS, onComplete: setState("keybotSet", true),
     })];

@@ -5,7 +5,7 @@
  *   send(user, slug, message)   asks the bot (Bots.ask: its rules, skills, apps, memory, budget) with the last turns as history, and keeps both turns
  *   clear(user, slug)           starts the chat over (what the bot remembers is its memory, forgotten on its own routes)
  *
- * The bot's memory (src/bots/memory.ts) keeps facts and a short summary; this keeps the words, so the page can show them. The Code bot
+ * The bot's memory (src/bots/memory.ts) keeps facts and a short summary; this keeps the words, so the page can show them. Xode
  * answers through the front door (its own page), not here.
  */
 import { randomUUID } from "node:crypto";
@@ -63,7 +63,7 @@ export class BotChat {
     if (message.length > LIMITS.message) throw new BotError("too_large", `A message may be ${LIMITS.message} characters at most.`, 413);
     const found = await this.bots.resolve(userId, slug);
     if (!found) throw new BotError("not_found", "There is no such bot.", 404);
-    if (found.def.slug === "code") throw new BotError("code_bot", "The Code bot answers on its own page.", 409);
+    if (found.def.slug === "code") throw new BotError("code_bot", "Xode answers on its own page.", 409);
     const said = message.trim();
     const before = await this.recent(userId, found.def.slug, LIMITS.history.turns);
     const history = before.map((t) => ({ role: t.role === "me" ? "user" as const : "assistant" as const, content: t.text.slice(0, LIMITS.history.chars) }));

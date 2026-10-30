@@ -3,7 +3,7 @@
  *
  *   types.ts      a bot's definition, its skills, the palette, the limits, BotError
  *   validate.ts   a definition checked (the palette only, the rules capped, the skills a schema); the owner's rules that try to change ours are inert
- *   builtin.ts    the Code bot, Keybot, the Plan bot and the Travel bot, in the same format
+ *   builtin.ts    Xode, Keylessbord, Plan Ease and the Travel bot, in the same format
  *   store.ts      bots, keys (hashed), commands, facts and threads: the memory twin and Supabase (migration 0038)
  *   keys.ts       an API key: made at random, shown once, kept as sha256 of a pepper and the key
  *   commands.ts   saved commands: a short template with {{input}}, run as /name
@@ -16,7 +16,7 @@
  *   run.ts        runBot(): the turn
  *   builder.ts    a draft from one sentence; nothing is saved
  *   door.ts       "Ask any bot": the front door picks the best bot, rules first, the tiny tier when unsure
- *   ports.ts      the seams to the connectors, the files, the artifact core, the Code bot and the web
+ *   ports.ts      the seams to the connectors, the files, the artifact core, Xode and the web
  *   service.ts    Bots: all of the above, owner only
  *
  * Off unless BOTS=true (config.ts). Nothing here reaches a network or a store unless it is called to; every piece takes its dependencies as

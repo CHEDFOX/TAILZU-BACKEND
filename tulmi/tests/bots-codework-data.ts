@@ -1,5 +1,5 @@
 /**
- * The Code bot at work, as the existing routes answer it: a job waiting on a quick question, a lead with two helpers, a job that
+ * Xode at work, as the existing routes answer it: a job waiting on a quick question, a lead with two helpers, a job that
  * shipped, one that could not finish, an approved design and the person's files. For tests/bots-codework.test.ts and the render
  * check (`npx tsx -e` prints CODEWORK_API as JSON for --api).
  */

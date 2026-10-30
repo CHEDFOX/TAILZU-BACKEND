@@ -57,7 +57,7 @@ export async function notifyApproval(userId: string, taskId: string, app: string
   } catch { /* a missed push is not a failed task: the card is still in the app */ }
 }
 
-/** The Code bot's job events (code/jobs/types.ts NotifyKind) as push kinds. */
+/** Xode's job events (code/jobs/types.ts NotifyKind) as push kinds. */
 const CODE_PUSH: Record<NotifyKind, EventPushKind> = {
   compute_ask: "code_compute_ask", compute_paused: "code_compute_paused", commit_ask: "code_commit_ask",
   job_moved: "code_job_moved", job_done: "code_job_done", job_failed: "code_job_failed", needs_you: "code_needs_you", minutes_low: "code_minutes_low",

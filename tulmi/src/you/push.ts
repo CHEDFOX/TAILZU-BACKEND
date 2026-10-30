@@ -5,9 +5,9 @@
  *   needs you    a bot is waiting on their answer or their yes: always sent; in quiet hours without a sound
  *   done         a job finished, stopped or moved: "ping" as before, "quiet" without a sound; in quiet hours not sent (it waits in Activity);
  *                not sent for a bot they turned off
- *   the rest     the engine's own reminders (Keybot's streak, the week): not sent in quiet hours, nor with Keybot turned off
+ *   the rest     the engine's own reminders (Keylessbord's streak, the week): not sent in quiet hours, nor with Keylessbord turned off
  *   summary      one note a day at their hour, only when they turned it on and something happened that day
- *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan bot off
+ *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan Ease off
  *   people       someone in a space gave them a task, planned something for them, or messaged them: sent; in quiet hours without a
  *                sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none: botsBots/threads.ts)
  *
@@ -22,7 +22,7 @@ import type { Spending } from "./limits.js";
 
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
-/** From people in a space (push/defaults.ts): quiet hours apply, Keybot being off does not. */
+/** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
 const PEOPLE = new Set(["space_task", "space_plan", "space_message"]);
 
 /** The person's minute of the day, in their own time. */
@@ -43,7 +43,7 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
     if (quiet || n.botsOff.includes("code")) return "drop";
     return n.done === "quiet" ? "silent" : "send";
   }
-  // The engine's own reminders are Keybot's (streak, refill, the week).
+  // The engine's own reminders are Keylessbord's (streak, refill, the week).
   if (quiet || n.botsOff.includes("keybot")) return "drop";
   return "send";
 }

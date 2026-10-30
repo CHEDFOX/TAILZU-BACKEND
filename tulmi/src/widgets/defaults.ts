@@ -221,7 +221,7 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
     "x0.needs.max": 3,
     "x0.needs.choicesMax": 3,
     // Kinds whose words never show on a locked phone (a bot also marks a question private itself). A connected app's yes says personal
-    // things (an event, a message); a Code bot's question is about code.
+    // things (an event, a message); a Xode's question is about code.
     "x0.needs.private": ["approval"],
     // A finished job is "the last thing done" for this long after it ended, until the person opens it.
     "x0.done.windowMin": 120,
@@ -277,8 +277,8 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
     "widgets.needs.answer": "Answer",
 
     // Who a bot's row is from (a connected app's yes belongs to the built-in whose skills name the app, else X0 itself).
-    "widgets.who.code": "Code bot",
-    "widgets.who.plan": "Plan bot",
+    "widgets.who.code": "Xode",
+    "widgets.who.plan": "Plan Ease",
     "widgets.who.travel": "Travel bot",
     "widgets.who.tailzu": "X0",
 

@@ -8,8 +8,8 @@
  *
  * What feeds what (all real records):
  *   bots        GET /v1/bots's list (BOTS on), else the four built-ins
- *   working     a Code bot job that is queued / running / waiting for a computer; a connected-app task that is running
- *   needs you   a Code bot job waiting for the person's answer (its question and options) or yes; a task waiting for approval
+ *   working     a Xode job that is queued / running / waiting for a computer; a connected-app task that is running
+ *   needs you   a Xode job waiting for the person's answer (its question and options) or yes; a task waiting for approval
  *   the week    jobs and tasks that ended done since Monday, and the minutes writing by voice saved (history stats)
  *   spend       ours, never drawn: what the month's jobs spent, against DEFAULT_MONTH_BUDGET_PAISE; with the You tab's source set
  *               (setSpendSource, src/you), the month over every bot's records
@@ -33,7 +33,7 @@ export interface BotLite {
   builtin: boolean;
 }
 
-/** A Code bot job: its state, and the question its agent is waiting on (if any). */
+/** A Xode job: its state, and the question its agent is waiting on (if any). */
 export interface JobLite {
   id: string;
   task: string;
@@ -98,7 +98,7 @@ export const DEFAULT_MONTH_BUDGET_PAISE = 50_000;
 export interface UsageLive { used: number; month: number; state: "ok" | "near" | "out"; resetsAt: number | null; windows: boolean }
 
 /**
- * The month over every bot (the Code bot's jobs and the other bots' answers) and the usage meter, from the You tab's records (src/you;
+ * The month over every bot (Xode's jobs and the other bots' answers) and the usage meter, from the You tab's records (src/you;
  * routes/botsYou.ts sets it when the server starts). Read through the person's own `api`. Unset (tests, the render check) or failing: the
  * jobs' month against deps.budgetPaise(), as before.
  */
@@ -116,7 +116,7 @@ export interface LiveBot extends BotLook {
   builtin: boolean;
   /** needs if anything of its needs the person, else working if it is busy, else idle. */
   state: BotState;
-  /** Busy right now (a bot can be busy AND waiting on the person: Home's Code bot is both). */
+  /** Busy right now (a bot can be busy AND waiting on the person: Home's Xode is both). */
   working: boolean;
   /** How many of its things wait on the person. */
   needs: number;
@@ -216,7 +216,7 @@ export function greetingAt(now: number, tzOffsetMinutes: number): string {
 function jobChoices(job: JobLite): Choice[] {
   const answer = (text: string): ActionSpec => ({
     kind: "callEndpoint", method: "POST", path: `/v1/code/jobs/${job.id}/answer`, body: { answer: text },
-    onSuccess: { kind: "sequence", actions: [{ kind: "toast", message: "Sent to Code bot" }, { kind: "refresh" }] },
+    onSuccess: { kind: "sequence", actions: [{ kind: "toast", message: "Sent to Xode" }, { kind: "refresh" }] },
     onError: { kind: "toast", message: "Couldn't send that. Try again.", tone: "error" },
   });
   const opts = (job.question?.options ?? []).filter((o) => o.trim()).slice(0, 2);
@@ -337,9 +337,9 @@ export function liveFrom(i: LiveInput): BotsLive {
 
 /** The built-ins' own words, for when the bots platform is off (src/bots/builtin.ts is the source when it is on). */
 const BUILTIN_LITE: Record<(typeof BUILTIN_SLUGS)[number], { name: string; purpose: string }> = {
-  code: { name: "Code bot", purpose: "Reads your projects, answers questions about the code, and changes it through pull requests." },
-  keybot: { name: "Keybot", purpose: "Writes, rewrites and replies in your own voice, in any language you mix." },
-  plan: { name: "Plan bot", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list." },
+  code: { name: "Xode", purpose: "Reads your projects, answers questions about the code, and changes it through pull requests." },
+  keybot: { name: "Keylessbord", purpose: "Writes, rewrites and replies in your own voice, in any language you mix." },
+  plan: { name: "Plan Ease", purpose: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list." },
   travel: { name: "Travel bot", purpose: "Plans trips: routes, stays and timings, with sources." },
 };
 

@@ -1,6 +1,6 @@
 /**
  * "SHARE TO A SPACE OR PERSON", FROM ANY ITEM THE APP SHOWS: a plan, a trip, a list, a meeting note, a file, a link, a bot's answer, a
- * Code bot preview. It opens bots.share (screens/spaces.ts) with what the item is; the person picks a space or someone, and the server
+ * Xode preview. It opens bots.share (screens/spaces.ts) with what the item is; the person picks a space or someone, and the server
  * keeps it (POST /v1/botsapp/bots/shares; src/botsBots/shared.ts checks what it can: a file must be theirs, a trip comes from their own).
  *
  *   button("Share", shareTo({ kind: "trip", ref: trip.id, title: `Trip to ${trip.place}` }), { kind: "secondary", icon: "share" })

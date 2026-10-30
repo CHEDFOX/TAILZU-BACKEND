@@ -1,5 +1,5 @@
 /**
- * The Code bot's GitHub side, against a fake GitHub (tests/github-fake.ts):
+ * Xode's GitHub side, against a fake GitHub (tests/github-fake.ts):
  * the App's JWT and installation tokens, tying an install to a person,
  * listing repos, projects, work branches, the names and paths that are never
  * right, commits, draft PRs, the workspace the bot will use, and what the

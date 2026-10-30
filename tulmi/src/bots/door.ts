@@ -4,13 +4,13 @@
  *   pickBot(deps, userId, message, bots, ctx) -> { bot | null, by, confidence, reasons }
  *
  * `bot: null` is "none of them": the message goes down the front door's own roads as it always has (docs/front-door.md), which is also where the
- * Code bot's flows are. So picking the Code bot and picking nobody are the same road; the difference is only that the person is shown "Code bot".
+ * Xode's flows are. So picking Xode and picking nobody are the same road; the difference is only that the person is shown "Xode".
  *
  *   1. @name           the message opens with a bot's slug: that bot, for nothing, and the @name is taken off the words
  *   2. the rules       each bot is scored from what is known for free, the same words always giving the same answer:
  *                        - its purpose and name against the message (words stemmed, Hinglish and Hindi read through a small table of what people say)
- *                        - what a built-in is for (Keybot writes and rewrites, Plan plans, Travel travels) in English, Hinglish and Hindi
- *                        - the front door's own reading of the message (a question about code in a project is the Code bot's)
+ *                        - what a built-in is for (Keylessbord writes and rewrites, Plan plans, Travel travels) in English, Hinglish and Hindi
+ *                        - the front door's own reading of the message (a question about code in a project is Xode's)
  *                        - the apps the message names or the job it describes, against the connected apps a bot was given (connectors/intent.ts)
  *                        - what the bot can do: an attached file wants Files, a chart wants Artifacts, "the latest" wants Web or Research
  *                      Sure when the best bot has 6 points and leads the next by 3; nothing scored two points: no bot, no model asked
@@ -137,7 +137,7 @@ export function scoreBots(
     let points = 0;
     const add = (n: number, id: string): void => { points += n; reasons.push(id); };
 
-    // The Code bot is the front door's: code words in a project, and the questions and designs the front door sends down the Code bot's roads.
+    // Xode is the front door's: code words in a project, and the questions and designs the front door sends down Xode's roads.
     if (bot.slug === CODE_SLUG) {
       if (ctx.projectId && ["code_question", "code_task", "design"].includes(front.intent)) add(Math.round(6 + front.confidence * 6), `code:${front.intent}`);
       else if (!ctx.projectId && ["code_question", "code_task"].includes(front.intent) && front.confidence >= 0.7) add(4, "code:no_project");

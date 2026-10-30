@@ -468,7 +468,7 @@ describe("a person's edits and the viewer's errors", () => {
   });
 });
 
-// ------------------------------------------------------------------ the Code bot's routes
+// ------------------------------------------------------------------ Xode's routes
 
 describe("a component in place, and build it", () => {
   const FILES = {
@@ -526,7 +526,7 @@ describe("a component in place, and build it", () => {
     expect((await call("alice", "POST", url, {})).statusCode).toBe(400);
   });
 
-  it("is the project's owner's: another person's project, or none, is 404; with no Code bot or no brain it says which is off", async () => {
+  it("is the project's owner's: another person's project, or none, is 404; with no Xode or no brain it says which is off", async () => {
     const { a, call } = await codeRig();
     const url = `/v1/code/projects/${a.project.id}/artifacts/component`;
     expect((await call("bob", "POST", url, { request: "a card" })).statusCode).toBe(404);

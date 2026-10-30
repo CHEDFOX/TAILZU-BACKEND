@@ -1,5 +1,5 @@
 /**
- * PLACES: WHERE THINGS ARE, HOW LONG IT TAKES BETWEEN THEM, AND THE WEATHER THERE. For the Plan bot's travel times and the Travel bot's
+ * PLACES: WHERE THINGS ARE, HOW LONG IT TAKES BETWEEN THEM, AND THE WEATHER THERE. For Plan Ease's travel times and the Travel bot's
  * trip (src/botsBots/planTravel.ts, tripExtras.ts). Every provider is behind an interface (types.ts) with an address in the config, so
  * a public server today becomes one we run tomorrow by changing one setting.
  *

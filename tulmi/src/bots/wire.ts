@@ -4,11 +4,11 @@
  *   botPorts({ connectors, media, artifacts, code, call, gateway }) -> BotPorts
  *
  * Nothing here is new behaviour: the connected apps are connectors/ (the same permission tiers), the files are media/ (read once, searched by
- * chunk), the artifacts are artifacts/ (the same checks), the web is code/webTools.ts, and a question about a person's project is the Code bot's own
+ * chunk), the artifacts are artifacts/ (the same checks), the web is code/webTools.ts, and a question about a person's project is Xode's own
  * chat (code/chat), read-only, on the cheap tier, as the front door asks it. Only server.ts imports this file, so the platform itself stays light.
  *
  * In front of the connected apps sit Tailzu's own calendar and to-dos ("calendar", "tasks": src/calendar/bots.ts), always on, so a bot
- * given them (the Plan bot is) reads and writes the person's own days, with or without connected apps switched on.
+ * given them (Plan Ease is) reads and writes the person's own days, with or without connected apps switched on.
  */
 import type { Artifacts } from "../artifacts/index.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
@@ -30,7 +30,7 @@ export interface WireOptions {
   gateway?: GatewayDeps;
 }
 
-/** A question about a person's project, answered by the Code bot's chat: the cheap tier, a short answer, nothing kept. Null while the Code bot or its brain is off. */
+/** A question about a person's project, answered by Xode's chat: the cheap tier, a short answer, nothing kept. Null while Xode or its brain is off. */
 export function codeAskPort(code: Code | null | undefined, o: Pick<WireOptions, "call" | "gateway"> = {}): CodeAsk | null {
   if (!code?.github || !code.brain) return null;
   const projects: ProjectDeps = { store: code.store, github: code.github, approvals: code.approvals, oauth: code.oauth };

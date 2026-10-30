@@ -10,7 +10,7 @@
  *   POST /v1/ask                  → screen: screen content + question → answer
  *   POST /v1/agent                → Ask: one step of the on-screen agent (NDJSON)
  *   /v1/connectors, /v1/tasks     → connected apps and the assistant's tasks (CONNECTORS)
- *   /v1/code/*                    → the Code bot: connect GitHub, projects, work branches (CODE_GITHUB)
+ *   /v1/code/*                    → Xode: connect GitHub, projects, work branches (CODE_GITHUB)
  *   GET  /oauth/client-metadata.json → Tailzu's published OAuth client, for the apps' sign-in (CIMD)
  *   POST /v1/assistant/ask        → the phone's Ask: one command, one JSON answer (CONNECTORS)
  *   POST /v1/speak                → voice out: text → spoken audio (TTS)
@@ -362,7 +362,7 @@ app.setErrorHandler((err, req, reply) => {
 });
 
 // What each request really cost us, for the usage meter (usage/cost.ts): a tally of its own that the calls it makes outside the brain's
-// gateway add OpenRouter's charge to (Keybot's rewrites, the old Ask), written to the meter with its usage row; what is left when the
+// gateway add OpenRouter's charge to (Keylessbord's rewrites, the old Ask), written to the meter with its usage row; what is left when the
 // response goes (a request that failed after a model answered) is charged to whoever enforceQuota said it was for.
 app.addHook("preHandler", costTallyHook);
 app.addHook("onResponse", async (req) => { await settleCostTally(req); });
@@ -1093,7 +1093,7 @@ const ledger = new RunLedger({ log: app.log });
 const stopRuns = startRunSweeper({ store: runStore(), log: app.log });
 app.addHook("onClose", async () => { stopRuns(); });
 registerConnectorRoutes(app, { rateLimit: AUTHED_RL, connectors });
-// The Code bot's GitHub side: connect an install, pick a repo, start a work
+// Xode's GitHub side: connect an install, pick a repo, start a work
 // branch (src/code). Off unless CODE_GITHUB is true; the routes then answer
 // 404 code_off, and with the GitHub App not set up, 503 not_configured.
 // With CODE_JOBS_MODE=cloudflare the jobs (the agent loop, the project brain's builds) run on the Worker in jobs/: this server hands
@@ -1109,7 +1109,7 @@ if (code?.brain) {
   code.brain.useLog(app.log);
   app.addHook("onClose", async () => { code.brain!.dispose(); });
 }
-// The Code bot's jobs and the environment router (src/code/jobs, docs/code-router.md): where each step that
+// Xode's jobs and the environment router (src/code/jobs, docs/code-router.md): where each step that
 // needs a computer runs (the person's PC, then GitHub's free minutes, then paid compute by their own rule), the
 // runner protocol the desktop app will speak, and a ticker (every 15 s, started when the server is ready and
 // stopped when it closes) that takes back leases that ran out and looks at the steps out on GitHub.
@@ -1154,7 +1154,7 @@ registerCodeJobRoutes(app, {
   ...(jobsHandoff ? { tickEveryMs: null, onStepResult: (jobId: string) => { void jobsHandoff.wake(jobId, "runner"); } } : {}),
 });
 // Artifacts (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, run by the viewer in a
-// sandbox with no network. Off unless ARTIFACTS is true (the routes then answer 404 artifacts_off). With the Code bot on, a project's
+// sandbox with no network. Off unless ARTIFACTS is true (the routes then answer 404 artifacts_off). With Xode on, a project's
 // artifacts look like the project and "build it" makes a job (the routes use `code`, the job router and the agent above).
 const artifacts = createArtifacts({ log: app.log });
 registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJobs, agent: codeAgent, viewer: liveViewerOf(cfg) });
@@ -1170,9 +1170,9 @@ registerFilesRoutes(app, { rateLimit: AUTHED_RL, media, artifacts, code });
 const attachments = new AttachmentRegistry();
 if (media) registerMedia(attachments, media);
 const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, log: app.log, attachments });
-// The bots platform (src/bots, docs/bots.md): everything is a bot (Code, Keybot, Plan, Travel), and a person makes their own, each with its tools, knowledge, memory and an
+// The bots platform (src/bots, docs/bots.md): everything is a bot (Code, Keylessbord, Plan, Travel), and a person makes their own, each with its tools, knowledge, memory and an
 // API endpoint for their own apps. Off unless BOTS is true: /v1/bots answers 404 bots_off and "Ask any bot" on POST /v1/ask does too. It runs on what is above: the connected
-// apps (same permission tiers), the files, the artifact core, the Code bot's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
+// apps (same permission tiers), the files, the artifact core, Xode's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
 const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent };
@@ -2271,7 +2271,7 @@ app.post("/v1/speak", { config: AUTHED_RL }, async (req, reply) => {
   const over = tooLong(body.text) ?? tooLong(body.instructions);
   if (over) return reply.code(413).send({ code: "bad_request", message: over });
 
-  // How fast to read: the speed they chose on Keybot's Read aloud page (normal when none).
+  // How fast to read: the speed they chose on Keylessbord's Read aloud page (normal when none).
   const [quota, prefs] = await Promise.all([enforceQuota(user), getPrefs(user).catch(() => ({} as KeybotPrefs))]);
   if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
   const speed = readSpeed(prefs);
@@ -3443,7 +3443,7 @@ async function eraseAccount(admin: NonNullable<ReturnType<typeof supabase>>, use
     ["usage_events", "usageEvents"], ["personalities", "personality"], ["profiles", "profile"],
     ["cleanup_history", "history"], ["push_tokens", "pushTokens"],
     ["keyboard_telemetry", null], ["push_log", null], ["entitlements", null],
-    // The Code bot's GitHub links and projects (a project's branches go with it: code_branches
+    // Xode's GitHub links and projects (a project's branches go with it: code_branches
     // has no user_id, and cascades from code_projects, as do the project brain's four tables,
     // code_brain, code_brain_files, code_brain_dirs and code_brain_texts: migration 0028).
     ["code_installations", null], ["code_projects", null], ["code_oauth_links", null],
@@ -3486,7 +3486,7 @@ async function eraseAccount(admin: NonNullable<ReturnType<typeof supabase>>, use
 // eraseAccount on the day. No service key, no deleting: the ask is refused (503), as DELETE /v1/account is above.
 registerAccountDeletionRoutes(app, {
   rateLimit: AUTHED_RL,
-  // The person's bots stop when the date is set: their running Code bot jobs are stopped.
+  // The person's bots stop when the date is set: their running Xode jobs are stopped.
   jobs: codeJobs, agent: codeAgent,
   erase: supabase() ? async (userId) => {
     const admin = supabase();
@@ -3530,7 +3530,7 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, asy
    * reach for the button, so the keyboard is given the number too.
    */
   let quota: { remaining: number; total: number; entitled: boolean } | undefined;
-  /** What they chose on Keybot's Keyboard page (look, haptics, key height…), laid over the config below. */
+  /** What they chose on Keylessbord's Keyboard page (look, haptics, key height…), laid over the config below. */
   let keybot: KeybotPrefs["keyboard"];
   /** The language the app is in, so the keyboard's words are in it too (localizeKeyboardLabels). */
   let language: string | undefined;
@@ -3573,7 +3573,7 @@ app.get("/v1/keyboard/config", { config: AUTHED_RL, onSend: gzipLargeJson }, asy
     "keyboard config",
   );
   const isIosStamp = !!stamp && stamp[1]!.toUpperCase() === "K";
-  // Keybot's keyboard choices go over the built config (nothing chosen → the same config, byte for byte), and
+  // Keylessbord's keyboard choices go over the built config (nothing chosen → the same config, byte for byte), and
   // under the control rules below, so the console still has the last word.
   const kbConfig = withKeybotKeyboard(buildKeyboardConfig(personality, userId, {
     platform: kbPlatform,

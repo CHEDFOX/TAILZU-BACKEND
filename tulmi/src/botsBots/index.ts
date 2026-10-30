@@ -6,7 +6,7 @@
  *   shop.ts     Find a bot: Tailzu's ready-made bots and the ones people listed; add a copy
  *   usage.ts    what each API key of a bot used this month
  *   spaces.ts   spaces: members, shared bots, who approves payments, invites by code
- *   plan.ts     the Plan bot's tomorrow and week from the person's own calendar and to-dos (src/calendar), and the change it suggests
+ *   plan.ts     Plan Ease's tomorrow and week from the person's own calendar and to-dos (src/calendar), and the change it suggests
  *   trips.ts    the Travel bot's trip: where, when, who, packing, its main places and stays
  *   planTravel.ts, tripExtras.ts   travel times, weather and stays compared, over src/places (look.ts, later.ts: from memory now,
  *               the rest looked up after and the screen told); stays.ts, tripDates.ts
@@ -106,9 +106,9 @@ export function shareAsk(slug: string, kind: "file" | "link" | "text"): string {
 export function shareLine(slug: string, name: string): string {
   switch (slug) {
     case "travel": return "Travel bot adds the times and booking details to your trip. It won't book or pay for anything.";
-    case "plan": return "Plan bot puts it on your calendar in X0 Bot. You can change it or take it out any time.";
-    case "code": return "Code bot reads it and answers. It changes code only through a pull request you approve.";
-    case "keybot": return "Keybot writes it in your voice. You send it yourself.";
+    case "plan": return "Plan Ease puts it on your calendar in X0 Bot. You can change it or take it out any time.";
+    case "code": return "Xode reads it and answers. It changes code only through a pull request you approve.";
+    case "keybot": return "Keylessbord writes it in your voice. You send it yourself.";
     default: return `${name} reads it and answers here. It asks before it changes anything or spends money.`;
   }
 }

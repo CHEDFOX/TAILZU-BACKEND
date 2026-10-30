@@ -1,5 +1,5 @@
 /**
- * The Code bot's routes: off, not set up, behind a session, the install flow
+ * Xode's routes: off, not set up, behind a session, the install flow
  * from the install link to the done page, repos, projects, work branches and
  * draft PRs, and GitHub's webhook through the real server (so the raw body it
  * signs is the one the server keeps).
@@ -110,7 +110,7 @@ const ALL_ROUTES: Array<["GET" | "POST" | "DELETE", string]> = [
 
 // ------------------------------------------------------------ off, not set up
 
-describe("with the Code bot off", () => {
+describe("with Xode off", () => {
   it("answers 404 code_off on every route, with or without a session", async () => {
     const app = Fastify();
     registerCodeRoutes(app, { rateLimit: RL, code: null });
@@ -1291,7 +1291,7 @@ describe("logs", () => {
 
 // ------------------------------------------------------------ the webhook, through the real server
 
-describe("the real server with the Code bot on: GitHub's webhook, and deleting an account", () => {
+describe("the real server with Xode on: GitHub's webhook, and deleting an account", () => {
   let app: FastifyInstance;
   const store = () => codeStore();
   const hook = (event: string, payload: unknown, o: { signature?: string | null; raw?: string } = {}) => {
@@ -1518,7 +1518,7 @@ describe("the real server with the Code bot on: GitHub's webhook, and deleting a
   });
 });
 
-describe("the real server with the Code bot off", () => {
+describe("the real server with Xode off", () => {
   // The default: no CODE_GITHUB line in the environment.
   it("answers 404 code_off on every route, the webhook and the callback included", async () => {
     const saved = process.env.CODE_GITHUB;

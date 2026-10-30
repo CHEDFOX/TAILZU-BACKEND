@@ -23,8 +23,8 @@
  *   GET    /v1/you/export/file?t=       -> the same, for the browser: the signed link from GET /v1/you (no session; 30 minutes)
  *   POST   /v1/you/data/delete          -> { ok, cleared }  chats, notes and files go; the account, plan, bots and projects stay
  *
- * Plugged in here too, on the services the server already made (src/you/limits.ts, push.ts): the usage limits on the Code bot's job routes, on
- * the bots platform's answers and on Keybot and Ask (metering.setUsageGate), every bot answer's cost written down, and what Keybot, Ask and
+ * Plugged in here too, on the services the server already made (src/you/limits.ts, push.ts): the usage limits on Xode's job routes, on
+ * the bots platform's answers and on Keylessbord and Ask (metering.setUsageGate), every bot answer's cost written down, and what Keylessbord, Ask and
  * notes really cost (usage/cost.ts setCostSink), the push engine's gate for
  * "What pings you" and the daily summary, a computer remembered when it sends a heartbeat, and the tab ring's numbers (live.ts setSpendSource).
  */
@@ -50,7 +50,7 @@ import { APP_COMPUTER, computerOs, youStore } from "../you/store.js";
 const SIGNED_IN_FOR_MS = 30 * 86_400_000;
 import type { BotsAreaDeps } from "./botsArea.js";
 
-/** The bots each app is for when the person made no bot of their own that uses it (builtin.ts skills). None today: the Plan bot runs on
+/** The bots each app is for when the person made no bot of their own that uses it (builtin.ts skills). None today: Plan Ease runs on
  *  Tailzu's own calendar and to-dos (src/calendar), which are not connected apps. */
 const BUILTIN_APPS: Record<string, string[]> = {};
 
@@ -83,9 +83,9 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
   if (deps.bots) wrapBots(deps.bots, spending);
   if (deps.jobs) holdJobsToUsage(app, spending, deps.jobs);
   setUsageGate(async (userId) => (await spending.refusal(userId))?.message ?? null);
-  // What Keybot, Ask and notes really cost (usage/cost.ts), written down for the meter.
+  // What Keylessbord, Ask and notes really cost (usage/cost.ts), written down for the meter.
   setCostSink((userId, usd, bot) => spending.recordUsd(userId, bot, usd));
-  // Whether a person's month is used in stretches, for a Code bot job's pause ("this month" on the free plan).
+  // Whether a person's month is used in stretches, for a Xode job's pause ("this month" on the free plan).
   setUsageSpan(async (userId) => (await spending.usage(userId)).plan.windows);
   setPushGate(pushGate(spending));
   setSpendSource(async (botsDeps, tz) => botsDeps.api<{ limitPaise: number; monthPaise: number; usage?: LiveUsage }>("GET", `/v1/you/live?tz=${Math.round(tz)}`));

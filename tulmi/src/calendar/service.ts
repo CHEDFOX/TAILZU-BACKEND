@@ -9,7 +9,7 @@
  *   landSpace(user, item) / unlandSpace(taskId, user?)    a space's task or plan for this person, kept on their days "From <name>"
  *   remind(now, send)                     every reminder that is due, sent once (the push engine), and the next one worked out
  *
- * `source` says where a thing came from: the person, a bot ("Plan bot"), someone in a space, a meeting's to-do. Someone else's plan
+ * `source` says where a thing came from: the person, a bot ("Plan Ease"), someone in a space, a meeting's to-do. Someone else's plan
  * or task is theirs to change: here it can be ticked, or said no to ("Can't do it", through the space), and nothing else.
  * Every change tells the person's open screens (live "calendar", "tasks", "bot:plan").
  */
@@ -35,7 +35,7 @@ export interface CalEvent {
   day: string;
   repeat: Repeat;
   remindMin: number | null;
-  /** Who put it there, when not the person: "Meera S.", "Plan bot", a meeting's title. */
+  /** Who put it there, when not the person: "Meera S.", "Plan Ease", a meeting's title. */
   from: string | null;
   source: Source["kind"];
   /** Someone else's: only they change it. */
@@ -351,7 +351,7 @@ export class Calendar {
     this.publish(userId);
   }
 
-  /** To another start, the same length (the Plan bot's suggestion, said yes to). One start of a series moves alone. */
+  /** To another start, the same length (Plan Ease's suggestion, said yes to). One start of a series moves alone. */
   async moveEvent(userId: string, id: unknown, startMs: number): Promise<CalEvent> {
     if (!Number.isFinite(startMs)) throw bad("start is when it moves to.");
     const { row, day } = await this.eventRowOf(userId, id);

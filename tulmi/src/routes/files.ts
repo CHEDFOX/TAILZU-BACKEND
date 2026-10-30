@@ -197,7 +197,7 @@ export function registerFilesRoutes(app: FastifyInstance, deps: FilesRoutesDeps)
       if (b[k] !== undefined && (typeof b[k] !== "string" || !(b[k] as string) || (b[k] as string).length > 500)) return reply.code(400).send({ code: "bad_request", message: `${k} is text, up to 500 characters.` });
     }
     const code = deps.code;
-    if (!code) return reply.code(404).send({ code: "code_off", message: "The Code bot is not switched on." });
+    if (!code) return reply.code(404).send({ code: "code_off", message: "Xode is not switched on." });
     const pd = projectDepsOf(code);
     if (!pd) return reply.code(503).send({ code: "not_configured", message: "GitHub isn't set up on this server yet." });
     try {

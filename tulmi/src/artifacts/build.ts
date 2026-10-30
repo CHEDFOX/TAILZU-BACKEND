@@ -3,7 +3,7 @@
  *
  * The person has looked at a design (an artifact, made in their project's style by kit.ts componentArtifact or by a bot),
  * clicked around it, changed what they wanted, and said "build it". buildFromArtifact(...) turns that version into a
- * Code bot job:
+ * Xode job:
  *
  *   1. the artifact is read AT THE VERSION they approved, not the head (they may have kept editing since)
  *   2. the project's kit is read (kit.ts; the cache makes it free when the brain has not moved) and locate() says where
@@ -159,7 +159,7 @@ export function buildTask(o: { title: string; type: string; version: number; tar
 
 /**
  * Makes the job. The artifact must be the person's and `version` one that exists; the project must be theirs too. Throws the service's
- * ArtifactError for the former, and the Code bot's ConnectorError (not_found, no_access, too_many...) for the latter.
+ * ArtifactError for the former, and Xode's ConnectorError (not_found, no_access, too_many...) for the latter.
  */
 export async function buildFromArtifact(d: BuildDeps, userId: string, artifactId: string, version: number, projectId: string, o: { budgetPaise?: number; now?: () => number } = {}): Promise<Built> {
   if (typeof version !== "number" || !Number.isInteger(version)) throw new ArtifactError("bad_request", "version is the version the person approved.");

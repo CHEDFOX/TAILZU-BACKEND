@@ -3,7 +3,7 @@
  * $4, $8, $6, $10 and $7 ($35), Elite's $50, $70, $80, $100 and $150 ($450), each stretch its own amount whatever its days (days 1–4, 5–9,
  * 10–15, 16–22, 23 to the end); the free plan is $3 for the month with no stretches. Dollars become paise at CODE_USD_INR, the rate the
  * records were counted at. From the billing cycle or the calendar month on the person's clock; carry-over when asked; the plans; the config,
- * validated; the words every screen says; and the gate Keybot and Ask ask (metering.setUsageGate). Never an amount in what a person reads.
+ * validated; the words every screen says; and the gate Keylessbord and Ask ask (metering.setUsageGate). Never an amount in what a person reads.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -237,7 +237,7 @@ describe("the config: the owner's numbers, validated", () => {
   });
 });
 
-describe("the gate Keybot and Ask ask", () => {
+describe("the gate Keylessbord and Ask ask", () => {
   afterEach(() => setUsageGate(null));
   it("refuses with the meter's sentence before anything else, and lets through when the meter cannot answer", async () => {
     setUsageGate(async () => "You've reached this stretch's limit. It resets Sun.");

@@ -2,7 +2,7 @@
  * KEYBOT'S SMALL PARTS, shared by its page files (screens/keybot.ts, keybotStats.ts, keybotYou.ts): the heads, a field,
  * the writes, and the charts the numbers are drawn with.
  *
- * The charts follow the kit's look and the dataviz rules: one series is one colour (Keybot's clay, its own accent),
+ * The charts follow the kit's look and the dataviz rules: one series is one colour (Keylessbord's clay, its own accent),
  * the one bar a chart is about is clay and the rest a quiet grey; bars at most 24 wide, 4 rounded at the data end and
  * square at the baseline, 2 apart; values and labels in ink and grey, never in the data's colour; a few labels, not
  * one on every bar; and every chart has its numbers as rows somewhere on the same page (the table view).
@@ -64,20 +64,20 @@ export function kbd(label: string, bind?: string): Node {
 
 // ===================================================================== heads
 
-/** The phone page's head: back, the title, Keybot's face. */
+/** The phone page's head: back, the title, Keylessbord's face. */
 export function phoneHead(heading: string, o: { onBack?: ActionRef; backLabel?: string } = {}): Node {
   return row([
-    box([icon("back", { size: 24, label: o.backLabel ?? "Back to Keybot" })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, o.onBack ?? back()),
+    box([icon("back", { size: 24, label: o.backLabel ?? "Back to Keylessbord" })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, o.onBack ?? back()),
     text(heading, { size: 24, weight: 700, tracking: -0.5, lineHeight: 30, lines: 1, style: { flexShrink: 1 } }),
     grow(),
     botAvatar(KEYBOT, 30),
   ], { gap: 8, minHeight: 44 });
 }
 
-/** The window page's head: "‹ Keybot" back, the title and its line, what the page does on the right. */
+/** The window page's head: "‹ Keylessbord" back, the title and its line, what the page does on the right. */
 export function deskHead(heading: string, sub: string, right: Node[] = [], o: { onBack?: ActionRef; backTo?: string } = {}): Node {
   return col([
-    row([icon("back", { size: 14, color: C.grey70 }), botAvatar(KEYBOT, 20), text(o.backTo ?? "Keybot", { size: 13, color: C.grey70, lineHeight: 18 })],
+    row([icon("back", { size: 14, color: C.grey70 }), botAvatar(KEYBOT, 20), text(o.backTo ?? "Keylessbord", { size: 13, color: C.grey70, lineHeight: 18 })],
       { gap: 6, paddingVertical: 2, paddingRight: 8, alignSelf: "flex-start", borderRadius: 8 }, o.onBack ?? back()),
     row([
       col([title(heading, { size: 26 }), text(sub, { size: 14, color: C.grey70, lineHeight: 19 })], { gap: 4, flexGrow: 1, flexShrink: 1, minWidth: 0 }),

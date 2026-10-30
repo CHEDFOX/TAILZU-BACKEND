@@ -1,7 +1,7 @@
 /**
  * THE CONNECTORS' ERROR, AND THE SIGNED STATE THAT CARRIES A SIGN-IN BACK.
  *
- * Split out of oauth.ts so that the Code bot's modules (and the Cloudflare jobs
+ * Split out of oauth.ts so that Xode's modules (and the Cloudflare jobs
  * Worker that bundles them) can use ConnectorError, signState and verifyState
  * without pulling in the MCP SDK and the egress guard (undici, node:dns,
  * node:net) that the rest of oauth.ts needs. oauth.ts re-exports all of it, so

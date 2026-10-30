@@ -1,7 +1,7 @@
 /**
  * THE JOB ROUTER, ASSEMBLED FROM THE CODE BOT'S OWN PIECES.
  *
- * createJobs() builds a JobRouter (router.ts) over the Code bot's store,
+ * createJobs() builds a JobRouter (router.ts) over Xode's store,
  * GitHub client and approvals (code/index.ts), the jobs' own store (store.ts),
  * and the settings:
  *
@@ -10,7 +10,7 @@
  *   CODE_RUNNER_OIDC_AUDIENCE  the audience of the identity token a step on
  *                              GitHub's computers reports with, "tailzu" by default
  *
- * It exists only when the Code bot is on and the GitHub client is set up, since
+ * It exists only when Xode is on and the GitHub client is set up, since
  * a job runs in a person's repo. `notify` is how the person is told (the push
  * engine in the server; absent: nobody is). createGithubActions() builds the
  * real provider for GitHub's free computers (githubActions.ts), which a server
@@ -55,7 +55,7 @@ export interface CreateJobsOptions {
   log?: { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
 }
 
-/** The Code bot's own pieces, as the project functions take them. Null when there is no GitHub client. */
+/** Xode's own pieces, as the project functions take them. Null when there is no GitHub client. */
 export function projectDepsOf(code: Pick<Code, "store" | "github" | "approvals" | "oauth">): ProjectDeps | null {
   return code.github ? { store: code.store, github: code.github, approvals: code.approvals, oauth: code.oauth } : null;
 }

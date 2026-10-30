@@ -9,7 +9,7 @@
  *              already turned personality.hapticsAll off (kb.haptics.all); with no key picked one by one either,
  *              kb.haptics.enabled false also quiets the hold buzzes. Keys picked one by one keep buzzing, and a master
  *              switch turned on elsewhere afterwards still works: those two live in the personality, not here.
- *   keyAt      Left / Right of space: the mic (the clay Keybot key) leaves the tools row and sits beside the space bar
+ *   keyAt      Left / Right of space: the mic (the clay Keylessbord key) leaves the tools row and sits beside the space bar
  *              on the letter and 123 / #+= pages, in each appearance's colours. Top is where it already is.
  *   look       kb.look.force "light" | "dark": both keyboards hold that appearance instead of following the phone.
  *   sounds     three ways: not chosen sends nothing and each phone does what it did (iOS clicks as its own Keyboard

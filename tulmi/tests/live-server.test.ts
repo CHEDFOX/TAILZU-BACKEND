@@ -1,5 +1,5 @@
 /**
- * The live channel as the server runs it: a Keybot setting saved on one device reaches the other device's socket as a "keybot"
+ * The live channel as the server runs it: a Keylessbord setting saved on one device reaches the other device's socket as a "keybot"
  * event, through server.ts's own wiring (routes/live.ts, live/writes.ts).
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

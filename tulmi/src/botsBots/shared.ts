@@ -1,5 +1,5 @@
 /**
- * SHARING ANYTHING WITH A SPACE OR A PERSON: a plan, a trip, a list, a meeting note, a file, a link, a bot's answer, a Code bot preview.
+ * SHARING ANYTHING WITH A SPACE OR A PERSON: a plan, a trip, a list, a meeting note, a file, a link, a bot's answer, a Xode preview.
  *
  *   share(user, me, { kind, ref?, title, text?, url?, items?, note?, access, to: { space } | { person } })
  *                         a shared thing: in a space's Shared, or to one person (their chat with you gets its card)

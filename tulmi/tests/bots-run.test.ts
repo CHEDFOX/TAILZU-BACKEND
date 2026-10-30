@@ -184,12 +184,12 @@ describe("the skills are the gate", () => {
     expect(scopeMessage({ skills: { ...none.skills, research: true } }, "what's the latest news on the election? do a deep research with sources").intent).toBe("research");
     // a bot with the web but not research can still look
     expect(scopeMessage({ skills: { ...none.skills, web: true } }, "do a deep research on lithium prices, with sources").intent).toBe("research");
-    // changing code is the Code bot's flow, whatever skills another bot has
+    // changing code is Xode's flow, whatever skills another bot has
     const project = { projectId: "55555555-5555-4555-8555-555555555555", attachments: [], recent: [], mode: "text" as const };
     const code = scopeMessage({ skills: { ...none.skills, code: true } }, "fix the crash when the cart is empty", project);
     expect(code.intent).not.toBe("code_task");
-    expect(code.notes).toEqual(["Changes to code are the Code bot's: ask it, and it opens a pull request."]);
-    // no project: nothing to ask the Code bot about
+    expect(code.notes).toEqual(["Changes to code are Xode's: ask it, and it opens a pull request."]);
+    // no project: nothing to ask Xode about
     expect(scopeMessage({ skills: { ...none.skills, code: true } }, "why is checkout slow under load?").intent).toBe("answer");
     expect(scopeMessage(none, "hi").tier).toBe("tiny");
     expect(scopeMessage(none, "convert 5 miles to km").tier).toBe("cheap");
@@ -362,12 +362,12 @@ describe("streaming and the built-ins", () => {
     expect(a.bot).toEqual({ slug: "buddy", name: "Workout buddy", colour: expect.any(String), builtin: false });
   });
 
-  it("runs Keybot, Plan and Travel like any bot, and leaves the Code bot to the front door", async () => {
+  it("runs Keylessbord, Plan and Travel like any bot, and leaves Xode to the front door", async () => {
     const r = await rig(() => "Sure.");
     const a = await r.bots.ask(ALICE, "keybot", { message: "reply to Neha that I'm running late" });
-    expect(a.bot).toMatchObject({ slug: "keybot", name: "Keybot", builtin: true });
+    expect(a.bot).toMatchObject({ slug: "keybot", name: "Keylessbord", builtin: true });
     const sent = r.model.of("bot.run")[0]!;
-    expect(sent.user).toContain("Name: Keybot");
+    expect(sent.user).toContain("Name: Keylessbord");
     for (const rule of builtinBot("keybot")!.principles) expect(sent.user).toContain(rule);
     await expect(r.bots.ask(ALICE, "code", { message: "where is login handled?" })).rejects.toMatchObject({ code: "code_bot", status: 409 });
     await expect(r.bots.ask(ALICE, "nobody", { message: "hi" })).rejects.toMatchObject({ code: "not_found", status: 404 });

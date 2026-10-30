@@ -305,13 +305,13 @@ if (foreign.size) console.warn(`  pictures from elsewhere, blanked: ${[...foreig
 
 /** The jump list: every sample, grouped as the app is. */
 const GROUP: Record<string, string> = {
-  firstrun: "First run", bots: "Bots", keybot: "Keybot", code: "Code bot", codework: "Code bot", you: "Activity and You",
+  firstrun: "First run", bots: "Bots", keybot: "Keylessbord", code: "Xode", codework: "Xode", you: "Activity and You",
 };
 const ACTIVITY = new Set(["bots.activity", "bots.tasks", "bots.approve"]);
-const GROUPS = ["First run", "Bots", "Keybot", "Code bot", "Activity and You", "Desktop pages"];
+const GROUPS = ["First run", "Bots", "Keylessbord", "Xode", "Activity and You", "Desktop pages"];
 /** The first run's old pages, listed where the app reaches them now. */
 const REACHED_FROM: Record<string, string> = {
-  "bots.keybot.on": "Keybot", "bots.first-words": "Keybot", "bots.language": "Activity and You", "bots.plans": "Activity and You",
+  "bots.keybot.on": "Keylessbord", "bots.first-words": "Keylessbord", "bots.language": "Activity and You", "bots.plans": "Activity and You",
 };
 const groupOf = (s: Sample) => REACHED_FROM[s.id] ?? (!s.board && s.deskBoard ? "Desktop pages" : s.area === "shell" ? (ACTIVITY.has(s.id) ? "Activity and You" : "Bots") : GROUP[s.area] ?? "Bots");
 /** A screen's own title, or its board's name when it has none of its own yet ("On its way"). */

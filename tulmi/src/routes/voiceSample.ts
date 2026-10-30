@@ -1,5 +1,5 @@
 /**
- * A VOICE'S SAMPLE: what Keybot's Read aloud page plays when a voice's play button is pressed.
+ * A VOICE'S SAMPLE: what Keylessbord's Read aloud page plays when a voice's play button is pressed.
  *
  *   GET /v1/keybot/voices/:id/sample?speed=1.25   -> the voice saying one short line (audio/mpeg)
  *

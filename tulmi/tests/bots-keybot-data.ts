@@ -1,5 +1,5 @@
 /**
- * AANYA'S LAST 30 DAYS, for Keybot's numbers (src/keybot/stats.ts) and the old You tab's lines on Keybot: the history
+ * AANYA'S LAST 30 DAYS, for Keylessbord's numbers (src/keybot/stats.ts) and the old You tab's lines on Keylessbord: the history
  * stats, the meter's month, the allowance and the personality, shaped as the reads give them. The week ends on the
  * keybot sample's (Mon 1,012, Tue 944, today 1,284 words), and the words are its words (Sharvari, Aanya, PRD…).
  *
@@ -115,13 +115,13 @@ export const PERSONALITY: Personality = {
 
 const PREFS = { tones: { chats: { preset: "casual_hinglish" }, mail: { preset: "clear_polite" }, work: { preset: "short_direct" } }, read: { speed: "1.25" as const }, train: { said: { "0": "a", "1": "b", "2": "c", "3": "d" } } };
 
-/** Keybot's numbers as GET /v1/keybot/stats serves them: free for everyone (no limit), or the free plan's limit (`unlimited: false`). */
+/** Keylessbord's numbers as GET /v1/keybot/stats serves them: free for everyone (no limit), or the free plan's limit (`unlimited: false`). */
 export const statsFor = (o: { unlimited?: boolean; stats?: StatsForUser | undefined } = {}) => statsView({
   stats: "stats" in o ? o.stats : MONTH_STATS, usage: USAGE, allowance: o.unlimited === false ? FREE_PLAN : ALLOWANCE, paid: false, free: o.unlimited ?? true,
   personality: PERSONALITY, now: FIXED_NOW, tzOffsetMinutes: IST,
 });
 
-/** Every answer Keybot's pages read, as served (the keybot sample's tone, voices, train, history and settings come from keybot.json). */
+/** Every answer Keylessbord's pages read, as served (the keybot sample's tone, voices, train, history and settings come from keybot.json). */
 export function keybotApi(): Record<string, unknown> {
   const tz = `tz=${IST}`;
   return {

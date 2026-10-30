@@ -4,7 +4,7 @@
  *   - nothing chosen, nothing changed: the keyboard config is the same object, byte for byte, on both platforms
  *   - key height moves the key rows and the frame together; the tools row stays
  *   - haptics: Strong is a stronger style, Light the keyboard's own, Off quiets the rest without undoing keys picked one by one
- *   - the Keybot key moves beside the space bar in both appearances, or stays on top
+ *   - the Keylessbord key moves beside the space bar in both appearances, or stays on top
  *   - look, key sounds and hold space to speak are knobs sent only when chosen
  *   - over HTTP: the person's saved choices reach their keyboard config, and their read-aloud speed reaches the voice
  */
@@ -119,7 +119,7 @@ describe("haptics", () => {
   });
 });
 
-describe("the Keybot key", () => {
+describe("the Keylessbord key", () => {
   for (const platform of PLATFORMS) {
     for (const side of ["left", "right"] as const) {
       it(`${platform}: ${side} of space, in both appearances, out of the tools row`, () => {

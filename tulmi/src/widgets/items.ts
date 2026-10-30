@@ -2,7 +2,7 @@
  * WHAT A QUICK ACTION IS ABOUT: one id per thing a widget row, a notification's button or a Home Screen tap can act on, and the
  * one place that reads them back. Opaque to the apps (they only hand it back), checked here before anything is done with it.
  *
- *   job:<jobId>:<q>               a Code bot job's question; <q> is the question's fingerprint, so an answer meant for one question
+ *   job:<jobId>:<q>               a Xode job's question; <q> is the question's fingerprint, so an answer meant for one question
  *                                 never answers the next one the job asks
  *   task:<taskId>[:<approvalId>]  a connected app's call waiting for a yes; with the approval's id, only that approval
  *   stask:<spaceId>:<taskId>      a task or plan someone in a space gave this person

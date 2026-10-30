@@ -69,7 +69,7 @@ async function served(o: { now?: { t: number } } = {}) {
   const clock = o.now ?? { t: Date.UTC(2026, 9, 28, 6, 0) };
   const now = () => clock.t;
   const outbox = new MailOutbox(new MemoryPaged(), now);
-  const bots = { resolve: async (_u: string, slug: string) => (["plan", "shop-bot"].includes(slug) ? { def: { slug, name: slug === "plan" ? "Plan bot" : "Shop bot", colour: "ochre" } } : null) };
+  const bots = { resolve: async (_u: string, slug: string) => (["plan", "shop-bot"].includes(slug) ? { def: { slug, name: slug === "plan" ? "Plan Ease" : "Shop bot", colour: "ochre" } } : null) };
   const spaces = new Spaces(bots as never, now, { outbox, mailer: NOT_CONFIGURED, origin: () => "https://app.example.in" });
   const media = fakeMedia();
   const app = Fastify();

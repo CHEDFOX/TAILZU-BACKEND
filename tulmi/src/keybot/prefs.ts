@@ -1,5 +1,5 @@
 /**
- * KEYBOT'S OWN CHOICES: what the Keybot pages of the Bots app let a person pick that has no field in the personality
+ * KEYBOT'S OWN CHOICES: what the Keylessbord pages of the Bots app let a person pick that has no field in the personality
  * document (shared/types/api.ts, which every other screen reads too):
  *
  *   tones      per kind of app (Chats, Mail, Work chat): the preset chosen and its little things. The writer reads
@@ -8,7 +8,7 @@
  *              "Read my draft back before sending" were here too and are gone: nothing on the phone or the server
  *              could act on them, so the pages no longer offer them.
  *   keyboard   the phone keyboard's look, haptics strength, key height, key sounds, hold space to speak, where the
- *              Keybot key sits. Haptics on/off is also written to personality.hapticsAll; the rest reaches the
+ *              Keylessbord key sits. Haptics on/off is also written to personality.hapticsAll; the rest reaches the
  *              keyboard through GET /v1/keyboard/config (keyboard.ts lays it over the config).
  *   train      Teach your style: what they said for each of the ten lines, and the ones they skipped
  *
@@ -118,7 +118,7 @@ async function savePrefs(user: AuthedUser, prefs: KeybotPrefs): Promise<void> {
   }
   const { error } = await sb.from("keybot_prefs")
     .upsert({ user_id: user.id, data: prefs, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
-  if (error) throw new Error(`Failed to save Keybot prefs: ${error.message}`);
+  if (error) throw new Error(`Failed to save Keylessbord prefs: ${error.message}`);
 }
 
 /** Change the document under the person's lock; returns what was saved. */

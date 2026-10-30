@@ -5,8 +5,8 @@
  *     it in the ask; a build without FileUpload keeps the attach screen as before
  *   - the phone speaks into Ask (recordVoice into `ask`), starts listening when opened from a mic, and the window never
  *     gets it (it has Fn)
- *   - the Code bot's Add to chat sends a photo, a screenshot, a screen recording or a file, and the message carries it
- *   - Keybot's voices play their sample (playAudio, one at a time, the speed picked), and only for a build with AudioPlay
+ *   - Xode's Add to chat sends a photo, a screenshot, a screen recording or a file, and the message carries it
+ *   - Keylessbord's voices play their sample (playAudio, one at a time, the speed picked), and only for a build with AudioPlay
  *   - over HTTP: a sample is the person's to hear only when signed in, only an offered voice, made once
  */
 import { describe, expect, it, vi } from "vitest";
@@ -158,7 +158,7 @@ describe("Add to chat sends a picked file", () => {
   });
 });
 
-describe("Keybot's voices play their sample", () => {
+describe("Keylessbord's voices play their sample", () => {
   const api = { [`GET /v1/keybot/voices?tz=${IST}`]: views.voicesView({ ttsVoice: "sage" }, { read: { speed: "1.25" } }) };
   for (const client of ["phone", "desktop"] as const) {
     it(`one play button per voice, at the speed picked (${client})`, async () => {

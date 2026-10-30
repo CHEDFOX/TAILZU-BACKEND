@@ -119,7 +119,7 @@ export interface ActParts {
     approve(userId: string, taskId: string, approvalId?: string): Promise<{ status: string; error?: { message?: string } }>;
     deny(userId: string, taskId: string): Promise<{ status: string }>;
   } | null;
-  /** A Code bot job: its question now (jobs/router.ts + deps.ts jobLite), and the answer (agent/orchestrator.ts answer). */
+  /** A Xode job: its question now (jobs/router.ts + deps.ts jobLite), and the answer (agent/orchestrator.ts answer). */
   jobs: {
     question(userId: string, jobId: string): Promise<{ text: string; options: string[] } | null>;
     answer(userId: string, jobId: string, answer: string): Promise<unknown>;

@@ -1,7 +1,7 @@
 /**
  * THE ROLES: WHO THE MODEL IS FOR ONE KIND OF CALL, AND HOW compose() TURNS A ROLE INTO A PROMPT.
  *
- * Every model prompt the Code bot, the artifact core, the web layer, the front door and the main
+ * Every model prompt Xode, the artifact core, the web layer, the front door and the main
  * assistant (Ask's planner, the writer and its helpers) send is a role plus the dynamic context of
  * the call. A role is three things and nothing else:
  *

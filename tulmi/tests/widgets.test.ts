@@ -49,7 +49,7 @@ const CT = "ctask-1";
 
 type Flags = Record<string, unknown>;
 
-/** A connected app's call waiting for a yes, and a Code bot job asking a question: fakes of the two services. */
+/** A connected app's call waiting for a yes, and a Xode job asking a question: fakes of the two services. */
 function fakeServices(clock: { t: number }) {
   const approvals = new Map<string, { userId: string; state: string; approval: { id: string; connector: string; tool: string; risk: string; preview: string } | null; title: string; approved: number; denied: number }>();
   approvals.set(CT, { userId: A_, state: "waiting", approval: { id: "ap-1", connector: "google-calendar", tool: "move_event", risk: "write", preview: "Dinner, 7:30 pm" }, title: "Move dinner to 7:30?", approved: 0, denied: 0 });
@@ -171,9 +171,9 @@ describe("GET /v1/widgets/now", () => {
     expect(needs.rows.map((x: { kind: string }) => x.kind)).toEqual(["question", "approval", "task"]);
     const [q, ap, t] = needs.rows;
     // A bot's row says whose bot it is, for its ring in that bot's colour; a person's row does not.
-    expect(q).toMatchObject({ who: "Code bot", bot: "code", text: "Round per item or at the end?", id: `job:${JOB}:${questionMark("Round per item or at the end?")}`, url: `tulmi://screen/bots.code.job?id=${JOB}` });
+    expect(q).toMatchObject({ who: "Xode", bot: "code", text: "Round per item or at the end?", id: `job:${JOB}:${questionMark("Round per item or at the end?")}`, url: `tulmi://screen/bots.code.job?id=${JOB}` });
     expect(q.actions).toEqual([{ id: "a0", label: "Per item", style: "primary", mode: "inPlace" }, { id: "a1", label: "At the end", style: "secondary", mode: "inPlace" }]);
-    expect(ap).toMatchObject({ who: "Plan bot", bot: "plan", androidIcon: "tailzu_widget_mark", text: "Move dinner to 7:30?", detail: "Dinner, 7:30 pm", id: `task:${CT}:ap-1` });
+    expect(ap).toMatchObject({ who: "Plan Ease", bot: "plan", androidIcon: "tailzu_widget_mark", text: "Move dinner to 7:30?", detail: "Dinner, 7:30 pm", id: `task:${CT}:ap-1` });
     expect(ap.actions.map((a: { id: string; label: string }) => `${a.id}:${a.label}`)).toEqual(["yes:Yes", "no:No"]);
     // Who gave it is the row's name; under it, where it is from (the space), not the name again.
     expect(t).toMatchObject({ who: "Meera S.", text: "Call Grandma", detail: "Home", actions: [{ id: "done", label: "Done", style: "primary", mode: "inPlace", icon: "checkmark", androidIcon: "tailzu_wi_check" }] });
@@ -392,7 +392,7 @@ describe("buildNow", () => {
     const doc = buildNow({
       now, tzOffsetMinutes: 330, inSpaces: true, tokenReady: true,
       people: { messages: [{ threadId: "t", messageId: "m", chat: "Home", chatKind: "space", from: "Sam", text: "running late", at: now - 3 * HOUR, unread: false }], shared: [], tasks: [] },
-      needs: { jobs: [], approvals: [], tasks: [], codeBotName: "Code bot" },
+      needs: { jobs: [], approvals: [], tasks: [], codeBotName: "Xode" },
     }, { flags: { ...WIDGETS_DEFAULTS.flags, "widgets.people.limits": { small: 1 } }, labels: { ...WIDGETS_DEFAULTS.labels, "widgets.time.hour": "{n} hr ago" } });
     expect(doc.people.rows[0]).toMatchObject({ when: "3 hr ago", detail: "Home", new: true });
     expect(doc.people.limits).toEqual({ small: 1, medium: 3, large: 6, lock: 0, android: 4 });

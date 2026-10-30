@@ -95,19 +95,19 @@ describe("a bot's widget words (section 1)", () => {
   });
 
   it("fall back to the server's lines, in English and Hinglish, when a bot gives nothing usable", () => {
-    expect(eventLine("needs", undefined, { bot: "Code bot" }, FILL_INS.en)).toBe("Code bot needs you");
-    expect(eventLine("needs", "", { bot: "Code bot" }, FILL_INS.hg)).toBe("Code bot ko aapki zaroorat hai");
+    expect(eventLine("needs", undefined, { bot: "Xode" }, FILL_INS.en)).toBe("Xode needs you");
+    expect(eventLine("needs", "", { bot: "Xode" }, FILL_INS.hg)).toBe("Xode ko aapki zaroorat hai");
     expect(eventLine("working", undefined, { bot: "Travel bot" }, FILL_INS.en)).toBe("Travel bot is working");
     expect(eventLine("failed", undefined, { bot: "Gym bot" }, FILL_INS.hg)).toBe("Gym bot atak gaya");
     expect(eventLine("idle", undefined, { bot: "Gym bot" }, FILL_INS.en)).toBe("Ready");
     // its own words win, cut to the event's limit
-    expect(eventLine("done", "Cart fix is ready", { bot: "Code bot", task: "x" }, FILL_INS.en)).toBe("Cart fix is ready");
-    expect(eventLine("failed", "The checks failed twice on the payment page tests", { bot: "Code bot" }, FILL_INS.en)).toBe("The checks failed twice on the payment…");
+    expect(eventLine("done", "Cart fix is ready", { bot: "Xode", task: "x" }, FILL_INS.en)).toBe("Cart fix is ready");
+    expect(eventLine("failed", "The checks failed twice on the payment page tests", { bot: "Xode" }, FILL_INS.en)).toBe("The checks failed twice on the payment…");
     // {task} is cut first, so the bot and the verb stay
-    const done = eventLine("done", undefined, { bot: "Code bot", task: "fix cart total rounding across every currency" }, FILL_INS.en);
-    expect(done).toBe("Code bot finished fix cart total…");
+    const done = eventLine("done", undefined, { bot: "Xode", task: "fix cart total rounding across every currency" }, FILL_INS.en);
+    expect(done).toBe("Xode finished fix cart total rounding…");
     expect(done.length).toBeLessThanOrEqual(40);
-    expect(fillIn("{bot} finished {task}", { bot: "Code bot", task: "Supercalifragilisticexpialidocious" }, 40)).toBe("Code bot finished");
+    expect(fillIn("{bot} finished {task}", { bot: "Xode", task: "Supercalifragilisticexpialidocious" }, 40)).toBe("Xode finished");
   });
 
   it("the doing line is the task's first clause, cut at a word (it cut mid-word at 27)", () => {
@@ -129,12 +129,12 @@ describe("the situation line (section 3)", () => {
     expect(situationOf({ ...base, weekend: true })?.situation).toBe("weekend");
     expect(situationOf({ ...base, weekend: true, quietDays: 4 })?.situation).toBe("quietLong");
     expect(situationOf({ ...base, weekend: true, quietDays: 4, firstLook: true })?.situation).toBe("firstLook");
-    expect(situationOf({ ...base, firstLook: true, longJob: { bot: "Code bot", task: "fixing cart", minutes: 45 } })?.situation).toBe("longJob");
-    expect(situationOf({ ...base, firstLook: true, longJob: { bot: "Code bot", task: "fixing cart", minutes: 5 } })?.situation).toBe("firstLook");
-    expect(situationOf({ ...base, working: 2, longJob: { bot: "Code bot", task: "x", minutes: 45 } })).toMatchObject({ situation: "severalWorking", vars: { n: 2 } });
+    expect(situationOf({ ...base, firstLook: true, longJob: { bot: "Xode", task: "fixing cart", minutes: 45 } })?.situation).toBe("longJob");
+    expect(situationOf({ ...base, firstLook: true, longJob: { bot: "Xode", task: "fixing cart", minutes: 5 } })?.situation).toBe("firstLook");
+    expect(situationOf({ ...base, working: 2, longJob: { bot: "Xode", task: "x", minutes: 45 } })).toMatchObject({ situation: "severalWorking", vars: { n: 2 } });
     expect(situationOf({ ...base, working: 3, moved: 1 })?.situation).toBe("severalWorking");
     expect(situationOf({ ...base, working: 3, moved: 2 })).toMatchObject({ situation: "moved", vars: { n: 2 } });
-    expect(situationOf({ ...base, moved: 5, justFinished: { bot: "Code bot", task: "Cart fix is ready" } })).toMatchObject({ situation: "justFinished", vars: { bot: "Code bot", task: "Cart fix is ready" } });
+    expect(situationOf({ ...base, moved: 5, justFinished: { bot: "Xode", task: "Cart fix is ready" } })).toMatchObject({ situation: "justFinished", vars: { bot: "Xode", task: "Cart fix is ready" } });
     expect(situationOf({ ...base, moved: 2 }, { ...SITUATION_RULES, movedMin: 3 })).toBeNull();
   });
 
@@ -144,8 +144,8 @@ describe("the situation line (section 3)", () => {
     expect(situationLine(templateFor(lookup, "moved", "night", true), { name: "Aanya", n: 3 })).toBe("Aapke peeche 3 cheezein badlin");
     expect(situationLine(templateFor(lookup, "quietLong", "afternoon", false), { name: "Aanya" })).toBe("Quiet for a while, Aanya. Ask anything.");
     expect(situationLine(templateFor(lookup, "quietLong", "afternoon", false), { name: "" })).toBe("Quiet for a while. Ask anything.");
-    const long = situationLine(templateFor(lookup, "justFinished", "afternoon", false), { name: "", bot: "Code bot", task: "moved the whole sign-in flow to phone OTP and removed passwords" });
-    expect(long.startsWith("Code bot just finished: moved the whole")).toBe(true);
+    const long = situationLine(templateFor(lookup, "justFinished", "afternoon", false), { name: "", bot: "Xode", task: "moved the whole sign-in flow to phone OTP and removed passwords" });
+    expect(long.startsWith("Xode just finished: moved the whole")).toBe(true);
     expect(long.length).toBeLessThanOrEqual(60);
     // every line the knobs hold fits once its slots are filled
     for (const [key, t] of Object.entries(WIDGETS_DEFAULTS.labels)) {
@@ -204,7 +204,7 @@ describe("glance v2 (section 2)", () => {
         startedAt: FIXED_NOW - 58 * MIN, link: "tulmi://screen/bots.code.job?id=j-run", phase: "working",
       },
       lastDone: {
-        id: "j-done", bot: "code", botName: "Code bot", face: "code", result: "Cart fix is ready", endedAt: FIXED_NOW - 20 * MIN, minutes: 58,
+        id: "j-done", bot: "code", botName: "Xode", face: "code", result: "Cart fix is ready", endedAt: FIXED_NOW - 20 * MIN, minutes: 58,
         pr: { number: 131, url: "https://github.com/aanya/storefront/pull/131" }, link: "tulmi://screen/bots.code.job?id=j-done",
       },
     });
@@ -217,13 +217,13 @@ describe("glance v2 (section 2)", () => {
     const g = glanceV2Of(input(), payload());
     expect(g.bots.map((b) => [b.slug, b.state])).toEqual([["code", "needs"], ["plan", "needs"], ["keybot", "idle"], ["travel", "idle"], ["gym-bot", "idle"]]);
     expect(g.bots[0]).toEqual({
-      slug: "code", name: "Code bot", color: "#4F7A3A", face: "code", faceUrl: "https://api.x0bot.com/blip/bots/head-code.png?v=1",
+      slug: "code", name: "Xode", color: "#4F7A3A", face: "code", faceUrl: "https://api.x0bot.com/blip/bots/head-code.png?v=1",
       state: "needs", needs: 1, working: true, line: "fixing cart", link: "tulmi://screen/bots.code",
     });
     // a person's bot has no head of its own
     expect(g.bots.find((b) => b.slug === "gym-bot")).toMatchObject({ face: null, faceUrl: null, line: "Ready", link: "tulmi://screen/bots.bot?slug=gym-bot" });
     // a connected app's yes is private: its bot's line says only that it needs them
-    expect(g.bots.find((b) => b.slug === "plan")!.line).toBe("Plan bot needs you");
+    expect(g.bots.find((b) => b.slug === "plan")!.line).toBe("Plan Ease needs you");
     // done, not seen: after working, before the rest
     const done = glanceV2Of(input({ jobs: [DONE], tasks: [] }), payload());
     expect(done.bots[0]).toMatchObject({ slug: "code", state: "done", line: "Cart fix is ready" });
@@ -246,19 +246,19 @@ describe("glance v2 (section 2)", () => {
     expect(g.needs.items.map((n) => n.kind)).toEqual(["approval", "question"]);
     const [yes, q] = g.needs.items;
     expect(q).toMatchObject({
-      kind: "question", bot: "code", botName: "Code bot", face: "code", question: "Round the cart total per item, or once at the end?",
+      kind: "question", bot: "code", botName: "Xode", face: "code", question: "Round the cart total per item, or once at the end?",
       choices: [{ id: "a0", label: "Per item", primary: true }, { id: "a1", label: "At the end" }],
       decideLink: "tulmi://screen/bots.code.job?id=j-ask", private: false, answerable: true, link: "tulmi://screen/bots.code",
     });
     expect(yes).toMatchObject({
-      id: "task:t-1:ap-1", kind: "approval", bot: "plan", botName: "Plan bot", question: "Update event: Dentist, Friday 10 am",
+      id: "task:t-1:ap-1", kind: "approval", bot: "plan", botName: "Plan Ease", question: "Update event: Dentist, Friday 10 am",
       choices: [{ id: "yes", label: "Yes", primary: true }, { id: "no", label: "No" }], decideLink: "tulmi://screen/bots.approve?task=t-1",
       private: true, answerable: true,
     });
     // the rows of /v1/widgets/now for the same records
     const now = buildNow({
       now: FIXED_NOW, tzOffsetMinutes: IST, inSpaces: false, people: { messages: [], shared: [], tasks: [] }, tokenReady: true,
-      needs: { jobs: [QUESTION], approvals: [{ taskId: "t-1", approvalId: "ap-1", title: APPROVAL.title, preview: APPROVAL.approval.preview, risk: "write", who: "Plan bot", at: APPROVAL.updatedAt, bot: "plan" }], tasks: [], codeBotName: "Code bot" },
+      needs: { jobs: [QUESTION], approvals: [{ taskId: "t-1", approvalId: "ap-1", title: APPROVAL.title, preview: APPROVAL.approval.preview, risk: "write", who: "Plan Ease", at: APPROVAL.updatedAt, bot: "plan" }], tasks: [], codeBotName: "Xode" },
     }, payload());
     const rows = new Map(now.needs.rows.map((r) => [r.id, r]));
     for (const item of g.needs.items) {
@@ -292,7 +292,7 @@ describe("glance v2 (section 2)", () => {
     expect(glanceV2Of(input({ jobs: [QUESTION], tasks: [] }), knobs({ "widgets.token.enabled": false })).needs.items[0]!.answerable).toBe(false);
     const pay = { ...APPROVAL, approval: { ...APPROVAL.approval, risk: "pay" } };
     expect(glanceV2Of(input({ jobs: [], tasks: [pay] }), payload()).needs.items[0]).toMatchObject({ answerable: false, choices: [] });
-    // a yes to a Code bot's plan has no /v1/widgets row: open only
+    // a yes to a Xode's plan has no /v1/widgets row: open only
     const plan: JobLite = { ...QUESTION, waitingOn: "approval", question: undefined, approval: { summary: "Go ahead with this plan?" } };
     expect(glanceV2Of(input({ jobs: [plan], tasks: [] }), payload()).needs.items[0]).toMatchObject({ kind: "question", question: "Go ahead with this plan?", answerable: false, choices: [] });
     // three at most, the count is all of them
@@ -305,16 +305,16 @@ describe("glance v2 (section 2)", () => {
   it("never puts a private question's words on the Lock Screen", () => {
     const secret = { ...QUESTION, question: { ...QUESTION.question!, widget: { private: true } } };
     const g = glanceV2Of(input({ jobs: [secret], tasks: [] }), payload());
-    expect(g.lock).toEqual({ inline: "Code bot needs you", title: "Code bot needs you", line: "Open X0 to answer" });
+    expect(g.lock).toEqual({ inline: "Xode needs you", title: "Xode needs you", line: "Open X0 to answer" });
     expect(JSON.stringify(g.lock)).not.toContain("Round");
     const open = glanceV2Of(input({ jobs: [QUESTION], tasks: [] }), payload());
-    expect(open.lock).toEqual({ inline: "Code bot needs you", title: "Code bot needs you", line: "Round the cart total per item, or once…" });
+    expect(open.lock).toEqual({ inline: "Xode needs you", title: "Xode needs you", line: "Round the cart total per item, or once…" });
     // a connected app's yes is private unless the knobs say otherwise
     expect(glanceV2Of(input({ jobs: [], tasks: [APPROVAL] }), payload()).lock.line).toBe("Open X0 to answer");
     expect(glanceV2Of(input({ jobs: [], tasks: [APPROVAL] }), knobs({ "x0.needs.private": [] })).lock.line).toBe("Update event: Dentist, Friday 10 am");
     expect(glanceV2Of(input(), payload()).lock.title).toBe("2 things need you");
     expect(glanceV2Of(input({ jobs: [RUNNING, DONE], tasks: [] }), payload()).lock).toEqual({ inline: "Cart fix is ready", title: "Cart fix is ready", line: "PR #131 is ready" });
-    expect(glanceV2Of(input({ jobs: [RUNNING], tasks: [] }), payload()).lock).toEqual({ inline: "Code bot is working", title: "Code bot is working", line: "Step 3 of 5 · Build" });
+    expect(glanceV2Of(input({ jobs: [RUNNING], tasks: [] }), payload()).lock).toEqual({ inline: "Xode is working", title: "Xode is working", line: "Step 3 of 5 · Build" });
     expect(glanceV2Of(input({ jobs: [], tasks: [] }), payload()).lock).toMatchObject({ inline: "Ready", title: "X0" });
   });
 
@@ -327,7 +327,7 @@ describe("glance v2 (section 2)", () => {
     // a team's helper is not something a person follows
     expect(glanceV2Of(input({ jobs: [{ ...DONE, helper: true }], tasks: [] }), payload()).lastDone).toBeUndefined();
     // no words of its own: the fill-in, with what it was asked
-    expect(glanceV2Of(input({ jobs: [{ ...DONE, result: undefined }], tasks: [] }), payload()).lastDone!.result).toBe("Code bot finished answer the review on…");
+    expect(glanceV2Of(input({ jobs: [{ ...DONE, result: undefined }], tasks: [] }), payload()).lastDone!.result).toBe("Xode finished answer the review on PR…");
   });
 
   it("the job: one at work, else one waiting for the person; 300 s while a bot works", () => {
@@ -345,7 +345,7 @@ describe("glance v2 (section 2)", () => {
     expect(g.needs.items[0]!.choices.map((c) => c.label)).toEqual(["Haan", "Nahi"]);
     expect(g.lock.title).toBe("2 cheezon mein aapki zaroorat");
     expect(g.week.line).toBe("Is hafte 1 kaam hua · 2 ghante bache");
-    expect(g.bots.find((b) => b.slug === "plan")!.line).toBe("Plan bot ko aapki zaroorat hai");
+    expect(g.bots.find((b) => b.slug === "plan")!.line).toBe("Plan Ease ko aapki zaroorat hai");
   });
 
   it("says what moved since the person last looked, and nothing of a connected app's words", () => {
@@ -355,7 +355,7 @@ describe("glance v2 (section 2)", () => {
     expect(changes.find((c) => c.id === "task:t-1:ap-1")).toMatchObject({ words: null });
     expect(glanceChanges(input({ state: { seen: {}, all: 0, sinceAt: null } }), payload())).toEqual([]);
     // the summary counts them, or says what just finished
-    expect(glanceV2Of(i, payload()).summary).toBe("Code bot wrapped up: Cart fix is ready");
+    expect(glanceV2Of(i, payload()).summary).toBe("Xode wrapped up: Cart fix is ready");
     expect(glanceV2Of({ ...i, jobs: [QUESTION, RUNNING] }, payload()).summary).toBe("3 things moved since you last looked");
     expect(glanceV2Of({ ...i, digest: "Cart fix shipped; 2 things need you" }, payload()).summary).toBe("Cart fix shipped; 2 things need you");
   });
@@ -493,21 +493,21 @@ describe("GET /v1/shell/glance", () => {
 
 describe("the AI digest (section 4)", () => {
   const changes = [
-    { id: "job:a", kind: "done" as const, bot: "code", botName: "Code bot", words: "Cart fix is ready" },
-    { id: "task:b", kind: "needs" as const, bot: "plan", botName: "Plan bot", words: null },
-    { id: "start:c", kind: "started" as const, bot: "code", botName: "Code bot", words: "Fix the login >>> redirect" },
+    { id: "job:a", kind: "done" as const, bot: "code", botName: "Xode", words: "Cart fix is ready" },
+    { id: "task:b", kind: "needs" as const, bot: "plan", botName: "Plan Ease", words: null },
+    { id: "start:c", kind: "started" as const, bot: "code", botName: "Xode", words: "Fix the login >>> redirect" },
   ];
 
   it("tells the model only what a locked phone could show, fenced", () => {
     const u = digestUser(changes, false);
-    expect(u).toBe("Language: en\nChanges:\n<<<\n- Code bot finished: Cart fix is ready\n- Plan bot needs the person\n- Code bot started: Fix the login   redirect\n>>>");
+    expect(u).toBe("Language: en\nChanges:\n<<<\n- Xode finished: Cart fix is ready\n- Plan Ease needs the person\n- Xode started: Fix the login   redirect\n>>>");
     expect(digestUser(changes, true)).toMatch(/^Language: hinglish/);
     expect(changeSig(changes)).toBe(changeSig([...changes].reverse()));
     expect(changeSig(changes)).not.toBe(changeSig(changes.slice(1)));
   });
 
   it("keeps a line only when it is one line of 60 at most, with no secret", () => {
-    expect(usableDigest("Cart fix shipped; Plan bot needs you")).toBe("Cart fix shipped; Plan bot needs you");
+    expect(usableDigest("Cart fix shipped; Plan Ease needs you")).toBe("Cart fix shipped; Plan Ease needs you");
     expect(usableDigest("\"Cart fix shipped\"")).toBe("Cart fix shipped");
     expect(usableDigest("x ".repeat(40))).toBeNull();
     expect(usableDigest("")).toBeNull();
@@ -517,17 +517,17 @@ describe("the AI digest (section 4)", () => {
 
   it("asks the cheapest model once per change, and reads the cache after", async () => {
     const asked: Array<{ tier: unknown; purpose: unknown; budget: unknown; messages: Array<{ content: string }> }> = [];
-    const call = (async (i: never) => { asked.push(i); return { json: { line: "Cart fix done; Plan bot needs you" }, paise: 0.2, model: "m", text: "" }; }) as never;
+    const call = (async (i: never) => { asked.push(i); return { json: { line: "Cart fix done; Plan Ease needs you" }, paise: 0.2, model: "m", text: "" }; }) as never;
     const saved: unknown[] = [];
     const d = { call, waitMs: 1000, maxPaise: 5, now: () => FIXED_NOW, save: async (x: unknown) => { saved.push(x); } };
     const line = await digestFor("u1", changes, false, undefined, d);
-    expect(line).toBe("Cart fix done; Plan bot needs you");
+    expect(line).toBe("Cart fix done; Plan Ease needs you");
     expect(asked).toHaveLength(1);
     expect(asked[0]).toMatchObject({ tier: "tiny", purpose: "widget.digest", budget: { maxPaise: 5 } });
     expect(asked[0]!.messages.at(-1)!.content).toBe(digestUser(changes, false));
-    expect(saved).toEqual([{ sig: changeSig(changes), line: "Cart fix done; Plan bot needs you", at: FIXED_NOW }]);
+    expect(saved).toEqual([{ sig: changeSig(changes), line: "Cart fix done; Plan Ease needs you", at: FIXED_NOW }]);
     // the same changes: the cache, no call
-    expect(await digestFor("u1", changes, false, saved[0] as never, d)).toBe("Cart fix done; Plan bot needs you");
+    expect(await digestFor("u1", changes, false, saved[0] as never, d)).toBe("Cart fix done; Plan Ease needs you");
     expect(asked).toHaveLength(1);
   });
 
@@ -561,7 +561,7 @@ describe("the AI digest (section 4)", () => {
     expect(sent).toHaveLength(1);
     // the connected app's yes is private: its words never reach the model
     expect(sent[0]).not.toContain("dentist");
-    expect(sent[0]).toContain("Plan bot needs the person");
+    expect(sent[0]).toContain("Plan Ease needs the person");
     expect((await on.glance.get("u1")).digest).toMatchObject({ line: "Three things moved" });
     // the same changes on the next glance: the cache
     await on.app.inject({ method: "GET", url: `/v1/shell/glance?v=2&tz=${IST}`, headers: who("u1") });

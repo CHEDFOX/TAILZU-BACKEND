@@ -11,7 +11,7 @@
  *   research(question, opts)  search, read, and an answer that cites its pages (research.ts)
  *   indexPage(page)           a read page into our own searchable index (search/index.ts)
  *
- * Shared code: the Code bot's web tools (code/webTools.ts), the agent loop and
+ * Shared code: Xode's web tools (code/webTools.ts), the agent loop and
  * later web tasks for a person all use it. It has no HTTP routes.
  */
 export { asUntrusted, readPage, resetWebReaderForTests, WebError } from "./reader.js";

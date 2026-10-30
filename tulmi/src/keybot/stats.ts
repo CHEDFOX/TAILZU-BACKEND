@@ -1,7 +1,7 @@
 /**
  * KEYBOT'S NUMBERS: everything the old Stats tab (experience/catalog.ts statsScreen, phoneLook.ts phoneStatsBody) and
  * the desk's Insights pages (experience/desk.ts deskInsights, deskDay, deskApp) showed, as one view for the Bots app's
- * Keybot pages (experience/bots/screens/keybot*.ts). docs/bots-keybot-parity.md lists every figure and where it lives.
+ * Keylessbord pages (experience/bots/screens/keybot*.ts). docs/bots-keybot-parity.md lists every figure and where it lives.
  *
  * Pure: routes/botsKeybot.ts GET /v1/keybot/stats makes the old screens' own reads and this shapes them.
  *

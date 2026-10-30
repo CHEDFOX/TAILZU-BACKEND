@@ -3,7 +3,7 @@ import type { Node } from "../../shared/types/sdui.js";
 
 // THE ONE KEY on the window's pages (keybot.ts, firstRun.ts; the desktop's oneKey.js puts it in `desktop` state):
 //   - this computer's keys are one line, the key main.js bound (desktop.holdKey), never the old list of three
-//   - Keybot's settings offer a Mac's three keys and a PC's two, saved with desktop.config oneKey, only on a window that has it
+//   - Keylessbord's settings offer a Mac's three keys and a PC's two, saved with desktop.config oneKey, only on a window that has it
 //   - the clay key sits where the chosen key is on the keyboard
 //   - the arrival card's last step names the key
 process.env.OPENROUTER_API_KEY = "k";
@@ -29,7 +29,7 @@ const bound = (n: Node, path: string) => walk(n).filter((x) => x.type === "Text"
 /** The node shown only under `cond`, found by what it says. */
 const shownWhen = (n: Node, cond: unknown) => walk(n).filter((x) => JSON.stringify(x.visibleIf) === JSON.stringify(cond));
 
-describe("Keybot's pages: one key", () => {
+describe("Keylessbord's pages: one key", () => {
   it("this computer's keys are one line: the held key by name, or a window's chord before the one key", async () => {
     for (const id of ["bots.keybot", "bots.keybot.settings"]) {
       const s = await build(id);

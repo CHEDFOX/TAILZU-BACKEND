@@ -1,7 +1,7 @@
 /**
  * WHICH OF A PERSON'S PCS ARE ONLINE, AND WHAT EACH ONE HAS ALLOWED.
  *
- * A Tailzu desktop app that can run commands for the Code bot sends a
+ * A Tailzu desktop app that can run commands for Xode sends a
  * heartbeat (POST /v1/code/runner/heartbeat) every half minute or so, saying:
  *
  *   deviceId   a stable id the app made for this install

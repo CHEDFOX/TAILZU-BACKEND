@@ -80,7 +80,7 @@ export function stepWords(stage: string): string | null {
     if (t === "web_search") return "Searching the web…";
     if (t === "read_page") return "Reading a page…";
     if (t === "research") return "Looking into it…";
-    if (t === "code_ask") return "Asking Code bot…";
+    if (t === "code_ask") return "Asking Xode…";
     if (t === "search_knowledge") return "Looking through its files…";
     if (/^artifact/.test(t)) return "Making it…";
     if (/^(calendar|tasks)_/.test(t)) return t.startsWith("tasks") ? "Checking your to-dos…" : "Checking your calendar…";

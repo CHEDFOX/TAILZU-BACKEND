@@ -117,7 +117,7 @@ describe("bots and controls", () => {
   it("a meter and a timeline", () => {
     const m = meter(420, 3000, { label: "This stretch", valueText: "14% used" });
     expect(m.children![1]!.children![0]!.style!.width).toBe("14.0%");
-    const t = timeline([{ mark: "needs", title: "Plan bot needs you" }, { mark: "working", color: "#4F7A3A", title: "Checkout redesign" }]);
+    const t = timeline([{ mark: "needs", title: "Plan Ease needs you" }, { mark: "working", color: "#4F7A3A", title: "Checkout redesign" }]);
     expect(t.children).toHaveLength(2);
     expect(checkTree(t)).toEqual([]);
   });
@@ -156,7 +156,7 @@ describe("the frames", () => {
     const [side, main] = s.root!.children!;
     expect(side!.style).toMatchObject({ width: 240, borderRightWidth: 1 });
     const words = JSON.stringify(side);
-    for (const w of ["Bots", "Activity", "You", "Your bots", "Code bot", "Gym bot", "Make a bot", "Today", "Notes", "This computer helps", "Settings"]) expect(words).toContain(w);
+    for (const w of ["Bots", "Activity", "You", "Your bots", "Xode", "Gym bot", "Make a bot", "Today", "Notes", "This computer helps", "Settings"]) expect(words).toContain(w);
     expect(words).toContain('"screenId":"desk_settings"');
     expect(main!.style).toMatchObject({ overflowY: "auto", flexGrow: 1 });
     expect(checkTree(s.root!)).toEqual([]);

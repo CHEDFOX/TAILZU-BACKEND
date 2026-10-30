@@ -12,17 +12,17 @@
  *   activity   the Activity feed: an answer, a payment, a job, a connected-app task, the day's words
  *   tasks      connected-app tasks (bots.tasks), and the person's own to-dos (src/calendar)
  *   calendar   the person's own calendar (src/calendar): Plan, Today, Tasks' upcoming
- *   code       the Code bot's lists: jobs, projects, rules, PR care
- *   job:<id>   one Code bot job: its progress, its question, its end
+ *   code       Xode's lists: jobs, projects, rules, PR care
+ *   job:<id>   one Xode job: its progress, its question, its end
  *   notes      the meeting notes list;  note:<id>  one meeting's notes (its transcript grows while it records)
- *   keybot     Keybot: its settings, words, voices, history, stats
+ *   keybot     Keylessbord: its settings, words, voices, history, stats
  *   you        You and account settings: profile, plan, notifications, connected apps
  *
  * Spaces and messaging ("space:<id>", "thread:<id>", "threads") and the calendar (calendar, tasks, bot:plan, from wherever it changes:
  * the app, a bot, a space, a reminder) publish their own and are left out of the write table.
  *
  * A write over HTTP is published by live/writes.ts (an onResponse hook: a 2xx write whose route is in the table below); the
- * writes that happen away from a request publish where they are made (notes/store.ts, the Code bot's job store, the history).
+ * writes that happen away from a request publish where they are made (notes/store.ts, Xode's job store, the history).
  * A screen's topics are added to its ScreenResponse by experience/bots/index.ts; a screen can name more with page({ live }).
  */
 

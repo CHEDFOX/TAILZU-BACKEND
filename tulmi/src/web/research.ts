@@ -6,7 +6,7 @@
  *
  * Generic: it takes the model (`ask`), the search (`search`, search/engine.ts
  * bound to its fetch and store) and the page reader (`read`, readPage bound to
- * its renderer) as arguments, and imports nothing from src/code. The Code bot's
+ * its renderer) as arguments, and imports nothing from src/code. Xode's
  * glue (code/webTools.ts) is what binds them to callModel, tiers and a job's
  * budget.
  *

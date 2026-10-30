@@ -6,7 +6,7 @@
  *
  * Builders only: screens/bots.ts calls these from bots.plan and bots.travel. Data is what GET /v1/botsapp/bots/plan (its `travel`) and
  * GET /v1/botsapp/bots/trip/:id/extras answer (routes/botsTrips.ts, src/botsBots/planTravel.ts, tripExtras.ts); a missing part draws
- * nothing, never a made-up number. Colour stays with the bots: the Plan bot's ochre on its leave-by lines, the Travel bot's sea on its pick.
+ * nothing, never a made-up number. Colour stays with the bots: Plan Ease's ochre on its leave-by lines, the Travel bot's sea on its pick.
  * Nothing here books or pays: a stay opens its own site, "you book and pay there".
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
@@ -123,7 +123,7 @@ function creditLine(credits: CreditView[]): Node | null {
   return row([text(credits.map((c) => c.text).join(" · "), { size: 11, color: C.idle, lineHeight: 15, style: { flexShrink: 1 } })], { minHeight: 24 }, openUrl(credits[0]!.url));
 }
 
-// ===================================================================== the Plan bot
+// ===================================================================== Plan Ease
 
 const PLAN = () => botLook("plan").color;
 
@@ -171,7 +171,7 @@ export function leaveBlocks(ctx: BotsCtx, t: PlanTravelView | undefined, events:
     return [{ id: `leave:${l.toId}`, title: l.tight ? `Tight · ${l.minutes} min` : `Leave ${c}`, start: l.leaveBy, end: to.start, allDay: false as const, people: 0 as const }];
   });
 }
-/** The style a leave block takes in the week column (the Plan bot's ochre, dashed). */
+/** The style a leave block takes in the week column (Plan Ease's ochre, dashed). */
 export const leaveStyle = (): Record<string, unknown> => ({ backgroundColor: C.paper, borderWidth: 1.5, borderColor: PLAN(), borderStyle: "dashed" });
 export const isLeave = (id: string): boolean => id.startsWith("leave:");
 
@@ -194,7 +194,7 @@ export function homePart(_ctx: BotsCtx, t: PlanTravelView | undefined): Node[] {
   if (!t.home) {
     return [card([
       text("Where does your day start?", { size: 15, weight: 600, lineHeight: 20 }),
-      meta("Plan bot then times the trip to your first stop, and counts the travel a change saves you. Only your area, not your address.", { size: 13 }),
+      meta("Plan Ease then times the trip to your first stop, and counts the travel a change saves you. Only your area, not your address.", { size: 13 }),
       form,
     ], { dashed: true, gap: 10 })];
   }

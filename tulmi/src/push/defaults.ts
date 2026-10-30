@@ -93,7 +93,7 @@ export const PUSH_DEFAULTS: PushPayload = {
     // The confirm sheet (experience/assistant.ts); the push carries data.taskId.
     "push.approval.screenId": "assistant_approve",
 
-    // The Code bot's jobs (src/code/jobs, docs/code-router.md): paid compute needs a yes, a job is
+    // Xode's jobs (src/code/jobs, docs/code-router.md): paid compute needs a yes, a job is
     // waiting for a computer, its changes need a yes to be committed, it moved to another place, it
     // finished, it stopped, and (the agent loop, docs/code-agent.md) it needs the person: a question,
     // a plan to approve, an OK, more budget. The push carries data.jobId. The Code screen is the phone's to come, so
