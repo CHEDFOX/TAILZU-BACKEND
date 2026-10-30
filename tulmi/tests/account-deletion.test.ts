@@ -223,7 +223,7 @@ describe("Home, signed in during the seven days", () => {
         const api = { "GET /v1/shell/started": { started }, "GET /v1/bots/first-run/arrival": { due: true }, [`GET ${DELETION_PATH}`]: SET, "GET /v1/bots/push-ask": { due: true } };
         const s = await buildBotsScreen(req("bots.home", client), fakeDeps(started ? { api } : { api, bots: SAMPLE_BOTS.filter((b) => b.builtin), jobs: [], tasks: [] }));
         expect(lintTree(s.root!)).toEqual([]);
-        expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your account will be deleted on 2 Nov", "Your bots are stopped. Keep it, and they start again.", "Keep my account", ...(started ? [] : ["Hi Aanya, I'm Blip"])]));
+        expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your account will be deleted on 2 Nov", "Your bots are stopped. Keep it, and they start again.", "Keep my account", ...(started ? [] : ["Hi Aanya, I'm X0"])]));
         expect(json(s.root)).toContain(`"method":"DELETE","path":"${DELETION_PATH}"`);
         expect(s.state).not.toHaveProperty("permitClosed");
         expect(s.state).not.toHaveProperty("pushGranted");
