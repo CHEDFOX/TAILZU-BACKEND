@@ -5,7 +5,8 @@
  *   installLiveWrites(app)                every 2xx write over HTTP whose route is in topics.ts's table publishes its topics,
  *                                         after the response has gone (an onResponse hook: never in a request's way)
  *   liveJobStore(store)                   the Code bot's jobs say so as they move (the agent, the ticker, a runner's result),
- *                                         whoever made the change: job:<id>, code, home, activity
+ *                                         whoever made the change: job:<id>, code, home, activity; and the job's Live Activity
+ *                                         (setJobChangeHook: the APNs pusher, widgets/activity.ts, when it is configured)
  *   liveNote(userId, id)                  a meeting's notes changed (notes/store.ts): notes, note:<id>
  *
  * A BURST IS ONE EVENT. Per person and topic, the first event goes at once and the rest of a burst become one more at its end
@@ -89,10 +90,15 @@ export function liveNote(userId: string, id: string): void {
   livePublish(userId, [TOPIC.notes, noteTopic(id)]);
 }
 
-/** A Code bot job changed: its page at once, the Code bot's lists, Home's tiles and Activity a little more slowly. */
+/** Who else hears that a job changed: the "Bots at work" Live Activity's pusher (widgets/activity.ts, set by routes/widgets.ts). */
+let jobChangeHook: ((userId: string, jobId: string) => void) | null = null;
+export function setJobChangeHook(fn: ((userId: string, jobId: string) => void) | null): void { jobChangeHook = fn; }
+
+/** A Code bot job changed: its page at once, the Code bot's lists, Home's tiles and Activity a little more slowly; and its Live Activity. */
 export function liveJob(userId: string, jobId: string): void {
   livePublish(userId, [jobTopic(jobId)]);
   try { listThrottle.publish(userId, [TOPIC.code, TOPIC.home, TOPIC.activity]); } catch { /* a hint lost */ }
+  try { jobChangeHook?.(userId, jobId); } catch { /* never the writer's problem */ }
 }
 
 /** Who made this request, for publishing after it. Null when nobody can be said to have. */
