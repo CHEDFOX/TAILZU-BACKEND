@@ -23,14 +23,14 @@ import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../.
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
-import { icon, keyMark, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
+import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
 import type { BotsLive, LiveBot, NeedsItem } from "./live.js";
 import { C, botLook, type BotLook } from "./palette.js";
 import { botRoute, SCREENS } from "./ids.js";
 import { askMoment, failed as momentFailed, SENT_WORDS, start as momentStart, streamed as momentStreamed } from "./askMoment.js";
 
 export { C, PALETTE_HEX, botLook, BUILTIN_SLUGS, type BotLook } from "./palette.js";
-export { icon, keyMark, shapes, statusMark, tabGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
+export { icon, peekKey, shapes, statusMark, tabGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
 export { blipUrl, headUrl, BLIP_POSES, type BlipPose } from "./art.js";
 export { SCREENS, botRoute } from "./ids.js";
 export { percent, whenWords } from "../../you/usage.js";
@@ -529,13 +529,10 @@ export function roundButton(name: IconName, onPress: ActionRef | undefined, o: {
   return o.label ? labelled(b, o.label) : b;
 }
 
-/** The keyboard's mic key, in the app: the same dark round key with the mark (catalog.ts makeToolsRow, light look). */
-export const KEY_INK = "#1B1712";
+/** The keyboard's mic key, in the app: the same round window with the bot peeking in (glyphs.ts peekKey). */
 export function micKey(onPress: ActionRef | undefined, o: { size?: number; label?: string } = {}): Node {
   const s = o.size ?? 48;
-  return labelled(box([keyMark(Math.round(s * 0.7), "#FFFFFF")], {
-    width: s, height: s, borderRadius: s / 2, alignItems: "center", justifyContent: "center", flexShrink: 0, backgroundColor: KEY_INK,
-  }, onPress), o.label ?? "Speak");
+  return labelled(box([peekKey(s)], { width: s, height: s, borderRadius: s / 2, flexShrink: 0 }, onPress), o.label ?? "Speak");
 }
 
 /** A chip: radius 18, padding 8 14, 13px. Selected: black fill, white text. */

@@ -102,26 +102,99 @@ const MARK_DOTS: Array<[number, number, number]> = [
 
 /** The Tailzu dot mark: eight dots in a ring, two eyes. */
 /**
- * The keyboard mic key's mark (catalog.ts MIC_MARK): three rounded blocks, the line from the low one up to the first, and
- * the wave of seven bars across to the second; one filled path in the key's own viewBox.
+ * THE KEYBOARD'S MIC KEY, AS IT IS: a dark round window with the bot peeking in from below, his paws on its rim
+ * (catalog.ts "kb.mic.bot": "peek", drawn by the keyboard's PeekBotView.swift / TulmiPeekBot.kt). This is that
+ * drawing's peek pose, still, in the same units (the key's radius is 1, centre 0 0, y down) and the same colours
+ * (keyboardKnobsData.ts kb.mic.bot.*). The keyboard clips to the window; an SVG shape cannot clip, so each shape is
+ * cut to the window here, and the shell's gradient and the rim's soft shadow are laid in bands.
  */
-const rrect = (x: number, y: number, w: number, h: number, r: number) =>
-  `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
-function keyMarkPath(): string {
-  const line = (x1: number, y1: number, x2: number, y2: number, w: number) => {
-    const dx = x2 - x1, dy = y2 - y1, d = Math.hypot(dx, dy), nx = (-dy / d) * w / 2, ny = (dx / d) * w / 2;
-    return `M${x1 + nx} ${y1 + ny}L${x2 + nx} ${y2 + ny}L${x2 - nx} ${y2 - ny}L${x1 - nx} ${y1 - ny}Z`;
+const PEEK = {
+  window: "#2E2B28", shell: "#FBF0DE", shellShade: "#E9D0A8", visor: "#1D1C1B", glow: "#FFF1D6", clay: "#C9683F",
+} as const;
+type Pt = [number, number];
+const disc = (cx: number, cy: number, r: number, n = 40): Pt[] =>
+  Array.from({ length: n }, (_, i) => [cx + r * Math.cos((i / n) * 2 * Math.PI), cy + r * Math.sin((i / n) * 2 * Math.PI)] as Pt);
+function roundRect(x: number, y: number, w: number, h: number, r: number): Pt[] {
+  const k = Math.min(r, w / 2, h / 2), out: Pt[] = [];
+  const corner = (cx: number, cy: number, from: number) => {
+    for (let i = 0; i <= 8; i++) { const a = from + (i / 8) * (Math.PI / 2); out.push([cx + k * Math.cos(a), cy + k * Math.sin(a)]); }
   };
-  const bars = [28, 36, 41, 46, 43, 34, 28].map((h, i, a) => {
-    const t = i / (a.length - 1), x = 444 + (554 - 444) * t, y = 394 + (486 - 394) * t;
-    return rrect(x - 6, y - h * .6, 12, h * 1.2, 6);   // thicker than the key's own 6, so the wave reads at an app's sizes
-  });
-  return [rrect(308, 269, 132, 132, 28), rrect(558, 478, 132, 132, 28), rrect(178, 598, 132, 132, 28), line(346, 402, 270, 598, 16), ...bars].join("");
+  corner(x + w - k, y + k, -Math.PI / 2); corner(x + w - k, y + h - k, 0); corner(x + k, y + h - k, Math.PI / 2); corner(x + k, y + k, Math.PI);
+  return out;
 }
-const KEY_MARK = keyMarkPath();
-/** The keyboard mic key's mark, `size` wide, in `color`. */
-export function keyMark(size: number, color: string): Node {
-  return { type: "SVG", props: { viewBox: "170 261 528 477", d: KEY_MARK, fill: color, stroke: "none" }, style: { width: size, height: Math.round(size * 477 / 528), flexShrink: 0 } };
+const band = (y0: number, y1: number): Pt[] => [[-2, y0], [2, y0], [2, y1], [-2, y1]];
+/** `poly` cut to the convex `edge` (Sutherland–Hodgman; both wound the same way). */
+function cut(poly: Pt[], edge: Pt[]): Pt[] {
+  let out = poly;
+  for (let i = 0; i < edge.length && out.length; i++) {
+    const [a, b] = [edge[i]!, edge[(i + 1) % edge.length]!];
+    const inside = (p: Pt) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]) >= 0;
+    const meet = (p: Pt, q: Pt): Pt => {
+      const d = (b[0] - a[0]) * (q[1] - p[1]) - (b[1] - a[1]) * (q[0] - p[0]);
+      const t = ((b[0] - a[0]) * (a[1] - p[1]) - (b[1] - a[1]) * (a[0] - p[0])) / d;
+      return [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])];
+    };
+    const src = out; out = [];
+    for (let j = 0; j < src.length; j++) {
+      const p = src[j]!, q = src[(j + 1) % src.length]!;
+      if (inside(q)) { if (!inside(p)) out.push(meet(p, q)); out.push(q); } else if (inside(p)) out.push(meet(p, q));
+    }
+  }
+  return out;
+}
+const WINDOW = disc(0, 0, 1, 96);
+const pathOf = (poly: Pt[]) => poly.length < 3 ? "" : `M${poly.map(([x, y]) => `${+x.toFixed(3)} ${+y.toFixed(3)}`).join("L")}Z`;
+/** A filled shape, cut to the window. */
+const inWindow = (poly: Pt[], fill: string, opacity?: number): SvgShape[] => {
+  const d = pathOf(cut(poly, WINDOW));
+  return d ? [{ d, fill, ...(opacity === undefined ? {} : { opacity }) }] : [];
+};
+const mix = (a: string, b: string, t: number) => "#" + [1, 3, 5].map((i) => {
+  const v = Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t);
+  return v.toString(16).padStart(2, "0");
+}).join("");
+
+function peekKeyShapes(): SvgShape[] {
+  const Y = 0.86;                                    // the peek: his head comes up this far into the window
+  const headW = 1.12, headH = 0.86, top = -headH / 2 + Y, fy = -0.05 - 0.02 + Y;
+  const shell = roundRect(-headW / 2, top, headW, headH, 0.32);
+  // The shell, lighter on top: its gradient in bands down the part of it the window shows.
+  const shellBands: SvgShape[] = [];
+  const BANDS = 6;
+  for (let i = 0; i < BANDS; i++) {
+    const y0 = top + (i / BANDS) * (1 - top), y1 = top + ((i + 1) / BANDS) * (1 - top) + 0.004;
+    shellBands.push(...inWindow(cut(shell, band(y0, y1)), mix(PEEK.shell, PEEK.shellShade, ((y0 + y1) / 2 - top) / headH)));
+  }
+  const eye = (x: number) => [
+    ...inWindow(roundRect(x - 0.102, fy - 0.1615, 0.204, 0.323, 0.102), PEEK.glow, 0.18),
+    ...inWindow(roundRect(x - 0.06, fy - 0.095, 0.12, 0.19, 0.06), PEEK.glow),
+  ];
+  // The rim: a soft shadow inside it (none at 0.72 of the way out, 42% black at the edge), in rings.
+  const rim: SvgShape[] = Array.from({ length: 7 }, (_, i) => {
+    const r = 0.74 + i * 0.04;
+    return { circle: [0, 0, r] as [number, number, number], stroke: "#000000", strokeWidth: 0.042, opacity: +(0.42 * (r - 0.72) / 0.28).toFixed(3) };
+  });
+  const glint = (a: number) => [0.86 * Math.cos(a * Math.PI), 0.86 * Math.sin(a * Math.PI)].map((v) => +v.toFixed(3));
+  const [g0, g1] = [glint(1.08), glint(1.38)];
+  return [
+    { circle: [0, 0, 1], fill: PEEK.window },
+    ...inWindow(disc(-headW / 2, -0.02 + Y, 0.1), PEEK.clay), ...inWindow(disc(headW / 2, -0.02 + Y, 0.1), PEEK.clay),   // ears
+    { d: `M0 ${+(top + 0.02).toFixed(3)}L0 ${+(top - 0.22).toFixed(3)}`, stroke: PEEK.shellShade, strokeWidth: 0.05, linecap: "round" },   // antenna
+    { circle: [0, +(top - 0.22).toFixed(3), 0.075], fill: PEEK.clay },
+    ...shellBands,
+    ...inWindow(roundRect(-0.4, -0.38 + Y, 0.26, 0.07, 0.035), "#FFFFFF", 0.55),                                       // highlight
+    ...inWindow(roundRect(-0.42, -0.05 - 0.23 + Y, 0.84, 0.46, 0.2), PEEK.visor),
+    ...eye(-0.19), ...eye(0.19),
+    ...inWindow(disc(-0.5, 0.83, 0.1), PEEK.shell), ...inWindow(disc(0.5, 0.83, 0.1), PEEK.shell),                   // paws on the rim
+    ...rim,
+    { d: `M${g0[0]} ${g0[1]}A0.86 0.86 0 0 1 ${g1[0]} ${g1[1]}`, stroke: "#FFFFFF", strokeWidth: 0.05, opacity: 0.16, linecap: "round" },
+  ];
+}
+const PEEK_KEY = peekKeyShapes();
+
+/** The keyboard's mic key, `size` across: the bot peeking into his window. */
+export function peekKey(size: number): Node {
+  return shapes(PEEK_KEY, { size, viewBox: "-1 -1 2 2" });
 }
 
 export function tailzuMark(size = 34): Node {
