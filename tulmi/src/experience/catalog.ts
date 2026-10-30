@@ -2803,7 +2803,7 @@ export function buildBootstrap(
     // stopped mid-sentence does not need to hear about a feature first, and
     // two cards on one open is one too many.
     ...(() => {
-      const card = wordsMilestoneCard(opts) ?? LAUNCH_CARD;
+      const card = wordsMilestoneCard({ ...opts, ...(botsApp ? { plansScreenId: "bots.plans" } : {}) }) ?? LAUNCH_CARD;
       return card ? { launchCard: card } : {};
     })(),
     cacheTtlSeconds: 300,
@@ -2953,6 +2953,8 @@ function wordsMilestoneCard(opts: {
   isReviewer?: boolean;
   wordsUsed?: number;
   allowance?: Allowance | null;
+  /** Where its button goes: the Bots app's own Plans, or today's paywall. */
+  plansScreenId?: string;
 }): LaunchCard | null {
   if (opts.entitled === true || opts.isReviewer || freeForAll()) return null;
   const used = Math.max(0, Math.round(opts.wordsUsed ?? 0));
@@ -2973,7 +2975,7 @@ function wordsMilestoneCard(opts: {
     title: fill(m.title),
     body: fill(m.body),
     cta: WORDS_GATE.cta,
-    screenId: WORDS_GATE.paywallScreenId,
+    screenId: opts.plansScreenId ?? WORDS_GATE.paywallScreenId,
     dismiss: WORDS_GATE.dismiss,
   });
 }

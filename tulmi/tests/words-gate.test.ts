@@ -169,6 +169,14 @@ describe("the gate is one editable block", () => {
     }
   });
 
+  it("in the Bots app, its button opens the Bots app's Plans, not today's paywall", () => {
+    const m = WORDS_GATE.milestones[0]!.at;
+    const bots = JSON.stringify(buildBootstrap({ wordsUsed: m, allowance: allow(m), botsApp: true }).launchCard);
+    expect(bots).toContain('"screenId":"bots.plans"');
+    expect(bots).not.toContain(`"screenId":"${WORDS_GATE.paywallScreenId}"`);
+    expect(JSON.stringify(buildBootstrap({ wordsUsed: m, allowance: allow(m) }).launchCard)).toContain(`"screenId":"${WORDS_GATE.paywallScreenId}"`);
+  });
+
   it("templates the numbers rather than computing them in code", () => {
     // Changing what a card says — including WHICH numbers it says — has to be
     // editing a string, or the copy is code and only a developer can touch it.
