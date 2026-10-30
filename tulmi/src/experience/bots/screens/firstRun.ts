@@ -1577,7 +1577,9 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
       }),
       gotYou({ all: [MIC_SETTLED, KEYS_ON] }),
     ];
-    ready = { all: [{ neq: ["micGranted", null] }, { neq: ["keyboardReady", null] }] };
+    // Known enough to decide: the microphone, and the keyboard switched on or not. Full Access is only read once the
+    // keyboard has run; an iPhone may not have that yet, and KEYS_ON does not need it there.
+    ready = { all: [{ neq: ["micGranted", null] }, { neq: ["keyboardEnabled", null] }, { any: [{ neq: ["keyboardReady", null] }, { platform: "ios" }] }] };
     done = { all: [MIC_SETTLED, KEYS_ON] };
   }
   if (canMove(ctx)) {

@@ -261,7 +261,9 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   // for whatever is missing (the microphone, the keyboard) comes in over him as he goes; with nothing missing it closes by
   // itself unseen. Once he is gone and the card is done (or put off), Home comes in, piece by piece, as on any day.
   const intro = n.arrival && canMove(ctx);
-  const gone: Condition = { all: [{ truthy: "helloGone" }, { truthy: "permitClosed" }] };
+  // Home comes in as soon as he is gone. A card still due sits over it (the card is an overlay, over a veil), so Home never
+  // waits on the card deciding: on an iPhone whose keyboard has not reported Full Access yet, it might never decide.
+  const gone: Condition = { truthy: "helloGone" };
   const arrive = (x: Node, i: number): Node => (intro ? { type: "Rise", props: { delayMs: i * 70, fromY: 36, scaleFrom: 0.98 }, visibleIf: gone, children: [x] } : x);
   return page(ctx, {
     tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}) },
@@ -324,7 +326,9 @@ function hello(ctx: BotsCtx, more: HomeMore, o: { walkOut?: boolean } = {}): Nod
     return row([blip("hello", 140), col([text(hi, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), text(line, { size: 15, color: C.grey70, lineHeight: 21 })], { gap: 6, flexShrink: 1 })], { gap: 24 });
   }
   const bot = blip("hello", 132);
-  const words = [text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })];
+  // The full width of the stage, centred in it: measured to its own ink, tight type loses its last letters on an iPhone.
+  const wide = { alignSelf: "stretch" as const, paddingHorizontal: 24 };
+  const words = [text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center", style: wide }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center", style: wide })];
   if (!o.walkOut) return col([bot, ...words], { gap: 6, alignItems: "center" });
   const walking: Node = ctx.can.has(WALK_OUT)
     ? { type: WALK_OUT, props: { h: 120, goWhen: "helloSeen", walkMs: WALK_MS - 100, label: "Blip" } }
