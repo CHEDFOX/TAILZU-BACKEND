@@ -1038,7 +1038,7 @@ function start(ctx: BotsCtx, s: StartData | undefined): ScreenResponse {
 // ===================================================================== bots.code.new (NewProject / DNewProject)
 
 type NewData =
-  | { kind: "pick"; projects: Project[]; repoLink?: string }
+  | { kind: "pick"; projects: Project[] }
   | { kind: "intake"; v: IntakeView };
 
 async function loadNew(ctx: BotsCtx, deps: BotsDeps): Promise<NewData | undefined> {
@@ -1047,11 +1047,8 @@ async function loadNew(ctx: BotsCtx, deps: BotsDeps): Promise<NewData | undefine
     const v = await get<IntakeView>(deps, `/v1/bots/code/projects/${id}/intake`);
     return v ? { kind: "intake", v } : undefined;
   }
-  const [projects, link] = await Promise.all([
-    get<{ projects: Project[] }>(deps, "/v1/code/projects").then((r) => r?.projects ?? []),
-    get<{ url: string }>(deps, "/v1/code/new-repo-link?name=my-new-project"),
-  ]);
-  return { kind: "pick", projects, ...(link?.url ? { repoLink: link.url } : {}) };
+  const projects = await get<{ projects: Project[] }>(deps, "/v1/code/projects").then((r) => r?.projects ?? []);
+  return { kind: "pick", projects };
 }
 
 /** "The plan so far": what is decided (the answers, or the plan the answers made) and what is still to decide. */
@@ -1103,13 +1100,22 @@ function newProject(ctx: BotsCtx, d: NewData | undefined): ScreenResponse {
           }),
         },
     };
+    // A new repo is made from here: GitHub only checks it's them (a blink when they already allowed X0 Bot), then makes it and it's added.
+    const makeRepo: ActionRef = {
+      kind: "condition", if: { falsy: "repoName" }, then: toast("Name the repo first"),
+      else: call("POST", "/v1/code/repos/new", { name: "$state.repoName", visibility: "$state.repoVis" }, {
+        assignTo: "newRepo", ok: openUrl("$state.newRepo.url"), fail: toast("Couldn't start that. Try again."),
+      }),
+    };
     const where: Node[] = projectId ? [] : [
       sectionLabel("Where it lives"),
-      meta("An empty repo on GitHub. Make one, add it here, then pick it.", { size: 13 }),
+      meta("A new repo on your GitHub, made from here. Or pick one you added.", { size: 13 }),
+      boxedField("repoName", "my-new-project", { size: 15, label: "New repo name" }),
       row([
-        ...(d.kind === "pick" && d.repoLink ? [secondaryButton("Make an empty repo on GitHub", openUrl(d.repoLink), { size: "md", icon: "plus" })] : []),
-        quietButton("Add it here", open(SCREENS.codeStart, { step: "pick" }), { size: "md" }),
-      ], { gap: 8, flexWrap: "wrap" }),
+        chips([{ label: "Private", value: "private" }, { label: "Public", value: "public" }], "repoVis"),
+        secondaryButton("Make the repo", makeRepo, { size: "md", icon: "plus" }),
+        quietButton("Add one I have", open(SCREENS.codeStart, { step: "pick" }), { size: "md" }),
+      ], { gap: 8, flexWrap: "wrap", alignItems: "center" }),
       ...(projects.length ? [chips(projects.slice(0, 12).map((p) => ({ label: short(p.fullName), value: p.id })), "where")] : []),
     ];
     const bodyNodes: Node[] = [

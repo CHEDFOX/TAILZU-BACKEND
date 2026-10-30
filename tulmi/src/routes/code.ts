@@ -144,10 +144,11 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser } from "../auth/supabase.js";
 import { NoTokenKey, tokenKey } from "../connectors/crypto.js";
 import { ConnectorError } from "../connectors/oauth.js";
+import { verifyState } from "../connectors/state.js";
 import type { Code } from "../code/index.js";
 import { beginConnect, completeCallback, forgetInstallation, linkStatus } from "../code/link.js";
 import { GRANTS_MAX, PolicyError, actionCatalog, parseGrant, type GateOptions } from "../code/policy.js";
-import { addProject, createWorkBranch, initEmptyRepo, listBranches, listRepos, newRepoLink, openPr, ownProject, workspace } from "../code/projects.js";
+import { addProject, beginNewRepo, createWorkBranch, finishNewRepo, initEmptyRepo, isNewRepoState, listBranches, listRepos, newRepoLink, openPr, ownProject, workspace } from "../code/projects.js";
 import { emptyRepoVerdict } from "../code/newproject/detect.js";
 import { advanceIntake } from "../code/newproject/intake.js";
 import { milestoneBranch } from "../code/newproject/milestones.js";
@@ -317,6 +318,21 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
       const code = text(q.code, 4096), state = text(q.state, 4096), installationId = text(q.installation_id, 20), setupAction = text(q.setup_action, 32);
       if ((q.code !== undefined && code === undefined) || (q.state !== undefined && state === undefined)) {
         return reply.code(400).send(again("That link didn't work", "Go back to X0 Bot and start connecting again."));
+      }
+      // "Make a repo" from X0 Bot comes back here too: its signed state names the repo.
+      const made = state ? await verifyState(state).catch(() => null) : null;
+      if (made && isNewRepoState(made.connectorId)) {
+        if (!code) return reply.code(400).send(again("Nothing was made", "Go back to X0 Bot and try again."));
+        try {
+          const r = await finishNewRepo({ store: k.store, github: k.github, approvals: k.approvals, oauth: k.oauth }, made.userId, made.connectorId, code);
+          if (r.project && k.brain) await k.brain.added(made.userId, r.project).catch(() => false);
+          return reply.send(r.project
+            ? page(`${r.fullName} is ready`, "It's added to X0 Bot. You can go back now.", true, OPEN_APP)
+            : page(`${r.fullName} is made`, "Back in X0 Bot, tap \u201cMissing one?\u201d to give X0 Bot access to it, then pick it.", true, OPEN_APP));
+        } catch (err) {
+          req.log.warn({ code: (err as { code?: string })?.code }, "github new repo failed");
+          return reply.code(400).send(again("The repo wasn't made", err instanceof ConnectorError ? err.message : "Go back to X0 Bot and try again."));
+        }
       }
       try {
         const r = await completeCallback({ store: k.store, github: k.github }, { code, installationId, setupAction, state });
@@ -610,6 +626,14 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
         return reply.send(await openPr(s.d, s.user.id, req.params.id, branch, title, body));
       } catch (err) { return fail(reply, err); }
     });
+
+  // Make a repo from X0 Bot: the GitHub page to open, which sends the person straight back to the callback above, where the repo is made.
+  app.post<{ Body: { name?: unknown; visibility?: unknown } }>("/v1/code/repos/new", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply, "app");
+    if (!s) return reply;
+    const { name, visibility } = req.body ?? {};
+    return reply.send(await beginNewRepo(s.d, s.user.id, name, visibility));
+  });
 
   app.get<{ Querystring: { name?: unknown } }>("/v1/code/new-repo-link", RL, async (req, reply) => {
     const s = await begin(req.headers["authorization"], reply);

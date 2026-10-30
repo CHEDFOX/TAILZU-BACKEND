@@ -667,6 +667,24 @@ export class FakeGithub {
       });
     }
 
+    // A repo made with the person's own token: GitHub lets an App do it only with Administration (write) on their install.
+    if (c.method === "POST" && p === "/user/repos") {
+      const me = this.profiles.get(this.bearer(c));
+      if (!me) return this.reply(401, { message: "Bad credentials" });
+      const own = [...this.installs.values()].find((i) => i.login === me.login);
+      if (own?.permissions.administration !== "write") return this.reply(403, { message: "Resource not accessible by integration" });
+      const fullName = `${me.login}/${String(c.body?.name ?? "")}`;
+      if (this.repos.some((r) => r.fullName === fullName)) return this.reply(422, { message: "Repository creation failed.", errors: [{ message: "name already exists on this account" }] });
+      const repo = this.addRepo(own.selection === "all" ? own.id : 0, fullName, { private: c.body?.private !== false });
+      return this.reply(201, { id: repo.id, name: fullName.split("/")[1], full_name: fullName, private: repo.private, default_branch: repo.defaultBranch, archived: false });
+    }
+    if ((m = p.match(/^\/user\/installations\/(\d+)\/repositories\/(\d+)$/)) && c.method === "PUT") {
+      const repo = this.repos.find((r) => r.id === Number(m![2]));
+      if (!this.people.get(this.bearer(c))?.includes(Number(m[1])) || !repo) return this.reply(404, { message: "Not Found" });
+      repo.installationId = Number(m[1]);
+      return new Response(null, { status: 204 });
+    }
+
     if ((m = p.match(/^\/app\/installations\/(\d+)$/)) && c.method === "GET") {
       await this.asApp(c);
       const i = this.installs.get(Number(m[1]));

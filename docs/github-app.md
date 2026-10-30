@@ -58,7 +58,7 @@ Pick one of the two ways.
 | Webhook URL | `https://api.x0bot.com/v1/code/github/webhook` |
 | Webhook secret | `openssl rand -hex 32`. This is `GITHUB_APP_WEBHOOK_SECRET` |
 | SSL verification | Enable |
-| Repository permissions | **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). **Checks: Read-only** and **Commit statuses: Read-only**, for PR care (`docs/pr-care.md`): they let Tailzu see why a pull request's CI is red (with Actions, for the failing job's log). Nothing else, except, optionally, **Deployments** (**Read-only**), which lets a milestone's pull request show its host's preview link (`docs/code-work.md`, section 8; without it the person gets a one-time tip instead) |
+| Repository permissions | **Administration: Read and write**, so a person can make a new repo from X0 Bot (`POST /v1/code/repos/new`: GitHub checks it's them, then the repo is made on their account with their one-moment token and added as a project; without it they're told to accept the permission). **Contents: Read and write.** **Pull requests: Read and write.** **Metadata: Read-only** (GitHub sets this one itself). **Workflows: Read and write** and **Actions: Read-only**, both for GitHub's free computers (below, and section 9). **Checks: Read-only** and **Commit statuses: Read-only**, for PR care (`docs/pr-care.md`): they let Tailzu see why a pull request's CI is red (with Actions, for the failing job's log). Nothing else, except, optionally, **Deployments** (**Read-only**), which lets a milestone's pull request show its host's preview link (`docs/code-work.md`, section 8; without it the person gets a one-time tip instead) |
 | Account and organization permissions | None |
 | Subscribe to events | Tick **Pull request**, **Pull request review**, **Pull request review comment** and **Issue comment** (they only appear once Pull requests is given), **Check run** and **Check suite** (once Checks is given), **Status** (once Commit statuses is given) and **Push** (it appears once Contents is given; the project brain, `docs/code-project-brain.md`, keeps itself fresh with it). The five after Pull request review are PR care's (`docs/pr-care.md`). `installation` and `installation_repositories` are sent to every App without being asked for, and this server reads those too |
 | Where can this GitHub App be installed? | **Any account.** With "Only on this account" nobody but you could install it |
@@ -102,6 +102,7 @@ name if it is taken, and the origin if the API is not at `api.x0bot.com`):
   "request_oauth_on_install": true,
   "public": true,
   "default_permissions": {
+    "administration": "write",
     "contents": "write",
     "pull_requests": "write",
     "workflows": "write",
