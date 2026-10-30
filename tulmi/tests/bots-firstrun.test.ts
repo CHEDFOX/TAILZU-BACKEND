@@ -321,10 +321,19 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       // Unknown until the app's own readings arrive: the card decides only then.
       expect(s.state).toMatchObject({ micGranted: null, keyboardEnabled: null, keyboardReady: null, micAsked: false, permitClosed: false });
       const card = cardOf(s.root!)!;
+      // It comes in after the bot's hello has played on its own (helloSeen), and Home waits on it closing.
       expect(card.props).toMatchObject({
-        overlay: true, once: "bots.arrival", closeWhen: { truthy: "permitClosed" },
-        readyWhen: { all: [{ neq: ["micGranted", null] }, { neq: ["keyboardReady", null] }] },
+        overlay: true, closeWhen: { truthy: "permitClosed" },
+        readyWhen: { all: [{ all: [{ neq: ["micGranted", null] }, { neq: ["keyboardReady", null] }] }, { truthy: "helloSeen" }] },
       });
+      expect(s.state).toMatchObject({ helloSeen: false });
+      // The first visit: only the waving bot and his line, which sets helloSeen after a few seconds; the rest of Home, and the
+      // ask bar, only once the card is closed.
+      const nodes = walk(s.root!);
+      const helloNode = nodes.find((x) => x.on?.onAppear && JSON.stringify(x.on.onAppear).includes("helloSeen"))!;
+      expect(helloNode.visibleIf).toEqual({ falsy: "permitClosed" });
+      expect(JSON.stringify(helloNode.on?.onAppear)).toMatch(/"kind":"delay","ms":3\d{3}/);
+      expect(JSON.stringify(s.root)).toContain('"visibleIf":{"truthy":"permitClosed"}');
       // Monochrome: white, ink and Geist; the bot in a neutral grey.
       expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
       expect(card.props?.color).toBe("#3d3d3d");
