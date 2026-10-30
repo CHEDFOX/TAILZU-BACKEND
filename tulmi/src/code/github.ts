@@ -687,6 +687,36 @@ export class GithubApp {
 
   // ---------------------------------------------------------- the person
 
+  /** GitHub's "is this you" page for the App, for a step that needs the person's own token once (making a repo). Someone who already said yes is sent straight back. */
+  authorizeUrl(state: string): string {
+    const u = new URL("https://github.com/login/oauth/authorize");
+    u.searchParams.set("client_id", this.app().clientId);
+    u.searchParams.set("state", state);
+    return u.toString();
+  }
+
+  /** A new repo on the person's own account, with a README so it has a first commit. Their one-moment token; the App needs Administration (write). */
+  async createUserRepo(userToken: string, name: string, isPrivate: boolean): Promise<GithubRepo> {
+    const r = await this.send("POST", `${GITHUB_API}/user/repos`, userToken, { name, private: isPrivate, auto_init: true, description: "Made with X0 Bot" });
+    if (r.status === 422 && /already exists/i.test(saidIn(r.json))) throw new ConnectorError("exists", `You already have a repo called ${name}. Pick another name.`);
+    if (r.status === 403 || r.status === 404) throw new ConnectorError("needs_permission", "X0 Bot isn't allowed to make repos on your GitHub yet. Accept its new permission on GitHub, then try again.");
+    const repo = r.status === 201 ? asRepo(r.json) : null;
+    if (!repo) throw githubError(r.status, r.json, "the new repo");
+    return repo;
+  }
+
+  /** Puts a repo in an install that has only some repos. False when GitHub won't; the install's own page can do it. */
+  async addToInstallation(userToken: string, installationId: number, repoId: number): Promise<boolean> {
+    const r = await this.send("PUT", `${GITHUB_API}/user/installations/${installationId}/repositories/${repoId}`, userToken);
+    if (r.status === 204) this.dropTokens(installationId);
+    return r.status === 204;
+  }
+
+  /** Forgets the install's cached tokens: one made before a repo joined it can't see that repo. */
+  dropTokens(installationId: number): void {
+    for (const key of this.tokens.keys()) if (key.startsWith(`${installationId}|`)) this.tokens.delete(key);
+  }
+
   /** The code GitHub sent the person back with, traded for their token. Used once by the caller and dropped. */
   async exchangeUserCode(code: string): Promise<string> {
     let res: Response;

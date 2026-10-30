@@ -93,6 +93,7 @@ const ALL_ROUTES: Array<["GET" | "POST" | "DELETE", string]> = [
   ["GET", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches"],
   ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/pr"],
   ["GET", "/v1/code/new-repo-link?name=my-app"],
+  ["POST", "/v1/code/repos/new"],
   ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/init"],
   ["POST", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/sync"],
   ["GET", "/v1/code/projects/00000000-0000-4000-8000-000000000000/branches/tailzu%2Fx-1234/diff"],
@@ -539,6 +540,47 @@ describe("new repos, and a work branch's life", () => {
     const pr = (await r.call("alice", "POST", `${B(id, branch)}/pr`, { title: "Add feature", body: "Does it." })).json();
     return { ...r, repo: repo!, id, branch, pr };
   }
+
+  describe("made from X0 Bot", () => {
+    const ADMIN = { contents: "write", pull_requests: "write", metadata: "read", administration: "write" };
+    const back = (r: Rig, url: string, code = "code-1") =>
+      r.app.inject({ method: "GET", url: `/v1/code/github/callback?code=${code}&state=${encodeURIComponent(new URL(url).searchParams.get("state")!)}` });
+
+    it("asks GitHub who it is, makes the repo on their account, and adds it as a project", async () => {
+      const r = await rig();
+      r.fake.addInstall(101, "alice", { selection: "selected", permissions: ADMIN });
+      r.fake.addPerson("code-1", "gho_alice", [101], "alice");
+      await r.store.upsertInstallation("alice", { installationId: 101, accountLogin: "alice", accountType: "User", repositorySelection: "selected", githubUserId: 77, githubLogin: "alice" });
+      const start = (await r.call("alice", "POST", "/v1/code/repos/new", { name: "My Salon App", visibility: "public" })).json();
+      expect(start.name).toBe("my-salon-app");
+      expect(start.url).toMatch(/^https:\/\/github\.com\/login\/oauth\/authorize\?client_id=/);
+      const res = await back(r, start.url);
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toContain("<h1>alice/my-salon-app is ready</h1>");
+      expect(res.body).not.toContain("code-1");
+      const projects = (await r.call("alice", "GET", "/v1/code/projects")).json().projects;
+      expect(projects.map((x: { fullName: string }) => x.fullName)).toEqual(["alice/my-salon-app"]);
+      // The same name again is refused in plain words.
+      r.fake.addPerson("code-2", "gho_alice", [101], "alice");
+      const again = await back(r, (await r.call("alice", "POST", "/v1/code/repos/new", { name: "my-salon-app" })).json().url, "code-2");
+      expect(again.statusCode).toBe(400);
+      expect(again.body).toContain("You already have a repo called my-salon-app");
+    });
+
+    it("says what to accept on GitHub when the install can't make repos", async () => {
+      const r = await rig();
+      r.fake.addInstall(101, "alice", { selection: "all" });
+      r.fake.addPerson("code-1", "gho_alice", [101], "alice");
+      const res = await back(r, (await r.call("alice", "POST", "/v1/code/repos/new", { name: "x" })).json().url);
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toContain("Accept its new permission on GitHub");
+    });
+
+    it("wants a session", async () => {
+      const r = await rig();
+      expect((await r.call(null, "POST", "/v1/code/repos/new", { name: "x" })).statusCode).toBe(401);
+    });
+  });
 
   it("makes a link to GitHub's new-repo page, for a signed-in person", async () => {
     const r = await rig();

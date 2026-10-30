@@ -76,7 +76,7 @@
  * two-step merge, deleting the branch) are in pulls.ts.
  */
 import { randomBytes } from "node:crypto";
-import { ConnectorError } from "../connectors/state.js";
+import { ConnectorError, signState } from "../connectors/state.js";
 import type { Person } from "./access.js";
 import { COMMIT_FILES_MAX, commitTreeEntries, validBranchName, type CommitFile, type GithubApp, type RepoPermission, type RepoRef, type TreeEntry } from "./github.js";
 import type { ApprovalBook } from "./approvals.js";
@@ -304,6 +304,33 @@ export async function recordedBranch(d: ProjectDeps, project: CodeProject, branc
 export function newRepoLink(name: unknown): { url: string; name: string } {
   const slug = (String(typeof name === "string" ? name.slice(0, 500) : "").match(/[A-Za-z0-9]+/g) ?? []).join("-").toLowerCase().slice(0, 100).replace(/-+$/, "") || "my-project";
   return { url: `https://github.com/new?${new URLSearchParams({ name: slug, visibility: "private" })}`, name: slug };
+}
+
+/** The signed state's id for "make a repo": `code-newrepo:<private|public>:<name>`. */
+const NEW_REPO = "code-newrepo:";
+export const isNewRepoState = (id: string): boolean => id.startsWith(NEW_REPO);
+
+/** Making a repo from X0 Bot, step one: GitHub's page that hands back the person's token once, with the name and private-or-public signed into the state. */
+export async function beginNewRepo(d: Pick<ProjectDeps, "github">, userId: string, name: unknown, visibility: unknown, now = Date.now()): Promise<{ url: string; name: string }> {
+  const n = newRepoLink(name).name;
+  return { url: d.github.authorizeUrl(await signState(userId, `${NEW_REPO}${visibility === "public" ? "public" : "private"}:${n}`, now)), name: n };
+}
+
+/**
+ * Step two: GitHub sent the person back. The repo is made on their own account
+ * with their one-moment token, put in their install when it has only some repos,
+ * and added here. No `project` when the install can't see it yet.
+ */
+export async function finishNewRepo(d: ProjectDeps, userId: string, stateId: string, code: string): Promise<{ fullName: string; project?: CodeProject }> {
+  const [vis, name = ""] = stateId.slice(NEW_REPO.length).split(":");
+  const token = await d.github.exchangeUserCode(code);
+  const repo = await d.github.createUserRepo(token, name, vis !== "public");
+  const who = await d.github.userProfile(token).catch(() => null);
+  const mine = who ? (await d.github.userInstallations(token).catch(() => [])).find((i) => i.accountLogin.toLowerCase() === who.login.toLowerCase()) : undefined;
+  if (mine?.repositorySelection === "selected") await d.github.addToInstallation(token, mine.id, repo.id).catch(() => false);
+  if (mine) d.github.dropTokens(mine.id);
+  const added = await addProject(d, userId, repo.id).catch(() => null);
+  return { fullName: repo.fullName, ...(added ? { project: added.project } : {}) };
 }
 
 /** What every gate needs of the person and the project. */
