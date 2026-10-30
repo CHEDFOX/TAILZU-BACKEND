@@ -188,7 +188,7 @@ async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<CodeAnsw
   const words = streamed(c);
   const out = await chat.answer({
     userId: c.userId, projectId, question: c.said ?? c.message, ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}),
-    ...(c.decision.followUp ? { context: c.decision.followUp } : {}), tier: c.decision.tier === "vision" ? "cheap" : c.decision.tier, length: c.decision.shape.length,
+    ...(c.decision.followUp ? { context: c.decision.followUp } : {}), ...(c.decision.reask ? { ask: c.decision.reask } : {}), tier: c.decision.tier === "vision" ? "cheap" : c.decision.tier, length: c.decision.shape.length,
     diagram: !!v && v.kind === "diagram" && !v.offer && v.via === "artifact", maxPaise: c.maxPaise, ...(c.signal ? { signal: c.signal } : {}),
     ...words.ask, ...(c.onStep ? { onStep: c.onStep } : {}),
   });

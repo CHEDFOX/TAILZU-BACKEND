@@ -149,6 +149,11 @@ describe("what a message is, by the rules alone", () => {
     // "why?" is asked of the last answer as it is; Hinglish is answered in Hinglish
     expect(readByRules("why?", { projectId: "p", recent, attachments: [], mode: "text" }).reaction).toEqual({ ask: "About your last answer: why?", language: "en" });
     expect(readByRules("matlab?", { projectId: "p", recent, attachments: [], mode: "text" }).reaction?.language).toBe("hinglish");
+    // "??" alone is lost too, said in the language of the question it follows.
+    const marks = readByRules("??", { projectId: "p", recent, attachments: [], mode: "text" });
+    expect(marks.intent).toBe(lost.intent);
+    expect(marks.reaction).toEqual({ ask: lost.reaction?.ask, language: "en" });
+    expect(readByRules("...?", { projectId: "p", recent, attachments: [], mode: "text" }).reaction?.language).toBe("en");
     // With nothing before it, "what?" is still nothing to go on; a long message is its own request
     expect(readByRules("what?", { projectId: "p", recent: [], attachments: [], mode: "text" }).reaction).toBeUndefined();
     expect(readByRules("what does the checkout page do when the cart is empty?", { projectId: "p", recent, attachments: [], mode: "text" }).reaction).toBeUndefined();

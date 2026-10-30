@@ -53,6 +53,11 @@ export interface ChatRequest {
   threadId?: string;
   /** The earlier question this one follows, when the front door's rules saw that (a short follow-up): looked up together with it. */
   context?: string;
+  /**
+   * What the person's words ask of the last answer, written out by the front door ("??" after an answer: explain it again, simpler). The model
+   * is asked `context` and this; the chat shows the person's own words, and the thread keeps `context` as the question.
+   */
+  ask?: string;
   tier: ModelTier;
   length: Length;
   /** The decision plans a diagram. */
@@ -105,7 +110,8 @@ export class CodeChat {
     };
     const files = (await this.d.rooms?.(r.userId, project.id).catch(() => null)) ?? null;
     const out = await answerCode({
-      userId: r.userId, projectId: project.id, question: r.question, search: r.context ? `${r.context}. ${r.question}` : searchFor(r.question, thread), tier: r.tier, length: r.length,
+      userId: r.userId, projectId: project.id, question: r.ask && r.context ? `${r.context}\n\n${r.ask}` : r.question,
+      ...(r.ask && r.context ? { shown: r.question, kept: r.context } : {}), search: r.context ? `${r.context}. ${r.question}` : searchFor(r.question, thread), tier: r.tier, length: r.length,
       maxPaise: r.maxPaise, thread, diagram: r.diagram, now: this.now(),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
     }, { brain, read, files }, this.model(r.userId, r.signal));

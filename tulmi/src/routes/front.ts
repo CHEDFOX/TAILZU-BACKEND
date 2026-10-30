@@ -40,6 +40,7 @@ import {
   type AttachmentRef, type Decision, type Device, type Front, type FrontCtx, type FrontEvent, type FrontResult, type Mode, type Outcome, type Turn, type VisualKind, type VisualPref,
 } from "../front/index.js";
 import { failCode } from "./code.js";
+import { threadStore, type ThreadStore } from "../code/chat/threads.js";
 import { idempotencyHeader, planOf } from "./guarded.js";
 import { isLeaving, LEAVING_MESSAGE } from "../you/deletion.js";
 import type { Attached } from "../bots/prompt.js";
@@ -66,6 +67,8 @@ export interface FrontRoutesDeps {
   used?: (user: AuthedUser, paise: number) => Promise<void>;
   /** The bots platform (src/bots), for `bot` in the body ("Ask any bot"). Null or absent while BOTS is off: a body with `bot` is then 404 bots_off. */
   bots?: Bots | null;
+  /** The project chats' threads (code/chat/threads.ts); the process's own when absent. */
+  threads?: ThreadStore;
   /**
    * What the person's spaces shared with a bot (botsBots/shared.ts forBot), for a bot shared into a space they are in: the bot reads it as
    * data, never as instructions, as it does in its chat (routes/botsBots.ts). Absent: nothing is added.
@@ -189,6 +192,11 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
     if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
 
     const ctx: FrontCtx = { userId: user.id, plan: await planOf(user), ...input.ctx };
+    // The Xode chat sends no turns: the thread it names says what was asked last, so "??" or "why?" goes on from that question.
+    if (ctx.projectId && ctx.threadId && !ctx.recent.length) {
+      const kept = await (deps.threads ?? threadStore()).get(user.id, ctx.projectId, ctx.threadId).catch(() => null);
+      if (kept?.lastQuestion) ctx.recent.push({ said: kept.lastQuestion, did: "code_question" });
+    }
     const streaming = input.stream || String(req.headers["accept"] ?? "").includes("application/x-ndjson");
     const gone = new AbortController();
     reply.raw.once("close", () => { if (!reply.raw.writableFinished) gone.abort(); });

@@ -29,6 +29,9 @@
  *                                                  summaries: none | partial | complete, welcome, structure, features, conventions,
  *                                                  baseline, spentPaise, error }  404 for a project that isn't the person's, 404
  *                                                  brain_off while CODE_PROJECT_BRAIN is off
+ *   GET    /v1/code/projects/:id/chat?thread= -> { thread, turns: [{ q, a, at }] }  the chat about the project so far, oldest first
+ *                                                  (code/chat/threads.ts): the thread named, else the person's latest on the project (thread null
+ *                                                  when there is none); no turns for a thread that is not theirs
  *   POST   /v1/code/projects/:id/locate { task }
  *                                             -> { targets: [{ path, lines?, why, signals, score }], related, tests, confidence, question?, used }
  *                                                  where in the repo the bot would work for that task (code/work/locate.ts): searches the brain,
@@ -166,6 +169,7 @@ import { IdempotencyConflict } from "../guard/idempotency.js";
 import { Overloaded } from "../guard/limiter.js";
 import { PAGE_CSP, page } from "./connectors.js";
 import { guarded } from "./guarded.js";
+import { threadStore } from "../code/chat/threads.js";
 
 export interface CodeRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -504,6 +508,17 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     try {
       return reply.send(await s.brain.get(s.user.id, req.params.id));
     } catch (err) { return fail(reply, err); }
+  });
+
+  // --- the chat about a project so far: what the chat page shows above the box.
+  app.get<{ Params: { id: string }; Querystring: { thread?: string } }>("/v1/code/projects/:id/chat", RL, async (req, reply) => {
+    const s = await begin(req.headers["authorization"], reply);
+    if (!s) return reply;
+    const named = typeof req.query.thread === "string" && req.query.thread ? req.query.thread : null;
+    const t = named
+      ? await threadStore().get(s.user.id, req.params.id, named).catch(() => null)
+      : (await threadStore().list(s.user.id, req.params.id, 1).catch(() => []))[0] ?? null;
+    return reply.send({ thread: t?.id ?? named, turns: t?.history ?? [] });
   });
 
   // --- the work core (code/work, code/resources, code/newproject): thin doors, for the agent loop's own use first. Off while the brain is.

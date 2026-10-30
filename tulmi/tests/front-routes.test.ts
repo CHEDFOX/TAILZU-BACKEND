@@ -55,13 +55,13 @@ function gate() {
   return { opened, open };
 }
 
-async function served(o: { on?: boolean; handlers?: Parameters<typeof fakeHandlers>[0]; guard?: InstanceType<typeof Guard>; quota?: () => Promise<string | null>; used?: () => Promise<void> } = {}) {
+async function served(o: { on?: boolean; handlers?: Parameters<typeof fakeHandlers>[0]; guard?: InstanceType<typeof Guard>; quota?: () => Promise<string | null>; used?: () => Promise<void>; threads?: import("../src/code/chat/threads.js").ThreadStore } = {}) {
   const store = new MemoryFrontStore();
   const guard = o.guard ?? new Guard();
   const h = fakeHandlers(o.handlers);
   const front = o.on === false ? null : createFront({ force: true, handlers: h.handlers, store, guard, call: noModel().call, attachments: new AttachmentRegistry() });
   const app = Fastify({ bodyLimit: FRONT_BODY_LIMIT });
-  const routes = registerFrontRoutes(app, { rateLimit: RL, front, guard, ...(o.quota ? { quota: o.quota } : {}), ...(o.used ? { used: o.used } : {}) });
+  const routes = registerFrontRoutes(app, { rateLimit: RL, front, guard, ...(o.quota ? { quota: o.quota } : {}), ...(o.used ? { used: o.used } : {}), ...(o.threads ? { threads: o.threads } : {}) });
   // server.ts hands the old route's `message` bodies over like this; the door answers for itself.
   app.post("/v1/ask", async (req, reply) => {
     const { resolveUser } = await import("../src/auth/supabase.js");
@@ -186,6 +186,20 @@ describe("POST /v1/ask", () => {
     expect(res.json()).toMatchObject({ code: "bad_request" });
     expect((await t.ask({ ...BODY, message: "x".repeat(MESSAGE_MAX + 1) })).statusCode).toBe(413);
     expect(t.guard.limiter.stats().active).toBe(0);
+    expect(t.h.calls.reply).toHaveLength(0);
+  });
+
+  it("takes \"??\" in a project chat as about the chat's last question, which the app does not send: the thread it names says it", async () => {
+    const { MemoryThreadStore, newThread, afterTurn } = await import("../src/code/chat/threads.js");
+    const threads = new MemoryThreadStore();
+    const THREAD = "abababab-abab-4bab-8bab-abababababab";
+    await threads.put(afterTurn(newThread("alice", PROJECT, THREAD, 1), { question: "what do you understand of the project", cites: [], located: null, now: 2, answer: "A small app." }));
+    const t = await served({ threads });
+    const res = await t.ask({ ...BODY, message: "??", projectId: PROJECT, threadId: THREAD });
+    expect(res.statusCode).toBe(200);
+    expect(t.h.calls.codeAnswer).toHaveLength(1);
+    expect(t.h.calls.codeAnswer[0]).toMatchObject({ said: "??", decision: { intent: "code_question", followUp: "what do you understand of the project", language: "en" } });
+    expect(t.h.calls.codeAnswer[0]!.decision.reask).toMatch(/simpler/);
     expect(t.h.calls.reply).toHaveLength(0);
   });
 

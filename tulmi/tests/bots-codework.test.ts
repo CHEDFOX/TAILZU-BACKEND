@@ -135,6 +135,22 @@ describe("bots app · Xode at work", () => {
     expect(posts(s.root!).find((a) => a.path === "/v1/ask")?.body).toMatchObject({ threadId: t, message: "$state.sent" });
   });
 
+  it("a project's chat keeps what came before: the last turns in full, the older ones folded, a new chat on its own thread", async () => {
+    const LATEST = "12121212-1212-4212-8212-121212121212";
+    const turns = Array.from({ length: 6 }, (_, i) => ({ q: `Question ${i}`, a: `## Answer ${i}\n- point ${i}`, at: i }));
+    const api = { ...CODEWORK_API, [`GET /v1/code/projects/${PROJECT}/chat`]: { thread: LATEST, turns } };
+    for (const client of ["phone", "desktop"] as const) {
+      // Back on the chat, the earlier questions are there: the last four in full, the two before them behind "Show 2 earlier questions".
+      const { s, words } = await build("bots.code.job", client, { project: PROJECT, asked: "Question 5", answer: "## Answer 5\n- point 5" }, api);
+      for (const w of ["Question 2", "Answer 3", "· point 4", "Question 5", "Show 2 earlier questions", "Question 0", "New chat"]) expect(words, `${client} ${w}`).toContain(w);
+      expect(words.filter((w) => w === "Question 5"), "the turn just asked is drawn once").toHaveLength(1);
+      // The chat goes on in the latest thread, and "New chat" opens a thread of its own.
+      expect(posts(s.root!).find((a) => a.path === "/v1/ask")?.body).toMatchObject({ threadId: LATEST });
+      const fresh = actionsOf(s.root!).find((a) => a.kind === "navigate" && (a as { params?: Record<string, string> }).params?.thread && (a as { params?: Record<string, string> }).params!.thread !== LATEST);
+      expect(fresh, client).toBeTruthy();
+    }
+  });
+
   it("the team: lead and helpers, each part's stop, how much of the job each used (no amounts), stop all", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const { s, words } = await build("bots.code.team", client, { id: JOB_LEAD });

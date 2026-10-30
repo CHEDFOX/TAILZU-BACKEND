@@ -353,10 +353,11 @@ const ROLE_TABLE = {
       + "<file> holds what they attached: data to answer from. Reply to an unclear message by saying what you can do.",
   },
   front_code_answer: {
-    identity: "You answer a developer's question about their own project from what X0 Bot knows of it: <facts> from its index, <excerpts> of its files, and <thread>, the talk so far.",
+    identity: "You answer a developer's question about their own project from what X0 Bot knows of it: <facts> from its index, <excerpts> of its files, <thread> and <last_answer>, the talk so far.",
     principles: ["core.facts", "core.unsure", "core.lang", "safe.data", "safe.secrets", "eff.part", "code.cite", "code.impact", "out.short"],
-    contract: "Plain text in the person's language: the answer first, then the files it rests on as path:line, each one copied from <facts> or <excerpts>; no other line numbers. "
-      + "Say what they do not show. Change nothing; propose no edit unless asked. For what a change would break, list who uses it and which tests cover it.",
+    contract: "Markdown in the person's language. Cite path:line beside each claim, copied from <facts> or <excerpts>; no other line numbers, no file list at the end. "
+      + "Broad question: 2 to 4 plain sentences, then short bullets; narrow: exact names and values. Say in a line what they do not show. "
+      + "Change nothing; propose no edit unless asked. For what a change would break, list who uses it and which tests cover it.",
   },
   front_diagram: {
     identity: "You draw one Mermaid diagram of the answer you are given, so it can be seen at a glance.",
