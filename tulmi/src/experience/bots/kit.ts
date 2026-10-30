@@ -988,6 +988,14 @@ export function page(ctx: BotsCtx, o: PageOpts): ScreenResponse {
  */
 const NEVER_KEPT = /^bots\.(code\.|attach$|done$|failed$|approve$|offline$|link$|lock$)/;
 
+/**
+ * Pages that only change when the person changes them (settings, a bot's voice, the people they blocked): kept ten
+ * minutes, so going in and out of them never fetches or redraws. Any write the person makes drops every kept page (the
+ * apps do that on every call that is not a read), so they are never shown stale after a change.
+ */
+const STEADY = /^bots\.(notify|privacy|blocked|settings|language|make|store|avatars|delete-account|keybot\.(style|tone|words|voices|settings|haptics|name))$/;
+const STEADY_SECONDS = 600;
+
 function response(ctx: BotsCtx, o: PageOpts, root: Node): ScreenResponse {
   const pullBot = o.pullBot && canPullBot(ctx) ? pullBotOf(o.pullBot) : undefined;
   return {
@@ -995,7 +1003,7 @@ function response(ctx: BotsCtx, o: PageOpts, root: Node): ScreenResponse {
     // Kept, but stale after a second: a page opened before shows at once from what the phone kept and is fetched again
     // behind it (SduiApp's show-then-revalidate), so nothing waits on the network twice and nothing stays stale. At 0 the
     // phone kept nothing, every tap waited on the server, and even the tabs it warmed at launch were thrown away.
-    hideChrome: true, look: "bots", theme: BOTS_THEME, cacheTtlSeconds: NEVER_KEPT.test(ctx.screenId) ? 0 : 1,
+    hideChrome: true, look: "bots", theme: BOTS_THEME, cacheTtlSeconds: NEVER_KEPT.test(ctx.screenId) ? 0 : STEADY.test(ctx.screenId) ? STEADY_SECONDS : 1,
     state: { ask: "", asking: false, ...(o.state ?? {}) }, ...(o.actions ? { actions: o.actions } : {}), root,
     ...(o.live?.length ? { liveTopics: o.live } : {}),
     ...(pullBot ? { pullBot } : {}),

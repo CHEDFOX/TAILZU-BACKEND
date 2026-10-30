@@ -275,7 +275,9 @@ function deskSteps(current: number): Node {
 function respond(ctx: BotsCtx, titleText: string, root: Node, state: Record<string, unknown> = {}, actions?: Record<string, ActionSpec>): ScreenResponse {
   return {
     schemaVersion: SDUI_SCHEMA_VERSION, screenId: ctx.screenId, title: titleText, hideChrome: true, look: "bots",
-    theme: BOTS_THEME, cacheTtlSeconds: 0, state: { ask: "", asking: false, ...state }, ...(actions ? { actions } : {}), root,
+    // Never kept: the first run and the plans are read fresh. Language is a settings page now (Keylessbord's), kept as
+    // the kit keeps those (kit.ts STEADY): a choice of the person's, and their own change drops it.
+    theme: BOTS_THEME, cacheTtlSeconds: ctx.screenId === SCREENS.language ? 600 : 0, state: { ask: "", asking: false, ...state }, ...(actions ? { actions } : {}), root,
   };
 }
 

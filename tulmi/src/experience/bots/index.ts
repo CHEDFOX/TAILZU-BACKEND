@@ -99,7 +99,18 @@ export function botsNav(): NavigationShell {
 
 /** Fetched at launch, before they are asked for: the three tab roots. */
 // The tabs, then the bots Home leads to: fetched in the background at launch so the first tap on each is instant too.
-export const BOTS_WARM_SCREEN_IDS = ["bots.home", "bots.activity", "bots.you", "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.ask"];
+/**
+ * Every page the apps fetch at launch (and keep fresh after: SduiApp's warm pass and refreshCachedScreens), so no tap
+ * waits on the network the first time: the tabs, the bots, the You pages and Keylessbord's. Only pages that need no
+ * params and are kept (never a decision, a job in flight or the first run).
+ */
+export const BOTS_WARM_SCREEN_IDS = [
+  "bots.home", "bots.activity", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
+  "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.make", "bots.store",
+  "bots.usage", "bots.billing", "bots.notify", "bots.computer", "bots.apps", "bots.privacy", "bots.blocked", "bots.settings", "bots.language",
+  "bots.keybot.style", "bots.keybot.tone", "bots.keybot.words", "bots.keybot.voices", "bots.keybot.settings", "bots.keybot.haptics", "bots.keybot.name",
+  "bots.keybot.history", "bots.keybot.days", "bots.keybot.month", "bots.keybot.speak", "bots.keybot.apps",
+];
 
 /** What a request says about itself (server.ts fills it in). */
 export interface BotsRequest {

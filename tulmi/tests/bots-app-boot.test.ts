@@ -38,6 +38,23 @@ describe("the bootstrap", () => {
     expect(Object.keys(on.fonts ?? {})).toEqual(expect.arrayContaining(["Tailzu Geist", "Tailzu Geist SemiBold", "Tailzu Geist Mono"]));
     expect(on.warmScreenIds?.slice(0, 3)).toEqual(["bots.home", "bots.activity", "bots.you"]);
   });
+  it("on: every page warmed at launch is a real page that builds with no params and is kept (no tap waits the first time)", async () => {
+    const { BOTS_SCREENS, BOTS_WARM_SCREEN_IDS, buildBotsScreen } = await import("../src/experience/bots/index.js");
+    const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
+    expect(BOTS_WARM_SCREEN_IDS.length).toBeGreaterThanOrEqual(30);
+    expect(new Set(BOTS_WARM_SCREEN_IDS).size).toBe(BOTS_WARM_SCREEN_IDS.length);
+    for (const id of BOTS_WARM_SCREEN_IDS) {
+      expect(BOTS_SCREENS.has(id), id).toBe(true);
+      const s = await buildBotsScreen({ screenId: id, client: "phone", tzOffsetMinutes: IST, user: { id: "u1", name: "Aanya" }, can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps());
+      expect(s.cacheTtlSeconds, id).toBeGreaterThan(0);
+    }
+    // Settings-like pages are kept ten minutes; live ones go stale at once and are fetched again behind what shows.
+    const ttl = async (id: string) => (await buildBotsScreen({ screenId: id, client: "phone", tzOffsetMinutes: IST, user: { id: "u1" }, can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps())).cacheTtlSeconds;
+    expect(await ttl("bots.notify")).toBe(600);
+    expect(await ttl("bots.keybot.style")).toBe(600);
+    expect(await ttl("bots.activity")).toBe(1);
+    expect(await ttl("bots.home")).toBe(1);
+  });
   it("on: no start-up setting points at the old app's screens (paywall, settings, profile, the languages prompt)", () => {
     const on = buildBootstrap({ onboarded: true, botsApp: true, launchCount: 3, languagesSet: false });
     expect(on.flags?.["paywall.screenId"]).toBe("bots.plans");
