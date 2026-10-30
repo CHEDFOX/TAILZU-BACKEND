@@ -199,7 +199,7 @@ const PRIVACY_POLICY_BODY = `
 <h3>Notifications (see Section 15)</h3>
 <ul>
   <li><strong>Expo</strong> (expo.dev/privacy) — our servers send notifications through Expo's push service, with the notification's words and your phone's push token.</li>
-  <li><strong>Apple Push Notification service / Firebase Cloud Messaging</strong> — deliver them to your iPhone or Android phone.</li>
+  <li><strong>Apple Push Notification service / Firebase Cloud Messaging</strong> — deliver them to your iPhone or Android phone. Our servers also send the Bots at work Live Activity's updates to Apple's service directly (Section 15).</li>
 </ul>
 
 <h3>Advertising measurement</h3>
@@ -527,6 +527,8 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>From your people</strong> (widget): the latest from the people in your spaces and chats: who sent or shared something, the tasks and plans they gave you, and, on the Home Screen, the words of their messages.</li>
   <li><strong>Needs you</strong> (widget): a bot's question with its answers, a change in a connected app waiting for your yes, and the tasks given to you, with buttons to answer them.</li>
   <li>On the iPhone Lock Screen, these two widgets show only a count ("2 new from your people"), and while the phone is locked (StandBy, Always-On) the words of messages and of Needs you are hidden. On Android they are Home Screen widgets, and show what they show to anyone who can see your Home Screen.</li>
+  <li><strong>X0</strong> (widget, Home Screen and iPhone Lock Screen): your bots at a glance: which are working and on what, what needs you (a bot's question with its answers, or a change waiting for your yes, with buttons), the last thing a bot finished and its pull request, your week's count, and a line about what changed. On the Lock Screen, and while the phone is locked, a change waiting in a connected app and a question a bot marks private show only that a bot needs you, never their words; a Code bot's question shows its words.</li>
+  <li><strong>The Bots at work Live Activity</strong> (iPhone Lock Screen and Dynamic Island), while a Code bot job runs: the words of its task, its step, a question it asks you with its answers (only that it needs you, if the bot marks the question private), and when it ends, what it finished and its pull request.</li>
   <li><strong>Notifications</strong>, if you allow them: that a bot needs your answer or your OK (one for a connected app names only the app); how a Code bot job is going, with the words of its task; a task or plan someone gave you, with its title; that someone messaged you (their name and the chat, not the message); the reminders you asked for; a daily summary, if you turn it on; and reminders about your words. Your phone's settings decide whether their words show on the Lock Screen.</li>
 </ul>
 
@@ -539,9 +541,9 @@ const PRIVACY_POLICY_BODY = `
 
 <h3>15.3 Your choices</h3>
 <ul>
-  <li>Widgets appear only where you add them, and the Flow Live Activity only while Flow is on. Remove them as you would any other.</li>
+  <li>Widgets appear only where you add them, the Flow Live Activity only while Flow is on, and the Bots at work Live Activity only while a Code bot job runs. Remove them as you would any other.</li>
   <li>Choose which notifications X0 Bot sends, and its quiet hours, in X0 Bot ("What pings you"); turn notifications off, or hide their words on the Lock Screen, in your phone's settings.</li>
-  <li>Our servers send notifications through Expo's push service to Apple's and Google's (see Section 3).</li>
+  <li>Our servers send notifications through Expo's push service to Apple's and Google's (see Section 3). The Bots at work Live Activity is updated through Apple's push service directly, with a token your iPhone gives for that one activity; we delete it when the job ends.</li>
 </ul>
 
 <hr>

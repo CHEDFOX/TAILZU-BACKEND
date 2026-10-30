@@ -537,4 +537,7 @@ long press (Ask, Dictate, New note, Spaces). All of it is decided on the server,
 * Each push kind's category is `push.<kind>.category`.
 * The config is the control plane's `widgets` surface (`src/widgets/defaults.ts`).
 * Migration 0058 adds `widget_tokens` and `quick_actions`.
+* The X0 widget reads GET /v1/shell/glance?v=2 and the "Bots at work" Live Activity can be pushed by the server
+  ([widget-glance-v2.md](widget-glance-v2.md); `src/widgets/{glance,situation,digest,activity,apns}.ts`). Migration 0059 adds
+  `widget_glance` and `widget_activity_tokens`.
 
