@@ -331,10 +331,11 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       // Unknown until the app's own readings arrive: the card decides only then.
       expect(s.state).toMatchObject({ micGranted: null, keyboardEnabled: null, keyboardReady: null, micAsked: false, permitClosed: false });
       const card = cardOf(s.root!)!;
-      // It comes in after the bot's hello has played on its own (helloSeen), and Home waits on it closing.
+      // It comes in after the bot's hello has played on its own (helloSeen), over Home. It decides once the microphone and the
+      // keyboard are known; Full Access only where it can be read (an iPhone reads it only after the keyboard has run).
       expect(card.props).toMatchObject({
         overlay: true, closeWhen: { truthy: "permitClosed" },
-        readyWhen: { all: [{ all: [{ neq: ["micGranted", null] }, { neq: ["keyboardReady", null] }] }, { truthy: "helloSeen" }] },
+        readyWhen: { all: [{ all: [{ neq: ["micGranted", null] }, { neq: ["keyboardEnabled", null] }, { any: [{ neq: ["keyboardReady", null] }, { platform: "ios" }] }] }, { truthy: "helloSeen" }] },
       });
       expect(s.state).toMatchObject({ helloSeen: false });
       // The first visit: only the waving bot and his line, which sets helloSeen after a few seconds; the rest of Home, and the
@@ -344,10 +345,10 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       expect(helloNode.visibleIf).toEqual({ falsy: "helloGone" });
       expect(JSON.stringify(helloNode.on?.onAppear)).toMatch(/"kind":"delay","ms":3\d{3}/);
       // Waved (helloSeen): he walks off as the card comes in (a build without BlipWalkOut slides him off, MorphOut), then
-      // helloGone; Home rises in once he is gone and the card is closed.
+      // helloGone; Home rises in once he is gone, never waiting on the card (it is an overlay over Home).
       expect(walk(helloNode).find((x) => x.type === "MorphOut")?.bind).toEqual({ active: "helloSeen" });
       expect(nodes.some((x) => x.visibleIf && JSON.stringify(x.visibleIf) === '{"truthy":"helloSeen"}' && JSON.stringify(x.on?.onAppear).includes("helloGone"))).toBe(true);
-      const home = { all: [{ truthy: "helloGone" }, { truthy: "permitClosed" }] };
+      const home = { truthy: "helloGone" };
       expect(nodes.filter((x) => x.type === "Rise" && JSON.stringify(x.visibleIf) === JSON.stringify(home)).length).toBeGreaterThan(2);
       // A build that draws him walking gets that instead.
       const walker = await build("bots.home", "phone", { api: { ...ARRIVE, "GET /v1/shell/started": { started } }, can: [...MOTION, "BlipWalkOut"] });
