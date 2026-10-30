@@ -457,3 +457,26 @@ describe("migration 0028_code_project_brain.sql", () => {
     expect(full.endsWith("\n")).toBe(true);
   });
 });
+
+describe("GET /v1/code/projects/:id/chat", () => {
+  it("is the chat so far: the thread named, else the latest that is not a job's own; nobody else's", async () => {
+    const { threadStore, resetThreadStoreForTests, newThread, afterTurn } = await import("../src/code/chat/threads.js");
+    resetThreadStoreForTests();
+    const P = "66666666-6666-4666-8666-666666666666";
+    const CHAT = "77777777-7777-4777-8777-777777777777";
+    const JOB = "88888888-8888-4888-8888-888888888888";
+    const turn = (id: string, q: string, now: number) => afterTurn(newThread("alice", P, id, now), { question: q, cites: [], located: null, now, answer: `About ${q}.` });
+    await threadStore().put(turn(CHAT, "what is this project?", 1));
+    await threadStore().put(turn(JOB, "and in the job?", 2));
+    const r = await projectRig();
+    const t = await served(r);
+    const named = await t.call("alice", "GET", `/v1/code/projects/${P}/chat?thread=${CHAT}`);
+    expect(named.json()).toEqual({ thread: CHAT, turns: [{ q: "what is this project?", a: "About what is this project?.", at: 1 }] });
+    // The latest is the job's chat, which is not the project's: skipped.
+    expect((await t.call("alice", "GET", `/v1/code/projects/${P}/chat?not=${JOB}`)).json()).toMatchObject({ thread: CHAT });
+    expect((await t.call("alice", "GET", `/v1/code/projects/${P}/chat`)).json()).toMatchObject({ thread: JOB });
+    expect((await t.call("bob", "GET", `/v1/code/projects/${P}/chat?thread=${CHAT}`)).json()).toEqual({ thread: CHAT, turns: [] });
+    expect((await t.call(null, "GET", `/v1/code/projects/${P}/chat`)).statusCode).toBe(401);
+    resetThreadStoreForTests();
+  });
+});

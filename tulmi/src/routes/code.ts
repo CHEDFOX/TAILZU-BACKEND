@@ -29,9 +29,10 @@
  *                                                  summaries: none | partial | complete, welcome, structure, features, conventions,
  *                                                  baseline, spentPaise, error }  404 for a project that isn't the person's, 404
  *                                                  brain_off while CODE_PROJECT_BRAIN is off
- *   GET    /v1/code/projects/:id/chat?thread= -> { thread, turns: [{ q, a, at }] }  the chat about the project so far, oldest first
- *                                                  (code/chat/threads.ts): the thread named, else the person's latest on the project (thread null
- *                                                  when there is none); no turns for a thread that is not theirs
+ *   GET    /v1/code/projects/:id/chat?thread=&not= -> { thread, turns: [{ q, a, at }] }  the chat about the project so far, oldest first
+ *                                                  (code/chat/threads.ts): the thread named, else the person's latest on the project that is not
+ *                                                  one of `not` (comma-separated ids: a job's own chat is not the project's); thread null when
+ *                                                  there is none; no turns for a thread that is not theirs
  *   POST   /v1/code/projects/:id/locate { task }
  *                                             -> { targets: [{ path, lines?, why, signals, score }], related, tests, confidence, question?, used }
  *                                                  where in the repo the bot would work for that task (code/work/locate.ts): searches the brain,
@@ -511,13 +512,14 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
   });
 
   // --- the chat about a project so far: what the chat page shows above the box.
-  app.get<{ Params: { id: string }; Querystring: { thread?: string } }>("/v1/code/projects/:id/chat", RL, async (req, reply) => {
+  app.get<{ Params: { id: string }; Querystring: { thread?: string; not?: string } }>("/v1/code/projects/:id/chat", RL, async (req, reply) => {
     const s = await begin(req.headers["authorization"], reply);
     if (!s) return reply;
     const named = typeof req.query.thread === "string" && req.query.thread ? req.query.thread : null;
+    const not = new Set(typeof req.query.not === "string" ? req.query.not.split(",").slice(0, 100) : []);
     const t = named
       ? await threadStore().get(s.user.id, req.params.id, named).catch(() => null)
-      : (await threadStore().list(s.user.id, req.params.id, 1).catch(() => []))[0] ?? null;
+      : (await threadStore().list(s.user.id, req.params.id, 10).catch(() => [])).find((x) => !not.has(x.id)) ?? null;
     return reply.send({ thread: t?.id ?? named, turns: t?.history ?? [] });
   });
 

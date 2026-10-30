@@ -362,7 +362,7 @@ function newChat(ctx: BotsCtx, c: ChatCtx, turns: number): Node {
 function askCode(ctx: BotsCtx, c: ChatCtx, message: string, o: { from?: string; attachments?: string } = {}): ActionRef {
   // The words go up as the person's bubble and the box clears at once (askMoment.ts); the call sends them from there.
   const said = SENT_WORDS;
-  const carry = { project: c.projectId, thread: c.threadId, ...(c.jobId ? { id: c.jobId } : {}) };
+  const carry = { project: c.projectId, thread: c.threadId, ...(c.jobId ? { id: c.jobId } : {}), ...(c.jobId && isUuid(ctx.params.from) ? { from: ctx.params.from } : {}) };
   return seq(
     ...start({ message, busy: "asking", ...(o.from ? { from: o.from } : {}) }),
     streamed(ctx, call("POST", "/v1/ask", {
@@ -374,7 +374,8 @@ function askCode(ctx: BotsCtx, c: ChatCtx, message: string, o: { from?: string; 
         { kind: "setState", path: "asking", value: false },
         {
           kind: "condition", if: { truthy: "said.result.job.id" },
-          then: open(SCREENS.codeJob, { id: "$state.said.result.job.id" }),
+          // A question that became a job keeps the chat it was asked in, above the job.
+          then: open(SCREENS.codeJob, { id: "$state.said.result.job.id", ...(c.jobId ? {} : { from: c.threadId }) }),
           else: open(SCREENS.codeJob, { ...carry, asked: said, answer: "$state.said.result.text", flow: "$state.said.result.artifacts.0.id" }),
         },
       ),
@@ -425,16 +426,16 @@ const SHOW_TURNS = 4;
 const FOLDED_ANSWER = 280;
 
 /** The chat about the project so far: the last SHOW_TURNS turns in full, the earlier ones folded. A long chat stays one light page. */
-function history(turns: readonly ChatTurn[], size: number, show = SHOW_TURNS): Node[] {
+function history(turns: readonly ChatTurn[], size: number, show = SHOW_TURNS, fold = "earlier"): Node[] {
   const full = show > 0 ? turns.slice(-show) : [];
   const folded = turns.slice(0, Math.max(0, turns.length - show));
   const out: Node[] = [];
   if (folded.length) {
-    out.push(when({ falsy: "earlier" }, labelled(row([
+    out.push(when({ falsy: fold }, labelled(row([
       icon("down", { size: 16, color: C.meta }),
       meta(`Show ${folded.length} earlier ${folded.length === 1 ? "question" : "questions"}`, { size: 13 }),
-    ], { gap: 6, alignItems: "center", alignSelf: "center", paddingVertical: 6 }, { kind: "toggleState", path: "earlier" }), "Show earlier questions")));
-    out.push(when({ truthy: "earlier" }, col(folded.flatMap((t) => [
+    ], { gap: 6, alignItems: "center", alignSelf: "center", paddingVertical: 6 }, { kind: "toggleState", path: fold }), "Show earlier questions")));
+    out.push(when({ truthy: fold }, col(folded.flatMap((t) => [
       mine(t.q, size - 1),
       text(clip(t.a.replace(/[#*`_]/g, "").replace(/\s+/g, " ").trim(), FOLDED_ANSWER), { size: size - 2, lineHeight: Math.round((size - 2) * 1.45), color: C.meta }),
     ]), { gap: 10 })));
@@ -444,9 +445,14 @@ function history(turns: readonly ChatTurn[], size: number, show = SHOW_TURNS): N
 }
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
 
-/** The conversation of a job: what was asked, its questions and the answers, what it said at the end; then the project chat so far, and the question just asked. */
-function conversation(d: JobData | undefined, p: { asked?: string; answer?: string; flow?: string[]; turns?: readonly ChatTurn[] }, size: number): Node[] {
+/**
+ * The conversation, the way a chat keeps it: the project chat a job was started from (its last turns, the rest folded); the job, what was
+ * asked, its questions and the answers, what it said at the end; then the chat so far (the job's own, or the project's), and the question
+ * just asked.
+ */
+function conversation(d: JobData | undefined, p: { asked?: string; answer?: string; flow?: string[]; turns?: readonly ChatTurn[]; before?: readonly ChatTurn[] }, size: number): Node[] {
   const out: Node[] = [];
+  if (p.before?.length) out.push(...history(p.before, size, 2, "earlierBefore"));
   if (d) {
     out.push(mine(d.job.task, size));
     for (const e of d.log) {
@@ -461,7 +467,7 @@ function conversation(d: JobData | undefined, p: { asked?: string; answer?: stri
   const turns = p.turns ?? [];
   // The question just asked is the chat's last turn once it is kept; drawn from the params only when it was not.
   const kept = !!p.asked && turns.at(-1)?.q === p.asked.trim();
-  if (turns.length && !d) {
+  if (turns.length) {
     // The question just asked counts as one of the turns drawn in full.
     out.push(...(kept ? history(turns.slice(0, -1), size, SHOW_TURNS - 1) : history(turns, size, p.asked ? SHOW_TURNS - 1 : SHOW_TURNS)));
   }
@@ -509,7 +515,13 @@ function nextMoves(ctx: BotsCtx, c: ChatCtx): Node {
   ], { gap: 8, flexWrap: "wrap" });
 }
 
-interface ChatData { job?: JobData; project?: ProjectRow; flow?: string[]; chat?: { thread: string | null; turns: ChatTurn[] } }
+interface ChatData {
+  job?: JobData; project?: ProjectRow; flow?: string[];
+  /** The chat so far: the job's own (its thread is the job), else the project's (the thread named, or the latest). */
+  chat?: { thread: string | null; turns: ChatTurn[] };
+  /** The project chat a job was started from (`from`): drawn above the job. */
+  before?: ChatTurn[];
+}
 
 function chatCtx(ctx: BotsCtx, data: ChatData | undefined): ChatCtx | null {
   const projectId = data?.job?.job.projectId ?? (typeof ctx.params.project === "string" ? ctx.params.project : "");
@@ -528,17 +540,17 @@ function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
   const c = chatCtx(ctx, data);
   if (!c) return noProject(ctx);
   const p = askedOf(ctx);
-  const turns = data?.job ? [] : data?.chat?.turns ?? [];
-  const talk = conversation(data?.job, { ...p, ...(data?.flow ? { flow: data.flow } : {}), turns }, 15);
+  const turns = data?.chat?.turns ?? [];
+  const talk = conversation(data?.job, { ...p, ...(data?.flow ? { flow: data.flow } : {}), turns, ...(data?.before ? { before: data.before } : {}) }, 15);
   return page(ctx, {
     nav: "code", title: "Xode", gap: 18,
     body: [
-      head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true, ...(!data?.job && (turns.length || p.asked) ? { right: newChat(ctx, c, turns.length) } : {}) }),
+      head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true, ...(turns.length || p.asked ? { right: newChat(ctx, c, turns.length) } : {}) }),
       ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 16, weight: 500, lineHeight: 22 }), meta("Where something is, how it works, what would break. I answer with the files and lines, and change it when you say so.", { size: 13, lineHeight: 18 })], { gap: 6, paddingTop: 8 })]),
       ...(p.answer ? [nextMoves(ctx, c)] : []),
     ],
     footer: [composer(ctx, c, data?.job, "Ask about your code…")],
-    state: { msg: "", said: null, earlier: false },
+    state: { msg: "", said: null, earlier: false, earlierBefore: false },
   });
 }
 
@@ -613,15 +625,15 @@ function jobAside(ctx: BotsCtx, d: JobData): Node {
 function chatPane(ctx: BotsCtx, data: ChatData, c: ChatCtx): Node {
   const p = askedOf(ctx);
   const d = data.job;
-  const turns = d ? [] : data.chat?.turns ?? [];
-  const talk = conversation(d, { ...p, ...(data.flow ? { flow: data.flow } : {}), turns }, 15);
+  const turns = data.chat?.turns ?? [];
+  const talk = conversation(d, { ...p, ...(data.flow ? { flow: data.flow } : {}), turns, ...(data.before ? { before: data.before } : {}) }, 15);
   const pr = d?.agent?.pr;
   return col([
     row([
       text(c.projectName, { size: 18, weight: 600, lineHeight: 23 }),
       ...(d ? [box([text(d.job.branch, { size: 12, lineHeight: 16, mono: true, lines: 1 })], { borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 3, paddingHorizontal: 9, maxWidth: 260 })] : []),
       ...(pr ? [meta(`PR #${pr.number}${pr.ready ? " · ready" : " · draft"}`, { size: 12 })] : []),
-      ...(!d && (turns.length || p.asked) ? [grow(), newChat(ctx, c, turns.length)] : []),
+      ...(turns.length || p.asked ? [grow(), newChat(ctx, c, turns.length)] : []),
     ], { gap: 10, flexWrap: "wrap", alignItems: "center" }),
     ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 18, weight: 500, lineHeight: 24 }), meta("Where something is, how it works, what would break. Xode answers with the files and lines, and changes it when you say so.", { size: 14, lineHeight: 20 })], { gap: 6 })]),
     ...(p.answer ? [nextMoves(ctx, c)] : []),
@@ -636,14 +648,27 @@ function jobDesk(ctx: BotsCtx, data: ChatData) {
   return page(ctx, {
     nav: "code", title: data.job?.job.task ?? "Xode", maxWidth: 1400,
     body: [row([chatPane(ctx, data, c), ...(data.job && data.job.agent?.report?.outcome !== "answer" ? [jobAside(ctx, data.job)] : [])], { alignItems: "stretch", flexGrow: 1, minHeight: 600 })],
-    state: { msg: "", said: null, earlier: false },
+    state: { msg: "", said: null, earlier: false, earlierBefore: false },
   });
 }
 
 /** Is this job a conversation (or did the person just ask something)? Then the phone draws the chat. */
 const isChat = (ctx: BotsCtx, d?: JobData): boolean => !d || d.agent?.report?.outcome === "answer" || !!askedOf(ctx).asked;
 
-async function loadJobOrChat(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1]): Promise<ChatData> {
+type LoadDeps = Parameters<NonNullable<BotsScreen["load"]>>[1];
+
+/**
+ * A project chat's turns: the thread named, else the person's latest on the project that is not a job's own chat (a job's thread is the
+ * job's id); undefined when it cannot be read.
+ */
+async function chatRead(deps: LoadDeps, projectId: string, thread?: string): Promise<{ thread: string | null; turns: ChatTurn[] } | undefined> {
+  const not = thread ? [] : (await deps.jobs().catch(() => [])).map((j) => j.id).filter(isUuid);
+  const q = thread ? `?thread=${thread}` : not.length ? `?not=${not.join(",")}` : "";
+  return deps.api<{ thread: string | null; turns: ChatTurn[] }>("GET", `/v1/code/projects/${projectId}/chat${q}`)
+    .then((x) => ({ thread: x.thread, turns: Array.isArray(x.turns) ? x.turns : [] })).catch(() => undefined);
+}
+
+async function loadJobOrChat(ctx: BotsCtx, deps: LoadDeps): Promise<ChatData> {
   const chatOf = ctx.params.id === undefined && isUuid(ctx.params.project);
   const [job, flow, project, chat] = await Promise.all([
     ctx.params.id !== undefined ? readJob(deps, ctx.params.id) : Promise.resolve(undefined),
@@ -654,12 +679,20 @@ async function loadJobOrChat(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScre
       ? deps.api<{ project: ProjectRow }>("GET", `/v1/code/projects/${ctx.params.project}`).then((x) => x.project).catch(() => undefined)
       : Promise.resolve(undefined),
     // The chat so far: the thread named, else the latest one on the project.
-    chatOf
-      ? deps.api<{ thread: string | null; turns: ChatTurn[] }>("GET", `/v1/code/projects/${ctx.params.project}/chat${isUuid(ctx.params.thread) ? `?thread=${ctx.params.thread}` : ""}`)
-        .then((x) => ({ thread: x.thread, turns: Array.isArray(x.turns) ? x.turns : [] })).catch(() => undefined)
-      : Promise.resolve(undefined),
+    chatOf ? chatRead(deps, ctx.params.project as string, isUuid(ctx.params.thread) ? ctx.params.thread : undefined) : Promise.resolve(undefined),
   ]);
-  return { ...(job ? { job } : {}), ...(flow?.length ? { flow } : {}), ...(project ? { project } : {}), ...(chat ? { chat } : {}) };
+  // A job's own chat (its thread is the job) and the project chat it was started from.
+  const [own, before] = job
+    ? await Promise.all([
+      chatRead(deps, job.job.projectId, job.job.id),
+      isUuid(ctx.params.from) && ctx.params.from !== job.job.id ? chatRead(deps, job.job.projectId, ctx.params.from) : Promise.resolve(undefined),
+    ])
+    : [undefined, undefined];
+  const talk = chat ?? own;
+  return {
+    ...(job ? { job } : {}), ...(flow?.length ? { flow } : {}), ...(project ? { project } : {}), ...(talk ? { chat: talk } : {}),
+    ...(before?.turns.length ? { before: before.turns } : {}),
+  };
 }
 
 function jobScreen(ctx: BotsCtx, data: ChatData | undefined) {
