@@ -2,6 +2,7 @@
  * Bots app · shell area: what Home, Activity, Ask, Search, Tasks, Approve, Today and Meeting notes need beyond the existing routes,
  * and the glance the phone's widgets and live activity read (docs/bots-app.md).
  *
+ *   POST /v1/shell/activity/clear { id }      takes one row off this person's Activity (the row's ✕); the thing itself stays
  *   GET  /v1/shell/activity?tz=&bot=&type=   one feed across Xode jobs, answers bots gave, payments, Keylessbord's words and connected-app
  *                                            tasks (src/shell/feed.ts), newest first, money per row; and the week (done, spent, saved)
  *   GET  /v1/shell/search?q=&tz=             projects, chats, notes, files and bots that match (src/shell/search.ts)
@@ -45,6 +46,8 @@ import { calendar, todayForShell, upcomingForShell } from "../calendar/index.js"
 import { getConfig } from "../config.js";
 import { isHinglish } from "../connectors/words.js";
 import { getProfile } from "../profile/store.js";
+import { withCleared } from "../you/settings.js";
+import { youStore } from "../you/store.js";
 import type { CallFn } from "../code/work/model.js";
 import { digestFor } from "../widgets/digest.js";
 import { widgetsConfig, type WidgetsConfigFor } from "../widgets/config.js";
@@ -127,10 +130,26 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     const tz = tzOf(req.query);
     const q = (req.query ?? {}) as { bot?: unknown; type?: unknown };
     try {
-      const [{ rows }, minutes] = await Promise.all([feedFor(user, tz), saved(user, tz).catch(() => 0)]);
+      const [{ rows }, minutes, cleared] = await Promise.all([
+        feedFor(user, tz), saved(user, tz).catch(() => 0),
+        youStore().getSettings(user.id).then((s) => new Set(s.privacy.cleared ?? []), () => new Set<string>()),
+      ]);
       const week = weekOf(rows, weekAndMonthStart(now(), tz).week, minutes);
-      const shown = filterFeed(rows, { ...(typeof q.bot === "string" ? { bot: q.bot } : {}), ...(typeof q.type === "string" ? { kind: q.type } : {}) });
+      const shown = filterFeed(rows.filter((r) => !cleared.has(r.id)), { ...(typeof q.bot === "string" ? { bot: q.bot } : {}), ...(typeof q.type === "string" ? { kind: q.type } : {}) });
       return reply.send({ now: now(), week, rows: shown.slice(0, 80) });
+    } catch (err) { return fail(req, reply, err); }
+  });
+
+  // An Activity row off the list (its ✕): only the list forgets it, never the job, the payment or the words themselves.
+  app.post("/v1/shell/activity/clear", RL, async (req, reply) => {
+    const user = await who(req, reply);
+    if (!user) return reply;
+    try {
+      const store = youStore();
+      const next = withCleared(await store.getSettings(user.id), (req.body as { id?: unknown } | null)?.id);
+      if (!next) return reply.code(400).send({ code: "bad_request", message: "That isn't a row of Activity." });
+      await store.putSettings(user.id, next, now());
+      return reply.send({ ok: true });
     } catch (err) { return fail(req, reply, err); }
   });
 

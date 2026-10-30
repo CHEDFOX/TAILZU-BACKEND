@@ -34,6 +34,7 @@ const { registerBotsShellRoutes, glanceOf } = await import("../src/routes/botsSh
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, FIXED_NOW, IST, SAMPLE_BOTS, SAMPLE_JOBS } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
+const { MemoryYouStore, setYouStoreForTests } = await import("../src/you/store.js");
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const texts = (n: Node): string[] => walk(n).filter((x) => x.type === "Text").map((x) => String(x.props?.content));
@@ -194,6 +195,20 @@ describe("the shell's routes", () => {
     expect(words.json().rows.map((x: { type: string }) => x.type)).toEqual(["words"]);
     expect((await app.inject({ method: "GET", url: "/v1/shell/activity", headers: who("u2") })).json().rows).toEqual([]);
   });
+  it("activity: a row cleared with its ✕ is off this person's list for good, and nothing else changes", async () => {
+    setYouStoreForTests(new MemoryYouStore());
+    try {
+      const { app } = served();
+      const id = "job:" + SAMPLE_JOBS[1]!.id;
+      const list = async (u = "u1") => (await app.inject({ method: "GET", url: `/v1/shell/activity?tz=${IST}`, headers: who(u) })).json().rows.map((x: { id: string }) => x.id);
+      expect(await list()).toContain(id);
+      expect((await app.inject({ method: "POST", url: "/v1/shell/activity/clear", payload: { id } })).statusCode).toBe(401);
+      expect((await app.inject({ method: "POST", url: "/v1/shell/activity/clear", headers: who("u1"), payload: { id: "<script>" } })).statusCode).toBe(400);
+      expect((await app.inject({ method: "POST", url: "/v1/shell/activity/clear", headers: who("u1"), payload: { id } })).json()).toEqual({ ok: true });
+      expect(await list()).not.toContain(id);
+      expect(await list()).toEqual(expect.arrayContaining(["task:t1", "words:2026-10-28"]));
+    } finally { setYouStoreForTests(null); }
+  });
   it("route: who will answer, decided without answering; a bot the person chose is echoed", async () => {
     const calls: string[] = [];
     const bots = {
@@ -289,6 +304,24 @@ describe("the shell's screens", () => {
     // Back after a long time away, or the first time on a newer Home: welcomed back instead.
     const back = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ ...quiet, api: { "GET /v1/bots/first-run/arrival": { due: true, kind: "back" }, "GET /v1/personality": { personality: { assistantName: "Tara" } } } }));
     expect(texts(back.root!)).toEqual(expect.arrayContaining(["Welcome back, Aanya", "Tara and your bots missed you."]));
+  });
+  it("activity: every row has a ✕; its small card's two buttons both clear it, its own ✕ keeps it", async () => {
+    const deps = fakeDeps({ api: { [`GET /v1/shell/activity?tz=${IST}`]: ACTIVITY } });
+    for (const client of both) {
+      const s = await buildBotsScreen(req("bots.activity", client), deps);
+      const all = walk(s.root!);
+      const xs = all.filter((n) => n.props?.accessibilityLabel === "Clear from Activity");
+      const rows = (ACTIVITY as { rows: Array<{ id: string; mark: string }> }).rows.filter((r) => r.mark !== "needs" && (client === "desktop" || all.length));
+      expect(xs.length, client).toBeGreaterThanOrEqual(Math.min(rows.length, 3));
+      const id = rows.find((r) => r.mark !== "working")!.id;
+      const card = all.find((n) => JSON.stringify(n.visibleIf) === JSON.stringify({ eq: ["clearing", id] }))!;
+      expect(texts(card)).toEqual(expect.arrayContaining(["Don't want to see it", "Just do it"]));
+      const clears = JSON.stringify(card).split('"path":"/v1/shell/activity/clear"').length - 1;
+      expect(clears, client).toBe(2);
+      expect(JSON.stringify(card)).toContain(JSON.stringify({ id }));
+      expect(all.some((n) => n.props?.accessibilityLabel === "Keep it")).toBe(true);
+      expect(lintTree(s.root!), client).toEqual([]);
+    }
   });
   it("activity: the feed, no money on it, needs-you choices, filters by bot and type", async () => {
     const deps = fakeDeps({ api: { [`GET /v1/shell/activity?tz=${IST}`]: ACTIVITY } });
