@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 
@@ -331,9 +331,12 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       // ask bar, only once the card is closed.
       const nodes = walk(s.root!);
       const helloNode = nodes.find((x) => x.on?.onAppear && JSON.stringify(x.on.onAppear).includes("helloSeen"))!;
-      expect(helloNode.visibleIf).toEqual({ falsy: "permitClosed" });
+      expect(helloNode.visibleIf).toEqual({ falsy: "helloGone" });
       expect(JSON.stringify(helloNode.on?.onAppear)).toMatch(/"kind":"delay","ms":3\d{3}/);
-      expect(JSON.stringify(s.root)).toContain('"visibleIf":{"truthy":"permitClosed"}');
+      // The card done (permitClosed): the bot walks off (MorphOut, run by it), then helloGone, and Home rises in.
+      expect(walk(helloNode).find((x) => x.type === "MorphOut")?.bind).toEqual({ active: "permitClosed" });
+      expect(nodes.some((x) => x.visibleIf && JSON.stringify(x.visibleIf) === '{"truthy":"permitClosed"}' && JSON.stringify(x.on?.onAppear).includes("helloGone"))).toBe(true);
+      expect(nodes.filter((x) => x.type === "Rise" && JSON.stringify(x.visibleIf) === '{"truthy":"helloGone"}').length).toBeGreaterThan(2);
       // Monochrome: white, ink and Geist; the bot in a neutral grey.
       expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
       expect(card.props?.color).toBe("#3d3d3d");
@@ -461,11 +464,26 @@ describe("the routes", () => {
     expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/arrival" })).statusCode).toBe(401);
     const first = await server.inject({ method: "GET", url: "/v1/bots/first-run/arrival", headers: auth });
     expect(first.statusCode).toBe(200);
-    expect(first.json()).toEqual({ due: true });
+    expect(first.json()).toEqual({ due: true, kind: "first" });
     const done = await server.inject({ method: "PUT", url: "/v1/bots/first-run/arrival", headers: auth, payload: {} });
     expect(done.statusCode).toBe(200);
-    expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/arrival", headers: auth })).json()).toEqual({ due: false });
+    const get = async () => (await server.inject({ method: "GET", url: "/v1/bots/first-run/arrival", headers: auth })).json();
+    expect(await get()).toEqual({ due: false });
     expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/arrival", headers: auth, payload: {} })).statusCode).toBe(200);
+    // Coming back the next day: no welcome. After two weeks away: welcomed back, and it stays due through the visit
+    // (a screen that refreshes mid-welcome keeps it) until the PUT once it has played.
+    vi.useFakeTimers({ toFake: ["Date"], now: Date.now() });
+    try {
+      vi.setSystemTime(Date.now() + 86_400_000);
+      expect(await get()).toEqual({ due: false });
+      vi.setSystemTime(Date.now() + 15 * 86_400_000);
+      expect(await get()).toEqual({ due: true, kind: "back" });
+      expect(await get()).toEqual({ due: true, kind: "back" });
+      await server.inject({ method: "PUT", url: "/v1/bots/first-run/arrival", headers: auth, payload: {} });
+      expect(await get()).toEqual({ due: false });
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("languages, words and plans, signed in only", async () => {
     const langs = await server.inject({ method: "GET", url: "/v1/bots/first-run/languages", headers: auth });

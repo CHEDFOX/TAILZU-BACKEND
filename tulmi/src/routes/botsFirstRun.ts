@@ -8,9 +8,12 @@
  *                                      taken when the step opened) also what was said since: First words' numbers
  *   GET /v1/bots/first-run/plans       Plans' cards: the paywall's own plans (phone, RevenueCat) or the pay page's
  *                                      Razorpay prices (window), the free words, and whether the account already pays
- *   GET /v1/bots/first-run/arrival     { due }: the first-arrival card over Home (the microphone, then the keyboard) is
- *                                      still to be shown, answered or put off (personality.botsArrivalAt unset)
- *   PUT /v1/bots/first-run/arrival     it was: botsArrivalAt is set (once; a second PUT keeps the first time)
+ *   GET /v1/bots/first-run/arrival     { due, kind }: Home's welcome is due. "first": the first visit after onboarding
+ *                                      (personality.botsArrivalAt unset). "back": a visit after AWAY_DAYS away, or the
+ *                                      first on a newer Home (HOME_VERSION); kept (botsBackDue) until the PUT, so a screen
+ *                                      that refreshes mid-welcome still has it. Each new visit is recorded (botsHomeSeenAt).
+ *   PUT /v1/bots/first-run/arrival     it was: botsArrivalAt is set (once; a second PUT keeps the first time), the welcome
+ *                                      back cleared
  *
  * Every write the steps make goes to the routes that already own it: PUT /v1/profile { full_name, gender } (the name
  * and gender card's own write), PUT /v1/personality (languages, the boss bot's name), PUT /v1/profile { onboarded }
@@ -155,22 +158,38 @@ function phonePlans(): FirstRunPlan[] {
   }));
 }
 
+/** Home's version: one above what someone last saw, and their next visit is welcomed back. */
+export const HOME_VERSION = 2;
+/** Days away after which a visit is welcomed back. */
+const AWAY_DAYS = 14;
+/** One visit: Home opened again within this counts as the same one. */
+const VISIT_MS = 30 * 60_000;
+
 export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaDeps): void {
   const rl = { config: deps.rateLimit };
 
   app.get("/v1/bots/first-run/arrival", rl, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return unauthorized(reply);
-    const personality = await getPersonality(user).catch(() => null);
+    let p = await getPersonality(user).catch(() => null);
     // Unknown (the store failed): not due. A card that never comes is better than one that keeps coming back.
-    return reply.send({ due: !!personality && !personality.botsArrivalAt });
+    if (!p) return reply.send({ due: false });
+    const now = Date.now(), seen = Date.parse(p.botsHomeSeenAt ?? "") || 0;
+    if (now - seen > VISIT_MS) {
+      // A new visit: after a long time away, or the first on a newer Home, it is welcomed back (once onboarded).
+      const back = !!p.botsArrivalAt && ((p.botsHomeVersion ?? 0) < HOME_VERSION || (seen > 0 && now - seen > AWAY_DAYS * 86_400_000));
+      p = await updatePersonality(user, (c) => ({ ...c, botsHomeSeenAt: new Date(now).toISOString(), botsHomeVersion: HOME_VERSION, ...(back ? { botsBackDue: true } : {}) }))
+        .catch(() => p);
+    }
+    if (!p!.botsArrivalAt) return reply.send({ due: true, kind: "first" });
+    return reply.send(p!.botsBackDue ? { due: true, kind: "back" } : { due: false });
   });
 
   app.put("/v1/bots/first-run/arrival", rl, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return unauthorized(reply);
     try {
-      await updatePersonality(user, (p) => (p.botsArrivalAt ? p : { ...p, botsArrivalAt: new Date().toISOString() }));
+      await updatePersonality(user, (p) => ({ ...p, botsArrivalAt: p.botsArrivalAt ?? new Date().toISOString(), botsBackDue: false }));
       return reply.send({ ok: true });
     } catch (err) {
       req.log.error(err);

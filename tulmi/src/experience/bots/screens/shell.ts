@@ -187,7 +187,7 @@ function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, n
 const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
 
 /** What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due (pushAsk.ts). */
-interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined; botName?: string | undefined }
+interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean }
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the
@@ -255,30 +255,37 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     tiles(ctx, 2, 132, 16, more.notes),
   ];
   const footer = [askBar("phone", { ctx })];
-  // THE FIRST VISIT AFTER ONBOARDING, where the build plays it: only the bot waving with its line, for a few seconds; then the
-  // card for the microphone and the keyboard; once that is done (or put off) the bot goes and Home is as on any day.
+  // HOME'S WELCOME, where the build plays it (the first visit after onboarding; a visit after a long time away or the first on
+  // a newer Home): only the bot waving with his line, for a few seconds. Then the card for whatever is missing (the
+  // microphone, the keyboard); with nothing missing it closes by itself unseen. Once it is done (or put off) the bot walks
+  // off to the side, and Home comes in, piece by piece, as on any day.
   const intro = n.arrival && canMove(ctx);
-  const afterIntro = (x: Node): Node => (intro ? { ...x, visibleIf: x.visibleIf ? { all: [x.visibleIf, { truthy: "permitClosed" }] } : { truthy: "permitClosed" } } : x);
+  const gone: Condition = { truthy: "helloGone" };
+  const arrive = (x: Node, i: number): Node => (intro ? { type: "Rise", props: { delayMs: i * 70, fromY: 36, scaleFrom: 0.98 }, visibleIf: gone, children: [x] } : x);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false } : {}) }, pinned: pinned.map(afterIntro),
+    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}) },
+    pinned: intro ? pinned.map((x) => when(gone, x)) : pinned,
     ...(hasNotes(ctx) ? { live: ["notes"] } : {}), pullBot: homePull(ctx),
     body: intro
       ? [
         {
-          ...col([hello(ctx, more)], { paddingTop: 150 }), visibleIf: { falsy: "permitClosed" },
+          ...col([hello(ctx, more, { walkOut: true })], { paddingTop: 150 }), visibleIf: { falsy: "helloGone" },
           on: { onAppear: seq({ kind: "delay", ms: HELLO_MS }, { kind: "setState", path: "helloSeen", value: true }) },
         },
+        // The card done: the bot's walk, then Home.
+        { ...box([], { height: 0 }), visibleIf: { truthy: "permitClosed" }, on: { onAppear: seq({ kind: "delay", ms: WALK_MS }, { kind: "setState", path: "helloGone", value: true }) } },
         ...arrivalCard(ctx, { after: "helloSeen" }),
-        ...home.map(afterIntro),
+        ...home.map(arrive),
       ]
-      // The first time here on a build without it: the card over Home, and the bot saying hello.
+      // A build without it: the card over Home, and the bot saying hello.
       : [...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []), ...home],
-    footer: footer.map(afterIntro),
+    footer: footer.map((x, i) => arrive(x, home.length + i)),
   });
 }
 
-/** How long the bot waves on his own before the first visit's card comes in. */
+/** How long the bot waves on his own before the welcome's card comes in, and how long his walk off takes. */
 const HELLO_MS = 3500;
+const WALK_MS = 900;
 
 function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const first = ctx.live.needs[0];
@@ -300,14 +307,28 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   });
 }
 
-/** The bot waving hello by the name they gave it (else X0's): on Home only the first visit after onboarding, while the first-arrival card is due. */
-function hello(ctx: BotsCtx, more: HomeMore): Node {
+/**
+ * The bot waving hello by the name they gave it (else X0's), while Home's welcome is due: the first visit after onboarding,
+ * or (`more.back`) a visit after a long time away or the first on a newer Home. `walkOut`: on the phone's first-visit stage the
+ * bot walks off to the side once the card is done (MorphOut, run by permitClosed) and his words go with him.
+ */
+function hello(ctx: BotsCtx, more: HomeMore, o: { walkOut?: boolean } = {}): Node {
   const name = firstName(ctx), me = more.botName || ASSISTANT_NAME;
-  const hi = name ? `Hi ${name}, I'm ${me}` : `Hi, I'm ${me}`;
-  const line = "Every bot here is me, ready for one job. Your first one is already on.";
-  return ctx.client === "desktop"
-    ? row([blip("hello", 140), col([text(hi, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), text(line, { size: 15, color: C.grey70, lineHeight: 21 })], { gap: 6, flexShrink: 1 })], { gap: 24 })
-    : col([blip("hello", 132), text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })], { gap: 6, alignItems: "center" });
+  const hi = more.back ? (name ? `Welcome back, ${name}` : "Welcome back") : name ? `Hi ${name}, I'm ${me}` : `Hi, I'm ${me}`;
+  const line = more.back ? `${me} and your bots missed you.` : "Every bot here is me, ready for one job. Your first one is already on.";
+  if (ctx.client === "desktop") {
+    return row([blip("hello", 140), col([text(hi, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), text(line, { size: 15, color: C.grey70, lineHeight: 21 })], { gap: 6, flexShrink: 1 })], { gap: 24 });
+  }
+  const bot = blip("hello", 132);
+  const words = [text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })];
+  if (!o.walkOut) return col([bot, ...words], { gap: 6, alignItems: "center" });
+  const walking: Node = {
+    type: "MorphOut", bind: { active: "permitClosed" }, style: { width: bot.style?.width, height: bot.style?.height },
+    // Off to the side at full size: no gather, no shrink, picking up speed, gone by the end.
+    props: { dx: 4, durationMs: 900, windup: 0.04, collapseIn: [0, 1], collapseOut: [1, 1], toScale: 1, fadeAt: 0.85 },
+    children: [bot],
+  };
+  return col([walking, ...words.map((w) => when({ falsy: "permitClosed" }, w))], { gap: 6, alignItems: "center" });
 }
 
 // ===================================================================== the empty home
@@ -1545,17 +1566,17 @@ export const shellScreens: BotsScreen[] = [
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
       const [arrival, leaving, push, notes, persona] = await Promise.all([
-        deps.api<{ due: boolean }>("GET", ARRIVAL_PATH).catch(() => undefined),
+        deps.api<{ due: boolean; kind?: "first" | "back" }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
         hasNotes(ctx) ? deps.api<NotesStats>("GET", NOTES_STATS_PATH).catch(() => undefined) : Promise.resolve(undefined),
         // The name they gave their bot, for the first day's hello.
         deps.api<{ personality?: { assistantName?: string } }>("GET", "/v1/personality").catch(() => undefined),
       ]);
-      return { arrival: arrival?.due === true, leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality) };
+      return { arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality) };
     },
     build: (ctx, data) => {
-      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName };
+      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true };
       // One Home for everyone, new or not; the bot's hello on top only the first time.
       return ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
     },
