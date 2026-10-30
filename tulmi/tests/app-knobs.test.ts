@@ -45,6 +45,12 @@ describe("keyboard knobs", () => {
   }
   it("the catalog's own values still win", () => {
     const cfg = buildKeyboardConfig(undefined, undefined, { platform: "ios" }) as unknown as { labels: Record<string, string> };
-    expect(cfg.labels.full_access_required).toBe("Enable Full Access to use voice + Refine.");
+    expect(cfg.labels.full_access_required).toBe("Allow Full Access to speak with X0. Tap to set it up.");
+  });
+  it("the status line is drawn once, by the tree's band: the native overlay is clear on both keyboards", () => {
+    for (const platform of ["ios", "android"]) {
+      const { flags } = buildKeyboardConfig(undefined, undefined, { platform }) as unknown as { flags: Record<string, unknown> };
+      expect([flags["kb.status.overlay.bg"], flags["kb.status.overlay.fg"]], platform).toEqual(["#00000000", "#00000000"]);
+    }
   });
 });
