@@ -8,6 +8,12 @@
  *                front when the summary is full. It holds questions and paths, not the code and not the answers' words
  *   last         the last question, the files and lines the last answer rested on (`cites`), and where a change would go (`located`, work/locate.ts):
  *                what a hand-off to a job carries, so the job does not look for the place again
+ *   history      the last HISTORY_TURNS questions and answers word for word (an answer up to ANSWER_KEEP characters), so the chat shows them the way
+ *                a chat does, and the front door knows what "??" or "why?" is about. Kept in the row's last_located jsonb beside the located files
+ *                ({ located, history }), so no migration was needed; a row written before holds the located files alone, and reads as no history
+ *
+ * A thread can go on for ever and costs the same each turn: the model is shown the summary, and the last answer only on a follow-up, never the
+ * history; the row holds at most HISTORY_TURNS turns; the chat shows the last few in full and folds the rest; "New chat" starts a thread afresh.
  *
  * The table is migration 0034 (code_chat_threads), behind one interface with a memory twin for tests and local runs, as the other stores are. Written with
  * the service key; a person's own token can only read their own rows. A thread is a person's and a project's: another person's id, or another project's,
@@ -24,6 +30,12 @@ export const SUMMARY_TURNS = 5;
 const QUESTION_MAX = 1000;
 const CITES_MAX = 12;
 const TURN_Q = 140;
+/** The turns the chat shows, and the most of an answer kept. */
+export const HISTORY_TURNS = 30;
+const ANSWER_KEEP = 4_000;
+
+/** One question and its answer, as the chat shows them. */
+export interface ChatTurn { q: string; a: string; at: number }
 
 export interface ChatThread {
   id: string;
@@ -36,6 +48,8 @@ export interface ChatThread {
   lastCites: string[];
   /** Where the last answer found the code to be: what a job made from this conversation is handed. */
   lastLocated: Located | null;
+  /** The last HISTORY_TURNS turns, oldest first. */
+  history: ChatTurn[];
   createdAt: number;
   updatedAt: number;
 }
@@ -75,7 +89,8 @@ export function rollSummary(summary: string, question: string, cites: readonly s
 }
 
 /** A thread after a turn. */
-export function afterTurn(t: ChatThread, o: { question: string; cites: readonly string[]; located: Located | null; now: number }): ChatThread {
+export function afterTurn(t: ChatThread, o: { question: string; shown?: string; cites: readonly string[]; located: Located | null; now: number; answer?: string }): ChatThread {
+  const turn: ChatTurn = { q: (o.shown ?? o.question).trim().slice(0, QUESTION_MAX), a: (o.answer ?? "").trim().slice(0, ANSWER_KEEP), at: o.now };
   return {
     ...t,
     summary: rollSummary(t.summary, o.question, o.cites),
@@ -83,12 +98,13 @@ export function afterTurn(t: ChatThread, o: { question: string; cites: readonly 
     lastQuestion: oneLine(o.question, QUESTION_MAX),
     lastCites: [...new Set(o.cites)].slice(0, CITES_MAX),
     lastLocated: o.located,
+    history: [...t.history, turn].slice(-HISTORY_TURNS),
     updatedAt: o.now,
   };
 }
 
 export function newThread(userId: string, projectId: string, id: string, now: number): ChatThread {
-  return { id, userId, projectId, summary: "", turns: 0, lastQuestion: "", lastCites: [], lastLocated: null, createdAt: now, updatedAt: now };
+  return { id, userId, projectId, summary: "", turns: 0, lastQuestion: "", lastCites: [], lastLocated: null, history: [], createdAt: now, updatedAt: now };
 }
 
 const clone = (t: ChatThread): ChatThread => structuredClone(t);
@@ -126,11 +142,24 @@ interface Row {
 
 const ms = (v: unknown): number => { const n = typeof v === "string" ? Date.parse(v) : NaN; return Number.isFinite(n) ? n : 0; };
 
-const threadOf = (r: Row): ChatThread => ({
-  id: r.id, userId: r.user_id, projectId: r.project_id, summary: r.summary ?? "", turns: typeof r.turns === "number" ? r.turns : 0,
-  lastQuestion: r.last_question ?? "", lastCites: Array.isArray(r.last_cites) ? r.last_cites.filter((c) => typeof c === "string") : [],
-  lastLocated: r.last_located && typeof r.last_located === "object" ? (r.last_located as Located) : null, createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
-});
+/** last_located as it is kept: { located, history }, or (a row written before the history) the located files alone. */
+function lastOf(v: unknown): { located: Located | null; history: ChatTurn[] } {
+  if (!v || typeof v !== "object") return { located: null, history: [] };
+  const o = v as { located?: unknown; history?: unknown };
+  if (!Array.isArray(o.history)) return { located: v as Located, history: [] };
+  const history = o.history.filter((h): h is ChatTurn => !!h && typeof h === "object" && typeof (h as ChatTurn).q === "string" && typeof (h as ChatTurn).a === "string")
+    .map((h) => ({ q: h.q, a: h.a, at: typeof h.at === "number" ? h.at : 0 }));
+  return { located: o.located && typeof o.located === "object" ? (o.located as Located) : null, history };
+}
+
+const threadOf = (r: Row): ChatThread => {
+  const last = lastOf(r.last_located);
+  return {
+    id: r.id, userId: r.user_id, projectId: r.project_id, summary: r.summary ?? "", turns: typeof r.turns === "number" ? r.turns : 0,
+    lastQuestion: r.last_question ?? "", lastCites: Array.isArray(r.last_cites) ? r.last_cites.filter((c) => typeof c === "string") : [],
+    lastLocated: last.located, history: last.history, createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
+  };
+};
 
 function ok<T>(res: { data: T | null; error: { message: string } | null }): T | null {
   if (res.error) throw new Error(`code chat store: ${res.error.message}`);
@@ -153,7 +182,7 @@ export class SupabaseThreadStore implements ThreadStore {
     if (!this.ids(t.userId, t.projectId, t.id)) throw new Error("code chat store: not a thread of a signed-in person");
     const r = ok(await this.sb.from("code_chat_threads").upsert({
       id: t.id, user_id: t.userId, project_id: t.projectId, summary: t.summary.slice(0, 2000), turns: t.turns, last_question: t.lastQuestion.slice(0, 1000),
-      last_cites: t.lastCites, last_located: t.lastLocated, updated_at: new Date(t.updatedAt).toISOString(),
+      last_cites: t.lastCites, last_located: { located: t.lastLocated, history: t.history.slice(-HISTORY_TURNS) }, updated_at: new Date(t.updatedAt).toISOString(),
     }, { onConflict: "id" }).select("*").single<Row>());
     return threadOf(r!);
   }

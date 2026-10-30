@@ -250,6 +250,48 @@ describe("the conversation", () => {
     expect(alone.thread).toBeNull();
   });
 
+  it("keeps the turns word for word for the chat to show, and a follow-up is answered knowing the last answer (as Claude Code does)", async () => {
+    const r = await chatRig();
+    const threadId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    r.a.json.on("front.code_answer", "In startSession: src/auth/session.ts:3.");
+    await r.ask("where is the session cookie set?", { threadId });
+    // "??" after it: the front door writes out what it asks; the model is asked that, with the last answer; the chat shows "??".
+    r.a.json.on("front.code_answer", "Simply: startSession sets the cookie.");
+    const again = await r.ask("??", { threadId, context: "where is the session cookie set?", ask: "I did not follow that. Explain your last answer again, simpler." });
+    const sent = said(r, 1);
+    expect(sent.user).toContain("<question>\nwhere is the session cookie set?\n\nI did not follow that.");
+    expect(sent.user).toContain("<last_answer>\nIn startSession: src/auth/session.ts:3.\n</last_answer>");
+    expect(again.thread!.history.map((t) => t.q)).toEqual(["where is the session cookie set?", "??"]);
+    expect(again.thread!.history[1]!.a).toBe("Simply: startSession sets the cookie.");
+    // The thread keeps the real question, so the next "why?" is about it, not about "??".
+    expect(again.thread!.lastQuestion).toBe("where is the session cookie set?");
+    // A question that stands alone is not shown the last answer.
+    r.a.json.on("front.code_answer", "The login route: src/routes/login.ts:4.");
+    await r.ask("where is the login route defined in the routes folder?", { threadId });
+    expect(said(r, 2).user).not.toContain("<last_answer>");
+  });
+
+  it("keeps at most HISTORY_TURNS turns, however long the chat goes", () => {
+    let t = chatMod.newThread("alice", "p", "dddddddd-dddd-4ddd-8ddd-dddddddddddd", 0);
+    for (let i = 0; i < chatMod.HISTORY_TURNS + 7; i += 1) t = chatMod.afterTurn(t, { question: `q${i}`, cites: [], located: null, now: i, answer: "a".repeat(9000) });
+    expect(t.history).toHaveLength(chatMod.HISTORY_TURNS);
+    expect(t.history[0]!.q).toBe("q7");
+    expect(t.history.at(-1)!.a.length).toBeLessThanOrEqual(4000);
+  });
+
+  it("reads the whole project the way a newcomer does for a question about all of it: README and manifest first, whatever words matched", async () => {
+    const r = await chatRig();
+    r.a.json.on("front.code_answer", "A small app (README.md:3).");
+    const out = await r.ask("what do you under stand of the project");
+    expect(out.reads).toEqual(expect.arrayContaining(["README.md", "package.json"]));
+    expect(out.reads.length).toBeLessThanOrEqual(4);
+    expect(said(r).user).toContain("README.md\n1: # app");
+    expect(out.cites).toEqual(["README.md:3"]);
+    expect(chatMod.readQuestion("what does this app do?").whole).toBe(true);
+    expect(chatMod.readQuestion("project samjhao").whole).toBe(true);
+    expect(chatMod.readQuestion("where in the project is the login route?").whole).toBe(false);
+  });
+
   it("holds the summary to its limit, the oldest turn going first", async () => {
     const t = chatMod.rollSummary("", "q0", []);
     let s = t;

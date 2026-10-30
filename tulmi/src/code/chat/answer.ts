@@ -7,6 +7,8 @@
  *                  A "where" and a "what" nearly always; a "how" when the graph shows the flow; an "impact" from the graph (work/impact.ts).
  *   READ PATH      not sure, or a "why", or the code itself was asked for: the located spans are read, 3 files and 5,000 characters at the most, through the
  *                  job's room (read and grep) when the person has one open, else through GitHub. Never a secret file, never a file nothing pointed at
+ *   WHOLE PROJECT  a question about the project as a whole is read the way a newcomer reads it: the brain's map (languages, frameworks, entry points,
+ *                  commands, features with their files) and the README, the manifest and the entry files themselves, 4 files and 7,000 characters at most
  *   OVERVIEW       nothing matched: the project's overview is the basis, and the answer says so
  *   THE ANSWER     one call of the front_code_answer role, at the tier the front door's decision named (cheap; strong for a deep why or an impact question)
  *   CITATIONS      each path:line in it is checked against what was seen; the ones that do not resolve are taken out and the notes say so (cite.ts)
@@ -67,6 +69,9 @@ export interface ChatInput {
   question: string;
   /** What is searched for: the words, and for a follow-up the thread's last question in front of them. */
   search: string;
+  /** When `question` was written out for the person (a reaction like "??"): their own words, which the chat shows, and the question the thread keeps. */
+  shown?: string;
+  kept?: string;
   tier: ModelTier;
   length: Length;
   maxPaise: number;
@@ -228,6 +233,14 @@ const ctxOf = (m: FrontModel, maxPaise: number): ModelCtx => ({
   ...(m.call ? { call: m.call } : {}), ...(m.gateway ? { gateway: m.gateway } : {}), userId: m.userId, budget: { maxPaise }, ...(m.signal ? { signal: m.signal } : {}),
 });
 
+/** The most of the last answer shown to the model with a follow-up. */
+const LAST_ANSWER_CHARS = 2_500;
+/** What was said last, when this question goes on from it ("??", "why?", "and the logout?"): a chat answers a follow-up knowing its own last words. */
+const lastAnswer = (input: ChatInput): string => {
+  const last = input.thread?.history.at(-1);
+  return last?.a && (input.kept !== undefined || isFollowUp(input.question)) ? cut(last.a, LAST_ANSWER_CHARS) : "";
+};
+
 /** The block of the thread's summary the model is shown, as data. */
 const threadBlock = (t: ChatThread | null): string => (t?.summary ? `<thread>\n${fence(forModel(t.summary))}\n</thread>\n\n` : "");
 
@@ -271,6 +284,52 @@ async function gatherValues(ports: ChatPorts, located: Located, targets: readonl
   return facts;
 }
 
+/** What a whole-project question may read: files, characters in all. */
+const WHOLE_FILES = 4;
+const WHOLE_CHARS = 7_000;
+/** The manifest a project of this main language keeps at its root; package.json for the rest. */
+const MANIFESTS: Record<string, string> = { python: "pyproject.toml", rust: "Cargo.toml", go: "go.mod", java: "pom.xml", php: "composer.json", ruby: "Gemfile" };
+
+/**
+ * The project as a newcomer reads it: the brain's map of it, then the README, the manifest and the entry files themselves. The map names files
+ * without lines; only what was read can be cited by line.
+ */
+async function wholeProject(ports: ChatPorts, anchors: Anchors, onStep?: (s: string) => void): Promise<{ basis: string; excerpts: string[]; reads: string[] }> {
+  const view: BrainView = await ports.brain.status();
+  const st = view.structure;
+  const map = [
+    cut(view.welcome, 800),
+    st ? `${st.fileCount} files; ${st.languages.slice(0, 5).map((l) => `${l.lang} ${Math.round(l.pct)}%`).join(", ")}` : "",
+    st?.frameworks.length ? `frameworks: ${st.frameworks.join(", ")}` : "",
+    st?.readme ? `readme ${st.readme.path}: ${st.readme.title}${st.readme.blurb ? ` - ${cut(st.readme.blurb, 300)}` : ""}` : "",
+    st?.entryPoints.length ? `entry points:\n${st.entryPoints.slice(0, 6).map((e) => `${e.path} (${e.why})`).join("\n")}` : "",
+    st?.commands.length ? `commands:\n${st.commands.slice(0, 6).map((c) => `${c.kind}: ${c.cmd}`).join("\n")}` : "",
+    view.features.length
+      ? `features:\n${view.features.slice(0, 10).map((f) => `${f.name}: ${cut(f.summary, 140)} (${f.files.slice(0, 4).join(", ")}${f.fileCount > 4 ? `, ${f.fileCount - 4} more` : ""})`).join("\n")}`
+      : "",
+  ].filter(Boolean).join("\n\n");
+  const read = readerOf(ports);
+  const excerpts: string[] = [];
+  const reads: string[] = [];
+  if (read) {
+    const manifest = MANIFESTS[(st?.languages[0]?.lang ?? "").toLowerCase()] ?? "package.json";
+    const wanted = [...new Set([st?.readme?.path ?? "README.md", manifest, ...(st?.entryPoints ?? []).map((e) => e.path)])].filter((p) => !isSecretPath(p));
+    let chars = 0;
+    for (const path of wanted) {
+      if (reads.length >= WHOLE_FILES || chars >= WHOLE_CHARS) break;
+      onStep?.(`code:read:${path}`);
+      const text = await read(path);
+      if (text === null) continue;
+      anchors.read(path, text);
+      const body = around(text);
+      reads.push(path);
+      excerpts.push(`${path}\n${body}`);
+      chars += body.length;
+    }
+  }
+  return { basis: map, excerpts, reads };
+}
+
 /** The same ports, with GitHub asked for a file once however many steps want it (the values are read from the files the excerpts are). */
 function cachedPorts(ports: ChatPorts): ChatPorts {
   const read = ports.read;
@@ -283,7 +342,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const ports = cachedPorts(given);
   const { brain } = ports;
   const anchors = new Anchors();
-  const rq = readQuestion(input.question);
+  const rq = readQuestion(input.kept ?? input.question);
   const notes: string[] = [];
 
   // Where it is, from the index alone: no file is read to find out.
@@ -300,7 +359,15 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   let reads: string[] = [];
   let greps: string[] = [];
   let basis = "";
-  if (targets.length) {
+  if (rq.whole) {
+    // The whole project: its map and the files a newcomer opens first, whatever the words happened to match.
+    let map: string;
+    ({ basis: map, excerpts, reads } = await wholeProject(ports, anchors, input.onStep));
+    // The map is the facts beside what was read; with nothing read, it is the basis itself.
+    road = reads.length ? "read" : "overview";
+    if (reads.length) facts = { text: map, rich: true, flow: false };
+    else basis = map;
+  } else if (targets.length) {
     facts = await gatherBrainFacts(brain, located, targets, input.search, rq, anchors);
     values = await gatherValues(ports, located, targets, rq, anchors);
     if (values.length) facts = { ...facts, text: `${facts.text}\nvalues in the code:\n${factsBlock(values)}` };
@@ -323,6 +390,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const user = [
     `<question>\n${forModel(input.question).replace(/<\/question/gi, "<\\/question")}\n</question>`,
     ...(input.thread?.summary ? [threadBlock(input.thread).trim()] : []),
+    ...(lastAnswer(input) ? [`<last_answer>\n${fence(forModel(lastAnswer(input)))}\n</last_answer>`] : []),
     ...(facts.text ? [`<facts>\n${fence(forModel(facts.text))}\n</facts>`] : []),
     `<excerpts>\n${fence(forModel(excerpts.length ? excerpts.join("\n\n") : basis || "(none read)"))}\n</excerpts>`,
   ].filter((p) => road !== "fast" || !p.startsWith("<excerpts>")).join("\n\n");
@@ -343,7 +411,9 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
 
   const diagram = input.diagram && targets.length ? (await flowDiagram(brain, targets.map((t) => t.path))) ?? undefined : undefined;
   const slim = trimLocated(located);
-  const thread = input.thread ? afterTurn(input.thread, { question: input.question, cites, located: targets.length ? slim : null, now: input.now }) : null;
+  const thread = input.thread ? afterTurn(input.thread, {
+    question: input.kept ?? input.question, ...(input.shown !== undefined ? { shown: input.shown } : {}), cites, located: targets.length ? slim : null, now: input.now, answer: answerText,
+  }) : null;
   return {
     text: answerText, paise: r.paise + located.used.paise, notes, ...(diagram ? { diagram } : {}), road, reads, greps, cites, located: slim, thread,
   };

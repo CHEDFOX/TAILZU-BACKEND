@@ -53,13 +53,15 @@ describe.each([
 ])("the chat thread store (%s)", (_n, make) => {
   const thread = (over: Partial<import("../src/code/chat/threads.js").ChatThread> = {}) => ({
     id: T, userId: U, projectId: P, summary: "- how does login work (src/auth/session.ts)", turns: 1, lastQuestion: "how does login work", lastCites: ["src/auth/session.ts:14"],
-    lastLocated: null, createdAt: 1, updatedAt: 2, ...over,
+    lastLocated: null, history: [{ q: "how does login work", a: "In src/auth/session.ts:14.", at: 2 }], createdAt: 1, updatedAt: 2, ...over,
   });
 
   it("keeps a thread for the person and the project that made it, and for nobody else", async () => {
     const s = make();
     await s.put(thread());
-    expect(await s.get(U, P, T)).toMatchObject({ summary: "- how does login work (src/auth/session.ts)", lastCites: ["src/auth/session.ts:14"] });
+    expect(await s.get(U, P, T)).toMatchObject({
+      summary: "- how does login work (src/auth/session.ts)", lastCites: ["src/auth/session.ts:14"], history: [{ q: "how does login work", a: "In src/auth/session.ts:14.", at: 2 }],
+    });
     expect(await s.get(U2, P, T)).toBeNull();
     expect(await s.get(U, P2, T)).toBeNull();
     expect(await s.get(U, P, "not-an-id")).toBeNull();
@@ -81,10 +83,14 @@ describe("the chat thread store's Supabase twin", () => {
   it("cuts what the columns limit, and fails loudly when the table is missing", async () => {
     const sb = fakeSupabase({ tables: ["code_chat_threads"] });
     const s = new chat.SupabaseThreadStore(sb as never);
-    await s.put({ id: T, userId: U, projectId: P, summary: "x".repeat(5000), turns: 1, lastQuestion: "q".repeat(3000), lastCites: [], lastLocated: null, createdAt: 1, updatedAt: 2 });
+    await s.put({ id: T, userId: U, projectId: P, summary: "x".repeat(5000), turns: 1, lastQuestion: "q".repeat(3000), lastCites: [], lastLocated: null, history: [], createdAt: 1, updatedAt: 2 });
     const row = sb.tables.code_chat_threads![0]!;
     expect((row.summary as string).length).toBe(2000);
     expect((row.last_question as string).length).toBe(1000);
+    // A row kept before the history: last_located holds the located files alone, and reads as no history.
+    const located = { targets: [{ path: "a.ts" }], related: [], tests: [], confidence: 0.9, used: { expanded: false, picked: false, paise: 0 } };
+    row.last_located = located;
+    expect(await s.get(U, P, T)).toMatchObject({ lastLocated: located, history: [] });
     await expect(new chat.SupabaseThreadStore(fakeSupabase({ error: "no table" }) as never).get(U, P, T)).rejects.toThrow(/no table/);
   });
 });

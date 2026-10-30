@@ -25,6 +25,8 @@ export interface QuestionRead {
   flow: boolean;
   /** The question asks for a value the code holds (a default, a limit, a window, a timeout, a port, a setting): the answer needs the constants, not a summary. */
   values: boolean;
+  /** The question is about the project as a whole ("what do you understand of the project", "what does this app do"): read like a newcomer would, README first. */
+  whole: boolean;
 }
 
 const hindi = (words: string[]): RegExp => new RegExp(`(?<![\\p{L}\\p{M}])(?:${words.join("|")})`, "u");
@@ -50,6 +52,12 @@ const FLOW = /\bflow\b|\bhow\s+(?:does|do|is|are|did)\b[^.?!\n]{2,60}\b(?:work|w
 /** A question about a number or a setting: what the default is, how many, how long, the limit, the window, the timeout, the port. */
 const VALUES = /\b(?:defaults?|limits?|windows?|time-?outs?|ttl|intervals?|thresholds?|max(?:imum)?|min(?:imum)?|sizes?|ports?|retr(?:y|ies)|attempts?|quota|config(?:uration|ured|s)?|settings?|options?|constants?|how\s+(?:many|long|much|often|big|large|far)|rates?|expir\w*|delays?|durations?|budget)\b|\bkitna\b|\bkitne\b/i;
 
+/** Asking about the whole: a project word at the very end, after a word that asks for the big picture; or "overview" anywhere. */
+const PROJECT_END = /\b(?:project|repo|repository|codebase|code\s*base|app|application)(?:'s)?\s*(?:do(?:es)?|is\s+about|about|is|for|structured|structure|architecture|overall|in\s+short)?\s*[?.!]*\s*$/i;
+const BIG_PICTURE = /\b(?:under\s*stand|know|explain|summari[sz]e|summary|describe|overview|tell\s+me\s+about|what\s+is|what'?s|what\s+does|walk\s+me\s+through|how\s+is|architecture|structure|about)\b/i;
+const WHOLE_HI = /\b(?:project|repo|app|codebase)\s+(?:kya\s+(?:hai|karta|karti)|samjhao|samjha\s+do|ke\s+baare\s+mein|batao)\b/i;
+const isWhole = (q: string): boolean => /\boverview\b/i.test(q) || (PROJECT_END.test(q) && BIG_PICTURE.test(q)) || WHOLE_HI.test(q);
+
 export function readQuestion(raw: string): QuestionRead {
   const q = raw.trim();
   const impact = IMPACT.test(q) || IMPACT_HI.test(q);
@@ -64,6 +72,7 @@ export function readQuestion(raw: string): QuestionRead {
     wantsCode: WANTS_CODE.test(q),
     flow: FLOW.test(q) || kind === "how",
     values: VALUES.test(q),
+    whole: isWhole(q),
   };
 }
 

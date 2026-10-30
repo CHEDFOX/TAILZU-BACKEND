@@ -138,7 +138,7 @@ const FOLLOW_UP = /^\s*(?:and|also|what\s+about|how\s+about|now|then|ok(?:ay)?\s
 const wordCount = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
 
 /**
- * A REACTION to the answer just given, the way one talks to Claude Code: "what?", "why?", "explain", "simpler", "matlab?". Never a new
+ * A REACTION to the answer just given, the way one talks to Claude Code: "what?", "??", "why?", "explain", "simpler", "matlab?". Never a new
  * question with nothing in it: it goes on from the last turn. The ones that say "I did not follow" ask for the last answer again, simpler;
  * the rest ("why?", "how?", "more") are asked about the last answer as they are. Each says its own language, so a one-word "what?" is
  * answered in English whatever the profile says.
@@ -147,10 +147,20 @@ const LOST_EN = /^\s*(?:what|wut|huh|eh|pardon|sorry|come again|what do you mean
 const ON_EN = /^\s*(?:why|how|how so|explain(?: (?:that|it|more|again|simply|simpler))?|simpler|simply|in simple (?:words|terms)|more|tell me more|go on|elaborate|example|for example|e\.?g\.?|meaning|such as|like what|and then|really|sure)\s*[?!.]*\s*$/i;
 const LOST_HG = /^\s*(?:kya|kya\s+matlab|matlab|samjha\s+nahi|samjhi\s+nahi|samajh\s+nahi\s+aaya|nahi\s+samjha|samjhao|samjha\s+do)\s*[?!.]*\s*$/i;
 const ON_HG = /^\s*(?:kyun|kyon|kaise|aur\s+batao|detail\s+mein|thoda\s+aur|example\s+do|jaise)\s*[?!.]*\s*$/i;
-/** The reaction this message is, if it is one, and what it asks of the last answer. */
-function reactionOf(text: string): { ask: string; language: "en" | "hinglish" } | null {
-  if (LOST_EN.test(text)) return { ask: "I did not follow that. Explain your last answer again, simpler and shorter, in plain words.", language: "en" };
-  if (LOST_HG.test(text)) return { ask: "Samajh nahi aaya. Apna pichla jawab phir se samjhao, aur aasaan aur chhota karke.", language: "hinglish" };
+/** Nothing but question marks or dots ("??", "...?"): lost, in no language of its own, so in the language of the question it follows. */
+const LOST_MARKS = /^\s*(?:[?？¿]+|\.{2,}\??|…\??)\s*[!.]*\s*$/;
+const LOST_ASK = {
+  en: "I did not follow that. Explain your last answer again, simpler and shorter, in plain words.",
+  hinglish: "Samajh nahi aaya. Apna pichla jawab phir se samjhao, aur aasaan aur chhota karke.",
+} as const;
+/** The reaction this message is, if it is one, and what it asks of the last answer (`lastSaid`, the question it answered). */
+function reactionOf(text: string, lastSaid: string): { ask: string; language: "en" | "hinglish" } | null {
+  if (LOST_MARKS.test(text)) {
+    const language = classifyByRules(lastSaid, { repoEmpty: false }).language === "hinglish" ? "hinglish" : "en";
+    return { ask: LOST_ASK[language], language };
+  }
+  if (LOST_EN.test(text)) return { ask: LOST_ASK.en, language: "en" };
+  if (LOST_HG.test(text)) return { ask: LOST_ASK.hinglish, language: "hinglish" };
   if (ON_EN.test(text)) return { ask: `About your last answer: ${text.trim()}`, language: "en" };
   if (ON_HG.test(text)) return { ask: `Pichle jawab ke baare mein: ${text.trim()}`, language: "hinglish" };
   return null;
@@ -287,7 +297,7 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
     followUp = { base: last.said };
   }
   // "what?", "why?", "explain" after an answer: about that answer, never a fresh message with nothing in it.
-  const reaction = last && n <= 6 && last.intent !== "chat" ? reactionOf(text) : null;
+  const reaction = last && n <= 6 && last.intent !== "chat" ? reactionOf(text, last.said) : null;
   if (reaction && last) {
     hit(last.intent, 0.9, "follow_up:reaction");
     followUp = { base: last.said };
