@@ -373,18 +373,43 @@ window's `desk_plan`; the web checkout), where Apple (App Review 3.1.2) and Goog
 buys: there the store's (or Razorpay's) price, the renewal ("Renews automatically until you cancel") and Terms and Privacy are shown.
 Everything else leads there, by what a plan gives.
 
-Instead the person sees a **usage meter**, the way Claude shows it. What is counted is what always was (src/you/spend.ts, the brain's
-gateway, you_spend, usage_events): the Code bot's jobs, every bot's answers (and so Ask's), Keybot's words at
-`USAGE_KEYBOT_PAISE_PER_1000_WORDS`. It stays ours, in paise, for the logs and the admin.
+Instead the person sees a **usage meter**, the way Claude shows it. What is counted is **what each use really costs us, in US dollars**
+(src/usage/cost.ts), from the records that always held it (code_jobs.spent_paise, you_spend):
 
-* **The limits** are ours, per plan, in config.ts: `USAGE_FREE_MONTH_PAISE` (5,000), `USAGE_PAID_MONTH_PAISE` (50,000), `USAGE_TIERS`
-  (`{"<entitlement id>": paise}` for a paid tier of its own), `USAGE_FREE_WINDOWS` (false), `USAGE_CARRY_OVER` (false), `USAGE_NEAR`
-  (0.8), `USAGE_LIMITS` (true; false shows the meter and refuses nothing). While `FREE_FOR_ALL` is on everyone has the paid month and
-  nothing is offered to buy.
-* **The stretches** (src/you/usage.ts): a paid month is used in five, days 1–4, 5–9, 10–15, 16–22 and 23 to the end (8 days in a 30-day
-  month, fewer in February). Each may use the month's limit × its days / the month's days; what it did not use is gone when it ends
-  unless `USAGE_CARRY_OVER`. The month is the billing cycle when billing has one (the entitlement's period end: its day and time, month
-  after month), else the calendar month on the person's clock. A free plan is one stretch, the month.
+| Use | Where its real cost comes from |
+| --- | --- |
+| Every call through the brain's gateway (the Code bot's jobs, every bot's answers and so Ask's, the front door) | what OpenRouter reports it charged for the generation (`usage: { include: true }` in the request, `usage.cost` in the answer); an estimate from the tokens it reports only when the answer lacks it, logged once an hour per model |
+| Keybot's rewrites (pipeline/cleanup.ts), a note's organising (notes/organise.ts), the old Ask's planner (agent/llm.ts) | the same charge from OpenRouter, added to the request's tally (`addCostUsd`) and written with the request's usage row (`metering.recordUsage`) |
+| Speech-to-text (Groq, OpenAI, Deepgram, Sarvam) | each engine's list price a minute (`STT_USD_PER_MINUTE`, `USAGE_STT_USD_PER_MINUTE` over it), for every engine that heard the audio (STT_PROVIDER=auto runs two or three at once, live dictation's dual mode two); Groq's ten-second least |
+| Read aloud (TTS) | `USAGE_TTS_USD_PER_1M_CHARS` a million characters |
+| Paid compute for a Code bot job | what the paid place reports (`paise` in its step result), added to the job's spend |
+
+The records keep **paise**, as they always have: dollars are written at `CODE_USD_INR` (88), the one rate, and the plans' dollars are turned
+into paise at the same rate, so it cancels and the meter counts dollars. A use that is a fraction of a paise is kept exactly per person and
+written in whole paise rounded up once (never per use). Keybot's words no longer count at a rate a thousand (`USAGE_KEYBOT_PAISE_PER_1000_WORDS`
+is gone): their real cost does. It stays ours, for the logs and the admin.
+
+* **The limits** are ours, per plan, in config.ts, in US dollars, validated at boot (zod: five positive amounts, or the server does not
+  start):
+  * Free, `USAGE_FREE_MONTH_USD` ($3): **no stretches**, one allowance for the month, which starts again when the month does. Every line a
+    free account sees says "this month" ("This month · 64% used · Resets Sun 1 Nov", "You've reached this month's limit. It resets Sun.").
+  * Lite, `USAGE_LITE_STRETCHES_USD` ("4,8,6,10,7": $35 a month); while `FREE_FOR_ALL` is on, everyone without a plan has Lite's stretches
+    and nothing is offered to buy.
+  * Elite, `USAGE_ELITE_STRETCHES_USD` ("50,70,80,100,150": $450 a month), by the product bought (`PLAN_ELITE_PRODUCTS`).
+  * `USAGE_TIERS` (`{"<entitlement id>": "a,b,c,d,e"}` for a paid tier's own stretches), `USAGE_CARRY_OVER` (false), `USAGE_NEAR` (0.8),
+    `USAGE_LIMITS` (true; false shows the meter and refuses nothing).
+* **The stretches** (src/you/usage.ts): a Lite or Elite month is used in five, days 1–4, 5–9, 10–15, 16–22 and 23 to the end (8 days in a
+  30-day month, fewer in February). Each may use **its own amount** from the plan, in order, whatever its length; what it did not use is gone
+  when it ends unless `USAGE_CARRY_OVER` (then the amounts so far, less what was used before it). The month may use the sum. The month is the
+  billing cycle when billing has one (the entitlement's period end: its day and time, month after month), else the calendar month on the
+  person's clock.
+* **Plans' one line** (routes/botsFirstRun.ts `planLine`): how many times the free month a plan's month is, from the same config: Lite
+  35 / 3 → "11× more every month, for all your bots", Elite 450 / 3 → "150×".
+* **Not on the meter yet**: gateway calls that belong to no job, bot answer or front-door message (a note's to-dos, `notes/extract.ts`; an
+  artifact's edits and asks, held to their own daily caps, `ARTIFACT_*_DAILY_PAISE`), and an old-Ask planner stream stopped before
+  OpenRouter's last chunk (its charge never arrives). They are still in OpenRouter's own records and the run ledger.
+* **OpenRouter's side**: the server calls OpenRouter with one shared key (`OPENROUTER_API_KEY`); there are no per-person OpenRouter keys to
+  put a ceiling on, so the backend is the ceiling: every paid call is refused before it is made once the stretch or the month is used.
 * **The one answer**: `Spending.usage(userId)` (src/you/limits.ts) gives the stretch and the month as fractions used, when each resets,
   near (from 80%) or out. `GET /v1/you/usage` serves it to the Usage page with the lines to show (`near`, `out`, `how`); `GET /v1/you/live`
   to every screen (`ctx.live.usage`, the You tab's ring).
@@ -398,7 +423,8 @@ gateway, you_spend, usage_events): the Code bot's jobs, every bot's answers (and
   the sentence and, when a plan is for sale, "Get more with a plan" (opens Plans, whose buttons open the store's own sheet). You, Billing
   and Settings show the meter's share; the Code bot's home the near / at line; a job asks "This job has used a lot of this stretch. Keep
   going?" and shows how much of what it was given it used, as a share. Project rules' "Checks with you" (Often, Sometimes, Rarely) sets
-  how much of the stretch a job may use before it asks.
+  how much of the stretch a job may use before it asks. Every one of these says "this month" to a free account (kit.ts `spanOf`; a
+  job's own pause words through you/span.ts, and words true for every plan where the plan cannot be known, as on the Worker).
 * **Payments** (a space's requests; Approve, where a bot's UPI hand-off lands): what it is for, who asks, approve or decline. The UPI link
   opens without an amount (`am` is optional, shell/parse.ts `upiOf` drops it): the person types it in their UPI app (migration 0055 lets
   a request carry none). The hand-off tool itself (connectors/handoffs) still takes the amount the person said, for the old app.
