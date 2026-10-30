@@ -146,7 +146,7 @@ describe("the You screens", () => {
       }
     }
     const billing = texts((await build("bots.billing", "desktop", ANSWERS)).root);
-    expect(billing).toEqual(expect.arrayContaining(["Usage", "64% of this stretch", "More to use every month, in five stretches"]));
+    expect(billing).toEqual(expect.arrayContaining(["Usage", "64% of this stretch", "More every month, for all your bots"]));
   });
 
   it("near the limit a calm line; at it the sentence, and a plan offered as an action without a price", async () => {
@@ -182,8 +182,8 @@ describe("the You screens", () => {
       const usage = texts((await build("bots.usage", client, free)).root);
       expect(usage).toEqual(expect.arrayContaining(["This month", "64% used", "Resets Sun", how]));
       for (const id of ["bots.usage", "bots.you", "bots.billing", "bots.settings"]) {
-        // Billing may set the paid plans beside the free one ("More to use every month, in five stretches"): that is theirs, not this meter.
-        const words = texts((await build(id, client, free)).root).filter((w) => w !== "More to use every month, in five stretches");
+        // Billing may set the paid plans beside the free one ("More every month, for all your bots"): that is theirs, not this meter.
+        const words = texts((await build(id, client, free)).root).filter((w) => w !== "More every month, for all your bots");
         expect(words.join(" "), `${id} on the ${client}`).not.toMatch(/stretch/i);
       }
     }

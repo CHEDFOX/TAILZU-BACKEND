@@ -487,22 +487,23 @@ function usageDesk(ctx: BotsCtx, d: UsagePage | undefined) {
 // ===================================================================== bots.billing
 
 /** What each plan gives, in words. No price: a store's own sheet shows that when someone buys. */
+// The same for every bot, like the plans screen: nothing bot-specific.
 const PLAN_GIVES = {
-  free: ["Every bot, with a smaller allowance each month", "Keybot, with a monthly word allowance"],
-  pro: ["More to use every month, in five stretches", "Keybot without a word limit", "First in line on busy days"],
+  free: ["A monthly allowance for all your bots"],
+  pro: ["More every month, for all your bots"],
 };
-const billingBody = (b: BillingData["plan"]) => (b.active ? PLAN_GIVES.pro : PLAN_GIVES.free).slice(0, 2).join(". ");
+const billingBody = (b: BillingData["plan"]) => (b.active ? PLAN_GIVES.pro : PLAN_GIVES.free).join(". ");
 
 function cancelAction(p: BillingData["plan"]): ActionRef | undefined {
   if (p.cancel === "store" && p.manageUrl) return openUrl(p.manageUrl);
   if (p.cancel !== "razorpay") return undefined;
   return when2("cancelSure",
-    call("POST", "/v1/billing/razorpay/cancel", {}, { ok: seq(toast("Cancelled. Pro stays till the end of what you paid for."), refresh), fail: oops("cancel the plan") }),
+    call("POST", "/v1/billing/razorpay/cancel", {}, { ok: seq(toast(`Cancelled. ${p.name} stays till the end of what you paid for.`), refresh), fail: oops("cancel the plan") }),
     seq({ kind: "setState", path: "cancelSure", value: true }, toast("Tap Cancel plan again to cancel")));
 }
 const cancelLine = (ctx: BotsCtx, p: BillingData["plan"]) =>
   p.cancel === "store" ? `Cancel in ${p.paidBy ?? "your app store"}. Your bots and projects stay.`
-    : `Two taps. ${p.until ? `Pro stays till ${dayMonth(ctx, p.until)}, ` : ""}your bots and projects stay too.`;
+    : `Two taps. ${p.until ? `${p.name} stays till ${dayMonth(ctx, p.until)}, ` : ""}your bots and projects stay too.`;
 
 function invoiceRows(ctx: BotsCtx, list: Invoice[]): Node[] {
   return list.slice(0, 3).map((i) => listRow({
@@ -558,7 +559,7 @@ function billingDesk(ctx: BotsCtx, d: BillingData | undefined) {
       columns([
         card([
           sectionLabel("Plan"),
-          row([planCard("Free", PLAN_GIVES.free, !p.active), planCard("Pro", PLAN_GIVES.pro, p.active)], { gap: 12, alignItems: "stretch" }),
+          row([planCard("Free", PLAN_GIVES.free, !p.active), planCard(p.active ? p.name : "Lite or Elite", PLAN_GIVES.pro, p.active)], { gap: 12, alignItems: "stretch" }),
           row([
             secondaryButton(p.active ? "Change plan" : "See plans", open(SCREENS.plans), { size: "md" }),
             ...(cancel ? [quietButton("Cancel plan", cancel, { size: "md" })] : []),
