@@ -262,3 +262,25 @@ describe("migration 0034", () => {
     expect(full).toContain(sql.trim());
   });
 });
+
+describe("the chat thread store, kept in the process when the table fails", () => {
+  it("holds the chat in memory when the table is missing, and says once why", async () => {
+    const lines: string[] = [];
+    const s = new chat.KeptThreadStore(new chat.SupabaseThreadStore(fakeSupabase({ error: "relation code_chat_threads does not exist" }) as never), (l) => lines.push(l));
+    const t = chat.afterTurn(chat.newThread(U, P, T, 1), { question: "what is this?", cites: [], located: null, now: 2, answer: "A storefront." });
+    await s.put(t);
+    await s.put(chat.withTurn(t, { said: "??", answer: "A shop on the web.", now: 3 }));
+    expect((await s.get(U, P, T))!.history.map((h) => h.q)).toEqual(["what is this?", "??"]);
+    expect(await s.list(U, P)).toHaveLength(1);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/0034_code_chat_and_care\.sql/);
+  });
+
+  it("uses the table when it works", async () => {
+    const sb = fakeSupabase({ tables: ["code_chat_threads"] });
+    const s = new chat.KeptThreadStore(new chat.SupabaseThreadStore(sb as never), () => { throw new Error("no warning expected"); });
+    await s.put(chat.newThread(U, P, T, 1));
+    expect(sb.tables.code_chat_threads).toHaveLength(1);
+    expect(await s.get(U, P, T)).toMatchObject({ id: T });
+  });
+});

@@ -203,6 +203,20 @@ describe("POST /v1/ask", () => {
     expect(t.h.calls.reply).toHaveLength(0);
   });
 
+  it("keeps every answer in a project chat as one of its turns, whichever road gave it", async () => {
+    const { MemoryThreadStore } = await import("../src/code/chat/threads.js");
+    const threads = new MemoryThreadStore();
+    const THREAD = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
+    const t = await served({ threads });
+    const res = await t.ask({ ...BODY, projectId: PROJECT, threadId: THREAD });
+    expect(res.statusCode).toBe(200);
+    expect(t.h.calls.reply).toHaveLength(1);
+    expect((await threads.get("alice", PROJECT, THREAD))!.history).toEqual([{ q: FACT, a: "A reply.", at: expect.any(Number) }]);
+    // Asked with no thread: nothing is kept.
+    await t.ask(BODY);
+    expect(await threads.list("alice", PROJECT)).toHaveLength(1);
+  });
+
   it("needs a signed-in person", async () => {
     const t = await served();
     expect((await t.ask(BODY, null)).statusCode).toBe(401);
