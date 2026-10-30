@@ -1477,8 +1477,10 @@ const OPEN_AX = { kind: "ask.openAccessibility" } as unknown as ActionSpec;
 export const ARRIVAL_PATH = "/v1/bots/first-run/arrival";
 
 const MIC_SETTLED: Condition = { any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] };
-const KEYS_ON: Condition = { all: [{ truthy: "keyboardEnabled" }, { truthy: "keyboardReady" }] };
-const KEYS_MISSING: Condition = { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] };
+// An iPhone only learns Full Access once the keyboard has been opened (only the keyboard can read it), so there the
+// keyboard switched on is enough for the card; the keyboard asks for Full Access itself if it is still off.
+const KEYS_ON: Condition = { all: [{ truthy: "keyboardEnabled" }, { any: [{ truthy: "keyboardReady" }, { platform: "ios" }] }] };
+const KEYS_MISSING: Condition = { not: KEYS_ON };
 const SOMETHING_MISSING: Condition = { any: [{ falsy: "micGranted" }, KEYS_MISSING] };
 
 /** The bot on the permission cards: neutral, ink grey (the cards carry no bot's colour). */
@@ -1497,6 +1499,12 @@ function permitStep(o: { when: Condition; title: string; lines: Node[]; cta?: { 
 }
 
 const line = (s: string): Node => text(s, { size: 14, color: C.grey70, lineHeight: 20 });
+
+/** The card's last step, once everything is on: its words give way to one short line while the bot cheers, then it goes. */
+const gotYou = (whenOn: Condition): Node =>
+  when(whenOn, row([text("X0 got you!", { size: 22, weight: 600, tracking: -0.3, lineHeight: 28 })], { justifyContent: "center", paddingTop: 18, paddingBottom: 26 }));
+/** How long the bot cheers on that line before the card goes. */
+const CHEER_MS = 2800;
 
 /** The keyboard step's words: iPhone and Android each say where the switch is. */
 function keyboardLines(): Node[] {
@@ -1579,7 +1587,7 @@ export function arrivalCard(ctx: BotsCtx): Node[] {
         cta: { label: "Open Settings", onPress: { kind: "openSettings", target: "keyboard" } as ActionSpec },
         quiet: notNow,
       }),
-      permitStep({ when: { all: [MIC_SETTLED, KEYS_ON] }, title: "You're all set", lines: [line("Hold the clay key to speak, in any app.")] }),
+      gotYou({ all: [MIC_SETTLED, KEYS_ON] }),
     ];
     ready = { all: [{ neq: ["micGranted", null] }, { neq: ["keyboardReady", null] }] };
     done = { all: [MIC_SETTLED, KEYS_ON] };
@@ -1588,7 +1596,7 @@ export function arrivalCard(ctx: BotsCtx): Node[] {
     return [botCard(steps, {
       ...CARD_BOT, kind: "custom", overlay: true, width: desk ? 360 : 330, label: "Set up Keybot",
       ...(ready ? { readyWhen: ready } : {}), ...(done ? { doneWhen: done } : {}),
-      closeWhen: { truthy: "permitClosed" }, once: "bots.arrival", doneDelayMs: 1400, onComplete: close,
+      closeWhen: { truthy: "permitClosed" }, once: "bots.arrival", doneDelayMs: CHEER_MS, onComplete: close,
     })];
   }
   // A build without the living tiles: the same steps in a plain card at the top, gone when answered or all done.
@@ -1664,9 +1672,15 @@ export function keybotCard(ctx: BotsCtx): Node[] {
       quiet: { label: "Show me how", onPress: go(SCREENS.keyOn) },
     }),
   ];
-  return [when(SOMETHING_MISSING, canMove(ctx)
-    ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Set up Keybot" })
-    : col(steps, { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, paddingTop: 6 }))];
+  // Drawn once the app says something is missing; when it is all on, the bot cheers on "X0 got you!" and the card goes.
+  if (canMove(ctx)) {
+    return [botCard([...steps, gotYou({ not: SOMETHING_MISSING })], {
+      ...CARD_BOT, kind: "custom", label: "Set up Keybot",
+      readyWhen: SOMETHING_MISSING, doneWhen: { not: SOMETHING_MISSING }, closeWhen: { truthy: "keybotSet" },
+      doneDelayMs: CHEER_MS, onComplete: setState("keybotSet", true),
+    })];
+  }
+  return [when(SOMETHING_MISSING, col(steps, { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, paddingTop: 6 }))];
 }
 
 /** Every text in a tree. */
