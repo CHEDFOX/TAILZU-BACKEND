@@ -1522,7 +1522,7 @@ function keyboardLines(): Node[] {
  * moment and it closes. "Not now" closes it for good. Over a blurred Home (BotCard overlay) where the build draws it,
  * else a plain card at the top of Home. Nothing at all when there is nothing to ask for.
  */
-export function arrivalCard(ctx: BotsCtx): Node[] {
+export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
   const desk = ctx.client === "desktop";
   const close = seq(setState("permitClosed", true), call("PUT", ARRIVAL_PATH, {}, {}));
   const notNow = { label: "Not now", onPress: close };
@@ -1593,10 +1593,13 @@ export function arrivalCard(ctx: BotsCtx): Node[] {
     done = { all: [MIC_SETTLED, KEYS_ON] };
   }
   if (canMove(ctx)) {
+    // `after`: a state path that must be true first (Home's hello plays alone, then the card comes). Home waits on the card
+    // closing then, so it is not also kept per device: a second account on the same phone still gets it.
+    const wait: Condition | undefined = o.after ? (ready ? { all: [ready, { truthy: o.after }] } : { truthy: o.after }) : ready;
     return [botCard(steps, {
       ...CARD_BOT, kind: "custom", overlay: true, width: desk ? 360 : 330, label: "Set up Keybot",
-      ...(ready ? { readyWhen: ready } : {}), ...(done ? { doneWhen: done } : {}),
-      closeWhen: { truthy: "permitClosed" }, once: "bots.arrival", doneDelayMs: CHEER_MS, onComplete: close,
+      ...(wait ? { readyWhen: wait } : {}), ...(done ? { doneWhen: done } : {}),
+      closeWhen: { truthy: "permitClosed" }, ...(o.after ? {} : { once: "bots.arrival" }), doneDelayMs: CHEER_MS, onComplete: close,
     })];
   }
   // A build without the living tiles: the same steps in a plain card at the top, gone when answered or all done.

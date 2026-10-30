@@ -245,22 +245,40 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const first = ctx.live.needs[0];
   const { head, pinned } = homeHead(ctx);
   const n = homeNotices(ctx, arrival, more);
+  const home: Node[] = [
+    n.head(head),
+    ...n.leaving,
+    weekRow(ctx),
+    ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
+    ...(first ? [needsCard(first)] : []),
+    ...n.push,
+    tiles(ctx, 2, 132, 16, more.notes),
+  ];
+  const footer = [askBar("phone", { ctx })];
+  // THE FIRST VISIT AFTER ONBOARDING, where the build plays it: only the bot waving with its line, for a few seconds; then the
+  // card for the microphone and the keyboard; once that is done (or put off) the bot goes and Home is as on any day.
+  const intro = n.arrival && canMove(ctx);
+  const afterIntro = (x: Node): Node => (intro ? { ...x, visibleIf: x.visibleIf ? { all: [x.visibleIf, { truthy: "permitClosed" }] } : { truthy: "permitClosed" } } : x);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: n.state, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}), pullBot: homePull(ctx),
-    body: [
-      n.head(head),
-      ...n.leaving,
-      // The first time here: one card for the microphone and the keyboard, over Home, and the bot saying hello.
-      ...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []),
-      weekRow(ctx),
-      ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
-      ...(first ? [needsCard(first)] : []),
-      ...n.push,
-      tiles(ctx, 2, 132, 16, more.notes),
-    ],
-    footer: [askBar("phone", { ctx })],
+    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false } : {}) }, pinned: pinned.map(afterIntro),
+    ...(hasNotes(ctx) ? { live: ["notes"] } : {}), pullBot: homePull(ctx),
+    body: intro
+      ? [
+        {
+          ...col([hello(ctx, more)], { paddingTop: 150 }), visibleIf: { falsy: "permitClosed" },
+          on: { onAppear: seq({ kind: "delay", ms: HELLO_MS }, { kind: "setState", path: "helloSeen", value: true }) },
+        },
+        ...arrivalCard(ctx, { after: "helloSeen" }),
+        ...home.map(afterIntro),
+      ]
+      // The first time here on a build without it: the card over Home, and the bot saying hello.
+      : [...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []), ...home],
+    footer: footer.map(afterIntro),
   });
 }
+
+/** How long the bot waves on his own before the first visit's card comes in. */
+const HELLO_MS = 3500;
 
 function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const first = ctx.live.needs[0];
