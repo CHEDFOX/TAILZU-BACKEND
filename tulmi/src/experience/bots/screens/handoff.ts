@@ -66,13 +66,25 @@ const head = (label: string, heading: string, line: string): Node[] => [
   body(line, { align: "center", color: C.grey70 }),
 ];
 
+/** The keyboard's handoff screens: today's ids (the keyboard's config names them), drawn in the Bots app's look. */
+export const BOTS_HANDOFF_IDS: ReadonlySet<string> = new Set(["keyboard_record", "keyboard_primer", "flow_arm"]);
+
 /** flow_arm: armed on appear, says what changed, leaves on its own. Centred on the screen; nothing to tap. */
 export function botsFlowArm(base: ScreenResponse): ScreenResponse {
-  return page(base, col([
+  return homeNotStats(page(base, col([
     bot(), gap(24),
     title("The mic goes with you.", { align: "center" }), gap(10),
     body("Tap the mic in any app and talk — the words land written.", { align: "center", color: C.grey70 }),
-  ], { flex: 1, justifyContent: "center", paddingHorizontal: 28, paddingBottom: 48 }), base.root?.on);
+  ], { flex: 1, justifyContent: "center", paddingHorizontal: 28, paddingBottom: 48 }), base.root?.on));
+}
+
+/** Today's flow_arm leaves for the Stats tab, which the Bots app does not have: it leaves for Home. */
+function homeNotStats<T>(v: T): T {
+  if (Array.isArray(v)) return v.map(homeNotStats) as T;
+  if (!v || typeof v !== "object") return v;
+  const o = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, homeNotStats(x)])) as Record<string, unknown>;
+  if (o.kind === "navigate" && o.screenId === "stats") o.screenId = "home";
+  return o as T;
 }
 
 /** keyboard_record: the mic, the words it heard, Send and Cancel. */

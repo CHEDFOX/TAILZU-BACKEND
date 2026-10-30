@@ -114,4 +114,15 @@ describe("the screen route", () => {
     const oldHome = await post("/v1/app/screen", { screenId: "home", capabilities: caps([]) });
     expect(oldHome.json().screenId).toBe("home");
   });
+  it("a build that draws only the Bots app never gets an old screen: an old id opens Home, the keyboard's screens stay", async () => {
+    const only = caps(["BotsKit", "BotsOnly"]);
+    for (const id of ["stats", "settings", "personality", "onboarding_keyboard", "paywall"]) {
+      const r = await post("/v1/app/screen", { screenId: id, capabilities: only });
+      expect(r.json().screenId, id).toBe("bots.home");
+    }
+    const flow = await post("/v1/app/screen", { screenId: "flow_arm", capabilities: only });
+    expect(flow.json().screenId).toBe("flow_arm");
+    const boot = await post("/v1/app/bootstrap", { capabilities: only });
+    expect(boot.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["bots", "activity", "you"]);
+  });
 });

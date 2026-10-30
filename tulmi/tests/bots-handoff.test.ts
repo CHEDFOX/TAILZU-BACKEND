@@ -14,6 +14,8 @@ const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { CREAM } = await import("../src/experience/bots/screens/handoff.js");
 
 const IDS = ["flow_arm", "keyboard_record", "keyboard_primer"] as const;
+/** Where today's screens leave for the Stats tab, the Bots app's leave for Home. */
+const home = (s: string) => s.replaceAll('"screenId":"stats"', '"screenId":"home"');
 const build = (id: string, bots: boolean) => buildScreen(id, {
   personality: {}, language: "en", onboarded: true, email: "a@b.com", params: { session: "s-1", host: "Notes" }, bots,
 } as never) as ScreenResponse;
@@ -32,14 +34,20 @@ describe("the keyboard's handoff screens in the Bots app", () => {
     expect(now.screenId).toBe(id);
     expect(now.state).toEqual(old.state);
     // The same actions; the words in them in the Bots app's sentence case, where the catalog capitalises every word.
-    const folded = (x: unknown) => JSON.parse(JSON.stringify(x).toLowerCase());
+    const folded = (x: unknown) => JSON.parse(home(JSON.stringify(x)).toLowerCase());
     expect(folded(now.actions)).toEqual(folded(old.actions));
     expect(now.root!.props?.keepCase).toBe(true);
     expect(now.cacheTtlSeconds).toEqual(old.cacheTtlSeconds);
   });
 
   it.each(IDS)("%s does exactly what it did: every action fired, binding and condition", (id) => {
-    expect(doing(build(id, true).root!)).toEqual(doing(build(id, false).root!));
+    expect(doing(build(id, true).root!)).toEqual(doing(build(id, false).root!).map(home));
+  });
+
+  it("flow_arm leaves for Home, not the Stats tab the Bots app does not have", () => {
+    const s = JSON.stringify(build("flow_arm", true));
+    expect(s).not.toContain('"screenId":"stats"');
+    expect(s).toContain('"screenId":"home"');
   });
 
   it("the mic and the field it writes into are the catalog's own nodes", () => {
