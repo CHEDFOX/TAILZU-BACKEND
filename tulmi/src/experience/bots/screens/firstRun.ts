@@ -1052,7 +1052,10 @@ function keyOnPhone(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
   // iPhone's words unless the phone says it is an Android one.
   const android: Condition = { platform: "android" };
   const ios: Condition = { not: android };
-  const ready: Condition = { truthy: "keyboardReady" };
+  // Full Access read, or, on an iPhone, the keyboard switched on: an iPhone reads Full Access only after the keyboard has
+  // run, so waiting for it there would hold Continue back from someone who has done every step (the keyboard itself says
+  // so if Full Access is still off).
+  const ready: Condition = { any: [{ truthy: "keyboardReady" }, { all: [ios, { truthy: "keyboardEnabled" }] }] };
   const done: Condition[] = [
     { any: [{ truthy: "opened" }, { truthy: "keyboardEnabled" }, ready] },
     { any: [{ truthy: "keyboardEnabled" }, ready] },
