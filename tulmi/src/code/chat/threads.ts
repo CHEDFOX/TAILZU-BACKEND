@@ -103,6 +103,15 @@ export function afterTurn(t: ChatThread, o: { question: string; shown?: string; 
   };
 }
 
+/**
+ * A thread after a turn some other part of X0 Bot answered (a plain reply, a question back, research): only the chat's history moves, so
+ * the chat shows every turn, whichever road answered it. A code answer moves the whole thread (afterTurn).
+ */
+export function withTurn(t: ChatThread, o: { said: string; answer: string; now: number }): ChatThread {
+  const turn: ChatTurn = { q: o.said.trim().slice(0, QUESTION_MAX), a: o.answer.trim().slice(0, ANSWER_KEEP), at: o.now };
+  return { ...t, history: [...t.history, turn].slice(-HISTORY_TURNS), updatedAt: o.now };
+}
+
 export function newThread(userId: string, projectId: string, id: string, now: number): ChatThread {
   return { id, userId, projectId, summary: "", turns: 0, lastQuestion: "", lastCites: [], lastLocated: null, history: [], createdAt: now, updatedAt: now };
 }
@@ -199,15 +208,44 @@ export class SupabaseThreadStore implements ThreadStore {
   }
 }
 
+/**
+ * The database, with this process as a second place to keep a thread: when the table cannot be read or written (migration 0034 never run,
+ * the database away for a moment) the chat still holds its turns until a restart, and the log says once, plainly, why.
+ */
+export class KeptThreadStore implements ThreadStore {
+  private readonly mem = new MemoryThreadStore();
+  private warned = false;
+  constructor(private readonly db: ThreadStore, private readonly warn: (line: string) => void = (l) => console.error(l)) {}
+
+  private missed(err: unknown): void {
+    if (this.warned) return;
+    this.warned = true;
+    this.warn(`code chat: threads are kept in memory only, so chats are lost on restart (${(err as Error)?.message ?? err}). Run supabase/migrations/0034_code_chat_and_care.sql.`);
+  }
+  async get(userId: string, projectId: string, id: string) {
+    try { return (await this.db.get(userId, projectId, id)) ?? (await this.mem.get(userId, projectId, id)); } catch (err) { this.missed(err); return this.mem.get(userId, projectId, id); }
+  }
+  async put(t: ChatThread) {
+    try { return await this.db.put(t); } catch (err) { this.missed(err); return this.mem.put(t); }
+  }
+  async list(userId: string, projectId: string, limit = 20) {
+    try { return await this.db.list(userId, projectId, limit); } catch (err) { this.missed(err); return this.mem.list(userId, projectId, limit); }
+  }
+  async delete(userId: string, projectId: string, id: string) {
+    const here = await this.mem.delete(userId, projectId, id);
+    try { return (await this.db.delete(userId, projectId, id)) || here; } catch (err) { this.missed(err); return here; }
+  }
+}
+
 // ------------------------------------------------------------------ the one
 
 let current: ThreadStore | null = null;
 
-/** Supabase when the service client exists, else memory (tests, local runs). */
+/** Supabase (kept in this process too when it fails) when the service client exists, else memory (tests, local runs). */
 export function threadStore(): ThreadStore {
   if (!current) {
     const sb = supabase();
-    current = sb ? new SupabaseThreadStore(sb) : new MemoryThreadStore();
+    current = sb ? new KeptThreadStore(new SupabaseThreadStore(sb)) : new MemoryThreadStore();
   }
   return current;
 }

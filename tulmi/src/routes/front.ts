@@ -40,7 +40,7 @@ import {
   type AttachmentRef, type Decision, type Device, type Front, type FrontCtx, type FrontEvent, type FrontResult, type Mode, type Outcome, type Turn, type VisualKind, type VisualPref,
 } from "../front/index.js";
 import { failCode } from "./code.js";
-import { threadStore, type ThreadStore } from "../code/chat/threads.js";
+import { newThread, threadStore, withTurn, type ThreadStore } from "../code/chat/threads.js";
 import { idempotencyHeader, planOf } from "./guarded.js";
 import { isLeaving, LEAVING_MESSAGE } from "../you/deletion.js";
 import type { Attached } from "../bots/prompt.js";
@@ -175,6 +175,20 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
     }
   };
 
+  /**
+   * Every answer in a project chat is one of its turns, whichever road gave it (a reply, a question back, research), so the chat shows them
+   * all. A code answer is kept by the chat itself (code/chat), and a job is its own page.
+   */
+  const keepTurn = async (userId: string, ctx: FrontCtx, said: string, decision: { intent?: string } | undefined, result: FrontResult | undefined): Promise<void> => {
+    if (!ctx.projectId || !ctx.threadId || !result || result.job || decision?.intent === "code_question") return;
+    const answer = result.text ?? result.clarify?.question ?? "";
+    if (!answer.trim()) return;
+    const threads = deps.threads ?? threadStore();
+    const now = Date.now();
+    const kept = (await threads.get(userId, ctx.projectId, ctx.threadId)) ?? newThread(userId, ctx.projectId, ctx.threadId, now);
+    await threads.put(withTurn(kept, { said, answer, now }));
+  };
+
   const ask: FrontRoutes["ask"] = async (req, reply, user) => {
     const botMode = typeof (req.body as { bot?: unknown } | null)?.bot === "string";
     // "Ask any bot" needs the bots platform; with it off, a body that names a bot is 404 before anything else. A chosen bot does not need the front door.
@@ -281,6 +295,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
       });
       // A replayed answer was counted the first time.
       void deps.used?.(user, out.replay ? 0 : own)?.catch(() => undefined);
+      if (!out.replay) await keepTurn(user.id, ctx, input.message, out.result.decision, out.result.result).catch(() => undefined);
       words?.end();
       if (!streaming) {
         if (out.replay) reply.header("idempotent-replayed", "true");
