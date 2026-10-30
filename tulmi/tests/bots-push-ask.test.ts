@@ -113,7 +113,7 @@ describe("the first-day Home", () => {
       expect(nodes.some((n) => n.type === "WriteOn" && json(n.props).includes(line.slice(0, 20)))).toBe(true);
       expect(nodes.some((n) => n.type === "LiveMark")).toBe(true);
       expect(json(live.root)).toContain('"type":"HeadBar"');
-      expect(texts(live.root!)).toEqual(expect.arrayContaining(["Good evening, Aanya", "Hi Aanya, I'm Blip"]));
+      expect(texts(live.root!)).toEqual(expect.arrayContaining(["Good evening, Aanya", "Hi Aanya, I'm X0"]));
       // Still, for a build without the living header: the same words.
       const still = await buildBotsScreen(req("bots.home", client), fakeDeps(fresh));
       expect(lintTree(still.root!)).toEqual([]);
