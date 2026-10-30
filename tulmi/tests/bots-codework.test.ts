@@ -135,6 +135,24 @@ describe("bots app · Xode at work", () => {
     expect(posts(s.root!).find((a) => a.path === "/v1/ask")?.body).toMatchObject({ threadId: t, message: "$state.sent" });
   });
 
+  it("a job's page keeps its chat too: the project chat it was asked from above it, and every follow-up after it", async () => {
+    const FROM = "34343434-3434-4434-8434-343434343434";
+    const api = {
+      ...CODEWORK_API,
+      [`GET /v1/code/projects/${PROJECT}/chat?thread=${JOB_ANSWER}`]: { thread: JOB_ANSWER, turns: [{ q: "Where is the cookie set?", a: "In lib/session.ts:42.", at: 1 }, { q: "??", a: "Simply: the session file sets it.", at: 2 }] },
+      [`GET /v1/code/projects/${PROJECT}/chat?thread=${FROM}`]: { thread: FROM, turns: [{ q: "What is this project?", a: "A storefront.", at: 0 }] },
+    };
+    for (const client of ["phone", "desktop"] as const) {
+      const { s, words } = await build("bots.code.job", client, { id: JOB_ANSWER, from: FROM, asked: "??", answer: "Simply: the session file sets it." }, api);
+      for (const w of ["What is this project?", "A storefront.", "How does sign-in work here?", "Where is the cookie set?", "In lib/session.ts:42.", "??", "Simply: the session file sets it."]) {
+        expect(words, `${client} ${w}`).toContain(w);
+      }
+      expect(words.filter((w) => w === "??"), "the turn just asked is drawn once").toHaveLength(1);
+      // A follow-up from here keeps the chat it came from.
+      expect(actionsOf(s.root!).some((a) => a.kind === "navigate" && (a as { params?: Record<string, string> }).params?.from === FROM)).toBe(true);
+    }
+  });
+
   it("a project's chat keeps what came before: the last turns in full, the older ones folded, a new chat on its own thread", async () => {
     const LATEST = "12121212-1212-4212-8212-121212121212";
     const turns = Array.from({ length: 6 }, (_, i) => ({ q: `Question ${i}`, a: `## Answer ${i}\n- point ${i}`, at: i }));
