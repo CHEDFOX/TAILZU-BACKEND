@@ -10,6 +10,9 @@ Four ways to reach X0 Bot without opening it, all decided by the server, each wi
 3. **A notification's buttons**: Reply inline to a Spaces message, Done on a task, Yes or No on a waiting yes.
 4. **Long-press the app icon**: Ask, Dictate, New note and Spaces (iOS Home Screen quick actions, Android app shortcuts).
 
+The universal **X0** widget (it replaces Needs you and The Month) and the "Bots at work" Live Activity read
+GET /v1/shell/glance?v=2 and answer through POST /v1/widgets/act below: their contract is [widget-glance-v2.md](widget-glance-v2.md).
+
 The code is in `tulmi/src/widgets`, `tulmi/src/routes/widgets.ts` and `tulmi/src/push`. The apps' side is in
 `TAILZU-FRONTEND/app/src/{widgets,notifications,quickActions}`, the widget extension `app/targets/widgets` (its README lists every
 App Group key), and the bridge `app/modules/tulmi-bridge`.
