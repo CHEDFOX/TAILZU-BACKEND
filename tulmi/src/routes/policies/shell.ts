@@ -2,7 +2,7 @@
  * THE SITE'S OWN ROOM, for every page x0bot.com links to.
  *
  * The landing page is one hand-built file on Vercel; the pages it links to
- * (/pricing, /pay, /privacy, /terms, /download) are rendered here and served
+ * (/pricing, /pay, /privacy, /terms, /support, /download) are rendered here and served
  * through it. They used to be plain white documents, a visible change of
  * room between a link and the page it opens. This is the landing page's own
  * material, lifted: the warm near-black ground and its pale, Newsreader over
@@ -23,7 +23,7 @@ const MARK = `<svg viewBox="170 228 680 512" aria-hidden="true"> <line x1="346" 
 // the rest is reached from there and from the sitemap.
 const NAV: Array<[string, string]> = [
   ["/pricing", "Pricing"], ["/faq", "FAQ"],
-  ["/privacy", "Privacy"], ["/terms", "Terms"], ["/download", "Download"],
+  ["/privacy", "Privacy"], ["/terms", "Terms"], ["/support", "Support"], ["/download", "Download"],
 ];
 
 const CSS = `

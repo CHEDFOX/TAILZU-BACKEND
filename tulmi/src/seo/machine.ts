@@ -15,6 +15,7 @@
  */
 import { PRIVACY_POLICY_EFFECTIVE } from "../routes/policies/privacy.js";
 import { TERMS_EFFECTIVE } from "../routes/policies/terms.js";
+import { SUPPORT_UPDATED } from "../routes/policies/support.js";
 import { ORIGIN, abs, esc } from "./head.js";
 import {
   DEFINITION, INDIA, LANGS, PAGED, STORES, WORLD,
@@ -46,6 +47,7 @@ export function sitePages(): Array<{ path: string; lastmod: string; priority: st
     { path: "/download", lastmod: CONTENT_UPDATED, priority: "0.7" },
     { path: "/privacy", lastmod: iso(PRIVACY_POLICY_EFFECTIVE), priority: "0.3" },
     { path: "/terms", lastmod: iso(TERMS_EFFECTIVE), priority: "0.3" },
+    { path: "/support", lastmod: iso(SUPPORT_UPDATED), priority: "0.3" },
   ];
 }
 
@@ -104,6 +106,7 @@ ${STORES.windowsInstaller ? `- [Windows (Microsoft-certified download)](${STORES
 - [Everything in one file](${ORIGIN}/llms-full.txt)
 - [Privacy policy](${ORIGIN}/privacy)
 - [Terms of service](${ORIGIN}/terms)
+- [Support](${ORIGIN}/support)
 `;
 }
 
