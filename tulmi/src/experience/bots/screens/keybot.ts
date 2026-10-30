@@ -36,7 +36,7 @@ import { sw } from "../../settingsWords.js";
 import {
   back, blip, botAvatar, box, button, C, call, card, chip, col, divider, emptyState, grow, icon, listCard, listRow,
   meta, meter, open, page, primaryButton, quietButton, row, SCREENS, sectionLabel, segmented, seq, statusMark,
-  switchMark, switchRow, text, title, when, whenEq, headerBuddy, type BotsCtx, KEY_INK, keyMark,
+  switchMark, switchRow, text, title, when, whenEq, headerBuddy, type BotsCtx, peekKey,
 } from "../kit.js";
 import type { BotsDeps } from "../live.js";
 import { screen, type BotsScreen } from "../registry.js";
@@ -299,9 +299,9 @@ const homeState = (d: HomeData | undefined) => ({ ...DEVICE_STATE, micAsked: fal
 
 /**
  * The phone keyboard, drawn as it is (catalog.ts makeToolsRow and the letter page): on top, the tools row (the X0 key,
- * the dark round mic with the mark, at the left; the suggestions; the tone pill at the right), then the four rows of
- * keys. `keyAt` left / right: the X0 key sits beside the space bar instead (keybot/keyboard.ts micBesideSpace), a key
- * as wide as the globe with the letter keys' corners.
+ * the round window with the bot peeking in, at the left; the suggestions; the tone pill at the right), then the four rows of
+ * keys. `keyAt` left / right: the X0 key sits beside the space bar instead (keybot/keyboard.ts micBesideSpace), the same
+ * round key.
  */
 function phoneKeys(keyAt: "left" | "right" | "top" = "top", scale = 1): Node {
   const z = (n: number) => Math.round(n * scale);
@@ -309,7 +309,7 @@ function phoneKeys(keyAt: "left" | "right" | "top" = "top", scale = 1): Node {
     box(kids, { flexGrow: g, flexBasis: 0, height: z(h), borderRadius: z(6), backgroundColor: bg, alignItems: "center", justifyContent: "center" });
   const keys = (n: number) => Array.from({ length: n }, () => k(1, C.paper));
   const gap = { gap: z(5) };
-  const xKey = (h: number) => box([keyMark(z(h * 0.7), "#FFFFFF")], { width: z(h), height: z(h), borderRadius: keyAt === "top" ? z(h / 2) : z(6), backgroundColor: KEY_INK, alignItems: "center", justifyContent: "center", flexShrink: 0 });
+  const xKey = (h: number) => box([peekKey(z(h))], { width: z(h), height: z(h), borderRadius: z(h / 2), flexShrink: 0 });
   const word = (w: number) => box([], { width: z(w), height: z(5), borderRadius: z(3), backgroundColor: C.track });
   const tools = row([
     ...(keyAt === "top" ? [xKey(32)] : []),
