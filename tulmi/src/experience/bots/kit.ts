@@ -136,7 +136,11 @@ export function text(content: string, o: TextOpts = {}): Node {
       fontFamily: face(o.weight ?? 400, !!o.mono), fontWeight: "normal", fontStyle: "normal",
       fontSize: size, lineHeight: o.lineHeight ?? Math.round(size * (o.mono ? 1.45 : 1.35)), letterSpacing: o.tracking ?? 0,
       color: o.color ?? C.ink, margin: 0, textTransform: o.upper ? "uppercase" : "none",
-      ...(o.align ? { textAlign: o.align } : {}), ...(o.style ?? {}),
+      ...(o.align ? { textAlign: o.align } : {}),
+      // Centred and set tighter than the font: the row's full width, centred in it. Measured to its own ink, an iPhone
+      // sizes such a line a little short and clips its last letters ("Welcome back, Aany").
+      ...(o.align === "center" && (o.tracking ?? 0) < 0 ? { alignSelf: "stretch" } : {}),
+      ...(o.style ?? {}),
     },
   };
 }

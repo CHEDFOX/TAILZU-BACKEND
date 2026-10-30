@@ -178,6 +178,10 @@ describe("Turn on Keybot, First words", () => {
     expect(JSON.stringify(s.root)).not.toContain('"screenId":"bots.plans"');
     expect(texts(s.root!)).toContain("Not now");
     expect(texts(s.root!).some((t) => / of 5$/.test(t))).toBe(false);
+    // Continue never waits on Full Access alone: an iPhone reads it only after the keyboard has run, so there the keyboard
+    // being switched on is enough.
+    const cont = walk(s.root!).find((x) => x.visibleIf && texts(x).includes("Continue"))!;
+    expect(cont.visibleIf).toEqual({ any: [{ truthy: "keyboardReady" }, { all: [{ not: { platform: "android" } }, { truthy: "keyboardEnabled" }] }] });
   });
   it("window: this computer's own Accessibility card when it has one", async () => {
     const plain = await build("bots.keybot.on", "desktop");
