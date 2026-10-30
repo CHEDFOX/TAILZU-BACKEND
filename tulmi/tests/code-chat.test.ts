@@ -292,6 +292,26 @@ describe("the conversation", () => {
     expect(chatMod.readQuestion("where in the project is the login route?").whole).toBe(false);
   });
 
+  it("takes the answer's own \"Next:\" line off it as what to ask next, and keeps it with the turn; the words as they come never show it", async () => {
+    const r = await chatRig();
+    const threadId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    r.a.json.on("front.code_answer", "The cookie is set in startSession: src/auth/session.ts:3.\n\n**Next:** Where is it cleared? | What signs the token?");
+    const pieces: string[] = [];
+    const out = await r.ask("where is the session cookie set?", { threadId, onText: (p: string) => pieces.push(p) });
+    expect(out.text).toBe("The cookie is set in startSession: src/auth/session.ts:3.");
+    expect(out.next).toEqual(["Where is it cleared?", "What signs the token?"]);
+    expect(out.thread!.history.at(-1)).toMatchObject({ a: "The cookie is set in startSession: src/auth/session.ts:3.", n: ["Where is it cleared?", "What signs the token?"] });
+    expect(pieces.join("")).not.toMatch(/Next/);
+    // No line, no suggestions: nothing is made up.
+    expect(chatMod.splitNext("Just an answer.")).toEqual({ text: "Just an answer.", next: [] });
+    expect(chatMod.splitNext("A.\nnext: one thing | x | another thing").next).toEqual(["one thing", "another thing"]);
+    // Streamed in small pieces, the words stop where "Next:" starts.
+    const shown: string[] = [];
+    const w = chatMod.withoutNext((p) => shown.push(p));
+    for (const ch of "It is set in a.ts:3.\n\nNext: Why? | Where else?") w.onText(ch);
+    expect(shown.join("")).toBe("It is set in a.ts:3.");
+  });
+
   it("holds the summary to its limit, the oldest turn going first", async () => {
     const t = chatMod.rollSummary("", "q0", []);
     let s = t;

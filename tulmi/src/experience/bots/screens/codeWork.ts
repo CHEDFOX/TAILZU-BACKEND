@@ -479,7 +479,10 @@ function conversation(d: JobData | undefined, p: { asked?: string; answer?: stri
 }
 
 /** The composer: the message box, attach, and (in the window) speak. A live job hears it as a message, a question as its answer. */
-function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder: string): Node {
+/** The moment an ask is out (askMoment.ts): the person's words and Xode carrying them, under the chat's last turn. */
+const chatMoment = (ctx: BotsCtx): Node => askMoment(ctx, { slug: "code", color: MOSS, kind: "code", busy: "asking", line: "Asking Xode…" });
+
+function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder: string, o: { moment?: boolean } = {}): Node {
   const job = d?.job;
   const live = job && !isOver(job.state);
   const send: ActionRef = live
@@ -491,7 +494,7 @@ function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder:
   const attach = labelled(box([icon("clip", { size: 20, color: C.ink })], { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", flexShrink: 0 },
     open(SCREENS.attach, { ...(job ? { id: job.id } : {}), project: c.projectId, thread: c.threadId })), "Add to chat");
   return col([
-    askMoment(ctx, { slug: "code", color: MOSS, kind: "code", busy: "asking", line: "Asking Xode…" }),
+    ...(o.moment === false ? [] : [chatMoment(ctx)]),
     row([
       attach,
       {
@@ -507,12 +510,19 @@ function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder:
   ], { gap: 8 });
 }
 
-/** After an answer: change it (the front door hands the place the chat found to a job), or see the code itself. */
-function nextMoves(ctx: BotsCtx, c: ChatCtx): Node {
-  return row([
-    button("Change something here", askCode(ctx, c, "Ok, change it the way we just talked about."), { kind: "primary", size: "md" }),
-    button("Show the code", askCode(ctx, c, "Show me the exact code for that, line by line."), { kind: "secondary", size: "md" }),
-  ], { gap: 8, flexWrap: "wrap" });
+/** What the last answer suggested asking next (its own "Next:" line, code/chat/answer.ts), while it is the last thing on the page. */
+function nextOf(turns: readonly ChatTurn[], p: { asked?: string }): string[] {
+  const last = turns.at(-1);
+  if (!last?.n?.length) return [];
+  return !p.asked || last.q === p.asked.trim() ? last.n : [];
+}
+
+/** Under the last answer: the questions it suggested, each one tap to ask. None when the answer gave none: nothing is made up. */
+function nextMoves(ctx: BotsCtx, c: ChatCtx, next: readonly string[]): Node[] {
+  if (!next.length) return [];
+  return [col(next.map((q) => labelled(box([text(q, { size: 14, lineHeight: 19, color: C.ink })], {
+    borderWidth: 1, borderColor: C.line, borderRadius: 16, paddingVertical: 8, paddingHorizontal: 12, maxWidth: "100%",
+  }, askCode(ctx, c, q)), q)), { gap: 8, alignItems: "flex-start" })];
 }
 
 interface ChatData {
@@ -547,7 +557,7 @@ function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
     body: [
       head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true, ...(turns.length || p.asked ? { right: newChat(ctx, c, turns.length) } : {}) }),
       ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 16, weight: 500, lineHeight: 22 }), meta("Where something is, how it works, what would break. I answer with the files and lines, and change it when you say so.", { size: 13, lineHeight: 18 })], { gap: 6, paddingTop: 8 })]),
-      ...(p.answer ? [nextMoves(ctx, c)] : []),
+      ...nextMoves(ctx, c, nextOf(turns, p)),
     ],
     footer: [composer(ctx, c, data?.job, "Ask about your code…")],
     state: { msg: "", said: null, earlier: false, earlierBefore: false },
@@ -618,7 +628,7 @@ function jobAside(ctx: BotsCtx, d: JobData): Node {
     jobButtons(d, 14),
   ], {
     width: 340, flexShrink: 0, gap: 18, padding: 22, backgroundColor: ASIDE, borderLeftWidth: 1, borderLeftColor: C.divider,
-    marginTop: -40, marginBottom: -32, marginRight: -48,
+    marginTop: -40, marginBottom: -32, marginRight: -48, overflowY: "auto", minHeight: 0,
   });
 }
 
@@ -635,19 +645,25 @@ function chatPane(ctx: BotsCtx, data: ChatData, c: ChatCtx): Node {
       ...(pr ? [meta(`PR #${pr.number}${pr.ready ? " · ready" : " · draft"}`, { size: 12 })] : []),
       ...(turns.length || p.asked ? [grow(), newChat(ctx, c, turns.length)] : []),
     ], { gap: 10, flexWrap: "wrap", alignItems: "center" }),
-    ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 18, weight: 500, lineHeight: 24 }), meta("Where something is, how it works, what would break. Xode answers with the files and lines, and changes it when you say so.", { size: 14, lineHeight: 20 })], { gap: 6 })]),
-    ...(p.answer ? [nextMoves(ctx, c)] : []),
-    grow(),
-    composer(ctx, c, d, "Ask about the code, or tell Xode what to change…"),
-  ], { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, gap: 20, paddingRight: 32 });
+    // The messages scroll on their own, and open at the newest (column-reverse starts a scroll at its end); the box stays put under them.
+    col([
+      col([
+        ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 18, weight: 500, lineHeight: 24 }), meta("Where something is, how it works, what would break. Xode answers with the files and lines, and changes it when you say so.", { size: 14, lineHeight: 20 })], { gap: 6 })]),
+        ...nextMoves(ctx, c, nextOf(turns, p)),
+        chatMoment(ctx),
+      // A short chat sits at the top (the auto margin takes the room under it); a long one opens at its newest turn.
+      ], { gap: 20, paddingRight: 32, paddingBottom: 8, marginBottom: "auto" }),
+    ], { flexGrow: 1, flexShrink: 1, minHeight: 0, overflowY: "auto", flexDirection: "column-reverse" }),
+    box([composer(ctx, c, d, "Ask about the code, or tell Xode what to change…", { moment: false })], { paddingRight: 32, flexShrink: 0 }),
+  ], { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, minHeight: 0, gap: 16 });
 }
 
 function jobDesk(ctx: BotsCtx, data: ChatData) {
   const c = chatCtx(ctx, data);
   if (!c) return noProject(ctx);
   return page(ctx, {
-    nav: "code", title: data.job?.job.task ?? "Xode", maxWidth: 1400,
-    body: [row([chatPane(ctx, data, c), ...(data.job && data.job.agent?.report?.outcome !== "answer" ? [jobAside(ctx, data.job)] : [])], { alignItems: "stretch", flexGrow: 1, minHeight: 600 })],
+    nav: "code", title: data.job?.job.task ?? "Xode", maxWidth: 1400, fixed: true,
+    body: [row([chatPane(ctx, data, c), ...(data.job && data.job.agent?.report?.outcome !== "answer" ? [jobAside(ctx, data.job)] : [])], { alignItems: "stretch", flexGrow: 1, flexShrink: 1, minHeight: 0 })],
     state: { msg: "", said: null, earlier: false, earlierBefore: false },
   });
 }

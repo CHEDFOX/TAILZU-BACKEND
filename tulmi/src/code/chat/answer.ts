@@ -102,6 +102,33 @@ export interface ChatAnswer {
   located: Located;
   /** The thread after this turn, to be kept; null when the question was asked outside a thread. */
   thread: ChatThread | null;
+  /** What the person might ask next, written by the model from its own answer (its last line, "Next: a | b"); none when it gave none. */
+  next: string[];
+}
+
+/** The answer's last line, "Next: a | b", taken off it: at most NEXT_MAX questions, each short. */
+const NEXT_MAX = 3;
+const NEXT_LINE = /\n[ \t]*[*_]{0,2}next[*_]{0,2}[ \t]*:[*_]{0,2}([^\n]*)\s*$/i;
+export function splitNext(text: string): { text: string; next: string[] } {
+  const m = NEXT_LINE.exec(`\n${text}`);
+  if (!m) return { text, next: [] };
+  const next = m[1]!.split("|").map((q) => q.replace(/^[\s"'“”*_-]+|[\s"'“”*_]+$/g, "").replace(/\s+/g, " ")).filter((q) => q.length >= 3 && q.length <= 90);
+  return { text: `\n${text}`.slice(0, m.index).trim(), next: [...new Set(next)].slice(0, NEXT_MAX) };
+}
+
+/** The words as they come, without the "Next:" line: held back once it starts, and a few characters held in case it is starting. */
+export function withoutNext(onText: (piece: string) => void): { onText: (piece: string) => void; reset: () => void } {
+  let all = "";
+  let sent = 0;
+  return {
+    onText: (piece) => {
+      all += piece;
+      const at = all.search(/\s*\n[ \t]*[*_]{0,2}next[*_]{0,2}[ \t]*:/i);
+      const upTo = at >= 0 ? at : Math.max(sent, all.length - 8);
+      if (upTo > sent) { onText(all.slice(sent, upTo)); sent = upTo; }
+    },
+    reset: () => { all = ""; sent = 0; },
+  };
 }
 
 const trimLocated = (l: Located): Located => ({
@@ -395,13 +422,15 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     `<excerpts>\n${fence(forModel(excerpts.length ? excerpts.join("\n\n") : basis || "(none read)"))}\n</excerpts>`,
   ].filter((p) => road !== "fast" || !p.startsWith("<excerpts>")).join("\n\n");
   input.onStep?.("code:write");
+  const words = input.onText ? withoutNext(input.onText) : null;
   const r = await askText(model, {
     role: "front_code_answer", tier: input.tier, purpose: "front.code_answer", maxTokens: REPLY_TOKENS[input.length], budget: { maxPaise: left }, user,
-    ...(input.onText ? { onText: input.onText } : {}), ...(input.onReset ? { onReset: input.onReset } : {}),
+    ...(words ? { onText: words.onText } : {}), ...(input.onReset || words ? { onReset: () => { words?.reset(); input.onReset?.(); } } : {}),
   });
+  const { text: said, next } = splitNext(r.text);
 
   // Every path:line in the answer is something that was seen; the rest is taken out, and the notes say so.
-  const checked = checkCitations(r.text, anchors);
+  const checked = checkCitations(said, anchors);
   if (checked.dropped.length) notes.push(`I took out ${checked.dropped.length} reference${checked.dropped.length === 1 ? "" : "s"} to code I could not find.`);
   // The values the question asks about, and the ones on the lines it cites, are in the answer by name and by value; the ones it left out are added, with where they are.
   const missing = missingFacts(values, input.question, checked.text);
@@ -412,9 +441,9 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const diagram = input.diagram && targets.length ? (await flowDiagram(brain, targets.map((t) => t.path))) ?? undefined : undefined;
   const slim = trimLocated(located);
   const thread = input.thread ? afterTurn(input.thread, {
-    question: input.kept ?? input.question, ...(input.shown !== undefined ? { shown: input.shown } : {}), cites, located: targets.length ? slim : null, now: input.now, answer: answerText,
+    question: input.kept ?? input.question, ...(input.shown !== undefined ? { shown: input.shown } : {}), cites, located: targets.length ? slim : null, now: input.now, answer: answerText, next,
   }) : null;
   return {
-    text: answerText, paise: r.paise + located.used.paise, notes, ...(diagram ? { diagram } : {}), road, reads, greps, cites, located: slim, thread,
+    text: answerText, paise: r.paise + located.used.paise, notes, ...(diagram ? { diagram } : {}), road, reads, greps, cites, located: slim, thread, next,
   };
 }
