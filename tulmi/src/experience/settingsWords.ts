@@ -116,10 +116,46 @@ export function dayLineAfterGreeting(part: DayPartName): Line {
   return { en: drop(l.en), hg: drop(l.hg), sentence: true };
 }
 
+/**
+ * HOME'S BIG LINE under the greeting: a few for each part of the day, a different one each day, so it reads fresh and
+ * never like a clock. "Still up?" is only for the small hours (touches.ts dayPart: night is 11 pm to 5 am).
+ */
+const HOME_LINES: Record<DayPartName, readonly Line[]> = {
+  morning: [
+    sentence("Fresh start. Say what’s first, I’ll line it up.", "Naya din. Batao pehle kya, main line up kar deta hoon."),
+    sentence("Coffee in one hand? Talk, I’ll type.", "Ek haath mein coffee? Bolo, main likh deta hoon."),
+    sentence("Ready when you are. Your bots already are.", "Aap bolo jab ready ho. Bots toh ready hain."),
+  ],
+  afternoon: [
+    sentence("Halfway through. Hand me the boring bits.", "Aadha din gaya. Boring kaam mujhe de do."),
+    sentence("Say the word, and it’s done.", "Bas bolo, ho jayega."),
+    sentence("Busy hands? Just talk.", "Haath busy hain? Bas bolo."),
+  ],
+  evening: [
+    sentence("Wrap up the day. I’ll tidy what’s left.", "Din samet lo. Baaki main sambhal lunga."),
+    sentence("Anything to finish before tonight?", "Raat se pehle kuch khatam karna hai?"),
+    sentence("Kick back. Your bots are still on it.", "Aaram karo. Bots kaam pe lage hain."),
+  ],
+  night: [
+    sentence("Still up? I’ll keep it quiet.", "Abhi tak jaag rahe ho? Main chupchaap rahunga."),
+    sentence("Night owl mode. Whisper it, I’ll write it.", "Night owl mode. Dheere se bolo, main likh dunga."),
+    sentence("Late one? Your bots don’t sleep either.", "Der ho gayi? Bots bhi nahi sote."),
+  ],
+};
+
+/** Today's line for this part of the day; `day` is the person's own day number (days since 1970 in their time zone). */
+export function homeDayLine(part: DayPartName, day: number): Line {
+  const lines = HOME_LINES[part];
+  return lines[((Math.floor(day) % lines.length) + lines.length) % lines.length]!;
+}
+
 /** Hinglish for Home's day lines as Home draws them (i18n.ts applies it to bots.home). */
 export function homeLineSeeds(): Map<string, string> {
   const seeds = new Map<string, string>();
-  for (const part of ["morning", "afternoon", "evening", "night"] as const) { const l = dayLineAfterGreeting(part); seeds.set(l.en, l.hg); }
+  for (const part of ["morning", "afternoon", "evening", "night"] as const) {
+    const l = dayLineAfterGreeting(part); seeds.set(l.en, l.hg);
+    for (const h of HOME_LINES[part]) seeds.set(h.en, h.hg);
+  }
   return seeds;
 }
 

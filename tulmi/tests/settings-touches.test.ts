@@ -541,7 +541,8 @@ describe("Blip in the right places", () => {
     expect(at("2026-10-22T20:00:00Z", 330)).toBe("night");     // 01:30 in India
     expect(at("2026-10-22T02:00:00Z", 780)).toBe("afternoon");  // 15:00 in Auckland
     expect(at("2026-10-22T10:00:00Z", -240)).toBe("morning");   // 06:00 in New York
-    expect(at("2026-10-22T02:00:00Z", -240)).toBe("night");     // 22:00 the evening before
+    expect(at("2026-10-22T02:00:00Z", -240)).toBe("evening");   // 22:00 the evening before: night is the small hours only
+    expect(at("2026-10-22T03:30:00Z", -240)).toBe("night");     // 23:30
     // Nothing known about the person: UTC, and never a throw.
     expect(at("2026-10-22T08:00:00Z", undefined)).toBe("morning");
     expect(at("2026-10-22T08:00:00Z", Number.NaN)).toBe("morning");

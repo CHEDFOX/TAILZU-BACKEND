@@ -77,5 +77,6 @@ export type DayPart = "morning" | "afternoon" | "evening" | "night";
 export function dayPart(tzOffsetMinutes?: number, nowMs: number = Date.now()): DayPart {
   const offset = Math.max(-840, Math.min(840, Math.round(Number.isFinite(tzOffsetMinutes) ? tzOffsetMinutes! : 0)));
   const hour = new Date(nowMs + offset * 60_000).getUTCHours();
-  return hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 17 ? "afternoon" : hour >= 17 && hour < 21 ? "evening" : "night";
+  // Night is the small hours only: 9 or 10 pm is still the evening, and "Still up?" then reads wrong.
+  return hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 17 ? "afternoon" : hour >= 17 && hour < 23 ? "evening" : "night";
 }
