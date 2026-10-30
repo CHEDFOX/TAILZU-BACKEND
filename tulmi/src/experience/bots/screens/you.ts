@@ -44,7 +44,7 @@ interface YouData {
   plan: { name: string; active: boolean };
   usage: UsageMeter | null;
   apps: { enabled: boolean; connected: Array<{ id: string; name: string; usedBy: string[]; lastUsedAt: number | null }>; github: { repos: number } | null; alone: number } | null;
-  computers: { online: Array<{ name: string; busy: boolean; allowRun: boolean }>; offline: number; helped: { jobs: number; minutes: number } } | null;
+  computers: { online: Array<{ name: string; busy: boolean; allowRun: boolean }>; offline: number; signedIn?: number; helped: { jobs: number; minutes: number } } | null;
   settings: Settings;
   exportUrl: string | null;
   language: string | null;
@@ -60,6 +60,8 @@ interface BillingData {
 interface ComputersData {
   online: Array<{ deviceId: string; name: string; os: string; allowRun: boolean; busy: boolean; projects: "all" | "most" | number; liveOnly: boolean; container: boolean }>;
   offline: Array<{ deviceId: string; name: string; os: string; lastSeen: number }>;
+  /** The desktop app signed in as them while its runner is off ("Your Mac"). */
+  signedIn?: Array<{ deviceId: string; name: string; os: string; lastSeen: number }>;
   helped: { jobs: number; minutes: number };
 }
 interface AppsData {
@@ -273,7 +275,7 @@ const computerLine = (d: YouData | undefined) => {
   const c = d?.computers;
   if (!c) return "";
   const on = c.online.filter((x) => x.allowRun);
-  return on.length ? "On" : c.online.length ? "Online · not helping" : c.offline ? "Offline" : "Off";
+  return on.length ? "On" : c.online.length ? "Online · not helping" : c.signedIn ? "Signed in · not helping" : c.offline ? "Offline" : "Off";
 };
 const pingsLine = (s: Settings | undefined) => {
   if (!s) return "";
@@ -547,15 +549,16 @@ const daysAgo = (ctx: BotsCtx, t: number) => {
 const codeWorking = (ctx: BotsCtx) => ctx.live.working.find((w) => w.bot === "code" && w.id.startsWith("job:"));
 
 function computerPhone(ctx: BotsCtx, d: ComputersData | undefined) {
-  const head = [title("This computer helps"), meta("Your own computers run part of the work, so jobs cost less. It's free, and bots say when they use one.", { size: 14, lineHeight: 20, color: C.grey70 })];
+  const head = [title("This computer helps")];
+  const signedIn = d?.signedIn ?? [];
   const add = card([
     text("Add a computer", { size: 15, weight: 600 }),
-    meta("On that computer, get X0 Bot, sign in as you, and turn on This computer helps. It shows up here.", { size: 13, lineHeight: 18 }),
+    meta("On that computer, get X0 Bot and sign in as you. It shows up here.", { size: 13, lineHeight: 18 }),
     button("Get X0 Bot for computer", openUrl(DOWNLOAD_URL), { kind: "secondary", size: "md" }),
   ], { gap: 10 });
   if (!d) return page(ctx, { back: true, nav: "computer", title: "This computer helps", body: [...head, couldNot("your computers")] });
-  if (!d.online.length && !d.offline.length) {
-    return page(ctx, { back: true, nav: "computer", title: "This computer helps", body: [...head, emptyState({ pose: "think", title: "No computer yet", body: "Your laptop can run tests and builds for Code bot, for free.", action: { label: "Get X0 Bot for computer", onPress: openUrl(DOWNLOAD_URL) } })] });
+  if (!d.online.length && !d.offline.length && !signedIn.length) {
+    return page(ctx, { back: true, nav: "computer", title: "This computer helps", body: [...head, emptyState({ pose: "think", title: "No computer yet", action: { label: "Get X0 Bot for computer", onPress: openUrl(DOWNLOAD_URL) } })] });
   }
   const w = codeWorking(ctx);
   const first = d.online[0];
@@ -575,7 +578,9 @@ function computerPhone(ctx: BotsCtx, d: ComputersData | undefined) {
           left: icon("computer", { size: 22, color: C.idle }), label: c.name, sub: `Offline · last seen ${daysAgo(ctx, c.lastSeen)}`, chevron: false,
           right: quietButton("Remove", call("DELETE", `/v1/you/computers/${encodeURIComponent(c.deviceId)}`, undefined, { ok: seq(toast(`${c.name} removed`), refresh), fail: oops("remove it") }), { size: "md" }),
         })),
+        ...signedIn.map((c) => listRow({ left: icon("computer", { size: 22 }), label: c.name, sub: "Signed in · X0 Code is off", chevron: false })),
       ]),
+      ...(signedIn.length && !first ? [meta("To let it help, open This computer helps in X0 Bot on that computer and turn on Use this computer for X0 Code.", { size: 12, lineHeight: 17 })] : []),
       ...(first ? [col([
         sectionLabel("What it may do"),
         listCard([
@@ -657,7 +662,7 @@ function computerDesk(ctx: BotsCtx, d: ComputersData | undefined) {
   const w = codeWorking(ctx);
   const busy = d.online.find((c) => c.busy);
   const first = d.online[0];
-  const status = first ? onlineLine(first, busy ? w?.title.split(/[.\n]/)[0] : undefined) : d.offline.length ? "Offline" : "No computer yet";
+  const status = first ? onlineLine(first, busy ? w?.title.split(/[.\n]/)[0] : undefined) : d.offline.length ? "Offline" : d.signedIn?.length ? "Signed in · X0 Code is off" : "No computer yet";
   return page(ctx, {
     back: true, nav: "computer", title: "This computer helps", maxWidth: 1040, gap: 20,
     body: [
@@ -685,7 +690,7 @@ function computerDesk(ctx: BotsCtx, d: ComputersData | undefined) {
         })))], { gap: 8 })] : []),
         ...(!d.online.length ? [card([
           text("Add a computer", { size: 15, weight: 600 }),
-          meta("On that computer, get X0 Bot, sign in as you, and turn on This computer helps. It shows up here.", { size: 13 }),
+          meta("On that computer, get X0 Bot and sign in as you. It shows up here.", { size: 13 }),
           button("Get X0 Bot for computer", openUrl(DOWNLOAD_URL), { kind: "secondary", size: "md" }),
         ], { gap: 10, padding: 20 })] : []),
       ], [

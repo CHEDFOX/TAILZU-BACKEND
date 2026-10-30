@@ -64,6 +64,7 @@ import { registerBotRoutes } from "./routes/bots.js";
 import { registerBotsShellRoutes } from "./routes/botsShell.js";
 import { markSeen } from "./widgets/glanceStore.js";
 import { registerBotsYouRoutes } from "./routes/botsYou.js";
+import { seeDesktopApp } from "./you/store.js";
 import { registerBotsBotsRoutes } from "./routes/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/botsKeybot.js";
 import { getPrefs, readSpeed, type KeybotPrefs } from "./keybot/prefs.js";
@@ -3017,6 +3018,8 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
     ? await Promise.all([getPersonality(user), getProfile(user)])
     : [{}, null];
   const screenFormFactor = body.capabilities?.device?.formFactor === "desktop" ? "desktop" : "phone";
+  // A desktop signed in as this person is one of their computers, runner on or not (This computer helps lists it).
+  if (user && screenFormFactor === "desktop") seeDesktopApp(user.id, body.capabilities?.device?.os);
   const screenCtx = (screen: string) => ({
     surface: "screen" as const,
     screen,

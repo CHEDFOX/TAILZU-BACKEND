@@ -34,7 +34,7 @@ import { Spending, holdJobsToUsage, wrapBots } from "../src/you/limits.js";
 import { summaryLine, verdict } from "../src/you/push.js";
 import { DEFAULT_SETTINGS, applyPatch, cleanSettings, inQuietHours } from "../src/you/settings.js";
 import { spendReport } from "../src/you/spend.js";
-import { MemoryYouStore, setYouStoreForTests } from "../src/you/store.js";
+import { MemoryYouStore, resetDesktopAppSeenForTests, seeDesktopApp, setYouStoreForTests, youStore } from "../src/you/store.js";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const MONTH_START = Date.UTC(2026, 9, 1) - IST * MIN;
@@ -119,6 +119,19 @@ describe("the You screens", () => {
       });
     }
   }
+
+  it("This computer helps: no sales lines, and a computer signed in as them shows with how to let it help", async () => {
+    const none = await build("bots.computer", "phone", { ...ANSWERS, "GET /v1/you/computers": { online: [], offline: [], signedIn: [], helped: { jobs: 0, minutes: 0 } } });
+    expect(texts(none.root)).toContain("No computer yet");
+    for (const gone of ["Your own computers run part of the work, so jobs cost less. It's free, and bots say when they use one.", "Your laptop can run tests and builds for Code bot, for free."]) {
+      expect(texts(none.root)).not.toContain(gone);
+    }
+    const mac = await build("bots.computer", "phone", { ...ANSWERS, "GET /v1/you/computers": { online: [], offline: [], signedIn: [{ deviceId: "app:mac", name: "Your Mac", os: "mac", lastSeen: FIXED_NOW }], helped: { jobs: 0, minutes: 0 } } });
+    expect(texts(mac.root)).toEqual(expect.arrayContaining(["Your Mac", "Signed in · X0 Code is off", "Add a computer"]));
+    expect(texts(mac.root).some((t) => t.includes("Use this computer for X0 Code"))).toBe(true);
+    expect(texts(mac.root)).not.toContain("No computer yet");
+    expect(lintTree(mac.root!)).toEqual([]);
+  });
 
   it("Delete account is reachable from the phone's Privacy page (App Store 5.1.1(v)), and from the computer's", async () => {
     for (const client of ["phone", "desktop"] as const) {
@@ -402,6 +415,21 @@ describe("the routes", () => {
     const r = (await get("/v1/you/computers")).json();
     expect(r.online[0]).toMatchObject({ name: "MacBook", allowRun: true, projects: "all" });
     expect(r.helped).toEqual({ jobs: 1, minutes: 4 });
+    expect(r.signedIn).toEqual([]);
+  });
+
+  it("a computer signed in to X0 Bot is listed before its runner is on, once per kind of computer", async () => {
+    resetDesktopAppSeenForTests();
+    const now = Date.now();
+    // The desktop app's screen requests: a Windows PC (no runner) and the Mac (whose runner is online, so the runner row says it).
+    seeDesktopApp(UID, "windows", now, youStore());
+    seeDesktopApp(UID, "darwin", now, youStore());
+    seeDesktopApp(UID, "windows", now + 1000, youStore());   // within the window: not written again
+    seeDesktopApp(UID, "ios", now, youStore());              // not a computer
+    const r = (await get("/v1/you/computers")).json();
+    expect(r.signedIn).toEqual([{ deviceId: "app:windows", name: "Your Windows PC", os: "windows", lastSeen: now }]);
+    expect(r.offline).toEqual([]);
+    expect((await get("/v1/you?tz=330")).json().computers).toMatchObject({ signedIn: 1, offline: 0 });
   });
 
   it("the You page carries the month, the plan and the settings", async () => {

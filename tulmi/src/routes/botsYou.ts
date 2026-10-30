@@ -13,7 +13,8 @@
  *   PUT    /v1/you/settings { monthLimitPaise? | monthLimitRupees?, stopAtLimit?, notify?: { done?, summary?, summaryAt?, quiet?, quietFrom?,
  *                                         quietTo?, bot?, on? }, privacy?: { screenPictures? } }  -> { settings }  only what was sent changes
  *   GET    /v1/you/billing              -> { plan, invoices, usage }  (src/you/billing.ts; the screens show no price and no amount)
- *   GET    /v1/you/computers            -> { online, offline, helped }  the person's computers (runner presence, and the ones seen before)
+ *   GET    /v1/you/computers            -> { online, offline, signedIn, helped }  the person's computers (runner presence, the ones seen before, and
+ *                                          the desktop app signed in as them while its runner is off)
  *   DELETE /v1/you/computers/:id        -> { ok }  forgets an offline computer (it comes back if it sends a heartbeat again)
  *   GET    /v1/you/apps                 -> { enabled, connected, more, github }  the connected apps with the bots that use each and when last used
  *   GET    /v1/you/apps/:id             -> { app, bots, can, cant }  one app, for Connect
@@ -43,7 +44,10 @@ import { howLine, nearLine, outLine, type UsageNow } from "../you/usage.js";
 import { getProfile } from "../profile/store.js";
 import { dayOf, pushGate, startSummaries, summaryLine } from "../you/push.js";
 import { applyPatch } from "../you/settings.js";
-import { youStore } from "../you/store.js";
+import { APP_COMPUTER, computerOs, youStore } from "../you/store.js";
+
+/** A signed-in desktop not seen for this long is no longer listed (it is still kept, as every computer row is). */
+const SIGNED_IN_FOR_MS = 30 * 86_400_000;
 import type { BotsAreaDeps } from "./botsArea.js";
 
 /** The bots each app is for when the person made no bot of their own that uses it (builtin.ts skills). None today: the Plan bot runs on
@@ -161,7 +165,11 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     const now = Date.now();
     const online = deps.jobs ? deps.jobs.devices.onlineFor(user.id, now) : [];
     for (const d of online) await store.seeComputer(user.id, { deviceId: d.deviceId, name: d.name, os: d.capabilities.os }, now).catch(() => undefined);
-    const known = await store.listComputers(user.id).catch(() => []);
+    const rows = await store.listComputers(user.id).catch(() => []);
+    // The desktop app's own rows ("app:<os>", you/store.ts seeDesktopApp): a computer signed in as them whose runner is not on.
+    const known = rows.filter((k) => !k.deviceId.startsWith(APP_COMPUTER));
+    const runnerKinds = new Set([...online.map((d) => computerOs(d.capabilities.os)), ...known.map((k) => computerOs(k.os))]);
+    const signedIn = rows.filter((k) => k.deviceId.startsWith(APP_COMPUTER) && now - k.lastSeen < SIGNED_IN_FOR_MS && !runnerKinds.has(computerOs(k.os)));
     const on = new Set(online.map((d) => d.deviceId));
     // What computers did this month: the jobs with a step that ran on one, and the minutes those steps took.
     let jobs = 0, minutes = 0;
@@ -182,6 +190,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
         liveOnly: d.capabilities.liveOnly, container: d.capabilities.container,
       })),
       offline: known.filter((k) => !on.has(k.deviceId)).map((k) => ({ deviceId: k.deviceId, name: k.name || "A computer", os: k.os, lastSeen: k.lastSeen })),
+      signedIn: signedIn.map((k) => ({ deviceId: k.deviceId, name: k.name || "Your computer", os: computerOs(k.os), lastSeen: k.lastSeen })),
       helped: { jobs, minutes },
     };
   };
@@ -210,7 +219,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
         usage: usage ? meterOf(usage) : null,
         apps: apps ? { enabled: apps.enabled, connected: apps.connected.map((a) => ({ id: a.id, name: a.name, usedBy: a.usedBy, lastUsedAt: a.lastUsedAt })), github: apps.github, alone: apps.alone } : null,
         language: profile?.language ?? null,
-        computers: computers ? { online: computers.online.map((c) => ({ name: c.name, busy: c.busy, allowRun: c.allowRun })), offline: computers.offline.length, helped: computers.helped } : null,
+        computers: computers ? { online: computers.online.map((c) => ({ name: c.name, busy: c.busy, allowRun: c.allowRun })), offline: computers.offline.length, signedIn: computers.signedIn.length, helped: computers.helped } : null,
         settings,
         exportUrl: exportLink(user.id, Date.now())?.url ?? null,
       });
