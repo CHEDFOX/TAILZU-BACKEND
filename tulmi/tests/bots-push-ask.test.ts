@@ -105,7 +105,8 @@ describe("What pings you", () => {
 describe("the first-day Home", () => {
   it("has Home's own living header", async () => {
     const line = dayLineAfterGreeting(dayPart(IST, FIXED_NOW)).en;
-    const fresh = { api: { "GET /v1/shell/started": { started: false } }, bots: SAMPLE_BOTS.filter((b) => b.builtin), jobs: [], tasks: [] };
+    // The first visit after onboarding: the first-arrival card is due, and the bot says hello under the header.
+    const fresh = { api: { "GET /v1/bots/first-run/arrival": { due: true } }, bots: SAMPLE_BOTS.filter((b) => b.builtin), jobs: [], tasks: [] };
     for (const client of ["phone", "desktop"] as const) {
       const live = await buildBotsScreen(req("bots.home", client, ["BotsMotion", "WriteOn", "LiveMark", "HeadBar"]), fakeDeps(fresh));
       expect(lintTree(live.root!)).toEqual([]);
@@ -117,7 +118,7 @@ describe("the first-day Home", () => {
       // Still, for a build without the living header: the same words.
       const still = await buildBotsScreen(req("bots.home", client), fakeDeps(fresh));
       expect(lintTree(still.root!)).toEqual([]);
-      expect(texts(still.root!)).toEqual(expect.arrayContaining(["Good evening, Aanya", line, "Make your first bot"]));
+      expect(texts(still.root!)).toEqual(expect.arrayContaining(["Good evening, Aanya", line, "Hi Aanya, I'm X0"]));
     }
   });
 });
