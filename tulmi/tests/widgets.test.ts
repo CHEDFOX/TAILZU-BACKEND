@@ -146,7 +146,8 @@ describe("GET /v1/widgets/now", () => {
     const r = await s.call("GET", "/v1/widgets/now?tz=330&platform=ios");
     expect(r.status).toBe(200);
     const doc = r.body;
-    expect(doc).toMatchObject({ v: 1, refreshSec: 900, fetchSec: 60, time: "relative", act: { path: "/v1/widgets/act", inPlace: true } });
+    // Times in whole minutes at the finest, in the server's words: a widget never ticks the seconds.
+    expect(doc).toMatchObject({ v: 1, refreshSec: 900, fetchSec: 60, time: "minutes", timeWords: { now: "now", min: "{n}m", hour: "{n}h", day: "{n}d" }, act: { path: "/v1/widgets/act", inPlace: true } });
     expect(doc.rev).toMatch(/^[0-9a-f]{12}$/);
     const people = doc.people;
     expect(people).toMatchObject({ on: true, title: "From your people", url: "tulmi://screen/bots.spaces", count: 3, newCount: 3, lock: { line: "3 new from your people" } });
@@ -154,7 +155,8 @@ describe("GET /v1/widgets/now", () => {
     const [msg, shared, task] = people.rows;
     expect(msg).toMatchObject({ kind: "message", who: "Meera S.", initial: "M", text: "running late", private: true, new: true, icon: "bubble.left.fill", androidIcon: "tailzu_wi_chat", url: `tulmi://screen/bots.thread?id=${h.chat}` });
     expect(typeof msg.when).toBe("string");
-    expect(shared).toMatchObject({ kind: "shared", text: "Weekend plan", detail: "Home", private: false });
+    // Shared says so in its tag too, so a row drawn as name, tag and title keeps the whole line.
+    expect(shared).toMatchObject({ kind: "shared", tag: "shared", text: "Weekend plan", detail: "Home", private: false });
     expect(shared.url).toMatch(/^tulmi:\/\/screen\/bots\.space\.item\?item=/);
     expect(task).toMatchObject({ kind: "task", tag: "task", text: "Call Grandma", url: `tulmi://screen/bots.space.tasks?id=${h.id}`, id: `stask:${h.id}:${h.task.id}` });
     // Nothing a person's own screen would not show: no amounts, no other people's ids.
@@ -168,12 +170,15 @@ describe("GET /v1/widgets/now", () => {
     const needs = (await s.call("GET", "/v1/widgets/now?tz=330")).body.needs;
     expect(needs.rows.map((x: { kind: string }) => x.kind)).toEqual(["question", "approval", "task"]);
     const [q, ap, t] = needs.rows;
-    expect(q).toMatchObject({ who: "Code bot", text: "Round per item or at the end?", id: `job:${JOB}:${questionMark("Round per item or at the end?")}`, url: `tulmi://screen/bots.code.job?id=${JOB}` });
+    // A bot's row says whose bot it is, for its ring in that bot's colour; a person's row does not.
+    expect(q).toMatchObject({ who: "Code bot", bot: "code", text: "Round per item or at the end?", id: `job:${JOB}:${questionMark("Round per item or at the end?")}`, url: `tulmi://screen/bots.code.job?id=${JOB}` });
     expect(q.actions).toEqual([{ id: "a0", label: "Per item", style: "primary", mode: "inPlace" }, { id: "a1", label: "At the end", style: "secondary", mode: "inPlace" }]);
-    expect(ap).toMatchObject({ who: "Plan bot", text: "Move dinner to 7:30?", detail: "Dinner, 7:30 pm", id: `task:${CT}:ap-1` });
+    expect(ap).toMatchObject({ who: "Plan bot", bot: "plan", androidIcon: "tailzu_widget_mark", text: "Move dinner to 7:30?", detail: "Dinner, 7:30 pm", id: `task:${CT}:ap-1` });
     expect(ap.actions.map((a: { id: string; label: string }) => `${a.id}:${a.label}`)).toEqual(["yes:Yes", "no:No"]);
-    expect(t).toMatchObject({ who: "Meera S.", text: "Call Grandma", detail: "From Meera S.", actions: [{ id: "done", label: "Done", style: "primary", mode: "inPlace", icon: "checkmark", androidIcon: "tailzu_wi_check" }] });
-    expect(needs.words).toMatchObject({ done: "Done", failed: "Open X0 Bot to finish" });
+    // Who gave it is the row's name; under it, where it is from (the space), not the name again.
+    expect(t).toMatchObject({ who: "Meera S.", text: "Call Grandma", detail: "Home", actions: [{ id: "done", label: "Done", style: "primary", mode: "inPlace", icon: "checkmark", androidIcon: "tailzu_wi_check" }] });
+    expect(t.bot).toBeUndefined();
+    expect(needs.words).toMatchObject({ done: "Done", failed: "Open X0 to finish", answer: "Answer" });
     // A locked phone redacts what is asked (StandBy, Always-On); the Lock Screen never shows it at all.
     expect(needs.rows.every((r: { private: boolean }) => r.private)).toBe(true);
     expect(needs.lock.line).toBe("3 things need you");

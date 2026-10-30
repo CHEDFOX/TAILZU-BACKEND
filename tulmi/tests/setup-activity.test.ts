@@ -21,8 +21,9 @@ describe("the step it shows", () => {
   });
 
   it("walks the steps in order, counting the ones behind them", () => {
-    expect(setupActivity({ ...ios, signedIn: true })).toMatchObject({ done: 1, title: "Add the X0 Bot keyboard", url: "tulmi://screen/onboarding_keyboard" });
-    expect(setupActivity({ ...ios, signedIn: true, keyboardReady: true })).toMatchObject({ done: 2, title: "Allow the microphone" });
+    // Each step opens the Bots app where it is done: Keybot's Turn on page for the keyboard, Keybot (its card asks for the mic).
+    expect(setupActivity({ ...ios, signedIn: true })).toMatchObject({ done: 1, title: "Add the X0 keyboard", url: "tulmi://screen/bots.keybot.on" });
+    expect(setupActivity({ ...ios, signedIn: true, keyboardReady: true })).toMatchObject({ done: 2, title: "Allow the microphone", url: "tulmi://screen/bots.keybot" });
     expect(setupActivity({ ...ios, signedIn: true, keyboardReady: true, micGranted: true })).toMatchObject({ done: 3, title: "Say your first sentence" });
   });
 
@@ -46,7 +47,7 @@ describe("the step it shows", () => {
 describe("in the bootstrap", () => {
   it("rides as a flag while setup is unfinished, and is absent once it is done", () => {
     const open = buildBootstrap({ platform: "ios", signedIn: true } as never) as { flags: Record<string, unknown> };
-    expect(open.flags["liveActivity.setup"]).toMatchObject({ title: "Add the X0 Bot keyboard" });
+    expect(open.flags["liveActivity.setup"]).toMatchObject({ title: "Add the X0 keyboard" });
     const done = buildBootstrap({ platform: "ios", signedIn: true, keyboardReady: true, micGranted: true, wordsEver: 5 } as never) as { flags: Record<string, unknown> };
     expect(done.flags["liveActivity.setup"]).toBeUndefined();
   });
