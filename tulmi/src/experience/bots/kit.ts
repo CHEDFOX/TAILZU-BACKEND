@@ -23,14 +23,14 @@ import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../.
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
-import { icon, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
+import { icon, keyMark, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
 import type { BotsLive, LiveBot, NeedsItem } from "./live.js";
 import { C, botLook, type BotLook } from "./palette.js";
 import { botRoute, SCREENS } from "./ids.js";
 import { askMoment, failed as momentFailed, SENT_WORDS, start as momentStart, streamed as momentStreamed } from "./askMoment.js";
 
 export { C, PALETTE_HEX, botLook, BUILTIN_SLUGS, type BotLook } from "./palette.js";
-export { icon, shapes, statusMark, tabGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
+export { icon, keyMark, shapes, statusMark, tabGlyph, tailzuMark, ICONS, type IconName, type Mark, type TabId } from "./glyphs.js";
 export { blipUrl, headUrl, BLIP_POSES, type BlipPose } from "./art.js";
 export { SCREENS, botRoute } from "./ids.js";
 export { percent, whenWords } from "../../you/usage.js";
@@ -398,7 +398,7 @@ export function writeOn(content: string, o: { size: number; lineHeight: number; 
 
 /** The Tailzu mark, alive (LiveMark): a ring dot lit in each working bot's colour; a tap runs `onPress`. */
 export function liveMark(size: number, lit: string[], onPress?: ActionRef): Node {
-  return { type: "LiveMark", props: { size, lit: lit.slice(0, 8), label: "X0 Bot. Ask anything" }, ...(onPress ? { on: { onPress } } : {}) };
+  return { type: "LiveMark", props: { size, lit: lit.slice(0, 8), label: onPress ? "X0 Bot. Ask anything" : "X0 Bot" }, ...(onPress ? { on: { onPress } } : {}) };
 }
 
 /** A compact bar over the top of the page that comes in once the page has scrolled past `at` (page()'s `pinned`). */
@@ -527,6 +527,15 @@ export function roundButton(name: IconName, onPress: ActionRef | undefined, o: {
     backgroundColor: o.light ? C.paper : C.ink, ...(o.light ? { borderWidth: 1, borderColor: C.line } : {}),
   }, onPress);
   return o.label ? labelled(b, o.label) : b;
+}
+
+/** The keyboard's mic key, in the app: the same dark round key with the mark (catalog.ts makeToolsRow, light look). */
+export const KEY_INK = "#1B1712";
+export function micKey(onPress: ActionRef | undefined, o: { size?: number; label?: string } = {}): Node {
+  const s = o.size ?? 48;
+  return labelled(box([keyMark(Math.round(s * 0.7), "#FFFFFF")], {
+    width: s, height: s, borderRadius: s / 2, alignItems: "center", justifyContent: "center", flexShrink: 0, backgroundColor: KEY_INK,
+  }, onPress), o.label ?? "Speak");
 }
 
 /** A chip: radius 18, padding 8 14, 13px. Selected: black fill, white text. */
@@ -827,7 +836,8 @@ export function askBar(client: Client, o: { placeholder?: string; path?: string;
         },
       },
       when({ truthy: path }, roundButton("send", send, { label: "Send" })),
-      when({ falsy: path }, roundButton("mic", mic, { label: "Speak" })),
+      // The keyboard's own mic key, so speaking looks the same in the app as in every other app.
+      when({ falsy: path }, micKey(mic, { label: "Speak" })),
     ], { gap: 10, borderRadius: client === "desktop" ? 30 : RADIUS.input, borderWidth: 1, borderColor: C.line, paddingVertical: 6, paddingRight: 6, paddingLeft: client === "desktop" ? 22 : 18, backgroundColor: C.paper }),
     o.ctx
       ? askMoment(o.ctx, { slug: "tailzu", color: C.ink, kind: "custom", busy: "asking", line: "Asking your bots…", bubble: "surface" })

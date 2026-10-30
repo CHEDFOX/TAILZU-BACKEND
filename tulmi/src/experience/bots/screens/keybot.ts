@@ -36,7 +36,7 @@ import { sw } from "../../settingsWords.js";
 import {
   back, blip, botAvatar, box, button, C, call, card, chip, col, divider, emptyState, grow, icon, listCard, listRow,
   meta, meter, open, page, primaryButton, quietButton, row, SCREENS, sectionLabel, segmented, seq, statusMark,
-  switchMark, switchRow, text, title, when, whenEq, headerBuddy, type BotsCtx,
+  switchMark, switchRow, text, title, when, whenEq, headerBuddy, type BotsCtx, KEY_INK, keyMark,
 } from "../kit.js";
 import type { BotsDeps } from "../live.js";
 import { screen, type BotsScreen } from "../registry.js";
@@ -297,20 +297,34 @@ const lines = (title: string, ls: Line[]): Node =>
 
 const homeState = (d: HomeData | undefined) => ({ ...DEVICE_STATE, micAsked: false, keep: d?.home?.keepHistory ?? true });
 
-/** The phone keyboard, drawn: two rows of keys, the clay Keybot key beside the space bar. */
-function phoneKeys(keyAt: "left" | "right" | "top" = "left", scale = 1): Node {
-  const k = (grow_: number, bg: string, kids: Node[] = [], h = 36): Node =>
-    box(kids, { flexGrow: grow_, flexBasis: 0, height: Math.round(h * scale), borderRadius: 7 * scale, backgroundColor: bg, alignItems: "center", justifyContent: "center" });
-  const mic = icon("mic", { size: Math.round(18 * scale), color: C.paper });
-  const top = keyAt === "top"
-    ? row([k(1, CLAY, [mic]), ...Array.from({ length: 9 }, () => k(1, C.paper))], { gap: 5 * scale })   // the keyboard's mic starts its top row
-    : row(Array.from({ length: 10 }, () => k(1, C.paper)), { gap: 5 * scale });
-  const bottom = keyAt === "right"
-    ? row([k(1.4, C.track, [], 38), k(4, C.paper, [], 38), k(1, CLAY, [mic], 38), k(1.4, C.track, [], 38)], { gap: 5 * scale })
-    : keyAt === "top"
-      ? row([k(1.4, C.track, [], 38), k(5, C.paper, [], 38), k(1.4, C.track, [], 38)], { gap: 5 * scale })
-      : row([k(1.4, C.track, [], 38), k(1, CLAY, [mic], 38), k(4, C.paper, [], 38), k(1.4, C.track, [], 38)], { gap: 5 * scale });
-  return col([top, bottom], { gap: 8 * scale, backgroundColor: C.surface, borderRadius: 22 * scale, paddingTop: 12 * scale, paddingBottom: 14 * scale, paddingHorizontal: 8 * scale });
+/**
+ * The phone keyboard, drawn as it is (catalog.ts makeToolsRow and the letter page): on top, the tools row (the X0 key,
+ * the dark round mic with the mark, at the left; the suggestions; the tone pill at the right), then the four rows of
+ * keys. `keyAt` left / right: the X0 key sits beside the space bar instead (keybot/keyboard.ts micBesideSpace), a key
+ * as wide as the globe with the letter keys' corners.
+ */
+function phoneKeys(keyAt: "left" | "right" | "top" = "top", scale = 1): Node {
+  const z = (n: number) => Math.round(n * scale);
+  const k = (g: number, bg: string, kids: Node[] = [], h = 34): Node =>
+    box(kids, { flexGrow: g, flexBasis: 0, height: z(h), borderRadius: z(6), backgroundColor: bg, alignItems: "center", justifyContent: "center" });
+  const keys = (n: number) => Array.from({ length: n }, () => k(1, C.paper));
+  const gap = { gap: z(5) };
+  const xKey = (h: number) => box([keyMark(z(h * 0.7), "#FFFFFF")], { width: z(h), height: z(h), borderRadius: keyAt === "top" ? z(h / 2) : z(6), backgroundColor: KEY_INK, alignItems: "center", justifyContent: "center", flexShrink: 0 });
+  const word = (w: number) => box([], { width: z(w), height: z(5), borderRadius: z(3), backgroundColor: C.track });
+  const tools = row([
+    ...(keyAt === "top" ? [xKey(32)] : []),
+    row([word(34), box([], { width: 1, height: z(14), backgroundColor: C.line }), word(46), box([], { width: 1, height: z(14), backgroundColor: C.line }), word(28)], { gap: z(10), flexGrow: 1, justifyContent: "center", alignItems: "center" }),
+    box([text("Tone", { size: Math.max(9, z(11)), weight: 500, lineHeight: z(14) })], { width: z(64), height: z(26), borderRadius: z(13), borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, alignItems: "center", justifyContent: "center", flexShrink: 0 }),
+  ], { gap: z(8), alignItems: "center", height: z(36) });
+  const half = box([], { flexGrow: 0.5, flexBasis: 0 });
+  const bottom = [k(1.3, C.track), k(1, C.track), ...(keyAt === "left" ? [xKey(34)] : []), k(5, C.paper), ...(keyAt === "right" ? [xKey(34)] : []), k(2, C.track)];
+  return col([
+    tools,
+    row(keys(10), gap),
+    row([half, ...keys(9), half], gap),
+    row([k(1.4, C.track), ...keys(7), k(1.4, C.track)], gap),
+    row(bottom, { ...gap, alignItems: "center" }),
+  ], { gap: z(9), backgroundColor: C.surface, borderRadius: z(22), paddingTop: z(8), paddingBottom: z(14), paddingHorizontal: z(6) });
 }
 
 function keybotPhone(ctx: BotsCtx, d: HomeData | undefined) {
@@ -348,7 +362,7 @@ function keybotPhone(ctx: BotsCtx, d: HomeData | undefined) {
         row([modeCard(MODES[0]!, 0), modeCard(MODES[1]!, 1)].map((c) => box([c], { flexGrow: 1, flexBasis: 0 })), { gap: 10, alignItems: "stretch" }),
         row([modeCard(MODES[2]!, 2), modeCard(MODES[3]!, 3)].map((c) => box([c], { flexGrow: 1, flexBasis: 0 })), { gap: 10, alignItems: "stretch" }),
       ], { gap: 10 })], { gap: 10 }),
-      col([phoneKeys(), meta("The clay key is Keybot. Hold to speak, tap for more.", { size: 12 })], { gap: 10 }),
+      col([phoneKeys(), meta("The X0 key, top left, is Keybot. Tap it and speak; tap it again when you're done, and Keybot tidies your words and types them in. The pill on the right sets the tone.", { size: 12, lineHeight: 17 })], { gap: 10 }),
     ],
   });
 }
@@ -920,7 +934,7 @@ function trainActions(d: KeybotTrainView, client: "phone" | "desktop"): Node[] {
   };
   const skip = write("POST", "/v1/keybot/train/skip", { line: d.current }, undefined, "Couldn't skip it. Try again.");
   return [
-    field("said", client === "desktop" ? "Type it, or hold your Keybot key and say it" : "Type it, or hold the clay key and say it", { onSubmit: next, label: "Your way", returnKey: "send" }),
+    field("said", client === "desktop" ? "Type it, or hold your Keybot key and say it" : "Type it, or tap the X0 key and say it", { onSubmit: next, label: "Your way", returnKey: "send" }),
     row([
       box([button("Skip", skip, { kind: "secondary", wide: true, size: client === "desktop" ? "md" : "lg" })], { flexGrow: 1, flexBasis: 0 }),
       box([button("That's how I say it", next, { wide: true, icon: "check", size: client === "desktop" ? "md" : "lg" })], { flexGrow: 2.4, flexBasis: 0 }),
@@ -1193,7 +1207,7 @@ function settingsPhone(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
       ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" })], { gap: 8 }),
       listCard([
         listRow({ label: "Languages", value: langs, onPress: open(SCREENS.language) }),
-        switchRow("Hold space to speak", "kb.holdSpace", { sub: "Hold still to speak, like the clay key. Slide to move the cursor.", onChange: kbSave("holdSpace") }),
+        switchRow("Hold space to speak", "kb.holdSpace", { sub: "Hold still to speak, like a tap on the X0 key. Slide to move the cursor.", onChange: kbSave("holdSpace") }),
       ], { title: "Typing" }),
       col([sectionLabel("Keybot key"), card([
         tight(segmented([{ label: "Left of space", value: "left" }, { label: "Right of space", value: "right" }, { label: "Top row", value: "top" }], "kb.keyAt", { onChange: kbSave("keyAt") })),
