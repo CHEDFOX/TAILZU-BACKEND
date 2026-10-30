@@ -19,6 +19,7 @@ import { realKey } from "../env.js";
 import path from "node:path";
 import { CliExit, parseCli, requireBudget, runCli, type CliSpec } from "../cli.js";
 import { OUT_DIR, mkdirp, writeJson } from "../util.js";
+import { keyProblem } from "../adapters/upstream.js";
 import { RealExecutor, type Executor } from "./exec.js";
 import { buildCtx, estimateStages, fxRate, PLAN_SPECS, renderEstimate, requireReceipt, totalsOf, writeReceipt, type Ctx, type RealityOptions } from "./plan.js";
 import { commandList, missingRepos, missingTools } from "./installs.js";
@@ -162,6 +163,9 @@ export async function runReality(argv: readonly string[] = process.argv.slice(2)
   if (spends) {
     requireReceipt(ctx);
     if (!realKey) { console.error("OPENROUTER_API_KEY is not set, so a paid run cannot start. Stage 0 is free: npm run reality -- --stages 0. To prove the plan without a key: --prove."); return 2; }
+    // A key that no longer works would fail every run at no cost, and the failures would be kept as results: stop before anything runs.
+    const refused = await keyProblem(realKey);
+    if (refused) { console.error(`OPENROUTER_API_KEY does not work (${refused}), so a paid run cannot start and nothing was run or kept. Set a working key and run again.`); return 2; }
   }
   console.log(`${renderEstimate(ctx, estimates)}\n`);
   mkdirp(ctx.outDir);

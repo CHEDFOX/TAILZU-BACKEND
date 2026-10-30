@@ -44,6 +44,24 @@ export function openRouterClient(o: { key?: string; baseUrl?: string; fetchFn?: 
 }
 
 /**
+ * Whether the key still opens OpenRouter, asked once before a paid run (GET /key costs nothing). A key that is expired, revoked or wrong is
+ * the reason, in words; a key that works, or a network that cannot say for now, is null. Without this, an expired key turned every run of a
+ * comparison into a failure "measured" at no cost, and those failures were kept in the results store as if they were the agents'.
+ */
+export async function keyProblem(key: string, o: { baseUrl?: string; fetchFn?: typeof fetch } = {}): Promise<string | null> {
+  const f = o.fetchFn ?? proxyAwareFetch();
+  const base = (o.baseUrl ?? OPENROUTER_URL).replace(/\/$/, "");
+  try {
+    const res = await f(`${base}/key`, { headers: { authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(15_000) } as RequestInit);
+    if (res.status !== 401 && res.status !== 403) return null;
+    const json = await res.json().catch(() => undefined) as { error?: { message?: string } } | undefined;
+    return `OpenRouter ${res.status}: ${String(json?.error?.message ?? "the key was refused").slice(0, 200)}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The recording proxy (proxy.ts) as an OpenAI-shaped client: for Tailzu's own flow to reach its model THROUGH the proxy, the way an external agent does, so that
  * the same cassette, the same per-run counting and the same spend caps apply. The key is a fake one made now; the proxy ignores it and holds the real one.
  */
