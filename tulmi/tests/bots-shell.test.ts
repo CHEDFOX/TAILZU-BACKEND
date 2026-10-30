@@ -286,6 +286,9 @@ describe("the shell's screens", () => {
     // The name they gave their bot says hello.
     const named = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ ...quiet, api: { ...FIRST, "GET /v1/personality": { personality: { assistantName: "Tara" } } } }));
     expect(texts(named.root!)).toContain("Hi Aanya, I'm Tara");
+    // Back after a long time away, or the first time on a newer Home: welcomed back instead.
+    const back = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ ...quiet, api: { "GET /v1/bots/first-run/arrival": { due: true, kind: "back" }, "GET /v1/personality": { personality: { assistantName: "Tara" } } } }));
+    expect(texts(back.root!)).toEqual(expect.arrayContaining(["Welcome back, Aanya", "Tara and your bots missed you."]));
   });
   it("activity: the feed, no money on it, needs-you choices, filters by bot and type", async () => {
     const deps = fakeDeps({ api: { [`GET /v1/shell/activity?tz=${IST}`]: ACTIVITY } });
