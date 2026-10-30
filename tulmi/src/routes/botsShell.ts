@@ -17,7 +17,11 @@
  *   GET  /v1/shell/today?tz=                 today's calendar (their own, src/calendar), Keybot's words by hour and app, the day's work
  *   GET  /v1/shell/started                   whether the person has done anything yet (Home shows the empty home until they have)
  *   GET  /v1/shell/glance?tz=                for the natives (iOS widgets, the live activity): bots and their live state, what needs the
- *                                            person, Keybot's words today, the current Code bot job's stage. Small, no words to translate
+ *                                            person, Keybot's words today, the current Code bot job's stage. Small, no words to translate.
+ *                                            The shape older builds read (v: 1), unchanged
+ *   GET  /v1/shell/glance?v=2&tz=&lang=      the X0 widget's whole document (src/widgets/glance.ts; docs/widget-glance-v2.md): what it leads
+ *                                            with, the greeting, a summary line, the week, the bots, what needs the person (answered through
+ *                                            POST /v1/widgets/act), the job at work, the last thing done, the Lock Screen's lines, the words
  *
  * Every route is the signed-in person's own (401 without a session). A part that is off reads as empty.
  */
@@ -38,6 +42,15 @@ import { searchAll } from "../shell/search.js";
 import { CLIENT_ID, sentAskStore, type Claim, type SentAskStore } from "../shell/sentAsks.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import { calendar, todayForShell, upcomingForShell } from "../calendar/index.js";
+import { getConfig } from "../config.js";
+import { isHinglish } from "../connectors/words.js";
+import { getProfile } from "../profile/store.js";
+import type { CallFn } from "../code/work/model.js";
+import { digestFor } from "../widgets/digest.js";
+import { widgetsConfig, type WidgetsConfigFor } from "../widgets/config.js";
+import { glanceChanges, glanceV2Of, type GlanceInput } from "../widgets/glance.js";
+import { emptyGlanceState, glanceStore, withGlance, type GlanceStore } from "../widgets/glanceStore.js";
+import { widgetKnobs } from "../widgets/now.js";
 
 /** Words a minute a person types: the product's standing figure (experience/desk.ts, history/store.ts). */
 const TYPING_WPM = 40;
@@ -53,6 +66,14 @@ export interface ShellRoutesOptions {
   voiceRows?: (user: AuthedUser, since: number) => Promise<Array<{ at: number; words: number; app?: string }>>;
   /** The client ids of asks sent from the apps' outbox (src/shell/sentAsks.ts); tests hand in their own. */
   sentAsks?: SentAskStore;
+  /** Glance v2: what the person has seen and when they last looked (src/widgets/glanceStore.ts). */
+  glance?: GlanceStore;
+  /** Glance v2: the person's name and language (profile/store.ts). */
+  profile?: (user: AuthedUser) => Promise<{ fullName?: string; language?: string } | null>;
+  /** Glance v2: the widgets surface's knobs for this person (src/widgets/config.ts). */
+  widgetsConfig?: WidgetsConfigFor;
+  /** Glance v2's AI digest: on (WIDGET_DIGEST unless said), and the model door (tests hand in a fake). */
+  digest?: { on?: boolean; call?: CallFn };
 }
 
 /** When an outbox ask was typed (ms), if it is a time that can be true: the last 30 days, and not later than now. */
@@ -273,10 +294,56 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     } catch (err) { return fail(req, reply, err); }
   });
 
+  /** Glance v2: the X0 widget's document (src/widgets/glance.ts). The person's records, what they have seen, their name and language. */
+  const glanceV2 = async (req: FastifyRequest, reply: FastifyReply, user: AuthedUser, tz: number): Promise<FastifyReply> => {
+    const t = now();
+    const q = (req.query ?? {}) as Record<string, unknown>;
+    const [jobs, tasks, list, minutes, profile] = await Promise.all([
+      readJobs(deps, user.id), readTasks(deps, user.id),
+      deps.bots ? deps.bots.list(user.id).catch(() => []) : Promise.resolve([]),
+      saved(user, tz).catch(() => 0),
+      (o.profile ?? getProfile)(user).catch(() => null),
+    ]);
+    const asked = req.headers["x-app-language"];
+    const lang = (typeof asked === "string" && asked) || (typeof q.lang === "string" && q.lang.slice(0, 32)) || profile?.language || "";
+    const hg = isHinglish(lang);
+    const payload = (o.widgetsConfig ?? widgetsConfig)({
+      userId: user.id, platform: q.platform === "ios" || q.platform === "android" ? q.platform : undefined, ...(lang ? { locale: lang } : {}), signedIn: true, now: t,
+    });
+    const k = widgetKnobs(payload);
+    const store = o.glance ?? glanceStore();
+    const before = await store.get(user.id).catch(() => emptyGlanceState());
+    const state = withGlance(before, t, Math.max(0, k.flag("x0.lookGapMin", 10)) * 60_000);
+    const input: GlanceInput = {
+      now: t, tz, hg, name: (profile?.fullName ?? "").trim().split(/\s+/)[0] ?? "",
+      bots: list.map((b) => ({ slug: b.slug, name: b.name, colour: b.colour, purpose: b.purpose, builtin: b.builtin })),
+      jobs: jobs.map(jobLite),
+      tasks: tasks.map((x) => ({ id: x.id, state: x.state, title: x.title, approval: x.approval, createdAt: x.createdAt, updatedAt: x.updatedAt })),
+      minutesSaved: minutes, state,
+    };
+    // The AI digest, when it is on and enough moved: written once per change, waited for a moment at most (src/widgets/digest.ts).
+    let digest: string | null = null;
+    if (o.digest?.on ?? getConfig().WIDGET_DIGEST) {
+      const changes = glanceChanges(input, payload);
+      if (changes.length >= Math.max(1, k.flag("x0.digest.min", 3))) {
+        digest = await digestFor(user.id, changes, hg, before.digest, {
+          ...(o.digest?.call ? { call: o.digest.call } : {}), waitMs: k.flag("x0.digest.waitMs", 2500), maxPaise: k.flag("x0.digest.maxPaise", 5), now,
+          save: (d) => store.update(user.id, (s) => ({ ...s, digest: d })),
+        });
+      }
+    }
+    const g = glanceV2Of({ ...input, digest }, payload);
+    await store.update(user.id, (s) => ({ ...s, lastAt: state.lastAt, sinceAt: state.sinceAt })).catch((err) => req.log.warn({ err: (err as Error)?.name }, "shell: glance not remembered"));
+    return reply.header("cache-control", "private, no-store").send(g);
+  };
+
   app.get("/v1/shell/glance", RL, async (req, reply) => {
     const user = await who(req, reply);
     if (!user) return reply;
     const tz = tzOf(req.query);
+    if (String((req.query as { v?: unknown } | null)?.v ?? "") === "2") {
+      try { return await glanceV2(req, reply, user, tz); } catch (err) { return fail(req, reply, err); }
+    }
     try {
       const t = now();
       const [jobs, tasks, list, words] = await Promise.all([

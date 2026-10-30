@@ -1073,6 +1073,29 @@ const EnvSchema = z.object({
   /** Only needed when "enhanced push security" is on for the Expo project. */
   EXPO_ACCESS_TOKEN: z.string().optional(),
   /**
+   * The "Bots at work" Live Activity, pushed by the server (src/widgets/apns.ts, activity.ts; docs/widget-glance-v2.md section 6): when a
+   * Code bot job's step, question or end changes, its activity on the person's Lock Screen moves while the app is shut. Straight to Apple's
+   * push service (HTTP/2, a JWT signed with the .p8 key), not through Expo. OFF, and nothing is registered or sent, unless the first four
+   * are all set; the app then updates the activity itself whenever it fetches.
+   *
+   *   APNS_KEY_ID    the key's id (10 characters, Apple Developer → Keys)
+   *   APNS_TEAM_ID   the team's id
+   *   APNS_KEY_P8    the .p8 file's contents (newlines as written, or as \n). A SECRET: never logged
+   *   APNS_TOPIC     the app's bundle id + ".push-type.liveactivity"
+   *   APNS_ENV       production (default) or sandbox (a development build's activities)
+   */
+  APNS_KEY_ID: z.string().optional(),
+  APNS_TEAM_ID: z.string().optional(),
+  APNS_KEY_P8: z.string().optional(),
+  APNS_TOPIC: z.string().optional(),
+  APNS_ENV: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["production", "sandbox"]).default("production")),
+  /**
+   * The X0 widget's AI digest (src/widgets/digest.ts; docs/widget-glance-v2.md section 4): when three or more things changed since a
+   * person last looked, one line (60 characters at most) from the cheapest model sums them up, written once per change. Off: the
+   * situation lines (src/widgets/situation.ts), which cost nothing.
+   */
+  WIDGET_DIGEST: bool(false),
+  /**
    * Shared secret for RevenueCat's webhook.
    *
    * RevenueCat sends it as the Authorization header, verbatim, on every event.
@@ -1676,6 +1699,17 @@ export function getConfig(): AppConfig {
     }
     if (env.CODE_GITHUB_OAUTH && !(env.GITHUB_OAUTH_CLIENT_ID && env.GITHUB_OAUTH_CLIENT_SECRET)) {
       console.warn("[config] CODE_GITHUB_OAUTH=true but GITHUB_OAUTH_CLIENT_ID / GITHUB_OAUTH_CLIENT_SECRET are not both set: Sign in with GitHub answers not_configured.");
+    }
+  }
+  // Live Activity pushes are all or nothing: half of APNs is no pushes, said once here (never a value: APNS_KEY_P8 is a secret).
+  {
+    const apns = [["APNS_KEY_ID", env.APNS_KEY_ID], ["APNS_TEAM_ID", env.APNS_TEAM_ID], ["APNS_KEY_P8", env.APNS_KEY_P8], ["APNS_TOPIC", env.APNS_TOPIC]] as const;
+    const missing = apns.filter(([, v]) => !v?.trim()).map(([k]) => k);
+    if (missing.length && missing.length < apns.length) {
+      console.warn(`[config] ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not set: the Live Activity pushes stay off until all four APNS_* are (docs/widget-glance-v2.md).`);
+    }
+    if (env.APNS_TOPIC?.trim() && !env.APNS_TOPIC.trim().endsWith(".push-type.liveactivity")) {
+      console.warn("[config] APNS_TOPIC should be the app's bundle id + \".push-type.liveactivity\": Apple refuses a Live Activity push to any other topic.");
     }
   }
   if (env.CODE_GITHUB_OAUTH && !env.CODE_GITHUB) {

@@ -26,6 +26,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
 import type { Level, Policy, Risk } from "./risk.js";
+import type { NeedsWords } from "../widgets/botWords.js";
 
 export type TaskState = "running" | "waiting" | "done" | "failed" | "cancelled";
 export const TERMINAL_STATES: readonly TaskState[] = ["done", "failed", "cancelled"];
@@ -102,6 +103,8 @@ export interface Approval {
   preview: string;
   /** The call itself, kept until it runs or is refused. Never in an API response. */
   args: Record<string, unknown>;
+  /** The bot's own short words for the X0 widget (its x0_widget, bots/tools.ts), checked (widgets/botWords.ts). */
+  widget?: NeedsWords;
   at: number;
 }
 

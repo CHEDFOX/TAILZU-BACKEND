@@ -31,7 +31,8 @@ export interface BotConnectors {
   /** The tools the person's app offers a bot (the app's own tool list, cleaned; for an app added by link, only the ones switched on). */
   tools(userId: string, id: string): Promise<ConnectorToolInfo[]>;
   /** One tool call, through the permission tiers. */
-  use(userId: string, runId: string, said: string, line: { connector: string; tool: string; args: Record<string, unknown> }, opts: { allowWrite: boolean }): Promise<UseOutcome>;
+  /** `widget`: the bot's own short words for a change it asks a yes for (x0_widget, tools.ts), checked where the approval is made. */
+  use(userId: string, runId: string, said: string, line: { connector: string; tool: string; args: Record<string, unknown> }, opts: { allowWrite: boolean; widget?: unknown }): Promise<UseOutcome>;
   /** The request ended: the task it made, if any, is closed (a change still waiting for a yes stays waiting). */
   settle(userId: string, runId: string, ending: "done" | "error"): Promise<void>;
 }

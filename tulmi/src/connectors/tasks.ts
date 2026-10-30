@@ -47,6 +47,7 @@ import { gate, gateTool, type Gate, type Level, type Risk } from "./risk.js";
 import { TASK_STEPS_MAX, type Approval, type ConnectorStore, type Task } from "./store.js";
 import { checkArgs, problemLine } from "./validate.js";
 import { en } from "./words.js";
+import { needsWords, type NeedsWords } from "../widgets/botWords.js";
 
 export const APPROVAL_TTL_MS = 60 * 60_000;
 /** The step a card that waited past APPROVAL_TTL_MS ends on (the You tab's Activity reads it). */
@@ -76,8 +77,11 @@ export type UseOutcome =
   /** Something for the person's own device to open (a hand-off): the run says `say`, opens it and ends. `words` is the app's own line, worded for the person before the run sees it. */
   | { kind: "open"; url: string; label: string; fallback?: string; say?: string; words?: HandoffWords };
 
-/** An approval as the device sees it: no arguments. "read" only for an app added by link (see the top of this file). */
-export interface ApprovalView { id: string; connector: string; tool: string; risk: Risk; preview: string }
+/**
+ * An approval as the device sees it: no arguments. "read" only for an app added by link (see the top of this file). `widget`: the asking
+ * bot's own short words for the X0 widget, when it gave any.
+ */
+export interface ApprovalView { id: string; connector: string; tool: string; risk: Risk; preview: string; widget?: NeedsWords }
 
 export interface TaskView {
   id: string;
@@ -90,7 +94,7 @@ export interface TaskView {
 }
 
 export const viewOfApproval = (a: Approval): ApprovalView =>
-  ({ id: a.id, connector: a.connector, tool: a.tool, risk: a.risk, preview: a.preview });
+  ({ id: a.id, connector: a.connector, tool: a.tool, risk: a.risk, preview: a.preview, ...(a.widget ? { widget: a.widget } : {}) });
 
 export const viewOfTask = (t: Task): TaskView => ({
   id: t.id, state: t.state, title: t.title, steps: t.steps, approval: t.approval ? viewOfApproval(t.approval) : null,
@@ -172,7 +176,7 @@ export class TaskService {
   async use(
     userId: string, runId: string, said: string,
     line: { connector: string; tool: string; args: Record<string, unknown> },
-    opts: { allowWrite: boolean },
+    opts: { allowWrite: boolean; widget?: unknown },
   ): Promise<UseOutcome> {
     const def = await this.o.hub.resolve(userId, line.connector);
     // An app that needs no permission (the email hand-off) has no connection to look for.
@@ -263,9 +267,11 @@ export class TaskService {
       return { kind: "stopped", message: out.error!.message, code: out.error!.code, ...(asks ? { ask: true } : {}) };
     }
 
+    // The asking bot's own words for the person's phone (the X0 widget): checked, cut at a word, never a reason to refuse the call.
+    const widget = opts.widget === undefined ? undefined : needsWords(opts.widget);
     const approval: Approval = {
       id: randomUUID(), connector: def.id, tool: info.name, risk, args,
-      preview: clip(preview ?? previewOf(def, info.name, args), PREVIEW_MAX), at: this.now(),
+      preview: clip(preview ?? previewOf(def, info.name, args), PREVIEW_MAX), ...(widget ? { widget } : {}), at: this.now(),
     };
     task = await this.step(userId, task, `Waiting for you: ${human(info.name)} in ${def.name}`, { state: "waiting", approval });
     void Promise.resolve().then(() => this.o.notify?.(userId, task, approval)).catch(() => {});

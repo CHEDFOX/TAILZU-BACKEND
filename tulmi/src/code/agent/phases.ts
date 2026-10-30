@@ -382,13 +382,17 @@ async function executeCalls(r: Run, ex: Exchange): Promise<void> {
       result = { ok: out.ok, content: out.content, ...(out.data !== undefined ? { data: out.data } : {}), ...(out.label ? { label: out.label } : {}), ...(out.wrapped ? { wrapped: true } : {}) };
       if (out.control?.type === "ask") {
         // The call is answered when the person answers: the turn stays half done, and the job waits.
-        r.state.waiting = { kind: "question", from: "model", question: out.control.question, ...(out.control.options ? { options: out.control.options } : {}), callId: c.id, at: r.now() };
+        r.state.waiting = {
+          kind: "question", from: "model", question: out.control.question, ...(out.control.options ? { options: out.control.options } : {}),
+          ...(out.control.widget ? { widget: out.control.widget } : {}), callId: c.id, at: r.now(),
+        };
         throw new Park("answer", cut(out.control.question, 200));
       }
       if (out.control?.type === "done") {
         w.finished = true;
         // A job that changed nothing answers with its words AND its summary (answerOf): the summary alone shortened the answer.
         w.doneSummary = r.tools.changes.empty && !r.state.merge ? answerOf(out.control.summary, [ex.text, w.draft]) : out.control.summary;
+        if (out.control.result) w.doneResult = out.control.result;
       }
     }
     ex.results.push(result);

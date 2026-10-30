@@ -51,6 +51,7 @@ const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
+const { DigestReply } = await import("../src/widgets/digest.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { readSend } = await import("../src/pipeline/assistPrompt.js");
 const { parsePortraitDraft } = await import("../src/pipeline/portraitDimensions.js");
@@ -285,6 +286,7 @@ describe("a known-good answer for each role", () => {
       text: '{"add":["Trains at 6am on weekdays.","Is vegetarian."],"drop":[],"summary":"Planning workouts around a 6am weekday routine and a vegetarian diet."}',
       reads: (t) => BotMemoryReply.parse(JSON.parse(t)),
     },
+    widget_digest: { text: '{"line":"Code bot finished the cart fix; Plan bot needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.
     ask_planner: {
       text: "SAY Captions is this switch on the right.\nPOINT e40 | Captions\nDONE",

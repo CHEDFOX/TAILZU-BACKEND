@@ -39,7 +39,9 @@ export async function readTasks(d: BotsAreaDeps, userId: string, limit = 30): Pr
   if (!d.connectors) return [];
   return (await safe(d.connectors.tasks.list(userId, limit), [])).map((t) => ({
     id: t.id, state: t.state, title: t.title, steps: t.steps, createdAt: t.createdAt, updatedAt: t.updatedAt,
-    approval: t.approval ? { id: t.approval.id, connector: t.approval.connector, preview: t.approval.preview } : null,
+    approval: t.approval ? {
+      id: t.approval.id, connector: t.approval.connector, preview: t.approval.preview, risk: t.approval.risk, ...(t.approval.widget ? { widget: t.approval.widget } : {}),
+    } : null,
   }));
 }
 
