@@ -14046,9 +14046,9 @@ export function buildKeyboardConfig(
       // keyboards honour "" as a label, not as a missing one.
       space: "",
       return: "return",
-      needFullAccess: "Enable Full Access to use voice + Refine.",
+      needFullAccess: "Allow Full Access to speak with X0. Tap to set it up.",
       // The iOS keyboard reads the same message under this key.
-      full_access_required: "Enable Full Access to use voice + Refine.",
+      full_access_required: "Allow Full Access to speak with X0. Tap to set it up.",
       // The words-out line, under the key both keyboards read it by.
       // While Tailzu is free there are no free words to run out of: a 429 is the usage meter (src/you/usage.ts).
       // Read safely: the keyboard's config is also built where no server config is loaded.
@@ -14673,6 +14673,13 @@ export function buildKeyboardConfig(
         // thinks while the words are cleaned up, smiles when they land. ""
         // keeps the mark. Builds before the bot ignore this and draw the mark.
         "kb.mic.bot": "peek",
+        // The status line is drawn once: by the tree's own band above the
+        // tools row (which a tap on opens the app). Both keyboards also float
+        // their native copy of it over the top of the keyboard, for a tree
+        // without a band; over this tree that is the same words twice, a
+        // little apart. Clear, it draws nothing and takes no touch.
+        "kb.status.overlay.bg": "#00000000",
+        "kb.status.overlay.fg": "#00000000",
         // Mic mode (iOS only — Android reads `liveVoice` and records in-process,
         // which iOS extensions CANNOT do). iOS blocks microphone recording
         // inside a keyboard extension: even with Full Access,
