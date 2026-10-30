@@ -123,6 +123,8 @@ export interface Decision {
   language: "en" | "hinglish" | "hi" | "other";
   /** A short follow-up to an earlier turn: that turn's words, to be put in front of this message when it is made into something. */
   followUp?: string;
+  /** A reaction ("what?", "why?") said as what it asks of the last answer ("Explain your last answer again, simpler"): sent in its place. */
+  reask?: string;
   /** "Ok, change it" after a question about the code: the job is handed what the conversation found, and does not look for the place again (code/chat/handoff.ts). */
   handoff?: boolean;
   /** A code task that is open-ended (debugging, investigating, exploring): worked in the free-form mode, where the model decides the order of explore, change and run (code/agent). */

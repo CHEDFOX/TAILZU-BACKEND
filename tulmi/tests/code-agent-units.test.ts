@@ -523,10 +523,12 @@ describe("the report", () => {
 
   it("is an answer when nothing was changed", () => {
     const x = state();
-    x.work.doneSummary = "slug() lowercases a title.";
+    x.work.doneSummary = "slug() lowercases a title.\n\n- It trims spaces (src/slug.ts:4)\n- It joins words with a dash (src/slug.ts:7)";
     const text = reportText({ state: x, spentPaise: 5, budgetPaise: 3000, outcome: "answer" });
-    expect(text).toContain("Here is the answer: ");
-    expect(text).toContain("slug() lowercases a title.");
+    // The answer itself, first, as written: no headline echoing the question, its lines and bullets kept.
+    expect(text).not.toContain("Here is the answer");
+    expect(text.startsWith("slug() lowercases a title.")).toBe(true);
+    expect(text).toContain("\n- It trims spaces (src/slug.ts:4)\n- It joins words with a dash (src/slug.ts:7)");
     expect(text).not.toContain("What changed");
     expect(text).not.toContain("Nothing needed changing.");
   });

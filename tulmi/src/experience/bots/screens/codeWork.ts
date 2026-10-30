@@ -382,7 +382,9 @@ function theirs(s: string, o: { flow?: string[]; size?: number } = {}): Node {
   return col([
     ...blocks.map((b) => b.kind === "code"
       ? box([text(b.text, { size: 12, mono: true, lineHeight: 18 })], { backgroundColor: C.surface, borderRadius: 12, padding: 12 })
-      : text(b.text, { size, lineHeight: Math.round(size * 1.45), color: C.ink })),
+      : b.kind === "head"
+        ? text(b.text, { size, weight: 600, lineHeight: Math.round(size * 1.35), color: C.ink })
+        : text(b.text, { size, lineHeight: Math.round(size * 1.45), color: C.ink })),
     ...(o.flow && o.flow.length >= 2 ? [flowCard(o.flow)] : []),
     ...(cites.length ? [row(cites.map(codeChip), { gap: 6, flexWrap: "wrap" })] : []),
   ], { gap: 10 });
@@ -926,7 +928,7 @@ function partsView(art: ArtifactRead, o: { scale?: number; max?: number } = {}):
   const parts = POINTABLE.has(art.artifact.type) ? visibleParts(outline(art.content)) : [];
   if (!parts.length) {
     const words = plainWords(art.content, 6);
-    return col(words.length ? words.map((b) => text(b.text, { size: Math.round(13 * s), lineHeight: Math.round(19 * s), mono: b.kind === "code" })) : [meta("Nothing to show yet.")], { gap: 8 });
+    return col(words.length ? words.map((b) => text(b.text, { size: Math.round(13 * s), lineHeight: Math.round(19 * s), mono: b.kind === "code", ...(b.kind === "head" ? { weight: 600 as const } : {}) })) : [meta("Nothing to show yet.")], { gap: 8 });
   }
   let budget = o.max ?? 28;
   const draw = (p: Part, depth: number): Node | null => {

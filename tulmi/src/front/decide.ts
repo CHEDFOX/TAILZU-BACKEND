@@ -238,7 +238,8 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
 
   return {
     intent, shape: { length, visual }, route, tier, budgetPaise, confidence, ...(clarify ? { clarify } : {}), via, ...(depth ? { depth } : {}),
-    language: rules.cls.language, ...(rules.followUp ? { followUp: rules.followUp.base } : {}),
+    language: rules.reaction?.language ?? rules.cls.language, ...(rules.followUp ? { followUp: rules.followUp.base } : {}),
+    ...(rules.reaction ? { reask: rules.reaction.ask } : {}),
     ...(rules.handoff && intent === "code_task" ? { handoff: true } : {}), ...(rules.openEnded && intent === "code_task" ? { mode: "freeform" as const } : {}),
     ...(rules.team && intent === "code_task" ? { team: rules.team } : {}),
     reasons: [...new Set(reasons)],

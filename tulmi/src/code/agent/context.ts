@@ -80,8 +80,16 @@ export interface ProjectInput {
   kind: string;
 }
 
-/** Said once a request is a question: the answer is made of the code's own names and values, not a paraphrase of them. */
-const QUESTION_NOTE = " Answer it from the code you read: give the exact names and values it asks for (a setting's name and its default, as `name = value`) and where each is (file:line), not a paraphrase of them.";
+/**
+ * Said once a request is a question: the answer is made of the code's own names and values, not a paraphrase of them,
+ * shaped to the question: a narrow one gets its names and values straight; a broad one (what is this project, how does
+ * it work) gets a plain overview first and the details after, never a wall of every setting.
+ */
+const QUESTION_NOTE = " Answer it from the code you read, shaped to the question. A narrow question (a setting, a function, an error): give the exact names "
+  + "and values it asks for (a setting's name and its default, as `name = value`) and where each is (file:line), not a paraphrase of them. A broad question "
+  + "(what is this project, how does it work, what do you understand): first two to four plain sentences anyone could follow (what it is, what it does, how "
+  + "it is built), then the few things that matter as short bullets with file:line, and what the code does not show; not every setting and number. Write it "
+  + "in short paragraphs and bullet lines (Markdown: line breaks, `-` bullets, **bold** for a heading word), never one block, and in the language the person wrote in.";
 
 /**
  * What the model is told about THIS project and THIS job, as the head of its first user message: dynamic, so it
@@ -318,8 +326,10 @@ export function freeformGuide(s: AgentState): string {
     + "Make the calls that do not wait on each other in one step (read three files at once; several edit_file calls together): a step costs the same with one call or eight.";
   if (asksOnly(s)) {
     return `${head}\nThis is a question: change nothing. Find the code that decides it (suggest_files, grep for the names, read_file the whole functions), follow the calls `
-      + "until you have the answer from the code itself, then call done with the WHOLE answer as summary: the exact names it asks about (functions, constants, error "
-      + "types, status codes, settings and their values) and where each is (file:line). The summary is all the person reads; say what the code does not show.";
+      + "until you have the answer from the code itself, then call done with the WHOLE answer as summary, shaped to the question: a narrow one gets the exact names "
+      + "it asks about (functions, constants, error types, status codes, settings and their values) and where each is (file:line); a broad one (what is this project, "
+      + "how does it work) gets two to four plain sentences first, then the few things that matter as bullets with file:line. Short paragraphs and `-` bullets, never "
+      + "one block, in the person's own language. The summary is all the person reads; say what the code does not show.";
   }
   return [
     head,

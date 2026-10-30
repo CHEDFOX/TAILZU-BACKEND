@@ -7,7 +7,7 @@
  *                       section 4), so POST /v1/artifacts/:id/edit { elementId } changes only that part
  *   flowOf(mermaid)     the boxes of a `flowchart` the code chat drew (code/chat/flow.ts), in the order the arrows go
  *   citations(text)     the `path:line` an answer rests on (code/chat/cite.ts kept only the ones it saw)
- *   plainWords(md)      an answer's Markdown as paragraphs and code blocks
+ *   plainWords(md)      an answer's Markdown as headings, paragraphs (bullets as lines) and code blocks
  *   stageOf(phase)      the agent's phase as the five stages the boards show (Understand · Plan · Build · Check · Ship)
  *   workLines(entries)  the work log as the short lines "watch it work" shows (Read…, Edited…, Ran…)
  *   tries(entries)      what a job that failed tried: each check it ran and what came of it
@@ -337,18 +337,30 @@ export function citations(text: string, max = 4): string[] {
   return [...seen];
 }
 
-export interface Block { kind: "para" | "code"; text: string }
+export interface Block { kind: "para" | "code" | "head"; text: string }
 
-/** An answer's Markdown as paragraphs (inline marks taken off) and code blocks, at most `max` blocks. */
-export function plainWords(md: string, max = 8): Block[] {
+/** One line's inline marks taken off: bold, code ticks, links. */
+const unmark = (t: string): string =>
+  t.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/__([^_]+)__/g, "$1").replace(/`([^`]+)`/g, "$1").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+
+/**
+ * An answer's Markdown the way a chat shows it: headings (a `#` line, or a line that is only bold) as their own blocks,
+ * paragraphs with their line breaks kept, bullets as "· " lines (nested ones indented), and code blocks; at most `max`.
+ */
+export function plainWords(md: string, max = 30): Block[] {
   const out: Block[] = [];
   const parts = md.replace(/\r/g, "").split(/```[^\n]*\n?/);
   parts.forEach((part, i) => {
     if (i % 2 === 1) { if (part.trim()) out.push({ kind: "code", text: part.replace(/\n+$/, "").split("\n").slice(0, 14).join("\n") }); return; }
     for (const p of part.split(/\n{2,}/)) {
-      const t = p.replace(/^#{1,6}\s+/gm, "").replace(/\*\*([^*]+)\*\*/g, "$1").replace(/__([^_]+)__/g, "$1").replace(/`([^`]+)`/g, "$1")
-        .replace(/^\s*[-*]\s+/gm, "· ").replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").trim();
-      if (t) out.push({ kind: "para", text: t });
+      let lines: string[] = [];
+      const flush = () => { const t = lines.join("\n").trim(); if (t) out.push({ kind: "para", text: t }); lines = []; };
+      for (const line of p.split("\n")) {
+        const head = /^\s*#{1,6}\s+(.+?)\s*#*\s*$/.exec(line) ?? /^\s*\*\*([^*]+)\*\*:?\s*$/.exec(line);
+        if (head) { flush(); out.push({ kind: "head", text: unmark(head[1]!).replace(/:$/, "") }); continue; }
+        lines.push(unmark(line).replace(/^(\s*)[-*+]\s+/, (_, sp: string) => (sp.length >= 2 ? "   · " : "· ")).replace(/\s+$/, ""));
+      }
+      flush();
     }
   });
   return out.slice(0, max);

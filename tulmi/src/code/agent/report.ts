@@ -22,6 +22,12 @@ import { cut, oneLine } from "../work/model.js";
 import { ANSWER_MAX_CHARS, type AgentState, type CheckSummary } from "./types.js";
 
 const safe = (s: string, n: number): string => redactText(oneLine(s, n), n);
+/**
+ * An answer, kept as written: its line breaks, bullets and paragraphs (oneLine flattened a whole answer into one block).
+ * Redacted and capped as everything else here; runs of blank lines become one.
+ */
+const keepLines = (s: string, n: number): string =>
+  redactText(String(s ?? "").replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, n), n);
 const list = (items: readonly string[], max = 15): string[] => items.slice(0, max).map((i) => `- ${i}`).concat(items.length > max ? [`- and ${items.length - max} more`] : []);
 
 // ------------------------------------------------------------------ commits
@@ -120,15 +126,19 @@ export function reportText(i: ReportInput): string {
   // A lead's work is its helpers' parts, merged: the files are theirs (code/team).
   const files = s.team && !s.work.staged.length ? (s.committedPaths ?? []).map((p) => `${p} (changed)`)
     : s.commit?.files?.length ? s.commit.files : s.work.staged.map((f) => `${f.path} (${f.action === "delete" ? "deleted" : f.action === "create" ? "added" : "changed"})`);
+  // An answer is the answer: no headline echoing the question back ("Here is the answer: what do you…").
   const headline = {
-    done: `Done: ${task}`, failed: `I stopped: ${task}`, budget: `I paused to check with you: ${task}`, answer: `Here is the answer: ${task}`,
+    done: `Done: ${task}`, failed: `I stopped: ${task}`, budget: `I paused to check with you: ${task}`, answer: "",
   }[i.outcome];
-  out.push(headline, "");
+  if (headline) out.push(headline, "");
   if (i.outcome === "failed" || i.outcome === "budget") {
     if (i.why) out.push(safe(i.why, 500), "");
   }
   // An answer is the whole of what the person asked for (the names and values it must hold): it is kept nearly whole. A change's summary is a few sentences.
-  if (s.work.doneSummary) out.push(i.outcome === "answer" ? "" : "What I did", safe(s.work.doneSummary, i.outcome === "answer" ? ANSWER_MAX_CHARS : 1500), "");
+  if (s.work.doneSummary) {
+    if (i.outcome === "answer") out.push(keepLines(s.work.doneSummary, ANSWER_MAX_CHARS), "");
+    else out.push("What I did", safe(s.work.doneSummary, 1500), "");
+  }
   if (i.outcome !== "answer") {
     if (files.length) out.push(i.outcome === "done" ? "What changed" : "What I changed but did not commit", ...list(files, 20), "");
     else if (i.outcome === "done") out.push("Nothing needed changing.", "");

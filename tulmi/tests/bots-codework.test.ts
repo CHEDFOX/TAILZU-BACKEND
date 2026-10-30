@@ -218,6 +218,16 @@ describe("bots app · reading Xode's work", () => {
     expect(flowOf("# not a flow")).toEqual([]);
     expect(citations("See `lib/session.ts:42` and (app/api/auth/route.ts:9-12), and lib/session.ts:42 again.")).toEqual(["lib/session.ts:42", "app/api/auth/route.ts:9-12"]);
     expect(plainWords("**Yes.** It's in `a.ts`.\n\n```ts\nconst a = 1;\n```")).toEqual([{ kind: "para", text: "Yes. It's in a.ts." }, { kind: "code", text: "const a = 1;" }]);
+    // A structured answer reads like a chat: its heading on its own, each bullet on its own line, nothing cut at 8 blocks.
+    const md = "Sign-in lives in two places.\n## Where\n- `lib/session.ts:42` keeps it\n  - refreshed hourly\n- **app/api/auth** checks it\n\n**Why it logs out**\nThe refresh failed.";
+    expect(plainWords(md)).toEqual([
+      { kind: "para", text: "Sign-in lives in two places." },
+      { kind: "head", text: "Where" },
+      { kind: "para", text: "· lib/session.ts:42 keeps it\n   · refreshed hourly\n· app/api/auth checks it" },
+      { kind: "head", text: "Why it logs out" },
+      { kind: "para", text: "The refresh failed." },
+    ]);
+    expect(plainWords(Array.from({ length: 20 }, (_, i) => `Point ${i}.`).join("\n\n"))).toHaveLength(20);
   });
 
   it("the stages, the work lines, the tries and the test counts", () => {
