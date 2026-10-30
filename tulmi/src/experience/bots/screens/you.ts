@@ -16,7 +16,7 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import { BOT_SOUNDS_CAPABILITY } from "../../../../../shared/types/sdui.js";
 import {
-  C, FACE, SCREENS, back, body, botAvatar, botRoute, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, listCard,
+  C, FACE, SCREENS, back, body, botAvatar, botRoute, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, labelled, listCard,
   listRow, meta, notice, open, page, percent, primaryButton, quietButton, row, secondaryButton, sectionLabel, seq, shapes,
   switchMark, switchRow, table, text, title, usageMeter, when, whenEq, whenWords, type BotsCtx, type IconName,
 } from "../kit.js";
@@ -238,8 +238,6 @@ const face = (ctx: BotsCtx, size: number): Node =>
     width: size, height: size, borderRadius: size / 2, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0,
   });
 
-const LANGS: Record<string, string> = { auto: "Same as you", en: "English", hi: "Hindi", hinglish: "Hinglish", bn: "Bengali", ta: "Tamil", te: "Telugu", mr: "Marathi", gu: "Gujarati", kn: "Kannada", ml: "Malayalam", pa: "Punjabi", ur: "Urdu" };
-const languageName = (code: string | null) => (!code ? "Same as you" : LANGS[code.toLowerCase()] ?? LANGS[code.toLowerCase().split("-")[0]!] ?? code);
 
 const signOut: ActionSpec = { kind: "signOut" };
 const exportAction = (url: string | null): ActionRef => (url ? seq(openUrl(url), toast("Your data is downloading")) : toast("Download isn't available right now. Try again later."));
@@ -291,7 +289,7 @@ const pingsLine = (s: Settings | undefined) => {
 function soundsCard(ctx: BotsCtx): Node[] {
   if (ctx.client !== "phone" || !ctx.can.has(BOT_SOUNDS_CAPABILITY)) return [];
   const keep: ActionSpec = { kind: "devicePref", key: "sounds", value: "$state.soundsOn" };
-  return [listCard([switchRow("Sounds", "soundsOn", { sub: "Little sounds when you pull to refresh, and when your bots play", onChange: keep })])];
+  return [listCard([switchRow("Sound", "soundsOn", { sub: "Bots might tell you something", onChange: keep })])];
 }
 
 function youPhone(ctx: BotsCtx, d: YouData | undefined) {
@@ -318,8 +316,6 @@ function youPhone(ctx: BotsCtx, d: YouData | undefined) {
         // Sign in on a computer by scanning its code (screens/link.ts).
         listRow({ label: "Link a computer", value: "Scan to sign in", onPress: open(SCREENS.link) }),
         listRow({ label: "What pings you", value: d ? (d.settings.notify.quiet ? "Quiet hours on" : "Needs you always") : "", onPress: open(SCREENS.notify) }),
-        listRow({ label: "Language", value: languageName(d?.language ?? null), onPress: open(SCREENS.language) }),
-        listRow({ label: "What bots may do alone", value: d?.apps ? (d.apps.alone ? plural(d.apps.alone, "rule") : "Ask me first") : "", onPress: open(SCREENS.apps) }),
       ]),
       ...soundsCard(ctx),
       listCard([
@@ -401,8 +397,6 @@ function youDesk(ctx: BotsCtx, d: YouData | undefined) {
           }),
         ]),
         deskList([
-          deskRow({ glyphNode: glyph(G.globe, 18), label: "Language", sub: "Bots reply the way you talk", value: languageName(d?.language ?? null), onPress: open(SCREENS.language) }),
-          deskRow({ glyphNode: glyph(G.rules, 18), label: "What bots may do alone", sub: "Everything else asks you first", value: apps ? (apps.alone ? plural(apps.alone, "rule") : "Nothing yet") : "", onPress: open(SCREENS.apps) }),
           deskRow({ glyphNode: glyph(G.bell, 18), label: "What pings you", sub: pingsLine(d?.settings) || "Needs you always", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
         ]),
         deskList([
@@ -711,9 +705,58 @@ function computerDesk(ctx: BotsCtx, d: ComputersData | undefined) {
 }
 // ===================================================================== bots.notify
 
-const SUMMARY_TIMES = [{ label: "7 pm", value: "1140" }, { label: "8 pm", value: "1200" }, { label: "9 pm", value: "1260" }, { label: "10 pm", value: "1320" }];
+// ---- the time picker: any hour, the minutes in fives, am or pm. Made of the kit's own parts (a box, a bound text, a
+// condition), so every app that draws these pages can use it; the server turns { h, m, ap } into the minute of the day.
+
+type ClockKey = "sum" | "qf" | "qt";
+const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
+const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
+/** A saved minute of the day as the picker's state: its hour, its minute (down to a five), am or pm. */
+function clockState(key: ClockKey, minute: number): Record<string, unknown> {
+  const h = Math.floor(minute / 60) % 24;
+  return { [`${key}_h`]: h % 12 === 0 ? 12 : h % 12, [`${key}_m`]: Math.floor((minute % 60) / 5) * 5, [`${key}_ap`]: h < 12 ? "am" : "pm" };
+}
+/** The next (or the one before) in a list that goes round: after 12 comes 1, before :00 comes :55. */
+function cycle(path: string, values: number[], dir: 1 | -1): ActionSpec {
+  let act: ActionSpec = { kind: "setState", path, value: values[0] };
+  for (let i = values.length - 1; i >= 0; i--) {
+    const next = values[(i + dir + values.length) % values.length];
+    act = { kind: "condition", if: { eq: [path, values[i]] }, then: { kind: "setState", path, value: next }, else: act } as ActionSpec;
+  }
+  return act;
+}
+const BIG = { size: 26, weight: 600, lineHeight: 32, tracking: -0.4 } as const;
+function stepper(path: string, values: number[], pad: boolean, what: string): Node {
+  const btn = (name: IconName, dir: 1 | -1) =>
+    labelled(box([icon(name, { size: 16, color: C.grey70 })], { width: 34, height: 44, alignItems: "center", justifyContent: "center" }, cycle(path, values, dir)), `${dir > 0 ? "Later" : "Earlier"} ${what}`);
+  return row([
+    btn("minus", -1),
+    row([...(pad ? [when({ lt: [path, 10] }, text("0", BIG))] : []), text(String(values[0]), { ...BIG, bind: path })], { minWidth: 36, justifyContent: "center" }),
+    btn("plus", 1),
+  ], { alignItems: "center" });
+}
+/** A saved time, as a chip: tap it to change it (and again to put the picker away). */
+function timeChip(key: ClockKey, minute: number): Node {
+  const open = whenEq("edit", key, C.ink, C.outline);
+  return box([text(clock(minute, true), { size: 14, weight: 600, lineHeight: 19 })], { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1.5, borderColor: open },
+    { kind: "condition", if: { eq: ["edit", key] }, then: { kind: "setState", path: "edit", value: "" }, else: { kind: "setState", path: "edit", value: key } } as ActionSpec);
+}
+/** The picker for one time, open while its chip is: hour, minutes, am or pm, then Save. */
+function timePicker(key: ClockKey, field: "summaryAt" | "quietFrom" | "quietTo", ok: string): Node {
+  const p = (x: string) => `${key}_${x}`;
+  return when({ eq: ["edit", key] }, col([
+    row([stepper(p("h"), HOURS, false, "hour"), text(":", BIG), stepper(p("m"), MINUTES, true, "minutes")], { alignItems: "center", justifyContent: "center", gap: 4 }),
+    row([
+      segments([{ label: "am", value: "am" }, { label: "pm", value: "pm" }], p("ap"), () => ({ kind: "haptic", style: "selection" }) as ActionSpec, 96),
+      grow(),
+      button("Save", seq(save({ notify: { [field]: { h: `$state.${p("h")}`, m: `$state.${p("m")}`, ap: `$state.${p("ap")}` } } }, ok), { kind: "setState", path: "edit", value: "" }), { size: "md" }),
+    ], { alignItems: "center", gap: 10 }),
+  ], { backgroundColor: C.surface, borderRadius: 14, paddingVertical: 8, paddingHorizontal: 12, gap: 6 }));
+}
+
 const notifyState = (s: Settings, ctx: BotsCtx) => ({
-  done: s.notify.done, summary: s.notify.summary, quiet: s.notify.quiet, at: String(s.notify.summaryAt), pickTime: false,
+  done: s.notify.done, summary: s.notify.summary, quiet: s.notify.quiet, edit: "",
+  ...clockState("sum", s.notify.summaryAt), ...clockState("qf", s.notify.quietFrom), ...clockState("qt", s.notify.quietTo),
   ...Object.fromEntries(ctx.live.bots.map((b) => [`bot_${b.slug.replace(/-/g, "_")}`, !s.notify.botsOff.includes(b.slug)])),
 });
 const doneSeg = (width?: number) => segments([{ label: "Quiet", value: "quiet" }, { label: "Ping", value: "ping" }], "done",
@@ -725,7 +768,12 @@ const botSwitch = (slug: string) => {
   const saveIt = when2(path, save({ notify: { bot: slug, on: true } }, "Pings on"), save({ notify: { bot: slug, on: false } }, "Pings off"));
   return { path, saveIt, press: seq({ kind: "toggleState", path }, saveIt) };
 };
-const timePicker = (): Node => when({ truthy: "pickTime" }, pills(SUMMARY_TIMES, "at", (v) => seq(save({ notify: { summaryAt: Number(v) } }, "Summary time changed"), { kind: "setState", path: "pickTime", value: false })));
+/** From and to, each a chip that opens its picker. */
+const quietTimes = (s: Settings): Node => col([
+  row([meta("From", { size: 13 }), timeChip("qf", s.notify.quietFrom), meta("to", { size: 13 }), timeChip("qt", s.notify.quietTo)], { gap: 8, flexWrap: "wrap" }),
+  timePicker("qf", "quietFrom", "Quiet hours changed"),
+  timePicker("qt", "quietTo", "Quiet hours changed"),
+], { gap: 8 });
 const botSub = (slug: string) => (slug === "keybot" ? "Only reminders, like your streak" : slug === "code" ? "Done, stopped or moved jobs" : undefined);
 
 function summaryPreview(ctx: BotsCtx, d: NotifyData): Node {
@@ -751,12 +799,11 @@ function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
         listRow({ left: box([], { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: C.ink }), label: "Done", sub: "Quiet: no sound. Ping: with sound", right: doneSeg(116), chevron: false }),
         row([
           glyph(G.rules, 18),
-          col([text("Daily summary", { size: 15 }), row([meta("One note at ", { size: 12 }), text(clock(s.notify.summaryAt), { size: 12, weight: 600 }), meta(" · ", { size: 12 }),
-            box([text("Change", { size: 12, style: { textDecorationLine: "underline" } })], { minHeight: 24, justifyContent: "center" }, { kind: "toggleState", path: "pickTime" })], {})], { flexGrow: 1, flexShrink: 1, gap: 2 }),
+          col([text("Daily summary", { size: 15 }), row([meta("One note at", { size: 12 }), timeChip("sum", s.notify.summaryAt)], { gap: 8 })], { flexGrow: 1, flexShrink: 1, gap: 6 }),
           box([switchMark("summary")], { minHeight: 44, justifyContent: "center" }, summarySwitch()),
         ], { gap: 12, paddingVertical: 10, paddingHorizontal: 16 }),
       ]),
-      timePicker(),
+      timePicker("sum", "summaryAt", "Summary time changed"),
       when({ truthy: "summary" }, summaryPreview(ctx, d)),
       col([
         sectionLabel("By bot"),
@@ -764,7 +811,8 @@ function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
         meta("A bot turned off still reaches you when it needs you.", { size: 12 }),
       ], { gap: 8 }),
       card([
-        row([glyph(G.moon, 18), col([text("Quiet hours", { size: 15, weight: 500 }), meta(`${clock(s.notify.quietFrom, true)} – ${clock(s.notify.quietTo, true)}, every night`, { size: 12 })], { flexGrow: 1, gap: 2 }), switchMark("quiet")], { gap: 12 }, quietSwitch()),
+        row([glyph(G.moon, 18), col([text("Quiet hours", { size: 15, weight: 500 }), meta("Every night", { size: 12 })], { flexGrow: 1, gap: 2 }), switchMark("quiet")], { gap: 12 }, quietSwitch()),
+        quietTimes(s),
         meta("Bots keep working. Done waits in Activity. Needs you still reaches you, without sound.", { size: 12, lineHeight: 17 }),
       ], { gap: 10, padding: 16 }),
     ],
@@ -799,13 +847,14 @@ function notifyDesk(ctx: BotsCtx, d: NotifyData | undefined) {
         card([
           row([col([text("Done", { size: 15, weight: 600 }), meta("Quiet: no sound. Ping: with sound", { size: 12 })], { flexGrow: 1, gap: 2 }), doneSeg(130)], { gap: 12 }),
           divider(),
-          row([col([text("Daily summary", { size: 15, weight: 600 }), meta(`One note at ${clock(s.notify.summaryAt)}`, { size: 12 })], { flexGrow: 1, gap: 2 }), box([switchMark("summary")], {}, summarySwitch())], { gap: 12 }),
-          pills(SUMMARY_TIMES, "at", (v) => save({ notify: { summaryAt: Number(v) } }, "Summary time changed")),
+          row([col([text("Daily summary", { size: 15, weight: 600 }), row([meta("One note at", { size: 12 }), timeChip("sum", s.notify.summaryAt)], { gap: 8 })], { flexGrow: 1, gap: 6 }), box([switchMark("summary")], {}, summarySwitch())], { gap: 12 }),
+          timePicker("sum", "summaryAt", "Summary time changed"),
           sectionLabel("Tonight's summary, as it will look"),
           summaryPreview(ctx, d),
         ], { padding: 20, gap: 14 }),
         card([
-          row([glyph(G.moon, 18), col([text("Quiet hours", { size: 15, weight: 600 }), meta(`${clock(s.notify.quietFrom, true)} – ${clock(s.notify.quietTo, true)}, every night`, { size: 12 })], { flexGrow: 1, gap: 2 }), switchMark("quiet")], { gap: 12 }, quietSwitch()),
+          row([glyph(G.moon, 18), col([text("Quiet hours", { size: 15, weight: 600 }), meta("Every night", { size: 12 })], { flexGrow: 1, gap: 2 }), switchMark("quiet")], { gap: 12 }, quietSwitch()),
+          quietTimes(s),
           quietBar,
           row([meta("12 am", { size: 11 }), grow(), meta("12 pm", { size: 11 }), grow(), meta("11 pm", { size: 11 })]),
           meta("Bots keep working. Done waits in Activity. Needs you still reaches you, without sound.", { size: 12, lineHeight: 17 }),
@@ -1182,7 +1231,6 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
     listRow({ label: "What pings you", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
     listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
     listRow({ label: "This computer helps", value: computerLine(d), onPress: open(SCREENS.computer) }),
-    listRow({ label: "Language", value: languageName(d?.language ?? null), onPress: open(SCREENS.language) }),
   ]);
   const privacy = listCard([
     listRow({ label: "Privacy", onPress: open(SCREENS.privacy) }),

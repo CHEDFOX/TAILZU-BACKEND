@@ -120,6 +120,31 @@ describe("the You screens", () => {
     }
   }
 
+  it("What pings you: every time can be set to any hour and five minutes, and saves as { h, m, ap }", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.notify", client, ANSWERS);
+      const json = JSON.stringify(s.root);
+      // Summary, quiet from and quiet to: each a chip that opens its picker.
+      for (const [key, field] of [["sum", "summaryAt"], ["qf", "quietFrom"], ["qt", "quietTo"]] as const) {
+        expect(json, client).toContain(JSON.stringify({ eq: ["edit", key] }));
+        expect(json, client).toContain(JSON.stringify({ [field]: { h: `$state.${key}_h`, m: `$state.${key}_m`, ap: `$state.${key}_ap` } }));
+        expect(typeof s.state?.[`${key}_h`], client).toBe("number");
+      }
+      expect(json).not.toContain('"pickTime"');
+      expect(lintTree(s.root!)).toEqual([]);
+    }
+  });
+
+  it("Settings has no Language (it is Keylessbord's) and no What bots may do alone", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      for (const id of ["bots.you", "bots.settings"]) {
+        const t = texts((await build(id, client, ANSWERS)).root);
+        expect(t, `${id} ${client}`).not.toContain("Language");
+        expect(t, `${id} ${client}`).not.toContain("What bots may do alone");
+      }
+    }
+  });
+
   it("This computer helps: no sales lines, and a computer signed in as them shows with how to let it help", async () => {
     const none = await build("bots.computer", "phone", { ...ANSWERS, "GET /v1/you/computers": { online: [], offline: [], signedIn: [], helped: { jobs: 0, minutes: 0 } } });
     expect(texts(none.root)).toContain("No computer yet");
@@ -247,6 +272,12 @@ describe("settings", () => {
     const p = applyPatch(DEFAULT_SETTINGS, { monthLimitRupees: "₹1,000", stopAtLimit: true, notify: { bot: "keybot", on: false, summaryAt: 1260 } });
     expect(p.ok && p.settings).toMatchObject({ monthLimitPaise: 100_000, stopAtLimit: true, notify: { botsOff: ["keybot"], summaryAt: 1260 } });
     expect(applyPatch(DEFAULT_SETTINGS, { stopAtLimit: "yes" }).ok).toBe(false);
+    // The time picker's { h, m, ap }: 12 am is midnight, 12 pm is noon, any minute.
+    const t = applyPatch(DEFAULT_SETTINGS, { notify: { quietFrom: { h: 10, m: 35, ap: "pm" }, quietTo: { h: 12, m: 0, ap: "am" }, summaryAt: { h: 12, m: 5, ap: "pm" } } });
+    expect(t.ok && t.settings.notify).toMatchObject({ quietFrom: 22 * 60 + 35, quietTo: 0, summaryAt: 12 * 60 + 5 });
+    for (const bad of [{ h: 0, m: 0, ap: "am" }, { h: 13, m: 0, ap: "pm" }, { h: 7, m: 60, ap: "am" }, { h: 7, m: 0, ap: "noon" }]) {
+      expect(applyPatch(DEFAULT_SETTINGS, { notify: { summaryAt: bad } }).ok).toBe(false);
+    }
     expect(applyPatch(DEFAULT_SETTINGS, { monthLimitPaise: 5 }).ok).toBe(false);
   });
 

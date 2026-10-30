@@ -41,6 +41,13 @@ export const LIMIT_MAX_PAISE = 10_000_000;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 const minuteOfDay = (v: unknown, d: number): number => (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 1440 ? (v as number) : d);
+/** 10:30 pm as { h: 10, m: 30, ap: "pm" } → 1350, the minute of the day; null when it isn't a time. */
+export function minuteOfClock(v: unknown): number | null {
+  const t = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  const h = Number(t.h), m = Number(t.m), ap = t.ap;
+  if (!Number.isInteger(h) || h < 1 || h > 12 || !Number.isInteger(m) || m < 0 || m > 59 || (ap !== "am" && ap !== "pm")) return null;
+  return ((h % 12) + (ap === "pm" ? 12 : 0)) * 60 + m;
+}
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 
 /** Whatever was stored, as settings: a field that is missing or wrong is its default. */
@@ -98,6 +105,13 @@ export function applyPatch(cur: YouSettings, raw: unknown): Patched {
     }
   }
   for (const k of ["summaryAt", "quietFrom", "quietTo"] as const) {
+    // As the time picker sends it: { h: 1-12, m: 0-59, ap: "am" | "pm" }.
+    if (n[k] && typeof n[k] === "object") {
+      const t = minuteOfClock(n[k]);
+      if (t === null) return { ok: false, message: `${k} is { h: 1 to 12, m: 0 to 59, ap: "am" or "pm" }.` };
+      next.notify[k] = t;
+      continue;
+    }
     if (n[k] !== undefined) {
       if (!Number.isInteger(n[k]) || (n[k] as number) < 0 || (n[k] as number) >= 1440) return { ok: false, message: `${k} is minutes after midnight, 0 to 1439.` };
       next.notify[k] = n[k] as number;
