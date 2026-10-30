@@ -47,17 +47,17 @@ import { MemoryRunStore, RunLedger, SWEEP_TIMES } from "../src/runs/index.js";
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&rarr;/g, "→").replace(/\s+/g, " ").replace(/ ([,.;:)])/g, "$1");
 const policy = text(PRIVACY_POLICY_HTML);
 const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.indexOf("11. Google apps you connect"));
-const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Changes to this policy"));
+const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. The Code bot and GitHub"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day Spaces got reporting and blocking, and deleting an account a page on the web", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 29, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 29, 2026");
+  it("is effective from the day the Code bot, connected apps, bots, files and the Lock Screen got their own sections", () => {
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 30, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 30, 2026");
   });
 
-  it("numbers its sections 1 to 13, once each, in order", () => {
+  it("numbers its sections 1 to 17, once each, in order", () => {
     const nums = [...PRIVACY_POLICY_HTML.matchAll(/<h2(?: id="[a-z-]+")?>(\d+)\. /g)].map((m) => Number(m[1]));
-    expect(nums).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    expect(nums).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
     const subs = [...PRIVACY_POLICY_HTML.matchAll(/<h3>10\.(\d) /g)].map((m) => Number(m[1]));
     expect(subs).toEqual([1, 2, 3, 4, 5]);
     const google = [...PRIVACY_POLICY_HTML.matchAll(/<h3>11\.(\d) /g)].map((m) => Number(m[1]));
@@ -71,7 +71,7 @@ describe("the policy's date and shape", () => {
   it("says, with the terms, that deleting an account waits 7 days, stops the bots, and can be kept until then", async () => {
     const { TERMS_HTML, TERMS_EFFECTIVE } = await import("../src/routes/policies/terms.js");
     const terms = text(TERMS_HTML);
-    expect(TERMS_EFFECTIVE).toBe("October 29, 2026");
+    expect(TERMS_EFFECTIVE).toBe("October 30, 2026");
     for (const words of [policy, terms]) {
       expect(words).toContain("7 days");
       expect(words).toContain("your bots stop working");
@@ -344,8 +344,8 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: October 29, 2026");
+    expect(res.body).toContain("Effective: October 30, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "October 29, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "October 30, 2026" });
   });
 });

@@ -38,6 +38,7 @@ import { installLiveWrites, liveJob } from "./live/writes.js";
 import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/media.js";
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./routes/policies/privacy.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./routes/policies/terms.js";
+import { SUPPORT_HTML } from "./routes/policies/support.js";
 import { pricingHtml } from "./routes/policies/pricing.js";
 import { payCsp, payHtml, type PayOffer } from "./routes/pay.js";
 import { DOWNLOAD_PAGE_HTML } from "./routes/download.js";
@@ -683,6 +684,15 @@ app.get("/terms", async (_req, reply) => {
   reply.type("text/html; charset=utf-8");
   reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
   return published ?? TERMS_HTML;
+});
+
+// How to reach us, and quick answers (x0bot.com/support). Served like the two
+// above: the published site first, this repo's copy as the fallback.
+app.get("/support", async (_req, reply) => {
+  const published = sitePage(cfg.SITE_DIR, "support");
+  reply.type("text/html; charset=utf-8");
+  reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
+  return published ?? SUPPORT_HTML;
 });
 
 // The prices, on a page of their own (x0bot.com/pricing), linked from the
