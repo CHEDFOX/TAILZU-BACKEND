@@ -10,6 +10,10 @@
  *   POST   /v1/widgets/act { item, action, text?, key? }   -> { ok, state, repeat? }   an answer (src/widgets/act.ts): with the
  *                                             widget's `X-Widget-Token` (needs-you answers and Done only), or the session
  *                                             (a notification's buttons and its reply)
+ *   POST   /v1/widgets/activity-token { jobId, token, platform?, env? }   -> { ok, push, removed? }   the "Bots at work" Live Activity's
+ *                                             APNs push token for one of the person's Code bot jobs (session), so the server can move it
+ *                                             while the app is shut (src/widgets/activity.ts). `push` false: server pushes are off (APNS_*
+ *                                             not set) or not an iPhone, nothing is kept. No token: the activity ended, its token is forgotten
  *
  * Every read and write is the person's own and goes through the services the app's own routes use, with their checks. The rows say
  * nothing the person's app would not (no amounts, a message's words only as the server allows, marked private).
@@ -23,7 +27,13 @@ import { widgetsConfig, type WidgetsConfigFor } from "../widgets/config.js";
 import { buildNow, widgetKnobs, type NowInput, type PendingApproval, type PeopleShared, type PeopleTask } from "../widgets/now.js";
 import { DEVICE_RE, WidgetTokens, widgetTokenStore } from "../widgets/token.js";
 import { parseItem } from "../widgets/items.js";
-import { livePublish } from "../live/writes.js";
+import { livePublish, setJobChangeHook } from "../live/writes.js";
+import { getConfig } from "../config.js";
+import { ActivityPusher } from "../widgets/activity.js";
+import { ApnsSender, apnsSettingsOf, type ApnsSettings } from "../widgets/apns.js";
+import { isHinglish } from "../connectors/words.js";
+import { x0Words } from "../widgets/glance.js";
+import { ACTIVITY_TOKEN_RE, activityTokenStore, JOB_ID_RE, markSeen, type ActivityTokenStore, type GlanceStore } from "../widgets/glanceStore.js";
 import { TOPIC, jobTopic } from "../live/topics.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import type { SpaceParts } from "./botsSpaces.js";
@@ -40,7 +50,17 @@ export interface WidgetRouteOptions {
   acts?: QuickActs;
   config?: WidgetsConfigFor;
   now?: () => number;
+  /** APNs for the Live Activity: null is off; absent reads APNS_* (config.ts). */
+  apns?: ApnsSettings | null;
+  /** Where Live Activity tokens are kept, and how a push goes (tests hand in fakes). */
+  activityTokens?: ActivityTokenStore;
+  apnsSender?: ConstructorParameters<typeof ActivityPusher>[0]["sender"];
+  /** What the person has seen (an answer marks its thing seen). */
+  glance?: GlanceStore;
 }
+
+/** Said once a process: the Live Activity pushes are off. */
+let saidApnsOff = false;
 
 /** The services an answer goes through, from what the server runs (any may be off). */
 export function actPartsOf(deps: BotsAreaDeps, parts: Pick<SpaceParts, "tasks" | "threads">): ActParts {
@@ -77,6 +97,23 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
   const acts = o.acts ?? new QuickActs(actPartsOf(deps, parts), undefined, now);
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
+
+  // THE "BOTS AT WORK" LIVE ACTIVITY'S PUSHES (src/widgets/activity.ts): every change to a job is heard (live/writes.ts), and a job whose
+  // activity registered its token is pushed. Off, and nothing heard, kept or sent, unless APNs is configured.
+  const apns = o.apns === undefined ? apnsSettingsOf(getConfig()) : o.apns;
+  const activityTokens = o.activityTokens ?? activityTokenStore();
+  const jobs = deps.jobs;
+  const pusher = apns && jobs ? new ActivityPusher({
+    tokens: activityTokens, sender: o.apnsSender ?? new ApnsSender(apns, undefined, now), now,
+    readJob: async (userId, jobId) => jobLite(await jobs.job(userId, jobId)),
+    words: (userId, hg) => x0Words(config({ userId, signedIn: true, now: now() }), hg),
+    log: { info: (m) => app.log.info(m), warn: (m) => app.log.warn(m) },
+  }) : null;
+  setJobChangeHook(pusher ? (userId, jobId) => pusher.jobChanged(userId, jobId) : null);
+  if (!pusher && !saidApnsOff) {
+    saidApnsOff = true;
+    app.log.info(jobs ? "widgets: Live Activity pushes are off (APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8 and APNS_TOPIC are not all set)" : "widgets: Live Activity pushes are off (no Code bot jobs)");
+  }
 
   const who = async (req: FastifyRequest, reply: FastifyReply): Promise<AuthedUser | null> => {
     const user = await resolveUser(req.headers["authorization"]);
@@ -201,7 +238,38 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
     const item = parseItem(b.item);
     if (out.status === 200 && item && (item.kind === "task" || item.kind === "job")) {
       livePublish(userId, item.kind === "job" ? [jobTopic(item.jobId), TOPIC.code, TOPIC.home, TOPIC.activity] : [TOPIC.tasks, TOPIC.activity, TOPIC.home]);
+      // Answered is seen: what it was about, as of now (a job that finishes later is news again).
+      void markSeen(userId, { ids: [item.kind === "job" ? item.jobId : item.taskId] }, now(), o.glance);
     }
     return reply.code(out.status).header("cache-control", "no-store").send(out.body);
+  });
+
+  app.post("/v1/widgets/activity-token", tight(30), async (req, reply) => {
+    const user = await who(req, reply);
+    if (!user) return reply;
+    const b = bodyOf(req.body);
+    const jobId = typeof b.jobId === "string" ? b.jobId : "";
+    if (!JOB_ID_RE.test(jobId)) return reply.code(400).send({ code: "bad_request", message: "jobId is the Code bot job's id." });
+    // The activity ended (no token): its token is forgotten.
+    if (b.token === undefined || b.token === null) {
+      await activityTokens.drop(user.id, jobId).catch(() => undefined);
+      return reply.header("cache-control", "no-store").send({ ok: true, push: !!pusher, removed: true });
+    }
+    const token = typeof b.token === "string" ? b.token.trim().toLowerCase() : "";
+    if (!ACTIVITY_TOKEN_RE.test(token)) return reply.code(400).send({ code: "bad_request", message: "token is the activity's push token, in hex." });
+    if (b.env !== undefined && b.env !== "production" && b.env !== "sandbox") return reply.code(400).send({ code: "bad_request", message: "env is production or sandbox." });
+    // Live Activities are the iPhone's: any other platform has nothing to push to.
+    if (!pusher || !jobs || (b.platform !== undefined && b.platform !== "ios")) return reply.header("cache-control", "no-store").send({ ok: true, push: false });
+    // Only the person's own job: the job router refuses anyone else's.
+    const job = await jobs.job(user.id, jobId).catch(() => null);
+    if (!job) return reply.code(404).send({ code: "not_found", message: "No such job." });
+    try {
+      const lang = header(req, "x-app-language") || (typeof b.language === "string" ? b.language : "");
+      await activityTokens.put(user.id, jobId, token, b.env === "sandbox" || b.env === "production" ? b.env : apns!.env, isHinglish(lang), now());
+    } catch (err) {
+      req.log.error({ err: (err as Error)?.name }, "widgets: activity token not kept");
+      return reply.code(503).send({ code: "failed", message: "Couldn't do that just now." });
+    }
+    return reply.header("cache-control", "no-store").send({ ok: true, push: true });
   });
 }
