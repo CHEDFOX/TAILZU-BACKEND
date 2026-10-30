@@ -182,7 +182,7 @@ describe("the phone's Sounds switch", () => {
   it("on the You tab, kept on the device, on by default, for a build that plays the sounds", async () => {
     const s = await you("phone", ["BotsKit", BOT_SOUNDS_CAPABILITY]);
     const texts = walk(s.root!).filter((n) => n.type === "Text").map((n) => String(n.props?.content));
-    expect(texts).toContain("Sounds");
+    expect(texts).toEqual(expect.arrayContaining(["Sound", "Bots might tell you something"]));
     expect(s.state).toMatchObject({ soundsOn: true });
     const row = soundRow(s.root!);
     expect(row?.on?.onPress).toEqual({ kind: "sequence", actions: [{ kind: "toggleState", path: "soundsOn" }, { kind: "devicePref", key: "sounds", value: "$state.soundsOn" }] });
