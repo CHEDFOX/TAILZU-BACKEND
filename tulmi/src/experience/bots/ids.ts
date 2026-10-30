@@ -74,7 +74,7 @@ export const SCREENS = {
   report: "bots.report",             // Report a message, a shared thing or a person (params: kind, id, thread)
   blocked: "bots.blocked",           // Blocked people, each with Unblock (You › Blocked people)
   // screens/keybot.ts
-  keybot: "bots.keybot",             // Keybot / DKeybot
+  keybot: "bots.keybot",             // Keylessbord / DKeybot
   keyOn: "bots.keybot.on",           // KeyOn / DKeyOn
   keyLive: "bots.keybot.live",       // KeyLive
   keyReply: "bots.keybot.reply",     // KeyReply / DKeyReply
@@ -86,8 +86,8 @@ export const SCREENS = {
   keyHistory: "bots.keybot.history", // KeyHistory / DKeyHistory
   keySettings: "bots.keybot.settings", // KeySettings / DKeySettings
   keyPill: "bots.keybot.pill",       // DeskPill
-  // screens/keybotStats.ts and keybotYou.ts: the old Stats tab and You tab, in Keybot (docs/bots-keybot-parity.md).
-  // No boards of their own: drawn in Keybot's look (KeySettings, KeyWords) from the old screens' contents.
+  // screens/keybotStats.ts and keybotYou.ts: the old Stats tab and You tab, in Keylessbord (docs/bots-keybot-parity.md).
+  // No boards of their own: drawn in Keylessbord's look (KeySettings, KeyWords) from the old screens' contents.
   keyMonth: "bots.keybot.month",     // This month: typed against said, the words left, every day, spoken, all time
   keyDay: "bots.keybot.day",         // One day (params: day, its place in the last 30; none is today)
   keyApps: "bots.keybot.apps",       // Where the words went (params: app, one app's page)

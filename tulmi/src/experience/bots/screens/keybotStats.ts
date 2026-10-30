@@ -1,6 +1,6 @@
 /**
  * KEYBOT'S NUMBERS, PAGE BY PAGE: what the old Stats tab opened in its cards (catalog.ts statsScreen's panels) and the
- * desk's Insights pages (desk.ts deskInsights, deskDay, deskApp), in Keybot's look, for the phone and the window.
+ * desk's Insights pages (desk.ts deskInsights, deskDay, deskApp), in Keylessbord's look, for the phone and the window.
  *
  *   bots.keybot.month   This month: typed against said, the words left and what turning up earned, words a day, by
  *                       week, the running total, spoken, against typing, all time, and every day as a list
@@ -170,7 +170,7 @@ function dayPage(ctx: BotsCtx, s: Stats | undefined) {
   if (!d) {
     return statsPage(ctx, {
       title: "A day", sub: "What you said that day",
-      top: [card([text("That day isn't here.", { size: 15, weight: 600 }), meta(`Open it from the calendar on Keybot: the last ${s.window.days} days are there.`, { size: 13 })], { gap: 6 })],
+      top: [card([text("That day isn't here.", { size: 15, weight: 600 }), meta(`Open it from the calendar on Keylessbord: the last ${s.window.days} days are there.`, { size: 13 })], { gap: 6 })],
       left: [], right: [],
     });
   }
@@ -181,7 +181,7 @@ function dayPage(ctx: BotsCtx, s: Stats | undefined) {
     nav,
     col([
       text(d.words ? plural(d.words, "word", "words") : d.today ? "Nothing yet today" : "A quiet day", { size: 34, weight: 700, tracking: -0.8, lineHeight: 40 }),
-      meta(d.words ? (said > 0 ? `said in ${span(said)}` : "written with Keybot")
+      meta(d.words ? (said > 0 ? `said in ${span(said)}` : "written with Keylessbord")
         : d.today ? "Nothing yet today. Say something in any app and it shows here, hour by hour." : "Nothing was said or written on this day. Days off count too.", { size: 13 }),
     ], { gap: 2 }),
   ];
@@ -300,7 +300,7 @@ function speakPage(ctx: BotsCtx, s: Stats | undefined) {
   const vt = s.voices.reduce((a, b) => a + b.words, 0);
   const top: Node[] = [col([
     text(s.languages.length ? plural(s.languages.length, "language", "languages") : "No languages yet", { size: 34, weight: 700, tracking: -0.8, lineHeight: 40 }),
-    meta(`What Keybot wrote in the last ${w.days} days, read from the words themselves.`, { size: 13 }),
+    meta(`What Keylessbord wrote in the last ${w.days} days, read from the words themselves.`, { size: 13 }),
   ], { gap: 2 })];
   const left: Node[] = [
     block("What you write in", [shareBars(s.languages, { empty: "Talk for a few days and this fills in." }),

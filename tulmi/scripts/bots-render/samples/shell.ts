@@ -1,6 +1,6 @@
 /**
  * The shell's day (Home, Activity, Ask, Search, Tasks, Approve, Today, meeting notes) as routes/botsShell.ts answers it, built with the
- * real feed and search (src/shell) from the sample day's jobs: Code bot working on the cart, the dentist waiting for a yes, the salon.
+ * real feed and search (src/shell) from the sample day's jobs: Xode working on the cart, the dentist waiting for a yes, the salon.
  */
 import { feedOf, weekOf } from "../../../src/shell/feed.js";
 import { searchAll } from "../../../src/shell/search.js";
@@ -29,10 +29,10 @@ export function shellApi(): Record<string, unknown> {
   const week = weekOf(rows, N - 3 * DAY, 200);
 
   const search = searchAll("salon", {
-    projects: [{ id: "project:p2", title: "Salon booking app", sub: "aanya/salon-booking-app", text: "", at: N - 3 * HOUR, bot: "code", open: { screenId: "bots.code", params: { project: "p2" } }, preview: { body: "A Code bot project on GitHub: aanya/salon-booking-app." } }],
+    projects: [{ id: "project:p2", title: "Salon booking app", sub: "aanya/salon-booking-app", text: "", at: N - 3 * HOUR, bot: "code", open: { screenId: "bots.code", params: { project: "p2" } }, preview: { body: "A Xode project on GitHub: aanya/salon-booking-app." } }],
     chats: [
-      { id: "bot:plan", title: "Book the salon for Sat 11 am, before Riya's mehendi", sub: "Plan bot · Tue", at: N - DAY, bot: "plan", open: { screenId: "bots.chat", params: { slug: "plan" } }, preview: { lines: [{ who: "you", text: "Book the salon for Sat 11 am, before Riya's mehendi" }, { who: "bot", text: "Found 11 am free at the Indiranagar salon. Haircut ₹650. Hold it?" }, { who: "you", text: "Haan, hold karo" }, { who: "bot", text: "Booked for Sat 31 Oct, 11 am. It's on your calendar." }], at: "Tue" } },
-      { id: "code:x", title: "Add salon time slots to the booking page", sub: "Code bot · Salon booking app · Mon", at: N - 2 * DAY, bot: "code", open: { screenId: "bots.chat", params: { slug: "code" } } },
+      { id: "bot:plan", title: "Book the salon for Sat 11 am, before Riya's mehendi", sub: "Plan Ease · Tue", at: N - DAY, bot: "plan", open: { screenId: "bots.chat", params: { slug: "plan" } }, preview: { lines: [{ who: "you", text: "Book the salon for Sat 11 am, before Riya's mehendi" }, { who: "bot", text: "Found 11 am free at the Indiranagar salon. Haircut ₹650. Hold it?" }, { who: "you", text: "Haan, hold karo" }, { who: "bot", text: "Booked for Sat 31 Oct, 11 am. It's on your calendar." }], at: "Tue" } },
+      { id: "code:x", title: "Add salon time slots to the booking page", sub: "Xode · Salon booking app · Mon", at: N - 2 * DAY, bot: "code", open: { screenId: "bots.chat", params: { slug: "code" } } },
     ],
     notes: [{ id: "note:n1", title: "Salon list, Indiranagar", sub: "Your note · haircut ₹650 · keratin ₹3,200", text: "", at: N - 5 * DAY, open: { screenId: "bots.note", params: { id: "n1" } } }],
     files: [
@@ -59,7 +59,7 @@ export function shellApi(): Record<string, unknown> {
     { at: 91, speaker: "Speaker 3", text: "Haan, SMS koi nahi padhta. And a small deposit will help." },
     { at: 124, speaker: "Speaker 2", text: "That old calendar plugin was useless for this, honestly." },
     { at: 140, speaker: "Speaker 1", text: "₹200 deposit, refunded when they walk in. Done." },
-    { at: 161, speaker: "You", text: "Okay. Code bot can start on the reminders today." },
+    { at: 161, speaker: "You", text: "Okay. Xode can start on the reminders today." },
   ], decisions: [
     "Reminders go out on WhatsApp, 24 hours and 2 hours before",
     "Weekend slots need a ₹200 UPI deposit, refunded at the counter",

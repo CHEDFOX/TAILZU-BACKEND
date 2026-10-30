@@ -1,5 +1,5 @@
 /**
- * WHAT A PERSON'S USE IS COUNTED IN, FOR THE WORDS THAT ARE NOT DRAWN ON A SCREEN: a Code bot job that pauses for more says so in its
+ * WHAT A PERSON'S USE IS COUNTED IN, FOR THE WORDS THAT ARE NOT DRAWN ON A SCREEN: a Xode job that pauses for more says so in its
  * notification and on its record ("This job has used a lot of this stretch."), and a person on the free plan has no stretches, only the
  * month (src/you/usage.ts). The screens know from the meter (kit.ts spanOf); this answers the job's loop, which runs away from them.
  *

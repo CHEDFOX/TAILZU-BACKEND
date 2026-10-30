@@ -19,7 +19,7 @@
  *   orchestrator.ts  the worker: claims, checkpoints, concurrency, the person's word
  *   ../team/         lead and helpers: a big goal split into parts, built in parallel by helpers, reviewed, merged and verified (docs/code-team.md)
  *
- * createAgent() wires it from the Code object and the job router. It exists only when the Code bot has a
+ * createAgent() wires it from the Code object and the job router. It exists only when Xode has a
  * GitHub client AND the project brain is on (the loop reads the brain for where a change belongs); a server
  * without it leaves a job to whatever drives the router directly, as before.
  */

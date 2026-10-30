@@ -1,11 +1,11 @@
 /**
  * THE SAMPLES: every Bots app screen (ids.ts) with the params and the route answers that draw it the way its boards do, the boards' day
- * (Aanya, Tuesday 28 October, Code bot asking about the cart's rounding). showcase.ts renders them all; one screen's answers also work for
+ * (Aanya, Tuesday 28 October, Xode asking about the cart's rounding). showcase.ts renders them all; one screen's answers also work for
  * render.ts: `--api "$(npx tsx -e 'import("./scripts/bots-render/samples/index.ts").then(async (m) => console.log(JSON.stringify(await m.apiFor(m.sample("bots.plan")))))')"`.
  *
  * Each area keeps its own day (they were made by the area's own render checks): tests/bots-bots-data.ts and tests/bots-codework-data.ts
  * (shared with their tests), and here shell.ts, you.ts, keybot.json (the views in src/keybot/views.ts, as served), firstrun.json and
- * code.json (Code bot's projects, jobs and PRs; `variants` are the few answers a step changes). A screen gets every area's answers, its
+ * code.json (Xode's projects, jobs and PRs; `variants` are the few answers a step changes). A screen gets every area's answers, its
  * own area's last, since two areas answer some of the same routes differently (/v1/files, /v1/code/jobs).
  */
 import { sampleApi as botsApi } from "../../../tests/bots-bots-data.js";
@@ -40,7 +40,7 @@ export interface Sample {
   fake?: Omit<FakeOpts, "api" | "calls">;
 }
 
-/** Code bot's project and jobs in code.json. */
+/** Xode's project and jobs in code.json. */
 const P = "11111111-1111-4111-8111-111111111111";
 const J_REVIEW = "7c1d2e3f-0000-4000-8000-000000000001";
 const J_PLAN = "7c1d2e3f-0000-4000-8000-000000000004";
@@ -68,7 +68,7 @@ export const SAMPLES: Sample[] = [
   { id: S.signIn, area: "firstrun", board: "SignIn", deskBoard: "DSignIn" },
   { id: S.signCode, area: "firstrun", board: "SignCode", deskBoard: "DSignCode" },
   { id: S.nameIt, area: "firstrun", board: "NameIt", deskBoard: "DNameIt" },
-  // ...and the pages it used to lead through, reached from the app now: Language and Plans from You, Turn on Keybot
+  // ...and the pages it used to lead through, reached from the app now: Language and Plans from You, Turn on Keylessbord
   // from the keyboard card, First words after the microphone card.
   { id: S.language, area: "firstrun", board: "Language", deskBoard: "DLanguage" },
   { id: S.keyOn, area: "firstrun", board: "KeyOn", deskBoard: "DKeyOn" },
@@ -110,7 +110,7 @@ export const SAMPLES: Sample[] = [
   { id: S.shareIn, area: "bots", board: "ShareIn", deskBoard: "DShareIn", params: { file: "f-9" } },
   { id: S.avatars, area: "bots", board: "Avatars" },
   // screens/keybot.ts
-  { id: S.keybot, area: "keybot", board: "Keybot", deskBoard: "DKeybot" },
+  { id: S.keybot, area: "keybot", board: "Keylessbord", deskBoard: "DKeybot" },
   { id: S.keyLive, area: "keybot", board: "KeyLive" },
   { id: S.keyReply, area: "keybot", board: "KeyReply", deskBoard: "DKeyReply" },
   { id: S.keyRewrite, area: "keybot", board: "KeyRewrite", deskBoard: "DKeyRewrite" },
@@ -121,7 +121,7 @@ export const SAMPLES: Sample[] = [
   { id: S.keyHistory, area: "keybot", board: "KeyHistory", deskBoard: "DKeyHistory" },
   { id: S.keySettings, area: "keybot", board: "KeySettings", deskBoard: "DKeySettings" },
   { id: S.keyPill, area: "keybot", deskBoard: "DeskPill" },
-  // The old Stats and You tabs' pages, in Keybot (no boards of their own; docs/bots-keybot-parity.md).
+  // The old Stats and You tabs' pages, in Keylessbord (no boards of their own; docs/bots-keybot-parity.md).
   { id: S.keyMonth, area: "keybot" },
   { id: S.keyDay, area: "keybot" },
   { id: S.keyDay, variant: "quiet", area: "keybot", params: { day: 19 } },
@@ -171,7 +171,7 @@ export function areaApis(): Promise<Record<Area, Record<string, unknown>>> {
 }
 
 /**
- * Keybot's answers: keybot.json (the views as served), with the home, the numbers, the words' spellings, shortcuts
+ * Keylessbord's answers: keybot.json (the views as served), with the home, the numbers, the words' spellings, shortcuts
  * and use, and the personality made from the last 30 days in tests/bots-keybot-data.ts.
  */
 function keybotAnswers(): Record<string, unknown> {

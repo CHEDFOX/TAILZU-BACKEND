@@ -350,7 +350,7 @@ export class Bots {
     const found = await this.resolve(userId, ref);
     if (!found) throw notFound();
     const def = found.def;
-    if (def.slug === CODE_SLUG) throw new BotError("code_bot", "The Code bot answers through the front door (POST /v1/ask).", 409);
+    if (def.slug === CODE_SLUG) throw new BotError("code_bot", "Xode answers through the front door (POST /v1/ask).", 409);
     await this.notStopped(userId);
     let message = this.messageOf(input.message);
     const ran = expand(await this.store.listCommands(userId, def.id), message);

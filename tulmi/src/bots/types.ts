@@ -20,7 +20,7 @@ export interface BotSkills {
   files: boolean;
   /** Make a page, a chart or a diagram the person sees beside the chat. */
   artifacts: boolean;
-  /** Ask the Code bot about the person's project. */
+  /** Ask Xode about the person's project. */
   code: boolean;
   /** A researched answer that cites its pages. */
   research: boolean;
@@ -35,7 +35,7 @@ export interface BotBudgets {
   dailyPaise: number;
 }
 
-/** A bot, as one format for the Code bot, Keybot, the Plan bot, the Travel bot and every bot a person makes. */
+/** A bot, as one format for Xode, Keylessbord, Plan Ease, the Travel bot and every bot a person makes. */
 export interface BotDef {
   /** A uuid for a person's bot; the slug for a built-in. */
   id: string;

@@ -1,5 +1,5 @@
 /**
- * The Plan bot's travel times (src/botsBots/planTravel.ts over src/places, with fakes: no network), on the boards' week (Aanya's
+ * Plan Ease's travel times (src/botsBots/planTravel.ts over src/places, with fakes: no network), on the boards' week (Aanya's
  * Thursday: a video standup, the dentist in Indiranagar at 6, dinner with Mom in Koramangala at 7).
  *
  *   - the trip between stops, when to leave, a gap too short to make; a video call is not a place

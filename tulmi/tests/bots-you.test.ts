@@ -55,7 +55,7 @@ const ANSWERS: Record<string, unknown> = {
   "GET /v1/you?tz=330": {
     plan: { name: "Pro", active: true },
     usage: USAGE,
-    apps: { enabled: true, connected: [{ id: "google-calendar", name: "Google Calendar", usedBy: ["Plan bot", "Gym bot"], lastUsedAt: FIXED_NOW - 2 * MIN }], github: { repos: 2 }, alone: 3 },
+    apps: { enabled: true, connected: [{ id: "google-calendar", name: "Google Calendar", usedBy: ["Plan Ease", "Gym bot"], lastUsedAt: FIXED_NOW - 2 * MIN }], github: { repos: 2 }, alone: 3 },
     computers: { online: [{ name: "Aanya's MacBook", busy: false, allowRun: true }], offline: 1, helped: { jobs: 6, minutes: 200 } },
     settings: S, exportUrl: "https://api.x0bot.com/v1/you/export/file?t=x", language: "hinglish",
   },
@@ -79,17 +79,17 @@ const ANSWERS: Record<string, unknown> = {
   },
   "GET /v1/you/notify?tz=330": { settings: S, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you." },
   "GET /v1/you/account": {
-    bots: [{ slug: "code", name: "Code bot", colour: "", builtin: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }],
+    bots: [{ slug: "code", name: "Xode", colour: "", builtin: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }],
     projects: ["checkout-web", "storefront"], notes: 212, keys: 3, plan: { active: true, store: "razorpay", renews: true, until: FIXED_NOW + 15 * DAY }, exportUrl: null,
   },
   "GET /v1/you/apps": {
     enabled: true, github: { repos: 2 },
-    connected: [{ id: "google-calendar", name: "Google Calendar", category: "Calendar", level: "draft", lastUsedAt: FIXED_NOW - DAY, usedBy: ["Plan bot"] }],
+    connected: [{ id: "google-calendar", name: "Google Calendar", category: "Calendar", level: "draft", lastUsedAt: FIXED_NOW - DAY, usedBy: ["Plan Ease"] }],
     more: [{ id: "google-docs", name: "Google Docs", category: "Docs", oneLine: "Write a new Google Doc.", usedBy: [] }],
   },
   "GET /v1/you/apps/google-calendar": {
     app: { id: "google-calendar", name: "Google Calendar", category: "Calendar", oneLine: "See your schedule.", auth: "oauth", provider: "google", connected: false, level: "look", lastUsedAt: null },
-    bots: [{ slug: "plan", name: "Plan bot", colour: "", purpose: "Plans your day", builtin: true, linked: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Workouts", builtin: false, linked: false }],
+    bots: [{ slug: "plan", name: "Plan Ease", colour: "", purpose: "Plans your day", builtin: true, linked: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Workouts", builtin: false, linked: false }],
     can: ["Read your events"], cant: ["Share your calendar"],
   },
 };
@@ -123,12 +123,12 @@ describe("the You screens", () => {
   it("This computer helps: no sales lines, and a computer signed in as them shows with how to let it help", async () => {
     const none = await build("bots.computer", "phone", { ...ANSWERS, "GET /v1/you/computers": { online: [], offline: [], signedIn: [], helped: { jobs: 0, minutes: 0 } } });
     expect(texts(none.root)).toContain("No computer yet");
-    for (const gone of ["Your own computers run part of the work, so jobs cost less. It's free, and bots say when they use one.", "Your laptop can run tests and builds for Code bot, for free."]) {
+    for (const gone of ["Your own computers run part of the work, so jobs cost less. It's free, and bots say when they use one.", "Your laptop can run tests and builds for Xode, for free."]) {
       expect(texts(none.root)).not.toContain(gone);
     }
     const mac = await build("bots.computer", "phone", { ...ANSWERS, "GET /v1/you/computers": { online: [], offline: [], signedIn: [{ deviceId: "app:mac", name: "Your Mac", os: "mac", lastSeen: FIXED_NOW }], helped: { jobs: 0, minutes: 0 } } });
-    expect(texts(mac.root)).toEqual(expect.arrayContaining(["Your Mac", "Signed in · X0 Code is off", "Add a computer"]));
-    expect(texts(mac.root).some((t) => t.includes("Use this computer for X0 Code"))).toBe(true);
+    expect(texts(mac.root)).toEqual(expect.arrayContaining(["Your Mac", "Signed in · Xode is off", "Add a computer"]));
+    expect(texts(mac.root).some((t) => t.includes("To let it help") || t.includes("It shows up here"))).toBe(false);
     expect(texts(mac.root)).not.toContain("No computer yet");
     expect(lintTree(mac.root!)).toEqual([]);
   });
@@ -221,7 +221,7 @@ describe("the You screens", () => {
 });
 
 describe("the month's spend", () => {
-  it("adds the Code bot's jobs and every other bot's answers, in the person's own days", () => {
+  it("adds Xode's jobs and every other bot's answers, in the person's own days", () => {
     const r = spendReport({
       jobs: [
         { id: "a", task: "Fix cart", state: "done", spentPaise: 1000, createdAt: FIXED_NOW - 2 * HOUR, updatedAt: FIXED_NOW - HOUR },
@@ -260,7 +260,7 @@ describe("settings", () => {
 
 describe("what pings the person", () => {
   const s = cleanSettings({ notify: { done: "quiet", quiet: true, summary: true, botsOff: ["keybot"] } });
-  it("needs you always comes (silent in quiet hours); done is quiet, and waits at night; Keybot off drops its reminders", () => {
+  it("needs you always comes (silent in quiet hours); done is quiet, and waits at night; Keylessbord off drops its reminders", () => {
     expect(verdict(s, "code_needs_you", 12 * 60)).toBe("send");
     expect(verdict(s, "approval", 2 * 60)).toBe("silent");
     expect(verdict(s, "code_job_done", 12 * 60)).toBe("silent");
@@ -272,7 +272,7 @@ describe("what pings the person", () => {
     expect(summaryLine({ done: 0, needs: 0, spentPaise: 0 })).toBeNull();
   });
 
-  it("a task, a plan or a message from someone in a space comes with Keybot off, and without a sound in quiet hours", () => {
+  it("a task, a plan or a message from someone in a space comes with Keylessbord off, and without a sound in quiet hours", () => {
     for (const kind of ["space_task", "space_plan", "space_message"]) {
       expect(verdict(s, kind, 12 * 60)).toBe("send");
       expect(verdict(s, kind, 2 * 60)).toBe("silent");
@@ -310,7 +310,7 @@ describe("the usage limits, kept", () => {
   const make = () =>
     new Spending({ store, jobs: jobs as never, now: () => FIXED_NOW, entitlement: async () => ({ entitlement: "pro", active: true }) });
 
-  it("counts the Code bot's jobs, every bot's answers and what Keybot really cost, and shows only shares and when they reset", async () => {
+  it("counts Xode's jobs, every bot's answers and what Keylessbord really cost, and shows only shares and when they reset", async () => {
     spent = 3000;
     await store.addSpend(UID, "plan", 1000, FIXED_NOW - 2 * HOUR);
     const spending = make();
@@ -338,7 +338,7 @@ describe("the usage limits, kept", () => {
     });
   });
 
-  it("a new Code bot job, and a Keep going, are held to what is left of the stretch; with nothing left, the refusal", async () => {
+  it("a new Xode job, and a Keep going, are held to what is left of the stretch; with nothing left, the refusal", async () => {
     spent = 59_000;
     const spending = make();
     const app = Fastify();

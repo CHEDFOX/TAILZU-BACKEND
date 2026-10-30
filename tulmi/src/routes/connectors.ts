@@ -55,7 +55,7 @@ const AUTO_MAX = 100;
 export const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'";
 /** Where the phone's app is opened from this page: its Connected apps screen (it refreshes itself on the way in). */
 const OPEN_APP = "tulmi://screen/assistant_apps?entry=link";
-/** The done page of a browser sign-in. The Code bot's GitHub callback (routes/code.ts) uses it too, with its own `openUrl`. */
+/** The done page of a browser sign-in. Xode's GitHub callback (routes/code.ts) uses it too, with its own `openUrl`. */
 export const page = (title: string, line: string, openApp = true, openUrl = OPEN_APP) =>
   `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>` +
   `<style>body{font:18px/1.5 system-ui,sans-serif;display:grid;place-items:center;min-height:100vh;margin:0;padding:24px;text-align:center;color:#1b1b1f;background:#faf8f5}` +

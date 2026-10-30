@@ -1,5 +1,5 @@
 /**
- * A fake GitHub, for the Code bot's tests (code-github.test.ts, code-routes.test.ts).
+ * A fake GitHub, for Xode's tests (code-github.test.ts, code-routes.test.ts).
  *
  * `fake.fetchFn` is handed to the code under test in place of fetch, and
  * answers what api.github.com and github.com/login/oauth answer, from memory:

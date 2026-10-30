@@ -85,7 +85,7 @@ export interface TeamPorts {
 }
 
 export interface AgentDeps {
-  /** The Code bot's own pieces: projects, GitHub, the approvals. */
+  /** Xode's own pieces: projects, GitHub, the approvals. */
   projects: ProjectDeps;
   jobs: Pick<JobRouter, "finishJob" | "cancelJob"> & Partial<Pick<JobRouter, "clearCaptured" | "createJob" | "capacity">>;
   store: JobStore;

@@ -115,7 +115,7 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li>To provide the core features (transcription, refinement, keyboard, personality)</li>
   <li>To do what you ask in the Google apps you connect, and nothing more (see Section 11)</li>
-  <li>To do what you ask in GitHub with the Code bot (Section 12) and in the other apps you connect (Section 13)</li>
+  <li>To do what you ask in GitHub with Xode (Section 12) and in the other apps you connect (Section 13)</li>
   <li>To run the bots you use and make, and to keep what they remember of you (Section 14)</li>
   <li>To read the files and photos you attach (see 1.9)</li>
   <li>To send the notifications and fill the widgets you choose (Section 15)</li>
@@ -163,10 +163,10 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>OpenRouter</strong>, <strong>OpenAI</strong> and <strong>Anthropic</strong> — the same models that answer Ask's questions about the text on your screen work out what to do in the apps you connect, on your phone and on your computer.</li>
 </ul>
 
-<h3>The Code bot and GitHub (see Section 12)</h3>
+<h3>Xode and GitHub (see Section 12)</h3>
 <ul>
   <li><strong>GitHub</strong> (docs.github.com/site-policy/privacy-policies/github-general-privacy-statement) — holds the repos you connect; X0 Bot reads and writes there as Section 12 says, and GitHub Actions runs the steps X0 Bot gives it in your repo.</li>
-  <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — passes the Code bot's work to AI models made by companies such as OpenAI, Anthropic, Google, DeepSeek and Z.ai, chosen by the kind of work, and only to providers that neither keep nor train on what they are sent.</li>
+  <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — passes Xode's work to AI models made by companies such as OpenAI, Anthropic, Google, DeepSeek and Z.ai, chosen by the kind of work, and only to providers that neither keep nor train on what they are sent.</li>
 </ul>
 
 <h3>Other apps you connect, and bots (see Sections 13 and 14)</h3>
@@ -225,7 +225,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>The record of your requests to Ask:</strong> how each one went (done, waiting for you, or stopped, and why), how long it took, how many steps and changes it made, and which AI model answered and what that cost. It is kept until you delete your account, and holds none of your words, except from your phone: the first 80 characters of what you asked, for 30 days; your words to try again with, for a day; and a question X0 Bot asks you back, with your request, for five minutes. See 10.4 and 11.4.</li>
   <li><strong>Google apps you connect:</strong> what X0 Bot reads in them is not stored, except the details of a change waiting for your OK. Your access to an app is kept until you disconnect it or delete your account; your Tasks list and its record of actions, until you delete your account. See Section 11.</li>
   <li><strong>Other apps you connect:</strong> the same as for Google apps. See Section 13.</li>
-  <li><strong>The Code bot:</strong> your GitHub link, projects, jobs and what X0 Bot learned of your repos are kept until you remove the project, unlink GitHub in X0 Bot, or delete your account. A token from Sign in with GitHub is kept until you disconnect, delete your account, or leave it unused for 30 days. See Section 12.</li>
+  <li><strong>Xode:</strong> your GitHub link, projects, jobs and what X0 Bot learned of your repos are kept until you remove the project, unlink GitHub in X0 Bot, or delete your account. A token from Sign in with GitHub is kept until you disconnect, delete your account, or leave it unused for 30 days. See Section 12.</li>
   <li><strong>Files and photos you attach:</strong> 30 days from when they were first read, unless you choose to keep them. See 1.9.</li>
   <li><strong>Bots:</strong> the bots you make, your chats with them (the last 200 turns with each) and what they remember of you are kept until you delete them or your account; activity entries older than 90 days are deleted whenever a new one is added. See Section 14.</li>
   <li><strong>Widgets and notifications:</strong> a widget's key lasts a day; the outcome of an answer given from a widget or a notification is kept for seven days. See Section 15.</li>
@@ -399,8 +399,8 @@ const PRIVACY_POLICY_BODY = `
 
 <hr>
 
-<h2 id="github">12. The Code bot and GitHub</h2>
-<p>The Code bot works on code in your GitHub repos: it reads a repo, makes changes on a branch of its own, and opens a pull request for you to review. You connect GitHub yourself, in X0 Bot. This section says what it can reach, what it does there, where your code goes, what we keep, and how to end it.</p>
+<h2 id="github">12. Xode and GitHub</h2>
+<p>Xode works on code in your GitHub repos: it reads a repo, makes changes on a branch of its own, and opens a pull request for you to review. You connect GitHub yourself, in X0 Bot. This section says what it can reach, what it does there, where your code goes, what we keep, and how to end it.</p>
 
 <h3>12.1 How it connects, and to which repos</h3>
 <ul>
@@ -484,11 +484,11 @@ const PRIVACY_POLICY_BODY = `
 <hr>
 
 <h2 id="bots">14. Bots</h2>
-<p>X0 Bot's helpers are bots. The Code bot, Keybot, the Plan bot and the Travel bot come with it, and you can make your own from a sentence. This section says what a bot can do for you, what we keep, and what others can see when you share one.</p>
+<p>X0 Bot's helpers are bots. Xode, Keylessbord, Plan Ease and the Travel bot come with it, and you can make your own from a sentence. This section says what a bot can do for you, what we keep, and what others can see when you share one.</p>
 
 <h3>14.1 What a bot can do for you</h3>
 <ul>
-  <li>Only what its skills allow: search the web and read pages, read the files you gave it, make pages and charts, answer questions about your code (only reading it), and use the connected apps you gave it. Changing code is the Code bot's own work (Section 12).</li>
+  <li>Only what its skills allow: search the web and read pages, read the files you gave it, make pages and charts, answer questions about your code (only reading it), and use the connected apps you gave it. Changing code is Xode's own work (Section 12).</li>
   <li>In a connected app, a bot follows the rules in 13.2: it reads right away, and nothing that changes, sends, deletes or pays happens until you say yes, unless you already allowed that kind of change in that app. A bot is told when something is waiting for you, so it does not say it is done.</li>
   <li>A bot fills in a UPI payment for you to pay in your own UPI app; X0 Bot never moves money.</li>
   <li>When a bot searches the web, the words it searches for go to search services, and it reads public web pages; the Plan and Travel bots send places to map services (see Section 3). Your account is not sent to them.</li>
@@ -527,9 +527,9 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>From your people</strong> (widget): the latest from the people in your spaces and chats: who sent or shared something, the tasks and plans they gave you, and, on the Home Screen, the words of their messages.</li>
   <li><strong>Needs you</strong> (widget): a bot's question with its answers, a change in a connected app waiting for your yes, and the tasks given to you, with buttons to answer them.</li>
   <li>On the iPhone Lock Screen, these two widgets show only a count ("2 new from your people"), and while the phone is locked (StandBy, Always-On) the words of messages and of Needs you are hidden. On Android they are Home Screen widgets, and show what they show to anyone who can see your Home Screen.</li>
-  <li><strong>X0</strong> (widget, Home Screen and iPhone Lock Screen): your bots at a glance: which are working and on what, what needs you (a bot's question with its answers, or a change waiting for your yes, with buttons), the last thing a bot finished and its pull request, your week's count, and a line about what changed. On the Lock Screen, and while the phone is locked, a change waiting in a connected app and a question a bot marks private show only that a bot needs you, never their words; a Code bot's question shows its words.</li>
-  <li><strong>The Bots at work Live Activity</strong> (iPhone Lock Screen and Dynamic Island), while a Code bot job runs: the words of its task, its step, a question it asks you with its answers (only that it needs you, if the bot marks the question private), and when it ends, what it finished and its pull request.</li>
-  <li><strong>Notifications</strong>, if you allow them: that a bot needs your answer or your OK (one for a connected app names only the app); how a Code bot job is going, with the words of its task; a task or plan someone gave you, with its title; that someone messaged you (their name and the chat, not the message); the reminders you asked for; a daily summary, if you turn it on; and reminders about your words. Your phone's settings decide whether their words show on the Lock Screen.</li>
+  <li><strong>X0</strong> (widget, Home Screen and iPhone Lock Screen): your bots at a glance: which are working and on what, what needs you (a bot's question with its answers, or a change waiting for your yes, with buttons), the last thing a bot finished and its pull request, your week's count, and a line about what changed. On the Lock Screen, and while the phone is locked, a change waiting in a connected app and a question a bot marks private show only that a bot needs you, never their words; a Xode's question shows its words.</li>
+  <li><strong>The Bots at work Live Activity</strong> (iPhone Lock Screen and Dynamic Island), while a Xode job runs: the words of its task, its step, a question it asks you with its answers (only that it needs you, if the bot marks the question private), and when it ends, what it finished and its pull request.</li>
+  <li><strong>Notifications</strong>, if you allow them: that a bot needs your answer or your OK (one for a connected app names only the app); how a Xode job is going, with the words of its task; a task or plan someone gave you, with its title; that someone messaged you (their name and the chat, not the message); the reminders you asked for; a daily summary, if you turn it on; and reminders about your words. Your phone's settings decide whether their words show on the Lock Screen.</li>
 </ul>
 
 <h3>15.2 Answering without opening the app</h3>
@@ -541,7 +541,7 @@ const PRIVACY_POLICY_BODY = `
 
 <h3>15.3 Your choices</h3>
 <ul>
-  <li>Widgets appear only where you add them, the Flow Live Activity only while Flow is on, and the Bots at work Live Activity only while a Code bot job runs. Remove them as you would any other.</li>
+  <li>Widgets appear only where you add them, the Flow Live Activity only while Flow is on, and the Bots at work Live Activity only while a Xode job runs. Remove them as you would any other.</li>
   <li>Choose which notifications X0 Bot sends, and its quiet hours, in X0 Bot ("What pings you"); turn notifications off, or hide their words on the Lock Screen, in your phone's settings.</li>
   <li>Our servers send notifications through Expo's push service to Apple's and Google's (see Section 3). The Bots at work Live Activity is updated through Apple's push service directly, with a token your iPhone gives for that one activity; we delete it when the job ends.</li>
 </ul>

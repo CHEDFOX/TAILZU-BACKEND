@@ -7,7 +7,7 @@
  *                    lastAt   their newest glance; sinceAt the end of their look before (glances closer than x0.lookGapMin are one look),
  *                             what "since you last looked" counts from
  *                    digest   the AI digest's line for one set of changes (digest.ts): written once per change, read until the next
- *   activity tokens  one per person and Code bot job: the Live Activity's APNs push token, its environment, the app's language (English or
+ *   activity tokens  one per person and Xode job: the Live Activity's APNs push token, its environment, the app's language (English or
  *                    Hinglish), and the last state sent (a
  *                    signature, so a change nobody would see is not pushed). Dropped when the job ends or Apple says the token is gone
  *

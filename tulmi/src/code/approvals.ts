@@ -1,7 +1,7 @@
 /**
  * THE YES THAT AN ACTION WAITS FOR.
  *
- * Some things the Code bot does only after a person says yes: merging a pull
+ * Some things Xode does only after a person says yes: merging a pull
  * request, committing to a branch it didn't make, deleting a branch, and the
  * rest of what policy.ts calls "ask" (and, with Face ID on the phone, the
  * "ask_strict" ones: a force-push, a commit that looks like it holds a secret).

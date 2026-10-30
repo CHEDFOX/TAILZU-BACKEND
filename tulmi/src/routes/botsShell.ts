@@ -2,7 +2,7 @@
  * Bots app · shell area: what Home, Activity, Ask, Search, Tasks, Approve, Today and Meeting notes need beyond the existing routes,
  * and the glance the phone's widgets and live activity read (docs/bots-app.md).
  *
- *   GET  /v1/shell/activity?tz=&bot=&type=   one feed across Code bot jobs, answers bots gave, payments, Keybot's words and connected-app
+ *   GET  /v1/shell/activity?tz=&bot=&type=   one feed across Xode jobs, answers bots gave, payments, Keylessbord's words and connected-app
  *                                            tasks (src/shell/feed.ts), newest first, money per row; and the week (done, spent, saved)
  *   GET  /v1/shell/search?q=&tz=             projects, chats, notes, files and bots that match (src/shell/search.ts)
  *   POST /v1/shell/route { message, bot? }   who will answer, WITHOUT answering: "Ask any bot"'s own pick (the rules, the tiny tier only
@@ -14,10 +14,10 @@
  *   POST /v1/shell/receipts { upi, bot?, title? }   the person says they pressed pay in their UPI app: a receipt for Activity. Nothing is paid
  *   GET  /v1/shell/receipts/:id              one receipt
  *   GET  /v1/shell/tasks?tz=                 today's work by bots and what needs the person, and their own open to-dos for the week (src/calendar)
- *   GET  /v1/shell/today?tz=                 today's calendar (their own, src/calendar), Keybot's words by hour and app, the day's work
+ *   GET  /v1/shell/today?tz=                 today's calendar (their own, src/calendar), Keylessbord's words by hour and app, the day's work
  *   GET  /v1/shell/started                   whether the person has done anything yet (Home shows the empty home until they have)
  *   GET  /v1/shell/glance?tz=                for the natives (iOS widgets, the live activity): bots and their live state, what needs the
- *                                            person, Keybot's words today, the current Code bot job's stage. Small, no words to translate.
+ *                                            person, Keylessbord's words today, the current Xode job's stage. Small, no words to translate.
  *                                            The shape older builds read (v: 1), unchanged
  *   GET  /v1/shell/glance?v=2&tz=&lang=      the X0 widget's whole document (src/widgets/glance.ts; docs/widget-glance-v2.md): what it leads
  *                                            with, the greeting, a summary line, the week, the bots, what needs the person (answered through
@@ -62,7 +62,7 @@ export interface ShellRoutesOptions {
   now?: () => number;
   /** Minutes writing by voice saved this week (history stats); tests hand in their own. */
   minutesSaved?: (user: AuthedUser, tz: number) => Promise<number>;
-  /** Keybot's spoken words since a time (history); tests hand in their own. */
+  /** Keylessbord's spoken words since a time (history); tests hand in their own. */
   voiceRows?: (user: AuthedUser, since: number) => Promise<Array<{ at: number; words: number; app?: string }>>;
   /** The client ids of asks sent from the apps' outbox (src/shell/sentAsks.ts); tests hand in their own. */
   sentAsks?: SentAskStore;
@@ -172,7 +172,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       // A bot only while the bots platform is on; "tailzu" is the front door's own road.
       ...(deps.bots && bot !== "tailzu" ? { bot } : {}),
       ...(Array.isArray(b.attachments) && b.attachments.length ? { attachments: b.attachments.slice(0, 8) } : {}),
-      // The Code bot's own page asks about one project (screens/code.ts codeAsk); POST /v1/ask checks the id.
+      // Xode's own page asks about one project (screens/code.ts codeAsk); POST /v1/ask checks the id.
       ...(typeof b.projectId === "string" && b.projectId ? { projectId: b.projectId } : {}),
       // The app's stream id: the words go to it as they come (POST /v1/ask checks it; live/askStream.ts).
       ...(typeof b.streamId === "string" && b.streamId ? { streamId: b.streamId } : {}),
@@ -204,7 +204,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     try { j = JSON.parse(r.body) as AskReply; } catch { await letGo(); return reply.code(r.statusCode >= 400 ? r.statusCode : 502).send({ code: "ask_failed", message: "Couldn't answer that" }); }
     if (r.statusCode < 200 || r.statusCode >= 300) { await letGo(); return reply.code(r.statusCode).send(j); }
     const slug = j.bot?.slug ?? (j.result?.job || j.decision?.route === "code" ? "code" : "tailzu");
-    const name = j.bot?.name ?? (slug === "code" ? "Code bot" : "X0");
+    const name = j.bot?.name ?? (slug === "code" ? "Xode" : "X0");
     const upi = (j.answer?.opens ?? []).map((x) => upiOf(x.url)).find((x) => !!x);
     await events().add(user.id, { kind: "ask", bot: slug, title: message, paise: Math.max(0, Math.round(j.result?.paise ?? 0)), amountPaise: 0, payee: "" }, now()).catch((err) => req.log.warn({ err }, "shell: ask not written down"));
     started.add(user.id);
@@ -378,7 +378,7 @@ export interface Glance {
   /** The first thing waiting on them, in a line. */
   ask?: { bot: string; question: string };
   keybot: { wordsToday: number };
-  /** The Code bot job that is working now, and where it is. */
+  /** Xode job that is working now, and where it is. */
   job: { id: string; task: string; stage: number; of: number; stageName: string; spentPaise: number } | null;
 }
 

@@ -1,7 +1,7 @@
 /**
  * THE FRONT DOOR: ONE SMART ENTRY POINT FOR A MESSAGE. The story is in docs/front-door.md.
  *
- *   rules.ts        what a message is, read for nothing (English, Hinglish, Hindi; the Code bot's free classifier for code)
+ *   rules.ts        what a message is, read for nothing (English, Hinglish, Hindi; Xode's free classifier for code)
  *   visual.ts       the cheapest picture that explains the answer, or none: a table, a diagram, a chart, a component, a page
  *   path.ts         the route, the tier and the budget an intent gets
  *   decide.ts       decide(): rules first, the small model only under 0.7, a question only under 0.45 and when the road is costly

@@ -2,7 +2,7 @@
  * WHAT A MESSAGE IS, READ FOR NOTHING: THE FRONT DOOR'S RULES.
  *
  * readByRules() reads one message with patterns in English, Hinglish (Hindi in Latin letters) and Hindi, and says which intent it is
- * and how sure that is. It reuses the Code bot's free classifier (code/brain/classify.ts classifyByRules) for the code signals (a bug,
+ * and how sure that is. It reuses Xode's free classifier (code/brain/classify.ts classifyByRules) for the code signals (a bug,
  * a change, a question about code, an error pasted in, the language), and adds what only the front door knows: whether there is a
  * project, whether something is attached, what the person's earlier turns were about, and the wording of a design, a plan, a piece
  * of research or small talk.
@@ -29,7 +29,7 @@ export interface RuleRead {
   scores: Partial<Record<Intent, number>>;
   rival?: Intent;
   signals: string[];
-  /** The Code bot's free read of the same words. */
+  /** Xode's free read of the same words. */
   cls: Classification;
   depth?: ResearchDepth;
   /** A short follow-up to an earlier turn: what that turn was about, to be put in front of this one. */
@@ -114,7 +114,7 @@ const CODE_WORDS = /\b(?:app|project|repo|repository|codebase|code|file|files|fu
 /** The shapes of names in code: camelCase and snake_case (case matters, so no `i` flag). */
 const CODE_SHAPES = /\b[a-z]+[A-Z]\w*\b|\b[a-z]+_[a-z_]+\b/;
 const CODE_HI = hindi(["कोड", "ऐप", "प्रोजेक्ट", "फ़ाइल", "फाइल", "फंक्शन", "लॉगिन"]);
-/** A change asked for: the Code bot's classifier calls these small_edit, bug_fix, feature and refactor. */
+/** A change asked for: Xode's classifier calls these small_edit, bug_fix, feature and refactor. */
 /**
  * A report that ends in an ask to change the code ("Security report from a customer: … Find out why and fix it."): a code task, whatever research-sounding words
  * ("find out", "investigate") come with it. Only with a project, only when the message says what is wrong (code words or a dozen words), never bare ("fix it").

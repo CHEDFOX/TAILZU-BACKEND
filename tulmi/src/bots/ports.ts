@@ -37,7 +37,7 @@ export interface BotConnectors {
   settle(userId: string, runId: string, ending: "done" | "error"): Promise<void>;
 }
 
-/** What the Code bot can say about a person's project: a question, answered from the project's index. */
+/** What Xode can say about a person's project: a question, answered from the project's index. */
 export type CodeAsk = (a: { userId: string; projectId: string; question: string; maxPaise: number; signal?: AbortSignal }) => Promise<{ text: string; paise: number }>;
 
 export interface BotPorts {

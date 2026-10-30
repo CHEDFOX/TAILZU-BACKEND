@@ -1,5 +1,5 @@
 /**
- * THE MOMENT AN ASK IS OUT, IN EVERY CHAT: the Code bot's project chat and its task bar, every bot's chat, Ask and Home's ask bar.
+ * THE MOMENT AN ASK IS OUT, IN EVERY CHAT: Xode's project chat and its task bar, every bot's chat, Ask and Home's ask bar.
  *
  * The person sends: their words go up at once as their bubble (bound to `sent`) and the box is cleared. Under the bubble, a lane
  * where the bot of the chat (its colour and its look; Tailzu's own in Ask) carries the ask as a bag, trip after trip, heavier each
@@ -13,7 +13,7 @@
  *   failed(...)          the call's onError: stopped, it stays; else the words go back in the box and the chat's own words say why
  *   askMoment(ctx, o)    the nodes, for above the box
  *
- * A build without BotBuddyCarry gets today's line ("Asking Code bot…") under the bubble; one without AskStream, no Stop and no
+ * A build without BotBuddyCarry gets today's line ("Asking Xode…") under the bubble; one without AskStream, no Stop and no
  * step line, and the whole answer at the end. No model names, no money: short, plain words.
  */
 import type { ActionRef, ActionSpec, BotTileKind, Condition, Node } from "../../../../shared/types/sdui.js";
@@ -86,7 +86,7 @@ export interface MomentOpts {
   kind: BotTileKind;
   /** The state that holds while the ask is out ("asking", "sending"). */
   busy: string;
-  /** Today's line, for a build that cannot carry: "Asking Code bot…". */
+  /** Today's line, for a build that cannot carry: "Asking Xode…". */
   line: string;
   /** The bubble: ink (a chat) or a light grey (Ask). */
   bubble?: "ink" | "surface";

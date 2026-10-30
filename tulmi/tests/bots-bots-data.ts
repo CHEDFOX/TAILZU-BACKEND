@@ -105,8 +105,8 @@ export async function sampleApi(): Promise<Record<string, unknown>> {
       { id: "email-handoff", name: "Gmail", oneLine: "Drafts an email for you to send", connected: false },
     ] },
     "GET /v1/bots": { bots: [
-      { slug: "code", name: "Code bot", colour: "pine", builtin: true }, { slug: "keybot", name: "Keybot", colour: "ochre", builtin: true },
-      { slug: "plan", name: "Plan bot", colour: "sea", builtin: true }, { slug: "travel", name: "Travel bot", colour: "clay", builtin: true },
+      { slug: "code", name: "Xode", colour: "pine", builtin: true }, { slug: "keybot", name: "Keylessbord", colour: "ochre", builtin: true },
+      { slug: "plan", name: "Plan Ease", colour: "sea", builtin: true }, { slug: "travel", name: "Travel bot", colour: "clay", builtin: true },
       { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }, { slug: "shop-bot", name: "Shop bot", colour: "sand", builtin: false },
     ] },
     [`GET ${A}/listing/gym-bot`]: { listed: true },

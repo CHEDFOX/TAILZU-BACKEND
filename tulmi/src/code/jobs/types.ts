@@ -1,7 +1,7 @@
 /**
  * THE WORDS THE JOB ROUTER IS BUILT FROM: STATES, PLACES, RECORDS AND NUMBERS.
  *
- * A JOB is one coding task the Code bot is working on, on one work branch of
+ * A JOB is one coding task Xode is working on, on one work branch of
  * one project. It runs as STEPS, numbered from 0 in the order they happen:
  *
  *   edit   something done through the GitHub workspace API (read, change,

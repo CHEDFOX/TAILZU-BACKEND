@@ -17,9 +17,9 @@ const presses = (n: Node): ActionSpec[] => walk(n).map((x) => x.on?.onPress).fil
 
 describe("live state from real records", () => {
   const live = sampleLive();
-  it("the question a Code bot job waits on, with its own options, and You decide", () => {
+  it("the question a Xode job waits on, with its own options, and You decide", () => {
     const n = live.needs[0]!;
-    expect(n).toMatchObject({ bot: "code", botName: "Code bot", question: "Round the cart total per item, or once at the end?" });
+    expect(n).toMatchObject({ bot: "code", botName: "Xode", question: "Round the cart total per item, or once at the end?" });
     expect(n.choices.map((c) => [c.label, c.kind])).toEqual([["Per item", "primary"], ["At the end", "secondary"], ["You decide", "quiet"]]);
     expect(n.choices[0]!.action).toMatchObject({ kind: "callEndpoint", method: "POST", path: `/v1/code/jobs/${SAMPLE_JOBS[0]!.id}/answer`, body: { answer: "Per item" } });
   });
@@ -40,11 +40,11 @@ describe("live state from real records", () => {
       bots: [], jobs: [], minutesSaved: 0, budgetPaise: 0, now: FIXED_NOW, tzOffsetMinutes: IST,
       tasks: [{ id: "t1", state: "waiting", title: "Move the dentist to Friday 10 am?", approval: { id: "a1", connector: "google-calendar", preview: "Update event: Dentist" }, createdAt: FIXED_NOW, updatedAt: FIXED_NOW }],
     });
-    expect(l.needs[0]).toMatchObject({ bot: "plan", botName: "Plan bot", question: "Move the dentist to Friday 10 am?" });
+    expect(l.needs[0]).toMatchObject({ bot: "plan", botName: "Plan Ease", question: "Move the dentist to Friday 10 am?" });
     expect(l.needs[0]!.choices[0]!.action).toMatchObject({ path: "/v1/tasks/t1/approve", body: { approvalId: "a1" } });
     expect(l.needs[0]!.choices[1]!.action).toMatchObject({ path: "/v1/tasks/t1/deny" });
     // The four built-ins are there even with the bots platform off.
-    expect(l.bots.map((b) => b.name)).toEqual(["Plan bot", "Code bot", "Keybot", "Travel bot"]);
+    expect(l.bots.map((b) => b.name)).toEqual(["Plan Ease", "Xode", "Keylessbord", "Travel bot"]);
     expect(l.spend.budgetPaise).toBe(50_000);
     expect(weekLine(l.week)).toBe("Nothing done yet this week");
   });
@@ -69,9 +69,9 @@ describe("bots.home", () => {
   it("phone: Main.dc.html, from the live state, with its actions wired", async () => {
     const s = await buildBotsScreen(req("bots.home", "phone"), fakeDeps());
     const words = texts(s.root!);
-    for (const w of ["Good evening, Aanya", "Anything to write up before the day ends?", "4 things done this week · 2 h saved", "Needs you · Code bot",
+    for (const w of ["Good evening, Aanya", "Anything to write up before the day ends?", "4 things done this week · 2 h saved", "Needs you · Xode",
       "Round the cart total per item, or once at the end?", "Per item", "At the end", "You decide",
-      "Code bot", "Working · fixing cart", "Keybot", "Your keyboard, everywhere", "Plan bot", "Make a bot", "Bots", "Activity", "You"]) {
+      "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot", "Bots", "Activity", "You"]) {
       expect(words, w).toContain(w);
     }
     expect(words).not.toContain("Travel bot");
@@ -118,7 +118,7 @@ describe("bots.home", () => {
       expect(grid.props).toMatchObject({ columns: cols, faces: { semibold: "Tailzu Geist SemiBold" } });
       expect(tiles).toHaveLength(4);
       expect(tiles[3]).toMatchObject({ slug: "make", name: "Make a bot", kind: "make", color: "#0a0a0a", action: { kind: "navigate", screenId: "bots.make" } });
-      // The sample day: Code bot both working and waiting on Aanya (needs first), each with its own colour and play.
+      // The sample day: Xode both working and waiting on Aanya (needs first), each with its own colour and play.
       const code = tiles.find((t) => t.slug === "code")!;
       expect(code).toMatchObject({ kind: "code", color: "#4F7A3A", action: { kind: "navigate" } });
       expect(["working", "needs"]).toContain(code.state);
@@ -156,7 +156,7 @@ describe("bots.home", () => {
         const living = walk(old.root!).find((n) => n.type === "BotTiles");
         expect(living?.props?.strip).toBeUndefined();
         const words = [...texts(old.root!), ...((living?.props?.tiles as Array<{ name: string }> | undefined) ?? []).map((t) => t.name)];
-        expect(words).toEqual(expect.arrayContaining(["Plan bot", "Make a bot", "Notes", "2 to-dos open"]));
+        expect(words).toEqual(expect.arrayContaining(["Plan Ease", "Make a bot", "Notes", "2 to-dos open"]));
         expect(presses(old.root!)).toContainEqual({ kind: "navigate", screenId: "bots.notes" });
         expect(checkTree(old.root!)).toEqual([]);
       }

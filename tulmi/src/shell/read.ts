@@ -56,7 +56,7 @@ export function projectName(fullName: string): string {
   return repo ? repo.charAt(0).toUpperCase() + repo.slice(1) : fullName;
 }
 
-/** Keybot's spoken words since `since`, newest first: a few pages of history at most. */
+/** Keylessbord's spoken words since `since`, newest first: a few pages of history at most. */
 export async function readVoiceRows(user: AuthedUser, since: number): Promise<Array<{ at: number; words: number; app?: string }>> {
   const out: Array<{ at: number; words: number; app?: string }> = [];
   let before: string | undefined;
@@ -139,7 +139,7 @@ export async function readSearchSources(d: BotsAreaDeps, user: AuthedUser, tzOff
   // The talk about each project's code (the newest few projects), and what each bot and the person last said.
   const codeChats = (await Promise.all(projects.slice(0, 6).map(async (p) =>
     (await safe(threadStore().list(user.id, p.id, 10), [])).map((t): Findable => ({
-      id: `code:${t.id}`, title: t.lastQuestion || t.summary.split("\n")[0] || p.name, sub: `Code bot · ${p.name} · ${shortDay(t.updatedAt, tzOffsetMinutes)}`,
+      id: `code:${t.id}`, title: t.lastQuestion || t.summary.split("\n")[0] || p.name, sub: `Xode · ${p.name} · ${shortDay(t.updatedAt, tzOffsetMinutes)}`,
       text: t.summary, at: t.updatedAt, bot: "code",
       open: { screenId: "bots.chat", params: { slug: "code", project: p.id, thread: t.id } },
       preview: { lines: t.lastQuestion ? [{ who: "you", text: t.lastQuestion }] : [], body: t.summary, at: shortDay(t.updatedAt, tzOffsetMinutes) },
@@ -160,7 +160,7 @@ export async function readSearchSources(d: BotsAreaDeps, user: AuthedUser, tzOff
   return {
     projects: projects.map((p) => ({
       id: `project:${p.id}`, title: p.name, sub: p.fullName, text: p.fullName, at: p.createdAt, bot: "code",
-      open: { screenId: "bots.code", params: { project: p.id } }, preview: { body: `A Code bot project on GitHub: ${p.fullName}.` },
+      open: { screenId: "bots.code", params: { project: p.id } }, preview: { body: `A Xode project on GitHub: ${p.fullName}.` },
     })),
     chats: [...codeChats, ...botChats],
     notes: notes.map((n) => ({
@@ -213,9 +213,9 @@ export interface RoutePreview {
 export function firstWords(slug: string, name: string): string {
   switch (slug) {
     case "travel": return "Travel bot shows the plan before it books";
-    case "plan": return "Plan bot asks before it changes your calendar";
-    case "code": return "Code bot shows the plan before it changes code";
-    case "keybot": return "Keybot writes it, you send it";
+    case "plan": return "Plan Ease asks before it changes your calendar";
+    case "code": return "Xode shows the plan before it changes code";
+    case "keybot": return "Keylessbord writes it, you send it";
     case "tailzu": return "X0 answers, or hands it to the right bot";
     default: return `${name} asks before it does anything`;
   }
@@ -238,7 +238,7 @@ export async function routeOf(d: BotsAreaDeps, userId: string, message: string, 
   if (!d.bots) {
     const rules = readByRules(message, ctx);
     return rules.intent === "code_task" || rules.intent === "code_question"
-      ? previewOf("code", "Code bot", "rules", rules.confidence) : previewOf("tailzu", "X0", "none", rules.confidence);
+      ? previewOf("code", "Xode", "rules", rules.confidence) : previewOf("tailzu", "X0", "none", rules.confidence);
   }
   if (chosen && chosen !== "any" && chosen !== "tailzu") {
     const b = await d.bots.get(userId, chosen).catch(() => null);

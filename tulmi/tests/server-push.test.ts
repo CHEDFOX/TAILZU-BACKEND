@@ -147,7 +147,7 @@ describe("A3, A4, A5: the keyboards", () => {
     }
     expect((ios["kb.swipe.coreWords"] as string[]).slice(0, 4)).toEqual(["the", "be", "to", "of"]);
   });
-  it("the key click is said for everyone, as each keyboard behaves today; Keybot's choice still wins", () => {
+  it("the key click is said for everyone, as each keyboard behaves today; Keylessbord's choice still wins", () => {
     expect(ios["kb.key.sound"]).toBe(true);
     expect(android["kb.key.sound"]).toBe(false);
     const quiet = withKeybotKeyboard(buildKeyboardConfig(undefined, undefined, { platform: "ios" }), { sounds: false } as never);
@@ -201,7 +201,7 @@ describe("A6: the name card, for someone onboarded before the Bots app asked it"
   });
 });
 
-describe("B3: X0 Code on this computer, drawn on bots.computer", () => {
+describe("B3: Xode on this computer, drawn on bots.computer", () => {
   const api = { "GET /v1/you/computers": { online: [], offline: [], helped: { jobs: 0, minutes: 0 } } };
   it("a window that has the card gets it, with every word it shows; any other gets none", async () => {
     const card = walk((await build("bots.computer", "desktop", api, ["DeskRunner"])).root!).find((n) => n.type === "DeskRunner");

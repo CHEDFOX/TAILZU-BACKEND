@@ -1,5 +1,5 @@
 /**
- * The Code bot's jobs and the runner protocol over HTTP (src/routes/codeJobs.ts):
+ * Xode's jobs and the runner protocol over HTTP (src/routes/codeJobs.ts):
  * off, not set up, behind a session; making, reading and cancelling a job; the
  * person's two yeses; the compute settings; and a PC's heartbeat, its wait for
  * work, its progress and its result, through a real Fastify with the fake GitHub
@@ -56,7 +56,7 @@ const ROUTES: Array<["GET" | "POST" | "PUT", string]> = [
   ["POST", "/v1/code/runner/heartbeat"], ["GET", `/v1/code/runner/next?deviceId=${LAPTOP}`], ["POST", "/v1/code/runner/progress"], ["POST", "/v1/code/runner/result"],
 ];
 
-describe("with the Code bot off, or GitHub not set up, or nobody signed in", () => {
+describe("with Xode off, or GitHub not set up, or nobody signed in", () => {
   it("answers 404 code_off on every route, with or without a session", async () => {
     const app = Fastify();
     registerCodeJobRoutes(app, { rateLimit: RL, code: null, jobs: null });

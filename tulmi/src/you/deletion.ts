@@ -146,7 +146,7 @@ export function resetDeletionStoreForTests(): void { current = null; }
 
 /**
  * Whether a person asked to delete their account and the date still stands. Their bots stop right away (the DeleteAcct board): a
- * Code bot job or a bot's answer does not start (bots/service.ts, code/jobs/router.ts createJob, routes/front.ts), their bots' API
+ * Xode job or a bot's answer does not start (bots/service.ts, code/jobs/router.ts createJob, routes/front.ts), their bots' API
  * keys do not work, and the jobs that were running are stopped (routes/accountDeletion.ts). Keep my account takes the date away,
  * and everything works again.
  *

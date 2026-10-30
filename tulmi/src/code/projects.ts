@@ -50,7 +50,7 @@
  * functions that can be asked about return `Gated<...>`: what they did, or
  * the question. Each takes `{ approvalId?, attended? }` last.
  *
- * workspace() is what the Code bot's agent loop will call (there is no route
+ * workspace() is what Xode's agent loop will call (there is no route
  * for it yet): the same checks, then a handle over one branch: tree, read,
  * commit and openDraftPr. The handle can't be pointed at any other branch. It
  * can be pointed at ANY branch of the project, not just one the bot made; a
@@ -634,7 +634,7 @@ export async function forceUpdateBranch(
   });
 }
 
-/** The handle the Code bot has over one branch. */
+/** The handle Xode has over one branch. */
 export interface Workspace {
   readonly project: CodeProject;
   readonly branch: string;

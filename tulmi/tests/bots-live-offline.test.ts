@@ -211,7 +211,7 @@ describe("an ask from the outbox is answered once", () => {
       asked.push({ body: req.body, key: req.headers["idempotency-key"] });
       await o.wait?.();
       const status = o.status?.() ?? 200;
-      return reply.code(status).send(status === 200 ? { result: { text: "Moved it to 7 am.", paise: 120 }, bot: { slug: "plan", name: "Plan bot" } } : { code: "busy", message: "Busy" });
+      return reply.code(status).send(status === 200 ? { result: { text: "Moved it to 7 am.", paise: 120 }, bot: { slug: "plan", name: "Plan Ease" } } : { code: "busy", message: "Busy" });
     });
     registerBotsShellRoutes(app, { rateLimit: RL, bots: null } as never, { events, sentAsks, now: () => FIXED_NOW });
     const send = (payload: Record<string, unknown>, user = "u1") => app.inject({ method: "POST", url: "/v1/shell/ask", headers: who(user), payload });

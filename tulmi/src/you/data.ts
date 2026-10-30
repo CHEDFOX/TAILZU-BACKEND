@@ -2,14 +2,14 @@
  * "DOWNLOAD MY DATA" AND "DELETE MY DATA" (Privacy, and Delete account's "Want a copy first?").
  *
  * The download is one JSON file of everything Tailzu holds for the person, built from the exports and reads that already exist: the bots
- * platform's own export (bots, keys masked, commands, what each bot remembers), the profile and writing style, the Code bot's projects and jobs,
+ * platform's own export (bots, keys masked, commands, what each bot remembers), the profile and writing style, Xode's projects and jobs,
  * the connected apps (never a token) and their tasks, meeting notes, dictation history, files (their names and sizes; the files themselves are
  * downloaded where they are), and the You tab's own rows. A read that fails is left out and named in `missing`, never faked.
  *
  * The browser opens it from a link (the phone's and the window's openUrl carry no session): /v1/you/export/file?t=<token>, the token signed for
  * one person and good for 30 minutes (a key derived from the server's service key, so it exists only where data does).
  *
- * Deleting takes chats, notes and files: dictation history, what the bots remember and their chat summaries, the Code bot's conversations, meeting
+ * Deleting takes chats, notes and files: dictation history, what the bots remember and their chat summaries, Xode's conversations, meeting
  * notes, and files (their bytes first). The account, the plan, the bots themselves and the projects stay. Like DELETE /v1/account it needs the
  * service key, and says so when it is missing.
  */

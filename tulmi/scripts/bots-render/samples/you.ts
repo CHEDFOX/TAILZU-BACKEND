@@ -33,8 +33,8 @@ const you = {
   apps: {
     enabled: true, github: { repos: 2 }, alone: 3,
     connected: [
-      { id: "google-calendar", name: "Google Calendar", usedBy: ["Plan bot", "Travel bot", "Gym bot"], lastUsedAt: NOW - 2 * MIN },
-      { id: "google-tasks", name: "Google Tasks", usedBy: ["Plan bot"], lastUsedAt: NOW - D },
+      { id: "google-calendar", name: "Google Calendar", usedBy: ["Plan Ease", "Travel bot", "Gym bot"], lastUsedAt: NOW - 2 * MIN },
+      { id: "google-tasks", name: "Google Tasks", usedBy: ["Plan Ease"], lastUsedAt: NOW - D },
     ],
   },
   computers: { online: [{ name: "Aanya's MacBook", busy: true, allowRun: true }], offline: 1, helped: { jobs: 6, minutes: 200 } },
@@ -66,7 +66,7 @@ const computers = {
 
 const builtin = (slug: string, name: string) => ({ slug, name, colour: "", builtin: true });
 const account = {
-  bots: [builtin("code", "Code bot"), builtin("keybot", "Keybot"), builtin("plan", "Plan bot"), builtin("travel", "Travel bot"), { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }],
+  bots: [builtin("code", "Xode"), builtin("keybot", "Keylessbord"), builtin("plan", "Plan Ease"), builtin("travel", "Travel bot"), { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }],
   projects: ["checkout-web", "salon-booking", "storefront", "diwali-sale"], notes: 212, keys: 3,
   plan: { active: true, store: "razorpay", renews: true, until: utc(2026, 11, 12, 6) }, exportUrl: "https://api.x0bot.com/v1/you/export/file?t=x",
 };
@@ -74,9 +74,9 @@ const account = {
 const apps = {
   enabled: true, github: { repos: 2 },
   connected: [
-    { id: "google-calendar", name: "Google Calendar", category: "Calendar", level: "draft", lastUsedAt: NOW - 2 * MIN, usedBy: ["Plan bot", "Travel bot", "Gym bot"] },
-    { id: "google-tasks", name: "Google Tasks", category: "Tasks", level: "draft", lastUsedAt: NOW - D, usedBy: ["Plan bot"] },
-    { id: "google-classroom", name: "Google Classroom", category: "School", level: "look", lastUsedAt: NOW - 2 * D, usedBy: ["Plan bot"] },
+    { id: "google-calendar", name: "Google Calendar", category: "Calendar", level: "draft", lastUsedAt: NOW - 2 * MIN, usedBy: ["Plan Ease", "Travel bot", "Gym bot"] },
+    { id: "google-tasks", name: "Google Tasks", category: "Tasks", level: "draft", lastUsedAt: NOW - D, usedBy: ["Plan Ease"] },
+    { id: "google-classroom", name: "Google Classroom", category: "School", level: "look", lastUsedAt: NOW - 2 * D, usedBy: ["Plan Ease"] },
   ],
   more: [
     { id: "google-docs", name: "Google Docs", category: "Docs", oneLine: "Write a new Google Doc from your words, or turn a meeting note into a Doc.", usedBy: [] },
@@ -88,7 +88,7 @@ const apps = {
 const app = {
   app: { id: "google-calendar", name: "Google Calendar", category: "Calendar", oneLine: "See your schedule, find free time, and add, move or cancel events.", auth: "oauth", provider: "google", connected: false, level: "look", lastUsedAt: null },
   bots: [
-    { slug: "plan", name: "Plan bot", colour: "", purpose: "Finds free time, moves things", builtin: true, linked: true },
+    { slug: "plan", name: "Plan Ease", colour: "", purpose: "Finds free time, moves things", builtin: true, linked: true },
     { slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Books 3 workouts a week", builtin: false, linked: false },
   ],
   can: ["Read your events and free time", "Add or move events, asking you first"], cant: ["Share your calendar", "Change anything you didn't allow"],

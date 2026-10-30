@@ -3,7 +3,7 @@
  *
  *   searchAll(q, sources, o) -> { q, total, groups }
  *
- * The sources are read by routes/botsShell.ts, each as the person (their Code bot projects and the conversations about them, what
+ * The sources are read by routes/botsShell.ts, each as the person (their Xode projects and the conversations about them, what
  * each bot and they last said to each other, their meeting notes, their files, their bots); this file only matches and orders,
  * for nothing, the same words always giving the same answer. A query matches when every one of its words is in the thing (case
  * and accents aside); a match in a name ranks over one in the words under it, then the newest first.

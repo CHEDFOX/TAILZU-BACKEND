@@ -179,7 +179,7 @@ const req = (screenId: string, client: "phone" | "desktop", can: string[] = []) 
   can: new Set(["BotsKit", ...can]), desk: { pages: client === "desktop", notes: false },
 });
 const ACCOUNT = {
-  bots: [{ slug: "code", name: "Code bot", colour: "moss", builtin: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }],
+  bots: [{ slug: "code", name: "Xode", colour: "moss", builtin: true }, { slug: "gym-bot", name: "Gym bot", colour: "pine", builtin: false }],
   projects: ["checkout-web", "salon-booking"], notes: 212, keys: 3,
   plan: { active: false, store: null, renews: false, until: null }, exportUrl: null,
 };

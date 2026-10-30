@@ -125,7 +125,7 @@ const failed = (message = "Couldn't save that. Try again."): ActionRef => toast(
 
 function shell(ctx: BotsCtx, heading: string, sub: string, body: Node[], footer: Node[], state: Record<string, unknown>) {
   return page(ctx, {
-    back: true, ...(isDesk(ctx) ? { backTitle: "Plan bot" } : {}), nav: "plan", title: heading, maxWidth: 640, gap: 18, state,
+    back: true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), nav: "plan", title: heading, maxWidth: 640, gap: 18, state,
     body: [col([text(heading, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), ...(sub ? [meta(sub, { size: 13 })] : [])], { gap: 4 }), ...body],
     footer,
   });
@@ -141,7 +141,7 @@ function addPage(ctx: BotsCtx) {
     then: call("POST", `${CAL}/tasks`, taskBody(ctx), { ok: done("Added to your to-dos"), fail: failed("Couldn't add it. Check the day and the time.") }),
     else: call("POST", `${CAL}/events`, eventBody(ctx), { ok: done("On your calendar"), fail: failed("Couldn't add it. Check the day and the time.") }),
   }, "Say what it is first");
-  return shell(ctx, "Add to your Plan", "Only you see it. Plan bot plans around it, and reminds you when you ask.", [
+  return shell(ctx, "Add to your Plan", "Only you see it. Plan Ease plans around it, and reminds you when you ask.", [
     segmented([{ label: "Event", value: "event" }, { label: "To-do", value: "task" }], "kind"),
     when({ eq: ["kind", "event"] }, col(eventFields(ctx, { extraDay: day }), { gap: 18 })),
     when({ eq: ["kind", "task"] }, col(taskFields(ctx, { extraDay: day }), { gap: 18 })),

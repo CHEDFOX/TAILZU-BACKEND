@@ -47,10 +47,10 @@ import { MemoryRunStore, RunLedger, SWEEP_TIMES } from "../src/runs/index.js";
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&rarr;/g, "→").replace(/\s+/g, " ").replace(/ ([,.;:)])/g, "$1");
 const policy = text(PRIVACY_POLICY_HTML);
 const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.indexOf("11. Google apps you connect"));
-const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. The Code bot and GitHub"));
+const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Xode and GitHub"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day the Code bot, connected apps, bots, files and the Lock Screen got their own sections", () => {
+  it("is effective from the day Xode, connected apps, bots, files and the Lock Screen got their own sections", () => {
     expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 30, 2026");
     expect(PRIVACY_POLICY_HTML).toContain("Effective: October 30, 2026");
   });

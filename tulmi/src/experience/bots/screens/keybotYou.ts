@@ -1,5 +1,5 @@
 /**
- * THE OLD YOU TAB'S PAGES THAT KEYBOT HAD NO PAGE FOR, in Keybot's look, for the phone and the window. Each reads
+ * THE OLD YOU TAB'S PAGES THAT KEYBOT HAD NO PAGE FOR, in Keylessbord's look, for the phone and the window. Each reads
  * GET /v1/personality and writes through the routes the old screens used (docs/bots-keybot-parity.md).
  *
  *   bots.keybot.style    Voice (the old Voice card and "voices" screen, the desk's Voices page): Zu, the voices on
@@ -61,7 +61,7 @@ function samples(v: PersonalityPreset): Node[] {
     { backgroundColor: C.surface, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12 })));
 }
 
-/** Write as this voice: it and its tone become what Keybot writes with. */
+/** Write as this voice: it and its tone become what Keylessbord writes with. */
 const activate = (v: PersonalityPreset): ActionSpec => call("PUT", "/v1/personality",
   { activePresetId: v.id, ...(v.defaultTone ? { activeTone: v.defaultTone } : {}) },
   { ok: seq(toast(`Writing as ${v.name}.`), refresh), fail: oops("Couldn't switch voices. Try again.") });
@@ -74,7 +74,7 @@ function editor(v: PersonalityPreset | null): Node {
   const saveIt: ActionSpec = {
     kind: "condition", if: { any: [{ truthy: "vcName" }, { truthy: "vcPrompt" }] },
     then: call("POST", "/v1/personality/tone", { id: "$state.vcId", name: "$state.vcName", promptStyle: "$state.vcPrompt" }, {
-      ok: seq({ kind: "setState", path: "edit", value: "" }, toast("Voice saved. Keybot writes in it now."), refresh), fail: oops("Couldn't save that voice. Try again."),
+      ok: seq({ kind: "setState", path: "edit", value: "" }, toast("Voice saved. Keylessbord writes in it now."), refresh), fail: oops("Couldn't save that voice. Try again."),
     }),
     else: toast("Give it a name, or say how it writes"),
   };
@@ -160,7 +160,7 @@ const bottom = (left: Key): Key[] => [{ ...left, flex: 1.6 }, k(".", ".", 1), k(
 
 /**
  * The keyboard's layers, as the keyboard has them (catalog.ts KB_ROW_*, which the keyboard itself is built from): the
- * letters, the numbers, the symbols, and Keybot's own keys. A key on two layers is on the first only, so a key picked
+ * letters, the numbers, the symbols, and Keylessbord's own keys. A key on two layers is on the first only, so a key picked
  * on one never looks unpicked on another; where it would repeat, its place stays empty at its own width.
  */
 const LAYERS: Array<{ value: string; label: string; rows: Key[][] }> = (() => {
@@ -183,7 +183,7 @@ const LAYERS: Array<{ value: string; label: string; rows: Key[][] }> = (() => {
       [k("123", "123", 1.5), ...chars([".", ",", "?", "!", "'"]), k("backspace", "delete", 1.5)],
       bottom(k("abc", "ABC")),
     ] },
-    { value: "keybot", label: "Keybot", rows: [[k("mic", "Mic"), k("refine", "Refine"), k("globe", "Globe")]] },
+    { value: "keybot", label: "Keylessbord", rows: [[k("mic", "Mic"), k("refine", "Refine"), k("globe", "Globe")]] },
   ];
   const seen = new Set<string>();
   return raw.map((l) => ({ ...l, rows: l.rows.map((r) => r.map((key) => {

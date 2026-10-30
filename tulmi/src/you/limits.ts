@@ -2,12 +2,12 @@
  * THE USAGE LIMITS, KEPT: what the person has used of this stretch and this month (usage.ts, over the real records), and every place the bots
  * spend, held to it. The limits are ours, per plan (config.ts USAGE_*); the person only ever sees how much is used and when it resets.
  *
- *   A Code bot job     POST /v1/code/jobs: its budget is held to what is left of the stretch. A job that reaches it pauses and asks "This job
+ *   A Xode job     POST /v1/code/jobs: its budget is held to what is left of the stretch. A job that reaches it pauses and asks "This job
  *                      has used a lot of this stretch. Keep going?"; a yes (POST /v1/code/jobs/:id/budget, a team part's rerun) is held to what
  *                      is left too. With nothing left the job is not started, and the answer says when it resets.
  *   A bot's answer     Bots.ask / test / askWithKey (the bots platform's three ways in, and so Ask's answers): refused once the stretch is used
  *                      up, with the sentence. What each answer cost is written to you_spend when it comes back, so the meter counts every bot.
- *   Ask and Keybot     metering.enforceQuota asks the gate set here (setUsageGate) before any paid upstream: Keybot's dictation and rewrites,
+ *   Ask and Keylessbord     metering.enforceQuota asks the gate set here (setUsageGate) before any paid upstream: Keylessbord's dictation and rewrites,
  *                      the old Ask, the front door. What each of those really cost (OpenRouter's charge, the speech engines' and the voice's
  *                      list prices: usage/cost.ts) is written to you_spend through the sink set here (setCostSink, recordUsd).
  *
@@ -99,8 +99,8 @@ export class Spending {
   forget(userId: string): void { this.cache.delete(userId); this.meters.delete(userId); }
 
   /**
-   * What the meter adds up, with the plan and the billing month's anchor: the Code bot's jobs (code_jobs.spent_paise) and you_spend, where every
-   * bot's answer, the front door's messages and Keybot's, Ask's and notes' real costs (usage/cost.ts) are written.
+   * What the meter adds up, with the plan and the billing month's anchor: Xode's jobs (code_jobs.spent_paise) and you_spend, where every
+   * bot's answer, the front door's messages and Keylessbord's, Ask's and notes' real costs (usage/cost.ts) are written.
    */
   private async read(userId: string, fresh = false): Promise<MeterRead> {
     const hit = this.meters.get(userId);

@@ -21,7 +21,7 @@ describe("the step it shows", () => {
   });
 
   it("walks the steps in order, counting the ones behind them", () => {
-    // Each step opens the Bots app where it is done: Keybot's Turn on page for the keyboard, Keybot (its card asks for the mic).
+    // Each step opens the Bots app where it is done: Keylessbord's Turn on page for the keyboard, Keylessbord (its card asks for the mic).
     expect(setupActivity({ ...ios, signedIn: true })).toMatchObject({ done: 1, title: "Add the X0 keyboard", url: "tulmi://screen/bots.keybot.on" });
     expect(setupActivity({ ...ios, signedIn: true, keyboardReady: true })).toMatchObject({ done: 2, title: "Allow the microphone", url: "tulmi://screen/bots.keybot" });
     expect(setupActivity({ ...ios, signedIn: true, keyboardReady: true, micGranted: true })).toMatchObject({ done: 3, title: "Say your first sentence" });

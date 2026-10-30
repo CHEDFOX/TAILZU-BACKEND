@@ -304,7 +304,7 @@ export class PushEngine {
       sound: verdict === "silent" ? null : "default",
       // A channel per kind when the server names one (push.<kind>.channelId: the
       // phone makes the channels push.android.channels lists), so Plan reminders or
-      // Code bot pings can be muted on their own; else the one channel, as ever.
+      // Xode pings can be muted on their own; else the one channel, as ever.
       channelId: k.flag(`push.${d.kind}.channelId`, k.flag("push.android.channelId", "default")),
       ttl: d.ttlSec,
       priority: "default",

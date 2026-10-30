@@ -9,7 +9,7 @@
  *   failed   problem (40)
  *   idle     nothing
  *
- * The words are the bot's own (the Code bot's ask_user short / short_options and done short, code/agent/tools.ts; a person's bot's x0_widget
+ * The words are the bot's own (Xode's ask_user short / short_options and done short, code/agent/tools.ts; a person's bot's x0_widget
  * on a change it calls, bots/tools.ts). This file is the ONE place they are checked: widgetWords() keeps what fits, cuts what is long AT A WORD
  * ("…" only when it cut), and drops what is wrong. It never throws and never refuses: a bot's work never fails over its widget words. Where a
  * bot gave nothing usable, eventLine() writes the server's fill-in line ("{bot} needs you", knobs x0.fill.*, in English and Hinglish).

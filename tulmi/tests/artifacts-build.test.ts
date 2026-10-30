@@ -1,5 +1,5 @@
 /**
- * "Build it" (src/artifacts/build.ts, code/agent): an approved artifact becomes a Code bot job whose SPEC it is. The job's task carries the design,
+ * "Build it" (src/artifacts/build.ts, code/agent): an approved artifact becomes a Xode job whose SPEC it is. The job's task carries the design,
  * the kit and the place found; its state carries the whole design at the approved version; the agent loop shows the design to the model as the
  * thing to match, with the project's real components, and does not search for the place again. The screenshot compare is a seam, not built here.
  */

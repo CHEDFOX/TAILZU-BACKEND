@@ -85,7 +85,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   const spacesArea = registerSpacesRoutes(app, deps, { spaces: parts.spaces, trips: parts.trips });
   // The widgets, a notification's buttons and its reply (routes/widgets.ts): they read and answer through Spaces' parts.
   registerWidgetRoutes(app, deps, spacesArea);
-  registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; the Plan bot's home (routes/botsTrips.ts)
+  registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/botsCalendar.ts)
 
   const fail = (req: FastifyRequest, reply: FastifyReply, err: unknown): FastifyReply => {

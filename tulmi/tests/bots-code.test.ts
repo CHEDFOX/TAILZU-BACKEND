@@ -163,7 +163,7 @@ describe("the screens, for the phone and the window", () => {
     it(`bots.code.start meet / pick / read (${client})`, async () => {
       const meet = await build("bots.code.start", client, { step: "meet" }, { ...API, "GET /v1/code/github": { connected: false, installations: [] }, "POST /v1/code/github/connect": { installUrl: "https://github.com/apps/tailzu/installations/new?state=s" } });
       expect(meet.lint).toEqual([]);
-      expect(meet.words).toContain("Hi, I'm Code bot.");
+      expect(meet.words).toContain("Hi, I'm Xode.");
       expect(meet.json).toContain("https://github.com/apps/tailzu/installations/new?state=s");
       const pick = await build("bots.code.start", client, { step: "pick" });
       expect(pick.lint).toEqual([]);
@@ -186,7 +186,7 @@ describe("the screens, for the phone and the window", () => {
       expect(neither.json).not.toContain("oauth/authorize");
       expect(neither.words).toContain("GitHub isn't set up on this server yet.");
     });
-    it(`bots.code.start (${client}) with BotBuddy: one Code bot of his own across the steps, in one place, a moment per step`, async () => {
+    it(`bots.code.start (${client}) with BotBuddy: one Xode of his own across the steps, in one place, a moment per step`, async () => {
       const BUDDY = ["BotsKit", "BotsMotion", "BotBuddy"];
       const meetApi = { ...API, "GET /v1/code/github": { connected: false, installations: [] } };
       const steps = [["meet", "wave", meetApi], ["pick", "survey", API], ["read", "wave", API], ["home", "settle", API]] as const;
@@ -272,7 +272,7 @@ describe("the screens, for the phone and the window", () => {
 
 // ---------------------------------------------------------------------------- the routes
 
-/** The Code bot's own routes, faked, and its store: what the Bots app's doors call in-process. */
+/** Xode's own routes, faked, and its store: what the Bots app's doors call in-process. */
 function served() {
   resetCodeRulesStoreForTests(new MemoryCodeRulesStore());
   const app = Fastify();
@@ -306,22 +306,22 @@ function served() {
 }
 const who = (user: string) => ({ authorization: `Bearer ${user}` });
 
-describe("Tell Code bot what to do, offline", () => {
-  it("keeps the ask in the outbox for the Code bot (a build with one says it is offline); online, it asks as before", async () => {
-    // Two projects: Code bot's overview, whose bar asks the bot (not one project's plan).
+describe("Tell Xode what to do, offline", () => {
+  it("keeps the ask in the outbox for Xode (a build with one says it is offline); online, it asks as before", async () => {
+    // Two projects: Xode's overview, whose bar asks the bot (not one project's plan).
     const two = { ...API, "GET /v1/code/projects": { projects: [project, { ...project, id: "22222222-2222-4222-8222-222222222222", fullName: "aanya-sharma/salon-booking" }] } };
     for (const client of ["phone", "desktop"] as const) {
       const { json, lint } = await build("bots.code", client, {}, two);
       expect(lint, client).toEqual([]);
-      expect(json, client).toContain('"if":{"eq":["online",false]},"then":{"kind":"sequence","actions":[{"kind":"outbox","op":"add","path":"/v1/shell/ask","body":{"message":"$state.task","bot":"code","device":"' + client + '","mode":"text"},"label":"$state.task","sub":"Code bot · asked {time}"},{"kind":"clearState","path":"task"},{"kind":"toast","message":"Kept. It will send when you\'re back."}]},"else":{"kind":"sequence","actions":[{"kind":"setState","path":"sent","value":"$state.task"},{"kind":"setState","path":"stopped","value":false},{"kind":"setState","path":"reply","value":null},{"kind":"clearState","path":"task"},{"kind":"setState","path":"asking","value":true},{"kind":"callEndpoint","method":"POST","path":"/v1/shell/ask"');
+      expect(json, client).toContain('"if":{"eq":["online",false]},"then":{"kind":"sequence","actions":[{"kind":"outbox","op":"add","path":"/v1/shell/ask","body":{"message":"$state.task","bot":"code","device":"' + client + '","mode":"text"},"label":"$state.task","sub":"Xode · asked {time}"},{"kind":"clearState","path":"task"},{"kind":"toast","message":"Kept. It will send when you\'re back."}]},"else":{"kind":"sequence","actions":[{"kind":"setState","path":"sent","value":"$state.task"},{"kind":"setState","path":"stopped","value":false},{"kind":"setState","path":"reply","value":null},{"kind":"clearState","path":"task"},{"kind":"setState","path":"asking","value":true},{"kind":"callEndpoint","method":"POST","path":"/v1/shell/ask"');
     }
     // In a project the bar starts a plan, which is not an ask: nothing is kept for it.
     const inProject = await build("bots.code", "phone", { project: P });
-    expect(inProject.json).not.toContain('"sub":"Code bot · asked {time}"');
+    expect(inProject.json).not.toContain('"sub":"Xode · asked {time}"');
   });
 });
 
-describe("the Bots app's Code bot doors", () => {
+describe("the Bots app's Xode doors", () => {
   it("a task: a branch, then a plan-first job with the project's cap; another's project is a 404", async () => {
     const { app, seen } = served();
     await app.inject({ method: "POST", url: `/v1/bots/code/projects/${P}/cap`, headers: who("aanya"), payload: { step: 1 } });

@@ -48,7 +48,7 @@ const RTL = new Set(["ar", "he", "fa", "ur"]);
 /** Exact strings we never translate (brand, etc.). */
 const KEEP = new Set(["X0 Bot", "X0"]);
 
-const BRAND_NOTE = "Never translate the brand name 'X0 Bot' or its short form 'X0' (as in 'X0 Code') — keep them exactly.";
+const BRAND_NOTE = "Never translate the brand name 'X0 Bot', its short form 'X0', or the bots' names 'Xode', 'Keylessbord' and 'Plan Ease' — keep them exactly.";
 
 /**
  * The language to translate into, or null for English.

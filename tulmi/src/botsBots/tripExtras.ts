@@ -1,7 +1,7 @@
 /**
  * WHAT THE TRAVEL BOT WORKS OUT FOR A TRIP: its dates (from how the person wrote them, tripDates.ts), the forecast on those days at the
  * place (places/metno.ts), a packing line the weather calls for, where the trip's main places are, and its stays compared: price a
- * night and for the whole stay, rating, and minutes to the main place (stays.ts compareStays, with the Plan bot's routing).
+ * night and for the whole stay, rating, and minutes to the main place (stays.ts compareStays, with Plan Ease's routing).
  *
  *   extras.read(user, trip, { tz })     -> TripExtras    from memory at once; what is missing is looked up after and the screen told
  *                                                        ("bot:travel")

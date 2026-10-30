@@ -35,7 +35,7 @@ const LIST = { notes: [
 const NOTE = {
   id: "n1", status: "ready", startedAt: at(3 * HOUR), durationSeconds: 2520, words: 900, title: "Salon booking app review", summary: "Reminders move to WhatsApp.",
   people: [{ label: "Speaker 1", name: "Kavya Rao" }], organised: true, highlights: [{ speaker: "Speaker 1", text: "Weekends have the most no-shows." }],
-  transcript: [{ at: 42, speaker: "Speaker 1", text: "Weekends pe sabse zyada no-shows hote hain." }, { at: 70, speaker: "You", text: "Code bot can start today." }],
+  transcript: [{ at: 42, speaker: "Speaker 1", text: "Weekends pe sabse zyada no-shows hote hain." }, { at: 70, speaker: "You", text: "Xode can start today." }],
   decisions: ["Reminders go out on WhatsApp", "Weekend slots need a ₹200 UPI deposit"],
   todos: [
     { id: "t1", text: "Move booking reminders to WhatsApp", who: "You", done: false },

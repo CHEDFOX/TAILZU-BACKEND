@@ -1,5 +1,5 @@
 /**
- * WORK IT OUT FROM WHAT IS KNOWN, AND LEARN THE REST AFTER: the Plan bot's travel times and the Travel bot's weather and stays are each
+ * WORK IT OUT FROM WHAT IS KNOWN, AND LEARN THE REST AFTER: Plan Ease's travel times and the Travel bot's weather and stays are each
  * one pure computation over three questions (where is this, how long between these, what weather there), written once.
  *
  *   const { value, pending } = await lookNow({ places, later, userId, key: "plan", topics: ["bot:plan"], waitMs, compute })

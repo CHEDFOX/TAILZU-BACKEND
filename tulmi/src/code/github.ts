@@ -1,7 +1,7 @@
 /**
  * CALLING GITHUB AS THE TAILZU APP (OR AS THE PERSON), AND SAYING IT IN PLAIN WORDS WHEN GITHUB REFUSES.
  *
- * The Code bot works in a person's repos through a GitHub App, not through
+ * Xode works in a person's repos through a GitHub App, not through
  * their password or a token of theirs. Who Tailzu is to GitHub, in the order a
  * call needs it:
  *

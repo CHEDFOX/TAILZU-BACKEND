@@ -1,7 +1,7 @@
 /**
  * THE ONE DOOR TO A MODEL: callModel().
  *
- * Everything the Code bot's brain asks of a model goes through this function
+ * Everything Xode's brain asks of a model goes through this function
  * and nowhere else, so that the rules about money, privacy and failure are
  * written once:
  *

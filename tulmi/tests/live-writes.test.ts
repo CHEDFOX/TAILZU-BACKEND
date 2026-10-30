@@ -1,6 +1,6 @@
 /**
  * Live updates, the publishing side: which topics a write changes and which a screen hears (live/topics.ts), the hook that
- * publishes a 2xx write after its response, bursts folded into one event, the Code bot's jobs saying so as they move, and the
+ * publishes a 2xx write after its response, bursts folded into one event, Xode's jobs saying so as they move, and the
  * topics a Bots app screen carries.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -164,7 +164,7 @@ describe("a burst is one event", () => {
   });
 });
 
-describe("the Code bot's jobs", () => {
+describe("Xode's jobs", () => {
   const newJob = { userId: "user-a", projectId: "p", branch: "b", task: "Fix the login", budgetPaise: 0 };
 
   it("say so when they are made, change in a way a screen shows, or a step moves; lease bookkeeping stays quiet", async () => {

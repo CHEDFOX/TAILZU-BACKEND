@@ -1,5 +1,5 @@
 /**
- * THE MOMENT AN ASK IS OUT (src/experience/bots/askMoment.ts), in every chat: the Code bot's project chat and task bar, a bot's chat,
+ * THE MOMENT AN ASK IS OUT (src/experience/bots/askMoment.ts), in every chat: Xode's project chat and task bar, a bot's chat,
  * Ask, and Home's ask bar.
  *
  * What these hold down, for a build that carries (BotBuddyCarry) and streams (AskStream):
@@ -51,7 +51,7 @@ function actions(nodes: Node[]): ActionSpec[] {
 const lanes = (nodes: Node[]) => nodes.filter((n) => n.type === "BotBuddy" && n.props?.act === "carry");
 
 const CASES: Array<{ name: string; id: string; params: Record<string, string>; api: () => Promise<Record<string, unknown>>; color: string; kind: string; path: string; box: string; busy: string; old: string }> = [
-  { name: "the Code bot's project chat", id: "bots.code.job", params: { project: PROJECT }, api: async () => CODEWORK_API, color: "#4F7A3A", kind: "code", path: "/v1/ask", box: "msg", busy: "asking", old: "Asking Code bot…" },
+  { name: "Xode's project chat", id: "bots.code.job", params: { project: PROJECT }, api: async () => CODEWORK_API, color: "#4F7A3A", kind: "code", path: "/v1/ask", box: "msg", busy: "asking", old: "Asking Xode…" },
   { name: "a bot's chat", id: "bots.chat", params: { slug: "gym-bot" }, api: sampleApi, color: "", kind: "custom", path: "/v1/botsapp/bots/chat/gym-bot", box: "say", busy: "sending", old: "Gym bot is on it…" },
   { name: "Ask", id: "bots.ask", params: {}, api: async () => ({}), color: "#0a0a0a", kind: "custom", path: "/v1/shell/ask", box: "ask", busy: "asking", old: "Asking…" },
   { name: "Home's ask bar", id: "bots.home", params: {}, api: async () => ({}), color: "#0a0a0a", kind: "custom", path: "/v1/shell/ask", box: "ask", busy: "asking", old: "Asking your bots…" },

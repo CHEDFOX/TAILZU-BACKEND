@@ -228,7 +228,7 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
       }, async (emitOut, stop) => {
         own = 0;
         const emit = (ev: unknown): void => { toWords(ev as { t: string }); emitOut(ev); };
-        // "Ask any bot", or a bot the person chose: the front door picks, or is told. The Code bot and "none of them" go down the front door's own roads, unchanged.
+        // "Ask any bot", or a bot the person chose: the front door picks, or is told. Xode and "none of them" go down the front door's own roads, unchanged.
         if (bots) {
           const target = await bots.target(user.id, input.bot!, input.message, { ...(ctx.projectId ? { projectId: ctx.projectId } : {}), attachments: ctx.attachments, recent: ctx.recent, mode: ctx.mode }, stop);
           if (target.kind === "bot") {

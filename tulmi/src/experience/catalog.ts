@@ -2276,9 +2276,9 @@ export function buildBootstrap(
     //
     // A window that is not onboarded yet starts the new flow first, with the
     // desk behind it; onboarded, it opens on Today as ever.
-    // The Bots app's own first run (Languages, Name, Keybot, First words, Plans) for someone not onboarded yet.
+    // The Bots app's own first run (Languages, Name, Keylessbord, First words, Plans) for someone not onboarded yet.
     // The Bots app never opens on the old app's screens (the intro film, the microphone and keyboard steps, onboarding v2):
-    // it has its own first run, and Keybot's own screen sets up the microphone and the keyboard. Once through, Home.
+    // it has its own first run, and Keylessbord's own screen sets up the microphone and the keyboard. Once through, Home.
     initialScreenId: botsApp ? (!opts.onboarded && opts.isReviewer !== true ? BOTS_FIRST_RUN_SCREEN : landingScreenId(nav, "home"))
       : desk && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
       !!opts.onboarded,
@@ -5025,8 +5025,8 @@ export interface ScreenContext {
  * when setup is done, and never on a desktop or Android (no Live Activities).
  * Not amber: nothing here is live.
  */
-// Each step opens the Bots app where it is done: the keyboard on Keybot's "Turn on" page (bots.keybot.on, the step by step
-// the keyboard card's "Show me how" opens), the microphone on Keybot's page, whose card asks for it first (firstRun.ts
+// Each step opens the Bots app where it is done: the keyboard on Keylessbord's "Turn on" page (bots.keybot.on, the step by step
+// the keyboard card's "Show me how" opens), the microphone on Keylessbord's page, whose card asks for it first (firstRun.ts
 // keybotCard). Signing up and the first sentence open the app as it is.
 const SETUP_STEPS = [
   { key: "account", title: "Finish signing up", detail: "About a minute from here to talking in any app.", url: "tulmi://" },
@@ -5256,7 +5256,7 @@ function phoneScreen(screenId: string, ctx: ScreenContext): ScreenResponse | nul
 
 /** What the paywall and the out-of-words screen say while Tailzu is free. */
 /**
- * Keybot stopped by the usage meter (src/you/usage.ts), not by the free words: what it means, and where to see when it starts again.
+ * Keylessbord stopped by the usage meter (src/you/usage.ts), not by the free words: what it means, and where to see when it starts again.
  * No number of money, and nothing to buy here (Usage, in the app, offers a plan when one is for sale).
  */
 function usageOutScreen(screenId: string): ScreenResponse {
@@ -5271,7 +5271,7 @@ function usageOutScreen(screenId: string): ScreenResponse {
         style: { flex: 1, justifyContent: "center", alignItems: "center", gap: 14, padding: 32 },
         children: [
           { type: "Text", props: { content: "You've reached your limit for now" }, style: { fontSize: 26, fontWeight: "600", textAlign: "center" } },
-          { type: "Text", props: { content: "The keyboard still types. Keybot writes for you again when your stretch resets: see when in You, under Usage." }, style: { fontSize: 15, textAlign: "center", opacity: 0.75 } },
+          { type: "Text", props: { content: "The keyboard still types. Keylessbord writes for you again when your stretch resets: see when in You, under Usage." }, style: { fontSize: 15, textAlign: "center", opacity: 0.75 } },
           { type: "Button", props: { label: "Back" }, on: { onPress: { kind: "navigateBack" } }, style: { marginTop: 10 } },
         ],
       }],

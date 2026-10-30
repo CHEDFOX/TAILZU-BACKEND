@@ -549,7 +549,7 @@ const EnvSchema = z.object({
    * nothing breaks. Server-side only: never sent to a device, a log or a reply.
    */
   YOUTUBE_API_KEY: z.string().optional(),
-  // --- Code bot (src/code): connect GitHub, add a project, work on a branch ---
+  // --- Xode (src/code): connect GitHub, add a project, work on a branch ---
   /**
    * The whole feature. Off by default, and while it is off every /v1/code/*
    * route answers 404 { code: "code_off" }. On, but with the GitHub App below
@@ -581,7 +581,7 @@ const EnvSchema = z.object({
   /** The secret GitHub signs its webhooks with (X-Hub-Signature-256). With none, the webhook refuses everything. */
   GITHUB_APP_WEBHOOK_SECRET: z.string().optional(),
   /**
-   * "Sign in with GitHub" for the Code bot: a second way to connect that needs
+   * "Sign in with GitHub" for Xode: a second way to connect that needs
    * no App install. It is a classic GitHub OAuth App, so its token reaches all
    * the person's repos; Tailzu's own limits make that safe (src/code/oauth.ts:
    * only repos added as projects, push access re-checked before every write,
@@ -715,7 +715,7 @@ const EnvSchema = z.object({
    * a React component, SVG, a diagram, markdown. They run in the viewer (the viewer/ package, a site of its own, in a sandbox with no network);
    * this server keeps them, their versions, what they save while they run, and makes the changes cheaply (an edit of one element sends a
    * model only that element, on the cheap tier). Off by default: it needs migration 0032, and every /v1/artifacts route answers
-   * 404 { code: "artifacts_off" } while it is off. Not tied to the Code bot, but a Code project makes an artifact look like the project
+   * 404 { code: "artifacts_off" } while it is off. Not tied to Xode, but a Code project makes an artifact look like the project
    * (needs CODE_GITHUB and CODE_PROJECT_BRAIN for that part).
    *
    * ARTIFACT_DAILY_PAISE is what one person's edits, fixes and makings may cost in a day, in paise (2,000, twenty rupees, unless set).
@@ -759,7 +759,7 @@ const EnvSchema = z.object({
   R2_BUCKET: z.string().trim().optional(),
   MEDIA_KEEP_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
   /**
-   * THE BOTS PLATFORM (src/bots, docs/bots.md): everything is a bot (the Code bot, Keybot, the Plan bot, the Travel bot), and a person can make their own, each
+   * THE BOTS PLATFORM (src/bots, docs/bots.md): everything is a bot (Xode, Keylessbord, Plan Ease, the Travel bot), and a person can make their own, each
    * with its own tools, knowledge, memory and an API endpoint for their own apps. Off by default: it needs migration 0038, and with it off every /v1/bots route
    * answers 404 { code: "bots_off" } and the front door never picks a bot.
    *
@@ -775,7 +775,7 @@ const EnvSchema = z.object({
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). Off by default, and off means today's app, byte for byte. On, a build that declares "BotsKit" (it draws the kit's pieces)
    * is booted into it; an older build keeps today's app. BOTS_APP_TESTERS (sign-in emails, comma separated) narrows it to those people while set.
-   * The screens read the bots platform (BOTS), the Code bot's jobs and connected apps where they are on, and draw an honest empty state where not.
+   * The screens read the bots platform (BOTS), Xode's jobs and connected apps where they are on, and draw an honest empty state where not.
    */
   BOTS_APP: bool(false),
   BOTS_APP_TESTERS: z.string().default(""),
@@ -822,7 +822,7 @@ const EnvSchema = z.object({
   /**
    * THE USAGE METER (src/you/usage.ts, limits.ts): what each plan may use, set by us, in US DOLLARS of what the use really costs us. The person
    * never sees an amount: only how much of this stretch (or, on the free plan, this month) is used, and when it resets. Counted from the real
-   * records (the Code bot's jobs, every bot's answers, Keybot's dictations and rewrites: src/usage/cost.ts), which keep paise as they always
+   * records (Xode's jobs, every bot's answers, Keylessbord's dictations and rewrites: src/usage/cost.ts), which keep paise as they always
    * have; dollars become paise at CODE_USD_INR, the same rate the brain's gateway turns OpenRouter's dollars into paise with, so the rate
    * cancels out and a $4 stretch is $4 of what OpenRouter (and the speech engines) charged.
    *
@@ -936,7 +936,7 @@ const EnvSchema = z.object({
   CLOUDFLARE_API_TOKEN: z.string().trim().optional(),
   /**
    * THE PAGE READER AND ITS BROWSER (src/web, docs/web-reader.md). Shared by the
-   * Code bot's search tools and, later, anything Tailzu does on the web for a
+   * Xode's search tools and, later, anything Tailzu does on the web for a
    * person; it has no routes of its own.
    *
    * WEB_BROWSER: "off" (default) reads a page with a plain fetch only, and a page
@@ -969,7 +969,7 @@ const EnvSchema = z.object({
    */
   WEB_CACHE_TTL_MIN: z.coerce.number().int().min(0).max(10_080).default(360),
   /**
-   * WEB SEARCH (src/web/search, docs/web-search.md): the Code bot's web_search and
+   * WEB SEARCH (src/web/search, docs/web-search.md): Xode's web_search and
    * research tools. The direct sources (npm, PyPI, crates.io, GitHub, Stack
    * Overflow, MDN, Hacker News, Wikipedia) need no key. Then, for a general web
    * search, tried in this order and only as many as it takes:
@@ -1005,7 +1005,7 @@ const EnvSchema = z.object({
   WEB_SEARCH_DAILY: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(100_000).default(200)),
   WEB_RESEARCH_DAILY: z.preprocess((v) => (v === "" ? undefined : v), z.coerce.number().int().min(0).max(100_000).default(30)),
   /**
-   * PLACES AND WEATHER (src/places/index.ts): the Plan bot's travel times and the Travel bot's weather and stay distances.
+   * PLACES AND WEATHER (src/places/index.ts): Plan Ease's travel times and the Travel bot's weather and stay distances.
    * PLACES_GEOCODER photon|nominatim|off and PLACES_ROUTER osrm|ors|off are off unless set; each has its address
    * (PLACES_GEOCODE_URL, PLACES_ROUTE_URL; Nominatim's must be set) so a public server can become our own. PLACES_ROUTE_KEY is
    * openrouteservice's key, a SECRET (.env only). PLACES_RATE_MS spaces requests (1100 for the public servers, 0 for our own).
@@ -1089,7 +1089,7 @@ const EnvSchema = z.object({
   EXPO_ACCESS_TOKEN: z.string().optional(),
   /**
    * The "Bots at work" Live Activity, pushed by the server (src/widgets/apns.ts, activity.ts; docs/widget-glance-v2.md section 6): when a
-   * Code bot job's step, question or end changes, its activity on the person's Lock Screen moves while the app is shut. Straight to Apple's
+   * Xode job's step, question or end changes, its activity on the person's Lock Screen moves while the app is shut. Straight to Apple's
    * push service (HTTP/2, a JWT signed with the .p8 key), not through Expo. OFF, and nothing is registered or sent, unless the first four
    * are all set; the app then updates the activity itself whenever it fetches.
    *
@@ -1700,7 +1700,7 @@ export function getConfig(): AppConfig {
     console.warn("[config] CODE_JOBS_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the Worker.");
   }
 
-  // The Code bot switched on with half a GitHub App can be asked and never answer.
+  // Xode switched on with half a GitHub App can be asked and never answer.
   // Warned, not refused: every /v1/code route says "not_configured" until it is whole.
   if (env.CODE_GITHUB) {
     const missing = ([
@@ -1708,7 +1708,7 @@ export function getConfig(): AppConfig {
       ["GITHUB_APP_CLIENT_SECRET", env.GITHUB_APP_CLIENT_SECRET], ["GITHUB_APP_PRIVATE_KEY", env.GITHUB_APP_PRIVATE_KEY],
       ["GITHUB_APP_WEBHOOK_SECRET", env.GITHUB_APP_WEBHOOK_SECRET],
     ] as const).filter(([, v]) => !v).map(([k]) => k);
-    if (missing.length) console.warn(`[config] CODE_GITHUB=true but ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not set: the Code bot cannot be used until they are (docs/github-app.md).`);
+    if (missing.length) console.warn(`[config] CODE_GITHUB=true but ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} not set: Xode cannot be used until they are (docs/github-app.md).`);
     if (Buffer.from(env.CONNECTOR_TOKEN_KEY ?? "", "base64").length !== 32) {
       console.warn("[config] CODE_GITHUB=true but CONNECTOR_TOKEN_KEY is not 32 bytes of base64 (openssl rand -base64 32): GitHub cannot be connected.");
     }

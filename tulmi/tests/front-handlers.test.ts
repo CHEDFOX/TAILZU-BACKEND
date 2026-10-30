@@ -215,7 +215,7 @@ describe("a question about a project", () => {
     await expect(h.codeJob({ ...(await call("fix it", inProject({ projectId: a.project.id, userId: "bob" }))), userId: "bob", maxPaise: 100 })).rejects.toMatchObject({ code: "not_found" });
   });
 
-  it("says which part is off when it cannot go on: the Code bot, GitHub, the agent, a project", async () => {
+  it("says which part is off when it cannot go on: Xode, GitHub, the agent, a project", async () => {
     const { a, code } = await projectRig();
     const c = await call("fix the login bug", inProject({ projectId: a.project.id }));
     await expect(defaultHandlers({}).codeJob(c)).rejects.toMatchObject({ code: "code_off", status: 404 });

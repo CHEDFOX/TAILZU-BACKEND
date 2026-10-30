@@ -105,7 +105,7 @@ export function createCode(o: CreateCodeOptions = {}): Code {
       appReady = true;
     } catch {
       // The key is what could not be read: say which setting, never its contents.
-      console.warn("[code] GITHUB_APP_PRIVATE_KEY can't be read as a private key (raw PEM, or base64 of the PEM): the Code bot answers not_configured.");
+      console.warn("[code] GITHUB_APP_PRIVATE_KEY can't be read as a private key (raw PEM, or base64 of the PEM): Xode answers not_configured.");
     }
   }
   // A server with only the sign-in still needs the client for the git calls; it just has no App behind it.

@@ -42,14 +42,14 @@
  *   GET    /v1/artifacts/:id/shots/:shotId?exp=&sig=                    -> image/png  a screenshot of a design check (docs/artifacts.md section 11): the link
  *                                                                          is SIGNED for its owner (7 days) and served only to that person's own session
  *   POST   /v1/artifacts/:id/build { projectId, version?, budgetPaise? }
- *                                                                       -> 201 { job, branch, spec, located, kit }  "build it": a Code bot job whose
+ *                                                                       -> 201 { job, branch, spec, located, kit }  "build it": a Xode job whose
  *                                                                          spec is this version (the head if none is named)
  *   POST   /v1/code/projects/:id/artifacts/component { request, image? }
  *                                                                       -> 201 { artifact, version, content, type, located, kit, layout?, paise }  a
  *                                                                          component made in the project's style and shown in place; image is a
  *                                                                          sketch or a screenshot (a data: URL, png, jpeg, webp or gif)
  *
- * With ARTIFACTS off every route answers 404 { code: "artifacts_off" }, before the session. The project routes need the Code bot and the
+ * With ARTIFACTS off every route answers 404 { code: "artifacts_off" }, before the session. The project routes need Xode and the
  * project brain (404 code_off / brain_off; 409 brain_not_ready for a project whose brain was never built).
  *
  * What a mistake looks like: an artifact that is not the caller's is 404 (it does not say it exists), a bad body 400, a refusal (a secret, an
@@ -77,7 +77,7 @@ export interface ArtifactRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
   /** Null when ARTIFACTS is off. */
   artifacts: Artifacts | null;
-  /** The Code bot and the agent, for the project routes and "build it". Null or absent: those answer 404 code_off. */
+  /** Xode and the agent, for the project routes and "build it". Null or absent: those answer 404 code_off. */
   code?: Code | null;
   jobs?: JobRouter | null;
   agent?: AgentOrchestrator | null;
@@ -385,12 +385,12 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
     } catch (err) { return fail(reply, err); }
   });
 
-  // --- a project's artifacts, and "build it" (the Code bot)
+  // --- a project's artifacts, and "build it" (Xode)
 
-  /** The Code bot and its brain, as the project routes need them. Null once the answer has been sent. */
+  /** Xode and its brain, as the project routes need them. Null once the answer has been sent. */
   const codeReady = (reply: FastifyReply) => {
     const code = deps.code;
-    if (!code) { reply.code(404).send({ code: "code_off", message: "The Code bot is not switched on." }); return null; }
+    if (!code) { reply.code(404).send({ code: "code_off", message: "Xode is not switched on." }); return null; }
     if (!code.github) { reply.code(503).send({ code: "not_configured", message: "GitHub isn't set up on this server yet." }); return null; }
     if (!code.brain) { reply.code(404).send({ code: "brain_off", message: "The project brain isn't switched on." }); return null; }
     const d: ProjectDeps = { store: code.store, github: code.github, approvals: code.approvals, oauth: code.oauth };
@@ -451,7 +451,7 @@ export function registerArtifactRoutes(app: FastifyInstance, deps: ArtifactRoute
     const c = codeReady(reply);
     if (!c) return reply;
     if (!deps.jobs) return reply.code(503).send({ code: "not_configured", message: "GitHub isn't set up on this server yet." });
-    if (!deps.agent) return reply.code(404).send({ code: "agent_off", message: "The Code bot's agent is not switched on on this server." });
+    if (!deps.agent) return reply.code(404).send({ code: "agent_off", message: "Xode's agent is not switched on on this server." });
     const b = bodyOf(req.body);
     if (typeof b.projectId !== "string" || !UUID.test(b.projectId)) return reply.code(400).send({ code: "bad_request", message: "projectId is the project to build it into." });
     if (b.version !== undefined && (typeof b.version !== "number" || !Number.isInteger(b.version))) return reply.code(400).send({ code: "bad_request", message: "version is the version they approved." });

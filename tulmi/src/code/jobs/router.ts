@@ -106,7 +106,7 @@ import { isLeaving, STOPPED_MESSAGE } from "../../you/deletion.js";
 
 export interface JobRouterOptions {
   store: JobStore;
-  /** The Code bot's own pieces (projects.ts): the store of projects and branches, GitHub, the approvals. */
+  /** Xode's own pieces (projects.ts): the store of projects and branches, GitHub, the approvals. */
   projects: ProjectDeps;
   /** GitHub's free computers. Absent: not built or not set up, and never chosen. */
   github?: ComputeProvider | null;

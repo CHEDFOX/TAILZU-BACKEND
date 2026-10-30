@@ -162,10 +162,10 @@ export const DESKTOP_ROUTER = {
     "as bullets", "politely", "hindi mein", "english mein", "हिंदी में",
   ],
   bots: [
-    { slug: "plan", names: ["plan bot", "planner bot"] },
+    { slug: "plan", names: ["plan ease", "planease", "plan bot", "planner bot"] },
     { slug: "travel", names: ["travel bot"] },
-    { slug: "code", names: ["code bot", "coding bot"] },
-    { slug: "keybot", names: ["keybot", "key bot"] },
+    { slug: "code", names: ["xode", "code bot", "coding bot"] },
+    { slug: "keybot", names: ["keylessbord", "keylessboard", "keybot", "key bot"] },
   ],
   tasks: [
     { slug: "plan", re: "^(?:plan|organi[sz]e|sort out|block) (?:my|the|our) (?:day|week|weekend|morning|afternoon|evening|night|saturday|sunday|monday|tuesday|wednesday|thursday|friday|tomorrow|today|schedule|calendar|month)(?: |$)" },
@@ -286,16 +286,16 @@ export const SWIPE_EXTRA_WORDS: readonly string[] = [
 /**
  * The keyboards' lists, and the key click.
  *
- * kb.key.sound was sent only for someone who chose in Keybot, and its absence meant different things: iOS clicked
+ * kb.key.sound was sent only for someone who chose in Keylessbord, and its absence meant different things: iOS clicked
  * and Android stayed quiet. Now it is said for everyone, as each keyboard behaves today, so nothing changes until
- * the console makes it one decision; Keybot's own choice still goes over it (withKeybotKeyboard).
+ * the console makes it one decision; Keylessbord's own choice still goes over it (withKeybotKeyboard).
  */
 export function keyboardLists(platform: "ios" | "android"): Record<string, unknown> {
   return {
     "kb.swipe.coreWords": [...SWIPE_CORE_WORDS],
     "kb.swipe.extraWords": [...SWIPE_EXTRA_WORDS],
     "kb.key.sound": platform !== "android",
-    // Keybot's "Hold space to speak" is a person's choice (withKeybotKeyboard sets it on); off for everyone else,
+    // Keylessbord's "Hold space to speak" is a person's choice (withKeybotKeyboard sets it on); off for everyone else,
     // as both keyboards read its absence.
     "kb.space.holdToSpeak": false,
     ...(platform === "android" ? ANDROID_EXPLICIT : IOS_EXPLICIT),
@@ -308,7 +308,7 @@ export function keyboardLists(platform: "ios" | "android"): Record<string, unkno
  * keyboard uses when it is absent, so it is listed and changeable, and nothing changes until it is changed.
  *
  * Left absent on purpose (absence is their meaning): kb.dictation.language and kb.dictation.targetApp (overrides),
- * kb.look.force (Keybot's look), kb.personality.* and kb.quota.* (per person), kb.tones (the legacy tone list, whose
+ * kb.look.force (Keylessbord's look), kb.personality.* and kb.quota.* (per person), kb.tones (the legacy tone list, whose
  * absence keeps the built-in one), kb.flow.tailWaitMs (its default depends on the capture), and the colours derived
  * from the keyboard's light or dark look (kb.flash.color, kb.suggestion.chip*, kb.suggestion.dividerColor).
  */

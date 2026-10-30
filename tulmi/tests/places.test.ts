@@ -1,5 +1,5 @@
 /**
- * src/places: the providers behind the Plan bot's travel times and the Travel bot's weather, against recorded answers
+ * src/places: the providers behind Plan Ease's travel times and the Travel bot's weather, against recorded answers
  * (tests/fixtures: MET Norway for Pune and FOSSGIS' OSRM in Bengaluru, recorded 28 Oct 2026) and documented shapes. No network.
  *
  *   - Photon and Nominatim: places parsed, the country hint ranks, the bias point is sent

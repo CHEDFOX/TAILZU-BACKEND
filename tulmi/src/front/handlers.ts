@@ -8,8 +8,8 @@
  *                default is the fallback, and `assistant` is the seam where one can be put
  *   codeAnswer   a question about a project, answered from its brain: locate where, read a few excerpts, ask a cheap role. A stub for the
  *                code-question work that follows: the hook is `codeAnswer`, and nothing else in the front door depends on how it answers
- *   codeJob      a Code bot job on a new work branch (the same three calls "build it" makes), driven by the agent loop
- *   research     web/research.ts through the Code bot's web tools, held to the job-less budget and the person's daily research runs
+ *   codeJob      a Xode job on a new work branch (the same three calls "build it" makes), driven by the agent loop
+ *   research     web/research.ts through Xode's web tools, held to the job-less budget and the person's daily research runs
  *   plan         steps and a timeline: in a project, the work core's own plan (locate, then planChange); otherwise the front_plan role.
  *                A plan's diagram is drawn from its steps by code, so it costs nothing
  *   artifact     a visual made by the artifact core: a mermaid diagram (front_diagram, the cheap tier), a chart or a page (the service's
@@ -163,7 +163,7 @@ const projectDeps = (code: Code): ProjectDeps => ({ store: code.store, github: c
 
 function needCode(d: HandlerDeps, c: RouteCall): { code: Code; pd: ProjectDeps; projectId: string } {
   const code = d.code;
-  if (!code) throw new FrontError("code_off", "The Code bot is not switched on.", 404);
+  if (!code) throw new FrontError("code_off", "Xode is not switched on.", 404);
   if (!code.github) throw new FrontError("not_configured", "GitHub isn't set up on this server yet.", 503);
   if (!c.ctx.projectId) throw new FrontError("no_project", "Pick a project first.", 400);
   return { code, pd: projectDeps(code), projectId: c.ctx.projectId };
@@ -199,7 +199,7 @@ async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<CodeAnsw
 async function codeJobDefault(d: HandlerDeps, c: RouteCall): Promise<{ job: NonNullable<FrontResult["job"]>; paise: number }> {
   const { pd, projectId } = needCode(d, c);
   if (!d.jobs) throw new FrontError("not_configured", "GitHub isn't set up on this server yet.", 503);
-  if (!d.agent) throw new FrontError("agent_off", "The Code bot's agent is not switched on on this server.", 404);
+  if (!d.agent) throw new FrontError("agent_off", "Xode's agent is not switched on on this server.", 404);
   const project = await ownProject(pd, c.userId, projectId);
   await assertAccess(pd, c.userId, project);
   // "Ok, change it" after a talk about the code: the job starts with the place the conversation found, and does not look for it again.

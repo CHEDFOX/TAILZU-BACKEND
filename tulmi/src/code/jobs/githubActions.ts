@@ -86,7 +86,7 @@ const CI_KEEP_MS = 60 * 60_000;
 const WORKFLOWS_DIR = ".github/workflows";
 
 export interface GithubActionsOptions {
-  /** The Code bot's own pieces (projects.ts): the store of projects, GitHub, the approvals. */
+  /** Xode's own pieces (projects.ts): the store of projects, GitHub, the approvals. */
   d: ProjectDeps;
   /** The jobs' store: a result names a job, and the job says whose it is. */
   jobs: JobStore;

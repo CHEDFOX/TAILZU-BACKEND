@@ -5,7 +5,7 @@
  *
  * The front door reads a message for nothing (front/rules.ts: English, Hinglish, Hindi) and says what it is. Inside a bot, that reading is clamped to
  * the bot's skills: a bot with no research skill that is asked for the latest news answers from what it knows and says so; a bot with no Code skill
- * is not a code bot because the words sound like code; no bot but the Code bot changes code (that flow is the Code bot's own and is left exactly as
+ * is not a code bot because the words sound like code; no bot but Xode changes code (that flow is Xode's own and is left exactly as
  * it is: docs/code-agent.md), so "fix the crash" asked of any other bot is an answer, and the note says where to ask. The intent chooses the model's tier
  * and how long the answer may be; it grants nothing: what a bot may DO is its tools (tools.ts), which are its skills.
  *
@@ -46,12 +46,12 @@ export function scopeMessage(bot: Pick<BotDef, "skills">, message: string, ctx: 
   const read = intent;
   // Something attached: the message is about it (the front door's own rule, front/decide.ts).
   if (ctx.attachments.length) { intent = "file_question"; reasons.push("attachment"); }
-  // No project, nothing to ask the Code bot about.
+  // No project, nothing to ask Xode about.
   if ((intent === "code_question" || intent === "code_task") && !ctx.projectId) { intent = "answer"; reasons.push("no_project"); }
-  // Changing code is the Code bot's own flow, never another bot's.
+  // Changing code is Xode's own flow, never another bot's.
   if (intent === "code_task") {
     intent = bot.skills.code ? "code_question" : "answer";
-    notes.push("Changes to code are the Code bot's: ask it, and it opens a pull request.");
+    notes.push("Changes to code are Xode's: ask it, and it opens a pull request.");
     reasons.push("code_task:code_bot");
   }
   let needs = NEEDS[intent] ?? null;

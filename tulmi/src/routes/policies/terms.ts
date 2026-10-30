@@ -133,10 +133,10 @@ const TERMS_BODY = `
 
 <hr>
 
-<h2>9. The Code bot and GitHub</h2>
+<h2>9. Xode and GitHub</h2>
 <ul>
   <li>You may connect only repos, accounts and organisations you are allowed to, and your use of GitHub stays subject to GitHub's terms and to the rules of any organisation that owns a repo.</li>
-  <li>The Code bot makes its changes on its own branches and in draft pull requests. Unless you have told it otherwise for a project, it asks you before it merges a pull request, commits or pushes to any other branch (the default branch included), or deletes a branch, and some actions (such as a force-push) ask every time. A standing "always" you give for a project lets it act without asking, at your risk; you can take it back at any time.</li>
+  <li>Xode makes its changes on its own branches and in draft pull requests. Unless you have told it otherwise for a project, it asks you before it merges a pull request, commits or pushes to any other branch (the default branch included), or deletes a branch, and some actions (such as a force-push) ask every time. A standing "always" you give for a project lets it act without asking, at your risk; you can take it back at any time.</li>
   <li><strong>Reviewing, testing, merging, deploying and releasing code, and your repos' settings, branch protection, CI and secrets, are your decision and your risk.</strong> Code X0 Bot writes may contain bugs or security weaknesses, or resemble code under another licence; checking it is your job.</li>
   <li>X0 Bot's check for passwords and keys is a safeguard, not a guarantee. Do not keep secrets in your code.</li>
   <li>Commands X0 Bot runs for a job run on the computers you allow: your own computer, or GitHub's computers in your repo. You are responsible for allowing them there, and for anything a third party charges you, such as GitHub for Actions minutes beyond your free allowance.</li>
@@ -173,7 +173,7 @@ const TERMS_BODY = `
 <hr>
 
 <h2>14. Indemnification</h2>
-<p>To the extent the law allows, you agree to indemnify and hold X0 Bot and its affiliates harmless from any claim, loss, liability or expense (including reasonable legal fees) arising from (a) your use of the Service in violation of these Terms, (b) content you submit or share, (c) actions taken by your bots, your keys or the Code bot that you instructed, approved or allowed, (d) your use of connected apps and repos, or (e) your violation of any law or third-party right.</p>
+<p>To the extent the law allows, you agree to indemnify and hold X0 Bot and its affiliates harmless from any claim, loss, liability or expense (including reasonable legal fees) arising from (a) your use of the Service in violation of these Terms, (b) content you submit or share, (c) actions taken by your bots, your keys or Xode that you instructed, approved or allowed, (d) your use of connected apps and repos, or (e) your violation of any law or third-party right.</p>
 
 <hr>
 

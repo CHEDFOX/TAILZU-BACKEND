@@ -441,7 +441,7 @@ export async function appendHistoryEntry(
 ): Promise<void> {
   if (!hasConsentedToHistory(personality)) return;
   await withUserLock(user.id, () => appendHistoryEntryLocked(user, entry, audioSeconds));
-  // Keybot's pages and Activity's words, on the person's other devices (live/writes.ts).
+  // Keylessbord's pages and Activity's words, on the person's other devices (live/writes.ts).
   livePublish(user.id, [TOPIC.keybot, TOPIC.activity]);
 }
 

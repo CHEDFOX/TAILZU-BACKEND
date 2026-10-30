@@ -3,7 +3,7 @@
  *
  *   decide(message, ctx) -> Decision { intent, shape: { length, visual }, route, tier, budgetPaise, confidence, clarify? }
  *
- * RULES FIRST, FOR NOTHING (rules.ts): the Code bot's free classifier for the code signals, plus the project, the attachments, the earlier turns
+ * RULES FIRST, FOR NOTHING (rules.ts): Xode's free classifier for the code signals, plus the project, the attachments, the earlier turns
  * and the wording of a design, a plan, a piece of research or small talk. When the rules are sure (0.7 or more, after the person's own
  * history has been allowed to cut their confidence: learn.ts) that is the answer, and no model was asked. Below 0.7 the SMALL model is
  * asked once (role front_decide, the tiny tier, a few hundred tokens): it wins on the intent, the length and the clarifying question, and

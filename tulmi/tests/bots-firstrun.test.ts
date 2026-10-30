@@ -3,8 +3,8 @@ import type { FastifyInstance } from "fastify";
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 
 // The Bots app's first run (screens/firstRun.ts, routes/botsFirstRun.ts): Welcome, Sign in and Code in the gate's
-// tree, then About you → Name on a stage of their own, with one Blip walking across both; Language, Turn on Keybot,
-// First words and Plans are pages reached from the app, and Bots and Keybot carry the keyboard and microphone cards.
+// tree, then About you → Name on a stage of their own, with one Blip walking across both; Language, Turn on Keylessbord,
+// First words and Plans are pages reached from the app, and Bots and Keylessbord carry the keyboard and microphone cards.
 process.env.OPENROUTER_API_KEY = "k";
 process.env.OPENAI_API_KEY = "k";
 process.env.GROQ_API_KEY = "k";
@@ -114,7 +114,7 @@ describe("About you and Name: the stage after sign-in", () => {
       { kind: "switchTab", tabId: "bots" },
     ]));
     expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "setState", path: "name", value: "Jarvis" })]));
-    // Nothing after it any more: no Turn on Keybot, no Plans in the run.
+    // Nothing after it any more: no Turn on Keylessbord, no Plans in the run.
     expect(actions(s.root).some((x) => x.kind === "navigate")).toBe(false);
     // The two writes to the profile on this screen (each from its button and from its field's return): About you's,
     // and the end of onboarding.
@@ -162,7 +162,7 @@ describe("Language: a page from You now", () => {
   });
 });
 
-describe("Turn on Keybot, First words", () => {
+describe("Turn on Keylessbord, First words", () => {
   it("phone: the steps follow the phone's own keyboard reading, Settings opens per OS, and on to First words with the words so far", async () => {
     const s = await build("bots.keybot.on", "phone");
     expect(s.state).toMatchObject({ keyboardEnabled: false, keyboardReady: false });
@@ -182,7 +182,7 @@ describe("Turn on Keybot, First words", () => {
     // The phone's mic key is tapped, not held.
     expect(texts(s.root!).some((t) => /\bhold\b/i.test(t))).toBe(false);
     expect(texts(s.root!)).toContain("It only takes your words after you tap its mic key.");
-    // One button, Continue: it opens Settings until the phone says Keybot is on, then goes on to First words. That never
+    // One button, Continue: it opens Settings until the phone says Keylessbord is on, then goes on to First words. That never
     // waits on Full Access alone: an iPhone reads it only after the keyboard has run, so there the keyboard being
     // switched on is enough.
     const conts = walk(s.root!).filter((x) => x.visibleIf && x.type !== "Text" && texts(x).join("") === "Continue");
@@ -202,7 +202,7 @@ describe("Turn on Keybot, First words", () => {
     expect(actions(inApp.root)).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "navigate", screenId: "bots.first-words", params: { w: 5210, s: 1880, from: "app" }, replace: true }),
     ]));
-    // First words is the same: Done never lands back on Turn on Keybot.
+    // First words is the same: Done never lands back on Turn on Keylessbord.
     const words = await build("bots.first-words", "phone");
     const done = walk(words.root!).find((x) => x.on?.onPress && texts(x).join("") === "Done")!;
     expect(actions(done)[0]).toEqual({ kind: "navigate", screenId: "bots.home", replace: true });
@@ -240,7 +240,7 @@ describe("Turn on Keybot, First words", () => {
     expect(texts(phone.root!).some((t) => /\bhold\b/i.test(t))).toBe(false);
     const quiet = await build("bots.first-words", "desktop");
     expect(texts(quiet.root!).some((t) => /^\d[\d,]* words?$/.test(t))).toBe(false);
-    // Done goes back (to Bots, or Keybot), not on to Plans.
+    // Done goes back (to Bots, or Keylessbord), not on to Plans.
     expect(texts(quiet.root!)).toContain("Done");
     expect(JSON.stringify(quiet.root)).not.toContain('"screenId":"bots.plans"');
   });
@@ -267,7 +267,7 @@ describe("Plans: a page from You and Billing now", () => {
     expect(s.state?.plan).toBe("annual");
     expect(texts(s.root!)).toEqual(expect.arrayContaining(["Elite", "$59.99", "Lite", "Start free week", "Not now", "100× more every month, for all your bots", "10× more every month, for all your bots"]));
     // Minimal and the same for every bot: no Free card, no bot-specific lines, no feature list.
-    for (const gone of ["Stay on Free", "Keybot, 2,000 words a month", "Keybot without a word limit", "Unlimited voice-to-text refinement"]) expect(texts(s.root!)).not.toContain(gone);
+    for (const gone of ["Stay on Free", "Keylessbord, 2,000 words a month", "Keylessbord without a word limit", "Unlimited voice-to-text refinement"]) expect(texts(s.root!)).not.toContain(gone);
     const all = actions(s.root);
     const buy = all.find((x) => x.kind === "iap.showPaywall" && (x as { packageId?: string }).packageId === "$rc_annual") as { onSuccess?: unknown } | undefined;
     expect(buy).toBeDefined();
@@ -431,7 +431,7 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
     expect(lintTree(plain.root!)).toEqual([]);
   });
 
-  it("Keybot on a phone: the same card in the page, only for what is missing; nothing once it is all on", async () => {
+  it("Keylessbord on a phone: the same card in the page, only for what is missing; nothing once it is all on", async () => {
     const s = await build("bots.keybot", "phone", { can: MOTION });
     // Declared on, so the card never flashes: the app's own readings bring it in.
     expect(s.state).toMatchObject({ keyboardEnabled: true, keyboardReady: true, micGranted: true, micAsked: false });
@@ -443,7 +443,7 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
     expect(actions(card.on?.onComplete)).toEqual([{ kind: "setState", path: "keybotSet", value: true }]);
     expect(stepOf(card, "X0 got you!")?.visibleIf).toEqual({ not: missing });
     expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
-    const mic = stepOf(card, "Let Keybot hear you")!;
+    const mic = stepOf(card, "Let Keylessbord hear you")!;
     const ask = actions(mic).find((x) => x.kind === "requestPermission") as { onGranted?: unknown; onBlocked?: unknown };
     expect(actions(ask.onGranted)).toEqual(expect.arrayContaining([{ kind: "setState", path: "micGranted", value: true }, expect.objectContaining({ kind: "navigate", screenId: "bots.first-words" })]));
     expect(actions(ask.onBlocked)).toEqual(expect.arrayContaining([{ kind: "openSettings", target: "app" }]));
@@ -460,7 +460,7 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
     const card = cardOf(real.root!)!;
     expect(card.props).toMatchObject({ overlay: true, readyWhen: { neq: ["micGranted", null] } });
     expect(stepOf(card, "Let X0 Bot hear you")).toBeDefined();
-    expect(walk(stepOf(card, "Let Keybot type for you")!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read" }] });
+    expect(walk(stepOf(card, "Let Keylessbord type for you")!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read" }] });
     const keybot = await build("bots.keybot", "desktop", { can: [...MOTION, "DeskAskSetup", "DeskMicAsk"] });
     expect(cardOf(keybot.root!)?.visibleIf).toEqual({ falsy: "micGranted" });
     expect(walk(keybot.root!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ place: "home" });

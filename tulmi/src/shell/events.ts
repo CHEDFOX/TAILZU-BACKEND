@@ -2,11 +2,11 @@
  * WHAT THE BOTS APP WRITES DOWN FOR ACTIVITY: an answer a bot gave through Ask, and a payment the person says they made.
  *
  *   ask    which bot answered, what was asked (cut to 200 characters), and what the answer cost in paise: through Ask
- *          (/v1/shell/ask, which the Code bot's page uses too) or on a bot's own page and chat (routes/botsBots.ts), once each
+ *          (/v1/shell/ask, which Xode's page uses too) or on a bot's own page and chat (routes/botsBots.ts), once each
  *   paid   which bot filled the payment in, what it was for, to whom, how much: the person's own word that they pressed pay
  *          in their UPI app (bots.approve). Tailzu never pays, so this is the receipt of what they did, not proof of a transfer.
  *
- * The other rows of the feed are the records their own parts keep (Code bot jobs, connected-app tasks, history); these two had
+ * The other rows of the feed are the records their own parts keep (Xode jobs, connected-app tasks, history); these two had
  * no record anywhere, so the shell keeps them: migration 0040 (bots_app_events), with a memory twin for tests and a server with
  * no Supabase. Written with the service key; a person's own token can read their own rows and write none. A row older than
  * KEEP_DAYS is dropped the next time the person writes one.

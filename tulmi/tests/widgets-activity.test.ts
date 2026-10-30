@@ -152,40 +152,40 @@ describe("a push to Apple", () => {
 
 describe("the activity's content state", () => {
   it("working: the job's task, its step and stages, when it started, where it opens", () => {
-    const u = contentStateOf(RUNNING, words(), "Code bot")!;
+    const u = contentStateOf(RUNNING, words(), "Xode")!;
     expect(u).toMatchObject({ event: "update", priority: 5 });
     expect(u.alert).toBeUndefined();
     expect(u.state).toEqual({
-      bot: "code", botName: "Code bot", face: "code", task: "Fix cart total rounding", stage: 3, of: 5, stageName: "Build",
+      bot: "code", botName: "Xode", face: "code", task: "Fix cart total rounding", stage: 3, of: 5, stageName: "Build",
       stages: ["Understand", "Plan", "Build", "Check", "Ship"], startedAt: NOW - 30 * MIN, phase: "working", link: "tulmi://screen/bots.code.job?id=j1",
     });
-    expect(contentStateOf({ ...RUNNING, phase: "verify" }, words(), "Code bot")!.sig).not.toBe(u.sig);
-    expect(contentStateOf({ ...RUNNING, updatedAt: NOW }, words(), "Code bot")!.sig).toBe(u.sig);
+    expect(contentStateOf({ ...RUNNING, phase: "verify" }, words(), "Xode")!.sig).not.toBe(u.sig);
+    expect(contentStateOf({ ...RUNNING, updatedAt: NOW }, words(), "Xode")!.sig).toBe(u.sig);
   });
 
   it("needs: the question and its answers (the act item they answer), an alert; private: only that it needs them", () => {
-    const u = contentStateOf(ASKING, words(), "Code bot")!;
-    expect(u).toMatchObject({ event: "update", priority: 10, alert: { title: "Code bot needs you", body: "Round the cart total per item, or once at the end?" } });
+    const u = contentStateOf(ASKING, words(), "Xode")!;
+    expect(u).toMatchObject({ event: "update", priority: 10, alert: { title: "Xode needs you", body: "Round the cart total per item, or once at the end?" } });
     expect(u.state).toMatchObject({
       phase: "needs", question: "Round the cart total per item, or once at the end?",
       choices: [{ id: "a0", label: "Per item", primary: true }, { id: "a1", label: "At the end" }],
       itemId: expect.stringMatching(/^job:j1:[0-9a-f]{8}$/), itemKind: "question", decideLink: "tulmi://screen/bots.code.job?id=j1",
     });
-    const hidden = contentStateOf({ ...ASKING, question: { ...ASKING.question!, widget: { private: true } } }, words(), "Code bot")!;
-    expect(hidden.state).toMatchObject({ phase: "needs", question: "Code bot needs you", private: true, itemKind: "question", decideLink: "tulmi://screen/bots.code.job?id=j1" });
+    const hidden = contentStateOf({ ...ASKING, question: { ...ASKING.question!, widget: { private: true } } }, words(), "Xode")!;
+    expect(hidden.state).toMatchObject({ phase: "needs", question: "Xode needs you", private: true, itemKind: "question", decideLink: "tulmi://screen/bots.code.job?id=j1" });
     expect(hidden.state.choices).toBeUndefined();
     expect(JSON.stringify(hidden)).not.toContain("Round the cart");
-    expect(hidden.alert).toEqual({ title: "Code bot needs you", body: "Open X0 to answer" });
-    expect(contentStateOf(ASKING, words(true), "Code bot")!.alert!.title).toBe("Code bot ko aapki zaroorat hai");
+    expect(hidden.alert).toEqual({ title: "Xode needs you", body: "Open X0 to answer" });
+    expect(contentStateOf(ASKING, words(true), "Xode")!.alert!.title).toBe("Xode ko aapki zaroorat hai");
   });
 
   it("done: the result and the pull request, and the activity ends; a failure says so", () => {
-    const u = contentStateOf(DONE, words(), "Code bot")!;
+    const u = contentStateOf(DONE, words(), "Xode")!;
     expect(u).toMatchObject({ event: "end", priority: 10 });
     expect(u.state).toMatchObject({ phase: "done", stage: 5, stageName: "Ship", result: "Cart fix is ready", pr: { number: 131 }, minutes: 29 });
-    const failed = contentStateOf({ ...RUNNING, state: "failed", reason: "" }, words(), "Code bot")!;
-    expect(failed.state).toMatchObject({ phase: "done", failed: true, result: "Code bot hit a snag" });
-    expect(contentStateOf({ ...RUNNING, helper: true }, words(), "Code bot")).toBeNull();
+    const failed = contentStateOf({ ...RUNNING, state: "failed", reason: "" }, words(), "Xode")!;
+    expect(failed.state).toMatchObject({ phase: "done", failed: true, result: "Xode hit a snag" });
+    expect(contentStateOf({ ...RUNNING, helper: true }, words(), "Xode")).toBeNull();
   });
 });
 
@@ -211,7 +211,7 @@ describe("the pusher", () => {
     expect(h2.sent).toHaveLength(1);
     jobs.set("j1", ASKING);
     expect(await pusher.flush("u1", "j1")).toBe("sent");
-    expect(h2.sent[1]!.body.aps).toMatchObject({ event: "update", "content-state": { phase: "needs" }, alert: { title: "Code bot needs you" } });
+    expect(h2.sent[1]!.body.aps).toMatchObject({ event: "update", "content-state": { phase: "needs" }, alert: { title: "Xode needs you" } });
     expect(h2.sent[1]!.headers["apns-priority"]).toBe("10");
     jobs.set("j1", DONE);
     expect(await pusher.flush("u1", "j1")).toBe("ended");

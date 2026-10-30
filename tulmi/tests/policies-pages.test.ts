@@ -50,7 +50,7 @@ import { ACT_WITHIN_MS } from "../src/botsBots/safety.js";
  * THE POLICY PAGES, HELD TO THE CODE (routes/policies: privacy.ts, terms.ts, support.ts).
  *
  * privacy-ask.test.ts holds the Ask and Google sections. This file holds the rest of what the policy says the product
- * does today (the Code bot and GitHub, other connected apps, bots, files, the Lock Screen, purchases), the Terms'
+ * does today (Xode and GitHub, other connected apps, bots, files, the Lock Screen, purchases), the Terms'
  * protections, and the Support page, to the code that does it: a change that makes a sentence untrue fails here, and
  * the page is changed with it.
  */
@@ -58,14 +58,14 @@ import { ACT_WITHIN_MS } from "../src/botsBots/safety.js";
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&rarr;/g, "→").replace(/\s+/g, " ").replace(/ ([,.;:)])/g, "$1");
 const policy = text(PRIVACY_POLICY_HTML);
 const between = (from: string, to: string) => policy.slice(policy.indexOf(from), policy.indexOf(to));
-const github = between("12. The Code bot and GitHub", "13. Other apps you connect");
+const github = between("12. Xode and GitHub", "13. Other apps you connect");
 const apps = between("13. Other apps you connect", "14. Bots");
 const bots = between("14. Bots", "15. Widgets, Live Activities");
 const lock = between("15. Widgets, Live Activities", "16. Changes to this policy");
 const terms = text(TERMS_HTML);
 const support = text(SUPPORT_HTML);
 
-describe("the Code bot and GitHub (privacy, Section 12)", () => {
+describe("Xode and GitHub (privacy, Section 12)", () => {
   it("says what it does on its own, what it asks about, and what asks every time, as the policy's tiers have it", () => {
     for (const a of ["branch.create", "commit.own_branch", "pr.open_draft", "branch.sync", "pr.comment"] as const) expect(ACTIONS[a].tier, a).toBe("free");
     for (const a of ["commit.other_branch", "pr.merge", "pr.ready", "pr.close", "branch.delete", "workflow.write", "repo.init"] as const) expect(ACTIONS[a].tier, a).toBe("ask");
@@ -203,7 +203,7 @@ describe("the terms", () => {
     expect(terms).not.toMatch(/class action|arbitration/i);
   });
 
-  it("say what the Code bot asks about as the policy's tiers do", () => {
+  it("say what Xode asks about as the policy's tiers do", () => {
     expect(ACTIONS["pr.merge"].tier).toBe("ask");
     expect(ACTIONS["commit.other_branch"].tier).toBe("ask");
     expect(ACTIONS["push.force"].tier).toBe("ask_strict");
@@ -256,7 +256,7 @@ describe("served", () => {
     const t = await app.inject({ method: "GET", url: "/terms" });
     expect(t.statusCode).toBe(200);
     expect(t.body).toContain("Effective: October 30, 2026");
-    expect(t.body).toContain("<h2>9. The Code bot and GitHub</h2>");
+    expect(t.body).toContain("<h2>9. Xode and GitHub</h2>");
     const map = await app.inject({ method: "GET", url: "/sitemap.xml" });
     expect(map.body).toContain("<loc>https://x0bot.com/support</loc>");
   });

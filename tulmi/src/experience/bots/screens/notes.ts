@@ -1,7 +1,7 @@
 /**
  * NOTES: meetings noted on the computer, written up, with what each one left to do (DeskNotes, DeskNote).
  *
- * Its own thing, not a part of Keybot: a strip under Home's grid (with its own tiny bot, who listens and scribbles on a
+ * Its own thing, not a part of Keylessbord: a strip under Home's grid (with its own tiny bot, who listens and scribbles on a
  * little pad), an item in the window's sidebar, and two pages, for the phone and the window alike:
  *
  *   bots.notes   the meetings, newest first; search; the week in numbers (meetings, hours, people met) and the to-dos

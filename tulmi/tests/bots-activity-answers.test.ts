@@ -3,7 +3,7 @@
  *
  *   - an answer in a bot's own page or chat (POST /v1/botsapp/bots/chat/:slug) is written down as Ask's are, once: a repeat of the
  *     same request is replayed and not written again, and a refused ask writes nothing
- *   - the Code bot's own page asks through /v1/shell/ask (which writes it down), with its project
+ *   - Xode's own page asks through /v1/shell/ask (which writes it down), with its project
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
@@ -78,12 +78,12 @@ describe("a bot's own page and chat", () => {
   });
 });
 
-describe("the Code bot's own page", () => {
+describe("Xode's own page", () => {
   it("asks through /v1/shell/ask, which writes the answer down and carries the project", async () => {
     const PROJECT = "9b2c3d4e-0000-4000-8000-0000000000aa";
     const asked: Array<Record<string, unknown>> = [];
     const app = Fastify();
-    app.post("/v1/ask", async (req) => { asked.push(req.body as Record<string, unknown>); return { id: "d1", result: { text: "Two PRs merged.", paise: 30 }, bot: { slug: "code", name: "Code bot" } }; });
+    app.post("/v1/ask", async (req) => { asked.push(req.body as Record<string, unknown>); return { id: "d1", result: { text: "Two PRs merged.", paise: 30 }, bot: { slug: "code", name: "Xode" } }; });
     const events = new MemoryEventStore();
     registerBotsShellRoutes(app, { rateLimit: RL, ...NONE, bots: {} as never }, { events });
     await app.ready();
@@ -92,7 +92,7 @@ describe("the Code bot's own page", () => {
     expect(asked[0]).toMatchObject({ message: "What changed this week?", bot: "code", projectId: PROJECT });
     expect(await events.list(ALICE, 0)).toMatchObject([{ kind: "ask", bot: "code", title: "What changed this week?", paise: 30 }]);
 
-    // Two projects: the Code bot's overview, whose "What changed this week?" asks the bot itself.
+    // Two projects: Xode's overview, whose "What changed this week?" asks the bot itself.
     const projects = [PROJECT, "9b2c3d4e-0000-4000-8000-0000000000bb"].map((id, i) => ({ id, fullName: `aanya-sharma/${i ? "salon" : "storefront"}`, defaultBranch: "main", private: true, createdAt: 0 }));
     const api = { "GET /v1/code/github": { connected: true, installations: [] }, "GET /v1/code/projects": { projects }, "GET /v1/code/jobs": { jobs: [] } };
     for (const client of ["phone", "desktop"] as const) {

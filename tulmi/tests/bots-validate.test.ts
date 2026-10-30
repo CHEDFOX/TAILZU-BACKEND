@@ -152,7 +152,7 @@ describe("the owner's rules that try to change ours", () => {
 });
 
 describe("the four X0 Bot ships", () => {
-  it("are Code, Keybot, Plan and Travel, in the format of any bot, owned by nobody", () => {
+  it("are Code, Keylessbord, Plan and Travel, in the format of any bot, owned by nobody", () => {
     const all = builtinBots();
     expect(all.map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel"]);
     for (const b of all) {

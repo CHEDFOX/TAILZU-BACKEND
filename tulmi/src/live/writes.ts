@@ -4,7 +4,7 @@
  *   livePublish(userId, ["keybot"])       a change, for every device the person has open (bursts coalesced, below)
  *   installLiveWrites(app)                every 2xx write over HTTP whose route is in topics.ts's table publishes its topics,
  *                                         after the response has gone (an onResponse hook: never in a request's way)
- *   liveJobStore(store)                   the Code bot's jobs say so as they move (the agent, the ticker, a runner's result),
+ *   liveJobStore(store)                   Xode's jobs say so as they move (the agent, the ticker, a runner's result),
  *                                         whoever made the change: job:<id>, code, home, activity; and the job's Live Activity
  *                                         (setJobChangeHook: the APNs pusher, widgets/activity.ts, when it is configured)
  *   liveNote(userId, id)                  a meeting's notes changed (notes/store.ts): notes, note:<id>
@@ -12,7 +12,7 @@
  * A BURST IS ONE EVENT. Per person and topic, the first event goes at once and the rest of a burst become one more at its end
  * (a job's checkpoints, a note's transcript growing every few seconds, a write that calls another route in-process). One topic's
  * gap: GAP_MS, or ITEM_GAP_MS for one thing's own topic (job:<id>, note:<id>), which a person watches closely; a working job's
- * lists (Home, Activity, the Code bot's) LIST_GAP_MS, since each of those reloads reads a good deal.
+ * lists (Home, Activity, Xode's) LIST_GAP_MS, since each of those reloads reads a good deal.
  *
  * Who wrote, for the hook: the session's user id, read locally from the JWT (auth/jwt.ts localUserId, no network), else the same
  * resolveUser the route used (a desktop's static token, a server with no JWT key). Only after a 2xx, so the route has already
@@ -76,7 +76,7 @@ export class LiveThrottle {
 }
 
 const throttle = new LiveThrottle();
-/** A job at work writes often: the lists it shows on (Home, Activity, the Code bot's) hear of it at most every LIST_GAP_MS. */
+/** A job at work writes often: the lists it shows on (Home, Activity, Xode's) hear of it at most every LIST_GAP_MS. */
 export const LIST_GAP_MS = 3000;
 const listThrottle = new LiveThrottle(live, () => LIST_GAP_MS);
 
@@ -94,7 +94,7 @@ export function liveNote(userId: string, id: string): void {
 let jobChangeHook: ((userId: string, jobId: string) => void) | null = null;
 export function setJobChangeHook(fn: ((userId: string, jobId: string) => void) | null): void { jobChangeHook = fn; }
 
-/** A Code bot job changed: its page at once, the Code bot's lists, Home's tiles and Activity a little more slowly; and its Live Activity. */
+/** A Xode job changed: its page at once, Xode's lists, Home's tiles and Activity a little more slowly; and its Live Activity. */
 export function liveJob(userId: string, jobId: string): void {
   livePublish(userId, [jobTopic(jobId)]);
   try { listThrottle.publish(userId, [TOPIC.code, TOPIC.home, TOPIC.activity]); } catch { /* a hint lost */ }

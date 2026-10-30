@@ -1,5 +1,5 @@
 /**
- * Bots app · the person's own calendar and to-dos (src/calendar; the Plan bot's pages in experience/bots/screens/bots.ts and planItem.ts).
+ * Bots app · the person's own calendar and to-dos (src/calendar; Plan Ease's pages in experience/bots/screens/bots.ts and planItem.ts).
  * Registered by routes/botsBots.ts. Every route is the signed-in person's own (401 without a session); another person's is "not found".
  *
  *   GET    /v1/botsapp/calendar?from=&to=&tz=          -> { events, tasks, open }   the days' events (a series' starts as their own) and

@@ -2,7 +2,7 @@
  * WHICH SCRIPT A TEXT IS WRITTEN IN, AND HOW MUCH OF IT IS ROMANIZED HINDI.
  *
  * Split out of stt.ts, whose other half drives the speech engines (groq-sdk, the
- * speech-presence probe: child_process, fs). The Code bot's request classifier
+ * speech-presence probe: child_process, fs). Xode's request classifier
  * needs only these pure functions, and the Cloudflare jobs Worker that bundles
  * it must not carry a speech-to-text SDK for them. stt.ts re-exports all of it,
  * so every existing import keeps working.

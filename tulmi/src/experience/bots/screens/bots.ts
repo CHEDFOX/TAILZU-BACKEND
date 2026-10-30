@@ -1,5 +1,5 @@
 /**
- * THE BOTS THEMSELVES: a bot's page and its chat, Make a bot, Edit, its keys, Find a bot, the Plan bot, the Travel bot, Spaces, sending a
+ * THE BOTS THEMSELVES: a bot's page and its chat, Make a bot, Edit, its keys, Find a bot, Plan Ease, the Travel bot, Spaces, sending a
  * shared file or link to a bot, and Blip's five moments (BotPage, Chat, MakeBot, BotEdit, BotKeys, BotStore, PlanBot, TravelBot, Spaces,
  * ShareIn, Avatars; D<Board> in the window).
  *
@@ -32,7 +32,7 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const OWN_COLOURS = ["pine", "plum", "sand", "stone"] as const;
 const ALL_COLOURS = ["moss", "clay", "ochre", "sea", "pine", "plum", "sand", "stone"] as const;
 /** The design gives the built-ins these colours (palette.ts), whatever src/bots calls them. */
-const BUILTIN_COLOUR: Record<string, string> = { moss: "Code", clay: "Keybot", ochre: "Plan", sea: "Travel" };
+const BUILTIN_COLOUR: Record<string, string> = { moss: "Code", clay: "Keylessbord", ochre: "Plan", sea: "Travel" };
 
 // ===================================================================== what the screens read
 
@@ -403,7 +403,7 @@ function chatPage(ctx: BotsCtx, d: BotPageData) {
   const bot = d.bot!;
   const look = lookOf(bot.slug, bot.colour);
   if (bot.slug === "code") {
-    return page(ctx, { back: true, title: "Code bot", nav: "code", body: [emptyState({ pose: "think", title: "The Code bot talks on its own page", body: "It reads your projects and answers there.", action: { label: "Open the Code bot", onPress: open(SCREENS.code) } })] });
+    return page(ctx, { back: true, title: "Xode", nav: "code", body: [emptyState({ pose: "think", title: "Xode talks on its own page", body: "It reads your projects and answers there.", action: { label: "Open Xode", onPress: open(SCREENS.code) } })] });
   }
   const turns = d.turns ?? [];
   // The bot's own tiny bot at the head's right end: it thinks while an answer comes, and glances down at the field.
@@ -1013,7 +1013,7 @@ function planChips(d: PlanRead): string[] {
   return [busy && busy.events.length >= 2 ? `Free up ${PLAN_WEEKDAYS_LONG[keyDate(busy.key).getUTCDay()]}` : "Plan my week", "What should I do first tomorrow?"];
 }
 
-/** "From Meera S.", "Added by Plan bot": who put it on the person's days, when not them. */
+/** "From Meera S.", "Added by Plan Ease": who put it on the person's days, when not them. */
 const fromWords = (x: { from?: string }) => (x.from ? (x.from === "You" ? "" : x.from.endsWith(" bot") ? `Added by ${x.from}` : `From ${x.from}`) : "");
 
 /** A to-do on a day or a list: its tick (on its own), and its words (open it). */
@@ -1058,7 +1058,7 @@ function dayTimeline(ctx: BotsCtx, d: PlanRead, day: PlanDay): Node {
   if (!rows.length) {
     return card([
       text(`Nothing on ${day.key === d.today ? "today" : day.key === d.tomorrow ? "tomorrow" : dayLabelOf(d, day.key)}`, { size: 15, weight: 500, lineHeight: 20 }),
-      meta("A free day. Add something, or ask Plan bot to fill it.", { size: 13 }),
+      meta("A free day. Add something, or ask Plan Ease to fill it.", { size: 13 }),
     ], { dashed: true });
   }
   return col(rows, { gap: 8 });
@@ -1119,9 +1119,9 @@ function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
   const sel = d ? planDay(ctx, d) : "";
   const day = d ? d.days.find((x) => x.key === sel) ?? { key: sel, events: [], tasks: [] } : undefined;
   return page(ctx, {
-    title: "Plan bot", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
+    title: "Plan Ease", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
     body: [
-      phoneHead(look, "Plan bot", planHeadLine(d), undefined, headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING })),
+      phoneHead(look, "Plan Ease", planHeadLine(d), undefined, headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING })),
       ...(!d || !day ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : [
           dayStrip(d, sel, week),
@@ -1139,7 +1139,7 @@ function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
     ],
     footer: [
       ...(d ? [row(planChips(d).map((c) => chip(c, { onPress: askBot("plan", c) })), { gap: 8, flexWrap: "wrap" })] : []),
-      chatBar(ctx, "plan", "Plan bot", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
+      chatBar(ctx, "plan", "Plan Ease", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
     ],
   });
 }
@@ -1212,12 +1212,12 @@ function planDesk(ctx: BotsCtx, d: PlanRead | undefined) {
     ...(d ? openTodos(ctx, d) : []),
     ...places.homePart(ctx, d?.travel),
     row(d ? planChips(d).map((c) => chip(c, { onPress: askBot("plan", c) })) : [], { gap: 8, flexWrap: "wrap" }),
-    chatBar(ctx, "plan", "Plan bot", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
+    chatBar(ctx, "plan", "Plan Ease", "Add dentist Fri 5 pm, or plan my week…", open(SCREENS.chat, { slug: "plan" })),
   ], { width: 300, flexShrink: 0, gap: 18 });
   return page(ctx, {
-    title: "Plan bot", nav: "plan", maxWidth: 1180, live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
+    title: "Plan Ease", nav: "plan", maxWidth: 1180, live: ["bot:plan", "calendar", "tasks"], state: { ...places.PLAN_STATE },
     body: [
-      row([botAvatar(look, 44), col([title("Plan bot", { size: 26 }), text(planHeadLine(d), { size: 13, weight: 500, color: look.color, lineHeight: 18 })], { gap: 2 }),
+      row([botAvatar(look, 44), col([title("Plan Ease", { size: 26 }), text(planHeadLine(d), { size: 13, weight: 500, color: look.color, lineHeight: 18 })], { gap: 2 }),
         ...headerBuddy(ctx, "plan", { lookTo: "down", thinkWhen: ANSWERING }), grow(),
         ...(d ? [secondaryButton("Add", addAction(d.tomorrow), { size: "md", icon: "plus" }), nav] : [])], { gap: 14 }),
       ...(!d ? [emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
@@ -1436,9 +1436,9 @@ const shareLineFor = (slug: string, name: string) => {
   switch (slug) {
     case ASK_ANY: return "X0 Bot gives it to the bot that fits best. It asks before it changes anything or spends money.";
     case "travel": return "Travel bot adds the times and booking details to your trip. It won't book or pay for anything.";
-    case "plan": return "Plan bot puts it on your calendar in X0 Bot. You can change it or take it out any time.";
-    case "code": return "Code bot reads it and answers. It changes code only through a pull request you approve.";
-    case "keybot": return "Keybot writes it in your voice. You send it yourself.";
+    case "plan": return "Plan Ease puts it on your calendar in X0 Bot. You can change it or take it out any time.";
+    case "code": return "Xode reads it and answers. It changes code only through a pull request you approve.";
+    case "keybot": return "Keylessbord writes it in your voice. You send it yourself.";
     default: return `${name} reads it and answers here. It asks before it changes anything or spends money.`;
   }
 };
@@ -1563,9 +1563,9 @@ function shareDesk(ctx: BotsCtx, d: ShareData) {
 
 const MOMENTS: Array<{ pose: "hello" | "listen" | "think" | "needs" | "done"; who: string; slug: string; line: string }> = [
   { pose: "hello", who: "X0 Bot · Hello", slug: "tailzu", line: "Ink · no light · home, welcome" },
-  { pose: "listen", who: "Keybot · Listening", slug: "keybot", line: "Clay" },
-  { pose: "think", who: "Code bot · On it", slug: "code", line: "Moss" },
-  { pose: "needs", who: "Plan bot · Needs you", slug: "plan", line: "Ochre" },
+  { pose: "listen", who: "Keylessbord · Listening", slug: "keybot", line: "Clay" },
+  { pose: "think", who: "Xode · On it", slug: "code", line: "Moss" },
+  { pose: "needs", who: "Plan Ease · Needs you", slug: "plan", line: "Ochre" },
   { pose: "done", who: "Travel bot · All set", slug: "travel", line: "Sea" },
 ];
 

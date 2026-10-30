@@ -4,7 +4,7 @@
  *
  *   - the numbers view: the month as the meter counts it, the last 30 days, each day in the person's own day, apps,
  *     languages, voices and registers by name; what was not read is absent, never a zero standing in for it
- *   - Keybot's home: every item of the inventory is on it, on the phone and in the window, and each line opens its page
+ *   - Keylessbord's home: every item of the inventory is on it, on the phone and in the window, and each line opens its page
  *   - the pages: each draws for both clients, with its data and without, lint-clean, and its controls write through
  *     the routes the old screens used
  *   - over HTTP: GET /v1/keybot/stats is the signed-in person's own
@@ -116,7 +116,7 @@ describe("the old You tab's lines", () => {
   });
 });
 
-describe("Keybot's home", () => {
+describe("Keylessbord's home", () => {
   for (const client of ["phone", "desktop"] as const) {
     it(`carries the old Stats tab up top and the You tab's lines in groups (${client})`, async () => {
       const s = await build(SCREENS.keybot, client);
@@ -143,7 +143,7 @@ describe("Keybot's home", () => {
       expect(opens(s.root!)).toContainEqual({ screenId: SCREENS.keyApps, params: { app: "Gmail" } });
       expect(opens(s.root!)).toContainEqual({ screenId: SCREENS.keyDay, params: { day: 18 } });
       const j = json(s);
-      // Keybot is part of the app: no account or help groups of its own (they live in the You tab).
+      // Keylessbord is part of the app: no account or help groups of its own (they live in the You tab).
       for (const w of ["Your account", "Help and about", "Write to us", "Delete account"]) expect(t.includes(w), `${client}: no ${w}`).toBe(false);
       expect(to).not.toContain(SCREENS.deleteAccount);
       expect(j).toContain('"path":"/v1/personality","body":{"retainHistory":"$state.keep"}');

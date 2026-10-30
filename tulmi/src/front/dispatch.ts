@@ -6,7 +6,7 @@
  *   reply / file    the main assistant's reply, or the cheap fallback role; a file is read first (attachments.ts), once, and only the part
  *                   that matters reaches the model
  *   code_answer     a question about a project, answered from its brain (code/chat); a flow it drew from the import graph is the diagram
- *   code_job        a Code bot job on a new branch
+ *   code_job        a Xode job on a new branch
  *   artifact        a design: a component in the project's style, or a page
  *   research        the web layer's research, quick, standard or deep
  *   plan            steps, and a diagram drawn from them

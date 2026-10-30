@@ -14,7 +14,7 @@
  *   tools.ts     artifact_create, artifact_update, artifact_rewrite: the bot's tools, for any bot
  *   kitparse.ts  the readers that turn a project's files into design tokens
  *   kit.ts       designKit (the project's look, cached per head) and componentArtifact (a component shown in place)
- *   build.ts     "build it": an approved artifact becomes a Code bot job whose spec it is; the compare seam (CompareHook)
+ *   build.ts     "build it": an approved artifact becomes a Xode job whose spec it is; the compare seam (CompareHook)
  *   pixels.ts    a PNG reader and the cheap gate (small grids of lightness and colour), in pure TypeScript
  *   shothost.ts  the host page an artifact's screenshot is taken of (it frames the viewer, posts load, marks #done)
  *   shots.ts     screenshots of a page and of an artifact (Cloudflare Browser Rendering, or our own Chrome), kept in the owner's saved data, with signed 7-day links

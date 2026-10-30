@@ -1,5 +1,5 @@
 /**
- * TAILZU'S OWN CALENDAR AND TO-DOS (no Google Calendar, no Google Tasks): what the Plan bot, Today, Tasks, Spaces, meeting notes and
+ * TAILZU'S OWN CALENDAR AND TO-DOS (no Google Calendar, no Google Tasks): what Plan Ease, Today, Tasks, Spaces, meeting notes and
  * every bot given "calendar" or "tasks" read and write. docs/bots-app.md, "The calendar".
  *
  *   words.ts     days, times and a line of words ("Dentist Fri 5 pm") in the person's own time; India-first ("kal", "5 baje")

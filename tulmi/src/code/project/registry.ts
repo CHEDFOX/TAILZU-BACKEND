@@ -6,7 +6,7 @@
  * a package has a newer major version, or was deprecated by its author, is a
  * question for the registries, so the project brain asks them, through the
  * layer 3 sources (web/search/sources/npm.ts and pypi.ts: the same calls the
- * Code bot's package search makes, behind the same egress guard and size caps),
+ * Xode's package search makes, behind the same egress guard and size caps),
  * for at most FIFTEEN packages, a few at a time:
  *
  *   npm    the registry's search, then `/<pkg>/latest` for the exact name: the

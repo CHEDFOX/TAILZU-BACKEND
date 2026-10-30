@@ -207,7 +207,7 @@ export class RunLedger {
 /**
  * A planner call as the ledger keeps it: the CallRecord's numbers under the
  * run, step and time it belongs to. The one place a CallRecord becomes a
- * CallRow, shared by a step's watch and by the Code bot's model gateway
+ * CallRow, shared by a step's watch and by Xode's model gateway
  * (code/brain/gateway.ts), which writes its calls to the same table. Never any
  * of what was asked or answered: a CallRecord has none.
  */

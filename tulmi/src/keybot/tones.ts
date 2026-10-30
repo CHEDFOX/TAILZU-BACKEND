@@ -1,10 +1,10 @@
 /**
- * TONE PER APP: Keybot writes like you, a bit different per kind of app (KeyTone / DKeyTone).
+ * TONE PER APP: Keylessbord writes like you, a bit different per kind of app (KeyTone / DKeyTone).
  *
  * Three kinds of app (Chats, Mail, Work chat), four presets, and three little things per kind. A choice is kept in
- * the Keybot prefs (prefs.ts) and compiled into personality.appStyles for every app of that kind, which is what the
+ * the Keylessbord prefs (prefs.ts) and compiled into personality.appStyles for every app of that kind, which is what the
  * writer reads (prompts.ts resolveAppStyle: matched by the app's name, case-insensitively). Nothing is written for a
- * kind until the person picks a preset for it: until then Keybot writes it as they said it.
+ * kind until the person picks a preset for it: until then Keylessbord writes it as they said it.
  */
 import type { AppStyle, Personality } from "../../../shared/types/api.js";
 import type { KeybotPrefs, ToneGroup } from "./prefs.js";

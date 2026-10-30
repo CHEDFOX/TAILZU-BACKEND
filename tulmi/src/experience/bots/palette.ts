@@ -5,7 +5,7 @@
  * bot's avatar, its working dot, its own accent, its selected card border and its progress segment. Never for an
  * error, a success, a link or a warning.
  *
- * The design gives the four built-ins their colours by bot (Code moss, Keybot clay, Plan ochre, Travel sea). The
+ * The design gives the four built-ins their colours by bot (Code moss, Keylessbord clay, Plan ochre, Travel sea). The
  * bots platform's own definitions (src/bots/builtin.ts) name different palette entries for them; the app follows
  * the design, so a built-in's colour here is by SLUG and a person's own bot's is its palette name.
  */

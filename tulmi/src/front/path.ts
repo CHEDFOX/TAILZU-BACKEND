@@ -7,7 +7,7 @@
  *   answer                 reply        cheap     general knowledge, a table inline when asked for
  *   file_question          file         vision    for an image (it is described once); cheap for text and code
  *   code_question          code_answer  cheap     the brain's facts first, a few excerpts only when it must, answer from them (strong for a deep why or an impact question)
- *   code_task              code_job     code      a Code bot job (strong when the classifier calls the change risky)
+ *   code_task              code_job     code      a Xode job (strong when the classifier calls the change risky)
  *   design                 artifact     code      a project-styled component, or a page
  *   research               research     cheap, code or strong, by depth: quick, standard, deep
  *   plan                   plan         cheap, or code in a project

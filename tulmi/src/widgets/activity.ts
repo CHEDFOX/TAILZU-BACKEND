@@ -1,5 +1,5 @@
 /**
- * THE "BOTS AT WORK" LIVE ACTIVITY, FROM THE SERVER (docs/widget-glance-v2.md section 6): when a Code bot job's stage, its question or its end
+ * THE "BOTS AT WORK" LIVE ACTIVITY, FROM THE SERVER (docs/widget-glance-v2.md section 6): when a Xode job's stage, its question or its end
  * changes, the activity on the person's Lock Screen is updated by an APNs push (apns.ts), so it moves while the app is shut.
  *
  *   contentStateOf(job)    the activity's ContentState, the same shape the app writes from glance v2 (phase working | needs | done), with a
@@ -140,7 +140,7 @@ export class ActivityPusher {
     const job = await this.d.readJob(userId, jobId).catch(() => null);
     if (!job) return "none";
     const words = this.d.words(userId, t.hg === true);
-    const name = words.k.label("widgets.who.code", "Code bot");
+    const name = words.k.label("widgets.who.code", "Xode");
     const u = contentStateOf(job, words, name);
     if (!u) return "none";
     if (u.sig === t.sent) return "same";

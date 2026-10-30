@@ -11,7 +11,7 @@
  *                                             widget's `X-Widget-Token` (needs-you answers and Done only), or the session
  *                                             (a notification's buttons and its reply)
  *   POST   /v1/widgets/activity-token { jobId, token, platform?, env? }   -> { ok, push, removed? }   the "Bots at work" Live Activity's
- *                                             APNs push token for one of the person's Code bot jobs (session), so the server can move it
+ *                                             APNs push token for one of the person's Xode jobs (session), so the server can move it
  *                                             while the app is shut (src/widgets/activity.ts). `push` false: server pushes are off (APNS_*
  *                                             not set) or not an iPhone, nothing is kept. No token: the activity ended, its token is forgotten
  *
@@ -112,7 +112,7 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
   setJobChangeHook(pusher ? (userId, jobId) => pusher.jobChanged(userId, jobId) : null);
   if (!pusher && !saidApnsOff) {
     saidApnsOff = true;
-    app.log.info(jobs ? "widgets: Live Activity pushes are off (APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8 and APNS_TOPIC are not all set)" : "widgets: Live Activity pushes are off (no Code bot jobs)");
+    app.log.info(jobs ? "widgets: Live Activity pushes are off (APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8 and APNS_TOPIC are not all set)" : "widgets: Live Activity pushes are off (no Xode jobs)");
   }
 
   const who = async (req: FastifyRequest, reply: FastifyReply): Promise<AuthedUser | null> => {
@@ -156,7 +156,7 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
     return {
       now: now(), tzOffsetMinutes: tz, inSpaces: mine.length > 0,
       people: { messages, shared, tasks: peopleOn ? theirs : [] },
-      needs: { jobs, approvals, tasks: needsOn ? theirs : [], codeBotName: k.label("widgets.who.code", "Code bot") },
+      needs: { jobs, approvals, tasks: needsOn ? theirs : [], codeBotName: k.label("widgets.who.code", "Xode") },
       tokenReady: k.flag("widgets.token.enabled", true),
     };
   }
@@ -249,7 +249,7 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
     if (!user) return reply;
     const b = bodyOf(req.body);
     const jobId = typeof b.jobId === "string" ? b.jobId : "";
-    if (!JOB_ID_RE.test(jobId)) return reply.code(400).send({ code: "bad_request", message: "jobId is the Code bot job's id." });
+    if (!JOB_ID_RE.test(jobId)) return reply.code(400).send({ code: "bad_request", message: "jobId is Xode job's id." });
     // The activity ended (no token): its token is forgotten.
     if (b.token === undefined || b.token === null) {
       await activityTokens.drop(user.id, jobId).catch(() => undefined);

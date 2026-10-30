@@ -165,7 +165,7 @@ export interface CodeJobRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
   /** Null when CODE_GITHUB is off. */
   code: Code | null;
-  /** Null when the Code bot has no GitHub client to run jobs with. */
+  /** Null when Xode has no GitHub client to run jobs with. */
   jobs: JobRouter | null;
   /** How often the ticker looks; null: it does not run. Default every 15 seconds (jobs/types.ts TICK_MS). */
   tickEveryMs?: number | null;
@@ -194,7 +194,7 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
   const { code, jobs } = deps;
   const poll = deps.pollMs ?? LONG_POLL_MS;
 
-  const off = (reply: FastifyReply) => reply.code(404).send({ code: "code_off", message: "The Code bot is not switched on." });
+  const off = (reply: FastifyReply) => reply.code(404).send({ code: "code_off", message: "Xode is not switched on." });
   const notConfigured = (reply: FastifyReply) => reply.code(503).send({ code: "not_configured", message: "GitHub isn't set up on this server yet." });
   const noSession = (reply: FastifyReply) => reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
   const fail = failCode;
@@ -225,7 +225,7 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     if (deps.onStepResult && typeof id === "string" && UUID.test(id)) deps.onStepResult(id);
   };
 
-  const agentOff = (reply: FastifyReply) => reply.code(404).send({ code: "agent_off", message: "The Code bot's agent is not switched on on this server." });
+  const agentOff = (reply: FastifyReply) => reply.code(404).send({ code: "agent_off", message: "Xode's agent is not switched on on this server." });
 
   const bodyOf = (b: unknown): Record<string, unknown> => (b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {});
   const text = (v: unknown, max: number) => (typeof v === "string" && v.length <= max ? v : undefined);

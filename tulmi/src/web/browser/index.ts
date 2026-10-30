@@ -9,7 +9,7 @@
  *
  * LATER, LAYER 8: render where the job runs. A page for the user's own errand
  * is better opened on the user's own machine (the desktop app has a browser,
- * and their IP address and their ordinary network), and a Code bot job's page
+ * and their IP address and their ordinary network), and a Xode job's page
  * can be opened on its GitHub Actions runner, which has Chrome preinstalled.
  * Both are another provider of the same `Renderer` (browser/engine.ts): the
  * folder is built so that engine.ts, guard.ts, cdp.ts and chrome.ts can be

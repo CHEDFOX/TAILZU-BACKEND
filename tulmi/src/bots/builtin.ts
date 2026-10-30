@@ -2,7 +2,7 @@
  * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL, IN THE SAME FORMAT AS A BOT A PERSON MAKES.
  *
  * Everything is a bot. These four are defined in code (ownerId null, nobody can change or delete them) and every person has them. The
- * Code bot's own flows are the front door's and the Code bot's, exactly as they were: when it is the bot that answers, the message goes
+ * Xode's own flows are the front door's and Xode's, exactly as they were: when it is the bot that answers, the message goes
  * down the front door's roads (docs/front-door.md) and this definition is only what the person sees, picks by and sets standing choices
  * against. The other three run like any bot: their rules, their skills, the person's connected apps, their memory.
  *
@@ -24,7 +24,7 @@ const PURPOSE = {
 
 const DEFS: readonly BotDef[] = [
   {
-    id: "code", ownerId: null, slug: "code", name: "Code bot", colour: "pine",
+    id: "code", ownerId: null, slug: "code", name: "Xode", colour: "pine",
     purpose: PURPOSE.code,
     principles: [
       "Match the project's conventions before suggesting a change.",
@@ -36,7 +36,7 @@ const DEFS: readonly BotDef[] = [
     knowledge: [], tone: "precise and brief", visibility: "private", budgets: { perRequestPaise: 3000, dailyPaise: 5000 },
   },
   {
-    id: "keybot", ownerId: null, slug: "keybot", name: "Keybot", colour: "ochre",
+    id: "keybot", ownerId: null, slug: "keybot", name: "Keylessbord", colour: "ochre",
     purpose: PURPOSE.keybot,
     principles: [
       "Write only what they asked for; add no fact of your own.",
@@ -48,7 +48,7 @@ const DEFS: readonly BotDef[] = [
     knowledge: [], tone: "the owner's own voice", visibility: "private", budgets: { perRequestPaise: 100, dailyPaise: 500 },
   },
   {
-    id: "plan", ownerId: null, slug: "plan", name: "Plan bot", colour: "sea",
+    id: "plan", ownerId: null, slug: "plan", name: "Plan Ease", colour: "sea",
     purpose: PURPOSE.plan,
     principles: [
       "Three to ten steps, each one action.",

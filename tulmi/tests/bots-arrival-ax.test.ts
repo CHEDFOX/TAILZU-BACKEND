@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 
-// The window's arrival card and Keybot's card with this computer's Accessibility in the screen's state
+// The window's arrival card and Keylessbord's card with this computer's Accessibility in the screen's state
 // ($state.axGranted, written by a window that declares DeskAxState): the step goes on its own once it is on.
 process.env.OPENROUTER_API_KEY = "k";
 process.env.OPENAI_API_KEY = "k";
@@ -45,7 +45,7 @@ describe("the window's arrival card, with Accessibility in its state", () => {
       readyWhen: { all: [{ neq: ["micGranted", null] }, { neq: ["axGranted", null] }] },
       doneWhen: { all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { truthy: "axGranted" }] },
     });
-    const ax = stepOf(card, "Let Keybot type for you")!;
+    const ax = stepOf(card, "Let Keylessbord type for you")!;
     expect(ax.visibleIf).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { falsy: "axGranted" }] });
     // Its own button to the Mac's page (no Ask card in this window), and "Not now" instead of a Done to press.
     expect(actions(ax)).toEqual(expect.arrayContaining([{ kind: "ask.openAccessibility" }]));
@@ -58,7 +58,7 @@ describe("the window's arrival card, with Accessibility in its state", () => {
 
   it("with Ask's card too: the row is the card's, and the step still goes once it is on", async () => {
     const s = await build("bots.home", [...MOTION, "DeskMicAsk", "DeskAskSetup", AX_STATE]);
-    const ax = stepOf(cardOf(s.root!)!, "Let Keybot type for you")!;
+    const ax = stepOf(cardOf(s.root!)!, "Let Keylessbord type for you")!;
     expect(walk(ax).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read" }] });
     expect(actions(ax).some((a) => a.kind === "ask.openAccessibility")).toBe(false);
     expect(cardOf(s.root!)!.props?.doneWhen).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { truthy: "axGranted" }] });
@@ -75,27 +75,27 @@ describe("the window's arrival card, with Accessibility in its state", () => {
     const card = cardOf(s.root!)!;
     expect(card.props?.readyWhen).toEqual({ neq: ["micGranted", null] });
     expect(card.props?.doneWhen).toBeUndefined();
-    expect(texts(stepOf(card, "Let Keybot type for you")!)).toContain("Done");
+    expect(texts(stepOf(card, "Let Keylessbord type for you")!)).toContain("Done");
   });
 
   it("without the living tiles: a plain card, gone once it is all on", async () => {
     const s = await build("bots.home", ["DeskMicAsk", AX_STATE]);
     expect(cardOf(s.root!)).toBeUndefined();
-    expect(texts(s.root!)).toContain("Let Keybot type for you");
+    expect(texts(s.root!)).toContain("Let Keylessbord type for you");
     expect(lintTree(s.root!).filter((m) => !m.startsWith("type Desk"))).toEqual([]);
   });
 });
 
-describe("Keybot's page in a window that reads Accessibility", () => {
+describe("Keylessbord's page in a window that reads Accessibility", () => {
   it("shows the step only while it is off (declared on, so nothing flashes)", async () => {
     const s = await build("bots.keybot", [...MOTION, AX_STATE], {});
     expect(s.state).toMatchObject({ axGranted: true });
-    const card = walk(s.root!).find((n) => n.type === "BotCard" && texts(n).includes("Let Keybot type for you"));
+    const card = walk(s.root!).find((n) => n.type === "BotCard" && texts(n).includes("Let Keylessbord type for you"));
     expect(card?.visibleIf).toEqual({ falsy: "axGranted" });
     expect(actions(card)).toEqual(expect.arrayContaining([{ kind: "ask.openAccessibility" }]));
     // With Ask's card, that card carries it, as before.
     const ask = await build("bots.keybot", [...MOTION, AX_STATE, "DeskAskSetup"], {});
-    expect(walk(ask.root!).filter((n) => texts(n).includes("Let Keybot type for you") && n.type === "BotCard")).toHaveLength(0);
+    expect(walk(ask.root!).filter((n) => texts(n).includes("Let Keylessbord type for you") && n.type === "BotCard")).toHaveLength(0);
     expect(walk(ask.root!).some((n) => n.type === "DeskAskSetup")).toBe(true);
   });
 });

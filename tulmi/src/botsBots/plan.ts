@@ -25,7 +25,7 @@ import { table, type Table } from "./rows.js";
 
 /**
  * `where` is the location's first part, to show ("Indiranagar"); `place` is the whole location, to find on a map. `from` says who put it
- * there when not the person ("Meera S.", "Plan bot"); a `fixed` one is someone else's to change.
+ * there when not the person ("Meera S.", "Plan Ease"); a `fixed` one is someone else's to change.
  */
 export interface PlanEvent {
   id: string; title: string; start: number; end: number; allDay: boolean; where?: string; place?: string; people: number;

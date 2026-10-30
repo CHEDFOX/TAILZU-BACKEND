@@ -83,7 +83,7 @@ export interface JobExpect {
   placement?: Placement;
   /** The lease must have run out by this time (epoch ms). */
   leaseExpiredBy?: number;
-  /** The job's spend must still be this many paise: how the Code bot's model calls add to it without losing a concurrent add (code/brain/spend.ts). */
+  /** The job's spend must still be this many paise: how Xode's model calls add to it without losing a concurrent add (code/brain/spend.ts). */
   spentPaise?: number;
   /** The job's budget must still be this many paise: how more budget is added without losing a concurrent add. */
   budgetPaise?: number;

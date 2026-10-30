@@ -1,5 +1,5 @@
 /**
- * The Code bot at work in the Bots app (screens/codeWork.ts): the live job and its chat, the team, a design and its preview,
+ * Xode at work in the Bots app (screens/codeWork.ts): the live job and its chat, the team, a design and its preview,
  * attaching, done and failed, on the routes' own answers (bots-codework-data.ts), for the phone and the window.
  */
 import { afterEach, describe, expect, it } from "vitest";
@@ -47,7 +47,7 @@ const SCREENS_WITH_PARAMS: Array<[string, Record<string, string>]> = [
   ["bots.code.preview", { id: ART }], ["bots.attach", { id: JOB_ASK }], ["bots.done", { id: JOB_DONE }], ["bots.failed", { id: JOB_FAILED }],
 ];
 
-describe("bots app · the Code bot at work", () => {
+describe("bots app · Xode at work", () => {
   it("every screen builds on real answers for both clients and keeps the kit's rules", async () => {
     for (const [id, params] of SCREENS_WITH_PARAMS) {
       for (const client of ["phone", "desktop"] as const) {
@@ -111,13 +111,13 @@ describe("bots app · the Code bot at work", () => {
     const { s, words } = await build("bots.code.job", "desktop", { id: JOB_ASK });
     for (const w of ["storefront", "Fix cart total rounding", "Quick question", "Running on this computer"]) expect(words, w).toContain(w);
     const field = walk(s.root!).find((n) => n.type === "TextField" && n.id === "msg")!;
-    expect(field.props?.placeholder).toBe("Ask about the code, or tell Code bot what to change…");
+    expect(field.props?.placeholder).toBe("Ask about the code, or tell Xode what to change…");
     expect(posts(s.root!).some((a) => a.path === `/v1/code/jobs/${JOB_ASK}/answer` && (a.body as Record<string, unknown>).answer === "$state.msg")).toBe(true);
   });
 
   it("a job that was a question is the chat: the answer, the files and lines it rests on, change it, ask again through the front door", async () => {
     const { s, words } = await build("bots.code.job", "phone", { id: JOB_ANSWER, asked: "Where is the cookie set?", answer: "In `lib/session.ts:42`." });
-    for (const w of ["Code bot", "storefront", "How does sign-in work here?", "app/api/auth/route.ts:9", "lib/session.ts:42", "Where is the cookie set?", "Change something here", "Show the code"]) {
+    for (const w of ["Xode", "storefront", "How does sign-in work here?", "app/api/auth/route.ts:9", "lib/session.ts:42", "Where is the cookie set?", "Change something here", "Show the code"]) {
       expect(words, w).toContain(w);
     }
     const ask = posts(s.root!).filter((a) => a.path === "/v1/ask");
@@ -138,7 +138,7 @@ describe("bots app · the Code bot at work", () => {
   it("the team: lead and helpers, each part's stop, how much of the job each used (no amounts), stop all", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const { s, words } = await build("bots.code.team", client, { id: JOB_LEAD });
-      for (const w of ["Checkout redesign", "Code bot · lead", "Helper · Checkout UI", "Helper · Orders API", "Joining the parts on one branch", "Stop all"]) expect(words, `${client} ${w}`).toContain(w);
+      for (const w of ["Checkout redesign", "Xode · lead", "Helper · Checkout UI", "Helper · Orders API", "Joining the parts on one branch", "Stop all"]) expect(words, `${client} ${w}`).toContain(w);
       expect(words.join(" ")).toMatch(/of the job/);
       expect(words.join(" ")).not.toMatch(/₹/);
       const p = posts(s.root!);
@@ -189,16 +189,16 @@ describe("bots app · the Code bot at work", () => {
     expect(posts(s.root!).find((a) => a.path === `/v1/artifacts/${ART}/revert`)?.body).toEqual({ version: 2 });
   });
 
-  it("attach: the person's recent files go to the Code bot as refs, with the message", async () => {
+  it("attach: the person's recent files go to Xode as refs, with the message", async () => {
     const { s, words } = await build("bots.attach", "phone", { id: JOB_ASK });
-    for (const w of ["Add to chat", "Recent", "redmi-booking.png", "Price list.pdf", "Link", "Voice note", "Code bot reads designs, PDFs and videos"]) expect(words, w).toContain(w);
+    for (const w of ["Add to chat", "Recent", "redmi-booking.png", "Price list.pdf", "Link", "Voice note", "Xode reads designs, PDFs and videos"]) expect(words, w).toContain(w);
     const set = actionsOf(s.root!).find((a) => a.kind === "setState" && a.path === "atts") as { value: unknown[] };
     expect(set.value[0]).toEqual({ id: "f0000000-0000-4000-8000-000000000001", kind: "image", mime: "image/png", bytes: 655360, sha256: "a".repeat(64), name: "redmi-booking.png" });
     expect(posts(s.root!).find((a) => a.path === "/v1/ask")?.body).toMatchObject({ attachments: "$state.atts", threadId: JOB_ASK, projectId: PROJECT });
   });
 });
 
-describe("bots app · reading the Code bot's work", () => {
+describe("bots app · reading Xode's work", () => {
   it("outline: the parts of html and JSX with the viewer's line:col ids", () => {
     const html = "<div>\n  <h1>Hi</h1>\n  <button class=\"x\">Book</button>\n</div>";
     const parts = outline(html);

@@ -4,7 +4,7 @@
  *   - a message that names a bot (@slug) goes there for nothing; one the rules are sure of goes to the right bot with no model asked, in English, Hinglish and Hindi
  *   - a message that is nobody's (small talk, a fact) is nobody's, and costs nothing
  *   - between two, the tiny tier is asked once; a model that is down, over budget or wrong costs nothing but the rules' own answer
- *   - the Code bot, and "none of them", are the front door's own roads
+ *   - Xode, and "none of them", are the front door's own roads
  *   - only the person's own bots and the built-ins are candidates
  */
 import { describe, expect, it, vi } from "vitest";
@@ -69,7 +69,7 @@ describe("the rules, for nothing", () => {
     expect(nothing[0]!.reasons).toContain("skill:files");
   });
 
-  it("send a question about code in a project to the Code bot, and not outside one", () => {
+  it("send a question about code in a project to Xode, and not outside one", () => {
     expect(top("where is the session cookie set?", { ...none, projectId: PROJECT }).bot.slug).toBe("code");
     expect(top("fix the crash when the cart is empty", { ...none, projectId: PROJECT }).bot.slug).toBe("code");
     expect(top("fix the crash when the cart is empty").points).toBeLessThan(top("fix the crash when the cart is empty", { ...none, projectId: PROJECT }).points);
@@ -188,7 +188,7 @@ describe("through the service", () => {
     if (bobs.kind === "bot") expect(bobs.bot.slug).toBe("bobs-chef");
   });
 
-  it("sends the Code bot and 'none of them' down the front door's own roads, and a chosen bot to itself", async () => {
+  it("sends Xode and 'none of them' down the front door's own roads, and a chosen bot to itself", async () => {
     const r = await rig(() => "ok");
     const code = await r.bots.target(ALICE, "any", "where is the session cookie set?", { ...none, projectId: PROJECT });
     expect(code).toMatchObject({ kind: "front", by: "rules" });

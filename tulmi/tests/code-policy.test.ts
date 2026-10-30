@@ -1,5 +1,5 @@
 /**
- * What the Code bot may do, what it asks about first, and what it never does
+ * What Xode may do, what it asks about first, and what it never does
  * (src/code/policy.ts), and how that is put to work on a real repo (a fake
  * GitHub, tests/github-fake.ts): the tiers, the standing grants, the questions
  * and their yes (single use, ten minutes, bound to what was looked at), the

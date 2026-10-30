@@ -2376,7 +2376,7 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
     // ---- This computer -----------------------------------------------------
     part(say("comp.h"), say("comp.p"), [
       defRow("Shortcut", stack([
-        // The one key: held to talk, tapped to keep listening; picked in Keybot's settings.
+        // The one key: held to talk, tapped to keep listening; picked in Keylessbord's settings.
         row([text("Hold", "d-v"), keys("hotkey", true), text("to talk, tap it to keep listening", "d-v")],
           { gap: 8, align: "center", flexWrap: "wrap" }, undefined, { visibleIf: { truthy: "desktop.oneKeyOn" } }),
         row([
