@@ -19,6 +19,7 @@
 import OpenAI from "openai";
 import type { Note, NoteSegment } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
+import { addCostUsd, openRouterUsd } from "../usage/cost.js";
 import type { NoteBody } from "./store.js";
 
 /** Characters of transcript per call. A one-hour meeting is about 50,000. */
@@ -124,7 +125,10 @@ async function ask(system: string, user: string): Promise<string> {
     ...({ reasoning: { effort: "low" } } as Record<string, unknown>),
     response_format: { type: "json_object" },
     messages: [{ role: "system", content: system }, { role: "user", content: user }],
+    // OpenRouter's usage accounting: what it charged comes back with the answer, for the usage meter (usage/cost.ts).
+    ...({ usage: { include: true } } as Record<string, unknown>),
   });
+  addCostUsd(openRouterUsd(res, { where: "notes", model: cfg.NOTES_MODEL || cfg.CLEANUP_MODEL }));
   return res.choices[0]?.message?.content ?? "";
 }
 

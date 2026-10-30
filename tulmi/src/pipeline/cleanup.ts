@@ -40,6 +40,7 @@ export { stripFenceTags };
 import type { ChatCompletion } from "openai/resources/chat/completions";
 import { reasoningFor } from "../agent/llm.js";
 import { allowedEffort, EFFORTS, isReasoningRequiredError, learnReasoningRequired, maxTokensWithReasoning, reasoningRequired, type Effort } from "../agent/reasoning.js";
+import { addCostUsd, openRouterUsd } from "../usage/cost.js";
 import { openrouter } from "./openrouter.js";
 export { openrouter };
 
@@ -81,11 +82,15 @@ function reasoningOf(model: string): Record<string, unknown> | undefined {
 async function complete(body: Record<string, unknown> & { model: string; max_tokens: number }): Promise<ChatCompletion> {
   const send = async (bigger: boolean): Promise<ChatCompletion> => {
     const reasoning = reasoningOf(body.model);
-    return (await openrouter().chat.completions.create({
+    const res = (await openrouter().chat.completions.create({
       ...body,
       ...(reasoning ? { reasoning } : {}),
       max_tokens: maxTokensWithReasoning(body.max_tokens, reasoning, { retry: bigger }),
+      // OpenRouter's usage accounting: what it charged, in dollars, comes back with the answer, for the usage meter (usage/cost.ts).
+      usage: { include: true },
     } as never)) as ChatCompletion;
+    addCostUsd(openRouterUsd(res, { where: "keybot", model: body.model }));
+    return res;
   };
   let res: ChatCompletion;
   try {

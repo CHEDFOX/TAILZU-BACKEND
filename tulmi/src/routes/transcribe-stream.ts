@@ -376,6 +376,8 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
           audioSeconds: Number(seconds.toFixed(2)),
           words: asking ? 0 : totalWords,
           model: engine?.label ?? "live:unknown",
+          // Both engines heard all of it in dual mode, and both charge for it.
+          sttEngines: [engine?.label, shadow?.label],
         }).catch(() => { /* metering must never break the close path */ });
       };
 

@@ -1058,6 +1058,9 @@ export function comingSoon(ctx: BotsCtx): ScreenResponse {
  * `usageMeter`, `percent` ("64%") and `whenWords` ("Thu 9 am").
  */
 
+/** "this stretch", or "this month" on a plan with no stretches (the free plan): what every line about use says, for this person. */
+export const spanOf = (ctx: { live: { usage: { windows: boolean } } }): string => (ctx.live.usage.windows ? "this stretch" : "this month");
+
 /** A usage meter: "This stretch · 64% used", its bar, and when it resets. `used` is a fraction (0.64); never an amount. */
 export function usageMeter(label: string, used: number, o: { resets?: string; color?: string; height?: number } = {}): Node {
   const part = Math.max(0, Math.min(1, used));

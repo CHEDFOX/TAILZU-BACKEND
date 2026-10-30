@@ -24,10 +24,12 @@
  * it has: the checks are run on the staged edits (they cost no model money), and only if they come out no
  * worse than the project was before Tailzu touched it are the edits committed; otherwise they stay
  * staged, in the checkpoint, for the person to go on from. The report says which, and asks "This job
- * has used a lot of this stretch. Keep going?" (POST /v1/code/jobs/:id/budget raises the budget, held to
- * what is left of the stretch, and the loop resumes). It is never a
+ * has used a lot of this stretch. Keep going?" ("this month" on the free plan, which has no stretches:
+ * you/span.ts) (POST /v1/code/jobs/:id/budget raises the budget, held to what is left of the stretch,
+ * and the loop resumes). It is never a
  * failure, and it never leaves a half-way commit that breaks the project.
  */
+import { usageSpanWords } from "../../you/span.js";
 import { BudgetExceeded } from "../brain/gateway.js";
 import type { WaitingOn } from "../jobs/types.js";
 import type { LoopEnv } from "./run.js";
@@ -251,7 +253,7 @@ async function budgetStop(r: Run, needPaise: number): Promise<void> {
     }
   }
   const money = await r.money();
-  const short = budgetShortfall(money, needPaise);
+  const short = budgetShortfall(money, needPaise, await usageSpanWords(r.userId));
   // The top-up on offer covers what is short, not only half of what was spent: a job that stopped at 1% spent needs the step's price, not a rule of thumb.
   const top = Math.max(topUpFor(money.spent), short.kind === "short" ? Math.ceil((short.needPaise - short.leftPaise) / 100) * 100 : 0);
   const why = `${short.words} ${outcome}`.trim();
@@ -267,18 +269,22 @@ async function budgetStop(r: Run, needPaise: number): Promise<void> {
  * price) is more than what is left, which can happen with most of the budget unspent; telling the person it was all used then sent them to give
  * more to a job that had barely started. The amounts stay in the result, for our own logs.
  */
-export function budgetShortfall(money: { spent: number; budget: number }, needPaise: number): { kind: "spent" | "short"; words: string; ask: string; needPaise: number; leftPaise: number } {
+export function budgetShortfall(
+  money: { spent: number; budget: number }, needPaise: number,
+  /** What the person's use is counted in: "this stretch", "this month" on the free plan (you/span.ts), or null when it is not known. */
+  span: string | null = "this stretch",
+): { kind: "spent" | "short"; words: string; ask: string; needPaise: number; leftPaise: number } {
   const left = Math.max(0, money.budget - money.spent);
   if (left <= 0 || (needPaise <= 0 && money.spent >= money.budget)) {
     return {
       kind: "spent", needPaise, leftPaise: left,
-      words: "This job used what it was given of this stretch before the work was finished.",
-      ask: "This job has used a lot of this stretch.",
+      words: span ? `This job used what it was given of ${span} before the work was finished.` : "This job used what it was given before the work was finished.",
+      ask: span ? `This job has used a lot of ${span}.` : "This job has used what it was given.",
     };
   }
   return {
     kind: "short", needPaise, leftPaise: left,
     words: "The next step needs more than this job has left, so I stopped before the work was finished.",
-    ask: "This job's next step needs more of this stretch.",
+    ask: span ? `This job's next step needs more of ${span}.` : "This job's next step needs more than it has left.",
   };
 }

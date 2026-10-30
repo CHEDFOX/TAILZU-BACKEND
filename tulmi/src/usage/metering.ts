@@ -10,12 +10,34 @@ import { dataClientFor, type AuthedUser } from "../auth/supabase.js";
 import { isEntitled } from "../billing/entitlements.js";
 import { getConfig } from "../config.js";
 import { computeAllowance, type Allowance } from "./allowance.js";
+import { chargeUsd, engineOf, fileEngines, noteCostUser, sttUsd, takeCostUsd } from "./cost.js";
 import type { UsageRecord, UsageSummary } from "../../../shared/types/api.js";
 
 export interface MeterInput extends UsageRecord {
   user: AuthedUser;
   /** Which surface produced this: "rest" | "stream" | "agent" (one Ask step). */
   source: "rest" | "stream" | "agent";
+  /**
+   * What the speech cost (usage/cost.ts): the labels of the engines that heard it ("deepgram", "sarvam"), when the caller knows them (the
+   * live stream); else the engines a recorded clip goes to (STT_PROVIDER).
+   */
+  sttEngines?: ReadonlyArray<string | null | undefined>;
+  /** Seconds of audio the engines heard, when that is not `audioSeconds` (a note's computer track is heard, and not counted as time). */
+  sttSeconds?: number;
+  /** Which bot the use counts under on the meter: "keybot" unless an Ask step ("tailzu"). */
+  bot?: string;
+}
+
+/**
+ * What this request really cost us, onto the person's usage meter (usage/cost.ts): what OpenRouter charged for the calls the request made
+ * outside the brain's gateway (its tally), and what the speech engines charge for the audio they heard. Never throws.
+ */
+function chargeUse(input: MeterInput): void {
+  try {
+    const seconds = input.sttSeconds ?? input.audioSeconds;
+    const engines = input.sttEngines ? input.sttEngines.map(engineOf) : seconds > 0 ? fileEngines() : [];
+    chargeUsd(input.user.id, takeCostUsd() + sttUsd(seconds, engines), input.bot ?? (input.source === "agent" ? "tailzu" : "keybot"));
+  } catch { /* the meter is a guard rail, never a failed request */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -61,6 +83,7 @@ export function recordPicture(user: AuthedUser, now = Date.now()): void {
 }
 
 export async function recordUsage(input: MeterInput): Promise<void> {
+  chargeUse(input);
   if (isStaticUser(input.user)) {
     memRecord(input.user, input.audioSeconds, input.words, input.source);
     return;
@@ -279,6 +302,8 @@ export async function enforceQuota(
   // free-for-all included, and its sentence says when it resets. Operator
   // tokens skip it as they skip the rest. A meter that cannot be read lets
   // the request through: it is a guard rail, not a reason for an outage.
+  // Whose request this is: what its calls cost is theirs, even if it fails before its usage row is written (usage/cost.ts).
+  noteCostUser(user.id);
   if (usageGate && !isQuotaExempt(user.id, getConfig().QUOTA_EXEMPT_USER_IDS)) {
     const out = await usageGate(user.id).catch(() => null);
     if (out) return out;

@@ -77,6 +77,7 @@ import { retryJitter } from "../../guard/timing.js";
 import { openrouter } from "../../pipeline/openrouter.js";
 import { principleText } from "../../principles/library.js";
 import { callRowOf, runStore, type RunStore } from "../../runs/index.js";
+import { logEstimated } from "../../usage/cost.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
 import { DEFAULT_USD_INR, charsOf, tokensOfChars, usdFor, usdToPaise, worstCasePaise } from "./money.js";
 import { SpendMeter, addJobSpend, currentSpendScope, readJobMoney, sharedSpendMeter } from "./spend.js";
@@ -641,12 +642,15 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
         reported = true;
         rec.costUsd = usd;
       } else if (done.promptTokens !== undefined || done.completionTokens !== undefined) {
+        // The request asked for usage accounting, so this is rare: said once an hour per model, never per call.
+        logEstimated("gateway", model, clock(), (line) => log.warn({ model, purpose: input.purpose }, line));
         usd = usdFor(
           done.promptTokens ?? tokensOfChars(charsOf(messages, input.tools)),
           done.completionTokens ?? tokensOfChars(done.text.length + done.toolCalls.reduce((n, t) => n + t.arguments.length, 0)),
           settings,
         );
       } else {
+        logEstimated("gateway", model, clock(), (line) => log.warn({ model, purpose: input.purpose }, line));
         usd = usdFor(tokensOfChars(charsOf(messages, input.tools)), tokensOfChars(done.text.length + done.toolCalls.reduce((n, t) => n + t.arguments.length, 0)), settings);
       }
       // A call of a job is charged against the job's running total, rounded up once for all of them (spend.ts); so is a call of a request that opened a scope

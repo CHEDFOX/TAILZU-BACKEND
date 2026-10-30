@@ -4,7 +4,7 @@
  * In each the job is PARKED (waiting_for_you, nobody's claim), the person is pushed `needs_you`, and what they say is written
  * into the job's state so the loop goes on from where it was. Run end to end against the fake GitHub, with the real policy.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
 
 vi.hoisted(() => {
@@ -17,6 +17,7 @@ vi.hoisted(() => {
 noNetwork();
 
 const { agentRig, call, done, UTIL_TASK, UTIL_PLAN, UTIL_EDIT } = await import("./agent-rig.js");
+const { setUsageSpan } = await import("../src/you/span.js");
 type Rig = Awaited<ReturnType<typeof agentRig>>;
 
 const BUG = { path: "src/util.ts", old: UTIL_EDIT.old, new: '  return s.toLowerCase().replace(/\\s+/g, "-").trim(); // BUG\n' };
@@ -301,6 +302,8 @@ describe("a commit, or a pull request, the policy asks about", () => {
 });
 
 describe("the budget", () => {
+  afterEach(() => setUsageSpan(null));
+
   it("is the server's default when a job is made without one, and a budget of 0 sent on purpose means no model calls", async () => {
     const r = await agentRig();
     const a = await r.start(UTIL_TASK, { enqueue: false });
@@ -310,6 +313,8 @@ describe("the budget", () => {
   });
 
   it("stops cleanly with no model call when the job has no budget, offers more, and goes on from where it was when it is given", async () => {
+    // A paid plan: the person's month is used in stretches (you/span.ts, set by the You routes over the meter).
+    setUsageSpan(async () => true);
     const r = await agentRig();
     r.json.on("work.plan", UTIL_PLAN);
     r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed."));
@@ -338,7 +343,24 @@ describe("the budget", () => {
     expect(r.fake.commitCount(r.repo)).toBe(2);
   });
 
+  it("a free account has no stretches: the pause says this month; where the plan cannot be known, words true for every plan", async () => {
+    for (const [span, reason] of [
+      [async () => false, "This job has used a lot of this month. Keep going?"],
+      [null, "This job has used what it was given. Keep going?"],
+      [async () => { throw new Error("meter down"); }, "This job has used what it was given. Keep going?"],
+    ] as const) {
+      setUsageSpan(span);
+      const r = await agentRig();
+      r.json.on("work.plan", UTIL_PLAN);
+      const { job } = await r.start(UTIL_TASK, { budgetPaise: 0 });
+      await r.orch.idle();
+      expect((await r.jobNow(job.id)).waitingOn).toBe("budget");
+      expect(r.toldOf("needs_you")[0]!.data.reason).toBe(reason);
+    }
+  });
+
   it("commits nothing when the money runs out mid-work and the checks are worse than the baseline: the edits stay staged, and more budget resumes the work", async () => {
+    setUsageSpan(async () => true);
     // Each model call costs 100 paise; the budget lets the plan and two turns through.
     const r = await agentRig({ paise: 100 });
     r.runner.checkResult = (kind, run) => (kind === "test" && run.overlay.some((f) => f.content?.includes("BUG")) ? { exit: 1, text: " FAIL  src/util.test.ts > slug > keeps the words" } : { exit: 0, text: "ok" });

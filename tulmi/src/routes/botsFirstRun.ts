@@ -23,12 +23,13 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { getEntitlement } from "../billing/entitlements.js";
 import { fetchPlan, formatPeriod, formatPrice, planFor, razorpayReady, type Market, type Tier } from "../billing/razorpay.js";
-import { getConfig } from "../config.js";
+import { getConfig, type AppConfig } from "../config.js";
 import { DAILY_LANGUAGES, freeForAll, PAYWALL_CONFIG } from "../experience/catalog.js";
 import { getPersonality, updatePersonality } from "../personality/store.js";
 import { getProfile } from "../profile/store.js";
 import { TYPING_WORDS_PER_MINUTE } from "../history/store.js";
 import { usageSummary } from "../usage/metering.js";
+import { timesFree } from "../you/usage.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 
 /** One plan as the Plans step draws it. `buy` is absent when it cannot be bought here and now. */
@@ -122,12 +123,11 @@ export function spokenSince(now: { words: number; audioSeconds: number }, base: 
 
 /**
  * A plan in one line, the same for every bot: how many times the free month it gives, from the allowances the meter
- * enforces (USAGE_*_MONTH_PAISE), so the line can never promise more than the server allows.
+ * enforces (USAGE_FREE_MONTH_USD, USAGE_LITE_STRETCHES_USD, USAGE_ELITE_STRETCHES_USD: Lite 35 / 3 → 11×, Elite 450 / 3 → 150×), so the
+ * line can never promise more than the server allows. A share, never an amount.
  */
-export function planLine(tier: string, cfg = getConfig()): string {
-  const free = cfg.USAGE_FREE_MONTH_PAISE;
-  const month = tier === "elite" ? cfg.USAGE_ELITE_MONTH_PAISE : cfg.USAGE_PAID_MONTH_PAISE;
-  const times = free > 0 ? Math.floor(month / free) : 0;
+export function planLine(tier: string, cfg: Pick<AppConfig, "USAGE_FREE_MONTH_USD" | "USAGE_LITE_STRETCHES_USD" | "USAGE_ELITE_STRETCHES_USD"> = getConfig()): string {
+  const times = timesFree(tier, cfg);
   return times >= 2 ? `${times.toLocaleString("en-IN")}× more every month, for all your bots` : "More every month, for all your bots";
 }
 

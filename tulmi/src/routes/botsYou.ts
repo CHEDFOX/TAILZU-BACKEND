@@ -23,7 +23,8 @@
  *   POST   /v1/you/data/delete          -> { ok, cleared }  chats, notes and files go; the account, plan, bots and projects stay
  *
  * Plugged in here too, on the services the server already made (src/you/limits.ts, push.ts): the usage limits on the Code bot's job routes, on
- * the bots platform's answers and on Keybot and Ask (metering.setUsageGate), every bot answer's cost written down, the push engine's gate for
+ * the bots platform's answers and on Keybot and Ask (metering.setUsageGate), every bot answer's cost written down, and what Keybot, Ask and
+ * notes really cost (usage/cost.ts setCostSink), the push engine's gate for
  * "What pings you" and the daily summary, a computer remembered when it sends a heartbeat, and the tab ring's numbers (live.ts setSpendSource).
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
@@ -36,6 +37,8 @@ import { billingView } from "../you/billing.js";
 import { deleteMyData, exportLink, exportLinkUser, gatherExport } from "../you/data.js";
 import { holdJobsToUsage, Spending, wrapBots } from "../you/limits.js";
 import { setUsageGate } from "../usage/metering.js";
+import { setCostSink } from "../usage/cost.js";
+import { setUsageSpan } from "../you/span.js";
 import { howLine, nearLine, outLine, type UsageNow } from "../you/usage.js";
 import { getProfile } from "../profile/store.js";
 import { dayOf, pushGate, startSummaries, summaryLine } from "../you/push.js";
@@ -76,10 +79,14 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
   if (deps.bots) wrapBots(deps.bots, spending);
   if (deps.jobs) holdJobsToUsage(app, spending, deps.jobs);
   setUsageGate(async (userId) => (await spending.refusal(userId))?.message ?? null);
+  // What Keybot, Ask and notes really cost (usage/cost.ts), written down for the meter.
+  setCostSink((userId, usd, bot) => spending.recordUsd(userId, bot, usd));
+  // Whether a person's month is used in stretches, for a Code bot job's pause ("this month" on the free plan).
+  setUsageSpan(async (userId) => (await spending.usage(userId)).plan.windows);
   setPushGate(pushGate(spending));
   setSpendSource(async (botsDeps, tz) => botsDeps.api<{ limitPaise: number; monthPaise: number; usage?: LiveUsage }>("GET", `/v1/you/live?tz=${Math.round(tz)}`));
   const stopSummaries = startSummaries({ spending, jobs: deps.jobs, connectors: deps.connectors, log: app.log });
-  app.addHook("onClose", async () => { stopSummaries(); setUsageGate(null); });
+  app.addHook("onClose", async () => { stopSummaries(); setUsageGate(null); setCostSink(null); setUsageSpan(null); });
 
   // A computer's heartbeat: remembered (name, when last seen) at most every ten minutes, so an offline one can still be listed.
   const seen = new Map<string, number>();

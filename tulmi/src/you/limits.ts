@@ -8,7 +8,11 @@
  *   A bot's answer     Bots.ask / test / askWithKey (the bots platform's three ways in, and so Ask's answers): refused once the stretch is used
  *                      up, with the sentence. What each answer cost is written to you_spend when it comes back, so the meter counts every bot.
  *   Ask and Keybot     metering.enforceQuota asks the gate set here (setUsageGate) before any paid upstream: Keybot's dictation and rewrites,
- *                      the old Ask, the front door. Keybot's words count at USAGE_KEYBOT_PAISE_PER_1000_WORDS.
+ *                      the old Ask, the front door. What each of those really cost (OpenRouter's charge, the speech engines' and the voice's
+ *                      list prices: usage/cost.ts) is written to you_spend through the sink set here (setCostSink, recordUsd).
+ *
+ * The limits are in US dollars (config.ts USAGE_*_USD); the records keep paise, counted at CODE_USD_INR, and the plans' dollars become paise at
+ * the same rate (usage.ts planOf), so the meter counts dollars.
  *
  * Every refusal is 429 { code: "quota_exceeded", reason: "usage_limit", message, resetsAt, upgrade }: "You've reached this stretch's limit.
  * It resets Thu 9 am." The apps open the bootstrap's quota.screenId on it (the Bots app's Usage page).
@@ -25,7 +29,7 @@ import { getEntitlement, type Entitlement } from "../billing/entitlements.js";
 import { BotError, type Bots } from "../bots/index.js";
 import type { JobRouter } from "../code/jobs/router.js";
 import { getConfig } from "../config.js";
-import { usageMomentsSince } from "../usage/metering.js";
+import { SpendMeter } from "../code/brain/spend.js";
 import { spendReport, type SpendReport } from "./spend.js";
 import type { YouStore } from "./store.js";
 import type { YouSettings } from "./settings.js";
@@ -45,6 +49,8 @@ export class Spending {
   private readonly cache = new Map<string, { at: number; report: SpendReport; settings: YouSettings }>();
   private readonly meters = new Map<string, MeterRead>();
   private readonly tz = new Map<string, number>();
+  /** What each person's uses outside the gateway came to exactly, against the whole paise written (recordUsd). */
+  private readonly carry = new SpendMeter();
   readonly now: () => number;
 
   constructor(private readonly o: {
@@ -53,8 +59,6 @@ export class Spending {
     now?: () => number;
     /** The person's entitlement (billing/entitlements.ts unless a test says). */
     entitlement?: (userId: string) => Promise<Entitlement | null>;
-    /** Keybot's words since a moment (usage_events unless a test says). */
-    words?: (userId: string, since: number) => Promise<Array<{ at: number; words: number }>>;
   }) {
     this.now = o.now ?? Date.now;
   }
@@ -94,24 +98,24 @@ export class Spending {
 
   forget(userId: string): void { this.cache.delete(userId); this.meters.delete(userId); }
 
-  /** What the meter adds up: the Code bot's jobs, every bot's answers and Keybot's words, with the plan and the billing month's anchor. */
+  /**
+   * What the meter adds up, with the plan and the billing month's anchor: the Code bot's jobs (code_jobs.spent_paise) and you_spend, where every
+   * bot's answer, the front door's messages and Keybot's, Ask's and notes' real costs (usage/cost.ts) are written.
+   */
   private async read(userId: string, fresh = false): Promise<MeterRead> {
     const hit = this.meters.get(userId);
     const now = this.now();
     if (hit && !fresh && now - hit.at < CACHE_MS) return hit;
     const c = getConfig();
     const since = now - READ_BACK_MS;
-    const rate = c.USAGE_KEYBOT_PAISE_PER_1000_WORDS;
-    const [ent, jobs, rows, words] = await Promise.all([
+    const [ent, jobs, rows] = await Promise.all([
       (this.o.entitlement ?? ((id: string) => getEntitlement({ id })))(userId).catch(() => null),
       this.o.jobs ? this.o.jobs.listJobs(userId, JOBS_READ).catch(() => []) : Promise.resolve([]),
       this.o.store.spendSince(userId, since).catch(() => []),
-      rate > 0 ? (this.o.words ?? keybotWords)(userId, since).catch(() => []) : Promise.resolve([]),
     ]);
     const events: UsageEvent[] = [
       ...jobs.filter((j) => j.spentPaise > 0 && j.updatedAt >= since).map((j) => ({ at: j.updatedAt, paise: j.spentPaise })),
       ...rows.map((r) => ({ at: r.at, paise: r.paise })),
-      ...words.filter((w) => w.words > 0).map((w) => ({ at: w.at, paise: (w.words * rate) / 1000 })),
     ];
     const anchor = ent?.active && ent.expiresAt ? Date.parse(ent.expiresAt) || null : null;
     const read: MeterRead = { at: now, events, plan: planOf(ent, c), anchor };
@@ -153,17 +157,22 @@ export class Spending {
     void this.o.store.addSpend(userId, bot, paise, at).catch(() => undefined);
   }
 
+  /**
+   * What a use really cost, in US dollars, written down as paise at CODE_USD_INR (the rate the plans' dollars are turned at). A cheap use is a
+   * fraction of a paise: the exact amounts are kept per person and only the whole paise they come to are written (SpendMeter, rounded up once,
+   * never low and never more than one paise high), so a thousand dictations at a third of a paise each are not a thousand paise.
+   */
+  recordUsd(userId: string, bot: string, usd: number): void {
+    if (!(usd > 0) || !userId) return;
+    const paise = this.carry.charge(userId, usd * getConfig().CODE_USD_INR * 100);
+    if (paise > 0) this.record(userId, bot, paise);
+  }
+
   /** Refuses a bot's answer once the stretch is used up. */
   async gate(userId: string): Promise<void> {
     const r = await this.refusal(userId);
     if (r) throw new BotError("quota_exceeded", r.message, 429, { reason: r.reason, resetsAt: r.resetsAt, upgrade: r.upgrade });
   }
-}
-
-/** Keybot's words since a moment, from usage_events (a person's own rows; none when they cannot be read). */
-async function keybotWords(userId: string, since: number): Promise<Array<{ at: number; words: number }>> {
-  const rows = await usageMomentsSince({ id: userId }, new Date(since).toISOString());
-  return (rows ?? []).map((r) => ({ at: r.at, words: r.words }));
 }
 
 const WRAPPED = Symbol.for("tailzu.you.limits");
