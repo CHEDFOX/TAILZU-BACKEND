@@ -27,8 +27,8 @@ try {
 const b = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 const now = Math.floor(Date.now() / 1000);
 const jwt = (iss) => { const h = b({ alg: "RS256", typ: "JWT" }), p = b({ iat: now - 60, exp: now + 540, iss }); return `${h}.${p}.${c.sign("RSA-SHA256", Buffer.from(`${h}.${p}`), key).toString("base64url")}`; };
-const gh = async (method, path, token) => {
-  const r = await fetch(`https://api.github.com${path}`, { method, headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "x0-check" } });
+const gh = async (method, path, token, body) => {
+  const r = await fetch(`https://api.github.com${path}`, { method, headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "user-agent": "x0-check" }, ...(body ? { body: JSON.stringify(body) } : {}) });
   return { status: r.status, json: await r.json().catch(() => null) };
 };
 (async () => {
@@ -47,7 +47,8 @@ const gh = async (method, path, token) => {
   say("\ninstalls on GitHub        ", inst.status, Array.isArray(inst.json) ? inst.json.length : inst.json?.message);
   for (const i of Array.isArray(inst.json) ? inst.json : []) {
     say(`  #${i.id} @${i.account?.login} repos=${i.repository_selection} suspended=${!!i.suspended_at}`);
-    const t = await gh("POST", `/app/installations/${i.id}/access_tokens`, appJwt);
+    say("    accepted permissions", JSON.stringify(i.permissions));
+    const t = await gh("POST", `/app/installations/${i.id}/access_tokens`, appJwt, { permissions: { metadata: "read" } });
     if (t.status !== 201) { say("    token", t.status, t.json?.message); continue; }
     const r = await gh("GET", "/installation/repositories?per_page=5", t.json.token);
     say("    repos", r.status, r.status === 200 ? `${r.json.total_count}: ${r.json.repositories.map((x) => x.full_name).join(", ")}` : r.json?.message);
