@@ -5,6 +5,9 @@ import { approvalLine, jobLite } from "../src/experience/bots/deps.js";
 import { ctxFor, fakeDeps, FIXED_NOW, IST, SAMPLE_JOBS, sampleLive } from "../src/experience/bots/fixtures.js";
 import { liveFrom, weekAndMonthStart } from "../src/experience/bots/live.js";
 import { weekLine } from "../src/experience/bots/screens/shell.js";
+import { homeDayLine } from "../src/experience/settingsWords.js";
+/** Home's line on the fixtures' evening: one of the evening's, today's. */
+const HOME_LINE = homeDayLine("evening", (FIXED_NOW + IST * 60_000) / 86_400_000).en;
 import type { CodeJob } from "../src/code/jobs/types.js";
 import { lintTree as checkTree, walk } from "../src/experience/bots/lint.js";
 
@@ -69,7 +72,8 @@ describe("bots.home", () => {
   it("phone: Main.dc.html, from the live state, with its actions wired", async () => {
     const s = await buildBotsScreen(req("bots.home", "phone"), fakeDeps());
     const words = texts(s.root!);
-    for (const w of ["Good evening, Aanya", "Anything to write up before the day ends?", "4 things done this week · 2 h saved", "Needs you · Xode",
+    expect(words.some((w) => /this week|saved/.test(w))).toBe(false);
+    for (const w of ["Good evening, Aanya", HOME_LINE, "Needs you · Xode",
       "Round the cart total per item, or once at the end?", "Per item", "At the end", "You decide",
       "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot", "Bots", "Activity", "You"]) {
       expect(words, w).toContain(w);
@@ -100,7 +104,7 @@ describe("bots.home", () => {
   it("window: DeskHome.dc.html in the sidebar frame, four tiles across, the ask bar says desktop", async () => {
     const s = await buildBotsScreen(req("bots.home", "desktop"), fakeDeps());
     const words = texts(s.root!);
-    for (const w of ["Good evening, Aanya", "Anything to write up before the day ends?", "Hold a key, speak, done", "Your bots", "Travel bot", "Gym bot"]) expect(words, w).toContain(w);
+    for (const w of ["Good evening, Aanya", HOME_LINE, "Hold a key, speak, done", "Your bots", "Travel bot", "Gym bot"]) expect(words, w).toContain(w);
     expect(walk(s.root!).some((n) => n.type === "Grid" && n.props?.columns === 4)).toBe(true);
     const field = walk(s.root!).find((n) => n.type === "TextField")!;
     expect(JSON.stringify(field.on!.onSubmit)).toContain('"device":"desktop"');
@@ -191,7 +195,7 @@ describe("bots.home", () => {
       expect(checkTree(s.root!), client).toEqual([]);
       const nodes = walk(s.root!);
       const line = nodes.find((n) => n.type === "WriteOn")!;
-      expect(line.props).toMatchObject({ content: "Anything to write up before the day ends?", once: "home.evening", caretColor: "#A9573A", fontFamily: "Tailzu Geist Bold", size: client === "phone" ? 30 : 40 });
+      expect(line.props).toMatchObject({ content: HOME_LINE, once: "home.evening", caretColor: "#A9573A", fontFamily: "Tailzu Geist Bold", size: client === "phone" ? 30 : 40 });
       const mark = nodes.find((n) => n.type === "LiveMark")!;
       expect(mark.props!.lit).toContain("#4F7A3A");
       // It only answers a touch (squish, eyes on the finger): it opens nothing.
@@ -205,19 +209,24 @@ describe("bots.home", () => {
       // Still for a build without them: the same words, no new nodes.
       const still = await buildBotsScreen({ ...req("bots.home", client), can: new Set(["BotsKit", "BotsMotion"]) }, fakeDeps());
       expect(walk(still.root!).some((n) => ["WriteOn", "LiveMark", "HeadBar"].includes(n.type))).toBe(false);
-      expect(texts(still.root!)).toContain("Anything to write up before the day ends?");
+      expect(texts(still.root!)).toContain(HOME_LINE);
     }
     // The old app's lines: the greeting sentence dropped under a greeting, the night's whole; Hinglish beside them.
     const { dayLineAfterGreeting, homeLineSeeds } = await import("../src/experience/settingsWords.js");
     expect(dayLineAfterGreeting("morning").en).toBe("I’m ready when you are.");
     expect(dayLineAfterGreeting("night").en).toBe("Still up? I’m here, and I’ll keep it quiet.");
     expect(homeLineSeeds().get("Anything to write up before the day ends?")).toBe("Din khatam hone se pehle kuch likhwana hai?");
+    // Home's own lines: three for each part of the day, a different one each day, each with its Hinglish; never a clock.
+    const evenings = [0, 1, 2].map((d) => homeDayLine("evening", d).en);
+    expect(new Set(evenings).size).toBe(3);
+    for (const e of evenings) expect(homeLineSeeds().get(e)).toBeTruthy();
+    expect(homeDayLine("night", 7).en).toBe(homeDayLine("night", 10).en);
   });
 
-  it("a quiet day: no decision card, and the week says so", async () => {
+  it("a quiet day: no decision card, and no week line", async () => {
     const s = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ jobs: [], tasks: [], minutesSaved: 0 }));
     const words = texts(s.root!);
-    expect(words).toContain("Nothing done yet this week");
+    expect(words.some((w) => /this week/.test(w))).toBe(false);
     expect(words.some((w) => w.startsWith("Needs you"))).toBe(false);
     expect(words).toContain("Fixes and ships your code");
   });

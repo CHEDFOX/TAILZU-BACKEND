@@ -28,7 +28,7 @@ const { registerBotsPushAskRoutes, PUSH_ASK_ROUTE } = await import("../src/route
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
-const { dayLineAfterGreeting } = await import("../src/experience/settingsWords.js");
+const { homeDayLine } = await import("../src/experience/settingsWords.js");
 const { dayPart } = await import("../src/experience/touches.js");
 const { FIXED_NOW, SAMPLE_BOTS, SAMPLE_JOBS } = await import("../src/experience/bots/fixtures.js");
 
@@ -104,7 +104,7 @@ describe("What pings you", () => {
 
 describe("the first-day Home", () => {
   it("has Home's own living header", async () => {
-    const line = dayLineAfterGreeting(dayPart(IST, FIXED_NOW)).en;
+    const line = homeDayLine(dayPart(IST, FIXED_NOW), (FIXED_NOW + IST * 60_000) / 86_400_000).en;
     // The first visit after onboarding: the first-arrival card is due, and the bot says hello under the header.
     const fresh = { api: { "GET /v1/bots/first-run/arrival": { due: true } }, bots: SAMPLE_BOTS.filter((b) => b.builtin), jobs: [], tasks: [] };
     for (const client of ["phone", "desktop"] as const) {

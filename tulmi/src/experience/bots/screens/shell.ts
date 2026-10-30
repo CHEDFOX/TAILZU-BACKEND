@@ -24,7 +24,7 @@ import {
 } from "../kit.js";
 import type { Mark } from "../glyphs.js";
 import { dayPart } from "../../touches.js";
-import { dayLineAfterGreeting } from "../../settingsWords.js";
+import { homeDayLine } from "../../settingsWords.js";
 import { screen, type BotsScreen } from "../registry.js";
 import { askMoment, failed, SENT_WORDS, start as momentStart, streamed } from "../askMoment.js";
 import { canRecord, canUpload, listenAction, listening, micBlockedNotice, notListening, uploadChip, uploadPick, voiceBars, writingDown } from "../media.js";
@@ -144,18 +144,6 @@ const toast = (message: string, tone?: "error"): ActionSpec => ({ kind: "toast",
 
 // ===================================================================== home
 
-/** The week as beads: one ink dot per thing done (six at most), then a hollow one for the next. */
-function weekBeads(done: number): Node {
-  const dot = (filled: boolean): Node => box([], filled
-    ? { width: 8, height: 8, borderRadius: 4, backgroundColor: C.ink }
-    : { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: C.dashed });
-  return row([...Array.from({ length: Math.min(done, 6) }, () => dot(true)), dot(false)], { gap: 4 });
-}
-
-function weekRow(ctx: BotsCtx): Node {
-  return row([weekBeads(ctx.live.week.done), text(weekLine(ctx.live.week), { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 10 });
-}
-
 /**
  * The tiles: the three bots that matter most right now (needs you, working, then the built-ins), and Make a bot.
  * Living (a tiny Blip in each, playing; BotTiles) where the build draws them, else today's static tiles. Under them,
@@ -219,7 +207,7 @@ function homeHead(ctx: BotsCtx): { head: Node; pinned: Node[] } {
   const name = firstName(ctx);
   const greet = name ? `${ctx.live.greeting}, ${name}` : ctx.live.greeting;
   const part = dayPart(ctx.tzOffsetMinutes, ctx.live.now);
-  const line = dayLineAfterGreeting(part).en;
+  const line = homeDayLine(part, (ctx.live.now + ctx.tzOffsetMinutes * 60_000) / 86_400_000).en;
   const alive = canHead(ctx);
   const size = desk ? 40 : 30, lineHeight = desk ? 46 : 35, tracking = desk ? -1.2 : -0.9;
   const bold = alive ? writeOn(line, { size, lineHeight, tracking, once: `home.${part}` }) : text(line, { size, weight: 700, tracking, lineHeight });
@@ -249,7 +237,6 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const home: Node[] = [
     n.head(head),
     ...n.leaving,
-    weekRow(ctx),
     ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
     ...(first ? [needsCard(first)] : []),
     ...n.push,
@@ -303,8 +290,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     body: [
       head,
       ...n.leaving,
-      weekRow(ctx),
-      ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
+        ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
       // The first time here: one card for this computer's microphone and Accessibility, over Home, and the bot saying hello.
       ...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []),
       ...(first ? [needsCard(first, { layout: "row" })] : []),
