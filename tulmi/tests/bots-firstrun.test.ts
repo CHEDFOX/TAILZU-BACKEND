@@ -338,10 +338,14 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       expect(actions(ask.onBlocked)).toEqual([{ kind: "setState", path: "micAsked", value: true }]);
       // Step 2: the keyboard, straight to its settings.
       const keys = stepOf(card, "Add the X0 Bot keyboard")!;
-      expect(keys.visibleIf).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] }] });
+      // An iPhone can't read Full Access until the keyboard has run, so there the keyboard switched on is enough.
+      const KEYS_ON = { all: [{ truthy: "keyboardEnabled" }, { any: [{ truthy: "keyboardReady" }, { platform: "ios" }] }] };
+      expect(keys.visibleIf).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { not: KEYS_ON }] });
       expect(actions(keys)).toEqual(expect.arrayContaining([{ kind: "openSettings", target: "keyboard" }]));
-      // Both done: a happy moment, then it closes and the server is told; "Not now" does the same, for good.
-      expect(card.props?.doneWhen).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, { all: [{ truthy: "keyboardEnabled" }, { truthy: "keyboardReady" }] }] });
+      // Both done: the words give way to "X0 got you!" while the bot cheers, then it closes and the server is told; "Not now" does the same, for good.
+      expect(card.props?.doneWhen).toEqual({ all: [{ any: [{ truthy: "micGranted" }, { truthy: "micAsked" }] }, KEYS_ON] });
+      expect(stepOf(card, "X0 got you!")?.visibleIf).toEqual(card.props?.doneWhen);
+      expect(card.props?.doneDelayMs).toBeGreaterThanOrEqual(2000);
       const closes = [{ kind: "setState", path: "permitClosed", value: true }, expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/first-run/arrival" })];
       expect(actions(card.on?.onComplete)).toEqual(expect.arrayContaining(closes));
       const notNow = walk(mic).find((x) => x.on?.onPress && texts(x).includes("Not now"));
@@ -368,7 +372,11 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
     expect(s.state).toMatchObject({ keyboardEnabled: true, keyboardReady: true, micGranted: true, micAsked: false });
     const card = cardOf(s.root!)!;
     expect(card.props?.overlay).toBeUndefined();
-    expect(card.visibleIf).toEqual({ any: [{ falsy: "micGranted" }, { any: [{ falsy: "keyboardEnabled" }, { falsy: "keyboardReady" }] }] });
+    // It comes in when the app says something is missing, and once it is all on the bot cheers on "X0 got you!" and it goes.
+    const missing = { any: [{ falsy: "micGranted" }, { not: { all: [{ truthy: "keyboardEnabled" }, { any: [{ truthy: "keyboardReady" }, { platform: "ios" }] }] } }] };
+    expect(card.props).toMatchObject({ readyWhen: missing, doneWhen: { not: missing }, closeWhen: { truthy: "keybotSet" } });
+    expect(actions(card.on?.onComplete)).toEqual([{ kind: "setState", path: "keybotSet", value: true }]);
+    expect(stepOf(card, "X0 got you!")?.visibleIf).toEqual({ not: missing });
     expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
     const mic = stepOf(card, "Let Keybot hear you")!;
     const ask = actions(mic).find((x) => x.kind === "requestPermission") as { onGranted?: unknown; onBlocked?: unknown };
