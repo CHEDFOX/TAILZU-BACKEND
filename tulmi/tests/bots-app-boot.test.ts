@@ -105,7 +105,7 @@ describe("the screen route", () => {
     expect(phone.body).toContain('"type":"SafeArea"');
     const desk = await post("/v1/app/screen", { screenId: "bots.home", capabilities: caps(["BotsKit", "DeskShell"], "desktop") });
     // A person who has done nothing yet lands on the empty home (EmptyHome); anyone else on "What should we do?".
-    expect(desk.body).toMatch(/What should we do\?|I'm Blip/);
+    expect(desk.body).toMatch(/What should we do\?|I'm X0/);
     expect(desk.body).toContain('"screenId":"bots.today"');
     const home = await post("/v1/app/screen", { screenId: "home", capabilities: caps(["BotsKit"]) });
     expect(home.json().screenId).toBe("bots.home");

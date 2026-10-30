@@ -29,6 +29,7 @@ import { screen, type BotsScreen } from "../registry.js";
 import { askMoment, failed, SENT_WORDS, start as momentStart, streamed } from "../askMoment.js";
 import { canRecord, canUpload, listenAction, listening, micBlockedNotice, notListening, uploadChip, uploadPick, voiceBars, writingDown } from "../media.js";
 import { ARRIVAL_PATH, ARRIVAL_STATE, arrivalCard } from "./firstRun.js";
+import { ASSISTANT_NAME, nicknameOf } from "../../assistantName.js";
 import { DELETION_PATH, leavingCard, type DeletionState } from "./accountGrace.js";
 import { offlineKept, outboxCard, outboxSection } from "./outbox.js";
 import { hasNotes, notesStrip, notesStripHeight, notesTileSpec, NOTES_STATS_PATH } from "./notes.js";
@@ -186,7 +187,7 @@ function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, n
 const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
 
 /** What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due (pushAsk.ts). */
-interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined }
+interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined; botName?: string | undefined }
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the
@@ -300,7 +301,9 @@ const IDEAS = [
  */
 function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const name = firstName(ctx);
-  const hi = name ? `Hi ${name}, I'm Blip` : "Hi, I'm Blip";
+  // The name they gave their bot when they named it, else X0's own.
+  const me = more.botName || ASSISTANT_NAME;
+  const hi = name ? `Hi ${name}, I'm ${me}` : `Hi, I'm ${me}`;
   const { head, pinned } = homeHead(ctx);
   const n = homeNotices(ctx, arrival, more);
   const line = "Every bot here is me, ready for one job. Your first one is already on.";
@@ -365,11 +368,8 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...n.leaving,
       ...(n.arrival ? arrivalCard(ctx) : []),
       col([blip("hello", 132), text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })], { gap: 6, alignItems: "center" }),
-      row([
-        botAvatar(keybot, 38),
-        col([text("Keybot is on", { size: 15, weight: 600, lineHeight: 20 }), meta("Hold the clay key to speak, in any app")], { gap: 2, flexGrow: 1, flexShrink: 1 }),
-        box([icon("mic", { size: 18, color: C.paper })], { width: 40, height: 34, borderRadius: 9, backgroundColor: botLook("keybot").color, alignItems: "center", justifyContent: "center" }),
-      ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }, botRoute("keybot")),
+      // The bots they already have (Keybot, Code, Plan, Travel), as Home shows them once they've started.
+      tiles(ctx, 2, 132, 16, more.notes),
       col([
         row([
           col([text("Make your first bot", { size: 20, weight: 700, tracking: -0.3, lineHeight: 25 }), text("Say what it should do. It shows you the plan before it acts.", { size: 13, color: C.grey70, lineHeight: 18 })], { gap: 4, flexGrow: 1, flexShrink: 1 }),
@@ -1526,17 +1526,19 @@ export const shellScreens: BotsScreen[] = [
     // Whether they have anything of their own yet, whether the first-arrival card is due (once, after onboarding), whether the
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
-      const [started, arrival, leaving, push, notes] = await Promise.all([
+      const [started, arrival, leaving, push, notes, persona] = await Promise.all([
         deps.api<{ started: boolean }>("GET", "/v1/shell/started").catch(() => undefined),
         deps.api<{ due: boolean }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
         hasNotes(ctx) ? deps.api<NotesStats>("GET", NOTES_STATS_PATH).catch(() => undefined) : Promise.resolve(undefined),
+        // The name they gave their bot, for the first day's hello.
+        deps.api<{ personality?: { assistantName?: string } }>("GET", "/v1/personality").catch(() => undefined),
       ]);
-      return { ...(started ?? {}), arrival: arrival?.due === true, leaving, push: push?.due === true, notes };
+      return { ...(started ?? {}), arrival: arrival?.due === true, leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality) };
     },
     build: (ctx, data) => {
-      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes };
+      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName };
       return isNew(ctx, data) ? emptyHome(ctx, arrival, more) : ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
     },
   }),
