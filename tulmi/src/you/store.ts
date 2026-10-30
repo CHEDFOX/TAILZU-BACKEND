@@ -149,3 +149,35 @@ export function youStore(): YouStore {
 }
 
 export function setYouStoreForTests(s: YouStore | null): void { current = s; }
+
+// -------------------------------------------------------------------- signed-in desktops
+
+/**
+ * A COMPUTER SIGNED IN AS THE PERSON, before its X0 Code runner is on. The runner (off until they turn it on) is the
+ * only thing that reported a computer, so someone signed in on their Mac saw "No computer yet". The desktop app's own
+ * screen requests say what it is (formFactor "desktop", its os), so each one is kept as a row "app:<os>", one per kind
+ * of computer (the window sends no name of its own), written at most every few minutes per person.
+ */
+export const APP_COMPUTER = "app:";
+const APP_SEEN_EVERY_MS = 10 * 60_000;
+const appSeen = new Map<string, number>();
+
+/** "mac", "windows" or "linux", from either what the window says or Node's process.platform; "" for anything else. */
+export function computerOs(os: string | undefined): "mac" | "windows" | "linux" | "" {
+  const o = String(os ?? "").toLowerCase();
+  return o === "mac" || o === "darwin" || o === "macos" ? "mac" : o === "windows" || o === "win32" ? "windows" : o === "linux" ? "linux" : "";
+}
+
+/** The desktop app, signed in as this person, asked for a screen: keep (or freshen) its row. Never throws. */
+export function seeDesktopApp(userId: string, os: string | undefined, now = Date.now(), store: YouStore = youStore()): void {
+  const kind = computerOs(os);
+  if (!userId || !kind) return;
+  const key = `${userId}:${kind}`;
+  if (now - (appSeen.get(key) ?? 0) < APP_SEEN_EVERY_MS) return;
+  if (appSeen.size > 50_000) appSeen.clear();
+  appSeen.set(key, now);
+  const name = kind === "mac" ? "Your Mac" : kind === "windows" ? "Your Windows PC" : "Your Linux computer";
+  void store.seeComputer(userId, { deviceId: APP_COMPUTER + kind, name, os: kind }, now).catch(() => appSeen.delete(key));
+}
+
+export function resetDesktopAppSeenForTests(): void { appSeen.clear(); }
