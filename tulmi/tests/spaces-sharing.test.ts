@@ -10,7 +10,7 @@
  *   - messaging: one to one and groups, unread counts, older pages, muting, leaving, photos by signed link, and live events
  *   - tasks and plans for others: who may, answering, the push, and the assignee's Plan ("From <name>")
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
 
 vi.hoisted(() => {
@@ -410,6 +410,10 @@ describe("messaging", () => {
 });
 
 describe("tasks and plans for others", () => {
+  // The days below are fixed (Oct 29, 30) and the routes' tasks read the real clock: hold it on the test's own day,
+  // or a plan for Oct 29 is "in the past" from Oct 30 on.
+  beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 9, 28, 6, 0) }); });
+  afterEach(() => { vi.useRealTimers(); });
   it("gives tasks with the permission, tells the person, and takes their answer", async () => {
     const s = await served();
     const id = await s.home();
