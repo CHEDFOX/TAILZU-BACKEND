@@ -773,11 +773,12 @@ const EnvSchema = z.object({
   BOTS: bool(false),
   /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
-   * Home is your bots). Off by default, and off means today's app, byte for byte. On, a build that declares "BotsKit" (it draws the kit's pieces)
-   * is booted into it; an older build keeps today's app. BOTS_APP_TESTERS (sign-in emails, comma separated) narrows it to those people while set.
+   * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which
+   * cannot draw it, keeps the app it has. The phone's builds declare BotsOnly and get it whatever this says; it is the desktop this decides.
+   * BOTS_APP=false puts the desktop back on the old app. BOTS_APP_TESTERS (sign-in emails, comma separated) narrows it to those people while set.
    * The screens read the bots platform (BOTS), Xode's jobs and connected apps where they are on, and draw an honest empty state where not.
    */
-  BOTS_APP: bool(false),
+  BOTS_APP: bool(true),
   BOTS_APP_TESTERS: z.string().default(""),
   BOT_KEY_PEPPER: z.string().optional(),
   BOTS_MAX: z.coerce.number().int().min(1).max(500).default(20),
