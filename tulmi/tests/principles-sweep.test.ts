@@ -88,6 +88,7 @@ describe("the sweep", () => {
     const NOT_PROMPTS: Array<{ rel: string; text: string; why: string }> = [
       { rel: "code/newproject/intake.ts", text: "e\\.g\\.|for example", why: "a regex that spots a person naming an example in their own answer" },
       { rel: "code/resources/finder.ts", text: "for example \\\"a date picker for React\\\"", why: "the hint the person sees when they ask for nothing" },
+      { rel: "front/rules.ts", text: "for example|e\\.?g\\.?", why: "a regex that spots a person replying \"for example?\" to the last answer" },
     ];
     const MARKERS: Array<[string, RegExp]> = [
       ["Example:", /Example:/],

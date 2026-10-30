@@ -36,6 +36,8 @@ export interface RuleRead {
   followUp?: { base: string };
   /** "Ok, change it" right after a question about the code. */
   handoff?: boolean;
+  /** "what?", "why?", "explain" right after an answer: what it asks of that answer, and the language it says it in. */
+  reaction?: { ask: string; language: "en" | "hinglish" };
   /** The words of an open-ended task (debug, investigate, find out why, explore): if it is a code task, it is worked freely. */
   openEnded?: boolean;
   /** The person asked for a team of helpers ("on"), or said not to ("off"): a code task is then worked as a lead's, or never (code/team). */
@@ -134,6 +136,25 @@ const TEAM_OFF = /\b(?:no\s+(?:team|helpers?)|without\s+(?:a\s+)?(?:team|helpers
 const FOLLOW_UP = /^\s*(?:and|also|what\s+about|how\s+about|now|then|ok(?:ay)?\s+(?:and|now)|make\s+it|change\s+it|do\s+(?:that|it)|same\s+(?:for|with)|aur|phir|ab|isko|usko|aur\s+kya)\b/i;
 
 const wordCount = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
+
+/**
+ * A REACTION to the answer just given, the way one talks to Claude Code: "what?", "why?", "explain", "simpler", "matlab?". Never a new
+ * question with nothing in it: it goes on from the last turn. The ones that say "I did not follow" ask for the last answer again, simpler;
+ * the rest ("why?", "how?", "more") are asked about the last answer as they are. Each says its own language, so a one-word "what?" is
+ * answered in English whatever the profile says.
+ */
+const LOST_EN = /^\s*(?:what|wut|huh|eh|pardon|sorry|come again|what do you mean|i (?:do ?n[o']?t|did ?n[o']?t) (?:get|understand|follow)(?: (?:it|that|you))?|not clear|unclear|confusing)\s*[?!.]*\s*$/i;
+const ON_EN = /^\s*(?:why|how|how so|explain(?: (?:that|it|more|again|simply|simpler))?|simpler|simply|in simple (?:words|terms)|more|tell me more|go on|elaborate|example|for example|e\.?g\.?|meaning|such as|like what|and then|really|sure)\s*[?!.]*\s*$/i;
+const LOST_HG = /^\s*(?:kya|kya\s+matlab|matlab|samjha\s+nahi|samjhi\s+nahi|samajh\s+nahi\s+aaya|nahi\s+samjha|samjhao|samjha\s+do)\s*[?!.]*\s*$/i;
+const ON_HG = /^\s*(?:kyun|kyon|kaise|aur\s+batao|detail\s+mein|thoda\s+aur|example\s+do|jaise)\s*[?!.]*\s*$/i;
+/** The reaction this message is, if it is one, and what it asks of the last answer. */
+function reactionOf(text: string): { ask: string; language: "en" | "hinglish" } | null {
+  if (LOST_EN.test(text)) return { ask: "I did not follow that. Explain your last answer again, simpler and shorter, in plain words.", language: "en" };
+  if (LOST_HG.test(text)) return { ask: "Samajh nahi aaya. Apna pichla jawab phir se samjhao, aur aasaan aur chhota karke.", language: "hinglish" };
+  if (ON_EN.test(text)) return { ask: `About your last answer: ${text.trim()}`, language: "en" };
+  if (ON_HG.test(text)) return { ask: `Pichle jawab ke baare mein: ${text.trim()}`, language: "hinglish" };
+  return null;
+}
 
 /** Words that say nothing about WHAT to change: a request made only of these is "do something to it". */
 const BARE = new Set([
@@ -265,6 +286,12 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
     hit(last.intent, 0.6, "follow_up");
     followUp = { base: last.said };
   }
+  // "what?", "why?", "explain" after an answer: about that answer, never a fresh message with nothing in it.
+  const reaction = last && n <= 6 && last.intent !== "chat" ? reactionOf(text) : null;
+  if (reaction && last) {
+    hit(last.intent, 0.9, "follow_up:reaction");
+    followUp = { base: last.said };
+  }
 
   // Nothing matched: two words or fewer is nothing to go on; the rest is conversation.
   if (!miss.size) {
@@ -273,9 +300,10 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
   }
 
   const ranked = [...miss].map(([intent, m]) => [intent, 1 - m] as const).sort((a, b) => b[1] - a[1]);
-  const [intent, top] = ranked[0]!;
+  // A reaction right after an answer is about that answer, however much a lone "what?" also reads as a new question.
+  const [intent, top] = reaction && last ? [last.intent, 0.9] as const : ranked[0]!;
   const ignored = NOT_RIVALS[intent] ?? [];
-  const second = ranked.slice(1).find(([i]) => !ignored.includes(i));
+  const second = reaction ? undefined : ranked.slice(1).find(([i]) => i !== intent && !ignored.includes(i));
   let confidence = Math.min(0.95, top) - RIVAL_PENALTY * (second?.[1] ?? 0);
   confidence = Math.max(0.1, Math.round(confidence * 100) / 100);
 
@@ -285,6 +313,7 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
     intent, confidence, scores, ...(second ? { rival: second[0] } : {}), signals: [...new Set(signals)], cls,
     ...(intent === "research" && depth ? { depth } : {}), ...(followUp && (intent === last?.intent || (handoff && intent === "code_task")) ? { followUp } : {}),
     ...(handoff && intent === "code_task" ? { handoff: true } : {}), ...(OPEN_ENDED.test(text) ? { openEnded: true } : {}),
+    ...(reaction && intent === last?.intent ? { reaction } : {}),
     ...(TEAM_OFF.test(text) ? { team: "off" as const } : TEAM_ON.test(text) ? { team: "on" as const } : {}),
     ...(vague ? { vague: true } : {}),
   };

@@ -136,6 +136,24 @@ describe("what a message is, by the rules alone", () => {
     expect(readByRules("and then explain in detail why the sky is blue during the day but red at sunset", { recent, attachments: [], mode: "text" }).followUp).toBeUndefined();
   });
 
+  it("takes \"what?\", \"why?\", \"explain\" after an answer as about that answer, in the language it is said in (as Claude Code does)", async () => {
+    const recent = [{ said: "what do you understand of the project", did: "code_question" }];
+    const lost = readByRules("what ?", { projectId: "p", recent, attachments: [], mode: "text" });
+    expect(lost).toMatchObject({ intent: "code_question", followUp: { base: "what do you understand of the project" } });
+    expect(lost.reaction?.language).toBe("en");
+    expect(lost.reaction?.ask).toMatch(/explain your last answer again, simpler/i);
+    const d = await ruled("what?", ctx({ projectId: "p", recent }));
+    expect(d).toMatchObject({ intent: "code_question", language: "en", followUp: "what do you understand of the project" });
+    expect(d.reask).toMatch(/simpler/);
+    expect(d.clarify).toBeUndefined();
+    // "why?" is asked of the last answer as it is; Hinglish is answered in Hinglish
+    expect(readByRules("why?", { projectId: "p", recent, attachments: [], mode: "text" }).reaction).toEqual({ ask: "About your last answer: why?", language: "en" });
+    expect(readByRules("matlab?", { projectId: "p", recent, attachments: [], mode: "text" }).reaction?.language).toBe("hinglish");
+    // With nothing before it, "what?" is still nothing to go on; a long message is its own request
+    expect(readByRules("what?", { projectId: "p", recent: [], attachments: [], mode: "text" }).reaction).toBeUndefined();
+    expect(readByRules("what does the checkout page do when the cart is empty?", { projectId: "p", recent, attachments: [], mode: "text" }).reaction).toBeUndefined();
+  });
+
   it("is the same for the same words, and says why in short ids, never in the words", async () => {
     const a = await ruled("compare React vs Vue");
     const b = await ruled("compare React vs Vue");
