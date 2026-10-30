@@ -101,6 +101,29 @@ const MARK_DOTS: Array<[number, number, number]> = [
 ];
 
 /** The Tailzu dot mark: eight dots in a ring, two eyes. */
+/**
+ * The keyboard mic key's mark (catalog.ts MIC_MARK): three rounded blocks, the line from the low one up to the first, and
+ * the wave of seven bars across to the second; one filled path in the key's own viewBox.
+ */
+const rrect = (x: number, y: number, w: number, h: number, r: number) =>
+  `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+function keyMarkPath(): string {
+  const line = (x1: number, y1: number, x2: number, y2: number, w: number) => {
+    const dx = x2 - x1, dy = y2 - y1, d = Math.hypot(dx, dy), nx = (-dy / d) * w / 2, ny = (dx / d) * w / 2;
+    return `M${x1 + nx} ${y1 + ny}L${x2 + nx} ${y2 + ny}L${x2 - nx} ${y2 - ny}L${x1 - nx} ${y1 - ny}Z`;
+  };
+  const bars = [28, 36, 41, 46, 43, 34, 28].map((h, i, a) => {
+    const t = i / (a.length - 1), x = 444 + (554 - 444) * t, y = 394 + (486 - 394) * t;
+    return rrect(x - 6, y - h * .6, 12, h * 1.2, 6);   // thicker than the key's own 6, so the wave reads at an app's sizes
+  });
+  return [rrect(308, 269, 132, 132, 28), rrect(558, 478, 132, 132, 28), rrect(178, 598, 132, 132, 28), line(346, 402, 270, 598, 16), ...bars].join("");
+}
+const KEY_MARK = keyMarkPath();
+/** The keyboard mic key's mark, `size` wide, in `color`. */
+export function keyMark(size: number, color: string): Node {
+  return { type: "SVG", props: { viewBox: "170 261 528 477", d: KEY_MARK, fill: color, stroke: "none" }, style: { width: size, height: Math.round(size * 477 / 528), flexShrink: 0 } };
+}
+
 export function tailzuMark(size = 34): Node {
   return {
     type: "SVG",

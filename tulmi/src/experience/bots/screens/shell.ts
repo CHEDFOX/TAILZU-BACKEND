@@ -224,7 +224,8 @@ function homeHead(ctx: BotsCtx): { head: Node; pinned: Node[] } {
   const size = desk ? 40 : 30, lineHeight = desk ? 46 : 35, tracking = desk ? -1.2 : -0.9;
   const bold = alive ? writeOn(line, { size, lineHeight, tracking, once: `home.${part}` }) : text(line, { size, weight: 700, tracking, lineHeight });
   const markSize = desk ? 56 : 44;
-  const mark = alive ? liveMark(markSize, ctx.live.bots.filter((b) => b.working).map((b) => b.color), open(SCREENS.ask)) : tailzuMark(markSize);
+  // The mark only answers a touch (it squishes, its eyes follow the finger): it opens nothing.
+  const mark = alive ? liveMark(markSize, ctx.live.bots.filter((b) => b.working).map((b) => b.color)) : tailzuMark(markSize);
   const quiet = (glyph: "search" | "person", onPress: ActionRef, label: string) => roundButton(glyph, onPress, { size: desk ? 38 : 36, light: true, label });
   const head = col([
     row([mark, grow(), quiet("search", open(SCREENS.search), "Search everything"), ...(desk ? [] : [quiet("person", toTab("you"), "Profile and settings")])], { gap: 6, alignItems: "flex-start" }),

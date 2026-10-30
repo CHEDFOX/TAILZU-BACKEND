@@ -194,7 +194,8 @@ describe("bots.home", () => {
       expect(line.props).toMatchObject({ content: "Anything to write up before the day ends?", once: "home.evening", caretColor: "#A9573A", fontFamily: "Tailzu Geist Bold", size: client === "phone" ? 30 : 40 });
       const mark = nodes.find((n) => n.type === "LiveMark")!;
       expect(mark.props!.lit).toContain("#4F7A3A");
-      expect(mark.on?.onPress).toMatchObject({ kind: "navigate", screenId: "bots.ask" });
+      // It only answers a touch (squish, eyes on the finger): it opens nothing.
+      expect(mark.on?.onPress).toBeUndefined();
       // The compact bar: over the page, before what scrolls (the phone's Screen, the window's column).
       const bar = nodes.find((n) => n.type === "HeadBar")!;
       expect(texts(bar)).toContain("Your bots");
