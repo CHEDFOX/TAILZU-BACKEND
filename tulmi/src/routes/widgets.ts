@@ -113,7 +113,7 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
       const bot = CONNECTOR_BOT[t.approval!.connector] ?? "tailzu";
       return {
         taskId: t.id, approvalId: t.approval!.id, title: t.title, preview: t.approval!.preview, risk: t.approval!.risk, at: t.updatedAt,
-        who: k.label(`widgets.who.${bot}`, bot === "tailzu" ? "X0" : bot),
+        who: k.label(`widgets.who.${bot}`, bot === "tailzu" ? "X0" : bot), bot,
       };
     });
     return {
@@ -178,7 +178,7 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
     let via: ActVia;
     if (widgetToken) {
       const v = await tokens.verify(widgetToken).catch(() => null);
-      if (!v) return reply.code(401).send({ code: "widget_token", message: "Open X0 Bot to finish." });
+      if (!v) return reply.code(401).send({ code: "widget_token", message: "Open X0 to finish." });
       userId = v.userId;
       via = { kind: "widget", scopes: v.scopes };
     } else {
@@ -188,7 +188,7 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
       via = { kind: "session" };
     }
     const k = widgetKnobs(cfgFor(req, userId));
-    if (!k.flag("widgets.enabled", true) && via.kind === "widget") return reply.code(403).send({ code: "open_app", message: "Open X0 Bot to answer." });
+    if (!k.flag("widgets.enabled", true) && via.kind === "widget") return reply.code(403).send({ code: "open_app", message: "Open X0 to answer." });
     const policy: ActPolicy = {
       inPlaceRisks: k.list("widgets.needs.inPlaceRisks", ["read", "write", "send"]),
       modes: k.obj<Record<string, unknown>>("widgets.needs.modes", {}),

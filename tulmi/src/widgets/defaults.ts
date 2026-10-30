@@ -63,9 +63,11 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
       needsEmpty: "bots.home",
     },
 
-    // How a row's time is written: "relative" (the widget counts: "4 min"), "clock" (the widget writes the time: "6:30 pm"), or
-    // "server" (the words below, as of the fetch).
-    "widgets.time": "relative",
+    // How a row's time is written: "minutes" (the widget counts in whole minutes, hours, days, in the widgets.time.* words sent
+    // as the answer's timeWords: "now", "4m", never seconds), "relative" (the widget counts in the phone's own words; an iOS build
+    // before minutes ticks the seconds), "clock" (the widget writes the time: "6:30 pm"), or "server" (the words below, as of the
+    // fetch). A build that does not know a style writes the server's words.
+    "widgets.time": "minutes",
 
     // FROM YOUR PEOPLE. The kinds of row, in the order they win when "sort" is "kind" ("time": newest first, whatever the kind).
     "widgets.people.kinds": ["message", "task", "plan", "shared"],
@@ -112,26 +114,36 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
     // Where a button posts.
     "widgets.act.path": "/v1/widgets/act",
 
-    // THE LOOK: the widgets' ink (today's, as the Month draws it), the buttons' styles, and each kind's symbol, drawable and colour
-    // (no colour: the ink).
+    // THE LOOK: the app's own palette (experience/bots/palette.ts), by role, for each theme: `colors` the dark one, `light` the
+    // light one (pale is the ink; meta a label's grey; line the hairlines, a border; surface an avatar's disc). The buttons'
+    // styles, dark and light: a primary one ink-filled with the ground's words, a secondary one a line-grey ring with ink words
+    // (colour belongs to bots alone, so nothing here is red or green). Each kind's symbol and drawable, and a colour only if a
+    // rule gives one (no colour: the ink). The mark (tailzu_widget_mark) is the app icon's bot. The Android widgets read all of
+    // it; the iOS widgets from this release draw the same palette natively, and older builds of both read colors and styles.
     "widgets.look": {
-      colors: { ground: "#0F0D0B", pale: "#F3E2C6", mark: "#F3E2C6", accent: "#F3E2C6" },
-      alpha: { dim: 0.52, rule: 0.13 },
+      colors: { ground: "#0A0A0A", pale: "#FFFFFF", mark: "#FFFFFF", accent: "#FFFFFF", meta: "#A3A3A3", line: "#262626", surface: "#171717" },
+      light: { ground: "#FFFFFF", pale: "#0A0A0A", mark: "#0A0A0A", accent: "#0A0A0A", meta: "#5C5C5C", line: "#E6E6E6", surface: "#F5F5F5" },
+      alpha: { dim: 0.64, rule: 0.15 },
       styles: {
-        primary: { fg: "#0F0D0B", bg: "#F3E2C6" },
-        secondary: { fg: "#F3E2C6", bg: "#F3E2C621" },
-        destructive: { fg: "#FFB4A8", bg: "#FFB4A821" },
+        primary: { fg: "#0A0A0A", bg: "#FFFFFF" },
+        secondary: { fg: "#FFFFFF", bg: "#00000000", border: "#262626" },
+        destructive: { fg: "#FFFFFF", bg: "#00000000", border: "#262626" },
+      },
+      lightStyles: {
+        primary: { fg: "#FFFFFF", bg: "#0A0A0A" },
+        secondary: { fg: "#0A0A0A", bg: "#00000000", border: "#E6E6E6" },
+        destructive: { fg: "#0A0A0A", bg: "#00000000", border: "#E6E6E6" },
       },
       kinds: {
         message: { icon: "bubble.left.fill", androidIcon: "tailzu_wi_chat" },
         shared: { icon: "square.and.arrow.up", androidIcon: "tailzu_wi_share" },
         task: { icon: "checkmark.circle", androidIcon: "tailzu_wi_task" },
         plan: { icon: "calendar", androidIcon: "tailzu_wi_plan" },
-        question: { icon: "questionmark.bubble", androidIcon: "tailzu_wi_bot" },
-        approval: { icon: "hand.raised", androidIcon: "tailzu_wi_bot" },
+        question: { icon: "questionmark.bubble", androidIcon: "tailzu_widget_mark" },
+        approval: { icon: "hand.raised", androidIcon: "tailzu_widget_mark" },
       },
-      people: { icon: "person.2.fill", androidIcon: "tailzu_wi_spaces" },
-      needs: { icon: "exclamationmark.bubble", androidIcon: "tailzu_wi_bot" },
+      people: { icon: "person.2.fill", androidIcon: "tailzu_widget_mark" },
+      needs: { icon: "exclamationmark.bubble", androidIcon: "tailzu_widget_mark" },
     },
   },
   labels: {
@@ -149,7 +161,8 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
     "widgets.people.line.messageHidden": "{name} sent a message",
     "widgets.people.tag.task": "task",
     "widgets.people.tag.plan": "plan",
-    "widgets.people.tag.shared": "",
+    // The kind's word after the name. Shared says so: a row drawn as its name, tag and title reads "Riya shared · Weekend plan".
+    "widgets.people.tag.shared": "shared",
     "widgets.people.tag.message": "",
 
     "widgets.needs.title": "Needs you",
@@ -158,13 +171,14 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
     "widgets.needs.lockNone": "Nothing needs you",
     "widgets.needs.empty.title": "All clear",
     "widgets.needs.empty.body": "Nothing needs you right now.",
-    "widgets.needs.empty.cta": "Open X0 Bot",
-    "widgets.needs.from": "From {name}",
+    "widgets.needs.empty.cta": "Open X0",
     "widgets.needs.done": "Done",
     "widgets.needs.sent": "Sent",
     "widgets.needs.working": "Sending…",
-    "widgets.needs.failed": "Open X0 Bot to finish",
+    "widgets.needs.failed": "Open X0 to finish",
     "widgets.needs.gone": "Already answered",
+    // A row's one button when its answers do not fit (the small widget): it opens the row.
+    "widgets.needs.answer": "Answer",
 
     // Who a bot's row is from (a connected app's yes belongs to the built-in whose skills name the app, else X0 itself).
     "widgets.who.code": "Code bot",
@@ -177,6 +191,7 @@ export const WIDGETS_DEFAULTS: WidgetsPayload = {
     "widgets.action.done": "Done",
     "widgets.action.open": "Open",
 
+    // A time, as the server writes it ("server") and as the widgets count it ("minutes", sent as timeWords).
     "widgets.time.now": "now",
     "widgets.time.min": "{n}m",
     "widgets.time.hour": "{n}h",

@@ -21,8 +21,8 @@ export interface PeopleMessage { threadId: string; messageId: string; chat: stri
 export interface PeopleShared { itemId: string; spaceId: string | null; spaceName: string; by: string; title: string; at: number }
 /** A task or plan someone in a space gave the person, still theirs to do. */
 export interface PeopleTask { taskId: string; spaceId: string; spaceName: string; by: string; title: string; kind: "task" | "plan"; at: number; due: number | null }
-/** A connected app's call waiting for the person's yes. */
-export interface PendingApproval { taskId: string; approvalId: string; title: string; preview: string; risk: string; who: string; at: number }
+/** A connected app's call waiting for the person's yes. `bot`: whose it is (the built-in whose skills name the app, else "tailzu"). */
+export interface PendingApproval { taskId: string; approvalId: string; title: string; preview: string; risk: string; who: string; at: number; bot?: string }
 
 export interface NowInput {
   now: number;
@@ -74,6 +74,12 @@ export interface NowRow {
   icon: string;
   androidIcon: string;
   color?: string;
+  /**
+   * Whose bot the row is, for a bot's row (a question, a yes): a built-in's key ("code", "keybot", "plan", "travel"; "tailzu" is
+   * X0 itself) or a person's own bot's palette name. The widgets ring its avatar in that bot's own colour (bots/art.ts BOT_INK,
+   * bots/palette.ts PALETTE_HEX; X0's is the ink). Absent on a person's row.
+   */
+  bot?: string;
   actions?: NowAction[];
 }
 
@@ -90,7 +96,7 @@ export interface NowSection {
   newCount: number;
   lock: { line: string };
   empty: { title: string; body: string; cta: string; url: string };
-  /** The words a button's moment needs (Needs you): done, sent, working, failed, gone. */
+  /** The words a button's moment needs (Needs you): done, sent, working, failed, gone, and answer (a row's one button to open it). */
   words?: Record<string, string>;
 }
 
@@ -101,7 +107,10 @@ export interface NowDoc {
   at: number;
   refreshSec: number;
   fetchSec: number;
+  /** How a row's time is written (widgets.time): "minutes", "relative", "clock" or "server". */
   time: string;
+  /** The words a widget writes a time in, whole minutes at the finest ("minutes"): now, min, hour, day; {n} the count. */
+  timeWords: Record<string, string>;
   look: Record<string, unknown>;
   act: { path: string; inPlace: boolean };
   people: NowSection;
@@ -176,14 +185,14 @@ function kindLook(k: WidgetKnobs, kind: string): { icon: string; androidIcon: st
   const l = kinds[kind] ?? {};
   return {
     icon: typeof l.icon === "string" ? l.icon : "circle.fill",
-    androidIcon: typeof l.androidIcon === "string" ? l.androidIcon : "tailzu_wi_bot",
+    androidIcon: typeof l.androidIcon === "string" ? l.androidIcon : "tailzu_widget_mark",
     ...(typeof l.color === "string" && l.color ? { color: l.color } : {}),
   };
 }
 
 function sectionLook(k: WidgetKnobs, which: "people" | "needs"): { icon: string; androidIcon: string } {
   const l = (k.obj<Record<string, unknown>>("widgets.look", {})[which] ?? {}) as { icon?: unknown; androidIcon?: unknown };
-  return { icon: typeof l.icon === "string" ? l.icon : "circle.fill", androidIcon: typeof l.androidIcon === "string" ? l.androidIcon : "tailzu_wi_bot" };
+  return { icon: typeof l.icon === "string" ? l.icon : "circle.fill", androidIcon: typeof l.androidIcon === "string" ? l.androidIcon : "tailzu_widget_mark" };
 }
 
 function limitsOf(k: WidgetKnobs, key: string, fallback: Record<string, number>): Record<string, number> {
@@ -323,7 +332,7 @@ export function needsRows(i: NowInput, k: WidgetKnobs): NowRow[] {
       id: itemId({ kind: "job", jobId: j.id, q: questionMark(j.question.text) }), kind: "question",
       who: i.needs.codeBotName, initial: initialOf(i.needs.codeBotName), text, line: `${i.needs.codeBotName}: ${text}`, tag: "",
       detail: oneLine(j.task, 60), at: j.updatedAt, when: whenWords(j.updatedAt, i.now, k), url, private: secret.has("question"), new: true,
-      ...kindLook(k, "question"),
+      ...kindLook(k, "question"), bot: "code",
       actions: answerable ? actionsFor(k, "question", url, { options, inPlace: inPlaceFor(i, k, "question") }) : openOnly(k, url),
     });
   }
@@ -334,7 +343,7 @@ export function needsRows(i: NowInput, k: WidgetKnobs): NowRow[] {
       id: itemId({ kind: "task", taskId: a.taskId, approvalId: a.approvalId }), kind: "approval",
       who: oneLine(a.who, 40), initial: initialOf(a.who), text, line: `${oneLine(a.who, 40)}: ${text}`, tag: "",
       detail: oneLine(a.preview, 120), at: a.at, when: whenWords(a.at, i.now, k), url, private: secret.has("approval"), new: true,
-      ...kindLook(k, "approval"),
+      ...kindLook(k, "approval"), ...(a.bot ? { bot: a.bot } : {}),
       actions: risks.includes(a.risk) ? actionsFor(k, "approval", url, { inPlace: inPlaceFor(i, k, "approval") }) : openOnly(k, url),
     });
   }
@@ -344,8 +353,9 @@ export function needsRows(i: NowInput, k: WidgetKnobs): NowRow[] {
     const by = oneLine(t.by, 40);
     out.push({
       id: itemId({ kind: "stask", spaceId: t.spaceId, taskId: t.taskId }), kind: t.kind,
+      // Under it, where it is from (the space): who gave it is the row's name already.
       who: by, initial: initialOf(by), text: title, line: `${by}: ${title}`, tag: k.label(`widgets.people.tag.${t.kind}`, t.kind),
-      detail: k.label("widgets.needs.from", "From {name}", { name: by }), at: t.at, when: whenWords(t.at, i.now, k), url,
+      detail: oneLine(t.spaceName, 40), at: t.at, when: whenWords(t.at, i.now, k), url,
       private: secret.has(t.kind), new: true, ...kindLook(k, t.kind),
       actions: actionsFor(k, t.kind, url, { inPlace: inPlaceFor(i, k, t.kind) }),
     });
@@ -373,7 +383,7 @@ function section(k: WidgetKnobs, which: "people" | "needs", rows: NowRow[], on: 
     empty: {
       title: k.label(`widgets.${which}.empty.title`, isPeople ? "Your people, here" : "All clear"),
       body: k.label(`widgets.${which}.empty.body`, isPeople ? "Make a space for family and friends. What they share shows up here." : "Nothing needs you right now."),
-      cta: k.label(`widgets.${which}.empty.cta`, isPeople ? "Make a space" : "Open X0 Bot"),
+      cta: k.label(`widgets.${which}.empty.cta`, isPeople ? "Make a space" : "Open X0"),
       url: emptyUrl,
     },
   };
@@ -391,14 +401,21 @@ export function buildNow(i: NowInput, payload: WidgetsPayload): NowDoc {
     done: k.label("widgets.needs.done", "Done"),
     sent: k.label("widgets.needs.sent", "Sent"),
     working: k.label("widgets.needs.working", "Sending…"),
-    failed: k.label("widgets.needs.failed", "Open X0 Bot to finish"),
+    failed: k.label("widgets.needs.failed", "Open X0 to finish"),
     gone: k.label("widgets.needs.gone", "Already answered"),
+    answer: k.label("widgets.needs.answer", "Answer"),
   };
   const body = {
     v: WIDGETS_VERSION,
     refreshSec: Math.max(60, nonNeg(k.flag("widgets.refreshSec", 900), 900)),
     fetchSec: Math.max(0, nonNeg(k.flag("widgets.fetchSec", 60), 60)),
-    time: k.flag("widgets.time", "relative"),
+    time: k.flag("widgets.time", "minutes"),
+    timeWords: {
+      now: k.label("widgets.time.now", "now"),
+      min: k.label("widgets.time.min", "{n}m"),
+      hour: k.label("widgets.time.hour", "{n}h"),
+      day: k.label("widgets.time.day", "{n}d"),
+    },
     look: k.obj<Record<string, unknown>>("widgets.look", {}),
     act: { path: k.flag("widgets.act.path", "/v1/widgets/act"), inPlace: i.tokenReady && k.flag("widgets.token.enabled", true) },
     people,

@@ -15,7 +15,7 @@
  *   kept hashed  the server keeps the SHA-256 of it, never the token. Compared by that hash.
  *
  * Migration 0058 (widget_tokens), with a memory twin for tests and a server with no Supabase (a restart then forgets every token:
- * the widgets answer "Open X0 Bot to finish" until the app next opens and asks again).
+ * the widgets answer "Open X0 to finish" until the app next opens and asks again).
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";

@@ -188,9 +188,9 @@ export class QuickActs {
     if (!need) return no(400, "bad_request", "That button doesn't do anything here.");
     if (via.kind === "widget") {
       // A widget's token: only its scopes, only where the server lets a widget answer in place, never a reply.
-      if (!policy.tokenEnabled) return no(403, "open_app", "Open X0 Bot to answer.");
-      if (need === "session" || !via.scopes.includes(need)) return no(403, "not_allowed", "Open X0 Bot to do that.");
-      if (policy.modes[modeKind(item)] === "open") return no(403, "open_app", "Open X0 Bot to answer.");
+      if (!policy.tokenEnabled) return no(403, "open_app", "Open X0 to answer.");
+      if (need === "session" || !via.scopes.includes(need)) return no(403, "not_allowed", "Open X0 to do that.");
+      if (policy.modes[modeKind(item)] === "open") return no(403, "open_app", "Open X0 to answer.");
     }
     const text = typeof req.text === "string" ? req.text.replace(/\r/g, "").trim() : "";
     if (action === "reply" && !text) return no(400, "bad_request", "Type something first.");
@@ -232,7 +232,7 @@ export class QuickActs {
         const now = await a.risk(userId, item.taskId);
         if (!now) return no(404, "not_found", "That isn't there any more.");
         if (!now.waiting || (item.approvalId && item.approvalId !== now.approvalId)) return no(409, "not_waiting", "That was already answered.");
-        if (!policy.inPlaceRisks.includes(now.risk)) return no(403, "open_app", "Open X0 Bot to answer this one.");
+        if (!policy.inPlaceRisks.includes(now.risk)) return no(403, "open_app", "Open X0 to answer this one.");
         if (action === "no") {
           const r = await a.deny(userId, item.taskId);
           return r.status === "ok" ? ok("done") : r.status === "not_waiting" ? no(409, "not_waiting", "That was already answered.") : no(404, "not_found", "That isn't there any more.");
@@ -240,7 +240,7 @@ export class QuickActs {
         const r = await a.approve(userId, item.taskId, item.approvalId ?? now.approvalId);
         if (r.status === "ok") return ok("done");
         if (r.status === "not_waiting") return no(409, "not_waiting", "That was already answered.");
-        if (r.status === "expired") return no(410, "expired", "That request ran out. Ask again in X0 Bot.");
+        if (r.status === "expired") return no(410, "expired", "That request ran out. Ask again in X0.");
         if (r.status === "failed") return ok("failed", { message: r.error?.message ?? "It didn't go through." });
         return no(404, "not_found", "That isn't there any more.");
       }
@@ -249,7 +249,7 @@ export class QuickActs {
         if (!j) return no(404, "off", "That isn't there any more.");
         const q = await j.question(userId, item.jobId);
         if (!q) return no(409, "not_waiting", "That was already answered.");
-        if (questionMark(q.text) !== item.q) return no(409, "changed", "The question changed. Open X0 Bot to see it.");
+        if (questionMark(q.text) !== item.q) return no(409, "changed", "The question changed. Open X0 to see it.");
         const said = q.options.map((o) => o.trim()).filter(Boolean)[Number(action.slice(1))];
         if (!said) return no(400, "bad_request", "That isn't one of its answers.");
         await j.answer(userId, item.jobId, said);

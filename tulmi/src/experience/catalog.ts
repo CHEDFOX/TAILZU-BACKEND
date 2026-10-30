@@ -5025,11 +5025,14 @@ export interface ScreenContext {
  * when setup is done, and never on a desktop or Android (no Live Activities).
  * Not amber: nothing here is live.
  */
+// Each step opens the Bots app where it is done: the keyboard on Keybot's "Turn on" page (bots.keybot.on, the step by step
+// the keyboard card's "Show me how" opens), the microphone on Keybot's page, whose card asks for it first (firstRun.ts
+// keybotCard). Signing up and the first sentence open the app as it is.
 const SETUP_STEPS = [
   { key: "account", title: "Finish signing up", detail: "About a minute from here to talking in any app.", url: "tulmi://" },
-  { key: "keyboard", title: "Add the X0 Bot keyboard", detail: "30 seconds in Settings. Then every app takes your voice.", url: "tulmi://screen/onboarding_keyboard" },
-  { key: "mic", title: "Allow the microphone", detail: "So it can hear you. It listens only when you tap.", url: "tulmi://screen/onboarding" },
-  { key: "first", title: "Say your first sentence", detail: "Tap the mic on the X0 Bot keyboard, in any app.", url: "tulmi://" },
+  { key: "keyboard", title: "Add the X0 keyboard", detail: "30 seconds in Settings. Then every app takes your voice.", url: "tulmi://screen/bots.keybot.on" },
+  { key: "mic", title: "Allow the microphone", detail: "So it can hear you. It listens only when you tap.", url: "tulmi://screen/bots.keybot" },
+  { key: "first", title: "Say your first sentence", detail: "Tap the mic on the X0 keyboard, in any app.", url: "tulmi://" },
 ] as const;
 
 export function setupActivity(opts: {
