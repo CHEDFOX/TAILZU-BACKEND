@@ -333,10 +333,17 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       const helloNode = nodes.find((x) => x.on?.onAppear && JSON.stringify(x.on.onAppear).includes("helloSeen"))!;
       expect(helloNode.visibleIf).toEqual({ falsy: "helloGone" });
       expect(JSON.stringify(helloNode.on?.onAppear)).toMatch(/"kind":"delay","ms":3\d{3}/);
-      // The card done (permitClosed): the bot walks off (MorphOut, run by it), then helloGone, and Home rises in.
-      expect(walk(helloNode).find((x) => x.type === "MorphOut")?.bind).toEqual({ active: "permitClosed" });
-      expect(nodes.some((x) => x.visibleIf && JSON.stringify(x.visibleIf) === '{"truthy":"permitClosed"}' && JSON.stringify(x.on?.onAppear).includes("helloGone"))).toBe(true);
-      expect(nodes.filter((x) => x.type === "Rise" && JSON.stringify(x.visibleIf) === '{"truthy":"helloGone"}').length).toBeGreaterThan(2);
+      // Waved (helloSeen): he walks off as the card comes in (a build without BlipWalkOut slides him off, MorphOut), then
+      // helloGone; Home rises in once he is gone and the card is closed.
+      expect(walk(helloNode).find((x) => x.type === "MorphOut")?.bind).toEqual({ active: "helloSeen" });
+      expect(nodes.some((x) => x.visibleIf && JSON.stringify(x.visibleIf) === '{"truthy":"helloSeen"}' && JSON.stringify(x.on?.onAppear).includes("helloGone"))).toBe(true);
+      const home = { all: [{ truthy: "helloGone" }, { truthy: "permitClosed" }] };
+      expect(nodes.filter((x) => x.type === "Rise" && JSON.stringify(x.visibleIf) === JSON.stringify(home)).length).toBeGreaterThan(2);
+      // A build that draws him walking gets that instead.
+      const walker = await build("bots.home", "phone", { api: { ...ARRIVE, "GET /v1/shell/started": { started } }, can: [...MOTION, "BlipWalkOut"] });
+      expect(walk(walker.root!).find((x) => x.type === "BlipWalkOut")?.props).toMatchObject({ goWhen: "helloSeen" });
+      expect(walk(walker.root!).some((x) => x.type === "MorphOut")).toBe(false);
+      expect(lintTree(walker.root!)).toEqual([]);
       // Monochrome: white, ink and Geist; the bot in a neutral grey.
       expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
       expect(card.props?.color).toBe("#3d3d3d");

@@ -256,11 +256,11 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   ];
   const footer = [askBar("phone", { ctx })];
   // HOME'S WELCOME, where the build plays it (the first visit after onboarding; a visit after a long time away or the first on
-  // a newer Home): only the bot waving with his line, for a few seconds. Then the card for whatever is missing (the
-  // microphone, the keyboard); with nothing missing it closes by itself unseen. Once it is done (or put off) the bot walks
-  // off to the side, and Home comes in, piece by piece, as on any day.
+  // a newer Home): only the bot waving with his line, for a few seconds. Then he turns and walks off the side, and the card
+  // for whatever is missing (the microphone, the keyboard) comes in over him as he goes; with nothing missing it closes by
+  // itself unseen. Once he is gone and the card is done (or put off), Home comes in, piece by piece, as on any day.
   const intro = n.arrival && canMove(ctx);
-  const gone: Condition = { truthy: "helloGone" };
+  const gone: Condition = { all: [{ truthy: "helloGone" }, { truthy: "permitClosed" }] };
   const arrive = (x: Node, i: number): Node => (intro ? { type: "Rise", props: { delayMs: i * 70, fromY: 36, scaleFrom: 0.98 }, visibleIf: gone, children: [x] } : x);
   return page(ctx, {
     tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}) },
@@ -272,8 +272,8 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
           ...col([hello(ctx, more, { walkOut: true })], { paddingTop: 150 }), visibleIf: { falsy: "helloGone" },
           on: { onAppear: seq({ kind: "delay", ms: HELLO_MS }, { kind: "setState", path: "helloSeen", value: true }) },
         },
-        // The card done: the bot's walk, then Home.
-        { ...box([], { height: 0 }), visibleIf: { truthy: "permitClosed" }, on: { onAppear: seq({ kind: "delay", ms: WALK_MS }, { kind: "setState", path: "helloGone", value: true }) } },
+        // He has waved: his walk off, then he is gone.
+        { ...box([], { height: 0 }), visibleIf: { truthy: "helloSeen" }, on: { onAppear: seq({ kind: "delay", ms: WALK_MS }, { kind: "setState", path: "helloGone", value: true }) } },
         ...arrivalCard(ctx, { after: "helloSeen" }),
         ...home.map(arrive),
       ]
@@ -283,9 +283,11 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   });
 }
 
-/** How long the bot waves on his own before the welcome's card comes in, and how long his walk off takes. */
+/** How long the bot waves on his own before he walks off and the welcome's card comes in, and how long his walk off takes. */
 const HELLO_MS = 3500;
-const WALK_MS = 900;
+const WALK_MS = 1500;
+/** The component a build declares when it draws Blip turning and walking off (TAILZU-FRONTEND onboard/BlipWalkOut.tsx). */
+const WALK_OUT = "BlipWalkOut";
 
 function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const first = ctx.live.needs[0];
@@ -309,8 +311,9 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
 
 /**
  * The bot waving hello by the name they gave it (else X0's), while Home's welcome is due: the first visit after onboarding,
- * or (`more.back`) a visit after a long time away or the first on a newer Home. `walkOut`: on the phone's first-visit stage the
- * bot walks off to the side once the card is done (MorphOut, run by permitClosed) and his words go with him.
+ * or (`more.back`) a visit after a long time away or the first on a newer Home. `walkOut`: on the phone's welcome stage, once
+ * he has waved (helloSeen) he turns and walks off the side (BlipWalkOut; a build without it slides him off, MorphOut), and
+ * his words go as he turns. A card that is due comes in at the same moment, over him walking off.
  */
 function hello(ctx: BotsCtx, more: HomeMore, o: { walkOut?: boolean } = {}): Node {
   const name = firstName(ctx), me = more.botName || ASSISTANT_NAME;
@@ -322,13 +325,15 @@ function hello(ctx: BotsCtx, more: HomeMore, o: { walkOut?: boolean } = {}): Nod
   const bot = blip("hello", 132);
   const words = [text(hi, { size: 25, weight: 700, tracking: -0.5, lineHeight: 31, align: "center" }), text(line, { size: 14, color: C.grey70, lineHeight: 20, align: "center" })];
   if (!o.walkOut) return col([bot, ...words], { gap: 6, alignItems: "center" });
-  const walking: Node = {
-    type: "MorphOut", bind: { active: "permitClosed" }, style: { width: bot.style?.width, height: bot.style?.height },
-    // Off to the side at full size: no gather, no shrink, picking up speed, gone by the end.
-    props: { dx: 4, durationMs: 900, windup: 0.04, collapseIn: [0, 1], collapseOut: [1, 1], toScale: 1, fadeAt: 0.85 },
-    children: [bot],
-  };
-  return col([walking, ...words.map((w) => when({ falsy: "permitClosed" }, w))], { gap: 6, alignItems: "center" });
+  const walking: Node = ctx.can.has(WALK_OUT)
+    ? { type: WALK_OUT, props: { h: 120, goWhen: "helloSeen", walkMs: WALK_MS - 100, label: "Blip" } }
+    : {
+      type: "MorphOut", bind: { active: "helloSeen" }, style: { width: bot.style?.width, height: bot.style?.height },
+      // Off to the side at full size: no gather, no shrink, picking up speed, gone by the end.
+      props: { dx: 4, durationMs: WALK_MS, windup: 0.04, collapseIn: [0, 1], collapseOut: [1, 1], toScale: 1, fadeAt: 0.85 },
+      children: [bot],
+    };
+  return col([walking, ...words.map((w) => when({ falsy: "helloSeen" }, w))], { gap: 6, alignItems: "center", alignSelf: "stretch" });
 }
 
 // ===================================================================== the empty home
