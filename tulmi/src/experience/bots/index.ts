@@ -44,12 +44,25 @@ export const BOTS_SCREENS: ReadonlyMap<string, BotsScreen> = (() => {
   return m;
 })();
 
-/** Is the Bots app on for this request? The switch, a build that draws the kit, and (while set) the testers list. */
+/** A build that draws nothing else says so with this name: it is always given the Bots app, whatever the switch says. */
+export const BOTS_ONLY_CAPABILITY = "BotsOnly";
+
+const declares = (components: unknown, name: string): boolean =>
+  components instanceof Set ? components.has(name) : Array.isArray(components) && components.includes(name);
+
+/** Does this build draw only the Bots app (it has no old screens left to fall back on)? */
+export function botsOnly(components: unknown): boolean {
+  return declares(components, BOTS_ONLY_CAPABILITY);
+}
+
+/**
+ * Is the Bots app on for this request? A build that draws only the Bots app always; any other: the switch, a build
+ * that draws the kit, and (while set) the testers list.
+ */
 export function botsAppOn(o: { on: boolean; testers?: string; email?: string | null; components?: unknown }): boolean {
+  if (botsOnly(o.components)) return true;
   if (!o.on) return false;
-  const can = o.components instanceof Set ? o.components.has(BOTS_KIT_CAPABILITY)
-    : Array.isArray(o.components) && o.components.includes(BOTS_KIT_CAPABILITY);
-  if (!can) return false;
+  if (!declares(o.components, BOTS_KIT_CAPABILITY)) return false;
   const testers = (o.testers ?? "").split(",").map((x) => x.trim().toLowerCase()).filter(Boolean);
   return !testers.length || (!!o.email && testers.includes(o.email.trim().toLowerCase()));
 }

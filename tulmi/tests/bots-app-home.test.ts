@@ -264,6 +264,10 @@ describe("the registry", () => {
     expect(botsAppOn({ on: true, components: ["BotsKit"], testers: "aanya@example.in", email: "ravi@example.in" })).toBe(false);
     expect(botsAppOn({ on: true, components: ["BotsKit"], testers: "aanya@example.in" })).toBe(false);
   });
+  it("is always on for a build that draws only the Bots app, whatever the switch and testers say", () => {
+    expect(botsAppOn({ on: false, components: ["BotsKit", "BotsOnly"] })).toBe(true);
+    expect(botsAppOn({ on: true, components: new Set(["BotsOnly"]), testers: "aanya@example.in", email: "ravi@example.in" })).toBe(true);
+  });
   it("a screen's own load reads through api, and its answers come back as data", async () => {
     const calls: Array<{ method: string; path: string }> = [];
     const deps = fakeDeps({ api: { "GET /v1/bots/plan/memory": { facts: [{ id: "f1", text: "Gym at 7" }] } }, calls });

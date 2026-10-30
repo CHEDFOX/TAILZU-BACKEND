@@ -16,7 +16,7 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import { BOT_SOUNDS_CAPABILITY } from "../../../../../shared/types/sdui.js";
 import {
-  C, FACE, SCREENS, back, body, botAvatar, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, listCard,
+  C, FACE, SCREENS, back, body, botAvatar, botRoute, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, listCard,
   listRow, meta, mono, notice, open, page, percent, primaryButton, quietButton, row, secondaryButton, sectionLabel, seq, shapes,
   switchMark, switchRow, table, text, title, usageMeter, when, whenEq, whenWords, type BotsCtx, type IconName,
 } from "../kit.js";
@@ -1245,8 +1245,8 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
   ]);
   const local = card([
     sectionLabel(desk ? "On this computer" : "On this phone"),
-    meta(desk ? "Shortcuts, where the pill sits, screen pictures, apps Ask never looks at, and updates." : "Your keyboard, sounds and the rest of this phone's settings.", { size: 13, lineHeight: 18 }),
-    button(desk ? "Open computer settings" : "Open phone settings", open(deskSettingsId), { kind: "secondary", size: "md" }),
+    meta(desk ? "Shortcuts, where the pill sits, screen pictures, apps Ask never looks at, and updates." : "Your keyboard: its keys, haptics and how Keybot types.", { size: 13, lineHeight: 18 }),
+    button(desk ? "Open computer settings" : "Keyboard settings", desk ? open(deskSettingsId) : botRoute("keybot"), { kind: "secondary", size: "md" }),
   ], { padding: 18, gap: 10 });
   return page(ctx, {
     back: !desk, nav: "settings", title: "Settings", ...(desk ? { maxWidth: 1040 } : {}), gap: 20,

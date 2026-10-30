@@ -141,7 +141,8 @@ import {
   setMediaRegistryAccessor,
   PAYWALL_CONFIG, POLICY,
 } from "./experience/catalog.js";
-import { botsAppOn, botsDepsFor, buildBotsScreen, emptyDeps, isBotsScreen } from "./experience/bots/index.js";
+import { botsAppOn, botsDepsFor, botsOnly, buildBotsScreen, emptyDeps, isBotsScreen } from "./experience/bots/index.js";
+import { BOTS_HANDOFF_IDS } from "./experience/bots/screens/handoff.js";
 import { canOnboard, onboardLanguage } from "./experience/onboard.js";
 import { canOnboardStore, onboardMode } from "./experience/onboardStore.js";
 import { hasAlreadyDictated } from "./experience/onboardGuard.js";
@@ -3011,7 +3012,11 @@ app.post("/v1/app/screen", { config: AUTHED_RL, onSend: gzipLargeJson }, async (
   // app is on for; any other build is answered exactly as before, and a "bots.*" id it asks for is unknown.
   const botsOn = botsAppOn({ on: cfg.BOTS_APP, testers: cfg.BOTS_APP_TESTERS, email: user?.email, components: body.capabilities?.components });
   // The window's notes pages (where "Your notes are ready" opens) are Notes' own pages in the Bots app.
-  const botsId = !botsOn ? screenId : screenId === "home" ? "bots.home" : screenId === "desk_notes" ? "bots.notes" : screenId === "desk_note" ? "bots.note" : screenId;
+  // A build that draws only the Bots app has nothing else to draw: any other id it is sent to (an old link, a
+  // notification, a Live Activity) opens Home, but for the keyboard's handoff screens, drawn in its look.
+  const oldId = botsOnly(body.capabilities?.components) && !isBotsScreen(screenId) && !BOTS_HANDOFF_IDS.has(screenId)
+    && !["home", "desk_notes", "desk_note"].includes(screenId);
+  const botsId = !botsOn ? screenId : screenId === "home" || oldId ? "bots.home" : screenId === "desk_notes" ? "bots.notes" : screenId === "desk_note" ? "bots.note" : screenId;
   const botsParams = screenId === "desk_note" && body.params?.noteId !== undefined ? { ...body.params, id: body.params.noteId } : body.params;
   if (isBotsScreen(botsId)) {
     if (!botsOn) return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });
