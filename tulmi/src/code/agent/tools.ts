@@ -50,7 +50,7 @@ import { skipReason } from "../live/rules.js";
 import { byPath, globPaths, grepFiles, type GrepFile, type GrepOk, type GrepOptions } from "../live/search.js";
 import { scanForSecrets } from "../policy.js";
 import { checkSymbols, findInMap, type BrainHandle, type MapComponent, type SymbolCheck } from "../project/index.js";
-import { isSecretPath } from "../project/lang.js";
+import { isSecretPath, isTestPath } from "../project/lang.js";
 import type { Workspace } from "../projects.js";
 import { findResources } from "../resources/finder.js";
 import { WEB_TOOLS, type WebTools } from "../webTools.js";
@@ -58,6 +58,7 @@ import { cleanFinding, redactText, type WorkLog } from "../work/index.js";
 import { fusedFor } from "../work/locate.js";
 import { needsWords, widgetWords, type NeedsWords } from "../../widgets/botWords.js";
 import { Changeset, Refused, checkedText, editablePath, replaceOnce } from "./changeset.js";
+import { lockedWords, TESTS_ASKED, weakenedTests } from "./testlock.js";
 import type { PathGuard } from "../team/guard.js";
 import type { RunOutcome, RunSpec } from "./runner.js";
 import { FINDINGS_MAX, FREEFORM_RUNS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_DEFAULT_SEC, RUN_MIN_SEC, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
@@ -710,6 +711,13 @@ export class Tools {
 
   // ------------------------------------------------------------------ editing
 
+  /** The project's tests decide, so an existing one is not weakened unless the person asked (testlock.ts). */
+  private keepTests(path: string, original: string | null, next: string | null): void {
+    if (original === null || !isTestPath(path) || TESTS_ASKED.test(this.env.state.task)) return;
+    const why = weakenedTests(original, next);
+    if (why) throw new Refused(lockedWords(path, why));
+  }
+
   private async editFile(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
     const path = editablePath(a.path);
     this.changes.assertOwned(path);
@@ -717,6 +725,7 @@ export class Tools {
     if (before === null) throw new Refused(`There is no file ${path} to edit. Use write_file to create it.`);
     const next = checkedText(path, replaceOnce(path, before, a.old, a.new), before);
     const original = await this.branchText(path);
+    this.keepTests(path, original, next);
     this.changes.stage(path, next, { existed: original !== null, original });
     await this.log(call, "edit", `Edited ${path}.`, [path], { action: original === null ? "create" : "edit" });
     return { ok: true, content: `Edited ${path}. It is staged, not committed.` };
@@ -729,6 +738,7 @@ export class Tools {
     const original = await this.branchText(path);
     const before = await this.current(path);
     const text = checkedText(path, a.content, before);
+    this.keepTests(path, original, text);
     this.changes.stage(path, text, { existed: original !== null, original });
     const action = original === null ? "create" : "edit";
     await this.log(call, "edit", `${action === "create" ? "Wrote" : "Rewrote"} ${path}.`, [path], { action });
@@ -741,6 +751,7 @@ export class Tools {
     const before = await this.current(path);
     if (before === null) throw new Refused(`There is no file ${path} to delete.`);
     const original = await this.branchText(path);
+    this.keepTests(path, original, null);
     this.changes.stage(path, null, { existed: original !== null, original });
     await this.log(call, "edit", `Deleted ${path}.`, [path], { action: "delete" });
     return { ok: true, content: `Deleted ${path}. It is staged, not committed.` };
