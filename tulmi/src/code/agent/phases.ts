@@ -54,7 +54,8 @@ import {
   ANSWER_MAX_CHARS, BASELINE_MAX_AGE_MS, CALLS_PER_TURN, CONTEXT_STRATEGY_DEFAULT, FIX_ROUNDS_MAX, TURNS_MAX, freeformStepCap,
   type AgentState, type Exchange, type Phase, type ResultRecord, type VerifyState,
 } from "./types.js";
-import { GithubRefusal } from "../github.js";
+import { GithubRefusal, type CommitFile } from "../github.js";
+import { mapMarkdown, MAP_DIR } from "../project/index.js";
 import { afterConflict, afterContracts, teamClean } from "../team/lead.js";
 import { afterPlan } from "../team/when.js";
 import { isHelperState } from "../team/types.js";
@@ -867,11 +868,33 @@ function refusalWords(branch: string, err: GithubRefusal): string {
  *   A MERGE (a PR-care job for a conflict) is committed as a merge commit with two parents, through the policy: never a rebase, never a force.
  *   A PUSH GITHUB REFUSES (a protection rule) is not worked round: the job stops, tells the person exactly what GitHub said with the link it gave, and waits.
  */
+/** The most of the map's JSON a commit carries: a map bigger than this stays in the brain only. */
+const MAP_JSON_MAX = 900_000;
+
+/**
+ * A change's files and the project map of the code as they leave it (.xode/map.json, .xode/MAP.md), made from the brain with only the changed
+ * files read again and no model, so the next request lands on the exact lines. Not for a merge or a team's part (several branches would each
+ * write the same two files), never what stops a commit, and the map is Xode's alone: a change the model made to .xode/ is not committed.
+ */
+async function withMap(r: Run, files: CommitFile[], skip: boolean): Promise<CommitFile[]> {
+  const own = files.filter((f) => !f.path.startsWith(`${MAP_DIR}/`));
+  if (skip || !own.length || !getConfig().CODE_PROJECT_MAP_FILES) return files;
+  try {
+    const map = await r.brain.mapAfter(own);
+    if (!map) return files;
+    const json = JSON.stringify(map);
+    if (json.length > MAP_JSON_MAX) return files;
+    return [...own, { path: `${MAP_DIR}/map.json`, content: json }, { path: `${MAP_DIR}/MAP.md`, content: mapMarkdown(map) }];
+  } catch {
+    return files;
+  }
+}
+
 export async function commitStaged(r: Run, o: { partial?: boolean } = {}): Promise<string | null> {
   const s = r.state;
   if (r.tools.changes.empty && !s.merge) return null;
   if (s.verified !== stagedFingerprint(r)) throw new Unverified();
-  const files = r.tools.changes.toCommitFiles();
+  const files = await withMap(r, r.tools.changes.toCommitFiles(), !!s.merge || !!s.team);
   const repo = repoRef(r.deps.projects, r.userId, r.project);
   const head = await r.deps.projects.github.branchHead(repo, r.branch);
   const view = await r.brain.status().catch(() => null);

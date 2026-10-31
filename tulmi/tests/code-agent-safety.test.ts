@@ -88,7 +88,9 @@ describe("paths the agent may not write", () => {
     expect(r.fake.commitCount(r.repo)).toBe(2);
     const files = r.fake.files(r.repo, branch);
     expect(files[".github/workflows/ci.yml"]).toBe("name: ci\non: push\n");
-    expect(Object.keys(files).sort()).toEqual(Object.keys(r.fake.files(r.repo, "main")).sort());
+    // the same files as main, plus the project map Xode keeps with every change (.xode/: code/project/mapupdate.ts)
+    expect(Object.keys(files).sort()).toEqual([...Object.keys(r.fake.files(r.repo, "main")), ".xode/MAP.md", ".xode/map.json"].sort());
+    expect(JSON.parse(files[".xode/map.json"]!).components["src/util.ts"].symbols.length).toBeGreaterThan(0);
     expect(files["src/util.ts"]).toContain("^-+|-+$");
     expect((await r.jobNow(job.id)).state).toBe("done");
     // The refusals are in the work log, for the person who reviews it.

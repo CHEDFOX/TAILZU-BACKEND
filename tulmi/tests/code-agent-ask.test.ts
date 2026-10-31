@@ -222,7 +222,9 @@ describe("a commit, or a pull request, the policy asks about", () => {
     s = await r.stateNow(job.id);
     expect(s.waiting).toMatchObject({ kind: "approval", for: "commit", action: "commit.other_branch" });
     expect(JSON.stringify(s.waiting)).not.toContain("toLowerCase");
-    expect(s.waiting!.kind === "approval" && s.waiting.summary).toMatchObject({ fileCount: 1, files: [{ path: "src/util.ts", change: "write" }] });
+    // the change, and the project map that goes with it (.xode/: code/project/mapupdate.ts)
+    expect(s.waiting!.kind === "approval" && s.waiting.summary).toMatchObject({ fileCount: 3 });
+    expect(s.waiting!.kind === "approval" && s.waiting.summary.files.map((f: { path: string }) => f.path).sort()).toEqual([".xode/MAP.md", ".xode/map.json", "src/util.ts"]);
     expect(s.work.staged.map((f) => f.path)).toEqual(["src/util.ts"]);
     expect(r.fake.commitCount(r.repo)).toBe(1);
     expect(r.toldOf("needs_you")).toHaveLength(2);
