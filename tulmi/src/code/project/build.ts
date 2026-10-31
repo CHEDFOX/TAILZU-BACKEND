@@ -117,7 +117,7 @@ interface Analysed {
 }
 
 /** The directories that hold a Next.js app: any package.json that depends on `next`. */
-function nextRootsOf(core: Record<string, CoreEntry>): string[] {
+export function nextRootsOf(core: Record<string, CoreEntry>): string[] {
   const out: string[] = [];
   for (const [path, e] of Object.entries(core)) {
     if (e.kind !== "npm") continue;

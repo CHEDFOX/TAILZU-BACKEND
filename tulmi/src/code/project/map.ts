@@ -76,6 +76,8 @@ export interface ProjectMap {
   placements: Placement[];
   /** The entry points reachability started from. */
   entries: string[];
+  /** For a map made after a change (mapupdate.ts): the files the change touched, on top of `commit`. */
+  changed?: string[];
 }
 
 /** A fingerprint of lines start..end of a text (1-based, inclusive): 16 hex characters of SHA-256. Line endings do not count. */

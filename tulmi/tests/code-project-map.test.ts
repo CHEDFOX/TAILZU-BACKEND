@@ -18,6 +18,7 @@ vi.hoisted(() => {
 
 const { buildMap, checkSymbol, findInMap, mapMarkdown, spanHash } = await import("../src/code/project/map.js");
 const { withHashes } = await import("../src/code/project/map.js");
+const { gitBlobSha, mapAfterChanges } = await import("../src/code/project/mapupdate.js");
 const { extractSymbols } = await import("../src/code/project/symbols.js");
 const { projectRig, built } = await import("./project-rig.js");
 const { ensureGrammars } = await import("../src/code/project/treesitter/index.js");
@@ -113,6 +114,31 @@ describe("the project map", () => {
     expect(md).toContain("`src/auth/session-old.ts` · unused: nothing leads here");
     expect(md).toContain("- Used by: `src/routes/login.ts`, `src/routes/logout.ts`");
     expect(md).toMatch(/\*\*route\*\* in `src\/routes\/`/);
+  });
+
+  it("after a change, reads only the changed files again: new lines and fingerprints, new links, gone files gone, git's own hash", async () => {
+    const before = sample();
+    const files = Object.values(before.components).map((c) => row(c.path, "", { imports: c.uses, tests: c.tests, summary: c.summary }));
+    const grown = SESSION.replace("export function endSession", "export function renewSession(res) {\n  return res;\n}\n\nexport function endSession");
+    const after = await mapAfterChanges({
+      commit: "base123", files, features: [], entries: ["src/routes/index.ts"], core: {},
+      changes: [
+        { path: "src/auth/session.ts", content: grown },
+        { path: "src/auth/session-old.ts", delete: true },
+        { path: "tests/auth/renew.test.ts", content: 'import { renewSession } from "../../src/auth/session";\n' },
+        { path: ".xode/map.json", content: "{}" },
+      ],
+    });
+    const session = after.components["src/auth/session.ts"]!;
+    expect(session.symbols.map((s) => [s.name, s.start, s.end])).toEqual([["startSession", 3, 5], ["renewSession", 7, 9], ["endSession", 11, 13]]);
+    expect(session.symbols.find((s) => s.name === "endSession")!.hash).toBe(spanHash(grown, 11, 13));
+    expect(session.uses).toEqual(["src/auth/token.ts"]);
+    expect(session.tests).toContain("tests/auth/renew.test.ts");
+    expect(session.blob).toBe(gitBlobSha(grown));
+    expect(after.components["src/auth/session-old.ts"]).toBeUndefined();
+    expect(after.changed).toEqual(["src/auth/session-old.ts", "src/auth/session.ts", "tests/auth/renew.test.ts"]);
+    // git hash-object of "hello\n"
+    expect(gitBlobSha("hello\n")).toBe("ce013625030ba8dba906f756967f9e9ca394464a");
   });
 
   it("is made from a real build, which keeps each parsed symbol's fingerprint; config files are not components", async () => {

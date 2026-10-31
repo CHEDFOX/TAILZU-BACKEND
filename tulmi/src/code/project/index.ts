@@ -50,8 +50,10 @@ import {
 } from "./types.js";
 
 import { buildMap, type ProjectMap } from "./map.js";
+import { mapAfterChanges, type MapChange } from "./mapupdate.js";
 export { memoryMarkdown, withBaseline } from "./memory.js";
 export { buildMap, checkSymbol, findInMap, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap } from "./map.js";
+export { gitBlobSha, mapAfterChanges, MAP_DIR, type MapChange } from "./mapupdate.js";
 export { baselinePlan, recordBaseline } from "./baseline.js";
 export { diffSnapshots } from "./merkle.js";
 export type { BuildMode, ProjectBrainDeps } from "./build.js";
@@ -369,6 +371,8 @@ export interface BrainHandle {
   repoMap(seeds: MapSeeds, opts?: MapOptions): Promise<MapHit[]>;
   /** The project map (map.ts): every component with its exact lines, connections, whether anything leads to it, and where new things go. */
   projectMap(): Promise<ProjectMap | null>;
+  /** The project map as the code will be after these changes (mapupdate.ts): only the changed files are read again. */
+  mapAfter(changes: readonly MapChange[]): Promise<ProjectMap | null>;
 }
 
 /** The graphs made lately, by project and the state of its row: making one reads every file of the project. */
@@ -484,6 +488,14 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       maps.set(id, { key, map });
       while (maps.size > GRAPHS_KEPT) maps.delete(maps.keys().next().value as string);
       return map;
+    },
+    async mapAfter(changes) {
+      const b = await row();
+      if (!b || !b.headSha) return null;
+      return mapAfterChanges({
+        commit: b.headSha, files: await store.listFiles(id), features: b.features, entries: (b.structure?.entryPoints ?? []).map((e) => e.path),
+        core: b.structure?.core ?? {}, changes,
+      });
     },
   };
 }
