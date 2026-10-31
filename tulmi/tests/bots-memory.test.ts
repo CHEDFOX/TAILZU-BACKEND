@@ -103,6 +103,18 @@ describe("learning", () => {
     // folded: the next turn starts a new pile
     await said(r, "and the week after?");
     expect(r.model.of("bot.memory")).toHaveLength(1);
+    // and the bot still sees what was just said: the two turns before the fold, then the one after, never folded twice
+    const run = r.model.of("bot.run").at(-1)!.user;
+    expect(run).toContain("<history>");
+    expect(run).toContain("said: and Sunday?");
+    expect(run).toContain("said: and next week?");
+    expect(run).not.toContain("said: and tomorrow?");
+    await said(r, "and in a month?");
+    await said(r, "and in a year?");
+    await said(r, "and ever?");
+    expect(r.model.of("bot.memory")).toHaveLength(2);
+    expect(r.model.of("bot.memory")[1]!.user.match(/said: /g)).toHaveLength(4);
+    expect(r.model.of("bot.memory")[1]!.user).not.toContain("and next week?");
   });
 
   it("refuses what is not fit, keeps the same fact once, drops what the model says is no longer true, and keeps forty at most", async () => {

@@ -286,6 +286,20 @@ describe("the conversation", () => {
     expect(second.thread!.history.at(-1)!.q).toBe("and cleared?");
   });
 
+  it("brings back an earlier answer the question is about again, beyond the last turn, for nothing", () => {
+    let t = chatMod.newThread("alice", "p", "e1e1e1e1-e1e1-4e1e-8e1e-e1e1e1e1e1e1", 0);
+    const turn = (q: string, a: string, at: number) => { t = chatMod.afterTurn(t, { question: q, cites: [], located: null, now: at, answer: a }); };
+    turn("how is the session cookie signed?", "sign() in src/auth/token.ts:1 serialises the claims; the session cookie carries them.", 1);
+    turn("where is the pricing page?", "In src/pages/pricing.tsx.", 2);
+    turn("what does slug do?", "It lowercases a title for a URL.", 3);
+    expect(chatMod.earlierTurns(t, "can the session cookie be signed with a secret?")).toEqual([
+      { q: "how is the session cookie signed?", a: "sign() in src/auth/token.ts:1 serialises the claims; the session cookie carries them." },
+    ]);
+    // the last turn is shown on its own (last_answer); one shared word is not enough
+    expect(chatMod.earlierTurns(t, "slug for a title")).toEqual([]);
+    expect(chatMod.earlierTurns(t, "pricing")).toEqual([]);
+  });
+
   it("keeps at most HISTORY_TURNS turns, however long the chat goes", () => {
     let t = chatMod.newThread("alice", "p", "dddddddd-dddd-4ddd-8ddd-dddddddddddd", 0);
     for (let i = 0; i < chatMod.HISTORY_TURNS + 7; i += 1) t = chatMod.afterTurn(t, { question: `q${i}`, cites: [], located: null, now: i, answer: "a".repeat(9000) });

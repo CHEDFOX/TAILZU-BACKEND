@@ -36,6 +36,22 @@ export const MEMORY_CAP_PAISE = 40;
 const FOLD_EVERY = 4;
 const BUFFER_MAX = 6;
 const TURN_CHARS = 220;
+/** After a fold, the last turns stay to be shown (the next answer sees what was just said), marked as in the summary already. */
+const KEEP_SHOWN = 2;
+const FOLDED = "~ ";
+const unfolded = (buffer: readonly string[]): string[] => buffer.filter((t) => !t.startsWith(FOLDED));
+
+/** The latest turns a bot is shown, oldest first, from its thread: what was said and what it answered, each shortened. */
+export function recentTurnsOf(thread: Thread | null): Array<{ role: "user" | "assistant"; content: string }> {
+  const out: Array<{ role: "user" | "assistant"; content: string }> = [];
+  for (const raw of thread?.buffer ?? []) {
+    const t = raw.startsWith(FOLDED) ? raw.slice(FOLDED.length) : raw;
+    const m = /^said: (.*?) \| bot: (.*)$/s.exec(t);
+    if (!m) continue;
+    out.push({ role: "user", content: m[1]! }, { role: "assistant", content: m[2]! });
+  }
+  return out;
+}
 
 const REMEMBER = /^\s*(?:please\s+)?(?:remember|note|keep in mind)\s+(?:that\s+)?(.{3,300}?)[.!\s]*$/is;
 const REMEMBER_HG = /^\s*(?:yaad\s+rakh(?:na|o)?|dhyan\s+rakh(?:na|o)?)\s+(?:ki\s+)?(.{3,300}?)[.!\s]*$/is;
@@ -90,7 +106,7 @@ export function memoryUser(facts: readonly Fact[], thread: Thread): string {
   return [
     `Facts:\n<<<\n${facts.length ? facts.map((f, i) => `${i + 1}. ${neutral(f.text)}`).join("\n") : "(none)"}\n>>>`,
     `Summary:\n<<<\n${neutral(thread.summary) || "(none)"}\n>>>`,
-    `Latest turns:\n<<<\n${thread.buffer.map((t) => neutral(t)).join("\n")}\n>>>`,
+    `Latest turns:\n<<<\n${unfolded(thread.buffer).map((t) => neutral(t)).join("\n")}\n>>>`,
   ].join("\n");
 }
 
@@ -115,7 +131,7 @@ export async function rememberTurn(d: MemoryDeps, t: Turn): Promise<Remembered> 
 
   // 2. The small model, now and then.
   const aboutMe = !asked && ABOUT_ME.test(t.said);
-  const fold = thread.buffer.length >= FOLD_EVERY;
+  const fold = unfolded(thread.buffer).length >= FOLD_EVERY;
   if ((aboutMe || fold) && t.leftPaise >= 5 && !t.signal?.aborted) {
     const facts = await d.store.listFacts(t.userId, t.botId);
     const ctx: ModelCtx = { ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), userId: t.userId, budget: { maxPaise: Math.min(MEMORY_CAP_PAISE, t.leftPaise) }, ...(t.signal ? { signal: t.signal } : {}) };
@@ -128,7 +144,7 @@ export async function rememberTurn(d: MemoryDeps, t: Turn): Promise<Remembered> 
       if (add.length) out.learned.push(...(await d.store.addFacts(t.userId, t.botId, add, LIMITS.facts.perBot, now)).map((f) => f.text));
       const summary = oneLine(r.value.summary, 600);
       if (summary && !scanForSecrets([{ path: "summary.txt", content: summary }]).length && !inertRules([summary]).length) thread.summary = summary;
-      thread.buffer = [];
+      thread.buffer = thread.buffer.slice(-KEEP_SHOWN).map((x) => (x.startsWith(FOLDED) ? x : `${FOLDED}${x}`));
       out.folded = true;
     }
   }
