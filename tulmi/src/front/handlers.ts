@@ -31,6 +31,7 @@ import type { AgentOrchestrator } from "../code/agent/orchestrator.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { Code } from "../code/index.js";
 import type { JobRouter } from "../code/jobs/router.js";
+import { isEnded } from "../code/jobs/types.js";
 import { assertAccess, createWorkBranch, ownProject, workspace, type ProjectDeps } from "../code/projects.js";
 import { makeWebTools, ResearchLimit, type WebTools, type WebToolDeps } from "../code/webTools.js";
 import { locate } from "../code/work/locate.js";
@@ -130,7 +131,7 @@ const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 
 // ------------------------------------------------------------------ reply
 
 /** The shape the reply role is told: its length, whether to lead with a table, and whether it will be read out. */
-export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, files: readonly ReadFile[], about: readonly string[] = []): string {
+export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, files: readonly ReadFile[], about: readonly string[] = [], project = ""): string {
   const v = c.decision.shape.visual;
   const table = v?.kind === "table" && v.via === "inline" && !v.offer;
   const recent = c.message.trim().split(/\s+/).length <= 8 && c.ctx.recent.length
@@ -141,6 +142,7 @@ export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, fi
     ...files.map((f) => `<file name="${esc(f.name)}" kind="${f.kind}">\n${fence(f.text)}\n</file>`),
     ...(recent ? [recent.trim()] : []),
     ...(about.length ? [`About them:\n<<<\n${forModel(aboutLines(about)).replace(/>>>/g, "> > >")}\n>>>`] : []),
+    ...(project ? [`The project they are in:\n<<<\n${forModel(project).replace(/>>>/g, "> > >")}\n>>>`] : []),
     "",
     `Message:\n<<<\n${forModel(c.message).replace(/>>>/g, "> > >")}\n>>>`,
   ].join("\n");
@@ -153,10 +155,14 @@ async function replyDefault(d: HandlerDeps, c: RouteCall & { files: ReadFile[] }
   }
   const tier = c.decision.tier === "vision" ? "cheap" : c.decision.tier;
   const words = streamed(c);
-  // What they told their bots about themselves (bots/shared.ts), the few lines that matter here.
-  const about = await (d.personal ?? sharedFacts)(c.userId, c.message).catch(() => [] as string[]);
+  // What they told their bots about themselves (bots/shared.ts), the few lines that matter here; and in a project's chat, what the project is,
+  // so "what is this repo?" read as a general question is still answered (the changesets run: "I can't see the repo").
+  const [about, project] = await Promise.all([
+    (d.personal ?? sharedFacts)(c.userId, c.message).catch(() => [] as string[]),
+    projectBrief(d, c).catch(() => ""),
+  ]);
   const r = await askText(model(d, c), {
-    role: "front_reply", tier, purpose: "front.reply", user: replyUser(c, c.files, about), maxTokens: REPLY_TOKENS[c.decision.shape.length], budget: { maxPaise: c.maxPaise },
+    role: "front_reply", tier, purpose: "front.reply", user: replyUser(c, c.files, about, project), maxTokens: REPLY_TOKENS[c.decision.shape.length], budget: { maxPaise: c.maxPaise },
     ...words.ask,
   });
   if (!words.sent()) c.onText?.(r.text);
@@ -164,6 +170,14 @@ async function replyDefault(d: HandlerDeps, c: RouteCall & { files: ReadFile[] }
 }
 
 // ------------------------------------------------------------------ code
+
+/** What the project of a project chat is, in a few lines from its brain: its name, the welcome and its main parts. Empty outside one. */
+async function projectBrief(d: HandlerDeps, c: RouteCall): Promise<string> {
+  if (!c.ctx.projectId || !d.code?.brain || !d.code.github) return "";
+  const project = await ownProject(projectDeps(d.code), c.userId, c.ctx.projectId);
+  const view = await (await d.code.brain.open(c.userId, project.id)).status();
+  return [`${project.fullName}`, cut(view.welcome ?? "", 700), ...view.features.slice(0, 6).map((f) => `${f.name}: ${cut(f.summary, 90)}`)].filter(Boolean).join("\n");
+}
 
 const projectDeps = (code: Code): ProjectDeps => ({ store: code.store, github: code.github!, approvals: code.approvals, oauth: code.oauth });
 
@@ -183,8 +197,24 @@ function chatOf(d: HandlerDeps, c: RouteCall): { chat: CodeChat; projectId: stri
     chat: d.chat ?? new CodeChat({
       projects: pd, brain: code.brain, ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), ...(d.threads ? { threads: d.threads } : {}),
       ...(d.rooms ? { rooms: d.rooms } : {}), ...(d.personal ? { personal: d.personal } : {}),
+      ...(d.agent ? { job: (userId: string, jobId: string) => jobBrief(d.agent!, userId, jobId) } : {}),
     }),
   };
+}
+
+/** Where a job stands, in the few lines a question about it needs: its state, the checks, the pull request and its report. Null when it is not theirs. */
+export async function jobBrief(agent: Pick<AgentOrchestrator, "view">, userId: string, jobId: string): Promise<string | null> {
+  const v = await agent.view(userId, jobId).catch(() => null);
+  if (!v) return null;
+  const a = v.agent;
+  const running = !isEnded(v.job.state);
+  return [
+    `Job on branch ${v.job.branch}: ${running ? `still working (${a?.phase ?? v.job.state})` : v.job.state}${v.job.reason ? ` (${cut(v.job.reason, 200)})` : ""}.`,
+    ...(a?.staged.length ? [`Staged, not committed yet: ${a.staged.slice(0, 12).join(", ")}`] : []),
+    ...(a?.verify ? [`The project's checks: ${a.verify.ran ? (a.verify.ok ? "passed" : "failed") : "not run"}. ${cut(a.verify.summary, 300)}`] : []),
+    ...(a?.pr ? [`Pull request #${a.pr.number} (${a.pr.ready ? "ready for review" : "draft"}).`] : []),
+    ...(a?.report?.text ? [`Its report:\n${cut(a.report.text, 1_800)}`] : []),
+  ].join("\n");
 }
 
 /** A question about the project's code: the brain's facts first, a few reads only when it must, every claim with path:line (code/chat, docs/code-chat.md). */
@@ -194,7 +224,7 @@ async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<CodeAnsw
   const words = streamed(c);
   const out = await chat.answer({
     userId: c.userId, projectId, question: c.said ?? c.message, ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}),
-    ...(c.decision.followUp ? { context: c.decision.followUp } : {}), ...(c.decision.reask ? { ask: c.decision.reask } : {}), tier: c.decision.tier === "vision" ? "cheap" : c.decision.tier, length: c.decision.shape.length,
+    ...(c.decision.followUp ? { context: c.decision.followUp } : {}), ...(c.decision.reask ? { ask: c.decision.reask } : {}), language: c.decision.language, tier: c.decision.tier === "vision" ? "cheap" : c.decision.tier, length: c.decision.shape.length,
     diagram: !!v && v.kind === "diagram" && !v.offer && v.via === "artifact", maxPaise: c.maxPaise, ...(c.signal ? { signal: c.signal } : {}),
     ...words.ask, ...(c.onStep ? { onStep: c.onStep } : {}),
   });
@@ -220,6 +250,8 @@ async function codeJobDefault(d: HandlerDeps, c: RouteCall): Promise<{ job: NonN
   const { branch } = await createWorkBranch(pd, c.userId, project.id, c.said ?? c.message);
   const job = await d.jobs.createJob(c.userId, project.id, branch, task, c.maxPaise, { agent: true });
   const made = await d.agent.enqueue(job.id, task, opts);
+  // Kept on the chat it was asked in: "what did you change?" there is about this job.
+  if (c.ctx.threadId && d.code?.brain) await chatOf(d, c).chat.noteJob(c.userId, project.id, c.ctx.threadId, { id: job.id, branch, said: c.said ?? c.message }).catch(() => undefined);
   return { job: { id: job.id, branch, state: (made ?? job).state, budgetPaise: c.maxPaise }, paise: 0 };
 }
 

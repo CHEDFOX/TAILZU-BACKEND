@@ -109,6 +109,11 @@ function mapSymbol(s: SymbolInfo): MapSymbol {
  * The map of a project from the brain's rows. `entries` are the project's entry points (structure.entryPoints); a component with a route or
  * an entry mark in it counts as one too, since a framework reaches it, not an import.
  */
+/** A file a tool runs by its name (vite.config.ts, scripts/build.ts, .vitepress/config.ts, a root file), so nothing imports it and it is still used. */
+export function toolEntry(path: string): boolean {
+  return !path.includes("/") || /(^|\/)[^/]+\.(?:config|setup|data)\.[cm]?[jt]sx?$/.test(path) || /(^|\/)(?:scripts?|bin|tools|e2e)\//.test(path) || /(^|\/)\.[a-z][\w-]*\//.test(path);
+}
+
 export function buildMap(input: { commit: string; files: readonly StoredFile[]; features: readonly Feature[]; entries: readonly string[] }): ProjectMap {
   const files = [...input.files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   const comps = files.filter((f) => isComponentPath(f.path));
@@ -153,6 +158,8 @@ export function buildMap(input: { commit: string; files: readonly StoredFile[]; 
     ...comps.filter((f) => f.symbols.some((s) => s.kind === "route" || s.kind === "entry")).map((f) => f.path),
   ])].sort();
   if (entries.length) {
+    // With them, what a tool loads by its name (a config, a script, a root file, a dot folder's like .vitepress, a data loader): nothing imports it, and it runs.
+    for (const f of comps) if (toolEntry(f.path) && !entries.includes(f.path)) entries.push(f.path);
     const seen = new Set(entries);
     const queue = [...entries];
     while (queue.length) {

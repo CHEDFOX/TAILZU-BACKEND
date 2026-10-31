@@ -25,7 +25,7 @@ import type { Located } from "../work/locate.js";
 import { completeMessage } from "../../front/complete.js";
 import { answerCode, type ChatAnswer } from "./answer.js";
 import { handoffOf, taskFor, type Handoff } from "./handoff.js";
-import { newThread, threadStore, type ChatThread, type ThreadStore } from "./threads.js";
+import { newThread, THREAD_ID, threadStore, withJob, type ChatThread, type ThreadStore } from "./threads.js";
 
 export * from "./answer.js";
 export * from "./cite.js";
@@ -46,6 +46,8 @@ export interface CodeChatDeps {
   log?: { warn(o: object, msg: string): void };
   /** The few things the person told their bots that matter to a question (bots/shared.ts sharedFacts when not given). */
   personal?: (userId: string, about: string) => Promise<string[]>;
+  /** Where a job stands, in a few lines (its state, report, checks, pull request): for a job started from the thread. */
+  job?: (userId: string, jobId: string) => Promise<string | null>;
 }
 
 export interface ChatRequest {
@@ -62,6 +64,8 @@ export interface ChatRequest {
    * is asked `context` and this; the chat shows the person's own words, and the thread keeps `context` as the question.
    */
   ask?: string;
+  /** The language the person wrote in, as the front door read it. */
+  language?: "en" | "hinglish" | "hi" | "other";
   tier: ModelTier;
   length: Length;
   /** The decision plans a diagram. */
@@ -125,11 +129,14 @@ export class CodeChat {
       }),
       (this.d.personal ?? sharedFacts)(r.userId, r.question).catch(() => [] as string[]),
     ]);
+    // The latest job started from this thread, where it stands: "what did you change?" is about it.
+    const lastJob = thread?.jobs?.at(-1);
+    const job = lastJob && this.d.job ? await this.d.job(r.userId, lastJob.id).catch(() => null) : null;
     const out = await answerCode({
       userId: r.userId, projectId: project.id, question: r.ask && r.context ? `${r.context}\n\n${r.ask}` : r.question,
       ...(r.ask && r.context ? { shown: r.question, kept: r.context } : {}), ...(meant?.via === "model" ? { meant: meant.text } : {}),
       search: r.ask && r.context ? r.context : meant?.text ?? r.question, tier: r.tier, length: r.length,
-      maxPaise: Math.max(1, r.maxPaise - (meant?.paise ?? 0)), thread, diagram: r.diagram, now: this.now(), ...(about.length ? { about } : {}),
+      maxPaise: Math.max(1, r.maxPaise - (meant?.paise ?? 0)), thread, diagram: r.diagram, now: this.now(), ...(about.length ? { about } : {}), ...(job ? { job } : {}), ...(r.language ? { language: r.language } : {}),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
     }, { brain, read, files }, model);
     if (meant?.paise) out.paise += meant.paise;
@@ -141,6 +148,14 @@ export class CodeChat {
    * "Ok, change it": what a job made from this conversation is handed, or null when the conversation found no place in the code (then the job
    * looks for it as any job does). `task` is the job's request; `located` is where to start, and the agent does not locate again.
    */
+  /** A job was started from this thread: it is kept on it, so the next questions in the thread know what it did. */
+  async noteJob(userId: string, projectId: string, threadId: string, o: { id: string; branch: string; said: string }): Promise<void> {
+    if (!THREAD_ID.test(threadId)) return;
+    const now = this.now();
+    const t = (await this.threads.get(userId, projectId, threadId).catch(() => null)) ?? newThread(userId, projectId, threadId, now);
+    await this.threads.put(withJob(t, { ...o, now })).catch(() => undefined);
+  }
+
   async handoff(userId: string, projectId: string, threadId: string, message: string): Promise<{ task: string; located: Located; handoff: Handoff } | null> {
     const thread = await this.threads.get(userId, projectId, threadId).catch(() => null);
     const h = handoffOf(thread);

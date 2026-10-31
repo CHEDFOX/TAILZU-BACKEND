@@ -155,3 +155,11 @@ describe("the project map", () => {
     for (const s of Object.values(map!.components).flatMap((c) => c.symbols)) expect(Boolean(s.hash)).toBe(Boolean(s.end));
   });
 });
+
+describe("what a tool runs by its name", () => {
+  it("is not called unused: configs, scripts, root files and dot folders' files", async () => {
+    const { toolEntry } = await import("../src/code/project/map.js");
+    for (const p of ["vite.config.ts", "packages/cli/tsdown.config.ts", "scripts/build.ts", "eslint.config.js", "site/.vitepress/config.ts", "site/blog/index.data.ts", "vitest.setup.ts"]) expect(toolEntry(p), p).toBe(true);
+    for (const p of ["src/auth/session-old.ts", "packages/cli/src/changelog.ts", "src/config/index.ts"]) expect(toolEntry(p), p).toBe(false);
+  });
+});

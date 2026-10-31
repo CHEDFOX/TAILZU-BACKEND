@@ -36,7 +36,9 @@ export interface Completed {
 
 const ANSWER_HEAD = 600;
 const COMPLETE_TOKENS = 120;
-const COMPLETE_PAISE = 5;
+/** The most the call may cost at the tier's dearest model (the gateway checks the worst case before it calls: at 5 paise a follow-up with a long last
+ *  answer was refused every time, in the changesets run). The tiny model it goes to first costs a fraction of a paisa. */
+const COMPLETE_PAISE = 20;
 const COMPLETE_MAX = 400;
 /** Thanks, a greeting, an ok: nothing to look up, so nothing to complete. */
 const ACK = /^\s*(?:thanks?(?:\s+(?:a\s+lot|so\s+much|you))?|thank\s+you|thx|ty|ok(?:ay)?|k|cool|nice|great|perfect|got\s+it|sure|yes|no|hi|hello|hey|bye|good\s+(?:night|morning)|shukriya|dhanyavaad|theek\s+hai|thik\s+hai|accha|acha|haan|nahi|hmm+)[\s!.,🙏👍]*$/iu;

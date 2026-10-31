@@ -57,10 +57,10 @@ const FEATURES = [
 
 beforeEach(() => { resetSettingsStoreForTests(); });
 
-async function chatRig(over: { rooms?: Parameters<typeof chatMod.CodeChat.prototype.answer> extends never ? never : unknown; personal?: (userId: string, about: string) => Promise<string[]> } = {}) {
+async function chatRig(over: { rooms?: Parameters<typeof chatMod.CodeChat.prototype.answer> extends never ? never : unknown; personal?: (userId: string, about: string) => Promise<string[]>; job?: (userId: string, jobId: string) => Promise<string | null> } = {}) {
   const a = await agentRig({ files: FILES, rows: ROWS, features: FEATURES });
   const threads = new chatMod.MemoryThreadStore();
-  const chat = new chatMod.CodeChat({ projects: a.d, brain: { open: async () => a.fixture.brain } as never, call: a.model.call as never, threads, now: () => a.now(), ...(over.rooms ? { rooms: over.rooms as never } : {}), ...(over.personal ? { personal: over.personal } : {}) });
+  const chat = new chatMod.CodeChat({ projects: a.d, brain: { open: async () => a.fixture.brain } as never, call: a.model.call as never, threads, now: () => a.now(), ...(over.rooms ? { rooms: over.rooms as never } : {}), ...(over.personal ? { personal: over.personal } : {}), ...(over.job ? { job: over.job } : {}) });
   const ask = (question: string, o: Partial<Parameters<typeof chat.answer>[0]> = {}) =>
     chat.answer({ userId: "alice", projectId: a.project.id, question, tier: "cheap", length: "short", diagram: false, maxPaise: 150, ...o });
   /** GitHub reads of file contents since the rig was made. */
@@ -286,6 +286,22 @@ describe("the conversation", () => {
     expect(second.thread!.history.at(-1)!.q).toBe("and cleared?");
   });
 
+  it("knows the job started from the thread: the turn reads as the request it was, and the next answer is shown where the job stands", async () => {
+    const threadId = "d1d1d1d1-d1d1-4d1d-8d1d-d1d1d1d1d1d1";
+    const asked: string[] = [];
+    const r = await chatRig({ job: async (_u, id) => { asked.push(id); return "Job on branch tailzu/fix: done.\nIts report:\nFixed the duplicate error in src/auth/session.ts."; } });
+    await r.chat.noteJob("alice", r.a.project.id, threadId, { id: "job-1", branch: "tailzu/fix", said: "the session cookie is set twice, fix it" });
+    const kept = await r.threads.get("alice", r.a.project.id, threadId);
+    expect(kept!.jobs).toEqual([{ id: "job-1", branch: "tailzu/fix", at: expect.any(Number) }]);
+    expect(kept!.history.at(-1)).toMatchObject({ q: "the session cookie is set twice, fix it", a: "Started a job on branch tailzu/fix to do this." });
+    expect(kept!.lastQuestion).toBe("the session cookie is set twice, fix it");
+    r.a.json.on("front.complete", "What did the job change to fix the session cookie being set twice?");
+    r.a.json.on("front.code_answer", "It changed src/auth/session.ts:3.");
+    await r.ask("what did you change?", { threadId });
+    expect(asked).toEqual(["job-1"]);
+    expect(said(r, 0).user).toContain("<job>\nJob on branch tailzu/fix: done.");
+  });
+
   it("shows the model what the person told their bots, as data, and nothing when there is none", async () => {
     const asked: string[] = [];
     const r = await chatRig({ personal: async (userId, about) => { asked.push(`${userId}: ${about}`); return ["I write TypeScript, not Python"]; } });
@@ -438,5 +454,22 @@ describe("what it costs", () => {
     expect(said(r).tier).toBe("strong");
     await r.ask("where is startSession defined?", { tier: "cheap" });
     expect(said(r, 1).tier).toBe("cheap");
+  });
+});
+
+describe("where a file is read when nothing points into it", () => {
+  it("is where the question's words gather, not its top", () => {
+    const text = [...Array.from({ length: 60 }, (_, i) => `import x${i} from "./x${i}";`), "export function noDuplicateFixedPackages(ctx) {", "  // fixed groups", "  for (const group of ctx.fixed) {}", "}", ...Array.from({ length: 60 }, (_, i) => `const filler${i} = ${i};`)].join("\n");
+    const span = chatMod.bestSpan(text, "what rules does it check for the fixed groups?")!;
+    expect(span[0]).toBeLessThanOrEqual(61);
+    expect(span[1] + 20).toBeGreaterThanOrEqual(63);
+    expect(chatMod.bestSpan(text, "how is the cache warmed?")).toBeUndefined();
+  });
+});
+
+describe("the prompt's block names in an answer", () => {
+  it("are said in plain words, never inside code", () => {
+    expect(chatMod.plainTags("Jo <facts>/<excerpts> nahi dikhate: the <job> report.")).toBe("Jo the project's index and the files I read nahi dikhate: the job report.");
+    expect(chatMod.plainTags("Render `<facts>` in JSX.")).toBe("Render `<facts>` in JSX.");
   });
 });

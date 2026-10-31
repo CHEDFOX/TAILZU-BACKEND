@@ -31,13 +31,18 @@ import type { LiveFiles } from "../live/ports.js";
 import type { BrainHandle, BrainView } from "../project/index.js";
 import { isSecretPath, isTestPath } from "../project/lang.js";
 import { computeImpact, extractCues, fence, forModel, locate, type Located, type LocateTarget } from "../work/index.js";
-import { CONFIDENT } from "../work/locate.js";
+import { CONFIDENT, fusedFor } from "../work/locate.js";
 import { cut, type ModelCtx } from "../work/model.js";
 import { Anchors, checkCitations, keptLocations } from "./cite.js";
 import { factsBlock, gatherFacts, isConfigPath, missingFacts, withMissing, type Fact } from "./facts.js";
 import { flowDiagram } from "./flow.js";
 import { isFollowUp, readQuestion, type QuestionRead } from "./question.js";
 import { afterTurn, type ChatThread } from "./threads.js";
+
+/** The least room a code answer has: its citations make it longer than a reply of the same length (the changesets run cut a "short" one mid-sentence). */
+export const CODE_ANSWER_TOKENS_MIN = REPLY_TOKENS.medium;
+
+const LANGUAGE_WORDS: Record<string, string> = { en: "English", hinglish: "Hinglish (Hindi in Latin letters, mixed with English)", hi: "Hindi" };
 
 /** What reading may cost the model: files, characters in all, and per file. */
 export const READ_FILES_MAX = 3;
@@ -77,6 +82,10 @@ export interface ChatInput {
   meant?: string;
   /** What the person told their bots about themselves that may matter here (bots/shared.ts), a few short lines. */
   about?: string[];
+  /** The latest job started from this thread, where it stands (its state, report, checks, pull request). */
+  job?: string;
+  /** The language the person wrote in, as the front door read it: said to the model, so a cue in the prompt does not pull it into another. */
+  language?: "en" | "hinglish" | "hi" | "other";
   tier: ModelTier;
   length: Length;
   maxPaise: number;
@@ -157,7 +166,9 @@ async function gatherBrainFacts(brain: ChatBrain, located: Located, targets: rea
     if (!row) { rich = false; lines.push(`${t.path}:1 — in the index; ${cut(t.why, 120)}`); anchors.known(t.path, 6000, [1]); continue; }
     anchors.known(t.path, row.bytes, [1, ...row.symbols.map((s) => s.line)]);
     const syms = row.symbols.filter((s) => s.kind !== "env" && s.kind !== "entry" && (s.exported !== false || s.kind === "route")).slice(0, 10);
-    if (!row.summary && !syms.length) rich = false;
+    // Names alone do not say what code does: with no summary of the file, it is read (the changesets run answered "what rules does it check?"
+    // from one function name, and filled the rest from what it guessed).
+    if (!row.summary) rich = false;
     const near = await brain.neighbors(t.path).catch(() => ({ imports: [] as string[], importedBy: [] as string[] }));
     lines.push([
       `${t.path}:${t.lines?.[0] ?? 1} — ${row.summary ? cut(row.summary, 220) : "(no summary)"}`,
@@ -201,6 +212,24 @@ async function gatherBrainFacts(brain: ChatBrain, located: Located, targets: rea
 }
 
 /** The lines of a file around where the evidence points, numbered, cut. */
+/** The lines of `text` where the question's words gather most (a window of SPAN_HEAD lines), or undefined when none of them is there. */
+export function bestSpan(text: string, search: string): [number, number] | undefined {
+  const words = [...wordsOf(search)].filter((w) => w.length >= 4).map((w) => w.replace(/s$/, ""));
+  if (!words.length) return undefined;
+  const all = text.split("\n");
+  const hits = all.map((l) => { const low = l.toLowerCase(); return words.reduce((n, w) => n + (low.includes(w) ? 1 : 0), 0); });
+  const win = SPAN_HEAD;
+  let sum = hits.slice(0, win).reduce((a, b) => a + b, 0);
+  let best = sum, at = 0;
+  for (let i = 1; i + win <= all.length; i++) {
+    sum += hits[i + win - 1]! - hits[i - 1]!;
+    if (sum > best) { best = sum; at = i; }
+  }
+  if (best === 0) return undefined;
+  // around() adds SPAN_AROUND on each side: the window is handed in without it.
+  return [at + 1 + SPAN_AROUND, Math.min(all.length, at + win - SPAN_AROUND)];
+}
+
 function around(text: string, lines?: [number, number]): string {
   const all = text.split("\n");
   const from = lines ? Math.max(1, lines[0] - SPAN_AROUND) : 1;
@@ -210,6 +239,16 @@ function around(text: string, lines?: [number, number]): string {
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const TAG_WORDS: Record<string, string> = {
+  facts: "the project's index", excerpts: "the files I read", thread: "our chat", last_answer: "my last answer", job: "the job", meant: "your question", earlier: "earlier answers", about_them: "what you told me",
+};
+/** The prompt's block names said in plain words: a person never reads "<excerpts>" (the changesets run: "<facts>/<excerpts> mein ..."). */
+export function plainTags(text: string): string {
+  const tag = /<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them)>(?:\s*\/\s*<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them)>)?/g;
+  // Only outside code: a backtick span is the project's own text.
+  return text.split(/(`[^`\n]*`)/).map((part) => (part.startsWith("`") ? part : part.replace(tag, (_m, a: string, b?: string) => (b ? `${TAG_WORDS[a]} and ${TAG_WORDS[b]}` : TAG_WORDS[a]!)).replace(/\b([Tt]he) the\b/g, "$1"))).join("");
+}
+
 /** The patterns worth a grep for this question: the names in the words, and a quoted string. */
 export function grepPatterns(search: string): string[] {
   const cues = extractCues(search);
@@ -217,6 +256,21 @@ export function grepPatterns(search: string): string[] {
 }
 
 /** Reads the located spans (and greps, with a room), registering every line it saw as an anchor. Returns the excerpts. */
+/**
+ * Not sure of the files: the free ranking's best (names, symbols, words; no model) are read beside the model's picks, one of each in turn, so a file
+ * the question is about is opened, not only named (the changesets run: "rules.ts holds the fixed and linked checks, but I can't see its contents").
+ */
+async function withRanked(targets: readonly LocateTarget[], search: string, brain: ChatBrain): Promise<LocateTarget[]> {
+  const ranked = (await fusedFor(search, brain).catch(() => [])).filter((f) => !isSecretPath(f.path) && !targets.some((t) => t.path === f.path)).slice(0, READ_FILES_MAX - 1);
+  const out: LocateTarget[] = [];
+  for (let i = 0; i < Math.max(targets.length, ranked.length); i++) {
+    if (targets[i]) out.push(targets[i]!);
+    const f = ranked[i];
+    if (f) out.push({ path: f.path, why: "ranked by name, symbols and words", signals: f.signals, score: f.score });
+  }
+  return out;
+}
+
 async function readSpans(ports: ChatPorts, targets: readonly LocateTarget[], search: string, anchors: Anchors, onStep?: (stage: string) => void): Promise<{ excerpts: string[]; reads: string[]; greps: string[] }> {
   const excerpts: string[] = [];
   const reads: string[] = [];
@@ -239,14 +293,19 @@ async function readSpans(ports: ChatPorts, targets: readonly LocateTarget[], sea
     if (isSecretPath(t.path) || chars >= READ_CHARS_MAX) continue;
     onStep?.(`code:read:${t.path}`);
     let body: string | null = null;
-    if (room) {
-      const from = t.lines ? Math.max(1, t.lines[0] - SPAN_AROUND) : 1;
-      const r = await room.read(t.path, { offset: from, limit: t.lines ? t.lines[1] - t.lines[0] + 2 * SPAN_AROUND + 1 : SPAN_HEAD }).catch(() => null);
+    if (room && t.lines) {
+      const from = Math.max(1, t.lines[0] - SPAN_AROUND);
+      const r = await room.read(t.path, { offset: from, limit: t.lines[1] - t.lines[0] + 2 * SPAN_AROUND + 1 }).catch(() => null);
       if (r?.kind === "ok") { body = cut(r.out.text, READ_FILE_CHARS); anchors.lines(t.path, r.out.total); }
     }
     if (body === null && ports.read) {
+      // A file with no pointer into it is read where the question's words gather, not from its top (the changesets run read rules.ts's imports only).
       const text = await ports.read(t.path).catch(() => null);
-      if (text !== null) { anchors.read(t.path, text); body = around(text, t.lines); }
+      if (text !== null) { anchors.read(t.path, text); body = around(text, t.lines ?? bestSpan(text, search)); }
+    }
+    if (body === null && room && !t.lines) {
+      const r = await room.read(t.path, { offset: 1, limit: SPAN_HEAD }).catch(() => null);
+      if (r?.kind === "ok") { body = cut(r.out.text, READ_FILE_CHARS); anchors.lines(t.path, r.out.total); }
     }
     if (body === null) continue;
     reads.push(t.path);
@@ -432,7 +491,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     const fast = sure && facts.rich && rq.kind !== "why" && !rq.wantsCode && (rq.kind !== "how" || facts.flow);
     if (fast) road = "fast";
     else {
-      ({ excerpts, reads, greps } = await readSpans(ports, targets, input.search, anchors, input.onStep));
+      ({ excerpts, reads, greps } = await readSpans(ports, sure ? targets : await withRanked(targets, input.search, brain), input.search, anchors, input.onStep));
       road = "read";
       if (!excerpts.length) notes.push("I could not read the files themselves, so this rests on the project's index.");
     }
@@ -440,15 +499,17 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     const view: BrainView = await brain.status();
     road = "overview";
     basis = `${cut(view.welcome, 800)}\n${view.features.slice(0, 8).map((f) => `${f.name}: ${cut(f.summary, 100)}`).join("\n")}`;
-    notes.push("Nothing in the code matched, so this answer is from the project's overview.");
+    if (!input.job) notes.push("Nothing in the code matched, so this answer is from the project's overview.");
   }
 
   const left = Math.max(0, input.maxPaise - located.used.paise);
   const earlier = earlierTurns(input.thread, input.search);
   const user = [
     `<question>\n${forModel(input.question).replace(/<\/question/gi, "<\\/question")}\n</question>`,
+    ...(input.language && LANGUAGE_WORDS[input.language] ? [`Answer in ${LANGUAGE_WORDS[input.language]}.`] : []),
     ...(input.meant && input.meant !== input.question ? [`<meant>\n${fence(forModel(input.meant))}\n</meant>`] : []),
     ...(input.about?.length ? [`<about_them>\n${fence(forModel(aboutLines(input.about)))}\n</about_them>`] : []),
+    ...(input.job ? [`<job>\n${fence(forModel(input.job))}\n</job>`] : []),
     ...(input.thread?.summary ? [threadBlock(input.thread).trim()] : []),
     ...(earlier.length ? [`<earlier>\n${fence(forModel(earlier.map((t) => `Q: ${t.q}\nA: ${t.a}`).join("\n\n")))}\n</earlier>`] : []),
     ...(lastAnswer(input) ? [`<last_answer>\n${fence(forModel(lastAnswer(input)))}\n</last_answer>`] : []),
@@ -458,13 +519,13 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   input.onStep?.("code:write");
   const words = input.onText ? withoutNext(input.onText) : null;
   const r = await askText(model, {
-    role: "front_code_answer", tier: input.tier, purpose: "front.code_answer", maxTokens: REPLY_TOKENS[input.length], budget: { maxPaise: left }, user,
+    role: "front_code_answer", tier: input.tier, purpose: "front.code_answer", maxTokens: Math.max(REPLY_TOKENS[input.length], CODE_ANSWER_TOKENS_MIN), budget: { maxPaise: left }, user,
     ...(words ? { onText: words.onText } : {}), ...(input.onReset || words ? { onReset: () => { words?.reset(); input.onReset?.(); } } : {}),
   });
   const { text: said, next } = splitNext(r.text);
 
   // Every path:line in the answer is something that was seen; the rest is taken out, and the notes say so.
-  const checked = checkCitations(said, anchors);
+  const checked = checkCitations(plainTags(said), anchors);
   if (checked.dropped.length) notes.push(`I took out ${checked.dropped.length} reference${checked.dropped.length === 1 ? "" : "s"} to code I could not find.`);
   // The values the question asks about, and the ones on the lines it cites, are in the answer by name and by value; the ones it left out are added, with where they are.
   const missing = missingFacts(values, input.question, checked.text);
