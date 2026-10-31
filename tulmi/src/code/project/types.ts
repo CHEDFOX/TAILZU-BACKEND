@@ -95,6 +95,8 @@ export interface SymbolInfo {
   path?: string;
   /** The last line of the definition, when a parser read the file (tree-sitter). Absent when a regex did: a regex knows where a thing starts, not where it ends. */
   endLine?: number;
+  /** A fingerprint of lines line..endLine (map.ts spanHash), when the end is known: the project map proves a range with it. */
+  hash?: string;
 }
 
 /** What a file is, by its path. */
