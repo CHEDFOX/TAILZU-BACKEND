@@ -12,6 +12,7 @@
  * The front door's `codeAnswer` road calls CodeChat.answer (front/handlers.ts); nothing else in the front door depends on how it answers. Everything it
  * needs comes in through the constructor, so the tests run it over a fixture brain, a fake GitHub and a scripted model.
  */
+import { sharedFacts } from "../../bots/shared.js";
 import type { FrontModel } from "../../front/model.js";
 import type { Length } from "../../front/types.js";
 import type { GatewayDeps } from "../brain/gateway.js";
@@ -43,6 +44,8 @@ export interface CodeChatDeps {
   rooms?: (userId: string, projectId: string) => Promise<Pick<LiveFiles, "read" | "grep"> | null>;
   now?: () => number;
   log?: { warn(o: object, msg: string): void };
+  /** The few things the person told their bots that matter to a question (bots/shared.ts sharedFacts when not given). */
+  personal?: (userId: string, about: string) => Promise<string[]>;
 }
 
 export interface ChatRequest {
@@ -114,15 +117,19 @@ export class CodeChat {
     // A reaction ("??", "why?") is about the last question as it was; any other follow-up is made complete before it is looked up with
     // (front/complete.ts): "and the logout?" is searched as "where is the logout checked?".
     const lastQuestion = r.context ?? thread?.lastQuestion;
-    const meant = r.ask && r.context ? null : await completeMessage(model, {
-      message: r.question, ...(lastQuestion ? { lastQuestion } : {}), ...(thread?.history.at(-1)?.a ? { lastAnswer: thread.history.at(-1)!.a } : {}),
-      ...(r.context ? { followUp: true } : {}),
-    });
+    // What the person told their bots about themselves (bots/shared.ts), read while the message is made complete.
+    const [meant, about] = await Promise.all([
+      r.ask && r.context ? null : completeMessage(model, {
+        message: r.question, ...(lastQuestion ? { lastQuestion } : {}), ...(thread?.history.at(-1)?.a ? { lastAnswer: thread.history.at(-1)!.a } : {}),
+        ...(r.context ? { followUp: true } : {}),
+      }),
+      (this.d.personal ?? sharedFacts)(r.userId, r.question).catch(() => [] as string[]),
+    ]);
     const out = await answerCode({
       userId: r.userId, projectId: project.id, question: r.ask && r.context ? `${r.context}\n\n${r.ask}` : r.question,
       ...(r.ask && r.context ? { shown: r.question, kept: r.context } : {}), ...(meant?.via === "model" ? { meant: meant.text } : {}),
       search: r.ask && r.context ? r.context : meant?.text ?? r.question, tier: r.tier, length: r.length,
-      maxPaise: Math.max(1, r.maxPaise - (meant?.paise ?? 0)), thread, diagram: r.diagram, now: this.now(),
+      maxPaise: Math.max(1, r.maxPaise - (meant?.paise ?? 0)), thread, diagram: r.diagram, now: this.now(), ...(about.length ? { about } : {}),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
     }, { brain, read, files }, model);
     if (meant?.paise) out.paise += meant.paise;

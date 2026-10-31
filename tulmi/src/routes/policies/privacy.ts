@@ -10,7 +10,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "October 30, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "October 31, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
@@ -499,6 +499,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>The bots you make:</strong> name, purpose, your rules for it, its skills, the apps and files you gave it, its tone, and its spending limits.</li>
   <li><strong>Your chats with a bot:</strong> what you said and what it answered, up to the last 200 turns with each bot, until you clear the chat, delete the bot, or delete your account.</li>
   <li><strong>What a bot remembers of you:</strong> short facts it learned from what you told it (at most 40 a bot; never a feeling, your health, politics, someone else's details or anything secret) and a short running summary of your talks. You can read them, and forget one or all of them, in X0 Bot.</li>
+  <li><strong>What all your bots use:</strong> a fact one of your bots learned is also kept once for all of them (at most 60), so every bot, Ask and Xode can fit their answers to you; a fact about your health, religion or caste, politics, money or sexuality is never kept this way. It is on unless you turn it off in Settings › Privacy, where you can also clear it; forgetting a fact in a bot forgets it here too, and it is in your data download and goes when you delete your data.</li>
   <li><strong>Activity:</strong> for each answer a bot gave you, which bot, the first 200 characters of what you asked, and what it cost; and for a payment you say you made, which bot filled it in, what it was for, to whom and how much. Entries older than 90 days are deleted whenever a new one is added.</li>
   <li><strong>API keys</strong> you make for a bot are stored only as one-way hashes, with their first few characters so you can tell them apart. What an app sends a bot with a key, and the bot's answers, are not written to our logs, and do not go into the bot's memory of you.</li>
 </ul>

@@ -29,9 +29,10 @@ import type { FrontCtx } from "../front/types.js";
 import { completeMessage } from "../front/complete.js";
 import { retrieve } from "./knowledge.js";
 import { memoryFor, recentTurnsOf, rememberTurn } from "./memory.js";
+import { sharedFacts, type SharedDeps } from "./shared.js";
 import { Meter } from "./meter.js";
 import type { BotPorts } from "./ports.js";
-import { botUserMessage, type Attached, type Turn } from "./prompt.js";
+import { botUserMessage, MEMORY_SHOWN, type Attached, type Turn } from "./prompt.js";
 import { scopeMessage } from "./scope.js";
 import type { BotStore } from "./store.js";
 import { buildTools, CALLS_PER_STEP, newRecord } from "./tools.js";
@@ -43,6 +44,8 @@ export interface RunDeps {
   call?: CallFn;
   gateway?: GatewayDeps;
   now?: () => number;
+  /** Whether the owner's personalise switch is on (shared.ts); the You store when not given. */
+  shared?: Pick<SharedDeps, "on">;
 }
 
 export interface RunRequest {
@@ -109,7 +112,15 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   notes.push(...scope.notes);
 
   // The context: what it kept of its owner, and the few chunks of its files that are about this.
-  const mem = remember ? await memoryFor(d.store, r.userId, bot.id).catch(() => ({ facts: [], thread: null })) : { facts: [], thread: null };
+  // What the owner told any of their bots (shared.ts), the few that matter here: only in their own chat, never to an API caller.
+  const [mem, shared] = remember
+    ? await Promise.all([memoryFor(d.store, r.userId, bot.id).catch(() => ({ facts: [], thread: null })), sharedFacts(r.userId, r.message, { store: d.store, ...d.shared })])
+    : [{ facts: [], thread: null }, [] as string[]];
+  const own = mem.facts.map((f) => f.text);
+  const seen = new Set(own.map((f) => f.toLowerCase()));
+  const extra = shared.filter((f) => !seen.has(f.toLowerCase()));
+  // The prompt shows the last MEMORY_SHOWN: the shared few, picked for this message, stay; the bot's own oldest give way.
+  const facts = [...own.slice(-Math.max(0, MEMORY_SHOWN - extra.length)), ...extra];
   // The bot's files are searched with the message made complete: "and Saturday?" finds what "trains on Saturday?" would (front/complete.ts).
   // The turns just before: the caller's, or (a chat in the app sends none) the latest ones the bot kept in its thread.
   const history = r.history?.length ? r.history : remember ? recentTurnsOf(mem.thread) : [];
@@ -131,7 +142,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
 
   const user = botUserMessage({
     bot: { ...bot, skills: bot.skills },
-    ...(mem.facts.length ? { facts: mem.facts.map((f) => f.text) } : {}), ...(mem.thread?.summary ? { summary: mem.thread.summary } : {}),
+    ...(facts.length ? { facts } : {}), ...(mem.thread?.summary ? { summary: mem.thread.summary } : {}),
     ...(know?.text ? { knowledge: know.text } : {}), ...(r.attached?.length ? { attached: r.attached } : {}), ...(history.length ? { history } : {}), ...(kit.notConnected.length ? { notConnected: kit.notConnected } : {}),
     message: r.message,
   });
@@ -195,7 +206,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   // What the owner told it, and how the talk is going.
   if (remember && !r.signal?.aborted) {
     const learned = await rememberTurn(
-      { store: d.store, call: base, ...(d.gateway ? { gateway: d.gateway } : {}), ...(d.now ? { now: d.now } : {}) },
+      { store: d.store, call: base, ...(d.gateway ? { gateway: d.gateway } : {}), ...(d.now ? { now: d.now } : {}), ...(d.shared ? { shared: d.shared } : {}) },
       { userId: r.userId, botId: bot.id, said: r.message, answered: text, leftPaise: meter.left(), ...(r.signal ? { signal: r.signal } : {}) },
     ).catch(() => null);
     if (learned) meter.add(learned.paise);

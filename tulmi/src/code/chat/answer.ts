@@ -22,6 +22,7 @@
  *
  * What is sent to the model is fenced as data, the person's words go through the secret scan (forModel), and a file the scan flags is never read for it.
  */
+import { aboutLines } from "../../bots/shared.js";
 import { askText, type FrontModel } from "../../front/model.js";
 import { REPLY_TOKENS, LOCATE_PAISE } from "../../front/path.js";
 import type { Length } from "../../front/types.js";
@@ -74,6 +75,8 @@ export interface ChatInput {
   kept?: string;
   /** A follow-up made complete (front/complete.ts): what the person meant, shown to the model beside their words. */
   meant?: string;
+  /** What the person told their bots about themselves that may matter here (bots/shared.ts), a few short lines. */
+  about?: string[];
   tier: ModelTier;
   length: Length;
   maxPaise: number;
@@ -445,6 +448,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const user = [
     `<question>\n${forModel(input.question).replace(/<\/question/gi, "<\\/question")}\n</question>`,
     ...(input.meant && input.meant !== input.question ? [`<meant>\n${fence(forModel(input.meant))}\n</meant>`] : []),
+    ...(input.about?.length ? [`<about_them>\n${fence(forModel(aboutLines(input.about)))}\n</about_them>`] : []),
     ...(input.thread?.summary ? [threadBlock(input.thread).trim()] : []),
     ...(earlier.length ? [`<earlier>\n${fence(forModel(earlier.map((t) => `Q: ${t.q}\nA: ${t.a}`).join("\n\n")))}\n</earlier>`] : []),
     ...(lastAnswer(input) ? [`<last_answer>\n${fence(forModel(lastAnswer(input)))}\n</last_answer>`] : []),
