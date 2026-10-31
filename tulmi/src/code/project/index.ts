@@ -52,7 +52,7 @@ import {
 import { buildMap, type ProjectMap } from "./map.js";
 import { mapAfterChanges, type MapChange } from "./mapupdate.js";
 export { memoryMarkdown, withBaseline } from "./memory.js";
-export { buildMap, checkSymbol, findInMap, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap } from "./map.js";
+export { buildMap, checkSymbol, checkSymbols, findInMap, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap, type SymbolCheck } from "./map.js";
 export { gitBlobSha, mapAfterChanges, MAP_DIR, type MapChange } from "./mapupdate.js";
 export { baselinePlan, recordBaseline } from "./baseline.js";
 export { diffSnapshots } from "./merkle.js";

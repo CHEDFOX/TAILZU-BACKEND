@@ -8,6 +8,8 @@
  *   search_code {query}                the project brain: files, symbols, the text people see ("where is the feature")
  *   suggest_files {query?}             the locate funnel's free half (work/locate.ts fusedFor): the files the request (or the query) is most likely about, ranked,
  *                                      each with why, and the tests near the first ones. No model. A free-form job's map of where to look, never a gate
+ *   project_map {action, query?, path?} the project map (project/map.ts): find the components a request means, open one's card with each function's
+ *                                      lines as they are NOW (checked against the file with the staged edits), or where a new thing of a kind goes
  *   edit_file {path, old, new}         an exact replace of text that occurs once; STAGES it
  *   write_file {path, content}         stages a whole file
  *   delete_file {path}                 stages a deletion
@@ -47,7 +49,7 @@ import type { ViewerEvent } from "../live/protocol.js";
 import { skipReason } from "../live/rules.js";
 import { byPath, globPaths, grepFiles, type GrepFile, type GrepOk, type GrepOptions } from "../live/search.js";
 import { scanForSecrets } from "../policy.js";
-import type { BrainHandle } from "../project/index.js";
+import { checkSymbols, findInMap, type BrainHandle, type MapComponent, type SymbolCheck } from "../project/index.js";
 import { isSecretPath } from "../project/lang.js";
 import type { Workspace } from "../projects.js";
 import { findResources } from "../resources/finder.js";
@@ -64,7 +66,7 @@ export type ToolControl = { type: "done"; summary: string; result?: string } | {
 export interface ToolOutcome extends ResultRecord { control?: ToolControl }
 
 export const AGENT_TOOL_NAMES = [
-  "read_file", "list_dir", "grep", "glob", "search_code", "suggest_files", "edit_file", "write_file", "delete_file", "run",
+  "read_file", "list_dir", "grep", "glob", "search_code", "suggest_files", "project_map", "edit_file", "write_file", "delete_file", "run",
   "web_search", "read_page", "research", "find_resources", "flag_finding", "note", "ask_user", "done",
 ] as const;
 export type AgentToolName = (typeof AGENT_TOOL_NAMES)[number];
@@ -112,6 +114,15 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
     description: "The files this request is most likely about, ranked by the project's index (names, text, symbols, imports), each with why, and tests near the first ones. "
       + "A guess to read from. Give query to ask with other words.",
     parameters: obj({ query: { type: "string", maxLength: 500 } }, []),
+  },
+  {
+    name: "project_map",
+    description: "The project map: every component (a source file) with its exact lines, links and tests. find {query}: the components a name, route or words mean. "
+      + "open {path}: its card, each function's lines as they are now (your edits included). place {query}: where a new route, component or model goes and what registers it. "
+      + "Start here, then read_file those lines.",
+    parameters: obj({
+      action: { type: "string", enum: ["find", "open", "place"] }, query: { type: "string", maxLength: 200 }, path: { type: "string", maxLength: 500 },
+    }, ["action"]),
   },
   {
     name: "edit_file",
@@ -377,6 +388,7 @@ export class Tools {
       case "glob": return this.glob(call, a);
       case "search_code": return this.searchCode(call, a);
       case "suggest_files": return this.suggestFiles(call, a);
+      case "project_map": return this.projectMap(call, a);
       case "edit_file": return this.editFile(call, a);
       case "write_file": return this.writeFile(call, a);
       case "delete_file": return this.deleteFile(call, a);
@@ -616,6 +628,67 @@ export class Tools {
     await this.log(call, "read", `Searched the code for ${JSON.stringify(short(q, 60))}: ${files.length} files, ${symbols.length} symbols, ${texts.length} texts.`);
     if (!lines.length) return { ok: true, content: `Nothing in the project's index matches ${JSON.stringify(short(q, 60))}. Try another word, or list_dir.` };
     return { ok: true, content: `Search for ${JSON.stringify(short(q, 60))} (the index does not see your staged edits):`, data: lines.join("\n"), label: q };
+  }
+
+  /**
+   * The project map: find, open or place. A card's lines are checked against the file as it is now, the staged edits included, so the model is
+   * given where each function IS, and told when one moved, changed or is gone since the map was made.
+   */
+  private async projectMap(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
+    const action = str(a.action);
+    const map = await this.env.brain.projectMap().catch(() => null);
+    if (!map) return { ok: true, content: "The project has no map yet (it is made when the project is read). Use search_code or suggest_files." };
+    const status = (c: MapComponent) => (c.live === false ? " [unused: nothing leads here]" : "");
+    if (action === "find") {
+      const q = str(a.query)?.trim();
+      if (!q || q.length < 2) throw new Refused("query is needed for find: a name, a route or a few words.");
+      const hits = findInMap(map, q, 8);
+      await this.log(call, "read", `Looked in the project map for ${JSON.stringify(short(q, 60))}: ${hits.length} component${hits.length === 1 ? "" : "s"}.`);
+      if (!hits.length) return { ok: true, content: `Nothing in the map matches ${JSON.stringify(short(q, 60))}. Try other words, or grep for a name.` };
+      const lines = hits.map((p) => {
+        const c = map.components[p]!;
+        const names = c.symbols.filter((s) => s.kind !== "entry").slice(0, 5).map((s) => (s.route ? `${s.route.method} ${s.route.path}` : `${s.name}:${s.start}${s.end ? `-${s.end}` : ""}`));
+        return `${p}${c.summary ? ` - ${short(c.summary, 100)}` : ""}${names.length ? ` [${names.join(", ")}]` : ""}${status(c)}`;
+      });
+      return { ok: true, content: `Components for ${JSON.stringify(short(q, 60))} (open one for its exact lines):`, data: lines.join("\n"), label: q };
+    }
+    if (action === "open") {
+      const raw = str(a.path)?.trim();
+      if (!raw) throw new Refused("path is needed for open: a component's path from find.");
+      const path = readablePath(raw);
+      const c = map.components[path];
+      if (!c) throw new Refused(`${path} is not a component in the map. Use find to get one, or read_file for any other file.`);
+      const text = await this.current(path);
+      if (text === null) return { ok: true, content: `${path} is in the map but not on the branch any more${this.changes.get(path) ? " (deleted in your staged edits)" : ""}.` };
+      const shown = c.symbols.slice(0, 40);
+      const checks = await checkSymbols(path, text, shown);
+      const note = (k: SymbolCheck) => (k.status === "same" ? "" : k.status === "moved" ? " (moved)" : k.status === "changed" ? " (changed since the map)" : " (gone)");
+      const lines = [
+        `${path}${c.area ? ` · ${c.area}` : ""}${status(c)}`,
+        ...(c.summary ? [c.summary] : []),
+        ...shown.map((s, i) => {
+          const k = checks[i]!;
+          const at = k.status === "gone" ? "-" : `${k.start}${k.end && k.end !== k.start ? `-${k.end}` : ""}`;
+          return `  ${s.route ? `${s.route.method} ${s.route.path}` : s.name} (${s.kind}) lines ${at}${note(k)}`;
+        }),
+        ...(c.symbols.length > shown.length ? [`  … ${c.symbols.length - shown.length} more`] : []),
+        ...(c.uses.length ? [`Uses: ${c.uses.slice(0, 12).join(", ")}`] : []),
+        ...(c.usedBy.length ? [`Used by: ${c.usedBy.slice(0, 12).join(", ")}`] : []),
+        ...(c.calls.length ? [`Calls: ${c.calls.slice(0, 8).map((k) => `${k.to} (${k.names.slice(0, 4).join(", ")})`).join("; ")}`] : []),
+        ...(c.tests.length ? [`Tests: ${c.tests.slice(0, 8).join(", ")}`] : []),
+      ];
+      await this.log(call, "read", `Opened the map card of ${path}.`, [path]);
+      return { ok: true, content: `The map card of ${path} (lines checked against the file now):`, data: lines.join("\n"), label: path };
+    }
+    if (action === "place") {
+      const q = (str(a.query) ?? "").trim().toLowerCase();
+      const fits = map.placements.filter((p) => !q || p.kind.toLowerCase().includes(q) || p.folder.toLowerCase().includes(q) || q.includes(p.kind.toLowerCase()));
+      await this.log(call, "read", `Asked the project map where ${q ? JSON.stringify(short(q, 40)) : "new things"} go: ${fits.length} place${fits.length === 1 ? "" : "s"}.`);
+      if (!fits.length) return { ok: true, content: `The map has no folder of ${JSON.stringify(short(q, 40))}. Find a similar component and put the new one beside it.` };
+      const lines = fits.slice(0, 8).map((p) => `${p.kind} in ${p.folder}/ (like ${p.examples.join(", ")})${p.registeredIn.length ? `; registered in ${p.registeredIn.join(", ")}` : ""}${p.testsIn ? `; tests in ${p.testsIn}/` : ""}`);
+      return { ok: true, content: "Where new things go, by what already lives there:", data: lines.join("\n"), label: q || "places" };
+    }
+    throw new Refused('action is find, open or place.');
   }
 
   /** The locate funnel's free half for the task (or a query of the model's own): ranked files with why, and the tests near the first three. No model. */
