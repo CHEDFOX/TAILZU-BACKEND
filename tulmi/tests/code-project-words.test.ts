@@ -568,14 +568,14 @@ describe("the memory document", () => {
 describe("the baseline", () => {
   const cmd = (kind: "install" | "dev" | "build" | "test" | "lint" | "typecheck" | "format" | "run", c: string, cwd = "") => ({ kind, cmd: c, cwd, source: "x" });
 
-  it("plans install, typecheck, lint, test, build from the scripts, root commands standing for the whole repo", () => {
+  it("plans install, build, typecheck, lint, test from the scripts (the build first: what the rest reads), root commands standing for the whole repo", () => {
     const plan = baselinePlan([
       cmd("build", "pnpm run build"), cmd("test", "pnpm test"), cmd("dev", "pnpm run dev"), cmd("install", "pnpm install"), cmd("lint", "pnpm run lint"), cmd("typecheck", "pnpm run typecheck"),
       cmd("test", "pnpm test", "packages/a"), cmd("format", "pnpm run format"),
     ]);
     expect(plan).toEqual([
-      { kind: "install", cmd: "pnpm install", cwd: "" }, { kind: "typecheck", cmd: "pnpm run typecheck", cwd: "" }, { kind: "lint", cmd: "pnpm run lint", cwd: "" },
-      { kind: "test", cmd: "pnpm test", cwd: "" }, { kind: "build", cmd: "pnpm run build", cwd: "" },
+      { kind: "install", cmd: "pnpm install", cwd: "" }, { kind: "build", cmd: "pnpm run build", cwd: "" }, { kind: "typecheck", cmd: "pnpm run typecheck", cwd: "" },
+      { kind: "lint", cmd: "pnpm run lint", cwd: "" }, { kind: "test", cmd: "pnpm test", cwd: "" },
     ]);
   });
 

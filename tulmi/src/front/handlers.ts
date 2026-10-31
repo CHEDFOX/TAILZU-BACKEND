@@ -21,7 +21,7 @@
 import { aboutLines, sharedFacts } from "../bots/shared.js";
 import type { Artifacts } from "../artifacts/index.js";
 import { CodeChat } from "../code/chat/index.js";
-import type { ThreadStore } from "../code/chat/threads.js";
+import { threadStore, type ThreadStore } from "../code/chat/threads.js";
 import type { LiveFiles } from "../code/live/ports.js";
 import { componentArtifact, workspaceFiles } from "../artifacts/kit.js";
 import { unfence } from "../artifacts/edit.js";
@@ -131,7 +131,7 @@ const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 
 // ------------------------------------------------------------------ reply
 
 /** The shape the reply role is told: its length, whether to lead with a table, and whether it will be read out. */
-export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, files: readonly ReadFile[], about: readonly string[] = [], project = ""): string {
+export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, files: readonly ReadFile[], about: readonly string[] = [], project = "", job = ""): string {
   const v = c.decision.shape.visual;
   const table = v?.kind === "table" && v.via === "inline" && !v.offer;
   const recent = c.message.trim().split(/\s+/).length <= 8 && c.ctx.recent.length
@@ -143,6 +143,7 @@ export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, fi
     ...(recent ? [recent.trim()] : []),
     ...(about.length ? [`About them:\n<<<\n${forModel(aboutLines(about)).replace(/>>>/g, "> > >")}\n>>>`] : []),
     ...(project ? [`The project they are in:\n<<<\n${forModel(project).replace(/>>>/g, "> > >")}\n>>>`] : []),
+    ...(job ? [`The job this chat started, as it stands (all that is known of it: never add to it):\n<<<\n${forModel(job).replace(/>>>/g, "> > >")}\n>>>`] : []),
     "",
     `Message:\n<<<\n${forModel(c.message).replace(/>>>/g, "> > >")}\n>>>`,
   ].join("\n");
@@ -157,12 +158,13 @@ async function replyDefault(d: HandlerDeps, c: RouteCall & { files: ReadFile[] }
   const words = streamed(c);
   // What they told their bots about themselves (bots/shared.ts), the few lines that matter here; and in a project's chat, what the project is,
   // so "what is this repo?" read as a general question is still answered (the changesets run: "I can't see the repo").
-  const [about, project] = await Promise.all([
+  const [about, project, job] = await Promise.all([
     (d.personal ?? sharedFacts)(c.userId, c.message).catch(() => [] as string[]),
     projectBrief(d, c).catch(() => ""),
+    threadJobBrief(d, c).catch(() => ""),
   ]);
   const r = await askText(model(d, c), {
-    role: "front_reply", tier, purpose: "front.reply", user: replyUser(c, c.files, about, project), maxTokens: REPLY_TOKENS[c.decision.shape.length], budget: { maxPaise: c.maxPaise },
+    role: "front_reply", tier, purpose: "front.reply", user: replyUser(c, c.files, about, project, job), maxTokens: REPLY_TOKENS[c.decision.shape.length], budget: { maxPaise: c.maxPaise },
     ...words.ask,
   });
   if (!words.sent()) c.onText?.(r.text);
@@ -170,6 +172,14 @@ async function replyDefault(d: HandlerDeps, c: RouteCall & { files: ReadFile[] }
 }
 
 // ------------------------------------------------------------------ code
+
+/** Where the latest job this chat started stands, for a reply in it ("how's it going?"): empty when the chat started none. */
+async function threadJobBrief(d: HandlerDeps, c: RouteCall): Promise<string> {
+  if (!c.ctx.projectId || !c.ctx.threadId || !d.agent) return "";
+  const t = await (d.threads ?? threadStore()).get(c.userId, c.ctx.projectId, c.ctx.threadId).catch(() => null);
+  const last = t?.jobs?.at(-1);
+  return last ? (await jobBrief(d.agent, c.userId, last.id)) ?? "" : "";
+}
 
 /** What the project of a project chat is, in a few lines from its brain: its name, the welcome and its main parts. Empty outside one. */
 async function projectBrief(d: HandlerDeps, c: RouteCall): Promise<string> {
@@ -202,14 +212,19 @@ function chatOf(d: HandlerDeps, c: RouteCall): { chat: CodeChat; projectId: stri
   };
 }
 
+const JOB_STEPS_SHOWN = 6;
+
 /** Where a job stands, in the few lines a question about it needs: its state, the checks, the pull request and its report. Null when it is not theirs. */
-export async function jobBrief(agent: Pick<AgentOrchestrator, "view">, userId: string, jobId: string): Promise<string | null> {
+export async function jobBrief(agent: Pick<AgentOrchestrator, "view"> & Partial<Pick<AgentOrchestrator, "workLog">>, userId: string, jobId: string): Promise<string | null> {
   const v = await agent.view(userId, jobId).catch(() => null);
   if (!v) return null;
   const a = v.agent;
   const running = !isEnded(v.job.state);
+  // A job at work: what it did last, the way the app's live steps show it, so "how's it going?" is answered from what happened.
+  const latest = running && agent.workLog ? (await agent.workLog(userId, jobId).catch(() => [])).slice(-JOB_STEPS_SHOWN) : [];
   return [
     `Job on branch ${v.job.branch}: ${running ? `still working (${a?.phase ?? v.job.state})` : v.job.state}${v.job.reason ? ` (${cut(v.job.reason, 200)})` : ""}.`,
+    ...(latest.length ? [`Its latest steps:\n${latest.map((e) => `- ${cut(e.text.replace(/\s+/g, " "), 160)}`).join("\n")}`] : []),
     ...(a?.staged.length ? [`Staged, not committed yet: ${a.staged.slice(0, 12).join(", ")}`] : []),
     ...(a?.verify ? [`The project's checks: ${a.verify.ran ? (a.verify.ok ? "passed" : "failed") : "not run"}. ${cut(a.verify.summary, 300)}`] : []),
     ...(a?.pr ? [`Pull request #${a.pr.number} (${a.pr.ready ? "ready for review" : "draft"}).`] : []),

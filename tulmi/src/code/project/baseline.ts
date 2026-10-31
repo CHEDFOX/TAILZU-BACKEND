@@ -26,7 +26,12 @@ import { withBaseline } from "./memory.js";
 import { projectBrainStore, type ProjectBrainStore } from "./store.js";
 import type { Baseline, BaselineKind, BaselineResult, BaselineStep, Command } from "./types.js";
 
-export const BASELINE_KINDS: readonly BaselineKind[] = ["install", "typecheck", "lint", "test", "build"];
+/**
+ * The order the checks run in, before a change and after it. The build goes right after the install: in a monorepo the typecheck, the lint and the
+ * tests read what the build makes (the changesets run: lint failed before the change and passed after it, only because the build ran last and its
+ * output was there the second time).
+ */
+export const BASELINE_KINDS: readonly BaselineKind[] = ["install", "build", "typecheck", "lint", "test"];
 const PER_KIND_PACKAGES = 4;
 const STEPS_MAX = 14;
 

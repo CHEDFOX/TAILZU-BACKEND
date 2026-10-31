@@ -150,12 +150,13 @@ describe("the read path", () => {
     expect(out.cites).toEqual(["src/auth/session.ts:5"]);
   });
 
-  it("says when it was not sure which part of the code the question is about, and rests on the closest files", async () => {
+  it("reads the closest files when it is not sure which part of the code the question is about, and says nothing of it when it read them", async () => {
     const r = await chatRig();
     r.a.json.on("front.code_answer", "Probably startSession: src/auth/session.ts:3.");
     const out = await r.ask("where is the session cookie set?");
     expect(out.road).toBe("read");
-    expect(out.notes).toContain("I was not sure which part of the code this is about, so this rests on the closest files.");
+    expect(out.reads.length).toBeGreaterThan(0);
+    expect(out.notes.join(" ")).not.toMatch(/not sure/);
   });
 
   it("answers from the project's overview when nothing in the code matches, and says so", async () => {
@@ -470,6 +471,60 @@ describe("where a file is read when nothing points into it", () => {
 describe("the prompt's block names in an answer", () => {
   it("are said in plain words, never inside code", () => {
     expect(chatMod.plainTags("Jo <facts>/<excerpts> nahi dikhate: the <job> report.")).toBe("Jo the project's index and the files I read nahi dikhate: the job report.");
-    expect(chatMod.plainTags("Render `<facts>` in JSX.")).toBe("Render `<facts>` in JSX.");
+    expect(chatMod.plainTags("Render `<Facts />` in JSX.")).toBe("Render `<Facts />` in JSX.");
+    expect(chatMod.plainTags("The `<job>` says it, but the `<excerpts>` do not.")).toBe("The job says it, but the files I read do not.");
+  });
+});
+
+describe("reading for a question about the tests", () => {
+  it("knows a question about the tests", () => {
+    for (const q of ["is slug tested?", "is the 3-group case covered by a test now?", "what's the coverage of login", "is there a regression test?"]) expect(chatMod.readQuestion(q).tests, q).toBe(true);
+    for (const q of ["where is slug defined?", "how does login work?"]) expect(chatMod.readQuestion(q).tests, q).toBe(false);
+  });
+
+  it("opens the test of the code in question, not only the code", async () => {
+    const r = await chatRig();
+    r.a.json.on("front.code_answer", "Yes: src/util.test.ts:4 checks slug.");
+    const out = await r.ask("is slug tested?");
+    expect(out.reads).toContain("src/util.test.ts");
+    expect(said(r, 0).user).toContain("src/util.test.ts");
+  });
+});
+
+describe("a long file", () => {
+  it("is read in the two places the question's words gather, apart", () => {
+    const filler = (n: number, tag: string) => Array.from({ length: n }, (_, i) => `const ${tag}${i} = ${i};`);
+    const text = [...filler(70, "a"), "function fixedRule() { /* fixed groups */ }", "// fixed group check", ...filler(70, "b"), "function linkedRule() { /* linked groups */ }", "// linked group check", ...filler(70, "c")].join("\n");
+    const spans = chatMod.bestSpans(text, "what rules does it check for the fixed and linked groups?");
+    expect(spans).toHaveLength(2);
+    expect(spans[0]![0] - 20).toBeLessThanOrEqual(71);
+    expect(spans[1]![1] + 20).toBeGreaterThanOrEqual(143);
+  });
+});
+
+describe("an answer as the chat shows it", () => {
+  it("has bold lines for headings and a space after a code name that runs into a word", () => {
+    expect(chatMod.tidy("# Declaring an option\n\nSee `index.js:1`exports the program.")).toBe("**Declaring an option**\n\nSee `index.js:1` exports the program.");
+    expect(chatMod.tidy("Each `Option`s flags stay.")).toBe("Each `Option`s flags stay.");
+    expect(chatMod.tidy("parses `process.argv` and exports a global `program` instance and `Command`.")).toBe("parses `process.argv` and exports a global `program` instance and `Command`.");
+    expect(chatMod.tidy("It is not in the excerpts I was given. The excerpts show `excerpts` only.")).toBe("It is not in the files I read. The files I read show `excerpts` only.");
+    expect(chatMod.tidy("Not in the excerpts you gave, and the excerpt shows less.")).toBe("Not in the files I read, and the files I read shows less.");
+  });
+});
+
+describe("a question about where something is used", () => {
+  it("is known, so its uses are read and not only where it is defined", () => {
+    for (const q of ["where does the 'trust proxy' hop count get used?", "where is slug called?", "who uses the session cookie?"]) expect(chatMod.readQuestion(q).usage, q).toBe(true);
+    for (const q of ["where is slug defined?", "what does slug do?"]) expect(chatMod.readQuestion(q).usage, q).toBe(false);
+  });
+});
+
+describe("a citation whose line cannot be checked", () => {
+  it("keeps the file when the file is known, and goes whole when it is not", () => {
+    const a = new chatMod.Anchors();
+    a.read("lib/utils.js", Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n"));
+    const out = chatMod.checkCitations("The count is compiled in `lib/utils.js:204`, and stored in lib/ghost.js:9.", a);
+    expect(out.text).toBe("The count is compiled in `lib/utils.js`, and stored.");
+    expect(out.dropped).toEqual(["lib/utils.js:204", "lib/ghost.js:9"]);
   });
 });

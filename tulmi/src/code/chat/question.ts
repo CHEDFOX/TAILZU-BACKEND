@@ -27,7 +27,15 @@ export interface QuestionRead {
   values: boolean;
   /** The question is about the project as a whole ("what do you understand of the project", "what does this app do"): read like a newcomer would, README first. */
   whole: boolean;
+  /** The question is about the tests ("is it tested?", "is that case covered?"): the test files are read, not only the code. */
+  tests: boolean;
+  /** The question asks where or how something is used ("where does the hop count get used?"): the uses are read, not only where it is defined. */
+  usage: boolean;
 }
+
+const USAGE = /\b(?:used|uses|using|usage|called|calls|consumed|applied|read\s+from|gets?\s+(?:used|read|checked|applied))\b|\b(?:use|istemal)\s+(?:hota|hoti|hote|kiya|karta)\b/i;
+
+const TESTS = /\b(?:tests?|tested|testing|specs?|unit\s*tests?|covered|coverage|regression)\b|\b(?:test|tests)\s+(?:hai|hain|kiya|likha)\b/i;
 
 const hindi = (words: string[]): RegExp => new RegExp(`(?<![\\p{L}\\p{M}])(?:${words.join("|")})`, "u");
 
@@ -50,7 +58,7 @@ const WANTS_CODE = /\b(?:show|print|paste|give|display)\s+(?:me\s+)?(?:the\s+)?(
 const FLOW = /\bflow\b|\bhow\s+(?:does|do|is|are|did)\b[^.?!\n]{2,60}\b(?:work|works|handled|processed|happen|happens|authenticate|authenticates|get|gets)\b|\bwalk\s+me\s+through\b|\blifecycle\b|\bsequence\b|\brequest\s+path\b|\bpipeline\b|\bkaise\s+(?:kaam|chalta|hota)\b|कैसे\s+काम/i;
 
 /** A question about a number or a setting: what the default is, how many, how long, the limit, the window, the timeout, the port. */
-const VALUES = /\b(?:defaults?|limits?|windows?|time-?outs?|ttl|intervals?|thresholds?|max(?:imum)?|min(?:imum)?|sizes?|ports?|retr(?:y|ies)|attempts?|quota|config(?:uration|ured|s)?|settings?|options?|constants?|how\s+(?:many|long|much|often|big|large|far)|rates?|expir\w*|delays?|durations?|budget)\b|\bkitna\b|\bkitne\b/i;
+const VALUES = /\b(?:defaults?|limits?|windows?|time-?outs?|ttl|intervals?|thresholds?|max(?:imum)?|min(?:imum)?|sizes?|ports?|retr(?:y|ies)|attempts?|quota|config(?:uration|ured|s)?|settings?|constants?|how\s+(?:many|long|much|often|big|large|far)|rates?|expir\w*|delays?|durations?|budget)\b|\bkitna\b|\bkitne\b/i;
 
 /** Asking about the whole: a project word at the very end, after a word that asks for the big picture; or "overview" anywhere. */
 const PROJECT_END = /\b(?:project|repo|repository|codebase|code\s*base|app|application)(?:'s)?\s*(?:do(?:es)?|is\s+about|about|is|for|structured|structure|architecture|overall|in\s+short)?\s*[?.!]*\s*$/i;
@@ -73,6 +81,8 @@ export function readQuestion(raw: string): QuestionRead {
     flow: FLOW.test(q) || kind === "how",
     values: VALUES.test(q),
     whole: isWhole(q),
+    tests: TESTS.test(q),
+    usage: USAGE.test(q),
   };
 }
 

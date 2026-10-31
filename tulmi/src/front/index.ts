@@ -94,9 +94,23 @@ export function createFront(o: FrontOptions = {}): Front | null {
     ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}), learning, daily: guard.daily, ...(signal ? { signal } : {}),
   });
 
+  // The project's name, for the router: one read per project, kept for the process (a name does not change under a chat).
+  const names = new Map<string, string>();
+  const named = async (ctx: FrontCtx): Promise<FrontCtx> => {
+    if (!ctx.projectId || ctx.projectName || !o.code) return ctx;
+    const key = `${ctx.userId}:${ctx.projectId}`;
+    let name = names.get(key);
+    if (name === undefined) {
+      name = (await o.code.store.getProject(ctx.userId, ctx.projectId).catch(() => null))?.fullName ?? "";
+      if (names.size > 2000) names.clear();
+      names.set(key, name);
+    }
+    return name ? { ...ctx, projectName: name } : ctx;
+  };
+
   const front: Front = {
     store, learning, guard,
-    decide: (message, ctx, opts = {}) => decide(message, ctx, decideDeps(opts.signal)),
+    decide: async (message, ctx, opts = {}) => decide(message, await named(ctx), decideDeps(opts.signal)),
     dispatch: (decision, message, ctx, opts = {}) => dispatch(decision, message, ctx, {
       handlers, attachments, store, learning, watch, daily: guard.daily, ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}), now,
       ...(o.log ? { log: o.log } : {}),
