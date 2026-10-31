@@ -34,7 +34,7 @@ const oneLine = (s: string, max: number): string => {
 };
 
 export const INERT_NOTE = "(ignored: it tried to change X0 Bot's own rules)";
-const MEMORY_SHOWN = 20;
+export const MEMORY_SHOWN = 20;
 const SUMMARY_SHOWN = 800;
 const HISTORY_SHOWN = 6;
 const ATTACHED_SHOWN = 4;

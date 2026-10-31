@@ -30,7 +30,7 @@ interface Settings {
   monthLimitPaise: number;
   stopAtLimit: boolean;
   notify: { done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[] };
-  privacy: { screenPictures: "ask" | "allow" };
+  privacy: { screenPictures: "ask" | "allow"; personalise?: boolean };
 }
 /** The usage meter (GET /v1/you/usage, src/you/usage.ts): fractions used (0.64 is 64%) and when each resets. Never an amount. */
 interface UsageMeter {
@@ -894,14 +894,31 @@ function picturesCard(ctx: BotsCtx): Node {
   ], { gap: 10, padding: 16 });
 }
 
+const clearPersonal: ActionRef = when2("surePersonal",
+  call("POST", "/v1/you/personal/clear", {}, { ok: seq(toast("Cleared"), { kind: "setState", path: "surePersonal", value: false }), fail: oops("clear that") }),
+  seq({ kind: "setState", path: "surePersonal", value: true }, toast("Tap Clear again to clear")));
+
+/** What the person told their bots, used by all of them (src/bots/shared.ts): on unless they turn it off, and cleared here. */
+function personalCard(d: YouData | undefined): Node {
+  const on = d?.settings.privacy.personalise !== false;
+  return col([
+    listCard([switchRow("Use what you've told your bots", "personal", {
+      sub: "Every bot's answers fit you. Never health, religion, politics or money.",
+      onChange: save({ privacy: { personalise: !on } }, on ? "Turned off" : "Turned on"),
+    })]),
+    row([grow(), quietButton("Clear", clearPersonal, { size: "md" })]),
+  ], { gap: 4 });
+}
+
 function privacyPhone(ctx: BotsCtx, d: YouData | undefined) {
   return page(ctx, {
-    back: true, nav: "you", title: "Privacy", gap: 18, state: { sureData: false, pictures: d?.settings.privacy.screenPictures ?? "ask" },
+    back: true, nav: "you", title: "Privacy", gap: 18, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false, pictures: d?.settings.privacy.screenPictures ?? "ask" },
     body: [
       title("Privacy"),
       col([sectionLabel("What we keep, and for how long"), listCard(KEPT.map(([l, , v]) => listRow({ label: l, value: v })))], { gap: 8 }),
       col([sectionLabel("What we never do"), neverList()], { gap: 10 }),
       picturesCard(ctx),
+      personalCard(d),
     ],
     footer: [
       secondaryButton("Download my data", exportAction(d?.exportUrl ?? null), { wide: true, icon: undefined }),
@@ -914,7 +931,7 @@ function privacyPhone(ctx: BotsCtx, d: YouData | undefined) {
 
 function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
   return page(ctx, {
-    back: true, backTitle: "You", nav: "you", title: "Privacy", maxWidth: 1040, gap: 20, state: { sureData: false, pictures: d?.settings.privacy.screenPictures ?? "ask" },
+    back: true, backTitle: "You", nav: "you", title: "Privacy", maxWidth: 1040, gap: 20, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false, pictures: d?.settings.privacy.screenPictures ?? "ask" },
     body: [
       heading(ctx, "Privacy", "What we keep, and for how long"),
       columns([
@@ -932,6 +949,7 @@ function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
       ], [
         card([sectionLabel("What we never do"), neverList()], { padding: 20, gap: 12 }),
         picturesCard(ctx),
+        personalCard(d),
       ]),
     ],
   });

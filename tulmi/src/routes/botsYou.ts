@@ -11,7 +11,7 @@
  *   GET    /v1/you/settings             -> { settings }
  *   GET    /v1/you/notify?tz=           -> { settings, today: { done, needs, spentPaise }, line }  "What pings you", with today's summary as it would read
  *   PUT    /v1/you/settings { monthLimitPaise? | monthLimitRupees?, stopAtLimit?, notify?: { done?, summary?, summaryAt?, quiet?, quietFrom?,
- *                                         quietTo?, bot?, on? }, privacy?: { screenPictures? } }  -> { settings }  only what was sent changes
+ *                                         quietTo?, bot?, on? }, privacy?: { screenPictures?, personalise? } }  -> { settings }  only what was sent changes
  *   GET    /v1/you/billing              -> { plan, invoices, usage }  (src/you/billing.ts; the screens show no price and no amount)
  *   GET    /v1/you/computers            -> { online, offline, signedIn, helped }  the person's computers (runner presence, the ones seen before, and
  *                                          the desktop app signed in as them while its runner is off)
@@ -22,6 +22,7 @@
  *   GET    /v1/you/export               -> the person's data, one JSON file (src/you/data.ts)
  *   GET    /v1/you/export/file?t=       -> the same, for the browser: the signed link from GET /v1/you (no session; 30 minutes)
  *   POST   /v1/you/data/delete          -> { ok, cleared }  chats, notes and files go; the account, plan, bots and projects stay
+ *   POST   /v1/you/personal/clear       -> { ok, cleared }  what the person told their bots, shared across them (src/bots/shared.ts), goes
  *
  * Plugged in here too, on the services the server already made (src/you/limits.ts, push.ts): the usage limits on Xode's job routes, on
  * the bots platform's answers and on Keylessbord and Ask (metering.setUsageGate), every bot answer's cost written down, and what Keylessbord, Ask and
@@ -43,6 +44,7 @@ import { setUsageSpan } from "../you/span.js";
 import { howLine, nearLine, outLine, type UsageNow } from "../you/usage.js";
 import { getProfile } from "../profile/store.js";
 import { dayOf, pushGate, startSummaries, summaryLine } from "../you/push.js";
+import { clearShared, dropSharedCache } from "../bots/shared.js";
 import { applyPatch } from "../you/settings.js";
 import { APP_COMPUTER, computerOs, youStore } from "../you/store.js";
 
@@ -275,8 +277,15 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
       if (!next.ok) return reply.code(400).send({ code: "bad_request", message: next.message });
       const settings = await store.putSettings(user.id, next.settings, Date.now());
       spending.forget(user.id);
+      dropSharedCache(user.id);
       return reply.send({ settings });
     } catch (err) { return fail(reply, err); }
+  });
+
+  app.post("/v1/you/personal/clear", RL, async (req, reply) => {
+    const user = await who(req.headers["authorization"], reply);
+    if (!user) return reply;
+    try { return reply.send({ ok: true, cleared: await clearShared(user.id) }); } catch (err) { return fail(reply, err); }
   });
 
   app.get("/v1/you/notify", RL, async (req, reply) => {

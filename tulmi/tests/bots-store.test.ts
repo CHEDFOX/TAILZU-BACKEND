@@ -292,7 +292,7 @@ describe("the migration (supabase/migrations/0038_bots.sql)", () => {
     expect(out.bots.map((b) => b.slug)).toEqual(["api-bot"]);
     expect(out.keys).toEqual([expect.objectContaining({ bot: "api-bot", label: "app", masked: `${key.slice(0, 8)}…` })]);
     expect(out.commands.map((c) => [c.bot, c.name])).toEqual([["keybot", "short"], ["api-bot", "go"]]);
-    expect(out.memory).toEqual([{ bot: "api-bot", facts: ["I train at 6"], summary: "" }]);
+    expect(out.memory).toEqual([{ bot: "api-bot", facts: ["I train at 6"], summary: "" }, { bot: "all your bots", facts: ["I train at 6"], summary: "" }]);
     expect(JSON.stringify(out)).not.toContain(key);
     expect(await r.bots.exportAll(BOB)).toMatchObject({ bots: [], keys: [], commands: [], memory: [] });
   });

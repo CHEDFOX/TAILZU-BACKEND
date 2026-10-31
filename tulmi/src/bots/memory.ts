@@ -4,11 +4,12 @@
  *   rememberTurn(deps, turn)   after an answer: say-so facts are kept for nothing; a small model reads the turns now and then; the summary rolls
  *   memoryFor(store, userId, botId)   what the next turn is shown: the facts and the summary
  *
- * Per bot AND per owner: two bots do not share a memory, and a bot's API callers (who are the owner's customers, not the owner) neither read it nor
+ * Per bot AND per owner: a bot's own memory is its own (only the facts shared.ts keeps reach the others), and a bot's API callers (who are the owner's customers, not the owner) neither read it nor
  * write to it. A fact is one short line the owner said about themselves that will still be true next month (a preference, a name, a routine, a goal, a
  * limit). Never a feeling, health, politics, a one-off request, another person's details or anything secret: the role says so (bot_memory), and the code
  * checks again before a line is kept (no secret, no instruction to the bot, one line, 160 characters). At most 40 facts a bot: the oldest go first.
- * The owner reads them and forgets one, or all of it, on the memory routes.
+ * The owner reads them and forgets one, or all of it, on the memory routes. What a bot learns is kept for all of the owner's bots too (shared.ts), unless
+ * it touches a sensitive topic or the owner turned that off.
  *
  * RULES FIRST. "Remember that I train at six" / "yaad rakhna ki ..." keeps the sentence as a fact with no model at all. Otherwise the small model
  * (the tiny tier, at most 40 paise) is asked only when the owner's words sound like they were about themselves (I am, my X is, I prefer, mera ... hai)
@@ -20,6 +21,7 @@ import { scanForSecrets } from "../code/policy.js";
 import { askJson, forModel, oneLine, type CallFn, type ModelCtx } from "../code/work/model.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import { neutral } from "./prompt.js";
+import { learnShared, type SharedDeps } from "./shared.js";
 import type { BotStore, Fact, Thread } from "./store.js";
 import { LIMITS } from "./types.js";
 import { inertRules } from "./validate.js";
@@ -63,6 +65,8 @@ export interface MemoryDeps {
   call?: CallFn;
   gateway?: GatewayDeps;
   now?: () => number;
+  /** Whether the switch is on (shared.ts); the You store when not given. */
+  shared?: Pick<SharedDeps, "on">;
 }
 
 export interface Turn {
@@ -149,5 +153,6 @@ export async function rememberTurn(d: MemoryDeps, t: Turn): Promise<Remembered> 
     }
   }
   await d.store.putThread(t.userId, t.botId, thread);
+  if (out.learned.length) await learnShared(t.userId, out.learned, now, { store: d.store, ...d.shared }).catch(() => []);
   return out;
 }

@@ -34,6 +34,7 @@ import { runBot } from "./run.js";
 import type { BotPorts } from "./ports.js";
 import type { Attached, Turn } from "./prompt.js";
 import { botStore, SlugTaken, type BotStore, type Command, type Fact, type KeyRow } from "./store.js";
+import { forgetSharedTexts, SHARED_ID } from "./shared.js";
 import { BotError, LIMITS, type BotAnswer, type BotDef, type BotEvent, type BotView, type StoredBot } from "./types.js";
 import { parseBotInput, slugOf, type CleanInput, type Limits } from "./validate.js";
 import { isLeaving, LEAVING_MESSAGE } from "../you/deletion.js";
@@ -482,15 +483,18 @@ export class Bots {
     return { facts, summary: thread?.summary ?? "", turns: thread?.turns ?? 0 };
   }
 
-  /** Forgets one fact, or all of it (the facts and the summary). */
+  /** Forgets one fact, or all of it (the facts and the summary), and the copies kept for all their bots (shared.ts). */
   async forget(userId: string, ref: string, factId?: string): Promise<{ forgotten: number }> {
     const found = await this.resolve(userId, ref);
     if (!found) throw notFound();
+    const facts = await this.store.listFacts(userId, found.def.id);
     if (factId !== undefined) {
       if (!(await this.store.dropFact(userId, found.def.id, factId))) throw new BotError("not_found", "There is no such memory.", 404);
+      await forgetSharedTexts(userId, facts.filter((f) => f.id === factId).map((f) => f.text), { store: this.store }).catch(() => 0);
       return { forgotten: 1 };
     }
     const r = await this.store.clearMemory(userId, found.def.id);
+    await forgetSharedTexts(userId, facts.map((f) => f.text), { store: this.store }).catch(() => 0);
     return { forgotten: r.facts };
   }
 
@@ -544,6 +548,9 @@ export class Bots {
       const [facts, thread] = await Promise.all([this.store.listFacts(userId, b.id), this.store.getThread(userId, b.id)]);
       if (facts.length || thread?.summary) memory.push({ bot: b.slug, facts: facts.map((f) => f.text), summary: thread?.summary ?? "" });
     }
+    // What all their bots use (shared.ts), under the name the Privacy screen gives it.
+    const shared = await this.store.listFacts(userId, SHARED_ID);
+    if (shared.length) memory.push({ bot: "all your bots", facts: shared.map((f) => f.text), summary: "" });
     return { bots: mine.map((b) => viewOf(defOf(b), b)), keys, commands, memory, exportedAt: this.now() };
   }
 }

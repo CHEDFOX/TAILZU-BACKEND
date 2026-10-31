@@ -459,7 +459,7 @@ describe("chatting, commands, memory, linked apps, the export", () => {
     expect(out.bots.map((b: { slug: string }) => b.slug)).toEqual(["api-bot"]);
     expect(out.keys).toEqual([expect.objectContaining({ bot: "api-bot", label: "app", masked: k.masked, active: true })]);
     expect(out.commands).toEqual([expect.objectContaining({ bot: "api-bot", name: "go" })]);
-    expect(out.memory).toEqual([{ bot: "api-bot", facts: ["I train at 6am"], summary: "" }]);
+    expect(out.memory).toEqual([{ bot: "api-bot", facts: ["I train at 6am"], summary: "" }, { bot: "all your bots", facts: ["I train at 6am"], summary: "" }]);
     expect(JSON.stringify(out)).not.toContain(k.key);
     expect((await s.get("/v1/bots/export", BOB)).json()).toMatchObject({ bots: [], keys: [], commands: [], memory: [] });
   });

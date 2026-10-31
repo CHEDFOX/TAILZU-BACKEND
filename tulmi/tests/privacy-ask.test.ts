@@ -51,8 +51,8 @@ const google = policy.slice(policy.indexOf("11. Google apps you connect"), polic
 
 describe("the policy's date and shape", () => {
   it("is effective from the day Xode, connected apps, bots, files and the Lock Screen got their own sections", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 30, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 30, 2026");
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 31, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 31, 2026");
   });
 
   it("numbers its sections 1 to 17, once each, in order", () => {
@@ -344,8 +344,8 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: October 30, 2026");
+    expect(res.body).toContain("Effective: October 31, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "October 30, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "October 31, 2026" });
   });
 });

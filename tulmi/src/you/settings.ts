@@ -6,7 +6,8 @@
  *   notify            what pings them (push.ts reads it): needs you always does; done "quiet" (sent without a sound) or "ping"; a daily summary at an
  *                     hour; quiet hours, when nothing makes a sound and done waits; bots turned off (their done pings stop; needs you still comes).
  *                     The defaults are what the pushes did before the screen existed: done pings, no summary, no quiet hours.
- *   privacy           the screen-picture choice they made on the desktop ("ask" first, or "allow"), so the screens show it back
+ *   privacy           the screen-picture choice they made on the desktop ("ask" first, or "allow"), so the screens show it back; and whether
+ *                     what they told their bots personalises every answer (personalise, on unless they turn it off: src/bots/shared.ts)
  */
 import { DEFAULT_MONTH_BUDGET_PAISE } from "../experience/bots/live.js";
 
@@ -27,14 +28,14 @@ export interface YouSettings {
   stopAtLimit: boolean;
   notify: NotifySettings;
   /** cleared: Activity rows the person took off their list ("job:<id>", "words:<day>"), newest last. Kept in the privacy column. */
-  privacy: { screenPictures: "ask" | "allow"; cleared?: string[] };
+  privacy: { screenPictures: "ask" | "allow"; personalise: boolean; cleared?: string[] };
 }
 
 export const DEFAULT_SETTINGS: YouSettings = {
   monthLimitPaise: DEFAULT_MONTH_BUDGET_PAISE,
   stopAtLimit: false,
   notify: { done: "ping", summary: false, summaryAt: 21 * 60, quiet: false, quietFrom: 23 * 60, quietTo: 7 * 60, botsOff: [] },
-  privacy: { screenPictures: "ask" },
+  privacy: { screenPictures: "ask", personalise: true },
 };
 
 /** 1,00,00,000 paise a month is the most a stored limit may be. */
@@ -69,6 +70,7 @@ export function cleanSettings(raw: unknown): YouSettings {
     },
     privacy: {
       screenPictures: p.screenPictures === "allow" ? "allow" : "ask",
+      personalise: p.personalise !== false,
       ...(Array.isArray(p.cleared) ? { cleared: cleanCleared(p.cleared) } : {}),
     },
   };
@@ -143,6 +145,10 @@ export function applyPatch(cur: YouSettings, raw: unknown): Patched {
   if (p.screenPictures !== undefined) {
     if (p.screenPictures !== "ask" && p.screenPictures !== "allow") return { ok: false, message: 'screenPictures is "ask" or "allow".' };
     next.privacy.screenPictures = p.screenPictures;
+  }
+  if (p.personalise !== undefined) {
+    if (typeof p.personalise !== "boolean") return { ok: false, message: "personalise is true or false." };
+    next.privacy.personalise = p.personalise;
   }
   return { ok: true, settings: next };
 }

@@ -57,10 +57,10 @@ const FEATURES = [
 
 beforeEach(() => { resetSettingsStoreForTests(); });
 
-async function chatRig(over: { rooms?: Parameters<typeof chatMod.CodeChat.prototype.answer> extends never ? never : unknown } = {}) {
+async function chatRig(over: { rooms?: Parameters<typeof chatMod.CodeChat.prototype.answer> extends never ? never : unknown; personal?: (userId: string, about: string) => Promise<string[]> } = {}) {
   const a = await agentRig({ files: FILES, rows: ROWS, features: FEATURES });
   const threads = new chatMod.MemoryThreadStore();
-  const chat = new chatMod.CodeChat({ projects: a.d, brain: { open: async () => a.fixture.brain } as never, call: a.model.call as never, threads, now: () => a.now(), ...(over.rooms ? { rooms: over.rooms as never } : {}) });
+  const chat = new chatMod.CodeChat({ projects: a.d, brain: { open: async () => a.fixture.brain } as never, call: a.model.call as never, threads, now: () => a.now(), ...(over.rooms ? { rooms: over.rooms as never } : {}), ...(over.personal ? { personal: over.personal } : {}) });
   const ask = (question: string, o: Partial<Parameters<typeof chat.answer>[0]> = {}) =>
     chat.answer({ userId: "alice", projectId: a.project.id, question, tier: "cheap", length: "short", diagram: false, maxPaise: 150, ...o });
   /** GitHub reads of file contents since the rig was made. */
@@ -284,6 +284,19 @@ describe("the conversation", () => {
     expect(second.located.targets.map((t) => t.path)).toContain("src/auth/session.ts");
     // the chat keeps the person's own words
     expect(second.thread!.history.at(-1)!.q).toBe("and cleared?");
+  });
+
+  it("shows the model what the person told their bots, as data, and nothing when there is none", async () => {
+    const asked: string[] = [];
+    const r = await chatRig({ personal: async (userId, about) => { asked.push(`${userId}: ${about}`); return ["I write TypeScript, not Python"]; } });
+    r.a.json.on("front.code_answer", "In startSession: src/auth/session.ts:3.");
+    await r.ask("where is the session cookie set?");
+    expect(asked).toEqual(["alice: where is the session cookie set?"]);
+    expect(said(r, 0).user).toContain("<about_them>\n- I write TypeScript, not Python\n</about_them>");
+    const bare = await chatRig({ personal: async () => [] });
+    bare.a.json.on("front.code_answer", "In startSession: src/auth/session.ts:3.");
+    await bare.ask("where is the session cookie set?");
+    expect(said(bare, 0).user).not.toContain("<about_them>");
   });
 
   it("brings back an earlier answer the question is about again, beyond the last turn, for nothing", () => {

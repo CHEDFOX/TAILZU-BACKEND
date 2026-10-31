@@ -18,6 +18,7 @@
  * The defaults are built from what the server has (defaultHandlers); a road whose part is not switched on answers FrontError with the
  * reason in words, never silence. Nothing here logs what was sent or received.
  */
+import { aboutLines, sharedFacts } from "../bots/shared.js";
 import type { Artifacts } from "../artifacts/index.js";
 import { CodeChat } from "../code/chat/index.js";
 import type { ThreadStore } from "../code/chat/threads.js";
@@ -106,6 +107,8 @@ export interface HandlerDeps {
   threads?: ThreadStore;
   /** The job's copy of the code for the person's open job on a project, if any: a question is then answered with read and grep from it instead of GitHub reads. */
   rooms?: (userId: string, projectId: string) => Promise<Pick<LiveFiles, "read" | "grep"> | null>;
+  /** The few things the person told their bots that matter to a message (bots/shared.ts sharedFacts when not given). */
+  personal?: (userId: string, about: string) => Promise<string[]>;
 }
 
 /** A road's words streamed as the model writes them, when the caller listens: what to hand the model call, and whether any were sent. */
@@ -127,7 +130,7 @@ const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 
 // ------------------------------------------------------------------ reply
 
 /** The shape the reply role is told: its length, whether to lead with a table, and whether it will be read out. */
-export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, files: readonly ReadFile[]): string {
+export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, files: readonly ReadFile[], about: readonly string[] = []): string {
   const v = c.decision.shape.visual;
   const table = v?.kind === "table" && v.via === "inline" && !v.offer;
   const recent = c.message.trim().split(/\s+/).length <= 8 && c.ctx.recent.length
@@ -137,6 +140,7 @@ export function replyUser(c: Pick<RouteCall, "message" | "ctx" | "decision">, fi
     ...(c.ctx.mode === "voice" ? ["Spoken: yes."] : []),
     ...files.map((f) => `<file name="${esc(f.name)}" kind="${f.kind}">\n${fence(f.text)}\n</file>`),
     ...(recent ? [recent.trim()] : []),
+    ...(about.length ? [`About them:\n<<<\n${forModel(aboutLines(about)).replace(/>>>/g, "> > >")}\n>>>`] : []),
     "",
     `Message:\n<<<\n${forModel(c.message).replace(/>>>/g, "> > >")}\n>>>`,
   ].join("\n");
@@ -149,8 +153,10 @@ async function replyDefault(d: HandlerDeps, c: RouteCall & { files: ReadFile[] }
   }
   const tier = c.decision.tier === "vision" ? "cheap" : c.decision.tier;
   const words = streamed(c);
+  // What they told their bots about themselves (bots/shared.ts), the few lines that matter here.
+  const about = await (d.personal ?? sharedFacts)(c.userId, c.message).catch(() => [] as string[]);
   const r = await askText(model(d, c), {
-    role: "front_reply", tier, purpose: "front.reply", user: replyUser(c, c.files), maxTokens: REPLY_TOKENS[c.decision.shape.length], budget: { maxPaise: c.maxPaise },
+    role: "front_reply", tier, purpose: "front.reply", user: replyUser(c, c.files, about), maxTokens: REPLY_TOKENS[c.decision.shape.length], budget: { maxPaise: c.maxPaise },
     ...words.ask,
   });
   if (!words.sent()) c.onText?.(r.text);
@@ -176,7 +182,7 @@ function chatOf(d: HandlerDeps, c: RouteCall): { chat: CodeChat; projectId: stri
     projectId,
     chat: d.chat ?? new CodeChat({
       projects: pd, brain: code.brain, ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), ...(d.threads ? { threads: d.threads } : {}),
-      ...(d.rooms ? { rooms: d.rooms } : {}),
+      ...(d.rooms ? { rooms: d.rooms } : {}), ...(d.personal ? { personal: d.personal } : {}),
     }),
   };
 }
