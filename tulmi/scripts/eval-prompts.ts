@@ -43,7 +43,7 @@ export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   spec: "strong", brief: "code", research_answer: "code", research_gaps: "cheap", search_plan: "tiny",
   artifact_element: "cheap", artifact_edit: "cheap", artifact_fix: "cheap", artifact_make: "code", artifact_ask: "cheap",
   artifact_vision: "vision", artifact_compare: "vision",
-  front_decide: "tiny", front_reply: "cheap", front_code_answer: "cheap", front_diagram: "cheap", front_plan: "cheap", front_look: "vision",
+  front_decide: "tiny", front_reply: "cheap", front_code_answer: "cheap", front_complete: "tiny", front_diagram: "cheap", front_plan: "cheap", front_look: "vision",
   care_review: "cheap", care_conflict: "cheap",
   team_split: "strong", team_review: "review",
   bot_builder: "cheap", bot_pick: "tiny", bot_run: "cheap", bot_memory: "tiny",

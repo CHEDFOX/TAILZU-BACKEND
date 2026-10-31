@@ -273,6 +273,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   front_decide: 1606, // 1460 measured
   front_reply: 1173, // 1066 measured
   front_code_answer: 1174, // 1067 measured
+  front_complete: 712, // 647 measured
   front_diagram: 612, // 556 measured
   front_plan: 735, // 668 measured
   front_look: 646, // 587 measured

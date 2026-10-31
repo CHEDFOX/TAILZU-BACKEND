@@ -72,6 +72,8 @@ export interface ChatInput {
   /** When `question` was written out for the person (a reaction like "??"): their own words, which the chat shows, and the question the thread keeps. */
   shown?: string;
   kept?: string;
+  /** A follow-up made complete (front/complete.ts): what the person meant, shown to the model beside their words. */
+  meant?: string;
   tier: ModelTier;
   length: Length;
   maxPaise: number;
@@ -134,11 +136,6 @@ export function withoutNext(onText: (piece: string) => void): { onText: (piece: 
 const trimLocated = (l: Located): Located => ({
   targets: l.targets.slice(0, 5), related: l.related.slice(0, 8), tests: l.tests.slice(0, 6), confidence: l.confidence, used: { expanded: l.used.expanded, picked: l.used.picked, paise: 0 },
 });
-
-/** The searched words for a question: a follow-up is looked up together with the one before it. */
-export function searchFor(question: string, thread: ChatThread | null): string {
-  return thread?.lastQuestion && isFollowUp(question) ? `${thread.lastQuestion}. ${question}` : question;
-}
 
 interface Facts {
   text: string;
@@ -369,7 +366,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const ports = cachedPorts(given);
   const { brain } = ports;
   const anchors = new Anchors();
-  const rq = readQuestion(input.kept ?? input.question);
+  const rq = readQuestion(input.kept ?? input.meant ?? input.question);
   const notes: string[] = [];
 
   // Where it is, from the index alone: no file is read to find out.
@@ -416,6 +413,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const left = Math.max(0, input.maxPaise - located.used.paise);
   const user = [
     `<question>\n${forModel(input.question).replace(/<\/question/gi, "<\\/question")}\n</question>`,
+    ...(input.meant && input.meant !== input.question ? [`<meant>\n${fence(forModel(input.meant))}\n</meant>`] : []),
     ...(input.thread?.summary ? [threadBlock(input.thread).trim()] : []),
     ...(lastAnswer(input) ? [`<last_answer>\n${fence(forModel(lastAnswer(input)))}\n</last_answer>`] : []),
     ...(facts.text ? [`<facts>\n${fence(forModel(facts.text))}\n</facts>`] : []),

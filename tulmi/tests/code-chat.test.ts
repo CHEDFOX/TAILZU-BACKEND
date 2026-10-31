@@ -271,6 +271,21 @@ describe("the conversation", () => {
     expect(said(r, 2).user).not.toContain("<last_answer>");
   });
 
+  it("looks a follow-up up as the person meant it, completed by the tiny model, and shows the model what was meant", async () => {
+    const r = await chatRig();
+    const threadId = "f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1";
+    r.a.json.on("front.code_answer", "In startSession: src/auth/session.ts:3.");
+    await r.ask("where is the session cookie set?", { threadId });
+    r.a.json.on("front.complete", "Where is the session cookie cleared?");
+    r.a.json.on("front.code_answer", "endSession clears it: src/auth/session.ts:8.");
+    const second = await r.ask("and cleared?", { threadId });
+    expect(r.a.json.of("front.complete")).toHaveLength(1);
+    expect(said(r, 1).user).toContain("<meant>\nWhere is the session cookie cleared?\n</meant>");
+    expect(second.located.targets.map((t) => t.path)).toContain("src/auth/session.ts");
+    // the chat keeps the person's own words
+    expect(second.thread!.history.at(-1)!.q).toBe("and cleared?");
+  });
+
   it("keeps at most HISTORY_TURNS turns, however long the chat goes", () => {
     let t = chatMod.newThread("alice", "p", "dddddddd-dddd-4ddd-8ddd-dddddddddddd", 0);
     for (let i = 0; i < chatMod.HISTORY_TURNS + 7; i += 1) t = chatMod.afterTurn(t, { question: `q${i}`, cites: [], located: null, now: i, answer: "a".repeat(9000) });
