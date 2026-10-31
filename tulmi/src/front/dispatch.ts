@@ -181,7 +181,8 @@ async function dispatchRequest(decision: Decision, message: string, ctx: FrontCt
     } catch (err) {
       if (isAbort(err)) throw err;
       const why = err instanceof FrontError ? err.message : "something went wrong";
-      result.notes.push(`I left out the ${v.kind}: ${why}`);
+      // Said only when they asked for it: a picture they never asked for is not missed ("I left out the diagram" under "what did you change?").
+      if (v.asked) result.notes.push(`I left out the ${v.kind}: ${why}`);
     }
   }
 

@@ -53,6 +53,11 @@ export const TURNS_MAX = 60;
 export const FREEFORM_STEPS_MAX = 50;
 export const FREEFORM_RUNS_MAX = 30;
 /**
+ * The web calls one job may make. A change to the person's code is made from their code: the commander run spent most of 31 steps on searches, pages that
+ * answered 404 and `npm pack` of the project's own published package, looking for how upstream had built the feature, and ran out of money before the change.
+ */
+export const WEB_CALLS_MAX = 4;
+/**
  * Steps a free-form job is given past its cap for each round of fixing what the checks found, and for the focused test it is asked for: a job that used its 50
  * steps and then broke a test had no step left to fix it, and its three fix rounds ran the checks on the same edits three times (the first comparison run).
  */
@@ -460,6 +465,8 @@ export interface AgentState {
     badTurns: number;
     fixRounds: number;
     runs: number;
+    /** Web calls (web_search, read_page, research) this job has made: at most WEB_CALLS_MAX. */
+    web?: number;
     staged: StagedFile[];
     /** The excerpts of the located files, as they were when work began. */
     excerpts?: string;

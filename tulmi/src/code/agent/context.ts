@@ -334,7 +334,8 @@ export function freeformGuide(s: AgentState): string {
   return [
     head,
     "How to work:",
-    "1. Find the code: suggest_files ranks the project index's guesses with reasons; grep finds exact names and every call site; read whole functions, not slivers.",
+    "1. Find the code: suggest_files ranks the project index's guesses with reasons; grep finds exact names and every call site; read whole functions, not slivers. "
+      + "The answer is in this project's own code: do not go looking for how someone else built it (the web, a published copy of this package).",
     "2. If the request leaves open WHAT to build (several reasonable designs, names or behaviours, or it does not say what is wrong), ask_user once, with two or three concrete options, before you change code.",
     "3. A bug: reproduce it first (a small script or the test that covers it, with run) and see it fail; then look for the cause, which may be far from where it shows. "
       + "A script to try something goes inside the run command (a heredoc into /tmp), never in write_file: every file you write is committed.",
@@ -343,6 +344,9 @@ export function freeformGuide(s: AgentState): string {
     "6. Call done with what you changed and why (the server then runs the project's checks, and may ask you for one focused test of the change).",
   ].join("\n");
 }
+
+/** Steps of reading after which a free-form job with nothing staged is told to start the change. */
+export const START_EDITING_AFTER = 12;
 
 /** The status line at the end of a transcript job's prompt: the step, the runs, what is staged, and a warning near the cap. */
 function statusLine(i: ContextInput): string {
@@ -362,6 +366,8 @@ function statusLine(i: ContextInput): string {
   }
   // Half the steps gone on a change with nothing staged: a model that keeps reading is lost in it, not careful (the first free-form runs: 38 steps of research).
   else if (freeform && !asksOnly(s) && !i.stagedLines.length && w.turns >= FREEFORM_STEPS_MAX / 2) parts.push("Half the steps are used and nothing is staged: you know enough to make the change now; make it, then check it.");
+  // Earlier, softer: twelve steps of reading is enough to start (the commander run read 43 times before its first edit and ran out of money doing it).
+  else if (freeform && !asksOnly(s) && !i.stagedLines.length && w.turns >= START_EDITING_AFTER) parts.push(`${w.turns} steps of reading and nothing is staged: start the change now, the part you are sure of first, and check it as you go.`);
   return parts.join(" ");
 }
 

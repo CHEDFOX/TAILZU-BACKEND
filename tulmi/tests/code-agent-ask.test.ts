@@ -11,6 +11,8 @@ vi.hoisted(() => {
   process.env.OPENROUTER_API_KEY = "k";
   process.env.GROQ_API_KEY = "k";
   process.env.DEV_SKIP_AUTH = "true";
+  // The project map in each commit (off by default): this file checks it goes with the change when it is on.
+  process.env.CODE_PROJECT_MAP_FILES = "true";
   process.env.NODE_ENV = "test";
   process.env.CONNECTOR_TOKEN_KEY = Buffer.from("0123456789abcdef0123456789abcdef").toString("base64");
 });

@@ -94,10 +94,13 @@ export function checkCitations(text: string, anchors: Anchors): Checked {
     const c: Cite = { path: p.replace(/^\.\//, ""), from: Number(a), to: b ? Number(b) : Number(a), text: whole };
     if (resolves(c, anchors)) { if (!kept.includes(whole)) kept.push(whole); return whole; }
     dropped.push(whole);
-    return "\u0000";
+    // A file this answer knows, at a line it cannot check: the file stays and the line goes, so the sentence keeps its subject ("lives in (" was left).
+    return anchors.has(c.path) ? c.path : "\u0000";
   });
   if (dropped.length) {
     out = out
+      // A dropped citation in backticks goes with its backticks (the changesets run: "listed as a user of ``").
+      .replace(/`\u0000`/g, "\u0000")
       .replace(/\s*[(\[]\s*(?:(?:see|in|at|from|per|cf\.?)\s+)?\u0000(?:\s*[,;]\s*\u0000)*\s*[)\]]/gi, "")
       .replace(/\u0000(?:\s*[,;]\s*\u0000)*/g, "")
       .replace(/\b(?:see|in|at|from|per)\s*(?=[.,;:)]|$)/gi, "")

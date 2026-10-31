@@ -171,14 +171,17 @@ describe("a visual beside the answer", () => {
     expect(t.h.calls.reply[0]!.decision.shape.visual).toMatchObject({ kind: "table", via: "inline" });
   });
 
-  it("does not fail the answer when it cannot be made: the answer goes out, and the notes say what was left out", async () => {
+  it("does not fail the answer when it cannot be made: the answer goes out, and the notes say what was left out when it was asked for", async () => {
     const t = rig({ handlers: { artifact: async () => { throw new FrontError("model_down", "No model could be reached just now.", 503); } } });
     const c = inProject();
     const d = await rules("how does the login flow work", c);
     const { result } = await t.run(d, "how does the login flow work", c);
     expect(result.text).toBe("It lives in src/auth/login.ts:12.");
     expect(result.artifacts).toEqual([]);
-    expect(result.notes).toEqual(["I left out the diagram: No model could be reached just now."]);
+    // Not asked for: not missed.
+    expect(result.notes).toEqual([]);
+    const asked = { ...d, shape: { ...d.shape, visual: { ...d.shape.visual!, asked: true } } };
+    expect((await t.run(asked, "how does the login flow work", c)).result.notes).toEqual(["I left out the diagram: No model could be reached just now."]);
   });
 
   it("does fail a design when the design cannot be made: the design is the answer", async () => {

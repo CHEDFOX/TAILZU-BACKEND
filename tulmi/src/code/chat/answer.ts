@@ -46,8 +46,8 @@ const LANGUAGE_WORDS: Record<string, string> = { en: "English", hinglish: "Hingl
 
 /** What reading may cost the model: files, characters in all, and per file. */
 export const READ_FILES_MAX = 3;
-export const READ_CHARS_MAX = 5_000;
-export const READ_FILE_CHARS = 1_800;
+export const READ_CHARS_MAX = 8_000;
+export const READ_FILE_CHARS = 3_000;
 /** Lines around where the evidence points, and the lines of a file without a pointer. */
 const SPAN_AROUND = 20;
 const SPAN_HEAD = 50;
@@ -212,6 +212,34 @@ async function gatherBrainFacts(brain: ChatBrain, located: Located, targets: rea
 }
 
 /** The lines of a file around where the evidence points, numbered, cut. */
+/**
+ * The two places in `text` where the question's words gather most (windows of SPAN_HEAD lines, apart), the second only when it holds at least half
+ * as many: a question about "fixed and linked" groups finds the fixed rules and, further down, the linked ones. Empty when none of the words is there.
+ */
+export function bestSpans(text: string, search: string): Array<[number, number]> {
+  const first = bestSpan(text, search);
+  if (!first) return [];
+  const all = text.split("\n");
+  const from = first[0] - SPAN_AROUND, to = first[1] + SPAN_AROUND;
+  // The rest of the file, with the first window blanked out, searched again.
+  const rest = all.map((l, i) => (i + 1 >= from && i + 1 <= to ? "" : l)).join("\n");
+  const second = bestSpan(rest, search);
+  if (!second) return [first];
+  const hits = (span: [number, number]) => wordHits(all.slice(span[0] - SPAN_AROUND - 1, span[1] + SPAN_AROUND), search);
+  return hits(second) * 2 >= hits(first) ? [first, second].sort((a, b) => a[0] - b[0]) : [first];
+}
+
+const wordHits = (lines: readonly string[], search: string): number => {
+  const words = [...wordsOf(search)].filter((w) => w.length >= 4).map((w) => w.replace(/s$/, ""));
+  return lines.reduce((n, l) => { const low = l.toLowerCase(); return n + words.filter((w) => low.includes(w)).length; }, 0);
+};
+
+/** The windows' lines, numbered, one after the other: the whole of the room one file has. */
+function spansOf(text: string, spans: ReadonlyArray<[number, number]>): string {
+  if (!spans.length) return around(text);
+  return cut(spans.map((sp) => around(text, sp)).join("\n…\n"), READ_FILE_CHARS);
+}
+
 /** The lines of `text` where the question's words gather most (a window of SPAN_HEAD lines), or undefined when none of them is there. */
 export function bestSpan(text: string, search: string): [number, number] | undefined {
   const words = [...wordsOf(search)].filter((w) => w.length >= 4).map((w) => w.replace(/s$/, ""));
@@ -239,14 +267,28 @@ function around(text: string, lines?: [number, number]): string {
 
 const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** A chat answer as a chat shows it: a heading is a bold line, and a code name runs into the next word with a space between ("`index.js:1`exports"). */
+export function tidy(text: string): string {
+  // Code spans are taken left to right as pairs, so the gap between two of them is never read as one (that put a space inside "`program`").
+  const spaced = text.replace(/^#{1,6}[ \t]+(.+?)[ \t]*#*[ \t]*$/gm, "**$1**")
+    .replace(/`[^`\n]+`/g, (span: string, at: number, all: string) => (/^[A-Za-z]{3}/.test(all.slice(at + span.length, at + span.length + 3)) ? `${span} ` : span));
+  // The prompt's word for what was read is not the person's: outside code, "the excerpts" are the files read.
+  return spaced.split(/(`[^`\n]*`)/).map((part) => (part.startsWith("`") ? part : part
+    .replace(/\b(?:the|these|those|this|that) excerpts?(?: (?:I was given|you gave(?: me)?|you've given(?: me)?|I have|I got|I can see|I see|shown|provided|here))?\b/gi, (m) => (m[0] === m[0]!.toUpperCase() ? "The files I read" : "the files I read"))
+    .replace(/\bexcerpts?\b/gi, "the files I read"))).join("").replace(/\bthe the\b/gi, "the");
+}
+
 const TAG_WORDS: Record<string, string> = {
   facts: "the project's index", excerpts: "the files I read", thread: "our chat", last_answer: "my last answer", job: "the job", meant: "your question", earlier: "earlier answers", about_them: "what you told me",
 };
 /** The prompt's block names said in plain words: a person never reads "<excerpts>" (the changesets run: "<facts>/<excerpts> mein ..."). */
 export function plainTags(text: string): string {
   const tag = /<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them)>(?:\s*\/\s*<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them)>)?/g;
-  // Only outside code: a backtick span is the project's own text.
-  return text.split(/(`[^`\n]*`)/).map((part) => (part.startsWith("`") ? part : part.replace(tag, (_m, a: string, b?: string) => (b ? `${TAG_WORDS[a]} and ${TAG_WORDS[b]}` : TAG_WORDS[a]!)).replace(/\b([Tt]he) the\b/g, "$1"))).join("");
+  // Only outside code: a backtick span is the project's own text, unless it is nothing but one of the block names ("The `<job>` says").
+  const named = /^`<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them)>`$/;
+  return text.split(/(`[^`\n]*`)/)
+    .map((part) => (named.test(part) ? TAG_WORDS[named.exec(part)![1]!]! : part.startsWith("`") ? part : part.replace(tag, (_m, a: string, b?: string) => (b ? `${TAG_WORDS[a]} and ${TAG_WORDS[b]}` : TAG_WORDS[a]!))))
+    .join("").replace(/\b([Tt]he) the\b/g, "$1");
 }
 
 /** The patterns worth a grep for this question: the names in the words, and a quoted string. */
@@ -261,12 +303,41 @@ export function grepPatterns(search: string): string[] {
  * the question is about is opened, not only named (the changesets run: "rules.ts holds the fixed and linked checks, but I can't see its contents").
  */
 async function withRanked(targets: readonly LocateTarget[], search: string, brain: ChatBrain): Promise<LocateTarget[]> {
-  const ranked = (await fusedFor(search, brain).catch(() => [])).filter((f) => !isSecretPath(f.path) && !targets.some((t) => t.path === f.path)).slice(0, READ_FILES_MAX - 1);
+  // Ranked with the quote marks and without: the ranking takes a quoted piece for a string on a screen and leaves its words out, which hid
+  // 'trust proxy' (a setting's name) in the express run; and the project's own source before its examples and docs, which name it everywhere.
+  const plain = search.replace(/["'“”‘’`]/g, " ");
+  const runs = await Promise.all([fusedFor(search, brain).catch(() => []), plain !== search ? fusedFor(plain, brain).catch(() => []) : Promise.resolve([])]);
+  const best = new Map<string, (typeof runs)[number][number]>();
+  for (const f of runs.flat()) if ((best.get(f.path)?.score ?? -1) < f.score) best.set(f.path, f);
+  const aside = (p: string) => (/(^|\/)(?:examples?|samples?|demos?|docs?|benchmarks?|fixtures?)\//i.test(p) ? 1 : 0);
+  const ranked = [...best.values()].filter((f) => !isSecretPath(f.path) && !targets.some((t) => t.path === f.path))
+    .sort((a, b) => aside(a.path) - aside(b.path) || b.score - a.score).slice(0, READ_FILES_MAX - 1);
   const out: LocateTarget[] = [];
   for (let i = 0; i < Math.max(targets.length, ranked.length); i++) {
     if (targets[i]) out.push(targets[i]!);
     const f = ranked[i];
     if (f) out.push({ path: f.path, why: "ranked by name, symbols and words", signals: f.signals, score: f.score });
+  }
+  return out;
+}
+
+/**
+ * A question about the tests reads the tests: the ones the thread's job changed, then the ones the index links to the files (and to the files that
+ * use them), one of each in turn with the code (the changesets run answered "is the 3-group case covered?" from the job's report, never opening the test).
+ */
+async function withTests(targets: readonly LocateTarget[], job: string | undefined, brain: ChatBrain): Promise<LocateTarget[]> {
+  const found: string[] = [];
+  for (const m of (job ?? "").matchAll(/^\s*-\s+(\S+)\s+\((?:changed|added)\)/gm)) if (isTestPath(m[1]!)) found.push(m[1]!);
+  for (const t of targets.slice(0, 2)) {
+    found.push(...(await brain.testsFor(t.path).catch(() => [] as string[])));
+    const near = await brain.neighbors(t.path).catch(() => null);
+    for (const p of (near?.importedBy ?? []).filter((x) => !isTestPath(x)).slice(0, 2)) found.push(...(await brain.testsFor(p).catch(() => [] as string[])));
+  }
+  const tests = [...new Set(found)].filter((p) => !isSecretPath(p) && !targets.some((t) => t.path === p)).slice(0, 2);
+  const out: LocateTarget[] = [];
+  for (let i = 0; i < Math.max(tests.length, targets.length); i++) {
+    if (tests[i]) out.push({ path: tests[i]!, why: "a test of the code in question", signals: [], score: 1 });
+    if (targets[i]) out.push(targets[i]!);
   }
   return out;
 }
@@ -301,7 +372,7 @@ async function readSpans(ports: ChatPorts, targets: readonly LocateTarget[], sea
     if (body === null && ports.read) {
       // A file with no pointer into it is read where the question's words gather, not from its top (the changesets run read rules.ts's imports only).
       const text = await ports.read(t.path).catch(() => null);
-      if (text !== null) { anchors.read(t.path, text); body = around(text, t.lines ?? bestSpan(text, search)); }
+      if (text !== null) { anchors.read(t.path, text); body = t.lines ? around(text, t.lines) : spansOf(text, bestSpans(text, search)); }
     }
     if (body === null && room && !t.lines) {
       const r = await room.read(t.path, { offset: 1, limit: SPAN_HEAD }).catch(() => null);
@@ -466,7 +537,8 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const located = await locate(input.search, brain, { model: ctxOf(model, Math.max(1, Math.min(LOCATE_PAISE, input.maxPaise))) });
   const targets = located.targets.filter((t) => !isSecretPath(t.path)).slice(0, FACT_FILES);
   const sure = !located.question && located.confidence >= CONFIDENT && targets.length > 0;
-  if (!sure && targets.length) notes.push("I was not sure which part of the code this is about, so this rests on the closest files.");
+  // Said after the reading, and only when nothing could be read: an answer from the files it read rests on them, sure or not.
+  const unsure = !sure && targets.length > 0;
 
   let road: Road;
   let facts: Facts = { text: "", rich: false, flow: false };
@@ -488,12 +560,14 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     values = await gatherValues(ports, located, targets, rq, anchors);
     if (values.length) facts = { ...facts, text: `${facts.text}\nvalues in the code:\n${factsBlock(values)}` };
     // Enough from the brain alone? Sure of the files, the facts say something about each, and the question is not one that needs the code itself.
-    const fast = sure && facts.rich && rq.kind !== "why" && !rq.wantsCode && (rq.kind !== "how" || facts.flow);
+    const fast = sure && facts.rich && rq.kind !== "why" && !rq.wantsCode && !rq.tests && !rq.usage && (rq.kind !== "how" || facts.flow);
     if (fast) road = "fast";
     else {
-      ({ excerpts, reads, greps } = await readSpans(ports, sure ? targets : await withRanked(targets, input.search, brain), input.search, anchors, input.onStep));
+      // Unsure, or asked where something is used (its uses are rarely where it is defined): the free ranking's picks are read beside the model's.
+      const reading = sure && !rq.usage ? targets : await withRanked(targets, input.search, brain);
+      ({ excerpts, reads, greps } = await readSpans(ports, rq.tests ? await withTests(reading, input.job, brain) : reading, input.search, anchors, input.onStep));
       road = "read";
-      if (!excerpts.length) notes.push("I could not read the files themselves, so this rests on the project's index.");
+      if (!excerpts.length) notes.push(unsure ? "I was not sure which part of the code this is about, and could not read the files, so this rests on the project's index." : "I could not read the files themselves, so this rests on the project's index.");
     }
   } else {
     const view: BrainView = await brain.status();
@@ -525,10 +599,11 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const { text: said, next } = splitNext(r.text);
 
   // Every path:line in the answer is something that was seen; the rest is taken out, and the notes say so.
-  const checked = checkCitations(plainTags(said), anchors);
+  const checked = checkCitations(tidy(plainTags(said)), anchors);
   if (checked.dropped.length) notes.push(`I took out ${checked.dropped.length} reference${checked.dropped.length === 1 ? "" : "s"} to code I could not find.`);
   // The values the question asks about, and the ones on the lines it cites, are in the answer by name and by value; the ones it left out are added, with where they are.
-  const missing = missingFacts(values, input.question, checked.text);
+  // Values named by the question are added only to a question that asks for a value: "how does the help print a line?" got "displayHelp is true".
+  const missing = missingFacts(values, rq.values ? input.question : "", checked.text);
   const answerText = withMissing(checked.text, missing);
   if (missing.length) notes.push(`The answer left out ${missing.length === 1 ? "a value" : `${missing.length} values`} the code holds (${missing.map((f) => f.name).join(", ")}), so ${missing.length === 1 ? "it was" : "they were"} added.`);
   const cites = [...new Set([...keptLocations(checked.kept), ...missing.map((f) => `${f.path}:${f.line}`)])];

@@ -33,21 +33,53 @@ const arg = (name: string, d: string): string => { const i = process.argv.indexO
 const CAP_PAISE = Math.round(Number(arg("cap-inr", "80")) * 100);
 const TASK_ID = arg("task", "changesets-bug-e522996");
 const JOB_TIMEOUT_MS = Number(arg("job-minutes", "25")) * 60_000;
+/** What the project brain may spend summarising the repo when it is added: the product's own default (CODE_IMPORT_BUDGET_PAISE, ₹10) unless said. */
+const BRAIN_PAISE = Math.round(Number(arg("brain-inr", "10")) * 100);
 const OUT = path.join(E2E_DIR, "out", "conversation");
 
-/** What the person says, in order. `after` runs before the message is sent (the person merging the pull request on GitHub). */
-interface Step { say: string; after?: "merge" }
-const SCRIPT: Step[] = [
-  { say: "hi! I just connected this repo. what is it, in a few lines?" },
-  { say: "how does it check the config file? where's that code?" },
-  { say: "and for the fixed and linked groups, what rules does it check?" },
-  { say: "??" },
-  { say: "hmm I think there's a bug. with fixed: [[\"pkg-a\"], [\"pkg-a\"], [\"pkg-b\"]] the \"pkg-a is defined in multiple groups\" error shows up twice. can you fix it?" },
-  { say: "what did you change, and how do you know it works?" },
-  { say: "looks good, I merged it. is the 3-group case covered by a test now?", after: "merge" },
-];
+/**
+ * What the person says, in order, per task. `after: "merge"` merges the last job's branch on GitHub first; `whileJob` is said while the last job is
+ * still working (after it has started on the code), the way a person checks in; the job is then followed to its end before the next step.
+ */
+interface Step { say: string; after?: "merge"; whileJob?: boolean }
+const SCRIPTS: Record<string, Step[]> = {
+  "changesets-bug-e522996": [
+    { say: "hi! I just connected this repo. what is it, in a few lines?" },
+    { say: "how does it check the config file? where's that code?" },
+    { say: "and for the fixed and linked groups, what rules does it check?" },
+    { say: "??" },
+    { say: "hmm I think there's a bug. with fixed: [[\"pkg-a\"], [\"pkg-a\"], [\"pkg-b\"]] the \"pkg-a is defined in multiple groups\" error shows up twice. can you fix it?" },
+    { say: "what did you change, and how do you know it works?" },
+    { say: "looks good, I merged it. is the 3-group case covered by a test now?", after: "merge" },
+  ],
+  "commander-feat-deprecated-option": [
+    { say: "what does this library do, briefly?" },
+    { say: "how does an option get declared, and how does the help print an option's line? point me at the code" },
+    { say: "and where are the TypeScript typings for Option?" },
+    { say: "I want to retire some options gently. add Option#deprecated(message?), returning the option so it chains. "
+      + "a deprecated option still works exactly as before, but when it's given on the command line write ONE warning per parse to the command's writeErr: "
+      + "`warning: option '<flags>' is deprecated: <message>` plus a newline, or `warning: option '<flags>' is deprecated` when there's no message, flags as declared (like `--old-name <value>`). "
+      + "not an error, the action still runs. no warning when the value only comes from a default or an env var. it has to work for subcommand options too. "
+      + "in the help, the option's line should say `deprecated` next to the default/env info. and add it to the typings." },
+    { say: "how's it going? anything tricky so far?", whileJob: true },
+    { say: "what did you change, and how did you check the help output and the subcommand case?" },
+    { say: "merged, thanks. is there a test for the env var case, where no warning should show?", after: "merge" },
+  ],
+  "express-bug-trust-proxy-hops": [
+    { say: "a customer says req.ip can be spoofed behind their load balancer. how does express work out req.ip?" },
+    { say: "and where does the 'trust proxy' hop count get used?" },
+    { say: "??" },
+    { say: "they run behind exactly one load balancer with app.set('trust proxy', 1). the client sends its own X-Forwarded-For: 6.6.6.6, the LB appends the real address, "
+      + "so the app gets '6.6.6.6, <real address>' and req.ip comes out 6.6.6.6. req.ips lists the spoofed one too. find out why and fix it please" },
+    { say: "is it in our code or in proxy-addr?", whileJob: true },
+    { say: "so what was the actual cause, in plain words?" },
+    { say: "merged. is the one-hop case covered by a test now, and would two hops still work?", after: "merge" },
+  ],
+};
+const SCRIPT: Step[] = SCRIPTS[TASK_ID] ?? [];
 
 const lines: string[] = [];
+const toppedUp = new Set<string>();
 let promptsOut: string[] = [];
 const out = (s = ""): void => { lines.push(s); console.log(s); };
 const rupees = (p: number): string => `₹${(p / 100).toFixed(2)}`;
@@ -60,16 +92,18 @@ async function main(): Promise<void> {
   if (refused) throw new Error(`The model key was refused: ${refused}`);
   const task = loadTasks().find((t) => t.id === TASK_ID);
   if (!task) throw new Error(`No task ${TASK_ID}.`);
+  if (!SCRIPT.length) throw new Error(`No conversation written for ${TASK_ID}: add one to SCRIPTS.`);
 
   const t0 = Date.now();
   out(`# Xode, a real conversation: ${task.repo} (${TASK_ID})`);
   out(`Started ${new Date(t0).toISOString()}. Cap ${rupees(CAP_PAISE)}.`);
   out();
-  const rig = await createRig({ mode: "real", brainBudgetPaise: 60, room: true, log: (m) => { if (/^warn /.test(m)) console.error(m); } });
+  const rig = await createRig({ mode: "real", brainBudgetPaise: BRAIN_PAISE, room: true, log: (m) => { if (/^warn /.test(m)) console.error(m); } });
   let spent = 0;
   try {
     const h = await rig.addProjectFor(task, task.repo);
-    out(`Project added: ${h.project.fullName} at ${h.baseSha.slice(0, 10)} (the project brain was built, as when a person connects a repo).`);
+    const brainPaise = Math.ceil(rig.kit.logs.reduce((n, l) => n + l.paise, 0));
+    out(`Project added: ${h.project.fullName} at ${h.baseSha.slice(0, 10)} (the project brain was built, as when a person connects a repo; its summaries cost ${rupees(brainPaise)}).`);
     out();
 
     const threads = new MemoryThreadStore();
@@ -86,6 +120,7 @@ async function main(): Promise<void> {
     })!;
     const threadId = randomUUID();
     let lastJob: { id: string; branch: string } | null = null;
+    let pendingJob: { following: Promise<number>; id: string; branch: string } | null = null;
 
     for (const [i, step] of SCRIPT.entries()) {
       if (spent >= CAP_PAISE) { out(`(stopped before step ${i + 1}: ${rupees(spent)} spent, the cap is ${rupees(CAP_PAISE)})`); break; }
@@ -93,7 +128,8 @@ async function main(): Promise<void> {
         if (!lastJob) { out("(nothing to merge: no job ran)"); continue; }
         const head = await h.repo.head(lastJob.branch);
         const main = await h.repo.head(h.repo.defaultBranch);
-        if (head && main) {
+        if (!head || head === main) out("[nothing was committed on the branch, so there is nothing to merge]");
+        else if (main) {
           await h.repo.setRef(h.repo.defaultBranch, head, main);
           // GitHub's push webhook brings the brain up to date; the person merged on GitHub.
           await buildProjectBrain(rig.code.brain!.runtime, USER, h.project.id);
@@ -129,9 +165,24 @@ async function main(): Promise<void> {
 
       if (r.result.job) {
         lastJob = { id: r.result.job.id, branch: r.result.job.branch };
-        out(`Xode started a job on ${r.result.job.branch} (budget ${rupees(r.result.job.budgetPaise)}). Its steps, as the app shows them:`);
-        spent += await followJob(rig, r.result.job.id);
-        await report(rig, h, task, r.result.job.id, r.result.job.branch);
+        const job = r.result.job;
+        out(`Xode started a job on ${job.branch} (budget ${rupees(job.budgetPaise)}). Its steps, as the app shows them:`);
+        const following = followJob(rig, job.id);
+        const next = SCRIPT[i + 1];
+        if (next?.whileJob) {
+          // The person checks in once the job is at work on the code, and the job's steps go on beside the answer.
+          await waitForWork(rig, job.id);
+          pendingJob = { following, id: job.id, branch: job.branch };
+          continue;
+        }
+        spent += await following;
+        await report(rig, h, task, job.id, job.branch);
+      }
+      if (pendingJob && step.whileJob) {
+        out("   (said while the job was still working)");
+        spent += await pendingJob.following;
+        await report(rig, h, task, pendingJob.id, pendingJob.branch);
+        pendingJob = null;
       }
       out();
       out(`   running total ${rupees(spent)}`);
@@ -145,6 +196,16 @@ async function main(): Promise<void> {
     fs.writeFileSync(file.replace(/\.md$/, ".prompts.txt"), promptsOut.join("\n\n"));
     console.log(`\nTranscript: ${path.relative(process.cwd(), file)}`);
     await rig.dispose();
+  }
+}
+
+/** Until the job has started on the code (its first read or edit after the baseline), or ended, or two minutes. */
+async function waitForWork(rig: Rig, jobId: string): Promise<void> {
+  const until = Date.now() + 120_000;
+  while (Date.now() < until) {
+    const entries = await rig.workLogOf(jobId).catch(() => []);
+    if (entries.some((e) => e.kind === "edit") || isEnded((await rig.jobNow(jobId)).state)) return;
+    await rig.sleep(1000);
   }
 }
 
@@ -180,8 +241,15 @@ async function followJob(rig: Rig, jobId: string): Promise<number> {
           const asked = await rig.jobs.approveCommit(USER, jobId);
           if ("needsApproval" in asked && asked.needsApproval) await rig.jobs.approveCommit(USER, jobId, (asked as { approvalId: string }).approvalId);
         } else if (j.waitingOn === "budget") {
-          out("   Xode ran out of budget. You: stop there.");
-          await rig.orch.stopJob(USER, jobId);
+          // A person says "keep going" once, the way the report asks; a second time they stop.
+          if (!toppedUp.has(jobId)) {
+            toppedUp.add(jobId);
+            out("   Xode ran out of budget. You: keep going (₹10 more).");
+            await rig.orch.addBudget(USER, jobId, 1000);
+          } else {
+            out("   Xode ran out of budget again. You: stop there.");
+            await rig.orch.stopJob(USER, jobId);
+          }
         } else if (j.waitingOn === "paid") {
           await rig.jobs.approvePaid(USER, jobId).catch(() => undefined);
         }

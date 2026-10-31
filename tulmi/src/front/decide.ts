@@ -112,7 +112,8 @@ export function decideMessage(text: string, ctx: FrontCtx, rules: Pick<RuleRead,
   const body = forModel(cut(text, MODEL_HEAD, MODEL_TAIL)).replace(/>>>/g, "> > >");
   return [
     `Message:\n<<<\n${body}\n>>>`,
-    `Project: ${ctx.projectId ? "yes" : "no"}.`,
+    // In a project's chat, "this repo", "the app" and "it" are the project: said, so a question about it is not read as one about the world.
+    `Project: ${ctx.projectId ? `yes, this is the chat of their code project${ctx.projectName ? ` ${oneLine(forModel(ctx.projectName), 80)}` : ""} ("this repo", "the app", "it" and its name mean the project)` : "no"}.`,
     `Device: ${ctx.device}. Mode: ${ctx.mode}.`,
     ...(kinds.length ? [`Attachments: ${kinds.join(", ")}.`] : []),
     ...(ctx.recent.length ? [`Recent:\n${ctx.recent.slice(-3).map((t) => `- "${oneLine(forModel(t.said), 120)}"${t.did ? ` -> ${oneLine(t.did, 40)}` : ""}`).join("\n")}`] : []),

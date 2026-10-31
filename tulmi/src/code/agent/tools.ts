@@ -61,7 +61,7 @@ import { Changeset, Refused, checkedText, editablePath, replaceOnce } from "./ch
 import { lockedWords, TESTS_ASKED, weakenedTests } from "./testlock.js";
 import type { PathGuard } from "../team/guard.js";
 import type { RunOutcome, RunSpec } from "./runner.js";
-import { FINDINGS_MAX, FREEFORM_RUNS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_DEFAULT_SEC, RUN_MIN_SEC, RUN_TIMEOUT_SEC, type AgentState, type ResultRecord } from "./types.js";
+import { FINDINGS_MAX, FREEFORM_RUNS_MAX, LIST_MAX, READ_MAX_CHARS, RESULT_MAX_CHARS, RUNS_MAX, RUN_DEFAULT_SEC, RUN_MIN_SEC, RUN_TIMEOUT_SEC, WEB_CALLS_MAX, type AgentState, type ResultRecord } from "./types.js";
 
 export type ToolControl = { type: "done"; summary: string; result?: string } | { type: "ask"; question: string; options?: string[]; widget?: NeedsWords };
 export interface ToolOutcome extends ResultRecord { control?: ToolControl }
@@ -792,6 +792,11 @@ export class Tools {
   // ---------------------------------------------------------------- the web
 
   private async web(call: ToolCall, name: AgentToolName): Promise<ToolOutcome> {
+    const w = this.env.state.work;
+    if ((w.web ?? 0) >= WEB_CALLS_MAX) {
+      throw new Refused(`This job has used the web ${WEB_CALLS_MAX} times, which is all one job gets. Work from the project's own code now: read it, change it, run its tests.`);
+    }
+    w.web = (w.web ?? 0) + 1;
     const r = await this.env.web.run({ id: call.id, name, arguments: call.arguments });
     const content = String(r.message.content);
     await this.log(call, "read", `${name}: ${r.ok ? "answered" : short(content, 100)}`);
