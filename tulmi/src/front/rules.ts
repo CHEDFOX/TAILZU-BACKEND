@@ -321,7 +321,9 @@ export function readByRules(message: string, ctx: Pick<FrontCtx, "projectId" | "
   for (const [i, s] of ranked) scores[i] = Math.round(s * 100) / 100;
   return {
     intent, confidence, scores, ...(second ? { rival: second[0] } : {}), signals: [...new Set(signals)], cls,
-    ...(intent === "research" && depth ? { depth } : {}), ...(followUp && (intent === last?.intent || (handoff && intent === "code_task")) ? { followUp } : {}),
+    ...(intent === "research" && depth ? { depth } : {}), // A follow-up keeps the turn it goes on from whatever wins: what it is gets decided (rules or model), what it means is made complete from the
+    // last question (front/complete.ts), which gives an unrelated question back as it was. A hand-off keeps it only as the job it starts.
+    ...(followUp && (!handoff || intent === "code_task") ? { followUp } : {}),
     ...(handoff && intent === "code_task" ? { handoff: true } : {}), ...(OPEN_ENDED.test(text) ? { openEnded: true } : {}),
     ...(reaction && intent === last?.intent ? { reaction } : {}),
     ...(TEAM_OFF.test(text) ? { team: "off" as const } : TEAM_ON.test(text) ? { team: "on" as const } : {}),

@@ -26,6 +26,7 @@ import { scanForSecrets } from "../code/policy.js";
 import type { CallFn } from "../code/work/model.js";
 import { compose } from "../principles/index.js";
 import type { FrontCtx } from "../front/types.js";
+import { completeMessage } from "../front/complete.js";
 import { retrieve } from "./knowledge.js";
 import { memoryFor, rememberTurn } from "./memory.js";
 import { Meter } from "./meter.js";
@@ -109,7 +110,14 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
 
   // The context: what it kept of its owner, and the few chunks of its files that are about this.
   const mem = remember ? await memoryFor(d.store, r.userId, bot.id).catch(() => ({ facts: [], thread: null })) : { facts: [], thread: null };
-  const know = bot.skills.files && bot.knowledge.length ? await retrieve(d.ports.media, r.userId, bot.knowledge, r.message) : null;
+  // The bot's files are searched with the message made complete: "and Saturday?" finds what "trains on Saturday?" would (front/complete.ts).
+  const lastSaid = [...(r.history ?? [])].reverse().find((t) => t.role === "user")?.content;
+  const lastAnswer = [...(r.history ?? [])].reverse().find((t) => t.role === "assistant")?.content;
+  const lookup = bot.skills.files && bot.knowledge.length && lastSaid
+    ? (await completeMessage({ call, ...(d.gateway ? { gateway: d.gateway } : {}), userId: r.userId, ...(r.signal ? { signal: r.signal } : {}) },
+      { message: r.message, lastQuestion: lastSaid, ...(lastAnswer ? { lastAnswer } : {}) })).text
+    : r.message;
+  const know = bot.skills.files && bot.knowledge.length ? await retrieve(d.ports.media, r.userId, bot.knowledge, lookup) : null;
   if (know) notes.push(...know.notes);
 
   const kit = await buildTools({

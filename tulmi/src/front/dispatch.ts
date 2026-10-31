@@ -44,6 +44,7 @@ import { visualCapOf } from "./path.js";
 import type { FrontStore } from "./store.js";
 import { clarifyFor, designReady, jobStarted, langOf, offerLabel, type ClarifyKind } from "./words.js";
 import { FrontError, type Decision, type FileNote, type FrontCtx, type FrontEvent, type FrontResult, type RouteName, type VisualKind } from "./types.js";
+import { completeMessage } from "./complete.js";
 
 /** A job or a deep research run needs the decision to be at least this sure. */
 export const SELF_CHECK_MIN = 0.7;
@@ -133,8 +134,16 @@ async function dispatchRequest(decision: Decision, message: string, ctx: FrontCt
     }
   }
 
+  // A follow-up is made complete before it is looked up with (front/complete.ts): "and Saturday?" is researched as "trains Delhi to Jaipur on
+  // Saturday?". A code question completes its own, with the chat's last answer (code/chat); a reaction is asked as the front door wrote it out.
+  const completes = !!decision.followUp && !decision.reask && decision.route !== "code_answer" && decision.route !== "code_job";
+  const meant = completes
+    ? await completeMessage({ ...(deps.call ? { call: deps.call } : {}), ...(deps.gateway ? { gateway: deps.gateway } : {}), userId, ...(o.signal ? { signal: o.signal } : {}) },
+      { message, lastQuestion: decision.followUp!, followUp: true })
+    : null;
+  if (meant?.paise) { result.paise += meant.paise; ownPaise += meant.paise; }
   const call = (maxPaise: number, signal: AbortSignal, message2 = message): RouteCall => ({
-    userId, message: decision.followUp ? `${decision.followUp}. ${decision.reask ?? message2}` : message2, said: message2, ctx, decision, signal, maxPaise,
+    userId, message: meant && message2 === message ? meant.text : decision.followUp ? `${decision.followUp}. ${decision.reask ?? message2}` : message2, said: message2, ctx, decision, signal, maxPaise,
     onText: (piece) => { streamed = true; emit({ t: "text", text: piece }); },
     onReset: () => { streamed = false; emit({ t: "reset" }); },
     onStep: (stage) => emit({ t: "status", stage }),

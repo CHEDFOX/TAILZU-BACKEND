@@ -185,7 +185,7 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
   // In a project's chat, words alone can't tell a question from a change ("what do you understand of the project", "this isn't a bug, just
   // explain"): the small model always reads the message there, and is not shown what the rules guessed. A reaction ("??", "why?") and a
   // hand-off ("ok, change it") are already known from the turn before, and keep the rules' answer; with no model to ask, the rules stand in.
-  const always = !!ctx.projectId && !rules.reaction && !rules.followUp;
+  const always = !!ctx.projectId && !rules.reaction && !rules.handoff;
   if ((always || confidence < (deps.threshold ?? RULES_SURE)) && text) {
     const got = await askModel(text, ctx, always ? null : rules, confidence, deps);
     if ("read" in got) {

@@ -57,12 +57,24 @@ describe("the roads", () => {
     expect(result.ms).toBeGreaterThanOrEqual(0);
   });
 
-  it("puts a follow-up's earlier words in front of it, for the roads that make something of it", async () => {
+  it("puts a follow-up's earlier words in front of it when no model can complete it, for the roads that make something of it", async () => {
     const t = rig();
     const c = ctx({ recent: [{ said: "show me a pricing page", did: "design" }] });
     const d = await decide("make it darker", c, { call: model(() => decideJson({ intent: "design", confidence: 0.8 })).call, tiers, fx: 88, jobBudgetPaise: 3000 });
     await t.run(d, "make it darker", c);
     expect(t.h.calls.artifact[0]!.message).toBe("show me a pricing page. make it darker");
+  });
+
+  it("makes a follow-up complete before a road looks anything up, and charges what that cost", async () => {
+    const m = model((s) => (s.purpose === "front.complete" ? "Trains from Delhi to Jaipur on Saturday?" : decideJson({ intent: "research", confidence: 0.9 })), { paise: 0.5 });
+    const t = rig({ call: m.call });
+    const c = ctx({ recent: [{ said: "trains from Delhi to Jaipur on Friday?", did: "research" }] });
+    const d = await decide("and Saturday?", c, { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+    expect(d.followUp).toBe("trains from Delhi to Jaipur on Friday?");
+    const { result } = await t.run(d, "and Saturday?", c);
+    expect(t.h.calls.research[0]!.message).toBe("Trains from Delhi to Jaipur on Saturday?");
+    expect(t.h.calls.research[0]!.said).toBe("and Saturday?");
+    expect(result.paise).toBeGreaterThanOrEqual(0.5);
   });
 
   it("answers a question about a project through the code-answer hook, and draws its flow beside it from the answer", async () => {
