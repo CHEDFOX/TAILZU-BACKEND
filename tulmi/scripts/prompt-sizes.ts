@@ -51,6 +51,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   front_reply: 1066,
   // Rewritten when the code answer became real (src/code/chat): it is told about <facts> and <thread> too. Re-measured, 789 before.
   front_code_answer: 1067,
+  front_complete: 647,
   front_diagram: 556,
   front_plan: 668,
   front_look: 587,
@@ -82,7 +83,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "widget_digest"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "widget_digest"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

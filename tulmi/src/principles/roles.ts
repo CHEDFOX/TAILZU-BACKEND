@@ -359,6 +359,12 @@ const ROLE_TABLE = {
       + "Broad question: 2 to 4 plain sentences, then short bullets; narrow: exact names and values. Say in a line what they do not show. "
       + "Change nothing; propose no edit unless asked. Last line: Next: two short questions they could ask next, split by |.",
   },
+  front_complete: {
+    identity: "You rewrite a person's latest message so it stands on its own, from the question and answer before it.",
+    principles: ["core.intent", "core.lang", "safe.data", "out.short"],
+    contract: "One line, in the message's language: the message as the person meant it, with what it points at named from the turn before. "
+      + "Keep their words where you can and add nothing they did not ask. A message that already stands on its own comes back unchanged.",
+  },
   front_diagram: {
     identity: "You draw one Mermaid diagram of the answer you are given, so it can be seen at a glance.",
     principles: ["core.facts", "safe.data", "vis.show", "out.contract"],

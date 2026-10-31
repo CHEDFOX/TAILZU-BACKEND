@@ -21,7 +21,8 @@ import type { ProjectBrain } from "../project/index.js";
 import { ownProject, workspace, type ProjectDeps } from "../projects.js";
 import type { CallFn } from "../work/model.js";
 import type { Located } from "../work/locate.js";
-import { answerCode, searchFor, type ChatAnswer } from "./answer.js";
+import { completeMessage } from "../../front/complete.js";
+import { answerCode, type ChatAnswer } from "./answer.js";
 import { handoffOf, taskFor, type Handoff } from "./handoff.js";
 import { newThread, threadStore, type ChatThread, type ThreadStore } from "./threads.js";
 
@@ -109,12 +110,22 @@ export class CodeChat {
       try { ws ??= await workspace(this.d.projects, r.userId, project.id, project.defaultBranch); return (await ws.read(path)).text; } catch { return null; }
     };
     const files = (await this.d.rooms?.(r.userId, project.id).catch(() => null)) ?? null;
+    const model = this.model(r.userId, r.signal);
+    // A reaction ("??", "why?") is about the last question as it was; any other follow-up is made complete before it is looked up with
+    // (front/complete.ts): "and the logout?" is searched as "where is the logout checked?".
+    const lastQuestion = r.context ?? thread?.lastQuestion;
+    const meant = r.ask && r.context ? null : await completeMessage(model, {
+      message: r.question, ...(lastQuestion ? { lastQuestion } : {}), ...(thread?.history.at(-1)?.a ? { lastAnswer: thread.history.at(-1)!.a } : {}),
+      ...(r.context ? { followUp: true } : {}),
+    });
     const out = await answerCode({
       userId: r.userId, projectId: project.id, question: r.ask && r.context ? `${r.context}\n\n${r.ask}` : r.question,
-      ...(r.ask && r.context ? { shown: r.question, kept: r.context } : {}), search: r.context ? `${r.context}. ${r.question}` : searchFor(r.question, thread), tier: r.tier, length: r.length,
-      maxPaise: r.maxPaise, thread, diagram: r.diagram, now: this.now(),
+      ...(r.ask && r.context ? { shown: r.question, kept: r.context } : {}), ...(meant?.via === "model" ? { meant: meant.text } : {}),
+      search: r.ask && r.context ? r.context : meant?.text ?? r.question, tier: r.tier, length: r.length,
+      maxPaise: Math.max(1, r.maxPaise - (meant?.paise ?? 0)), thread, diagram: r.diagram, now: this.now(),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
-    }, { brain, read, files }, this.model(r.userId, r.signal));
+    }, { brain, read, files }, model);
+    if (meant?.paise) out.paise += meant.paise;
     if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
     return out;
   }

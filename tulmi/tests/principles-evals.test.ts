@@ -249,6 +249,7 @@ describe("a known-good answer for each role", () => {
     front_decide: { text: '{"intent":"research","length":"medium","visual":"table","confidence":0.8,"clarify":null}', reads: (t) => DecideReply.parse(JSON.parse(t)) },
     front_reply: { text: "Canberra is the capital of Australia.", reads: (t) => t },
     front_code_answer: { text: "The cookie is set in startSession, at src/auth/session.ts:14, with httpOnly and sameSite lax.", reads: (t) => t },
+    front_complete: { text: "Where is the logout handled?", reads: (t) => (t.trim() && !t.includes("\n") ? t : null) },
     front_diagram: { text: "flowchart TD\n  A[App] --> B[API gateway]\n  B --> C[Orders service]\n  C --> D[Database]\n  D --> C\n  C --> B\n  B --> A", reads: (t) => (t.startsWith("flowchart") ? t : null) },
     front_plan: {
       text: '{"title":"Three days in Jaipur","steps":[{"do":"Day 1: Amber Fort in the morning, then the old city bazaars","when":"Day 1"},{"do":"Day 2: City Palace, Jantar Mantar and Hawa Mahal","when":"Day 2"},{"do":"Day 3: Nahargarh Fort at sunrise, then shopping","when":"Day 3"}],"notes":["Book fort tickets ahead on weekends."]}',
