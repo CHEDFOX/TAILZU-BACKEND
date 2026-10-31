@@ -49,7 +49,9 @@ import {
   type BaselineStep, type BrainRow, type BrainView, type Feature, type Hotspot, type StoredFile, type StoredText, type SymbolInfo,
 } from "./types.js";
 
+import { buildMap, type ProjectMap } from "./map.js";
 export { memoryMarkdown, withBaseline } from "./memory.js";
+export { buildMap, checkSymbol, findInMap, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap } from "./map.js";
 export { baselinePlan, recordBaseline } from "./baseline.js";
 export { diffSnapshots } from "./merkle.js";
 export type { BuildMode, ProjectBrainDeps } from "./build.js";
@@ -365,13 +367,18 @@ export interface BrainHandle {
    * identifiers it mentions. Empty when it names nothing the repo has. The graph is made from every file's row once and kept while the brain does not change.
    */
   repoMap(seeds: MapSeeds, opts?: MapOptions): Promise<MapHit[]>;
+  /** The project map (map.ts): every component with its exact lines, connections, whether anything leads to it, and where new things go. */
+  projectMap(): Promise<ProjectMap | null>;
 }
 
 /** The graphs made lately, by project and the state of its row: making one reads every file of the project. */
 const graphs = new Map<string, { graph: RepoGraph; at: number }>();
 const GRAPHS_KEPT = 6;
 
-export function resetRepoGraphsForTests(): void { graphs.clear(); }
+/** The project maps made lately, by project, with the state of the row they were made from. */
+const maps = new Map<string, { key: string; map: ProjectMap }>();
+
+export function resetRepoGraphsForTests(): void { graphs.clear(); maps.clear(); }
 
 export async function openProjectBrain(d: BrainRuntime, userId: string, projectId: string): Promise<BrainHandle> {
   const project = await ownProject(d.projects, userId, projectId);
@@ -466,6 +473,17 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
         while (graphs.size > GRAPHS_KEPT) graphs.delete(graphs.keys().next().value as string);
       }
       return hit.graph.rank(seeds, opts);
+    },
+    async projectMap() {
+      const b = await row();
+      if (!b || !b.headSha) return null;
+      const key = `${id}|${b.headSha}|${b.status}|${b.updatedAt}|${b.builtAt ?? 0}`;
+      const kept = maps.get(id);
+      if (kept?.key === key) return kept.map;
+      const map = buildMap({ commit: b.headSha, files: await store.listFiles(id), features: b.features, entries: (b.structure?.entryPoints ?? []).map((e) => e.path) });
+      maps.set(id, { key, map });
+      while (maps.size > GRAPHS_KEPT) maps.delete(maps.keys().next().value as string);
+      return map;
     },
   };
 }

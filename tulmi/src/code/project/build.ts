@@ -63,6 +63,7 @@ import {
   Meter, fallbackWelcome, labelFeatures, phaseCap, pickForSummary, suggestTasks, summarizeDirs, summarizeFiles, summarizeRepo, welcomeMessage,
   type CallFn, type DirJob, type FileJob, type SummaryCtx,
 } from "./summarize.js";
+import { withHashes } from "./map.js";
 import { countTodos, extractSymbols, type SymbolContext } from "./symbols.js";
 import { buildTestMap, untestedImportant } from "./tests.js";
 import { extractTexts } from "./texts.js";
@@ -141,7 +142,7 @@ function resolverSignature(core: Record<string, CoreEntry>): string {
 /** A file's analysis: the symbols, the imports as written, the strings, the TODOs. */
 function analyseFile(path: string, sha: string, text: string, ctx: SymbolContext): Analysed {
   const lang = languageOf(path);
-  const symbols: SymbolInfo[] = extractSymbols(path, lang, text, ctx);
+  const symbols: SymbolInfo[] = withHashes(text, extractSymbols(path, lang, text, ctx));
   // Read by a parser, a file also says which names it refers to (the repo map's graph); read by a regex it does not.
   const refs = analyse(path, lang, text)?.refs;
   return {
