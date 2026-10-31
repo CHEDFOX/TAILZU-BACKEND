@@ -107,7 +107,7 @@ const cut = (s: string, head: number, tail: number): string => (s.length > head 
 const oneLine = (s: string, n: number): string => s.replace(/\s+/g, " ").trim().slice(0, n);
 
 /** What the small model is sent: the message fenced as data, and what the rules saw. */
-export function decideMessage(text: string, ctx: FrontCtx, rules: Pick<RuleRead, "intent" | "confidence">): string {
+export function decideMessage(text: string, ctx: FrontCtx, rules: Pick<RuleRead, "intent" | "confidence"> | null): string {
   const kinds = [...new Set(ctx.attachments.map((a) => a.kind))];
   const body = forModel(cut(text, MODEL_HEAD, MODEL_TAIL)).replace(/>>>/g, "> > >");
   return [
@@ -116,11 +116,11 @@ export function decideMessage(text: string, ctx: FrontCtx, rules: Pick<RuleRead,
     `Device: ${ctx.device}. Mode: ${ctx.mode}.`,
     ...(kinds.length ? [`Attachments: ${kinds.join(", ")}.`] : []),
     ...(ctx.recent.length ? [`Recent:\n${ctx.recent.slice(-3).map((t) => `- "${oneLine(forModel(t.said), 120)}"${t.did ? ` -> ${oneLine(t.did, 40)}` : ""}`).join("\n")}`] : []),
-    `The rules read it as: ${rules.intent} (${rules.confidence}).`,
+    ...(rules ? [`The rules read it as: ${rules.intent} (${rules.confidence}).`] : []),
   ].join("\n");
 }
 
-async function askModel(text: string, ctx: FrontCtx, rules: RuleRead, confidence: number, d: DecideDeps): Promise<{ read: DecideReply } | { skipped: string }> {
+async function askModel(text: string, ctx: FrontCtx, rules: RuleRead | null, confidence: number, d: DecideDeps): Promise<{ read: DecideReply } | { skipped: string }> {
   const left = d.daily ? d.daily.leftPaise(ctx.userId) : Infinity;
   if (left <= 0) return { skipped: "daily" };
   const model: ModelCtx = {
@@ -128,7 +128,7 @@ async function askModel(text: string, ctx: FrontCtx, rules: RuleRead, confidence
     budget: { maxPaise: Math.min(DECIDE_CAP_PAISE, left) }, ...(d.signal ? { signal: d.signal } : {}),
   };
   const r = await askJson(model, {
-    tier: "tiny", purpose: "front.decide", role: "front_decide", user: decideMessage(text, ctx, { intent: rules.intent, confidence }), schema: DecideReply, maxTokens: 260,
+    tier: "tiny", purpose: "front.decide", role: "front_decide", user: decideMessage(text, ctx, rules ? { intent: rules.intent, confidence } : null), schema: DecideReply, maxTokens: 260,
   });
   if (!r.ok) return { skipped: r.reason };
   d.daily?.add(ctx.userId, r.paise);
@@ -182,8 +182,12 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
   let length: Length | undefined;
   let hint: VisualKind | "none" | undefined;
   let modelClarify: Clarify | null = null;
-  if (confidence < (deps.threshold ?? RULES_SURE) && text) {
-    const got = await askModel(text, ctx, rules, confidence, deps);
+  // In a project's chat, words alone can't tell a question from a change ("what do you understand of the project", "this isn't a bug, just
+  // explain"): the small model always reads the message there, and is not shown what the rules guessed. A reaction ("??", "why?") and a
+  // hand-off ("ok, change it") are already known from the turn before, and keep the rules' answer; with no model to ask, the rules stand in.
+  const always = !!ctx.projectId && !rules.reaction && !rules.followUp;
+  if ((always || confidence < (deps.threshold ?? RULES_SURE)) && text) {
+    const got = await askModel(text, ctx, always ? null : rules, confidence, deps);
     if ("read" in got) {
       via = "model";
       intent = got.read.intent;

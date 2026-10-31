@@ -361,8 +361,18 @@ describe("the small model", () => {
   it("is not asked when the rules are sure (0.7 or more)", async () => {
     const m = noModel();
     for (const text of ["hi", "what is the capital of France?", "compare React vs Vue", "plan my week"]) await decide(text, ctx(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
-    await decide("fix the login bug", inProject(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
     expect(m.sent).toEqual([]);
+  });
+
+  it("always decides in a project's chat, and is not shown what the keywords guessed", async () => {
+    const m = model(() => decideJson({ intent: "code_question", length: "short", confidence: 0.9 }));
+    const d = await decide("this isn't a bug, just explain how the login works", inProject(), { call: m.call, tiers, fx: 88, jobBudgetPaise: 3000 });
+    expect(m.sent).toHaveLength(1);
+    expect(d.intent).toBe("code_question");
+    expect(m.sent[0]!.user).not.toMatch(/The rules read it as/);
+    // a model that can't be reached leaves the rules' answer standing
+    const off = await decide("fix the login bug", inProject(), { call: noModel().call, tiers, fx: 88, jobBudgetPaise: 3000 });
+    expect(off.intent).toBe("code_task");
   });
 
   it("is asked once under 0.7: the tiny tier, the front_decide role, the message fenced as data, and what the rules saw", async () => {
