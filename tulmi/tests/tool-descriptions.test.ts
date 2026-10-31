@@ -24,9 +24,10 @@ const { TOOLS_BEFORE, toolSizes } = await import("../scripts/prompt-sizes.js");
  * The measured size of the list as it is now. A tool that grows past it has grown back into a paragraph. Measured again on 2026-10-28, when suggest_files joined
  * (free-form by default: the locate funnel as a tool) and the run tool learned to say that what a command writes is not kept.
  */
-const MEASURED = { total: 7538, descriptions: 3301 };
+/** Measured with project_map added (19 tools); it was { total: 7538, descriptions: 3301 } with 18. */
+const MEASURED = { total: 8401, descriptions: 3762 };
 /** The tools that were there when TOOLS_BEFORE was measured: the "smaller than it was" comparison is between the same tools. */
-const ORIGINAL = AGENT_TOOLS.filter((t) => t.name !== "suggest_files");
+const ORIGINAL = AGENT_TOOLS.filter((t) => t.name !== "suggest_files" && t.name !== "project_map");
 const room = (n: number) => Math.ceil(n * 1.05);
 
 /** Said where the example would be. The same markers the principles are held to (principles.test.ts). */
@@ -65,9 +66,9 @@ describe("the tool definitions' size", () => {
 });
 
 describe("the tool definitions' style", () => {
-  it("are the same eighteen tools, in the same order", () => {
+  it("are the same nineteen tools, in the same order", () => {
     expect(AGENT_TOOLS.map((t) => t.name)).toEqual([...AGENT_TOOL_NAMES]);
-    expect(AGENT_TOOLS).toHaveLength(18);
+    expect(AGENT_TOOLS).toHaveLength(19);
     for (const t of AGENT_TOOLS) {
       expect(Object.keys(t).sort(), t.name).toEqual(["description", "name", "parameters"]);
       expect(t.description.trim(), t.name).toBe(t.description);
@@ -93,7 +94,7 @@ describe("the tool definitions' style", () => {
   it("keep their schema: strict objects, the same required fields, the same bounds", () => {
     const req = Object.fromEntries(AGENT_TOOLS.map((t) => [t.name, (t.parameters as { required: string[] }).required]));
     expect(req).toEqual({
-      read_file: ["path"], list_dir: ["path"], grep: ["pattern"], glob: ["pattern"], search_code: ["query"], suggest_files: [], edit_file: ["path", "old", "new"],
+      read_file: ["path"], list_dir: ["path"], grep: ["pattern"], glob: ["pattern"], search_code: ["query"], suggest_files: [], project_map: ["action"], edit_file: ["path", "old", "new"],
       write_file: ["path", "content"], delete_file: ["path"], run: ["cmd", "why"], web_search: ["query"], read_page: ["url"], research: ["question", "depth"],
       find_resources: ["need"], flag_finding: ["severity", "path", "text"], note: ["text"], ask_user: ["question"], done: ["summary"],
     });

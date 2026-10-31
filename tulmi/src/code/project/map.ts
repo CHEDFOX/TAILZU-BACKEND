@@ -225,10 +225,21 @@ export function findInMap(map: ProjectMap, query: string, limit = 8): string[] {
  * One symbol checked against the file as it is now: the same (the fingerprint matches at the same lines), moved (found by name and kind at
  * other lines, same fingerprint), changed (found, but its lines differ from what the map holds) or gone. The current range comes with it.
  */
-export async function checkSymbol(path: string, text: string, s: MapSymbol): Promise<{ status: "same" | "moved" | "changed" | "gone"; start?: number; end?: number }> {
+export async function checkSymbol(path: string, text: string, s: MapSymbol): Promise<SymbolCheck> {
+  return (await checkSymbols(path, text, [s]))[0]!;
+}
+
+export type SymbolCheck = { status: "same" | "moved" | "changed" | "gone"; start?: number; end?: number };
+
+/** checkSymbol for several symbols of one file, with the file parsed once. */
+export async function checkSymbols(path: string, text: string, symbols: readonly MapSymbol[]): Promise<SymbolCheck[]> {
   // The parser, not the regexes: only it knows where a definition ends, and the fingerprint covers to the end.
   await ensureGrammars([{ path, lang: languageOf(path) }]);
-  const now = withHashes(text, extractSymbols(path, languageOf(path), text)).find((x) => x.name === s.name && x.kind === s.kind);
+  const fresh = withHashes(text, extractSymbols(path, languageOf(path), text));
+  return symbols.map((s) => verdict(s, fresh.find((x) => x.name === s.name && x.kind === s.kind)));
+}
+
+function verdict(s: MapSymbol, now: SymbolInfo | undefined): SymbolCheck {
   if (!now) return { status: "gone" };
   const range = { start: now.line, ...(now.endLine ? { end: now.endLine } : {}) };
   if (!s.hash || !now.hash) return { status: now.line === s.start ? "same" : "moved", ...range };
