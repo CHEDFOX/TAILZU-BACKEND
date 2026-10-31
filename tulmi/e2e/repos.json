@@ -38,12 +38,12 @@
       },
       "uiCapable": false,
       "measured": {
-        "at": "2026-10-27T09:41:23.042Z",
-        "testSec": 2.6,
+        "at": "2026-10-31T00:14:18.045Z",
+        "testSec": 3.7,
         "tests": 1290,
         "failed": 0,
         "command": "npx mocha --require test/support/env --reporter json --reporter-option output=\"$E2E_REPORT\" --check-leaks test/ test/acceptance/",
-        "installSec": 0,
+        "installSec": 4.2,
         "installMB": 66
       },
       "format": {
@@ -135,12 +135,12 @@
       },
       "uiCapable": false,
       "measured": {
-        "at": "2026-10-27T09:41:26.016Z",
-        "testSec": 2.7,
+        "at": "2026-10-31T00:14:23.455Z",
+        "testSec": 4.9,
         "tests": 1373,
         "failed": 0,
         "command": "node --test --test-reporter=junit --test-reporter-destination=\"$E2E_REPORT\"",
-        "installSec": 0,
+        "installSec": 4.2,
         "installMB": 100
       },
       "format": {
