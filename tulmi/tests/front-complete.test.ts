@@ -25,6 +25,7 @@ describe("completing a message", () => {
     expect(await completeMessage(f.m, { message: "where is the login route defined in the routes folder?", lastQuestion: "what does slug do?" }))
       .toEqual({ text: "where is the login route defined in the routes folder?", via: "as_is", paise: 0 });
     expect(await completeMessage(f.m, { message: "and the logout?" })).toMatchObject({ via: "as_is" });
+    for (const ack of ["thanks!", "ok", "Shukriya 🙏", "theek hai", "hi"]) expect(await completeMessage(f.m, { message: ack, lastQuestion: "where is the login checked?", followUp: true })).toMatchObject({ via: "as_is" });
     expect(f.sent).toEqual([]);
   });
 

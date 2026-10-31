@@ -257,6 +257,36 @@ const ctxOf = (m: FrontModel, maxPaise: number): ModelCtx => ({
   ...(m.call ? { call: m.call } : {}), ...(m.gateway ? { gateway: m.gateway } : {}), userId: m.userId, budget: { maxPaise }, ...(m.signal ? { signal: m.signal } : {}),
 });
 
+/** Words too common to say what a turn was about. */
+const COMMON = new Set(["the", "and", "for", "with", "that", "this", "what", "where", "when", "how", "why", "which", "does", "did", "are", "was", "were", "has", "have", "can", "you", "your", "our", "its", "from", "into", "about", "there", "here", "then", "than", "but", "not", "all", "any", "kya", "hai", "kaise", "kahan", "mein"]);
+const wordsOf = (s: string): Set<string> => new Set((s.toLowerCase().match(/[\p{L}\p{N}_]{3,}/gu) ?? []).filter((w) => !COMMON.has(w)));
+/** The most of an earlier answer shown, and how many earlier turns. */
+const EARLIER_CHARS = 800;
+const EARLIER_TURNS = 2;
+
+/**
+ * Earlier turns this question is about, beyond the last one: picked by the words they share with what is looked up (two at least), the most
+ * recent first on a tie, for nothing. A chat can go on for ever: the summary says what was asked, and this brings back what was answered when
+ * it matters again.
+ */
+export function earlierTurns(thread: ChatThread | null, search: string): Array<{ q: string; a: string }> {
+  const turns = (thread?.history ?? []).slice(0, -1);
+  if (!turns.length) return [];
+  const want = wordsOf(search);
+  return turns
+    .map((t, i) => {
+      const have = wordsOf(`${t.q} ${t.a.slice(0, 2000)}`);
+      let shared = 0;
+      for (const w of want) if (have.has(w)) shared += 1;
+      return { t, i, shared };
+    })
+    .filter((x) => x.shared >= 2 && x.t.a)
+    .sort((a, b) => b.shared - a.shared || b.i - a.i)
+    .slice(0, EARLIER_TURNS)
+    .sort((a, b) => a.i - b.i)
+    .map((x) => ({ q: x.t.q, a: cut(x.t.a, EARLIER_CHARS) }));
+}
+
 /** The most of the last answer shown to the model with a follow-up. */
 const LAST_ANSWER_CHARS = 2_500;
 /** What was said last, when this question goes on from it ("??", "why?", "and the logout?"): a chat answers a follow-up knowing its own last words. */
@@ -411,10 +441,12 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   }
 
   const left = Math.max(0, input.maxPaise - located.used.paise);
+  const earlier = earlierTurns(input.thread, input.search);
   const user = [
     `<question>\n${forModel(input.question).replace(/<\/question/gi, "<\\/question")}\n</question>`,
     ...(input.meant && input.meant !== input.question ? [`<meant>\n${fence(forModel(input.meant))}\n</meant>`] : []),
     ...(input.thread?.summary ? [threadBlock(input.thread).trim()] : []),
+    ...(earlier.length ? [`<earlier>\n${fence(forModel(earlier.map((t) => `Q: ${t.q}\nA: ${t.a}`).join("\n\n")))}\n</earlier>`] : []),
     ...(lastAnswer(input) ? [`<last_answer>\n${fence(forModel(lastAnswer(input)))}\n</last_answer>`] : []),
     ...(facts.text ? [`<facts>\n${fence(forModel(facts.text))}\n</facts>`] : []),
     `<excerpts>\n${fence(forModel(excerpts.length ? excerpts.join("\n\n") : basis || "(none read)"))}\n</excerpts>`,

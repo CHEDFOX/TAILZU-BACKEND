@@ -28,7 +28,7 @@ import { compose } from "../principles/index.js";
 import type { FrontCtx } from "../front/types.js";
 import { completeMessage } from "../front/complete.js";
 import { retrieve } from "./knowledge.js";
-import { memoryFor, rememberTurn } from "./memory.js";
+import { memoryFor, recentTurnsOf, rememberTurn } from "./memory.js";
 import { Meter } from "./meter.js";
 import type { BotPorts } from "./ports.js";
 import { botUserMessage, type Attached, type Turn } from "./prompt.js";
@@ -111,8 +111,10 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   // The context: what it kept of its owner, and the few chunks of its files that are about this.
   const mem = remember ? await memoryFor(d.store, r.userId, bot.id).catch(() => ({ facts: [], thread: null })) : { facts: [], thread: null };
   // The bot's files are searched with the message made complete: "and Saturday?" finds what "trains on Saturday?" would (front/complete.ts).
-  const lastSaid = [...(r.history ?? [])].reverse().find((t) => t.role === "user")?.content;
-  const lastAnswer = [...(r.history ?? [])].reverse().find((t) => t.role === "assistant")?.content;
+  // The turns just before: the caller's, or (a chat in the app sends none) the latest ones the bot kept in its thread.
+  const history = r.history?.length ? r.history : remember ? recentTurnsOf(mem.thread) : [];
+  const lastSaid = [...history].reverse().find((t) => t.role === "user")?.content;
+  const lastAnswer = [...history].reverse().find((t) => t.role === "assistant")?.content;
   const lookup = bot.skills.files && bot.knowledge.length && lastSaid
     ? (await completeMessage({ call, ...(d.gateway ? { gateway: d.gateway } : {}), userId: r.userId, ...(r.signal ? { signal: r.signal } : {}) },
       { message: r.message, lastQuestion: lastSaid, ...(lastAnswer ? { lastAnswer } : {}) })).text
@@ -130,7 +132,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const user = botUserMessage({
     bot: { ...bot, skills: bot.skills },
     ...(mem.facts.length ? { facts: mem.facts.map((f) => f.text) } : {}), ...(mem.thread?.summary ? { summary: mem.thread.summary } : {}),
-    ...(know?.text ? { knowledge: know.text } : {}), ...(r.attached?.length ? { attached: r.attached } : {}), ...(r.history?.length ? { history: r.history } : {}), ...(kit.notConnected.length ? { notConnected: kit.notConnected } : {}),
+    ...(know?.text ? { knowledge: know.text } : {}), ...(r.attached?.length ? { attached: r.attached } : {}), ...(history.length ? { history } : {}), ...(kit.notConnected.length ? { notConnected: kit.notConnected } : {}),
     message: r.message,
   });
   const messages: ChatMessage[] = compose("bot_run", [{ role: "user" as const, content: user }]);

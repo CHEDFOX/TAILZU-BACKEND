@@ -38,11 +38,13 @@ const ANSWER_HEAD = 600;
 const COMPLETE_TOKENS = 120;
 const COMPLETE_PAISE = 5;
 const COMPLETE_MAX = 400;
+/** Thanks, a greeting, an ok: nothing to look up, so nothing to complete. */
+const ACK = /^\s*(?:thanks?(?:\s+(?:a\s+lot|so\s+much|you))?|thank\s+you|thx|ty|ok(?:ay)?|k|cool|nice|great|perfect|got\s+it|sure|yes|no|hi|hello|hey|bye|good\s+(?:night|morning)|shukriya|dhanyavaad|theek\s+hai|thik\s+hai|accha|acha|haan|nahi|hmm+)[\s!.,🙏👍]*$/iu;
 
 export async function completeMessage(m: FrontModel, i: CompleteInput): Promise<Completed> {
   const message = i.message.trim();
   const last = i.lastQuestion?.trim();
-  if (!last || !message || (!i.followUp && !isFollowUp(message))) return { text: message, via: "as_is", paise: 0 };
+  if (!last || !message || ACK.test(message) || (!i.followUp && !isFollowUp(message))) return { text: message, via: "as_is", paise: 0 };
   const joined = `${last}. ${message}`;
   const user = [
     `<last_question>\n${fence(forModel(last))}\n</last_question>`,
