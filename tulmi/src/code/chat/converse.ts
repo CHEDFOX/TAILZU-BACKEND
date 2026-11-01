@@ -17,11 +17,13 @@
  */
 import type { ToolDef } from "../brain/types.js";
 import type { FrontModel } from "../../front/model.js";
-import { FrontError } from "../../front/types.js";
+import { FrontError, type Length } from "../../front/types.js";
 import type { ModelTier } from "../brain/tiers.js";
 import { bookCard, bookChapter, CHAPTERS, type ProjectBook } from "../project/book.js";
 import { fence, forModel } from "../work/index.js";
 import { cut } from "../work/model.js";
+import { redactText } from "../work/worklog.js";
+import { isSecretPath } from "../project/lang.js";
 import { CODE_ANSWER_TOKENS_MIN, LANGUAGE_WORDS, mapBrief, plainTags, splitNext, tidy, withoutNext, type ChatBrain } from "./answer.js";
 import { Anchors, checkCitations, fixPaths, keptLocations, unknownPaths } from "./cite.js";
 import { investigate, type Acts, type LookTools } from "./look.js";
@@ -36,10 +38,14 @@ export interface ConverseInput {
   message: string;
   /** What a reaction ("??", "why?") asks of the last answer, as the front door's rules read it: shown beside the words. */
   meant?: string;
+  /** The front door read the message as a change to make: the loop is told, and starts the job with what it found, unless it asks for something else. */
+  change?: boolean;
   thread: ChatThread | null;
   /** Where the latest job this chat started stands (handlers.ts jobBrief), when it started one. */
   job?: string | null;
   language?: string;
+  /** How long the answer may be (the front door's read of the message): a setup guide is long, a "thanks" short. */
+  length?: Length;
   tier: ModelTier;
   maxPaise: number;
   now: number;
@@ -52,6 +58,10 @@ export interface ConversePorts {
   brain: ChatBrain;
   /** The read-only code tools (look.ts). */
   look: LookTools;
+  /** A file's text on the default branch: what show_file shows exactly. Null when it cannot be read. */
+  read?: (path: string) => Promise<string | null>;
+  /** The web (code/webTools.ts): its web_search and read_page, for what the project cannot say (a provider's options, a version, a price). */
+  web?: { defs: readonly ToolDef[]; run(name: string, args: Record<string, unknown>): Promise<string> };
   /** Starts a coding job on a new branch with this task; absent where jobs are off (the tool then says so). */
   startJob?: (task: string) => Promise<StartedJob>;
 }
@@ -69,6 +79,27 @@ export interface Conversed {
   clarify?: { question: string; options: string[] };
   thread: ChatThread | null;
 }
+
+/** What one answer may show of files (show_file): files, lines of each, characters in all. And the web calls one answer may make. */
+const SHOW_FILES_MAX = 3;
+const SHOW_LINES_MAX = 400;
+const SHOW_CHARS_MAX = 24_000;
+const WEB_CALLS_MAX = 3;
+/** The room an answer has, by how long the front door read it should be: a setup guide with its commands needs the most. */
+const ANSWER_TOKENS: Readonly<Record<Length, number>> = { short: 800, medium: 1_400, long: 2_600 };
+/** A file's language for its code block, by its extension. */
+const FENCE: Readonly<Record<string, string>> = {
+  ts: "ts", tsx: "tsx", js: "js", jsx: "jsx", mjs: "js", cjs: "js", json: "json", jsonc: "jsonc", sql: "sql", sh: "bash", bash: "bash", ps1: "powershell",
+  py: "python", rb: "ruby", go: "go", rs: "rust", java: "java", kt: "kotlin", swift: "swift", yml: "yaml", yaml: "yaml", toml: "toml", md: "markdown",
+  html: "html", css: "css", dockerfile: "dockerfile", conf: "nginx", xml: "xml", php: "php", cs: "csharp", dart: "dart",
+};
+const fenceOf = (path: string): string => {
+  const b = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
+  if (b === "dockerfile" || b.startsWith("dockerfile.")) return "dockerfile";
+  if (b === "caddyfile") return "";
+  return FENCE[b.slice(b.lastIndexOf(".") + 1)] ?? "";
+};
+interface Shown { path: string; from: number; to: number; total: number; text: string }
 
 /** The most of the last answer the loop is shown, and the turns of the chat it sees word for word. */
 const LAST_ANSWER_CHARS = 1_500;
@@ -90,6 +121,16 @@ export const CHAT_ACTS: readonly ToolDef[] = [
       type: "object",
       properties: { task: { type: "string", description: "The whole change: what to do, where if you know (files, functions), and how to tell it is done." } },
       required: ["task"],
+    },
+  },
+  {
+    name: "show_file",
+    description: "Shows the person a file of the project exactly as it is, below your answer, to read or copy (a migration, a config, a script). "
+      + "You do not repeat it. Up to 400 lines at a time; a file that holds secrets is never shown.",
+    parameters: {
+      type: "object",
+      properties: { path: { type: "string" }, from: { type: "integer", minimum: 1 }, to: { type: "integer", minimum: 1 } },
+      required: ["path"],
     },
   },
   {
@@ -143,15 +184,43 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
     ...(map ? [`<map>\n${fence(forModel(map))}\n</map>`] : []),
     `<message>\n${forModel(input.message).replace(/<\/message/gi, "<\\/message")}\n</message>`,
     ...(input.meant ? [`(That is: ${forModel(input.meant)})`] : []),
+    ...(input.change ? ["(Read as a change to make: start_job with the whole task and what you found, unless the message asks for something else.)"] : []),
     ...(input.language && LANGUAGE_WORDS[input.language] ? [`Answer in ${LANGUAGE_WORDS[input.language]}.`] : []),
   ].join("\n\n");
 
   let job: StartedJob | undefined;
   let clarify: Conversed["clarify"];
   let book: ProjectBook | null | undefined;
+  const shown: Shown[] = [];
+  let webCalls = 0;
+  const webNames = new Set((ports.web?.defs ?? []).map((d) => d.name));
+  const anchors = new Anchors();
   const acts: Acts = {
-    defs: CHAT_ACTS.filter((d) => d.name !== "project_book" || brain.book),
+    defs: [...CHAT_ACTS.filter((d) => (d.name !== "project_book" || brain.book) && (d.name !== "show_file" || ports.read)), ...(ports.web?.defs ?? [])],
     exec: async (name, a) => {
+      if (webNames.has(name)) {
+        if (++webCalls > WEB_CALLS_MAX) return { content: `No more web this time (${WEB_CALLS_MAX} calls a message): answer from what you have.` };
+        input.onStep?.(name === "web_search" ? "web:search" : "web:read");
+        return { content: await ports.web!.run(name, a).catch((err: unknown) => `The web did not answer: ${cut(String((err as Error)?.message ?? err), 160)}`) };
+      }
+      if (name === "show_file") {
+        const path = String(a.path ?? "").trim().replace(/^\.\//, "");
+        if (!path) return { content: "show_file needs a path." };
+        // A file that holds secrets is never shown, whatever is asked: say what goes in it and where it lives instead.
+        if (isSecretPath(path)) return { content: `${path} holds secrets and is never shown. Say what goes in it and where it is kept, without any value.` };
+        if (shown.length >= SHOW_FILES_MAX) return { content: `At most ${SHOW_FILES_MAX} files are shown in one answer.` };
+        const text = ports.read ? await ports.read(path).catch(() => null) : null;
+        if (text === null) return { content: `${path} could not be read: check the path with glob or list_dir.` };
+        const lines = text.split("\n");
+        const from = Math.max(1, Math.min(lines.length, Number(a.from) || 1));
+        const to = Math.min(lines.length, Math.max(from, Number(a.to) || lines.length), from + SHOW_LINES_MAX - 1);
+        const used = shown.reduce((n, x) => n + x.text.length, 0);
+        const body = redactText(lines.slice(from - 1, to).join("\n"), Math.max(500, SHOW_CHARS_MAX - used));
+        shown.push({ path, from, to, total: lines.length, text: body });
+        anchors.read(path, text);
+        input.onStep?.(`code:read:${path}`);
+        return { content: `Shown to the person below your answer, exactly: ${path} lines ${from}-${to} of ${lines.length}${to < lines.length ? " (the rest is not shown: show_file again with from and to for more)" : ""}. Do not repeat it; say what it is and how to use it.` };
+      }
       if (name === "project_book") {
         book ??= brain.book ? await brain.book().catch(() => null) : null;
         return { content: book ? bookChapter(book, String(a.chapter ?? "")) : "The project book is not ready yet." };
@@ -173,15 +242,14 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
     },
   };
 
-  const anchors = new Anchors();
   // The words stream as they are written, without the "Next:" line (the chat shows those as buttons).
   const words = input.onText ? withoutNext(input.onText) : null;
   const looked = await investigate({
-    model, tier: input.tier, user, tools: ports.look, anchors, maxPaise: input.maxPaise, maxTokens: CODE_ANSWER_TOKENS_MIN, role: "code_chat", acts,
+    model, tier: input.tier, user, tools: ports.look, anchors, maxPaise: input.maxPaise, maxTokens: Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
     ...(words ? { onText: words.onText, onReset: () => { words.reset(); input.onReset?.(); } } : input.onReset ? { onReset: input.onReset } : {}),
     ...(input.onStep ? { onStep: input.onStep } : {}),
   });
-  if (!looked.text && !job && !clarify) throw new FrontError("model_down", "I could not finish that just now. Nothing was changed; try again in a moment.", 503);
+  if (!looked.text && !job && !clarify && !shown.length) throw new FrontError("model_down", "I could not finish that just now. Nothing was changed; try again in a moment.", 503);
 
   // The truth, by code: a path put right when the project has one file of that name, then every line cited checked against what was read.
   const notes: string[] = [];
@@ -194,15 +262,21 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
   const checked = checkCitations(written, anchors);
   if (checked.dropped.length) notes.push(`I took out ${checked.dropped.length} reference${checked.dropped.length === 1 ? "" : "s"} to code I could not find.`);
   const cites = keptLocations(checked.kept);
+  // A secret in the words (a key the model read in a file and repeated) is taken out by code, whatever the model was told; then the files it
+  // chose to show, exactly as they are on the branch (their secrets taken out the same way).
+  const said2 = redactText(checked.text, 40_000);
+  const files = shown.map((x) => `**\`${x.path}\`**${x.from > 1 || x.to < x.total ? ` (lines ${x.from}-${x.to} of ${x.total})` : ""}\n\n\`\`\`${fenceOf(x.path)}\n${x.text}\n\`\`\``);
+  const answer = [said2, ...files].filter(Boolean).join("\n\n");
+  if (files.length && input.onText) input.onText(`\n\n${files.join("\n\n")}`);
 
   let thread = input.thread;
   if (thread) {
     thread = job
       ? withJob(thread, { id: job.id, branch: job.branch, said: input.message, now: input.now })
-      : afterTurn(thread, { question: input.message, cites, located: null, now: input.now, answer: checked.text, next, seen: looked.seen });
+      : afterTurn(thread, { question: input.message, cites, located: null, now: input.now, answer, next, seen: looked.seen });
   }
   return {
-    text: checked.text, paise: looked.paise, next, notes, cites, reads: looked.reads, seen: looked.seen, steps: looked.steps,
+    text: answer, paise: looked.paise, next, notes, cites, reads: looked.reads, seen: looked.seen, steps: looked.steps,
     ...(job ? { job } : {}), ...(clarify ? { clarify } : {}), thread,
   };
 }

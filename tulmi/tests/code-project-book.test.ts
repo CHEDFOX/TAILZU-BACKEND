@@ -3,7 +3,8 @@
  * sources; what is not known said as a gap; the owner asked, and their words kept as confirmed; the few facts a chat or a job needs.
  */
 import { describe, expect, it } from "vitest";
-import { bookBrief, bookForJobs, bookMarkdown, buildBook, cleanAnswers, ownerSaidAt, planLines, reasonsIn, type BookInput } from "../src/code/project/book.js";
+import { bookBrief, bookCard, bookForJobs, bookMarkdown, buildBook, cleanAnswers, ownerSaidAt, planLines, reasonsIn, RUN_FILE, settingsIn, type BookInput } from "../src/code/project/book.js";
+import { buildMap } from "../src/code/project/map.js";
 import { SupabaseProjectBrainStore } from "../src/code/project/store.js";
 import { fakeSupabase, fixtureBrain } from "./work-fixtures.js";
 
@@ -69,6 +70,61 @@ describe("a project with no docs", () => {
     // Once the owner says what it is, that is the first line, confirmed.
     const told = buildBook({ ...bare(null), owner: { for: "Dictation for people who write all day.", at: NOW } });
     expect(told.facts.find((f) => f.chapter === "what")).toMatchObject({ text: "Dictation for people who write all day.", status: "confirmed" });
+  });
+});
+
+describe("how it runs and is set up", () => {
+  const ENV = [
+    "# OPENROUTER_API_KEY is the key every model call is paid with. Set it on the server only.",
+    "OPENROUTER_API_KEY=",
+    "",
+    "# The database. SUPABASE_URL is the project's address; SUPABASE_SERVICE_KEY lets the server write.",
+    "SUPABASE_URL=",
+    "SUPABASE_SERVICE_KEY=",
+    "# CODE_CHAT_AGENT=true",
+  ].join("\n");
+
+  it("reads every setting an example env file names, with the sentence that says what it is for, and never a value", () => {
+    expect(settingsIn(ENV)).toEqual([
+      { name: "OPENROUTER_API_KEY", purpose: "OPENROUTER_API_KEY is the key every model call is paid with." },
+      { name: "SUPABASE_URL", purpose: "SUPABASE_URL is the project's address; SUPABASE_SERVICE_KEY lets the server write." },
+      { name: "SUPABASE_SERVICE_KEY", purpose: "SUPABASE_URL is the project's address; SUPABASE_SERVICE_KEY lets the server write." },
+      { name: "CODE_CHAT_AGENT", purpose: "The database." },
+    ]);
+  });
+
+  it("says where it runs and how, from the index and the run files, and the routes of each place with their lines", () => {
+    const map = buildMap({ commit: "c".repeat(40), entries: [], features: [], files: [
+      { path: "server/routes/ask.ts", blobSha: "b", lang: "TypeScript", bytes: 1, symbols: [{ name: "POST /v1/ask", kind: "route", line: 12, method: "POST", path: "/v1/ask" }], imports: [], rank: 0, hot: 0, todo: 0, tests: [], summary: "" },
+    ] });
+    const b = buildBook(input({
+      map,
+      view: { ...input().view, structure: { ...(input().view.structure as object), commands: [{ kind: "dev", cmd: "npm run dev", cwd: "server", source: "server/package.json" }] } as never },
+      ops: {
+        "Dockerfile": "FROM node:22-slim AS build\nFROM node:22-slim\nEXPOSE 8080\n",
+        "deploy/ship.sh": "#!/bin/sh\n# Pulls the branch, builds the image and restarts the server.\n",
+        "jobs/wrangler.jsonc": '{ "name": "tailzu-jobs", "triggers": { "crons": ["*/5 * * * *"] } }',
+        "deploy/Caddyfile": "api.example.com {\n  reverse_proxy localhost:8080\n}\n",
+        "DEPLOY.md": "# Deploy\n## The server\n## The database\n## The Worker\n",
+        "server/.env.example": ENV,
+      },
+    }));
+    const run = b.facts.filter((f) => f.chapter === "run").map((f) => f.text);
+    expect(run.slice(0, 7)).toEqual([
+      "To dev: `npm run dev` in server.",
+      "Docker image: Dockerfile, from node:22-slim, port 8080.",
+      "Script: deploy/ship.sh: Pulls the branch, builds the image and restarts the server.",
+      "Cloudflare Worker: jobs/wrangler.jsonc (tailzu-jobs), cron \"*/5 * * * *\".",
+      "Web server: deploy/Caddyfile, serves api.example.com.",
+      "Setup guide: DEPLOY.md: The server; The database; The Worker.",
+      "1 route in server/routes, such as POST /v1/ask (server/routes/ask.ts:12).",
+    ]);
+    expect(run).toContain("4 settings in server/.env.example; a value is never in the book, only what each is for.");
+    expect(run).toContain("OPENROUTER_API_KEY: OPENROUTER_API_KEY is the key every model call is paid with.");
+    // The card has it, and a question about setting up gets the chapter.
+    expect(bookCard(b)).toContain("## How it runs and is set up (all of it: project_book run)");
+    expect(bookBrief(b, "how do I deploy the server?", 6)).toContain("[How it runs and is set up]");
+    expect(RUN_FILE.test("tulmi/.env.example") && RUN_FILE.test("deploy/ship.sh") && !RUN_FILE.test("src/deploy.ts")).toBe(true);
   });
 });
 

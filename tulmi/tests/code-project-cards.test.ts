@@ -7,10 +7,29 @@ import { describe, expect, it } from "vitest";
 import { buildMap, componentCard, findInMap, keepMeanings, mapMarkdown, spanHash } from "../src/code/project/map.js";
 import { CARD_CALL_PARTS, cardFiles, cardable, Meter, type CardJob } from "../src/code/project/summarize.js";
 import type { StoredFile, SymbolInfo } from "../src/code/project/types.js";
+import { extractTexts, messageTexts } from "../src/code/project/texts.js";
 
 const sym = (name: string, line: number, o: Partial<SymbolInfo> = {}): SymbolInfo => ({ name, kind: "function", line, exported: true, ...o });
 const row = (path: string, symbols: SymbolInfo[], o: Partial<StoredFile> = {}): StoredFile => ({
   path, blobSha: "b".repeat(40), lang: "TypeScript", bytes: 100, symbols, imports: [], rank: 0.5, hot: 0, todo: 0, tests: [], summary: "", ...o,
+});
+
+describe("what the code says when it refuses or fails", () => {
+  it("is a text of its own, with its code said as words, so a question in a person's words finds it", () => {
+    const src = [
+      'if (left <= 0) throw new FrontError("daily_limit", "You\'ve used what X0 Bot may spend on your messages today.", 429);',
+      "// throw new Error(\"a comment, not a message\")",
+      'throw new Error(`The job ${id} is not yours to stop.`);',
+      'raise ValueError("The file is larger than ten megabytes.")',
+      'throw new Error("short");',
+    ].join("\n");
+    expect(messageTexts(src)).toEqual([
+      { line: 1, text: "daily limit: You've used what X0 Bot may spend on your messages today.", kind: "message" },
+      { line: 3, text: "The job … is not yours to stop.", kind: "message" },
+      { line: 4, text: "The file is larger than ten megabytes.", kind: "message" },
+    ]);
+    expect(extractTexts("src/front/index.ts", "TypeScript", src).map((t) => t.kind)).toContain("message");
+  });
 });
 
 describe("the words of a part are kept while its lines are the same", () => {

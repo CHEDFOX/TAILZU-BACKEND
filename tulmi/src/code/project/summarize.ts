@@ -256,8 +256,8 @@ export const CARD_CALL_PARTS = 40;
 const CARD_TOKENS_PER_PART = 120;
 const CARD_ANSWER_TOKENS_MAX = 8_000;
 const CARD_FAILURES_MAX = 6;
-/** A quick read reads this much of each file it picks; a full read reads all of it. */
-export const QUICK_FILE_CHARS = 12_000;
+/** A quick read reads this much of each file it picks (150 at most: what the old excerpts cost, about ₹1.2 for a large repo; 12,000 cost ₹9.20); a full read reads all of it. */
+export const QUICK_FILE_CHARS = 3_000;
 const SAY_MAX = 4;
 const SAY_CHARS = 48;
 

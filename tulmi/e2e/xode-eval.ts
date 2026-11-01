@@ -31,6 +31,10 @@ const arg = (name: string, d = ""): string => { const i = process.argv.indexOf(`
 const ONLY = arg("only");
 const CAP_PAISE = Math.round(Number(arg("cap", "30")) * 100);
 const OUT = arg("out", path.join("e2e", "out", "xode-eval.md"));
+/** Which ways to ask: both (the default), or only one ("router" or "loop"). */
+const MODES = (arg("modes", "router,loop").split(",").filter((m) => m === "router" || m === "loop")) as Array<"router" | "loop">;
+/** Only these cases (their ids), when given. */
+const CASES = arg("cases") ? new Set(arg("cases").split(",")) : null;
 
 type Did = "answer" | "job" | "ask";
 interface Case { id: string; say: string; before?: string[]; did: Did; says?: RegExp[]; max?: number }
@@ -74,6 +78,13 @@ const PROJECTS: Project[] = [
       { id: "thanks", say: "thanks!", did: "answer", max: 300 },
       { id: "bare-fix", say: "fix it", did: "ask" },
       { id: "change", say: "add a test that bookCard puts the owner's words first", did: "job" },
+      // Anything a person may ask of it: a file to copy, setting it up, what the project cannot say.
+      { id: "sql-copy", say: "give me the database code for the project book migration, to copy paste", did: "answer", says: [/alter table public\.code_brain add column if not exists book jsonb/] },
+      { id: "vps-setup", say: "what commands do I run to set up and deploy the server on my VPS?", did: "answer", says: [/ship\.sh|docker compose|git pull/i], max: 9000 },
+      { id: "github-env", say: "what settings does the server need in .env for GitHub?", did: "answer", says: [/GITHUB_APP_/] },
+      { id: "route", say: "where is POST /v1/ask handled?", did: "answer", says: [/routes\/front\.ts/] },
+      { id: "local", say: "how do I run it on my own computer?", did: "answer", says: [/npm (?:run )?(?:dev|start|install)|npm ci|docker compose/i], max: 9000 },
+      { id: "providers", say: "which other model providers could we use instead of OpenRouter? give options", did: "answer", says: [/Together|Groq|Fireworks|DeepInfra|Anthropic|OpenAI|Google|Mistral|DeepSeek|Bedrock|Azure/i] },
     ],
   },
 ];
@@ -166,9 +177,9 @@ async function runProject(p: Project, lines: string[], totals: Record<string, { 
 
     const rows: string[] = ["| case | expected | router | loop |", "|---|---|---|---|"];
     const answers: string[] = [];
-    for (const c of p.cases) {
+    for (const c of p.cases.filter((x) => !CASES || CASES.has(x.id))) {
       const v: Partial<Record<keyof typeof modes, Verdict>> = {};
-      for (const mode of ["router", "loop"] as const) {
+      for (const mode of MODES) {
         if (spent() >= CAP_PAISE) { out(`(stopped: ${rupees(spent())} spent, the cap is ${rupees(CAP_PAISE)})`); return; }
         const threadId = randomUUID();
         for (const b of c.before ?? []) await ask(mode, b, threadId);
@@ -184,9 +195,9 @@ async function runProject(p: Project, lines: string[], totals: Record<string, { 
         console.error(`${p.key}/${c.id} ${mode}: ${verdict.pass ? "PASS" : "FAIL"} ${verdict.did} ${rupees(verdict.paise)} ${secs(verdict.ms)}`);
       }
       const cell = (x: Verdict) => `${x.pass ? "✅" : "❌"} ${x.did}, ${rupees(x.paise)}, ${secs(x.ms)}, ${x.calls} calls${x.pass ? "" : `<br>${x.checks.filter(([, ok]) => !ok).map(([n]) => n).join("; ")}`}`;
-      rows.push(`| ${c.id}: "${c.say}" | ${c.did} | ${cell(v.router!)} | ${cell(v.loop!)} |`);
+      rows.push(`| ${c.id}: "${c.say}" | ${c.did} | ${v.router ? cell(v.router) : "-"} | ${v.loop ? cell(v.loop) : "-"} |`);
       answers.push(`#### ${c.id}: "${c.say}"${c.before ? ` (after "${c.before.join('", "')}")` : ""}`, "");
-      for (const mode of ["router", "loop"] as const) {
+      for (const mode of MODES) {
         const x = v[mode]!;
         answers.push(`**${mode}** (${x.did}${x.job ? `, task: "${x.job.slice(0, 200)}"` : ""}):`, "", x.text.slice(0, 900).split("\n").map((l) => `> ${l}`).join("\n"), "");
       }

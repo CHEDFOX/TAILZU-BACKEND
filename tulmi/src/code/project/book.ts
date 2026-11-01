@@ -25,11 +25,11 @@ import type { ProjectMap } from "./map.js";
 import { classOf, isTestPath } from "./lang.js";
 import type { BrainView, CommitRecord, StoredFile } from "./types.js";
 
-export const CHAPTERS = ["what", "build", "state", "recent", "why", "direction", "rules"] as const;
+export const CHAPTERS = ["what", "build", "run", "state", "recent", "why", "direction", "rules"] as const;
 export type Chapter = (typeof CHAPTERS)[number];
 export const CHAPTER_TITLES: Readonly<Record<Chapter, string>> = {
-  what: "What it is", build: "How it is built", state: "How it stands now", recent: "What changed lately", why: "Why it is this way",
-  direction: "Where it is heading", rules: "Its rules",
+  what: "What it is", build: "How it is built", run: "How it runs and is set up", state: "How it stands now", recent: "What changed lately",
+  why: "Why it is this way", direction: "Where it is heading", rules: "Its rules",
 };
 
 export type FactStatus = "confirmed" | "found" | "guessed";
@@ -73,6 +73,8 @@ export interface BookInput {
   milestones: readonly MilestoneInfo[] | null;
   /** Roadmap-like files and the README, by path. */
   docs: Readonly<Record<string, string>>;
+  /** The files that say how it runs and is set up (deploy scripts, Dockerfiles, a Worker's or a host's config, .env.example, a setup guide), by path. */
+  ops?: Readonly<Record<string, string>>;
   owner: OwnerAnswers | null;
 }
 
@@ -119,6 +121,9 @@ export function buildBook(i: BookInput): ProjectBook {
   }
   // The owners' own overview of how it is built, when they wrote one.
   for (const [path, text] of Object.entries(i.docs)) if (ARCH_DOC.test(path)) { const p = firstParagraph(text); if (p) add("build", p, { kind: "file", ref: path }); }
+
+  // ------------------------------------------------------------------ how it runs and is set up
+  runChapter(i, add, index);
 
   // ------------------------------------------------------------------ how it stands now
   const base = i.view.baseline;
@@ -323,6 +328,7 @@ const ASKS: ReadonlyArray<[RegExp, Chapter]> = [
   [/\b(?:recent\w*|lately|changed|latest|last\s+(?:week|month))\b/i, "recent"],
   [/\b(?:health|broken|failing|passing|state|status|tested|coverage|todo|debt|risky)\b/i, "state"],
   [/\b(?:stack|built|architecture|framework|language|monorepo|packages)\b/i, "build"],
+  [/\b(?:deploy\w*|run(?:ning)?\s+(?:it|locally)|set\s*up|setup|install\w*|\.?env|settings?|config\w*|server|vps|docker|host\w*|migrat\w*|routes?|endpoints?)\b/i, "run"],
   [/\b(?:rules?|conventions?|style|lint\w*|format\w*)\b/i, "rules"],
   [/\b(?:what\s+is|what's|who\s+is\s+it\s+for|purpose|about|overview|for\s+whom)\b/i, "what"],
 ];
@@ -380,6 +386,7 @@ export function bookCard(b: ProjectBook, max = CARD_CHARS): string {
     ["The owner's words (newest; they win over anything older)", owner.map(line)],
     [CHAPTER_TITLES.what, take("what", 4)],
     [CHAPTER_TITLES.build, take("build", 4)],
+    [`${CHAPTER_TITLES.run} (all of it: project_book run)`, take("run", 9)],
     [CHAPTER_TITLES.direction, take("direction", 6)],
     [CHAPTER_TITLES.state, take("state", 6)],
     [CHAPTER_TITLES.recent, take("recent", 4)],
@@ -440,4 +447,99 @@ export function cleanAnswers(raw: unknown, now: number, prev: OwnerAnswers | nul
     if (t) { out[id] = t; any = true; } else delete out[id];
   }
   return any || prev ? out : null;
+}
+
+
+// ------------------------------------------------------------------ how it runs and is set up
+
+/** A file that says how the project runs, is deployed or is set up: what the book reads for its run chapter (project/index.ts loads them). */
+export const RUN_FILE = /(^|\/)(?:Dockerfile[\w.-]*|docker-compose[\w.-]*\.ya?ml|compose\.ya?ml|Procfile|fly\.toml|render\.ya?ml|vercel\.json|netlify\.toml|wrangler\.(?:jsonc?|toml)|eas\.json|app\.ya?ml|Caddyfile|nginx[\w.-]*\.conf|\.env\.(?:example|sample|template)|(?:deploy(?:ment)?|setup|install(?:ation)?|self-?host\w*|hosting|operations?|runbook)\.md)$|(^|\/)(?:deploy|scripts\/deploy|ops|infra)\/[^/]+\.(?:sh|ps1|ya?ml)$/i;
+
+/** The settings an example env file names, each with what its comment says it is for (the sentence that names it, or the block's first). */
+export function settingsIn(text: string): Array<{ name: string; purpose: string }> {
+  const out: Array<{ name: string; purpose: string }> = [];
+  let note: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) { note = []; continue; }
+    const m = /^#?\s*([A-Z][A-Z0-9_]{2,})\s*=/.exec(line);
+    if (m) {
+      const name = m[1]!;
+      if (!out.some((o) => o.name === name)) {
+        const said = note.join(" ").replace(/\s+/g, " ").trim();
+        const sentences = said.split(/(?<=[.!?:])\s+(?=[A-Z(`"])/);
+        const own = sentences.find((x) => x.includes(name)) ?? sentences[0] ?? "";
+        out.push({ name, purpose: one(own, 200) });
+      }
+      continue;
+    }
+    if (line.startsWith("#")) note.push(line.replace(/^#+\s?/, ""));
+  }
+  return out;
+}
+
+/** What one run file says, in a line: what kind of place it sets up, and the words that matter in it. */
+function runLine(path: string, text: string): string | null {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  // The file's first comment of some length, without its own closing stop (the line adds one).
+  const comment = (text.match(/^(?:#|\/\/)\s*(?!!)(.{12,})$/m)?.[1] ?? "").replace(/^[-=*\s]+/, "").trim().replace(/[.:;]+$/, "");
+  if (/^Dockerfile/i.test(base)) {
+    const from = [...text.matchAll(/^FROM\s+(\S+)/gim)].map((m) => m[1]).slice(-1)[0];
+    const ports = [...text.matchAll(/^EXPOSE\s+(.+)$/gim)].map((m) => m[1]!.trim()).join(", ");
+    return `Docker image: ${path}${from ? `, from ${from}` : ""}${ports ? `, port ${ports}` : ""}.`;
+  }
+  if (/compose/i.test(base)) {
+    const services = [...text.matchAll(/^ {2}([\w-]+):\s*$/gm)].map((m) => m[1]).slice(0, 8);
+    return `Docker Compose: ${path}${services.length ? `, services ${services.join(", ")}` : ""}.`;
+  }
+  if (/^wrangler\./i.test(base)) {
+    const name = /"?name"?\s*[:=]\s*"([^"]+)"/.exec(text)?.[1];
+    const crons = /"?crons"?\s*[:=]\s*\[([^\]]*)\]/.exec(text)?.[1]?.trim();
+    return `Cloudflare Worker: ${path}${name ? ` (${name})` : ""}${crons ? `, cron ${crons}` : ""}.`;
+  }
+  if (/^Caddyfile$|^nginx/i.test(base)) {
+    const sites = [...text.matchAll(/^([a-z0-9.-]+\.[a-z]{2,}(?::\d+)?)\s*(?:,|\{)/gim)].map((m) => m[1]).slice(0, 4);
+    return `Web server: ${path}${sites.length ? `, serves ${sites.join(", ")}` : ""}.`;
+  }
+  if (/^(?:vercel\.json|netlify\.toml|fly\.toml|render\.ya?ml|Procfile|app\.ya?ml)$/i.test(base)) return `Hosting: ${path}${comment ? `: ${one(comment, 140)}` : ""}.`;
+  if (/^eas\.json$/i.test(base)) return `Phone app builds (Expo EAS): ${path}.`;
+  if (/\.md$/i.test(base)) {
+    const heads = [...text.matchAll(/^#{1,3}\s+(.+)$/gm)].map((m) => m[1]!.replace(/[`*]/g, "").trim()).slice(1, 7);
+    return `Setup guide: ${path}${heads.length ? `: ${heads.join("; ")}` : ""}.`;
+  }
+  if (/\.(?:sh|ps1)$/i.test(base)) return `Script: ${path}${comment ? `: ${one(comment, 160)}` : ""}.`;
+  return null;
+}
+
+/** The run chapter: where it runs and how, from the index and the run files; every setting with what it is for; the routes of each place. */
+function runChapter(i: BookInput, add: (c: Chapter, text: string, source: Source) => void, index: (ref: string) => Source): void {
+  const st = i.view.structure;
+  const KINDS = new Set(["dev", "start", "build", "test", "lint", "typecheck", "migrate", "deploy", "install"]);
+  for (const c of (st?.commands ?? []).filter((x) => KINDS.has(x.kind)).slice(0, 12)) {
+    add("run", `To ${c.kind}: \`${c.cmd}\`${c.cwd && c.cwd !== "." ? ` in ${c.cwd}` : ""}.`, { kind: "file", ref: c.source || "package.json" });
+  }
+  const ops = Object.entries(i.ops ?? {});
+  for (const [path, text] of ops) {
+    if (/\.env\.(?:example|sample|template)$/i.test(path)) continue;
+    const line = runLine(path, text);
+    if (line) add("run", line, { kind: "file", ref: path });
+  }
+  // The routes of each place: the top folder they are in, how many, and a few of them with their exact lines.
+  if (i.map) {
+    const byPlace = new Map<string, Array<{ route: string; at: string }>>();
+    for (const c of Object.values(i.map.components)) for (const s of c.symbols) {
+      if (!s.route) continue;
+      const place = c.path.split("/").slice(0, c.path.split("/").length > 2 ? 2 : 1).join("/");
+      (byPlace.get(place) ?? byPlace.set(place, []).get(place)!).push({ route: `${s.route.method} ${s.route.path}`, at: `${c.path}:${s.start}` });
+    }
+    for (const [place, routes] of [...byPlace].sort((a, b) => b[1].length - a[1].length).slice(0, 6)) {
+      add("run", `${plural(routes.length, "route")} in ${place}, such as ${routes.slice(0, 3).map((r) => `${r.route} (${r.at})`).join(", ")}.`, index("project map"));
+    }
+  }
+  for (const [path, text] of ops.filter(([p]) => /\.env\.(?:example|sample|template)$/i.test(p))) {
+    const settings = settingsIn(text);
+    if (!settings.length) continue;
+    add("run", `${plural(settings.length, "setting")} in ${path}; a value is never in the book, only what each is for.`, { kind: "file", ref: path });
+    for (const x of settings) add("run", `${x.name}${x.purpose ? `: ${x.purpose}` : ""}`, { kind: "file", ref: path });
+  }
 }

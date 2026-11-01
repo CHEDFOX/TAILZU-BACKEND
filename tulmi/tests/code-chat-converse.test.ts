@@ -8,7 +8,7 @@ import { buildBook } from "../src/code/project/book.js";
 import { newThread } from "../src/code/chat/threads.js";
 import { decide } from "../src/front/decide.js";
 import { buildTierTable } from "../src/code/brain/tiers.js";
-import { ctx as frontCtx, inProject, noModel } from "./front-rig.js";
+import { ctx as frontCtx, decideJson, inProject, model, noModel } from "./front-rig.js";
 
 type Sent = { tools: string[]; toolChoice: unknown; system: string; user: string };
 
@@ -51,7 +51,7 @@ describe("one loop", () => {
     expect(m.sent[0]!.user).toContain("#7 Checkout fails on Safari");
     expect(m.sent[0]!.user).toMatch(/<message>\nWhat should we do\n<\/message>/);
     // Reading, a book chapter, a job and a question back are all offered; nothing that writes.
-    expect(m.sent[0]!.tools).toEqual(["read_file", "grep", ...CHAT_ACTS.map((d) => d.name)]);
+    expect(m.sent[0]!.tools).toEqual(["read_file", "grep", ...CHAT_ACTS.map((d) => d.name).filter((n) => n !== "show_file")]);
     expect(out).toMatchObject({ text: "Next is gift cards, then UPI, as you said; #7 (Safari checkout) is open.", next: ["start gift cards?", "look at #7?"], steps: 1 });
   });
 
@@ -86,6 +86,47 @@ describe("one loop", () => {
   });
 });
 
+describe("anything a person asks of the project", () => {
+  // A made-up key in the shape of one, put together here so that no key-shaped text sits in the repository (GitHub's push protection reads it).
+  const FAKE_KEY = ["sk", "or", "v1", "0123456789abcdef".repeat(4)].join("-");
+  const files: Record<string, string> = {
+    "supabase/migrations/0060_project_book.sql": "-- The project book\nalter table public.code_brain add column if not exists book jsonb;\n",
+    "deploy/ship.sh": `#!/bin/sh\n# Ships the server: pull, build, restart.\nexport OPENROUTER_API_KEY=${FAKE_KEY}\ndocker compose up -d\n`,
+    ".env": "OPENROUTER_API_KEY=sk-or-v1-real\n",
+  };
+  const read = async (p: string) => files[p] ?? null;
+
+  it("shows a file exactly as it is below the answer, to copy; the model does not retype it", async () => {
+    const m = scripted([{ calls: [{ name: "show_file", args: { path: "supabase/migrations/0060_project_book.sql" } }] }, { text: "Run this in the Supabase SQL editor." }]);
+    const out = await converse({ ...base, message: "give me the database code for the book" }, { brain, look, read }, m.model);
+    expect(out.text).toBe("Run this in the Supabase SQL editor.\n\n**`supabase/migrations/0060_project_book.sql`**\n\n```sql\n-- The project book\nalter table public.code_brain add column if not exists book jsonb;\n\n```");
+    expect(m.sent[0]!.tools).toContain("show_file");
+  });
+
+  it("never shows a file of secrets, and takes a secret out of any file it shows", async () => {
+    const m = scripted([
+      { calls: [{ name: "show_file", args: { path: ".env" } }, { name: "show_file", args: { path: "deploy/ship.sh" } }] },
+      { text: "The key goes in the server's .env." },
+    ]);
+    const out = await converse({ ...base, message: "show me the env and the deploy script" }, { brain, look, read }, m.model);
+    expect(out.text).not.toContain("sk-or-v1-real");
+    expect(out.text).not.toContain(FAKE_KEY.slice(0, 12));
+    expect(out.text).toContain("docker compose up -d");
+  });
+
+  it("looks on the web for what the project cannot say, at most a few calls a message", async () => {
+    const ran: string[] = [];
+    const web = { defs: [{ name: "web_search", description: "search", parameters: {} }], run: async (name: string, a: Record<string, unknown>) => { ran.push(`${name}:${String(a.query)}`); return "Resend: 3,000 emails a month free. Postmark: 100 a month free."; } };
+    const m = scripted([
+      { calls: [1, 2, 3, 4].map((n) => ({ name: "web_search", args: { query: `email providers ${n}` } })) },
+      { text: "Resend or Postmark; Resend's free tier is the larger." },
+    ]);
+    const out = await converse({ ...base, message: "which email provider could we use?" }, { brain, look, web }, m.model);
+    expect(ran).toHaveLength(3);
+    expect(out.text).toContain("Resend");
+  });
+});
+
 describe("the words", () => {
   it("start with the answer: a lead-in or a first line that tells of the looking is taken off", () => {
     expect(unnarrate("I have enough to answer: the timer is in pill.js.\n\nMore.")).toBe("The timer is in pill.js.\n\nMore.");
@@ -98,20 +139,33 @@ describe("the words", () => {
 describe("the router, in a project's chat as one loop", () => {
   const tiers = buildTierTable();
   const read = (m: string, c = inProject({ projectId: "p1" }), agentChat = true) => decide(m, c, { call: noModel().call, tiers, fx: 88, jobBudgetPaise: 3000, agentChat });
-  it("decides only what is done: a change is a job, a bare 'fix it' is a question back, anything else is the loop", async () => {
+  it("decides only what is done: a change is the loop's to start, marked; a bare 'fix it' is a question back; anything else is the loop", async () => {
     expect(await read("where is the session cookie set?")).toMatchObject({ route: "code_answer", reasons: expect.arrayContaining(["agent_chat"]), budgetPaise: 300 });
     expect(await read("what is this project for?")).toMatchObject({ reasons: expect.arrayContaining(["agent_chat"]) });
     const fix = await read("fix it");
     expect(fix.clarify).toBeTruthy();
     expect(fix.reasons).not.toContain("agent_chat");
     const change = await read("add a dark mode toggle to the settings page");
-    expect(change.route).toBe("code_job");
+    expect(change).toMatchObject({ route: "code_answer", reasons: expect.arrayContaining(["agent_chat", "agent_change"]) });
     // A UI to make and fresh facts from the web are actions of their own: the design and research roads, as before.
     expect((await read("show me how a pricing page would look")).route).toBe("artifact");
     expect((await read("is there a good library for date pickers in react")).route).toBe("research");
     // Off, or outside a project, the router and its roads as before.
     expect((await read("where is the session cookie set?", inProject({ projectId: "p1" }), false)).reasons).not.toContain("agent_chat");
     expect((await read("where is the session cookie set?", frontCtx())).reasons).not.toContain("agent_chat");
+  });
+
+  it("sends every change to the loop marked as one, sure or not: the loop starts the job with what it found, or does what was really asked", async () => {
+    for (const confidence of [0.5, 0.92]) {
+      const d = await decide("give me the database code to copy paste", inProject({ projectId: "p1" }), {
+        call: model(() => decideJson({ intent: "code_task", confidence })).call, tiers, fx: 88, jobBudgetPaise: 3000, agentChat: true,
+      });
+      expect(d).toMatchObject({ route: "code_answer", reasons: expect.arrayContaining(["agent_change"]) });
+    }
+    const m = scripted([{ calls: [{ name: "start_job", args: { task: "Add a dark mode toggle to src/settings.tsx, saved in the user's settings, with a test." } }] }]);
+    const out = await converse({ ...base, message: "add a dark mode toggle", change: true }, { brain, look, startJob: async () => ({ id: "j", branch: "xode/dark", state: "queued", budgetPaise: 3000 }) }, m.model);
+    expect(m.sent[0]!.user).toContain("(Read as a change to make: start_job");
+    expect(out.job).toMatchObject({ branch: "xode/dark" });
   });
 
   it("tells the loop what a reaction asks of the last answer", async () => {
