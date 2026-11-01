@@ -50,6 +50,7 @@ const { SplitReply } = await import("../src/code/team/split.js");
 const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
+const { AskDecideReply } = await import("../src/askDecide/index.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { parseLine } = await import("../src/agent/lines.js");
@@ -283,6 +284,10 @@ describe("a known-good answer for each role", () => {
       reads: (t) => BotDraftReply.parse(JSON.parse(t)),
     },
     bot_pick: { text: '{"bot":"workout-buddy","confidence":0.9}', reads: (t) => BotPickReply.parse(JSON.parse(t)) },
+    ask_decide: {
+      text: '{"do":"send","goal":"Tell Riya the mockups are ready","to":"Riya","via":"WhatsApp","bot":null,"notes":null,"screen":false,"web":false,"sure":0.92}',
+      reads: (t) => AskDecideReply.parse(JSON.parse(t)),
+    },
     bot_run: { text: "Two rest days a week is a good rule: one full rest and one light day.", reads: (t) => t },
     bot_memory: {
       text: '{"add":["Trains at 6am on weekdays.","Is vegetarian."],"drop":[],"summary":"Planning workouts around a 6am weekday routine and a vegetarian diet."}',
