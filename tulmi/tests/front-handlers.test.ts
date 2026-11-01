@@ -126,7 +126,7 @@ describe("a question about a project", () => {
     const out = await h.codeAnswer({ ...(await call("what does slug() in src/util.ts do?", c)), maxPaise: 150 });
     expect(out.text).toContain("src/util.ts:1");
     const sent = a.json.of("front.code_answer")[0]!;
-    expect(sent).toMatchObject({ tier: "cheap", system: stableBlock("front_code_answer") });
+    expect(sent).toMatchObject({ tier: "cheap", system: stableBlock("code_ask") });
     expect(sent.user).toContain("<question>\nwhat does slug() in src/util.ts do?\n</question>");
     expect(sent.user).toContain("<facts>\nsrc/util.ts:1 — String helpers: slug turns a title into a URL slug.");
     // The index was enough: no file was read from GitHub, and so no excerpts were sent.

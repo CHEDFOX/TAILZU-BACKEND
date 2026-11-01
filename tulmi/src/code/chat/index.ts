@@ -13,6 +13,14 @@
  * needs comes in through the constructor, so the tests run it over a fixture brain, a fake GitHub and a scripted model.
  */
 import { sharedFacts } from "../../bots/shared.js";
+import { getConfig } from "../../config.js";
+import { Tools } from "../agent/tools.js";
+import { initialState } from "../agent/types.js";
+import type { BrainHandle } from "../project/index.js";
+import type { CodeProject } from "../store.js";
+import { MemoryWorklogStore } from "../work/worklogStore.js";
+import { WorkLog } from "../work/worklog.js";
+import type { LookTools } from "./look.js";
 import type { FrontModel } from "../../front/model.js";
 import type { Length } from "../../front/types.js";
 import type { GatewayDeps } from "../brain/gateway.js";
@@ -48,6 +56,8 @@ export interface CodeChatDeps {
   personal?: (userId: string, about: string) => Promise<string[]>;
   /** Where a job stands, in a few lines (its state, report, checks, pull request): for a job started from the thread. */
   job?: (userId: string, jobId: string) => Promise<string | null>;
+  /** Look before answering (look.ts): CODE_CHAT_LOOK when not given. */
+  look?: boolean;
 }
 
 export interface ChatRequest {
@@ -85,9 +95,12 @@ export class CodeChat {
   private readonly threads: ThreadStore;
   private readonly now: () => number;
 
+  private readonly lookOn: boolean;
+
   constructor(private readonly d: CodeChatDeps) {
     this.threads = d.threads ?? threadStore();
     this.now = d.now ?? Date.now;
+    this.lookOn = d.look ?? getConfig().CODE_CHAT_LOOK;
   }
 
   private model(userId: string, signal?: AbortSignal): FrontModel {
@@ -138,7 +151,7 @@ export class CodeChat {
       search: r.ask && r.context ? r.context : meant?.text ?? r.question, tier: r.tier, length: r.length,
       maxPaise: Math.max(1, r.maxPaise - (meant?.paise ?? 0)), thread, diagram: r.diagram, now: this.now(), ...(about.length ? { about } : {}), ...(job ? { job } : {}), ...(r.language ? { language: r.language } : {}),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
-    }, { brain, read, files }, model);
+    }, { brain, read, files, look: this.lookOn ? this.lookTools(r.userId, project, brain, meant?.text ?? r.question, r.signal) : null }, model);
     if (meant?.paise) out.paise += meant.paise;
     if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
     return out;
@@ -148,6 +161,23 @@ export class CodeChat {
    * "Ok, change it": what a job made from this conversation is handed, or null when the conversation found no place in the code (then the job
    * looks for it as any job does). `task` is the job's request; `located` is where to start, and the agent does not locate again.
    */
+  /**
+   * The agent's tools for one answer, read-only (look.ts takes only project_map, search_code, grep, read_file, list_dir, glob and suggest_files): the
+   * branch through GitHub (the workspace's own ten-minute reads), the brain for the map and the index. Nothing here can write, run or go to the web.
+   */
+  private lookTools(userId: string, project: CodeProject, brain: BrainHandle, task: string, signal?: AbortSignal): LookTools {
+    let ws: Awaited<ReturnType<typeof workspace>> | null = null;
+    const open = async () => (ws ??= await workspace(this.d.projects, userId, project.id, project.defaultBranch));
+    const tools = new Tools({
+      userId, projectId: project.id, state: initialState(task, this.now()), ws: { read: async (p) => (await open()).read(p), tree: async () => (await open()).tree() },
+      brain, log: new WorkLog(`chat:${project.id}`, { store: new MemoryWorklogStore() }),
+      runStep: async () => { throw new Error("A chat runs nothing."); },
+      web: { run: async () => ({ ok: false, message: { content: "This chat does not use the web." } }) } as never,
+      closedSource: project.private, now: this.now, ...(signal ? { signal } : {}),
+    });
+    return { defs: tools.defs(), exec: (c) => tools.exec(c) };
+  }
+
   /** A job was started from this thread: it is kept on it, so the next questions in the thread know what it did. */
   async noteJob(userId: string, projectId: string, threadId: string, o: { id: string; branch: string; said: string }): Promise<void> {
     if (!THREAD_ID.test(threadId)) return;

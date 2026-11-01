@@ -82,7 +82,7 @@ describe("the fast path", () => {
     expect(out.notes).toEqual([]);
     // The model got the question and the index's facts as data, the role's own block, and no excerpts.
     const sent = said(r);
-    expect(sent).toMatchObject({ tier: "cheap", system: stableBlock("front_code_answer") });
+    expect(sent).toMatchObject({ tier: "cheap", system: stableBlock("code_ask") });
     expect(sent.user).toContain("<question>\nwhere is startSession defined?\n</question>");
     expect(sent.user).toContain("<facts>\nsrc/auth/session.ts:");
     expect(sent.user).toContain("symbols:");
