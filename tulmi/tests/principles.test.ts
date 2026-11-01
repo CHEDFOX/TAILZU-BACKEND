@@ -29,7 +29,7 @@ const { SynonymReply, PickReply } = await import("../src/code/work/locate.js");
 const { SpecReply } = await import("../src/code/newproject/spec.js");
 const { Weighed } = await import("../src/code/resources/brief.js");
 const { FoldReply } = await import("../src/code/agent/context.js");
-const { FileSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema } = await import("../src/code/project/summarize.js");
+const { FileSchema, CardSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema } = await import("../src/code/project/summarize.js");
 const { GapSchema } = await import("../src/web/research.js");
 const { ModelPlan } = await import("../src/web/search/plan.js");
 const { INTENTS, DIRECT_SOURCES } = await import("../src/web/search/types.js");
@@ -254,6 +254,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   agent_work: 1478, // 1343 measured
   agent_fold: 528, // 480 measured
   index_files: 477, // 433 measured
+  index_cards: 676, // 615 measured
   index_dirs: 398, // 361 measured
   index_repo: 364, // 330 measured
   index_features: 405, // 368 measured
@@ -346,6 +347,7 @@ describe("the contracts say what the parsers read", () => {
     ["plan_change", PlanReply],
     ["agent_fold", FoldReply],
     ["index_files", FileSchema],
+    ["index_cards", CardSchema],
     ["index_dirs", DirSchema],
     ["index_repo", OverviewSchema],
     ["index_features", FeatureSchema],

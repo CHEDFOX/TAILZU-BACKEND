@@ -60,10 +60,10 @@ import { buildStructure, DESCRIBED, extractCore } from "./scan.js";
 import { coreKindOf, fetchContents, fetchTree, selectFiles, type Candidate, type Contents } from "./snapshot.js";
 import type { ProjectBrainStore } from "./store.js";
 import {
-  Meter, fallbackWelcome, labelFeatures, phaseCap, pickForSummary, suggestTasks, summarizeDirs, summarizeFiles, summarizeRepo, welcomeMessage,
-  type CallFn, type DirJob, type FileJob, type SummaryCtx,
+  Meter, fallbackWelcome, labelFeatures, phaseCap, pickForSummary, suggestTasks, summarizeDirs, summarizeRepo, cardFiles, cardable, QUICK_FILE_CHARS, welcomeMessage,
+  type CallFn, type CardJob, type DirJob, type SummaryCtx,
 } from "./summarize.js";
-import { withHashes } from "./map.js";
+import { keepMeanings, withHashes } from "./map.js";
 import { countTodos, extractSymbols, type SymbolContext } from "./symbols.js";
 import { buildTestMap, untestedImportant } from "./tests.js";
 import { extractTexts } from "./texts.js";
@@ -91,6 +91,9 @@ export interface ProjectBrainDeps {
   budgetPaise: number;
   log?: BuildLog;
 }
+
+/** The share of a full read's money its parts may take (a quick read's files take 65%: phaseCap). */
+export const FULL_READ_PARTS_SHARE = 0.9;
 
 /** An incremental build may spend this fraction of the import budget: it only writes about what changed. */
 export const INCREMENTAL_BUDGET_SHARE = 0.2;
@@ -169,8 +172,11 @@ export interface BuildResult { row: BrainRow; mode: BuildMode; changed: number }
  * before this build was marked "building" (index.ts does that first, so that the
  * status is true at once); left out, it is read.
  */
+/** How much of a project's code the index's model reads (StartOptions.depth). */
+export type ReadDepth = "quick" | "full";
+
 export async function runBuild(
-  deps: ProjectBrainDeps, userId: string, project: CodeProject, requested: BuildMode, base?: BrainRow | null,
+  deps: ProjectBrainDeps, userId: string, project: CodeProject, requested: BuildMode, base?: BrainRow | null, o: { depth?: ReadDepth; budgetPaise?: number } = {},
 ): Promise<BuildResult> {
   const { store } = deps;
   const now = deps.now ?? Date.now;
@@ -284,8 +290,10 @@ export async function runBuild(
       const a = analysed.get(c.path);
       const old = storedByPath.get(c.path);
       if (a) {
-        // A read file with the same sha as the kept one is the same file: the old line still describes it.
+        // A read file with the same sha as the kept one is the same file: the old line still describes it. Its parts whose lines did not change
+        // keep what they do (their fingerprints prove it); a changed or new part is described again below.
         if (old && old.blobSha === a.file.blobSha) a.file.summary = old.summary;
+        a.file.symbols = keepMeanings(a.file.symbols, old?.symbols, { sameFile: !!old && old.blobSha === a.file.blobSha });
         all.set(c.path, a.file);
       } else if (old && old.blobSha === c.sha && mode === "incremental") all.set(c.path, { ...old });
       else if (treeOnly) all.set(c.path, old && old.blobSha === c.sha ? { ...old } : stubOf(c));
@@ -345,6 +353,7 @@ export async function runBuild(
     if (tree.truncated) structure.note = `${structure.note} GitHub cut the file listing short (a very large repo), so some files are missing.`.trim();
     const importantUntested = untestedImportant(allPaths.map((p) => ({ path: p, hot: all.get(p)!.hot, rank: all.get(p)!.rank, tests: all.get(p)!.tests, isTest: isTestPath(p), lang: all.get(p)!.lang })));
     structure = { ...structure, testing: { frameworks: testMap.frameworks, testFiles: testMap.testFiles.length, untestedHot: importantUntested } };
+    if ((o.depth ?? existing?.structure.read) === "full") structure = { ...structure, read: "full" };
 
     // The style is sniffed from the best-connected source files read in a full build; an incremental one keeps what it found.
     const sample = [...analysed.values()].filter((a) => classOf(a.file.path) === "source" && !a.redact)
@@ -416,7 +425,10 @@ export async function runBuild(
 
     // ---- the words
     await progress(85, "writing it down");
-    const meter = new Meter(mode === "full" ? deps.budgetPaise : Math.ceil(deps.budgetPaise * INCREMENTAL_BUDGET_SHARE));
+    // A full read is asked for once and kept: the project's later builds describe every part that changes.
+    const depth: ReadDepth = o.depth ?? existing?.structure.read ?? "quick";
+    const budget = o.budgetPaise ?? deps.budgetPaise;
+    const meter = new Meter(mode === "full" || o.budgetPaise ? budget : Math.ceil(budget * INCREMENTAL_BUDGET_SHARE));
     const ctx: SummaryCtx = { call, gateway: deps.gateway, userId, meter };
     let anySummary = false;
     let complete = true;
@@ -432,14 +444,26 @@ export async function runBuild(
         isTest: isTestPath(p), kind: klass === "source" ? "source" as const : klass === "markup" ? "markup" as const : "other" as const,
       };
     }));
-    const pickedSet = new Set(picked);
+    // A full read describes every source file (not tests, not generated code); a quick one the picked ones.
+    const scope = depth === "full" ? allPaths.filter((p) => classOf(p) === "source" && !isTestPath(p)) : picked;
+    const pickedSet = new Set(scope);
     for (const f of all.values()) if (f.summary && !pickedSet.has(f.path)) f.summary = "";
-    const jobs: FileJob[] = picked.filter((p) => analysed.has(p) && !all.get(p)!.summary)
-      .map((p) => { const a = analysed.get(p)!; return { path: p, lang: a.file.lang, text: a.text, symbols: a.file.symbols, redact: a.redact }; });
-    const fileLines = await summarizeFiles(ctx, jobs, phaseCap(meter, "files"));
-    for (const [p, s] of fileLines.summaries) { all.get(p)!.summary = s; anySummary = true; }
-    if (picked.some((p) => !all.get(p)!.summary)) complete = false;
-    if (picked.some((p) => all.get(p)!.summary)) anySummary = true;
+    // Each file read now gets words for the parts that have none (new, or changed since they were described) and a line if it has none.
+    const jobs: CardJob[] = scope.filter((p) => analysed.has(p)).map((p) => {
+      const a = analysed.get(p)!;
+      const f = all.get(p)!;
+      return { path: p, lang: f.lang, text: a.text, symbols: f.symbols, want: cardable(f.symbols).filter((i) => !f.symbols[i]!.does), summary: !f.summary, redact: a.redact };
+    }).filter((j) => j.want.length || j.summary);
+    // A full read is for the parts: the folders, the features and the welcome after them cost little, so the parts may have FULL_READ_PARTS_SHARE.
+    const cards = await cardFiles(ctx, jobs, depth === "full" ? Math.floor(meter.budget * FULL_READ_PARTS_SHARE) : phaseCap(meter, "files"), depth === "full" ? {} : { fileChars: QUICK_FILE_CHARS });
+    for (const [p, got] of cards.files) {
+      const f = all.get(p)!;
+      if (got.summary) f.summary = got.summary;
+      if (got.parts.size) f.symbols = f.symbols.map((s, i) => (got.parts.has(i) ? { ...s, does: got.parts.get(i)!.does, ...(got.parts.get(i)!.say.length ? { say: got.parts.get(i)!.say } : {}) } : s));
+      anySummary = true;
+    }
+    if (!cards.complete || scope.some((p) => !all.get(p)!.summary)) complete = false;
+    if (scope.some((p) => all.get(p)!.summary)) anySummary = true;
 
     // Folders, deepest first, so a parent reads its children's lines.
     const childFiles = new Map<string, string[]>();

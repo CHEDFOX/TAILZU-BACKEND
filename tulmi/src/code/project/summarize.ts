@@ -207,6 +207,191 @@ export async function summarizeFiles(ctx: SummaryCtx, files: readonly FileJob[],
   return { summaries: out, complete };
 }
 
+// ------------------------------------------------------------ the parts, each with words
+
+/**
+ * A file whose parts get words: its text, its symbols, which of them to describe (`want`, indexes into `symbols`), and whether the file needs its
+ * own line too. The words are what a part does and what a person would call it: never where it is or what it connects to, which the map has.
+ */
+export interface CardJob { path: string; lang: string; text: string; symbols: readonly SymbolInfo[]; want: number[]; summary: boolean; redact: boolean }
+export interface Meaning { does: string; say: string[] }
+export interface CardsOut { files: Map<string, { summary?: string; parts: Map<number, Meaning> }>; complete: boolean; calls: number }
+
+/** The code one call reads, in characters; a file longer than this is read in parts, cut where a symbol starts. */
+export const CARD_CALL_CHARS = 20_000;
+/**
+ * What a full read of a project costs and takes, from its files' sizes alone (no read, no model): its source code (not tests, generated code or
+ * data), at what reading cost (tailzu-desktop ₹8.76 for 1.91 MB, tailzu-frontend ₹18.14 for 3.85 MB in 236 calls) with a margin. What already
+ * has words: those parts are not paid for again.
+ */
+export interface ReadEstimate { read: "quick" | "full"; files: number; mb: number; paise: number; minutes: number; parts: number; described: number }
+export const FULL_READ_PAISE_PER_MB = 500;
+const CALLS_PER_MB = 60;
+const SECONDS_PER_CALL = 5;
+
+export function readEstimate(files: ReadonlyArray<{ path: string; bytes: number; symbols: readonly SymbolInfo[] }>, read: "quick" | "full", isSource: (path: string) => boolean): ReadEstimate {
+  const source = files.filter((f) => isSource(f.path));
+  let parts = 0;
+  let described = 0;
+  let bytes = 0;
+  for (const f of source) {
+    const want = cardable(f.symbols);
+    const left = want.filter((i) => !f.symbols[i]!.does).length;
+    parts += want.length;
+    described += want.length - left;
+    // A file all of whose parts have words costs nothing more; one partly described is counted whole (it is read whole).
+    if (left || !want.length) bytes += f.bytes;
+  }
+  const mb = bytes / 1e6;
+  return {
+    read, files: source.length, mb: Math.round(mb * 100) / 100, paise: Math.ceil(mb * FULL_READ_PAISE_PER_MB),
+    minutes: Math.max(1, Math.ceil((mb * CALLS_PER_MB * SECONDS_PER_CALL) / CARD_PARALLEL / 60)), parts, described,
+  };
+}
+
+/** The calls a reading makes at once, the parts one call may be asked for (its answer must fit), and the failures in a row that stop it. */
+export const CARD_PARALLEL = 4;
+export const CARD_CALL_PARTS = 40;
+const CARD_FAILURES_MAX = 6;
+/** A quick read reads this much of each file it picks; a full read reads all of it. */
+export const QUICK_FILE_CHARS = 12_000;
+const SAY_MAX = 4;
+const SAY_CHARS = 48;
+
+/** The symbols worth words: what does something, and the shapes and values another file uses. Not env names or entry marks. */
+export function cardable(symbols: readonly SymbolInfo[]): number[] {
+  const out: number[] = [];
+  symbols.forEach((s, i) => {
+    if (s.kind === "env" || s.kind === "entry") return;
+    if ((s.kind === "const" || s.kind === "type" || s.kind === "interface" || s.kind === "enum") && s.exported === false) return;
+    out.push(i);
+  });
+  return out;
+}
+
+export const CardSchema = z.object({
+  files: z.array(z.object({
+    path: z.string(), summary: z.string().optional().nullable(),
+    parts: z.array(z.object({ id: z.string(), does: z.string(), say: z.array(z.string()).max(8).optional().nullable() })).max(120),
+  })).max(40),
+});
+
+/** A part of a file for one call: the lines from..to (1-based) and the wanted symbols that start in them. */
+interface Piece { job: CardJob; from: number; to: number; ids: number[]; first: boolean; text: string }
+
+function piecesOf(job: CardJob, limit: number): Piece[] {
+  // A minified or generated line is cut: one line of a bundle should not be a whole call.
+  const lines = job.text.split("\n").map((l) => (l.length > LINE_CHARS ? `${l.slice(0, LINE_CHARS)}…` : l));
+  // The lines read: all of them, or in a quick read the first `limit` characters' worth.
+  let last = lines.length;
+  let used = 0;
+  for (let i = 0; i < lines.length; i++) { used += lines[i]!.length + 1; if (used > limit) { last = Math.max(1, i); break; } }
+  const starts = job.want.map((i) => job.symbols[i]!.line).filter((l) => l <= last);
+  const out: Piece[] = [];
+  let from = 1;
+  while (from <= last) {
+    let to = from;
+    let size = 0;
+    while (to <= last && size + lines[to - 1]!.length + 1 <= CARD_CALL_CHARS) { size += lines[to - 1]!.length + 1; to += 1; }
+    to = Math.max(from, to - 1);
+    // Cut where a symbol starts, so a part is read whole, unless that would leave the piece too small.
+    if (to < last) { const cutAt = [...starts].reverse().find((l) => l > from + 20 && l <= to); if (cutAt) to = cutAt - 1; }
+    // And before the part one call may not be asked for (CARD_CALL_PARTS): a file of many small parts is read in several pieces.
+    const inside = starts.filter((l) => l >= from && l <= to);
+    if (inside.length > CARD_CALL_PARTS) to = inside[CARD_CALL_PARTS]! - 1;
+    const ids = job.want.filter((i) => { const l = job.symbols[i]!.line; return l >= from && l <= to; });
+    if (ids.length || (from === 1 && job.summary)) out.push({ job, from, to, ids, first: from === 1, text: lines.slice(from - 1, to).join("\n") });
+    from = to + 1;
+  }
+  return out;
+}
+
+/** The longest line shown as it is. */
+const LINE_CHARS = 2_000;
+
+const partLine = (s: SymbolInfo, id: number) => `p${id} ${s.kind} ${s.kind === "route" ? `${s.method} ${s.path}` : s.name} (line ${s.line})`;
+
+/**
+ * Words for each part of each file: what it does, and what a person would call it; and a line for the file. Files are packed into calls of about
+ * CARD_CALL_CHARS of code; a long file is read in parts. A part left out by the model is asked once more, alone with its file's lines. A file
+ * that may hold a secret is described from its symbols' names only.
+ */
+export async function cardFiles(ctx: SummaryCtx, jobs: readonly CardJob[], cap: number, o: { fileChars?: number } = {}): Promise<CardsOut> {
+  const out: CardsOut["files"] = new Map();
+  let complete = true;
+  let calls = 0;
+  const limit = o.fileChars ?? Number.MAX_SAFE_INTEGER;
+  const ask1 = async (pieces: Piece[]): Promise<boolean> => {
+    const user = pieces.map((p) => {
+      const syms = p.ids.map((i) => partLine(p.job.symbols[i]!, i)).join("\n");
+      const code = p.job.redact ? "(the file's text is withheld: it may hold a secret; describe the parts from their names)" : fence(p.text);
+      return `<file path="${p.job.path}" lang="${p.job.lang}" lines="${p.from}-${p.to}"${p.first && p.job.summary ? ' summary="yes"' : ""}>\n<parts>\n${syms || "(none)"}\n</parts>\n<code>\n${code}\n</code>\n</file>`;
+    }).join("\n");
+    const parts = pieces.reduce((n, p) => n + p.ids.length, 0);
+    calls += 1;
+    const r = await ask(ctx, cap, "brain.cards", "index_cards", user, CardSchema, Math.min(6_000, 300 + parts * 70));
+    if (!r.ok) return false;
+    for (const f of r.value.files) {
+      const mine = pieces.filter((p) => p.job.path === f.path);
+      if (!mine.length) continue;
+      const entry = out.get(f.path) ?? { parts: new Map<number, Meaning>() };
+      if (f.summary && mine.some((p) => p.first && p.job.summary)) { const line = cleanSummary(f.summary); if (line) entry.summary = line; }
+      const allowed = new Set(mine.flatMap((p) => p.ids));
+      for (const x of f.parts) {
+        const id = Number(/^p?(\d+)$/.exec(x.id.trim())?.[1] ?? NaN);
+        if (!allowed.has(id)) continue;
+        const does = cleanSummary(x.does);
+        if (!does) continue;
+        const name = mine[0]!.job.symbols[id]!.name.toLowerCase();
+        const say = [...new Set((x.say ?? []).map((w) => cleanSummary(w)?.slice(0, SAY_CHARS)).filter((w): w is string => !!w && w.toLowerCase() !== name))].slice(0, SAY_MAX);
+        entry.parts.set(id, { does: does.slice(0, 200), say });
+      }
+      out.set(f.path, entry);
+    }
+    return true;
+  };
+  // Pack the pieces into calls (by code and by parts, so that the answer fits too), and make CARD_PARALLEL of them at a time: a project of
+  // 2 MB is 90 calls, and one at a time took five minutes.
+  const pack = (pieces: readonly Piece[]): Piece[][] => {
+    const batches: Piece[][] = [];
+    let batch: Piece[] = [];
+    let size = 0;
+    let parts = 0;
+    for (const p of pieces) {
+      if (batch.length && (size + p.text.length > CARD_CALL_CHARS || parts + p.ids.length > CARD_CALL_PARTS)) { batches.push(batch); batch = []; size = 0; parts = 0; }
+      batch.push(p);
+      size += p.text.length;
+      parts += p.ids.length;
+    }
+    if (batch.length) batches.push(batch);
+    return batches;
+  };
+  // Several calls are in flight at once, so a failure is one of several: the reading stops only after CARD_FAILURES_MAX in a row.
+  const stopped = () => ctx.meter.left(cap) <= 0 || ctx.meter.failures >= CARD_FAILURES_MAX;
+  const run = async (batches: Piece[][]) => {
+    let next = 0;
+    const worker = async () => {
+      while (next < batches.length) {
+        if (stopped()) { complete = false; return; }
+        const mine = batches[next++]!;
+        if (!(await ask1(mine))) complete = false;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CARD_PARALLEL, batches.length) }, worker));
+  };
+  const all = jobs.flatMap((j) => piecesOf(j, limit));
+  await run(pack(all));
+  // What the model left out, asked once more: each piece with only its missing parts, packed the same way.
+  const missing = all.map((p) => ({ ...p, first: false, ids: p.ids.filter((i) => !out.get(p.job.path)?.parts.has(i)) })).filter((p) => p.ids.length);
+  if (missing.length && !stopped()) await run(pack(missing));
+  // Complete when every file asked for a line has one and every part that was read has words (a quick read leaves the rest of a long file).
+  for (const p of all) {
+    const got = out.get(p.job.path);
+    if ((p.first && p.job.summary && !got?.summary) || p.ids.some((i) => !got?.parts.has(i))) complete = false;
+  }
+  return { files: out, complete, calls };
+}
+
 export interface DirJob {
   path: string;
   files: Array<{ name: string; summary: string }>;

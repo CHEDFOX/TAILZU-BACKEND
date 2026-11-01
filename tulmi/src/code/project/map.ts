@@ -36,6 +36,11 @@ export interface MapSymbol {
   hash?: string;
   exported?: boolean;
   route?: { method: string; path: string };
+  /** What it does and what a person would call it (types.ts SymbolInfo): the meaning, beside the exact lines. */
+  does?: string;
+  say?: string[];
+  /** The components whose code names it: who calls it, from the same edges as `calls`. */
+  calledBy?: string[];
 }
 
 export interface MapComponent {
@@ -102,7 +107,32 @@ function mapSymbol(s: SymbolInfo): MapSymbol {
   return {
     name: s.name, kind: s.kind, start: s.line, ...(s.endLine ? { end: s.endLine } : {}), ...(s.hash ? { hash: s.hash } : {}),
     ...(s.exported !== undefined ? { exported: s.exported } : {}), ...(s.kind === "route" && s.method && s.path ? { route: { method: s.method, path: s.path } } : {}),
+    ...(s.does ? { does: s.does } : {}), ...(s.say?.length ? { say: [...s.say] } : {}),
   };
+}
+
+/** Languages that call each other's names directly: JavaScript and TypeScript in all their forms are one; any other language is its own. */
+function langFamily(lang: string): string {
+  return /^(?:typescript|javascript|tsx|jsx|vue|svelte)$/i.test(lang) ? "js" : lang.toLowerCase();
+}
+
+/** The most components a symbol lists as calling it. */
+const CALLED_BY_MAX = 12;
+
+/**
+ * The meanings of a file's symbols carried over from what was kept: a symbol whose fingerprint is the same keeps what it does and what people
+ * call it, wherever it moved; one whose lines changed, or a new one, has none until it is read again. Without fingerprints (a regex read the
+ * file) nothing can be proved the same, so nothing is carried.
+ */
+export function keepMeanings(fresh: readonly SymbolInfo[], old: readonly SymbolInfo[] | undefined, o: { sameFile?: boolean } = {}): SymbolInfo[] {
+  // The same file (its blob sha unchanged): every part is what it was, at the same line, fingerprint or not.
+  const key = (s: SymbolInfo) => (o.sameFile ? `${s.kind}:${s.name}:${s.line}` : s.hash ? `${s.kind}:${s.name}:${s.hash}` : "");
+  const byKey = new Map<string, SymbolInfo>();
+  for (const s of old ?? []) if (s.does && key(s)) byKey.set(key(s), s);
+  return fresh.map((s) => {
+    const was = key(s) ? byKey.get(key(s)) : undefined;
+    return was ? { ...s, does: was.does, ...(was.say?.length ? { say: [...was.say] } : {}) } : s;
+  });
 }
 
 /**
@@ -119,13 +149,16 @@ export function buildMap(input: { commit: string; files: readonly StoredFile[]; 
   const comps = files.filter((f) => isComponentPath(f.path));
   const isComp = new Set(comps.map((f) => f.path));
 
-  // Who defines each exported name: a reference resolves to a file only when one or two files define it.
+  // Who defines each exported name: a reference resolves to a file only when one or two files define it, in a language that can call it (a
+  // JavaScript file's `walk` is not a Swift function of that name).
   const definers = new Map<string, string[]>();
+  const familyOf = new Map(comps.map((f) => [f.path, langFamily(f.lang || languageOf(f.path))]));
   for (const f of comps) for (const s of f.symbols) {
     if (!s.exported || s.name.length < NAME_MIN) continue;
-    const list = definers.get(s.name) ?? [];
+    const key = `${familyOf.get(f.path)}:${s.name}`;
+    const list = definers.get(key) ?? [];
     if (!list.includes(f.path)) list.push(f.path);
-    definers.set(s.name, list);
+    definers.set(key, list);
   }
 
   const areaOf = new Map<string, string>();
@@ -135,7 +168,7 @@ export function buildMap(input: { commit: string; files: readonly StoredFile[]; 
   for (const f of comps) {
     const calls = new Map<string, Set<string>>();
     for (const [name] of f.refs ?? []) {
-      const by = definers.get(name);
+      const by = definers.get(`${familyOf.get(f.path)}:${name}`);
       if (!by || by.length > CALL_DEFINERS_MAX) continue;
       for (const to of by) if (to !== f.path) (calls.get(to) ?? calls.set(to, new Set()).get(to)!).add(name);
     }
@@ -151,6 +184,15 @@ export function buildMap(input: { commit: string; files: readonly StoredFile[]; 
   }
   for (const c of Object.values(components)) for (const u of c.uses) components[u]!.usedBy.push(c.path);
   for (const c of Object.values(components)) c.usedBy.sort();
+  // Who calls each symbol: the components whose code names it, by the same resolved references as `calls`.
+  for (const c of Object.values(components)) {
+    for (const k of c.calls) {
+      const target = components[k.to];
+      if (!target) continue;
+      for (const s of target.symbols) if (k.names.includes(s.name)) { const by = (s.calledBy ??= []); if (!by.includes(c.path) && by.length < CALLED_BY_MAX) by.push(c.path); }
+    }
+  }
+  for (const c of Object.values(components)) for (const s of c.symbols) s.calledBy?.sort();
 
   // Reachability from the entry points, through imports and resolved calls.
   const entries = [...new Set([
@@ -216,12 +258,17 @@ export function findInMap(map: ProjectMap, query: string, limit = 8): string[] {
     const path = c.path.toLowerCase();
     const names = c.symbols.map((s) => `${s.name} ${s.route ? `${s.route.method} ${s.route.path}` : ""}`.toLowerCase()).join(" ");
     const summary = c.summary.toLowerCase();
+    // What its parts do and what people call them: a question in a person's words finds the code that has other words.
+    const said = c.symbols.flatMap((s) => s.say ?? []).join(" | ").toLowerCase();
+    const does = c.symbols.map((s) => s.does ?? "").join(" ").toLowerCase();
     let score = 0;
     for (const w of words) {
       if (names.split(/[^a-z0-9_/.-]+/).includes(w)) score += 5;
       else if (names.includes(w)) score += 3;
       if (path.includes(w)) score += 2;
+      if (said.includes(w)) score += 2;
       if (summary.includes(w)) score += 1;
+      if (does.includes(w)) score += 1;
     }
     if (score) scored.push([c.path, score + (c.live ? 0.5 : 0)]);
   }
@@ -252,6 +299,51 @@ function verdict(s: MapSymbol, now: SymbolInfo | undefined): SymbolCheck {
   if (!s.hash || !now.hash) return { status: now.line === s.start ? "same" : "moved", ...range };
   if (now.hash !== s.hash) return { status: "changed", ...range };
   return { status: now.line === s.start ? "same" : "moved", ...range };
+}
+
+/**
+ * One component as a card: what it is, each part with its exact lines, what it does, what people call it and who calls it, then its connections
+ * in the map. The words are the index's; every line number, path and connection is the map's own data, never a model's. `checks` (from
+ * checkSymbols against the file now) puts each part at the lines it is at now and says when it moved, changed or is gone.
+ */
+export function componentCard(map: ProjectMap, path: string, o: { checks?: readonly SymbolCheck[]; max?: number } = {}): string | null {
+  const c = map.components[path];
+  if (!c) return null;
+  const max = o.max ?? 40;
+  // A file's own imports and plain values that have no words and are not exported say nothing a card needs.
+  const worth = (s: MapSymbol) => !!s.does || !(s.kind === "const" && s.exported !== true);
+  const listed = c.symbols.map((s, i) => ({ s, i })).filter(({ s }) => worth(s));
+  const shown = listed.slice(0, max).map(({ s }) => s);
+  const checkOf = new Map(listed.slice(0, max).map(({ s, i }) => [s, o.checks?.[i]]));
+  const note = (k: SymbolCheck | undefined) => (!k || k.status === "same" ? "" : k.status === "moved" ? " (moved)" : k.status === "changed" ? " (changed since the map: its words may be old)" : " (gone)");
+  const at = (s: MapSymbol, k: SymbolCheck | undefined) => {
+    if (k?.status === "gone") return "-";
+    const start = k?.start ?? s.start;
+    const end = k ? k.end : s.end;
+    return end && end !== start ? `lines ${start}-${end}` : `line ${start}`;
+  };
+  const reached = c.live === false ? "nothing leads here (unused)" : c.live ? "reached from the app's entry points" : "";
+  return [
+    `${c.path}${c.area ? ` · area ${c.area}` : ""}${reached ? ` · ${reached}` : ""}`,
+    ...(c.summary ? [`What it is: ${c.summary}`] : []),
+    ...(shown.length ? ["Parts, at their exact lines:"] : []),
+    ...shown.flatMap((s) => {
+      const k = checkOf.get(s);
+      const name = s.route ? `${s.route.method} ${s.route.path}` : s.name;
+      return [
+        `- ${name} (${s.kind}) ${at(s, k)}${note(k)}${s.does ? `: ${s.does}` : ""}`,
+        ...(s.say?.length ? [`  people call it: ${s.say.map((x) => `"${x}"`).join(", ")}`] : []),
+        ...(s.calledBy?.length ? [`  called by: ${s.calledBy.join(", ")}`] : []),
+      ];
+    }),
+    ...(listed.length > shown.length ? [`- … ${listed.length - shown.length} more`] : []),
+    "In the map:",
+    ...(c.uses.length ? [`- uses: ${c.uses.slice(0, 12).join(", ")}`] : []),
+    ...(c.usedBy.length ? [`- used by: ${c.usedBy.slice(0, 12).join(", ")}`] : []),
+    ...(c.calls.length ? [`- calls: ${c.calls.slice(0, 10).map((k) => `${k.names.slice(0, 4).join(", ")} in ${k.to}`).join("; ")}`] : []),
+    ...(c.tests.length ? [`- tests: ${c.tests.slice(0, 8).join(", ")}`] : ["- tests: none cover it"]),
+    `- as of commit ${map.commit.slice(0, 7)}${map.changed?.includes(c.path) ? ", changed since by a job" : ""}`,
+  ].join("\n");
 }
 
 /** The map as a person reads it (.xode/MAP.md): the contents, a card per component, where new things go. Made from the data; never edited by hand. */
@@ -288,9 +380,12 @@ export function mapMarkdown(map: ProjectMap, o: { maxComponents?: number } = {})
     if (c.live === false) out.push("Unused: nothing leads here from the app's entry points.");
     out.push("");
     if (c.symbols.length) {
-      out.push("| Symbol | Kind | Lines |", "|---|---|---|");
-      for (const s of c.symbols.slice(0, 40)) out.push(`| \`${s.route ? `${s.route.method} ${s.route.path}` : s.name}\` | ${s.kind} | ${lines(s)} |`);
-      if (c.symbols.length > 40) out.push(`| … ${c.symbols.length - 40} more | | |`);
+      out.push("| Symbol | Kind | Lines | What it does | Called by |", "|---|---|---|---|---|");
+      const cell = (t: string) => t.replace(/\|/g, "\\|").replace(/\s+/g, " ");
+      for (const s of c.symbols.slice(0, 40)) {
+        out.push(`| \`${s.route ? `${s.route.method} ${s.route.path}` : s.name}\` | ${s.kind} | ${lines(s)} | ${cell(s.does ?? "")}${s.say?.length ? ` _(${cell(s.say.join(", "))})_` : ""} | ${(s.calledBy ?? []).slice(0, 4).map((p) => `\`${p}\``).join(", ")} |`);
+      }
+      if (c.symbols.length > 40) out.push(`| … ${c.symbols.length - 40} more | | | | |`);
       out.push("");
     }
     const list = (label: string, xs: string[]) => (xs.length ? [`- ${label}: ${xs.map((x) => `\`${x}\``).join(", ")}`] : []);

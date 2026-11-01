@@ -492,6 +492,9 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     } catch (err) { return fail(reply, err); }
   });
 
+  /** A full read may spend this much over its estimate before it stops. */
+  const FULL_READ_MARGIN = 1.3;
+
   // --- the project brain (code/project): start or refresh a build, and read where it is.
   app.post<{ Params: { id: string }; Body: { mode?: unknown } | undefined }>("/v1/code/projects/:id/brain", RL, async (req, reply) => {
     const s = await beginBrain(req.headers["authorization"], reply);
@@ -513,6 +516,27 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
     if (!s) return reply;
     try {
       return reply.send(await s.brain.get(s.user.id, req.params.id));
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // --- reading the whole project (summarize.ts cardFiles): what it would cost and take, then, asked for, every part described and tied to the map.
+  app.get<{ Params: { id: string } }>("/v1/code/projects/:id/brain/read", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      return reply.send(await (await s.brain.open(s.user.id, req.params.id)).readEstimate());
+    } catch (err) { return fail(reply, err); }
+  });
+
+  app.post<{ Params: { id: string } }>("/v1/code/projects/:id/brain/read", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      const est = await (await s.brain.open(s.user.id, req.params.id)).readEstimate();
+      // What the person was shown, with a margin: the read stops there, and what it reached keeps its words (the next build finishes the rest).
+      const started = await s.brain.start(s.user.id, req.params.id, { mode: "full", depth: "full", budgetPaise: Math.max(100, Math.ceil(est.paise * FULL_READ_MARGIN)) });
+      started.done.catch(() => undefined);
+      return reply.code(202).send({ ...started.status, estimate: est });
     } catch (err) { return fail(reply, err); }
   });
 

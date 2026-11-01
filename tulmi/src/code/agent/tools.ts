@@ -49,7 +49,7 @@ import type { ViewerEvent } from "../live/protocol.js";
 import { skipReason } from "../live/rules.js";
 import { byPath, globPaths, grepFiles, type GrepFile, type GrepOk, type GrepOptions } from "../live/search.js";
 import { scanForSecrets } from "../policy.js";
-import { checkSymbols, findInMap, type BrainHandle, type MapComponent, type SymbolCheck } from "../project/index.js";
+import { checkSymbols, componentCard, findInMap, type BrainHandle, type MapComponent } from "../project/index.js";
 import { isSecretPath, isTestPath } from "../project/lang.js";
 import type { Workspace } from "../projects.js";
 import { findResources } from "../resources/finder.js";
@@ -661,25 +661,10 @@ export class Tools {
       if (!c) throw new Refused(`${path} is not a component in the map. Use find to get one, or read_file for any other file.`);
       const text = await this.current(path);
       if (text === null) return { ok: true, content: `${path} is in the map but not on the branch any more${this.changes.get(path) ? " (deleted in your staged edits)" : ""}.` };
-      const shown = c.symbols.slice(0, 40);
-      const checks = await checkSymbols(path, text, shown);
-      const note = (k: SymbolCheck) => (k.status === "same" ? "" : k.status === "moved" ? " (moved)" : k.status === "changed" ? " (changed since the map)" : " (gone)");
-      const lines = [
-        `${path}${c.area ? ` · ${c.area}` : ""}${status(c)}`,
-        ...(c.summary ? [c.summary] : []),
-        ...shown.map((s, i) => {
-          const k = checks[i]!;
-          const at = k.status === "gone" ? "-" : `${k.start}${k.end && k.end !== k.start ? `-${k.end}` : ""}`;
-          return `  ${s.route ? `${s.route.method} ${s.route.path}` : s.name} (${s.kind}) lines ${at}${note(k)}`;
-        }),
-        ...(c.symbols.length > shown.length ? [`  … ${c.symbols.length - shown.length} more`] : []),
-        ...(c.uses.length ? [`Uses: ${c.uses.slice(0, 12).join(", ")}`] : []),
-        ...(c.usedBy.length ? [`Used by: ${c.usedBy.slice(0, 12).join(", ")}`] : []),
-        ...(c.calls.length ? [`Calls: ${c.calls.slice(0, 8).map((k) => `${k.to} (${k.names.slice(0, 4).join(", ")})`).join("; ")}`] : []),
-        ...(c.tests.length ? [`Tests: ${c.tests.slice(0, 8).join(", ")}`] : []),
-      ];
+      const checks = await checkSymbols(path, text, c.symbols.slice(0, 40));
+      const card = componentCard(map, path, { checks, max: 40 })!;
       await this.log(call, "read", `Opened the map card of ${path}.`, [path]);
-      return { ok: true, content: `The map card of ${path} (lines checked against the file now):`, data: lines.join("\n"), label: path };
+      return { ok: true, content: `The map card of ${path} (lines checked against the file now):`, data: card, label: path };
     }
     if (action === "place") {
       const q = (str(a.query) ?? "").trim().toLowerCase();

@@ -30,7 +30,11 @@ export type WakeKind = (typeof WAKE_KINDS)[number];
 export interface StartBody { jobId: string }
 export interface EventBody { jobId: string; kind: WakeKind }
 export interface MessageBody { jobId: string; text: string }
-export interface BrainBody { userId: string; projectId: string; mode: "full" | "incremental"; headSha: string }
+export interface BrainBody {
+  userId: string; projectId: string; mode: "full" | "incremental"; headSha: string;
+  /** A full read the person asked for (code/project StartOptions.depth), and what it may spend. */
+  depth?: "quick" | "full"; budgetPaise?: number;
+}
 export interface NotifyBody {
   jobId: string;
   kind: NotifyKind;

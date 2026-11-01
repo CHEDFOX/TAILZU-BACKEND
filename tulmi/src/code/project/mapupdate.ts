@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { nextRootsOf } from "./build.js";
 import { buildResolver, extractImports, resolveImport } from "./graph.js";
 import { isTestPath, languageOf } from "./lang.js";
-import { buildMap, withHashes, type ProjectMap } from "./map.js";
+import { buildMap, keepMeanings, withHashes, type ProjectMap } from "./map.js";
 import { extractSymbols } from "./symbols.js";
 import { analyse, ensureGrammars } from "./treesitter/index.js";
 import type { CoreEntry, Feature, StoredFile } from "./types.js";
@@ -44,7 +44,8 @@ export async function mapAfterChanges(input: {
     const imports = [...new Set(extractImports(c.path, lang, c.content).flatMap((i) => resolveImport(resolver, i, c.path, lang)))].filter((p) => p !== c.path).sort();
     rows.set(c.path, {
       path: c.path, blobSha: gitBlobSha(c.content), lang, bytes: Buffer.byteLength(c.content, "utf8"),
-      symbols: withHashes(c.content, extractSymbols(c.path, lang, c.content, { nextRoots })), imports,
+      // A function whose lines the change left alone keeps what it does; a changed or new one has no words until the brain reads it again.
+      symbols: keepMeanings(withHashes(c.content, extractSymbols(c.path, lang, c.content, { nextRoots })), old?.symbols), imports,
       rank: old?.rank ?? 0, hot: old?.hot ?? 0, todo: old?.todo ?? 0, tests: old?.tests ?? [], summary: old?.summary ?? "", ...(refs ? { refs } : {}),
     });
     // A test the change wrote covers what it imports.

@@ -56,15 +56,15 @@ describe("project_map", () => {
   it("opens a card whose lines are checked against the file now: moved after an edit above, changed after an edit inside", async () => {
     const r = rig(mapOf(REPO));
     const first = String((await r.run("project_map", { action: "open", path: "src/util.ts" })).data);
-    expect(first).toContain("slug (function) lines 1-3\n");
-    expect(first).toContain("Used by: src/index.ts");
-    expect(first).toContain("Tests: src/util.test.ts");
+    expect(first).toContain("- slug (function) lines 1-3\n");
+    expect(first).toContain("- used by: src/index.ts");
+    expect(first).toContain("- tests: src/util.test.ts");
     await r.run("edit_file", { path: "src/util.ts", old: "export function slug", new: "// Helpers.\n\nexport function slug" });
     const moved = String((await r.run("project_map", { action: "open", path: "src/util.ts" })).data);
     expect(moved).toContain("slug (function) lines 3-5 (moved)");
     expect(moved).toContain("title (function) lines 7-9 (moved)");
     await r.run("edit_file", { path: "src/util.ts", old: "toUpperCase", new: "toLocaleUpperCase" });
-    expect(String((await r.run("project_map", { action: "open", path: "src/util.ts" })).data)).toContain("title (function) lines 7-9 (changed since the map)");
+    expect(String((await r.run("project_map", { action: "open", path: "src/util.ts" })).data)).toContain("title (function) lines 7-9 (changed since the map: its words may be old)");
   });
 
   it("says where a new thing of a kind goes, and refuses what is not a component", async () => {

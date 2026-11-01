@@ -90,8 +90,10 @@ export class JobsHandoff implements RemoteJobs, BrainRemote {
     await this.post(MESSAGE_PATH, { jobId, text } satisfies MessageBody);
   }
 
-  async build(b: { userId: string; projectId: string; mode: "full" | "incremental"; headSha: string }): Promise<void> {
-    await this.post(BRAIN_PATH, { userId: b.userId, projectId: b.projectId, mode: b.mode, headSha: b.headSha } satisfies BrainBody);
+  async build(b: BrainBody): Promise<void> {
+    await this.post(BRAIN_PATH, {
+      userId: b.userId, projectId: b.projectId, mode: b.mode, headSha: b.headSha, ...(b.depth ? { depth: b.depth } : {}), ...(b.budgetPaise ? { budgetPaise: b.budgetPaise } : {}),
+    } satisfies BrainBody);
   }
 
   /** One signed POST, tried up to `attempts` times. Resolves with the Worker's JSON answer. */

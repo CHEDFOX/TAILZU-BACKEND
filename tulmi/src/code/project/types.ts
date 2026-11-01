@@ -97,6 +97,13 @@ export interface SymbolInfo {
   endLine?: number;
   /** A fingerprint of lines line..endLine (map.ts spanHash), when the end is known: the project map proves a range with it. */
   hash?: string;
+  /**
+   * What it does, in one sentence, written by the index's model from its lines (summarize.ts cardFiles). Kept while its fingerprint holds: when
+   * its lines change, it is written again (map.ts keepMeanings). Where it is and what it is connected to are never the model's words: the map has those.
+   */
+  does?: string;
+  /** What a person would call it, in their words rather than its name ("the daily limit", "sign-in check"): how a question finds it. */
+  say?: string[];
 }
 
 /** What a file is, by its path. */
@@ -185,6 +192,8 @@ export interface Structure {
   envVars: Array<{ name: string; example: boolean; uses: number }>;
   docker: { files: string[]; images: string[]; ports: number[]; services: string[] };
   readme: { path: string; title: string; blurb: string } | null;
+  /** "full" once the whole project was read and every part described (build.ts ReadDepth): its later builds describe whatever changes. */
+  read?: "quick" | "full";
   /** What the manifest nearest the root says the project is (its description, the product's name, its keywords); absent in briefs built before. */
   about?: { path: string; text: string; product: string; keywords: string[] } | null;
   /** Files that hold secrets, by path only: their contents were never read. */

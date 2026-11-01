@@ -228,6 +228,13 @@ const ROLE_TABLE = {
     principles: ["core.facts", "safe.data", "out.json"],
     contract: '{"summaries":[{"path":"as given","summary":"one or two sentences under 220 characters: what the file is for, key functions by name, the feature or screen it belongs to"}]}; no advice, code or quotation.',
   },
+  index_cards: {
+    identity: "You write a codebase's index: what each part of a file does, in the words a person would search with.",
+    principles: ["core.facts", "safe.data", "out.json"],
+    contract: '{"files":[{"path":"as given","summary":"for a file marked summary=yes: what the file is for, under 220 characters","parts":[{"id":"as given",'
+      + '"does":"what it does and to what end, one sentence under 160 characters","say":["2 to 4 things a person would call it, not its name"]}]}]}; '
+      + "every id given; no lines, paths, advice, code or quotation.",
+  },
   index_dirs: {
     identity: "You write one-line summaries of folders in a code repository from what is in them.",
     principles: ["core.facts", "safe.data", "out.json"],

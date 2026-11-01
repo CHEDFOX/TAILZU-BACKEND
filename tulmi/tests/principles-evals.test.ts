@@ -37,7 +37,7 @@ const { SynonymReply, PickReply } = await import("../src/code/work/locate.js");
 const { SpecReply } = await import("../src/code/newproject/spec.js");
 const { Weighed } = await import("../src/code/resources/brief.js");
 const { FoldReply } = await import("../src/code/agent/context.js");
-const { FileSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema } = await import("../src/code/project/summarize.js");
+const { FileSchema, CardSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema } = await import("../src/code/project/summarize.js");
 const { GapSchema, splitGaps } = await import("../src/web/research.js");
 const { ModelPlan } = await import("../src/web/search/plan.js");
 const { VerdictSchema } = await import("../src/artifacts/compare.js");
@@ -206,6 +206,10 @@ describe("a known-good answer for each role", () => {
     index_files: {
       text: '{"summaries":[{"path":"src/billing/invoice.ts","summary":"Builds an invoice from line items: buildInvoice adds tax by region."},{"path":"src/routes/health.ts","summary":"Serves GET /health for uptime checks."}]}',
       reads: (t) => FileSchema.parse(JSON.parse(t)),
+    },
+    index_cards: {
+      text: '{"files":[{"path":"src/front/index.ts","summary":"The front door: one message is decided and carried out, under the day\'s spend limit.","parts":[{"id":"p0","does":"Refuses a message once the person has spent the day\'s money, then decides and dispatches it.","say":["daily limit","out of money for today"]}]}]}',
+      reads: (t) => CardSchema.parse(JSON.parse(t)),
     },
     index_dirs: { text: '{"summaries":[{"path":"src/billing","summary":"Invoices, tax and payment providers."},{"path":"src/ui","summary":"Shared interface components."}]}', reads: (t) => DirSchema.parse(JSON.parse(t)) },
     index_repo: { text: '{"overview":"Acme Bakery is a site for ordering bread and cakes for pickup. It is built with Next.js and Tailwind CSS."}', reads: (t) => OverviewSchema.parse(JSON.parse(t)) },

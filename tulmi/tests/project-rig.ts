@@ -46,7 +46,7 @@ export function fakeModel(o: { paise?: number } = {}): FakeModel {
   const m: FakeModel = {
     calls: [], paise: o.paise ?? 5, failAll: false, welcome: null, sent: [], refused: 0,
     of(purpose) { return m.calls.filter((c) => c.purpose === purpose); },
-    summarized() { return m.of("brain.summarize.files").flatMap((c) => c.paths); },
+    summarized() { return [...m.of("brain.summarize.files"), ...m.of("brain.cards")].flatMap((c) => c.paths); },
     call: (async <T>(input: CallInput<T>): Promise<CallResult<T>> => {
       const user = input.messages.filter((x) => x.role === "user").map((x) => String(x.content)).join("\n");
       m.sent.push(input.messages.map((x) => String(x.content)).join("\n---\n"));
@@ -66,6 +66,13 @@ export function fakeModel(o: { paise?: number } = {}): FakeModel {
       let json: unknown;
       switch (input.purpose) {
         case "brain.summarize.files": json = { summaries: last.paths.map((path) => ({ path, summary: `Summary of ${path}.` })) }; break;
+        // Each file's parts as asked (p<index>), and its line when it is marked summary=yes.
+        case "brain.cards": json = {
+          files: [...user.matchAll(/<file path="([^"]*)"[^>]*?(summary="yes")?>\n<parts>\n([\s\S]*?)\n<\/parts>/g)].map((x) => ({
+            path: x[1]!, ...(x[2] ? { summary: `Summary of ${x[1]}.` } : {}),
+            parts: [...x[3]!.matchAll(/^p(\d+) \S+ (.+?) \(line \d+\)$/gm)].map((y) => ({ id: `p${y[1]}`, does: `What ${y[2]} does.`, say: [`the ${y[2]} part`] })),
+          })),
+        }; break;
         case "brain.summarize.dirs": json = { summaries: last.paths.map((path) => ({ path, summary: `The ${path || "root"} folder.` })) }; break;
         case "brain.summarize.repo": json = { overview: "Acme Shop is a small shop with a web app, an API and a mobile app." }; break;
         case "brain.features": json = { features: last.ids.map((id) => ({ id, name: `Feature ${id}`, summary: `What feature ${id} does.` })) }; break;

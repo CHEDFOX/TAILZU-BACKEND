@@ -91,11 +91,15 @@ export async function handleRequest(req: Request, env: Env, d: HttpDeps = {}): P
     return said.ok ? json(200, { ok: true }) : fail(400, "bad_request", said.why);
   }
 
-  const { userId, projectId, mode, headSha } = b as Partial<BrainBody>;
+  const { userId, projectId, mode, headSha, depth, budgetPaise } = b as Partial<BrainBody>;
   if (typeof userId !== "string" || !userId || userId.length > 100 || !isUuid(projectId) || !isSha(headSha) || (mode !== "full" && mode !== "incremental")) {
     return fail(400, "bad_request", "userId, projectId, mode and headSha are needed.");
   }
-  const started = await startBrainBuild(env, { userId, projectId, mode, headSha });
+  // A full read the person asked for, and what it may spend: both optional, both checked.
+  if ((depth !== undefined && depth !== "quick" && depth !== "full") || (budgetPaise !== undefined && (!Number.isInteger(budgetPaise) || budgetPaise < 1 || budgetPaise > 1_000_000))) {
+    return fail(400, "bad_request", 'depth is "quick" or "full", and budgetPaise a whole number of paise.');
+  }
+  const started = await startBrainBuild(env, { userId, projectId, mode, headSha, ...(depth ? { depth } : {}), ...(budgetPaise ? { budgetPaise } : {}) });
   return json(200, { ok: true, created: started.created, status: started.status });
 }
 
