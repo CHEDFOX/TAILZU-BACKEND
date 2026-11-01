@@ -738,6 +738,8 @@ const answerParams = (message: string): Record<string, unknown> => ({
   needs: "$state.asked.shell.needs", job: "$state.asked.shell.job",
   // Words about a schedule come back as a routine's card to save (src/routines): its sealed draft.
   routine: "$state.asked.shell.routine.token",
+  // What the everyday tools found (screens/finds.ts): the cards under the answer.
+  finds: "$state.asked.shell.finds",
 });
 
 export function askAction(client: Client, path = "ask", ctx?: BotsCtx): ActionSpec {

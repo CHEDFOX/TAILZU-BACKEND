@@ -91,7 +91,7 @@ describe("bots.home", () => {
     expect(field.bind).toEqual({ value: "ask" });
     const ask = JSON.stringify(field.on!.onSubmit);
     expect(ask).toContain('"path":"/v1/shell/ask"');
-    expect(ask).toContain('"params":{"message":"$state.sent","answer":"$state.asked.shell.text","bot":"$state.asked.shell.bot.slug","upi":"$state.asked.shell.upi","needs":"$state.asked.shell.needs","job":"$state.asked.shell.job","routine":"$state.asked.shell.routine.token"}');
+    expect(ask).toContain('"params":{"message":"$state.sent","answer":"$state.asked.shell.text","bot":"$state.asked.shell.bot.slug","upi":"$state.asked.shell.upi","needs":"$state.asked.shell.needs","job":"$state.asked.shell.job","routine":"$state.asked.shell.routine.token","finds":"$state.asked.shell.finds"}');
     // The words go up as the person's bubble and the box clears at once; the call sends them from there (askMoment.ts).
     expect(ask).toContain('{"kind":"setState","path":"sent","value":"$state.ask"}');
     expect(ask).toContain('{"kind":"clearState","path":"ask"}');

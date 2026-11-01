@@ -9,6 +9,8 @@
  *   code       code_ask                         Xode's answer about the person's project (code/chat), read-only. A change to the code is the Code
  *                                               bot's own flow: the bot tells the person to ask it, and nothing here starts a job
  *   files      search_knowledge                 the bot's own files, by the question's words (knowledge.ts)
+ *   everyday   flights_search, hotels_search, currency_convert, weather   src/everyday: live, free, no sign-in of the person's; the Travel bot
+ *                                               and any bot that searches the web get all four, Plan Ease currency and weather (everyday/tools.ts)
  *   connectors <app>__<tool> for each tool of each connected app the owner gave the bot, through connectors/tasks.ts use(): the assistant's own permission tiers;
  *                                               each may carry x0_widget {question, private}: the bot's own words for the yes on the owner's phone
  *
@@ -32,9 +34,13 @@ import { retrieve } from "./knowledge.js";
 import type { Meter } from "./meter.js";
 import type { BotPorts } from "./ports.js";
 import type { BotDef, PendingApproval } from "./types.js";
+import { EVERYDAY_TOOLS, everydayKindsFor, runEveryday } from "../everyday/tools.js";
+import type { Card } from "../everyday/index.js";
 
 /** Everything the tools of one request write down, for the answer. */
 export interface ToolRecord {
+  /** What the everyday tools found (src/everyday): the cards beside the answer. */
+  cards: Card[];
   tools: string[];
   approvals: PendingApproval[];
   artifacts: Array<{ id: string; version?: number }>;
@@ -42,7 +48,7 @@ export interface ToolRecord {
   notes: string[];
 }
 
-export const newRecord = (): ToolRecord => ({ tools: [], approvals: [], artifacts: [], opens: [], notes: [] });
+export const newRecord = (): ToolRecord => ({ cards: [], tools: [], approvals: [], artifacts: [], opens: [], notes: [] });
 
 export interface ToolEnv {
   bot: Pick<BotDef, "id" | "name" | "skills" | "knowledge">;
@@ -149,6 +155,17 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
         const r = await web.run(call);
         return { content: r.message.content, ok: r.ok };
       });
+    }
+  }
+
+  // ---- the everyday tools: flights, hotels, currency, weather (src/everyday/tools.ts says who gets which)
+  if (ports.everyday) {
+    const e = ports.everyday;
+    for (const kind of everydayKindsFor(bot)) {
+      if (!e.on(kind)) continue;
+      const def = EVERYDAY_TOOLS[kind];
+      defs.push({ ...def });
+      handlers.set(def.name, (a) => runEveryday(e, userId, kind, a, (card) => { if (env.record.cards.length < 6) env.record.cards.push(card); }));
     }
   }
 

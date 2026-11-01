@@ -88,11 +88,13 @@ const PLAN = /\b(?:plan|schedule|timeline|roadmap|checklist|agenda|deadline|mile
 const PLAN_HI = hindi(["(?:योजना|प्लान|कार्यक्रम|शेड्यूल)\\s*(?:बनाओ|बना\\s*दो)"]);
 const TRAVEL = /\b(?:trip|travel(?:l?ing)?|flights?|trains?|buses|hotels?|stays?|visa|itinerary|tour|vacation|holiday|airport|passport|sightseeing|backpacking|road\s*trip|how\s+to\s+reach|route\s+to|things\s+to\s+do\s+in)\b|\b(?:yatra|safar|ghoomne|ghumne|ghoomna|ticket\s+book|hotel\s+book|kaise\s+pahunch|kahan\s+ghoom)\b/i;
 const TRAVEL_HI = hindi(["(?:यात्रा|सफर|सफ़र|घूमने|छुट्टी|होटल|टिकट)"]);
+/** Live lookups the Travel bot has tools for (src/everyday): the weather somewhere, and money in another currency. */
+const LIVE = /\b(?:weather|forecast|temperature|will\s+it\s+rain|rain(?:ing)?\s+(?:in|at|tomorrow|today)|exchange\s+rate|convert\s+[\d.,]+|currency|in\s+(?:rupees|dollars|euros|pounds|dirhams)|(?:usd|eur|gbp|aed|inr)\s+(?:to|in)\s+(?:usd|eur|gbp|aed|inr)|mausam|barish|kitne\s+rupa(?:ye|ya|y))\b/i;
 
 const HINTS: Readonly<Record<string, ReadonlyArray<{ re: RegExp; points: number; id: string }>>> = {
   keybot: [{ re: KEYBOT, points: 8, id: "keybot:write" }, { re: KEYBOT_HI, points: 8, id: "keybot:write_hi" }],
   plan: [{ re: PLAN, points: 7, id: "plan:plan" }, { re: PLAN_HI, points: 7, id: "plan:plan_hi" }],
-  travel: [{ re: TRAVEL, points: 9, id: "travel:trip" }, { re: TRAVEL_HI, points: 9, id: "travel:trip_hi" }],
+  travel: [{ re: TRAVEL, points: 9, id: "travel:trip" }, { re: TRAVEL_HI, points: 9, id: "travel:trip_hi" }, { re: LIVE, points: 8, id: "travel:live" }],
 };
 
 // ------------------------------------------------------------------ the rules

@@ -787,6 +787,18 @@ const EnvSchema = z.object({
    * time. On whenever the bots platform (BOTS) is; ROUTINES=false turns it off (its routes answer 404 routines_off and nothing runs). Migration 0061
    * keeps them (without it they live in memory). ROUTINES_MAX is how many one person may have.
    */
+  /**
+   * EVERYDAY TOOLS (src/everyday, docs/everyday.md): flights (Kiwi.com), hotels (trivago), currency (Frankfurter) and weather (MET Norway),
+   * live and free, with no sign-in of the person's: bot tools whose results are cards beside the answer. EVERYDAY=false turns all off;
+   * EVERYDAY_OFF names some to leave out ("stays,flights"). EVERYDAY_DAILY is the flight and hotel searches a person may make a day
+   * (currency and weather count a tenth). The URLs are the services' own unless set.
+   */
+  EVERYDAY: bool(true),
+  EVERYDAY_OFF: z.string().default(""),
+  EVERYDAY_DAILY: z.coerce.number().int().min(1).max(10_000).default(40),
+  EVERYDAY_FLIGHTS_URL: z.string().url().optional(),
+  EVERYDAY_STAYS_URL: z.string().url().optional(),
+  EVERYDAY_RATES_URL: z.string().url().optional(),
   ROUTINES: bool(true),
   ROUTINES_MAX: z.coerce.number().int().min(1).max(200).default(20),
   BOTS_APP_TESTERS: z.string().default(""),

@@ -217,6 +217,9 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
     text, paise: meter.spent, tools: record.tools, approvals: record.approvals, artifacts: record.artifacts, opens: record.opens,
     notes: [...new Set(notes)], ...(r.pickedBy ? { pickedBy: r.pickedBy } : {}), ms: (d.now ?? Date.now)() - t0,
   };
+  // What the everyday tools found: kept for the answer's page, which draws them as cards.
+  const finds = record.cards.length && d.ports.everyday ? d.ports.everyday.keep(r.userId, record.cards) : "";
+  if (finds) answer.finds = finds;
   emit({ t: "result", result: answer });
   return answer;
 }

@@ -22,6 +22,7 @@ import { botKind } from "../kit.js";
 import { shareButton, shareTo } from "../shareAction.js";
 import * as places from "./botsPlaces.js";
 import { addAction, itemAction, planItemScreens, tickAction, tickBox } from "./planItem.js";
+import { tripSearches } from "./finds.js";
 
 /** This area's routes (routes/botsBots.ts). */
 const A = "/v1/botsapp/bots";
@@ -1332,6 +1333,7 @@ function travelPhone(ctx: BotsCtx, d: TravelData) {
             ], { gap: 8 }),
             ...p.needs,
             ...places.datesHint(p.trip, d.x),
+            tripSearches(ctx, p.trip),
             ...bookingCards(ctx, d, p.trip.place),
             places.staysPart(ctx, p.trip, d.x, d.t?.bookings ?? []),
             ...places.weatherPart(ctx, p.trip, d.x),
@@ -1359,6 +1361,7 @@ function travelDesk(ctx: BotsCtx, d: TravelData) {
         ], { gap: 8 }),
         ...p.needs,
         ...places.datesHint(p.trip, d.x),
+        tripSearches(ctx, p.trip),
         grid(bookingCards(ctx, d, p.trip.place), 2, 14),
         ...(d.x ? [places.tripPlanPart(ctx, p.trip, d.x)!] : []),
         places.staysPart(ctx, p.trip, d.x, d.t?.bookings ?? [], { desk: true }),

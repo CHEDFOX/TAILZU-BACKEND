@@ -248,6 +248,8 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       shell: {
         bot: { slug, name, color: previewOf(slug, name, "chosen", 1).color }, text: j.result?.text ?? "", paise: j.result?.paise ?? 0,
         needs: j.answer?.approvals?.length ?? 0, ...(upi ? { upi: upi.link } : {}),
+        // What the everyday tools found (src/everyday): Ask's answer page draws them as cards (GET /v1/everyday/finds/:id).
+        ...(typeof j.answer?.finds === "string" && j.answer.finds ? { finds: j.answer.finds } : {}),
         ...(typeof (j.result?.job as { id?: unknown } | undefined)?.id === "string" ? { job: (j.result!.job as { id: string }).id } : {}),
         ...(clientId ? { clientId, ...(typedAt ? { typedAt } : {}) } : {}),
       },
@@ -396,7 +398,7 @@ interface AskReply {
   decision?: { route?: string };
   result?: { text?: string; paise?: number; job?: unknown };
   bot?: { slug: string; name: string };
-  answer?: { opens?: Array<{ label: string; url: string }>; approvals?: unknown[] };
+  answer?: { opens?: Array<{ label: string; url: string }>; approvals?: unknown[]; finds?: string };
 }
 
 /** True as soon as one of them is (a failed one counts as no). */

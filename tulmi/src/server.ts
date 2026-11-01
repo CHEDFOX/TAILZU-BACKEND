@@ -75,6 +75,8 @@ import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
 import { registerAccountDeletionRoutes } from "./routes/accountDeletion.js";
 import { registerBotsPushAskRoutes } from "./routes/botsPushAsk.js";
 import { registerRoutineRoutes } from "./routes/routines.js";
+import { registerEverydayRoutes } from "./routes/everyday.js";
+import { everyday } from "./everyday/index.js";
 import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { livePublish as routinePublish } from "./live/writes.js";
@@ -1190,6 +1192,8 @@ if (routines) {
   app.addHook("onClose", async () => { stopRoutines(); });
 }
 registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
+// Everyday tools (src/everyday, docs/everyday.md): flights, hotels, currency and weather for every bot that fits, free, no sign-in.
+registerEverydayRoutes(app, { rateLimit: AUTHED_RL, everyday: everyday() });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent, routines };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);

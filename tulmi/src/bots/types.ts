@@ -121,6 +121,8 @@ export interface BotAnswer {
   notes: string[];
   /** Why the front door picked this bot, when it did. */
   pickedBy?: "name" | "rules" | "model" | "chosen";
+  /** What the everyday tools found, kept for the answer's page: GET /v1/everyday/finds/:id (src/everyday). */
+  finds?: string;
   ms: number;
 }
 
