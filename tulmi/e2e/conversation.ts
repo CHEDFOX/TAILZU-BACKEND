@@ -76,6 +76,18 @@ const SCRIPTS: Record<string, Step[]> = {
     { say: "merged. is the one-hop case covered by a test now, and would two hops still work?", after: "merge" },
   ],
 };
+// Python, and a person who starts with chat, sets it up, then reports a bug in their own words: the job is the fix, judged by flask's own hidden test.
+SCRIPTS["flask-bug-7203fea"] = [
+  { say: "hey! just connected this. what is it, in a few lines?" },
+  { say: "how do I set it up locally and run its tests?" },
+  { say: "how does app.run decide which host and port to use? where's that code?" },
+  { say: "??" },
+  { say: "bug: we set SERVER_NAME = \"[::1]:8080\" and app.run() crashes with ValueError: invalid literal for int() with base 10: ':1]:8080'. "
+    + "IPv6 addresses have colons in them. can you fix it so IPv6 server names work, with or without a port?" },
+  { say: "is the problem in flask or in werkzeug?", whileJob: true },
+  { say: "what did you change, and how do you know it works?" },
+  { say: "merged, thanks. does an IPv4 one like 127.0.0.1:5000 still work the same?", after: "merge" },
+];
 const SCRIPT: Step[] = SCRIPTS[TASK_ID] ?? [];
 
 const lines: string[] = [];

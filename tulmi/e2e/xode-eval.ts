@@ -12,6 +12,7 @@
  *   did        what Xode did: answered, started a job, or asked back
  *   says       what the answer must say (each pattern), from the project's real code and history
  *   max        at most this long (a "thanks" is a line)
+ *   not        what it must never say (a secret's value)
  *   paths      every file path it names is one the project has
  *   clean      none of its own machinery in the words (<project>, "the brief", "tool call")
  * and it did not fail. The report has each case's verdict, cost and time for both, and the answers.
@@ -39,7 +40,7 @@ const CASES = arg("cases") ? new Set(arg("cases").split(",")) : null;
 const EXTRA = arg("extra");
 
 type Did = "answer" | "job" | "ask";
-interface Case { id: string; say: string; before?: string[]; did: Did; says?: RegExp[]; max?: number }
+interface Case { id: string; say: string; before?: string[]; did: Did; says?: RegExp[]; max?: number; not?: RegExp[] }
 interface Project { key: string; repo: string; dir: string; stripDocs: boolean; brainInr: number; owner: { for: string; next: string; keep: string }; cases: Case[] }
 
 const PROJECTS: Project[] = [
@@ -89,6 +90,109 @@ const PROJECTS: Project[] = [
       { id: "providers", say: "which other model providers could we use instead of OpenRouter? give options", did: "answer", says: [/Together|Groq|Fireworks|DeepInfra|Anthropic|OpenAI|Google|Mistral|DeepSeek|Bedrock|Azure/i] },
     ],
   },
+  // Open projects of other people, in other languages: every question a person might put, of every kind.
+  {
+    key: "umami", repo: "umami-software/umami", dir: "/home/user/OPEN/umami", stripDocs: false, brainInr: 15,
+    owner: {
+      for: "Website owners who want simple, privacy-first analytics: no cookies, self-hosted or in the cloud.",
+      next: "Make self-hosting easier, then faster reports for big sites.",
+      keep: "No cookies and no personal data; one Postgres database is all it needs.",
+    },
+    cases: [
+      { id: "what-for", say: "what is this, in two lines?", did: "answer", says: [/analytics/i, /privacy|cookie/i], max: 1500 },
+      { id: "what-next", say: "what should we work on next?", did: "answer", says: [/self-host|setup|report/i] },
+      { id: "where-send", say: "where does a pageview from the tracker land on the server?", did: "answer", says: [/api\/send\/route\.ts/] },
+      { id: "how-bots", say: "how does it keep bots out of the stats?", did: "answer", says: [/isbot/, /DISABLE_BOT_CHECK/] },
+      { id: "error", say: "my events are rejected with 'Website not found.' what causes that?", did: "answer", says: [/send\/route\.ts|fetchWebsite/, /website ?id|websiteId/i] },
+      { id: "ui-copy", say: "what warning does it show before deleting a team?", did: "answer", says: [/also delete all team websites/i] },
+      { id: "security", say: "is it safe to expose the collect endpoint publicly? what stops abuse?", did: "answer", says: [/isbot|IGNORE_IP|hasBlockedIp|bot/i] },
+      { id: "env", say: "what env settings must I set for production?", did: "answer", says: [/DATABASE_URL/, /APP_SECRET/] },
+      { id: "local", say: "how do I run it on my laptop?", did: "answer", says: [/pnpm (?:install|run dev|dev|i\b)/], max: 9000 },
+      { id: "docker", say: "give me the commands to run it with docker on a VPS", did: "answer", says: [/docker compose|docker-compose/i], max: 9000 },
+      { id: "file-copy", say: "show me the prisma model for websites, I want to copy it", did: "answer", says: [/model Website \{/] },
+      { id: "sql", say: "write a SQL query for pageviews per day for one website over the last 30 days", did: "answer", says: [/website_event/, /group by/i] },
+      { id: "impact", say: "what breaks if I rename the SALT_ROTATION setting?", did: "answer", says: [/send\/route\.ts|getSalt/] },
+      { id: "hinglish", say: "salt rotation kaise kaam karta hai?", did: "answer", says: [/getSalt|SALT_ROTATION/] },
+      { id: "hindi", say: "ट्रैकर स्क्रिप्ट का कोड कहाँ है?", did: "answer", says: [/src\/tracker\/index\.ts/] },
+      { id: "tests", say: "how do I run the tests?", did: "answer", says: [/pnpm (?:run )?test|vitest/] },
+      { id: "research", say: "which managed postgres could host its database? options with rough prices", did: "answer", says: [/Neon|Supabase|RDS|Railway|Render|DigitalOcean|Aiven/i] },
+      { id: "estimate", say: "how big a job would it be to add Slack alerts when traffic spikes?", did: "answer", says: [/src\//] },
+      { id: "chat-midway", before: ["where does a pageview from the tracker land on the server?"], say: "nice. btw I'm new to Next.js, is that a problem for working on this?", did: "answer" },
+      { id: "follow-up", before: ["where does a pageview from the tracker land on the server?"], say: "??", did: "answer", says: [/send/] },
+      { id: "change", say: "add an env setting DISABLE_IP_BLOCK that skips the IP block check in the send route", did: "job" },
+      { id: "handoff", before: ["the bot check lets headless chrome through; how would we also block it?"], say: "ok make that change", did: "job" },
+      { id: "bare-fix", say: "fix it", did: "ask" },
+      { id: "thanks", say: "thanks, that was quick", did: "answer", max: 400 },
+    ],
+  },
+  {
+    key: "fastapi", repo: "fastapi/full-stack-fastapi-template", dir: "/home/user/OPEN/full-stack-fastapi-template", stripDocs: false, brainInr: 10,
+    owner: {
+      for: "Developers starting a full-stack web app: a FastAPI backend, a React frontend, Postgres and Docker, ready to deploy.",
+      next: "Keep it current with FastAPI and React releases, and make deploying it simpler.",
+      keep: "Secure defaults: no default secrets in production, hashed passwords, JWT.",
+    },
+    cases: [
+      { id: "what-for", say: "what does this template give me?", did: "answer", says: [/FastAPI/, /React/] },
+      { id: "login-flow", say: "how does login work, from the form to the token?", did: "answer", says: [/login\.py|login_access_token/, /create_access_token|security\.py/] },
+      { id: "error", say: "I get 'Inactive user' when logging in, why?", did: "answer", says: [/is_active/] },
+      { id: "secret-check", say: "the backend won't start and says the SECRET_KEY is \"changethis\". why, and what do I do?", did: "answer", says: [/_check_default_secret|config\.py/, /openssl|secrets\.token|random|generate/i] },
+      { id: "secret-file", say: "show me the .env file", did: "answer", not: [/FIRST_SUPERUSER_PASSWORD=changethis/, /POSTGRES_PASSWORD=changethis/] },
+      { id: "data-model", say: "how are users and items related in the database?", did: "answer", says: [/owner_id/, /cascade/i] },
+      { id: "migration", say: "how do I add a new column and make a migration for it?", did: "answer", says: [/alembic/i, /revision/] },
+      { id: "curl", say: "write curl commands to log in and then list my items", did: "answer", says: [/curl/, /login\/access-token/, /items/] },
+      { id: "pagination", say: "how does the items list paginate?", did: "answer", says: [/skip/, /limit/] },
+      { id: "local", say: "how do I run it locally?", did: "answer", says: [/docker compose (?:watch|up)/], max: 9000 },
+      { id: "deploy", say: "deploy it to my own server with docker, step by step", did: "answer", says: [/compose\.deploy\.yml|docker compose -f/], max: 9000 },
+      { id: "tests", say: "how do I run the backend tests?", did: "answer", says: [/scripts\/test\.sh|pytest/] },
+      { id: "ci", say: "what does CI check on a pull request?", did: "answer", says: [/test-backend|playwright|pre-commit/i] },
+      { id: "emails", say: "how are password reset emails sent, and how can I see them locally?", did: "answer", says: [/mailpit/i] },
+      { id: "hinglish", say: "naya API endpoint kaise add karu?", did: "answer", says: [/routes|api\/main\.py|APIRouter/] },
+      { id: "hindi", say: "पासवर्ड कैसे सुरक्षित रखे जाते हैं?", did: "answer", says: [/hash|bcrypt|argon|pwdlib|security\.py/i] },
+      { id: "research", say: "should I use FastAPI Cloud or a VPS for this? compare them", did: "answer", says: [/FastAPI Cloud/, /VPS|server/i] },
+      { id: "plan", say: "plan adding teams, where users share items", did: "answer", says: [/models\.py/] },
+      { id: "follow-up", before: ["how does login work, from the form to the token?"], say: "and where is the token checked on each request?", did: "answer", says: [/deps\.py|get_current_user/] },
+      { id: "reaction", before: ["I get 'Inactive user' when logging in, why?"], say: "??", did: "answer", says: [/is_active|Inactive/] },
+      { id: "change", say: "add a search query parameter to the items list that filters by title", did: "job" },
+      { id: "handoff", before: ["how would we make access tokens expire after 1 day instead of 8?"], say: "ok do it", did: "job" },
+      { id: "bare-fix", say: "please fix the bug", did: "ask" },
+      { id: "casual", say: "you're fast lol", did: "answer", max: 400 },
+    ],
+  },
+  {
+    key: "pocketbase", repo: "pocketbase/pocketbase", dir: "/home/user/OPEN/pocketbase", stripDocs: false, brainInr: 15,
+    owner: {
+      for: "Developers who want a whole backend in one file: database, auth, files, realtime and an admin UI.",
+      next: "Reach v1.0 with a stable API, and keep the binary small.",
+      keep: "One portable executable; pure Go SQLite, no CGO.",
+    },
+    cases: [
+      { id: "what-for", say: "what is pocketbase?", did: "answer", says: [/SQLite/, /realtime|auth|admin/i] },
+      { id: "realtime", say: "how do realtime subscriptions work under the hood?", did: "answer", says: [/realtime\.go/, /event-stream|SSE|PB_CONNECT/i] },
+      { id: "rate-limit", say: "is there rate limiting? where is it?", did: "answer", says: [/middlewares_rate_limit\.go|rateLimit/] },
+      { id: "error", say: "users get 'Failed to authenticate.' where does that come from?", did: "answer", says: [/record_auth_with_password\.go/] },
+      { id: "superuser", say: "how do I create a superuser from the command line?", did: "answer", says: [/superuser (?:upsert|create)/] },
+      { id: "go-route", say: "how do I add my own route in Go?", did: "answer", says: [/OnServe/, /Router/] },
+      { id: "js-hooks", say: "can I extend it with JavaScript? where do the files go?", did: "answer", says: [/pb_hooks/] },
+      { id: "build", say: "how do I build a linux binary from the repo?", did: "answer", says: [/CGO_ENABLED=0/, /GOOS=linux|examples\/base/] },
+      { id: "vps", say: "how should I run it on a VPS with https?", did: "answer", says: [/serve/, /https|Caddy|nginx|reverse proxy/i], max: 9000 },
+      { id: "hooks-flow", say: "what happens when a record is created, which hooks run?", did: "answer", says: [/OnRecordCreate/] },
+      { id: "mfa", say: "how does MFA work here?", did: "answer", says: [/mfa/i] },
+      { id: "backup", say: "where is the data stored and how do I back it up?", did: "answer", says: [/pb_data/, /backup/i] },
+      { id: "impact", say: "what would break if I changed the rate limit middleware's priority?", did: "answer", says: [/priority/i] },
+      { id: "go-version", say: "which Go version do I need?", did: "answer", says: [/1\.27/] },
+      { id: "hinglish", say: "realtime ka code kaha hai?", did: "answer", says: [/realtime\.go/] },
+      { id: "hindi", say: "सुपरयूज़र कैसे बनाऊँ?", did: "answer", says: [/superuser/] },
+      { id: "compare", say: "pocketbase or supabase for a small app? be honest", did: "answer", says: [/Supabase/, /SQLite|Postgres/i] },
+      { id: "sdk", say: "write JS code to log a user in with email and password", did: "answer", says: [/authWithPassword/] },
+      { id: "tests", say: "how do I run the tests?", did: "answer", says: [/go test/] },
+      { id: "newcomer", say: "this codebase is big, where should a beginner start reading?", did: "answer", says: [/core|apis|examples\/base/] },
+      { id: "reaction", before: ["how do realtime subscriptions work under the hood?"], say: "??", did: "answer", says: [/realtime|SSE|event/i] },
+      { id: "change", say: "make the health endpoint also return the app version", did: "job" },
+      { id: "bare-fix", say: "fix it", did: "ask" },
+      { id: "thanks", say: "great, thanks!", did: "answer", max: 400 },
+    ],
+  },
 ];
 
 const rupees = (p: number): string => `₹${(p / 100).toFixed(2)}`;
@@ -120,6 +224,7 @@ function judge(c: Case, r: FrontResult | null, error: string, all: Set<string>, 
   const checks: Array<[string, boolean]> = [[`did ${c.did}`, did === c.did]];
   if (c.did === "answer") checks.push(["not empty", text.trim().length > 0]);
   for (const re of c.says ?? []) checks.push([`says ${re.source}`, re.test(text)]);
+  for (const re of c.not ?? []) checks.push([`never says ${re.source}`, !re.test(text)]);
   if (c.max) checks.push([`at most ${c.max} chars`, text.length <= c.max]);
   const named = [...text.matchAll(PATH)].map((m) => m[1]!.replace(/^\.\//, ""));
   const ends = (p: string): boolean => all.has(p) || [...all].some((f) => f.endsWith(`/${p}`)) || inCode.includes(p);
