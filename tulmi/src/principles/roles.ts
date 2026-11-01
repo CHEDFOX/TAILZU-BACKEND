@@ -384,7 +384,7 @@ const ROLE_TABLE = {
     identity: "You turn a request into a short plan a person can follow, in order.",
     principles: ["core.intent", "core.least", "core.unsure", "core.facts", "core.lang", "safe.data", "out.json"],
     contract: '{"title":"under 60 characters","steps":[{"do":"one action, under 120 characters","when":"timing in a few words, or null"}],"notes":["only what could go wrong"]}; '
-      + "3 to 10 steps.",
+      + "3 to 10 steps; with <project>, only from its lines.",
   },
   front_look: {
     identity: "You describe a picture someone sent, for the question they ask about it.",

@@ -366,6 +366,25 @@ export function bookForJobs(b: ProjectBook): string {
   ].join("\n");
 }
 
+/**
+ * What a plan for the project is made from, when the person asks what to do and names no place in the code: the owner's words, where it is heading
+ * (milestones, roadmap, open issues and pull requests), how it stands (failing checks, fragile files, TODOs), what changed lately, and what is not
+ * known. Every line says where it comes from, so each step can name the issue, file or check it rests on.
+ */
+export function bookForPlan(b: ProjectBook): string {
+  const line = (f: BookFact) => `- ${f.status === "confirmed" ? "(the owner) " : f.status === "guessed" ? "(a guess) " : ""}${f.text} (${sourceWords(f.source)})`;
+  const take = (c: Chapter, n: number) => b.facts.filter((f) => f.chapter === c).slice(0, n).map(line);
+  const what = b.facts.filter((f) => f.chapter === "what" && f.status === "confirmed");
+  const parts: Array<[string, string[]]> = [
+    ["Who it is for", what.length ? what.map(line) : take("what", 2)],
+    ["Where it is heading", take("direction", 10)],
+    ["How it stands", take("state", 8)],
+    ["What changed lately", take("recent", 3)],
+    ["Not known", b.gaps.map((g) => `- ${g}`)],
+  ];
+  return parts.filter(([, l]) => l.length).map(([h, l]) => [`## ${h}`, ...l].join("\n")).join("\n");
+}
+
 /** An owner's answers, cleaned: each one line of plain text, 400 characters at most; an empty one is left out. Null when there is none at all. */
 export function cleanAnswers(raw: unknown, now: number, prev: OwnerAnswers | null): OwnerAnswers | null {
   const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};

@@ -52,6 +52,7 @@ const QUESTIONS = [
   "what is this project, and who is it for?",
   "where is it heading next?",
   "what changed lately, and why?",
+  "What should we do",
 ];
 
 const rupees = (p: number): string => `₹${(p / 100).toFixed(2)}`;
@@ -169,6 +170,7 @@ async function main(): Promise<void> {
       out();
       const text = await ask(QUESTIONS[0]!, "4.1");
       await ask(QUESTIONS[1]!, "4.2");
+      await ask(QUESTIONS[3]!, "4.3");
       const words = owner.for.toLowerCase().match(/[a-z]{5,}/g) ?? [];
       const kept = words.filter((w) => text.toLowerCase().includes(w)).length;
       out(`(the answer uses ${kept} of the owner's ${words.length} longer words)`);

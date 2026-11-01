@@ -236,6 +236,27 @@ describe("a question about a project", () => {
     expect(out.diagram).toMatch(/^flowchart TD\n  S1\["1\. Make slug trim dashes from both ends<br\/>1 file"\]/);
   });
 
+  it("plans the project from its book when the request names no place in the code, and never makes up a change", async () => {
+    const { a, code } = await projectRig();
+    const { buildBook } = await import("../src/code/project/book.js");
+    const book = buildBook({
+      project: "alice/app", commit: "f".repeat(40), now: 0, view: { welcome: "A shop.", structure: null, features: [], conventions: null, baseline: null } as never,
+      files: [], map: null, commits: null, history: [], merged: null, open: null, milestones: null, docs: {},
+      issues: [{ number: 7, title: "Checkout fails on Safari", body: "", labels: ["bug"], milestone: null, comments: 4, updatedAt: 0, url: "u7" }],
+      owner: { next: "Gift cards, then UPI", at: 0 },
+    });
+    (a.fixture.brain as { book?: () => Promise<unknown> }).book = async () => book;
+    a.json.on("work.locate.pick", { targets: [], confidence: 0.1 });
+    a.json.on("front.plan", { title: "Next for the shop", steps: [{ do: "Fix #7: checkout fails on Safari", when: null }, { do: "Build gift cards", when: null }] });
+    const h = defaultHandlers({ code: code as never, call: a.model.call as never });
+    const out = await h.plan({ ...(await call("What should we do", inProject({ projectId: a.project.id }))), maxPaise: 400 });
+    expect(out.text).toBe("**Next for the shop**\n\n1. Fix #7: checkout fails on Safari\n2. Build gift cards");
+    expect(a.json.of("work.plan")).toHaveLength(0);
+    const sent = a.json.of("front.plan")[0]!.user;
+    expect(sent).toContain("Next, in the owner's words: Gift cards, then UPI");
+    expect(sent).toContain("#7 Checkout fails on Safari");
+  });
+
   it("makes a component in the project's style when the project has been read, and a page with the reason when it has not", async () => {
     const { a, code } = await projectRig();
     a.json.on("artifact.generate", "export default function Card() { return <p>Slug helper</p>; }");
