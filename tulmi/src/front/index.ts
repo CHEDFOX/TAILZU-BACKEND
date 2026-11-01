@@ -45,6 +45,9 @@ export { MemoryFrontStore, SupabaseFrontStore, frontStore, resetFrontStoreForTes
 export type { FrontStore, DecisionRow } from "./store.js";
 export { Learning, RephraseWatch, habitOf, trustOf } from "./learn.js";
 
+/** How long the front door keeps a project's name and line. */
+const NAMED_FRESH_MS = 10 * 60_000;
+
 /** The outcomes a person reports with a tap. */
 export const PERSON_OUTCOMES = ["visual_closed", "visual_kept", "thumbs_up", "thumbs_down"] as const satisfies readonly Outcome[];
 
@@ -98,17 +101,20 @@ export function createFront(o: FrontOptions = {}): Front | null {
   });
 
   // The project's name, for the router: one read per project, kept for the process (a name does not change under a chat).
-  const names = new Map<string, string>();
+  // And what it is, in a line (its brain's welcome): kept for ten minutes, since a build can change it.
+  const names = new Map<string, { name: string; about: string; at: number }>();
   const named = async (ctx: FrontCtx): Promise<FrontCtx> => {
     if (!ctx.projectId || ctx.projectName || !o.code) return ctx;
     const key = `${ctx.userId}:${ctx.projectId}`;
-    let name = names.get(key);
-    if (name === undefined) {
-      name = (await o.code.store.getProject(ctx.userId, ctx.projectId).catch(() => null))?.fullName ?? "";
+    let got = names.get(key);
+    if (!got || now() - got.at > NAMED_FRESH_MS) {
+      const name = (await o.code.store.getProject(ctx.userId, ctx.projectId).catch(() => null))?.fullName ?? "";
+      const welcome = name && o.code.brain ? (await o.code.brain.open(ctx.userId, ctx.projectId).then((b) => b.status()).catch(() => null))?.welcome ?? "" : "";
+      got = { name, about: welcome.split(/(?<=[.!?])\s+/)[0]?.slice(0, 240) ?? "", at: now() };
       if (names.size > 2000) names.clear();
-      names.set(key, name);
+      names.set(key, got);
     }
-    return name ? { ...ctx, projectName: name } : ctx;
+    return got.name ? { ...ctx, projectName: got.name, ...(got.about ? { projectAbout: got.about } : {}) } : ctx;
   };
 
   const front: Front = {

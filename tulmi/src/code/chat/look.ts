@@ -59,6 +59,13 @@ export interface LookInput {
   role?: "code_ask" | "code_chat";
   /** What it may do besides reading (converse.ts: a book chapter, start a job, ask the person). A call that returns `end` ends the loop with those words. */
   acts?: Acts;
+  /**
+   * What the turn owes besides words (converse.ts: a change asked for owes the job). Said once when the model ends with words and no act; the words it
+   * ended with are kept as the answer unless what follows ends with an act or says more.
+   */
+  owed?: string;
+  /** The most steps (LOOK_STEPS_MAX unless fewer): a change asked for looks only to place the work, as the job reads it in full. */
+  steps?: number;
 }
 
 export interface Acts {
@@ -77,6 +84,8 @@ export interface Looked {
   steps: number;
   /** The action that ended the loop (start_job, ask_person), when one did. */
   ended?: string;
+  /** A first look did not settle it and a tier that reasons looked again (converse.ts). */
+  escalated?: boolean;
 }
 
 const isAbort = (e: unknown): boolean => (e as { name?: unknown } | null)?.name === "AbortError";
@@ -116,8 +125,11 @@ export function promisesMore(text: string): boolean {
   return !!t && t.length <= 400 && !t.includes("```") && /\b(?:let me|i'll|i will|i need to|i'm going to|next,? i)\b[^.]*\b(?:read|check|look|open|search|find|see|get)\b/i.test(t);
 }
 
-/** A tool call a model wrote into its words instead of making it: the markup of one (`<invoke`, `<tool_call>`, `<function_calls>`) or a JSON call. */
-const LEAK = /(?<!`)<\s*\/?\s*(?:invoke|tool_call|tool_use|function_calls?)\b|```(?:json)?\s*\{\s*"(?:name|tool|function)"\s*:/;
+/**
+ * A tool call a model wrote into its words instead of making it: the markup of one (`<invoke`, `<tool_call>`, `<function_calls>`, a model's own
+ * tokens such as `<｜DSML｜invoke` or `<｜tool▁call▁begin｜>`) or a JSON call.
+ */
+const LEAK = /(?<!`)<\s*\/?\s*(?:invoke|tool_call|tool_use|function_calls?)\b|(?<!`)<\s*[｜|]\s*(?:DSML|tool)|```(?:json)?\s*\{\s*"(?:name|tool|function)"\s*:/;
 export const leakedCall = (text: string): boolean => LEAK.test(text);
 /** The words before a leaked call: what the person may read of such a turn. */
 export function stripLeak(text: string): string {
@@ -126,11 +138,11 @@ export function stripLeak(text: string): string {
 }
 
 /** The ledger: what has been read and searched so far, and the steps left. */
-function ledger(seen: readonly string[], greps: readonly string[], step: number): string {
-  const left = LOOK_STEPS_MAX - step;
+function ledger(seen: readonly string[], greps: readonly string[], step: number, max: number, lastNext: boolean, owed?: string): string {
+  const left = max - step;
   return [
     `Ledger: ${seen.length ? `read ${seen.slice(-14).join(", ")}` : "nothing read with your tools yet"}${greps.length ? `; searched ${greps.slice(-8).map((g) => JSON.stringify(cut(g, 40))).join(", ")}` : ""}.`,
-    left <= 1 ? "This is your last step: answer now, from what you have read, with no tool call." : `${left} steps left. Read only what you have not read; answer as soon as every claim rests on lines you read.`,
+    lastNext ? (owed ? `This is your last step: no more reading. ${owed}` : "This is your last step: answer now, from what you have read, with no tool call.") : `${left} steps left. Read only what you have not read; answer as soon as every claim rests on lines you read.`,
   ].join(" ");
 }
 
@@ -145,18 +157,29 @@ export async function investigate(i: LookInput): Promise<Looked> {
   let paise = 0;
   let chars = 0;
   let said = false;
+  let owed = i.owed;
+  /** The words a turn ended with before it was told what it owes: the answer, unless what follows does better. */
+  let held: string | null = null;
   const words = i.onText
     ? { onText: (piece: string) => { said = true; i.onText!(piece); }, onReset: () => { if (said) { said = false; i.onReset?.(); } } }
     : null;
-  for (let step = 1; step <= LOOK_STEPS_MAX; step += 1) {
-    const last = step === LOOK_STEPS_MAX || chars >= LOOK_CHARS_MAX || (step > 1 && paise >= i.maxPaise * LOOK_SPEND_SHARE);
+  const max = Math.max(1, Math.min(LOOK_STEPS_MAX, i.steps ?? LOOK_STEPS_MAX));
+  const lastAt = (step: number): boolean => step === max || chars >= LOOK_CHARS_MAX || (step > 1 && paise >= i.maxPaise * LOOK_SPEND_SHARE);
+  let steps = 0;
+  for (let step = 1; step <= max; step += 1) {
+    steps = step;
+    const last = lastAt(step);
+    // The last step of a turn that owes an act (a job for a change) may still act, and only act: no more reading. Told so by the ledger before it.
+    const acting = last && !!owed && acts.size > 0;
+    if (acting && step === 1) messages.push({ role: "user", content: owed! });
+    if (acting) owed = undefined;
     const left = Math.max(1, i.maxPaise - paise);
     i.onStep?.(step === 1 ? "code:write" : "code:look");
     let res;
     try {
       res = await call({
         tier: i.tier, messages, maxTokens: i.maxTokens, purpose: "front.code_answer", userId: i.model.userId, budget: { maxPaise: left },
-        tools: [...defs], toolChoice: last ? ("none" as const) : ("auto" as const), ...(i.model.signal ? { signal: i.model.signal } : {}), ...(words ?? {}),
+        tools: acting ? [...(i.acts?.defs ?? [])] : [...defs], toolChoice: last && !acting ? ("none" as const) : ("auto" as const), ...(i.model.signal ? { signal: i.model.signal } : {}), ...(held === null ? words ?? {} : {}),
       }, i.model.gateway);
     } catch (err) {
       if (isAbort(err) || step === 1) throw err;
@@ -174,8 +197,20 @@ export async function investigate(i: LookInput): Promise<Looked> {
       });
       continue;
     }
-    if (!asked.length || last) return { text: stripLeak(res.text).trim(), reads: [...reads], greps, seen, paise, steps: step };
-    words?.onReset();
+    // On the last step a promise or a written call is still no answer: one more call, with no tools, for the answer from what was read.
+    if (!asked.length && last && held === null && (promisesMore(res.text) || leakedCall(res.text))) break;
+    // Words where an act was owed (a change asked for, and no job): told once; the words stay the answer if words come back.
+    if (!asked.length && !last && owed) {
+      held = stripLeak(res.text).trim();
+      messages.push({ role: "assistant", content: held || "(no words)" }, { role: "user", content: owed });
+      owed = undefined;
+      continue;
+    }
+    if (!asked.length || (last && !acting)) {
+      const text = stripLeak(res.text).trim();
+      return { text: held !== null && held.length >= text.length ? held : text, reads: [...reads], greps, seen, paise, steps: step };
+    }
+    if (held === null) words?.onReset();
     messages.push({ role: "assistant", content: res.text || null, tool_calls: asked });
     const calls = asked.slice(0, LOOK_CALLS_PER_STEP);
     for (const c of calls) {
@@ -203,7 +238,7 @@ export async function investigate(i: LookInput): Promise<Looked> {
       messages.push({ role: "tool", tool_call_id: c.id, content });
     }
     for (const c of asked.slice(LOOK_CALLS_PER_STEP)) messages.push({ role: "tool", tool_call_id: c.id, content: `Skipped: at most ${LOOK_CALLS_PER_STEP} calls a step.` });
-    messages.push({ role: "user", content: ledger(seen, greps, step) });
+    messages.push({ role: "user", content: ledger(seen, greps, step, max, lastAt(step + 1), acts.size > 0 ? owed : undefined) });
   }
   // The money or the model ran out while looking: the last answer it can give, from what it has, with no tool call. The money's guard prices a call
   // at its worst case, so what the tools returned is cut down until the answer fits (a refused call costs nothing); the lines read stay anchors.
@@ -214,9 +249,9 @@ export async function investigate(i: LookInput): Promise<Looked> {
       ...(i.model.signal ? { signal: i.model.signal } : {}), ...(words ?? {}),
     }, i.model.gateway).catch((err: unknown) => { if (isAbort(err)) throw err; return err instanceof BudgetExceeded ? ("budget" as const) : null; });
     if (res === "budget") continue;
-    return { text: stripLeak(res?.text ?? "").trim(), reads: [...reads], greps, seen, paise: paise + (res?.paise ?? 0), steps: LOOK_STEPS_MAX };
+    return { text: stripLeak(res?.text ?? "").trim(), reads: [...reads], greps, seen, paise: paise + (res?.paise ?? 0), steps };
   }
-  return { text: "", reads: [...reads], greps, seen, paise, steps: LOOK_STEPS_MAX };
+  return { text: "", reads: [...reads], greps, seen, paise, steps };
 }
 
 /** How much of each tool result the last answer keeps, tried in turn until its worst case fits the money left (null: all of it). */

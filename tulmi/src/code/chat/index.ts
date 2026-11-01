@@ -34,6 +34,8 @@ import { completeMessage } from "../../front/complete.js";
 import { answerCode, type ChatAnswer } from "./answer.js";
 import { converse, type Conversed, type StartedJob } from "./converse.js";
 import { makeWebTools } from "../webTools.js";
+import { RESEARCH_PAISE } from "../../front/path.js";
+import type { ResearchDepth } from "../../front/types.js";
 import { handoffOf, taskFor, type Handoff } from "./handoff.js";
 import { newThread, THREAD_ID, threadStore, withJob, type ChatThread, type ThreadStore } from "./threads.js";
 
@@ -168,7 +170,7 @@ export class CodeChat {
    * The one loop of a project's chat (converse.ts): the project card in front of it, the code read with tools, a job started or a question asked
    * by the model's own tool call. No router decides before it. The thread keeps the turn, the job, what was read.
    */
-  async converse(r: ChatRequest & { startJob?: (task: string) => Promise<StartedJob>; change?: boolean }): Promise<Conversed> {
+  async converse(r: ChatRequest & { startJob?: (task: string) => Promise<StartedJob>; change?: boolean; research?: ResearchDepth }): Promise<Conversed> {
     const project = await ownProject(this.d.projects, r.userId, r.projectId);
     const brain = await this.d.brain.open(r.userId, project.id);
     const thread = await this.threadFor(r);
@@ -181,13 +183,16 @@ export class CodeChat {
       try { ws ??= await workspace(this.d.projects, r.userId, project.id, project.defaultBranch); return (await ws.read(path)).text; } catch { return null; }
     };
     const web = (this.d.web ?? makeWebTools)({
-      userId: r.userId, budget: { maxPaise: Math.max(1, Math.floor(r.maxPaise * WEB_SHARE)) }, ...(this.d.call ? { call: this.d.call as never } : {}),
+      // A question for the web has its research's money; any other message a share, for a look-up or two.
+      userId: r.userId, budget: { maxPaise: Math.max(1, r.research ? Math.min(r.maxPaise, RESEARCH_PAISE[r.research] + Math.floor(r.maxPaise * WEB_SHARE)) : Math.floor(r.maxPaise * WEB_SHARE)) },
+      ...(this.d.call ? { call: this.d.call as never } : {}),
       ...(this.d.gateway ? { gateway: this.d.gateway } : {}), ...(r.signal ? { signal: r.signal } : {}),
     });
-    const webDefs = web.tools.filter((t) => t.name === "web_search" || t.name === "read_page");
+    // A look-up, a page, or research: several sources read and every claim cited (quick, standard or deep), what a question about the world needs.
+    const webDefs = web.tools.filter((t) => t.name === "web_search" || t.name === "read_page" || t.name === "research");
     const out = await converse({
       userId: r.userId, project: { id: project.id, fullName: project.fullName }, message: r.question, ...(r.ask ? { meant: r.ask } : {}), thread, job,
-      ...(r.language ? { language: r.language } : {}), length: r.length, ...(r.change ? { change: true } : {}),
+      ...(r.language ? { language: r.language } : {}), length: r.length, ...(r.change ? { change: true } : {}), ...(r.research ? { research: r.research } : {}),
       tier: r.tier, maxPaise: r.maxPaise, now: this.now(),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
     }, {
@@ -231,5 +236,20 @@ export class CodeChat {
     const thread = await this.threads.get(userId, projectId, threadId).catch(() => null);
     const h = handoffOf(thread);
     return h ? { task: taskFor(h, message), located: h.located, handoff: h } : null;
+  }
+
+  /**
+   * "Make that change" after the one loop laid out a change (converse.ts): the job's task is what was asked and the plan the chat wrote, the
+   * files and lines it named in it. Null when the chat has no answer to hand over.
+   */
+  async planned(userId: string, projectId: string, threadId: string, message: string): Promise<string | null> {
+    const thread = await this.threads.get(userId, projectId, threadId).catch(() => null);
+    const last = thread?.history.at(-1);
+    if (!last?.a) return null;
+    return [
+      `The person asked: ${last.q}`,
+      `The chat looked into the code and laid out this change (its files and lines are where to start):\n${last.a.slice(0, 12_000)}`,
+      `What they say now: ${message.trim()}`,
+    ].join("\n\n");
   }
 }

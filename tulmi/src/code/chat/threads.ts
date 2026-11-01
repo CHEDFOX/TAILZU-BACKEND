@@ -39,6 +39,11 @@ export interface ChatTurn {
   q: string; a: string; at: number;
   /** What the answer suggested asking next (code/chat/answer.ts splitNext): the chat's buttons under its last answer. */
   n?: string[];
+  /**
+   * The person did not take this answer: the next message was a reaction to it ("??", "why?") or said the same thing again. A turn so marked is
+   * where Xode fell short, kept as a case to test it on (scripts/xode-cases.ts).
+   */
+  f?: "reaction" | "rephrase";
 }
 
 export interface ChatThread {
@@ -180,14 +185,15 @@ function jobsOf(v: unknown): ChatJob[] {
     .map((j) => ({ id: j.id, branch: j.branch, at: typeof j.at === "number" ? j.at : 0 })).slice(-JOBS_KEPT);
 }
 
-function lastOf(v: unknown): { located: Located | null; history: ChatTurn[]; jobs: ChatJob[]; seen: string[] } {
+/** A row's last_located, read: the located files, the turns, the jobs and the files seen (scripts/xode-cases.ts reads the turns too). */
+export function lastOf(v: unknown): { located: Located | null; history: ChatTurn[]; jobs: ChatJob[]; seen: string[] } {
   if (!v || typeof v !== "object") return { located: null, history: [], jobs: [], seen: [] };
   const o = v as { located?: unknown; history?: unknown; jobs?: unknown; seen?: unknown };
   if (!Array.isArray(o.history)) return { located: v as Located, history: [], jobs: [], seen: [] };
   const history = o.history.filter((h): h is ChatTurn => !!h && typeof h === "object" && typeof (h as ChatTurn).q === "string" && typeof (h as ChatTurn).a === "string")
     .map((h) => {
       const n = Array.isArray(h.n) ? h.n.filter((q): q is string => typeof q === "string").slice(0, 3) : [];
-      return { q: h.q, a: h.a, at: typeof h.at === "number" ? h.at : 0, ...(n.length ? { n } : {}) };
+      return { q: h.q, a: h.a, at: typeof h.at === "number" ? h.at : 0, ...(n.length ? { n } : {}), ...(h.f === "reaction" || h.f === "rephrase" ? { f: h.f } : {}) };
     });
   return { located: o.located && typeof o.located === "object" ? (o.located as Located) : null, history, jobs: jobsOf(o.jobs), seen: Array.isArray(o.seen) ? o.seen.filter((x): x is string => typeof x === "string" && x.length < 300).slice(-SEEN_KEPT) : [] };
 }

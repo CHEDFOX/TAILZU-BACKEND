@@ -252,7 +252,8 @@ async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<CodeAnsw
     let job: CodeAnswerOut["job"];
     const said = c.said ?? c.message;
     const out = await chat.converse({
-      userId: c.userId, projectId, question: said, ...(c.decision.reask ? { ask: c.decision.reask } : {}), change: c.decision.reasons.includes("agent_change"), ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}), language: c.decision.language,
+      userId: c.userId, projectId, question: said, ...(c.decision.reask ? { ask: c.decision.reask } : {}), change: c.decision.reasons.includes("agent_change"),
+      ...(c.decision.reasons.includes("agent_research") ? { research: c.decision.depth ?? "standard" } : {}), ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}), language: c.decision.language,
       tier: "cheap", length: c.decision.shape.length, diagram: false, maxPaise: c.maxPaise, ...(c.signal ? { signal: c.signal } : {}),
       ...words.ask, ...(c.onStep ? { onStep: c.onStep } : {}),
       ...(c.startJob ? { startJob: async (task: string) => (job = (await c.startJob!(task)).job) } : {}),
@@ -283,8 +284,11 @@ async function codeJobDefault(d: HandlerDeps, c: RouteCall): Promise<{ job: NonN
   let task = c.message.slice(0, 20_000);
   let opts: Parameters<AgentOrchestrator["enqueue"]>[2] = {};
   if (c.decision.handoff && c.ctx.threadId && d.code?.brain) {
-    const handed = await chatOf(d, c).chat.handoff(c.userId, project.id, c.ctx.threadId, c.said ?? c.message);
+    const chat = chatOf(d, c).chat;
+    const handed = await chat.handoff(c.userId, project.id, c.ctx.threadId, c.said ?? c.message);
     if (handed) { task = handed.task.slice(0, 20_000); opts = { located: handed.located, locatedFrom: "chat" }; }
+    // The one loop keeps no located place; its last answer is the plan, with the files and lines it read.
+    else { const planned = await chat.planned(c.userId, project.id, c.ctx.threadId, c.said ?? c.message); if (planned) task = planned.slice(0, 20_000); }
   }
   if (c.decision.mode === "freeform") opts = { ...opts, mode: "freeform" };
   if (c.decision.team) opts = { ...opts, team: c.decision.team };
