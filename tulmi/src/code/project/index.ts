@@ -45,6 +45,7 @@ import { aggregateHistory, coChanged, rankHotspots } from "./hotspots.js";
 import { RepoGraph, mapFiles, type MapHit, type MapOptions, type MapSeeds } from "./repomap.js";
 import { declaredDeps, type DeclaredDep } from "./registry.js";
 import { queryWords, scoreFile, symbolScore } from "./search.js";
+import { translationsOf } from "./texts.js";
 import { projectBrainStore, type ProjectBrainStore } from "./store.js";
 import {
   BUILD_DEAD_MS, IMPORT_BUDGET_DEFAULT, PUSH_DEBOUNCE_MS, publicStructure,
@@ -465,7 +466,9 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
         const value = x.includes(": ") && t.kind !== "string" && t.kind !== "flutter" ? x.slice(x.indexOf(": ") + 2) : x;
         return value === lq ? 100 : value.startsWith(lq) ? 80 : value.includes(lq) ? 60 : 20 - Math.min(19, Math.floor(value.length / 20));
       };
-      return found.map((t) => ({ t, s: score(t) })).sort((a, b) => b.s - a.s || (a.t.path < b.t.path ? -1 : 1) || a.t.line - b.t.line)
+      // A key found in many languages' catalogs (a brain built before they were indexed once): its base language's, once.
+      const translated = translationsOf(found.filter((t) => t.kind === "i18n").map((t) => t.path));
+      return found.filter((t) => !translated.has(t.path)).map((t) => ({ t, s: score(t) })).sort((a, b) => b.s - a.s || (a.t.path < b.t.path ? -1 : 1) || a.t.line - b.t.line)
         .slice(0, limit).map(({ t }) => ({ path: t.path, line: t.line, text: t.text, kind: t.kind }));
     }),
     async neighbors(path) {

@@ -20,6 +20,7 @@ import type { FrontModel } from "../../front/model.js";
 import { FrontError, type Length } from "../../front/types.js";
 import type { ModelTier } from "../brain/tiers.js";
 import { bookCard, bookChapter, CHAPTERS, type ProjectBook } from "../project/book.js";
+import { catalogsOf } from "../project/texts.js";
 import { fence, forModel } from "../work/index.js";
 import { cut } from "../work/model.js";
 import { redactText } from "../work/worklog.js";
@@ -200,19 +201,51 @@ function chatBlock(t: ChatThread | null, job: string | null | undefined): string
 
 /** What is known of the project when it has no book yet: the brain's welcome and its parts. */
 async function cardOf(brain: ChatBrain): Promise<string> {
-  const book: ProjectBook | null = brain.book ? await brain.book().catch(() => null) : null;
-  if (book) return bookCard(book);
+  const [book, screens] = await Promise.all([brain.book ? brain.book().catch(() => null) : Promise.resolve(null), screenText(brain).catch(() => "")]);
+  if (book) return [bookCard(book), screens].filter(Boolean).join("\n");
   const v = await brain.status();
-  return [cut(v.welcome ?? "", 900), ...v.features.slice(0, 8).map((f) => `- ${f.name}: ${cut(f.summary, 120)}`)].filter(Boolean).join("\n");
+  return [cut(v.welcome ?? "", 900), ...v.features.slice(0, 8).map((f) => `- ${f.name}: ${cut(f.summary, 120)}`), screens].filter(Boolean).join("\n");
+}
+
+/**
+ * Where the words on its screens are kept, when the project keeps them in catalogs by language: the code names a key (t(messages.deleteTeamWarning)),
+ * the words are in the catalog (public/intl/messages/en-US.json), and a guess at its place (src/lang/en-US.json) finds nothing.
+ */
+async function screenText(brain: ChatBrain): Promise<string> {
+  if (!brain.paths) return "";
+  const catalogs = catalogsOf(await brain.paths()).slice(0, 3);
+  return catalogs.length ? `Screen text is kept by language in ${catalogs.map((c) => `${c.base} (and ${c.copies.length - 1} other languages)`).join(", ")}.` : "";
+}
+
+/** Words a message quotes ("I get 'Failed to authenticate.'"), not an apostrophe inside a word ("it's"). */
+const QUOTED = /(?<![\p{L}\p{N}])["'“‘`]([^"'“”‘’`\n]{6,160}?)["'”’`](?![\p{L}\p{N}])/gu;
+/** A setting's name as the code reads it (SALT_ROTATION, DATABASE_URL). */
+const SETTING_NAME = /\b[A-Z][A-Z0-9]*_[A-Z0-9_]{2,}\b/g;
+
+/**
+ * What a message names exactly, found in the project's index before the model looks: the words it quotes (an error a person saw, a label) and
+ * the settings it names, each where it is, so "where does 'Failed to authenticate.' come from" starts from every place it is written, not from the
+ * first one a search happens on. Only the index's exact matches; their lines may be cited.
+ */
+export async function namedIn(brain: ChatBrain, message: string, anchors: Anchors): Promise<string> {
+  const asked = [...new Set([...[...message.matchAll(QUOTED)].map((m) => m[1]!.trim()), ...(message.match(SETTING_NAME) ?? [])])].slice(0, 3);
+  const lines: string[] = [];
+  for (const q of asked) {
+    const hits = (await brain.findTexts(q, 8).catch(() => [])).filter((h) => h.text.toLowerCase().includes(q.toLowerCase()));
+    for (const h of hits.slice(0, 6)) { lines.push(`${h.path}:${h.line} ${JSON.stringify(cut(h.text, 140))}`); anchors.hit(h.path, h.line); }
+  }
+  return lines.length ? `Where what the message names is written (every place the index has it):\n${lines.join("\n")}` : "";
 }
 
 export async function converse(input: ConverseInput, ports: ConversePorts, model: FrontModel): Promise<Conversed> {
   const { brain } = ports;
-  const [card, map] = await Promise.all([cardOf(brain), mapBrief(brain, input.message).catch(() => "")]);
+  const anchors = new Anchors();
+  const [card, map, named] = await Promise.all([cardOf(brain), mapBrief(brain, input.message).catch(() => ""), namedIn(brain, input.message, anchors).catch(() => "")]);
   const user = [
     `<project name="${forModel(input.project.fullName).replace(/"/g, "")}">\n${fence(forModel(card))}\n</project>`,
     `<chat>\n${fence(forModel(chatBlock(input.thread, input.job)))}\n</chat>`,
     ...(map ? [`<map>\n${fence(forModel(map))}\n</map>`] : []),
+    ...(named ? [`<found>\n${fence(forModel(named))}\n</found>`] : []),
     `<message>\n${forModel(input.message).replace(/<\/message/gi, "<\\/message")}\n</message>`,
     ...(input.meant ? [`(That is: ${forModel(input.meant)})`] : []),
     ...(input.change ? ["(Read as a change to make: start_job with the whole task and what you found, unless the message asks for something else.)"] : []),
@@ -226,7 +259,6 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
   const shown: Shown[] = [];
   let webCalls = 0;
   const webNames = new Set((ports.web?.defs ?? []).map((d) => d.name));
-  const anchors = new Anchors();
   // What earlier turns read stays citable: a follow-up ("??", "why?") answers from those lines without reading them again.
   if (input.thread?.seen?.length) anchors.earlier(input.thread.seen);
   const acts: Acts = {

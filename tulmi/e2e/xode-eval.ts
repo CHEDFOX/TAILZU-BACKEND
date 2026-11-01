@@ -198,7 +198,7 @@ const PROJECTS: Project[] = [
 const rupees = (p: number): string => `₹${(p / 100).toFixed(2)}`;
 const secs = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
 const PATH = /(?<![\w/.:@-])((?:[\w@.+-]+\/)*[\w@+-][\w@.+-]*\.(?:js|ts|tsx|jsx|mjs|cjs|json|swift|ps1|py|sql|html|css|md|yml|yaml))(?![\w/])/g;
-const LEAK = /<\/?(?:project|chat|map|message|brief|book|facts|excerpts|data)\b|\bthe brief\b|\btool calls?\b|\bmy tools\b/i;
+const LEAK = /<\/?(?:project|chat|map|message|brief|book|facts|excerpts|data|found)\b|\bthe brief\b|\btool calls?\b|\bmy tools\b/i;
 
 function filesOf(dir: string, stripDocs: boolean): { files: Record<string, string>; all: Set<string>; named: string } {
   const files: Record<string, string> = {};
@@ -229,8 +229,11 @@ function judge(c: Case, r: FrontResult | null, error: string, all: Set<string>, 
   const named = [...text.matchAll(PATH)].map((m) => m[1]!.replace(/^\.\//, ""));
   // A new file in a folder the project has is a proposal ("add backend/app/api/routes/teams.py"), not a made-up path; a folder it lacks is.
   const folders = new Set([...all].map((f) => f.slice(0, f.lastIndexOf("/") + 1)));
-  const ends = (p: string): boolean => all.has(p) || [...all].some((f) => f.endsWith(`/${p}`)) || inCode.includes(p) || (p.includes("/") && folders.has(p.slice(0, p.lastIndexOf("/") + 1)));
-  const wrong = named.filter((p) => !ends(p));
+  const ends = (p: string): boolean => all.has(p) || [...all].some((f) => f.endsWith(`/${p}`)) || inCode.includes(p) || (p.includes("/") && folders.has(p.slice(0, p.lastIndexOf("/") + 1)))
+    // A folder the app makes where it runs (pb_hooks beside the binary), named by the code that reads it: real too.
+    || (p.includes("/") && !folders.has(`${p.split("/")[0]}/`) && p.split("/")[0]!.length >= 4 && inCode.includes(p.split("/")[0]!));
+  // A bare name with no folder is an example as often as a file ("put it in myfile.pb.js"): only paths with folders are held to the project.
+  const wrong = named.filter((p) => p.includes("/") && !ends(p));
   checks.push([`paths real${wrong.length ? ` (not: ${[...new Set(wrong)].slice(0, 3).join(", ")})` : ""}`, !wrong.length]);
   checks.push(["clean", !LEAK.test(text)]);
   return { did, checks, pass: checks.every(([, ok]) => ok), text, ...(jobTask ? { job: jobTask } : {}) };
