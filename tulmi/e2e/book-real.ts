@@ -20,6 +20,8 @@ const arg = (name: string, d = ""): string => { const i = process.argv.indexOf(`
 const REPO = arg("repo");
 const DIR = arg("dir");
 const OUT = arg("out", path.join("e2e", "out", `book-${REPO.replace(/\W+/g, "-")}.md`));
+/** Leave the project's docs out (every .md, docs/, README): how the book does for a project with none. */
+const STRIP_DOCS = process.argv.includes("--strip-docs");
 if (!/^[\w.-]+\/[\w.-]+$/.test(REPO) || !DIR) throw new Error("Use --repo owner/name --dir /path/to/checkout");
 
 /** The checkout's tracked text files, the e2e caches and anything big or binary left out. */
@@ -28,6 +30,7 @@ function filesOf(dir: string): Record<string, string> {
   const list = execFileSync("git", ["-C", dir, "ls-files"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").filter(Boolean);
   for (const p of list) {
     if (/(^|\/)(?:e2e\/(?:cache|out|cassettes|results)|node_modules)\//.test(p)) continue;
+    if (STRIP_DOCS && (/\.(?:md|mdx|rst|txt)$/i.test(p) || /(^|\/)docs?\//i.test(p))) continue;
     const full = path.join(dir, p);
     let buf: Buffer;
     try { buf = fs.readFileSync(full); } catch { continue; }

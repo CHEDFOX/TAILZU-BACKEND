@@ -94,8 +94,16 @@ export function buildBook(i: BookInput): ProjectBook {
 
   // ------------------------------------------------------------------ what it is
   if (i.owner?.for) add("what", i.owner.for, { kind: "owner", ref: "the owner" }, "confirmed", i.owner.at);
+  const about = i.view.structure?.about ?? null;
+  const readme = !!i.view.structure?.readme?.blurb;
+  const said = about?.text && !readme ? `${about.product && !about.text.toLowerCase().includes(about.product.toLowerCase()) ? `${about.product}: ` : ""}${about.text}` : "";
+  if (said) add("what", said, { kind: "file", ref: about!.path });
   const welcome = i.view.welcome.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ");
-  if (welcome) add("what", welcome, index("the project's index (README and code)"));
+  // With neither a README nor a manifest that says what it is, the welcome's first lines are the index's reading of the code: a guess until the owner
+  // says. A welcome that only repeats the manifest (the template written when no model could) is not said twice.
+  if (welcome && !(said && welcome.includes(about!.text.slice(0, 60)))) {
+    add("what", welcome, index(readme ? "the project's index (README and code)" : "the project's index (its code)"), readme || said ? "found" : "guessed");
+  }
   for (const f of i.view.features.slice(0, 8)) add("what", `${f.name}: ${f.summary}`, index(`feature ${f.name}`));
   if (!facts.some((f) => f.chapter === "what")) gaps.push("What it is: the index has no summary of the project yet.");
 
@@ -228,7 +236,10 @@ function firstParagraph(text: string): string {
 const REASON = /\b(?:because|so that|in order to|instead of|rather than|to avoid|we (?:decided|chose|moved|switched)|the reason|trade-?off|otherwise)\b/i;
 
 /** A path's folder `depth` deep ("tulmi/src/code" at 3), or "" for a file that is not that deep in. */
-const folderOf = (path: string, depth: number): string => { const parts = path.split("/"); return parts.length > depth ? parts.slice(0, depth).join("/") : ""; };
+/** Files at the root of the repo, as an area of their own. */
+export const TOP_LEVEL = "top-level files";
+/** A file's folder, at most `depth` folders deep; a file at the root is in TOP_LEVEL. */
+const folderOf = (path: string, depth: number): string => { const dir = path.split("/").slice(0, -1); return dir.length ? dir.slice(0, depth).join("/") : TOP_LEVEL; };
 
 /**
  * Where the commits went, as folders, deep enough to say something: a folder that holds most of the work ("tulmi/src" in a repo whose code is all
@@ -239,9 +250,11 @@ export function busiestAreas(commits: ReadonlyArray<readonly string[]>, n: numbe
   let counted: Array<[string, number]> = [];
   for (; depth <= 4; depth++) {
     const areas = new Map<string, number>();
-    for (const files of commits) for (const a of new Set(files.map((f) => folderOf(f, depth)).filter(Boolean))) areas.set(a, (areas.get(a) ?? 0) + 1);
+    for (const files of commits) for (const a of new Set(files.map((f) => folderOf(f, depth)))) areas.set(a, (areas.get(a) ?? 0) + 1);
     counted = [...areas].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
-    if (!counted.length || counted[0]![1] <= commits.length * 0.5 || depth === 4) break;
+    // Deeper only while one folder holds most of the work and can still be split.
+    const top = counted[0];
+    if (!top || top[1] <= commits.length * 0.5 || top[0] === TOP_LEVEL || top[0].split("/").length < depth || depth === 4) break;
   }
   return counted.slice(0, n);
 }
@@ -291,13 +304,14 @@ const sourceWords = (s: Source): string => (s.kind === "owner" ? "you said" : s.
 /** The book as a person reads it: the chapters in order, every fact with where it came from; ✓ the owner confirmed it, ~ it is a guess. */
 export function bookMarkdown(b: ProjectBook): string {
   const out = [`# ${b.project}: the project book`, "", `As of commit \`${b.commit.slice(0, 7)}\`, ${date(b.builtAt)}. Each line says where it comes from; ✓ means you confirmed it, ~ means it is a guess.`];
+  // The owner's questions first, as on the app's page: their three answers say more than any chapter the code can give.
+  if (b.questions.length) out.push("", "## Questions for you", "", ...b.questions.map((q) => `- ${q.text}`));
   for (const c of CHAPTERS) {
     const fs = b.facts.filter((f) => f.chapter === c);
     if (!fs.length) continue;
     out.push("", `## ${CHAPTER_TITLES[c]}`, "", ...fs.map((f) => `- ${f.status === "confirmed" ? "✓ " : f.status === "guessed" ? "~ " : ""}${f.text} _(${sourceWords(f.source)})_`));
   }
   if (b.gaps.length) out.push("", "## Not known yet", "", ...b.gaps.map((g) => `- ${g}`));
-  if (b.questions.length) out.push("", "## Questions for you", "", ...b.questions.map((q) => `- ${q.text}`));
   return out.join("\n");
 }
 
@@ -324,8 +338,20 @@ export function bookBrief(b: ProjectBook, question: string, limit = 10): string 
     + [...wordsOf(f.text)].filter((w) => want.has(w)).length * 10 + (f.chapter === "state" && f.source.kind === "check" ? 5 : 0);
   const picked = b.facts.map((f, k) => ({ f, k, s: score(f) })).filter((x) => x.s > 0).sort((a, c) => c.s - a.s || a.k - c.k).slice(0, limit).sort((a, c) => a.k - c.k);
   const gaps = b.gaps.filter((g) => [...chapters].some((c) => g.startsWith(`${CHAPTER_TITLES[c]}:`)));
-  return [...picked.map(({ f }) => `[${CHAPTER_TITLES[f.chapter]}] ${f.text} (${sourceWords(f.source)})`), ...gaps.map((g) => `[not known] ${g}`)].join("\n");
+  // A question the owner has not answered yet, when this one is about it: the chat can say where they can answer it, and the book keeps it.
+  const open = b.questions.filter((q) => [...chapters].some((c) => QUESTION_CHAPTER[q.id] === c));
+  return [
+    ...picked.map(({ f }) => `[${CHAPTER_TITLES[f.chapter]}] ${f.text} (${f.source.kind === "owner" ? "the owner said: newer than the README, the docs and any earlier answer, and right where they differ" : sourceWords(f.source)})`),
+    ...gaps.map((g) => `[not known] ${g}`),
+    ...open.map((q) => `[the owner has not answered] ${q.text} (the person can answer it on the Project book page: the book button on the project's page)`),
+  ].join("\n");
 }
+
+/** The chapter each of the owner's questions fills. */
+const QUESTION_CHAPTER: Readonly<Record<QuestionId, Chapter>> = { for: "what", next: "direction", keep: "direction" };
+
+/** When the owner last said something in the book: answers given before then may be out of date. 0 when they never have. */
+export const ownerSaidAt = (b: ProjectBook): number => Math.max(0, ...b.facts.filter((f) => f.source.kind === "owner").map((f) => f.at));
 
 /** What a job is told of the book: the owner's words, where it is heading, what changed lately. A few lines, for the agent's project memory. */
 export function bookForJobs(b: ProjectBook): string {

@@ -3,8 +3,9 @@
  * step, cites only lines it read, answers at the last step whatever happens, and the thread keeps what it read for the next question.
  */
 import { describe, expect, it } from "vitest";
-import { Anchors, checkCitations } from "../src/code/chat/cite.js";
+import { Anchors, checkCitations, fixPaths, unknownPaths } from "../src/code/chat/cite.js";
 import { investigate, LOOK_STEPS_MAX, type LookTools } from "../src/code/chat/look.js";
+import { BudgetExceeded } from "../src/code/brain/gateway.js";
 import { afterTurn, newThread, SEEN_KEPT } from "../src/code/chat/threads.js";
 
 type Sent = { tools: string[]; toolChoice: unknown; messages: Array<{ role: string; content: unknown }> };
@@ -75,6 +76,35 @@ describe("looking before answering", () => {
     expect(out.steps).toBe(LOOK_STEPS_MAX);
   });
 
+  it("answers once most of the money is spent, so the answer can still be paid for", async () => {
+    const m = scripted([{ text: "looking", calls: [{ name: "grep", args: { pattern: "x" } }] }]);
+    // Each turn costs 1; with 3 to spend, the third turn is past 60% and is the answer.
+    const out = await investigate({ model: m.model, tier: "cheap", user: "q", tools: tools(), anchors: new Anchors(), maxPaise: 3, maxTokens: 800 });
+    expect(m.sent.map((s) => s.toolChoice)).toEqual(["auto", "auto", "none"]);
+    expect(out.steps).toBe(3);
+  });
+
+  it("when the money's guard refuses the next look, answers from what it read with the results cut down until the answer fits", async () => {
+    const sent: Array<{ toolChoice: unknown; longest: number }> = [];
+    let n = 0;
+    const call = (async (input: { toolChoice?: unknown; messages: Array<{ role: string; content: unknown }> }) => {
+      const longest = Math.max(0, ...input.messages.filter((m) => m.role === "tool").map((m) => String(m.content).length));
+      sent.push({ toolChoice: input.toolChoice, longest });
+      n += 1;
+      if (n === 1) return { text: "", paise: 1, model: "m", toolCalls: [{ id: "c1", name: "read_file", arguments: JSON.stringify({ path: "big.ts" }) }] };
+      // The guard prices a call at its worst case: one carrying the whole read is refused, before anything is spent.
+      if (longest > 2_500) throw new BudgetExceeded({ needPaise: 120, spentPaise: 1, budgetPaise: 100, purpose: "front.code_answer", model: "m", scope: "call" });
+      return { text: "It is in big.ts.", paise: 1, model: "m" };
+    }) as never;
+    const big = { defs: [{ name: "read_file", description: "", parameters: {} }], exec: async () => ({ ok: true, content: "Read big.ts.", data: Array.from({ length: 400 }, (_, k) => `${k + 1}: line ${k}`).join("\n") }) };
+    const out = await investigate({ model: { userId: "alice", call }, tier: "cheap", user: "q", tools: big, anchors: new Anchors(), maxPaise: 100, maxTokens: 800 });
+    expect(out.text).toBe("It is in big.ts.");
+    // The look that was refused, the answer with all of it (refused), then with 2,000 characters of it (answered).
+    expect(sent.map((x) => x.toolChoice)).toEqual(["auto", "auto", "none", "none"]);
+    expect(sent.at(-1)!.longest).toBeLessThan(2_100);
+    expect(out.paise).toBe(2);
+  });
+
   it("takes back words it streamed when the turn goes to a tool after all", async () => {
     const m = scripted([{ text: "Let me check", calls: [{ name: "grep", args: { pattern: "x" } }] }, { text: "Done." }]);
     const events: string[] = [];
@@ -94,5 +124,20 @@ describe("what a chat has read", () => {
     for (let i = 0; i < 30; i++) t = afterTurn(t, { question: `q${i}`, cites: [], located: null, now: 3 + i, seen: [`f${i}.ts:1-2`] });
     expect(t.seen).toHaveLength(SEEN_KEPT);
     expect(t.seen!.at(-1)).toBe("f29.ts:1-2");
+  });
+});
+
+describe("a path written with folders the file is not in", () => {
+  const all = ["liveViewMain.js", "agent.js", "src/a/index.ts", "src/b/index.ts", "runner/ws.js"];
+  it("is put right when exactly one file has its name, and left when none or several do", () => {
+    const text = "See `live/liveViewMain.js`, guide/agent.js:12, `runner/ws.js`, `pkg/index.ts` and `nope/missing.js`.";
+    expect(unknownPaths(text, (p) => all.includes(p))).toEqual(["live/liveViewMain.js", "guide/agent.js", "pkg/index.ts", "nope/missing.js"]);
+    const out = fixPaths(text, all);
+    expect(out.text).toBe("See `liveViewMain.js`, agent.js:12, `runner/ws.js`, `pkg/index.ts` and `nope/missing.js`.");
+    expect(out.fixed).toEqual([["live/liveViewMain.js", "liveViewMain.js"], ["guide/agent.js", "agent.js"]]);
+    // A line cited in it is then checked in the right file.
+    const anchors = new Anchors();
+    anchors.read("agent.js", "a\n".repeat(20));
+    expect(checkCitations(out.text, anchors).kept).toEqual(["agent.js:12"]);
   });
 });

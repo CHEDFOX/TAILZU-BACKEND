@@ -131,6 +131,10 @@ export function realKit(o: RealKitOptions): ModelKit {
       try {
         const r = await callContext.run({ purpose: input.purpose, ...(input.jobId ? { jobId: input.jobId } : {}), ...(input.tier ? { tier: input.tier } : {}) }, () => callModel(input, { ...gateway, ...(gw ?? {}) }));
         logs.push(logOf(input as CallInput<unknown>, r as CallResult<unknown>, null, t0));
+        // E2E_DUMP=<purpose regex>: what such a call was sent last and what came back, on stderr, to read a strange result against.
+        if (process.env.E2E_DUMP && new RegExp(process.env.E2E_DUMP).test(input.purpose)) {
+          console.error(`---- ${input.purpose}\n>>> ${String(input.messages.at(-1)?.content ?? "").slice(0, 3000)}\n<<< ${(r.text ?? "").slice(0, 3000)}`);
+        }
         if (input.purpose === "agent.work") await kit.afterTurn?.(kit.turns);
         return r;
       } catch (err) {
