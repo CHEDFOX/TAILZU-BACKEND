@@ -138,6 +138,20 @@ describe("reading the parts (cardFiles)", () => {
     expect(out.files.get("many.ts")!.parts.size).toBe(100);
   });
 
+  it("asks a call whose answer failed again as two halves, once; the read is whole when the halves are", async () => {
+    // A model whose answer for more than 2 parts at once is never usable (cut short, say).
+    const picky = () => scripted((user) => { if ((user.match(/^p\d+ /gm) ?? []).length > 2) throw new Error("the answer was cut short"); return echo(user); });
+    const m = picky();
+    const out = await cardFiles(m.ctx as never, [job("a.ts", 30, { summary: false })], 1000);
+    // 3 parts fail; the halves (2 and 1) are described: whole.
+    expect(out.files.get("a.ts")!.parts.size).toBe(3);
+    expect(out.complete).toBe(true);
+    // 8 parts fail, and so do their halves of 4: a half is not split again, and the read says it is not whole.
+    const big = await cardFiles(picky().ctx as never, [job("c.ts", 80, { summary: false })], 1000);
+    expect(big.files.get("c.ts")?.parts.size ?? 0).toBe(0);
+    expect(big.complete).toBe(false);
+  });
+
   it("asks once more for the parts a model left out", async () => {
     let n = 0;
     const m = scripted((user) => { n += 1; const all = echo(user); return n === 1 ? { files: all.files.map((f) => ({ ...f, parts: f.parts.slice(0, 1) })) } : all; });
