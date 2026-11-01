@@ -32,6 +32,7 @@ import type { CallFn } from "../work/model.js";
 import type { Located } from "../work/locate.js";
 import { completeMessage } from "../../front/complete.js";
 import { answerCode, type ChatAnswer } from "./answer.js";
+import { converse, type Conversed, type StartedJob } from "./converse.js";
 import { handoffOf, taskFor, type Handoff } from "./handoff.js";
 import { newThread, THREAD_ID, threadStore, withJob, type ChatThread, type ThreadStore } from "./threads.js";
 
@@ -153,6 +154,27 @@ export class CodeChat {
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
     }, { brain, read, files, look: this.lookOn ? this.lookTools(r.userId, project, brain, meant?.text ?? r.question, r.signal) : null }, model);
     if (meant?.paise) out.paise += meant.paise;
+    if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
+    return out;
+  }
+
+  /**
+   * The one loop of a project's chat (converse.ts): the project card in front of it, the code read with tools, a job started or a question asked
+   * by the model's own tool call. No router decides before it. The thread keeps the turn, the job, what was read.
+   */
+  async converse(r: ChatRequest & { startJob?: (task: string) => Promise<StartedJob> }): Promise<Conversed> {
+    const project = await ownProject(this.d.projects, r.userId, r.projectId);
+    const brain = await this.d.brain.open(r.userId, project.id);
+    const thread = await this.threadFor(r);
+    if ((await brain.status()).status === "none") return { text: UNREAD, paise: 0, next: [], notes: ["The project has not been read."], cites: [], reads: [], seen: [], steps: 0, thread };
+    const lastJob = thread?.jobs?.at(-1);
+    const job = lastJob && this.d.job ? await this.d.job(r.userId, lastJob.id).catch(() => null) : null;
+    const out = await converse({
+      userId: r.userId, project: { id: project.id, fullName: project.fullName }, message: r.question, ...(r.ask ? { meant: r.ask } : {}), thread, job,
+      ...(r.language ? { language: r.language } : {}),
+      tier: r.tier, maxPaise: r.maxPaise, now: this.now(),
+      ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
+    }, { brain, look: this.lookTools(r.userId, project, brain, r.question, r.signal), ...(r.startJob ? { startJob: r.startJob } : {}) }, this.model(r.userId, r.signal));
     if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
     return out;
   }

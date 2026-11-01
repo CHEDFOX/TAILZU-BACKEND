@@ -687,6 +687,8 @@ const EnvSchema = z.object({
   /** A job's commit carries the project map of the code as it leaves it (.xode/map.json and .xode/MAP.md: code/project/mapupdate.ts). */
   CODE_PROJECT_MAP_FILES: bool(false),
   CODE_CHAT_LOOK: bool(true),
+  // A project's chat is one loop (code/chat/converse.ts): the project card in front of it, reading, a job and a question back as tools; no router.
+  CODE_CHAT_AGENT: bool(true),
   /**
    * HOW THE CODE AGENT TREATS ITS OLD TOOL RESULTS (src/code/agent/mask.ts, context.ts, docs/code-agent.md): "mask" replaces the output of a result that is
    * older than the last six by a one-line placeholder and keeps the model's own actions, with no model call; "summary" drops those turns and has the cheap

@@ -124,6 +124,22 @@ describe("the roads", () => {
     expect(result.notes.join(" ")).toMatch(/Still missing or unsure: no benchmark; no price/);
   });
 
+  it("hands a project chat's one loop a way to start a job (the code_job road, with its task), and passes back the job or the question it asked", async () => {
+    const c = inProject({ threadId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
+    const d = await decide("where is the cart kept?", c, { call: noModel().call, tiers, fx: 88, jobBudgetPaise: 3000, agentChat: true });
+    expect(d.reasons).toContain("agent_chat");
+    const started = rig({ handlers: { codeAnswer: async (r: { startJob: (t: string) => Promise<{ job: unknown }> }) => ({ text: "", paise: 3, job: (await r.startJob("Add a gift card field to checkout.")).job }) } });
+    const { result } = await started.run(d, "where is the cart kept?", c);
+    expect(started.h.calls.codeJob).toHaveLength(1);
+    expect(started.h.calls.codeJob[0]).toMatchObject({ message: "Add a gift card field to checkout.", said: "Add a gift card field to checkout." });
+    expect(result.job).toBeTruthy();
+    expect(result.text).toMatch(/branch/i);
+    const asked = rig({ handlers: { codeAnswer: async () => ({ text: "Fix what?", paise: 2, clarify: { question: "Fix what?", options: ["#7", "the cart"] } }) } });
+    const r2 = await asked.run(d, "fix it", c);
+    expect(r2.result).toMatchObject({ clarify: { question: "Fix what?", options: ["#7", "the cart"] } });
+    expect(r2.result.text).toBeUndefined();
+  });
+
   it("keeps a flow the chat drew from the import graph as it is: no model call to make the diagram, and the thread reaches the road", async () => {
     const flow = "flowchart TD\n  N1[\"routes/login.ts\"]\n  N2[\"auth/session.ts\"]\n  N1 --> N2";
     const seen: Array<{ threadId?: string }> = [];

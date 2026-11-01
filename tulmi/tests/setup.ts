@@ -46,6 +46,11 @@ process.env.CODE_TREE_SITTER = "false";
 // "edit, done" and count the model's turns, so they run without the round; tests/code-agent-prove.test.ts turns it on for itself (`proveFix: true`).
 process.env.CODE_PROVE_FIX = "false";
 
+// A project's chat is one loop (code/chat/converse.ts, CODE_CHAT_AGENT): the router decides only the action and the loop answers the rest. The front
+// door's older tests were written against the router and its roads in a project too, so they run with it off; tests/code-chat-converse.test.ts and the
+// loop's own tests turn it on for themselves (`agentChat: true`).
+process.env.CODE_CHAT_AGENT = "false";
+
 // The brain's circuit breakers (guard/breaker.ts) are the process's, and a test that fails a model on purpose many times would otherwise
 // leave the next one with that model skipped. Every test starts with every breaker closed.
 beforeEach(() => { resetBreakersForTests(); });
