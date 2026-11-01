@@ -782,6 +782,13 @@ const EnvSchema = z.object({
    * The screens read the bots platform (BOTS), Xode's jobs and connected apps where they are on, and draw an honest empty state where not.
    */
   BOTS_APP: bool(true),
+  /**
+   * ROUTINES (src/routines, docs/routines.md): a bot does something on a schedule ("every Friday at 5, sum up my week") without being asked each
+   * time. On whenever the bots platform (BOTS) is; ROUTINES=false turns it off (its routes answer 404 routines_off and nothing runs). Migration 0061
+   * keeps them (without it they live in memory). ROUTINES_MAX is how many one person may have.
+   */
+  ROUTINES: bool(true),
+  ROUTINES_MAX: z.coerce.number().int().min(1).max(200).default(20),
   BOTS_APP_TESTERS: z.string().default(""),
   BOT_KEY_PEPPER: z.string().optional(),
   BOTS_MAX: z.coerce.number().int().min(1).max(500).default(20),

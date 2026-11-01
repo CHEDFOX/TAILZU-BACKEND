@@ -33,6 +33,7 @@ import { ASSISTANT_NAME, nicknameOf } from "../../assistantName.js";
 import { DELETION_PATH, leavingCard, type DeletionState } from "./accountGrace.js";
 import { offlineKept, outboxCard, outboxSection } from "./outbox.js";
 import { hasNotes, notesStrip, notesStripHeight, notesTileSpec, NOTES_STATS_PATH } from "./notes.js";
+import { isRoutineToken, routineCard, routineCardState, routinesRow, ROUTINES_PATH, type RoutinesData } from "./routines.js";
 import type { NotesStats } from "../../../notes/stats.js";
 import { hasOutbox } from "../kit.js";
 import type { PageOpts } from "../kit.js";
@@ -175,7 +176,7 @@ function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, n
 const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
 
 /** What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due (pushAsk.ts). */
-interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean }
+interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the
@@ -241,6 +242,7 @@ function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...(first ? [needsCard(first)] : []),
     ...n.push,
     tiles(ctx, 2, 132, 16, more.notes),
+    ...routinesRow(ctx, more.routines),
   ];
   const footer = [askBar("phone", { ctx })];
   // HOME'S WELCOME, where the build plays it (the first visit after onboarding; a visit after a long time away or the first on
@@ -295,6 +297,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []),
       ...(first ? [needsCard(first, { layout: "row" })] : []),
       tiles(ctx, 4, 150, 18, more.notes),
+      ...routinesRow(ctx, more.routines),
     ],
     footer: [askBar("desktop", { ctx })],
   });
@@ -407,6 +410,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       hello(ctx, more),
       // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started.
       tiles(ctx, 2, 132, 16, more.notes),
+    ...routinesRow(ctx, more.routines),
       col([
         row([
           col([text("Make your first bot", { size: 20, weight: 700, tracking: -0.3, lineHeight: 25 }), text("Say what it should do. It shows you the plan before it acts.", { size: 13, color: C.grey70, lineHeight: 18 })], { gap: 4, flexGrow: 1, flexShrink: 1 }),
@@ -663,13 +667,13 @@ function sendAsk(ctx: BotsCtx): ActionRef {
   // The words go up as the person's bubble and the box clears at once (askMoment.ts); the answer is written in as it comes.
   const ask = (bot: string): ActionSpec => streamed(ctx, {
     kind: "callEndpoint", method: "POST", path: "/v1/shell/ask",
-    body: { message: SENT_WORDS, bot, device: ctx.client, mode: "text", ...(ctx.params.file || canUpload(ctx) ? { attachments: "$state.attach" } : {}) },
+    body: { message: SENT_WORDS, bot, device: ctx.client, mode: "text", tz: ctx.tzOffsetMinutes, ...(ctx.params.file || canUpload(ctx) ? { attachments: "$state.attach" } : {}) },
     assignTo: "asked",
     onSuccess: seq(
       { kind: "setState", path: "asking", value: false },
       {
         kind: "navigate", screenId: SCREENS.ask, replace: true,
-        params: { message: SENT_WORDS, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi", needs: "$state.asked.shell.needs", job: "$state.asked.shell.job" },
+        params: { message: SENT_WORDS, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi", needs: "$state.asked.shell.needs", job: "$state.asked.shell.job", routine: "$state.asked.shell.routine.token" },
       },
     ),
     onError: failed({ busy: "asking", from: "ask", then: toast("Couldn't reach your bots. Try again.", "error") }),
@@ -904,6 +908,14 @@ function askAnswer(ctx: BotsCtx) {
   const blocks: Node[] = [];
   if (asked) {
     blocks.push(row([box([body(asked)], { backgroundColor: C.surface, borderRadius: 18, paddingVertical: 10, paddingHorizontal: 14, maxWidth: "85%" })], { justifyContent: "flex-end" }));
+  }
+  // Words about a schedule: the routine to save, not an answer (screens/routines.ts).
+  const routine = ctx.params.routine;
+  if (isRoutineToken(routine)) {
+    return page(ctx, {
+      back: true, backTitle: "Ask", title: "Ask", nav: "bots", gap: 18, state: routineCardState(ctx, routine, slug),
+      body: [...blocks, ...routineCard(ctx, routine, asked)],
+    });
   }
   blocks.push(col([
     row([slug ? avatarOf(ctx, slug, 24) : icon("spark", { size: 16, color: C.meta }), meta(by ? `${by} answered` : "Answered by your bots", { size: 12 })], { gap: 6 }),
@@ -1604,18 +1616,20 @@ export const shellScreens: BotsScreen[] = [
     // Whether the first-arrival card (and the bot's hello) is due (once, after onboarding), the name they gave their bot, whether the
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
-      const [arrival, leaving, push, notes, persona] = await Promise.all([
+      const [arrival, leaving, push, notes, persona, routines] = await Promise.all([
         deps.api<{ due: boolean; kind?: "first" | "back" }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
         hasNotes(ctx) ? deps.api<NotesStats>("GET", NOTES_STATS_PATH).catch(() => undefined) : Promise.resolve(undefined),
         // The name they gave their bot, for the first day's hello.
         deps.api<{ personality?: { assistantName?: string } }>("GET", "/v1/personality").catch(() => undefined),
+        // Routines, for Home's row once there is one (screens/routines.ts).
+        deps.api<RoutinesData>("GET", ROUTINES_PATH).catch(() => undefined),
       ]);
-      return { arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality) };
+      return { arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality), routines };
     },
     build: (ctx, data) => {
-      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true };
+      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true, routines: data?.routines };
       // One Home for everyone, new or not; the bot's hello on top only the first time.
       return ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
     },
