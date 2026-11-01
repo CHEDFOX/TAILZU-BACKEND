@@ -54,7 +54,25 @@ export class Anchors {
     this.files.set(path, { max: line, exact: false, lines: new Set([line]) });
   }
 
+  /** What earlier turns of the chat read, as `path:from-to` (the thread keeps them): those lines were there, so a follow-up may cite them. */
+  earlier(seen: readonly string[]): void {
+    for (const r of seen) {
+      const m = /^(.+):(\d+)(?:-(\d+))?$/.exec(r);
+      if (m) this.hit(m[1]!, Number(m[3] ?? m[2]));
+    }
+  }
+
   has(path: string): boolean { return this.files.has(path); }
+
+  /**
+   * The path a citation means: as written, or, for a file's bare name after its first mention ("deps.py:52" once backend/app/api/deps.py was
+   * read), the one file read with that name. Two read with the name: as written, so it does not resolve.
+   */
+  pathOf(written: string): string {
+    if (this.files.has(written) || written.includes("/")) return written;
+    const named = [...this.files.keys()].filter((p) => p.endsWith(`/${written}`));
+    return named.length === 1 ? named[0]! : written;
+  }
   get(path: string): FileAnchors | undefined { return this.files.get(path); }
   get size(): number { return this.files.size; }
   paths(): string[] { return [...this.files.keys()]; }
@@ -65,9 +83,13 @@ const CITE = /(?<![\w/.:@-])((?:[\w@.+-]+\/)*[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-
 
 export interface Cite { path: string; from: number; to: number; text: string }
 
+/** A web address and its port ("example.com:8080", "api.myapp.dev:443"), not a file and its line: no folder, and the last part a domain's. */
+const HOST_END = /^(?:com|org|net|io|dev|app|co|ai|me|local|localhost|internal|lan|test|example|invalid|cloud|site|xyz|in|us|uk|de|fr|eu)$/i;
+const hostLike = (path: string, anchors?: Anchors): boolean => !path.includes("/") && HOST_END.test(path.split(".").pop() ?? "") && !anchors?.has(path);
+
 /** Every citation in a text, in order. */
 export function citationsIn(text: string): Cite[] {
-  return [...text.matchAll(CITE)].map((m) => ({ path: m[1]!.replace(/^\.\//, ""), from: Number(m[2]), to: m[3] ? Number(m[3]) : Number(m[2]), text: m[0] }));
+  return [...text.matchAll(CITE)].filter((m) => !hostLike(m[1]!)).map((m) => ({ path: m[1]!.replace(/^\.\//, ""), from: Number(m[2]), to: m[3] ? Number(m[3]) : Number(m[2]), text: m[0] }));
 }
 
 /** Whether a citation points at something that is there. */
@@ -91,11 +113,13 @@ export function checkCitations(text: string, anchors: Anchors): Checked {
   const kept: string[] = [];
   const dropped: string[] = [];
   let out = text.replace(CITE, (whole, p: string, a: string, b: string | undefined) => {
-    const c: Cite = { path: p.replace(/^\.\//, ""), from: Number(a), to: b ? Number(b) : Number(a), text: whole };
+    const written = p.replace(/^\.\//, "");
+    if (hostLike(written, anchors)) return whole;
+    const c: Cite = { path: anchors.pathOf(written), from: Number(a), to: b ? Number(b) : Number(a), text: whole };
     if (resolves(c, anchors)) { if (!kept.includes(whole)) kept.push(whole); return whole; }
     dropped.push(whole);
     // A file this answer knows, at a line it cannot check: the file stays and the line goes, so the sentence keeps its subject ("lives in (" was left).
-    return anchors.has(c.path) ? c.path : "\u0000";
+    return anchors.has(c.path) ? written : "\u0000";
   });
   if (dropped.length) {
     out = out
