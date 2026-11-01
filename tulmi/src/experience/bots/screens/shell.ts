@@ -693,18 +693,21 @@ const checkWho: ActionSpec = {
 };
 
 /**
- * The big button: nothing said yet, a word; said but not routed, who will answer; routed, send. Offline (a build with an outbox), the ask
- * is kept there for the bot picked, or any, and goes once the connection is back (kit keptOffline). The "Check" chip (`keep: false`)
- * only ever asks who answers.
+ * The big button, and Enter: one press sends. With nothing said yet, a word; with a bot picked (Change, Or hand it to, Or
+ * try), to that bot; otherwise to "any", and the server picks who answers while it answers (POST /v1/shell/ask, bot "any":
+ * the same pick as Check). It used to take two presses, the first only asking who would answer: on every client that read
+ * as a Send that did nothing, or did it slowly, and a second press after an edit went to the bot picked for the old words.
+ * Offline (a build with an outbox), the ask is kept there for the bot picked, or any, and goes once the connection is back.
+ * The "Check" chip (`keep: false`) still only asks who answers, for anyone who wants to see first.
  */
 function goAction(ctx: BotsCtx, o: { keep?: boolean } = {}): ActionRef {
-  const keep = o.keep !== false;
+  if (o.keep === false) return { kind: "condition", if: { falsy: "ask" }, then: toast("Say or type what you need first"), else: checkWho };
   return {
     kind: "condition", if: { falsy: "ask" }, then: toast("Say or type what you need first"),
     else: {
       kind: "condition", if: { truthy: "route.slug" },
-      then: keep ? keptOffline(ctx.client, { message: "$state.ask", bot: "$state.route.slug", who: "$state.route.name", clear: "ask" }, sendAsk(ctx)) : sendAsk(ctx),
-      else: keep ? keptOffline(ctx.client, { message: "$state.ask", clear: "ask" }, checkWho) : checkWho,
+      then: keptOffline(ctx.client, { message: "$state.ask", bot: "$state.route.slug", who: "$state.route.name", clear: "ask" }, sendAsk(ctx)),
+      else: keptOffline(ctx.client, { message: "$state.ask", clear: "ask" }, sendAsk(ctx)),
     },
   };
 }
@@ -782,7 +785,7 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
     ...(canRecord(ctx) ? { voice: "idle", level: 0, micBlocked: false } : {}),
   };
   const hint = col([
-    when({ falsy: "route.slug" }, meta("Tap once to see who answers, again to send", { size: 13, align: "center" })),
+    when({ falsy: "route.slug" }, meta("X0 Bot picks who answers, or hand it to one", { size: 13, align: "center" })),
     when({ truthy: "route.slug" }, text("", { size: 13, color: C.meta, lineHeight: 17, align: "center", bind: "route.hint" })),
   ]);
   // The ask out: their words as a bubble, Tailzu carrying it (askMoment.ts).
@@ -895,7 +898,7 @@ function askVoice(ctx: BotsCtx): { line: Node; big: Node; hint: Node } | null {
   const hint = col([
     when(listening, meta("Tap the mic when you're done", { size: 13, align: "center" })),
     when({ all: [notListening, { falsy: "ask" }] }, meta("Tap the mic and speak, or type", { size: 13, align: "center" })),
-    when({ all: [notListening, { truthy: "ask" }, { falsy: "route.slug" }] }, meta("Tap once to see who answers, again to send", { size: 13, align: "center" })),
+    when({ all: [notListening, { truthy: "ask" }, { falsy: "route.slug" }] }, meta("Tap to send · X0 Bot picks who answers", { size: 13, align: "center" })),
     when({ all: [notListening, { truthy: "ask" }, { truthy: "route.slug" }] }, text("", { size: 13, color: C.meta, lineHeight: 17, align: "center", bind: "route.hint" })),
   ]);
   return { line, big, hint };
