@@ -170,7 +170,7 @@ export class CodeChat {
    * The one loop of a project's chat (converse.ts): the project card in front of it, the code read with tools, a job started or a question asked
    * by the model's own tool call. No router decides before it. The thread keeps the turn, the job, what was read.
    */
-  async converse(r: ChatRequest & { startJob?: (task: string) => Promise<StartedJob>; change?: boolean; research?: ResearchDepth }): Promise<Conversed> {
+  async converse(r: ChatRequest & { startJob?: (task: string) => Promise<StartedJob>; change?: boolean; research?: ResearchDepth; talk?: boolean }): Promise<Conversed> {
     const project = await ownProject(this.d.projects, r.userId, r.projectId);
     const brain = await this.d.brain.open(r.userId, project.id);
     const thread = await this.threadFor(r);
@@ -192,7 +192,7 @@ export class CodeChat {
     const webDefs = web.tools.filter((t) => t.name === "web_search" || t.name === "read_page" || t.name === "research");
     const out = await converse({
       userId: r.userId, project: { id: project.id, fullName: project.fullName }, message: r.question, ...(r.ask ? { meant: r.ask } : {}), thread, job,
-      ...(r.language ? { language: r.language } : {}), length: r.length, ...(r.change ? { change: true } : {}), ...(r.research ? { research: r.research } : {}),
+      ...(r.language ? { language: r.language } : {}), length: r.length, ...(r.change ? { change: true } : {}), ...(r.research ? { research: r.research } : {}), ...(r.talk ? { talk: true } : {}),
       tier: r.tier, maxPaise: r.maxPaise, now: this.now(),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
     }, {

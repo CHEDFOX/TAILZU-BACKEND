@@ -252,7 +252,7 @@ async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<CodeAnsw
     let job: CodeAnswerOut["job"];
     const said = c.said ?? c.message;
     const out = await chat.converse({
-      userId: c.userId, projectId, question: said, ...(c.decision.reask ? { ask: c.decision.reask } : {}), change: c.decision.reasons.includes("agent_change"),
+      userId: c.userId, projectId, question: said, ...(c.decision.reask ? { ask: c.decision.reask } : {}), change: c.decision.reasons.includes("agent_change"), talk: c.decision.reasons.includes("agent_talk"),
       ...(c.decision.reasons.includes("agent_research") ? { research: c.decision.depth ?? "standard" } : {}), ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}), language: c.decision.language,
       tier: "cheap", length: c.decision.shape.length, diagram: false, maxPaise: c.maxPaise, ...(c.signal ? { signal: c.signal } : {}),
       ...words.ask, ...(c.onStep ? { onStep: c.onStep } : {}),

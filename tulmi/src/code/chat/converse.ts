@@ -43,6 +43,8 @@ export interface ConverseInput {
   change?: boolean;
   /** The front door read it as a question for the web, at this depth: the loop researches it with the project in front of it. */
   research?: "quick" | "standard" | "deep";
+  /** The front door read the message as talk said in passing: a line or two back, as a person would, with no looking. */
+  talk?: boolean;
   thread: ChatThread | null;
   /** Where the latest job this chat started stands (handlers.ts jobBrief), when it started one. */
   job?: string | null;
@@ -97,6 +99,9 @@ const ESCALATE_MIN_PAISE = 60;
 /** The steps a change asked for looks before it starts the job: enough to place the work; the job reads the code in full. */
 export const CHANGE_LOOK_STEPS = 3;
 export const CHANGE_OWED = "This was asked as a change to the project. If it is still to be made, start it now with start_job: the whole task, with the files and lines you found. If you need the person's say first, ask_person. If nothing is to change, say why in one line.";
+
+/** Room for talk said in passing: a line or two, the follow-ups after. */
+export const TALK_TOKENS = 300;
 
 /** The button under a change the loop laid out but did not start (front/rules.ts reads it as a hand-off). */
 export const MAKE_CHANGE = "Make that change";
@@ -249,6 +254,7 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
     `<message>\n${forModel(input.message).replace(/<\/message/gi, "<\\/message")}\n</message>`,
     ...(input.meant ? [`(That is: ${forModel(input.meant)})`] : []),
     ...(input.change ? ["(Read as a change to make: start_job with the whole task and what you found, unless the message asks for something else.)"] : []),
+    ...(input.talk ? ["(Said in passing, not a question: a line or two back, as a person would.)"] : []),
     ...(input.research ? [`(Read as a question for the web: research it, ${input.research}, with this project in mind, and name the sources.)`] : []),
     ...(input.language && LANGUAGE_WORDS[input.language] ? [`Answer in ${LANGUAGE_WORDS[input.language]}.`] : []),
   ].join("\n\n");
@@ -312,7 +318,7 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
   // The words stream as they are written, without the "Next:" line (the chat shows those as buttons).
   const words = input.onText ? withoutNext(input.onText) : null;
   let looked = await investigate({
-    model, tier: input.tier, user, tools: ports.look, anchors, maxPaise: input.maxPaise, maxTokens: Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
+    model, tier: input.tier, user, tools: ports.look, anchors, maxPaise: input.maxPaise, maxTokens: input.talk ? TALK_TOKENS : Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
     ...(input.change ? { owed: CHANGE_OWED, steps: CHANGE_LOOK_STEPS } : {}),
     ...(words ? { onText: words.onText, onReset: () => { words.reset(); input.onReset?.(); } } : input.onReset ? { onReset: input.onReset } : {}),
     ...(input.onStep ? { onStep: input.onStep } : {}),
@@ -325,7 +331,7 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
     const read = looked.seen.length ? `Already read: ${looked.seen.slice(-14).join(", ")}.` : "Nothing was read yet.";
     const again = await investigate({
       model, tier: "code", user: `${user}\n\n(A first look did not settle it. ${read} Look where it did not, then answer.)`, tools: ports.look, anchors,
-      maxPaise: input.maxPaise - looked.paise, maxTokens: Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
+      maxPaise: input.maxPaise - looked.paise, maxTokens: input.talk ? TALK_TOKENS : Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
       ...(input.change ? { owed: CHANGE_OWED, steps: CHANGE_LOOK_STEPS } : {}), ...(words ? { onText: words.onText } : {}), ...(input.onStep ? { onStep: input.onStep } : {}),
     }).catch(() => null);
     if (again && (again.text || job || clarify)) {

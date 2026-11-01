@@ -272,7 +272,8 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
   const loopTakes = LOOP_ROUTES.has(route) || (route === "code_job" && !handOff) || route === "research";
   if (agentChat && hasProject && !ctx.attachments.length && loopTakes && !bareChange) {
     const pictured = visual?.via === "inline" ? null : visual;
-    const kind = route === "code_job" ? "agent_change" : route === "research" ? "agent_research" : null;
+    // Talk said in passing ("you're fast lol") is answered as talk: the loop is told, and given a line's room.
+    const kind = route === "code_job" ? "agent_change" : route === "research" ? "agent_research" : intent === "chat" && !rules.reaction ? "agent_talk" : null;
     return {
       // A picture made beside the answer stays (a diagram of a flow); a table is part of the words, and the loop writes its own.
       intent: "code_question", shape: { length, visual: pictured }, route: "code_answer",
