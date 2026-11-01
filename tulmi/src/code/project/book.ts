@@ -24,6 +24,7 @@ import type { IssueInfo, MilestoneInfo, PullSummary } from "../github.js";
 import type { ProjectMap } from "./map.js";
 import { classOf, isTestPath } from "./lang.js";
 import type { BrainView, CommitRecord, StoredFile } from "./types.js";
+import { overviewLines, type Overview } from "./overview.js";
 
 export const CHAPTERS = ["what", "build", "run", "state", "recent", "why", "direction", "rules"] as const;
 export type Chapter = (typeof CHAPTERS)[number];
@@ -54,6 +55,8 @@ export interface ProjectBook {
   gaps: string[];
   /** What the owner is asked, when the sources cannot say. */
   questions: Array<{ id: QuestionId; text: string }>;
+  /** What kind of application it is, what it does, its parts and flows, how its course changed (overview.ts); the card leads with it. */
+  overview?: Overview;
 }
 
 export interface BookInput {
@@ -76,6 +79,8 @@ export interface BookInput {
   /** The files that say how it runs and is set up (deploy scripts, Dockerfiles, a Worker's or a host's config, .env.example, a setup guide), by path. */
   ops?: Readonly<Record<string, string>>;
   owner: OwnerAnswers | null;
+  /** The project's overview, as the last build wrote or tuned it. */
+  overview?: Overview | null;
 }
 
 const DAY = 86_400_000;
@@ -100,13 +105,22 @@ export function buildBook(i: BookInput): ProjectBook {
   const readme = !!i.view.structure?.readme?.blurb;
   const said = about?.text && !readme ? `${about.product && !about.text.toLowerCase().includes(about.product.toLowerCase()) ? `${about.product}: ` : ""}${about.text}` : "";
   if (said) add("what", said, { kind: "file", ref: about!.path });
-  const welcome = i.view.welcome.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ");
+  // The overview, when there is one, says what it is: what kind, what it does, its parts. The welcome and the index's folder-by-folder parts
+  // are what is said without one.
+  const ov = i.overview ?? null;
+  const ovSource = index(ov?.via === "model" ? `the project's overview, ${date(ov.at)}` : "the project's overview, by the code");
+  if (ov) {
+    const head = [ov.kind && `${ov.kind[0]!.toUpperCase()}${ov.kind.slice(1)}`, ov.what].filter(Boolean).join(". ");
+    if (head) add("what", head, ovSource, ov.via === "model" ? "found" : "guessed", ov.at);
+    for (const p of ov.parts) add("what", `${p.name}: ${p.does}${p.start ? ` (starts at ${p.start})` : ""}`, p.start ? { kind: "file", ref: p.start } : ovSource, "found", ov.at);
+  }
+  const welcome = ov ? "" : i.view.welcome.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ");
   // With neither a README nor a manifest that says what it is, the welcome's first lines are the index's reading of the code: a guess until the owner
   // says. A welcome that only repeats the manifest (the template written when no model could) is not said twice.
   if (welcome && !(said && welcome.includes(about!.text.slice(0, 60)))) {
     add("what", welcome, index(readme ? "the project's index (README and code)" : "the project's index (its code)"), readme || said ? "found" : "guessed");
   }
-  for (const f of i.view.features.slice(0, 8)) add("what", `${f.name}: ${f.summary}`, index(`feature ${f.name}`));
+  if (!ov?.parts.length) for (const f of i.view.features.slice(0, 8)) add("what", `${f.name}: ${f.summary}`, index(`feature ${f.name}`));
   if (!facts.some((f) => f.chapter === "what")) gaps.push("What it is: the index has no summary of the project yet.");
 
   // ------------------------------------------------------------------ how it is built
@@ -119,6 +133,8 @@ export function buildBook(i: BookInput): ProjectBook {
     for (const e of st.entryPoints.filter((x) => !ASIDE.test(x.path)).slice(0, 4)) add("build", `Starts at ${e.path} (${e.why}).`, { kind: "file", ref: e.path });
     if (st.ci.length) add("build", `CI: ${st.ci.slice(0, 4).join(", ")}.`, index("ci"));
   }
+  // How work moves through the parts, as the overview says.
+  for (const f of ov?.flows ?? []) add("build", `How it flows: ${f}`, ovSource, "found", ov!.at);
   // The owners' own overview of how it is built, when they wrote one.
   for (const [path, text] of Object.entries(i.docs)) if (ARCH_DOC.test(path)) { const p = firstParagraph(text); if (p) add("build", p, { kind: "file", ref: path }); }
 
@@ -186,6 +202,9 @@ export function buildBook(i: BookInput): ProjectBook {
 
   // ------------------------------------------------------------------ where it is heading
   if (i.owner?.next) add("direction", `Next, in the owner's words: ${i.owner.next}`, { kind: "owner", ref: "the owner" }, "confirmed", i.owner.at);
+  // How its course changed, and what it was before: the overview's own record.
+  if (ov?.direction) add("direction", `Its course changed: ${ov.direction}`, ovSource, "found", ov.at);
+  for (const e of ov?.earlier ?? []) add("direction", `Until ${date(e.at)} it was: ${[e.kind, e.what].filter(Boolean).join(". ")}`, index(`the project's overview as it was at ${e.commit.slice(0, 7)}`), "found", e.at);
   if (i.owner?.keep) add("direction", `Must not change: ${i.owner.keep}`, { kind: "owner", ref: "the owner" }, "confirmed", i.owner.at);
   for (const m of (i.milestones ?? []).slice(0, 5)) {
     add("direction", `Milestone "${m.title}": ${m.closed} of ${m.open + m.closed} done${m.dueOn ? `, due ${date(m.dueOn)}` : ""}${m.description ? `. ${one(m.description, 120)}` : ""}`, { kind: "milestone", ref: m.title, url: m.url });
@@ -217,7 +236,7 @@ export function buildBook(i: BookInput): ProjectBook {
   if (!i.owner?.next && !facts.some((f) => f.chapter === "direction" && (f.source.kind === "milestone" || f.source.kind === "file"))) {
     gaps.push("Where it is heading: no milestones or roadmap file, so this rests on open pull requests and issues until the owner says.");
   }
-  return { version: 1, project: i.project, commit: i.commit, builtAt: i.now, facts, gaps, questions };
+  return { version: 1, project: i.project, commit: i.commit, builtAt: i.now, facts, gaps, questions, ...(ov ? { overview: ov } : {}) };
 }
 
 const KIND_WORDS: Record<string, string> = { feat: "features", fix: "fixes", refactor: "refactors", docs: "docs changes", test: "test changes", chore: "chores", perf: "speed-ups", build: "build changes", ci: "CI changes", style: "style changes" };
@@ -384,7 +403,8 @@ export function bookCard(b: ProjectBook, max = CARD_CHARS): string {
   const take = (c: Chapter, n: number) => b.facts.filter((f) => f.chapter === c && f.status !== "confirmed").slice(0, n).map(line);
   const parts: Array<[string, string[]]> = [
     ["The owner's words (newest; they win over anything older)", owner.map(line)],
-    [CHAPTER_TITLES.what, take("what", 4)],
+    // The overview leads: what kind of application, what it does, its parts, how they connect, how its course changed.
+    [b.overview ? `${CHAPTER_TITLES.what} (the project's overview)` : CHAPTER_TITLES.what, b.overview ? overviewLines(b.overview) : take("what", 4)],
     [CHAPTER_TITLES.build, take("build", 4)],
     [`${CHAPTER_TITLES.run} (all of it: project_book run)`, take("run", 9)],
     [CHAPTER_TITLES.direction, take("direction", 6)],

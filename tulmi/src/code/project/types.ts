@@ -24,6 +24,8 @@
 // ------------------------------------------------------------------ numbers
 
 /** A tarball bigger than this (compressed) is not read: the build falls back to the tree alone. */
+import type { Overview } from "./overview.js";
+
 export const TARBALL_MAX_BYTES = 300 * 1024 * 1024;
 /** ...and one that inflates past this is the same (a bomb is a few kilobytes of gzip). */
 export const TARBALL_EXPANDED_MAX_BYTES = 2 * 1024 * 1024 * 1024;
@@ -318,7 +320,11 @@ export interface BrainRow {
 }
 
 /** What the project book keeps: the owner's words. The rest of the book is read again from the code, GitHub and the checks. */
-export interface BookState { owner?: { for?: string; next?: string; keep?: string; at: number } }
+export interface BookState {
+  owner?: { for?: string; next?: string; keep?: string; at: number };
+  /** What kind of application it is, what it does, its parts and flows; tuned as the project changes course (overview.ts). */
+  overview?: Overview;
+}
 
 /** What a build reports to whoever asked. */
 export interface BrainView {

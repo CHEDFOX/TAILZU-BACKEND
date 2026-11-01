@@ -29,7 +29,7 @@ const { SynonymReply, PickReply } = await import("../src/code/work/locate.js");
 const { SpecReply } = await import("../src/code/newproject/spec.js");
 const { Weighed } = await import("../src/code/resources/brief.js");
 const { FoldReply } = await import("../src/code/agent/context.js");
-const { FileSchema, CardSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema } = await import("../src/code/project/summarize.js");
+const { FileSchema, CardSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema, ProjectOverviewSchema } = await import("../src/code/project/summarize.js");
 const { GapSchema } = await import("../src/web/research.js");
 const { ModelPlan } = await import("../src/web/search/plan.js");
 const { INTENTS, DIRECT_SOURCES } = await import("../src/web/search/types.js");
@@ -257,6 +257,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   index_cards: 676, // 615 measured
   index_dirs: 398, // 361 measured
   index_repo: 364, // 330 measured
+  project_overview: 985, // 895 measured
   index_features: 405, // 368 measured
   welcome: 492, // 447 measured
   spec: 1125, // 1022 measured
@@ -350,6 +351,7 @@ describe("the contracts say what the parsers read", () => {
     ["index_cards", CardSchema],
     ["index_dirs", DirSchema],
     ["index_repo", OverviewSchema],
+    ["project_overview", ProjectOverviewSchema],
     ["index_features", FeatureSchema],
     ["welcome", WelcomeSchema],
     ["spec", SpecReply],
