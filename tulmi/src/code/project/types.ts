@@ -302,7 +302,12 @@ export interface BrainRow {
   builtAt: number | null;
   error: string;
   updatedAt: number;
+  /** The project book's own part that is not read from anywhere: the owner's answers (book.ts). */
+  book?: BookState;
 }
+
+/** What the project book keeps: the owner's words. The rest of the book is read again from the code, GitHub and the checks. */
+export interface BookState { owner?: { for?: string; next?: string; keep?: string; at: number } }
 
 /** What a build reports to whoever asked. */
 export interface BrainView {

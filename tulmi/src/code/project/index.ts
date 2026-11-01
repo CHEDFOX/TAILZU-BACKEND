@@ -50,9 +50,11 @@ import {
 } from "./types.js";
 
 import { buildMap, type ProjectMap } from "./map.js";
+import { buildBook, cleanAnswers, type ProjectBook } from "./book.js";
 import { mapAfterChanges, type MapChange } from "./mapupdate.js";
 export { memoryMarkdown, withBaseline } from "./memory.js";
 export { buildMap, checkSymbol, checkSymbols, findInMap, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap, type SymbolCheck } from "./map.js";
+export { bookBrief, bookForJobs, bookMarkdown, buildBook, cleanAnswers, CHAPTERS, CHAPTER_TITLES, OWNER_QUESTIONS, type BookFact, type Chapter, type OwnerAnswers, type ProjectBook } from "./book.js";
 export { gitBlobSha, mapAfterChanges, MAP_DIR, type MapChange } from "./mapupdate.js";
 export { baselinePlan, recordBaseline } from "./baseline.js";
 export { diffSnapshots } from "./merkle.js";
@@ -371,6 +373,10 @@ export interface BrainHandle {
   repoMap(seeds: MapSeeds, opts?: MapOptions): Promise<MapHit[]>;
   /** The project map (map.ts): every component with its exact lines, connections, whether anything leads to it, and where new things go. */
   projectMap(): Promise<ProjectMap | null>;
+  /** The project book (book.ts): what the project is, how it stands, what changed, why, where it is heading; null before the brain is built. */
+  book(): Promise<ProjectBook | null>;
+  /** The owner's answers to the book's questions (who it is for, what comes next, what must not change), kept, and the book made again. */
+  answerBook(answers: unknown): Promise<ProjectBook | null>;
   /** The project map as the code will be after these changes (mapupdate.ts): only the changed files are read again. */
   mapAfter(changes: readonly MapChange[]): Promise<ProjectMap | null>;
 }
@@ -381,6 +387,10 @@ const GRAPHS_KEPT = 6;
 
 /** The project maps made lately, by project, with the state of the row they were made from. */
 const maps = new Map<string, { key: string; map: ProjectMap }>();
+/** Books made, by project: made again when the branch moves, the owner answers, or after BOOK_FRESH_MS (issues and pull requests move on their own). */
+const books = new Map<string, { key: string; at: number; book: ProjectBook }>();
+const BOOK_FRESH_MS = 30 * 60_000;
+const BOOK_DOC = /(^|\/)(?:roadmap|plans?|todo)\.(?:md|txt)$|^readme\.md$/i;
 
 export function resetRepoGraphsForTests(): void { graphs.clear(); maps.clear(); }
 
@@ -400,7 +410,20 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
     return { path: f.path, lang: f.lang, summary: f.summary, rank: f.rank, score, symbols };
   };
 
-  return {
+  /** The map, made once per state of the brain (map.ts). */
+  const mapOf = async (): Promise<ProjectMap | null> => {
+    const b = await row();
+    if (!b || !b.headSha) return null;
+    const key = `${id}|${b.headSha}|${b.status}|${b.updatedAt}|${b.builtAt ?? 0}`;
+    const kept = maps.get(id);
+    if (kept?.key === key) return kept.map;
+    const map = buildMap({ commit: b.headSha, files: await store.listFiles(id), features: b.features, entries: (b.structure?.entryPoints ?? []).map((e) => e.path) });
+    maps.set(id, { key, map });
+    while (maps.size > GRAPHS_KEPT) maps.delete(maps.keys().next().value as string);
+    return map;
+  };
+
+  const handle: BrainHandle = {
     projectId: id,
     status: async () => viewOf(await row(), { running: d.builds.isRunning(id), now: (d.now ?? Date.now)() }),
     // The three searches are reads of the kept rows: the same question asked while it is out is answered once (guard/coalesce.ts).
@@ -478,16 +501,42 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       }
       return hit.graph.rank(seeds, opts);
     },
-    async projectMap() {
+    projectMap: () => mapOf(),
+    async book() {
       const b = await row();
       if (!b || !b.headSha) return null;
-      const key = `${id}|${b.headSha}|${b.status}|${b.updatedAt}|${b.builtAt ?? 0}`;
-      const kept = maps.get(id);
-      if (kept?.key === key) return kept.map;
-      const map = buildMap({ commit: b.headSha, files: await store.listFiles(id), features: b.features, entries: (b.structure?.entryPoints ?? []).map((e) => e.path) });
-      maps.set(id, { key, map });
-      while (maps.size > GRAPHS_KEPT) maps.delete(maps.keys().next().value as string);
-      return map;
+      const now = (d.now ?? Date.now)();
+      const key = `${b.headSha}|${b.builtAt ?? 0}|${b.book?.owner?.at ?? 0}`;
+      const kept = books.get(id);
+      if (kept?.key === key && now - kept.at < BOOK_FRESH_MS) return kept.book;
+      // Free sources only, in parallel; one that cannot be read is a gap the book says, never a failure.
+      const gh = d.projects.github;
+      const safe = <T>(f: (repo: ReturnType<typeof repoRef>) => Promise<T>): Promise<T | null> =>
+        Promise.resolve().then(() => f(repoRef(d.projects, userId, project))).catch(() => null);
+      const files = await store.listFiles(id);
+      const docPaths = files.map((f) => f.path).filter((p) => BOOK_DOC.test(p)).slice(0, 3);
+      const [commits, merged, open, issues, milestones, docs, map] = await Promise.all([
+        safe((r) => gh.recentCommits(r, project.defaultBranch, 100)), safe((r) => gh.pullsOf(r, "merged", 30)), safe((r) => gh.pullsOf(r, "open", 20)),
+        safe((r) => gh.openIssues(r, 50)), safe((r) => gh.milestonesOf(r)),
+        Promise.all(docPaths.map(async (p) => [p, (await safe((r) => gh.readFile(r, project.defaultBranch, p)))?.text.slice(0, 40_000) ?? ""] as const)),
+        mapOf(),
+      ]);
+      const made = buildBook({
+        project: project.fullName, commit: b.headSha, now, files, map, commits, history: b.history.commits, merged, open, issues, milestones,
+        view: { welcome: b.welcome, structure: b.structure, features: b.features, conventions: b.conventions, baseline: b.baseline },
+        docs: Object.fromEntries(docs.filter(([, t]) => t)), owner: b.book?.owner ?? null,
+      });
+      books.set(id, { key, at: now, book: made });
+      while (books.size > GRAPHS_KEPT) books.delete(books.keys().next().value as string);
+      return made;
+    },
+    async answerBook(answers) {
+      const b = await row();
+      if (!b) return null;
+      const owner = cleanAnswers(answers, (d.now ?? Date.now)(), b.book?.owner ?? null);
+      if (owner) await store.saveBrain(id, { book: { ...(b.book ?? {}), owner } });
+      books.delete(id);
+      return handle.book();
     },
     async mapAfter(changes) {
       const b = await row();
@@ -498,6 +547,7 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       });
     },
   };
+  return handle;
 }
 
 // ---------------------------------------------------------------------- sync

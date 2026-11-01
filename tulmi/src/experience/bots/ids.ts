@@ -103,6 +103,7 @@ export const SCREENS = {
   codeReview: "bots.code.review",    // CodeReview / DCodeReview
   prCare: "bots.code.pr-care",       // PRCare / DPRCare
   projectRules: "bots.code.rules",   // ProjectRules / DProjectRules
+  projectBook: "bots.code.book",     // the project book: what it is, how it stands, where it is heading (params: project)
   newProject: "bots.code.new",       // NewProject / DNewProject
   preview: "bots.code.preview",      // Preview / DPreview
   design: "bots.code.design",        // Design / DeskDesign

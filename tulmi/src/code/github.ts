@@ -166,6 +166,10 @@ export interface TreeEntry { path: string; type: string; size?: number; sha: str
 export type RepoPermission = "admin" | "write" | "read" | "none";
 
 /** A pull request as Tailzu needs to see it. */
+export interface IssueInfo { number: number; title: string; body: string; labels: string[]; milestone: string | null; comments: number; updatedAt: number; url: string }
+export interface PullSummary { number: number; title: string; body: string; draft: boolean; labels: string[]; at: number; url: string; author: string }
+export interface MilestoneInfo { title: string; description: string; open: number; closed: number; dueOn: number | null; url: string }
+
 export interface PullInfo {
   number: number;
   url: string;
@@ -1614,6 +1618,44 @@ export class GithubApp {
       truncated: all.length >= DIFF_FILES_MAX,
       rateRemaining: r.headers.get("x-ratelimit-remaining") !== null && Number.isFinite(left) ? left : null,
     };
+  }
+
+  /**
+   * What the repo's people say is next, for the project book (project/book.ts): open issues (pull requests left out), newest activity first, with
+   * their labels, milestone and the start of their text. Needs Issues: read; GitHub's refusal comes back as an error the book turns into a sentence.
+   */
+  async openIssues(repo: RepoRef, perPage = 50): Promise<IssueInfo[]> {
+    const n = Math.min(Math.max(Math.trunc(perPage) || 1, 1), 100);
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/issues?state=open&sort=updated&direction=desc&per_page=${n}`);
+    if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "the repo's issues");
+    return r.json.filter((i: any) => i && typeof i.number === "number" && !i.pull_request).map((i: any) => ({
+      number: i.number as number, title: String(i.title ?? "").slice(0, 200), body: String(i.body ?? "").slice(0, 600),
+      labels: Array.isArray(i.labels) ? i.labels.map((l: any) => String(typeof l === "string" ? l : l?.name ?? "")).filter(Boolean).slice(0, 8) : [],
+      milestone: typeof i.milestone?.title === "string" ? i.milestone.title as string : null, comments: Number(i.comments) || 0,
+      updatedAt: Date.parse(String(i.updated_at ?? "")) || 0, url: String(i.html_url ?? ""),
+    }));
+  }
+
+  /** Pull requests, newest activity first: the open ones (what is in flight), or the merged ones of the closed (what was done, and why, in their text). */
+  async pullsOf(repo: RepoRef, state: "open" | "merged", perPage = 30): Promise<PullSummary[]> {
+    const n = Math.min(Math.max(Math.trunc(perPage) || 1, 1), 100);
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/pulls?state=${state === "open" ? "open" : "closed"}&sort=updated&direction=desc&per_page=${n}`);
+    if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "the repo's pull requests");
+    return r.json.filter((p: any) => p && typeof p.number === "number" && (state === "open" || p.merged_at)).map((p: any) => ({
+      number: p.number as number, title: String(p.title ?? "").slice(0, 200), body: String(p.body ?? "").slice(0, 1500), draft: p.draft === true,
+      labels: Array.isArray(p.labels) ? p.labels.map((l: any) => String(l?.name ?? "")).filter(Boolean).slice(0, 8) : [],
+      at: Date.parse(String(p.merged_at ?? p.updated_at ?? "")) || 0, url: String(p.html_url ?? ""), author: String(p.user?.login ?? ""),
+    }));
+  }
+
+  /** The open milestones: a repo's own plan, when it keeps one. */
+  async milestonesOf(repo: RepoRef): Promise<MilestoneInfo[]> {
+    const r = await this.rsend(repo, "GET", `${this.path(repo)}/milestones?state=open&sort=due_on&per_page=20`);
+    if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "the repo's milestones");
+    return r.json.filter((m: any) => m && typeof m.title === "string").map((m: any) => ({
+      title: String(m.title).slice(0, 120), description: String(m.description ?? "").slice(0, 400), open: Number(m.open_issues) || 0, closed: Number(m.closed_issues) || 0,
+      dueOn: m.due_on ? Date.parse(String(m.due_on)) || null : null, url: String(m.html_url ?? ""),
+    }));
   }
 
   /** The names of the repo's branches, `perPage` of them at most (100): the first page is enough to see how they are named. */

@@ -32,6 +32,7 @@ import type { LiveFiles } from "../live/ports.js";
 import type { BrainHandle, BrainView } from "../project/index.js";
 import { isSecretPath, isTestPath } from "../project/lang.js";
 import { findInMap } from "../project/map.js";
+import { bookBrief } from "../project/book.js";
 import { computeImpact, extractCues, fence, forModel, locate, type Located, type LocateTarget } from "../work/index.js";
 import { CONFIDENT, fusedFor } from "../work/locate.js";
 import { cut, type ModelCtx } from "../work/model.js";
@@ -73,7 +74,7 @@ const FACT_RELATED = 5;
 
 export type Road = "fast" | "read" | "overview";
 
-export type ChatBrain = Pick<BrainHandle, "status" | "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file"> & Partial<Pick<BrainHandle, "projectMap">>;
+export type ChatBrain = Pick<BrainHandle, "status" | "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file"> & Partial<Pick<BrainHandle, "projectMap" | "book">>;
 
 export interface ChatPorts {
   brain: ChatBrain;
@@ -617,9 +618,10 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   if (ports.look) {
     // Look before answering (look.ts): the same blocks are the brief, with where the map says things are and what this chat read before.
     const [question, ...known] = blocks;
-    const map = await mapBrief(brain, input.search);
+    // The project map (where things are) and the project book (what it is, how it stands, where it is heading), the parts this question needs.
+    const [map, book] = await Promise.all([mapBrief(brain, input.search), brain.book ? brain.book().then((b) => (b ? bookBrief(b, input.search, 10) : "")).catch(() => "") : Promise.resolve("")]);
     const before = input.thread?.seen?.length ? `Read earlier in this chat: ${input.thread.seen.slice(-12).join(", ")}` : "";
-    const brief = [question!, `<brief>\n${[...known, ...(map ? [`<map>\n${fence(forModel(map))}\n</map>`] : []), ...(before ? [before] : [])].join("\n\n")}\n</brief>`].join("\n\n");
+    const brief = [question!, `<brief>\n${[...known, ...(book ? [`<book>\n${fence(forModel(book))}\n</book>`] : []), ...(map ? [`<map>\n${fence(forModel(map))}\n</map>`] : []), ...(before ? [before] : [])].join("\n\n")}\n</brief>`].join("\n\n");
     try {
       const looked = await investigate({
         model, tier: input.tier, user: brief, tools: ports.look, anchors, maxPaise: Math.max(1, left), maxTokens,

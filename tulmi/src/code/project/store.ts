@@ -23,6 +23,7 @@
  * on the same words (search.ts). Both hand the candidates back for the caller to
  * score, so tests and production order hits the same way.
  */
+import type { BookState } from "./types.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../auth/supabase.js";
 import { fileMatches, queryWords, textMatches, tsQuery } from "./search.js";
@@ -173,7 +174,7 @@ const PAGE = 1000;
 interface BrainDbRow {
   project_id: string; head_sha: string; tree_sha: string; status: BrainStatus; progress: Progress; structure: Structure; conventions: Conventions;
   features: Feature[]; memory: string; welcome: string; summaries_state: SummariesState; baseline: Baseline | null; history: History;
-  spent_paise: number; built_at: string | null; error: string; updated_at: string;
+  spent_paise: number; built_at: string | null; error: string; updated_at: string; book?: BookState | null;
 }
 interface FileDbRow {
   project_id: string; path: string; blob_sha: string; lang: string; bytes: number; symbols: SymbolInfo[]; imports: string[]; rank: number;
@@ -190,6 +191,7 @@ const brainOf = (r: BrainDbRow): BrainRow => ({
   features: r.features ?? [], memory: r.memory ?? "", welcome: r.welcome ?? "", summariesState: r.summaries_state, baseline: r.baseline ?? null,
   history: r.history && Array.isArray(r.history.commits) ? r.history : { commits: [], head: "" },
   spentPaise: Number(r.spent_paise) || 0, builtAt: ms(r.built_at), error: r.error ?? "", updatedAt: ms(r.updated_at) ?? 0,
+  ...(r.book && typeof r.book === "object" ? { book: r.book } : {}),
 });
 const fileOf = (r: FileDbRow): StoredFile => ({
   path: r.path, blobSha: r.blob_sha, lang: r.lang ?? "", bytes: Number(r.bytes) || 0, symbols: r.symbols ?? [], imports: r.imports ?? [],
@@ -209,6 +211,9 @@ function ok<T>(res: { data: T | null; error: { message: string } | null }): T | 
 export class SupabaseProjectBrainStore implements ProjectBrainStore {
   /** Whether code_brain_files has the refs column (migration 0035): until a write says it does not, it is taken to. */
   private refsColumn = true;
+  /** Whether code_brain has the book column (migration 0060): until a write says it does not. Without it the owner's answers are kept here. */
+  private bookColumn = true;
+  private readonly books = new Map<string, BookState>();
 
   constructor(private readonly sb: SupabaseClient, private readonly now: () => number = Date.now) {}
 
@@ -224,7 +229,9 @@ export class SupabaseProjectBrainStore implements ProjectBrainStore {
     const id = this.id(projectId);
     if (!id) return null;
     const r = ok(await this.sb.from("code_brain").select("*").eq("project_id", id).maybeSingle<BrainDbRow>());
-    return r ? brainOf(r) : null;
+    if (!r) return null;
+    const kept = this.books.get(id);
+    return kept && !r.book ? { ...brainOf(r), book: kept } : brainOf(r);
   }
   async saveBrain(projectId: string, patch: BrainPatch) {
     const id = this.must(projectId);
@@ -244,8 +251,22 @@ export class SupabaseProjectBrainStore implements ProjectBrainStore {
     if (patch.spentPaise !== undefined) row.spent_paise = Math.max(0, Math.round(patch.spentPaise));
     if (patch.builtAt !== undefined) row.built_at = patch.builtAt === null ? null : iso(patch.builtAt);
     if (patch.error !== undefined) row.error = patch.error;
-    const r = ok(await this.sb.from("code_brain").upsert(row, { onConflict: "project_id" }).select("*").single<BrainDbRow>());
-    return brainOf(r!);
+    if (patch.book !== undefined) {
+      if (this.bookColumn) row.book = patch.book;
+      else this.books.set(id, patch.book);
+    }
+    const res = await this.sb.from("code_brain").upsert(row, { onConflict: "project_id" }).select("*").single<BrainDbRow>();
+    if (res.error && "book" in row && /\bbook\b/.test(res.error.message)) {
+      // Migration 0060 not run: the owner's answers are kept in this process, the rest of the row is written as it always was.
+      this.bookColumn = false;
+      this.books.set(id, patch.book!);
+      delete row.book;
+      const again = ok(await this.sb.from("code_brain").upsert(row, { onConflict: "project_id" }).select("*").single<BrainDbRow>());
+      return { ...brainOf(again!), book: patch.book! };
+    }
+    const r = ok(res);
+    const kept = this.books.get(id);
+    return kept && !r!.book ? { ...brainOf(r!), book: kept } : brainOf(r!);
   }
   async setProgress(projectId: string, progress: Progress) {
     const id = this.id(projectId);
