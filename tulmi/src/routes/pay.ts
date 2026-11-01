@@ -64,29 +64,29 @@ export function payCsp(nonce: string): string {
  */
 const CSS = `
   :root {
-    --hair: rgba(243,226,198,.10); --hair-strong: rgba(243,226,198,.24);
-    --surface: rgba(243,226,198,.028); --surface-lead: rgba(243,226,198,.055);
+    --hair: #E6E6E6; --hair-strong: #D4D4D4;
+    --surface: #FFFFFF; --surface-lead: #F5F5F5;
   }
   main { min-height: calc(100vh - 72px); min-height: calc(100svh - 72px); display: flex; align-items: center; padding: 48px 0 88px; }
   main > .wrap { width: 100%; }
   #pay { max-width: 760px; margin: 0 auto; text-align: center; }
   #pay .eye { margin-bottom: 20px; }
-  #pay h1 { font-weight: 300; font-size: clamp(40px, 5.6vw, 60px); margin-bottom: 14px; }
+  #pay h1 { font-weight: 700; font-size: clamp(40px, 5.6vw, 60px); margin-bottom: 14px; }
   #pay .lede { margin: 0 auto; font-size: 17px; }
   .perks { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px 22px; margin: 26px 0 0; padding: 0; list-style: none; font-family: var(--mono); font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); }
 
   .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 52px 0 0; text-align: left; }
-  .plan { display: flex; flex-direction: column; padding: 28px 28px 26px; border-radius: 20px; background: var(--surface); border: 1px solid var(--hair); box-shadow: inset 0 1px 0 rgba(243,226,198,.04); transition: border-color .3s, background .3s; }
+  .plan { display: flex; flex-direction: column; padding: 28px 28px 26px; border-radius: 20px; background: var(--surface); border: 1px solid var(--hair); transition: border-color .3s, background .3s; }
   .plan:hover { border-color: var(--hair-strong); }
   .plan.lead { background: var(--surface-lead); border-color: var(--hair-strong); }
   .plan .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; }
   .plan h2 { margin: 0; font-family: var(--mono); font-weight: 400; font-size: 11px; letter-spacing: .22em; text-transform: uppercase; color: var(--grey); }
   .badge { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--grey); border: 1px solid var(--hair-strong); border-radius: 999px; padding: 3px 10px; }
-  .price { margin: 30px 0 4px; font-family: var(--serif); font-weight: 300; font-size: 56px; line-height: 1; letter-spacing: -.03em; color: var(--white); font-variant-numeric: tabular-nums lining-nums; }
+  .price { margin: 30px 0 4px; font-family: var(--serif); font-weight: 700; font-size: 52px; line-height: 1; letter-spacing: -.03em; color: var(--white); font-variant-numeric: tabular-nums lining-nums; }
   .per { margin: 0 0 30px; color: var(--dim); font-size: 14px; }
   .plan .btn { margin-top: auto; width: 100%; min-height: 48px; font-size: 14px; background: transparent; color: var(--white); border: 1px solid var(--hair-strong); transition: background .2s, border-color .2s, opacity .2s; }
-  .plan .btn:hover { opacity: 1; background: rgba(243,226,198,.06); border-color: rgba(243,226,198,.4); }
-  .plan.lead .btn { background: linear-gradient(180deg, #F8EBD3, var(--white) 55%); border-color: var(--white); color: var(--ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
+  .plan .btn:hover { opacity: 1; background: var(--raise); border-color: var(--white); }
+  .plan.lead .btn { background: var(--white); border-color: var(--white); color: var(--ink); }
   .plan.lead .btn:hover { opacity: .9; }
 
   .note { display: none; margin: 20px 0 0; padding: 15px 20px; border-radius: 14px; border: 1px solid var(--hair); background: var(--surface); color: var(--grey); font-size: 15px; text-align: left; }
@@ -231,7 +231,7 @@ ${cards ? `<div class="plans">${cards}\n</div>` : ""}
               subscription_id: r.subscriptionId,
               name: "X0 Bot",
               description: b.getAttribute("data-label") || "X0 Bot",
-              theme: { color: "#F7CF4A" },
+              theme: { color: "#0A0A0A" },
               modal: { ondismiss: function () { if (root.dataset.state === "opening") set("pick"); } },
               handler: function (p) {
                 post("/v1/pay/razorpay/verify", p).then(function (v) {

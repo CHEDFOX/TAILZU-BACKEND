@@ -1,22 +1,27 @@
 /**
  * THE SITE'S OWN ROOM, for every page x0bot.com links to.
  *
- * The landing page is one hand-built file on Vercel; the pages it links to
- * (/pricing, /pay, /privacy, /terms, /support, /download) are rendered here and served
- * through it. They used to be plain white documents, a visible change of
- * room between a link and the page it opens. This is the landing page's own
- * material, lifted: the warm near-black ground and its pale, Newsreader over
- * Instrument Sans with IBM Plex Mono for the small labels, the mark at the
- * top, the same footer, and the price's own sun-yellow field.
+ * The landing page is one hand-built file on Vercel; the pages it links to (/pricing, /pay, /privacy, /terms, /support, /download,
+ * /delete-account, the FAQ and the guides) are rendered here and served through it. They wear the APP's look, so a link from the app
+ * to its own policy never changes room: the Bots app's white (bots-design STYLE.md, experience/bots/palette.ts): paper and ink,
+ * its greys and hairlines, Geist and Geist Mono, the X0 dot mark (eight dots in a ring, two eyes) with its name, and the bots'
+ * natural colours as the only colour, in small doses.
  *
- * Every word opens with a capital, as on the site; long legal prose is the
- * one exception, because a contract set in title case cannot be read.
- * The amber stays out: on the site it means "the microphone is open".
+ * The token names are the old dark room's, kept so every page's own rules still work, with the app's values: --ink is the PAGE
+ * (paper), --white is the TEXT (ink), --sun is the price's field (the app's surface grey), --ink2 the ink on it. Sentence case, as
+ * in the app.
  */
 import { headTags } from "../../seo/head.js";
 import { gtmBody, gtmHead } from "../../ads/gtm.js";
 
-const MARK = `<svg viewBox="170 228 680 512" aria-hidden="true"> <line x1="346" y1="402" x2="270" y2="598" stroke="#E9CBA2" stroke-width="9" stroke-linecap="round"/> <line x1="444" y1="394" x2="554" y2="486" stroke="#E8A23C" stroke-width="30" stroke-dasharray="9 11"/> <line x1="668" y1="478" x2="828" y2="243" stroke="#C77A3A" stroke-width="9" stroke-linecap="round"/> <circle cx="828" cy="243" r="11" fill="#B06240"/> <rect x="308" y="269" width="132" height="132" rx="28" fill="#F4F1EA"/> <rect x="558" y="478" width="132" height="132" rx="28" fill="#F4F1EA"/> <rect x="178" y="598" width="132" height="132" rx="28" fill="#F4F1EA"/> </svg>`;
+/** The X0 dot mark (experience/bots/glyphs.ts tailzuMark): eight dots in a ring, two eyes. */
+const DOTS: Array<[number, number, number]> = [
+  [17, 4, 2], [26, 7, 2], [30, 16, 2], [27, 25, 2], [17, 30, 2], [7, 25, 2], [4, 16, 2], [8, 7, 2], [13, 15, 2.6], [21, 15, 2.6],
+];
+const MARK = `<svg viewBox="0 0 34 34" aria-hidden="true">${DOTS.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join("")}</svg>`;
+
+/** The bots' natural colours, one dot each, under the footer's name (the app's living tab icon, still). */
+const BOT_DOTS = ["#2F5D50", "#A9573A", "#8F6A1F", "#3E6E8E", "#6E4A6B"].map((c) => `<i style="background:${c}"></i>`).join("");
 
 // ONE LINK IN for everything written for search and answer engines: the FAQ,
 // and through it the languages. The footer stays what it was plus one word;
@@ -28,61 +33,79 @@ const NAV: Array<[string, string]> = [
 
 const CSS = `
   :root {
-    --ink: #0F0D0B; --card: #211C17; --raise: rgba(243,226,198,.055); --rule: rgba(243,226,198,.15);
-    --white: #F3E2C6; --grey: rgba(243,226,198,.66); --dim: rgba(243,226,198,.52);
-    --sun: #F7CF4A; --ink2: #1B1712; --ink2-soft: rgba(27,23,18,.7); --line: rgba(27,23,18,.16);
-    --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
-    --sans: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    /* The app's white (experience/bots/palette.ts), under the names every page's rules already use. */
+    --ink: #FFFFFF; --white: #0A0A0A; --grey: #3D3D3D; --dim: #5C5C5C; --rule: #E6E6E6; --raise: #F5F5F5; --card: #F5F5F5;
+    --sun: #F5F5F5; --ink2: #0A0A0A; --ink2-soft: #5C5C5C; --line: #E0E0E0;
+    --outline: #D4D4D4; --moss: #4F7A3A; --clay: #A9573A; --sea: #3E6E8E;
+    --serif: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --sans: 'Geist', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; }
   html { background: var(--ink); }
-  body { margin: 0; background: var(--ink); color: var(--white); font: 17px/1.7 var(--sans); -webkit-font-smoothing: antialiased; text-transform: capitalize; }
-  button, input { font-family: inherit; text-transform: inherit; }
+  body { margin: 0; background: var(--ink); color: var(--white); font: 16px/1.65 var(--sans); -webkit-font-smoothing: antialiased; }
+  button, input { font-family: inherit; }
   a { color: inherit; }
-  a[href^="mailto:"], code { text-transform: none; }
-  :focus-visible { outline: 2px solid var(--white); outline-offset: 3px; }
+  :focus-visible { outline: 2px solid var(--white); outline-offset: 3px; border-radius: 6px; }
   .wrap { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 24px; }
-  .mast { padding: 22px 0 0; }
-  .mast .wrap { display: flex; justify-content: center; }
-  .mark { display: inline-flex; padding: 6px 10px; border-radius: 12px; }
-  .mark svg { height: 28px; width: auto; display: block; }
-  main { padding: 64px 0 80px; }
-  .eye { font-family: var(--mono); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); margin: 0 0 16px; }
-  h1 { font-family: var(--serif); font-weight: 350; font-size: clamp(40px, 6.4vw, 68px); line-height: 1.03; letter-spacing: -.028em; margin: 0 0 18px; text-wrap: balance; }
-  .lede { color: var(--grey); font-size: 19px; max-width: 44ch; margin: 0; }
-  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 50px; padding: 0 28px; border-radius: 999px; border: 0; font-size: 15px; font-weight: 500; text-decoration: none; cursor: pointer; background: var(--white); color: var(--ink); transition: opacity .2s, transform .12s; }
-  .btn:hover { opacity: .9; }
+
+  .mast { position: sticky; top: 0; z-index: 10; background: rgba(255,255,255,.86); backdrop-filter: saturate(1.6) blur(16px); -webkit-backdrop-filter: saturate(1.6) blur(16px); border-bottom: 1px solid transparent; }
+  .mast .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
+  .mark { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 700; font-size: 17px; letter-spacing: -.02em; }
+  .mark svg { height: 28px; width: 28px; display: block; fill: var(--white); }
+  .mast nav { margin-left: auto; display: flex; align-items: center; gap: 22px; font-size: 14px; }
+  .mast nav a { text-decoration: none; color: var(--grey); }
+  .mast nav a:hover, .mast nav a[aria-current] { color: var(--white); }
+  .mast nav .get { color: var(--ink); background: var(--white); padding: 8px 16px; border-radius: 999px; font-weight: 500; }
+  .mast nav .get:hover { color: var(--ink); opacity: .88; }
+
+  main { padding: 56px 0 88px; }
+  .eye { font: 600 11px/1 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); margin: 0 0 14px; }
+  h1 { font-family: var(--serif); font-weight: 700; font-size: clamp(36px, 5.6vw, 56px); line-height: 1.05; letter-spacing: -.035em; margin: 0 0 16px; text-wrap: balance; }
+  .lede { color: var(--grey); font-size: 18px; max-width: 48ch; margin: 0; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 24px; border-radius: 999px; border: 0; font-size: 15px; font-weight: 500; text-decoration: none; cursor: pointer; background: var(--white); color: var(--ink); transition: opacity .2s, transform .12s; }
+  .btn:hover { opacity: .88; }
   .btn:active { transform: scale(.98); }
   .btn.disabled, .btn:disabled { opacity: .35; pointer-events: none; }
-  footer { color: var(--dim); border-top: 1px solid var(--rule); }
-  footer .in { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 28px 0 44px; font-size: 14px; }
-  footer nav { display: flex; gap: 24px; flex-wrap: wrap; }
+
+  footer { color: var(--dim); border-top: 1px solid var(--rule); background: var(--ink); }
+  footer .in { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; padding: 28px 0 44px; font-size: 14px; }
+  footer .who { display: inline-flex; align-items: center; gap: 10px; }
+  footer .dots { display: inline-flex; gap: 4px; }
+  footer .dots i { width: 7px; height: 7px; border-radius: 50%; display: block; }
+  footer nav { display: flex; gap: 22px; flex-wrap: wrap; }
   footer nav a { text-decoration: none; transition: color .2s; }
   footer nav a:hover, footer nav a[aria-current] { color: var(--white); }
 
-  /* The price's room: the landing page's sun field. */
-  .field { background: var(--sun); color: var(--ink2); border-radius: 28px; padding: 28px; margin: 48px 0 0; }
+  /* The price's room: the app's surface, a card on the page. */
+  .field { background: var(--sun); color: var(--ink2); border-radius: 24px; padding: 28px; margin: 44px 0 0; }
   .field .eye { color: var(--ink2-soft); }
 
-  /* Long reading. */
-  .prose { max-width: 720px; }
+  /* Long reading: the app's type, a column a person can read, the section headings as the app sets a page's. */
+  .prose { max-width: 700px; }
   .prose h1 { margin-bottom: 10px; }
-  .prose .effective { font-family: var(--mono); font-size: 12px; letter-spacing: .2em; text-transform: uppercase; color: var(--dim); margin: 0 0 40px; }
-  .prose h2 { font-family: var(--serif); font-weight: 400; font-size: 28px; line-height: 1.2; letter-spacing: -.01em; margin: 52px 0 12px; }
-  .prose h3 { font-size: 17px; font-weight: 500; margin: 30px 0 6px; }
-  .prose p, .prose li { color: var(--grey); text-transform: none; }
-  .prose strong { color: var(--white); font-weight: 500; }
-  .prose ul { padding-left: 22px; }
+  .prose .effective { display: inline-flex; align-items: center; gap: 8px; font: 500 12px/1 var(--mono); color: var(--dim); background: var(--raise); border-radius: 999px; padding: 8px 12px; margin: 6px 0 36px; }
+  .prose .effective::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--moss); }
+  .prose h2 { font-weight: 600; font-size: 24px; line-height: 1.25; letter-spacing: -.02em; margin: 52px 0 12px; padding-top: 28px; border-top: 1px solid var(--rule); }
+  .prose h3 { font-size: 17px; font-weight: 600; letter-spacing: -.01em; margin: 30px 0 6px; }
+  .prose p, .prose li { color: var(--grey); }
+  .prose strong { color: var(--white); font-weight: 600; }
+  .prose ul, .prose ol { padding-left: 22px; }
   .prose li { margin-bottom: 6px; }
-  .prose a { text-decoration: underline; text-decoration-color: var(--rule); text-underline-offset: 3px; }
+  .prose li::marker { color: var(--dim); }
+  .prose a { text-decoration: underline; text-decoration-color: var(--outline); text-underline-offset: 3px; }
   .prose a:hover { text-decoration-color: var(--white); }
   .prose hr { border: 0; border-top: 1px solid var(--rule); margin: 44px 0; }
-  .prose code { font-family: var(--mono); font-size: 14px; background: var(--raise); padding: 2px 6px; border-radius: 6px; }
+  .prose hr + h2, .prose h1 + h2, .prose .effective + h2 { border-top: 0; padding-top: 0; margin-top: 0; }
+  .prose code { font-family: var(--mono); font-size: 13.5px; background: var(--raise); padding: 2px 6px; border-radius: 6px; }
+  .prose table { width: 100%; border-collapse: collapse; font-size: 15px; margin: 18px 0; display: block; overflow-x: auto; }
+  .prose th, .prose td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; color: var(--grey); }
+  .prose th { color: var(--white); font-weight: 600; background: var(--raise); }
 
   @media (max-width: 640px) {
-    main { padding: 40px 0 56px; }
-    .field { padding: 18px; border-radius: 22px; }
+    main { padding: 36px 0 56px; }
+    .mast nav a:not(.get) { display: none; }
+    .field { padding: 18px; border-radius: 20px; }
     .lede { font-size: 17px; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -131,18 +154,18 @@ ${headTags({
   noindex: o.noindex || !o.path,
   ld: o.ld,
 })}
-<meta name="theme-color" content="#0F0D0B">
+<meta name="theme-color" content="#FFFFFF">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,300..500&family=Instrument+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400${o.fonts ? `&${o.fonts}` : ""}&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500${o.fonts ? `&${o.fonts}` : ""}&display=swap">
 <style>${CSS}${o.css ?? ""}</style>
 ${o.pixel === false ? "" : `<script src="/site-events.js" async></script>\n`}</head>
 <body>
-${o.pixel === false ? "" : gtmBody()}<header class="mast"><div class="wrap"><a class="mark" href="/" aria-label="X0 Bot">${MARK}</a></div></header>
+${o.pixel === false ? "" : gtmBody()}<header class="mast"><div class="wrap"><a class="mark" href="/" aria-label="X0 Bot home">${MARK}<span>X0 Bot</span></a><nav aria-label="Site"><a href="/pricing"${here("/pricing") ? ' aria-current="page"' : ""}>Pricing</a><a href="/faq"${here("/faq") ? ' aria-current="page"' : ""}>FAQ</a><a href="/support"${here("/support") ? ' aria-current="page"' : ""}>Support</a><a class="get" href="/download">Get X0 Bot</a></nav></div></header>
 <main><div class="wrap">
 ${o.main}
 </div></main>
-<footer><div class="wrap"><div class="in"><span>© 2026 X0 Bot</span><nav>${nav}</nav></div></div></footer>
+<footer><div class="wrap"><div class="in"><span class="who"><span class="dots" aria-hidden="true">${BOT_DOTS}</span>© 2026 X0 Bot</span><nav aria-label="Footer">${nav}</nav></div></div></footer>
 ${o.script ? `<script${o.nonce ? ` nonce="${o.nonce}"` : ""}>${o.script}</script>\n` : ""}</body>
 </html>`;
 }
