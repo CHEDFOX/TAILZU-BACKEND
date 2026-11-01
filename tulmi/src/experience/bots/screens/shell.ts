@@ -34,6 +34,8 @@ import { DELETION_PATH, leavingCard, type DeletionState } from "./accountGrace.j
 import { offlineKept, outboxCard, outboxSection } from "./outbox.js";
 import { hasNotes, notesStrip, notesStripHeight, notesTileSpec, NOTES_STATS_PATH } from "./notes.js";
 import { isRoutineToken, routineCard, routineCardState, routinesRow, ROUTINES_PATH, type RoutinesData } from "./routines.js";
+import { FINDS_PATH, findsCards, isFindsId, liveRow } from "./finds.js";
+import type { Card } from "../../../everyday/index.js";
 import type { NotesStats } from "../../../notes/stats.js";
 import { hasOutbox } from "../kit.js";
 import type { PageOpts } from "../kit.js";
@@ -673,7 +675,7 @@ function sendAsk(ctx: BotsCtx): ActionRef {
       { kind: "setState", path: "asking", value: false },
       {
         kind: "navigate", screenId: SCREENS.ask, replace: true,
-        params: { message: SENT_WORDS, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi", needs: "$state.asked.shell.needs", job: "$state.asked.shell.job", routine: "$state.asked.shell.routine.token" },
+        params: { message: SENT_WORDS, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi", needs: "$state.asked.shell.needs", job: "$state.asked.shell.job", routine: "$state.asked.shell.routine.token", finds: "$state.asked.shell.finds" },
       },
     ),
     onError: failed({ busy: "asking", from: "ask", then: toast("Couldn't reach your bots. Try again.", "error") }),
@@ -813,6 +815,8 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
             grow(), attach("Paste", "keyboard", { kind: "readClipboard", assignTo: "ask" }),
           ], { gap: 8, paddingVertical: 12, paddingHorizontal: 22 }),
           divider(),
+          box([liveRow(ctx, ctx.live.bots.some((b) => b.slug === "travel") ? choose(ctx, "travel") : undefined)], { paddingTop: 14, paddingBottom: 6, paddingHorizontal: 22 }),
+          divider(),
           col([box([sectionLabel("Or try")], { paddingTop: 6, paddingBottom: 4, paddingHorizontal: 10 }), ...tries(ctx)], { paddingTop: 8, paddingBottom: 10, paddingHorizontal: 12 }),
           row([
             row([kbd("↵"), meta("send", { size: 12 })], { gap: 6 }),
@@ -844,6 +848,7 @@ function askCompose(ctx: BotsCtx, pre: Route | undefined) {
         ...fileChip,
       ], { gap: 8 }),
       col([whoChip(ctx), handTo(ctx), pickList(ctx)], { gap: 6 }),
+      liveRow(ctx, ctx.live.bots.some((b) => b.slug === "travel") ? choose(ctx, "travel") : undefined),
       col([sectionLabel("Or try"), ...tries(ctx)], { gap: 0 }),
     ],
     footer: [
@@ -897,7 +902,7 @@ function askVoice(ctx: BotsCtx): { line: Node; big: Node; hint: Node } | null {
 }
 
 /** The answer: what was asked, who answered and what came back; a payment it filled in; the bar to ask again. */
-function askAnswer(ctx: BotsCtx) {
+function askAnswer(ctx: BotsCtx, cards?: Card[]) {
   const asked = String(ctx.params.message ?? "");
   const answer = String(ctx.params.answer ?? "");
   const slug = String(ctx.params.bot ?? "");
@@ -921,6 +926,8 @@ function askAnswer(ctx: BotsCtx) {
     row([slug ? avatarOf(ctx, slug, 24) : icon("spark", { size: 16, color: C.meta }), meta(by ? `${by} answered` : "Answered by your bots", { size: 12 })], { gap: 6 }),
     ...(answer ? [body(answer, { lineHeight: 22 })] : []),
   ], { gap: 8 }));
+  // What the everyday tools found: flights, hotels, money, weather, as cards that link out (screens/finds.ts).
+  blocks.push(...findsCards(ctx, cards));
   if (job) {
     blocks.push(row([statusMark("working", { color: colorOf(ctx, "code") }), text("Xode is on it", { size: 14, lineHeight: 19 }), grow(), text("Watch", { size: 14, weight: 500, lineHeight: 19 }), icon("chevron", { size: 16 })], {
       gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: C.line,
@@ -1636,12 +1643,15 @@ export const shellScreens: BotsScreen[] = [
   }),
   screen({ id: SCREENS.empty, build: (ctx) => emptyHome(ctx) }),
   screen<ActivityData>({ id: SCREENS.activity, load: activityLoad, build: (ctx, d) => (ctx.client === "desktop" ? activityDesk(ctx, d) : activityPhone(ctx, d)) }),
-  screen<Route>({
+  screen<Route & { cards?: Card[] }>({
     id: SCREENS.ask,
-    load: (ctx, deps) => (ctx.params.message && ctx.params.answer === undefined && ctx.params.id === undefined && !ctx.params.bot
-      ? deps.api<Route>("POST", "/v1/shell/route", { message: String(ctx.params.message) })
-      : Promise.resolve(undefined as unknown as Route)),
-    build: (ctx, pre) => (ctx.params.answer !== undefined || ctx.params.id !== undefined ? askAnswer(ctx) : askCompose(ctx, pre)),
+    // Composing: who would answer what they typed. An answer: the cards its everyday tools found (screens/finds.ts), when it has any.
+    load: (ctx, deps) => (ctx.params.answer !== undefined && isFindsId(ctx.params.finds)
+      ? deps.api<{ cards: Card[] }>("GET", `${FINDS_PATH}/${ctx.params.finds}`) as Promise<Route & { cards?: Card[] }>
+      : ctx.params.message && ctx.params.answer === undefined && ctx.params.id === undefined && !ctx.params.bot
+        ? deps.api<Route>("POST", "/v1/shell/route", { message: String(ctx.params.message) })
+        : Promise.resolve(undefined as unknown as Route)),
+    build: (ctx, pre) => (ctx.params.answer !== undefined || ctx.params.id !== undefined ? askAnswer(ctx, pre?.cards) : askCompose(ctx, pre)),
   }),
   screen<SearchResult>({ id: SCREENS.search, load: searchLoad, build: (ctx, d) => (ctx.client === "desktop" ? searchDesk(ctx, d) : searchPhone(ctx, d)) }),
   screen<TasksData>({ id: SCREENS.tasks, load: (ctx, deps) => deps.api<TasksData>("GET", `/v1/shell/tasks?tz=${ctx.tzOffsetMinutes}`), build: (ctx, d) => (ctx.client === "desktop" ? tasksDesk(ctx, d) : tasksPhone(ctx, d)) }),

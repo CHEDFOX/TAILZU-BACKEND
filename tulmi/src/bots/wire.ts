@@ -20,6 +20,7 @@ import type { Connectors } from "../connectors/index.js";
 import type { MediaService } from "../media/service.js";
 import { calendar, withOwnDays } from "../calendar/index.js";
 import { connectorsPort, type BotPorts, type CodeAsk } from "./ports.js";
+import { everyday } from "../everyday/index.js";
 
 export interface WireOptions {
   connectors?: Connectors | null;
@@ -47,5 +48,7 @@ export function botPorts(o: WireOptions): BotPorts {
     media: o.media ?? null,
     artifacts: o.artifacts ?? null,
     code: codeAskPort(o.code, o),
+    // Flights, hotels, currency and weather, live and free, with no sign-in of the person's (src/everyday).
+    everyday: everyday(),
   };
 }
