@@ -3,7 +3,7 @@
  * sources; what is not known said as a gap; the owner asked, and their words kept as confirmed; the few facts a chat or a job needs.
  */
 import { describe, expect, it } from "vitest";
-import { bookBrief, bookForJobs, bookMarkdown, buildBook, cleanAnswers, planLines, reasonsIn, type BookInput } from "../src/code/project/book.js";
+import { bookBrief, bookForJobs, bookMarkdown, buildBook, cleanAnswers, ownerSaidAt, planLines, reasonsIn, type BookInput } from "../src/code/project/book.js";
 import { SupabaseProjectBrainStore } from "../src/code/project/store.js";
 import { fakeSupabase, fixtureBrain } from "./work-fixtures.js";
 
@@ -44,6 +44,33 @@ function input(over: Partial<BookInput> = {}): BookInput {
     ...over,
   };
 }
+
+describe("a project with no docs", () => {
+  const bare = (about: unknown) => input({
+    view: { ...input().view, welcome: "This seems to be a desktop dictation app. It records and pastes.", structure: { ...(input().view.structure as object), readme: null, about } as never },
+    docs: {},
+  });
+
+  it("says what the manifest says it is, and the index's reading of the code as a guess, until the owner answers", () => {
+    const b = buildBook(bare({ path: "package.json", text: "Desktop voice dictation: hotkey, record, paste.", product: "X0 Bot", keywords: [] }));
+    const what = b.facts.filter((f) => f.chapter === "what");
+    expect(what[0]).toMatchObject({ text: "X0 Bot: Desktop voice dictation: hotkey, record, paste.", source: { kind: "file", ref: "package.json" }, status: "found" });
+    expect(what[1]).toMatchObject({ text: "This seems to be a desktop dictation app. It records and pastes.", status: "found" });
+    // The product's name is not said twice, and a welcome that only repeats the manifest (the template) is left out.
+    const x0 = bare({ path: "package.json", text: "X0 Bot desktop dictation.", product: "X0 Bot", keywords: [] });
+    const repeat = buildBook({ ...x0, view: { ...x0.view, welcome: "alice/shop: X0 Bot desktop dictation. Built with Electron." } });
+    expect(repeat.facts.filter((f) => f.chapter === "what").slice(0, 2).map((f) => f.text)).toEqual(["X0 Bot desktop dictation.", "Checkout: Takes payment with Stripe and sends a receipt."]);
+    const guessed = buildBook(bare(null)).facts.find((f) => f.chapter === "what")!;
+    expect(guessed).toMatchObject({ status: "guessed", source: { kind: "index", ref: "the project's index (its code)" } });
+    // The owner's questions come first: their answers say more than the code can.
+    const md = bookMarkdown(buildBook(bare(null)));
+    expect(md.indexOf("## Questions for you")).toBeLessThan(md.indexOf("## What it is"));
+    expect(md).toContain("- ~ This seems to be");
+    // Once the owner says what it is, that is the first line, confirmed.
+    const told = buildBook({ ...bare(null), owner: { for: "Dictation for people who write all day.", at: NOW } });
+    expect(told.facts.find((f) => f.chapter === "what")).toMatchObject({ text: "Dictation for people who write all day.", status: "confirmed" });
+  });
+});
 
 describe("the book", () => {
   it("holds every chapter as facts with their sources, and says what it cannot know", () => {
@@ -118,8 +145,13 @@ describe("what a chat and a job are told", () => {
   it("gives a question the chapter it is about, with sources, and the owner's words always", () => {
     const b = buildBook(input({ owner: { next: "Gift cards, then UPI", at: NOW } }));
     const brief = bookBrief(b, "where is this project heading?", 6).split("\n");
-    expect(brief[0]).toBe("[Where it is heading] Next, in the owner's words: Gift cards, then UPI (you said)");
-    expect(brief.every((l) => l.startsWith("[Where it is heading]"))).toBe(true);
+    expect(brief[0]).toBe("[Where it is heading] Next, in the owner's words: Gift cards, then UPI (the owner said: newer than the README, the docs and any earlier answer, and right where they differ)");
+    expect(brief.slice(0, -1).every((l) => l.startsWith("[Where it is heading]"))).toBe(true);
+    // What the owner has not answered yet, when the question is about it: the chat can say where they can.
+    expect(brief.at(-1)).toBe("[the owner has not answered] Is there anything that must not change: an API, a design, a rule? (the person can answer it on the Project book page: the book button on the project's page)");
+    expect(bookBrief(b, "who is it for?", 6)).toContain("[the owner has not answered] Who is this project for");
+    expect(ownerSaidAt(b)).toBe(NOW);
+    expect(ownerSaidAt(buildBook(input()))).toBe(0);
     expect(bookBrief(b, "why do we use stripe?", 4)).toContain("[Why it is this way] Decision record: docs/adr/0001-use-stripe.md");
   });
 
@@ -191,10 +223,12 @@ describe("what a real project taught it (chedfox/tailzu-backend)", () => {
   });
 
   it("names the folders the work went to, deep enough to say something", async () => {
-    const { busiestAreas } = await import("../src/code/project/book.js");
+    const { busiestAreas, TOP_LEVEL } = await import("../src/code/project/book.js");
     const commits = [["tulmi/src/bots/a.ts"], ["tulmi/src/bots/b.ts"], ["tulmi/src/code/c.ts"], ["tulmi/tests/x.test.ts"]];
-    // "tulmi/src" holds 3 of the 4 commits, so it is split one level down; a file that is not that deep counts for no folder.
-    expect(busiestAreas(commits, 3)).toEqual([["tulmi/src/bots", 2], ["tulmi/src/code", 1]]);
+    // "tulmi/src" holds 3 of the 4 commits, so it is split one level down; a file not that deep counts for its own folder.
+    expect(busiestAreas(commits, 3)).toEqual([["tulmi/src/bots", 2], ["tulmi/src/code", 1], ["tulmi/tests", 1]]);
     expect(busiestAreas([["a/b/c.ts"], ["d/e/f.ts"]], 3)).toEqual([["a/b", 1], ["d/e", 1]]);
+    // Files at the root are an area too (an Electron app's main.js), and one that holds most of the work is not split.
+    expect(busiestAreas([["main.js"], ["main.js", "src/ui/a.js"], ["preload.js"], ["src/ui/b.js"]], 2)).toEqual([[TOP_LEVEL, 3], ["src/ui", 2]]);
   });
 });

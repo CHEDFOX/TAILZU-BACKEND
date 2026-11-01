@@ -56,7 +56,7 @@ import { baseName, classOf, dirName, isTestPath, languageOf } from "./lang.js";
 import { memoryMarkdown } from "./memory.js";
 import { ancestorsOf, diffSnapshots, fingerprintOf, rollUp, toRead, type SnapshotDiff } from "./merkle.js";
 import { checkDeps, declaredDeps, type CheckOptions, type DepNote } from "./registry.js";
-import { buildStructure, extractCore } from "./scan.js";
+import { buildStructure, DESCRIBED, extractCore } from "./scan.js";
 import { coreKindOf, fetchContents, fetchTree, selectFiles, type Candidate, type Contents } from "./snapshot.js";
 import type { ProjectBrainStore } from "./store.js";
 import {
@@ -228,7 +228,8 @@ export async function runBuild(
     if (mode === "incremental") {
       for (const c of coreCandidates) {
         const old = existing!.structure.core[c.path];
-        if (old && old.sha === c.sha && !changedSet.has(c.path)) core[c.path] = old;
+        // A manifest kept from before manifests' own words were read (no description key) is read again, once.
+        if (old && old.sha === c.sha && !changedSet.has(c.path) && !(DESCRIBED.has(old.kind) && !("description" in old.data))) core[c.path] = old;
       }
     }
 
@@ -507,8 +508,16 @@ export async function runBuild(
       fragile: hot.filter((h) => h.changes >= 3 && h.tests === 0).map((h) => ({ path: h.path, changes: h.changes })),
       hasCommands: { test: structure.commands.some((c) => c.kind === "test") },
     });
+    // With no README to say what the project is, the welcome reads what the code says: the manifest's words, its parts, its latest commits.
+    const about = structure.about ?? null;
+    const clues = structure.readme?.blurb ? [] : [
+      ...(about?.product ? [`product name: ${about.product}`] : []),
+      ...(about?.keywords.length ? [`keywords: ${about.keywords.join(", ")}`] : []),
+      ...features.filter((f) => f.name).slice(0, 6).map((f) => `part: ${f.name}${f.summary ? `, ${f.summary}` : ""}`),
+      ...messages.slice(0, 8).map((m) => `recent commit: ${m.split("\n")[0]!.slice(0, 120)}`),
+    ];
     const facts = {
-      name: project.fullName, blurb: structure.readme?.blurb || structure.readme?.title || "",
+      name: project.fullName, blurb: structure.readme?.blurb || about?.text || structure.readme?.title || "", clues,
       stack: [...structure.languages.slice(0, 3).map((l) => l.lang), ...structure.frameworks.slice(0, 5)],
       fileCount: structure.fileCount, analysed: structure.analysedCount,
       health: recorded ? (recorded.healthy ? "all checks passed" : "some checks fail") : structure.commands.some((c) => c.kind === "test") ? "not checked yet" : "no test command found",

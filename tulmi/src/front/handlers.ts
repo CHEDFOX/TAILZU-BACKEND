@@ -22,6 +22,7 @@ import { aboutLines, sharedFacts } from "../bots/shared.js";
 import type { Artifacts } from "../artifacts/index.js";
 import { CodeChat } from "../code/chat/index.js";
 import { threadStore, type ThreadStore } from "../code/chat/threads.js";
+import { bookBrief } from "../code/project/book.js";
 import type { LiveFiles } from "../code/live/ports.js";
 import { componentArtifact, workspaceFiles } from "../artifacts/kit.js";
 import { unfence } from "../artifacts/edit.js";
@@ -185,8 +186,11 @@ async function threadJobBrief(d: HandlerDeps, c: RouteCall): Promise<string> {
 async function projectBrief(d: HandlerDeps, c: RouteCall): Promise<string> {
   if (!c.ctx.projectId || !d.code?.brain || !d.code.github) return "";
   const project = await ownProject(projectDeps(d.code), c.userId, c.ctx.projectId);
-  const view = await (await d.code.brain.open(c.userId, project.id)).status();
-  return [`${project.fullName}`, cut(view.welcome ?? "", 700), ...view.features.slice(0, 6).map((f) => `${f.name}: ${cut(f.summary, 90)}`)].filter(Boolean).join("\n");
+  const brain = await d.code.brain.open(c.userId, project.id);
+  const view = await brain.status();
+  // The project book's lines this message needs (the owner's words first): a reply about the project says what the book says.
+  const book = await brain.book().then((b) => (b ? bookBrief(b, c.message, 8) : "")).catch(() => "");
+  return [`${project.fullName}`, cut(view.welcome ?? "", 700), ...view.features.slice(0, 6).map((f) => `${f.name}: ${cut(f.summary, 90)}`), book].filter(Boolean).join("\n");
 }
 
 const projectDeps = (code: Code): ProjectDeps => ({ store: code.store, github: code.github!, approvals: code.approvals, oauth: code.oauth });

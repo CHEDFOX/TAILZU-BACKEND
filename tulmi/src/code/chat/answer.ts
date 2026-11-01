@@ -32,11 +32,11 @@ import type { LiveFiles } from "../live/ports.js";
 import type { BrainHandle, BrainView } from "../project/index.js";
 import { isSecretPath, isTestPath } from "../project/lang.js";
 import { findInMap } from "../project/map.js";
-import { bookBrief } from "../project/book.js";
+import { bookBrief, ownerSaidAt } from "../project/book.js";
 import { computeImpact, extractCues, fence, forModel, locate, type Located, type LocateTarget } from "../work/index.js";
 import { CONFIDENT, fusedFor } from "../work/locate.js";
 import { cut, type ModelCtx } from "../work/model.js";
-import { Anchors, checkCitations, keptLocations } from "./cite.js";
+import { Anchors, checkCitations, fixPaths, keptLocations, unknownPaths } from "./cite.js";
 import { factsBlock, gatherFacts, isConfigPath, missingFacts, withMissing, type Fact } from "./facts.js";
 import { flowDiagram } from "./flow.js";
 import { investigate, type LookTools } from "./look.js";
@@ -74,7 +74,7 @@ const FACT_RELATED = 5;
 
 export type Road = "fast" | "read" | "overview";
 
-export type ChatBrain = Pick<BrainHandle, "status" | "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file"> & Partial<Pick<BrainHandle, "projectMap" | "book">>;
+export type ChatBrain = Pick<BrainHandle, "status" | "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file"> & Partial<Pick<BrainHandle, "projectMap" | "book" | "paths">>;
 
 export interface ChatPorts {
   brain: ChatBrain;
@@ -596,7 +596,11 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   }
 
   const left = Math.max(0, input.maxPaise - located.used.paise);
-  const earlier = earlierTurns(input.thread, input.search);
+  // The project book, for the look's brief; an earlier answer given before the owner last spoke in it may be out of date, and is not shown.
+  const book = ports.look && brain.book ? await brain.book().catch(() => null) : null;
+  const since = book ? ownerSaidAt(book) : 0;
+  const current = since && input.thread ? { ...input.thread, history: input.thread.history.filter((t) => t.at >= since) } : input.thread;
+  const earlier = earlierTurns(current, input.search);
   const blocks = [
     `<question>\n${forModel(input.question).replace(/<\/question/gi, "<\\/question")}\n</question>`,
     ...(input.language && LANGUAGE_WORDS[input.language] ? [`Answer in ${LANGUAGE_WORDS[input.language]}.`] : []),
@@ -605,7 +609,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     ...(input.job ? [`<job>\n${fence(forModel(input.job))}\n</job>`] : []),
     ...(input.thread?.summary ? [threadBlock(input.thread).trim()] : []),
     ...(earlier.length ? [`<earlier>\n${fence(forModel(earlier.map((t) => `Q: ${t.q}\nA: ${t.a}`).join("\n\n")))}\n</earlier>`] : []),
-    ...(lastAnswer(input) ? [`<last_answer>\n${fence(forModel(lastAnswer(input)))}\n</last_answer>`] : []),
+    ...(lastAnswer({ ...input, thread: current }) ? [`<last_answer>\n${fence(forModel(lastAnswer({ ...input, thread: current })))}\n</last_answer>`] : []),
     ...(facts.text ? [`<facts>\n${fence(forModel(facts.text))}\n</facts>`] : []),
     `<excerpts>\n${fence(forModel(excerpts.length ? excerpts.join("\n\n") : basis || "(none read)"))}\n</excerpts>`,
   ].filter((p) => road !== "fast" || !p.startsWith("<excerpts>"));
@@ -619,9 +623,10 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     // Look before answering (look.ts): the same blocks are the brief, with where the map says things are and what this chat read before.
     const [question, ...known] = blocks;
     // The project map (where things are) and the project book (what it is, how it stands, where it is heading), the parts this question needs.
-    const [map, book] = await Promise.all([mapBrief(brain, input.search), brain.book ? brain.book().then((b) => (b ? bookBrief(b, input.search, 10) : "")).catch(() => "") : Promise.resolve("")]);
+    const map = await mapBrief(brain, input.search);
+    const told = book ? bookBrief(book, input.search, 10) : "";
     const before = input.thread?.seen?.length ? `Read earlier in this chat: ${input.thread.seen.slice(-12).join(", ")}` : "";
-    const brief = [question!, `<brief>\n${[...known, ...(book ? [`<book>\n${fence(forModel(book))}\n</book>`] : []), ...(map ? [`<map>\n${fence(forModel(map))}\n</map>`] : []), ...(before ? [before] : [])].join("\n\n")}\n</brief>`].join("\n\n");
+    const brief = [question!, `<brief>\n${[...known, ...(told ? [`<book>\n${fence(forModel(told))}\n</book>`] : []), ...(map ? [`<map>\n${fence(forModel(map))}\n</map>`] : []), ...(before ? [before] : [])].join("\n\n")}\n</brief>`].join("\n\n");
     try {
       const looked = await investigate({
         model, tier: input.tier, user: brief, tools: ports.look, anchors, maxPaise: Math.max(1, left), maxTokens,
@@ -647,7 +652,13 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const { text: said, next } = splitNext(r.text);
 
   // Every path:line in the answer is something that was seen; the rest is taken out, and the notes say so.
-  const checked = checkCitations(tidy(plainTags(said)), anchors);
+  // A file named with folders it is not in, put right when the project has exactly one file of that name; then every line cited is checked.
+  let written = tidy(plainTags(said));
+  if (brain.paths && unknownPaths(written, (p) => anchors.has(p)).length) {
+    const all = await brain.paths().catch(() => [] as string[]);
+    if (all.length) written = fixPaths(written, all).text;
+  }
+  const checked = checkCitations(written, anchors);
   if (checked.dropped.length) notes.push(`I took out ${checked.dropped.length} reference${checked.dropped.length === 1 ? "" : "s"} to code I could not find.`);
   // The values the question asks about, and the ones on the lines it cites, are in the answer by name and by value; the ones it left out are added, with where they are.
   // Values named by the question are added only to a question that asks for a value: "how does the help print a line?" got "displayHelp is true".

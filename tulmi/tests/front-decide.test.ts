@@ -389,7 +389,7 @@ describe("the small model", () => {
     // In a project's chat it says whose project, so its name means the code.
     const { decideMessage } = await import("../src/front/decide.js");
     const inProject = decideMessage("how does express work out req.ip?", { userId: "u", plan: "paid", device: "desktop", mode: "text", visuals: "auto", projectId: "p", projectName: "alice/express", recent: [], attachments: [] }, null);
-    expect(inProject).toContain('Project: yes, this is the chat of their code project alice/express ("this repo", "the app", "it" and its name mean the project).');
+    expect(inProject).toContain('Project: yes, this is the chat of their code project alice/express ("this repo", "the app", "it" and its name mean the project; a question about the project itself, what it is, who it is for, what changed in it, where it is heading, is a code_question about it).');
     expect(s.user).toContain("The rules read it as: chat (0.4).");
     expect(s.capPaise).toBe(100);
     expect(s.userId).toBe("alice");

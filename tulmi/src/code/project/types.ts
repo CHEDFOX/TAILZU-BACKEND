@@ -185,6 +185,8 @@ export interface Structure {
   envVars: Array<{ name: string; example: boolean; uses: number }>;
   docker: { files: string[]; images: string[]; ports: number[]; services: string[] };
   readme: { path: string; title: string; blurb: string } | null;
+  /** What the manifest nearest the root says the project is (its description, the product's name, its keywords); absent in briefs built before. */
+  about?: { path: string; text: string; product: string; keywords: string[] } | null;
   /** Files that hold secrets, by path only: their contents were never read. */
   secretFiles: string[];
   skipped: { vendored: number; generated: number; binary: number; tooBig: number; lockfiles: number; secret: number; capped: number };

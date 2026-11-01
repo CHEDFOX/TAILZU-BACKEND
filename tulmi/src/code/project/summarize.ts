@@ -263,12 +263,20 @@ export async function summarizeRepo(ctx: SummaryCtx, facts: OverviewFacts, cap: 
 /** The cheap model NAMES and describes the clusters (features.ts); a cluster it says nothing about keeps its own name and summary. */
 export async function labelFeatures(ctx: SummaryCtx, features: readonly Feature[], cap: number): Promise<{ features: Feature[]; labelled: boolean }> {
   if (!features.length) return { features: [], labelled: true };
-  const user = features.map((f, i) => `<data id="${i + 1}">\nfolder-or-word: ${f.name}\nfiles: ${f.files.slice(0, 8).join(", ")}\nroutes: ${f.routes.slice(0, 6).join(", ")}\ntexts: ${f.texts.slice(0, 5).join(" | ")}\n</data>`).join("\n");
-  const r = await ask(
-    ctx, cap, "brain.features", "index_features", fence(user), FeatureSchema, 1800,
-  );
-  if (!r.ok) return { features: features.map((f) => ({ ...f })), labelled: false };
-  const byId = new Map(r.value.features.map((f) => [f.id, f]));
+  const block = (f: Feature, id: number) => `<data id="${id}">\nfolder-or-word: ${f.name}\nfiles: ${f.files.slice(0, 8).join(", ")}\nroutes: ${f.routes.slice(0, 6).join(", ")}\ntexts: ${f.texts.slice(0, 5).join(" | ")}\n</data>`;
+  const byId = new Map<string, { id: string; name: string; summary: string }>();
+  // A cheap model can answer the first block or two and stop: the ones it left are asked once more, by themselves.
+  for (let round = 0; round < 2; round++) {
+    const left = features.map((f, i) => ({ f, id: String(i + 1) })).filter((x) => !byId.has(x.id));
+    if (!left.length) break;
+    const r = await ask(
+      ctx, cap, "brain.features", "index_features", fence(left.map((x) => block(x.f, Number(x.id))).join("\n")), FeatureSchema, 1800,
+    );
+    if (!r.ok) break;
+    const asked = new Set(left.map((x) => x.id));
+    for (const f of r.value.features) if (asked.has(f.id)) byId.set(f.id, f);
+  }
+  if (!byId.size) return { features: features.map((f) => ({ ...f })), labelled: false };
   const out = features.map((f, i) => {
     const l = byId.get(String(i + 1));
     const name = l ? cleanSummary(l.name)?.slice(0, 40) : null;
@@ -289,6 +297,8 @@ export interface WelcomeFacts {
   /** In plain words: "tests pass", "2 of 4 checks fail", "not checked yet". */
   health: string;
   tasks: string[];
+  /** When no README says what the project is: what the code says instead (product name, keywords, parts, latest commits). */
+  clues?: string[];
 }
 
 /** The welcome as a plain template: what is used when no model could write it, and the shape of what the model is asked for. */
@@ -316,7 +326,7 @@ export function clampWelcome(s: string, max = WELCOME_CHARS): string {
 export async function welcomeMessage(ctx: SummaryCtx, facts: WelcomeFacts, cap: number): Promise<{ text: string; viaModel: boolean }> {
   const lines = [
     "<data>", `project: ${facts.name}`, facts.blurb ? `about: ${facts.blurb}` : "", `stack: ${facts.stack.join(", ")}`,
-    `size: ${facts.fileCount} files (${facts.analysed} read)`, `health: ${facts.health}`,
+    `size: ${facts.fileCount} files (${facts.analysed} read)`, `health: ${facts.health}`, ...(facts.clues ?? []).slice(0, 16).map((c) => `clue ${c}`),
     ...facts.tasks.slice(0, 6).map((t, i) => `candidate task ${i + 1}: ${t}`), "</data>",
   ].filter(Boolean);
   const r = await ask(

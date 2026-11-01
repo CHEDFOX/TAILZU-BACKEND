@@ -112,6 +112,35 @@ export function checkCitations(text: string, anchors: Anchors): Checked {
   return { text: out.trim(), kept, dropped };
 }
 
+/** A path in an answer: folders and a file with an extension, as a model writes one (with or without a line after it). */
+const PATH = /(?<![\w/.:@-])((?:[\w@.+-]+\/)+[\w@+-][\w@.+-]*\.[A-Za-z][A-Za-z0-9]{0,7})(?![\w/])/g;
+
+/** Paths in the text the project does not have, folders and all: what fixPaths may correct. */
+export function unknownPaths(text: string, has: (path: string) => boolean): string[] {
+  return [...new Set([...text.matchAll(PATH)].map((m) => m[1]!.replace(/^\.\//, "")).filter((p) => !has(p)))];
+}
+
+/**
+ * A path a model wrote with folders the project does not have ("live/liveViewMain.js" for a file at the root, its folder taken from a feature's
+ * name), put right when exactly one file in the project has that name; left as it is when none does or several do. Before the citations are
+ * checked, so a line cited in it is checked in the right file. Pure.
+ */
+export function fixPaths(text: string, all: readonly string[]): { text: string; fixed: Array<[string, string]> } {
+  const known = new Set(all);
+  const byName = new Map<string, string[]>();
+  for (const p of all) { const n = p.slice(p.lastIndexOf("/") + 1); const l = byName.get(n) ?? []; l.push(p); byName.set(n, l); }
+  const fixed: Array<[string, string]> = [];
+  const out = text.replace(PATH, (whole, p: string) => {
+    const path = p.replace(/^\.\//, "");
+    if (known.has(path)) return whole;
+    const same = byName.get(path.slice(path.lastIndexOf("/") + 1)) ?? [];
+    if (same.length !== 1) return whole;
+    if (!fixed.some(([a]) => a === path)) fixed.push([path, same[0]!]);
+    return same[0]!;
+  });
+  return { text: out, fixed };
+}
+
 /** The first "path:line" of every citation that stayed, as a list of unique `path:line` (a range is its first line). */
 export function keptLocations(kept: readonly string[]): string[] {
   return [...new Set(kept.map((k) => k.replace(/[-–]\d+$/, "")))];

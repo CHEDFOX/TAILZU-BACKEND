@@ -240,6 +240,16 @@ describe("entry points, CI, env vars, Docker, the README", () => {
     expect(structureOf({ "src/a.ts": "" }).readme).toBeNull();
   });
 
+  it("keeps what the manifest nearest the root says the project is: a project with no README still says this", () => {
+    const s = structureOf({
+      "package.json": pkg({ name: "tailzu-desktop", description: "X0 Bot desktop voice dictation:  hotkey, record, paste.", build: { productName: "X0 Bot" }, keywords: ["dictation", 3, "voice"] }),
+      "packages/ui/package.json": pkg({ name: "ui", description: "Buttons." }),
+    });
+    expect(s.about).toEqual({ path: "package.json", text: "X0 Bot desktop voice dictation: hotkey, record, paste.", product: "X0 Bot", keywords: ["dictation", "voice"] });
+    expect(structureOf({ "Cargo.toml": "[package]\nname = \"cli\"\ndescription = \"Finds dead links.\"\n" }).about?.text).toBe("Finds dead links.");
+    expect(structureOf({ "package.json": pkg({ name: "x" }) }).about).toBeNull();
+  });
+
   it("records secret files by path only", () => {
     const s = structureOf({ ".env": "SECRET=1", "keys/server.pem": "-----BEGIN", "a.ts": "" });
     expect(s.secretFiles).toEqual([".env", "keys/server.pem"]);

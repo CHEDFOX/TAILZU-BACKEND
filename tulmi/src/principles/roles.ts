@@ -241,12 +241,12 @@ const ROLE_TABLE = {
   index_features: {
     identity: "You name clusters of files in a repository as a person would; each <data> block is one.",
     principles: ["core.facts", "safe.data", "out.json"],
-    contract: '{"features":[{"id":"as given","name":"under 40 characters","summary":"one sentence under 200 characters"}]}',
+    contract: '{"features":[{"id":"as given","name":"under 40 characters","summary":"one sentence under 200 characters"}]}, one for every <data>',
   },
   welcome: {
     identity: "You write the first message a person sees after adding a project to a coding assistant.",
     principles: ["core.facts", "safe.data", "out.json"],
-    contract: '{"welcome":"plain friendly text, at most 800 characters, no headings: what the project is, stack, size, health, then 3 to 5 first tasks reworded from the candidates given, never others"}',
+    contract: '{"welcome":"plain friendly text, at most 800 characters, no headings: what it is (no about: a guess from the clues), stack, size, health, then 3 to 5 first tasks reworded from the candidates given, never others"}',
   },
 
   // ------------------------------------------------------------------ a new project (code/newproject)
@@ -364,7 +364,7 @@ const ROLE_TABLE = {
     principles: ["core.facts", "core.unsure", "core.lang", "safe.data", "safe.secrets", "eff.part", "code.cite", "code.impact", "out.short"],
     contract: "Look, then answer. If <brief> answers it, answer now. Else find what decides it: project_map for where things are, search_code or grep for exact names and every use, "
       + "read_file for whole functions by their lines; several calls at once; follow calls until every claim rests on lines you read. Then answer with no tool call: "
-      + "Markdown in their language, no headings, the answer first; cite path:line once per point, only lines you read. Broad: 2-4 plain sentences, then a few short bullets; "
+      + "Markdown in their language, no headings, the answer first, never about the brief or your tools; cite path:line once per point, only lines you read. Broad: 2-4 plain sentences, then a few short bullets; "
       + "narrow: exact names and values. Only if the question needs what you could not see, say so in one line. Propose no edit unless asked. "
       + "Last line: Next: two short follow-up questions, split by |.",
   },

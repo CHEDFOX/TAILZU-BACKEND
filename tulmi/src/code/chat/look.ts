@@ -20,7 +20,7 @@
  * little takes them back (onReset).
  */
 import type { ChatMessage, ToolCall, ToolDef } from "../brain/types.js";
-import { callModel } from "../brain/gateway.js";
+import { BudgetExceeded, callModel } from "../brain/gateway.js";
 import { compose } from "../../principles/roles.js";
 import type { CallFn } from "../work/model.js";
 import { cut } from "../work/model.js";
@@ -35,6 +35,8 @@ export const LOOK_STEPS_MAX = 5;
 export const LOOK_CALLS_PER_STEP = 6;
 export const LOOK_RESULT_CHARS = 6_000;
 export const LOOK_CHARS_MAX = 36_000;
+/** Past this share of the money, the next step is the answer: looking never spends what the answer needs (a large project's brief made the last call unaffordable). */
+export const LOOK_SPEND_SHARE = 0.6;
 
 export interface LookTools {
   defs: readonly ToolDef[];
@@ -120,7 +122,7 @@ export async function investigate(i: LookInput): Promise<Looked> {
     ? { onText: (piece: string) => { said = true; i.onText!(piece); }, onReset: () => { if (said) { said = false; i.onReset?.(); } } }
     : null;
   for (let step = 1; step <= LOOK_STEPS_MAX; step += 1) {
-    const last = step === LOOK_STEPS_MAX || chars >= LOOK_CHARS_MAX;
+    const last = step === LOOK_STEPS_MAX || chars >= LOOK_CHARS_MAX || (step > 1 && paise >= i.maxPaise * LOOK_SPEND_SHARE);
     const left = Math.max(1, i.maxPaise - paise);
     i.onStep?.(step === 1 ? "code:write" : "code:look");
     let res;
@@ -163,10 +165,28 @@ export async function investigate(i: LookInput): Promise<Looked> {
     for (const c of asked.slice(LOOK_CALLS_PER_STEP)) messages.push({ role: "tool", tool_call_id: c.id, content: `Skipped: at most ${LOOK_CALLS_PER_STEP} calls a step.` });
     messages.push({ role: "user", content: ledger(seen, greps, step) });
   }
-  // The money or the model ran out while looking: the last answer it can give, from what it has, without tools.
-  const res = await call({
-    tier: i.tier, messages: [...messages, { role: "user", content: "Answer now from what you have read, with no tool call." }], maxTokens: i.maxTokens, purpose: "front.code_answer",
-    userId: i.model.userId, budget: { maxPaise: Math.max(1, i.maxPaise - paise) }, ...(i.model.signal ? { signal: i.model.signal } : {}), ...(words ?? {}),
-  }, i.model.gateway).catch((err: unknown) => { if (isAbort(err)) throw err; return null; });
-  return { text: res?.text.trim() ?? "", reads: [...reads], greps, seen, paise: paise + (res?.paise ?? 0), steps: LOOK_STEPS_MAX };
+  // The money or the model ran out while looking: the last answer it can give, from what it has, with no tool call. The money's guard prices a call
+  // at its worst case, so what the tools returned is cut down until the answer fits (a refused call costs nothing); the lines read stay anchors.
+  for (const keep of FIT_KEEP) {
+    const res = await call({
+      tier: i.tier, messages: [...shrunk(messages, keep), { role: "user", content: "Answer now from what you have read, with no tool call." }], maxTokens: i.maxTokens,
+      purpose: "front.code_answer", userId: i.model.userId, budget: { maxPaise: Math.max(1, i.maxPaise - paise) }, tools: [...defs], toolChoice: "none" as const,
+      ...(i.model.signal ? { signal: i.model.signal } : {}), ...(words ?? {}),
+    }, i.model.gateway).catch((err: unknown) => { if (isAbort(err)) throw err; return err instanceof BudgetExceeded ? ("budget" as const) : null; });
+    if (res === "budget") continue;
+    return { text: res?.text.trim() ?? "", reads: [...reads], greps, seen, paise: paise + (res?.paise ?? 0), steps: LOOK_STEPS_MAX };
+  }
+  return { text: "", reads: [...reads], greps, seen, paise, steps: LOOK_STEPS_MAX };
+}
+
+/** How much of each tool result the last answer keeps, tried in turn until its worst case fits the money left (null: all of it). */
+const FIT_KEEP: ReadonlyArray<number | null> = [null, 2_000, 500, 0];
+
+/** The messages with every tool result cut to `keep` characters (null: as they are). */
+export function shrunk(messages: readonly ChatMessage[], keep: number | null): ChatMessage[] {
+  if (keep === null) return [...messages];
+  return messages.map((m) => {
+    if (m.role !== "tool" || typeof m.content !== "string" || m.content.length <= keep) return m;
+    return { ...m, content: keep ? `${m.content.slice(0, keep)}\n…(cut short: the answer has to fit the money left)` : "(left out: the answer has to fit the money left)" };
+  });
 }

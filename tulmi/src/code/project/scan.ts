@@ -51,6 +51,15 @@ function pipLine(line: string): [string, string] | null {
   return m ? [m[1]!.toLowerCase().replace(/_/g, "-"), (m[2] ?? "").replace(/\s+/g, "").trim()] : null;
 }
 
+/** The manifests that say what the project is in their own words. */
+export const DESCRIBED: ReadonlySet<string> = new Set(["npm", "pyproject", "cargo", "pubspec", "composer"]);
+
+/** What a manifest says the project is, in its own words: its description, the product's name, its keywords. Always set, so a kept entry without it is known to be old. */
+const described = (description: string, product: string, keywords: unknown[]): { description: string; product: string; keywords: string[] } => ({
+  description: description.replace(/\s+/g, " ").trim().slice(0, 300), product: product.trim().slice(0, 80),
+  keywords: keywords.filter((k): k is string => typeof k === "string" && !!k.trim()).map((k) => k.trim().slice(0, 40)).slice(0, 12),
+});
+
 /** What one core file says, in a form that is small and plain data. `kind` is snapshot.ts coreKindOf. */
 export function extractCore(path: string, kind: string, text: string): Record<string, unknown> {
   switch (kind) {
@@ -61,6 +70,7 @@ export function extractCore(path: string, kind: string, text: string): Record<st
       const bin = typeof j.bin === "string" ? [j.bin] : isObj(j.bin) ? Object.values(j.bin).filter((x): x is string => typeof x === "string") : [];
       return {
         name: asStr(j.name), private: j.private === true, main: asStr(j.main) || asStr(j.module), bin, type: asStr(j.type),
+        ...described(asStr(j.description), asStr(j.productName) || (isObj(j.build) ? asStr(j.build.productName) : ""), asArr(j.keywords)),
         scripts: strMap(j.scripts), deps: names(j.dependencies), devDeps: names(j.devDependencies), peerDeps: names(j.peerDependencies),
         depVersions: { ...strMap(j.devDependencies), ...strMap(j.dependencies) },
         workspaces: Array.isArray(ws) ? ws.filter((x): x is string => typeof x === "string") : isObj(ws) ? names(ws.packages) : null,
@@ -95,6 +105,7 @@ export function extractCore(path: string, kind: string, text: string): Record<st
       const build = isObj(t["build-system"]) ? asStr(t["build-system"]["build-backend"]) : "";
       return {
         name: asStr(project.name) || asStr(poetry.name),
+        ...described(asStr(project.description) || asStr(poetry.description), "", asArr(project.keywords ?? poetry.keywords)),
         deps, tools: Object.keys(tool), scripts: { ...strMap(project.scripts), ...strMap(poetry.scripts) },
         backend: build, requiresPython: asStr(project["requires-python"]),
         manager: tool.poetry ? "poetry" : tool.uv ? "uv" : tool.pdm ? "pdm" : tool.hatch ? "hatch" : "pip",
@@ -111,7 +122,7 @@ export function extractCore(path: string, kind: string, text: string): Record<st
       const pkg = isObj(t.package) ? t.package : {};
       const ws = isObj(t.workspace) ? t.workspace : {};
       return {
-        name: asStr(pkg.name), deps: names(t.dependencies), dev: names(t["dev-dependencies"]),
+        name: asStr(pkg.name), ...described(asStr(pkg.description), "", asArr(pkg.keywords)), deps: names(t.dependencies), dev: names(t["dev-dependencies"]),
         members: asArr(ws.members).filter((x): x is string => typeof x === "string"),
         bins: asArr(t.bin).flatMap((b) => (isObj(b) && typeof b.name === "string" ? [b.name] : [])),
         hasWorkspace: isObj(t.workspace),
@@ -122,7 +133,7 @@ export function extractCore(path: string, kind: string, text: string): Record<st
       if (!isObj(y)) return {};
       const dependencies = isObj(y.dependencies) ? y.dependencies : {};
       return {
-        name: asStr(y.name), deps: Object.keys(dependencies), devDeps: names(y.dev_dependencies),
+        name: asStr(y.name), ...described(asStr(y.description), "", []), deps: Object.keys(dependencies), devDeps: names(y.dev_dependencies),
         flutter: "flutter" in dependencies || isObj(y.flutter), depVersions: strMap(dependencies),
       };
     }
@@ -130,7 +141,7 @@ export function extractCore(path: string, kind: string, text: string): Record<st
     case "composer": {
       const j = parseJsonc(text);
       if (!isObj(j)) return {};
-      return { name: asStr(j.name), deps: names(j.require), devDeps: names(j["require-dev"]), scripts: strMap(j.scripts), depVersions: { ...strMap(j["require-dev"]), ...strMap(j.require) } };
+      return { name: asStr(j.name), ...described(asStr(j.description), "", asArr(j.keywords)), deps: names(j.require), devDeps: names(j["require-dev"]), scripts: strMap(j.scripts), depVersions: { ...strMap(j["require-dev"]), ...strMap(j.require) } };
     }
     case "gradle": {
       const deps = [...text.matchAll(/(?:implementation|api|compileOnly|runtimeOnly|testImplementation|kapt|ksp|classpath)\s*\(?\s*["']([\w.-]+:[\w.-]+)/g)].map((m) => m[1]!);
@@ -658,6 +669,11 @@ export function buildStructure(input: ScanInput): Structure {
   const readmes = Object.entries(core).filter(([, e]) => e.kind === "readme").sort((a, b) => a[0].split("/").length - b[0].split("/").length || (a[0] < b[0] ? -1 : 1));
   const readme = readmes[0] ? { path: readmes[0][0], title: asStr(get(readmes[0][1]).title), blurb: asStr(get(readmes[0][1]).blurb) } : null;
 
+  // The manifest nearest the root that says, in its own words, what the project is: a project with no README still has this.
+  const about = Object.entries(core).filter(([path, e]) => DESCRIBED.has(e.kind) && !isVendoredPath(path) && (asStr(get(e).description) || asStr(get(e).product)))
+    .sort((a, b) => a[0].split("/").length - b[0].split("/").length || (a[0] < b[0] ? -1 : 1))
+    .map(([path, e]) => ({ path, text: asStr(get(e).description), product: asStr(get(e).product), keywords: strs(get(e).keywords) }))[0] ?? null;
+
   const languages = languageShares(tree);
   const sizes = [...tree.files.values()].reduce((n, f) => n + f.size, 0);
 
@@ -667,7 +683,7 @@ export function buildStructure(input: ScanInput): Structure {
     fileCount: tree.files.size, analysedCount: input.analysedCount, totalBytes: sizes,
     languages, packageManagers: managers, lockfiles: [...input.lockfiles].slice(0, 40), frameworks: frameworks.slice(0, 30),
     monorepo, entryPoints: entryPointsOf(input, packages), commands: commandsOf(input, managers, packages),
-    ci: ciFiles.slice(0, 30), envVars, docker, readme,
+    ci: ciFiles.slice(0, 30), envVars, docker, readme, about,
     secretFiles: [...input.secretFiles].slice(0, 50), skipped: input.skipped,
     testing: { frameworks: [], testFiles: 0, untestedHot: [] },
     core, skippedBlobs: input.skippedBlobs,

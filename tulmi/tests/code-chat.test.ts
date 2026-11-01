@@ -382,6 +382,28 @@ describe("the conversation", () => {
   });
 });
 
+describe("the project book in the chat", () => {
+  it("drops an earlier answer the owner has spoken since, and gives the owner's words as the newer", async () => {
+    const r = await chatRig();
+    const threadId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    let book: import("../src/code/project/book.js").ProjectBook | null = null;
+    (r.a.fixture.brain as { book?: () => Promise<unknown> }).book = async () => book;
+    r.a.json.on("front.code_answer", "There is no roadmap, so I cannot say where the session code is heading.");
+    await r.ask("where is the session code heading next?", { threadId });
+    r.a.json.on("front.code_answer", "The login route: src/routes/login.ts:4.");
+    await r.ask("where is the login route?", { threadId });
+    // The owner then says what comes next, in the book, and the first question is asked again.
+    r.a.fake.clock.t += 60_000;
+    book = { version: 1, project: "alice/app", commit: "f".repeat(40), builtAt: r.a.now(), gaps: [], questions: [],
+      facts: [{ chapter: "direction", text: "Next, in the owner's words: refresh tokens for the session", source: { kind: "owner", ref: "the owner" }, status: "confirmed", at: r.a.now() }] };
+    r.a.json.on("front.code_answer", "Next: refresh tokens for the session.");
+    await r.ask("where is the session code heading next?", { threadId });
+    const sent = said(r, 2).user;
+    expect(sent).not.toContain("There is no roadmap");
+    expect(sent).toContain("[Where it is heading] Next, in the owner's words: refresh tokens for the session (the owner said: newer than the README, the docs and any earlier answer, and right where they differ)");
+  });
+});
+
 describe("ok, change it", () => {
   it("hands the job the place the conversation found, as the chat's, and the agent does not look for it again", async () => {
     const r = await chatRig();

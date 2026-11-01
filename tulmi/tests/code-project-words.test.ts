@@ -391,6 +391,24 @@ describe("summaries of folders, the repo and the features", () => {
     expect((await labelFeatures(ctx, [], 1000)).features).toEqual([]);
   });
 
+  it("asks once more for the clusters a model left out, and only those", async () => {
+    const { ctx, model } = ctxOf();
+    const mk = (name: string): import("../src/code/project/types.js").Feature => ({ key: name, name, summary: "plain", files: [`src/${name}/a.ts`], fileCount: 1, routes: [], texts: [] });
+    let n = 0;
+    // A cheap model that names the first block and stops.
+    const lazy = { ...ctx, call: (async (input: never, gw: never) => {
+      const r = await (ctx.call as (i: never, g: never) => Promise<{ json?: { features: unknown[] } }>)(input, gw);
+      if (n++ === 0 && r.json) r.json = { features: r.json.features.slice(0, 1) };
+      return r;
+    }) as typeof ctx.call };
+    const r = await labelFeatures(lazy, [mk("auth"), mk("billing"), mk("search")], 1000);
+    expect(r.features.map((f) => f.name)).toEqual(["Feature 1", "Feature 2", "Feature 3"]);
+    expect(r.labelled).toBe(true);
+    expect(model.sent).toHaveLength(2);
+    expect(model.sent[1]).not.toContain('<data id="1">');
+    expect(model.sent[1]).toContain('<data id="2">');
+  });
+
   it("cleans a line: control characters, spaces, 240 characters, and a secret", () => {
     expect(cleanSummary("a\u0000b\n\nc")).toBe("a b c");
     expect(cleanSummary("ab")).toBeNull();
@@ -416,6 +434,15 @@ describe("the welcome message and the first tasks", () => {
     expect(w.text.length).toBeLessThanOrEqual(900);
     expect(model.sent[0]).toContain("candidate task 1: Add tests for src/lib/api.ts");
     expect(model.sent[0]).toContain("health: not checked yet");
+  });
+
+  it("with no README, is given what the code says instead", async () => {
+    const { model, ctx } = ctxOf();
+    model.welcome = "This seems to be a desktop dictation app built with Electron.";
+    await welcomeMessage(ctx, { ...facts, blurb: "", clues: ["part: Recorder, records the mic", "recent commit: fix: paste into the focused field"] }, 1000);
+    expect(model.sent[0]).not.toContain("\nabout:");
+    expect(model.sent[0]).toContain("clue part: Recorder, records the mic");
+    expect(model.sent[0]).toContain("clue recent commit: fix: paste into the focused field");
   });
 
   it("is a plain template, still within 900 characters, when no model could write it", async () => {
