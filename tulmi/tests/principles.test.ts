@@ -44,6 +44,7 @@ const { SplitReply } = await import("../src/code/team/split.js");
 const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
+const { AskDecideReply } = await import("../src/askDecide/index.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
@@ -284,6 +285,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   team_review: 1406, // 1278 measured
   bot_builder: 1572, // 1429 measured
   bot_pick: 809, // 736 measured
+  ask_decide: 1709, // 1554 measured
   bot_run: 1516, // 1379 measured
   bot_memory: 1163, // 1058 measured
   widget_digest: 853, // 776 measured
@@ -362,6 +364,7 @@ describe("the contracts say what the parsers read", () => {
     ["team_review", PartReviewVerdict],
     ["bot_builder", BotDraftReply],
     ["bot_pick", BotPickReply],
+    ["ask_decide", AskDecideReply],
     ["bot_memory", BotMemoryReply],
     ["widget_digest", DigestReply],
   ];
