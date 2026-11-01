@@ -227,6 +227,8 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
   let webCalls = 0;
   const webNames = new Set((ports.web?.defs ?? []).map((d) => d.name));
   const anchors = new Anchors();
+  // What earlier turns read stays citable: a follow-up ("??", "why?") answers from those lines without reading them again.
+  if (input.thread?.seen?.length) anchors.earlier(input.thread.seen);
   const acts: Acts = {
     // A question back with answers to tap settles a change before work; anything else is answered (it may still ask in words, and offer what next).
     defs: [...CHAT_ACTS.filter((d) => (d.name !== "project_book" || brain.book) && (d.name !== "show_file" || ports.read) && (d.name !== "ask_person" || input.change)), ...(ports.web?.defs ?? [])],

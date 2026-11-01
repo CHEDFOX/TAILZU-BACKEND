@@ -363,7 +363,16 @@ export function extractTexts(path: string, lang: string, text: string): TextHit[
     if (seen.has(k)) continue;
     seen.add(k);
     out.push(h);
-    if (out.length >= TEXTS_PER_FILE) break;
   }
-  return out.sort((a, b2) => a.line - b2.line);
+  // More than a file may keep (a catalog of 500 strings): the ones a person reads as words are kept, not the first ones met. What the code
+  // says when it refuses or fails, then sentences, then the longest; a catalog lists its one-word labels before its messages.
+  const kept = out.length <= TEXTS_PER_FILE ? out : out.map((h, i) => ({ h, i, w: worth(h) })).sort((a, b) => b.w - a.w || a.i - b.i).slice(0, TEXTS_PER_FILE).map((x) => x.h);
+  return kept.sort((a, b2) => a.line - b2.line);
+}
+
+/** How much of what a person reads a string is: a message of the code first, then by its words (a sentence over a label). */
+function worth(h: TextHit): number {
+  const said = h.text.replace(/^[\w.[\]-]+: /, "");
+  const words = said.split(/\s+/).filter((w) => /\p{L}/u.test(w)).length;
+  return (h.kind === "message" ? 100 : 0) + Math.min(words, 30) + (/[.!?…]$/.test(said) ? 5 : 0);
 }

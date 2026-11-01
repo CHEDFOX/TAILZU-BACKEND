@@ -227,7 +227,9 @@ function judge(c: Case, r: FrontResult | null, error: string, all: Set<string>, 
   for (const re of c.not ?? []) checks.push([`never says ${re.source}`, !re.test(text)]);
   if (c.max) checks.push([`at most ${c.max} chars`, text.length <= c.max]);
   const named = [...text.matchAll(PATH)].map((m) => m[1]!.replace(/^\.\//, ""));
-  const ends = (p: string): boolean => all.has(p) || [...all].some((f) => f.endsWith(`/${p}`)) || inCode.includes(p);
+  // A new file in a folder the project has is a proposal ("add backend/app/api/routes/teams.py"), not a made-up path; a folder it lacks is.
+  const folders = new Set([...all].map((f) => f.slice(0, f.lastIndexOf("/") + 1)));
+  const ends = (p: string): boolean => all.has(p) || [...all].some((f) => f.endsWith(`/${p}`)) || inCode.includes(p) || (p.includes("/") && folders.has(p.slice(0, p.lastIndexOf("/") + 1)));
   const wrong = named.filter((p) => !ends(p));
   checks.push([`paths real${wrong.length ? ` (not: ${[...new Set(wrong)].slice(0, 3).join(", ")})` : ""}`, !wrong.length]);
   checks.push(["clean", !LEAK.test(text)]);
