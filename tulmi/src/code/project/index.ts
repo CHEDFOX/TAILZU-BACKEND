@@ -38,7 +38,9 @@ import { withFallback } from "../../guard/timing.js";
 import { assertAccess, ownProject, repoRef, type ProjectDeps } from "../projects.js";
 import type { CodeProject } from "../store.js";
 import { baselinePlan } from "./baseline.js";
-import { runBuild, type BuildMode, type ProjectBrainDeps } from "./build.js";
+import { classOf, isTestPath } from "./lang.js";
+import { readEstimate, type ReadEstimate } from "./summarize.js";
+import { runBuild, type BuildMode, type ProjectBrainDeps, type ReadDepth } from "./build.js";
 import { aggregateHistory, coChanged, rankHotspots } from "./hotspots.js";
 import { RepoGraph, mapFiles, type MapHit, type MapOptions, type MapSeeds } from "./repomap.js";
 import { declaredDeps, type DeclaredDep } from "./registry.js";
@@ -53,12 +55,12 @@ import { buildMap, type ProjectMap } from "./map.js";
 import { buildBook, cleanAnswers, type ProjectBook } from "./book.js";
 import { mapAfterChanges, type MapChange } from "./mapupdate.js";
 export { memoryMarkdown, withBaseline } from "./memory.js";
-export { buildMap, checkSymbol, checkSymbols, findInMap, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap, type SymbolCheck } from "./map.js";
+export { buildMap, checkSymbol, checkSymbols, componentCard, findInMap, keepMeanings, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap, type SymbolCheck } from "./map.js";
 export { bookBrief, bookForJobs, bookMarkdown, buildBook, cleanAnswers, CHAPTERS, CHAPTER_TITLES, OWNER_QUESTIONS, type BookFact, type Chapter, type OwnerAnswers, type ProjectBook } from "./book.js";
 export { gitBlobSha, mapAfterChanges, MAP_DIR, type MapChange } from "./mapupdate.js";
 export { baselinePlan, recordBaseline } from "./baseline.js";
 export { diffSnapshots } from "./merkle.js";
-export type { BuildMode, ProjectBrainDeps } from "./build.js";
+export type { BuildMode, ProjectBrainDeps, ReadDepth } from "./build.js";
 export type { DeclaredDep } from "./registry.js";
 export type { BaselineResult, BrainView, Feature, Hotspot, StoredFile, StoredText, SymbolInfo } from "./types.js";
 export { MemoryProjectBrainStore, SupabaseProjectBrainStore, projectBrainStore, resetProjectBrainStoreForTests } from "./store.js";
@@ -133,7 +135,7 @@ export interface CreateProjectBrainOptions {
 
 /** Where a build is handed: the Worker's BuildBrain Workflow, by HTTP from the VPS (code/jobs/handoff/client.ts) or by binding on the Worker. Asking twice for one head is one build. */
 export interface BrainRemote {
-  build(b: { userId: string; projectId: string; mode: BuildMode; headSha: string }): Promise<void>;
+  build(b: { userId: string; projectId: string; mode: BuildMode; headSha: string; depth?: ReadDepth; budgetPaise?: number }): Promise<void>;
 }
 
 /**
@@ -158,7 +160,7 @@ async function handOverBuild(d: BrainRuntime, remote: BrainRemote, userId: strin
   const headSha = await d.projects.github.branchHead(repoRef(d.projects, userId, project), project.defaultBranch);
   await d.store.saveBrain(project.id, { status: "building", progress: { pct: 0, phase: "starting" }, error: "" });
   try {
-    await remote.build({ userId, projectId: project.id, mode, headSha });
+    await remote.build({ userId, projectId: project.id, mode, headSha, ...(o.depth ? { depth: o.depth } : {}), ...(o.budgetPaise ? { budgetPaise: o.budgetPaise } : {}) });
   } catch {
     await d.store.saveBrain(project.id, { status: "failed", progress: { pct: 0, phase: "" }, error: "The build could not be started. Start it again in a little while." });
   }
@@ -215,6 +217,13 @@ export interface StartOptions {
    * runs it): so a "building" row that moved recently is not another server's work to be left alone, it is this one's to do.
    */
   handedOver?: boolean;
+  /**
+   * How much of the project's code the index's model reads: "quick" (the default) the most central files, each up to QUICK_FILE_CHARS; "full"
+   * every source file whole, every part described. A project read in full stays full: its later builds describe whatever changed.
+   */
+  depth?: ReadDepth;
+  /** What this build may spend, instead of CODE_IMPORT_BUDGET_PAISE (a full read the person agreed to, at its estimate). */
+  budgetPaise?: number;
 }
 
 /**
@@ -247,7 +256,7 @@ async function startFor(d: BrainRuntime, userId: string, project: CodeProject, o
   await d.store.saveBrain(project.id, { status: "building", progress: { pct: 0, phase: "starting" }, error: "" });
   const begun = book.start(
     project.id,
-    async () => (await runBuild(d, userId, project, mode, row)).row,
+    async () => (await runBuild(d, userId, project, mode, row, { ...(o.depth ? { depth: o.depth } : {}), ...(o.budgetPaise ? { budgetPaise: o.budgetPaise } : {}) })).row,
     // The build that follows one that ran while a push came: the row it left is the base.
     async () => {
       const base = await d.store.getBrain(project.id);
@@ -354,6 +363,8 @@ export interface BrainHandle {
   file(path: string): Promise<StoredFile | null>;
   /** The paths of the analysed files, in order, at most `limit` (5,000 unless told otherwise). */
   paths(limit?: number): Promise<string[]>;
+  /** What reading the whole project would cost and take (summarize.ts readEstimate), and whether it was read whole. */
+  readEstimate(): Promise<ReadEstimate>;
   feature(name: string): Promise<Feature | null>;
   features(): Promise<Feature[]>;
   /** The files changed most, carrying TODOs, central and untested: where to be careful. */
@@ -462,6 +473,10 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
     async testsFor(path) { return (await store.getFile(id, path))?.tests ?? []; },
     async file(path) { return typeof path === "string" && path ? store.getFile(id, path) : null; },
     async paths(limit = 5000) { return (await store.listFiles(id)).slice(0, Math.max(0, limit)).map((f) => f.path); },
+    async readEstimate() {
+      const [b, files] = await Promise.all([row(), store.listFiles(id)]);
+      return readEstimate(files, b?.structure?.read ?? "quick", (p) => classOf(p) === "source" && !isTestPath(p));
+    },
     async features() { return (await row())?.features ?? []; },
     async feature(name) {
       const all = (await row())?.features ?? [];

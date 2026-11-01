@@ -167,7 +167,7 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
         return { skip: false, reason: "" };
       },
       async build(b) {
-        const view = await brain.buildHere(b.userId, b.projectId, { mode: b.mode });
+        const view = await brain.buildHere(b.userId, b.projectId, { mode: b.mode, ...(b.depth ? { depth: b.depth } : {}), ...(b.budgetPaise ? { budgetPaise: b.budgetPaise } : {}) });
         return { status: view.status, headSha: view.headSha, spentPaise: view.spentPaise };
       },
     },

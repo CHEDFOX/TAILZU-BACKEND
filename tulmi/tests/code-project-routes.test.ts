@@ -79,6 +79,25 @@ async function ready() {
   return { r, ...s };
 }
 
+describe("GET and POST /v1/code/projects/:id/brain/read", () => {
+  it("says what reading the whole project would cost and take, then reads it: every part with words, and the project stays read in full", async () => {
+    const { r, call, app } = await ready();
+    const est = await call("alice", "GET", `/v1/code/projects/${r.projectId}/brain/read`);
+    expect(est.statusCode).toBe(200);
+    expect(est.json()).toMatchObject({ read: "quick", files: expect.any(Number), paise: expect.any(Number), minutes: expect.any(Number) });
+    expect(est.json().described).toBeLessThanOrEqual(est.json().parts);
+    const res = await call("alice", "POST", `/v1/code/projects/${r.projectId}/brain/read`);
+    expect(res.statusCode).toBe(202);
+    expect(res.json().estimate).toMatchObject({ read: "quick" });
+    await vi.waitFor(async () => expect((await call("alice", "GET", `/v1/code/projects/${r.projectId}/brain`)).json().status).toBe("ready"));
+    const after = (await call("alice", "GET", `/v1/code/projects/${r.projectId}/brain/read`)).json();
+    expect(after).toMatchObject({ read: "full" });
+    expect(after.described).toBe(after.parts);
+    expect((await call("bob", "GET", `/v1/code/projects/${r.projectId}/brain/read`)).statusCode).toBe(404);
+    await app.close();
+  });
+});
+
 describe("POST and GET /v1/code/projects/:id/brain", () => {
   it("starts a build and answers 202 with the status at once; the build goes on in the background", async () => {
     const r = await projectRig();
