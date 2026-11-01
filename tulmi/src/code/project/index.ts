@@ -390,7 +390,7 @@ const maps = new Map<string, { key: string; map: ProjectMap }>();
 /** Books made, by project: made again when the branch moves, the owner answers, or after BOOK_FRESH_MS (issues and pull requests move on their own). */
 const books = new Map<string, { key: string; at: number; book: ProjectBook }>();
 const BOOK_FRESH_MS = 30 * 60_000;
-const BOOK_DOC = /(^|\/)(?:roadmap|plans?|todo)\.(?:md|txt)$|^readme\.md$/i;
+const BOOK_DOC = /(^|\/)(?:roadmap|plans?|todo|backlog|[\w-]*gaps|architecture|overview|design)\.(?:md|txt)$|^readme\.md$/i;
 
 export function resetRepoGraphsForTests(): void { graphs.clear(); maps.clear(); }
 
@@ -514,7 +514,7 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       const safe = <T>(f: (repo: ReturnType<typeof repoRef>) => Promise<T>): Promise<T | null> =>
         Promise.resolve().then(() => f(repoRef(d.projects, userId, project))).catch(() => null);
       const files = await store.listFiles(id);
-      const docPaths = files.map((f) => f.path).filter((p) => BOOK_DOC.test(p)).slice(0, 3);
+      const docPaths = files.map((f) => f.path).filter((p) => BOOK_DOC.test(p)).slice(0, 6);
       const [commits, merged, open, issues, milestones, docs, map] = await Promise.all([
         safe((r) => gh.recentCommits(r, project.defaultBranch, 100)), safe((r) => gh.pullsOf(r, "merged", 30)), safe((r) => gh.pullsOf(r, "open", 20)),
         safe((r) => gh.openIssues(r, 50)), safe((r) => gh.milestonesOf(r)),

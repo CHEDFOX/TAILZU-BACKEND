@@ -177,11 +177,19 @@ export function extractCore(path: string, kind: string, text: string): Record<st
         title = alt >= 0 ? lines[alt]!.trim() : "";
       }
       let blurb = "";
-      for (const l of lines) {
-        const t = l.trim();
-        if (!t || /^[#>!<[|=\-`*]/.test(t) || /^(?:\[!|<img|<p|<div|<a )/i.test(t)) continue;
-        blurb = t.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[`*_]/g, "").slice(0, 220);
-        break;
+      const plain = (t: string) => !!t && !/^[#>!<[|=\-`*]/.test(t) && !/^(?:\[!|<img|<p|<div|<a )/i.test(t);
+      const at = lines.findIndex((l) => plain(l.trim()));
+      if (at >= 0) {
+        // The whole first paragraph, its wrapped lines joined ("point it at your / screen" was cut at the line), cut at a sentence or a word.
+        const para: string[] = [];
+        for (const l of lines.slice(at)) { const t = l.trim(); if (!plain(t)) break; para.push(t); }
+        const joined = para.join(" ").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[`*_]/g, "").replace(/\s+/g, " ").trim();
+        if (joined.length <= 220) blurb = joined;
+        else {
+          const cut = joined.slice(0, 220);
+          const stop = cut.lastIndexOf(". ");
+          blurb = stop >= 30 ? cut.slice(0, stop + 1) : `${cut.slice(0, Math.max(cut.lastIndexOf(" "), 80)).trim()}…`;
+        }
       }
       return { title: title.slice(0, 120), blurb };
     }

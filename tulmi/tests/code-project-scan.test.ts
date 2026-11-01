@@ -232,6 +232,10 @@ describe("entry points, CI, env vars, Docker, the README", () => {
 
   it("takes the README's title and first sentence, from # or an underline", () => {
     expect(structureOf({ "README.md": "# Acme **Shop**\n\n[![ci](x)](y)\n\nA small shop for [people](https://x).\n" }).readme).toEqual({ path: "README.md", title: "Acme Shop", blurb: "A small shop for people." });
+    // A paragraph wrapped over lines is one blurb, cut at a sentence when it is long.
+    expect(structureOf({ "README.md": "# Tulmi\n\nYour AI language layer for the phone. Speak, type, or point it at your\nscreen, and it turns rough input into clean text.\n\n## Next\n" }).readme!.blurb)
+      .toBe("Your AI language layer for the phone. Speak, type, or point it at your screen, and it turns rough input into clean text.");
+    expect(structureOf({ "README.md": `# T\n\nFirst sentence that is long enough to keep here. ${"word ".repeat(60)}\n` }).readme!.blurb).toBe("First sentence that is long enough to keep here.");
     expect(structureOf({ "README.md": "Acme\n====\n\nHello there.\n" }).readme?.title).toBe("Acme");
     expect(structureOf({ "src/a.ts": "" }).readme).toBeNull();
   });
