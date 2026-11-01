@@ -177,3 +177,24 @@ describe("keeping the owner's answers", () => {
     expect(sb.tables.code_brain![0]!.book).toEqual({ owner: { keep: "The API", at: NOW } });
   });
 });
+
+describe("what a real project taught it (chedfox/tailzu-backend)", () => {
+  it("reads a commit body's reason as one sentence, though it is wrapped", () => {
+    expect(reasonsIn("Checks run install, build, typecheck, lint, test: lint failed before a\nchange and passed after only because the build ran last.\n\n- second point")).toEqual([
+      "Checks run install, build, typecheck, lint, test: lint failed before a change and passed after only because the build ran last.",
+    ]);
+  });
+
+  it("keeps only what is still missing from a gaps list, and marks a roadmap's done items", () => {
+    expect(planLines("docs/bots-gaps.md", "- ✓ Delete account deletes at once\n- Keyboard settings not applied\n- ~~Old thing~~\n")).toEqual(["Open: Keyboard settings not applied"]);
+    expect(planLines("ROADMAP.md", "- ✓ Cart\n- Gift cards\n")).toEqual(["Done: Cart", "Planned: Gift cards"]);
+  });
+
+  it("names the folders the work went to, deep enough to say something", async () => {
+    const { busiestAreas } = await import("../src/code/project/book.js");
+    const commits = [["tulmi/src/bots/a.ts"], ["tulmi/src/bots/b.ts"], ["tulmi/src/code/c.ts"], ["tulmi/tests/x.test.ts"]];
+    // "tulmi/src" holds 3 of the 4 commits, so it is split one level down; a file that is not that deep counts for no folder.
+    expect(busiestAreas(commits, 3)).toEqual([["tulmi/src/bots", 2], ["tulmi/src/code", 1]]);
+    expect(busiestAreas([["a/b/c.ts"], ["d/e/f.ts"]], 3)).toEqual([["a/b", 1], ["d/e", 1]]);
+  });
+});

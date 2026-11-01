@@ -1590,7 +1590,7 @@ export class GithubApp {
   }
 
   /** The newest commits on a branch, newest first: sha, first line of the message, when. `perPage` is GitHub's, 100 at most. */
-  async recentCommits(repo: RepoRef, branch: string, perPage = 100): Promise<Array<{ sha: string; message: string; at: number }>> {
+  async recentCommits(repo: RepoRef, branch: string, perPage = 100): Promise<Array<{ sha: string; message: string; at: number; body: string }>> {
     const n = Math.min(Math.max(Math.trunc(perPage) || 1, 1), 100);
     const r = await this.rsend(repo, "GET", `${this.path(repo)}/commits?sha=${encodeURIComponent(refName(branch))}&per_page=${n}`);
     if (r.status !== 200 || !Array.isArray(r.json)) throw githubError(r.status, r.json, "the branch's history");
@@ -1598,7 +1598,9 @@ export class GithubApp {
       .filter((c: any) => c && typeof c.sha === "string")
       .map((c: any) => {
         const at = Date.parse(String(c.commit?.author?.date ?? c.commit?.committer?.date ?? ""));
-        return { sha: c.sha as string, message: String(c.commit?.message ?? "").split("\n")[0]!.slice(0, 200), at: Number.isFinite(at) ? at : 0 };
+        const full = String(c.commit?.message ?? "");
+        // The first line is the message; the rest, cut, is what a commit says of why (the project book reads its reasons).
+        return { sha: c.sha as string, message: full.split("\n")[0]!.slice(0, 200), at: Number.isFinite(at) ? at : 0, body: full.split("\n").slice(1).join("\n").trim().slice(0, 2000) };
       });
   }
 

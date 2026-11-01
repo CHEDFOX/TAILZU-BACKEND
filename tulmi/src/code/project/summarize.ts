@@ -293,7 +293,8 @@ export interface WelcomeFacts {
 
 /** The welcome as a plain template: what is used when no model could write it, and the shape of what the model is asked for. */
 export function fallbackWelcome(f: WelcomeFacts): string {
-  const head = `${f.name}${f.blurb ? `: ${f.blurb}` : ""}`.slice(0, 220);
+  // The blurb is already cut at a sentence or a word (scan.ts): cut again here, it lost the end of a word ("best-in-cl.").
+  const head = `${f.name}${f.blurb ? `: ${f.blurb.replace(/[.…]+$/, "")}` : ""}`;
   const stack = f.stack.length ? ` Built with ${f.stack.slice(0, 6).join(", ")}.` : "";
   const size = ` ${f.fileCount.toLocaleString("en-US")} files${f.analysed && f.analysed < f.fileCount ? `, ${f.analysed.toLocaleString("en-US")} read` : ""}. Health: ${f.health}.`;
   const tasks = f.tasks.length ? ` To start: ${f.tasks.slice(0, 5).map((t, i) => `${i + 1}) ${t}`).join(" ")}` : "";

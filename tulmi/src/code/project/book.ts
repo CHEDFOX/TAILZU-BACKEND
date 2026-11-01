@@ -64,7 +64,7 @@ export interface BookInput {
   files: readonly StoredFile[];
   map: ProjectMap | null;
   /** The newest commits of the default branch, newest first; null when they could not be read. */
-  commits: ReadonlyArray<{ sha: string; message: string; at: number }> | null;
+  commits: ReadonlyArray<{ sha: string; message: string; at: number; body?: string }> | null;
   /** The brain's kept history: the files each commit touched. */
   history: readonly CommitRecord[];
   merged: readonly PullSummary[] | null;
@@ -105,10 +105,12 @@ export function buildBook(i: BookInput): ProjectBook {
     const langs = st.languages.slice(0, 4).map((l) => `${l.lang} ${Math.round(l.pct)}%`).join(", ");
     if (langs) add("build", `Written in ${langs}, ${plural(st.fileCount, "file")}.`, index("languages"));
     if (st.frameworks.length) add("build", `Built with ${st.frameworks.slice(0, 6).join(", ")}.`, index("frameworks"));
-    if (st.monorepo) add("build", `A ${st.monorepo.tool} monorepo of ${plural(st.monorepo.packages.length, "package")}: ${st.monorepo.packages.slice(0, 8).map((p) => p.name).join(", ")}.`, index("monorepo"));
-    for (const e of st.entryPoints.slice(0, 4)) add("build", `Starts at ${e.path} (${e.why}).`, { kind: "file", ref: e.path });
+    if (st.monorepo) add("build", `${/repo\b/i.test(st.monorepo.tool) ? `A ${st.monorepo.tool}` : `A ${st.monorepo.tool} monorepo`} of ${plural(st.monorepo.packages.length, "package")}: ${st.monorepo.packages.slice(0, 8).map((p) => p.name).join(", ")}.`, index("monorepo"));
+    for (const e of st.entryPoints.filter((x) => !ASIDE.test(x.path)).slice(0, 4)) add("build", `Starts at ${e.path} (${e.why}).`, { kind: "file", ref: e.path });
     if (st.ci.length) add("build", `CI: ${st.ci.slice(0, 4).join(", ")}.`, index("ci"));
   }
+  // The owners' own overview of how it is built, when they wrote one.
+  for (const [path, text] of Object.entries(i.docs)) if (ARCH_DOC.test(path)) { const p = firstParagraph(text); if (p) add("build", p, { kind: "file", ref: path }); }
 
   // ------------------------------------------------------------------ how it stands now
   const base = i.view.baseline;
@@ -128,11 +130,12 @@ export function buildBook(i: BookInput): ProjectBook {
     const todo = source.reduce((n, f) => n + f.todo, 0);
     if (todo) {
       const top = source.filter((f) => f.todo).sort((a, b) => b.todo - a.todo).slice(0, 3);
-      add("state", `${plural(todo, "TODO or FIXME", "TODOs and FIXMEs")} in the code, most in ${top.map((f) => `${f.path} (${f.todo})`).join(", ")}.`, index("todo"));
+      add("state", `${plural(todo, "TODO or FIXME", "TODOs and FIXMEs")} in the code, ${top[0]!.todo > 1 ? "most in" : "in"} ${top.map((f) => (top[0]!.todo > 1 ? `${f.path} (${f.todo})` : f.path)).join(", ")}.`, index("todo"));
     }
   }
   if (i.map) {
-    const unused = Object.values(i.map.components).filter((c) => c.live === false);
+    // Only code that is reached by imports: a shell script, a SQL file or a workflow is run by name, and nothing ever imports it.
+    const unused = Object.values(i.map.components).filter((c) => c.live === false && IMPORTED.test(c.path) && !ASIDE.test(c.path));
     if (unused.length) add("state", `${plural(unused.length, "file")} nothing reaches from the entry points, such as ${unused.slice(0, 3).map((c) => c.path).join(", ")}.`, index("project map"), "guessed");
   }
 
@@ -145,12 +148,13 @@ export function buildBook(i: BookInput): ProjectBook {
     if (recent.length) {
       const kinds = new Map<string, number>();
       for (const c of recent) { const k = /^(feat|fix|refactor|docs|test|chore|perf|build|ci|style)(?:\(|!|:)/i.exec(c.message)?.[1]?.toLowerCase(); if (k) kinds.set(k, (kinds.get(k) ?? 0) + 1); }
-      const kindLine = [...kinds].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${KIND_WORDS[k] ?? k}`).join(", ");
-      add("recent", `${plural(recent.length, "commit")} in the last ${RECENT_DAYS} days${kindLine ? `: ${kindLine}` : ""}.`, { kind: "commit", ref: `${recent.at(-1)!.sha.slice(0, 7)}..${last.sha.slice(0, 7)}` });
+      // The kinds only when the project names them (feat:, fix:): four "docs:" among a hundred commits is not what the month was.
+      const named = [...kinds.values()].reduce((a, b) => a + b, 0);
+      const kindLine = named >= recent.length * 0.3 ? [...kinds].sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} ${KIND_WORDS[k] ?? k}`).join(", ") : "";
+      const all = recent.length === i.commits.length && i.commits.length >= 100;
+      add("recent", `${all ? `${recent.length} or more commits` : plural(recent.length, "commit")} in the last ${RECENT_DAYS} days${kindLine ? `: ${kindLine}` : ""}.`, { kind: "commit", ref: `${recent.at(-1)!.sha.slice(0, 7)}..${last.sha.slice(0, 7)}` });
       const shas = new Set(recent.map((c) => c.sha));
-      const areas = new Map<string, number>();
-      for (const h of i.history) if (shas.has(h.sha)) for (const a of new Set(h.files.map(areaOf))) areas.set(a, (areas.get(a) ?? 0) + 1);
-      const top = [...areas].filter(([a]) => a).sort((a, b) => b[1] - a[1]).slice(0, 4);
+      const top = busiestAreas(i.history.filter((h) => shas.has(h.sha)).map((h) => h.files), 4);
       if (top.length) add("recent", `Most work in ${top.map(([a, n]) => `${a} (${plural(n, "commit")})`).join(", ")}.`, index("history"));
     } else add("recent", `No commit in the last ${RECENT_DAYS} days.`, { kind: "commit", ref: last.sha.slice(0, 7) });
   } else gaps.push("What changed lately: the history could not be read.");
@@ -159,7 +163,11 @@ export function buildBook(i: BookInput): ProjectBook {
   // ------------------------------------------------------------------ why it is this way
   for (const f of i.files.filter((x) => DECISION_DOC.test(x.path)).slice(0, 8)) add("why", `Decision record: ${f.path}${f.summary ? `, ${one(f.summary, 140)}` : ""}`, { kind: "file", ref: f.path });
   for (const p of i.merged ?? []) for (const s of reasonsIn(p.body).slice(0, 2)) add("why", `#${p.number} (${one(p.title, 60)}): ${s}`, { kind: "pull", ref: `#${p.number}`, url: p.url }, "found", p.at);
-  for (const c of (i.commits ?? []).slice(0, 100)) for (const s of reasonsIn(c.message).slice(0, 1)) add("why", s, { kind: "commit", ref: c.sha.slice(0, 7) }, "found", c.at);
+  for (const c of (i.commits ?? []).slice(0, 100)) {
+    const inBody = reasonsIn(c.body ?? "")[0];
+    const reason = inBody ? `${one(c.message, 70)}: ${inBody}` : reasonsIn(c.message)[0];
+    if (reason) add("why", reason, { kind: "commit", ref: c.sha.slice(0, 7) }, "found", c.at);
+  }
   trim(facts, "why", 12);
   if (!facts.some((f) => f.chapter === "why")) gaps.push("Why it is this way: no decision records, and no reasons in the recent pull requests and commits.");
 
@@ -201,25 +209,58 @@ export function buildBook(i: BookInput): ProjectBook {
 
 const KIND_WORDS: Record<string, string> = { feat: "features", fix: "fixes", refactor: "refactors", docs: "docs changes", test: "test changes", chore: "chores", perf: "speed-ups", build: "build changes", ci: "CI changes", style: "style changes" };
 const DECISION_DOC = /(^|\/)(?:adr|adrs|decisions?|rfcs?)\/[^/]+\.(?:md|mdx|rst|txt)$/i;
+/** Paths that are not the project's own running code: fixtures, examples, tests, vendored copies. */
+const ASIDE = /(^|\/)(?:fixtures?|examples?|samples?|e2e|tests?|__tests__|vendor|third_party|evals?|bench(?:marks?)?)\/|\.d\.ts$/i;
+/** Languages whose files are reached by imports, so "nothing reaches it" means something. */
+const IMPORTED = /\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|rb|php|cs|swift|dart|vue|svelte)$/i;
+/** The owners' own overview of how the project is built. */
+const ARCH_DOC = /(^|\/)(?:architecture|overview|design)\.(?:md|txt)$/i;
+
+/** The first paragraph of a document that says something (not a heading, a badge or a table), cut to one line. */
+function firstParagraph(text: string): string {
+  for (const block of text.split(/\n\s*\n/)) {
+    const t = block.replace(/^\s*>\s?/gm, "").trim();
+    if (!t || /^(?:#|!\[|\||<|```|---|\[!)/.test(t) || t.length < 40) continue;
+    return one(t.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*_`]/g, ""), 260);
+  }
+  return "";
+}
 const REASON = /\b(?:because|so that|in order to|instead of|rather than|to avoid|we (?:decided|chose|moved|switched)|the reason|trade-?off|otherwise)\b/i;
 
-/** The area a path belongs to: a monorepo package, or the first two folders. */
-function areaOf(path: string): string {
-  const parts = path.split("/");
-  if (parts.length <= 1) return "";
-  if (/^(?:packages|apps|libs|services|modules)$/.test(parts[0]!) && parts.length > 2) return `${parts[0]}/${parts[1]}`;
-  return parts.length > 2 ? `${parts[0]}/${parts[1]}` : parts[0]!;
+/** A path's folder `depth` deep ("tulmi/src/code" at 3), or "" for a file that is not that deep in. */
+const folderOf = (path: string, depth: number): string => { const parts = path.split("/"); return parts.length > depth ? parts.slice(0, depth).join("/") : ""; };
+
+/**
+ * Where the commits went, as folders, deep enough to say something: a folder that holds most of the work ("tulmi/src" in a repo whose code is all
+ * there) is split into the folders under it, down to four deep. Each commit counts once a folder.
+ */
+export function busiestAreas(commits: ReadonlyArray<readonly string[]>, n: number): Array<[string, number]> {
+  let depth = 2;
+  let counted: Array<[string, number]> = [];
+  for (; depth <= 4; depth++) {
+    const areas = new Map<string, number>();
+    for (const files of commits) for (const a of new Set(files.map((f) => folderOf(f, depth)).filter(Boolean))) areas.set(a, (areas.get(a) ?? 0) + 1);
+    counted = [...areas].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
+    if (!counted.length || counted[0]![1] <= commits.length * 0.5 || depth === 4) break;
+  }
+  return counted.slice(0, n);
 }
 
 /** Sentences that give a reason, from a pull request's text or a commit message. */
 export function reasonsIn(text: string): string[] {
-  const clean = text.replace(/<!--[\s\S]*?-->/g, " ").replace(/```[\s\S]*?```/g, " ").replace(/^#+\s.*$/gm, " ").replace(/\[[^\]]*\]\([^)]*\)/g, " ");
-  return clean.split(/(?<=[.!?])\s+|\n+/).map((s) => s.replace(/^[-*>\s]+/, "").trim()).filter((s) => s.length >= 25 && s.length <= 260 && REASON.test(s)).map((s) => one(s, 220));
+  const clean = text.replace(/<!--[\s\S]*?-->/g, " ").replace(/```[\s\S]*?```/g, " ").replace(/^#+\s.*$/gm, " ").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
+  // A paragraph's wrapped lines are one text (commit bodies wrap at ~72 columns); a bullet starts a text of its own.
+  const texts = clean.split(/\n\s*\n/).flatMap((para) => para.split(/\n(?=\s*(?:[-*+]|\d+\.)\s)/).map((t) => t.replace(/\s*\n\s*/g, " ")));
+  return texts.flatMap((t) => t.split(/(?<=[.!?])\s+(?=[A-Z"'(])/)).map((s) => s.replace(/^[-*+>\s]+|^\d+\.\s+/g, "").trim())
+    .filter((s) => s.length >= 25 && s.length <= 260 && REASON.test(s)).map((s) => one(s, 220));
 }
 
 /** The plan in a roadmap file, or under a README heading about what is next: its bullets. */
 export function planLines(path: string, text: string): string[] {
-  const roadmapFile = /(^|\/)(?:roadmap|plans?|todo)\.(?:md|txt)$/i.test(path);
+  if (ARCH_DOC.test(path)) return [];
+  const roadmapFile = /(^|\/)(?:roadmap|plans?|todo|backlog|[\w-]*gaps)\.(?:md|txt)$/i.test(path);
+  // A list of what is missing (a gaps file, a backlog, a TODO list) holds open items, not plans.
+  const open = /(^|\/)(?:todo|backlog|[\w-]*gaps)\.(?:md|txt)$/i.test(path);
   const out: string[] = [];
   let inPlan = roadmapFile;
   for (const line of text.split("\n")) {
@@ -227,7 +268,12 @@ export function planLines(path: string, text: string): string[] {
     if (h) { inPlan = roadmapFile || /\b(?:roadmap|planned|coming|next|future|todo|upcoming)\b/i.test(h[1]!); continue; }
     if (!inPlan) continue;
     const b = /^\s*(?:[-*+]|\d+\.)\s+(?:\[( |x)\]\s+)?(.+)$/i.exec(line);
-    if (b && b[2]!.trim().length >= 2) out.push(`${b[1] === "x" ? "Done" : "Planned"}: ${one(b[2]!, 160)}`);
+    if (!b || b[2]!.trim().length < 2) continue;
+    const item = b[2]!.trim();
+    // Done: ticked, struck through, or marked with a check mark. A list of what is missing keeps only what is still missing.
+    const done = b[1]?.toLowerCase() === "x" || /^(?:✓|✔|✅|~~)/.test(item) || /^\*?\*?done\b/i.test(item);
+    if (done && open) continue;
+    out.push(`${done ? "Done" : open ? "Open" : "Planned"}: ${one(item.replace(/^(?:✓|✔|✅)\s*|~~/g, ""), 160)}`);
   }
   return out;
 }
