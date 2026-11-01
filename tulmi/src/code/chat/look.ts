@@ -110,6 +110,21 @@ export function anchorResult(anchors: Anchors, name: string, a: Record<string, u
   return null;
 }
 
+/** A turn that is only a promise to look further: short, no answer in it, and saying it will read, check or look next. */
+export function promisesMore(text: string): boolean {
+  const t = text.trim();
+  return !!t && t.length <= 400 && !t.includes("```") && /\b(?:let me|i'll|i will|i need to|i'm going to|next,? i)\b[^.]*\b(?:read|check|look|open|search|find|see|get)\b/i.test(t);
+}
+
+/** A tool call a model wrote into its words instead of making it: the markup of one (`<invoke`, `<tool_call>`, `<function_calls>`) or a JSON call. */
+const LEAK = /(?<!`)<\s*\/?\s*(?:invoke|tool_call|tool_use|function_calls?)\b|```(?:json)?\s*\{\s*"(?:name|tool|function)"\s*:/;
+export const leakedCall = (text: string): boolean => LEAK.test(text);
+/** The words before a leaked call: what the person may read of such a turn. */
+export function stripLeak(text: string): string {
+  const m = LEAK.exec(text);
+  return m ? text.slice(0, m.index).trim() : text;
+}
+
 /** The ledger: what has been read and searched so far, and the steps left. */
 function ledger(seen: readonly string[], greps: readonly string[], step: number): string {
   const left = LOOK_STEPS_MAX - step;
@@ -150,7 +165,16 @@ export async function investigate(i: LookInput): Promise<Looked> {
     }
     paise += res.paise;
     const asked = res.toolCalls ?? [];
-    if (!asked.length || last) return { text: res.text.trim(), reads: [...reads], greps, seen, paise, steps: step };
+    // Words that only say it will look further ("Let me read the rest of DEPLOY.md."), with no call: not an answer. Told to do it or answer, once a step.
+    // A tool call written out as words (`<invoke>…`, `<tool_call>{…}`) is not a call: told to make it, or to answer, and never shown as the answer.
+    if (!asked.length && !last && (promisesMore(res.text) || leakedCall(res.text))) {
+      words?.onReset();
+      messages.push({ role: "assistant", content: stripLeak(res.text) || "(a tool call written as words)" }, {
+        role: "user", content: leakedCall(res.text) ? "That was a tool call written as words: make it as a real tool call, or answer now." : "Do that now with your tools, or answer now: words that only say what you will do are not an answer.",
+      });
+      continue;
+    }
+    if (!asked.length || last) return { text: stripLeak(res.text).trim(), reads: [...reads], greps, seen, paise, steps: step };
     words?.onReset();
     messages.push({ role: "assistant", content: res.text || null, tool_calls: asked });
     const calls = asked.slice(0, LOOK_CALLS_PER_STEP);
@@ -190,7 +214,7 @@ export async function investigate(i: LookInput): Promise<Looked> {
       ...(i.model.signal ? { signal: i.model.signal } : {}), ...(words ?? {}),
     }, i.model.gateway).catch((err: unknown) => { if (isAbort(err)) throw err; return err instanceof BudgetExceeded ? ("budget" as const) : null; });
     if (res === "budget") continue;
-    return { text: res?.text.trim() ?? "", reads: [...reads], greps, seen, paise: paise + (res?.paise ?? 0), steps: LOOK_STEPS_MAX };
+    return { text: stripLeak(res?.text ?? "").trim(), reads: [...reads], greps, seen, paise: paise + (res?.paise ?? 0), steps: LOOK_STEPS_MAX };
   }
   return { text: "", reads: [...reads], greps, seen, paise, steps: LOOK_STEPS_MAX };
 }

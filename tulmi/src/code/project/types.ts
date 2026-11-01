@@ -138,7 +138,7 @@ export interface StoredFile {
 export interface StoredDir { path: string; treeSha: string; summary: string }
 
 /** The kinds of visible text. */
-export type TextKind = "jsx" | "attr" | "html" | "template" | "i18n" | "flutter" | "android" | "ios" | "string";
+export type TextKind = "jsx" | "attr" | "html" | "template" | "i18n" | "flutter" | "android" | "ios" | "string" | "message";
 export interface StoredText { path: string; line: number; text: string; kind: TextKind }
 
 // ----------------------------------------------------------------- the tree

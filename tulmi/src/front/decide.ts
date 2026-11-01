@@ -66,6 +66,7 @@ export interface DecideDeps {
 
 /** The roads a project chat's one loop takes the place of. */
 const LOOP_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>(["reply", "code_answer", "plan"]);
+// (A change, code_job, goes to the loop too, marked "agent_change": see step 6.)
 
 /** What one message of a project's chat may spend when it is one loop: its worst case at the tier's prices for a few steps of looking (spends far less). */
 export const AGENT_CHAT_PAISE = 300;
@@ -256,12 +257,16 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
   // with the project in front of it and the code a tool call away: no road of its own for each.
   let agentChat = deps.agentChat;
   if (agentChat === undefined) { try { agentChat = getConfig().CODE_CHAT_AGENT; } catch { agentChat = false; } }
-  if (agentChat && hasProject && !ctx.attachments.length && LOOP_ROUTES.has(route) && !(clarify && intent === "code_task")) {
+  // A bare "fix it" is a question back. A change goes to the loop marked as one: with the project in front of it, the loop starts the job with
+  // what it found (or, when it was not a change at all, "give me the database code to copy", does what was asked).
+  const bareChange = !!clarify && bare && intent === "code_task";
+  const loopTakes = LOOP_ROUTES.has(route) || route === "code_job";
+  if (agentChat && hasProject && !ctx.attachments.length && loopTakes && !bareChange) {
     return {
       // A picture made beside the answer stays (a diagram of a flow); a table is part of the words, and the loop writes its own.
       intent: "code_question", shape: { length, visual: visual?.via === "inline" ? null : visual }, route: "code_answer", tier: "cheap",
       budgetPaise: AGENT_CHAT_PAISE + visualCapOf("code_question", visual?.via === "inline" ? null : visual), confidence, via,
-      language: rules.reaction?.language ?? rules.cls.language, reasons: [...new Set([...reasons, "agent_chat"])],
+      language: rules.reaction?.language ?? rules.cls.language, reasons: [...new Set([...reasons, "agent_chat", ...(route === "code_job" ? ["agent_change"] : [])])],
       // "??", "why?": what the words ask of the last answer, as the rules read them; the loop is told it beside the person's own words.
       ...(rules.reaction ? { reask: rules.reaction.ask } : {}),
     };

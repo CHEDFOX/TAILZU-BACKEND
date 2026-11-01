@@ -52,7 +52,7 @@ import {
 } from "./types.js";
 
 import { buildMap, type ProjectMap } from "./map.js";
-import { buildBook, cleanAnswers, type ProjectBook } from "./book.js";
+import { buildBook, cleanAnswers, RUN_FILE, type ProjectBook } from "./book.js";
 import { mapAfterChanges, type MapChange } from "./mapupdate.js";
 export { memoryMarkdown, withBaseline } from "./memory.js";
 export { buildMap, checkSymbol, checkSymbols, componentCard, findInMap, keepMeanings, mapMarkdown, spanHash, MAP_VERSION, type MapComponent, type MapSymbol, type Placement, type ProjectMap, type SymbolCheck } from "./map.js";
@@ -401,6 +401,8 @@ const maps = new Map<string, { key: string; map: ProjectMap }>();
 /** Books made, by project: made again when the branch moves, the owner answers, or after BOOK_FRESH_MS (issues and pull requests move on their own). */
 const books = new Map<string, { key: string; at: number; book: ProjectBook }>();
 const BOOK_FRESH_MS = 30 * 60_000;
+/** The most run files the book reads (book.ts RUN_FILE). */
+const OPS_FILES_MAX = 16;
 const BOOK_DOC = /(^|\/)(?:roadmap|plans?|todo|backlog|[\w-]*gaps|architecture|overview|design)\.(?:md|txt)$|^readme\.md$/i;
 
 export function resetRepoGraphsForTests(): void { graphs.clear(); maps.clear(); }
@@ -530,16 +532,20 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
         Promise.resolve().then(() => f(repoRef(d.projects, userId, project))).catch(() => null);
       const files = await store.listFiles(id);
       const docPaths = files.map((f) => f.path).filter((p) => BOOK_DOC.test(p)).slice(0, 6);
-      const [commits, merged, open, issues, milestones, docs, map] = await Promise.all([
+      // How it runs and is set up: the deploy scripts, Dockerfiles, a Worker's or a host's config, the example env file, a setup guide.
+      const opsPaths = [...new Set([...files.map((f) => f.path).filter((p) => RUN_FILE.test(p)), ...(b.structure?.docker.files ?? [])])].slice(0, OPS_FILES_MAX);
+      if (!opsPaths.some((p) => /\.env\.(?:example|sample|template)$/i.test(p))) opsPaths.push(".env.example");
+      const [commits, merged, open, issues, milestones, docs, map, ops] = await Promise.all([
         safe((r) => gh.recentCommits(r, project.defaultBranch, 100)), safe((r) => gh.pullsOf(r, "merged", 30)), safe((r) => gh.pullsOf(r, "open", 20)),
         safe((r) => gh.openIssues(r, 50)), safe((r) => gh.milestonesOf(r)),
         Promise.all(docPaths.map(async (p) => [p, (await safe((r) => gh.readFile(r, project.defaultBranch, p)))?.text.slice(0, 40_000) ?? ""] as const)),
         mapOf(),
+        Promise.all(opsPaths.map(async (p) => [p, (await safe((r) => gh.readFile(r, project.defaultBranch, p)))?.text.slice(0, 40_000) ?? ""] as const)),
       ]);
       const made = buildBook({
         project: project.fullName, commit: b.headSha, now, files, map, commits, history: b.history.commits, merged, open, issues, milestones,
         view: { welcome: b.welcome, structure: b.structure, features: b.features, conventions: b.conventions, baseline: b.baseline },
-        docs: Object.fromEntries(docs.filter(([, t]) => t)), owner: b.book?.owner ?? null,
+        docs: Object.fromEntries(docs.filter(([, t]) => t)), ops: Object.fromEntries(ops.filter(([, t]) => t)), owner: b.book?.owner ?? null,
       });
       books.set(id, { key, at: now, book: made });
       while (books.size > GRAPHS_KEPT) books.delete(books.keys().next().value as string);

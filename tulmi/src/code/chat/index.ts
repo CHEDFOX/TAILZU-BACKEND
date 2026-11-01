@@ -33,6 +33,7 @@ import type { Located } from "../work/locate.js";
 import { completeMessage } from "../../front/complete.js";
 import { answerCode, type ChatAnswer } from "./answer.js";
 import { converse, type Conversed, type StartedJob } from "./converse.js";
+import { makeWebTools } from "../webTools.js";
 import { handoffOf, taskFor, type Handoff } from "./handoff.js";
 import { newThread, THREAD_ID, threadStore, withJob, type ChatThread, type ThreadStore } from "./threads.js";
 
@@ -59,7 +60,12 @@ export interface CodeChatDeps {
   job?: (userId: string, jobId: string) => Promise<string | null>;
   /** Look before answering (look.ts): CODE_CHAT_LOOK when not given. */
   look?: boolean;
+  /** The web tools (code/webTools.ts makeWebTools) the one loop searches and reads pages with; tests give their own. */
+  web?: typeof makeWebTools;
 }
+
+/** The share of a message's money its web calls may take. */
+const WEB_SHARE = 0.3;
 
 export interface ChatRequest {
   userId: string;
@@ -162,19 +168,32 @@ export class CodeChat {
    * The one loop of a project's chat (converse.ts): the project card in front of it, the code read with tools, a job started or a question asked
    * by the model's own tool call. No router decides before it. The thread keeps the turn, the job, what was read.
    */
-  async converse(r: ChatRequest & { startJob?: (task: string) => Promise<StartedJob> }): Promise<Conversed> {
+  async converse(r: ChatRequest & { startJob?: (task: string) => Promise<StartedJob>; change?: boolean }): Promise<Conversed> {
     const project = await ownProject(this.d.projects, r.userId, r.projectId);
     const brain = await this.d.brain.open(r.userId, project.id);
     const thread = await this.threadFor(r);
     if ((await brain.status()).status === "none") return { text: UNREAD, paise: 0, next: [], notes: ["The project has not been read."], cites: [], reads: [], seen: [], steps: 0, thread };
     const lastJob = thread?.jobs?.at(-1);
     const job = lastJob && this.d.job ? await this.d.job(r.userId, lastJob.id).catch(() => null) : null;
+    // The branch as it is, for show_file; the web for what the project cannot say (a provider's options, a version), with a share of the money.
+    let ws: Awaited<ReturnType<typeof workspace>> | null = null;
+    const read = async (path: string): Promise<string | null> => {
+      try { ws ??= await workspace(this.d.projects, r.userId, project.id, project.defaultBranch); return (await ws.read(path)).text; } catch { return null; }
+    };
+    const web = (this.d.web ?? makeWebTools)({
+      userId: r.userId, budget: { maxPaise: Math.max(1, Math.floor(r.maxPaise * WEB_SHARE)) }, ...(this.d.call ? { call: this.d.call as never } : {}),
+      ...(this.d.gateway ? { gateway: this.d.gateway } : {}), ...(r.signal ? { signal: r.signal } : {}),
+    });
+    const webDefs = web.tools.filter((t) => t.name === "web_search" || t.name === "read_page");
     const out = await converse({
       userId: r.userId, project: { id: project.id, fullName: project.fullName }, message: r.question, ...(r.ask ? { meant: r.ask } : {}), thread, job,
-      ...(r.language ? { language: r.language } : {}),
+      ...(r.language ? { language: r.language } : {}), length: r.length, ...(r.change ? { change: true } : {}),
       tier: r.tier, maxPaise: r.maxPaise, now: this.now(),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
-    }, { brain, look: this.lookTools(r.userId, project, brain, r.question, r.signal), ...(r.startJob ? { startJob: r.startJob } : {}) }, this.model(r.userId, r.signal));
+    }, {
+      brain, look: this.lookTools(r.userId, project, brain, r.question, r.signal), read, ...(r.startJob ? { startJob: r.startJob } : {}),
+      ...(webDefs.length ? { web: { defs: webDefs, run: async (name: string, args: Record<string, unknown>) => String((await web.run({ id: `w${Date.now()}`, name, arguments: JSON.stringify(args) })).message.content ?? "") } } : {}),
+    }, this.model(r.userId, r.signal));
     if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
     return out;
   }

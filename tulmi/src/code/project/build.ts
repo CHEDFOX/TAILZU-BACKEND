@@ -452,7 +452,9 @@ export async function runBuild(
     const jobs: CardJob[] = scope.filter((p) => analysed.has(p)).map((p) => {
       const a = analysed.get(p)!;
       const f = all.get(p)!;
-      return { path: p, lang: f.lang, text: a.text, symbols: f.symbols, want: cardable(f.symbols).filter((i) => !f.symbols[i]!.does), summary: !f.summary, redact: a.redact };
+      // A quick read describes what other files use (exported parts and routes), from the head of each file; a full read, every part.
+      const want = cardable(f.symbols).filter((i) => !f.symbols[i]!.does && (depth === "full" || f.symbols[i]!.exported === true || f.symbols[i]!.kind === "route"));
+      return { path: p, lang: f.lang, text: a.text, symbols: f.symbols, want, summary: !f.summary, redact: a.redact };
     }).filter((j) => j.want.length || j.summary);
     // A full read is for the parts: the folders, the features and the welcome after them cost little, so the parts may have FULL_READ_PARTS_SHARE.
     const cards = await cardFiles(ctx, jobs, depth === "full" ? Math.floor(meter.budget * FULL_READ_PARTS_SHARE) : phaseCap(meter, "files"), depth === "full" ? {} : { fileChars: QUICK_FILE_CHARS });

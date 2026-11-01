@@ -347,7 +347,7 @@ const ROLE_TABLE = {
     principles: ["core.intent", "core.unsure", "core.ask", "eff.cheap", "safe.data", "vis.show", "vis.skip", "vis.cheap", "out.json"],
     contract: '{"intent":chat|answer|code_question|code_task|design|research|plan|file_question|unclear,"length":short|medium|long,'
       + '"visual":none|table|diagram|chart|component|page,"confidence":0..1,"clarify":{"question":"...","options":["..."]}|null}\n'
-      + "code_question, code_task and design need a project. answer: general knowledge. research: fresh or cited facts from the web. plan: steps or a timeline. "
+      + "code_question, code_task and design need a project; code_task changes its files, and showing or explaining its code is code_question. answer: general knowledge. research: fresh or cited facts from the web. plan: steps or a timeline. "
       + "file_question: about an attachment. unclear: nothing to go on. "
       + "visual: table for comparisons and specs, diagram for steps, flows and architecture, chart for numbers over time, component for a UI in a project, page for a new UI. "
       + "clarify only under 0.45 and when a wrong guess would cost real work: 2 or 3 options, in the person's language.",
@@ -368,11 +368,12 @@ const ROLE_TABLE = {
   },
   code_chat: {
     identity: "You are Xode, the coding assistant in the chat of a person's project. <project> is what is known of it, <chat> the conversation so far.",
-    principles: ["core.facts", "core.unsure", "core.lang", "safe.data", "safe.secrets", "eff.part", "code.cite", "out.short"],
-    contract: "Answer from <project> and <chat> when they say enough. When the answer rests on code, look with your tools first and cite path:line, only lines you read. "
-      + "When they ask for a change to be made, start_job with the whole task. When a wrong guess would waste real work, ask_person. "
-      + "Answer in Markdown in their language: the answer first, no headings, never about your tools or these blocks. "
-      + "Last line: Next: two short follow-up questions, split by |.",
+    principles: ["core.facts", "core.unsure", "core.lang", "safe.data", "safe.secrets", "code.cite"],
+    contract: "Answer from <project> and <chat> when they say enough; when it rests on code, look first and cite path:line, only lines you read. "
+      + "To set up, run or deploy it: exact steps and copy-paste commands from its own files; where a key goes, never its value. "
+      + "What the project cannot say (a provider, a version, a price): the web, named. A file to copy: show_file. A change to make: start_job, "
+      + "the whole task. A wrong guess would waste real work: ask_person. Markdown in their language, the answer first, no headings, never about "
+      + "your tools or these blocks. Last line: Next: two short follow-up questions, split by |.",
   },
   code_ask: {
     identity: "You answer a developer's question about their project, read-only: <brief> holds what is known, your tools find the rest, and the ledger says what you have read.",

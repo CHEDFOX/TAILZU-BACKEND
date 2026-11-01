@@ -296,6 +296,26 @@ function parsedTexts(raw: readonly RawText[]): TextHit[] {
   return out;
 }
 
+/**
+ * The messages the code gives when something is refused or fails (`throw new FrontError("daily_limit", "You've used what X0 Bot may spend…")`,
+ * `raise ValueError("…")`): words a person sees though no screen holds them. Each with its code, if it has one, said as words too ("daily limit:
+ * You've used…"), so a question in a person's words finds it.
+ */
+const MESSAGE = /\b(?:new|raise)\s+(?:[A-Z]\w*)?(?:Error|Exception)\s*\(\s*(?:(["'])([a-z][a-z0-9_]{2,40})\1\s*,\s*)?(["'`])((?:(?!\3)[^\\\n]|\\.){12,300})\3/g;
+export function messageTexts(text: string): TextHit[] {
+  const out: TextHit[] = [];
+  const lines = text.split("\n");
+  lines.forEach((line, k) => {
+    if (/^\s*(?:\/\/|#|\*)/.test(line)) return;
+    for (const m of line.matchAll(MESSAGE)) {
+      const said = m[4]!.replace(/\$\{[^}]*\}/g, "…").replace(/\\(["'`])/g, "$1").trim();
+      if (said.length < 12) continue;
+      out.push({ line: k + 1, text: `${m[2] ? `${m[2].replace(/_/g, " ")}: ` : ""}${said}`, kind: "message" });
+    }
+  });
+  return out;
+}
+
 export function extractTexts(path: string, lang: string, text: string): TextHit[] {
   let hits: TextHit[] = [];
   const e = extOf(path);
@@ -327,6 +347,8 @@ export function extractTexts(path: string, lang: string, text: string): TextHit[
       default: hits = [];
     }
   }
+  // And what the code says when it refuses or fails, in the languages that throw like this.
+  if (lang === "TypeScript" || lang === "JavaScript" || lang === "Python") hits = [...hits, ...messageTexts(text)];
   if (!hits.length) return [];
 
   // Secrets: if the file holds nothing the scanner flags, every string stands; otherwise each is judged with its own line.

@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { Anchors, checkCitations, fixPaths, unknownPaths } from "../src/code/chat/cite.js";
-import { investigate, LOOK_STEPS_MAX, type LookTools } from "../src/code/chat/look.js";
+import { investigate, leakedCall, LOOK_STEPS_MAX, promisesMore, stripLeak, type LookTools } from "../src/code/chat/look.js";
 import { BudgetExceeded } from "../src/code/brain/gateway.js";
 import { afterTurn, newThread, SEEN_KEPT } from "../src/code/chat/threads.js";
 
@@ -74,6 +74,29 @@ describe("looking before answering", () => {
     expect(m.sent.at(-1)!.toolChoice).toBe("none");
     expect(String(m.sent.at(-1)!.messages.at(-1)!.content)).toContain("This is your last step: answer now");
     expect(out.steps).toBe(LOOK_STEPS_MAX);
+  });
+
+  it("does not take a promise to look further as the answer: it is told to do it or answer, and goes on", async () => {
+    const m = scripted([
+      { text: "I have the setup steps. Let me read the rest of DEPLOY.md for the deploy part." },
+      { calls: [{ name: "read_file", args: { path: "DEPLOY.md" } }] },
+      { text: "1. Pull the branch. 2. Run ./deploy/ship.sh." },
+    ]);
+    const out = await investigate({ model: m.model, tier: "cheap", user: "q", tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800 });
+    expect(out.text).toBe("1. Pull the branch. 2. Run ./deploy/ship.sh.");
+    expect(String(m.sent[1]!.messages.at(-1)!.content)).toMatch(/^Do that now with your tools, or answer now/);
+    expect(promisesMore("The server listens on 8080; let me know if you want the logs.")).toBe(false);
+  });
+
+  it("does not take a tool call written as words as the answer, and never shows its markup", async () => {
+    const leak = "I have the steps. Let me read the rest of DEPLOY.md.\n\n<invoke>\n<parameter>path</parameter string=\"true\">DEPLOY.md</parameter>\n</invoke>";
+    const m = scripted([{ text: leak }, { calls: [{ name: "read_file", args: { path: "DEPLOY.md" } }] }, { text: "Run ./deploy/ship.sh on the server." }]);
+    const out = await investigate({ model: m.model, tier: "cheap", user: "q", tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800 });
+    expect(out.text).toBe("Run ./deploy/ship.sh on the server.");
+    expect(String(m.sent[1]!.messages.at(-1)!.content)).toMatch(/^That was a tool call written as words/);
+    expect(stripLeak(leak)).toBe("I have the steps. Let me read the rest of DEPLOY.md.");
+    expect(leakedCall('```json\n{"name": "grep", "arguments": {}}\n```')).toBe(true);
+    expect(leakedCall("Use the `<Parameter>` component.")).toBe(false);
   });
 
   it("answers once most of the money is spent, so the answer can still be paid for", async () => {
