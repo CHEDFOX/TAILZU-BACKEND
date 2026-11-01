@@ -252,6 +252,9 @@ export function readEstimate(files: ReadonlyArray<{ path: string; bytes: number;
 /** The calls a reading makes at once, the parts one call may be asked for (its answer must fit), and the failures in a row that stop it. */
 export const CARD_PARALLEL = 4;
 export const CARD_CALL_PARTS = 40;
+/** The answer's room: per part asked, and at most. */
+const CARD_TOKENS_PER_PART = 120;
+const CARD_ANSWER_TOKENS_MAX = 8_000;
 const CARD_FAILURES_MAX = 6;
 /** A quick read reads this much of each file it picks; a full read reads all of it. */
 export const QUICK_FILE_CHARS = 12_000;
@@ -321,7 +324,7 @@ export async function cardFiles(ctx: SummaryCtx, jobs: readonly CardJob[], cap: 
   let complete = true;
   let calls = 0;
   const limit = o.fileChars ?? Number.MAX_SAFE_INTEGER;
-  const ask1 = async (pieces: Piece[]): Promise<boolean> => {
+  const ask1 = async (pieces: Piece[]): Promise<"ok" | "budget" | "down"> => {
     const user = pieces.map((p) => {
       const syms = p.ids.map((i) => partLine(p.job.symbols[i]!, i)).join("\n");
       const code = p.job.redact ? "(the file's text is withheld: it may hold a secret; describe the parts from their names)" : fence(p.text);
@@ -329,8 +332,10 @@ export async function cardFiles(ctx: SummaryCtx, jobs: readonly CardJob[], cap: 
     }).join("\n");
     const parts = pieces.reduce((n, p) => n + p.ids.length, 0);
     calls += 1;
-    const r = await ask(ctx, cap, "brain.cards", "index_cards", user, CardSchema, Math.min(6_000, 300 + parts * 70));
-    if (!r.ok) return false;
+    // Room for the answer: a part's words run to about 60 tokens on average, more for a wordy one; an answer cut short is JSON no model can use
+    // (tailzu-frontend: 4 calls failed so on every model of the ladder, 6 parts left without words, at 70 a part).
+    const r = await ask(ctx, cap, "brain.cards", "index_cards", user, CardSchema, Math.min(CARD_ANSWER_TOKENS_MAX, 400 + parts * CARD_TOKENS_PER_PART));
+    if (!r.ok) return r.reason;
     for (const f of r.value.files) {
       const mine = pieces.filter((p) => p.job.path === f.path);
       if (!mine.length) continue;
@@ -348,7 +353,15 @@ export async function cardFiles(ctx: SummaryCtx, jobs: readonly CardJob[], cap: 
       }
       out.set(f.path, entry);
     }
-    return true;
+    return "ok";
+  };
+  /** A call that failed for its answer (not for money) asked again as two halves, once: a smaller answer fits, and one odd part spoils only its half. */
+  const halves = (b: Piece[]): Piece[][] => {
+    if (b.length > 1) return [b.slice(0, Math.ceil(b.length / 2)), b.slice(Math.ceil(b.length / 2))];
+    const p = b[0]!;
+    if (p.ids.length < 2) return [];
+    const mid = Math.ceil(p.ids.length / 2);
+    return [[{ ...p, ids: p.ids.slice(0, mid) }], [{ ...p, ids: p.ids.slice(mid), first: false }]];
   };
   // Pack the pieces into calls (by code and by parts, so that the answer fits too), and make CARD_PARALLEL of them at a time: a project of
   // 2 MB is 90 calls, and one at a time took five minutes.
@@ -370,11 +383,15 @@ export async function cardFiles(ctx: SummaryCtx, jobs: readonly CardJob[], cap: 
   const stopped = () => ctx.meter.left(cap) <= 0 || ctx.meter.failures >= CARD_FAILURES_MAX;
   const run = async (batches: Piece[][]) => {
     let next = 0;
+    const split = new Set<Piece[]>();
     const worker = async () => {
       while (next < batches.length) {
         if (stopped()) { complete = false; return; }
         const mine = batches[next++]!;
-        if (!(await ask1(mine))) complete = false;
+        const got = await ask1(mine);
+        // Whether it is whole in the end is decided below, part by part: a half that gets its words makes up for the call that failed.
+        if (got === "ok") continue;
+        if (got === "down" && !split.has(mine)) for (const h of halves(mine)) { split.add(h); batches.push(h); }
       }
     };
     await Promise.all(Array.from({ length: Math.min(CARD_PARALLEL, batches.length) }, worker));

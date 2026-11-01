@@ -129,7 +129,7 @@ describe("AgentJob", () => {
     const out = (await inst.getOutput()) as { ended: string };
     expect(out.ended).toMatch(/^errored/);
     expect(h.agent.abandoned).toHaveLength(1);
-    expect(h.agent.abandoned[0]!.why).toContain("went wrong on Tailzu's side");
+    expect(h.agent.abandoned[0]!.why).toContain("went wrong on X0 Bot's side");
   });
 
   it("goes on after a step that failed once", async () => {

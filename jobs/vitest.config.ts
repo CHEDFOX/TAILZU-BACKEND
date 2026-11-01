@@ -18,7 +18,8 @@ export default defineConfig({
         plugins: [
           cloudflareTest({
             wrangler: { configPath: "./wrangler.jsonc" },
-            miniflare: { bindings: { CODE_JOBS_SECRET: "test-secret-for-hmac-0123456789abcdef0123456789abcdef", CODE_JOBS_URL: "https://jobs.example" } },
+            // CODE_PROVE_FIX off: the agent's tests script a job as "edit, done" and count its turns, as tulmi/tests/setup.ts does for the same reason.
+            miniflare: { bindings: { CODE_JOBS_SECRET: "test-secret-for-hmac-0123456789abcdef0123456789abcdef", CODE_JOBS_URL: "https://jobs.example", CODE_PROVE_FIX: "false" } },
           }),
         ],
         test: { name: "worker", include: ["test/**/*.test.ts"] },
