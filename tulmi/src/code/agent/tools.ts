@@ -525,27 +525,34 @@ export class Tools {
       ...(a.ignoreCase === true ? { ignoreCase: true } : {}), ...(int(a.context) !== undefined ? { context: Math.min(5, int(a.context)!) } : {}),
       ...(a.filesOnly === true ? { filesOnly: true } : {}), ...(int(a.maxResults) !== undefined ? { maxResults: int(a.maxResults)! } : {}),
     };
-    let out: (GrepOk & { searched?: number; candidates?: number }) | null = null;
-    let why = "";
-    const live = await this.live(true);
-    if (live) {
-      const r = await live.grep(pattern, opts).catch(() => ({ kind: "unavailable" as const, why: "" }));
-      if (r.kind === "error") return { ok: false, content: r.error };
-      if (r.kind === "ok") out = r.out;
-      else why = r.why ?? "";
-    }
-    if (!out) {
+    const search = async (re: string, o: GrepOptions): Promise<(GrepOk & { searched?: number; candidates?: number }) | { error: string }> => {
+      let why = "";
+      const live = await this.live(true);
+      if (live) {
+        const r = await live.grep(re, o).catch(() => ({ kind: "unavailable" as const, why: "" }));
+        if (r.kind === "error") return { error: r.error };
+        if (r.kind === "ok") return r.out;
+        why = r.why ?? "";
+      }
       if (this.liveStatus?.remote) {
         throw new Refused(`This repo is too big to search from here${why ? ` (${why})` : ""}. Use search_code to find where something lives, then read_file; or run \`rg\` or \`grep -rn\` with run, which searches the whole checkout.`);
       }
-      const fallback = await this.grepViaGithub(pattern, opts);
-      if ("error" in fallback) return { ok: false, content: fallback.error };
-      out = fallback;
+      return this.grepViaGithub(re, o);
+    };
+    let out = await search(pattern, opts);
+    if ("error" in out) return { ok: false, content: out.error };
+    // A name written one way in the code and another where it is kept (actionConfirmation in the code, "action-confirmation" in the catalog,
+    // SALT_ROTATION and saltRotation): found nowhere as written, it is looked for in any of its forms, and the words say so.
+    let other = "";
+    const forms = out.matches === 0 ? nameForms(pattern) : null;
+    if (forms) {
+      const again = await search(forms, { ...opts, ignoreCase: true });
+      if (!("error" in again) && again.matches > 0) { out = again; other = forms; }
     }
     const text = withholdSecrets(out.text);
     const words = out.matches === 0
-      ? `No match for ${JSON.stringify(short(pattern, 60))}${out.partial ? ` (the search was cut short: ${partialWhy(out)})` : ""}.`
-      : `${out.matches} ${a.filesOnly === true ? "file" : "line"}${out.matches === 1 ? "" : "s"} match${out.matches === 1 ? "es" : ""} ${JSON.stringify(short(pattern, 60))} in ${out.files} file${out.files === 1 ? "" : "s"}${out.partial ? `. PARTIAL: ${partialWhy(out)}` : ""}.`;
+      ? `No match for ${JSON.stringify(short(pattern, 60))}${forms ? " in any of its forms" : ""}${out.partial ? ` (the search was cut short: ${partialWhy(out)})` : ""}.`
+      : `${other ? `No match for ${JSON.stringify(short(pattern, 60))} as written; written another way (${JSON.stringify(other)}, any case): ` : ""}${out.matches} ${a.filesOnly === true ? "file" : "line"}${out.matches === 1 ? "" : "s"} match${out.matches === 1 ? "es" : ""} ${JSON.stringify(short(other || pattern, 60))} in ${out.files} file${out.files === 1 ? "" : "s"}${out.partial ? `. PARTIAL: ${partialWhy(out)}` : ""}.`;
     await this.log(call, "read", `Searched the files for ${JSON.stringify(short(pattern, 60))}: ${out.matches} match${out.matches === 1 ? "" : "es"}.`);
     return text ? { ok: true, content: words, data: text, label: pattern } : { ok: true, content: words };
   }
@@ -854,4 +861,14 @@ function readablePath(raw: string): string {
   }
   if (isSecretPath(path)) throw new Refused(`${path} is the kind of file that holds secrets, so X0 Bot does not read it. If you need to know a setting's name, look at .env.example.`);
   return path;
+}
+
+/**
+ * A plain name in any of its written forms: "actionConfirmation", "action_confirmation", "action-confirmation", "ACTION_CONFIRMATION" all as
+ * `action[-_. ]?confirmation` (to search with any case). Null for a pattern that is not one plain name of two parts or more.
+ */
+export function nameForms(pattern: string): string | null {
+  if (!/^[A-Za-z][A-Za-z0-9_.-]{3,60}$/.test(pattern)) return null;
+  const parts = pattern.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2").split(/[\s_.-]+/).filter(Boolean).map((w) => w.toLowerCase());
+  return parts.length >= 2 ? parts.join("[-_. ]?") : null;
 }

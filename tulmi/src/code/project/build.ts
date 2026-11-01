@@ -66,7 +66,7 @@ import {
 import { keepMeanings, withHashes } from "./map.js";
 import { countTodos, extractSymbols, type SymbolContext } from "./symbols.js";
 import { buildTestMap, untestedImportant } from "./tests.js";
-import { extractTexts } from "./texts.js";
+import { extractTexts, keepTexts, translationsOf } from "./texts.js";
 import { analyse, ensureGrammars, treeSitter } from "./treesitter/index.js";
 import {
   BLOBS_MAX, EMPTY_STRUCTURE, PARSER_WORKER_TEXT_MAX, TEXTS_PER_PROJECT,
@@ -414,7 +414,9 @@ export async function runBuild(
     await store.upsertDirs(project.id, [...dirRows.values()]);
     const goneDirs = storedDirs.filter((d) => !dirRows.has(d.path)).map((d) => d.path);
     if (goneDirs.length) await store.deleteDirs(project.id, goneDirs);
-    const freshTexts = [...analysed.values()].flatMap((a) => a.texts).slice(0, TEXTS_PER_PROJECT);
+    // A catalog's translations are indexed as its base language once; over the cap, what the code says is kept before catalog entries.
+    const translations = translationsOf([...tree.files.keys()]);
+    const freshTexts = keepTexts([...analysed.entries()].flatMap(([p, a]) => (translations.has(p) ? [] : a.texts)), TEXTS_PER_PROJECT);
     if (mode === "full") { await store.clearTexts(project.id); await store.replaceTexts(project.id, [], freshTexts); }
     else await store.replaceTexts(project.id, [...analysed.keys(), ...goneFiles], freshTexts);
     await store.saveBrain(project.id, {

@@ -297,13 +297,13 @@ export function tidy(text: string): string {
 }
 
 const TAG_WORDS: Record<string, string> = {
-  facts: "the project's index", excerpts: "the files I read", thread: "our chat", last_answer: "my last answer", job: "the job", meant: "your question", earlier: "earlier answers", about_them: "what you told me",
+  facts: "the project's index", excerpts: "the files I read", thread: "our chat", last_answer: "my last answer", job: "the job", meant: "your question", earlier: "earlier answers", about_them: "what you told me", found: "the project's index",
 };
 /** The prompt's block names said in plain words: a person never reads "<excerpts>" (the changesets run: "<facts>/<excerpts> mein ..."). */
 export function plainTags(text: string): string {
-  const tag = /<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them)>(?:\s*\/\s*<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them)>)?/g;
+  const tag = /<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them|found)>(?:\s*\/\s*<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them|found)>)?/g;
   // Only outside code: a backtick span is the project's own text, unless it is nothing but one of the block names ("The `<job>` says").
-  const named = /^`<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them)>`$/;
+  const named = /^`<\/?(facts|excerpts|thread|last_answer|job|meant|earlier|about_them|found)>`$/;
   return text.split(/(`[^`\n]*`)/)
     .map((part) => (named.test(part) ? TAG_WORDS[named.exec(part)![1]!]! : part.startsWith("`") ? part : part.replace(tag, (_m, a: string, b?: string) => (b ? `${TAG_WORDS[a]} and ${TAG_WORDS[b]}` : TAG_WORDS[a]!))))
     .join("").replace(/\b([Tt]he) the\b/g, "$1");

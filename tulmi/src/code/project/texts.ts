@@ -316,6 +316,98 @@ export function messageTexts(text: string): TextHit[] {
   return out;
 }
 
+/**
+ * The same in the languages that return or raise their errors by a call: `errors.New("…")`, `fmt.Errorf("… %w", err)`, `e.BadRequestError("Failed
+ * to authenticate.", err)` (Go), `anyhow!("…")`, `bail!("…")` (Rust), `throw IllegalStateException("…")` (Kotlin, Java, C#).
+ */
+const MESSAGE_CALL = /(?:\berrors\.New|\bfmt\.Errorf|\b[A-Za-z_]\w*Error|\b(?:anyhow|bail)!|\bthrow\s+(?:new\s+)?[A-Z]\w*(?:Error|Exception))\s*\(\s*"((?:[^"\\\n]|\\.){12,300})"/g;
+const CALL_LANGS = new Set(["Go", "Rust", "Java", "Kotlin", "C#", "Scala"]);
+const CODE_LANGS = new Set(["TypeScript", "JavaScript", "Python", "Go", "Rust", "Java", "Kotlin", "C#", "Scala", "Ruby", "PHP", "Vue", "Svelte", "Astro"]);
+export function messageCallTexts(text: string): TextHit[] {
+  const out: TextHit[] = [];
+  text.split("\n").forEach((line, k) => {
+    if (/^\s*(?:\/\/|\*)/.test(line)) return;
+    for (const m of line.matchAll(MESSAGE_CALL)) {
+      const said = m[1]!.replace(/%[-+ #0-9.]*[a-zA-Z]/g, "…").replace(/\{[^}]*\}/g, "…").replace(/\\(["'])/g, "$1").trim();
+      if (said.length >= 12) out.push({ line: k + 1, text: said, kind: "message" });
+    }
+  });
+  return out;
+}
+
+/**
+ * The environment settings the code reads, each where it is read: `process.env.SALT_ROTATION`, `import.meta.env.X`, `os.environ["X"]`,
+ * `os.getenv("X")`, `os.Getenv("X")`, `env::var("X")`, `System.getenv("X")`, `ENV["X"]`, `getenv('X')`. So "what breaks if I rename X" and "what
+ * settings does it need" find every place, in a repo too big to search file by file. The name only: never a value.
+ */
+const SETTING = /\b(?:process\.env\.([A-Z][A-Z0-9_]{2,})|process\.env\[\s*["'`]([A-Z][A-Z0-9_]{2,})["'`]\s*\]|import\.meta\.env\.([A-Z][A-Z0-9_]{2,})|Deno\.env\.get\(\s*["']([A-Z][A-Z0-9_]{2,})|os\.(?:environ(?:\.get)?|getenv)\s*[[(]\s*["']([A-Z][A-Z0-9_]{2,})|os\.(?:Getenv|LookupEnv)\(\s*"([A-Z][A-Z0-9_]{2,})|env::var(?:_os)?\(\s*"([A-Z][A-Z0-9_]{2,})|System\.getenv\(\s*"([A-Z][A-Z0-9_]{2,})|ENV(?:\.fetch\(|\[)\s*["']([A-Z][A-Z0-9_]{2,})|getenv\(\s*["']([A-Z][A-Z0-9_]{2,}))/g;
+export function settingTexts(text: string): TextHit[] {
+  const out: TextHit[] = [];
+  // pydantic's settings class: each upper-case field of a class built on BaseSettings is read from the environment by its name.
+  const pydantic = /\bclass\s+\w+\s*\([^)]*\bBaseSettings\b/.test(text);
+  text.split("\n").forEach((line, k) => {
+    if (/^\s*(?:\/\/|#|\*)/.test(line)) return;
+    const field = pydantic ? /^\s{4}([A-Z][A-Z0-9_]{2,})\s*:\s*[\w[]/.exec(line) : null;
+    if (field) out.push({ line: k + 1, text: `${field[1]}: an environment setting the code reads here`, kind: "setting" });
+    for (const m of line.matchAll(SETTING)) {
+      const name = m.slice(1).find(Boolean);
+      if (name) out.push({ line: k + 1, text: `${name}: an environment setting the code reads here`, kind: "setting" });
+    }
+  });
+  return out;
+}
+
+/** A language as a catalog file or folder is named for it: en, en-US, en_GB, pt-BR, zh-Hans, sr-Latn-RS. */
+const LOCALE = /^[a-z]{2,3}(?:[-_][A-Za-z]{2,4}){0,2}$/;
+const CATALOG_EXT = /\.(?:json|jsonc|json5|ya?ml|po|properties|arb|strings|xml|toml|ts|js)$/i;
+/** How English a locale is: the base a catalog's translations are of. en-US, en_US and en first, then any other en-*. */
+const englishness = (locale: string): number => (/^en(?:[-_]US)?$/i.test(locale) ? 2 : /^en(?:[-_]|$)/i.test(locale) || /^Base$/.test(locale) ? 1 : 0);
+
+/**
+ * The translations of a catalog: where the same catalog is kept in several languages (public/intl/messages/en-US.json, fr-FR.json, … ;
+ * locales/en/common.json, locales/fr/common.json; Android values-fr/strings.xml; iOS fr.lproj/Localizable.strings), every copy but the base
+ * language's. English is the base when there is one, else the first by name. Their strings are the base's in other words: indexed once, as the
+ * base, a project's text index is not 54 copies of every label, and what its code says is not crowded out (umami: 32,164 catalog strings).
+ */
+export function translationsOf(paths: readonly string[]): Set<string> {
+  const out = new Set<string>();
+  for (const g of catalogsOf(paths)) for (const m of g.copies) if (m !== g.base) out.add(m);
+  return out;
+}
+
+/** The catalogs kept in several languages: each one's base (English when there is one) and every copy, the base among them. */
+export function catalogsOf(paths: readonly string[]): Array<{ base: string; copies: string[] }> {
+  const groups = new Map<string, Array<{ path: string; locale: string }>>();
+  const add = (key: string, path: string, locale: string) => { const g = groups.get(key) ?? []; g.push({ path, locale }); groups.set(key, g); };
+  for (const p of paths) {
+    if (!CATALOG_EXT.test(p)) continue;
+    const parts = p.split("/");
+    const file = parts.pop()!;
+    const dir = parts.join("/");
+    const stem = file.replace(/\.[^.]+$/, "").replace(/\.[^.]+$/, "");
+    const folder = parts.at(-1) ?? "";
+    const catalogish = I18N_DIR.test(`${dir}/`) || /\.(?:arb|po|strings)$/i.test(file);
+    if (/^values(?:-([a-z]{2}(?:-r[A-Z]{2})?))?$/.test(folder) && /\.xml$/i.test(file)) add(`${parts.slice(0, -1).join("/")}|values|${file}`, p, folder === "values" ? "en" : folder.slice(7));
+    else if (/\.lproj$/.test(folder)) add(`${parts.slice(0, -1).join("/")}|lproj|${file}`, p, folder.replace(/\.lproj$/, ""));
+    else if (catalogish && LOCALE.test(stem)) add(`${dir}|file`, p, stem);
+    else if (catalogish && LOCALE.test(folder)) add(`${parts.slice(0, -1).join("/")}|dir|${file}`, p, folder);
+  }
+  const out: Array<{ base: string; copies: string[] }> = [];
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    const base = [...g].sort((a, b) => englishness(b.locale) - englishness(a.locale) || (a.path < b.path ? -1 : 1))[0]!;
+    out.push({ base: base.path, copies: g.map((m) => m.path) });
+  }
+  return out.sort((a, b) => b.copies.length - a.copies.length || (a.base < b.base ? -1 : 1));
+}
+
+/** What a project keeps of its strings when they are more than it may: what the code says first, then screens, then catalogs; in order within each. */
+export function keepTexts<T extends { kind: TextKind }>(texts: readonly T[], max: number): T[] {
+  if (texts.length <= max) return [...texts];
+  const rank = (k: TextKind): number => (k === "setting" || k === "message" ? 0 : k === "i18n" ? 3 : k === "string" ? 2 : 1);
+  return texts.map((t, i) => ({ t, i })).sort((a, b) => rank(a.t.kind) - rank(b.t.kind) || a.i - b.i).slice(0, max).map((x) => x.t);
+}
+
 export function extractTexts(path: string, lang: string, text: string): TextHit[] {
   let hits: TextHit[] = [];
   const e = extOf(path);
@@ -349,6 +441,8 @@ export function extractTexts(path: string, lang: string, text: string): TextHit[
   }
   // And what the code says when it refuses or fails, in the languages that throw like this.
   if (lang === "TypeScript" || lang === "JavaScript" || lang === "Python") hits = [...hits, ...messageTexts(text)];
+  if (CALL_LANGS.has(lang)) hits = [...hits, ...messageCallTexts(text)];
+  if (CODE_LANGS.has(lang)) hits = [...hits, ...settingTexts(text)];
   if (!hits.length) return [];
 
   // Secrets: if the file holds nothing the scanner flags, every string stands; otherwise each is judged with its own line.
@@ -374,5 +468,5 @@ export function extractTexts(path: string, lang: string, text: string): TextHit[
 function worth(h: TextHit): number {
   const said = h.text.replace(/^[\w.[\]-]+: /, "");
   const words = said.split(/\s+/).filter((w) => /\p{L}/u.test(w)).length;
-  return (h.kind === "message" ? 100 : 0) + Math.min(words, 30) + (/[.!?…]$/.test(said) ? 5 : 0);
+  return (h.kind === "message" || h.kind === "setting" ? 100 : 0) + Math.min(words, 30) + (/[.!?…]$/.test(said) ? 5 : 0);
 }

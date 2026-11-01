@@ -75,6 +75,8 @@ export function extractCore(path: string, kind: string, text: string): Record<st
         depVersions: { ...strMap(j.devDependencies), ...strMap(j.dependencies) },
         workspaces: Array.isArray(ws) ? ws.filter((x): x is string => typeof x === "string") : isObj(ws) ? names(ws.packages) : null,
         packageManager: asStr(j.packageManager).split("@")[0] ?? "",
+        // A project that pins its manager in engines ({ "pnpm": "10.x" }) and has no packageManager field: the manager it asks for.
+        engineManager: ((e) => (isObj(e) ? (["pnpm", "yarn", "bun"].find((m) => typeof e[m] === "string") ?? "") : ""))(j.engines),
       };
     }
     case "tsconfig": {
@@ -378,6 +380,9 @@ function packageManagers(input: ScanInput, deps: string[]): string[] {
   for (const e of Object.values(input.core)) kinds.set(e.kind, (kinds.get(e.kind) ?? 0) + 1);
   for (const e of Object.values(input.core)) {
     if (e.kind === "npm" && get(e).packageManager) add(String(get(e).packageManager));
+    // No lockfile seen (too big to fetch, or not committed): what the repo itself says it uses, a pnpm workspace or its engines.
+    if (e.kind === "workspace" && get(e).tool === "pnpm" && !input.lockfiles.length) add("pnpm");
+    if (e.kind === "npm" && get(e).engineManager && !input.lockfiles.length) add(String(get(e).engineManager));
     if (e.kind === "pyproject") add(String(get(e).manager ?? "pip"));
   }
   if (kinds.get("npm") && !out.some((m) => ["npm", "pnpm", "yarn", "bun"].includes(m))) add("npm");

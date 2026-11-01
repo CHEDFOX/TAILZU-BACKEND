@@ -128,6 +128,13 @@ describe("package managers, frameworks and commands", () => {
     expect(cmds("bun.lockb")).toEqual(["install: bun install", "test: bun run test", "lint: bun run lint", "typecheck: bun run typecheck", "build: bun run build", "dev: bun run dev", "format: bun run format", "run: bun run start"]);
   });
 
+  it("with no lockfile seen, takes the manager the repo says it uses: a pnpm workspace, or its engines", () => {
+    expect(structureOf({ "pnpm-workspace.yaml": "packages:\n  - 'packages/*'\n", "package.json": pkg({ name: "u", scripts: { test: "vitest run" } }) }).packageManagers).toEqual(["pnpm"]);
+    expect(structureOf({ "package.json": pkg({ name: "u", engines: { node: ">=18", yarn: "4.x" }, scripts: { test: "jest" } }) }).packageManagers).toEqual(["yarn"]);
+    // A lockfile seen wins over both.
+    expect(structureOf({ "pnpm-workspace.yaml": "packages: []\n", "package.json": pkg({ name: "u" }), "package-lock.json": "" }).packageManagers).toEqual(["npm"]);
+  });
+
   it("reads the packageManager field when there is no lockfile, and records the lockfiles it saw", () => {
     const s = structureOf({ "package.json": pkg({ name: "x", packageManager: "pnpm@9.1.0", scripts: { test: "jest" } }), "yarn.lock": "" });
     expect(s.packageManagers).toEqual(["yarn", "pnpm"]);

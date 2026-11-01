@@ -3,7 +3,7 @@
  * (a fake room that uses the real search code) when it has one, and from GitHub's API as they always were when it has not.
  */
 import { describe, expect, it } from "vitest";
-import { Tools, AGENT_TOOLS, AGENT_TOOL_NAMES } from "../src/code/agent/tools.js";
+import { Tools, AGENT_TOOLS, AGENT_TOOL_NAMES, nameForms } from "../src/code/agent/tools.js";
 import { initialState } from "../src/code/agent/types.js";
 import type { ViewerEvent } from "../src/code/live/protocol.js";
 import { FakeRoom, FakeWorkspace, fakeLog } from "./live-fakes.js";
@@ -141,6 +141,17 @@ describe("grep", () => {
     expect(files).toMatchObject({ ok: true, content: '3 files match "slug" in 3 files.', data: "src/index.ts\nsrc/util.test.ts\nsrc/util.ts" });
   });
 
+  it("finds a name written another way where it is kept: actionConfirmation as action-confirmation, SALT_ROTATION as saltRotation", async () => {
+    const t = rig({ repo: { "public/intl/en-US.json": '{\n  "message.action-confirmation": "Type {confirmation} in the box below to confirm."\n}\n', "src/a.ts": "const saltRotation = 1;\n" } });
+    const g = await t.run("grep", { pattern: "actionConfirmation" });
+    expect(g.content).toBe('No match for "actionConfirmation" as written; written another way ("action[-_. ]?confirmation", any case): 1 line matches "action[-_. ]?confirmation" in 1 file.');
+    expect(g.data).toContain("public/intl/en-US.json:2:");
+    expect((await t.run("grep", { pattern: "SALT_ROTATION" })).data).toBe("src/a.ts:1:const saltRotation = 1;");
+    expect(nameForms("parseConfig")).toBe("parse[-_. ]?config");
+    expect(nameForms("TODO\\(")).toBeNull();
+    expect(nameForms("token")).toBeNull();
+  });
+
   it("sees the staged edits", async () => {
     const t = rig();
     await t.run("edit_file", { path: "src/util.ts", old: "// TODO: trim the dashes\n", new: "// done\n" });
@@ -152,7 +163,8 @@ describe("grep", () => {
 
   it("says plainly when nothing matches, and when the search was cut short", async () => {
     const t = rig();
-    expect(await t.run("grep", { pattern: "nothing-like-this" })).toMatchObject({ ok: true, content: 'No match for "nothing-like-this".' });
+    expect(await t.run("grep", { pattern: "nothing-like-this" })).toMatchObject({ ok: true, content: 'No match for "nothing-like-this" in any of its forms.' });
+    expect(await t.run("grep", { pattern: "nothing[0-9]+" })).toMatchObject({ ok: true, content: 'No match for "nothing[0-9]+".' });
     const lots = rig({ repo: { "a.txt": Array.from({ length: 50 }, (_, i) => `hit ${i}`).join("\n") } });
     const g = await lots.run("grep", { pattern: "hit", maxResults: 5 });
     expect(g.content).toMatch(/PARTIAL: there are more matches than are shown\. Narrow it with path or glob\./);
