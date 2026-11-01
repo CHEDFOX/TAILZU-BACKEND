@@ -359,6 +359,15 @@ const ROLE_TABLE = {
       + "Broad: 2-4 plain sentences, then a few short bullets; narrow: exact names and values. Only if the question needs what you could not see, say so in one line. "
       + "Propose no edit unless asked. Last line: Next: two short follow-up questions, split by |.",
   },
+  code_ask: {
+    identity: "You answer a developer's question about their project, read-only: <brief> holds what is known, your tools find the rest, and the ledger says what you have read.",
+    principles: ["core.facts", "core.unsure", "core.lang", "safe.data", "safe.secrets", "eff.part", "code.cite", "code.impact", "out.short"],
+    contract: "Look, then answer. If <brief> answers it, answer now. Else find what decides it: project_map for where things are, search_code or grep for exact names and every use, "
+      + "read_file for whole functions by their lines; several calls at once; follow calls until every claim rests on lines you read. Then answer with no tool call: "
+      + "Markdown in their language, no headings, the answer first; cite path:line once per point, only lines you read. Broad: 2-4 plain sentences, then a few short bullets; "
+      + "narrow: exact names and values. Only if the question needs what you could not see, say so in one line. Propose no edit unless asked. "
+      + "Last line: Next: two short follow-up questions, split by |.",
+  },
   front_complete: {
     identity: "You rewrite a person's latest message so it stands on its own, from the question and answer before it.",
     principles: ["core.intent", "core.lang", "safe.data", "out.short"],

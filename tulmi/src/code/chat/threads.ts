@@ -56,12 +56,15 @@ export interface ChatThread {
   history: ChatTurn[];
   /** Jobs started from this chat, newest last (at most JOBS_KEPT): what "what did you change?" is about. */
   jobs?: ChatJob[];
+  /** What this chat has read, as path:from-to, newest last (at most SEEN_KEPT): the next question's brief starts from it. */
+  seen?: string[];
   createdAt: number;
   updatedAt: number;
 }
 
 export interface ChatJob { id: string; branch: string; at: number }
 export const JOBS_KEPT = 3;
+export const SEEN_KEPT = 16;
 
 export interface ThreadStore {
   get(userId: string, projectId: string, id: string): Promise<ChatThread | null>;
@@ -98,7 +101,7 @@ export function rollSummary(summary: string, question: string, cites: readonly s
 }
 
 /** A thread after a turn. */
-export function afterTurn(t: ChatThread, o: { question: string; shown?: string; cites: readonly string[]; located: Located | null; now: number; answer?: string; next?: readonly string[] }): ChatThread {
+export function afterTurn(t: ChatThread, o: { question: string; shown?: string; cites: readonly string[]; located: Located | null; now: number; answer?: string; next?: readonly string[]; seen?: readonly string[] }): ChatThread {
   const turn: ChatTurn = {
     q: (o.shown ?? o.question).trim().slice(0, QUESTION_MAX), a: (o.answer ?? "").trim().slice(0, ANSWER_KEEP), at: o.now,
     ...(o.next?.length ? { n: o.next.slice(0, 3).map((q) => q.slice(0, 90)) } : {}),
@@ -111,6 +114,7 @@ export function afterTurn(t: ChatThread, o: { question: string; shown?: string; 
     lastCites: [...new Set(o.cites)].slice(0, CITES_MAX),
     lastLocated: o.located,
     history: [...t.history, turn].slice(-HISTORY_TURNS),
+    ...(o.seen?.length || t.seen?.length ? { seen: [...new Set([...(t.seen ?? []), ...(o.seen ?? [])].reverse())].reverse().slice(-SEEN_KEPT) } : {}),
     updatedAt: o.now,
   };
 }
@@ -176,16 +180,16 @@ function jobsOf(v: unknown): ChatJob[] {
     .map((j) => ({ id: j.id, branch: j.branch, at: typeof j.at === "number" ? j.at : 0 })).slice(-JOBS_KEPT);
 }
 
-function lastOf(v: unknown): { located: Located | null; history: ChatTurn[]; jobs: ChatJob[] } {
-  if (!v || typeof v !== "object") return { located: null, history: [], jobs: [] };
-  const o = v as { located?: unknown; history?: unknown; jobs?: unknown };
-  if (!Array.isArray(o.history)) return { located: v as Located, history: [], jobs: [] };
+function lastOf(v: unknown): { located: Located | null; history: ChatTurn[]; jobs: ChatJob[]; seen: string[] } {
+  if (!v || typeof v !== "object") return { located: null, history: [], jobs: [], seen: [] };
+  const o = v as { located?: unknown; history?: unknown; jobs?: unknown; seen?: unknown };
+  if (!Array.isArray(o.history)) return { located: v as Located, history: [], jobs: [], seen: [] };
   const history = o.history.filter((h): h is ChatTurn => !!h && typeof h === "object" && typeof (h as ChatTurn).q === "string" && typeof (h as ChatTurn).a === "string")
     .map((h) => {
       const n = Array.isArray(h.n) ? h.n.filter((q): q is string => typeof q === "string").slice(0, 3) : [];
       return { q: h.q, a: h.a, at: typeof h.at === "number" ? h.at : 0, ...(n.length ? { n } : {}) };
     });
-  return { located: o.located && typeof o.located === "object" ? (o.located as Located) : null, history, jobs: jobsOf(o.jobs) };
+  return { located: o.located && typeof o.located === "object" ? (o.located as Located) : null, history, jobs: jobsOf(o.jobs), seen: Array.isArray(o.seen) ? o.seen.filter((x): x is string => typeof x === "string" && x.length < 300).slice(-SEEN_KEPT) : [] };
 }
 
 const threadOf = (r: Row): ChatThread => {
@@ -193,7 +197,7 @@ const threadOf = (r: Row): ChatThread => {
   return {
     id: r.id, userId: r.user_id, projectId: r.project_id, summary: r.summary ?? "", turns: typeof r.turns === "number" ? r.turns : 0,
     lastQuestion: r.last_question ?? "", lastCites: Array.isArray(r.last_cites) ? r.last_cites.filter((c) => typeof c === "string") : [],
-    lastLocated: last.located, history: last.history, ...(last.jobs.length ? { jobs: last.jobs } : {}), createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
+    lastLocated: last.located, history: last.history, ...(last.jobs.length ? { jobs: last.jobs } : {}), ...(last.seen.length ? { seen: last.seen } : {}), createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
   };
 };
 
@@ -218,7 +222,7 @@ export class SupabaseThreadStore implements ThreadStore {
     if (!this.ids(t.userId, t.projectId, t.id)) throw new Error("code chat store: not a thread of a signed-in person");
     const r = ok(await this.sb.from("code_chat_threads").upsert({
       id: t.id, user_id: t.userId, project_id: t.projectId, summary: t.summary.slice(0, 2000), turns: t.turns, last_question: t.lastQuestion.slice(0, 1000),
-      last_cites: t.lastCites, last_located: { located: t.lastLocated, history: t.history.slice(-HISTORY_TURNS), ...(t.jobs?.length ? { jobs: t.jobs.slice(-JOBS_KEPT) } : {}) }, updated_at: new Date(t.updatedAt).toISOString(),
+      last_cites: t.lastCites, last_located: { located: t.lastLocated, history: t.history.slice(-HISTORY_TURNS), ...(t.jobs?.length ? { jobs: t.jobs.slice(-JOBS_KEPT) } : {}), ...(t.seen?.length ? { seen: t.seen.slice(-SEEN_KEPT) } : {}) }, updated_at: new Date(t.updatedAt).toISOString(),
     }, { onConflict: "id" }).select("*").single<Row>());
     return threadOf(r!);
   }

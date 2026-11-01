@@ -686,6 +686,7 @@ const EnvSchema = z.object({
   CODE_TREE_SITTER: bool(true),
   /** A job's commit carries the project map of the code as it leaves it (.xode/map.json and .xode/MAP.md: code/project/mapupdate.ts). */
   CODE_PROJECT_MAP_FILES: bool(false),
+  CODE_CHAT_LOOK: bool(true),
   /**
    * HOW THE CODE AGENT TREATS ITS OLD TOOL RESULTS (src/code/agent/mask.ts, context.ts, docs/code-agent.md): "mask" replaces the output of a result that is
    * older than the last six by a one-line placeholder and keeps the model's own actions, with no model call; "summary" drops those turns and has the cheap

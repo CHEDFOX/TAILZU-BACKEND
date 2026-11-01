@@ -24,18 +24,21 @@
  */
 import { aboutLines } from "../../bots/shared.js";
 import { askText, type FrontModel } from "../../front/model.js";
+import { FrontError } from "../../front/types.js";
 import { REPLY_TOKENS, LOCATE_PAISE } from "../../front/path.js";
 import type { Length } from "../../front/types.js";
 import type { ModelTier } from "../brain/tiers.js";
 import type { LiveFiles } from "../live/ports.js";
 import type { BrainHandle, BrainView } from "../project/index.js";
 import { isSecretPath, isTestPath } from "../project/lang.js";
+import { findInMap } from "../project/map.js";
 import { computeImpact, extractCues, fence, forModel, locate, type Located, type LocateTarget } from "../work/index.js";
 import { CONFIDENT, fusedFor } from "../work/locate.js";
 import { cut, type ModelCtx } from "../work/model.js";
 import { Anchors, checkCitations, keptLocations } from "./cite.js";
 import { factsBlock, gatherFacts, isConfigPath, missingFacts, withMissing, type Fact } from "./facts.js";
 import { flowDiagram } from "./flow.js";
+import { investigate, type LookTools } from "./look.js";
 import { isFollowUp, readQuestion, type QuestionRead } from "./question.js";
 import { afterTurn, type ChatThread } from "./threads.js";
 
@@ -43,6 +46,18 @@ import { afterTurn, type ChatThread } from "./threads.js";
 export const CODE_ANSWER_TOKENS_MIN = REPLY_TOKENS.medium;
 
 const LANGUAGE_WORDS: Record<string, string> = { en: "English", hinglish: "Hinglish (Hindi in Latin letters, mixed with English)", hi: "Hindi" };
+
+const isAbortErr = (e: unknown): boolean => (e as { name?: unknown } | null)?.name === "AbortError";
+
+/** Where the project map says the things the question names are: the components, each with its functions' exact lines. Free. */
+async function mapBrief(brain: ChatBrain, search: string): Promise<string> {
+  const map = brain.projectMap ? await brain.projectMap().catch(() => null) : null;
+  if (!map) return "";
+  return findInMap(map, search.replace(/["'“”‘’`]/g, " "), 4).map((path) => {
+    const c = map.components[path];
+    return c ? `${c.path}${c.summary ? ` - ${cut(c.summary, 120)}` : ""} [${c.symbols.slice(0, 8).map((sym) => `${sym.name}:${sym.start}-${sym.end ?? sym.start}`).join(", ")}]` : path;
+  }).join("\n");
+}
 
 /** What reading may cost the model: files, characters in all, and per file. */
 export const READ_FILES_MAX = 3;
@@ -58,7 +73,7 @@ const FACT_RELATED = 5;
 
 export type Road = "fast" | "read" | "overview";
 
-export type ChatBrain = Pick<BrainHandle, "status" | "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file">;
+export type ChatBrain = Pick<BrainHandle, "status" | "findFiles" | "findSymbols" | "findTexts" | "neighbors" | "testsFor" | "feature" | "features" | "file"> & Partial<Pick<BrainHandle, "projectMap">>;
 
 export interface ChatPorts {
   brain: ChatBrain;
@@ -66,6 +81,8 @@ export interface ChatPorts {
   read?: (path: string) => Promise<string | null>;
   /** The job's copy of the code, when the person has a job open on this project: read and grep with no GitHub call. */
   files?: Pick<LiveFiles, "read" | "grep"> | null;
+  /** The agent's read-only tools: with them the answer looks before it answers (look.ts). */
+  look?: LookTools | null;
 }
 
 export interface ChatInput {
@@ -545,6 +562,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   let values: Fact[] = [];
   let excerpts: string[] = [];
   let reads: string[] = [];
+  const seenNow: string[] = [];
   let greps: string[] = [];
   let basis = "";
   if (rq.whole) {
@@ -578,7 +596,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
 
   const left = Math.max(0, input.maxPaise - located.used.paise);
   const earlier = earlierTurns(input.thread, input.search);
-  const user = [
+  const blocks = [
     `<question>\n${forModel(input.question).replace(/<\/question/gi, "<\\/question")}\n</question>`,
     ...(input.language && LANGUAGE_WORDS[input.language] ? [`Answer in ${LANGUAGE_WORDS[input.language]}.`] : []),
     ...(input.meant && input.meant !== input.question ? [`<meant>\n${fence(forModel(input.meant))}\n</meant>`] : []),
@@ -589,13 +607,41 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     ...(lastAnswer(input) ? [`<last_answer>\n${fence(forModel(lastAnswer(input)))}\n</last_answer>`] : []),
     ...(facts.text ? [`<facts>\n${fence(forModel(facts.text))}\n</facts>`] : []),
     `<excerpts>\n${fence(forModel(excerpts.length ? excerpts.join("\n\n") : basis || "(none read)"))}\n</excerpts>`,
-  ].filter((p) => road !== "fast" || !p.startsWith("<excerpts>")).join("\n\n");
+  ].filter((p) => road !== "fast" || !p.startsWith("<excerpts>"));
+  const user = blocks.join("\n\n");
   input.onStep?.("code:write");
   const words = input.onText ? withoutNext(input.onText) : null;
-  const r = await askText(model, {
-    role: "front_code_answer", tier: input.tier, purpose: "front.code_answer", maxTokens: Math.max(REPLY_TOKENS[input.length], CODE_ANSWER_TOKENS_MIN), budget: { maxPaise: left }, user,
-    ...(words ? { onText: words.onText } : {}), ...(input.onReset || words ? { onReset: () => { words?.reset(); input.onReset?.(); } } : {}),
-  });
+  const maxTokens = Math.max(REPLY_TOKENS[input.length], CODE_ANSWER_TOKENS_MIN);
+  const reset = input.onReset || words ? { onReset: () => { words?.reset(); input.onReset?.(); } } : {};
+  let r: { text: string; paise: number };
+  if (ports.look) {
+    // Look before answering (look.ts): the same blocks are the brief, with where the map says things are and what this chat read before.
+    const [question, ...known] = blocks;
+    const map = await mapBrief(brain, input.search);
+    const before = input.thread?.seen?.length ? `Read earlier in this chat: ${input.thread.seen.slice(-12).join(", ")}` : "";
+    const brief = [question!, `<brief>\n${[...known, ...(map ? [`<map>\n${fence(forModel(map))}\n</map>`] : []), ...(before ? [before] : [])].join("\n\n")}\n</brief>`].join("\n\n");
+    try {
+      const looked = await investigate({
+        model, tier: input.tier, user: brief, tools: ports.look, anchors, maxPaise: Math.max(1, left), maxTokens,
+        ...(words ? { onText: words.onText } : {}), ...reset, ...(input.onStep ? { onStep: input.onStep } : {}),
+      });
+      // Nothing to say after looking (the money or the model gave out before an answer could be had): said plainly, never an empty reply.
+      if (!looked.text) throw new FrontError("model_down", "I could not finish looking into that just now. Nothing was changed; try again in a moment.", 503);
+      r = looked;
+      for (const p of looked.reads) if (!reads.includes(p)) reads.push(p);
+      greps.push(...looked.greps.filter((g) => !greps.includes(g)));
+      seenNow.push(...looked.seen);
+      if (looked.steps > 1) road = "read";
+    } catch (err) {
+      if (isAbortErr(err) || err instanceof FrontError) throw err;
+      throw new FrontError("model_down", "No model could be reached just now. Nothing was changed; try again in a moment.", 503);
+    }
+  } else {
+    r = await askText(model, {
+      role: "front_code_answer", tier: input.tier, purpose: "front.code_answer", maxTokens, budget: { maxPaise: left }, user,
+      ...(words ? { onText: words.onText } : {}), ...reset,
+    });
+  }
   const { text: said, next } = splitNext(r.text);
 
   // Every path:line in the answer is something that was seen; the rest is taken out, and the notes say so.
@@ -612,6 +658,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
   const slim = trimLocated(located);
   const thread = input.thread ? afterTurn(input.thread, {
     question: input.kept ?? input.question, ...(input.shown !== undefined ? { shown: input.shown } : {}), cites, located: targets.length ? slim : null, now: input.now, answer: answerText, next,
+    seen: [...reads.filter((p) => !seenNow.some((x) => x.startsWith(`${p}:`))), ...seenNow],
   }) : null;
   return {
     text: answerText, paise: r.paise + located.used.paise, notes, ...(diagram ? { diagram } : {}), road, reads, greps, cites, located: slim, thread, next,
