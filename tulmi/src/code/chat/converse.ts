@@ -26,7 +26,7 @@ import { redactText } from "../work/worklog.js";
 import { isSecretPath } from "../project/lang.js";
 import { CODE_ANSWER_TOKENS_MIN, LANGUAGE_WORDS, mapBrief, plainTags, splitNext, tidy, withoutNext, type ChatBrain } from "./answer.js";
 import { Anchors, checkCitations, fixPaths, keptLocations, unknownPaths } from "./cite.js";
-import { investigate, type Acts, type LookTools } from "./look.js";
+import { investigate, LOOK_STEPS_MAX, type Acts, type LookTools } from "./look.js";
 import { afterTurn, withJob, type ChatThread } from "./threads.js";
 
 export interface StartedJob { id: string; branch: string; state: string; budgetPaise: number }
@@ -40,6 +40,8 @@ export interface ConverseInput {
   meant?: string;
   /** The front door read the message as a change to make: the loop is told, and starts the job with what it found, unless it asks for something else. */
   change?: boolean;
+  /** The front door read it as a question for the web, at this depth: the loop researches it with the project in front of it. */
+  research?: "quick" | "standard" | "deep";
   thread: ChatThread | null;
   /** Where the latest job this chat started stands (handlers.ts jobBrief), when it started one. */
   job?: string | null;
@@ -78,6 +80,35 @@ export interface Conversed {
   job?: StartedJob;
   clarify?: { question: string; options: string[] };
   thread: ChatThread | null;
+}
+
+/** An answer that says it could not find what decides the question: a reason to look again on a tier that reasons. */
+export function admitsMiss(text: string): boolean {
+  return /\b(?:could not|couldn't|can't|cannot|did not|didn't|was not able to|wasn't able to|unable to)\s+(?:find|see|locate|read|confirm|tell)\b|\bnot (?:in )?(?:anything|what) I (?:read|found)\b/i.test(text);
+}
+/** What must be left of a message's money to climb a tier. */
+const ESCALATE_MIN_PAISE = 60;
+
+/**
+ * What a change asked for owes when the loop ends it with words alone: the job, a question, or why not. Said once (look.ts `owed`); its first
+ * words stay the answer if words come back.
+ */
+/** The steps a change asked for looks before it starts the job: enough to place the work; the job reads the code in full. */
+export const CHANGE_LOOK_STEPS = 3;
+export const CHANGE_OWED = "This was asked as a change to the project. If it is still to be made, start it now with start_job: the whole task, with the files and lines you found. If you need the person's say first, ask_person. If nothing is to change, say why in one line.";
+
+/** The button under a change the loop laid out but did not start (front/rules.ts reads it as a hand-off). */
+export const MAKE_CHANGE = "Make that change";
+
+/** The same words said again, near enough: the person asked again because the answer did not do. */
+export function saidAgain(now: string, before: string): boolean {
+  const words = (t: string) => new Set(t.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []);
+  const a = words(now);
+  const b = words(before);
+  if (a.size < 3 || b.size < 3) return false;
+  let shared = 0;
+  for (const w of a) if (b.has(w)) shared += 1;
+  return shared / Math.min(a.size, b.size) >= 0.7;
 }
 
 /** What one answer may show of files (show_file): files, lines of each, characters in all. And the web calls one answer may make. */
@@ -135,7 +166,7 @@ export const CHAT_ACTS: readonly ToolDef[] = [
   },
   {
     name: "ask_person",
-    description: "Asks the person one question instead of answering, when a wrong guess would waste real work.",
+    description: "Asks the person one question before a change, when a wrong guess would make the wrong change. A question, even an open one, is answered: recommend, and say what would change it.",
     parameters: {
       type: "object",
       properties: { question: { type: "string" }, options: { type: "array", items: { type: "string" }, description: "2 to 4 short answers they can tap." } },
@@ -185,6 +216,7 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
     `<message>\n${forModel(input.message).replace(/<\/message/gi, "<\\/message")}\n</message>`,
     ...(input.meant ? [`(That is: ${forModel(input.meant)})`] : []),
     ...(input.change ? ["(Read as a change to make: start_job with the whole task and what you found, unless the message asks for something else.)"] : []),
+    ...(input.research ? [`(Read as a question for the web: research it, ${input.research}, with this project in mind, and name the sources.)`] : []),
     ...(input.language && LANGUAGE_WORDS[input.language] ? [`Answer in ${LANGUAGE_WORDS[input.language]}.`] : []),
   ].join("\n\n");
 
@@ -196,7 +228,8 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
   const webNames = new Set((ports.web?.defs ?? []).map((d) => d.name));
   const anchors = new Anchors();
   const acts: Acts = {
-    defs: [...CHAT_ACTS.filter((d) => (d.name !== "project_book" || brain.book) && (d.name !== "show_file" || ports.read)), ...(ports.web?.defs ?? [])],
+    // A question back with answers to tap settles a change before work; anything else is answered (it may still ask in words, and offer what next).
+    defs: [...CHAT_ACTS.filter((d) => (d.name !== "project_book" || brain.book) && (d.name !== "show_file" || ports.read) && (d.name !== "ask_person" || input.change)), ...(ports.web?.defs ?? [])],
     exec: async (name, a) => {
       if (webNames.has(name)) {
         if (++webCalls > WEB_CALLS_MAX) return { content: `No more web this time (${WEB_CALLS_MAX} calls a message): answer from what you have.` };
@@ -244,11 +277,27 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
 
   // The words stream as they are written, without the "Next:" line (the chat shows those as buttons).
   const words = input.onText ? withoutNext(input.onText) : null;
-  const looked = await investigate({
+  let looked = await investigate({
     model, tier: input.tier, user, tools: ports.look, anchors, maxPaise: input.maxPaise, maxTokens: Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
+    ...(input.change ? { owed: CHANGE_OWED, steps: CHANGE_LOOK_STEPS } : {}),
     ...(words ? { onText: words.onText, onReset: () => { words.reset(); input.onReset?.(); } } : input.onReset ? { onReset: input.onReset } : {}),
     ...(input.onStep ? { onStep: input.onStep } : {}),
   });
+  // Stuck on the cheap tier (the steps ran out, or it says it could not find what decides it): once more on the code tier, which reasons, told
+  // what was already read so that it looks elsewhere. Its answer takes the place of the first.
+  if (!job && !clarify && input.tier === "cheap" && (looked.steps >= LOOK_STEPS_MAX || admitsMiss(looked.text)) && input.maxPaise - looked.paise >= ESCALATE_MIN_PAISE) {
+    input.onStep?.("code:think");
+    if (words) { words.reset(); input.onReset?.(); }
+    const read = looked.seen.length ? `Already read: ${looked.seen.slice(-14).join(", ")}.` : "Nothing was read yet.";
+    const again = await investigate({
+      model, tier: "code", user: `${user}\n\n(A first look did not settle it. ${read} Look where it did not, then answer.)`, tools: ports.look, anchors,
+      maxPaise: input.maxPaise - looked.paise, maxTokens: Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
+      ...(input.change ? { owed: CHANGE_OWED, steps: CHANGE_LOOK_STEPS } : {}), ...(words ? { onText: words.onText } : {}), ...(input.onStep ? { onStep: input.onStep } : {}),
+    }).catch(() => null);
+    if (again && (again.text || job || clarify)) {
+      looked = { ...again, paise: looked.paise + again.paise, reads: [...new Set([...looked.reads, ...again.reads])], seen: [...looked.seen, ...again.seen], escalated: true };
+    }
+  }
   if (!looked.text && !job && !clarify && !shown.length) throw new FrontError("model_down", "I could not finish that just now. Nothing was changed; try again in a moment.", 503);
 
   // The truth, by code: a path put right when the project has one file of that name, then every line cited checked against what was read.
@@ -269,7 +318,12 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
   const answer = [said2, ...files].filter(Boolean).join("\n\n");
   if (files.length && input.onText) input.onText(`\n\n${files.join("\n\n")}`);
 
-  let thread = input.thread;
+  // A change the loop laid out but did not start: one tap starts it with this plan.
+  if (input.change && !job && !clarify && answer) next.unshift(MAKE_CHANGE);
+  // The turn before this one fell short if this message reacts to it or says it again: kept on it, a case to test Xode on.
+  const before = input.thread?.history.at(-1);
+  const fell = before ? (input.meant ? "reaction" as const : saidAgain(input.message, before.q) ? "rephrase" as const : null) : null;
+  let thread = input.thread && fell ? { ...input.thread, history: [...input.thread.history.slice(0, -1), { ...before!, f: fell }] } : input.thread;
   if (thread) {
     thread = job
       ? withJob(thread, { id: job.id, branch: job.branch, said: input.message, now: input.now })

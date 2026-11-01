@@ -70,6 +70,10 @@ export interface FrontCtx {
   projectId?: string;
   /** The project's name (owner/repo), looked up by the front door: the router is told it, so "how does express do X?" in express's chat is about the code. */
   projectName?: string;
+  /** What the project is, in a line (its brain's welcome, looked up by the front door): the router reads a message in its light. */
+  projectAbout?: string;
+  /** The start of the chat's last answer: what "it", "that" and "do the same" point at, for the router. */
+  lastAnswer?: string;
   /** The conversation about the project's code this message belongs to (a uuid the app makes): its short rolling summary is what a follow-up leans on (code/chat). */
   threadId?: string;
   /** The last three turns at most, summarised. */

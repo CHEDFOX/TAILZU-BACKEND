@@ -97,6 +97,47 @@ describe("looking before answering", () => {
     expect(stripLeak(leak)).toBe("I have the steps. Let me read the rest of DEPLOY.md.");
     expect(leakedCall('```json\n{"name": "grep", "arguments": {}}\n```')).toBe(true);
     expect(leakedCall("Use the `<Parameter>` component.")).toBe(false);
+    // A model's own call tokens (DeepSeek's DSML, its tool-call markers) are calls too.
+    const dsml = "I have the deploy command. Let me read the rest.\n\n<｜DSML｜ calls>\n<｜DSML｜ invoke name=\"read_file\">\n</｜DSML｜ invoke>";
+    expect(stripLeak(dsml)).toBe("I have the deploy command. Let me read the rest.");
+    expect(leakedCall("<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>function")).toBe(true);
+    expect(leakedCall("Run `a | b` and see x < y.")).toBe(false);
+  });
+
+  it("at its last step, a promise or a written call is no answer: one more call, with no tools, for the answer from what was read", async () => {
+    const m = scripted([
+      { calls: [{ name: "grep", args: { pattern: "x" } }] }, { calls: [{ name: "grep", args: { pattern: "y" } }] },
+      { text: "Let me read the rest of DEPLOY.md.\n<｜DSML｜ invoke name=\"read_file\">" }, { text: "Run ./deploy/ship.sh on the server." },
+    ]);
+    // Each turn costs 1; with 3 to spend the third is past 60% and is the last step.
+    const out = await investigate({ model: m.model, tier: "cheap", user: "q", tools: tools(), anchors: new Anchors(), maxPaise: 3, maxTokens: 800 });
+    expect(out.text).toBe("Run ./deploy/ship.sh on the server.");
+    expect(m.sent.at(-1)!.toolChoice).toBe("none");
+    expect(String(m.sent.at(-1)!.messages.at(-1)!.content)).toBe("Answer now from what you have read, with no tool call.");
+    expect(out.steps).toBe(3);
+  });
+
+  it("is told once what the turn owes when it ends with words alone, and keeps its first words if words come back", async () => {
+    const m = scripted([{ text: "The toggle goes in src/settings.tsx, saved with the user's settings." }, { text: "Nothing to add." }]);
+    const out = await investigate({ model: m.model, tier: "cheap", user: "q", tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, owed: "Start the job." });
+    expect(m.sent).toHaveLength(2);
+    expect(String(m.sent[1]!.messages.at(-1)!.content)).toBe("Start the job.");
+    expect(out.text).toBe("The toggle goes in src/settings.tsx, saved with the user's settings.");
+  });
+
+  it("on the last step of a turn that owes an act, it may only act: no more reading, the act offered and taken", async () => {
+    const started: string[] = [];
+    const acts = {
+      defs: [{ name: "start_job", description: "start", parameters: {} }],
+      exec: async (_name: string, a: Record<string, unknown>) => { started.push(String(a.task)); return { content: "", end: "Started." }; },
+    };
+    const m = scripted([{ calls: [{ name: "grep", args: { pattern: "toggle" } }] }, { calls: [{ name: "start_job", args: { task: "Add the toggle." } }] }]);
+    const out = await investigate({ model: m.model, tier: "cheap", user: "q", tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, acts, owed: "Start the job.", steps: 2 });
+    expect(m.sent.map((s) => s.toolChoice)).toEqual(["auto", "auto"]);
+    expect(m.sent[1]!.tools).toEqual(["start_job"]);
+    expect(String(m.sent[1]!.messages.at(-1)!.content)).toContain("This is your last step: no more reading. Start the job.");
+    expect(started).toEqual(["Add the toggle."]);
+    expect(out).toMatchObject({ text: "Started.", ended: "start_job", steps: 2 });
   });
 
   it("answers once most of the money is spent, so the answer can still be paid for", async () => {

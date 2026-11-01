@@ -1,7 +1,7 @@
 /**
  * XODE'S CHAT, SCORED, ON REAL PROJECTS: THE ROUTER AND ITS ROADS AGAINST THE ONE LOOP, THE SAME CASES, THE SAME BRAIN.
  *
- *   npx tsx e2e/xode-eval.ts [--only desktop|backend] [--cap 30] [--out e2e/out/xode-eval.md]
+ *   npx tsx e2e/xode-eval.ts [--only desktop|backend] [--modes router,loop] [--cases a,b] [--extra e2e/cases/real.jsonl] [--cap 30] [--out e2e/out/xode-eval.md]
  *
  * Each project's brain is built once with real models (as when a person connects the repo; its history, pull requests and issues read from the
  * real repo on api.github.com), the owner's three answers are given to its book, and every case is asked through the front door twice: with the
@@ -35,6 +35,8 @@ const OUT = arg("out", path.join("e2e", "out", "xode-eval.md"));
 const MODES = (arg("modes", "router,loop").split(",").filter((m) => m === "router" || m === "loop")) as Array<"router" | "loop">;
 /** Only these cases (their ids), when given. */
 const CASES = arg("cases") ? new Set(arg("cases").split(",")) : null;
+/** Cases from real chats (scripts/xode-cases.ts), one JSON line each; those whose `did` is filled in run with their project's. */
+const EXTRA = arg("extra");
 
 type Did = "answer" | "job" | "ask";
 interface Case { id: string; say: string; before?: string[]; did: Did; says?: RegExp[]; max?: number }
@@ -127,6 +129,16 @@ function judge(c: Case, r: FrontResult | null, error: string, all: Set<string>, 
   return { did, checks, pass: checks.every(([, ok]) => ok), text, ...(jobTask ? { job: jobTask } : {}) };
 }
 
+/** The labelled lines of an --extra file, as cases of the project with that repo. */
+function extraCases(repo: string): Case[] {
+  if (!EXTRA) return [];
+  return fs.readFileSync(EXTRA, "utf8").split("\n").filter((l) => l.trim()).flatMap((l): Case[] => {
+    const x = JSON.parse(l) as { id: string; repo: string; before?: string[]; say: string; did: string; says?: string[]; max?: number };
+    if (x.repo !== repo || !["answer", "job", "ask"].includes(x.did)) return [];
+    return [{ id: x.id, say: x.say, did: x.did as Did, ...(x.before?.length ? { before: x.before } : {}), ...(x.says?.length ? { says: x.says.map((w) => new RegExp(w, "i")) } : {}), ...(x.max ? { max: x.max } : {}) }];
+  });
+}
+
 async function runProject(p: Project, lines: string[], totals: Record<string, { pass: number; n: number; paise: number; ms: number }>): Promise<void> {
   const out = (s = ""): void => { lines.push(s); console.log(s); };
   const { files, all, named } = filesOf(p.dir, p.stripDocs);
@@ -177,7 +189,7 @@ async function runProject(p: Project, lines: string[], totals: Record<string, { 
 
     const rows: string[] = ["| case | expected | router | loop |", "|---|---|---|---|"];
     const answers: string[] = [];
-    for (const c of p.cases.filter((x) => !CASES || CASES.has(x.id))) {
+    for (const c of [...p.cases, ...extraCases(p.repo)].filter((x) => !CASES || CASES.has(x.id))) {
       const v: Partial<Record<keyof typeof modes, Verdict>> = {};
       for (const mode of MODES) {
         if (spent() >= CAP_PAISE) { out(`(stopped: ${rupees(spent())} spent, the cap is ${rupees(CAP_PAISE)})`); return; }
@@ -189,6 +201,8 @@ async function runProject(p: Project, lines: string[], totals: Record<string, { 
         const at = Date.now();
         const { r, error } = await ask(mode, c.say, threadId);
         const verdict: Verdict = { ...judge(c, r, error, all, named, lastTask), paise: spent() - p0, ms: Date.now() - at, calls: rig.kit.logs.length - before };
+        // --trace: each model call of the case, to see where the money went.
+        if (process.argv.includes("--trace")) for (const l of rig.kit.logs.slice(before)) console.error(`  ${l.purpose} ${l.tier ?? "-"} ${l.model} ${rupees(l.paise)} in ${l.promptTokens} out ${l.completionTokens}${l.ok ? "" : ` FAILED ${l.why ?? l.error ?? ""}`}`);
         v[mode] = verdict;
         const tot = (totals[mode] ??= { pass: 0, n: 0, paise: 0, ms: 0 });
         tot.n += 1; tot.pass += verdict.pass ? 1 : 0; tot.paise += verdict.paise; tot.ms += verdict.ms;

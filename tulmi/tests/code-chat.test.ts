@@ -404,6 +404,18 @@ describe("the project book in the chat", () => {
   });
 });
 
+describe("make that change, after the one loop laid it out", () => {
+  it("gives the job what was asked and the plan the chat wrote, its files and lines", async () => {
+    const r = await chatRig();
+    const threadId = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    await r.threads.put({ ...(await import("../src/code/chat/threads.js")).newThread("alice", r.a.project.id, threadId, 0),
+      history: [{ q: "make the cookie expire after a day", a: "Set maxAge in startSession at src/auth/session.ts:5.", at: 1 }] });
+    const task = await r.chat.planned("alice", r.a.project.id, threadId, "make that change");
+    expect(task).toBe("The person asked: make the cookie expire after a day\n\nThe chat looked into the code and laid out this change (its files and lines are where to start):\nSet maxAge in startSession at src/auth/session.ts:5.\n\nWhat they say now: make that change");
+    expect(await r.chat.planned("alice", r.a.project.id, "ffffffff-ffff-4fff-8fff-ffffffffffff", "make that change")).toBeNull();
+  });
+});
+
 describe("ok, change it", () => {
   it("hands the job the place the conversation found, as the chat's, and the agent does not look for it again", async () => {
     const r = await chatRig();

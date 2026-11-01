@@ -210,6 +210,8 @@ export function registerFrontRoutes(app: FastifyInstance, deps: FrontRoutesDeps)
     if (ctx.projectId && ctx.threadId && !ctx.recent.length) {
       const kept = await (deps.threads ?? threadStore()).get(user.id, ctx.projectId, ctx.threadId).catch(() => null);
       if (kept?.lastQuestion) ctx.recent.push({ said: kept.lastQuestion, did: "code_question" });
+      const last = kept?.history.at(-1)?.a;
+      if (last) ctx.lastAnswer = last.slice(0, 600);
     }
     const streaming = input.stream || String(req.headers["accept"] ?? "").includes("application/x-ndjson");
     const gone = new AbortController();

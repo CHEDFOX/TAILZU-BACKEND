@@ -29,7 +29,7 @@ import type { SpendMeter } from "../artifacts/limits.js";
 import { askJson, forModel, type CallFn, type ModelCtx } from "../code/work/model.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { Learning } from "./learn.js";
-import { answerPaise, budgetOf, COSTLY_PAISE, routeOf, tierOf, visualCapOf } from "./path.js";
+import { answerPaise, budgetOf, COSTLY_PAISE, RESEARCH_PAISE, routeOf, tierOf, visualCapOf } from "./path.js";
 import { readByRules, type RuleRead } from "./rules.js";
 import { chooseVisual } from "./visual.js";
 import { clarifyFor, langOf, type ClarifyKind } from "./words.js";
@@ -69,7 +69,9 @@ const LOOP_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>(["reply", "code_a
 // (A change, code_job, goes to the loop too, marked "agent_change": see step 6.)
 
 /** What one message of a project's chat may spend when it is one loop: its worst case at the tier's prices for a few steps of looking (spends far less). */
-export const AGENT_CHAT_PAISE = 300;
+export const AGENT_CHAT_PAISE = 500;
+/** The same for a deep question, which the strong tier takes from the start (its worst case is several times the cheap one's). */
+export const AGENT_STRONG_PAISE = 1_500;
 
 /** What the small model is held to. Strict: a field it was not asked for is a bad answer, and gets one repair. */
 export const DecideReply = z.object({
@@ -123,6 +125,9 @@ export function decideMessage(text: string, ctx: FrontCtx, rules: Pick<RuleRead,
     `Message:\n<<<\n${body}\n>>>`,
     // In a project's chat, "this repo", "the app" and "it" are the project: said, so a question about it is not read as one about the world.
     `Project: ${ctx.projectId ? `yes, this is the chat of their code project${ctx.projectName ? ` ${oneLine(forModel(ctx.projectName), 80)}` : ""} ("this repo", "the app", "it" and its name mean the project; a question about the project itself, what it is, who it is for, what changed in it, where it is heading, is a code_question about it)` : "no"}.`,
+    ...(ctx.projectId && ctx.projectAbout ? [`What the project is: ${oneLine(forModel(ctx.projectAbout), 220)}`] : []),
+    // What the chat said last: "do that", "the same for logout", "and why?" point at it.
+    ...(ctx.lastAnswer ? [`The chat's last answer began:\n<<<\n${oneLine(forModel(ctx.lastAnswer), 400).replace(/>>>/g, "> > >")}\n>>>`] : []),
     `Device: ${ctx.device}. Mode: ${ctx.mode}.`,
     ...(kinds.length ? [`Attachments: ${kinds.join(", ")}.`] : []),
     ...(ctx.recent.length ? [`Recent:\n${ctx.recent.slice(-3).map((t) => `- "${oneLine(forModel(t.said), 120)}"${t.did ? ` -> ${oneLine(t.did, 40)}` : ""}`).join("\n")}`] : []),
@@ -260,13 +265,22 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
   // A bare "fix it" is a question back. A change goes to the loop marked as one: with the project in front of it, the loop starts the job with
   // what it found (or, when it was not a change at all, "give me the database code to copy", does what was asked).
   const bareChange = !!clarify && bare && intent === "code_task";
-  const loopTakes = LOOP_ROUTES.has(route) || route === "code_job";
+  // "Make that change" after the loop laid out a change: a job at once, with the chat's plan (handlers.ts codeJobDefault).
+  const handOff = route === "code_job" && !!rules.handoff;
+  // Research in a project's chat is the loop's too: the question is looked into with the project in front of it (what it uses now, its settings),
+  // which a search alone does not know.
+  const loopTakes = LOOP_ROUTES.has(route) || (route === "code_job" && !handOff) || route === "research";
   if (agentChat && hasProject && !ctx.attachments.length && loopTakes && !bareChange) {
+    const pictured = visual?.via === "inline" ? null : visual;
+    const kind = route === "code_job" ? "agent_change" : route === "research" ? "agent_research" : null;
     return {
       // A picture made beside the answer stays (a diagram of a flow); a table is part of the words, and the loop writes its own.
-      intent: "code_question", shape: { length, visual: visual?.via === "inline" ? null : visual }, route: "code_answer", tier: "cheap",
-      budgetPaise: AGENT_CHAT_PAISE + visualCapOf("code_question", visual?.via === "inline" ? null : visual), confidence, via,
-      language: rules.reaction?.language ?? rules.cls.language, reasons: [...new Set([...reasons, "agent_chat", ...(route === "code_job" ? ["agent_change"] : [])])],
+      intent: "code_question", shape: { length, visual: pictured }, route: "code_answer",
+      // A deep why (a slow page, a leak, what a change reaches) is the strong tier's from the start; the rest starts cheap and climbs when stuck.
+      tier: tier === "strong" ? "strong" : "cheap",
+      budgetPaise: (tier === "strong" ? AGENT_STRONG_PAISE : AGENT_CHAT_PAISE) + (route === "research" ? RESEARCH_PAISE[depth ?? "standard"] : 0) + visualCapOf("code_question", pictured),
+      confidence, via, language: rules.reaction?.language ?? rules.cls.language, reasons: [...new Set([...reasons, "agent_chat", ...(kind ? [kind] : [])])],
+      ...(route === "research" ? { depth: depth ?? "standard" } : {}),
       // "??", "why?": what the words ask of the last answer, as the rules read them; the loop is told it beside the person's own words.
       ...(rules.reaction ? { reask: rules.reaction.ask } : {}),
     };
