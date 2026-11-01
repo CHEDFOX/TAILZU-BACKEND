@@ -31,6 +31,7 @@ import {
 } from "../policy.js";
 import { gatherFacts, isConfigPath, missingFacts, sourcesFor, withMissing, withSources } from "../chat/facts.js";
 import { classOf, isSecretPath, isTestPath } from "../project/lang.js";
+import { bookForJobs } from "../project/book.js";
 import type { BaselineKind, BaselineStep } from "../project/types.js";
 import { gateBase, repoRef } from "../projects.js";
 import { markReady } from "../pulls.js";
@@ -579,7 +580,9 @@ async function modelTurn(r: Run): Promise<void> {
   const install = (await r.brain.baselinePlan().catch(() => [])).find((x) => x.kind === "install")?.cmd;
   const view = await r.brain.status().catch(() => null);
   const rules = (view?.conventions?.rules ?? []).map((x) => `${x.path}:\n${x.text}`).join("\n\n");
-  const memory = (await r.brain.memory().catch(() => "")).replace(/\n## Project rules[\s\S]*?(?=\n## |$)/, "");
+  // The project book's part a job needs (who it is for, where it is heading, recent work), after the brain's memory (project/book.ts).
+  const book = typeof r.brain.book === "function" ? await r.brain.book().catch(() => null) : null;
+  const memory = [(await r.brain.memory().catch(() => "")).replace(/\n## Project rules[\s\S]*?(?=\n## |$)/, ""), book ? bookForJobs(book) : ""].filter(Boolean).join("\n");
   const checks = (s.plan?.verify ?? []).map((v) => `${v.kind}: ${v.cmd}`).slice(0, 6);
   const ctx = buildContext({
     strategy, state: s, project: projectContext({ rules, memory, ...(install ? { install } : {}), kind: s.classification ? s.classification.type.replace("_", " ") : "" }),

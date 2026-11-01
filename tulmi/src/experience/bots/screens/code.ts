@@ -14,6 +14,7 @@
  *   bots.code.new        params project?  the idea, then the questions with the plan growing beside them, then Start building
  *   bots.code.plan       params id (a job)  the plan, Start / Change the plan
  *   bots.code.rules      params project
+ *   bots.code.book       params project   the project book (code/project/book.ts): its chapters, every fact with its source, and the owner's questions
  *   bots.code.review     params id (a job), or project + branch
  *   bots.code.pr-care    params project, pr (and branch, when PR care is off)
  */
@@ -23,6 +24,7 @@ import { estimate, type PastJob } from "../../../botsCode/history.js";
 import { QUICK, SHORT, slugOf } from "../../../botsCode/intake.js";
 import { hunkRange, type Hunk } from "../../../botsCode/linediff.js";
 import { nextValue, ruleWord, type RuleId, type RuleValue } from "../../../botsCode/rules.js";
+import { CHAPTERS, CHAPTER_TITLES, type BookFact, type ProjectBook } from "../../../code/project/book.js";
 import {
   back, bigNumber, blip, body, botAvatar, botLook, box, button, C, call, chips, col, emptyState, grid, grow,
   icon, labelled, listCard, listRow, meta, meter, mono, needsCard, notice, open, page, primaryButton, quietButton, row,
@@ -890,6 +892,8 @@ function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project" }>): S
   const rs = desk ? 36 : 44;
   const rules = labelled(box([icon("settings", { size: desk ? 18 : 20 })], { width: rs, height: rs, borderRadius: rs / 2, borderWidth: 1, borderColor: C.line, alignItems: "center", justifyContent: "center", flexShrink: 0 },
     open(SCREENS.projectRules, { project: p.id })), "Project rules");
+  const bookBtn = labelled(box([icon("book", { size: desk ? 18 : 20 })], { width: rs, height: rs, borderRadius: rs / 2, borderWidth: 1, borderColor: C.line, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+    open(SCREENS.projectBook, { project: p.id })), "Project book");
   const branchTag = box([text(p.defaultBranch, { size: 12, mono: true, lineHeight: 16 })], { borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10, flexShrink: 0 });
   const chipsOf = stackChips(b);
 
@@ -935,7 +939,7 @@ function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project" }>): S
       nav: "code", title: `Xode · ${name}`,
       body: [
         row([backButton(), col([text("Xode", { size: 20, weight: 600, tracking: -0.3, lineHeight: 25 }), text(p.fullName, { size: 13, mono: true, color: C.meta, lineHeight: 17, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-          ...headerBuddy(ctx, "code", { width: 64, lookTo: "down", thinkWhen: CODE_BUSY }), branchTag, rules], { gap: 8 }),
+          ...headerBuddy(ctx, "code", { width: 64, lookTo: "down", thinkWhen: CODE_BUSY }), branchTag, bookBtn, rules], { gap: 8 }),
         readCard,
         ...usageNote(ctx),
         ...(tasks.length && !building ? [col([sectionLabel("Good first tasks"), ...tasks.map((t, i) => row([
@@ -998,6 +1002,7 @@ function projectHome(ctx: BotsCtx, d: Extract<HomeData, { kind: "project" }>): S
         branchTag, ...headerBuddy(ctx, "code", { lookTo: "down", thinkWhen: CODE_BUSY }), grow(),
         ...(building || empty ? [] : [row([statusMark("done"), text("I've read your project", { size: 13, color: C.grey70, lineHeight: 17 })], { gap: 7 })]),
         ...(chipsOf.length ? [row(chipsOf.map((c) => tag(c, { mono: true })), { gap: 6, flexShrink: 1, overflow: "hidden" })] : []),
+        bookBtn,
         rules,
       ], { gap: 10 }),
       ...(empty ? [readCard] : [composer,
@@ -1380,6 +1385,51 @@ function estimateGrid(est: ReturnType<typeof estimate>, steps: number, files: nu
     cell(String(steps), steps === 1 ? "step" : "steps"),
     cell(String(files), files === 1 ? "file changed" : "files changed"),
   ], { backgroundColor: C.surface, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, gap: 8, alignItems: "flex-start" });
+}
+
+// ===================================================================== bots.code.book (the project book)
+
+interface BookData { book: ProjectBook; markdown: string }
+interface BookView { id: string; data: BookData }
+
+async function loadBook(ctx: BotsCtx, deps: BotsDeps): Promise<BookView | undefined> {
+  const id = str(ctx.params.project);
+  if (!id) return undefined;
+  const data = await get<BookData>(deps, `/v1/code/projects/${id}/book`);
+  return data?.book ? { id, data } : undefined;
+}
+
+const SOURCE_WORDS: Record<string, string> = { owner: "you said", index: "the project's index", file: "file", commit: "commit", pull: "pull request", issue: "issue", milestone: "milestone", check: "checks" };
+
+/** The book: each chapter a list, each fact with where it came from (✓ you said it, ~ a guess); what is not known; the questions, answered here. */
+function projectBookScreen(ctx: BotsCtx, v: BookView | undefined): ScreenResponse {
+  if (!v) return unreachable(ctx, "that project's book");
+  const desk = ctx.client === "desktop";
+  const { book } = v.data;
+  const name = short(book.project);
+  const factRow = (f: BookFact): Node => col([
+    text(`${f.status === "confirmed" ? "✓ " : f.status === "guessed" ? "~ " : ""}${f.text}`, { size: 14, lineHeight: 20 }),
+    meta(f.source.kind === "owner" || f.source.kind === "index" ? SOURCE_WORDS[f.source.kind]! : `${SOURCE_WORDS[f.source.kind]} ${f.source.ref}`, { size: 12 }),
+  ], { gap: 2, paddingVertical: 10, paddingHorizontal: 16 }, f.source.url ? { kind: "openUrl", url: f.source.url } : undefined);
+  const chapters = CHAPTERS.map((c) => ({ c, facts: book.facts.filter((f) => f.chapter === c) })).filter((x) => x.facts.length)
+    .map(({ c, facts }) => col([sectionLabel(CHAPTER_TITLES[c]), listCard(facts.map(factRow))], { gap: 8 }));
+  const asked = book.questions;
+  const answers = Object.fromEntries(asked.map((q) => [q.id, `$state.a_${q.id}`]));
+  const save = call("POST", `/v1/code/projects/${v.id}/book`, { answers }, { ok: seq(toast("Saved to the book."), REFRESH), fail: toast("Couldn't save that. Try again.") });
+  const questions = asked.length ? [col([
+    sectionLabel("A few questions"),
+    meta("Your words go in the book as facts, and Xode works by them.", { size: 12 }),
+    listCard(asked.map((q) => col([text(q.text, { size: 14, weight: 600, lineHeight: 20 }), field(`a_${q.id}`, "Your answer", { multiline: true, minHeight: 60 })], { gap: 6, paddingVertical: 12, paddingHorizontal: 16 }))),
+    button("Save", save, { kind: "primary", size: "md" }),
+  ], { gap: 8 })] : [];
+  const gaps = book.gaps.length ? [col([sectionLabel("Not known yet"), ...book.gaps.map((g) => meta(g, { size: 13, lineHeight: 18 }))], { gap: 6 })] : [];
+  return page(ctx, {
+    nav: "code", title: "Project book", state: Object.fromEntries(asked.map((q) => [`a_${q.id}`, ""])), gap: 16, ...(desk ? { maxWidth: 820 } : {}),
+    body: [
+      head(ctx, { title: "Project book", sub: subLine([{ code: name }, `· as of ${book.commit.slice(0, 7)}`]), to: open(SCREENS.code, { project: v.id }), right: [botAvatar(CODE, 30)] }),
+      ...questions, ...chapters, ...gaps,
+    ],
+  });
 }
 
 // ===================================================================== bots.code.rules (ProjectRules / DProjectRules)
@@ -1766,6 +1816,7 @@ export const codeScreens: BotsScreen[] = [
   screen<NewData | undefined>({ id: SCREENS.newProject, load: loadNew, build: newProject }),
   screen<PlanData | undefined>({ id: SCREENS.codePlan, load: loadPlan, build: codePlan }),
   screen<RulesView | undefined>({ id: SCREENS.projectRules, load: loadRules, build: projectRules }),
+  screen<BookView | undefined>({ id: SCREENS.projectBook, load: loadBook, build: projectBookScreen }),
   screen<ReviewData | undefined>({ id: SCREENS.codeReview, load: loadReview, build: codeReview }),
   screen<CareData | undefined>({ id: SCREENS.prCare, load: loadCare, build: prCare }),
 ];

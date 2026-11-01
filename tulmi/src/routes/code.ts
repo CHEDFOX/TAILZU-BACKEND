@@ -39,6 +39,10 @@
  *                                                  asks a cheap model only when unsure, and answers with a question and 2 or 3 labelled options when
  *                                                  it cannot tell. Changes nothing. 404 brain_off while CODE_PROJECT_BRAIN is off; 409 brain_not_ready
  *                                                  for a project whose brain was never built
+ *   GET    /v1/code/projects/:id/book         -> { book: { facts: [{ chapter, text, source, status, at }], gaps, questions }, markdown }  the project book
+ *                                                  (code/project/book.ts): what it is, how it stands, what changed, why, where it is heading; every fact with
+ *                                                  its source. Free (GitHub and the brain's rows). 409 brain_not_ready before the brain is built
+ *   POST   /v1/code/projects/:id/book { answers: { for?, next?, keep? } }  -> the same, with the owner's answers kept as confirmed facts
  *   POST   /v1/code/projects/:id/resources { need }
  *                                             -> { need, ecosystem, candidates: [{ name, version, score, licence, maintenance, security, size,
  *                                                  popularity, fit, avoid, line }], pick, pickReason, notes }  a library for "a date picker for React",
@@ -153,6 +157,7 @@ import type { Code } from "../code/index.js";
 import { beginConnect, completeCallback, forgetInstallation, linkStatus } from "../code/link.js";
 import { GRANTS_MAX, PolicyError, actionCatalog, parseGrant, type GateOptions } from "../code/policy.js";
 import { addProject, beginNewRepo, createWorkBranch, finishNewRepo, initEmptyRepo, isNewRepoState, listBranches, listRepos, newRepoLink, openPr, ownProject, workspace } from "../code/projects.js";
+import { bookMarkdown, type ProjectBook } from "../code/project/book.js";
 import { emptyRepoVerdict } from "../code/newproject/detect.js";
 import { advanceIntake } from "../code/newproject/intake.js";
 import { milestoneBranch } from "../code/newproject/milestones.js";
@@ -548,6 +553,31 @@ export function registerCodeRoutes(app: FastifyInstance, deps: CodeRoutesDeps): 
         };
         return { status: 200, body: await locate(task, brain, { model: { ...modelFor(s.brain, s.user.id, LOCATE_PAISE), signal: stop }, read }) };
       });
+    } catch (err) { return fail(reply, err); }
+  });
+
+  // The project book (code/project/book.ts): free to read (GitHub and the brain's rows, no model); the owner's answers are kept.
+  const bookReply = (book: ProjectBook | null) => (book
+    ? { status: 200, body: { book, markdown: bookMarkdown(book) } }
+    : { status: 409, body: { code: "brain_not_ready", message: "X0 Bot hasn't read this project yet. Start its brain first." } });
+  app.get<{ Params: { id: string } }>("/v1/code/projects/:id/book", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    try {
+      const r = bookReply(await (await s.brain.open(s.user.id, req.params.id)).book());
+      return reply.code(r.status).send(r.body);
+    } catch (err) { return fail(reply, err); }
+  });
+  app.post<{ Params: { id: string }; Body: { answers?: unknown } | undefined }>("/v1/code/projects/:id/book", RL, async (req, reply) => {
+    const s = await beginBrain(req.headers["authorization"], reply);
+    if (!s) return reply;
+    const answers = bodyOf(req.body).answers;
+    if (!answers || typeof answers !== "object" || Array.isArray(answers)) {
+      return reply.code(400).send({ code: "bad_request", message: "answers is { for?, next?, keep? }: who it is for, what comes next, what must not change." });
+    }
+    try {
+      const r = bookReply(await (await s.brain.open(s.user.id, req.params.id)).answerBook(answers));
+      return reply.code(r.status).send(r.body);
     } catch (err) { return fail(reply, err); }
   });
 
