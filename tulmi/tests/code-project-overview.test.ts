@@ -16,8 +16,8 @@ vi.hoisted(() => {
 });
 
 import {
-  basisOf, checkedOverview, commitsSince, driftOf, fallbackOverview, kindsOf, overviewDue, overviewLines, tuneOverview, TUNE_AT, TUNE_GAP_MS,
-  type Overview, type OverviewInput,
+  basisOf, checkedOverview, commitsSince, driftOf, fallbackOverview, kindsOf, overviewDue, overviewFacts, overviewLines, ownUsed, ownWords, namesIn, readmeAge,
+  trajectoryOf, tuneOverview, upkeep, focusOf, TUNE_AT, TUNE_GAP_MS, type Overview, type OverviewInput,
 } from "../src/code/project/overview.js";
 import { EMPTY_STRUCTURE, type Feature, type Structure } from "../src/code/project/types.js";
 import { Meter } from "../src/code/project/summarize.js";
@@ -32,7 +32,7 @@ const input = (o: Partial<OverviewInput> = {}): OverviewInput => ({
   paths: ["server/index.ts", "server/orders.ts", "web/App.tsx", "web/Cart.tsx", "README.md"], history: [], messages: ["Add cart"], owner: null, ...o,
 });
 const written = (i: OverviewInput, at = 0, o: Partial<Overview> = {}): Overview => ({
-  kind: "a web service and its web app", what: "A shop.", parts: [{ name: "Orders", does: "Takes orders.", start: "server/orders.ts" }, { name: "Web", does: "The shop in the browser.", start: "web/App.tsx" }],
+  essence: "Acme: a shop that takes orders for its own bread.", kind: "a web service and its web app", what: "A shop.", parts: [{ name: "Orders", does: "Takes orders.", start: "server/orders.ts" }, { name: "Web", does: "The shop in the browser.", start: "web/App.tsx" }],
   flows: [], direction: "", via: "model", at, commit: "c0", basis: basisOf(i), earlier: [], ...o,
 });
 
@@ -113,7 +113,7 @@ describe("the overview, checked and shown", () => {
     expect(f).toMatchObject({ kind: "a web service (an HTTP API), and a web app in the browser", what: "A shop.", via: "code", commit: "c1" });
     expect(f.parts[0]).toEqual({ name: "Orders", does: "What Orders does.", start: "server/index.ts" });
     expect(overviewLines(written(input(), 0, { flows: ["An order: Web posts it, Orders saves it."], direction: "It was a shop; it is now a marketplace." }))).toEqual([
-      "- A web service and its web app. A shop.", "- Orders: Takes orders. (starts at server/orders.ts)", "- Web: The shop in the browser. (starts at web/App.tsx)",
+      "- Acme: a shop that takes orders for its own bread.", "- A web service and its web app. A shop.", "- Orders: Takes orders. (starts at server/orders.ts)", "- Web: The shop in the browser. (starts at web/App.tsx)",
       "- How it flows: An order: Web posts it, Orders saves it.", "- How its course changed: It was a shop; it is now a marketplace.",
     ]);
   });
@@ -130,14 +130,14 @@ describe("tuning, not writing afresh", () => {
     const prior = written(i, 10);
     const now = input({ structure: structure({ ...i.structure, frameworks: ["Fastify", "React", "Expo"] }) });
     const sent: string[] = [];
-    const answer = { kind: "a web service, its web app and a phone app", what: "A shop people order from in the browser or on their phones.", parts: [{ name: "Orders", does: "Takes orders.", start: "server/orders.ts" }], flows: [], direction: "" };
+    const answer = { essence: "Acme: Orders and Web, now on phones too.", kind: "a web service, its web app and a phone app", what: "A shop people order from in the browser or on their phones.", parts: [{ name: "Orders", does: "Takes orders.", start: "server/orders.ts" }], flows: [], direction: "" };
     const o = await tuneOverview(ctxWith(answer, sent) as never, now, prior, ["it is now also a phone app"], "c9", 99, 100);
     expect(sent[0]).toContain("<before>");
     expect(sent[0]).toContain('"what":"A shop."');
     expect(sent[0]).toContain("<changed>\n- it is now also a phone app\n</changed>");
     expect(sent[0]).toContain("kind signal: a phone app (Expo)");
     expect(o).toMatchObject({ kind: answer.kind, via: "model", commit: "c9", at: 99, direction: "It was a web service and its web app; it is now a web service, its web app and a phone app." });
-    expect(o.earlier).toEqual([{ at: 10, commit: "c0", kind: "a web service and its web app", what: "A shop." }]);
+    expect(o.earlier).toEqual([{ at: 10, commit: "c0", kind: "a web service and its web app", what: "A shop.", essence: "Acme: a shop that takes orders for its own bread." }]);
     expect(o.basis.kinds).toContain("mobile");
   });
 
@@ -163,13 +163,14 @@ describe("the book and the card lead with it", () => {
     });
     const card = bookCard(book);
     expect(card.indexOf("(the owner) A marketplace for bakeries.")).toBeLessThan(card.indexOf("## What it is (the project's overview)"));
-    expect(card).toContain("## What it is (the project's overview)\n- A web service and its web app. A shop.\n- Orders: Takes orders. (starts at server/orders.ts)");
+    expect(card).toContain("## What it is (the project's overview)\n- Acme: a shop that takes orders for its own bread.\n- A web service and its web app. A shop.\n- Orders: Takes orders. (starts at server/orders.ts)");
     expect(card).not.toContain("Welcome words.");
     expect(card).not.toContain("What Orders does.");
     const facts = book.facts.map((f) => `${f.chapter}: ${f.text}`);
     expect(facts).toEqual(expect.arrayContaining([
       "build: How it flows: An order: Web posts it, Orders saves it.", "direction: Its course changed: It was a shop; it is now a marketplace.",
       "direction: Until 2026-10-01 it was: a web app. A shop.",
+      "what: Acme: a shop that takes orders for its own bread.",
     ]));
   });
 });
@@ -183,7 +184,7 @@ describe("in a build", () => {
     expect(first).toMatchObject({ via: "model", kind: "a web service (an HTTP API) and the web app it serves" });
     expect(first.parts.map((p) => p.start)).toEqual(["src/lib/api.ts", "src/app/page.tsx"]);
     const handle = await r.code.brain!.open(r.user, r.projectId);
-    expect(bookCard((await handle.book())!)).toContain("## What it is (the project's overview)\n- A web service (an HTTP API) and the web app it serves.");
+    expect(bookCard((await handle.book())!)).toContain("## What it is (the project's overview)\n- Acme Shop: a shop whose web app and API sell its own goods, signups and settings included.\n- A web service (an HTTP API) and the web app it serves.");
 
     // A small push: nothing that matters moved, no call.
     r.repo.commit({ "src/lib/util.ts": "export const add = (a: number, b: number) => a + b;\n" }, "tidy");
@@ -191,7 +192,7 @@ describe("in a build", () => {
     expect(r.model.of("brain.overview")).toHaveLength(1);
 
     // The owner says where it is going: tuned now, told what it was and why.
-    r.model.overview = { kind: "a marketplace's web service and web app", what: "A marketplace where many shops sell.", parts: [{ name: "API", does: "Serves every shop's data.", start: "src/lib/api.ts" }], flows: [], direction: "It was one shop; it is becoming a marketplace." };
+    r.model.overview = { essence: "Acme Shop, becoming a marketplace: many shops sell through one API and web app.", kind: "a marketplace's web service and web app", what: "A marketplace where many shops sell.", parts: [{ name: "API", does: "Serves every shop's data.", start: "src/lib/api.ts" }], flows: [], direction: "It was one shop; it is becoming a marketplace." };
     await handle.answerBook({ for: "A marketplace where many shops sell, not one shop.", next: "Shops sign up themselves." });
     await vi.waitFor(async () => expect((await r.brainStore.getBrain(r.projectId))!.book!.overview!.kind).toBe("a marketplace's web service and web app"));
     expect(r.model.of("brain.overview")).toHaveLength(2);
@@ -207,5 +208,99 @@ describe("in a build", () => {
     await built(r);
     expect(r.model.of("brain.overview")).toHaveLength(0);
     expect((await r.brainStore.getBrain(r.projectId))!.book!.overview!.via).toBe("code");
+  });
+});
+
+describe("what the code and its history show it really is", () => {
+  const parts = [feature("Speech", ["speech/a.ts", "speech/b.ts"]), feature("Keyboard", ["kb/a.ts"]), feature("Xode", ["code/a.ts", "code/b.ts"]), feature("Bots", ["bots/a.ts"])];
+  const commit = (k: number, files: string[]) => ({ sha: `s${k}`, at: 1000 - k, files });
+  // Newest first: the latest work is in Xode and Bots; before it, in Speech and Keyboard.
+  const history = [
+    ...Array.from({ length: 20 }, (_, k) => commit(k, k % 4 === 0 ? ["bots/a.ts"] : ["code/a.ts"])),
+    ...Array.from({ length: 20 }, (_, k) => commit(20 + k, k % 2 ? ["speech/a.ts"] : k === 0 ? ["kb/a.ts", "code/b.ts"] : ["kb/a.ts"])),
+  ];
+
+  it("reads where the work went: what rose, what is new, what faded, from the commits, not from anyone's words", () => {
+    const t = trajectoryOf(parts, history);
+    expect(t.recent.map((x) => x.part)).toEqual(["Xode", "Bots"]);
+    expect(t.recent[0]!.share).toBe(0.75);
+    expect(t.rising).toEqual(["Xode"]);
+    expect(t.fresh).toEqual(["Bots"]);
+    expect(t.fading.sort()).toEqual(["Keyboard", "Speech"]);
+    // Too little history before says nothing of a change.
+    expect(trajectoryOf(parts, history.slice(0, 12))).toMatchObject({ rising: [], fresh: [], fading: [] });
+  });
+
+  it("finds the names the product goes by on its own screens, not the first word of a sentence or a word of the trade", () => {
+    const texts = [
+      "You've used what X0 Bot may spend today.", "Ask X0 Bot anything.", "Connect GitHub so X0 Bot can read your code.", "Xode opened a pull request.",
+      "Let Xode fix it.", "Start with Xode now.", "Settings", "Delete the API key?", "Open the URL in a browser.", "Open the URL again.", "Open the URL.",
+    ].map((text) => ({ text, kind: "jsx" }));
+    expect(namesIn([...texts, { text: "label.x: Ask X0 Bot now", kind: "i18n" }, { text: "X0_BOT_KEY: an environment setting", kind: "setting" }])).toEqual([{ name: "X0 Bot", count: 4 }, { name: "Xode", count: 3 }]);
+    // A table of proper nouns is data, not the product talking: no names from it.
+    expect(namesIn(["Falkland Islands", "Cayman Islands", "Cook Islands", "Faroe Islands"].map((text) => ({ text, kind: "i18n" })))).toEqual([]);
+  });
+
+  it("says where each name is said most, and when the screens call the product something its README does not", () => {
+    const texts = [
+      ...Array.from({ length: 12 }, () => ({ text: "Ask X0 Bot anything you like.", kind: "jsx", path: "web/App.tsx" })),
+      ...Array.from({ length: 3 }, () => ({ text: "Let Xode open a pull request.", kind: "jsx", path: "server/orders.ts" })),
+    ];
+    const facts = overviewFacts(input({ texts }));
+    expect(facts).toContain("names its own screens and messages use most (what its people call it, and the services it names): X0 Bot (12, mostly in Web), Xode (3, mostly in Orders)");
+    expect(facts).toContain("its own screens call it X0 Bot; its README or folders call it Acme: what its people see is its name now");
+  });
+
+  it("knows a README the work has left behind: changed long ago, and the work since went where it says nothing", () => {
+    const i = input({ features: parts, history: [...history, commit(99, ["README.md"])], structure: structure({ readme: { path: "README.md", title: "Tailzu", blurb: "A voice keyboard: speak and Speech turns it into text." } }) });
+    expect(readmeAge(i)).toEqual({ since: 40, away: ["Xode", "Bots"] });
+    expect(overviewFacts(i)).toContain("readme last changed: 40 commits ago; most of the work since went to Xode, Bots, which it does not name: it may be out of date");
+    expect(overviewFacts(i)).toMatch(/where the latest work went \(21 commits\): Xode 7\d%, Bots 2\d%/);
+    expect(overviewFacts(i)).toMatch(/(?:rising|new): Xode/);
+    expect(overviewFacts(i)).toContain("fading: Speech, Keyboard");
+  });
+
+  it("asks once more when the overview could be said of any project of its kind, naming the project's own words", async () => {
+    const i = input({ texts: Array.from({ length: 3 }, () => ({ text: "Ask Acme Bakery for bread.", kind: "jsx" })) });
+    const answers = [
+      { essence: "A full-stack web application with a backend API and a frontend.", kind: "a web service", what: "It lets users manage data through an API.", parts: [], flows: [], direction: "" },
+      { essence: "Acme Bakery: Orders takes bread orders for pickup, and Web is where people place them.", kind: "a web service", what: "People order bread from Acme Bakery.", parts: [], flows: [], direction: "" },
+    ];
+    const sent: string[] = [];
+    let n = 0;
+    const ctx = { userId: "alice", meter: new Meter(100), call: (async (c: { messages: Array<{ content: unknown }> }) => { sent.push(String(c.messages.at(-1)!.content)); const a = answers[Math.min(n++, 1)]; return { json: a, text: JSON.stringify(a), paise: 2, model: "m", toolCalls: [] }; }) as never };
+    const o = await tuneOverview(ctx as never, i, null, ["first read"], "c1", 1, 100);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toMatch(/That says what any project of its kind is\. Say what this one really is, in its own words \(.*bakery.*\)/);
+    expect(o.essence).toBe("Acme Bakery: Orders takes bread orders for pickup, and Web is where people place them.");
+    expect(ownUsed({ essence: answers[0]!.essence, what: answers[0]!.what }, ownWords(i))).toEqual([]);
+  });
+
+  it("sees a rename on its own screens and the work moving to another part as a change of course", () => {
+    const i = input({ texts: Array.from({ length: 3 }, () => ({ text: "Ask Tailzu anything.", kind: "jsx" })) });
+    const renamed = input({ texts: Array.from({ length: 3 }, () => ({ text: "Ask X0 Bot anything.", kind: "jsx" })) });
+    expect(driftOf(written(i), basisOf(renamed), 0).reasons).toContain("its screens now call it X0 Bot (they called it Tailzu)");
+  });
+});
+
+describe("telling a name from a word, and upkeep from direction", () => {
+  it("drops a word the texts mostly write in lower case, and a message's code before its words", () => {
+    const texts = [
+      ...Array.from({ length: 5 }, () => ({ text: "rate limited: That is too fast. Wait for that minute.", kind: "message" })),
+      ...Array.from({ length: 3 }, () => ({ text: "Ask X0 Bot, and say That aloud", kind: "jsx" })),
+      ...Array.from({ length: 4 }, () => ({ text: "daily limit: You've used what X0 Bot may spend.", kind: "message" })),
+      { text: "you can do that, and that, and that", kind: "jsx" },
+    ];
+    expect(namesIn(texts)).toEqual([{ name: "X0 Bot", count: 7 }]);
+  });
+
+  it("does not take work on CI, docs, translations or tests for where the project is heading", () => {
+    const ci = feature("GitHub Automation", [".github/workflows/ci.yml", ".github/workflows/release.yml", "scripts/check.sh"]);
+    const docs = feature("Docs", ["docs/a.md", "docs/b.md"]);
+    const app = feature("Checkout", ["src/checkout.ts", "src/cart.ts"]);
+    expect([ci, docs, app].map(upkeep)).toEqual([true, true, false]);
+    const history = Array.from({ length: 30 }, (_, k) => ({ sha: `s${k}`, at: k, files: k % 5 ? [".github/workflows/ci.yml"] : ["src/cart.ts"] }));
+    expect(focusOf([ci, docs, app], history)).toEqual(["checkout"]);
+    expect(trajectoryOf([ci, docs, app], history).recent.map((x) => x.part)).toEqual(["Checkout"]);
   });
 });

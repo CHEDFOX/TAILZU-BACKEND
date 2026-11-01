@@ -257,7 +257,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   index_cards: 676, // 615 measured
   index_dirs: 398, // 361 measured
   index_repo: 364, // 330 measured
-  project_overview: 985, // 895 measured
+  project_overview: 1257, // 1142 measured
   index_features: 405, // 368 measured
   welcome: 492, // 447 measured
   spec: 1125, // 1022 measured

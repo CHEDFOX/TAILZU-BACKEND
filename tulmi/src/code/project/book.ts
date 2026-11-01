@@ -110,6 +110,7 @@ export function buildBook(i: BookInput): ProjectBook {
   const ov = i.overview ?? null;
   const ovSource = index(ov?.via === "model" ? `the project's overview, ${date(ov.at)}` : "the project's overview, by the code");
   if (ov) {
+    if (ov.essence) add("what", ov.essence, ovSource, ov.via === "model" ? "found" : "guessed", ov.at);
     const head = [ov.kind && `${ov.kind[0]!.toUpperCase()}${ov.kind.slice(1)}`, ov.what].filter(Boolean).join(". ");
     if (head) add("what", head, ovSource, ov.via === "model" ? "found" : "guessed", ov.at);
     for (const p of ov.parts) add("what", `${p.name}: ${p.does}${p.start ? ` (starts at ${p.start})` : ""}`, p.start ? { kind: "file", ref: p.start } : ovSource, "found", ov.at);
@@ -204,7 +205,7 @@ export function buildBook(i: BookInput): ProjectBook {
   if (i.owner?.next) add("direction", `Next, in the owner's words: ${i.owner.next}`, { kind: "owner", ref: "the owner" }, "confirmed", i.owner.at);
   // How its course changed, and what it was before: the overview's own record.
   if (ov?.direction) add("direction", `Its course changed: ${ov.direction}`, ovSource, "found", ov.at);
-  for (const e of ov?.earlier ?? []) add("direction", `Until ${date(e.at)} it was: ${[e.kind, e.what].filter(Boolean).join(". ")}`, index(`the project's overview as it was at ${e.commit.slice(0, 7)}`), "found", e.at);
+  for (const e of ov?.earlier ?? []) add("direction", `Until ${date(e.at)} it was: ${e.essence || [e.kind, e.what].filter(Boolean).join(". ")}`, index(`the project's overview as it was at ${e.commit.slice(0, 7)}`), "found", e.at);
   if (i.owner?.keep) add("direction", `Must not change: ${i.owner.keep}`, { kind: "owner", ref: "the owner" }, "confirmed", i.owner.at);
   for (const m of (i.milestones ?? []).slice(0, 5)) {
     add("direction", `Milestone "${m.title}": ${m.closed} of ${m.open + m.closed} done${m.dueOn ? `, due ${date(m.dueOn)}` : ""}${m.description ? `. ${one(m.description, 120)}` : ""}`, { kind: "milestone", ref: m.title, url: m.url });

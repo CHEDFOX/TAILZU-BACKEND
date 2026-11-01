@@ -67,7 +67,7 @@ import { keepMeanings, withHashes } from "./map.js";
 import { countTodos, extractSymbols, type SymbolContext } from "./symbols.js";
 import { buildTestMap, untestedImportant } from "./tests.js";
 import { extractTexts, keepTexts, translationsOf } from "./texts.js";
-import { basisOf, commitsSince, overviewDue, tuneOverview, type OverviewInput } from "./overview.js";
+import { basisOf, commitsSince, OVERVIEW_TEXTS, overviewDue, tuneOverview, type OverviewInput } from "./overview.js";
 import { analyse, ensureGrammars, treeSitter } from "./treesitter/index.js";
 import {
   BLOBS_MAX, EMPTY_STRUCTURE, PARSER_WORKER_TEXT_MAX, TEXTS_PER_PROJECT,
@@ -559,6 +559,7 @@ export async function runBuild(
     const bookBefore = (await store.getBrain(project.id).catch(() => null))?.book ?? existing?.book ?? {};
     const ovIn: OverviewInput = {
       name: project.fullName, structure, features, paths: allPaths, rank: new Map(allPaths.map((p) => [p, all.get(p)!.rank])), history: history.commits, messages, owner: bookBefore.owner ?? null,
+      texts: await store.sampleTexts(project.id, OVERVIEW_TEXTS).catch(() => []),
     };
     const prior = bookBefore.overview ?? null;
     const due = overviewDue(prior, basisOf(ovIn), prior ? commitsSince(prior, history.commits) : 0, now(), meter.left(phaseCap(meter, "rest")) > 0);

@@ -159,7 +159,7 @@ export const OverviewSchema = z.object({ overview: z.string() });
 export const FeatureSchema = z.object({ features: z.array(z.object({ id: z.string(), name: z.string(), summary: z.string() })).max(40) });
 export const WelcomeSchema = z.object({ welcome: z.string() });
 export const ProjectOverviewSchema = z.object({
-  kind: z.string(), what: z.string(),
+  essence: z.string().default(""), kind: z.string(), what: z.string(),
   parts: z.array(z.object({ name: z.string(), does: z.string(), start: z.string().default("") })).max(12).default([]),
   flows: z.array(z.string()).max(6).default([]),
   direction: z.string().default(""),
@@ -536,19 +536,20 @@ export function clampWelcome(s: string, max = WELCOME_CHARS): string {
  * The project's overview, written or tuned (overview.ts): the signals and parts in <data>; when tuning, the overview as it was in <before> and
  * what moved since in <changed>, so it keeps what is still true and says how the direction changed. Null when no answer could be had.
  */
-export async function writeOverview(ctx: SummaryCtx, facts: string, before: OverviewDraft | null, changed: readonly string[], cap: number): Promise<OverviewDraft | null> {
+export async function writeOverview(ctx: SummaryCtx, facts: string, before: OverviewDraft | null, changed: readonly string[], cap: number, again?: string): Promise<OverviewDraft | null> {
   const guard = (s: string) => fence(s).replace(/<\/(before|changed)/gi, "<\\/$1");
   const user = [
     `<data>\n${guard(facts)}\n</data>`,
     ...(before ? [`<before>\n${guard(JSON.stringify(before))}\n</before>`, `<changed>\n${guard(changed.map((c) => `- ${c}`).join("\n"))}\n</changed>`] : []),
+    ...(again ? [`(${again})`] : []),
   ].join("\n");
   const r = await ask(ctx, cap, "brain.overview", "project_overview", user, ProjectOverviewSchema, 1200);
   if (!r.ok) return null;
   const v = r.value;
   const d: OverviewDraft = {
-    kind: v.kind, what: v.what, parts: (v.parts ?? []).map((p) => ({ name: p.name, does: p.does, start: p.start ?? "" })), flows: v.flows ?? [], direction: v.direction ?? "",
+    essence: v.essence ?? "", kind: v.kind, what: v.what, parts: (v.parts ?? []).map((p) => ({ name: p.name, does: p.does, start: p.start ?? "" })), flows: v.flows ?? [], direction: v.direction ?? "",
   };
-  const text = [d.kind, d.what, ...d.parts.map((p) => `${p.name} ${p.does}`), ...d.flows, d.direction].join("\n");
+  const text = [d.essence, d.kind, d.what, ...d.parts.map((p) => `${p.name} ${p.does}`), ...d.flows, d.direction].join("\n");
   return scanForSecrets([{ path: "overview.txt", content: text }]).length ? null : d;
 }
 

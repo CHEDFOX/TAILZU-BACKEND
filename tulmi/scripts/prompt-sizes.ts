@@ -32,7 +32,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   index_files: 615,
   // Each part of each file with what it does and what people call it (summarize.ts cardFiles): written after the principles, its first size is its 'before'.
   index_cards: 615,
-  project_overview: 895,
+  project_overview: 1142,
   index_dirs: 496,
   index_repo: 405,
   index_features: 553,

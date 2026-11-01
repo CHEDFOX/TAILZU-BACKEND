@@ -80,7 +80,7 @@ export function fakeModel(o: { paise?: number } = {}): FakeModel {
         case "brain.features": json = { features: last.ids.map((id) => ({ id, name: `Feature ${id}`, summary: `What feature ${id} does.` })) }; break;
         case "brain.welcome": json = { welcome: m.welcome ?? "Acme Shop is a small shop built with TypeScript, Python and Go. Health: not checked yet. To start: 1) Add tests for src/lib/api.ts 2) Update next." }; break;
         case "brain.overview": json = m.overview ?? {
-          kind: "a web service (an HTTP API) and the web app it serves", what: "Acme Shop sells things online: people order in the web app, the API keeps the orders.",
+          essence: "Acme Shop: a shop whose web app and API sell its own goods, signups and settings included.", kind: "a web service (an HTTP API) and the web app it serves", what: "Acme Shop sells things online: people order in the web app, the API keeps the orders.",
           parts: [{ name: "API", does: "Serves the shop's data to the apps.", start: "src/lib/api.ts" }, { name: "Web app", does: "Where people browse and order.", start: "src/app/page.tsx" }],
           flows: ["An order: the web app posts it to the API, which saves it."], direction: "",
         }; break;

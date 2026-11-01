@@ -40,7 +40,7 @@ import type { CodeProject } from "../store.js";
 import { baselinePlan } from "./baseline.js";
 import { classOf, isTestPath } from "./lang.js";
 import { Meter, readEstimate, type CallFn, type ReadEstimate } from "./summarize.js";
-import { basisOf, commitsSince, overviewDue, OVERVIEW_PAISE, tuneOverview, type OverviewInput } from "./overview.js";
+import { basisOf, commitsSince, OVERVIEW_PAISE, OVERVIEW_TEXTS, overviewDue, tuneOverview, type OverviewInput } from "./overview.js";
 import { callModel } from "../brain/gateway.js";
 import { runBuild, type BuildMode, type ProjectBrainDeps, type ReadDepth } from "./build.js";
 import { aggregateHistory, coChanged, rankHotspots } from "./hotspots.js";
@@ -691,7 +691,7 @@ export async function refreshOverview(d: ProjectBrainDeps, userId: string, proje
   try { messages = (await d.projects.github.recentCommits(repoRef(d.projects, userId, project), project.defaultBranch, 15)).map((c) => c.message); } catch { /* the code says enough */ }
   const input: OverviewInput = {
     name: project.fullName, structure: b.structure, features: b.features, paths: files.map((f) => f.path), rank: new Map(files.map((f) => [f.path, f.rank])),
-    history: b.history.commits, messages, owner: b.book?.owner ?? null,
+    history: b.history.commits, messages, owner: b.book?.owner ?? null, texts: await d.store.sampleTexts(project.id, OVERVIEW_TEXTS).catch(() => []),
   };
   const prior = b.book?.overview ?? null;
   const due = overviewDue(prior, basisOf(input), prior ? commitsSince(prior, b.history.commits) : 0, at, true);
