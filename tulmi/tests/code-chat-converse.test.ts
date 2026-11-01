@@ -3,7 +3,7 @@
  * job started or a question asked by the model's own tool call, the truth checked by code after; no router reads the message first (decide.ts).
  */
 import { describe, expect, it } from "vitest";
-import { admitsMiss, CHANGE_OWED, converse, CHAT_ACTS, MAKE_CHANGE, saidAgain, unnarrate } from "../src/code/chat/converse.js";
+import { admitsMiss, CHANGE_OWED, converse, CHAT_ACTS, MAKE_CHANGE, saidAgain, TALK_TOKENS, unnarrate } from "../src/code/chat/converse.js";
 import { buildBook } from "../src/code/project/book.js";
 import { newThread } from "../src/code/chat/threads.js";
 import { decide, decideMessage } from "../src/front/decide.js";
@@ -188,6 +188,18 @@ describe("a change laid out, and a turn that fell short", () => {
     expect(plain.sent).toHaveLength(1);
   });
 
+  it("answers talk said in passing as talk: told so, with a line's room", async () => {
+    const tokens: number[] = [];
+    let user = "";
+    const call = (async (input: { maxTokens: number; messages: Array<{ content: unknown }> }) => {
+      tokens.push(input.maxTokens); user = String(input.messages[1]!.content);
+      return { text: "Ha, thanks! Ask me anything about the shop.", paise: 1, model: "m", toolCalls: [] };
+    }) as never;
+    await converse({ ...base, message: "you're fast lol", talk: true }, { brain, look }, { userId: "alice", call });
+    expect(user).toContain("(Said in passing, not a question: a line or two back, as a person would.)");
+    expect(tokens).toEqual([TALK_TOKENS]);
+  });
+
   it("researches a question for the web with the project in mind", async () => {
     const m = scripted([{ text: "Resend fits: it is a plain HTTP API like the one the server uses for Supabase." }]);
     await converse({ ...base, message: "which email provider should we use?", research: "standard" }, { brain, look }, m.model);
@@ -218,6 +230,9 @@ describe("the router, in a project's chat as one loop", () => {
     // A UI to make is the design road; a question for the web is the loop's, marked, so it is researched with the project in mind.
     expect((await read("show me how a pricing page would look")).route).toBe("artifact");
     expect(await read("is there a good library for date pickers in react")).toMatchObject({ route: "code_answer", reasons: expect.arrayContaining(["agent_research"]), depth: "standard" });
+    // Talk said in passing is the loop's, marked as talk; a reaction to the last answer is not talk.
+    expect((await read("thanks!")).reasons).toEqual(expect.arrayContaining(["agent_chat", "agent_talk"]));
+    expect((await read("where is the session cookie set?")).reasons).not.toContain("agent_talk");
     // "Make that change" after a plan is a job at once, with the chat's plan as its task.
     const handOff = await read("make that change", inProject({ projectId: "p1", recent: [{ said: "add a dark mode toggle", did: "code_question" }] }));
     expect(handOff).toMatchObject({ route: "code_job", handoff: true });
