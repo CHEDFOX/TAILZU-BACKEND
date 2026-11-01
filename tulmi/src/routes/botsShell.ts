@@ -8,8 +8,10 @@
  *   GET  /v1/shell/search?q=&tz=             projects, chats, notes, files and bots that match (src/shell/search.ts)
  *   POST /v1/shell/route { message, bot? }   who will answer, WITHOUT answering: "Ask any bot"'s own pick (the rules, the tiny tier only
  *                                            when unsure, counted on the person's front-door day); `bot` the person chose: echoed back
- *   POST /v1/shell/ask { message, bot?, device?, mode?, attachments?, projectId?, clientId?, typedAt? }
+ *   POST /v1/shell/ask { message, bot?, device?, mode?, attachments?, projectId?, clientId?, typedAt?, tz? }
  *                                            POST /v1/ask as the person (same guard, same money), and the answer written down for Activity.
+ *                                            Words that ask for something done on a schedule ("every Friday at 5, ...") are not answered:
+ *                                            `shell.routine` is the routine's card to save (src/routines, POST /v1/routines), nothing kept yet.
  *                                            With a clientId (an ask from the apps' outbox, typed offline at typedAt) it is answered ONCE:
  *                                            a retry gets the first answer (idempotent-replayed), one still out is 409 ask_in_flight
  *   POST /v1/shell/receipts { upi, bot?, title? }   the person says they pressed pay in their UPI app: a receipt for Activity. Nothing is paid
@@ -44,6 +46,7 @@ import { CLIENT_ID, sentAskStore, type Claim, type SentAskStore } from "../shell
 import type { BotsAreaDeps } from "./botsArea.js";
 import { calendar, todayForShell, upcomingForShell } from "../calendar/index.js";
 import { getConfig } from "../config.js";
+import { tzOf as calendarTz } from "../calendar/words.js";
 import { isHinglish } from "../connectors/words.js";
 import { getProfile } from "../profile/store.js";
 import { withCleared } from "../you/settings.js";
@@ -186,6 +189,19 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     const message = typeof b.message === "string" ? b.message.trim() : "";
     if (!message) return reply.code(400).send({ code: "bad_request", message: "message is what the person said." });
     const bot = typeof b.bot === "string" && SLUG.test(b.bot) ? b.bot : "any";
+    // "Every Friday at 5, sum up my week": a routine to set up (src/routines), not a question to answer now. Ask shows its card and
+    // nothing is kept until the person saves it. Rules only (routines/words.ts), so an ordinary ask costs nothing more.
+    if (deps.routines && !(Array.isArray(b.attachments) && b.attachments.length)) {
+      const draft = await deps.routines.draft(user.id, message, calendarTz(b.tz), bot).catch((err) => { req.log.warn({ err }, "shell: routine not read"); return null; });
+      if (draft) {
+        const slug = draft.bot?.slug ?? "tailzu", name = draft.bot?.name ?? "X0";
+        const text = `${draft.when}: ${draft.task}. Save it as a routine?`;
+        return reply.send({
+          result: { text, notes: [], paise: 0 },
+          shell: { bot: { slug, name, color: previewOf(slug, name, "chosen", 1).color }, text, paise: 0, needs: 0, routine: draft },
+        });
+      }
+    }
     const body: Record<string, unknown> = {
       message, device: b.device === "desktop" ? "desktop" : "phone", mode: b.mode === "voice" ? "voice" : "text",
       // A bot only while the bots platform is on; "tailzu" is the front door's own road.

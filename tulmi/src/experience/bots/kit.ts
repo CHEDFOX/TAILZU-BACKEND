@@ -736,6 +736,8 @@ const ASK_PATH = "/v1/shell/ask";
 const answerParams = (message: string): Record<string, unknown> => ({
   message, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi",
   needs: "$state.asked.shell.needs", job: "$state.asked.shell.job",
+  // Words about a schedule come back as a routine's card to save (src/routines): its sealed draft.
+  routine: "$state.asked.shell.routine.token",
 });
 
 export function askAction(client: Client, path = "ask", ctx?: BotsCtx): ActionSpec {
@@ -775,7 +777,7 @@ function askMomentAction(ctx: BotsCtx, path: string): ActionSpec {
         ...momentStart({ message: `$state.${path}`, from: path, busy: "asking" }),
         momentStreamed(ctx, {
           kind: "callEndpoint", method: "POST", path: ASK_PATH,
-          body: { message: SENT_WORDS, device: ctx.client, mode: "text", bot: "any" },
+          body: { message: SENT_WORDS, device: ctx.client, mode: "text", bot: "any", tz: ctx.tzOffsetMinutes },
           assignTo: "asked",
           onSuccess: { kind: "sequence", actions: [
             { kind: "setState", path: "asking", value: false },

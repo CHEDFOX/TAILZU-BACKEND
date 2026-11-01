@@ -92,6 +92,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.approval.enabled": true,
     // The confirm sheet (experience/assistant.ts); the push carries data.taskId.
     "push.approval.screenId": "assistant_approve",
+    // Routines (src/routines, docs/routines.md): a bot did what it does on a schedule, or stopped after three runs that didn't work.
+    // The push carries data.routineId and opens the routines list.
+    "push.routine_done.screenId": "bots.routines",
+    "push.routine_failed.screenId": "bots.routines",
 
     // Xode's jobs (src/code/jobs, docs/code-router.md): paid compute needs a yes, a job is
     // waiting for a computer, its changes need a yes to be committed, it moved to another place, it
@@ -181,6 +185,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_message.body": "{name} sent a message",
     "push.plan_reminder.title": "{title}",
     "push.plan_reminder.body": "{when}",
+    "push.routine_done.title": "{bot}: {task}",
+    "push.routine_done.body": "{line}",
+    "push.routine_failed.title": "Routine paused: {task}",
+    "push.routine_failed.body": "{bot} couldn't do it 3 times in a row. {line}",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -197,5 +205,6 @@ export const EVENT_PUSH_KINDS = [
   "bots_summary",
   "space_task", "space_plan", "space_message",
   "plan_reminder",
+  "routine_done", "routine_failed",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

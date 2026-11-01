@@ -74,6 +74,10 @@ import { registerBotsCodeWorkRoutes } from "./routes/botsCodeWork.js";
 import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
 import { registerAccountDeletionRoutes } from "./routes/accountDeletion.js";
 import { registerBotsPushAskRoutes } from "./routes/botsPushAsk.js";
+import { registerRoutineRoutes } from "./routes/routines.js";
+import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
+import { eventStore as routineEvents } from "./shell/events.js";
+import { livePublish as routinePublish } from "./live/writes.js";
 import { registerBotLooksRoutes } from "./routes/botLooks.js";
 import { registerBotSoundFiles, registerBotSoundsRoutes } from "./routes/botSounds.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
@@ -1175,7 +1179,18 @@ const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, l
 // apps (same permission tiers), the files, the artifact core, Xode's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
 const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
-const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent };
+// Routines (src/routines, docs/routines.md): a bot does something on a schedule, without being asked each time. On with the bots platform
+// unless ROUTINES=false; every minute the ones that are due run as their owner, through the bot's own road. Migration 0061 keeps them.
+const routines = createRoutines({
+  store: routineStore(), bots, events: routineEvents(), publish: routinePublish,
+  notify: async (userId, msg) => { try { await pushEngine()?.notify(userId, msg); } catch { /* the answer is still on the routine */ } },
+});
+if (routines) {
+  const stopRoutines = startRoutines(routines, app.log);
+  app.addHook("onClose", async () => { stopRoutines(); });
+}
+registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
+const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent, routines };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);

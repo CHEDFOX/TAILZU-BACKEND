@@ -31,6 +31,7 @@ export const SCREENS = {
   widgets: "bots.widgets",           // Widgets / DWidgets
   today: "bots.today",               // DeskToday (the window's Today; the phone draws it in a column)
   notes: "bots.notes",               // DeskNotes (meeting notes; params: q)
+  routines: "bots.routines",         // routines: what each bot does on a schedule (screens/routines.ts; no board)
   note: "bots.note",                 // DeskNote (one meeting's notes; params: id)
   // screens/you.ts: You and its settings
   you: "bots.you",                   // You / DYou
