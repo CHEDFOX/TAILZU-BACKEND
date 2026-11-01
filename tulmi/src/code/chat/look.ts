@@ -55,6 +55,15 @@ export interface LookInput {
   onText?: (piece: string) => void;
   onReset?: () => void;
   onStep?: (stage: string) => void;
+  /** The role the loop speaks as: code_ask (a question, read-only) unless told; code_chat for the one loop of a project's chat (converse.ts). */
+  role?: "code_ask" | "code_chat";
+  /** What it may do besides reading (converse.ts: a book chapter, start a job, ask the person). A call that returns `end` ends the loop with those words. */
+  acts?: Acts;
+}
+
+export interface Acts {
+  defs: readonly ToolDef[];
+  exec(name: string, args: Record<string, unknown>): Promise<{ content: string; end?: string }>;
 }
 
 export interface Looked {
@@ -66,6 +75,8 @@ export interface Looked {
   seen: string[];
   paise: number;
   steps: number;
+  /** The action that ended the loop (start_job, ask_person), when one did. */
+  ended?: string;
 }
 
 const isAbort = (e: unknown): boolean => (e as { name?: unknown } | null)?.name === "AbortError";
@@ -110,8 +121,9 @@ function ledger(seen: readonly string[], greps: readonly string[], step: number)
 
 export async function investigate(i: LookInput): Promise<Looked> {
   const call: CallFn = i.model.call ?? (callModel as CallFn);
-  const messages: ChatMessage[] = compose("code_ask", [{ role: "user" as const, content: i.user }]);
-  const defs = i.tools.defs.filter((d) => (LOOK_TOOLS as readonly string[]).includes(d.name));
+  const messages: ChatMessage[] = compose(i.role ?? "code_ask", [{ role: "user" as const, content: i.user }]);
+  const acts = new Set((i.acts?.defs ?? []).map((d) => d.name));
+  const defs = [...i.tools.defs.filter((d) => (LOOK_TOOLS as readonly string[]).includes(d.name)), ...(i.acts?.defs ?? [])];
   const reads = new Set<string>();
   const greps: string[] = [];
   const seen: string[] = [];
@@ -145,7 +157,11 @@ export async function investigate(i: LookInput): Promise<Looked> {
     for (const c of calls) {
       const a = args(c);
       let content: string;
-      if (!(LOOK_TOOLS as readonly string[]).includes(c.name)) {
+      if (acts.has(c.name)) {
+        const r = await i.acts!.exec(c.name, a);
+        if (r.end !== undefined) return { text: r.end, reads: [...reads], greps, seen, paise, steps: step, ended: c.name };
+        content = r.content;
+      } else if (!(LOOK_TOOLS as readonly string[]).includes(c.name)) {
         content = `There is no ${cut(c.name, 40)} here: this chat only reads (${LOOK_TOOLS.join(", ")}).`;
       } else {
         if (c.name === "read_file") { const p = str(a.path)?.trim(); if (p) { reads.add(p); i.onStep?.(`code:read:${p}`); } }

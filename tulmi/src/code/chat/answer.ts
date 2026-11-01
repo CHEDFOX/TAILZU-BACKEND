@@ -46,12 +46,12 @@ import { afterTurn, type ChatThread } from "./threads.js";
 /** The least room a code answer has: its citations make it longer than a reply of the same length (the changesets run cut a "short" one mid-sentence). */
 export const CODE_ANSWER_TOKENS_MIN = REPLY_TOKENS.medium;
 
-const LANGUAGE_WORDS: Record<string, string> = { en: "English", hinglish: "Hinglish (Hindi in Latin letters, mixed with English)", hi: "Hindi" };
+export const LANGUAGE_WORDS: Record<string, string> = { en: "English", hinglish: "Hinglish (Hindi in Latin letters, mixed with English)", hi: "Hindi" };
 
 const isAbortErr = (e: unknown): boolean => (e as { name?: unknown } | null)?.name === "AbortError";
 
 /** Where the project map says the things the question names are: the components, each with its functions' exact lines. Free. */
-async function mapBrief(brain: ChatBrain, search: string): Promise<string> {
+export async function mapBrief(brain: ChatBrain, search: string): Promise<string> {
   const map = brain.projectMap ? await brain.projectMap().catch(() => null) : null;
   if (!map) return "";
   return findInMap(map, search.replace(/["'“”‘’`]/g, " "), 4).map((path) => {
@@ -629,7 +629,7 @@ export async function answerCode(input: ChatInput, given: ChatPorts, model: Fron
     const brief = [question!, `<brief>\n${[...known, ...(told ? [`<book>\n${fence(forModel(told))}\n</book>`] : []), ...(map ? [`<map>\n${fence(forModel(map))}\n</map>`] : []), ...(before ? [before] : [])].join("\n\n")}\n</brief>`].join("\n\n");
     try {
       const looked = await investigate({
-        model, tier: input.tier, user: brief, tools: ports.look, anchors, maxPaise: Math.max(1, left), maxTokens,
+        model, tier: input.tier, user: brief, tools: ports.look, anchors, maxPaise: Math.max(1, left), maxTokens, role: "code_ask",
         ...(words ? { onText: words.onText } : {}), ...reset, ...(input.onStep ? { onStep: input.onStep } : {}),
       });
       // Nothing to say after looking (the money or the model gave out before an answer could be had): said plainly, never an empty reply.

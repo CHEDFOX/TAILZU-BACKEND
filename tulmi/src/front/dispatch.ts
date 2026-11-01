@@ -34,6 +34,7 @@ import { CAP_PAISE } from "../artifacts/types.js";
 import type { SpendMeter } from "../artifacts/limits.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import { inRequestSpend } from "../code/brain/spend.js";
+import { getConfig } from "../config.js";
 import type { CallFn } from "../code/work/model.js";
 import { TimeoutError, withTimeout } from "../guard/timing.js";
 import type { DataTable } from "../media/types.js";
@@ -48,6 +49,9 @@ import { completeMessage } from "./complete.js";
 
 /** A job or a deep research run needs the decision to be at least this sure. */
 export const SELF_CHECK_MIN = 0.7;
+
+/** What a job started from a project chat's one loop may spend: CODE_JOB_DEFAULT_BUDGET_PAISE. */
+const jobPaise = (): number => { try { return getConfig().CODE_JOB_DEFAULT_BUDGET_PAISE; } catch { return 3_000; } };
 
 /** How long each road may take, in milliseconds. */
 export const DEADLINES: Readonly<Record<RouteName | "visual" | "attachments", number>> = {
@@ -221,7 +225,20 @@ async function dispatchRequest(decision: Decision, message: string, ctx: FrontCt
     }
     case "code_answer": {
       emit({ t: "status", stage: "reading_code" });
-      const r = await stage("code_answer", (sig) => deps.handlers.codeAnswer(call(room(routeCap), sig)));
+      // A project chat's one loop may start a job itself (its start_job tool): the code_job road, with the task it wrote and a job's own budget.
+      const r = await stage("code_answer", (sig) => deps.handlers.codeAnswer({
+        ...call(room(routeCap), sig), startJob: (task) => deps.handlers.codeJob(call(jobPaise(), sig, task)),
+      }));
+      if (r.job) {
+        result.job = r.job;
+        if (streamed) { streamed = false; emit({ t: "reset" }); }
+        text(jobStarted(lang, r.job.branch));
+        break;
+      }
+      if (r.clarify) {
+        result.clarify = r.clarify;
+        break;
+      }
       text(r.text);
       result.paise += r.paise;
       ownPaise += r.paise;

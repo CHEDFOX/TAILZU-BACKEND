@@ -64,6 +64,8 @@ export interface FrontOptions extends HandlerDeps {
   log?: { warn(o: object, msg: string): void };
   /** Make it even when FRONT_DOOR is off (tests). */
   force?: boolean;
+  /** A project's chat as one loop (code/chat/converse.ts), instead of CODE_CHAT_AGENT. */
+  agentChat?: boolean;
 }
 
 export interface Front {
@@ -92,6 +94,7 @@ export function createFront(o: FrontOptions = {}): Front | null {
   const handlers: Handlers = { ...defaultHandlers(o), ...(o.handlers ?? {}) };
   const decideDeps = (signal?: AbortSignal): DecideDeps => ({
     ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}), learning, daily: guard.daily, ...(signal ? { signal } : {}),
+    ...(o.agentChat !== undefined ? { agentChat: o.agentChat } : {}),
   });
 
   // The project's name, for the router: one read per project, kept for the process (a name does not change under a chat).

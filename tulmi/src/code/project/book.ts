@@ -367,6 +367,49 @@ export function bookForJobs(b: ProjectBook): string {
 }
 
 /**
+ * The project card: what Xode's chat has in front of it for every message (code/chat/converse.ts), the way CLAUDE.md is in front of Claude Code.
+ * What it is and for whom, the owner's words, where it is heading, how it stands, what changed, its rules, what is not known and what the owner has
+ * not answered: a few lines of each chapter, every one with its source. The same for every message of a project, so a model's prompt cache keeps it.
+ * A chapter in full is one tool call away (bookChapter).
+ */
+export function bookCard(b: ProjectBook, max = CARD_CHARS): string {
+  const line = (f: BookFact) => `- ${f.status === "confirmed" ? "(the owner) " : f.status === "guessed" ? "(a guess) " : ""}${f.text} (${sourceWords(f.source)})`;
+  const owner = b.facts.filter((f) => f.status === "confirmed");
+  const take = (c: Chapter, n: number) => b.facts.filter((f) => f.chapter === c && f.status !== "confirmed").slice(0, n).map(line);
+  const parts: Array<[string, string[]]> = [
+    ["The owner's words (newest; they win over anything older)", owner.map(line)],
+    [CHAPTER_TITLES.what, take("what", 4)],
+    [CHAPTER_TITLES.build, take("build", 4)],
+    [CHAPTER_TITLES.direction, take("direction", 6)],
+    [CHAPTER_TITLES.state, take("state", 6)],
+    [CHAPTER_TITLES.recent, take("recent", 4)],
+    [CHAPTER_TITLES.rules, take("rules", 3)],
+    ["Not known", b.gaps.map((g) => `- ${g}`)],
+    ["The owner has not answered (they can, on the Project book page)", b.questions.map((q) => `- ${q.text}`)],
+  ];
+  let out = "";
+  for (const [h, l] of parts) {
+    if (!l.length) continue;
+    const part = `## ${h}\n${l.join("\n")}\n`;
+    if (out.length + part.length > max) break;
+    out += part;
+  }
+  return out.trim();
+}
+
+/** The most the project card holds. */
+export const CARD_CHARS = 5_000;
+
+/** One chapter of the book in full, every line with its source: what the chat's project_book tool returns. */
+export function bookChapter(b: ProjectBook, chapter: string): string {
+  const c = (CHAPTERS as readonly string[]).includes(chapter) ? (chapter as Chapter) : null;
+  if (!c) return `No chapter "${chapter.slice(0, 40)}". The chapters: ${CHAPTERS.join(", ")}.`;
+  const lines = b.facts.filter((f) => f.chapter === c).map((f) => `- ${f.status === "confirmed" ? "(the owner) " : f.status === "guessed" ? "(a guess) " : ""}${f.text} (${sourceWords(f.source)})`);
+  const gaps = b.gaps.filter((g) => g.startsWith(`${CHAPTER_TITLES[c]}:`)).map((g) => `- not known: ${g}`);
+  return [`## ${CHAPTER_TITLES[c]}`, ...(lines.length ? lines : ["- nothing found"]), ...gaps].join("\n");
+}
+
+/**
  * What a plan for the project is made from, when the person asks what to do and names no place in the code: the owner's words, where it is heading
  * (milestones, roadmap, open issues and pull requests), how it stands (failing checks, fragile files, TODOs), what changed lately, and what is not
  * known. Every line says where it comes from, so each step can name the issue, file or check it rests on.

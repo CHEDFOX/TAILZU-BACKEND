@@ -64,6 +64,8 @@ export interface RouteCall {
   onReset?: () => void;
   /** What it is doing now, as a stage word ("code:read:src/cart.ts"): for the line under the carrying bot. */
   onStep?: (stage: string) => void;
+  /** A project chat's one loop starts a job through this (the code_job road, with the task as its message). */
+  startJob?: (task: string) => Promise<{ job: NonNullable<FrontResult["job"]>; paise: number }>;
 }
 
 export interface TextOut { text: string; paise: number }
@@ -75,6 +77,9 @@ export interface PlanOut extends TextOut {
 
 export interface CodeAnswerOut extends TextOut {
   notes?: string[];
+  /** The one loop started a job (its start_job tool), or asked the person a question back (ask_person). */
+  job?: NonNullable<FrontResult["job"]>;
+  clarify?: { question: string; options: string[] };
   /** The flow the answer is about, as Mermaid text drawn from the project's import graph (no model made it). */
   diagram?: string;
 }
@@ -242,6 +247,22 @@ async function codeAnswerDefault(d: HandlerDeps, c: RouteCall): Promise<CodeAnsw
   const { chat, projectId } = chatOf(d, c);
   const v = c.decision.shape.visual;
   const words = streamed(c);
+  // A project's chat as one loop (code/chat/converse.ts): the router read nothing, the loop's own tool calls decide (decide.ts "agent_chat").
+  if (c.decision.reasons?.includes("agent_chat")) {
+    let job: CodeAnswerOut["job"];
+    const said = c.said ?? c.message;
+    const out = await chat.converse({
+      userId: c.userId, projectId, question: said, ...(c.decision.reask ? { ask: c.decision.reask } : {}), ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}), language: c.decision.language,
+      tier: "cheap", length: c.decision.shape.length, diagram: false, maxPaise: c.maxPaise, ...(c.signal ? { signal: c.signal } : {}),
+      ...words.ask, ...(c.onStep ? { onStep: c.onStep } : {}),
+      ...(c.startJob ? { startJob: async (task: string) => (job = (await c.startJob!(task)).job) } : {}),
+    });
+    if (!words.sent() && !out.job && !out.clarify) c.onText?.(out.text);
+    return {
+      text: out.text, paise: out.paise, ...(out.notes.length ? { notes: out.notes } : {}), ...(job ?? out.job ? { job: (job ?? out.job)! } : {}),
+      ...(out.clarify ? { clarify: out.clarify } : {}),
+    };
+  }
   const out = await chat.answer({
     userId: c.userId, projectId, question: c.said ?? c.message, ...(c.ctx.threadId ? { threadId: c.ctx.threadId } : {}),
     ...(c.decision.followUp ? { context: c.decision.followUp } : {}), ...(c.decision.reask ? { ask: c.decision.reask } : {}), language: c.decision.language, tier: c.decision.tier === "vision" ? "cheap" : c.decision.tier, length: c.decision.shape.length,

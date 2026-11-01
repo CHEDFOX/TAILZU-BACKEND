@@ -29,12 +29,12 @@ import type { SpendMeter } from "../artifacts/limits.js";
 import { askJson, forModel, type CallFn, type ModelCtx } from "../code/work/model.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { Learning } from "./learn.js";
-import { answerPaise, budgetOf, COSTLY_PAISE, routeOf, tierOf } from "./path.js";
+import { answerPaise, budgetOf, COSTLY_PAISE, routeOf, tierOf, visualCapOf } from "./path.js";
 import { readByRules, type RuleRead } from "./rules.js";
 import { chooseVisual } from "./visual.js";
 import { clarifyFor, langOf, type ClarifyKind } from "./words.js";
 import { deepCodeQuestion } from "../code/chat/question.js";
-import { INTENTS, LENGTHS, VISUAL_KINDS, type Clarify, type Decision, type FrontCtx, type Intent, type Length, type Via, type VisualKind } from "./types.js";
+import { INTENTS, LENGTHS, VISUAL_KINDS, type Clarify, type Decision, type FrontCtx, type Intent, type Length, type RouteName, type Via, type VisualKind } from "./types.js";
 
 /** The rules are trusted alone at or above this. */
 export const RULES_SURE = 0.7;
@@ -60,7 +60,15 @@ export interface DecideDeps {
   /** The person's day: the small model is not asked once it is spent, and what it cost is added. */
   daily?: Pick<SpendMeter, "leftPaise" | "add">;
   signal?: AbortSignal;
+  /** A project's chat is one loop (CODE_CHAT_AGENT when not given): no model reads the message here, the loop's own tool calls decide. */
+  agentChat?: boolean;
 }
+
+/** The roads a project chat's one loop takes the place of. */
+const LOOP_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>(["reply", "code_answer", "plan"]);
+
+/** What one message of a project's chat may spend when it is one loop: its worst case at the tier's prices for a few steps of looking (spends far less). */
+export const AGENT_CHAT_PAISE = 300;
 
 /** What the small model is held to. Strict: a field it was not asked for is a bad answer, and gets one repair. */
 export const DecideReply = z.object({
@@ -169,6 +177,7 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
 
   // 1. The rules, and how far this person's history lets them be trusted.
   const rules = readByRules(text, ctx);
+
   const reasons = [...rules.signals];
   let confidence = rules.confidence;
   const trust = await deps.learning?.trust(ctx.userId, rules.intent).catch(() => undefined);
@@ -239,6 +248,23 @@ async function decideRequest(message: string, ctx: FrontCtx, deps: DecideDeps): 
     clarify = modelClarify ?? clarifyFor(clarifyKind(intent), langOf(rules.cls.language));
     reasons.push("clarify");
     if (bare) reasons.push("clarify:bare");
+  }
+
+  // 6. A project's chat as one loop (code/chat/converse.ts): what was read here decides only what is done. A change is a job, a UI to make is a
+  // design, fresh facts from the web are research, a file attached is the file's road; a change asked with nothing that says what is a question
+  // back (a vague question is not: the loop answers it from the project). Everything else, the talk, the questions and the plans, is the loop,
+  // with the project in front of it and the code a tool call away: no road of its own for each.
+  let agentChat = deps.agentChat;
+  if (agentChat === undefined) { try { agentChat = getConfig().CODE_CHAT_AGENT; } catch { agentChat = false; } }
+  if (agentChat && hasProject && !ctx.attachments.length && LOOP_ROUTES.has(route) && !(clarify && intent === "code_task")) {
+    return {
+      // A picture made beside the answer stays (a diagram of a flow); a table is part of the words, and the loop writes its own.
+      intent: "code_question", shape: { length, visual: visual?.via === "inline" ? null : visual }, route: "code_answer", tier: "cheap",
+      budgetPaise: AGENT_CHAT_PAISE + visualCapOf("code_question", visual?.via === "inline" ? null : visual), confidence, via,
+      language: rules.reaction?.language ?? rules.cls.language, reasons: [...new Set([...reasons, "agent_chat"])],
+      // "??", "why?": what the words ask of the last answer, as the rules read them; the loop is told it beside the person's own words.
+      ...(rules.reaction ? { reask: rules.reaction.ask } : {}),
+    };
   }
 
   return {
