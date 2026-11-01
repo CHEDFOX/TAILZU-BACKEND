@@ -22,7 +22,7 @@ import { aboutLines, sharedFacts } from "../bots/shared.js";
 import type { Artifacts } from "../artifacts/index.js";
 import { CodeChat } from "../code/chat/index.js";
 import { threadStore, type ThreadStore } from "../code/chat/threads.js";
-import { bookBrief } from "../code/project/book.js";
+import { bookBrief, bookForPlan, type ProjectBook } from "../code/project/book.js";
 import type { LiveFiles } from "../code/live/ports.js";
 import { componentArtifact, workspaceFiles } from "../artifacts/kit.js";
 import { unfence } from "../artifacts/edit.js";
@@ -189,7 +189,8 @@ async function projectBrief(d: HandlerDeps, c: RouteCall): Promise<string> {
   const brain = await d.code.brain.open(c.userId, project.id);
   const view = await brain.status();
   // The project book's lines this message needs (the owner's words first): a reply about the project says what the book says.
-  const book = await brain.book().then((b) => (b ? bookBrief(b, c.message, 8) : "")).catch(() => "");
+  // A message that matches no line ("what should we do?") gets the lines a plan is made from: where it is heading and how it stands.
+  const book = await brain.book().then((b) => (b ? bookBrief(b, c.message, 8) || bookForPlan(b).split("\n").slice(0, 16).join("\n") : "")).catch(() => "");
   return [`${project.fullName}`, cut(view.welcome ?? "", 700), ...view.features.slice(0, 6).map((f) => `${f.name}: ${cut(f.summary, 90)}`), book].filter(Boolean).join("\n");
 }
 
@@ -319,6 +320,24 @@ export function planText(p: PlanShape): string {
   return [`**${p.title}**`, "", ...p.steps.map((s, i) => `${i + 1}. ${s.do}${s.when ? ` (${s.when})` : ""}`), ...(p.notes?.length ? ["", ...p.notes.map((n) => `- ${n}`)] : [])].join("\n");
 }
 
+/** A plan for a project as a whole, from its book: each step rests on a line of it (an issue, a failing check, the owner's words). */
+async function projectPlan(c: RouteCall, mctx: ModelCtx, brain: { status(): Promise<{ welcome: string }>; book?: () => Promise<ProjectBook | null> }, name: string): Promise<PlanOut> {
+  const book = brain.book ? await brain.book().catch(() => null) : null;
+  const known = book ? bookForPlan(book) : cut((await brain.status()).welcome ?? "", 900);
+  const r = await askJson(mctx, {
+    tier: c.decision.tier === "vision" ? "cheap" : c.decision.tier, purpose: "front.plan", role: "front_plan", schema: PlanSchema, maxTokens: 900,
+    user: `Request:\n<<<\n${forModel(c.message).replace(/>>>/g, "> > >")}\n>>>\n\nThe owner's words first; each step names the issue, file or check it rests on.\n<project name="${forModel(name).replace(/"/g, "")}">\n${fence(forModel(known))}\n</project>`,
+  });
+  if (!r.ok) {
+    if (r.reason === "budget") throw new FrontError("budget", "That would cost more than one message may. Ask for less.", 402);
+    if (r.reason === "aborted") throw Object.assign(new Error("aborted"), { name: "AbortError" });
+    throw new FrontError("model_down", "No model could be reached just now. Try again in a moment.", 503);
+  }
+  const text = planText(r.value);
+  c.onText?.(text);
+  return { text, paise: r.paise, diagram: planDiagram(r.value.steps) };
+}
+
 async function planDefault(d: HandlerDeps, c: RouteCall): Promise<PlanOut> {
   // In a project that has been read, the work core's own plan: where it goes, what it touches, how to check it.
   if (c.ctx.projectId && d.code?.github && d.code.brain) {
@@ -332,6 +351,12 @@ async function planDefault(d: HandlerDeps, c: RouteCall): Promise<PlanOut> {
       };
       const mctx = ctxOf(d, c, c.maxPaise);
       const located = await locate(c.message, brain, { model: { ...mctx, budget: { maxPaise: Math.min(60, c.maxPaise) } }, read });
+      // "What should we do?" names no place in the code: it is a plan for the project, made from its book (what comes next, what is failing, the
+      // open issues), not a code change. The change planner, given nothing to change, made one up ("create NOTES.md saying the request is unclear").
+      if (!located.targets.length) {
+        const out = await projectPlan(c, mctx, brain, project.fullName);
+        return { ...out, paise: out.paise + located.used.paise };
+      }
       const plan = await planChange(c.message, located, brain, { model: mctx, read });
       const steps = plan.steps.map((s) => ({ do: s.do, when: s.files.length ? `${s.files.length} file${s.files.length === 1 ? "" : "s"}` : null }));
       const text = [
