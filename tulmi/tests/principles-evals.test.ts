@@ -37,7 +37,7 @@ const { SynonymReply, PickReply } = await import("../src/code/work/locate.js");
 const { SpecReply } = await import("../src/code/newproject/spec.js");
 const { Weighed } = await import("../src/code/resources/brief.js");
 const { FoldReply } = await import("../src/code/agent/context.js");
-const { FileSchema, CardSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema } = await import("../src/code/project/summarize.js");
+const { FileSchema, CardSchema, DirSchema, OverviewSchema, FeatureSchema, WelcomeSchema, ProjectOverviewSchema } = await import("../src/code/project/summarize.js");
 const { GapSchema, splitGaps } = await import("../src/web/research.js");
 const { ModelPlan } = await import("../src/web/search/plan.js");
 const { VerdictSchema } = await import("../src/artifacts/compare.js");
@@ -212,6 +212,7 @@ describe("a known-good answer for each role", () => {
       reads: (t) => CardSchema.parse(JSON.parse(t)),
     },
     index_dirs: { text: '{"summaries":[{"path":"src/billing","summary":"Invoices, tax and payment providers."},{"path":"src/ui","summary":"Shared interface components."}]}', reads: (t) => DirSchema.parse(JSON.parse(t)) },
+    project_overview: { text: '{"kind": "a web service (an HTTP API) and the phone app it serves", "what": "Acme Bakery takes bread and cake orders for pickup. Customers order in the phone app; the bakery sees the orders on an admin page.", "parts": [{"name": "Ordering", "does": "Takes an order and its pickup slot and saves it.", "start": "src/orders/route.ts"}, {"name": "Admin", "does": "Lists the day\'s orders for the bakery.", "start": "src/admin/page.tsx"}], "flows": ["An order: the app posts it to /api/orders, Ordering checks the slot and saves it, Admin shows it."], "direction": ""}', reads: (t) => ProjectOverviewSchema.parse(JSON.parse(t)) },
     index_repo: { text: '{"overview":"Acme Bakery is a site for ordering bread and cakes for pickup. It is built with Next.js and Tailwind CSS."}', reads: (t) => OverviewSchema.parse(JSON.parse(t)) },
     index_features: {
       text: '{"features":[{"id":"1","name":"Sign in","summary":"Email and password login and logout."},{"id":"2","name":"Billing","summary":"Invoices, totals and paying them."}]}',

@@ -37,6 +37,7 @@ import { compose, type RoleId } from "../../principles/index.js";
 import { scanForSecrets } from "../policy.js";
 import { BudgetExceeded, type CallInput, type CallResult, type GatewayDeps } from "../brain/gateway.js";
 import { EXCERPT_CHARS, SUMMARY_BATCH, SUMMARY_FILES_MAX, WELCOME_CHARS, type Feature, type SymbolInfo } from "./types.js";
+import type { OverviewDraft } from "./overview.js";
 
 export type CallFn = <T>(input: CallInput<T>, deps?: GatewayDeps) => Promise<CallResult<T>>;
 
@@ -157,6 +158,12 @@ export const DirSchema = FileSchema;
 export const OverviewSchema = z.object({ overview: z.string() });
 export const FeatureSchema = z.object({ features: z.array(z.object({ id: z.string(), name: z.string(), summary: z.string() })).max(40) });
 export const WelcomeSchema = z.object({ welcome: z.string() });
+export const ProjectOverviewSchema = z.object({
+  kind: z.string(), what: z.string(),
+  parts: z.array(z.object({ name: z.string(), does: z.string(), start: z.string().default("") })).max(12).default([]),
+  flows: z.array(z.string()).max(6).default([]),
+  direction: z.string().default(""),
+});
 
 type Outcome<T> = { ok: true; value: T } | { ok: false; reason: "budget" | "down" };
 
@@ -525,6 +532,26 @@ export function clampWelcome(s: string, max = WELCOME_CHARS): string {
 }
 
 /** The welcome message: what the project is, its stack, size and health, and three to five first tasks. At most 900 characters. */
+/**
+ * The project's overview, written or tuned (overview.ts): the signals and parts in <data>; when tuning, the overview as it was in <before> and
+ * what moved since in <changed>, so it keeps what is still true and says how the direction changed. Null when no answer could be had.
+ */
+export async function writeOverview(ctx: SummaryCtx, facts: string, before: OverviewDraft | null, changed: readonly string[], cap: number): Promise<OverviewDraft | null> {
+  const guard = (s: string) => fence(s).replace(/<\/(before|changed)/gi, "<\\/$1");
+  const user = [
+    `<data>\n${guard(facts)}\n</data>`,
+    ...(before ? [`<before>\n${guard(JSON.stringify(before))}\n</before>`, `<changed>\n${guard(changed.map((c) => `- ${c}`).join("\n"))}\n</changed>`] : []),
+  ].join("\n");
+  const r = await ask(ctx, cap, "brain.overview", "project_overview", user, ProjectOverviewSchema, 1200);
+  if (!r.ok) return null;
+  const v = r.value;
+  const d: OverviewDraft = {
+    kind: v.kind, what: v.what, parts: (v.parts ?? []).map((p) => ({ name: p.name, does: p.does, start: p.start ?? "" })), flows: v.flows ?? [], direction: v.direction ?? "",
+  };
+  const text = [d.kind, d.what, ...d.parts.map((p) => `${p.name} ${p.does}`), ...d.flows, d.direction].join("\n");
+  return scanForSecrets([{ path: "overview.txt", content: text }]).length ? null : d;
+}
+
 export async function welcomeMessage(ctx: SummaryCtx, facts: WelcomeFacts, cap: number): Promise<{ text: string; viaModel: boolean }> {
   const lines = [
     "<data>", `project: ${facts.name}`, facts.blurb ? `about: ${facts.blurb}` : "", `stack: ${facts.stack.join(", ")}`,

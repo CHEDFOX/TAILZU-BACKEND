@@ -157,7 +157,7 @@ describe("the sweep", () => {
     const callers = sources.filter((s) => /\bcallModel\b/.test(s.code) && s.rel !== "code/brain/gateway.ts");
     expect(callers.map((s) => s.rel).sort()).toEqual([
       "artifacts/compare.ts", "artifacts/model.ts", "artifacts/service.ts", "bots/run.ts", "code/agent/phases.ts", "code/brain/classify.ts", "code/chat/look.ts",
-      "code/project/build.ts", "code/webTools.ts", "code/work/model.ts", "front/model.ts",
+      "code/project/build.ts", "code/project/index.ts", "code/webTools.ts", "code/work/model.ts", "front/model.ts",
     ]);
     for (const s of callers) {
       // a hand-built [{ role: ..., content: ... }] is a prompt written out; the messages of a call come from compose()

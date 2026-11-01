@@ -67,6 +67,7 @@ import { keepMeanings, withHashes } from "./map.js";
 import { countTodos, extractSymbols, type SymbolContext } from "./symbols.js";
 import { buildTestMap, untestedImportant } from "./tests.js";
 import { extractTexts, keepTexts, translationsOf } from "./texts.js";
+import { basisOf, commitsSince, overviewDue, tuneOverview, type OverviewInput } from "./overview.js";
 import { analyse, ensureGrammars, treeSitter } from "./treesitter/index.js";
 import {
   BLOBS_MAX, EMPTY_STRUCTURE, PARSER_WORKER_TEXT_MAX, TEXTS_PER_PROJECT,
@@ -551,15 +552,32 @@ export async function runBuild(
       health: recorded ? (recorded.healthy ? "all checks passed" : "some checks fail") : structure.commands.some((c) => c.kind === "test") ? "not checked yet" : "no test command found",
       tasks,
     };
+    // The overview (overview.ts): written on the first read, then tuned only when the project has moved far enough from what it was written
+    // from (a new kind of app, the owner's or the README's new words, new or gone parts, the latest work elsewhere). Before the welcome, so it
+    // has the first claim on what money is left; within the build's money, like every word the index writes.
+    await progress(94, "writing the overview");
+    const bookBefore = (await store.getBrain(project.id).catch(() => null))?.book ?? existing?.book ?? {};
+    const ovIn: OverviewInput = {
+      name: project.fullName, structure, features, paths: allPaths, rank: new Map(allPaths.map((p) => [p, all.get(p)!.rank])), history: history.commits, messages, owner: bookBefore.owner ?? null,
+    };
+    const prior = bookBefore.overview ?? null;
+    const due = overviewDue(prior, basisOf(ovIn), prior ? commitsSince(prior, history.commits) : 0, now(), meter.left(phaseCap(meter, "rest")) > 0);
+    const overview = due ? await tuneOverview(ctx, ovIn, prior, due, tree.headSha, now(), phaseCap(meter, "rest")) : prior;
+    if (overview?.via === "model" && overview !== prior) anySummary = true;
+
     const w = await welcomeMessage(ctx, facts, phaseCap(meter, "rest"));
     if (w.viaModel) anySummary = true; else if (meter.budget > 0) complete = false;
+
 
     // ---- kept
     await progress(96, "saving");
     const withLines = [...all.values()].filter((f) => f.summary !== (storedByPath.get(f.path)?.summary ?? "") || (analysed.has(f.path) && f.summary !== ""));
     await store.upsertFiles(project.id, withLines);
     await store.upsertDirs(project.id, [...dirRows.values()]);
+    // The owner may have answered while this ran: their words are read again, and the overview put beside them.
+    const bookNow = overview && overview !== prior ? { ...((await store.getBrain(project.id).catch(() => null))?.book ?? bookBefore), overview } : null;
     const row = await store.saveBrain(project.id, {
+      ...(bookNow ? { book: bookNow } : {}),
       status: "ready", progress: { pct: 100, phase: "ready" }, features, structure, baseline, welcome: w.text || fallbackWelcome(facts),
       memory: memoryMarkdown({ project: project0, headSha: tree.headSha, structure, conventions, features, hotspots: hot, baseline }),
       summariesState: !anySummary ? "none" : complete ? "complete" : "partial",

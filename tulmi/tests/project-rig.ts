@@ -36,6 +36,8 @@ export interface FakeModel {
   failAll: boolean;
   /** Answer the welcome call with this text. */
   welcome: string | null;
+  /** Answer the overview call with this (overview.ts); a shop's web service and web app when null. */
+  overview: Record<string, unknown> | null;
   /** The messages of every call, in order: what was SENT. */
   sent: string[];
   /** Calls refused for not fitting the cap (never made). */
@@ -44,7 +46,7 @@ export interface FakeModel {
 
 export function fakeModel(o: { paise?: number } = {}): FakeModel {
   const m: FakeModel = {
-    calls: [], paise: o.paise ?? 5, failAll: false, welcome: null, sent: [], refused: 0,
+    calls: [], paise: o.paise ?? 5, failAll: false, welcome: null, overview: null, sent: [], refused: 0,
     of(purpose) { return m.calls.filter((c) => c.purpose === purpose); },
     summarized() { return [...m.of("brain.summarize.files"), ...m.of("brain.cards")].flatMap((c) => c.paths); },
     call: (async <T>(input: CallInput<T>): Promise<CallResult<T>> => {
@@ -77,6 +79,11 @@ export function fakeModel(o: { paise?: number } = {}): FakeModel {
         case "brain.summarize.repo": json = { overview: "Acme Shop is a small shop with a web app, an API and a mobile app." }; break;
         case "brain.features": json = { features: last.ids.map((id) => ({ id, name: `Feature ${id}`, summary: `What feature ${id} does.` })) }; break;
         case "brain.welcome": json = { welcome: m.welcome ?? "Acme Shop is a small shop built with TypeScript, Python and Go. Health: not checked yet. To start: 1) Add tests for src/lib/api.ts 2) Update next." }; break;
+        case "brain.overview": json = m.overview ?? {
+          kind: "a web service (an HTTP API) and the web app it serves", what: "Acme Shop sells things online: people order in the web app, the API keeps the orders.",
+          parts: [{ name: "API", does: "Serves the shop's data to the apps.", start: "src/lib/api.ts" }, { name: "Web app", does: "Where people browse and order.", start: "src/app/page.tsx" }],
+          flows: ["An order: the web app posts it to the API, which saves it."], direction: "",
+        }; break;
         default: throw new Error(`unexpected call ${input.purpose}`);
       }
       return {

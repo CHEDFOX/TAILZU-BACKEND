@@ -245,6 +245,13 @@ const ROLE_TABLE = {
     principles: ["core.facts", "safe.data", "out.json"],
     contract: '{"overview":"two sentences under 400 characters: what the product is, who it is for, what it is built with"}',
   },
+  project_overview: {
+    identity: "You write the overview of a software project a new teammate reads first: what kind of application it is, what it does, its parts, how they connect.",
+    principles: ["core.facts", "core.unsure", "safe.data", "out.json"],
+    contract: '{"kind":"what kind of application it is, under 90 characters, in a person\'s words, from the kind signals","what":"two or three sentences: what it does and for whom; the owner\'s words win",'
+      + '"parts":[{"name":"as a person names it","does":"one sentence","start":"a path from <data>, or empty"}],"flows":["one to three: how work moves through the parts, naming them"],'
+      + '"direction":"one sentence: what it was and what it is becoming, when <before> differs; else empty"}; 3 to 8 parts; keep what <before> says that is still true.',
+  },
   index_features: {
     identity: "You name clusters of files in a repository as a person would; each <data> block is one.",
     principles: ["core.facts", "safe.data", "out.json"],

@@ -39,7 +39,9 @@ import { assertAccess, ownProject, repoRef, type ProjectDeps } from "../projects
 import type { CodeProject } from "../store.js";
 import { baselinePlan } from "./baseline.js";
 import { classOf, isTestPath } from "./lang.js";
-import { readEstimate, type ReadEstimate } from "./summarize.js";
+import { Meter, readEstimate, type CallFn, type ReadEstimate } from "./summarize.js";
+import { basisOf, commitsSince, overviewDue, OVERVIEW_PAISE, tuneOverview, type OverviewInput } from "./overview.js";
+import { callModel } from "../brain/gateway.js";
 import { runBuild, type BuildMode, type ProjectBrainDeps, type ReadDepth } from "./build.js";
 import { aggregateHistory, coChanged, rankHotspots } from "./hotspots.js";
 import { RepoGraph, mapFiles, type MapHit, type MapOptions, type MapSeeds } from "./repomap.js";
@@ -526,7 +528,7 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       const b = await row();
       if (!b || !b.headSha) return null;
       const now = (d.now ?? Date.now)();
-      const key = `${b.headSha}|${b.builtAt ?? 0}|${b.book?.owner?.at ?? 0}`;
+      const key = `${b.headSha}|${b.builtAt ?? 0}|${b.book?.owner?.at ?? 0}|${b.book?.overview?.at ?? 0}`;
       const kept = books.get(id);
       if (kept?.key === key && now - kept.at < BOOK_FRESH_MS) return kept.book;
       // Free sources only, in parallel; one that cannot be read is a gap the book says, never a failure.
@@ -549,6 +551,7 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
         project: project.fullName, commit: b.headSha, now, files, map, commits, history: b.history.commits, merged, open, issues, milestones,
         view: { welcome: b.welcome, structure: b.structure, features: b.features, conventions: b.conventions, baseline: b.baseline },
         docs: Object.fromEntries(docs.filter(([, t]) => t)), ops: Object.fromEntries(ops.filter(([, t]) => t)), owner: b.book?.owner ?? null,
+        overview: b.book?.overview ?? null,
       });
       books.set(id, { key, at: now, book: made });
       while (books.size > GRAPHS_KEPT) books.delete(books.keys().next().value as string);
@@ -560,6 +563,10 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       const owner = cleanAnswers(answers, (d.now ?? Date.now)(), b.book?.owner ?? null);
       if (owner) await store.saveBrain(id, { book: { ...(b.book ?? {}), owner } });
       books.delete(id);
+      // What it is or where it goes, in the owner's new words: the overview is tuned now, not at the next push (in the background; the book
+      // they see at once leads with their words either way).
+      const said = (o: typeof owner) => `${o?.for ?? ""}|${o?.next ?? ""}`;
+      if (owner && said(owner) !== said(b.book?.owner ?? null)) void refreshOverview(d, userId, project).then(() => books.delete(id), () => undefined);
       return handle.book();
     },
     async mapAfter(changes) {
@@ -669,4 +676,29 @@ export class ProjectBrain {
   useLog(log: ProjectBrainDeps["log"]): void { this.runtime.log = log; }
   /** The server is closing. */
   dispose(): void { this.sync.dispose(); }
+}
+
+/**
+ * The overview tuned outside a build: when the owner says something new about what the project is or where it goes, and nothing was pushed
+ * (a build with no new commit stops at once). One call at most, at OVERVIEW_PAISE; nothing when no model may be used.
+ */
+export async function refreshOverview(d: ProjectBrainDeps, userId: string, project: CodeProject): Promise<void> {
+  const b = await d.store.getBrain(project.id);
+  if (!b?.headSha || !b.structure || d.budgetPaise <= 0) return;
+  const at = (d.now ?? Date.now)();
+  const files = await d.store.listFiles(project.id);
+  let messages: string[] = [];
+  try { messages = (await d.projects.github.recentCommits(repoRef(d.projects, userId, project), project.defaultBranch, 15)).map((c) => c.message); } catch { /* the code says enough */ }
+  const input: OverviewInput = {
+    name: project.fullName, structure: b.structure, features: b.features, paths: files.map((f) => f.path), rank: new Map(files.map((f) => [f.path, f.rank])),
+    history: b.history.commits, messages, owner: b.book?.owner ?? null,
+  };
+  const prior = b.book?.overview ?? null;
+  const due = overviewDue(prior, basisOf(input), prior ? commitsSince(prior, b.history.commits) : 0, at, true);
+  if (!due) return;
+  const meter = new Meter(OVERVIEW_PAISE);
+  // The model door the builds use: the one given, else the gateway's own.
+  const overview = await tuneOverview({ call: d.call ?? (callModel as CallFn), ...(d.gateway ? { gateway: d.gateway } : {}), userId, meter }, input, prior, due, b.headSha, at, OVERVIEW_PAISE);
+  const latest = (await d.store.getBrain(project.id))?.book ?? b.book ?? {};
+  await d.store.saveBrain(project.id, { book: { ...latest, overview }, spentPaise: b.spentPaise + meter.spent });
 }
