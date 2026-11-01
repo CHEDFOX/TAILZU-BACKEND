@@ -353,6 +353,8 @@ const EnvSchema = z.object({
   AGENT_TIMEOUT_MS: z.coerce.number().int().min(500).max(60_000).default(6000),
   /** Steps in one run, counted from 0. Past it a step is refused. */
   AGENT_MAX_STEPS: z.coerce.number().int().min(1).max(50).default(8),
+  /** A long job (docs/long-jobs.md): a run that carries a plan's ledger may take this many steps. */
+  AGENT_JOB_MAX_STEPS: z.coerce.number().int().min(1).max(300).default(60),
   /** Elements one step may send. The device stops its walk at the same number. */
   AGENT_MAX_ELEMENTS: z.coerce.number().int().min(10).max(1000).default(250),
   /**

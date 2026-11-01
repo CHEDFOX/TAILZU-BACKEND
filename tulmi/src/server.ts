@@ -2182,7 +2182,7 @@ app.post("/v1/agent", { config: AGENT_RL }, async (req, reply) => {
     const nick = nicknameOf(personality);
     result = await runStep(
       {
-        req: step, maxSteps: cfg.AGENT_MAX_STEPS, names: [ASSISTANT_NAME, ...NAME_HEARD, "Blip", ...(nick ? [nick] : [])],
+        req: step, maxSteps: cfg.AGENT_MAX_STEPS, jobMaxSteps: cfg.AGENT_JOB_MAX_STEPS, names: [ASSISTANT_NAME, ...NAME_HEARD, "Blip", ...(nick ? [nick] : [])],
         ...(image ? { image } : {}),
       },
       {

@@ -48,7 +48,7 @@ import type { SpotOrder } from "./lines.js";
 import { isGemini, type UserPart } from "./llm.js";
 import type { AgentImage } from "./protocol.js";
 
-const AGENT_TAG_NAMES = "screen|said|history";
+const AGENT_TAG_NAMES = "screen|said|history|job";
 export const AGENT_TAGS = fenceTags(AGENT_TAG_NAMES);
 
 /** The "<" of anything a model would read as one of the fences' tags. */
@@ -83,6 +83,14 @@ export function fenced(s: string): string {
 export const PHONE_NOTE = "On a phone: there is no screen here to point at or press. Answer, ask, or use their connected apps.";
 
 /** Whether a request's platform is a phone (written out rather than taken from connectors/, which this file must not import). */
+/**
+ * A long job (docs/long-jobs.md): Tailzu's own line at the head of the step's message, only while the run carries a job's
+ * ledger, so the stable block (and every step that is not a job) pays nothing for it.
+ */
+export const JOB_NOTE = "A job of many steps: <job> is its plan, steps marked [done] and [now], and what was kept. Work on [now]. "
+  + "When the history shows a plan step finished, write PROGRESS <its numbers> | <a fact worth keeping, optional> before your action. "
+  + "DONE only once the screen shows the whole goal reached; until then, take the next step.";
+
 export const onAPhone = (platform: string): boolean => platform === "ios" || platform === "android";
 
 /**
@@ -147,11 +155,24 @@ export function agentUserMessage(
   ];
   if (req.language && req.language !== "auto") head.push(`Their language: ${req.language}.`);
 
-  const parts = [head.join(" "), ...(onAPhone(req.platform) ? [PHONE_NOTE] : []), `<screen>\n${screenLines(req).join("\n")}\n</screen>`];
+  const job = !!req.job && mode === "do";
+  const parts = [head.join(" "), ...(onAPhone(req.platform) ? [PHONE_NOTE] : []), ...(job ? [JOB_NOTE] : []), `<screen>\n${screenLines(req).join("\n")}\n</screen>`];
+  // A long job's ledger: the plan, what is finished, and what it learned. Written by the planner from screens, so data.
+  if (job && req.job) parts.push(`<job>\n${jobLines(req.job).join("\n")}\n</job>`);
   const history = req.history ?? [];
   if (history.length) parts.push(`<history>\n${history.map((t, i) => historyLine(i + 1, t)).join("\n")}\n</history>`);
   parts.push(`<said>${fenced(said)}</said>`);
   return parts.join("\n");
+}
+
+/** The job's ledger as the planner reads it: each plan step numbered, finished ones marked, then the notes. */
+export function jobLines(job: NonNullable<AgentStepRequest["job"]>): string[] {
+  const done = new Set(job.done);
+  const next = job.plan.findIndex((_, i) => !done.has(i));
+  return [
+    ...job.plan.map((step, i) => `${i + 1}. ${done.has(i) ? "[done] " : i === next ? "[now] " : ""}${fenced(step)}`),
+    ...(job.notes.length ? ["Kept:", ...job.notes.map((n) => `- ${fenced(n)}`)] : []),
+  ];
 }
 
 /** When the device sends no offset: India's, where most people using Tailzu are. */

@@ -21,7 +21,7 @@
  * called.
  */
 import type {
-  AgentElement, AgentEvent, AgentPicture, AgentRegion, AgentStepRequest, AgentTurn, AudioFormat,
+  AgentElement, AgentEvent, AgentJob, AgentPicture, AgentRegion, AgentStepRequest, AgentTurn, AudioFormat,
 } from "../../../shared/types/api.js";
 import { elementLine } from "./prompt.js";
 
@@ -44,6 +44,12 @@ export const LIMITS = {
   note: 200,
   data: 5000,
   capabilities: 8,
+  /** A long job's ledger (AgentJob). */
+  jobGoal: 1000,
+  jobPlan: 12,
+  jobStep: 120,
+  jobNotes: 8,
+  jobNote: 160,
 } as const;
 
 export interface Caps {
@@ -275,7 +281,24 @@ export function readStepRequest(
     : [];
   if (capabilities.length) req.capabilities = capabilities;
   if (hasImage) req.picture = readPictureInfo(o.picture);
+  const job = readJob(o.job);
+  if (job) req.job = job;
   return { req };
+}
+
+/**
+ * A long job's ledger, read like everything else off a device: cut to its caps, the done steps only ones the plan has, and
+ * nothing at all when there is no plan (a ledger without one is not a job). Its plan and notes were written by the planner
+ * from screens, so they go to the prompt fenced, as data.
+ */
+export function readJob(v: unknown): AgentJob | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const plan = Array.isArray(o.plan) ? o.plan.filter((x): x is string => typeof x === "string").map((x) => oneLine(x, LIMITS.jobStep)).filter(Boolean).slice(0, LIMITS.jobPlan) : [];
+  if (!plan.length) return null;
+  const done = Array.isArray(o.done) ? [...new Set(o.done.filter((n): n is number => Number.isInteger(n) && n >= 0 && n < plan.length))].sort((a, b) => a - b) : [];
+  const notes = Array.isArray(o.notes) ? o.notes.filter((x): x is string => typeof x === "string").map((x) => oneLine(x, LIMITS.jobNote)).filter(Boolean).slice(-LIMITS.jobNotes) : [];
+  return { goal: typeof o.goal === "string" ? oneLine(o.goal, LIMITS.jobGoal) : "", plan, done, notes };
 }
 
 /** What the picture is a crop of. Anything but one image on the screen is
@@ -339,7 +362,7 @@ export function audioFormatOf(filename: string | undefined, mime: string | undef
   return "webm";
 }
 
-const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "approve", "device", "done", "error"]);
+const TERMINAL = new Set<AgentEvent["t"]>(["action", "ask", "look", "approve", "device", "handover", "done", "error"]);
 
 /**
  * What a route may add to a step's events without the planner knowing: the
