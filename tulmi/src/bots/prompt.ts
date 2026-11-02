@@ -56,7 +56,19 @@ export interface PromptParts {
   attached?: readonly Attached[];
   /** Connected apps the owner gave the bot that this person has not connected yet: the bot can say how to. */
   notConnected?: readonly string[];
+  /** Now, and the person's offset from UTC in minutes (India's 330 when not known): a model left to itself takes its training's
+   *  year for today, and "next Friday" becomes a day long gone. */
+  now?: number;
+  tzOffsetMinutes?: number;
   message: string;
+}
+
+/** "Today: Monday 2 November 2026, 14:05 (UTC+05:30)", in the person's own clock. */
+export function todayLine(now: number, tz = 330): string {
+  const d = new Date(now + tz * 60_000);
+  const day = d.toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" }).replace(",", "");
+  const time = d.toISOString().slice(11, 16), sign = tz < 0 ? "-" : "+", a = Math.abs(tz);
+  return `Today: ${day}, ${time} (UTC${sign}${String(Math.floor(a / 60)).padStart(2, "0")}:${String(a % 60).padStart(2, "0")})`;
 }
 
 /** The owner's rules as the model reads them: numbered, each capped, the ones that try to change our rules replaced by a note. */
@@ -74,7 +86,7 @@ export function botUserMessage(p: PromptParts): string {
   const b = p.bot;
   const missing = (p.notConnected ?? []).slice(0, LIMITS.connectors).map((n) => oneLine(n, 40)).filter(Boolean);
   const parts: string[] = [
-    `<bot>\nName: ${oneLine(b.name, 40)}\nPurpose: ${oneLine(b.purpose, LIMITS.purpose)}\nTone: ${oneLine(b.tone || "plain and friendly", LIMITS.tone)}\nSkills: ${skillsLine(b.skills)}`
+    `${todayLine(p.now ?? Date.now(), p.tzOffsetMinutes)}\n<bot>\nName: ${oneLine(b.name, 40)}\nPurpose: ${oneLine(b.purpose, LIMITS.purpose)}\nTone: ${oneLine(b.tone || "plain and friendly", LIMITS.tone)}\nSkills: ${skillsLine(b.skills)}`
     + `${missing.length ? `\nNot connected yet: ${missing.join(", ")}` : ""}\n</bot>`,
   ];
   if (b.principles.length) parts.push(`<owner_rules>\n${rulesBlock(b.principles)}\n</owner_rules>`);

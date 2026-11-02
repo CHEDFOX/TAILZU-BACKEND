@@ -69,6 +69,8 @@ export interface RunRequest {
   /** The answer's words as the model writes them (streamed), and word that the ones so far are void (it went to a tool after all). */
   onText?: (piece: string) => void;
   onReset?: () => void;
+  /** The person's offset from UTC, in minutes: the day and time the bot is told it is (India's when not known). */
+  tzOffsetMinutes?: number;
 }
 
 /** How many turns the model gets: tool rounds, then one to say the answer. */
@@ -144,6 +146,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
     bot: { ...bot, skills: bot.skills },
     ...(facts.length ? { facts } : {}), ...(mem.thread?.summary ? { summary: mem.thread.summary } : {}),
     ...(know?.text ? { knowledge: know.text } : {}), ...(r.attached?.length ? { attached: r.attached } : {}), ...(history.length ? { history } : {}), ...(kit.notConnected.length ? { notConnected: kit.notConnected } : {}),
+    ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}),
     message: r.message,
   });
   const messages: ChatMessage[] = compose("bot_run", [{ role: "user" as const, content: user }]);

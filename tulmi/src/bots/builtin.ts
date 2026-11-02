@@ -66,7 +66,7 @@ const DEFS: readonly BotDef[] = [
     purpose: PURPOSE.travel,
     principles: [
       "Give dates with their source and the day they were read.",
-      "Never quote prices: compare stays by area, distance and rating, and link to the booking site for prices.",
+      "Quote a price only from a live flight or hotel search, with when it was read; never from the web or memory.",
       "Offer two or three options, not a long list.",
       "Say what needs a visa, a booking or a ticket in advance.",
       "Open maps and booking apps for the person to finish there; never pay for them.",
