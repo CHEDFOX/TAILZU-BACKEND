@@ -71,6 +71,8 @@ export interface RunRequest {
   onReset?: () => void;
   /** The person's offset from UTC, in minutes: the day and time the bot is told it is (India's when not known). */
   tzOffsetMinutes?: number;
+  /** Not a turn in the chat (a routine): no earlier turns from the thread (service.ts AskInput.fresh). */
+  fresh?: boolean;
 }
 
 /** How many turns the model gets: tool rounds, then one to say the answer. */
@@ -125,7 +127,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const facts = [...own.slice(-Math.max(0, MEMORY_SHOWN - extra.length)), ...extra];
   // The bot's files are searched with the message made complete: "and Saturday?" finds what "trains on Saturday?" would (front/complete.ts).
   // The turns just before: the caller's, or (a chat in the app sends none) the latest ones the bot kept in its thread.
-  const history = r.history?.length ? r.history : remember ? recentTurnsOf(mem.thread) : [];
+  const history = r.history?.length ? r.history : remember && !r.fresh ? recentTurnsOf(mem.thread) : [];
   const lastSaid = [...history].reverse().find((t) => t.role === "user")?.content;
   const lastAnswer = [...history].reverse().find((t) => t.role === "assistant")?.content;
   const lookup = bot.skills.files && bot.knowledge.length && lastSaid

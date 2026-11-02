@@ -25,7 +25,7 @@ import { cleanSchedule, nextRun, nextWords, readRoutine, scheduleWords, TASK_MAX
 
 /** What routines need of the bots platform (bots/service.ts Bots). */
 export interface RoutineBots {
-  ask(userId: string, ref: string, input: { message: string }): Promise<BotAnswer>;
+  ask(userId: string, ref: string, input: { message: string; fresh?: boolean }): Promise<BotAnswer>;
   resolve(userId: string, ref: string): Promise<{ def: BotDef } | null>;
   target(userId: string, bot: string, message: string, ctx: Pick<FrontCtx, "mode" | "recent" | "attachments">): Promise<{ kind: "front" | "bot"; bot: BotDef | null }>;
   list(userId: string): Promise<Array<{ slug: string; name: string; builtin: boolean }>>;
@@ -289,7 +289,8 @@ export class Routines {
         this.tell(r.userId);
         return out ?? r;
       }
-      const answer = await this.bots.ask(r.userId, r.bot, { message: r.task });
+      // Its own words, not the chat's last turns: a routine is not a reply to whatever was said last (AskInput.fresh).
+      const answer = await this.bots.ask(r.userId, r.bot, { message: r.task, fresh: true });
       status = answer.approvals.length ? "needs" : "done";
       patch = { lastAt: at, lastStatus: status, lastText: (answer.text || "").slice(0, TEXT_MAX), lastPaise: Math.max(0, Math.round(answer.paise)), runs: r.runs + 1, fails: 0, botName: found.def.name };
       await this.o.events?.add(r.userId, { kind: "ask", bot: r.bot, title: r.task, paise: patch.lastPaise ?? 0, amountPaise: 0, payee: "" }, at).catch(() => undefined);

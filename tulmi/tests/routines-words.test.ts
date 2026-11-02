@@ -75,3 +75,23 @@ describe("cleanSchedule", () => {
     expect(cleanSchedule({ every: "week", minute: 60, days: [] })).toBeNull();
   });
 });
+
+describe("Hinglish and Hindi schedule words", () => {
+  const NOW = Date.UTC(2026, 10, 2, 6, 0);
+  const read = (w: string) => { const r = readRoutine(w, NOW, 330); return r ? `${scheduleWords(r.schedule)} | ${r.task}` : null; };
+  it("reads har, roz, subah, shaam, baje, the days and tarikh as English would", () => {
+    expect(read("har friday shaam 6 baje mujhe hafte ka summary bhejna")).toBe("Every Friday at 6 pm | Mujhe hafte ka summary bhejna");
+    expect(read("roz subah 8 baje top tech news batao")).toBe("Every day at 8 am | Top tech news batao");
+    expect(read("har mahine 1 tarikh ko bijli ka bill check karo")).toBe("On the 1st of every month at 9 am | Bijli ka bill check karo");
+  });
+  it("reads Devanagari, and keeps a task written in it", () => {
+    expect(read("हर सोमवार सुबह 9 बजे मुझे हफ्ते की योजना बताना")).toBe("Every Monday at 9 am | मुझे हफ्ते की योजना बताना");
+  });
+  it("an hour said beside a day and a part of the day is read in that part", () => {
+    expect(read("every friday evening at 6 send me the week summary")).toBe("Every Friday at 6 pm | Send me the week summary");
+    expect(read("every 15th of the month sum up my spending")).toBe("On the 15th of every month at 9 am | Sum up my spending");
+  });
+  it("still not a routine without a schedule", () => {
+    expect(read("raat ko kuch nahi")).toBeNull();
+  });
+});
