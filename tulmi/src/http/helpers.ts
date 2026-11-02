@@ -17,7 +17,7 @@ import { currentCacheVersion } from "../experience/cacheVersion.js";
  * and 9 KB. The phone, the keyboards and the desktop all ask for gzip and
  * undo it themselves. Small replies go as they are.
  */
-export const gzipped = promisify(gzip);
+const gzipped = promisify(gzip);
 
 export async function gzipLargeJson(req: FastifyRequest, reply: FastifyReply, payload: unknown): Promise<unknown> {
   if (typeof payload !== "string" || payload.length < 8_192) return payload;
