@@ -149,6 +149,29 @@ describe("About you and Name: the stage after sign-in", () => {
   });
 });
 
+describe("App Review: signed in with Apple, nothing more is asked; a bought plan can be restored", () => {
+  const appleApi = { ...API, "GET /v1/bots/first-run/profile": { name: "", via: "apple", source: null, gender: null, saved: false } };
+  it("starts someone who signed in with Apple on naming the bot, and About you asks nothing of them: optional, skippable", async () => {
+    const s = await build("bots.name-it", "phone", { api: appleApi });
+    expect(s.state).toMatchObject({ step: 1, fullName: "" });
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your name (optional)", "Skip", "Optional. Apple shared what you chose to share; add more only if you like."]));
+    const all = actions(s.root);
+    // Continue with nothing filled in goes on; nothing is required.
+    expect(all).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "condition", if: { any: [{ truthy: "fullName" }, { truthy: "gender" }] }, else: expect.objectContaining({ kind: "sequence" }),
+    })]));
+    expect(all).not.toEqual(expect.arrayContaining([expect.objectContaining({ kind: "toast", message: "Add your name and pick one." })]));
+  });
+
+  it("offers Restore Purchases on the phone's Plans, which restores and reads the screen again", async () => {
+    const s = await build("bots.plans", "phone");
+    expect(texts(s.root!)).toContain("Restore Purchases");
+    expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "iap.restore", onSuccess: expect.objectContaining({ kind: "sequence", actions: expect.arrayContaining([{ kind: "refresh" }]) }),
+    })]));
+  });
+});
+
 describe("Language: a page from You now", () => {
   it("the person's own picks, chips that toggle (never to none), saved to the personality, then back", async () => {
     const s = await build("bots.language", "phone");

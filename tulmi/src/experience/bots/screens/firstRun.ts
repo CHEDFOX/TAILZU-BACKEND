@@ -79,6 +79,11 @@ const W = {
   youP: "So your bots know what to call you, and how to write for you.",
   youGender: "You are",
   youMissing: "Add your name and pick one.",
+  // Signed in with Apple: Apple gave the name it will (saved by the app), and nothing more is asked of them (App Review 4, Sign in with Apple).
+  youAppleP: "Optional. Apple shared what you chose to share; add more only if you like.",
+  restore: "Restore Purchases",
+  restoreDone: "Restore finished. If a plan was bought with this Apple ID or Google account, it's active again.",
+  restoreErr: "Couldn't restore just now. Try again in a moment.",
   nameH: "What will you call me?",
   nameP: "I'm the one in charge. Your other bots report to me and call me by this name. Say it to talk to me.",
   keyH: "Turn on Keylessbord",
@@ -915,6 +920,8 @@ function nameSource(me: Me | undefined): string | null {
  */
 function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = false): Node {
   const desk = ctx.client === "desktop";
+  // Signed in with Apple: nothing here is required. Whatever they add is saved; nothing at all goes straight on.
+  if (me?.via === "apple") return appleYouStep(ctx, fig, me, only);
   const save: ActionSpec = {
     kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] },
     // PUT /v1/profile { full_name, gender }: the card's own write, so everything that reads them (the bootstrap's
@@ -952,6 +959,43 @@ function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = false): N
     col([sectionLabel("Your name"), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 8 }),
     col([sectionLabel(W.youGender), genderChips(false)], { gap: 8 }),
   ], [cont])], { props: { stepId: "you" } });
+}
+
+/**
+ * About you for someone signed in with Apple: Apple's own name, when it shared one, already saved by the app (AuthGateScreen); the rest is
+ * theirs to add or not. Apple's guidelines (4, Sign in with Apple) do not let an app require a name or an email after it, so the step asks for
+ * nothing: Continue saves what is there, empty goes on, and Skip is always there.
+ */
+function appleYouStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only: boolean): Node {
+  const desk = ctx.client === "desktop";
+  const next = (only ? seq({ kind: "refresh" } as ActionSpec, back) : seq({ kind: "haptic", style: "selection" } as ActionSpec, setState("step", 1))) as ActionSpec;
+  const save: ActionSpec = {
+    kind: "condition", if: { any: [{ truthy: "fullName" }, { truthy: "gender" }] },
+    then: call("PUT", "/v1/profile", { full_name: "$state.fullName", gender: "$state.gender" }, { ok: next, fail: toast(W.saveErr) }),
+    else: next,
+  } as ActionSpec;
+  const field = nameField("fullName", "Your name (optional)", save, desk, { capitalize: true, label: "your name" });
+  const source = nameSource(me);
+  const cont = button("Continue", save, { size: "lg", wide: !desk });
+  const skip = link("Skip", next, { center: true });
+  if (desk) {
+    return gateStep(true, deskBody({
+      title: "About you", right: signedInAs(ctx), current: only ? null : 1,
+      left: [deskFig(fig, "present", 140), deskHeading(only ? "About you" : `Step 1 of ${STEPS.length - 1}`, W.youH, W.youAppleP)],
+      main: [col([
+        col([text("Your name", { size: 13, weight: 500, lineHeight: 17 }), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 6 }),
+        col([text(W.youGender, { size: 13, weight: 500, lineHeight: 17 }), genderChips(true)], { gap: 8 }),
+      ], { padding: 20, gap: 18, borderRadius: 18, borderWidth: 1, borderColor: C.line })],
+      foot: deskFoot(null, [skip, cont]),
+    }), { props: { stepId: "you" } });
+  }
+  return gateStep(false, [phoneStepBody([
+    only ? phoneTop(1, 1, { back }) : phoneTop(1, 2),
+    row([fig("present", 116)], { justifyContent: "center" }),
+    phoneHeading(W.youH, W.youAppleP),
+    col([sectionLabel("Your name (optional)"), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 8 }),
+    col([sectionLabel(W.youGender), genderChips(false)], { gap: 8 }),
+  ], [cont, skip])], { props: { stepId: "you" } });
 }
 
 /** What will you call me? The boss bot's name (X0 unless they pick their own); saving it finishes onboarding. */
@@ -1028,11 +1072,13 @@ function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenRespons
   // Someone already onboarded is here only for the card's question (the bootstrap's promptScreenId): About you
   // alone, which closes once saved. Naming it, and finishing the first run, are not theirs to do again.
   const only = me?.onboarded === true;
+  // Signed in with Apple: the run starts on naming the bot; About you is asked of no one who signed in with Apple (Back still reaches it).
+  const apple = me?.via === "apple";
   return stageScreen(ctx, {
     title: "About you", id: only ? "bots.about-you" : "bots.first", first: 2,
     steps: only ? [youStep(ctx, fig, me, true)] : [youStep(ctx, fig, me), nameStep(ctx, fig)],
     state: {
-      step: me?.saved && !only ? 1 : 0,
+      step: (me?.saved || apple) && !only ? 1 : 0,
       fullName: me?.name ?? "",
       gender,
       name: (data?.persona?.personality?.assistantName ?? "").trim() || ASSISTANT_NAME,
@@ -1443,6 +1489,11 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
     ...paid.map((p) => when(isOn(p.id), button(ctaFor(p), buyAction(p), { size: "lg", wide: !desk, ...(p.buy ? {} : { kind: "disabled" }) }))),
   ];
   const stay = link("Not now", done, { center: true });
+  // A plan bought before (another phone, a reinstall) is the store's to give back, when the person asks for it (App Review 3.1.1):
+  // RevenueCat's restore, then the screen read again, which says "You have a plan" once it is theirs.
+  const restore = link(W.restore, {
+    kind: "iap.restore", onSuccess: seq(toast(W.restoreDone), { kind: "refresh" } as ActionSpec), onError: toast(W.restoreErr),
+  } as ActionSpec, { center: true });
   const sub = "Start today. Switch any time from You.";
   // THE PURCHASE SCREEN, AND THE ONLY ONE WITH MONEY ON IT: the stores (App Review 3.1.2, Google Play) want the price and its period
   // shown before someone buys, with the renewal and the terms. Everywhere else the app shows no money.
@@ -1463,7 +1514,7 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
   return phoneFrame(ctx, {
     title: W.plansH, state, gap: 16,
     body: [...doneHeading(W.plansH, sub), col(cards, { gap: 12 }), ...trials],
-    footer: [...ctas, stay, meta(fine, { size: 11, align: "center" }), legal],
+    footer: [...ctas, stay, restore, meta(fine, { size: 11, align: "center" }), legal],
   });
 }
 
