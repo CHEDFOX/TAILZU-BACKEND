@@ -22,7 +22,8 @@
  *   GET    /v1/you/export               -> the person's data, one JSON file (src/you/data.ts)
  *   GET    /v1/you/export/file?t=       -> the same, for the browser: the signed link from GET /v1/you (no session; 30 minutes)
  *   POST   /v1/you/data/delete          -> { ok, cleared }  chats, notes and files go; the account, plan, bots and projects stay
- *   POST   /v1/you/personal/clear       -> { ok, cleared }  what the person told their bots, shared across them (src/bots/shared.ts), goes
+ *   POST   /v1/you/personal/clear       -> { ok, cleared }  what the person told their bots, shared across them (src/bots/shared.ts), and what
+ *                                         X0 keeps for Ask and the one key (src/context), goes
  *
  * Plugged in here too, on the services the server already made (src/you/limits.ts, push.ts): the usage limits on Xode's job routes, on
  * the bots platform's answers and on Keylessbord and Ask (metering.setUsageGate), every bot answer's cost written down, and what Keylessbord, Ask and
@@ -45,6 +46,7 @@ import { howLine, nearLine, outLine, type UsageNow } from "../../you/usage.js";
 import { getProfile } from "../../profile/store.js";
 import { dayOf, pushGate, startSummaries, summaryLine } from "../../you/push.js";
 import { clearShared, dropSharedCache } from "../../bots/shared.js";
+import { forgetAll as forgetContext } from "../../context/index.js";
 import { applyPatch } from "../../you/settings.js";
 import { APP_COMPUTER, computerOs, youStore } from "../../you/store.js";
 
@@ -285,7 +287,12 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
   app.post("/v1/you/personal/clear", RL, async (req, reply) => {
     const user = await who(req.headers["authorization"], reply);
     if (!user) return reply;
-    try { return reply.send({ ok: true, cleared: await clearShared(user.id) }); } catch (err) { return fail(reply, err); }
+    // What X0 keeps about them for Ask and the one key (src/context) goes with it.
+    try {
+      const cleared = await clearShared(user.id);
+      await forgetContext(user.id).catch(() => undefined);
+      return reply.send({ ok: true, cleared });
+    } catch (err) { return fail(reply, err); }
   });
 
   app.get("/v1/you/notify", RL, async (req, reply) => {

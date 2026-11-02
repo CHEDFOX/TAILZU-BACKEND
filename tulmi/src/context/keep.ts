@@ -100,6 +100,8 @@ export function notKept(i: DecideInput, d: AskDecision): string | null {
   if (i.field && i.field.private) return "private_field";
   if (sensitiveApp(i.app) || sensitiveApp(i.title)) return "sensitive_app";
   if (d.by === "rules") return "rules";
+  // Dictation is the person's own writing for a text box, not an ask of X0: its words are not kept.
+  if (d.do === "write") return "dictation";
   if (secretish(i.words) || secretish(d.goal) || secretish(i.field?.selection ?? "")) return "secret";
   return null;
 }

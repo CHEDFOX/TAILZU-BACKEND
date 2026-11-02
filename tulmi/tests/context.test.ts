@@ -210,7 +210,7 @@ describe("what is learned", () => {
 });
 
 describe("privacy", () => {
-  it("keeps nothing from a private field, X0 Bot's own window, a sensitive app, a secret, or with the switch off", async () => {
+  it("keeps nothing from dictation, a private field, X0 Bot's own window, a sensitive app, a secret, or with the switch off", async () => {
     const w = world();
     const cases: Array<[DecideInput, Partial<AskDecision>]> = [
       [{ words: "hunter2 is my password", field: { private: true } }, { do: "write", by: "rules" }],
@@ -219,6 +219,8 @@ describe("privacy", () => {
       [{ words: "send Riya the key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOP", field: null }, { do: "send", to: "Riya" }],
       [{ words: "tell Riya my otp is 482913", field: null }, { do: "send", to: "Riya" }],
       [{ words: "   ", field: null }, { do: "write" }],
+      // Dictation: the person's own writing for a text box, not an ask of X0.
+      [{ words: "running late, see you at ten", field: {} }, { do: "write", by: "model" }],
     ];
     for (const [i, d] of cases) expect(await ask(w, i, d)).toBe(false);
     w.on.set(ME, false);
