@@ -1,5 +1,5 @@
 /**
- * The Travel bot's trip, with outside data (src/botsBots/tripExtras.ts, stays.ts, tripDates.ts, trips.ts; routes/botsTrips.ts;
+ * The Travel bot's trip, with outside data (src/botsBots/tripExtras.ts, stays.ts, tripDates.ts, trips.ts; routes/bots/botsTrips.ts;
  * screens/botsPlaces.ts). Fakes and recorded answers only: no network.
  *
  *   - dates from how people write them; the weather on those days from MET Norway's recorded Pune forecast
@@ -37,7 +37,7 @@ const { Later } = await import("../src/botsBots/later.js");
 const { MemoryTable, resetAreaTablesForTests, botsAreaParts } = await import("../src/botsBots/index.js");
 const { Places } = await import("../src/places/index.js");
 const { parseMetno } = await import("../src/places/metno.js");
-const { registerBotsBotsRoutes } = await import("../src/routes/botsBots.js");
+const { registerBotsBotsRoutes } = await import("../src/routes/bots/botsBots.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");

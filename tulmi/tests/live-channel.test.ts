@@ -8,7 +8,7 @@ import websocket from "@fastify/websocket";
 import { WebSocket } from "ws";
 import type { AddressInfo } from "node:net";
 import { LiveBus } from "../src/live/bus.js";
-import { CLOSE, LIVE_PATH, registerLiveRoutes, type LiveRouteOptions, type LiveRoutes } from "../src/routes/live.js";
+import { CLOSE, LIVE_PATH, registerLiveRoutes, type LiveRouteOptions, type LiveRoutes } from "../src/routes/app/live.js";
 
 const USERS: Record<string, string> = { "Bearer token-a": "user-a", "Bearer token-b": "user-b" };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));

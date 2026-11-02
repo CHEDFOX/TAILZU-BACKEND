@@ -149,7 +149,7 @@ async function main(): Promise<void> {
           out();
         }
       }
-      // As POST /v1/ask: the Xode chat sends no turns, and the thread it names says what was asked last (routes/front.ts).
+      // As POST /v1/ask: the Xode chat sends no turns, and the thread it names says what was asked last (routes/ask/front.ts).
       const recent: Turn[] = [];
       const kept = await threads.get(USER, h.project.id, threadId).catch(() => null);
       if (kept?.lastQuestion) recent.push({ said: kept.lastQuestion, did: "code_question" });

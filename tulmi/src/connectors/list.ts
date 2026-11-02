@@ -115,7 +115,7 @@ export async function appTools(c: Connectors, userId: string, id: string, waitMs
   };
 }
 
-/** A run as the You tab's Activity shows it (experience/assistant.ts youCard). Never its turns, never an app's words. */
+/** A run as the You tab's Activity shows it (experience/assistant/ youCard). Never its turns, never an app's words. */
 export interface ActivityItem {
   runId: string;
   surface: "phone" | "desktop";

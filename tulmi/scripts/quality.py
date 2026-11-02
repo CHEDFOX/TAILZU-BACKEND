@@ -384,7 +384,7 @@ def main():
     ap.add_argument("--assist", default="unknown",
                     help="fingerprint of the assist prompt, which serves everything else")
     ap.add_argument("--pipeline", default="unknown",
-                    help="fingerprint of the compiled writing path (cleanup + assistPrompt)")
+                    help="fingerprint of the compiled writing path (cleanup, pipeline/writing and assistPrompt)")
     ap.add_argument("--repeat", type=int, default=1,
                     help="run each case N times; a case passes only if every run passes")
     ap.add_argument("--only", default="", help="one group, e.g. lang")

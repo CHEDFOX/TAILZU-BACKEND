@@ -1,6 +1,6 @@
 /**
  * The stuck-task sweeper (connectors/sweeper.ts, store.ts failStuckTasks, and
- * its start in routes/connectors.ts).
+ * its start in routes/connectors/connectors.ts).
  *
  * What must hold: a task running for more than ten minutes with nothing
  * happening is failed, with the reason as its last step, when the server is
@@ -23,7 +23,7 @@ vi.hoisted(() => {
 
 const { MemoryConnectorStore, SupabaseConnectorStore, TASK_STEPS_MAX } = await import("../src/connectors/store.js");
 const { STUCK_MS, STUCK_STEP, startTaskSweeper, sweepTasks } = await import("../src/connectors/sweeper.js");
-const { registerConnectorRoutes } = await import("../src/routes/connectors.js");
+const { registerConnectorRoutes } = await import("../src/routes/connectors/connectors.js");
 const { createConnectors } = await import("../src/connectors/index.js");
 const { ALWAYS_ON } = await import("../src/connectors/catalog.js");
 type Store = InstanceType<typeof MemoryConnectorStore>;

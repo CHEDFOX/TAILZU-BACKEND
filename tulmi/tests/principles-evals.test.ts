@@ -204,7 +204,7 @@ describe("a known-good answer for each role", () => {
     agent_work: { text: "", reads: () => true },
     agent_fold: { text: '{"summary":"slug() in src/util/slug.ts lowercases and dashes spaces. A trim of leading and trailing dashes is staged; npm test fails on slug keeps inner dashes. Next: fix the trim."}', reads: (t) => FoldReply.parse(JSON.parse(t)) },
     index_files: {
-      text: '{"summaries":[{"path":"src/billing/invoice.ts","summary":"Builds an invoice from line items: buildInvoice adds tax by region."},{"path":"src/routes/health.ts","summary":"Serves GET /health for uptime checks."}]}',
+      text: '{"summaries":[{"path":"src/billing/invoice.ts","summary":"Builds an invoice from line items: buildInvoice adds tax by region."},{"path":"src/routes/site/health.ts","summary":"Serves GET /health for uptime checks."}]}',
       reads: (t) => FileSchema.parse(JSON.parse(t)),
     },
     index_cards: {

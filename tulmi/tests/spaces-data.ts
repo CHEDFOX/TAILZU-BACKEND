@@ -1,5 +1,5 @@
 /**
- * The boards' day for Spaces (Aanya's Home with Mom and Rohan, and Dev's Studio), as routes/botsSpaces.ts answers it: the spaces, one
+ * The boards' day for Spaces (Aanya's Home with Mom and Rohan, and Dev's Studio), as routes/bots/botsSpaces.ts answers it: the spaces, one
  * space whole, shared things, payment requests, tasks, invites, the chats and one chat. Used by tests/bots-bots-data.ts (sampleApi)
  * and tests/spaces-screens.test.ts, and so by the render check.
  */

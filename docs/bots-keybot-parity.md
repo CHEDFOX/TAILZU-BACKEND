@@ -13,7 +13,7 @@ where its data came from, and where it lives now in the Bots app. Every line is 
 | `bots.keybot.style` · `.haptics` · `.name` (screens/keybotYou.ts) | the old Voice list, Haptics picker and "What you call me" page |
 | `bots.keybot.tone` · `.words` · `.voices` · `.train` · `.history` · `.settings` (screens/keybot.ts) | Keybot's pages that were already there (words gained spellings, shortcuts and how the words do; the window's keyboard page gained "Start with the computer") |
 | `bots.language`, `bots.billing`, `bots.privacy`, `bots.notify`, `bots.apps`, `bots.tasks`, `bots.computer`, `bots.settings`, `bots.delete-account` | the You tab's own pages (Keybot is part of the app, so account items are not repeated in it) |
-| `GET /v1/keybot/stats` (routes/botsKeybot.ts → src/keybot/stats.ts) | the old Stats screen's own reads, as one view: `statsForUser(user, "month", tz, saved words, languages)`, `usageSummary`, `allowanceFor`, the entitlement, `FREE_FOR_ALL` |
+| `GET /v1/keybot/stats` (routes/bots/botsKeybot.ts → src/keybot/stats.ts) | the old Stats screen's own reads, as one view: `statsForUser(user, "month", tz, saved words, languages)`, `usageSummary`, `allowanceFor`, the entitlement, `FREE_FOR_ALL` |
 | `GET /v1/keybot` (src/keybot/views.ts homeView) | the week, and now the You tab's lines: the voice, languages, haptics, what it learned, its name, history kept, spellings, shortcuts |
 | `GET /v1/personality` | read by Voice, Haptics and What you call it, as the old screens read `ctx.personality` |
 
@@ -28,7 +28,7 @@ Tests: tests/bots-keybot-parity.test.ts (every item below that is on Keybot's ho
 
 ## 1. The old phone Stats tab (screen `stats`)
 
-`phone/stats.ts statsScreen` + `phoneLook.ts phoneStatsBody`. Data: routes/appScreens.ts read for `stats` usageSummary (the calendar month,
+`phone/stats.ts statsScreen` + `phoneLook.ts phoneStatsBody`. Data: routes/app/appScreens.ts read for `stats` usageSummary (the calendar month,
 all time, today), statsForUser "month" (the last 30 days), allowanceFor, getEntitlement, the personality; `freeForAll()`.
 Now: `GET /v1/keybot/stats`.
 
@@ -158,7 +158,7 @@ assistant's tasks (`youCard`, while CONNECTORS is on), `ctx.stats` for the wavef
 
 ## 4. The window (the desk's pages)
 
-`experience/desk/`. The same reads in routes/appScreens.ts (`desk_insights`, `desk_day`, `desk_app`, `desk_settings`, `desk_train`).
+`experience/desk/`. The same reads in routes/app/appScreens.ts (`desk_insights`, `desk_day`, `desk_app`, `desk_settings`, `desk_train`).
 
 - [x] **Insights · eyebrow and Full history** → the month card's label; "What you said".
 - [x] **Insights · the statement** ("You said N words this month. Typed… Said…") and **the race** (said against typed, its

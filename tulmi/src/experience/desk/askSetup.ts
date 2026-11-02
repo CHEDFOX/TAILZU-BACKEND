@@ -23,7 +23,7 @@ import { typeFor } from "./kit.js";
  * while asking permissions". The card says Ask sees or looks at the screen
  * when it is needed. That a picture of part of it goes with a question that
  * needs one, and where, is the privacy policy's to say (its Ask section,
- * routes/policies/privacy.ts), and the card links to it.
+ * routes/site/policies/privacy.ts), and the card links to it.
  */
 export function askSetupCard(a: NonNullable<DeskContext["askSetup"]>, place: "home" | "settings"): Node {
   const home = place === "home";

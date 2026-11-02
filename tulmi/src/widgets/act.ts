@@ -1,6 +1,6 @@
 /**
  * ANSWERING FROM OUTSIDE THE APP: POST /v1/widgets/act, the one door a widget's button, a notification's button and a reply typed
- * into a notification all go through (routes/widgets.ts). It does what the app's own screens do, through the same services and
+ * into a notification all go through (routes/bots/widgets.ts). It does what the app's own screens do, through the same services and
  * the same checks, and nothing else:
  *
  *   a0, a1…   answer a bot's question with its first, second… answer           job:<id>:<q>          needs.answer

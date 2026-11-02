@@ -1,5 +1,5 @@
 -- Tailzu — quick access from outside the app: the widgets' own narrow token, and answering once (src/widgets/token.ts, act.ts;
--- routes/widgets.ts; docs/widgets.md).
+-- routes/bots/widgets.ts; docs/widgets.md).
 --
 -- Run in your Supabase SQL editor before turning the widgets on. It needs nothing from the other migrations. It can be run again.
 -- Without it both are kept in memory: a restart forgets every widget token (the widgets say "Open X0 Bot to finish" until the app

@@ -195,9 +195,9 @@ describe("the sweep", () => {
       expect(s.code, `${s.rel} has an example line`).not.toMatch(/"Example\./);
     }
     // the six helpers and the writer name their role where they send it
-    const cleanup = mainSources.find((s) => s.rel === "pipeline/cleanup.ts")!.code;
+    const writers = mainSources.filter((s) => s.rel.startsWith("pipeline/writing/")).map((s) => s.code).join("\n");
     for (const id of ["writer", "edit_selection", "answer_about", "converse", "portrait_update", "portrait_usage", "portrait_transcript"]) {
-      expect(cleanup, id).toMatch(new RegExp(`compose\\(\\s*"${id}"`));
+      expect(writers, id).toMatch(new RegExp(`compose\\(\\s*"${id}"`));
     }
     // Ask's planner and the picture reader are handed to the seam as their stable blocks
     const run = mainSources.find((s) => s.rel === "agent/run.ts")!.code;
@@ -205,7 +205,7 @@ describe("the sweep", () => {
     expect(run).toMatch(/stableBlock\("ask_vision"\)/);
     // and no message of theirs is a hand-written system one, bar the three left: the planner's request body (the stable block it is handed, cache-marked
     // for Anthropic), the screen reply's old file prompt (REPLY_PROMPT_VERSION=v4), and inferStyle's one-line analysis of a writing sample (not a role yet)
-    const byHand = new Map<string, number>([["agent/llm.ts", 1], ["pipeline/cleanup.ts", 2]]);
+    const byHand = new Map<string, number>([["agent/llm.ts", 1], ["pipeline/writing/draft.ts", 1], ["pipeline/writing/portrait.ts", 1]]);
     for (const s of mainSources) expect((s.code.match(/role:\s*"system"/g) ?? []).length, `${s.rel} writes system messages by hand`).toBe(byHand.get(s.rel) ?? 0);
   });
 });

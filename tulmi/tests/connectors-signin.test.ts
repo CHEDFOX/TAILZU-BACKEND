@@ -40,8 +40,8 @@ const { createConnectors } = await import("../src/connectors/index.js");
 const { encrypt } = await import("../src/connectors/crypto.js");
 const { CATALOG } = await import("../src/connectors/catalog.js");
 const { connectorOAuthClients } = await import("../src/config.js");
-const { registerConnectorRoutes } = await import("../src/routes/connectors.js");
-const { clientMetadataDocument, registerOAuthClientMetadataRoute } = await import("../src/routes/oauthClientMetadata.js");
+const { registerConnectorRoutes } = await import("../src/routes/connectors/connectors.js");
+const { clientMetadataDocument, registerOAuthClientMetadataRoute } = await import("../src/routes/connectors/oauthClientMetadata.js");
 type ConnectorDef = import("../src/connectors/catalog.js").ConnectorDef;
 
 const CIMD = "https://api.example.com/oauth/client-metadata.json";

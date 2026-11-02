@@ -6,7 +6,7 @@
  *
  * NO MONEY ON ANY OF THEM: no cost, no price, no amount. Use is the usage meter (src/you/usage.ts), the way other AI assistants show it: "This stretch ·
  * 64% used · resets Thu 9 am", "This month · 40% used", a calm line near the limit, and at it a bigger plan offered as an action (the store's
- * own sheet shows its price). Every number is the person's own, from the routes in routes/botsYou.ts (src/you): the meter, the plan and its
+ * own sheet shows its price). Every number is the person's own, from the routes in routes/bots/botsYou.ts (src/you): the meter, the plan and its
  * dates from billing, the computers from runner presence, the connected apps from connectors. A read that fails draws the honest empty state
  * (or ctx.live's meter), never a sample. Every control writes: PUT /v1/you/settings, the existing connector, job, billing and account routes,
  * then a refresh and a short ink toast.
@@ -24,7 +24,7 @@ import { DELETION_PATH, GRACE_DAYS, daysStrip, dayMonthOf, goneAt, keepAccount, 
 import { PUSH_STATE, pushOffRow, withPushCheck } from "./pushAsk.js";
 import { screen, type BotsScreen } from "../registry.js";
 
-// ===================================================================== what the routes answer (routes/botsYou.ts)
+// ===================================================================== what the routes answer (routes/bots/botsYou.ts)
 
 interface Settings {
   monthLimitPaise: number;

@@ -1,5 +1,5 @@
 /**
- * Apps added by link, on the screens (experience/assistant.ts for the phone,
+ * Apps added by link, on the screens (experience/assistant/ for the phone,
  * experience/desk/ for the desk): Add an app by link, an added app's own
  * sheet or row, what it can do tool by tool, "This app changed", and More
  * apps. All of it only while CUSTOM_CONNECTORS is on (assistant.custom), every

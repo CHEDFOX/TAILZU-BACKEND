@@ -6,7 +6,8 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { appendHistoryEntry, statsForUser } from "../src/history/store.js";
+import { appendHistoryEntry } from "../src/history/store.js";
+import { statsForUser } from "../src/history/stats.js";
 
 const user = { id: "u-breakdowns", email: "a@b.c" } as never;
 const keep = { retainHistory: true } as never;

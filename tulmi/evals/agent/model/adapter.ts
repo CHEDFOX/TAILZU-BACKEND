@@ -1,7 +1,7 @@
 /**
  * THE PLANNER, AS THE BENCH HANDS IT TO THE ROUTE.
  *
- * The phone's route takes its planner as a dependency (routes/assistant.ts
+ * The phone's route takes its planner as a dependency (routes/ask/assistant.ts
  * `plan`, which is StepDeps["plan"]), and that is the one seam the bench
  * uses: everything else, the router, the tools, the cards, the words, is the
  * server's own code. A ModelAdapter is that dependency, in one of three

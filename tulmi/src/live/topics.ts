@@ -49,7 +49,7 @@ export const jobTopic = (id: unknown): string => (idOf(id) ? `job:${idOf(id)}` :
 export const noteTopic = (id: unknown): string => (idOf(id) ? `note:${idOf(id)}` : "");
 
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-/** The Bots app's own area (routes/botsBots.ts AREA). */
+/** The Bots app's own area (routes/bots/botsBots.ts AREA). */
 const AREA = "/v1/botsapp/bots";
 
 /**

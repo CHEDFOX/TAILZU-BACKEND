@@ -4,7 +4,7 @@ For the owner. The Code bot works in a person's repos through a GitHub App
 that Tailzu owns and each person installs on their own account. This page
 covers making that App, the settings the server reads from it, and what it
 can and cannot do. The code is in `tulmi/src/code/` and
-`tulmi/src/routes/code.ts`.
+`tulmi/src/routes/code/code.ts`.
 
 You need to do four things, in this order:
 
@@ -559,7 +559,7 @@ is ignored for the default.
   they picked as projects, for each work branch its name, the first 200 characters of the task it was
   made for, the commit it started from and its pull request number, and the
   standing permissions they gave (action, branch pattern, allow or deny, expiry).
-  Add this to the privacy policy (`tulmi/src/routes/policies/privacy.ts`, and
+  Add this to the privacy policy (`tulmi/src/routes/site/policies/privacy.ts`, and
   the site's copy) before turning `CODE_GITHUB` on.
 
 ## 6. When something is wrong

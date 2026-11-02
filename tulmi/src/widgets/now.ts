@@ -1,6 +1,6 @@
 /**
  * GET /v1/widgets/now, BUILT: both widgets' rows, already worded, each with where its tap goes and (Needs you) its buttons, and
- * everything the widgets draw them with. Pure: what the person's records say arrives in `NowInput` (routes/widgets.ts reads them),
+ * everything the widgets draw them with. Pure: what the person's records say arrives in `NowInput` (routes/bots/widgets.ts reads them),
  * every decision is a knob of the "widgets" surface (defaults.ts), and the answer is plain JSON the app writes to the App Group /
  * SharedPreferences as it is.
  *

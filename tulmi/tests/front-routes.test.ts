@@ -1,5 +1,5 @@
 /**
- * THE FRONT DOOR OVER HTTP (src/routes/front.ts): POST /v1/ask with a `message`, the feedback route, and the admin's view of the guards.
+ * THE FRONT DOOR OVER HTTP (src/routes/ask/front.ts): POST /v1/ask with a `message`, the feedback route, and the admin's view of the guards.
  *
  * What these hold down:
  *   - the body is checked (the device, the mode, the visuals preference, the attachments, the last turns) before anything runs;
@@ -34,7 +34,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
   };
 });
 
-const { registerFrontRoutes, readAsk, MESSAGE_MAX, FRONT_BODY_LIMIT } = await import("../src/routes/front.js");
+const { registerFrontRoutes, readAsk, MESSAGE_MAX, FRONT_BODY_LIMIT } = await import("../src/routes/ask/front.js");
 const { createFront } = await import("../src/front/index.js");
 const { MemoryFrontStore } = await import("../src/front/store.js");
 const { AttachmentRegistry } = await import("../src/front/attachments.js");
@@ -62,7 +62,7 @@ async function served(o: { on?: boolean; handlers?: Parameters<typeof fakeHandle
   const front = o.on === false ? null : createFront({ force: true, handlers: h.handlers, store, guard, call: noModel().call, attachments: new AttachmentRegistry() });
   const app = Fastify({ bodyLimit: FRONT_BODY_LIMIT });
   const routes = registerFrontRoutes(app, { rateLimit: RL, front, guard, ...(o.quota ? { quota: o.quota } : {}), ...(o.used ? { used: o.used } : {}), ...(o.threads ? { threads: o.threads } : {}) });
-  // routes/ask.ts hands the old route's `message` bodies over like this; the door answers for itself.
+  // routes/ask/ask.ts hands the old route's `message` bodies over like this; the door answers for itself.
   app.post("/v1/ask", async (req, reply) => {
     const { resolveUser } = await import("../src/auth/supabase.js");
     const user = await resolveUser(req.headers["authorization"]);

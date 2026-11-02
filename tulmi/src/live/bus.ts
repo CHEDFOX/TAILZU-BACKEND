@@ -1,7 +1,7 @@
 /**
  * LIVE UPDATES: THE BUS. Anything that changes something a person can see
  * says so here, by topic, for the people who see it; the live channel
- * (routes/live.ts) carries it to every device they have open, and a screen
+ * (routes/app/live.ts) carries it to every device they have open, and a screen
  * listening to that topic (its `liveTopics`, from `page(ctx, { live })`)
  * reloads itself.
  *

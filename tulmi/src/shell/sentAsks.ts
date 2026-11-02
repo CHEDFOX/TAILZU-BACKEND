@@ -1,5 +1,5 @@
 /**
- * AN ASK TYPED OFFLINE GOES OUT ONCE (routes/botsShell.ts POST /v1/shell/ask, docs/bots-app.md "Offline").
+ * AN ASK TYPED OFFLINE GOES OUT ONCE (routes/bots/botsShell.ts POST /v1/shell/ask, docs/bots-app.md "Offline").
  *
  * The apps keep the asks a person types while offline in an outbox on the device, each with a client id made when it was typed, and send
  * them in order when the connection is back. A send can reach the server and its answer still be lost (the connection drops again), so the

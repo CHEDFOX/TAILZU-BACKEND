@@ -1,5 +1,5 @@
 /**
- * THE PHONE'S QUESTION BACK OUTLIVES THE PROCESS (routes/assistant.ts over
+ * THE PHONE'S QUESTION BACK OUTLIVES THE PROCESS (routes/ask/assistant.ts over
  * src/runs).
  *
  * A question asked on one server is answered on another, as after a restart
@@ -33,7 +33,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => ({
   },
 }));
 
-const { registerAssistantRoutes, FOLLOW_UP_MS, FOLLOW_UPS_CHAIN } = await import("../src/routes/assistant.js");
+const { registerAssistantRoutes, FOLLOW_UP_MS, FOLLOW_UPS_CHAIN } = await import("../src/routes/ask/assistant.js");
 const { ALWAYS_ON } = await import("../src/connectors/catalog.js");
 const { createConnectors } = await import("../src/connectors/index.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");

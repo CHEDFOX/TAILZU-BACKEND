@@ -24,7 +24,7 @@ type Timing = { start: number; duration: number };
 type H = { onReady(): void; onFinal(t: string, timing?: Timing): void; onClose(c?: number): void };
 const engines: { primary?: H; shadow?: H } = {};
 
-vi.mock("../src/routes/live-engines.js", () => ({
+vi.mock("../src/routes/writing/live-engines.js", () => ({
   liveEngineConfigured: () => true,
   openLiveEngine: (_o: unknown, h: H) => {
     engines.primary = h;

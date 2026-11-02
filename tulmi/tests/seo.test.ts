@@ -8,7 +8,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
-import { registerSeoRoutes } from "../src/routes/seo.js";
+import { registerSeoRoutes } from "../src/routes/site/seo.js";
 // eslint-disable-next-line import/first
 import { PAGED, LANGS, DEFINITION, appLd, examplesFor, faqGroups, filmLd, homeFaq, homeFilms, plans } from "../src/seo/facts.js";
 import { LANDING_PATHS, landings } from "../src/seo/landing.js";
@@ -21,13 +21,13 @@ import { PAYWALL_CONFIG } from "../src/experience/phone/paywall.js";
 // eslint-disable-next-line import/first
 import { filmProblems, headHtml, langsLines, lineLang, siteCopyLines, syncHome, titleHtml } from "../src/seo/home.js";
 // eslint-disable-next-line import/first
-import { pricingHtml } from "../src/routes/policies/pricing.js";
+import { pricingHtml } from "../src/routes/site/policies/pricing.js";
 // eslint-disable-next-line import/first
-import { PRIVACY_POLICY_HTML } from "../src/routes/policies/privacy.js";
+import { PRIVACY_POLICY_HTML } from "../src/routes/site/policies/privacy.js";
 // eslint-disable-next-line import/first
-import { TERMS_HTML } from "../src/routes/policies/terms.js";
+import { TERMS_HTML } from "../src/routes/site/policies/terms.js";
 // eslint-disable-next-line import/first
-import { DOWNLOAD_PAGE_HTML } from "../src/routes/download.js";
+import { DOWNLOAD_PAGE_HTML } from "../src/routes/site/download.js";
 
 // Search and answer engines judge a page on its head and its structured
 // data, and quote single answers. These hold every page to one origin, one

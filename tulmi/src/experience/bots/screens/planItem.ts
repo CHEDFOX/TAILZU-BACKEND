@@ -7,7 +7,7 @@
  *   bots.plan.item { kind, id }                        change one, take it out (a series: this day, or every time), tick a to-do.
  *                                                       Someone else's (a space's plan or task): who set it, Done, Can't do it; no changes.
  *
- * Data: GET /v1/botsapp/calendar/events/:id, /tasks/:id (routes/botsCalendar.ts). Writes are calls, then a short toast and back; the Plan
+ * Data: GET /v1/botsapp/calendar/events/:id, /tasks/:id (routes/bots/botsCalendar.ts). Writes are calls, then a short toast and back; the Plan
  * hears the change itself (live "calendar", "tasks").
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";

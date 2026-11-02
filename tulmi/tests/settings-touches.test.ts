@@ -49,10 +49,10 @@ const { buildDeskScreen, deskNav } = await import("../src/experience/desk/screen
 const { localize } = await import("../src/experience/i18n.js");
 const { SW, settingsHinglishSeeds } = await import("../src/experience/settingsWords.js");
 const { NEON, HEADING_FACE, dayPart } = await import("../src/experience/touches.js");
-const { OB } = await import("../src/experience/onboard.js");
+const { OB } = await import("../src/experience/onboard/kit.js");
 const { PHONE_FONT } = await import("../src/experience/phoneLook.js");
 const { BLIP_BUILD } = await import("../src/experience/blipData.js");
-const { STORE_NEEDS } = await import("../src/experience/onboardStore.js");
+const { STORE_NEEDS } = await import("../src/experience/onboard/store.js");
 
 // ---- helpers ------------------------------------------------------------------
 

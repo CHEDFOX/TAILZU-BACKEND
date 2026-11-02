@@ -2,10 +2,10 @@
  * ONE TRIAL OF ONE TASK, THROUGH THE PHONE'S REAL ASK.
  *
  * The bench drives the path a person's phone drives, in process, end to end:
- * POST /v1/assistant/ask (routes/assistant.ts), runCommand and the planner's
+ * POST /v1/assistant/ask (routes/ask/assistant.ts), runCommand and the planner's
  * rounds (agent/run.ts), the router and the tool cards, the native connectors
  * and the hand-offs (src/connectors), the confirm card, GET /v1/tasks and the
- * approve and deny routes (routes/connectors.ts). Only three things are the
+ * approve and deny routes (routes/connectors/connectors.ts). Only three things are the
  * bench's: the planner (a ModelAdapter: scripted, replayed or live), Google
  * (worlds/google.ts, behind the connectors' own fetch) and the person
  * (worlds/user.ts). The clock is frozen at the task's Monday morning in India
@@ -47,8 +47,8 @@ import { ALWAYS_ON, CATALOG } from "../../src/connectors/catalog.js";
 import { encrypt } from "../../src/connectors/crypto.js";
 import { createConnectors } from "../../src/connectors/index.js";
 import { MemoryConnectorStore } from "../../src/connectors/store.js";
-import { registerAssistantRoutes } from "../../src/routes/assistant.js";
-import { registerConnectorRoutes } from "../../src/routes/connectors.js";
+import { registerAssistantRoutes } from "../../src/routes/ask/assistant.js";
+import { registerConnectorRoutes } from "../../src/routes/connectors/connectors.js";
 import { installClock } from "./clock.js";
 import type { ModelAdapter } from "./model/adapter.js";
 import { BENCH_NOW, BENCH_TZ_OFFSET_MINUTES, type ApprovalTrace, type Mode, type ReceiptLike, type Task, type Trace, type TurnTrace } from "./types.js";

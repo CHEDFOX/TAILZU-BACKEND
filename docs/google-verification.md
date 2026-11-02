@@ -32,7 +32,7 @@ You need to do four things, in this order:
 1. **Deploy section 11 of the privacy policy and check that it is live.** The
    live policy at https://x0bot.com/privacy is dated October 20, 2026
    and has no Google section. The new version is already written in
-   `tulmi/src/routes/policies/privacy.ts`, dated October 24, 2026. Its section
+   `tulmi/src/routes/site/policies/privacy.ts`, dated October 24, 2026. Its section
    "11. Google apps you connect" carries the anchor `id="google-user-data"`
    and the Limited Use statement with its link.
 

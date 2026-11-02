@@ -1,5 +1,5 @@
 /**
- * THE BOTS APP'S SHELL (screens/shell.ts, routes/botsShell.ts, src/shell):
+ * THE BOTS APP'S SHELL (screens/shell.ts, routes/bots/botsShell.ts, src/shell):
  *
  *   - one feed across Xode jobs, answers bots gave, payments, Keylessbord's words and connected-app tasks, money per row, by bot and type
  *   - search across projects, chats, notes, files and bots; a UPI link read, never trusted when it cannot be read whole; Google's lines read
@@ -30,7 +30,7 @@ const { searchAll, snippetOf, turnOf } = await import("../src/shell/search.js");
 const { upiOf, calendarOf, googleTasksOf } = await import("../src/shell/parse.js");
 const { qrOf, qrPath } = await import("../src/shell/qr.js");
 const { MemoryEventStore } = await import("../src/shell/events.js");
-const { registerBotsShellRoutes, glanceOf } = await import("../src/routes/botsShell.js");
+const { registerBotsShellRoutes, glanceOf } = await import("../src/routes/bots/botsShell.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, FIXED_NOW, IST, SAMPLE_BOTS, SAMPLE_JOBS } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");

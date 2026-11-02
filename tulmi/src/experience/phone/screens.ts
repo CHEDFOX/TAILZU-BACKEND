@@ -3,10 +3,10 @@
  */
 
 import type { ScreenResponse } from "../../../../shared/types/sdui.js";
-import { buildAssistantScreen } from "../assistant.js";
+import { buildAssistantScreen } from "../assistant/screens.js";
 import { botsKeyboardRecord, botsKeyboardPrimer, botsFlowArm } from "../bots/screens/handoff.js";
-import { canOnboard, onboardScreen } from "../onboard.js";
-import { canOnboardStore, onboardStoreScreen } from "../onboardStore.js";
+import { canOnboard, onboardScreen } from "../onboard/screens.js";
+import { canOnboardStore, onboardStoreScreen } from "../onboard/store.js";
 import { freeForAll } from "../policy.js";
 import type { ScreenContext } from "../screens.js";
 import { WORDS_GATE } from "../wordsGate.js";
@@ -65,7 +65,7 @@ export function phoneScreen(screenId: string, ctx: ScreenContext): ScreenRespons
     case "assistant_name":
       return assistantNameScreen(ctx);
     // The assistant on the phone: Connected apps, Tasks, the confirm sheet
-    // (experience/assistant.ts). The words are the shared table's, so these
+    // (experience/assistant/). The words are the shared table's, so these
     // opt out of the capitalising pass below the way assistant.ts explains.
     case "assistant_apps":
     case "assistant_tasks":

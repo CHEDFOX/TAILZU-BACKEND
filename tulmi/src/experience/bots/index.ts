@@ -112,7 +112,7 @@ export const BOTS_WARM_SCREEN_IDS = [
   "bots.keybot.history", "bots.keybot.days", "bots.keybot.month", "bots.keybot.speak", "bots.keybot.apps",
 ];
 
-/** What a request says about itself (routes/appScreens.ts fills it in). */
+/** What a request says about itself (routes/app/appScreens.ts fills it in). */
 export interface BotsRequest {
   screenId: string;
   client: Client;

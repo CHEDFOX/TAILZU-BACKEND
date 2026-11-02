@@ -6,7 +6,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { cleanPresent } from "../src/routes/media.js";
+import { cleanPresent } from "../src/routes/app/media.js";
 
 describe("nothing is not zero", () => {
   // This was `Number(v)` and a finite check, which accepted every value

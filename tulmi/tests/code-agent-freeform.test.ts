@@ -38,7 +38,7 @@ const { resetSettingsStoreForTests, settingsStore } = await import("../src/code/
 const { resetRewindStoreForTests } = await import("../src/code/agent/rewind.js");
 const { FREEFORM_STEPS_MAX, FREEFORM_RUNS_MAX, RUNS_MAX } = await import("../src/code/agent/types.js");
 const { commitStaged, Unverified, stagedFingerprint } = await import("../src/code/agent/phases.js");
-const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
+const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
 const { createWorkBranch } = await import("../src/code/projects.js");
 type Rig = Awaited<ReturnType<typeof agentRig>>;
 

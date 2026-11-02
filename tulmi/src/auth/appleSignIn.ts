@@ -7,7 +7,7 @@
  *
  *   POST /v1/auth/apple/code { code }   the app, just after an Apple sign-in (AuthGateScreen): traded at Apple, and the refresh token
  *                                        kept, encrypted (connectors/crypto.ts), in apple_sign_in (migration 0061)
- *   forAccountDelete(userId)            the account's delete (routes/account.ts eraseAccount, both ways in): the token revoked at Apple, which
+ *   forAccountDelete(userId)            the account's delete (routes/account/account.ts eraseAccount, both ways in): the token revoked at Apple, which
  *                                        also makes the next sign-in with that Apple ID a first one, Apple's name and all. Never throws.
  *
  * Both speak to Apple as the app, with a client secret made for the call: an ES256 JWT signed with the Sign in with Apple key (the .p8

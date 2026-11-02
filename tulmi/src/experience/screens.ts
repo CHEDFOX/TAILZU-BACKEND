@@ -12,11 +12,11 @@
 import type { Personality, UsageSummary, StatsResponse, HistoryEntry, NoteSummary, Note } from "../../../shared/types/api.js";
 import type { ScreenResponse } from "../../../shared/types/sdui.js";
 import type { AssistantView } from "../connectors/list.js";
-import type { StatsForUser } from "../history/store.js";
+import type { StatsForUser } from "../history/stats.js";
 import type { Allowance } from "../usage/allowance.js";
 import { DESK_SCREENS, buildDeskScreen } from "./desk/screens.js";
 import { DESKTOP_LATEST, desktopOs, updateFor } from "./desktopRelease.js";
-import { canOnboard } from "./onboard.js";
+import { canOnboard } from "./onboard/screens.js";
 import { neuralField, fieldGrowth, FIELD_SIGNAL_AT_REST } from "./phone/neuralField.js";
 import { PAYWALL_CONFIG } from "./phone/paywall.js";
 import { phoneScreen } from "./phone/screens.js";
@@ -120,7 +120,7 @@ export interface ScreenContext {
   os?: string;
   /**
    * What the phone says about itself on every screen fetch, for the new
-   * onboarding (experience/onboard.ts): whether the keyboard already has Full
+   * onboarding (experience/onboard/): whether the keyboard already has Full
    * Access (a cold start lands past the Keyboard step) and the device's
    * locale ("en-IN" starts the language chips on Hinglish, Hindi and English).
    */

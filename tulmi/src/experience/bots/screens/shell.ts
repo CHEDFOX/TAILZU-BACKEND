@@ -7,7 +7,7 @@
  * on the empty home (EmptyHome) instead of four idle tiles. Its actions are real: a bot's tile opens the bot, the needs-you
  * choices answer the job (POST /v1/code/jobs/:id/answer) or the task, the ask bar sends to the front door (POST /v1/ask).
  *
- * What the other screens read is the shell's own routes (routes/botsShell.ts, src/shell): one feed across Xode jobs, answers
+ * What the other screens read is the shell's own routes (routes/bots/botsShell.ts, src/shell): one feed across Xode jobs, answers
  * bots gave, payments, Keylessbord's words and connected-app tasks (/v1/shell/activity), search across projects, chats, notes, files
  * and bots (/v1/shell/search), who will answer without answering (/v1/shell/route), today's calendar and words (/v1/shell/today),
  * today's tasks (/v1/shell/tasks), and receipts. Money is always "you press pay": bots.approve opens the person's UPI app with the

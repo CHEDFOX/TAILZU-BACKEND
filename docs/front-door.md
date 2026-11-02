@@ -1,6 +1,6 @@
 # The front door and the overload guards
 
-One entry point for a message, and the guards that keep the pipeline from being overloaded by it. Code: `tulmi/src/front/` (the entry point), `tulmi/src/guard/` (the guards), `tulmi/src/routes/front.ts` and `tulmi/src/routes/guarded.ts` (the doors to them). Migration: `tulmi/supabase/migrations/0033_front_decisions.sql`.
+One entry point for a message, and the guards that keep the pipeline from being overloaded by it. Code: `tulmi/src/front/` (the entry point), `tulmi/src/guard/` (the guards), `tulmi/src/routes/ask/front.ts` and `tulmi/src/http/guarded.ts` (the doors to them). Migration: `tulmi/supabase/migrations/0033_front_decisions.sql`.
 
 The front door **understands a message for nothing where it can**, sends it down **the cheapest road that can do it**, shows **a visual when one explains faster**, asks **one question only when a wrong guess would cost real work**, and **writes down what happened** (categories and numbers, never a word) so it can get a little better for each person. The guards make sure that however many messages arrive, **each costly thing runs once, under a limit, and a failing model stops being asked**.
 
@@ -75,7 +75,7 @@ Errors: `400 bad_request` (the body), `413` (a message over 8,000 characters), `
 
 **Ask any bot.** With `bot` in the body (and `BOTS=true`) the front door first picks a bot (`docs/bots.md` section 7): the Code bot and "none of them" go down the roads above exactly as they were, with `bot` in the answer saying which bot it was; any other bot answers with its own rules, skills, files and memory, and the answer is `{ id: null, decision, result, bot, answer }`. A body without `bot` is untouched.
 
-**`POST /v1/ask` already existed**: the desktop's "ask about the screen" sends `{ question, screenContent }`. That is unchanged. `routes/ask.ts` hands a body to the front door only when it has a `message` and no `question`; with the flag off, such a body is `404 front_door_off`. The route's body limit is 8 MB while the flag is on (a 4 MB picture is about 5.5 MB of base64); the old ask keeps 1 MB either way.
+**`POST /v1/ask` already existed**: the desktop's "ask about the screen" sends `{ question, screenContent }`. That is unchanged. `routes/ask/ask.ts` hands a body to the front door only when it has a `message` and no `question`; with the flag off, such a body is `404 front_door_off`. The route's body limit is 8 MB while the flag is on (a 4 MB picture is about 5.5 MB of base64); the old ask keeps 1 MB either way.
 
 ## 3. Intents, roads, tiers and budgets
 

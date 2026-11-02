@@ -40,7 +40,8 @@ function builder(): unknown {
 }
 vi.mock("../src/auth/supabase.js", () => ({ dataClientFor: () => ({ from: () => builder() }) }));
 
-const { listHistory, statsForUser } = await import("../src/history/store.js");
+const { listHistory } = await import("../src/history/store.js");
+const { statsForUser } = await import("../src/history/stats.js");
 
 describe("the history cursor", () => {
   it("is one the route accepts back, with its microseconds", async () => {

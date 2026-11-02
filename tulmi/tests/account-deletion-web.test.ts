@@ -1,5 +1,5 @@
 /**
- * DELETE YOUR ACCOUNT ON THE WEB (Google Play's deletion link: routes/accountDeletion.ts, policies/deleteAccount.ts):
+ * DELETE YOUR ACCOUNT ON THE WEB (Google Play's deletion link: routes/account/accountDeletion.ts, policies/deleteAccount.ts):
  *
  *   - /delete-account is a page of its own: the steps, the seven days, what is deleted and what is kept; it runs only its own script
  *     (by nonce), talks only to its own origin, and loads no pixel or tag manager
@@ -25,9 +25,9 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const { MemoryDeletionStore, GRACE_MS } = await import("../src/you/deletion.js");
-const { registerAccountDeletionRoutes } = await import("../src/routes/accountDeletion.js");
-const { PRIVACY_POLICY_HTML } = await import("../src/routes/policies/privacy.js");
-const { TERMS_HTML } = await import("../src/routes/policies/terms.js");
+const { registerAccountDeletionRoutes } = await import("../src/routes/account/accountDeletion.js");
+const { PRIVACY_POLICY_HTML } = await import("../src/routes/site/policies/privacy.js");
+const { TERMS_HTML } = await import("../src/routes/site/policies/terms.js");
 
 const NOW = Date.UTC(2026, 9, 29, 6, 0);
 const ACCOUNTS: Record<string, string> = { "meera@example.in": "u-meera" };

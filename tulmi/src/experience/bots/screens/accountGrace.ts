@@ -1,5 +1,5 @@
 /**
- * DELETE ACCOUNT'S SEVEN DAYS (DeleteAcct.dc.html, DDeleteAcct.dc.html; src/you/deletion.ts, routes/accountDeletion.ts).
+ * DELETE ACCOUNT'S SEVEN DAYS (DeleteAcct.dc.html, DDeleteAcct.dc.html; src/you/deletion.ts, routes/account/accountDeletion.ts).
  *
  * Asking to delete sets a date seven days out and signs the person out; until then everything is kept, and their bots are stopped
  * (you/deletion.ts isLeaving). Signing in during those days shows it plainly, at the top of Home ("Your account will be deleted on

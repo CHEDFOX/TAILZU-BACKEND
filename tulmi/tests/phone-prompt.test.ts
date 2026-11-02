@@ -32,7 +32,7 @@ const { ROLES, stableBlock } = await import("../src/principles/roles.js");
 const { plannerRequest } = await import("../src/agent/llm.js");
 const { runStep } = await import("../src/agent/run.js");
 const { EventSink } = await import("../src/agent/protocol.js");
-const { registerAssistantRoutes } = await import("../src/routes/assistant.js");
+const { registerAssistantRoutes } = await import("../src/routes/ask/assistant.js");
 const { ALWAYS_ON } = await import("../src/connectors/catalog.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
 

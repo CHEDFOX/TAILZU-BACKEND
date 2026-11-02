@@ -1,5 +1,5 @@
 /**
- * The You tab's day (routes/botsYou.ts): 64% of this stretch used (40% of October), Pro paid by UPI autopay, the MacBook helping, three apps
+ * The You tab's day (routes/bots/botsYou.ts): 64% of this stretch used (40% of October), Pro paid by UPI autopay, the MacBook helping, three apps
  * connected. No screen draws an amount; the routes' own still carry some (ours), so the screens are seen not to.
  */
 import { FIXED_NOW, IST } from "../../../src/experience/bots/fixtures.js";

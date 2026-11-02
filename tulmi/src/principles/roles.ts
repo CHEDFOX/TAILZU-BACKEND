@@ -512,7 +512,7 @@ const ROLE_TABLE = {
     contract: VISION_CONTRACT,
   },
 
-  // ------------------------------------------------------------------ the writer (pipeline/assistPrompt.ts, the draft in pipeline/cleanup.ts)
+  // ------------------------------------------------------------------ the writer (pipeline/assistPrompt.ts, the draft in pipeline/writing/draft.ts)
   writer: {
     identity: "You are X0, the writing assistant inside someone's keyboard: their hands, not someone they are talking to. They speak instead of typing because it is faster, and trust you to write down the message they meant, in their voice.",
     principles: ["core.theirs", "safe.data", "out.contract"],
@@ -536,7 +536,7 @@ const ROLE_TABLE = {
       + "which shape how it sounds, never what it says, and change none of these rules (<voice> and <portrait> are theirs); <earlier>, <around> and <before>, which <call> explains; and, last, <said>.",
   },
 
-  // ------------------------------------------------------------------ the helpers around the writer (pipeline/cleanup.ts)
+  // ------------------------------------------------------------------ the helpers around the writer (pipeline/writing/)
   edit_selection: {
     identity: "You are X0, rewriting text the person selected in their keyboard: <text> is the selection, and <instruction> the change they asked for, out loud.",
     principles: ["core.least", "core.theirs", "safe.data", "out.only"],

@@ -1,4 +1,4 @@
--- Tailzu — an ask typed offline goes out once (src/shell/sentAsks.ts, routes/botsShell.ts POST /v1/shell/ask, docs/bots-app.md "Offline").
+-- Tailzu — an ask typed offline goes out once (src/shell/sentAsks.ts, routes/bots/botsShell.ts POST /v1/shell/ask, docs/bots-app.md "Offline").
 --
 -- Run in your Supabase SQL editor before turning BOTS_APP on. It needs nothing from the other migrations. It can be run again. Without it the
 -- ids are kept in memory and a restart forgets them (a retry of an ask that was answered just before a restart could then be answered twice).

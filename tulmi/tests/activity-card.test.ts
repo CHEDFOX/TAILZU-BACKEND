@@ -1,5 +1,5 @@
 /**
- * The You tab's Activity (connectors/list.ts activityOf, experience/assistant.ts
+ * The You tab's Activity (connectors/list.ts activityOf, experience/assistant/
  * youCard): the person's last runs, from the run ledger, and how each ended.
  *
  * What must hold: each row of the mapping (a run, and its task when it
@@ -33,7 +33,7 @@ process.env.DEV_SKIP_AUTH = "true";
 process.env.CONNECTOR_TOKEN_KEY = Buffer.from("0123456789abcdef0123456789abcdef").toString("base64");
 
 const { buildScreen } = await import("../src/experience/screens.js");
-const { askAction } = await import("../src/experience/assistant.js");
+const { askAction } = await import("../src/experience/assistant/ask.js");
 const { SW, settingsHinglishSeeds } = await import("../src/experience/settingsWords.js");
 const { NEON } = await import("../src/experience/touches.js");
 const { ACTIVITY_MS, activityOf, assistantView } = await import("../src/connectors/list.js");

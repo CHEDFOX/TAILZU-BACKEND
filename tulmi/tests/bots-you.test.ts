@@ -1,5 +1,5 @@
 /**
- * The You tab (screens/you.ts, routes/botsYou.ts, src/you): its screens on both clients (no money on any of them), the usage meter from the
+ * The You tab (screens/you.ts, routes/bots/botsYou.ts, src/you): its screens on both clients (no money on any of them), the usage meter from the
  * real records and the places it is kept (a job's budget and "Keep going", a bot's answer), what pings the person, the download link, and the
  * tab ring.
  */
@@ -28,7 +28,7 @@ import { resetConfigForTests } from "../src/config.js";
 import { PushEngine, setPushGate } from "../src/push/engine.js";
 import { PUSH_DEFAULTS } from "../src/push/defaults.js";
 import { MemoryPushStore } from "../src/push/store.js";
-import { registerBotsYouRoutes } from "../src/routes/botsYou.js";
+import { registerBotsYouRoutes } from "../src/routes/bots/botsYou.js";
 import { exportLink, exportLinkUser } from "../src/you/data.js";
 import { Spending, holdJobsToUsage, wrapBots } from "../src/you/limits.js";
 import { summaryLine, verdict } from "../src/you/push.js";

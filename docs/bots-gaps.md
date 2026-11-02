@@ -10,7 +10,7 @@ features left out or simplified while building, grouped by what they need. ✓ =
    Read-aloud speed, "read while driving", "read my draft back" are saved but not used by `/v1/speak`.
 2. Monthly spend limit does not cover front-door answers or Keybot (only Code bot jobs and bot answers).
 3. ✓ Delete account deletes at once: no 7-day grace / undo. *Now a date 7 days out (migration 0045, src/you/deletion.ts,
-   routes/accountDeletion.ts); signing in shows it with Keep my account; a sweep deletes on the day.*
+   routes/account/accountDeletion.ts); signing in shows it with Keep my account; a sweep deletes on the day.*
 4. ✓ Activity only records bot answers sent through Ask (`/v1/shell/ask`); answers from a bot's own page and chat
    are missing from the feed. *The chat route writes them down; the Code bot's page asks through `/v1/shell/ask`.*
 5. ✓ The "turn on notifications" ask (pushAsk) is not shown in the Bots app. *A card on a phone's Home once a bot is working
@@ -42,13 +42,13 @@ features left out or simplified while building, grouped by what they need. ✓ =
 14. ✓ Voice in Ask on the phone (speak inside the app, not via the keyboard's mic). *Action `recordVoice` (VoiceRecord):
     the mic asked for properly, the take through /v1/transcribe-clean into Ask's field; bars follow the voice.*
 15. ✓ Play a voice sample on Keybot's voices page (no audio playback node). *Actions `playAudio` / `stopAudio`
-    (AudioPlay), one sound at a time, stopped with its screen; GET /v1/keybot/voices/:id/sample (routes/voiceSample.ts).*
+    (AudioPlay), one sound at a time, stopped with its screen; GET /v1/keybot/voices/:id/sample (routes/writing/voiceSample.ts).*
 
 ## C. Needs a backend feature that doesn't exist yet
 16. ✓ Desktop sign-in by scanning a QR with the phone / approve on the phone (device linking). *The window's sign-in
     has a QR and a typed code (DeskLinkSignIn, desktop linkSignIn.js); the phone's camera opens
     app.x0bot.com/s/bots.link (or You › Link a computer, the code) and Approve / Not me; the window then redeems a
-    one-time sign-in, once (src/auth/deviceLink.ts, routes/deviceLink.ts, migration 0049, screens/link.ts).*
+    one-time sign-in, once (src/auth/deviceLink.ts, routes/account/deviceLink.ts, migration 0049, screens/link.ts).*
 17. ✓ Desktop Keybot key choice (Fn / Right ⌥ / Right ⌘) from the app. *One key on the desktop (desktop oneKey.js): hold to
     talk, tap for hands-free; Fn on a Mac (native/tzkey.swift watches it), Right Ctrl on Windows, picked in Keybot's settings
     (`desktop.config` oneKey: Fn, Right ⌥, Right ⌘ / Right Ctrl, Right Alt). The words go where they are meant (routing.js):

@@ -1,5 +1,5 @@
 -- Tailzu — the X0 widget: what it remembers per person, and the "Bots at work" Live Activity's push tokens (src/widgets/glanceStore.ts;
--- routes/botsShell.ts GET /v1/shell/glance?v=2, routes/widgets.ts POST /v1/widgets/activity-token; docs/widget-glance-v2.md).
+-- routes/bots/botsShell.ts GET /v1/shell/glance?v=2, routes/bots/widgets.ts POST /v1/widgets/activity-token; docs/widget-glance-v2.md).
 --
 -- Run in your Supabase SQL editor before the X0 widget ships. It needs nothing from the other migrations. It can be run again.
 -- Without it both are kept in memory: a restart forgets what the person has seen (the widget then shows the last finished job until it is

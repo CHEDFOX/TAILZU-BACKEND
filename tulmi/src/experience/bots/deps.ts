@@ -1,7 +1,7 @@
 /**
  * THE REAL BotsDeps: the reads a Bots app screen makes, for one signed-in person, from the services the server runs.
  *
- * Built per request by routes/appScreens.ts (botsDepsFor). Every service may be absent (its switch is off): the read is then
+ * Built per request by routes/app/appScreens.ts (botsDepsFor). Every service may be absent (its switch is off): the read is then
  * empty, and the screen draws what is true (the four built-ins, nothing waiting). `api` calls the app's own HTTP
  * routes in-process (fastify inject) as the person, so a screen can read anything a client could, through the same
  * checks, without a new service being threaded through here.
@@ -20,7 +20,7 @@ export interface BotsServices {
   bots: Bots | null;
   jobs: JobRouter | null;
   connectors: Connectors | null;
-  /** Minutes writing by voice saved in the last seven days (history/store.ts statsForUser). */
+  /** Minutes writing by voice saved in the last seven days (history/stats.ts statsForUser). */
   minutesSaved?: (user: AuthedUser, tzOffsetMinutes: number) => Promise<number>;
   /** The app's own routes, in-process (fastify's inject). */
   inject?: (o: { method: string; url: string; payload?: unknown; headers: Record<string, string> }) => Promise<{ statusCode: number; body: string }>;

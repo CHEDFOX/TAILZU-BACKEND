@@ -26,7 +26,7 @@ tulmi/src/code/
     scaffold.ts   the official starter command, as a step spec
     milestones.ts a branch, a draft PR and a preview link per milestone
     intakeStore.ts   the intake's store
-  routes (src/routes/code.ts)   POST /v1/code/projects/:id/{locate,resources,audit,intake}
+  routes (src/routes/code/code.ts)   POST /v1/code/projects/:id/{locate,resources,audit,intake}
 ```
 
 No npm dependency was added. Every model call goes through `callModel` (layer 1) with the job's budget, at the cheapest tier that does the work; every network call takes an injected `fetchFn`, every clock an injected `now`, so the tests (`tests/code-work-*`, `code-resources-*`, `code-newproject-*`) reach nothing. The four routes are **off unless `CODE_PROJECT_BRAIN=true`**, as the brain is; the libraries need nothing but the brain's handle.

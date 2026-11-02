@@ -1,5 +1,5 @@
 /**
- * THE FOUR DOORS (src/routes/code.ts): POST /v1/code/projects/:id/{locate,resources,audit,intake}.
+ * THE FOUR DOORS (src/routes/code/code.ts): POST /v1/code/projects/:id/{locate,resources,audit,intake}.
  *
  * Thin: they check the session, that the project is the caller's and that the brain is on, shape the body, and call
  * code/work, code/resources and code/newproject. The rig is the project brain's (tests/project-rig.ts: a fake GitHub
@@ -47,7 +47,7 @@ noNetwork();
 const { projectRig, KEYS } = await import("./project-rig.js");
 const { acmeFiles } = await import("./project-repo.js");
 const { fakeCall, fakeWorld, osvRecord } = await import("./work-fixtures.js");
-const { registerCodeRoutes } = await import("../src/routes/code.js");
+const { registerCodeRoutes } = await import("../src/routes/code/code.js");
 const { createCode } = await import("../src/code/index.js");
 
 type Rig = Awaited<ReturnType<typeof projectRig>>;

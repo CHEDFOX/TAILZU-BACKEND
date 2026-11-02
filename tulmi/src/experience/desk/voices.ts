@@ -21,7 +21,7 @@ export function deskVoices(ctx: DeskContext): ScreenResponse {
   const voices = applyPresetOverrides(p.presetOverrides);
   const ordered = [...voices.filter((v) => v.id === active), ...voices.filter((v) => v.id !== active)];
   // Every voice but Zu can be renamed and re-prompted — a built-in picks up a
-  // per-user override, a custom one is edited in place (routes/personality.ts
+  // per-user override, a custom one is edited in place (routes/account/personality.ts
   // /v1/personality/tone). The same name + "How it writes" prompt the phone's
   // voice editor carries.
   const editable = ordered.filter((v) => v.id !== ZU_ID);

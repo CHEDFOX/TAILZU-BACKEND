@@ -8,7 +8,7 @@ process.env.NODE_ENV = "test";
 process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 
 // eslint-disable-next-line import/first
-import { payCsp, payHtml, type PayOffer } from "../src/routes/pay.js";
+import { payCsp, payHtml, type PayOffer } from "../src/routes/billing/pay.js";
 import { POLICY } from "../src/experience/policy.js";
 
 const OFFERS: PayOffer[] = [

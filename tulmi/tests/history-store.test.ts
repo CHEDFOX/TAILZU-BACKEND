@@ -8,15 +8,8 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import {
-  appendHistoryEntry,
-  coalesce,
-  deleteHistoryEntry,
-  hasConsentedToHistory,
-  listHistory,
-  statsForUser,
-  TYPING_WORDS_PER_MINUTE,
-} from "../src/history/store.js";
+import { appendHistoryEntry, coalesce, deleteHistoryEntry, hasConsentedToHistory, listHistory } from "../src/history/store.js";
+import { statsForUser, TYPING_WORDS_PER_MINUTE } from "../src/history/stats.js";
 
 function makeUser(id: string): AuthedUser {
   return { id, email: `${id}@test.local` };

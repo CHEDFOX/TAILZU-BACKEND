@@ -6,7 +6,7 @@
  *
  * The logos are small PNGs (tulmi/icons/<id>.png, 128 points square, a rounded
  * tile each) cut from the Simple Icons set by scripts/make-app-icons.ts, served
- * from /icons/ the way the typefaces and Blip are served (routes/staticFiles.ts), and drawn
+ * from /icons/ the way the typefaces and Blip are served (routes/app/staticFiles.ts), and drawn
  * with the Image node both clients already have: a `source` with a `url` and a
  * `contentFit`, nothing else, so no build needs a release for it.
  *

@@ -10,7 +10,7 @@
  *
  * A guarded route does:   guard.run({ userId, plan, route, body, header, lane }, (emit) => work)   and the guard takes the idempotency key, lets
  * a double tap join the run that is out, takes a permit (waiting in line, or turning the request away with Overloaded), runs the work, and
- * gives the permit back. The routes turn Overloaded into 429 with Retry-After and IdempotencyConflict into 409 (guardFail in routes/guarded.ts).
+ * gives the permit back. The routes turn Overloaded into 429 with Retry-After and IdempotencyConflict into 409 (guardFail in http/guarded.ts).
  *
  * All of it is in memory, per process. Nothing here reads a store; the config is read once, when the default guard is made.
  */

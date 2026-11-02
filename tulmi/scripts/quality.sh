@@ -62,7 +62,7 @@ fi
 #
 # The assist fingerprint covers assistPrompt.ts and nothing else, so a release
 # that changed the script derivation, the refusal filter and the prompt-leak
-# guard — all of which live in cleanup.ts and all of which change what comes
+# guard — all of which live in the writing path and all of which change what comes
 # back — left it identical. Identical looked like "nothing deployed", which
 # was wrong, and the opposite mistake is the expensive one.
 #
@@ -71,8 +71,9 @@ fi
 PIPE=$(dex node -e '
 Promise.all([import("node:crypto"), import("node:fs")]).then(([c, fs]) => {
   const h = c.createHash("sha256");
-  for (const f of ["/app/tulmi/dist/tulmi/src/pipeline/cleanup.js",
-                   "/app/tulmi/dist/tulmi/src/pipeline/assistPrompt.js"]) h.update(fs.readFileSync(f));
+  const dir = "/app/tulmi/dist/tulmi/src/pipeline/";
+  const writing = fs.readdirSync(dir + "writing").filter((f) => f.endsWith(".js")).sort().map((f) => "writing/" + f);
+  for (const f of ["cleanup.js", "assistPrompt.js", ...writing]) h.update(fs.readFileSync(dir + f));
   console.log(h.digest("hex").slice(0, 12));
 })')
 

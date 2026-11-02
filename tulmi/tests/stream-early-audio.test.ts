@@ -21,7 +21,7 @@ type H = { onReady(): void; onClose(c?: number): void };
 const heard: string[] = [];
 const opened: Array<{ sampleRate: number; channels: number; prompt?: string }> = [];
 
-vi.mock("../src/routes/live-engines.js", () => ({
+vi.mock("../src/routes/writing/live-engines.js", () => ({
   liveEngineConfigured: () => true,
   openLiveEngine: (o: { sampleRate: number; channels: number; prompt?: string }, h: H) => {
     opened.push(o);

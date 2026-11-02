@@ -61,7 +61,7 @@ export interface CalTask {
 export interface Listed { events: CalEvent[]; tasks: CalTask[]; open: CalTask[] }
 
 export type ReminderSend = (userId: string, msg: { kind: "plan_reminder"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<unknown>;
-/** A space's task, answered from the person's own list (their tick, or a no): spaceTasks.ts answer, wired by routes/botsSpaces.ts. */
+/** A space's task, answered from the person's own list (their tick, or a no): spaceTasks.ts answer, wired by routes/bots/botsSpaces.ts. */
 export type SpaceAnswer = (userId: string, spaceId: string, taskId: string, status: "done" | "todo" | "cant") => Promise<unknown>;
 
 /** What a space hands over for one person it's for (spaceTasks.ts). */
@@ -124,7 +124,7 @@ export class Calendar {
     this.publish = o.publish ?? ((userId) => livePublish(userId, [TOPIC.calendar, TOPIC.tasks, botTopic("plan")]));
   }
 
-  /** Spaces answer here when the person ticks, or says no to, something a space gave them (routes/botsSpaces.ts). */
+  /** Spaces answer here when the person ticks, or says no to, something a space gave them (routes/bots/botsSpaces.ts). */
   onSpaceAnswer(fn: SpaceAnswer | null): void { this.spaceAnswer = fn; }
 
   /** The person's offset, as their apps last said it (India's when never said): what "today" is for a bot's words. */

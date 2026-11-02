@@ -15,7 +15,7 @@
  * away) is logged and the next one tries again; a pass never starts while the
  * one before is still running; the timer never keeps the process alive.
  * Started once the server is ready and stopped when it closes, like the
- * stuck-task sweeper (connectors/sweeper.ts): routes/codeJobs.ts hooks it in.
+ * stuck-task sweeper (connectors/sweeper.ts): routes/code/codeJobs.ts hooks it in.
  *
  * With the agent loop (src/code/agent) the same pass also hands back the claims
  * of agent jobs whose server went quiet, and picks up the jobs nobody is driving

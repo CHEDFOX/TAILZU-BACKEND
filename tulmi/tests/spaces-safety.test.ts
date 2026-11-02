@@ -1,5 +1,5 @@
 /**
- * REPORTING AND BLOCKING IN SPACES (src/botsBots/{blocks,safety}.ts, routes/safety.ts, screens/safety.ts; App Review 1.2):
+ * REPORTING AND BLOCKING IN SPACES (src/botsBots/{blocks,safety}.ts, routes/bots/safety.ts, screens/safety.ts; App Review 1.2):
  *
  *   - blocking, either way round: the one-to-one chat is gone for both and can't be started again; in a space's chat neither sees the
  *     other's messages (nor gets them as unread or as a ping); neither is in the other's lists of people (members, Message someone,
@@ -41,7 +41,7 @@ const { Spaces } = await import("../src/botsBots/spaces.js");
 const { MailOutbox, NOT_CONFIGURED } = await import("../src/botsBots/mail.js");
 const { MemoryPaged, resetSpaceTablesForTests } = await import("../src/botsBots/spaceRows.js");
 const { resetAreaTablesForTests } = await import("../src/botsBots/rows.js");
-const { registerSpacesRoutes, spaceParts } = await import("../src/routes/botsSpaces.js");
+const { registerSpacesRoutes, spaceParts } = await import("../src/routes/bots/botsSpaces.js");
 const { resetCalendarForTests } = await import("../src/calendar/index.js");
 const { REPORTS_A_DAY } = await import("../src/botsBots/safety.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");

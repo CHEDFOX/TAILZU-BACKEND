@@ -12,7 +12,7 @@
 import { describe, expect, it } from "vitest";
 import { SITE_UI } from "../src/experience/site/copy.js";
 import { WINDOWS_STORE_ID, windowsInstallerUrl, windowsStoreUrl } from "../src/experience/site/windowsStore.js";
-import { downloadPageHtml } from "../src/routes/download.js";
+import { downloadPageHtml } from "../src/routes/site/download.js";
 import { GETS } from "../src/seo/pages.js";
 
 const ID = "9NBLGGH4NNS1";

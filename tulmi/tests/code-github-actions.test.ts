@@ -56,7 +56,7 @@ const { addProject, commitToBranch, createWorkBranch, forceUpdateBranch, workspa
 const { syncBranch } = await import("../src/code/pulls.js");
 const { createCode } = await import("../src/code/index.js");
 const { MemoryCodeStore } = await import("../src/code/store.js");
-const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
+const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
 const { getConfig, resetConfigForTests } = await import("../src/config.js");
 type Rig = Awaited<ReturnType<typeof rig>>;
 

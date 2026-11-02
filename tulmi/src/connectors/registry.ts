@@ -5,7 +5,7 @@
  * vets none of them: searching "notion" finds third-party proxies and no
  * Notion. So it is never a list of apps we offer. It is a search source behind
  * our own catalog, and everything found in it is shown as Unverified, with its
- * host, and added like any app pasted by link (routes/connectorsCustom.ts):
+ * host, and added like any app pasted by link (routes/connectors/connectorsCustom.ts):
  * the same strict sign-in, the same cleaned and pinned tools, the same Ask
  * first for anything that is not plainly a read.
  *

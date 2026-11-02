@@ -13,7 +13,7 @@
  *              the person
  *   parked     the job waits for the person: a question (locate, intake, the model), a yes (the plan, a
  *              commit the policy asks about, marking a pull request ready), or more budget. The state is
- *              saved, the claim is let go, and the person is told. The routes in routes/codeJobs.ts
+ *              saved, the claim is let go, and the person is told. The routes in routes/code/codeJobs.ts
  *              (answer, approve, deny, budget) write their word into the state and the orchestrator picks
  *              the job up again where it was
  *   lost       the claim is not ours (another server has the job, or it was stopped): nothing more is

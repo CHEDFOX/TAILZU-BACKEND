@@ -12,11 +12,11 @@ process.env.NODE_ENV = "test";
 process.env.SITE_DIR = "/tmp/tailzu-test-no-site";
 
 // eslint-disable-next-line import/first
-import { PRIVACY_POLICY_HTML } from "../src/routes/policies/privacy.js";
+import { PRIVACY_POLICY_HTML } from "../src/routes/site/policies/privacy.js";
 // eslint-disable-next-line import/first
-import { TERMS_EFFECTIVE, TERMS_HTML } from "../src/routes/policies/terms.js";
+import { TERMS_EFFECTIVE, TERMS_HTML } from "../src/routes/site/policies/terms.js";
 // eslint-disable-next-line import/first
-import { SUPPORT_EMAIL, SUPPORT_HTML } from "../src/routes/policies/support.js";
+import { SUPPORT_EMAIL, SUPPORT_HTML } from "../src/routes/site/policies/support.js";
 // eslint-disable-next-line import/first
 import { buildApp } from "../src/server.js";
 // eslint-disable-next-line import/first
@@ -34,7 +34,7 @@ import { KEEP_DAYS as ACTIVITY_DAYS, cleanEvent } from "../src/shell/events.js";
 // eslint-disable-next-line import/first
 import { CHAT_KEEP } from "../src/botsBots/chat.js";
 // eslint-disable-next-line import/first
-import { shownName } from "../src/routes/botsBots.js";
+import { shownName } from "../src/routes/bots/botsBots.js";
 // eslint-disable-next-line import/first
 import { KEEP_DAYS as WIDGET_ANSWER_DAYS } from "../src/widgets/act.js";
 // eslint-disable-next-line import/first

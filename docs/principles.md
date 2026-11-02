@@ -305,7 +305,7 @@ Ask's planner and picture reader (`src/agent/`), the writer (`pipeline/assistPro
 5. **The tests that assert prompt wording** (`phone-prompt`, `assistant-ask`, `tone-none-voice`, `instruction-split`, `prompt-injection`, `device`, `connectors-mcp`, and thirty more) assert `stableBlock(role)` for a rule and the dynamic data for a fact about one call, `tests/writer-prompt.ts` being the helper (`WRITER`, `dataFor`, `told`). Each kept its intent: the phone test now says the block is one for both and the phone is a line; the tone test says the voice is data and the block is the same for an account with a voice and one without.
 6. **The examples** are `evals/<role>.jsonl`; the order of work (planner, writer, helpers) was done in one change, measured with `npm run prompt-sizes` and, for behaviour, not measured: see below.
 
-What did not move, on purpose: `inferStyle` (one line asking for a style profile of a writing sample) is still a string in `cleanup.ts`; the notes and localisation prompts (`notes/organise.ts`, `experience/i18n.ts`) are not the assistant's; `prompts.ts` keeps the personality renderers (`renderPersonality`, `renderToneDial`, `renderAppStyle`, `resolveRecipientHint`), which are data.
+What did not move, on purpose: `inferStyle` (one line asking for a style profile of a writing sample) is still a string in `pipeline/writing/portrait.ts`; the notes and localisation prompts (`notes/organise.ts`, `experience/i18n.ts`) are not the assistant's; `prompts.ts` keeps the personality renderers (`renderPersonality`, `renderToneDial`, `renderAppStyle`, `resolveRecipientHint`), which are data.
 
 ### What could not be kept identical
 

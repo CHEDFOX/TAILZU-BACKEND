@@ -49,7 +49,7 @@ const NODE_KEYS = new Set(["type", "id", "props", "style", "children", "bind", "
 const STYLE_PASSTHROUGH = new Set(["transform"]);
 /**
  * Action fields a screen may send that the store build does not read.
- * openUrl.handoff: askAction (experience/assistant.ts) sends it to every
+ * openUrl.handoff: askAction (experience/assistant/) sends it to every
  * build from the hand card's Do it already; a build with the phone's own
  * hand-off list holds the link to it, and the store build's openUrl reads
  * `url` alone and opens it as it always has.

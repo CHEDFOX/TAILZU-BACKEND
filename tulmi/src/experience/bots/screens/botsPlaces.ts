@@ -5,7 +5,7 @@
  * the window's table, "Trip plan").
  *
  * Builders only: screens/bots.ts calls these from bots.plan and bots.travel. Data is what GET /v1/botsapp/bots/plan (its `travel`) and
- * GET /v1/botsapp/bots/trip/:id/extras answer (routes/botsTrips.ts, src/botsBots/planTravel.ts, tripExtras.ts); a missing part draws
+ * GET /v1/botsapp/bots/trip/:id/extras answer (routes/bots/botsTrips.ts, src/botsBots/planTravel.ts, tripExtras.ts); a missing part draws
  * nothing, never a made-up number. Colour stays with the bots: Plan Ease's ochre on its leave-by lines, the Travel bot's sea on its pick.
  * Nothing here books or pays: a stay opens its own site, "you book and pay there".
  */

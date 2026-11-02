@@ -3,9 +3,9 @@
  * the desk's Insights pages (experience/desk/insights.ts, day.ts, app.ts) showed, as one view for the Bots app's
  * Keylessbord pages (experience/bots/screens/keybot*.ts). docs/bots-keybot-parity.md lists every figure and where it lives.
  *
- * Pure: routes/botsKeybot.ts GET /v1/keybot/stats makes the old screens' own reads and this shapes them.
+ * Pure: routes/bots/botsKeybot.ts GET /v1/keybot/stats makes the old screens' own reads and this shapes them.
  *
- *   stats      history/store.ts statsForUser(user, "month", tz, saved words, languages): the last 30 days, a bucket a day
+ *   stats      history/stats.ts statsForUser(user, "month", tz, saved words, languages): the last 30 days, a bucket a day
  *              in the person's own day, today last; by app, language, voice, register, hour, part of the day; the
  *              dictionary's use; each day's detail; today's sessions
  *   usage      usage/metering.ts usageSummary: the calendar month and all time, as the meter counted them
@@ -15,12 +15,12 @@
  * A figure that was not read is absent or null, never a zero standing in for it.
  */
 import type { Personality, UsageSummary } from "../../../shared/types/api.js";
-import type { DayDetail, StatsForUser } from "../history/store.js";
+import type { DayDetail, StatsForUser } from "../history/stats.js";
 import type { Allowance } from "../usage/allowance.js";
 import { applyPresetOverrides, TONE_LABELS, type PresetTone } from "../experience/personalityPresets.js";
 import { appLabel, languageLabel } from "./views.js";
 
-/** Typing speed the minutes saved are counted against (history/store.ts TYPING_WORDS_PER_MINUTE). */
+/** Typing speed the minutes saved are counted against (history/stats.ts TYPING_WORDS_PER_MINUTE). */
 export const TYPING_WPM = 40;
 const DAY = 86_400_000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -144,7 +144,7 @@ const kindsOf = (k: { voice: number; typing: number; draft: number } | undefined
   ({ said: k?.voice ?? 0, typed: k?.typing ?? 0, drafted: k?.draft ?? 0 });
 const HOW: Record<string, string> = { voice: "said", typing: "typed", draft: "drafted" };
 
-/** The day buckets' dates in the person's own day (oldest first, today last): history/store.ts counts into the same. */
+/** The day buckets' dates in the person's own day (oldest first, today last): history/stats.ts counts into the same. */
 function windowDays(count: number, now: number, tzOffsetMinutes: number): Array<Pick<KeybotStatsDay, "label" | "short" | "date" | "weekday">> {
   const tz = Math.max(-840, Math.min(840, Math.round(tzOffsetMinutes)));
   return Array.from({ length: count }, (_, i) => {

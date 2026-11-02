@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import Fastify from "fastify";
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 
-// Signing in on a computer with the phone (auth/deviceLink.ts, routes/deviceLink.ts, screens/link.ts): the window's QR,
+// Signing in on a computer with the phone (auth/deviceLink.ts, routes/account/deviceLink.ts, screens/link.ts): the window's QR,
 // approved on the phone, exchanged once for the window's own session.
 process.env.OPENROUTER_API_KEY = "k";
 process.env.OPENAI_API_KEY = "k";
@@ -15,7 +15,7 @@ process.env.BOTS_APP = "true";
 const {
   createDeviceLinks, memoryLinkStore, normalizeCode, showCode, cleanDeviceName, hashOf, LINK_TTL_MS, EXCHANGE_GRACE_MS, TOKEN_RE,
 } = await import("../src/auth/deviceLink.js");
-const { registerDeviceLinkRoutes, linkUrl } = await import("../src/routes/deviceLink.js");
+const { registerDeviceLinkRoutes, linkUrl } = await import("../src/routes/account/deviceLink.js");
 const { logUrl } = await import("../src/observability.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");

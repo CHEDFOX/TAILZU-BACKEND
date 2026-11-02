@@ -1,5 +1,5 @@
 /**
- * THE BOTS APP'S "BOTS" AREA, BEHIND ITS SCREENS (experience/bots/screens/bots.ts) AND ITS ROUTES (routes/botsBots.ts).
+ * THE BOTS APP'S "BOTS" AREA, BEHIND ITS SCREENS (experience/bots/screens/bots.ts) AND ITS ROUTES (routes/bots/botsBots.ts).
  *
  *   chat.ts     a chat with a bot, turn by turn, as the bot's page shows it (Bots.ask underneath)
  *   maker.ts    Make a bot: the draft kept while it is shaped (Bots.draft / test / approve underneath)
@@ -49,7 +49,7 @@ export interface BotsAreaParts {
   spaces: Spaces;
   plan: PlanDays;
   trips: Trips;
-  /** A trip's weather, places and stays compared (routes/botsTrips.ts). */
+  /** A trip's weather, places and stays compared (routes/bots/botsTrips.ts). */
   tripExtras: TripExtrasReader;
 }
 

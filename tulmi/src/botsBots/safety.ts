@@ -10,7 +10,7 @@
  *                                   It is kept with a copy of what was reported (content_reports.snapshot), logged (no content in the
  *                                   log), and mailed to the owner (support@x0bot.com, SAFETY_REPORTS_EMAIL) through the mail outbox,
  *                                   due within 24 hours. With `block`, the person is blocked too.
- *   reports({ status }) / resolve(id, { status, remove, suspend, note, by })   the admin's side (routes/safety.ts, the console's
+ *   reports({ status }) / resolve(id, { status, remove, suspend, note, by })   the admin's side (routes/bots/safety.ts, the console's
  *                                   Reports tab): take the message or shared thing out for everyone, suspend the account (it can't
  *                                   sign in again), or dismiss the report.
  *

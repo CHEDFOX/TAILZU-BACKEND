@@ -1,5 +1,5 @@
 /**
- * THE NEW ONBOARDING, SERVER SIDE (experience/onboard.ts).
+ * THE NEW ONBOARDING, SERVER SIDE (experience/onboard/).
  *
  * What these hold down, in the order the spec lists them:
  *   - who gets it: only a build that declared both OnboardStage and BlipSpot,
@@ -50,8 +50,10 @@ const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.j
 const { buildScreen } = await import("../src/experience/screens.js");
 const { DAILY_LANGUAGES } = await import("../src/experience/phone/languages.js");
 const { POLICY } = await import("../src/experience/policy.js");
-const { OB_EN, OB_HG, canOnboard, onboardAuthTree, onboardLanguage, onboardStart, onboardTotal } = await import("../src/experience/onboard.js");
-const { PRIVACY_POLICY_HTML } = await import("../src/routes/policies/privacy.js");
+const { OB_EN, OB_HG } = await import("../src/experience/onboard/copy.js");
+const { canOnboard, onboardLanguage, onboardStart, onboardTotal } = await import("../src/experience/onboard/screens.js");
+const { onboardAuthTree } = await import("../src/experience/onboard/auth.js");
+const { PRIVACY_POLICY_HTML } = await import("../src/routes/site/policies/privacy.js");
 const { gate } = await import("../src/connectors/risk.js");
 const { EN: ASSISTANT_EN } = await import("../src/connectors/words.js");
 

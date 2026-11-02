@@ -5,8 +5,8 @@ App Store Connect (App Privacy) and Play Console (App content, Data safety). Eve
 so it can be checked again when the code changes. Paths are from the repo roots: `tulmi/` is this repo's server, `app/` is
 TAILZU-FRONTEND's phone app.
 
-The account deletion link for Play is **https://x0bot.com/delete-account** (`tulmi/src/routes/accountDeletion.ts`,
-`tulmi/src/routes/policies/deleteAccount.ts`, proxied by TAILZU-WEB `vercel.json`).
+The account deletion link for Play is **https://x0bot.com/delete-account** (`tulmi/src/routes/account/accountDeletion.ts`,
+`tulmi/src/routes/site/policies/deleteAccount.ts`, proxied by TAILZU-WEB `vercel.json`).
 
 * [1. Decided](#1-decided-29-oct-2026)
 * [2. What the app collects, and where](#2-what-the-app-collects-and-where)
@@ -42,10 +42,10 @@ section 1 says.
 | --- | --- | --- | --- |
 | Email address | The sign-in address (email code, Sign in with Apple, Google) | `app/src/auth/supabaseClient.ts`; Supabase Auth | Until the account is deleted |
 | Phone number | Only for phone sign-in | `supabaseClient.ts` sendPhoneCode; Supabase Auth | Until deleted |
-| Name | The name the person gives (first run, About you), or the sign-in provider's; shown to people in their Spaces | `PUT /v1/profile` (`tulmi/src/routes/profile.ts`), `profiles` (migrations 0003, 0007); `space_members.name` | Until deleted |
+| Name | The name the person gives (first run, About you), or the sign-in provider's; shown to people in their Spaces | `PUT /v1/profile` (`tulmi/src/routes/account/profile.ts`), `profiles` (migrations 0003, 0007); `space_members.name` | Until deleted |
 | Gender | Female, male or other, to address the person correctly | `PUT /v1/profile { gender }` | Until deleted |
 | User ID | The account's ID (Supabase), also RevenueCat's app user ID | `tulmi/src/auth/supabase.ts`; `app/src/billing/purchases.ts` | Until deleted |
-| Voice | Audio of dictation and of speaking to bots, sent to be turned into text, then discarded (never stored) | `/v1/transcribe-clean`, `/v1/stream` (`tulmi/src/routes/transcribe.ts`, `routes/transcribe-stream.ts`); OpenAI / Groq | Not stored (processed ephemerally) |
+| Voice | Audio of dictation and of speaking to bots, sent to be turned into text, then discarded (never stored) | `/v1/transcribe-clean`, `/v1/stream` (`tulmi/src/routes/writing/transcribe.ts`, `routes/writing/transcribe-stream.ts`); OpenAI / Groq | Not stored (processed ephemerally) |
 | Dictated text and history | What was dictated and the cleaned text, its language and voice | `cleanup_history` (`tulmi/src/history/store.ts`, migrations 0004, 0010) | On by default (section 1.3); 90-day purge of deleted rows; until the account is deleted |
 | Messages | Words, photos and files people send each other in Spaces' chats | `tulmi/src/botsBots/threads.ts`, `thread_messages` (migration 0051) | Until taken out, the space or the account is deleted (a sender's messages stay in others' chats) |
 | Shared things | Lists, plans, notes, links, files, answers shared to a space or a person | `tulmi/src/botsBots/shared.ts`, `space_items` | Until taken out or deleted |
@@ -164,7 +164,7 @@ blocked: the system photo picker needs no permission. No contacts, calendar or l
 ## 5. Keep it true
 
 * A new SDK, a new kind of upload, location, contacts from the phone, or anything sent to a new third party changes these answers:
-  update this file, the privacy policy (`tulmi/src/routes/policies/privacy.ts`) and the privacy manifest in the same change, and
+  update this file, the privacy policy (`tulmi/src/routes/site/policies/privacy.ts`) and the privacy manifest in the same change, and
   re-answer both stores' forms.
 * iOS purpose strings live in `app/app.config.ts` (`ios.infoPlist`); each kept key says why it is there. Add a key only in the
   release that asks for it.

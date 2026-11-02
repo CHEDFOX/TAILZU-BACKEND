@@ -1,5 +1,5 @@
 /**
- * QUICK ACCESS FROM OUTSIDE THE APP (src/widgets, routes/widgets.ts; docs/widgets.md):
+ * QUICK ACCESS FROM OUTSIDE THE APP (src/widgets, routes/bots/widgets.ts; docs/widgets.md):
  *
  *   - GET /v1/widgets/now: both widgets' rows, worded, linked, with buttons; the empty state; the kill switches; the server's knobs
  *   - the widget's own token: narrow (its scopes only, never a reply, never a session anywhere else), short-lived, revocable,
@@ -32,8 +32,8 @@ const { Spaces } = await import("../src/botsBots/spaces.js");
 const { MailOutbox, NOT_CONFIGURED } = await import("../src/botsBots/mail.js");
 const { MemoryPaged, resetSpaceTablesForTests } = await import("../src/botsBots/spaceRows.js");
 const { resetAreaTablesForTests } = await import("../src/botsBots/rows.js");
-const { registerSpacesRoutes } = await import("../src/routes/botsSpaces.js");
-const { registerWidgetRoutes, actPartsOf } = await import("../src/routes/widgets.js");
+const { registerSpacesRoutes } = await import("../src/routes/bots/botsSpaces.js");
+const { registerWidgetRoutes, actPartsOf } = await import("../src/routes/bots/widgets.js");
 const { resetCalendarForTests } = await import("../src/calendar/index.js");
 const { WidgetTokens, MemoryWidgetTokenStore, TOKEN_RE, hashToken } = await import("../src/widgets/token.js");
 const { QuickActs, MemoryQuickActionStore } = await import("../src/widgets/act.js");

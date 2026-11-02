@@ -16,7 +16,7 @@
  *   bots.done          Done / DDone (id)                 the shipped moment: the pull request, the numbers, what changed
  *   bots.failed        Failed / DFailed (id)             what it tried; try again deeper, tell me more, stop
  *
- * Everything is the existing Xode backend: routes/codeJobs.ts (the job, its log, its team, answer / approve / deny /
+ * Everything is the existing Xode backend: routes/code/codeJobs.ts (the job, its log, its team, answer / approve / deny /
  * budget / stop / message), routes/artifacts.ts, routes/files.ts, and the front door (POST /v1/ask with projectId and a
  * threadId, docs/code-chat.md) for the chat. Live: the screens are never cached (cacheTtlSeconds 0), every write refreshes
  * the screen, the phone refreshes open screens on its own tick and when it comes back to the front, the window when it

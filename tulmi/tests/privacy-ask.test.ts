@@ -12,7 +12,7 @@ process.env.NODE_ENV = "test";
 process.env.SITE_DIR = "/tmp/tailzu-test-no-site";
 
 // eslint-disable-next-line import/first
-import { PRIVACY_POLICY_EFFECTIVE, PRIVACY_POLICY_HTML } from "../src/routes/policies/privacy.js";
+import { PRIVACY_POLICY_EFFECTIVE, PRIVACY_POLICY_HTML } from "../src/routes/site/policies/privacy.js";
 // eslint-disable-next-line import/first
 import { APP_KNOB_FLAGS } from "../src/experience/appKnobsData.js";
 // eslint-disable-next-line import/first
@@ -69,7 +69,7 @@ describe("the policy's date and shape", () => {
   });
 
   it("says, with the terms, that deleting an account waits 7 days, stops the bots, and can be kept until then", async () => {
-    const { TERMS_HTML, TERMS_EFFECTIVE } = await import("../src/routes/policies/terms.js");
+    const { TERMS_HTML, TERMS_EFFECTIVE } = await import("../src/routes/site/policies/terms.js");
     const terms = text(TERMS_HTML);
     expect(TERMS_EFFECTIVE).toBe("October 30, 2026");
     for (const words of [policy, terms]) {

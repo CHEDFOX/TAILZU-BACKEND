@@ -29,14 +29,14 @@
 import "./domainHold.js";
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
-import transcribeStream from "./routes/transcribe-stream.js";
-import { registerLiveRoutes } from "./routes/live.js";
+import transcribeStream from "./routes/writing/transcribe-stream.js";
+import { registerLiveRoutes } from "./routes/app/live.js";
 import { installLiveWrites, liveJob } from "./live/writes.js";
-import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/media.js";
-import { registerSeoRoutes } from "./routes/seo.js";
+import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/app/media.js";
+import { registerSeoRoutes } from "./routes/site/seo.js";
 import { registerNotesRoutes } from "./routes/notes.js";
 import { createConnectors, type Connectors } from "./connectors/index.js";
-import { registerConnectorRoutes } from "./routes/connectors.js";
+import { registerConnectorRoutes } from "./routes/connectors/connectors.js";
 import { createCode } from "./code/index.js";
 import { startOAuthSweeper } from "./code/oauth.js";
 import { createArtifacts } from "./artifacts/index.js";
@@ -45,24 +45,23 @@ import { liveViewerOf } from "./artifacts/livehost.js";
 import { AttachmentRegistry, createFront } from "./front/index.js";
 import { createMedia, registerMedia, startMediaSweep } from "./media/index.js";
 import { registerFilesRoutes } from "./routes/files.js";
-import { registerFrontRoutes } from "./routes/front.js";
-import { registerCodeRoutes } from "./routes/code.js";
-import { registerCodeJobRoutes } from "./routes/codeJobs.js";
-import { registerCodeInternalRoutes } from "./routes/codeInternal.js";
+import { registerFrontRoutes } from "./routes/ask/front.js";
+import { registerCodeRoutes } from "./routes/code/code.js";
+import { registerCodeJobRoutes } from "./routes/code/codeJobs.js";
+import { registerCodeInternalRoutes } from "./routes/code/codeInternal.js";
 import { createBots } from "./bots/index.js";
 import { botPorts } from "./bots/wire.js";
-import { registerBotRoutes } from "./routes/bots.js";
-import { registerBotsShellRoutes } from "./routes/botsShell.js";
-import { registerBotsYouRoutes } from "./routes/botsYou.js";
-import { registerBotsBotsRoutes } from "./routes/botsBots.js";
-import { registerBotsKeybotRoutes } from "./routes/botsKeybot.js";
-import { registerBotsCodeRoutes } from "./routes/botsCode.js";
-import { registerBotsCodeWorkRoutes } from "./routes/botsCodeWork.js";
-import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
+import { registerBotRoutes } from "./routes/bots/bots.js";
+import { registerBotsShellRoutes } from "./routes/bots/botsShell.js";
+import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
+import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
+import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
+import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
+import { registerBotsFirstRunRoutes } from "./routes/bots/botsFirstRun.js";
 import { createAppleSignIn } from "./auth/appleSignIn.js";
-import { registerBotsPushAskRoutes } from "./routes/botsPushAsk.js";
-import { registerBotLooksRoutes } from "./routes/botLooks.js";
-import { registerBotSoundsRoutes } from "./routes/botSounds.js";
+import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
+import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
+import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
 import { sessionOffers } from "./code/live/offers.js";
 import { jobStore } from "./code/jobs/store.js";
@@ -70,17 +69,17 @@ import { createAgent } from "./code/agent/index.js";
 import { createPrCare, startCareSweep, type PrCare } from "./code/prcare/index.js";
 import type { WebhookHooks } from "./code/webhook.js";
 import { createGithubActions, createJobs } from "./code/jobs/index.js";
-import { registerCustomConnectorRoutes } from "./routes/connectorsCustom.js";
-import { registerOAuthClientMetadataRoute } from "./routes/oauthClientMetadata.js";
+import { registerCustomConnectorRoutes } from "./routes/connectors/connectorsCustom.js";
+import { registerOAuthClientMetadataRoute } from "./routes/connectors/oauthClientMetadata.js";
 import { startDirectorySync } from "./connectors/registry.js";
-import { registerAssistantRoutes } from "./routes/assistant.js";
+import { registerAssistantRoutes } from "./routes/ask/assistant.js";
 import { RunLedger, runStore, startRunSweeper } from "./runs/index.js";
-import { registerDemoRoutes } from "./routes/demo.js";
+import { registerDemoRoutes } from "./routes/site/demo.js";
 import { initControl, registerControlRoutes } from "./control/index.js";
 import { initPush, notifyApproval, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
-import { registerReviewCodeRoute } from "./routes/reviewCode.js";
-import { registerDeviceLinkRoutes } from "./routes/deviceLink.js";
+import { registerReviewCodeRoute } from "./routes/account/reviewCode.js";
+import { registerDeviceLinkRoutes } from "./routes/account/deviceLink.js";
 import { getConfig } from "./config.js";
 import { resolveUser, supabase } from "./auth/supabase.js";
 import { enforceQuota, recordUsage } from "./usage/metering.js";
@@ -92,31 +91,31 @@ import { bumpCacheVersion } from "./experience/cacheVersion.js";
 import { setMediaRegistryAccessor } from "./experience/mediaRegistry.js";
 import type { Personality } from "../../shared/types/api.js";
 import { planStream } from "./agent/llm.js";
-import { registerHealthRoutes } from "./routes/health.js";
-import { registerPolicyPageRoutes } from "./routes/policyPages.js";
-import { registerBillingRoutes } from "./routes/billing.js";
-import { registerSitePageRoutes } from "./routes/sitePages.js";
-import { registerWellKnownRoutes } from "./routes/wellKnown.js";
-import { registerTranscribeRoutes } from "./routes/transcribe.js";
-import { registerRefineRoutes } from "./routes/refine.js";
-import { registerTrainRoutes } from "./routes/train.js";
-import { registerVocabularyRoutes } from "./routes/vocabulary.js";
-import { registerDraftRoutes } from "./routes/draft.js";
-import { registerEditRoutes } from "./routes/edit.js";
-import { registerAskRoutes } from "./routes/ask.js";
-import { registerAgentRoutes } from "./routes/agent.js";
-import { registerSpeakRoutes } from "./routes/speak.js";
-import { registerPersonalityRoutes } from "./routes/personality.js";
-import { registerAppScreenRoutes } from "./routes/appScreens.js";
-import { registerProfileRoutes } from "./routes/profile.js";
-import { registerAccountRoutes } from "./routes/account.js";
-import { registerKeyboardRoutes } from "./routes/keyboard.js";
-import { registerHistoryRoutes } from "./routes/history.js";
+import { registerHealthRoutes } from "./routes/site/health.js";
+import { registerPolicyPageRoutes } from "./routes/site/policyPages.js";
+import { registerBillingRoutes } from "./routes/billing/billing.js";
+import { registerSitePageRoutes } from "./routes/site/sitePages.js";
+import { registerWellKnownRoutes } from "./routes/site/wellKnown.js";
+import { registerTranscribeRoutes } from "./routes/writing/transcribe.js";
+import { registerRefineRoutes } from "./routes/writing/refine.js";
+import { registerTrainRoutes } from "./routes/writing/train.js";
+import { registerVocabularyRoutes } from "./routes/writing/vocabulary.js";
+import { registerDraftRoutes } from "./routes/writing/draft.js";
+import { registerEditRoutes } from "./routes/writing/edit.js";
+import { registerAskRoutes } from "./routes/ask/ask.js";
+import { registerAgentRoutes } from "./routes/ask/agent.js";
+import { registerSpeakRoutes } from "./routes/writing/speak.js";
+import { registerPersonalityRoutes } from "./routes/account/personality.js";
+import { registerAppScreenRoutes } from "./routes/app/appScreens.js";
+import { registerProfileRoutes } from "./routes/account/profile.js";
+import { registerAccountRoutes } from "./routes/account/account.js";
+import { registerKeyboardRoutes } from "./routes/app/keyboard.js";
+import { registerHistoryRoutes } from "./routes/account/history.js";
 import { effectiveLanguage } from "./profile/language.js";
 import { registerErrorHandling } from "./http/errors.js";
 import { registerRequestHooks } from "./http/hooks.js";
 import { registerPlugins } from "./http/plugins.js";
-import { registerStaticFileRoutes } from "./routes/staticFiles.js";
+import { registerStaticFileRoutes } from "./routes/app/staticFiles.js";
 
 /**
  * Build (but do NOT listen on) a fully-configured Fastify instance.
@@ -166,7 +165,7 @@ const MEDIA_PUBLIC_URL = process.env.MEDIA_PUBLIC_URL
 await loadMediaRegistry(MEDIA_DIR);
 // Let the SDUI catalog reach into the media registry (for e.g. surfacing
 // the "mic.animation" media URL into the keyboard config's flags). Avoids a
-// circular import between routes/media.ts and the screens (experience/mediaRegistry.ts).
+// circular import between routes/app/media.ts and the screens (experience/mediaRegistry.ts).
 setMediaRegistryAccessor(getMediaRegistry);
 await app.register(fastifyStatic, {
   root: MEDIA_DIR,
@@ -264,7 +263,7 @@ registerSitePageRoutes(app, { cfg });
 registerSeoRoutes(app);
 
 // The landing page at /, its copy at /v1/site, and the live demo — a visitor's
-// own voice written clean, no account. See routes/demo.ts for why the demo is
+// own voice written clean, no account. See routes/site/demo.ts for why the demo is
 // off by default and how it is bounded when on.
 registerDemoRoutes(app, {
   downloadsDir: DOWNLOADS_DIR,
@@ -409,7 +408,6 @@ const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
-registerBotsCodeWorkRoutes(app, botsAreaDeps);
 registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
@@ -450,7 +448,7 @@ if (connectors) {
 // avoids the 429-storm we saw on /v1/keyboard/config launch traffic.
 
 // The fixed review pair. 404s unless BOTH REVIEW_EMAIL and REVIEW_CODE are set,
-// so in ordinary operation this route does not exist. See routes/reviewCode.ts.
+// so in ordinary operation this route does not exist. See routes/account/reviewCode.ts.
 //
 // ITS OWN LIMIT, far below the app's.
 //
@@ -467,7 +465,7 @@ if (connectors) {
 registerReviewCodeRoute(app, {
   rateLimit: { max: 8, timeWindow: 15 * 60_000 },
 });
-// Signing in on a computer with the phone: the window's QR, approved on the phone (routes/deviceLink.ts, migration 0049).
+// Signing in on a computer with the phone: the window's QR, approved on the phone (routes/account/deviceLink.ts, migration 0049).
 // Off (link_off) without the service key, which mints the window's session. Its own limits, per address and per person.
 registerDeviceLinkRoutes(app);
 
@@ -490,7 +488,7 @@ registerAgentRoutes(app, { rateLimit: AGENT_RL, cfg, ledger, connectors });
 //
 // The same planner and connected apps as /v1/agent, for Tailzu on the phone:
 // one JSON answer ({ say, open?, taskId?, receipt }) instead of a stream,
-// since there is no screen to act on step by step. See src/routes/assistant.ts.
+// since there is no screen to act on step by step. See src/routes/ask/assistant.ts.
 registerAssistantRoutes(app, {
   rateLimit: AGENT_RL,
   connectors,

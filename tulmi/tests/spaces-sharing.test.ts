@@ -1,5 +1,5 @@
 /**
- * SPACES FOR FAMILY AND FRIENDS (src/botsBots/{spaces,spacePerms,mail,shared,payments,threads,spaceTasks}.ts, routes/botsSpaces.ts):
+ * SPACES FOR FAMILY AND FRIENDS (src/botsBots/{spaces,spacePerms,mail,shared,payments,threads,spaceTasks}.ts, routes/bots/botsSpaces.ts):
  *
  *   - permissions: the admin can do everything and can't be changed; presets and custom roles; nobody gives or takes away what they
  *     can't do; nobody changes someone who can do more than them
@@ -40,7 +40,7 @@ const { Spaces, INVITE_ORIGIN, inviteLinkOf } = await import("../src/botsBots/sp
 const { MailOutbox, NOT_CONFIGURED } = await import("../src/botsBots/mail.js");
 const { MemoryPaged, resetSpaceTablesForTests } = await import("../src/botsBots/spaceRows.js");
 const { resetAreaTablesForTests } = await import("../src/botsBots/rows.js");
-const { registerSpacesRoutes } = await import("../src/routes/botsSpaces.js");
+const { registerSpacesRoutes } = await import("../src/routes/bots/botsSpaces.js");
 const { PlanDays } = await import("../src/botsBots/plan.js");
 const { calendar, resetCalendarForTests } = await import("../src/calendar/index.js");
 const { live } = await import("../src/live/bus.js");

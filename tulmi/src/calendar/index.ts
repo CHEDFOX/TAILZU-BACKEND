@@ -9,7 +9,7 @@
  *   bots.ts      "calendar" and "tasks" as apps every bot can be given (withOwnDays over bots/ports.ts)
  *
  *   startReminders(calendar, send)   every minute: the reminders that are due, through the push engine ("plan_reminder")
- *   todayForShell / upcomingForShell the shapes Today and Tasks already draw (routes/botsShell.ts)
+ *   todayForShell / upcomingForShell the shapes Today and Tasks already draw (routes/bots/botsShell.ts)
  */
 import type { Calendar, ReminderSend } from "./service.js";
 import { clockAt, dayName, dayOf, hhmm, minuteOf, shiftDay } from "./words.js";

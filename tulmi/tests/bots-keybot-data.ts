@@ -7,7 +7,7 @@
  * serve the views made from it.
  */
 import type { Personality, UsageSummary } from "../../shared/types/api.js";
-import type { DayDetail, StatsForUser } from "../src/history/store.js";
+import type { DayDetail, StatsForUser } from "../src/history/stats.js";
 import type { Allowance } from "../src/usage/allowance.js";
 import { FIXED_NOW, IST } from "../src/experience/bots/fixtures.js";
 import { homeView, wordsView } from "../src/keybot/views.js";
@@ -46,7 +46,7 @@ const requests = sum((d) => d.sessions);
 const audioSeconds = sum((d) => d.saidSeconds);
 const appWords = (app: string) => sum((d) => d.apps.find((a) => a.app === app)?.words ?? 0);
 
-/** What history/store.ts statsForUser(user, "month", IST, saved words, languages) answers for her. */
+/** What history/stats.ts statsForUser(user, "month", IST, saved words, languages) answers for her. */
 export const MONTH_STATS: StatsForUser = {
   window: "month", requests, wordsOut, audioSeconds,
   minutesSaved: Math.round(wordsOut / 40 - audioSeconds / 60),

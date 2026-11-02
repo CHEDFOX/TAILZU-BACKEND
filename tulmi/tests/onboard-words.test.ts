@@ -45,8 +45,9 @@ process.env.DEV_SKIP_AUTH = "true";
 const { localize } = await import("../src/experience/i18n.js");
 const { buildScreen } = await import("../src/experience/screens.js");
 const { DAILY_LANGUAGES } = await import("../src/experience/phone/languages.js");
-const { OB_EN, OB_HG, OB_STORE_EN, OB_STORE_HG, onboardAuthTree, onboardHinglishSeeds } = await import("../src/experience/onboard.js");
-const { STORE_NEEDS } = await import("../src/experience/onboardStore.js");
+const { OB_EN, OB_HG, OB_STORE_EN, OB_STORE_HG, onboardHinglishSeeds } = await import("../src/experience/onboard/copy.js");
+const { onboardAuthTree } = await import("../src/experience/onboard/auth.js");
+const { STORE_NEEDS } = await import("../src/experience/onboard/store.js");
 const { EN, hinglishSeeds } = await import("../src/connectors/words.js");
 const { CATALOG } = await import("../src/connectors/catalog.js");
 

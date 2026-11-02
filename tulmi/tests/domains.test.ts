@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import Fastify from "fastify";
 import { API_ORIGIN, APP_LINK_ORIGIN, isOurPayPage, isSitePage, legacyTwin, SITE_ORIGIN, SITE_ORIGINS } from "../src/domains.js";
-import { registerOAuthClientMetadataRoute } from "../src/routes/oauthClientMetadata.js";
+import { registerOAuthClientMetadataRoute } from "../src/routes/connectors/oauthClientMetadata.js";
 import { madeForAnotherAddress } from "../src/connectors/oauth.js";
 
 describe("our addresses", () => {

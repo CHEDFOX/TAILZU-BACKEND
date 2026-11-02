@@ -1,5 +1,5 @@
 /**
- * ACTIVITY HAS EVERY ANSWER A BOT GAVE (routes/botsBots.ts, routes/botsShell.ts, screens/code.ts; docs/bots-gaps.md A4):
+ * ACTIVITY HAS EVERY ANSWER A BOT GAVE (routes/bots/botsBots.ts, routes/bots/botsShell.ts, screens/code.ts; docs/bots-gaps.md A4):
  *
  *   - an answer in a bot's own page or chat (POST /v1/botsapp/bots/chat/:slug) is written down as Ask's are, once: a repeat of the
  *     same request is replayed and not written again, and a refused ask writes nothing
@@ -26,9 +26,9 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
   };
 });
 
-const { registerBotRoutes } = await import("../src/routes/bots.js");
-const { registerBotsBotsRoutes, AREA } = await import("../src/routes/botsBots.js");
-const { registerBotsShellRoutes } = await import("../src/routes/botsShell.js");
+const { registerBotRoutes } = await import("../src/routes/bots/bots.js");
+const { registerBotsBotsRoutes, AREA } = await import("../src/routes/bots/botsBots.js");
+const { registerBotsShellRoutes } = await import("../src/routes/bots/botsShell.js");
 const { botsAreaParts, resetAreaTablesForTests } = await import("../src/botsBots/index.js");
 const { MemoryEventStore } = await import("../src/shell/events.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");

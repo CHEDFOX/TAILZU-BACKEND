@@ -1,5 +1,5 @@
 /**
- * THE LIVE SESSION'S ROUTES ON THE VPS (src/routes/codeJobs.ts): the pass for a PC's presence socket (POST /v1/code/runner/ticket), the pass for
+ * THE LIVE SESSION'S ROUTES ON THE VPS (src/routes/code/codeJobs.ts): the pass for a PC's presence socket (POST /v1/code/runner/ticket), the pass for
  * the app watching a job (POST /v1/code/jobs/:id/live), and the person's word to a working job (POST /v1/code/jobs/:id/message). The passes are signed
  * tickets for the Worker (code/live/tickets.ts), short-lived and one-time; the Worker's own checks of them are in jobs/test.
  */
@@ -29,7 +29,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const { agentRig, call, done, UTIL_TASK, UTIL_PLAN, UTIL_EDIT } = await import("./agent-rig.js");
-const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
+const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
 const { readTicket } = await import("../src/code/live/tickets.js");
 const { DEVICE_TICKET_TTL_MS, VIEWER_TICKET_TTL_MS, SAID_MAX_CHARS } = await import("../src/code/live/limits.js");
 const { createWorkBranch } = await import("../src/code/projects.js");

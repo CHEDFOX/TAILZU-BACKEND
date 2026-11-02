@@ -1,5 +1,5 @@
 /**
- * THE ONBOARDING SPEAKS THE LANGUAGE THE PERSON CHOSE (routes/appScreens.ts, /v1/app/screen).
+ * THE ONBOARDING SPEAKS THE LANGUAGE THE PERSON CHOSE (routes/app/appScreens.ts, /v1/app/screen).
  *
  * The profile's language stays "auto" (English) until someone changes it in
  * Settings, and the Languages step only saves personality.languages. So the
@@ -49,7 +49,7 @@ process.env.STATIC_BEARER_TOKENS = Object.values(T).join(",");
 const { resetConfigForTests } = await import("../src/config.js");
 resetConfigForTests();
 const { buildApp } = await import("../src/server.js");
-const { OB_EN, OB_HG } = await import("../src/experience/onboard.js");
+const { OB_EN, OB_HG } = await import("../src/experience/onboard/copy.js");
 
 describe("the screen onboard, through the server", () => {
   let app: FastifyInstance;

@@ -1,5 +1,5 @@
 /**
- * PR CARE OVER HTTP (src/routes/codeJobs.ts care routes, src/routes/code.ts webhook, src/code/webhook.ts): what the app calls to hand a pull request over, and
+ * PR CARE OVER HTTP (src/routes/code/codeJobs.ts care routes, src/routes/code/code.ts webhook, src/code/webhook.ts): what the app calls to hand a pull request over, and
  * how GitHub's events reach the engine.
  *
  *   - the care routes want a session, are the owner's only, and answer 404 care_off on a server without the engine
@@ -34,8 +34,8 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 const { call } = await import("./agent-rig.js");
 const { careRig, CARE_EDIT } = await import("./care-rig.js");
 const { resetSettingsStoreForTests } = await import("../src/code/agent/settings.js");
-const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
-const { registerCodeRoutes } = await import("../src/routes/code.js");
+const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
+const { registerCodeRoutes } = await import("../src/routes/code/code.js");
 const { handleWebhook, signatureFor } = await import("../src/code/webhook.js");
 type Rig = Awaited<ReturnType<typeof careRig>>;
 

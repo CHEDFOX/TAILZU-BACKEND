@@ -1,5 +1,5 @@
 /**
- * KEYBOT'S PAGES (experience/bots/screens/keybot.ts, routes/botsKeybot.ts, src/keybot):
+ * KEYBOT'S PAGES (experience/bots/screens/keybot.ts, routes/bots/botsKeybot.ts, src/keybot):
  *
  *   - the views: the week is Monday on in the person's own day, the days to come are empty; by app with each kind's tone;
  *     words with how often said and where last; the ten lines and what comes next; history searched; keyboard defaults
@@ -34,7 +34,7 @@ const { fakeDeps, FIXED_NOW, IST } = await import("../src/experience/bots/fixtur
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const views = await import("../src/keybot/views.js");
 const { withGroupStyles, compileStyle } = await import("../src/keybot/tones.js");
-const { registerBotsKeybotRoutes } = await import("../src/routes/botsKeybot.js");
+const { registerBotsKeybotRoutes } = await import("../src/routes/bots/botsKeybot.js");
 const { getPersonality, savePersonality } = await import("../src/personality/store.js");
 import type { HistoryEntry, Personality } from "../../shared/types/api.js";
 import type { Node } from "../../shared/types/sdui.js";

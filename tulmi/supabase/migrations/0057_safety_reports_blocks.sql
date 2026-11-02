@@ -1,4 +1,4 @@
--- X0 Bot — reporting and blocking in Spaces (src/botsBots/{blocks,safety}.ts, routes/safety.ts, App Review guideline 1.2):
+-- X0 Bot — reporting and blocking in Spaces (src/botsBots/{blocks,safety}.ts, routes/bots/safety.ts, App Review guideline 1.2):
 -- what people report (a message, a shared thing, a person) and whom each person has blocked.
 --
 -- Run in your Supabase SQL editor after 0056_entitlement_product.sql. It can be run again. Until it is run, messaging works as

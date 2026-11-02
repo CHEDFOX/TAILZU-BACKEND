@@ -1,5 +1,5 @@
 /**
- * THE NEW ONBOARDING FOR THE BUILDS IN THE STORES (experience/onboardStore.ts).
+ * THE NEW ONBOARDING FOR THE BUILDS IN THE STORES (experience/onboard/store.ts).
  *
  * What these hold down:
  *   - the variant is made ONLY of what the store build draws and does: every
@@ -55,9 +55,9 @@ const { buildApp } = await import("../src/server.js");
 const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
 const { buildScreen } = await import("../src/experience/screens.js");
 const { DAILY_LANGUAGES } = await import("../src/experience/phone/languages.js");
-const { OB_EN, OB_HG, OB_STORE_EN, OB_STORE_HG, onboardHinglishSeeds } = await import("../src/experience/onboard.js");
-const { STORE_NEEDS, canOnboardStore, onboardMode, storeStart } = await import("../src/experience/onboardStore.js");
-const { hasAlreadyDictated } = await import("../src/experience/onboardGuard.js");
+const { OB_EN, OB_HG, OB_STORE_EN, OB_STORE_HG, onboardHinglishSeeds } = await import("../src/experience/onboard/copy.js");
+const { STORE_NEEDS, canOnboardStore, onboardMode, storeStart } = await import("../src/experience/onboard/store.js");
+const { hasAlreadyDictated } = await import("../src/experience/onboard/guard.js");
 const { BLIP_LOOPS, BLIP_HEIGHT, BLIP_LOOP_MS, blipSize, blipUrl } = await import("../src/experience/blipLoops.js");
 const { BLIP_BUILD } = await import("../src/experience/blipData.js");
 const { recordUsage } = await import("../src/usage/metering.js");

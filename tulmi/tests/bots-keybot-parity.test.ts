@@ -30,7 +30,7 @@ const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { SCREENS } = await import("../src/experience/bots/ids.js");
 const { statsView } = await import("../src/keybot/stats.js");
 const views = await import("../src/keybot/views.js");
-const { registerBotsKeybotRoutes } = await import("../src/routes/botsKeybot.js");
+const { registerBotsKeybotRoutes } = await import("../src/routes/bots/botsKeybot.js");
 const data = await import("./bots-keybot-data.js");
 import type { Node } from "../../shared/types/sdui.js";
 

@@ -99,7 +99,7 @@ export interface UsageLive { used: number; month: number; state: "ok" | "near" |
 
 /**
  * The month over every bot (Xode's jobs and the other bots' answers) and the usage meter, from the You tab's records (src/you;
- * routes/botsYou.ts sets it when the server starts). Read through the person's own `api`. Unset (tests, the render check) or failing: the
+ * routes/bots/botsYou.ts sets it when the server starts). Read through the person's own `api`. Unset (tests, the render check) or failing: the
  * jobs' month against deps.budgetPaise(), as before.
  */
 export type SpendSource = (deps: BotsDeps, tzOffsetMinutes: number) => Promise<{ limitPaise: number; monthPaise: number; usage?: UsageLive } | null>;

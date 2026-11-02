@@ -19,7 +19,7 @@ import { attachmentKindOf, type MediaKind } from "../media/types.js";
 
 // ------------------------------------------------------------------ the shapes the routes return (as much as is read)
 
-/** GET /v1/code/jobs/:id → job (routes/codeJobs.ts, stripAgent). */
+/** GET /v1/code/jobs/:id → job (routes/code/codeJobs.ts, stripAgent). */
 export interface JobRow {
   id: string;
   projectId: string;

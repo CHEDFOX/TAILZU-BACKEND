@@ -1,5 +1,5 @@
 /**
- * THE BOTS APP'S MEDIA (experience/bots/media.ts, routes/voiceSample.ts; shared/types/sdui.ts section 3d):
+ * THE BOTS APP'S MEDIA (experience/bots/media.ts, routes/writing/voiceSample.ts; shared/types/sdui.ts section 3d):
  *
  *   - Ask sends a picked photo, file or screenshot (uploadFile into `attach`), shows it on its way and sent, and carries
  *     it in the ask; a build without FileUpload keeps the attach screen as before
@@ -33,7 +33,7 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const views = await import("../src/keybot/views.js");
-const { registerVoiceSampleRoute, sampleLine } = await import("../src/routes/voiceSample.js");
+const { registerVoiceSampleRoute, sampleLine } = await import("../src/routes/writing/voiceSample.js");
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 
 const PROJECT = "55555555-5555-4555-8555-555555555555";

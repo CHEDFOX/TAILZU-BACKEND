@@ -29,7 +29,7 @@
 import WebSocket from "ws";
 import { getConfig } from "../src/config.js";
 import { synthesize } from "../src/pipeline/tts.js";
-import { OPENAI_RATE, openOpenAI } from "../src/routes/live-engines.js";
+import { OPENAI_RATE, openOpenAI } from "../src/routes/writing/live-engines.js";
 
 function args(): { say: string[]; gap: number } {
   const a = process.argv.slice(2);

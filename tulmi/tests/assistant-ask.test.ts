@@ -1,5 +1,5 @@
 /**
- * The phone's Ask (POST /v1/assistant/ask, routes/assistant.ts) with the
+ * The phone's Ask (POST /v1/assistant/ask, routes/ask/assistant.ts) with the
  * planner faked: one command in, one { say, open?, taskId?, receipt } out, from
  * the same planner and connected apps as the desktop's Ask, with no screen.
  * Every answer carries the run's receipt (src/runs), and every ask is a row
@@ -25,7 +25,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => ({
   },
 }));
 
-const { registerAssistantRoutes, answerOf, phoneOf, FOLLOW_UP_MS, FOLLOW_UPS_CHAIN } = await import("../src/routes/assistant.js");
+const { registerAssistantRoutes, answerOf, phoneOf, FOLLOW_UP_MS, FOLLOW_UPS_CHAIN } = await import("../src/routes/ask/assistant.js");
 const { ALWAYS_ON } = await import("../src/connectors/catalog.js");
 const { createConnectors } = await import("../src/connectors/index.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");

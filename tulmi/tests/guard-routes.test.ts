@@ -1,5 +1,5 @@
 /**
- * THE GUARDS ON THE ROUTES THAT SPEND MONEY (src/routes/guarded.ts): artifact make and edit, job create, and the code doors that ask a model.
+ * THE GUARDS ON THE ROUTES THAT SPEND MONEY (src/http/guarded.ts): artifact make and edit, job create, and the code doors that ask a model.
  *
  * What these hold down:
  *   - no room is a 429 with Retry-After and the place in the queue (the same words on every route), and nothing is made or asked;
@@ -40,8 +40,8 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 
 const { Guard } = await import("../src/guard/index.js");
 const { registerArtifactRoutes } = await import("../src/routes/artifacts.js");
-const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
-const { registerCodeRoutes } = await import("../src/routes/code.js");
+const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
+const { registerCodeRoutes } = await import("../src/routes/code/code.js");
 const { rig: artifactRig, idOf } = await import("./artifacts-rig.js");
 const { rig: jobsRig } = await import("./jobs-rig.js");
 const { projectRig, built } = await import("./project-rig.js");

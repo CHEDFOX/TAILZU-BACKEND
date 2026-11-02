@@ -1,5 +1,5 @@
 /**
- * THE "TURN ON NOTIFICATIONS" ASK IN THE BOTS APP (screens/pushAsk.ts, routes/botsPushAsk.ts; docs/bots-gaps.md A5), and the
+ * THE "TURN ON NOTIFICATIONS" ASK IN THE BOTS APP (screens/pushAsk.ts, routes/bots/botsPushAsk.ts; docs/bots-gaps.md A5), and the
  * first-day Home's living header (A9):
  *
  *   - on a phone's Home, once a bot is working or needs the person: a card that says why, then the system's own ask; it reads the
@@ -24,7 +24,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
   return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id ? { id } : null; } };
 });
 
-const { registerBotsPushAskRoutes, PUSH_ASK_ROUTE } = await import("../src/routes/botsPushAsk.js");
+const { registerBotsPushAskRoutes, PUSH_ASK_ROUTE } = await import("../src/routes/bots/botsPushAsk.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
