@@ -52,7 +52,7 @@ const { withKeybotKeyboard } = await import("../src/keybot/keyboard.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { walk } = await import("../src/experience/bots/lint.js");
-const { RUNNER_CARD_WORDS } = await import("../src/experience/bots/screens/you.js");
+const { RUNNER_CARD_WORDS } = await import("../src/experience/bots/screens/you/computer.js");
 
 type Flags = Record<string, unknown>;
 const flagsOf = (b: { flags?: unknown }) => (b.flags ?? {}) as Flags;
