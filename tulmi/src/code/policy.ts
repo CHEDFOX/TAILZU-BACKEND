@@ -1,7 +1,7 @@
 /**
  * WHAT THE CODE BOT MAY DO, WHAT IT ASKS ABOUT, AND WHAT IT NEVER DOES.
  *
- * The bot is not fenced into one corner of a repo. It works the way Claude Code
+ * The bot is not fenced into one corner of a repo. It works the way a coding agent
  * works with git: it has principles (GIT_PRINCIPLES, below), and a permission
  * system that decides, for each thing it is about to do, whether to just do it,
  * ask the person first, or refuse. The person can answer an "ask" once and for

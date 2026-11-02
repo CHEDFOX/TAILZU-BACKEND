@@ -4,7 +4,7 @@
  * boards; Usage takes the Budget board's place, at bots.usage and the old bots.budget). Plans and Language are built in screens/firstRun.ts
  * (once first-run steps, now pages); they are linked, not built, here.
  *
- * NO MONEY ON ANY OF THEM: no cost, no price, no amount. Use is the usage meter (src/you/usage.ts), the way Claude shows it: "This stretch ·
+ * NO MONEY ON ANY OF THEM: no cost, no price, no amount. Use is the usage meter (src/you/usage.ts), the way other AI assistants show it: "This stretch ·
  * 64% used · resets Thu 9 am", "This month · 40% used", a calm line near the limit, and at it a bigger plan offered as an action (the store's
  * own sheet shows its price). Every number is the person's own, from the routes in routes/botsYou.ts (src/you): the meter, the plan and its
  * dates from billing, the computers from runner presence, the connected apps from connectors. A read that fails draws the honest empty state

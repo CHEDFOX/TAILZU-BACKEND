@@ -453,7 +453,7 @@ const fail = (error: Fail): CallOutcome => ({ ok: false, text: "", error });
 /**
  * What an address a person pasted turns out to be, by asking it to start an
  * MCP session with no credentials: "oauth" when it answers 401 (the only
- * signal the spec gives that a sign-in is wanted, and the one Claude starts
+ * signal the spec gives that a sign-in is wanted, and the one other MCP clients start
  * from), "none" when it simply answers. Anything else is not an app we can
  * connect to. Through egress.ts like every request: ten seconds, 256 KiB.
  */

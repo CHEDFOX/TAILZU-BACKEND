@@ -716,7 +716,7 @@ const EnvSchema = z.object({
    */
   CODE_EFFORT: z.preprocess((v) => (typeof v === "string" && v.trim() ? v.trim().toLowerCase() : undefined), z.enum(["adaptive", "high"]).default("high")),
   /**
-   * ARTIFACTS (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, like Claude's: a page,
+   * ARTIFACTS (src/artifacts, docs/artifacts.md): live things a bot makes and the person sees and clicks in the app, like other assistants' artifacts: a page,
    * a React component, SVG, a diagram, markdown. They run in the viewer (the viewer/ package, a site of its own, in a sandbox with no network);
    * this server keeps them, their versions, what they save while they run, and makes the changes cheaply (an edit of one element sends a
    * model only that element, on the cheap tier). Off by default: it needs migration 0032, and every /v1/artifacts route answers

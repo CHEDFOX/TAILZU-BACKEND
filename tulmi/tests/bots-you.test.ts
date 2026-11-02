@@ -165,7 +165,7 @@ describe("the You screens", () => {
     }
   });
 
-  it("You and Usage show the meter the way Claude does, and no screen here shows money", async () => {
+  it("You and Usage show the meter the way other AI assistants do, and no screen here shows money", async () => {
     const you = texts((await build("bots.you", "phone", ANSWERS)).root);
     expect(you).toContain("This stretch");
     expect(you).toContain("64% used");

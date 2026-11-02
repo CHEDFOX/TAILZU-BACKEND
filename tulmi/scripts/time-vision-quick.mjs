@@ -7,8 +7,8 @@
  * the production container as it is, with the server's own key, and
  * without deploying anything:
  *
- *   git fetch origin claude/serene-lovelace-y9fcnj
- *   git show origin/claude/serene-lovelace-y9fcnj:tulmi/scripts/time-vision-quick.mjs > /tmp/time-vision-quick.mjs
+ *   git fetch origin <branch>
+ *   git show origin/<branch>:tulmi/scripts/time-vision-quick.mjs > /tmp/time-vision-quick.mjs
  *   docker compose cp /tmp/time-vision-quick.mjs backend:/tmp/time-vision-quick.mjs
  *   docker compose exec backend node /tmp/time-vision-quick.mjs
  *

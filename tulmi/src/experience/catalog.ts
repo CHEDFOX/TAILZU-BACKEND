@@ -14644,7 +14644,7 @@ export function buildKeyboardConfig(
         // default is FALSE so store builds never show it. To verify a fresh
         // binary + live OTA delivery in one shot: flip this to true + cache
         // bump — the stamp appearing proves both — then flip back off.
-        // ON, temporarily. Every keyboard fix I have made in this session is a
+        // ON, temporarily. Every recent keyboard fix is a
         // FLAG — holdMultiplier, hitSlop, fillGaps — and a flag only does
         // anything if the config actually reaches the keyboard. The keyboard
         // needs Full Access and a valid token to fetch it; without either it

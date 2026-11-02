@@ -393,7 +393,7 @@ export function bookForJobs(b: ProjectBook): string {
 }
 
 /**
- * The project card: what Xode's chat has in front of it for every message (code/chat/converse.ts), the way CLAUDE.md is in front of Claude Code.
+ * The project card: what Xode's chat has in front of it for every message (code/chat/converse.ts), the way an agent's rules file is in front of a coding agent.
  * What it is and for whom, the owner's words, where it is heading, how it stands, what changed, its rules, what is not known and what the owner has
  * not answered: a few lines of each chapter, every one with its source. The same for every message of a project, so a model's prompt cache keeps it.
  * A chapter in full is one tool call away (bookChapter).

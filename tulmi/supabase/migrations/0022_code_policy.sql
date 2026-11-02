@@ -3,7 +3,7 @@
 -- Run in your Supabase SQL editor after 0021, before using the permission routes
 -- (GET/POST/DELETE /v1/code/projects/:id/permissions).
 --
--- The bot is not fenced in. It works like Claude Code with git: some things it
+-- The bot is not fenced in. It works like a coding agent with git: some things it
 -- just does (read, make a branch, commit to a branch it made, open a draft pull
 -- request), some it asks the person about first (commit to any other branch,
 -- merge, mark ready, close, delete a branch, change a workflow file, start an

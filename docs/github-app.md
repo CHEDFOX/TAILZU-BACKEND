@@ -14,7 +14,7 @@ You need to do four things, in this order:
 3. Put the values in `tulmi/.env` and switch `CODE_GITHUB` on.
 4. Install it on your own account and try it (section 4).
 
-The bot is **not fenced into a corner of the repo**. It works like Claude Code
+The bot is **not fenced into a corner of the repo**. It works like a coding agent
 works with git: it has principles, and a permission system. Some things it just
 does, some it asks you about first, a few it asks about with Face ID every
 single time, and a few it never does. You can answer an "ask" once and for all
@@ -287,7 +287,7 @@ Removing it on GitHub (or suspending it) reaches Tailzu through the webhook.
 
 This is the permission model (`tulmi/src/code/policy.ts`). The rule: the bot is
 **not hard-limited**. It has strong principles and a permission
-system, as Claude Code has with git. It asks the person when an action needs
+system, as a coding agent has with git. It asks the person when an action needs
 it, and the person can grant standing permission.
 
 ### The principles

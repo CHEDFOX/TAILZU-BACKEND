@@ -373,7 +373,7 @@ window's `desk_plan`; the web checkout), where Apple (App Review 3.1.2) and Goog
 buys: there the store's (or Razorpay's) price, the renewal ("Renews automatically until you cancel") and Terms and Privacy are shown.
 Everything else leads there, by what a plan gives.
 
-Instead the person sees a **usage meter**, the way Claude shows it. What is counted is **what each use really costs us, in US dollars**
+Instead the person sees a **usage meter**, the way other AI assistants show it. What is counted is **what each use really costs us, in US dollars**
 (src/usage/cost.ts), from the records that always held it (code_jobs.spent_paise, you_spend):
 
 | Use | Where its real cost comes from |

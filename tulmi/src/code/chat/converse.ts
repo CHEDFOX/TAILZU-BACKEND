@@ -4,7 +4,7 @@
  *   converse(input, ports, model) -> { text, job?, clarify?, cites, thread, ... }
  *
  * There is no router guessing what a message is, and no road per guess with its own prompt and its own view of the project. Every message is the
- * same loop (look.ts), in the way Claude Code works:
+ * same loop (look.ts), in the way a coding agent works:
  *
  *   CONTEXT  the project card (book.ts bookCard: what it is and for whom, the owner's words, where it is heading, how it stands, what changed, its
  *            rules, what is not known), where the map puts what the message names, and the chat so far (its summary, the last answer, the job it

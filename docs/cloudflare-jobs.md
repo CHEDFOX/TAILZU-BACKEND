@@ -281,7 +281,7 @@ A suggested first check: make a job on a throwaway repo with a small task, watch
 
 ## 10. The live session
 
-The aim is to make the bot work the way Claude Code does: **read, list, glob and grep the real files at once**, and run commands in **one runner kept open for the job**, so a command takes about a second instead of 30 to 60 (a new GitHub Actions run for each one). It exists only with the jobs on the Worker; the VPS in `local` mode behaves as it always has. The desktop app's half is `docs/desktop-runner-session.md`; the agent's tools are in `docs/code-agent.md`; the minutes ledger is in `docs/code-router.md`.
+The aim is to make the bot work the way a coding agent does: **read, list, glob and grep the real files at once**, and run commands in **one runner kept open for the job**, so a command takes about a second instead of 30 to 60 (a new GitHub Actions run for each one). It exists only with the jobs on the Worker; the VPS in `local` mode behaves as it always has. The desktop app's half is `docs/desktop-runner-session.md`; the agent's tools are in `docs/code-agent.md`; the minutes ledger is in `docs/code-router.md`.
 
 ### What was added
 

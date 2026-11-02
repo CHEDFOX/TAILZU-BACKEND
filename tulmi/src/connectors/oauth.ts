@@ -15,7 +15,7 @@
  *      never registered over, and never shown to any auth server but its own;
  *   2. Tailzu's published client document (CONNECTOR_CLIENT_METADATA_URL,
  *      "CIMD"), where the auth server takes one AND lets a client with no
- *      secret in ("none"), which is Claude's rule too;
+ *      secret in ("none"), which is other MCP clients' rule too;
  *   3. dynamic client registration, as before.
  *
  * WHAT IS CHECKED that the SDK skips, before anyone is sent anywhere

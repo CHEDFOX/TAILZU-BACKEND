@@ -136,7 +136,7 @@ describe("what a message is, by the rules alone", () => {
     expect(readByRules("and then explain in detail why the sky is blue during the day but red at sunset", { recent, attachments: [], mode: "text" }).followUp).toBeUndefined();
   });
 
-  it("takes \"what?\", \"why?\", \"explain\" after an answer as about that answer, in the language it is said in (as Claude Code does)", async () => {
+  it("takes \"what?\", \"why?\", \"explain\" after an answer as about that answer, in the language it is said in (as a coding agent does)", async () => {
     const recent = [{ said: "what do you understand of the project", did: "code_question" }];
     const lost = readByRules("what ?", { projectId: "p", recent, attachments: [], mode: "text" });
     expect(lost).toMatchObject({ intent: "code_question", followUp: { base: "what do you understand of the project" } });
