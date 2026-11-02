@@ -6,14 +6,15 @@
  *   outbox.sendDue(mailer)                                    sends what is due (none while the mailer is not configured), retrying with backoff
  *   startMailSender({ outbox, mailer })                       that, every minute; returns the way to stop
  *
- * THE PLUG-IN POINT for a provider is `Mailer` below. Today `mailerFromEnv()` gives `NOT_CONFIGURED`: it sends nothing, so mail stays
- * queued, and the screens say plainly that it will go out (and offer the link to send by hand meanwhile). To plug one in, write a
- * Mailer whose `send` calls the provider (its key from config, never logged) and return it from `mailerFromEnv()`; what is queued then
- * goes out on the next run, oldest first.
+ * The provider is Xooteq Mail's Postal (mail.xooteq.online, the same server that sends the sign-in codes): `PostalMailer` posts each
+ * mail to its HTTP API with the X0 Bot mail server's API key (MAIL_API_KEY), from MAIL_FROM. Without the key `mailerFromEnv()` gives
+ * `NOT_CONFIGURED`: nothing is sent, mail stays queued, and the screens say plainly that it will go out (and offer the link to send by
+ * hand meanwhile); once the key is set, what is queued goes out on the next run, oldest first.
  *
  * Addresses and bodies are never logged. A failure keeps only a short reason (no address, no body).
  */
 import { randomUUID } from "node:crypto";
+import { getConfig } from "../config.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 
 export interface MailMessage { to: string; subject: string; text: string; html?: string }
@@ -31,9 +32,39 @@ export const NOT_CONFIGURED: Mailer = {
   async send() { throw new Error("mail is not configured"); },
 };
 
-/** The server's mailer. THE PLUG-IN POINT: return a real Mailer here once a provider is chosen. */
-export function mailerFromEnv(): Mailer {
-  return NOT_CONFIGURED;
+/**
+ * Postal's HTTP API (POST /api/v1/send/message, header X-Server-API-Key): one mail a call, plain text and HTML, from the configured
+ * sender. A refusal throws an error named for Postal's code (e.g. "Postal:UnauthenticatedFromAddress", a sender on a domain the mail
+ * server does not have), which is all the outbox keeps of it: never the address or the body.
+ */
+export class PostalMailer implements Mailer {
+  readonly configured = true;
+  private readonly fetch: typeof fetch;
+
+  constructor(private readonly o: { url: string; key: string; from: string; fetch?: typeof fetch; timeoutMs?: number }) {
+    this.fetch = o.fetch ?? fetch;
+  }
+
+  async send(m: MailMessage): Promise<void> {
+    const res = await this.fetch(`${this.o.url.replace(/\/+$/, "")}/api/v1/send/message`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-server-api-key": this.o.key },
+      body: JSON.stringify({ to: [m.to], from: this.o.from, subject: m.subject, plain_body: m.text, ...(m.html ? { html_body: m.html } : {}) }),
+      signal: AbortSignal.timeout(this.o.timeoutMs ?? 15_000),
+    });
+    const body = (await res.json().catch(() => null)) as { status?: unknown; data?: { code?: unknown } } | null;
+    if (res.ok && body?.status === "success") return;
+    const code = typeof body?.data?.code === "string" && /^[A-Za-z]{1,40}$/.test(body.data.code) ? body.data.code : `HTTP${res.status}`;
+    const err = new Error(`Postal refused the mail (${code})`);
+    err.name = `Postal:${code}`;
+    throw err;
+  }
+}
+
+/** The server's mailer: Postal when its API key is set (MAIL_API_KEY), else none, and mail waits in the outbox. */
+export function mailerFromEnv(env: Pick<ReturnType<typeof getConfig>, "MAIL_API_KEY" | "MAIL_API_URL" | "MAIL_FROM"> = getConfig()): Mailer {
+  const key = env.MAIL_API_KEY?.trim();
+  return key ? new PostalMailer({ url: env.MAIL_API_URL, key, from: env.MAIL_FROM }) : NOT_CONFIGURED;
 }
 
 export interface MailRow {

@@ -1070,6 +1070,15 @@ const EnvSchema = z.object({
   APPLE_SIWA_PRIVATE_KEY: z.string().optional(),
   APPLE_SIWA_TEAM_ID: z.string().default("6552H8HYA4"),
   APPLE_SIWA_CLIENT_ID: z.string().default("com.tulmi.app"),
+  /**
+   * Mail the server sends itself (space invites, safety reports: src/botsBots/mail.ts) goes out through Xooteq Mail's Postal, the same
+   * server that sends the sign-in codes. MAIL_API_KEY is an API key of the X0 Bot mail server in its dashboard (Settings → Sending →
+   * the app → Keys), a SECRET (.env only); without it mail waits in the outbox. MAIL_FROM must be on a domain that mail server has, with
+   * its DKIM record in place (Sending → the app → Domains).
+   */
+  MAIL_API_KEY: z.string().optional(),
+  MAIL_API_URL: z.string().default("https://postal.mail.xooteq.online"),
+  MAIL_FROM: z.string().default("X0 Bot <noreply@x0bot.com>"),
   // Supabase — optional when DEV_SKIP_AUTH is true.
   SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_KEY: z.string().optional(),

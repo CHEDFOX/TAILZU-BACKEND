@@ -137,7 +137,7 @@ export class Spaces {
     this.publish = o.publish ?? ((ids, topic, data) => live.publish(ids, topic, data));
     this.outbox = o.outbox ?? new MailOutbox(undefined, now);
     this.mailer = o.mailer ?? mailerFromEnv();
-    // The host the apps claim for their links: the invite opens Tailzu at joining (a browser gets a page that opens it).
+    // The host the apps claim for their links: the invite opens X0 Bot at joining (a browser gets a page that opens it).
     this.origin = o.origin ?? (() => INVITE_ORIGIN);
   }
 
