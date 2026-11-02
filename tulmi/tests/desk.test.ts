@@ -32,7 +32,7 @@ import { recordUsage, usageSummary } from "../src/usage/metering.js";
 import { buildApp } from "../src/server.js";
 
 /**
- * What the desktop renderer (desktop/sdui.js COMPONENTS and ACTIONS) can draw
+ * What the desktop renderer (desktop src/app/sdui/ COMPONENTS and ACTIONS) can draw
  * and do. A desk page that names anything else renders as nothing in the
  * window, so every page is checked against this list.
  */

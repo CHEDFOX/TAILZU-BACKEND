@@ -292,7 +292,7 @@ export const SITE_UI = {
     title: "Your keyboard just learned another trick.",
     human: "another trick.",
     lede: "Your words appear at the cursor. No copy. No paste.",
-    // The tray app's way in (desktop/main.js, `tap` on by default): a
+    // The tray app's way in (desktop src/main/main.js, `tap` on by default): a
     // double-tap on Ctrl, or on Alt. The chord and F9 are fallbacks and are
     // not what the page shows. Two keys drawn is the gesture; `join` is
     // what goes between them, and for a double-tap nothing does.

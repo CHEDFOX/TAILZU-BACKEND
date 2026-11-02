@@ -4,7 +4,7 @@
  * The design is bots-design/STYLE.md and the Kit boards (Kit1: foundations and frame, Kit2: input and conversation,
  * Kit3: decisions, work, proof, system states). Every helper returns plain SDUI nodes built from the core types
  * (Stack, Text, Image, Grid, Screen, TextField, SafeArea, SVG) and the kit's four extensions (shared/types/sdui.ts,
- * "The Bots app's kit"), with explicit styles, so the phone (React Native) and the window (desktop/sdui.js) draw the
+ * "The Bots app's kit"), with explicit styles, so the phone (React Native) and the window (desktop src/app/sdui/) draw the
  * same thing. Nothing here reads data or the clock: a builder hands the kit what to draw (ctx.live, its own data).
  *
  * Read docs/bots-app.md before adding to it. The rules that keep the two clients identical:

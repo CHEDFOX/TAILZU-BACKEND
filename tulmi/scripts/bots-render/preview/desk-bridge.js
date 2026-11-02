@@ -17,7 +17,7 @@
     md.getUserMedia = async () => { window.__previewMic = "granted"; return { getTracks: () => [] }; };
   } catch { /* a page that cannot: the card's own refusal path */ }
   window.tailzuApp = new Proxy(known, { get: (t, k) => (k in t ? t[k] : noop) });
-  // sdui.js's own names (a classic script's top-level bindings), read when called.
+  // The renderer's own names (top-level bindings of its classic scripts, src/app/sdui/*.js), read when called.
   /* global go, back, STACK */
   window.__previewGo = (id, params) => go(id, params || {});
   window.__previewBack = () => back();

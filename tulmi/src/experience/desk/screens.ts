@@ -8,10 +8,10 @@
  * WRITTEN, in type. That picture is the product's whole claim, and no other
  * dictation app shows it.
  *
- * Sent only to a desktop that declares DeskShell (desktop/sdui.js), so an
+ * Sent only to a desktop that declares DeskShell (desktop src/app/sdui/), so an
  * older installer keeps the rail and the phone's screens. Everything here is
  * composed from the renderer's plain nodes and its named `d-` styles
- * (desktop/app.html); a page changes with a deploy, never an installer.
+ * (desktop src/app/app.html); a page changes with a deploy, never an installer.
  *
  * Honest by construction. Every number is one the server holds: words and
  * speaking time from the usage meter, notes from history, the languages read

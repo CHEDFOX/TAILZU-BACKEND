@@ -43,7 +43,7 @@ function actions(root: unknown): Array<Record<string, unknown>> {
 }
 
 /**
- * Actions only one app runs (TAILZU-FRONTEND/app/src/sdui/actions.ts, TAILZU-DESKTOP/sdui.js `run`): sent to the other, they do nothing.
+ * Actions only one app runs (TAILZU-FRONTEND/app/src/sdui/actions.ts, TAILZU-DESKTOP/src/app/sdui/ `run`): sent to the other, they do nothing.
  * The window's own: its clipboard (copyText), dictation, its settings and recorder, its connect flow. The phone's: Settings, the mic into
  * a field, its clipboard (copyToClipboard), Face ID, the share sheet, the permissions it asks for, a setting kept on the phone.
  */
