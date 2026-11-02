@@ -8,7 +8,7 @@ import { buildBotsScreen } from "../src/experience/bots/index.js";
 import { fakeDeps, IST } from "../src/experience/bots/fixtures.js";
 import { setSpendSource } from "../src/experience/bots/live.js";
 import { lintTree, walk } from "../src/experience/bots/lint.js";
-import { threadFor } from "../src/experience/bots/screens/codeWork.js";
+import { threadFor } from "../src/experience/bots/screens/codeWork/parts.js";
 import { citations, flowOf, outline, plainWords, stageOf, testCount, tries, visibleParts, workLines } from "../src/botsCodeWork/read.js";
 import { ART, CODEWORK_API, JOB_ANSWER, JOB_ASK, JOB_DONE, JOB_FAILED, JOB_LEAD, PROJECT } from "./bots-codework-data.js";
 

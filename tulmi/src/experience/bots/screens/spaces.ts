@@ -7,49 +7,29 @@
  * Every write is a call, then a refresh and a short ink toast. Money is "you press pay": a yes hands over the UPI payment (bots.approve).
  * Screens listen to their live topics ("space:<id>", "spaces", "threads", "thread:<id>"), so they update when someone else changes them.
  */
-import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
-import { PERM_WORDS, PERMS, type Perm } from "../../../botsBots/spacePerms.js";
+
+import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sdui.js";
+import { PERMS, PERM_WORDS } from "../../../botsBots/spacePerms.js";
 import {
-  back, botAvatar, botLook, botRoute, box, button, C, call, card, chip, chips, col, divider, emptyState, FACE, grid, grow, icon, labelled,
-  listRow, meta, notice, open, page, picture, primaryButton, quietButton, row, SCREENS, secondaryButton, sectionLabel, segmented,
-  seq, statusMark, switchMark, text, title, toTab, when, type BotsCtx,
+  row, text, C, call, seq, col, meta, icon, open, SCREENS, box, statusMark, grow, sectionLabel, button, type BotsCtx, notice, card,
+  primaryButton, page, title, emptyState, secondaryButton, toTab, back, switchMark, picture, listRow, quietButton, chips, when, segmented,
+  labelled, divider,
 } from "../kit.js";
 import { canUpload, uploadChip, uploadPick } from "../media.js";
-import { screen, type BotsScreen } from "../registry.js";
+import { type BotsScreen, screen } from "../registry.js";
+import { invitePage } from "./spaces/invitePage.js";
+import { idParam, memberPage } from "./spaces/memberPage.js";
+import {
+  ifFilled, A, toast, clearState, refresh, rowsCard, rowPad, type Space, personDot, names, inputBox, field, isDesk, type OneSpace, failed,
+  enc, write, type Role, section, type Item, iconButton, kindBadge, shortDate, canDo, labelledField, type Task, DAY, localDate,
+  messagePerson,
+} from "./spaces/parts.js";
+import { iconBox, KIND_WORD, setState, type Targets, sharePage } from "./spaces/sharePage.js";
+import {
+  type SpacesData, plural, spaceCount, youAre, memberName, approversLine, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
+  openChat, dayWords, clockOf, type JoinInvite,
+} from "./spaces/spaceDetail.js";
 
-const A = "/v1/botsapp/bots";
-const enc = encodeURIComponent;
-const MIN = 60_000, DAY = 86_400_000;
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-// ===================================================================== what the screens read
-
-interface Member { userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number; perms: Perm[]; role: string | null; roleName: string }
-interface Role { id: string; name: string; perms: Perm[]; preset: boolean }
-interface Invite { code: string; link: string; email: string | null; expiresAt: number; roleName: string; perms: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
-interface SpaceBot { slug: string; name: string; colour: string; addedBy: string; byYou: boolean }
-interface Space {
-  id: string; name: string; mine: boolean; me: { admin: boolean; perms: Perm[] }; members: Member[]; bots: SpaceBot[];
-  invite: { code: string; expiresAt: number } | null; roles: Role[]; waiting?: number;
-  invites?: Invite[]; activity?: Array<{ id: string; kind: string; text: string; at: number; by: string }> | null;
-}
-interface ListLine { id: string; text: string; done: boolean }
-interface Item {
-  id: string; kind: string; title: string; spaceId: string | null; threadId: string | null; by: string; byYou: boolean; at: number; updatedAt: number;
-  access: "view" | "edit"; canEdit: boolean; canRemove: boolean; summary: string; text: string; url: string; note: string; list: ListLine[];
-  place: string; when: string; who: string; bot: string; file: { name: string; mime: string; bytes: number; kind: string; url: string } | null;
-}
-interface Payment {
-  id: string; amountPaise: number; payee: string; vpa: string; note: string; status: "waiting" | "approved" | "declined" | "paid" | "cancelled"; at: number;
-  askedBy: string; byYou: boolean; decidedBy: string; decidedAt: number | null; paidAt: number | null; upi: string | null;
-  canDecide: boolean; canCancel: boolean; canMarkPaid: boolean;
-}
-interface Task {
-  id: string; spaceId: string; spaceName: string; kind: "task" | "plan"; title: string; notes: string; place: string; at: number | null; end: number | null; allDay: boolean;
-  setBy: string; byYou: boolean; people: Array<{ userId: string; name: string; you: boolean; status: "todo" | "done" | "cant"; note: string }>;
-  mine: { status: "todo" | "done" | "cant"; note: string } | null; done: boolean; canRemove: boolean;
-}
 interface Thread {
   id: string; kind: "direct" | "group" | "space"; name: string; spaceId: string | null; spaceName: string; people: Array<{ userId: string; name: string; you: boolean }>;
   last: { text: string; at: number } | null; unread: number; muted: boolean; canPost: boolean; why: string;
@@ -60,128 +40,15 @@ interface Message {
 }
 interface Contacts { people: Array<{ userId: string; name: string; spaces: string[] }>; groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> }
 
-// ===================================================================== small helpers
-
-const refresh: ActionSpec = { kind: "refresh" };
-const toast = (message: string, error = false): ActionSpec => ({ kind: "toast", message, ...(error ? { tone: "error" as const } : {}) });
-const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
-const clearState = (path: string): ActionSpec => ({ kind: "clearState", path });
-const isDesk = (ctx: BotsCtx) => ctx.client === "desktop";
-const idParam = (ctx: BotsCtx, k = "id"): string => String(ctx.params[k] ?? "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64);
-/** A state key from an id: letters, digits and _. */
-const key = (prefix: string, id: string) => `${prefix}_${id.replace(/[^a-z0-9]/gi, "")}`;
-
-/** A write: the call, then a quiet toast and a refresh; a failure says so in plain words. */
-function write(method: "POST" | "PUT" | "DELETE", path: string, bodyArg?: Record<string, unknown>, o: { ok?: string; fail?: string; then?: ActionRef } = {}): ActionRef {
-  return call(method, path, bodyArg, { ok: seq(o.ok ? toast(o.ok) : undefined, o.then ?? refresh), fail: toast(o.fail ?? "Couldn't do that. Try again.", true) });
-}
-const ifFilled = (path: string, then: ActionRef, empty = "Type something first"): ActionSpec => ({ kind: "condition", if: { falsy: path }, then: toast(empty), else: then });
-
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
-const names = (list: string[]) => (list.length <= 1 ? list[0] ?? "" : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`);
-const localDate = (ctx: BotsCtx, ms: number) => new Date(ms + ctx.tzOffsetMinutes * MIN);
-const dayKeyOf = (ctx: BotsCtx, ms: number) => localDate(ctx, ms).toISOString().slice(0, 10);
-function clockOf(ctx: BotsCtx, ms: number): string {
-  const d = localDate(ctx, ms);
-  const h = d.getUTCHours(), m = d.getUTCMinutes();
-  return `${h % 12 === 0 ? 12 : h % 12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "am" : "pm"}`;
-}
-const shortDate = (ctx: BotsCtx, ms: number) => { const d = localDate(ctx, ms); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
-/** "Today", "Tomorrow", "Thu 29 Oct". */
-function dayWords(ctx: BotsCtx, ms: number): string {
-  const k = dayKeyOf(ctx, ms);
-  if (k === dayKeyOf(ctx, ctx.live.now)) return "Today";
-  if (k === dayKeyOf(ctx, ctx.live.now + DAY)) return "Tomorrow";
-  if (k === dayKeyOf(ctx, ctx.live.now - DAY)) return "Yesterday";
-  const d = localDate(ctx, ms);
-  return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
-}
-/** "4 min ago", "9:30 am", "Yesterday", "2 Oct". */
-function ago(ctx: BotsCtx, ms: number): string {
-  const m = Math.max(0, Math.round((ctx.live.now - ms) / MIN));
-  if (m < 1) return "now";
-  if (m < 60) return `${m} min`;
-  if (dayKeyOf(ctx, ms) === dayKeyOf(ctx, ctx.live.now)) return clockOf(ctx, ms);
-  if (dayKeyOf(ctx, ms) === dayKeyOf(ctx, ctx.live.now - DAY)) return "Yesterday";
-  return shortDate(ctx, ms);
-}
-const whenLine = (ctx: BotsCtx, at: number | null, allDay: boolean) => (at === null ? "" : allDay ? dayWords(ctx, at) : `${dayWords(ctx, at)}, ${clockOf(ctx, at)}`);
 const kb = (bytes: number) => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
-const canDo = (s: Space, p: Perm) => s.me.perms.includes(p);
 
-/** A text field the kit's way: no frame of its own, Geist, 44 tall. Put it in `inputBox`. */
-function field(id: string, path: string, placeholder: string, o: { onSubmit?: ActionRef; multiline?: boolean; keyboard?: "numeric" | "email-address" } = {}): Node {
-  return {
-    type: "TextField", id, bind: { value: path },
-    props: {
-      placeholder, placeholderColor: C.idle, background: "transparent", borderWidth: 0, radius: 0, paddingHorizontal: 0, paddingVertical: 0,
-      minHeight: o.multiline ? 72 : 44, color: C.ink, returnKeyType: o.onSubmit ? "send" : "done", ...(o.multiline ? { multiline: true } : {}),
-      ...(o.keyboard ? { keyboardType: o.keyboard, autoCapitalize: "none" } : {}),
-    },
-    ...(o.onSubmit ? { on: { onSubmit: o.onSubmit } } : {}),
-    style: {
-      flexGrow: 1, flexShrink: 1, minWidth: 0, minHeight: o.multiline ? 72 : 44, paddingHorizontal: 0, paddingVertical: 0, fontFamily: FACE.regular,
-      fontSize: 15, lineHeight: 22, color: C.ink, borderWidth: 0, backgroundColor: "transparent", outlineStyle: "none",
-    },
-  };
-}
-function inputBox(children: Node[], o: { radius?: number; pad?: number } = {}): Node {
-  return row(children, { gap: 8, borderWidth: 1, borderColor: C.line, borderRadius: o.radius ?? 14, paddingLeft: o.pad ?? 14, paddingRight: 6, paddingVertical: 4, minHeight: 48, backgroundColor: C.paper });
-}
-const labelledField = (label: string, f: Node) => col([sectionLabel(label), inputBox([f])], { gap: 8 });
 /** A chip that turns a switch in state on and off (a person picked or not). */
 const toggleChip = (label: string, path: string): Node => row([text(label, { size: 13, lineHeight: 17, style: { color: { truthy: path, then: C.paper, else: C.ink } } })], {
   paddingVertical: 8, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: { truthy: path, then: C.ink, else: C.outline }, backgroundColor: { truthy: path, then: C.ink, else: C.paper },
 }, { kind: "toggleState", path });
 
-const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase();
-function personDot(name: string, you: boolean, size = 32): Node {
-  return box([text(initial(name), { size: 13, weight: 600, color: you ? C.paper : C.grey70, lineHeight: 16 })], {
-    width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center", flexShrink: 0,
-    backgroundColor: you ? C.ink : C.surface, borderWidth: you ? 0 : 1, borderColor: C.outline,
-  });
-}
-function iconButton(name: Parameters<typeof icon>[0], onPress: ActionRef, label: string, size = 40): Node {
-  return labelled(box([icon(name, { size: 18, color: C.grey70 })], { width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center", flexShrink: 0 }, onPress), label);
-}
-const head = (label: string, right?: Node): Node => row([sectionLabel(label), grow(), ...(right ? [right] : [])], { minHeight: 24 });
-const link = (label: string, onPress: ActionRef): Node => row([text(label, { size: 13, weight: 500, lineHeight: 18 })], { minHeight: 32, paddingHorizontal: 4 }, onPress);
-const section = (label: string, children: Node[], right?: Node): Node => col([head(label, right), ...children], { gap: 8, minWidth: 0 });
-/** A list card from rows that are already rows (with their own padding). */
-const rowsCard = (rows: Node[]): Node => col(rows.flatMap((r, i) => (i ? [divider(), r] : [r])), { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" });
-const rowPad = { paddingVertical: 12, paddingHorizontal: 16, minHeight: 52, gap: 12 };
-
-const KIND_ICON: Record<string, Parameters<typeof icon>[0]> = { list: "check", trip: "pin", plan: "calendar", note: "notes", file: "clip", link: "link", answer: "spark", preview: "code", text: "notes" };
-const KIND_WORD: Record<string, string> = { list: "List", trip: "Trip", plan: "Plan", note: "Note", file: "File", link: "Link", answer: "Answer", preview: "Preview", text: "Note" };
-const kindBadge = (kind: string, size = 36): Node => box([icon(KIND_ICON[kind] ?? "notes", { size: 18, color: C.grey70 })], { width: size, height: size, borderRadius: 10, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 });
-
-function failed(ctx: BotsCtx, what: string, o: { back?: boolean; nav?: string } = {}) {
-  return page(ctx, { back: o.back ?? true, title: what, nav: o.nav ?? "you", body: [emptyState({ pose: "think", title: `Couldn't open ${what.toLowerCase()}`, body: "It may have gone, or the connection dropped. Try again.", action: { label: "Try again", onPress: refresh } })] });
-}
-
-// ===================================================================== bots.spaces: the list
-
-interface SpacesData {
-  spaces?: Space[]; you?: string; unread?: number; given?: Task[]; one?: { space: Space; items: Item[]; payments: Payment[]; tasks: Task[]; mailReady: boolean };
-  bots?: Array<{ slug: string; name: string; colour: string; builtin: boolean }>;
-  /** What the invite in `join` is for (GET .../spaces/join/:code): null when it doesn't work, absent when it couldn't be read. */
-  invite?: JoinInvite | null;
-}
-interface JoinInvite { name: string; members: number; email: string | null }
-
-const spaceCount = (s: Space) => `${plural(s.members.length, "person", "people")} · ${plural(s.bots.length, "bot")}`;
-function approversLine(s: Space): string {
-  const yes = s.members.filter((m) => m.canApprove).map((m) => (m.you ? "You" : m.name));
-  const ask = s.members.filter((m) => !m.canApprove && m.perms.includes("askPay")).map((m) => (m.you ? "you" : m.name));
-  return `${names(yes)}${ask.length ? ` · ${names(ask)} can ask` : ""}`;
-}
-const youAre = (s: Space) => (s.me.admin ? "You're the admin" : `You're ${s.members.find((m) => m.you)?.roleName ?? "in it"}`);
-const memberName = (m: Member) => (m.you ? `${m.name} (you)` : m.name);
-
 const newSpace = ifFilled("spaceName", call("POST", `${A}/spaces`, { name: "$state.spaceName" }, { assignTo: "made", ok: seq(toast("Space made"), clearState("spaceName"), refresh), fail: toast("Couldn't make it. Try again.", true) }), "Name the space first");
 const joinSpace = ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code" }, { assignTo: "joined", ok: seq(toast("You're in"), clearState("code"), refresh), fail: toast("That code doesn't work, or it's for another email.", true) }), "Enter the invite code");
-const openChat = (spaceId: string): ActionRef => call("POST", `${A}/threads/group`, { space: spaceId, people: "all" }, { assignTo: "chat", ok: { kind: "navigate", screenId: SCREENS.thread, params: { id: "$state.chat.id" } }, fail: toast("Couldn't open the chat. Try again.", true) });
-const messagePerson = (userId: string): ActionRef => call("POST", `${A}/threads/direct`, { person: userId }, { assignTo: "dm", ok: { kind: "navigate", screenId: SCREENS.thread, params: { id: "$state.dm.id" } }, fail: toast("You can't message them from here.", true) });
 
 /** Chats and what's given to you: the two ways in at the top of Spaces. */
 function topRows(d: SpacesData): Node {
@@ -193,7 +60,7 @@ function topRows(d: SpacesData): Node {
       ...(given ? [countDot(given)] : []), icon("chevron", { size: 16, color: C.meta })], rowPad, open(SCREENS.spaceTasks)),
   ]);
 }
-const iconBox = (name: Parameters<typeof icon>[0]) => box([icon(name, { size: 18 })], { width: 32, height: 32, borderRadius: 10, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 });
+
 const countDot = (n: number) => box([text(n > 99 ? "99+" : String(n), { size: 11, weight: 600, color: C.paper, lineHeight: 14 })], { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 });
 
 function spaceSummary(s: Space): Node {
@@ -254,168 +121,6 @@ function spacesPhone(ctx: BotsCtx, d: SpacesData) {
   });
 }
 
-// ===================================================================== one space, whole
-
-function payRow(ctx: BotsCtx, s: Space, p: Payment): Node {
-  const status = p.status === "waiting" ? (p.canDecide ? "Waiting for your yes" : `Waiting for a yes · asked by ${p.askedBy}`)
-    : p.status === "approved" ? `${p.decidedBy} said yes · ${p.canMarkPaid ? "you pay in your UPI app" : "to be paid"}`
-      : p.status === "paid" ? `Paid by ${p.decidedBy}${p.paidAt ? ` · ${shortDate(ctx, p.paidAt)}` : ""}`
-        : p.status === "declined" ? `${p.decidedBy} said no` : "Taken back";
-  const mark = p.status === "paid" ? "done" : p.status === "declined" || p.status === "cancelled" ? "failed" : p.canDecide ? "needs" : "waiting";
-  const base = `${A}/spaces/${enc(s.id)}/payments/${enc(p.id)}`;
-  const approve = call("PUT", base, { decision: "approve" }, {
-    assignTo: "decided", ok: seq(toast("Approved. Now pay in your UPI app"), { kind: "navigate", screenId: SCREENS.approve, params: { upi: "$state.decided.payment.upi", bot: "tailzu" } }),
-    fail: toast("Couldn't approve it. Someone may have answered.", true),
-  });
-  const actions: Node[] = [
-    ...(p.canDecide ? [button("Approve", approve, { kind: "secondary", size: "md" }), button("Say no", write("PUT", base, { decision: "decline" }, { ok: "Said no" }), { kind: "secondary", size: "md" })] : []),
-    ...(p.canMarkPaid && p.upi ? [button("Pay in UPI", open(SCREENS.approve, { upi: p.upi, bot: "tailzu" }), { kind: "secondary", size: "md" }), button("I've paid", write("PUT", base, { paid: true }, { ok: "Marked paid" }), { kind: "secondary", size: "md" })] : []),
-    ...(p.canCancel ? [button("Take back", write("DELETE", base, undefined, { ok: "Taken back" }), { kind: "quiet", size: "md" })] : []),
-  ];
-  return col([
-    row([statusMark(mark), col([text(p.note ? `${p.note} · ${p.payee}` : `Pay ${p.payee}`, { size: 15, weight: 500, lineHeight: 20 }), meta(status, { size: 12, lines: 2 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }), meta(shortDate(ctx, p.at), { size: 12 })], { gap: 12, alignItems: "flex-start" }),
-    ...(actions.length ? [row(actions, { gap: 8, flexWrap: "wrap", paddingLeft: 20 })] : []),
-  ], { ...rowPad, gap: 10 });
-}
-
-function itemRow(ctx: BotsCtx, it: Item): Node {
-  return row([kindBadge(it.kind), col([text(it.title, { size: 15, weight: 500, lineHeight: 20, lines: 1 }), meta([it.summary, `${it.by} · ${ago(ctx, it.updatedAt)}`].filter(Boolean).join(" · "), { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-    ...(it.access === "edit" ? [meta("Can edit", { size: 12, lines: 1, style: { flexShrink: 0 } })] : []), icon("chevron", { size: 16, color: C.meta })], rowPad, open(SCREENS.spaceItem, { item: it.id }));
-}
-
-function taskLine(ctx: BotsCtx, t: Task): string {
-  const who = t.people.map((p) => (p.you ? "you" : p.name));
-  return [`${t.kind === "plan" ? "For" : "To"} ${names(who)}`, whenLine(ctx, t.at, t.allDay), t.place, `from ${t.setBy}`].filter(Boolean).join(" · ");
-}
-function taskMark(t: Task) {
-  if (t.done) return "done" as const;
-  if (t.mine?.status === "cant" || t.people.every((p) => p.status === "cant")) return "failed" as const;
-  return t.mine && t.mine.status === "todo" ? "needs" as const : "waiting" as const;
-}
-/** One task or plan: its line, what each person said, and (yours) Done / Can't do it. */
-function taskRow(ctx: BotsCtx, t: Task, o: { showSpace?: boolean } = {}): Node {
-  const base = `${A}/spaces/${enc(t.spaceId)}/tasks/${enc(t.id)}`;
-  const noteKey = key("cant", t.id), openKey = key("cantOpen", t.id);
-  const said = t.people.filter((p) => p.status !== "todo").map((p) => (p.status === "done" ? `${p.you ? "You" : p.name}: done` : `${p.you ? "You" : p.name} can't${p.note ? `: ${p.note}` : ""}`));
-  const mine = t.mine;
-  return col([
-    row([statusMark(taskMark(t)), col([
-      text(t.title, { size: 15, weight: 500, lineHeight: 20 }),
-      meta(`${o.showSpace ? `${t.spaceName} · ` : ""}${taskLine(ctx, t)}`, { size: 12, lines: 2 }),
-      ...(t.notes ? [text(t.notes, { size: 13, color: C.grey70, lineHeight: 18, lines: 3 })] : []),
-      ...(said.length ? [meta(said.join(" · "), { size: 12, lines: 2 })] : []),
-    ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-    ...(t.canRemove ? [iconButton("close", write("DELETE", base, undefined, { ok: "Taken out" }), "Take it out", 36)] : [])], { gap: 12, alignItems: "flex-start" }),
-    ...(mine && mine.status === "todo" ? [
-      row([button("Done", write("PUT", base, { status: "done" }, { ok: "Nice, done" }), { kind: "secondary", size: "md", icon: "check" }), button("Can't do it", { kind: "toggleState", path: openKey }, { kind: "secondary", size: "md" })], { gap: 8, paddingLeft: 20, flexWrap: "wrap" }),
-      when({ truthy: openKey }, col([inputBox([field(noteKey, noteKey, "Say why, in a few words", { onSubmit: write("PUT", base, { status: "cant", note: `$state.${noteKey}` }, { ok: "Told them" }) }),
-        button("Send", write("PUT", base, { status: "cant", note: `$state.${noteKey}` }, { ok: "Told them" }), { kind: "secondary", size: "md" })])], { paddingLeft: 20 })),
-    ] : mine && mine.status !== "todo" ? [row([link("Not done yet", write("PUT", base, { status: "todo" }, { ok: "Back on your list" }))], { paddingLeft: 16 })] : []),
-  ], { ...rowPad, gap: 10 });
-}
-
-function memberRow(s: Space, m: Member): Node {
-  const who = row([personDot(m.name, m.you, 32), col([text(memberName(m), { size: 15, lineHeight: 20, lines: 1 }), meta(m.roleName, { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 0 }, open(SCREENS.spaceMember, { id: s.id, member: m.userId }));
-  return row([who, ...(!m.you && canDo(s, "message") ? [iconButton("send", messagePerson(m.userId), `Message ${m.name}`)] : []), icon("chevron", { size: 16, color: C.meta })], { ...rowPad, paddingRight: 12 });
-}
-
-function botsCard(s: Space, mineBots: SpacesData["bots"]): Node {
-  const shareable = (mineBots ?? []).filter((b) => !s.bots.some((x) => x.slug === b.slug));
-  const rows: Node[] = s.bots.map((b) => row([
-    row([botAvatar(botLook(b.slug, b.colour), 30), col([text(b.name, { size: 15, lineHeight: 20 }), meta(`${b.byYou ? "You added it" : `${b.addedBy} added it`}${canDo(s, "bots") ? " · it reads what's shared here" : ""}`, { size: 12, lines: 1 })], { gap: 2, flexShrink: 1, minWidth: 0 })],
-      { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 0 }, canDo(s, "bots") ? botRoute(b.slug) : undefined),
-    ...(canDo(s, "addBots") ? [iconButton("close", write("DELETE", `${A}/spaces/${enc(s.id)}/bots/${enc(b.slug)}`, undefined, { ok: `${b.name} taken out` }), "Take it out", 36)] : []),
-  ], { ...rowPad, paddingRight: 8 }));
-  if (canDo(s, "addBots") && shareable.length) {
-    rows.push(col([
-      text(`Add a bot to ${s.name}`, { size: 14, weight: 600, lineHeight: 19 }),
-      row(shareable.slice(0, 6).map((b) => chip(b.name, { onPress: write("POST", `${A}/spaces/${enc(s.id)}/bots`, { slug: b.slug }, { ok: `${b.name} shared` }) })), { gap: 8, flexWrap: "wrap" }),
-    ], { gap: 10, paddingVertical: 12, paddingHorizontal: 16 }));
-  }
-  return rows.length ? rowsCard(rows) : notice("No bots shared here yet.");
-}
-
-function inviteRows(ctx: BotsCtx, s: Space, mailReady: boolean): Node[] {
-  return (s.invites ?? []).map((i) => {
-    const msg = `Join ${s.name} on X0 Bot: ${i.link}`;
-    const mail = !i.email ? `Anyone with the link · good till ${shortDate(ctx, i.expiresAt)}`
-      : i.mail === "sent" ? "Email sent" : i.mail === "failed" ? "The email didn't go. Send the link yourself."
-        : mailReady ? "Email on its way" : "Email waits to go out (email isn't switched on yet). Send the link yourself meanwhile.";
-    return col([
-      row([col([text(i.email ?? `Link · ${i.roleName}`, { size: 15, weight: 500, lineHeight: 20, lines: 1 }), meta(`${i.email ? `${i.roleName} · ` : ""}${mail}`, { size: 12, lines: 2 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-        ...(i.byYou || s.me.admin ? [iconButton("close", write("DELETE", `${A}/spaces/${enc(s.id)}/invites/${enc(i.code)}`, undefined, { ok: "Invite taken back" }), "Take it back", 36)] : [])], { gap: 10 }),
-      row([
-        button(isDesk(ctx) ? "Copy link" : "Share link", isDesk(ctx) ? { kind: "copyText", text: i.link, message: "Link copied" } : { kind: "share", text: msg, title: `Join ${s.name}` }, { kind: "secondary", size: "md", icon: "link" }),
-        meta(`Code ${i.code}`, { size: 12 }),
-      ], { gap: 10, flexWrap: "wrap" }),
-    ], { ...rowPad, gap: 10 });
-  });
-}
-
-function activityRows(ctx: BotsCtx, s: Space, max = 8): Node | null {
-  if (!s.activity?.length) return null;
-  return col(s.activity.slice(0, max).map((a) => row([box([], { width: 6, height: 6, borderRadius: 3, backgroundColor: C.idle, marginTop: 7 }), text(a.text, { size: 13, lineHeight: 19, style: { flexGrow: 1, flexShrink: 1 } }), meta(ago(ctx, a.at), { size: 12 })], { gap: 10, alignItems: "flex-start" })), { gap: 8 });
-}
-
-interface OneSpace { space: Space; items: Item[]; payments: Payment[]; tasks: Task[]; mailReady: boolean }
-
-function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bots"]): Node[] {
-  const s = o.space;
-  const waiting = o.payments.filter((p) => p.canDecide);
-  const forMe = o.tasks.filter((t) => t.mine && t.mine.status === "todo");
-  const open_ = o.tasks.filter((t) => !t.done && !forMe.includes(t)).slice(0, 6);
-  const history = o.payments.filter((p) => !p.canDecide).slice(0, 6);
-  const sid = enc(s.id);
-  const newList = ifFilled("listName", call("POST", `${A}/spaces/${sid}/lists`, { title: "$state.listName" }, { assignTo: "newList", ok: seq(clearState("listName"), toast("List made"), { kind: "navigate", screenId: SCREENS.spaceItem, params: { item: "$state.newList.item.id" } }), fail: toast("Couldn't make it. Try again.", true) }), "Name the list first");
-  const desk = isDesk(ctx);
-
-  const top = row([
-    col([text(s.name, { size: desk ? 26 : 22, weight: 700, tracking: -0.5, lineHeight: desk ? 32 : 28 }), meta(`${spaceCount(s)} · ${youAre(s)}`, { size: 13 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
-    button("Chat", openChat(s.id), { kind: "secondary", size: "md", icon: "send" }),
-    ...(canDo(s, "invite") ? [button("Invite", open(SCREENS.spaceInvite, { id: s.id }), { kind: "secondary", size: "md", icon: "plus" })] : []),
-  ], { gap: 8, flexWrap: "wrap" });
-
-  const needs = [
-    ...waiting.map((p) => payRow(ctx, s, p)),
-    ...forMe.map((t) => taskRow(ctx, t)),
-  ];
-
-  const shared = section(`Shared · ${o.items.length}`, [
-    ...(o.items.length ? [rowsCard(o.items.slice(0, 8).map((it) => itemRow(ctx, it)))] : [meta("Lists, trips, notes, files and links people share land here. Share from any page with Share.", { size: 13 })]),
-    ...(canDo(s, "share") ? [inputBox([field("listName", "listName", "New list: Groceries, Packing…", { onSubmit: newList }), button("Make", newList, { kind: "secondary", size: "md" })])] : []),
-  ]);
-
-  const tasks = section("Tasks and plans", [
-    ...(open_.length ? [rowsCard(open_.map((t) => taskRow(ctx, t)))] : [meta(canDo(s, "tasks") || canDo(s, "plan") ? "Give someone a task, or put something on their day." : "Nothing given out right now.", { size: 13 })]),
-    row([
-      ...(canDo(s, "tasks") ? [button("Give a task", open(SCREENS.spaceTasks, { id: s.id, new: "task" }), { kind: "secondary", size: "md", icon: "check" })] : []),
-      ...(canDo(s, "plan") ? [button("Plan for someone", open(SCREENS.spaceTasks, { id: s.id, new: "plan" }), { kind: "secondary", size: "md", icon: "calendar" })] : []),
-    ], { gap: 8, flexWrap: "wrap" }),
-  ], link("All", open(SCREENS.spaceTasks, { id: s.id })));
-
-  const pays = section("Payments", [
-    row([col([text("Who can approve payments", { size: 14, lineHeight: 19 }), meta(`${approversLine(s)}. ${s.name} never pays by itself: you press pay in your UPI app.`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 10 }),
-    ...(history.length ? [rowsCard(history.map((p) => payRow(ctx, s, p)))] : []),
-    ...(canDo(s, "askPay") ? [button("Ask for a payment", open(SCREENS.spacePay, { id: s.id }), { kind: "secondary", size: "md", icon: "rupee" })] : []),
-  ]);
-
-  const members = section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => memberRow(s, m)))], s.me.admin ? link("Roles", open(SCREENS.spaceRoles, { id: s.id })) : undefined);
-  const bots = section(`Bots · ${s.bots.length}`, [botsCard(s, mineBots)]);
-  const log = activityRows(ctx, s);
-  const rename = ifFilled("spaceRename", write("PUT", `${A}/spaces/${sid}`, { name: "$state.spaceRename" }, { ok: "Renamed" }), "Type the new name");
-
-  return [
-    top,
-    ...(needs.length ? [section("Needs you", [rowsCard(needs)])] : []),
-    ...(desk ? [grid([col([shared, tasks], { gap: 22, minWidth: 0 }), col([members, bots], { gap: 22, minWidth: 0 })], 2, 24)] : [shared, tasks, members, bots]),
-    pays,
-    ...(canDo(s, "invite") && s.invites?.length ? [section("Open invites", [rowsCard(inviteRows(ctx, s, o.mailReady))])] : []),
-    ...(log ? [section("Activity", [log])] : []),
-    ...(canDo(s, "rename") ? [section("Name", [inputBox([field("spaceRename", "spaceRename", s.name, { onSubmit: rename }), button("Rename", rename, { kind: "secondary", size: "md" })])])] : []),
-    quietButton(s.me.admin ? `Delete ${s.name}` : `Leave ${s.name}`, call("DELETE", `${A}/spaces/${sid}`, undefined, { ok: seq(toast(s.me.admin ? `${s.name} deleted` : `You left ${s.name}`), { kind: "navigate", screenId: SCREENS.spaces, replace: true }), fail: toast("Couldn't do that. Try again.", true) }), { size: "md" }),
-  ];
-}
-
 function spaceLive(o: OneSpace | undefined, list: Space[]): string[] {
   return ["spaces", "threads", ...(o ? [`space:${o.space.id}`] : list.map((s) => `space:${s.id}`))];
 }
@@ -458,91 +163,7 @@ function spacesDesk(ctx: BotsCtx, d: SpacesData) {
   });
 }
 
-// ===================================================================== bots.space.member: what <name> can do
-
-function memberPage(ctx: BotsCtx, d: OneSpace | undefined) {
-  const s = d?.space;
-  const m = s?.members.find((x) => x.userId === idParam(ctx, "member"));
-  if (!s || !m) return failed(ctx, "This person");
-  const mine = s.me.perms;
-  const coversThem = m.perms.every((p) => mine.includes(p));
-  const can = canDo(s, "manage") && !m.maker && !m.you && coversThem;
-  const why = m.maker && m.you ? "You made this space, so you can do everything." : m.maker ? `${m.name} made ${s.name}, so they can do everything. That can't change.`
-    : m.you ? (s.me.admin ? "You made this space, so you can do everything." : "Only someone who can change what others can do may change this. Ask the admin.")
-      : !canDo(s, "manage") ? "Only someone who can change what others can do may change this."
-        : !coversThem ? `${m.name} can do things you can't, so only someone who can may change them.` : "";
-  const base = `${A}/spaces/${enc(s.id)}/members/${enc(m.userId)}`;
-  const permsBody = Object.fromEntries(PERMS.map((p) => [p, `$state.p_${p}`]));
-  const save = write("PUT", base, { perms: permsBody }, { ok: "Saved", fail: "Couldn't save that. Try again." });
-  const roles = s.roles.filter((r) => r.perms.every((p) => mine.includes(p)));
-  const roleOf = m.maker ? "admin" : m.role;
-  const rows = PERMS.map((p) => {
-    const has = m.perms.includes(p);
-    const mayToggle = can && mine.includes(p);
-    return row([
-      col([text(PERM_WORDS[p].label, { size: 15, lineHeight: 20 }), meta(mayToggle || !can ? PERM_WORDS[p].sub : "You can't give this yourself", { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-      can ? switchMark(`p_${p}`) : text(has ? "Yes" : "No", { size: 14, color: has ? C.ink : C.meta, lineHeight: 19 }),
-    ], { ...rowPad, ...(mayToggle ? {} : can ? { opacity: 0.5 } : {}) }, mayToggle ? seq({ kind: "toggleState", path: `p_${p}` }, save) : undefined);
-  });
-  const remove = canDo(s, "remove") && !m.maker && !m.you && coversThem
-    ? quietButton(`Remove ${m.name} from ${s.name}`, call("DELETE", base, undefined, { ok: seq(toast(`${m.name} removed`), back()), fail: toast("Couldn't remove them. Try again.", true) }), { size: "md" }) : null;
-  return page(ctx, {
-    back: true, title: m.you ? "What you can do" : `What ${m.name} can do`, nav: "you", maxWidth: 720, live: [`space:${s.id}`],
-    state: Object.fromEntries(PERMS.map((p) => [`p_${p}`, m.perms.includes(p)])),
-    body: [
-      row([personDot(m.name, m.you, 48), col([text(m.you ? "What you can do" : `What ${m.name} can do`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(`${s.name} · ${m.roleName}${m.maker ? "" : ` · joined ${shortDate(ctx, m.joinedAt)}`}`, { size: 13 })], { gap: 2, flexShrink: 1 })], { gap: 14 }),
-      ...(why ? [notice(why, { mark: "lock" })] : []),
-      ...(can ? [section("Make them", [row(roles.map((r) => chip(r.name, { selected: roleOf === r.id, onPress: write("PUT", base, { role: r.id }, { ok: `${m.name} is ${r.name} now` }) })), { gap: 8, flexWrap: "wrap" }),
-        meta("Or pick one by one below. You can only give what you can do yourself.", { size: 12 })])] : []),
-      rowsCard(rows),
-      ...(!m.you && canDo(s, "message") ? [secondaryButton(`Message ${m.name}`, messagePerson(m.userId), { size: "md", icon: "send" })] : []),
-      ...(remove ? [remove] : []),
-      ...(!m.you ? [quietButton(`Report or block ${m.name}`, open(SCREENS.person, { id: m.userId }), { size: "md", icon: "shield" })] : []),
-    ],
-  });
-}
-
-// ===================================================================== bots.space.invite
-
-function invitePage(ctx: BotsCtx, d: OneSpace | undefined) {
-  const s = d?.space;
-  if (!s) return failed(ctx, "Invite");
-  if (!canDo(s, "invite")) return page(ctx, { back: true, title: "Invite", nav: "you", body: [emptyState({ pose: "think", title: `You can't invite people to ${s.name}`, body: "Ask the admin to let you." })] });
-  const mine = s.me.perms;
-  const roles = s.roles.filter((r) => r.perms.every((p) => mine.includes(p)));
-  const grantable = PERMS.filter((p) => mine.includes(p));
-  const sid = enc(s.id);
-  const custom = Object.fromEntries(grantable.map((p) => [p, `$state.i_${p}`]));
-  const made = (body: Record<string, unknown>) => call("POST", `${A}/spaces/${sid}/invite`, body, {
-    assignTo: "made", ok: seq(clearState("email"), toast("Invite made"), refresh), fail: toast("Couldn't make it. Check the email, or try again.", true),
-  });
-  const withRole = (email: unknown): ActionRef => ({ kind: "condition", if: { eq: ["role", "custom"] }, then: made({ email, perms: custom }), else: made({ email, role: "$state.role" }) });
-  const go: ActionRef = { kind: "condition", if: { eq: ["how", "email"] }, then: ifFilled("email", withRole("$state.email"), "Type their email"), else: withRole("") };
-  return page(ctx, {
-    back: true, title: `Invite to ${s.name}`, nav: "you", maxWidth: 720, live: [`space:${s.id}`],
-    state: { how: "link", email: "", role: roles.find((r) => r.id === "family")?.id ?? roles[0]?.id ?? "custom", ...Object.fromEntries(grantable.map((p) => [`i_${p}`, false])) },
-    body: [
-      col([text(`Invite to ${s.name}`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta("By a link anyone can use for seven days, or by email: then only that email can accept.", { size: 13 })], { gap: 4 }),
-      segmented([{ label: "Link", value: "link" }, { label: "Email", value: "email" }], "how"),
-      when({ eq: ["how", "email"] }, labelledField("Their email", field("email", "email", "name@example.com", { keyboard: "email-address" }))),
-      section("They can", [
-        chips([...roles.map((r) => ({ label: r.name, value: r.id })), { label: "Pick one by one", value: "custom" }], "role"),
-        ...roles.map((r) => when({ eq: ["role", r.id] }, meta(r.perms.length ? r.perms.map((p) => PERM_WORDS[p].label).join(" · ") : "Look at what's shared, nothing more", { size: 12, lineHeight: 17 }))),
-        when({ eq: ["role", "custom"] }, rowsCard(grantable.map((p) => row([col([text(PERM_WORDS[p].label, { size: 15, lineHeight: 20 }), meta(PERM_WORDS[p].sub, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }), switchMark(`i_${p}`)], rowPad, { kind: "toggleState", path: `i_${p}` })))),
-        meta("You can only give what you can do yourself.", { size: 12 }),
-      ]),
-      ...(s.invites?.length ? [section("Open invites", [rowsCard(inviteRows(ctx, s, d!.mailReady))])] : []),
-    ],
-    footer: [
-      when({ eq: ["how", "email"] }, primaryButton("Send the invite", go, { wide: !isDesk(ctx) })),
-      when({ neq: ["how", "email"] }, primaryButton("Make a link", go, { wide: !isDesk(ctx) })),
-      ...(d!.mailReady ? [] : [when({ eq: ["how", "email"] }, meta("Email isn't switched on yet: the invite waits to go out, and you can send its link yourself.", { size: 12, align: "center" }))]),
-    ],
-  });
-}
-
 // ===================================================================== bots.space.roles
-
 function rolesPage(ctx: BotsCtx, d: OneSpace | undefined) {
   const s = d?.space;
   if (!s) return failed(ctx, "Roles");
@@ -702,53 +323,7 @@ function newTaskPage(ctx: BotsCtx, s: Space, kind: "task" | "plan") {
   });
 }
 
-// ===================================================================== bots.share: share to a space or person
-
-interface Targets { spaces: Array<{ id: string; name: string; canShare: boolean }>; people: Array<{ userId: string; name: string; spaces: string[] }> }
-
-function sharePage(ctx: BotsCtx, t: Targets | undefined) {
-  const p = ctx.params;
-  const kind = String(p.kind ?? "text");
-  const itemTitle = String(p.title ?? "").slice(0, 120) || (KIND_WORD[kind] ?? "This");
-  const editable = kind === "list" || kind === "trip";
-  const items = typeof p.items === "string" && p.items ? p.items.split("\n") : [];
-  const preview = String(p.text ?? "").replace(/\s+/g, " ").slice(0, 160) || String(p.url ?? "") || (items.length ? items.slice(0, 4).join(", ") : "");
-  const body: Record<string, unknown> = {
-    kind, title: itemTitle, note: "$state.note", access: editable ? "$state.access" : "view", to: { space: "$state.toSpace", person: "$state.toPerson" },
-    ...(p.ref ? { ref: String(p.ref) } : {}), ...(p.text ? { text: String(p.text) } : {}), ...(p.url ? { url: String(p.url) } : {}),
-    ...(items.length ? { items } : {}), ...(p.bot ? { bot: String(p.bot) } : {}),
-  };
-  const go: ActionSpec = {
-    kind: "condition", if: { all: [{ falsy: "toSpace" }, { falsy: "toPerson" }] }, then: toast("Pick a space or a person"),
-    else: call("POST", `${A}/shares`, body, { ok: seq(toast("Shared"), back()), fail: toast("Couldn't share it. You may not be allowed to there.", true) }),
-  };
-  const choice = (label: string, sub: string, path: "toSpace" | "toPerson", value: string, left: Node, ok = true): Node => row([
-    left, col([text(label, { size: 15, lineHeight: 20 }), meta(sub, { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-    ...(ok ? [box([box([], { width: 10, height: 10, borderRadius: 5, backgroundColor: { eq: [path, value], then: C.ink, else: "transparent" } })], { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: { eq: [path, value], then: C.ink, else: C.outline }, alignItems: "center", justifyContent: "center" })] : []),
-  ], { ...rowPad, ...(ok ? {} : { opacity: 0.5 }) }, ok ? seq(setState(path, value), clearState(path === "toSpace" ? "toPerson" : "toSpace")) : undefined);
-  const spaces = t?.spaces ?? [];
-  const people = t?.people ?? [];
-  return page(ctx, {
-    back: true, title: "Share", nav: "you", maxWidth: 640, state: { note: "", toSpace: "", toPerson: "", access: editable ? "edit" : "view" },
-    body: [
-      col([text("Share", { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta("With a space you're in, or with one person.", { size: 13 })], { gap: 4 }),
-      row([kindBadge(kind, 44), col([text(itemTitle, { size: 16, weight: 600, lineHeight: 21, lines: 2 }), ...(preview ? [meta(preview, { size: 12, lines: 2 })] : [])], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12, padding: 14, borderRadius: 18, backgroundColor: C.surface }),
-      ...(!t ? [emptyState({ pose: "think", title: "Couldn't load your spaces", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
-        : !spaces.length && !people.length ? [emptyState({ pose: "hello", title: "No spaces yet", body: "Make a space for home or friends first. Then you can share anything there.", action: { label: "Spaces", onPress: open(SCREENS.spaces) } })]
-          : [
-            ...(spaces.length ? [section("To a space", [rowsCard(spaces.map((s) => choice(s.name, s.canShare ? "Everyone in it can see it" : "You can't share things here", "toSpace", s.id, iconBox("folder"), s.canShare)))])] : []),
-            ...(people.length ? [section("To a person", [rowsCard(people.map((m) => choice(m.name, `In ${names(m.spaces)} · goes to your chat`, "toPerson", m.userId, personDot(m.name, false))))])] : []),
-            ...(editable ? [section("They can", [segmented([{ label: "Change it", value: "edit" }, { label: "Only look", value: "view" }], "access")])] : []),
-            labelledField("Say something (if you like)", field("note", "note", "For Sunday's lunch")),
-            meta(kind === "file" || kind === "trip" ? "They see a copy of it now, kept with the space or your chat." : "They see a copy of it as it is now.", { size: 12 }),
-          ]),
-    ],
-    footer: t && (spaces.length || people.length) ? [primaryButton("Share", go, { wide: !isDesk(ctx) })] : [],
-  });
-}
-
 // ===================================================================== bots.chats and bots.thread
-
 interface ChatsData { threads?: Thread[]; unread?: number; contacts?: Contacts; open?: ThreadRead }
 interface ThreadRead { thread: Thread; messages: Message[]; more: boolean; before: number | null }
 

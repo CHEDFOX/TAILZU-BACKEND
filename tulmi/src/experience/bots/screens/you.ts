@@ -13,42 +13,30 @@
  *
  * Built with the kit (../kit.ts) the way screens/shell.ts builds bots.home; one id serves the phone and the window (ctx.client).
  */
-import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
-import { BOT_SOUNDS_CAPABILITY } from "../../../../../shared/types/sdui.js";
+
+import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sdui.js";
 import {
-  C, FACE, SCREENS, back, body, botAvatar, botRoute, botLook, box, button, call, card, col, divider, emptyState, grow, icon, infoChip, labelled, listCard,
-  listRow, meta, notice, open, page, percent, primaryButton, quietButton, row, secondaryButton, sectionLabel, seq, shapes,
-  switchMark, switchRow, table, text, title, usageMeter, when, whenEq, whenWords, type BotsCtx, type IconName,
+  type BotsCtx, type IconName, box, icon, C, row, FACE, text, whenEq, seq, botAvatar, percent, primaryButton, open, SCREENS, usageMeter,
+  whenWords, card, divider, notice, page, title, col, meta, call, listCard, listRow, quietButton, secondaryButton, switchMark, when,
+  sectionLabel, switchRow, body, grow, table, button, back, emptyState, shapes, botLook, botRoute,
 } from "../kit.js";
-import { DELETION_PATH, GRACE_DAYS, daysStrip, dayMonthOf, goneAt, keepAccount, scheduleDeletion, type DeletionState } from "./accountGrace.js";
-import { PUSH_STATE, pushOffRow, withPushCheck } from "./pushAsk.js";
-import { screen, type BotsScreen } from "../registry.js";
+import { type BotsScreen, screen } from "../registry.js";
+import { type DeletionState, dayMonthOf, goneAt, daysStrip, GRACE_DAYS, keepAccount, scheduleDeletion, DELETION_PATH } from "./accountGrace.js";
+import { PUSH_STATE, withPushCheck, pushOffRow } from "./pushAsk.js";
+import { type ComputersData, computerDesk, computerPhone } from "./you/computer.js";
+import { type DeleteData, goesAway, planWarning, type AccountData, deleteDesk } from "./you/deleteDesk.js";
+import {
+  when2, type NotifyData, notifyState, alwaysOn, doneSeg, timeChip, summarySwitch, timePicker, summaryPreview, botSwitch, botSub,
+  quietSwitch, quietTimes, segments, save, notifyDesk,
+} from "./you/notifyDesk.js";
+import { glyph, G, couldNot, heading, columns, openUrl, toast, refresh, oops, dayMonth, exportAction, plural } from "./you/parts.js";
+import {
+  type UsageMeter, spanLabel, resetsLine, meterOf, ring, type YouData, ago, face, youName, signOut, appsLine, computerLine, youDesk,
+  youPhone,
+} from "./you/you.js";
 
-// ===================================================================== what the routes answer (routes/bots/botsYou.ts)
-
-interface Settings {
-  monthLimitPaise: number;
-  stopAtLimit: boolean;
-  notify: { done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[] };
-  privacy: { screenPictures: "ask" | "allow"; personalise?: boolean };
-}
-/** The usage meter (GET /v1/you/usage, src/you/usage.ts): fractions used (0.64 is 64%) and when each resets. Never an amount. */
-interface UsageMeter {
-  plan: { id: string; name: string; paid: boolean; windows: boolean; carryOver: boolean; upgrade: boolean };
-  stretch: { used: number; startsAt: number; resetsAt: number; n: number; of: number; days: number };
-  month: { used: number; startsAt: number; resetsAt: number; days: number };
-  state: "ok" | "near" | "out";
-}
 interface UsagePage { usage: UsageMeter; near: string | null; out: string | null; how: string }
-interface YouData {
-  plan: { name: string; active: boolean };
-  usage: UsageMeter | null;
-  apps: { enabled: boolean; connected: Array<{ id: string; name: string; usedBy: string[]; lastUsedAt: number | null }>; github: { repos: number } | null; alone: number } | null;
-  computers: { online: Array<{ name: string; busy: boolean; allowRun: boolean }>; offline: number; signedIn?: number; helped: { jobs: number; minutes: number } } | null;
-  settings: Settings;
-  exportUrl: string | null;
-  language: string | null;
-}
+
 /** An invoice, as much as the screens show: when, which, what for, Razorpay's own page. No amount. */
 interface Invoice { id: string; number: string; date: number; status: string; url: string | null; what: string }
 interface BillingData {
@@ -57,13 +45,7 @@ interface BillingData {
   usage: UsageMeter | null;
   email: string | null;
 }
-interface ComputersData {
-  online: Array<{ deviceId: string; name: string; os: string; allowRun: boolean; busy: boolean; projects: "all" | "most" | number; liveOnly: boolean; container: boolean }>;
-  offline: Array<{ deviceId: string; name: string; os: string; lastSeen: number }>;
-  /** The desktop app signed in as them while its runner is off ("Your Mac"). */
-  signedIn?: Array<{ deviceId: string; name: string; os: string; lastSeen: number }>;
-  helped: { jobs: number; minutes: number };
-}
+
 interface AppsData {
   enabled: boolean;
   connected: Array<{ id: string; name: string; category: string; level: string; lastUsedAt: number | null; usedBy: string[]; needsSignIn?: boolean }>;
@@ -76,75 +58,8 @@ interface AppData {
   can: string[];
   cant: string[];
 }
-interface NotifyData { settings: Settings; today: { done: number; needs: number; spentPaise: number } | null; line: string | null }
-interface AccountData {
-  bots: Array<{ slug: string; name: string; colour: string; builtin: boolean }>;
-  projects: string[];
-  notes: number;
-  keys: number;
-  plan: { active: boolean; store: string | null; renews: boolean; until: number | null };
-  exportUrl: string | null;
-}
 
-// ===================================================================== small things
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const DAY_MS = 86_400_000;
-
-const local = (ctx: BotsCtx, t: number) => new Date(t + ctx.tzOffsetMinutes * 60_000);
-/** "14 Oct" */
-const dayMonth = (ctx: BotsCtx, t: number) => { const d = local(ctx, t); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
-const hhmm = (ctx: BotsCtx, t: number) => { const d = local(ctx, t); return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`; };
-/** "In use now", "2 min ago", "Today 10:40", "Yesterday", "Mon", "14 Oct". */
-function ago(ctx: BotsCtx, t: number | null): string {
-  if (!t) return "Not used yet";
-  const now = ctx.live.now, mins = Math.floor((now - t) / 60_000);
-  if (mins < 2) return "In use now";
-  if (mins < 60) return `${mins} min ago`;
-  const dayOf = (x: number) => Math.floor((x + ctx.tzOffsetMinutes * 60_000) / DAY_MS);
-  const days = dayOf(now) - dayOf(t);
-  if (days === 0) return `Today ${hhmm(ctx, t)}`;
-  if (days === 1) return "Yesterday";
-  if (days < 7) return DAYS[local(ctx, t).getUTCDay()]!;
-  return dayMonth(ctx, t);
-}
-/** "9:00 pm", "11 pm" */
-function clock(minute: number, short = false): string {
-  const h = Math.floor(minute / 60) % 24, m = minute % 60, h12 = h % 12 === 0 ? 12 : h % 12, ap = h < 12 ? "am" : "pm";
-  return short && m === 0 ? `${h12} ${ap}` : `${h12}:${String(m).padStart(2, "0")} ${ap}`;
-}
-const hours = (min: number) => (min < 60 ? `${min} min` : min % 60 >= 10 ? `${Math.floor(min / 60)} h ${min % 60} min` : `${Math.floor(min / 60)} h`);
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-IN")} ${n === 1 ? one : many}`;
-
-/** A bot by slug: the live one (name, colour, head), or Tailzu itself. */
-function botOf(ctx: BotsCtx, slug: string) {
-  const b = ctx.live.bots.find((x) => x.slug === slug);
-  if (b) return { slug, name: b.name, short: b.name.replace(/ bot$/i, ""), look: b };
-  const look = botLook(slug);
-  const name = slug === "tailzu" ? "X0" : slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
-  return { slug, name, short: name.replace(/ bot$/i, ""), look };
-}
 const botByName = (ctx: BotsCtx, name: string) => ctx.live.bots.find((b) => b.name === name);
-
-/** A line icon from a path of our own (24 grid), for the few the kit's set has not got. */
-const glyph = (d: string, size = 20, color: string = C.ink): Node =>
-  shapes([{ d, stroke: color, strokeWidth: 1.9, linecap: "round", linejoin: "round" }], { size });
-const G = {
-  download: "M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14",
-  trash: "M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13",
-  bell: "M6.5 16v-5a5.5 5.5 0 0 1 11 0v5l1.5 2h-14zM10 20.5a2 2 0 0 0 4 0",
-  moon: "M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z",
-  globe: "M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 1 0 0-17zM3.5 12h17M12 3.5c2.4 2.4 3.5 5.4 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.4-3.5-8.5s1.1-6.1 3.5-8.5z",
-  mail: "M3.5 6.5h17v11h-17zM3.5 7.5l8.5 6 8.5-6",
-  never: "M12 3.5a8.5 8.5 0 1 0 0 17a8.5 8.5 0 1 0 0-17zM6 6l12 12",
-  card: "M3 6.5h18v11H3zM3 10h18M7 14.5h3",
-  receipt: "M6 3.5h12v17l-3-2-3 2-3-2-3 2zM9 8h6M9 11.5h6",
-  sliders: "M5 7h14M5 17h14M9 4.5v5M15 14.5v5",
-  rules: "M5 6.5h14M5 12h14M5 17.5h9",
-  box: "M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8",
-  battery: "M3.5 8h15v8h-15zM18.5 10.5h2v3h-2M6 10.5v3",
-};
 
 const APP_ICON: Record<string, IconName> = { Calendar: "calendar", Tasks: "check", Docs: "notes", Code: "code", School: "book", Projects: "today", Notes: "notes", "Meeting notes": "notes" };
 function appIcon(category: string, size = 20): Node {
@@ -152,21 +67,6 @@ function appIcon(category: string, size = 20): Node {
     width: size + 16, height: size + 16, borderRadius: 10, borderWidth: 1, borderColor: C.line, alignItems: "center", justifyContent: "center", flexShrink: 0,
   });
 }
-
-const toast = (message: string): ActionSpec => ({ kind: "toast", message });
-const refresh: ActionSpec = { kind: "refresh" };
-const oops = (what = "save that"): ActionSpec => ({ kind: "toast", message: `Couldn't ${what}. Try again.`, tone: "error" });
-/** A setting saved: PUT /v1/you/settings, a short toast, a refresh. */
-const save = (b: Record<string, unknown>, ok: string): ActionRef => call("PUT", "/v1/you/settings", b, { ok: seq(toast(ok), refresh), fail: oops() });
-const when2 = (path: string, then: ActionRef, otherwise: ActionRef): ActionSpec => ({ kind: "condition", if: { truthy: path }, then, else: otherwise });
-const openUrl = (url: string): ActionSpec => ({ kind: "openUrl", url });
-/** Help: the whole app's, kept here (Keylessbord links nothing account-wide). */
-const HELP = [
-  { label: "Write to us", value: "support@x0bot.com", url: "mailto:support@x0bot.com" },
-  { label: "Privacy policy", value: "", url: "https://x0bot.com/privacy" },
-  { label: "Terms of use", value: "", url: "https://x0bot.com/terms" },
-] as const;
-const helpAction = (url: string): ActionSpec => ({ kind: "openUrl", url, external: true });
 
 /** A text input in an outlined box, into a state path. */
 function field(path: string, placeholder: string, o: { keyboard?: "numeric" | "url" } = {}): Node {
@@ -180,23 +80,6 @@ function field(path: string, placeholder: string, o: { keyboard?: "numeric" | "u
   }], { borderWidth: 1, borderColor: C.outline, borderRadius: 12, paddingHorizontal: 14, minHeight: 44 });
 }
 
-/** The window's two columns: the main one, and a narrower one beside it. */
-const columns = (left: Node[], right: Node[], o: { gap?: number; rightWidth?: number } = {}): Node =>
-  row([
-    col(left, { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, gap: 18 }),
-    col(right, { width: o.rightWidth ?? 340, flexShrink: 0, gap: 18 }),
-  ], { alignItems: "flex-start", gap: o.gap ?? 20 });
-
-/** A page's heading: the title, and a line under it. */
-const heading = (ctx: BotsCtx, t: string, sub?: string): Node =>
-  col([title(t, ctx.client === "desktop" ? { size: 28, lineHeight: 34 } : {}), ...(sub ? [meta(sub, { size: 14, lineHeight: 19, color: C.grey70 })] : [])], { gap: 4 });
-
-/** Something the screen could not read: says so, plainly. */
-const couldNot = (what: string): Node => card([body(`Couldn't load ${what}.`, { size: 14 }), meta("Pull down to try again, or come back in a moment.", { size: 13 })], { gap: 4 });
-
-/** A lock and "Always on": a ping that can't be turned off. */
-const alwaysOn = (label = "Always on"): Node => row([icon("lock", { size: 13, color: C.meta }), meta(label, { size: 12 })], { gap: 4 });
-
 /** A selected-or-not pill that saves on press (the state follows on both clients). */
 function pills(options: Array<{ label: string; value: string }>, path: string, onPick: (value: string) => ActionRef): Node {
   return row(options.map((opt) => row([text(opt.label, { size: 13, lineHeight: 17, style: { color: whenEq(path, opt.value, C.paper, C.ink) } })], {
@@ -205,214 +88,12 @@ function pills(options: Array<{ label: string; value: string }>, path: string, o
   }, seq({ kind: "setState", path, value: opt.value }, onPick(opt.value)))), { gap: 8, flexWrap: "wrap" });
 }
 
-/** A segmented control that saves on press. */
-function segments(options: Array<{ label: string; value: string }>, path: string, onPick: (value: string) => ActionRef, width?: number): Node {
-  return row(options.map((opt) => box([text(opt.label, { size: 13, weight: 500, lineHeight: 17, align: "center" })], {
-    flexGrow: 1, flexBasis: 0, alignItems: "center", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 9,
-    backgroundColor: whenEq(path, opt.value, C.paper, "transparent"),
-  }, seq({ kind: "setState", path, value: opt.value }, onPick(opt.value)))), { padding: 3, borderRadius: 12, backgroundColor: C.surface, gap: 2, ...(width ? { width } : {}) });
-}
-
-/** This stretch's ring: how much of it is used, with the share in the middle. Never an amount. */
-function ring(used: number, size: number, label = "used"): Node {
-  const r = 15.5, circ = 2 * Math.PI * r, part = Math.max(0, Math.min(1, used));
-  return box([
-    box([shapes([
-      { circle: [18, 18, r], stroke: C.divider, strokeWidth: 3 },
-      ...(part > 0 ? [{ circle: [18, 18, r] as [number, number, number], stroke: C.ink, strokeWidth: 3, linecap: "round" as const, dash: `${(part * circ).toFixed(2)} ${circ.toFixed(2)}`, rotate: -90 }] : []),
-    ], { size, viewBox: "0 0 36 36", label: `${percent(part)} ${label}` })], { position: "absolute", top: 0, left: 0 }),
-    text(percent(part), { size: Math.round(size / 4.6), weight: 700, tracking: -0.6, align: "center" }),
-    meta(label, { size: 12, align: "center" }),
-  ], { width: size, height: size, alignItems: "center", justifyContent: "center", flexShrink: 0 });
-}
-
-const avatar = (ctx: BotsCtx, slug: string, size = 24): Node => botAvatar(botOf(ctx, slug).look, size);
 /** A row of overlapping-free little avatars for bots named in a list ("Plan Ease", "Gym bot"). */
 const avatarsOf = (ctx: BotsCtx, names: string[], size = 16): Node[] =>
   names.slice(0, 4).map((n) => { const b = botByName(ctx, n); return b ? botAvatar(b, size) : box([], { width: size, height: size, borderRadius: size / 2, backgroundColor: C.surface }); });
 
-const youInitial = (ctx: BotsCtx) => (ctx.user?.name ?? ctx.user?.email ?? "Y").trim().charAt(0).toUpperCase() || "Y";
-const youName = (ctx: BotsCtx) => ctx.user?.name ?? ctx.user?.email?.split("@")[0] ?? "You";
-const face = (ctx: BotsCtx, size: number): Node =>
-  box([text(youInitial(ctx), { size: Math.round(size * 0.4), weight: 600, align: "center" })], {
-    width: size, height: size, borderRadius: size / 2, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0,
-  });
-
-
-const signOut: ActionSpec = { kind: "signOut" };
-const exportAction = (url: string | null): ActionRef => (url ? seq(openUrl(url), toast("Your data is downloading")) : toast("Download isn't available right now. Try again later."));
-
-// ===================================================================== bots.you
-
-/** The meter the You page and Settings show: from the You page's read, else the live one every screen has. */
-function meterOf(ctx: BotsCtx, u: UsageMeter | null | undefined): { used: number; month: number; windows: boolean; resetsAt: number | null; monthResets: number | null; state: UsageMeter["state"] } {
-  if (u) return { used: u.stretch.used, month: u.month.used, windows: u.plan.windows, resetsAt: u.stretch.resetsAt, monthResets: u.month.resetsAt, state: u.state };
-  const l = ctx.live.usage;
-  return { used: l.used, month: l.month, windows: l.windows, resetsAt: l.resetsAt, monthResets: null, state: l.state };
-}
-/** "This stretch" or "This month", as the plan is used. */
-const spanLabel = (windows: boolean) => (windows ? "This stretch" : "This month");
-/** "Resets Thu 9 am", on the person's clock. */
-const resetsLine = (ctx: BotsCtx, at: number | null) => (at ? `Resets ${whenWords(at, ctx.live.now, ctx.tzOffsetMinutes)}` : "");
 /** "64% of this stretch". */
 const usedLine = (m: { used: number; windows: boolean }) => `${percent(m.used)} of this ${m.windows ? "stretch" : "month"}`;
-/** Near the limit, or at it: the calm line, else nothing. */
-function limitLine(ctx: BotsCtx, m: ReturnType<typeof meterOf>): string {
-  const span = m.windows ? "this stretch" : "this month";
-  const when = m.resetsAt ? ` It resets ${whenWords(m.resetsAt, ctx.live.now, ctx.tzOffsetMinutes)}.` : "";
-  if (m.state === "out") return `You've reached ${span}'s limit.${when}`;
-  if (m.state === "near") return `You've used most of ${span}.${when}`;
-  return "";
-}
-
-function appsLine(d: YouData | undefined): string {
-  const names = [...(d?.apps?.github ? ["GitHub"] : []), ...(d?.apps?.connected ?? []).map((a) => a.name.replace(/^Google /, ""))];
-  return names.length ? (names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3}` : names.join(", ")) : "None yet";
-}
-const computerLine = (d: YouData | undefined) => {
-  const c = d?.computers;
-  if (!c) return "";
-  const on = c.online.filter((x) => x.allowRun);
-  return on.length ? "On" : c.online.length ? "Online · not helping" : c.signedIn ? "Signed in · not helping" : c.offline ? "Offline" : "Off";
-};
-const pingsLine = (s: Settings | undefined) => {
-  if (!s) return "";
-  const parts = ["Needs you always", ...(s.notify.summary ? [`summary at ${clock(s.notify.summaryAt, true)}`] : [])];
-  return parts.join(" · ");
-};
-
-/**
- * The phone's Sounds switch (shared/types/sdui.ts 3h): pull-a-bot's and the bots' moments' sounds, on or off. Kept on the
- * device, not the account (devicePref "sounds"; the phone puts `soundsOn` in the screen's state). Only for a build that
- * plays them.
- */
-function soundsCard(ctx: BotsCtx): Node[] {
-  if (ctx.client !== "phone" || !ctx.can.has(BOT_SOUNDS_CAPABILITY)) return [];
-  const keep: ActionSpec = { kind: "devicePref", key: "sounds", value: "$state.soundsOn" };
-  return [listCard([switchRow("Sound", "soundsOn", { sub: "Bots might tell you something", onChange: keep })])];
-}
-
-function youPhone(ctx: BotsCtx, d: YouData | undefined) {
-  const m = meterOf(ctx, d?.usage);
-  const line = limitLine(ctx, m);
-  const planLine = `${d?.plan.name ?? "Your plan"} · ${plural(ctx.live.bots.length, "bot")}`;
-  return page(ctx, {
-    tab: "you", title: "You", gap: 18,
-    // On until this phone says otherwise (it writes its own `soundsOn` over this).
-    ...(soundsCard(ctx).length ? { state: { soundsOn: true } } : {}),
-    body: [
-      row([
-        face(ctx, 48),
-        col([text(youName(ctx), { size: 20, weight: 600, tracking: -0.3, lineHeight: 25, lines: 1 }), meta(planLine, { size: 13 })], { gap: 2, flexShrink: 1, minWidth: 0 }),
-      ], { gap: 12 }, open(SCREENS.billing)),
-      card([
-        usageMeter(spanLabel(m.windows), m.used, { resets: line || resetsLine(ctx, m.resetsAt) }),
-      ], { gap: 12, padding: 16, onPress: open(SCREENS.usage) }),
-      listCard([
-        // Family and friends: spaces, what's shared, tasks, payment requests and chats (screens/spaces.ts).
-        listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
-        listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
-        listRow({ label: "This computer helps", value: computerLine(d), onPress: open(SCREENS.computer) }),
-        // Sign in on a computer by scanning its code (screens/link.ts).
-        listRow({ label: "Link a computer", value: "Scan to sign in", onPress: open(SCREENS.link) }),
-        listRow({ label: "What pings you", value: d ? (d.settings.notify.quiet ? "Quiet hours on" : "Needs you always") : "", onPress: open(SCREENS.notify) }),
-      ]),
-      ...soundsCard(ctx),
-      listCard([
-        listRow({ label: "Plan and billing", value: d?.plan.name ?? "", onPress: open(SCREENS.billing) }),
-        listRow({ label: "Your data", value: "Download · Delete", onPress: open(SCREENS.privacy) }),
-        listRow({ label: "Privacy", onPress: open(SCREENS.privacy) }),
-        // Reporting and blocking in Spaces (screens/safety.ts): who you blocked, each with Unblock.
-        listRow({ label: "Blocked people", onPress: open(SCREENS.blocked) }),
-      ]),
-      listCard(HELP.map((h) => listRow({ label: h.label, value: h.value || undefined, onPress: helpAction(h.url) })), { title: "Help" }),
-    ],
-  });
-}
-
-/** One row of the window's settings card: an icon, a label with a line under it, and what is on the right. */
-function deskRow(o: { glyphNode: Node; label: string; sub?: string; right?: Node; value?: string; onPress?: ActionRef; chevron?: boolean }): Node {
-  return row([
-    box([o.glyphNode], { width: 22, alignItems: "center" }),
-    col([text(o.label, { size: 14, weight: 500, lineHeight: 19 }), ...(o.sub ? [meta(o.sub, { size: 12 })] : [])], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
-    ...(o.value ? [text(o.value, { size: 13, color: C.meta, align: "right", style: { flexShrink: 0 } })] : []),
-    ...(o.right ? [o.right] : []),
-    ...((o.chevron ?? !!o.onPress) ? [icon("chevron", { size: 16, color: C.meta })] : []),
-  ], { gap: 12, paddingVertical: 13, paddingHorizontal: 16, minHeight: 52 }, o.onPress);
-}
-const deskList = (rows: Node[]): Node => listCard(rows);
-
-function youDesk(ctx: BotsCtx, d: YouData | undefined) {
-  const m = meterOf(ctx, d?.usage);
-  const line = limitLine(ctx, m);
-  const helped = d?.computers?.helped;
-  const online = d?.computers?.online ?? [];
-  const apps = d?.apps;
-  const appRows: Node[] = [
-    ...(apps?.github ? [deskRow({
-      glyphNode: icon("code", { size: 18 }), label: "GitHub", sub: `Used by Code · ${plural(apps.github.repos, "repo")}`, onPress: open(SCREENS.code),
-    })] : []),
-    ...(apps?.connected ?? []).slice(0, 3).map((a) => deskRow({
-      glyphNode: icon("link", { size: 18 }), label: a.name, sub: a.usedBy.length ? `Used by ${a.usedBy.map((n) => n.replace(/ bot$/i, "")).join(", ")}` : "Not used by a bot yet",
-      value: ago(ctx, a.lastUsedAt), onPress: open(SCREENS.appConnect, { id: a.id }),
-    })),
-  ];
-  const moreApps = (apps?.connected.length ?? 0) - 3;
-  return page(ctx, {
-    tab: "you", title: "You", maxWidth: 1040, gap: 22,
-    body: [
-      row([
-        face(ctx, 52),
-        col([
-          text(youName(ctx), { size: 24, weight: 700, tracking: -0.5, lineHeight: 30 }),
-          meta([`${d?.plan.name ?? "Your plan"} · ${plural(ctx.live.bots.length, "bot")}`, ...(ctx.user?.email ? [ctx.user.email] : [])].join(" · "), { size: 13 }),
-        ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-        secondaryButton("Plan and billing", open(SCREENS.billing), { size: "md" }),
-        secondaryButton("Sign out", signOut, { size: "md" }),
-      ], { gap: 14 }),
-      columns([
-        card([
-          row([
-            ring(m.used, 132),
-            col([
-              row([text(spanLabel(m.windows), { size: 14, weight: 600 }), grow(), text("Usage", { size: 13, weight: 500, style: { textDecorationLine: "underline" } })], {}, open(SCREENS.usage)),
-              meta(resetsLine(ctx, m.resetsAt), { size: 12 }),
-              ...(m.windows ? [usageMeter("This month", m.month, { height: 4 })] : []),
-              ...(line ? [meta(line, { size: 12 })] : []),
-            ], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 10 }),
-          ], { gap: 22, alignItems: "center" }),
-        ], { padding: 20 }),
-        col([
-          row([sectionLabel(`Connected apps · ${(apps?.connected.length ?? 0) + (apps?.github ? 1 : 0)}`), grow(), text("Manage", { size: 13, weight: 500, style: { textDecorationLine: "underline" } })], {}, open(SCREENS.apps)),
-          appRows.length ? deskList([...appRows, ...(moreApps > 0 ? [deskRow({ glyphNode: box([]), label: `${plural(moreApps, "more app")}`, onPress: open(SCREENS.apps) })] : [])])
-            : card([meta(apps && !apps.enabled ? "Connected apps aren't on yet." : "No apps connected yet. Your bots can use GitHub, Docs and more.", { size: 13 }), button("Connect an app", open(SCREENS.apps), { kind: "secondary", size: "md" })], { gap: 10 }),
-        ], { gap: 8 }),
-      ], [
-        deskList([
-          deskRow({
-            glyphNode: icon("computer", { size: 18 }), label: "This computer helps",
-            sub: online.length ? `${computerLine(d)} · ${online[0]!.name}` : "Off · your computers can run jobs for your bots",
-            ...(helped && helped.jobs ? { value: `${plural(helped.jobs, "job")} this month` } : {}),
-            onPress: open(SCREENS.computer),
-          }),
-        ]),
-        deskList([
-          deskRow({ glyphNode: glyph(G.bell, 18), label: "What pings you", sub: pingsLine(d?.settings) || "Needs you always", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
-        ]),
-        deskList([
-          deskRow({ glyphNode: icon("shield", { size: 18 }), label: "Privacy", sub: "What we keep, and for how long", onPress: open(SCREENS.privacy) }),
-          deskRow({ glyphNode: icon("lock", { size: 18 }), label: "Blocked people", sub: "People you blocked in Spaces", onPress: open(SCREENS.blocked) }),
-          deskRow({
-            glyphNode: glyph(G.download, 18), label: "Your data", sub: "Chats, notes and files", chevron: false,
-            right: row([button("Download", exportAction(d?.exportUrl ?? null), { kind: "secondary", size: "md" }), button("Delete", open(SCREENS.privacy), { kind: "secondary", size: "md" })], { gap: 8 }),
-          }),
-          deskRow({ glyphNode: glyph(G.trash, 18), label: "Delete account", sub: "7 days to change your mind", onPress: open(SCREENS.deleteAccount) }),
-        ]),
-        deskList(HELP.map((h) => deskRow({ glyphNode: icon(h.url.startsWith("mailto:") ? "send" : "book", { size: 18 }), label: h.label, value: h.value || undefined, onPress: helpAction(h.url) }))),
-      ], { rightWidth: 380 }),
-    ],
-  });
-}
 
 // ===================================================================== bots.usage (and bots.budget, its old link)
 
@@ -526,265 +207,6 @@ function billingDesk(ctx: BotsCtx, d: BillingData | undefined) {
   });
 }
 
-// ===================================================================== bots.computer
-
-const DOWNLOAD_URL = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/download`;
-
-function onlineLine(c: ComputersData["online"][number], working: string | undefined): string {
-  if (!c.allowRun) return "Online · not running jobs";
-  if (c.busy) return working ? `Online · working on ${working}` : "Online · working for Xode";
-  return "Online · ready for Xode";
-}
-const projectsLine = (p: ComputersData["online"][number]["projects"]) => (p === "all" ? "Every project" : p === "most" ? "All but a few" : plural(p, "project"));
-const daysAgo = (ctx: BotsCtx, t: number) => {
-  const days = Math.floor((ctx.live.now - t) / DAY_MS);
-  return days < 1 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
-};
-const codeWorking = (ctx: BotsCtx) => ctx.live.working.find((w) => w.bot === "code" && w.id.startsWith("job:"));
-
-function computerPhone(ctx: BotsCtx, d: ComputersData | undefined) {
-  const head = [title("This computer helps")];
-  const signedIn = d?.signedIn ?? [];
-  const add = card([
-    text("Add a computer", { size: 15, weight: 600 }),
-    meta("On that computer, get X0 Bot and sign in as you.", { size: 13, lineHeight: 18 }),
-    button("Get X0 Bot for computer", openUrl(DOWNLOAD_URL), { kind: "secondary", size: "md" }),
-  ], { gap: 10 });
-  if (!d) return page(ctx, { back: true, nav: "computer", title: "This computer helps", body: [...head, couldNot("your computers")] });
-  if (!d.online.length && !d.offline.length && !signedIn.length) {
-    return page(ctx, { back: true, nav: "computer", title: "This computer helps", body: [...head, emptyState({ pose: "think", title: "No computer yet", action: { label: "Get X0 Bot for computer", onPress: openUrl(DOWNLOAD_URL) } })] });
-  }
-  const w = codeWorking(ctx);
-  const first = d.online[0];
-  return page(ctx, {
-    back: true, nav: "computer", title: "This computer helps", gap: 18,
-    body: [
-      ...head,
-      listCard([
-        ...d.online.map((c, i) => col([
-          row([icon("computer", { size: 22 }), col([text(c.name, { size: 15, weight: 600 }), meta(onlineLine(c, c.busy ? w?.title.split(/[.\n]/)[0] : undefined), { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12 }),
-          ...(i === 0 ? [row([
-            box([text(plural(d.helped.jobs, "job"), { size: 18, weight: 700 }), meta("helped this month", { size: 12 })], { flexGrow: 1, flexBasis: 0, backgroundColor: C.surface, borderRadius: 12, padding: 12, gap: 2 }),
-            box([text(hours(d.helped.minutes), { size: 18, weight: 700 }), meta("of work, free", { size: 12 })], { flexGrow: 1, flexBasis: 0, backgroundColor: C.surface, borderRadius: 12, padding: 12, gap: 2 }),
-          ], { gap: 10 })] : []),
-        ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16 })),
-        ...d.offline.map((c) => listRow({
-          left: icon("computer", { size: 22, color: C.idle }), label: c.name, sub: `Offline · last seen ${daysAgo(ctx, c.lastSeen)}`, chevron: false,
-          right: quietButton("Remove", call("DELETE", `/v1/you/computers/${encodeURIComponent(c.deviceId)}`, undefined, { ok: seq(toast(`${c.name} removed`), refresh), fail: oops("remove it") }), { size: "md" }),
-        })),
-        ...signedIn.map((c) => listRow({ left: icon("computer", { size: 22 }), label: c.name, sub: "Signed in · Xode is off", chevron: false })),
-      ]),
-      ...(first ? [col([
-        sectionLabel("What it may do"),
-        listCard([
-          listRow({ label: "Run jobs for Xode", value: first.allowRun ? "On" : "Off" }),
-          listRow({ label: "Projects", value: projectsLine(first.projects) }),
-          listRow({ label: "Can push code", value: "Never", sub: "It gets a read-only copy" }),
-        ]),
-        meta("Change these in X0 Bot on that computer. Never other folders, passwords, photos or your browser.", { size: 12, lineHeight: 17 }),
-      ], { gap: 8 })] : []),
-      add,
-    ],
-  });
-}
-
-/**
- * TAILZU CODE ON THIS COMPUTER, the runner's own window drawn here (a window that declares DeskRunner: the
- * desktop's runnerCard.js): its switch and what it is doing, the safety words, Stop, the container, the projects
- * and what it ran, as that computer's main process reports them. Every word it shows is one of these props, so
- * they are the server's and translated (i18n NODE_TYPE_TEXT_PROPS). Turning it on and allowing a project are
- * asked by the window itself, in its own words, before they happen; the card is never the consent.
- */
-export const RUNNER_CARD_WORDS = {
-  title: "Xode on this computer",
-  lede: "Let Xode do its work here first: free, and fast, because nothing has to wait for a cloud computer to start.",
-  use: "Use this computer for Xode",
-  safetyLead: "Off until you turn it on.",
-  safety: "When it is on, and only while X0 Bot is open, Xode can run its commands (tests, builds, installs) on this computer, for the projects you allow below. Each project is asked about the first time. It works in a folder of its own, from a read-only copy of your code, and cannot see your passwords, keys or other files: commands get a clean environment and a private home folder, and things like sudo, git push, publishing or deleting your home folder are refused. It pauses by itself when the battery is under 20% or Low Power Mode is on. Everything it runs is listed below and kept in a log on this computer for 7 days.",
-  stateOff: "Off",
-  stateSignedOut: "Sign in to X0 Bot to use this",
-  stateConnecting: "Connecting…",
-  stateOnline: "Online for Xode",
-  stateWorking: "Working on {project}",
-  statePaused: "Paused",
-  pausedBattery: "Paused: the battery is under 20%",
-  pausedLowPower: "Paused: Low Power Mode is on",
-  stateLiveOff: "Xode is not on for your account yet",
-  stateReplaced: "Another copy of X0 Bot has this computer",
-  workingLine: "X0 Bot is working on {project}",
-  stop: "Stop",
-  stopNote: "Stop ends what is running and turns this off until you turn it on again.",
-  container: "Run in a container (Docker)",
-  checkDocker: "Check Docker",
-  dockerRunning: "Docker {version} is running.",
-  dockerChecking: "Checking Docker…",
-  dockerDown: "{reason} Nothing will run until it is available or this is turned off.",
-  containerNote: "Each command runs in a throwaway container (image {image}) with only this project's workspace mounted, so it cannot touch the rest of this computer. Needs Docker installed and running; if it is not, nothing runs here. Off by default.",
-  projects: "Projects",
-  noProjects: "No projects yet. Xode asks the first time it wants to run one here.",
-  allow: "Allow",
-  deny: "Don't allow",
-  askAgain: "Ask me again",
-  badgeAsk: "Will ask",
-  badgeAllowed: "Allowed",
-  badgeDenied: "Not allowed",
-  ran: "What it ran",
-  nothingYet: "Nothing yet.",
-  colTime: "Time",
-  colProject: "Project",
-  colCommand: "Command",
-  colExit: "Exit",
-  colTook: "Took",
-  devServer: "[dev server]",
-  notRun: "- not run: {why}",
-  running: "running",
-  refused: "refused",
-  timedOut: "(time)",
-  stopped: "(stopped)",
-  audit: "Open the audit log folder",
-  workspaces: "Workspaces: {dir}",
-} as const;
-
-/** The card, for a window that draws it; nothing for any other. */
-const runnerCard = (ctx: BotsCtx): Node[] =>
-  ctx.can.has("DeskRunner") ? [col([sectionLabel("On this computer"), { type: "DeskRunner", props: { ...RUNNER_CARD_WORDS } }], { gap: 8 })] : [];
-
-function computerDesk(ctx: BotsCtx, d: ComputersData | undefined) {
-  const head = heading(ctx, "This computer helps", "Your bots can run heavy work on your own computers instead of the cloud. It's free, and your files stay with you.");
-  if (!d) return page(ctx, { back: true, nav: "computer", title: "This computer helps", maxWidth: 1040, body: [head, ...runnerCard(ctx), couldNot("your computers")] });
-  const w = codeWorking(ctx);
-  const busy = d.online.find((c) => c.busy);
-  const first = d.online[0];
-  const status = first ? onlineLine(first, busy ? w?.title.split(/[.\n]/)[0] : undefined) : d.offline.length ? "Offline" : d.signedIn?.length ? "Signed in · Xode is off" : "No computer yet";
-  return page(ctx, {
-    back: true, nav: "computer", title: "This computer helps", maxWidth: 1040, gap: 20,
-    body: [
-      row([col([head], { flexGrow: 1, flexShrink: 1 }), ...(first ? [infoChip(first.allowRun ? "Helping" : "Not helping")] : [])], { gap: 16, alignItems: "flex-start" }),
-      ...runnerCard(ctx),
-      columns([
-        col([
-          sectionLabel("Runner"),
-          listCard([
-            listRow({ label: "Status", value: status }),
-            ...(first ? [
-              listRow({ label: "This computer", value: [first.name, first.os === "darwin" ? "Mac" : first.os === "win32" ? "Windows" : first.os === "linux" ? "Linux" : ""].filter(Boolean).join(" · ") }),
-              listRow({ label: "Projects it may run", value: projectsLine(first.projects) }),
-              listRow({ label: "Where jobs run", value: first.container ? "In a sealed box" : "On this computer, in its own folder" }),
-            ] : []),
-          ]),
-        ], { gap: 8 }),
-        ...(busy && w ? [card([
-          row([avatar(ctx, "code", 30), col([text(`Working on ${w.title.split(/[.\n]/)[0]}`, { size: 14, weight: 600, lines: 1 }), meta(`Xode · on ${busy.name}`, { size: 12 })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 2 }),
-            button("Stop job", call("POST", `/v1/code/jobs/${w.id.slice(4)}/stop`, {}, { ok: seq(toast("Stopped"), refresh), fail: oops("stop it") }), { kind: "secondary", size: "md" })], { gap: 12 }),
-        ], { padding: 16 })] : []),
-        ...(d.offline.length ? [col([sectionLabel("Other computers"), listCard(d.offline.map((c) => listRow({
-          left: icon("computer", { size: 20, color: C.idle }), label: c.name, sub: `Offline · last seen ${daysAgo(ctx, c.lastSeen)}`, chevron: false,
-          right: button("Remove", call("DELETE", `/v1/you/computers/${encodeURIComponent(c.deviceId)}`, undefined, { ok: seq(toast(`${c.name} removed`), refresh), fail: oops("remove it") }), { kind: "secondary", size: "md" }),
-        })))], { gap: 8 })] : []),
-        ...(!d.online.length ? [card([
-          text("Add a computer", { size: 15, weight: 600 }),
-          meta("On that computer, get X0 Bot and sign in as you.", { size: 13 }),
-          button("Get X0 Bot for computer", openUrl(DOWNLOAD_URL), { kind: "secondary", size: "md" }),
-        ], { gap: 10, padding: 20 })] : []),
-      ], [
-        card([
-          sectionLabel("Guard rails"),
-          ...[
-            [icon("folder", { size: 18 }), "Runs only projects you allowed", "Nothing else on the computer is shown to bots."],
-            [icon("lock", { size: 18 }), "Never pushes code", "It gets a copy to read. X0 Bot commits, through your rules."],
-            [icon("shield", { size: 18 }), "Asks before anything risky", "Bots say when they use a computer."],
-          ].map(([g, l, s]) => row([g as Node, col([text(l as string, { size: 14, weight: 500 }), meta(s as string, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, alignItems: "flex-start" })),
-        ], { padding: 20, gap: 14 }),
-        card([
-          sectionLabel("Helped this month"),
-          row([text(plural(d.helped.jobs, "job"), { size: 30, weight: 700, tracking: -0.6 }), meta(`${hours(d.helped.minutes)} of work, free`, { size: 12, style: { paddingBottom: 6 } })], { gap: 10, alignItems: "flex-end" }),
-        ], { padding: 20, gap: 10 }),
-      ]),
-    ],
-  });
-}
-// ===================================================================== bots.notify
-
-// ---- the time picker: any hour, the minutes in fives, am or pm. Made of the kit's own parts (a box, a bound text, a
-// condition), so every app that draws these pages can use it; the server turns { h, m, ap } into the minute of the day.
-
-type ClockKey = "sum" | "qf" | "qt";
-const HOURS = Array.from({ length: 12 }, (_, i) => i + 1);
-const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
-/** A saved minute of the day as the picker's state: its hour, its minute (down to a five), am or pm. */
-function clockState(key: ClockKey, minute: number): Record<string, unknown> {
-  const h = Math.floor(minute / 60) % 24;
-  return { [`${key}_h`]: h % 12 === 0 ? 12 : h % 12, [`${key}_m`]: Math.floor((minute % 60) / 5) * 5, [`${key}_ap`]: h < 12 ? "am" : "pm" };
-}
-/** The next (or the one before) in a list that goes round: after 12 comes 1, before :00 comes :55. */
-function cycle(path: string, values: number[], dir: 1 | -1): ActionSpec {
-  let act: ActionSpec = { kind: "setState", path, value: values[0] };
-  for (let i = values.length - 1; i >= 0; i--) {
-    const next = values[(i + dir + values.length) % values.length];
-    act = { kind: "condition", if: { eq: [path, values[i]] }, then: { kind: "setState", path, value: next }, else: act } as ActionSpec;
-  }
-  return act;
-}
-const BIG = { size: 26, weight: 600, lineHeight: 32, tracking: -0.4 } as const;
-function stepper(path: string, values: number[], pad: boolean, what: string): Node {
-  const btn = (name: IconName, dir: 1 | -1) =>
-    labelled(box([icon(name, { size: 16, color: C.grey70 })], { width: 34, height: 44, alignItems: "center", justifyContent: "center" }, cycle(path, values, dir)), `${dir > 0 ? "Later" : "Earlier"} ${what}`);
-  return row([
-    btn("minus", -1),
-    row([...(pad ? [when({ lt: [path, 10] }, text("0", BIG))] : []), text(String(values[0]), { ...BIG, bind: path })], { minWidth: 36, justifyContent: "center" }),
-    btn("plus", 1),
-  ], { alignItems: "center" });
-}
-/** A saved time, as a chip: tap it to change it (and again to put the picker away). */
-function timeChip(key: ClockKey, minute: number): Node {
-  const open = whenEq("edit", key, C.ink, C.outline);
-  return box([text(clock(minute, true), { size: 14, weight: 600, lineHeight: 19 })], { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1.5, borderColor: open },
-    { kind: "condition", if: { eq: ["edit", key] }, then: { kind: "setState", path: "edit", value: "" }, else: { kind: "setState", path: "edit", value: key } } as ActionSpec);
-}
-/** The picker for one time, open while its chip is: hour, minutes, am or pm, then Save. */
-function timePicker(key: ClockKey, field: "summaryAt" | "quietFrom" | "quietTo", ok: string): Node {
-  const p = (x: string) => `${key}_${x}`;
-  return when({ eq: ["edit", key] }, col([
-    row([stepper(p("h"), HOURS, false, "hour"), text(":", BIG), stepper(p("m"), MINUTES, true, "minutes")], { alignItems: "center", justifyContent: "center", gap: 4 }),
-    row([
-      segments([{ label: "am", value: "am" }, { label: "pm", value: "pm" }], p("ap"), () => ({ kind: "haptic", style: "selection" }) as ActionSpec, 96),
-      grow(),
-      button("Save", seq(save({ notify: { [field]: { h: `$state.${p("h")}`, m: `$state.${p("m")}`, ap: `$state.${p("ap")}` } } }, ok), { kind: "setState", path: "edit", value: "" }), { size: "md" }),
-    ], { alignItems: "center", gap: 10 }),
-  ], { backgroundColor: C.surface, borderRadius: 14, paddingVertical: 8, paddingHorizontal: 12, gap: 6 }));
-}
-
-const notifyState = (s: Settings, ctx: BotsCtx) => ({
-  done: s.notify.done, summary: s.notify.summary, quiet: s.notify.quiet, edit: "",
-  ...clockState("sum", s.notify.summaryAt), ...clockState("qf", s.notify.quietFrom), ...clockState("qt", s.notify.quietTo),
-  ...Object.fromEntries(ctx.live.bots.map((b) => [`bot_${b.slug.replace(/-/g, "_")}`, !s.notify.botsOff.includes(b.slug)])),
-});
-const doneSeg = (width?: number) => segments([{ label: "Quiet", value: "quiet" }, { label: "Ping", value: "ping" }], "done",
-  (v) => save({ notify: { done: v } }, v === "ping" ? "Done pings you" : "Done comes without a sound"), width);
-const summarySwitch = () => seq({ kind: "toggleState", path: "summary" }, when2("summary", save({ notify: { summary: true } }, "Daily summary on"), save({ notify: { summary: false } }, "Daily summary off")));
-const quietSwitch = () => seq({ kind: "toggleState", path: "quiet" }, when2("quiet", save({ notify: { quiet: true } }, "Quiet hours on"), save({ notify: { quiet: false } }, "Quiet hours off")));
-const botSwitch = (slug: string) => {
-  const path = `bot_${slug.replace(/-/g, "_")}`;
-  const saveIt = when2(path, save({ notify: { bot: slug, on: true } }, "Pings on"), save({ notify: { bot: slug, on: false } }, "Pings off"));
-  return { path, saveIt, press: seq({ kind: "toggleState", path }, saveIt) };
-};
-/** From and to, each a chip that opens its picker. */
-const quietTimes = (s: Settings): Node => col([
-  row([meta("From", { size: 13 }), timeChip("qf", s.notify.quietFrom), meta("to", { size: 13 }), timeChip("qt", s.notify.quietTo)], { gap: 8, flexWrap: "wrap" }),
-  timePicker("qf", "quietFrom", "Quiet hours changed"),
-  timePicker("qt", "quietTo", "Quiet hours changed"),
-], { gap: 8 });
-const botSub = (slug: string) => (slug === "keybot" ? "Only reminders, like your streak" : slug === "code" ? "Done, stopped or moved jobs" : undefined);
-
-function summaryPreview(ctx: BotsCtx, d: NotifyData): Node {
-  return box([
-    row([botAvatar(botOf(ctx, "tailzu").look, 26), col([
-      meta(`Tonight, ${clock(d.settings.notify.summaryAt)}`, { size: 12 }),
-      text(d.line ?? "Nothing happened yet today. On a quiet day, no note comes.", { size: 13, weight: d.line ? 500 : 400, lineHeight: 18 }),
-    ], { gap: 2, flexShrink: 1 })], { gap: 10, alignItems: "flex-start" }),
-  ], { backgroundColor: C.surface, borderRadius: 14, padding: 14 });
-}
-
 function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
   if (!d) return page(ctx, { back: true, nav: "you", title: "What pings you", body: [title("What pings you"), couldNot("your settings")] });
   const s = d.settings;
@@ -819,53 +241,7 @@ function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
   });
 }
 
-function notifyDesk(ctx: BotsCtx, d: NotifyData | undefined) {
-  if (!d) return page(ctx, { back: true, backTitle: "You", nav: "you", title: "What pings you", maxWidth: 1040, body: [heading(ctx, "What pings you"), couldNot("your settings")] });
-  const s = d.settings;
-  const H = 24 * 60, pct = (m: number) => `${((m / H) * 100).toFixed(1)}%`;
-  const quietBar = s.notify.quietFrom > s.notify.quietTo
-    ? row([box([], { width: pct(s.notify.quietTo), height: 6, backgroundColor: C.ink }), box([], { flexGrow: 1, height: 6 }), box([], { width: pct(H - s.notify.quietFrom), height: 6, backgroundColor: C.ink })], { borderRadius: 3, backgroundColor: C.track, overflow: "hidden" })
-    : row([box([], { width: pct(s.notify.quietFrom), height: 6 }), box([], { width: pct(s.notify.quietTo - s.notify.quietFrom), height: 6, backgroundColor: C.ink })], { borderRadius: 3, backgroundColor: C.track, overflow: "hidden" });
-  return page(ctx, {
-    back: true, backTitle: "You", nav: "you", title: "What pings you", maxWidth: 1040, gap: 20, state: notifyState(s, ctx),
-    body: [
-      heading(ctx, "What pings you", "Needs you always reaches you. The rest waits quietly in Activity."),
-      columns([
-        card([
-          table([{ label: "By bot", flex: 2 }, { label: "Needs you" }, { label: "Done pings", align: "right" }],
-            ctx.live.bots.map((b) => {
-              const sw = botSwitch(b.slug);
-              return [
-                row([botAvatar(b, 26), col([text(b.name, { size: 14 }), ...(botSub(b.slug) ? [meta(botSub(b.slug)!, { size: 11 })] : [])], { gap: 1, flexShrink: 1 })], { gap: 10 }),
-                alwaysOn("Always"),
-                box([switchMark(sw.path)], {}, sw.press),
-              ];
-            })),
-        ], { padding: 0, gap: 0, style: { borderWidth: 0 } }),
-        meta("A bot turned off still reaches you when it needs you.", { size: 12 }),
-      ], [
-        card([
-          row([col([text("Done", { size: 15, weight: 600 }), meta("Quiet: no sound. Ping: with sound", { size: 12 })], { flexGrow: 1, gap: 2 }), doneSeg(130)], { gap: 12 }),
-          divider(),
-          row([col([text("Daily summary", { size: 15, weight: 600 }), row([meta("One note at", { size: 12 }), timeChip("sum", s.notify.summaryAt)], { gap: 8 })], { flexGrow: 1, gap: 6 }), box([switchMark("summary")], {}, summarySwitch())], { gap: 12 }),
-          timePicker("sum", "summaryAt", "Summary time changed"),
-          sectionLabel("Tonight's summary, as it will look"),
-          summaryPreview(ctx, d),
-        ], { padding: 20, gap: 14 }),
-        card([
-          row([glyph(G.moon, 18), col([text("Quiet hours", { size: 15, weight: 600 }), meta("Every night", { size: 12 })], { flexGrow: 1, gap: 2 }), switchMark("quiet")], { gap: 12 }, quietSwitch()),
-          quietTimes(s),
-          quietBar,
-          row([meta("12 am", { size: 11 }), grow(), meta("12 pm", { size: 11 }), grow(), meta("11 pm", { size: 11 })]),
-          meta("Bots keep working. Done waits in Activity. Needs you still reaches you, without sound.", { size: 12, lineHeight: 17 }),
-        ], { padding: 20, gap: 12 }),
-      ], { rightWidth: 400 }),
-    ],
-  });
-}
-
 // ===================================================================== bots.privacy
-
 const KEPT: Array<[string, string, string]> = [
   ["Chats with your bots", "What they remember. Forget any of it", "Till you delete"],
   ["What you ask on your phone", "The first 80 characters, for Activity", "30 days"],
@@ -955,33 +331,6 @@ function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
   });
 }
 
-// ===================================================================== bots.delete-account
-
-// Asking sets a date seven days out and signs the person out; signing in before it shows the date and Keep my account (accountGrace.ts).
-
-/** What the page reads: what the account holds (GET /v1/you/account), and whether a date is set (GET /v1/account/deletion). */
-interface DeleteData { account: AccountData | undefined; deletion: DeletionState | undefined }
-
-function goesAway(ctx: BotsCtx, d: AccountData): Node[] {
-  const own = d.bots.filter((b) => !b.builtin);
-  return [
-    listRow({
-      label: plural(d.bots.length, "bot"), chevron: false,
-      right: row(d.bots.slice(0, 5).map((b) => botAvatar(botLook(b.slug, b.colour), 20)), { gap: 3 }),
-      ...(ctx.client === "desktop" ? { sub: d.bots.map((b) => b.name).join(", ") } : own.length ? { sub: `${plural(own.length, "of your own")}` } : {}),
-    }),
-    listRow({ label: plural(d.projects.length, "project"), value: d.projects.length ? (d.projects.length > 1 ? `${d.projects[0]} and ${d.projects.length - 1} more` : d.projects[0]!) : "None" }),
-    listRow({ label: plural(d.notes, "note"), value: "and every chat" }),
-    // The bots stop the day they ask, keys too (you/deletion.ts isLeaving); Keep my account starts them again.
-    listRow({ label: plural(d.keys, "key"), value: d.keys ? "stop working right away" : "None" }),
-  ];
-}
-const planWarning = (ctx: BotsCtx, d: AccountData): Node[] =>
-  d.plan.active && d.plan.renews ? [card([
-    row([glyph(G.never, 16), text(`Cancel Pro first. You're on Pro, and it would still renew${d.plan.until ? ` on ${dayMonth(ctx, d.plan.until)}` : ""}.`, { size: 13, weight: 500, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 10, alignItems: "flex-start" }),
-    text("Plan and billing", { size: 13, weight: 500, style: { textDecorationLine: "underline" } }),
-  ], { gap: 8, padding: 14, style: { backgroundColor: C.surface, borderWidth: 0 }, onPress: open(SCREENS.billing) })] : [];
-
 /** The seven days under their strip: from today (or the day they asked) to the day it goes, and what that means. */
 function graceBlock(ctx: BotsCtx, del: DeletionState | undefined): Node {
   const s = del?.scheduled;
@@ -1027,57 +376,7 @@ function deletePhone(ctx: BotsCtx, data: DeleteData | undefined) {
   });
 }
 
-function deleteDesk(ctx: BotsCtx, data: DeleteData | undefined) {
-  const d = data?.account, del = data?.deletion, s = del?.scheduled;
-  const gone = dayMonthOf(ctx, goneAt(ctx, del));
-  const days = card([
-    row([sectionLabel(s ? "Until then, nothing is lost" : `${GRACE_DAYS} days to change your mind`), grow(), text(`Gone for good, ${gone}`, { size: 13, weight: 600, lineHeight: 18 })], { gap: 10 }),
-    daysStrip(ctx, s?.requestedAt ?? ctx.live.now, { labels: true }),
-    text(s ? "Everything is kept, and your bots are stopped. Keep your account and they start again."
-      : `You have ${GRACE_DAYS} days to change your mind. Sign in before ${gone} and everything comes back as it was.`, { size: 14, lineHeight: 20 }),
-  ], { padding: 20, gap: 12 });
-  const left = [
-    ...(d ? [col([sectionLabel(s ? "What goes then" : "What goes away"), listCard(goesAway(ctx, d))], { gap: 8 })] : [couldNot("what your account holds")]),
-    days,
-  ];
-  if (s) {
-    return page(ctx, {
-      back: true, backTitle: "You", nav: "you", title: "Delete account", maxWidth: 1040, gap: 20,
-      body: [
-        heading(ctx, "Delete account", `Your account will be deleted on ${gone}.`),
-        columns(left, [card([
-          sectionLabel("Changed your mind?"),
-          meta("Keep your account and your bots and keys work again. Nothing is lost.", { size: 13, lineHeight: 18 }),
-          primaryButton("Keep my account", keepAccount, { wide: true, size: "md" }),
-        ], { padding: 20, gap: 12 })]),
-      ],
-    });
-  }
-  return page(ctx, {
-    back: true, backTitle: "You", nav: "you", title: "Delete account", maxWidth: 1040, gap: 20, state: { sure: false },
-    body: [
-      heading(ctx, "Delete account", "Here is exactly what happens, so there are no surprises."),
-      columns(left, [
-        card([
-          sectionLabel("Before you go"),
-          ...(d ? planWarning(ctx, d) : []),
-          row([icon("check", { size: 14 }), meta("Want a copy first? Chats, notes, files and job steps, in one file.", { size: 13, style: { flexShrink: 1 } })], { gap: 8, alignItems: "flex-start" }),
-          button("Download my data", exportAction(d?.exportUrl ?? null), { kind: "secondary", size: "md" }),
-          divider(),
-          when({ falsy: "sure" }, primaryButton("Delete account", { kind: "setState", path: "sure", value: true }, { wide: true, size: "md" })),
-          when({ truthy: "sure" }, col([
-            text(`Delete your account on ${gone}?`, { size: 14, weight: 600, align: "center" }),
-            primaryButton("Yes, delete my account", scheduleDeletion(gone), { wide: true, size: "md" }),
-          ], { gap: 8 })),
-          secondaryButton("Keep my account", back(), { wide: true, size: "md" }),
-        ], { padding: 20, gap: 12 }),
-      ]),
-    ],
-  });
-}
-
 // ===================================================================== bots.apps
-
 const LEVEL_WORDS: Record<string, string> = { look: "Reads only", draft: "Reads, drafts for your yes", send: "Reads and acts, asking first" };
 
 function usedByNode(ctx: BotsCtx, names: string[], extra?: string): Node {

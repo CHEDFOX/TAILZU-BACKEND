@@ -17,7 +17,7 @@ process.env.BOTS_APP = "true";
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
-const { AX_STATE } = await import("../src/experience/bots/screens/firstRun.js");
+const { AX_STATE } = await import("../src/experience/bots/screens/firstRun/parts.js");
 
 const build = (screenId: string, can: string[] = [], api: Record<string, unknown> = {}) =>
   buildBotsScreen({
