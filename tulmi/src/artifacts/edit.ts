@@ -72,7 +72,7 @@ export const SMALL_INSTRUCTION_CHARS = 240;
 export const FIX_ATTEMPTS = 2;
 export const FIX_CHAIN = 3;
 /** Lines of the artifact a fix is shown, each side of the failing line. */
-export const FIX_WINDOW = 6;
+const FIX_WINDOW = 6;
 const INSTRUCTION_MAX = 2000;
 const CHARS_PER_TOKEN = 3.5;
 
@@ -392,7 +392,7 @@ function howOf(mode: ChangeHow["mode"], ran: Ran<unknown>, artifactChars: number
 }
 
 /** Where an error happened: its own line and column, else the first `:line:col` of its stack; null if neither. */
-export function placeOfError(err: ViewerError, content: string): { line: number; col: number } | null {
+function placeOfError(err: ViewerError, content: string): { line: number; col: number } | null {
   const lines = content.split("\n").length;
   const ok = (line: unknown, col: unknown) => (Number.isInteger(line) && (line as number) >= 1 && (line as number) <= lines ? { line: line as number, col: Number.isInteger(col) && (col as number) >= 1 ? (col as number) : 1 } : null);
   const own = ok(err.line, err.col);

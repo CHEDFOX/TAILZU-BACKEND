@@ -155,7 +155,7 @@ export const ACTIONS = {
 
 export type ActionId = keyof typeof ACTIONS;
 
-export const isActionId = (v: unknown): v is ActionId => typeof v === "string" && Object.prototype.hasOwnProperty.call(ACTIONS, v);
+const isActionId = (v: unknown): v is ActionId => typeof v === "string" && Object.prototype.hasOwnProperty.call(ACTIONS, v);
 
 const def = (a: ActionId): ActionDef => ACTIONS[a];
 /** Needs Face ID on the phone, every time. */
@@ -441,7 +441,7 @@ export function commitFingerprint(files: readonly CommitFile[], message: string,
  * it reaches for `.tailzu/`, the workflow `tailzu-run.yml` or a `tailzu-run/`
  * branch. Those are written by the server alone (shadow.ts).
  */
-export function reservedRefusal(): PolicyError {
+function reservedRefusal(): PolicyError {
   return new PolicyError("never", "Those files and branches belong to X0 Bot's own runner, so nothing else can write them.", {
     action: "runner.reserved", tier: "never", reason: "never", faceId: false,
   });

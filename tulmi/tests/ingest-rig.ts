@@ -131,7 +131,7 @@ export function bigPng(bytes: number): Buffer {
 }
 
 /** An EXIF block (big-endian) holding the orientation and some text a camera would write, e.g. "GPSLatitude 12.97". */
-export function exifBlock(orientation: number, secret: string): Buffer {
+function exifBlock(orientation: number, secret: string): Buffer {
   const text = Buffer.from(`${secret}\0`, "latin1");
   // IFD0: Orientation (0x0112) and ImageDescription (0x010e) pointing at the text.
   const ifd = Buffer.concat([be16(2), Buffer.concat([be16(0x010e), be16(2), be32(text.length), be32(8 + 2 + 24 + 4)]), Buffer.concat([be16(0x0112), be16(3), be32(1), be16(orientation), be16(0)]), be32(0)]);

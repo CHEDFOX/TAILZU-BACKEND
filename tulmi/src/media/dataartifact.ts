@@ -30,14 +30,14 @@ const literal = (v: unknown): string => JSON.stringify(v).replace(/</g, "\\u003c
 export const chartable = (t: DataTable): boolean => t.numeric.length > 0 && t.rows.length >= 2 && t.columns.length >= 2;
 
 /** The columns a chart is drawn from: the category, and the number columns (at most four). */
-export function chartColumns(t: DataTable): { category: number; series: number[] } {
+function chartColumns(t: DataTable): { category: number; series: number[] } {
   const category = t.columns.findIndex((_, i) => !t.numeric.includes(i));
   const cat = category >= 0 ? category : 0;
   const series = t.numeric.filter((i) => i !== cat).slice(0, 4);
   return { category: cat, series };
 }
 
-export function chartSource(t: DataTable): string {
+function chartSource(t: DataTable): string {
   const { category, series } = chartColumns(t);
   const lines = t.rows.length > 24;
   const rows = t.rows.slice(0, lines ? 200 : 60).map((r) => {
@@ -79,7 +79,7 @@ export default function DataChart() {
 /** Text that goes between JSX tags: braces and angle brackets are made safe. */
 const escapeJsx = (s: string): string => escapeHtml(s).replace(/[{}]/g, (c) => (c === "{" ? "&#123;" : "&#125;"));
 
-export function tableSource(t: DataTable): string {
+function tableSource(t: DataTable): string {
   const head = `<tr>${t.columns.map((c, i) => `<th${t.numeric.includes(i) ? ' class="n"' : ""}>${escapeHtml(c)}</th>`).join("")}</tr>`;
   const before = (n: number): string => `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(t.name)}</title>

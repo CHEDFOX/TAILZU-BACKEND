@@ -29,22 +29,22 @@ import type { ModelTier } from "../brain/tiers.js";
 import type { Anchors } from "./cite.js";
 
 /** The tools the chat may use: the agent's, read-only. */
-export const LOOK_TOOLS = ["project_map", "search_code", "grep", "read_file", "list_dir", "glob", "suggest_files"] as const;
+const LOOK_TOOLS = ["project_map", "search_code", "grep", "read_file", "list_dir", "glob", "suggest_files"] as const;
 /** Steps of looking at most, the answer's included; calls one step may make; what all the results together may hold. */
 export const LOOK_STEPS_MAX = 5;
-export const LOOK_CALLS_PER_STEP = 6;
-export const LOOK_RESULT_CHARS = 6_000;
-export const LOOK_CHARS_MAX = 36_000;
+const LOOK_CALLS_PER_STEP = 6;
+const LOOK_RESULT_CHARS = 6_000;
+const LOOK_CHARS_MAX = 36_000;
 /** Past this share of the money, the next step is the answer: looking never spends what the answer needs (a large project's brief made the last call unaffordable). */
-export const LOOK_SPEND_SHARE = 0.6;
+const LOOK_SPEND_SHARE = 0.6;
 /** Steps the answer may take after its review, to read what the review found missing and write the answer again. */
-export const CHECK_STEPS = 2;
+const CHECK_STEPS = 2;
 /** The review runs only while at least this share of the money is left: the answer as it is beats one that cannot be finished. */
-export const CHECK_MONEY_SHARE = 0.35;
+const CHECK_MONEY_SHARE = 0.35;
 /** The review's own words, OK or a few CHECK lines, and the thinking a reasoning model does first (220 was all thinking, measured: no CHECK came back). */
-export const CHECK_TOKENS = 1_200;
+const CHECK_TOKENS = 1_200;
 /** At most this many gaps go back to be settled. */
-export const GAPS_MAX = 3;
+const GAPS_MAX = 3;
 
 /**
  * THE REVIEW OF AN ANSWER, BEFORE IT GOES. The App Review replay (2026-11-02): asked why Apple found no tracking prompt, Xode found the gate (a server
@@ -57,7 +57,7 @@ export const GAPS_MAX = 3;
  * call of a few hundred tokens; gaps, and the loop settles them with its tools and writes the answer again. A model reviewing its own answer in its
  * own context passed it as it was (measured: "HOLDS" in four tokens); and it cost a lookup ten times as much.
  */
-export function reviewInput(question: string, draft: string, seen: readonly string[], greps: readonly string[]): string {
+function reviewInput(question: string, draft: string, seen: readonly string[], greps: readonly string[]): string {
   const read = [seen.length ? seen.slice(-30).join("\n") : "nothing read with tools", greps.length ? `searched: ${greps.slice(-12).map((g) => JSON.stringify(cut(g, 60))).join(", ")}` : ""];
   return [`<question>\n${cut(question, 1_500)}\n</question>`, `<answer>\n${cut(draft, 6_000)}\n</answer>`, `<read>\n${read.filter(Boolean).join("\n")}\n</read>`].join("\n\n");
 }
@@ -148,7 +148,7 @@ const args = (c: ToolCall): Record<string, unknown> => {
 };
 
 /** What a tool showed, made into anchors: a numbered line read (`12: text`), a grep hit (`path:12:`), a map card's line range. */
-export function anchorResult(anchors: Anchors, name: string, a: Record<string, unknown>, data: string): string | null {
+function anchorResult(anchors: Anchors, name: string, a: Record<string, unknown>, data: string): string | null {
   if (name === "read_file") {
     const path = str(a.path)?.trim().replace(/^\.\//, "");
     if (!path) return null;
@@ -337,7 +337,7 @@ export async function investigate(i: LookInput): Promise<Looked> {
 const FIT_KEEP: ReadonlyArray<number | null> = [null, 2_000, 500, 0];
 
 /** The messages with every tool result cut to `keep` characters (null: as they are). */
-export function shrunk(messages: readonly ChatMessage[], keep: number | null): ChatMessage[] {
+function shrunk(messages: readonly ChatMessage[], keep: number | null): ChatMessage[] {
   if (keep === null) return [...messages];
   return messages.map((m) => {
     if (m.role !== "tool" || typeof m.content !== "string" || m.content.length <= keep) return m;

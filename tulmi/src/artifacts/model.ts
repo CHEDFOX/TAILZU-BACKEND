@@ -41,7 +41,7 @@ import type { SpendMeter } from "./limits.js";
 import { CAP_PAISE, ArtifactError } from "./types.js";
 
 /** The tier above this one, once. Review, vision and indic are not on the ladder and do not climb. */
-export function tierAbove(tier: ModelTier): ModelTier | null {
+function tierAbove(tier: ModelTier): ModelTier | null {
   return tier === "tiny" ? "cheap" : tier === "cheap" ? "code" : tier === "code" ? "strong" : null;
 }
 

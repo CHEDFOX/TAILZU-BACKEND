@@ -377,7 +377,7 @@ export function glanceV2Of(i: GlanceInput, payload: WidgetsPayload): GlanceV2 {
 }
 
 /** What changed since the person's last look ended: what needs them, what finished, what started. Empty on a first look ever. */
-export function changesOf(i: GlanceInput, needs: readonly GlanceNeedsItem[], w: X0Words, nameOf: (slug: string) => string): GlanceChange[] {
+function changesOf(i: GlanceInput, needs: readonly GlanceNeedsItem[], w: X0Words, nameOf: (slug: string) => string): GlanceChange[] {
   const since = i.state.sinceAt;
   if (since === null) return [];
   const out: GlanceChange[] = [];

@@ -113,7 +113,7 @@ export function responseOf(bytes: Buffer, chunk = 4096, init: ResponseInit = {})
 // ----------------------------------------------------------------- git hashing
 
 const sha1 = (...parts: Array<string | Buffer>) => { const h = createHash("sha1"); for (const p of parts) h.update(p); return h.digest("hex"); };
-export const blobSha = (content: string | Buffer): string => { const b = Buffer.isBuffer(content) ? content : Buffer.from(content); return sha1(`blob ${b.length}\0`, b); };
+const blobSha = (content: string | Buffer): string => { const b = Buffer.isBuffer(content) ? content : Buffer.from(content); return sha1(`blob ${b.length}\0`, b); };
 
 interface Node { name: string; isDir: boolean; sha: string; size: number }
 

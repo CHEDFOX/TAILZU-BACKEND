@@ -106,7 +106,7 @@ export function coreKindOf(path: string): string | null {
 }
 
 /** Core files read from a tree, at most this many (shallow first): a monorepo has hundreds of package.json. */
-export const CORE_FILES_MAX = 150;
+const CORE_FILES_MAX = 150;
 
 // ------------------------------------------------------------------ choosing
 

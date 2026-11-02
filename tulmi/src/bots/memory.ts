@@ -34,7 +34,7 @@ export const BotMemoryReply = z.object({
 }).strict();
 export type BotMemoryReply = z.infer<typeof BotMemoryReply>;
 
-export const MEMORY_CAP_PAISE = 40;
+const MEMORY_CAP_PAISE = 40;
 const FOLD_EVERY = 4;
 const BUFFER_MAX = 6;
 const TURN_CHARS = 220;

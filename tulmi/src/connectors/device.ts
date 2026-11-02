@@ -28,15 +28,11 @@ import type { Risk } from "./risk.js";
 import { wordsFor } from "./words.js";
 
 export const DEVICE_ID = "this-computer";
-export const DEVICE_CAPABILITY = "DeviceFiles";
-/** Files one change may touch; the desktop holds the same number. */
-export const DEVICE_MAX_FILES = 500;
-/** What a device result may carry back into the prompt. */
-export const DEVICE_DATA_MAX = 5000;
+const DEVICE_CAPABILITY = "DeviceFiles";
 
 export type DeviceRisk = Extract<Risk, "read" | "write" | "destructive">;
 
-export const FILE_KINDS = [
+const FILE_KINDS = [
   "image", "video", "audio", "pdf", "document", "spreadsheet", "presentation", "archive", "installer", "code", "other",
 ] as const;
 

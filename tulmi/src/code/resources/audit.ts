@@ -62,7 +62,7 @@ export interface AuditOptions {
   max?: number;
 }
 
-export const AUDIT_PACKAGES_MAX = 3000;
+const AUDIT_PACKAGES_MAX = 3000;
 const LOCKFILES_READ = 6;
 const RANK = new Map(SEVERITY_ORDER.map((s, i) => [s, i]));
 const worst = (a: Severity, b: Severity): Severity => ((RANK.get(a) ?? 4) <= (RANK.get(b) ?? 4) ? a : b);

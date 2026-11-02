@@ -52,7 +52,7 @@ export const CACHE_RESULTS_MAX = 20;
 /** Most index chunks a search takes. */
 export const INDEX_HITS_MAX = 5;
 /** Longest a search keeps trying discovery engines. */
-export const SEARCH_BUDGET_MS = 30_000;
+const SEARCH_BUDGET_MS = 30_000;
 
 export interface SearchOptions {
   ctx?: PlanCtx;

@@ -38,8 +38,8 @@ export const BotPickReply = z.object({
 export type BotPickReply = z.infer<typeof BotPickReply>;
 
 export const SURE_POINTS = 6;
-export const SURE_LEAD = 3;
-export const PICK_CAP_PAISE = 30;
+const SURE_LEAD = 3;
+const PICK_CAP_PAISE = 30;
 const STOP = new Set([
   "the", "and", "for", "with", "that", "this", "from", "into", "your", "you", "are", "was", "can", "will", "all", "any", "not", "but", "its", "has", "have", "who", "what", "when", "where", "how", "why",
   "bot", "bots", "tailzu", "please", "help", "make", "get", "give", "tell", "show", "want", "need", "like", "just", "about", "some", "more", "my", "me", "mera", "meri", "mere", "ka", "ki", "ke", "ko", "se", "me",

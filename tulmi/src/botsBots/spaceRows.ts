@@ -23,7 +23,7 @@ export class MemoryPaged<R extends Row> extends MemoryTable<R> implements PagedT
   }
 }
 
-export class SupabasePaged<R extends Row> extends SupabaseTable<R> implements PagedTable<R> {
+class SupabasePaged<R extends Row> extends SupabaseTable<R> implements PagedTable<R> {
   constructor(private readonly client: SupabaseClient, private readonly tableName: string) { super(client, tableName); }
 
   async before(match: Partial<R>, column: keyof R & string, value: number | null, limit: number): Promise<R[]> {
@@ -36,7 +36,7 @@ export class SupabasePaged<R extends Row> extends SupabaseTable<R> implements Pa
 }
 
 /** The tables migration 0051 adds, and 0057's blocks and reports (botsBots/blocks.ts, safety.ts). */
-export const SPACE_TABLES = [
+const SPACE_TABLES = [
   "space_roles", "space_activity", "space_items", "space_payments", "space_tasks", "threads", "thread_members", "thread_messages", "mail_outbox",
   "user_blocks", "content_reports",
 ] as const;

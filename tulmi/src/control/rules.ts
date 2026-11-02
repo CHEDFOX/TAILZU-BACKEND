@@ -63,7 +63,7 @@ const Obj = z.record(Json);
  *   select — a partial object; every object in the payload that contains it
  *            is a target: { "type": "LetterKey", "props": { "char": "q" } }.
  */
-export const OpSchema = z.discriminatedUnion("op", [
+const OpSchema = z.discriminatedUnion("op", [
   /** Replace the value at `path` (creating objects on the way). */
   z.object({ op: z.literal("set"), path: z.string(), value: Json }),
   /** Deep-merge `value` into the object at `path` (objects merge, arrays replace). */
@@ -94,7 +94,7 @@ export type Op = z.infer<typeof OpSchema>;
 const Range = z.object({ min: z.number().optional(), max: z.number().optional() });
 const VersionRange = z.object({ min: z.string().optional(), max: z.string().optional() });
 
-export const WhenSchema = z.object({
+const WhenSchema = z.object({
   /** For surface "screen": which screens ("*" = all). */
   screens: z.array(z.string()).optional(),
   platform: z.array(z.string()).optional(),
@@ -226,7 +226,7 @@ const isObj = (v: unknown): v is Record<string, unknown> =>
  */
 const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-export function parsePointer(p: string): string[] {
+function parsePointer(p: string): string[] {
   if (p === "" || p === "/") return [];
   if (!p.startsWith("/")) throw new Error(`path must start with "/": ${p}`);
   const tokens = p.slice(1).split("/").map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
@@ -260,7 +260,7 @@ function get(root: unknown, tokens: string[]): unknown {
   return cur;
 }
 
-export function deepMerge(target: Record<string, unknown>, src: Record<string, unknown>): void {
+function deepMerge(target: Record<string, unknown>, src: Record<string, unknown>): void {
   for (const [k, v] of Object.entries(src)) {
     if (FORBIDDEN_KEYS.has(k)) continue;
     const t = target[k];
@@ -272,7 +272,7 @@ export function deepMerge(target: Record<string, unknown>, src: Record<string, u
 const clone = <T>(v: T): T => (v === undefined ? v : structuredClone(v));
 
 /** Does `node` contain everything in `sel`? Objects recurse; everything else is equal. */
-export function contains(node: unknown, sel: unknown): boolean {
+function contains(node: unknown, sel: unknown): boolean {
   if (isObj(sel)) {
     if (!isObj(node)) return false;
     for (const [k, v] of Object.entries(sel)) if (!contains(node[k], v)) return false;

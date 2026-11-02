@@ -14,7 +14,7 @@ import { isValidTtsVoice, ttsVoiceById } from "../experience/ttsVoices.js";
 import { synthesize, type TtsInput, type TtsResult } from "../pipeline/tts.js";
 
 /** The speeds Read aloud offers (keybot.ts SPEEDS); a sample is made at the one the person picked. */
-export const SAMPLE_SPEEDS: readonly string[] = ["0.8", "1", "1.25", "1.5"];
+const SAMPLE_SPEEDS: readonly string[] = ["0.8", "1", "1.25", "1.5"];
 
 /** What a voice says when it is tried: its name, and what it is for. Short, so it plays in about five seconds. */
 export const sampleLine = (name: string): string => `Namaste, I'm ${name}. This is how I'll read your messages and drafts to you.`;

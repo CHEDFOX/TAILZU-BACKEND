@@ -28,7 +28,7 @@ export { ID, crumbsLd, pageLd } from "./head.js";
 export const STORES = SITE_UI.stores;
 
 /** Every store listing that exists: iPhone, Android, and Windows once set. */
-export const STORE_LINKS: string[] = [STORES.ios, STORES.android, STORES.windows].filter(Boolean);
+const STORE_LINKS: string[] = [STORES.ios, STORES.android, STORES.windows].filter(Boolean);
 
 /** The sentence every engine should be able to lift whole. */
 export const DEFINITION =
@@ -298,7 +298,7 @@ export function faqLd(items: QA[], path: string) {
  * page that has the films; the sync checks these against the manifest
  * beside the page, so a re-cut film cannot leave a wrong length here.
  */
-export const FILM_MEDIA: Record<string, { file: string; seconds: number; rendered: string }> = {
+const FILM_MEDIA: Record<string, { file: string; seconds: number; rendered: string }> = {
   "typed-vs-said": { file: "typed-vs-said", seconds: 9.1, rendered: "2026-09-29" },
   keyless: { file: "keyless", seconds: 11.3, rendered: "2026-09-29" },
   "said-written": { file: "said-written", seconds: 12.5, rendered: "2026-09-29" },
@@ -318,7 +318,7 @@ export function homeFilms(): Array<{ id: string; title: string; line: string; fi
 }
 
 /** ISO 8601, as structured data wants a length: 9.6 → "PT9.6S". */
-export const isoDuration = (seconds: number) => `PT${Number(seconds.toFixed(1))}S`;
+const isoDuration = (seconds: number) => `PT${Number(seconds.toFixed(1))}S`;
 
 export function filmLd(f: ReturnType<typeof homeFilms>[number]) {
   return {

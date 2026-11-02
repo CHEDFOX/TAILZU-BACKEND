@@ -29,7 +29,7 @@ export const OG_IMAGE = {
 };
 
 /** The App Store id, for Safari's install banner. */
-export const APP_STORE_ID = "6784811357";
+const APP_STORE_ID = "6784811357";
 
 /** Text or a double-quoted attribute value, safe in HTML and in XML. */
 export const esc = (s: string) =>

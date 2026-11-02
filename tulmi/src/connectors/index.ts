@@ -102,7 +102,7 @@ export function checkSecretUrl(def: ConnectorDef, raw: unknown, nodeEnv = proces
  * Slack)" when it is reached through another, "not in Tailzu: Swiggy" when
  * there is no way into it.
  */
-export function missingLine(m: Missing, catalog: readonly ConnectorDef[]): string {
+function missingLine(m: Missing, catalog: readonly ConnectorDef[]): string {
   const def = m.ids.map((id) => catalog.find((d) => d.id === id && !d.hidden)).find((d): d is ConnectorDef => !!d);
   if (!def) return `not in X0 Bot: ${m.label}`;
   return def.name === m.label ? `not connected: ${m.label}` : `not connected: ${def.name} (for ${m.label})`;

@@ -20,7 +20,7 @@ import type { Located } from "../src/code/work/index.js";
 import { agentRig, call, done, KEYS, type AgentRig, type AgentRigOptions, type Turn } from "./agent-rig.js";
 import { sym, type FileSpec } from "./work-fixtures.js";
 
-export { call, done, KEYS };
+export { call, done };
 
 const T = (name: string, body: string) => `export const ${name} = ${JSON.stringify(body)};\n`;
 
@@ -55,8 +55,8 @@ const rows = (files: Record<string, string>): FileSpec[] => Object.keys(files).m
   ...(path === "src/web/api.ts" ? { imports: ["src/types/note.ts"] } : {}),
 }));
 
-export const TEAM_TASK = "Let people export a note as a PDF from the note page and email it to a friend, and show the word count in the stats and with the shared formats.";
-export const LOCATED: Located = {
+const TEAM_TASK = "Let people export a note as a PDF from the note page and email it to a friend, and show the word count in the stats and with the shared formats.";
+const LOCATED: Located = {
   targets: [{ path: "src/api/notes.ts", why: "the export lives here", signals: [], score: 1 }], related: [], tests: [], confidence: 1, used: { expanded: false, picked: false, paise: 0 },
 };
 

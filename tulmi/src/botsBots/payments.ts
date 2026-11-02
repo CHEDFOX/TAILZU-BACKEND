@@ -29,14 +29,14 @@ export interface PaymentView {
   canDecide: boolean; canCancel: boolean; canMarkPaid: boolean;
 }
 
-export const PAY_MAX_PAISE = 100_000 * 100;
+const PAY_MAX_PAISE = 100_000 * 100;
 const OPEN_MAX = 30;
 const VPA = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,64}$/;
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** "1240", "1,240.50", "₹ 99": paise, or NaN. */
-export function paiseOf(v: unknown): number {
+function paiseOf(v: unknown): number {
   if (typeof v === "number") return Number.isFinite(v) ? Math.round(v * 100) : NaN;
   if (typeof v !== "string") return NaN;
   const s = v.replace(/[₹,\s]/g, "").replace(/^rs\.?/i, "");
@@ -44,7 +44,7 @@ export function paiseOf(v: unknown): number {
 }
 
 /** The UPI payment for a request, as bots.approve reads it: the payee and what for, no amount (the person types it in UPI). */
-export function upiFor(r: Pick<PaymentRow, "payee_vpa" | "payee_name" | "note">): string | null {
+function upiFor(r: Pick<PaymentRow, "payee_vpa" | "payee_name" | "note">): string | null {
   const q = new URLSearchParams({ pa: r.payee_vpa, pn: r.payee_name, cu: "INR", ...(r.note ? { tn: r.note } : {}) });
   return upiOf(`upi://pay?${q.toString()}`)?.link ?? null;
 }

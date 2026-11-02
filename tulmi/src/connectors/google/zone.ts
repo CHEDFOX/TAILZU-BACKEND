@@ -17,7 +17,7 @@ import type { Args } from "../native.js";
 import type { GoogleSession } from "./oauth.js";
 import { MIN, validZone } from "./time.js";
 
-export const HOME_ZONE = "Asia/Kolkata";
+const HOME_ZONE = "Asia/Kolkata";
 const CALENDAR = "google-calendar";
 /**
  * Where the zone on their Google calendar is read: the `timeZone` Google puts

@@ -21,9 +21,9 @@
  */
 import type { ChatMessage, ToolDef } from "./types.js";
 
-export const CHARS_PER_TOKEN = 3.5;
+const CHARS_PER_TOKEN = 3.5;
 /** What one picture is counted as, in tokens. */
-export const IMAGE_TOKENS = 1_200;
+const IMAGE_TOKENS = 1_200;
 /** The rate used where no config is at hand (routeStep's pure tests): the Tailzu default. */
 export const DEFAULT_USD_INR = 88;
 

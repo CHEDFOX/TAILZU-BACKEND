@@ -81,7 +81,7 @@ export const OB = {
  * The icons, each as ONE path (the SVG node takes one): the prototype's, with
  * its rectangles written as arc paths.
  */
-export const IC = {
+const IC = {
   mic: "M9 6a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0zM5 11a7 7 0 0 0 14 0M12 18v3",
   bell: "M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0",
   lock: "M7.5 10.5h9a2.5 2.5 0 0 1 2.5 2.5v5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 5 18v-5a2.5 2.5 0 0 1 2.5-2.5zM8 10.5V8a4 4 0 0 1 8 0v2.5",
@@ -348,11 +348,11 @@ export const OB_STORE_HG: Record<keyof typeof OB_STORE_EN, string> = {
 export const shownChip = (l: (typeof DAILY_LANGUAGES)[number]): boolean => l.india || l.value === "en";
 
 /** What "+ N more" counts: every language the Languages screen has that this step does not show. */
-export function moreLanguages(): number {
+function moreLanguages(): number {
   return DAILY_LANGUAGES.length - DAILY_LANGUAGES.filter(shownChip).length;
 }
 
-export const fillSlots = (s: string, vars: Record<string, string | number>): string =>
+const fillSlots = (s: string, vars: Record<string, string | number>): string =>
   s.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
 /**
@@ -473,19 +473,19 @@ export function onboardLanguage(profileLanguage: string | undefined, chosen: rea
 // ---------------------------------------------------------------------------
 
 export const EN = OB_EN;
-export const words = en;
+const words = en;
 
 /** The stage moves only through setState: the desktop has no incrementState. */
 export const SET = (i: number): ActionSpec => ({ kind: "setState", path: "step", value: i });
 export const seq = (...actions: ActionRef[]): ActionSpec => ({ kind: "sequence", actions });
 export const haptic = (style: "selection" | "success"): ActionSpec => ({ kind: "haptic", style });
 export const toast = (message: string, tone: "info" | "error" = "info"): ActionSpec => ({ kind: "toast", message, tone });
-export const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
-export const when = (cond: Condition, then: ActionRef, otherwise?: ActionRef): ActionSpec =>
+const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
+const when = (cond: Condition, then: ActionRef, otherwise?: ActionRef): ActionSpec =>
   ({ kind: "condition", if: cond, then, ...(otherwise !== undefined ? { else: otherwise } : {}) });
-export const bothPerms: Condition = { all: [{ truthy: "perm.n" }, { truthy: "perm.m" }] };
+const bothPerms: Condition = { all: [{ truthy: "perm.n" }, { truthy: "perm.m" }] };
 
-export const nodes = (kids: Array<Node | null | false | undefined>): Node[] => kids.filter((k): k is Node => !!k);
+const nodes = (kids: Array<Node | null | false | undefined>): Node[] => kids.filter((k): k is Node => !!k);
 
 /**
  * A style value that follows state: the app resolves `{<condition>, then, else}`
@@ -547,7 +547,7 @@ export const P = (k: ObKey, s: Style = {}): Node => ({
   style: plain({ fontSize: 15, lineHeight: 21, color: OB.ink2, marginBottom: 12, ...s }),
 });
 /** The small capitals over a group: Suggested, You said, I wrote. */
-export const LABEL = (content: string): Node => ({
+const LABEL = (content: string): Node => ({
   type: "Text", props: { content },
   style: plain({ fontSize: 12, lineHeight: 14, fontWeight: "700", letterSpacing: 1.2, textTransform: "uppercase", color: OB.ink2, marginTop: 6, marginBottom: 8 }),
 });
@@ -573,7 +573,7 @@ export const BTN = (label: string, action: ActionRef, dim = false): Node => ({
   children: [TXT(label, { fontSize: 16, fontWeight: "600", color: OB.surf })],
 });
 /** The quiet one under it. */
-export const BTN2 = (label: string, action: ActionRef): Node => ({
+const BTN2 = (label: string, action: ActionRef): Node => ({
   type: "Stack",
   on: { onPress: action },
   props: { pressOpacity: 0.7 },
@@ -583,7 +583,7 @@ export const BTN2 = (label: string, action: ActionRef): Node => ({
 
 const hairline = (): Node => ({ type: "Stack", style: { flex: 1, height: 1, backgroundColor: OB.hair } });
 /** A line with "or" in the middle. */
-export const OR = (): Node => ({
+const OR = (): Node => ({
   type: "Stack",
   style: { flexDirection: "row", alignItems: "center", gap: 10 },
   children: [
@@ -595,7 +595,7 @@ export const OR = (): Node => ({
 /** Pushes what follows to the bottom of the window. */
 export const PUSH = (): Node => ({ type: "Spacer", style: { flex: 1, minHeight: 12 } });
 
-export const ICON = (name: keyof typeof IC, size: number, color: string): Node => ({
+const ICON = (name: keyof typeof IC, size: number, color: string): Node => ({
   type: "SVG",
   props: { viewBox: "0 0 24 24", d: IC[name], fill: "none", stroke: color, strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" },
   style: { width: size, height: size },
@@ -610,7 +610,7 @@ export const ICON = (name: keyof typeof IC, size: number, color: string): Node =
  * of sign-in, so he does not change at the boundary. (Reduced motion is the
  * app's to apply to `glide`.)
  */
-export function stageProps(id: "onboard.auth" | "onboard", first: number, of: number): Style {
+function stageProps(id: "onboard.auth" | "onboard", first: number, of: number): Style {
   return {
     id, first, of,
     // Opts the tree out of the capitalising pass (titleCase.ts): these are
@@ -835,7 +835,7 @@ export interface Plan {
   spot: typeof SPOT;
 }
 
-export function languageChip(l: (typeof DAILY_LANGUAGES)[number]): Node {
+function languageChip(l: (typeof DAILY_LANGUAGES)[number]): Node {
   const picked: Condition = { contains: ["langs", l.value] };
   const save = (): ActionSpec => ({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { languages: "$state.langs" } });
   return {
@@ -894,7 +894,7 @@ export function languagesStep(p: Plan): Node {
 }
 
 /** The little keyboard in a row of Keyboard's steps: three bars, one lit, and the thing to tap or flip on it. */
-export function miniKeyboard(lit: number, kind: "point" | "toggle"): Node {
+function miniKeyboard(lit: number, kind: "point" | "toggle"): Node {
   const marker: Node = kind === "point"
     ? { type: "Stack", style: { position: "absolute", right: -3, top: 2, width: 9, height: 9, borderRadius: 5, backgroundColor: OB.neon, borderWidth: 1.5, borderColor: OB.ink } }
     : { type: "Stack", style: { position: "absolute", right: 2, top: -1, width: 9, height: 6, borderRadius: 3, backgroundColor: OB.ink } };
@@ -1050,7 +1050,7 @@ function tryStep(p: Plan): Node {
 }
 
 /** One row of Make me yours: the glyph, what it is for, and a switch. */
-export function permRow(icon: keyof typeof IC, title: string, why: string, path: string, action: string, extra: Style = {}): Node {
+function permRow(icon: keyof typeof IC, title: string, why: string, path: string, action: string, extra: Style = {}): Node {
   return {
     type: "Stack",
     style: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 10, paddingHorizontal: 14, borderBottomWidth: 1, borderBottomColor: OB.hair, ...extra },

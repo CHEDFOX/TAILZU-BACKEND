@@ -123,7 +123,7 @@ function isVideo(ct: string): boolean {
 }
 
 /** ffmpeg present? Without it this endpoint has nothing to offer. */
-export async function hasFfmpeg(): Promise<boolean> {
+async function hasFfmpeg(): Promise<boolean> {
   try {
     await run("ffmpeg", ["-version"], { timeout: 5000 });
     return true;

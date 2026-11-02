@@ -40,7 +40,7 @@ export const PRESETS: readonly Preset[] = [
 ];
 
 export const presetOf = (id: unknown): Preset | undefined => PRESETS.find((p) => p.id === id);
-export const isPerm = (p: unknown): p is Perm => typeof p === "string" && (PERMS as readonly string[]).includes(p);
+const isPerm = (p: unknown): p is Perm => typeof p === "string" && (PERMS as readonly string[]).includes(p);
 
 /** A clean, ordered, de-duplicated list of permissions from anything (unknown names are dropped). */
 export function permsOf(v: unknown): Perm[] {

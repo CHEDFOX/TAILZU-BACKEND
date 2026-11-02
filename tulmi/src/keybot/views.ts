@@ -73,7 +73,7 @@ export interface KeybotHomeView {
 type DayBucket = { words: number; apps?: Array<{ app: string; words: number }>; kinds?: { voice: number } };
 
 /** This week, Monday on, in the person's own day: stats' buckets are the last seven days, today last. */
-export function weekFrom(st: Pick<StatsForUser, "days" | "wordsPerDay"> | undefined, now: number, tzOffsetMinutes: number): {
+function weekFrom(st: Pick<StatsForUser, "days" | "wordsPerDay"> | undefined, now: number, tzOffsetMinutes: number): {
   days: KeybotHomeView["week"]["days"]; buckets: DayBucket[];
 } {
   const dow = new Date(now + tzOffsetMinutes * 60_000).getUTCDay();
@@ -151,14 +151,14 @@ function youOf(p: Personality): Pick<KeybotHomeView, "style" | "languages" | "ha
 }
 
 /** Shortcuts as stored ("my upi = aanya@okhdfc", one a line; a line break inside one is kept as the two characters \n). */
-export function snippetsOf(p: Personality): Array<{ say: string; get: string }> {
+function snippetsOf(p: Personality): Array<{ say: string; get: string }> {
   return String(p.snippets ?? "").split(/\r?\n/).map((l) => {
     const i = l.indexOf("=");
     return i > 0 ? { say: l.slice(0, i).trim(), get: l.slice(i + 1).trim().replace(/\\n/g, "\n") } : null;
   }).filter((x): x is { say: string; get: string } => !!x && !!x.say && !!x.get);
 }
 
-export const speedLabel = (s: string | undefined): string => (!s || s === "1" ? "Normal" : `${s}×`);
+const speedLabel = (s: string | undefined): string => (!s || s === "1" ? "Normal" : `${s}×`);
 
 function toneNames(prefs: KeybotPrefs): Record<ToneGroup, string | null> {
   const out = {} as Record<ToneGroup, string | null>;
@@ -208,7 +208,7 @@ export interface KeybotWordsView {
 }
 
 /** What they added: the dictionary's pairs (written as, heard as) and the vocabulary's lines. */
-export function addedWords(p: Personality): Array<{ word: string; was?: string; kind: "word" | "pair" }> {
+function addedWords(p: Personality): Array<{ word: string; was?: string; kind: "word" | "pair" }> {
   const pairs = (p.dictionary ?? []).filter((d) => d?.word && d?.replacement).map((d) => ({ word: d.replacement, was: d.word, kind: "pair" as const }));
   const marked = new Set(pairs.map((x) => x.word.toLowerCase()));
   const vocab = String(p.vocabulary ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
@@ -217,7 +217,7 @@ export function addedWords(p: Personality): Array<{ word: string; was?: string; 
 }
 
 /** What it learned of their words on its own (the style portrait's), with what each means to them. */
-export function learnedWords(p: Personality): Array<{ word: string; means: string }> {
+function learnedWords(p: Personality): Array<{ word: string; means: string }> {
   return (p.stylePortrait?.words ?? []).filter((w) => w?.term).map((w) => ({ word: w.term, means: String(w.means ?? "") }));
 }
 
@@ -350,7 +350,7 @@ export interface KeybotSettingsView {
 
 /** The keyboard's choices, each defaulting to what the keyboard does when nothing is chosen (keyboard.ts): it follows
  *  the phone's look, the mic sits in the top row, space holds for the trackpad, and haptics is what it reads. */
-export function keyboardChoices(prefs: KeybotPrefs, p?: Personality): KeybotSettingsView["keyboard"] {
+function keyboardChoices(prefs: KeybotPrefs, p?: Personality): KeybotSettingsView["keyboard"] {
   const k = prefs.keyboard ?? {};
   return {
     look: k.look ?? "phone",

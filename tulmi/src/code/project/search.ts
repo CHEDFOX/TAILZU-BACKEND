@@ -40,7 +40,7 @@ export function tsQuery(words: readonly string[], op: "&" | "|" = "&"): string {
 }
 
 /** What the generated tsv holds for a file: its path words, its symbol names' words, its summary's. */
-export function fileDocument(f: Pick<StoredFile, "path" | "symbols" | "summary">): string[] {
+function fileDocument(f: Pick<StoredFile, "path" | "symbols" | "summary">): string[] {
   return [...tokenize(f.path), ...f.symbols.flatMap((s) => (s.kind === "route" ? tokenize(s.path ?? s.name) : tokenize(s.name))), ...tokenize(f.summary)];
 }
 

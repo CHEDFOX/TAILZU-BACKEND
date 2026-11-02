@@ -16,7 +16,7 @@ import { AUDIO_PLAY_CAPABILITY, FILE_UPLOAD_CAPABILITY, VOICE_RECORD_CAPABILITY 
 import { box, C, col, icon, labelled, meta, row, seq, statusMark, text, when, whenEq, type BotsCtx } from "./kit.js";
 
 /** The most a file may be: the upload route's own limit (media/types.ts CAP_MAX); each kind has a lower cap it words itself. */
-export const UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+const UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
 
 export const canUpload = (ctx: BotsCtx): boolean => ctx.can.has(FILE_UPLOAD_CAPABILITY);
 export const canPlay = (ctx: BotsCtx): boolean => ctx.can.has(AUDIO_PLAY_CAPABILITY);
@@ -45,13 +45,13 @@ export function uploadPick(pick: UploadPick, list: string, then?: ActionRef): Ac
 }
 
 /** Take the sent file off the ask. */
-export const dropSent = (list: string): ActionRef => seq({ kind: "clearState", path: "sent" }, { kind: "clearState", path: list });
+const dropSent = (list: string): ActionRef => seq({ kind: "clearState", path: "sent" }, { kind: "clearState", path: list });
 
 const sending: Condition = { truthy: "up.name" };
 const sentOne: Condition = { all: [{ truthy: "sent.name" }, { falsy: "up.name" }] };
 
 /** A bar in `segments` steps that fills as `path` (0-100) grows: plain boxes, so both clients draw it from state. */
-export function stateBar(path: string, o: { color?: string; segments?: number; height?: number } = {}): Node {
+function stateBar(path: string, o: { color?: string; segments?: number; height?: number } = {}): Node {
   const n = o.segments ?? 20;
   const h = o.height ?? 4;
   const step = 100 / n;
@@ -142,7 +142,7 @@ function solid(d: string, color: string, size = 16): Node {
 }
 
 /** Is this the sound that is playing? */
-export const isPlaying = (id: string): Condition => ({ eq: ["playing.id", id] });
+const isPlaying = (id: string): Condition => ({ eq: ["playing.id", id] });
 
 /**
  * A round play button (44): an outline with a play mark; while its sound plays, ink with a pause mark, and a press

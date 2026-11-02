@@ -17,7 +17,7 @@
  */
 import { cutAtWord, fillIn, oneLineOf } from "./botWords.js";
 
-export const SITUATIONS = ["justFinished", "moved", "severalWorking", "longJob", "firstLook", "quietLong", "weekend"] as const;
+const SITUATIONS = ["justFinished", "moved", "severalWorking", "longJob", "firstLook", "quietLong", "weekend"] as const;
 export type Situation = (typeof SITUATIONS)[number];
 export type DayPart = "morning" | "afternoon" | "evening" | "night";
 

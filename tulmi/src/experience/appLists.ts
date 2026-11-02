@@ -28,7 +28,7 @@ import { applyPresetOverrides, DEFAULT_TONE, MAX_PINNED_PRESETS, TONE_LABELS, ty
  * list, the ids themselves in lower case ("none", "very-casual"), because nothing sent one. The id is what the
  * tray stores and sends (personality.activeTone); the label is what it shows, translated (i18n LIST_WORD_FLAGS).
  */
-export const DESKTOP_TONES: ReadonlyArray<{ id: PresetTone; label: string }> = (Object.keys(TONE_LABELS) as PresetTone[])
+const DESKTOP_TONES: ReadonlyArray<{ id: PresetTone; label: string }> = (Object.keys(TONE_LABELS) as PresetTone[])
   .map((id) => ({ id, label: TONE_LABELS[id] }));
 
 /**
@@ -188,7 +188,7 @@ export const DESKTOP_ROUTER = {
 } as const;
 
 /** The names it answers to, besides the person's own for it (desktop.router.names): X0, the guide, and its old name. */
-export const DESKTOP_WAKE_NAMES = ["X0", "Blip", "Tailzu"] as const;
+const DESKTOP_WAKE_NAMES = ["X0", "Blip", "Tailzu"] as const;
 
 /** A pattern as the desktop compiles it: its source and its flags. */
 const pattern = (r: RegExp) => ({ source: r.source, flags: r.flags });
@@ -197,7 +197,7 @@ const pattern = (r: RegExp) => ({ source: r.source, flags: r.flags });
  * ASK'S GRAMMAR ON THE DESKTOP (resolver.js, desktop.agent.grammar): the server's own rules, from the modules the
  * server answers with, so the copy on the computer is this one and cannot drift from it.
  */
-export function desktopGrammar(): Record<string, unknown> {
+function desktopGrammar(): Record<string, unknown> {
   return {
     headFiller: pattern(GRAMMAR_RULES.headFiller), headAsk: pattern(GRAMMAR_RULES.headAsk), tail: pattern(GRAMMAR_RULES.tail),
     showOpening: pattern(GRAMMAR_RULES.showOpening), showAnywhere: pattern(GRAMMAR_RULES.showAnywhere),
@@ -266,7 +266,7 @@ export const SWIPE_CORE_WORDS: readonly string[] = [
  * Past the core list (kb.swipe.extraWords): product names, the apps people name while typing, and everyday
  * Hinglish, which no English lexicon has and which India types in Latin letters ("kal milte hain").
  */
-export const SWIPE_EXTRA_WORDS: readonly string[] = [
+const SWIPE_EXTRA_WORDS: readonly string[] = [
   "tailzu", "tulmi", "keybot", "blip", "whatsapp", "instagram", "gmail", "youtube", "google", "zomato", "swiggy",
   "paytm", "phonepe", "gpay", "upi", "ola", "uber", "flipkart", "amazon", "myntra", "irctc", "zoom", "slack",
   "linkedin", "hai", "hain", "haan", "haa", "nahi", "nahin", "na", "kya", "kyun", "kyu", "kaise", "kaisa", "kaisi",

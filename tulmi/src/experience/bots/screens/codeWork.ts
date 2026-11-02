@@ -146,7 +146,7 @@ function workList(lines: WorkLine[], size: 13 | 12 = 13): Node {
 }
 
 /** The status of a job, in a few words, its mark and its colour. */
-export function statusOf(job: JobRow, now: number): { mark: Mark; words: string; color: string } {
+function statusOf(job: JobRow, now: number): { mark: Mark; words: string; color: string } {
   const min = duration(minutesBetween(job.createdAt, now));
   const took = duration(Math.max(1, minutesBetween(job.createdAt, job.updatedAt)));
   switch (job.state) {
@@ -344,7 +344,7 @@ interface ChatCtx { projectId: string; threadId: string; jobId?: string; project
  * "New chat": a thread of its own, the way a chat starts afresh. Its id comes from the thread it leaves and how far that went, so the button
  * on a page kept in the cache still opens a new thread once the old one has moved on, and the same one while it has not.
  */
-export function nextThread(userId: string, c: Pick<ChatCtx, "projectId" | "threadId">, turns: number): string {
+function nextThread(userId: string, c: Pick<ChatCtx, "projectId" | "threadId">, turns: number): string {
   return threadFor(userId, `${c.projectId}:after:${c.threadId}:${turns}`);
 }
 
@@ -729,7 +729,7 @@ const BUILT: PartRow["status"][] = ["reviewing", "fixing", "approved", "merged"]
 const PART_OVER_BAD: PartRow["status"][] = ["failed", "stopped", "exhausted", "skipped"];
 
 /** A helper's three things: build its part, be checked by the reviewer, be handed to the lead. */
-export function partItems(p: PartRow): TeamItem[] {
+function partItems(p: PartRow): TeamItem[] {
   const bad = PART_OVER_BAD.includes(p.status);
   const build: ItemMark = bad ? "failed" : BUILT.includes(p.status) ? "done" : p.status === "running" || p.status === "blocked" ? "working" : "todo";
   const review: ItemMark = p.status === "approved" || p.status === "merged" ? "done" : p.status === "reviewing" || p.status === "fixing" ? "working" : bad && p.review ? "failed" : "todo";
@@ -741,7 +741,7 @@ export function partItems(p: PartRow): TeamItem[] {
 }
 
 /** The lead's own things: split the goal, the shared groundwork (part 0), join the parts, the last full check. */
-export function leadItems(t: TeamRead["team"]): TeamItem[] {
+function leadItems(t: TeamRead["team"]): TeamItem[] {
   const helpers = t.parts.filter((p) => p.id !== 0);
   const zero = t.parts.find((p) => p.id === 0);
   const merged = helpers.filter((p) => p.status === "merged").length;

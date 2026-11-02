@@ -41,7 +41,7 @@ export const RULES_SURE = 0.7;
 /** Under this, and with a costly road, the front door asks before it goes. */
 export const CLARIFY_BELOW = 0.45;
 /** The most one small-model read of a message may cost, in paise. */
-export const DECIDE_CAP_PAISE = 100;
+const DECIDE_CAP_PAISE = 100;
 const MESSAGE_MAX = 8_000;
 const MODEL_HEAD = 1_000;
 const MODEL_TAIL = 400;
@@ -69,9 +69,9 @@ const LOOP_ROUTES: ReadonlySet<RouteName> = new Set<RouteName>(["reply", "code_a
 // (A change, code_job, goes to the loop too, marked "agent_change": see step 6.)
 
 /** What one message of a project's chat may spend when it is one loop: its worst case at the tier's prices for a few steps of looking (spends far less). */
-export const AGENT_CHAT_PAISE = 500;
+const AGENT_CHAT_PAISE = 500;
 /** The same for a deep question, which the strong tier takes from the start (its worst case is several times the cheap one's). */
-export const AGENT_STRONG_PAISE = 1_500;
+const AGENT_STRONG_PAISE = 1_500;
 
 /** What the small model is held to. Strict: a field it was not asked for is a bad answer, and gets one repair. */
 export const DecideReply = z.object({
@@ -107,7 +107,7 @@ export function lengthOf(text: string, intent: Intent, mode: FrontCtx["mode"]): 
 }
 
 /** Spoken, a reply is brief: it is read out, and a visual is offered for the rest. Unless they asked for detail. */
-export function spoken(length: Length, detail: boolean): Length {
+function spoken(length: Length, detail: boolean): Length {
   if (detail) return length;
   return length === "long" ? "medium" : length === "medium" ? "short" : length;
 }

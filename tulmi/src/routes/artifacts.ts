@@ -99,7 +99,7 @@ type Body = Record<string, unknown>;
 const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArray(b) ? (b as Body) : {});
 
 /** An artifact as its owner sees it. */
-export function ownerView(a: Artifact) {
+function ownerView(a: Artifact) {
   return {
     id: a.id, type: a.type, title: a.title, projectId: a.projectId, headVersion: a.headVersion, shared: a.shareToken !== null, shareToken: a.shareToken,
     othersCanSave: a.othersCanSave, spentPaise: a.spentPaise, createdAt: a.createdAt, updatedAt: a.updatedAt,

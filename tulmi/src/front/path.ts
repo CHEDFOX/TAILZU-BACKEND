@@ -38,7 +38,7 @@ export const RESEARCH_PAISE: Readonly<Record<ResearchDepth, number>> = { quick: 
 /** What reading the project and picking excerpts may cost before the answer is written. */
 export const LOCATE_PAISE = 60;
 /** A generic plan, and a plan in a project (the search, then the plan). */
-export const PLAN_PAISE = { generic: 120, project: 400 } as const;
+const PLAN_PAISE = { generic: 120, project: 400 } as const;
 /** A message is "costly" past this, in paise: a wrong guess then is worth a question. */
 export const COSTLY_PAISE = 200;
 
@@ -68,7 +68,7 @@ export function tierOf(intent: Intent, o: { hasImage: boolean; hasProject: boole
 }
 
 /** What a reply at this tier and length costs in the worst case. */
-export function replyCap(tier: ModelTier, length: Length, tiers: Tiers, fx: number): number {
+function replyCap(tier: ModelTier, length: Length, tiers: Tiers, fx: number): number {
   const t = tiers[tier === "vision" ? "cheap" : tier];
   return worstCasePaise({ chars: 6_000, maxTokens: REPLY_TOKENS[length], usdPerMIn: t.usdPerMIn, usdPerMOut: t.usdPerMOut }, fx);
 }
@@ -111,7 +111,7 @@ export interface Caps {
   total: number;
 }
 
-export function capsOf(i: BudgetInput): Caps {
+function capsOf(i: BudgetInput): Caps {
   const fx = i.fx ?? DEFAULT_USD_INR;
   const reply = replyCap(i.tier, i.length, i.tiers, fx);
   let own = 0;

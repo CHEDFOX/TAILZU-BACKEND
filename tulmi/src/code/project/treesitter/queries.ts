@@ -29,7 +29,7 @@ function filesFor(id: GrammarId, kind: QueryKind): string[] {
 }
 
 /** The source of a query, or null when this grammar has none of that kind. */
-export function querySource(id: GrammarId, kind: QueryKind): string | null {
+function querySource(id: GrammarId, kind: QueryKind): string | null {
   const parts = filesFor(id, kind).map((f) => QUERY_FILES[f]).filter((t): t is string => typeof t === "string");
   return parts.length ? parts.join("\n") : null;
 }
@@ -43,9 +43,3 @@ export function combinedSource(id: GrammarId): string | null {
   return parts.length ? parts.join("\n") : null;
 }
 
-/** Every (grammar, kind) that has a query, for the test that compiles them all. */
-export function allQueries(ids: readonly GrammarId[]): Array<{ id: GrammarId; kind: QueryKind; source: string }> {
-  const out: Array<{ id: GrammarId; kind: QueryKind; source: string }> = [];
-  for (const id of ids) for (const kind of ["tags", "imports", "routes", "text"] as const) { const source = querySource(id, kind); if (source) out.push({ id, kind, source }); }
-  return out;
-}

@@ -15,11 +15,11 @@ import type { UseOutcome } from "../connectors/tasks.js";
 import type { Calendar, CalEvent, CalTask } from "./service.js";
 import { clockAt, dayName, dayOf, dayWords, isDayKey, shiftDay } from "./words.js";
 
-export const OWN_APPS = ["calendar", "tasks"] as const;
+const OWN_APPS = ["calendar", "tasks"] as const;
 type OwnApp = (typeof OWN_APPS)[number];
 /** Ids that mean one of Tailzu's own two (the old Google ones). */
 const ALIAS: Record<string, OwnApp> = { calendar: "calendar", tasks: "tasks", "google-calendar": "calendar", "google-tasks": "tasks" };
-export const ownAppOf = (id: string): OwnApp | null => ALIAS[id] ?? null;
+const ownAppOf = (id: string): OwnApp | null => ALIAS[id] ?? null;
 const NAME: Record<OwnApp, string> = { calendar: "Calendar", tasks: "Tasks" };
 const LINE: Record<OwnApp, string> = { calendar: "Your days in X0 Bot: events, with reminders.", tasks: "Your to-do list in X0 Bot." };
 
@@ -113,7 +113,7 @@ function taskBody(a: Record<string, unknown>, tz: number): Record<string, unknow
 }
 
 /** One tool call on the person's own days: the words the bot reads back. */
-export async function runOwnTool(cal: Calendar, userId: string, app: OwnApp, tool: string, args: Record<string, unknown>, botName: string): Promise<UseOutcome> {
+async function runOwnTool(cal: Calendar, userId: string, app: OwnApp, tool: string, args: Record<string, unknown>, botName: string): Promise<UseOutcome> {
   const tz = cal.tzFor(userId);
   const today = dayOf(Date.now(), tz);
   const by = { kind: "bot" as const, name: botName.replace(/\s+bot\s+bot$/i, " bot").replace(/\s+/g, " ").trim().slice(0, 40) || "A bot" };

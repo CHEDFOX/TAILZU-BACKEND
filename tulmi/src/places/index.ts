@@ -42,8 +42,8 @@ export { cityNamed, countryForOffset } from "./cities.js";
 
 const MIN = 60_000, DAY = 24 * 60 * MIN;
 /** Walk when the straight line is at most this, and the walk at most WALK_MAX_MIN. */
-export const WALK_KM = 1.6;
-export const WALK_MAX_MIN = 20;
+const WALK_KM = 1.6;
+const WALK_MAX_MIN = 20;
 /** How long a failed lookup is not tried again (a provider that said slow down: less). */
 const FAIL_TTL = 15 * MIN, BUSY_TTL = 2 * MIN;
 
@@ -220,10 +220,10 @@ export interface PlacesConfig {
   WEATHER_URL?: string;
 }
 
-export const DEFAULT_PHOTON_URL = "https://photon.komoot.io";
-export const DEFAULT_OSRM_URL = "https://routing.openstreetmap.de/routed-{mode}";
-export const DEFAULT_ORS_URL = "https://api.openrouteservice.org";
-export const DEFAULT_METNO_URL = "https://api.met.no/weatherapi/locationforecast/2.0";
+const DEFAULT_PHOTON_URL = "https://photon.komoot.io";
+const DEFAULT_OSRM_URL = "https://routing.openstreetmap.de/routed-{mode}";
+const DEFAULT_ORS_URL = "https://api.openrouteservice.org";
+const DEFAULT_METNO_URL = "https://api.met.no/weatherapi/locationforecast/2.0";
 /** The public servers' asks: one request a second (Nominatim, FOSSGIS, OSRM's demo, Photon's fair use); openrouteservice's free plan, 40 a minute. */
 const PUBLIC_FLOOR_MS: Record<string, number> = {
   "nominatim.openstreetmap.org": 1100, "photon.komoot.io": 1100, "routing.openstreetmap.de": 1100, "router.project-osrm.org": 1100, "api.openrouteservice.org": 1600,
@@ -268,5 +268,3 @@ export function places(): Places {
   return made;
 }
 
-/** Tests: use these, or (null) build from the config again. */
-export function setPlacesForTests(p: Places | null): void { made = p; }

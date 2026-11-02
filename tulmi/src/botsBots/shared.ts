@@ -22,12 +22,12 @@ import { spaceTable, type PagedTable } from "./spaceRows.js";
 import type { Publish, Spaces } from "./spaces.js";
 import type { FileRef, Threads } from "./threads.js";
 
-export const ITEM_KINDS = ["list", "trip", "plan", "note", "file", "link", "answer", "preview", "text"] as const;
+const ITEM_KINDS = ["list", "trip", "plan", "note", "file", "link", "answer", "preview", "text"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 /** The kinds that can be edited once shared: their list. */
-export const EDITABLE: readonly ItemKind[] = ["list", "trip"];
-export const LIST_MAX = 60;
-export const ITEMS_MAX = 200;
+const EDITABLE: readonly ItemKind[] = ["list", "trip"];
+const LIST_MAX = 60;
+const ITEMS_MAX = 200;
 
 export interface ListLine { id: string; text: string; done: boolean }
 export interface ItemData {

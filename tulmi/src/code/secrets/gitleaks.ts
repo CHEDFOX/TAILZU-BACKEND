@@ -197,7 +197,7 @@ function accepted(r: GlRule, path: string, text: string, m: RegExpExecArray): bo
 export const WINDOW_BUDGET = 2_000_000;
 
 /** Whether rule number `ri` finds something in `text` (a file at `path`). */
-export function ruleMatches(ri: number, path: string, text: string): boolean {
+function ruleMatches(ri: number, path: string, text: string): boolean {
   const r = GL_RULES[ri]!;
   if (r.path && !rx(r.path, false).test(path)) return false;
   if (!r.re) return true;
@@ -265,4 +265,3 @@ export function gitleaksKinds(path: string, text: string, generic = true): strin
 const GENERIC_ID = "generic-api-key";
 
 export const RULE_COUNT = GL_RULES.length;
-export const ruleIds = (): string[] => GL_RULES.map((r) => r.id);

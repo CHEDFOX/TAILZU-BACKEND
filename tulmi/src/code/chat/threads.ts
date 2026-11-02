@@ -68,7 +68,7 @@ export interface ChatThread {
 }
 
 export interface ChatJob { id: string; branch: string; at: number }
-export const JOBS_KEPT = 3;
+const JOBS_KEPT = 3;
 export const SEEN_KEPT = 16;
 
 export interface ThreadStore {
@@ -87,7 +87,7 @@ const oneLine = (s: string, n: number): string => {
 };
 
 /** A turn as the summary keeps it: the question, and the files its answer rested on. */
-export function turnLine(question: string, cites: readonly string[]): string {
+function turnLine(question: string, cites: readonly string[]): string {
   const files = [...new Set(cites.map((c) => c.replace(/:\d+$/, "")))].slice(0, 4);
   return `- ${oneLine(question, TURN_Q)}${files.length ? ` (${files.join(", ")})` : ""}`;
 }

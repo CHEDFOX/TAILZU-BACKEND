@@ -19,9 +19,9 @@ export interface DiffLine {
 export interface Hunk { lines: DiffLine[] }
 
 /** Lines compared at most per side; past it the diff is not drawn. */
-export const MAX_LINES = 1500;
+const MAX_LINES = 1500;
 /** Unchanged lines kept around each change. */
-export const CONTEXT = 2;
+const CONTEXT = 2;
 /** The longest line kept, so a minified file does not draw a wall. */
 const LINE_CHARS = 160;
 

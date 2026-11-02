@@ -40,16 +40,16 @@ const API = "https://api.razorpay.com/v1";
 const SITE = "https://x0bot.com";
 const TABLE = "razorpay_subscriptions";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const KEY_ID = /^rzp_(?:live|test)_[A-Za-z0-9]+$/;
-export const PLAN_ID = /^plan_[A-Za-z0-9]+$/;
+const KEY_ID = /^rzp_(?:live|test)_[A-Za-z0-9]+$/;
+const PLAN_ID = /^plan_[A-Za-z0-9]+$/;
 export const SUB_ID = /^sub_[A-Za-z0-9]+$/;
 
 /** Past the period's end while it renews: the charge and its webhook land
  *  around that moment, and nobody should be locked out in between. */
-export const SLACK_MS = 24 * 3600_000;
+const SLACK_MS = 24 * 3600_000;
 /** A renewal that failed is retried by Razorpay over several days before it
  *  gives up (halted). Access holds for this long past the period's end. */
-export const PENDING_GRACE_MS = 7 * 24 * 3600_000;
+const PENDING_GRACE_MS = 7 * 24 * 3600_000;
 
 export type Market = "IN" | "world";
 /** The plan on sale: Lite or Elite, both billed monthly. */

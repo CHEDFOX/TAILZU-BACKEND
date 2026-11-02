@@ -32,7 +32,7 @@ const locs = (xml: string): string[] =>
   [...xml.matchAll(/<loc>\s*(?:<!\[CDATA\[)?\s*([^<\]\s][^<\]]*?)\s*(?:\]\]>)?\s*<\/loc>/gi)].map((m) => decodeEntities(m[1]!).trim()).filter((u) => /^https?:\/\//i.test(u));
 
 /** The addresses in a sitemap or a sitemap index. */
-export function parseSitemap(xml: string): ParsedSitemap {
+function parseSitemap(xml: string): ParsedSitemap {
   const sitemaps: string[] = [];
   const urls: string[] = [];
   for (const m of xml.matchAll(/<sitemap\b[\s\S]*?<\/sitemap>/gi)) sitemaps.push(...locs(m[0]));

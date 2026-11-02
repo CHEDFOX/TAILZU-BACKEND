@@ -18,12 +18,12 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BotSound, BotSoundKind, BotSoundsCatalog } from "../../../../shared/types/sdui.js";
 
-export const SOUND_KINDS: readonly BotSoundKind[] = ["throw", "tick", "new", "uptodate", "moment"];
+const SOUND_KINDS: readonly BotSoundKind[] = ["throw", "tick", "new", "uptodate", "moment"];
 /** Where the files are served (server.ts registers it with the route file). */
 export const SOUNDS_PREFIX = "/bots/sounds/";
 /** The longest a sound may be, and how many a catalog may hold. */
 export const SOUND_MAX_MS = 450;
-export const SOUNDS_MAX = 64;
+const SOUNDS_MAX = 64;
 
 /** A sound as the catalog file has it: a `file` in shared/bots/sounds/, or (a pushed catalog) a `url`. */
 export interface SoundSpec {
@@ -96,7 +96,7 @@ export function checkSounds(spec: unknown, o: { dir?: string } = {}): string[] {
 }
 
 /** A file's hash as the catalog writes it: sha-256, its first 12 hex. */
-export function fileHash(path: string): string {
+function fileHash(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex").slice(0, 12);
 }
 

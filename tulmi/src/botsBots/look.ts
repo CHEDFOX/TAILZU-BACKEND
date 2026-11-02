@@ -20,7 +20,7 @@ export interface Look {
 const pt = (p: LatLon) => `${p.lat.toFixed(4)},${p.lon.toFixed(4)}`;
 
 /** A look from memory; what it could not answer is put in `missing`, as the lookup that would. */
-export function peeking(places: Places, missing: Map<string, () => Promise<unknown>>): Look {
+function peeking(places: Places, missing: Map<string, () => Promise<unknown>>): Look {
   return {
     place(q, hints) {
       const v = places.peekPlace(q, hints);
@@ -41,7 +41,7 @@ export function peeking(places: Places, missing: Map<string, () => Promise<unkno
 }
 
 /** Makes the lookups `compute` needs, round by round. True when something new was learned. */
-export async function settle(places: Places, compute: (look: Look) => unknown, rounds = 8): Promise<boolean> {
+async function settle(places: Places, compute: (look: Look) => unknown, rounds = 8): Promise<boolean> {
   let learned = false;
   let before: string[] | null = null;
   for (let i = 0; i < rounds; i += 1) {

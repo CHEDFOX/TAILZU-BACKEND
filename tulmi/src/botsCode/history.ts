@@ -13,7 +13,7 @@ export interface PastJob {
 }
 
 /** Finished jobs needed before anything is said about "usually". */
-export const MIN_JOBS = 3;
+const MIN_JOBS = 3;
 
 const median = (xs: number[]): number => {
   const s = [...xs].sort((a, b) => a - b);

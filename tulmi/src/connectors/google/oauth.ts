@@ -27,8 +27,8 @@ import { decrypt, encrypt } from "../crypto.js";
 import { ConnectorError, signState, verifyState } from "../oauth.js";
 import type { ConnectorStore } from "../store.js";
 
-export const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
-export const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
+const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 /** Each request to Google gets this long. */
 const REQUEST_MS = 15_000;
 /** A token this close to running out is refreshed before it is used. */
@@ -251,7 +251,7 @@ export class GoogleSession {
 }
 
 /** A failed Google response as a ConnectorError in plain words. Google's own text is not repeated. */
-export function apiError(status: number, body: any, app: string, notFound?: string): ConnectorError {
+function apiError(status: number, body: any, app: string, notFound?: string): ConnectorError {
   const reason = String(body?.error?.errors?.[0]?.reason ?? body?.error?.status ?? "");
   if (status === 401) return new ConnectorError("needs_reconnect", `${app} needs you to sign in again.`);
   if (status === 404 || status === 410) return new ConnectorError("rejected", notFound ?? `I couldn't find that in ${app}.`);

@@ -24,7 +24,7 @@ export interface RuleDef {
   values: RuleValue[];
 }
 
-export const RULES: readonly RuleDef[] = [
+const RULES: readonly RuleDef[] = [
   { id: "prs", action: "pr.open_draft", onDefaultBranch: false, fallback: "yes", values: ["yes", "never"] },
   { id: "merge", action: "pr.merge", onDefaultBranch: false, fallback: "ask", values: ["yes", "ask", "never"] },
   { id: "main", action: "commit.other_branch", onDefaultBranch: true, fallback: "ask", values: ["yes", "ask", "never"] },

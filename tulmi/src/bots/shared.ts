@@ -18,7 +18,7 @@ import { youStore } from "../you/store.js";
 import { botStore, type BotStore } from "./store.js";
 
 export const SHARED_ID = "_you";
-export const SHARED_KEEP = 60;
+const SHARED_KEEP = 60;
 export const SHARED_SHOWN = 6;
 const CACHE_MS = 30_000;
 const CACHE_MAX = 1000;

@@ -12,8 +12,8 @@ import type { FastifyInstance } from "fastify";
 import { requireAdmin } from "../control/index.js";
 import { activeLooks, dropPushed, pushLooks } from "../experience/bots/looks.js";
 
-export const LOOKS_ROUTE = "/v1/bots/looks";
-export const LOOKS_ADMIN_ROUTE = "/v1/admin/bots/looks";
+const LOOKS_ROUTE = "/v1/bots/looks";
+const LOOKS_ADMIN_ROUTE = "/v1/admin/bots/looks";
 
 export function registerBotLooksRoutes(app: FastifyInstance, deps: { rateLimit: unknown }): void {
   const rl = { config: deps.rateLimit as never };

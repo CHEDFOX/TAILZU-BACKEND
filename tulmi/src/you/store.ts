@@ -70,7 +70,7 @@ export class MemoryYouStore implements YouStore {
 const ms = (v: unknown): number => (typeof v === "string" ? Date.parse(v) : 0) || 0;
 const iso = (t: number): string => new Date(t).toISOString();
 
-export class SupabaseYouStore implements YouStore {
+class SupabaseYouStore implements YouStore {
   constructor(private readonly sb: SupabaseClient) {}
 
   private settingsOf(r: Record<string, unknown> | null): YouSettings {

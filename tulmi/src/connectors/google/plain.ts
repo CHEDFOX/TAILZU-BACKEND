@@ -30,7 +30,7 @@ export function oneLine(s: string | undefined, max = 80, empty = "(no title)"): 
 }
 
 /** A result is at most RESULT_MAX before it goes anywhere. */
-export const cut = (s: string) => (s.length > RESULT_MAX ? s.slice(0, RESULT_MAX).trimEnd() + "…" : s);
+const cut = (s: string) => (s.length > RESULT_MAX ? s.slice(0, RESULT_MAX).trimEnd() + "…" : s);
 
 export const ok = (text: string): CallOutcome => ({ ok: true, text: cut(text) });
 

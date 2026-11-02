@@ -15,7 +15,7 @@
  */
 import type { BlipLoop } from "../blipLoops.js";
 
-export const ART_V = 1;
+const ART_V = 1;
 
 /** The heads that exist, and the colour each was cut in. The keys are the built-in bots' slugs, and "tailzu". */
 export const BOT_INK = {
@@ -30,9 +30,6 @@ export type HeadKey = keyof typeof BOT_INK;
 /** Blip's poses, whole body: hello (welcome), listen, think (working), needs (needs you), done. */
 export const BLIP_POSES = ["hello", "listen", "think", "needs", "done"] as const;
 export type BlipPose = (typeof BLIP_POSES)[number];
-
-/** The body pictures' own proportions (522 x 600 px). */
-export const BLIP_BODY_RATIO = 522 / 600;
 
 const origin = (): string => process.env.PUBLIC_ORIGIN || "https://api.x0bot.com";
 

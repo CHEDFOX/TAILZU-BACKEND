@@ -284,7 +284,7 @@ export function landings(): Landing[] {
 }
 
 export const LANDING_PATHS = () => landings().map((l) => l.path);
-export const landingFor = (path: string) => landings().find((l) => l.path === path);
+const landingFor = (path: string) => landings().find((l) => l.path === path);
 
 const STEPS_CSS = `
   ol.steps { counter-reset: step; list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; max-width: 760px; }

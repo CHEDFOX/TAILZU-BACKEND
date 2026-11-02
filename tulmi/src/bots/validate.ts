@@ -13,7 +13,7 @@
  * Pure. Nothing here reads the environment, a store or a model.
  */
 import { z } from "zod";
-import { LIMITS, PALETTE, RESERVED_SLUGS, SKILL_NAMES, type BotBudgets, type BotSkills, type Colour } from "./types.js";
+import { LIMITS, PALETTE, RESERVED_SLUGS, type BotBudgets, type BotSkills, type Colour } from "./types.js";
 
 /** Whitespace and control characters made into single spaces. */
 // eslint-disable-next-line no-control-regex
@@ -32,19 +32,19 @@ export const SlugSchema = z.string().trim().toLowerCase()
   .regex(SLUG, "slug is lower-case letters, digits and single hyphens")
   .refine((s) => !RESERVED_SLUGS.includes(s), "that slug is taken by X0 Bot");
 
-export const ColourSchema = z.enum(PALETTE, { errorMap: () => ({ message: `colour is one of ${PALETTE.join(", ")}` }) });
+const ColourSchema = z.enum(PALETTE, { errorMap: () => ({ message: `colour is one of ${PALETTE.join(", ")}` }) });
 
 const flag = (name: string) => z.boolean({ invalid_type_error: `skills.${name} is true or false` }).default(false);
 
 /** The skills: five switches and the connected apps the bot may use. Anything else is refused. */
-export const SkillsSchema = z.object({
+const SkillsSchema = z.object({
   web: flag("web"), files: flag("files"), artifacts: flag("artifacts"), code: flag("code"), research: flag("research"),
   connectors: z.array(z.string().regex(CONNECTOR_ID, "a connector is named by its id")).max(LIMITS.connectors, `at most ${LIMITS.connectors} connected apps`).default([])
     .transform((l) => [...new Set(l)]),
 }).strict("skills has web, files, artifacts, code, research and connectors, and nothing else");
 
 /** The owner's rules: at most 12, each one short line. A rule over its cap is refused, not cut. */
-export const RulesSchema = z.array(text(LIMITS.rule, "a rule")).max(LIMITS.rules, `at most ${LIMITS.rules} rules`)
+const RulesSchema = z.array(text(LIMITS.rule, "a rule")).max(LIMITS.rules, `at most ${LIMITS.rules} rules`)
   .transform((l) => l.filter((r, i) => l.indexOf(r) === i));
 
 export interface Limits {
@@ -56,7 +56,7 @@ export interface Limits {
   dailyDefault: number;
 }
 
-export const DEFAULT_LIMITS: Limits = { requestMax: 1000, dailyMax: 5000, requestDefault: 150, dailyDefault: 800 };
+const DEFAULT_LIMITS: Limits = { requestMax: 1000, dailyMax: 5000, requestDefault: 150, dailyDefault: 800 };
 
 const budgetsOf = (l: Limits) => z.object({
   perRequestPaise: z.number({ invalid_type_error: "perRequestPaise is a number" }).int("perRequestPaise is whole paise").min(1, "perRequestPaise is at least 1").max(l.requestMax, `perRequestPaise is ${l.requestMax} at most`),
@@ -166,4 +166,3 @@ export function slugOf(name: string, salt = ""): string {
   return s.slice(0, LIMITS.slug.max).replace(/-+$/g, "");
 }
 
-export const isSkill = (v: unknown): v is (typeof SKILL_NAMES)[number] => typeof v === "string" && (SKILL_NAMES as readonly string[]).includes(v);

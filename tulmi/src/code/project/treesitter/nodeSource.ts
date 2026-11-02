@@ -26,7 +26,7 @@ function findPackage(name: string, file: string): string | null {
 }
 
 /** The file name tree-sitter-wasm uses for a grammar: out/<id>/tree-sitter-<id>.wasm. */
-export const grammarFile = (id: GrammarId): string => `out/${id}/tree-sitter-${id}.wasm`;
+const grammarFile = (id: GrammarId): string => `out/${id}/tree-sitter-${id}.wasm`;
 
 export function nodeSource(): GrammarSource {
   const compiled = new Map<string, Promise<WasmModule>>();

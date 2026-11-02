@@ -34,7 +34,7 @@ export const LINK_TTL_MS = 5 * 60_000;
 /** After approval, how long the window has to take its session (it is polling, so a second or two is normal). */
 export const EXCHANGE_GRACE_MS = 60_000;
 /** The longest a poll is held open. */
-export const POLL_MAX_MS = 25_000;
+const POLL_MAX_MS = 25_000;
 /** How often a held poll reads the request again (an approval on another server instance wakes nothing here). */
 const RECHECK_MS = 2_000;
 /** Requests nobody finished are deleted this long after they ran out; used ones stay, as the record of the computer. */
@@ -42,7 +42,7 @@ const KEEP_UNUSED_MS = 24 * 60 * 60_000;
 
 /** The code's letters: no 0/O or 1/I, so it reads aloud and types without doubt. 32 of them: 40 bits in 8. */
 const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-export const CODE_LENGTH = 8;
+const CODE_LENGTH = 8;
 
 /** A token or a secret as the server makes them: 32 random bytes, base64url. */
 export const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -139,7 +139,7 @@ export function cleanDeviceName(raw: unknown, platform: LinkPlatform): string {
   return platform === "mac" ? "a Mac" : platform === "windows" ? "a Windows PC" : platform === "linux" ? "a Linux computer" : "a computer";
 }
 
-export const cleanPlatform = (raw: unknown): LinkPlatform =>
+const cleanPlatform = (raw: unknown): LinkPlatform =>
   (raw === "mac" || raw === "windows" || raw === "linux" ? raw : "");
 
 const base64url = (b: Buffer): string => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -306,7 +306,7 @@ const fromDb = (d: DbRow): LinkRow => ({
  * Supabase (migration 0049, public.device_links), through the service client only: the rows are written before there
  * is an account, and no person reads them directly (row-level security is on with no policies).
  */
-export function supabaseLinkStore(): LinkStore | null {
+function supabaseLinkStore(): LinkStore | null {
   const sb = supabase();
   if (!sb) return null;
   const T = "device_links";
@@ -355,7 +355,7 @@ export function supabaseLinkStore(): LinkStore | null {
  * only the link's hashed token comes back (the window redeems it at /auth/v1/verify with its own anon key). An account
  * with no address (a number-only sign-in) cannot be linked this way.
  */
-export async function mintSignIn(userId: string): Promise<Minted> {
+async function mintSignIn(userId: string): Promise<Minted> {
   const sb = supabase();
   if (!sb) return { error: "failed" };
   const { data: got, error: readErr } = await sb.auth.admin.getUserById(userId);

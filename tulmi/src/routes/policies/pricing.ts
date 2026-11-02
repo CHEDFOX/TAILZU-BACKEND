@@ -20,12 +20,12 @@ export const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const n = (v: number) => Math.max(0, Math.round(v)).toLocaleString("en-US");
 /** A plan's price as a number, for ordering plans. Shared with the pay page. */
-export const amount = (price: string | undefined) => Number(String(price ?? "").replace(/[^0-9.]/g, "")) || 0;
+const amount = (price: string | undefined) => Number(String(price ?? "").replace(/[^0-9.]/g, "")) || 0;
 
 export const SELLER = "XOOTEQ LAB PRIVATE LIMITED";
 
 /** The plan cards' look, shared with the pay page. */
-export const PLAN_CSS = `
+const PLAN_CSS = `
   .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
   .plan { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 20px; padding: 24px; background: rgba(255,255,255,.26); }
   .plan.lead { background: var(--ink2); color: var(--sun); border-color: var(--ink2); }

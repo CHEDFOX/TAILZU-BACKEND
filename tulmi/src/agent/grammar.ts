@@ -29,7 +29,7 @@ export interface GrammarAction {
 
 /** Lowercase words, the punctuation commands never need gone. Keeps what a
  *  chord or a channel is spelled with: "+", "#", "@", "'" and ".". */
-export function plainWords(s: string): string {
+function plainWords(s: string): string {
   return s
     .normalize("NFKC")
     .toLowerCase()

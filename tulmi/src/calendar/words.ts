@@ -12,11 +12,10 @@
  */
 
 export const MIN = 60_000;
-export const HOUR = 60 * MIN;
+const HOUR = 60 * MIN;
 export const DAY = 24 * HOUR;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const WEEKDAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -35,7 +34,7 @@ export const isDayKey = (s: unknown): s is string => typeof s === "string" && DA
 export const minuteOf = (ms: number, tz: number): number => { const d = new Date(ms + tz * MIN); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
 
 /** "9:30 am", "6 pm". */
-export function clockWords(minute: number): string {
+function clockWords(minute: number): string {
   const h = Math.floor(minute / 60) % 24, m = minute % 60;
   return `${h % 12 === 0 ? 12 : h % 12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "am" : "pm"}`;
 }
@@ -45,7 +44,6 @@ export function dayWords(key: string): string {
   const d = new Date(`${key}T00:00:00Z`);
   return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
-export const weekdayLong = (key: string): string => WEEKDAYS_LONG[weekdayOf(key)]!;
 /** "Today", "Tomorrow", "Thu 29 Oct". */
 export function dayName(key: string, today: string): string {
   if (key === today) return "Today";

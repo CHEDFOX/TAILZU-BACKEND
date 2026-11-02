@@ -30,7 +30,7 @@ export function hasConflictMarkers(text: string): boolean {
 }
 
 /** The commands of the merge step: the head of the default branch is fetched by its commit, so the commit the merge brings in is exactly the one the server will name as the second parent. */
-export function mergeCommands(baseSha: string): string[] {
+function mergeCommands(baseSha: string): string[] {
   return [
     // A shallow checkout cannot find a merge base; a complete one says so (and that is fine).
     "git fetch --no-tags --unshallow origin 2>/dev/null || true",
@@ -43,7 +43,7 @@ export function mergeCommands(baseSha: string): string[] {
 }
 
 /** The paths the merge step named as conflicting. */
-export function conflictedIn(output: string): string[] {
+function conflictedIn(output: string): string[] {
   return [...new Set([...output.matchAll(/^TAILZU_CONFLICT (.+)$/gm)].map((m) => m[1]!.trim()).filter(Boolean))];
 }
 

@@ -64,7 +64,7 @@ export interface ClassifyContext {
 const RIVAL_PENALTY = 0.4;
 /** Below this the rules are not trusted alone. */
 export const RULES_CONFIDENT = 0.7;
-export const CACHE_MS = 10 * 60_000;
+const CACHE_MS = 10 * 60_000;
 const CACHE_MAX = 500;
 /** What the rules read of a request, and what the model is sent of it. */
 const RULES_CHARS = 20_000;

@@ -66,7 +66,7 @@ const VENDORED_DIRS = new Set([
   "site-packages", ".expo", ".parcel-cache",
 ]);
 
-export const LOCKFILES = new Set([
+const LOCKFILES = new Set([
   "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb", "bun.lock", "npm-shrinkwrap.json", "cargo.lock", "poetry.lock",
   "pipfile.lock", "uv.lock", "gemfile.lock", "composer.lock", "go.sum", "pubspec.lock", "podfile.lock", "gradle.lockfile",
   "packages.lock.json", "flake.lock", "mix.lock", "package.resolved", ".terraform.lock.hcl", "pdm.lock", "conan.lock",
@@ -90,7 +90,7 @@ const GENERATED = /(?:\.min\.[a-z0-9]+|\.map|\.g\.dart|\.freezed\.dart|\.gr\.dar
  * Not the committed examples (`.env.example`, `.sample`, `.template`...), which
  * are documentation. The same rule as policy.ts's secret scan.
  */
-export function isEnvFile(path: string): boolean {
+function isEnvFile(path: string): boolean {
   const b = baseName(path).toLowerCase();
   return /^\.env(\..+)?$/.test(b) && !isEnvExample(path);
 }

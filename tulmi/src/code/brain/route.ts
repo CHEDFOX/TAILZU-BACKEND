@@ -54,11 +54,11 @@ import { reviewCandidates, tierTable, type ModelTier, type TierSettings } from "
 import type { Classification, StepName } from "./types.js";
 
 /** A step that failed this many times climbs. */
-export const CLIMB_AFTER_FAILURES = 2;
+const CLIMB_AFTER_FAILURES = 2;
 /** A step that touched more files than this climbs. */
-export const CLIMB_AFTER_FILES = 10;
+const CLIMB_AFTER_FILES = 10;
 /** The size of a step's input when the caller does not say, for the affordability check. */
-export const DEFAULT_INPUT_CHARS = 8_000;
+const DEFAULT_INPUT_CHARS = 8_000;
 
 /** The tiers a step climbs through, lowest first. */
 export const CLIMB_LADDER: readonly ModelTier[] = ["tiny", "cheap", "code", "strong"];
@@ -150,7 +150,7 @@ export function climbReasons(h: StepHistory): string[] {
  * the tier allows. The gateway reserves the same sum for the same call (brain/gateway.ts guard), so the router never refuses what the gateway would take, and
  * never takes what the gateway would refuse.
  */
-export function reservationPaise(t: Pick<TierSettings, "maxTokens" | "usdPerMIn" | "usdPerMOut">, chars: number, askedTokens: number | undefined, fx: number): number {
+function reservationPaise(t: Pick<TierSettings, "maxTokens" | "usdPerMIn" | "usdPerMOut">, chars: number, askedTokens: number | undefined, fx: number): number {
   const out = askedTokens !== undefined && askedTokens > 0 ? Math.min(t.maxTokens, askedTokens) : t.maxTokens;
   return worstCasePaise({ chars, maxTokens: out, usdPerMIn: t.usdPerMIn, usdPerMOut: t.usdPerMOut }, fx);
 }

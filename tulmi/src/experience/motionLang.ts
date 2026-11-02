@@ -62,7 +62,7 @@ export function parse(src: string): Ast {
 }
 
 const fin = (x: number) => (Number.isFinite(x) ? x : 0);
-export const builtins: Record<string, (...a: number[]) => number> = {
+const builtins: Record<string, (...a: number[]) => number> = {
   sin: Math.sin, cos: Math.cos, tan: Math.tan, abs: Math.abs, sqrt: (x) => (x < 0 ? 0 : Math.sqrt(x)), floor: Math.floor, ceil: Math.ceil, round: Math.round, exp: Math.exp,
   log: (x) => (x > 0 ? Math.log(x) : 0), atan2: Math.atan2, min: Math.min, max: Math.max, pow: (a, b) => (a < 0 && b !== Math.floor(b) ? 0 : Math.pow(a, b)), hypot: Math.hypot,
   clamp: (x, a, b) => (x < a ? a : x > b ? b : x),

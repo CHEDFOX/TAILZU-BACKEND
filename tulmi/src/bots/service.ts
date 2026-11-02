@@ -49,7 +49,7 @@ export interface ServiceLimits extends Limits {
   draftsPerHour: number;
 }
 
-export function limitsFromConfig(): ServiceLimits {
+function limitsFromConfig(): ServiceLimits {
   const c = getConfig();
   return {
     requestMax: c.BOT_REQUEST_PAISE_MAX, dailyMax: c.BOT_DAILY_PAISE_MAX, requestDefault: c.BOT_REQUEST_PAISE, dailyDefault: c.BOT_DAILY_PAISE,
@@ -111,7 +111,7 @@ const defOf = (b: StoredBot): BotDef => ({
   skills: { ...b.skills, connectors: [...b.skills.connectors] }, knowledge: [...b.knowledge], tone: b.tone, visibility: "private", budgets: { ...b.budgets },
 });
 
-export function viewOf(def: BotDef, stored?: Pick<StoredBot, "publicCard" | "createdAt" | "updatedAt"> | null): BotView {
+function viewOf(def: BotDef, stored?: Pick<StoredBot, "publicCard" | "createdAt" | "updatedAt"> | null): BotView {
   return { ...def, builtin: def.ownerId === null, publicCard: stored?.publicCard ?? false, createdAt: stored?.createdAt ?? null, updatedAt: stored?.updatedAt ?? null };
 }
 

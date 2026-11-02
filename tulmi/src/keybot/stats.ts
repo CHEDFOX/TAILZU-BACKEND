@@ -26,8 +26,8 @@ const DAY = 86_400_000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTHS_LONG = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-export const WEEK_NAMES = ["3 weeks ago", "2 weeks ago", "Last week", "This week"];
-export const LENGTH_NAMES = ["1–5", "6–15", "16–40", "41–100", "100+"];
+const WEEK_NAMES = ["3 weeks ago", "2 weeks ago", "Last week", "This week"];
+const LENGTH_NAMES = ["1–5", "6–15", "16–40", "41–100", "100+"];
 export const PART_NAMES = ["Morning", "Afternoon", "Evening", "Night"] as const;
 
 export interface Kinds { said: number; typed: number; drafted: number }
@@ -145,7 +145,7 @@ const kindsOf = (k: { voice: number; typing: number; draft: number } | undefined
 const HOW: Record<string, string> = { voice: "said", typing: "typed", draft: "drafted" };
 
 /** The day buckets' dates in the person's own day (oldest first, today last): history/store.ts counts into the same. */
-export function windowDays(count: number, now: number, tzOffsetMinutes: number): Array<Pick<KeybotStatsDay, "label" | "short" | "date" | "weekday">> {
+function windowDays(count: number, now: number, tzOffsetMinutes: number): Array<Pick<KeybotStatsDay, "label" | "short" | "date" | "weekday">> {
   const tz = Math.max(-840, Math.min(840, Math.round(tzOffsetMinutes)));
   return Array.from({ length: count }, (_, i) => {
     const d = new Date(now + tz * 60_000 - (count - 1 - i) * DAY);

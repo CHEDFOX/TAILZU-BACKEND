@@ -29,14 +29,14 @@ import { notesStats, WEEK_MS, type NotesStats } from "../../../notes/stats.js";
 // ===================================================================== the look
 
 /** Notes' colour (STYLE.md: colour belongs to bots; Notes has its own tiny bot) and its icon. */
-export const NOTES_LOOK = { color: PALETTE_HEX.plum!, icon: "notes" as const };
+const NOTES_LOOK = { color: PALETTE_HEX.plum!, icon: "notes" as const };
 export const NOTES_STATS_PATH = "/v1/notes/stats";
 
 /** Where Notes has a strip on Home and a sidebar item: every phone (it shows what the computer noted), a window with the note-taker. */
 export const hasNotes = (ctx: BotsCtx): boolean => ctx.client === "phone" || ctx.desk.notes;
 
 /** The line under Notes' name on Home: what it is doing, else what is waiting, else what it is for. */
-export function notesLine(ctx: BotsCtx, s: NotesStats | undefined): string {
+function notesLine(ctx: BotsCtx, s: NotesStats | undefined): string {
   if (s?.recording) return "Taking notes now";
   if (s?.organising) return "Writing it up";
   if (s?.openTodos) return `${s.openTodos} ${s.openTodos === 1 ? "to-do" : "to-dos"} open`;

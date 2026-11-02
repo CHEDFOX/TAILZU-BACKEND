@@ -25,9 +25,9 @@ import { BRAIN_PATH, EVENT_PATH, MESSAGE_PATH, START_PATH, type BrainBody, type 
 
 export const HANDOFF_ATTEMPTS = 3;
 /** Each attempt gets this long, answer included. */
-export const HANDOFF_TIMEOUT_MS = 10_000;
+const HANDOFF_TIMEOUT_MS = 10_000;
 /** Waits before the second and the third attempt. */
-export const HANDOFF_BACKOFF_MS = [500, 2_000] as const;
+const HANDOFF_BACKOFF_MS = [500, 2_000] as const;
 
 export class HandoffError extends Error {
   constructor(readonly code: "unreachable" | "rejected" | "not_configured", message: string, readonly status?: number) {

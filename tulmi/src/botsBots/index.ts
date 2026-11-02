@@ -31,16 +31,15 @@ import { TripExtrasReader } from "./tripExtras.js";
 
 export { BotChat, type ChatTurn } from "./chat.js";
 export { BotMaker, type DraftView } from "./maker.js";
-export { BotShop, READY_MADE, type ShopEntry } from "./shop.js";
+export { BotShop, type ShopEntry } from "./shop.js";
 export { KeyUsage, type MonthUsage } from "./usage.js";
 export { Spaces, type SpaceView } from "./spaces.js";
-export { PlanDays, calendarPlanReader, suggestionFor, clock, dayWords, dayOf, shiftDay, mondayOf, isoAt, type PlanRead, type PlanEvent, type PlanReader, type Suggestion } from "./plan.js";
-export { Trips, STARTER_LIST, type Trip } from "./trips.js";
-export { PlanTravelling, type PlanTravel, type PlanLeg } from "./planTravel.js";
+export { PlanDays, suggestionFor, type PlanRead, type PlanEvent, type PlanReader, type Suggestion } from "./plan.js";
+export { Trips, type Trip } from "./trips.js";
+export { type PlanTravel, type PlanLeg } from "./planTravel.js";
 export { TripExtrasReader, type TripExtras } from "./tripExtras.js";
-export { webStaySource, compareStays, type StaySource, type StayRow } from "./stays.js";
-export { Later } from "./later.js";
-export { table, resetAreaTablesForTests, MemoryTable, AREA_TABLES } from "./rows.js";
+export { type StaySource, type StayRow } from "./stays.js";
+export { resetAreaTablesForTests, MemoryTable } from "./rows.js";
 
 export interface BotsAreaParts {
   chat: BotChat | null;

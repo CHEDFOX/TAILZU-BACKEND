@@ -43,7 +43,7 @@ export interface CiReading {
 }
 
 /** What a commit's checks come to. Pure. */
-export function readChecks(view: CommitChecksView): CiReading {
+function readChecks(view: CommitChecksView): CiReading {
   const failing: FailingCheck[] = [];
   let pending = false;
   let passing = 0;
@@ -80,13 +80,13 @@ const INFRA: RegExp[] = [
 ];
 
 /** Whether a log reads as the CI's own trouble. */
-export const isInfraNoise = (log: string): boolean => INFRA.some((re) => re.test(log));
+const isInfraNoise = (log: string): boolean => INFRA.some((re) => re.test(log));
 
 /**
  * What a failure looks like once the parts that change from run to run are taken out: the last line that names an error, with numbers, hashes and
  * times blanked. Two logs with the same signature failed the same way.
  */
-export function signatureOf(log: string): string {
+function signatureOf(log: string): string {
   const lines = log.split("\n").map((l) => l.trim()).filter(Boolean);
   const hit = [...lines].reverse().find((l) => /\b(?:error|failed|failure|exception|assert\w*|cannot|unable|timed out)\b|✕|×/i.test(l)) ?? lines.at(-1) ?? "";
   return hit.toLowerCase().replace(/\b[0-9a-f]{7,40}\b/g, "#").replace(/\d+/g, "#").replace(/\s+/g, " ").slice(0, 160);

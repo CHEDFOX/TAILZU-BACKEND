@@ -157,7 +157,7 @@ const initialOf = (name: string) => (Array.from(name.trim())[0] ?? "").toUpperCa
 const nonNeg = (n: number, fallback: number) => (Number.isFinite(n) && n >= 0 ? Math.floor(n) : fallback);
 
 /** "now", "4m", "3h", "2d": a time as of `now`, in the server's words. */
-export function whenWords(at: number, now: number, k: WidgetKnobs): string {
+function whenWords(at: number, now: number, k: WidgetKnobs): string {
   const ago = Math.max(0, now - at);
   if (ago < MIN) return k.label("widgets.time.now", "now");
   if (ago < HOUR) return k.label("widgets.time.min", "{n}m", { n: Math.floor(ago / MIN) });
@@ -218,7 +218,7 @@ function lockLine(k: WidgetKnobs, which: "people" | "needs", n: number): string 
 
 // ------------------------------------------------------------------ from your people
 
-export function peopleRows(i: NowInput, k: WidgetKnobs): NowRow[] {
+function peopleRows(i: NowInput, k: WidgetKnobs): NowRow[] {
   const since = i.now - Math.max(1, k.flag("widgets.people.windowDays", 14)) * DAY;
   const fresh = i.now - Math.max(0, k.flag("widgets.people.newHours", 24)) * HOUR;
   const showWords = k.flag("widgets.people.messageText", true);
@@ -317,7 +317,7 @@ function inPlaceFor(i: NowInput, k: WidgetKnobs, kind: string): boolean {
 const openOnly = (k: WidgetKnobs, url: string): NowAction[] =>
   url ? [{ id: "open", label: k.label("widgets.action.open", "Open"), style: "secondary", mode: "open", url }] : [];
 
-export function needsRows(i: NowInput, k: WidgetKnobs): NowRow[] {
+function needsRows(i: NowInput, k: WidgetKnobs): NowRow[] {
   const out: NowRow[] = [];
   const optionsMax = nonNeg(k.flag("widgets.needs.optionsMax", 2), 2);
   const risks = k.list("widgets.needs.inPlaceRisks", ["read", "write", "send"]);

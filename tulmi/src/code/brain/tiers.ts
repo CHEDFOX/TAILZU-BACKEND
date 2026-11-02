@@ -51,7 +51,6 @@ export type ModelTier = (typeof MODEL_TIERS)[number];
 
 /** How hard a model thinks before it answers. OpenRouter's `reasoning.effort`. */
 export type Reasoning = "none" | "low" | "medium" | "high";
-export const REASONING_LEVELS: readonly Reasoning[] = ["none", "low", "medium", "high"];
 
 export interface TierSettings {
   /** The ladder, in the order it is tried. For `review`, the pool the reviewer is picked from. */

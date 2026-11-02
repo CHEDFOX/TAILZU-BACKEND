@@ -32,7 +32,7 @@ export interface WireOptions {
 }
 
 /** A question about a person's project, answered by Xode's chat: the cheap tier, a short answer, nothing kept. Null while Xode or its brain is off. */
-export function codeAskPort(code: Code | null | undefined, o: Pick<WireOptions, "call" | "gateway"> = {}): CodeAsk | null {
+function codeAskPort(code: Code | null | undefined, o: Pick<WireOptions, "call" | "gateway"> = {}): CodeAsk | null {
   if (!code?.github || !code.brain) return null;
   const projects: ProjectDeps = { store: code.store, github: code.github, approvals: code.approvals, oauth: code.oauth };
   const chat = new CodeChat({

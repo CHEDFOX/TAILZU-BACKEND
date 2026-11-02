@@ -114,7 +114,7 @@ export function eventPayload(ev: MetaEvent, now = Date.now()): Record<string, un
 
 /** Both halves are needed for the server to report: the dataset, and the
  *  token that lets this server write to it. */
-export function metaReady(): boolean {
+function metaReady(): boolean {
   const c = getConfig();
   return !!(c.META_PIXEL_ID && c.META_CAPI_TOKEN);
 }
@@ -130,7 +130,7 @@ export function requestBody(events: MetaEvent[], now = Date.now()): Record<strin
   };
 }
 
-export async function postEvents(events: MetaEvent[], fetchImpl: typeof fetch = fetch): Promise<void> {
+async function postEvents(events: MetaEvent[], fetchImpl: typeof fetch = fetch): Promise<void> {
   const c = getConfig();
   const res = await fetchImpl(`https://graph.facebook.com/${c.META_GRAPH_VERSION}/${c.META_PIXEL_ID}/events`, {
     method: "POST",
@@ -149,7 +149,7 @@ export async function postEvents(events: MetaEvent[], fetchImpl: typeof fetch = 
  * platform that is slow or down must cost nobody a dictation, a launch or a
  * payment. A failure is one log line.
  */
-export function sendMetaEvent(ev: MetaEvent): void {
+function sendMetaEvent(ev: MetaEvent): void {
   if (!metaReady()) return;
   void postEvents([ev]).catch((err) => {
     console.warn(`[meta] ${ev.name} not sent: ${(err as Error).message}`);
@@ -161,7 +161,7 @@ export function sendMetaEvent(ev: MetaEvent): void {
 /** The visitor's address. Through x0bot.com every request comes from
  *  Vercel, which names the visitor; straight to the API, the connection's
  *  own (trustProxy). */
-export function visitorIp(req: FastifyRequest): string | undefined {
+function visitorIp(req: FastifyRequest): string | undefined {
   const v = req.headers["x-vercel-forwarded-for"];
   const first = (Array.isArray(v) ? v[0] : v)?.split(",")[0]?.trim();
   if (first && isIP(first)) return first;
@@ -174,7 +174,7 @@ export function userAgentOf(req: FastifyRequest): string | undefined {
 }
 
 /** A cookie off the request, when the browser sent one. */
-export function cookieOf(req: FastifyRequest, name: string): string | undefined {
+function cookieOf(req: FastifyRequest, name: string): string | undefined {
   const raw = req.headers.cookie;
   if (typeof raw !== "string") return undefined;
   for (const part of raw.split(";")) {
@@ -224,7 +224,7 @@ export function dueMilestones(o: {
 /** The names on the site's side (pixel and Conversions API). FirstDictation
  *  is Tailzu's own; Events Manager makes it a custom conversion to optimise
  *  for. */
-export const WEB_EVENTS: Record<Milestone, string> = {
+const WEB_EVENTS: Record<Milestone, string> = {
   registration: "CompleteRegistration",
   keyboard: "KeyboardOn",
   firstDictation: "FirstDictation",
@@ -237,7 +237,7 @@ export interface AppEvent {
   name: string;
   params?: Record<string, string | number>;
 }
-export const APP_EVENTS: Record<Milestone, AppEvent> = {
+const APP_EVENTS: Record<Milestone, AppEvent> = {
   registration: { name: "fb_mobile_complete_registration" },
   keyboard: { name: "fb_mobile_tutorial_completion", params: { fb_content_id: "keyboard", fb_success: 1 } },
   firstDictation: { name: "FirstDictation" },
@@ -369,7 +369,7 @@ export function reportSubscribe(o: {
 /** The browser events this server will copy to the Conversions API. Only
  *  the ones that mean someone is getting the app; a page view is the pixel's
  *  alone. */
-export const SITE_EVENTS = new Set(["Lead"]);
+const SITE_EVENTS = new Set(["Lead"]);
 /** Where the download went: a store, an installer. */
 const SITE_KINDS = new Set(["mac", "windows", "linux", "iphone", "android"]);
 const EVENT_ID = /^[A-Za-z0-9_-]{8,64}$/;
@@ -478,9 +478,3 @@ export function siteEventsScript(): string {
 `;
 }
 
-/** The hosts a page needs to allow for the pixel, by CSP directive. */
-export const META_CSP = {
-  script: "https://connect.facebook.net",
-  img: "https://www.facebook.com",
-  connect: "https://www.facebook.com https://connect.facebook.net",
-} as const;

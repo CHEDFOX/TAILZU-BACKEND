@@ -254,4 +254,3 @@ export function tickBox(isDone: boolean, onPress: ActionRef, label: string): Nod
   const hit = row([ring], { width: 40, height: 40, marginLeft: -9, marginVertical: -9, alignItems: "center", justifyContent: "center", flexShrink: 0 }, onPress);
   return { ...hit, props: { ...(hit.props ?? {}), accessibilityLabel: label } };
 }
-export { fromLine as itemFromLine };

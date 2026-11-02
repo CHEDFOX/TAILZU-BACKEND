@@ -55,14 +55,14 @@ export interface TaskView {
 }
 export type TaskNotify = (userId: string, msg: { kind: "space_task" | "space_plan"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<void>;
 
-export const TASKS_OPEN_MAX = 100;
+const TASKS_OPEN_MAX = 100;
 const MIN = 60_000, DAY = 86_400_000;
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** UTC ms for a day ("2026-10-29") and a time ("18:30") in the person's offset; null when they don't read. */
-export function whenOf(day: unknown, time: unknown, tz: number): { at: number; allDay: boolean } | null {
+function whenOf(day: unknown, time: unknown, tz: number): { at: number; allDay: boolean } | null {
   if (typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
   const base = Date.parse(`${day}T00:00:00Z`);
   if (!Number.isFinite(base)) return null;

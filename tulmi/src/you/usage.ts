@@ -38,9 +38,9 @@ export function parseStretchesUsd(v: unknown): number[] | null {
   return r.success ? r.data : null;
 }
 
-export const DAY_MS = 86_400_000;
+const DAY_MS = 86_400_000;
 /** Where each stretch starts, in days from the month's start: days 1–4, 5–9, 10–15, 16–22, 23 to the end. */
-export const STRETCH_STARTS = [0, 4, 9, 15, 22] as const;
+const STRETCH_STARTS = [0, 4, 9, 15, 22] as const;
 
 export interface UsagePlan {
   /** "free", "paid", "elite", "everyone", or a paid tier's entitlement id. */
@@ -181,7 +181,7 @@ export function whenWords(at: number, now: number, tzOffsetMinutes: number): str
 }
 
 /** "this stretch" or "this month", for a plan used in stretches or by the month. */
-export const spanWord = (u: Pick<UsageNow, "plan">): string => (u.plan.windows ? "this stretch" : "this month");
+const spanWord = (u: Pick<UsageNow, "plan">): string => (u.plan.windows ? "this stretch" : "this month");
 
 /** The line under a meter once most of it is used, or null: "You've used most of this stretch. It resets Thu." */
 export function nearLine(u: UsageNow, now: number, tzOffsetMinutes: number): string | null {

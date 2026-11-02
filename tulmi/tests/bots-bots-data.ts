@@ -34,7 +34,7 @@ export function fakeReader(o: { calendar?: boolean; tasks?: boolean; events?: Pl
   };
 }
 
-export const GYM = {
+const GYM = {
   id: "9d0c1b2a-0000-4000-8000-000000000001", ownerId: "u", slug: "gym-bot", name: "Gym bot", colour: "pine", purpose: "Plans workouts around your calendar",
   principles: ["Never plan on days I'm travelling", "Keep sessions under 45 minutes", "Remind me at 9 pm the night before"],
   skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: ["google-calendar"] },
@@ -53,7 +53,7 @@ export const GYM_TURNS = [
 
 /** Tomorrow's travel as GET /plan answers it with places set up (src/botsBots/planTravel.ts): home in HSR Layout, the dentist in
  *  Indiranagar, dinner in Koramangala 35 min away with 15 min between (too short), and 40 min saved by last week's yeses. */
-export const SAMPLE_PLAN_TRAVEL = {
+const SAMPLE_PLAN_TRAVEL = {
   on: true, pending: false, home: "HSR Layout", homeFound: true,
   legs: [
     { fromId: "home", toId: "e11", to: "Indiranagar", mode: "drive", minutes: 30, leaveBy: ist(10, 29, 17, 30), gapMin: null, tight: false },
@@ -67,7 +67,7 @@ const stay = (id: string, name: string, area: string, rupees: number, rating: nu
   id, name, area, url, host: new URL(url).hostname.replace(/^www\./, ""), nightPaise: rupees * 100, rating, ratingOf: 5, reviews, by: "web", picked: false, at: FIXED_NOW - HOUR, ...extra,
 });
 /** The Pune trip's weather, places and stays as GET /trip/:id/extras answers them (src/botsBots/tripExtras.ts). */
-export const SAMPLE_TRIP_EXTRAS = {
+const SAMPLE_TRIP_EXTRAS = {
   dates: { from: "2026-11-14", to: "2026-11-16", nights: 2 }, where: "Pune",
   weather: {
     days: [{ key: "2026-11-14", hiC: 29, loC: 17, sky: "clear", rainMm: 0 }, { key: "2026-11-15", hiC: 30, loC: 16, sky: "clear", rainMm: 0 }, { key: "2026-11-16", hiC: 28, loC: 16, sky: "clear", rainMm: 0 }],
@@ -84,7 +84,7 @@ export const SAMPLE_TRIP_EXTRAS = {
   credits: [{ text: "Map data © OpenStreetMap contributors", url: "https://www.openstreetmap.org/copyright" }, { text: "Routes: OSRM", url: "https://project-osrm.org" }, { text: "Weather: MET Norway", url: "https://www.met.no/en" }],
 };
 
-export async function samplePlan() {
+async function samplePlan() {
   const plan = new PlanDays(fakeReader(), null, () => FIXED_NOW, new MemoryTable());
   return plan.read("u", { tz: IST, week: 0 });
 }

@@ -72,7 +72,7 @@ export interface RunRequest {
 }
 
 /** How many turns the model gets: tool rounds, then one to say the answer. */
-export const MAX_TURNS = 5;
+const MAX_TURNS = 5;
 const KEY_SHAPE = /\btzb_[A-Za-z0-9_-]{16,}/g;
 
 const isAbort = (e: unknown): boolean => (e as { name?: unknown } | null)?.name === "AbortError";

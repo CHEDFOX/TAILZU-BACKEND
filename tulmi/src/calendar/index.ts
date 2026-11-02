@@ -14,10 +14,10 @@
 import type { Calendar, ReminderSend } from "./service.js";
 import { clockAt, dayName, dayOf, hhmm, minuteOf, shiftDay } from "./words.js";
 
-export { Calendar, calendar, resetCalendarForTests, DEFAULT_REMIND_MIN, type CalEvent, type CalTask, type Listed, type SpaceItem, type SpaceAnswer, type ReminderSend } from "./service.js";
-export { withOwnDays, ownAppOf, runOwnTool, OWN_APPS } from "./bots.js";
-export { calendarRows, memoryCalendarRows, type Source, type EventRow, type TaskRow, type CalendarRows } from "./store.js";
-export { readLine, timeOf, dayFrom, dayOf, startOfDay, shiftDay, dayWords, dayName, clockAt, hhmm, isDayKey, tzOf, REPEATS, type Repeat } from "./words.js";
+export { Calendar, calendar, resetCalendarForTests, type CalEvent, type CalTask, type Listed, type SpaceItem, type SpaceAnswer, type ReminderSend } from "./service.js";
+export { withOwnDays } from "./bots.js";
+export { memoryCalendarRows, type Source, type EventRow, type TaskRow, type CalendarRows } from "./store.js";
+export { readLine, timeOf, dayFrom, type Repeat } from "./words.js";
 
 const TICK_MS = 60_000;
 

@@ -28,7 +28,6 @@
  */
 import { baseName, dirName, isBinaryPath, isCodeLanguage, isGeneratedPath, isLockfile, isSecretPath, isTestPath, isVendoredPath, languageOf } from "./lang.js";
 import { asArr, asStr, isObj, parseGoMod, parseJsonc, parseToml, parseYaml, type Json, type Obj } from "./parse.js";
-import { coreKindOf } from "./snapshot.js";
 import {
   EMPTY_STRUCTURE, RULES_DOC_CHARS,
   type Command, type CommandKind, type CoreEntry, type LanguageShare, type PackageInfo, type Structure, type SymbolInfo, type TreeInfo,
@@ -696,4 +695,3 @@ export function buildStructure(input: ScanInput): Structure {
 }
 
 /** The core entry kinds a path can have: re-exported so the build need not know snapshot.ts. */
-export { coreKindOf };

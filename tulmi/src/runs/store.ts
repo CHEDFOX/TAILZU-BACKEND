@@ -42,7 +42,7 @@ const WAITING_READ = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A step's record laid over the run's row as it stands (null: the run's first). The one rule both twins keep. */
-export function mergeStep(cur: RunRow | null, userId: string, r: StepRecord, at: number): RunRow {
+function mergeStep(cur: RunRow | null, userId: string, r: StepRecord, at: number): RunRow {
   const base: RunRow = cur ?? {
     userId, runId: r.runId, surface: r.surface, platform: r.platform, outcome: "running", reason: null,
     steps: 0, effects: 0, ms: 0, firstMs: null, path: null, mode: null, language: null, taskId: null,
@@ -75,7 +75,7 @@ export function mergeStep(cur: RunRow | null, userId: string, r: StepRecord, at:
 }
 
 /** A run as a screen shows it: never its turns, and its words only while they are kept. */
-export const viewOfRun = (r: RunRow): RunView => ({
+const viewOfRun = (r: RunRow): RunView => ({
   runId: r.runId, surface: r.surface, outcome: r.outcome, ...(r.reason ? { reason: r.reason } : {}),
   title: r.title, at: r.updatedAt, steps: r.steps, effects: r.effects,
   ...(r.taskId ? { taskId: r.taskId } : {}), ...(r.said ? { retry: r.said } : {}),

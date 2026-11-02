@@ -93,11 +93,6 @@ export function registerReasoningCatalog(models: Iterable<{ id: string; supporte
   return n;
 }
 
-/** Takes the facts for one model, as a catalog entry would give them. */
-export function registerReasoning(model: string, facts: ReasoningFacts): void {
-  fromCatalog.set(model, facts);
-}
-
 /** The model answered "Reasoning is mandatory": it is never sent "none" again in this process. */
 export function learnReasoningRequired(model: string): void {
   learned.add(model);

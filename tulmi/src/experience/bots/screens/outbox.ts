@@ -17,11 +17,11 @@ import {
  * The Offline screen is the one page a build shows WITHOUT a connection, so a build with an outbox may keep it (a Bots page is otherwise
  * never kept: cacheTtlSeconds 0). It is fetched while online and shown from what was kept; its "Last online" is when that was.
  */
-export const OFFLINE_KEEP_SECONDS = 24 * 3600;
+const OFFLINE_KEEP_SECONDS = 24 * 3600;
 export const offlineKept = (ctx: BotsCtx, s: ScreenResponse): ScreenResponse => (hasOutbox(ctx) ? { ...s, cacheTtlSeconds: OFFLINE_KEEP_SECONDS } : s);
 
 /** How many asks are drawn: the rest still go, in order. */
-export const OUTBOX_SLOTS = 5;
+const OUTBOX_SLOTS = 5;
 
 /**
  * What the Bots app's bootstrap tells a build with an outbox about going offline (catalog.ts, beside "bots.app"): Home is shown as the
@@ -85,7 +85,7 @@ function askRow(ctx: BotsCtx, i: number, o: { edit: boolean; last: boolean }): N
 }
 
 /** The asks, in a bordered list, shown while there is one. */
-export function outboxList(ctx: BotsCtx, o: { slots?: number; edit?: boolean } = {}): Node {
+function outboxList(ctx: BotsCtx, o: { slots?: number; edit?: boolean } = {}): Node {
   const n = Math.min(o.slots ?? OUTBOX_SLOTS, OUTBOX_SLOTS);
   return when({ truthy: "outbox.0.id" }, col(Array.from({ length: n }, (_, i) => askRow(ctx, i, { edit: o.edit === true, last: i === n - 1 })), {
     borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden",
@@ -93,7 +93,7 @@ export function outboxList(ctx: BotsCtx, o: { slots?: number; edit?: boolean } =
 }
 
 /** The line over the list: how many will go when the connection is back; that they went; or that asks can wait here. */
-export function outboxHeading(o: { idle?: string } = {}): Node {
+function outboxHeading(o: { idle?: string } = {}): Node {
   const line = (words: string, size = 15) => text(words, { size, weight: 600, lineHeight: 20 });
   const waitMark = box([statusMark("waiting", { size: 12 })], { width: 16, alignItems: "center" });
   return col([
@@ -105,7 +105,7 @@ export function outboxHeading(o: { idle?: string } = {}): Node {
 }
 
 /** The field to keep an ask in: Enter or + keeps it, for any bot, and it goes out on its own when the connection is back. */
-export function outboxField(ctx: BotsCtx, placeholder: string): Node {
+function outboxField(ctx: BotsCtx, placeholder: string): Node {
   const keep: ActionSpec = {
     kind: "condition", if: { falsy: "later" }, then: toast("Type the ask first"),
     else: seq(keepAsk(ctx.client, { message: "$state.later", label: "$state.later", sub: "Any bot · asked {time}" }), { kind: "clearState", path: "later" }) as ActionSpec,

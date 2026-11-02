@@ -11,7 +11,7 @@
  */
 import { COLUMNS_MAX, ROWS_MAX, TEXT_CHARS_MAX, type DataTable } from "./types.js";
 
-export const ROWS_READ_MAX = 200_000;
+const ROWS_READ_MAX = 200_000;
 const CELL_SHOWN = 200;
 
 /** The rows of delimited text. A trailing blank line is not a row. */
@@ -111,7 +111,7 @@ const cellText = (v: string | number | null): string => (v === null ? "" : Strin
 const fmt = (n: number): string => (Number.isInteger(n) ? String(n) : String(Math.round(n * 1000) / 1000));
 
 /** Facts over every row: for a number column its count, sum, range and mean; for any other, its distinct values and the commonest. */
-export function columnFacts(columns: string[], allRows: string[][], numeric: number[]): string[] {
+function columnFacts(columns: string[], allRows: string[][], numeric: number[]): string[] {
   const lines: string[] = [];
   columns.forEach((name, i) => {
     if (numeric.includes(i)) {
@@ -171,15 +171,3 @@ export function readDelimited(text: string, delimiter: string, name = "table"): 
   return { table, text: `${head.join("\n")}${md.join("\n")}${cut ? "\n\n(the rest of the rows are not searchable: the file is bigger than I keep)" : ""}`, truncated: truncated || cut, columnsDropped };
 }
 
-/** A table from a spreadsheet as the worker read it, as the text a question is answered from. */
-export function tableText(t: DataTable, maxChars: number): string {
-  const lines = [`## ${t.name}`, `${t.totalRows} rows, ${t.columns.length} columns.`, "", `| ${t.columns.map(cellText).join(" | ")} |`, `| ${t.columns.map(() => "---").join(" | ")} |`];
-  let size = lines.join("\n").length;
-  for (const r of t.rows) {
-    const line = `| ${t.columns.map((_, i) => cellText(r[i] ?? null)).join(" | ")} |`;
-    if (size + line.length + 1 > maxChars) break;
-    lines.push(line);
-    size += line.length + 1;
-  }
-  return lines.join("\n");
-}

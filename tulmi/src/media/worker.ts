@@ -62,8 +62,7 @@ export interface WorkerClient {
   video(data: Buffer): Promise<VideoRead>;
 }
 
-export const SIGNATURE_VERSION = "v1";
-export const MAX_SKEW_SECONDS = 60;
+const SIGNATURE_VERSION = "v1";
 
 /** The lines the signature is made over. */
 export function signedLines(o: { timestamp: number; nonce: string; method: string; pathWithQuery: string; body: Uint8Array }): string {

@@ -127,7 +127,7 @@ export function applyRollouts<T extends Record<string, unknown>>(
  *   { flag: "kb.haptics.style", value: "light", buckets: [0, 9],
  *     note: "2026-08: is a softer tick preferred? 10%" }
  */
-export const ROLLOUTS: RolloutRule[] = [];
+const ROLLOUTS: RolloutRule[] = [];
 
 /** Code rules + env rules. Env wins on a duplicate flag so an experiment can
  *  be corrected or killed without waiting for a deploy. */

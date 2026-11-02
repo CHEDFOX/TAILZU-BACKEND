@@ -48,7 +48,7 @@ export function decodePatch(body: string): { e: PosEdit[]; n: number } {
 }
 
 /** The edits applied to a text. They must be sorted and not overlap, and fit inside it. */
-export function applyPositional(prev: string, edits: readonly PosEdit[]): string {
+function applyPositional(prev: string, edits: readonly PosEdit[]): string {
   let out = "";
   let at = 0;
   for (const [start, del, ins] of edits) {

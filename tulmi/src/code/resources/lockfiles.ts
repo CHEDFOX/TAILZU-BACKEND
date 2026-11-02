@@ -167,9 +167,6 @@ export function parseRequirements(text: string): LockedPackage[] {
 
 // ----------------------------------------------------------------- the dispatch
 
-/** The lockfiles the audit reads, best first for each ecosystem. */
-export const LOCKFILE_NAMES = ["package-lock.json", "npm-shrinkwrap.json", "pnpm-lock.yaml", "yarn.lock", "poetry.lock", "Pipfile.lock"] as const;
-
 /** The parser for a lockfile's path, or null for a file we do not read. */
 export function parseLockfile(path: string, text: string): LockedPackage[] | null {
   switch (baseName(path).toLowerCase()) {

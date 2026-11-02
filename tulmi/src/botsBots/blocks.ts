@@ -22,7 +22,7 @@ import { spaceTable, type PagedTable } from "./spaceRows.js";
 export interface BlockRow { [k: string]: unknown; blocker_id: string; blocked_id: string; name: string; at_ms: number }
 
 /** How many people one person can block: plenty for family and friends, and a bound on every read. */
-export const BLOCKS_MAX = 200;
+const BLOCKS_MAX = 200;
 const MEMO_MS = 2_000;
 
 export class Blocks {

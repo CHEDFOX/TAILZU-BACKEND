@@ -32,7 +32,7 @@ import { clip, compact, decodeEntities, kindOfUrl, stripTags } from "./util.js";
 /** Least time between two requests. */
 export const DDG_GAP_MS = 2_000;
 /** Longest a request waits its turn before it stands aside. */
-export const DDG_MAX_WAIT_MS = 8_000;
+const DDG_MAX_WAIT_MS = 8_000;
 /** How long a block is waited out. */
 export const DDG_BLOCK_MS = 10 * 60_000;
 

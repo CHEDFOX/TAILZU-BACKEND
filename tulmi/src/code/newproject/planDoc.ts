@@ -42,7 +42,6 @@ export function checksFor(kind: StackKind): string[] {
   }
 }
 
-const isWeb = (k: StackKind): boolean => k === "next" || k.startsWith("vite");
 const isApi = (k: StackKind): boolean => k === "fastapi" || k === "fastify" || k === "express" || k === "django";
 
 // ---------------------------------------------------------------- milestones
@@ -255,4 +254,3 @@ export function planMarkdown(spec: Spec, stack: Stack, o: { date?: string } = {}
   return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
 }
 
-export { isApi, isWeb };

@@ -170,7 +170,7 @@ export const MAX_TONE_PROMPT = 600;
  * defaults so thin/old clients keep working). Either way the user's global
  * customInstructions + sign-off layer on top.
  */
-export function toneParts(
+function toneParts(
   tone: string | undefined,
   personality?: Personality,
   inlinePrompt?: string,
@@ -237,7 +237,7 @@ export function toneParts(
 }
 
 /** `<tag>` around a body, on lines of their own; nothing when there is no body. */
-export const fenceBlock = (tag: string, body: string): string => (body ? `<${tag}>\n${body}\n</${tag}>` : "");
+const fenceBlock = (tag: string, body: string): string => (body ? `<${tag}>\n${body}\n</${tag}>` : "");
 
 /** Tailzu's notes on a call, one line each, in <call>; nothing when there are none. */
 export const callBlock = (lines: ReadonlyArray<string | null | undefined | false>): string =>
@@ -284,7 +284,7 @@ export function toneGuidance(
  * Capped hard: this rides on every request, and a lexicon that grows without
  * limit eventually crowds out the message it was meant to help write.
  */
-export function lexiconBlock(personality: Personality | undefined): string {
+function lexiconBlock(personality: Personality | undefined): string {
   const terms = String(personality?.vocabulary ?? "")
     .split(/[\n,]+/)
     .map((s) => inlineValue(s))
@@ -310,7 +310,7 @@ export function lexiconBlock(personality: Personality | undefined): string {
   return lines.join("\n");
 }
 
-export function portraitBlock(personality: Personality | undefined, tone?: string): string {
+function portraitBlock(personality: Personality | undefined, tone?: string): string {
   const p = personality?.stylePortrait;
   if (!p) return "";
   const parts: string[] = [];

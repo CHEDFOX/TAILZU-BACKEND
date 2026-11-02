@@ -15,7 +15,7 @@ import { inertRules } from "./validate.js";
 
 const NAME = /^[a-z][a-z0-9_-]{0,23}$/;
 /** Names chat keeps for itself. */
-export const RESERVED_COMMANDS: readonly string[] = ["help", "new", "clear", "forget", "memory", "test", "commands", "stop"];
+const RESERVED_COMMANDS: readonly string[] = ["help", "new", "clear", "forget", "memory", "test", "commands", "stop"];
 const PLACEHOLDER = /\{\{\s*([^{}]*?)\s*\}\}/g;
 const HAS_INPUT = /\{\{\s*input\s*\}\}/;
 

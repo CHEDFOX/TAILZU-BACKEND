@@ -69,9 +69,9 @@ export interface PlanPrefsRow {
 }
 
 /** Not a place: a video link, a call, "online". */
-export const VIRTUAL = /https?:\/\/|www\.|meet\.google|zoom|teams|webex|video|online|virtual|\bcall\b|phone|hangout|skype|whatsapp|gmeet|\bremote\b|\btbd\b/i;
+const VIRTUAL = /https?:\/\/|www\.|meet\.google|zoom|teams|webex|video|online|virtual|\bcall\b|phone|hangout|skype|whatsapp|gmeet|\bremote\b|\btbd\b/i;
 /** Likely out in the open: rain and heat matter. */
-export const OUTDOOR = /\b(park|garden|trek|hike|hiking|run|running|jog|marathon|cycl\w*|ride|match|cricket|football|tennis|golf|beach|picnic|walk|zoo|fort|lake|stadium|ground|outdoors?|festival|mela|fair|rooftop|terrace|swim\w*|pool|market|bazaar|sightseeing)\b/i;
+const OUTDOOR = /\b(park|garden|trek|hike|hiking|run|running|jog|marathon|cycl\w*|ride|match|cricket|football|tennis|golf|beach|picnic|walk|zoo|fort|lake|stadium|ground|outdoors?|festival|mela|fair|rooftop|terrace|swim\w*|pool|market|bazaar|sightseeing)\b/i;
 
 export function placeText(e: Pick<PlanEvent, "place" | "where">): string | null {
   const t = (e.place ?? e.where ?? "").trim();
@@ -82,7 +82,7 @@ const clean = (s: unknown, max: number) => (typeof s === "string" ? s.replace(/\
 const same = (a: LatLon, b: LatLon) => distanceKm(a, b) < 0.15;
 
 /** Rain, a storm or heat across [start, end) in a forecast; the first such step. */
-export function weatherFor(f: Forecast, start: number, end: number): { kind: "rain" | "storm" | "heat"; at: number; tempC: number } | null {
+function weatherFor(f: Forecast, start: number, end: number): { kind: "rain" | "storm" | "heat"; at: number; tempC: number } | null {
   const steps = f.steps.filter((s) => s.t < end && s.t + s.hours * HOUR > start);
   const storm = steps.find((s) => /thunder/.test(s.symbol));
   if (storm) return { kind: "storm", at: Math.max(storm.t, start), tempC: storm.tempC };

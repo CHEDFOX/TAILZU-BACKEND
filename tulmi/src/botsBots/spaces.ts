@@ -67,11 +67,11 @@ export interface Access { s: SpaceRow; me: MemberRow; admin: boolean; perms: Per
 export type MemberEvent = { spaceId: string; joined?: { userId: string; name: string }; left?: string; deleted?: boolean };
 export type Publish = (userIds: Iterable<string>, topic: string, data?: Record<string, unknown>) => void;
 
-export const SPACES_MAX = 10;
-export const MEMBERS_MAX = 20;
-export const SPACE_BOTS_MAX = 12;
-export const ROLES_MAX = 8;
-export const INVITES_A_DAY = 30;
+const SPACES_MAX = 10;
+const MEMBERS_MAX = 20;
+const SPACE_BOTS_MAX = 12;
+const ROLES_MAX = 8;
+const INVITES_A_DAY = 30;
 const INVITE_MS = 7 * 24 * 3600_000;
 const ACTIVITY_KEEP = 200;
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -91,9 +91,9 @@ const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.re
 const notFound = () => new BotError("not_found", "That space isn't there any more.", 404);
 const forbid = (msg: string) => new BotError("not_allowed", msg, 403);
 /** "m•••@gmail.com": an address shown to someone who may not know it whole. */
-export const maskEmail = (e: string): string => { const [l, d] = e.split("@"); return `${(l ?? "").slice(0, 1)}•••@${d ?? ""}`; };
+const maskEmail = (e: string): string => { const [l, d] = e.split("@"); return `${(l ?? "").slice(0, 1)}•••@${d ?? ""}`; };
 
-export function inviteCode(): string {
+function inviteCode(): string {
   const b = randomBytes(8);
   return Array.from(b, (x) => CODE_CHARS[x % CODE_CHARS.length]).join("");
 }

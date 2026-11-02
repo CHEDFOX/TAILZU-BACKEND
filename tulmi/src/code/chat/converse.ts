@@ -97,7 +97,7 @@ const ESCALATE_MIN_PAISE = 60;
  * words stay the answer if words come back.
  */
 /** The steps a change asked for looks before it starts the job: enough to place the work; the job reads the code in full. */
-export const CHANGE_LOOK_STEPS = 3;
+const CHANGE_LOOK_STEPS = 3;
 export const CHANGE_OWED = "This was asked as a change to the project. If it is still to be made, start it now with start_job: the whole task, with the files and lines you found. If you need the person's say first, ask_person. If nothing is to change, say why in one line.";
 
 /** Room for talk said in passing: a line or two, the follow-ups after. */

@@ -69,7 +69,7 @@ export interface ProjectBrainStore {
   topFiles(projectId: string, by: "hot" | "todo" | "rank", limit: number): Promise<StoredFile[]>;
 }
 
-export const NO_PROGRESS: Readonly<Progress> = { pct: 0, phase: "" };
+const NO_PROGRESS: Readonly<Progress> = { pct: 0, phase: "" };
 
 const clone = <T>(v: T): T => structuredClone(v);
 

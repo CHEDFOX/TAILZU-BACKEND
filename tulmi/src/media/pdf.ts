@@ -12,7 +12,7 @@
  */
 import { MediaError } from "./types.js";
 
-export const PDF_PAGES_MAX = 1000;
+const PDF_PAGES_MAX = 1000;
 const READ_MS = 60_000;
 
 export interface PdfText {

@@ -26,7 +26,7 @@ import type { FrontCtx, Intent, Length, VisualKind, VisualPlan } from "./types.j
 import { VISUAL_KINDS } from "./types.js";
 
 /** What each rung costs a typical time: the tier it is made on and the tokens in and out. */
-export const VISUAL_TOKENS: Readonly<Record<VisualKind, { tier: ModelTier; inTok: number; outTok: number }>> = {
+const VISUAL_TOKENS: Readonly<Record<VisualKind, { tier: ModelTier; inTok: number; outTok: number }>> = {
   table: { tier: "cheap", inTok: 0, outTok: 200 },
   diagram: { tier: "cheap", inTok: 600, outTok: 350 },
   chart: { tier: "code", inTok: 1400, outTok: 1100 },
@@ -35,9 +35,9 @@ export const VISUAL_TOKENS: Readonly<Record<VisualKind, { tier: ModelTier; inTok
 };
 
 /** A visual must be at least this sure, after the person's habits are counted, to be made unasked. */
-export const VISUAL_BAR = 0.5;
+const VISUAL_BAR = 0.5;
 /** The most the habits move the evidence, either way. */
-export const HABIT_RANGE: readonly [number, number] = [0.6, 1.4];
+const HABIT_RANGE: readonly [number, number] = [0.6, 1.4];
 
 const rung = (k: VisualKind): number => VISUAL_KINDS.indexOf(k);
 

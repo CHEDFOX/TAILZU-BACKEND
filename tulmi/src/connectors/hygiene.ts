@@ -32,10 +32,10 @@ import type { ToolInfo } from "./client.js";
 import { defaultPolicy, POLICIES, type Policy } from "./risk.js";
 import type { Connection, ConnectionPatch, ToolsPin } from "./store.js";
 
-export const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
+const TOOL_NAME = /^[A-Za-z0-9_.-]{1,128}$/;
 export const MAX_CUSTOM_TOOLS = 100;
-export const DESCRIPTION_MAX = 1000;
-export const SCHEMA_MAX = 8 * 1024;
+const DESCRIPTION_MAX = 1000;
+const SCHEMA_MAX = 8 * 1024;
 const TITLE_MAX = 200;
 /** Deeper than this a schema is not describing arguments any more. */
 const DEPTH_MAX = 24;
@@ -90,7 +90,7 @@ export function cleanTools(raw: readonly unknown[]): ToolInfo[] {
 // ------------------------------------------------------------------ pins
 
 /** JSON with every object's keys in order, so the same tool always hashes the same. */
-export function canonical(v: unknown): string {
+function canonical(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
   if (isObject(v)) {
     return `{${Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;

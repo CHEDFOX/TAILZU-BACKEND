@@ -30,26 +30,14 @@ import { MemoryMediaStore, mediaStore } from "./store.js";
 import { workerFromConfig } from "./worker.js";
 
 export * from "./types.js";
-export { sniff, decodeText, looksLikeText, tableDelimiter } from "./sniff.js";
-export { readZip, readEntry, unsafeName } from "./zip.js";
-export { stripMetadata, imageSize } from "./strip.js";
-export { sign, presign, signingKey } from "./sigv4.js";
-export { MemoryBlobStore, R2BlobStore, blobKey, blobStoreFromConfig } from "./blob.js";
+export { MemoryBlobStore, R2BlobStore } from "./blob.js";
 export type { BlobStore } from "./blob.js";
-export { MemoryMediaStore, SupabaseMediaStore, mediaStore, resetMediaStoreForTests } from "./store.js";
+export { MemoryMediaStore } from "./store.js";
 export type { MediaStore, NewItem } from "./store.js";
-export { chunkText, chunkSections, chunkLines, findChunks, queryTerms, tokens } from "./chunk.js";
-export { readDelimited, parseDelimited, toNumber, makeTable } from "./tabular.js";
-export { readPdf, looksHard } from "./pdf.js";
-export { DeepgramTranscriber, transcriberFromConfig } from "./speech.js";
 export type { Transcriber } from "./speech.js";
-export { HttpWorker, workerFromConfig, workerSignature } from "./worker.js";
 export type { WorkerClient } from "./worker.js";
-export { MediaService, EXCERPT_CHARS, htmlToText, splitSlides, splitPages } from "./service.js";
-export { asUntrustedFile } from "./untrusted.js";
-export { makeDataArtifact, chartable, chartSource, tableSource } from "./dataartifact.js";
-export { mediaHandler, registerMedia, retypeFromBytes } from "./attach.js";
-export { insertAsset, habitsOf, unsafeSvg, ASSET_USES, isAssetUse } from "./assets.js";
+export { MediaService } from "./service.js";
+export { registerMedia } from "./attach.js";
 
 export interface MediaOptions extends Partial<MediaDeps> {
   /** Make it even when MEDIA_INGEST is off (tests). */

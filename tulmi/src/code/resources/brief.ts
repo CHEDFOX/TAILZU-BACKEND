@@ -39,7 +39,7 @@ import type { PlanCtx } from "../../web/search/types.js";
 import { askJson, cut, fence, oneLine, type ModelCtx } from "../work/model.js";
 import { redactText } from "../work/worklog.js";
 
-export class BriefError extends Error {
+class BriefError extends Error {
   constructor(readonly code: "limit" | "failed" | "empty", message: string) {
     super(message);
     this.name = "BriefError";

@@ -14,8 +14,8 @@ import { safeFetchWith } from "../../web/safeFetch.js";
 import { WebError } from "../../web/error.js";
 import { botUa } from "../../web/search/http.js";
 
-export const POST_TIMEOUT_MS = 10_000;
-export const POST_MAX_BYTES = 2 * 1024 * 1024;
+const POST_TIMEOUT_MS = 10_000;
+const POST_MAX_BYTES = 2 * 1024 * 1024;
 
 export interface PostOptions { fetchFn?: FetchLike; timeoutMs?: number; maxBytes?: number }
 

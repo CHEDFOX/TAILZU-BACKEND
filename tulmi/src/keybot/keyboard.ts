@@ -26,7 +26,7 @@ import type { KeybotPrefs } from "./prefs.js";
 
 /** A key row's height as catalog.ts builds the tree, and what each Key height makes it. */
 export const KEY_ROW_HEIGHT = 44;
-export const KEY_ROW_HEIGHTS = { short: 40, normal: KEY_ROW_HEIGHT, tall: 48 } as const;
+const KEY_ROW_HEIGHTS = { short: 40, normal: KEY_ROW_HEIGHT, tall: 48 } as const;
 /** Key rows on screen at once: letters, 123, #+= and the number pad each have four. */
 export const KEY_ROWS = 4;
 /** Strong haptics: the impact style one step up from the keyboard's own selection tick. */

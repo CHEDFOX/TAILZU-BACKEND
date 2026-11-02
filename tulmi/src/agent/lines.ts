@@ -41,10 +41,10 @@
 import type { AgentDraw, AgentDrawKind, AgentEvent, AgentSpot } from "../../../shared/types/api.js";
 import type { Platform } from "./grammar.js";
 
-export const SAY_MAX = 240;
-export const CAPTION_MAX = 80;
-export const STEP_MAX = 80;
-export const STEPS_MAX = 6;
+const SAY_MAX = 240;
+const CAPTION_MAX = 80;
+const STEP_MAX = 80;
+const STEPS_MAX = 6;
 const TYPE_MAX = 1000;
 const INSTRUCTION_MAX = 500;
 /** More SAYs or POINTs than this in one step is a model rambling. */
@@ -58,7 +58,7 @@ const DRAWS_MAX = 12;
 /** A mark's label sits beside what it marks, in handwriting: a few words. */
 export const LABEL_MAX = 48;
 /** Picture units run from 0 to this, across the picture and down it. */
-export const PICTURE_UNITS = 1000;
+const PICTURE_UNITS = 1000;
 /** A box thinner than this is a line, and nobody can see what it holds. */
 const BOX_MIN = 4;
 /** A path is a line through at least two points; past this it is a scribble. */
@@ -378,7 +378,7 @@ const CLOSERS: Record<string, string> = {
 
 /** A label as it is drawn: one line, no control characters, no markdown, at
  *  most LABEL_MAX characters, cut at a word when it has to be cut. */
-export function labelText(s: string): string {
+function labelText(s: string): string {
   const t = unmark(s.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ")).replace(/\s+/g, " ").trim();
   if (t.length <= LABEL_MAX) return t;
   let cut = t.slice(0, LABEL_MAX - 1);
@@ -717,4 +717,4 @@ export class LineReader {
 }
 
 /** A line of text the device read off the window's picture, not a control. */
-export const isOcrLine = (id: string) => id.startsWith("o");
+const isOcrLine = (id: string) => id.startsWith("o");

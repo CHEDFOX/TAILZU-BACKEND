@@ -97,12 +97,6 @@ export interface FeedInput {
 
 // ------------------------------------------------------------------ words and numbers
 
-/** Money as a person reads it: "₹184", "₹6.40" (the kit's rupees(), here so the domain does not import the screens' kit). */
-export function rupeesOf(paise: number): string {
-  const r = Math.round(paise) / 100;
-  return `₹${Number.isInteger(r) ? r.toLocaleString("en-IN") : r.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 /** "4:02 pm", in the person's own day. */
 export function clockOf(at: number, tzOffsetMinutes: number): string {
   const d = new Date(at + tzOffsetMinutes * 60_000);
@@ -173,7 +167,7 @@ const APP_BOT: Array<[RegExp, string]> = [
 ];
 
 /** The bot a connected-app task belongs to: by the app it is waiting on, else by the app its steps name, else Tailzu. */
-export function taskBot(t: Pick<FeedTask, "approval" | "steps" | "title">): string {
+function taskBot(t: Pick<FeedTask, "approval" | "steps" | "title">): string {
   if (t.approval) return CONNECTOR_BOT[t.approval.connector] ?? "tailzu";
   const words = `${t.steps.map((s) => s.text).join(" ")} ${t.title}`;
   for (const [re, bot] of APP_BOT) if (re.test(words)) return bot;

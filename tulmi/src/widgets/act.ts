@@ -26,9 +26,9 @@ import { parseItem, questionMark, type QuickItem } from "./items.js";
 import type { WidgetScope } from "./token.js";
 
 export const KEEP_DAYS = 7;
-export const STALE_MS = 2 * 60_000;
+const STALE_MS = 2 * 60_000;
 /** An idempotency key, as the apps make it. */
-export const KEY_RE = /^[A-Za-z0-9_.:-]{8,120}$/;
+const KEY_RE = /^[A-Za-z0-9_.:-]{8,120}$/;
 
 // ------------------------------------------------------------------ once
 
@@ -63,7 +63,7 @@ export class MemoryQuickActionStore implements QuickActionStore {
 const TABLE = "quick_actions";
 interface DbRow { state: "sending" | "sent"; claimed_at: string; reply: unknown }
 
-export class SupabaseQuickActionStore implements QuickActionStore {
+class SupabaseQuickActionStore implements QuickActionStore {
   constructor(private readonly sb: SupabaseClient) {}
 
   async claim(userId: string, key: string, now: number, again = true): Promise<ActClaim> {
@@ -96,14 +96,13 @@ export class SupabaseQuickActionStore implements QuickActionStore {
 }
 
 let current: QuickActionStore | null = null;
-export function quickActionStore(): QuickActionStore {
+function quickActionStore(): QuickActionStore {
   if (!current) {
     const sb = supabase();
     current = sb ? new SupabaseQuickActionStore(sb) : new MemoryQuickActionStore();
   }
   return current;
 }
-export function resetQuickActionStoreForTests(): void { current = null; }
 
 // ------------------------------------------------------------------ doing it
 

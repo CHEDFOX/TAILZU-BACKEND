@@ -42,7 +42,7 @@ import {
 import { esc, headTags } from "./head.js";
 
 /** The redesign's markers, as the sync finds them. */
-export const REDESIGN_MARKERS = {
+const REDESIGN_MARKERS = {
   hero: "<!-- SEO:hero -->",
   line: "<!-- SEO:line -->",
   langs: "<!-- SEO:langs -->",
@@ -51,13 +51,13 @@ export const REDESIGN_MARKERS = {
 
 // ---------------------------------------------------------------- the six
 
-export const stepsHtml = () => SITE_UI.how.steps
+const stepsHtml = () => SITE_UI.how.steps
   .map((s, i) => `<div class="step"><p class="n">0${i + 1}</p><h3>${esc(s.title)}</h3></div>`).join("");
 
-export const toneGridHtml = () => SITE_UI.tone.tones
+const toneGridHtml = () => SITE_UI.tone.tones
   .map((t, i) => `<div class="tcard t${i % 8}"><span class="tn">${esc(t.name)}</span><p>${esc(t.text)}</p></div>`).join("");
 
-export const faqHtml = () => homeFaq()
+const faqHtml = () => homeFaq()
   .map((it) => `<div class="qa"><h3>${esc(it.q)}</h3><p>${esc(it.a)}</p></div>`).join("");
 
 /**
@@ -66,9 +66,9 @@ export const faqHtml = () => homeFaq()
  * so nothing in the copy can close the script ("</script") or open the
  * HTML comment state ("<!--") that changes how the rest of it is read.
  */
-export const jsValue = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
+const jsValue = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
 
-export const faqCopyJs = () => [
+const faqCopyJs = () => [
   "    faq: {",
   `      title: ${jsValue(SITE_UI.faq.title)},`,
   "      items: [",
@@ -138,7 +138,7 @@ export function titleHtml(title: string, human?: string): string {
   return out + esc(rest.slice(0, last.index)) + `<span class="kw">${esc(last[1]!)}</span>` + esc(last[2]!);
 }
 
-export function heroLines(): string[] {
+function heroLines(): string[] {
   const a = SITE_UI.apps;
   return [
     `<p class="kind" id="appsKind">${esc(a.kind)}</p>`,
@@ -159,7 +159,7 @@ export function lineLang(said: string): string {
   return /[ऀ-ॿ]/.test(said) ? "hi" : "hi-Latn";
 }
 
-export function lineLines(): string[] {
+function lineLines(): string[] {
   const l = SITE_UI.lines[0];
   return [
     `<p class="said" id="lineSaid" lang="${esc(lineLang(l.said))}">${esc(l.said)}</p>`,
@@ -194,7 +194,7 @@ export function siteCopyLines(): string[] {
 
 /** Replace what lies between an opening marker (to the end of its own
  *  comment or line) and its closing marker. */
-export function fill(src: string, open: RegExp, close: string, body: string): string {
+function fill(src: string, open: RegExp, close: string, body: string): string {
   const m = open.exec(src);
   if (!m) throw new Error(`marker not found: ${open}`);
   const from = m.index + m[0].length;
@@ -206,7 +206,7 @@ export function fill(src: string, open: RegExp, close: string, body: string): st
 /** Fill a marker pair with markup, one element a line, at the indent of the
  *  opening marker's line (when the marker starts that line), so the page's
  *  source reads the same after a sync as before it. */
-export function fillLines(src: string, open: string, close: string, lines: string[]): string {
+function fillLines(src: string, open: string, close: string, lines: string[]): string {
   const at = src.indexOf(open);
   if (at < 0) throw new Error(`marker not found: ${open}`);
   const lineStart = src.lastIndexOf("\n", at) + 1;
@@ -226,7 +226,7 @@ export interface SyncResult {
 }
 
 /** The page's own markers beside SEO:HEAD, from before the redesign. */
-export const BODY_MARKERS = ["<!-- SEO:steps -->", "<!-- SEO:toneSaid -->", "<!-- SEO:toneGrid -->", "<!-- SEO:faq -->", "// SEO:faqCopy"] as const;
+const BODY_MARKERS = ["<!-- SEO:steps -->", "<!-- SEO:toneSaid -->", "<!-- SEO:toneGrid -->", "<!-- SEO:faq -->", "// SEO:faqCopy"] as const;
 
 /** Write every marker the page has. Pure: the CLI reads and writes files. */
 export function syncHome(src: string): SyncResult {

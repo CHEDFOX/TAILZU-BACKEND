@@ -12,5 +12,4 @@ export function handoffConnector(id: string, o: HandoffOptions = {}): NativeConn
 }
 
 export { HANDOFF_IDS, type HandoffOptions } from "./apps.js";
-export { handoffLinks } from "./email.js";
 export { linkKind, onPhone, type LinkKind } from "./links.js";

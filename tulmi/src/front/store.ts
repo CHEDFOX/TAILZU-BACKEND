@@ -47,7 +47,7 @@ export interface Summary {
 }
 
 export const SUMMARY_ROWS = 300;
-export const SUMMARY_DAYS = 30;
+const SUMMARY_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** An outcome from the person (a tap) replaces any other; "rephrased" only replaces "ok". */
 const PERSON_OUTCOMES: readonly Outcome[] = ["visual_closed", "visual_kept", "thumbs_up", "thumbs_down"];

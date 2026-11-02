@@ -53,7 +53,7 @@ export interface AppleTokenStore {
   drop(userId: string): Promise<void>;
 }
 
-export function supabaseAppleTokens(sb: SupabaseClient): AppleTokenStore {
+function supabaseAppleTokens(sb: SupabaseClient): AppleTokenStore {
   return {
     async get(userId) {
       const { data, error } = await sb.from("apple_sign_in").select("refresh_enc").eq("user_id", userId).maybeSingle();

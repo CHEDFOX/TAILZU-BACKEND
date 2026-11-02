@@ -26,26 +26,11 @@ import { getConfig } from "../config.js";
 import { Bots, type BotsOptions } from "./service.js";
 
 export * from "./types.js";
-export { parseBotInput, inertRules, slugOf, SlugSchema, SkillsSchema, RulesSchema, DEFAULT_LIMITS } from "./validate.js";
 export type { Limits, Parsed, CleanInput } from "./validate.js";
-export { builtinBots, builtinBot, isBuiltinSlug, colourFor, CODE_SLUG } from "./builtin.js";
-export { MemoryBotStore, SupabaseBotStore, botStore, resetBotStoreForTests, SlugTaken, BOT_TABLES, BOT_USER_TABLES } from "./store.js";
 export type { BotStore, KeyRow, Command, Fact, Thread } from "./store.js";
-export { newKey, hashKey, maskKey, prefixOf, bearerKey, looksLikeKey, KEY_SHAPE } from "./keys.js";
-export { checkCommand, expand, RESERVED_COMMANDS } from "./commands.js";
-export { botUserMessage, rulesBlock, neutral, INERT_NOTE } from "./prompt.js";
-export { retrieve, KNOWLEDGE_CHARS } from "./knowledge.js";
-export { rememberTurn, saidToRemember, usableFact, BotMemoryReply } from "./memory.js";
-export { scopeMessage } from "./scope.js";
-export { buildTools } from "./tools.js";
-export { Meter } from "./meter.js";
-export { runBot, scrub, MAX_TURNS } from "./run.js";
-export { draftBot, BotDraftReply, connectorHints } from "./builder.js";
 export type { Draft } from "./builder.js";
-export { pickBot, scoreBots, BotPickReply, wordsOf } from "./door.js";
-export { connectorsPort } from "./ports.js";
 export type { BotPorts, BotConnectors, CodeAsk } from "./ports.js";
-export { Bots, viewOf, limitsFromConfig } from "./service.js";
+export { Bots } from "./service.js";
 export type { BotsOptions, KeyView, AskInput, KeyAnswer, Target, Card } from "./service.js";
 
 /** The bots platform, or null while BOTS is off. `force` makes it anyway (tests). */

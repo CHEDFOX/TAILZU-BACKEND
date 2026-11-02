@@ -57,7 +57,7 @@ export const OAUTH_STATE_ID_WORKFLOW = "code-github-oauth-workflow";
 /** Everything Tailzu ever asks for, by default. */
 export const OAUTH_SCOPES: readonly string[] = ["repo", "read:user"];
 /** Asked for only by the incremental sign-in, for changing `.github/workflows/*` (policy.ts: workflow.write asks first, and needs this). */
-export const OAUTH_SCOPES_WORKFLOW: readonly string[] = [...OAUTH_SCOPES, "workflow"];
+const OAUTH_SCOPES_WORKFLOW: readonly string[] = [...OAUTH_SCOPES, "workflow"];
 /** What a scope on that list brings with it: GitHub may name these instead of, or as well as, the parent. */
 const IMPLIED: Record<string, readonly string[]> = {
   repo: ["repo:status", "repo_deployment", "public_repo", "repo:invite", "security_events"],
@@ -71,7 +71,7 @@ const PENDING_MS = 10 * 60_000;
 /** How long GitHub's answer about push access is kept, for a read. */
 const PUSH_KEEP_MS = 10 * 60_000;
 /** How often the expiry sweep runs, and how many links one pass revokes. */
-export const SWEEP_EVERY_MS = 6 * 60 * 60_000;
+const SWEEP_EVERY_MS = 6 * 60 * 60_000;
 const SWEEP_BATCH = 100;
 
 export interface GithubOAuthConfig { clientId: string; clientSecret: string }

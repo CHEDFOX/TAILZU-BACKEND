@@ -204,7 +204,7 @@ const LOCATE_PAISE = 100;
 const SPEC_PAISE = 800;
 
 /** The HTTP status of a ConnectorError, by its code. Anything not listed (GitHub failing, mostly) is a 502. */
-export const STATUS: Record<string, number> = {
+const STATUS: Record<string, number> = {
   bad_state: 400, bad_request: 400, bad_branch: 400, bad_path: 400, binary_file: 400, too_large: 400, not_a_file: 400,
   not_yours: 403, no_access: 403, needs_reconnect: 403, not_found: 404,
   branch_moved: 409, branch_exists: 409, conflict: 409, too_many: 409, suspended: 409, nothing_to_review: 409, no_drafts: 409,

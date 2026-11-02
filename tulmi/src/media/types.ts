@@ -59,8 +59,6 @@ export const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** A video longer than this is not read (the worker also holds it). */
 export const VIDEO_SECONDS_MAX = 20 * 60;
-/** Key frames of a video: at most this many are kept, and at most this many are shown to the vision tier. */
-export const FRAMES_MAX = 8;
 export const FRAMES_LOOKED_AT = 3;
 
 /** A zip: what it may hold before it is taken for a bomb, and how much of it is read. */
@@ -115,7 +113,6 @@ export interface DataTable {
 
 export const ROWS_MAX = 500;
 export const COLUMNS_MAX = 40;
-export const TABLES_MAX = 6;
 
 /** What is known of a file apart from its text. */
 export interface MediaMeta {

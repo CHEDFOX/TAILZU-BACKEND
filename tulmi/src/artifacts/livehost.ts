@@ -26,7 +26,7 @@ import type { ArtifactPayload, DesignKitCss } from "./protocol.js";
 import { viewerOrigin } from "./shothost.js";
 
 /** How long the viewer has to say `ready` before the page says it failed. */
-export const LIVE_START_MS = 15_000;
+const LIVE_START_MS = 15_000;
 
 export interface LiveHostOptions {
   /** The app's viewer (its origin; a path is ignored). Not the viewer kept for screenshots. */

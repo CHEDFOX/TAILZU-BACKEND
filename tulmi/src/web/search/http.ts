@@ -30,7 +30,7 @@ import { WebError } from "../error.js";
 import { decodeBody } from "../extract.js";
 
 /** Longest a source's answer may take, headers and body together. */
-export const SEARCH_TIMEOUT_MS = 10_000;
+const SEARCH_TIMEOUT_MS = 10_000;
 /** Most bytes read from a source unless it says otherwise. */
 export const SEARCH_MAX_BYTES = 1024 * 1024;
 /** How much of an error's body is read. */

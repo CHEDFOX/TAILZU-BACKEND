@@ -28,7 +28,7 @@ import { landings } from "./landing.js";
  * worth anything while it is honest: bump this when the pages say something
  * new, not on every deploy.
  */
-export const CONTENT_UPDATED = "2026-10-03";
+const CONTENT_UPDATED = "2026-10-03";
 
 const iso = (d: string) => {
   const t = Date.parse(d);

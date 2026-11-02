@@ -174,13 +174,6 @@ export function statRow(label: string, value: string, o: { onPress?: ActionRef; 
   ], { gap: 10, paddingVertical: 9, minHeight: 38 }, o.onPress);
 }
 
-/** Rows in a card with hairlines between them. */
-export function rowsCard(rows: Node[], o: { label?: string } = {}): Node {
-  const kids: Node[] = [];
-  rows.forEach((r, i) => { if (i) kids.push(box([], { height: 1, backgroundColor: C.divider })); kids.push(r); });
-  return card([...(o.label ? [sectionLabel(o.label)] : []), col(kids)], { gap: 6, radius: 18, padding: 16, style: { paddingVertical: 12 } });
-}
-
 export const toast = (message: string): ActionSpec => ({ kind: "toast", message });
 export const oops = (what = "Couldn't save that. Try again."): ActionSpec => ({ kind: "toast", message: what, tone: "error" });
 /** A write: the call, a refresh (the window refetches by itself after a write too), and a quiet word. */

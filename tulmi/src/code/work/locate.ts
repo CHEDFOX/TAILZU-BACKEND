@@ -137,7 +137,7 @@ export const CONFIDENT = 0.75;
 /** Below this the answer is a question. */
 export const UNSURE = 0.45;
 /** Reciprocal-rank fusion's constant. Small, because the lists are short and the top of each is what counts. */
-export const RRF_K = 6;
+const RRF_K = 6;
 /** Half-saturation of the squash from the fused sum to a score. */
 const HALF = 0.7;
 /** A weak prior: how central a file is and how hot, never more than this much of a score. */
@@ -161,16 +161,16 @@ export interface Weights {
 }
 
 /** A test file is a place the change is CHECKED, listed on its own (`tests`); it is not where a change to behaviour is made, unless the request is about tests. */
-export const TEST_FILE_WEIGHT = 0.5;
+const TEST_FILE_WEIGHT = 0.5;
 const ABOUT_TESTS = /\b(?:tests?|specs?|testing|coverage|jest|vitest|pytest|mocha|unittest|e2e)\b/i;
-export const wantsTests = (c: Cues): boolean => [...c.nouns, ...c.identifiers, ...c.paths, ...c.dirs, ...c.quoted].some((w) => ABOUT_TESTS.test(w) || isTestPath(w));
+const wantsTests = (c: Cues): boolean => [...c.nouns, ...c.identifiers, ...c.paths, ...c.dirs, ...c.quoted].some((w) => ABOUT_TESTS.test(w) || isTestPath(w));
 
 /**
  * A documentation file is where a change is DESCRIBED, not made, unless the request is about documentation. What a README says about the project (and a model's
  * summary of it, which is made from its text) is a handle on the project for a person reading it, not a place to change a route: its evidence counts for less.
  * It is never the reason a source file is, or is not, a candidate: nothing a doc says is carried to another file.
  */
-export const DOC_FILE_WEIGHT = 0.35;
+const DOC_FILE_WEIGHT = 0.35;
 const ABOUT_DOCS = /\b(?:readme|docs?|documentation|changelog|contributing|licen[sc]e|guide|tutorial|wiki|markdown|docstrings?)\b|\.mdx?\b/i;
 export const wantsDocs = (task: string, c: Cues): boolean => ABOUT_DOCS.test(task) || c.paths.some((p) => classOf(p) === "doc");
 
@@ -400,7 +400,7 @@ async function consultMap(brain: LocateBrain, c: Cues, signals: Signals, weights
 }
 
 /** Strong hits: a signal that found a file almost exactly (the string itself, the symbol by name, the file by name). */
-export function strongHits(s: Signals): number {
+function strongHits(s: Signals): number {
   let n = 0;
   for (const id of ["path", "text", "symbol", "file"] as const) for (const h of s[id]) if (h.q >= STRONG_Q) n += 1;
   return n;
@@ -523,7 +523,7 @@ async function expandTerms(task: string, c: Cues, brain: LocateBrain, ctx: Model
 }
 
 /** What a model is shown of one candidate: the summary, the exports, the head, and the lines the evidence points at with 20 on each side. */
-export async function excerptFor(f: Fused, row: StoredFile | null, read: LocateOptions["read"]): Promise<string> {
+async function excerptFor(f: Fused, row: StoredFile | null, read: LocateOptions["read"]): Promise<string> {
   const out: string[] = [];
   if (row?.summary) out.push(`summary: ${cut(row.summary, 200)}`);
   const exported = (row?.symbols ?? []).filter((s) => s.kind !== "env" && s.kind !== "entry" && (s.exported !== false || s.kind === "route"));
@@ -733,7 +733,7 @@ function targetOf(f: Fused, why?: string): LocateTarget {
 }
 
 /** The question for a request that cannot be placed: two or three labelled options, written out. */
-export async function questionFor(fused: readonly Fused[], brain: Pick<LocateBrain, "features">): Promise<LocateQuestion> {
+async function questionFor(fused: readonly Fused[], brain: Pick<LocateBrain, "features">): Promise<LocateQuestion> {
   const unique: Fused[] = [];
   for (const f of fused) if (!unique.some((d) => d.path === f.path)) unique.push(f);
   // Not three screen parts that share a word: the best, then the state and the wiring when they are real candidates too.
@@ -904,4 +904,3 @@ export async function fusedWith(brain: LocateBrain, base: BaseSignals, map?: Map
   return (await consultMap(brain, base.cues, signals, weights, fused, map)).fused;
 }
 
-export { looksLikeIdentifier };

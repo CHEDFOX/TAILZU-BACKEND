@@ -32,7 +32,7 @@ export interface Fact {
 }
 
 /** Facts kept for one file, and the characters of one value. */
-export const FACTS_PER_FILE = 40;
+const FACTS_PER_FILE = 40;
 const VALUE_MAX = 80;
 const BLOCK_LINES_MAX = 40;
 
@@ -141,7 +141,7 @@ export function constantsOf(path: string, text: string): Fact[] {
 }
 
 /** The config-like files among some paths: a file that exists to hold settings, constants or defaults. */
-export const CONFIG_FILE = /(?:^|\/)(?:[\w.-]*(?:config|configs|settings?|constants?|defaults?|options|env)[\w.-]*)\.[a-z0-9]+$|(?:^|\/)(?:config|configs|settings|constants)\//i;
+const CONFIG_FILE = /(?:^|\/)(?:[\w.-]*(?:config|configs|settings?|constants?|defaults?|options|env)[\w.-]*)\.[a-z0-9]+$|(?:^|\/)(?:config|configs|settings|constants)\//i;
 export const isConfigPath = (path: string): boolean => CONFIG_FILE.test(path) && !isSecretPath(path);
 
 /** Reads some files and takes the values out of them: at most `files` files and `max` facts. A file that cannot be read is skipped. */
@@ -166,7 +166,7 @@ const STOP = new Set([
 ]);
 
 /** The words of a name: `windowMs` is window and ms, `MAX_LIMIT` is max and limit; a trailing s is not a difference. */
-export function wordsOfName(name: string): string[] {
+function wordsOfName(name: string): string[] {
   return name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").split(/[^A-Za-z0-9]+/).filter(Boolean).map((w) => w.toLowerCase().replace(/s$/, ""));
 }
 

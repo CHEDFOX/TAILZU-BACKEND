@@ -122,7 +122,7 @@ export interface FinderOptions {
   max?: number;
 }
 
-export const CANDIDATES_MAX = 6;
+const CANDIDATES_MAX = 6;
 const POINTS = { relevance: 25, licence: 20, maintenance: 20, security: 15, popularity: 10, size: 5, fit: 5 } as const;
 const AVOID_PENALTY = 30;
 const DAY = 86_400_000;

@@ -83,7 +83,7 @@ export interface Extracted {
 /** Most links kept. */
 export const LINKS_MAX = 200;
 /** Under this many characters of visible text, a script-rendered shell counts as empty. */
-export const THIN_TEXT = 200;
+const THIN_TEXT = 200;
 /** More HTML than this is cut off before parsing (the reader's cap is far lower). */
 const HTML_MAX = 6_000_000;
 /** Elements nested deeper than this are not nested: a hostile page cannot overflow the stack. */

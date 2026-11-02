@@ -57,7 +57,7 @@ export interface MapOptions {
   limit?: number;
 }
 
-export const DEFAULTS = { back: 2, iterations: 40, damping: 0.85, limit: 25 } as const;
+const DEFAULTS = { back: 2, iterations: 40, damping: 0.85, limit: 25 } as const;
 
 const DEFINES = new Set(["function", "method", "class", "interface", "type", "enum", "struct", "trait", "const", "component", "module"]);
 /** A name defined in more files than this is a convention (`render`, `handle`), not a dependency. */

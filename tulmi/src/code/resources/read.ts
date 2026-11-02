@@ -13,7 +13,7 @@
 import { ConnectorError } from "../../connectors/state.js";
 import { repoRef, workspace, ownProject, type ProjectDeps } from "../projects.js";
 
-export const BLOB_READ_MAX = 20 * 1024 * 1024;
+const BLOB_READ_MAX = 20 * 1024 * 1024;
 
 export type ManifestReader = (path: string) => Promise<string | null>;
 

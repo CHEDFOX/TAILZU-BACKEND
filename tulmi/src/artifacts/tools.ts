@@ -72,7 +72,7 @@ export interface ArtifactToolResult {
 }
 
 /** A rewrite that changed less than this share of the artifact should have been an update. */
-export const REWRITE_SMALL_SHARE = 0.25;
+const REWRITE_SMALL_SHARE = 0.25;
 
 const receipt = (c: Change, what: string): string => {
   const kb = c.how.artifactChars !== undefined ? ` (${(c.how.artifactChars / 1024).toFixed(1)} KB)` : "";

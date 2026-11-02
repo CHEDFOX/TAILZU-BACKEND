@@ -426,7 +426,7 @@ export function bookCard(b: ProjectBook, max = CARD_CHARS): string {
 }
 
 /** The most the project card holds. */
-export const CARD_CHARS = 5_000;
+const CARD_CHARS = 5_000;
 
 /** One chapter of the book in full, every line with its source: what the chat's project_book tool returns. */
 export function bookChapter(b: ProjectBook, chapter: string): string {

@@ -23,4 +23,4 @@ import { wikipedia } from "./wikipedia.js";
 export const DIRECT: Readonly<Record<SourceId, Source>> = { npm, pypi, crates, github, stackoverflow, mdn, hn, wikipedia };
 export const DISCOVERY: Readonly<Record<DiscoveryId, Source>> = { searxng, ddg, brave };
 
-export { brave, crates, ddg, github, hn, mdn, npm, pypi, searxng, stackoverflow, wikipedia };
+export { npm, pypi };
