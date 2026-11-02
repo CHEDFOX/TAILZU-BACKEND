@@ -58,6 +58,11 @@ export const ICONS = {
   rupee: "M7 4.5h10M7 9h10M9.5 4.5c3.2 0 5 1.7 5 4.5s-1.8 4.5-5 4.5H8l7 6.5",
   pot: "M4.5 11h15v2.5a6 6 0 0 1-6 6h-3a6 6 0 0 1-6-6zM2.5 11h19M9.5 7.5c0-1.2 1-1.6 1-2.8M14 7.5c0-1.2 1-1.6 1-2.8",
   bag: "M5 8h14l-1 12H6zM9 8V6.5a3 3 0 0 1 6 0V8",
+  // The everyday tools (screens/finds.ts): a flight, a bed, the sun, and two arrows for money changing hands.
+  plane: "M21 15.5v-2l-8-5V3.8a1.5 1.5 0 0 0-3 0v4.7l-8 5v2l8-2.5v5l-2 1.5v1.5l3.5-1 3.5 1V19.5l-2-1.5v-5z",
+  bed: "M3 6v14M3 16h18v4M21 16v-3.5a2.5 2.5 0 0 0-2.5-2.5H11v6" + circ(7, 12.5, 1.8),
+  sun: circ(12, 12, 4) + "M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4",
+  swap: "M4 8h15l-3.5-3.5M20 16H5l3.5 3.5",
   spark: "M12 3.5l1.8 5.2 5.2 1.8-5.2 1.8L12 17.5l-1.8-5.2L5 10.5l5.2-1.8z",
 } as const;
 export type IconName = keyof typeof ICONS;

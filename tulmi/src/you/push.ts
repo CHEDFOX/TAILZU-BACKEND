@@ -8,6 +8,7 @@
  *   the rest     the engine's own reminders (Keylessbord's streak, the week): not sent in quiet hours, nor with Keylessbord turned off
  *   summary      one note a day at their hour, only when they turned it on and something happened that day
  *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan Ease off
+ *   routines     a routine they set up ran, or paused itself: sent (they asked for it at that time); in quiet hours without a sound
  *   people       someone in a space gave them a task, planned something for them, or messaged them: sent; in quiet hours without a
  *                sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none: botsBots/threads.ts)
  *
@@ -39,6 +40,7 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   if (kind === "bots_summary") return !n.summary ? "drop" : quiet ? "silent" : "send";
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
   if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
+  if (kind === "routine_done" || kind === "routine_failed") return quiet ? "silent" : "send";
   if (DONE.has(kind)) {
     if (quiet || n.botsOff.includes("code")) return "drop";
     return n.done === "quiet" ? "silent" : "send";

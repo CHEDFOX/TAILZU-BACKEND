@@ -18,6 +18,7 @@ import { arrivalCard } from "../firstRun/arrivalCard.js";
 import { hasNotes, notesTileSpec, notesStripHeight, notesStrip } from "../notes.js";
 import { outboxCard } from "../outbox.js";
 import { pushAskDue, PUSH_STATE, withPushCheck, pushAskCard } from "../pushAsk.js";
+import { routinesRow, type RoutinesData } from "../routines.js";
 import { idleLine, firstName } from "./parts.js";
 
 // ===================================================================== home
@@ -53,7 +54,7 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
 const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
 
 /** What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due (pushAsk.ts). */
-export interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean }
+export interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the
@@ -119,6 +120,7 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...(first ? [needsCard(first)] : []),
     ...n.push,
     tiles(ctx, 2, 132, 16, more.notes),
+    ...routinesRow(ctx, more.routines),
   ];
   const footer = [askBar("phone", { ctx })];
   // HOME'S WELCOME, where the build plays it (the first visit after onboarding; a visit after a long time away or the first on

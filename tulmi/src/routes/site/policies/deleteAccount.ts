@@ -64,7 +64,7 @@ const CSS = `
   .box .check input { margin-top: 5px; }
   .linkish { background: none; border: 0; color: var(--grey); text-decoration: underline; cursor: pointer; padding: 0; font-size: 14px; }
   .when { font-family: var(--serif); font-size: 30px; line-height: 1.2; color: var(--white); text-transform: none; }
-  .err { color: #F2A28B; min-height: 1.2em; text-transform: none; }
+  .err { color: var(--clay); min-height: 1.2em; text-transform: none; }
   .ok { color: var(--white); }
   [hidden] { display: none !important; }
 `;

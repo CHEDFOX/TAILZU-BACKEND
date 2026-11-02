@@ -11,6 +11,7 @@ import {
 import {
   canUpload, uploadPick, canRecord, uploadChip, micBlockedNotice, listenAction, notListening, listening, voiceBars, writingDown,
 } from "../../media.js";
+import { liveRow } from "../finds.js";
 import { nameOf, colorOf, toast, avatarOf, idleLine, field, kbd } from "./parts.js";
 
 // ===================================================================== ask
@@ -58,13 +59,13 @@ function sendAsk(ctx: BotsCtx): ActionRef {
   // The words go up as the person's bubble and the box clears at once (askMoment.ts); the answer is written in as it comes.
   const ask = (bot: string): ActionSpec => streamed(ctx, {
     kind: "callEndpoint", method: "POST", path: "/v1/shell/ask",
-    body: { message: SENT_WORDS, bot, device: ctx.client, mode: "text", ...(ctx.params.file || canUpload(ctx) ? { attachments: "$state.attach" } : {}) },
+    body: { message: SENT_WORDS, bot, device: ctx.client, mode: "text", tz: ctx.tzOffsetMinutes, ...(ctx.params.file || canUpload(ctx) ? { attachments: "$state.attach" } : {}) },
     assignTo: "asked",
     onSuccess: seq(
       { kind: "setState", path: "asking", value: false },
       {
         kind: "navigate", screenId: SCREENS.ask, replace: true,
-        params: { message: SENT_WORDS, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi", needs: "$state.asked.shell.needs", job: "$state.asked.shell.job" },
+        params: { message: SENT_WORDS, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi", needs: "$state.asked.shell.needs", job: "$state.asked.shell.job", routine: "$state.asked.shell.routine.token", finds: "$state.asked.shell.finds" },
       },
     ),
     onError: failed({ busy: "asking", from: "ask", then: toast("Couldn't reach your bots. Try again.", "error") }),
@@ -204,6 +205,8 @@ export function askCompose(ctx: BotsCtx, pre: Route | undefined) {
             grow(), attach("Paste", "keyboard", { kind: "readClipboard", assignTo: "ask" }),
           ], { gap: 8, paddingVertical: 12, paddingHorizontal: 22 }),
           divider(),
+          box([liveRow(ctx, ctx.live.bots.some((b) => b.slug === "travel") ? choose(ctx, "travel") : undefined)], { paddingTop: 14, paddingBottom: 6, paddingHorizontal: 22 }),
+          divider(),
           col([box([sectionLabel("Or try")], { paddingTop: 6, paddingBottom: 4, paddingHorizontal: 10 }), ...tries(ctx)], { paddingTop: 8, paddingBottom: 10, paddingHorizontal: 12 }),
           row([
             row([kbd("↵"), meta("send", { size: 12 })], { gap: 6 }),
@@ -235,6 +238,7 @@ export function askCompose(ctx: BotsCtx, pre: Route | undefined) {
         ...fileChip,
       ], { gap: 8 }),
       col([whoChip(ctx), handTo(ctx), pickList(ctx)], { gap: 6 }),
+      liveRow(ctx, ctx.live.bots.some((b) => b.slug === "travel") ? choose(ctx, "travel") : undefined),
       col([sectionLabel("Or try"), ...tries(ctx)], { gap: 0 }),
     ],
     footer: [

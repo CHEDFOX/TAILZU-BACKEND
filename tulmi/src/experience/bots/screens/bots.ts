@@ -36,6 +36,7 @@ import {
 } from "./bots/sharePhone.js";
 import * as places from "./botsPlaces.js";
 import { itemAction, addAction, planItemScreens } from "./planItem.js";
+import { tripSearches } from "./finds.js";
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
@@ -526,6 +527,7 @@ function travelPhone(ctx: BotsCtx, d: TravelData) {
             ], { gap: 8 }),
             ...p.needs,
             ...places.datesHint(p.trip, d.x),
+            tripSearches(ctx, p.trip),
             ...bookingCards(ctx, d, p.trip.place),
             places.staysPart(ctx, p.trip, d.x, d.t?.bookings ?? []),
             ...places.weatherPart(ctx, p.trip, d.x),
@@ -553,6 +555,7 @@ function travelDesk(ctx: BotsCtx, d: TravelData) {
         ], { gap: 8 }),
         ...p.needs,
         ...places.datesHint(p.trip, d.x),
+        tripSearches(ctx, p.trip),
         grid(bookingCards(ctx, d, p.trip.place), 2, 14),
         ...(d.x ? [places.tripPlanPart(ctx, p.trip, d.x)!] : []),
         places.staysPart(ctx, p.trip, d.x, d.t?.bookings ?? [], { desk: true }),
