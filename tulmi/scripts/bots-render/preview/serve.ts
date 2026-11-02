@@ -1,6 +1,6 @@
 /**
- * Try the preview locally the way an Artifact serves it: the folder preview.ts wrote, every response under the Artifact's
- * content policy, and index.html wrapped in the skeleton an Artifact adds at publish.
+ * Try the preview locally the way its static host serves it: the folder preview.ts wrote, every response under the host's
+ * content policy, and index.html wrapped in the skeleton the host adds at publish.
  *
  *   cd tulmi && npx tsx scripts/bots-render/preview/serve.ts [--port 8787] [--dir scripts/bots-render/out/preview]
  */

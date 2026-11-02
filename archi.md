@@ -89,7 +89,8 @@ experience/        everything the apps draw, built as SDUI JSON
   bootstrap/       buildBootstrap and what only it sends (start screen, push prompt, launch card, platform flags)
   phone/           the phone app: theme, navigation, shared parts, and one file per screen (you/, training/, onboarding/)
   desk/            the desktop window's pages, one file per page, with their kit, charts and time helpers
-  bots/            the Bots app: kit.ts (its UI kit), screens/ (one file per bot area), looks, sounds, live data
+  bots/            the Bots app: kit.ts (its UI kit), screens/ (per area: <area>.ts lists its screens, <area>/ holds
+                   one file per screen and parts.ts), looks, sounds, live data
   keyboard/        buildKeyboardConfig (GET /v1/keyboard/config): keys, tools row, mic
   assistant/       the phone's Connected apps, Tasks, approval sheet, Ask and the You card
   onboard/         the onboarding: sign-in stage, one file per step, the store builds' variant
@@ -152,7 +153,7 @@ ads/               Meta and Google Tag Manager events
 |---|---|
 | A phone screen | `tulmi/src/experience/phone/<screen>.ts`; the id → builder table is `phone/screens.ts` |
 | A desktop page | `tulmi/src/experience/desk/<page>.ts`; ids and tabs in `desk/screens.ts` |
-| A Bots app screen | `tulmi/src/experience/bots/screens/<area>.ts`; ids in `bots/ids.ts`, entry `bots/index.ts` |
+| A Bots app screen | `tulmi/src/experience/bots/screens/<area>/<screen>.ts`, listed in `screens/<area>.ts`; ids in `bots/ids.ts`, entry `bots/index.ts` |
 | The bootstrap | `tulmi/src/experience/bootstrap/bootstrap.ts` |
 | The keyboard config | `tulmi/src/experience/keyboard/config.ts` |
 | An SDUI node kind or action | `shared/types/sdui.ts` |

@@ -213,8 +213,8 @@ npx tsx scripts/bots-render/preview/serve.ts               # try it: http://loca
 
 It builds the bootstrap and every sample screen on both clients, then every screen they link to (at most `--max`, 300, a client),
 and writes them with the real renderers (the phone's through react-native-web with a navigator, `phone/preview.jsx`; the window's
-app.html + sdui.js) and a stand-in API (`preview/shim.js`) that answers from those files. Motions run. `index.html` has no
-doctype or head: it is made to be published as a claude.ai Artifact with the rest of the folder.
+src/app/app.html and its scripts) and a stand-in API (`preview/shim.js`) that answers from those files. Motions run. `index.html` has no
+doctype or head: it is made to be published on a static host that wraps it in its own page, with the rest of the folder.
 
 ## 8. The node types the kit adds
 

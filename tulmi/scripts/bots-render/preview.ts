@@ -1,6 +1,6 @@
 /**
  * THE LIVE PREVIEW: the Bots app as it will look and move, on the phone and in the window, as a folder of static files
- * (a private claude.ai Artifact, or any static server).
+ * (for a static host, or any static server).
  *
  *   cd tulmi && npx tsx scripts/bots-render/preview.ts            # writes scripts/bots-render/out/preview/
  *
