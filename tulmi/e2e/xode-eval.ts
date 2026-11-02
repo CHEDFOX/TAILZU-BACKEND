@@ -1,7 +1,7 @@
 /**
  * XODE'S CHAT, SCORED, ON REAL PROJECTS: THE ROUTER AND ITS ROADS AGAINST THE ONE LOOP, THE SAME CASES, THE SAME BRAIN.
  *
- *   npx tsx e2e/xode-eval.ts [--only desktop|backend] [--modes router,loop] [--cases a,b] [--extra e2e/cases/real.jsonl] [--cap 30] [--out e2e/out/xode-eval.md]
+ *   npx tsx e2e/xode-eval.ts [--only desktop|backend|app|...] [--modes router,loop] [--cases a,b] [--extra e2e/cases/real.jsonl] [--cap 30] [--full] [--out e2e/out/xode-eval.md]
  *
  * Each project's brain is built once with real models (as when a person connects the repo; its history, pull requests and issues read from the
  * real repo on api.github.com), the owner's three answers are given to its book, and every case is asked through the front door twice: with the
@@ -104,7 +104,7 @@ const PROJECTS: Project[] = [
       keep: "Screens and their words come from the server, not the app.",
     },
     cases: [
-      { id: "att-missing", say: "Apple rejected the iPhone build: \"We're unable to locate the App Tracking Transparency permission request.\" The build does have NSUserTrackingUsageDescription. Why doesn't the prompt show?", did: "answer", says: [/initMeta/, /ads\.meta\.ios\.enabled/, /mount|bootstrap|knobs?\b/i] },
+      { id: "att-missing", say: "Apple rejected the iPhone build: \"We're unable to locate the App Tracking Transparency permission request.\" The build does have NSUserTrackingUsageDescription. Why doesn't the prompt show?", did: "answer", says: [/initMeta/, /ads\.meta\.ios\.enabled/, /\bmount|before (?:the |any )?(?:bootstrap|knobs)|(?:bootstrap|knobs) (?:arrive|land|come|load)/i] },
       { id: "restore-missing", say: "App Review says there is no Restore Purchases button. Where do I add it?", did: "answer", says: [/iap\.restore/, /server|backend|bootstrap/i] },
       { id: "version-low", say: "Apple refused the upload: the version must be higher than the previously approved version. What do I change?", did: "answer", says: [/app\.config\.ts/, /version/i] },
     ],
@@ -346,7 +346,7 @@ async function runProject(p: Project, lines: string[], totals: Record<string, { 
       answers.push(`#### ${c.id}: "${c.say}"${c.before ? ` (after "${c.before.join('", "')}")` : ""}`, "");
       for (const mode of MODES) {
         const x = v[mode]!;
-        answers.push(`**${mode}** (${x.did}${x.job ? `, task: "${x.job.slice(0, 200)}"` : ""}):`, "", x.text.slice(0, 900).split("\n").map((l) => `> ${l}`).join("\n"), "");
+        answers.push(`**${mode}** (${x.did}${x.job ? `, task: "${x.job.slice(0, 200)}"` : ""}):`, "", (process.argv.includes("--full") ? x.text : x.text.slice(0, 900)).split("\n").map((l) => `> ${l}`).join("\n"), "");
       }
     }
     out(rows.join("\n"));
