@@ -794,6 +794,14 @@ const EnvSchema = z.object({
   ROUTINES: bool(true),
   ROUTINES_MAX: z.coerce.number().int().min(1).max(200).default(20),
   /**
+   * THE PERSON'S CONTEXT (src/context, docs/context.md): who they are, who they message, their last asks, open work and recent results, as
+   * one short block of data for the one key's brain (/v1/ask/decide) and Ask's first step (/v1/agent). CONTEXT=false turns it off: nothing
+   * is kept or shown, and /v1/context answers 404 context_off. CONTEXT_MAX_CHARS is the hard cap on the block. Migration 0063 keeps it
+   * (without it, it lives in memory).
+   */
+  CONTEXT: bool(true),
+  CONTEXT_MAX_CHARS: z.coerce.number().int().min(200).max(8000).default(2000),
+  /**
    * EVERYDAY TOOLS (src/everyday, docs/everyday.md): flights (Kiwi.com), hotels (trivago), currency (Frankfurter) and weather (MET Norway),
    * live and free, with no sign-in of the person's: bot tools whose results are cards beside the answer. EVERYDAY=false turns all off;
    * EVERYDAY_OFF names some to leave out ("stays,flights"). EVERYDAY_DAILY is the flight and hotel searches a person may make a day

@@ -14,7 +14,7 @@ The person holds one key and talks. Whatever they said is an ask; `POST /v1/ask/
 
 ## How it decides (Xode's way)
 1. **Safety first, for nothing.** A password field or Tailzu's own window: typed, no model, the words never leave.
-2. **One tiny call** (role `ask_decide`, tiny tier, 30 paise cap) with the app, window title, the text box, the last 3 asks and the person's bots. Any language. A short follow-up is made whole in `goal`.
+2. **One tiny call** (role `ask_decide`, tiny tier, 30 paise cap) with the app, window title, the text box, the person's context (docs/context.md: who they are, who they message, their last asks; the computer's last 3 asks only while the server has kept none) and the person's bots. Any language. A short follow-up is made whole in `goal`.
 3. **Climb once.** Under 0.7 sure, or the tiny model down: the cheap tier, once; the surer answer wins.
 4. **Never stuck.** Both down, or still under 0.45 with a text box in front: typed. No box: Ask, which can ask one question itself.
 5. **Rules only raise the risk.** Money and deleting are read from the words (`risk`), whatever the model said, so they are always confirmed.

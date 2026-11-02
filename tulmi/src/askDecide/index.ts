@@ -16,8 +16,9 @@
  *
  * HOW IT DECIDES, Xode's way (code/brain/classify.ts, code/brain/route.ts):
  *   1. SAFETY FIRST, FOR NOTHING. A password field, or Tailzu's own window: typed, no model asked, the words never leave.
- *   2. ONE TINY CALL (role ask_decide, the tiny tier, a few hundred tokens) reads the words with the app, the field, the last turns
- *      and the person's bots, and answers in strict JSON. It also makes a short follow-up whole ("send it to Dev too" after a
+ *   2. ONE TINY CALL (role ask_decide, the tiny tier, a few hundred tokens) reads the words with the app, the field, the person's
+ *      context (src/context: who they are, who they message, their last asks; else the last turns the computer sent) and their bots,
+ *      and answers in strict JSON. It also makes a short follow-up whole ("send it to Dev too" after a
  *      message to Riya), so nothing downstream sees half a request.
  *   3. CLIMB ONCE. Under 0.7 sure, or the tiny model down: the cheap tier, once. The surer of the two wins.
  *   4. NEVER THROWS, NEVER STUCK. Both down: the safest thing that can be undone: typed when a text box is in front, else Ask,
@@ -62,8 +63,12 @@ export interface DecideInput {
   field?: { selection?: string; private?: boolean } | null;
   /** Tailzu's own window is in front. */
   ours?: boolean;
-  /** Up to 3 of the person's last asks, newest last. */
+  /** Up to 3 of the person's last asks, newest last, as the computer remembers them: used when the server has kept none (`context`). */
   last?: AskTurn[];
+  /** What the server keeps about the person (src/context): their facts, people, asks, open work. Its text is data. */
+  context?: { text: string; turns: number };
+  /** The computer's offset, minutes east of UTC. */
+  tz?: number;
   bots?: AskBotLite[];
   grants?: Partial<Record<Grant, GrantState>>;
   notesOn?: boolean;
@@ -151,7 +156,9 @@ export function decideUser(i: DecideInput): string {
       `Meeting notes: ${i.notesOn ? "running" : "off"}`,
     ].join("\n")),
   ];
-  const last = (i.last ?? []).slice(-3);
+  const kept = i.context?.text.trim();
+  if (kept) parts.push(fenced("What X0 keeps about them", neutral(kept)));
+  const last = i.context?.turns ? [] : (i.last ?? []).slice(-3);
   if (last.length) parts.push(fenced("Last asks, oldest first", last.map((t) => `- ${t.did}${t.to ? ` to ${neutral(oneLine(t.to, 60))}` : ""}: ${neutral(oneLine(t.said, 200))}`).join("\n")));
   const bots = (i.bots ?? []).slice(0, 12);
   if (bots.length) parts.push(fenced("Their bots", bots.map((b) => `- ${b.slug}: ${neutral(oneLine(b.name, 40))}${b.purpose ? `. ${neutral(oneLine(b.purpose, 120))}` : ""}`).join("\n")));
@@ -167,7 +174,7 @@ export function resetAskDecideCacheForTests(): void { kept.clear(); }
 function keyOf(userId: string, i: DecideInput): string {
   const f = i.field === undefined ? "?" : i.field === null ? "-" : i.field.selection?.trim() ? `s:${i.field.selection.length}:${i.field.selection.slice(0, 80)}` : "f";
   return createHash("sha256").update(JSON.stringify([
-    userId, i.words.trim().toLowerCase(), i.app ?? "", i.title ?? "", f, !!i.notesOn, (i.last ?? []).slice(-3), (i.bots ?? []).map((b) => b.slug),
+    userId, i.words.trim().toLowerCase(), i.app ?? "", i.title ?? "", f, !!i.notesOn, (i.last ?? []).slice(-3), (i.bots ?? []).map((b) => b.slug), i.context?.text ?? "",
   ])).digest("base64url");
 }
 
@@ -255,7 +262,8 @@ function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision
   // small model asked for "the request made whole" also translated it (English in, Hindi out), and the goal is
   // what Ask is handed as the request. Even made whole, a goal in another script than what was said is not used.
   const made = oneLine(r.goal ?? "", 600);
-  const goal = (i.last ?? []).length > 0 && made && detectScript(made) === detectScript(words) ? made : words;
+  const before = (i.last ?? []).length > 0 || (i.context?.turns ?? 0) > 0;
+  const goal = before && made && detectScript(made) === detectScript(words) ? made : words;
   let kind: AskDo = r.do;
   let bot: AskDecision["bot"];
   if (kind === "bot") {

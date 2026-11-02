@@ -62,6 +62,8 @@ import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
 import { registerRoutineRoutes } from "./routes/bots/routines.js";
 import { registerAskDecideRoutes } from "./routes/ask/askDecide.js";
+import { registerContextRoutes } from "./routes/ask/context.js";
+import { createPersonContext } from "./context/index.js";
 import { registerEverydayRoutes } from "./routes/bots/everyday.js";
 import { everyday } from "./everyday/index.js";
 import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
@@ -421,8 +423,12 @@ if (routines) {
 registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
 // Everyday tools (src/everyday, docs/everyday.md): flights, hotels, currency and weather for every bot that fits, free, no sign-in.
 registerEverydayRoutes(app, { rateLimit: AUTHED_RL, everyday: everyday() });
+// The person's context (src/context, docs/context.md): who they are, who they message, their last asks and open work, for the one key's
+// brain and Ask's first step. Off with CONTEXT=false; migration 0063 keeps it.
+const personContext = createPersonContext({ jobs: codeJobs, connectors, routines: routineStore() });
+registerContextRoutes(app, { rateLimit: AUTHED_RL, context: personContext });
 // The one key's brain (src/askDecide, docs/ask-decide.md): what the person meant, in any language.
-registerAskDecideRoutes(app, { rateLimit: AUTHED_RL, bots });
+registerAskDecideRoutes(app, { rateLimit: AUTHED_RL, bots, context: personContext });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent, routines };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);
@@ -503,7 +509,7 @@ registerAskRoutes(app, { rateLimit: AUTHED_RL, cfg, frontRoutes, tooLong, person
 const AGENT_RL = {
   rateLimit: { max: cfg.AGENT_RATE_LIMIT_MAX, timeWindow: cfg.AGENT_RATE_LIMIT_WINDOW_MS },
 };
-registerAgentRoutes(app, { rateLimit: AGENT_RL, cfg, ledger, connectors });
+registerAgentRoutes(app, { rateLimit: AGENT_RL, cfg, ledger, connectors, context: personContext });
 
 // --- The phone's Ask (REST): one command, no screen ------------------------
 //
