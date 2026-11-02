@@ -63,6 +63,7 @@ import { Threads, type FileRef } from "../../botsBots/threads.js";
 import type { Trips } from "../../botsBots/trips.js";
 import { pushEngine } from "../../push/index.js";
 import { calendar } from "../../calendar/index.js";
+import { SITE_UI } from "../../experience/site/copy.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import { AREA, apiOrigin, shownName } from "./botsBots.js";
 
@@ -77,8 +78,20 @@ const codeOf = (v: unknown): string => String(v ?? "").toUpperCase().replace(/[^
 const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/download`;
 
 /**
+ * A phone that opens an invite's link in its browser has no X0 Bot (with it, the link opens the app: apple-app-site-association and
+ * assetlinks.json cover /s/*), so it goes to its own store. Android's carries the invite as the install referrer. A computer, or anything
+ * else, gets the page.
+ */
+export function storeFor(userAgent: unknown, code: string): string | null {
+  const ua = String(userAgent ?? "");
+  if (/iPhone|iPad|iPod/i.test(ua)) return SITE_UI.stores.ios;
+  if (/Android/i.test(ua)) return `${SITE_UI.stores.android}&referrer=${encodeURIComponent(`join=${code}`)}`;
+  return null;
+}
+
+/**
  * An invite opened in a browser instead of the app: what it is for, a button that opens Tailzu at joining (tulmi://, which the apps
- * register), and the code to type in You › Spaces › Join with a code. The code is written into the page only once it has the exact
+ * register), and the code to type in You › Spaces › Got an invite code?. The code is written into the page only once it has the exact
  * shape of one; no script runs here.
  */
 function invitePage(code: string, s: { name: string; members: number; email: string | null } | null): string {
@@ -88,7 +101,7 @@ function invitePage(code: string, s: { name: string; members: number; email: str
   const who = s?.email ? `<p>It's for ${esc(s.email)}: sign in to X0 Bot with that email to accept it.</p>` : "";
   const how = s && INVITE_CODE_RE.test(code)
     ? `${who}<a class="btn" href="tulmi://screen/${JOIN_SCREEN}?join=${code}">Open in X0 Bot</a>`
-      + `<p>Or open X0 Bot, go to <b>You → Spaces</b>, tap <b>Join with a code</b> and enter:</p><p class="code">${esc(code)}</p>`
+      + `<p>Or open X0 Bot, go to <b>You → Spaces</b>, tap <b>Got an invite code?</b> and enter:</p><p class="code">${esc(code)}</p>`
       + `<p class="meta">No X0 Bot yet? <a href="${DOWNLOAD}">Get it here</a>, sign in, and open this link again.</p>`
     : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>X0 Bot space invite</title>
@@ -219,17 +232,20 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.delete(`${AREA}/spaces/:id/bots/:slug`, RL, run(async (user, req) => { await spaces.removeBot(user.id, param(req, "id"), param(req, "slug")); return { ok: true }; }));
   app.get(`${AREA}/spaces/:id/activity`, RL, run(async (user, req) => ({ activity: await spaces.activity(user.id, param(req, "id"), Number(queryOf(req).limit) || 50) })));
 
-  // An invite's link (https://app.x0bot.com/s/bots.spaces?join=CODE) opens the app; a browser that has no app to hand it to lands here.
-  const sendInvite = async (reply: FastifyReply, raw: unknown) => {
+  // An invite's link (https://app.x0bot.com/s/bots.spaces?join=CODE) opens the app; a browser that has no app to hand it to lands here:
+  // a phone goes on to its store, a computer gets the page.
+  const sendInvite = async (req: FastifyRequest, reply: FastifyReply, raw: unknown) => {
     const code = codeOf(raw);
     const s = code ? await spaces.peek(code).catch(() => null) : null;
+    const store = s && INVITE_CODE_RE.test(code) ? storeFor(req.headers["user-agent"], code) : null;
+    if (store) return reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer").redirect(store, 302);
     return reply.header("content-type", "text/html; charset=utf-8").header("cache-control", "no-store")
       .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
       .header("referrer-policy", "no-referrer").header("x-robots-tag", "noindex")
       .send(invitePage(code, s));
   };
-  app.get(`/s/${JOIN_SCREEN}`, tight(30), async (req, reply) => sendInvite(reply, queryOf(req).join));
-  app.get(`${AREA}/invite/:code`, tight(30), async (req, reply) => sendInvite(reply, param(req, "code")));
+  app.get(`/s/${JOIN_SCREEN}`, tight(30), async (req, reply) => sendInvite(req, reply, queryOf(req).join));
+  app.get(`${AREA}/invite/:code`, tight(30), async (req, reply) => sendInvite(req, reply, param(req, "code")));
 
   // ------------------------------------------------------------------ sharing
 

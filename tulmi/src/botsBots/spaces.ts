@@ -388,8 +388,9 @@ export class Spaces {
         subject: `${from} invited you to ${a.s.name} on X0 Bot`,
         text: [
           `${from} invited you to ${a.s.name} on X0 Bot.`,
-          `Open this link to join (it works for seven days): ${link}`,
-          `Or open X0 Bot, go to You, then Spaces, tap Join with a code and enter ${code}.`,
+          `Open this link on your phone to join (it works for seven days): ${link}`,
+          `No X0 Bot yet? The link takes you to the App Store or Google Play. Install it, sign in, and open the link again.`,
+          `Or open X0 Bot, go to You, then Spaces, tap Got an invite code? and enter ${code}.`,
           `Sign in with this email address (${email}) to accept. If you weren't expecting this, you can ignore it.`,
         ].join("\n\n"),
       });

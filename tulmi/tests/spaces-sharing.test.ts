@@ -191,9 +191,22 @@ describe("invites by link and by email", () => {
     expect(String(page.headers["content-security-policy"])).toContain("default-src 'none'");
     expect(page.body).toContain("<b>Home</b>");
     expect(page.body).toContain(`href="tulmi://screen/bots.spaces?join=${inv.code}"`);
-    expect(page.body).toContain("Join with a code");
+    expect(page.body).toContain("Got an invite code?");
     expect(page.body).toContain(`>${inv.code}<`);
     expect(page.body).not.toContain("<script");
+    // A phone with no X0 Bot (the link would have opened it) goes to its own store; Android's carries the invite.
+    const open = (ua: string, url = inv.link) => s.app.inject({ method: "GET", url: url.replace(/^https?:\/\/[^/]+/, ""), headers: { "user-agent": ua } });
+    const iphone = await open("Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 Version/18.1 Mobile/15E148 Safari/604.1");
+    expect(iphone.statusCode).toBe(302);
+    expect(iphone.headers.location).toBe("https://apps.apple.com/app/id6784811357");
+    const android = await open("Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36");
+    expect(android.statusCode).toBe(302);
+    expect(android.headers.location).toBe(`https://play.google.com/store/apps/details?id=com.tulmi.app&referrer=join%3D${inv.code}`);
+    // A computer gets the page; so does a phone whose invite doesn't work (no store for a dead invite).
+    expect((await open("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.1 Safari/605.1.15")).statusCode).toBe(200);
+    const dead = await open("Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X)", "/s/bots.spaces?join=NOPE1234");
+    expect(dead.statusCode).toBe(200);
+    expect(dead.body).toContain("This invite doesn't work any more.");
     // A code that isn't one, or one that doesn't work: the plain words, and nothing to open.
     for (const bad of ["NOPE1234", "%3Cscript%3E", ""]) {
       const p = await s.call("GET", `/s/bots.spaces?join=${bad}`, null);
