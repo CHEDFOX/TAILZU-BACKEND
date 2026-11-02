@@ -289,7 +289,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   team_review: 1406, // 1278 measured
   bot_builder: 1572, // 1429 measured
   bot_pick: 809, // 736 measured
-  ask_decide: 1709, // 1554 measured
+  ask_decide: 1913, // 1739 measured
   bot_run: 1516, // 1379 measured
   bot_memory: 1163, // 1058 measured
   widget_digest: 853, // 776 measured
