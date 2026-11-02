@@ -65,6 +65,8 @@ export interface StepContext {
   req: AgentStepRequest;
   /** AGENT_MAX_STEPS: steps are counted from 0, and one past this is refused. */
   maxSteps: number;
+  /** AGENT_JOB_MAX_STEPS: the same, for a run that carries a long job's ledger (req.job). Absent: maxSteps. */
+  jobMaxSteps?: number;
   /** The names it answers to, taken off the front of a command. */
   names?: string[];
   /** The one picture that came with the step: the picture path. */
@@ -181,7 +183,8 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
     sink.emit({ t: "error", code: "private", message: "Ask doesn't read private windows or sensitive apps." });
     return { path: "refused", words: 0, audioSeconds: 0, code: "private" };
   }
-  if (req.step > ctx.maxSteps) {
+  const stepsAllowed = req.job && ctx.jobMaxSteps ? Math.max(ctx.maxSteps, ctx.jobMaxSteps) : ctx.maxSteps;
+  if (req.step > stepsAllowed) {
     sink.emit({ t: "error", code: "too_many_steps", message: "That took too many steps, so I stopped." });
     return { path: "refused", words: 0, audioSeconds: 0, code: "too_many_steps" };
   }
@@ -323,7 +326,7 @@ async function planWithModel(
   },
 ): Promise<StepResult> {
   const { req } = ctx;
-  const user = agentUserMessage(req, s.said, s.mode, ctx.maxSteps);
+  const user = agentUserMessage(req, s.said, s.mode, req.job && ctx.jobMaxSteps ? Math.max(ctx.maxSteps, ctx.jobMaxSteps) : ctx.maxSteps);
   const ids = new Set(req.screen.elements.map((e) => e.id));
   const result: StepResult = { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds };
   const reads = s.act === false ? "show" : s.mode;

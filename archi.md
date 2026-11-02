@@ -106,7 +106,7 @@ pipeline/          the writing pipeline
   stt.ts, stt/     speech-to-text: transcribe() and each engine, the prompt, duration probes, transcript checks
   assistPrompt.ts  the writer's data blocks; tts.ts, openrouter.ts, field.ts, compose.ts, session.ts, …
 principles/        the prompt library: one role per model call (roles.ts), composed with compose()
-agent/             the desktop's on-screen agent (Ask): one step, the planner, the resolver, risk
+agent/             the desktop's on-screen agent (Ask): one step, the planner, the resolver, risk; long jobs (docs/long-jobs.md)
 front/             the front door: one entry for a message, decided and dispatched (docs/front-door.md)
 guard/             overload guards: limiter, breaker, coalescing, idempotency
 code/              Xode (docs/code-*.md)
@@ -253,7 +253,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
+`docs/front-door.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
 `viewer/docs/artifact-viewer.md`.

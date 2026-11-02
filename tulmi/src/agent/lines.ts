@@ -38,13 +38,17 @@
  * Either way the event is the same [x, y, w, h] and [x, y], so the device
  * never knows which model drew.
  */
-import type { AgentDraw, AgentDrawKind, AgentEvent, AgentSpot } from "../../../shared/types/api.js";
+import type { AgentDraw, AgentDrawKind, AgentEvent, AgentHandoverWhy, AgentSpot } from "../../../shared/types/api.js";
 import type { Platform } from "./grammar.js";
 
 const SAY_MAX = 240;
 const CAPTION_MAX = 80;
 const STEP_MAX = 80;
-const STEPS_MAX = 6;
+/** A plan's steps: a long job may need a dozen (docs/long-jobs.md). */
+const STEPS_MAX = 12;
+/** A PROGRESS note: one fact worth keeping. */
+const NOTE_MAX = 160;
+const HANDOVER_WHY: readonly AgentHandoverWhy[] = ["login", "code", "captcha", "payment", "other"];
 const TYPE_MAX = 1000;
 const INSTRUCTION_MAX = 500;
 /** More SAYs or POINTs than this in one step is a model rambling. */
@@ -99,6 +103,10 @@ export type Line =
   | { verb: "ASK"; text: string }
   | { verb: "LOOK"; why?: string }
   | { verb: "DONE"; text?: string }
+  /** A long job's progress: plan steps finished (1-based as written; the reader makes them 0-based), and a fact to keep. */
+  | { verb: "PROGRESS"; done: number[]; note?: string }
+  /** The next step is the person's: a password, a code, a CAPTCHA, card details, a choice. */
+  | { verb: "HANDOVER"; why: AgentHandoverWhy; text: string }
   /** `draw` is null for a DRAW line that could not be read: it is still a
    *  mark the model meant, so the reader counts it as dropped. */
   | { verb: "DRAW"; draw: AgentDraw | null }
@@ -205,6 +213,23 @@ export function parseLine(raw: string, platform: Platform, opts: ParseOptions = 
     case "ASK": {
       const text = clip(unmark(unquote(arg)), SAY_MAX);
       return text ? { verb, text } : null;
+    }
+    case "PROGRESS": {
+      // "PROGRESS 1, 2 | Booked: AI 803, seat 14C": the numbers first, then the note after a bar.
+      const bar = arg.indexOf("|");
+      const nums = (bar >= 0 ? arg.slice(0, bar) : arg).match(/\d{1,2}/g) ?? [];
+      const done = [...new Set(nums.map(Number).filter((n) => n >= 1 && n <= STEPS_MAX))];
+      const note = bar >= 0 ? clip(unmark(unquote(arg.slice(bar + 1))), NOTE_MAX) : "";
+      if (!done.length && !note) return null;
+      return note ? { verb, done, note } : { verb, done };
+    }
+    case "HANDOVER": {
+      // "HANDOVER login | Type your password, then press Continue."
+      const bar = arg.indexOf("|");
+      const kind = (bar >= 0 ? arg.slice(0, bar) : arg.split(/\s/)[0] ?? "").trim().toLowerCase();
+      const why = (HANDOVER_WHY as readonly string[]).includes(kind) ? (kind as AgentHandoverWhy) : "other";
+      const text = clip(unmark(unquote(bar >= 0 ? arg.slice(bar + 1) : arg.replace(/^\S+\s*/, ""))), SAY_MAX);
+      return { verb, why, text: text || "Your turn: finish this part, then press Continue." };
     }
     case "LOOK": {
       const why = clip(unmark(unquote(arg)), WHY_MAX);
@@ -642,6 +667,15 @@ export class LineReader {
       case "DONE":
         this.done = true;
         return this.out(line.text ? { t: "done", text: line.text } : { t: "done" });
+      case "PROGRESS":
+        // Bookkeeping, honoured on a do-run only; the device keeps it in the job's ledger.
+        if (this.mode !== "do" || this.picture) return [];
+        return this.out(line.note ? { t: "progress", done: line.done.map((n) => n - 1), note: line.note } : { t: "progress", done: line.done.map((n) => n - 1) });
+      case "HANDOVER":
+        // The person's turn ends the step. In show mode, and with a picture, it is simply said.
+        if (this.mode !== "do" || this.picture) return this.say(line.text);
+        this.done = true;
+        return this.out({ t: "handover", why: line.why, text: line.text });
       case "USE":
         // Like an action, it is the step's last word; the run decides what it means.
         if (!this.connectors) return [];

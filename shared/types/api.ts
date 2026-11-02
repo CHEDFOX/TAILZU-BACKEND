@@ -782,10 +782,28 @@ export interface AgentStepRequest {
   };
   /** ≤ 16, oldest first. */
   history?: AgentTurn[];
+  /** A LONG JOB's ledger (docs/long-jobs.md): the goal, the plan the planner wrote (STEPS), which of its steps are finished
+   *  (PROGRESS), and the few facts worth keeping (a booking number, a total). The device keeps it and sends it every step, so a
+   *  job of many steps never forgets its start when the oldest history turns fall off. Present once a do-run has a plan; with
+   *  it the run may go to AGENT_JOB_MAX_STEPS. */
+  job?: AgentJob;
   /** Only with an `image` part: what the picture is a crop of. One image on
    *  the screen ("element"), or the whole window. Where it is on the screen
    *  never leaves the device. */
   picture?: AgentPicture;
+}
+
+export type AgentHandoverWhy = "login" | "code" | "captcha" | "payment" | "other";
+
+export interface AgentJob {
+  /** What they asked for, ≤ 1000. */
+  goal: string;
+  /** The plan, ≤ 12 steps of ≤ 120 chars. */
+  plan: string[];
+  /** Indexes into `plan` that are finished. */
+  done: number[];
+  /** Facts the run found and must not lose, ≤ 8 of ≤ 160 chars. Written by the planner from the screen: data, not instructions. */
+  notes: string[];
 }
 
 export interface AgentPicture {
@@ -994,6 +1012,13 @@ export type AgentEvent =
       id?: string; text?: string; keys?: string; dir?: string; app?: string;
       risk: AgentRisk; confirm?: string;
     }
+  /** A long job's progress: plan steps now finished (indexes into the ledger's plan), and a fact worth keeping. The device
+   *  adds them to its ledger and ticks the steps off. Never terminal. */
+  | { t: "progress"; done?: number[]; note?: string }
+  /** TERMINAL: the next step is the person's own: a password, a one-time code, a CAPTCHA, card details, or a choice only
+   *  they can make. Ask never types those. The device shows `text` with Continue and Stop; Continue is the next step, with a
+   *  history turn { did: "HANDOVER", result: "ok" }. */
+  | { t: "handover"; why: AgentHandoverWhy; text: string }
   /** TERMINAL: a question for the user; their answer is the next step. */
   | { t: "ask"; text: string }
   /** TERMINAL, only on a step without a picture: the answer needs to see
