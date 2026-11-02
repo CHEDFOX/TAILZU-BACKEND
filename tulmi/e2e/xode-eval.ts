@@ -19,6 +19,7 @@
  */
 import "./env.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -41,7 +42,8 @@ const EXTRA = arg("extra");
 
 type Did = "answer" | "job" | "ask";
 interface Case { id: string; say: string; before?: string[]; did: Did; says?: RegExp[]; max?: number; not?: RegExp[] }
-interface Project { key: string; repo: string; dir: string; stripDocs: boolean; brainInr: number; owner: { for: string; next: string; keep: string }; cases: Case[] }
+/** `at`: the project as it was at that commit (a worktree made for the run), for a case whose answer was found and fixed after it. */
+interface Project { key: string; repo: string; dir: string; at?: string; stripDocs: boolean; brainInr: number; owner: { for: string; next: string; keep: string }; cases: Case[] }
 
 const PROJECTS: Project[] = [
   {
@@ -91,6 +93,22 @@ const PROJECTS: Project[] = [
     ],
   },
   // Open projects of other people, in other languages: every question a person might put, of every kind.
+  {
+    // The phone app as it was when App Review sent build 79 back (2026-11-02): the questions a person had that day, answered then by reading two
+    // repos and the live store. The tracking prompt never showed because initMeta ran once at mount, before the bootstrap set the knobs, so
+    // ads.meta.ios.enabled read false; the screens with the missing Restore button are built by the server, the app only has the action.
+    key: "app", repo: "chedfox/tailzu-frontend", dir: "/home/user/TAILZU-FRONTEND", at: "c98be81", stripDocs: false, brainInr: 12,
+    owner: {
+      for: "The X0 Bot phone app for iPhone and Android. Its screens come from the server (server-driven UI); the app draws them and runs the native parts: the keyboard, widgets, purchases, Meta ads.",
+      next: "Get X0 Bot through App Review, then grow installs with Meta ads.",
+      keep: "Screens and their words come from the server, not the app.",
+    },
+    cases: [
+      { id: "att-missing", say: "Apple rejected the iPhone build: \"We're unable to locate the App Tracking Transparency permission request.\" The build does have NSUserTrackingUsageDescription. Why doesn't the prompt show?", did: "answer", says: [/initMeta/, /ads\.meta\.ios\.enabled/, /mount|bootstrap|knobs?\b/i] },
+      { id: "restore-missing", say: "App Review says there is no Restore Purchases button. Where do I add it?", did: "answer", says: [/iap\.restore/, /server|backend|bootstrap/i] },
+      { id: "version-low", say: "Apple refused the upload: the version must be higher than the previously approved version. What do I change?", did: "answer", says: [/app\.config\.ts/, /version/i] },
+    ],
+  },
   {
     key: "umami", repo: "umami-software/umami", dir: "/home/user/OPEN/umami", stripDocs: false, brainInr: 15,
     owner: {
@@ -251,7 +269,12 @@ function extraCases(repo: string): Case[] {
 
 async function runProject(p: Project, lines: string[], totals: Record<string, { pass: number; n: number; paise: number; ms: number }>): Promise<void> {
   const out = (s = ""): void => { lines.push(s); console.log(s); };
-  const { files, all, named } = filesOf(p.dir, p.stripDocs);
+  let dir = p.dir;
+  if (p.at) {
+    dir = path.join(os.tmpdir(), `xode-eval-${p.key}-${p.at}`);
+    if (!fs.existsSync(dir)) execFileSync("git", ["-C", p.dir, "worktree", "add", "-f", "--detach", dir, p.at], { stdio: "ignore" });
+  }
+  const { files, all, named } = filesOf(dir, p.stripDocs);
   const rig: Rig = await createRig({ mode: "real", brainBudgetPaise: p.brainInr * 100, room: false, log: (m) => { if (/^warn /.test(m)) console.error(m); } });
   try {
     const gh = rig.code.github as unknown as { rsend: (repo: unknown, method: string, url: string, body?: unknown, o?: unknown) => Promise<unknown> };
