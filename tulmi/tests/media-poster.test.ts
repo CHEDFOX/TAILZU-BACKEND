@@ -7,7 +7,8 @@ process.env.STT_PROVIDER = "openai";
 process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
-import { buildScreen, setMediaRegistryAccessor } from "../src/experience/catalog.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { setMediaRegistryAccessor } from "../src/experience/mediaRegistry.js";
 
 // What the app's splash waits on at a later launch (SduiApp firstRemoteImage):
 // the first Image or Slideshow, through children and fallbacks. Visibility is

@@ -8,7 +8,8 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { buildScreen, setMediaRegistryAccessor } from "../src/experience/catalog.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { setMediaRegistryAccessor } from "../src/experience/mediaRegistry.js";
 import type { MediaPresent } from "../../shared/types/sdui.js";
 
 // How the opening media is SHOWN is registry data, not code. These tests hold

@@ -35,7 +35,7 @@
  * gets its head and nothing else, and that head names no films and no
  * questions, since the page shows neither.
  */
-import { SITE_UI, siteCopy } from "../experience/catalog.js";
+import { SITE_UI, siteCopy } from "../experience/site/copy.js";
 import {
   HOME, LANGS, appLd, faqLd, filmLd, homeFaq, homeFilms, orgLd, pageLd, websiteLd,
 } from "./facts.js";

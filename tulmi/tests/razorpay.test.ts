@@ -339,7 +339,8 @@ describe("the routes", () => {
   });
 
   it("the cancel screen says what happens, and the bootstrap hands the desktop a signed pay link", async () => {
-    const { buildScreen, buildBootstrap } = await import("../src/experience/catalog.js");
+    const { buildScreen } = await import("../src/experience/screens.js");
+    const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
     const until = new Date(Date.now() + 20 * DAY * 1000).toISOString();
     const live = JSON.stringify(buildScreen("cancel_subscription", { personality: {}, language: "en", entitlement: { store: "razorpay", expiresAt: until, renews: true } } as never));
     expect(live).toContain("/v1/billing/razorpay/cancel");

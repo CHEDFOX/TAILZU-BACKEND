@@ -8,7 +8,8 @@ process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
 import { pricingHtml } from "../src/routes/policies/pricing.js";
-import { PAYWALL_CONFIG, POLICY } from "../src/experience/catalog.js";
+import { PAYWALL_CONFIG } from "../src/experience/phone/paywall.js";
+import { POLICY } from "../src/experience/policy.js";
 import { TERMS_HTML } from "../src/routes/policies/terms.js";
 
 describe("the pricing page", () => {

@@ -1,7 +1,7 @@
 /**
  * EVERY WORD STARTS WITH A CAPITAL — the owner's rule for the app's own words.
  *
- * Applied to a phone screen as the last step of building it (catalog.ts
+ * Applied to a phone screen as the last step of building it (screens.ts
  * buildScreen), so the hundreds of strings written in sentence case across
  * the catalog follow it without each being rewritten, and a string added
  * tomorrow follows it too.

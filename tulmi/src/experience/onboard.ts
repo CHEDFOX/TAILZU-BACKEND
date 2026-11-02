@@ -47,8 +47,9 @@ import type { ConnectorInfo } from "../../../shared/types/api.js";
 import { CATALOG } from "../connectors/catalog.js";
 import { en } from "../connectors/words.js";
 import { appIconNode } from "./appIcons.js";
-import { AUTH_UI, DAILY_LANGUAGES, GOOGLE_PATHS } from "./catalog.js";
-import type { ScreenContext } from "./catalog.js";
+import { AUTH_UI, GOOGLE_PATHS } from "./phone/auth.js";
+import { DAILY_LANGUAGES } from "./phone/languages.js";
+import type { ScreenContext } from "./screens.js";
 
 export type Style = Record<string, unknown>;
 

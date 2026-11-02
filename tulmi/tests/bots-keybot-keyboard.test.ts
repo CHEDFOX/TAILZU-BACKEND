@@ -45,7 +45,7 @@ vi.mock("../src/pipeline/stt.js", () => ({
 }));
 
 import { buildApp } from "../src/server.js";
-import { buildKeyboardConfig } from "../src/experience/catalog.js";
+import { buildKeyboardConfig } from "../src/experience/keyboard/config.js";
 import { KEY_ROWS, KEY_ROW_HEIGHT, STRONG_HAPTIC_STYLE, withKeybotKeyboard } from "../src/keybot/keyboard.js";
 import { paceFor } from "../src/pipeline/tts.js";
 import type { Personality } from "../../shared/types/api.js";

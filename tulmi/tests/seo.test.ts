@@ -15,7 +15,9 @@ import { LANDING_PATHS, landings } from "../src/seo/landing.js";
 // eslint-disable-next-line import/first
 import { llmsFullTxt, llmsTxt, sitePages } from "../src/seo/machine.js";
 // eslint-disable-next-line import/first
-import { SITE_LAYOUT_REDESIGN, SITE_SHAPE, SITE_UI, PAYWALL_CONFIG, siteCopy } from "../src/experience/catalog.js";
+import { SITE_LAYOUT_REDESIGN, SITE_SHAPE } from "../src/experience/site/shape.js";
+import { SITE_UI, siteCopy } from "../src/experience/site/copy.js";
+import { PAYWALL_CONFIG } from "../src/experience/phone/paywall.js";
 // eslint-disable-next-line import/first
 import { filmProblems, headHtml, langsLines, lineLang, siteCopyLines, syncHome, titleHtml } from "../src/seo/home.js";
 // eslint-disable-next-line import/first

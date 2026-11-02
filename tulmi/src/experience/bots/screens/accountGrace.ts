@@ -36,7 +36,7 @@ export const goneAt = (ctx: BotsCtx, d: DeletionState | undefined): number => d?
 
 /**
  * Ask to delete: the date is set and the person is signed out (only once it is set: a failed ask must never look like a done one,
- * catalog.ts deleteAccountScreen says why).
+ * phone/deleteAccount.ts deleteAccountScreen says why).
  */
 export const scheduleDeletion = (gone: string): ActionSpec => call("POST", DELETION_PATH, {}, {
   ok: seq(toast(`Your account will be deleted on ${gone}. Sign in before then to keep it.`), { kind: "signOut" } as ActionSpec),

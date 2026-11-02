@@ -15,7 +15,8 @@ vi.mock("../src/pipeline/stt.js", () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { buildBootstrap, buildScreen } from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
+import { buildScreen } from "../src/experience/screens.js";
 import { LAST_TAILZU_ONLY_BUILD, resetPublishedVersions, updateFor } from "../src/experience/desktopRelease.js";
 import fs from "node:fs";
 import os from "node:os";

@@ -1,6 +1,6 @@
 /**
  * EVERY LANGUAGE TAILZU TAKES, in one place — for the site's /languages pages
- * (seo/facts.ts) and the app's Languages screen (experience/catalog.ts), so
+ * (seo/facts.ts) and the app's Languages screen (experience/phone/languages.ts), so
  * the two can never list different things.
  *
  * India's 22 scheduled languages are the set the Indic recogniser is built for

@@ -126,7 +126,7 @@ describe("the entitlement the server filters on", () => {
   it("is the one the apps are told to look for", async () => {
     baselineEnv();
     const getConfig = await loadFreshConfig();
-    const { PAYWALL_CONFIG } = await import("../src/experience/catalog.js");
+    const { PAYWALL_CONFIG } = await import("../src/experience/phone/paywall.js");
     expect(PAYWALL_CONFIG.entitlement).toBeTruthy();
     expect(getConfig().REVENUECAT_ENTITLEMENT.toLowerCase())
       .toBe(String(PAYWALL_CONFIG.entitlement).toLowerCase());

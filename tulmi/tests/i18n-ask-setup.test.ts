@@ -36,7 +36,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 const { localize } = await import("../src/experience/i18n.js");
-const { buildScreen } = await import("../src/experience/catalog.js");
+const { buildScreen } = await import("../src/experience/screens.js");
 
 type AnyNode = { type?: string; props?: Record<string, any>; children?: AnyNode[] };
 function cardsOf(root: unknown): AnyNode[] {

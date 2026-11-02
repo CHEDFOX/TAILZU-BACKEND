@@ -15,7 +15,7 @@ process.env.SUPABASE_ANON_KEY = "anon";
 process.env.STATIC_BEARER_TOKENS = "test-static-token-0123456789";
 process.env.BOTS_APP = "true";
 
-const { buildBootstrap } = await import("../src/experience/catalog.js");
+const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
 const { buildApp } = await import("../src/server.js");
 
 describe("the bootstrap", () => {

@@ -9,7 +9,7 @@ process.env.OPENAI_API_KEY = "test-openai-key";
 process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
-import { buildBootstrap } from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
 import { CATALOG_CONDITIONAL, withAppKnobs } from "../src/experience/appKnobs.js";
 import { APP_KNOB_FLAGS, APP_KNOB_LABELS } from "../src/experience/appKnobsData.js";
 
@@ -31,7 +31,7 @@ describe("app knobs", () => {
   });
 });
 
-import { buildKeyboardConfig } from "../src/experience/catalog.js";
+import { buildKeyboardConfig } from "../src/experience/keyboard/config.js";
 import { KEYBOARD_KNOBS } from "../src/experience/keyboardKnobsData.js";
 
 describe("keyboard knobs", () => {

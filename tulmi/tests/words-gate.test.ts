@@ -6,7 +6,10 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { buildBootstrap, buildScreen, buildKeyboardConfig, WORDS_GATE } from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { buildKeyboardConfig } from "../src/experience/keyboard/config.js";
+import { WORDS_GATE } from "../src/experience/wordsGate.js";
 
 const allow = (used: number, total = 800) =>
   ({ base: total, earned: 0, total, used, remaining: Math.max(0, total - used), streakDays: 0, grants: [] } as never);

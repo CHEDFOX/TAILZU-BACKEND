@@ -2,7 +2,7 @@
  * THE KEYBOARD'S HANDOFF SCREENS IN THE BOTS APP: flow_arm, keyboard_record and keyboard_primer, in the launch's look.
  *
  * The keyboard opens these by id, and its config names them the same for every app, so the ids stay and the catalog
- * builds them as it always has (catalog.ts). For the Bots app (ScreenContext.bots) it hands its screen here and gets it
+ * builds them as it always has (phone/). For the Bots app (ScreenContext.bots) it hands its screen here and gets it
  * back drawn the new way: the launch's cream ground, the app icon's bot small at the top (the splash's own art), ink
  * words in Geist and the kit's pill buttons, with no old header or tab bar over a screen that only lasts a moment.
  *

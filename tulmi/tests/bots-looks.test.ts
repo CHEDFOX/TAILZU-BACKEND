@@ -35,7 +35,7 @@ import { fakeDeps, IST, ctxFor } from "../src/experience/bots/fixtures.js";
 // eslint-disable-next-line import/first
 import { walk } from "../src/experience/bots/lint.js";
 // eslint-disable-next-line import/first
-import { buildBootstrap } from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
 
 const FILE = new URL("../../shared/bots/looks.json", import.meta.url);
 const catalog = (): LooksCatalog => JSON.parse(readFileSync(FILE, "utf8"));

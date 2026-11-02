@@ -7,7 +7,9 @@ process.env.STT_PROVIDER = "openai";
 process.env.NODE_ENV = "test";
 
 import type { RcEvent } from "../src/billing/entitlements.js";
-import { manageFlags, buildScreen, PAYWALL_CONFIG } from "../src/experience/catalog.js";
+import { manageFlags } from "../src/experience/phone/subscription.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { PAYWALL_CONFIG } from "../src/experience/phone/paywall.js";
 
 /**
  * Every assertion here is about the FILTER, which runs before any database

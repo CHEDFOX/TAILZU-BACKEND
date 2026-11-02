@@ -6,7 +6,9 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { FONTS, buildBootstrap, buildScreen } from "../src/experience/catalog.js";
+import { FONTS } from "../src/experience/phone/theme.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
+import { buildScreen } from "../src/experience/screens.js";
 // eslint-disable-next-line import/first
 import { PHONE_LOOK, sentence } from "../src/experience/phoneLook.js";
 // eslint-disable-next-line import/first

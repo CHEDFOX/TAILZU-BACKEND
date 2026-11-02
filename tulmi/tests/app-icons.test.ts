@@ -43,7 +43,7 @@ vi.mock("openai", () => ({
   toFile: async (b: Buffer, name: string) => ({ b, name }),
 }));
 
-const { buildScreen } = await import("../src/experience/catalog.js");
+const { buildScreen } = await import("../src/experience/screens.js");
 const { CATALOG, ALWAYS_ON } = await import("../src/connectors/catalog.js");
 const { newCustomId } = await import("../src/connectors/store.js");
 const { APP_ICON_BUILD } = await import("../src/experience/appIconData.js");

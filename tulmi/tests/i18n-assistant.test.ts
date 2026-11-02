@@ -34,7 +34,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 const { localize } = await import("../src/experience/i18n.js");
-const { buildScreen } = await import("../src/experience/catalog.js");
+const { buildScreen } = await import("../src/experience/screens.js");
 const { EN, HG, hinglishSeeds, wordsFor } = await import("../src/connectors/words.js");
 
 const ctx = (extra: Record<string, unknown>) =>

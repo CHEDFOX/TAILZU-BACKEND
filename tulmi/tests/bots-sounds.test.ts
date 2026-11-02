@@ -28,7 +28,7 @@ import {
 // eslint-disable-next-line import/first
 import { registerBotSoundFiles, registerBotSoundsRoutes } from "../src/routes/botSounds.js";
 // eslint-disable-next-line import/first
-import { buildBootstrap } from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
 // eslint-disable-next-line import/first
 import { buildBotsScreen } from "../src/experience/bots/index.js";
 // eslint-disable-next-line import/first

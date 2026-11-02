@@ -304,7 +304,7 @@ what to do"), clears the field and says "Kept. It will send when you're back."; 
 * **Both clients**: build with the kit, keep `lintTree` clean: no pressable inside a pressable (the window runs both), images as
   `{ url }` in a sized box, text through `text()`. Never `Button`, `Card`, `Row`… (they look different on each client).
 * **Do not edit** without the kit owner: `kit.ts` (additive only, see section 5), `live.ts`, `deps.ts`, `registry.ts`, `index.ts`,
-  `ids.ts`, `glyphs.ts`, `palette.ts`, `server.ts`, `catalog.ts`, `shared/types/sdui.ts`, the phone and window renderers.
+  `ids.ts`, `glyphs.ts`, `palette.ts`, `server.ts`, `experience/screens.ts`, `experience/bootstrap/`, `shared/types/sdui.ts`, the phone and window renderers.
   **Never touch `tulmi/e2e`.**
 * Known gaps: a job's spend counts on the day it was last worked on, whole (a job that runs across two stretches counts in the later);
   the name-and-gender card is asked in the first run (About you), so `profileGate.screenIds` is empty in the Bots app; someone onboarded

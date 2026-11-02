@@ -15,7 +15,8 @@ vi.mock("../src/pipeline/stt.js", () => ({
 }));
 
 // eslint-disable-next-line import/first
-import { POLICY, buildScreen } from "../src/experience/catalog.js";
+import { POLICY } from "../src/experience/policy.js";
+import { buildScreen } from "../src/experience/screens.js";
 // eslint-disable-next-line import/first
 import { DESK_SCREENS, buildDeskScreen } from "../src/experience/desk.js";
 // eslint-disable-next-line import/first

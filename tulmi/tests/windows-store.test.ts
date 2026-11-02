@@ -10,7 +10,8 @@
  * direct mode); the listing is only cited, never the destination.
  */
 import { describe, expect, it } from "vitest";
-import { SITE_UI, WINDOWS_STORE_ID, windowsInstallerUrl, windowsStoreUrl } from "../src/experience/catalog.js";
+import { SITE_UI } from "../src/experience/site/copy.js";
+import { WINDOWS_STORE_ID, windowsInstallerUrl, windowsStoreUrl } from "../src/experience/site/windowsStore.js";
 import { downloadPageHtml } from "../src/routes/download.js";
 import { GETS } from "../src/seo/pages.js";
 

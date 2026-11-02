@@ -21,7 +21,7 @@
  * shows (SITE_UI), and every price and count comes from seo/facts.ts.
  */
 import { siteShell } from "../routes/policies/shell.js";
-import { SITE_UI } from "../experience/catalog.js";
+import { SITE_UI } from "../experience/site/copy.js";
 import {
   INDIA, PAGED, WORLD, crumbsLd, faqLd, pageLd, plans,
   type Example, type QA,

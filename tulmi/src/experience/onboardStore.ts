@@ -57,8 +57,8 @@
  */
 import type { ActionSpec, Condition, Node, ScreenResponse } from "../../../shared/types/sdui.js";
 import { SDUI_SCHEMA_VERSION } from "../../../shared/types/sdui.js";
-import { DAILY_LANGUAGES } from "./catalog.js";
-import type { ScreenContext } from "./catalog.js";
+import { DAILY_LANGUAGES } from "./phone/languages.js";
+import type { ScreenContext } from "./screens.js";
 import { BLIP_LOOPS, blipSize, blipUrl } from "./blipLoops.js";
 import type { BlipLoop } from "./blipLoops.js";
 import {

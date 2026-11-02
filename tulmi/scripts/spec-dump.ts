@@ -18,7 +18,9 @@ process.env.OPENAI_API_KEY ??= "spec-dump";
 process.env.STT_PROVIDER ??= "openai";
 process.env.DEV_SKIP_AUTH ??= "true";
 
-import { buildScreen, THEME, setMediaRegistryAccessor } from "../src/experience/catalog.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { THEME } from "../src/experience/phone/theme.js";
+import { setMediaRegistryAccessor } from "../src/experience/mediaRegistry.js";
 
 /**
  * Every media key the catalogue asks for, stubbed as present.

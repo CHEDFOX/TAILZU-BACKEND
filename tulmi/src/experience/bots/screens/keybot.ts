@@ -301,7 +301,7 @@ const lines = (title: string, ls: Line[]): Node =>
 const homeState = (d: HomeData | undefined) => ({ ...DEVICE_STATE, micAsked: false, keep: d?.home?.keepHistory ?? true });
 
 /**
- * The phone keyboard, drawn as it is (catalog.ts makeToolsRow and the letter page): on top, the tools row (the X0 key,
+ * The phone keyboard, drawn as it is (keyboard/toolsRow.ts makeToolsRow and the letter page): on top, the tools row (the X0 key,
  * the round window with the bot peeking in, at the left; the suggestions; the tone pill at the right), then the four rows of
  * keys. `keyAt` left / right: the X0 key sits beside the space bar instead (keybot/keyboard.ts micBesideSpace), the same
  * round key.

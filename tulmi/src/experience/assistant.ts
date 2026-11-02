@@ -71,7 +71,7 @@ import type { BlipLoop } from "./blipLoops.js";
 import { SW, sw } from "./settingsWords.js";
 import { appIconNode } from "./appIcons.js";
 
-type You = typeof import("./catalog.js").YOU_UI;
+type You = typeof import("./phone/you/copy.js").YOU_UI;
 type Style = Record<string, unknown>;
 type Face = Parameters<typeof t>[1];
 type CallEndpoint = Extract<ActionSpec, { kind: "callEndpoint" }>;
@@ -1128,7 +1128,7 @@ function askChip(ui: You, examples: readonly string[], i: number, paper = false)
  * colours, which read as one more setting. The onboarding is where the app
  * shows what it can do, so the card takes its look: paper, ink, the heading
  * face, solid ink buttons, Blip with a handwritten bubble. Copied, not
- * imported: onboard.ts reads catalog.ts, which reads this file.
+ * imported: onboard.ts reads the phone screens, which read this file.
  */
 const PAPER = {
   ground: "#EFEDE8", surf: "#FCFBF8", ink: "#1C1A17", ink2: "rgba(28,26,23,0.7)", muted: "rgba(28,26,23,0.56)",

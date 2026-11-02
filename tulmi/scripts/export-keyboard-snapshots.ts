@@ -17,7 +17,7 @@ process.env.OPENAI_API_KEY ??= "snapshot";
 process.env.STT_PROVIDER ??= "openai";
 process.env.DEV_SKIP_AUTH ??= "true";
 
-const { buildKeyboardConfig } = await import("../src/experience/catalog.js");
+const { buildKeyboardConfig } = await import("../src/experience/keyboard/config.js");
 const app = process.argv[2];
 if (!app) { console.error("usage: export-keyboard-snapshots.ts <frontend app dir>"); process.exit(2); }
 const BUILD = Number(process.env.KB_BUILD ?? 42);

@@ -12,7 +12,8 @@ process.env.DEV_SKIP_AUTH = "true";
 // eslint-disable-next-line import/first
 import { ensureVideoPosters, getMediaRegistry, loadMediaRegistry } from "../src/routes/media.js";
 // eslint-disable-next-line import/first
-import { buildScreen, setMediaRegistryAccessor } from "../src/experience/catalog.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { setMediaRegistryAccessor } from "../src/experience/mediaRegistry.js";
 
 const hasFfmpeg = (() => { try { execFileSync("ffmpeg", ["-version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 

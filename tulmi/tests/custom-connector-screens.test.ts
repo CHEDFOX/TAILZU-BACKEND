@@ -34,7 +34,7 @@ process.env.OPENAI_API_KEY = "k";
 process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
-const { buildScreen } = await import("../src/experience/catalog.js");
+const { buildScreen } = await import("../src/experience/screens.js");
 const { localize } = await import("../src/experience/i18n.js");
 const { DESK_SCREENS } = await import("../src/experience/desk.js");
 const { EN, HG } = await import("../src/connectors/words.js");

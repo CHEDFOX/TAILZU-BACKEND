@@ -9,7 +9,7 @@ process.env.MEDIA_DIR = "/tmp/tailzu-test-media";
 
 // eslint-disable-next-line import/first
 import { payCsp, payHtml, type PayOffer } from "../src/routes/pay.js";
-import { POLICY } from "../src/experience/catalog.js";
+import { POLICY } from "../src/experience/policy.js";
 
 const OFFERS: PayOffer[] = [
   { market: "IN", tier: "elite", label: "Elite", price: "₹1,499", per: "a month", buyable: true },

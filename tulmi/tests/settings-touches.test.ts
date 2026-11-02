@@ -42,7 +42,9 @@ process.env.OPENAI_API_KEY = "k";
 process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
-const { buildScreen, FONTS, POLICY } = await import("../src/experience/catalog.js");
+const { buildScreen } = await import("../src/experience/screens.js");
+const { FONTS } = await import("../src/experience/phone/theme.js");
+const { POLICY } = await import("../src/experience/policy.js");
 const { buildDeskScreen, deskNav } = await import("../src/experience/desk.js");
 const { localize } = await import("../src/experience/i18n.js");
 const { SW, settingsHinglishSeeds } = await import("../src/experience/settingsWords.js");

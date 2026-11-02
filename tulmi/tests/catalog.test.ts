@@ -7,26 +7,22 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import {
-  buildBootstrap,
-  buildScreen,
-  buildKeyboardConfig,
-  bumpCacheVersion,
-  currentCacheVersion,
-  launchCard,
-  THEME,
-  TRAINING_UI,
-  TYPE_ROLES,
-  YOU_UI,
-  PAYWALL_UI,
-  POLICY,
-  AUTH_UI,
-  STATS_UI,
-} from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { buildKeyboardConfig } from "../src/experience/keyboard/config.js";
+import { bumpCacheVersion, currentCacheVersion } from "../src/experience/cacheVersion.js";
+import { launchCard } from "../src/experience/bootstrap/launchCard.js";
+import { THEME, TYPE_ROLES } from "../src/experience/phone/theme.js";
+import { TRAINING_UI } from "../src/experience/phone/training/copy.js";
+import { YOU_UI } from "../src/experience/phone/you/copy.js";
+import { PAYWALL_UI } from "../src/experience/phone/paywall.js";
+import { POLICY } from "../src/experience/policy.js";
+import { AUTH_UI } from "../src/experience/phone/auth.js";
+import { STATS_UI } from "../src/experience/phone/stats.js";
 import { getConfig, resetConfigForTests } from "../src/config.js";
 import { PERSONALITY_PRESETS } from "../src/experience/personalityPresets.js";
 import { titleCase } from "../src/experience/titleCase.js";
-import { SITE_MIC } from "../src/experience/catalog.js";
+import { SITE_MIC } from "../src/experience/site/shape.js";
 import { parse } from "../src/experience/motionLang";
 
 describe("the arrival prompt", () => {

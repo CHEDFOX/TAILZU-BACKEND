@@ -33,7 +33,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { MediaPresent } from "../../../shared/types/sdui.js";
-import { bumpCacheVersion } from "../experience/catalog.js";
+import { bumpCacheVersion } from "../experience/cacheVersion.js";
 import { requireAdmin } from "../control/index.js";
 
 const runFile = promisify(execFile);

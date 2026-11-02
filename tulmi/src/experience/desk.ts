@@ -1493,7 +1493,7 @@ function deskWords(ctx: DeskContext): ScreenResponse {
 
 /** Zu's id. Zu is the person's own voice, not a style laid on top — it asserts
  *  nothing and has no prompt to change, so it is never editable, exactly as the
- *  phone's Voice page treats it (catalog.ts selfBlock only activates Zu). */
+ *  phone's Voice page treats it (phone/you/voices.ts selfBlock only activates Zu). */
 const ZU_ID = "signature";
 
 function deskVoices(ctx: DeskContext): ScreenResponse {
@@ -1565,7 +1565,7 @@ function deskVoices(ctx: DeskContext): ScreenResponse {
       ...(samples
         ? DESK_CONTEXTS.map((c) => ({ ...text(samples[c.id], "d-world-text"), visibleIf: { eq: ["state.ctx", c.id] } } as Node))
         // A custom voice has no hand-written sample; it shows what it was told
-        // to do, the way the phone's card does (catalog.ts voiceCardOf).
+        // to do, the way the phone's card does (phone/you/voices.ts voiceCardOf).
         : [text(v.promptStyle || v.tagline, "d-world-text")]),
       text(on ? "In use, everywhere" : (v.tagline || "Your voice"), "d-world-use", { marginTop: "auto" }),
     ], { gap: 14 },

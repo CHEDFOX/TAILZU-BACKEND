@@ -12,7 +12,10 @@ process.env.FREE_FOR_ALL = "true";
 process.env.FREE_MONTHLY_WORDS = "800";
 
 // eslint-disable-next-line import/first
-import { buildBootstrap, buildKeyboardConfig, buildScreen, siteCopy } from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
+import { buildKeyboardConfig } from "../src/experience/keyboard/config.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { siteCopy } from "../src/experience/site/copy.js";
 // eslint-disable-next-line import/first
 import { enforceQuota } from "../src/usage/metering.js";
 // eslint-disable-next-line import/first

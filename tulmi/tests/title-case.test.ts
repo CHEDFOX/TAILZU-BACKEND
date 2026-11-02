@@ -8,7 +8,8 @@ process.env.DEV_SKIP_AUTH = "true";
 // eslint-disable-next-line import/first
 import { titleCase, titleCaseScreen } from "../src/experience/titleCase.js";
 // eslint-disable-next-line import/first
-import { buildBootstrap, buildScreen } from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
+import { buildScreen } from "../src/experience/screens.js";
 
 describe("every word starts with a capital", () => {
   it("capitalises each word, and each part of a joined one", () => {
