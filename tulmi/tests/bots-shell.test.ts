@@ -424,3 +424,23 @@ describe("the shell's screens", () => {
     }
   });
 });
+
+describe("Ask's Send", () => {
+  it("one press sends: to the bot picked, else to any (the server picks while it answers), never only a check first", async () => {
+    const { buildBotsScreen } = await import("../src/experience/bots/index.js");
+    const { fakeDeps } = await import("../src/experience/bots/fixtures.js");
+    const { walk } = await import("../src/experience/bots/lint.js");
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await buildBotsScreen({ screenId: "bots.ask", client, params: {}, tzOffsetMinutes: 330, user: { id: "u1", name: "Aanya" }, can: new Set(["BotsKit"]), desk: { pages: client === "desktop", notes: client === "desktop" } }, fakeDeps());
+      const presses = walk(s.root!).flatMap((x) => [x.on?.onPress, x.on?.onSubmit]).filter(Boolean) as ActionSpec[];
+      const sends = presses.filter((a) => JSON.stringify(a).includes('"falsy":"ask"') && JSON.stringify(a).includes('"truthy":"route.slug"'));
+      expect(sends.length, client).toBeGreaterThan(0);
+      for (const a of sends) {
+        const j = JSON.stringify((a as { else?: unknown }).else);
+        // Both branches send (POST /v1/shell/ask); neither is only a who-answers check.
+        expect(j.match(/"path":"\/v1\/shell\/ask"/g)?.length ?? 0, client).toBeGreaterThanOrEqual(2);
+      }
+      expect(JSON.stringify(s.root)).not.toContain("Tap once to see who answers");
+    }
+  });
+});
