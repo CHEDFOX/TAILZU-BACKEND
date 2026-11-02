@@ -19,7 +19,7 @@
  * is answered 200 { refused: { code, message } }, not as an HTTP error: the
  * phone and the desk run a call's onError with nothing from the answer, so
  * only a 2xx lets the screen say the server's reason (afterAdd in
- * experience/assistant.ts, addByLink in experience/desk.ts). The codes:
+ * experience/assistant.ts, addByLink in experience/desk/connectedApps.ts). The codes:
  *   - custom_off: apps added by link are switched off (CUSTOM_CONNECTORS);
  *   - too_many_tries: this person tried ten times in the last hour (every try
  *     costs a request to a stranger's server, from ours);

@@ -14,7 +14,7 @@ import type { ScreenResponse } from "../../../shared/types/sdui.js";
 import type { AssistantView } from "../connectors/list.js";
 import type { StatsForUser } from "../history/store.js";
 import type { Allowance } from "../usage/allowance.js";
-import { DESK_SCREENS, buildDeskScreen } from "./desk.js";
+import { DESK_SCREENS, buildDeskScreen } from "./desk/screens.js";
 import { DESKTOP_LATEST, desktopOs, updateFor } from "./desktopRelease.js";
 import { canOnboard } from "./onboard.js";
 import { neuralField, fieldGrowth, FIELD_SIGNAL_AT_REST } from "./phone/neuralField.js";
@@ -134,7 +134,7 @@ export interface ScreenContext {
 }
 
 export function buildScreen(screenId: string, ctx: ScreenContext): ScreenResponse | null {
-  // The desk's own pages, for a desktop that can draw them (experience/desk.ts).
+  // The desk's own pages, for a desktop that can draw them (experience/desk/).
   if (DESK_SCREENS.has(screenId)) {
     return buildDeskScreen(screenId, {
       personality: ctx.personality,

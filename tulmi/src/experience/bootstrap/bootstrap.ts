@@ -13,7 +13,7 @@ import { BOTS_FIRST_RUN_SCREEN, botsAuthTree, BOTS_FIRST_RUN_IDS } from "../bots
 import { BOTS_OFFLINE_FLAGS } from "../bots/screens/outbox.js";
 import { soundsFlags } from "../bots/sounds.js";
 import { CACHE_VERSION } from "../cacheVersion.js";
-import { deskNav } from "../desk.js";
+import { deskNav } from "../desk/screens.js";
 import { DESKTOP_LATEST, installerUrl, desktopOs, publishedRelease } from "../desktopRelease.js";
 import { FLOW_IDLE_TIMEOUT_MS, FLOW_TRANSPORT } from "../flow.js";
 import { getMediaRegistryFn } from "../mediaRegistry.js";
@@ -154,7 +154,7 @@ export function buildBootstrap(
     os?: string;
     /**
      * THE DESK: a desktop that declared DeskShell gets Tailzu's own pages
-     * (experience/desk.ts) — the masthead's tabs, landing on Today — instead
+     * (experience/desk/) — the masthead's tabs, landing on Today — instead
      * of the phone's. An older installer does not declare it and keeps the
      * rail and the phone's screens.
      */

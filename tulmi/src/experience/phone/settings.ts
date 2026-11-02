@@ -123,7 +123,7 @@ export function settingsScreen(ctx: ScreenContext): ScreenResponse {
         // History and "Keep my history" are gone from Settings by owner
         // decision. History is therefore kept by DEFAULT (history/store.ts,
         // HISTORY_DEFAULT_ON) — the phone has no switch; the desktop's
-        // Settings page still carries "Keep history" (desk.ts).
+        // Settings page still carries "Keep history" (desk/settings.ts).
 
         // THE WAY IN. Until this row existed there was none.
         //
