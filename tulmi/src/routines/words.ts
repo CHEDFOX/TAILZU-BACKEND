@@ -61,6 +61,34 @@ const NOT_TIME = /\bevery\s*(?:time|one|body|thing|where|single\s+(?:one|thing|t
 
 interface Found { every: Every; days?: number[]; monthDay?: number; part?: number }
 
+/**
+ * Hinglish and Hindi schedule words, said in English for the rules below: "har friday shaam 6 baje" is "every friday evening at 6",
+ * "roz subah 8 baje" is "every day morning at 8", "हर सोमवार" is "every monday". Only the words that say when: the task stays as said.
+ */
+const SAID_AS: Array<[RegExp, string]> = [
+  [/(?:^|\s)(?:हर|प्रत्येक)\s+(?:महीने|माह)(?=\s|$)|\bhar\s+(?:mahine|mahina|month)\b/giu, " every month"],
+  [/(?:^|\s)(?:हर|प्रत्येक)\s+(?:हफ्ते|हफ़्ते|सप्ताह)(?=\s|$)|\bhar\s+(?:hafte|hafta|week)\b/giu, " every week"],
+  [/(?:^|\s)(?:रोज़|रोज|रोजाना|रोज़ाना|प्रतिदिन|हर\s+दिन)(?=\s|$)|\b(?:roz|rozana|roj|rojana|har\s+din)\b/giu, " every day"],
+  [/(?:^|\s)(?:हर|प्रत्येक)(?=\s)|\bhar\b(?=\s)/giu, " every"],
+  [/(?:^|\s)(?:सुबह)(?=\s|$)|\bsubah\b/giu, " morning"],
+  [/(?:^|\s)(?:दोपहर)(?=\s|$)|\bdopahar\b/giu, " afternoon"],
+  [/(?:^|\s)(?:शाम)(?=\s|$)|\b(?:shaam|sham)\b/giu, " evening"],
+  [/(?:^|\s)(?:रात)(?=\s|$)|\braat\b/giu, " night"],
+  [/(\d{1,2}(?::\d{2})?)\s*(?:बजे|baje)(?=\s|$|[,.!?])/giu, "at $1"],
+  [/(\d{1,2})\s*(?:tarikh|tareekh|tarik|तारीख़|तारीख)(?:\s*(?:ko|को))?(?=\s|$)/giu, "on the $1"],
+  [/\b(?:somvar|somwar)\b|सोमवार/giu, "monday"], [/\b(?:mangalvar|mangalwar)\b|मंगलवार/giu, "tuesday"],
+  [/\b(?:budhvar|budhwar)\b|बुधवार/giu, "wednesday"], [/\b(?:guruvar|guruwar|veervar|brihaspativar)\b|गुरुवार|बृहस्पतिवार/giu, "thursday"],
+  [/\b(?:shukravar|shukrawar)\b|शुक्रवार/giu, "friday"], [/\b(?:shanivar|shaniwar)\b|शनिवार/giu, "saturday"],
+  [/\b(?:ravivar|raviwar|itvaar|itwar)\b|रविवार/giu, "sunday"],
+  // "friday ko", "सोमवार को": the case word after a day goes.
+  [/\b((?:mon|tues|wednes|thurs|fri|satur|sun)day)\s+(?:ko|को)(?=\s|$)/giu, "$1"],
+];
+export function saidInEnglish(s: string): string {
+  let t = s;
+  for (const [re, to] of SAID_AS) t = t.replace(re, to);
+  return t.replace(/\s+/g, " ").trim();
+}
+
 /** The words that say how often, taken out of `s` (which is changed in place through the returned rest). */
 function findEvery(s: string, now: number, tz: number): { found: Found; rest: string } | null {
   const today = dayOf(now, tz);
@@ -80,7 +108,7 @@ function findEvery(s: string, now: number, tz: number): { found: Found; rest: st
       return d === null ? null : { every: "week", days: [d] };
     }],
     // the month: "every month on the 1st", "on the 15th of every month", "monthly", "every month"
-    [/\b(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\s+(?:of\s+)?(?:every|each)\s+month\b|\b(?:every|each)\s+month\s+on\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b|\bmonthly\s+on\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b|\b(?:every|each)\s+month\b|\bmonthly\b/i, (m) => {
+    [/\b(?:(?:every|each)\s+)?(?:on\s+)?(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\s+(?:of\s+)?(?:every|each|the)\s+month\b|\b(?:every|each)\s+month\s+on\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b|\bmonthly\s+on\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)?\b|\b(?:every|each)\s+month\b|\bmonthly\b/i, (m) => {
       const n = Number(m[1] ?? m[2] ?? m[3] ?? new Date(`${today}T00:00:00Z`).getUTCDate());
       return n >= 1 && n <= 31 ? { every: "month", monthDay: Math.min(28, n) } : null;
     }],
@@ -135,18 +163,22 @@ function cleanTask(s: string): string {
  * when no day is named.
  */
 export function readRoutine(words: string, now: number, tz: number): ReadRoutine | null {
-  const said = words.replace(/\s+/g, " ").trim();
+  const said = saidInEnglish(words.replace(/\s+/g, " ").trim());
   if (said.length < 8 || said.length > 600) return null;
   if (QUESTION.test(said) || REMINDER.test(said) || NOT_TIME.test(said)) return null;
   const e = findEvery(said, now, tz);
   if (!e) return null;
-  const t = findTime(e.rest, e.found.part);
+  // "every friday evening at 6": the part of the day said beside a day of the week reads the hour (6 pm), and goes from the task.
+  const partSaid = e.found.part === undefined ? /\b(?:in the )?(morning|afternoon|evening|night)\b/i.exec(e.rest) : null;
+  const part = e.found.part ?? (partSaid ? PARTS[partSaid[1]!.toLowerCase()] : undefined);
+  const t0 = findTime(e.rest, part);
+  const t = partSaid && t0.minute !== null ? { ...t0, rest: t0.rest.replace(/\b(?:in the )?(?:morning|afternoon|evening|night)\b/i, " ") } : t0;
   const task = cleanTask(t.rest);
   // A schedule with nothing to do ("every day at 8"), or only a word or two ("daily stuff"), is not a routine.
-  if (task.split(/\s+/).filter((w) => /[a-z]/i.test(w)).length < 2) return null;
-  const minute = t.minute ?? e.found.part ?? DEFAULT_MINUTE;
+  if (task.split(/\s+/).filter((w) => /\p{L}/u.test(w)).length < 2) return null;
+  const minute = t.minute ?? part ?? DEFAULT_MINUTE;
   const schedule: Schedule = { every: e.found.every, minute, ...(e.found.days ? { days: e.found.days } : {}), ...(e.found.monthDay ? { monthDay: e.found.monthDay } : {}) };
-  return { schedule, task, timeSaid: t.minute !== null || e.found.part !== undefined };
+  return { schedule, task, timeSaid: t.minute !== null || part !== undefined };
 }
 
 /** A schedule that can be kept: the right fields for its kind, in range. Null when it cannot. */

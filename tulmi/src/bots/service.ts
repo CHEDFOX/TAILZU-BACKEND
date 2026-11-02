@@ -91,6 +91,9 @@ export interface AskInput {
   /** The answer's words as they are written, and word that the ones so far are void (run.ts). */
   onText?: (piece: string) => void;
   onReset?: () => void;
+  /** Not a turn in the chat (a routine running on its schedule): answered from its own words, without the thread's last turns,
+   *  so a chat in another language or about something else does not lead it. What it answers is still kept. */
+  fresh?: boolean;
 }
 
 export interface KeyAnswer {
@@ -333,6 +336,7 @@ export class Bots {
       ...(i.emit ? { emit: i.emit } : {}), ...(i.ctx ? { ctx: i.ctx } : {}), ...(i.pickedBy ? { pickedBy: i.pickedBy } : {}),
       ...(i.attached?.length ? { attached: i.attached } : {}), ...(i.extraPaise ? { extraPaise: i.extraPaise } : {}),
       ...(i.onText ? { onText: i.onText } : {}), ...(i.onReset ? { onReset: i.onReset } : {}),
+      ...(i.fresh ? { fresh: true } : {}),
     };
   }
 
