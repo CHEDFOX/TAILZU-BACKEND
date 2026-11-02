@@ -18,7 +18,7 @@ import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, "..", "src");
-const DIRS = ["code", "artifacts", "web", "front", "bots", "widgets"];
+const DIRS = ["code", "artifacts", "web", "front", "bots", "widgets", "askDecide"];
 
 const { ROLE_IDS } = await import("../src/principles/roles.js");
 
@@ -137,7 +137,7 @@ describe("the sweep", () => {
     const sites = sources.filter((s) => asks(s.code) && s.rel !== "code/brain/gateway.ts");
     expect(sites.map((s) => s.rel).sort()).toEqual([
       "artifacts/compare.ts", "artifacts/edit.ts", "artifacts/kit.ts", "artifacts/service.ts",
-      "bots/builder.ts", "bots/door.ts", "bots/memory.ts", "bots/run.ts",
+      "askDecide/index.ts", "bots/builder.ts", "bots/door.ts", "bots/memory.ts", "bots/run.ts",
       "code/agent/context.ts", "code/agent/merge.ts", "code/agent/phases.ts", "code/brain/classify.ts", "code/chat/answer.ts", "code/chat/look.ts", "code/newproject/spec.ts",
       "code/prcare/review.ts", "code/project/summarize.ts", "code/resources/brief.ts", "code/team/review.ts", "code/team/split.ts", "code/webTools.ts", "code/work/locate.ts", "code/work/model.ts", "code/work/plan.ts",
       "front/attachments.ts", "front/complete.ts", "front/decide.ts", "front/handlers.ts", "web/research.ts", "web/search/plan.ts",

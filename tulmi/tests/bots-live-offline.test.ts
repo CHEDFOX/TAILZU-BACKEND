@@ -373,12 +373,12 @@ describe("Offline and the outbox on screen", () => {
         expect(json(c.else), client).toContain('"path":"/v1/shell/ask"');
         expect(json(c.then), client).not.toContain("callEndpoint");
       }
-      // Ask's own send: for the bot picked (its name on the line), or any; online, who answers and then the send, as before.
+      // Ask's own send: for the bot picked (its name on the line), or any; online, one press sends (the server picks who answers while it answers).
       const ask = offline((await build("bots.ask", client, ["Outbox"])).s.root!);
       const picked = ask.find((c) => json(c.then).includes('"bot":"$state.route.slug"'));
       expect(picked?.then.actions[0], client).toMatchObject({ kind: "outbox", op: "add", body: { message: "$state.ask", bot: "$state.route.slug" }, sub: "$state.route.name · asked {time}" });
       expect(json(picked?.else), client).toContain('"path":"/v1/shell/ask"');
-      const any = ask.find((c) => json(c.then).includes('"bot":"any"') && json(c.else).includes('"path":"/v1/shell/route"'));
+      const any = ask.find((c) => json(c.then).includes('"bot":"any"') && json(c.else).includes('"path":"/v1/shell/ask"') && json(c) !== json(picked));
       expect(any, client).toBeTruthy();
     }
   });
