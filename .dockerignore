@@ -46,6 +46,7 @@ tulmi/scripts/
 # module". They need nothing the server does not already have.
 !tulmi/scripts/live-check.ts
 !tulmi/scripts/speech-check.ts
+!tulmi/scripts/apple-signin-check.ts
 # Supabase SQL ships out-of-band via the SQL editor, not in the image.
 tulmi/supabase/
 # The reality-check harness (recorded runs, bake-offs) runs from a laptop, never in the image. Its bake-off reads
