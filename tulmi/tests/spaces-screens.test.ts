@@ -42,12 +42,12 @@ const calls = (nodes: Node[]) => actions(nodes).filter((a) => a.kind === "callEn
 
 describe("Spaces' screens", () => {
   const CASES: Array<[string, Record<string, string>, string[], string[]]> = [
-    ["bots.spaces", {}, ["Spaces", "Chats", "Given to you", "Home", "Studio", "Who can approve payments"], [`POST ${A}/spaces`, `POST ${A}/spaces/join`]],
-    ["bots.spaces", { id: "s1" }, ["Home", "Needs you", "₹1,240 to Fresh Basket", "Call Nani", "Groceries", "2 of 5 done", "Pick up the cake for Mom", "Who can approve payments", "Open invites", "nani.sharma@gmail.com", "Email waits to go out", "Activity"],
+    ["bots.spaces", {}, ["Spaces", "Chats", "Given to you", "Home", "Studio", "needs your yes", "Start a space", "Got an invite code? Join with it"], [`POST ${A}/spaces`, `POST ${A}/spaces/join`]],
+    ["bots.spaces", { id: "s1" }, ["Home", "Now", "Shared", "Plans", "Money", "People", "Waiting on you · 2", "₹1,240 to Fresh Basket", "Call Nani", "Groceries", "2 of 5 done", "Pick up the cake for Mom", "No money moves without a yes", "Invites waiting · 1", "nani.sharma@gmail.com", "Email waits to go out", "Lately"],
       [`PUT ${A}/spaces/s1/payments/p-groceries`, `POST ${A}/spaces/s1/lists`, `PUT ${A}/spaces/s1/tasks/t-nani`, `DELETE ${A}/spaces/s1/invites/QW3RT7YP`, `POST ${A}/threads/group`, `POST ${A}/threads/direct`, `PUT ${A}/spaces/s1`, `DELETE ${A}/spaces/s1`]],
     ["bots.space.member", { id: "s1", member: "r" }, ["What Rohan can do", "Kid", "Give tasks to others", "Plan for others", "Approve payments", "Remove Rohan from Home"], [`PUT ${A}/spaces/s1/members/r`, `DELETE ${A}/spaces/s1/members/r`]],
     ["bots.space.member", { id: "s1", member: "u" }, ["What you can do", "You made this space, so you can do everything."], []],
-    ["bots.space.invite", { id: "s1" }, ["Invite to Home", "Family", "Kid", "Grandparent", "Pick one by one", "Send the invite", "Email isn't switched on yet"], [`POST ${A}/spaces/s1/invite`]],
+    ["bots.space.invite", { id: "s1" }, ["Bring someone into Home", "Who are they to you?", "Family", "Kid", "Grandparent", "Choose exactly", "Send the invite", "Create the invite link", "Email isn't switched on yet"], [`POST ${A}/spaces/s1/invite`]],
     ["bots.space.roles", { id: "s1" }, ["Roles in Home", "Grandparent", "Family", "A new role"], [`POST ${A}/spaces/s1/roles`]],
     ["bots.space.roles", { id: "s1", role: "r-nani" }, ["Change Grandparent", "Delete it"], [`PUT ${A}/spaces/s1/roles/r-nani`, `DELETE ${A}/spaces/s1/roles/r-nani`]],
     ["bots.space.item", { item: "i-groceries" }, ["Groceries", "Mom: For the week", "Chakki atta · 5 kg", "Paneer · 400 g"], [`PUT ${A}/items/i-groceries`, `DELETE ${A}/items/i-groceries`]],
@@ -119,7 +119,7 @@ describe("Spaces' screens", () => {
       const { nodes, s } = await build("bots.spaces", client, { join: "qw3rt7yp" }, api);
       expect(lintTree(s.root!), client).toEqual([]);
       expect(texts(nodes), client).toContain("You're invited to Cousins");
-      expect(texts(nodes), client).toContain("4 people so far");
+      expect(texts(nodes), client).toContain("4 people are already in. Join them.");
       expect(s.state, client).toMatchObject({ code: "QW3RT7YP" });
       const join = actions(nodes).find((a) => a.kind === "callEndpoint" && a.path === `${A}/spaces/join` && (a.body as { code?: string }).code === "QW3RT7YP");
       expect(join, client).toBeTruthy();

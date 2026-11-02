@@ -5,7 +5,7 @@
 import type { ActionRef, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, row, text, call, SCREENS, seq, button, open, col, statusMark, meta, icon, C, when, botAvatar, botLook, botRoute, chip,
-  notice, box, grid, quietButton,
+  notice, box, quietButton, segmented,
 } from "../../kit.js";
 import {
   localDate, DAY, MONTHS, MIN, shortDate, type Space, type Task, type Item, type Payment, names, type Member, A, toast, enc, write, rowPad,
@@ -154,6 +154,20 @@ function activityRows(ctx: BotsCtx, s: Space, max = 8): Node | null {
   return col(s.activity.slice(0, max).map((a) => row([box([], { width: 6, height: 6, borderRadius: 3, backgroundColor: C.idle, marginTop: 7 }), text(a.text, { size: 13, lineHeight: 19, style: { flexGrow: 1, flexShrink: 1 } }), meta(ago(ctx, a.at), { size: 12 })], { gap: 10, alignItems: "flex-start" })), { gap: 8 });
 }
 
+/** "You, Mom and Rohan": who is in the space, you first. */
+export const facesLine = (s: Space) => names([...s.members.filter((m) => m.you).map(() => "You"), ...s.members.filter((m) => !m.you).map((m) => m.name)]);
+
+/** The space's tabs: one part of it at a time, so a space never reads as a wall. */
+export const SPACE_TABS = [
+  { label: "Now", value: "now" }, { label: "Shared", value: "shared" }, { label: "Plans", value: "plans" }, { label: "Money", value: "money" }, { label: "People", value: "people" },
+];
+const tab = (value: string, children: Node[]): Node => when({ eq: ["tab", value] }, col(children, { gap: 22, minWidth: 0 }));
+
+/**
+ * One space, a tab at a time. Now: only what waits on you (three at most, the rest under Plans and Money) and the last few things that
+ * happened. Shared, Plans and Money: one each. People: who is in, the bots, waiting invites, the name, leaving. Every action is the one
+ * the full page had; only where it sits changed.
+ */
 export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bots"]): Node[] {
   const s = o.space;
   const waiting = o.payments.filter((p) => p.canDecide);
@@ -164,49 +178,54 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
   const newList = ifFilled("listName", call("POST", `${A}/spaces/${sid}/lists`, { title: "$state.listName" }, { assignTo: "newList", ok: seq(clearState("listName"), toast("List made"), { kind: "navigate", screenId: SCREENS.spaceItem, params: { item: "$state.newList.item.id" } }), fail: toast("Couldn't make it. Try again.", true) }), "Name the list first");
   const desk = isDesk(ctx);
 
-  const top = row([
-    col([text(s.name, { size: desk ? 26 : 22, weight: 700, tracking: -0.5, lineHeight: desk ? 32 : 28 }), meta(`${spaceCount(s)} · ${youAre(s)}`, { size: 13 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
-    button("Chat", openChat(s.id), { kind: "secondary", size: "md", icon: "send" }),
-    ...(canDo(s, "invite") ? [button("Invite", open(SCREENS.spaceInvite, { id: s.id }), { kind: "secondary", size: "md", icon: "plus" })] : []),
-  ], { gap: 8, flexWrap: "wrap" });
+  const top = col([
+    row([
+      row(s.members.slice(0, 4).map((m) => box([personDot(m.name, m.you, desk ? 36 : 34)], { marginRight: -8, borderRadius: 20, borderWidth: 2, borderColor: C.paper })), { paddingRight: 8 }),
+      col([text(s.name, { size: desk ? 26 : 24, weight: 700, tracking: -0.5, lineHeight: desk ? 32 : 30 }), meta(facesLine(s), { size: 13, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    ], { gap: 12, alignItems: "center" }),
+    row([
+      ...(canDo(s, "invite") ? [button("Invite someone", open(SCREENS.spaceInvite, { id: s.id }), { kind: "secondary", size: "md", icon: "plus" })] : []),
+      button("Chat", openChat(s.id), { kind: "secondary", size: "md", icon: "send" }),
+    ], { gap: 8, flexWrap: "wrap" }),
+  ], { gap: 14 });
 
-  const needs = [
-    ...waiting.map((p) => payRow(ctx, s, p)),
-    ...forMe.map((t) => taskRow(ctx, t)),
-  ];
-
-  const shared = section(`Shared · ${o.items.length}`, [
-    ...(o.items.length ? [rowsCard(o.items.slice(0, 8).map((it) => itemRow(ctx, it)))] : [meta("Lists, trips, notes, files and links people share land here. Share from any page with Share.", { size: 13 })]),
-    ...(canDo(s, "share") ? [inputBox([field("listName", "listName", "New list: Groceries, Packing…", { onSubmit: newList }), button("Make", newList, { kind: "secondary", size: "md" })])] : []),
+  const needs = [...waiting.map((p) => payRow(ctx, s, p)), ...forMe.map((t) => taskRow(ctx, t))];
+  const more = needs.length - 3;
+  const log = activityRows(ctx, s, 4);
+  const now = tab("now", [
+    needs.length
+      ? section(`Waiting on you · ${needs.length}`, [rowsCard(needs.slice(0, 3)), ...(more > 0 ? [meta(`${plural(more, "more thing")} under Plans and Money.`, { size: 12 })] : [])])
+      : row([statusMark("done"), col([text("You're all caught up", { size: 15, weight: 500, lineHeight: 20 }), meta(`Nothing in ${s.name} is waiting on you.`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
+    ...(log ? [section("Lately", [log])] : []),
   ]);
 
-  const tasks = section("Tasks and plans", [
-    ...(open_.length ? [rowsCard(open_.map((t) => taskRow(ctx, t)))] : [meta(canDo(s, "tasks") || canDo(s, "plan") ? "Give someone a task, or put something on their day." : "Nothing given out right now.", { size: 13 })]),
+  const shared = tab("shared", [section(`Shared · ${o.items.length}`, [
+    ...(o.items.length ? [rowsCard(o.items.slice(0, 8).map((it) => itemRow(ctx, it)))] : [meta("Lists, trips, notes and files you share with your people live here, for everyone to see and add to.", { size: 13 })]),
+    ...(canDo(s, "share") ? [inputBox([field("listName", "listName", "Start a list: Groceries, Packing…", { onSubmit: newList }), button("Create", newList, { kind: "secondary", size: "md" })])] : []),
+  ])]);
+
+  const plans = tab("plans", [section("Tasks and plans", [
+    ...(open_.length ? [rowsCard(open_.map((t) => taskRow(ctx, t)))] : [meta(canDo(s, "tasks") || canDo(s, "plan") ? "Help each other out: hand someone a task, or put something on their day." : "Nothing given out right now.", { size: 13 })]),
     row([
       ...(canDo(s, "tasks") ? [button("Give a task", open(SCREENS.spaceTasks, { id: s.id, new: "task" }), { kind: "secondary", size: "md", icon: "check" })] : []),
       ...(canDo(s, "plan") ? [button("Plan for someone", open(SCREENS.spaceTasks, { id: s.id, new: "plan" }), { kind: "secondary", size: "md", icon: "calendar" })] : []),
     ], { gap: 8, flexWrap: "wrap" }),
-  ], link("All", open(SCREENS.spaceTasks, { id: s.id })));
+  ], link("All", open(SCREENS.spaceTasks, { id: s.id })))]);
 
-  const pays = section("Payments", [
-    row([col([text("Who can approve payments", { size: 14, lineHeight: 19 }), meta(`${approversLine(s)}. ${s.name} never pays by itself: you press pay in your UPI app.`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 10 }),
+  const money = tab("money", [section("Money", [
+    col([text("No money moves without a yes", { size: 15, weight: 500, lineHeight: 20 }), meta(`${approversLine(s)}. Whoever pays does it in their own UPI app: ${s.name} never pays by itself.`, { size: 12 })], { gap: 2 }),
     ...(history.length ? [rowsCard(history.map((p) => payRow(ctx, s, p)))] : []),
     ...(canDo(s, "askPay") ? [button("Ask for a payment", open(SCREENS.spacePay, { id: s.id }), { kind: "secondary", size: "md", icon: "rupee" })] : []),
-  ]);
+  ])]);
 
-  const members = section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => memberRow(s, m)))], s.me.admin ? link("Roles", open(SCREENS.spaceRoles, { id: s.id })) : undefined);
-  const bots = section(`Bots · ${s.bots.length}`, [botsCard(s, mineBots)]);
-  const log = activityRows(ctx, s);
   const rename = ifFilled("spaceRename", write("PUT", `${A}/spaces/${sid}`, { name: "$state.spaceRename" }, { ok: "Renamed" }), "Type the new name");
-
-  return [
-    top,
-    ...(needs.length ? [section("Needs you", [rowsCard(needs)])] : []),
-    ...(desk ? [grid([col([shared, tasks], { gap: 22, minWidth: 0 }), col([members, bots], { gap: 22, minWidth: 0 })], 2, 24)] : [shared, tasks, members, bots]),
-    pays,
-    ...(canDo(s, "invite") && s.invites?.length ? [section("Open invites", [rowsCard(inviteRows(ctx, s, o.mailReady))])] : []),
-    ...(log ? [section("Activity", [log])] : []),
+  const people = tab("people", [
+    section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => memberRow(s, m)))], s.me.admin ? link("Roles", open(SCREENS.spaceRoles, { id: s.id })) : undefined),
+    ...(canDo(s, "invite") && s.invites?.length ? [section(`Invites waiting · ${s.invites.length}`, [rowsCard(inviteRows(ctx, s, o.mailReady))])] : []),
+    section(`Bots · ${s.bots.length}`, [botsCard(s, mineBots)]),
     ...(canDo(s, "rename") ? [section("Name", [inputBox([field("spaceRename", "spaceRename", s.name, { onSubmit: rename }), button("Rename", rename, { kind: "secondary", size: "md" })])])] : []),
     quietButton(s.me.admin ? `Delete ${s.name}` : `Leave ${s.name}`, call("DELETE", `${A}/spaces/${sid}`, undefined, { ok: seq(toast(s.me.admin ? `${s.name} deleted` : `You left ${s.name}`), { kind: "navigate", screenId: SCREENS.spaces, replace: true }), fail: toast("Couldn't do that. Try again.", true) }), { size: "md" }),
-  ];
+  ]);
+
+  return [top, segmented(SPACE_TABS, "tab"), now, shared, plans, money, people];
 }

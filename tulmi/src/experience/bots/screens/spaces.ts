@@ -12,7 +12,7 @@ import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sd
 import { PERMS, PERM_WORDS } from "../../../botsBots/spacePerms.js";
 import {
   row, text, C, call, seq, col, meta, icon, open, SCREENS, box, statusMark, grow, sectionLabel, button, type BotsCtx, notice, card,
-  primaryButton, page, title, emptyState, secondaryButton, toTab, back, switchMark, picture, listRow, quietButton, chips, when, segmented,
+  primaryButton, page, title, emptyState, toTab, back, switchMark, picture, listRow, quietButton, chips, when, segmented,
   labelled, divider,
 } from "../kit.js";
 import { canUpload, uploadChip, uploadPick } from "../media.js";
@@ -26,8 +26,8 @@ import {
 } from "./spaces/parts.js";
 import { iconBox, KIND_WORD, setState, type Targets, sharePage } from "./spaces/sharePage.js";
 import {
-  type SpacesData, plural, spaceCount, youAre, memberName, approversLine, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
-  openChat, dayWords, clockOf, type JoinInvite,
+  type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
+  openChat, dayWords, clockOf, type JoinInvite, facesLine,
 } from "./spaces/spaceDetail.js";
 
 interface Thread {
@@ -50,30 +50,46 @@ const toggleChip = (label: string, path: string): Node => row([text(label, { siz
 const newSpace = ifFilled("spaceName", call("POST", `${A}/spaces`, { name: "$state.spaceName" }, { assignTo: "made", ok: seq(toast("Space made"), clearState("spaceName"), refresh), fail: toast("Couldn't make it. Try again.", true) }), "Name the space first");
 const joinSpace = ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code" }, { assignTo: "joined", ok: seq(toast("You're in"), clearState("code"), refresh), fail: toast("That code doesn't work, or it's for another email.", true) }), "Enter the invite code");
 
-/** Chats and what's given to you: the two ways in at the top of Spaces. */
-function topRows(d: SpacesData): Node {
+/**
+ * Chats and what's given to you, at the top of Spaces only when there is something in them (a new message, a thing to do): an empty
+ * door is noise. Both are always in reach from the page's quiet links too.
+ */
+function topRows(d: SpacesData): Node | null {
   const given = (d.given ?? []).length;
-  return rowsCard([
-    row([iconBox("send"), col([text("Chats", { size: 15, weight: 500, lineHeight: 20 }), meta(d.unread ? `${plural(d.unread, "new message")}` : "Message people in your spaces", { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
-      ...(d.unread ? [countDot(d.unread)] : []), icon("chevron", { size: 16, color: C.meta })], rowPad, open(SCREENS.chats)),
-    row([iconBox("check"), col([text("Given to you", { size: 15, weight: 500, lineHeight: 20 }), meta(given ? `${plural(given, "thing")} to do` : "Tasks and plans people give you show here", { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
-      ...(given ? [countDot(given)] : []), icon("chevron", { size: 16, color: C.meta })], rowPad, open(SCREENS.spaceTasks)),
-  ]);
+  const rows: Node[] = [
+    ...(d.unread ? [row([iconBox("send"), col([text(`${plural(d.unread, "new message")}`, { size: 15, weight: 500, lineHeight: 20 }), meta("Your people wrote to you", { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+      countDot(d.unread), icon("chevron", { size: 16, color: C.meta })], rowPad, open(SCREENS.chats))] : []),
+    ...(given ? [row([iconBox("check"), col([text(`${plural(given, "thing")} for you`, { size: 15, weight: 500, lineHeight: 20 }), meta("Someone's counting on you", { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }),
+      countDot(given), icon("chevron", { size: 16, color: C.meta })], rowPad, open(SCREENS.spaceTasks))] : []),
+  ];
+  return rows.length ? rowsCard(rows) : null;
 }
+/** The two places that are always there, said quietly under the list. */
+const quietLinks = (): Node => row([link("Chats", open(SCREENS.chats)), meta("·", { size: 13 }), link("Given to you", open(SCREENS.spaceTasks))], { gap: 6, justifyContent: "center" });
 
 const countDot = (n: number) => box([text(n > 99 ? "99+" : String(n), { size: 11, weight: 600, color: C.paper, lineHeight: 14 })], { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 });
 
-function spaceSummary(s: Space): Node {
-  const rs = { paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: C.divider };
-  return col([
-    row([col([text(s.name, { size: 17, weight: 600, lineHeight: 22 }), meta(`${spaceCount(s)} · ${youAre(s)}`, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }), icon("chevron", { size: 16, color: C.meta })], { ...rs, gap: 10 }, open(SCREENS.spaces, { id: s.id })),
-    row([row(s.members.slice(0, 5).map((m) => box([personDot(m.name, m.you)], { marginRight: -8, borderRadius: 18, borderWidth: 2, borderColor: C.paper })), { paddingRight: 8 }), text(names(s.members.map(memberName)), { size: 14, lineHeight: 19, lines: 2, style: { flexShrink: 1 } })], { ...rs, gap: 12 }),
-    row([col([text("Who can approve payments", { size: 14, lineHeight: 19 }), meta(approversLine(s), { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 })], { ...rs, gap: 10, borderBottomWidth: s.waiting ? 1 : 0 }),
-    ...(s.waiting ? [row([statusMark("needs"), text(`${plural(s.waiting, "payment")} ${s.waiting === 1 ? "waits" : "wait"} for your yes`, { size: 14, lineHeight: 19, style: { flexShrink: 1 } }), grow(), text("Review", { size: 13, color: C.meta, lineHeight: 18 })], { ...rs, gap: 10, borderBottomWidth: 0 }, open(SCREENS.spaces, { id: s.id }))] : []),
-  ], { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" });
+/** A space in the list: its faces, its name, and one line: what waits for you there, or who is in it. */
+function spaceRow(s: Space): Node {
+  const line = s.waiting ? `${plural(s.waiting, "payment")} ${s.waiting === 1 ? "needs" : "need"} your yes` : facesLine(s);
+  return row([
+    row(s.members.slice(0, 3).map((m) => box([personDot(m.name, m.you, 30)], { marginRight: -8, borderRadius: 17, borderWidth: 2, borderColor: C.paper })), { paddingRight: 8, width: 82 }),
+    col([text(s.name, { size: 16, weight: 600, lineHeight: 21, lines: 1 }), row([...(s.waiting ? [statusMark("needs")] : []), meta(line, { size: 12, lines: 1 })], { gap: 6, alignItems: "center" })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    icon("chevron", { size: 16, color: C.meta }),
+  ], { ...rowPad, gap: 10, alignItems: "center" }, open(SCREENS.spaces, { id: s.id }));
 }
 
-const joinBox = (): Node => col([sectionLabel("Join with a code"), inputBox([field("code", "code", "Invite code", { onSubmit: joinSpace }), button("Join", joinSpace, { kind: "secondary", size: "md" })])], { gap: 8 });
+/** Joining with a code, folded behind one quiet line until it's wanted (a link opens Spaces with its code already in: joinCard). */
+const joinBox = (): Node => col([
+  when({ falsy: "codeOpen" }, row([link("Got an invite code? Join with it", { kind: "toggleState", path: "codeOpen" })], { justifyContent: "center" })),
+  when({ truthy: "codeOpen" }, col([sectionLabel("Join with a code"), inputBox([field("code", "code", "The code you were sent", { onSubmit: joinSpace }), button("Join", joinSpace, { kind: "secondary", size: "md" })])], { gap: 8 })),
+], { gap: 8 });
+
+/** Starting a space: one button, then its name and Create. */
+const startSpace = (desk: boolean): Node[] => [
+  when({ falsy: "newOpen" }, primaryButton("Start a space", { kind: "toggleState", path: "newOpen" }, { wide: !desk, size: desk ? "md" : "lg" })),
+  when({ truthy: "newOpen" }, col([inputBox([field("spaceName", "spaceName", "Name it: Home, Family, Goa trip…", { onSubmit: newSpace }), button("Create", newSpace, { kind: "secondary", size: "md" })])], { gap: 8 })),
+];
 
 // An invite's link (https://app.x0bot.com/s/bots.spaces?join=CODE, botsBots/spaces.ts inviteLinkOf) opens Spaces with its code: what
 // it is for and Join, at the top. The code is in Join with a code too, as the way that always works.
@@ -94,11 +110,12 @@ function joinCard(ctx: BotsCtx, d: SpacesData): Node[] {
   const inv = d.invite;
   if (inv === null) return [notice("This invite doesn't work any more. Ask for a new one.")];
   const name = inv?.name ?? "the space";
+  const already = inv ? (inv.members === 1 ? "1 person is already in. Join them." : `${plural(inv.members, "person", "people")} are already in. Join them.`) : `Invite code ${code}`;
   return [card([
     col([
-      text(inv ? `You're invited to ${inv.name}` : "You're invited to a space", { size: 17, weight: 600, lineHeight: 22 }),
-      meta(inv ? `${plural(inv.members, "person", "people")} so far${inv.email ? ` · for ${inv.email}` : ""}` : `Invite code ${code}`, { size: 13 }),
-    ], { gap: 2 }),
+      text(inv ? `You're invited to ${inv.name}` : "You're invited to a space", { size: 19, weight: 700, lineHeight: 24 }),
+      meta(`${already}${inv?.email ? ` · for ${inv.email}` : ""}`, { size: 13 }),
+    ], { gap: 4 }),
     primaryButton(inv ? `Join ${name}` : "Join", joinFromLink(code), { wide: !isDesk(ctx), size: "md" }),
   ], { gap: 14, padding: 18 })];
 }
@@ -106,18 +123,22 @@ function joinCard(ctx: BotsCtx, d: SpacesData): Node[] {
 function spacesPhone(ctx: BotsCtx, d: SpacesData) {
   const list = d.spaces ?? [];
   return page(ctx, {
-    back: true, title: "Spaces", nav: "you", state: { spaceName: "", code: joinParam(ctx) }, live: ["spaces", "threads", ...list.map((s) => `space:${s.id}`)],
+    back: true, title: "Spaces", nav: "you", state: { spaceName: "", code: joinParam(ctx), newOpen: false, codeOpen: false }, live: ["spaces", "threads", ...list.map((s) => `space:${s.id}`)],
     // Pull-a-bot at both ends: what is new is a space or something given to you (none named when the spaces couldn't be read).
     pullBot: { top: true, bottom: true, ...(d.spaces ? { items: [...list.map((s) => `space:${s.id}`), ...(d.given ?? []).map((t) => `task:${t.id}`)] } : {}) },
     body: [
-      col([title("Spaces"), meta("Family and friends: share bots, lists and plans, give tasks, ask for payments, and chat.", { size: 13 })], { gap: 4 }),
+      col([title("Spaces"), meta("Your people, in one place.", { size: 14 })], { gap: 4 }),
       ...joinCard(ctx, d),
       ...(!d.spaces ? [emptyState({ pose: "think", title: "Couldn't load your spaces", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
-        : [topRows(d), ...(list.length ? list.map((s) => spaceSummary(s)) : [emptyState({ pose: "hello", title: "No spaces yet", body: "Make one for home or your friends, then invite people by link or email." })])]),
+        : [
+          ...[topRows(d)].filter((n): n is Node => !!n),
+          ...(list.length
+            ? [rowsCard(list.map((s) => spaceRow(s))), quietLinks()]
+            : [emptyState({ pose: "hello", title: "Bring your people in", body: "A space for home, family or friends: shared lists and plans, money decided together, and everyone in the loop." })]),
+        ]),
       joinBox(),
-      inputBox([field("spaceName", "spaceName", "Name a new space: Home, Studio…", { onSubmit: newSpace })]),
     ],
-    footer: [secondaryButton("New space", newSpace, { wide: true })],
+    footer: startSpace(false),
   });
 }
 
@@ -131,34 +152,34 @@ function spaceOnePhone(ctx: BotsCtx, o: OneSpace, d: SpacesData) {
     ...o.items.map((x) => `item:${x.id}`), ...o.payments.map((p) => `pay:${p.id}`), ...o.tasks.map((t) => `task:${t.id}`),
     ...(o.space.activity ?? []).map((a) => `act:${a.id}`),
   ];
-  return page(ctx, { back: true, title: o.space.name, nav: "you", state: { listName: "", spaceRename: "" }, live: spaceLive(o, []), body: spaceDetail(ctx, o, d.bots), gap: 24, pullBot: { top: true, bottom: true, items } });
+  return page(ctx, { back: true, title: o.space.name, nav: "you", state: { listName: "", spaceRename: "", tab: String(ctx.params.tab ?? "now") }, live: spaceLive(o, []), body: spaceDetail(ctx, o, d.bots), gap: 22, pullBot: { top: true, bottom: true, items } });
 }
 
 function spacesDesk(ctx: BotsCtx, d: SpacesData) {
   const list = d.spaces ?? [];
   const sel = d.one;
   const nav = col([
-    topRows(d),
+    ...[topRows(d)].filter((n): n is Node => !!n),
     sectionLabel(`Your spaces · ${list.length}`),
     ...list.map((s) => col([
       row([col([text(s.name, { size: 16, weight: 600, lineHeight: 21 }), meta(spaceCount(s), { size: 12 })], { gap: 2, flexGrow: 1 }),
         row(s.members.slice(0, 4).map((m) => box([personDot(m.name, m.you, 28)], { marginRight: -6, borderRadius: 16, borderWidth: 2, borderColor: s.id === sel?.space.id ? C.surface : C.paper })), { paddingRight: 6 })], { gap: 8 }),
-      ...(s.waiting ? [row([statusMark("needs"), text(`${plural(s.waiting, "payment")} ${s.waiting === 1 ? "waits" : "wait"} for you`, { size: 13, color: C.grey70, lineHeight: 18 })], { gap: 8 })] : []),
+      ...(s.waiting ? [row([statusMark("needs"), text(`${plural(s.waiting, "payment")} ${s.waiting === 1 ? "needs" : "need"} your yes`, { size: 13, color: C.grey70, lineHeight: 18 })], { gap: 8 })] : []),
     ], { gap: 10, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: s.id === sel?.space.id ? C.surface : C.line, ...(s.id === sel?.space.id ? { backgroundColor: C.surface } : {}) }, open(SCREENS.spaces, { id: s.id }))),
-    meta("Each space keeps its own bots, things and money rules. What happens in one stays there.", { size: 12, lineHeight: 17 }),
+    meta("What happens in a space stays in that space.", { size: 12, lineHeight: 17 }),
+    quietLinks(),
     col([joinBox()], { paddingTop: 8 }),
   ], { width: 300, flexShrink: 0, gap: 10 });
   return page(ctx, {
-    title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: joinParam(ctx), listName: "", spaceRename: "" }, live: spaceLive(sel, list),
+    title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: joinParam(ctx), listName: "", spaceRename: "", tab: "now", newOpen: false, codeOpen: false }, live: spaceLive(sel, list),
     body: [
       row([
-        col([row([text("You", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("you")), title("Spaces", { size: 26 }), meta("Family and friends: share, give tasks, ask for payments, and chat.", { size: 14 })], { gap: 4, flexGrow: 1 }),
-        box([inputBox([field("spaceName", "spaceName", "Name: Home, Studio…", { onSubmit: newSpace })], { radius: 22 })], { width: 220 }),
-        button("New space", newSpace, { kind: "secondary", size: "md" }),
+        col([row([text("You", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("you")), title("Spaces", { size: 26 }), meta("Your people, in one place.", { size: 14 })], { gap: 4, flexGrow: 1 }),
+        box(startSpace(true), { width: 320, alignItems: "flex-end" }),
       ], { gap: 12, alignItems: "flex-end" }),
       ...joinCard(ctx, d),
       ...(!d.spaces ? [emptyState({ pose: "think", title: "Couldn't load your spaces", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
-        : [row([nav, col(sel ? spaceDetail(ctx, sel, d.bots) : [emptyState({ pose: "hello", title: list.length ? "Couldn't open that space" : "No spaces yet", body: list.length ? "Pick one on the left." : "Name one above and press New space. Then invite people by link or email." })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 24 })], { gap: 28, alignItems: "flex-start" })]),
+        : [row([nav, col(sel ? spaceDetail(ctx, sel, d.bots) : [emptyState({ pose: "hello", title: list.length ? "Couldn't open that space" : "Bring your people in", body: list.length ? "Pick one on the left." : "Start a space for home, family or friends, then invite them by link or email." })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 24 })], { gap: 28, alignItems: "flex-start" })]),
     ],
   });
 }

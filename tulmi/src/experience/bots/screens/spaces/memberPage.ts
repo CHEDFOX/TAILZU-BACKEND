@@ -2,13 +2,20 @@
  * The Spaces's memberPage screen.
  */
 
-import { PERMS, PERM_WORDS } from "../../../../botsBots/spacePerms.js";
+import { PERMS, PERM_WORDS, type Perm } from "../../../../botsBots/spacePerms.js";
 import {
-  type BotsCtx, row, col, text, meta, switchMark, C, seq, quietButton, call, back, page, notice, chip, secondaryButton, open, SCREENS,
+  type BotsCtx, row, col, text, meta, switchMark, C, seq, quietButton, call, back, page, notice, chip, secondaryButton, open, SCREENS, when, icon,
 } from "../../kit.js";
 import { type OneSpace, failed, canDo, A, enc, write, rowPad, toast, personDot, shortDate, section, rowsCard, messagePerson } from "./parts.js";
 
 export const idParam = (ctx: BotsCtx, k = "id"): string => String(ctx.params[k] ?? "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64);
+
+/** "Can share things, use the shared bots and message people here." What a person can do, in one sentence. */
+function canSay(perms: readonly Perm[]): string {
+  if (!perms.length) return "Can see what's shared here. Nothing more.";
+  const w = perms.map((p) => PERM_WORDS[p].label.charAt(0).toLowerCase() + PERM_WORDS[p].label.slice(1));
+  return `Can ${w.length === 1 ? w[0] : `${w.slice(0, -1).join(", ")} and ${w[w.length - 1]}`}.`;
+}
 
 // ===================================================================== bots.space.member: what <name> can do
 export function memberPage(ctx: BotsCtx, d: OneSpace | undefined) {
@@ -39,13 +46,14 @@ export function memberPage(ctx: BotsCtx, d: OneSpace | undefined) {
     ? quietButton(`Remove ${m.name} from ${s.name}`, call("DELETE", base, undefined, { ok: seq(toast(`${m.name} removed`), back()), fail: toast("Couldn't remove them. Try again.", true) }), { size: "md" }) : null;
   return page(ctx, {
     back: true, title: m.you ? "What you can do" : `What ${m.name} can do`, nav: "you", maxWidth: 720, live: [`space:${s.id}`],
-    state: Object.fromEntries(PERMS.map((p) => [`p_${p}`, m.perms.includes(p)])),
+    state: { ...Object.fromEntries(PERMS.map((p) => [`p_${p}`, m.perms.includes(p)])), fineOpen: false },
     body: [
       row([personDot(m.name, m.you, 48), col([text(m.you ? "What you can do" : `What ${m.name} can do`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(`${s.name} · ${m.roleName}${m.maker ? "" : ` · joined ${shortDate(ctx, m.joinedAt)}`}`, { size: 13 })], { gap: 2, flexShrink: 1 })], { gap: 14 }),
       ...(why ? [notice(why, { mark: "lock" })] : []),
-      ...(can ? [section("Make them", [row(roles.map((r) => chip(r.name, { selected: roleOf === r.id, onPress: write("PUT", base, { role: r.id }, { ok: `${m.name} is ${r.name} now` }) })), { gap: 8, flexWrap: "wrap" }),
-        meta("Or pick one by one below. You can only give what you can do yourself.", { size: 12 })])] : []),
-      rowsCard(rows),
+      ...(can ? [section(`${m.name} is`, [row(roles.map((r) => chip(r.name, { selected: roleOf === r.id, onPress: write("PUT", base, { role: r.id }, { ok: `${m.name} is ${r.name} now` }) })), { gap: 8, flexWrap: "wrap" })])] : []),
+      text(canSay(m.perms), { size: 15, lineHeight: 21 }),
+      row([text(m.you || !can ? "See every detail" : `Fine-tune what ${m.name} can do`, { size: 14, weight: 500, lineHeight: 19, style: { flexGrow: 1, flexShrink: 1 } }), icon("chevron", { size: 16, color: C.meta })], { gap: 10, paddingVertical: 8 }, { kind: "toggleState", path: "fineOpen" }),
+      when({ truthy: "fineOpen" }, col([rowsCard(rows), ...(can ? [meta("You can only give what you can do yourself.", { size: 12 })] : [])], { gap: 8 })),
       ...(!m.you && canDo(s, "message") ? [secondaryButton(`Message ${m.name}`, messagePerson(m.userId), { size: "md", icon: "send" })] : []),
       ...(remove ? [remove] : []),
       ...(!m.you ? [quietButton(`Report or block ${m.name}`, open(SCREENS.person, { id: m.userId }), { size: "md", icon: "shield" })] : []),

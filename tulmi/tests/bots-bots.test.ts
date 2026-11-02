@@ -78,7 +78,7 @@ describe("the screens, from the boards' day", () => {
     ["bots.store", {}, ["Find a bot", "Study bot", "Shop bot", "In Home", "Yours"]],
     ["bots.plan", {}, ["Plan Ease", "Move Dentist to Friday 10 am?", "Keep Thursday"]],
     ["bots.travel", { }, ["Travel bot", "Pune · 14–16 Nov", "5 of 8 packed", "Ready to book · you press pay"]],
-    ["bots.spaces", {}, ["Spaces", "Home", "Studio", "Who can approve payments"]],
+    ["bots.spaces", {}, ["Spaces", "Home", "Studio", "needs your yes"]],
     ["bots.share-in", { file: "f-9" }, ["Ticket_BLR-GOI_14Nov.pdf", "Travel bot"]],
     ["bots.avatars", {}, ["Blip, as every bot", "Plan Ease · Needs you"]],
   ];
