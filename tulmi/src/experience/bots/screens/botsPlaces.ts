@@ -72,7 +72,7 @@ const openUrl = (url: string): ActionSpec => ({ kind: "openUrl", url, handoff: t
 
 const local = (ctx: BotsCtx, ms: number) => new Date(ms + ctx.tzOffsetMinutes * MIN);
 /** "6:55 pm". */
-export function clockAt(ctx: BotsCtx, ms: number): string {
+function clockAt(ctx: BotsCtx, ms: number): string {
   const d = local(ctx, ms);
   const h = d.getUTCHours(), m = d.getUTCMinutes();
   return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
@@ -109,7 +109,7 @@ const SKY_PATH: Record<Sky | "heat", string> = {
   storm: "M7 14h10.5a3.6 3.6 0 0 0 .4-7.18A5.6 5.6 0 0 0 6.6 5.6 4.2 4.2 0 0 0 7 14zM12.5 15.5l-2 3.5h3l-2 3.5",
   snow: "M7 15h10.5a3.6 3.6 0 0 0 .4-7.18A5.6 5.6 0 0 0 6.6 6.6 4.2 4.2 0 0 0 7 15zM9 19h.01M12 20.5h.01M15 19h.01",
 };
-export function skyGlyph(kind: Sky | "heat", size = 22, color: string = C.ink): Node {
+function skyGlyph(kind: Sky | "heat", size = 22, color: string = C.ink): Node {
   return {
     type: "SVG",
     props: { viewBox: "0 0 24 24", d: SKY_PATH[kind], fill: "none", stroke: color, strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round", accessibilityLabel: kind === "heat" ? "hot" : kind },
@@ -128,7 +128,7 @@ function creditLine(credits: CreditView[]): Node | null {
 const PLAN = () => botLook("plan").color;
 
 /** "Leave by 6:55 pm · 35 min to Koramangala", "Only 15 min to get there · 35 min to Koramangala". */
-export function legWords(ctx: BotsCtx, leg: PlanLegView): string {
+function legWords(ctx: BotsCtx, leg: PlanLegView): string {
   const how = leg.mode === "walk" ? `${leg.minutes} min walk to ${leg.to}` : `${leg.minutes} min to ${leg.to}`;
   if (leg.tight) return leg.gapMin !== null && leg.gapMin > 0 ? `Only ${leg.gapMin} min to get there · ${how}` : `No time to get there · ${how}`;
   return `Leave ${leg.fromId === "home" ? "home " : ""}by ${clockAt(ctx, leg.leaveBy)} · ${how}`;
@@ -155,9 +155,6 @@ export function headsUpRows(_ctx: BotsCtx, t: PlanTravelView | undefined, eventI
     meta(h.text, { size: 12, style: { flexShrink: 1 } }),
   ], { gap: 10, minHeight: 26, alignItems: "center" }));
 }
-
-/** Has a trip into this event (the timeline then needs no "Free" row of its own before it). */
-export const hasLegTo = (t: PlanTravelView | undefined, eventId: string): boolean => !!t?.legs.some((l) => l.toId === eventId);
 
 /** "40 min saved" for the head line, when moves said yes to saved travel this week. */
 export const savedWords = (t: PlanTravelView | undefined): string | null => (t && t.savedWeekMin > 0 ? `${t.savedWeekMin} min saved` : null);

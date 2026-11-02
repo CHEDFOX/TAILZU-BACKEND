@@ -22,7 +22,7 @@ export const WIDGET_LIMITS = { question: 80, choice: 14, choices: 3, doing: 28, 
 export type EventKind = "needs" | "working" | "done" | "failed" | "idle";
 
 /** The most characters each event's line may have. */
-export const EVENT_LIMIT: Readonly<Record<EventKind, number>> = {
+const EVENT_LIMIT: Readonly<Record<EventKind, number>> = {
   needs: WIDGET_LIMITS.question, working: WIDGET_LIMITS.doing, done: WIDGET_LIMITS.result, failed: WIDGET_LIMITS.problem, idle: WIDGET_LIMITS.doing,
 };
 
@@ -76,7 +76,7 @@ const int = (v: unknown, lo: number, hi: number): number | undefined =>
   typeof v === "number" && Number.isInteger(v) && v >= lo && v <= hi ? v : undefined;
 
 /** The short labels of a bot's answers, in order: each cut to 14 at a word, "" where none fits. At most 3. */
-export function choicesOf(raw: unknown): string[] | undefined {
+function choicesOf(raw: unknown): string[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out = raw.slice(0, WIDGET_LIMITS.choices).map((c) => text(c, WIDGET_LIMITS.choice) ?? "");
   return out.some(Boolean) ? out : undefined;

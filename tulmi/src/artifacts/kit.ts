@@ -37,8 +37,7 @@ import { locate, type LocateBrain, type Located } from "../code/work/locate.js";
 import type { CallFn } from "../code/work/model.js";
 import type { LiveFiles } from "../code/live/ports.js";
 import {
-  colorToHex, emptyTokens, googleFontsUrl, iconLibrary, mergeTokens, readAndroidColors, readAndroidThemes, readColorset, readCompose, readCss, readFlutter, readFonts, readJsTheme,
-  readProps, readShadcn, readTailwind, type KitTokens,
+  emptyTokens, googleFontsUrl, iconLibrary, mergeTokens, readAndroidColors, readAndroidThemes, readColorset, readCompose, readCss, readFlutter, readFonts, readJsTheme, readProps, readShadcn, readTailwind, type KitTokens,
 } from "./kitparse.js";
 import type { DesignKitCss } from "./protocol.js";
 import type { ArtifactService } from "./service.js";
@@ -52,9 +51,9 @@ export const KIT_FILES_MAX = 12;
 /** The model's kit. */
 export const KIT_PROMPT_MAX = 2000;
 /** The CSS the viewer gets. */
-export const KIT_CSS_MAX = 12_000;
+const KIT_CSS_MAX = 12_000;
 /** The Tailwind config the viewer gets, as JSON. */
-export const KIT_TAILWIND_MAX = 8_000;
+const KIT_TAILWIND_MAX = 8_000;
 const FILE_CHARS = 200_000;
 /** Component files looked at in the brain, and how many have their props read. */
 const COMPONENT_FILES = 80;
@@ -563,4 +562,3 @@ export async function componentArtifact(
 }
 
 // Kept for tests and the docs: a colour in the form the kit prints.
-export { colorToHex };

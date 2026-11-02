@@ -48,7 +48,7 @@ const QUESTION_MAX = 4_000;
 // ------------------------------------------------------------------ scrubbing
 
 /** The text with anything that looks like a credential, a personal address or an address's query string taken out. Its lines are kept. */
-export function scrubSecrets(s: string): string {
+function scrubSecrets(s: string): string {
   return s
     .replace(/\bhttps?:\/\/[^\s"'<>)\]]+/gi, (m) => {
       try {
@@ -84,7 +84,7 @@ function cutWords(s: string, n: number): string {
 }
 
 /** A final list of queries: scrubbed, one line each, no repeats, at most three, none empty. */
-export function finishQueries(qs: string[]): string[] {
+function finishQueries(qs: string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const q of qs) {
@@ -481,7 +481,7 @@ const PRIORITY: Intent[] = ["error_fix", "package_lookup", "compare_libs", "vers
 function dedupe<T>(xs: T[]): T[] { return [...new Set(xs)]; }
 
 /** Default sources for an intent, for a plan a model made without any worth keeping. */
-export function defaultSources(intent: Intent, text: string, ctx: PlanCtx): SourceId[] {
+function defaultSources(intent: Intent, text: string, ctx: PlanCtx): SourceId[] {
   const fw = frameworkOf(text, ctx);
   switch (intent) {
     case "package_lookup": return [...registriesFor(text, ctx), "github"];

@@ -34,7 +34,7 @@ export interface TurnFacts {
   said: boolean;
 }
 
-export const EDIT_TOOLS: ReadonlySet<string> = new Set(["edit_file", "write_file", "delete_file"]);
+const EDIT_TOOLS: ReadonlySet<string> = new Set(["edit_file", "write_file", "delete_file"]);
 
 const failedOf = (ex: TurnFacts["exchanges"][number], names: (n: string) => boolean): boolean => ex.calls.some((c, i) => names(c.name) && ex.results[i]?.ok === false);
 const passedOf = (ex: TurnFacts["exchanges"][number], names: (n: string) => boolean): boolean => ex.calls.some((c, i) => names(c.name) && ex.results[i]?.ok === true);

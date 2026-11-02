@@ -42,10 +42,10 @@ export interface Trip {
   spots: string[]; stays: StayRow[];
 }
 
-export const PACKING_MAX = 30;
-export const SPOTS_MAX = 6;
-export const STAYS_MAX = 8;
-export const STARTER_LIST = ["Clothes for each day", "Phone charger", "ID for check-in (Aadhaar)", "Toothbrush kit", "Medicines you take", "Snacks for the way"];
+const PACKING_MAX = 30;
+const SPOTS_MAX = 6;
+const STAYS_MAX = 8;
+const STARTER_LIST = ["Clothes for each day", "Phone charger", "ID for check-in (Aadhaar)", "Toothbrush kit", "Medicines you take", "Snacks for the way"];
 
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const tripOf = (r: TripRow): Trip => ({

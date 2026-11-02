@@ -10,10 +10,10 @@ import { supabase } from "../auth/supabase.js";
 
 /** The cap when the person has set none: the server's default job budget is what a job gets then. */
 export const CAP_STEP_PAISE = 1000;
-export const CAP_MIN_PAISE = 1000;
-export const CAP_MAX_PAISE = 50_000;
+const CAP_MIN_PAISE = 1000;
+const CAP_MAX_PAISE = 50_000;
 
-export const clampCap = (p: number): number =>
+const clampCap = (p: number): number =>
   Math.min(CAP_MAX_PAISE, Math.max(CAP_MIN_PAISE, Math.round(p / CAP_STEP_PAISE) * CAP_STEP_PAISE));
 
 export interface CodeRulesStore {
@@ -34,7 +34,7 @@ export class MemoryCodeRulesStore implements CodeRulesStore {
 
 interface Row { job_cap_paise: number }
 
-export class SupabaseCodeRulesStore implements CodeRulesStore {
+class SupabaseCodeRulesStore implements CodeRulesStore {
   constructor(private readonly sb: SupabaseClient) {}
   async cap(userId: string, projectId: string) {
     const r = await this.sb.from("bots_code_rules").select("job_cap_paise").eq("user_id", userId).eq("project_id", projectId).maybeSingle<Row>();

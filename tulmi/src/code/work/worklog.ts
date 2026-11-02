@@ -33,7 +33,7 @@ import { scanForSecrets } from "../policy.js";
 import { cut } from "./model.js";
 import { ENTRIES_MAX, WORK_KINDS, worklogStore, type NewWorkEntry, type WorkEntry, type WorkKind, type WorklogStore } from "./worklogStore.js";
 
-export { WORK_KINDS, MemoryWorklogStore, SupabaseWorklogStore, worklogStore, resetWorklogStoreForTests } from "./worklogStore.js";
+export { WORK_KINDS, MemoryWorklogStore, SupabaseWorklogStore, worklogStore } from "./worklogStore.js";
 export type { WorkEntry, WorkKind, WorklogStore } from "./worklogStore.js";
 
 // ------------------------------------------------------------------ redacting

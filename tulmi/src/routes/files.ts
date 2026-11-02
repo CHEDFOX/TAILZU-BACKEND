@@ -53,7 +53,7 @@ const STATUS: Record<string, number> = {
 };
 
 /** The ref the app puts in `attachments` of an ask. */
-export const attachmentOf = (i: MediaItem) => ({ id: i.id, kind: attachmentKindOf(i.kind), mime: i.mime, bytes: i.bytes, sha256: i.sha256, name: i.name });
+const attachmentOf = (i: MediaItem) => ({ id: i.id, kind: attachmentKindOf(i.kind), mime: i.mime, bytes: i.bytes, sha256: i.sha256, name: i.name });
 
 export function registerFilesRoutes(app: FastifyInstance, deps: FilesRoutesDeps): void {
   const media = deps.media;

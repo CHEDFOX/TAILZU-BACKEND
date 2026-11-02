@@ -52,7 +52,7 @@ export interface CdpSession {
   on(method: string, fn: (params: any) => void): () => void;
 }
 
-export const CDP_TIMEOUT_MS = 30_000;
+const CDP_TIMEOUT_MS = 30_000;
 
 interface Pending {
   resolve: (v: any) => void;

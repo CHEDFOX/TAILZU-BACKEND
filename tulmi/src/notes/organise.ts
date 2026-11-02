@@ -23,7 +23,7 @@ import { addCostUsd, openRouterUsd } from "../usage/cost.js";
 import type { NoteBody } from "./store.js";
 
 /** Characters of transcript per call. A one-hour meeting is about 50,000. */
-export const PART_CHARS = 90_000;
+const PART_CHARS = 90_000;
 
 let client: OpenAI | null = null;
 function llm(): OpenAI {
@@ -87,7 +87,7 @@ const str = (v: unknown, max: number): string => (typeof v === "string" ? v.repl
 const unquote = (s: string) => s.replace(/^["'“”‘’«»]+|["'“”‘’«»]+$/g, "").trim();
 
 /** Most highlights a note keeps, however many the writer returns. */
-export const MAX_HIGHLIGHTS = 7;
+const MAX_HIGHLIGHTS = 7;
 
 /** The writer's JSON, cut to shape. Anything malformed is dropped, not trusted. */
 export function parseBody(raw: string, labels: Set<string>): NoteBody | null {

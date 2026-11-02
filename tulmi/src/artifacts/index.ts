@@ -29,23 +29,13 @@ import { ArtifactDataShotStore, type ShotStore } from "./shots.js";
 import { artifactStore } from "./store.js";
 
 export * from "./types.js";
-export { LIMITS, ARTIFACT_LIBS, ELEMENT_ID_ATTR, PROTOCOL_VERSION } from "./protocol.js";
 export type { DesignKitCss, ArtifactPayload, HostMsg, FrameMsg } from "./protocol.js";
 export { ArtifactService } from "./service.js";
 export type { Access, ArtifactView, SharedView, DataScope } from "./service.js";
-export { MemoryArtifactStore, SupabaseArtifactStore, artifactStore, resetArtifactStoreForTests, ARTIFACT_TABLES, ARTIFACT_USER_TABLES, deleteViewerData } from "./store.js";
+export { deleteViewerData } from "./store.js";
 export type { ArtifactStore, ArtifactExport, StoredKit } from "./store.js";
-export { ARTIFACT_TOOLS, ARTIFACT_TOOL_NAMES, runArtifactTool, isArtifactTool } from "./tools.js";
-export { validateArtifact, assertValid } from "./validate.js";
-export { EditEngine, FixBook } from "./edit.js";
-export { designKit, componentArtifact, workspaceFiles, liveFiles } from "./kit.js";
-export { buildFromArtifact, noCompare } from "./build.js";
 export type { CompareHook, CompareInput, CompareResult, DesignIssue, ViewportResult } from "./build.js";
-export { createCompareHook, compareShots, routeUrl } from "./compare.js";
-export { shootUrl, shootArtifact, shootDepsFromConfig, shootProblem, ShotError, ArtifactDataShotStore, MemoryShotStore, signShotPath, verifyShotLink, isShotId, SHOT_TTL_MS } from "./shots.js";
 export type { ShotStore, ShootDeps, ShotMeta } from "./shots.js";
-export { decodePng, encodePng, gate, isPng, PngError } from "./pixels.js";
-export { SHOT_VIEWPORTS, VIEWPORT_NAMES } from "./shothost.js";
 export type { ViewportName } from "./shothost.js";
 
 /** What the server holds while artifacts are on. */

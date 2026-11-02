@@ -31,19 +31,19 @@
 import dns from "node:dns";
 import { BlockList, isIP, isIPv4, isIPv6, type LookupFunction } from "node:net";
 import { Agent } from "undici";
-import { EgressRefused, MAX_REDIRECTS, PORTS, capBody, followRedirects, type EgressOptions, type FetchLike, type RefusedReason } from "./egressTypes.js";
+import { EgressRefused, PORTS, capBody, followRedirects, type EgressOptions, type FetchLike, type RefusedReason } from "./egressTypes.js";
 import { installSafeFetch, isSafeFetchInstalled } from "../web/safeFetch.js";
 
 // The refusal, the body cap, the walk through redirects and the fetch type are in egressTypes.ts (no node-only module), where the Cloudflare jobs Worker's own guard shares them. They are re-exported so nothing that imports them from here has to change.
-export { EgressRefused, MAX_REDIRECTS, capBody, followRedirects };
+export { EgressRefused, capBody };
 export type { EgressOptions, FetchLike, RefusedReason };
 
 /** Most an MCP answer may be: one POST's response, or everything over the life of the GET stream. */
-export const MCP_BODY_MAX = 1024 * 1024;
+const MCP_BODY_MAX = 1024 * 1024;
 /** Most a sign-in document may be: resource or auth server metadata, a registration, a token. */
-export const METADATA_BODY_MAX = 256 * 1024;
+const METADATA_BODY_MAX = 256 * 1024;
 /** A sign-in endpoint (discovery, registration, token) gets this long, body included. */
-export const OAUTH_TIMEOUT_MS = 10_000;
+const OAUTH_TIMEOUT_MS = 10_000;
 // ------------------------------------------------------------ the blocked ranges
 
 /**

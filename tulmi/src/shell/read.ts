@@ -16,7 +16,6 @@ import { attachmentKindOf } from "../media/index.js";
 import { listNotes } from "../notes/store.js";
 import { botLook } from "../experience/bots/palette.js";
 import type { BotsAreaDeps } from "../routes/botsArea.js";
-import { calendarOf, googleTasksOf, type CalEvent, type GoogleTodo } from "./parse.js";
 import { dayKeyOf, type FeedJob, type FeedTask, type FeedWords } from "./feed.js";
 import { fileLine, turnOf, type Findable, type SearchSources } from "./search.js";
 
@@ -51,7 +50,7 @@ export async function readProjects(d: BotsAreaDeps, userId: string): Promise<Arr
   return (await safe(d.code.store.listProjects(userId), [])).map((p) => ({ id: p.id, name: projectName(p.fullName), fullName: p.fullName, createdAt: p.createdAt }));
 }
 
-export function projectName(fullName: string): string {
+function projectName(fullName: string): string {
   const repo = (fullName.split("/").pop() ?? fullName).replace(/[-_.]+/g, " ").trim();
   return repo ? repo.charAt(0).toUpperCase() + repo.slice(1) : fullName;
 }
@@ -89,40 +88,6 @@ export function wordsByDay(rows: ReadonlyArray<{ at: number; words: number; app?
     days.set(day, d);
   }
   return [...days.values()].map(({ counts, ...d }) => ({ ...d, apps: [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([a]) => a) }));
-}
-
-/** Whether the person has this app connected (signed in). */
-export async function hasApp(d: BotsAreaDeps, userId: string, connectorId: string): Promise<boolean> {
-  if (!d.connectors) return false;
-  const conns = await safe(d.connectors.store.listConnections(userId), []);
-  return conns.some((c) => c.connectorId === connectorId && !!c.tokensEnc);
-}
-
-/** A read of a connected Google app, answered in its own words, or null when it is not connected or did not answer in time. */
-async function readApp(d: BotsAreaDeps, userId: string, app: string, tool: string, args: Record<string, unknown>, waitMs: number): Promise<string | null> {
-  if (!d.connectors || !(await hasApp(d, userId, app))) return null;
-  const call = d.connectors.hub.call(userId, app, tool, args).then((r) => (r.ok ? r.text : null), () => null);
-  const late = new Promise<null>((res) => { const t = setTimeout(() => res(null), waitMs); t.unref?.(); });
-  return Promise.race([call, late]);
-}
-
-/**
- * Today's Google Calendar: { connected, events } (events null when it could not be read). Not used by the Bots app any more: Today reads
- * the person's own calendar (src/calendar todayForShell). Kept, like the Google connectors, for the old app.
- */
-export async function readCalendar(d: BotsAreaDeps, userId: string, waitMs = 5000): Promise<{ connected: boolean; events: CalEvent[] | null }> {
-  const connected = await hasApp(d, userId, "google-calendar");
-  if (!connected) return { connected, events: null };
-  const text = await readApp(d, userId, "google-calendar", "list_events", { max: 25 }, waitMs);
-  return { connected, events: text === null ? null : calendarOf(text) };
-}
-
-/** Open Google Tasks for the coming week (and overdue): { connected, todos }. Not used by the Bots app any more (src/calendar upcomingForShell). */
-export async function readGoogleTasks(d: BotsAreaDeps, userId: string, waitMs = 5000): Promise<{ connected: boolean; todos: GoogleTodo[] | null }> {
-  const connected = await hasApp(d, userId, "google-tasks");
-  if (!connected) return { connected, todos: null };
-  const text = await readApp(d, userId, "google-tasks", "list_tasks", {}, waitMs);
-  return { connected, todos: text === null ? null : googleTasksOf(text) };
 }
 
 // ------------------------------------------------------------------ search
@@ -210,7 +175,7 @@ export interface RoutePreview {
 }
 
 /** What each built-in says it will do first, before it acts (STYLE.md: say what a bot will and won't do). */
-export function firstWords(slug: string, name: string): string {
+function firstWords(slug: string, name: string): string {
   switch (slug) {
     case "travel": return "Travel bot shows the plan before it books";
     case "plan": return "Plan Ease asks before it changes your calendar";

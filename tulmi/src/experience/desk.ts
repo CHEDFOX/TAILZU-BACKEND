@@ -715,7 +715,7 @@ const hourName = (h: number) => `${((h + 11) % 12) + 1} ${h < 12 ? "AM" : "PM"}`
  * On a day with nothing said yet the page still has its month to show — the
  * usual hours, the usual apps — and says so in each heading.
  */
-export function deskToday(ctx: DeskContext): ScreenResponse {
+function deskToday(ctx: DeskContext): ScreenResponse {
   const now = local(ctx, Date.now());
   const today = dayKey(now);
   const all = ctx.history ?? [];
@@ -968,7 +968,7 @@ function historyRow(it: EntryItem): Node {
   ], { gap: 24, paddingTop: 24, paddingBottom: 24 }, "d-entry");
 }
 
-export function deskHistory(ctx: DeskContext): ScreenResponse {
+function deskHistory(ctx: DeskContext): ScreenResponse {
   const all = ctx.history ?? [];
   const items = entryItems(ctx, all, false);
 
@@ -1009,7 +1009,7 @@ export function deskHistory(ctx: DeskContext): ScreenResponse {
  * type specimens, the dictionary as a ranking. An app opens its own page, a
  * day opens its own; nothing is hidden behind a tap that a page has room for.
  */
-export function deskInsights(ctx: DeskContext): ScreenResponse {
+function deskInsights(ctx: DeskContext): ScreenResponse {
   const now = local(ctx, Date.now());
   const words = ctx.usage?.month.words ?? ctx.stats?.wordsOut ?? 0;
   const saidMin = (ctx.usage?.month.audioSeconds ?? 0) / 60;
@@ -1247,7 +1247,7 @@ function barList(rows: Array<{ label: string; words: number; press?: ActionRef; 
  * the day under it, and down the side where the words went, how they were
  * written, and in what.
  */
-export function deskDay(ctx: DeskContext): ScreenResponse {
+function deskDay(ctx: DeskContext): ScreenResponse {
   const st = ctx.stats;
   const list = st?.days ?? [];
   const idx = Math.trunc(Number(ctx.params?.day));
@@ -1324,7 +1324,7 @@ export function deskDay(ctx: DeskContext): ScreenResponse {
  * of the same stats read. How much went there and in how many pieces, the time
  * of day it happens, and how it was written.
  */
-export function deskApp(ctx: DeskContext): ScreenResponse {
+function deskApp(ctx: DeskContext): ScreenResponse {
   const st = ctx.stats;
   const key = String(ctx.params?.app ?? "");
   const a = (st?.appDetail ?? []).find((x) => x.app === key);
@@ -1414,7 +1414,7 @@ function snippetPairs(p: Personality): Array<{ say: string; get: string }> {
   }).filter((x): x is { say: string; get: string } => !!x && !!x.say && !!x.get);
 }
 
-export function deskWords(ctx: DeskContext): ScreenResponse {
+function deskWords(ctx: DeskContext): ScreenResponse {
   const p = ctx.personality;
   // The dictionary's pairs are proof marks — what it was heard as, struck,
   // above what it is written as. The vocabulary's lines are words it knows.
@@ -1496,7 +1496,7 @@ export function deskWords(ctx: DeskContext): ScreenResponse {
  *  phone's Voice page treats it (catalog.ts selfBlock only activates Zu). */
 const ZU_ID = "signature";
 
-export function deskVoices(ctx: DeskContext): ScreenResponse {
+function deskVoices(ctx: DeskContext): ScreenResponse {
   const p = ctx.personality;
   const active = p.activePresetId || "signature";
   const voices = applyPresetOverrides(p.presetOverrides);
@@ -1623,7 +1623,7 @@ export function deskVoices(ctx: DeskContext): ScreenResponse {
  * what it noted per voice, and what it learns from — the days it heard them,
  * the voices and languages they write in (the stats read, when it arrived).
  */
-export function deskTrain(ctx: DeskContext): ScreenResponse {
+function deskTrain(ctx: DeskContext): ScreenResponse {
   const portrait = ctx.personality.stylePortrait;
   const st = ctx.stats;
   const now = local(ctx, Date.now());
@@ -1841,7 +1841,7 @@ const daypart = (h: number) => (h >= 5 && h < 12 ? 0 : h >= 12 && h < 17 ? 1 : h
  * run, when in the day, who is in them. Every note follows, newest first.
  * The charts only come once there are two notes to compare.
  */
-export function deskNotes(ctx: DeskContext): ScreenResponse {
+function deskNotes(ctx: DeskContext): ScreenResponse {
   const all = ctx.notes ?? [];
   const now = local(ctx, Date.now());
   const secs = all.reduce((s, x) => s + (x.durationSeconds || 0), 0);
@@ -2131,7 +2131,7 @@ function noteNumbers(nt: Note): Node[] {
  * voice, worded the best way. Under them, the conversation in numbers (see
  * noteNumbers); the transcript itself is never shown.
  */
-export function deskNote(ctx: DeskContext): ScreenResponse {
+function deskNote(ctx: DeskContext): ScreenResponse {
   const nt = ctx.note;
   if (!nt) {
     return screen("desk_note", "Note", [page([
@@ -2328,7 +2328,7 @@ function askFoldersCard(a: NonNullable<DeskContext["askSetup"]>): Node {
  * Every section is spaced the same (a heading, a line, its rows) and every row
  * is a defRow, so no row is taller than its neighbours.
  */
-export function deskSettings(ctx: DeskContext): ScreenResponse {
+function deskSettings(ctx: DeskContext): ScreenResponse {
   const q = planWords(ctx);
   const langs = (ctx.personality.languages ?? []).filter((l) => l && l !== "auto");
   const who = ctx.email || ctx.phone || "";
@@ -2671,7 +2671,7 @@ function toolRow(id: string, t: ConnectorTool, i: number): Node {
  * changed. Have a look." with Looks right. The tools are the app's own words:
  * from state, never translated.
  */
-export function deskConnector(ctx: DeskContext): ScreenResponse {
+function deskConnector(ctx: DeskContext): ScreenResponse {
   const app = ctx.assistant?.custom ? ctx.assistant.app : undefined;
   const back = row([link(w("tools.back"), { kind: "navigate", screenId: "desk_settings" })], { marginTop: 28 }, "d-tools");
   if (!app) {
@@ -2722,7 +2722,7 @@ const lastStep = (t: AssistantTask): string => t.steps[t.steps.length - 1]?.text
  * shows the exact words and answers to Approve or Not now, the same two the
  * confirm card gives (routes/connectors.ts approve and deny).
  */
-export function deskTasks(ctx: DeskContext): ScreenResponse {
+function deskTasks(ctx: DeskContext): ScreenResponse {
   const tasks = ctx.assistant?.tasks ?? [];
   const names = ctx.assistant?.names ?? {};
   const waiting = tasks.filter((t) => t.state === "waiting" && t.approval);
@@ -2783,7 +2783,7 @@ export function deskTasks(ctx: DeskContext): ScreenResponse {
  * that is writing. No preview: nothing in the window plays audio from an
  * endpoint, and the voice is heard where it is used.
  */
-export function deskVoiceRead(ctx: DeskContext): ScreenResponse {
+function deskVoiceRead(ctx: DeskContext): ScreenResponse {
   const current = isValidTtsVoice(ctx.personality.ttsVoice) ? ctx.personality.ttsVoice : DEFAULT_TTS_VOICE;
   const rows = TTS_VOICES.map((v) => defRow(
     v.label,
@@ -2810,7 +2810,7 @@ export function deskVoiceRead(ctx: DeskContext): ScreenResponse {
  * is saved to personality.assistantName, which the writer and the recognizer
  * both read (experience/assistantName). One field, Save, and "Tailzu only".
  */
-export function deskAssistantName(ctx: DeskContext): ScreenResponse {
+function deskAssistantName(ctx: DeskContext): ScreenResponse {
   const nick = nicknameOf(ctx.personality);
   const put = (assistantName: string): ActionRef => ({
     kind: "callEndpoint", method: "PUT", path: "/v1/personality",
@@ -2832,7 +2832,7 @@ export function deskAssistantName(ctx: DeskContext): ScreenResponse {
   ], { maxWidth: 820 })], { nick: nick ?? "" });
 }
 
-export function deskPlan(ctx: DeskContext): ScreenResponse {
+function deskPlan(ctx: DeskContext): ScreenResponse {
   // Free for everyone: nothing to choose, nothing to buy.
   if (ctx.free) {
     return screen("desk_plan", "Plan", [page([

@@ -83,7 +83,7 @@ const MIN_LINE: Record<keyof typeof PHONE_FONT, number> = {
   // these only keep t() from drawing either face tighter than its glyphs.
   grotesk: 1.1, hand: 1.15,
 };
-export const lineFor = (face: keyof typeof PHONE_FONT, size: number, asked?: unknown): number =>
+const lineFor = (face: keyof typeof PHONE_FONT, size: number, asked?: unknown): number =>
   Math.max(typeof asked === "number" ? asked : 0, Math.ceil(size * MIN_LINE[face]));
 
 /** Any text in one of the four faces. */
@@ -106,10 +106,6 @@ export const label = (content: string, style: Style = {}): Node =>
 /** A caption in the UI face. */
 export const caption = (content: string, style: Style = {}): Node =>
   t(content, "ui", 12.5, { lineHeight: 19, color: PHONE_LOOK.ink2, ...style });
-
-/** A section heading in the written face. */
-export const heading = (content: string, style: Style = {}): Node =>
-  t(content, "written", 16, style);
 
 /**
  * A sentence whose parts can differ — an italic phrase, a coloured figure —
@@ -143,7 +139,7 @@ export function sentence(
 }
 
 /** A thin bar: `pct` of a track. */
-export function bar(pct: number, color: string = PHONE_LOOK.ink, height = 3, style: Style = {}): Node {
+function bar(pct: number, color: string = PHONE_LOOK.ink, height = 3, style: Style = {}): Node {
   const w = Math.max(0, Math.min(100, pct || 0)); // NaN (0 of 0) is an empty bar, not "NaN%"
   return {
     type: "Stack",
@@ -223,7 +219,7 @@ function howYouSpeakNote(count: number): Node {
  * THE AIR BETWEEN THE STATS TAB'S SECTIONS. Asked for more room: each
  * section is one idea, and at 56 they read as one long list.
  */
-export const STATS_SECTION = 96;
+const STATS_SECTION = 96;
 
 /**
  * Where the Stats tab's words start: under the settings gear (catalog GEAR,

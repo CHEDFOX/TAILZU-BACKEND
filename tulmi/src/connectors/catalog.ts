@@ -476,7 +476,7 @@ export function enabledCatalog(ids: string[], all: readonly ConnectorDef[] = CAT
 // ------------------------------------------------------------- apps added by link
 
 /** The category every app a person added shows under. */
-export const CUSTOM_CATEGORY = "Added by you";
+const CUSTOM_CATEGORY = "Added by you";
 
 /** The ConnectorDef of an app a person added by link. */
 export function customDef(row: {

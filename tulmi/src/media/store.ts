@@ -287,4 +287,3 @@ export function mediaStore(): MediaStore {
   return current;
 }
 
-export function resetMediaStoreForTests(): void { current = null; }

@@ -36,7 +36,7 @@ import type { YouSettings } from "./settings.js";
 import { planOf, refusalOf, usageNow, type UsageEvent, type UsageNow, type UsagePlan, type UsageRefusal } from "./usage.js";
 
 /** India first: the month turns at midnight IST until the person's own offset is known (the screens send it). */
-export const DEFAULT_TZ = 330;
+const DEFAULT_TZ = 330;
 const CACHE_MS = 30_000;
 const JOBS_READ = 200;
 /** The meter reads this far back: a billing month and a day or two either side. */

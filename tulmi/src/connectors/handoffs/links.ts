@@ -29,7 +29,7 @@ export type LinkKind = "any" | "phone";
  */
 export const LINK_MAX = 8000;
 /** Google Maps URLs are limited to 2,048 characters (Maps URLs docs). */
-export const MAPS_LINK_MAX = 2048;
+const MAPS_LINK_MAX = 2048;
 
 /** Each link on the list: its pattern, where it opens, and, when it is shorter than LINK_MAX, its own limit. */
 const LINKS: ReadonlyArray<readonly [RegExp, LinkKind, number?]> = [

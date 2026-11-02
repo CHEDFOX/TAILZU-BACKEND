@@ -32,7 +32,7 @@ import { tickTodo } from "../notes/extract.js";
 import { pushEngine } from "../push/index.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 
-export const CALENDAR = "/v1/botsapp/calendar";
+const CALENDAR = "/v1/botsapp/calendar";
 
 type Body = Record<string, unknown>;
 const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArray(b) ? (b as Body) : {});

@@ -30,7 +30,7 @@ import { APPROVAL_TTL_MS, EXPIRED_STEP } from "./tasks.js";
 /** A tool's description, as far as the sheet shows it. */
 const DESCRIPTION_MAX = 1000;
 /** How long a screen waits for an app to list its tools before it says it couldn't. */
-export const TOOLS_SCREEN_WAIT_MS = 8000;
+const TOOLS_SCREEN_WAIT_MS = 8000;
 
 export async function connectorList(c: Connectors, userId: string, email?: string): Promise<ConnectorInfo[]> {
   const [conns, own] = await Promise.all([c.store.listConnections(userId), c.hub.customApps(userId)]);

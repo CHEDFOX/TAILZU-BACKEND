@@ -34,16 +34,11 @@ import { frontStore, type FrontStore } from "./store.js";
 import { FrontError, type Decision, type FrontCtx, type FrontResult, type Outcome } from "./types.js";
 
 export * from "./types.js";
-export { decide, DecideReply, lengthOf, RULES_SURE, CLARIFY_BELOW } from "./decide.js";
-export { dispatch, needsSelfCheck, SELF_CHECK_MIN, DEADLINES } from "./dispatch.js";
-export { readByRules } from "./rules.js";
-export { chooseVisual, needsOf, askedKind, estimatePaise, habitFactor } from "./visual.js";
-export { AttachmentRegistry, AttachmentCache, refFromBody, kindOf, relevantPart, textHandler, imageHandler } from "./attachments.js";
-export { defaultHandlers, planDiagram, planText, replyUser } from "./handlers.js";
+export { AttachmentRegistry, refFromBody } from "./attachments.js";
 export type { Handlers, RouteCall } from "./handlers.js";
-export { MemoryFrontStore, SupabaseFrontStore, frontStore, resetFrontStoreForTests } from "./store.js";
+export { MemoryFrontStore } from "./store.js";
 export type { FrontStore, DecisionRow } from "./store.js";
-export { Learning, RephraseWatch, habitOf, trustOf } from "./learn.js";
+export { Learning } from "./learn.js";
 
 /** How long the front door keeps a project's name and line. */
 const NAMED_FRESH_MS = 10 * 60_000;

@@ -110,19 +110,19 @@ export function clock(ms: number, tz: number): string {
   return `${h12}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "am" : "pm"}`;
 }
 /** "Thu 29 Oct". */
-export function dayWords(key: string): string {
+function dayWords(key: string): string {
   const d = new Date(`${key}T00:00:00Z`);
   return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
-export const weekdayLong = (key: string): string => WEEKDAYS_LONG[new Date(`${key}T00:00:00Z`).getUTCDay()]!;
-export const shiftDay = (key: string, n: number): string => new Date(Date.parse(`${key}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
+const weekdayLong = (key: string): string => WEEKDAYS_LONG[new Date(`${key}T00:00:00Z`).getUTCDay()]!;
+const shiftDay = (key: string, n: number): string => new Date(Date.parse(`${key}T00:00:00Z`) + n * DAY).toISOString().slice(0, 10);
 /** The Monday of the week `key` is in. */
-export function mondayOf(key: string): string {
+function mondayOf(key: string): string {
   const wd = new Date(`${key}T00:00:00Z`).getUTCDay();
   return shiftDay(key, -((wd + 6) % 7));
 }
 /** ISO with the person's offset: "2026-10-30T10:00:00+05:30". */
-export function isoAt(ms: number, tz: number): string {
+function isoAt(ms: number, tz: number): string {
   const d = local(ms, tz).toISOString().slice(0, 19);
   const sign = tz >= 0 ? "+" : "-";
   const a = Math.abs(tz);

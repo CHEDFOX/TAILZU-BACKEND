@@ -41,12 +41,12 @@ export interface SearchResult {
 }
 
 /** Lower case, accents off, punctuation to spaces. */
-export function fold(s: string): string {
+function fold(s: string): string {
   return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^\p{L}\p{N}#@.]+/gu, " ").trim();
 }
 
 /** The query's words (two letters at least, the first eight). */
-export function wordsOfQuery(q: string): string[] {
+function wordsOfQuery(q: string): string[] {
   return [...new Set(fold(q).split(/\s+/).filter((w) => w.length >= 2))].slice(0, 8);
 }
 

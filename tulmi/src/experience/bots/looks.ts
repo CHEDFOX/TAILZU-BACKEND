@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { evaluate, parse, type Ast, type Ctx } from "../motionLang.js";
 
 /** The looks format the apps of this release play (core.ts LOOKS_FORMAT). */
-export const LOOKS_FORMAT = 1;
+const LOOKS_FORMAT = 1;
 
 export type BuddyActName = "play" | "wave" | "survey" | "read" | "settle" | "think" | "carry";
 
@@ -40,15 +40,15 @@ export interface LooksCatalog {
 // ---------------------------------------------------------------- what the apps know (core.ts, kept in step)
 
 /** The names a moment's expression may read, and its built-in functions ([fewest, most] arguments). */
-export const MOMENT_VARS = ["t", "u", "T", "D", "beat", "k", "side", "rnd", "rnd2", "W", "x", "px"];
+const MOMENT_VARS = ["t", "u", "T", "D", "beat", "k", "side", "rnd", "rnd2", "W", "x", "px"];
 const CONSTS: Record<string, number> = { pi: Math.PI, tau: Math.PI * 2, e: Math.E };
-export const MOMENT_FUNCS: Record<string, [number, number]> = {
+const MOMENT_FUNCS: Record<string, [number, number]> = {
   sin: [1, 1], cos: [1, 1], tan: [1, 1], abs: [1, 1], sqrt: [1, 1], floor: [1, 1], ceil: [1, 1], round: [1, 1], exp: [1, 1], log: [1, 1],
   atan2: [2, 2], min: [1, 8], max: [1, 8], pow: [2, 2], hypot: [1, 8], clamp: [3, 3], smooth: [3, 3], lerp: [3, 3], crest: [1, 1],
   ramp: [3, 4], run: [5, 5], noise: [1, 1], sign: [1, 1], tri: [1, 1], hash: [1, 1],
 };
 /** Each track's own fields: x a number or an expression, n a number, the rest named choices. */
-export const TRACK_FIELDS: Record<string, Record<string, string>> = {
+const TRACK_FIELDS: Record<string, Record<string, string>> = {
   walk: { x: "x", dx: "x", toward: "walk", gap: "x", speed: "x" },
   crouch: { v: "x" }, sit: { v: "x" }, lean: { v: "x" }, tilt: { v: "x" }, lid: { v: "x" },
   arm: { hand: "hand", x: "x", y: "x", from: "from", k: "x", over: "bool" },
@@ -66,7 +66,7 @@ export const TRACK_FIELDS: Record<string, Record<string, string>> = {
   glow: { v: "x" }, sound: { name: "name" }, others: { play: "moment", n: "n", near: "n" }, event: { name: "name" }, blink: {},
 };
 const INSTANT = new Set(["hop", "kick", "fabric", "glow", "sound", "others", "event", "blink"]);
-export const ANCHORS = ["head", "crown", "face", "mouth", "neck", "body", "hip", "hand_l", "hand_r", "hand_front", "hand_back", "foot_l", "foot_r", "ground"];
+const ANCHORS = ["head", "crown", "face", "mouth", "neck", "body", "hip", "hand_l", "hand_r", "hand_front", "hand_back", "foot_l", "foot_r", "ground"];
 const ENUMS: Record<string, string[]> = {
   hand: ["front", "back", "l", "r", "both"],
   from: ["neck", "head", "hip", "crown", "face", "body"],
@@ -85,7 +85,7 @@ const RANGES: Record<string, [number, number]> = {
   rate: [0.1, 10], n: [1, 24], every: [0, 10], spread: [0, 3], g: [-3, 3], drag: [0, 20], life: [0.05, 10], grow: [0, 6], spin: [0, 30],
   alpha: [0, 1], flight: [0.1, 3], miss: [0, 1], pause: [0, 10], orbit: [0, 2], orbitRate: [-20, 20], near: [1, 40],
 };
-export const MOMENT_LIMITS = { tracks: 40, events: 8, dur: 60, props: 4 } as const;
+const MOMENT_LIMITS = { tracks: 40, events: 8, dur: 60, props: 4 } as const;
 const ACTS: BuddyActName[] = ["play", "wave", "survey", "read", "settle", "think", "carry"];
 const KINDS = ["code", "keybot", "plan", "travel", "notes", "make", "custom"];
 
@@ -446,7 +446,7 @@ export function looksFlags(): Record<string, unknown> {
 // ---------------------------------------------------------------- for screens
 
 /** A build that plays the catalog (it declares BotMoments), with the living bots. */
-export const BOT_MOMENTS = "BotMoments";
+const BOT_MOMENTS = "BotMoments";
 
 /** The newest recipe format a build plays: 1 for "BotMoments", n for a later build that also declares "BotMoments<n>"; 0 none. */
 export function playsFormat(can: ReadonlySet<string>): number {

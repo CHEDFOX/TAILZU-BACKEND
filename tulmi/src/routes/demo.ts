@@ -46,7 +46,7 @@ const FORMATS: AudioFormat[] = ["wav", "m4a", "webm", "mp3", "ogg", "flac"];
  * that forges the header only mints itself buckets, which the day's budget
  * (DEMO_PER_DAY) still bounds.
  */
-export function demoVisitor(req: FastifyRequest): string {
+function demoVisitor(req: FastifyRequest): string {
   const v = req.headers["x-vercel-forwarded-for"];
   const first = (Array.isArray(v) ? v[0] : v)?.split(",")[0]?.trim();
   return "demo:" + (first && isIP(first) ? first : req.ip);
@@ -121,7 +121,7 @@ export const AUTH_RESUME_SCHEME_URL = "tulmi://auth/callback";
  * navigation without a tap is the one thing some browsers refuse; the tap is
  * the way through when they do.
  */
-export const AUTH_CALLBACK_HTML = `<!doctype html>
+const AUTH_CALLBACK_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -164,7 +164,7 @@ export const AUTH_CALLBACK_HTML = `<!doctype html>
  * not a lookup — the page cannot know which phone is holding which state, and
  * does not need to: the app redeems only the one it is waiting for.
  */
-export const AUTH_STATE_RE = /^[A-Za-z0-9_-]{32,128}$/;
+const AUTH_STATE_RE = /^[A-Za-z0-9_-]{32,128}$/;
 
 /**
  * What a callback WITHOUT a state gets: no bounce, nothing of the request in
@@ -172,7 +172,7 @@ export const AUTH_STATE_RE = /^[A-Za-z0-9_-]{32,128}$/;
  * carries one, so a return without one is somebody else's — typically a link
  * built to sign this phone into the sender's account.
  */
-export const AUTH_CALLBACK_REFUSED_HTML = `<!doctype html>
+const AUTH_CALLBACK_REFUSED_HTML = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">

@@ -332,7 +332,7 @@ async function writeRegistryAndInvalidate(mediaDir: string, r: MediaRegistry): P
 /** One video file in, its first frame out as WebP bytes (or null). */
 export type FrameExtractor = (videoFile: string) => Promise<Buffer | null>;
 
-export const ffmpegFirstFrame: FrameExtractor = async (videoFile) => {
+const ffmpegFirstFrame: FrameExtractor = async (videoFile) => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "tulmi-poster-"));
   try {
     const out = path.join(dir, "frame.webp");

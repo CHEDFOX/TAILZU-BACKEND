@@ -101,7 +101,7 @@ export function onboardMode(c?: unknown, formFactor?: string): OnboardMode {
 }
 
 /** The build can fill "$state.x" into an address (so Connect apps works). */
-export const storeCanConnect = (c?: unknown): boolean => hasAll(c, ["ActionUrl"]);
+const storeCanConnect = (c?: unknown): boolean => hasAll(c, ["ActionUrl"]);
 
 /**
  * Where a cold start lands. Languages are asked once: someone who has answered

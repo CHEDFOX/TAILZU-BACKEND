@@ -29,11 +29,11 @@ import type { Level, Policy, Risk } from "./risk.js";
 import type { NeedsWords } from "../widgets/botWords.js";
 
 export type TaskState = "running" | "waiting" | "done" | "failed" | "cancelled";
-export const TERMINAL_STATES: readonly TaskState[] = ["done", "failed", "cancelled"];
+const TERMINAL_STATES: readonly TaskState[] = ["done", "failed", "cancelled"];
 /** The steps a task keeps, the newest. */
 export const TASK_STEPS_MAX = 30;
 /** Tasks the sweeper closes in one pass. */
-export const STUCK_BATCH = 200;
+const STUCK_BATCH = 200;
 
 export interface Connection {
   userId: string;
@@ -492,4 +492,3 @@ export function connectorStore(): ConnectorStore {
   return current;
 }
 
-export function resetConnectorStoreForTests(): void { current = null; }

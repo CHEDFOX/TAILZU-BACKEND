@@ -34,7 +34,7 @@ export function deletePageCsp(nonce: string, captcha: boolean): string {
 }
 
 /** What goes, and what stays: the same account as the app's Delete account (server.ts eraseAccount). */
-export const DELETED = [
+const DELETED = [
   "Your account and how you sign in to it (your email address or phone number, and your name)",
   "Your profile and settings, the personality and words Keylessbord learned, and your dictation history",
   "Your bots, what they remember, their keys, and your chats with them",
@@ -43,7 +43,7 @@ export const DELETED = [
   "The spaces you made, with everything in them; your place in other spaces, and everything you shared in them",
   "Your usage records, notification tokens and the record of your purchases on our side",
 ];
-export const KEPT = [
+const KEPT = [
   "Messages you sent in chats with other people stay in those chats for them, under the name you had then. Things you shared in other people's spaces are deleted.",
   "Reports you made, and reports about things you sent, are kept as a safety record, without your account.",
   "Apple, Google and Razorpay keep their own records of what you bought, as the law asks them to. Deleting your account doesn't cancel a subscription: cancel it in the App Store, Google Play or the app first.",

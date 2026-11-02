@@ -65,7 +65,7 @@ export type CareRig = Awaited<ReturnType<typeof careRig>>;
 const sender = (login: string, type = "User") => ({ login, type });
 
 /** The payloads GitHub sends, with the fields the engine reads. */
-export function events(repo: FakeRepo) {
+function events(repo: FakeRepo) {
   const repository = { id: repo.id, full_name: repo.fullName };
   const pull = (number: number, branch: string) => ({ number, head: { ref: branch, repo: { id: repo.id } }, base: { ref: repo.defaultBranch, repo: { id: repo.id } } });
   return {
@@ -83,4 +83,3 @@ export function events(repo: FakeRepo) {
   };
 }
 
-export { UTIL_EDIT };

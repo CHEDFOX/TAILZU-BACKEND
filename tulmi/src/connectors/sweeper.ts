@@ -26,7 +26,7 @@ import type { ConnectorStore } from "./store.js";
 /** How long a task may run with nothing happening. A desktop step is at most its 60 s deadline; an app call, 20 s. */
 export const STUCK_MS = 10 * 60_000;
 /** How often the sweeper looks. */
-export const SWEEP_EVERY_MS = 60_000;
+const SWEEP_EVERY_MS = 60_000;
 /** The step a stuck task ends on: the reason, as the person reads it on Tasks. */
 export const STUCK_STEP = "Stopped: nothing happened for 10 minutes.";
 

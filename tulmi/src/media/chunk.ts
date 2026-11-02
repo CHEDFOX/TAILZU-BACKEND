@@ -16,7 +16,7 @@
  */
 import { CHUNKS_MAX, type Chunk, type FoundChunk } from "./types.js";
 
-export const CHUNK_TARGET = 900;
+const CHUNK_TARGET = 900;
 export const CHUNK_MAX = 1400;
 
 const STOP = new Set([

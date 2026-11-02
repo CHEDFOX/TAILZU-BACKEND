@@ -31,7 +31,7 @@ export const TOKEN_RE = /^xwt_[A-Za-z0-9_-]{43}$/;
 export const DEVICE_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
 export const hashToken = (t: string): string => createHash("sha256").update(t).digest("hex");
-export const newToken = (): string => `xwt_${randomBytes(32).toString("base64url")}`;
+const newToken = (): string => `xwt_${randomBytes(32).toString("base64url")}`;
 
 export interface TokenRow { id: string; userId: string; device: string; hash: string; scopes: WidgetScope[]; createdAt: number; expiresAt: number; revokedAt: number | null; lastUsedAt: number | null }
 
@@ -72,7 +72,7 @@ const fromDb = (r: DbRow): TokenRow => ({
   createdAt: Date.parse(r.created_at), expiresAt: Date.parse(r.expires_at), revokedAt: ms(r.revoked_at), lastUsedAt: ms(r.last_used_at),
 });
 
-export class SupabaseWidgetTokenStore implements WidgetTokenStore {
+class SupabaseWidgetTokenStore implements WidgetTokenStore {
   constructor(private readonly sb: SupabaseClient) {}
   async insert(row: TokenRow) {
     const { error } = await this.sb.from(TABLE).insert({
@@ -165,4 +165,3 @@ export function widgetTokenStore(): WidgetTokenStore {
   return current;
 }
 
-export function resetWidgetTokenStoreForTests(): void { current = null; }

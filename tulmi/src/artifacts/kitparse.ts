@@ -81,7 +81,7 @@ export function colorToHex(raw: string): string | null {
 }
 
 /** `var(--x)` replaced by its value from `vars`, up to three deep, so `hsl(var(--primary))` reads as a colour. */
-export function resolveVars(value: string, vars: Readonly<Record<string, string>>): string {
+function resolveVars(value: string, vars: Readonly<Record<string, string>>): string {
   let out = value;
   for (let i = 0; i < 3 && /var\(/.test(out); i += 1) {
     out = out.replace(/var\(\s*--([\w-]+)\s*(?:,\s*([^)]*))?\)/g, (_m, name: string, fallback?: string) => vars[name] ?? fallback ?? "");
@@ -115,7 +115,7 @@ export function mergeTokens(into: KitTokens, from: Partial<KitTokens>): void {
 }
 
 /** The first family of a font stack, unquoted: `"Inter", system-ui, sans-serif` is Inter. Generic families and variables give null. */
-export function firstFamily(stack: string): string | null {
+function firstFamily(stack: string): string | null {
   for (const part of stack.split(",")) {
     const f = part.trim().replace(/^["']|["']$/g, "").trim();
     if (!f || /^var\(/.test(f) || /^(?:ui-|-apple-system|blinkmacsystemfont|system-ui|sans-serif|serif|monospace|cursive|fantasy|inherit)/i.test(f)) continue;
@@ -134,7 +134,7 @@ type Lit = unknown;
  * objects and arrays are kept; anything that needs running (a call, a variable, a spread, a function, a template with ${}) is dropped,
  * along with the property it was the value of. Comments, unquoted and quoted keys, trailing commas and `as const` are fine.
  */
-export function readLiteral(src: string, at: number): Lit {
+function readLiteral(src: string, at: number): Lit {
   let i = at;
   let budget = 40_000;
   const ws = () => {
@@ -297,7 +297,7 @@ export interface CssRead {
 export interface CssBlock { selector: string; body: string; at: string[] }
 
 /** The rule blocks of a stylesheet, descending into @layer, @media, @supports and @container. */
-export function cssBlocks(css: string, at: string[] = []): CssBlock[] {
+function cssBlocks(css: string, at: string[] = []): CssBlock[] {
   const text = at.length ? css : css.replace(/\/\*[\s\S]*?\*\//g, "");
   const out: CssBlock[] = [];
   let i = 0;
@@ -323,7 +323,7 @@ export function cssBlocks(css: string, at: string[] = []): CssBlock[] {
   return out;
 }
 
-export function declarations(body: string): Array<[string, string]> {
+function declarations(body: string): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   for (const m of body.matchAll(/(--?[\w-]+)\s*:\s*((?:[^;{}"']|"[^"]*"|'[^']*')+?)\s*(?:;|$)/g)) out.push([m[1]!, m[2]!.trim()]);
   return out;

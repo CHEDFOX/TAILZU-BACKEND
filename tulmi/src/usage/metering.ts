@@ -410,7 +410,7 @@ function monthResetDate(): string {
  * the JWT-scoped (RLS) client — so quota reads work on anon-key-only
  * deployments too (a service-only read there returned null → quota fail-open).
  */
-export async function usageMomentsSince(
+async function usageMomentsSince(
   user: AuthedUser,
   sinceIso: string,
 ): Promise<Array<{ at: number; audioSeconds: number; words: number; source?: string }> | null> {
@@ -435,7 +435,7 @@ export async function usageMomentsSince(
 }
 
 /** The start of the current monthly window, in UTC. */
-export function monthStartIso(now = new Date()): string {
+function monthStartIso(now = new Date()): string {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 

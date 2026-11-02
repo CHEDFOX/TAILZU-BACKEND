@@ -54,7 +54,7 @@ export interface EngineOptions {
   guard?: Pick<GuardOptions, "allow" | "resolve">;
 }
 
-export const RENDER_TIMEOUT_MS = 20_000;
+const RENDER_TIMEOUT_MS = 20_000;
 const QUIET_MS = 500;
 const POLL_MS = 40;
 /** Request types that may never finish, so "nothing in flight" cannot wait for them. */

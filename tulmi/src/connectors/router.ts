@@ -43,7 +43,7 @@ import { JOB_APPS, JOB_HUBS, KNOWN_IDS, readIntent, toolVerb, type Intent, type 
 export const MAX_CONNECTORS = 3;
 export const MAX_TOOLS = 12;
 /** Tools shown beside the chosen one (and the list tool it needs) when the app is sure. */
-export const MORE_TOOLS = 3;
+const MORE_TOOLS = 3;
 const WEEK_MS = 7 * 24 * 60 * 60_000;
 
 const STOP = new Set([

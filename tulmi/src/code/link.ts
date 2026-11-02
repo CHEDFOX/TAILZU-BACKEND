@@ -120,7 +120,7 @@ export async function completeCallback(d: LinkDeps, q: CallbackQuery, now = Date
  * is kept as it was: that needs their own token, which only the install step
  * has. Returns how many links remain.
  */
-export async function resyncInstallations(d: LinkDeps, userId: string): Promise<number> {
+async function resyncInstallations(d: LinkDeps, userId: string): Promise<number> {
   const links = await d.store.listInstallations(userId);
   let left = links.length;
   for (const link of links) {

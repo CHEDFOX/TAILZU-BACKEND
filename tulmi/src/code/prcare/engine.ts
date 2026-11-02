@@ -50,7 +50,7 @@ import {
 } from "./types.js";
 
 /** The events PR care listens to. */
-export const CARE_EVENTS: ReadonlySet<string> = new Set(["pull_request", "pull_request_review", "pull_request_review_comment", "issue_comment", "check_run", "check_suite", "status"]);
+const CARE_EVENTS: ReadonlySet<string> = new Set(["pull_request", "pull_request_review", "pull_request_review_comment", "issue_comment", "check_run", "check_suite", "status"]);
 
 export interface CareDeps {
   projects: ProjectDeps;

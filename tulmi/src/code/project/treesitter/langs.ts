@@ -54,7 +54,7 @@ export interface Adapter {
 // ----------------------------------------------------------------- helpers
 
 export const row = (n: Node): number => n.startPosition.row + 1;
-export const endRow = (n: Node): number => n.endPosition.row + 1;
+const endRow = (n: Node): number => n.endPosition.row + 1;
 
 function ancestor(n: Node, types: ReadonlySet<string>): Node | null {
   for (let p = n.parent; p; p = p.parent) if (types.has(p.type)) return p;

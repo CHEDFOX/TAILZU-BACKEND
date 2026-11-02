@@ -792,7 +792,7 @@ export const SITE_UI = {
 } as const;
 
 /** The You tab's three small cards (see settingCard). */
-export const YOU_CARD_FILL = { dictionary: "#16463D", languages: "#4B2240", haptics: "#253A5C", stats: "#3A2B1C" } as const;
+const YOU_CARD_FILL = { dictionary: "#16463D", languages: "#4B2240", haptics: "#253A5C", stats: "#3A2B1C" } as const;
 /** Between the You tab's cards, top to bottom: three times the 14 it was, so
  *  each card is a place of its own rather than a row in a list. */
 const YOU_CARD_GAP = 42;
@@ -1699,7 +1699,7 @@ const TAB_PALE = "#F3E2C6";
  * Declared before the set because the set uses it, and a `const` read while
  * the module is still being evaluated has to already exist.
  */
-export const TAB_GLYPH_CONTRAST: TabGlyph = {
+const TAB_GLYPH_CONTRAST: TabGlyph = {
   layers: [
     {
       d: "M5.80 16.00 A7.2 7.2 0 1 1 20.20 16.00 A7.2 7.2 0 1 1 5.80 16.00 Z",
@@ -1768,23 +1768,6 @@ const TAB_GLYPHS: Record<string, TabGlyph> = {
   personality: TAB_GLYPH_CONTRAST,
 };
 
-/**
- * The person, built and kept for whenever You wants it back. Same rules as the
- * three above: malt at rest, the body to the accent when lit. Unused — swap it
- * into `personality` to use it.
- */
-export const TAB_GLYPH_PERSON: TabGlyph = {
-  layers: [
-    // Body first so the head sits over it.
-    { d: "M6.2 26.8 A9.8 9.8 0 0 1 25.8 26.8 Z", fill: true, activeFill: true, color: TAB_MALT, activeColor: TAB_ACCENT },
-    {
-      // Low, sitting ON the shoulders rather than floating above them. A head
-      // with air under it reads as a balloon.
-      d: "M11.3 12.4 A4.7 4.7 0 1 1 20.7 12.4 A4.7 4.7 0 1 1 11.3 12.4 Z",
-      fill: true, activeFill: true, color: TAB_MALT,
-    },
-  ],
-};
 /**
  * THE DOCK — three squares close together, not a bar across the screen.
  *
@@ -4342,7 +4325,7 @@ export const PAYWALL_UI = {
  * A plan row's `storePrice` (app billing/storePrice.ts): the phone shows the store's own price for the package, in the
  * person's currency, in place of the words this file holds. With a template, the store's monthly price in that line.
  */
-export function storePriceOf(
+function storePriceOf(
   plan: { offeringId?: string; packageId?: string }, template?: string,
 ): { storePrice?: { packageId: string; offeringId?: string; field?: "perMonth"; template?: string } } {
   if (!plan.packageId) return {};
@@ -5827,7 +5810,7 @@ function authScreenTree(
  * are deliberate — roughly a third of the field is past the edge, which is
  * what makes the picture read as a section of something larger.
  */
-export const NEURAL_FIELD = {
+const NEURAL_FIELD = {
   /** The whole field's opacity. Lower it where the field is scenery behind
    *  copy; leave it at 1 where the field IS the screen. */
   alpha: 1,
@@ -13491,7 +13474,6 @@ const MIC_MOTION = {
 // #FFFFFFE6 (90% white) is what native reads as against the light keyboard
 // backdrop and holds up over any light-app content behind it.
 const LIGHT_KEY_FILL_LETTER = "#FFFFFFE6";     // 90% white — solid-white chips
-export const LIGHT_KEY_FILL_FUNCTION = "#C7CDD3E6";   // ~90% opaque light gray — kept exported for the next light-mode row expansion
 const LIGHT_KEY_TEXT = "#000000";
 
 /** Which keyboard is asking. Derived server-side from the request, never

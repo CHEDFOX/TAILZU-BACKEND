@@ -57,7 +57,7 @@ interface Template {
 const skills = (on: Partial<BotSkills>): BotSkills => ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on });
 
 /** Tailzu's ready-made bots: real definitions, added as the person's own copy. */
-export const READY_MADE: readonly Template[] = [
+const READY_MADE: readonly Template[] = [
   {
     id: "tailzu-study", name: "Study bot", colour: "plum", purpose: "Turns Classroom work into a daily plan",
     about: "Turns Classroom work into a daily plan. Good for school, college and exam prep.",

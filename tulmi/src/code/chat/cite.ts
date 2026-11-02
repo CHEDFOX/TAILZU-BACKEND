@@ -93,7 +93,7 @@ export function citationsIn(text: string): Cite[] {
 }
 
 /** Whether a citation points at something that is there. */
-export function resolves(c: Pick<Cite, "path" | "from" | "to">, anchors: Anchors): boolean {
+function resolves(c: Pick<Cite, "path" | "from" | "to">, anchors: Anchors): boolean {
   const a = anchors.get(c.path);
   if (!a || c.from < 1 || c.to < c.from) return false;
   if (a.exact) return c.to <= Math.max(a.max, 1);

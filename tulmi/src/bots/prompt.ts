@@ -65,7 +65,7 @@ export function rulesBlock(rules: readonly string[]): string {
   return rules.slice(0, LIMITS.rules).map((r, i) => `${i + 1}. ${inert.has(i) ? INERT_NOTE : oneLine(forModel(r), LIMITS.rule)}`).join("\n");
 }
 
-export function skillsLine(skills: PromptParts["bot"]["skills"]): string {
+function skillsLine(skills: PromptParts["bot"]["skills"]): string {
   const on = SKILL_NAMES.filter((s) => skills[s]);
   return on.length || skills.connectors.length ? [...on, ...(skills.connectors.length ? ["connected apps"] : [])].join(", ") : "none: you answer from what you know";
 }

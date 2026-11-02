@@ -26,14 +26,14 @@ import { spaceTable, type PagedTable } from "./spaceRows.js";
 import type { Publish, Spaces } from "./spaces.js";
 import type { Threads } from "./threads.js";
 
-export const REASONS = ["spam", "harassment", "hate", "sexual", "violence", "self_harm", "illegal", "other"] as const;
+const REASONS = ["spam", "harassment", "hate", "sexual", "violence", "self_harm", "illegal", "other"] as const;
 export type Reason = (typeof REASONS)[number];
 /** How each reason reads, in the app and in the mail. */
 export const REASON_WORDS: Record<Reason, string> = {
   spam: "Spam or a scam", harassment: "Bullying or harassment", hate: "Hate speech", sexual: "Sexual content", violence: "Violence or threats",
   self_harm: "Self-harm or suicide", illegal: "Something illegal", other: "Something else",
 };
-export const REPORT_KINDS = ["message", "item", "person"] as const;
+const REPORT_KINDS = ["message", "item", "person"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 /** Every report is acted on within a day (Terms, section 4). */
@@ -41,9 +41,9 @@ export const ACT_WITHIN_MS = 24 * 3600_000;
 /** How many reports one person can send in a day: enough for anything real, and a bound on a flood. */
 export const REPORTS_A_DAY = 20;
 /** Where reports are mailed: the owner's support inbox. */
-export const SAFETY_EMAIL = (process.env.SAFETY_REPORTS_EMAIL || "support@x0bot.com").trim();
+const SAFETY_EMAIL = (process.env.SAFETY_REPORTS_EMAIL || "support@x0bot.com").trim();
 /** Where the admin acts on them (the control console, GET /admin, its Reports tab). */
-export const ADMIN_URL = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/admin`;
+const ADMIN_URL = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/admin`;
 
 export interface ReportRow {
   [k: string]: unknown;

@@ -48,14 +48,14 @@ import { egressFetchWith, type FetchLike } from "./egress.js";
 import { stripInvisible } from "./hygiene.js";
 
 export const REGISTRY_URL = "https://registry.modelcontextprotocol.io/v0.1/servers";
-export const SYNC_EVERY_MS = 12 * 60 * 60_000;
+const SYNC_EVERY_MS = 12 * 60 * 60_000;
 /** The first run waits this long after the server starts, so a deploy is not also a crawl. */
-export const FIRST_SYNC_DELAY_MS = 60_000;
-export const PAGE_SIZE = 100;
+const FIRST_SYNC_DELAY_MS = 60_000;
+const PAGE_SIZE = 100;
 /** 480 pages on 2026-10-22: room to grow, and a stop if a cursor never ends. */
-export const MAX_PAGES = 2000;
+const MAX_PAGES = 2000;
 /** One page of results. */
-export const SEARCH_LIMIT = 20;
+const SEARCH_LIMIT = 20;
 /** An incremental run asks from a little before the last one started, so nothing published in between is missed. */
 const OVERLAP_MS = 10 * 60_000;
 /** A page is a hundred server.json documents: a few hundred KB. */
@@ -78,7 +78,7 @@ const QUERY_MAX = 60;
  * Unverified, and still gets everything an app added by link gets. An app we
  * are ready to vouch for belongs in catalog.ts instead.
  */
-export const DIRECTORY_FEATURED: readonly string[] = [];
+const DIRECTORY_FEATURED: readonly string[] = [];
 
 /** An MCP Registry name: reverse DNS, a slash, a name ("io.github.someone/server"). */
 export const REGISTRY_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$/;
@@ -130,7 +130,7 @@ function pickRemote(remotes: unknown): URL | null {
 }
 
 /** "com.stripe/mcp" -> "stripe.com"; null when the namespace is not a domain. */
-export function domainOfName(name: string): string | null {
+function domainOfName(name: string): string | null {
   const ns = name.split("/")[0] ?? "";
   const labels = ns.toLowerCase().split(".").filter(Boolean);
   return labels.length >= 2 ? labels.reverse().join(".") : null;

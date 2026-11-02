@@ -18,7 +18,7 @@ const UP_MAX = 2;
 const DOWN_PER_NODE = 3;
 
 /** A label as Mermaid takes it inside quotes: no quotes, brackets or breaks; short. */
-export function boxLabel(s: string, max = 40): string {
+function boxLabel(s: string, max = 40): string {
   const t = s.replace(/["\n\r[\]{}()<>|`#;]/g, " ").replace(/\s+/g, " ").trim();
   return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t || "file";
 }

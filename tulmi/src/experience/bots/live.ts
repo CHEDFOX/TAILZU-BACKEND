@@ -207,7 +207,7 @@ export function weekAndMonthStart(now: number, tzOffsetMinutes: number): { week:
   return { week, month };
 }
 
-export function greetingAt(now: number, tzOffsetMinutes: number): string {
+function greetingAt(now: number, tzOffsetMinutes: number): string {
   const h = new Date(now + tzOffsetMinutes * 60_000).getUTCHours();
   return h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
 }

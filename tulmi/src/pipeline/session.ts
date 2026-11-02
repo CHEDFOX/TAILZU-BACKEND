@@ -37,7 +37,7 @@ export interface RecentDictation {
 }
 
 export const SESSION_WINDOW_MS = 30 * 60_000;
-export const SESSION_MAX = 5;
+const SESSION_MAX = 5;
 const SESSION_READ_MS = 350;
 const CLIP = 400;
 

@@ -65,7 +65,7 @@ export interface WebOtp {
  * Supabase's own email code, as the app uses it (signInWithOtp / verifyOtp), with the public anon key (or the service key when that
  * is all there is). A client per call, so no session is ever kept on the server. Null without Supabase.
  */
-export function supabaseOtp(): WebOtp | null {
+function supabaseOtp(): WebOtp | null {
   const cfg = getConfig();
   const key = cfg.SUPABASE_ANON_KEY ?? cfg.SUPABASE_SERVICE_KEY;
   if (!cfg.SUPABASE_URL || !key) return null;
@@ -90,7 +90,7 @@ const JOBS_LOOKED_AT = 100;
  * The person's bots stop: each job still going is stopped the way Stop job stops it (the agent's loop is told, a step that is out is
  * dropped, a late result is refused), with a reason that says nothing about the account. Best effort, one at a time; returns how many.
  */
-export async function stopJobsOf(userId: string, o: Pick<AccountDeletionDeps, "jobs" | "agent">, log?: { warn: (o: object, m: string) => void }): Promise<number> {
+async function stopJobsOf(userId: string, o: Pick<AccountDeletionDeps, "jobs" | "agent">, log?: { warn: (o: object, m: string) => void }): Promise<number> {
   if (!o.jobs) return 0;
   const going = (await o.jobs.listJobs(userId, JOBS_LOOKED_AT).catch(() => [])).filter((j) => !isEnded(j.state));
   let stopped = 0;

@@ -39,12 +39,12 @@ export const DEFAULT_SETTINGS: YouSettings = {
 };
 
 /** 1,00,00,000 paise a month is the most a stored limit may be. */
-export const LIMIT_MAX_PAISE = 10_000_000;
+const LIMIT_MAX_PAISE = 10_000_000;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 const minuteOfDay = (v: unknown, d: number): number => (Number.isInteger(v) && (v as number) >= 0 && (v as number) < 1440 ? (v as number) : d);
 /** 10:30 pm as { h: 10, m: 30, ap: "pm" } → 1350, the minute of the day; null when it isn't a time. */
-export function minuteOfClock(v: unknown): number | null {
+function minuteOfClock(v: unknown): number | null {
   const t = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
   const h = Number(t.h), m = Number(t.m), ap = t.ap;
   if (!Number.isInteger(h) || h < 1 || h > 12 || !Number.isInteger(m) || m < 0 || m > 59 || (ap !== "am" && ap !== "pm")) return null;
@@ -77,7 +77,7 @@ export function cleanSettings(raw: unknown): YouSettings {
 }
 
 /** The most Activity rows a person's cleared list keeps: the oldest drop off (by then they are past the feed's days anyway). */
-export const CLEARED_MAX = 600;
+const CLEARED_MAX = 600;
 const FEED_ID = /^(job|task|ask|pay|words):[A-Za-z0-9_.:-]{1,80}$/;
 const cleanCleared = (v: unknown[]): string[] => [...new Set(v.filter((x): x is string => typeof x === "string" && FEED_ID.test(x)))].slice(-CLEARED_MAX);
 

@@ -164,7 +164,7 @@ function waitingMessage(req: AgentStepRequest): { to?: string; text: string } | 
 const sending = (m: { to?: string; text: string }) => `Send${m.to ? ` to ${m.to}` : ""}: “${short(m.text, 80)}”`;
 
 /** The sentence the device shows when it asks before acting. */
-export function confirmText(action: PlannedAction, scene: Scene): string {
+function confirmText(action: PlannedAction, scene: Scene): string {
   const { req } = scene;
   const label = byId(req, action.id)?.label;
   switch (action.kind) {

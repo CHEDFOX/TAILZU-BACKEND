@@ -31,7 +31,7 @@ const CI_WORDS: Record<CiOutcome, string> = {
 const time = (at: number): string => new Date(at).toISOString().slice(5, 16).replace("T", " ");
 
 /** The comment's text for a row. A pure function of the state, so it is the same text twice. */
-export function statusBody(row: Pick<CareRow, "origin" | "state" | "ciRounds">, now: number): string {
+function statusBody(row: Pick<CareRow, "origin" | "state" | "ciRounds">, now: number): string {
   const s: CareState = row.state;
   const lines: string[] = [STATUS_MARK, "**X0 Bot status**", ""];
   const open = s.jobs.filter((j) => !j.done);

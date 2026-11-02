@@ -18,7 +18,7 @@ import path from "node:path";
 import { z } from "zod";
 import { RuleSchema, type Rule } from "./rules.js";
 
-export const DocSchema = z.object({
+const DocSchema = z.object({
   version: z.number().int().nonnegative(),
   updatedAt: z.string(),
   updatedBy: z.string().optional(),

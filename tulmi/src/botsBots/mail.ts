@@ -53,7 +53,7 @@ export interface MailRow {
   sent_ms: number | null;
 }
 
-export const MAIL_TRIES = 5;
+const MAIL_TRIES = 5;
 const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000, 6 * 3600_000];
 const EMAIL = /^[^\s@<>()[\]\\,;:"]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 

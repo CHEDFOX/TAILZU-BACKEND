@@ -60,10 +60,10 @@ export interface FileLookup {
 /** A push for a new message (routes: the push engine). */
 export type MessageNotify = (userId: string, msg: { kind: "space_message"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<void>;
 
-export const TEXT_MAX = 4000;
-export const FILES_MAX = 6;
-export const PAGE = 30;
-export const GROUPS_MAX = 40;
+const TEXT_MAX = 4000;
+const FILES_MAX = 6;
+const PAGE = 30;
+const GROUPS_MAX = 40;
 
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\r/g, "").trim().slice(0, max) : "");
 const oneLine = (s: string, max: number) => s.replace(/\s+/g, " ").trim().slice(0, max);

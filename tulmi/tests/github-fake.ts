@@ -115,13 +115,13 @@ export interface Call { method: string; url: URL; headers: Record<string, string
 const sha = (s: string) => createHash("sha1").update(s).digest("hex");
 
 /** What a blob made from bytes is held as: this marker, then the base64. A test reads a binary file back with `bytesOf`. */
-export const BINARY_BLOB = "\u0000base64:";
+const BINARY_BLOB = "\u0000base64:";
 export const bytesOf = (stored: string | undefined): Buffer | null => (stored?.startsWith(BINARY_BLOB) ? Buffer.from(stored.slice(BINARY_BLOB.length), "base64") : null);
 
 export interface AppKeys { privateKeyPem: string; publicKeyPem: string }
 
 /** Where a job's log is fetched from after GitHub's redirect: another host, reached with no token. */
-export const LOGS_HOST = "logs.actions.test";
+const LOGS_HOST = "logs.actions.test";
 
 /** A fresh RSA key pair, the private half in GitHub's own format (PKCS#1). */
 export function appKeys(): AppKeys {

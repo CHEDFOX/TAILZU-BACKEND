@@ -24,7 +24,7 @@
 import type { FastifyInstance } from "fastify";
 import { legacyTwin, SITE_ORIGIN } from "../domains.js";
 
-export const CLIENT_METADATA_PATH = "/oauth/client-metadata.json";
+const CLIENT_METADATA_PATH = "/oauth/client-metadata.json";
 
 export interface ClientMetadataDeps {
   /** CONNECTOR_CLIENT_METADATA_URL; empty means none is published. */

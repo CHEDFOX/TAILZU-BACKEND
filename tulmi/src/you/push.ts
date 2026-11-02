@@ -26,7 +26,7 @@ const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "cod
 const PEOPLE = new Set(["space_task", "space_plan", "space_message"]);
 
 /** The person's minute of the day, in their own time. */
-export const minuteOf = (now: number, tzOffsetMinutes: number): number => {
+const minuteOf = (now: number, tzOffsetMinutes: number): number => {
   const d = new Date(now + tzOffsetMinutes * 60_000);
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 };

@@ -29,7 +29,7 @@ export interface NoteBody {
   people: Note["people"];
 }
 
-export const EMPTY_BODY: NoteBody = { title: "", summary: "", highlights: [], people: [] };
+const EMPTY_BODY: NoteBody = { title: "", summary: "", highlights: [], people: [] };
 
 interface Row {
   id: string;

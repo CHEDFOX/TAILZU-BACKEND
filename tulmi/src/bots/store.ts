@@ -482,4 +482,3 @@ export function botStore(): BotStore {
   return current;
 }
 
-export function resetBotStoreForTests(): void { current = null; }

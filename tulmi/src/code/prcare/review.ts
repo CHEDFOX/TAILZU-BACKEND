@@ -19,7 +19,7 @@ import { askJson, cut, forModel, oneLine, type ModelCtx } from "../work/model.js
 import { redactText } from "../work/worklog.js";
 import { CARE_REPLY_MAX } from "./types.js";
 
-export const REVIEW_KINDS = ["small", "large", "question", "other"] as const;
+const REVIEW_KINDS = ["small", "large", "question", "other"] as const;
 
 export const ReviewVerdict = z.object({
   kind: z.enum(REVIEW_KINDS),

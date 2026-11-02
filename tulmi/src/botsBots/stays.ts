@@ -70,7 +70,7 @@ export function ratingOf(v: unknown): { rating: number; of: 5 | 10 } | null {
 }
 
 /** "1,820 reviews" -> 1820. */
-export function reviewsOf(s: string): number | null {
+function reviewsOf(s: string): number | null {
   const m = s.match(/([\d,]{1,9})\s*(?:reviews|ratings|verified reviews)/i);
   const n = m ? Number(m[1]!.replace(/,/g, "")) : NaN;
   return Number.isFinite(n) && n > 0 ? n : null;

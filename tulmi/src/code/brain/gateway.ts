@@ -221,9 +221,6 @@ const consoleLog: BrainLog = {
 };
 let theLog: BrainLog = consoleLog;
 
-/** Where the brain's lines go: the server passes its logger. Null puts it back on the console. */
-export function setBrainLog(log: BrainLog | null): void { theLog = log ?? consoleLog; }
-
 /** The part of an OpenAI-shaped client the gateway uses. */
 export interface ChatClient {
   chat: {

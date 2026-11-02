@@ -63,7 +63,7 @@ export async function mapBrief(brain: ChatBrain, search: string): Promise<string
 /** What reading may cost the model: files, characters in all, and per file. */
 export const READ_FILES_MAX = 3;
 export const READ_CHARS_MAX = 8_000;
-export const READ_FILE_CHARS = 3_000;
+const READ_FILE_CHARS = 3_000;
 /** Lines around where the evidence points, and the lines of a file without a pointer. */
 const SPAN_AROUND = 20;
 const SPAN_HEAD = 50;
@@ -310,7 +310,7 @@ export function plainTags(text: string): string {
 }
 
 /** The patterns worth a grep for this question: the names in the words, and a quoted string. */
-export function grepPatterns(search: string): string[] {
+function grepPatterns(search: string): string[] {
   const cues = extractCues(search);
   return [...cues.identifiers, ...cues.quoted].filter((s) => s.length >= 3 && s.length <= 80).slice(0, GREP_PATTERNS_MAX).map(escapeRe);
 }

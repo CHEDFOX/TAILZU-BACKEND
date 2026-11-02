@@ -61,12 +61,12 @@ import { isReasoningRequiredError, learnReasoningRequired, lowestEffort, maxToke
 
 export const AGENT_MAX_TOKENS = 300;
 /** About 90 words of answer, a line each, with room for its points. */
-export const VISION_MAX_TOKENS = 450;
+const VISION_MAX_TOKENS = 450;
 /** About 250 words, a step a line, in maths that tokenizes densely. */
-export const VISION_DEEP_MAX_TOKENS = 1000;
+const VISION_DEEP_MAX_TOKENS = 1000;
 /** One vision call, however steadily it writes. The device gives a whole run
  *  a minute, and an answer this long has long since been read. */
-export const VISION_CALL_MAX_MS = 45_000;
+const VISION_CALL_MAX_MS = 45_000;
 
 export interface PlanChunk {
   model: string;
@@ -164,7 +164,7 @@ export function visionLadder(deep = false): string[] {
   ]);
 }
 
-export const isAnthropic = (model: string) => model.startsWith("anthropic/");
+const isAnthropic = (model: string) => model.startsWith("anthropic/");
 export const isGemini = (model: string) => model.startsWith("google/gemini-");
 
 /** Gemini 3 and later: a major version of 3 or more, whatever follows it. */

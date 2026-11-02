@@ -44,7 +44,7 @@ export function wallOf(ms: number, tz: string): Wall {
 }
 
 /** The zone's offset from UTC at `ms`, in ms (+5:30 is 19 800 000). */
-export function offsetMs(ms: number, tz: string): number {
+function offsetMs(ms: number, tz: string): number {
   const w = wallOf(ms, tz);
   return Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s) - Math.floor(ms / 1000) * 1000;
 }

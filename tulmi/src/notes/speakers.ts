@@ -47,7 +47,7 @@ export function overlap(a: string, b: string): number {
 }
 
 /** The same words, heard twice: once from the call, once through the room. */
-export const ECHO_OVERLAP = 0.6;
+const ECHO_OVERLAP = 0.6;
 
 /**
  * Add a live stretch to the transcript, unless it is the echo of one already
@@ -162,7 +162,7 @@ export async function diarize(audio: Buffer, format: AudioFormat): Promise<Utter
 /** OpenAI's diarizing transcription. Its speakers are letters ("A", "B"),
  *  numbered here in the order they first speak. Files over 25 MB are refused
  *  by OpenAI, which reads as null. */
-export async function diarizeOpenAI(audio: Buffer, format: AudioFormat): Promise<Utterance[] | null> {
+async function diarizeOpenAI(audio: Buffer, format: AudioFormat): Promise<Utterance[] | null> {
   const cfg = getConfig();
   if (!cfg.OPENAI_API_KEY || !cfg.NOTES_DIARIZE_OPENAI_MODEL) return null;
   try {

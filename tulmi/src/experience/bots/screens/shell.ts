@@ -46,7 +46,7 @@ import type { SearchHit, SearchKind, SearchResult } from "../../../shell/search.
 // ===================================================================== shared
 
 /** A bot's idle line on its tile. */
-export function idleLine(bot: LiveBot, client: "phone" | "desktop"): string {
+function idleLine(bot: LiveBot, client: "phone" | "desktop"): string {
   switch (bot.slug) {
     case "code": return "Fixes and ships your code";
     case "keybot": return client === "desktop" ? "Hold a key, speak, done" : "Your keyboard, everywhere";

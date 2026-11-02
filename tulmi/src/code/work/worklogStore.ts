@@ -132,4 +132,3 @@ export function worklogStore(): WorklogStore {
   return current;
 }
 
-export function resetWorklogStoreForTests(): void { current = null; }

@@ -28,12 +28,12 @@ import { parts, transcriptLines } from "./organise.js";
 import { getNote, updateNote } from "./store.js";
 
 /** Characters of transcript per read: about an hour and a quarter of talk. A longer meeting is read in parts. */
-export const FIND_PART_CHARS = 60_000;
+const FIND_PART_CHARS = 60_000;
 /** The most one part's read may cost, retries and a repair included (paise). The cheap tier's worst case for a full part is about 220. */
-export const FIND_PART_CAP_PAISE = 600;
+const FIND_PART_CAP_PAISE = 600;
 /** The most a meeting keeps. */
 export const MAX_TODOS = 20;
-export const MAX_DECISIONS = 12;
+const MAX_DECISIONS = 12;
 /** A read that failed waits this long before it may be tried again. */
 export const RETRY_AFTER_MS = 30 * 60_000;
 /** Room for the answer: twenty to-dos and a dozen decisions are well under it. */
@@ -143,7 +143,7 @@ export function setFindGateway(deps: GatewayDeps): void { gateway = deps; }
  * Read a transcript for its to-dos and decisions: one cheap call per part (one for most meetings). Null when there
  * was nothing to read or the read failed (the model down, the budget refused).
  */
-export async function findTodos(segs: NoteSegment[], userId: string): Promise<Found | null> {
+async function findTodos(segs: NoteSegment[], userId: string): Promise<Found | null> {
   const lines = heardLines(segs);
   if (!lines.length) return null;
   const labels = new Set(segs.map((s) => s.speaker ?? "Speaker"));

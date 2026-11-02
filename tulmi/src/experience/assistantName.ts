@@ -12,7 +12,7 @@
 export const ASSISTANT_NAME = "X0";
 /** Its name said in full, which is the name too: saving it as a nickname clears the nickname. */
 const FULL_NAME = "X0 Bot";
-export const NICKNAME_MAX = 24;
+const NICKNAME_MAX = 24;
 
 /**
  * A nickname as it is stored: trimmed, single-spaced, letters (any alphabet),

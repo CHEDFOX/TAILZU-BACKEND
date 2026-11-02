@@ -49,7 +49,7 @@ import { isGemini, type UserPart } from "./llm.js";
 import type { AgentImage } from "./protocol.js";
 
 const AGENT_TAG_NAMES = "screen|said|history";
-export const AGENT_TAGS = fenceTags(AGENT_TAG_NAMES);
+const AGENT_TAGS = fenceTags(AGENT_TAG_NAMES);
 
 /** The "<" of anything a model would read as one of the fences' tags. */
 const AGENT_TAG_START = new RegExp(`<(?=\\s*\\/?\\s*(?:${AGENT_TAG_NAMES})\\b)`, "gi");
@@ -155,7 +155,7 @@ export function agentUserMessage(
 }
 
 /** When the device sends no offset: India's, where most people using Tailzu are. */
-export const DEFAULT_TZ_OFFSET_MINUTES = 330;
+const DEFAULT_TZ_OFFSET_MINUTES = 330;
 
 /**
  * The person's date and time, so "tomorrow", "tonight" and "next Friday" mean

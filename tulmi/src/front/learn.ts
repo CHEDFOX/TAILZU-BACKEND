@@ -22,8 +22,6 @@ import { createHash } from "node:crypto";
 import type { FrontStore, Summary } from "./store.js";
 import type { Intent } from "./types.js";
 
-/** The habit with no history: neither. */
-export const HABIT_PRIOR = 0.5;
 /** The most a rule's confidence is cut for an intent, and how many messages of it there must be first. */
 export const MAX_CUT = 0.3;
 export const MIN_SAMPLE = 5;

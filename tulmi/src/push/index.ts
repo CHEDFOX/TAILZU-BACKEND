@@ -29,7 +29,7 @@ import { SupabasePushStore, type PushStore } from "./store.js";
 let engine: PushEngine | null = null;
 
 /** The defaults with the live rules applied for this context. */
-export const pushConfig: ConfigFor = (ctx) => {
+const pushConfig: ConfigFor = (ctx) => {
   const base = structuredClone(PUSH_DEFAULTS) as PushPayload;
   const store = controlStore();
   if (!store) return base;

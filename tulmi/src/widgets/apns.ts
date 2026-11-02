@@ -63,7 +63,7 @@ export interface H2Client {
 }
 
 /** node:http2, one session per host, kept open and dropped when it errors or the host says goodbye. */
-export function nodeH2Client(timeoutMs = 10_000): H2Client {
+function nodeH2Client(timeoutMs = 10_000): H2Client {
   const sessions = new Map<string, ClientHttp2Session>();
   const sessionFor = (origin: string): ClientHttp2Session => {
     const had = sessions.get(origin);

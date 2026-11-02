@@ -26,7 +26,7 @@ export const DELETION_PATH = "/v1/account/deletion";
 /** A claim older than this is someone else's that never finished: taken again. */
 export const CLAIM_STALE_MS = 30 * 60_000;
 /** How often the sweep looks, and how many it deletes in one pass. */
-export const SWEEP_EVERY_MS = 10 * 60_000;
+const SWEEP_EVERY_MS = 10 * 60_000;
 const SWEEP_FIRST_MS = 60_000;
 const SWEEP_BATCH = 20;
 
@@ -91,7 +91,7 @@ const iso = (t: number) => new Date(t).toISOString();
 /** No claim, or one gone stale (the value quoted: an ISO time has dots and colons). */
 const unclaimed = (staleIso: string) => `claimed_at.is.null,claimed_at.lt."${staleIso}"`;
 
-export class SupabaseDeletionStore implements DeletionStore {
+class SupabaseDeletionStore implements DeletionStore {
   constructor(private readonly sb: SupabaseClient) {}
   async get(userId: string) {
     const { data, error } = await this.sb.from(T).select("user_id, requested_at, delete_at").eq("user_id", userId).maybeSingle<Row>();
@@ -139,8 +139,6 @@ export function deletionStore(): DeletionStore {
   }
   return current;
 }
-
-export function resetDeletionStoreForTests(): void { current = null; }
 
 // -------------------------------------------------------------------- while the date stands, the bots stop
 

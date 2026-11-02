@@ -73,7 +73,7 @@ export function crc32(bytes: Uint8Array, start = 0, end = bytes.length): number 
 // -------------------------------------------------------------------- reader
 
 /** The most pixels a picture may have (a 4K screenshot is 8 million). */
-export const PNG_MAX_PIXELS = 24_000_000;
+const PNG_MAX_PIXELS = 24_000_000;
 
 const CHANNELS: Record<number, number> = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
 
@@ -272,16 +272,16 @@ export const GRID_COLS = 64;
 export const GRID_ROWS = 128;
 /** A cell differs by at least this (of lightness, 0 to 1) to count as changed: ten points of L*. */
 export const CELL_CHANGED = 0.1;
-export const SAME_MAX = 0.1;
+const SAME_MAX = 0.1;
 const SAME_FEW_CELLS = 2;
 const SAME_MEAN = 0.004;
 /** Shapes (height over width) that differ by more than this are not the same picture. */
 const SHAPE_TOLERANCE = 0.04;
 
-export const COLOR_COLS = 16;
-export const COLOR_ROWS = 32;
+const COLOR_COLS = 16;
+const COLOR_ROWS = 32;
 /** A coarse cell whose colour is further than this from the other picture's is a different colour. */
-export const COLOR_SAME = 0.12;
+const COLOR_SAME = 0.12;
 const COLOR_CHANGED = 0.08;
 
 export interface Grid {

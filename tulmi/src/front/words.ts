@@ -72,13 +72,6 @@ const OFFER: Record<VisualKind, Record<Lang, string>> = {
 
 export const offerLabel = (kind: VisualKind, lang: Lang): string => OFFER[kind][lang];
 
-/** Said when a message could not be read at all, in the person's language. */
-export const NOTHING: Record<Lang, string> = {
-  en: "I did not catch that. What would you like to know or do?",
-  hinglish: "Mujhe samajh nahi aaya. Aap kya jaanna ya karna chahte hain?",
-  hi: "मुझे समझ नहीं आया। आप क्या जानना या करना चाहते हैं?",
-};
-
 const DESIGN_READY: Record<Lang, string> = {
   en: "Here it is. Tell me what you would change.",
   hinglish: "Yeh raha. Batao kya badalna hai.",

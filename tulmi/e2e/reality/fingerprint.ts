@@ -13,7 +13,7 @@
  * The PROMPT VERSION is a second hash, of the words the models are given (and, for a task, how its project was built: `fixtureFingerprint`): src/principles for the product, the probe and edit-format texts for probes, the task's
  * own text and the scorer for a task. A prompt edit invalidates results without touching "code"; a code edit without touching a prompt leaves the probe words alone.
  *
- * All pure reads of the working tree (uncommitted edits count: the other worker's change to src/** shows up here the moment it lands).
+ * All pure reads of the working tree (uncommitted edits count: a change to src/** shows up here the moment it lands).
  */
 import { createHash } from "node:crypto";
 import fs from "node:fs";

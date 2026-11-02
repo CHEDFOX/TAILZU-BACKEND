@@ -14,7 +14,7 @@
  */
 export * from "./detect.js";
 export * from "./intake.js";
-export { MemoryIntakeStore, SupabaseIntakeStore, intakeStore, resetIntakeStoreForTests, type IntakeStore } from "./intakeStore.js";
+export { MemoryIntakeStore, intakeStore, type IntakeStore } from "./intakeStore.js";
 export * from "./milestones.js";
 export * from "./planDoc.js";
 export * from "./scaffold.js";

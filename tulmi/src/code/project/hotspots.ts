@@ -28,7 +28,7 @@ import { classOf, isGeneratedPath, isLockfile, isTestPath, isVendoredPath } from
 import { COMMITS_MAX, COMMIT_CONCURRENCY, RATE_FLOOR, type CommitRecord, type Hotspot, type History } from "./types.js";
 
 /** Files kept per commit. */
-export const COMMIT_FILES_KEPT = 40;
+const COMMIT_FILES_KEPT = 40;
 /** A commit with more files than this says nothing about what changes together. */
 const CO_CHANGE_MAX_FILES = 30;
 

@@ -42,7 +42,6 @@ import { reasoningFor } from "../agent/llm.js";
 import { allowedEffort, EFFORTS, isReasoningRequiredError, learnReasoningRequired, maxTokensWithReasoning, reasoningRequired, type Effort } from "../agent/reasoning.js";
 import { addCostUsd, openRouterUsd } from "../usage/cost.js";
 import { openrouter } from "./openrouter.js";
-export { openrouter };
 
 /**
  * Reasoning effort for every LLM call.

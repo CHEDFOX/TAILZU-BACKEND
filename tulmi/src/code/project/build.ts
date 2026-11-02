@@ -97,13 +97,13 @@ export interface ProjectBrainDeps {
 }
 
 /** The share of a full read's money its parts may take (a quick read's files take 65%: phaseCap). */
-export const FULL_READ_PARTS_SHARE = 0.9;
+const FULL_READ_PARTS_SHARE = 0.9;
 
 /** An incremental build may spend this fraction of the import budget: it only writes about what changed. */
-export const INCREMENTAL_BUDGET_SHARE = 0.2;
+const INCREMENTAL_BUDGET_SHARE = 0.2;
 
 /** Words for a person when a build ends badly. Never GitHub's own words, a path or a line of code. */
-export function whyFailed(err: unknown): string {
+function whyFailed(err: unknown): string {
   if (err instanceof ConnectorError) return err.message;
   return "X0 Bot couldn't finish reading this project. Try again in a moment.";
 }

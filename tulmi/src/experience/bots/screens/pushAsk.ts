@@ -40,7 +40,7 @@ export function withPushCheck(ctx: BotsCtx, node: Node): Node {
 const answered = (answer: "granted" | "dismissed"): ActionRef => seq(setState("pushAsked", true), call("PUT", PUSH_ASK_PATH, { answer }, {}));
 
 /** The system's own ask. Allowed: the app registers for pushes itself. Refused (now or before): it stays off, and says where to change it. */
-export const turnOnPush = (o: { record?: boolean } = {}): ActionSpec => ({
+const turnOnPush = (o: { record?: boolean } = {}): ActionSpec => ({
   kind: "requestPushPermission",
   onGranted: seq(setState("pushGranted", true), o.record === false ? undefined : answered("granted"), toast("Notifications on")),
   onDenied: seq(o.record === false ? undefined : answered("dismissed"), toast("Notifications stay off. You can turn them on in Settings.")),

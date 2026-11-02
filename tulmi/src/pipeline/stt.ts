@@ -630,7 +630,7 @@ export type SttEngineName = keyof typeof STT_ENGINES;
  * Below this, there is no speech to find and every provider says so with an
  * error. A tenth of a second of audio is not a word in any language.
  */
-export const MIN_USABLE_AUDIO_BYTES = 1024;
+const MIN_USABLE_AUDIO_BYTES = 1024;
 
 /**
  * Did the provider look at this audio and refuse it, or did it never look?
@@ -647,11 +647,11 @@ export const MIN_USABLE_AUDIO_BYTES = 1024;
  * about the audio.
  */
 /** Longest a clip can be and still plausibly hold no speech at all. */
-export const SILENCE_PLAUSIBLE_S = 2;
+const SILENCE_PLAUSIBLE_S = 2;
 /** Fallback ceiling for containers whose duration we cannot read (ogg, webm,
  *  flac): roughly two seconds of 16 kHz 16-bit mono, and far more than two
  *  seconds of anything compressed. */
-export const QUIET_CLIP_BYTES = 64_000;
+const QUIET_CLIP_BYTES = 64_000;
 
 /**
  * Could this clip genuinely contain nothing?

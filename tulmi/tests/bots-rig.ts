@@ -27,7 +27,7 @@ export const BOB = "22222222-2222-4222-8222-222222222222";
 // ------------------------------------------------------------- fake secrets and a pepper, made at runtime
 
 export const FAKE_STRIPE = ["sk", "live", "x4eC39HqLyjWDarjtT1zdp7dc"].join("_");
-export const FAKE_AWS = ["AKIA", "IOSFODNN7EXAMPLQ"].join("");
+const FAKE_AWS = ["AKIA", "IOSFODNN7EXAMPLQ"].join("");
 export const PEPPER = ["pepper", "for", "the", "tests", "0123456789abcdef0123456789"].join("-");
 
 // ------------------------------------------------------------- the scripted model
@@ -100,7 +100,7 @@ export interface FakeWeb {
   ran: string[];
 }
 
-export function fakeWeb(): FakeWeb {
+function fakeWeb(): FakeWeb {
   const ran: string[] = [];
   const make: FakeWeb["make"] = () => ({
     tools: WEB_TOOLS.map((t) => ({ ...t })),
@@ -123,17 +123,17 @@ export interface ConnectorRig {
   done: Array<{ tool: string; args: Record<string, unknown> }>;
 }
 
-export const CAL: ConnectorDef = {
+const CAL: ConnectorDef = {
   id: "fake-cal", name: "Fake Calendar", category: "Calendar", oneLine: "Read and create calendar events.", aliases: ["calendar"], url: "https://calendar.example.test",
   auth: "oauth", kind: "native", provider: "google", verified: true,
 };
 /** A real catalog id, not connected: the maker marks it "not connected yet". */
-export const GCAL: ConnectorDef = {
+const GCAL: ConnectorDef = {
   id: "google-calendar", name: "Google Calendar", category: "Calendar", oneLine: "Read, create and move calendar events.", aliases: ["calendar"], url: "https://calendar.example.test/mcp", auth: "oauth", verified: true,
 };
-export const MAPS: ConnectorDef = { id: "fake-maps", name: "Fake Maps", category: "Travel", oneLine: "Directions.", aliases: [], url: "https://maps.example.test", auth: "oauth", verified: true };
+const MAPS: ConnectorDef = { id: "fake-maps", name: "Fake Maps", category: "Travel", oneLine: "Directions.", aliases: [], url: "https://maps.example.test", auth: "oauth", verified: true };
 
-export async function connectorRig(o: { userId?: string; connected?: boolean; level?: "look" | "draft" | "send" } = {}): Promise<ConnectorRig> {
+async function connectorRig(o: { userId?: string; connected?: boolean; level?: "look" | "draft" | "send" } = {}): Promise<ConnectorRig> {
   const store = new MemoryConnectorStore();
   const done: ConnectorRig["done"] = [];
   const native: NativeConnector = {

@@ -44,7 +44,7 @@ export function desktopOs(os: unknown): DesktopOs | null {
 }
 
 /** -1, 0 or 1, by dotted number. "0.2.10" is newer than "0.2.9". */
-export function compareVersions(a: string, b: string): number {
+function compareVersions(a: string, b: string): number {
   const pa = String(a).split("."), pb = String(b).split(".");
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const x = parseInt(pa[i] ?? "0", 10) || 0, y = parseInt(pb[i] ?? "0", 10) || 0;

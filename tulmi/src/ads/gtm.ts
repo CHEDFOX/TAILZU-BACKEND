@@ -10,7 +10,7 @@
  *
  * The container id is not a secret: it is in every page's source.
  */
-export const GTM_ID = "GTM-KH975V6M";
+const GTM_ID = "GTM-KH975V6M";
 
 /** The loader, for the top of <head>. */
 export const gtmHead = (id: string = GTM_ID): string => `<!-- Google Tag Manager -->

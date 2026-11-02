@@ -79,7 +79,7 @@ const LIST_MAX = 400;
 const OPEN_MAX = 200;
 const ROWS_MAX = 5000;
 /** A timed event's reminder when none was said; an all-day one and a to-do have none unless asked. */
-export const DEFAULT_REMIND_MIN = 15;
+const DEFAULT_REMIND_MIN = 15;
 const REMIND_MAX = 7 * 24 * 60;
 /** A reminder this late (the server was down) is not sent: the moment has passed. */
 const LATE_MS = 6 * 60 * MIN;

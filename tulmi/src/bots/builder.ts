@@ -61,8 +61,8 @@ export interface BuilderDeps {
   limits: Limits;
 }
 
-export const SENTENCE_MAX = 600;
-export const DRAFT_CAP_PAISE = { cheap: 60, strong: 150 } as const;
+const SENTENCE_MAX = 600;
+const DRAFT_CAP_PAISE = { cheap: 60, strong: 150 } as const;
 const CATALOG_SHOWN = 60;
 
 const FALLBACK_TESTS = ["What can you help me with?", "What do you need from me to get started?", "Show me how you would answer a typical request."];

@@ -172,20 +172,20 @@ export function wordCapacity(voicedSeconds: number): number {
 }
 
 /** Below this much voice, and without a breath's worth of other sound, nothing was said. */
-export const NO_VOICE_S = 0.12;
+const NO_VOICE_S = 0.12;
 /** Unvoiced sound shorter than this is a breath, a click or a knock, not whispering. */
-export const BREATH_MAX_S = 1.0;
+const BREATH_MAX_S = 1.0;
 /** Voice this long is clearly someone talking, whatever another engine
  *  heard: Whisper drops a real short "haan ji" as no-speech now and then,
  *  and that must not cost the other engine's correct reading. */
-export const CLEAR_VOICE_S = 0.35;
+const CLEAR_VOICE_S = 0.35;
 /** Voice needed to have really said one of the NOISE phrases. */
-export function knownPhraseMinVoice(text: string): number {
+function knownPhraseMinVoice(text: string): number {
   return spokenWords(text) >= 2 ? 0.3 : 0.2;
 }
 /** Without a measurement, a clip this short (or this small) could be only a breath. */
-export const SHORT_CLIP_S = 3;
-export const SHORT_CLIP_BYTES = 64_000;
+const SHORT_CLIP_S = 3;
+const SHORT_CLIP_BYTES = 64_000;
 
 export type GateReason =
   | "boilerplate"      // outro / subtitle credit / annotation only

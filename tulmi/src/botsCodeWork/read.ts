@@ -161,7 +161,7 @@ export function refOf(f: FileRow): { id: string; kind: string; mime: string; byt
 
 export const isUuid = (s: unknown): s is string => typeof s === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
-export const ENDED: readonly JobRow["state"][] = ["done", "failed", "cancelled"];
+const ENDED: readonly JobRow["state"][] = ["done", "failed", "cancelled"];
 export const isOver = (s: JobRow["state"]): boolean => ENDED.includes(s);
 
 export const STAGES = ["Understand", "Plan", "Build", "Check", "Ship"];
@@ -236,7 +236,7 @@ function checkWords(e: WorkEntry): string {
 }
 
 /** One entry of the work log as a line, or null for what the short list leaves out (notes, decisions). */
-export function workLine(e: WorkEntry): WorkLine | null {
+function workLine(e: WorkEntry): WorkLine | null {
   const files = (e.files ?? []).map(fileOf);
   switch (e.kind) {
     case "read": return { mark: "done", text: `Read ${files[0] ?? short(e.text, 60)}${files.length > 1 ? ` and ${files.length - 1} more` : ""}` };
@@ -410,7 +410,7 @@ export interface Part {
 const NOT_POINTABLE = new Set(["html", "head", "title", "meta", "link", "script", "style", "base", "noscript", "template", "br", "hr"]);
 const VOID = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"]);
 
-export function kindOf(tag: string): string {
+function kindOf(tag: string): string {
   const t = tag.toLowerCase();
   if (t === "button") return "Button";
   if (t === "a") return "Link";

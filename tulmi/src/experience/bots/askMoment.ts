@@ -21,14 +21,14 @@ import { ASK_STREAM_CAPABILITY, BOT_BUDDY_CARRY } from "../../../../shared/types
 import { botBuddy, canBuddy, C, col, labelled, meta, row, statusMark, text, when, box, grow, FACE, type BotsCtx } from "./kit.js";
 
 /** A build whose BotBuddy carries an ask (a lane under it). */
-export const canCarry = (ctx: BotsCtx): boolean => canBuddy(ctx) && ctx.can.has(BOT_BUDDY_CARRY);
+const canCarry = (ctx: BotsCtx): boolean => canBuddy(ctx) && ctx.can.has(BOT_BUDDY_CARRY);
 /** A build that writes an answer in as it comes, and can stop it. */
-export const canStream = (ctx: BotsCtx): boolean => ctx.can.has(ASK_STREAM_CAPABILITY);
+const canStream = (ctx: BotsCtx): boolean => ctx.can.has(ASK_STREAM_CAPABILITY);
 
 /** Where the moment keeps what it shows. */
-export const SENT = "sent";
-export const REPLY = "reply";
-export const STOPPED = "stopped";
+const SENT = "sent";
+const REPLY = "reply";
+const STOPPED = "stopped";
 /** The person's words, as the call sends them (the box is cleared before it goes). */
 export const SENT_WORDS = `$state.${SENT}`;
 
@@ -72,7 +72,7 @@ export function failed(o: { busy: string; from?: string; then: ActionRef }): Act
 }
 
 /** Stop the ask that is out: the server stops it (its words stay); the call then fails, and `failed` keeps them. */
-export const stop = (): ActionSpec => ({
+const stop = (): ActionSpec => ({
   kind: "sequence", actions: [
     { kind: "setState", path: STOPPED, value: true },
     { kind: "callEndpoint", method: "POST", path: "/v1/ask/stop", body: { id: `$state.${REPLY}.id` } },

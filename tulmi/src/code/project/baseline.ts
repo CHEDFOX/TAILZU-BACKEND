@@ -31,7 +31,7 @@ import type { Baseline, BaselineKind, BaselineResult, BaselineStep, Command } fr
  * tests read what the build makes (the changesets run: lint failed before the change and passed after it, only because the build ran last and its
  * output was there the second time).
  */
-export const BASELINE_KINDS: readonly BaselineKind[] = ["install", "build", "typecheck", "lint", "test"];
+const BASELINE_KINDS: readonly BaselineKind[] = ["install", "build", "typecheck", "lint", "test"];
 const PER_KIND_PACKAGES = 4;
 const STEPS_MAX = 14;
 

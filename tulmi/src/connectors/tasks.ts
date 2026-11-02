@@ -93,10 +93,10 @@ export interface TaskView {
   updatedAt: number;
 }
 
-export const viewOfApproval = (a: Approval): ApprovalView =>
+const viewOfApproval = (a: Approval): ApprovalView =>
   ({ id: a.id, connector: a.connector, tool: a.tool, risk: a.risk, preview: a.preview, ...(a.widget ? { widget: a.widget } : {}) });
 
-export const viewOfTask = (t: Task): TaskView => ({
+const viewOfTask = (t: Task): TaskView => ({
   id: t.id, state: t.state, title: t.title, steps: t.steps, approval: t.approval ? viewOfApproval(t.approval) : null,
   createdAt: t.createdAt, updatedAt: t.updatedAt,
 });

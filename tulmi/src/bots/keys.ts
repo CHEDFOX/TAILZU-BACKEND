@@ -11,11 +11,11 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 
-export const KEY_PREFIX = "tzb_";
+const KEY_PREFIX = "tzb_";
 /** The shape of a key we made: the prefix and 43 base64url characters. Anything else is turned away before a lookup. */
 export const KEY_SHAPE = /^tzb_[A-Za-z0-9_-]{43}$/;
 /** How many characters of a key are kept to tell keys apart. */
-export const PREFIX_CHARS = 8;
+const PREFIX_CHARS = 8;
 
 export const newKey = (): string => `${KEY_PREFIX}${randomBytes(32).toString("base64url")}`;
 

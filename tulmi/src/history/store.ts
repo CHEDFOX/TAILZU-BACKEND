@@ -37,7 +37,7 @@ import type {
 export const TYPING_WORDS_PER_MINUTE = 40;
 
 /** How many history rows a list response returns by default. */
-export const DEFAULT_LIMIT = 50;
+const DEFAULT_LIMIT = 50;
 /** Maximum a caller can request via `?limit=` on the list endpoint. */
 export const MAX_LIMIT = 200;
 

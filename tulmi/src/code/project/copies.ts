@@ -27,9 +27,9 @@ import { byPath, grepFiles, readLines, type GrepOptions } from "../live/search.j
 const zip = promisify(gzip);
 const unzip = promisify(gunzip);
 
-export const COPY_MEMORY_BYTES = 300 * 1024 * 1024;
-export const COPY_UNUSED_MS = 30 * 86_400_000;
-export const COPY_DISK_BYTES = 20 * 1024 * 1024 * 1024;
+const COPY_MEMORY_BYTES = 300 * 1024 * 1024;
+const COPY_UNUSED_MS = 30 * 86_400_000;
+const COPY_DISK_BYTES = 20 * 1024 * 1024 * 1024;
 const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface CodeCopy { sha: string; files: Map<string, string>; bytes: number }

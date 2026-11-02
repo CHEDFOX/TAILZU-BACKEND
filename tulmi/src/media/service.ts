@@ -31,8 +31,7 @@ import type { MediaStore } from "./store.js";
 import { imageSize, stripMetadata } from "./strip.js";
 import { readDelimited } from "./tabular.js";
 import {
-  CAPS, CHUNKS_MAX, DAY_MS, KEEP_DAYS, MediaError, TEXT_CHARS_MAX, VIDEO_SECONDS_MAX, ZIP,
-  type Chunk, type DataTable, type MediaItem, type MediaKind, type MediaMeta,
+  CAPS, CHUNKS_MAX, DAY_MS, KEEP_DAYS, MediaError, TEXT_CHARS_MAX, VIDEO_SECONDS_MAX, ZIP, type Chunk, type MediaItem, type MediaKind, type MediaMeta,
 } from "./types.js";
 import { asUntrustedFile } from "./untrusted.js";
 import type { WorkerClient } from "./worker.js";
@@ -66,7 +65,7 @@ export interface Ingested {
 }
 
 /** The most characters of a file's text that go to a model for one question. */
-export const EXCERPT_CHARS = 3_500;
+const EXCERPT_CHARS = 3_500;
 export const WITHHELD = "(withheld: this part looked like it held a secret)";
 const MAX_PIXELS = 100_000_000;
 
@@ -84,7 +83,7 @@ interface Extraction {
 const sha256Of = (data: Buffer): string => createHash("sha256").update(data).digest("hex");
 
 /** The slides of a deck, from MarkItDown's `<!-- Slide number: N -->` marks: one section each, with its number as the page. */
-export function splitSlides(markdown: string): Section[] {
+function splitSlides(markdown: string): Section[] {
   const parts = markdown.split(/<!--\s*Slide number:\s*(\d+)\s*-->/i);
   if (parts.length < 3) return [{ text: markdown }];
   const out: Section[] = [];
@@ -94,7 +93,7 @@ export function splitSlides(markdown: string): Section[] {
 }
 
 /** A page-broken text (the layout reader separates pages with a form feed) as sections with page numbers. */
-export function splitPages(markdown: string): Section[] {
+function splitPages(markdown: string): Section[] {
   const pages = markdown.split("\f");
   return pages.length > 1 ? pages.map((text, i) => ({ text, page: i + 1 })) : [{ text: markdown }];
 }
@@ -472,5 +471,3 @@ export class MediaService {
   }
 }
 
-/** A table of a stored item, for a chart or a table artifact: its first. */
-export const firstTable = (i: Pick<MediaItem, "meta">): DataTable | null => i.meta.tables?.[0] ?? null;

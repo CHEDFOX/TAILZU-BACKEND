@@ -225,14 +225,14 @@ export interface Meaning { does: string; say: string[] }
 export interface CardsOut { files: Map<string, { summary?: string; parts: Map<number, Meaning> }>; complete: boolean; calls: number }
 
 /** The code one call reads, in characters; a file longer than this is read in parts, cut where a symbol starts. */
-export const CARD_CALL_CHARS = 20_000;
+const CARD_CALL_CHARS = 20_000;
 /**
  * What a full read of a project costs and takes, from its files' sizes alone (no read, no model): its source code (not tests, generated code or
  * data), at what reading cost (tailzu-desktop ₹8.76 for 1.91 MB, tailzu-frontend ₹18.14 for 3.85 MB in 236 calls) with a margin. What already
  * has words: those parts are not paid for again.
  */
 export interface ReadEstimate { read: "quick" | "full"; files: number; mb: number; paise: number; minutes: number; parts: number; described: number }
-export const FULL_READ_PAISE_PER_MB = 500;
+const FULL_READ_PAISE_PER_MB = 500;
 const CALLS_PER_MB = 60;
 const SECONDS_PER_CALL = 5;
 
@@ -257,7 +257,7 @@ export function readEstimate(files: ReadonlyArray<{ path: string; bytes: number;
 }
 
 /** The calls a reading makes at once, the parts one call may be asked for (its answer must fit), and the failures in a row that stop it. */
-export const CARD_PARALLEL = 4;
+const CARD_PARALLEL = 4;
 export const CARD_CALL_PARTS = 40;
 /** The answer's room: per part asked, and at most. */
 const CARD_TOKENS_PER_PART = 120;

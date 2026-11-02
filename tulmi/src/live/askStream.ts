@@ -19,12 +19,12 @@
 import { live as theBus, type LiveBus } from "./bus.js";
 
 /** A stream id: the client makes it. */
-export const STREAM_ID = /^[A-Za-z0-9_-]{16,64}$/;
+const STREAM_ID = /^[A-Za-z0-9_-]{16,64}$/;
 export const streamTopic = (id: string): string => `ask:${id}`;
 /** How long words gather before they go (ms). */
-export const FLUSH_MS = 90;
+const FLUSH_MS = 90;
 /** A run of characters with no space in it this long goes out anyway (a long link, a line of code). */
-export const LONG_RUN = 160;
+const LONG_RUN = 160;
 
 export interface AskStream {
   readonly id: string;

@@ -49,7 +49,7 @@ function share(ctx: ReadCtx, parts: number): ReadCtx {
   return typeof b === "object" && b && "maxPaise" in b ? { ...ctx, budget: { maxPaise: Math.max(1, Math.floor(b.maxPaise / parts)) } } : ctx;
 }
 
-export function mediaHandler(media: MediaService): AttachmentHandler {
+function mediaHandler(media: MediaService): AttachmentHandler {
   /** A picture looked at by the vision tier, through the front door's own image handler. The copy it is sent has no metadata. */
   async function look(ref: AttachmentRef, data: Buffer, ctx: ReadCtx): Promise<{ text: string; paise: number }> {
     const got = await imageHandler.extract({ ref: { ...ref, kind: "image" }, data }, ctx);

@@ -29,8 +29,6 @@ export const PATCH_MAX_SHARE = 0.6;
 /** The longest title, the longest note on a version. */
 export const TITLE_MAX = 120;
 export const NOTE_MAX = 300;
-/** Edits in one artifact_update, and the most of an `old` or `new` string one edit may carry. */
-export const EDITS_MAX = 40;
 /** Versions a list returns at most. */
 export const VERSIONS_LIST_MAX = 200;
 /** A person's artifacts a list returns at most. */

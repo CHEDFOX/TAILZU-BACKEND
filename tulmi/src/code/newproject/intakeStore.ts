@@ -101,4 +101,3 @@ export function intakeStore(): IntakeStore {
   return current;
 }
 
-export function resetIntakeStoreForTests(): void { current = null; }

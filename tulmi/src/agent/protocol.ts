@@ -89,7 +89,7 @@ export function withoutUrlSecrets(s: string): string {
 /** A field that holds the page's address: its value is the URL being visited,
  *  which is the one value on a browser's screen most likely to carry a token. */
 const ADDRESS_BAR = /\b(?:address|url|location bar|smart search|omnibox|web address)\b|\bsearch or (?:type|enter)\b/i;
-export function isAddressBar(label: string | undefined): boolean {
+function isAddressBar(label: string | undefined): boolean {
   return !!label && ADDRESS_BAR.test(label);
 }
 
@@ -285,7 +285,7 @@ function readPictureInfo(v: unknown): AgentPicture {
   return { region: region === "element" ? "element" : "window" };
 }
 
-export const PICTURE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
+const PICTURE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 export type PictureType = (typeof PICTURE_TYPES)[number];
 
 /** The one picture a step carries, as read: its type is its bytes'. */

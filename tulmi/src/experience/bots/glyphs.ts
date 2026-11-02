@@ -9,8 +9,8 @@
 import type { Node, SvgShape } from "../../../../shared/types/sdui.js";
 
 /** The greys and the ink (STYLE.md: colour belongs only to bots). */
-export const INK = "#0a0a0a";
-export const IDLE = "#8a8a8a";
+const INK = "#0a0a0a";
+const IDLE = "#8a8a8a";
 
 // ------------------------------------------------------------------ shapes → paths
 

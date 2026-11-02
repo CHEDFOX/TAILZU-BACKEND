@@ -14,7 +14,7 @@ import { homeView, wordsView } from "../src/keybot/views.js";
 import { statsView } from "../src/keybot/stats.js";
 
 /** Words a day, 29 September to today (Wednesday 28 October), today last. */
-export const WORDS = [420, 0, 610, 880, 0, 0, 540, 720, 960, 1105, 830, 0, 310, 0, 690, 1240, 980, 760, 1330, 0, 450, 870, 1020, 640, 905, 1180, 560, 1012, 944, 1284];
+const WORDS = [420, 0, 610, 880, 0, 0, 540, 720, 960, 1105, 830, 0, 310, 0, 690, 1240, 980, 760, 1330, 0, 450, 870, 1020, 640, 905, 1180, 560, 1012, 944, 1284];
 
 const APPS: Array<[string, number]> = [["WhatsApp", 0.36], ["Gmail", 0.28], ["Slack", 0.2], ["Notes", 0.1], ["Generic", 0.06]];
 const HOURS = [9, 10, 11, 13, 14, 16, 18, 19, 20, 21, 22];
@@ -90,14 +90,14 @@ export const USAGE: UsageSummary = {
 };
 
 /** The month against the plan, as allowanceFor reads it (no limit applies while Tailzu is free for everyone). */
-export const ALLOWANCE: Allowance = {
+const ALLOWANCE: Allowance = {
   base: 800, earned: 380, total: 1180, used: USAGE.month.words, remaining: Math.max(0, 1180 - USAGE.month.words), streakDays: 10, grants: [], maxed: true,
   perVisit: [["2026-10-21", 40], ["2026-10-22", 55], ["2026-10-23", 30], ["2026-10-24", 60], ["2026-10-25", 45], ["2026-10-26", 50], ["2026-10-27", 35], ["2026-10-28", 65]]
     .map(([day, words]) => ({ day: day as string, words: words as number, sessions: 3, tier: "good" as const })),
 };
 
 /** A free plan with a limit (FREE_FOR_ALL off): 800 words a month, 380 earned by turning up, 240 left. */
-export const FREE_PLAN: Allowance = { ...ALLOWANCE, used: 940, remaining: 240, maxed: false };
+const FREE_PLAN: Allowance = { ...ALLOWANCE, used: 940, remaining: 240, maxed: false };
 
 /** Her personality, as GET /v1/personality answers it: the words, the voices, the keys, the name. */
 export const PERSONALITY: Personality = {

@@ -33,7 +33,7 @@ import { ATTACHMENT_KINDS, type AttachmentKind, type AttachmentRef, type FileNot
 export const ATTACHMENTS_MAX = 4;
 export const IMAGE_BYTES_MAX = 4 * 1024 * 1024;
 export const TEXT_BYTES_MAX = 1024 * 1024;
-export const TEXT_CHARS_READ = 200_000;
+const TEXT_CHARS_READ = 200_000;
 /** The most of one file that is sent to a model. */
 export const RELEVANT_CHARS = 3_500;
 const WINDOW_LINES = 10;
@@ -200,7 +200,7 @@ export function relevantPart(text: string, question: string, max: number, number
 // ------------------------------------------------------------------ the handlers
 
 /** Text and code: decoded, capped, no model. */
-export const textHandler: AttachmentHandler = {
+const textHandler: AttachmentHandler = {
   kinds: ["text", "code"],
   async extract({ data }) {
     const head = data.subarray(0, 8_000);

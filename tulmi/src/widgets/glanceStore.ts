@@ -19,7 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
 
 /** Things remembered as seen, at most (the newest are kept). */
-export const SEEN_MAX = 100;
+const SEEN_MAX = 100;
 
 export interface GlanceState {
   seen: Record<string, number>;
@@ -39,7 +39,7 @@ export interface GlanceStore {
 }
 
 /** A state read back from storage, whatever it holds: what is wrong is left out. */
-export function cleanGlanceState(raw: unknown): GlanceState {
+function cleanGlanceState(raw: unknown): GlanceState {
   const s = emptyGlanceState();
   if (!raw || typeof raw !== "object") return s;
   const r = raw as Record<string, unknown>;
@@ -86,7 +86,7 @@ export class MemoryGlanceStore implements GlanceStore {
 
 const GLANCE = "widget_glance";
 
-export class SupabaseGlanceStore implements GlanceStore {
+class SupabaseGlanceStore implements GlanceStore {
   constructor(private readonly sb: SupabaseClient) {}
   async get(userId: string): Promise<GlanceState> {
     const { data, error } = await this.sb.from(GLANCE).select("state").eq("user_id", userId).maybeSingle<{ state: unknown }>();
@@ -153,7 +153,7 @@ export class MemoryActivityTokenStore implements ActivityTokenStore {
 const TOKENS = "widget_activity_tokens";
 interface TokenRow { token: string; env: ApnsEnv; hg: boolean | null; sent: string | null; updated_at: string }
 
-export class SupabaseActivityTokenStore implements ActivityTokenStore {
+class SupabaseActivityTokenStore implements ActivityTokenStore {
   constructor(private readonly sb: SupabaseClient) {}
   async put(userId: string, jobId: string, token: string, env: ApnsEnv, hg: boolean, now: number) {
     const before = await this.get(userId, jobId);
@@ -183,4 +183,3 @@ export function activityTokenStore(): ActivityTokenStore {
   return tokens;
 }
 
-export function resetGlanceStoresForTests(): void { glance = null; tokens = null; }

@@ -70,7 +70,7 @@ export function confident(r: Rhythm, k: Pick<TimingKnobs, "minEvents" | "minDays
 }
 
 /** How strongly the hour starting at `hourStart` is this person's. */
-export function score(r: Rhythm, hourStart: number, dayBlend: number): number {
+function score(r: Rhythm, hourStart: number, dayBlend: number): number {
   const d = new Date(hourStart);
   const h = d.getUTCHours();
   return r.week[d.getUTCDay() * 24 + h] + dayBlend * r.day[h];
@@ -97,7 +97,7 @@ export function isQuiet(hourStart: number, tzOffsetMin: number | null, k: Pick<T
 }
 
 /** A stable few minutes for this person on this day, so sends spread out. */
-export function jitterMs(seed: string, jitterMin: number): number {
+function jitterMs(seed: string, jitterMin: number): number {
   if (!(jitterMin > 0)) return 0;
   let h = 0x811c9dc5;
   for (let i = 0; i < seed.length; i++) {

@@ -49,21 +49,20 @@ import {
   type ContentKind, type Extracted, type Heading, type PageLink,
 } from "./extract.js";
 
-export { WebError } from "./error.js";
 export type { Heading, PageLink } from "./extract.js";
 
 /** Longest a page may take, headers and body together. */
-export const FETCH_TIMEOUT_MS = 15_000;
+const FETCH_TIMEOUT_MS = 15_000;
 /** Most bytes read from a page. */
 export const FETCH_MAX_BYTES = 3 * 1024 * 1024;
 /** The most text of a page that is kept or returned, whatever maxChars says. */
 export const TEXT_HARD_MAX = 200_000;
 /** The default for maxChars. */
-export const MAX_CHARS_DEFAULT = 40_000;
+const MAX_CHARS_DEFAULT = 40_000;
 /** Time between two requests to one host when indexing. */
 export const INDEX_GAP_MS = 1_000;
 /** How long the browser gets to render a page. */
-export const RENDER_TIMEOUT_MS = 20_000;
+const RENDER_TIMEOUT_MS = 20_000;
 
 const ROBOTS_TTL_MS = 24 * 60 * 60 * 1000;
 /** A robots.txt we could not read is "stay away" for this long, then tried again. */

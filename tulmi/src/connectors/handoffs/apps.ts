@@ -62,7 +62,7 @@ export const POST_MAX = 500;
 /** A search, a place or a destination. */
 const QUERY_MAX = 150;
 /** UPI's usual limit for one payment between people. */
-export const UPI_MAX_RUPEES = 100_000;
+const UPI_MAX_RUPEES = 100_000;
 const GUESTS_MAX = 30;
 
 const rejected = (message: string) => new ConnectorError("rejected", message);

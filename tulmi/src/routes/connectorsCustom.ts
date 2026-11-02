@@ -91,7 +91,7 @@ const CREDENTIAL_PARAM = /(token|key|secret|password|passwd|pwd|auth|authorizati
  * tokens out of those), and travel to the auth server as the sign-in's
  * `resource`. So an address with one is not added at all.
  */
-export function credentialParam(url: URL): string | undefined {
+function credentialParam(url: URL): string | undefined {
   for (const name of url.searchParams.keys()) {
     if (CREDENTIAL_PARAM.test(name.toLowerCase().replace(/[^a-z]/g, ""))) return name;
   }

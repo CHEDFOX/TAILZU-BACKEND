@@ -30,9 +30,9 @@ export interface MonthUsage {
 }
 
 /** The app's home zone: a request from someone's app has no zone of its own. */
-export const HOME_OFFSET_MIN = 330;
+const HOME_OFFSET_MIN = 330;
 
-export const dayKey = (ms: number, offsetMin: number): string => new Date(ms + offsetMin * 60_000).toISOString().slice(0, 10);
+const dayKey = (ms: number, offsetMin: number): string => new Date(ms + offsetMin * 60_000).toISOString().slice(0, 10);
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 

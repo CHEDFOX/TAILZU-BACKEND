@@ -17,7 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
 
-export const KEEP_DAYS = 30;
+const KEEP_DAYS = 30;
 /** A claim that has not finished in this long is taken to be abandoned (an ask answers well within it). */
 export const STALE_MS = 10 * 60_000;
 /** A client id: what the apps make when the ask is typed (a UUID, or any 8 to 64 letters, digits, `-` and `_`). */
@@ -68,7 +68,7 @@ export class MemorySentAskStore implements SentAskStore {
 const TABLE = "bots_app_sent_asks";
 interface DbRow { state: "sending" | "sent"; claimed_at: string; reply: unknown }
 
-export class SupabaseSentAskStore implements SentAskStore {
+class SupabaseSentAskStore implements SentAskStore {
   constructor(private readonly sb: SupabaseClient) {}
 
   claim(userId: string, clientId: string, now: number, typedAt?: number): Promise<Claim> {
@@ -119,4 +119,3 @@ export function sentAskStore(): SentAskStore {
   return current;
 }
 
-export function resetSentAskStoreForTests(): void { current = null; }

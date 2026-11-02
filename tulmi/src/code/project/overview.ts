@@ -87,7 +87,7 @@ export const TUNE_AT = 1;
 /** At most one tune in this long, unless the owner said something new. */
 export const TUNE_GAP_MS = 6 * 3_600_000;
 /** The versions kept from before. */
-export const EARLIER_KEPT = 4;
+const EARLIER_KEPT = 4;
 /** Commits since it was written that count as drift on their own. */
 const COMMITS_STALE = 150;
 /** The latest commits looked at for where the work is. */

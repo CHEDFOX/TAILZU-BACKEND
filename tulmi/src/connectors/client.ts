@@ -53,17 +53,17 @@ export interface ToolInfo {
 
 export interface CallOutcome { ok: boolean; text: string; error?: Fail; open?: Handoff }
 
-export const TOOLS_CACHE_MS = 5 * 60_000;
+const TOOLS_CACHE_MS = 5 * 60_000;
 /** How long a person's own apps are kept before they are read again. */
-export const CUSTOM_CACHE_MS = 60_000;
-export const CALL_TIMEOUT_MS = 20_000;
+const CUSTOM_CACHE_MS = 60_000;
+const CALL_TIMEOUT_MS = 20_000;
 /** A client nobody has used for this long is closed. */
 const IDLE_MS = 10 * 60_000;
 /** Most a result is cut to before it goes anywhere (the planner, the log). */
 export const RESULT_MAX = 1500;
 
 /** A thrown thing turned into a plain-words failure about `name`. */
-export function toFail(err: unknown, name: string): Fail {
+function toFail(err: unknown, name: string): Fail {
   if (err instanceof ConnectorError) {
     return err.code === "needs_reconnect" ? { code: err.code, message: `${name} needs you to sign in again.` } : { code: err.code, message: err.message };
   }
@@ -125,7 +125,7 @@ export function endpointFetch(endpoint: URL, mcp: FetchLike, signIn: FetchLike):
 }
 
 /** The text of a tool's result, cut short; images and files are named, not carried. */
-export function resultText(content: unknown): string {
+function resultText(content: unknown): string {
   if (!Array.isArray(content)) return "";
   const parts = content.map((c: { type?: string; text?: string }) =>
     c?.type === "text" && typeof c.text === "string" ? c.text : c?.type === "image" ? "[an image]" : c?.type ? `[${c.type}]` : "");

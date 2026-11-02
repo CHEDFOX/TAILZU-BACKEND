@@ -59,7 +59,6 @@ export class SpendMeter {
 let shared = new SpendMeter();
 /** The process's meter, which callModel uses unless it is given its own. */
 export const sharedSpendMeter = (): SpendMeter => shared;
-export function resetSpendMeterForTests(): void { shared = new SpendMeter(); }
 
 /**
  * A REQUEST'S CALLS ARE ONE SCOPE, ROUNDED UP ONCE, LIKE A JOB'S.

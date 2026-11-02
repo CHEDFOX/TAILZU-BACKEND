@@ -12,8 +12,8 @@ import fastifyStatic from "@fastify/static";
 import { requireAdmin } from "../control/index.js";
 import { activeSounds, dropPushedSounds, pushSounds, servedSounds, soundsDir, SOUNDS_PREFIX } from "../experience/bots/sounds.js";
 
-export const SOUNDS_ROUTE = "/v1/bots/sounds";
-export const SOUNDS_ADMIN_ROUTE = "/v1/admin/bots/sounds";
+const SOUNDS_ROUTE = "/v1/bots/sounds";
+const SOUNDS_ADMIN_ROUTE = "/v1/admin/bots/sounds";
 
 export function registerBotSoundsRoutes(app: FastifyInstance, deps: { rateLimit: unknown }): void {
   const rl = { config: deps.rateLimit as never };

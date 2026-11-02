@@ -53,7 +53,7 @@ export interface Frame {
   periodicity: number;
 }
 
-export const FRAME_S = 0.04;
+const FRAME_S = 0.04;
 /** Pitch analysis runs near 4 kHz: plenty for a 70–400 Hz voice, and cheap
  *  enough to run on the event loop (20 s of solid speech in about 10 ms). */
 const ANALYSIS_RATE = 4000;
@@ -72,7 +72,7 @@ const SOUND_MIN_DB = -55;
 const VOICE_CAP_DB = -32;
 /** Only this much of a clip is decoded and measured. A pause stretch is a few
  *  seconds; past this a clip is a real dictation and the measure is moot. */
-export const MEASURE_MAX_S = 20;
+const MEASURE_MAX_S = 20;
 /** Nothing larger goes to disk for measuring. */
 const MEASURE_MAX_BYTES = 4 * 1024 * 1024;
 
@@ -80,7 +80,7 @@ const MEASURE_MAX_BYTES = 4 * 1024 * 1024;
  * Analyse mono PCM (floats in -1..1) into frames. Pitch is only computed for
  * frames loud enough that it could matter, which keeps a silent minute cheap.
  */
-export function analyzeFrames(samples: Float32Array, sampleRate: number): Frame[] {
+function analyzeFrames(samples: Float32Array, sampleRate: number): Frame[] {
   const frameLen = Math.max(1, Math.round(FRAME_S * sampleRate));
   const out: Frame[] = [];
   for (let start = 0; start + frameLen <= samples.length; start += frameLen) {
@@ -149,14 +149,14 @@ function periodicity(frame: Float32Array, sampleRate: number): number {
 }
 
 /** The room: the level of the quietest tenth of these frames. */
-export function roomFloorDb(frames: Frame[]): number {
+function roomFloorDb(frames: Frame[]): number {
   if (!frames.length) return -120;
   const levels = frames.map((f) => f.db).sort((a, b) => a - b);
   return levels[Math.floor(levels.length * 0.1)]!;
 }
 
 /** Voiced and active seconds in `frames`, judged against `floorDb`. */
-export function summarizeFrames(frames: Frame[], floorDb = roomFloorDb(frames)): { voicedSeconds: number; activeSeconds: number } {
+function summarizeFrames(frames: Frame[], floorDb = roomFloorDb(frames)): { voicedSeconds: number; activeSeconds: number } {
   const soundDb = Math.max(floorDb + ABOVE_ROOM_DB, SOUND_MIN_DB);
   // Capped: continuous speech has no quiet tenth, and its "room" is itself.
   const voiceDb = Math.min(soundDb, VOICE_CAP_DB);
@@ -239,7 +239,7 @@ export function decodeWav(buf: Buffer): { samples: Float32Array; sampleRate: num
 }
 
 /** Little-endian 16-bit PCM → floats (mixing interleaved channels to mono). */
-export function pcm16ToFloat(buf: Buffer, channels = 1): Float32Array {
+function pcm16ToFloat(buf: Buffer, channels = 1): Float32Array {
   const ch = Math.max(1, channels);
   const count = Math.floor(buf.length / (2 * ch));
   const out = new Float32Array(count);

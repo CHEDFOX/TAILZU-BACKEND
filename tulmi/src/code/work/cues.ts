@@ -52,10 +52,6 @@ export interface Cues {
   ui: boolean;
 }
 
-export const EMPTY_CUES: Readonly<Cues> = {
-  quoted: [], replacements: [], uiPhrases: [], uiWords: [], identifiers: [], paths: [], dirs: [], extensions: [], routes: [], errors: [], frames: [], nouns: [], phrase: "", ui: false,
-};
-
 // ----------------------------------------------------------------- the lists
 
 /** Words for something a person reads on a screen: the text next to one of these is searched as visible text. */

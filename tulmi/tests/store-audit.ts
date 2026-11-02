@@ -16,10 +16,10 @@ import { execFileSync } from "node:child_process";
 import fixtureJson from "./fixtures/store-build.json";
 import { STORE_COMMIT, STORE_FILES, parseStoreBuild, type StoreBuild, type StoreSources } from "../scripts/storeBuild.js";
 
-export const FIXTURE = fixtureJson as unknown as StoreBuild;
+const FIXTURE = fixtureJson as unknown as StoreBuild;
 
 /** The phone build in the stores, read from the phone repo at STORE_COMMIT when the repo is at hand; null where it is not (CI). */
-export function liveStoreBuild(): StoreBuild | null {
+function liveStoreBuild(): StoreBuild | null {
   const repo = process.env.TAILZU_FRONTEND ?? "/home/user/TAILZU-FRONTEND";
   try {
     const src = Object.fromEntries(

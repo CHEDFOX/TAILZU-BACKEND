@@ -9,7 +9,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 const KEY = randomBytes(32);
-export const LINK_TTL_MS = 3600_000;
+const LINK_TTL_MS = 3600_000;
 
 const sigOf = (parts: string[], exp: number): string => createHmac("sha256", KEY).update(`${parts.join("|")}|${exp}`).digest("base64url");
 

@@ -51,7 +51,7 @@ export function osrmRouting(o: { baseUrl: string; line: Polite }): Routing {
 
 // ------------------------------------------------------------------ openrouteservice
 
-export function parseOrs(mode: Mode, body: unknown): Leg | null {
+function parseOrs(mode: Mode, body: unknown): Leg | null {
   const r = (body as { routes?: Array<{ summary?: { duration?: unknown; distance?: unknown } }> } | null)?.routes?.[0];
   if (!r?.summary) return null;
   return legOf(mode, r.summary.duration ?? 0, r.summary.distance ?? 0);

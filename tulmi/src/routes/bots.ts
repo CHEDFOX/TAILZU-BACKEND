@@ -44,7 +44,7 @@ const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArr
 const isAbort = (err: unknown): boolean => (err as { name?: unknown } | null)?.name === "AbortError";
 
 /** What an app gets back: the bot's answer, and what the key may still spend today. */
-export function apiBody(a: BotAnswer, usage?: { leftTodayPaise: number }) {
+function apiBody(a: BotAnswer, usage?: { leftTodayPaise: number }) {
   return {
     bot: a.bot.slug, text: a.text, paise: a.paise, tools: a.tools, approvals: a.approvals, artifacts: a.artifacts, opens: a.opens, notes: a.notes,
     ...(usage ? { usage: { paise: a.paise, leftTodayPaise: usage.leftTodayPaise } } : {}),
@@ -52,7 +52,7 @@ export function apiBody(a: BotAnswer, usage?: { leftTodayPaise: number }) {
 }
 
 /** `history` from a body: up to ten turns, each a role and some text. */
-export function readHistory(v: unknown): { ok: true; history: Array<{ role: "user" | "assistant"; content: string }> } | { ok: false; message: string } {
+function readHistory(v: unknown): { ok: true; history: Array<{ role: "user" | "assistant"; content: string }> } | { ok: false; message: string } {
   if (v === undefined) return { ok: true, history: [] };
   if (!Array.isArray(v) || v.length > LIMITS.history.turns) return { ok: false, message: `history is the last ${LIMITS.history.turns} turns at most.` };
   const out: Array<{ role: "user" | "assistant"; content: string }> = [];

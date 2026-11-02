@@ -315,7 +315,7 @@ export function dayCurve(hours: number[]): Node {
 }
 
 /** 1,234 as "1.2k" where a column is too narrow for the whole number. */
-export function compact(v: number): string {
+function compact(v: number): string {
   if (v >= 10_000) return `${Math.round(v / 1000)}k`;
   if (v >= 1000) return `${(v / 1000).toFixed(1).replace(/\.0$/, "")}k`;
   return String(Math.round(v));

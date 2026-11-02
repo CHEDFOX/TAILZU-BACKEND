@@ -65,7 +65,7 @@ const of = (r: Row): FeedEvent => ({
   id: r.id, kind: r.kind, bot: r.bot, title: r.title, paise: r.paise, amountPaise: Number(r.amount_paise), payee: r.payee, at: Date.parse(r.created_at),
 });
 
-export class SupabaseEventStore implements EventStore {
+class SupabaseEventStore implements EventStore {
   constructor(private readonly sb: SupabaseClient) {}
   async add(userId: string, e: NewEvent, now: number) {
     const c = cleanEvent(e);
@@ -107,4 +107,3 @@ export function eventStore(): EventStore {
   return current;
 }
 
-export function resetEventStoreForTests(): void { current = null; }

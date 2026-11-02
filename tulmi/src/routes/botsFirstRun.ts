@@ -174,7 +174,7 @@ function phonePlans(): FirstRunPlan[] {
 }
 
 /** Home's version: one above what someone last saw, and their next visit is welcomed back. */
-export const HOME_VERSION = 2;
+const HOME_VERSION = 2;
 /** Days away after which a visit is welcomed back. */
 const AWAY_DAYS = 14;
 /** One visit: Home opened again within this counts as the same one. */

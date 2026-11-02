@@ -10,13 +10,13 @@
  * sends its pages on to x0bot.com, and the few checks below that name a host take both while the move lasts.
  */
 
-export const DOMAIN = "x0bot.com";
+const DOMAIN = "x0bot.com";
 export const SITE_ORIGIN = "https://x0bot.com";
 export const API_ORIGIN = "https://api.x0bot.com";
 export const APP_LINK_ORIGIN = "https://app.x0bot.com";
 
 /** The domain before x0bot.com. Never built into anything new: only accepted. */
-export const LEGACY_DOMAIN = "tailzu.space";
+const LEGACY_DOMAIN = "tailzu.space";
 
 /** The site's origins, new and old, apex and www: what a page of ours can be opened from. */
 export const SITE_ORIGINS: readonly string[] = [

@@ -26,8 +26,8 @@ import { resolveUser } from "../auth/supabase.js";
 import type { CodeJob, JobStep } from "../code/jobs/types.js";
 import type { JobPatch, JobStore } from "../code/jobs/store.js";
 
-export const GAP_MS = 1000;
-export const ITEM_GAP_MS = 400;
+const GAP_MS = 1000;
+const ITEM_GAP_MS = 400;
 
 const gapFor = (topic: string): number => (topic.startsWith("job:") || topic.startsWith("note:") ? ITEM_GAP_MS : GAP_MS);
 
@@ -77,7 +77,7 @@ export class LiveThrottle {
 
 const throttle = new LiveThrottle();
 /** A job at work writes often: the lists it shows on (Home, Activity, Xode's) hear of it at most every LIST_GAP_MS. */
-export const LIST_GAP_MS = 3000;
+const LIST_GAP_MS = 3000;
 const listThrottle = new LiveThrottle(live, () => LIST_GAP_MS);
 
 /** Tell every device this person has open that these topics changed. Never throws. */
@@ -102,7 +102,7 @@ export function liveJob(userId: string, jobId: string): void {
 }
 
 /** Who made this request, for publishing after it. Null when nobody can be said to have. */
-export async function writerOf(req: FastifyRequest): Promise<string | null> {
+async function writerOf(req: FastifyRequest): Promise<string | null> {
   const auth = req.headers.authorization;
   const local = await localUserId(auth).catch(() => null);
   if (local) return local;

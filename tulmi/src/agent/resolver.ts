@@ -12,8 +12,8 @@
  */
 import type { AgentElement } from "../../../shared/types/api.js";
 
-export const ACCEPT_AT = 0.85;
-export const MARGIN = 0.2;
+const ACCEPT_AT = 0.85;
+const MARGIN = 0.2;
 
 /** What they asked of a named control: to be shown it, or to press it. */
 export interface ResolverAsk {
@@ -61,7 +61,7 @@ export function resolverAsk(clean: string): ResolverAsk | null {
 }
 
 /** Lowercase words without punctuation or accents, for comparing names. */
-export function nameWords(s: string): string {
+function nameWords(s: string): string {
   return s.normalize("NFKD").replace(/\p{M}+/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 

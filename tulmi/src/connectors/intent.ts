@@ -135,7 +135,7 @@ const V_READ = /\b(?:kya|dikhao|dikha do|batao|bata do|kitni|kitne|kab|dhoondo|d
 const V_CREATE = /\b(?:add|put|create|make|schedule|set up|setup|plan|write|draft|start|banao|bana do|bana de|daal do|daalo|dal do|likh do|likho|likh de|jod do|note|jot|remind|file|raise|open|invite|block|save)\b|^comment on\b|\b(?:leave|post|drop) (?:a |my )?comment\b/;
 
 /** The verb of a request, when it says one. A change outranks a look: "cancel what's on at 3" cancels. */
-export function verbOf(t: string): Verb | null {
+function verbOf(t: string): Verb | null {
   const h = head(t);
   if (V_COMPLETE.test(t)) return "complete";
   if (V_DELETE.test(t)) return "delete";
@@ -267,7 +267,7 @@ const PRODUCTS: readonly Product[] = [
 ];
 
 /** The ids of every app a product name can stand for: what the router may take as named. */
-export const NAMED_IDS: ReadonlySet<string> = new Set(PRODUCTS.flatMap((p) => p.ids));
+const NAMED_IDS: ReadonlySet<string> = new Set(PRODUCTS.flatMap((p) => p.ids));
 
 /** Where content starts, after a message's verb: "message Rahul on telegram THAT I'm late". */
 const CONTENT = /\b(?:that|saying|ki|to say)\b|:/;
@@ -352,7 +352,7 @@ const TYPOS: ReadonlyArray<readonly [RegExp, string]> = [
 ];
 
 /** The words, lowercased, with quotes made plain, misspellings put right and spaces made single. */
-export function normalize(s: string): string {
+function normalize(s: string): string {
   let t = s.toLowerCase().replace(/[’‘`´]/g, "'").replace(/[“”]/g, "\"");
   for (const [re, to] of TYPOS) t = t.replace(re, to);
   return t.replace(/\s+/g, " ").trim();
@@ -696,7 +696,7 @@ export const JOB_HUBS: Readonly<Partial<Record<Job, readonly string[]>>> = {
   sheets: ["zapier"],
 };
 
-export const doesJob = (id: string, job: Job) => JOB_APPS[job].includes(id) || !!JOB_HUBS[job]?.includes(id);
+const doesJob = (id: string, job: Job) => JOB_APPS[job].includes(id) || !!JOB_HUBS[job]?.includes(id);
 
 /** Every id some job names: a catalog app or a hand-off the router knows. */
 export const KNOWN_IDS: ReadonlySet<string> = new Set([...Object.values(JOB_APPS).flat(), ...Object.values(JOB_HUBS).flat(), ...NAMED_IDS]);
