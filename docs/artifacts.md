@@ -1,6 +1,6 @@
 # Artifacts: live things a bot makes, and the person sees and clicks
 
-An **artifact** is a small live thing a bot makes (a web page, a React component, an SVG, a diagram, some markdown) that the person sees and clicks in the app, beside the chat, like Claude's artifacts. This is the server's side of it: what is kept, how a bot and a person change it, what it costs, how it can look like a person's own project, and how an approved one becomes a Code bot job. It lives in `tulmi/src/artifacts/` and `tulmi/src/routes/artifacts.ts`, and it is for every bot, not only the Code bot.
+An **artifact** is a small live thing a bot makes (a web page, a React component, an SVG, a diagram, some markdown) that the person sees and clicks in the app, beside the chat, like the artifacts other AI assistants show. This is the server's side of it: what is kept, how a bot and a person change it, what it costs, how it can look like a person's own project, and how an approved one becomes a Code bot job. It lives in `tulmi/src/artifacts/` and `tulmi/src/routes/artifacts.ts`, and it is for every bot, not only the Code bot.
 
 It is **switched off by default**: `ARTIFACTS=true` turns it on, and migration `0032_artifacts.sql` must be run. With it off every `/v1/artifacts` route answers `404 artifacts_off`, before the session.
 

@@ -22,7 +22,7 @@
  *
  * Sizes and times: an MCP answer is cut off at 1 MiB, a sign-in document
  * (metadata, a registration, a token) at 256 KiB, and a sign-in request gets
- * ten seconds start to finish, as Claude gives them.
+ * ten seconds start to finish, as other MCP clients give them.
  *
  * undici is pinned to the version inside Node 20 (6.23.0): its Agent is handed
  * to Node's own fetch as the dispatcher, so the responses are Node's own

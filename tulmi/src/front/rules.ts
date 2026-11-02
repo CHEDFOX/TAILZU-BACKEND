@@ -138,7 +138,7 @@ const FOLLOW_UP = /^\s*(?:and|also|what\s+about|how\s+about|now|then|ok(?:ay)?\s
 const wordCount = (s: string): number => s.trim().split(/\s+/).filter(Boolean).length;
 
 /**
- * A REACTION to the answer just given, the way one talks to Claude Code: "what?", "??", "why?", "explain", "simpler", "matlab?". Never a new
+ * A REACTION to the answer just given, the way one talks to a coding agent: "what?", "??", "why?", "explain", "simpler", "matlab?". Never a new
  * question with nothing in it: it goes on from the last turn. The ones that say "I did not follow" ask for the last answer again, simpler;
  * the rest ("why?", "how?", "more") are asked about the last answer as they are. Each says its own language, so a one-word "what?" is
  * answered in English whatever the profile says.

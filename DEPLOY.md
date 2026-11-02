@@ -411,7 +411,7 @@ no message text.
 
 Off by default (`CUSTOM_CONNECTORS=false`). When on, a person can paste any
 remote MCP server's address and connect it for themselves
-(`POST /v1/connectors/custom`), like Claude's custom connectors. Nobody has
+(`POST /v1/connectors/custom`), like the custom connectors other assistants offer. Nobody has
 vetted those servers, so they get the strict treatment in `src/connectors/`:
 public https addresses only (`egress.ts`), the strict sign-in checks and no
 sign-in at one of the catalog's vendors from another site (`oauth.ts`), a

@@ -28,7 +28,7 @@
  *   --quiet                         the quiet day: nothing working, nothing waiting (default: the boards' day)
  *   --json <file>                   draw this screen JSON (e.g. one a running server served) instead of building one
  *   --motion                        let the motions run (default: Reduce Motion, so every shot is the same)
- *   --out <dir>   --design <bots-design dir, default $BOTS_DESIGN>
+ *   --out <dir>   --design <bots-design dir, default $BOTS_DESIGN, else bots-design beside the repos>
  *
  * The data is fixtures.ts's (fakeDeps); a screen's own `load` gets its answers from yours
  * (--api '{"GET /v1/bots/plan/memory": {...}}'). The sample answers for every screen are in samples/ (showcase.ts uses them).
@@ -50,7 +50,7 @@ const DESKTOP = path.resolve(TULMI, "../../TAILZU-DESKTOP");
 const APP = path.resolve(TULMI, "../../TAILZU-FRONTEND/app");
 const DEPS = path.join(HERE, ".deps");
 const DEP_VERSIONS = ["react-native-web@0.21.2", "react-dom@19.2.3", "react@19.2.3", "esbuild@0.25.10"];
-export const DEFAULT_DESIGN = process.env.BOTS_DESIGN ?? "/tmp/claude-0/-home-user/36aabdc6-23c5-5bb4-b965-f6afd0072759/scratchpad/bots-design";
+export const DEFAULT_DESIGN = process.env.BOTS_DESIGN ?? path.resolve(TULMI, "../../bots-design");
 
 export type Client = "phone" | "desktop";
 export type Params = Record<string, string | number | boolean>;

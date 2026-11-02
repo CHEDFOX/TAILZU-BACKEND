@@ -1,7 +1,7 @@
 /**
  * THE JOB'S ROOM: ONE DURABLE OBJECT PER JOB. A COPY OF THE CODE FOR INSTANT READ, GREP AND GLOB; ONE RUNNER KEPT OPEN FOR THE JOB; THE APP'S LIVE VIEW.
  *
- * "Make the bot work like Claude Code" (docs/cloudflare-jobs.md section 10). Id = the job's id. Everything it holds is in its own SQLite and is
+ * "Make the bot work like a coding agent" (docs/cloudflare-jobs.md section 10). Id = the job's id. Everything it holds is in its own SQLite and is
  * deleted when the job ends or after six idle hours (`deleteAll`): Tailzu never keeps a person's code.
  *
  * (a) THE COPY. On the first need the Worker mints a read-only, one-repo token and calls `prepare`; the room downloads the tarball for the job's

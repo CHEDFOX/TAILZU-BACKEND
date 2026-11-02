@@ -251,7 +251,7 @@ describe("the conversation", () => {
     expect(alone.thread).toBeNull();
   });
 
-  it("keeps the turns word for word for the chat to show, and a follow-up is answered knowing the last answer (as Claude Code does)", async () => {
+  it("keeps the turns word for word for the chat to show, and a follow-up is answered knowing the last answer (as a coding agent does)", async () => {
     const r = await chatRig();
     const threadId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
     r.a.json.on("front.code_answer", "In startSession: src/auth/session.ts:3.");
