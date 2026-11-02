@@ -49,7 +49,7 @@ token is accepted and mapped to a dev user.
 | Mode    | Endpoint | In → Out |
 |---------|----------|----------|
 | Voice (one-shot) | `POST /v1/transcribe-clean` | multipart `audio` + `targetApp?`, `language?`, `personality?` → `{ cleanedText, transcript, usage }` |
-| Voice (live) | `WS /v1/transcribe-stream` | `start` frame (token) → 16 kHz PCM frames → `stop`; receive `ready` → `partial`* / `final`* → `done` (see STREAMING.md) |
+| Voice (live) | `WS /v1/transcribe-stream` | `start` frame (token) → 16 kHz PCM frames → `stop`; receive `ready` → `partial`* / `final`* → `done` (see `src/routes/writing/transcribe-stream.ts`) |
 | Typing | `POST /v1/refine` | `{ text, targetApp?, language?, personality? }` → `{ refinedText, usage }` |
 | Screen | `POST /v1/draft` | `{ screenContent, intent, recipient?, targetApp?, language?, personality? }` → `{ draftText, usage }` |
 | Voice out | `POST /v1/speak` | `{ text, voice?, format?, instructions? }` → **binary audio** (TTS) |
@@ -98,6 +98,5 @@ the foundation for free-tier enforcement.
 | `OPENAI_STT_MODEL`       | OpenAI STT model (default `gpt-4o-transcribe`)      |
 | `GROQ_STT_MODEL`         | Groq Whisper model (when `STT_PROVIDER=groq`)      |
 | `CLEANUP_MODEL`          | OpenRouter model — **swap this one line** to change the LLM |
-| `CLEANUP_PROMPT_VERSION` | Which `cleanup.<v>.md` to load (default `v2`)       |
 | `REPLY_PROMPT_VERSION`   | The screen reply's prompt: `v5` (default) is the `writer` role, `v1` to `v4` are `reply.<v>.md` |
 | `DEV_SKIP_AUTH`          | Skip Supabase auth + metering for local testing    |

@@ -1,7 +1,7 @@
 /**
  * Tulmi live dictation — /v1/transcribe-stream.
  *
- * Implements the WebSocket protocol documented in STREAMING.md:
+ * The WebSocket protocol:
  *   client → { type:"start", token, ... } then raw 16 kHz mono PCM frames,
  *            then { type:"stop" }
  *   server → { type:"ready" | "partial" | "final" | "done" | "error" }
