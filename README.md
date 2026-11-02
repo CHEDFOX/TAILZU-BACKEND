@@ -1,90 +1,47 @@
-# Tulmi
+# X0 Bot server
 
-Your **AI language layer** for the phone. Speak, type, or point it at your
-screen — Tulmi turns rough input into clean, ready-to-send text **in your own
-voice**, across **most world languages**, with best-in-class **Hindi / Hinglish
-/ code-switching** as the flagship that other apps treat as an afterthought.
+The server behind X0 Bot (formerly Tulmi, then Tailzu): the phone app, the desktop app and the website all talk
+to it. It writes what a person says or types in their own voice, in most languages with Hindi and Hinglish
+first; it builds every screen the apps draw (server-driven UI); it runs the Bots app's bots; and it runs Xode,
+the coding bot that works on a person's GitHub repos.
 
-## Three ways in, one brain (all powered by the backend)
+The apps are thin: they capture input, send it, and draw what comes back.
 
-1. **🎙️ Speak** → audio is transcribed and cleaned (fillers removed, punctuated,
-   lists formatted) → inserted where your cursor is.
-2. **⌨️ Type** → rough text is rewritten the best way, like smart autocorrect.
-3. **🫧 Screen** → a floating bubble (Android) / Share-sheet (iOS) reads what's on
-   screen; you say what you want; Tulmi drafts a personalized reply.
-
-Every output is shaped by two things the **backend** owns:
-
-- **Personality** — your tone/style, set once in the app.
-- **Context** — which app you're in, who you're writing to, what's on screen.
-
-The apps are thin: they capture input and send it; the backend does the thinking.
-
----
-
-## Monorepo layout
+## Layout
 
 ```
-tulmi/
-├─ shared/        Cross-cutting source of truth
-│  ├─ prompts/    Versioned prompts (cleanup + reply) — the product's secret sauce
-│  └─ types/      API request/response + streaming contract (TypeScript)
-├─ tulmi/         Backend — Node + TypeScript (Fastify). Deploys to the VPS.
-│                 voice/typing/screen → STT + OpenRouter LLM → personalized text
-└─ app/           Expo (React Native) — ONE codebase → Android + iOS via EAS.
-                  Main app (settings, personality, playground) in JS; the
-                  keyboard is a native module (Kotlin IME / Swift extension).
+tulmi/          the server: Node 20+, TypeScript, Fastify (deploys to the VPS with Docker)
+jobs/           Cloudflare Worker: Xode's jobs, the cron ticker, the live session
+viewer/         Cloudflare Worker: the sandboxed artifact viewer
+media-worker/   Python service for office files, hard PDFs, pictures and video
+shared/         the wire contracts (types/api.ts, types/sdui.ts) and the bots' looks and sounds
+deploy/         the deploy script, Caddy, release receiver, app-link files
+docs/           one document per subsystem
 ```
 
-## Apps: Expo shell + native keyboard
+[`archi.md`](archi.md) maps every folder, says where to find each feature, and how the parts connect.
 
-Both platforms build from one **Expo** project (`app/`) via **EAS** — so iOS
-ships from Windows with no Mac. The keyboard surface stays **native** (a phone
-keyboard runs in a separate system process where JS can't run): native Kotlin
-`InputMethodService` on Android, native Swift keyboard extension on iOS, both
-wrapped and shipped by Expo. Only the main app UI is React Native.
-
-The **screen feature** differs by platform (Apple forbids reading other apps'
-screens): an always-on **floating bubble on Android**, the **Share-sheet** on
-iOS. Voice, typing, and the keyboard work on both.
-
-## Tech decisions (locked)
-
-| Concern            | Choice                                                    |
-|--------------------|-----------------------------------------------------------|
-| Backend            | Node + TypeScript (Fastify), in `tulmi/`                  |
-| Speech-to-text     | OpenAI `gpt-4o-transcribe` (default, ~100 langs); Groq Whisper optional. Provider via `STT_PROVIDER` |
-| Cleanup / reply LLM| OpenRouter, default `anthropic/claude-haiku-4.5` (swappable via env) |
-| Streaming          | WebSocket (+ one-shot REST endpoints)                     |
-| Auth + DB + usage  | Supabase (usage metered from day one)                     |
-| Mobile app shell   | Expo (React Native), one codebase, built via EAS          |
-| Android keyboard   | Native Kotlin `InputMethodService` (+ overlay bubble) module |
-| iOS keyboard       | Native Swift keyboard extension (+ Share extension) target |
-| Secrets            | Env vars only. See `.env.example`.                        |
-
-## Backend API (summary)
-
-| Mode    | Endpoint                                   |
-|---------|--------------------------------------------|
-| Voice   | `POST /v1/transcribe-clean`, `WS /v1/transcribe-stream` |
-| Typing  | `POST /v1/refine`                          |
-| Screen  | `POST /v1/draft`                           |
-| Voice out (TTS) | `POST /v1/speak`                   |
-| Profile | `GET` / `PUT /v1/personality`              |
-
-Full contract: [`shared/types/api.ts`](shared/types/api.ts).
-
-## Quick start (backend)
+## Quick start
 
 ```bash
 cd tulmi
-cp ../.env.example .env      # then fill in your keys
+cp ../.env.example .env      # DEV_SKIP_AUTH=true runs without Supabase; add the model keys you have
 npm install
-npm run dev                  # starts the server
+npm run dev                  # the server, in watch mode
 
-# Prove the pipeline with an audio file (no server needed):
-npm run test:pipeline -- ./test-assets/sample.m4a --app WhatsApp
+npx tsc --noEmit -p .        # typecheck
+npx vitest run               # the test suite
 ```
 
-See [`tulmi/README.md`](tulmi/README.md) for details, and
-[`DEPLOY.md`](DEPLOY.md) to deploy to a VPS without disturbing other apps.
+More in [`tulmi/README.md`](tulmi/README.md) (the API at a glance, settings) and the wire contract in
+[`shared/types/api.ts`](shared/types/api.ts) and [`shared/types/sdui.ts`](shared/types/sdui.ts).
+
+## Deploy
+
+On the VPS the repo lives at `~/tulmi`:
+
+```bash
+ssh root@<server> "cd ~/tulmi && git pull && ./deploy/ship.sh"
+```
+
+[`DEPLOY.md`](DEPLOY.md) covers the first setup and every optional service.
