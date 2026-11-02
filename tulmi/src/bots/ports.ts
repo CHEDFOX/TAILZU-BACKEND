@@ -14,6 +14,7 @@ import type { Connectors } from "../connectors/index.js";
 import type { UseOutcome } from "../connectors/tasks.js";
 import type { WebToolDeps, WebTools } from "../code/webTools.js";
 import type { KnowledgeMedia } from "./knowledge.js";
+import type { Everyday } from "../everyday/index.js";
 
 export interface ConnectorToolInfo {
   name: string;
@@ -47,6 +48,8 @@ export interface BotPorts {
   code?: CodeAsk | null;
   /** makeWebTools, or a stand-in. */
   web?: (d: WebToolDeps) => WebTools;
+  /** The everyday tools (src/everyday): flights, hotels, currency, weather, with no sign-in of the person's. */
+  everyday?: Everyday | null;
 }
 
 /** The connectors the server has, as a bot sees them. */

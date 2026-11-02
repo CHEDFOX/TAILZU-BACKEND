@@ -25,13 +25,14 @@ import { linkScreens } from "./screens/link.js";
 import { spacesScreens } from "./screens/spaces.js";
 import { safetyScreens } from "./screens/safety.js";
 import { notesScreens } from "./screens/notes.js";
+import { routinesScreens } from "./screens/routines.js";
 import { joinTopics, topicsForScreen } from "../../live/topics.js";
 
 export { isBotsScreen, screen, type BotsScreen } from "./registry.js";
 export { botsDepsFor, emptyDeps, type BotsServices } from "./deps.js";
 export { botsFonts } from "./kit.js";
 
-const ALL: BotsScreen[] = [...shellScreens, ...youScreens, ...botsScreens, ...keybotScreens, ...codeScreens, ...codeWorkScreens, ...firstRunScreens, ...linkScreens, ...notesScreens, ...spacesScreens, ...safetyScreens];
+const ALL: BotsScreen[] = [...shellScreens, ...youScreens, ...botsScreens, ...keybotScreens, ...codeScreens, ...codeWorkScreens, ...firstRunScreens, ...linkScreens, ...notesScreens, ...routinesScreens, ...spacesScreens, ...safetyScreens];
 
 /** Every registered screen, by id. Two files claiming one id is a mistake caught when the server starts. */
 export const BOTS_SCREENS: ReadonlyMap<string, BotsScreen> = (() => {

@@ -77,10 +77,10 @@ routes/            one module per feature, each exporting register…Routes(app,
   ask/             POST /v1/ask, the desktop's on-screen agent (/v1/agent), the phone's Ask, the front door
   billing/         the /pay page, Razorpay, RevenueCat and Razorpay webhooks
   bots/            the bots platform and every Bots app area (shell, You, bots, Keybot, code, first run, spaces,
-                   trips, calendar, push ask, looks, sounds, safety, widgets)
+                   trips, calendar, push ask, looks, sounds, safety, widgets), routines, the everyday tools' cards
   code/            Xode: projects, jobs, the Worker's internal calls
   connectors/      connected apps, apps added by link, the published OAuth client document
-  site/            the website's endpoints: SEO pages, demo, download, legal pages (policies/), health
+  site/            the website's endpoints: SEO pages, demo, download, legal pages (policies/, in the app's look), health
   writing/         transcribe (one-shot and live), refine, draft, edit, train, vocabulary, speak, voice sample
   artifacts.ts files.ts notes.ts   artifacts, uploaded files, the desktop's meeting notes
 
@@ -90,7 +90,8 @@ experience/        everything the apps draw, built as SDUI JSON
   phone/           the phone app: theme, navigation, shared parts, and one file per screen (you/, training/, onboarding/)
   desk/            the desktop window's pages, one file per page, with their kit, charts and time helpers
   bots/            the Bots app: kit.ts (its UI kit), screens/ (per area: <area>.ts lists its screens, <area>/ holds
-                   one file per screen and parts.ts), looks, sounds, live data
+                   one file per screen and parts.ts; small areas such as notes, routines are one file), looks, sounds,
+                   live data; screens/finds.ts draws what the everyday tools found
   keyboard/        buildKeyboardConfig (GET /v1/keyboard/config): keys, tools row, mic
   assistant/       the phone's Connected apps, Tasks, approval sheet, Ask and the You card
   onboard/         the onboarding: sign-in stage, one file per step, the store builds' variant
@@ -119,6 +120,9 @@ code/              Xode (docs/code-*.md)
   work/ newproject/ prcare/ resources/ secrets/   locating code, starting projects, PR care, library research, secret scanning
   github.ts oauth.ts policy.ts projects.ts …      the GitHub App and sign-in, the permission tiers, projects
 bots/              the bots platform: a bot's definition, store, keys, memory, tools, and running one (docs/bots.md)
+routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
+everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
+                   currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
 botsBots/          the Bots app's own bots behind their screens: plan, travel, shop, spaces, threads, safety, usage
 botsCode/          the Code bot's rules, intake and history as the Bots app keeps them
 botsCodeWork/      a Xode job read for the Bots app's work screens
@@ -166,6 +170,9 @@ ads/               Meta and Google Tag Manager events
 | Prompts | `tulmi/src/principles/roles.ts` (docs/principles.md); evals in `tulmi/evals/<role>.jsonl` |
 | Model gateway | Xode and the bots: `tulmi/src/code/brain/gateway.ts`; the writer: `pipeline/writing/model.ts`; Ask: `agent/llm.ts`; client `pipeline/openrouter.ts` |
 | The bots platform | `tulmi/src/bots/` (docs/bots.md); the Bots app areas `botsBots/`, `botsCode/`, `shell/`, `keybot/`, `you/` (docs/bots-app.md) |
+| Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
+| Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |
+| The website's own pages (privacy, terms, support, pricing, delete account) | `tulmi/src/routes/site/policies/` (their look in `policies/shell.ts`); the pay page `routes/billing/pay.ts` |
 | Xode | `tulmi/src/code/` and `routes/code/`; jobs on Cloudflare in `jobs/` (docs/code-*.md, docs/cloudflare-jobs.md, docs/github-app.md) |
 | Connected apps | `tulmi/src/connectors/` |
 | Settings (env) | `tulmi/src/config.ts`, `.env.example` |
@@ -196,11 +203,11 @@ the client declared in its capabilities. Keyboards fetch `GET /v1/keyboard/confi
 The media the screens name is resolved through `experience/mediaRegistry.ts`, set at boot from `routes/app/media.ts`.
 
 **Background work.** Started in `server.ts` and stopped when the app closes: the push engine's ticker
-(`push/`), the run ledger's sweep (`runs/`), the media sweep, PR care's sweep, the code copies' sweep, the MCP
-directory sync, the GitHub sign-in sweep, and Xode's job ticker (`code/jobs/ticker.ts`, local mode). With
-`CODE_JOBS_MODE=cloudflare` the jobs run on the Worker instead: a Workflow per job and per brain build, a cron
-trigger for the ticker, and two Durable Objects for the live session, with signed calls both ways
-(`code/jobs/handoff/`).
+(`push/`), the routines' minute tick (`routines/`), the run ledger's sweep (`runs/`), the media sweep, PR care's
+sweep, the code copies' sweep, the MCP directory sync, the GitHub sign-in sweep, and Xode's job ticker
+(`code/jobs/ticker.ts`, local mode). With `CODE_JOBS_MODE=cloudflare` the jobs run on the Worker instead: a
+Workflow per job and per brain build, a cron trigger for the ticker, and two Durable Objects for the live session,
+with signed calls both ways (`code/jobs/handoff/`).
 
 ## Contracts with the other repositories
 
@@ -246,7 +253,7 @@ trigger for the ticker, and two Durable Objects for the live session, with signe
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/principles.md`, `docs/artifacts.md`, `docs/media.md`, `docs/web-reader.md`,
-`docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
+`docs/front-door.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
+`docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
 `viewer/docs/artifact-viewer.md`.

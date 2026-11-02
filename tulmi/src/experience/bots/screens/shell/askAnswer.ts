@@ -5,10 +5,13 @@
 import type { Node } from "../../../../../../shared/types/sdui.js";
 import { upiOf } from "../../../../shell/parse.js";
 import { type BotsCtx, row, box, body, C, col, icon, meta, statusMark, text, grow, open, SCREENS, toTab, page, askBar } from "../../kit.js";
+import type { Card } from "../../../../everyday/index.js";
+import { findsCards } from "../finds.js";
+import { isRoutineToken, routineCard, routineCardState } from "../routines.js";
 import { nameOf, avatarOf, colorOf } from "./parts.js";
 
 /** The answer: what was asked, who answered and what came back; a payment it filled in; the bar to ask again. */
-export function askAnswer(ctx: BotsCtx) {
+export function askAnswer(ctx: BotsCtx, cards?: Card[]) {
   const asked = String(ctx.params.message ?? "");
   const answer = String(ctx.params.answer ?? "");
   const slug = String(ctx.params.bot ?? "");
@@ -20,10 +23,20 @@ export function askAnswer(ctx: BotsCtx) {
   if (asked) {
     blocks.push(row([box([body(asked)], { backgroundColor: C.surface, borderRadius: 18, paddingVertical: 10, paddingHorizontal: 14, maxWidth: "85%" })], { justifyContent: "flex-end" }));
   }
+  // Words about a schedule: the routine to save, not an answer (screens/routines.ts).
+  const routine = ctx.params.routine;
+  if (isRoutineToken(routine)) {
+    return page(ctx, {
+      back: true, backTitle: "Ask", title: "Ask", nav: "bots", gap: 18, state: routineCardState(ctx, routine, slug),
+      body: [...blocks, ...routineCard(ctx, routine, asked)],
+    });
+  }
   blocks.push(col([
     row([slug ? avatarOf(ctx, slug, 24) : icon("spark", { size: 16, color: C.meta }), meta(by ? `${by} answered` : "Answered by your bots", { size: 12 })], { gap: 6 }),
     ...(answer ? [body(answer, { lineHeight: 22 })] : []),
   ], { gap: 8 }));
+  // What the everyday tools found: flights, hotels, money, weather, as cards that link out (screens/finds.ts).
+  blocks.push(...findsCards(ctx, cards));
   if (job) {
     blocks.push(row([statusMark("working", { color: colorOf(ctx, "code") }), text("Xode is on it", { size: 14, lineHeight: 19 }), grow(), text("Watch", { size: 14, weight: 500, lineHeight: 19 }), icon("chevron", { size: 16 })], {
       gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: C.line,

@@ -27,17 +27,17 @@ export const SELLER = "XOOTEQ LAB PRIVATE LIMITED";
 /** The plan cards' look, shared with the pay page. */
 const PLAN_CSS = `
   .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
-  .plan { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 20px; padding: 24px; background: rgba(255,255,255,.26); }
+  .plan { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 20px; padding: 24px; background: #FFFFFF; }
   .plan.lead { background: var(--ink2); color: var(--sun); border-color: var(--ink2); }
   .plan .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .plan h2 { font-family: var(--mono); font-weight: 400; font-size: 13px; letter-spacing: .2em; text-transform: uppercase; margin: 0; }
+  .plan h2 { font-family: var(--sans); font-weight: 600; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; margin: 0; }
   .badge { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; border: 1px solid currentColor; border-radius: 999px; padding: 3px 10px; opacity: .8; }
-  .price { font-family: var(--serif); font-weight: 400; font-size: 54px; line-height: 1; letter-spacing: -.03em; margin: 22px 0 4px; font-variant-numeric: tabular-nums; }
+  .price { font-family: var(--serif); font-weight: 700; font-size: 52px; line-height: 1; letter-spacing: -.03em; margin: 22px 0 4px; font-variant-numeric: tabular-nums; }
   .per { margin: 0 0 18px; color: var(--ink2-soft); font-size: 15px; }
-  .plan.lead .per { color: rgba(247,207,74,.72); }
+  .plan.lead .per { color: rgba(245,245,245,.7); }
   .plan ul { list-style: none; padding: 0; margin: 0 0 4px; }
   .plan li { padding: 9px 0; border-top: 1px solid var(--line); font-size: 15px; }
-  .plan.lead li { border-top-color: rgba(247,207,74,.2); }
+  .plan.lead li { border-top-color: rgba(245,245,245,.18); }
   .plan .btn { margin-top: auto; background: var(--ink2); color: var(--sun); }
   .plan.lead .btn { background: var(--sun); color: var(--ink2); }
   .plan li + .btn, .plan .per + .btn { margin-top: 18px; }

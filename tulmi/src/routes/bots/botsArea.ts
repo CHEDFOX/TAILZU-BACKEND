@@ -8,6 +8,7 @@ import type { Code } from "../../code/index.js";
 import type { JobRouter } from "../../code/jobs/router.js";
 import type { Connectors } from "../../connectors/index.js";
 import type { MediaService } from "../../media/index.js";
+import type { Routines } from "../../routines/index.js";
 
 export interface BotsAreaDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -20,4 +21,6 @@ export interface BotsAreaDeps {
   artifacts: Artifacts | null;
   /** Xode's agent: its answer to a job's question (the widgets' and notifications' quick answers, routes/bots/widgets.ts). Optional. */
   agent?: { answer(userId: string, jobId: string, answer: unknown): Promise<unknown> } | null;
+  /** Routines (src/routines): Ask turns "every Friday at 5, ..." into a routine's card instead of answering it. Optional. */
+  routines?: Routines | null;
 }

@@ -784,6 +784,25 @@ const EnvSchema = z.object({
    * The screens read the bots platform (BOTS), Xode's jobs and connected apps where they are on, and draw an honest empty state where not.
    */
   BOTS_APP: bool(true),
+  /**
+   * ROUTINES (src/routines, docs/routines.md): a bot does something on a schedule ("every Friday at 5, sum up my week") without being asked each
+   * time. On whenever the bots platform (BOTS) is; ROUTINES=false turns it off (its routes answer 404 routines_off and nothing runs). Migration 0062
+   * keeps them (without it they live in memory). ROUTINES_MAX is how many one person may have.
+   */
+  ROUTINES: bool(true),
+  ROUTINES_MAX: z.coerce.number().int().min(1).max(200).default(20),
+  /**
+   * EVERYDAY TOOLS (src/everyday, docs/everyday.md): flights (Kiwi.com), hotels (trivago), currency (Frankfurter) and weather (MET Norway),
+   * live and free, with no sign-in of the person's: bot tools whose results are cards beside the answer. EVERYDAY=false turns all off;
+   * EVERYDAY_OFF names some to leave out ("stays,flights"). EVERYDAY_DAILY is the flight and hotel searches a person may make a day
+   * (currency and weather count a tenth). The URLs are the services' own unless set.
+   */
+  EVERYDAY: bool(true),
+  EVERYDAY_OFF: z.string().default(""),
+  EVERYDAY_DAILY: z.coerce.number().int().min(1).max(10_000).default(40),
+  EVERYDAY_FLIGHTS_URL: z.string().url().optional(),
+  EVERYDAY_STAYS_URL: z.string().url().optional(),
+  EVERYDAY_RATES_URL: z.string().url().optional(),
   BOTS_APP_TESTERS: z.string().default(""),
   BOT_KEY_PEPPER: z.string().optional(),
   BOTS_MAX: z.coerce.number().int().min(1).max(500).default(20),

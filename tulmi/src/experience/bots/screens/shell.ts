@@ -30,6 +30,9 @@ import { arrivalCard, ARRIVAL_PATH } from "./firstRun/arrivalCard.js";
 import { hasNotes, NOTES_STATS_PATH } from "./notes.js";
 import { outboxCard, offlineKept } from "./outbox.js";
 import { PUSH_ASK_PATH } from "./pushAsk.js";
+import { routinesRow, ROUTINES_PATH, type RoutinesData } from "./routines.js";
+import { FINDS_PATH, isFindsId } from "./finds.js";
+import type { Card } from "../../../everyday/index.js";
 import { type ActivityData, activityDesk, activityPhone } from "./shell/activity.js";
 import { stepDot, approveTop, approvePay } from "./shell/approvePay.js";
 import { askAnswer } from "./shell/askAnswer.js";
@@ -63,6 +66,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []),
       ...(first ? [needsCard(first, { layout: "row" })] : []),
       tiles(ctx, 4, 150, 18, more.notes),
+      ...routinesRow(ctx, more.routines),
     ],
     footer: [askBar("desktop", { ctx })],
   });
@@ -145,6 +149,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       hello(ctx, more),
       // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started.
       tiles(ctx, 2, 132, 16, more.notes),
+      ...routinesRow(ctx, more.routines),
       col([
         row([
           col([text("Make your first bot", { size: 20, weight: 700, tracking: -0.3, lineHeight: 25 }), text("Say what it should do. It shows you the plan before it acts.", { size: 13, color: C.grey70, lineHeight: 18 })], { gap: 4, flexGrow: 1, flexShrink: 1 }),
@@ -305,30 +310,35 @@ export const shellScreens: BotsScreen[] = [
     // Whether the first-arrival card (and the bot's hello) is due (once, after onboarding), the name they gave their bot, whether the
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
-      const [arrival, leaving, push, notes, persona] = await Promise.all([
+      const [arrival, leaving, push, notes, persona, routines] = await Promise.all([
         deps.api<{ due: boolean; kind?: "first" | "back" }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
         hasNotes(ctx) ? deps.api<NotesStats>("GET", NOTES_STATS_PATH).catch(() => undefined) : Promise.resolve(undefined),
         // The name they gave their bot, for the first day's hello.
         deps.api<{ personality?: { assistantName?: string } }>("GET", "/v1/personality").catch(() => undefined),
+        // Routines, for Home's row once there is one (screens/routines.ts).
+        deps.api<RoutinesData>("GET", ROUTINES_PATH).catch(() => undefined),
       ]);
-      return { arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality) };
+      return { arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality), routines };
     },
     build: (ctx, data) => {
-      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true };
+      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true, routines: data?.routines };
       // One Home for everyone, new or not; the bot's hello on top only the first time.
       return ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
     },
   }),
   screen({ id: SCREENS.empty, build: (ctx) => emptyHome(ctx) }),
   screen<ActivityData>({ id: SCREENS.activity, load: activityLoad, build: (ctx, d) => (ctx.client === "desktop" ? activityDesk(ctx, d) : activityPhone(ctx, d)) }),
-  screen<Route>({
+  screen<Route & { cards?: Card[] }>({
     id: SCREENS.ask,
-    load: (ctx, deps) => (ctx.params.message && ctx.params.answer === undefined && ctx.params.id === undefined && !ctx.params.bot
-      ? deps.api<Route>("POST", "/v1/shell/route", { message: String(ctx.params.message) })
-      : Promise.resolve(undefined as unknown as Route)),
-    build: (ctx, pre) => (ctx.params.answer !== undefined || ctx.params.id !== undefined ? askAnswer(ctx) : askCompose(ctx, pre)),
+    // Composing: who would answer what they typed. An answer: the cards its everyday tools found (screens/finds.ts), when it has any.
+    load: (ctx, deps) => (ctx.params.answer !== undefined && isFindsId(ctx.params.finds)
+      ? deps.api<{ cards: Card[] }>("GET", `${FINDS_PATH}/${ctx.params.finds}`) as Promise<Route & { cards?: Card[] }>
+      : ctx.params.message && ctx.params.answer === undefined && ctx.params.id === undefined && !ctx.params.bot
+        ? deps.api<Route>("POST", "/v1/shell/route", { message: String(ctx.params.message) })
+        : Promise.resolve(undefined as unknown as Route)),
+    build: (ctx, pre) => (ctx.params.answer !== undefined || ctx.params.id !== undefined ? askAnswer(ctx, pre?.cards) : askCompose(ctx, pre)),
   }),
   screen<SearchResult>({ id: SCREENS.search, load: searchLoad, build: (ctx, d) => (ctx.client === "desktop" ? searchDesk(ctx, d) : searchPhone(ctx, d)) }),
   screen<TasksData>({ id: SCREENS.tasks, load: (ctx, deps) => deps.api<TasksData>("GET", `/v1/shell/tasks?tz=${ctx.tzOffsetMinutes}`), build: (ctx, d) => (ctx.client === "desktop" ? tasksDesk(ctx, d) : tasksPhone(ctx, d)) }),

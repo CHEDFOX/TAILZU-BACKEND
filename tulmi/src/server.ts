@@ -31,7 +31,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import transcribeStream from "./routes/writing/transcribe-stream.js";
 import { registerLiveRoutes } from "./routes/app/live.js";
-import { installLiveWrites, liveJob } from "./live/writes.js";
+import { installLiveWrites, liveJob, livePublish } from "./live/writes.js";
 import { registerMediaRoutes, loadMediaRegistry, getMediaRegistry } from "./routes/app/media.js";
 import { registerSeoRoutes } from "./routes/site/seo.js";
 import { registerNotesRoutes } from "./routes/notes.js";
@@ -60,6 +60,11 @@ import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
 import { registerBotsFirstRunRoutes } from "./routes/bots/botsFirstRun.js";
 import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
+import { registerRoutineRoutes } from "./routes/bots/routines.js";
+import { registerEverydayRoutes } from "./routes/bots/everyday.js";
+import { everyday } from "./everyday/index.js";
+import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
+import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
@@ -402,7 +407,20 @@ const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, l
 // apps (same permission tiers), the files, the artifact core, Xode's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
 const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
-const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent };
+// Routines (src/routines, docs/routines.md): a bot does something on a schedule, without being asked each time. On with the bots platform
+// unless ROUTINES=false; every minute the ones that are due run as their owner, through the bot's own road. Migration 0062 keeps them.
+const routines = createRoutines({
+  store: routineStore(), bots, events: routineEvents(), publish: livePublish,
+  notify: async (userId, msg) => { try { await pushEngine()?.notify(userId, msg); } catch { /* the answer is still on the routine */ } },
+});
+if (routines) {
+  const stopRoutines = startRoutines(routines, app.log);
+  app.addHook("onClose", async () => { stopRoutines(); });
+}
+registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
+// Everyday tools (src/everyday, docs/everyday.md): flights, hotels, currency and weather for every bot that fits, free, no sign-in.
+registerEverydayRoutes(app, { rateLimit: AUTHED_RL, everyday: everyday() });
+const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent, routines };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);
