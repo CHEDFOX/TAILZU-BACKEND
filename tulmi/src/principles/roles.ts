@@ -69,7 +69,7 @@ const PLANNER_CONTRACT = [
   "SCROLL <up|down|left|right> [<id>]",
   "FOCUS <id> — put the cursor in a field",
   "OPEN <app> — open or switch to an app by its name",
-  "ASK <question> — when they need to choose or tell you something",
+  "ASK <question> — only when you cannot go on without their choice; an offer (\"Want me to…?\") is a SAY, then DONE",
   "LOOK [<what>] — when answering needs to see a picture, chart, diagram, equation, photo or anything drawn rather than written; you are then shown it",
   "DRAW … — mark the screen as you explain; see Drawing, below",
   "DONE [<summary>] — the goal is reached, or there is nothing more you can do here",
