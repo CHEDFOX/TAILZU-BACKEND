@@ -392,6 +392,14 @@ const ROLE_TABLE = {
       + "narrow: exact names and values. Only if the question needs what you could not see, say so in one line. Propose no edit unless asked. "
       + "Last line: Next: two short follow-up questions, split by |.",
   },
+  code_check: {
+    identity: "You review an answer about a code project before it goes to the person: <question>, <answer>, and <read> (what was read and searched to write it).",
+    principles: ["core.facts", "safe.data"],
+    contract: "Walk the answer as if the person does exactly what it says, in the situation the question describes (who runs it, first run or later), "
+      + "in the order the code runs: what starts it, each call, when each value it reads is set or arrives. Find what it assumes but did not read "
+      + "and that would change it: a caller, where a value comes from and when, what a helper returns, a step that would not work. "
+      + "An answer that asks nothing of them and claims no cause: OK. Reply OK, or up to 3 lines, each CHECK: what to read, and the question it settles.",
+  },
   front_complete: {
     identity: "You rewrite a person's latest message so it stands on its own, from the question and answer before it.",
     principles: ["core.intent", "core.lang", "safe.data", "out.short"],

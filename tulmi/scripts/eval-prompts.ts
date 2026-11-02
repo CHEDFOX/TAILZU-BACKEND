@@ -39,7 +39,7 @@ export const EVALS_DIR = path.join(HERE, "..", "evals");
 export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   classify: "tiny", locate_terms: "cheap", locate_pick: "cheap", plan_change: "code",
   agent_work: "code", agent_fold: "cheap",
-  index_files: "cheap", index_cards: "cheap", project_overview: "cheap", index_dirs: "cheap", index_repo: "cheap", index_features: "cheap", welcome: "cheap",
+  index_files: "cheap", index_cards: "cheap", project_overview: "cheap", code_check: "cheap", index_dirs: "cheap", index_repo: "cheap", index_features: "cheap", welcome: "cheap",
   spec: "strong", brief: "code", research_answer: "code", research_gaps: "cheap", search_plan: "tiny",
   artifact_element: "cheap", artifact_edit: "cheap", artifact_fix: "cheap", artifact_make: "code", artifact_ask: "cheap",
   artifact_vision: "vision", artifact_compare: "vision",

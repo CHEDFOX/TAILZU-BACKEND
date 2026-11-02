@@ -37,47 +37,49 @@ export const LOOK_RESULT_CHARS = 6_000;
 export const LOOK_CHARS_MAX = 36_000;
 /** Past this share of the money, the next step is the answer: looking never spends what the answer needs (a large project's brief made the last call unaffordable). */
 export const LOOK_SPEND_SHARE = 0.6;
-/** Steps the test of an answer may add, to read what it found missing and write the answer again. */
+/** Steps the answer may take after its review, to read what the review found missing and write the answer again. */
 export const CHECK_STEPS = 2;
-/** The test runs only while at least this share of the money is left: the answer as it is beats one that cannot be finished. */
+/** The review runs only while at least this share of the money is left: the answer as it is beats one that cannot be finished. */
 export const CHECK_MONEY_SHARE = 0.35;
-/** What the test of an answer says when the answer stands. */
-export const HOLDS = "HOLDS";
+/** The review's own words: OK, or a few CHECK lines. */
+export const CHECK_TOKENS = 220;
+/** At most this many gaps go back to be settled. */
+export const GAPS_MAX = 3;
 
 /**
- * THE TEST OF AN ANSWER, BEFORE IT GOES. The App Review replay (2026-11-02): asked why Apple found no tracking prompt, Xode found the gate (a server
+ * THE REVIEW OF AN ANSWER, BEFORE IT GOES. The App Review replay (2026-11-02): asked why Apple found no tracking prompt, Xode found the gate (a server
  * switch, off by default) and the one call at startup, and said "turn the switch on, no build needed" without walking it: the switch arrives with
- * the server's answer, after that one call, so the prompt would still never show. Found the parts, never ran them in order. This is no rule about
- * that case: any answer from code is walked as if the person did what it says, in the order the code runs, and a link only assumed is read.
+ * the server's answer, after that one call, so the prompt would still never show. Found the parts, never ran them in order.
+ *
+ * So an answer drawn from the code is read by a reviewer with fresh eyes (role code_check) before it goes: the question, the answer and the list of
+ * what was read, a tenth of the loop's context. It walks the answer as if done, in the order the code runs, and names what the answer assumed and
+ * did not read ("CHECK: where do the knobs get their values, and is that before initMeta runs at startup?"). OK, and the answer goes as it is, for a
+ * call of a few hundred tokens; gaps, and the loop settles them with its tools and writes the answer again. A model reviewing its own answer in its
+ * own context passed it as it was (measured: "HOLDS" in four tokens); and it cost a lookup ten times as much.
  */
-export const TEST_DRAFT = [
-  "Before this goes to the person, test it. They will not see this test.",
-  "WALK: suppose they do exactly what your answer says, in the situation the question describes (who runs it, on what, and whether it is the first run or a later one). Write, as numbered lines, the code running in the order it runs: what starts it, each function called, each value it reads and where and WHEN that value was set or arrives. A link you have not read (who calls it, where a value comes from, when it arrives, what a helper returns) is to be read now, with your tools, before you go on.",
-  `Then one line: VERDICT: ${HOLDS} if the problem really goes away (or the question is really answered) as written, or VERDICT: WRONG.`,
-  "After WRONG, write the corrected answer in full, exactly as you would have answered the person from the start. They never saw the first answer: do not mention it, a draft, a correction or a mistake.",
-].join("\n");
-
-const VERDICT = /^\s*\**\s*VERDICT\s*:?\s*\**\s*(HOLDS|WRONG)\b\**[^\n]*$/im;
-
-/**
- * What the test of an answer decided: "holds" (the answer goes as it was), "wrong" with the corrected answer after the verdict, or null when it said
- * neither (its words are then taken as the answer, if they are one). A bare HOLDS counts as holds.
- */
-export function verdictOf(text: string): { holds: true } | { holds: false; answer: string } | null {
-  const t = text.trim();
-  if (holds(t)) return { holds: true };
-  const m = VERDICT.exec(t);
-  if (!m) return null;
-  if (m[1]!.toUpperCase() === HOLDS) return { holds: true };
-  // What follows the verdict, without the rule or heading lines a model puts before an answer ("---", "Answer:").
-  const after = t.slice(m.index + m[0].length).replace(/^(?:\s*(?:[-*_=]{3,}|#*\s*(?:corrected\s+)?answer\s*:?)\s*\n)+/i, "");
-  return { holds: false, answer: after.trim() };
+export function reviewInput(question: string, draft: string, seen: readonly string[], greps: readonly string[]): string {
+  const read = [seen.length ? seen.slice(-30).join("\n") : "nothing read with tools", greps.length ? `searched: ${greps.slice(-12).map((g) => JSON.stringify(cut(g, 60))).join(", ")}` : ""];
+  return [`<question>\n${cut(question, 1_500)}\n</question>`, `<answer>\n${cut(draft, 6_000)}\n</answer>`, `<read>\n${read.filter(Boolean).join("\n")}\n</read>`].join("\n\n");
 }
 
-/** The test's reply is the word alone (a full stop, quotes or bold around it at most). */
-export const holds = (text: string): boolean => new RegExp(`^[\\s"'*_.]*${HOLDS}[\\s"'*_.!]*$`, "i").test(text);
-/** Room for the walk the test writes before its verdict. */
-export const CHECK_TOKENS = 600;
+/** The gaps the review found, each "what to read, and the question it settles"; none when it said OK. */
+export function gapsOf(text: string): string[] {
+  return [...text.matchAll(/^\s*(?:[-*]|\d+[.)])?\s*\**\s*CHECK\s*\**\s*:\s*\**\s*(.+)$/gim)].map((m) => cut(m[1]!.replace(/\*+$/, "").trim(), 300)).filter(Boolean).slice(0, GAPS_MAX);
+}
+
+/** What the loop is told when the review found gaps: settle them, then the answer in full, as if it were the first. */
+export function settle(gaps: readonly string[]): string {
+  return [
+    "Before this goes to the person, settle these with your tools:",
+    ...gaps.map((g, n) => `${n + 1}. ${g}`),
+    "Then write the answer in full, exactly as you would have from the start. They never saw the first one: do not mention it, a draft, a review or a correction. If what you find changes nothing, write the same answer.",
+  ].join("\n");
+}
+
+/** The question in the loop's first message (converse.ts puts it in <message>), or the start of that message. */
+export function questionOf(user: string): string {
+  return /<message>\n?([\s\S]*?)\n?<\/message>/.exec(user)?.[1]?.trim() || /<question>\n?([\s\S]*?)\n?<\/question>/.exec(user)?.[1]?.trim() || cut(user, 1_500);
+}
 
 export interface LookTools {
   defs: readonly ToolDef[];
@@ -106,10 +108,13 @@ export interface LookInput {
    */
   owed?: string;
   /**
-   * Test the answer before it goes (TEST_DRAFT): an answer drawn from reading code is walked again, as if the person did what it says, in the order
-   * the code runs; a link only assumed is read. One round a turn, only after looking. converse.ts asks it of every question, not of talk or a change.
+   * Review the answer before it goes (code_check, reviewInput): an answer drawn from reading code is walked by a fresh reviewer, as if the person did
+   * what it says, in the order the code runs; what it assumed is settled with the tools. Once a turn, only after looking. converse.ts asks it of every
+   * question, not of talk or a change.
    */
   check?: boolean;
+  /** The person's question, for the review (questionOf reads it from `user` when not given). */
+  question?: string;
   /** The most steps (LOOK_STEPS_MAX unless fewer): a change asked for looks only to place the work, as the job reads it in full. */
   steps?: number;
 }
@@ -212,10 +217,9 @@ export async function investigate(i: LookInput): Promise<Looked> {
     ? { onText: (piece: string) => { said = true; i.onText!(piece); }, onReset: () => { if (said) { said = false; i.onReset?.(); } } }
     : null;
   let max = Math.max(1, Math.min(LOOK_STEPS_MAX, i.steps ?? LOOK_STEPS_MAX));
-  /** The answer under test (TEST_DRAFT), once it has been written; the test runs once a turn. */
-  let draft: string | null = null;
-  let draftForced = false;
+  /** The answer is reviewed once a turn (code_check); `settling`: the review found gaps, and the loop is settling them. */
   let tested = false;
+  let settling = false;
   const lastAt = (step: number): boolean => step === max || chars >= LOOK_CHARS_MAX || (step > 1 && paise >= i.maxPaise * LOOK_SPEND_SHARE);
   let steps = 0;
   for (let step = 1; step <= max; step += 1) {
@@ -230,35 +234,20 @@ export async function investigate(i: LookInput): Promise<Looked> {
     let res;
     try {
       res = await call({
-        tier: i.tier, messages, maxTokens: draft !== null ? i.maxTokens + CHECK_TOKENS : i.maxTokens, purpose: "front.code_answer", userId: i.model.userId, budget: { maxPaise: left },
+        tier: i.tier, messages, maxTokens: i.maxTokens, purpose: "front.code_answer", userId: i.model.userId, budget: { maxPaise: left },
         tools: acting ? [...(i.acts?.defs ?? [])] : [...defs], toolChoice: last && !acting ? ("none" as const) : ("auto" as const), ...(i.model.signal ? { signal: i.model.signal } : {}),
-        // The test's own reply is not streamed: "HOLDS" is no answer, and a corrected one is shown whole once it is in.
-        ...(held === null && draft === null ? words ?? {} : {}),
+        ...(held === null ? words ?? {} : {}),
       }, i.model.gateway);
     } catch (err) {
-      if (draft !== null) return { text: draft, reads: [...reads], greps, seen, paise, steps: step, ranOut: draftForced };
       if (isAbort(err) || step === 1) throw err;
       // Out of money or the model gone after some looking: one answer from what was read, with no tools, if it can be had.
       break;
     }
     paise += res.paise;
     const asked = res.toolCalls ?? [];
-    // The test of the answer came back: it stands (shown already), or it is written again (shown whole now), or more is read first, and the
-    // test goes on after the reading (the draft stays on screen until the verdict says otherwise).
-    if (draft !== null && !asked.length) {
-      const reply = stripLeak(res.text).trim();
-      const v = verdictOf(reply);
-      // A walk with no verdict, or a WRONG with nothing after it: the answer as it was beats a half-written one. Words with no walk and no
-      // verdict, after reading more, are the answer written again.
-      const again = v ? (v.holds ? "" : v.answer) : /^\s*\**\s*WALK\b/i.test(reply) ? "" : reply;
-      if (!again) return { text: draft, reads: [...reads], greps, seen, paise, steps: step, ranOut: draftForced };
-      words?.onReset();
-      words?.onText(again);
-      return { text: again, reads: [...reads], greps, seen, paise, steps: step };
-    }
     // Words that only say it will look further ("Let me read the rest of DEPLOY.md."), with no call: not an answer. Told to do it or answer, once a step.
     // A tool call written out as words (`<invoke>…`, `<tool_call>{…}`) is not a call: told to make it, or to answer, and never shown as the answer.
-    if (draft === null && !asked.length && !last && (promisesMore(res.text) || leakedCall(res.text))) {
+    if (!asked.length && !last && (promisesMore(res.text) || leakedCall(res.text))) {
       words?.onReset();
       messages.push({ role: "assistant", content: stripLeak(res.text) || "(a tool call written as words)" }, {
         role: "user", content: leakedCall(res.text) ? "That was a tool call written as words: make it as a real tool call, or answer now." : "Do that now with your tools, or answer now: words that only say what you will do are not an answer.",
@@ -277,18 +266,30 @@ export async function investigate(i: LookInput): Promise<Looked> {
     if (!asked.length || (last && !acting)) {
       const text = stripLeak(res.text).trim();
       const answer: string = held !== null && held.length >= text.length ? held : text;
-      // An answer drawn from reading code is tested once before it goes (TEST_DRAFT), while the money allows: walked as if done, every link read.
+      // An answer drawn from reading code is reviewed once before it goes (code_check), while the money allows. Gaps: settled with the tools,
+      // and the answer written again; the one already shown is taken back first.
       if (i.check && !tested && answer && (reads.size > 0 || greps.length > 0) && i.maxPaise - paise >= i.maxPaise * CHECK_MONEY_SHARE) {
         tested = true;
-        draft = answer;
-        draftForced = last && !acting;
-        max = Math.min(LOOK_STEPS_MAX + CHECK_STEPS, Math.max(max, step) + CHECK_STEPS);
-        messages.push({ role: "assistant", content: answer }, { role: "user", content: TEST_DRAFT });
-        continue;
+        i.onStep?.("code:check");
+        const review = await call({
+          tier: i.tier, messages: compose("code_check", [{ role: "user" as const, content: reviewInput(i.question ?? questionOf(i.user), answer, seen, greps) }]),
+          maxTokens: CHECK_TOKENS, purpose: "front.code_check", userId: i.model.userId, budget: { maxPaise: Math.max(1, i.maxPaise - paise) },
+          ...(i.model.signal ? { signal: i.model.signal } : {}),
+        }, i.model.gateway).catch((err: unknown) => { if (isAbort(err)) throw err; return null; });
+        if (review) paise += review.paise;
+        const gaps = review ? gapsOf(review.text) : [];
+        if (gaps.length) {
+          settling = true;
+          words?.onReset();
+          max = Math.min(LOOK_STEPS_MAX + CHECK_STEPS, Math.max(max, step) + CHECK_STEPS);
+          messages.push({ role: "assistant", content: answer }, { role: "user", content: settle(gaps) });
+          continue;
+        }
       }
-      return { text: answer, reads: [...reads], greps, seen, paise, steps: step, ranOut: last && !acting };
+      // Settling the review's gaps used steps the first look did not have: an answer that ends them did not run out of looking.
+      return { text: answer, reads: [...reads], greps, seen, paise, steps: step, ranOut: last && !acting && !settling };
     }
-    if (held === null && draft === null) words?.onReset();
+    if (held === null) words?.onReset();
     messages.push({ role: "assistant", content: res.text || null, tool_calls: asked });
     const calls = asked.slice(0, LOOK_CALLS_PER_STEP);
     for (const c of calls) {
