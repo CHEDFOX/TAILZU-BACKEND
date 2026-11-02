@@ -71,7 +71,7 @@ import { getPrefs, readSpeed, type KeybotPrefs } from "./keybot/prefs.js";
 import { withKeybotKeyboard } from "./keybot/keyboard.js";
 import { registerBotsCodeRoutes } from "./routes/botsCode.js";
 import { registerBotsCodeWorkRoutes } from "./routes/botsCodeWork.js";
-import { registerBotsFirstRunRoutes, signedInVia } from "./routes/botsFirstRun.js";
+import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
 import { registerAccountDeletionRoutes } from "./routes/accountDeletion.js";
 import { registerBotsPushAskRoutes } from "./routes/botsPushAsk.js";
 import { registerBotLooksRoutes } from "./routes/botLooks.js";
@@ -2840,10 +2840,7 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // not the screen you want a reviewer to open on.
     landedBefore: isReviewer || !!personality?.shellSeenAt,
     // Both answers are required by the card, so either one proves it ran.
-    // Signed in with Apple: Apple gave the name it will (the app saves it), and nothing more may be asked after it (App Review 4), so
-    // the profile asks nothing of them.
-    // Signed in with Apple, the name is never asked for (App Review 4), so only the pick counts.
-    profileComplete: user && signedInVia(user) === "apple" ? !!profile?.gender : !!(profile?.fullName || profile?.gender),
+    profileComplete: !!(profile?.fullName || profile?.gender),
     launchCount: Number(reqBody.launchCount) || 0,
     languagesSet: isReviewer || !!personality?.languages?.length,
     // Entitled, so no paywall stands between a reviewer and the app. Guideline
