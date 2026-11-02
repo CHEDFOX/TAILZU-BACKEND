@@ -1,5 +1,5 @@
 /**
- * KEYBOT'S NUMBERS: everything the old Stats tab (experience/catalog.ts statsScreen, phoneLook.ts phoneStatsBody) and
+ * KEYBOT'S NUMBERS: everything the old Stats tab (experience/phone/stats.ts statsScreen, phoneLook.ts phoneStatsBody) and
  * the desk's Insights pages (experience/desk.ts deskInsights, deskDay, deskApp) showed, as one view for the Bots app's
  * Keylessbord pages (experience/bots/screens/keybot*.ts). docs/bots-keybot-parity.md lists every figure and where it lives.
  *

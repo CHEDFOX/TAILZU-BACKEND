@@ -52,7 +52,9 @@ const { resetConfigForTests } = await import("../src/config.js");
 resetConfigForTests();
 
 const { buildApp } = await import("../src/server.js");
-const { buildBootstrap, buildScreen, DAILY_LANGUAGES } = await import("../src/experience/catalog.js");
+const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
+const { buildScreen } = await import("../src/experience/screens.js");
+const { DAILY_LANGUAGES } = await import("../src/experience/phone/languages.js");
 const { OB_EN, OB_HG, OB_STORE_EN, OB_STORE_HG, onboardHinglishSeeds } = await import("../src/experience/onboard.js");
 const { STORE_NEEDS, canOnboardStore, onboardMode, storeStart } = await import("../src/experience/onboardStore.js");
 const { hasAlreadyDictated } = await import("../src/experience/onboardGuard.js");

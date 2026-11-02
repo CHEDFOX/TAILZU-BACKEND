@@ -1,5 +1,5 @@
 /**
- * KEYBOT'S NUMBERS, PAGE BY PAGE: what the old Stats tab opened in its cards (catalog.ts statsScreen's panels) and the
+ * KEYBOT'S NUMBERS, PAGE BY PAGE: what the old Stats tab opened in its cards (phone/stats.ts statsScreen's panels) and the
  * desk's Insights pages (desk.ts deskInsights, deskDay, deskApp), in Keylessbord's look, for the phone and the window.
  *
  *   bots.keybot.month   This month: typed against said, the words left and what turning up earned, words a day, by

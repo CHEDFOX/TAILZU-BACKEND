@@ -9,7 +9,8 @@ process.env.GROQ_API_KEY = "k";
 process.env.STT_PROVIDER = "groq";
 process.env.NODE_ENV = "test";
 
-const { buildScreen, setMediaRegistryAccessor } = await import("../src/experience/catalog.js");
+const { buildScreen } = await import("../src/experience/screens.js");
+const { setMediaRegistryAccessor } = await import("../src/experience/mediaRegistry.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { CREAM } = await import("../src/experience/bots/screens/handoff.js");
 

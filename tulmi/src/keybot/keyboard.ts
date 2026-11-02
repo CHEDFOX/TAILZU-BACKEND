@@ -3,7 +3,7 @@
  * config GET /v1/keyboard/config sends, so the keyboard does what that page says:
  *
  *   height     Short / Tall: every key row in the tree (the four of each layer) gets that height, and kb.height.pt and
- *              kb.height.byWidth move by the same four rows, so the frame and the rows keep agreeing (catalog.ts
+ *              kb.height.byWidth move by the same four rows, so the frame and the rows keep agreeing (experience/keyboard/config.ts
  *              derives the one from the other). Normal is the tree as built.
  *   haptics    Strong: kb.haptics.style "medium". Light is the keyboard's own tick, so nothing changes. Off: the PUT
  *              already turned personality.hapticsAll off (kb.haptics.all); with no key picked one by one either,
@@ -24,7 +24,7 @@ import type { Personality } from "../../../shared/types/api.js";
 import type { KeyboardConfigResponse, KeyboardNode } from "../../../shared/types/sdui.js";
 import type { KeybotPrefs } from "./prefs.js";
 
-/** A key row's height as catalog.ts builds the tree, and what each Key height makes it. */
+/** A key row's height as experience/keyboard/config.ts builds the tree, and what each Key height makes it. */
 export const KEY_ROW_HEIGHT = 44;
 const KEY_ROW_HEIGHTS = { short: 40, normal: KEY_ROW_HEIGHT, tall: 48 } as const;
 /** Key rows on screen at once: letters, 123, #+= and the number pad each have four. */

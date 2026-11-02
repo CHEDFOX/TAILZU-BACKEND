@@ -23,7 +23,7 @@
  */
 import { siteShell } from "./policies/shell.js";
 import { crumbsLd, pageLd } from "../seo/head.js";
-import { SITE_UI } from "../experience/catalog.js";
+import { SITE_UI } from "../experience/site/copy.js";
 
 const DESCRIPTION = "X0 Bot for Windows and Mac: tap Ctrl twice, talk, and clean text lands wherever your cursor is. Also on iPhone and Android.";
 

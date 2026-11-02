@@ -103,7 +103,7 @@ const MARK_DOTS: Array<[number, number, number]> = [
 /** The Tailzu dot mark: eight dots in a ring, two eyes. */
 /**
  * THE KEYBOARD'S MIC KEY, AS IT IS: a dark round window with the bot peeking in from below, his paws on its rim
- * (catalog.ts "kb.mic.bot": "peek", drawn by the keyboard's PeekBotView.swift / TulmiPeekBot.kt). This is that
+ * (keyboard/config.ts "kb.mic.bot": "peek", drawn by the keyboard's PeekBotView.swift / TulmiPeekBot.kt). This is that
  * drawing's peek pose, still, in the same units (the key's radius is 1, centre 0 0, y down) and the same colours
  * (keyboardKnobsData.ts kb.mic.bot.*). The keyboard clips to the window; an SVG shape cannot clip, so each shape is
  * cut to the window here, and the shell's gradient and the rim's soft shadow are laid in bands.

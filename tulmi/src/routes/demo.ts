@@ -34,7 +34,8 @@ import type { AudioFormat } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
 import { runPipeline } from "../pipeline/index.js";
 import { estimateDurationSeconds } from "../pipeline/stt.js";
-import { siteCopy, SITE_MIC, SITE_SHAPE } from "../experience/catalog.js";
+import { siteCopy } from "../experience/site/copy.js";
+import { SITE_MIC, SITE_SHAPE } from "../experience/site/shape.js";
 import { ORIGIN } from "../seo/head.js";
 
 const FORMATS: AudioFormat[] = ["wav", "m4a", "webm", "mp3", "ogg", "flac"];

@@ -1411,7 +1411,7 @@ function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenResponse {
     width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: sel(id, C.ink, C.outline), alignItems: "center", justifyContent: "center", flexShrink: 0,
   });
   const tag = (s: string): Node => box([text(s, { size: 12, weight: 500, lineHeight: 16 })], { backgroundColor: C.surface, borderRadius: 10, paddingVertical: 3, paddingHorizontal: 8 });
-  // A phone's plans carry their store package: the price shows as the store words it once it answers (catalog.ts storePriceOf).
+  // A phone's plans carry their store package: the price shows as the store words it once it answers (phone/paywall.ts storePriceOf).
   const store = (p: Plans["plans"][number], o: { field?: "perMonth"; template?: string } = {}): TextOpts =>
     p.buy?.kind === "iap.showPaywall" && p.buy.packageId
       ? { storePrice: { packageId: p.buy.packageId, offeringId: p.buy.offeringId, ...o } }

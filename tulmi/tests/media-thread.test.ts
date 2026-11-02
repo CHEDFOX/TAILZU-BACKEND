@@ -8,7 +8,9 @@ process.env.STT_PROVIDER = "openai";
 process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
-import { buildBootstrap, buildScreen, setMediaRegistryAccessor } from "../src/experience/catalog.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
+import { buildScreen } from "../src/experience/screens.js";
+import { setMediaRegistryAccessor } from "../src/experience/mediaRegistry.js";
 
 // The onboarding films and the You-tab posters are registry entries, not
 // code: upload to the key and the slot shows it, on the phone and, with a

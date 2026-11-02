@@ -43,7 +43,8 @@ vi.mock("node:fs/promises", async (importOriginal) => {
   return { ...real, default: { ...real, readFile, writeFile, mkdir }, readFile, writeFile, mkdir };
 });
 
-const { buildBootstrap, buildKeyboardConfig } = await import("../src/experience/catalog.js");
+const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
+const { buildKeyboardConfig } = await import("../src/experience/keyboard/config.js");
 const { localize, localizeKeyboardLabels } = await import("../src/experience/i18n.js");
 const { DESKTOP_ROUTER, SWIPE_CORE_WORDS, deskVoices } = await import("../src/experience/appLists.js");
 const { GRAMMAR_RULES } = await import("../src/agent/grammar.js");

@@ -2,7 +2,7 @@
  * THE CONTROL PLANE — change anything any client is sent, live, without a
  * deploy.
  *
- * catalog.ts builds every payload: the app's bootstrap and screens, the
+ * src/experience builds every payload: the app's bootstrap and screens, the
  * keyboard's config, the site's copy. A rule here edits the built payload on
  * its way out, for whoever it targets. It can reach any value: a flag, a
  * label, a colour, a node anywhere in a tree, a whole screen. It can target

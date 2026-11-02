@@ -136,16 +136,13 @@ import {
 import { PERSONALITY_PRESETS, applyPresetOverrides } from "./experience/personalityPresets.js";
 import { DEFAULT_TTS_VOICE, isValidTtsVoice } from "./experience/ttsVoices.js";
 import { ASSISTANT_NAME, cleanNickname, NAME_HEARD, nicknameOf, vocabularyWithNames } from "./experience/assistantName.js";
-import {
-  type KeyboardPlatform,
-  buildBootstrap,
-  buildScreen,
-  buildKeyboardConfig,
-  bumpCacheVersion,
-  currentCacheVersion,
-  setMediaRegistryAccessor,
-  PAYWALL_CONFIG, POLICY,
-} from "./experience/catalog.js";
+import { type KeyboardPlatform, buildKeyboardConfig } from "./experience/keyboard/config.js";
+import { buildBootstrap } from "./experience/bootstrap/bootstrap.js";
+import { buildScreen } from "./experience/screens.js";
+import { bumpCacheVersion, currentCacheVersion } from "./experience/cacheVersion.js";
+import { setMediaRegistryAccessor } from "./experience/mediaRegistry.js";
+import { PAYWALL_CONFIG } from "./experience/phone/paywall.js";
+import { POLICY } from "./experience/policy.js";
 import { botsAppOn, botsDepsFor, botsOnly, buildBotsScreen, emptyDeps, isBotsScreen } from "./experience/bots/index.js";
 import { BOTS_HANDOFF_IDS } from "./experience/bots/screens/handoff.js";
 import { canOnboard, onboardLanguage } from "./experience/onboard.js";
@@ -483,7 +480,7 @@ const MEDIA_PUBLIC_URL = process.env.MEDIA_PUBLIC_URL
 await loadMediaRegistry(MEDIA_DIR);
 // Let the SDUI catalog reach into the media registry (for e.g. surfacing
 // the "mic.animation" media URL into the keyboard config's flags). Avoids a
-// circular import between routes/media.ts and experience/catalog.ts.
+// circular import between routes/media.ts and the screens (experience/mediaRegistry.ts).
 setMediaRegistryAccessor(getMediaRegistry);
 await app.register(fastifyStatic, {
   root: MEDIA_DIR,
@@ -532,9 +529,9 @@ await app.register(fastifyStatic, {
 
 // --- Typefaces for the phone app ---------------------------------------------
 // The app bundles no fonts and loads the ones the bootstrap names (FONTS in
-// experience/catalog.ts) from here, so a change of typeface is a deploy, not
+// experience/phone/theme.ts) from here, so a change of typeface is a deploy, not
 // a store release. Shipped in the image (tulmi/fonts); OFL.txt is their
-// licence. The names in catalog.ts carry a ?v= so a changed file is a new URL.
+// licence. The names in phone/theme.ts carry a ?v= so a changed file is a new URL.
 const FONTS_DIR = process.env.FONTS_DIR || path.join(process.cwd(), "fonts");
 if (fs.existsSync(FONTS_DIR)) {
   await app.register(fastifyStatic, {

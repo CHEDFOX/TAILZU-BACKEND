@@ -24,7 +24,7 @@ export const offlineKept = (ctx: BotsCtx, s: ScreenResponse): ScreenResponse => 
 const OUTBOX_SLOTS = 5;
 
 /**
- * What the Bots app's bootstrap tells a build with an outbox about going offline (catalog.ts, beside "bots.app"): Home is shown as the
+ * What the Bots app's bootstrap tells a build with an outbox about going offline (bootstrap/bootstrap.ts, beside "bots.app"): Home is shown as the
  * Offline screen while the connection is down (and back when it returns); any other screen gets the line over it; and once the asks kept
  * offline went, the line that says so. A build without an outbox ignores them.
  */

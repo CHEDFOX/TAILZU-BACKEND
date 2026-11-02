@@ -28,7 +28,7 @@ Tests: tests/bots-keybot-parity.test.ts (every item below that is on Keybot's ho
 
 ## 1. The old phone Stats tab (screen `stats`)
 
-`catalog.ts statsScreen` + `phoneLook.ts phoneStatsBody`. Data: server.ts read for `stats` usageSummary (the calendar month,
+`phone/stats.ts statsScreen` + `phoneLook.ts phoneStatsBody`. Data: server.ts read for `stats` usageSummary (the calendar month,
 all time, today), statsForUser "month" (the last 30 days), allowanceFor, getEntitlement, the personality; `freeForAll()`.
 Now: `GET /v1/keybot/stats`.
 
@@ -113,7 +113,7 @@ Now: `GET /v1/keybot/stats`.
 
 ## 2. The old phone You tab (screen `personality`)
 
-`catalog.ts personalityScreen`. Data: the personality (presets, dictionary, languages, haptics, the style portrait), the
+`phone/you/personality.ts personalityScreen`. Data: the personality (presets, dictionary, languages, haptics, the style portrait), the
 assistant's tasks (`youCard`, while CONNECTORS is on), `ctx.stats` for the waveform. Now: `GET /v1/keybot`, `GET /v1/personality`.
 
 - [x] **The greeting**: "Hello" turning through languages, and the name → *not on Keybot: the Bots app greets the person by
@@ -141,7 +141,7 @@ assistant's tasks (`youCard`, while CONNECTORS is on), `ctx.stats` for the wavef
 
 ## 3. Settings (the gear on both tabs, screen `settings`)
 
-`catalog.ts settingsScreen`, words in `settingsWords.ts`.
+`phone/settings.ts settingsScreen`, words in `settingsWords.ts`.
 
 - [x] **You · Upgrade** (paywall) → "Plan and billing" → `bots.billing` ("See plans" → `bots.plans`).
 - [x] **You · Change or cancel** (App Store, Google Play, the web) and **Cancel subscription** (Razorpay) → `bots.billing`.

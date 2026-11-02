@@ -19,7 +19,9 @@
  * No ratings, no user counts, no competitor facts: a number an engine quotes
  * has to be one we can stand behind.
  */
-import { SITE_UI, SITE_SHAPE, PAYWALL_CONFIG, siteCopy } from "../experience/catalog.js";
+import { SITE_UI, siteCopy } from "../experience/site/copy.js";
+import { SITE_SHAPE } from "../experience/site/shape.js";
+import { PAYWALL_CONFIG } from "../experience/phone/paywall.js";
 import { getConfig } from "../config.js";
 import { ID, ORIGIN, OG_IMAGE, abs } from "./head.js";
 

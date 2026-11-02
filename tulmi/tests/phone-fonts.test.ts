@@ -11,7 +11,9 @@ process.env.NODE_ENV = "test";
 // eslint-disable-next-line import/first
 import { buildApp } from "../src/server.js";
 // eslint-disable-next-line import/first
-import { FONTS, PHONE_FONT, buildBootstrap } from "../src/experience/catalog.js";
+import { FONTS } from "../src/experience/phone/theme.js";
+import { PHONE_FONT } from "../src/experience/phoneLook.js";
+import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); await app.ready(); });

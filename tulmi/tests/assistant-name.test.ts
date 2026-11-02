@@ -51,7 +51,7 @@ import { buildApp } from "../src/server.js";
 
 // eslint-disable-next-line import/first
 // eslint-disable-next-line import/first
-import { buildScreen } from "../src/experience/catalog.js";
+import { buildScreen } from "../src/experience/screens.js";
 // eslint-disable-next-line import/first
 import { cleanNickname, nameForPrompt, nicknameOf, vocabularyWithNames } from "../src/experience/assistantName.js";
 // eslint-disable-next-line import/first

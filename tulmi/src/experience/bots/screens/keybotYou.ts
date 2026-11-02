@@ -159,7 +159,7 @@ const gapKey = (flex: number): Key => ({ id: "", label: "", flex, gap: true });
 const bottom = (left: Key): Key[] => [{ ...left, flex: 1.6 }, k(".", ".", 1), k("space", "space", 4.2), k("@", "@", 1), k("return", "return", 1.8)];
 
 /**
- * The keyboard's layers, as the keyboard has them (catalog.ts KB_ROW_*, which the keyboard itself is built from): the
+ * The keyboard's layers, as the keyboard has them (keyboard/keys.ts KB_ROW_*, which the keyboard itself is built from): the
  * letters, the numbers, the symbols, and Keylessbord's own keys. A key on two layers is on the first only, so a key picked
  * on one never looks unpicked on another; where it would repeat, its place stays empty at its own width.
  */

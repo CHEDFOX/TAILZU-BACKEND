@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { converseContext, languageName, spokenLanguage } from "../src/pipeline/cleanup";
 import { stableBlock } from "../src/principles/roles";
-import { buildScreen, buildKeyboardConfig, speechLocale } from "../src/experience/catalog";
+import { buildScreen } from "../src/experience/screens";
+import { buildKeyboardConfig } from "../src/experience/keyboard/config";
+import { speechLocale } from "../src/experience/phone/training/live";
 
 describe("the spoken training partner speaks the user's language", () => {
   it("names the language rather than quoting its code", () => {

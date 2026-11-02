@@ -48,7 +48,7 @@ const { beginOAuth, vendorSignIn } = await import("../src/connectors/oauth.js");
 const { pickConnectors } = await import("../src/connectors/router.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { appTools, assistantView } = await import("../src/connectors/list.js");
-const { buildScreen } = await import("../src/experience/catalog.js");
+const { buildScreen } = await import("../src/experience/screens.js");
 type ConnectorDef = import("../src/connectors/catalog.js").ConnectorDef;
 type Store = import("../src/connectors/store.js").ConnectorStore;
 

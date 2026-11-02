@@ -115,7 +115,7 @@ export interface TextOpts {
   lines?: number;
   /** Show this state path's value instead of `content` when it has one (Text bind.content). */
   bind?: string;
-  /** A plan's price: the phone shows the store's own words for this package once it answers (catalog.ts storePriceOf). */
+  /** A plan's price: the phone shows the store's own words for this package once it answers (phone/paywall.ts storePriceOf). */
   storePrice?: { packageId: string; offeringId?: string; field?: "price" | "perMonth"; template?: string };
   style?: Style;
 }

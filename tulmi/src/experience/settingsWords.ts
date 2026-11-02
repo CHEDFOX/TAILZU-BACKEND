@@ -3,7 +3,7 @@
  * new onboarding speaks (onboard.ts): short, warm, honest, and "I" for Tailzu.
  *
  * English is written once here, with its Hinglish beside it, so both screens
- * that draw Settings (the phone's, catalog.ts, and the desk's, desk.ts) say
+ * that draw Settings (the phone's, phone/settings.ts, and the desk's, desk.ts) say
  * the same thing and the translator is never left to guess at them: the
  * Hinglish below is used as written, the way the onboarding's own is
  * (settingsHinglishSeeds, applied by i18n.ts to the screens that use these).

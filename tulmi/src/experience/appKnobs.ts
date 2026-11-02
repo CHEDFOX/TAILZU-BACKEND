@@ -3,7 +3,7 @@
  * in the bootstrap with a value, so nothing on the phone decides it and the
  * control console can find and change each one.
  *
- * catalog.ts wins: a label or flag it already sets is left alone. The knob
+ * The bootstrap wins: a label or flag it already sets is left alone. The knob
  * values fill everything else.
  */
 import type { BootstrapResponse } from "../../../shared/types/sdui.js";

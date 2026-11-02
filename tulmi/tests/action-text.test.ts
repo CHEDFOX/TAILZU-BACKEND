@@ -7,7 +7,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
-import { buildScreen } from "../src/experience/catalog.js";
+import { buildScreen } from "../src/experience/screens.js";
 
 // What a toast or a copy puts in front of someone. An installed phone fills in
 // a message that IS "$state.x" and nothing else: "@history.detail.toast" and

@@ -8,7 +8,7 @@ process.env.DEV_SKIP_AUTH = "true";
 // eslint-disable-next-line import/first
 import { appendHistoryEntry, statsForUser } from "../src/history/store.js";
 // eslint-disable-next-line import/first
-import { buildScreen } from "../src/experience/catalog.js";
+import { buildScreen } from "../src/experience/screens.js";
 // eslint-disable-next-line import/first
 import { curvePaths } from "../src/experience/statsCharts.js";
 // eslint-disable-next-line import/first

@@ -50,7 +50,7 @@ vi.mock("../src/pipeline/stt.js", () => ({
 // eslint-disable-next-line import/first
 import { buildApp } from "../src/server.js";
 // eslint-disable-next-line import/first
-import { buildScreen } from "../src/experience/catalog.js";
+import { buildScreen } from "../src/experience/screens.js";
 // eslint-disable-next-line import/first
 import {
   DEFAULT_TTS_VOICE, TTS_VOICES, TTS_VOICE_IDS, isValidTtsVoice, ttsVoiceById,

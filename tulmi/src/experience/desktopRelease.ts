@@ -16,6 +16,10 @@ import path from "node:path";
 
 export type DesktopOs = "mac" | "windows" | "linux";
 
+/** The desktop release every OS has at least, for an OS whose installer was
+ *  published before versions were recorded beside it. */
+export const DESKTOP_LATEST = "0.2.1";
+
 const FILES: Record<DesktopOs, string> = {
   windows: "Tailzu-Setup.exe",
   mac: "Tailzu.dmg",

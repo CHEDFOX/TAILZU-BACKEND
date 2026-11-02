@@ -52,7 +52,7 @@ import { sitePage, spendDemo } from "../src/routes/demo.js";
 // eslint-disable-next-line import/first
 import { askSite } from "../src/config.js";
 // eslint-disable-next-line import/first
-import { SITE_UI } from "../src/experience/catalog.js";
+import { SITE_UI } from "../src/experience/site/copy.js";
 // eslint-disable-next-line import/first
 import { logUrl } from "../src/observability.js";
 

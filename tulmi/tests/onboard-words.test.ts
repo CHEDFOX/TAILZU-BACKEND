@@ -43,7 +43,8 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 const { localize } = await import("../src/experience/i18n.js");
-const { buildScreen, DAILY_LANGUAGES } = await import("../src/experience/catalog.js");
+const { buildScreen } = await import("../src/experience/screens.js");
+const { DAILY_LANGUAGES } = await import("../src/experience/phone/languages.js");
 const { OB_EN, OB_HG, OB_STORE_EN, OB_STORE_HG, onboardAuthTree, onboardHinglishSeeds } = await import("../src/experience/onboard.js");
 const { STORE_NEEDS } = await import("../src/experience/onboardStore.js");
 const { EN, hinglishSeeds } = await import("../src/connectors/words.js");

@@ -11,7 +11,8 @@ process.env.OPENAI_API_KEY = "k";
 process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
-const { buildBootstrap, setupActivity } = await import("../src/experience/catalog.js");
+const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
+const { setupActivity } = await import("../src/experience/bootstrap/setupActivity.js");
 
 const ios = { platform: "ios" as const };
 
