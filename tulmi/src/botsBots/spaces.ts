@@ -5,7 +5,7 @@
  *
  *   list(user) / detail(user, space)   the spaces the person is in, and one whole (members, roles, invites, activity as they may see them)
  *   create(user, name, me)             a new space; its maker is its admin, for good
- *   invite(user, space, { email?, role?, perms? })   a code and its link, seven days; with an email, bound to that address and mailed.
+ *   invite(user, space, { email?, role?, perms? })   a code and its link, seven days; with an email, mailed, and good once.
  *                                      The link opens the app at joining (https://app.x0bot.com/s/bots.spaces?join=CODE, a link
  *                                      the apps claim, as bots.link's does); a browser gets a page that opens it, with the code to type
  *   join(user, code, me)               into the space, with what the invite gave (never more than its maker can still do)
@@ -353,8 +353,8 @@ export class Spaces {
   }
 
   /**
-   * A code and its link, seven days. With `email`, the invite is that address's alone (signing in with it is how it is accepted) and
-   * a mail is queued to it; without, anyone with the link can join. Either way it gives what was chosen, never more than you can do.
+   * A code and its link, seven days. With `email`, a mail is queued to it and the invite works once, for whoever uses it first, on any
+   * account; without, anyone with the link can join. Either way it gives what was chosen, never more than you can do.
    */
   async invite(user: { id: string; name?: string }, id: string, o: { email?: unknown; role?: unknown; perms?: unknown } = {}): Promise<{ code: string; link: string; expiresAt: number; email: string | null; mail: "queued" | null; mailReady: boolean }> {
     const a = await this.need(user.id, id, "invite");
@@ -391,7 +391,7 @@ export class Spaces {
           `Open this link on your phone to join (it works for seven days): ${link}`,
           `No X0 Bot yet? The link takes you to the App Store or Google Play. Install it, sign in, and open the link again.`,
           `Or open X0 Bot, go to You, then Spaces, tap Got an invite code? and enter ${code}.`,
-          `Sign in with this email address (${email}) to accept. If you weren't expecting this, you can ignore it.`,
+          `The invite works once. If you weren't expecting this, you can ignore it.`,
         ].join("\n\n"),
       });
       await this.note(id, user.id, "invited", `${from} invited ${maskEmail(email)}`);
@@ -411,15 +411,15 @@ export class Spaces {
     await this.changed(id);
   }
 
-  /** What a code is for, without joining: the space's name (the link's page shows it) and whether it is for one address. */
-  async peek(code: unknown): Promise<{ name: string; members: number; email: string | null } | null> {
+  /** What a code is for, without joining: the space's name (the link's page shows it) and how many are in. */
+  async peek(code: unknown): Promise<{ name: string; members: number } | null> {
     const c = clean(code, 16).toUpperCase();
     if (!c) return null;
     const [inv] = await this.invites.select({ code: c }, { limit: 1 });
     if (!inv || Number(inv.expires_ms) <= this.now() || inv.used_by) return null;
     const [s] = await this.spaces.select({ id: inv.space_id }, { limit: 1 });
     if (!s) return null;
-    return { name: s.name, members: (await this.members.select({ space_id: s.id }, { limit: MEMBERS_MAX })).length, email: inv.email ? maskEmail(inv.email) : null };
+    return { name: s.name, members: (await this.members.select({ space_id: s.id }, { limit: MEMBERS_MAX })).length };
   }
 
   async join(user: { id: string; email?: string | null }, code: unknown, me: string): Promise<{ id: string; name: string }> {
@@ -429,9 +429,6 @@ export class Spaces {
     if (!inv || Number(inv.expires_ms) <= this.now()) throw new BotError("bad_code", "That code doesn't work. Ask for a new invite.", 404);
     const [s] = await this.spaces.select({ id: inv.space_id }, { limit: 1 });
     if (!s) throw new BotError("bad_code", "That space isn't there any more.", 404);
-    if (inv.email && (!user.email || user.email.trim().toLowerCase() !== inv.email)) {
-      throw new BotError("wrong_account", `This invite is for ${maskEmail(inv.email)}. Sign in with that email to accept it.`, 403);
-    }
     const [already] = await this.members.select({ space_id: s.id, user_id: userId }, { limit: 1 });
     if (already) return { id: s.id, name: s.name };
     if (inv.email && inv.used_by) throw new BotError("bad_code", "That invite has been used. Ask for a new one.", 404);
@@ -446,7 +443,7 @@ export class Spaces {
     if ((await this.members.select({ space_id: s.id }, { limit: MEMBERS_MAX + 1 })).length >= MEMBERS_MAX) throw new BotError("space_full", `A space can have ${MEMBERS_MAX} people.`, 409);
     if ((await this.members.select({ user_id: userId }, { limit: SPACES_MAX + 1 })).length >= SPACES_MAX) throw new BotError("space_limit", `You can be in ${SPACES_MAX} spaces.`, 409);
     if (inv.email) {
-      // One account per email invite: claim it first (on the expiry just read, so of two taps only one matches), then it's used up.
+      // One person per email invite, on any account: claim it first (on the expiry just read, so of two taps only one matches), then it's used up.
       const claimed = await this.invites.update({ code: inv.code, expires_ms: inv.expires_ms } as Partial<InviteRow>, { used_by: userId, used_ms: this.now(), expires_ms: this.now() });
       if (!claimed) throw new BotError("bad_code", "That invite has been used. Ask for a new one.", 404);
     }

@@ -3,8 +3,8 @@
  *
  *   - permissions: the admin can do everything and can't be changed; presets and custom roles; nobody gives or takes away what they
  *     can't do; nobody changes someone who can do more than them
- *   - invites by link and by email: an email invite is mailed through the outbox (queued while no provider is plugged in), works only
- *     for that address and only once; the mail job sends once a mailer is there
+ *   - invites by link and by email: an email invite is mailed through the outbox (queued while no provider is plugged in), works once,
+ *     on any account; the mail job sends once a mailer is there
  *   - sharing: to a space or a person, lists edited by who may, a file must be the sharer's, and a shared bot reads the space's things
  *   - payment requests: asked, approved by someone else who may, handed to UPI, paid; never money moved here
  *   - messaging: one to one and groups, unread counts, older pages, muting, leaving, photos by signed link, and live events
@@ -154,7 +154,7 @@ describe("permissions", () => {
 });
 
 describe("invites by link and by email", () => {
-  it("queues the email, says it waits for a provider, and works only for that address, once", async () => {
+  it("queues the email, says it waits for a provider, and works once, on any account", async () => {
     const s = await served();
     const id = await s.home();
     const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "X@Example.in", role: "guest" })).body;
@@ -166,19 +166,17 @@ describe("invites by link and by email", () => {
     expect(mail!.body_text).toContain(inv.link);
     expect(await s.outbox.sendDue(NOT_CONFIGURED)).toBe(0);
     expect((await s.outbox.byRef("space_invite", inv.code))!.status).toBe("queued");
-    // The invite page says whose it is, masked: at the link (a browser with no app to hand it to), and at the old address.
-    expect((await s.call("GET", inv.link, null)).body).toContain("x•••@example.in");
-    expect((await s.call("GET", `${AREA}/invite/${inv.code}`, null)).body).toContain("x•••@example.in");
-    // Rohan has it, but it isn't his.
-    const wrong = await s.call("POST", `${AREA}/spaces/join`, R_, { code: inv.code });
-    expect(wrong.status).toBe(403);
-    expect(wrong.body.message).toContain("x•••@example.in");
-    expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code: inv.code })).status).toBe(200);
-    const d = (await s.call("GET", `${AREA}/spaces/${id}`, X_)).body.space;
-    expect(memberOf(d, X_)).toMatchObject({ roleName: "Guest" });
-    // Used up.
-    await s.call("DELETE", `${AREA}/spaces/${id}`, X_);
+    // The invite page never shows the address: at the link (a browser with no app to hand it to), and at the old address.
+    expect((await s.call("GET", inv.link, null)).body).not.toContain("example.in");
+    expect((await s.call("GET", `${AREA}/invite/${inv.code}`, null)).body).not.toContain("example.in");
+    // Whoever uses it first is in, whatever email they signed in with (Rohan leaves first, so he can join by it).
+    await s.call("DELETE", `${AREA}/spaces/${id}`, R_);
+    expect((await s.call("POST", `${AREA}/spaces/join`, R_, { code: inv.code })).status).toBe(200);
+    const d = (await s.call("GET", `${AREA}/spaces/${id}`, R_)).body.space;
+    expect(memberOf(d, R_)).toMatchObject({ roleName: "Guest" });
+    // Used up: nobody else, not even the address it was sent to.
     expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code: inv.code })).status).toBe(404);
+    expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, X_)).body).toEqual({ invite: null });
   });
 
   it("opens the app straight to joining: the link's page opens X0 Bot at Spaces with the code, and keeps the code to type", async () => {
@@ -214,7 +212,7 @@ describe("invites by link and by email", () => {
       expect(p.body).not.toContain("tulmi://");
     }
     // What the app's join card reads, signed in: what it is for, before joining.
-    expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, R_)).body).toEqual({ invite: { name: "Home", members: 3, email: null } });
+    expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, R_)).body).toEqual({ invite: { name: "Home", members: 3 } });
     expect((await s.call("GET", `${AREA}/spaces/join/NOPE1234`, R_)).body).toEqual({ invite: null });
     expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, null)).status).toBe(401);
     // Without an origin given, the link is the apps' own host.

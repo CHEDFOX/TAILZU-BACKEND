@@ -48,7 +48,7 @@ const toggleChip = (label: string, path: string): Node => row([text(label, { siz
 }, { kind: "toggleState", path });
 
 const newSpace = ifFilled("spaceName", call("POST", `${A}/spaces`, { name: "$state.spaceName" }, { assignTo: "made", ok: seq(toast("Space made"), clearState("spaceName"), refresh), fail: toast("Couldn't make it. Try again.", true) }), "Name the space first");
-const joinSpace = ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code" }, { assignTo: "joined", ok: seq(toast("You're in"), clearState("code"), refresh), fail: toast("That code doesn't work, or it's for another email.", true) }), "Enter the invite code");
+const joinSpace = ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code" }, { assignTo: "joined", ok: seq(toast("You're in"), clearState("code"), refresh), fail: toast("That code doesn't work any more. Ask for a new one.", true) }), "Enter the invite code");
 
 /**
  * Chats and what's given to you, at the top of Spaces only when there is something in them (a new message, a thing to do): an empty
@@ -101,7 +101,7 @@ const joinParam = (ctx: BotsCtx): string => String(ctx.params.join ?? "").toUppe
 const joinFromLink = (code: string): ActionRef => call("POST", `${A}/spaces/join`, { code }, {
   assignTo: "joined",
   ok: seq(toast("You're in"), { kind: "navigate", screenId: SCREENS.spaces, params: { id: "$state.joined.id" }, replace: true } as ActionSpec),
-  fail: toast("That invite doesn't work, or it's for another email.", true),
+  fail: toast("That invite doesn't work any more. Ask for a new one.", true),
 });
 
 function joinCard(ctx: BotsCtx, d: SpacesData): Node[] {
@@ -114,7 +114,7 @@ function joinCard(ctx: BotsCtx, d: SpacesData): Node[] {
   return [card([
     col([
       text(inv ? `You're invited to ${inv.name}` : "You're invited to a space", { size: 19, weight: 700, lineHeight: 24 }),
-      meta(`${already}${inv?.email ? ` · for ${inv.email}` : ""}`, { size: 13 }),
+      meta(already, { size: 13 }),
     ], { gap: 4 }),
     primaryButton(inv ? `Join ${name}` : "Join", joinFromLink(code), { wide: !isDesk(ctx), size: "md" }),
   ], { gap: 14, padding: 18 })];

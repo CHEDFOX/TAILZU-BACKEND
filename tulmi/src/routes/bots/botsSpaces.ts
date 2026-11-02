@@ -9,8 +9,8 @@
  *   PUT    /v1/botsapp/bots/spaces/:id { name }         rename;   DELETE leave (the admin: delete)
  *   POST   /v1/botsapp/bots/spaces/:id/invite { email?, role?, perms? }  -> { code, link, expiresAt, email, mail, mailReady }
  *   DELETE /v1/botsapp/bots/spaces/:id/invites/:code    take an invite back
- *   POST   /v1/botsapp/bots/spaces/join { code }        -> { id, name }   (an email invite: signed in with that email)
- *   GET    /v1/botsapp/bots/spaces/join/:code           -> { invite: { name, members, email } | null }   what an invite is for, before joining
+ *   POST   /v1/botsapp/bots/spaces/join { code }        -> { id, name }   (an email invite: once, on any account)
+ *   GET    /v1/botsapp/bots/spaces/join/:code           -> { invite: { name, members } | null }   what an invite is for, before joining
  *   PUT    /v1/botsapp/bots/spaces/:id/members/:member { role } | { perms } | { canApprove };  DELETE (remove)
  *   POST   /v1/botsapp/bots/spaces/:id/roles { name, perms };  PUT|DELETE .../roles/:role
  *   POST   /v1/botsapp/bots/spaces/:id/bots { slug };  DELETE .../bots/:slug
@@ -94,13 +94,12 @@ export function storeFor(userAgent: unknown, code: string): string | null {
  * register), and the code to type in You › Spaces › Got an invite code?. The code is written into the page only once it has the exact
  * shape of one; no script runs here.
  */
-function invitePage(code: string, s: { name: string; members: number; email: string | null } | null): string {
+function invitePage(code: string, s: { name: string; members: number } | null): string {
   const line = s
     ? `You're invited to <b>${esc(s.name)}</b> on X0 Bot (${s.members} ${s.members === 1 ? "person" : "people"} so far).`
     : "This invite doesn't work any more. Ask for a new one.";
-  const who = s?.email ? `<p>It's for ${esc(s.email)}: sign in to X0 Bot with that email to accept it.</p>` : "";
   const how = s && INVITE_CODE_RE.test(code)
-    ? `${who}<a class="btn" href="tulmi://screen/${JOIN_SCREEN}?join=${code}">Open in X0 Bot</a>`
+    ? `<a class="btn" href="tulmi://screen/${JOIN_SCREEN}?join=${code}">Open in X0 Bot</a>`
       + `<p>Or open X0 Bot, go to <b>You → Spaces</b>, tap <b>Got an invite code?</b> and enter:</p><p class="code">${esc(code)}</p>`
       + `<p class="meta">No X0 Bot yet? <a href="${DOWNLOAD}">Get it here</a>, sign in, and open this link again.</p>`
     : "";
