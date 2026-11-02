@@ -27,7 +27,7 @@ import { redactText } from "../work/worklog.js";
 import { isSecretPath } from "../project/lang.js";
 import { CODE_ANSWER_TOKENS_MIN, LANGUAGE_WORDS, mapBrief, plainTags, splitNext, tidy, withoutNext, type ChatBrain } from "./answer.js";
 import { Anchors, checkCitations, fixPaths, keptLocations, unknownPaths } from "./cite.js";
-import { investigate, LOOK_STEPS_MAX, type Acts, type LookTools } from "./look.js";
+import { investigate, type Acts, type LookTools } from "./look.js";
 import { afterTurn, withJob, type ChatThread } from "./threads.js";
 
 export interface StartedJob { id: string; branch: string; state: string; budgetPaise: number }
@@ -320,19 +320,22 @@ export async function converse(input: ConverseInput, ports: ConversePorts, model
   let looked = await investigate({
     model, tier: input.tier, user, tools: ports.look, anchors, maxPaise: input.maxPaise, maxTokens: input.talk ? TALK_TOKENS : Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
     ...(input.change ? { owed: CHANGE_OWED, steps: CHANGE_LOOK_STEPS } : {}),
+    // An answer from the code is tested before it goes (look.ts TEST_DRAFT); talk is not, and a change is the job's to prove.
+    ...(!input.talk && !input.change ? { check: true } : {}),
     ...(words ? { onText: words.onText, onReset: () => { words.reset(); input.onReset?.(); } } : input.onReset ? { onReset: input.onReset } : {}),
     ...(input.onStep ? { onStep: input.onStep } : {}),
   });
   // Stuck on the cheap tier (the steps ran out, or it says it could not find what decides it): once more on the code tier, which reasons, told
   // what was already read so that it looks elsewhere. Its answer takes the place of the first.
-  if (!job && !clarify && input.tier === "cheap" && (looked.steps >= LOOK_STEPS_MAX || admitsMiss(looked.text)) && input.maxPaise - looked.paise >= ESCALATE_MIN_PAISE) {
+  if (!job && !clarify && input.tier === "cheap" && (looked.ranOut || admitsMiss(looked.text)) && input.maxPaise - looked.paise >= ESCALATE_MIN_PAISE) {
     input.onStep?.("code:think");
     if (words) { words.reset(); input.onReset?.(); }
     const read = looked.seen.length ? `Already read: ${looked.seen.slice(-14).join(", ")}.` : "Nothing was read yet.";
     const again = await investigate({
       model, tier: "code", user: `${user}\n\n(A first look did not settle it. ${read} Look where it did not, then answer.)`, tools: ports.look, anchors,
       maxPaise: input.maxPaise - looked.paise, maxTokens: input.talk ? TALK_TOKENS : Math.max(CODE_ANSWER_TOKENS_MIN, ANSWER_TOKENS[input.length ?? "medium"]), role: "code_chat", acts,
-      ...(input.change ? { owed: CHANGE_OWED, steps: CHANGE_LOOK_STEPS } : {}), ...(words ? { onText: words.onText } : {}), ...(input.onStep ? { onStep: input.onStep } : {}),
+      ...(input.change ? { owed: CHANGE_OWED, steps: CHANGE_LOOK_STEPS } : {}), ...(!input.talk && !input.change ? { check: true } : {}),
+      ...(words ? { onText: words.onText } : {}), ...(input.onStep ? { onStep: input.onStep } : {}),
     }).catch(() => null);
     if (again && (again.text || job || clarify)) {
       looked = { ...again, paise: looked.paise + again.paise, reads: [...new Set([...looked.reads, ...again.reads])], seen: [...looked.seen, ...again.seen], escalated: true };

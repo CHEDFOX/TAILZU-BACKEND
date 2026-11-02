@@ -107,6 +107,8 @@ const PROJECTS: Project[] = [
       { id: "att-missing", say: "Apple rejected the iPhone build: \"We're unable to locate the App Tracking Transparency permission request.\" The build does have NSUserTrackingUsageDescription. Why doesn't the prompt show?", did: "answer", says: [/initMeta/, /ads\.meta\.ios\.enabled/, /\bmount|before (?:the |any )?(?:bootstrap|knobs)|(?:bootstrap|knobs) (?:arrive|land|come|load)/i] },
       { id: "restore-missing", say: "App Review says there is no Restore Purchases button. Where do I add it?", did: "answer", says: [/iap\.restore/, /server|backend|bootstrap/i] },
       { id: "version-low", say: "Apple refused the upload: the version must be higher than the previously approved version. What do I change?", did: "answer", says: [/app\.config\.ts/, /version/i] },
+      // The way forward as steps (2026-11-02, the owner): numbered, the command from the project's own files (SHIP.md), how to check it.
+      { id: "ship-steps", say: "I fixed it in the code. What exactly do I do now to get a new iPhone build to Apple?", did: "answer", says: [/eas(?:-cli)? build/, /^\s*(?:1\.|1\))/m, /--platform ios/] },
     ],
   },
   {

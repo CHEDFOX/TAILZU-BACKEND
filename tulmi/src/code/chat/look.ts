@@ -37,6 +37,47 @@ export const LOOK_RESULT_CHARS = 6_000;
 export const LOOK_CHARS_MAX = 36_000;
 /** Past this share of the money, the next step is the answer: looking never spends what the answer needs (a large project's brief made the last call unaffordable). */
 export const LOOK_SPEND_SHARE = 0.6;
+/** Steps the test of an answer may add, to read what it found missing and write the answer again. */
+export const CHECK_STEPS = 2;
+/** The test runs only while at least this share of the money is left: the answer as it is beats one that cannot be finished. */
+export const CHECK_MONEY_SHARE = 0.35;
+/** What the test of an answer says when the answer stands. */
+export const HOLDS = "HOLDS";
+
+/**
+ * THE TEST OF AN ANSWER, BEFORE IT GOES. The App Review replay (2026-11-02): asked why Apple found no tracking prompt, Xode found the gate (a server
+ * switch, off by default) and the one call at startup, and said "turn the switch on, no build needed" without walking it: the switch arrives with
+ * the server's answer, after that one call, so the prompt would still never show. Found the parts, never ran them in order. This is no rule about
+ * that case: any answer from code is walked as if the person did what it says, in the order the code runs, and a link only assumed is read.
+ */
+export const TEST_DRAFT = [
+  "Before this goes to the person, test it. They will not see this test.",
+  "WALK: suppose they do exactly what your answer says, in the situation the question describes (who runs it, on what, and whether it is the first run or a later one). Write, as numbered lines, the code running in the order it runs: what starts it, each function called, each value it reads and where and WHEN that value was set or arrives. A link you have not read (who calls it, where a value comes from, when it arrives, what a helper returns) is to be read now, with your tools, before you go on.",
+  `Then one line: VERDICT: ${HOLDS} if the problem really goes away (or the question is really answered) as written, or VERDICT: WRONG.`,
+  "After WRONG, write the corrected answer in full, exactly as you would have answered the person from the start. They never saw the first answer: do not mention it, a draft, a correction or a mistake.",
+].join("\n");
+
+const VERDICT = /^\s*\**\s*VERDICT\s*:?\s*\**\s*(HOLDS|WRONG)\b\**[^\n]*$/im;
+
+/**
+ * What the test of an answer decided: "holds" (the answer goes as it was), "wrong" with the corrected answer after the verdict, or null when it said
+ * neither (its words are then taken as the answer, if they are one). A bare HOLDS counts as holds.
+ */
+export function verdictOf(text: string): { holds: true } | { holds: false; answer: string } | null {
+  const t = text.trim();
+  if (holds(t)) return { holds: true };
+  const m = VERDICT.exec(t);
+  if (!m) return null;
+  if (m[1]!.toUpperCase() === HOLDS) return { holds: true };
+  // What follows the verdict, without the rule or heading lines a model puts before an answer ("---", "Answer:").
+  const after = t.slice(m.index + m[0].length).replace(/^(?:\s*(?:[-*_=]{3,}|#*\s*(?:corrected\s+)?answer\s*:?)\s*\n)+/i, "");
+  return { holds: false, answer: after.trim() };
+}
+
+/** The test's reply is the word alone (a full stop, quotes or bold around it at most). */
+export const holds = (text: string): boolean => new RegExp(`^[\\s"'*_.]*${HOLDS}[\\s"'*_.!]*$`, "i").test(text);
+/** Room for the walk the test writes before its verdict. */
+export const CHECK_TOKENS = 600;
 
 export interface LookTools {
   defs: readonly ToolDef[];
@@ -64,6 +105,11 @@ export interface LookInput {
    * ended with are kept as the answer unless what follows ends with an act or says more.
    */
   owed?: string;
+  /**
+   * Test the answer before it goes (TEST_DRAFT): an answer drawn from reading code is walked again, as if the person did what it says, in the order
+   * the code runs; a link only assumed is read. One round a turn, only after looking. converse.ts asks it of every question, not of talk or a change.
+   */
+  check?: boolean;
   /** The most steps (LOOK_STEPS_MAX unless fewer): a change asked for looks only to place the work, as the job reads it in full. */
   steps?: number;
 }
@@ -86,6 +132,8 @@ export interface Looked {
   ended?: string;
   /** A first look did not settle it and a tier that reasons looked again (converse.ts). */
   escalated?: boolean;
+  /** The answer came because the steps or the money ran out, not because it was done looking (converse.ts looks again on a tier that reasons). */
+  ranOut?: boolean;
 }
 
 const isAbort = (e: unknown): boolean => (e as { name?: unknown } | null)?.name === "AbortError";
@@ -163,7 +211,11 @@ export async function investigate(i: LookInput): Promise<Looked> {
   const words = i.onText
     ? { onText: (piece: string) => { said = true; i.onText!(piece); }, onReset: () => { if (said) { said = false; i.onReset?.(); } } }
     : null;
-  const max = Math.max(1, Math.min(LOOK_STEPS_MAX, i.steps ?? LOOK_STEPS_MAX));
+  let max = Math.max(1, Math.min(LOOK_STEPS_MAX, i.steps ?? LOOK_STEPS_MAX));
+  /** The answer under test (TEST_DRAFT), once it has been written; the test runs once a turn. */
+  let draft: string | null = null;
+  let draftForced = false;
+  let tested = false;
   const lastAt = (step: number): boolean => step === max || chars >= LOOK_CHARS_MAX || (step > 1 && paise >= i.maxPaise * LOOK_SPEND_SHARE);
   let steps = 0;
   for (let step = 1; step <= max; step += 1) {
@@ -178,19 +230,35 @@ export async function investigate(i: LookInput): Promise<Looked> {
     let res;
     try {
       res = await call({
-        tier: i.tier, messages, maxTokens: i.maxTokens, purpose: "front.code_answer", userId: i.model.userId, budget: { maxPaise: left },
-        tools: acting ? [...(i.acts?.defs ?? [])] : [...defs], toolChoice: last && !acting ? ("none" as const) : ("auto" as const), ...(i.model.signal ? { signal: i.model.signal } : {}), ...(held === null ? words ?? {} : {}),
+        tier: i.tier, messages, maxTokens: draft !== null ? i.maxTokens + CHECK_TOKENS : i.maxTokens, purpose: "front.code_answer", userId: i.model.userId, budget: { maxPaise: left },
+        tools: acting ? [...(i.acts?.defs ?? [])] : [...defs], toolChoice: last && !acting ? ("none" as const) : ("auto" as const), ...(i.model.signal ? { signal: i.model.signal } : {}),
+        // The test's own reply is not streamed: "HOLDS" is no answer, and a corrected one is shown whole once it is in.
+        ...(held === null && draft === null ? words ?? {} : {}),
       }, i.model.gateway);
     } catch (err) {
+      if (draft !== null) return { text: draft, reads: [...reads], greps, seen, paise, steps: step, ranOut: draftForced };
       if (isAbort(err) || step === 1) throw err;
       // Out of money or the model gone after some looking: one answer from what was read, with no tools, if it can be had.
       break;
     }
     paise += res.paise;
     const asked = res.toolCalls ?? [];
+    // The test of the answer came back: it stands (shown already), or it is written again (shown whole now), or more is read first, and the
+    // test goes on after the reading (the draft stays on screen until the verdict says otherwise).
+    if (draft !== null && !asked.length) {
+      const reply = stripLeak(res.text).trim();
+      const v = verdictOf(reply);
+      // A walk with no verdict, or a WRONG with nothing after it: the answer as it was beats a half-written one. Words with no walk and no
+      // verdict, after reading more, are the answer written again.
+      const again = v ? (v.holds ? "" : v.answer) : /^\s*\**\s*WALK\b/i.test(reply) ? "" : reply;
+      if (!again) return { text: draft, reads: [...reads], greps, seen, paise, steps: step, ranOut: draftForced };
+      words?.onReset();
+      words?.onText(again);
+      return { text: again, reads: [...reads], greps, seen, paise, steps: step };
+    }
     // Words that only say it will look further ("Let me read the rest of DEPLOY.md."), with no call: not an answer. Told to do it or answer, once a step.
     // A tool call written out as words (`<invoke>…`, `<tool_call>{…}`) is not a call: told to make it, or to answer, and never shown as the answer.
-    if (!asked.length && !last && (promisesMore(res.text) || leakedCall(res.text))) {
+    if (draft === null && !asked.length && !last && (promisesMore(res.text) || leakedCall(res.text))) {
       words?.onReset();
       messages.push({ role: "assistant", content: stripLeak(res.text) || "(a tool call written as words)" }, {
         role: "user", content: leakedCall(res.text) ? "That was a tool call written as words: make it as a real tool call, or answer now." : "Do that now with your tools, or answer now: words that only say what you will do are not an answer.",
@@ -208,9 +276,19 @@ export async function investigate(i: LookInput): Promise<Looked> {
     }
     if (!asked.length || (last && !acting)) {
       const text = stripLeak(res.text).trim();
-      return { text: held !== null && held.length >= text.length ? held : text, reads: [...reads], greps, seen, paise, steps: step };
+      const answer: string = held !== null && held.length >= text.length ? held : text;
+      // An answer drawn from reading code is tested once before it goes (TEST_DRAFT), while the money allows: walked as if done, every link read.
+      if (i.check && !tested && answer && (reads.size > 0 || greps.length > 0) && i.maxPaise - paise >= i.maxPaise * CHECK_MONEY_SHARE) {
+        tested = true;
+        draft = answer;
+        draftForced = last && !acting;
+        max = Math.min(LOOK_STEPS_MAX + CHECK_STEPS, Math.max(max, step) + CHECK_STEPS);
+        messages.push({ role: "assistant", content: answer }, { role: "user", content: TEST_DRAFT });
+        continue;
+      }
+      return { text: answer, reads: [...reads], greps, seen, paise, steps: step, ranOut: last && !acting };
     }
-    if (held === null) words?.onReset();
+    if (held === null && draft === null) words?.onReset();
     messages.push({ role: "assistant", content: res.text || null, tool_calls: asked });
     const calls = asked.slice(0, LOOK_CALLS_PER_STEP);
     for (const c of calls) {
@@ -249,9 +327,9 @@ export async function investigate(i: LookInput): Promise<Looked> {
       ...(i.model.signal ? { signal: i.model.signal } : {}), ...(words ?? {}),
     }, i.model.gateway).catch((err: unknown) => { if (isAbort(err)) throw err; return err instanceof BudgetExceeded ? ("budget" as const) : null; });
     if (res === "budget") continue;
-    return { text: stripLeak(res?.text ?? "").trim(), reads: [...reads], greps, seen, paise: paise + (res?.paise ?? 0), steps };
+    return { text: stripLeak(res?.text ?? "").trim(), reads: [...reads], greps, seen, paise: paise + (res?.paise ?? 0), steps, ranOut: true };
   }
-  return { text: "", reads: [...reads], greps, seen, paise, steps };
+  return { text: "", reads: [...reads], greps, seen, paise, steps, ranOut: true };
 }
 
 /** How much of each tool result the last answer keeps, tried in turn until its worst case fits the money left (null: all of it). */

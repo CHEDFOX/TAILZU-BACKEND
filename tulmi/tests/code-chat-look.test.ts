@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { Anchors, checkCitations, fixPaths, unknownPaths } from "../src/code/chat/cite.js";
-import { investigate, leakedCall, LOOK_STEPS_MAX, promisesMore, stripLeak, type LookTools } from "../src/code/chat/look.js";
+import { holds, verdictOf, investigate, leakedCall, LOOK_STEPS_MAX, promisesMore, stripLeak, TEST_DRAFT, type LookTools } from "../src/code/chat/look.js";
 import { BudgetExceeded } from "../src/code/brain/gateway.js";
 import { afterTurn, newThread, SEEN_KEPT } from "../src/code/chat/threads.js";
 
@@ -203,5 +203,119 @@ describe("a path written with folders the file is not in", () => {
     const anchors = new Anchors();
     anchors.read("agent.js", "a\n".repeat(20));
     expect(checkCitations(out.text, anchors).kept).toEqual(["agent.js:12"]);
+  });
+});
+
+describe("the test of an answer before it goes (TEST_DRAFT)", () => {
+  const user = "<question>\nwhy is the cookie never set?\n</question>";
+  const stream = () => {
+    const shown: string[] = [];
+    let resets = 0;
+    return { shown, resets: () => resets, onText: (p: string) => { shown.push(p); }, onReset: () => { resets += 1; shown.length = 0; } };
+  };
+
+  it("walks an answer drawn from the code once more; one that holds goes as it was, its words already shown", async () => {
+    const m = scripted([{ calls: [{ name: "read_file", args: { path: "src/auth/session.ts" } }] }, { text: "startSession sets it at src/auth/session.ts:2." }, { text: "HOLDS" }]);
+    const s = stream();
+    const out = await investigate({ model: m.model, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, check: true, onText: s.onText, onReset: s.onReset });
+    expect(out.text).toBe("startSession sets it at src/auth/session.ts:2.");
+    expect(String(m.sent[2]!.messages.at(-1)!.content)).toBe(TEST_DRAFT);
+    expect(m.sent[2]!.messages.at(-2)).toMatchObject({ role: "assistant", content: "startSession sets it at src/auth/session.ts:2." });
+    expect(m.sent).toHaveLength(3);
+  });
+
+  it("takes back an answer that does not hold and shows the corrected one whole", async () => {
+    const m = scripted([
+      { calls: [{ name: "grep", args: { pattern: "startSession" } }] },
+      { text: "Turn the cookie switch on; no build is needed." },
+      { text: "WALK:\n1. The app starts; initMeta runs once.\n2. It reads the switch: not arrived yet.\nVERDICT: WRONG\nTurning the switch on would not help: it is read before it arrives. The fix is to read it again once it does." },
+    ]);
+    // Words stream as the real model writes them (the scripted one does not): the draft is on screen when the test says it is wrong.
+    const streamed = { userId: m.model.userId, call: (async (input: { onText?: (p: string) => void }) => {
+      const r = await (m.model.call as unknown as (x: unknown) => Promise<{ text: string }>)(input);
+      if (r.text) input.onText?.(r.text);
+      return r;
+    }) as never };
+    const s = stream();
+    const out = await investigate({ model: streamed, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, check: true, onText: s.onText, onReset: s.onReset });
+    expect(out.text).toMatch(/^Turning the switch on would not help/);
+    expect(s.shown.join("")).toBe(out.text);
+    expect(s.resets()).toBeGreaterThan(0);
+  });
+
+  it("reads what the test found missing before writing again, and tests only once", async () => {
+    const m = scripted([
+      { calls: [{ name: "grep", args: { pattern: "startSession" } }] },
+      { text: "It is never called." },
+      { calls: [{ name: "read_file", args: { path: "src/auth/session.ts" } }] },
+      { text: "It is called from login, and sets the cookie at src/auth/session.ts:2." },
+    ]);
+    const t = tools();
+    const out = await investigate({ model: m.model, tier: "cheap", user, tools: t, anchors: new Anchors(), maxPaise: 50, maxTokens: 800, check: true });
+    expect(t.ran).toEqual(["grep", "read_file"]);
+    expect(out.text).toMatch(/^It is called from login/);
+    expect(m.sent.filter((x) => x.messages.some((msg) => msg.content === TEST_DRAFT))).toHaveLength(2);   // asked once; the call after it still carries it
+    expect(m.sent).toHaveLength(4);
+  });
+
+  it("is not run for an answer made without looking, when not asked for, or when the money is mostly spent", async () => {
+    const noLook = scripted([{ text: "Hi! Ask me about the code." }, { text: "HOLDS" }]);
+    await investigate({ model: noLook.model, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, check: true });
+    expect(noLook.sent).toHaveLength(1);
+
+    const off = scripted([{ calls: [{ name: "grep", args: { pattern: "x" } }] }, { text: "Answer." }, { text: "HOLDS" }]);
+    await investigate({ model: off.model, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800 });
+    expect(off.sent).toHaveLength(2);
+
+    const poor = scripted([{ calls: [{ name: "grep", args: { pattern: "x" } }] }, { text: "Answer." }, { text: "HOLDS" }]);
+    await investigate({ model: poor.model, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 2, maxTokens: 800, check: true });
+    expect(poor.sent).toHaveLength(2);
+  });
+
+  it("knows the word that says an answer stands, and nothing more", () => {
+    for (const t of ["HOLDS", "HOLDS.", "**HOLDS**", "holds"]) expect(holds(t), t).toBe(true);
+    for (const t of ["It holds mostly", "HOLDS, but the switch is read too early", ""]) expect(holds(t), t).toBe(false);
+  });
+
+  it("reads the verdict after the walk: holds, or wrong with the answer that follows, or neither", () => {
+    expect(verdictOf("WALK:\n1. a\n2. b\nVERDICT: HOLDS")).toEqual({ holds: true });
+    expect(verdictOf("1. a\n**VERDICT: HOLDS**")).toEqual({ holds: true });
+    expect(verdictOf("WALK:\n1. a\nVERDICT: WRONG\nThe switch is read too early.")).toEqual({ holds: false, answer: "The switch is read too early." });
+    expect(verdictOf("WALK:\n1. a\nVERDICT: WRONG")).toEqual({ holds: false, answer: "" });
+    expect(verdictOf("1. a\nVERDICT: WRONG\n\n---\n\nThe switch is read too early.")).toEqual({ holds: false, answer: "The switch is read too early." });
+    expect(verdictOf("1. a\nVERDICT: WRONG\nCorrected answer:\nThe switch is read too early.")).toEqual({ holds: false, answer: "The switch is read too early." });
+    expect(verdictOf("WALK:\n1. a")).toBeNull();
+  });
+
+  it("keeps the answer as it was when the walk ends with no verdict, or with WRONG and nothing after it", async () => {
+    for (const reply of ["WALK:\n1. it runs", "WALK:\n1. it runs\nVERDICT: WRONG"]) {
+      const m = scripted([{ calls: [{ name: "grep", args: { pattern: "x" } }] }, { text: "The answer." }, { text: reply }]);
+      const out = await investigate({ model: m.model, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, check: true });
+      expect(out.text, reply).toBe("The answer.");
+    }
+  });
+
+  it("says the answer came because the steps ran out only then, not for the steps its test took", async () => {
+    const m = scripted([{ calls: [{ name: "grep", args: { pattern: "x" } }] }, { text: "The answer." }, { text: "VERDICT: HOLDS" }]);
+    const out = await investigate({ model: m.model, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, check: true });
+    expect(out.ranOut).toBe(false);
+    const stuck = scripted([{ calls: [{ name: "grep", args: { pattern: "x" } }] }]);
+    const out2 = await investigate({ model: stuck.model, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, steps: 2 });
+    expect(out2.ranOut).toBe(true);
+  });
+});
+
+describe("the test of an answer, reading before its verdict", () => {
+  const user = "<question>\nwhy is the cookie never set?\n</question>";
+  it("keeps the answer when, after reading more, the walk ends HOLDS (the walk is never the answer)", async () => {
+    const m = scripted([
+      { calls: [{ name: "grep", args: { pattern: "startSession" } }] },
+      { text: "The answer." },
+      { calls: [{ name: "read_file", args: { path: "src/auth/session.ts" } }] },
+      { text: "WALK:\n1. login calls startSession\n2. it sets the cookie\nVERDICT: HOLDS" },
+    ]);
+    const out = await investigate({ model: m.model, tier: "cheap", user, tools: tools(), anchors: new Anchors(), maxPaise: 50, maxTokens: 800, check: true });
+    expect(out.text).toBe("The answer.");
+    expect(out.ranOut).toBe(false);
   });
 });
