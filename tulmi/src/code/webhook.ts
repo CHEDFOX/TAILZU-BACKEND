@@ -6,7 +6,7 @@
  * GitHub is the caller, not a person, so there is no session: the request is
  * trusted only if X-Hub-Signature-256 is "sha256=" and the HMAC-SHA256 (hex)
  * of the raw body under GITHUB_APP_WEBHOOK_SECRET. The raw body is kept by the
- * server's JSON parser for this path (server.ts, as for Razorpay's), since a
+ * server's JSON parser for this path (http/hooks.ts, as for Razorpay's), since a
  * signature is over the bytes as sent. The compare is timing-safe (auth/secret.ts). With no
  * secret set, every delivery is refused.
  *

@@ -1087,7 +1087,7 @@ const EnvSchema = z.object({
 
   // Rate limiting — buckets are keyed by the locally verified user id when the
   // request carries a valid session, else by client IP (see the keyGenerator
-  // in server.ts). Spending is bounded downstream by metering/quota.
+  // in http/plugins.ts). Spending is bounded downstream by metering/quota.
   RATE_LIMIT_MAX: z.coerce.number().default(120),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
 

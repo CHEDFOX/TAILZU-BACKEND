@@ -51,7 +51,7 @@ const who = (user: string) => ({ authorization: `Bearer ${user}` });
 /** The routes on a bare Fastify over the rig's Code object. */
 async function served(r: Rig) {
   const app = Fastify();
-  // The real server keeps the body GitHub signed, exactly as sent (server.ts does the same).
+  // The real server keeps the body GitHub signed, exactly as sent (http/hooks.ts does the same).
   app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
     (req as unknown as { rawBody?: string }).rawBody = body as string;
     done(null, JSON.parse((body as string) || "{}"));

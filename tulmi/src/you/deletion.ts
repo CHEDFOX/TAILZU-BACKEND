@@ -5,7 +5,7 @@
  * their pings (push tokens go; a sign-in brings them back). Until that date everything is kept as it was, but their bots are stopped
  * (isLeaving, below); signing in shows "Your account will be deleted on 4 Nov" with Keep my account, which takes the date away and
  * starts them again. On the date a sweep does the real delete,
- * the same one DELETE /v1/account always did (server.ts eraseAccount), and the row goes with the account.
+ * the same one DELETE /v1/account always did (routes/account.ts eraseAccount), and the row goes with the account.
  *
  * The sweep is safe with more than one server: a due row is claimed (claimed_at) before it is worked on, and a claim older than
  * CLAIM_STALE_MS is taken again, so a server that died mid-way, or a delete that did not finish, is tried again later. Nothing
@@ -181,7 +181,7 @@ export const STOPPED_MESSAGE = "Your bots are stopped for now.";
 
 // -------------------------------------------------------------------- the sweep
 
-/** The real delete (server.ts eraseAccount): true only when the account itself is gone. */
+/** The real delete (routes/account.ts eraseAccount): true only when the account itself is gone. */
 export type Erase = (userId: string) => Promise<boolean>;
 
 type Log = { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };

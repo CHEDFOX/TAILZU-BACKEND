@@ -6,7 +6,7 @@
  * an Image, and the Image animates a WebP. So each pose Blip takes in a step is
  * a short transparent loop of the same drawing (the desktop's blip.js walker,
  * cut by scripts/make-blip-loops.ts), served from /blip/ the way the typefaces
- * are served from /fonts/ (server.ts), and shipped in the image (tulmi/blip).
+ * are served from /fonts/ (routes/staticFiles.ts), and shipped in the image (tulmi/blip).
  *
  * The names are `<pose>-<size>`: the pose is blip.js's own word for it, the
  * size is `s` (a step's head, 100 points tall) or `l` (Welcome and Done, 190).

@@ -28,7 +28,7 @@ Tests: tests/bots-keybot-parity.test.ts (every item below that is on Keybot's ho
 
 ## 1. The old phone Stats tab (screen `stats`)
 
-`phone/stats.ts statsScreen` + `phoneLook.ts phoneStatsBody`. Data: server.ts read for `stats` usageSummary (the calendar month,
+`phone/stats.ts statsScreen` + `phoneLook.ts phoneStatsBody`. Data: routes/appScreens.ts read for `stats` usageSummary (the calendar month,
 all time, today), statsForUser "month" (the last 30 days), allowanceFor, getEntitlement, the personality; `freeForAll()`.
 Now: `GET /v1/keybot/stats`.
 
@@ -158,7 +158,7 @@ assistant's tasks (`youCard`, while CONNECTORS is on), `ctx.stats` for the wavef
 
 ## 4. The window (the desk's pages)
 
-`experience/desk/`. The same reads in server.ts (`desk_insights`, `desk_day`, `desk_app`, `desk_settings`, `desk_train`).
+`experience/desk/`. The same reads in routes/appScreens.ts (`desk_insights`, `desk_day`, `desk_app`, `desk_settings`, `desk_train`).
 
 - [x] **Insights · eyebrow and Full history** → the month card's label; "What you said".
 - [x] **Insights · the statement** ("You said N words this month. Typed… Said…") and **the race** (said against typed, its

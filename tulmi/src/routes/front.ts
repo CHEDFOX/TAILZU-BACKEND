@@ -18,7 +18,7 @@
  *   GET  /v1/admin/guard   -> the overload guards at a glance: the limiter, the idempotency store, coalescing, and every breaker's state
  *                             (x-admin-secret, like the other admin routes)
  *
- * The desktop's old POST /v1/ask { question, screenContent } stays exactly as it was. server.ts hands a body to this door only when it
+ * The desktop's old POST /v1/ask { question, screenContent } stays exactly as it was. routes/ask.ts hands a body to this door only when it
  * has a `message` and no `question`. Off unless FRONT_DOOR is true: those bodies are then answered 404 front_door_off.
  *
  * A request is guarded (routes/guarded.ts, src/guard): one run per key, so a double tap joins the run that is out; a permit, so one person

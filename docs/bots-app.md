@@ -59,7 +59,7 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `…/bots/art.ts` | Blip heads (PNGs in `tulmi/blip/bots`, served at `/blip/bots/`) and which animated loop plays each pose (`blipLoopFor`; the loops are the onboarding's, `experience/blipLoops.ts`) |
 | `…/bots/ids.ts` | **every screen id** (`SCREENS`), mapped to its boards and its file; `botRoute(slug)` |
 | `…/bots/live.ts` | the live state every screen gets (`ctx.live`), `BotsDeps` |
-| `…/bots/deps.ts` | the real `BotsDeps` (server.ts builds one per request) |
+| `…/bots/deps.ts` | the real `BotsDeps` (routes/appScreens.ts builds one per request) |
 | `…/bots/registry.ts` | `screen({ id, load?, build })` |
 | `…/bots/screens/{shell,you,bots,keybot,code,firstRun}.ts` | **the screens, one file per area: yours** |
 | `…/bots/screens/planItem.ts` | Plan's add / change an event or a to-do (`bots.plan.item`), registered with bots.ts's list (section 11) |

@@ -27,7 +27,7 @@ const MB = 1024 * 1024;
 /**
  * The most bytes of a file of each kind. A file over its cap is refused before anything is read from it. Text and code match the front
  * door's own (a megabyte); the rest are what the worker and the speech and vision providers can take in one go. Nothing is over 50 MB, which is
- * what an attachment ref (front/attachments.ts refFromBody) and the upload route's multipart limit (server.ts) allow.
+ * what an attachment ref (front/attachments.ts refFromBody) and the upload route's multipart limit (http/plugins.ts) allow.
  */
 export const CAPS: Readonly<Record<Exclude<MediaKind, "unsupported">, number>> = {
   image: 10 * MB,

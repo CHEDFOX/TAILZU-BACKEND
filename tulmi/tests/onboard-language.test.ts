@@ -1,5 +1,5 @@
 /**
- * THE ONBOARDING SPEAKS THE LANGUAGE THE PERSON CHOSE (server.ts, /v1/app/screen).
+ * THE ONBOARDING SPEAKS THE LANGUAGE THE PERSON CHOSE (routes/appScreens.ts, /v1/app/screen).
  *
  * The profile's language stays "auto" (English) until someone changes it in
  * Settings, and the Languages step only saves personality.languages. So the

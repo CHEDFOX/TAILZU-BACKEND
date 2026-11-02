@@ -75,7 +75,7 @@ Errors: `400 bad_request` (the body), `413` (a message over 8,000 characters), `
 
 **Ask any bot.** With `bot` in the body (and `BOTS=true`) the front door first picks a bot (`docs/bots.md` section 7): the Code bot and "none of them" go down the roads above exactly as they were, with `bot` in the answer saying which bot it was; any other bot answers with its own rules, skills, files and memory, and the answer is `{ id: null, decision, result, bot, answer }`. A body without `bot` is untouched.
 
-**`POST /v1/ask` already existed**: the desktop's "ask about the screen" sends `{ question, screenContent }`. That is unchanged. `server.ts` hands a body to the front door only when it has a `message` and no `question`; with the flag off, such a body is `404 front_door_off`. The route's body limit is 8 MB while the flag is on (a 4 MB picture is about 5.5 MB of base64); the old ask keeps 1 MB either way.
+**`POST /v1/ask` already existed**: the desktop's "ask about the screen" sends `{ question, screenContent }`. That is unchanged. `routes/ask.ts` hands a body to the front door only when it has a `message` and no `question`; with the flag off, such a body is `404 front_door_off`. The route's body limit is 8 MB while the flag is on (a 4 MB picture is about 5.5 MB of base64); the old ask keeps 1 MB either way.
 
 ## 3. Intents, roads, tiers and budgets
 

@@ -33,7 +33,7 @@ export function deletePageCsp(nonce: string, captcha: boolean): string {
   ].join("; ");
 }
 
-/** What goes, and what stays: the same account as the app's Delete account (server.ts eraseAccount). */
+/** What goes, and what stays: the same account as the app's Delete account (routes/account.ts eraseAccount). */
 const DELETED = [
   "Your account and how you sign in to it (your email address or phone number, and your name)",
   "Your profile and settings, the personality and words Keylessbord learned, and your dictation history",
