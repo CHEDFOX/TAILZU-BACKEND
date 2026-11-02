@@ -1037,6 +1037,15 @@ const EnvSchema = z.object({
   TTS_VOICE: z.string().default("alloy"),
   TTS_FORMAT: z.enum(["mp3", "opus", "aac", "flac", "wav", "pcm"]).default("mp3"),
 
+  /**
+   * Sign in with Apple, ended when the account is (src/auth/appleSignIn.ts, migration 0061): the Sign in with Apple key from Apple
+   * Developer → Keys (Key ID, and the .p8 file's text, or that text in base64 on one line). With both, a deleted account's Apple sign-in
+   * is revoked at Apple, as Apple asks. The team and the app's bundle id are the app's own. Needs CONNECTOR_TOKEN_KEY (the token is kept encrypted).
+   */
+  APPLE_SIWA_KEY_ID: z.string().optional(),
+  APPLE_SIWA_PRIVATE_KEY: z.string().optional(),
+  APPLE_SIWA_TEAM_ID: z.string().default("6552H8HYA4"),
+  APPLE_SIWA_CLIENT_ID: z.string().default("com.tulmi.app"),
   // Supabase — optional when DEV_SKIP_AUTH is true.
   SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_KEY: z.string().optional(),

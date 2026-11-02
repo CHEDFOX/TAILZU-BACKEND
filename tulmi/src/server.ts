@@ -71,7 +71,8 @@ import { getPrefs, readSpeed, type KeybotPrefs } from "./keybot/prefs.js";
 import { withKeybotKeyboard } from "./keybot/keyboard.js";
 import { registerBotsCodeRoutes } from "./routes/botsCode.js";
 import { registerBotsCodeWorkRoutes } from "./routes/botsCodeWork.js";
-import { registerBotsFirstRunRoutes } from "./routes/botsFirstRun.js";
+import { registerBotsFirstRunRoutes, signedInVia } from "./routes/botsFirstRun.js";
+import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerAccountDeletionRoutes } from "./routes/accountDeletion.js";
 import { registerBotsPushAskRoutes } from "./routes/botsPushAsk.js";
 import { registerBotLooksRoutes } from "./routes/botLooks.js";
@@ -1165,6 +1166,8 @@ registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJ
 // answered from the few chunks that matter. Off unless MEDIA_INGEST is true: the attachment registry then keeps its "coming soon" for those kinds and /v1/files answers
 // 404 media_off. Bytes go to R2, text and chunks to migration 0035's tables, office files and hard PDFs to the worker (media-worker/).
 const media = createMedia({ log: app.log });
+// Sign in with Apple, ended when the account is (src/auth/appleSignIn.ts): null until the Sign in with Apple key is set.
+const appleSignIn = createAppleSignIn(supabase());
 if (media) startMediaSweep(media, { log: app.log });
 registerFilesRoutes(app, { rateLimit: AUTHED_RL, media, artifacts, code });
 const attachments = new AttachmentRegistry();
@@ -3309,6 +3312,24 @@ app.get("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
   return reply.send(await getProfile(user));
 });
 
+// Sign in with Apple's one-time code (src/auth/appleSignIn.ts): the app hands it over just after an Apple sign-in, and the server trades it
+// at Apple for the token that ends the sign-in when the account is deleted. { kept } says whether a token is now kept; false while the key is
+// not set, for a sign-in that was not Apple's, or a code Apple would not trade. Never in the way of anything.
+app.post("/v1/auth/apple/code", { config: AUTHED_RL }, async (req, reply) => {
+  const user = await resolveUser(req.headers["authorization"]);
+  if (!user) return unauthorized(reply);
+  const code = (req.body as { code?: unknown } | null)?.code;
+  if (typeof code !== "string" || !code.trim() || code.length > 2000) {
+    return reply.code(400).send({ code: "bad_request", message: "Apple's code is needed." });
+  }
+  if (!appleSignIn || signedInVia(user) !== "apple") return reply.send({ kept: false });
+  const kept = await appleSignIn.keepCode(user.id, code.trim()).catch((err: unknown) => {
+    req.log.warn({ err: (err as Error)?.message }, "apple code: could not keep the token");
+    return false;
+  });
+  return reply.send({ kept });
+});
+
 app.put("/v1/profile", { config: AUTHED_RL }, async (req, reply) => {
   const user = await resolveUser(req.headers["authorization"]);
   if (!user) return unauthorized(reply);
@@ -3432,6 +3453,8 @@ async function eraseAccount(admin: NonNullable<ReturnType<typeof supabase>>, use
   // and do not abort the sequence.
   // A GitHub sign-in token is revoked at GitHub before its row goes; the rows go with the account either way.
   await code?.oauth?.forAccountDelete(user.id);
+  // So is the Apple sign-in, at Apple (App Review 5.1.1(v)); its row goes with the account below.
+  if (appleSignIn && !(await appleSignIn.forAccountDelete(user.id))) req.log.warn("account delete: the Apple sign-in could not be revoked at Apple");
   // The bytes of their files are in a bucket, not in the database: they go first (the rows go with the account just below).
   try { await media?.forAccountDelete(user.id); } catch (err) { req.log.error({ err }, "delete media bytes"); }
 
@@ -3459,6 +3482,8 @@ async function eraseAccount(admin: NonNullable<ReturnType<typeof supabase>>, use
     ["code_chat_threads", null], ["code_project_settings", null], ["code_pr_care", null],
     // The bots platform (migration 0038): their bots, the API keys (only hashes), saved commands, and what their bots remember of them.
     ["bots", null], ["bot_keys", null], ["bot_commands", null], ["bot_facts", null], ["bot_threads", null],
+    // Apple's token for revoking the sign-in (migration 0061), revoked just above.
+    ["apple_sign_in", null],
   ];
   for (const [table, key] of tables) {
     try {
