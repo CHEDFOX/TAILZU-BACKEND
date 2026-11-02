@@ -15,6 +15,7 @@ import type { GatewayDeps } from "../code/brain/gateway.js";
 import { CodeChat } from "../code/chat/index.js";
 import type { Code } from "../code/index.js";
 import type { ProjectDeps } from "../code/projects.js";
+import type { CodeProject } from "../code/store.js";
 import type { CallFn } from "../code/work/model.js";
 import type { Connectors } from "../connectors/index.js";
 import type { MediaService } from "../media/service.js";
@@ -34,7 +35,10 @@ export interface WireOptions {
 export function codeAskPort(code: Code | null | undefined, o: Pick<WireOptions, "call" | "gateway"> = {}): CodeAsk | null {
   if (!code?.github || !code.brain) return null;
   const projects: ProjectDeps = { store: code.store, github: code.github, approvals: code.approvals, oauth: code.oauth };
-  const chat = new CodeChat({ projects, brain: code.brain, ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}) });
+  const chat = new CodeChat({
+    projects, brain: code.brain, ...(o.call ? { call: o.call } : {}), ...(o.gateway ? { gateway: o.gateway } : {}),
+    ...(code.copies ? { copies: code.copies, fillCopy: (userId: string, project: CodeProject) => code.brain!.keepCopy(userId, project) } : {}),
+  });
   return async (a) => {
     const r = await chat.answer({ userId: a.userId, projectId: a.projectId, question: a.question, tier: "cheap", length: "medium", diagram: false, maxPaise: a.maxPaise, ...(a.signal ? { signal: a.signal } : {}) });
     return { text: r.text, paise: r.paise };

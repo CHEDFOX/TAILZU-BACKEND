@@ -29,6 +29,8 @@ services:
       MEDIA_DIR: /data/media
       # The control plane's live rules and their history (GET /admin).
       CONTROL_DIR: /data/control
+      # Each Xode project's code, kept for the chat to search all of it (tulmi/src/code/project/copies.ts).
+      CODE_COPY_DIR: /data/code
       # Public URL clients see for uploaded media. Empty: the server's own
       # PUBLIC_ORIGIN + /media (tulmi/.env), so it moves when that does.
       MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-}
@@ -42,6 +44,8 @@ services:
       - tulmi_media:/data/media
       # Control-plane rules survive every deploy, like the media.
       - tulmi_control:/data/control
+      # The projects' code copies: rebuilt from GitHub if lost, kept across deploys so they need not be.
+      - tulmi_code:/data/code
       # Desktop-app installers, served at /downloads/* (see the /download page).
       # Host-side bind mount so publishing a release is just:
       #   scp "Tailzu-Setup.exe" server:~/tulmi/downloads/
@@ -131,3 +135,5 @@ volumes:
   tulmi_media:
   # Live rules edited from the console at /admin, with every saved version.
   tulmi_control:
+  # Xode's copy of each project's code (one gzipped file a project; swept after 30 days unused).
+  tulmi_code:

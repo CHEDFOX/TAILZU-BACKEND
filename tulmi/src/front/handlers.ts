@@ -21,6 +21,7 @@
 import { aboutLines, sharedFacts } from "../bots/shared.js";
 import type { Artifacts } from "../artifacts/index.js";
 import { CodeChat } from "../code/chat/index.js";
+import type { CodeProject } from "../code/store.js";
 import { threadStore, type ThreadStore } from "../code/chat/threads.js";
 import { bookBrief, bookForPlan, type ProjectBook } from "../code/project/book.js";
 import type { LiveFiles } from "../code/live/ports.js";
@@ -217,6 +218,7 @@ function chatOf(d: HandlerDeps, c: RouteCall): { chat: CodeChat; projectId: stri
     chat: d.chat ?? new CodeChat({
       projects: pd, brain: code.brain, ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), ...(d.threads ? { threads: d.threads } : {}),
       ...(d.rooms ? { rooms: d.rooms } : {}), ...(d.personal ? { personal: d.personal } : {}),
+      ...(code.copies ? { copies: code.copies, fillCopy: (userId: string, project: CodeProject) => code.brain!.keepCopy(userId, project) } : {}),
       ...(d.agent ? { job: (userId: string, jobId: string) => jobBrief(d.agent!, userId, jobId) } : {}),
     }),
   };
