@@ -2842,7 +2842,8 @@ app.post("/v1/app/bootstrap", { config: AUTHED_RL }, async (req, reply) => {
     // Both answers are required by the card, so either one proves it ran.
     // Signed in with Apple: Apple gave the name it will (the app saves it), and nothing more may be asked after it (App Review 4), so
     // the profile asks nothing of them.
-    profileComplete: !!(profile?.fullName || profile?.gender) || (!!user && signedInVia(user) === "apple"),
+    // Signed in with Apple, the name is never asked for (App Review 4), so only the pick counts.
+    profileComplete: user && signedInVia(user) === "apple" ? !!profile?.gender : !!(profile?.fullName || profile?.gender),
     launchCount: Number(reqBody.launchCount) || 0,
     languagesSet: isReviewer || !!personality?.languages?.length,
     // Entitled, so no paywall stands between a reviewer and the app. Guideline
