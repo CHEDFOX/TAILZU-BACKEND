@@ -16,8 +16,8 @@
  *      in a list or a row, never on Settings. An Image node draws them in
  *      every build.
  *
- * This module imports nothing that imports the catalog, so desk.ts (which must
- * not import the catalog) can use it as the phone's screens do.
+ * This module imports nothing that imports the phone's screens, so the desk
+ * (which must not import them) can use it as the phone's screens do.
  */
 import type { Node } from "../../../shared/types/sdui.js";
 import { blipSize, blipUrl } from "./blipLoops.js";

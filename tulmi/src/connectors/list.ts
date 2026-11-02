@@ -1,6 +1,6 @@
 /**
  * The apps switched on, with this person's state in each: the one list behind
- * GET /v1/connectors and the desk's Connected apps (experience/desk.ts), so the
+ * GET /v1/connectors and the desk's Connected apps (experience/desk/connectedApps.ts), so the
  * two cannot disagree about what is connected. The catalog's apps come first,
  * then the ones this person added by link (while those are switched on),
  * marked `custom` and shown with their host, since nobody vetted them.

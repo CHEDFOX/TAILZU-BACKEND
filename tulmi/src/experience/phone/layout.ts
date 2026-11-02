@@ -26,7 +26,7 @@ export const FILL_STYLE = {
 const WIDE_AT = 720;
 
 /**
- * A DESKTOP DRAWING THE DESK'S OWN PAGES (experience/desk.ts).
+ * A DESKTOP DRAWING THE DESK'S OWN PAGES (experience/desk/).
  *
  * Its tabs are desk_today … desk_train, so a phone tab named as the way out of
  * a screen — "personality", "stats" — lands a window on the phone's You or

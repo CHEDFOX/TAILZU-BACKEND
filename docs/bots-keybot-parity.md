@@ -158,7 +158,7 @@ assistant's tasks (`youCard`, while CONNECTORS is on), `ctx.stats` for the wavef
 
 ## 4. The window (the desk's pages)
 
-`desk.ts`. The same reads in server.ts (`desk_insights`, `desk_day`, `desk_app`, `desk_settings`, `desk_train`).
+`experience/desk/`. The same reads in server.ts (`desk_insights`, `desk_day`, `desk_app`, `desk_settings`, `desk_train`).
 
 - [x] **Insights · eyebrow and Full history** → the month card's label; "What you said".
 - [x] **Insights · the statement** ("You said N words this month. Typed… Said…") and **the race** (said against typed, its

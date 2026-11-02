@@ -3,7 +3,7 @@
  * new onboarding speaks (onboard.ts): short, warm, honest, and "I" for Tailzu.
  *
  * English is written once here, with its Hinglish beside it, so both screens
- * that draw Settings (the phone's, phone/settings.ts, and the desk's, desk.ts) say
+ * that draw Settings (the phone's, phone/settings.ts, and the desk's, desk/settings.ts) say
  * the same thing and the translator is never left to guess at them: the
  * Hinglish below is used as written, the way the onboarding's own is
  * (settingsHinglishSeeds, applied by i18n.ts to the screens that use these).
@@ -13,8 +13,8 @@
  * opts out with `props.keepCase`, as the onboarding does, so it reads as it
  * was written. The desk keeps sentence case everywhere.
  *
- * This file imports only the capitalising pass, so desk.ts (which must not
- * import the catalog) can use it.
+ * This file imports only the capitalising pass, so the desk (which must not
+ * import the phone's screens) can use it.
  */
 import { titleCase } from "./titleCase.js";
 

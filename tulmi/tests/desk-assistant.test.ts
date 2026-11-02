@@ -37,7 +37,7 @@ vi.mock("openai", () => ({
 
 const { buildScreen } = await import("../src/experience/screens.js");
 const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
-const { DESK_SCREENS, deskNav } = await import("../src/experience/desk.js");
+const { DESK_SCREENS, deskNav } = await import("../src/experience/desk/screens.js");
 const { approvalCard } = await import("../src/connectors/card.js");
 const { buildApp } = await import("../src/server.js");
 

@@ -1,6 +1,6 @@
 /**
  * Apps added by link, on the screens (experience/assistant.ts for the phone,
- * experience/desk.ts for the desk): Add an app by link, an added app's own
+ * experience/desk/ for the desk): Add an app by link, an added app's own
  * sheet or row, what it can do tool by tool, "This app changed", and More
  * apps. All of it only while CUSTOM_CONNECTORS is on (assistant.custom), every
  * word from connectors/words.ts in both voices, and every word of the app's
@@ -36,7 +36,7 @@ process.env.DEV_SKIP_AUTH = "true";
 
 const { buildScreen } = await import("../src/experience/screens.js");
 const { localize } = await import("../src/experience/i18n.js");
-const { DESK_SCREENS } = await import("../src/experience/desk.js");
+const { DESK_SCREENS } = await import("../src/experience/desk/screens.js");
 const { EN, HG } = await import("../src/connectors/words.js");
 
 type AnyNode = { type?: string; props?: Record<string, any>; on?: Record<string, any>; bind?: Record<string, string>; visibleIf?: any; children?: AnyNode[] };

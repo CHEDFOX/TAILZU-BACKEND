@@ -55,7 +55,7 @@ import { glanceChanges, glanceV2Of, type GlanceInput } from "../widgets/glance.j
 import { emptyGlanceState, glanceStore, withGlance, type GlanceStore } from "../widgets/glanceStore.js";
 import { widgetKnobs } from "../widgets/now.js";
 
-/** Words a minute a person types: the product's standing figure (experience/desk.ts, history/store.ts). */
+/** Words a minute a person types: the product's standing figure (experience/desk/context.ts, history/store.ts). */
 const TYPING_WPM = 40;
 const MESSAGE_MAX = 2000;
 const SLUG = /^(?:any|tailzu|[a-z0-9]+(?:-[a-z0-9]+)*)$/;

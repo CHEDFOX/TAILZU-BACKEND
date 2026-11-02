@@ -201,7 +201,7 @@ const NODE_TEXT_PROPS = [
 const NODE_TEXT_ARRAY_PROPS = ["chips", "options", "choices", "items"] as const;
 
 // A node type whose copy is in props of its own: Ask's one-time setup card
-// (desk.ts askSetupCard). Its prop names are the window's to read
+// (desk/askSetup.ts askSetupCard). Its prop names are the window's to read
 // (permissions-spec §4) and cannot become the ones above, so they are named
 // here, for that type only: a generic "on" or "allow" elsewhere may be an
 // identifier. Without this only its `title` was translated, and a German
@@ -219,7 +219,7 @@ const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { 
   SwipePill: { props: ["submitLabel"] },
   // The mic button's words while it listens and while it writes (its idle one is a `label`).
   VoiceButton: { props: ["stopLabel", "transcribingLabel"] },
-  // The allowed-folders row under Ask (desk.ts askFoldersCard).
+  // The allowed-folders row under Ask (desk/askSetup.ts askFoldersCard).
   DeskFolders: {
     props: ["lede", "usual", "add", "remove", "reset", "none", "refused", "foot", "policyLabel"],
   },

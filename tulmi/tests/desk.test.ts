@@ -22,7 +22,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 // eslint-disable-next-line import/first
-import { DESK_NAV, DESK_SCREENS, SPEAKER_COLORS, deskNav, speakerColor } from "../src/experience/desk.js";
+import { DESK_NAV, DESK_SCREENS, deskNav } from "../src/experience/desk/screens.js";
+import { SPEAKER_COLORS, speakerColor } from "../src/experience/desk/speakers.js";
 // eslint-disable-next-line import/first
 import { writtenIn } from "../src/history/writtenIn.js";
 // eslint-disable-next-line import/first

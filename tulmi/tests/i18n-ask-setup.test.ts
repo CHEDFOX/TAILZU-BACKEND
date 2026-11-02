@@ -1,6 +1,6 @@
 /**
  * Ask's one-time setup card, translated whole. Its words are in props of its
- * own (desk.ts askSetupCard, the names permissions-spec §4 fixes for the
+ * own (desk/askSetup.ts askSetupCard, the names permissions-spec §4 fixes for the
  * window), and the localizer translated only the ones every node shares: a
  * German profile got its `title` in German and "what you see.", the rows and
  * every button in English.
