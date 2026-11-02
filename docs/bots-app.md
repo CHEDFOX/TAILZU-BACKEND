@@ -2,7 +2,7 @@
 
 The new design of the phone and desktop apps ("everything is a bot": tabs **Bots / Activity / You**, Home is your bots) is
 server-driven like the rest of Tailzu. The backend builds node trees from a **kit**; the phone (`TAILZU-FRONTEND/app/src/sdui`) and
-the window (`TAILZU-DESKTOP/sdui.js`) draw them. Design source: `bots-design/` (STYLE.md, Kit1-3, every board, `check.cjs`).
+the window (`TAILZU-DESKTOP/src/app/sdui/`) draw them. Design source: `bots-design/` (STYLE.md, Kit1-3, every board, `check.cjs`).
 
 * [1. The switch](#1-the-switch)
 * [2. Where things are](#2-where-things-are)

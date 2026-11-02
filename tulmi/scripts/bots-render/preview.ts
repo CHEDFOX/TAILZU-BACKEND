@@ -5,7 +5,7 @@
  *   cd tulmi && npx tsx scripts/bots-render/preview.ts            # writes scripts/bots-render/out/preview/
  *
  * The renderers are the real ones, as in render.ts: the phone's sdui renderer (RenderNode, its components, runAction)
- * through react-native-web, with a navigator around it (phone/preview.jsx); the window's app.html + sdui.js, with the
+ * through react-native-web, with a navigator around it (phone/preview.jsx); the window's src/app/app.html and its scripts, with the
  * Electron bridge stood in (preview/desk-bridge.js). Motions are on (the viewer's own Reduce Motion still counts).
  *
  * The screens are the real ones too, built here once: the bootstrap (BOTS_APP on, BotsKit declared) and, per client,
@@ -18,7 +18,7 @@
  *   index.html                the page: the device frames, Phone / Desktop, jump to a screen, start over. No doctype,
  *                             html, head or body: an Artifact wraps it. (preview/serve.ts wraps it to try it locally.)
  *   phone.html  phone.js      the phone (phone.js: the renderer bundle)
- *   desk.html   sdui.js …     the window (TAILZU-DESKTOP's app.html, its scripts and its faces)
+ *   desk.html   knobs.js src/… the window (TAILZU-DESKTOP's src/app/app.html, its scripts and its faces, at their repo paths)
  *   shim.js  desk-bridge.js   the stand-in API, the stand-in bridge
  *   data/<client>.json        the bootstrap, the answers, the "not in this preview" page, which chunk has which screen
  *   data/<client>-<n>.json    the screens, by key
@@ -126,7 +126,7 @@ function sampleFor(t: Target, c: Client): Sample | undefined {
 
 /**
  * What each client declares beyond BotsKit. Both draw the onboarding's stage and its one Blip (the first run walks him
- * from Welcome to Name: the window with its own walker, blip.js; the phone with phone/preview.jsx's stand-in for
+ * from Welcome to Name: the window with its own walker, src/shared/blip.js; the phone with phone/preview.jsx's stand-in for
  * BlipHost, which needs Skia).
  */
 const STAGE = ["OnboardStage", "BlipSpot"];
@@ -276,19 +276,31 @@ ${faces}
 </html>
 `);
 
-// The window: app.html as it ships, with the stand-ins before its scripts. Its own policy goes (the page it sits in
-// sets the policy); everything else is untouched.
-let desk = read(path.join(DESKTOP, "app.html"));
+// The window: src/app/app.html as it ships, with the stand-ins before its scripts. Its own policy goes (the page it
+// sits in sets the policy); everything else is untouched. The page lands at the preview's root as desk.html, so each
+// script and face it names (relative to src/app/) is copied to its path in the desktop repo and named by that path.
+const DESK_PAGE_DIR = path.join(DESKTOP, "src", "app");
+const deskPath = (ref: string) => path.relative(DESKTOP, path.resolve(DESK_PAGE_DIR, ref)).split(path.sep).join("/");
+let desk = read(path.join(DESK_PAGE_DIR, "app.html"));
 desk = desk.replace(/<meta http-equiv="Content-Security-Policy"[\s\S]*?>/, "")
   .replace(/<html([^>]*)>/, '<html$1 data-client="desktop">')
-  .replace('<script src="knobs.js"></script>', '<script src="shim.js"></script>\n  <script src="desk-bridge.js"></script>\n  <script src="knobs.js"></script>');
+  .replace(/<script src="([^"]*knobs\.js)"><\/script>/, '<script src="shim.js"></script>\n  <script src="desk-bridge.js"></script>\n  <script src="$1"></script>');
+// Every script the window loads, in app.html's order (knobs.js, blip.js, the bot tiles, the renderer's sdui/*.js, the
+// abilities loaded after it).
+desk = desk.replace(/<script src="([^"]+\.js)"><\/script>/g, (tag, ref: string) => {
+  if (ref === "shim.js" || ref === "desk-bridge.js") return tag;
+  const f = deskPath(ref);
+  if (!fs.existsSync(path.join(DESKTOP, f))) return tag;
+  copy(path.join(DESKTOP, f), f);
+  return `<script src="${f}"></script>`;
+});
+desk = desk.replace(/url\(([^)"']*assets\/[^)"']+)\)/g, (all, ref: string) => {
+  const f = deskPath(ref);
+  if (!fs.existsSync(path.join(DESKTOP, f))) return all;
+  copy(path.join(DESKTOP, f), f);
+  return `url(${f})`;
+});
 write("desk.html", desk);
-// Every script the window loads, as app.html names them (sdui.js and the abilities loaded after it).
-for (const m of desk.matchAll(/<script src="([\w.-]+\.js)"><\/script>/g)) {
-  const f = m[1]!;
-  if (f !== "shim.js" && f !== "desk-bridge.js" && fs.existsSync(path.join(DESKTOP, f))) copy(path.join(DESKTOP, f), f);
-}
-for (const m of desk.matchAll(/url\((assets\/[^)"']+)\)/g)) if (fs.existsSync(path.join(DESKTOP, m[1]!))) copy(path.join(DESKTOP, m[1]!), m[1]!);
 
 // What the screens name, and the faces the page around them is set in; and every one of Blip's loops, which the
 // phone's stand-in for BlipHost draws by pose.

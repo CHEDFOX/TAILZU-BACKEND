@@ -1303,7 +1303,7 @@ export type ActionSpec =
   | { kind: "share"; text?: string; url?: string; title?: string }
   | { kind: "shareFile"; path: string; mimeType?: string }
   | { kind: "copyToClipboard"; text: string; toastMessage?: string }
-  // --- the desktop window only (desktop/sdui.js) ---
+  // --- the desktop window only (desktop src/app/sdui/) ---
   /** Put text on the clipboard and say so. */
   | { kind: "copyText"; text: string; message?: string }
   /** Change one of this computer's own settings (the pill, pausing, start at
@@ -2042,7 +2042,7 @@ export type KeyboardActionSpec =
   | { kind: "stopMedia" }
   // ----- clipboard + share -----
   | { kind: "copyToClipboard"; text: string; toastMessage?: string }
-  // --- the desktop window only (desktop/sdui.js) ---
+  // --- the desktop window only (desktop src/app/sdui/) ---
   /** Put text on the clipboard and say so. */
   | { kind: "copyText"; text: string; message?: string }
   /** Change one of this computer's own settings (the pill, pausing, start at

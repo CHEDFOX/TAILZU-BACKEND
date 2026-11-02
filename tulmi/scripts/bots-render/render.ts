@@ -12,7 +12,7 @@
  * Every screen at once, with the sample data, on both clients, laid out for review: showcase.ts.
  *
  * THE RENDERERS ARE THE REAL ONES.
- *   desktop  TAILZU-DESKTOP/app.html + sdui.js in Chromium at 1280 x 800, signed in against a stand-in API that
+ *   desktop  TAILZU-DESKTOP/src/app/app.html and its scripts (src/app/sdui/*.js) in Chromium at 1280 x 800, signed in against a stand-in API that
  *            answers /v1/app/bootstrap and /v1/app/screen (with the builder below) and serves Blip and the fonts.
  *   phone    TAILZU-FRONTEND/app/src/sdui (Renderer, components, componentsV3, SvgShapes) bundled with
  *            react-native-web at 390 x 844, a 12 pt status bar inset. Native-only modules (Skia, video, haptics…)
@@ -305,7 +305,7 @@ async function renderDesktop(browser: any, screenId: string, params: Params, bui
       return serveAssets(r);
     });
     page.on("console", (m: { type(): string; text(): string }) => { if (m.type() === "error") errors.push(`console: ${m.text().slice(0, 300)}`); });
-    await page.goto("https://desk.local/app.html");
+    await page.goto("https://desk.local/src/app/app.html");
     try {
       await page.waitForFunction("!!document.querySelector('#view [data-h]')", null, { timeout: 15_000 });
     } catch (e) {

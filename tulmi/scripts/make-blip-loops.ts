@@ -3,7 +3,7 @@
  *
  *   PLAYWRIGHT=/opt/node-tools/node_modules/playwright \
  *   CHROMIUM=/opt/pw-browsers/chromium-1194/chrome-linux/chrome \
- *   npx tsx scripts/make-blip-loops.ts [../../TAILZU-DESKTOP/blip.js]
+ *   npx tsx scripts/make-blip-loops.ts [../../TAILZU-DESKTOP/src/shared/blip.js]
  *
  * Needs a Chromium (Playwright's) and ffmpeg with libwebp. Neither is a
  * dependency of the backend: this is run by hand when Blip changes, and the
@@ -47,7 +47,7 @@ const QUALITY: Record<string, number> = { s: Number(process.env.BLIP_QUALITY ?? 
 const here = path.dirname(new URL(import.meta.url).pathname);
 const outDir = path.join(here, "..", "blip");
 const dataFile = path.join(here, "..", "src", "experience", "blipData.ts");
-const blipJs = path.resolve(process.argv[2] ?? path.join(here, "..", "..", "..", "TAILZU-DESKTOP", "blip.js"));
+const blipJs = path.resolve(process.argv[2] ?? path.join(here, "..", "..", "..", "TAILZU-DESKTOP", "src", "shared", "blip.js"));
 
 /** [what to find in blip.js, what to draw instead, how many times it must be found]. */
 const RETUNE: Array<[string, string, number]> = [
