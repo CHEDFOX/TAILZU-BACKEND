@@ -1,0 +1,26 @@
+# The one key's brain (`tulmi/src/askDecide`)
+
+The person holds one key and talks. Whatever they said is an ask; `POST /v1/ask/decide` says which kind, so the computer does it without asking them which.
+
+| `do` | What it is | What the computer does |
+|---|---|---|
+| `write` | words for the text box in front (dictation, or "reply saying I'm late") | types them; the pill can take them back |
+| `send` | a message to someone through an app | Ask does it on the screen; they already said to send, so no "send?" card |
+| `answer` | a question or advice; `screen` about what is in front, `web` needs fresh facts | Ask answers: looks at the screen, or searches and reads pages |
+| `task` | something to do, one step or many | Ask's long job: plan, steps, "your turn" only for passwords, codes and payments |
+| `routine` | something to do again on a schedule | saved as a routine (src/routines) |
+| `notes` | start or stop meeting notes | notes |
+| `bot` | clearly one of the person's bots | sent to that bot |
+
+## How it decides (Xode's way)
+1. **Safety first, for nothing.** A password field or Tailzu's own window: typed, no model, the words never leave.
+2. **One tiny call** (role `ask_decide`, tiny tier, 30 paise cap) with the app, window title, the text box, the last 3 asks and the person's bots. Any language. A short follow-up is made whole in `goal`.
+3. **Climb once.** Under 0.7 sure, or the tiny model down: the cheap tier, once; the surer answer wins.
+4. **Never stuck.** Both down, or still under 0.45 with a text box in front: typed. No box: Ask, which can ask one question itself.
+5. **Rules only raise the risk.** Money and deleting are read from the words (`risk`), whatever the model said, so they are always confirmed.
+6. **Cache.** The same words in the same place within 10 minutes: the answer from before.
+
+## Permissions
+The setup card is answered once (read text, see the screen, send pictures). The computer sends its state as `grants`; the answer's `needs` is what this ask will use and `missing` what the card has not allowed. The computer asks for that one permission at the turn that needs it, and never for one already given.
+
+Evals: `tulmi/evals/ask_decide.jsonl` (English, Hinglish, Hindi, Spanish, a follow-up, a bot, a planted instruction).

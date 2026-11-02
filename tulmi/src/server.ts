@@ -61,6 +61,7 @@ import { registerBotsFirstRunRoutes } from "./routes/bots/botsFirstRun.js";
 import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
 import { registerRoutineRoutes } from "./routes/bots/routines.js";
+import { registerAskDecideRoutes } from "./routes/ask/askDecide.js";
 import { registerEverydayRoutes } from "./routes/bots/everyday.js";
 import { everyday } from "./everyday/index.js";
 import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
@@ -420,6 +421,8 @@ if (routines) {
 registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
 // Everyday tools (src/everyday, docs/everyday.md): flights, hotels, currency and weather for every bot that fits, free, no sign-in.
 registerEverydayRoutes(app, { rateLimit: AUTHED_RL, everyday: everyday() });
+// The one key's brain (src/askDecide, docs/ask-decide.md): what the person meant, in any language.
+registerAskDecideRoutes(app, { rateLimit: AUTHED_RL, bots });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent, routines };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);

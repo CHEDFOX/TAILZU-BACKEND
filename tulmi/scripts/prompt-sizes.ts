@@ -71,6 +71,8 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   // The bots platform (src/bots): written after the principles, so their first size is their "before".
   bot_builder: 1429,
   bot_pick: 736,
+  // New with the one key's brain: nothing came before it, so its "before" is its own size and it is not held to a saving.
+  ask_decide: 0,
   bot_run: 1379,
   bot_memory: 1058,
   // The X0 widget's digest (src/widgets/digest.ts): written after the principles, so its first size is its "before".

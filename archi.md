@@ -74,7 +74,8 @@ http/              HTTP plumbing: error handling, request hooks (cost tally, HTM
 routes/            one module per feature, each exporting register…Routes(app, deps)
   account/         account deletion, profile, personality, history, device link (QR sign-in), the review sign-in pair
   app/             the SDUI app (bootstrap, screen, cache), keyboard config and telemetry, live updates, media, static files
-  ask/             POST /v1/ask, the desktop's on-screen agent (/v1/agent), the phone's Ask, the front door
+  ask/             POST /v1/ask, the desktop's on-screen agent (/v1/agent), the phone's Ask, the front door,
+                   the one key's brain (/v1/ask/decide)
   billing/         the /pay page, Razorpay, RevenueCat and Razorpay webhooks
   bots/            the bots platform and every Bots app area (shell, You, bots, Keybot, code, first run, spaces,
                    trips, calendar, push ask, looks, sounds, safety, widgets), routines, the everyday tools' cards
@@ -107,6 +108,7 @@ pipeline/          the writing pipeline
   assistPrompt.ts  the writer's data blocks; tts.ts, openrouter.ts, field.ts, compose.ts, session.ts, …
 principles/        the prompt library: one role per model call (roles.ts), composed with compose()
 agent/             the desktop's on-screen agent (Ask): one step, the planner, the resolver, risk; long jobs (docs/long-jobs.md)
+askDecide/         the one key's brain: what the person meant by what they said, in any language (docs/ask-decide.md)
 front/             the front door: one entry for a message, decided and dispatched (docs/front-door.md)
 guard/             overload guards: limiter, breaker, coalescing, idempotency
 code/              Xode (docs/code-*.md)
@@ -253,7 +255,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
 `viewer/docs/artifact-viewer.md`.
