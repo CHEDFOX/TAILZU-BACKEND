@@ -41,8 +41,8 @@ export const LOOK_SPEND_SHARE = 0.6;
 export const CHECK_STEPS = 2;
 /** The review runs only while at least this share of the money is left: the answer as it is beats one that cannot be finished. */
 export const CHECK_MONEY_SHARE = 0.35;
-/** The review's own words: OK, or a few CHECK lines. */
-export const CHECK_TOKENS = 220;
+/** The review's own words, OK or a few CHECK lines, and the thinking a reasoning model does first (220 was all thinking, measured: no CHECK came back). */
+export const CHECK_TOKENS = 1_200;
 /** At most this many gaps go back to be settled. */
 export const GAPS_MAX = 3;
 
