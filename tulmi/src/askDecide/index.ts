@@ -39,6 +39,7 @@ import { askJson, forModel, oneLine, type CallFn, type ModelCtx } from "../code/
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { ModelTier } from "../code/brain/tiers.js";
 import { neutral } from "../bots/prompt.js";
+import { detectScript } from "../pipeline/script.js";
 
 export const ASK_DOS = ["write", "send", "answer", "task", "routine", "notes", "bot"] as const;
 export type AskDo = (typeof ASK_DOS)[number];
@@ -115,7 +116,7 @@ const CACHE_MAX = 500;
 /** Money moving: pay, buy, order, transfer, in the languages people say it in. */
 const MONEY = /\b(pay|paying|payment|pays|paid|transfer|send money|buy|buying|purchase|order|checkout|check out|book(?:ing)? (?:a |the )?(?:flight|ticket|hotel|room|cab|table)|subscribe|upi|gpay|paytm|phonepe|bhim|neft|imps|rtgs|paisa|paise|rupees?|rs\.?\s?\d|inr|usd|dollars?|bhej(?:o|do)? paise|paise bhej|kharid(?:o|na|lo)?|bharo|payment kar|pay kar)\b|[₹$€£]|भुगतान|पैसे भेज|ख़रीद|खरीद|ऑर्डर|पेमेंट/iu;
 /** Something gone for good: delete, wipe, uninstall, cancel an account. */
-const DELETE = /\b(delete|deleting|remove|erase|wipe|clear (?:all|everything|history)|empty (?:the )?(?:trash|bin)|uninstall|format|cancel (?:my |the )?(?:account|subscription|order|plan)|close (?:my |the )?account|unsubscribe|mita(?:o|do|na)?|hata(?:o|do|na)?|delete kar)\b|मिटा|हटा|डिलीट/iu;
+const DELETE = /\b(delete|deleting|remove|erase|wipe|clear (?:all|everything|history)|empty (?:the )?(?:trash|bin)|uninstall|format|cancel (?:my |the )?(?:account|subscription|order|plan)|close (?:my |the )?account|mita(?:o|do|na)?|hata(?:o|do|na)?|delete kar)\b|मिटा|हटा|डिलीट/iu;
 
 export function riskOf(words: string, d: AskDo): AskRisk {
   if (MONEY.test(words)) return "money";
@@ -250,7 +251,11 @@ async function decideOnce(i: DecideInput, userId: string, d: DecideDeps): Promis
 
 /** The model's answer, held to what can be done here. */
 function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision["by"], reasons: string[], sure: number, paise: number): AskDecision {
-  const goal = oneLine(r.goal ?? "", 600) || words;
+  // THEIR OWN WORDS are the goal, except for a follow-up the model had to make whole ("send it to Dev too"): a
+  // small model asked for "the request made whole" also translated it (English in, Hindi out), and the goal is
+  // what Ask is handed as the request. Even made whole, a goal in another script than what was said is not used.
+  const made = oneLine(r.goal ?? "", 600);
+  const goal = (i.last ?? []).length > 0 && made && detectScript(made) === detectScript(words) ? made : words;
   let kind: AskDo = r.do;
   let bot: AskDecision["bot"];
   if (kind === "bot") {

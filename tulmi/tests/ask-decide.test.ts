@@ -53,6 +53,15 @@ describe("the meaning is the model's, in any language", () => {
     expect(d.goal).toBe("Tell Dev the mockups are ready");
   });
 
+  it("the goal is their own words, unless a follow-up had to be made whole, and never in another script", async () => {
+    const translated = await decideAsk({ words: "tell Riya the mockups are ready", field: null }, ME, { call: model({ tiny: [{ do: "send", goal: "Riya को बताओ कि mockups ready हैं", to: "Riya", sure: .95 }] }).call });
+    expect(translated.goal).toBe("tell Riya the mockups are ready");
+    resetAskDecideCacheForTests();
+    const last = [{ said: "tell Riya the mockups are ready", did: "send" as const, to: "Riya" }];
+    const odd = await decideAsk({ words: "send it to Dev too", field: null, last }, ME, { call: model({ tiny: [{ do: "send", goal: "Dev को भी बताओ", to: "Dev", sure: .95 }] }).call });
+    expect(odd.goal).toBe("send it to Dev too");
+  });
+
   it("picks one of the person's bots only from their list", async () => {
     const bots = [{ slug: "plan-ease", name: "Plan Ease", purpose: "Plans my days" }];
     const yes = await decideAsk({ words: "plan my Saturday", field: null, bots }, ME, { call: model({ tiny: [{ do: "bot", bot: "plan-ease", sure: 0.9 }] }).call });
@@ -85,6 +94,7 @@ describe("safety: rules only raise the risk, and some words never leave", () => 
     expect(riskOf("purani files mita do", "task")).toBe("delete");
     expect(riskOf("tell Riya I'm late", "send")).toBe("send");
     expect(riskOf("what's the weather", "answer")).toBe("none");
+    expect(riskOf("unsubscribe me from the promo emails", "task"), "unsubscribing is not deleting").toBe("none");
   });
 });
 

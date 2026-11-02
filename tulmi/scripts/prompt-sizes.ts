@@ -66,7 +66,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   bot_builder: 1429,
   bot_pick: 736,
   // New with the one key's brain: it replaces nothing, so its first size is its "before" (a NEW_ROLE).
-  ask_decide: 1554,
+  ask_decide: 1739,
   bot_run: 1379,
   bot_memory: 1058,
   // The X0 widget's digest (src/widgets/digest.ts): written after the principles, so its first size is its "before".
