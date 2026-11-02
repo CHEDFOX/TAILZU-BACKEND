@@ -22,7 +22,7 @@ process.env.NODE_ENV = "test";
 type H = { onReady(): void; onPartial(t: string): void; onFinal(t: string): void; onError(m: string): void; onClose(c?: number): void };
 const engines: { primary?: H } = {};
 
-vi.mock("../src/routes/live-engines.js", () => ({
+vi.mock("../src/routes/writing/live-engines.js", () => ({
   liveEngineConfigured: () => true,
   openLiveEngine: (_o: unknown, h: H) => {
     engines.primary = h;
@@ -32,7 +32,7 @@ vi.mock("../src/routes/live-engines.js", () => ({
   openShadowEngine: () => ({ label: "test:shadow", send: () => {}, close: () => {} }),
 }));
 
-const { STREAM_ERROR_TEXT } = await import("../src/routes/transcribe-stream.js");
+const { STREAM_ERROR_TEXT } = await import("../src/routes/writing/transcribe-stream.js");
 const { buildApp } = await import("../src/server.js");
 
 /**

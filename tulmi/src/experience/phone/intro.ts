@@ -416,7 +416,7 @@ export function introScreen(ctx: ScreenContext): ScreenResponse {
         // app either way, so the failure costs a beat, not a trap.
         // Video path — an uploaded mp4 (what the mic prefers).
         // THE FILM'S OWN FIRST FRAME, under the film. The server cuts it
-        // (routes/media.ts ensureVideoPosters) and the app's splash wait
+        // (routes/app/media.ts ensureVideoPosters) and the app's splash wait
         // prefetches it with the screen's other images, so it is on disk
         // before the launch image lifts. The film's box is then transparent
         // until its first frame lands on top of the same picture — where it

@@ -80,7 +80,7 @@ export const INVITE_CODE_RE = /^[A-Z0-9]{6,16}$/;
 
 /**
  * Where an invite's link points: the host the phone app claims for its links (associatedDomains, intentFilters; the AASA serves
- * /s/*), the same one bots.link's QR uses (routes/deviceLink.ts LINK_ORIGIN). Opened there, the app goes straight to joining.
+ * /s/*), the same one bots.link's QR uses (routes/account/deviceLink.ts LINK_ORIGIN). Opened there, the app goes straight to joining.
  */
 export const INVITE_ORIGIN = (process.env.DEVICE_LINK_ORIGIN || "https://app.x0bot.com").replace(/\/+$/, "");
 /** The screen an invite opens, and its parameter. */

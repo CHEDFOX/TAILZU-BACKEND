@@ -13,7 +13,7 @@ Four ways to reach X0 Bot without opening it, all decided by the server, each wi
 The universal **X0** widget (it replaces Needs you and The Month) and the "Bots at work" Live Activity read
 GET /v1/shell/glance?v=2 and answer through POST /v1/widgets/act below: their contract is [widget-glance-v2.md](widget-glance-v2.md).
 
-The code is in `tulmi/src/widgets`, `tulmi/src/routes/widgets.ts` and `tulmi/src/push`. The apps' side is in
+The code is in `tulmi/src/widgets`, `tulmi/src/routes/bots/widgets.ts` and `tulmi/src/push`. The apps' side is in
 `TAILZU-FRONTEND/app/src/{widgets,notifications,quickActions}`, the widget extension `app/targets/widgets` (its README lists every
 App Group key), and the bridge `app/modules/tulmi-bridge`.
 
@@ -67,7 +67,7 @@ Answers `NowDoc` (`src/widgets/now.ts`; version `v: 1`, which only ever gains fi
 }
 ```
 
-**Where the rows come from** (`routes/widgets.ts` `gather`):
+**Where the rows come from** (`routes/bots/widgets.ts` `gather`):
 
 * From your people:
   * the newest message from someone else in each of the person's newest chats (`Threads.recentFrom`, which reads without

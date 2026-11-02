@@ -1,5 +1,5 @@
 /**
- * POST /v1/internal/code/notify (src/routes/codeInternal.ts): the Worker's way to the push engine. The signature is the one the
+ * POST /v1/internal/code/notify (src/routes/code/codeInternal.ts): the Worker's way to the push engine. The signature is the one the
  * VPS makes (jobs-handoff-sign.test.ts), so the cases here are the route's own: who is told, which jobs, which kinds, and that
  * the route is not there unless jobs run on Cloudflare.
  */
@@ -9,7 +9,7 @@ import { NOTIFY_PATH } from "../src/code/jobs/handoff/protocol.js";
 import { MemoryNonceStore, SIGNATURE_WINDOW_MS, signRequest } from "../src/code/jobs/handoff/sign.js";
 import { MemoryJobStore } from "../src/code/jobs/store.js";
 import type { NotifyData, NotifyKind } from "../src/code/jobs/types.js";
-import { registerCodeInternalRoutes } from "../src/routes/codeInternal.js";
+import { registerCodeInternalRoutes } from "../src/routes/code/codeInternal.js";
 
 const SECRET = "n".repeat(40);
 let clock = 1_800_000_000_000;

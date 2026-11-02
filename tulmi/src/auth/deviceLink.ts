@@ -18,7 +18,7 @@
  *                   in the same step (approved → used, a conditional write), and only the poll that spent it gets the
  *                   session: a second one, or a copy of the token without the secret, gets nothing.
  *
- * THE SESSION is minted as the review pair's is (routes/reviewCode.ts): Supabase's admin API makes a one-time magic link
+ * THE SESSION is minted as the review pair's is (routes/account/reviewCode.ts): Supabase's admin API makes a one-time magic link
  * for the account's own address (nothing is sent), and the window gets only its hashed token, which it redeems with its
  * own anon key at /auth/v1/verify. The service key never leaves the server, and the window's session is a new, ordinary
  * one that it refreshes like any other. The used row is the record of the computer: who, which computer, when, from

@@ -10,7 +10,7 @@
  *                        "Sign in on <computer>?": which computer, when it asked, which account it signs in as, and
  *                        Approve / Not me. Approved, the computer signs itself in a moment later.
  *
- * Reads POST /v1/auth/link/view; writes POST /v1/auth/link/approve and /deny (routes/deviceLink.ts). The token or code
+ * Reads POST /v1/auth/link/view; writes POST /v1/auth/link/approve and /deny (routes/account/deviceLink.ts). The token or code
  * travels in the bodies only.
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";

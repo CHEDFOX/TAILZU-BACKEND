@@ -168,7 +168,7 @@ A job that needs the person is **parked**: `waiting_for_you`, nobody's claim, th
 | the OK to a high-risk plan, a commit or "mark the pull request ready" the policy asks about | `approval` | `POST .../approve` (a question, then a yes with the `approvalId`), or `POST .../deny` |
 | more money | `budget` | `POST .../budget {addPaise}` |
 
-`approve` is the same two steps as every other question in the Code bot (`routes/code.ts`): with no `approvalId` it changes nothing and answers with what would be done and the id to say yes with (and whether Face ID goes with it); with the id, it says yes. An approval that ran out is asked again, with a fresh id. **Deny** ends the job for a plan or a commit ("You didn't approve the plan, so nothing was changed."); for "mark ready" the pull request just stays a draft.
+`approve` is the same two steps as every other question in the Code bot (`routes/code/code.ts`): with no `approvalId` it changes nothing and answers with what would be done and the id to say yes with (and whether Face ID goes with it); with the id, it says yes. An approval that ran out is asked again, with a fresh id. **Deny** ends the job for a plan or a commit ("You didn't approve the plan, so nothing was changed."); for "mark ready" the pull request just stays a draft.
 
 ## 7. Routes
 

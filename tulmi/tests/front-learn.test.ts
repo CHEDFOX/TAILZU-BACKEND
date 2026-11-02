@@ -378,7 +378,7 @@ describe("migration 0033_front_decisions.sql", () => {
   });
 
   it("goes with the account: the delete clears it with the other tables", () => {
-    const account = readFileSync(join(dir, "src", "routes", "account.ts"), "utf8");
+    const account = readFileSync(join(dir, "src", "routes", "account", "account.ts"), "utf8");
     expect(account).toContain('["front_decisions", null]');
   });
 });

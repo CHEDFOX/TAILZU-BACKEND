@@ -306,7 +306,7 @@ async function noteLoad(ctx: BotsCtx, deps: { api<T>(m: "GET" | "POST", p: strin
 
 /** A to-do's tick: the state path its row reads, so a tap shows at once. */
 const tickPath = (t: NoteTodo) => `td_${t.id.replace(/[^A-Za-z0-9_]/g, "")}`;
-/** The person's own to-dos made from a meeting's (routes/botsCalendar.ts). */
+/** The person's own to-dos made from a meeting's (routes/bots/botsCalendar.ts). */
 const CAL_NOTES = "/v1/botsapp/calendar/notes";
 
 /** "Add to my tasks": the to-do on the person's own list (once); "In your tasks" when it is. Beside the row, never inside it. */

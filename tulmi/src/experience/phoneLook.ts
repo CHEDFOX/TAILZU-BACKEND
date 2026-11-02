@@ -242,7 +242,7 @@ export interface StatsDay {
 
 /**
  * The date of each day bucket in the stats (oldest first, today last), in
- * the user's own day — the same buckets history/store.ts counts into.
+ * the user's own day — the same buckets history/stats.ts counts into.
  */
 export function statsDays(count: number, tzOffsetMinutes = 0): StatsDay[] {
   const tz = Math.max(-840, Math.min(840, Math.round(tzOffsetMinutes)));

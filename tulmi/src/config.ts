@@ -511,7 +511,7 @@ const EnvSchema = z.object({
    * pinned tool lists and a yes for anything not plainly a read (see
    * src/connectors/hygiene.ts). Off means their rows are not read at all; on
    * needs CONNECTORS too. One switch for everyone for now, so it can later
-   * become a paid-plan perk in one place (routes/connectorsCustom.ts). While
+   * become a paid-plan perk in one place (routes/connectors/connectorsCustom.ts). While
    * on, the server also keeps More apps, its copy of the official MCP
    * Registry, synced every 12 hours (connectors/registry.ts).
    */
@@ -1295,7 +1295,7 @@ const EnvSchema = z.object({
    * /auth/callback hands a sign-in to the app only when the return carries a
    * `state` — the one the app minted when it started that sign-in, and the
    * only thing that lets the app tell its own flow from a link minted for
-   * someone else's account (login CSRF; see routes/demo.ts).
+   * someone else's account (login CSRF; see routes/site/demo.ts).
    *
    * On by default. Off is a rollout valve and nothing else: an app bundle
    * from before the state existed sends none, so its Google-on-Android

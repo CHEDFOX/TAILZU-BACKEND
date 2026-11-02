@@ -1,6 +1,6 @@
 # Bots: everything is a bot, and anyone can make their own
 
-Tailzu's assistants are **bots**: the Code bot, Keybot (writes in your voice), the Plan bot and the Travel bot ship with it, and a person can **make their own** from one sentence, each with its own **tools, knowledge, memory and an API endpoint** for their own apps. Code: `tulmi/src/bots/` (the platform), `tulmi/src/routes/bots.ts` (the doors), `tulmi/src/routes/front.ts` ("Ask any bot"). Migration: `tulmi/supabase/migrations/0038_bots.sql`.
+Tailzu's assistants are **bots**: the Code bot, Keybot (writes in your voice), the Plan bot and the Travel bot ship with it, and a person can **make their own** from one sentence, each with its own **tools, knowledge, memory and an API endpoint** for their own apps. Code: `tulmi/src/bots/` (the platform), `tulmi/src/routes/bots/bots.ts` (the doors), `tulmi/src/routes/ask/front.ts` ("Ask any bot"). Migration: `tulmi/supabase/migrations/0038_bots.sql`.
 
 It is **off unless `BOTS=true`**. Off, every `/v1/bots` route answers `404 { "code": "bots_off" }` before the session, a `/v1/ask` that names a `bot` does too, and the front door never picks a bot. Nothing else changes either way: the Code bot's own flows are the front door's and the Code bot's, exactly as they were.
 
@@ -128,7 +128,7 @@ The owner's `principles` are **their own rules for their own bot**: tone, topic,
 * A key is **for one bot**: at another bot's address it is `403 wrong_bot`. **Revocable** at once (`DELETE .../keys/:id`; a revoked key keeps its row, with when). Each key has a **last-used time**. At most 5 active keys a bot. A malformed, unknown, revoked or wrong-pepper key is the same `401`, in the same words.
 * **Per-key rate limit** (30 a minute) and **daily budget** (500 paise), and the bot's own per-request and daily budgets on top; a refusal says when to come back (`Retry-After`).
 * A built-in has no keys (nothing to give a key to).
-* **Request bodies are never logged**, nor the answers, nor the key: nothing in `bots/` or `routes/bots.ts` writes them, the server's logger does not log bodies or `Authorization`, an error is logged by its name only, and a connected app's task is titled with the bot's name. A test captures the logs and looks for what was asked.
+* **Request bodies are never logged**, nor the answers, nor the key: nothing in `bots/` or `routes/bots/bots.ts` writes them, the server's logger does not log bodies or `Authorization`, an error is logged by its name only, and a connected app's task is titled with the bot's name. A test captures the logs and looks for what was asked.
 
 ### Whose it is
 

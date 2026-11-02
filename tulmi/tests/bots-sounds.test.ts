@@ -1,5 +1,5 @@
 /**
- * The bots' sounds (experience/bots/sounds.ts, routes/botSounds.ts, shared/bots/sounds.json + sounds/; docs/bots-app.md
+ * The bots' sounds (experience/bots/sounds.ts, routes/bots/botSounds.ts, shared/bots/sounds.json + sounds/; docs/bots-app.md
  * "Sounds"): the repo's pack is whole (every file there, its hash its own, short, a sound for every moment the looks
  * catalog names), the check finds what would not do, the bootstrap names the catalog, the route serves it with its file
  * addresses, the files are served immutable (and never the masters), a pack can be pushed and taken back, and the phone's
@@ -26,7 +26,7 @@ import {
   SOUND_MAX_MS, type SoundsSpec,
 } from "../src/experience/bots/sounds.js";
 // eslint-disable-next-line import/first
-import { registerBotSoundFiles, registerBotSoundsRoutes } from "../src/routes/botSounds.js";
+import { registerBotSoundFiles, registerBotSoundsRoutes } from "../src/routes/bots/botSounds.js";
 // eslint-disable-next-line import/first
 import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
 // eslint-disable-next-line import/first

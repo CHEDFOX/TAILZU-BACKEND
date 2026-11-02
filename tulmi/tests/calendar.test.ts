@@ -27,7 +27,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 
 const { Calendar, memoryCalendarRows, readLine, timeOf, dayFrom, withOwnDays } = await import("../src/calendar/index.js");
 const { occurrences, nextReminder } = await import("../src/calendar/repeat.js");
-const { registerCalendarRoutes } = await import("../src/routes/botsCalendar.js");
+const { registerCalendarRoutes } = await import("../src/routes/bots/botsCalendar.js");
 const { PlanDays, calendarPlanReader } = await import("../src/botsBots/plan.js");
 const { MemoryTable } = await import("../src/botsBots/rows.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");

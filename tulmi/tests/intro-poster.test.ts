@@ -10,7 +10,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { ensureVideoPosters, getMediaRegistry, loadMediaRegistry } from "../src/routes/media.js";
+import { ensureVideoPosters, getMediaRegistry, loadMediaRegistry } from "../src/routes/app/media.js";
 // eslint-disable-next-line import/first
 import { buildScreen } from "../src/experience/screens.js";
 import { setMediaRegistryAccessor } from "../src/experience/mediaRegistry.js";

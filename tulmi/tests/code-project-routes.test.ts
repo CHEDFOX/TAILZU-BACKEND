@@ -34,7 +34,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const { projectRig, KEYS } = await import("./project-rig.js");
-const { registerCodeRoutes } = await import("../src/routes/code.js");
+const { registerCodeRoutes } = await import("../src/routes/code/code.js");
 const { signatureFor, handleWebhook } = await import("../src/code/webhook.js");
 const { createCode } = await import("../src/code/index.js");
 const { MemoryCodeStore } = await import("../src/code/store.js");

@@ -3,7 +3,7 @@
  * matters most right now (`case`): something needs the person, else a bot finished something they have not seen, else bots are working,
  * else quiet.
  *
- * Pure: routes/botsShell.ts reads the records (Xode's jobs, the connected apps' tasks, the bots, the week's minutes, what the person
+ * Pure: routes/bots/botsShell.ts reads the records (Xode's jobs, the connected apps' tasks, the bots, the week's minutes, what the person
  * has seen) and hands them in; every word and limit is a knob of the "widgets" surface (defaults.ts, x0.*), in English or Hinglish. It is the
  * same live state Home draws (experience/bots/live.ts liveFrom), so the widget and Home never disagree about who is working or what waits.
  *

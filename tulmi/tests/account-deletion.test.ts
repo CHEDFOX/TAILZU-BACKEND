@@ -1,5 +1,5 @@
 /**
- * DELETE ACCOUNT WITH SEVEN DAYS TO UNDO (src/you/deletion.ts, routes/accountDeletion.ts, screens/accountGrace.ts, screens/you.ts):
+ * DELETE ACCOUNT WITH SEVEN DAYS TO UNDO (src/you/deletion.ts, routes/account/accountDeletion.ts, screens/accountGrace.ts, screens/you.ts):
  *
  *   - asking sets a date seven days out (asking again keeps it), signs out and stops pings; Keep my account takes it away
  *   - nothing is promised by a server that cannot delete (503)
@@ -27,7 +27,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const { MemoryDeletionStore, sweepDeletions, GRACE_MS, CLAIM_STALE_MS, DELETION_PATH, isLeaving, forgetLeaving, LEAVING_TTL_MS, STOPPED_MESSAGE } = await import("../src/you/deletion.js");
-const { registerAccountDeletionRoutes } = await import("../src/routes/accountDeletion.js");
+const { registerAccountDeletionRoutes } = await import("../src/routes/account/accountDeletion.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, FIXED_NOW, IST, SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");

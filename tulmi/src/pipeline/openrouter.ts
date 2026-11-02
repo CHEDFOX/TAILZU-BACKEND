@@ -1,11 +1,10 @@
 /**
  * THE ONE OPENROUTER CLIENT.
  *
- * Split out of cleanup.ts (the voice-cleanup pipeline: prompts read from disk,
- * the speech scripts) so that Xode's model gateway and Ask's planner can
- * take the client without that whole pipeline, which the Cloudflare jobs Worker
- * must not bundle. cleanup.ts re-exports it, so every existing import keeps
- * working.
+ * Kept apart from the writing pipeline (cleanup.ts and pipeline/writing: prompts
+ * read from disk, the speech scripts) so that Xode's model gateway and Ask's
+ * planner can take the client without that whole pipeline, which the Cloudflare
+ * jobs Worker must not bundle.
  */
 import OpenAI from "openai";
 import { getConfig } from "../config.js";

@@ -181,12 +181,12 @@ export interface Personality {
 
   /**
    * When the Bots app's first-arrival card (the microphone, then the keyboard, over Home) was answered or put off
-   * (routes/botsFirstRun.ts, PUT /v1/bots/first-run/arrival). Unset: it is still due.
+   * (routes/bots/botsFirstRun.ts, PUT /v1/bots/first-run/arrival). Unset: it is still due.
    */
   botsArrivalAt?: string;
 
   /**
-   * Home's welcome back (routes/botsFirstRun.ts, GET /v1/bots/first-run/arrival): when Home was last opened (written once
+   * Home's welcome back (routes/bots/botsFirstRun.ts, GET /v1/bots/first-run/arrival): when Home was last opened (written once
    * per visit, at most every half hour), the Home version they last saw, and whether a welcome back is waiting (set on a
    * visit after a long time away or on a newer Home; cleared by the PUT once it has played).
    */
@@ -196,7 +196,7 @@ export interface Personality {
 
   /**
    * When the Bots app's "turn on notifications" card (on a phone's Home, once a bot is working or needs them) was answered:
-   * notifications allowed, or "Not now" (routes/botsPushAsk.ts, PUT /v1/bots/push-ask). Unset: it may still come up.
+   * notifications allowed, or "Not now" (routes/bots/botsPushAsk.ts, PUT /v1/bots/push-ask). Unset: it may still come up.
    */
   botsPushAskAt?: string;
   botsPushAnswer?: "granted" | "dismissed";

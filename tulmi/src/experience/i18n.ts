@@ -19,7 +19,7 @@ import OpenAI from "openai";
 import { getConfig } from "../config.js";
 import { CATALOG } from "../connectors/catalog.js";
 import { hinglishSeeds } from "../connectors/words.js";
-import { onboardHinglishSeeds } from "./onboard.js";
+import { onboardHinglishSeeds } from "./onboard/copy.js";
 import { homeLineSeeds, settingsHinglishSeeds } from "./settingsWords.js";
 import type {
   ActionRef,
@@ -212,7 +212,7 @@ const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { 
     props: ["eyebrow", "titleEm", "lede", "on", "allow", "turnOff", "restart", "restartButton", "foot", "policyLabel"],
     rows: { key: "rows", fields: ["title", "sub"] },
   },
-  // The new onboarding (experience/onboard.ts): what Blip says, and the sign-in
+  // The new onboarding (experience/onboard/): what Blip says, and the sign-in
   // controls' own lines. Their {len}, {to} are filled by the app afterwards.
   BlipSpot: { props: ["say"] },
   CodeEntry: { props: ["sentTo", "waitLabel", "okLabel", "failLabel", "resendLabel", "wrongLabel", "wrongEmailLabel", "changeLabel"] },

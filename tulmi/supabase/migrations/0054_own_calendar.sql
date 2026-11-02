@@ -1,4 +1,4 @@
--- Tailzu — each person's own calendar and to-dos (src/calendar, routes/botsCalendar.ts): what the Plan bot, Today, Tasks, Spaces, meeting
+-- Tailzu — each person's own calendar and to-dos (src/calendar, routes/bots/botsCalendar.ts): what the Plan bot, Today, Tasks, Spaces, meeting
 -- notes and every bot given "calendar" or "tasks" read and write. Tailzu no longer reads Google Calendar or Google Tasks for these.
 --
 -- Run in your Supabase SQL editor after 0051_spaces_sharing.sql. It can be run again. Without it these rows live in memory and a restart

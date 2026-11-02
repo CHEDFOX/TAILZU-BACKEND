@@ -43,7 +43,7 @@ const { blocksTime, mergeSpans } = await import("../src/connectors/google/calend
 const { CALENDAR_ZONE_URL } = await import("../src/connectors/google/zone.js");
 const { parseWhen, wallOf } = await import("../src/connectors/google/time.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
-const { registerConnectorRoutes } = await import("../src/routes/connectors.js");
+const { registerConnectorRoutes } = await import("../src/routes/connectors/connectors.js");
 const { wordsFor, EN, HG } = await import("../src/connectors/words.js");
 type Note = import("../../shared/types/api.js").Note;
 

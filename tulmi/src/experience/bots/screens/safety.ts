@@ -7,7 +7,7 @@
  *                 they like, and "Also block". Reached from a message's Report, a shared thing's page, and someone's page.
  *   bots.blocked  Blocked people, each with Unblock (You › Blocked people, Settings, Spaces).
  *
- * Data is routes/safety.ts; every rule is src/botsBots/{safety,blocks}.ts. Every write is a call, a short toast and a refresh.
+ * Data is routes/bots/safety.ts; every rule is src/botsBots/{safety,blocks}.ts. Every write is a call, a short toast and a refresh.
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {

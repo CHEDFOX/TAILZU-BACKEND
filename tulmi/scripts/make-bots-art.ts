@@ -4,7 +4,7 @@
  *   npx tsx scripts/make-bots-art.ts <dir with n-{hello,listen,think,needs,done}{,-head}.svg>
  *
  * Needs Playwright's Chromium (require("playwright") resolves through NODE_PATH or /opt/node-tools). Run by hand when
- * the art changes; the PNGs it writes are committed and served from /blip/bots/ (routes/staticFiles.ts serves tulmi/blip), and
+ * the art changes; the PNGs it writes are committed and served from /blip/bots/ (routes/app/staticFiles.ts serves tulmi/blip), and
  * experience/bots/art.ts names them. Raise ART_V there when a picture changes, so the apps fetch the new file.
  *
  *   head-<bot>.png   the "hello" head in the bot's colour, 144 px square (an avatar up to 48 pt at 3x)

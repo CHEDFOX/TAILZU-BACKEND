@@ -3,7 +3,7 @@
  * notification and on its record ("This job has used a lot of this stretch."), and a person on the free plan has no stretches, only the
  * month (src/you/usage.ts). The screens know from the meter (kit.ts spanOf); this answers the job's loop, which runs away from them.
  *
- * Set by the You routes over the usage meter (routes/botsYou.ts). Unset (the Cloudflare Worker, tests), or the meter cannot be read: null,
+ * Set by the You routes over the usage meter (routes/bots/botsYou.ts). Unset (the Cloudflare Worker, tests), or the meter cannot be read: null,
  * and the words say what is true for every plan ("what it was given") instead of guessing.
  */
 export type UsageSpanSource = (userId: string) => Promise<boolean>;

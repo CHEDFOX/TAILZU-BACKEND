@@ -12,7 +12,7 @@ the bots' moments (sneeze, a tiny fart, celebrate, hiccup, a clap) have theirs. 
 
 Writes, from the repo root:
     shared/bots/sounds/masters/<id>.wav   44.1 kHz mono 16-bit masters
-    shared/bots/sounds/<id>.m4a           AAC 96 kb/s, what the server serves (/bots/sounds/, routes/staticFiles.ts)
+    shared/bots/sounds/<id>.m4a           AAC 96 kb/s, what the server serves (/bots/sounds/, routes/app/staticFiles.ts)
     shared/bots/sounds.json               the catalog: v, and each sound's id, file, hash, kind, weight, rare, ms, label
 
 Each sound is normalised to a loudness by kind (K-weighted, the loudest 100 ms: throw -20 LUFS, tick -27, new -21,

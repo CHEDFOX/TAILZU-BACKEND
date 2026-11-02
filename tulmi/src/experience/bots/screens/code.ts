@@ -4,8 +4,8 @@
  * (CodeHome, Enter1-4, NewProject, CodePlan, ProjectRules, CodeReview, PRCare and their D* boards).
  *
  * Screen ids are "bots.<name>"; one id serves the phone and the window (ctx.client). Everything is Xode's own
- * backend (routes/code.ts, routes/codeJobs.ts, src/code/**) read through deps.api, and the few doors the screens needed
- * beyond it (routes/botsCode.ts: start a task plan-first, pick projects, the rules, a new project's answers, the line
+ * backend (routes/code/code.ts, routes/code/codeJobs.ts, src/code/**) read through deps.api, and the few doors the screens needed
+ * beyond it (routes/bots/botsCode.ts: start a task plan-first, pick projects, the rules, a new project's answers, the line
  * diff, merge). The job, team, design, preview, attach, done, failed and chat screens are screens/codeWork.ts's: this
  * file links to them through SCREENS.
  *
@@ -294,7 +294,7 @@ function taskBar(ctx: BotsCtx, o: { projectId?: string; placeholder?: string }):
 }
 
 /**
- * A yes to one of the policy's questions, in two steps (routes/code.ts "A QUESTION"): the call, then the same call with the
+ * A yes to one of the policy's questions, in two steps (routes/code/code.ts "A QUESTION"): the call, then the same call with the
  * approvalId it gave. Face ID first where it asks for it (the phone); the window says to use the phone.
  */
 function twoStep(ctx: BotsCtx, path: string, o: { ok: ActionRef; fail: ActionRef }): ActionRef {

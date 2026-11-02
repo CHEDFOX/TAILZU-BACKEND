@@ -42,7 +42,7 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
   whatever is still missing (`keybotCard`), and none when all is on. A window asks for its microphone (`DeskMicAsk`) and shows
   Accessibility (`DeskAskSetup`) only where it declares them; one that declares `DeskAxState` also writes `axGranted` (the
   Mac's answer, true elsewhere), so the Accessibility step goes and the card closes on its own once it is on.
-* **Signing in on a computer with the phone** (src/auth/deviceLink.ts, routes/deviceLink.ts, migration 0049): the window's
+* **Signing in on a computer with the phone** (src/auth/deviceLink.ts, routes/account/deviceLink.ts, migration 0049): the window's
   sign-in draws a QR and a typed code (`DeskLinkSignIn`, desktop linkSignIn.js); the phone opens `bots.link` (its camera,
   or You › Link a computer) and approves; the window redeems a one-time sign-in, once.
 * **Existing screens stay reachable** by their ids: `settings`, `keyboard`/keyboard settings, `history`, `paywall`, `personality`…
@@ -59,11 +59,11 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `…/bots/art.ts` | Blip heads (PNGs in `tulmi/blip/bots`, served at `/blip/bots/`) and which animated loop plays each pose (`blipLoopFor`; the loops are the onboarding's, `experience/blipLoops.ts`) |
 | `…/bots/ids.ts` | **every screen id** (`SCREENS`), mapped to its boards and its file; `botRoute(slug)` |
 | `…/bots/live.ts` | the live state every screen gets (`ctx.live`), `BotsDeps` |
-| `…/bots/deps.ts` | the real `BotsDeps` (routes/appScreens.ts builds one per request) |
+| `…/bots/deps.ts` | the real `BotsDeps` (routes/app/appScreens.ts builds one per request) |
 | `…/bots/registry.ts` | `screen({ id, load?, build })` |
 | `…/bots/screens/{shell,you,bots,keybot,code,firstRun}.ts` | **the screens, one file per area: yours** |
 | `…/bots/screens/planItem.ts` | Plan's add / change an event or a to-do (`bots.plan.item`), registered with bots.ts's list (section 11) |
-| `…/bots/screens/safety.ts` | Reporting and blocking in Spaces (App Review 1.2): someone's page (`bots.person`), the report screen (`bots.report`), Blocked people (`bots.blocked`). Rules: `src/botsBots/{blocks,safety}.ts`; routes: `routes/safety.ts` (with the admin's `/v1/admin/reports`, the console's Reports tab); migration 0057 |
+| `…/bots/screens/safety.ts` | Reporting and blocking in Spaces (App Review 1.2): someone's page (`bots.person`), the report screen (`bots.report`), Blocked people (`bots.blocked`). Rules: `src/botsBots/{blocks,safety}.ts`; routes: `routes/bots/safety.ts` (with the admin's `/v1/admin/reports`, the console's Reports tab); migration 0057 |
 | `…/bots/screens/keybot{Stats,You,Parts}.ts` | Keybot's other pages: the old Stats tab's cards (month, day, apps, speak, days), the old You tab's Voice, Haptics and name pages, and Keybot's small parts and charts ([bots-keybot-parity.md](bots-keybot-parity.md)) |
 | `…/bots/index.ts` | joins the screen files, bootstrap nav, the switch, `buildBotsScreen` |
 | `…/bots/fixtures.ts` | fake deps and the boards' sample day (Aanya), for tests and the render check |
@@ -315,7 +315,7 @@ what to do"), clears the field and says "Kept. It will send when you're back."; 
 
 A change made on one device shows on the other's open screen within about a second.
 
-* **The channel**: `WS /v1/live` (`tulmi/src/routes/live.ts`). Signed in by the first message `{ type: "auth", token }` (or the
+* **The channel**: `WS /v1/live` (`tulmi/src/routes/app/live.ts`). Signed in by the first message `{ type: "auth", token }` (or the
   upgrade's `Authorization`), never a token in the URL; then `{ type: "event", topic, at }` for every change of that person's,
   pings both ways every 25 s, at most 8 sockets a person (the oldest goes, 4008), renewed every 30 min (4000). One process holds
   every socket; for several, give `live.setRelay` (`src/live/bus.ts`) a Postgres LISTEN/NOTIFY or Redis fan-out to `bus.deliver`.
@@ -347,13 +347,13 @@ the Bots app no longer reads or offers Google Calendar or Google Tasks.
   and time, done). Each has a `source`: the person, a bot (`"Plan bot"`), someone in a space (theirs to change: the person ticks it or
   says they can't), or a meeting's to-do. Times are on the person's clock (`tz_min`); `words.ts` reads a line ("Dentist Fri 5 pm at
   Indiranagar", "remind me to call Nani at 6", "kal subah 7 baje gym"). Memory when there is no Supabase.
-* **Routes** (`routes/botsCalendar.ts`, registered by botsBots.ts): `GET /v1/botsapp/calendar?from=&to=&tz=`, `…/events[/:id]` and
+* **Routes** (`routes/bots/botsCalendar.ts`, registered by botsBots.ts): `GET /v1/botsapp/calendar?from=&to=&tz=`, `…/events[/:id]` and
   `…/tasks[/:id]` (POST, PUT, DELETE; a task's `PUT { done }` ticks it), `POST …/quick { words }`, `POST …/cant/:id` (a space's), and
   `…/notes/:noteId[/:todoId]` (a meeting's to-dos on the list). `GET /v1/botsapp/bots/plan` reads the same store (`calendarPlanReader`).
 * **Screens**: Plan (`bots.plan`, bots.ts) shows the person's days with nothing to connect: the phone has a week strip (`week`, `day`
   params; a reminder's tap opens its day) and the day's timeline; the window the week. Each event and to-do opens `bots.plan.item`
   (screens/planItem.ts: add, change, take out, a series' one day; someone else's shows Done and Can't do it), a to-do's ring ticks it.
-  Today's calendar and Tasks' Upcoming (routes/botsShell.ts) read it too; a meeting's to-do has "Add to my tasks" (screens/notes.ts).
+  Today's calendar and Tasks' Upcoming (routes/bots/botsShell.ts) read it too; a meeting's to-do has "Add to my tasks" (screens/notes.ts).
 * **Bots** (`calendar/bots.ts`): "calendar" and "tasks" are two apps every bot can be given, always on (`withOwnDays`, wired in
   bots/wire.ts over the connected apps). The Plan bot has both, so "add dentist Friday 5 pm" in Ask or its chat adds it (Ask picks the
   Plan bot by the calendar job, bots/door.ts). A bot made with the old ids (`google-calendar`, `google-tasks`) gets these.
@@ -403,7 +403,7 @@ is gone): their real cost does. It stays ours, for the logs and the admin.
   when it ends unless `USAGE_CARRY_OVER` (then the amounts so far, less what was used before it). The month may use the sum. The month is the
   billing cycle when billing has one (the entitlement's period end: its day and time, month after month), else the calendar month on the
   person's clock.
-* **Plans' one line** (routes/botsFirstRun.ts `planLine`): how many times the free month a plan's month is, from the same config: Lite
+* **Plans' one line** (routes/bots/botsFirstRun.ts `planLine`): how many times the free month a plan's month is, from the same config: Lite
   35 / 3 → "11× more every month, for all your bots", Elite 450 / 3 → "150×".
 * **Not on the meter yet**: gateway calls that belong to no job, bot answer or front-door message (a note's to-dos, `notes/extract.ts`; an
   artifact's edits and asks, held to their own daily caps, `ARTIFACT_*_DAILY_PAISE`), and an old-Ask planner stream stopped before
@@ -440,7 +440,7 @@ moment needs no app update: change the catalog, and every app with the `BotMomen
 | --- | --- |
 | `shared/bots/looks.json` | **the catalog**: `parts`, `avatars`, `moments`, `kinds` (which avatar each kind wears), `idle` (Home's surprises), `v` |
 | `tulmi/src/experience/bots/looks.ts` | `checkLooks` (the apps' rules), `activeLooks`, `pushLooks`, `looksFlags`, `momentProps`, `idleSurprises` |
-| `tulmi/src/routes/botLooks.ts` | `GET /v1/bots/looks`; `PUT` / `DELETE /v1/admin/bots/looks` (ADMIN_SECRET) |
+| `tulmi/src/routes/bots/botLooks.ts` | `GET /v1/bots/looks`; `PUT` / `DELETE /v1/admin/bots/looks` (ADMIN_SECRET) |
 | kit | `canMoments(ctx)`, `botMoment(ctx, id, mode?)`, `homeSurprises(ctx)`; `botTiles(…, { surprises })` |
 | apps | phone `src/botTiles/looks.ts` (+ `looksStore.ts`, `starter.ts`), window `sdui.js` `btLooks()` (+ `botLooks.js`) |
 
@@ -535,7 +535,7 @@ their recipe names (`sound` tracks: sneeze, fart.small, party, hic, clap). Quiet
   `shared/bots/sounds/masters/<id>.wav`, `shared/bots/sounds/<id>.m4a` (AAC, 44.1 kHz mono) and `shared/bots/sounds.json` (each
   sound's id, file, hash, kind `throw | tick | new | uptodate | moment`, weight, `rare`, ms, label), normalised by kind and
   checked (length <= 450 ms, no clipping, silent ends, no DC). `--check` only checks; `--bump` raises `v`. Same input, same files.
-* **Served**: the files at `/bots/sounds/<id>.m4a?h=<hash>` (routes/botSounds.ts; immutable, a year; never the masters), the
+* **Served**: the files at `/bots/sounds/<id>.m4a?h=<hash>` (routes/bots/botSounds.ts; immutable, a year; never the masters), the
   catalog at `GET /v1/bots/sounds` (each sound's address), and the Bots app's bootstrap flag `"bots.sounds": { v, url }`.
 * **A new pack** (a seasonal one): make or add the files, raise `v`, deploy; or without a deploy, put the files in the media
   store and `PUT /v1/admin/bots/sounds` a catalog whose new sounds name their `url` (https), with a higher `v`
@@ -556,7 +556,7 @@ long press (Ask, Dictate, New note, Spaces). All of it is decided on the server,
 **[widgets.md](widgets.md)** has the whole of it.
 
 * GET /v1/widgets/now builds both widgets' rows from the records Home's Needs you card and Spaces read (`src/widgets/now.ts`,
-  `routes/widgets.ts`).
+  `routes/bots/widgets.ts`).
 * POST /v1/widgets/act answers from outside the app, through the same services and checks, once per key.
 * A widget answers with its own narrow token (`src/widgets/token.ts`): it can only answer the person's needs-you and tick their
   tasks, it runs out in a day, and it is revoked at sign-out.

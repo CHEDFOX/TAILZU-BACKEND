@@ -1,6 +1,6 @@
 /**
  * AN ANSWER AS IT IS WRITTEN (shared/types/sdui.ts section 3f): the words and the steps of one ask, to the one person who asked,
- * over the live channel (bus.ts, routes/live.ts), and the way to stop it.
+ * over the live channel (bus.ts, routes/app/live.ts), and the way to stop it.
  *
  *   const s = openAskStream(userId, body.streamId)   // null without a good id: the ask goes on as it always did
  *   s.text(piece) · s.whole(text) · s.step("code:read:src/cart.ts") · s.reset() · s.end()

@@ -236,7 +236,7 @@ describe("the migration (supabase/migrations/0038_bots.sql)", () => {
   const sql = readFileSync(join(root, "supabase", "migrations", "0038_bots.sql"), "utf8");
   const full = readFileSync(join(root, "supabase", "full_schema.sql"), "utf8");
   const code = readFileSync(join(root, "src", "bots", "store.ts"), "utf8");
-  const account = readFileSync(join(root, "src", "routes", "account.ts"), "utf8");
+  const account = readFileSync(join(root, "src", "routes", "account", "account.ts"), "utf8");
 
   it("makes the five tables, safe to run again", () => {
     for (const t of BOT_TABLES) expect(sql).toMatch(new RegExp(`create table if not exists public\\.${t}\\b`));

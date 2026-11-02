@@ -70,8 +70,8 @@ import { LIMITS } from "../artifacts/protocol.js";
 import { isShotId, verifyShotLink } from "../artifacts/shots.js";
 import { ARTIFACT_TYPES, isArtifactError, type Artifact, type Change, type ArtifactType } from "../artifacts/types.js";
 import type { Guard } from "../guard/index.js";
-import { failCode } from "./code.js";
-import { guarded } from "./guarded.js";
+import { failCode } from "./code/code.js";
+import { guarded } from "../http/guarded.js";
 
 export interface ArtifactRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };

@@ -1,5 +1,5 @@
 /**
- * The media registry as the screens see it: set at boot by server.ts (routes/media.ts owns the
+ * The media registry as the screens see it: set at boot by server.ts (routes/app/media.ts owns the
  * registry), read when a screen names an uploaded picture, film or sound by its key.
  */
 
@@ -8,7 +8,7 @@ import type { MediaPresent } from "../../../shared/types/sdui.js";
 /**
  * Optional accessor into the media registry — set at boot by server.ts so the
  * catalog can surface uploaded media URLs into the keyboard config without a
- * circular import. Signature matches routes/media.ts getMediaRegistry().
+ * circular import. Signature matches routes/app/media.ts getMediaRegistry().
  */
 export type MediaEntry = {
   url: string; contentType: string; size: number; uploadedAt: number;
@@ -17,7 +17,7 @@ export type MediaEntry = {
   /** How this slot is shown — shape, fit, radius, hold. Set over HTTP by
    *  POST /v1/media/present, so changing it needs no deploy. */
   present?: MediaPresent;
-  /** A video's first frame, cut by the server (routes/media.ts). */
+  /** A video's first frame, cut by the server (routes/app/media.ts). */
   poster?: { url: string; contentType: string; from: string };
 };
 export let getMediaRegistryFn: (() => Record<string, MediaEntry>) | null = null;

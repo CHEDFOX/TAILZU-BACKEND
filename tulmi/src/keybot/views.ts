@@ -1,6 +1,6 @@
 /**
  * WHAT THE KEYBOT PAGES READ: one view per page, made here from the real records with no I/O (the route reads, these
- * shape), so each is tested directly. routes/botsKeybot.ts serves them at GET /v1/bots/keybot[/<page>]; the screens
+ * shape), so each is tested directly. routes/bots/botsKeybot.ts serves them at GET /v1/bots/keybot[/<page>]; the screens
  * (experience/bots/screens/keybot.ts) draw them.
  *
  *   home      the week's words by day (history stats, the person's own day, Monday on), the minutes that saved,
@@ -17,7 +17,7 @@
  *   settings  the phone keyboard's choices (with their defaults) and the languages they write in
  */
 import type { HistoryEntry, Personality } from "../../../shared/types/api.js";
-import type { StatsForUser } from "../history/store.js";
+import type { StatsForUser } from "../history/stats.js";
 import { LANGS } from "../experience/languages.js";
 import { DEFAULT_TTS_VOICE, isValidTtsVoice, TTS_VOICES, ttsVoiceById, type TtsVoice } from "../experience/ttsVoices.js";
 import { applyPresetOverrides } from "../experience/personalityPresets.js";
@@ -25,7 +25,7 @@ import { nicknameOf } from "../experience/assistantName.js";
 import type { KeybotPrefs, ToneGroup } from "./prefs.js";
 import { groupOfApp, presetById, TONE_GROUP_DEFS } from "./tones.js";
 
-/** Typing speed the minutes saved are counted against (history/store.ts TYPING_WORDS_PER_MINUTE). */
+/** Typing speed the minutes saved are counted against (history/stats.ts TYPING_WORDS_PER_MINUTE). */
 const WPM = 40;
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 

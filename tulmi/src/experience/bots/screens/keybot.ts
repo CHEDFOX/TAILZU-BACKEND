@@ -13,7 +13,7 @@
  *   bots.keybot.settings   KeySettings / DKeySettings  the phone keyboard (look, feel, typing, the key); in the window,
  *                          this computer's keys, the pill and listening (desktop.config), and the languages
  *
- * Each page reads one view from routes/botsKeybot.ts (GET /v1/keybot[/page], shaped in src/keybot/views.ts) and
+ * Each page reads one view from routes/bots/botsKeybot.ts (GET /v1/keybot[/page], shaped in src/keybot/views.ts) and
  * writes through it or the routes that were already there (PUT /v1/personality, POST /v1/words, DELETE /v1/history).
  * A failed read draws the page's honest "couldn't load" state, never a made-up number.
  *

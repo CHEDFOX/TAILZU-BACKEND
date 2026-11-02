@@ -11,7 +11,7 @@ process.env.NODE_ENV = "test";
 process.env.OPENAI_LIVE_FLUSH_MS = "50";
 
 // eslint-disable-next-line import/first
-import { OPENAI_RATE, createResampler, liveEngineConfigured, liveProvider, openOpenAI } from "../src/routes/live-engines.js";
+import { OPENAI_RATE, createResampler, liveEngineConfigured, liveProvider, openOpenAI } from "../src/routes/writing/live-engines.js";
 
 /** Stands in for OpenAI's realtime socket: records what is sent, replays events. */
 class FakeSocket extends EventEmitter {

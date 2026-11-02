@@ -41,7 +41,7 @@ const { resetConfigForTests } = await import("../src/config.js");
 const { scrubBreadcrumb, scrubSpan } = await import("../src/observability.js");
 const { pickConnectors } = await import("../src/connectors/router.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
-const { registerConnectorRoutes } = await import("../src/routes/connectors.js");
+const { registerConnectorRoutes } = await import("../src/routes/connectors/connectors.js");
 const { HG_APP_LINES, hinglishSeeds } = await import("../src/connectors/words.js");
 
 // Thursday 22 Oct 2026, 13:30 in India (UTC+5:30), 04:00 in New York (UTC-4).

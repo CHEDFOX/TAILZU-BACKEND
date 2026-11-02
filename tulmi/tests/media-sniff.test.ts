@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { sniffContentType } from "../src/routes/media.js";
+import { sniffContentType } from "../src/routes/app/media.js";
 
 /** First bytes only — sniffing never reads past the header. */
 function head(...parts: Array<string | number[]>): Buffer {

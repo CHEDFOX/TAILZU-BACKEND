@@ -1,7 +1,7 @@
 /**
  * WHAT A BOT'S API KEYS USED: requests and paise per key per day, for the keys page ("1,284 requests in October"; the paise are ours, never shown).
  *
- *   record(owner, slug, masked, paise)   one answered request on a key (the route's onSend hook in routes/botsBots.ts writes it)
+ *   record(owner, slug, masked, paise)   one answered request on a key (the route's onSend hook in routes/bots/botsBots.ts writes it)
  *   month(owner, slug, now, tz)          this month: the totals, each key's, and each day's
  *
  * A key is told apart by its masked prefix (what GET /v1/bots/:slug/keys shows), never by the key. Counted after the answer went out;

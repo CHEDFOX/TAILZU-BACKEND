@@ -293,7 +293,7 @@ export const THEME: ThemeTokens = {
  */
 const FONT_BASE = `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/fonts/`;
 export const FONTS: Record<string, string> = {
-  // Tailzu's four voices on paper (tulmi/fonts, served by routes/staticFiles.ts): the
+  // Tailzu's four voices on paper (tulmi/fonts, served by routes/app/staticFiles.ts): the
   // written line, what was said in a hand, the small labels, and the UI.
   // One family per face: a custom font's weight is its file, not fontWeight.
   [PHONE_FONT.writtenLight]: `${FONT_BASE}written-light.ttf?v=1`,

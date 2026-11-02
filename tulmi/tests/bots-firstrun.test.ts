@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 
-// The Bots app's first run (screens/firstRun.ts, routes/botsFirstRun.ts): Welcome, Sign in and Code in the gate's
+// The Bots app's first run (screens/firstRun.ts, routes/bots/botsFirstRun.ts): Welcome, Sign in and Code in the gate's
 // tree, then About you → Name on a stage of their own, with one Blip walking across both; Language, Turn on Keylessbord,
 // First words and Plans are pages reached from the app, and Bots and Keylessbord carry the keyboard and microphone cards.
 process.env.OPENROUTER_API_KEY = "k";
@@ -22,7 +22,7 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { botsAuthTree, BOTS_FIRST_RUN_IDS } = await import("../src/experience/bots/screens/firstRun.js");
-const { nameFromEmail, planLine, signedInVia, spokenSince, startingName, trialDaysOf } = await import("../src/routes/botsFirstRun.js");
+const { nameFromEmail, planLine, signedInVia, spokenSince, startingName, trialDaysOf } = await import("../src/routes/bots/botsFirstRun.js");
 
 const LANGS = { options: [{ value: "hinglish", label: "Hinglish" }, { value: "hi", label: "Hindi" }, { value: "en", label: "English" }, { value: "ta", label: "Tamil" }], picked: ["ta", "en"] };
 const WORDS = { words: 0, seconds: 0, typingSeconds: 0, totalWords: 5210, totalSeconds: 1880 };

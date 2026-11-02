@@ -1,5 +1,5 @@
 /**
- * THE TEAM'S ROUTES AND THE PERSON'S WORD (src/routes/codeJobs.ts, src/code/agent/orchestrator.ts, docs/code-team.md sections 7 and 8): the team of a lead job, stopping one part,
+ * THE TEAM'S ROUTES AND THE PERSON'S WORD (src/routes/code/codeJobs.ts, src/code/agent/orchestrator.ts, docs/code-team.md sections 7 and 8): the team of a lead job, stopping one part,
  * running one again, the project's setting, a goal that is asked for or refused in words, and the stream's team board.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,7 +30,7 @@ const { teamRig, call, done, edit, buildScript, settle, goodSplit, allGood, OVER
 const { resetSettingsStoreForTests, settingsStore } = await import("../src/code/agent/settings.js");
 const { resetRewindStoreForTests } = await import("../src/code/agent/rewind.js");
 const { resetConfigForTests } = await import("../src/config.js");
-const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
+const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
 const { createWorkBranch } = await import("../src/code/projects.js");
 type Rig = Awaited<ReturnType<typeof teamRig>>;
 

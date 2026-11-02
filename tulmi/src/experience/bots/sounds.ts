@@ -4,7 +4,7 @@
  *
  *   shared/bots/sounds.json     the catalog in the repo: `v` (raise it with every change), and each sound's id, file, hash,
  *                               kind, weight, rare, ms, label (tulmi/scripts/make-bot-sounds.py writes it with the files)
- *   shared/bots/sounds/*.m4a    the files, served at /bots/sounds/ (routes/botSounds.ts), immutable: a URL carries its
+ *   shared/bots/sounds/*.m4a    the files, served at /bots/sounds/ (routes/bots/botSounds.ts), immutable: a URL carries its
  *                               file's hash, so a changed file is a new URL (masters/*.wav are kept, never served)
  *   a pushed catalog            PUT /v1/admin/bots/sounds: kept on the control volume, served while its v is higher than
  *                               the file's; its sounds may name an https address (a file put in the media store) instead
@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import type { BotSound, BotSoundKind, BotSoundsCatalog } from "../../../../shared/types/sdui.js";
 
 const SOUND_KINDS: readonly BotSoundKind[] = ["throw", "tick", "new", "uptodate", "moment"];
-/** Where the files are served (routes/staticFiles.ts registers it with the route file). */
+/** Where the files are served (routes/app/staticFiles.ts registers it with the route file). */
 export const SOUNDS_PREFIX = "/bots/sounds/";
 /** The longest a sound may be, and how many a catalog may hold. */
 export const SOUND_MAX_MS = 450;

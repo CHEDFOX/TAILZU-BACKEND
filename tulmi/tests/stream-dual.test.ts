@@ -22,7 +22,7 @@ process.env.NODE_ENV = "test";
 type H = { onReady(): void; onPartial(t: string): void; onFinal(t: string): void; onError(m: string): void; onClose(c?: number): void };
 const engines: { primary?: H; shadow?: H } = {};
 
-vi.mock("../src/routes/live-engines.js", () => ({
+vi.mock("../src/routes/writing/live-engines.js", () => ({
   liveEngineConfigured: () => true,
   openLiveEngine: (_o: unknown, h: H) => {
     engines.primary = h;

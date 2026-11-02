@@ -11,7 +11,7 @@ process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
-import { loadMediaRegistry, registerMediaRoutes } from "../src/routes/media.js";
+import { loadMediaRegistry, registerMediaRoutes } from "../src/routes/app/media.js";
 
 // /media/k/<key> is what the sign-in email's <img> points at. Pasted into
 // Supabase by hand, that HTML cannot wait for someone to upload a mark: with

@@ -1,4 +1,4 @@
--- Tailzu — the Bots app's "bots" area (src/botsBots, routes/botsBots.ts): a bot's chat as the app shows it, the draft of a bot being made,
+-- Tailzu — the Bots app's "bots" area (src/botsBots, routes/bots/botsBots.ts): a bot's chat as the app shows it, the draft of a bot being made,
 -- the bot store, what each bot API key used, spaces, the Plan bot's kept-as-is suggestions and the Travel bot's trip.
 --
 -- Run in your Supabase SQL editor after 0038_bots.sql. It can be run again. Without it these rows live in memory and a restart forgets them.

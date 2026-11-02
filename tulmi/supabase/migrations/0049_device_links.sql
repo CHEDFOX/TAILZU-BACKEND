@@ -1,4 +1,4 @@
--- Tailzu — signing in on a computer with the phone (src/auth/deviceLink.ts, src/routes/deviceLink.ts).
+-- Tailzu — signing in on a computer with the phone (src/auth/deviceLink.ts, src/routes/account/deviceLink.ts).
 --
 -- The window's sign-in shows a QR code and a short code; the signed-in phone approves; the window then takes a session
 -- of its own, once. One row per request.

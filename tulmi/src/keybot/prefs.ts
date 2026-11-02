@@ -14,7 +14,7 @@
  *
  * One JSON document per person in `keybot_prefs` (migration 0043), through the person's own token or the service key,
  * like the personality store; with no database, a map in memory, so the pages work end to end in development.
- * GET /v1/bots/keybot/prefs hands it to any client that wants to follow it (routes/botsKeybot.ts).
+ * GET /v1/bots/keybot/prefs hands it to any client that wants to follow it (routes/bots/botsKeybot.ts).
  */
 import { z } from "zod";
 import { dataClientFor, type AuthedUser } from "../auth/supabase.js";

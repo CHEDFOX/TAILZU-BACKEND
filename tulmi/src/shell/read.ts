@@ -1,6 +1,6 @@
 /**
  * THE SHELL'S READS, FOR ONE SIGNED-IN PERSON: each part's own records, read the way that part keeps them, for the feed, search,
- * Today, Tasks, the routing preview and the glance (routes/botsShell.ts). Every read may fail or its part may be off: it is then
+ * Today, Tasks, the routing preview and the glance (routes/bots/botsShell.ts). Every read may fail or its part may be off: it is then
  * empty, and the screen draws what is true.
  */
 import type { AuthedUser } from "../auth/supabase.js";
@@ -15,7 +15,7 @@ import { listHistory } from "../history/store.js";
 import { attachmentKindOf } from "../media/index.js";
 import { listNotes } from "../notes/store.js";
 import { botLook } from "../experience/bots/palette.js";
-import type { BotsAreaDeps } from "../routes/botsArea.js";
+import type { BotsAreaDeps } from "../routes/bots/botsArea.js";
 import { dayKeyOf, type FeedJob, type FeedTask, type FeedWords } from "./feed.js";
 import { fileLine, turnOf, type Findable, type SearchSources } from "./search.js";
 

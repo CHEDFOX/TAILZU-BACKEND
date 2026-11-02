@@ -34,8 +34,8 @@ import { defaultGuard, type Guard } from "../guard/index.js";
 import { insertAsset, isAssetUse, ASSET_USES } from "../media/assets.js";
 import { makeDataArtifact } from "../media/dataartifact.js";
 import { CAP_MAX, attachmentKindOf, isMediaError, viewOf, type MediaItem, type MediaService } from "../media/index.js";
-import { failCode } from "./code.js";
-import { idempotencyHeader, planOf } from "./guarded.js";
+import { failCode } from "./code/code.js";
+import { idempotencyHeader, planOf } from "../http/guarded.js";
 import { createHash } from "node:crypto";
 
 export interface FilesRoutesDeps {

@@ -652,7 +652,7 @@ sign-in uses it. Until Google approves the sensitive scopes:
 - The privacy policy linked on the consent screen must say what is read and
   that Google data is not used to train models or shown to anyone else
   (Google API Services User Data Policy, Limited Use). It does, in Section 11
-  ("Google apps you connect") of `tulmi/src/routes/policies/privacy.ts`,
+  ("Google apps you connect") of `tulmi/src/routes/site/policies/privacy.ts`,
   served at x0bot.com/privacy.
 
 **What to show in Google's review video** (one take, screen recording, English
@@ -894,7 +894,7 @@ whole answer and reads only `say`, `open` and `taskId`).
    Receipts are sent either way. Turn it on (`AGENT_RUN_LEDGER=true`) only
    when both of these hold: 0019 is applied, and the privacy policy people are
    shown says what the ledger keeps. This change brings those lines in
-   `src/routes/policies/privacy.ts` (sections 1.2, 3, 4, 10.4, 11.4 and 11.5,
+   `src/routes/site/policies/privacy.ts` (sections 1.2, 3, 4, 10.4, 11.4 and 11.5,
    effective October 24, 2026); `/privacy` serves the published site's page
    first, so that page must carry them too. Read them before turning it on.
 3. What it keeps of people's words, and for how long (a sweep inside the server

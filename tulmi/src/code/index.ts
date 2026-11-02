@@ -2,7 +2,7 @@
  * THE CODE BOT'S GITHUB SIDE, WIRED FROM THE ENVIRONMENT.
  *
  * Off (CODE_GITHUB=false, the default) there is no `Code` at all and the
- * routes say so (routes/code.ts). On, `Code` is the store, the GitHub client,
+ * routes say so (routes/code/code.ts). On, `Code` is the store, the GitHub client,
  * and the webhook secret. There are two ways a person can connect, and a
  * server may offer either or both:
  *   - the GitHub App (`appReady`): set up when the App has a name, client id,

@@ -16,7 +16,7 @@ import { text, row, link, failToast, defRow, stack, type Style } from "./kit.js"
 // the words are connectors/words.ts (the approved design's, in English; the
 // translator has the design's Hinglish for them), the rows are the plain nodes
 // above, and every button is an action the window already has (callEndpoint to
-// the routes in routes/connectors.ts) plus "connector.connect", which opens the
+// the routes in routes/connectors/connectors.ts) plus "connector.connect", which opens the
 // sign-in page that route answers with. Nothing here is decided on the device.
 const LEVELS = ["look", "draft", "send"] as const;
 
@@ -145,7 +145,7 @@ function customRow(c: ConnectorInfo): Node {
 
 /**
  * What an add answered. A no comes back 200 with the server's reason in
- * `refused` (routes/connectorsCustom.ts), since a failed call's onError has
+ * `refused` (routes/connectors/connectorsCustom.ts), since a failed call's onError has
  * nothing from the answer to say: that reason is the toast. failToast("err.add")
  * is left for an answer with no reason in it (no connection, a server error).
  */

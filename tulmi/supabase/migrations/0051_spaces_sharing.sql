@@ -1,4 +1,4 @@
--- Tailzu — Spaces for family and friends (src/botsBots/{spaces,spacePerms,shared,payments,threads,mail}.ts, routes/botsSpaces.ts):
+-- Tailzu — Spaces for family and friends (src/botsBots/{spaces,spacePerms,shared,payments,threads,mail}.ts, routes/bots/botsSpaces.ts):
 -- what each person may do in a space, invites by link or email, the space's own roles and activity, shared things, payment requests,
 -- messaging between people who share a space, and the email outbox.
 --

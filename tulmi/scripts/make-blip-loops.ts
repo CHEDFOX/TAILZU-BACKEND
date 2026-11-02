@@ -36,7 +36,7 @@ process.env.OPENAI_API_KEY ??= "blip";
 process.env.STT_PROVIDER ??= "openai";
 process.env.DEV_SKIP_AUTH ??= "true";
 
-const { OB } = await import("../src/experience/onboard.js");
+const { OB } = await import("../src/experience/onboard/kit.js");
 const { BLIP_HEIGHT, BLIP_LOOPS, BLIP_LOOP_MS } = await import("../src/experience/blipLoops.js");
 
 const FRAMES = Number(process.env.BLIP_FRAMES ?? 20);

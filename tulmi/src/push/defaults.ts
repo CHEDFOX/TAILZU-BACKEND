@@ -90,7 +90,7 @@ export const PUSH_DEFAULTS: PushPayload = {
     // PushEngine.notify). They skip the daily and weekly caps, the quiet
     // hours and the fatigue count, because a person is waiting on them.
     "push.approval.enabled": true,
-    // The confirm sheet (experience/assistant.ts); the push carries data.taskId.
+    // The confirm sheet (experience/assistant/); the push carries data.taskId.
     "push.approval.screenId": "assistant_approve",
 
     // Xode's jobs (src/code/jobs, docs/code-router.md): paid compute needs a yes, a job is

@@ -17,7 +17,7 @@ const lastStep = (t: AssistantTask): string => t.steps[t.steps.length - 1]?.text
  * TASKS: what the assistant is doing in the person's apps, grouped Waiting for
  * you, Running and Done, each with what happened in plain words. A waiting one
  * shows the exact words and answers to Approve or Not now, the same two the
- * confirm card gives (routes/connectors.ts approve and deny).
+ * confirm card gives (routes/connectors/connectors.ts approve and deny).
  */
 export function deskTasks(ctx: DeskContext): ScreenResponse {
   const tasks = ctx.assistant?.tasks ?? [];

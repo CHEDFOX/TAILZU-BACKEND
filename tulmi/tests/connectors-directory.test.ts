@@ -29,7 +29,7 @@ const {
 } = await import("../src/connectors/registry.js");
 const { MemoryConnectorStore } = await import("../src/connectors/store.js");
 const { createConnectors } = await import("../src/connectors/index.js");
-const { registerCustomConnectorRoutes } = await import("../src/routes/connectorsCustom.js");
+const { registerCustomConnectorRoutes } = await import("../src/routes/connectors/connectorsCustom.js");
 type DirectoryEntry = import("../src/connectors/registry.js").DirectoryEntry;
 type DirectoryStore = import("../src/connectors/registry.js").DirectoryStore;
 type ConnectorDef = import("../src/connectors/catalog.js").ConnectorDef;

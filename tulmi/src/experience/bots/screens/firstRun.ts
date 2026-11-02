@@ -34,7 +34,7 @@
  * (opens the keyboard's settings) and the microphone (asks for it, then opens First words). Each is drawn from what
  * the app itself reports into the screen's state (keyboardEnabled, keyboardReady, micGranted) and goes once it is on.
  *
- * Reads: GET /v1/bots/first-run/{profile,languages,words,plans} (routes/botsFirstRun.ts), GET /v1/personality.
+ * Reads: GET /v1/bots/first-run/{profile,languages,words,plans} (routes/bots/botsFirstRun.ts), GET /v1/personality.
  * Writes: PUT /v1/profile { full_name, gender }, PUT /v1/personality (languages, the boss bot's name), PUT /v1/profile
  * { onboarded }, the paywall's own purchase actions (iap.showPaywall / iap.subscribe: RevenueCat on the phone, the pay
  * page in a window).
@@ -861,7 +861,7 @@ function language(ctx: BotsCtx, data: Langs | undefined): ScreenResponse {
 
 /** GET /v1/personality, as much as this step reads. */
 interface Persona { personality?: { assistantName?: string } }
-/** GET /v1/bots/first-run/profile (routes/botsFirstRun.ts). */
+/** GET /v1/bots/first-run/profile (routes/bots/botsFirstRun.ts). */
 interface Me { name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null; saved: boolean; onboarded?: boolean }
 interface AfterSignIn { me?: Me; persona?: Persona }
 
@@ -1362,7 +1362,7 @@ function firstWords(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
 
 // ===================================================================== Plans
 
-/** GET /v1/bots/first-run/plans (routes/botsFirstRun.ts). */
+/** GET /v1/bots/first-run/plans (routes/bots/botsFirstRun.ts). */
 interface Plans {
   freeForAll: boolean;
   entitled: boolean;

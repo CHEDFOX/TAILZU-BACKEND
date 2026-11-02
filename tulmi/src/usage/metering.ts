@@ -268,7 +268,7 @@ export async function usageEventsSince(
 /**
  * The usage meter's answer for a person: its refusal sentence ("You've reached
  * this stretch's limit. It resets Thu 9 am.") or null. Set by the You routes
- * (routes/botsYou.ts) over src/you/limits.ts; unset, nothing is asked.
+ * (routes/bots/botsYou.ts) over src/you/limits.ts; unset, nothing is asked.
  */
 export type UsageGate = (userId: string) => Promise<string | null>;
 let usageGate: UsageGate | null = null;

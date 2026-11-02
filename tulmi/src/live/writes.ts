@@ -90,7 +90,7 @@ export function liveNote(userId: string, id: string): void {
   livePublish(userId, [TOPIC.notes, noteTopic(id)]);
 }
 
-/** Who else hears that a job changed: the "Bots at work" Live Activity's pusher (widgets/activity.ts, set by routes/widgets.ts). */
+/** Who else hears that a job changed: the "Bots at work" Live Activity's pusher (widgets/activity.ts, set by routes/bots/widgets.ts). */
 let jobChangeHook: ((userId: string, jobId: string) => void) | null = null;
 export function setJobChangeHook(fn: ((userId: string, jobId: string) => void) | null): void { jobChangeHook = fn; }
 

@@ -1,5 +1,5 @@
 /**
- * THE BOTS PLATFORM OVER HTTP (src/routes/bots.ts, routes/front.ts "Ask any bot"):
+ * THE BOTS PLATFORM OVER HTTP (src/routes/bots/bots.ts, routes/ask/front.ts "Ask any bot"):
  *
  *   - BOTS off: every /v1/bots route is 404 bots_off before the session, and POST /v1/ask with a `bot` is 404 too; the front door without one is as it was
  *   - every route is the signed-in person's own: someone else's bot is a 404, a built-in can't be changed (403)
@@ -32,8 +32,8 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
   };
 });
 
-const { registerBotRoutes } = await import("../src/routes/bots.js");
-const { registerFrontRoutes, FRONT_BODY_LIMIT } = await import("../src/routes/front.js");
+const { registerBotRoutes } = await import("../src/routes/bots/bots.js");
+const { registerFrontRoutes, FRONT_BODY_LIMIT } = await import("../src/routes/ask/front.js");
 const { createFront } = await import("../src/front/index.js");
 const { MemoryFrontStore } = await import("../src/front/store.js");
 const { AttachmentRegistry } = await import("../src/front/attachments.js");

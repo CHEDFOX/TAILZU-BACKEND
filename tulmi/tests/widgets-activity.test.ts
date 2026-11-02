@@ -1,5 +1,5 @@
 /**
- * THE "BOTS AT WORK" LIVE ACTIVITY'S PUSHES (docs/widget-glance-v2.md section 6; src/widgets/{apns,activity}.ts, routes/widgets.ts):
+ * THE "BOTS AT WORK" LIVE ACTIVITY'S PUSHES (docs/widget-glance-v2.md section 6; src/widgets/{apns,activity}.ts, routes/bots/widgets.ts):
  *
  *   - off unless APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8 and APNS_TOPIC are all set: nothing registered, heard or sent, said once
  *   - the provider token is an ES256 JWT Apple can check (kid, iss, iat), reused, made again when Apple refuses it; the key never logged
@@ -31,7 +31,7 @@ const { ActivityPusher, contentStateOf, DONE_SHOWN_MS } = await import("../src/w
 const { x0Words } = await import("../src/widgets/glance.js");
 const { MemoryActivityTokenStore, MemoryGlanceStore } = await import("../src/widgets/glanceStore.js");
 const { WIDGETS_DEFAULTS } = await import("../src/widgets/defaults.js");
-const { registerWidgetRoutes } = await import("../src/routes/widgets.js");
+const { registerWidgetRoutes } = await import("../src/routes/bots/widgets.js");
 const { liveJob, setJobChangeHook } = await import("../src/live/writes.js");
 const { getConfig, resetConfigForTests } = await import("../src/config.js");
 

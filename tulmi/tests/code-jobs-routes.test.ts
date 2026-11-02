@@ -1,5 +1,5 @@
 /**
- * Xode's jobs and the runner protocol over HTTP (src/routes/codeJobs.ts):
+ * Xode's jobs and the runner protocol over HTTP (src/routes/code/codeJobs.ts):
  * off, not set up, behind a session; making, reading and cancelling a job; the
  * person's two yeses; the compute settings; and a PC's heartbeat, its wait for
  * work, its progress and its result, through a real Fastify with the fake GitHub
@@ -30,7 +30,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const { rig, LAPTOP, DESKTOP, SEC, SECRET_ENV } = await import("./jobs-rig.js");
-const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
+const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
 const { LEASE_MS } = await import("../src/code/jobs/types.js");
 type Rig = Awaited<ReturnType<typeof rig>>;
 

@@ -25,7 +25,7 @@ import {
   resetLooksForTests, type LooksCatalog,
 } from "../src/experience/bots/looks.js";
 // eslint-disable-next-line import/first
-import { registerBotLooksRoutes } from "../src/routes/botLooks.js";
+import { registerBotLooksRoutes } from "../src/routes/bots/botLooks.js";
 // eslint-disable-next-line import/first
 import { buildBotsScreen } from "../src/experience/bots/index.js";
 // eslint-disable-next-line import/first

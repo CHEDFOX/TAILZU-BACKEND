@@ -1,5 +1,5 @@
 /**
- * THE AGENT'S ROUTES (src/routes/codeJobs.ts, docs/code-agent.md): what the app calls to steer a job the agent is working on,
+ * THE AGENT'S ROUTES (src/routes/code/codeJobs.ts, docs/code-agent.md): what the app calls to steer a job the agent is working on,
  * through a real Fastify over the rig (tests/agent-rig.ts). What the orchestrator decides is in code-agent-ask.test.ts and
  * code-agent-resume.test.ts; this holds down the HTTP:
  *
@@ -36,7 +36,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const { agentRig, call, done, UTIL_TASK, UTIL_PLAN, UTIL_EDIT } = await import("./agent-rig.js");
-const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
+const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
 const { createWorkBranch } = await import("../src/code/projects.js");
 type Rig = Awaited<ReturnType<typeof agentRig>>;
 

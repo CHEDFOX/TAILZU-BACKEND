@@ -1,7 +1,7 @@
 /**
  * AN ANSWER AS IT IS WRITTEN: the words and steps of an ask, to the one person who asked, over the live channel
  * (src/live/askStream.ts), the gateway that streams them (src/code/brain/gateway.ts `onText`), and the front door that carries them
- * (src/routes/front.ts, streamId; POST /v1/ask/stop).
+ * (src/routes/ask/front.ts, streamId; POST /v1/ask/stop).
  *
  * What these hold down:
  *   - words go out whole: a piece ends at a space, never inside a word (Devanagari, an emoji), numbered, in order;
@@ -32,7 +32,7 @@ const { openAskStream, stopAsk, sendable, stepWords, streamTopic, openAsks } = a
 const { LiveBus, live } = await import("../src/live/bus.js");
 const { callModel } = await import("../src/code/brain/gateway.js");
 const { buildTierTable } = await import("../src/code/brain/tiers.js");
-const { registerFrontRoutes, FRONT_BODY_LIMIT } = await import("../src/routes/front.js");
+const { registerFrontRoutes, FRONT_BODY_LIMIT } = await import("../src/routes/ask/front.js");
 const { createFront } = await import("../src/front/index.js");
 const { MemoryFrontStore } = await import("../src/front/store.js");
 const { AttachmentRegistry } = await import("../src/front/attachments.js");

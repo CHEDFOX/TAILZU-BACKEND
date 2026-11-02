@@ -41,7 +41,7 @@ import { buildApp } from "../src/server.js";
 // eslint-disable-next-line import/first
 import { getConfig, resetConfigForTests } from "../src/config.js";
 // eslint-disable-next-line import/first
-import { siteShell } from "../src/routes/policies/shell.js";
+import { siteShell } from "../src/routes/site/policies/shell.js";
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 const HOUR = 3600_000;

@@ -1,5 +1,5 @@
 /**
- * THE BOTS APP'S CODE AREA (screens/code.ts, routes/botsCode.ts, src/botsCode):
+ * THE BOTS APP'S CODE AREA (screens/code.ts, routes/bots/botsCode.ts, src/botsCode):
  *
  *   - the pure parts: the line diff, the rules over grants, the estimate from past jobs, the brain's health and first tasks, intake answers
  *   - every screen for the phone and the window: lint-clean, the real numbers drawn, every button wired to its endpoint
@@ -28,7 +28,7 @@ const { resetCodeRulesStoreForTests, MemoryCodeRulesStore } = await import("../s
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST, FIXED_NOW } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
-const { registerBotsCodeRoutes } = await import("../src/routes/botsCode.js");
+const { registerBotsCodeRoutes } = await import("../src/routes/bots/botsCode.js");
 
 const P = "11111111-1111-4111-8111-111111111111";
 const J = "7c1d2e3f-0000-4000-8000-0000000000aa";

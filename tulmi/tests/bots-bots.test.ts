@@ -1,5 +1,5 @@
 /**
- * THE BOTS APP'S "BOTS" AREA (experience/bots/screens/bots.ts, routes/botsBots.ts, src/botsBots):
+ * THE BOTS APP'S "BOTS" AREA (experience/bots/screens/bots.ts, routes/bots/botsBots.ts, src/botsBots):
  *
  *   - every screen builds for the phone and the window from the boards' day, lint-clean, with real actions wired to real routes
  *   - a chat with a bot keeps both turns; Xode is sent to its own page
@@ -35,8 +35,8 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
-const { registerBotRoutes } = await import("../src/routes/bots.js");
-const { registerBotsBotsRoutes, AREA, shownName } = await import("../src/routes/botsBots.js");
+const { registerBotRoutes } = await import("../src/routes/bots/bots.js");
+const { registerBotsBotsRoutes, AREA, shownName } = await import("../src/routes/bots/botsBots.js");
 const { botsAreaParts, resetAreaTablesForTests, suggestionFor, PlanDays, MemoryTable, shareMessage } = await import("../src/botsBots/index.js");
 const { ALICE, BOB, rig, def } = await import("./bots-rig.js");
 const { sampleApi, fakeReader, WEEK } = await import("./bots-bots-data.js");

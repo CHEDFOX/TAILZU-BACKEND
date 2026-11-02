@@ -20,7 +20,7 @@ type Opts = { sampleRate: number; channels: number };
 type H = { onReady(): void; onClose(c?: number): void };
 const opened: Opts[] = [];
 
-vi.mock("../src/routes/live-engines.js", () => ({
+vi.mock("../src/routes/writing/live-engines.js", () => ({
   liveEngineConfigured: () => true,
   openLiveEngine: (o: Opts, h: H) => {
     opened.push(o);

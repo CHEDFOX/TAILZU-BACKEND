@@ -1,5 +1,5 @@
 /**
- * The shell's day (Home, Activity, Ask, Search, Tasks, Approve, Today, meeting notes) as routes/botsShell.ts answers it, built with the
+ * The shell's day (Home, Activity, Ask, Search, Tasks, Approve, Today, meeting notes) as routes/bots/botsShell.ts answers it, built with the
  * real feed and search (src/shell) from the sample day's jobs: Xode working on the cart, the dentist waiting for a yes, the salon.
  */
 import { feedOf, weekOf } from "../../../src/shell/feed.js";

@@ -1,7 +1,7 @@
 /**
  * Pipeline orchestration: audio → transcript → written text, plus usage.
  * runPipeline() is the one-shot path (/v1/transcribe-clean, the demo, the
- * test scripts); live dictation streams through routes/transcribe-stream.ts.
+ * test scripts); live dictation streams through routes/writing/transcribe-stream.ts.
  */
 import { vocabularyWithNames } from "../experience/assistantName.js";
 import { transcribe } from "./stt.js";

@@ -7,7 +7,7 @@ process.env.STT_PROVIDER = "openai";
 process.env.DEV_SKIP_AUTH = "true";
 
 // eslint-disable-next-line import/first
-import { registerReviewCodeRoute } from "../src/routes/reviewCode.js";
+import { registerReviewCodeRoute } from "../src/routes/account/reviewCode.js";
 // eslint-disable-next-line import/first
 import { resetConfigForTests } from "../src/config.js";
 

@@ -1,5 +1,5 @@
 /**
- * The assistant on the phone (experience/assistant.ts): Connected apps, Tasks
+ * The assistant on the phone (experience/assistant/): Connected apps, Tasks
  * and the confirm sheet are built here and only drawn by the app.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -33,7 +33,7 @@ process.env.DEV_SKIP_AUTH = "true";
 
 const { buildScreen } = await import("../src/experience/screens.js");
 const { localize } = await import("../src/experience/i18n.js");
-const { ASSISTANT_SCREENS } = await import("../src/experience/assistant.js");
+const { ASSISTANT_SCREENS } = await import("../src/experience/assistant/screens.js");
 const { EN, HG } = await import("../src/connectors/words.js");
 
 type AnyNode = { type?: string; props?: Record<string, any>; on?: Record<string, any>; bind?: Record<string, string>; visibleIf?: unknown; children?: AnyNode[] };

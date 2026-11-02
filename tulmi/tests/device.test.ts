@@ -25,7 +25,7 @@ const { EN, HG, wordsFor } = await import("../src/connectors/words.js");
 const { EventSink, readStepRequest } = await import("../src/agent/protocol.js");
 const { runStep } = await import("../src/agent/run.js");
 const { buildDeskScreen } = await import("../src/experience/desk/screens.js");
-const { PRIVACY_POLICY_HTML } = await import("../src/routes/policies/privacy.js");
+const { PRIVACY_POLICY_HTML } = await import("../src/routes/site/policies/privacy.js");
 type AgentEvent = import("../../shared/types/api.js").AgentEvent;
 type AgentStepRequest = import("../../shared/types/api.js").AgentStepRequest;
 

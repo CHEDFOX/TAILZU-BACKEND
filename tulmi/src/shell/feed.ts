@@ -3,7 +3,7 @@
  *
  *   feedOf(input) -> FeedRow[]      newest first: what needs them and what is working is the screen's to lift to the top
  *
- * Every row is a real record, read by routes/botsShell.ts and handed in here, so this file is pure and tested directly:
+ * Every row is a real record, read by routes/bots/botsShell.ts and handed in here, so this file is pure and tested directly:
  *   job       a Xode job (code/jobs): its task, its state, the stage its agent is in, what it spent
  *   task      a connected-app task (connectors/tasks.ts): a change waiting for a yes, running, done, refused
  *   ask       an answer a bot gave through the Bots app's Ask (shell/events.ts): which bot, what was asked, what it cost

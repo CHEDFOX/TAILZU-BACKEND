@@ -198,7 +198,7 @@ $("#k-load").onclick=loadKnobs;$("#k-src").onchange=loadKnobs;$("#k-kind").oncha
 function tab(t){document.querySelectorAll(".tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));$("#t-edit").classList.toggle("hidden",t!=="edit");$("#ctxBox").classList.toggle("hidden",!(t==="edit"||t==="find"));$("#t-knobs").classList.toggle("hidden",t!=="knobs");if(t==="knobs"&&!KN)loadKnobs();
  $("#t-hist").classList.toggle("hidden",t!=="hist");$("#t-help").classList.toggle("hidden",t!=="help");if(t==="hist")hist();if(t==="find")$("#onlyChanged").checked=false;
  $("#t-reports").classList.toggle("hidden",t!=="reports");if(t==="reports")loadReports()}
-// Reports (routes/safety.ts): every value is set as text, never as markup; what people wrote is untrusted.
+// Reports (routes/bots/safety.ts): every value is set as text, never as markup; what people wrote is untrusted.
 async function loadReports(){msg($("#rp-msg"),"Loading…");try{const j=await api("GET","/v1/admin/reports?status="+encodeURIComponent($("#rp-status").value));
  const b=$("#rp-badge");b.textContent=j.open+(j.overdue?" ("+j.overdue+" late)":"");b.classList.toggle("hidden",!j.open);
  msg($("#rp-msg"),j.open+" open"+(j.overdue?" · "+j.overdue+" past 24 hours":""),j.overdue?"bad":"");const box=$("#rp-list");box.innerHTML="";

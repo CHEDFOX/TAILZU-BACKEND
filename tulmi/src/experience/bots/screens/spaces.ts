@@ -3,7 +3,7 @@
  * can do", inviting by link or email, the space's roles, one shared thing, asking for a payment, tasks and plans for others, sharing
  * anything to a space or a person, the chats and one chat.
  *
- * Data is the routes in routes/botsSpaces.ts (src/botsBots does every permission check; these screens only leave out what won't work).
+ * Data is the routes in routes/bots/botsSpaces.ts (src/botsBots does every permission check; these screens only leave out what won't work).
  * Every write is a call, then a refresh and a short ink toast. Money is "you press pay": a yes hands over the UPI payment (bots.approve).
  * Screens listen to their live topics ("space:<id>", "spaces", "threads", "thread:<id>"), so they update when someone else changes them.
  */

@@ -21,7 +21,7 @@ process.env.DEEPGRAM_API_KEY = "k";
 process.env.SARVAM_API_KEY = "k";
 process.env.SARVAM_WS_URL = `ws://127.0.0.1:${(server.address() as AddressInfo).port}/`;
 
-const { openShadowEngine } = await import("../src/routes/live-engines.js");
+const { openShadowEngine } = await import("../src/routes/writing/live-engines.js");
 
 beforeAll(() => { frames.length = 0; });
 afterAll(() => new Promise<void>((r) => {

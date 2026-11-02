@@ -148,7 +148,7 @@ export interface WorldSeed {
   /** Apps connected, with their level and the tools approved once already (auto). Default: none. */
   connected?: Array<{
     app: GoogleApp;
-    /** Default "send", what a first connect gives today (routes/connectors.ts:127). */
+    /** Default "send", what a first connect gives today (routes/connectors/connectors.ts:127). */
     level?: "look" | "draft" | "send";
     /** Tools that run without a card, as if approved once before. */
     auto?: string[];

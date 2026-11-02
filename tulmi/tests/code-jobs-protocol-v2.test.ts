@@ -121,7 +121,7 @@ describe("2. a decline releases the lease at once", () => {
 
   it("is the HTTP route too: the same answer, and a result from the one that declined is refused", async () => {
     const { r, j, placed, holder } = await declined();
-    const { registerCodeJobRoutes } = await import("../src/routes/codeJobs.js");
+    const { registerCodeJobRoutes } = await import("../src/routes/code/codeJobs.js");
     const Fastify = (await import("fastify")).default;
     const app = Fastify();
     registerCodeJobRoutes(app, { rateLimit: { rateLimit: { max: 1000, timeWindow: 60_000 } }, code: r.code, jobs: r.jobs, tickEveryMs: null });

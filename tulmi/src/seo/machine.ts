@@ -13,9 +13,9 @@
  *
  * All four are built from seo/facts.ts, the same place the pages are.
  */
-import { PRIVACY_POLICY_EFFECTIVE } from "../routes/policies/privacy.js";
-import { TERMS_EFFECTIVE } from "../routes/policies/terms.js";
-import { SUPPORT_UPDATED } from "../routes/policies/support.js";
+import { PRIVACY_POLICY_EFFECTIVE } from "../routes/site/policies/privacy.js";
+import { TERMS_EFFECTIVE } from "../routes/site/policies/terms.js";
+import { SUPPORT_UPDATED } from "../routes/site/policies/support.js";
 import { ORIGIN, abs, esc } from "./head.js";
 import {
   DEFINITION, INDIA, LANGS, PAGED, STORES, WORLD,
@@ -65,7 +65,7 @@ function priceLines(): string[] {
   const p = plans();
   if (p.free) return ["- Free: every word, every language, every app, with no word limit and nothing to pay."];
   return [
-    // The words earned by coming back stay a surprise (see routes/policies/pricing.ts).
+    // The words earned by coming back stay a surprise (see routes/site/policies/pricing.ts).
     `- Free: ${p.freeWords.toLocaleString("en-US")} words a month.`,
     ...[p.lite, p.elite].filter((x) => !!x).map((x) => `- ${x!.name}: ${x!.price} a month, unlimited words, cancel any time.`),
   ];

@@ -8,7 +8,7 @@ process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 
 // eslint-disable-next-line import/first
-import { registerDemoRoutes } from "../src/routes/demo.js";
+import { registerDemoRoutes } from "../src/routes/site/demo.js";
 // eslint-disable-next-line import/first
 import { resetConfigForTests } from "../src/config.js";
 

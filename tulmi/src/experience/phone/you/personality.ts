@@ -3,7 +3,7 @@
  */
 
 import { type ScreenResponse, type Node, type ActionRef, type ActionSpec, SDUI_SCHEMA_VERSION } from "../../../../../shared/types/sdui.js";
-import { youCard } from "../../assistant.js";
+import { youCard } from "../../assistant/youCard.js";
 import { DESK_ROOMS } from "../../deskSamples.js";
 import { applyPresetOverrides } from "../../personalityPresets.js";
 import { PHONE_LOOK, t, PHONE_ROOMS, label, caption, proofMark } from "../../phoneLook.js";

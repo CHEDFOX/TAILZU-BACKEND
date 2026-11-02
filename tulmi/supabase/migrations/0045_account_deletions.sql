@@ -1,4 +1,4 @@
--- Tailzu — Delete account with seven days to change your mind (src/you/deletion.ts, routes/accountDeletion.ts, docs/bots-app.md).
+-- Tailzu — Delete account with seven days to change your mind (src/you/deletion.ts, routes/account/accountDeletion.ts, docs/bots-app.md).
 --
 -- Run in your Supabase SQL editor before the Bots app's Delete account is used. It needs nothing from the other migrations and can be
 -- run again. Without it nobody can be scheduled (the write fails and the app says "Couldn't delete the account. Try again."); DELETE

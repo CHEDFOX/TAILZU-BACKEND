@@ -48,7 +48,7 @@ vi.mock("../src/pipeline/stt.js", async (importOriginal) => {
 // eslint-disable-next-line import/first
 import { buildApp } from "../src/server.js";
 // eslint-disable-next-line import/first
-import { sitePage, spendDemo } from "../src/routes/demo.js";
+import { sitePage, spendDemo } from "../src/routes/site/demo.js";
 // eslint-disable-next-line import/first
 import { askSite } from "../src/config.js";
 // eslint-disable-next-line import/first

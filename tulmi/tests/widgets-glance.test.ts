@@ -1,5 +1,5 @@
 /**
- * THE X0 WIDGET, SERVER SIDE (docs/widget-glance-v2.md; src/widgets/{botWords,situation,glance,glanceStore,digest}.ts, routes/botsShell.ts):
+ * THE X0 WIDGET, SERVER SIDE (docs/widget-glance-v2.md; src/widgets/{botWords,situation,glance,glanceStore,digest}.ts, routes/bots/botsShell.ts):
  *
  *   - a bot's widget words: kept when they fit, cut at a word ("…" only when cut, never half a word), wrong ones dropped, never a throw;
  *     the fill-in lines in English and Hinglish when a bot gives nothing; the doing line cut at a word
@@ -34,7 +34,7 @@ const { WIDGETS_DEFAULTS } = await import("../src/widgets/defaults.js");
 const { buildNow } = await import("../src/widgets/now.js");
 const { QuickActs, MemoryQuickActionStore } = await import("../src/widgets/act.js");
 const { digestFor, changeSig, digestUser, usableDigest } = await import("../src/widgets/digest.js");
-const { registerBotsShellRoutes } = await import("../src/routes/botsShell.js");
+const { registerBotsShellRoutes } = await import("../src/routes/bots/botsShell.js");
 const { jobLite } = await import("../src/experience/bots/deps.js");
 const { FIXED_NOW, IST, SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
 

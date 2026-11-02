@@ -5,7 +5,7 @@
  *
  * One id serves the phone and the window (ctx.client). Data comes from the app's own routes through deps.api: the bots platform
  * (/v1/bots/..., docs/bots.md), connected apps (/v1/connectors, /v1/tasks), files (/v1/files), and this area's routes
- * (/v1/botsapp/bots/..., routes/botsBots.ts over src/botsBots). A read that fails draws the honest empty state, never a made-up number.
+ * (/v1/botsapp/bots/..., routes/bots/botsBots.ts over src/botsBots). A read that fails draws the honest empty state, never a made-up number.
  * Every write is a callEndpoint, then a refresh and a short ink toast; money is always "you press pay".
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
@@ -23,7 +23,7 @@ import { shareButton, shareTo } from "../shareAction.js";
 import * as places from "./botsPlaces.js";
 import { addAction, itemAction, planItemScreens, tickAction, tickBox } from "./planItem.js";
 
-/** This area's routes (routes/botsBots.ts). */
+/** This area's routes (routes/bots/botsBots.ts). */
 const A = "/v1/botsapp/bots";
 const enc = encodeURIComponent;
 const MIN = 60_000, DAY = 86_400_000;
@@ -284,7 +284,7 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
 const OWN_APP_LINE: Record<string, string> = {
   calendar: "Your days in X0 Bot", tasks: "Your to-dos in X0 Bot", "google-calendar": "Your days in X0 Bot", "google-tasks": "Your to-dos in X0 Bot",
 };
-/** Not offered in the Bots app: Tailzu keeps its own (routes/botsYou.ts). */
+/** Not offered in the Bots app: Tailzu keeps its own (routes/bots/botsYou.ts). */
 const NOT_OFFERED_APPS = new Set(["google-calendar", "google-tasks"]);
 
 /** "Calendar, Reminders": the apps a bot uses, and its own skills, in a line. */

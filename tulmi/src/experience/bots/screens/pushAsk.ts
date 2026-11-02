@@ -4,7 +4,7 @@
  * Today's app asked the system's question the first time Stats showed. The Bots app asks when a ping is worth having: on a phone's
  * Home, the first time a bot is working or needs the person (and not while the first-arrival card is up), as a small card that says
  * why first, then the system's own ask (requestPushPermission, which also registers the phone for pushes). Allowed or "Not now", it
- * is answered for good (PUT /v1/bots/push-ask; routes/botsPushAsk.ts). It shows only while the phone itself says notifications are
+ * is answered for good (PUT /v1/bots/push-ask; routes/bots/botsPushAsk.ts). It shows only while the phone itself says notifications are
  * not allowed: the page reads that as it appears (checkPermission, never asking), so a phone that already allows them never sees it.
  * What pings you (bots.notify) carries a quiet "Notifications are off on this phone" line instead, for as long as they are off.
  *
@@ -13,7 +13,7 @@
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../shared/types/sdui.js";
 import { button, C, call, card, col, labelled, meta, row, seq, shapes, text, when, type BotsCtx } from "../kit.js";
 
-/** GET { due } / PUT { answer } (routes/botsPushAsk.ts). */
+/** GET { due } / PUT { answer } (routes/bots/botsPushAsk.ts). */
 export const PUSH_ASK_PATH = "/v1/bots/push-ask";
 
 /** What a page with the ask starts with: the phone's answer unknown (null) until it reads it, and not answered on this page yet. */

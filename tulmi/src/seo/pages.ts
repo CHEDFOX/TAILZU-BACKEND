@@ -15,7 +15,7 @@
  * The example sentences are shown exactly as written: they are the product's
  * output, so the site's every-word-capitalised rule stops at their edge.
  */
-import { siteShell } from "../routes/policies/shell.js";
+import { siteShell } from "../routes/site/policies/shell.js";
 import {
   INDIA, LANGS, PAGED, STORES, WORLD,
   crumbsLd, examplesFor, faqGroups, faqLd, langBySlug, langFaq, pageLd, sampleFor,

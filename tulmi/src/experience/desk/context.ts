@@ -5,11 +5,11 @@
 import type { Personality, HistoryEntry, UsageSummary, PaywallPlan, NoteSummary, Note } from "../../../../shared/types/api.js";
 import type { Node } from "../../../../shared/types/sdui.js";
 import type { AssistantView } from "../../connectors/list.js";
-import type { StatsForUser } from "../../history/store.js";
+import type { StatsForUser } from "../../history/stats.js";
 import type { Allowance } from "../../usage/allowance.js";
 
 /** Words a minute a person types on a keyboard — the same figure the stats
- *  screen's "minutes saved" has always used (history/store.ts). */
+ *  screen's "minutes saved" has always used (history/stats.ts). */
 export const TYPING_WPM = 40;
 
 /** What a desk page is built from. A subset of the catalog's ScreenContext,
