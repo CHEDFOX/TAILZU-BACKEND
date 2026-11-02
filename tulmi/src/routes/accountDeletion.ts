@@ -10,7 +10,7 @@
  *   GET    /v1/account/deletion   -> { scheduled: null | { requestedAt, deleteAt }, graceDays, deleteAtIfNow }
  *   DELETE /v1/account/deletion   -> { ok, kept }   Keep my account: the date is taken away, and the bots and keys work again
  *
- * DELETE /v1/account (server.ts) still deletes at once, for today's app and anyone who must have it gone now. The sweep that does
+ * DELETE /v1/account (routes/account.ts) still deletes at once, for today's app and anyone who must have it gone now. The sweep that does
  * the real delete on the date runs here, once the server is ready, while the server can delete (`erase`).
  *
  * ON THE WEB, WITHOUT THE APP (Google Play's account deletion link; policies/deleteAccount.ts):

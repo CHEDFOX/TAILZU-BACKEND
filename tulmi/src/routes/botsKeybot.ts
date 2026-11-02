@@ -96,7 +96,7 @@ export function registerBotsKeybotRoutes(app: FastifyInstance, deps: BotsAreaDep
     try {
       const personality = await getPersonality(user);
       const tz = tzOf(req, personality.stylePortrait?.tzOffsetMinutes);
-      // The reads the old Stats screen made (server.ts, screen "stats"), each with its own failure: a figure not read
+      // The reads the old Stats screen made (routes/appScreens.ts, screen "stats"), each with its own failure: a figure not read
       // is left out of the view, never shown as a zero.
       const saved = String(personality.vocabulary ?? "").split(/\r?\n/).map((w) => w.trim()).filter(Boolean).slice(0, 500);
       const [stats, usage, allowance, entitlement] = await Promise.all([

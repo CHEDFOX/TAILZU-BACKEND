@@ -236,7 +236,7 @@ describe("the migration (supabase/migrations/0038_bots.sql)", () => {
   const sql = readFileSync(join(root, "supabase", "migrations", "0038_bots.sql"), "utf8");
   const full = readFileSync(join(root, "supabase", "full_schema.sql"), "utf8");
   const code = readFileSync(join(root, "src", "bots", "store.ts"), "utf8");
-  const server = readFileSync(join(root, "src", "server.ts"), "utf8");
+  const account = readFileSync(join(root, "src", "routes", "account.ts"), "utf8");
 
   it("makes the five tables, safe to run again", () => {
     for (const t of BOT_TABLES) expect(sql).toMatch(new RegExp(`create table if not exists public\\.${t}\\b`));
@@ -280,7 +280,7 @@ describe("the migration (supabase/migrations/0038_bots.sql)", () => {
   });
 
   it("is on the account delete list, and in the export", async () => {
-    for (const t of BOT_USER_TABLES) expect(server).toContain(`["${t}", null]`);
+    for (const t of BOT_USER_TABLES) expect(account).toContain(`["${t}", null]`);
     expect([...BOT_USER_TABLES]).toEqual([...BOT_TABLES]);
     const r = await rig(() => "hi");
     await r.bots.create(ALICE, def({ slug: "api-bot" }));

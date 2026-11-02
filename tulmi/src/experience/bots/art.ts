@@ -2,7 +2,7 @@
  * BLIP, FOR THE BOTS APP: every bot's head, and Blip's whole body for the big moments.
  *
  * The pictures are PNGs cut from the design's dithered drawing by scripts/make-bots-art.ts and served the
- * way the onboarding's loops are: shipped in the image (tulmi/blip/bots), from /blip/ (server.ts), immutable,
+ * way the onboarding's loops are: shipped in the image (tulmi/blip/bots), from /blip/ (routes/staticFiles.ts), immutable,
  * with ?v= in the URL so a changed picture is a new file to the apps' caches. Raise ART_V when one changes.
  *
  * Blip's whole body MOVES: kit.blip(pose) draws the pose's animated loop (../blipLoops.ts, the onboarding's own,

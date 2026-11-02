@@ -62,7 +62,7 @@ async function served(o: { on?: boolean; handlers?: Parameters<typeof fakeHandle
   const front = o.on === false ? null : createFront({ force: true, handlers: h.handlers, store, guard, call: noModel().call, attachments: new AttachmentRegistry() });
   const app = Fastify({ bodyLimit: FRONT_BODY_LIMIT });
   const routes = registerFrontRoutes(app, { rateLimit: RL, front, guard, ...(o.quota ? { quota: o.quota } : {}), ...(o.used ? { used: o.used } : {}), ...(o.threads ? { threads: o.threads } : {}) });
-  // server.ts hands the old route's `message` bodies over like this; the door answers for itself.
+  // routes/ask.ts hands the old route's `message` bodies over like this; the door answers for itself.
   app.post("/v1/ask", async (req, reply) => {
     const { resolveUser } = await import("../src/auth/supabase.js");
     const user = await resolveUser(req.headers["authorization"]);

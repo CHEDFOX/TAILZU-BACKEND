@@ -284,9 +284,9 @@ describe("the migration, the whole schema and the account", () => {
   });
 
   it("is on the account delete list (and what a viewer saved in other people's artifacts is cleared by scope), and the export covers every table", () => {
-    const server = readFileSync(join(dir, "src", "server.ts"), "utf8");
-    for (const t of ARTIFACT_USER_TABLES) expect(server).toContain(`["${t}", null]`);
-    expect(server).toMatch(/deleteViewerData\(admin, user\.id\)/);
+    const account = readFileSync(join(dir, "src", "routes", "account.ts"), "utf8");
+    for (const t of ARTIFACT_USER_TABLES) expect(account).toContain(`["${t}", null]`);
+    expect(account).toMatch(/deleteViewerData\(admin, user\.id\)/);
     // versions and data go with the artifact (cascade), so the delete list needs only the tables with a user_id
     expect([...ARTIFACT_USER_TABLES]).toEqual(["artifacts", "artifact_kits"]);
     expect([...ARTIFACT_TABLES]).toEqual(["artifacts", "artifact_versions", "artifact_data", "artifact_kits"]);

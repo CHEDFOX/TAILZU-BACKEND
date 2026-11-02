@@ -17,7 +17,7 @@ let clock = 1_800_000_000_000;
 async function setup(over: { secret?: string | null } = {}) {
   const store = new MemoryJobStore(() => clock);
   const told: Array<{ userId: string; kind: NotifyKind; data: NotifyData }> = [];
-  // The server's own JSON parser (server.ts): it parses, and keeps no raw body for this route; the route does that itself.
+  // The server's own JSON parser (http/hooks.ts): it parses, and keeps no raw body for this route; the route does that itself.
   const app = Fastify();
   app.addContentTypeParser("application/json", { parseAs: "string", bodyLimit: 1024 * 1024 }, (_req, body, done) => {
     const raw = typeof body === "string" ? body.trim() : "";

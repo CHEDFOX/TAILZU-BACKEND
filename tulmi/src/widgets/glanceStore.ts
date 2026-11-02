@@ -3,7 +3,7 @@
  *
  *   glance state     seen     what the person has seen of what finished: one time per thing (id -> ms) and `all` (everything that ended
  *                             before it). A finished job is "the last thing done" only while it ended after both. Marked when they open
- *                             the job's page or Activity in the app (server.ts), and when they answer from outside it (routes/widgets.ts)
+ *                             the job's page or Activity in the app (routes/appScreens.ts), and when they answer from outside it (routes/widgets.ts)
  *                    lastAt   their newest glance; sinceAt the end of their look before (glances closer than x0.lookGapMin are one look),
  *                             what "since you last looked" counts from
  *                    digest   the AI digest's line for one set of changes (digest.ts): written once per change, read until the next

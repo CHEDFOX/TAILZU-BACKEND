@@ -41,7 +41,7 @@ import { enforceQuota, recordUsage } from "../usage/metering.js";
 
 export interface NotesRouteDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
-  /** The language to hear in: the hint, else the user's own (server.ts). */
+  /** The language to hear in: the hint, else the user's own (profile/language.ts). */
   effectiveLanguage: (user: AuthedUser, hint: string | undefined, p?: Personality) => Promise<string>;
 }
 

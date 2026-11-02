@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import type { BotSound, BotSoundKind, BotSoundsCatalog } from "../../../../shared/types/sdui.js";
 
 const SOUND_KINDS: readonly BotSoundKind[] = ["throw", "tick", "new", "uptodate", "moment"];
-/** Where the files are served (server.ts registers it with the route file). */
+/** Where the files are served (routes/staticFiles.ts registers it with the route file). */
 export const SOUNDS_PREFIX = "/bots/sounds/";
 /** The longest a sound may be, and how many a catalog may hold. */
 export const SOUND_MAX_MS = 450;

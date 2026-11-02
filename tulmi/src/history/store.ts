@@ -1,6 +1,6 @@
 // CALLERS: /v1/transcribe-clean, /v1/refine, /v1/draft, and the /v1/stream WS
 // handler should call appendHistoryEntry() on success. Wiring lives in
-// server.ts / cleanup routes.
+// the writing routes (src/routes).
 /**
  * Per-user cleanup history: append-only log of what the user asked for and
  * what Tulmi produced. Storage is *opt-in* — appendHistoryEntry no-ops unless
