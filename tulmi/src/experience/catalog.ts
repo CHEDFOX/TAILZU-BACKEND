@@ -2548,6 +2548,12 @@ export function buildBootstrap(
         // screen under it.
         "profileGate.screenIds": ["personality", "home"],
 
+        // Meta on iPhone (the app's src/telemetry/meta.ts): on. Apple's tracking prompt comes first, and only those who allow
+        // it are tracked; the rest are counted in aggregate. A build from 80 on asks once this bootstrap is in hand (build 79
+        // asked only before any bootstrap, so never). The App Privacy answers declare tracking for Device ID and Product
+        // Interaction to match. The app's own fallback stays off, so a phone that never reached the server never asks.
+        "ads.meta.ios.enabled": true,
+
         // Flow Session warm-keeping (iOS). When true, the app re-arms the
         // background mic on every foreground so the keyboard dictates WITHOUT
         // reopening the app (the Wispr Flow feel). DISABLED for now: on a build
