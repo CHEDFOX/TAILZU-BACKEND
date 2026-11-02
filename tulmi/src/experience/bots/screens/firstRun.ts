@@ -79,8 +79,6 @@ const W = {
   youP: "So your bots know what to call you, and how to write for you.",
   youGender: "You are",
   youMissing: "Add your name and pick one.",
-  // Signed in with Apple the name is filled in as for everyone, but an empty one does not stop them (App Review 4): only the pick does.
-  youAppleMissing: "Pick one to go on.",
   restore: "Restore Purchases",
   restoreDone: "Restore finished. If a plan was bought with this Apple ID or Google account, it's active again.",
   restoreErr: "Couldn't restore just now. Try again in a moment.",
@@ -920,12 +918,10 @@ function nameSource(me: Me | undefined): string | null {
  */
 function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = false): Node {
   const desk = ctx.client === "desktop";
-  // Signed in with Apple: the name is filled in (what Apple shared, saved by the app's AuthGateScreen, else a guess from the email:
-  // startingName) and theirs to change, but Apple's guidelines (4, Sign in with Apple) do not let an app require a name or an email after
-  // it, so one Apple did not share does not stop them. The pick is still needed: it is neither, and the bots write in their voice with it.
-  const apple = me?.via === "apple";
+  // The name is filled in for everyone (what Apple or Google shared, saved by the app's AuthGateScreen, else a guess from the email:
+  // startingName), so signing in with Apple asks no one to type it (App Review 4); it is theirs to change, and needed, with the pick.
   const save: ActionSpec = {
-    kind: "condition", if: apple ? { truthy: "gender" } : { all: [{ truthy: "fullName" }, { truthy: "gender" }] },
+    kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] },
     // PUT /v1/profile { full_name, gender }: the card's own write, so everything that reads them (the bootstrap's
     // profile.complete, the greeting, the prompt) keeps working, and the card is never asked again.
     then: call("PUT", "/v1/profile", { full_name: "$state.fullName", gender: "$state.gender" }, {
@@ -934,7 +930,7 @@ function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = false): N
         : seq({ kind: "haptic", style: "selection" } as ActionSpec, setState("step", 1)),
       fail: toast(W.saveErr),
     }),
-    else: toast(apple ? W.youAppleMissing : W.youMissing),
+    else: toast(W.youMissing),
   } as ActionSpec;
   const field = nameField("fullName", "Your name", save, desk, { capitalize: true, label: "your name" });
   const source = nameSource(me);
@@ -1037,13 +1033,11 @@ function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenRespons
   // Someone already onboarded is here only for the card's question (the bootstrap's promptScreenId): About you
   // alone, which closes once saved. Naming it, and finishing the first run, are not theirs to do again.
   const only = me?.onboarded === true;
-  // Signed in with Apple, the name is not needed to have answered About you: the pick is.
-  const done = me?.saved || (me?.via === "apple" && !!gender);
   return stageScreen(ctx, {
     title: "About you", id: only ? "bots.about-you" : "bots.first", first: 2,
     steps: only ? [youStep(ctx, fig, me, true)] : [youStep(ctx, fig, me), nameStep(ctx, fig)],
     state: {
-      step: done && !only ? 1 : 0,
+      step: me?.saved && !only ? 1 : 0,
       fullName: me?.name ?? "",
       gender,
       name: (data?.persona?.personality?.assistantName ?? "").trim() || ASSISTANT_NAME,

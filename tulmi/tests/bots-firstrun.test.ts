@@ -149,28 +149,18 @@ describe("About you and Name: the stage after sign-in", () => {
   });
 });
 
-describe("App Review: signed in with Apple, no name or email is required; a bought plan can be restored", () => {
-  const appleApi = { ...API, "GET /v1/bots/first-run/profile": { name: "", via: "apple", source: null, gender: null, saved: false } };
-  it("asks someone who signed in with Apple About you, the name filled in, and only the pick needed to go on; no way past it", async () => {
-    const named = { ...API, "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "apple", source: "provider", gender: null, saved: false } };
-    expect((await build("bots.name-it", "phone", { api: named })).state).toMatchObject({ step: 0, fullName: "Aanya Rao" });
+describe("App Review: signed in with Apple, the name is filled in, never typed; a bought plan can be restored", () => {
+  it("asks someone who signed in with Apple About you with Apple's name filled in, and the name and the pick needed, as for everyone", async () => {
+    const api = { ...API, "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "apple", source: "provider", gender: null, saved: false } };
     for (const client of ["phone", "desktop"] as const) {
-      const s = await build("bots.name-it", client, { api: appleApi });
-      expect(s.state).toMatchObject({ step: 0, fullName: "" });
+      const s = await build("bots.name-it", client, { api });
+      expect(s.state).toMatchObject({ step: 0, fullName: "Aanya Rao" });
       expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your name", "You are"]));
       expect(texts(s.root!).some((t) => /optional|Skip/i.test(t))).toBe(false);
-      const all = actions(s.root);
-      expect(all).toEqual(expect.arrayContaining([expect.objectContaining({
-        kind: "condition", if: { truthy: "gender" }, else: expect.objectContaining({ kind: "toast", message: "Pick one to go on." }),
+      expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({
+        kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] }, else: expect.objectContaining({ kind: "toast", message: "Add your name and pick one." }),
       })]));
-      expect(all).not.toEqual(expect.arrayContaining([expect.objectContaining({ kind: "toast", message: "Add your name and pick one." })]));
     }
-  });
-
-  it("goes on to naming the bot once the pick is saved, with no name", async () => {
-    const api = { ...API, "GET /v1/bots/first-run/profile": { name: "", via: "apple", source: null, gender: "female", saved: false } };
-    const s = await build("bots.name-it", "phone", { api });
-    expect(s.state).toMatchObject({ step: 1, gender: "female" });
   });
 
   it("offers Restore Purchases on the phone's Plans, which restores and reads the screen again", async () => {
