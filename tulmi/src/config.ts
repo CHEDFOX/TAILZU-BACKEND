@@ -882,6 +882,11 @@ const EnvSchema = z.object({
    * /v1/internal/code/notify, which is how the push still goes out from here.
    * Anything but "cloudflare" is "local".
    */
+  /**
+   * Where each Xode project's code is kept for the chat to search all of it (src/code/project/copies.ts): one gzipped file a project, of
+   * the latest read. Unset: kept in memory only (up to 300 MB of text), so a restart forgets them until the next read.
+   */
+  CODE_COPY_DIR: z.string().optional(),
   CODE_JOBS_MODE: z.preprocess((v) => (String(v ?? "").trim().toLowerCase() === "cloudflare" ? "cloudflare" : "local"), z.enum(["local", "cloudflare"])),
   CODE_JOBS_URL: z.string().trim().optional(),
   CODE_JOBS_SECRET: z.string().optional(),

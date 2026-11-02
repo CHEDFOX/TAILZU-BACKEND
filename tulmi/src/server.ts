@@ -1166,6 +1166,12 @@ registerArtifactRoutes(app, { rateLimit: AUTHED_RL, artifacts, code, jobs: codeJ
 // answered from the few chunks that matter. Off unless MEDIA_INGEST is true: the attachment registry then keeps its "coming soon" for those kinds and /v1/files answers
 // 404 media_off. Bytes go to R2, text and chunks to migration 0035's tables, office files and hard PDFs to the worker (media-worker/).
 const media = createMedia({ log: app.log });
+// The projects' code copies (code/project/copies.ts): one unused for a month goes, and past the disk cap the longest unused. Looked at every six hours.
+if (code?.copies) {
+  const sweepCopies = () => { void code.copies!.sweep().then((n) => { if (n) app.log.info({ removed: n }, "code copies swept"); }).catch(() => undefined); };
+  setTimeout(sweepCopies, 60_000).unref();
+  setInterval(sweepCopies, 6 * 3_600_000).unref();
+}
 // Sign in with Apple, ended when the account is (src/auth/appleSignIn.ts): null until the Sign in with Apple key is set.
 const appleSignIn = createAppleSignIn(supabase());
 if (media) startMediaSweep(media, { log: app.log });
@@ -3453,6 +3459,13 @@ async function eraseAccount(admin: NonNullable<ReturnType<typeof supabase>>, use
   // and do not abort the sequence.
   // A GitHub sign-in token is revoked at GitHub before its row goes; the rows go with the account either way.
   await code?.oauth?.forAccountDelete(user.id);
+  // Their projects' code copies (code/project/copies.ts) are on disk, not in the database: they go first.
+  if (code?.copies) {
+    try {
+      const { data } = await admin.from("code_projects").select("id").eq("user_id", user.id);
+      for (const p of (data ?? []) as Array<{ id: string }>) await code.copies.drop(p.id);
+    } catch (err) { req.log.error({ err }, "delete code copies"); }
+  }
   // So is the Apple sign-in, at Apple (App Review 5.1.1(v)); its row goes with the account below.
   if (appleSignIn && !(await appleSignIn.forAccountDelete(user.id))) req.log.warn("account delete: the Apple sign-in could not be revoked at Apple");
   // The bytes of their files are in a bucket, not in the database: they go first (the rows go with the account just below).

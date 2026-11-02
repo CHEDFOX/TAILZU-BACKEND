@@ -58,6 +58,7 @@ import { ancestorsOf, diffSnapshots, fingerprintOf, rollUp, toRead, type Snapsho
 import { checkDeps, declaredDeps, type CheckOptions, type DepNote } from "./registry.js";
 import { buildStructure, DESCRIBED, extractCore } from "./scan.js";
 import { coreKindOf, fetchContents, fetchTree, selectFiles, type Candidate, type Contents } from "./snapshot.js";
+import type { CodeCopies } from "./copies.js";
 import type { ProjectBrainStore } from "./store.js";
 import {
   Meter, fallbackWelcome, labelFeatures, phaseCap, pickForSummary, suggestTasks, summarizeDirs, summarizeRepo, cardFiles, cardable, QUICK_FILE_CHARS, welcomeMessage,
@@ -91,6 +92,8 @@ export interface ProjectBrainDeps {
   /** CODE_IMPORT_BUDGET_PAISE. */
   budgetPaise: number;
   log?: BuildLog;
+  /** Where each project's code is kept for the chat to search (copies.ts); absent: none is kept. */
+  copies?: CodeCopies;
 }
 
 /** The share of a full read's money its parts may take (a quick read's files take 65%: phaseCap). */
@@ -208,6 +211,10 @@ export async function runBuild(
     // Nothing has moved: the brain is as fresh as it was (a push that was already built marked it stale, and it is not any more).
     if (mode === "incremental" && existing!.headSha === tree.headSha && (existing!.status === "ready" || existing!.status === "stale")) {
       const row = await store.saveBrain(project.id, { status: "ready", progress: { pct: 100, phase: "ready" }, error: "" });
+      // A brain built before copies were kept (or one whose copy was swept) gets its copy now, from one download.
+      if (deps.copies && existing!.structure.mode !== "tree_only") {
+        await keepCopy(deps, project.id, tree.headSha, null, async () => fetchContents(gh, repo, tree.headSha, [...selectFiles(tree, existing!.structure.skippedBlobs ?? {}).candidates], { tarball: true }));
+      }
       return { row, mode, changed: 0 };
     }
     const [storedFiles, storedDirs] = existing
@@ -585,6 +592,12 @@ export async function runBuild(
       spentPaise: (existing?.spentPaise ?? 0) + meter.spent, builtAt: now(), error: "",
     });
     deps.log?.info({ project: project.id, mode, files: allPaths.length, changed: analysed.size, via: contents.via, paise: meter.spent, calls: meter.calls, ms: now() - t0 }, "code project brain built");
+    // The code itself, kept for the chat's search (copies.ts): all of it after a full read; after an incremental one, the copy before with what
+    // changed laid over it, or, with no copy of the commit before, one download of the whole. A too-big repo (tree-only) keeps none.
+    if (deps.copies && !treeOnly) {
+      await keepCopy(deps, project.id, tree.headSha, mode === "full" && contents.via === "tarball" ? null : { before: existing?.headSha ?? "", texts: contents.texts, removed: diff.removed },
+        async () => mode === "full" && contents.via === "tarball" ? contents : fetchContents(gh, repo, tree.headSha, [...sel.candidates], { tarball: true }));
+    }
     return { row, mode, changed: analysed.size };
   } catch (err) {
     // Not theirs, or no access any more: the caller hears it. Anything else is a failed build, in plain words.
@@ -609,4 +622,47 @@ async function emptyRepo(deps: ProjectBrainDeps, project: CodeProject): Promise<
     features: [], memory: "", summariesState: "none", error: "", builtAt: now(),
     welcome: "This repo has no commits yet, so there is nothing to read. Ask me to start it with a README, or push something first and I will learn it.",
   });
+}
+
+/**
+ * A copy of the project's code made outside a build (index.ts keepCopy): the branch's tree, the files a build would read, one download. A
+ * too-big repo (tree-only) gets none. True when a copy is kept.
+ */
+export async function fillCopy(deps: ProjectBrainDeps, userId: string, project: CodeProject): Promise<boolean> {
+  if (!deps.copies) return false;
+  await assertAccess(deps.projects, userId, project);
+  const repo = repoRef(deps.projects, userId, project);
+  const gh: GithubApp = deps.projects.github;
+  const brain = await deps.store.getBrain(project.id);
+  if (!brain || brain.structure.mode === "tree_only") return false;
+  const tree = await fetchTree(gh, repo, project.defaultBranch);
+  await keepCopy(deps, project.id, tree.headSha, null, async () => fetchContents(gh, repo, tree.headSha, [...selectFiles(tree, brain.structure.skippedBlobs ?? {}).candidates], { tarball: true }));
+  return (await deps.copies.get(project.id))?.sha === tree.headSha;
+}
+
+/**
+ * Keep the project's code at `sha` for the chat (copies.ts). `patch`: what an incremental build read, laid over the copy of the commit before
+ * when that is the one kept; otherwise (or with no patch) `whole` gives every file. Never fails a build: a copy not kept is a chat that searches
+ * through GitHub, as before.
+ */
+async function keepCopy(
+  deps: ProjectBrainDeps, projectId: string, sha: string,
+  patch: { before: string; texts: Map<string, string>; removed: readonly string[] } | null, whole: () => Promise<Contents>,
+): Promise<void> {
+  const copies = deps.copies!;
+  try {
+    const kept = await copies.get(projectId);
+    if (kept?.sha === sha) return;
+    if (patch && kept && kept.sha === patch.before) {
+      const files = new Map(kept.files);
+      for (const p of patch.removed) files.delete(p);
+      for (const [p, t] of patch.texts) files.set(p, t);
+      await copies.put(projectId, sha, files);
+      return;
+    }
+    const c = await whole();
+    if (c.via !== "tree_only") await copies.put(projectId, sha, c.texts);
+  } catch (err) {
+    deps.log?.warn({ project: projectId, error: (err as Error)?.name }, "code project brain: the code copy was not kept");
+  }
 }

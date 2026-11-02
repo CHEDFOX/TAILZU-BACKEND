@@ -42,7 +42,8 @@ import { classOf, isTestPath } from "./lang.js";
 import { Meter, readEstimate, type CallFn, type ReadEstimate } from "./summarize.js";
 import { basisOf, commitsSince, OVERVIEW_PAISE, OVERVIEW_TEXTS, overviewDue, tuneOverview, type OverviewInput } from "./overview.js";
 import { callModel } from "../brain/gateway.js";
-import { runBuild, type BuildMode, type ProjectBrainDeps, type ReadDepth } from "./build.js";
+import { fillCopy, runBuild, type BuildMode, type ProjectBrainDeps, type ReadDepth } from "./build.js";
+import type { CodeCopies } from "./copies.js";
 import { aggregateHistory, coChanged, rankHotspots } from "./hotspots.js";
 import { RepoGraph, mapFiles, type MapHit, type MapOptions, type MapSeeds } from "./repomap.js";
 import { declaredDeps, type DeclaredDep } from "./registry.js";
@@ -124,6 +125,8 @@ export interface CreateProjectBrainOptions {
   /** Instead of CODE_IMPORT_BUDGET_PAISE. */
   budgetPaise?: number;
   log?: ProjectBrainDeps["log"];
+  /** Where each project's code is kept for the chat (copies.ts). */
+  copies?: CodeCopies;
   /** Instead of 60 seconds. */
   debounceMs?: number;
   /** Timers, for tests. */
@@ -647,7 +650,7 @@ export class ProjectBrain {
   constructor(o: CreateProjectBrainOptions) {
     this.runtime = {
       projects: o.projects, store: o.store ?? projectBrainStore(), call: o.call, gateway: o.gateway, fetchFn: o.fetchFn, sources: o.sources, now: o.now,
-      budgetPaise: o.budgetPaise ?? importBudgetFromEnv(), log: o.log, builds: new BuildBook(),
+      budgetPaise: o.budgetPaise ?? importBudgetFromEnv(), log: o.log, builds: new BuildBook(), ...(o.copies ? { copies: o.copies } : {}),
     };
     this.remote = o.remote;
     const remote = o.remote;
@@ -670,8 +673,21 @@ export class ProjectBrain {
   added(userId: string, project: CodeProject) { return this.remote ? ensureStartedRemote(this.runtime, this.remote, userId, project) : ensureStarted(this.runtime, userId, project); }
   /** GitHub's push webhook (see BrainSync). */
   pushed(project: CodeProject) { return this.sync.pushed(project); }
-  /** The project is gone: forget what was learned. (The database cascades too.) */
-  async forget(projectId: string): Promise<void> { await this.runtime.store.deleteBrain(projectId); }
+  /** The project is gone: forget what was learned, and its code copy. (The database cascades too.) */
+  async forget(projectId: string): Promise<void> {
+    await this.runtime.copies?.drop(projectId).catch(() => undefined);
+    await this.runtime.store.deleteBrain(projectId);
+  }
+  /**
+   * A chat found no copy of the project's code (a brain built before copies were kept, one swept after a month unused, or built elsewhere):
+   * one is made in the background, from one download. One at a time a project; never throws.
+   */
+  keepCopy(userId: string, project: CodeProject): void {
+    if (!this.runtime.copies || this.filling.has(project.id)) return;
+    this.filling.add(project.id);
+    void fillCopy(this.runtime, userId, project).catch(() => false).finally(() => this.filling.delete(project.id));
+  }
+  private readonly filling = new Set<string>();
   /** Where the brain's lines go (counts and timings: never a path or a line of code). */
   useLog(log: ProjectBrainDeps["log"]): void { this.runtime.log = log; }
   /** The server is closing. */

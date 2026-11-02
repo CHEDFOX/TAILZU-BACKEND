@@ -27,6 +27,7 @@ import { ApprovalBook } from "./approvals.js";
 import { GithubApp, type GithubAppConfig } from "./github.js";
 import { GithubOAuth, type GithubOAuthConfig } from "./oauth.js";
 import { ProjectBrain, type CreateProjectBrainOptions } from "./project/index.js";
+import { CodeCopies } from "./project/copies.js";
 import { codeStore, type CodeStore } from "./store.js";
 
 export interface Code {
@@ -48,6 +49,8 @@ export interface Code {
    * Null while CODE_PROJECT_BRAIN is off, or with no GitHub client.
    */
   brain: ProjectBrain | null;
+  /** Each project's code as its last build read it, for the chat's search (project/copies.ts). Null with no brain. */
+  copies: CodeCopies | null;
 }
 
 export interface CreateCodeOptions {
@@ -66,6 +69,8 @@ export interface CreateCodeOptions {
   bot?: BotIdentity;
   /** The project brain's settings (its store, model door, budget...), or false for none; instead of CODE_PROJECT_BRAIN. */
   brain?: false | Omit<CreateProjectBrainOptions, "projects">;
+  /** Where the projects' code copies are kept; null: none. Made from CODE_COPY_DIR when not given. */
+  copies?: CodeCopies | null;
 }
 
 /** The App from GITHUB_APP_*, or null when any part of it is missing. */
@@ -118,8 +123,10 @@ export function createCode(o: CreateCodeOptions = {}): Code {
   const approvals = new ApprovalBook({ now: o.now });
   // The brain reads repos through the same client, and costs nothing until a project is added.
   const brainOptions = o.brain !== undefined ? o.brain : getConfig().CODE_PROJECT_BRAIN ? {} : false;
+  // Each project's code, kept for the chat to search (project/copies.ts): on disk at CODE_COPY_DIR, else in memory only.
+  const copies = github && brainOptions !== false ? (o.copies !== undefined ? o.copies : new CodeCopies({ dir: getConfig().CODE_COPY_DIR?.trim() || null })) : null;
   const brain = github && brainOptions !== false
-    ? new ProjectBrain({ fetchFn: o.fetchFn, now: o.now, ...brainOptions, projects: { store, github, approvals, oauth } })
+    ? new ProjectBrain({ fetchFn: o.fetchFn, now: o.now, ...(copies ? { copies } : {}), ...brainOptions, projects: { store, github, approvals, oauth } })
     : null;
-  return { store, github, appReady, oauth, oauthWanted, webhookSecret: secret || null, approvals, brain };
+  return { store, github, appReady, oauth, oauthWanted, webhookSecret: secret || null, approvals, brain, copies };
 }

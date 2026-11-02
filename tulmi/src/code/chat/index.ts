@@ -38,6 +38,7 @@ import { RESEARCH_PAISE } from "../../front/path.js";
 import type { ResearchDepth } from "../../front/types.js";
 import { handoffOf, taskFor, type Handoff } from "./handoff.js";
 import { newThread, THREAD_ID, threadStore, withJob, type ChatThread, type ThreadStore } from "./threads.js";
+import type { CodeCopies } from "../project/copies.js";
 
 export * from "./answer.js";
 export * from "./cite.js";
@@ -54,6 +55,13 @@ export interface CodeChatDeps {
   threads?: ThreadStore;
   /** The job's copy of the code, when the person has a job open on the project (grep and read with no GitHub call). Absent: GitHub reads. */
   rooms?: (userId: string, projectId: string) => Promise<Pick<LiveFiles, "read" | "grep"> | null>;
+  /**
+   * The project's code as the last build read it (project/copies.ts): the chat's grep searches all of it, and reads come from it. Without it
+   * (or before a build has kept one) grep goes to GitHub a file at a time and stops at 60, and says so.
+   */
+  copies?: Pick<CodeCopies, "files">;
+  /** No copy yet: make one in the background (ProjectBrain.keepCopy), for the next message. */
+  fillCopy?: (userId: string, project: CodeProject) => void;
   now?: () => number;
   log?: { warn(o: object, msg: string): void };
   /** The few things the person told their bots that matter to a question (bots/shared.ts sharedFacts when not given). */
@@ -138,7 +146,8 @@ export class CodeChat {
     const read = async (path: string): Promise<string | null> => {
       try { ws ??= await workspace(this.d.projects, r.userId, project.id, project.defaultBranch); return (await ws.read(path)).text; } catch { return null; }
     };
-    const files = (await this.d.rooms?.(r.userId, project.id).catch(() => null)) ?? null;
+    const copy = await this.copyOf(r.userId, project);
+    const files = (await this.d.rooms?.(r.userId, project.id).catch(() => null)) ?? copy;
     const model = this.model(r.userId, r.signal);
     // A reaction ("??", "why?") is about the last question as it was; any other follow-up is made complete before it is looked up with
     // (front/complete.ts): "and the logout?" is searched as "where is the logout checked?".
@@ -160,7 +169,7 @@ export class CodeChat {
       search: r.ask && r.context ? r.context : meant?.text ?? r.question, tier: r.tier, length: r.length,
       maxPaise: Math.max(1, r.maxPaise - (meant?.paise ?? 0)), thread, diagram: r.diagram, now: this.now(), ...(about.length ? { about } : {}), ...(job ? { job } : {}), ...(r.language ? { language: r.language } : {}),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
-    }, { brain, read, files, look: this.lookOn ? this.lookTools(r.userId, project, brain, meant?.text ?? r.question, r.signal) : null }, model);
+    }, { brain, read, files, look: this.lookOn ? this.lookTools(r.userId, project, brain, meant?.text ?? r.question, copy, r.signal) : null }, model);
     if (meant?.paise) out.paise += meant.paise;
     if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
     return out;
@@ -196,7 +205,7 @@ export class CodeChat {
       tier: r.tier, maxPaise: r.maxPaise, now: this.now(),
       ...(r.onText ? { onText: r.onText } : {}), ...(r.onReset ? { onReset: r.onReset } : {}), ...(r.onStep ? { onStep: r.onStep } : {}),
     }, {
-      brain, look: this.lookTools(r.userId, project, brain, r.question, r.signal), read, ...(r.startJob ? { startJob: r.startJob } : {}),
+      brain, look: this.lookTools(r.userId, project, brain, r.question, await this.copyOf(r.userId, project), r.signal), read, ...(r.startJob ? { startJob: r.startJob } : {}),
       ...(webDefs.length ? { web: { defs: webDefs, run: async (name: string, args: Record<string, unknown>) => String((await web.run({ id: `w${Date.now()}`, name, arguments: JSON.stringify(args) })).message.content ?? "") } } : {}),
     }, this.model(r.userId, r.signal));
     if (out.thread) await this.threads.put(out.thread).catch((err) => this.d.log?.warn({ error: (err as Error)?.name }, "code chat: a thread was not kept"));
@@ -211,7 +220,15 @@ export class CodeChat {
    * The agent's tools for one answer, read-only (look.ts takes only project_map, search_code, grep, read_file, list_dir, glob and suggest_files): the
    * branch through GitHub (the workspace's own ten-minute reads), the brain for the map and the index. Nothing here can write, run or go to the web.
    */
-  private lookTools(userId: string, project: CodeProject, brain: BrainHandle, task: string, signal?: AbortSignal): LookTools {
+  /** The project's kept code (copies.ts), or null, and then one is made for the next message. Never in the way of an answer. */
+  private async copyOf(userId: string, project: CodeProject): Promise<LiveFiles | null> {
+    if (!this.d.copies) return null;
+    const files = (await this.d.copies.files(project.id).catch(() => null)) ?? null;
+    if (!files) this.d.fillCopy?.(userId, project);
+    return files;
+  }
+
+  private lookTools(userId: string, project: CodeProject, brain: BrainHandle, task: string, files: LiveFiles | null, signal?: AbortSignal): LookTools {
     let ws: Awaited<ReturnType<typeof workspace>> | null = null;
     const open = async () => (ws ??= await workspace(this.d.projects, userId, project.id, project.defaultBranch));
     const tools = new Tools({
@@ -219,7 +236,7 @@ export class CodeChat {
       brain, log: new WorkLog(`chat:${project.id}`, { store: new MemoryWorklogStore() }),
       runStep: async () => { throw new Error("A chat runs nothing."); },
       web: { run: async () => ({ ok: false, message: { content: "This chat does not use the web." } }) } as never,
-      closedSource: project.private, now: this.now, ...(signal ? { signal } : {}),
+      closedSource: project.private, now: this.now, ...(signal ? { signal } : {}), ...(files ? { files } : {}),
     });
     return { defs: tools.defs(), exec: (c) => tools.exec(c) };
   }
