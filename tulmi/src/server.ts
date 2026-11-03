@@ -62,6 +62,7 @@ import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
 import { registerRoutineRoutes } from "./routes/bots/routines.js";
 import { registerAskDecideRoutes } from "./routes/ask/askDecide.js";
+import { registerTalkRoutes } from "./routes/ask/talk.js";
 import { registerContextRoutes } from "./routes/ask/context.js";
 import { createPersonContext } from "./context/index.js";
 import { registerEverydayRoutes } from "./routes/bots/everyday.js";
@@ -429,6 +430,8 @@ const personContext = createPersonContext({ jobs: codeJobs, connectors, routines
 registerContextRoutes(app, { rateLimit: AUTHED_RL, context: personContext });
 // The one key's brain (src/askDecide, docs/ask-decide.md): what the person meant, in any language.
 registerAskDecideRoutes(app, { rateLimit: AUTHED_RL, bots, context: personContext });
+// The voice chat (src/talk, docs/talk.md): one key anywhere, turn after turn; the answer streamed as NDJSON.
+registerTalkRoutes(app, { rateLimit: AUTHED_RL, bots, context: personContext });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent, routines };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);

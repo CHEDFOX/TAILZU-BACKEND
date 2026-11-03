@@ -14,6 +14,10 @@
  *   notes    start or stop meeting notes
  *   bot      clearly for one of the person's own bots, named or not
  *
+ * Two reads go beside it, for the voice chat (src/talk) and anything else that answers: `chat` (casual talk, a joke, a small question
+ * about nothing on the screen; `do` is answer, so this route's contract is unchanged) and `depth`, quick or think (depth.ts: maths, a deep
+ * why or how, a comparison, a plan, code). The depth is read by rules for nothing; the model may raise it, never lower it.
+ *
  * HOW IT DECIDES, Xode's way (code/brain/classify.ts, code/brain/route.ts):
  *   1. SAFETY FIRST, FOR NOTHING. A password field, or Tailzu's own window: typed, no model asked, the words never leave.
  *   2. ONE TINY CALL (role ask_decide, the tiny tier, a few hundred tokens) reads the words with the app, the field, the person's
@@ -41,9 +45,14 @@ import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { ModelTier } from "../code/brain/tiers.js";
 import { neutral } from "../bots/prompt.js";
 import { detectScript } from "../pipeline/script.js";
+import { DEPTHS, deeper, depthOf, type Depth } from "./depth.js";
+
+export { DEPTHS, depthOf, deeper, type Depth } from "./depth.js";
 
 export const ASK_DOS = ["write", "send", "answer", "task", "routine", "notes", "bot"] as const;
 export type AskDo = (typeof ASK_DOS)[number];
+/** What the model may answer: the kinds above, and chat (answered as `do: answer`, `chat: true`). */
+export const ASK_KINDS = [...ASK_DOS, "chat"] as const;
 export const GRANTS = ["read", "see", "pictures"] as const;
 export type Grant = (typeof GRANTS)[number];
 /** The setup card's own words for a row: on, off, na (this computer has no such permission), never (the server's), restart. */
@@ -67,6 +76,8 @@ export interface DecideInput {
   last?: AskTurn[];
   /** What the server keeps about the person (src/context): their facts, people, asks, open work. Its text is data. */
   context?: { text: string; turns: number };
+  /** The voice chat's turns so far (src/talk), a few lines, oldest first. Data. */
+  talk?: string;
   /** The computer's offset, minutes east of UTC. */
   tz?: number;
   bots?: AskBotLite[];
@@ -86,6 +97,10 @@ export interface AskDecision {
   /** answer: it is about what is on the screen; it needs the web. */
   screen: boolean;
   web: boolean;
+  /** Casual talk, a joke, a small question about nothing on the screen: `do` is answer. */
+  chat: boolean;
+  /** quick, or think (depth.ts), the model's raise included. */
+  depth: Depth;
   sure: number;
   risk: AskRisk;
   needs: Grant[];
@@ -97,7 +112,7 @@ export interface AskDecision {
 
 /** What the model answers. */
 export const AskDecideReply = z.object({
-  do: z.enum(ASK_DOS),
+  do: z.enum(ASK_KINDS),
   goal: z.string().max(600).nullish(),
   to: z.string().max(80).nullish(),
   via: z.string().max(40).nullish(),
@@ -105,6 +120,7 @@ export const AskDecideReply = z.object({
   notes: z.enum(["start", "stop"]).nullish(),
   screen: z.boolean().nullish(),
   web: z.boolean().nullish(),
+  depth: z.enum(DEPTHS).nullish(),
   sure: z.number().min(0).max(1),
 });
 export type AskDecideReply = z.infer<typeof AskDecideReply>;
@@ -113,6 +129,7 @@ export const SURE = 0.7;
 export const UNSURE = 0.45;
 const CAP_PAISE = 30;
 const WORDS_MAX = 1200;
+const TALK_MAX = 800;
 const CACHE_MS = 10 * 60_000;
 const CACHE_MAX = 500;
 
@@ -162,6 +179,8 @@ export function decideUser(i: DecideInput): string {
   if (last.length) parts.push(fenced("Last asks, oldest first", last.map((t) => `- ${t.did}${t.to ? ` to ${neutral(oneLine(t.to, 60))}` : ""}: ${neutral(oneLine(t.said, 200))}`).join("\n")));
   const bots = (i.bots ?? []).slice(0, 12);
   if (bots.length) parts.push(fenced("Their bots", bots.map((b) => `- ${b.slug}: ${neutral(oneLine(b.name, 40))}${b.purpose ? `. ${neutral(oneLine(b.purpose, 120))}` : ""}`).join("\n")));
+  const talk = i.talk?.trim();
+  if (talk) parts.push(fenced("This talk so far, oldest first", neutral(talk.slice(0, TALK_MAX))));
   parts.push(fenced("Said", neutral(forModel(oneLine(i.words, WORDS_MAX)))));
   return parts.join("\n");
 }
@@ -174,7 +193,7 @@ export function resetAskDecideCacheForTests(): void { kept.clear(); }
 function keyOf(userId: string, i: DecideInput): string {
   const f = i.field === undefined ? "?" : i.field === null ? "-" : i.field.selection?.trim() ? `s:${i.field.selection.length}:${i.field.selection.slice(0, 80)}` : "f";
   return createHash("sha256").update(JSON.stringify([
-    userId, i.words.trim().toLowerCase(), i.app ?? "", i.title ?? "", f, !!i.notesOn, (i.last ?? []).slice(-3), (i.bots ?? []).map((b) => b.slug), i.context?.text ?? "",
+    userId, i.words.trim().toLowerCase(), i.app ?? "", i.title ?? "", f, !!i.notesOn, (i.last ?? []).slice(-3), (i.bots ?? []).map((b) => b.slug), i.context?.text ?? "", i.talk ?? "",
   ])).digest("base64url");
 }
 
@@ -191,10 +210,11 @@ export interface DecideDeps {
 
 const round = (n: number): number => Math.round(n * 100) / 100;
 
-function finish(i: DecideInput, base: Omit<AskDecision, "risk" | "needs" | "missing">): AskDecision {
+/** The risk, the permissions and the depth, from the words: the rules' part of every answer. `raised`: the model's own depth. */
+function finish(i: DecideInput, base: Omit<AskDecision, "risk" | "needs" | "missing" | "chat" | "depth"> & { chat?: boolean }, raised?: Depth | null): AskDecision {
   const risk = riskOf(i.words, base.do);
   const needs = needsOf(base);
-  return { ...base, risk, needs, missing: missingOf(needs, i.grants) };
+  return { ...base, chat: base.chat === true, depth: deeper(depthOf(i.words).depth, raised), risk, needs, missing: missingOf(needs, i.grants) };
 }
 
 /** Typed, as dictation always was: the one thing that can always be taken back with the app's own undo. */
@@ -264,7 +284,9 @@ function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision
   const made = oneLine(r.goal ?? "", 600);
   const before = (i.last ?? []).length > 0 || (i.context?.turns ?? 0) > 0;
   const goal = before && made && detectScript(made) === detectScript(words) ? made : words;
-  let kind: AskDo = r.do;
+  // chat is answered: this route's `do` keeps its seven kinds, and `chat` says it was small talk.
+  const chat = r.do === "chat";
+  let kind: AskDo = r.do === "chat" ? "answer" : r.do;
   let bot: AskDecision["bot"];
   if (kind === "bot") {
     const b = r.bot ? (i.bots ?? []).find((x) => x.slug === r.bot) : undefined;
@@ -280,8 +302,9 @@ function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision
     ...(kind === "send" && r.via ? { via: oneLine(r.via, 40) } : {}),
     ...(bot ? { bot } : {}),
     ...(notes ? { notes } : {}),
-    screen: kind === "answer" || kind === "task" ? !!r.screen : false,
+    screen: kind === "answer" || kind === "task" ? !!r.screen && !chat : false,
     web: kind === "answer" || kind === "task" || kind === "routine" ? !!r.web : false,
+    chat: chat && kind === "answer",
     sure, by, reasons, paise,
-  });
+  }, kind === "answer" ? r.depth : null);
 }

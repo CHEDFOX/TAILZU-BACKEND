@@ -46,7 +46,7 @@ export const ROLE_TIER: Readonly<Record<RoleId, ModelTier>> = {
   front_decide: "tiny", front_reply: "cheap", front_code_answer: "cheap", code_ask: "cheap", code_chat: "cheap", front_complete: "tiny", front_diagram: "cheap", front_plan: "cheap", front_look: "vision",
   care_review: "cheap", care_conflict: "cheap",
   team_split: "strong", team_review: "review",
-  bot_builder: "cheap", bot_pick: "tiny", ask_decide: "tiny", bot_run: "cheap", bot_memory: "tiny",
+  bot_builder: "cheap", bot_pick: "tiny", ask_decide: "tiny", talk_reply: "cheap", bot_run: "cheap", bot_memory: "tiny",
   widget_digest: "tiny",
   ask_planner: "cheap", ask_vision: "vision", writer: "cheap", edit_selection: "cheap", answer_about: "cheap", converse: "cheap",
   portrait_update: "code", portrait_transcript: "code", portrait_usage: "code",

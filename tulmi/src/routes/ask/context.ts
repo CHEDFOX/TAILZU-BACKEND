@@ -3,9 +3,9 @@
  *
  *   GET    /v1/context?tz=330          { kept: { people, turns, summary, updatedAt }, you, open, results, text, trimmed }: what is kept,
  *                                      and the block a model is shown now, built from it
- *   DELETE /v1/context                 everything kept, forgotten: 204
+ *   DELETE /v1/context                 everything kept, forgotten, the voice chat's talks too (src/talk): 204
  *   DELETE /v1/context/people/:name    one person forgotten: 204, or 404 when they were not kept
- *   DELETE /v1/context/turns           the asks and their summary forgotten (the people stay): 204
+ *   DELETE /v1/context/turns           the asks and their summary forgotten, and the voice chat's talks (the people stay): 204
  *
  * Every route is the signed-in person's own (401 without a session). Off (CONTEXT=false): 404 context_off. What the bots were told is
  * not here: it has its own routes (Settings › Privacy, routes/bots/botsYou.ts).
@@ -14,6 +14,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { tzOf } from "../../calendar/words.js";
 import type { PersonContext } from "../../context/index.js";
+import { talkSessions } from "../../talk/session.js";
 
 export interface ContextRoutesDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -55,7 +56,7 @@ export function registerContextRoutes(app: FastifyInstance, deps: ContextRoutesD
   app.delete("/v1/context", RL, async (req, reply) => {
     const w = await who(req, reply);
     if (!w) return reply;
-    try { await w.c.forgetAll(w.user.id); return reply.code(204).send(); } catch (err) { return fail(req, reply, err); }
+    try { await w.c.forgetAll(w.user.id); talkSessions().forget(w.user.id); return reply.code(204).send(); } catch (err) { return fail(req, reply, err); }
   });
 
   app.delete("/v1/context/people/:name", RL, async (req, reply) => {
@@ -72,6 +73,6 @@ export function registerContextRoutes(app: FastifyInstance, deps: ContextRoutesD
   app.delete("/v1/context/turns", RL, async (req, reply) => {
     const w = await who(req, reply);
     if (!w) return reply;
-    try { await w.c.forgetTurns(w.user.id); return reply.code(204).send(); } catch (err) { return fail(req, reply, err); }
+    try { await w.c.forgetTurns(w.user.id); talkSessions().forget(w.user.id); return reply.code(204).send(); } catch (err) { return fail(req, reply, err); }
   });
 }

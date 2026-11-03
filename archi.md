@@ -75,7 +75,7 @@ routes/            one module per feature, each exporting register…Routes(app,
   account/         account deletion, profile, personality, history, device link (QR sign-in), the review sign-in pair
   app/             the SDUI app (bootstrap, screen, cache), keyboard config and telemetry, live updates, media, static files
   ask/             POST /v1/ask, the desktop's on-screen agent (/v1/agent), the phone's Ask, the front door,
-                   the one key's brain (/v1/ask/decide), the person's context (/v1/context)
+                   the one key's brain (/v1/ask/decide), the person's context (/v1/context), the voice chat (/v1/talk)
   billing/         the /pay page, Razorpay, RevenueCat and Razorpay webhooks
   bots/            the bots platform and every Bots app area (shell, You, bots, Keybot, code, first run, spaces,
                    trips, calendar, push ask, looks, sounds, safety, widgets), routines, the everyday tools' cards
@@ -111,6 +111,8 @@ agent/             the desktop's on-screen agent (Ask): one step, the planner, t
 askDecide/         the one key's brain: what the person meant by what they said, in any language (docs/ask-decide.md)
 context/           the person's context: who they are, who they message, their last asks, open work, recent results, as one
                    capped block for the brain and Ask's first step; the builder, what is kept, the store (docs/context.md)
+talk/              the voice chat: one key anywhere, turn after turn; the route table, the talk in memory, the whole page made small
+                   (also for Ask's first step), lookups, the streamed spoken answer with its mood (docs/talk.md)
 front/             the front door: one entry for a message, decided and dispatched (docs/front-door.md)
 guard/             overload guards: limiter, breaker, coalescing, idempotency
 code/              Xode (docs/code-*.md)
@@ -175,6 +177,7 @@ ads/               Meta and Google Tag Manager events
 | Model gateway | Xode and the bots: `tulmi/src/code/brain/gateway.ts`; the writer: `pipeline/writing/model.ts`; Ask: `agent/llm.ts`; client `pipeline/openrouter.ts` |
 | The bots platform | `tulmi/src/bots/` (docs/bots.md); the Bots app areas `botsBots/`, `botsCode/`, `shell/`, `keybot/`, `you/` (docs/bots-app.md) |
 | The person's context (what the brain and Ask know of someone) | `tulmi/src/context/`, `routes/ask/context.ts` (docs/context.md) |
+| The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |
 | The website's own pages (privacy, terms, support, pricing, delete account) | `tulmi/src/routes/site/policies/` (their look in `policies/shell.ts`); the pay page `routes/billing/pay.ts` |
@@ -258,7 +261,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
 `viewer/docs/artifact-viewer.md`.

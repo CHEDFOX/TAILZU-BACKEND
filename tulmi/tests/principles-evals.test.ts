@@ -51,6 +51,7 @@ const { PartReviewVerdict } = await import("../src/code/team/review.js");
 const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
+const { readMood } = await import("../src/talk/speak.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { parseLine } = await import("../src/agent/lines.js");
@@ -295,6 +296,7 @@ describe("a known-good answer for each role", () => {
       text: '{"do":"send","goal":"Tell Riya the mockups are ready","to":"Riya","via":"WhatsApp","bot":null,"notes":null,"screen":false,"web":false,"sure":0.92}',
       reads: (t) => AskDecideReply.parse(JSON.parse(t)),
     },
+    talk_reply: { text: "[laugh] Why did the cat sit on the computer? To keep an eye on the mouse.", reads: (t) => (readMood(t).tagged ? readMood(t) : null) },
     bot_run: { text: "Two rest days a week is a good rule: one full rest and one light day.", reads: (t) => t },
     bot_memory: {
       text: '{"add":["Trains at 6am on weekdays.","Is vegetarian."],"drop":[],"summary":"Planning workouts around a 6am weekday routine and a vegetarian diet."}',

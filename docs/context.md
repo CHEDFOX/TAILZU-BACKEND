@@ -20,6 +20,7 @@ The one key's brain and Ask used to start every request nearly blank: the screen
 ## Where it is used
 - **`POST /v1/ask/decide`**: the block goes into the prompt; the computer's own `last` is used only while the server has kept no asks. The decided ask is kept after the answer (not for a private field, X0 Bot's own window or empty words). The body may carry `tz`.
 - **`POST /v1/agent`**: at a run's first step only, the block goes into the planner's message (`agent/prompt.ts`); later steps have the run's history. A step that ends with DONE puts its SAY words on the matching ask from the last half hour.
+- **`POST /v1/talk`** (docs/talk.md): the block goes to the brain and to the answering model; each turn is kept as an ask, and a spoken answer as its result, under the same rules. Clearing the context clears the person's talks too.
 
 ## What is never kept
 Nothing from a private field, X0 Bot's own window, a sensitive app (`pipeline/sensitive.ts`) or a picture step; nothing that looks like a secret, a password or a code (`code/policy.ts` scanForSecrets, and the words by name); nothing at all while Settings › Privacy "Use what you've told your bots" is off (`privacy.personalise`), and then nothing learned is shown either.

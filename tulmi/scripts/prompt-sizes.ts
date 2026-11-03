@@ -71,8 +71,10 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   // The bots platform (src/bots): written after the principles, so their first size is their "before".
   bot_builder: 1429,
   bot_pick: 736,
-  // New with the one key's brain: it replaces nothing, so its first size is its "before" (a NEW_ROLE).
-  ask_decide: 1739,
+  // New with the one key's brain: it replaces nothing, so its first size is its "before" (a NEW_ROLE). Re-measured when it took chat and depth (src/talk).
+  ask_decide: 1932,
+  // The voice chat's answer (src/talk): it replaces nothing, so its first size is its "before" (a NEW_ROLE).
+  talk_reply: 1617,
   bot_run: 1379,
   bot_memory: 1058,
   // The X0 widget's digest (src/widgets/digest.ts): written after the principles, so its first size is its "before".
@@ -92,7 +94,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "widget_digest", "ask_decide"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "widget_digest", "ask_decide", "talk_reply"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

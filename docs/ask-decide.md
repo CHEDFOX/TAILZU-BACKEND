@@ -12,6 +12,8 @@ The person holds one key and talks. Whatever they said is an ask; `POST /v1/ask/
 | `notes` | start or stop meeting notes | notes |
 | `bot` | clearly one of the person's bots | sent to that bot |
 
+Two reads go beside `do`, for the voice chat (docs/talk.md) and anything else that answers: `chat` (casual talk, a joke, a small question about nothing on screen; `do` is `answer`, so this route still has its seven kinds) and `depth`, `quick` or `think` (`askDecide/depth.ts`: maths, a deep why or how, a comparison, a plan, code). The depth is read by rules for nothing; the model may raise it, never lower it.
+
 ## How it decides (Xode's way)
 1. **Safety first, for nothing.** A password field or Tailzu's own window: typed, no model, the words never leave.
 2. **One tiny call** (role `ask_decide`, tiny tier, 30 paise cap) with the app, window title, the text box, the person's context (docs/context.md: who they are, who they message, their last asks; the computer's last 3 asks only while the server has kept none) and the person's bots. Any language. A short follow-up is made whole in `goal`.
@@ -23,4 +25,4 @@ The person holds one key and talks. Whatever they said is an ask; `POST /v1/ask/
 ## Permissions
 The setup card is answered once (read text, see the screen, send pictures). The computer sends its state as `grants`; the answer's `needs` is what this ask will use and `missing` what the card has not allowed. The computer asks for that one permission at the turn that needs it, and never for one already given.
 
-Evals: `tulmi/evals/ask_decide.jsonl` (English, Hinglish, Hindi, Spanish, a follow-up, a bot, a planted instruction).
+Evals: `tulmi/evals/ask_decide.jsonl` (English, Hinglish, Hindi, Spanish, a follow-up, a bot, a planted instruction, chat, a think).

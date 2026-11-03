@@ -18,7 +18,7 @@ import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(here, "..", "src");
-const DIRS = ["code", "artifacts", "web", "front", "bots", "widgets", "askDecide"];
+const DIRS = ["code", "artifacts", "web", "front", "bots", "widgets", "askDecide", "talk"];
 
 const { ROLE_IDS } = await import("../src/principles/roles.js");
 
@@ -140,7 +140,7 @@ describe("the sweep", () => {
       "askDecide/index.ts", "bots/builder.ts", "bots/door.ts", "bots/memory.ts", "bots/run.ts",
       "code/agent/context.ts", "code/agent/merge.ts", "code/agent/phases.ts", "code/brain/classify.ts", "code/chat/answer.ts", "code/chat/look.ts", "code/newproject/spec.ts",
       "code/prcare/review.ts", "code/project/summarize.ts", "code/resources/brief.ts", "code/team/review.ts", "code/team/split.ts", "code/webTools.ts", "code/work/locate.ts", "code/work/model.ts", "code/work/plan.ts",
-      "front/attachments.ts", "front/complete.ts", "front/decide.ts", "front/handlers.ts", "web/research.ts", "web/search/plan.ts",
+      "front/attachments.ts", "front/complete.ts", "front/decide.ts", "front/handlers.ts", "talk/answer.ts", "talk/look.ts", "web/research.ts", "web/search/plan.ts",
       "widgets/digest.ts",
     ]);
     for (const s of sites) {
@@ -157,7 +157,7 @@ describe("the sweep", () => {
     const callers = sources.filter((s) => /\bcallModel\b/.test(s.code) && s.rel !== "code/brain/gateway.ts");
     expect(callers.map((s) => s.rel).sort()).toEqual([
       "artifacts/compare.ts", "artifacts/model.ts", "artifacts/service.ts", "bots/run.ts", "code/agent/phases.ts", "code/brain/classify.ts", "code/chat/look.ts",
-      "code/project/build.ts", "code/project/index.ts", "code/webTools.ts", "code/work/model.ts", "front/model.ts",
+      "code/project/build.ts", "code/project/index.ts", "code/webTools.ts", "code/work/model.ts", "front/model.ts", "talk/answer.ts", "talk/look.ts",
     ]);
     for (const s of callers) {
       // a hand-built [{ role: ..., content: ... }] is a prompt written out; the messages of a call come from compose()
