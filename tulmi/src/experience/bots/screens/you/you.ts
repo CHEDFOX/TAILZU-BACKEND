@@ -141,6 +141,8 @@ export function youPhone(ctx: BotsCtx, d: YouData | undefined) {
         usageMeter(spanLabel(m.windows), m.used, { resets: line || resetsLine(ctx, m.resetsAt) }),
       ], { gap: 12, padding: 16, onPress: open(SCREENS.usage) }),
       listCard([
+        // What your bots know about you, in sections (screens/you/space.ts).
+        listRow({ label: "Your space", value: "What bots know", onPress: open(SCREENS.youSpace) }),
         // Family and friends: spaces, what's shared, tasks, payment requests and chats (screens/spaces.ts).
         listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
         listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
@@ -230,6 +232,9 @@ export function youDesk(ctx: BotsCtx, d: YouData | undefined) {
         ]),
         deskList([
           deskRow({ glyphNode: glyph(G.bell, 18), label: "What pings you", sub: pingsLine(d?.settings) || "Needs you always", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
+        ]),
+        deskList([
+          deskRow({ glyphNode: icon("person", { size: 18 }), label: "Your space", sub: "What your bots know about you, in one place", onPress: open(SCREENS.youSpace) }),
         ]),
         deskList([
           deskRow({ glyphNode: icon("shield", { size: 18 }), label: "Privacy", sub: "What we keep, and for how long", onPress: open(SCREENS.privacy) }),

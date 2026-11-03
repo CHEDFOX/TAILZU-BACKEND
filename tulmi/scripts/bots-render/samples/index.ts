@@ -78,6 +78,9 @@ export const SAMPLES: Sample[] = [
   { id: S.you, area: "you", board: "You", deskBoard: "DYou" },
   { id: S.budget, area: "you", board: "Budget", deskBoard: "DBudget" },
   { id: S.billing, area: "you", board: "Billing", deskBoard: "DBilling" },
+  // screens/you/space.ts (tests/space-data.ts): no boards of their own
+  { id: S.youSpace, area: "you" },
+  ...["about", "day", "people", "money", "timeline"].map((id) => ({ id: S.youSpaceSection, area: "you" as const, variant: id, params: { id } })),
   { id: S.computer, area: "you", board: "Devices", deskBoard: "DeskComputer" },
   { id: S.notify, area: "you", board: "Notify", deskBoard: "DNotify" },
   { id: S.privacy, area: "you", board: "Privacy", deskBoard: "DPrivacy" },

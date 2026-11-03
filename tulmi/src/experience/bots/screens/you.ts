@@ -14,6 +14,7 @@
  * Built with the kit (../kit.ts) the way screens/shell.ts builds bots.home; one id serves the phone and the window (ctx.client).
  */
 
+import { spaceScreens } from "./you/space.js";
 import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, type IconName, box, icon, C, row, FACE, text, whenEq, seq, botAvatar, percent, primaryButton, open, SCREENS, usageMeter,
@@ -282,7 +283,7 @@ function personalCard(d: YouData | undefined): Node {
       sub: "Every bot's answers fit you. Never health, religion, politics or money.",
       onChange: save({ privacy: { personalise: !on } }, on ? "Turned off" : "Turned on"),
     })]),
-    row([grow(), quietButton("Clear", clearPersonal, { size: "md" })]),
+    row([quietButton("See what they know", open(SCREENS.youSpace), { size: "md" }), grow(), quietButton("Clear", clearPersonal, { size: "md" })]),
   ], { gap: 4 });
 }
 
@@ -573,6 +574,7 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
 const tz = (ctx: BotsCtx) => `tz=${Math.round(ctx.tzOffsetMinutes)}`;
 
 export const youScreens: BotsScreen[] = [
+  ...spaceScreens, // Your space (screens/you/space.ts)
   screen<YouData>({ id: SCREENS.you, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? youDesk(ctx, d) : youPhone(ctx, d)) }),
   ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({ id, load: (ctx, deps) => deps.api<UsagePage>("GET", `/v1/you/usage?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? usageDesk(ctx, d) : usagePhone(ctx, d)) })),
   screen<BillingData>({ id: SCREENS.billing, load: (ctx, deps) => deps.api<BillingData>("GET", `/v1/you/billing?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? billingDesk(ctx, d) : billingPhone(ctx, d)) }),

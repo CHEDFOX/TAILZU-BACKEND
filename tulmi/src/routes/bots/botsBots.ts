@@ -46,6 +46,7 @@ import type { BotEvent } from "../../bots/types.js";
 import { registerSpacesRoutes } from "./botsSpaces.js";
 import { registerBotsTripRoutes } from "./botsTrips.js";
 import { registerCalendarRoutes } from "./botsCalendar.js";
+import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
 import { registerWidgetRoutes } from "./widgets.js";
 
 export const AREA = "/v1/botsapp/bots";
@@ -87,6 +88,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   registerWidgetRoutes(app, deps, spacesArea);
   registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/bots/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/bots/botsCalendar.ts)
+  // Your space: what your bots know about you, in sections, beside your own things (routes/bots/botsYouSpace.ts).
+  registerYouSpaceRoutes(app, deps, { space: userSpace({ spaces: parts.spaces, trips: parts.trips }) });
 
   const fail = (req: FastifyRequest, reply: FastifyReply, err: unknown): FastifyReply => {
     if (isBotError(err)) {

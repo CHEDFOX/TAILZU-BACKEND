@@ -130,7 +130,8 @@ botsCode/          the Code bot's rules, intake and history as the Bots app keep
 botsCodeWork/      a Xode job read for the Bots app's work screens
 shell/             the Bots app's shell: the activity feed, search, events, sent asks
 keybot/            Keybot (the keyboard as a bot): its preferences, stats and views
-you/               the You area: settings, limits, spend, usage meter, billing, data export, account deletion sweep
+you/               the You area: settings, limits, spend, usage meter, billing, data export, account deletion sweep;
+                   your space: what bots know about you, in sections, pinned, moved, switched off (docs/user-space.md)
 calendar/          the person's own calendar and to-dos
 notes/             meeting notes: speakers, organising, extraction, store
 connectors/        connected apps over MCP: catalog, OAuth, egress guard, routing, tasks; google/ (native Google apps), handoffs/

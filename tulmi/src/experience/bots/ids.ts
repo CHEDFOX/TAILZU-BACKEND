@@ -44,6 +44,8 @@ export const SCREENS = {
   language: "bots.language",         // Language / DLanguage
   notify: "bots.notify",             // Notify / DNotify
   privacy: "bots.privacy",           // Privacy / DPrivacy
+  youSpace: "bots.you.space",        // Your space: what your bots know about you, in sections (screens/you/space.ts; no board)
+  youSpaceSection: "bots.you.space.section", // One section of it: its lines and your things (params: id)
   deleteAccount: "bots.delete-account", // DeleteAcct / DDeleteAcct
   apps: "bots.apps",                 // Apps / DApps
   appConnect: "bots.app-connect",    // AppConnect / DAppConnect (params: id)
