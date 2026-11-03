@@ -945,6 +945,9 @@ const EnvSchema = z.object({
    *                          A site of its own, never the app's or the API's (it runs the person's project)
    *   PREVIEW_HOST           cookie mode, on the Worker: one dedicated host, `https://<PREVIEW_HOST>/p/<token>/`. Used when PREVIEW_DOMAIN is not set
    *   CODE_DESIGN_CHECK      "false" skips the design round of the agent loop altogether (true)
+   *   CODE_CLOUD_RUNNER      "false" never uses X0's cloud runner (a Cloudflare container per job, jobs/src/containers.ts), the place after the
+   *                          person's PCs and GitHub's computers (true; it needs the Worker's XODE_RUNNER container and the live session)
+   *   CODE_CLOUD_PAISE_PER_MIN  what a minute of it costs the person, rounded up per run (0: free, and a free place needs no yes)
    *   CODE_SCREENS           "false" skips the screens round: a job that changed what people see runs the app and keeps real screenshots of
    *                          the page for its report (src/code/agent/screens.ts). Needs a browser for shots and R2 for the pictures (true)
    *   ARTIFACT_SHOT_VIEWER_URL  the address of the viewer kept for screenshots: the same viewer deployed a second time with VIEWER_PARENT_ORIGINS=null
@@ -960,6 +963,8 @@ const EnvSchema = z.object({
   PREVIEW_HOST: z.string().trim().toLowerCase().optional(),
   CODE_DESIGN_CHECK: bool(true),
   CODE_SCREENS: bool(true),
+  CODE_CLOUD_RUNNER: bool(true),
+  CODE_CLOUD_PAISE_PER_MIN: z.coerce.number().int().min(0).max(1000).default(0),
   ARTIFACT_SHOT_VIEWER_URL: z.string().trim().optional(),
   ARTIFACT_SHOT_SECRET: z.string().optional(),
   ARTIFACT_VIEWER_URL: z.string().trim().optional(),

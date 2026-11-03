@@ -748,7 +748,9 @@ export async function runSession(spec, o) {
     if (!busy && Date.now() - last > limit) { end(0, "the room was silent"); try { ws.close(); } catch { /* gone */ } }
   }, Math.min(1000, Math.max(50, silentMs / 4)));
   watch.unref();
-  ws.addEventListener("open", () => send({ t: "hello", v: 1, kind: "github", name: "GitHub Actions", os: process.platform, node: process.version }));
+  // X0's cloud container runs this same session (jobs/container): it says so, so the room counts its time as the cloud's, not GitHub's.
+  const cloud = env.TAILZU_RUNNER_KIND === "container";
+  ws.addEventListener("open", () => send({ t: "hello", v: 1, kind: cloud ? "container" : "github", name: cloud ? "X0 cloud" : "GitHub Actions", os: process.platform, node: process.version }));
   ws.addEventListener("error", () => end(1, "the socket failed"));
   ws.addEventListener("close", (ev) => end(ended ? 0 : (ev && ev.code === 1000) || ev.code === 1005 ? 0 : 1, "closed"));
   ws.addEventListener("message", (ev) => {

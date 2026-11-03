@@ -8,6 +8,7 @@
  * code must not depend on that having happened before its first read, so `applyEnv` copies them in itself, on
  * every entry, and says RUNTIME=worker (config.ts then does not ask a Worker for what only the VPS needs).
  */
+import type { XodeRunner } from "./containers.js";
 import type { Advance } from "../../tulmi/src/code/agent/loop.js";
 import type { BrainBody } from "../../tulmi/src/code/jobs/handoff/protocol.js";
 import type { JobRoom } from "./jobRoom.js";
@@ -28,6 +29,8 @@ export interface Env {
   ROOMS: DurableObjectNamespace<JobRoom>;
   /** A job's real screenshots (code/agent/screens.ts), served by their signed links (http.ts). Absent: no screens round. */
   SHOTS?: R2Bucket;
+  /** One per job: X0's cloud runner, a container for its live session (containers.ts). Absent: no cloud runner. */
+  XODE_RUNNER?: DurableObjectNamespace<XodeRunner>;
 
   // wrangler.jsonc vars
   RUNTIME?: string;

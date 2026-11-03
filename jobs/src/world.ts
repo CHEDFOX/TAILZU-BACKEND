@@ -34,6 +34,7 @@ import { installSafeFetch } from "../../tulmi/src/web/safeFetch.js";
 import { workerSafeFetchImpl } from "../../tulmi/src/web/workerSafeFetch.js";
 import { cloudflareRendererFromConfig } from "../../tulmi/src/web/browser/cloudflare.js";
 import { CloudDesktopProvider, devicesOf } from "./desktops.js";
+import { CloudContainerProvider, setRunReporter } from "./containers.js";
 import { shotsBlobs, applyEnv, type Env } from "./env.js";
 import { workerGrammars } from "./grammars.js";
 import { buildLive } from "./live.js";
@@ -155,11 +156,15 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   // and this is the place that asks it. The order of choice is the router's, unchanged: the PC if it is online, GitHub's computers, paid, wait.
   let routerRef: JobRouter | null = null;
   const desktop = env.USER_DEVICES ? new CloudDesktopProvider({ devices: devicesOf(env), store, router: () => routerRef }) : undefined;
+  // X0's cloud runner (containers.ts): the "paid" place, after the PCs and GitHub, for live sessions; free unless CODE_CLOUD_PAISE_PER_MIN says otherwise.
+  const paid = liveOn && env.XODE_RUNNER && cfg.CODE_CLOUD_RUNNER ? new CloudContainerProvider({ env, router: () => routerRef, paisePerMin: cfg.CODE_CLOUD_PAISE_PER_MIN }) : undefined;
   const jobs = createJobs({
-    code, github: githubActions, notify, log, store, actions: true, ...(desktop ? { desktop } : {}), ...(offerSession ? { offerSession } : {}),
+    code, github: githubActions, notify, log, store, actions: true, ...(desktop ? { desktop } : {}), ...(paid ? { paid } : {}), ...(offerSession ? { offerSession } : {}),
   });
   if (!jobs) throw new Error("The job router could not be made.");
   routerRef = jobs;
+  // A cloud runner that stops reports its step here (containers.ts onStop).
+  setRunReporter((userId, body) => jobs.submitResult(userId, body, "paid"));
   const render = cloudflareRendererFromConfig();
   const dProjects = projectDepsOf(code)!;
   const classic = routerRunner({ jobs, store, now: Date.now, sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)) });

@@ -475,3 +475,48 @@ No model is asked, and the round never holds the commit. When it can't run, the 
 - **Where links are made:** the VPS signs them when a job is read (`GET /v1/code/jobs/:id`, `report.shots[].url`), on `CODE_JOBS_URL`.
 
 **Switching it off.** Set `CODE_SCREENS=false`. Without Browser Rendering or the bucket, the round is skipped and the report says so.
+
+## 13. X0's cloud runner
+
+A container per job (Cloudflare Containers), for when the person's computer is off and their GitHub minutes are used up.
+
+**Where it fits.** It is the job router's "paid" place: Xode tries the person's computers, then GitHub's, and only then this one (`jobs/src/containers.ts` `CloudContainerProvider`).
+
+**What it takes.** Live sessions only, which is how the agent runs on Cloudflare. Classic steps stay with a computer or GitHub.
+
+**Price.** `CODE_CLOUD_PAISE_PER_MIN` per minute, rounded up per run.
+- **0, the default, is free.** A place that costs nothing is taken without the person's paid-compute rule or their yes (`code/jobs/placement.ts`).
+- **A price above 0** goes through the rule and the yes like any paid place.
+- **Turning it off:** `CODE_CLOUD_RUNNER=false`.
+
+**How one run goes:**
+1. The router asks for the step's offer. This is the same offer a person's PC gets: the repo, a read-only token for that one repo (or a one-time download link), and the session's ticket.
+2. The job's `XodeRunner` Durable Object starts the container with the offer in `X0_STEP`.
+3. The container (`jobs/container`: Node 22 and git) fetches the code at the step's commit into a git checkout. The token is used once, in the fetch URL, and written nowhere.
+4. It runs `run.mjs`, the same session script GitHub's computers run (written from `RUN_MJS` by `tulmi/scripts/write-container-runner.ts`; a test fails while they differ). It says `kind: "container"` in its hello.
+5. When the room closes the session, the container exits.
+6. The Durable Object reports the step from the exit code and the minutes (`onStop`, then `submitResult(..., "paid")`).
+
+**Limits.**
+- Instance type `standard-2` (1 vCPU, 6 GiB memory, 12 GB disk), at most 10 containers at once.
+- A container nothing talks to is reaped after 2 hours. The session's own idle and maximum times end it long before that.
+
+**Checked here, end to end, in Docker.** The image builds. Against a stand-in room, the container fetched a project, joined with its ticket as "container", ran the commands and streamed their output, and exited 0 when told to close.
+
+**Not checked yet:** the real rollout on Cloudflare (the deploy below).
+
+**Deploy.** One command on the server, which reads everything from `tulmi/.env` and prints no key:
+
+    ssh root@91.108.104.168 'cd ~/tulmi && git pull --ff-only && ./deploy/cloudflare.sh'
+    ssh root@91.108.104.168 'cd ~/tulmi && SWITCH=1 ./deploy/cloudflare.sh'     # when the first run says all PASS: jobs move to Cloudflare
+    ssh root@91.108.104.168 'cd ~/tulmi && BACK=1 ./deploy/cloudflare.sh'       # back to the server
+
+The first command:
+- makes the shared secret if the env file has none;
+- installs Node if the server has none;
+- creates the `x0-job-shots` bucket;
+- deploys the Worker with the server's own settings and builds the runner's image with Docker;
+- hands the Worker its secrets from the env file through a root-only temporary file, deleted at once;
+- checks `/v1/health`.
+
+It needs two lines in the env file: `CLOUDFLARE_DEPLOY_TOKEN` (an API token from the "Edit Cloudflare Workers" template) and `CLOUDFLARE_ACCOUNT_ID`.

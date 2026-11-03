@@ -196,6 +196,8 @@ describe("choosePlacement: the cheapest place there is", () => {
                     let want: "desktop" | "github" | "paid" | "ask" | "wait";
                     if (desktops > 0) want = "desktop";
                     else if (githubEnabled && need <= githubMinutesLeft) want = "github";
+                    // A place that costs nothing (X0's cloud runner while it is free) is taken whatever the rule.
+                    else if (paidAvailable && estimatePaise === 0) want = "paid";
                     else if (canPaid && estimatePaise <= paidLeftPaise) want = "paid";
                     else if (canPaid) want = "ask";
                     else want = "wait";
@@ -205,8 +207,10 @@ describe("choosePlacement: the cheapest place there is", () => {
                     // The invariants the product depends on, stated on their own.
                     if (desktops > 0) expect(kind, label).toBe("desktop");
                     if (kind === "github") expect(desktops === 0 && githubEnabled, label).toBe(true);
-                    if (kind === "paid") expect(desktops === 0 && paidRule !== "never" && paidAvailable && !(githubEnabled && need <= githubMinutesLeft), label).toBe(true);
-                    if (paidRule === "never" || !paidAvailable) expect(["paid", "ask"], label).not.toContain(kind);
+                    if (kind === "paid") expect(desktops === 0 && (paidRule !== "never" || estimatePaise === 0) && paidAvailable && !(githubEnabled && need <= githubMinutesLeft), label).toBe(true);
+                    // "never" means never paying: only a place that costs nothing runs under it, and it is never asked about.
+                    if (paidRule === "never" && estimatePaise > 0) expect(["paid", "ask"], label).not.toContain(kind);
+                    if (!paidAvailable) expect(["paid", "ask"], label).not.toContain(kind);
                     if ("ask" in got) expect(got.estimatePaise, label).toBe(estimatePaise);
                   }
     expect(n).toBe(3 * 2 * 5 * 3 * 2 * 5 * 3 * 2);
