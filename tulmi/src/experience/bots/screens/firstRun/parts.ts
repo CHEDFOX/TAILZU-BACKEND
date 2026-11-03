@@ -12,7 +12,7 @@ import {
 
 export const CLAY = PALETTE_HEX.clay!;
 /** The window's setup steps. */
-export const STEPS = ["Sign in", "About you", "Name"];
+export const STEPS = ["Sign in", "Name"];
 
 export type Style = Record<string, unknown>;
 
@@ -35,14 +35,6 @@ export const W = {
   langH: "Which languages do you speak?",
   langP: "Pick every one you use, at home, at work, with friends.",
   langMix: "Mix them freely. Keylessbord follows how you talk.",
-  youH: "What's your name?",
-  youP: "So your bots know what to call you, and how to write for you.",
-  youGender: "You are",
-  youMissing: "Add your name and pick one.",
-  // Signed in with Apple: Apple already shared what it shares, so nothing about the name is asked of anyone (App Review 4).
-  youHApple: "About you",
-  youPApple: "So your bots know how to write for you. Your name is optional.",
-  youMissingApple: "Pick one to continue.",
   restore: "Restore Purchases",
   restoreDone: "Restore finished. If a plan was bought with this Apple ID or Google account, it's active again.",
   restoreErr: "Couldn't restore just now. Try again in a moment.",
@@ -249,10 +241,11 @@ export const phoneStepBody = (body: Node[], footer: Node[], gap = 18): Node =>
   col([...body, ...(footer.length ? [grow(), col(footer, { gap: 6, paddingTop: 8 })] : [])], { flexGrow: 1, gap });
 
 /** GET /v1/bots/first-run/profile (routes/bots/botsFirstRun.ts). */
-export interface Me { name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null; saved: boolean; onboarded?: boolean }
+/** GET /v1/bots/first-run/about: the About you card (aboutCard.ts), due after a few visits while the answer is owed. */
+export interface About { due: boolean; name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null }
 
 /** A text field in the boards' look: the ink outline, the clear button. */
-export function nameField(path: string, placeholder: string, onSubmit: ActionRef, desk: boolean, o: { capitalize?: boolean; label: string }): Node {
+export function nameField(path: string, placeholder: string, onSubmit: ActionRef, desk: boolean, o: { capitalize?: boolean; label: string; height?: number }): Node {
   const input: Node = {
     type: "TextField", id: path, bind: { value: path },
     props: {
@@ -269,7 +262,7 @@ export function nameField(path: string, placeholder: string, onSubmit: ActionRef
   return row([
     input,
     labelled(box([icon("close", { size: 18, color: C.meta })], { width: 44, height: 44, alignItems: "center", justifyContent: "center", flexShrink: 0 }, setState(path, "")), `Clear ${o.label}`),
-  ], { height: desk ? 54 : 56, borderWidth: 1.5, borderColor: C.ink, borderRadius: desk ? 14 : 16, paddingLeft: 16, paddingRight: desk ? 6 : 4 });
+  ], { height: o.height ?? (desk ? 54 : 56), borderWidth: 1.5, borderColor: C.ink, borderRadius: desk ? 14 : 16, paddingLeft: 16, paddingRight: desk ? 6 : 4 });
 }
 
 // ===================================================================== Turn on Keylessbord

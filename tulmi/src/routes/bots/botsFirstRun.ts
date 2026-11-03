@@ -1,8 +1,13 @@
 /**
  * Bots app · first run: what its screens read beyond the existing routes (screens/firstRun.ts).
  *
- *   GET /v1/bots/first-run/profile     the "Your name" step: the name to start from (the account's own, else the
- *                                      sign-in provider's, else one suggested from the email) and the gender saved
+ *   GET /v1/bots/first-run/about       the About you card on Home: { due, name, source, via, gender }. Due once the
+ *                                      account is onboarded, from the ABOUT_AFTER_VISITS-th visit, while the answer is
+ *                                      owed (the gender, and the name unless they signed in with Apple: App Review 4),
+ *                                      and not put off for now. The name to start from: the account's own, else the
+ *                                      sign-in provider's, else one suggested from the email
+ *   PUT /v1/bots/first-run/about       "Not now": it comes again ABOUT_AGAIN_VISITS visits later, at most ABOUT_PUT_OFF_MAX
+ *                                      times. Saving is PUT /v1/profile { full_name, gender }, after which nothing is owed
  *   GET /v1/bots/first-run/languages   the Language page's chips (the onboarding's own list) and what is picked
  *   GET /v1/bots/first-run/words       the account's spoken words and audio seconds, all time; with ?w=&s= (a baseline
  *                                      taken when the step opened) also what was said since: First words' numbers
@@ -11,7 +16,8 @@
  *   GET /v1/bots/first-run/arrival     { due, kind }: Home's welcome is due. "first": the first visit after onboarding
  *                                      (personality.botsArrivalAt unset). "back": a visit after AWAY_DAYS away, or the
  *                                      first on a newer Home (HOME_VERSION); kept (botsBackDue) until the PUT, so a screen
- *                                      that refreshes mid-welcome still has it. Each new visit is recorded (botsHomeSeenAt).
+ *                                      that refreshes mid-welcome still has it. Each new visit is recorded (botsHomeSeenAt)
+ *                                      and counted (botsVisits).
  *   PUT /v1/bots/first-run/arrival     it was: botsArrivalAt is set (once; a second PUT keeps the first time), the welcome
  *                                      back cleared
  *
@@ -181,6 +187,11 @@ const HOME_VERSION = 2;
 const AWAY_DAYS = 14;
 /** One visit: Home opened again within this counts as the same one. */
 const VISIT_MS = 30 * 60_000;
+/** The About you card: first on this visit, again this many visits after a "Not now", and put off at most this often. */
+const ABOUT_AFTER_VISITS = 3;
+const ABOUT_AGAIN_VISITS = 4;
+const ABOUT_PUT_OFF_MAX = 3;
+const GENDER_VALUES = new Set(["male", "female", "other"]);
 
 export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaDeps): void {
   const rl = { config: deps.rateLimit };
@@ -195,7 +206,9 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
     if (now - seen > VISIT_MS) {
       // A new visit: after a long time away, or the first on a newer Home, it is welcomed back (once onboarded).
       const back = !!p.botsArrivalAt && ((p.botsHomeVersion ?? 0) < HOME_VERSION || (seen > 0 && now - seen > AWAY_DAYS * 86_400_000));
-      p = await updatePersonality(user, (c) => ({ ...c, botsHomeSeenAt: new Date(now).toISOString(), botsHomeVersion: HOME_VERSION, ...(back ? { botsBackDue: true } : {}) }))
+      p = await updatePersonality(user, (c) => ({
+        ...c, botsHomeSeenAt: new Date(now).toISOString(), botsHomeVersion: HOME_VERSION, botsVisits: (c.botsVisits ?? 0) + 1, ...(back ? { botsBackDue: true } : {}),
+      }))
         .catch(() => p);
     }
     if (!p!.botsArrivalAt) return reply.send({ due: true, kind: "first" });
@@ -214,21 +227,30 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
     }
   });
 
-  app.get("/v1/bots/first-run/profile", rl, async (req, reply) => {
+  app.get("/v1/bots/first-run/about", rl, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return unauthorized(reply);
-    const profile = await getProfile(user).catch(() => null);
-    const gender = profile?.gender === "male" || profile?.gender === "female" || profile?.gender === "other" ? profile.gender : null;
-    return reply.send({
-      ...startingName(user, profile?.fullName),
-      via: signedInVia(user),
-      gender,
-      // Both answers are what the name and gender card asks for: with both, the step has nothing to ask. Signed in with Apple,
-      // the name is optional (App Review 4), so the pick alone is enough.
-      saved: !!((profile?.fullName?.trim() || signedInVia(user) === "apple") && gender),
-      // Onboarded before the first run asked it: the screen is then only About you (the bootstrap's promptScreenId).
-      onboarded: profile?.onboarded === true,
-    });
+    const [profile, p] = await Promise.all([getProfile(user).catch(() => null), getPersonality(user).catch(() => null)]);
+    const gender = profile?.gender && GENDER_VALUES.has(profile.gender) ? profile.gender : null;
+    const via = signedInVia(user);
+    const visits = p?.botsVisits ?? 0;
+    const due = !!profile?.onboarded && !!p
+      && (!gender || (!profile.fullName?.trim() && via !== "apple"))
+      && visits >= Math.max(ABOUT_AFTER_VISITS, p.botsAboutFrom ?? 0)
+      && (p.botsAboutPutOff ?? 0) < ABOUT_PUT_OFF_MAX;
+    return reply.send({ due, ...startingName(user, profile?.fullName), via, gender });
+  });
+
+  app.put("/v1/bots/first-run/about", rl, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    try {
+      await updatePersonality(user, (p) => ({ ...p, botsAboutFrom: (p.botsVisits ?? 0) + ABOUT_AGAIN_VISITS, botsAboutPutOff: (p.botsAboutPutOff ?? 0) + 1 }));
+      return reply.send({ ok: true });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ code: "internal", message: "Couldn't save that" });
+    }
   });
 
   app.get("/v1/bots/first-run/languages", rl, async (req, reply) => {

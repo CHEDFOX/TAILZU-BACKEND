@@ -6,8 +6,7 @@ import type { Node, ScreenResponse } from "../../../../../../shared/types/sdui.j
 import { ASSISTANT_NAME } from "../../../assistantName.js";
 import { type BlipPose, blip, type BotsCtx, C, when, col } from "../../kit.js";
 import { nameStep } from "./nameStep.js";
-import { type Pose, type Figure, respond, type Me, GENDERS } from "./parts.js";
-import { youStep } from "./youStep.js";
+import { type Pose, type Figure, respond } from "./parts.js";
 
 /** The same pose as the kit's picture of him, for a build that draws no stage. */
 const KIT_POSE: Record<Pose, BlipPose> = { wave: "hello", listen: "listen", wait: "listen", think: "think", present: "needs", tada: "done" };
@@ -35,8 +34,8 @@ const STAGE_LOOK = {
   bubble: { background: C.paper, border: C.ink, ink: C.ink, font: "Tailzu Hand", size: 17, bigSize: 19 },
   glide: { slide: 18, outMs: 200, inMs: 260, inDelayMs: 40 },
 };
-/** The run's steps, for the stages' `first` / `of`: Welcome and Sign in, Code, About you, Name. */
-const RUN_STEPS = 4;
+/** The run's steps, for the stages' `first` / `of`: Welcome and Sign in, Code, Name. */
+const RUN_STEPS = 3;
 
 /** An OnboardStage in the run's look: one Blip walks from spot to spot across it, and on into the next stage. */
 export function stageNode(id: string, first: number, steps: Node[], extra: Record<string, unknown> = {}): Node {
@@ -62,32 +61,22 @@ export function stageScreen(ctx: BotsCtx, o: { title: string; id: string; first:
   }, state);
 }
 
-// ===================================================================== About you, Name: the stage after sign-in
+// ===================================================================== Name: the stage after sign-in
 
 /** GET /v1/personality, as much as this step reads. */
 export interface Persona { personality?: { assistantName?: string } }
 
-export interface AfterSignIn { me?: Me; persona?: Persona }
+export interface AfterSignIn { persona?: Persona }
 
 /**
- * bots.name-it: About you, then Name, on the stage Blip walks on to from the gate's (id "bots.first"). Someone whose
- * account already has both answers starts on Name.
+ * bots.name-it: Name, on the stage Blip walks on to from the gate's (id "bots.first"). Nothing about the person is asked
+ * here: their name and gender are the About you card's, on Home after a few visits (aboutCard.ts).
  */
 export function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenResponse {
   const fig = figureFor(ctx);
-  const me = data?.me;
-  const gender = GENDERS.some((g) => g.value === me?.gender) ? me!.gender! : "";
-  // Someone already onboarded is here only for the card's question (the bootstrap's promptScreenId): About you
-  // alone, which closes once saved. Naming it, and finishing the first run, are not theirs to do again.
-  const only = me?.onboarded === true;
   return stageScreen(ctx, {
-    title: "About you", id: only ? "bots.about-you" : "bots.first", first: 2,
-    steps: only ? [youStep(ctx, fig, me, true)] : [youStep(ctx, fig, me), nameStep(ctx, fig)],
-    state: {
-      step: me?.saved && !only ? 1 : 0,
-      fullName: me?.name ?? "",
-      gender,
-      name: (data?.persona?.personality?.assistantName ?? "").trim() || ASSISTANT_NAME,
-    },
+    title: "Name", id: "bots.first", first: 2,
+    steps: [nameStep(ctx, fig)],
+    state: { step: 0, name: (data?.persona?.personality?.assistantName ?? "").trim() || ASSISTANT_NAME },
   });
 }

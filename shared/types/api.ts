@@ -195,6 +195,15 @@ export interface Personality {
   botsBackDue?: boolean;
 
   /**
+   * The About you card (name and gender, on Home after a few visits; routes/bots/botsFirstRun.ts, GET/PUT
+   * /v1/bots/first-run/about): how many visits so far (counted with botsHomeSeenAt, at most one a half hour), the visit
+   * from which it may come again after a "Not now", and how many times it was put off.
+   */
+  botsVisits?: number;
+  botsAboutFrom?: number;
+  botsAboutPutOff?: number;
+
+  /**
    * When the Bots app's "turn on notifications" card (on a phone's Home, once a bot is working or needs them) was answered:
    * notifications allowed, or "Not now" (routes/bots/botsPushAsk.ts, PUT /v1/bots/push-ask). Unset: it may still come up.
    */

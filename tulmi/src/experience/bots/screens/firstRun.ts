@@ -17,18 +17,18 @@
  *   blip.js walker), walking him from spot to spot. He waves on Welcome, listens while the number or the email is
  *   typed, waits for the code and thinks while it is checked. After the code the gate goes and the app fetches
  *   bots.name-it, whose root is a stage too (id "bots.first"): the apps hold Blip and the white ground through the
- *   swap, exactly as they do between the onboarding's two stages, and he walks on to its spot, presents "About you",
- *   and cheers on "Name". Reduce Motion is the apps': no walk and no glide, a fade.
+ *   swap, exactly as they do between the onboarding's two stages, and he walks on to its spot and cheers on "Name".
+ *   Reduce Motion is the apps': no walk and no glide, a fade.
  *
- *   After the session, bots.name-it is the first screen of someone not onboarded yet (buildBootstrap): About you (the
- *   name and gender card's own question and write, PUT /v1/profile { full_name, gender }, started from the sign-in's
- *   own name), then "What will you call me?" (X0 unless they pick their own), which saves the boss bot's name and marks the account onboarded (PUT /v1/profile
- *   { onboarded }, as the onboarding's Done does) and lands on Bots.
+ *   After the session, bots.name-it is the first screen of someone not onboarded yet (buildBootstrap): "What will you
+ *   call me?" (X0 unless they pick their own), which saves the boss bot's name and marks the account onboarded (PUT
+ *   /v1/profile { onboarded }, as the onboarding's Done does) and lands on Bots. Nothing about the person is asked in
+ *   the run: their name and gender are the About you card's, on Home after a few visits (firstRun/aboutCard.ts).
  *
  * As screens of their own (bots.welcome, bots.sign-in, bots.sign-code) the three sign-in steps are the same layout
  * drawn with the kit only, each on a stage of its own so Blip walks on from one to the next; someone who reaches them is
  * already signed in, so Google and Apple lead to the gate (sign out), and Send code and Continue walk on through the
- * Code page to About you without sending anything. A build without the stage gets each step as a page.
+ * Code page to Name without sending anything. A build without the stage gets each step as a page.
  *
  * AFTER ONBOARDING, two cards on Bots (and on Keylessbord) ask for what Keylessbord still lacks: the keyboard with Full Access
  * (opens the keyboard's settings) and the microphone (asks for it, then opens First words). Each is drawn from what
@@ -52,7 +52,7 @@ import { keyOnDesk, keyOnPhone } from "./firstRun/keyStep.js";
 import { type Langs, language } from "./firstRun/language.js";
 import {
   CLAY, W, go, setState, type Figure, link, type DeskOpts, STEPS, deskFig, deskFoot, chevron, phoneHeading, deskHeading, deskBack, back,
-  gateStep, deskBody, phoneStepBody, type Me, type Words,
+  gateStep, deskBody, phoneStepBody, type Words,
 } from "./firstRun/parts.js";
 import { type Plans, plansScreen } from "./firstRun/plansScreen.js";
 
@@ -521,13 +521,7 @@ export const firstRunScreens: BotsScreen[] = [
   screen<Langs>({ id: SCREENS.language, load: (_ctx, deps) => deps.api<Langs>("GET", "/v1/bots/first-run/languages"), build: language }),
   screen<AfterSignIn>({
     id: SCREENS.nameIt,
-    load: async (_ctx, deps) => {
-      const [me, persona] = await Promise.all([
-        deps.api<Me>("GET", "/v1/bots/first-run/profile").catch(() => undefined),
-        deps.api<Persona>("GET", "/v1/personality").catch(() => undefined),
-      ]);
-      return { me, persona };
-    },
+    load: async (_ctx, deps) => ({ persona: await deps.api<Persona>("GET", "/v1/personality").catch(() => undefined) }),
     build: afterSignIn,
   }),
   screen<Words>({

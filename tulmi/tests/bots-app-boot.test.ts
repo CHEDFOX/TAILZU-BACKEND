@@ -81,21 +81,17 @@ describe("the bootstrap", () => {
     expect(on.flags?.["desktop.desk"]).toBe(true);
     expect(on.flags?.["desktop.desk.settingsScreenId"]).toBe("desk_settings");
   });
-  it("on, for someone the new onboarding has not finished: the onboarding first (the Bots app's own, About you and Name)", () => {
+  it("on, for someone the new onboarding has not finished: the onboarding first (the Bots app's own: Name)", () => {
     const on = buildBootstrap({ onboarded: false, botsApp: true, onboardV2: true, launchCount: 1 });
     expect(on.initialScreenId).toBe("bots.name-it");
-    // The run asks the name and gender card's question itself: the card is not laid over anything meanwhile.
+    // The name and gender are the About you card's, on Home after a few visits: never the native card, never a prompt.
     expect(on.flags?.["profileGate.screenIds"]).toEqual([]);
-    // Onboarded before the run asked it: no native card any more. The run's own screen asks, over Home after a
-    // pause (promptScreenId bots.name-it, About you alone for them), only while the answer is owed.
-    const owed = buildBootstrap({ onboarded: true, botsApp: true });
-    expect(owed.flags?.["profileGate.screenIds"]).toEqual([]);
-    expect(owed.flags?.["promptScreenId"]).toBe("bots.name-it");
-    const answered = buildBootstrap({ onboarded: true, botsApp: true, profileComplete: true });
-    expect(answered.flags?.["profileGate.screenIds"]).toEqual([]);
-    expect(answered.flags?.["promptScreenId"]).toBeUndefined();
-    // Never in front of a reviewer, and the old app keeps its card.
-    expect(buildBootstrap({ onboarded: true, botsApp: true, isReviewer: true }).flags?.["promptScreenId"]).toBeUndefined();
+    for (const o of [{ onboarded: true }, { onboarded: true, profileComplete: true }, { onboarded: true, isReviewer: true }]) {
+      const b = buildBootstrap({ ...o, botsApp: true });
+      expect(b.flags?.["profileGate.screenIds"]).toEqual([]);
+      expect(b.flags?.["promptScreenId"]).toBeUndefined();
+    }
+    // The old app keeps its card.
     expect(buildBootstrap({ onboarded: true }).flags?.["profileGate.screenIds"]).toEqual(["personality", "home"]);
   });
 });

@@ -26,7 +26,9 @@ import {
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, DELETION_PATH } from "./accountGrace.js";
+import { ABOUT_PATH } from "./firstRun/aboutCard.js";
 import { arrivalCard, ARRIVAL_PATH } from "./firstRun/arrivalCard.js";
+import type { About } from "./firstRun/parts.js";
 import { hasNotes, NOTES_STATS_PATH } from "./notes.js";
 import { outboxCard, offlineKept } from "./outbox.js";
 import { PUSH_ASK_PATH } from "./pushAsk.js";
@@ -61,6 +63,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     body: [
       head,
       ...n.leaving,
+      ...n.about,
         ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
       // The first time here: one card for this computer's microphone and Accessibility, over Home, and the bot saying hello.
       ...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []),
@@ -99,6 +102,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       body: [
         head,
         ...n.leaving,
+        ...n.about,
         ...(n.arrival ? arrivalCard(ctx) : []),
         row([
           col([
@@ -145,6 +149,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     body: [
       head,
       ...n.leaving,
+      ...n.about,
       ...(n.arrival ? arrivalCard(ctx) : []),
       hello(ctx, more),
       // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started.
@@ -310,7 +315,7 @@ export const shellScreens: BotsScreen[] = [
     // Whether the first-arrival card (and the bot's hello) is due (once, after onboarding), the name they gave their bot, whether the
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
-      const [arrival, leaving, push, notes, persona, routines] = await Promise.all([
+      const [arrival, leaving, push, notes, persona, routines, about] = await Promise.all([
         deps.api<{ due: boolean; kind?: "first" | "back" }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
@@ -319,11 +324,15 @@ export const shellScreens: BotsScreen[] = [
         deps.api<{ personality?: { assistantName?: string } }>("GET", "/v1/personality").catch(() => undefined),
         // Routines, for Home's row once there is one (screens/routines.ts).
         deps.api<RoutinesData>("GET", ROUTINES_PATH).catch(() => undefined),
+        // The About you card (firstRun/aboutCard.ts): due after a few visits, while the name and gender are owed.
+        deps.api<About>("GET", ABOUT_PATH).catch(() => undefined),
       ]);
-      return { arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality), routines };
+      return { arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality), routines, about };
     },
     build: (ctx, data) => {
-      const arrival = !!data?.arrival, more: HomeMore = { leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true, routines: data?.routines };
+      const arrival = !!data?.arrival, more: HomeMore = {
+        leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true, routines: data?.routines, about: data?.about,
+      };
       // One Home for everyone, new or not; the bot's hello on top only the first time.
       return ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
     },

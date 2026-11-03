@@ -14,7 +14,9 @@ import {
 } from "../../kit.js";
 import { type DeletionState, leavingCard } from "../accountGrace.js";
 import { ARRIVAL_STATE } from "../firstRun.js";
+import { aboutCard, aboutState } from "../firstRun/aboutCard.js";
 import { arrivalCard } from "../firstRun/arrivalCard.js";
+import type { About } from "../firstRun/parts.js";
 import { hasNotes, notesTileSpec, notesStripHeight, notesStrip } from "../notes.js";
 import { outboxCard } from "../outbox.js";
 import { pushAskDue, PUSH_STATE, withPushCheck, pushAskCard } from "../pushAsk.js";
@@ -53,22 +55,26 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
 /** What Home's state starts with: the first-arrival card's, when it is due. */
 const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
 
-/** What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due (pushAsk.ts). */
-export interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
+/**
+ * What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due
+ * (pushAsk.ts), and the About you card (firstRun/aboutCard.ts).
+ */
+export interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the
- * first-arrival card when due; else, on a phone, the notifications ask once something is working or needs them (its header reads
- * the phone's answer). `state` is what the page starts with.
+ * first-arrival card when due; else the About you card when due (a few visits in); else, on a phone, the notifications ask once
+ * something is working or needs them (its header reads the phone's answer). `state` is what the page starts with.
  */
 export function homeNotices(ctx: BotsCtx, arrival: boolean, more: HomeMore) {
   const leaving = leavingCard(ctx, more.leaving);
   const firstRun = arrival && !leaving.length;
-  const push = !leaving.length && !firstRun && pushAskDue(ctx, more.push === true);
+  const about = !leaving.length && !firstRun && more.about?.due === true;
+  const push = !leaving.length && !firstRun && !about && pushAskDue(ctx, more.push === true);
   return {
-    state: { ...homeState(firstRun), ...(push ? PUSH_STATE : {}) },
+    state: { ...homeState(firstRun), ...(push ? PUSH_STATE : {}), ...(about ? aboutState(more.about) : {}) },
     head: (n: Node): Node => (push ? withPushCheck(ctx, n) : n),
-    leaving, arrival: firstRun, push: push ? pushAskCard(ctx, true) : [],
+    leaving, arrival: firstRun, about: about ? aboutCard(ctx, more.about) : [], push: push ? pushAskCard(ctx, true) : [],
   };
 }
 
@@ -116,6 +122,7 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const home: Node[] = [
     n.head(head),
     ...n.leaving,
+    ...n.about,
     ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
     ...(first ? [needsCard(first)] : []),
     ...n.push,

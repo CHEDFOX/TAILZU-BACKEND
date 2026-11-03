@@ -8,7 +8,7 @@ import {
   call, seq, text, type BotsCtx, row, meta, C, botAvatar, botLook, col, sectionLabel, grow, box, divider, button, primaryButton,
 } from "../../kit.js";
 import {
-  toast, type Figure, nameField, setState, gateStep, deskBody, signedInAs, deskFig, deskHeading, STEPS, W, deskFoot, phoneStepBody,
+  toast, type Figure, nameField, setState, gateStep, deskBody, signedInAs, deskFig, deskHeading, W, deskFoot, phoneStepBody,
   phoneTop, phoneHeading,
 } from "./parts.js";
 
@@ -52,10 +52,10 @@ export function nameStep(ctx: BotsCtx, fig: Figure): Node {
   if (desk) {
     const heads = ctx.live.bots.slice(0, 4);
     return gateStep(true, deskBody({
-      title: "What will you call me?", right: signedInAs(ctx), current: 2,
+      title: "What will you call me?", right: signedInAs(ctx), current: 1,
       left: [
         deskFig(fig, "tada", 140),
-        deskHeading(`Step 2 of ${STEPS.length - 1}`, W.nameH, W.nameP),
+        deskHeading("Last step", W.nameH, W.nameP),
         ...(heads.length ? [row([
           row(heads.map((b) => botAvatar(b, 22)), { gap: 4 }),
           meta(`${heads.length === 1 ? "1 bot" : `${heads.length} bots`} will report to this name`, { size: 13 }),
@@ -78,7 +78,7 @@ export function nameStep(ctx: BotsCtx, fig: Figure): Node {
     }), { props: { stepId: "name" } });
   }
   return gateStep(false, [phoneStepBody([
-    phoneTop(2, 2, { back: setState("step", 0) }),
+    phoneTop(1, 1),
     row([fig("tada", 128)], { justifyContent: "center" }),
     phoneHeading(W.nameH, W.nameP),
     col([sectionLabel("Name"), fieldBox, ideas], { gap: 8 }),
