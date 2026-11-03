@@ -24,7 +24,7 @@ import type { Spending } from "./limits.js";
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
-const PEOPLE = new Set(["space_task", "space_plan", "space_message"]);
+const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined"]);
 
 /** The person's minute of the day, in their own time. */
 const minuteOf = (now: number, tzOffsetMinutes: number): number => {

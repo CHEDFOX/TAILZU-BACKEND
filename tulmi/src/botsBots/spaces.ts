@@ -64,7 +64,8 @@ export interface SpaceDetail extends SpaceView {
 }
 
 export interface Access { s: SpaceRow; me: MemberRow; admin: boolean; perms: Perm[]; roles: RoleRow[] }
-export type MemberEvent = { spaceId: string; joined?: { userId: string; name: string }; left?: string; deleted?: boolean };
+/** joined.invitedBy: who made the invite that was used (they are told: routes/bots/botsSpaces.ts). */
+export type MemberEvent = { spaceId: string; joined?: { userId: string; name: string; invitedBy?: string; spaceName?: string }; left?: string; deleted?: boolean };
 export type Publish = (userIds: Iterable<string>, topic: string, data?: Record<string, unknown>) => void;
 
 const SPACES_MAX = 10;
@@ -450,7 +451,7 @@ export class Spaces {
     const who = clean(me, 40) || "Someone";
     await this.members.insert({ space_id: s.id, user_id: userId, name: who, can_approve: perms.includes("approve"), joined_ms: this.now(), perms, role });
     await this.note(s.id, userId, "joined", `${who} joined`);
-    await this.emit({ spaceId: s.id, joined: { userId, name: who } });
+    await this.emit({ spaceId: s.id, joined: { userId, name: who, invitedBy: inv.created_by, spaceName: s.name } });
     await this.changed(s.id);
     return { id: s.id, name: s.name };
   }

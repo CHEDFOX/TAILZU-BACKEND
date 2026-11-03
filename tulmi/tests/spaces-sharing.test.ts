@@ -171,7 +171,10 @@ describe("invites by link and by email", () => {
     expect((await s.call("GET", `${AREA}/invite/${inv.code}`, null)).body).not.toContain("example.in");
     // Whoever uses it first is in, whatever email they signed in with (Rohan leaves first, so he can join by it).
     await s.call("DELETE", `${AREA}/spaces/${id}`, R_);
+    pushes.length = 0;
     expect((await s.call("POST", `${AREA}/spaces/join`, R_, { code: inv.code })).status).toBe(200);
+    // Aanya, who made the invite, is told who came in with it.
+    expect(pushes.filter((p) => p.kind === "space_joined")).toEqual([expect.objectContaining({ userId: A_, vars: expect.objectContaining({ space: "Home" }) })]);
     const d = (await s.call("GET", `${AREA}/spaces/${id}`, R_)).body.space;
     expect(memberOf(d, R_)).toMatchObject({ roleName: "Guest" });
     // Used up: nobody else, not even the address it was sent to.
@@ -452,7 +455,7 @@ describe("tasks and plans for others", () => {
     expect((await s.call("POST", `${AREA}/spaces/${id}/tasks`, M_, { kind: "plan", title: "Pick up Rohan", people: [R_], day: "2026-10-29", tz: 330 })).status).toBe(400);
     await s.call("POST", `${AREA}/spaces/${id}/tasks`, M_, { kind: "plan", title: "Pick up Rohan", people: [R_], day: "2026-10-29", time: "16:00", endTime: "16:30", place: "School gate", tz: 330 });
     await s.call("POST", `${AREA}/spaces/${id}/tasks`, M_, { title: "Homework", people: [R_], day: "2026-10-30", tz: 330 });
-    expect(pushes.map((p) => p.kind)).toEqual(["space_plan", "space_task"]);
+    expect(pushes.filter((p) => p.kind !== "space_joined").map((p) => p.kind)).toEqual(["space_plan", "space_task"]);
     const plan = await new PlanDays(null, null, () => s.clock.t).read(R_, { tz: 330 });
     const thu = plan.days.find((d) => d.key === "2026-10-29")!;
     // On Rohan's own calendar and to-dos (src/calendar), whoever he is: nothing to connect.

@@ -114,7 +114,7 @@ const INLINE = /^(image\/(png|jpeg|webp|gif|heic|heif)|application\/pdf|audio\/[
 export interface SpaceParts { spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety }
 
 /** A push to someone's phones (push/defaults.ts space_*): never throws, and says nothing private. */
-const push = async (userId: string, msg: { kind: "space_task" | "space_plan" | "space_message"; key: string; vars: Record<string, string>; data: Record<string, string> }) => {
+const push = async (userId: string, msg: { kind: "space_task" | "space_plan" | "space_message" | "space_joined"; key: string; vars: Record<string, string>; data: Record<string, string> }) => {
   try { await pushEngine()?.notify(userId, msg); } catch { /* a missed push is not a lost task or message: both are in the app */ }
 };
 
@@ -145,6 +145,12 @@ export function spaceParts(spaces: Spaces, o: {
   const tasks = new SpaceTasks(spaces, now, { notify: push });
   // Plans and tasks from other people land on the person's own calendar ("From Aanya"); their tick, or no, there is their answer here.
   calendar().onSpaceAnswer((userId, spaceId, taskId, status) => tasks.answer(userId, spaceId, taskId, { status }));
+  // Whoever made the invite that was used hears who came in with it, so a code that reached the wrong person is seen at once.
+  spaces.onMembers(async (e) => {
+    const j = e.joined;
+    if (!j?.invitedBy || j.invitedBy === j.userId) return;
+    await push(j.invitedBy, { kind: "space_joined", key: `${e.spaceId}:${j.userId}`, vars: { name: j.name, space: j.spaceName ?? "your space" }, data: { spaceId: e.spaceId } });
+  });
   const safety = new Safety(spaces, threads, items, now, { log: o.log, suspend: o.suspend !== undefined ? o.suspend : supabase() ? suspendWithSupabase : null });
   return { spaces, threads, items, payments: new Payments(spaces, now), tasks, safety };
 }
