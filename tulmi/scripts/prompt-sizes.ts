@@ -65,7 +65,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   // The Xode flow (src/code/flow): written after the principles, so their first size is their "before".
   code_plan_open: 1186,
   code_plan_keep: 935,
-  code_triage: 1427,
+  code_triage: 1557,
   // PR care (src/code/prcare, src/code/agent/merge.ts): written after the principles too, so their first size is their "before".
   care_review: 1422,
   care_conflict: 697,

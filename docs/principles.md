@@ -193,7 +193,7 @@ The front door's six roles (`src/front/`), PR care's two (`care_review`, `care_c
 | front_look | 587 | 168 |
 | code_plan_open | 1186 | 339 |
 | code_plan_keep | 935 | 267 |
-| code_triage | 1427 | 408 |
+| code_triage | 1557 | 445 |
 | care_review | 1422 | 407 |
 | care_conflict | 697 | 200 |
 | team_split | 1778 | 508 |

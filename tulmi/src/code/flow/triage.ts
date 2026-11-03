@@ -16,6 +16,7 @@
  * which is never worse than dropping them.
  */
 import { z } from "zod";
+import { classifyByRules } from "../brain/classify.js";
 import { askJson, cut, fence, forModel, oneLine, type ModelCtx } from "../work/model.js";
 import { STEPS_MAX, type ProjectPlan } from "./plan.js";
 
@@ -55,6 +56,13 @@ export interface TriageInput {
 
 const block = (tag: string, text: string) => `<${tag}>\n${fence(forModel(text))}\n</${tag}>`;
 
+/** The language a reply is written in, read from the person's own words by rules (never a guess from the project). */
+export function replyLanguage(message: string): string {
+  if (!message.trim()) return "English";
+  const l = classifyByRules(message, { repoEmpty: false }).language;
+  return l === "hinglish" ? "Hinglish (Hindi in Latin letters)" : l === "hi" ? "Hindi" : "English";
+}
+
 export async function triage(ctx: ModelCtx, i: TriageInput, now = Date.now()): Promise<Triage> {
   const r = await askJson(ctx, {
     tier: "cheap", purpose: "flow.triage", role: "code_triage", schema: TriageOut, maxTokens: 900,
@@ -63,6 +71,7 @@ export async function triage(ctx: ModelCtx, i: TriageInput, now = Date.now()): P
       ...(i.keep ? [block("keep", `Must not change: ${i.keep}`)] : []),
       block("doing", oneLine(i.doing, 300) || "working on the plan"),
       block("message", cut(i.message, 2000) || "(no words, only the picture)"),
+      `Write say in ${replyLanguage(i.message)}.`,
       ...(i.picture ? [block("picture", cut(i.picture, 1500))] : []),
     ].join("\n\n"),
   });
@@ -72,6 +81,10 @@ export async function triage(ctx: ModelCtx, i: TriageInput, now = Date.now()): P
   const v = r.value;
   const affects = [...new Set((v.affects ?? []).filter((n) => n <= i.plan.steps.length))].sort((a, b) => a - b);
   const say = oneLine(v.say, 1500) || defaultSay(v.kind);
+  // A "change" with no new plan (the same steps, or none: new work Xode put off) never reaches the job, or it would start on it unasked:
+  // it is said back to. One that only rewords one step (a smaller text, a colour) is a detail: it goes to the job, nothing waits for a yes.
+  if (v.kind === "change" && (!v.steps?.length || sameSteps(i.plan.steps, v.steps))) return { kind: "note", affects: [], say, paise: r.paise };
+  if (v.kind === "change" && minorChange(i.plan.steps, v.steps!)) return { kind: "addon", affects: [], say, paise: r.paise };
   if (v.kind === "change" && v.steps?.length) {
     const plan: ProjectPlan = {
       ...i.plan, v: i.plan.v + 1, goal: oneLine(v.goal || i.plan.goal, 200), steps: v.steps.map((s) => oneLine(s, 200)).filter(Boolean).slice(0, STEPS_MAX),
@@ -79,8 +92,20 @@ export async function triage(ctx: ModelCtx, i: TriageInput, now = Date.now()): P
     };
     return { kind: "change", affects, say, plan, paise: r.paise };
   }
-  // A change with no new steps is not a change anyone can approve: it goes to the job as words.
-  return { kind: v.kind === "change" ? "addon" : v.kind, affects: v.kind === "change" ? [] : affects, say, paise: r.paise };
+  return { kind: v.kind, affects, say, paise: r.paise };
+}
+
+const words = (s: string): Set<string> => new Set(s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 2));
+const sameSteps = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((s, n) => s.trim().toLowerCase() === b[n]!.trim().toLowerCase());
+/** The same steps, at most one of them reworded and still mostly the same words: not a change anyone needs to approve. */
+export function minorChange(was: readonly string[], now: readonly string[]): boolean {
+  if (was.length !== now.length) return false;
+  const differ = now.map((s, n) => [was[n]!, s] as const).filter(([a, b]) => a.trim().toLowerCase() !== b.trim().toLowerCase());
+  if (differ.length > 1) return false;
+  if (!differ.length) return true;
+  const [a, b] = [words(differ[0]![0]), words(differ[0]![1])];
+  const shared = [...a].filter((w) => b.has(w)).length;
+  return shared / Math.max(1, Math.min(a.size, b.size)) >= 0.6;
 }
 
 function defaultSay(k: TriageKind): string {
@@ -93,10 +118,13 @@ function defaultSay(k: TriageKind): string {
   }
 }
 
-/** What the job is told, by kind: an add-on as the person's words; a change as which steps wait; a yes as the new plan. */
+/**
+ * What the job is told, by kind: an add-on as the person's words; a change as which steps wait; a yes as the new plan. A picture always
+ * reaches the job, whatever the kind (a screenshot of a review, a design to follow): answering about it never drops it.
+ */
 export function jobNote(t: Triage, message: string, picture?: string): string | null {
   const pic = picture ? `\n\nThey sent a picture with it. What it shows: ${cut(picture, 1200)}` : "";
-  if (t.kind === "addon") return `${cut(message, 2000)}${pic}`;
+  if (t.kind === "addon" || (picture && (t.kind === "question" || t.kind === "note" || t.kind === "mockup"))) return `${cut(message, 2000)}${pic}`;
   if (t.kind === "change" && t.affects.length) {
     return `The person asked for a change that touches step${t.affects.length > 1 ? "s" : ""} ${t.affects.join(", ")} of the plan. Hold off on ${t.affects.length > 1 ? "those" : "that step"} until they approve the new plan; carry on with the others.${pic}`;
   }

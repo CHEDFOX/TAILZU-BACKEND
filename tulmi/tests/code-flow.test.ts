@@ -85,6 +85,8 @@ describe("judging a message sent during the work", () => {
     const { t } = await judge({ kind: "question", affects: [], say: "It's on step 2: building the page." }, "where are you now?");
     expect(t).toMatchObject({ kind: "question", say: "It's on step 2: building the page.", affects: [] });
     expect(jobNote(t, "where are you now?")).toBeNull();
+    // A picture always reaches the job, even with a question about it.
+    expect(jobNote(t, "what does this mean?", "A screenshot of an App Store review")).toContain("They sent a picture with it");
   });
   it("a detail that fits (a colour, a picture to follow) goes to the job, nothing waits", async () => {
     const { t, f } = await judge({ kind: "addon", affects: [], say: "Got it: the school's blue." }, "use our school blue #1F4FA0", "A screenshot of the school logo, blue and white.");
@@ -98,9 +100,17 @@ describe("judging a message sent during the work", () => {
     expect(jobNote(t, "x")).toContain("Hold off on that step until they approve the new plan; carry on with the others.");
     expect(approvedNote(t.plan!)).toContain("The person approved version 2 of the plan");
   });
-  it("a change with no new plan is passed on as words, never a stop", async () => {
-    const { t } = await judge({ kind: "change", affects: [2], say: "ok" }, "make it nicer");
+  it("a change that only rewords one step is a detail: passed on, nothing waits", async () => {
+    const { t } = await judge({ kind: "change", affects: [2], say: "Theek hai, text chhota kar denge.", goal: PLAN.goal, steps: ["Add a results route", "Build the results page with smaller text", "Link it from the dashboard", "Test it on a phone"] }, "text thoda chhota karo");
     expect(t).toMatchObject({ kind: "addon", affects: [] });
+    expect(t.plan).toBeUndefined();
+  });
+  it("a change with no new plan is said back to, and never reaches the job (it would start on it unasked)", async () => {
+    for (const out of [{ kind: "change", affects: [2], say: "That's new work: let's plan it once this is done." }, { kind: "change", affects: [], say: "Later.", goal: PLAN.goal, steps: PLAN.steps }]) {
+      const { t } = await judge(out, "also redo the whole Google sign-in");
+      expect(t).toMatchObject({ kind: "note", affects: [] });
+      expect(jobNote(t, "also redo the whole Google sign-in")).toBeNull();
+    }
   });
   it("a model that cannot answer passes the words on rather than dropping them", async () => {
     const { f, m } = ctx();

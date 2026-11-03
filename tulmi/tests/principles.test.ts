@@ -286,7 +286,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   front_plan: 735, // 668 measured
   code_plan_open: 1239, // 1126 measured
   code_plan_keep: 963, // 875 measured
-  code_triage: 1504, // 1367 measured
+  code_triage: 1647, // 1497 measured
   front_look: 646, // 587 measured
   care_review: 1565, // 1422 measured
   care_conflict: 767, // 697 measured

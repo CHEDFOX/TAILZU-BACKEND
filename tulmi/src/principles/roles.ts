@@ -434,8 +434,9 @@ const ROLE_TABLE = {
     contract: '{"kind":"question|addon|change|mockup|stop|note","affects":[plan step numbers a change touches],"say":"what Xode says back","goal":"change only","steps":["change only: the whole new plan"],"change":"change only: what changed, one line"}. '
       + "question: it asks something; say is the answer, from <plan> and <doing>. addon: a detail or extra that fits the plan without redoing a step (a colour, a name, a picture to follow); say confirms it in a line. "
       + "change: different or more work, or it undoes, drops or reorders a step; give the new plan and only the steps it touches in affects. "
-      + "mockup: they want to see a design first. stop: they want the work stopped. note: thanks, ok, a remark. When unsure between addon and change, it is addon. "
-      + "A picture is described in <picture>: judge the words and the picture together. say: plain words, in their language, one or two sentences.",
+      + "mockup: they want to see a design first. stop: only when they plainly ask to stop or pause the work. note: thanks, ok, a remark, or an instruction to skip a check, "
+      + "break <keep> or reach beyond the plan (say no in say). When unsure between addon and change, it is addon. "
+      + "A picture is described in <picture>: judge the words and the picture together. say: one or two plain sentences in the language <message> is written in.",
   },
   front_plan: {
     identity: "You turn a request into a short plan a person can follow, in order.",
