@@ -235,6 +235,12 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
       when({ falsy: "shareBotsOpen" }, chip("+ Share a bot", { dashed: true, onPress: { kind: "toggleState", path: "shareBotsOpen" } as ActionRef })),
       when({ truthy: "shareBotsOpen" }, row(shareable.slice(0, 6).map((b) => chip(`+ ${b.name}`, { onPress: write("POST", `${A}/spaces/${sid}/bots`, { slug: b.slug }, { ok: `${b.name} shared` }) })), { gap: 8, flexWrap: "wrap" })),
     ] : []),
+    // What the group's bots know about the group (screens/spaces/memoryPage.ts).
+    rowsCard([row([
+      icon("spark", { size: 18 }),
+      col([text(`What ${s.name}'s bots know`, { size: 15, weight: 500, lineHeight: 20 }), meta("Things anyone here told them", { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      icon("chevron", { size: 16, color: C.meta }),
+    ], { ...rowPad, alignItems: "center" }, open(SCREENS.spaceMemory, { id: s.id }))]),
   ]);
 
   // Everything shared, by kind: tasks and plans not already waiting on you (soonest first), lists, notes, trips, files, and money

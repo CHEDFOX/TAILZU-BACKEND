@@ -25,7 +25,9 @@ export interface SpaceThing { kind: "event" | "todo" | "home" | "trip" | "group"
 export interface SectionView {
   id: SectionId; name: string; line: string; use: boolean | null; canAdd: boolean; on: boolean;
   lines: SpaceLine[]; things: SpaceThing[]; me?: { name: string; gender: string | null };
+  groups?: Array<{ id: string; name: string }>;
 }
+type Groups = NonNullable<SectionView["groups"]>;
 
 const ICON: Record<SectionId, IconName> = {
   about: "person", day: "sun", people: "link", places: "pin", likes: "spark", money: "rupee", work: "folder", bots: "computer", files: "notes", timeline: "today",
@@ -103,7 +105,7 @@ function hub(ctx: BotsCtx, d: SpaceOverview | undefined): ScreenResponse {
 // ===================================================================== one section
 
 /** The four things a tapped line offers. Moving and rewording open under it. */
-function lineActions(l: SpaceLine, id: SectionId): Node {
+function lineActions(l: SpaceLine, id: SectionId, groups: Groups): Node {
   const path = `${SPACE_API}/lines/${l.key}`;
   const put = (body: Record<string, unknown>, ok: string): ActionRef => call("PUT", path, body, { ok: seq(toast(ok), { kind: "setState", path: "pick", value: "" } as ActionSpec, refresh), fail: oops("change that") });
   const forget: ActionRef = {
@@ -119,7 +121,18 @@ function lineActions(l: SpaceLine, id: SectionId): Node {
       small("Move", { kind: "setState", path: "mode", value: "move" } as ActionSpec),
       small("Edit", seq({ kind: "setState", path: "edit", value: l.text } as ActionSpec, { kind: "setState", path: "mode", value: "edit" } as ActionSpec)),
       small("Forget", forget),
+      // One line, to one group's bots, by this tap only. Money never leaves the bot that was told.
+      ...(groups.length && l.section !== "money" ? [small("Share", { kind: "setState", path: "mode", value: "share" } as ActionSpec)] : []),
     ], { gap: 8, flexWrap: "wrap" }),
+    when({ eq: ["mode", "share"] }, col([
+      meta("Share this one line with a group's bots. Nothing else of your space goes with it.", { size: 12 }),
+      chips(groups.map((g) => ({ label: g.name, value: g.id })), "shareTo", {
+        onChange: call("POST", `${path}/share`, { space: "$state.shareTo" }, {
+          ok: seq(toast("Shared with the group's bots"), { kind: "setState", path: "pick", value: "" } as ActionSpec),
+          fail: toast("Couldn't share that. It may be there already.") as ActionSpec,
+        }),
+      }),
+    ], { gap: 6 })),
     when({ eq: ["mode", "move"] }, col([meta("Move it to", { size: 12 }), chips(moveTo, "moveTo", { onChange: put({ section: "$state.moveTo" }, "Moved") })], { gap: 6 })),
     when({ eq: ["mode", "edit"] }, col([
       field("edit", "", 2),
@@ -128,14 +141,14 @@ function lineActions(l: SpaceLine, id: SectionId): Node {
   ], { gap: 10, paddingHorizontal: 16, paddingBottom: 14 });
 }
 
-function lineRow(ctx: BotsCtx, l: SpaceLine, id: SectionId): Node {
+function lineRow(ctx: BotsCtx, l: SpaceLine, id: SectionId, groups: Groups = []): Node {
   const tap = { kind: "condition", if: { eq: ["pick", l.key] }, then: { kind: "setState", path: "pick", value: "" }, else: seq({ kind: "setState", path: "pick", value: l.key } as ActionSpec, { kind: "setState", path: "mode", value: "" } as ActionSpec, { kind: "setState", path: "sure", value: "" } as ActionSpec) } as ActionSpec;
   return col([
     row([
       col([text(l.text, { size: 15, lineHeight: 20 }), meta(fromLine(ctx, l, id === "timeline"), { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
       icon("more", { size: 18, color: C.meta }),
     ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, alignItems: "center" }, tap),
-    when({ eq: ["pick", l.key] }, lineActions(l, id)),
+    when({ eq: ["pick", l.key] }, lineActions(l, id, groups)),
   ], {});
 }
 
@@ -193,7 +206,7 @@ function sectionPage(ctx: BotsCtx, v: SectionView | undefined): ScreenResponse {
   const empty = !lines.length && !things.length && !v?.me;
   return page(ctx, {
     back: true, nav: "you", title: v?.name ?? "Your space", gap: 18, ...(desk ? { maxWidth: 760 } : {}),
-    state: { pick: "", mode: "", sure: "", edit: "", moveTo: "", add: "", use: v?.use !== false, editMe: false, meName: v?.me?.name ?? "", meGender: v?.me?.gender ?? "" },
+    state: { pick: "", mode: "", sure: "", edit: "", moveTo: "", shareTo: "", add: "", use: v?.use !== false, editMe: false, meName: v?.me?.name ?? "", meGender: v?.me?.gender ?? "" },
     body: [
       row([
         box([icon(ICON[id], { size: 20 })], { width: 40, height: 40, borderRadius: 20, backgroundColor: C.surface, alignItems: "center", justifyContent: "center" }),
@@ -207,7 +220,7 @@ function sectionPage(ctx: BotsCtx, v: SectionView | undefined): ScreenResponse {
       ...(things.length ? [listCard(things.map((t) => listRow({
         label: t.title, sub: [t.line, t.at !== null && t.kind !== "bot" ? ago(ctx, t.at) : ""].filter(Boolean).join(" · "), onPress: openThing(t),
       })), { title: THINGS_TITLE[id] ?? "Yours" })] : []),
-      ...(id === "timeline" ? byDay(ctx, lines, id) : lines.length ? [listCard(lines.map((l) => lineRow(ctx, l, id)), { title: `What your bots know · ${lines.length}` })] : []),
+      ...(id === "timeline" ? byDay(ctx, lines, id) : lines.length ? [listCard(lines.map((l) => lineRow(ctx, l, id, v?.groups ?? [])), { title: `What your bots know · ${lines.length}` })] : []),
       ...(empty ? [meta(id === "money" ? "Nothing yet. A bot you tell about money keeps it to itself, and it shows here." : "Nothing here yet. As you talk to your bots, what they learn about you shows here.", { size: 13 })] : []),
       ...(v?.canAdd ? [col([
         sectionLabel("Add something"),

@@ -8,6 +8,7 @@
  * Screens listen to their live topics ("space:<id>", "spaces", "threads", "thread:<id>"), so they update when someone else changes them.
  */
 
+import { memoryPage, type GroupMemoryView } from "./spaces/memoryPage.js";
 import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sdui.js";
 import { PERMS, PERM_WORDS } from "../../../botsBots/spacePerms.js";
 import {
@@ -551,6 +552,7 @@ export const spacesScreens: BotsScreen[] = [
     },
     build: botPage,
   }),
+  screen<GroupMemoryView>({ id: SCREENS.spaceMemory, load: (ctx, deps) => deps.api<GroupMemoryView>("GET", `${A}/spaces/${enc(idParam(ctx))}/memory`), build: memoryPage }),
   screen<OneSpace>({ id: SCREENS.spaceMember, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: memberPage }),
   screen<OneSpace>({ id: SCREENS.spaceInvite, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: invitePage }),
   screen<OneSpace>({ id: SCREENS.spaceRoles, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: rolesPage }),

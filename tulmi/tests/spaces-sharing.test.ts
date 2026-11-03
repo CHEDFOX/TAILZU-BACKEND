@@ -546,3 +546,50 @@ describe("a group's sub-bots: what each person shares from their own bots", () =
     expect((await s.call("GET", `${AREA}/spaces/${id}/sharing`, A_)).body.bots[0].sharing).toEqual([]);
   });
 });
+
+describe("what a group's bots know (botsBots/spaceMemory.ts)", () => {
+  beforeEach(() => { resetSpaceTablesForTests(); resetAreaTablesForTests(); });
+  const M = (id: string) => `${AREA}/spaces/${id}/memory`;
+
+  it("anyone in the group writes a line; everyone there sees it with who said it; nobody else does", async () => {
+    const s = await served();
+    const id = await s.home();
+    expect((await s.call("POST", M(id), M_, { text: "Dadi is vegetarian" })).body.line).toMatchObject({ text: "Dadi is vegetarian", section: "people" });
+    expect((await s.call("POST", M(id), R_, { text: "We split the rent on the 1st" })).status).toBe(200); // money is fine for a group
+    const v = (await s.call("GET", M(id), A_)).body;
+    expect(v.lines.map((l: { text: string; by: string }) => `${l.text} · ${l.by}`)).toEqual(["We split the rent on the 1st · Rohan", "Dadi is vegetarian · Meera S."]);
+    expect(v.lines.every((l: { mine: boolean }) => l.mine)).toBe(true); // Aanya is the admin
+    expect((await s.call("GET", M(id), X_)).status).toBe(404);
+    expect((await s.call("POST", M(id), X_, { text: "I'm in" })).status).toBe(404);
+  });
+
+  it("never health, religion or politics; never the same line twice", async () => {
+    const s = await served();
+    const id = await s.home();
+    expect((await s.call("POST", M(id), M_, { text: "Papa has diabetes" })).body.code).toBe("sensitive");
+    expect((await s.call("POST", M(id), M_, { text: "We go to the temple on Tuesdays" })).body.code).toBe("sensitive");
+    await s.call("POST", M(id), M_, { text: "Groceries come on Sunday" });
+    expect((await s.call("POST", M(id), A_, { text: "groceries come on sunday" })).status).toBe(409);
+  });
+
+  it("only the one who wrote it, or the admin, forgets it; leaving takes your lines", async () => {
+    const s = await served();
+    const id = await s.home();
+    const line = (await s.call("POST", M(id), M_, { text: "Mom wakes at 5" })).body.line;
+    expect((await s.call("DELETE", `${M(id)}/${line.id}`, R_)).status).toBe(403);
+    expect((await s.call("DELETE", `${M(id)}/${line.id}`, A_)).status).toBe(200);
+    await s.call("POST", M(id), M_, { text: "Mom likes filter coffee" });
+    await s.call("DELETE", `${AREA}/spaces/${id}`, M_);
+    expect((await s.call("GET", M(id), A_)).body.lines).toEqual([]);
+  });
+
+  it("a bot shared into the group reads the group's lines; one that isn't reads nothing", async () => {
+    const s = await served();
+    const id = await s.home();
+    await s.call("POST", M(id), M_, { text: "Dadi is vegetarian" });
+    expect(await s.parts.memory.forBot(A_, "plan")).toEqual([]);
+    await s.call("POST", `${AREA}/spaces/${id}/bots`, A_, { slug: "plan" });
+    const told = await s.parts.memory.forBot(A_, "plan");
+    expect(told).toEqual([{ name: "What Home told its bots", kind: "space", text: "- Dadi is vegetarian (said by Meera S.)" }]);
+  });
+});

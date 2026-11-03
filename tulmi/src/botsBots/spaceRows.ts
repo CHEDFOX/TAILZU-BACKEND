@@ -39,6 +39,8 @@ class SupabasePaged<R extends Row> extends SupabaseTable<R> implements PagedTabl
 const SPACE_TABLES = [
   "space_roles", "space_activity", "space_items", "space_payments", "space_tasks", "threads", "thread_members", "thread_messages", "mail_outbox",
   "user_blocks", "content_reports", "space_bot_shares",
+  // migration 0064: what a group's bots know about the group (spaceMemory.ts)
+  "space_facts",
 ] as const;
 export type SpaceTableName = (typeof SPACE_TABLES)[number];
 

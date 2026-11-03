@@ -44,7 +44,7 @@ const of = (id: SectionView["id"], o: Partial<SectionView>): SectionView => ({
 });
 
 export const SECTIONS: Record<string, SectionView> = {
-  about: of("about", { line: "Who you are, and how you like to be talked to.", lines: LINES.filter((l) => l.section === "about"), me: { name: "Aanya Sharma", gender: "female" } }),
+  about: of("about", { line: "Who you are, and how you like to be talked to.", lines: LINES.filter((l) => l.section === "about"), me: { name: "Aanya Sharma", gender: "female" }, groups: [{ id: "s1", name: "Sharma family" }, { id: "s2", name: "Flat 4B" }] }),
   day: of("day", {
     line: "Your routine, and what's on next.", lines: LINES.filter((l) => l.section === "day"),
     things: [

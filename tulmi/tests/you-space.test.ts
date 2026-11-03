@@ -201,10 +201,12 @@ describe("UserSpace", () => {
 });
 
 describe("the routes", () => {
+  const shared: Array<{ space: string; text: string; section: unknown; fromKey?: string }> = [];
+  const groups = { add: async (_u: string, space: string, text: string, o: { section?: unknown; fromKey?: string }) => { shared.push({ space, text, ...o }); return { id: "g1", text }; } };
   async function app() {
     const r = await seeded();
     const a = Fastify();
-    registerYouSpaceRoutes(a, { rateLimit: { rateLimit: { max: 1000, timeWindow: 60_000 } } } as never, { space: r.space });
+    registerYouSpaceRoutes(a, { rateLimit: { rateLimit: { max: 1000, timeWindow: 60_000 } } } as never, { space: r.space, groups: groups as never });
     await a.ready();
     const as = { authorization: `Bearer ${ME}` };
     const go = (method: "GET" | "POST" | "PUT" | "DELETE", url: string, payload?: object) =>
@@ -231,6 +233,16 @@ describe("the routes", () => {
     expect((await go("GET", "/v1/bots/you/space/likes")).body.use).toBe(false);
     expect((await go("DELETE", `/v1/bots/you/space/lines/${added.body.line.key}`)).body.forgot).toBe(1);
     expect((await go("DELETE", "/v1/bots/you/space/lines/zzz")).status).toBe(404);
+  });
+
+  it("shares one line with one group, by its key, never a money line", async () => {
+    const { go } = await app();
+    shared.length = 0;
+    const key = keyOf("My sister Meera lives in Pune");
+    expect((await go("POST", `/v1/bots/you/space/lines/${key}/share`, { space: "s1" })).status).toBe(200);
+    expect(shared).toEqual([{ space: "s1", text: "My sister Meera lives in Pune", section: "people", fromKey: key }]);
+    expect((await go("POST", `/v1/bots/you/space/lines/${keyOf("Pays rent on the 5th through UPI")}/share`, { space: "s1" })).body.code).toBe("money_stays");
+    expect(shared).toHaveLength(1);
   });
 });
 

@@ -49,3 +49,21 @@ What a person's bots know about them, in one place, in sections. Only they see i
   pinned lines first.
 - `usableForBots` (a bot's own memory): leaves out lines in a switched-off section; a pinned line counts as the newest.
 - Both read the settings once, in the same 30-second cache as the "Use what you've told your bots" switch.
+
+## A group's memory
+
+What a group's bots know about the group. Code: `tulmi/src/botsBots/spaceMemory.ts` (table `space_facts`, migration
+0064); screen `bots.space.memory`, reached from the group page.
+
+- **Anyone in the group can write a line**, for example "Groceries come on Sunday mornings" or "Dadi is vegetarian".
+  Every member sees it, along with who said it.
+- **Your own space never reaches a group by itself.** A line gets there only when you tap Share on that one line in your
+  space. Money lines are never shared this way.
+- **Some topics are refused**: health, religion, politics and sexuality. Money is allowed, for example "We split the rent
+  on the 1st". The same line is never kept twice, and a group keeps at most 200 lines.
+- **Removing lines:**
+  - the person who wrote a line, or the group's admin, can forget it;
+  - leaving the group takes your lines with you;
+  - deleting the group takes all of them.
+- **Bots read it**: a bot shared into the group reads the group's newest 40 lines as data, next to what the group shared
+  (`sharedFor`). People with a block between them never see each other's lines.

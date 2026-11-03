@@ -18,6 +18,10 @@
  *   GET    /v1/botsapp/bots/spaces/:id/bots/:bot/shared  -> { bot, people: [{ userId, name, you, mode, items }] }   each person's shared items
  *   GET    /v1/botsapp/bots/spaces/:id/bots/:bot/mine    -> { bot, mode, items, own }   what you share there, and yours to pick from
  *   PUT    /v1/botsapp/bots/spaces/:id/bots/:bot/mine { mode } | { item, on }   change what you share (yours alone)
+ *   GET    /v1/botsapp/bots/spaces/:id/memory           -> { space, admin, lines: [{ id, text, section, by, you, mine, at, shared }] }
+ *                                                        what the group's bots know (botsBots/spaceMemory.ts)
+ *   POST   /v1/botsapp/bots/spaces/:id/memory { text, section? } -> { line }   a line for the group's bots
+ *   DELETE /v1/botsapp/bots/spaces/:id/memory/:line      forget it (the one who wrote it, or the admin)
  *   GET    /v1/botsapp/bots/spaces/:id/activity
  *   GET    /s/bots.spaces?join=CODE                     an invite's link (spaces.ts inviteLinkOf) opened in a browser, not the app: a small
  *                                                      page (no session) that says what it is for, opens Tailzu at joining, and gives the code
@@ -64,6 +68,7 @@ import { verifyQuery } from "../../botsBots/spaceLinks.js";
 import { INVITE_CODE_RE, JOIN_SCREEN, type Spaces } from "../../botsBots/spaces.js";
 import { SpaceTasks } from "../../botsBots/spaceTasks.js";
 import { SpaceShares, type ShareSources } from "../../botsBots/spaceShares.js";
+import { SpaceMemory } from "../../botsBots/spaceMemory.js";
 import { shareSources } from "../../botsBots/shareSources.js";
 import { Threads, type FileRef } from "../../botsBots/threads.js";
 import type { Trips } from "../../botsBots/trips.js";
@@ -117,7 +122,7 @@ function invitePage(code: string, s: { name: string; members: number } | null): 
 /** Shown inline only when it can't run anything: pictures, PDFs, sound and video. Everything else is a download. */
 const INLINE = /^(image\/(png|jpeg|webp|gif|heic|heif)|application\/pdf|audio\/[a-z0-9.+-]+|video\/(mp4|webm|quicktime))$/;
 
-export interface SpaceParts { spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety; shares: SpaceShares }
+export interface SpaceParts { spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety; shares: SpaceShares; memory: SpaceMemory }
 
 /** A push to someone's phones (push/defaults.ts space_*): never throws, and says nothing private. */
 const push = async (userId: string, msg: { kind: "space_task" | "space_plan" | "space_message" | "space_joined"; key: string; vars: Record<string, string>; data: Record<string, string> }) => {
@@ -161,7 +166,9 @@ export function spaceParts(spaces: Spaces, o: {
   });
   const safety = new Safety(spaces, threads, items, now, { log: o.log, suspend: o.suspend !== undefined ? o.suspend : supabase() ? suspendWithSupabase : null });
   const shares = new SpaceShares(spaces, o.sources ?? shareSources({ trips: o.trips, now }), now);
-  return { spaces, threads, items, payments: new Payments(spaces, now), tasks, safety, shares };
+  // What the group's bots know about the group: lines members write there, or share from their own space one at a time.
+  const memory = new SpaceMemory(spaces, { now, hidden: (u) => blocks.hiddenFor(u) });
+  return { spaces, threads, items, payments: new Payments(spaces, now), tasks, safety, shares, memory };
 }
 
 /** A space as one person sees it: nobody with a block between them in its members (blocks.ts). */
@@ -172,7 +179,7 @@ async function withoutHidden<S extends { members: Array<{ userId: string }> }>(t
 
 export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { spaces: Spaces; trips?: Trips | null; parts?: SpaceParts; sources?: ShareSources }): SpaceParts {
   const p = o.parts ?? spaceParts(o.spaces, { media: deps.media, trips: o.trips ?? null, log: app.log, ...(o.sources ? { sources: o.sources } : {}) });
-  const { spaces, threads, items, payments, tasks, shares } = p;
+  const { spaces, threads, items, payments, tasks, shares, memory } = p;
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
 
@@ -249,6 +256,9 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.get(`${AREA}/spaces/:id/bots/:bot/shared`, RL, run(async (user, req) => shares.view(user.id, param(req, "id"), param(req, "bot"))));
   app.get(`${AREA}/spaces/:id/bots/:bot/mine`, RL, run(async (user, req) => shares.mine(user.id, param(req, "id"), param(req, "bot"))));
   app.put(`${AREA}/spaces/:id/bots/:bot/mine`, RL, run(async (user, req) => { const b = bodyOf(req.body); return shares.set(user.id, param(req, "id"), param(req, "bot"), { mode: b.mode, item: b.item, on: b.on }); }));
+  app.get(`${AREA}/spaces/:id/memory`, RL, run(async (user, req) => memory.view(user.id, param(req, "id"))));
+  app.post(`${AREA}/spaces/:id/memory`, RL, run(async (user, req) => { const b = bodyOf(req.body); return { line: await memory.add(user.id, param(req, "id"), b.text, { section: b.section }) }; }));
+  app.delete(`${AREA}/spaces/:id/memory/:line`, RL, run(async (user, req) => { await memory.forget(user.id, param(req, "id"), param(req, "line")); return { ok: true }; }));
   app.get(`${AREA}/spaces/:id/activity`, RL, run(async (user, req) => ({ activity: await spaces.activity(user.id, param(req, "id"), Number(queryOf(req).limit) || 50) })));
 
   // An invite's link (https://app.x0bot.com/s/bots.spaces?join=CODE) opens the app; a browser that has no app to hand it to lands here:

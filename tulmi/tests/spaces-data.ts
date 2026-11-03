@@ -113,6 +113,13 @@ export function spacesApi(): Record<string, unknown> {
       { bot: "travel", sharing: [{ userId: "u", name: "Aanya", you: true, mode: "all" }] },
       { bot: "code", sharing: [{ userId: "r", name: "Rohan", you: false, mode: "some" }] },
     ] },
+    // What Home's bots know: lines Mom and Rohan told them, one Aanya shared from her own space.
+    [`GET ${A}/spaces/s1/memory`]: { space: { id: "s1", name: "Home" }, admin: true, lines: [
+      { id: "g1", text: "Dadi is vegetarian, no onion or garlic", section: "people", by: "Mom", you: false, mine: true, at: FIXED_NOW - 2 * HOUR, shared: false },
+      { id: "g2", text: "Groceries come on Sunday mornings", section: "day", by: "Rohan", you: false, mine: true, at: FIXED_NOW - DAY, shared: false },
+      { id: "g3", text: "We split the rent on the 1st", section: "money", by: "Mom", you: false, mine: true, at: FIXED_NOW - 3 * DAY, shared: false },
+      { id: "g4", text: "Prefers short replies, in English with a little Hindi", section: "likes", by: "you", you: true, mine: true, at: FIXED_NOW - 4 * DAY, shared: true },
+    ] },
     [`GET ${A}/spaces/s1/bots/plan/shared`]: { bot: "plan", space: { id: "s1", name: "Home" }, people: [
       { userId: "u", name: "Aanya", you: true, mode: "none", items: [] },
       { userId: "m", name: "Mom", you: false, mode: "all", items: [

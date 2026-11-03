@@ -42,8 +42,9 @@ const SENSITIVE: readonly RegExp[] = [
   /\b(?:sexual\w*|sex|gay|lesbian|bisexual|queer|transgender)\b/i,
 ];
 
-export function sensitive(text: string): boolean {
-  return SENSITIVE.some((re) => re.test(text));
+/** Touches a sensitive topic. `money: false`: money is fine here (a group's own line: "we split rent on the 1st"). */
+export function sensitive(text: string, o: { money?: boolean } = {}): boolean {
+  return SENSITIVE.some((re) => (o.money === false && re === MONEY ? false : re.test(text)));
 }
 
 const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();

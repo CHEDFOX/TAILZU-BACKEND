@@ -7,10 +7,13 @@
  *   PUT    /v1/bots/you/space/:section/use        { on } -> { on }  may bots use this section (its lines stay)
  *   PUT    /v1/bots/you/space/lines/:key          { pinned?, section?, text? } -> { line }  every bot's copy alike
  *   DELETE /v1/bots/you/space/lines/:key          -> { forgot }  gone from every bot that kept it
+ *   POST   /v1/bots/you/space/lines/:key/share    { space } -> { line }  that one line, for one group's bots (never Money)
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import type { Spaces } from "../../botsBots/spaces.js";
+import type { SpaceMemory } from "../../botsBots/spaceMemory.js";
+import { isBotError } from "../../bots/index.js";
 import { shareSources } from "../../botsBots/shareSources.js";
 import type { ShareSources } from "../../botsBots/spaceShares.js";
 import type { PlanPrefsRow } from "../../botsBots/planTravel.js";
@@ -39,7 +42,7 @@ export function userSpace(o: { spaces?: Spaces; trips?: Trips | null; sources?: 
   });
 }
 
-export function registerYouSpaceRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { space: UserSpace }): void {
+export function registerYouSpaceRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { space: UserSpace; groups?: SpaceMemory }): void {
   const RL = { config: deps.rateLimit };
   const space = o.space;
 
@@ -81,6 +84,20 @@ export function registerYouSpaceRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   app.put(`${SPACE_PATH}/lines/:key`, RL, run(async (user, req) => {
     const b = bodyOf(req.body);
     return { line: await space.change(user.id, keyOf(req), { pinned: b.pinned, section: b.section, text: b.text }) };
+  }));
+
+  // One line, shared with one group by the person's own tap: nothing else of their space goes with it. Money never does.
+  app.post(`${SPACE_PATH}/lines/:key/share`, RL, run(async (user, req) => {
+    if (!o.groups) throw new SpaceError(404, "groups_off", "Groups aren't switched on here.");
+    const key = keyOf(req);
+    const line = await space.lineOf(user.id, key);
+    if (line.section === "money") throw new SpaceError(400, "money_stays", "Money stays with the one bot you told.");
+    try {
+      return { line: await o.groups.add(user.id, String(bodyOf(req.body).space ?? ""), line.text, { section: line.section, fromKey: key }) };
+    } catch (err) {
+      if (isBotError(err)) throw new SpaceError(err.status, err.code, err.message);
+      throw err;
+    }
   }));
 
   app.delete(`${SPACE_PATH}/lines/:key`, RL, run(async (user, req) => ({ forgot: await space.forget(user.id, keyOf(req)) })));

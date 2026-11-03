@@ -61,6 +61,8 @@ export interface SectionView {
   on: boolean;
   lines: SpaceLine[]; things: SpaceThing[];
   me?: { name: string; gender: string | null };
+  /** Their groups, to share a line with one (never Money). */
+  groups?: Array<{ id: string; name: string }>;
 }
 
 export class SpaceError extends Error {
@@ -206,9 +208,10 @@ export class UserSpace {
     const { marks, on } = await this.marks(userId);
     const { lines, bots } = await this.lines(userId, marks);
     const fact = isFactSection(id);
-    const [things, me] = await Promise.all([
+    const [things, me, groups] = await Promise.all([
       this.things(userId, id, bots, lines).catch(() => []),
       id === "about" && o.profile ? o.profile().catch(() => null) : Promise.resolve(null),
+      fact && id !== "money" && this.d.groups ? this.d.groups(userId).catch(() => []) : Promise.resolve([]),
     ]);
     return {
       id, name: SECTION_NAMES[id], line: SECTION_LINES[id],
@@ -218,7 +221,16 @@ export class UserSpace {
       lines: id === "timeline" ? [...lines].sort((a, b) => b.at - a.at) : fact ? lines.filter((l) => l.section === id) : [],
       things,
       ...(me ? { me } : {}),
+      ...(groups.length ? { groups: groups.map((g) => ({ id: g.id, name: g.name })) } : {}),
     };
+  }
+
+  /** One line, by its key (to share it with a group). */
+  async lineOf(userId: string, key: string): Promise<SpaceLine> {
+    const { marks } = await this.marks(userId);
+    const line = (await this.lines(userId, marks)).lines.find((l) => l.key === key);
+    if (!line) throw new SpaceError(404, "not_found", "That line isn't kept any more.");
+    return line;
   }
 
   /** A line they write: one short line, kept for all their bots, in the section they wrote it in. */

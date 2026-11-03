@@ -102,6 +102,7 @@ export const SAMPLES: Sample[] = [
   { id: S.spaces, area: "bots", variant: "home", params: { id: "s1" } },
   { id: S.spaceBot, area: "bots", variant: "plan", params: { id: "s1", bot: "plan" } },
   { id: S.spaceBot, area: "bots", variant: "code", params: { id: "s1", bot: "code" } },
+  { id: S.spaceMemory, area: "bots", params: { id: "s1" } },
   { id: S.spaceMember, area: "bots", params: { id: "s1", member: "r" } },
   { id: S.spaceInvite, area: "bots", params: { id: "s1" } },
   { id: S.spaceRoles, area: "bots", params: { id: "s1" } },
