@@ -144,7 +144,7 @@ describe("About you: a card on Home after a few visits, never in the first run",
   it("the card: the name filled in from the sign-in, the three genders, Save writes the profile, Not now puts it off", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.home", client, { api: about({}) });
-      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Tell your bots about you", "Male", "Female", "Other", "From your Google account.", "Save", "Not now"]));
+      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Tell your bots about you", "Male", "Female", "Other", "So your bots know how to address you.", "Save", "Not now"]));
       expect(JSON.stringify(s.root)).toContain('"placeholder":"Your name"');
       expect(s.state).toMatchObject({ aboutName: "Aanya Rao", aboutGender: "", aboutSaved: false, aboutClosed: false });
       const all = actions(s.root);
@@ -163,7 +163,6 @@ describe("About you: a card on Home after a few visits, never in the first run",
     for (const name of ["Aanya Rao", ""]) {
       const s = await build("bots.home", "phone", { api: about({ name, via: "apple", source: name ? "provider" : null }) });
       expect(JSON.stringify(s.root)).toContain('"placeholder":"Your name (optional)"');
-      if (name) expect(texts(s.root!)).toContain("From your Apple account. Optional.");
       expect(s.state).toMatchObject({ aboutName: name });
       expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({
         kind: "condition", if: { truthy: "aboutGender" }, else: expect.objectContaining({ kind: "toast", message: "Pick one to save." }),

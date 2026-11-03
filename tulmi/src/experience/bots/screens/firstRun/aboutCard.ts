@@ -2,18 +2,19 @@
  * THE ABOUT YOU CARD: the person's name and gender, asked on Home after a few visits, never in the first run.
  *
  * The same card as the microphone and keyboard one (the bot on a stage, one black pill, a quiet "Not now"), and about
- * its size (the same width, no labels, a compact field and chips), but at the top of Home rather than over it, so the
+ * its size (the same width, a shorter stage, no labels, a compact field and chips), but at the top of Home rather than over it, so the
  * keyboard never covers it while the name is typed. Due by the server
  * (GET /v1/bots/first-run/about: onboarded, a few visits in, the answer still owed, not put off for now).
  *
  *   the name     filled in from what Apple or Google shared, else the account's own, else a guess from the email; theirs
- *                to change. Signed in with Apple it is optional (App Review 4: nothing Apple shares is asked again)
+ *                to change. Signed in with Apple it is optional (App Review 4: nothing Apple shares is asked again), and
+ *                its empty field says so
  *   the gender   Male, Female or Other: the one thing needed to save, so bots write to them right in gendered languages
  *   Save         PUT /v1/profile { full_name, gender } (the profile's own write), the bot's happy moment, and it goes
  *   Not now      PUT /v1/bots/first-run/about: it comes again a few visits later, a few times at most
  */
 import type { ActionSpec, Condition, Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, botCard, canMove, call, col, C, icon, labelled, meta, row, seq, text, when } from "../../kit.js";
+import { type BotsCtx, botCard, canMove, call, col, C, icon, labelled, row, seq, text, when } from "../../kit.js";
 import { type About, CARD_BOT, GENDERS, line, nameField, permitStep, setState, toast } from "./parts.js";
 
 /** The card's read and its "Not now". */
@@ -38,19 +39,10 @@ function genderChips(desk: boolean): Node {
       when(on, icon("check", { size: 14, color: C.paper, weight: 2 })),
       text(g.label, { size: 14, weight: 500, lineHeight: 18, style: { color: c(C.paper, C.ink) } }),
     ], {
-      gap: 6, height: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, justifyContent: "center",
+      gap: 6, height: 36, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, justifyContent: "center",
       borderColor: c(C.ink, C.outline), backgroundColor: c(C.ink, C.paper), flexGrow: desk ? 0 : 1, flexBasis: desk ? "auto" : 0,
     }, setState(GENDER, g.value)), g.label);
   }), { gap: 8 });
-}
-
-/** Where the name in the field came from, in one short line under it (and, signed in with Apple, that it is optional). */
-function nameSource(about: About): string | null {
-  const apple = about.via === "apple";
-  if (!about.name || about.source === "saved" || !about.source) return apple && about.name ? "Optional." : null;
-  if (about.source === "email") return "Guessed from your email.";
-  const who = apple ? "Apple" : about.via === "google" ? "Google" : "sign-in";
-  return `From your ${who} account.${apple ? " Optional." : ""}`;
 }
 
 /** The card, while it is due; nothing otherwise. */
@@ -67,15 +59,14 @@ export function aboutCard(ctx: BotsCtx, about: About | undefined): Node[] {
     else: toast(apple ? "Pick one to save." : "Add your name and pick one."),
   } as ActionSpec;
   const later = seq(setState(CLOSED, true), call("PUT", ABOUT_PATH, {}, {}));
-  const source = nameSource(about);
   // The keyboard's Done only puts the keyboard away: the pick may still be owed.
   const typed = { kind: "haptic", style: "selection" } as ActionSpec;
   const ask = permitStep({
     when: { falsy: SAVED },
     title: "Tell your bots about you",
-    lines: [line("So they know what to call you, and how to write to you.")],
+    lines: [line("So your bots know how to address you.")],
     extra: [
-      col([nameField(NAME, apple ? "Your name (optional)" : "Your name", typed, desk, { capitalize: true, label: "your name", height: 48 }), ...(source ? [meta(source, { size: 12 })] : [])], { gap: 6 }),
+      nameField(NAME, apple ? "Your name (optional)" : "Your name", typed, desk, { capitalize: true, label: "your name", height: 44 }),
       genderChips(desk),
     ],
     cta: { label: "Save", onPress: save },
@@ -85,7 +76,8 @@ export function aboutCard(ctx: BotsCtx, about: About | undefined): Node[] {
   const sized = (card: Node): Node => col([card], { width: WIDTH[ctx.client === "desktop" ? "desktop" : "phone"], maxWidth: "100%", alignSelf: "center" });
   if (canMove(ctx)) {
     return [sized(botCard([ask, thanks], {
-      ...CARD_BOT, kind: "custom", label: "About you",
+      // A shorter stage than the microphone card's, so with the field and the chips the card is about its height.
+      ...CARD_BOT, stageHeight: 72, kind: "custom", label: "About you",
       doneWhen: { truthy: SAVED }, doneDelayMs: 1800, onComplete: setState(CLOSED, true), closeWhen: { truthy: CLOSED },
     }))];
   }
