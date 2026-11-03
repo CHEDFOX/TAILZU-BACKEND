@@ -64,11 +64,13 @@ export interface PromptParts {
 }
 
 /** "Today: Monday 2 November 2026, 14:05 (UTC+05:30)", in the person's own clock. */
-export function todayLine(now: number, tz = 330): string {
+export function todayLine(now: number, given?: number): string {
+  // India's when the device sent none, said to be assumed.
+  const tz = typeof given === "number" && Number.isFinite(given) ? given : 330;
   const d = new Date(now + tz * 60_000);
   const day = d.toLocaleDateString("en-GB", { timeZone: "UTC", weekday: "long", day: "numeric", month: "long", year: "numeric" }).replace(",", "");
   const time = d.toISOString().slice(11, 16), sign = tz < 0 ? "-" : "+", a = Math.abs(tz);
-  return `Today: ${day}, ${time} (UTC${sign}${String(Math.floor(a / 60)).padStart(2, "0")}:${String(a % 60).padStart(2, "0")})`;
+  return `Today: ${day}, ${time} (UTC${sign}${String(Math.floor(a / 60)).padStart(2, "0")}:${String(a % 60).padStart(2, "0")}${tz === given ? "" : ", assumed: their time zone was not sent"})`;
 }
 
 /** The owner's rules as the model reads them: numbered, each capped, the ones that try to change our rules replaced by a note. */

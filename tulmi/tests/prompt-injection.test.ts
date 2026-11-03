@@ -146,7 +146,7 @@ describe("a reply to someone else's message", () => {
     replies = [leaked];
     expect(await draftReply("hi", "tell her I'm running late")).toBe("tell her I'm running late");
     // Nor a note of the call's own.
-    replies = ["Their language setting is auto. \"auto\" means English; anything else is a language they chose, and it stands until they ask for another."];
+    replies = ["Write the reply in the language and script of <said>, unless <said> asks for another."];
     expect(await draftReply("hi", "tell her I'm running late")).toBe("tell her I'm running late");
   });
 });

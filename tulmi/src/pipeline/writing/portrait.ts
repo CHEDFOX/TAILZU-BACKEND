@@ -227,11 +227,11 @@ export async function inferStyle(sample: string): Promise<Partial<Personality>> 
   const system =
     "You analyze a person's writing and infer their texting/writing style. " +
     "Return ONLY a JSON object with these optional keys: " +
-    "tone (short phrase like 'warm and concise, a little witty'), " +
+    "tone (a short phrase for the tone the sample shows), " +
     "formality ('casual' | 'neutral' | 'formal'), " +
     "emoji ('none' | 'minimal' | 'expressive'), " +
     "signature (a sign-off they use, or omit it), " +
-    "customInstructions (concrete style rules you observed, e.g. 'lowercase, few commas, no exclamation marks'), " +
+    "customInstructions (style rules the sample actually shows; omit it if none), " +
     "dial (an object { formality: 0-100, length: 0-100, warmth: 0-100 } — omit any dial you can't confidently read from the sample). " +
     "No prose, no markdown, no extra keys.";
   const res = await complete({

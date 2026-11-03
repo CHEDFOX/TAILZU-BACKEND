@@ -86,9 +86,9 @@ describe("the bots roles' fixtures", () => {
 describe("today's date", () => {
   it("opens every bot turn, in the person's clock (India's when not known), so 'next Friday' is a day still to come", async () => {
     const { todayLine } = await import("../src/bots/prompt.js");
-    expect(todayLine(Date.UTC(2026, 10, 1, 20, 0))).toBe("Today: Monday 2 November 2026, 01:30 (UTC+05:30)");
+    expect(todayLine(Date.UTC(2026, 10, 1, 20, 0))).toBe("Today: Monday 2 November 2026, 01:30 (UTC+05:30, assumed: their time zone was not sent)");
     expect(todayLine(Date.UTC(2026, 10, 1, 20, 0), -300)).toBe("Today: Sunday 1 November 2026, 15:00 (UTC-05:00)");
     const m = botUserMessage({ bot: { name: "T", purpose: "p", tone: "", principles: [], skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] } }, message: "hi", now: Date.UTC(2026, 10, 2, 8, 0) });
-    expect(m.startsWith("Today: Monday 2 November 2026, 13:30 (UTC+05:30)\n<bot>")).toBe(true);
+    expect(m.startsWith("Today: Monday 2 November 2026, 13:30 (UTC+05:30, assumed: their time zone was not sent)\n<bot>")).toBe(true);
   });
 });

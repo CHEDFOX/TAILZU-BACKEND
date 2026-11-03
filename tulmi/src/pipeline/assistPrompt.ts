@@ -328,7 +328,7 @@ function portraitBlock(personality: Personality | undefined, tone?: string): str
     .filter((w) => inlineValue(w?.term))
     .map((w) => `  ${inlineValue(w.term)} — ${inlineValue(w.means, 140)}`);
   if (words.length) {
-    parts.push("Words that are theirs — keep them, and use them where they fit:\n" + words.join("\n"));
+    parts.push("Words that are theirs, with what they mean: when they say one, keep it as they write it; never add one they did not say.\n" + words.join("\n"));
   }
   const styles = list(p.styles, 4).map((x) => {
     const when = inlineValue(x?.when, 120);
@@ -581,8 +581,9 @@ export function replyContext(opts: CleanupOptions, recipient?: string): string {
   const call = callBlock([
     nick ? `They also call you ${nick}.` : null,
     "Plain: answer with the text alone, no <intent> and no <send>; when they said nothing, return nothing.",
-    `It goes in ${targetApp}, as a reply to ${to || "Unknown"}.`,
-    `Their language setting is ${inlineValue(opts.language, 40) || "auto"}. "auto" means English; anything else is a language they chose, and it stands until they ask for another.`,
+    `It goes in ${targetApp}${to ? `, as a reply to ${to}` : ""}.`,
+    // Their saved language is the one they speak, never a language to write in (as in writerRequest.ts): the reply follows what they said.
+    "Write the reply in the language and script of <said>, unless <said> asks for another.",
     AROUND_NOTE,
     personality?.watermark ? "Watermark: on. When the message would carry one naturally, and only then, a single unobtrusive sign-off is permitted. Never on a short reply." : null,
   ]);

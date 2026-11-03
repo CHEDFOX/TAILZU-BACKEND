@@ -155,7 +155,7 @@ describe("a meeting's to-dos, through the routes", () => {
     expect(router.calls[0]!.model).toBe("deepseek/deepseek-v4.1-flash");
     const system = router.calls[0]!.messages[0]!.content;
     expect(system.length).toBeLessThan(2000);
-    expect(system).toContain("Do not translate");
+    expect(system).toContain("never translate");
     expect(router.calls[0]!.messages[1]!.content).toContain("<transcript>");
     const { note, finding } = await get(id);
     expect(finding).toBe(false);

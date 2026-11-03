@@ -303,11 +303,13 @@ describe("what reaches the model", () => {
 describe("the screen reply as the writer role", () => {
   it("states the user's language setting as a note, and the alphabet rule is the block's", () => {
     const data = replyContext({ targetApp: "WhatsApp", language: "hi" }, "Rahul");
-    expect(data).toContain('Their language setting is hi. "auto" means English; anything else is a language they chose, and it stands until they ask for another.');
-    expect(replyContext({}, undefined)).toContain("Their language setting is auto.");
-    expect(WRITER).toMatch(/in English letters/);
+    // The saved language is the one they speak, never one to write in: the reply follows what they said.
+    expect(data).toContain("Write the reply in the language and script of <said>, unless <said> asks for another.");
+    expect(data).not.toContain("language setting");
+    expect(replyContext({}, undefined)).not.toContain("language setting");
+    expect(WRITER).toMatch(/in Latin letters/);
     expect(WRITER).toMatch(/never translate/i);
-    expect(WRITER).toMatch(/never reach for an English word/i);
+    expect(WRITER).toMatch(/never swap a word for one from another language/i);
   });
 
   it("names the app and the recipient on one line, and fences the voice", () => {
@@ -316,7 +318,9 @@ describe("the screen reply as the writer role", () => {
     expect(data).toMatch(/<voice>\n- Tone: <tone>warm<\/tone>/);
     expect(data).toContain("<custom_instructions>short</custom_instructions>");
     expect(data.indexOf("<call>")).toBeLessThan(data.indexOf("<voice>"));
-    expect(replyContext({}, undefined)).toContain("as a reply to Unknown.");
+    // No recipient: none is named (never "Unknown", which could end up as a name in the reply).
+    expect(replyContext({}, undefined)).toContain("It goes in Generic.");
+    expect(replyContext({}, undefined)).not.toContain("Unknown");
   });
 
   it("answers plain, and says the screen is someone else's words", () => {

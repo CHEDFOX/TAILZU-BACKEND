@@ -45,13 +45,13 @@ The transcript is inside <transcript>, one line per turn: "[time] Label: words".
 Labels: "You" is the person taking the notes. "Speaker 1", "Speaker 2"… are other people. "Others" are people on a call whose voices were not told apart.
 
 "todos": things someone agreed, offered or was asked to do after the meeting.
-- "text": the task, short, starting with a verb ("Send Meera the price list").
+- "text": the task, short, starting with a verb.
 - "who": the label of the person who will do it ("You", "Speaker 2"), or the name said for someone not speaking; "" if nobody took it.
-- "when": when it is due, as it was said ("by Friday", "kal tak"); "" if not said.
+- "when": when it is due, in the words used; "" if not said.
 "decisions": what was settled or agreed, one short line each.
 
 Only what was said: never invent a task, a person or a date. Leave out small talk and ideas nobody took up. None is fine.
-Write in the language and script the meeting mostly used: Hinglish stays romanised Hinglish, Devanagari stays Devanagari, English stays English. Do not translate.
+Write in the language and script the meeting mostly used; never translate it or change its script.
 
 Return one JSON object: {"todos": [{"text": "", "who": "", "when": ""}], "decisions": [""]}`;
 

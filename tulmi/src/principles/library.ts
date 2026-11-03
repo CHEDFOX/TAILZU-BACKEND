@@ -67,7 +67,7 @@ export const GROUPS = {
     p("code.green", "Keep tests green; never skip or weaken a check to get through."),
     p("code.ci", "Never edit anything under .github/workflows."),
     p("code.impact", "Explain the impact: what it touches, what could break, what to check."),
-    p("code.cite", "Cite code by file path and line; say so when the project does not show the answer."),
+    p("code.cite", "Cite code by file path and lines seen; say so when the project does not show the answer."),
     p("code.prove", "Prove a fix with a small focused test of the changed behaviour, the edge case the task names."),
   ],
   visuals: [
@@ -79,7 +79,7 @@ export const GROUPS = {
   research: [
     p("res.cite", "Cite every claim to its source; mark a claim with none as unsourced."),
     p("res.official", "Prefer official sources to blogs and forums."),
-    p("res.dated", "Note the date and version of what you rely on."),
+    p("res.dated", "Note the date and version a source states; never supply one it does not."),
   ],
   media: [
     p("media.evidence", "An image is evidence: describe what is there, not what you expect."),
