@@ -20,11 +20,12 @@ import { type BotsScreen, screen } from "../registry.js";
 import { invitePage } from "./spaces/invitePage.js";
 import { idParam, memberPage } from "./spaces/memberPage.js";
 import {
-  ifFilled, A, toast, clearState, refresh, rowsCard, rowPad, type Space, personDot, names, inputBox, field, isDesk, type OneSpace, failed,
+  ifFilled, A, toast, clearState, refresh, rowsCard, rowPad, type Space, personDot, names, inputBox, field, isDesk, type OneSpace, type BotSharing, failed,
   enc, write, type Role, section, type Item, iconButton, kindBadge, shortDate, canDo, labelledField, type Task, DAY, localDate,
   messagePerson,
 } from "./spaces/parts.js";
 import { iconBox, KIND_WORD, setState, type Targets, sharePage } from "./spaces/sharePage.js";
+import { botPage, type BotPageData, type MineView, type SharedView } from "./spaces/botPage.js";
 import {
   type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
   openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState,
@@ -510,7 +511,14 @@ function chatsDesk(ctx: BotsCtx, d: ChatsData) {
 // ===================================================================== the screens
 
 type Api = Parameters<NonNullable<BotsScreen["load"]>>[1];
-const oneSpace = (deps: Api, id: string) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(id)}`).catch(() => undefined);
+/** One space whole, and who shares what from their own bots there (for its sub-bots). */
+const oneSpace = async (deps: Api, id: string): Promise<OneSpace | undefined> => {
+  const [one, sharing] = await Promise.all([
+    deps.api<OneSpace>("GET", `${A}/spaces/${enc(id)}`).catch(() => undefined),
+    deps.api<{ bots: BotSharing[] }>("GET", `${A}/spaces/${enc(id)}/sharing`).then((r) => r.bots, () => undefined),
+  ]);
+  return one ? { ...one, ...(sharing ? { sharing } : {}) } : undefined;
+};
 
 export const spacesScreens: BotsScreen[] = [
   screen<SpacesData>({
@@ -530,6 +538,18 @@ export const spacesScreens: BotsScreen[] = [
       return { spaces: sp?.spaces, you: sp?.you, unread: sp?.unread, bots, given, one: one ?? first, ...(join ? { invite } : {}) };
     },
     build: (ctx, d) => (isDesk(ctx) ? spacesDesk(ctx, d ?? {}) : d?.one && idParam(ctx) ? spaceOnePhone(ctx, d.one, d) : idParam(ctx) && d?.spaces ? failed(ctx, "This space") : spacesPhone(ctx, d ?? {})),
+  }),
+  screen<BotPageData>({
+    id: SCREENS.spaceBot,
+    load: async (ctx, deps) => {
+      const base = `${A}/spaces/${enc(idParam(ctx))}/bots/${enc(String(ctx.params.bot ?? ""))}`;
+      const [shared, mine] = await Promise.all([
+        deps.api<SharedView>("GET", `${base}/shared`).catch(() => undefined),
+        deps.api<MineView>("GET", `${base}/mine`).catch(() => undefined),
+      ]);
+      return { shared, mine };
+    },
+    build: botPage,
   }),
   screen<OneSpace>({ id: SCREENS.spaceMember, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: memberPage }),
   screen<OneSpace>({ id: SCREENS.spaceInvite, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: invitePage }),

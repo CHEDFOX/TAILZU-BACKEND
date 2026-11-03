@@ -14,6 +14,10 @@
  *   PUT    /v1/botsapp/bots/spaces/:id/members/:member { role } | { perms } | { canApprove };  DELETE (remove)
  *   POST   /v1/botsapp/bots/spaces/:id/roles { name, perms };  PUT|DELETE .../roles/:role
  *   POST   /v1/botsapp/bots/spaces/:id/bots { slug };  DELETE .../bots/:slug
+ *   GET    /v1/botsapp/bots/spaces/:id/sharing          -> { bots: [{ bot, sharing: [{ userId, name, you, mode }] }] }   who shares what, per bot
+ *   GET    /v1/botsapp/bots/spaces/:id/bots/:bot/shared  -> { bot, people: [{ userId, name, you, mode, items }] }   each person's shared items
+ *   GET    /v1/botsapp/bots/spaces/:id/bots/:bot/mine    -> { bot, mode, items, own }   what you share there, and yours to pick from
+ *   PUT    /v1/botsapp/bots/spaces/:id/bots/:bot/mine { mode } | { item, on }   change what you share (yours alone)
  *   GET    /v1/botsapp/bots/spaces/:id/activity
  *   GET    /s/bots.spaces?join=CODE                     an invite's link (spaces.ts inviteLinkOf) opened in a browser, not the app: a small
  *                                                      page (no session) that says what it is for, opens Tailzu at joining, and gives the code
@@ -59,6 +63,8 @@ import { registerSafetyRoutes, suspendWithSupabase } from "./safety.js";
 import { verifyQuery } from "../../botsBots/spaceLinks.js";
 import { INVITE_CODE_RE, JOIN_SCREEN, type Spaces } from "../../botsBots/spaces.js";
 import { SpaceTasks } from "../../botsBots/spaceTasks.js";
+import { SpaceShares, type ShareSources } from "../../botsBots/spaceShares.js";
+import { shareSources } from "../../botsBots/shareSources.js";
 import { Threads, type FileRef } from "../../botsBots/threads.js";
 import type { Trips } from "../../botsBots/trips.js";
 import { pushEngine } from "../../push/index.js";
@@ -111,7 +117,7 @@ function invitePage(code: string, s: { name: string; members: number } | null): 
 /** Shown inline only when it can't run anything: pictures, PDFs, sound and video. Everything else is a download. */
 const INLINE = /^(image\/(png|jpeg|webp|gif|heic|heif)|application\/pdf|audio\/[a-z0-9.+-]+|video\/(mp4|webm|quicktime))$/;
 
-export interface SpaceParts { spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety }
+export interface SpaceParts { spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety; shares: SpaceShares }
 
 /** A push to someone's phones (push/defaults.ts space_*): never throws, and says nothing private. */
 const push = async (userId: string, msg: { kind: "space_task" | "space_plan" | "space_message" | "space_joined"; key: string; vars: Record<string, string>; data: Record<string, string> }) => {
@@ -124,6 +130,8 @@ export function spaceParts(spaces: Spaces, o: {
   log?: { warn(o: object, m: string): void };
   /** The admin's suspend (routes/bots/safety.ts); by default Supabase's ban, where this server has the service key. */
   suspend?: ((userId: string) => Promise<boolean>) | null;
+  /** Where each bot's own items come from, for sharing into a group (botsBots/shareSources.ts by default). */
+  sources?: ShareSources;
 } = {}): SpaceParts {
   const media = o.media ?? null;
   // Full addresses: a picture is fetched by the app's image component, which knows no base.
@@ -152,7 +160,8 @@ export function spaceParts(spaces: Spaces, o: {
     await push(j.invitedBy, { kind: "space_joined", key: `${e.spaceId}:${j.userId}`, vars: { name: j.name, space: j.spaceName ?? "your space" }, data: { spaceId: e.spaceId } });
   });
   const safety = new Safety(spaces, threads, items, now, { log: o.log, suspend: o.suspend !== undefined ? o.suspend : supabase() ? suspendWithSupabase : null });
-  return { spaces, threads, items, payments: new Payments(spaces, now), tasks, safety };
+  const shares = new SpaceShares(spaces, o.sources ?? shareSources({ trips: o.trips, now }), now);
+  return { spaces, threads, items, payments: new Payments(spaces, now), tasks, safety, shares };
 }
 
 /** A space as one person sees it: nobody with a block between them in its members (blocks.ts). */
@@ -161,9 +170,9 @@ async function withoutHidden<S extends { members: Array<{ userId: string }> }>(t
   return hidden.size ? { ...s, members: s.members.filter((m) => !hidden.has(m.userId)) } : s;
 }
 
-export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { spaces: Spaces; trips?: Trips | null; parts?: SpaceParts }): SpaceParts {
-  const p = o.parts ?? spaceParts(o.spaces, { media: deps.media, trips: o.trips ?? null, log: app.log });
-  const { spaces, threads, items, payments, tasks } = p;
+export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { spaces: Spaces; trips?: Trips | null; parts?: SpaceParts; sources?: ShareSources }): SpaceParts {
+  const p = o.parts ?? spaceParts(o.spaces, { media: deps.media, trips: o.trips ?? null, log: app.log, ...(o.sources ? { sources: o.sources } : {}) });
+  const { spaces, threads, items, payments, tasks, shares } = p;
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
 
@@ -235,6 +244,11 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.delete(`${AREA}/spaces/:id/roles/:role`, RL, run(async (user, req) => { await spaces.dropRole(user.id, param(req, "id"), param(req, "role")); return { ok: true }; }));
   app.post(`${AREA}/spaces/:id/bots`, RL, run(async (user, req) => { await spaces.addBot(user.id, param(req, "id"), bodyOf(req.body).slug); return { ok: true }; }));
   app.delete(`${AREA}/spaces/:id/bots/:slug`, RL, run(async (user, req) => { await spaces.removeBot(user.id, param(req, "id"), param(req, "slug")); return { ok: true }; }));
+  // A group's sub-bots: what each person shares from their own Plan, Notes, Travel and Xode (botsBots/spaceShares.ts).
+  app.get(`${AREA}/spaces/:id/sharing`, RL, run(async (user, req) => ({ bots: await shares.summary(user.id, param(req, "id")) })));
+  app.get(`${AREA}/spaces/:id/bots/:bot/shared`, RL, run(async (user, req) => shares.view(user.id, param(req, "id"), param(req, "bot"))));
+  app.get(`${AREA}/spaces/:id/bots/:bot/mine`, RL, run(async (user, req) => shares.mine(user.id, param(req, "id"), param(req, "bot"))));
+  app.put(`${AREA}/spaces/:id/bots/:bot/mine`, RL, run(async (user, req) => { const b = bodyOf(req.body); return shares.set(user.id, param(req, "id"), param(req, "bot"), { mode: b.mode, item: b.item, on: b.on }); }));
   app.get(`${AREA}/spaces/:id/activity`, RL, run(async (user, req) => ({ activity: await spaces.activity(user.id, param(req, "id"), Number(queryOf(req).limit) || 50) })));
 
   // An invite's link (https://app.x0bot.com/s/bots.spaces?join=CODE) opens the app; a browser that has no app to hand it to lands here:

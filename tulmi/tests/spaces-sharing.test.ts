@@ -74,7 +74,14 @@ async function served(o: { now?: { t: number } } = {}) {
   const media = fakeMedia();
   const app = Fastify();
   const trips = { current: async (u: string) => (u === A_ ? { id: "trip-1", place: "Pune", when: "14–16 Nov", who: "Mom", packing: [{ text: "Charger", done: true }, { text: "Aadhaar", done: false }] } : null) };
-  const parts = registerSpacesRoutes(app, { rateLimit: RL, bots: null, code: null, jobs: null, connectors: null, media: media as never, artifacts: null }, { spaces, trips: trips as never });
+  // Each person's own items, as their bots would list them (botsBots/shareSources.ts in the server).
+  const own: Record<string, Array<{ id: string; title: string; line: string; at: number | null }>> = {
+    [A_]: [{ id: "e:dentist", title: "Dentist", line: "Event", at: clock.t + 86_400_000 }, { id: "t:passport", title: "Renew passport", line: "To-do", at: null }],
+    [M_]: [{ id: "e:satsang", title: "Satsang", line: "Event", at: clock.t + 2 * 86_400_000 }, { id: "e:doctor", title: "Doctor", line: "Event", at: clock.t + 3 * 86_400_000 }],
+    [R_]: [{ id: "e:match", title: "Football match", line: "Event", at: clock.t + 86_400_000 }],
+  };
+  const sources = { plan: { list: async (u: string) => own[u] ?? [] } };
+  const parts = registerSpacesRoutes(app, { rateLimit: RL, bots: null, code: null, jobs: null, connectors: null, media: media as never, artifacts: null }, { spaces, trips: trips as never, sources });
   await app.ready();
   const call = async (method: "GET" | "POST" | "PUT" | "DELETE", url: string, user: string | null = A_, payload?: unknown) => {
     const r = await app.inject({ method, url: url.replace(/^https?:\/\/[^/]+/, ""), headers: user ? { authorization: `Bearer ${user}` } : {}, ...(payload !== undefined ? { payload: payload as object } : {}) });
@@ -493,5 +500,49 @@ describe("tasks and plans for others", () => {
     // Taken out of the space by who set it: off his list too.
     await s.call("DELETE", `${AREA}/spaces/${id}/tasks/${hw.id}`, M_);
     expect((await cal.list(R_, { from: "2026-10-28", to: "2026-11-01", tz: 330 })).tasks).toEqual([]);
+  });
+});
+
+describe("a group's sub-bots: what each person shares from their own bots", () => {
+  beforeEach(() => { resetSpaceTablesForTests(); resetAreaTablesForTests(); });
+  const B = (id: string) => `${AREA}/spaces/${id}/bots/plan`;
+
+  it("shares nothing until each person chooses; then everything, or only what they picked; only they can change it", async () => {
+    const s = await served();
+    const id = await s.home();
+    // Nothing yet: everyone listed, nobody sharing.
+    const first = (await s.call("GET", `${B(id)}/shared`, A_)).body;
+    expect(first.space).toEqual({ id, name: "Home" });
+    expect(first.people.map((p: { you: boolean; mode: string; items: unknown[] }) => [p.you, p.mode, p.items.length])).toEqual([[true, "none", 0], [false, "none", 0], [false, "none", 0]]);
+    expect((await s.call("GET", `${AREA}/spaces/${id}/sharing`, A_)).body.bots).toEqual([expect.objectContaining({ bot: "plan", sharing: [] })]);
+    // Mom shares everything; Rohan picks one thing.
+    expect((await s.call("PUT", `${B(id)}/mine`, M_, { mode: "all" })).body).toEqual({ mode: "all", items: [] });
+    expect((await s.call("PUT", `${B(id)}/mine`, R_, { item: "e:match", on: true })).body).toEqual({ mode: "some", items: ["e:match"] });
+    const seen = (await s.call("GET", `${B(id)}/shared`, A_)).body.people as Array<{ name: string; mode: string; items: Array<{ title: string }> }>;
+    expect(seen.find((p) => p.mode === "all")!.items.map((i) => i.title)).toEqual(["Satsang", "Doctor"]);
+    expect(seen.find((p) => p.mode === "some")!.items.map((i) => i.title)).toEqual(["Football match"]);
+    // Nobody picks what isn't theirs, and nobody changes another's sharing (each PUT is the caller's own).
+    expect((await s.call("PUT", `${B(id)}/mine`, R_, { item: "e:satsang", on: true })).status).toBe(404);
+    expect((await s.call("PUT", `${B(id)}/mine`, R_, { mode: "everything" })).status).toBe(400);
+    // Yours to pick from, and what you picked.
+    const mine = (await s.call("GET", `${B(id)}/mine`, R_)).body;
+    expect(mine).toMatchObject({ bot: "plan", mode: "some", items: ["e:match"] });
+    expect(mine.own.map((i: { id: string }) => i.id)).toEqual(["e:match"]);
+    // Unpicked: gone from the group.
+    await s.call("PUT", `${B(id)}/mine`, R_, { item: "e:match", on: false });
+    expect(((await s.call("GET", `${B(id)}/shared`, A_)).body.people as Array<{ name: string; items: unknown[]; mode: string }>).filter((p) => p.mode !== "none").map((p) => p.items.length)).toEqual([2, 0]);
+    // A stranger reads nothing; a bot that can't be shared is not found.
+    expect((await s.call("GET", `${B(id)}/shared`, X_)).status).toBe(404);
+    expect((await s.call("GET", `${AREA}/spaces/${id}/bots/shop/shared`, A_)).status).toBe(404);
+  });
+
+  it("someone who leaves takes their sharing with them", async () => {
+    const s = await served();
+    const id = await s.home();
+    await s.call("PUT", `${B(id)}/mine`, M_, { mode: "all" });
+    await s.call("DELETE", `${AREA}/spaces/${id}`, M_);
+    const people = (await s.call("GET", `${B(id)}/shared`, A_)).body.people as Array<{ mode: string }>;
+    expect(people.every((p) => p.mode === "none")).toBe(true);
+    expect((await s.call("GET", `${AREA}/spaces/${id}/sharing`, A_)).body.bots[0].sharing).toEqual([]);
   });
 });

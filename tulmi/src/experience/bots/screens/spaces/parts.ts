@@ -126,4 +126,18 @@ export function inviteRows(ctx: BotsCtx, s: Space, mailReady: boolean): Node[] {
   });
 }
 
-export interface OneSpace { space: Space; items: Item[]; payments: Payment[]; tasks: Task[]; mailReady: boolean }
+/** Who shares what from their own bots in the space (GET .../spaces/:id/sharing), when it could be read. */
+export interface BotSharing { bot: string; sharing: Array<{ userId: string; name: string; you: boolean; mode: "all" | "some" | "none" }> }
+export interface OneSpace { space: Space; items: Item[]; payments: Payment[]; tasks: Task[]; mailReady: boolean; sharing?: BotSharing[] }
+
+/** The sub-bots a group can have, by the bot each comes from. */
+export const SUB_BOTS: Record<string, { name: string; what: string }> = {
+  plan: { name: "Plan", what: "plans and to-dos" },
+  notes: { name: "Notes", what: "notes" },
+  travel: { name: "Travel", what: "trips" },
+  code: { name: "Xode", what: "projects" },
+};
+
+/** The bot's own name for this person ("Plan Ease"), else the sub-bot's. */
+export const subBotName = (ctx: { live: { bots: Array<{ slug: string; name: string }> } }, bot: string): string => ctx.live.bots.find((b) => b.slug === bot)?.name ?? SUB_BOTS[bot]?.name ?? bot;
+

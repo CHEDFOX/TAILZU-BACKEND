@@ -67,6 +67,7 @@ export const SCREENS = {
   spaceItem: "bots.space.item",      // One shared thing (params: item)
   spacePay: "bots.space.pay",        // Ask for a payment (params: id)
   spaceTasks: "bots.space.tasks",    // Given to you; a space's tasks; a new task or plan (params: id, new: "task" | "plan")
+  spaceBot: "bots.space.bot",        // One of a group's sub-bots: what each person shares from it, and what you do (params: id, bot)
   share: "bots.share",               // Share to a space or person (params: kind, ref, title, text, url, bot)
   chats: "bots.chats",               // Chats (params: id, the open one in the window; new: "group")
   thread: "bots.thread",             // One chat (params: id, before)

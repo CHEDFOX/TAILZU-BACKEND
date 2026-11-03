@@ -10,7 +10,7 @@ import {
 import {
   localDate, DAY, MONTHS, MIN, shortDate, type Space, type Task, type Item, type Payment, names, type Member, A, toast, enc, write, rowPad,
   kindBadge, iconButton, inputBox, field, personDot, canDo, messagePerson, rowsCard, type OneSpace, ifFilled, clearState, isDesk, section,
-  inviteRows,
+  inviteRows, type BotSharing, subBotName,
 } from "./parts.js";
 
 export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -162,6 +162,24 @@ const ITEM_KIND: Record<string, FeedKind> = { list: "lists", note: "notes", trip
 /** In the whole feed, each kind shows this many, with "See all" for the rest. */
 const FEED_PEEK = 3;
 
+/** Who shares one of their bots here, in a few words: "Mom and Rohan share", "You share", "Nobody yet". */
+function sharersLine(b: BotSharing): string {
+  const who = b.sharing;
+  if (!who.length) return "Nobody yet";
+  const them = who.filter((p) => !p.you).map((p) => p.name);
+  if (!them.length) return "You share";
+  return `${names(them)}${who.some((p) => p.you) ? " and you" : ""} share${them.length === 1 && !who.some((p) => p.you) ? "s" : ""}`;
+}
+
+/** A sub-bot as a small tile: the bot's look, its name, who shares; opens each person's part of it. */
+function subBotChip(ctx: BotsCtx, s: Space, b: BotSharing): Node {
+  return col([
+    botAvatar(botLook(b.bot), 34),
+    text(subBotName(ctx, b.bot), { size: 14, weight: 600, lineHeight: 18, lines: 1 }),
+    meta(sharersLine(b), { size: 11, lines: 1 }),
+  ], { gap: 4, width: 104, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: C.line }, open(SCREENS.spaceBot, { id: s.id, bot: b.bot }));
+}
+
 /** A shared bot as a small tile: its look, its name, who shared it. */
 function botChip(s: Space, b: Space["bots"][number]): Node {
   return col([
@@ -202,12 +220,16 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
     ? section(`Waiting on you · ${needs.length}`, [rowsCard(needs.slice(0, 3)), ...(more > 0 ? [meta(`${plural(more, "more thing")} in the feed below.`, { size: 12 })] : [])])
     : row([statusMark("done"), col([text("You're all caught up", { size: 15, weight: 500, lineHeight: 20 }), meta(`Nothing in ${s.name} is waiting on you.`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line });
 
-  // The bots the group shares, side by side.
+  // The group's sub-bots (each person's own Plan, Notes, Travel and Xode, as much as they share), then the bots the group shares.
   const shareable = (mineBots ?? []).filter((b) => !s.bots.some((x) => x.slug === b.slug));
+  const subs = (o.sharing ?? []).map((b) => subBotChip(ctx, s, b));
+  // A bot that is a sub-bot too (Plan Ease) shows once, as the sub-bot.
+  const sharedBots = s.bots.filter((b) => !(o.sharing ?? []).some((x) => x.bot === b.slug));
   const botsNow = section(`Bots in ${s.name}`, [
-    s.bots.length
-      ? row(s.bots.map((b) => botChip(s, b)), { gap: 10, flexWrap: "wrap" })
-      : meta(canDo(s, "addBots") ? "Share a bot here and everyone can use it with what's shared." : "No bots shared here yet.", { size: 13 }),
+    ...(subs.length ? [row(subs, { gap: 10, flexWrap: "wrap" })] : []),
+    sharedBots.length
+      ? row(sharedBots.map((b) => botChip(s, b)), { gap: 10, flexWrap: "wrap" })
+      : subs.length ? box([]) : meta(canDo(s, "addBots") ? "Share a bot here and everyone can use it with what's shared." : "No bots shared here yet.", { size: 13 }),
     // Your other bots, one tap from shared, folded behind one chip.
     ...(canDo(s, "addBots") && shareable.length ? [
       when({ falsy: "shareBotsOpen" }, chip("+ Share a bot", { dashed: true, onPress: { kind: "toggleState", path: "shareBotsOpen" } as ActionRef })),
