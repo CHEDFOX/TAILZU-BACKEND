@@ -43,7 +43,13 @@ export const OWNER_QUESTIONS = {
   keep: "Is there anything that must not change: an API, a design, a rule?",
 } as const;
 export type QuestionId = keyof typeof OWNER_QUESTIONS;
-export interface OwnerAnswers { for?: string; next?: string; keep?: string; at: number }
+/**
+ * What the owner said: the three questions, `vision` (everything they are thinking for the project, in their own words: the Xode flow's
+ * vision form, code/flow/gate.ts) and `skipped` (they chose to let Xode suggest the direction instead).
+ */
+export interface OwnerAnswers { for?: string; next?: string; keep?: string; vision?: string; skipped?: boolean; at: number }
+/** The most of an owner's vision kept. */
+export const VISION_MAX = 2000;
 
 export interface ProjectBook {
   version: 1;
@@ -57,6 +63,8 @@ export interface ProjectBook {
   questions: Array<{ id: QuestionId; text: string }>;
   /** What kind of application it is, what it does, its parts and flows, how its course changed (overview.ts); the card leads with it. */
   overview?: Overview;
+  /** What the owner said (their own words back to them; the Xode flow's gate reads whether they gave a vision or let Xode suggest one). */
+  owner?: OwnerAnswers;
 }
 
 export interface BookInput {
@@ -207,6 +215,7 @@ export function buildBook(i: BookInput): ProjectBook {
   if (ov?.direction) add("direction", `Its course changed: ${ov.direction}`, ovSource, "found", ov.at);
   for (const e of ov?.earlier ?? []) add("direction", `Until ${date(e.at)} it was: ${e.essence || [e.kind, e.what].filter(Boolean).join(". ")}`, index(`the project's overview as it was at ${e.commit.slice(0, 7)}`), "found", e.at);
   if (i.owner?.keep) add("direction", `Must not change: ${i.owner.keep}`, { kind: "owner", ref: "the owner" }, "confirmed", i.owner.at);
+  if (i.owner?.vision) add("direction", `The owner's vision: ${one(i.owner.vision, 600)}`, { kind: "owner", ref: "the owner" }, "confirmed", i.owner.at);
   for (const m of (i.milestones ?? []).slice(0, 5)) {
     add("direction", `Milestone "${m.title}": ${m.closed} of ${m.open + m.closed} done${m.dueOn ? `, due ${date(m.dueOn)}` : ""}${m.description ? `. ${one(m.description, 120)}` : ""}`, { kind: "milestone", ref: m.title, url: m.url });
   }
@@ -237,7 +246,7 @@ export function buildBook(i: BookInput): ProjectBook {
   if (!i.owner?.next && !facts.some((f) => f.chapter === "direction" && (f.source.kind === "milestone" || f.source.kind === "file"))) {
     gaps.push("Where it is heading: no milestones or roadmap file, so this rests on open pull requests and issues until the owner says.");
   }
-  return { version: 1, project: i.project, commit: i.commit, builtAt: i.now, facts, gaps, questions, ...(ov ? { overview: ov } : {}) };
+  return { version: 1, project: i.project, commit: i.commit, builtAt: i.now, facts, gaps, questions, ...(ov ? { overview: ov } : {}), ...(i.owner ? { owner: i.owner } : {}) };
 }
 
 const KIND_WORDS: Record<string, string> = { feat: "features", fix: "fixes", refactor: "refactors", docs: "docs changes", test: "test changes", chore: "chores", perf: "speed-ups", build: "build changes", ci: "CI changes", style: "style changes" };
@@ -467,6 +476,11 @@ export function cleanAnswers(raw: unknown, now: number, prev: OwnerAnswers | nul
     const t = one(v.replace(/[<>]/g, " "), 400);
     if (t) { out[id] = t; any = true; } else delete out[id];
   }
+  if (typeof o.vision === "string") {
+    const v = o.vision.replace(/[<>]/g, " ").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim().slice(0, VISION_MAX);
+    if (v) { out.vision = v; any = true; } else delete out.vision;
+  }
+  if (o.skipped === true) { out.skipped = true; any = true; } else if (any) delete out.skipped;
   return any || prev ? out : null;
 }
 

@@ -8,6 +8,7 @@
  * Screens listen to their live topics ("space:<id>", "spaces", "threads", "thread:<id>"), so they update when someone else changes them.
  */
 
+import { memoryPage, type GroupMemoryView } from "./spaces/memoryPage.js";
 import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sdui.js";
 import { PERMS, PERM_WORDS } from "../../../botsBots/spacePerms.js";
 import {
@@ -20,14 +21,15 @@ import { type BotsScreen, screen } from "../registry.js";
 import { invitePage } from "./spaces/invitePage.js";
 import { idParam, memberPage } from "./spaces/memberPage.js";
 import {
-  ifFilled, A, toast, clearState, refresh, rowsCard, rowPad, type Space, personDot, names, inputBox, field, isDesk, type OneSpace, failed,
+  ifFilled, A, toast, clearState, refresh, rowsCard, rowPad, type Space, personDot, names, inputBox, field, isDesk, type OneSpace, type BotSharing, failed,
   enc, write, type Role, section, type Item, iconButton, kindBadge, shortDate, canDo, labelledField, type Task, DAY, localDate,
   messagePerson,
 } from "./spaces/parts.js";
 import { iconBox, KIND_WORD, setState, type Targets, sharePage } from "./spaces/sharePage.js";
+import { botPage, type BotPageData, type MineView, type SharedView } from "./spaces/botPage.js";
 import {
   type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
-  openChat, dayWords, clockOf, type JoinInvite, facesLine,
+  openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState,
 } from "./spaces/spaceDetail.js";
 
 interface Thread {
@@ -48,7 +50,7 @@ const toggleChip = (label: string, path: string): Node => row([text(label, { siz
 }, { kind: "toggleState", path });
 
 const newSpace = ifFilled("spaceName", call("POST", `${A}/spaces`, { name: "$state.spaceName" }, { assignTo: "made", ok: seq(toast("Space made"), clearState("spaceName"), refresh), fail: toast("Couldn't make it. Try again.", true) }), "Name the space first");
-const joinSpace = ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code" }, { assignTo: "joined", ok: seq(toast("You're in"), clearState("code"), refresh), fail: toast("That code doesn't work, or it's for another email.", true) }), "Enter the invite code");
+const joinSpace = ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code" }, { assignTo: "joined", ok: seq(toast("You're in"), clearState("code"), refresh), fail: toast("That code doesn't work any more. Ask for a new one.", true) }), "Enter the invite code");
 
 /**
  * Chats and what's given to you, at the top of Spaces only when there is something in them (a new message, a thing to do): an empty
@@ -101,7 +103,7 @@ const joinParam = (ctx: BotsCtx): string => String(ctx.params.join ?? "").toUppe
 const joinFromLink = (code: string): ActionRef => call("POST", `${A}/spaces/join`, { code }, {
   assignTo: "joined",
   ok: seq(toast("You're in"), { kind: "navigate", screenId: SCREENS.spaces, params: { id: "$state.joined.id" }, replace: true } as ActionSpec),
-  fail: toast("That invite doesn't work, or it's for another email.", true),
+  fail: toast("That invite doesn't work any more. Ask for a new one.", true),
 });
 
 function joinCard(ctx: BotsCtx, d: SpacesData): Node[] {
@@ -114,7 +116,7 @@ function joinCard(ctx: BotsCtx, d: SpacesData): Node[] {
   return [card([
     col([
       text(inv ? `You're invited to ${inv.name}` : "You're invited to a space", { size: 19, weight: 700, lineHeight: 24 }),
-      meta(`${already}${inv?.email ? ` · for ${inv.email}` : ""}`, { size: 13 }),
+      meta(already, { size: 13 }),
     ], { gap: 4 }),
     primaryButton(inv ? `Join ${name}` : "Join", joinFromLink(code), { wide: !isDesk(ctx), size: "md" }),
   ], { gap: 14, padding: 18 })];
@@ -152,7 +154,7 @@ function spaceOnePhone(ctx: BotsCtx, o: OneSpace, d: SpacesData) {
     ...o.items.map((x) => `item:${x.id}`), ...o.payments.map((p) => `pay:${p.id}`), ...o.tasks.map((t) => `task:${t.id}`),
     ...(o.space.activity ?? []).map((a) => `act:${a.id}`),
   ];
-  return page(ctx, { back: true, title: o.space.name, nav: "you", state: { listName: "", spaceRename: "", tab: String(ctx.params.tab ?? "now") }, live: spaceLive(o, []), body: spaceDetail(ctx, o, d.bots), gap: 22, pullBot: { top: true, bottom: true, items } });
+  return page(ctx, { back: true, title: o.space.name, nav: "you", state: spaceDetailState(ctx), live: spaceLive(o, []), body: spaceDetail(ctx, o, d.bots), gap: 22, pullBot: { top: true, bottom: true, items } });
 }
 
 function spacesDesk(ctx: BotsCtx, d: SpacesData) {
@@ -171,7 +173,7 @@ function spacesDesk(ctx: BotsCtx, d: SpacesData) {
     col([joinBox()], { paddingTop: 8 }),
   ], { width: 300, flexShrink: 0, gap: 10 });
   return page(ctx, {
-    title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: joinParam(ctx), listName: "", spaceRename: "", tab: "now", newOpen: false, codeOpen: false }, live: spaceLive(sel, list),
+    title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: joinParam(ctx), ...spaceDetailState(ctx), newOpen: false, codeOpen: false }, live: spaceLive(sel, list),
     body: [
       row([
         col([row([text("You", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("you")), title("Spaces", { size: 26 }), meta("Your people, in one place.", { size: 14 })], { gap: 4, flexGrow: 1 }),
@@ -510,7 +512,14 @@ function chatsDesk(ctx: BotsCtx, d: ChatsData) {
 // ===================================================================== the screens
 
 type Api = Parameters<NonNullable<BotsScreen["load"]>>[1];
-const oneSpace = (deps: Api, id: string) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(id)}`).catch(() => undefined);
+/** One space whole, and who shares what from their own bots there (for its sub-bots). */
+const oneSpace = async (deps: Api, id: string): Promise<OneSpace | undefined> => {
+  const [one, sharing] = await Promise.all([
+    deps.api<OneSpace>("GET", `${A}/spaces/${enc(id)}`).catch(() => undefined),
+    deps.api<{ bots: BotSharing[] }>("GET", `${A}/spaces/${enc(id)}/sharing`).then((r) => r.bots, () => undefined),
+  ]);
+  return one ? { ...one, ...(sharing ? { sharing } : {}) } : undefined;
+};
 
 export const spacesScreens: BotsScreen[] = [
   screen<SpacesData>({
@@ -531,6 +540,19 @@ export const spacesScreens: BotsScreen[] = [
     },
     build: (ctx, d) => (isDesk(ctx) ? spacesDesk(ctx, d ?? {}) : d?.one && idParam(ctx) ? spaceOnePhone(ctx, d.one, d) : idParam(ctx) && d?.spaces ? failed(ctx, "This space") : spacesPhone(ctx, d ?? {})),
   }),
+  screen<BotPageData>({
+    id: SCREENS.spaceBot,
+    load: async (ctx, deps) => {
+      const base = `${A}/spaces/${enc(idParam(ctx))}/bots/${enc(String(ctx.params.bot ?? ""))}`;
+      const [shared, mine] = await Promise.all([
+        deps.api<SharedView>("GET", `${base}/shared`).catch(() => undefined),
+        deps.api<MineView>("GET", `${base}/mine`).catch(() => undefined),
+      ]);
+      return { shared, mine };
+    },
+    build: botPage,
+  }),
+  screen<GroupMemoryView>({ id: SCREENS.spaceMemory, load: (ctx, deps) => deps.api<GroupMemoryView>("GET", `${A}/spaces/${enc(idParam(ctx))}/memory`), build: memoryPage }),
   screen<OneSpace>({ id: SCREENS.spaceMember, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: memberPage }),
   screen<OneSpace>({ id: SCREENS.spaceInvite, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: invitePage }),
   screen<OneSpace>({ id: SCREENS.spaceRoles, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: rolesPage }),

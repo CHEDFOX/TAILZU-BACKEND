@@ -2,6 +2,7 @@
  * The Code bot at work's attach screen.
  */
 
+import { flowSend } from "./flow.js";
 import type { Node, ActionRef, ActionSpec } from "../../../../../../shared/types/sdui.js";
 import { type FileRow, type ProjectRow, ago, refOf, isUuid, projectName } from "../../../../botsCodeWork/read.js";
 import {
@@ -50,10 +51,14 @@ export function attachScreen(ctx: BotsCtx, d: AttachData | undefined) {
   const c: ChatCtx = { projectId, threadId: jobId ?? (isUuid(ctx.params.thread) ? ctx.params.thread : threadFor(ctx.user?.id ?? "anon", projectId)), ...(jobId ? { jobId } : {}), projectName: projectName(d?.job?.project ?? d?.project) };
   const desk = ctx.client === "desktop";
   const files = (d?.files ?? []).slice(0, desk ? 6 : 4);
+  // In the Xode flow (via: the chat said where its plan is): the file goes with the message to the plan's talk, or, at work, to be judged
+  // against the plan (a picture is read first) — never to the old ask road, which could start work of its own.
+  const via = ctx.params.via === "work" || ctx.params.via === "say" ? ctx.params.via : null;
+  const sendWith = (message: string, o: { from?: string; attachments: string }): ActionRef => (via ? flowSend(c, via === "work", message, o) : askCode(ctx, c, message, o));
   const send: ActionSpec = {
     kind: "condition", if: { falsy: "msg" }, then: {
-      kind: "condition", if: { truthy: "pick" }, then: askCode(ctx, c, "Here's the file. Have a look.", { attachments: "$state.atts" }), else: toast("Pick a file or type something first"),
-    }, else: askCode(ctx, c, "$state.msg", { from: "msg", attachments: "$state.atts" }),
+      kind: "condition", if: { truthy: "pick" }, then: sendWith("Here's the file. Have a look.", { attachments: "$state.atts" }), else: toast("Pick a file or type something first"),
+    }, else: sendWith("$state.msg", { from: "msg", attachments: "$state.atts" }),
   };
   const voice: ActionRef = desk ? { kind: "dictate" } : open(SCREENS.ask, { voice: true });
   // A picked file goes up at once (media.ts uploadPick) and is the one this message carries, as a recent one is.

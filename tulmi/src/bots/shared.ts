@@ -16,9 +16,11 @@
  */
 import { youStore } from "../you/store.js";
 import { botStore, type BotStore } from "./store.js";
+import { forBots, keyOf, MONEY, sectionOf } from "../you/spaceFile.js";
+import { NO_MARKS, type SpaceMarks } from "../you/spaceMarks.js";
 
 export const SHARED_ID = "_you";
-const SHARED_KEEP = 60;
+export const SHARED_KEEP = 60;
 export const SHARED_SHOWN = 6;
 const CACHE_MS = 30_000;
 const CACHE_MAX = 1000;
@@ -27,6 +29,8 @@ export interface SharedDeps {
   store?: BotStore;
   /** Is the switch on for this person? The You store's privacy.personalise when not given. */
   on?: (userId: string) => Promise<boolean>;
+  /** Their space's marks (sections off, pinned lines). The You store's privacy.space when not given. */
+  marks?: (userId: string) => Promise<SpaceMarks>;
 }
 
 /** The topics a shared fact never touches. A false alarm only means one fact is not shared. */
@@ -34,12 +38,13 @@ const SENSITIVE: readonly RegExp[] = [
   /\b(?:health|illness|sick|disease|disorder|diagnos\w*|doctors?|hospital\w*|surgery|therap\w*|medic\w*|pills?|prescri\w*|pregnan\w*|diabet\w*|cancer|asthma|allerg\w*|blood\s+(?:pressure|sugar)|thyroid|pcos|depress\w*|anxiety|adhd|autis\w*|bipolar|ocd|ptsd|mental|disab\w*|hiv|injur\w*)\b/i,
   /\b(?:relig\w*|god|allah|bhagwan|pray\w*|puja|pooja|namaz|temples?|mosques?|church\w*|gurudwara|hindu\w*|muslims?|islam\w*|christian\w*|sikh\w*|jain\w*|buddhis\w*|jew|jewish|atheist|caste|brahmin|dalit|obc)\b/i,
   /\b(?:politic\w*|vot(?:e|ed|es|er|ers|ing)|elections?|bjp|congress|left[-\s]wing|right[-\s]wing|liberal|conservative|leftist|democrat\w*|republican\w*)\b/i,
-  /(?:[₹$€£]|\brs\.?\s*\d|\b(?:inr|rupees?|lakhs?|crores?|salary|income|earn(?:s|ed|ing)?|ctc|loans?|debts?|emi|banks?|credit\s+card|debit\s+card|upi|net\s+worth|savings?|invest\w*|stocks?|mutual\s+funds?|crypto|bitcoin|tax(?:es)?|budget)\b)/i,
+  MONEY, // the person's space files these under Money (src/you/spaceFile.ts)
   /\b(?:sexual\w*|sex|gay|lesbian|bisexual|queer|transgender)\b/i,
 ];
 
-export function sensitive(text: string): boolean {
-  return SENSITIVE.some((re) => re.test(text));
+/** Touches a sensitive topic. `money: false`: money is fine here (a group's own line: "we split rent on the 1st"). */
+export function sensitive(text: string, o: { money?: boolean } = {}): boolean {
+  return SENSITIVE.some((re) => (o.money === false && re === MONEY ? false : re.test(text)));
 }
 
 const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();
@@ -56,7 +61,7 @@ export function pickFacts(facts: ReadonlyArray<{ text: string; createdAt: number
 }
 
 // A person asks many things in a row: the switch and the facts are read once a half minute, and a change made here drops the copy at once.
-const cache = new Map<string, { at: number; on: boolean; facts: Array<{ text: string; createdAt: number }> }>();
+const cache = new Map<string, { at: number; on: boolean; marks: SpaceMarks; facts: Array<{ text: string; createdAt: number }> }>();
 export function dropSharedCache(userId?: string): void {
   if (userId === undefined) cache.clear(); else cache.delete(userId);
 }
@@ -64,6 +69,31 @@ export function dropSharedCache(userId?: string): void {
 async function switchOn(userId: string, d: SharedDeps): Promise<boolean> {
   if (d.on) return d.on(userId);
   return (await youStore().getSettings(userId)).privacy.personalise !== false;
+}
+
+/** The switch and the space's marks, from one read of the settings. */
+async function readSwitch(userId: string, d: SharedDeps): Promise<{ on: boolean; marks: SpaceMarks }> {
+  if (d.on || d.marks) return { on: await switchOn(userId, d), marks: d.marks ? await d.marks(userId) : NO_MARKS };
+  const p = (await youStore().getSettings(userId)).privacy;
+  return { on: p.personalise !== false, marks: p.space ?? NO_MARKS };
+}
+
+/**
+ * What a bot may be shown of `facts` (its own memory, oldest first): none from a section the person switched off, in the order given, the pinned
+ * lines moved to the end, as the newest, so a prompt that keeps the newest keeps them.
+ */
+export async function usableForBots<T extends { text: string }>(userId: string, facts: readonly T[], d: SharedDeps = {}): Promise<T[]> {
+  if (!facts.length) return [];
+  try {
+    // Read just before by sharedFacts for the same turn, most of the time: its half-minute copy saves a second read.
+    const hit = !d.on && !d.marks && (d.store ?? botStore()) === botStore() ? cache.get(userId) : undefined;
+    const marks = hit && Date.now() - hit.at <= CACHE_MS ? hit.marks : (await readSwitch(userId, d)).marks;
+    const pins = new Set(marks.pins);
+    const kept = forBots(facts, marks);
+    return [...kept.filter((f) => !pins.has(keyOf(f.text))), ...kept.filter((f) => pins.has(keyOf(f.text)))];
+  } catch {
+    return [...facts];
+  }
 }
 
 /** Keeps what a bot just learned, for every bot. Returns what was kept. */
@@ -83,16 +113,22 @@ export async function sharedFacts(userId: string, about: string, d: SharedDeps =
     const keep = !d.on && store === botStore();
     let hit = keep ? cache.get(userId) : undefined;
     if (!hit || now - hit.at > CACHE_MS) {
-      const on = await switchOn(userId, d);
+      const { on, marks } = await readSwitch(userId, d);
       const facts = on ? (await store.listFacts(userId, SHARED_ID)).map((f) => ({ text: f.text, createdAt: f.createdAt })) : [];
-      hit = { at: now, on, facts };
+      hit = { at: now, on, marks, facts };
       if (keep) {
         cache.delete(userId);
         cache.set(userId, hit);
         if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
       }
     }
-    return hit.on ? pickFacts(hit.facts, about, n) : [];
+    if (!hit.on) return [];
+    // Their space: a switched-off section is never shown; a pinned line always is (up to n), then the ones that fit this message.
+    // A line they moved to Money stays with the bot that learned it, like every money line.
+    const usable = forBots(hit.facts, hit.marks).filter((f) => sectionOf(f.text, hit!.marks) !== "money");
+    const pins = new Set(hit.marks.pins);
+    const pinned = usable.filter((f) => pins.has(keyOf(f.text))).slice(0, n).map((f) => f.text);
+    return [...pinned, ...pickFacts(usable.filter((f) => !pins.has(keyOf(f.text))), about, n - pinned.length)];
   } catch {
     return [];
   }

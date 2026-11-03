@@ -12,6 +12,7 @@ import { SENT_WORDS, start, streamed, failed } from "../../askMoment.js";
 import {
   botLook, C, call, seq, labelled, box, icon, back, row, botAvatar, col, text, statusMark, type Mark, duration, FACE, type BotsCtx, open,
   SCREENS, meta, RADIUS, page, emptyState, button, shapes, mono, blip, card, divider, sectionLabel, grow,
+  picture,
 } from "../../kit.js";
 
 export const CODE = botLook("code");
@@ -344,6 +345,26 @@ const doneMark = (size: number): Node => shapes([
   ...([[3, 10], [47, 8], [2, 36], [48, 38], [12, 49], [40, 2]] as Array<[number, number]>).map(([x, y]) => ({ circle: [x, y, 1.6] as [number, number, number], fill: MOSS, motion: "pop" as const })),
 ], { size, viewBox: "0 0 50 50", label: "Done" });
 
+/** The real screens a job kept (code/agent/screens.ts): phone and computer, side by side, each opening full size. */
+function screensOf(j: JobData, desk: boolean): Node[] {
+  const shots = (j.agent?.report?.shots ?? []).filter((s) => s.url);
+  if (!shots.length) return [];
+  const tile = (s: (typeof shots)[number]): Node => {
+    const phone = s.viewport === "mobile";
+    const w = desk ? (phone ? 180 : 420) : phone ? 120 : 220;
+    const h = phone ? Math.round(w * 844 / 390) : Math.round(w * 800 / 1280);
+    return col([
+      picture(s.url!, w, h, { radius: 12, background: C.surface, fit: "cover", label: `${s.route} on ${phone ? "a phone" : "a computer"}` }),
+      meta(`${phone ? "Phone" : "Computer"} · ${s.route}`, { size: 12 }),
+    ], { gap: 6 }, { kind: "openUrl", url: s.url! } as ActionSpec);
+  };
+  return [col([
+    sectionLabel("Real screens"),
+    row(shots.map(tile), { gap: 12, alignItems: "flex-end", flexWrap: "wrap" }),
+    meta("Taken from the running app after the change.", { size: 12 }),
+  ], { gap: 10 })];
+}
+
 export function donePhone(ctx: BotsCtx, d: DoneData) {
   const j = d.job;
   const nums = doneNumbers(j).slice(0, 4);
@@ -359,6 +380,7 @@ export function donePhone(ctx: BotsCtx, d: DoneData) {
         row([box([], { width: 10, height: 10, borderRadius: 5, backgroundColor: MOSS }), text(shippedLine(j), { size: 15, lineHeight: 20, style: { flexShrink: 1 } })], { gap: 8 }),
       ], { gap: 12, paddingTop: 8, alignItems: "center" }),
       ...(answer && j.agent?.report?.text ? [theirs(j.agent.report.text, { size: 14 })] : [row(nums.map((n) => numberTile(n.value, n.label.replace(/ changed$/, ""), undefined, 20, true)), { gap: 8 })]),
+      ...screensOf(j, false),
       ...(note ? [note] : []),
     ],
     footer: [...doneButtons(j, false), ...(d.shippedThisWeek ? [weekBeads(d.shippedThisWeek, `${d.shippedThisWeek} shipped this week`)] : [])],
@@ -387,6 +409,7 @@ export function doneDesk(ctx: BotsCtx, d: DoneData) {
       ...(answer && j.agent?.report?.text ? [card([theirs(j.agent.report.text)], { padding: 20 })]
         : [labelled(row(nums.flatMap((n, i) => [...(i ? [divider({ vertical: true })] : []), box([numberTile(n.value, n.label, n.sub, 24)], { flexGrow: 1, flexBasis: 0, paddingVertical: 18, paddingHorizontal: 20 })]),
           { borderWidth: 1, borderColor: C.line, borderRadius: 18, alignItems: "stretch" }), "By the numbers")]),
+      ...screensOf(j, true),
       ...(files.length || note ? [col([
         sectionLabel("What changed"),
         ...(files.length ? [col(files.flatMap((f, i) => [...(i ? [divider()] : []), col([

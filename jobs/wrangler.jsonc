@@ -55,12 +55,26 @@
     "bindings": [
       { "name": "NONCES", "class_name": "NonceGuard" },
       { "name": "USER_DEVICES", "class_name": "UserDevices" },
-      { "name": "ROOMS", "class_name": "JobRoom" }
+      { "name": "ROOMS", "class_name": "JobRoom" },
+      // One per job: X0's cloud runner, the container its live session runs in when the person's PC is off and GitHub's minutes are used up (src/containers.ts).
+      { "name": "XODE_RUNNER", "class_name": "XodeRunner" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["NonceGuard"] },
-    { "tag": "v2", "new_sqlite_classes": ["UserDevices", "JobRoom"] }
+    { "tag": "v2", "new_sqlite_classes": ["UserDevices", "JobRoom"] },
+    { "tag": "v3", "new_sqlite_classes": ["XodeRunner"] }
+  ],
+
+  // The cloud runner's image (container/Dockerfile): Node 22 and git. standard-2 is 1 vCPU, 6 GiB, 12 GB of disk; at most 10 at once.
+  "containers": [
+    { "class_name": "XodeRunner", "image": "./container/Dockerfile", "instance_type": "standard-2", "max_instances": 10 }
+  ],
+
+  // A job's real screenshots (tulmi/src/code/agent/screens.ts), kept under the owner's key and answered by their signed links (src/http.ts).
+  // Made once with: npx wrangler r2 bucket create x0-job-shots
+  "r2_buckets": [
+    { "binding": "SHOTS", "bucket_name": "x0-job-shots" }
   ],
 
   // Plain settings. Anything that is a secret goes in the list below instead, never here.

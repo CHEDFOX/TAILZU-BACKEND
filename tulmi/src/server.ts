@@ -57,6 +57,7 @@ import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
+import { registerXodeFlowRoutes } from "./routes/bots/botsXode.js";
 import { registerBotsFirstRunRoutes } from "./routes/bots/botsFirstRun.js";
 import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
@@ -68,6 +69,7 @@ import { createPersonContext } from "./context/index.js";
 import { registerEverydayRoutes } from "./routes/bots/everyday.js";
 import { everyday } from "./everyday/index.js";
 import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
+import { startOpsAlerts } from "./ops/alerts.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
@@ -422,10 +424,21 @@ if (routines) {
   app.addHook("onClose", async () => { stopRoutines(); });
 }
 registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
+// The server watches its own disk, memory and CPU, and tells its owner before one runs out (src/ops/alerts.ts; OPS_ALERT_USER_ID).
+{
+  const owner = getConfig().OPS_ALERT_USER_ID;
+  if (owner) {
+    const stopOps = startOpsAlerts({
+      send: async (m) => { await pushEngine()?.notify(owner, { kind: "ops_alert", key: m.key, vars: { title: m.title, body: m.body } }); },
+      log: app.log,
+    });
+    app.addHook("onClose", async () => { stopOps(); });
+  }
+}
 // Everyday tools (src/everyday, docs/everyday.md): flights, hotels, currency and weather for every bot that fits, free, no sign-in.
 registerEverydayRoutes(app, { rateLimit: AUTHED_RL, everyday: everyday() });
 // The person's context (src/context, docs/context.md): who they are, who they message, their last asks and open work, for the one key's
-// brain and Ask's first step. Off with CONTEXT=false; migration 0063 keeps it.
+// brain and Ask's first step. Off with CONTEXT=false; migration 0065 keeps it.
 const personContext = createPersonContext({ jobs: codeJobs, connectors, routines: routineStore() });
 registerContextRoutes(app, { rateLimit: AUTHED_RL, context: personContext });
 // The one key's brain (src/askDecide, docs/ask-decide.md): what the person meant, in any language.
@@ -438,6 +451,8 @@ const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
+// The Xode flow (code/flow, routes/bots/botsXode.ts): read and hear the direction, agree a plan, approve it, judge each message against it.
+registerXodeFlowRoutes(app, botsAreaDeps);
 registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).

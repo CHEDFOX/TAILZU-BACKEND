@@ -26,7 +26,7 @@ The one key's brain and Ask used to start every request nearly blank: the screen
 Nothing from a private field, X0 Bot's own window, a sensitive app (`pipeline/sensitive.ts`) or a picture step; nothing that looks like a secret, a password or a code (`code/policy.ts` scanForSecrets, and the words by name); nothing at all while Settings › Privacy "Use what you've told your bots" is off (`privacy.personalise`), and then nothing learned is shown either.
 
 ## Kept and forgotten
-Migration 0063 (`person_context`): one row per person, written with the service key only, gone with the account. Without it, memory. At most 30 people and 6 asks.
+Migration 0065 (`person_context`): one row per person, written with the service key only, gone with the account. Without it, memory. At most 30 people and 6 asks.
 
 - `GET /v1/context?tz=` what is kept, and the block a model is shown now
 - `DELETE /v1/context` everything; `DELETE /v1/context/people/:name` one person; `DELETE /v1/context/turns` the asks and their summary

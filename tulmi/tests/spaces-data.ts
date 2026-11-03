@@ -106,5 +106,38 @@ export function spacesApi(): Record<string, unknown> {
     [`GET ${A}/threads`]: { threads: THREADS, unread: 2 },
     [`GET ${A}/threads/contacts`]: { people: [{ userId: "m", name: "Mom", spaces: ["Home"] }, { userId: "r", name: "Rohan", spaces: ["Home"] }], groupSpaces: [{ id: "s1", name: "Home", people: [{ userId: "m", name: "Mom" }, { userId: "r", name: "Rohan" }] }] },
     [`GET ${A}/threads/th-home`]: HOME_CHAT,
+    // The group's sub-bots: Mom shares her whole Plan, Rohan one Xode project; Aanya shares nothing yet.
+    [`GET ${A}/spaces/s1/sharing`]: { bots: [
+      { bot: "plan", sharing: [{ userId: "m", name: "Mom", you: false, mode: "all" }] },
+      { bot: "notes", sharing: [] },
+      { bot: "travel", sharing: [{ userId: "u", name: "Aanya", you: true, mode: "all" }] },
+      { bot: "code", sharing: [{ userId: "r", name: "Rohan", you: false, mode: "some" }] },
+    ] },
+    // What Home's bots know: lines Mom and Rohan told them, one Aanya shared from her own space.
+    [`GET ${A}/spaces/s1/memory`]: { space: { id: "s1", name: "Home" }, admin: true, lines: [
+      { id: "g1", text: "Dadi is vegetarian, no onion or garlic", section: "people", by: "Mom", you: false, mine: true, at: FIXED_NOW - 2 * HOUR, shared: false },
+      { id: "g2", text: "Groceries come on Sunday mornings", section: "day", by: "Rohan", you: false, mine: true, at: FIXED_NOW - DAY, shared: false },
+      { id: "g3", text: "We split the rent on the 1st", section: "money", by: "Mom", you: false, mine: true, at: FIXED_NOW - 3 * DAY, shared: false },
+      { id: "g4", text: "Prefers short replies, in English with a little Hindi", section: "likes", by: "you", you: true, mine: true, at: FIXED_NOW - 4 * DAY, shared: true },
+    ] },
+    [`GET ${A}/spaces/s1/bots/plan/shared`]: { bot: "plan", space: { id: "s1", name: "Home" }, people: [
+      { userId: "u", name: "Aanya", you: true, mode: "none", items: [] },
+      { userId: "m", name: "Mom", you: false, mode: "all", items: [
+        { id: "e:satsang", title: "Satsang at Shanti's", line: "Event", at: FIXED_NOW + DAY + 3 * 3_600_000 },
+        { id: "e:doctor", title: "Doctor, knee check-up", line: "Event", at: FIXED_NOW + 2 * DAY },
+        { id: "t:pension", title: "Submit pension form", line: "To-do", at: null },
+      ] },
+      { userId: "r", name: "Rohan", you: false, mode: "none", items: [] },
+    ] },
+    [`GET ${A}/spaces/s1/bots/plan/mine`]: { bot: "plan", mode: "some", items: ["e:dentist"], own: [
+      { id: "e:dentist", title: "Dentist", line: "Event", at: FIXED_NOW + DAY },
+      { id: "t:passport", title: "Renew passport", line: "To-do", at: null },
+    ] },
+    [`GET ${A}/spaces/s1/bots/code/shared`]: { bot: "code", space: { id: "s1", name: "Home" }, people: [
+      { userId: "u", name: "Aanya", you: true, mode: "none", items: [] },
+      { userId: "m", name: "Mom", you: false, mode: "none", items: [] },
+      { userId: "r", name: "Rohan", you: false, mode: "some", items: [{ id: "p-school", title: "school-site", line: "Working · add the results page", at: FIXED_NOW - 20 * MIN }] },
+    ] },
+    [`GET ${A}/spaces/s1/bots/code/mine`]: { bot: "code", mode: "none", items: [], own: [{ id: "p-shop", title: "shop", line: "Done · round the cart total", at: FIXED_NOW - DAY }] },
   };
 }

@@ -54,17 +54,13 @@ import { isRuleId, isRuleValue, ruleChange, rulesFrom } from "../../botsCode/rul
 import { CAP_STEP_PAISE, codeRulesStore } from "../../botsCode/store.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import { failCode } from "../code/code.js";
+import { Inner, innerCall } from "./inner.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Files the review reads and diffs; the rest are listed with their counts only. */
 const DIFF_FILES = 4;
 /** A file changed by more lines than this is listed, not drawn. */
 const DIFF_LINES_MAX = 600;
-
-/** An inner route's refusal, passed on as it was. */
-class Inner extends Error {
-  constructor(readonly status: number, readonly body: unknown) { super(`inner ${status}`); }
-}
 
 const bodyOf = (b: unknown): Record<string, unknown> => (b && typeof b === "object" && !Array.isArray(b) ? (b as Record<string, unknown>) : {});
 const words = (v: unknown, max: number): string | null => (typeof v === "string" && v.trim() && v.trim().length <= max ? v.trim() : null);
@@ -83,16 +79,7 @@ export function registerBotsCodeRoutes(app: FastifyInstance, deps: BotsAreaDeps)
   };
 
   /** One of the app's own routes, as the same person. Throws Inner for anything but a 2xx. */
-  const inner = async <T = Record<string, unknown>>(req: FastifyRequest, method: "GET" | "POST" | "PUT" | "DELETE", url: string, payload?: Record<string, unknown>): Promise<T> => {
-    const r = await app.inject({
-      method, url, ...(payload ? { payload } : {}),
-      headers: { authorization: String(req.headers["authorization"] ?? ""), ...(payload ? { "content-type": "application/json" } : {}) },
-    });
-    let parsed: unknown = null;
-    try { parsed = r.body ? JSON.parse(r.body) : null; } catch { parsed = { message: r.body }; }
-    if (r.statusCode < 200 || r.statusCode >= 300) throw new Inner(r.statusCode, parsed);
-    return parsed as T;
-  };
+  const inner = innerCall(app);
 
   /**
    * A route that asks first (routes/code/code.ts "A QUESTION"): the person's press on the screen that showed what it does is the

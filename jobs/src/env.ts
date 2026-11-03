@@ -8,6 +8,7 @@
  * code must not depend on that having happened before its first read, so `applyEnv` copies them in itself, on
  * every entry, and says RUNTIME=worker (config.ts then does not ask a Worker for what only the VPS needs).
  */
+import type { XodeRunner } from "./containers.js";
 import type { Advance } from "../../tulmi/src/code/agent/loop.js";
 import type { BrainBody } from "../../tulmi/src/code/jobs/handoff/protocol.js";
 import type { JobRoom } from "./jobRoom.js";
@@ -26,6 +27,10 @@ export interface Env {
   USER_DEVICES: DurableObjectNamespace<UserDevices>;
   /** One per job: its copy of the code, its runner session, the app's live view (jobRoom.ts). */
   ROOMS: DurableObjectNamespace<JobRoom>;
+  /** A job's real screenshots (code/agent/screens.ts), served by their signed links (http.ts). Absent: no screens round. */
+  SHOTS?: R2Bucket;
+  /** One per job: X0's cloud runner, a container for its live session (containers.ts). Absent: no cloud runner. */
+  XODE_RUNNER?: DurableObjectNamespace<XodeRunner>;
 
   // wrangler.jsonc vars
   RUNTIME?: string;
@@ -53,4 +58,15 @@ export function applyEnv(env: Env): void {
     if (typeof v === "string" && process.env[k] !== v) process.env[k] = v;
   }
   process.env.RUNTIME = "worker";
+}
+
+/** The SHOTS bucket as the shared code's blob store (media/blob.ts BlobStore). */
+export function shotsBlobs(env: Env): import("../../tulmi/src/media/blob.js").BlobStore | null {
+  const b = env.SHOTS;
+  if (!b) return null;
+  return {
+    async put(key, data, contentType) { await b.put(key, data, { httpMetadata: { contentType } }); },
+    async get(key) { const o = await b.get(key); return o ? Buffer.from(await o.arrayBuffer()) : null; },
+    async delete(key) { await b.delete(key); },
+  };
 }

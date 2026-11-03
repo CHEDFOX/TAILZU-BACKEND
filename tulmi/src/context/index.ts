@@ -3,7 +3,7 @@
  *
  *   build.ts   contextFor: the one builder; the sections in a fixed order, a hard cap, data only
  *   keep.ts    what is learned from what they did: asks, the people they message, what came of a run; forgetting
- *   store.ts   the table (migration 0063), in memory or Supabase
+ *   store.ts   the table (migration 0065), in memory or Supabase
  *
  *   createPersonContext(deps)   the service the routes use, or null when CONTEXT is false
  *

@@ -44,6 +44,8 @@ export const SCREENS = {
   language: "bots.language",         // Language / DLanguage
   notify: "bots.notify",             // Notify / DNotify
   privacy: "bots.privacy",           // Privacy / DPrivacy
+  youSpace: "bots.you.space",        // Your space: what your bots know about you, in sections (screens/you/space.ts; no board)
+  youSpaceSection: "bots.you.space.section", // One section of it: its lines and your things (params: id)
   deleteAccount: "bots.delete-account", // DeleteAcct / DDeleteAcct
   apps: "bots.apps",                 // Apps / DApps
   appConnect: "bots.app-connect",    // AppConnect / DAppConnect (params: id)
@@ -67,6 +69,8 @@ export const SCREENS = {
   spaceItem: "bots.space.item",      // One shared thing (params: item)
   spacePay: "bots.space.pay",        // Ask for a payment (params: id)
   spaceTasks: "bots.space.tasks",    // Given to you; a space's tasks; a new task or plan (params: id, new: "task" | "plan")
+  spaceBot: "bots.space.bot",        // One of a group's sub-bots: what each person shares from it, and what you do (params: id, bot)
+  spaceMemory: "bots.space.memory",  // What a group's bots know: lines anyone there told them (params: id; screens/spaces/memoryPage.ts)
   share: "bots.share",               // Share to a space or person (params: kind, ref, title, text, url, bot)
   chats: "bots.chats",               // Chats (params: id, the open one in the window; new: "group")
   thread: "bots.thread",             // One chat (params: id, before)

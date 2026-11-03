@@ -21,13 +21,15 @@
  *
  * Answers carry a short `code` and never a value from the request or the environment. A body over 16 KB is refused unread.
  */
+import { BlobJobShots, isJobShotPath, serveJobShot } from "../../tulmi/src/code/agent/jobShots.js";
 import {
   BRAIN_PATH, EVENT_PATH, MESSAGE_PATH, START_PATH, WAKE_KINDS, isSha, isUuid, type BrainBody, type EventBody, type MessageBody, type StartBody,
 } from "../../tulmi/src/code/jobs/handoff/protocol.js";
 import { SAID_MAX_CHARS } from "../../tulmi/src/code/live/limits.js";
 import { readTicket, ticketOf, type TicketKind } from "../../tulmi/src/code/live/tickets.js";
 import { verifyRequest, type NonceStore } from "../../tulmi/src/code/jobs/handoff/sign.js";
-import { applyEnv, type Env } from "./env.js";
+import { applyEnv, shotsBlobs, type Env } from "./env.js";
+import { getConfig } from "../../tulmi/src/config.js";
 import { durableNonces } from "./nonceGuard.js";
 import { roomOf } from "./rooms.js";
 import { startAgentJob, startBrainBuild, wakeAgentJob } from "./workflows.js";
@@ -49,6 +51,13 @@ export async function handleRequest(req: Request, env: Env, d: HttpDeps = {}): P
   const url = new URL(req.url);
   if (req.method === "GET" && url.pathname === "/v1/health") return json(200, { ok: true });
   if (url.pathname === DEVICES_PATH || ROOM_PATH.test(url.pathname)) return handleSocket(req, env, url, d);
+  // A job's real screenshot, by its signed link (code/agent/jobShots.ts): the signature opens it, nothing else does.
+  if (req.method === "GET" && isJobShotPath(url.pathname)) {
+    applyEnv(env);
+    const blobs = shotsBlobs(env);
+    const cfg = getConfig();
+    return serveJobShot({ url, store: blobs ? new BlobJobShots(blobs) : null, secret: cfg.ARTIFACT_SHOT_SECRET || cfg.CODE_JOBS_SECRET || "" });
+  }
   if (url.pathname !== START_PATH && url.pathname !== EVENT_PATH && url.pathname !== BRAIN_PATH && url.pathname !== MESSAGE_PATH) return fail(404, "not_found", "No such route.");
   if (req.method !== "POST") return fail(405, "method_not_allowed", "POST only.");
 

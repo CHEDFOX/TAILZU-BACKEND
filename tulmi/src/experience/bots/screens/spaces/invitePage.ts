@@ -55,7 +55,7 @@ export function invitePage(ctx: BotsCtx, d: OneSpace | undefined) {
       section("How do you want to send it?", [
         segmented([{ label: "A link", value: "link" }, { label: "Their email", value: "email" }], "how"),
         when({ neq: ["how", "email"] }, meta("Anyone with the link can join for the next 7 days. Send it on WhatsApp.", { size: 12 })),
-        when({ eq: ["how", "email"] }, col([field("email", "email", "name@example.com", { keyboard: "email-address" }), meta("Only this email can accept it.", { size: 12 })], { gap: 6 })),
+        when({ eq: ["how", "email"] }, col([field("email", "email", "name@example.com", { keyboard: "email-address" }), meta("We email it to them. It works once.", { size: 12 })], { gap: 6 })),
       ]),
       ...(s.invites?.length ? [col([
         row([text(`${s.invites.length === 1 ? "1 invite is" : `${s.invites.length} invites are`} waiting to be accepted`, { size: 14, lineHeight: 19, style: { flexGrow: 1, flexShrink: 1 } }), text("See", { size: 13, color: C.meta, lineHeight: 18 })], { gap: 10, paddingVertical: 6 }, { kind: "toggleState", path: "invitesOpen" }),

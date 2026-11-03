@@ -3,6 +3,7 @@
  * connected. No screen draws an amount; the routes' own still carry some (ours), so the screens are seen not to.
  */
 import { FIXED_NOW, IST } from "../../../src/experience/bots/fixtures.js";
+import { SPACE_API } from "../../../tests/space-data.js";
 
 const MIN = 60_000, H = 60 * MIN, D = 24 * H;
 const NOW = FIXED_NOW;
@@ -95,6 +96,7 @@ const app = {
 };
 
 export const YOU_API: Record<string, unknown> = {
+  ...SPACE_API,
   [`GET /v1/you?tz=${IST}`]: you,
   [`GET /v1/you/spend?tz=${IST}`]: { report, settings },
   [`GET /v1/you/usage?tz=${IST}`]: { usage, near: null, out: null, how: "Each month is used in five stretches: 4, 5, 6 and 7 days, then the rest of the month. Each starts fresh." },

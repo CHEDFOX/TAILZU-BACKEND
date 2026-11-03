@@ -2,6 +2,7 @@
  * The Code bot at work's job screen.
  */
 
+import { atWork, flowSend, gatePage, planCard, stopConfirm, type FlowData } from "./flow.js";
 import type { ActionSpec, Node, ActionRef } from "../../../../../../shared/types/sdui.js";
 import {
   type WorkLine, type JobRow, isOver, approvalLineOf, type ProjectRow, isUuid, projectName, stageOf, STAGES, firstSentence,
@@ -189,17 +190,18 @@ function conversation(d: JobData | undefined, p: { asked?: string; answer?: stri
 /** The moment an ask is out (askMoment.ts): the person's words and Xode carrying them, under the chat's last turn. */
 const chatMoment = (ctx: BotsCtx): Node => askMoment(ctx, { slug: "code", color: MOSS, kind: "code", busy: "asking", line: "Asking Xode…" });
 
-function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder: string, o: { moment?: boolean } = {}): Node {
+function composer(ctx: BotsCtx, c: ChatCtx, d: JobData | undefined, placeholder: string, o: { moment?: boolean; flow?: FlowData } = {}): Node {
   const job = d?.job;
   const live = job && !isOver(job.state);
-  const send: ActionRef = live
+  // In the Xode flow, the box talks the plan over, or (once it is at work) sends a message judged against it.
+  const send: ActionRef = o.flow && !job ? flowSend(c, atWork(o.flow), "$state.msg", { from: "msg" }) : live
     ? job!.waitingOn === "answer"
       ? seq(write("POST", jobPath(job!.id, "/answer"), { answer: "$state.msg" }, "Sent to Xode"), { kind: "clearState", path: "msg" })
       : seq(write("POST", jobPath(job!.id, "/message"), { text: "$state.msg" }, "Xode will read it next"), { kind: "clearState", path: "msg" })
     : askCode(ctx, c, "$state.msg", { from: "msg" });
   const guarded: ActionSpec = { kind: "condition", if: { falsy: "msg" }, then: toast("Type what you need first"), else: send };
   const attach = labelled(box([icon("clip", { size: 20, color: C.ink })], { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-    open(SCREENS.attach, { ...(job ? { id: job.id } : {}), project: c.projectId, thread: c.threadId })), "Add to chat");
+    open(SCREENS.attach, { ...(job ? { id: job.id } : {}), project: c.projectId, thread: c.threadId, ...(o.flow && !job ? { via: atWork(o.flow) ? "work" : "say" } : {}) })), "Add to chat");
   return col([
     ...(o.moment === false ? [] : [chatMoment(ctx)]),
     row([
@@ -234,6 +236,8 @@ function nextMoves(ctx: BotsCtx, c: ChatCtx, next: readonly string[]): Node[] {
 
 export interface ChatData {
   job?: JobData; project?: ProjectRow; flow?: string[];
+  /** The Xode flow (routes/bots/botsXode.ts): the gate before the chat, and the plan in it. Absent: the chat as it was. */
+  xode?: FlowData;
   /** The chat so far: the job's own (its thread is the job), else the project's (the thread named, or the latest). */
   chat?: { thread: string | null; turns: ChatTurn[] };
   /** The project chat a job was started from (`from`): drawn above the job. */
@@ -253,9 +257,15 @@ const askedOf = (ctx: BotsCtx) => ({
   ...(typeof ctx.params.answer === "string" && ctx.params.answer && !ctx.params.answer.startsWith("$state.") ? { answer: ctx.params.answer } : {}),
 });
 
+/** The flow's placeholder: what the box is for now. */
+const flowWords = (f: FlowData): string => (atWork(f) ? "Message Xode while it works…" : f.plan?.status === "done" ? "What's next?" : "Talk the plan over, or ask anything…");
+
 function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
   const c = chatCtx(ctx, data);
   if (!c) return noProject(ctx);
+  // Not read yet, or no direction: the gate, not the chat.
+  if (data?.xode && !data.xode.gate.open) return gatePage(ctx, c, data.xode.gate);
+  const plan = data?.xode ? planCard(c, data.xode) : null;
   const p = askedOf(ctx);
   const turns = data?.chat?.turns ?? [];
   const talk = conversation(data?.job, { ...p, ...(data?.flow ? { flow: data.flow } : {}), turns, ...(data?.before ? { before: data.before } : {}) }, 15);
@@ -263,11 +273,12 @@ function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
     nav: "code", title: "Xode", gap: 18,
     body: [
       head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true, ...(turns.length || p.asked ? { right: newChat(ctx, c, turns.length) } : {}) }),
-      ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 16, weight: 500, lineHeight: 22 }), meta("Where something is, how it works, what would break. I answer with the files and lines, and change it when you say so.", { size: 13, lineHeight: 18 })], { gap: 6, paddingTop: 8 })]),
-      ...nextMoves(ctx, c, nextOf(turns, p)),
+      // In the Xode flow the plan is the first message; else, a word on what the chat is for.
+      ...(talk.length ? talk : plan ? [] : [col([text("Ask anything about your code.", { size: 16, weight: 500, lineHeight: 22 }), meta("Where something is, how it works, what would break. I answer with the files and lines, and change it when you say so.", { size: 13, lineHeight: 18 })], { gap: 6, paddingTop: 8 })]),
+      ...(plan ? [plan, stopConfirm()] : nextMoves(ctx, c, nextOf(turns, p))),
     ],
-    footer: [composer(ctx, c, data?.job, "Ask about your code…")],
-    state: { msg: "", said: null, earlier: false, earlierBefore: false },
+    footer: [composer(ctx, c, data?.job, data?.xode ? flowWords(data.xode) : "Ask about your code…", data?.xode ? { flow: data.xode } : {})],
+    state: { msg: "", said: null, earlier: false, earlierBefore: false, flowed: null },
   });
 }
 
@@ -340,22 +351,23 @@ function chatPane(ctx: BotsCtx, data: ChatData, c: ChatCtx): Node {
     col([
       col([
         ...(talk.length ? talk : [col([text("Ask anything about your code.", { size: 18, weight: 500, lineHeight: 24 }), meta("Where something is, how it works, what would break. Xode answers with the files and lines, and changes it when you say so.", { size: 14, lineHeight: 20 })], { gap: 6 })]),
-        ...nextMoves(ctx, c, nextOf(turns, p)),
+        ...(data.xode?.plan && !d ? [planCard(c, data.xode)!, stopConfirm()] : nextMoves(ctx, c, nextOf(turns, p))),
         chatMoment(ctx),
       // A short chat sits at the top (the auto margin takes the room under it); a long one opens at its newest turn.
       ], { gap: 20, paddingRight: 32, paddingBottom: 8, marginBottom: "auto" }),
     ], { flexGrow: 1, flexShrink: 1, minHeight: 0, overflowY: "auto", flexDirection: "column-reverse" }),
-    box([composer(ctx, c, d, "Ask about the code, or tell Xode what to change…", { moment: false })], { paddingRight: 32, flexShrink: 0 }),
+    box([composer(ctx, c, d, data.xode && !d ? flowWords(data.xode) : "Ask about the code, or tell Xode what to change…", { moment: false, ...(data.xode && !d ? { flow: data.xode } : {}) })], { paddingRight: 32, flexShrink: 0 }),
   ], { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, minHeight: 0, gap: 16 });
 }
 
 function jobDesk(ctx: BotsCtx, data: ChatData) {
   const c = chatCtx(ctx, data);
   if (!c) return noProject(ctx);
+  if (data.xode && !data.job && !data.xode.gate.open) return gatePage(ctx, c, data.xode.gate);
   return page(ctx, {
     nav: "code", title: data.job?.job.task ?? "Xode", maxWidth: 1400, fixed: true,
     body: [row([chatPane(ctx, data, c), ...(data.job && data.job.agent?.report?.outcome !== "answer" ? [jobAside(ctx, data.job)] : [])], { alignItems: "stretch", flexGrow: 1, flexShrink: 1, minHeight: 0 })],
-    state: { msg: "", said: null, earlier: false, earlierBefore: false },
+    state: { msg: "", said: null, earlier: false, earlierBefore: false, flowed: null },
   });
 }
 

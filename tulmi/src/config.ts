@@ -796,11 +796,16 @@ const EnvSchema = z.object({
   /**
    * THE PERSON'S CONTEXT (src/context, docs/context.md): who they are, who they message, their last asks, open work and recent results, as
    * one short block of data for the one key's brain (/v1/ask/decide) and Ask's first step (/v1/agent). CONTEXT=false turns it off: nothing
-   * is kept or shown, and /v1/context answers 404 context_off. CONTEXT_MAX_CHARS is the hard cap on the block. Migration 0063 keeps it
+   * is kept or shown, and /v1/context answers 404 context_off. CONTEXT_MAX_CHARS is the hard cap on the block. Migration 0065 keeps it
    * (without it, it lives in memory).
    */
   CONTEXT: bool(true),
   CONTEXT_MAX_CHARS: z.coerce.number().int().min(200).max(8000).default(2000),
+  /**
+   * OPS_ALERT_USER_ID (src/ops/alerts.ts): the owner's own account id. While set, the server checks its disk, memory and CPU every five
+   * minutes and pushes to that account when one is running out (disk past 80%, memory past 85%, CPU busy for 15 minutes). Unset: off.
+   */
+  OPS_ALERT_USER_ID: z.string().uuid().optional(),
   /**
    * EVERYDAY TOOLS (src/everyday, docs/everyday.md): flights (Kiwi.com), hotels (trivago), currency (Frankfurter) and weather (MET Norway),
    * live and free, with no sign-in of the person's: bot tools whose results are cards beside the answer. EVERYDAY=false turns all off;
@@ -948,6 +953,11 @@ const EnvSchema = z.object({
    *                          A site of its own, never the app's or the API's (it runs the person's project)
    *   PREVIEW_HOST           cookie mode, on the Worker: one dedicated host, `https://<PREVIEW_HOST>/p/<token>/`. Used when PREVIEW_DOMAIN is not set
    *   CODE_DESIGN_CHECK      "false" skips the design round of the agent loop altogether (true)
+   *   CODE_CLOUD_RUNNER      "false" never uses X0's cloud runner (a Cloudflare container per job, jobs/src/containers.ts), the place after the
+   *                          person's PCs and GitHub's computers (true; it needs the Worker's XODE_RUNNER container and the live session)
+   *   CODE_CLOUD_PAISE_PER_MIN  what a minute of it costs the person, rounded up per run (0: free, and a free place needs no yes)
+   *   CODE_SCREENS           "false" skips the screens round: a job that changed what people see runs the app and keeps real screenshots of
+   *                          the page for its report (src/code/agent/screens.ts). Needs a browser for shots and R2 for the pictures (true)
    *   ARTIFACT_SHOT_VIEWER_URL  the address of the viewer kept for screenshots: the same viewer deployed a second time with VIEWER_PARENT_ORIGINS=null
    *                          (viewer/docs/artifact-viewer.md section 14). It is NOT the app's viewer, which refuses the host page of a shot. Screenshots of a design need it
    *   ARTIFACT_SHOT_SECRET   signs the 7-day links to a job's screenshots; CODE_JOBS_SECRET when not set
@@ -960,6 +970,9 @@ const EnvSchema = z.object({
   PREVIEW_DOMAIN: z.string().trim().toLowerCase().optional(),
   PREVIEW_HOST: z.string().trim().toLowerCase().optional(),
   CODE_DESIGN_CHECK: bool(true),
+  CODE_SCREENS: bool(true),
+  CODE_CLOUD_RUNNER: bool(true),
+  CODE_CLOUD_PAISE_PER_MIN: z.coerce.number().int().min(0).max(1000).default(0),
   ARTIFACT_SHOT_VIEWER_URL: z.string().trim().optional(),
   ARTIFACT_SHOT_SECRET: z.string().optional(),
   ARTIFACT_VIEWER_URL: z.string().trim().optional(),

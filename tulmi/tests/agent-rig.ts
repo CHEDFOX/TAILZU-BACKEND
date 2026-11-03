@@ -23,7 +23,7 @@ import { BudgetExceeded, type CallInput, type CallResult } from "../src/code/bra
 import { createAgent } from "../src/code/agent/index.js";
 import type { RemoteJobs } from "../src/code/agent/orchestrator.js";
 import type { LiveDeps } from "../src/code/live/ports.js";
-import type { DesignDeps, TeamPorts } from "../src/code/agent/deps.js";
+import type { DesignDeps, ScreensDeps, TeamPorts } from "../src/code/agent/deps.js";
 import { CHECK_MARK } from "../src/code/agent/checks.js";
 import { routerRunner } from "../src/code/agent/runner.js";
 import type { ContextStrategy } from "../src/code/agent/mask.js";
@@ -254,6 +254,8 @@ export interface AgentRigOptions {
   live?: LiveDeps;
   /** The design round's compare step and links (code/agent/design.ts). */
   design?: DesignDeps;
+  /** The screens round's browser, picture store and links (code/agent/screens.ts). */
+  screens?: ScreensDeps;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts). Absent: the agent's default. */
   contextStrategy?: ContextStrategy;
   /** Ask once for a focused test of the change before the checks run (agent/phases.ts testWanted). Off in the suite (tests/setup.ts) unless a test turns it on: most scripts end a job with one `done`. */
@@ -334,7 +336,7 @@ export async function agentRig(o: AgentRigOptions = {}) {
       code, jobs, store: jobStore, brain, call: model.call as never, worklog, intake, routeStats, notify, now, sleep, log, web: { store: null, cache: null, fetchFn: webFetch as never },
       runner: routerRunner({ jobs, store: jobStore, now, sleep, placeWaitMs: o.placeWaitMs ?? 120_000, pollMs: 2000 }),
       concurrency: over.concurrency ?? o.concurrency ?? 4, instanceId: over.instanceId ?? "one",
-      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}),
+      ...((over.live ?? o.live) ? { live: (over.live ?? o.live)! } : {}), ...(over.remote ? { remote: over.remote } : {}), ...(o.design ? { design: o.design } : {}), ...(o.screens ? { screens: o.screens } : {}),
       ...(over.passive ? { passive: true } : {}), ...(over.team ? { team: over.team } : {}), ...(over.leaseMs ? { leaseMs: over.leaseMs } : {}),
       ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
       ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),

@@ -62,6 +62,10 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
   front_diagram: 556,
   front_plan: 668,
   front_look: 587,
+  // The Xode flow (src/code/flow): written after the principles, so their first size is their "before".
+  code_plan_open: 1186,
+  code_plan_keep: 935,
+  code_triage: 1557,
   // PR care (src/code/prcare, src/code/agent/merge.ts): written after the principles too, so their first size is their "before".
   care_review: 1422,
   care_conflict: 697,
@@ -94,7 +98,7 @@ export const BEFORE: Readonly<Record<RoleId, number>> = {
 };
 
 /** The roles that replaced a prompt the code used to carry: only these have a real "before", and only these are held to the saving. */
-export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "widget_digest", "ask_decide", "talk_reply"];
+export const NEW_ROLES: readonly RoleId[] = ["front_decide", "front_reply", "front_code_answer", "code_ask", "code_chat", "index_cards", "project_overview", "code_check", "front_complete", "front_diagram", "front_plan", "front_look", "care_review", "care_conflict", "team_split", "team_review", "bot_builder", "bot_pick", "bot_run", "bot_memory", "widget_digest", "ask_decide", "code_plan_open", "code_plan_keep", "code_triage", "talk_reply"];
 
 /**
  * The agent's tool definitions are sent with every turn of a job, so they are prompt too. What they were before they were tightened in the

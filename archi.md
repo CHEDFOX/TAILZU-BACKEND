@@ -37,7 +37,7 @@ media-worker/            Python service (FastAPI): office files, hard PDFs, pict
 shared/types/            the wire contracts: api.ts (requests and responses), sdui.ts (screens, nodes, actions)
 shared/bots/             the bots' looks and moments (looks.json) and sounds (sounds.json, sounds/*.m4a)
 shared/prompts/          the screen reply's old prompt files, kept so REPLY_PROMPT_VERSION can roll back
-deploy/                  ship.sh (the deploy), Caddyfile, the desktop-release receiver, GitHub App helpers,
+deploy/                  ship.sh (the deploy), backup-db.sh (the nightly database backup to R2), Caddyfile, the desktop-release receiver, GitHub App helpers,
                          and the .well-known files for app links
 docs/                    one document per subsystem (listed under "Where to find" below)
 ```
@@ -115,7 +115,7 @@ talk/              the voice chat: one key anywhere, turn after turn; the route 
                    (also for Ask's first step), lookups, the streamed spoken answer with its mood (docs/talk.md)
 front/             the front door: one entry for a message, decided and dispatched (docs/front-door.md)
 guard/             overload guards: limiter, breaker, coalescing, idempotency
-code/              Xode (docs/code-*.md)
+code/              Xode (docs/code-*.md); code/flow/: read, agree a plan, work to it (docs/code-flow.md)
   brain/           model tiers, money, the gateway (callModel), classify and route
   project/         the project brain: scan, tree-sitter symbols, graph, summaries, the project book
   chat/            the code chat (look, answer, cite)
@@ -134,7 +134,8 @@ botsCode/          the Code bot's rules, intake and history as the Bots app keep
 botsCodeWork/      a Xode job read for the Bots app's work screens
 shell/             the Bots app's shell: the activity feed, search, events, sent asks
 keybot/            Keybot (the keyboard as a bot): its preferences, stats and views
-you/               the You area: settings, limits, spend, usage meter, billing, data export, account deletion sweep
+you/               the You area: settings, limits, spend, usage meter, billing, data export, account deletion sweep;
+                   your space: what bots know about you, in sections, pinned, moved, switched off (docs/user-space.md)
 calendar/          the person's own calendar and to-dos
 notes/             meeting notes: speakers, organising, extraction, store
 connectors/        connected apps over MCP: catalog, OAuth, egress guard, routing, tasks; google/ (native Google apps), handoffs/

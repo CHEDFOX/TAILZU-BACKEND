@@ -48,7 +48,9 @@ describe("the bundle", () => {
 
   it("imports only the Workers runtime's own modules, and Node's as nodejs_compat provides them", () => {
     // node:async_hooks: AsyncLocalStorage, which counts each request's model money (tulmi/src/code/brain/spend.ts, usage/cost.ts); nodejs_compat has it.
-    const allowed = new Set(["cloudflare:workers", "cloudflare:workflows", "node:async_hooks", "node:crypto", "node:fs", "node:path", "node:url", "node:zlib", "node:stream", "node:stream/promises"]);
+    // node:fs/promises, node:util: the chat's code copies (tulmi/src/code/project/copies.ts), which the Worker never makes (no CODE_COPY_DIR); nodejs_compat
+    // provides both, and the bundle loads in workerd below.
+    const allowed = new Set(["cloudflare:workers", "cloudflare:workflows", "node:async_hooks", "node:crypto", "node:fs", "node:fs/promises", "node:path", "node:url", "node:util", "node:zlib", "node:stream", "node:stream/promises"]);
     // (A relative import cannot be real in one file: those are lines of the project templates the Code bot writes, inside template strings.)
     expect([...new Set(importsOf(source))].filter((m) => !m.startsWith(".") && !allowed.has(m))).toEqual([]);
   });
@@ -106,11 +108,14 @@ describe("wrangler.jsonc", () => {
     expect(cfg.compatibility_date! >= "2026-08-04").toBe(true);
   });
 
-  it("binds the two Workflows, the nonce book, the devices and the rooms, and names no secret", () => {
+  it("binds the two Workflows, the nonce book, the devices, the rooms, the cloud runner and the shots bucket, and names no secret", () => {
     expect(cfg.workflows.map((w: { binding: string; class_name: string }) => [w.binding, w.class_name])).toEqual([["AGENT_JOB", "AgentJob"], ["BUILD_BRAIN", "BuildBrain"]]);
-    expect(cfg.durable_objects.bindings.map((b: { name: string; class_name: string }) => [b.name, b.class_name])).toEqual([["NONCES", "NonceGuard"], ["USER_DEVICES", "UserDevices"], ["ROOMS", "JobRoom"]]);
+    expect(cfg.durable_objects.bindings.map((b: { name: string; class_name: string }) => [b.name, b.class_name])).toEqual([["NONCES", "NonceGuard"], ["USER_DEVICES", "UserDevices"], ["ROOMS", "JobRoom"], ["XODE_RUNNER", "XodeRunner"]]);
     // Each class is added once, by a migration of its own, SQLite-backed (a deployed tag is never edited).
-    expect(cfg.migrations.map((m: { tag: string; new_sqlite_classes?: string[] }) => [m.tag, m.new_sqlite_classes])).toEqual([["v1", ["NonceGuard"]], ["v2", ["UserDevices", "JobRoom"]]]);
+    expect(cfg.migrations.map((m: { tag: string; new_sqlite_classes?: string[] }) => [m.tag, m.new_sqlite_classes])).toEqual([["v1", ["NonceGuard"]], ["v2", ["UserDevices", "JobRoom"]], ["v3", ["XodeRunner"]]]);
+    // The cloud runner's container (src/containers.ts, container/Dockerfile), and where a job's screenshots go (src/http.ts).
+    expect(cfg.containers.map((c: { class_name: string; image: string }) => [c.class_name, c.image.replace(root, ".")])).toEqual([["XodeRunner", "./container/Dockerfile"]]);
+    expect(cfg.r2_buckets.map((b: { binding: string; bucket_name: string }) => [b.binding, b.bucket_name])).toEqual([["SHOTS", "x0-job-shots"]]);
     const vars = Object.keys(cfg.vars ?? {});
     for (const secret of ["CODE_JOBS_SECRET", "SUPABASE_SERVICE_KEY", "OPENROUTER_API_KEY", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_CLIENT_SECRET", "CLOUDFLARE_API_TOKEN", "CONNECTOR_TOKEN_KEY"]) {
       expect(vars).not.toContain(secret);

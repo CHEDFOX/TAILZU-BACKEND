@@ -44,6 +44,8 @@ const { VerdictSchema } = await import("../src/artifacts/compare.js");
 const { parseEdits, parseRewrite } = await import("../src/artifacts/edit.js");
 const { DecideReply } = await import("../src/front/decide.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
+const { PlanOut: FlowPlanReply, KeepOut: FlowKeepReply } = await import("../src/code/flow/plan.js");
+const { TriageOut: FlowTriageReply } = await import("../src/code/flow/triage.js");
 const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 const { SplitReply } = await import("../src/code/team/split.js");
@@ -266,6 +268,15 @@ describe("a known-good answer for each role", () => {
       reads: (t) => FrontPlanReply.parse(JSON.parse(t)),
     },
     front_look: { text: "A sign-in screen: a heading, two input fields and a wide blue button labelled Sign in, with a small link below it.", reads: (t) => t },
+    code_plan_open: {
+      text: '{"state":"A Next.js site with login and a marks table for teachers; nothing for students yet.","direction":"Students check their results on their phones in seconds.","suggested":false,"goal":"Add a results page students can open on their phones","steps":["Add a results route for a signed-in student","Build the results page, phone first","Link it from the student dashboard"]}',
+      reads: (t) => FlowPlanReply.parse(JSON.parse(t)),
+    },
+    code_plan_keep: { text: '{"kind":"same"}', reads: (t) => FlowKeepReply.parse(JSON.parse(t)) },
+    code_triage: {
+      text: '{"kind":"change","affects":[3],"say":"I\'ll put it in the main menu instead. Approve the new plan?","goal":"Add a results page for students","steps":["Add a results route","Build the results page","Put it in the main menu","Test it on a phone"],"change":"Menu instead of the dashboard"}',
+      reads: (t) => FlowTriageReply.parse(JSON.parse(t)),
+    },
     care_review: {
       text: '{"kind":"small","summary":"Rename the variable tmp to retryCount in retry().","reply":"Renaming it now."}',
       reads: (t) => ReviewVerdict.parse(JSON.parse(t)),

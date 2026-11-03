@@ -64,6 +64,11 @@ export class Trips {
     return r ? tripOf(r) : null;
   }
 
+  /** The person's trips, newest first. */
+  async list(userId: string, limit = 30): Promise<Trip[]> {
+    return (await this.rows.select({ user_id: userId }, { order: "created_ms", desc: true, limit: Math.max(1, Math.min(limit, 100)) })).map(tripOf);
+  }
+
   /** One of the person's trips (another's is not found). */
   async get(userId: string, id: string): Promise<Trip> { return tripOf(await this.mine(userId, id)); }
 

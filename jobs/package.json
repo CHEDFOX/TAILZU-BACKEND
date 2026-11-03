@@ -23,5 +23,8 @@
     "vitest": "4.1.12",
     "web-tree-sitter": "0.27.1",
     "wrangler": "4.153.0"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "^0.3.7"
   }
 }

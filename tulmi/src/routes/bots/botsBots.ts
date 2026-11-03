@@ -46,6 +46,7 @@ import type { BotEvent } from "../../bots/types.js";
 import { registerSpacesRoutes } from "./botsSpaces.js";
 import { registerBotsTripRoutes } from "./botsTrips.js";
 import { registerCalendarRoutes } from "./botsCalendar.js";
+import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
 import { registerWidgetRoutes } from "./widgets.js";
 
 export const AREA = "/v1/botsapp/bots";
@@ -87,6 +88,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   registerWidgetRoutes(app, deps, spacesArea);
   registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/bots/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/bots/botsCalendar.ts)
+  // Your space: what your bots know about you, in sections, beside your own things (routes/bots/botsYouSpace.ts).
+  registerYouSpaceRoutes(app, deps, { space: userSpace({ spaces: parts.spaces, trips: parts.trips }), groups: spacesArea.memory });
 
   const fail = (req: FastifyRequest, reply: FastifyReply, err: unknown): FastifyReply => {
     if (isBotError(err)) {
@@ -317,5 +320,11 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     return { message: shareMessage(str(b.what, 600), { name: str(b.name, 200), text: str(b.text, 6000), url: str(b.url, 2000) }) };
   }));
 
-  return { sharedFor: (userId, slug) => spacesArea.items.forBot(userId, slug.toLowerCase()) };
+  // What the groups shared with the bot, and what each group told its bots (botsBots/spaceMemory.ts).
+  return {
+    sharedFor: async (userId, slug) => {
+      const [shared, told] = await Promise.all([spacesArea.items.forBot(userId, slug.toLowerCase()), spacesArea.memory.forBot(userId, slug.toLowerCase()).catch(() => [])]);
+      return [...shared, ...told];
+    },
+  };
 }

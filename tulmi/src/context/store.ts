@@ -1,5 +1,5 @@
 /**
- * WHERE THE CONTEXT IS KEPT: migration 0063 (person_context), one row per person, with a memory twin for tests and a server with no Supabase
+ * WHERE THE CONTEXT IS KEPT: migration 0065 (person_context), one row per person, with a memory twin for tests and a server with no Supabase
  * (a restart then forgets it). Written with the service key only; a person's own token can neither read nor write a row. The row goes with
  * the account.
  *

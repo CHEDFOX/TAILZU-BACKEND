@@ -77,7 +77,7 @@ export interface OverviewInput {
   history: readonly CommitRecord[];
   /** The newest commits' messages, newest first. */
   messages: readonly string[];
-  owner: { for?: string; next?: string; keep?: string; at: number } | null;
+  owner: { for?: string; next?: string; keep?: string; vision?: string; skipped?: boolean; at: number } | null;
   /** What its screens and messages say (the index's texts, a sample): the names the product goes by, and where each is said. */
   texts?: ReadonlyArray<{ text: string; kind: string; path?: string }>;
 }
@@ -296,7 +296,7 @@ export function basisOf(i: OverviewInput): OverviewBasis {
     kinds: kindsOf(i).map((k) => k.id).sort(),
     stack: [...i.structure.frameworks].slice(0, 16).sort(),
     said: fingerprint([i.structure.readme?.title ?? "", i.structure.readme?.blurb ?? "", about?.product ?? "", about?.text ?? ""].join("|")),
-    owner: i.owner && (i.owner.for || i.owner.next) ? fingerprint(`${i.owner.for ?? ""}|${i.owner.next ?? ""}`) : "",
+    owner: i.owner && (i.owner.for || i.owner.next || i.owner.vision) ? fingerprint(`${i.owner.for ?? ""}|${i.owner.next ?? ""}${i.owner.vision ? `|${i.owner.vision}` : ""}`) : "",
     parts: Object.fromEntries(i.features.map((f) => [partKey(f), f.fileCount])),
     files: i.structure.fileCount,
     focus: focusOf(i.features, i.history),
@@ -421,6 +421,7 @@ export function overviewFacts(i: OverviewInput): string {
     ...(i.owner?.for ? [`the owner says it is: ${one(i.owner.for, 400)}`] : []),
     ...(i.owner?.next ? [`the owner says next: ${one(i.owner.next, 300)}`] : []),
     ...(i.owner?.keep ? [`the owner says must not change: ${one(i.owner.keep, 200)}`] : []),
+    ...(i.owner?.vision ? [`the owner's vision: ${one(i.owner.vision, 600)}`] : []),
     ...i.features.slice(0, 12).map((f) => `part: ${f.name} | ${one(f.summary, 160)} | ${f.fileCount} files${f.routes.length ? `, routes ${f.routes.slice(0, 4).join(" ")}` : ""} | starts: ${lead(f)}`),
     ...i.messages.slice(0, 20).map((m) => `latest commit: ${one(m.split("\n")[0]!, 110)}`),
     ...i.messages.slice(20).filter((_, k) => k % 6 === 0).slice(0, 8).map((m) => `older commit: ${one(m.split("\n")[0]!, 110)}`),

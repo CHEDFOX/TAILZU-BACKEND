@@ -29,7 +29,7 @@ import type { FrontCtx } from "../front/types.js";
 import { completeMessage } from "../front/complete.js";
 import { retrieve } from "./knowledge.js";
 import { memoryFor, recentTurnsOf, rememberTurn } from "./memory.js";
-import { sharedFacts, type SharedDeps } from "./shared.js";
+import { sharedFacts, usableForBots, type SharedDeps } from "./shared.js";
 import { Meter } from "./meter.js";
 import type { BotPorts } from "./ports.js";
 import { botUserMessage, MEMORY_SHOWN, type Attached, type Turn } from "./prompt.js";
@@ -120,7 +120,8 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const [mem, shared] = remember
     ? await Promise.all([memoryFor(d.store, r.userId, bot.id).catch(() => ({ facts: [], thread: null })), sharedFacts(r.userId, r.message, { store: d.store, ...d.shared })])
     : [{ facts: [], thread: null }, [] as string[]];
-  const own = mem.facts.map((f) => f.text);
+  // A section the person switched off in their space is never shown, even to the bot that learned it; a pinned line counts as the newest.
+  const own = remember ? (await usableForBots(r.userId, mem.facts, { store: d.store, ...d.shared })).map((f) => f.text) : [];
   const seen = new Set(own.map((f) => f.toLowerCase()));
   const extra = shared.filter((f) => !seen.has(f.toLowerCase()));
   // The prompt shows the last MEMORY_SHOWN: the shared few, picked for this message, stay; the bot's own oldest give way.

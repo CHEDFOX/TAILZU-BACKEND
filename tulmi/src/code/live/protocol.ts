@@ -57,8 +57,12 @@ export type ToRunner =
 
 // ---------------------------------------------------------- runner -> room
 
+/** Who runs a session: GitHub's computers, the person's own PC, or X0's cloud container (jobs/src/containers.ts). */
+export const RUNNER_KINDS = ["github", "desktop", "container"] as const;
+export type RunnerKind = (typeof RUNNER_KINDS)[number];
+
 export type FromRunner =
-  | { t: "hello"; v: 1; kind: "github" | "desktop"; name?: string; os?: string; node?: string }
+  | { t: "hello"; v: 1; kind: RunnerKind; name?: string; os?: string; node?: string }
   | { t: "out"; id: string; data: string }
   | { t: "done"; id: string; exitCode: number; ms: number; timedOut?: boolean; note?: string }
   | { t: "found"; id: string; ok: true; text: string; matches?: number; files?: number; partial?: boolean; paths?: string[]; total?: number }
@@ -222,8 +226,8 @@ export function parseFromRunner(raw: unknown): FromRunner | null {
   if (!m) return null;
   switch (m.t) {
     case "hello":
-      if (m.v !== 1 || (m.kind !== "github" && m.kind !== "desktop")) return null;
-      return { t: "hello", v: 1, kind: m.kind, ...(str(m.name, 80) ? { name: m.name } : {}), ...(str(m.os, 40) ? { os: m.os } : {}), ...(str(m.node, 40) ? { node: m.node } : {}) };
+      if (m.v !== 1 || !RUNNER_KINDS.includes(m.kind as RunnerKind)) return null;
+      return { t: "hello", v: 1, kind: m.kind as RunnerKind, ...(str(m.name, 80) ? { name: m.name } : {}), ...(str(m.os, 40) ? { os: m.os } : {}), ...(str(m.node, 40) ? { node: m.node } : {}) };
     case "out":
       return isId(m.id) && str(m.data, 256 * 1024) ? { t: "out", id: m.id, data: m.data } : null;
     case "done":

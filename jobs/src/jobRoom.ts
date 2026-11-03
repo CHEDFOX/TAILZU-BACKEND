@@ -40,7 +40,7 @@ import {
 } from "../../tulmi/src/code/live/limits.js";
 import { mintPreviewToken, previewAvailable, previewUrl, requestHeadersFor, responseHeadersFor, sameHex, type PreviewSite } from "../../tulmi/src/code/live/preview.js";
 import type { LiveGlob, LiveGrep, LiveList, LiveRead } from "../../tulmi/src/code/live/ports.js";
-import {
+import { type RunnerKind,
   isId, parseFromRunner, parseFromViewer, type CloseReason, type FromRunner, type OverlayEntry, type PreviewFailure, type ToRunner, type ViewerEvent,
 } from "../../tulmi/src/code/live/protocol.js";
 import { globPaths, grepFiles, inScope, listDir, readLines, type GrepBudget, type GrepFile, type GrepOptions } from "../../tulmi/src/code/live/search.js";
@@ -58,7 +58,7 @@ export interface SessionView {
   state: SessionState;
   stepIdx?: number;
   epoch?: number;
-  kind?: "github" | "desktop";
+  kind?: RunnerKind;
   /** Milliseconds of session time this job has used in all, closed sessions and the open one. */
   usedMs: number;
   /** A runner is connected and has said hello. */
@@ -215,7 +215,7 @@ interface SessionRow {
   state: SessionState;
   stepIdx?: number;
   epoch?: number;
-  kind?: "github" | "desktop";
+  kind?: RunnerKind;
   idleMs: number;
   /** What is left of the job's session time when this session was expected. */
   remainingMs: number;

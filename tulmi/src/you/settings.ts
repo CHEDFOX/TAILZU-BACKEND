@@ -9,6 +9,7 @@
  *   privacy           the screen-picture choice they made on the desktop ("ask" first, or "allow"), so the screens show it back; and whether
  *                     what they told their bots personalises every answer (personalise, on unless they turn it off: src/bots/shared.ts)
  */
+import { cleanMarks, type SpaceMarks } from "./spaceMarks.js";
 import { DEFAULT_MONTH_BUDGET_PAISE } from "../experience/bots/live.js";
 
 export interface NotifySettings {
@@ -28,7 +29,7 @@ export interface YouSettings {
   stopAtLimit: boolean;
   notify: NotifySettings;
   /** cleared: Activity rows the person took off their list ("job:<id>", "words:<day>"), newest last. Kept in the privacy column. */
-  privacy: { screenPictures: "ask" | "allow"; personalise: boolean; cleared?: string[] };
+  privacy: { screenPictures: "ask" | "allow"; personalise: boolean; cleared?: string[]; space?: SpaceMarks };
 }
 
 export const DEFAULT_SETTINGS: YouSettings = {
@@ -72,6 +73,8 @@ export function cleanSettings(raw: unknown): YouSettings {
       screenPictures: p.screenPictures === "allow" ? "allow" : "ask",
       personalise: p.personalise !== false,
       ...(Array.isArray(p.cleared) ? { cleared: cleanCleared(p.cleared) } : {}),
+      // Your space's switched-off sections, pinned lines and moved lines (src/you/spaceMarks.ts).
+      ...(p.space && typeof p.space === "object" ? { space: cleanMarks(p.space) } : {}),
     },
   };
 }

@@ -147,6 +147,21 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser } from "../../auth/supabase.js";
 import { stripAgent, viewOfState, type AgentOrchestrator } from "../../code/agent/orchestrator.js";
+import { signJobShotPath } from "../../code/agent/jobShots.js";
+import { getConfig } from "../../config.js";
+import type { ScreenShot } from "../../code/agent/types.js";
+
+/** The report's real screenshots, each with its signed link (7 days, routes/code/jobShots.ts), for the app to show. */
+function withShotLinks<V extends { report?: { shots?: ScreenShot[] } }>(view: V, userId: string, jobId: string): V {
+  const shots = view.report?.shots;
+  const cfg = getConfig();
+  const secret = cfg.ARTIFACT_SHOT_SECRET || cfg.CODE_JOBS_SECRET || "";
+  if (!shots?.length || !secret) return view;
+  // The Worker keeps the pictures and answers their links (code/agent/jobShots.ts serveJobShot).
+  let origin = "";
+  try { origin = new URL(cfg.CODE_JOBS_URL ?? "").origin; } catch { return view; }
+  return { ...view, report: { ...view.report, shots: shots.map((x) => ({ ...x, url: `${origin}${signJobShotPath({ secret, userId, jobId, shotId: x.id })}` })) } };
+}
 import { stateOf } from "../../code/agent/types.js";
 import type { Code } from "../../code/index.js";
 import type { PrCare } from "../../code/prcare/engine.js";
@@ -285,7 +300,7 @@ export function registerCodeJobRoutes(app: FastifyInstance, deps: CodeJobRoutesD
     try {
       const { job, steps } = await s.jobs.jobWithSteps(s.user.id, req.params.id);
       const state = stateOf(job.checkpoint);
-      return reply.send({ job: stripAgent(job), steps, ...(state ? { agent: viewOfState(state) } : {}) });
+      return reply.send({ job: stripAgent(job), steps, ...(state ? { agent: withShotLinks(viewOfState(state), s.user.id, job.id) } : {}) });
     } catch (err) { return fail(reply, err); }
   });
 

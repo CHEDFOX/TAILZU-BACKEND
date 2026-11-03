@@ -610,23 +610,11 @@ export function buildBootstrap(
         // steps. (Also the default in appKnobsData.ts; set here so a knob
         // sync that forgets it cannot let a tap past the new flow.)
         if (newFlow) flags["boot.firstRunGateIds"] = ["onboarding", "onboarding_keyboard", "onboard"];
-        // The Bots app's first run (About you, Name) holds a keyboard tap the same way.
+        // The Bots app's first run (Name) holds a keyboard tap the same way.
         if (botsApp) flags["boot.firstRunGateIds"] = [...(newFlow ? ["onboarding", "onboarding_keyboard", "onboard"] : ["onboarding", "onboarding_keyboard"]), ...BOTS_FIRST_RUN_IDS];
-        // The Bots app asks the name and gender card's question in its first run (About you, the same write), so
-        // the card itself is never laid over a screen for someone still in it: not while the run is on, and not
-        // after it in the same launch, while this bootstrap still says the answer is owed. Someone onboarded
-        // before the run asked it keeps the card where it has always been.
-        if (botsApp && !opts.onboarded) flags["profileGate.screenIds"] = [];
-        // And someone onboarded before the run asked it is asked by the run's own screen, not the native card:
-        // bots.name-it, which for an onboarded account is About you alone and closes once saved. Over Home after
-        // a pause, like any arrival prompt, and only while the answer is owed.
-        if (botsApp && opts.onboarded) {
-          flags["profileGate.screenIds"] = [];
-          if (opts.profileComplete !== true && opts.isReviewer !== true && !flags.promptScreenId) {
-            flags.promptScreenId = BOTS_FIRST_RUN_SCREEN;
-            flags.promptAfterMs = PROMPT_AFTER_MS;
-          }
-        }
+        // The Bots app never lays the native name and gender card over a screen: its own About you card asks it, on Home,
+        // after a few visits (screens/firstRun/aboutCard.ts), never in the first run.
+        if (botsApp) flags["profileGate.screenIds"] = [];
       }
 
       /**

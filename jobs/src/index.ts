@@ -17,6 +17,7 @@ export { BuildBrain } from "./buildBrain.js";
 export { NonceGuard } from "./nonceGuard.js";
 export { UserDevices } from "./userDevices.js";
 export { JobRoom } from "./jobRoom.js";
+export { XodeRunner } from "./containers.js";
 
 export default {
   async fetch(request, env): Promise<Response> {

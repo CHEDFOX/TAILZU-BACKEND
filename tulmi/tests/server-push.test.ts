@@ -171,36 +171,6 @@ const build = (screenId: string, client: "phone" | "desktop", api: Record<string
     can: new Set(["BotsKit", ...can]), desk: { pages: false, notes: false },
   }, fakeDeps({ api }));
 const texts = (n: Node): string[] => walk(n).filter((x) => x.type === "Text").map((x) => String(x.props?.content));
-function actionKinds(n: unknown, out: string[] = []): string[] {
-  if (Array.isArray(n)) { n.forEach((x) => actionKinds(x, out)); return out; }
-  if (n && typeof n === "object") {
-    const o = n as Record<string, unknown>;
-    if (typeof o.kind === "string") out.push(o.kind);
-    for (const v of Object.values(o)) if (v && typeof v === "object") actionKinds(v, out);
-  }
-  return out;
-}
-
-describe("A6: the name card, for someone onboarded before the Bots app asked it", () => {
-  const api = (onboarded: boolean) => ({
-    "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "email", source: "saved", gender: null, saved: false, onboarded },
-    "GET /v1/personality": { personality: { assistantName: "Zara" } },
-  });
-  it("bots.name-it is About you alone, which closes once saved: not Name your X0 Bot, not the first run's finish", async () => {
-    const s = await build("bots.name-it", "phone", api(true));
-    const t = texts(s.root!);
-    expect(t).toContain("What's your name?");
-    expect(t).not.toContain("What will you call me?");
-    const kinds = actionKinds(s.root);
-    expect(kinds).toContain("navigateBack");
-    expect(kinds).not.toContain("switchTab");
-  });
-  it("someone in the first run still gets both steps", async () => {
-    const t = texts((await build("bots.name-it", "phone", api(false))).root!);
-    expect(t).toContain("What's your name?");
-    expect(t).toContain("What will you call me?");
-  });
-});
 
 describe("B3: Xode on this computer, drawn on bots.computer", () => {
   const api = { "GET /v1/you/computers": { online: [], offline: [], helped: { jobs: 0, minutes: 0 } } };

@@ -23,6 +23,7 @@
  * comes back into focus; a status line taps to refresh. No new transport.
  */
 
+import type { FlowData } from "./codeWork/flow.js";
 import {
   isUuid, type JobRead, type WorkEntry, type ProjectRow, type ArtifactRead, flowOf, type VersionRow, type TeamRead, type FileRow,
 } from "../../../botsCodeWork/read.js";
@@ -34,7 +35,7 @@ import { type AttachData, attachScreen } from "./codeWork/attach.js";
 import { doneScreen } from "./codeWork/done.js";
 import { failedScreen } from "./codeWork/failed.js";
 import { type ChatData, jobScreen } from "./codeWork/job.js";
-import { type JobData, jobPath, type DoneData } from "./codeWork/parts.js";
+import { type JobData, jobPath, type DoneData, threadFor } from "./codeWork/parts.js";
 import { type TeamData, teamScreen } from "./codeWork/team.js";
 
 async function readJob(deps: Parameters<NonNullable<BotsScreen["load"]>>[1], id: unknown): Promise<JobData | undefined> {
@@ -81,7 +82,13 @@ async function loadJobOrChat(ctx: BotsCtx, deps: LoadDeps): Promise<ChatData> {
     ])
     : [undefined, undefined];
   const talk = chat ?? own;
+  // The Xode flow for a project chat: its gate and its plan, on the thread the chat shows (an older server answers nothing: the chat as it was).
+  const flowThread = chatOf ? (isUuid(ctx.params.thread) ? ctx.params.thread : isUuid(chat?.thread) ? chat!.thread! : threadFor(ctx.user?.id ?? "anon", ctx.params.project as string)) : null;
+  const xode = flowThread
+    ? await deps.api<FlowData>("GET", `/v1/bots/code/flow/${ctx.params.project}/plan?thread=${flowThread}`).catch(() => undefined)
+    : undefined;
   return {
+    ...(xode?.gate ? { xode } : {}),
     ...(job ? { job } : {}), ...(flow?.length ? { flow } : {}), ...(project ? { project } : {}), ...(talk ? { chat: talk } : {}),
     ...(before?.turns.length ? { before: before.turns } : {}),
   };

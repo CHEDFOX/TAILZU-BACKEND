@@ -5,12 +5,12 @@
 import type { ActionRef, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, row, text, call, SCREENS, seq, button, open, col, statusMark, meta, icon, C, when, botAvatar, botLook, botRoute, chip,
-  notice, box, quietButton, segmented,
+  chips, notice, box, quietButton,
 } from "../../kit.js";
 import {
   localDate, DAY, MONTHS, MIN, shortDate, type Space, type Task, type Item, type Payment, names, type Member, A, toast, enc, write, rowPad,
   kindBadge, iconButton, inputBox, field, personDot, canDo, messagePerson, rowsCard, type OneSpace, ifFilled, clearState, isDesk, section,
-  inviteRows,
+  inviteRows, type BotSharing, subBotName,
 } from "./parts.js";
 
 export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -149,31 +149,55 @@ function botsCard(s: Space, mineBots: SpacesData["bots"]): Node {
   return rows.length ? rowsCard(rows) : notice("No bots shared here yet.");
 }
 
-function activityRows(ctx: BotsCtx, s: Space, max = 8): Node | null {
-  if (!s.activity?.length) return null;
-  return col(s.activity.slice(0, max).map((a) => row([box([], { width: 6, height: 6, borderRadius: 3, backgroundColor: C.idle, marginTop: 7 }), text(a.text, { size: 13, lineHeight: 19, style: { flexGrow: 1, flexShrink: 1 } }), meta(ago(ctx, a.at), { size: 12 })], { gap: 10, alignItems: "flex-start" })), { gap: 8 });
-}
-
 /** "You, Mom and Rohan": who is in the space, you first. */
 export const facesLine = (s: Space) => names([...s.members.filter((m) => m.you).map(() => "You"), ...s.members.filter((m) => !m.you).map((m) => m.name)]);
 
-/** The space's tabs: one part of it at a time, so a space never reads as a wall. */
-export const SPACE_TABS = [
-  { label: "Now", value: "now" }, { label: "Shared", value: "shared" }, { label: "Plans", value: "plans" }, { label: "Money", value: "money" }, { label: "People", value: "people" },
-];
-const tab = (value: string, children: Node[]): Node => when({ eq: ["tab", value] }, col(children, { gap: 22, minWidth: 0 }));
+/** The feed's kinds, in the order the filters show them; an item's own kind maps to one. */
+const FEED = [
+  { value: "tasks", label: "Tasks" }, { value: "plans", label: "Plans" }, { value: "lists", label: "Lists" }, { value: "notes", label: "Notes" },
+  { value: "trips", label: "Trips" }, { value: "money", label: "Money" }, { value: "files", label: "Files" },
+] as const;
+type FeedKind = (typeof FEED)[number]["value"];
+const ITEM_KIND: Record<string, FeedKind> = { list: "lists", note: "notes", trip: "trips", file: "files", link: "files" };
+/** In the whole feed, each kind shows this many, with "See all" for the rest. */
+const FEED_PEEK = 3;
+
+/** Who shares one of their bots here, in a few words: "Mom and Rohan share", "You share", "Nobody yet". */
+function sharersLine(b: BotSharing): string {
+  const who = b.sharing;
+  if (!who.length) return "Nobody yet";
+  const them = who.filter((p) => !p.you).map((p) => p.name);
+  if (!them.length) return "You share";
+  return `${names(them)}${who.some((p) => p.you) ? " and you" : ""} share${them.length === 1 && !who.some((p) => p.you) ? "s" : ""}`;
+}
+
+/** A sub-bot as a small tile: the bot's look, its name, who shares; opens each person's part of it. */
+function subBotChip(ctx: BotsCtx, s: Space, b: BotSharing): Node {
+  return col([
+    botAvatar(botLook(b.bot), 34),
+    text(subBotName(ctx, b.bot), { size: 14, weight: 600, lineHeight: 18, lines: 1 }),
+    meta(sharersLine(b), { size: 11, lines: 1 }),
+  ], { gap: 4, width: 104, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: C.line }, open(SCREENS.spaceBot, { id: s.id, bot: b.bot }));
+}
+
+/** A shared bot as a small tile: its look, its name, who shared it. */
+function botChip(s: Space, b: Space["bots"][number]): Node {
+  return col([
+    botAvatar(botLook(b.slug, b.colour), 34),
+    text(b.name, { size: 14, weight: 600, lineHeight: 18, lines: 1 }),
+    meta(b.byYou ? "You shared it" : `${b.addedBy} shared it`, { size: 11, lines: 1 }),
+  ], { gap: 4, width: 104, padding: 12, borderRadius: 16, borderWidth: 1, borderColor: C.line }, canDo(s, "bots") ? botRoute(b.slug) : undefined);
+}
 
 /**
- * One space, a tab at a time. Now: only what waits on you (three at most, the rest under Plans and Money) and the last few things that
- * happened. Shared, Plans and Money: one each. People: who is in, the bots, waiting invites, the name, leaving. Every action is the one
- * the full page had; only where it sits changed.
+ * ONE GROUP, AS A BOT: what waits on you, the bots the group shares, and everything shared in it as one feed you can filter
+ * (Tasks, Plans, Lists, Notes, Trips, Money, Files). People and the group's settings stay folded under one row. Every action is
+ * the one the page always had; only where it sits changed.
  */
 export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bots"]): Node[] {
   const s = o.space;
   const waiting = o.payments.filter((p) => p.canDecide);
   const forMe = o.tasks.filter((t) => t.mine && t.mine.status === "todo");
-  const open_ = o.tasks.filter((t) => !t.done && !forMe.includes(t)).slice(0, 6);
-  const history = o.payments.filter((p) => !p.canDecide).slice(0, 6);
   const sid = enc(s.id);
   const newList = ifFilled("listName", call("POST", `${A}/spaces/${sid}/lists`, { title: "$state.listName" }, { assignTo: "newList", ok: seq(clearState("listName"), toast("List made"), { kind: "navigate", screenId: SCREENS.spaceItem, params: { item: "$state.newList.item.id" } }), fail: toast("Couldn't make it. Try again.", true) }), "Name the list first");
   const desk = isDesk(ctx);
@@ -189,43 +213,91 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
     ], { gap: 8, flexWrap: "wrap" }),
   ], { gap: 14 });
 
+  // What waits on you: three at most; the rest are in the feed below.
   const needs = [...waiting.map((p) => payRow(ctx, s, p)), ...forMe.map((t) => taskRow(ctx, t))];
   const more = needs.length - 3;
-  const log = activityRows(ctx, s, 4);
-  const now = tab("now", [
-    needs.length
-      ? section(`Waiting on you · ${needs.length}`, [rowsCard(needs.slice(0, 3)), ...(more > 0 ? [meta(`${plural(more, "more thing")} under Plans and Money.`, { size: 12 })] : [])])
-      : row([statusMark("done"), col([text("You're all caught up", { size: 15, weight: 500, lineHeight: 20 }), meta(`Nothing in ${s.name} is waiting on you.`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
-    ...(log ? [section("Lately", [log])] : []),
+  const waitingNow = needs.length
+    ? section(`Waiting on you · ${needs.length}`, [rowsCard(needs.slice(0, 3)), ...(more > 0 ? [meta(`${plural(more, "more thing")} in the feed below.`, { size: 12 })] : [])])
+    : row([statusMark("done"), col([text("You're all caught up", { size: 15, weight: 500, lineHeight: 20 }), meta(`Nothing in ${s.name} is waiting on you.`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line });
+
+  // The group's sub-bots (each person's own Plan, Notes, Travel and Xode, as much as they share), then the bots the group shares.
+  const shareable = (mineBots ?? []).filter((b) => !s.bots.some((x) => x.slug === b.slug));
+  const subs = (o.sharing ?? []).map((b) => subBotChip(ctx, s, b));
+  // A bot that is a sub-bot too (Plan Ease) shows once, as the sub-bot.
+  const sharedBots = s.bots.filter((b) => !(o.sharing ?? []).some((x) => x.bot === b.slug));
+  const botsNow = section(`Bots in ${s.name}`, [
+    ...(subs.length ? [row(subs, { gap: 10, flexWrap: "wrap" })] : []),
+    sharedBots.length
+      ? row(sharedBots.map((b) => botChip(s, b)), { gap: 10, flexWrap: "wrap" })
+      : subs.length ? box([]) : meta(canDo(s, "addBots") ? "Share a bot here and everyone can use it with what's shared." : "No bots shared here yet.", { size: 13 }),
+    // Your other bots, one tap from shared, folded behind one chip.
+    ...(canDo(s, "addBots") && shareable.length ? [
+      when({ falsy: "shareBotsOpen" }, chip("+ Share a bot", { dashed: true, onPress: { kind: "toggleState", path: "shareBotsOpen" } as ActionRef })),
+      when({ truthy: "shareBotsOpen" }, row(shareable.slice(0, 6).map((b) => chip(`+ ${b.name}`, { onPress: write("POST", `${A}/spaces/${sid}/bots`, { slug: b.slug }, { ok: `${b.name} shared` }) })), { gap: 8, flexWrap: "wrap" })),
+    ] : []),
+    // What the group's bots know about the group (screens/spaces/memoryPage.ts).
+    rowsCard([row([
+      icon("spark", { size: 18 }),
+      col([text(`What ${s.name}'s bots know`, { size: 15, weight: 500, lineHeight: 20 }), meta("Things anyone here told them", { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      icon("chevron", { size: 16, color: C.meta }),
+    ], { ...rowPad, alignItems: "center" }, open(SCREENS.spaceMemory, { id: s.id }))]),
   ]);
 
-  const shared = tab("shared", [section(`Shared · ${o.items.length}`, [
-    ...(o.items.length ? [rowsCard(o.items.slice(0, 8).map((it) => itemRow(ctx, it)))] : [meta("Lists, trips, notes and files you share with your people live here, for everyone to see and add to.", { size: 13 })]),
-    ...(canDo(s, "share") ? [inputBox([field("listName", "listName", "Start a list: Groceries, Packing…", { onSubmit: newList }), button("Create", newList, { kind: "secondary", size: "md" })])] : []),
-  ])]);
+  // Everything shared, by kind: tasks and plans not already waiting on you (soonest first), lists, notes, trips, files, and money
+  // already answered (newest first).
+  const rows: Record<FeedKind, Node[]> = { tasks: [], plans: [], lists: [], notes: [], trips: [], money: [], files: [] };
+  const soonest = (a: Task, b: Task) => (a.at ?? Number.MAX_SAFE_INTEGER) - (b.at ?? Number.MAX_SAFE_INTEGER);
+  for (const t of o.tasks.filter((x) => !x.done && !forMe.includes(x)).sort(soonest)) rows[t.kind === "plan" ? "plans" : "tasks"].push(taskRow(ctx, t));
+  for (const it of [...o.items].sort((a, b) => b.updatedAt - a.updatedAt)) rows[ITEM_KIND[it.kind] ?? "files"].push(itemRow(ctx, it));
+  for (const p of o.payments.filter((x) => !x.canDecide)) rows.money.push(payRow(ctx, s, p));
+  const kinds = FEED.filter((f) => rows[f.value].length);
+  const total = kinds.reduce((n, f) => n + rows[f.value].length, 0);
+  const feed: Node[] = total
+    ? [
+      chips([{ label: "All", value: "all" }, ...kinds.map((f) => ({ label: `${f.label} · ${rows[f.value].length}`, value: f.value }))], "feed"),
+      // All: a few of each kind, with the way to the rest.
+      when({ eq: ["feed", "all"] }, col(kinds.map((f) => col([
+        row([text(f.label, { size: 13, weight: 600, lineHeight: 18 }), ...(rows[f.value].length > FEED_PEEK ? [link(`See all ${rows[f.value].length}`, { kind: "setState", path: "feed", value: f.value } as ActionRef)] : [])], { justifyContent: "space-between", alignItems: "center" }),
+        rowsCard(rows[f.value].slice(0, FEED_PEEK)),
+      ], { gap: 6 })), { gap: 16 })),
+      // One kind: all of it (Money with who says yes, and that only people pay).
+      ...kinds.map((f) => when({ eq: ["feed", f.value] }, f.value === "money"
+        ? col([col([text("No money moves without a yes", { size: 15, weight: 500, lineHeight: 20 }), meta(`${approversLine(s)}. Whoever pays does it in their own UPI app: ${s.name} never pays by itself.`, { size: 12 })], { gap: 2 }), rowsCard(rows.money.slice(0, 30))], { gap: 10 })
+        : rowsCard(rows[f.value].slice(0, 30)))),
+    ]
+    : [meta("Nothing shared yet. Start a list, give someone a task, or plan something for them.", { size: 13 })];
+  const add = row([
+    ...(canDo(s, "share") ? [button("New list", { kind: "toggleState", path: "listOpen" } as ActionRef, { kind: "secondary", size: "md", icon: "plus" })] : []),
+    ...(canDo(s, "tasks") ? [button("Give a task", open(SCREENS.spaceTasks, { id: s.id, new: "task" }), { kind: "secondary", size: "md", icon: "check" })] : []),
+    ...(canDo(s, "plan") ? [button("Plan for someone", open(SCREENS.spaceTasks, { id: s.id, new: "plan" }), { kind: "secondary", size: "md", icon: "calendar" })] : []),
+    ...(canDo(s, "askPay") ? [button("Ask for money", open(SCREENS.spacePay, { id: s.id }), { kind: "secondary", size: "md", icon: "rupee" })] : []),
+  ], { gap: 8, flexWrap: "wrap" });
+  const sharedNow = section(`Shared in ${s.name}`, [
+    ...feed,
+    add,
+    ...(canDo(s, "share") ? [when({ truthy: "listOpen" }, inputBox([field("listName", "listName", "Name it: Groceries, Packing…", { onSubmit: newList }), button("Create", newList, { kind: "secondary", size: "md" })]))] : []),
+  ], link("All tasks", open(SCREENS.spaceTasks, { id: s.id })));
 
-  const plans = tab("plans", [section("Tasks and plans", [
-    ...(open_.length ? [rowsCard(open_.map((t) => taskRow(ctx, t)))] : [meta(canDo(s, "tasks") || canDo(s, "plan") ? "Help each other out: hand someone a task, or put something on their day." : "Nothing given out right now.", { size: 13 })]),
-    row([
-      ...(canDo(s, "tasks") ? [button("Give a task", open(SCREENS.spaceTasks, { id: s.id, new: "task" }), { kind: "secondary", size: "md", icon: "check" })] : []),
-      ...(canDo(s, "plan") ? [button("Plan for someone", open(SCREENS.spaceTasks, { id: s.id, new: "plan" }), { kind: "secondary", size: "md", icon: "calendar" })] : []),
-    ], { gap: 8, flexWrap: "wrap" }),
-  ], link("All", open(SCREENS.spaceTasks, { id: s.id })))]);
-
-  const money = tab("money", [section("Money", [
-    col([text("No money moves without a yes", { size: 15, weight: 500, lineHeight: 20 }), meta(`${approversLine(s)}. Whoever pays does it in their own UPI app: ${s.name} never pays by itself.`, { size: 12 })], { gap: 2 }),
-    ...(history.length ? [rowsCard(history.map((p) => payRow(ctx, s, p)))] : []),
-    ...(canDo(s, "askPay") ? [button("Ask for a payment", open(SCREENS.spacePay, { id: s.id }), { kind: "secondary", size: "md", icon: "rupee" })] : []),
-  ])]);
-
+  // People and the group's settings, folded under one row.
   const rename = ifFilled("spaceRename", write("PUT", `${A}/spaces/${sid}`, { name: "$state.spaceRename" }, { ok: "Renamed" }), "Type the new name");
-  const people = tab("people", [
+  const invites = canDo(s, "invite") ? s.invites?.length ?? 0 : 0;
+  const peopleRow = row([
+    row(s.members.slice(0, 3).map((m) => box([personDot(m.name, m.you, 26)], { marginRight: -6, borderRadius: 16, borderWidth: 2, borderColor: C.paper })), { paddingRight: 6 }),
+    col([text(`People · ${s.members.length}`, { size: 15, weight: 500, lineHeight: 20 }), meta([invites ? `${plural(invites, "invite")} waiting` : "", "roles, bots and settings"].filter(Boolean).join(" · "), { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    icon("chevron", { size: 16, color: C.meta }),
+  ], { gap: 12, alignItems: "center", padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }, { kind: "toggleState", path: "peopleOpen" } as ActionRef);
+  const people = when({ truthy: "peopleOpen" }, col([
     section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => memberRow(s, m)))], s.me.admin ? link("Roles", open(SCREENS.spaceRoles, { id: s.id })) : undefined),
-    ...(canDo(s, "invite") && s.invites?.length ? [section(`Invites waiting · ${s.invites.length}`, [rowsCard(inviteRows(ctx, s, o.mailReady))])] : []),
+    ...(invites ? [section(`Invites waiting · ${invites}`, [rowsCard(inviteRows(ctx, s, o.mailReady))])] : []),
     section(`Bots · ${s.bots.length}`, [botsCard(s, mineBots)]),
     ...(canDo(s, "rename") ? [section("Name", [inputBox([field("spaceRename", "spaceRename", s.name, { onSubmit: rename }), button("Rename", rename, { kind: "secondary", size: "md" })])])] : []),
     quietButton(s.me.admin ? `Delete ${s.name}` : `Leave ${s.name}`, call("DELETE", `${A}/spaces/${sid}`, undefined, { ok: seq(toast(s.me.admin ? `${s.name} deleted` : `You left ${s.name}`), { kind: "navigate", screenId: SCREENS.spaces, replace: true }), fail: toast("Couldn't do that. Try again.", true) }), { size: "md" }),
-  ]);
+  ], { gap: 22 }));
 
-  return [top, segmented(SPACE_TABS, "tab"), now, shared, plans, money, people];
+  return [top, waitingNow, botsNow, sharedNow, peopleRow, people];
+}
+
+/** What the group page starts with: the whole feed, people folded. */
+export function spaceDetailState(ctx: BotsCtx): Record<string, unknown> {
+  return { listName: "", spaceRename: "", feed: String(ctx.params.feed ?? "all"), listOpen: false, shareBotsOpen: false, peopleOpen: ctx.params.people === "open" };
 }

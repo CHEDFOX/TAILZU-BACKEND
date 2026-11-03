@@ -14,10 +14,11 @@
  */
 import { createCompareHook } from "../../tulmi/src/artifacts/compare.js";
 import { ArtifactService } from "../../tulmi/src/artifacts/service.js";
-import { ArtifactDataShotStore, shootDepsFromConfig, signShotPath } from "../../tulmi/src/artifacts/shots.js";
+import { ArtifactDataShotStore, shootDepsFromConfig, shootProblem, shootUrl, signShotPath } from "../../tulmi/src/artifacts/shots.js";
+import { BlobJobShots, signJobShotPath } from "../../tulmi/src/code/agent/jobShots.js";
 import { artifactStore } from "../../tulmi/src/artifacts/store.js";
 import { createAgent } from "../../tulmi/src/code/agent/index.js";
-import type { DesignDeps, TeamPorts } from "../../tulmi/src/code/agent/deps.js";
+import type { DesignDeps, ScreensDeps, TeamPorts } from "../../tulmi/src/code/agent/deps.js";
 import type { Advance } from "../../tulmi/src/code/agent/loop.js";
 import { routerRunner } from "../../tulmi/src/code/agent/runner.js";
 import { createCode } from "../../tulmi/src/code/index.js";
@@ -33,7 +34,8 @@ import { installSafeFetch } from "../../tulmi/src/web/safeFetch.js";
 import { workerSafeFetchImpl } from "../../tulmi/src/web/workerSafeFetch.js";
 import { cloudflareRendererFromConfig } from "../../tulmi/src/web/browser/cloudflare.js";
 import { CloudDesktopProvider, devicesOf } from "./desktops.js";
-import { applyEnv, type Env } from "./env.js";
+import { CloudContainerProvider, setRunReporter } from "./containers.js";
+import { shotsBlobs, applyEnv, type Env } from "./env.js";
 import { workerGrammars } from "./grammars.js";
 import { buildLive } from "./live.js";
 import { workerNotify } from "./notify.js";
@@ -96,6 +98,25 @@ export function buildDesign(env: Env): DesignDeps | undefined {
 }
 
 /**
+ * The screens round (code/agent/screens.ts): shots by Cloudflare's Browser Rendering of the job's preview, the pictures kept in the SHOTS bucket
+ * under the owner's key, and 7-day links to them signed for the owner, which this Worker answers (http.ts). Off with CODE_SCREENS=false, or without
+ * a browser or the bucket.
+ */
+export function buildScreens(env: Env): ScreensDeps | undefined {
+  const cfg = getConfig();
+  const blobs = shotsBlobs(env);
+  const shoot = shootDepsFromConfig();
+  if (!cfg.CODE_SCREENS || !blobs || shootProblem(shoot)) return undefined;
+  const secret = cfg.ARTIFACT_SHOT_SECRET || cfg.CODE_JOBS_SECRET || "";
+  const origin = String(env.CODE_JOBS_URL ?? "").replace(/\/+$/, "");
+  return {
+    shoot: (url, viewport) => shootUrl(url, { viewport }, shoot),
+    store: new BlobJobShots(blobs),
+    ...(secret && /^https?:\/\//.test(origin) ? { link: ({ userId, jobId, shotId }) => `${origin}${signJobShotPath({ secret, userId, jobId, shotId })}` } : {}),
+  };
+}
+
+/**
  * How a lead's helpers are started and its Workflow woken, on the Worker (docs/code-team.md "On Cloudflare"). A new helper's job has its state written by the lead; starting it is
  * making its Workflow (the job's id is the instance's id, so a second start finds the first). A helper that ended or needs the person wakes its lead's Workflow, which is
  * waiting for exactly that (`waitingOn: "team"`, agentJob.ts); an event sent before the lead reaches its wait is kept and delivered when it does. More budget for a helper
@@ -135,19 +156,24 @@ export async function buildWorld(env: Env, o: { notify?: Notify; /** Tests: stor
   // and this is the place that asks it. The order of choice is the router's, unchanged: the PC if it is online, GitHub's computers, paid, wait.
   let routerRef: JobRouter | null = null;
   const desktop = env.USER_DEVICES ? new CloudDesktopProvider({ devices: devicesOf(env), store, router: () => routerRef }) : undefined;
+  // X0's cloud runner (containers.ts): the "paid" place, after the PCs and GitHub, for live sessions; free unless CODE_CLOUD_PAISE_PER_MIN says otherwise.
+  const paid = liveOn && env.XODE_RUNNER && cfg.CODE_CLOUD_RUNNER ? new CloudContainerProvider({ env, router: () => routerRef, paisePerMin: cfg.CODE_CLOUD_PAISE_PER_MIN }) : undefined;
   const jobs = createJobs({
-    code, github: githubActions, notify, log, store, actions: true, ...(desktop ? { desktop } : {}), ...(offerSession ? { offerSession } : {}),
+    code, github: githubActions, notify, log, store, actions: true, ...(desktop ? { desktop } : {}), ...(paid ? { paid } : {}), ...(offerSession ? { offerSession } : {}),
   });
   if (!jobs) throw new Error("The job router could not be made.");
   routerRef = jobs;
+  // A cloud runner that stops reports its step here (containers.ts onStop).
+  setRunReporter((userId, body) => jobs.submitResult(userId, body, "paid"));
   const render = cloudflareRendererFromConfig();
   const dProjects = projectDepsOf(code)!;
   const classic = routerRunner({ jobs, store, now: Date.now, sleep: (ms) => new Promise<void>((r) => setTimeout(r, ms)) });
   const built = liveOn ? buildLive(env, { d: dProjects, jobs, store, fallback: classic, settings }) : null;
   const design = buildDesign(env);
+  const screens = buildScreens(env);
   const orchestrator = createAgent({
     code, jobs, notify, log, passive: true, leaseMs: WORKER_LEASE_MS, ...(render ? { web: { render } } : {}),
-    ...(built ? { runner: built.runner, live: built.deps } : {}), ...(design ? { design } : {}),
+    ...(built ? { runner: built.runner, live: built.deps } : {}), ...(design ? { design } : {}), ...(screens ? { screens } : {}),
     // Lead and helpers (code/team): a helper is a job with a Workflow of its own, and a helper that ends or needs the person sends its lead's Workflow a "wake" event.
     team: teamPorts(env, () => orchestrator),
   });

@@ -68,6 +68,8 @@ export interface BotStore {
   deleteCommand(userId: string, botId: string, name: string): Promise<boolean>;
 
   listFacts(userId: string, botId: string): Promise<Fact[]>;
+  /** Every fact the person's bots keep, each with its bot (the shared ones under "_you"), oldest first: their space (src/you/space.ts). */
+  listAllFacts(userId: string): Promise<Array<Fact & { botId: string }>>;
   /** New facts (a fact already there is not added twice), the oldest dropped past `max`. Returns the ones that are new. */
   addFacts(userId: string, botId: string, texts: readonly string[], max: number, now: number): Promise<Fact[]>;
   /** Forgets one fact; false when it is not the person's. */
@@ -79,6 +81,7 @@ export interface BotStore {
 }
 
 const norm = (s: string): string => s.toLowerCase().replace(/\s+/g, " ").trim();
+const ALL_FACTS_MAX = 2000;
 
 const copyBot = (b: StoredBot): StoredBot => ({
   ...b, principles: [...b.principles], skills: { ...b.skills, connectors: [...b.skills.connectors] }, knowledge: [...b.knowledge], budgets: { ...b.budgets },
@@ -196,6 +199,10 @@ export class MemoryBotStore implements BotStore {
 
   async listFacts(userId: string, botId: string): Promise<Fact[]> {
     return this.facts.filter((f) => f.userId === userId && f.botId === botId).map((f) => ({ id: f.id, text: f.text, createdAt: f.createdAt }));
+  }
+
+  async listAllFacts(userId: string): Promise<Array<Fact & { botId: string }>> {
+    return this.facts.filter((f) => f.userId === userId).map((f) => ({ id: f.id, botId: f.botId, text: f.text, createdAt: f.createdAt }));
   }
 
   async addFacts(userId: string, botId: string, texts: readonly string[], max: number, now: number): Promise<Fact[]> {
@@ -417,6 +424,14 @@ export class SupabaseBotStore implements BotStore {
       .returns<Array<{ id: string; fact: string; created_at: string }>>();
     if (error) fail("list facts", error);
     return (data ?? []).map((r) => ({ id: r.id, text: r.fact, createdAt: Date.parse(r.created_at) || 0 }));
+  }
+
+  async listAllFacts(userId: string): Promise<Array<Fact & { botId: string }>> {
+    // 40 a bot and 60 shared: a person with many bots still fits in one read.
+    const { data, error } = await this.sb.from("bot_facts").select("id, bot_id, fact, created_at").eq("user_id", userId).order("created_at", { ascending: true }).limit(ALL_FACTS_MAX)
+      .returns<Array<{ id: string; bot_id: string; fact: string; created_at: string }>>();
+    if (error) fail("list all facts", error);
+    return (data ?? []).map((r) => ({ id: r.id, botId: r.bot_id, text: r.fact, createdAt: Date.parse(r.created_at) || 0 }));
   }
 
   async addFacts(userId: string, botId: string, texts: readonly string[], max: number, now: number): Promise<Fact[]> {

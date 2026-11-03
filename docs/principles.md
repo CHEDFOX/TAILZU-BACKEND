@@ -85,6 +85,9 @@ A role is a one-line identity, a list of principle ids, and an **output contract
 | `front_diagram` | `front/handlers.ts` | Mermaid text only, at most 12 nodes |
 | `front_plan` | `front/handlers.ts` | JSON: `title`, `steps` (do, when), `notes` |
 | `front_look` | `front/attachments.ts` | plain prose, at most 200 words, the picture described for the question asked |
+| `code_plan_open` | `code/flow/plan.ts` (`docs/code-flow.md`) | JSON: `state`, `direction`, `suggested`, `goal`, `steps` (3 to 6): the chat's opening plan |
+| `code_plan_keep` | `code/flow/plan.ts` | JSON: `kind` (same, revise), and with revise `goal`, `steps`, `change`: the plan after a message, before the work |
+| `code_triage` | `code/flow/triage.ts` | JSON: `kind` (question, addon, change, mockup, stop, note), `affects`, `say`, and with change `goal`, `steps`, `change`: a message during the work |
 | `care_review` | `code/prcare/review.ts` (`docs/pr-care.md`) | JSON: `kind` (small, large, question, other), `summary`, `reply` (under 600 characters). The comment, the code it is on and the work log are fenced data |
 | `care_conflict` | `code/agent/merge.ts` | JSON: `files` (path, `kind` mechanical or semantic, `reason`). Each file shows both sides between its conflict markers |
 | `team_split` | `code/team/split.ts` (`docs/code-team.md`), the strong tier | JSON: `parts` (`id`, `goal`, `ownedPaths` as globs, `reads`, `dependsOn`, `acceptance`, `budgetShare`, and `repo` when several repos), `notes`. Part 0 is the shared contracts and the lead's own. The plan, the brain's files and a refused earlier try are fenced data |
@@ -188,6 +191,9 @@ The front door's six roles (`src/front/`), PR care's two (`care_review`, `care_c
 | front_diagram | 556 | 159 |
 | front_plan | 668 | 191 |
 | front_look | 587 | 168 |
+| code_plan_open | 1186 | 339 |
+| code_plan_keep | 935 | 267 |
+| code_triage | 1557 | 445 |
 | care_review | 1422 | 407 |
 | care_conflict | 697 | 200 |
 | team_split | 1778 | 508 |

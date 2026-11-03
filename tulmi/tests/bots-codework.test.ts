@@ -135,6 +135,29 @@ describe("bots app · Xode at work", () => {
     expect(posts(s.root!).find((a) => a.path === "/v1/ask")?.body).toMatchObject({ threadId: t, message: "$state.sent" });
   });
 
+  it("the Xode flow: the gate while it reads; the plan with Approve before the work; messages judged once it works", async () => {
+    const t = threadFor("00000000-0000-4000-8000-00000000aaaa", PROJECT);
+    const flow = (data: unknown) => ({ ...CODEWORK_API, [`GET /v1/bots/code/flow/${PROJECT}/plan?thread=${t}`]: data });
+    const gate = { open: false, reading: { status: "building", pct: 42, phase: "reading each file" }, vision: "missing" };
+    for (const client of ["phone", "desktop"] as const) {
+      const shut = await build("bots.code.job", client, { project: PROJECT }, flow({ gate, plan: null, job: null }));
+      expect(shut.words, client).toEqual(expect.arrayContaining(["Xode is reading your project", "42% · reading each file", "Where do you want to take it?", "Save", "Let Xode suggest one"]));
+      expect(posts(shut.s.root!).filter((a) => a.path === `/v1/bots/code/flow/${PROJECT}/vision`).map((a) => a.body)).toEqual(expect.arrayContaining([{ vision: "$state.vision", keep: "$state.keep" }, { skip: true }]));
+    }
+    const open = { open: true, reading: { status: "ready", pct: 100, phase: "done" }, vision: "given" };
+    const plan = { v: 1, goal: "Add a results page", state: "A school site.", direction: "Results on phones.", suggested: false, steps: ["Route", "Page", "Link"], status: "proposed" };
+    const talk = await build("bots.code.job", "phone", { project: PROJECT }, flow({ gate: open, plan, job: null }));
+    expect(talk.words).toEqual(expect.arrayContaining(["Where it stands", "Where you're taking it", "Add a results page", "Route", "Approve and start"]));
+    expect(posts(talk.s.root!).find((a) => a.path === `/v1/bots/code/flow/${PROJECT}/approve`)?.body).toEqual({ thread: t, v: 1 });
+    expect(posts(talk.s.root!).find((a) => a.path === `/v1/bots/code/flow/${PROJECT}/say`)?.body).toMatchObject({ thread: t, text: "$state.sent" });
+    expect(posts(talk.s.root!).some((a) => a.path === "/v1/ask")).toBe(false);
+    const work = await build("bots.code.job", "phone", { project: PROJECT }, flow({ gate: open, plan: { ...plan, status: "working", jobId: JOB_ANSWER }, job: { job: { id: JOB_ANSWER, state: "running" } } }));
+    expect(work.words).toContain("Xode is working on it");
+    expect(posts(work.s.root!).find((a) => a.path === `/v1/bots/code/flow/${PROJECT}/work`)?.body).toMatchObject({ thread: t, text: "$state.sent" });
+    // An older server answers nothing: the chat as it was.
+    expect((await build("bots.code.job", "phone", { project: PROJECT })).words).toContain("Ask anything about your code.");
+  });
+
   it("a job's page keeps its chat too: the project chat it was asked from above it, and every follow-up after it", async () => {
     const FROM = "34343434-3434-4434-8434-343434343434";
     const api = {

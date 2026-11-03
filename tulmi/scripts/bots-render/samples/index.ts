@@ -78,6 +78,9 @@ export const SAMPLES: Sample[] = [
   { id: S.you, area: "you", board: "You", deskBoard: "DYou" },
   { id: S.budget, area: "you", board: "Budget", deskBoard: "DBudget" },
   { id: S.billing, area: "you", board: "Billing", deskBoard: "DBilling" },
+  // screens/you/space.ts (tests/space-data.ts): no boards of their own
+  { id: S.youSpace, area: "you" },
+  ...["about", "day", "people", "money", "timeline"].map((id) => ({ id: S.youSpaceSection, area: "you" as const, variant: id, params: { id } })),
   { id: S.computer, area: "you", board: "Devices", deskBoard: "DeskComputer" },
   { id: S.notify, area: "you", board: "Notify", deskBoard: "DNotify" },
   { id: S.privacy, area: "you", board: "Privacy", deskBoard: "DPrivacy" },
@@ -97,6 +100,9 @@ export const SAMPLES: Sample[] = [
   { id: S.spaces, area: "bots", board: "Spaces", deskBoard: "DSpaces" },
   // screens/spaces.ts (tests/spaces-data.ts, in the bots area's answers): no boards of their own, drawn in Spaces' look
   { id: S.spaces, area: "bots", variant: "home", params: { id: "s1" } },
+  { id: S.spaceBot, area: "bots", variant: "plan", params: { id: "s1", bot: "plan" } },
+  { id: S.spaceBot, area: "bots", variant: "code", params: { id: "s1", bot: "code" } },
+  { id: S.spaceMemory, area: "bots", params: { id: "s1" } },
   { id: S.spaceMember, area: "bots", params: { id: "s1", member: "r" } },
   { id: S.spaceInvite, area: "bots", params: { id: "s1" } },
   { id: S.spaceRoles, area: "bots", params: { id: "s1" } },

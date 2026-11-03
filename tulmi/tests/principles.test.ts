@@ -38,6 +38,8 @@ const { ARTIFACT_LIBS } = await import("../src/artifacts/protocol.js");
 const { WELCOME_CHARS } = await import("../src/code/project/types.js");
 const { rows, totals, NEW_ROLES } = await import("../scripts/prompt-sizes.js");
 const { DecideReply } = await import("../src/front/decide.js");
+const { PlanOut: FlowPlanReply, KeepOut: FlowKeepReply } = await import("../src/code/flow/plan.js");
+const { TriageOut: FlowTriageReply } = await import("../src/code/flow/triage.js");
 const { ReviewVerdict } = await import("../src/code/prcare/review.js");
 const { ConflictVerdict } = await import("../src/code/agent/merge.js");
 const { SplitReply } = await import("../src/code/team/split.js");
@@ -282,6 +284,9 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   front_complete: 712, // 647 measured
   front_diagram: 612, // 556 measured
   front_plan: 735, // 668 measured
+  code_plan_open: 1239, // 1126 measured
+  code_plan_keep: 963, // 875 measured
+  code_triage: 1647, // 1497 measured
   front_look: 646, // 587 measured
   care_review: 1565, // 1422 measured
   care_conflict: 767, // 697 measured
@@ -365,6 +370,9 @@ describe("the contracts say what the parsers read", () => {
     ["artifact_compare", VerdictSchema],
     ["front_decide", DecideReply],
     ["front_plan", FrontPlanReply],
+    ["code_plan_open", FlowPlanReply],
+    ["code_plan_keep", FlowKeepReply],
+    ["code_triage", FlowTriageReply],
     ["care_review", ReviewVerdict],
     ["care_conflict", ConflictVerdict],
     ["team_split", SplitReply],

@@ -427,6 +427,8 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     if (!user) return reply;
     try {
       const r = await deleteMyData(user.id, { media: deps.media }, app.log);
+      // What every bot read of them (and their space's marks) is gone with the facts, not half a minute later.
+      dropSharedCache(user.id);
       if (!r.ok) return reply.code(503).send({ code: "delete_unavailable", message: "Deleting isn't available right now. Try again shortly." });
       return reply.send({ ok: true, cleared: r.cleared });
     } catch (err) { return fail(reply, err); }

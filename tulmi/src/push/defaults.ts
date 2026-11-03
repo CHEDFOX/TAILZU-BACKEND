@@ -95,6 +95,9 @@ export const PUSH_DEFAULTS: PushPayload = {
     // Routines (src/routines, docs/routines.md): a bot did what it does on a schedule, or stopped after three runs that didn't work.
     // The push carries data.routineId and opens the routines list.
     "push.routine_done.screenId": "bots.routines",
+    // The server's own health (src/ops/alerts.ts): to its owner only (OPS_ALERT_USER_ID), never quiet.
+    "push.ops_alert.enabled": true,
+    "push.ops_alert.screenId": "home",
     "push.routine_failed.screenId": "bots.routines",
 
     // Xode's jobs (src/code/jobs, docs/code-router.md): paid compute needs a yes, a job is
@@ -131,6 +134,9 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_plan.screenId": "bots.space.tasks",
     "push.space_message.enabled": true,
     "push.space_message.screenId": "bots.chats",
+    // Someone joined a space with your invite (src/botsBots/spaces.ts join): so a code used by the wrong person is seen at once.
+    "push.space_joined.enabled": true,
+    "push.space_joined.screenId": "bots.spaces",
 
     // THE BUTTONS ON A NOTIFICATION (docs/widgets.md): the category each kind carries, one the phone registered from the bootstrap's
     // push.categories (its buttons, their words, icons, text field, foreground or not, and what each calls). "" or absent: none.
@@ -183,8 +189,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_plan.body": "{title}{due}",
     "push.space_message.title": "{chat}",
     "push.space_message.body": "{name} sent a message",
+    "push.space_joined.title": "{name} joined {space}",
+    "push.space_joined.body": "With your invite. Not who you meant? Remove them in {space}.",
     "push.plan_reminder.title": "{title}",
     "push.plan_reminder.body": "{when}",
+    "push.ops_alert.title": "{title}",
+    "push.ops_alert.body": "{body}",
     "push.routine_done.title": "{bot}: {task}",
     "push.routine_done.body": "{line}",
     "push.routine_failed.title": "Routine paused: {task}",
@@ -203,8 +213,9 @@ export const EVENT_PUSH_KINDS = [
   "approval",
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
-  "space_task", "space_plan", "space_message",
+  "space_task", "space_plan", "space_message", "space_joined",
   "plan_reminder",
   "routine_done", "routine_failed",
+  "ops_alert",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

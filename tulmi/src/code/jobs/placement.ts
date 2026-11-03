@@ -100,9 +100,12 @@ export function choosePlacement(ctx: PlacementCtx): PlacementChoice {
     return { placement: "github", reason: "GitHub's free computers have minutes left this month." };
   }
 
-  // 3. Paid compute, by the person's rule.
+  // 3. Paid compute, by the person's rule. A place that costs nothing (X0's cloud runner while it is free) needs no rule and no yes.
   const noPc = "none of your computers is online and allowed for this project";
   const noGithub = ctx.githubEnabled ? "this month's free GitHub minutes are used up" : GITHUB_WHY[ctx.githubWhy ?? ""] ?? "GitHub's free computers aren't set up for this project";
+  if (ctx.paidAvailable && Math.ceil(ctx.estimatePaise) <= 0) {
+    return { placement: "paid", reason: "X0's cloud computer is free for this, so it runs there." };
+  }
   if (ctx.paidRule !== "never" && ctx.paidAvailable) {
     const estimatePaise = Math.max(0, Math.ceil(ctx.estimatePaise));
     if (estimatePaise <= Math.max(0, ctx.paidLeftPaise)) {

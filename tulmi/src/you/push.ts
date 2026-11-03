@@ -24,7 +24,7 @@ import type { Spending } from "./limits.js";
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
-const PEOPLE = new Set(["space_task", "space_plan", "space_message"]);
+const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined"]);
 
 /** The person's minute of the day, in their own time. */
 const minuteOf = (now: number, tzOffsetMinutes: number): number => {
@@ -41,6 +41,7 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
   if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
   if (kind === "routine_done" || kind === "routine_failed") return quiet ? "silent" : "send";
+  if (kind === "ops_alert") return "send";
   if (DONE.has(kind)) {
     if (quiet || n.botsOff.includes("code")) return "drop";
     return n.done === "quiet" ? "silent" : "send";
