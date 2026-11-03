@@ -91,7 +91,9 @@ describe("the library", () => {
     says("core.least", /least/i);
     says("core.unsure", /unsure/i);
     says("core.facts", /never invent/i, /facts/, /paths/, /APIs/);
-    says("core.lang", /language and script/i, /Hinglish/);
+    says("core.lang", /language and script/i, /latest message/i);
+    // Naming a language in the rule every prompt carries pulls replies into it.
+    expect(principleText("core.lang")).not.toMatch(/hinglish|hindi|english/i);
     says("core.ask", /one question/i, /two or three options/i, /real work/i);
     says("safe.data", /web/i, /file/i, /tool/i, /never instructions/);
     says("safe.secrets", /secrets/i);

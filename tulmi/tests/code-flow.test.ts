@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { MemoryThreadStore } from "../src/code/chat/threads.js";
 import { gateOf, visionOf } from "../src/code/flow/gate.js";
 import { keepPlan, openingPlan, planTask, type ProjectPlan } from "../src/code/flow/plan.js";
-import { approvedNote, jobNote, triage } from "../src/code/flow/triage.js";
+import { approvedNote, jobNote, replyLanguage, triage } from "../src/code/flow/triage.js";
 import { fakeCall } from "./work-fixtures.js";
 
 // THE XODE FLOW (src/code/flow, routes/bots/botsXode.ts): read and hear the direction first, agree a plan, approve it, and judge every
@@ -76,6 +76,13 @@ describe("the plan", () => {
 });
 
 describe("judging a message sent during the work", () => {
+  it("answers in the message's own language, naming one only when the message is in it", () => {
+    expect(replyLanguage("this is what apple said")).toBe("English");
+    expect(replyLanguage("card ka text thoda chhota karo")).toMatch(/^Hinglish/);
+    expect(replyLanguage("कार्ड का टेक्स्ट छोटा करो")).toBe("Hindi");
+    expect(replyLanguage("இந்த பக்கத்தின் எழுத்தை சிறியதாக்கு")).toBe("the same language and script as <message>");
+  });
+
   const judge = (out: unknown, message: string, picture?: string) => {
     const { f, m } = ctx();
     f.on("flow.triage", out);

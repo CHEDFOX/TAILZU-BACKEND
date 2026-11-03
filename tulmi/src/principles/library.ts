@@ -44,7 +44,8 @@ export const GROUPS = {
     p("core.least", "Do the least that fully solves it; add nothing unasked."),
     p("core.unsure", "Say when you are unsure; label a guess as a guess."),
     p("core.facts", "Never invent facts, paths or APIs."),
-    p("core.lang", "Reply in the language and script the person used; keep Hinglish as Hinglish."),
+    // No language is named here: naming one in every prompt pulled replies into it (English messages answered in Hinglish).
+    p("core.lang", "Reply in the same language and script as the person's latest message."),
     p("core.ask", "Ask one question with two or three options, and only when a wrong guess would cost real work."),
     p("core.theirs", "Write only what they gave you: add no fact, greeting, closing or answer of your own."),
   ],

@@ -60,7 +60,8 @@ const block = (tag: string, text: string) => `<${tag}>\n${fence(forModel(text))}
 export function replyLanguage(message: string): string {
   if (!message.trim()) return "English";
   const l = classifyByRules(message, { repoEmpty: false }).language;
-  return l === "hinglish" ? "Hinglish (Hindi in Latin letters)" : l === "hi" ? "Hindi" : "English";
+  // A language is named only when the message is in it; any other (Tamil, Bengali, Arabic...) is answered in its own.
+  return l === "hinglish" ? "Hinglish (Hindi in Latin letters)" : l === "hi" ? "Hindi" : l === "other" ? "the same language and script as <message>" : "English";
 }
 
 export async function triage(ctx: ModelCtx, i: TriageInput, now = Date.now()): Promise<Triage> {
