@@ -37,7 +37,7 @@ media-worker/            Python service (FastAPI): office files, hard PDFs, pict
 shared/types/            the wire contracts: api.ts (requests and responses), sdui.ts (screens, nodes, actions)
 shared/bots/             the bots' looks and moments (looks.json) and sounds (sounds.json, sounds/*.m4a)
 shared/prompts/          the screen reply's old prompt files, kept so REPLY_PROMPT_VERSION can roll back
-deploy/                  ship.sh (the deploy), Caddyfile, the desktop-release receiver, GitHub App helpers,
+deploy/                  ship.sh (the deploy), backup-db.sh (the nightly database backup to R2), Caddyfile, the desktop-release receiver, GitHub App helpers,
                          and the .well-known files for app links
 docs/                    one document per subsystem (listed under "Where to find" below)
 ```
