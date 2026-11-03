@@ -43,7 +43,7 @@ const calls = (nodes: Node[]) => actions(nodes).filter((a) => a.kind === "callEn
 describe("Spaces' screens", () => {
   const CASES: Array<[string, Record<string, string>, string[], string[]]> = [
     ["bots.spaces", {}, ["Spaces", "Chats", "Given to you", "Home", "Studio", "needs your yes", "Start a space", "Got an invite code? Join with it"], [`POST ${A}/spaces`, `POST ${A}/spaces/join`]],
-    ["bots.spaces", { id: "s1" }, ["Home", "Now", "Shared", "Plans", "Money", "People", "Waiting on you · 2", "₹1,240 to Fresh Basket", "Call Nani", "Groceries", "2 of 5 done", "Pick up the cake for Mom", "No money moves without a yes", "Invites waiting · 1", "nani.sharma@gmail.com", "Email waits to go out", "Lately"],
+    ["bots.spaces", { id: "s1" }, ["Home", "Waiting on you · 2", "Call Nani", "Bots in Home", "Plan Ease", "Shared in Home", "Tasks · 1", "Lists · 1", "Money · 1", "Groceries", "2 of 5 done", "Pick up the cake for Mom", "No money moves without a yes", "People · 3", "Invites waiting · 1", "nani.sharma@gmail.com", "Email waits to go out"],
       [`PUT ${A}/spaces/s1/payments/p-groceries`, `POST ${A}/spaces/s1/lists`, `PUT ${A}/spaces/s1/tasks/t-nani`, `DELETE ${A}/spaces/s1/invites/QW3RT7YP`, `POST ${A}/threads/group`, `POST ${A}/threads/direct`, `PUT ${A}/spaces/s1`, `DELETE ${A}/spaces/s1`]],
     ["bots.space.member", { id: "s1", member: "r" }, ["What Rohan can do", "Kid", "Give tasks to others", "Plan for others", "Approve payments", "Remove Rohan from Home"], [`PUT ${A}/spaces/s1/members/r`, `DELETE ${A}/spaces/s1/members/r`]],
     ["bots.space.member", { id: "s1", member: "u" }, ["What you can do", "You made this space, so you can do everything."], []],

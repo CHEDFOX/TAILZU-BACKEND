@@ -27,7 +27,7 @@ import {
 import { iconBox, KIND_WORD, setState, type Targets, sharePage } from "./spaces/sharePage.js";
 import {
   type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
-  openChat, dayWords, clockOf, type JoinInvite, facesLine,
+  openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState,
 } from "./spaces/spaceDetail.js";
 
 interface Thread {
@@ -152,7 +152,7 @@ function spaceOnePhone(ctx: BotsCtx, o: OneSpace, d: SpacesData) {
     ...o.items.map((x) => `item:${x.id}`), ...o.payments.map((p) => `pay:${p.id}`), ...o.tasks.map((t) => `task:${t.id}`),
     ...(o.space.activity ?? []).map((a) => `act:${a.id}`),
   ];
-  return page(ctx, { back: true, title: o.space.name, nav: "you", state: { listName: "", spaceRename: "", tab: String(ctx.params.tab ?? "now") }, live: spaceLive(o, []), body: spaceDetail(ctx, o, d.bots), gap: 22, pullBot: { top: true, bottom: true, items } });
+  return page(ctx, { back: true, title: o.space.name, nav: "you", state: spaceDetailState(ctx), live: spaceLive(o, []), body: spaceDetail(ctx, o, d.bots), gap: 22, pullBot: { top: true, bottom: true, items } });
 }
 
 function spacesDesk(ctx: BotsCtx, d: SpacesData) {
@@ -171,7 +171,7 @@ function spacesDesk(ctx: BotsCtx, d: SpacesData) {
     col([joinBox()], { paddingTop: 8 }),
   ], { width: 300, flexShrink: 0, gap: 10 });
   return page(ctx, {
-    title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: joinParam(ctx), listName: "", spaceRename: "", tab: "now", newOpen: false, codeOpen: false }, live: spaceLive(sel, list),
+    title: "Spaces", nav: "you", maxWidth: 1180, state: { spaceName: "", code: joinParam(ctx), ...spaceDetailState(ctx), newOpen: false, codeOpen: false }, live: spaceLive(sel, list),
     body: [
       row([
         col([row([text("You", { size: 13, color: C.grey70, lineHeight: 18 })], { minHeight: 32 }, toTab("you")), title("Spaces", { size: 26 }), meta("Your people, in one place.", { size: 14 })], { gap: 4, flexGrow: 1 }),

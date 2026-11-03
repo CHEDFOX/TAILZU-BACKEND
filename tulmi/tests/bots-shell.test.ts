@@ -281,6 +281,25 @@ const presses = (n: Node): ActionSpec[] => walk(n).flatMap((x) => [x.on?.onPress
 const both = ["phone", "desktop"] as const;
 
 describe("the shell's screens", () => {
+  it("home: each group (a family, friends) is a bot of its own, opening the group's page; two at most", async () => {
+    const quiet = { bots: SAMPLE_BOTS.filter((b) => b.builtin), jobs: [], tasks: [] };
+    const group = (id: string, name: string, waiting: number) => ({
+      id, name, waiting, mine: true, me: { admin: true, perms: [] }, bots: [], invite: null, roles: [],
+      members: [{ userId: "u", name: "Aanya", you: true, perms: [] }, { userId: "m", name: "Mom", you: false, perms: [] }],
+    });
+    const api = { "GET /v1/botsapp/bots/spaces": { spaces: [group("s1", "Home", 1), group("s2", "Studio", 0), group("s3", "Goa trip", 0)] } };
+    for (const client of both) {
+      const s = await buildBotsScreen(req("bots.home", client), fakeDeps({ ...quiet, api }));
+      const t = texts(s.root!);
+      expect(t, client).toEqual(expect.arrayContaining(["Home", "1 payment needs your yes", "Studio", "You and Mom"]));
+      expect(t, client).not.toContain("Goa trip");
+      expect(json(s.root)).toContain('"screenId":"bots.spaces","params":{"id":"s1"}');
+    }
+    // On a build with the living tiles, the group is a tile of its own kind, needing you when something waits.
+    const living = await buildBotsScreen({ ...req("bots.home", "phone"), can: new Set(["BotsKit", "BotsMotion"]) }, fakeDeps({ ...quiet, api }));
+    const tile = walk(living.root!).find((n) => n.type === "BotTiles")?.props?.tiles as Array<Record<string, unknown>> | undefined;
+    expect(tile?.find((x) => x.name === "Home")).toMatchObject({ kind: "custom", state: "needs", sub: "1 payment needs your yes" });
+  });
   it("home: one Home for everyone; the bot waves hello only on the first visit after onboarding", async () => {
     const quiet = { bots: SAMPLE_BOTS.filter((b) => b.builtin), jobs: [], tasks: [] };
     const FIRST = { "GET /v1/bots/first-run/arrival": { due: true } };

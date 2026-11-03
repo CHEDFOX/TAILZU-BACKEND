@@ -10,8 +10,10 @@ import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, toTab, C, headBar, type PageOpts, hasOutbox,
-  needsCard, askBar, page, when, seq, blip,
+  needsCard, askBar, page, when, seq, blip, botLook,
 } from "../../kit.js";
+import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
+import type { LiveBot } from "../../live.js";
 import { type DeletionState, leavingCard } from "../accountGrace.js";
 import { ARRIVAL_STATE } from "../firstRun.js";
 import { aboutCard, aboutState } from "../firstRun/aboutCard.js";
@@ -21,6 +23,8 @@ import { hasNotes, notesTileSpec, notesStripHeight, notesStrip } from "../notes.
 import { outboxCard } from "../outbox.js";
 import { pushAskDue, PUSH_STATE, withPushCheck, pushAskCard } from "../pushAsk.js";
 import { routinesRow, type RoutinesData } from "../routines.js";
+import type { Space } from "../spaces/parts.js";
+import { facesLine } from "../spaces/spaceDetail.js";
 import { idleLine, firstName } from "./parts.js";
 
 // ===================================================================== home
@@ -31,8 +35,35 @@ import { idleLine, firstName } from "./parts.js";
  * Notes as a full-width strip (screens/notes.ts): in the living grid's own world where the build draws one (canStrip),
  * else a still strip of its own.
  */
-export function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats): Node {
+/** How many groups Home shows as bots; the rest are on Spaces. */
+const GROUPS_ON_HOME = 2;
+/** A group's colour: one of a few quiet ones, the same for the group every time. */
+const GROUP_COLORS = ["#5B7DB1", "#B5654A", "#6B8E4E", "#8A6BB1", "#B18A3D"];
+const groupColor = (id: string): string => GROUP_COLORS[[...id].reduce((n, c) => (n * 31 + c.charCodeAt(0)) >>> 0, 7) % GROUP_COLORS.length]!;
+/** A group's line on its tile: what waits on you there, else who is in it. */
+const groupLine = (s: Space): string => (s.waiting ? `${s.waiting === 1 ? "1 payment needs" : `${s.waiting} payments need`} your yes` : facesLine(s));
+
+/** A group (a family or friends' space) as a bot on Home: its own tile, opening the group's page. */
+function groupTileSpec(s: Space): BotTileSpec {
+  return {
+    slug: `space-${s.id}`, name: s.name, sub: groupLine(s), color: groupColor(s.id), kind: "custom", state: s.waiting ? "needs" : "idle",
+    action: open(SCREENS.spaces, { id: s.id }), label: `${s.name}, your group: ${groupLine(s)}`,
+  };
+}
+/** The same, for a build without the living tiles. */
+function groupTile(s: Space, height: number, padding: number): Node {
+  const look = botLook(`space-${s.id}`, groupColor(s.id));
+  // Its own line says what waits ("1 payment needs your yes"), so no bot's "Needs you · 1 question" in its place.
+  const bot: LiveBot = { ...look, slug: `space-${s.id}`, name: s.name, builtin: false, state: "idle", working: false, needs: 0, purpose: "" };
+  return botTile(bot, { idle: groupLine(s), onPress: open(SCREENS.spaces, { id: s.id }), height, padding });
+}
+
+/**
+ * Home's grid: the first bots, then the groups as bots of their own (a family, friends: GROUPS_ON_HOME of them), then Make a bot.
+ */
+export function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats, groups: Space[] = []): Node {
   const shown = ctx.live.bots.slice(0, 3);
+  const groupsShown = groups.slice(0, GROUPS_ON_HOME);
   const gap = columns === 4 ? 14 : 12;
   const withNotes = hasNotes(ctx);
   if (canMove(ctx)) {
@@ -41,12 +72,14 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     const surprises = homeSurprises(ctx);
     const living = botTiles([
       ...shown.map((b) => botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) })),
+      ...groupsShown.map(groupTileSpec),
       makeTileSpec(open(SCREENS.make)),
     ], { columns, height, padding, gap, ...(strip ? { strip, stripHeight: notesStripHeight(ctx) } : {}), ...(surprises ? { surprises } : {}) });
     return withNotes && !strip ? col([living, notesStrip(ctx, notes)], { gap }) : living;
   }
   const still = grid([
     ...shown.map((b) => botTile(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug), height, padding })),
+    ...groupsShown.map((s) => groupTile(s, height, padding)),
     makeBotTile({ onPress: open(SCREENS.make), height, padding }),
   ], columns, gap);
   return withNotes ? col([still, notesStrip(ctx, notes)], { gap }) : still;
@@ -59,7 +92,7 @@ const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ..
  * What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due
  * (pushAsk.ts), and the About you card (firstRun/aboutCard.ts).
  */
-export interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
+export interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; groups?: Space[] | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the
@@ -126,7 +159,7 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
     ...(first ? [needsCard(first)] : []),
     ...n.push,
-    tiles(ctx, 2, 132, 16, more.notes),
+    tiles(ctx, 2, 132, 16, more.notes, more.groups),
     ...routinesRow(ctx, more.routines),
   ];
   const footer = [askBar("phone", { ctx })];
