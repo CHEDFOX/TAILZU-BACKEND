@@ -39,6 +39,10 @@ export const W = {
   youP: "So your bots know what to call you, and how to write for you.",
   youGender: "You are",
   youMissing: "Add your name and pick one.",
+  // Signed in with Apple: Apple already shared what it shares, so nothing about the name is asked of anyone (App Review 4).
+  youHApple: "About you",
+  youPApple: "So your bots know how to write for you. Your name is optional.",
+  youMissingApple: "Pick one to continue.",
   restore: "Restore Purchases",
   restoreDone: "Restore finished. If a plan was bought with this Apple ID or Google account, it's active again.",
   restoreErr: "Couldn't restore just now. Try again in a moment.",

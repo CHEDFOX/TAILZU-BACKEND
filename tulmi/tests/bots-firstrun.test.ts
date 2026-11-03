@@ -149,18 +149,29 @@ describe("About you and Name: the stage after sign-in", () => {
   });
 });
 
-describe("App Review: signed in with Apple, the name is filled in, never typed; a bought plan can be restored", () => {
-  it("asks someone who signed in with Apple About you with Apple's name filled in, and the name and the pick needed, as for everyone", async () => {
-    const api = { ...API, "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "apple", source: "provider", gender: null, saved: false } };
-    for (const client of ["phone", "desktop"] as const) {
-      const s = await build("bots.name-it", client, { api });
-      expect(s.state).toMatchObject({ step: 0, fullName: "Aanya Rao" });
-      expect(texts(s.root!)).toEqual(expect.arrayContaining(["Your name", "You are"]));
-      expect(texts(s.root!).some((t) => /optional|Skip/i.test(t))).toBe(false);
-      expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({
-        kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] }, else: expect.objectContaining({ kind: "toast", message: "Add your name and pick one." }),
-      })]));
+describe("App Review: signed in with Apple, the name is never asked for; a bought plan can be restored", () => {
+  it("asks someone who signed in with Apple only the pick: Apple's name filled in when Apple shared it, the name optional either way", async () => {
+    for (const name of ["Aanya Rao", ""]) {
+      const api = { ...API, "GET /v1/bots/first-run/profile": { name, via: "apple", source: name ? "provider" : null, gender: null, saved: false } };
+      for (const client of ["phone", "desktop"] as const) {
+        const s = await build("bots.name-it", client, { api });
+        expect(s.state).toMatchObject({ step: 0, fullName: name });
+        expect(texts(s.root!)).toEqual(expect.arrayContaining(["About you", "Your name (optional)", "You are"]));
+        expect(texts(s.root!)).not.toContain("What's your name?");
+        expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({
+          kind: "condition", if: { truthy: "gender" }, else: expect.objectContaining({ kind: "toast", message: "Pick one to continue." }),
+        })]));
+      }
     }
+  });
+
+  it("still needs the name from everyone who did not sign in with Apple", async () => {
+    const api = { ...API, "GET /v1/bots/first-run/profile": { name: "Aanya Rao", via: "google", source: "provider", gender: null, saved: false } };
+    const s = await build("bots.name-it", "phone", { api });
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["What's your name?", "Your name"]));
+    expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] }, else: expect.objectContaining({ kind: "toast", message: "Add your name and pick one." }),
+    })]));
   });
 
   it("offers Restore Purchases on the phone's Plans, which restores and reads the screen again", async () => {

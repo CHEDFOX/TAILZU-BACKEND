@@ -223,8 +223,9 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
       ...startingName(user, profile?.fullName),
       via: signedInVia(user),
       gender,
-      // Both answers are what the name and gender card asks for: with both, the step has nothing to ask.
-      saved: !!(profile?.fullName?.trim() && gender),
+      // Both answers are what the name and gender card asks for: with both, the step has nothing to ask. Signed in with Apple,
+      // the name is optional (App Review 4), so the pick alone is enough.
+      saved: !!((profile?.fullName?.trim() || signedInVia(user) === "apple") && gender),
       // Onboarded before the first run asked it: the screen is then only About you (the bootstrap's promptScreenId).
       onboarded: profile?.onboarded === true,
     });

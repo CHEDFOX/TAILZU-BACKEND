@@ -40,9 +40,11 @@ function nameSource(me: Me | undefined): string | null {
 export function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = false): Node {
   const desk = ctx.client === "desktop";
   // The name is filled in for everyone (what Apple or Google shared, saved by the app's AuthGateScreen, else a guess from the email:
-  // startingName), so signing in with Apple asks no one to type it (App Review 4); it is theirs to change, and needed, with the pick.
+  // startingName). Signed in with Apple, it is never required (App Review 4: nothing Apple shares may be asked again, and Apple
+  // shares the name only on the first sign-in): the field is optional and only the pick is needed. Everyone else needs both.
+  const apple = me?.via === "apple";
   const save: ActionSpec = {
-    kind: "condition", if: { all: [{ truthy: "fullName" }, { truthy: "gender" }] },
+    kind: "condition", if: apple ? { truthy: "gender" } : { all: [{ truthy: "fullName" }, { truthy: "gender" }] },
     // PUT /v1/profile { full_name, gender }: the card's own write, so everything that reads them (the bootstrap's
     // profile.complete, the greeting, the prompt) keeps working, and the card is never asked again.
     then: call("PUT", "/v1/profile", { full_name: "$state.fullName", gender: "$state.gender" }, {
@@ -51,9 +53,11 @@ export function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = fa
         : seq({ kind: "haptic", style: "selection" } as ActionSpec, setState("step", 1)),
       fail: toast(W.saveErr),
     }),
-    else: toast(W.youMissing),
+    else: toast(apple ? W.youMissingApple : W.youMissing),
   } as ActionSpec;
-  const field = nameField("fullName", "Your name", save, desk, { capitalize: true, label: "your name" });
+  const field = nameField("fullName", apple ? "Your name (optional)" : "Your name", save, desk, { capitalize: true, label: "your name" });
+  const nameLabel = apple ? "Your name (optional)" : "Your name";
+  const [heading, sub] = apple ? [W.youHApple, W.youPApple] : [W.youH, W.youP];
   const source = nameSource(me);
   const cont = button("Continue", save, { size: "lg", wide: !desk });
 
@@ -62,10 +66,10 @@ export function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = fa
       title: "About you", right: signedInAs(ctx), current: only ? null : 1,
       left: [
         deskFig(fig, "present", 140),
-        deskHeading(only ? "About you" : `Step 1 of ${STEPS.length - 1}`, W.youH, W.youP),
+        deskHeading(only ? "About you" : `Step 1 of ${STEPS.length - 1}`, heading, sub),
       ],
       main: [col([
-        col([text("Your name", { size: 13, weight: 500, lineHeight: 17 }), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 6 }),
+        col([text(nameLabel, { size: 13, weight: 500, lineHeight: 17 }), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 6 }),
         col([text(W.youGender, { size: 13, weight: 500, lineHeight: 17 }), genderChips(true)], { gap: 8 }),
       ], { padding: 20, gap: 18, borderRadius: 18, borderWidth: 1, borderColor: C.line })],
       foot: deskFoot(null, [cont]),
@@ -74,8 +78,8 @@ export function youStep(ctx: BotsCtx, fig: Figure, me: Me | undefined, only = fa
   return gateStep(false, [phoneStepBody([
     only ? phoneTop(1, 1, { back }) : phoneTop(1, 2),
     row([fig("present", 116)], { justifyContent: "center" }),
-    phoneHeading(W.youH, W.youP),
-    col([sectionLabel("Your name"), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 8 }),
+    phoneHeading(heading, sub),
+    col([sectionLabel(nameLabel), field, ...(source ? [meta(source, { size: 12 })] : [])], { gap: 8 }),
     col([sectionLabel(W.youGender), genderChips(false)], { gap: 8 }),
   ], [cont])], { props: { stepId: "you" } });
 }
