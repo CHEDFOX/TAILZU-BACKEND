@@ -10,13 +10,16 @@
  *   <where>             the app, the window, the address (no query) and the selection in front of them
  *   <page>              the whole page or document, reduced (page.ts), PAGE_MAX_CHARS
  *   <found_now>         what was just looked up (look.ts), LOOK_CHARS_MAX
- *   <said>, <meant>     their words now, and the same made whole when a follow-up was (complete)
+ *   <lang>              the language of their words by name, when the rules know it (pipeline/lang.ts): an English question
+ *                       after Hinglish turns is answered in English
+ *   <said>, <meant>     their words now, and the same made whole when the brain made a follow-up whole
  *
  * All of it is data: our fence tags are broken inside every part (`data`), and a part the secret scan flags is withheld (forModel).
  * The caps add up to under TALK_INPUT_CHARS (road.ts), which is what a reply's cap is reckoned on.
  */
 import { todayLine } from "../bots/prompt.js";
 import { forModel, oneLine } from "../code/work/model.js";
+import { langName, langOf } from "../pipeline/lang.js";
 import { reducePage, type PageText } from "./page.js";
 import { talkLines, type TalkSession } from "./session.js";
 
@@ -73,6 +76,8 @@ export function talkUser(i: TalkPromptInput): string {
   const page = reducePage(i.page, `${i.words} ${i.meant ?? ""}`).text;
   if (page) parts.push(fence("page", data(forModel(page))));
   if (i.found?.trim()) parts.push(fence("found_now", data(cut(i.found.trim(), FOUND_MAX))));
+  const lang = langName(langOf(i.words));
+  if (lang) parts.push(fence("lang", lang));
   parts.push(fence("said", data(forModel(cut(i.words.trim(), WORDS_MAX)))));
   if (i.meant && i.meant.trim() !== i.words.trim()) parts.push(fence("meant", data(forModel(cut(i.meant.trim(), WORDS_MAX)))));
   return parts.join("\n");

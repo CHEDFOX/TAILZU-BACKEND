@@ -25,7 +25,7 @@ const { Everyday, airportOf, kiwiDate, currencyOf } = await import("../src/every
 const { readFlights } = await import("../src/everyday/flights.js");
 const { readStays } = await import("../src/everyday/stays.js");
 const { everydayKindsFor, runEveryday, cardLines } = await import("../src/everyday/tools.js");
-const { daysOf } = await import("../src/everyday/weather.js");
+const { daysOf, bareName, weatherFor } = await import("../src/everyday/weather.js");
 const { registerEverydayRoutes } = await import("../src/routes/bots/everyday.js");
 
 const KIWI = {
@@ -74,6 +74,17 @@ describe("reading what the services send", () => {
     expect(currencyOf("usd")).toBe("USD");
     expect(currencyOf("bitcoin")).toBeNull();
   });
+  it("weather: a name with a case ending after an apostrophe is tried again bare (İstanbul'u, Paris'te)", async () => {
+    expect([bareName("İstanbul'u"), bareName("Paris’te"), bareName("Mumbai's"), bareName("Pune")]).toEqual(["İstanbul", "Paris", "Mumbai", "Pune"]);
+    const asked: string[] = [];
+    const card = await weatherFor("İstanbul'da", {
+      place: async (n: string) => { asked.push(n); return n === "İstanbul" ? { label: "Istanbul", lat: 41, lon: 29, country: "tr" } : null; },
+      forecast: async () => ({ fetchedAt: 0, expiresAt: 0, steps: [{ t: Date.parse("2026-11-04T12:00:00Z"), hours: 6, tempC: 16, rainMm: 1, symbol: "rain" }] }),
+    } as never);
+    expect(asked).toEqual(["İstanbul'da", "İstanbul"]);
+    expect(card.place).toBe("Istanbul");
+  });
+
   it("weather: the place's days, low, high and rain", () => {
     const t0 = Date.parse("2026-11-01T00:30:00Z");
     const steps = [0, 6, 12, 24, 30].map((h, i) => ({ t: t0 + h * 3_600_000, hours: 6, tempC: [24, 31, 27, 23, 30][i]!, rainMm: [0, 1.2, 0, 0, 3][i]!, symbol: "partlycloudy_day" }));

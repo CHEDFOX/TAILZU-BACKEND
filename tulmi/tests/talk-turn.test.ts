@@ -209,6 +209,37 @@ describe("a follow-up, made whole by the brain from the last turns and what they
     expect(second.events.find((e) => e.t === "handoff")).toMatchObject({ goal: "send the hotel's number to Riya\n(The Taj in Colaba is on 022 6665 3366. Found: numbers 022 6665 3366; names Taj, Colaba)" });
   });
 
+  it("a vague goal with a name in it but none of the last answer's figures gets the answer ('the Pixel 9 price' is no price)", async () => {
+    const w = world();
+    const m = model({
+      decide: [{ do: "answer" }, { do: "send", to: "Aman", goal: "send the Pixel 9 price to Aman" }],
+      say: [{ pieces: ["[talk] The Pixel 9 is about 79,999 rupees in India."] }],
+    });
+    await turn(w, m, { words: "how much is the Pixel 9 in India" });
+    const second = await turn(w, m, { words: "send that price to Aman", turn: 1 });
+    expect((second.events.find((e) => e.t === "handoff") as { goal: string }).goal).toContain("79,999");
+  });
+
+  it("a lone name, or a guess, is asked about instead of handed to Ask", async () => {
+    const w = world();
+    const m = model({ decide: [{ do: "send", to: "Riya", sure: 0.8 }, { do: "task", sure: 0.3 }], say: [{ pieces: ["[talk] What about Riya?"] }, { pieces: ["[talk] What should I open?"] }] });
+    const one = await turn(w, m, { words: "Riya" });
+    expect(one.events.find((e) => e.t === "handoff")).toBeUndefined();
+    expect(one.events[0]).toMatchObject({ t: "route", kind: "chat" });
+    expect(one.out.reasons).toContain("ask_back");
+    const two = await turn(w, m, { words: "open that thing from before", turn: 1 });
+    expect(two.events.find((e) => e.t === "handoff")).toBeUndefined();
+  });
+
+  it("Chinese and Japanese, written with no spaces, are not one word: a send said whole goes to Ask", async () => {
+    const w = world();
+    const m = model({ decide: [{ do: "send", sure: 0.9 }, { do: "send", sure: 0.9 }] });
+    const zh = await turn(w, m, { words: "给王经理发微信说报告明天上午交" });
+    expect(zh.events.find((e) => e.t === "handoff")).toMatchObject({ to: "agent" });
+    const ja = await turn(w, m, { words: "田中さんにLINEで明日の会議は10時からと送って", turn: 1 });
+    expect(ja.events.find((e) => e.t === "handoff")).toMatchObject({ to: "agent" });
+  });
+
   it("a handoff that does not point back goes as it was said", async () => {
     const w = world();
     const m = model({ decide: [{ do: "answer" }, { do: "send", to: "Riya", goal: "tell Riya I'm late" }], say: [{ pieces: ["[talk] Twelve dollars."] }] });
@@ -227,6 +258,7 @@ describe("a follow-up, made whole by the brain from the last turns and what they
     expect(one!.user).toContain("<page>\nOutline:\n- Free\n- Pro\nText:\nPro costs $12 a month or $120 a year.\n</page>");
     expect(two!.user).toContain("<talk>\n- They said: how much is pro\n  X0 said: Twelve dollars a month.");
     expect(two!.user.indexOf("<talk>")).toBeLessThan(two!.user.indexOf("<said>"));
+    expect(one!.user).toContain("<lang>\nEnglish\n</lang>\n<said>");
   });
 });
 
@@ -372,6 +404,7 @@ describe("lookups and money", () => {
     expect(ran.sort()).toEqual(["weather", "web_search"]);
     const lk = m.of("talk.look")[0]!;
     expect(lk.tools).toEqual(["web_search", "weather"]);
+    expect(lk.tier).toBe("cheap");
     const reply = m.of("talk.reply")[0]!;
     expect(reply.user).toContain("<found_now>\nweather:\nPune: light rain, 24°C");
     expect(r.events.at(-1)).toMatchObject({ t: "done", found: { links: ["https://weather.example/pune"] } });

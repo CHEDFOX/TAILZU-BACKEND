@@ -26,12 +26,17 @@ export interface AnswerAsk {
   onReset: () => void;
 }
 
+/** How long a voice waits for a model's first words before the next model on the tier's ladder is asked: a quick tier speaks in about
+ *  a second, so a model silent at 4 s has stalled; the strong tier thinks first. Measured: one model of the cheap tier sometimes
+ *  takes 13 s to start. */
+export const firstWordsMs = (tier: ModelTier): number => (tier === "strong" ? 12_000 : 4_000);
+
 export async function sayAnswer(a: AnswerAsk): Promise<{ text: string; paise: number; model: string }> {
   const call: CallFn = a.call ?? (callModel as CallFn);
   const r = await call({
     tier: a.tier, messages: compose("talk_reply", [{ role: "user" as const, content: a.user }]),
     maxTokens: a.maxTokens, reasoning: a.reasoning, purpose: "talk.reply", userId: a.userId, budget: { maxPaise: a.capPaise },
-    ...(a.signal ? { signal: a.signal } : {}), onText: a.onText, onReset: a.onReset,
+    ...(a.signal ? { signal: a.signal } : {}), onText: a.onText, onReset: a.onReset, firstTextMs: firstWordsMs(a.tier),
   }, a.gateway);
   return { text: r.text, paise: r.paise, model: r.model };
 }

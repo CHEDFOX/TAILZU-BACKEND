@@ -3,12 +3,14 @@
  *
  *   lookFirst({ user, ports, … }) -> { text, tools, links, paise }
  *
- * An answer that needs fresh facts (the one key's brain said `web`) is looked up before a word is said: one call with the role
- * talk_reply and the tools, where the model must pick what to look up, at most LOOK_CALLS calls, run together. Each result is cut to
+ * An answer that needs fresh facts (the one key's brain said `web`) is looked up before a word is said: one call on the cheap tier
+ * (LOOK_TIER: picking what to look up needs no reasoning, and the strong tier's first model refuses a tools call with reasoning on,
+ * 2.5 s lost before the next) with the role talk_reply and the tools, where the model must pick what to look up, at most LOOK_CALLS calls, run together. Each result is cut to
  * LOOK_RESULT_CHARS and all of them to LOOK_CHARS_MAX; they go to the answer in <found_now>. The tools are the bots' own:
  * web_search (code/webTools.ts) and the everyday tools' weather and currency_convert (src/everyday), which only read.
  *
- * Never in the way: a model that is down, over its cap, or a tool that fails leaves the answer to go on without it. Only the person's
+ * Never in the way: a model that is down, over its cap, a tool that fails, or one slower than LOOK_TOOL_MS leaves the answer to go on
+ * without it. Only the person's
  * stop goes through (an AbortError).
  */
 import { callModel, type GatewayDeps } from "../code/brain/gateway.js";
@@ -23,7 +25,12 @@ import { compose } from "../principles/index.js";
 export const LOOK_CALLS = 3;
 export const LOOK_RESULT_CHARS = 2_000;
 export const LOOK_CHARS_MAX = 4_500;
+/** A spoken answer waits this long for a lookup at most: one that takes longer is answered without (a search that hangs, a
+ *  geocoder that is slow), and the answer says it could not look. */
+export const LOOK_TOOL_MS = 4_000;
 const LOOK_TOKENS = 300;
+/** The tier that picks the lookups, whatever tier then answers. */
+export const LOOK_TIER: ModelTier = "cheap";
 /** The most the call that picks the lookups may cost, in paise. */
 export const LOOK_PAISE = 100;
 /** The model's line before the turn: what this call is for. */
@@ -48,7 +55,9 @@ const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 
 const LINK = /\bhttps?:\/\/[^\s<>"'()]+[^\s<>"'().,;:!?]/gi;
 
 export async function lookFirst(o: {
-  user: string; ports: LookPorts; userId: string; tier: ModelTier;
+  user: string; ports: LookPorts; userId: string;
+  /** Instead of LOOK_TOOL_MS (tests). */
+  toolMs?: number;
   call?: CallFn; gateway?: GatewayDeps; signal?: AbortSignal;
 }): Promise<Looked> {
   const none: Looked = { text: "", tools: [], links: [], paise: 0 };
@@ -58,7 +67,7 @@ export async function lookFirst(o: {
   let paise = 0;
   try {
     const r = await call({
-      tier: o.tier, messages: compose("talk_reply", [{ role: "user" as const, content: `${LOOK_NOTE}\n${o.user}` }]),
+      tier: LOOK_TIER, messages: compose("talk_reply", [{ role: "user" as const, content: `${LOOK_NOTE}\n${o.user}` }]),
       tools: o.ports.defs, toolChoice: "required", maxTokens: LOOK_TOKENS, purpose: "talk.look", userId: o.userId,
       budget: { maxPaise: LOOK_PAISE }, ...(o.signal ? { signal: o.signal } : {}),
     }, o.gateway);
@@ -71,7 +80,10 @@ export async function lookFirst(o: {
   if (!calls.length) return { ...none, paise };
   const results = await Promise.all(calls.map(async (c) => {
     try {
-      const r = await o.ports.run(c);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), o.toolMs ?? LOOK_TOOL_MS); });
+      const r = await Promise.race([o.ports.run(c), late]).finally(() => clearTimeout(timer));
+      if (!r) return { name: c.name, content: `${c.name} took too long just now.`, ok: false };
       return { name: c.name, content: cut(r.content, LOOK_RESULT_CHARS), ok: r.ok };
     } catch (err) {
       if (isAbort(err)) throw err;

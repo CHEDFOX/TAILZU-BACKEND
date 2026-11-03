@@ -18,8 +18,8 @@ import { sendable } from "../live/askStream.js";
 export const MOODS = ["talk", "laugh", "ponder", "done", "sorry", "surprised", "shy", "nope"] as const;
 export type Mood = (typeof MOODS)[number];
 
-/** How far into an answer its mood tag may end. */
-export const MOOD_HEAD = 24;
+/** How far into an answer its bracketed head (the mood tag, and any note a model put before it) may end. */
+export const MOOD_HEAD = 160;
 
 const NEAR: Readonly<Record<string, Mood>> = {
   happy: "laugh", joy: "laugh", funny: "laugh", haha: "laugh", smile: "laugh",
@@ -38,12 +38,43 @@ export function moodOf(tag: string): Mood {
   return (MOODS as readonly string[]).includes(t) ? (t as Mood) : NEAR[t] ?? "talk";
 }
 
-const TAG = /^\s*\[([\p{L} _-]{1,16})\]\s*/u;
+/** One bracketed piece at the head of an answer: the mood tag, or a note a model wrote before it ("[answer nahi — पहले mood tag]"). */
+const LEAD = /^\s*\[([^\]\n]{1,60})\]\s*/u;
+/** A tag's word, when it names a mood (one of MOODS or a near word). */
+const moodWord = (w: string): Mood | null => {
+  const t = w.trim().toLowerCase();
+  return (MOODS as readonly string[]).includes(t) ? (t as Mood) : NEAR[t] ?? null;
+};
 
-/** The mood an answer starts with and its words after the tag; `tagged` false when it has none. */
+/**
+ * The mood an answer starts with and its words after its head; `tagged` false when it has none. Every bracketed piece at the head goes
+ * (at most three): a model sometimes writes a note before its tag, and that note is never said. The mood is the first piece that
+ * names one, else talk.
+ */
 export function readMood(text: string): { mood: Mood; text: string; tagged: boolean } {
-  const m = TAG.exec(text);
-  return m ? { mood: moodOf(m[1]!), text: text.slice(m[0].length), tagged: true } : { mood: "talk", text, tagged: false };
+  let rest = text, mood: Mood | null = null, tagged = false;
+  for (let i = 0; i < 3; i++) {
+    const m = LEAD.exec(rest);
+    if (!m) break;
+    tagged = true;
+    mood ??= moodWord(m[1]!);
+    rest = rest.slice(m[0].length);
+  }
+  return { mood: mood ?? "talk", text: tagged ? rest : text, tagged };
+}
+
+/** The bracketed head is whole: a word follows its last piece, or it ran past MOOD_HEAD. */
+function headDone(lead: string): boolean {
+  if (lead.length >= MOOD_HEAD) return true;
+  let s = lead;
+  for (let i = 0; i < 3; i++) {
+    if (!s.startsWith("[")) return s.length > 0;
+    const close = s.indexOf("]");
+    if (close < 0) return false;
+    s = s.slice(close + 1).trimStart();
+    if (!s) return false;
+  }
+  return true;
 }
 
 export interface SpeakerOut {
@@ -74,8 +105,7 @@ export class Speaker {
       const lead = this.head.trimStart();
       if (!lead) return;
       if (lead.startsWith("[")) {
-        const close = lead.indexOf("]");
-        if (close < 0 && lead.length < MOOD_HEAD) return;
+        if (!headDone(lead)) return;
         const r = readMood(this.head);
         this.reading = false;
         this.out.mood(r.mood);

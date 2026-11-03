@@ -244,6 +244,17 @@ describe("the words as they are said", () => {
     expect([moodOf("happy"), moodOf("sad"), moodOf("whatever")]).toEqual(["laugh", "sorry", "talk"]);
   });
 
+  it("a note a model wrote before its tag is never said, and the tag after it still gives the mood", () => {
+    expect(readMood("[answer nahi — पहले mood tag] [nope] नहीं, छाते की ज़रूरत नहीं।")).toEqual({ mood: "nope", text: "नहीं, छाते की ज़रूरत नहीं।", tagged: true });
+    expect(readMood("[note: be brief] Sure.")).toEqual({ mood: "talk", text: "Sure.", tagged: true });
+    const out: string[] = [];
+    const s = new Speaker({ mood: (m) => out.push(`mood:${m}`), text: (t) => out.push(t) });
+    for (const p of ["[answer nahi", " — पहले mood tag] ", "[no", "pe] नहीं, ", "छाता नहीं चाहिए।"]) s.write(p);
+    s.flush();
+    expect(out[0]).toBe("mood:nope");
+    expect(out.slice(1).join("")).toBe("नहीं, छाता नहीं चाहिए।");
+  });
+
   it("says the mood once, then whole words, never a word cut in two", () => {
     const out: Array<[string, string]> = [];
     const s = new Speaker({ mood: (m) => out.push(["mood", m]), text: (t) => out.push(["text", t]) });
@@ -288,6 +299,18 @@ describe("the words as they are said", () => {
     expect(sorryWords("hi")).toMatch(/माफ़/);
     expect(sorryWords("xx")).toBe(sorryWords("en"));
   });
+
+  it("tells apart the languages that share a script, so the voice is the right one (pipeline/lang.ts)", () => {
+    const rows: Array<[string, string]> = [
+      ["erinnere mich morgen um 8 Uhr an den Arzttermin", "de"], ["lösch alle meine alten Fotos", "de"], ["fais un virement de 200 euros à Marc", "fr"],
+      ["manda uma mensagem pro João dizendo que vou me atrasar", "pt"], ["aggiungi latte e uova alla mia lista delle cose da fare", "it"],
+      ["recuérdame llamar al dentista mañana", "es"], ["yarın saat 9'da toplantıyı hatırlat", "tr"], ["kirim pesan ke Budi bilang aku sudah sampai", "id"],
+      ["nieleze kwa ufupi jinsi ya kupika chai", "sw"], ["hôm nay thời tiết thế nào", "vi"],
+      ["김치찌개 끓이는 팁 알려줘", "ko"], ["明日の朝7時にリマインドして", "ja"], ["简单解释一下什么是通货膨胀", "zh"],
+      ["متى يفتح المتجر؟", "ar"], ["آج موسم کیسا ہے", "ur"], ["почему зимой день короче", "ru"], ["чому взимку день коротший і темніє", "uk"],
+    ];
+    for (const [w, l] of rows) expect(langOf(w), w).toBe(l);
+  });
 });
 
 describe("Ask's first step carries the whole page", () => {
@@ -319,5 +342,21 @@ describe("Ask's first step carries the whole page", () => {
     const later = agentUserMessage({ ...read.req, step: 1 }, "summarise the refund policy", "show", 8);
     expect(later).not.toContain("<page>");
     expect(later).not.toContain(PAGE_NOTE);
+  });
+});
+
+describe("a lookup never holds a spoken answer for long (look.ts)", () => {
+  it("a tool slower than its limit is answered without, and says it took too long", async () => {
+    const { lookFirst } = await import("../src/talk/look.js");
+    const call = (async () => ({ text: "", toolCalls: [{ id: "c1", name: "web_search", arguments: "{}" }, { id: "c2", name: "weather", arguments: "{}" }],
+      model: "m", promptTokens: 1, completionTokens: 1, costUsd: 0, paise: 1, costSource: "estimated", truncated: false, ms: 1, calls: 1, trail: [] })) as never;
+    const t0 = Date.now();
+    const r = await lookFirst({
+      user: "will it rain", userId: "u", call, toolMs: 50,
+      ports: { defs: [{ name: "web_search", description: "", parameters: {} }, { name: "weather", description: "", parameters: {} }], run: async (c: { name: string }) => (c.name === "weather" ? { content: "Pune: 24°C", ok: true } : new Promise(() => {})) } as never,
+    });
+    expect(Date.now() - t0).toBeLessThan(1_000);
+    expect(r.text).toContain("weather:\nPune: 24°C");
+    expect(r.text).toContain("web_search took too long just now.");
   });
 });

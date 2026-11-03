@@ -130,6 +130,9 @@ export interface CallInput<T = unknown> {
   signal?: AbortSignal;
   /** Stream: each piece of the answer's words as it is written (not with `json`). */
   onText?: (piece: string) => void;
+  /** Streaming only: no word by then and this model is given up as a timeout, before anything was shown, and the ladder moves on.
+   *  For a voice that must start soon (talk), where one stalled model would otherwise hold the answer for the whole timeoutMs. */
+  firstTextMs?: number;
   /** Streaming: the words shown so far are void (that model failed after writing; the next one starts over). */
   onReset?: () => void;
 }
@@ -601,8 +604,12 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     let timer: ReturnType<typeof setTimeout> | undefined;
     const onAbort = () => { callerAborted = true; ctrl.abort(); };
     input.signal?.addEventListener("abort", onAbort, { once: true });
+    let firstTimer: ReturnType<typeof setTimeout> | undefined;
     const clockOut = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => { timedOut = true; reject(new CallFailure("timeout")); ctrl.abort(); }, timeoutMs);
+      const out = () => { timedOut = true; reject(new CallFailure("timeout")); ctrl.abort(); };
+      timer = setTimeout(out, timeoutMs);
+      // No word by firstTextMs: given up as a timeout while nothing was shown, so the next model on the ladder can start clean.
+      if (onText && input.firstTextMs) firstTimer = setTimeout(() => { if (!heard) out(); }, input.firstTextMs);
     });
     const started = clock();
     const rec: CallRecord = { model, outcome: "failed", ms: 0 };
@@ -695,6 +702,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
       throw failure;
     } finally {
       clearTimeout(timer);
+      clearTimeout(firstTimer);
       input.signal?.removeEventListener("abort", onAbort);
       ctrl.abort();
     }

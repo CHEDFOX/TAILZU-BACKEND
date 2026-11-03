@@ -60,6 +60,7 @@ const r = await callModel({
   purpose: "plan",               // a word for the log and the ledger
   budget: "job",                 // "job" | { maxPaise } | "none"
   writerModel,                   // the review tier only
+  onText, onReset, firstTextMs,  // stream the words; take them back; a model silent past firstTextMs is given up, before a word was shown
 }, deps?);
 // r: { text, json, toolCalls, model, tier, promptTokens, completionTokens, costUsd, paise, costSource, truncated, ms, calls, trail }
 ```

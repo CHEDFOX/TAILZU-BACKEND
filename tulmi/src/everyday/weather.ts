@@ -1,6 +1,7 @@
 /**
  * WEATHER: the forecast the trip screens already use (places/: MET Norway, free, commercial use allowed), as a card: now, and the next
- * days' low, high and rain. A place is found by our city list first, then the geocoder when one is on.
+ * days' low, high and rain. A place is found by our city list first, then the geocoder when one is on; a name with a case ending
+ * after an apostrophe (Turkish "İstanbul'u") is tried again bare (bareName).
  */
 import type { Forecast, LatLon, Place } from "../places/types.js";
 import type { WeatherCard, WeatherDay } from "./types.js";
@@ -29,8 +30,17 @@ export function daysOf(f: Forecast, tz: number, max = 5): WeatherDay[] {
   });
 }
 
+/**
+ * The place's own name, as a city list or a geocoder knows it: a case ending some languages join to a name with an apostrophe goes
+ * ("İstanbul'u", "İstanbul'da", "Paris'te": Istanbul, Paris), and so does a possessive ("Mumbai's").
+ */
+export function bareName(name: string): string {
+  return name.trim().replace(/[\u2019']\p{L}{1,5}$/u, "").trim();
+}
+
 export async function weatherFor(name: string, ports: WeatherPorts): Promise<WeatherCard> {
-  const place = await ports.place(name.trim().slice(0, 120));
+  const asked = name.trim().slice(0, 120);
+  const place = (await ports.place(asked)) ?? (bareName(asked) !== asked ? await ports.place(bareName(asked)) : null);
   if (!place) throw new Error(`couldn't find "${name}" on the map`);
   const f = await ports.forecast(place);
   if (!f || !f.steps.length) throw new Error("the forecast could not be read just now");

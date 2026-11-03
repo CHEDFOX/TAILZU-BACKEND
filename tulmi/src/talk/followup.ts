@@ -7,7 +7,8 @@
  * The brain is asked to make a follow-up whole in its goal (docs/ask-decide.md), and on the cheap tier it often hands the words back as
  * they were, or as something vaguer ("send the GST result to Riya"). Ask then has "that" and nothing it refers to. This is the rule
  * that holds whatever the brain did: words with a word that points back, an answer in the turn before, and a goal that carries none
- * of what that answer found: the answer (and what it found) goes with the goal. No call is made for it.
+ * of that answer's figures (a number of three digits or more): the answer (and what it found) goes with the goal. Names and short
+ * numbers say nothing ("the Pixel 9 price" carries no price). No call is made for it.
  */
 import { oneLine } from "../code/work/model.js";
 import type { TalkTurn } from "./session.js";
@@ -22,8 +23,8 @@ export const FOLLOW_ANSWER_CHARS = 400;
 export function followUp(goal: string, words: string, last: Pick<TalkTurn, "answer" | "found"> | undefined): string {
   if (!last || !last.answer.trim()) return goal;
   if (!BACK.test(words)) return goal;
-  const values = [...(last.found?.numbers ?? []), ...(last.found?.names ?? [])];
-  if (values.some((v) => goal.includes(v))) return goal;
+  const figures = (last.found?.numbers ?? []).filter((n) => n.replace(/\D/g, "").length >= 3);
+  if (figures.some((n) => goal.includes(n))) return goal;
   const found = foundLine(last.found);
   return `${goal}\n(${oneLine(last.answer, FOLLOW_ANSWER_CHARS)}${found ? ` Found: ${found}` : ""})`;
 }

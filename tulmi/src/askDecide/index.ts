@@ -30,9 +30,10 @@
  *      decision is kept as it is, and its `sure` says so: typed when a text box is in front (4), one reply tier up in talk.
  *   4. NEVER THROWS, NEVER STUCK. Down (after the gateway's own ladder of models): the safest thing that can be undone: typed when a text box is in front, else Ask,
  *      which can still ask one question itself. Still under 0.45 sure with a text box in front: typed (the pill takes it back).
- *   5. A ROUTINE IS ONLY WHAT REPEATS: one the routines' own reader (routines/words.ts readRoutine) finds no "every …" in is not one,
+ *   5. WORDS THAT ACT ARE ACTS (acts.ts): a send said in so many words in any language is a send, money or a delete called chat is a
+ *      task. A ROUTINE IS ONLY WHAT REPEATS: one the routines' own reader (routines/words.ts readRoutine) finds no "every …" in is not one,
  *      since saving it would be refused ("Say how often"); it goes to their bots, which make a one-off reminder or to-do of it.
- *   6. RULES ONLY RAISE THE RISK, never choose the meaning: money and deleting are seen in the words here, whatever the model
+ *   6. RULES ONLY RAISE THE RISK (risk.ts, about twenty languages), never choose the meaning: money and deleting are seen in the words here, whatever the model
  *      said, so a payment or a delete is always confirmed before it happens. A model can never lower a risk the rules saw.
  *   7. THE SAME WORDS IN THE SAME PLACE within ten minutes: the answer from before, nothing asked.
  *
@@ -51,6 +52,9 @@ import type { ModelTier } from "../code/brain/tiers.js";
 import { neutral } from "../bots/prompt.js";
 import { langOf } from "../pipeline/lang.js";
 import { readRoutine } from "../routines/words.js";
+import { asked, sendSaid } from "./acts.js";
+import { deleteSaid, moneySaid, riskOf } from "./risk.js";
+export { riskOf, moneySaid, deleteSaid } from "./risk.js";
 import { DEPTHS, deeper, depthOf, type Depth } from "./depth.js";
 
 export { DEPTHS, depthOf, deeper, type Depth } from "./depth.js";
@@ -142,19 +146,6 @@ const WORDS_MAX = 1200;
 const TALK_MAX = 800;
 const CACHE_MS = 10 * 60_000;
 const CACHE_MAX = 500;
-
-// ---- the rules: safety only ------------------------------------------------------------------------------------
-
-/** Money moving: pay, buy, order, transfer, in the languages people say it in. */
-const MONEY = /\b(pay|paying|payment|pays|paid|transfer|send money|buy|buying|purchase|order|checkout|check out|book(?:ing)? (?:a |the )?(?:flight|ticket|hotel|room|cab|table)|subscribe|upi|gpay|paytm|phonepe|bhim|neft|imps|rtgs|paisa|paise|rupees?|rs\.?\s?\d|inr|usd|dollars?|bhej(?:o|do)? paise|paise bhej|kharid(?:o|na|lo)?|bharo|payment kar|pay kar)\b|[₹$€£]|भुगतान|पैसे भेज|ख़रीद|खरीद|ऑर्डर|पेमेंट/iu;
-/** Something gone for good: delete, wipe, uninstall, cancel an account. */
-const DELETE = /\b(delete|deleting|remove|erase|wipe|clear (?:all|everything|history)|empty (?:the )?(?:trash|bin)|uninstall|format|cancel (?:my |the )?(?:account|subscription|order|plan)|close (?:my |the )?account|mita(?:o|do|na)?|hata(?:o|do|na)?|delete kar)\b|मिटा|हटा|डिलीट/iu;
-
-export function riskOf(words: string, d: AskDo): AskRisk {
-  if (MONEY.test(words)) return "money";
-  if (DELETE.test(words)) return "delete";
-  return d === "send" ? "send" : "none";
-}
 
 /** What the ask will use of the setup card's permissions. */
 export function needsOf(d: Pick<AskDecision, "do" | "screen">): Grant[] {
@@ -293,6 +284,10 @@ function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision
   let bot: AskDecision["bot"];
   // Their own day, in so many words, and Google not named: their bots keep X0 Bot's calendar and to-dos (Ask reaches only Google's).
   if (kind === "task" && OWN_DAY.test(words) && !GOOGLE.test(words)) { kind = "bot"; reasons.push("own_day"); }
+  // A request to act the model read as talk (acts.ts, risk.ts): a send said in so many words is a send; money or a delete is a task,
+  // which Ask asks about before it happens. Never a question.
+  if (kind === "answer" && sendSaid(words)) { kind = "send"; reasons.push("send_said"); }
+  else if (kind === "answer" && chat && !asked(words) && (moneySaid(words) || deleteSaid(words))) { kind = "task"; reasons.push("act_said"); }
   // A routine the routines' own reader finds no "every …" in would be refused when saved: a one-off reminder, for their bots.
   if (kind === "routine" && !readRoutine(words, now, i.tz ?? 0)) { kind = "bot"; reasons.push("routine_once"); }
   if (kind === "bot") {

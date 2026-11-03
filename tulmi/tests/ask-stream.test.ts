@@ -178,6 +178,26 @@ describe("the gateway streams when asked", () => {
     expect(seen.join("|")).toBe("Half |an |<reset>|Half |an |<reset>|A |whole |one.");
   });
 
+  it("a model silent past firstTextMs is given up before anything was shown, and the next one speaks", async () => {
+    const models: string[] = [];
+    const client = { chat: { completions: { create: async (body: any, o: { signal: AbortSignal }) => {
+      models.push(body.model);
+      if (body.model === "a/one") {
+        // Stalls: no first word until it is aborted.
+        return { async *[Symbol.asyncIterator]() { await new Promise<void>((_, reject) => o.signal.addEventListener("abort", () => reject(Object.assign(new Error("Request was aborted."), { name: "AbortError" })), { once: true })); } };
+      }
+      return chunks(["Quick ", "one."]);
+    } } } };
+    const seen: string[] = [];
+    const t0 = Date.now();
+    const r = await callModel({ ...input, firstTextMs: 60, onText: (p) => seen.push(p), onReset: () => seen.push("<reset>") },
+      { client, tiers: table, ledger: null, breakers: null, sleep: async () => {}, log: { info() {}, warn() {} } });
+    expect(Date.now() - t0).toBeLessThan(2_000);
+    expect(models).toEqual(["a/one", "b/two"]);
+    expect(r.text).toBe("Quick one.");
+    expect(seen.join("|")).toBe("Quick |one.");
+  });
+
   it("is charged for what it used when it is stopped while it streams", async () => {
     const ctrl = new AbortController();
     let release!: () => void;

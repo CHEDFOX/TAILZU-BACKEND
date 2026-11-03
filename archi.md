@@ -128,7 +128,8 @@ pipeline/          the writing pipeline; which language a few words are in (lang
   assistPrompt.ts  the writer's data blocks; tts.ts, openrouter.ts, field.ts, compose.ts, session.ts, …
 principles/        the prompt library: one role per model call (roles.ts), composed with compose()
 agent/             the desktop's on-screen agent (Ask): one step, the planner, the resolver, risk; long jobs (docs/long-jobs.md)
-askDecide/         the one key's brain: what the person meant by what they said, in any language (docs/ask-decide.md)
+askDecide/         the one key's brain: what the person meant by what they said, in any language; money and deleting in about
+                   twenty languages (risk.ts); a send or money said in so many words (acts.ts) (docs/ask-decide.md)
 context/           the person's context: who they are, who they message, their last asks, open work, recent results, as one
                    capped block for the brain and Ask's first step; the builder, what is kept, the store (docs/context.md)
 talk/              the voice chat: one key anywhere, turn after turn; the route table, the talk in memory, the whole page made small

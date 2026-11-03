@@ -19,8 +19,9 @@
  *   2. DECIDE. The person's context (src/context) and the one key's brain (askDecide: its kind, chat, depth, risk), with this talk's last
  *      turns and what each answer found, in one call, which is asked to make a short follow-up whole in its goal. The route event goes as
  *      soon as the brain has answered.
- *   3. HANDOFF. task and send go to Ask on the device (trusted unless money or deleting), write, routine, notes and a bot to theirs. Words
- *      that point back ("send that to Riya") and a goal the brain left as it was: the last answer goes with it (followup.ts).
+ *   3. HANDOFF. task and send go to Ask on the device (trusted unless money or deleting) when the brain was sure (UNSURE) and more than
+ *      a word was said, else it is asked about as a chat turn; write, routine, notes and a bot to theirs. Words that point back ("send
+ *      that to Riya") and a goal with none of the last answer's numbers: that answer goes with it (followup.ts).
  *   4. ANSWER. The road's tier (one up when the brain was unsure), lookups first when it needs fresh facts, ponder first for think; the
  *      words stream as they come. A model that fails before a word was said: the next on its ladder, then one tier up. After words were
  *      said: no second voice, a short apology. The person's stop ends it with what was said.
@@ -29,7 +30,7 @@
  * The day's front-door allowance (guard/ daily) is read before any model and charged after; nothing left, no model.
  */
 import type { TalkEvent, TalkFound } from "../../../shared/types/api.js";
-import { decideAsk, type AskBotLite, type AskDecision, type DecideInput } from "../askDecide/index.js";
+import { UNSURE, decideAsk, type AskBotLite, type AskDecision, type DecideInput } from "../askDecide/index.js";
 import type { AuthedUser } from "../auth/supabase.js";
 import { scrub } from "../bots/run.js";
 import { BudgetExceeded, type GatewayDeps } from "../code/brain/gateway.js";
@@ -54,6 +55,14 @@ export { MOODS, readMood, moodOf, Speaker, sorryWords, type Mood } from "./speak
 export { langOf } from "../pipeline/lang.js";
 export { lookFirst, lookPorts, LOOK_CALLS, LOOK_CHARS_MAX, type LookPorts } from "./look.js";
 export { talkUser } from "./prompt.js";
+
+/** Words with a letter in them: a lone name is one. Chinese and Japanese put no spaces between words: there, every two characters
+ *  count as a word ("给王经理发微信说报告明天上午交" is many words, "田中" is one). */
+const wordCount = (w: string): number => {
+  const spaced = w.split(/\s+/).filter((x) => /\p{L}/u.test(x)).length;
+  const han = (w.match(/[\u3040-\u30ff\u3400-\u9fff]/gu) ?? []).length;
+  return han > 2 ? Math.max(spaced, Math.ceil(han / 2)) : spaced;
+};
 
 export interface TalkInput {
   talkId: string;
@@ -165,7 +174,11 @@ export async function talkTurn(i: TalkInput, d: TalkDeps, emit: (e: TalkEvent) =
   const decision: AskDecision = await decideAsk(input, userId, { ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), signal, ...(left !== undefined ? { leftPaise: left } : {}) });
   charge(decision.paise);
   reasons.push(...decision.reasons);
-  const kind = kindOf(decision);
+  // Ask acts on the screen: it gets a handoff only when the brain was sure enough and more than a word was said. A lone "Riya", or a
+  // guess under UNSURE, is asked about instead (a chat turn: the answer asks what they meant).
+  const guess = (decision.do === "task" || decision.do === "send") && (decision.sure < UNSURE || wordCount(words) < 2);
+  if (guess) reasons.push("ask_back");
+  const kind = guess ? "chat" : kindOf(decision);
   const road = roadOf(kind, { web: decision.web, sure: decision.by === "fallback" ? undefined : decision.sure });
   emit({ t: "route", kind, depth: decision.depth, lang });
 
@@ -216,7 +229,7 @@ export async function talkTurn(i: TalkInput, d: TalkDeps, emit: (e: TalkEvent) =
       try {
         const looked = await lookFirst({
           user: talkUser({ words, ...(meant ? { meant } : {}), now, ...(i.tz !== undefined ? { tz: i.tz } : {}), session, ...(i.app ? { app: i.app } : {}), ...(i.title ? { title: i.title } : {}) }),
-          ports, userId, tier: road.tier, ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), signal,
+          ports, userId, ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), signal,
         });
         charge(looked.paise);
         found = looked.text;
