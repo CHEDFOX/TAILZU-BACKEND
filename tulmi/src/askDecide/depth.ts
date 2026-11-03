@@ -18,6 +18,8 @@ const MATHS = /\b(?:calculate|calculation|compute|solve|equation|integral|deriva
 const SUM = /\d[\d,.]*\s*(?:[-+*/×÷^x]|\bplus\b|\bminus\b|\btimes\b|\bdivided\s+by\b)\s*\d[\d,.]*\s*(?:[-+*/×÷^x]|\bplus\b|\bminus\b|\btimes\b|\bdivided\s+by\b)\s*\d/i;
 const BIG_SUM = /\d{3,}[\d,.]*\s*(?:[*/×÷^x]|\btimes\b|\bdivided\s+by\b)\s*\d{2,}|\d{2,}[\d,.]*\s*(?:[*/×÷^x]|\btimes\b|\bdivided\s+by\b)\s*\d{3,}/i;
 const MATHS_HI = hindi(["गणना", "हल\\s+करो", "प्रतिशत", "ब्याज"]);
+/** A share of a number, or tax, a discount or a tip on one: "18% of 2,450", "add GST", "20% off 1,999". */
+const PERCENT = /\d[\d,.]*\s*%\s*(?:of|on|off|on\s+top)\b|\b(?:gst|vat|tds|tax|discount|tip|markup|margin)\b[^.?!]*\d|\d[^.?!]*\b(?:gst|vat|tds|tax|discount|tip|markup|margin)\b/i;
 
 /** A why or a how asked in depth, or an explanation asked for step by step. */
 const DEEP = /\b(?:in\s+(?:depth|detail)|step\s+by\s+step|walk\s+me\s+through|explain\s+(?:how|why)|how\s+(?:exactly|does\s+\w+(?:\s+\w+)?\s+work)|why\s+(?:exactly|really)|root\s+cause|reason\s+(?:through|it\s+out)|think\s+(?:it\s+)?through|detail\s+mein|vistar\s+se|samjha(?:o|iye)\s+(?:detail|vistar))\b/i;
@@ -38,7 +40,7 @@ const CODE = /\b(?:coding|(?:write|the)\s+code|code\s+(?:for|that|to)|function|r
 export function depthOf(raw: string): { depth: Depth; why: string[] } {
   const w = raw.trim();
   const why: string[] = [];
-  if (MATHS.test(w) || SUM.test(w) || BIG_SUM.test(w) || MATHS_HI.test(w)) why.push("maths");
+  if (MATHS.test(w) || SUM.test(w) || BIG_SUM.test(w) || MATHS_HI.test(w) || PERCENT.test(w)) why.push("maths");
   if (DEEP.test(w) || DEEP_HI.test(w)) why.push("deep");
   if (COMPARE.test(w) || COMPARE_HI.test(w)) why.push("compare");
   if (PLAN.test(w) || PLAN_HI.test(w)) why.push("plan");

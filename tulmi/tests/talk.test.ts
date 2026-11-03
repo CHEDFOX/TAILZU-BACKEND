@@ -83,6 +83,10 @@ describe("the one key's brain: chat and depth", () => {
     const rows: Array<[string, "quick" | "think"]> = [
       ["what is 17 percent of 2,340", "think"],
       ["what's 234 times 56", "think"],
+      // The % sign and a tax on a number (found end to end: "18% of 2,450 plus GST" went to the quick tier and was read wrong).
+      ["what's 18% of 2,450, and then add 18% GST on top of that?", "think"],
+      ["20% off 1,999 kitna hua", "think"],
+      ["what is the GST rate in India", "quick"],
       ["explain in detail why the sky is blue", "think"],
       ["iPhone vs Pixel, which is better for photos", "think"],
       ["make me a plan for learning Spanish in three months", "think"],
