@@ -473,7 +473,8 @@ const ROLE_TABLE = {
       + "write: words for the text box in front, dictated or asked for (\"reply saying I'm late\"). send: a message to a person through an app; to and via when said or plain from the window. "
       + "answer: a question or a request for advice; screen when it is about what is in front of them, web when it needs fresh facts. chat: casual talk, a joke, a small question about nothing on the screen. "
       + "depth: think for maths, a why or how asked in depth, a comparison, a plan or code; else quick. task: something to do on the computer or the web, one step or many. "
-      + "routine: something to do again on a schedule. notes: start or stop meeting notes. bot: clearly the job of one of their bots. "
+      + "routine: only what is said to repeat (every, daily, har roz). notes: start or stop meeting notes. bot: clearly the job of one of their bots (bot null if none named). "
+      + "A one-off reminder, to-do or event for their day (remind me, add to my tasks or calendar, yaad dila dena): bot; task only when Google is named. "
       + "A text box in front and words that are the message itself (even in a chat app, to the person in the window): write, never send; send only when told to message someone. A text box in front and ordinary sentences with no ask in them: write. A short follow-up (\"send it to Dev too\", \"shorter\") is made whole from the last asks in goal. sure under 0.5 when it could plainly be two things.",
   },
   talk_reply: {

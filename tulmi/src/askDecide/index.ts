@@ -12,7 +12,9 @@
  *   task     something to do on the computer or the web, one step or many: "go to Gmail and unsubscribe from the promos"
  *   routine  something to do again and again on a schedule: "every morning tell me the top tech news"
  *   notes    start or stop meeting notes
- *   bot      clearly for one of the person's own bots, named or not
+ *   bot      clearly for one of the person's own bots, named or not; with no bot named, the computer asks which bot
+ *            (/v1/shell/route). A reminder, a to-do or an event for their own day is this: their bots keep X0 Bot's own
+ *            calendar and to-dos ("remind me to call mom at 6", "add buy milk to my tasks", "yaad dila dena")
  *
  * Two reads go beside it, for the voice chat (src/talk) and anything else that answers: `chat` (casual talk, a joke, a small question
  * about nothing on the screen; `do` is answer, so this route's contract is unchanged) and `depth`, quick or think (depth.ts: maths, a deep
@@ -27,9 +29,11 @@
  *   3. CLIMB ONCE. Under 0.7 sure, or the tiny model down: the cheap tier, once. The surer of the two wins.
  *   4. NEVER THROWS, NEVER STUCK. Both down: the safest thing that can be undone: typed when a text box is in front, else Ask,
  *      which can still ask one question itself. Still under 0.45 sure with a text box in front: typed (the pill takes it back).
- *   5. RULES ONLY RAISE THE RISK, never choose the meaning: money and deleting are seen in the words here, whatever the model
+ *   5. A ROUTINE IS ONLY WHAT REPEATS: one the routines' own reader (routines/words.ts readRoutine) finds no "every …" in is not one,
+ *      since saving it would be refused ("Say how often"); it goes to their bots, which make a one-off reminder or to-do of it.
+ *   6. RULES ONLY RAISE THE RISK, never choose the meaning: money and deleting are seen in the words here, whatever the model
  *      said, so a payment or a delete is always confirmed before it happens. A model can never lower a risk the rules saw.
- *   6. THE SAME WORDS IN THE SAME PLACE within ten minutes: the answer from before, nothing asked.
+ *   7. THE SAME WORDS IN THE SAME PLACE within ten minutes: the answer from before, nothing asked.
  *
  * PERMISSIONS. The person answers the setup card once (read the screen's text, see the screen, send pictures). `grants` is that
  * card's state; `needs` is what this ask will use, and `missing` what the card has not allowed, so the computer asks for that one
@@ -45,6 +49,7 @@ import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { ModelTier } from "../code/brain/tiers.js";
 import { neutral } from "../bots/prompt.js";
 import { detectScript } from "../pipeline/script.js";
+import { readRoutine } from "../routines/words.js";
 import { DEPTHS, deeper, depthOf, type Depth } from "./depth.js";
 
 export { DEPTHS, depthOf, deeper, type Depth } from "./depth.js";
@@ -232,7 +237,7 @@ async function decideOnce(i: DecideInput, userId: string, d: DecideDeps): Promis
   if (i.ours) return typed(i, "rules", ["ours"]);
   if (i.field && i.field.private) return typed(i, "rules", ["private_field"]);
 
-  // 6. The same words in the same place, just now.
+  // 7. The same words in the same place, just now.
   const now = (d.now ?? Date.now)();
   const key = keyOf(userId, i);
   const hit = kept.get(key);
@@ -270,14 +275,18 @@ async function decideOnce(i: DecideInput, userId: string, d: DecideDeps): Promis
   const sure = round(best.sure);
   if (sure < UNSURE && i.field) return typed(i, by, [...reasons, "unsure", "text_box"], sure, paise);
 
-  const out = shape(i, words, best, by, reasons, sure, paise);
+  const out = shape(i, words, best, by, reasons, sure, paise, now);
   kept.set(key, { at: now, d: out });
   if (kept.size > CACHE_MAX) kept.delete(kept.keys().next().value as string);
   return out;
 }
 
+/** A reminder, a to-do, or their calendar, named in the words (English, Hinglish, Hindi). */
+const OWN_DAY = /\b(?:remind(?:er)?s?|to-?dos?|to do(?: list)?|(?:my|the) (?:tasks?|task list|calendar|schedule|diary))\b|yaad (?:dila|dilana|rakh)|याद (?:दिला|दिलाना)|रिमाइंडर/i;
+const GOOGLE = /\bgoogle\b|गूगल/i;
+
 /** The model's answer, held to what can be done here. */
-function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision["by"], reasons: string[], sure: number, paise: number): AskDecision {
+function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision["by"], reasons: string[], sure: number, paise: number, now: number): AskDecision {
   // THEIR OWN WORDS are the goal, except for a follow-up the model had to make whole ("send it to Dev too"): a
   // small model asked for "the request made whole" also translated it (English in, Hindi out), and the goal is
   // what Ask is handed as the request. Even made whole, a goal in another script than what was said is not used.
@@ -288,10 +297,15 @@ function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision
   const chat = r.do === "chat";
   let kind: AskDo = r.do === "chat" ? "answer" : r.do;
   let bot: AskDecision["bot"];
+  // Their own day, in so many words, and Google not named: their bots keep X0 Bot's calendar and to-dos (Ask reaches only Google's).
+  if (kind === "task" && OWN_DAY.test(words) && !GOOGLE.test(words)) { kind = "bot"; reasons.push("own_day"); }
+  // A routine the routines' own reader finds no "every …" in would be refused when saved: a one-off reminder, for their bots.
+  if (kind === "routine" && !readRoutine(words, now, i.tz ?? 0)) { kind = "bot"; reasons.push("routine_once"); }
   if (kind === "bot") {
     const b = r.bot ? (i.bots ?? []).find((x) => x.slug === r.bot) : undefined;
     if (b) bot = { slug: b.slug, name: b.name };
-    else { kind = "answer"; reasons.push("bot_unknown"); }
+    // A slug that is not theirs is a guess: answered. None named: the computer asks which of their bots takes it.
+    else if (r.bot && r.do === "bot") { kind = "answer"; reasons.push("bot_unknown"); }
   }
   // Nothing in front to write into, known for sure: a "write" is something to say back.
   if (kind === "write" && i.field === null) { kind = "answer"; reasons.push("write_no_box"); }

@@ -72,6 +72,35 @@ describe("the meaning is the model's, in any language", () => {
     expect(made.bot).toBeUndefined();
   });
 
+  it("a reminder or a to-do for their day goes to their bots, which keep X0 Bot's own calendar and to-dos", async () => {
+    const d = await decideAsk({ words: "add buy milk to my tasks", field: null }, ME, { call: model({ tiny: [{ do: "bot", sure: 0.9 }] }).call });
+    expect(d.do).toBe("bot");
+    expect(d.bot).toBeUndefined();
+  });
+
+  it("their to-dos or their calendar, named, go to their bots even when the model says task; Google named stays with Ask", async () => {
+    for (const words of ["add buy milk to my tasks", "add lunch with Riya tomorrow at 1 to my calendar", "put pay rent on my to do list"]) {
+      resetAskDecideCacheForTests();
+      expect((await decideAsk({ words, field: null }, ME, { call: model({ tiny: [{ do: "task", sure: 0.9 }] }).call })).do, words).toBe("bot");
+    }
+    resetAskDecideCacheForTests();
+    expect((await decideAsk({ words: "add renew passport to my Google Tasks", field: null }, ME, { call: model({ tiny: [{ do: "task", sure: 0.9 }] }).call })).do).toBe("task");
+    resetAskDecideCacheForTests();
+    expect((await decideAsk({ words: "go to Gmail and unsubscribe from the promos", field: null }, ME, { call: model({ tiny: [{ do: "task", sure: 0.9 }] }).call })).do).toBe("task");
+  });
+
+  it("a routine is only what repeats: a one-off reminder the model called a routine goes to their bots", async () => {
+    for (const words of ["remind me to send the invoice to Acme on Friday", "set a reminder for the dentist tomorrow at 4", "mujhe kal subah 9 baje doctor ko call karna yaad dila dena"]) {
+      resetAskDecideCacheForTests();
+      const d = await decideAsk({ words, field: null, tz: 330 }, ME, { call: model({ tiny: [{ do: "routine", sure: 0.9 }] }).call });
+      expect(d.do, words).toBe("bot");
+      expect(d.reasons, words).toContain("routine_once");
+    }
+    resetAskDecideCacheForTests();
+    const every = await decideAsk({ words: "every morning at 8 tell me the top tech news", field: null, tz: 330 }, ME, { call: model({ tiny: [{ do: "routine", sure: 0.9 }] }).call });
+    expect(every.do).toBe("routine");
+  });
+
   it("a write with no text box in front is something to say back", async () => {
     const d = await decideAsk({ words: "a haiku about rain", field: null }, ME, { call: model({ tiny: [{ do: "write", sure: 0.9 }] }).call });
     expect(d.do).toBe("answer");
