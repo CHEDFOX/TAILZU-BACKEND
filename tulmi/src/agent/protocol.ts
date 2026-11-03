@@ -15,6 +15,10 @@
  * it is pasted back. The desktop does the same before sending; this is the
  * second lock.
  *
+ * A run's first step may carry the whole page or document (`page`): its text is
+ * cut at 20,000 characters rather than refused, since it is reduced before any
+ * model sees it (talk/page.ts), and its URLs lose their tails like the rest.
+ *
  * A step may also carry one picture, read here too: its type is taken from
  * its bytes as well as its label, since the label is only the client's word
  * for it, and the model it goes to refuses a picture that is not what it is
@@ -23,6 +27,7 @@
 import type {
   AgentElement, AgentEvent, AgentJob, AgentPicture, AgentRegion, AgentStepRequest, AgentTurn, AudioFormat,
 } from "../../../shared/types/api.js";
+import { readPage } from "../talk/page.js";
 import { elementLine } from "./prompt.js";
 
 export type { AgentElement, AgentEvent, AgentStepRequest, AgentTurn };
@@ -283,6 +288,11 @@ export function readStepRequest(
   if (hasImage) req.picture = readPictureInfo(o.picture);
   const job = readJob(o.job);
   if (job) req.job = job;
+  // The whole page, at a run's first step only and not with a picture: cut, never refused (talk/page.ts), its URLs without their tails.
+  if (o.step === 0 && !hasImage) {
+    const page = readPage(o.page, withoutUrlSecrets);
+    if (page) req.page = page;
+  }
   return { req };
 }
 

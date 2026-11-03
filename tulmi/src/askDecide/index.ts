@@ -12,19 +12,28 @@
  *   task     something to do on the computer or the web, one step or many: "go to Gmail and unsubscribe from the promos"
  *   routine  something to do again and again on a schedule: "every morning tell me the top tech news"
  *   notes    start or stop meeting notes
- *   bot      clearly for one of the person's own bots, named or not
+ *   bot      clearly for one of the person's own bots, named or not; with no bot named, the computer asks which bot
+ *            (/v1/shell/route). A reminder, a to-do or an event for their own day is this: their bots keep X0 Bot's own
+ *            calendar and to-dos ("remind me to call mom at 6", "add buy milk to my tasks", "yaad dila dena")
+ *
+ * Two reads go beside it, for the voice chat (src/talk) and anything else that answers: `chat` (casual talk, a joke, a small question
+ * about nothing on the screen; `do` is answer, so this route's contract is unchanged) and `depth`, quick or think (depth.ts: maths, a deep
+ * why or how, a comparison, a plan, code). The depth is read by rules for nothing; the model may raise it, never lower it.
  *
  * HOW IT DECIDES, Xode's way (code/brain/classify.ts, code/brain/route.ts):
  *   1. SAFETY FIRST, FOR NOTHING. A password field, or Tailzu's own window: typed, no model asked, the words never leave.
- *   2. ONE TINY CALL (role ask_decide, the tiny tier, a few hundred tokens) reads the words with the app, the field, the last turns
- *      and the person's bots, and answers in strict JSON. It also makes a short follow-up whole ("send it to Dev too" after a
+ *   2. ONE TINY CALL (role ask_decide, the tiny tier, a few hundred tokens) reads the words with the app, the field, the person's
+ *      context (src/context: who they are, who they message, their last asks; else the last turns the computer sent) and their bots,
+ *      and answers in strict JSON. It also makes a short follow-up whole ("send it to Dev too" after a
  *      message to Riya), so nothing downstream sees half a request.
  *   3. CLIMB ONCE. Under 0.7 sure, or the tiny model down: the cheap tier, once. The surer of the two wins.
  *   4. NEVER THROWS, NEVER STUCK. Both down: the safest thing that can be undone: typed when a text box is in front, else Ask,
  *      which can still ask one question itself. Still under 0.45 sure with a text box in front: typed (the pill takes it back).
- *   5. RULES ONLY RAISE THE RISK, never choose the meaning: money and deleting are seen in the words here, whatever the model
+ *   5. A ROUTINE IS ONLY WHAT REPEATS: one the routines' own reader (routines/words.ts readRoutine) finds no "every …" in is not one,
+ *      since saving it would be refused ("Say how often"); it goes to their bots, which make a one-off reminder or to-do of it.
+ *   6. RULES ONLY RAISE THE RISK, never choose the meaning: money and deleting are seen in the words here, whatever the model
  *      said, so a payment or a delete is always confirmed before it happens. A model can never lower a risk the rules saw.
- *   6. THE SAME WORDS IN THE SAME PLACE within ten minutes: the answer from before, nothing asked.
+ *   7. THE SAME WORDS IN THE SAME PLACE within ten minutes: the answer from before, nothing asked.
  *
  * PERMISSIONS. The person answers the setup card once (read the screen's text, see the screen, send pictures). `grants` is that
  * card's state; `needs` is what this ask will use, and `missing` what the card has not allowed, so the computer asks for that one
@@ -40,9 +49,15 @@ import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { ModelTier } from "../code/brain/tiers.js";
 import { neutral } from "../bots/prompt.js";
 import { detectScript } from "../pipeline/script.js";
+import { readRoutine } from "../routines/words.js";
+import { DEPTHS, deeper, depthOf, type Depth } from "./depth.js";
+
+export { DEPTHS, depthOf, deeper, type Depth } from "./depth.js";
 
 export const ASK_DOS = ["write", "send", "answer", "task", "routine", "notes", "bot"] as const;
 export type AskDo = (typeof ASK_DOS)[number];
+/** What the model may answer: the kinds above, and chat (answered as `do: answer`, `chat: true`). */
+export const ASK_KINDS = [...ASK_DOS, "chat"] as const;
 export const GRANTS = ["read", "see", "pictures"] as const;
 export type Grant = (typeof GRANTS)[number];
 /** The setup card's own words for a row: on, off, na (this computer has no such permission), never (the server's), restart. */
@@ -62,8 +77,14 @@ export interface DecideInput {
   field?: { selection?: string; private?: boolean } | null;
   /** Tailzu's own window is in front. */
   ours?: boolean;
-  /** Up to 3 of the person's last asks, newest last. */
+  /** Up to 3 of the person's last asks, newest last, as the computer remembers them: used when the server has kept none (`context`). */
   last?: AskTurn[];
+  /** What the server keeps about the person (src/context): their facts, people, asks, open work. Its text is data. */
+  context?: { text: string; turns: number };
+  /** The voice chat's turns so far (src/talk), a few lines, oldest first. Data. */
+  talk?: string;
+  /** The computer's offset, minutes east of UTC. */
+  tz?: number;
   bots?: AskBotLite[];
   grants?: Partial<Record<Grant, GrantState>>;
   notesOn?: boolean;
@@ -81,6 +102,10 @@ export interface AskDecision {
   /** answer: it is about what is on the screen; it needs the web. */
   screen: boolean;
   web: boolean;
+  /** Casual talk, a joke, a small question about nothing on the screen: `do` is answer. */
+  chat: boolean;
+  /** quick, or think (depth.ts), the model's raise included. */
+  depth: Depth;
   sure: number;
   risk: AskRisk;
   needs: Grant[];
@@ -92,7 +117,7 @@ export interface AskDecision {
 
 /** What the model answers. */
 export const AskDecideReply = z.object({
-  do: z.enum(ASK_DOS),
+  do: z.enum(ASK_KINDS),
   goal: z.string().max(600).nullish(),
   to: z.string().max(80).nullish(),
   via: z.string().max(40).nullish(),
@@ -100,6 +125,7 @@ export const AskDecideReply = z.object({
   notes: z.enum(["start", "stop"]).nullish(),
   screen: z.boolean().nullish(),
   web: z.boolean().nullish(),
+  depth: z.enum(DEPTHS).nullish(),
   sure: z.number().min(0).max(1),
 });
 export type AskDecideReply = z.infer<typeof AskDecideReply>;
@@ -108,6 +134,7 @@ export const SURE = 0.7;
 export const UNSURE = 0.45;
 const CAP_PAISE = 30;
 const WORDS_MAX = 1200;
+const TALK_MAX = 800;
 const CACHE_MS = 10 * 60_000;
 const CACHE_MAX = 500;
 
@@ -151,10 +178,14 @@ export function decideUser(i: DecideInput): string {
       `Meeting notes: ${i.notesOn ? "running" : "off"}`,
     ].join("\n")),
   ];
-  const last = (i.last ?? []).slice(-3);
+  const kept = i.context?.text.trim();
+  if (kept) parts.push(fenced("What X0 keeps about them", neutral(kept)));
+  const last = i.context?.turns ? [] : (i.last ?? []).slice(-3);
   if (last.length) parts.push(fenced("Last asks, oldest first", last.map((t) => `- ${t.did}${t.to ? ` to ${neutral(oneLine(t.to, 60))}` : ""}: ${neutral(oneLine(t.said, 200))}`).join("\n")));
   const bots = (i.bots ?? []).slice(0, 12);
   if (bots.length) parts.push(fenced("Their bots", bots.map((b) => `- ${b.slug}: ${neutral(oneLine(b.name, 40))}${b.purpose ? `. ${neutral(oneLine(b.purpose, 120))}` : ""}`).join("\n")));
+  const talk = i.talk?.trim();
+  if (talk) parts.push(fenced("This talk so far, oldest first", neutral(talk.slice(0, TALK_MAX))));
   parts.push(fenced("Said", neutral(forModel(oneLine(i.words, WORDS_MAX)))));
   return parts.join("\n");
 }
@@ -167,7 +198,7 @@ export function resetAskDecideCacheForTests(): void { kept.clear(); }
 function keyOf(userId: string, i: DecideInput): string {
   const f = i.field === undefined ? "?" : i.field === null ? "-" : i.field.selection?.trim() ? `s:${i.field.selection.length}:${i.field.selection.slice(0, 80)}` : "f";
   return createHash("sha256").update(JSON.stringify([
-    userId, i.words.trim().toLowerCase(), i.app ?? "", i.title ?? "", f, !!i.notesOn, (i.last ?? []).slice(-3), (i.bots ?? []).map((b) => b.slug),
+    userId, i.words.trim().toLowerCase(), i.app ?? "", i.title ?? "", f, !!i.notesOn, (i.last ?? []).slice(-3), (i.bots ?? []).map((b) => b.slug), i.context?.text ?? "", i.talk ?? "",
   ])).digest("base64url");
 }
 
@@ -184,10 +215,11 @@ export interface DecideDeps {
 
 const round = (n: number): number => Math.round(n * 100) / 100;
 
-function finish(i: DecideInput, base: Omit<AskDecision, "risk" | "needs" | "missing">): AskDecision {
+/** The risk, the permissions and the depth, from the words: the rules' part of every answer. `raised`: the model's own depth. */
+function finish(i: DecideInput, base: Omit<AskDecision, "risk" | "needs" | "missing" | "chat" | "depth"> & { chat?: boolean }, raised?: Depth | null): AskDecision {
   const risk = riskOf(i.words, base.do);
   const needs = needsOf(base);
-  return { ...base, risk, needs, missing: missingOf(needs, i.grants) };
+  return { ...base, chat: base.chat === true, depth: deeper(depthOf(i.words).depth, raised), risk, needs, missing: missingOf(needs, i.grants) };
 }
 
 /** Typed, as dictation always was: the one thing that can always be taken back with the app's own undo. */
@@ -205,7 +237,7 @@ async function decideOnce(i: DecideInput, userId: string, d: DecideDeps): Promis
   if (i.ours) return typed(i, "rules", ["ours"]);
   if (i.field && i.field.private) return typed(i, "rules", ["private_field"]);
 
-  // 6. The same words in the same place, just now.
+  // 7. The same words in the same place, just now.
   const now = (d.now ?? Date.now)();
   const key = keyOf(userId, i);
   const hit = kept.get(key);
@@ -243,25 +275,37 @@ async function decideOnce(i: DecideInput, userId: string, d: DecideDeps): Promis
   const sure = round(best.sure);
   if (sure < UNSURE && i.field) return typed(i, by, [...reasons, "unsure", "text_box"], sure, paise);
 
-  const out = shape(i, words, best, by, reasons, sure, paise);
+  const out = shape(i, words, best, by, reasons, sure, paise, now);
   kept.set(key, { at: now, d: out });
   if (kept.size > CACHE_MAX) kept.delete(kept.keys().next().value as string);
   return out;
 }
 
+/** A reminder, a to-do, or their calendar, named in the words (English, Hinglish, Hindi). */
+const OWN_DAY = /\b(?:remind(?:er)?s?|to-?dos?|to do(?: list)?|(?:my|the) (?:tasks?|task list|calendar|schedule|diary))\b|yaad (?:dila|dilana|rakh)|याद (?:दिला|दिलाना)|रिमाइंडर/i;
+const GOOGLE = /\bgoogle\b|गूगल/i;
+
 /** The model's answer, held to what can be done here. */
-function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision["by"], reasons: string[], sure: number, paise: number): AskDecision {
+function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision["by"], reasons: string[], sure: number, paise: number, now: number): AskDecision {
   // THEIR OWN WORDS are the goal, except for a follow-up the model had to make whole ("send it to Dev too"): a
   // small model asked for "the request made whole" also translated it (English in, Hindi out), and the goal is
   // what Ask is handed as the request. Even made whole, a goal in another script than what was said is not used.
   const made = oneLine(r.goal ?? "", 600);
-  const goal = (i.last ?? []).length > 0 && made && detectScript(made) === detectScript(words) ? made : words;
-  let kind: AskDo = r.do;
+  const before = (i.last ?? []).length > 0 || (i.context?.turns ?? 0) > 0;
+  const goal = before && made && detectScript(made) === detectScript(words) ? made : words;
+  // chat is answered: this route's `do` keeps its seven kinds, and `chat` says it was small talk.
+  const chat = r.do === "chat";
+  let kind: AskDo = r.do === "chat" ? "answer" : r.do;
   let bot: AskDecision["bot"];
+  // Their own day, in so many words, and Google not named: their bots keep X0 Bot's calendar and to-dos (Ask reaches only Google's).
+  if (kind === "task" && OWN_DAY.test(words) && !GOOGLE.test(words)) { kind = "bot"; reasons.push("own_day"); }
+  // A routine the routines' own reader finds no "every …" in would be refused when saved: a one-off reminder, for their bots.
+  if (kind === "routine" && !readRoutine(words, now, i.tz ?? 0)) { kind = "bot"; reasons.push("routine_once"); }
   if (kind === "bot") {
     const b = r.bot ? (i.bots ?? []).find((x) => x.slug === r.bot) : undefined;
     if (b) bot = { slug: b.slug, name: b.name };
-    else { kind = "answer"; reasons.push("bot_unknown"); }
+    // A slug that is not theirs is a guess: answered. None named: the computer asks which of their bots takes it.
+    else if (r.bot && r.do === "bot") { kind = "answer"; reasons.push("bot_unknown"); }
   }
   // Nothing in front to write into, known for sure: a "write" is something to say back.
   if (kind === "write" && i.field === null) { kind = "answer"; reasons.push("write_no_box"); }
@@ -272,8 +316,9 @@ function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision
     ...(kind === "send" && r.via ? { via: oneLine(r.via, 40) } : {}),
     ...(bot ? { bot } : {}),
     ...(notes ? { notes } : {}),
-    screen: kind === "answer" || kind === "task" ? !!r.screen : false,
+    screen: kind === "answer" || kind === "task" ? !!r.screen && !chat : false,
     web: kind === "answer" || kind === "task" || kind === "routine" ? !!r.web : false,
+    chat: chat && kind === "answer",
     sure, by, reasons, paise,
-  });
+  }, kind === "answer" ? r.depth : null);
 }

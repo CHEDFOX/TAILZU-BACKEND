@@ -794,6 +794,14 @@ const EnvSchema = z.object({
   ROUTINES: bool(true),
   ROUTINES_MAX: z.coerce.number().int().min(1).max(200).default(20),
   /**
+   * THE PERSON'S CONTEXT (src/context, docs/context.md): who they are, who they message, their last asks, open work and recent results, as
+   * one short block of data for the one key's brain (/v1/ask/decide) and Ask's first step (/v1/agent). CONTEXT=false turns it off: nothing
+   * is kept or shown, and /v1/context answers 404 context_off. CONTEXT_MAX_CHARS is the hard cap on the block. Migration 0065 keeps it
+   * (without it, it lives in memory).
+   */
+  CONTEXT: bool(true),
+  CONTEXT_MAX_CHARS: z.coerce.number().int().min(200).max(8000).default(2000),
+  /**
    * OPS_ALERT_USER_ID (src/ops/alerts.ts): the owner's own account id. While set, the server checks its disk, memory and CPU every five
    * minutes and pushes to that account when one is running out (disk past 80%, memory past 85%, CPU busy for 15 minutes). Unset: off.
    */

@@ -73,6 +73,8 @@ export interface StepContext {
   image?: AgentImage;
   /** Marks a step may draw; AGENT_DRAW_MAX when not given. */
   drawMax?: number;
+  /** The person's context (src/context), already capped: shown to the planner at a run's first step only. */
+  context?: string;
 }
 
 export interface StepDeps {
@@ -326,7 +328,7 @@ async function planWithModel(
   },
 ): Promise<StepResult> {
   const { req } = ctx;
-  const user = agentUserMessage(req, s.said, s.mode, req.job && ctx.jobMaxSteps ? Math.max(ctx.maxSteps, ctx.jobMaxSteps) : ctx.maxSteps);
+  const user = agentUserMessage(req, s.said, s.mode, req.job && ctx.jobMaxSteps ? Math.max(ctx.maxSteps, ctx.jobMaxSteps) : ctx.maxSteps, ctx.context);
   const ids = new Set(req.screen.elements.map((e) => e.id));
   const result: StepResult = { path: "model", mode: s.mode, words: 0, audioSeconds: s.audioSeconds };
   const reads = s.act === false ? "show" : s.mode;

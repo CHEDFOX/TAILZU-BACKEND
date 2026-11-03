@@ -1425,6 +1425,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
     "offBackground": "rgba(255,255,255,.16)",
     "knobColor": "#fff"
   },
+  "desktop.talk.enabled": true,
   "desktop.tap.default": true,
   "desktop.tap.gapMs": 400,
   "desktop.tap.keys": [

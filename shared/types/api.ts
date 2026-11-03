@@ -755,6 +755,21 @@ export interface AgentTurn {
   data?: string;
 }
 
+/**
+ * The whole page or document in front of the person, read on the device (the accessibility tree, or by scrolling) and already
+ * reduced there: its headings, its text (at most 20,000 characters; more is cut, not refused) and `where`, a few words of what is
+ * on screen now. The server shows a model its outline, the part around `where` and the parts that match what was said, under a
+ * hard cap (tulmi/src/talk/page.ts). Sent to POST /v1/talk, and to POST /v1/agent at a run's first step (top-level `page`).
+ */
+export interface PageText {
+  /** The page's headings, in order (≤ 200, each cut to 120). */
+  outline?: string[];
+  text?: string;
+  /** ≤ 300. Found in `text` by its first words. */
+  where?: string;
+  source?: "tree" | "scroll" | "none";
+}
+
 export interface AgentStepRequest {
   /** Made by the device: [A-Za-z0-9_-]{6,64}. */
   runId: string;
@@ -800,6 +815,9 @@ export interface AgentStepRequest {
    *  the screen ("element"), or the whole window. Where it is on the screen
    *  never leaves the device. */
   picture?: AgentPicture;
+  /** The whole page or document, at a run's first step only (later steps ignore it): the planner is shown it reduced, in
+   *  <page>, so it understands more than what is on screen. Not with a picture. */
+  page?: PageText;
 }
 
 export type AgentHandoverWhy = "login" | "code" | "captcha" | "payment" | "other";
@@ -1562,3 +1580,55 @@ export interface StatsResponse {
   /** Seconds of speech per day, same buckets as wordsPerDay. */
   saidSecondsPerDay?: number[];
 }
+
+// ---------------------------------------------------------------------------
+// Talk: the universal voice chat (POST /v1/talk, tulmi/src/talk, docs/talk.md)
+// ---------------------------------------------------------------------------
+//
+// The person holds or double-taps one key anywhere and talks, turn after turn. The desktop records, shows and speaks; the server
+// decides, thinks and streams the answer as NDJSON (application/x-ndjson), one TalkEvent a line, written as it is known.
+
+export interface TalkRequest {
+  /** The client's id for this conversation: [A-Za-z0-9_-]{6,64}. */
+  talkId: string;
+  /** 0, 1, …: a turn sent again with the same number replaces the first. */
+  turn: number;
+  /** What was said, ≤ 2000. */
+  words: string;
+  /** Minutes east of UTC. */
+  tz?: number;
+  app?: string;
+  title?: string;
+  /** The page's address; its query and fragment are dropped. */
+  url?: string;
+  /** The text box in front: null none; private: a password field (the words are typed, never sent to a model). */
+  field?: { selection?: string; private?: boolean } | null;
+  /** X0 Bot's own window is in front. */
+  ours?: boolean;
+  page?: PageText;
+  /** The setup card's state: "on", "off", "na", "never", "restart". With `read` not on, the page and selection are not used. */
+  grants?: { read?: string; see?: string; pictures?: string };
+}
+
+export type TalkKind = "chat" | "answer" | "think" | "task" | "send" | "write" | "routine" | "notes" | "bot";
+export type TalkMood = "talk" | "laugh" | "ponder" | "done" | "sorry" | "surprised" | "shy" | "nope";
+
+/** What an answer rested on, short: for a follow-up to point at ("send that to Riya"). */
+export interface TalkFound { numbers?: string[]; names?: string[]; links?: string[] }
+
+export type TalkEvent =
+  /** First, as soon as it is decided. `lang` is a BCP 47 tag, or und-<Script> when only the script is known. */
+  | { t: "route"; kind: TalkKind; depth: "quick" | "think"; lang: string }
+  /** Any time: ponder while a think-tier model works, then the answer's own mood. */
+  | { t: "mood"; mood: TalkMood }
+  /** The answer's words as they come, in whole words. */
+  | { t: "text"; text: string }
+  /** Something the device does instead of a spoken answer. `trusted`: no "are you sure?" (the person said to; no money, nothing deleted). */
+  | { t: "handoff"; to: "agent" | "write" | "routine" | "notes" | "bot"; goal: string; trusted: boolean; bot?: { slug: string; name: string }; notes?: "start" | "stop" }
+  /** TERMINAL: the whole answer (what was said, if the person stopped it), or empty after a handoff. */
+  | { t: "done"; text: string; found?: TalkFound }
+  /** TERMINAL. */
+  | { t: "error"; code: string; message: string };
+
+/** POST /v1/talk/stop: the person interrupted; the turn in flight ends with done. */
+export interface TalkStopRequest { talkId: string }

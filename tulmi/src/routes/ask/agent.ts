@@ -21,6 +21,11 @@
  * no further: past that the rest is read and thrown away, so a huge part
  * costs a refusal and not the memory to hold it. The picture is never logged,
  * and is gone with the request.
+ *
+ * The person's context (src/context) is read at a run's first step and goes
+ * into the planner's message; later steps have the run's own history. A step
+ * that ends the run with DONE puts its last words on the ask the run came
+ * from. Neither for a private window, a sensitive app or a picture step.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -31,10 +36,12 @@ import { type StepResult, runStep } from "../../agent/run.js";
 import { resolveUser } from "../../auth/supabase.js";
 import type { AppConfig } from "../../config.js";
 import type { Connectors } from "../../connectors/index.js";
+import type { PersonContext } from "../../context/index.js";
 import { nicknameOf, ASSISTANT_NAME, NAME_HEARD, vocabularyWithNames } from "../../experience/assistantName.js";
 import { getPersonality } from "../../personality/store.js";
 import { assist, editSelection } from "../../pipeline/cleanup.js";
 import { fieldKindOf, cleanLabel } from "../../pipeline/field.js";
+import { sensitiveApp } from "../../pipeline/sensitive.js";
 import { estimateDurationSeconds, transcribe } from "../../pipeline/stt.js";
 import { effectiveLanguage } from "../../profile/language.js";
 import { getProfile } from "../../profile/store.js";
@@ -47,10 +54,15 @@ export interface AgentRouteDeps {
   cfg: AppConfig;
   ledger: RunLedger;
   connectors: Connectors | null;
+  /** The person's context; null or absent when CONTEXT is off. */
+  context?: PersonContext | null;
 }
 
 export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps): void {
   const { rateLimit: AGENT_RL, cfg, ledger, connectors } = deps;
+  const context = deps.context ?? null;
+  /** Words a step's says may come to on the ask they are kept on. */
+  const RESULT_CHARS = 300;
   /** A spoken request, or an answer to a question. Two minutes is far past
    *  either, and well inside what a recogniser accepts. */
   const AGENT_AUDIO_MAX_SECONDS = 120;
@@ -154,14 +166,30 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
       if (!sink.ended) hungUp = true;
       gone.abort();
     });
+    // What the run was asked and what it said, for its result on the person's context.
+    let heard = "";
+    let says = "";
     const sink = new EventSink((line) => {
       if (!res.writableEnded && !res.destroyed) res.write(line);
-    }, watch.sink);
+    }, {
+      beforeEnd: (terminal, code) => watch.sink.beforeEnd?.(terminal, code) ?? null,
+      seen: (e) => {
+        watch.sink.seen?.(e);
+        if (e.t === "heard") heard = e.text;
+        else if (e.t === "say" && says.length < RESULT_CHARS) says = `${says} ${e.text}`.trim();
+      },
+    });
+    const offLimits = !!step.privateField || sensitiveApp(step.app) || !!image;
 
     const t0 = Date.now();
     let result: StepResult | undefined;
     try {
-      const personality = await getPersonality(user);
+      const [personality, kept] = await Promise.all([
+        getPersonality(user),
+        context && step.step === 0 && !offLimits
+          ? context.for(user, { about: step.utterance ?? "", ...(step.tzOffsetMinutes !== undefined ? { tz: step.tzOffsetMinutes } : {}) }).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       const lang = await effectiveLanguage(user, step.language, personality);
       const writer = {
         targetApp: step.app,
@@ -177,6 +205,7 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
         {
           req: step, maxSteps: cfg.AGENT_MAX_STEPS, jobMaxSteps: cfg.AGENT_JOB_MAX_STEPS, names: [ASSISTANT_NAME, ...NAME_HEARD, "Blip", ...(nick ? [nick] : [])],
           ...(image ? { image } : {}),
+          ...(kept?.text ? { context: kept.text } : {}),
         },
         {
           hear: audio
@@ -220,6 +249,11 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     // After the stream has closed: the device already has its answer, and a
     // slow metering or ledger write must not hold it open.
     void watch.end(result, { hungUp });
+    if (context && sink.ending === "done" && !offLimits) {
+      const runSaid = step.history?.find((t) => t.said)?.said ?? heard;
+      const did = says || (step.step > 0 ? "done" : "");
+      if (runSaid && did) void context.keepResult(user.id, { said: runSaid, result: did, app: step.app }).catch((err) => req.log.warn({ err: (err as Error)?.message }, "context: result not kept"));
+    }
     if (result && result.path !== "refused") {
       if (result.path === "picture") recordPicture(user);
       await recordUsage({
