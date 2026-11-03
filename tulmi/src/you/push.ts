@@ -41,6 +41,7 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
   if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
   if (kind === "routine_done" || kind === "routine_failed") return quiet ? "silent" : "send";
+  if (kind === "ops_alert") return "send";
   if (DONE.has(kind)) {
     if (quiet || n.botsOff.includes("code")) return "drop";
     return n.done === "quiet" ? "silent" : "send";

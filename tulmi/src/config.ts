@@ -794,6 +794,11 @@ const EnvSchema = z.object({
   ROUTINES: bool(true),
   ROUTINES_MAX: z.coerce.number().int().min(1).max(200).default(20),
   /**
+   * OPS_ALERT_USER_ID (src/ops/alerts.ts): the owner's own account id. While set, the server checks its disk, memory and CPU every five
+   * minutes and pushes to that account when one is running out (disk past 80%, memory past 85%, CPU busy for 15 minutes). Unset: off.
+   */
+  OPS_ALERT_USER_ID: z.string().uuid().optional(),
+  /**
    * EVERYDAY TOOLS (src/everyday, docs/everyday.md): flights (Kiwi.com), hotels (trivago), currency (Frankfurter) and weather (MET Norway),
    * live and free, with no sign-in of the person's: bot tools whose results are cards beside the answer. EVERYDAY=false turns all off;
    * EVERYDAY_OFF names some to leave out ("stays,flights"). EVERYDAY_DAILY is the flight and hotel searches a person may make a day

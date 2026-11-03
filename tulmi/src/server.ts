@@ -65,6 +65,7 @@ import { registerAskDecideRoutes } from "./routes/ask/askDecide.js";
 import { registerEverydayRoutes } from "./routes/bots/everyday.js";
 import { everyday } from "./everyday/index.js";
 import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
+import { startOpsAlerts } from "./ops/alerts.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
@@ -419,6 +420,17 @@ if (routines) {
   app.addHook("onClose", async () => { stopRoutines(); });
 }
 registerRoutineRoutes(app, { rateLimit: AUTHED_RL, routines });
+// The server watches its own disk, memory and CPU, and tells its owner before one runs out (src/ops/alerts.ts; OPS_ALERT_USER_ID).
+{
+  const owner = getConfig().OPS_ALERT_USER_ID;
+  if (owner) {
+    const stopOps = startOpsAlerts({
+      send: async (m) => { await pushEngine()?.notify(owner, { kind: "ops_alert", key: m.key, vars: { title: m.title, body: m.body } }); },
+      log: app.log,
+    });
+    app.addHook("onClose", async () => { stopOps(); });
+  }
+}
 // Everyday tools (src/everyday, docs/everyday.md): flights, hotels, currency and weather for every bot that fits, free, no sign-in.
 registerEverydayRoutes(app, { rateLimit: AUTHED_RL, everyday: everyday() });
 // The one key's brain (src/askDecide, docs/ask-decide.md): what the person meant, in any language.
