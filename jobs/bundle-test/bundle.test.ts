@@ -48,7 +48,9 @@ describe("the bundle", () => {
 
   it("imports only the Workers runtime's own modules, and Node's as nodejs_compat provides them", () => {
     // node:async_hooks: AsyncLocalStorage, which counts each request's model money (tulmi/src/code/brain/spend.ts, usage/cost.ts); nodejs_compat has it.
-    const allowed = new Set(["cloudflare:workers", "cloudflare:workflows", "node:async_hooks", "node:crypto", "node:fs", "node:path", "node:url", "node:zlib", "node:stream", "node:stream/promises"]);
+    // node:fs/promises, node:util: the chat's code copies (tulmi/src/code/project/copies.ts), which the Worker never makes (no CODE_COPY_DIR); nodejs_compat
+    // provides both, and the bundle loads in workerd below.
+    const allowed = new Set(["cloudflare:workers", "cloudflare:workflows", "node:async_hooks", "node:crypto", "node:fs", "node:fs/promises", "node:path", "node:url", "node:util", "node:zlib", "node:stream", "node:stream/promises"]);
     // (A relative import cannot be real in one file: those are lines of the project templates the Code bot writes, inside template strings.)
     expect([...new Set(importsOf(source))].filter((m) => !m.startsWith(".") && !allowed.has(m))).toEqual([]);
   });

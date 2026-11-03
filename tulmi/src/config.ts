@@ -945,6 +945,8 @@ const EnvSchema = z.object({
    *                          A site of its own, never the app's or the API's (it runs the person's project)
    *   PREVIEW_HOST           cookie mode, on the Worker: one dedicated host, `https://<PREVIEW_HOST>/p/<token>/`. Used when PREVIEW_DOMAIN is not set
    *   CODE_DESIGN_CHECK      "false" skips the design round of the agent loop altogether (true)
+   *   CODE_SCREENS           "false" skips the screens round: a job that changed what people see runs the app and keeps real screenshots of
+   *                          the page for its report (src/code/agent/screens.ts). Needs a browser for shots and R2 for the pictures (true)
    *   ARTIFACT_SHOT_VIEWER_URL  the address of the viewer kept for screenshots: the same viewer deployed a second time with VIEWER_PARENT_ORIGINS=null
    *                          (viewer/docs/artifact-viewer.md section 14). It is NOT the app's viewer, which refuses the host page of a shot. Screenshots of a design need it
    *   ARTIFACT_SHOT_SECRET   signs the 7-day links to a job's screenshots; CODE_JOBS_SECRET when not set
@@ -957,6 +959,7 @@ const EnvSchema = z.object({
   PREVIEW_DOMAIN: z.string().trim().toLowerCase().optional(),
   PREVIEW_HOST: z.string().trim().toLowerCase().optional(),
   CODE_DESIGN_CHECK: bool(true),
+  CODE_SCREENS: bool(true),
   ARTIFACT_SHOT_VIEWER_URL: z.string().trim().optional(),
   ARTIFACT_SHOT_SECRET: z.string().optional(),
   ARTIFACT_VIEWER_URL: z.string().trim().optional(),

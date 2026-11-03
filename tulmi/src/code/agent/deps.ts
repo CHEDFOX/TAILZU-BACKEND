@@ -15,6 +15,7 @@
  * defaulting to the shared one. `brain` is the project brain (layer 4) behind the three things the
  * loop asks of it; the real one is `brainOf(code.brain)`.
  */
+import type { JobShotStore } from "./jobShots.js";
 import type { EffortMode } from "./effort.js";
 import type { FetchLike } from "../../connectors/egressTypes.js";
 import type { GatewayDeps } from "../brain/gateway.js";
@@ -37,7 +38,7 @@ import type { ContextStrategy } from "./mask.js";
 import type { AgentRunner } from "./runner.js";
 import type { RewindStore } from "./rewind.js";
 import type { SettingsStore } from "./settings.js";
-import type { JobMode } from "./types.js";
+import type { DesignViewport, JobMode } from "./types.js";
 
 /** What the loop asks of the project brain. */
 export interface AgentBrain {
@@ -69,6 +70,13 @@ export interface AgentLog {
 export interface DesignDeps {
   compare: CompareHook;
   link?: (o: { userId: string; artifactId: string; shotId: string }) => string | null;
+}
+
+/** The screens round's tools (screens.ts): a browser that shoots an address, where the pictures are kept, and a signed link to one. */
+export interface ScreensDeps {
+  shoot: (url: string, viewport: DesignViewport) => Promise<Uint8Array>;
+  store: JobShotStore;
+  link?: (o: { userId: string; jobId: string; shotId: string }) => string | null;
 }
 
 /**
@@ -111,6 +119,7 @@ export interface AgentDeps {
   live?: LiveDeps;
   /** The design round (agent/design.ts) for a job built from an approved design. Absent: the round is skipped, and the report says so. */
   design?: DesignDeps;
+  screens?: ScreensDeps;
   /** Lead and helpers (code/team): how a lead starts a helper's job and a helper wakes its lead. Absent: a lead cannot start helpers (it does the work itself). */
   team?: TeamPorts;
   /** What becomes of a tool result once it is older than the last six (agent/mask.ts): instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */

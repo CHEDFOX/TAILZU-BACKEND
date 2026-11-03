@@ -63,6 +63,12 @@
     { "tag": "v2", "new_sqlite_classes": ["UserDevices", "JobRoom"] }
   ],
 
+  // A job's real screenshots (tulmi/src/code/agent/screens.ts), kept under the owner's key and answered by their signed links (src/http.ts).
+  // Made once with: npx wrangler r2 bucket create x0-job-shots
+  "r2_buckets": [
+    { "binding": "SHOTS", "bucket_name": "x0-job-shots" }
+  ],
+
   // Plain settings. Anything that is a secret goes in the list below instead, never here.
   // Set the GitHub and Cloudflare ones to what the VPS has; PUBLIC_ORIGIN is the VPS's own address (the signed call back is made to it).
   "vars": {

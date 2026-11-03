@@ -39,6 +39,7 @@ import {
   baseline, commitPhase, commitStaged, headlineOf, locatePhase, newProjectPhase, planPhase, prPhase, prepare, reportPhase, runVerify, stagedFingerprint, verifyPhase, workPhase,
 } from "./phases.js";
 import { designPhase } from "./design.js";
+import { screensPhase } from "./screens.js";
 import { mergePhase } from "./merge.js";
 import { splitPhase, teamPhase } from "../team/lead.js";
 import { reportText } from "./report.js";
@@ -48,7 +49,7 @@ export type LoopEnd = "finished" | "parked" | "lost" | "stopped";
 
 const PHASES: Record<Exclude<Phase, "done">, (r: Run) => Promise<void>> = {
   prepare, new_project: newProjectPhase, baseline, merge: mergePhase, locate: locatePhase, plan: planPhase, split: splitPhase, team: teamPhase, work: workPhase, verify: verifyPhase,
-  design: designPhase, commit: commitPhase, pr: prPhase, report: reportPhase,
+  design: designPhase, screens: screensPhase, commit: commitPhase, pr: prPhase, report: reportPhase,
 };
 
 const isBudget = (e: unknown): boolean => e instanceof BudgetStop || e instanceof BudgetExceeded || (e as { code?: unknown } | null)?.code === "budget_exceeded";

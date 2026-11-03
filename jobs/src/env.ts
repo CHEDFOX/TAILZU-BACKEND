@@ -26,6 +26,8 @@ export interface Env {
   USER_DEVICES: DurableObjectNamespace<UserDevices>;
   /** One per job: its copy of the code, its runner session, the app's live view (jobRoom.ts). */
   ROOMS: DurableObjectNamespace<JobRoom>;
+  /** A job's real screenshots (code/agent/screens.ts), served by their signed links (http.ts). Absent: no screens round. */
+  SHOTS?: R2Bucket;
 
   // wrangler.jsonc vars
   RUNTIME?: string;
@@ -53,4 +55,15 @@ export function applyEnv(env: Env): void {
     if (typeof v === "string" && process.env[k] !== v) process.env[k] = v;
   }
   process.env.RUNTIME = "worker";
+}
+
+/** The SHOTS bucket as the shared code's blob store (media/blob.ts BlobStore). */
+export function shotsBlobs(env: Env): import("../../tulmi/src/media/blob.js").BlobStore | null {
+  const b = env.SHOTS;
+  if (!b) return null;
+  return {
+    async put(key, data, contentType) { await b.put(key, data, { httpMetadata: { contentType } }); },
+    async get(key) { const o = await b.get(key); return o ? Buffer.from(await o.arrayBuffer()) : null; },
+    async delete(key) { await b.delete(key); },
+  };
 }

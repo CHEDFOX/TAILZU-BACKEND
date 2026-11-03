@@ -29,7 +29,7 @@ import type { Code } from "../index.js";
 import type { JobRouter } from "../jobs/router.js";
 import { projectDepsOf } from "../jobs/index.js";
 import { jobStore, type JobStore } from "../jobs/store.js";
-import { brainOf, type AgentBrain, type AgentDeps, type DesignDeps, type TeamPorts } from "./deps.js";
+import { brainOf, type AgentBrain, type AgentDeps, type DesignDeps, type ScreensDeps, type TeamPorts } from "./deps.js";
 import { MemoryInbox, type LiveDeps } from "../live/ports.js";
 import type { ContextStrategy } from "./mask.js";
 import { AgentOrchestrator, type RemoteJobs } from "./orchestrator.js";
@@ -83,6 +83,8 @@ export interface CreateAgentOptions extends Partial<Pick<AgentDeps, "call" | "ga
   live?: LiveDeps;
   /** The design round's compare step and links (agent/design.ts). */
   design?: DesignDeps;
+  /** The screens round's browser, picture store and links (screens.ts); without them a job's report says there are no real screens. */
+  screens?: ScreensDeps;
   /** Lead and helpers (code/team): how a helper's job is started and a lead woken, when this is not a server that drives its own jobs (the Worker starts a Workflow and sends an event). */
   team?: Partial<TeamPorts>;
   /** What becomes of old tool results: "mask", "summary", "hybrid" or "transcript" (agent/mask.ts). Instead of CODE_CONTEXT_STRATEGY, for a harness that compares them. */
@@ -111,6 +113,7 @@ export function createAgent(o: CreateAgentOptions): AgentOrchestrator | null {
     ...(o.routeStats ? { routeStats: o.routeStats } : {}), ...(o.notify ? { notify: o.notify } : {}), ...(o.log ? { log: o.log } : {}),
     ...(o.live ? { live: o.live } : o.passive || o.remote ? {} : { live: { inbox: new MemoryInbox() } }),
     ...(o.design ? { design: o.design } : {}),
+    ...(o.screens ? { screens: o.screens } : {}),
     ...(o.contextStrategy ? { contextStrategy: o.contextStrategy } : {}),
     ...(o.proveFix !== undefined ? { proveFix: o.proveFix } : {}),
     ...(o.jobMode ? { jobMode: o.jobMode } : {}),

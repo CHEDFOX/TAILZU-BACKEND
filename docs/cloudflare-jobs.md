@@ -446,3 +446,32 @@ The address is made of a token: `jobId (16 bytes) · nonce (6 random bytes) · e
 4. `npx wrangler deploy`. Check: a job built from an approved design gets `preview-ready {url}` on its live view; opening the address shows the app; it stops answering `CODE_PREVIEW_IDLE_SEC` after the last request.
 
 Tests: `jobs/test/preview.test.ts` (the door, the token, the room's state machine and idle rule, in workerd against a fake runner), `tulmi/tests/code-live-preview.test.ts` (the token, the site guard, the frames and the header rules) and `code-live-preview-runner.test.ts` (`run.mjs` against a real dev server).
+
+## 12. Real screens
+
+A job that changed what people see keeps real screenshots of it, which show in its report and on the Shipped screen.
+
+**When it runs.** All of these must hold:
+- the checks passed;
+- the job was not built from a design (that has its own round);
+- a staged file is one people see (a component, a page, a template or a stylesheet);
+- the project is a web app with a dev script.
+
+**How it runs** (`tulmi/src/code/agent/screens.ts`), stage by stage, each stage saved:
+1. Open the runner with the staged edits laid.
+2. Start the dev server behind the preview door (section 11).
+3. Wait for it to answer.
+4. Shoot the changed page with Browser Rendering, at phone and computer sizes (phone only for a phone-first app).
+
+No model is asked, and the round never holds the commit. When it can't run, the report says why in one sentence ("No real screens: ...").
+
+**Where the pictures go.** They are kept in the `SHOTS` R2 bucket (`x0-job-shots`) under `u/<user>/jobs/<job>/<shot>.png`. This Worker answers their links:
+
+    GET /v1/code/shots/<user>/<job>/<shot>?exp=&sig=
+
+- **The signature is the only key.** No session is needed, so the app's images and Xode's pages both load the link.
+- **What it is signed for:** exactly that owner, job and picture, with `ARTIFACT_SHOT_SECRET`, or `CODE_JOBS_SECRET` when that isn't set.
+- **How long it works:** 7 days.
+- **Where links are made:** the VPS signs them when a job is read (`GET /v1/code/jobs/:id`, `report.shots[].url`), on `CODE_JOBS_URL`.
+
+**Switching it off.** Set `CODE_SCREENS=false`. Without Browser Rendering or the bucket, the round is skipped and the report says so.

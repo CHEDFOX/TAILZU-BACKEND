@@ -16,6 +16,7 @@
  * runner, text from a file or the web taken as an instruction (context.ts fences it), and a model call
  * that is not charged to the job (every call carries the job and "job" as its budget).
  */
+import { screensDue, screensLines } from "./screens.js";
 import { ConnectorError } from "../../connectors/state.js";
 import { classifyRequest } from "../brain/classify.js";
 import { callModel } from "../brain/gateway.js";
@@ -816,7 +817,8 @@ export async function verifyPhase(r: Run): Promise<void> {
     // What the checks passed on is written down: the commit is made of exactly this, and of nothing the checks did not see.
     s.verified = stagedFingerprint(r);
     // A job built from an approved design runs the app and looks at it before it is committed (design.ts); every other job commits.
-    s.phase = designDue(r) ? "design" : "commit";
+    // A job that changed what people see runs the app and keeps real screenshots of it for the report (screens.ts).
+    s.phase = designDue(r) ? "design" : screensDue(r) ? "screens" : "commit";
     await r.save();
     return;
   }
@@ -1133,8 +1135,9 @@ export async function reportPhase(r: Run): Promise<void> {
   const money = await r.money();
   const outcome = s.commits.length === 0 && r.tools.changes.empty ? "answer" : "done";
   if (s.team) await linkPulls(r);
-  const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome, prReady: s.pr?.ready, design: designTextOf(r), ...(s.team ? { team: teamLines(s.team) } : {}) });
-  s.report = { at: r.now(), outcome, text, ...(s.pr ? { prUrl: s.pr.url } : {}), costPaise: money.spent };
+  const screens = screensLines(s.screens, r.deps.screens?.link ? (shotId) => r.deps.screens!.link!({ userId: r.userId, jobId: r.jobId, shotId }) : undefined);
+  const text = reportText({ state: s, spentPaise: money.spent, budgetPaise: money.budget, outcome, prReady: s.pr?.ready, design: designTextOf(r), screens, ...(s.team ? { team: teamLines(s.team) } : {}) });
+  s.report = { at: r.now(), outcome, text, ...(s.pr ? { prUrl: s.pr.url } : {}), costPaise: money.spent, ...(s.screens?.shots.length ? { shots: s.screens.shots } : {}) };
   s.phase = "done";
   await r.save({ notes: cut(text.split("\n")[0] ?? "Done.", 200) });
 }

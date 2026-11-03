@@ -32,7 +32,7 @@ import type { BaselineResult } from "../project/types.js";
 import type { ChangePlan, Located } from "../work/index.js";
 import type { PartContext, TeamMode, TeamState } from "../team/types.js";
 
-export const PHASES = ["prepare", "new_project", "baseline", "merge", "locate", "plan", "split", "team", "work", "verify", "design", "commit", "pr", "report", "done"] as const;
+export const PHASES = ["prepare", "new_project", "baseline", "merge", "locate", "plan", "split", "team", "work", "verify", "design", "screens", "commit", "pr", "report", "done"] as const;
 export type Phase = (typeof PHASES)[number];
 
 /** How a job is worked: GUIDED (locate, plan, work, verify, commit: the phases in order) or FREEFORM (the model decides the order of explore, change and run). */
@@ -326,6 +326,24 @@ export interface Report {
   costPaise: number;
   /** For "budget": the top-up the report offers, in paise. */
   continueWithPaise?: number;
+  /** Real screenshots of the running app (screens.ts): each kept in the job's picture store, shown by a signed link. */
+  shots?: ScreenShot[];
+}
+
+/** One real screenshot of the running app: the page, the size it was taken at, and its id in the job's picture store. */
+export interface ScreenShot { id: string; route: string; viewport: DesignViewport }
+
+/** The screens round (screens.ts): a job that changed what people see keeps real screenshots of it for its report. */
+export interface ScreensState {
+  stage: "session" | "start" | "wait" | "shoot" | "done";
+  /** The page to open, and a word about how it was found. */
+  route?: string;
+  routeNote?: string;
+  viewports: DesignViewport[];
+  shots: ScreenShot[];
+  startedAt?: number;
+  /** Why there are no real screens, in a sentence for the report. */
+  skipped?: string;
 }
 
 /** The most of an approved design's source the checkpoint keeps, and the most of it the model is shown in one turn. */
@@ -418,6 +436,8 @@ export interface AgentState {
   spec?: SpecArtifact;
   /** The design check, once the job has got to it (only a job with a spec). */
   design?: DesignState;
+  /** The screens round's progress (screens.ts). */
+  screens?: ScreensState;
   /** A clarification the person gave for a question from locate (spent: locate does not ask twice). */
   locateAsked?: boolean;
   /** How the job is worked. Absent: guided, as every job was before free-form existed. */

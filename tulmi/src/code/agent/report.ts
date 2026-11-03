@@ -117,6 +117,8 @@ export interface ReportInput {
   design?: readonly string[];
   /** The team that built it, in lines (code/team/report.ts teamLines), for a lead. */
   team?: readonly string[];
+  /** Real screenshots of the change, or why there are none (screens.ts screensLines). */
+  screens?: readonly string[];
 }
 
 export function reportText(i: ReportInput): string {
@@ -155,6 +157,7 @@ export function reportText(i: ReportInput): string {
   }
   if (s.baseline?.status === "unknown" && s.baseline.note) out.push(`Note: ${safe(s.baseline.note, 300)}`, "");
   if (i.design?.length) out.push("The design", ...i.design.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
+  if (i.screens?.length) out.push("The screens", ...i.screens.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (i.team?.length) out.push("The team", ...i.team.map((l) => (l.startsWith("- ") ? l : safe(l, 600))), "");
   if (s.findings.length) out.push("Findings", ...list(s.findings.map((f) => `${f.severity}: ${f.path}${f.line ? `:${f.line}` : ""} ${cut(f.text, 160)}`), 10), "");
   for (const n of s.notes.slice(0, 6)) out.push(`Note: ${safe(n, 300)}`);

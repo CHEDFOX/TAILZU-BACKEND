@@ -61,7 +61,7 @@ export interface AgentView {
   fixRounds: number;
   steps: number;
   findings: Array<{ severity: string; path: string; line?: number; text: string }>;
-  report?: { outcome: "done" | "failed" | "budget" | "answer"; text: string; prUrl?: string; costPaise: number; continueWithPaise?: number };
+  report?: { outcome: "done" | "failed" | "budget" | "answer"; text: string; prUrl?: string; costPaise: number; continueWithPaise?: number; shots?: Array<{ id: string; route: string; viewport: "mobile" | "desktop"; url?: string }> };
   notes: string[];
   spec?: { artifactId: string; version: number; title: string };
   design?: { stage: string; round: number; match?: number; skipped?: string };
