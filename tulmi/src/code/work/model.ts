@@ -68,6 +68,8 @@ export interface AskJson<T> {
   schema: z.ZodType<T>;
   maxTokens: number;
   step?: number;
+  /** Instead of the tier's: a stall moves on to the next model sooner (the one key's brain, which a spoken turn waits on). */
+  timeoutMs?: number;
 }
 
 /** `</data>` and its like cannot close the fence a text is in. */
@@ -94,7 +96,7 @@ export async function askJson<T>(ctx: ModelCtx, o: AskJson<T>): Promise<Asked<T>
     const r = await call<T>({
       tier: o.tier, ...(o.model ? { model: o.model } : {}), ...(o.writerModel ? { writerModel: o.writerModel } : {}),
       messages: compose(o.role, [{ role: "user" as const, content: o.user }]),
-      json: o.schema, maxTokens: o.maxTokens, purpose: o.purpose, budget: ctx.budget,
+      json: o.schema, maxTokens: o.maxTokens, purpose: o.purpose, budget: ctx.budget, ...(o.timeoutMs ? { timeoutMs: o.timeoutMs } : {}),
       userId: ctx.userId, ...(ctx.jobId ? { jobId: ctx.jobId } : {}), ...(o.step !== undefined ? { step: o.step } : {}),
       ...(ctx.signal ? { signal: ctx.signal } : {}),
     }, ctx.gateway);

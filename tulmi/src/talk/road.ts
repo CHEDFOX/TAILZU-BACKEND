@@ -2,7 +2,7 @@
  * WHICH ROAD AND WHICH TIER FOR A TURN OF TALK (front/path.ts's way): one cheapest road per kind, a tier that fits it.
  *
  *   kind      road      tier     reasoning  first mood  writes at most
- *   chat      reply     tiny     none       -           220 tokens    small talk, a joke, a small question
+ *   chat      reply     cheap    none       -           220 tokens    small talk, a joke, a small question (the tiny tier is slower to speak)
  *   answer    reply     cheap    none       -           450           a question; read-only lookups first when it needs fresh facts
  *   think     reply     strong   medium     ponder      4000          maths, a deep why or how, a comparison, a plan, code
  *   task      handoff   agent                                         Ask does it on the screen (the desktop hands it over)
@@ -34,7 +34,7 @@ export type Road =
   | { road: "handoff"; to: HandoffTo };
 
 export const ROADS: Readonly<Record<TalkKind, Road>> = {
-  chat: { road: "reply", tier: "tiny", reasoning: "none", ponder: false, look: false, maxTokens: 220 },
+  chat: { road: "reply", tier: "cheap", reasoning: "none", ponder: false, look: false, maxTokens: 220 },
   answer: { road: "reply", tier: "cheap", reasoning: "none", ponder: false, look: false, maxTokens: 450 },
   think: { road: "reply", tier: "strong", reasoning: "medium", ponder: true, look: false, maxTokens: 4_000 },
   task: { road: "handoff", to: "agent" },
@@ -45,7 +45,7 @@ export const ROADS: Readonly<Record<TalkKind, Road>> = {
   bot: { road: "handoff", to: "bot" },
 };
 
-/** Under this the decision is not sure enough for its tier: one up. The one key's brain's own line (askDecide SURE). */
+/** Under this the decision is not sure enough for its tier: one up. */
 export const TALK_SURE = 0.7;
 /** The most a turn's message to the answering model holds, in characters: the sum of its sections' caps (prompt.ts). */
 export const TALK_INPUT_CHARS = 20_000;

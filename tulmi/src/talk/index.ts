@@ -5,20 +5,22 @@
  *   talkTurn(input, deps, emit)    one turn: route, mood, text…, handoff, done | error (shared/types/api.ts TalkEvent)
  *
  *   road.ts      the route table: kind -> road, tier, reasoning, first mood; climbing; the cap
+ *   followup.ts  a handoff that points back ("send that to Riya"): the last answer goes with it, no call made
  *   session.ts   the talk in memory: the last turns whole, older ones folded, what each answer found; the turn in flight and its stop
  *   page.ts      the whole page made small: outline, the part around where they are, the parts that match (also for Ask's first step)
  *   prompt.ts    the turn's message to the answering model, every part fenced as data
  *   look.ts      read-only lookups before an answer that needs fresh facts
  *   answer.ts    the one streamed call (role talk_reply)
- *   speak.ts     the mood tag, whole words, the secret guard, the turn's language and the apology
+ *   speak.ts     the mood tag, whole words, the secret guard and the apology (the turn's language: pipeline/lang.ts)
  *
  * A TURN, IN ORDER:
  *   1. GATES, FOR NOTHING. Empty words, X0 Bot's own window, a password field or a sensitive app: no model, nothing kept. A text box
  *      in front: typed (handoff write). A sensitive app with none: refused (error private).
  *   2. DECIDE. The person's context (src/context) and the one key's brain (askDecide: its kind, chat, depth, risk), with this talk's last
- *      turns; beside it a short follow-up is made whole from the last turn and what it found (front/complete.ts). The route event goes as
+ *      turns and what each answer found, in one call, which is asked to make a short follow-up whole in its goal. The route event goes as
  *      soon as the brain has answered.
- *   3. HANDOFF. task and send go to Ask on the device (trusted unless money or deleting), write, routine, notes and a bot to theirs.
+ *   3. HANDOFF. task and send go to Ask on the device (trusted unless money or deleting), write, routine, notes and a bot to theirs. Words
+ *      that point back ("send that to Riya") and a goal the brain left as it was: the last answer goes with it (followup.ts).
  *   4. ANSWER. The road's tier (one up when the brain was unsure), lookups first when it needs fresh facts, ponder first for think; the
  *      words stream as they come. A model that fails before a word was said: the next on its ladder, then one tier up. After words were
  *      said: no second voice, a short apology. The person's stop ends it with what was said.
@@ -34,20 +36,22 @@ import { BudgetExceeded, type GatewayDeps } from "../code/brain/gateway.js";
 import { tierTable } from "../code/brain/tiers.js";
 import type { CallFn } from "../code/work/model.js";
 import { secretish, type PersonContext } from "../context/index.js";
-import { completeMessage } from "../front/complete.js";
 import { sensitiveApp } from "../pipeline/sensitive.js";
 import { sayAnswer } from "./answer.js";
 import { lookFirst, type LookPorts } from "./look.js";
 import type { PageText } from "./page.js";
 import { talkUser } from "./prompt.js";
 import { capPaise, climb, kindOf, roadOf, trustedOf, type TalkKind } from "./road.js";
-import { decideLines, foundIn, foundLine, talkSessions, type TalkSessions } from "./session.js";
-import { Speaker, langOf, sorryWords } from "./speak.js";
+import { followUp } from "./followup.js";
+import { decideLines, foundIn, talkSessions, type TalkSessions } from "./session.js";
+import { langOf } from "../pipeline/lang.js";
+import { Speaker, sorryWords } from "./speak.js";
 
 export { ROADS, TALK_KINDS, kindOf, roadOf, climb, capPaise, trustedOf, TALK_SURE, TALK_INPUT_CHARS, type TalkKind, type Road, type HandoffTo } from "./road.js";
 export { TalkSessions, talkSessions, resetTalkSessionsForTests, flight, stopTalk, foldTurn, foundIn, talkLines, TALK_ID, TALK_TURNS, TALK_IDLE_MS, type TalkSession, type TalkTurn, type Flight } from "./session.js";
 export { readPage, reducePage, termsOf, PAGE_MAX_CHARS, PAGE_TEXT_MAX, type PageText, type ReducedPage } from "./page.js";
-export { MOODS, readMood, moodOf, Speaker, langOf, sorryWords, type Mood } from "./speak.js";
+export { MOODS, readMood, moodOf, Speaker, sorryWords, type Mood } from "./speak.js";
+export { langOf } from "../pipeline/lang.js";
 export { lookFirst, lookPorts, LOOK_CALLS, LOOK_CHARS_MAX, type LookPorts } from "./look.js";
 export { talkUser } from "./prompt.js";
 
@@ -141,11 +145,10 @@ export async function talkTurn(i: TalkInput, d: TalkDeps, emit: (e: TalkEvent) =
   const selection = readOff ? undefined : i.field?.selection;
 
   const session = sessions.get(userId, i.talkId);
-  const last = session?.turns.at(-1);
   const stoppedNow = (): boolean => signal.aborted;
   const end = (text: string, found?: TalkFound): void => { emit({ t: "done", text, ...(found ? { found } : {}) }); };
 
-  // 2. Decide, with the person's context; a follow-up made whole beside it.
+  // 2. Decide, with the person's context and this talk's turns: one call, a follow-up made whole in its goal.
   const [ctx, bots] = await Promise.all([
     d.context ? d.context.for(d.user, { about: words, ...(i.tz !== undefined ? { tz: i.tz } : {}), now }).catch(() => null) : Promise.resolve(null),
     d.bots ? d.bots().catch(() => []) : Promise.resolve([]),
@@ -159,11 +162,6 @@ export async function talkTurn(i: TalkInput, d: TalkDeps, emit: (e: TalkEvent) =
     ...(session ? { talk: decideLines(session) } : {}),
   };
   const left = d.daily ? d.daily.leftPaise(userId) : undefined;
-  const model = { ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), userId, signal };
-  const completing = last && left !== 0
-    ? completeMessage(model, { message: words, lastQuestion: last.goal ?? last.said, lastAnswer: [last.answer, foundLine(last.found)].filter(Boolean).join("\nFound: ") })
-      .catch(() => null)
-    : Promise.resolve(null);
   const decision: AskDecision = await decideAsk(input, userId, { ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), signal, ...(left !== undefined ? { leftPaise: left } : {}) });
   charge(decision.paise);
   reasons.push(...decision.reasons);
@@ -171,9 +169,8 @@ export async function talkTurn(i: TalkInput, d: TalkDeps, emit: (e: TalkEvent) =
   const road = roadOf(kind, { web: decision.web, sure: decision.by === "fallback" ? undefined : decision.sure });
   emit({ t: "route", kind, depth: decision.depth, lang });
 
-  const completed = await completing;
-  if (completed) charge(completed.paise);
-  const meant = completed && completed.via === "model" ? completed.text : undefined;
+  // A follow-up the brain made whole: what Ask is handed, and what the answer is asked about.
+  const meant = decision.goal && decision.goal !== words ? decision.goal : undefined;
 
   const keep = (answer: string, found?: TalkFound, goal?: string): void => {
     if (secretish(words) || secretish(answer) || (goal && secretish(goal))) return;
@@ -191,7 +188,7 @@ export async function talkTurn(i: TalkInput, d: TalkDeps, emit: (e: TalkEvent) =
 
   // 3. Handoff: the device does it.
   if (road.road === "handoff") {
-    const goal = meant ?? decision.goal;
+    const goal = followUp(meant ?? decision.goal, words, session?.turns.at(-1));
     emit({ t: "mood", mood: "done" });
     emit({
       t: "handoff", to: road.to, goal, trusted: trustedOf(decision.risk),

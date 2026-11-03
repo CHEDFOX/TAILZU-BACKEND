@@ -22,12 +22,13 @@
  *
  * HOW IT DECIDES, Xode's way (code/brain/classify.ts, code/brain/route.ts):
  *   1. SAFETY FIRST, FOR NOTHING. A password field, or Tailzu's own window: typed, no model asked, the words never leave.
- *   2. ONE TINY CALL (role ask_decide, the tiny tier, a few hundred tokens) reads the words with the app, the field, the person's
+ *   2. ONE CALL (role ask_decide, the cheap tier, a few hundred tokens) reads the words with the app, the field, the person's
  *      context (src/context: who they are, who they message, their last asks; else the last turns the computer sent) and their bots,
  *      and answers in strict JSON. It also makes a short follow-up whole ("send it to Dev too" after a
  *      message to Riya), so nothing downstream sees half a request.
- *   3. CLIMB ONCE. Under 0.7 sure, or the tiny model down: the cheap tier, once. The surer of the two wins.
- *   4. NEVER THROWS, NEVER STUCK. Both down: the safest thing that can be undone: typed when a text box is in front, else Ask,
+ *   3. NO SECOND CALL. The cheap tier decides as well as the tiny one did, three times sooner (0.6 s against 1.5–2 s), so an unsure
+ *      decision is kept as it is, and its `sure` says so: typed when a text box is in front (4), one reply tier up in talk.
+ *   4. NEVER THROWS, NEVER STUCK. Down (after the gateway's own ladder of models): the safest thing that can be undone: typed when a text box is in front, else Ask,
  *      which can still ask one question itself. Still under 0.45 sure with a text box in front: typed (the pill takes it back).
  *   5. A ROUTINE IS ONLY WHAT REPEATS: one the routines' own reader (routines/words.ts readRoutine) finds no "every …" in is not one,
  *      since saving it would be refused ("Say how often"); it goes to their bots, which make a one-off reminder or to-do of it.
@@ -48,7 +49,7 @@ import { askJson, forModel, oneLine, type CallFn, type ModelCtx } from "../code/
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { ModelTier } from "../code/brain/tiers.js";
 import { neutral } from "../bots/prompt.js";
-import { detectScript } from "../pipeline/script.js";
+import { langOf } from "../pipeline/lang.js";
 import { readRoutine } from "../routines/words.js";
 import { DEPTHS, deeper, depthOf, type Depth } from "./depth.js";
 
@@ -110,7 +111,7 @@ export interface AskDecision {
   risk: AskRisk;
   needs: Grant[];
   missing: Grant[];
-  by: "rules" | "model" | "climbed" | "cache" | "fallback";
+  by: "rules" | "model" | "cache" | "fallback";
   reasons: string[];
   paise: number;
 }
@@ -130,7 +131,11 @@ export const AskDecideReply = z.object({
 });
 export type AskDecideReply = z.infer<typeof AskDecideReply>;
 
-export const SURE = 0.7;
+/** The tier that decides: fast enough for a spoken turn and for the computer's brainMs. */
+export const TIER: ModelTier = "cheap";
+/** A decision takes 0.3–2 s; one that stalls past this moves on to the next model of the tier (the gateway's ladder) instead of
+ *  holding the turn for the tier's 45 s. */
+export const TIMEOUT_MS = 3_000;
 export const UNSURE = 0.45;
 const CAP_PAISE = 30;
 const WORDS_MAX = 1200;
@@ -250,26 +255,14 @@ async function decideOnce(i: DecideInput, userId: string, d: DecideDeps): Promis
 
   if (d.leftPaise !== undefined && d.leftPaise <= 0) return fallback("no_allowance");
 
-  // 2. One tiny call; 3. climb once when unsure.
+  // 2. One call, on the cheap tier: it decides as well as the tiny tier did, three times sooner (docs/ask-decide.md).
   const user = decideUser({ ...i, words });
-  const ask = (tier: ModelTier) => {
-    const ctx: ModelCtx = { ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), userId, budget: { maxPaise: CAP_PAISE }, ...(d.signal ? { signal: d.signal } : {}) };
-    return askJson(ctx, { tier, purpose: "ask.decide", role: "ask_decide", user, schema: AskDecideReply, maxTokens: 160 });
-  };
-  let paise = 0;
-  const first = await ask("tiny");
-  if (first.ok) paise += first.paise;
-  let best: AskDecideReply | null = first.ok ? first.value : null;
-  let by: AskDecision["by"] = "model";
-  const reasons: string[] = [first.ok ? "model:tiny" : `tiny:${first.reason}`];
-  if ((!best || best.sure < SURE) && !(!first.ok && first.reason === "aborted")) {
-    const second = await ask("cheap");
-    if (second.ok) {
-      paise += second.paise;
-      reasons.push("model:cheap");
-      if (!best || second.value.sure >= best.sure) { best = second.value; by = "climbed"; }
-    } else reasons.push(`cheap:${second.reason}`);
-  }
+  const ctx: ModelCtx = { ...(d.call ? { call: d.call } : {}), ...(d.gateway ? { gateway: d.gateway } : {}), userId, budget: { maxPaise: CAP_PAISE }, ...(d.signal ? { signal: d.signal } : {}) };
+  const asked = await askJson(ctx, { tier: TIER, purpose: "ask.decide", role: "ask_decide", user, schema: AskDecideReply, maxTokens: 160, timeoutMs: TIMEOUT_MS });
+  const paise = asked.ok ? asked.paise : 0;
+  const best: AskDecideReply | null = asked.ok ? asked.value : null;
+  const by: AskDecision["by"] = "model";
+  const reasons: string[] = [asked.ok ? `model:${TIER}` : `${TIER}:${asked.reason}`];
   // 4. Never stuck.
   if (!best) return fallback(reasons.join(","), paise);
   const sure = round(best.sure);
@@ -289,10 +282,11 @@ const GOOGLE = /\bgoogle\b|गूगल/i;
 function shape(i: DecideInput, words: string, r: AskDecideReply, by: AskDecision["by"], reasons: string[], sure: number, paise: number, now: number): AskDecision {
   // THEIR OWN WORDS are the goal, except for a follow-up the model had to make whole ("send it to Dev too"): a
   // small model asked for "the request made whole" also translated it (English in, Hindi out), and the goal is
-  // what Ask is handed as the request. Even made whole, a goal in another script than what was said is not used.
+  // what Ask is handed as the request. Even made whole, a goal in another language than what was said is not used (pipeline/lang.ts:
+  // Hinglish and English share a script, and a goal turned into Hinglish is not theirs).
   const made = oneLine(r.goal ?? "", 600);
-  const before = (i.last ?? []).length > 0 || (i.context?.turns ?? 0) > 0;
-  const goal = before && made && detectScript(made) === detectScript(words) ? made : words;
+  const before = (i.last ?? []).length > 0 || (i.context?.turns ?? 0) > 0 || !!i.talk;
+  const goal = before && made && langOf(made) === langOf(words) ? made : words;
   // chat is answered: this route's `do` keeps its seven kinds, and `chat` says it was small talk.
   const chat = r.do === "chat";
   let kind: AskDo = r.do === "chat" ? "answer" : r.do;

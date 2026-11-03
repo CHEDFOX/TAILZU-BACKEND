@@ -16,9 +16,9 @@ Two reads go beside `do`, for the voice chat (docs/talk.md) and anything else th
 
 ## How it decides (Xode's way)
 1. **Safety first, for nothing.** A password field or Tailzu's own window: typed, no model, the words never leave.
-2. **One tiny call** (role `ask_decide`, tiny tier, 30 paise cap) with the app, window title, the text box, the person's context (docs/context.md: who they are, who they message, their last asks; the computer's last 3 asks only while the server has kept none) and the person's bots. Any language. A short follow-up is made whole in `goal`.
-3. **Climb once.** Under 0.7 sure, or the tiny model down: the cheap tier, once; the surer answer wins.
-4. **Never stuck.** Both down, or still under 0.45 with a text box in front: typed. No box: Ask, which can ask one question itself.
+2. **One call** (role `ask_decide`, cheap tier, 30 paise cap) with the app, window title, the text box, the person's context (docs/context.md: who they are, who they message, their last asks; the computer's last 3 asks only while the server has kept none), a talk's last turns with what each answer found, and the person's bots. Any language. A short follow-up is made whole in `goal`.
+3. **No second call.** Measured on the same words, the cheap tier decides as the tiny one did in 0.6 s against 1.5–2 s, for about half a paisa more a turn. An unsure decision is kept, and its `sure` says so. A call that stalls past 3 s moves on to the next model of the tier (the gateway's ladder) instead of waiting out the tier's 45 s.
+4. **Never stuck.** Down (after the gateway's own ladder of models), or under 0.45 with a text box in front: typed. No box: Ask, which can ask one question itself.
 5. **Rules only raise the risk.** Money and deleting are read from the words (`risk`), whatever the model said, so they are always confirmed.
 6. **Cache.** The same words in the same place within 10 minutes: the answer from before.
 

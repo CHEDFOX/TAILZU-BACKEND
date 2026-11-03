@@ -28,7 +28,7 @@ describe("the route table", () => {
   it("has one road and tier per kind", () => {
     const table = Object.fromEntries(Object.entries(ROADS).map(([k, r]) => [k, r.road === "reply" ? `${r.tier}/${r.reasoning}${r.ponder ? "/ponder" : ""}` : `handoff:${r.to}`]));
     expect(table).toEqual({
-      chat: "tiny/none", answer: "cheap/none", think: "strong/medium/ponder",
+      chat: "cheap/none", answer: "cheap/none", think: "strong/medium/ponder",
       task: "handoff:agent", send: "handoff:agent", write: "handoff:write", routine: "handoff:routine", notes: "handoff:notes", bot: "handoff:bot",
     });
   });
@@ -50,8 +50,8 @@ describe("the route table", () => {
   it("looks first only for an answer that needs fresh facts, and climbs one tier when the brain was unsure", () => {
     expect(roadOf("answer", { web: true })).toMatchObject({ road: "reply", tier: "cheap", look: true });
     expect(roadOf("think", { web: true })).toMatchObject({ tier: "strong", look: true });
-    expect(roadOf("chat", { web: true })).toMatchObject({ tier: "tiny", look: false });
-    expect(roadOf("chat", { sure: 0.5 })).toMatchObject({ tier: "cheap" });
+    expect(roadOf("chat", { web: true })).toMatchObject({ tier: "cheap", look: false });
+    expect(roadOf("chat", { sure: 0.5 })).toMatchObject({ tier: "code" });
     expect(roadOf("answer", { sure: 0.5 })).toMatchObject({ tier: "code" });
     expect(roadOf("think", { sure: 0.1 })).toMatchObject({ tier: "strong" });
     expect(roadOf("send", { sure: 0.1 })).toEqual({ road: "handoff", to: "agent" });

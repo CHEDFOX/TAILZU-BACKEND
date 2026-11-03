@@ -94,7 +94,7 @@ export function talkLines(s: TalkSession | null | undefined): string {
 /** The last few turns in a line each, for the one key's brain (askDecide `talk`). */
 export function decideLines(s: TalkSession | null | undefined, n = 4): string {
   if (!s) return "";
-  return s.turns.slice(-n).map((t) => `- ${t.kind}: ${oneLine(t.goal ?? t.said, 120)}${t.answer ? ` → ${oneLine(t.answer, 80)}` : ""}`).join("\n");
+  return s.turns.slice(-n).map((t) => `- ${t.kind}: ${oneLine(t.goal ?? t.said, 120)}${t.answer ? ` → ${oneLine(t.answer, 80)}` : ""}${t.found ? ` (found: ${oneLine(foundLine(t.found), 120)})` : ""}`).join("\n");
 }
 
 export class TalkSessions {

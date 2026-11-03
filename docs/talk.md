@@ -19,7 +19,7 @@ The person holds or double-taps one key anywhere and talks, turn after turn, lik
 
 | kind | road | tier | |
 |---|---|---|---|
-| `chat` | reply | tiny | small talk, a joke, a small question about nothing on screen |
+| `chat` | reply | cheap | small talk, a joke, a small question about nothing on screen (the tiny tier is slower to speak: 1.1 s against 0.4 s) |
 | `answer` | reply | cheap | a question; read-only lookups first when it needs fresh facts |
 | `think` | reply | strong, reasoning on | maths, a deep why or how, a comparison, a plan, code; `ponder` first |
 | `task`, `send` | handoff to `agent` | | Ask does it on the screen; `trusted` unless it moves money or deletes |
@@ -30,8 +30,8 @@ The kind comes from the one key's brain (docs/ask-decide.md), which reads `chat`
 
 ## A turn
 1. **Gates, for nothing.** Empty words, X0 Bot's own window, a password field, a sensitive app (`pipeline/sensitive.ts`): no model, nothing kept. A text box in front: typed (`handoff write`). A sensitive app with none: `error private`.
-2. **Decide.** The person's context (docs/context.md) and this talk's last turns go to the brain. Beside it, a short follow-up is made whole from the last turn and what it found (`front/complete.ts`): "send that to Riya" after an answer with a number hands Ask the number.
-3. **Handoff**, or **answer**: lookups first when it needs fresh facts (`look.ts`: the bots' `web_search`, the everyday tools' `weather` and `currency_convert`; one call, at most 3 lookups, 4,500 characters), then one streamed call (role `talk_reply`).
+2. **Decide.** The person's context (docs/context.md) and this talk's last turns, with what each answer found, go to the brain in one call, which is asked to make a short follow-up whole in its goal.
+3. **Handoff**, or **answer**. A handoff whose words point back ("send that to Riya", "isse bhej do", "इसे भेजो") and whose goal carries none of what the last answer found is handed to Ask with that answer and what it found (`followup.ts`), with no call made. An answer: lookups first when it needs fresh facts (`look.ts`: the bots' `web_search`, the everyday tools' `weather` and `currency_convert`; one call, at most 3 lookups, 4,500 characters), then one streamed call (role `talk_reply`).
 4. **Keep.** The turn goes into the talk and into the person's context (`keepAsk`, `keepResult`), under the context's privacy rules.
 
 ## Streaming and the mood

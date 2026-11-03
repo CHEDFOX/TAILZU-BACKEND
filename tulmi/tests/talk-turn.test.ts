@@ -1,9 +1,9 @@
 /**
  * A TURN OF TALK, END TO END, WITH A SCRIPTED MODEL (src/talk/index.ts, routes/ask/talk.ts):
  *
- *   - chat goes to the tiny tier; think to the strong one with reasoning on, ponder said first
+ *   - chat goes to the cheap tier; think to the strong one with reasoning on, ponder said first
  *   - send and task are handed to Ask: a send is trusted, a payment is not; nothing is said
- *   - a follow-up is made whole from the last turn and what it found
+ *   - a follow-up is made whole by the brain, in the one call, from the last turns and what they found
  *   - the words stream in whole words; the mood comes first
  *   - a model that fails before a word climbs one tier; after words, no second voice: a short apology
  *   - the person's stop ends the turn with what was said; a new turn of the same talk stops the one before
@@ -44,7 +44,7 @@ type Say =
   | { pieces: string[]; then: "hang" }            // waits for the stop
   | { error: Error };                              // fails before a word
 
-interface Script { decide?: Array<Partial<Reply>>; complete?: string[]; look?: ToolCall[][]; say?: Say[] }
+interface Script { decide?: Array<Partial<Reply>>; look?: ToolCall[][]; say?: Say[] }
 
 interface Seen { purpose: string; tier: string; reasoning?: string; user: string; tools?: string[]; maxPaise?: number }
 
@@ -66,11 +66,6 @@ function model(s: Script) {
       if (!next) throw new Error("down");
       const json = AskDecideReply.parse({ goal: "", screen: false, web: false, sure: 0.9, ...next });
       return result({ text: JSON.stringify(json), json, tier: input.tier });
-    }
-    if (input.purpose === "front.complete") {
-      const next = s.complete?.shift();
-      if (next === undefined) throw new Error("down");
-      return result({ text: next, tier: input.tier });
     }
     if (input.purpose === "talk.look") return result({ toolCalls: s.look?.shift() ?? [], tier: input.tier });
     if (input.purpose === "talk.reply") {
@@ -117,13 +112,13 @@ const flush = () => new Promise((r) => setTimeout(r, 5));
 beforeEach(() => { resetAskDecideCacheForTests(); resetTalkSessionsForTests(); });
 
 describe("the road each kind takes", () => {
-  it("chat goes to the tiny tier, fast, and says the answer's own mood", async () => {
+  it("chat goes to the cheap tier, fast, and says the answer's own mood", async () => {
     const w = world();
     const m = model({ decide: [{ do: "chat" }], say: [{ pieces: ["[laugh] Why did the cat sit on the computer? ", "To keep an eye on the mouse."] }] });
     const r = await turn(w, m, { words: "tell me a joke about cats" });
     expect(r.events[0]).toEqual({ t: "route", kind: "chat", depth: "quick", lang: "en" });
     expect(r.events[1]).toEqual({ t: "mood", mood: "laugh" });
-    expect(m.of("talk.reply").map((s) => [s.tier, s.reasoning])).toEqual([["tiny", "none"]]);
+    expect(m.of("talk.reply").map((s) => [s.tier, s.reasoning])).toEqual([["cheap", "none"]]);
     expect(r.events.at(-1)).toEqual({ t: "done", text: "Why did the cat sit on the computer? To keep an eye on the mouse." });
     expect(r.out).toMatchObject({ kind: "chat", ending: "done" });
   });
@@ -170,25 +165,56 @@ describe("the road each kind takes", () => {
   });
 });
 
-describe("a follow-up, made whole from the last turn and what it found", () => {
-  it("'send that to Riya' after an answer with a number hands Ask the number", async () => {
+describe("a follow-up, made whole by the brain from the last turns and what they found", () => {
+  it("'send that to Riya' after an answer with a number hands Ask the number, in one call", async () => {
     const w = world();
     const m = model({
-      decide: [{ do: "answer", web: false }, { do: "send", to: "Riya" }],
+      decide: [{ do: "answer", web: false }, { do: "send", to: "Riya", goal: "send the Taj's number 022 6665 3366 to Riya" }],
       say: [{ pieces: ["[talk] The Taj in Colaba is on 022 6665 3366."] }],
-      complete: ["send the Taj's number 022 6665 3366 to Riya"],
     });
     const first = await turn(w, m, { words: "what's the phone number of the Taj in Colaba" });
     expect(first.events.at(-1)).toEqual({ t: "done", text: "The Taj in Colaba is on 022 6665 3366.", found: { numbers: ["022 6665 3366"], names: ["Taj", "Colaba"] } });
     const second = await turn(w, m, { words: "send that to Riya", turn: 1 });
-    const complete = m.of("front.complete")[0]!;
-    expect(complete.tier).toBe("tiny");
-    expect(complete.user).toContain("The Taj in Colaba is on 022 6665 3366.");
-    expect(complete.user).toContain("Found: numbers 022 6665 3366");
-    expect(m.of("ask.decide")[1]!.user).toContain("This talk so far");
+    const decide = m.of("ask.decide")[1]!;
+    expect(decide.user).toContain("This talk so far");
+    expect(decide.user).toContain("The Taj in Colaba is on 022 6665 3366.");
+    expect(decide.user).toContain("found: numbers 022 6665 3366");
+    expect(m.seen.map((x) => x.purpose)).not.toContain("front.complete");
     expect(second.events.find((e) => e.t === "handoff")).toEqual({ t: "handoff", to: "agent", goal: "send the Taj's number 022 6665 3366 to Riya", trusted: true });
     const kept = w.sessions.get(ME, "talk_abc123")!;
     expect(kept.turns.map((t) => [t.n, t.kind, t.goal ?? ""])).toEqual([[0, "answer", ""], [1, "send", "send the Taj's number 022 6665 3366 to Riya"]]);
+  });
+
+  it("the brain left 'send that to Riya' as it was: the last answer and what it found go to Ask with it, no call made", async () => {
+    const w = world();
+    const m = model({
+      decide: [{ do: "answer", web: false }, { do: "send", to: "Riya", goal: "send that to Riya" }],
+      say: [{ pieces: ["[talk] The Taj in Colaba is on 022 6665 3366."] }],
+    });
+    await turn(w, m, { words: "what's the phone number of the Taj in Colaba" });
+    const second = await turn(w, m, { words: "send that to Riya", turn: 1 });
+    expect(m.seen.map((x) => x.purpose)).toEqual(["ask.decide", "talk.reply", "ask.decide"]);
+    expect(second.events.find((e) => e.t === "handoff")).toEqual({ t: "handoff", to: "agent", trusted: true,
+      goal: "send that to Riya\n(The Taj in Colaba is on 022 6665 3366. Found: numbers 022 6665 3366; names Taj, Colaba)" });
+  });
+
+  it("a goal the brain made vaguer, with none of what the last answer found, gets the answer too", async () => {
+    const w = world();
+    const m = model({
+      decide: [{ do: "answer" }, { do: "send", to: "Riya", goal: "send the hotel's number to Riya" }],
+      say: [{ pieces: ["[talk] The Taj in Colaba is on 022 6665 3366."] }],
+    });
+    await turn(w, m, { words: "what's the phone number of the Taj in Colaba" });
+    const second = await turn(w, m, { words: "send that to Riya", turn: 1 });
+    expect(second.events.find((e) => e.t === "handoff")).toMatchObject({ goal: "send the hotel's number to Riya\n(The Taj in Colaba is on 022 6665 3366. Found: numbers 022 6665 3366; names Taj, Colaba)" });
+  });
+
+  it("a handoff that does not point back goes as it was said", async () => {
+    const w = world();
+    const m = model({ decide: [{ do: "answer" }, { do: "send", to: "Riya", goal: "tell Riya I'm late" }], say: [{ pieces: ["[talk] Twelve dollars."] }] });
+    await turn(w, m, { words: "how much is pro" });
+    const second = await turn(w, m, { words: "tell Riya I'm late", turn: 1 });
+    expect(second.events.find((e) => e.t === "handoff")).toMatchObject({ goal: "tell Riya I'm late" });
   });
 
   it("the answering model sees the talk so far, where they are and the page, fenced", async () => {
@@ -218,9 +244,9 @@ describe("streaming, climbing and saying sorry", () => {
     const w = world();
     const m = model({ decide: [{ do: "chat" }], say: [{ error: new Error("every model for this call failed") }, { pieces: ["[talk] Hello there."] }] });
     const r = await turn(w, m, { words: "hello" });
-    expect(m.of("talk.reply").map((s) => s.tier)).toEqual(["tiny", "cheap"]);
+    expect(m.of("talk.reply").map((s) => s.tier)).toEqual(["cheap", "code"]);
     expect(r.events.at(-1)).toEqual({ t: "done", text: "Hello there." });
-    expect(r.out.reasons).toContain("down:tiny");
+    expect(r.out.reasons).toContain("down:cheap");
   });
 
   it("both tiers down before a word: an error, nothing kept", async () => {
