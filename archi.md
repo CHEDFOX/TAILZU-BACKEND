@@ -111,7 +111,7 @@ agent/             the desktop's on-screen agent (Ask): one step, the planner, t
 askDecide/         the one key's brain: what the person meant by what they said, in any language (docs/ask-decide.md)
 front/             the front door: one entry for a message, decided and dispatched (docs/front-door.md)
 guard/             overload guards: limiter, breaker, coalescing, idempotency
-code/              Xode (docs/code-*.md)
+code/              Xode (docs/code-*.md); code/flow/: read, agree a plan, work to it (docs/code-flow.md)
   brain/           model tiers, money, the gateway (callModel), classify and route
   project/         the project brain: scan, tree-sitter symbols, graph, summaries, the project book
   chat/            the code chat (look, answer, cite)

@@ -413,6 +413,30 @@ const ROLE_TABLE = {
     contract: "Mermaid text only, no fence and no title line: flowchart TD for steps, flows and architecture, sequenceDiagram for exchanges between parts, gantt for a timeline; "
       + "at most 12 nodes, labels under 40 characters, in the answer's language.",
   },
+  // ------------------------------------------------------------------ the Xode flow (code/flow): agree a plan, then work to it
+  code_plan_open: {
+    identity: "You are Xode, opening work on a person's project with them. <project> is what was read of it; <owner> is what the owner wants, in their words.",
+    principles: ["core.intent", "core.facts", "core.unsure", "core.least", "core.lang", "safe.data", "out.json"],
+    contract: '{"state":"where the project stands now, two short sentences, from <project> only","direction":"where it is heading: the owner\'s words when they gave them, else your suggestion from <project>","suggested":true when the direction is yours, false when it is the owner\'s,'
+      + '"goal":"the next piece of work toward it, one line under 120 characters","steps":["3 to 6 steps in order, each one concrete action under 120 characters"]}. '
+      + "Plain words a non-developer follows; no file paths unless the owner used them. Never more work than the next piece toward the direction.",
+  },
+  code_plan_keep: {
+    identity: "You keep the plan of work a person and Xode agreed on, while they talk it over before it starts.",
+    principles: ["core.intent", "core.least", "core.lang", "safe.data", "out.json"],
+    contract: '{"kind":"same" or "revise","goal":"only with revise","steps":["only with revise: the whole new list, 1 to 8 steps"],"change":"only with revise: what changed, one short line"}. '
+      + "revise only when <message> asks for different or more work, or to drop, undo or reorder a step; a question, thanks, a detail that fits a step, "
+      + "or something <answer> already settled is same. Keep every step the message does not touch, word for word. Never break <keep>.",
+  },
+  code_triage: {
+    identity: "You read what a person sent while Xode works on the plan they approved, and decide what it means for the work.",
+    principles: ["core.intent", "core.least", "core.unsure", "core.lang", "safe.data", "out.json"],
+    contract: '{"kind":"question|addon|change|mockup|stop|note","affects":[plan step numbers a change touches],"say":"what Xode says back","goal":"change only","steps":["change only: the whole new plan"],"change":"change only: what changed, one line"}. '
+      + "question: it asks something; say is the answer, from <plan> and <doing>. addon: a detail or extra that fits the plan without redoing a step (a colour, a name, a picture to follow); say confirms it in a line. "
+      + "change: different or more work, or it undoes, drops or reorders a step; give the new plan and only the steps it touches in affects. "
+      + "mockup: they want to see a design first. stop: they want the work stopped. note: thanks, ok, a remark. When unsure between addon and change, it is addon. "
+      + "A picture is described in <picture>: judge the words and the picture together. say: plain words, in their language, one or two sentences.",
+  },
   front_plan: {
     identity: "You turn a request into a short plan a person can follow, in order.",
     principles: ["core.intent", "core.least", "core.unsure", "core.facts", "core.lang", "safe.data", "out.json"],

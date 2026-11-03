@@ -19,6 +19,7 @@
  * the service key; a person's own token can only read their own rows. A thread is a person's and a project's: another person's id, or another project's,
  * is simply not found.
  */
+import type { ProjectPlan } from "../flow/plan.js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../../auth/supabase.js";
 import type { Located } from "../work/locate.js";
@@ -63,6 +64,8 @@ export interface ChatThread {
   jobs?: ChatJob[];
   /** What this chat has read, as path:from-to, newest last (at most SEEN_KEPT): the next question's brief starts from it. */
   seen?: string[];
+  /** The plan agreed in this chat (code/flow/plan.ts): proposed, approved, at work or done, with its version. */
+  plan?: ProjectPlan;
   createdAt: number;
   updatedAt: number;
 }
@@ -185,17 +188,33 @@ function jobsOf(v: unknown): ChatJob[] {
     .map((j) => ({ id: j.id, branch: j.branch, at: typeof j.at === "number" ? j.at : 0 })).slice(-JOBS_KEPT);
 }
 
+/** A kept plan, read back: only one with the shape of a plan, its words cut to their limits. */
+function planOf(v: unknown): ProjectPlan | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const p = v as Partial<ProjectPlan>;
+  if (typeof p.v !== "number" || typeof p.goal !== "string" || !Array.isArray(p.steps)) return undefined;
+  const status = p.status === "approved" || p.status === "working" || p.status === "done" ? p.status : "proposed";
+  return {
+    v: p.v, goal: p.goal.slice(0, 200), state: typeof p.state === "string" ? p.state.slice(0, 600) : "", direction: typeof p.direction === "string" ? p.direction.slice(0, 500) : "",
+    suggested: p.suggested === true, steps: p.steps.filter((x): x is string => typeof x === "string").map((x) => x.slice(0, 200)).slice(0, 8), status,
+    ...(typeof p.change === "string" && p.change ? { change: p.change.slice(0, 200) } : {}), ...(typeof p.jobId === "string" ? { jobId: p.jobId } : {}),
+    ...(typeof p.mockup === "string" ? { mockup: p.mockup.slice(0, 80) } : {}),
+    at: typeof p.at === "number" ? p.at : 0,
+  };
+}
+
 /** A row's last_located, read: the located files, the turns, the jobs and the files seen (scripts/xode-cases.ts reads the turns too). */
-export function lastOf(v: unknown): { located: Located | null; history: ChatTurn[]; jobs: ChatJob[]; seen: string[] } {
+export function lastOf(v: unknown): { located: Located | null; history: ChatTurn[]; jobs: ChatJob[]; seen: string[]; plan?: ProjectPlan } {
   if (!v || typeof v !== "object") return { located: null, history: [], jobs: [], seen: [] };
-  const o = v as { located?: unknown; history?: unknown; jobs?: unknown; seen?: unknown };
+  const o = v as { located?: unknown; history?: unknown; jobs?: unknown; seen?: unknown; plan?: unknown };
   if (!Array.isArray(o.history)) return { located: v as Located, history: [], jobs: [], seen: [] };
+  const plan = planOf(o.plan);
   const history = o.history.filter((h): h is ChatTurn => !!h && typeof h === "object" && typeof (h as ChatTurn).q === "string" && typeof (h as ChatTurn).a === "string")
     .map((h) => {
       const n = Array.isArray(h.n) ? h.n.filter((q): q is string => typeof q === "string").slice(0, 3) : [];
       return { q: h.q, a: h.a, at: typeof h.at === "number" ? h.at : 0, ...(n.length ? { n } : {}), ...(h.f === "reaction" || h.f === "rephrase" ? { f: h.f } : {}) };
     });
-  return { located: o.located && typeof o.located === "object" ? (o.located as Located) : null, history, jobs: jobsOf(o.jobs), seen: Array.isArray(o.seen) ? o.seen.filter((x): x is string => typeof x === "string" && x.length < 300).slice(-SEEN_KEPT) : [] };
+  return { located: o.located && typeof o.located === "object" ? (o.located as Located) : null, history, jobs: jobsOf(o.jobs), seen: Array.isArray(o.seen) ? o.seen.filter((x): x is string => typeof x === "string" && x.length < 300).slice(-SEEN_KEPT) : [], ...(plan ? { plan } : {}) };
 }
 
 const threadOf = (r: Row): ChatThread => {
@@ -203,7 +222,7 @@ const threadOf = (r: Row): ChatThread => {
   return {
     id: r.id, userId: r.user_id, projectId: r.project_id, summary: r.summary ?? "", turns: typeof r.turns === "number" ? r.turns : 0,
     lastQuestion: r.last_question ?? "", lastCites: Array.isArray(r.last_cites) ? r.last_cites.filter((c) => typeof c === "string") : [],
-    lastLocated: last.located, history: last.history, ...(last.jobs.length ? { jobs: last.jobs } : {}), ...(last.seen.length ? { seen: last.seen } : {}), createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
+    lastLocated: last.located, history: last.history, ...(last.jobs.length ? { jobs: last.jobs } : {}), ...(last.seen.length ? { seen: last.seen } : {}), ...(last.plan ? { plan: last.plan } : {}), createdAt: ms(r.created_at), updatedAt: ms(r.updated_at),
   };
 };
 
@@ -228,7 +247,7 @@ export class SupabaseThreadStore implements ThreadStore {
     if (!this.ids(t.userId, t.projectId, t.id)) throw new Error("code chat store: not a thread of a signed-in person");
     const r = ok(await this.sb.from("code_chat_threads").upsert({
       id: t.id, user_id: t.userId, project_id: t.projectId, summary: t.summary.slice(0, 2000), turns: t.turns, last_question: t.lastQuestion.slice(0, 1000),
-      last_cites: t.lastCites, last_located: { located: t.lastLocated, history: t.history.slice(-HISTORY_TURNS), ...(t.jobs?.length ? { jobs: t.jobs.slice(-JOBS_KEPT) } : {}), ...(t.seen?.length ? { seen: t.seen.slice(-SEEN_KEPT) } : {}) }, updated_at: new Date(t.updatedAt).toISOString(),
+      last_cites: t.lastCites, last_located: { located: t.lastLocated, history: t.history.slice(-HISTORY_TURNS), ...(t.jobs?.length ? { jobs: t.jobs.slice(-JOBS_KEPT) } : {}), ...(t.seen?.length ? { seen: t.seen.slice(-SEEN_KEPT) } : {}), ...(t.plan ? { plan: t.plan } : {}) }, updated_at: new Date(t.updatedAt).toISOString(),
     }, { onConflict: "id" }).select("*").single<Row>());
     return threadOf(r!);
   }

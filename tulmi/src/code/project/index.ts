@@ -82,6 +82,7 @@ export function viewOf(row: BrainRow | null, o: { running?: boolean; now?: numbe
     status: dead ? "failed" : row.status, progress: row.progress, headSha: row.headSha, builtAt: row.builtAt, summaries: row.summariesState, welcome: row.welcome,
     structure: publicStructure(row.structure), features: row.features, conventions: row.conventions, baseline: row.baseline, spentPaise: row.spentPaise,
     error: dead ? "The build stopped before it finished. Start it again." : row.error,
+    ...(row.book?.owner ? { owner: row.book.owner } : {}),
   };
 }
 
@@ -568,7 +569,7 @@ export async function openProjectBrain(d: BrainRuntime, userId: string, projectI
       books.delete(id);
       // What it is or where it goes, in the owner's new words: the overview is tuned now, not at the next push (in the background; the book
       // they see at once leads with their words either way).
-      const said = (o: typeof owner) => `${o?.for ?? ""}|${o?.next ?? ""}`;
+      const said = (o: typeof owner) => `${o?.for ?? ""}|${o?.next ?? ""}|${o?.vision ?? ""}`;
       if (owner && said(owner) !== said(b.book?.owner ?? null)) void refreshOverview(d, userId, project).then(() => books.delete(id), () => undefined);
       return handle.book();
     },

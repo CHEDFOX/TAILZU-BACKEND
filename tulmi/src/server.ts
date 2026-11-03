@@ -57,6 +57,7 @@ import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
+import { registerXodeFlowRoutes } from "./routes/bots/botsXode.js";
 import { registerBotsFirstRunRoutes } from "./routes/bots/botsFirstRun.js";
 import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
@@ -441,6 +442,8 @@ const you = registerBotsYouRoutes(app, botsAreaDeps);
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
+// The Xode flow (code/flow, routes/bots/botsXode.ts): read and hear the direction, agree a plan, approve it, judge each message against it.
+registerXodeFlowRoutes(app, botsAreaDeps);
 registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).

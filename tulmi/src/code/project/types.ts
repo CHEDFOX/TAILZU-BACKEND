@@ -321,7 +321,7 @@ export interface BrainRow {
 
 /** What the project book keeps: the owner's words. The rest of the book is read again from the code, GitHub and the checks. */
 export interface BookState {
-  owner?: { for?: string; next?: string; keep?: string; at: number };
+  owner?: { for?: string; next?: string; keep?: string; vision?: string; skipped?: boolean; at: number };
   /** What kind of application it is, what it does, its parts and flows; tuned as the project changes course (overview.ts). */
   overview?: Overview;
 }
@@ -341,4 +341,6 @@ export interface BrainView {
   baseline: Baseline | null;
   spentPaise: number;
   error: string;
+  /** The owner's own words (the book's questions and their vision; code/flow/gate.ts reads whether they gave one), even while it reads. */
+  owner?: { for?: string; next?: string; keep?: string; vision?: string; skipped?: boolean; at: number };
 }
