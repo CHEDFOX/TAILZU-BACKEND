@@ -240,9 +240,17 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
 
     // THE BOTS APP (experience/bots): the switch, a build that draws its kit, and the testers while that list is set.
     const botsApp = botsAppOn({ on: cfg.BOTS_APP, testers: cfg.BOTS_APP_TESTERS, email: user?.email, components: reqBody.capabilities?.components });
+    // The Bots app has no step after sign-in (App Review 4: nothing is asked once they are in): a signed-in account is
+    // onboarded here, and Home opens on its welcome. The write failing costs the same mark next launch, never the boot.
+    const botsIn = botsApp && !!user && !!profile && !profile.onboarded && !isReviewer;
+    if (botsIn && user) {
+      updateProfile(user, { onboarded: true }).catch((e) => {
+        req.log.warn({ err: e }, "[boot] could not mark a Bots app account onboarded after sign-in");
+      });
+    }
     const bootstrap = buildBootstrap({
       botsApp,
-      onboarded: isReviewer || (!newOnboarding && micGranted && keyboardReady) || dictatedBefore || (profile?.onboarded ?? false),
+      onboarded: isReviewer || botsIn || (!newOnboarding && micGranted && keyboardReady) || dictatedBefore || (profile?.onboarded ?? false),
       // Have they ever been inside the app before? A reviewer always has — a
       // fresh account walked into You on every submission otherwise, which is
       // not the screen you want a reviewer to open on.

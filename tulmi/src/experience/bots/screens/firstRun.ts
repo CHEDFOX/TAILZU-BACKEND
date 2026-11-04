@@ -1,5 +1,5 @@
 /**
- * FIRST RUN: WELCOME, SIGN IN, CODE, ABOUT YOU, NAME (Welcome, SignIn, SignCode, NameIt and their D* boards), and the
+ * FIRST RUN: WELCOME, SIGN IN, CODE (Welcome, SignIn, SignCode and their D* boards), and the
  * pages that used to follow them and are now reached from the app: Language (from You), Turn on Keylessbord (from the
  * keyboard card), First words (after the microphone card) and Plans (from You and Billing). One id serves the phone
  * and the window (ctx.client).
@@ -15,20 +15,17 @@
  *   ONE BLIP, THE WHOLE WAY. The root is an OnboardStage, the onboarding's own: each step holds a BlipSpot (where he
  *   stands and in which pose) and the apps draw Blip once, above everything (the phone's BlipHost, the window's
  *   blip.js walker), walking him from spot to spot. He waves on Welcome, listens while the number or the email is
- *   typed, waits for the code and thinks while it is checked. After the code the gate goes and the app fetches
- *   bots.name-it, whose root is a stage too (id "bots.first"): the apps hold Blip and the white ground through the
- *   swap, exactly as they do between the onboarding's two stages, and he walks on to its spot and cheers on "Name".
- *   Reduce Motion is the apps': no walk and no glide, a fade.
+ *   typed, waits for the code and thinks while it is checked. Reduce Motion is the apps': no walk and no glide, a fade.
  *
- *   After the session, bots.name-it is the first screen of someone not onboarded yet (buildBootstrap): "What will you
- *   call me?" (X0 unless they pick their own), which saves the boss bot's name and marks the account onboarded (PUT
- *   /v1/profile { onboarded }, as the onboarding's Done does) and lands on Bots. Nothing about the person is asked in
- *   the run: their name and gender are the About you card's, on Home after a few visits (firstRun/aboutCard.ts).
+ *   After the session, Home and its welcome, with nothing in between (App Review 4: nothing is asked once they are in).
+ *   The boot marks the account onboarded (appScreens.ts). Their name and gender are the About you card's, on Home after
+ *   a few visits (firstRun/aboutCard.ts); the assistant's name is Keylessbord's settings'. bots.name-it is only a
+ *   hand-off to Home now (firstRun/afterSignIn.ts).
  *
  * As screens of their own (bots.welcome, bots.sign-in, bots.sign-code) the three sign-in steps are the same layout
  * drawn with the kit only, each on a stage of its own so Blip walks on from one to the next; someone who reaches them is
  * already signed in, so Google and Apple lead to the gate (sign out), and Send code and Continue walk on through the
- * Code page to Name without sending anything. A build without the stage gets each step as a page.
+ * Code page to Home without sending anything. A build without the stage gets each step as a page.
  *
  * AFTER ONBOARDING, two cards on Bots (and on Keylessbord) ask for what Keylessbord still lacks: the keyboard with Full Access
  * (opens the keyboard's settings) and the microphone (asks for it, then opens First words). Each is drawn from what
@@ -51,7 +48,7 @@ import { firstWords } from "./firstRun/firstWords.js";
 import { keyOnDesk, keyOnPhone } from "./firstRun/keyStep.js";
 import { type Langs, language } from "./firstRun/language.js";
 import {
-  CLAY, W, go, setState, type Figure, link, type DeskOpts, STEPS, deskFig, deskFoot, chevron, phoneHeading, deskHeading, deskBack, back,
+  CLAY, W, go, setState, type Figure, link, type DeskOpts, deskFig, deskFoot, chevron, phoneHeading, deskHeading, deskBack, back,
   gateStep, deskBody, phoneStepBody, type Words,
 } from "./firstRun/parts.js";
 import { type Plans, plansScreen } from "./firstRun/plansScreen.js";
@@ -250,7 +247,7 @@ function welcomeDesk(start: ActionRef, fig: Figure): DeskOpts {
   const list: Node[] = [];
   rows.forEach((r, i) => { if (i) list.push(divider()); list.push(r); });
   return {
-    title: "Welcome", right: meta(`${STEPS.length} short steps`, { size: 13 }), current: -1,
+    title: "Welcome", right: meta("About a minute", { size: 13 }),
     left: [
       deskFig(fig, "wave", 172),
       col([title(W.welcomeH, { lineHeight: 31 }), text(W.welcomeP, { size: 15, lineHeight: 22, color: C.grey70, style: { maxWidth: 400 } })], { gap: 6 }),
@@ -303,7 +300,7 @@ function signInDesk(mode: Mode, o: BotsAuthOpts, backTo: ActionRef, fig: Figure)
   ];
   const card = { borderRadius: 18, borderWidth: 1, borderColor: C.line };
   return {
-    title: "Sign in", right: meta("About a minute", { size: 13 }), current: 0,
+    title: "Sign in", right: meta("About a minute", { size: 13 }),
     left: [
       deskFig(fig, "listen", 140),
       ...byMethod(deskHeading("Sign in", W.phoneH, W.phoneP), deskHeading("Sign in", W.emailH, W.emailP)),
@@ -396,13 +393,13 @@ function codePhone(mode: Mode, fig: Figure): { body: Node[]; footer: Node[] } {
       })] : []),
     ],
     // The code is checked the moment it is complete, so the gate has nothing to press.
-    footer: mode === "page" ? [primaryButton("Continue", go(SCREENS.nameIt), { wide: true })] : [],
+    footer: mode === "page" ? [primaryButton("Continue", { kind: "switchTab", tabId: "bots" }, { wide: true })] : [],
   };
 }
 
 function codeDesk(mode: Mode, fig: Figure): DeskOpts {
   return {
-    title: "Enter the code", right: meta("About a minute", { size: 13 }), current: 0,
+    title: "Enter the code", right: meta("About a minute", { size: 13 }),
     left: [
       box([codeFigure(mode, fig, 140)], { alignSelf: "flex-start", marginLeft: -10 }),
       deskHeading("Sign in", W.codeH, "Type the 6-digit code we sent you."),
@@ -413,7 +410,7 @@ function codeDesk(mode: Mode, fig: Figure): DeskOpts {
     main: [col([
       col([text("Type the code", { size: 16, weight: 600, lineHeight: 21 }), meta("It comes by SMS or email, from X0 Bot.", { size: 13 })], { gap: 3 }),
       codeEntry(mode, true),
-      ...(mode === "page" ? [primaryButton("Continue", go(SCREENS.nameIt), { wide: true })] : []),
+      ...(mode === "page" ? [primaryButton("Continue", { kind: "switchTab", tabId: "bots" }, { wide: true })] : []),
     ], { padding: 20, gap: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line })],
     ...(mode === "page" ? { foot: deskFoot(deskBack(), [link("Wrong number?", back, { size: 14 })]) } : {}),
   };
@@ -425,7 +422,7 @@ function codeDesk(mode: Mode, fig: Figure): DeskOpts {
  * Welcome, Sign in and Code for the bootstrap's `auth.screen`, with the Bots app on (catalog.buildBootstrap).
  * All actions are inline: the gate has no action table. Its state: `signing` (Welcome → Sign in) and `method`
  * (phone or email). The flow's phase shows Code (phaseStep), and "Change it" there returns to Sign in. Each step has
- * Blip's spot: he waves, listens, waits and thinks, and walks on into bots.name-it's stage after the code.
+ * Blip's spot: he waves, listens, waits and thinks. After the code, Home.
  */
 export function botsAuthTree(o: BotsAuthOpts): Record<string, unknown> {
   const desktop = o.desktop === true;
@@ -454,10 +451,6 @@ export function botsAuthTree(o: BotsAuthOpts): Record<string, unknown> {
   }
   return stageNode("bots.auth", 0, [entry, code], { phaseStep: { verify: 1, verifying: 1 } }) as unknown as Record<string, unknown>;
 }
-
-/** The first screen after sign-in for someone not onboarded yet, and every id of the run (the app parks a keyboard tap until they are past). */
-export const BOTS_FIRST_RUN_SCREEN = SCREENS.nameIt;
-export const BOTS_FIRST_RUN_IDS: string[] = [SCREENS.nameIt];
 
 // ===================================================================== the pages: Welcome, Sign in, Code
 

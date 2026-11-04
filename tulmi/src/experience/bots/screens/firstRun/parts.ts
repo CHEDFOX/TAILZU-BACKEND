@@ -6,14 +6,11 @@ import {
   type Node, type ActionSpec, type ActionRef, type ScreenResponse, SDUI_SCHEMA_VERSION, type Condition,
 } from "../../../../../../shared/types/sdui.js";
 import {
-  PALETTE_HEX, labelled, box, icon, row, C, text, type BlipPose, blip, meta, grow, col, statusMark, type BotsCtx, BOTS_THEME, SCREENS,
+  PALETTE_HEX, labelled, box, icon, row, C, text, type BlipPose, blip, meta, grow, col, type BotsCtx, BOTS_THEME, SCREENS,
   tailzuMark, title, FACE, when, primaryButton,
 } from "../../kit.js";
 
 export const CLAY = PALETTE_HEX.clay!;
-/** The window's setup steps. */
-export const STEPS = ["Sign in", "Start"];
-
 export type Style = Record<string, unknown>;
 
 // ===================================================================== words
@@ -38,8 +35,6 @@ export const W = {
   restore: "Restore Purchases",
   restoreDone: "Restore finished. If a plan was bought with this Apple ID or Google account, it's active again.",
   restoreErr: "Couldn't restore just now. Try again in a moment.",
-  readyH: "You're all set",
-  readyP: "Your bots are ready. Talk or type to any of them, any time.",
   keyH: "Turn on Keylessbord",
   keyP: "Speak instead of type, in every app",
   wordsH: "Now just talk",
@@ -84,42 +79,9 @@ export const link = (label: string, onPress: ActionRef, o: { size?: number; colo
 /** Blip's whole body, set against the left edge as the window's boards place him. */
 export const deskBlip = (pose: BlipPose, h: number): Node => box([blip(pose, h)], { alignSelf: "flex-start", marginLeft: -10 });
 
-// ===================================================================== progress
-
-/** The phone's setup bar: a segment a step after sign-in, filled to the step. */
-function phoneProgress(step: number, of: number): Node {
-  return labelled(row(Array.from({ length: of }, (_, i) => box([], {
-    flexGrow: 1, flexBasis: 0, height: 4, borderRadius: 2, backgroundColor: i < step ? C.ink : C.track,
-  })), { width: 24 * of + 4 * (of - 1), gap: 4, flexShrink: 0 }), `Setup step ${step} of ${of}`);
-}
-
-/** The phone's top line: back (or nothing), the bar, and "N of M". */
-export function phoneTop(step: number, of: number, o: { back?: ActionRef | null } = {}): Node {
-  return row([
-    box(o.back ? [chevron(o.back)] : [], { flexGrow: 1, flexBasis: 0, alignItems: "flex-start", minHeight: 44, justifyContent: "center" }),
-    phoneProgress(step, of),
-    box([meta(`${step} of ${of}`, { size: 12 })], { flexGrow: 1, flexBasis: 0, alignItems: "flex-end" }),
-  ], { minHeight: 44 });
-}
-
 /** A pushed page's top line on the phone: back, and something on the right. */
 export function phoneBackLine(right?: Node, backTo: ActionRef = back): Node {
   return row([chevron(backTo), grow(), ...(right ? [right] : [])], { minHeight: 44 });
-}
-
-/** The window's steps: a bar each, the name under it; done ones with a ring, the one in hand with the ink dot. */
-function deskSteps(current: number): Node {
-  return row(STEPS.map((s, i) => {
-    const done = current >= 0 && i < current;
-    const now = i === current;
-    return col([
-      box([], { height: 4, borderRadius: 2, backgroundColor: done || now ? C.ink : C.track }),
-      row([
-        ...(done ? [statusMark("done")] : now ? [statusMark("needs")] : []),
-        text(s, { size: 12.5, weight: now ? 600 : 400, color: now ? C.ink : done ? C.grey70 : C.meta, lineHeight: 16, lines: 1 }),
-      ], { gap: 7 }),
-    ], { flexGrow: 1, flexBasis: 0, minWidth: 0, gap: 8 });
-  }), { gap: 8, width: "100%", maxWidth: 1080, alignSelf: "center", alignItems: "flex-start" });
 }
 
 // ===================================================================== frames
@@ -161,10 +123,8 @@ export function phoneFrame(ctx: BotsCtx, o: PhoneOpts): ScreenResponse {
 
 export interface DeskOpts {
   title: string;
-  /** Top right: "About 2 minutes", "Signed in as …", Not now. */
+  /** Top right: "About a minute", "Signed in as …", Not now. */
   right?: Node | null;
-  /** The step in hand (STEPS), -1 for none yet, null for no steps row. */
-  current: number | null;
   left: Node[];
   main: Node[];
   foot?: Node;
@@ -184,7 +144,6 @@ function deskHeader(right: Node | null): Node {
 export function deskBody(o: DeskOpts): Node[] {
   return [
     deskHeader(o.right ?? null),
-    ...(o.current !== null ? [deskSteps(o.current)] : []),
     row([
       // Bases as lengths: the window reads a bare number in a flex property as a ratio.
       col(o.left, { flexGrow: 1, flexShrink: 1, flexBasis: "300px", minWidth: 0, gap: 16 }),

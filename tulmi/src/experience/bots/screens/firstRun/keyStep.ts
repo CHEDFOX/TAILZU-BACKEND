@@ -128,7 +128,7 @@ export function keyOnDesk(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
       }], { paddingHorizontal: 4, paddingBottom: 4 })
     : permRow("computer", "Accessibility", "If your Mac asks, allow X0 Bot in Privacy & Security › Accessibility, so Keylessbord can type where your cursor is.", null);
   return deskFrame(ctx, {
-    title: W.keyH, current: null,
+    title: W.keyH,
     right: link("Not now", leave(ctx), { size: 14, color: C.grey70 }),
     left: [
       deskBlip("needs", 140),

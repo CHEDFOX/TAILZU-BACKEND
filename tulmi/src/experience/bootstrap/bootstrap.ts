@@ -9,7 +9,7 @@ import { withAppKnobs } from "../appKnobs.js";
 import { desktopLists } from "../appLists.js";
 import { botsNav, botsFonts, BOTS_WARM_SCREEN_IDS } from "../bots/index.js";
 import { looksFlags } from "../bots/looks.js";
-import { BOTS_FIRST_RUN_SCREEN, botsAuthTree, BOTS_FIRST_RUN_IDS } from "../bots/screens/firstRun.js";
+import { botsAuthTree } from "../bots/screens/firstRun.js";
 import { BOTS_OFFLINE_FLAGS } from "../bots/screens/outbox.js";
 import { soundsFlags } from "../bots/sounds.js";
 import { CACHE_VERSION } from "../cacheVersion.js";
@@ -240,10 +240,10 @@ export function buildBootstrap(
     //
     // A window that is not onboarded yet starts the new flow first, with the
     // desk behind it; onboarded, it opens on Today as ever.
-    // The Bots app's own first run (Languages, Name, Keylessbord, First words, Plans) for someone not onboarded yet.
-    // The Bots app never opens on the old app's screens (the intro film, the microphone and keyboard steps, onboarding v2):
-    // it has its own first run, and Keylessbord's own screen sets up the microphone and the keyboard. Once through, Home.
-    initialScreenId: botsApp ? (!opts.onboarded && opts.isReviewer !== true ? BOTS_FIRST_RUN_SCREEN : landingScreenId(nav, "home"))
+    // The Bots app opens Home, signed in: nothing comes between sign-in and Home's welcome (App Review 4), and the account
+    // is marked onboarded at boot (appScreens.ts). It never opens on the old app's screens (the intro film, the microphone and
+    // keyboard steps, onboarding v2): Keylessbord's own screen sets up the microphone and the keyboard.
+    initialScreenId: botsApp ? landingScreenId(nav, "home")
       : desk && !(onboardV2 && !opts.onboarded) ? "desk_today" : landingScreenId(nav, pickInitialScreenId(
       !!opts.onboarded,
       // Uploaded media OR the built-in mark. The intro used to require a file,
@@ -610,8 +610,8 @@ export function buildBootstrap(
         // steps. (Also the default in appKnobsData.ts; set here so a knob
         // sync that forgets it cannot let a tap past the new flow.)
         if (newFlow) flags["boot.firstRunGateIds"] = ["onboarding", "onboarding_keyboard", "onboard"];
-        // The Bots app's first run (Name) holds a keyboard tap the same way.
-        if (botsApp) flags["boot.firstRunGateIds"] = [...(newFlow ? ["onboarding", "onboarding_keyboard", "onboard"] : ["onboarding", "onboarding_keyboard"]), ...BOTS_FIRST_RUN_IDS];
+        // The Bots app has no first-run screen after sign-in to hold a keyboard tap on.
+        if (botsApp) flags["boot.firstRunGateIds"] = newFlow ? ["onboarding", "onboarding_keyboard", "onboard"] : ["onboarding", "onboarding_keyboard"];
         // The Bots app never lays the native name and gender card over a screen: its own About you card asks it, on Home,
         // after a few visits (screens/firstRun/aboutCard.ts), never in the first run.
         if (botsApp) flags["profileGate.screenIds"] = [];

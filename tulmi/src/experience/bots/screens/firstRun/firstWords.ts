@@ -112,7 +112,7 @@ export function firstWords(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
 
   if (desk) {
     return deskFrame(ctx, {
-      title: W.wordsH, right: signedInAs(ctx), current: null, state,
+      title: W.wordsH, right: signedInAs(ctx), state,
       left: [
         deskBlip("listen", 140),
         deskHeading("Keylessbord", W.wordsH, "Hold your key and say anything, in any mix."),

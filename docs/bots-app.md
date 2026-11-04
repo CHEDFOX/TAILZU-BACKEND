@@ -30,10 +30,11 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
   `bots.home` (after the Bots app's own first run, below), adds the Geist fonts, flag `bots.app: true`, and warms the three tabs. The
   screen route answers every `bots.*` id, and `home` (where every "go to the app" in today's flows points) becomes `bots.home`.
 * **The first run** (screens/firstRun.ts): Welcome → Sign in → Code in the sign-in gate (`auth.screen` = `botsAuthTree()`), then
-  `bots.name-it` (About you: the name and gender card's own question and write, `PUT /v1/profile { full_name, gender }`, started from
-  the sign-in's name; then Name your Tailzu, which marks the account onboarded) → Bots. Both are OnboardStages with a `BlipSpot` per
-  step, so the apps draw **one Blip** walking across all of them, through the gate's swap (the phone's BlipHost, the window's
-  blip.js walker), as the old onboarding does. Language, Turn on Keybot, First words and Plans are pages reached from the app.
+  straight to Home and its welcome: nothing is asked once they are in (App Review 4). The boot marks a signed-in account onboarded
+  (routes/app/appScreens.ts). The gate is an OnboardStage with a `BlipSpot` per step, so the apps draw **one Blip** walking across it
+  (the phone's BlipHost, the window's blip.js walker). `bots.name-it` is only a hand-off to Home now, for an app that still opens it.
+  The name and gender are the About you card's, on Home after a few visits (firstRun/aboutCard.ts). Language, Turn on Keybot, First
+  words and Plans are pages reached from the app.
   After it, the first time they land on Bots, **one card** comes up over a blurred Home (`arrivalCard`, firstRun.ts): the
   microphone (asked for real), then on the same card the keyboard (straight to its settings); allowed or refused, the mic moves it
   on; with both on, the bot's small happy moment and it closes. "Not now" closes it for good. It is due until answered
@@ -311,10 +312,8 @@ what to do"), clears the field and says "Kept. It will send when you're back."; 
 * **Do not edit** without the kit owner: `kit.ts` (additive only, see section 5), `live.ts`, `deps.ts`, `registry.ts`, `index.ts`,
   `ids.ts`, `glyphs.ts`, `palette.ts`, `server.ts`, `experience/screens.ts`, `experience/bootstrap/`, `shared/types/sdui.ts`, the phone and window renderers.
   **Never touch `tulmi/e2e`.**
-* Known gaps: a job's spend counts on the day it was last worked on, whole (a job that runs across two stretches counts in the later);
-  the name-and-gender card is asked in the first run (About you), so `profileGate.screenIds` is empty in the Bots app; someone onboarded
-  before that, with no gender, is asked by `bots.name-it` itself (the bootstrap's `promptScreenId`, over Home after a pause), which for an
-  onboarded account is About you alone and closes once saved.
+* Known gaps: a job's spend counts on the day it was last worked on, whole (a job that runs across two stretches counts in the later).
+  `profileGate.screenIds` is empty in the Bots app: the name and gender are asked only by the About you card on Home.
 
 ## 10. Live updates
 

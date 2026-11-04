@@ -38,7 +38,7 @@ export function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenRespon
   const doneHeading = (h: string, sub: string): Node[] => desk ? [deskBlip("done", 140), deskHeading("Plans", h, sub)] : [phoneBackLine(), phoneHeading(h, sub, 6)];
   // Nothing to choose: free for everyone, already paying, or the plans could not be read. Say so, and go in.
   const simple = (h: string, sub: string, cta: string): ScreenResponse => desk
-    ? deskFrame(ctx, { title: W.plansH, right: signedInAs(ctx), current: null, left: doneHeading(h, sub), main: [], foot: deskFoot(deskBack(), [button(cta, done, { size: "lg" })]) })
+    ? deskFrame(ctx, { title: W.plansH, right: signedInAs(ctx), left: doneHeading(h, sub), main: [], foot: deskFoot(deskBack(), [button(cta, done, { size: "lg" })]) })
     : phoneFrame(ctx, { title: W.plansH, body: [...doneHeading(h, sub), row([blip("done", 160)], { justifyContent: "center", paddingTop: 20 })], footer: [primaryButton(cta, done, { wide: true })] });
   if (!data) return simple("Plans", "Plans couldn't load just now. Try again in a moment.", "Done");
   if (data.freeForAll) return simple("Plans", "X0 Bot is free for everyone right now. Nothing to pick, nothing to pay.", "Done");
@@ -113,7 +113,7 @@ export function plansScreen(ctx: BotsCtx, data: Plans | undefined): ScreenRespon
 
   if (desk) {
     return deskFrame(ctx, {
-      title: W.plansH, right: signedInAs(ctx), current: null, state,
+      title: W.plansH, right: signedInAs(ctx), state,
       left: [...doneHeading(W.plansH, sub), ...(trials.length ? [box(trials, { maxWidth: 400 })] : []), meta(fine, { size: 12, style: { maxWidth: 400 } }), legal],
       main: [col(cards, { gap: 12 })],
       foot: deskFoot(deskBack(), [stay, ...ctas]),

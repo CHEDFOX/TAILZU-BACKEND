@@ -81,9 +81,9 @@ describe("the bootstrap", () => {
     expect(on.flags?.["desktop.desk"]).toBe(true);
     expect(on.flags?.["desktop.desk.settingsScreenId"]).toBe("desk_settings");
   });
-  it("on, for someone the new onboarding has not finished: the onboarding first (the Bots app's own: Name)", () => {
+  it("on, for someone not onboarded yet: Home, with nothing between sign-in and it (App Review 4)", () => {
     const on = buildBootstrap({ onboarded: false, botsApp: true, onboardV2: true, launchCount: 1 });
-    expect(on.initialScreenId).toBe("bots.name-it");
+    expect(on.initialScreenId).toBe("bots.home");
     // The name and gender are the About you card's, on Home after a few visits: never the native card, never a prompt.
     expect(on.flags?.["profileGate.screenIds"]).toEqual([]);
     for (const o of [{ onboarded: true }, { onboarded: true, profileComplete: true }, { onboarded: true, isReviewer: true }]) {

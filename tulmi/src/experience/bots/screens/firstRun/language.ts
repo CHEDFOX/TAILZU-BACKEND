@@ -52,7 +52,7 @@ export function language(ctx: BotsCtx, data: Langs | undefined): ScreenResponse 
 
   if (desk) {
     return deskFrame(ctx, {
-      title: "Your languages", right: signedInAs(ctx), current: null, state,
+      title: "Your languages", right: signedInAs(ctx), state,
       left: [
         deskBlip("hello", 150),
         deskHeading("Language", W.langH, W.langP),

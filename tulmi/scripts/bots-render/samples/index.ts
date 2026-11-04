@@ -63,7 +63,7 @@ export const SAMPLES: Sample[] = [
   { id: S.today, area: "shell", deskBoard: "DeskToday" },
   { id: S.notes, area: "shell", deskBoard: "DeskNotes" },
   { id: S.note, area: "shell", deskBoard: "DeskNote", params: { id: "n1" } },
-  // screens/firstRun.ts: the first run, Welcome to Name (About you, then Name, are the two steps of bots.name-it)...
+  // screens/firstRun.ts: the first run, Welcome to Code (bots.name-it is only a blank hand-off to Home now)...
   { id: S.welcome, area: "firstrun", board: "Welcome", deskBoard: "DWelcome" },
   { id: S.signIn, area: "firstrun", board: "SignIn", deskBoard: "DSignIn" },
   { id: S.signCode, area: "firstrun", board: "SignCode", deskBoard: "DSignCode" },

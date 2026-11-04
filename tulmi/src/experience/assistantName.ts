@@ -3,8 +3,8 @@
  *
  * X0 is its name for everyone, always (the product is X0 Bot; X0 for short).
  * Beside it a person may give it a second name of their own ("Zara", "Jarvis",
- * "Munna"), asked for in onboarding ("What will you call me?") and changed in
- * Settings, and call it either while they talk ("Zara, make it formal"). Both reach the
+ * "Munna"), set in Keylessbord's settings (What you call it), never asked for
+ * in the first run, and call it either while they talk ("Zara, make it formal"). Both reach the
  * writer as the names it answers to, so speech addressed to it by either is an
  * instruction and never part of the message; and both reach the recognizer,
  * so an unusual name is heard as the name rather than as a near word.

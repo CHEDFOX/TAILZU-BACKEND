@@ -1,10 +1,9 @@
 /**
- * The first run's afterSignIn screen.
+ * The first run's stage (OnboardStage, BlipSpot) and bots.name-it, which is now only a hand-off to Home.
  */
 
-import type { Node, ScreenResponse } from "../../../../../../shared/types/sdui.js";
-import { type BlipPose, blip, type BotsCtx, C, when, col } from "../../kit.js";
-import { readyStep } from "./readyStep.js";
+import type { ActionSpec, Node, ScreenResponse } from "../../../../../../shared/types/sdui.js";
+import { type BlipPose, blip, type BotsCtx, C, call, when, col } from "../../kit.js";
 import { type Pose, type Figure, respond } from "./parts.js";
 
 /** The same pose as the kit's picture of him, for a build that draws no stage. */
@@ -33,8 +32,8 @@ const STAGE_LOOK = {
   bubble: { background: C.paper, border: C.ink, ink: C.ink, font: "Tailzu Hand", size: 17, bigSize: 19 },
   glide: { slide: 18, outMs: 200, inMs: 260, inDelayMs: 40 },
 };
-/** The run's steps, for the stages' `first` / `of`: Welcome and Sign in, Code, Name. */
-const RUN_STEPS = 3;
+/** The run's steps, for the stages' `first` / `of`: Welcome and Sign in, then Code. Home comes straight after. */
+const RUN_STEPS = 2;
 
 /** An OnboardStage in the run's look: one Blip walks from spot to spot across it, and on into the next stage. */
 export function stageNode(id: string, first: number, steps: Node[], extra: Record<string, unknown> = {}): Node {
@@ -60,17 +59,19 @@ export function stageScreen(ctx: BotsCtx, o: { title: string; id: string; first:
   }, state);
 }
 
-// ===================================================================== the stage after sign-in
+// ===================================================================== after sign-in
+
+/** Onboarded, as the onboarding's Done marks it, and on to Home. */
+const toHome = (): ActionSpec => call("PUT", "/v1/profile", { onboarded: true }, {
+  ok: { kind: "switchTab", tabId: "bots" },
+  fail: { kind: "switchTab", tabId: "bots" },
+});
 
 /**
- * bots.name-it: the last step, on the stage Blip walks on to from the gate's (id "bots.first"): they are in, and Start.
- * Nothing is typed or asked here (readyStep.ts); the id stays so the apps that open it need no change.
+ * bots.name-it: nothing. Sign-in leads straight to Home (App Review 4: nothing is asked once they are in), and the boot
+ * marks the account onboarded (appScreens.ts). The id stays only for an app that still opens it: a blank page that marks
+ * them onboarded and goes to Home at once.
  */
 export function afterSignIn(ctx: BotsCtx): ScreenResponse {
-  const fig = figureFor(ctx);
-  return stageScreen(ctx, {
-    title: "Start", id: "bots.first", first: 2,
-    steps: [readyStep(ctx, fig)],
-    state: { step: 0 },
-  });
+  return respond(ctx, "X0 Bot", { ...col([], { flexGrow: 1, backgroundColor: C.paper }), on: { onAppear: toHome() } });
 }

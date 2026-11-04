@@ -22,7 +22,7 @@ const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.j
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
-const { botsAuthTree, BOTS_FIRST_RUN_IDS } = await import("../src/experience/bots/screens/firstRun.js");
+const { botsAuthTree } = await import("../src/experience/bots/screens/firstRun.js");
 const { nameFromEmail, planLine, signedInVia, spokenSince, startingName, trialDaysOf } = await import("../src/routes/bots/botsFirstRun.js");
 
 const LANGS = { options: [{ value: "hinglish", label: "Hinglish" }, { value: "hi", label: "Hindi" }, { value: "en", label: "English" }, { value: "ta", label: "Tamil" }], picked: ["ta", "en"] };
@@ -87,40 +87,22 @@ describe("the first run's screens", () => {
   });
 });
 
-describe("The last step after sign-in: nothing to type, only Start", () => {
+describe("after sign-in: straight to Home, nothing asked (App Review 4)", () => {
   const profileWrite = (x: ActionSpec) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/profile";
-  const fields = (n: unknown): number => JSON.stringify(n).split('"type":"TextField"').length - 1;
-  it("asks nothing at all: no field, no name, no gender (App Review 4: a Name field here was read as asking theirs)", async () => {
+  it("bots.name-it is only a hand-off: no words, no field, and on appearing it marks them onboarded and goes to Home", async () => {
     for (const client of ["phone", "desktop"] as const) {
-      const s = await build("bots.name-it", client);
-      const t = texts(s.root!);
-      expect(t, client).toContain("You're all set");
-      for (const gone of ["What will you call me?", "What's your name?", "That's my name", "Name", "Your name", "Male"]) expect(t, client).not.toContain(gone);
-      expect(fields(s.root), client).toBe(0);
-    }
-  });
-  it("Start finishes onboarding and goes on to Bots; that is the only write", async () => {
-    for (const client of ["phone", "desktop"] as const) {
-      const s = await build("bots.name-it", client);
-      const writes = actions(s.root).filter(profileWrite);
-      expect(new Set(writes.map((x) => JSON.stringify((x as { body?: unknown }).body))), client).toEqual(new Set(['{"onboarded":true}']));
-      expect(actions(writes[0]!.onSuccess as never)).toEqual(expect.arrayContaining([{ kind: "switchTab", tabId: "bots" }]));
-      expect(actions(s.root).some((x) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/personality"), client).toBe(false);
-      expect(actions(s.root).some((x) => x.kind === "navigate"), client).toBe(false);
-    }
-  });
-  it("draws with nothing read", async () => {
-    const blank = await build("bots.name-it", "phone", { api: {} });
-    expect(blank.state).toMatchObject({ step: 0 });
-    expect(lintTree(blank.root!)).toEqual([]);
-  });
-  it("on a build that draws the stage: one stage, Blip cheering", async () => {
-    for (const client of ["phone", "desktop"] as const) {
-      const s = await build("bots.name-it", client, { can: STAGE });
-      expect(s.root).toMatchObject({ type: "OnboardStage", bind: { step: "step" }, props: { id: "bots.first", first: 2, of: 3, ground: "#ffffff" } });
-      expect(s.root!.children?.map((c) => c.props?.stepId)).toEqual(["ready"]);
-      expect(poses(s.root!)).toEqual(["tada"]);
-      expect(lintStaged(s.root!), client).toEqual([]);
+      for (const can of [undefined, STAGE]) {
+        const s = await build("bots.name-it", client, can ? { can } : {});
+        expect(texts(s.root!), client).toEqual([]);
+        expect(JSON.stringify(s.root), client).not.toContain('"type":"TextField"');
+        const appear = (s.root as { on?: { onAppear?: ActionSpec } }).on?.onAppear;
+        expect(appear && profileWrite(appear), client).toBe(true);
+        expect((appear as { body?: unknown }).body).toEqual({ onboarded: true });
+        // Home either way: a failed write is made again by the next boot (appScreens.ts).
+        for (const then of [appear!.onSuccess, appear!.onError]) expect(actions(then as never)).toEqual([{ kind: "switchTab", tabId: "bots" }]);
+        expect(actions(s.root).some((x) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/personality"), client).toBe(false);
+        expect(lintTree(s.root!)).toEqual([]);
+      }
     }
   });
 });
@@ -319,7 +301,7 @@ describe("the gate: Welcome, Sign in, Code on the sign-in the app already runs",
     for (const desktop of [false, true]) {
       const t = botsAuthTree({ ...opts, desktop }) as unknown as Node;
       expect(t.type).toBe("OnboardStage");
-      expect(t.props).toMatchObject({ id: "bots.auth", first: 0, of: 3, phaseStep: { verify: 1, verifying: 1 }, ground: "#ffffff", blip: { dot: "#F3E2C6" } });
+      expect(t.props).toMatchObject({ id: "bots.auth", first: 0, of: 2, phaseStep: { verify: 1, verifying: 1 }, ground: "#ffffff", blip: { dot: "#F3E2C6" } });
       // One Blip, walked from spot to spot by the app; the gate's Sign in step and the screen after sign-in share the look.
       // (The phone's Sign in has one spot by each way in, phone or email; one shows.)
       expect(poses(t)).toEqual(desktop ? ["wave", "listen", "wait", "think"] : ["wave", "listen", "listen", "wait", "think"]);
@@ -343,15 +325,16 @@ describe("the gate: Welcome, Sign in, Code on the sign-in the app already runs",
     const bridged = botsAuthTree({ ...opts, googleHidden: true, googleLink: "https://x.supabase.co/auth/v1/authorize?provider=google" }) as unknown as Node;
     expect(actions(bridged)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "openUrl", url: "https://x.supabase.co/auth/v1/authorize?provider=google" })]));
   });
-  it("the bootstrap: the Bots app's sign-in and first run when it is on, today's when it is off", () => {
+  it("the bootstrap: the Bots app's sign-in, then Home, when it is on; today's when it is off", () => {
     const on = buildBootstrap({ botsApp: true, onboarded: false, onboardV2: true });
     expect((on.flags?.["auth.screen"] as { props?: { id?: string } }).props?.id).toBe("bots.auth");
     expect(on.flags?.["auth.sdui"]).toBe(true);
-    expect(on.initialScreenId).toBe("bots.name-it");
-    expect(BOTS_FIRST_RUN_IDS).toEqual(["bots.name-it"]);
-    expect(on.flags?.["boot.firstRunGateIds"]).toEqual(expect.arrayContaining(BOTS_FIRST_RUN_IDS));
-    expect(buildBootstrap({ botsApp: true, onboarded: true }).initialScreenId).toBe("bots.home");
-    expect(buildBootstrap({ botsApp: true, onboarded: false, isReviewer: true }).initialScreenId).not.toBe("bots.name-it");
+    // Nothing between sign-in and Home, onboarded or not, reviewer or not.
+    for (const o of [{ onboarded: false }, { onboarded: true }, { onboarded: false, isReviewer: true }]) {
+      const b = buildBootstrap({ botsApp: true, onboardV2: true, ...o });
+      expect(b.initialScreenId).toBe("bots.home");
+      expect(b.flags?.["boot.firstRunGateIds"]).not.toContain("bots.name-it");
+    }
     const off = buildBootstrap({ onboarded: false, onboardV2: true });
     expect((off.flags?.["auth.screen"] as { props?: { id?: string } }).props?.id).not.toBe("bots.auth");
     expect(off.initialScreenId).toBe("onboard");
@@ -370,8 +353,12 @@ describe("the sign-in steps as pages", () => {
         expect(walk(plain.root!).some((n) => n.type === "BlipSpot" || n.type === "OnboardStage")).toBe(false);
       }
     }
-    // Code's Continue leads on to About you.
-    expect(actions((await build("bots.sign-code", "phone")).root)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "navigate", screenId: "bots.name-it" })]));
+    // Code's Continue leads on to Home.
+    for (const client of ["phone", "desktop"] as const) {
+      const all = actions((await build("bots.sign-code", client)).root);
+      expect(all, client).toEqual(expect.arrayContaining([{ kind: "switchTab", tabId: "bots" }]));
+      expect(all.some((x) => x.kind === "navigate" && (x as { screenId?: string }).screenId === "bots.name-it"), client).toBe(false);
+    }
   });
 });
 
