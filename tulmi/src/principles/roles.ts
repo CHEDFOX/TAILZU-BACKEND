@@ -297,11 +297,11 @@ const ROLE_TABLE = {
     contract: '{"gaps":["short phrase"],"queries":["web search"]}; up to 3 gaps and 2 queries that would fill them, both [] when the draft is complete.',
   },
   search_plan: {
-    identity: "You turn a developer's question into a plan for searching the web.",
+    identity: "You turn a question, often a developer's, into a plan for searching the web.",
     principles: ["core.unsure", "safe.data", "out.json"],
     contract: '{"intent":package_lookup|api_docs|error_fix|how_to|compare_libs|version_news|general,"queries":["short search"],"sources":["id"],"site":["official docs host"],"freshness":any|year|month,"confidence":0..1}\n'
       + "1 to 3 queries; an error message goes in quotes, without paths or numbers. sources, any of: npm, pypi, crates (packages); github (issues, repos); stackoverflow (questions); "
-      + "mdn (web platform); hn (opinions, comparisons); wikipedia (concepts). site: optional, up to 3. freshness other than any only when recency matters.",
+      + "mdn (web platform); hn (opinions, comparisons); wikipedia (concepts). Not about software: general, sources only wikipedia. site: optional, up to 3. freshness other than any only when recency matters.",
   },
 
   // ------------------------------------------------------------------ artifacts (artifacts)

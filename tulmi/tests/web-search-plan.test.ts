@@ -25,7 +25,7 @@ process.env.GROQ_API_KEY = "k";
 process.env.DEV_SKIP_AUTH = "true";
 process.env.NODE_ENV = "test";
 
-const { cleanErrorLine, cleanQuestion, findIdentifiers, planByRules, planSearch, scrubQuery, PLAN_CONFIDENCE_MIN } = await import("../src/web/search/plan.js");
+const { aboutSoftware, cleanErrorLine, cleanQuestion, findIdentifiers, planByRules, planSearch, scrubQuery, PLAN_CONFIDENCE_MIN } = await import("../src/web/search/plan.js");
 const { stableBlock } = await import("../src/principles/index.js");
 const { CONTENT_FARMS, DOCS, docsFor, docsMatch, findDocsInText, isContentFarm, isIndexableHost, nameOf } = await import("../src/web/search/catalog.js");
 type AskFn = import("../src/web/search/types.js").AskFn;
@@ -80,7 +80,7 @@ const CASES: Case[] = [
   { q: "zod vs yup", intent: "compare_libs", first: ["zod vs yup"], sources: ["hn", "github"], freshness: "year" },
   { q: "Prisma versus Drizzle for a small app", intent: "compare_libs", first: ["Prisma vs Drizzle"] },
   { q: "best library for pdf generation in node", intent: "compare_libs", first: ["pdf generation in node"], freshness: "year" },
-  { q: "alternatives to moment", intent: "compare_libs", first: ["moment alternatives"] },
+  { q: "alternatives to moment.js", intent: "compare_libs", first: ["moment.js alternatives"] },
   // version_news
   { q: "what's the latest version of next.js", intent: "version_news", site: "nextjs.org/docs", freshness: "month", sources: ["github", "hn"] },
   { q: "release notes for vite v6", intent: "version_news", site: "vite.dev" },
@@ -130,6 +130,44 @@ describe("the rules", () => {
       expect(p.sources.length).toBeGreaterThan(0);
     }
     expect(planByRules("").queries.length).toBe(1);
+  });
+});
+
+describe("everyday questions (the everyday bots search with the same planner)", () => {
+  const EVERYDAY = ["Delhi metro timings", "latest news on ISRO", "IPL score today", "how to make biryani", "Maruti Swift price", "express delivery charges",
+    "what's new in iOS 26", "best phone under 20000", "Taylor Swift new album", "where do pandas live", "India vs Pakistan score", "iPhone 17 vs Samsung S25",
+    "alternatives to Netflix"];
+  it("are asked of Wikipedia alone, as general, and left to the search engines", () => {
+    for (const q of EVERYDAY) {
+      const p = planByRules(q);
+      expect(p.sources, q).toEqual(["wikipedia"]);
+      expect(p.intent, q).toBe("general");
+      expect(p.confidence, q).toBeLessThan(PLAN_CONFIDENCE_MIN);
+    }
+  });
+  it("ask for fresh pages when they ask about now", () => {
+    for (const q of ["latest news on ISRO", "IPL score today", "board exam results"]) expect(planByRules(q).freshness, q).toBe("month");
+    for (const q of ["how to make biryani", "Delhi metro timings"]) expect(planByRules(q).freshness, q).toBe("any");
+  });
+  it("leave software questions to the coding sites, from their words, marks, names or the project", () => {
+    for (const q of ["how do I center a div", "explain closures in javascript", "fix this: `x.map is not a function`", "useEffect cleanup", "rust ownership vs borrowing in cargo builds",
+      "next.js app router", "how do I install node on ubuntu", "Prisma versus Drizzle for a small app", "npm install zod", "what does main.py do", "sql join explained"]) {
+      expect(aboutSoftware(q) || planByRules(q).sources.some((s) => s !== "wikipedia"), q).toBe(true);
+      expect(planByRules(q).sources, q).not.toEqual(["wikipedia"]);
+    }
+    expect(aboutSoftware("explain closures", { languages: ["python"] })).toBe(true);
+    expect(planByRules("explain closures", { languages: ["python"] }).sources).toContain("stackoverflow");
+    // A library's name that is also a plain word does not make a question software on its own.
+    for (const q of ["Maruti Swift price", "Flask of tea", "Bun bread recipe", "Rails in Mumbai local", "Angular cheilitis"]) expect(aboutSoftware(q), q).toBe(false);
+  });
+  it("keep only Wikipedia when the model plans one, unless the model reads code in it", async () => {
+    const coding: AskFn = async () => ({ text: "", json: good({ intent: "how_to", sources: ["stackoverflow", "github"], queries: ["delhi metro first train time"], freshness: "any" }) });
+    const p = await planSearch("Delhi metro timings", {}, { ask: coding });
+    expect(p).toMatchObject({ intent: "general", sources: ["wikipedia"], queries: ["delhi metro first train time"] });
+    const news: AskFn = async () => ({ text: "", json: good({ intent: "version_news", sources: ["hn"], queries: ["ISRO news"], freshness: "month" }) });
+    expect(await planSearch("what is ISRO up to", {}, { ask: news })).toMatchObject({ intent: "general", sources: ["wikipedia"], freshness: "month" });
+    const error: AskFn = async () => ({ text: "", json: good({ intent: "error_fix", sources: ["github", "stackoverflow"], queries: ["app crashes on start"] }) });
+    expect((await planSearch("my app crashes when it opens", {}, { ask: error })).sources).toEqual(["github", "stackoverflow"]);
   });
 });
 
@@ -366,11 +404,11 @@ describe("the model", () => {
   });
 
   it("keeps the rules' docs host when the model names none, and the intent's default sources when it names none", async () => {
-    const rules = planByRules("react release");
+    const rules = planByRules("reactjs release");
     expect(rules.confidence).toBeLessThan(PLAN_CONFIDENCE_MIN);
     expect(rules.site).toEqual(["react.dev"]);
     const ask: AskFn = async () => ({ text: "", json: good({ intent: "how_to", sources: [], site: undefined }) });
-    const p = await planSearch("react release", {}, { ask });
+    const p = await planSearch("reactjs release", {}, { ask });
     expect(p.intent).toBe("how_to");
     expect(p.site).toEqual(["react.dev"]);
     expect(p.sources).toEqual(["stackoverflow", "mdn"]);

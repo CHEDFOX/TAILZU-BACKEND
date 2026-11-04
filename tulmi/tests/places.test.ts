@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { noNetwork } from "./no-network.js";
 
-const { cityNamed, distanceKm, Places, placesFrom, PlacesBusy } = await import("../src/places/index.js");
+const { cityNamed, distanceKm, Places, placesFrom, PlacesBusy, trafficFloor } = await import("../src/places/index.js");
 const { parseNominatim, parsePhoton, photonGeocoder, nominatimGeocoder } = await import("../src/places/geocoders.js");
 const { osrmRouting, orsRouting, parseOsrm } = await import("../src/places/routers.js");
 const { MetNoWeather, parseMetno } = await import("../src/places/metno.js");
@@ -223,10 +223,22 @@ describe("Places", () => {
     expect(distanceKm(a, near)).toBeLessThan(1.6);
     expect(p.peekTravel(a, near)).toBeUndefined();
     expect(await p.travel(a, near)).toEqual({ mode: "walk", minutes: 12, km: 0.9 });
-    expect(await p.travel(a, far)).toEqual({ mode: "drive", minutes: 13, km: 8.4 });
-    expect(p.peekTravel(a, far)).toEqual({ mode: "drive", minutes: 13, km: 8.4 });
+    // 10 free-flow minutes x 1.3 is 13, but 8.4 km through town takes at least 26 (trafficFloor).
+    expect(await p.travel(a, far)).toEqual({ mode: "drive", minutes: 26, km: 8.4 });
+    expect(p.peekTravel(a, far)).toEqual({ mode: "drive", minutes: 26, km: 8.4 });
     await p.travel(a, far);
     expect(legs).toEqual(["walk:12.9784", "drive:12.9784"]);
+  });
+
+  it("never drives faster than a city's traffic allows, and leaves a long drive to the buffer", async () => {
+    // Real legs from the public router: free-flow minutes and km.
+    expect(trafficFloor(16.4)).toBe(50); // Connaught Place to Noida Sector 18: 17 free-flow minutes
+    expect(trafficFloor(5.9)).toBe(18); // Bandra West to Mumbai's airport: 8
+    expect(trafficFloor(30)).toBe(70); // Delhi to Gurugram: 20 km in town, 10 on the expressway
+    const drive = (minutes: number, km: number) => new Places({ driveBuffer: 1.3, routing: { id: "fake", modes: ["drive"] as const, async leg() { return { mode: "drive" as const, minutes, km }; } } });
+    expect((await drive(17, 16.4).travel({ lat: 28.63, lon: 77.22 }, { lat: 28.57, lon: 77.32 }))!.minutes).toBe(50);
+    // Delhi to Jaipur: 270 free-flow minutes x 1.3 is more than the floor (327), so the buffer decides.
+    expect((await drive(270, 280).travel({ lat: 28.63, lon: 77.22 }, { lat: 26.91, lon: 75.79 }))!.minutes).toBe(351);
   });
 
   it("credits the providers that are on", () => {

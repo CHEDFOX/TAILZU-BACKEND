@@ -123,6 +123,11 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const ALIASES_LONGEST_FIRST = [...TEXT_ALIASES.keys()].sort((a, b) => b.length - a.length);
 const ALIAS_RES = new Map(ALIASES_LONGEST_FIRST.map((a) => [a, new RegExp(`(?<![\\w.-])${escapeRe(a)}(?![\\w-]|\\.\\w)`, "i")]));
 
+/** The names of documentation entries a text uses, as written in the catalog ("swift", "react native"). */
+export function docsNamesInText(text: string): string[] {
+  return ALIASES_LONGEST_FIRST.filter((a) => ALIAS_RES.get(a)!.test(text));
+}
+
 /** The documentation entries a text names, in the order they first appear. "react-native" is not "react". */
 export function findDocsInText(text: string): DocsEntry[] {
   const found: Array<{ at: number; entry: DocsEntry }> = [];

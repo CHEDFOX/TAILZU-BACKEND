@@ -254,6 +254,27 @@ describe("the cache", () => {
 
 // ------------------------------------------------------------------ discovery
 
+describe("off-topic results from a direct source", () => {
+  it("are dropped when they share no word with the question; the engines' are kept", async () => {
+    const so = src("stackoverflow", [res("Time Complexity for searching a record?", "https://stackoverflow.com/q/1", "stackoverflow"), res("Delhi metro timings in a dataframe", "https://stackoverflow.com/q/2", "stackoverflow")]);
+    const wiki = src("wikipedia", [res("Delhi Metro", "https://en.wikipedia.org/wiki/Delhi_Metro", "wikipedia")]);
+    const ddg = src("ddg", [res("DMRC: first and last train", "https://www.delhimetrorail.com/timings", "ddg")]);
+    const out = await search("Delhi metro timings", {
+      plan: plan({ intent: "general", queries: ["Delhi metro timings"], sources: ["stackoverflow", "wikipedia"] }), store: null, now,
+      sources: { stackoverflow: so, wikipedia: wiki, ddg },
+    });
+    const urls = out.results.map((r) => r.url);
+    expect(urls).not.toContain("https://stackoverflow.com/q/1");
+    expect(urls).toEqual(expect.arrayContaining(["https://stackoverflow.com/q/2", "https://en.wikipedia.org/wiki/Delhi_Metro", "https://www.delhimetrorail.com/timings"]));
+    expect(out.notes).toContain("stackoverflow:off_topic");
+  });
+  it("are kept for an error or a package, which are found by their exact text or name", async () => {
+    const gh = src("github", [res("Crash on boot", "https://github.com/o/r/issues/1", "github")]);
+    const out = await search("x", { plan: plan({ intent: "error_fix", queries: ["\"ERR_OSSL_EVP_UNSUPPORTED\""], sources: ["github"] }), store: null, now, sources: { github: gh, ddg: src("ddg", []) } });
+    expect(out.results.map((r) => r.url)).toContain("https://github.com/o/r/issues/1");
+  });
+});
+
 describe("discovery", () => {
   const web = (n: number, source: ResultSource = "ddg") => Array.from({ length: n }, (_, i) => res(`Page ${i}`, `https://blog${i}.example.com/post`, source));
 

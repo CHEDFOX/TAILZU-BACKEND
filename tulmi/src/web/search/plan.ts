@@ -21,6 +21,13 @@
  *   how_to          "how do I", "how to"
  *   general         everything else
  *
+ * NOT EVERY QUESTION IS A DEVELOPER'S. The everyday bots search with the same
+ * planner ("Delhi metro timings", "latest news on ISRO"), and the coding sites
+ * only answer those with something off topic. A question that is not about
+ * software (aboutSoftware: no project, no code words or marks, no identifier,
+ * no library named by an unmistakable name) is planned as general, asked of
+ * Wikipedia alone, and left to the search engines, fresh when it asks for news.
+ *
  * These are rules, and they cost nothing. Each rule that fires scores its
  * intent; the highest wins, and a rival of a different kind that also scored
  * takes some of the confidence away ("how do I install node" is how_to and
@@ -36,7 +43,7 @@
  * a cache everyone shares. planSearch never throws.
  */
 import { z } from "zod";
-import { docsFor, findDocsInText, nameOf, type DocsEntry } from "./catalog.js";
+import { docsFor, docsNamesInText, findDocsInText, nameOf, type DocsEntry } from "./catalog.js";
 import { DIRECT_SOURCES, INTENTS, type AskFn, type Freshness, type Intent, type PlanCtx, type SearchPlan, type SourceId } from "./types.js";
 
 /** Under this the rules are not trusted on their own. */
@@ -146,6 +153,37 @@ function isWebish(text: string, ctx: PlanCtx, fw: DocsEntry | undefined): boolea
 }
 
 /** Names that belong to one language's standard library or platform, so a question that uses one needs no framework named: the first word of a dotted name, or a bare one. */
+/** Words only software questions use. A library's name is not one of them when it is also a plain word (EVERYDAY_NAMES). */
+const CODE_WORDS = /\b(?:code|coding|programming|programmer|apis?|sdk|compil(?:e|er|ing)|syntax|regexp?|sql|git|github|gitlab|npm|pip|pypi|docker|kubernetes|python|javascript|typescript|java|golang|php|kotlin|html|css|json|yaml|bash|linux|debug(?:ger|ging)?|exception|stack ?trace|algorithm|async|endpoint|frontend|backend|repo|repository|localhost|vscode|xcode|changelog|release notes|breaking changes|deprecated|variable|array|integer|boolean|null|undefined|webpack|vite|eslint|unit tests?|div|flexbox|ubuntu|debian|homebrew|apt-get|npx|yarn|pnpm)\b|c\+\+|c#|\.net\b/i;
+/** Marks only code has: backticks, an arrow, a call, braces, a tag, a source file's name. */
+const CODE_MARKS = /`|=>|\w\(\)|[{}]|<\/?[a-z][a-z0-9]*>|\w\.(?:js|jsx|ts|tsx|mjs|py|rs|go|java|kt|rb|php|cs|cpp|swift|json|ya?ml|toml|sh)\b/i;
+/** Catalog names that are also plain words or everyday things: "Maruti Swift", "express delivery", "pandas", "iOS 26 update". */
+const EVERYDAY_NAMES = new Set([
+  "swift", "ios", "macos", "android", "express", "flask", "angular", "bun", "rails", "rust", "react", "vue", "remix", "astro", "drizzle",
+  "stripe", "electron", "expo", "dart", "flutter", "pandas", "torch", "jest", "dom", "service worker", "tailwind", "django", "prisma",
+  "cargo", "openai", "anthropic",
+]);
+
+/** Is this a question about software? A project in ctx says so; else the question's own words, marks and names. */
+export function aboutSoftware(text: string, ctx: PlanCtx = {}): boolean {
+  if (lc(ctx.languages).length || ctx.framework?.trim() || lc(ctx.deps).length) return true;
+  if (CODE_WORDS.test(text) || CODE_MARKS.test(text)) return true;
+  if (docsNamesInText(text).some((n) => !EVERYDAY_NAMES.has(n))) return true;
+  return findIdentifiers(text).length > 0;
+}
+
+/** A comparison that says it is about software's building blocks. */
+const LIB_WORDS = /\b(?:librar(?:y|ies)|libs?|packages?|frameworks?|modules?|crates?|orms?|sdks?)\b/i;
+
+/** Asks for what is happening now: fresh pages only. */
+const NEWSY = /\b(?:latest|newest|news|today|tonight|yesterday|this (?:week|month)|recent(?:ly)?|score|results?)\b/i;
+
+/** The plan for a question that is not about software: the engines find it; of the direct sources only Wikipedia is asked. */
+function everydayPlan(text: string, queries: string[], confidence: number): SearchPlan {
+  const q = finishQueries(queries.length ? queries : [cleanQuestion(text)]);
+  return { intent: "general", queries: q.length ? q : [cleanQuestion(text).slice(0, 80) || "search"], sources: ["wikipedia"], freshness: NEWSY.test(text) ? "month" : "any", confidence };
+}
+
 const JS_GLOBALS = new Set((
   "Array Object Promise Map Set WeakMap WeakSet String Number Boolean BigInt Math JSON Date RegExp Symbol Intl Reflect Proxy Error URL URLSearchParams Blob FormData Headers Request Response " +
   "AbortController window document navigator console localStorage sessionStorage history location fetch XMLHttpRequest WebSocket Worker IntersectionObserver MutationObserver ResizeObserver " +
@@ -507,6 +545,12 @@ export function planByRules(question: string, ctx: PlanCtx = {}): SearchPlan {
   if (err > 0) found.unshift(...found.splice(err, 1));
 
   const top = found[0];
+  // Some shapes are software whatever words come with them: a package, an API's name, a real error message, and a comparison of two
+  // libraries or one that says it is about libraries ("India vs Pakistan" and "iPhone 17 vs S25" are not).
+  // The rest (how-to, news, anything) needs the question to be about software, or it is an everyday question.
+  const libraries = top?.intent === "compare_libs" && (docsNamesInText(text).length >= 2 || LIB_WORDS.test(text));
+  const shaped = !!top && (top.intent === "package_lookup" || top.intent === "api_docs" || libraries || (top.intent === "error_fix" && top.score >= 0.8));
+  if (!shaped && !aboutSoftware(text, ctx)) return everydayPlan(text, [cleanQuestion(text)], 0.4);
   if (!top || !top.plan.queries.length) {
     const q = finishQueries([cleanQuestion(text)]);
     return { intent: "general", queries: q.length ? q : [cleanQuestion(text).slice(0, 80) || "programming"], sources: defaultSources("general", text, ctx), freshness: "any", confidence: 0.4 };
@@ -546,6 +590,12 @@ const HOST_SHAPE = /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/[\w./-]*)?$/;
 /** The rules' plan with what a valid model plan says laid over it. */
 function merge(rules: SearchPlan, m: z.infer<typeof ModelPlan>, text: string, ctx: PlanCtx): SearchPlan {
   const queries = finishQueries(m.queries);
+  // The rules found nothing of software in it. The model may still read code in it (an error, a package, an API): then it is trusted.
+  const codeIntent = m.intent === "error_fix" || m.intent === "package_lookup" || m.intent === "api_docs";
+  if (rules.sources.length === 1 && rules.sources[0] === "wikipedia" && rules.intent === "general" && !codeIntent && !aboutSoftware(text, ctx)) {
+    const plan = everydayPlan(text, queries.length ? queries : rules.queries, Math.round(Math.min(0.9, Math.max(0.3, m.confidence)) * 100) / 100);
+    return m.freshness !== "any" ? { ...plan, freshness: m.freshness } : plan;
+  }
   const sources = dedupe(m.sources);
   const site = (m.site ?? []).map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "")).filter((s) => HOST_SHAPE.test(s));
   const useSite = site.length ? site : rules.site;

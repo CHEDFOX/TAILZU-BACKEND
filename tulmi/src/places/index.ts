@@ -20,7 +20,9 @@
  *   PLACES_RATE_MS   least time between two requests to the geocoder, and to the router (default 1100: the public servers' one a second;
  *                    0 for our own)
  *   PLACES_DRIVE_BUFFER   drive times are free-flow; this multiplies them (default 1.3) so a "leave by" is not optimistic. Shown as
- *                    "about"; never claimed to be traffic
+ *                    "about"; never claimed to be traffic. A city's traffic is never in a free-flow time (Connaught Place to Noida
+ *                    Sector 18 comes back as 17 minutes, and takes 40 to 60), so no drive is shorter than its first CITY_KM at CITY_KMH
+ *                    and the rest at OPEN_KMH (trafficFloor)
  *   PLACES_CONTACT   who we are in the User-Agent (default https://x0bot.com; an email works too)
  *   WEATHER          metno | off (default metno: free, commercial use allowed, no key)      WEATHER_URL  its Locationforecast address
  *
@@ -41,6 +43,15 @@ export * from "./types.js";
 export { cityNamed, countryForOffset } from "./cities.js";
 
 const MIN = 60_000, DAY = 24 * 60 * MIN;
+/** The least a drive takes: its first CITY_KM through town at CITY_KMH (a big city's average with its traffic), the rest at OPEN_KMH. */
+const CITY_KM = 20;
+const CITY_KMH = 20;
+const OPEN_KMH = 60;
+export function trafficFloor(km: number): number {
+  const town = Math.min(Math.max(0, km), CITY_KM);
+  return Math.ceil((town / CITY_KMH + Math.max(0, km - CITY_KM) / OPEN_KMH) * 60);
+}
+
 /** Walk when the straight line is at most this, and the walk at most WALK_MAX_MIN. */
 const WALK_KM = 1.6;
 const WALK_MAX_MIN = 20;
@@ -143,7 +154,7 @@ export class Places {
     }
   }
 
-  private buffered(l: Leg): Leg { return { ...l, minutes: Math.max(1, Math.ceil(l.minutes * this.buffer)) }; }
+  private buffered(l: Leg): Leg { return { ...l, minutes: Math.max(1, Math.ceil(l.minutes * this.buffer), trafficFloor(l.km)) }; }
   private walkable(a: LatLon, b: LatLon) { return !!this.routing?.modes.includes("walk") && distanceKm(a, b) <= WALK_KM; }
 
   /** How to get from a to b, from memory: undefined when a lookup it needs has not happened yet. */

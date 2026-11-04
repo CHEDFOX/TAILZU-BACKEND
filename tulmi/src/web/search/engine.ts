@@ -41,7 +41,7 @@ import { DIRECT, DISCOVERY } from "./sources/index.js";
 import { clip } from "./sources/util.js";
 import { planByRules, planSearch } from "./plan.js";
 import { rankResults, STRONG_SCORE, type Group } from "./rank.js";
-import { searchCacheKey, searchStore, searchTtlMs, type IndexHit, type SearchStore } from "./index.js";
+import { prepareQuery, searchCacheKey, searchStore, searchTtlMs, tokenize, type IndexHit, type SearchStore } from "./index.js";
 import {
   DISCOVERY_SOURCES, SearchSkip,
   type AskFn, type DiscoveryId, type FetchLike, type PlanCtx, type Ranked, type Result, type ResultSource, type SearchEnv, type SearchPlan, type Source, type SourceId, type SourceOpts,
@@ -100,6 +100,20 @@ export function searchEnvFromConfig(): SearchEnv {
   } catch {
     return {};
   }
+}
+
+/** A word without its ending, so "timings" meets "timing" and "searching" meets "search". */
+const stem = (w: string): string => (w.length > 4 ? w.replace(/(?:ing|ed|es|s)$/, "") : w);
+
+/** The question's meaningful words, stemmed. */
+function questionStems(queries: string[]): string[] {
+  return [...new Set(queries.flatMap((q) => prepareQuery(q).terms).filter((w) => w.length > 1).map(stem))];
+}
+
+/** Does the text share a meaningful word with the question? */
+function sharesAWord(stems: string[], text: string): boolean {
+  const words = new Set(tokenize(text).map(stem));
+  return stems.some((s) => words.has(s));
 }
 
 const noteOf = (id: string, err: unknown): string =>
@@ -180,7 +194,17 @@ export async function search(question: string, opts: SearchOptions = {}): Promis
     if (s.status === "rejected") { notes.push(noteOf(id, s.reason)); return; }
     if (s.value.length) byId.set(id, [...(byId.get(id) ?? []), ...s.value]);
   });
-  for (const id of plan.sources) if (byId.has(id)) groups.push({ source: id, results: byId.get(id)! });
+  // A direct source searches its own pages and answers even when none is about the question ("Delhi metro timings" on Stack Overflow):
+  // what shares no word with the question is dropped. Not for an error or a package, which are found by their exact text or name, nor
+  // from a registry, whose packages are named for what they do ("dayjs" for dates).
+  const want = plan.intent === "error_fix" || plan.intent === "package_lookup" ? [] : questionStems(queries);
+  for (const id of plan.sources) {
+    if (!byId.has(id)) continue;
+    const check = want.length && id !== "npm" && id !== "pypi" && id !== "crates";
+    const kept = check ? byId.get(id)!.filter((r) => sharesAWord(want, `${r.title} ${r.snippet ?? ""}`)) : byId.get(id)!;
+    if (kept.length < byId.get(id)!.length) notes.push(`${id}:off_topic`);
+    if (kept.length) groups.push({ source: id, results: kept });
+  }
 
   // 4. discovery, if what we have is thin
   const first = rankResults(plan, groups, now(), CACHE_RESULTS_MAX);
