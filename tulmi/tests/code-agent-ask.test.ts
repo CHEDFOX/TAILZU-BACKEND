@@ -79,6 +79,31 @@ describe("a question from the model", () => {
   });
 });
 
+const { holdQuestion } = await import("../src/code/agent/phases.js");
+const { planTask, fromApprovedPlan } = await import("../src/code/flow/plan.js");
+
+describe("once the work has started, the person is asked as little as possible", () => {
+  const planned = planTask({ v: 1, goal: "Add a results page", steps: ["Route", "Page"] } as never);
+  const at = (task: string, work: Record<string, unknown>) => ({ state: { task, work: { turns: 5, ...work } } }) as never;
+  it("a job from an approved plan holds its first question back, and says how to decide instead", () => {
+    expect(fromApprovedPlan(planned)).toBe(true);
+    const held = holdQuestion(at(planned, {}));
+    expect(held).toMatch(/^Not asked\. The person approved the plan/);
+    expect(held).toMatch(/note/);
+    expect(held).toMatch(/delete their data or spend their money/);
+  });
+  it("a plain request may ask once, about what to build, and nothing after that without insisting", () => {
+    expect(fromApprovedPlan("Fix the cart total")).toBe(false);
+    expect(holdQuestion(at("Fix the cart total", {}))).toBeNull();
+    expect(holdQuestion(at("Fix the cart total", { asked: 1 }))).toMatch(/You have asked the person once already/);
+  });
+  it("a question asked again right after it was held goes through (what only the person can give); later, it is held again", () => {
+    expect(holdQuestion(at(planned, { askHeldAt: 4 }))).toBeNull();
+    expect(holdQuestion(at(planned, { askHeldAt: 3 }))).toBeNull();
+    expect(holdQuestion(at(planned, { askHeldAt: 1 }))).toMatch(/^Not asked/);
+  });
+});
+
 describe("locating where a change belongs", () => {
   it("asks which part when the search is unsure, and goes on with the one they pick", async () => {
     const r = await agentRig();

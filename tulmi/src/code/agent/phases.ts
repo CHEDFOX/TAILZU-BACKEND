@@ -40,6 +40,7 @@ import {
   PlanError, compareToBaseline, locate, logComparison, planChange, redactText, worklogMarkdown, type Located,
 } from "../work/index.js";
 import { fusedFor, type Fused } from "../work/locate.js";
+import { fromApprovedPlan } from "../flow/plan.js";
 import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
 import { Refused } from "./changeset.js";
@@ -199,7 +200,8 @@ export async function locatePhase(r: Run): Promise<void> {
     task = `${s.task}\n\nThe person clarified: ${w.answer}`;
   }
   const located = await locate(task, r.brain, { model: r.model(), read: readOrNull(r) });
-  if (located.question && !s.locateAsked) {
+  // A plan the owner approved settles what to build: where it goes is decided here, never asked.
+  if (located.question && !s.locateAsked && !fromApprovedPlan(s.task)) {
     s.located = located;
     s.waiting = { kind: "question", from: "locate", question: located.question.text, options: located.question.options.map((o) => `${o.label}: ${o.title}`), at: r.now() };
     throw new Park("answer", cut(located.question.text.split("\n")[0] ?? "Where does this belong?", 160));
@@ -361,6 +363,23 @@ async function excerptsOf(r: Run): Promise<string> {
 
 const callOf = (c: Exchange["calls"][number], held?: ReadonlyMap<string, string>): ToolCall => ({ id: c.id, name: c.name, arguments: held?.get(c.id) ?? c.arguments });
 
+/**
+ * ASK AS LITTLE AS POSSIBLE ONCE THE WORK HAS STARTED. The person handed the work over and expects it done; a question stops the job and
+ * calls them back. A job made from a plan they approved asks nothing about what to build; a job from a plain request may ask once, about
+ * what to build, and nothing after. A question past that is held back, once: the model is told to decide, say what it chose with note, and
+ * go on. Asked again straight after (within two steps), it goes through: what only the person can give (a key, an account, a file), or
+ * what would delete their data or spend their money.
+ */
+export function holdQuestion(r: Pick<Run, "state">): string | null {
+  const w = r.state.work;
+  if (w.askHeldAt !== undefined && w.turns - w.askHeldAt <= 2) return null;
+  const planned = fromApprovedPlan(r.state.task);
+  if (!planned && !(w.asked ?? 0)) return null;
+  return `Not asked. ${planned ? "The person approved the plan and handed the work over" : "You have asked the person once already, and they expect the rest done without them"}: `
+    + "decide this yourself. Take the choice that fits the plan, the request and how this project already does things; say what you chose and why with note; carry on. "
+    + "Ask only if going on would delete their data or spend their money, or needs something only they have (a key, an account, a file): then call ask_user again now.";
+}
+
 /** Carries out the calls of a turn that have no result yet, writing each result into the state as it comes. */
 async function executeCalls(r: Run, ex: Exchange): Promise<void> {
   const w = r.state.work;
@@ -372,6 +391,10 @@ async function executeCalls(r: Run, ex: Exchange): Promise<void> {
       result = { ok: false, content: "Not run: the work was already finished." };
     } else if (i >= CALLS_PER_TURN) {
       result = { ok: false, content: `Not run: at most ${CALLS_PER_TURN} calls in one turn. Call it again.` };
+    } else if (c.name === "ask_user" && !(r.state.waiting?.kind === "question" && r.state.waiting.callId === c.id) && holdQuestion(r)) {
+      // Once the work has started the person is asked as little as possible: decided here, and said with note.
+      result = { ok: false, content: holdQuestion(r)! };
+      w.askHeldAt = w.turns;
     } else if (c.name === "ask_user" && r.state.waiting?.kind === "question" && r.state.waiting.from === "model" && r.state.waiting.callId === c.id) {
       // The person has answered what this call asked.
       const q = r.state.waiting;
@@ -385,6 +408,8 @@ async function executeCalls(r: Run, ex: Exchange): Promise<void> {
       result = { ok: out.ok, content: out.content, ...(out.data !== undefined ? { data: out.data } : {}), ...(out.label ? { label: out.label } : {}), ...(out.wrapped ? { wrapped: true } : {}) };
       if (out.control?.type === "ask") {
         // The call is answered when the person answers: the turn stays half done, and the job waits.
+        w.asked = (w.asked ?? 0) + 1;
+        w.askHeldAt = undefined;
         r.state.waiting = {
           kind: "question", from: "model", question: out.control.question, ...(out.control.options ? { options: out.control.options } : {}),
           ...(out.control.widget ? { widget: out.control.widget } : {}), callId: c.id, at: r.now(),

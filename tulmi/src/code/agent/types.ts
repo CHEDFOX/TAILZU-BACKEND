@@ -499,6 +499,10 @@ export interface AgentState {
     draft?: string;
     /** The step at which the person last answered the model's own question (ask_user): from there, what to build is settled (context.ts statusLine). */
     answeredAt?: number;
+    /** How many of the model's own questions were put to the person in this job (phases.ts holdQuestion). */
+    asked?: number;
+    /** The step at which a question of the model's was held back, told to decide itself: asked again right after, it goes through. */
+    askHeldAt?: number;
     /** What the last verify found, for the model to fix: the failing checks and the end of their output. Data, wrapped when shown. */
     feedback?: string;
     lastTier?: string;

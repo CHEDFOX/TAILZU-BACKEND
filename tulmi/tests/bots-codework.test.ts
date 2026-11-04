@@ -80,6 +80,18 @@ describe("bots app · Xode at work", () => {
     expect(p.some((a) => a.path === `/v1/code/jobs/${JOB_ASK}/stop`)).toBe(true);
     // a write is followed by the screen read again
     expect(actionsOf(s.root!).some((a) => a.kind === "refresh")).toBe(true);
+    // A job still going offers the ping while the phone does not allow notifications.
+    expect(walk(s.root!).some((n) => n.visibleIf && JSON.stringify(n).includes("Notify me when done"))).toBe(true);
+    expect((await build("bots.code.job", "phone", { id: JOB_DONE })).words).not.toContain("Notify me when done");
+  });
+
+  it("every Xode reply is a closed box with a faint border, the mirror of the person's bubble", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const { s } = await build("bots.code.job", client, { id: JOB_ANSWER, asked: "Where is the cookie set?", answer: "In lib/session.ts:42." });
+      const reply = walk(s.root!).find((n) => n.type === "Stack" && JSON.stringify(n).includes("In lib/session.ts:42.") && n.style?.borderWidth === 1)!;
+      expect(reply, client).toBeTruthy();
+      expect(reply.style).toMatchObject({ borderWidth: 1, borderColor: "#e6e6e6", borderRadius: 20, borderBottomLeftRadius: 6 });
+    }
   });
 
   it("a yes, keep going, paid compute: each wait has its own choices, and a yes the server asks about is said again with its id", async () => {
@@ -154,6 +166,19 @@ describe("bots app · Xode at work", () => {
     const work = await build("bots.code.job", "phone", { project: PROJECT }, flow({ gate: open, plan: { ...plan, status: "working", jobId: JOB_ANSWER }, job: { job: { id: JOB_ANSWER, state: "running" } } }));
     expect(work.words).toContain("Xode is working on it");
     expect(posts(work.s.root!).find((a) => a.path === `/v1/bots/code/flow/${PROJECT}/work`)?.body).toMatchObject({ thread: t, text: "$state.sent" });
+    // Handed over: a phone that does not allow notifications is offered a ping when it's done; the button asks the system once, for the whole app.
+    const notify = walk(work.s.root!).find((n) => n.visibleIf && JSON.stringify(n).includes("Notify me when done"))!;
+    expect(notify.visibleIf).toEqual({ eq: ["pushGranted", false] });
+    expect(work.s.state).toMatchObject({ pushGranted: null });
+    expect(walk(work.s.root!).some((n) => JSON.stringify(n.on?.onAppear ?? null).includes("checkPermission"))).toBe(true);
+    expect(actionsOf(work.s.root!).some((a) => a.kind === "requestPushPermission")).toBe(true);
+    // Not before the plan is approved, and never on a window (its pings are the computer's own).
+    expect(talk.words).not.toContain("Notify me when done");
+    const desk = await build("bots.code.job", "desktop", { project: PROJECT }, flow({ gate: open, plan: { ...plan, status: "working", jobId: JOB_ANSWER }, job: { job: { id: JOB_ANSWER, state: "running" } } }));
+    expect(desk.words).not.toContain("Notify me when done");
+    // Once the work is over, nothing to wait for.
+    const over = await build("bots.code.job", "phone", { project: PROJECT }, flow({ gate: open, plan: { ...plan, status: "working", jobId: JOB_ANSWER }, job: { job: { id: JOB_ANSWER, state: "done" } } }));
+    expect(over.words).not.toContain("Notify me when done");
     // An older server answers nothing: the chat as it was.
     expect((await build("bots.code.job", "phone", { project: PROJECT })).words).toContain("Ask anything about your code.");
   });

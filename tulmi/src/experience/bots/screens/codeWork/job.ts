@@ -9,6 +9,7 @@ import {
 } from "../../../../botsCodeWork/read.js";
 import type { ChatTurn } from "../../../../code/chat/threads.js";
 import { askMoment } from "../../askMoment.js";
+import { notifyWhenDone, PUSH_STATE, withPushCheck } from "../pushAsk.js";
 import {
   seq, call, col, row, box, text, C, meta, percent, grow, meter, type BotsCtx, statusMark, button, card, spanOf, labelled, icon, open,
   SCREENS, when, FACE, RADIUS, page, stages,
@@ -266,19 +267,22 @@ function chatPhone(ctx: BotsCtx, data: ChatData | undefined) {
   // Not read yet, or no direction: the gate, not the chat.
   if (data?.xode && !data.xode.gate.open) return gatePage(ctx, c, data.xode.gate);
   const plan = data?.xode ? planCard(c, data.xode) : null;
+  // The plan approved and the work going: Xode pings them when it needs them and when it is done, so they can leave (pushAsk.ts).
+  const handedOver = !!data?.xode?.plan && (data.xode.plan.status === "approved" || data.xode.plan.status === "working")
+    && !(data.xode.job && isOver(data.xode.job.job.state as JobRow["state"]));
   const p = askedOf(ctx);
   const turns = data?.chat?.turns ?? [];
   const talk = conversation(data?.job, { ...p, ...(data?.flow ? { flow: data.flow } : {}), turns, ...(data?.before ? { before: data.before } : {}) }, 15);
   return page(ctx, {
     nav: "code", title: "Xode", gap: 18,
     body: [
-      head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true, ...(turns.length || p.asked ? { right: newChat(ctx, c, turns.length) } : {}) }),
+      withPushCheck(ctx, head({ title: "Xode", size: 17, sub: meta(c.projectName, { size: 12 }), avatar: true, ...(turns.length || p.asked ? { right: newChat(ctx, c, turns.length) } : {}) })),
       // In the Xode flow the plan is the first message; else, a word on what the chat is for.
       ...(talk.length ? talk : plan ? [] : [col([text("Ask anything about your code.", { size: 16, weight: 500, lineHeight: 22 }), meta("Where something is, how it works, what would break. I answer with the files and lines, and change it when you say so.", { size: 13, lineHeight: 18 })], { gap: 6, paddingTop: 8 })]),
-      ...(plan ? [plan, stopConfirm()] : nextMoves(ctx, c, nextOf(turns, p))),
+      ...(plan ? [plan, ...(handedOver ? notifyWhenDone(ctx) : []), stopConfirm()] : nextMoves(ctx, c, nextOf(turns, p))),
     ],
     footer: [composer(ctx, c, data?.job, data?.xode ? flowWords(data.xode) : "Ask about your code…", data?.xode ? { flow: data.xode } : {})],
-    state: { msg: "", said: null, earlier: false, earlierBefore: false, flowed: null },
+    state: { msg: "", said: null, earlier: false, earlierBefore: false, flowed: null, ...PUSH_STATE },
   });
 }
 
@@ -304,13 +308,15 @@ function jobPhone(ctx: BotsCtx, d: JobData) {
   return page(ctx, {
     nav: "code", title: job.task, gap: 22,
     body: [
-      head({ title: job.task, sub: statusLine(job, ctx.live.now) }),
+      withPushCheck(ctx, head({ title: job.task, sub: statusLine(job, ctx.live.now) })),
       labelled(stages(STAGES, stage, MOSS), `Step ${Math.min(stage + 1, 5)} of 5: ${STAGES[Math.min(stage, 4)]}`),
       workList(linesOf(d, 4)),
       ...(q ? [q] : []),
+      ...(isOver(job.state) ? [] : notifyWhenDone(ctx)),
       ...(isOver(job.state) && agent?.report?.text ? [card([text(firstSentence(agent.report.text, 180), { size: 14, lineHeight: 20, color: C.grey70 })], { padding: 14 })] : []),
     ],
     footer: [spendMeter(job), jobButtons(d, 15)],
+    state: { ...PUSH_STATE },
   });
 }
 

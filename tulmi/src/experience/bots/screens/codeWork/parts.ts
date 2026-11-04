@@ -238,7 +238,10 @@ export function mine(s: string, size = 15): Node {
   })], { justifyContent: "flex-end" });
 }
 
-/** Xode's words: paragraphs, code in mono, the flow it drew, and the files and lines it rests on. */
+/**
+ * Xode's words: paragraphs, code in mono, the flow it drew, and the files and lines it rests on. Always in a closed box with a faint
+ * border, the mirror of the person's own bubble (its tail corner on the other side), so every reply reads as one piece.
+ */
 export function theirs(s: string, o: { flow?: string[]; size?: number } = {}): Node {
   const size = o.size ?? 15;
   const blocks = plainWords(s);
@@ -251,7 +254,10 @@ export function theirs(s: string, o: { flow?: string[]; size?: number } = {}): N
         : text(b.text, { size, lineHeight: Math.round(size * 1.45), color: C.ink })),
     ...(o.flow && o.flow.length >= 2 ? [flowCard(o.flow)] : []),
     ...(cites.length ? [row(cites.map(codeChip), { gap: 6, flexWrap: "wrap" })] : []),
-  ], { gap: 10 });
+  ], {
+    gap: 10, borderWidth: 1, borderColor: C.line, borderRadius: 20, borderBottomLeftRadius: 6, paddingVertical: 14, paddingHorizontal: 16,
+    backgroundColor: C.paper, alignSelf: "stretch",
+  });
 }
 
 /** A flow the chat drew from the import graph: boxes and arrows, the one the question is about in ink. */

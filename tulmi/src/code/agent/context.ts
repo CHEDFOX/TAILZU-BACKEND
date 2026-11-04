@@ -50,6 +50,7 @@ import { compose, stableBlock } from "../../principles/index.js";
 import { charsOf } from "../brain/money.js";
 import type { ChatMessage, ToolCall, ToolDef } from "../brain/types.js";
 import { REVIEW_FIX_ROUNDS_MAX } from "../team/types.js";
+import { fromApprovedPlan } from "../flow/plan.js";
 import { askJson, cut, fence, forModel, type ModelCtx } from "../work/model.js";
 import { HYBRID_EVERY, maskArguments, maskResult, maskText, type ContextStrategy } from "./mask.js";
 import {
@@ -336,7 +337,9 @@ export function freeformGuide(s: AgentState): string {
     "How to work:",
     "1. Find the code: suggest_files ranks the project index's guesses with reasons; grep finds exact names and every call site; read whole functions, not slivers. "
       + "The answer is in this project's own code: do not go looking for how someone else built it (the web, a published copy of this package).",
-    "2. If the request leaves open WHAT to build (several reasonable designs, names or behaviours, or it does not say what is wrong), ask_user once, with two or three concrete options, before you change code.",
+    fromApprovedPlan(s.task)
+      ? "2. The person approved the plan and handed the work over: do not ask them what to build. Where something is still open, take what fits the plan and the project, say so with note, and go on."
+      : "2. If the request leaves open WHAT to build (several reasonable designs, names or behaviours, or it does not say what is wrong), ask_user once, with two or three concrete options, before you change code. After that, decide and note.",
     "3. A bug: reproduce it first (a small script or the test that covers it, with run) and see it fail; then look for the cause, which may be far from where it shows. "
       + "A script to try something goes inside the run command (a heredoc into /tmp), never in write_file: every file you write is committed.",
     "4. Change the code with edit_file. When you rename something or change what a function takes or returns, grep for every use and update them all: code, types, docs, tests.",

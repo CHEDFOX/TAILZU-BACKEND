@@ -88,6 +88,29 @@ export function pushAskCard(ctx: BotsCtx, due: boolean): Node[] {
 }
 
 /**
+ * "Notify me when done", once the person has handed work over (Xode's plan approved, a job running): Xode pings them when it needs them
+ * and when the work is finished (the job's needs_you / job_done pushes), so they can leave. Shown on a phone only while it does not allow
+ * notifications; the button asks the system once, which turns notifications on for the whole app (the app registers for pushes), and
+ * answers the Home card for good. The page's state must start with PUSH_STATE, and one node that is always on it must read the phone's
+ * answer (withPushCheck). Nothing on a window.
+ */
+export function notifyWhenDone(ctx: BotsCtx, who = "Xode"): Node[] {
+  if (ctx.client !== "phone") return [];
+  return [
+    when({ eq: ["pushGranted", false] }, card([
+      row([
+        bell(20),
+        col([
+          text("Get a ping when it's done", { size: 15, weight: 600, lineHeight: 20 }),
+          text(`${who} tells you when the work is finished, or the moment it needs you. You can close the app.`, { size: 13, color: C.grey70, lineHeight: 18 }),
+        ], { gap: 3, flexGrow: 1, flexShrink: 1 }),
+      ], { gap: 12, alignItems: "flex-start" }),
+      button("Notify me when done", turnOnPush(), { kind: "secondary", size: "md" }),
+    ], { padding: 16, gap: 12 })),
+  ];
+}
+
+/**
  * What pings you, on a phone: while this phone does not allow notifications, a line that says so and a way to turn them on (no
  * "Not now": it is the settings page). Nothing on a window. The page's state must start with PUSH_STATE, and one node that is
  * always on it must read the phone's answer (withPushCheck).

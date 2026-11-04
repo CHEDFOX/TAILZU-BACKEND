@@ -108,11 +108,17 @@ export async function keepPlan(ctx: ModelCtx, i: { plan: ProjectPlan; message: s
 }
 
 /** The approved plan, as the task its job is given. */
+/** The line a job's task starts its approved plan with: the agent reads it as "what to build is settled" (agent/phases.ts holdQuestion). */
+export const APPROVED_PLAN_LINE = "The plan the owner approved";
+
+/** Was this job's task made from a plan the owner approved? */
+export const fromApprovedPlan = (task: string | undefined): boolean => !!task && task.includes(`${APPROVED_PLAN_LINE} (`);
+
 export function planTask(plan: ProjectPlan, o: { keep?: string; notes?: string[] } = {}): string {
   return [
     plan.goal,
     "",
-    "The plan the owner approved (do it in this order; split it as you need, but do not do more):",
+    `${APPROVED_PLAN_LINE} (do it in this order; split it as you need, but do not do more):`,
     ...plan.steps.map((s, n) => `${n + 1}. ${s}`),
     ...(o.keep ? ["", `Must not change: ${o.keep}`] : []),
     ...(o.notes?.length ? ["", "Also from the owner:", ...o.notes.map((n) => `- ${n}`)] : []),
