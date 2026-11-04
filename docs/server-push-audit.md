@@ -16,6 +16,24 @@ files two helpers are editing now (the chat screens, and the money and usage cha
 * [Inventory 5: feature switches](#inventory-5-feature-switches)
 * [Method and limits](#method-and-limits)
 
+## Status, 2026-11-04 (desktop)
+
+Re-checked against the desktop's code. Done since the audit: B1, B2, B4, A2, A5, B6, B10–B13, and now:
+
+* The knob manifest is current again (`extract.mjs`, then `scripts/sync-knobs.mjs`): 81 desktop keys the app read but the
+  server never sent (talk mode, page reading, Blip at rest, Ask's hand-over, routines, notes) are sent and in the console,
+  and keys of retired phone screens and the removed consent dialogs are gone.
+* The tray and notification words the desktop had but `DESKTOP_UI` lacked are sent (`tray.tapToTalk`, `notesStop`,
+  `notesTooltip`; `notify.tapUnavailable`, `unknownTapKey`, `notesStarted`, `notesReady`, `notesHotkeyTaken`).
+* "Xode on this computer" (the runner's window), the runner's notices and Docker reasons, and Ask's file results are labels
+  (`desktop.runner.*`, `desktop.files.*`); Ask's card takes new knobs live.
+* Small values: `desktop.agent.historyMax`, `speechMaxMs`, `desktop.writeOn.caretMs`, `desktop.pill.blipQuirkMin/MaxMs`,
+  `desktop.pill.hoverGestures`.
+
+Still in the app, on purpose: the runner's refusal reasons (`runner/guard.js`, built with the command's own paths; shown after
+the "not run:" label), Blip's figure and motion (B15, with the tiny bots' data work), security floors (group C), and folder
+names Ask creates on disk.
+
 ## Summary
 
 Most of the apps is already server-driven. The screens are SDUI. The knobs cover **411 labels and 1,362 flags** for the phone and

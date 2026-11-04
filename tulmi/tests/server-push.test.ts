@@ -53,7 +53,7 @@ type Flags = Record<string, unknown>;
 const flagsOf = (b: { flags?: unknown }) => (b.flags ?? {}) as Flags;
 
 describe("A1: the words the server sent but never translated", () => {
-  it("the desktop's tray and notifications, the tones, the genders and the countries, in the person's language", async () => {
+  it("the desktop's tray and notifications, the tones and the countries, in the person's language", async () => {
     const boot = buildBootstrap({ onboarded: true, formFactor: "desktop" });
     const f = flagsOf(await localize(boot, "hi"));
     const shell = f["desktop.shell"] as { tray: Record<string, string>; notify: Record<string, string>; gate: Record<string, string>; gateLayout: Record<string, unknown> };
@@ -63,7 +63,6 @@ describe("A1: the words the server sent but never translated", () => {
     expect(shell.gateLayout.align).toBe("right");                   // a layout value is not a word
     expect(shell.gateLayout.scrim).toMatch(/^linear-gradient/);
     expect((f["desktop.tones"] as Array<{ id: string; label: string }>)[1]).toEqual({ id: "formal", label: "T:Formal" });
-    expect((f["profile.genders"] as Array<{ key: string; label: string }>)[0]).toEqual({ key: "male", label: "T:Male" });
     const india = (f["auth.countries"] as Array<{ iso: string; name: string; dial: string }>).find((c) => c.iso === "IN")!;
     expect(india.dial).toBe("+91");
     expect(india.name).not.toBe("India");                           // the runtime's own name for it, no translation paid

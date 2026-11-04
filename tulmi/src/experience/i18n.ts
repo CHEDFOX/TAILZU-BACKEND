@@ -278,7 +278,7 @@ function transformNode(node: Node, fn: StrFn): Node {
  * FLAGS THAT CARRY WORDS. Flags are values, not copy, so the walk above never
  * looked at them — and these few hold what a person reads: the desktop's tray,
  * rail, gate and notifications (`desktop.shell`), the tray's tone names, and
- * the name card's genders. Only the named leaves move; everything beside them
+ * the names of Android's kinds of push. Only the named leaves move; everything beside them
  * (an id, a layout number, a CSS gradient) is an identifier and stays.
  * Country names are not here: the runtime names a region in any language
  * itself (localizeCountries), with no translation to pay for.
@@ -286,7 +286,6 @@ function transformNode(node: Node, fn: StrFn): Node {
 const SHELL_WORD_SECTIONS = ["gate", "rail", "tray", "notify"] as const;
 const LIST_WORD_FLAGS: Record<string, readonly string[]> = {
   "desktop.tones": ["label"],
-  "profile.genders": ["label"],
   // The names Android's settings show for each kind of push (the phone makes these channels).
   "push.android.channels": ["name", "description"],
 };

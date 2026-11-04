@@ -42,7 +42,7 @@ export const W = {
   saveErr: "Couldn't save that. Try again.",
 };
 
-/** The name and gender card's choices (the app's `profile.genders`), as PUT /v1/profile takes them. */
+/** The name and gender card's choices, as PUT /v1/profile takes them. */
 export const GENDERS: Array<{ value: string; label: string }> = [{ value: "male", label: "Male" }, { value: "female", label: "Female" }, { value: "other", label: "Other" }];
 
 // ===================================================================== Blip, one for the whole run

@@ -109,6 +109,7 @@ export const DESKTOP_UI = {
     holdToTalk: "Hold-to-talk: hold",
     holdUnavailable: "unavailable",
     holdOff: "Hold-to-talk: off (set \"hold\": true in config)",
+    tapToTalk: "Double-tap {key} to dictate",
     backend: "Backend",
     signedIn: "Signed in — dictation lands on your account",
     editConfig: "Edit config…",
@@ -116,6 +117,8 @@ export const DESKTOP_UI = {
     tooltipReady: "X0 Bot — ready",
     tooltipListening: "X0 Bot — listening…",
     tooltipSignIn: "X0 Bot — sign in to dictate",
+    notesStop: "◉ Taking notes {time} — click to stop",
+    notesTooltip: "X0 Bot — taking notes, {time}",
   },
   // Native notifications and the sentences the recorder shows when capture
   // fails. Every one of these names something the user has to go and do, and
@@ -136,5 +139,10 @@ export const DESKTOP_UI = {
     dictationFailed: "Dictation failed: {message}",
     hotkeyTaken: "{taken} is taken by another app, so dictation is on {bound}. Change it under Edit config.",
     noHotkey: "No hotkey could be registered. Use Dictate in the tray menu, and set a free one under Edit config.",
+    tapUnavailable: "Double-tap unavailable (uiohook-napi didn't load) — using the hotkey.",
+    unknownTapKey: "Unknown tapKey \"{key}\" — use Ctrl, Alt, Shift or Meta.",
+    notesStarted: "Taking notes. Nothing is typed anywhere. Press {key} to stop.",
+    notesReady: "Notes ready: {title}",
+    notesHotkeyTaken: "{taken} is taken by another app, so notes are on {bound}.",
   },
 } as const;
