@@ -21,7 +21,6 @@ export interface YouData {
   plan: { name: string; active: boolean };
   usage: UsageMeter | null;
   apps: { enabled: boolean; connected: Array<{ id: string; name: string; usedBy: string[]; lastUsedAt: number | null }>; github: { repos: number } | null; alone: number } | null;
-  computers: { online: Array<{ name: string; busy: boolean; allowRun: boolean }>; offline: number; signedIn?: number; helped: { jobs: number; minutes: number } } | null;
   settings: Settings;
   exportUrl: string | null;
   language: string | null;
@@ -101,12 +100,6 @@ export function appsLine(d: YouData | undefined): string {
   const names = [...(d?.apps?.github ? ["GitHub"] : []), ...(d?.apps?.connected ?? []).map((a) => a.name.replace(/^Google /, ""))];
   return names.length ? (names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3}` : names.join(", ")) : "None yet";
 }
-export const computerLine = (d: YouData | undefined) => {
-  const c = d?.computers;
-  if (!c) return "";
-  const on = c.online.filter((x) => x.allowRun);
-  return on.length ? "On" : c.online.length ? "Online · not helping" : c.signedIn ? "Signed in · not helping" : c.offline ? "Offline" : "Off";
-};
 const pingsLine = (s: Settings | undefined) => {
   if (!s) return "";
   const parts = ["Needs you always", ...(s.notify.summary ? [`summary at ${clock(s.notify.summaryAt, true)}`] : [])];
@@ -146,7 +139,6 @@ export function youPhone(ctx: BotsCtx, d: YouData | undefined) {
         // Family and friends: spaces, what's shared, tasks, payment requests and chats (screens/spaces.ts).
         listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
         listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
-        listRow({ label: "This computer helps", value: computerLine(d), onPress: open(SCREENS.computer) }),
         // Sign in on a computer by scanning its code (screens/link.ts).
         listRow({ label: "Link a computer", value: "Scan to sign in", onPress: open(SCREENS.link) }),
         listRow({ label: "What pings you", value: d ? (d.settings.notify.quiet ? "Quiet hours on" : "Needs you always") : "", onPress: open(SCREENS.notify) }),
@@ -179,8 +171,6 @@ const deskList = (rows: Node[]): Node => listCard(rows);
 export function youDesk(ctx: BotsCtx, d: YouData | undefined) {
   const m = meterOf(ctx, d?.usage);
   const line = limitLine(ctx, m);
-  const helped = d?.computers?.helped;
-  const online = d?.computers?.online ?? [];
   const apps = d?.apps;
   const appRows: Node[] = [
     ...(apps?.github ? [deskRow({
@@ -222,14 +212,6 @@ export function youDesk(ctx: BotsCtx, d: YouData | undefined) {
             : card([meta(apps && !apps.enabled ? "Connected apps aren't on yet." : "No apps connected yet. Your bots can use GitHub, Docs and more.", { size: 13 }), button("Connect an app", open(SCREENS.apps), { kind: "secondary", size: "md" })], { gap: 10 }),
         ], { gap: 8 }),
       ], [
-        deskList([
-          deskRow({
-            glyphNode: icon("computer", { size: 18 }), label: "This computer helps",
-            sub: online.length ? `${computerLine(d)} · ${online[0]!.name}` : "Off · your computers can run jobs for your bots",
-            ...(helped && helped.jobs ? { value: `${plural(helped.jobs, "job")} this month` } : {}),
-            onPress: open(SCREENS.computer),
-          }),
-        ]),
         deskList([
           deskRow({ glyphNode: glyph(G.bell, 18), label: "What pings you", sub: pingsLine(d?.settings) || "Needs you always", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
         ]),

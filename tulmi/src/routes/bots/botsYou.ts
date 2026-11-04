@@ -2,7 +2,7 @@
  * Bots app · you area (screens/you.ts): what the You tab and its settings read and write beyond the existing routes. Everything is the signed-in
  * person's own; another person's anything is never named. `tz` (minutes from UTC) is the person's own day, as the screens send it.
  *
- *   GET    /v1/you?tz=                  -> the You page: plan, the usage meter, connected apps, computers, settings, the download link
+ *   GET    /v1/you?tz=                  -> the You page: plan, the usage meter, connected apps, settings, the download link
  *   GET    /v1/you/usage?tz=            -> { usage, near, out, how }  the Usage page: this stretch and this month as fractions used, when each
  *                                          resets, the line near or at the limit, how the stretches work (src/you/usage.ts). Never an amount
  *   GET    /v1/you/live?tz=             -> { limitPaise, monthPaise, usage }  the tab ring's numbers (live.ts SpendSource), from a 30 s cache
@@ -13,9 +13,6 @@
  *   PUT    /v1/you/settings { monthLimitPaise? | monthLimitRupees?, stopAtLimit?, notify?: { done?, summary?, summaryAt?, quiet?, quietFrom?,
  *                                         quietTo?, bot?, on? }, privacy?: { screenPictures?, personalise? } }  -> { settings }  only what was sent changes
  *   GET    /v1/you/billing              -> { plan, invoices, usage }  (src/you/billing.ts; the screens show no price and no amount)
- *   GET    /v1/you/computers            -> { online, offline, signedIn, helped }  the person's computers (runner presence, the ones seen before, and
- *                                          the desktop app signed in as them while its runner is off)
- *   DELETE /v1/you/computers/:id        -> { ok }  forgets an offline computer (it comes back if it sends a heartbeat again)
  *   GET    /v1/you/apps                 -> { enabled, connected, more, github }  the connected apps with the bots that use each and when last used
  *   GET    /v1/you/apps/:id             -> { app, bots, can, cant }  one app, for Connect
  *   GET    /v1/you/account              -> what deleting the account takes: bots, projects, notes, keys, the plan
@@ -28,7 +25,7 @@
  * Plugged in here too, on the services the server already made (src/you/limits.ts, push.ts): the usage limits on Xode's job routes, on
  * the bots platform's answers and on Keylessbord and Ask (metering.setUsageGate), every bot answer's cost written down, and what Keylessbord, Ask and
  * notes really cost (usage/cost.ts setCostSink), the push engine's gate for
- * "What pings you" and the daily summary, a computer remembered when it sends a heartbeat, and the tab ring's numbers (live.ts setSpendSource).
+ * "What pings you" and the daily summary, and the tab ring's numbers (live.ts setSpendSource).
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
@@ -49,10 +46,8 @@ import { clearShared, dropSharedCache } from "../../bots/shared.js";
 import { forgetAll as forgetContext } from "../../context/index.js";
 import { talkSessions } from "../../talk/session.js";
 import { applyPatch } from "../../you/settings.js";
-import { APP_COMPUTER, computerOs, youStore } from "../../you/store.js";
+import { youStore } from "../../you/store.js";
 
-/** A signed-in desktop not seen for this long is no longer listed (it is still kept, as every computer row is). */
-const SIGNED_IN_FOR_MS = 30 * 86_400_000;
 import type { BotsAreaDeps } from "./botsArea.js";
 
 /** The bots each app is for when the person made no bot of their own that uses it (builtin.ts skills). None today: Plan Ease runs on
@@ -96,22 +91,6 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
   setSpendSource(async (botsDeps, tz) => botsDeps.api<{ limitPaise: number; monthPaise: number; usage?: LiveUsage }>("GET", `/v1/you/live?tz=${Math.round(tz)}`));
   const stopSummaries = startSummaries({ spending, jobs: deps.jobs, connectors: deps.connectors, log: app.log });
   app.addHook("onClose", async () => { stopSummaries(); setUsageGate(null); setCostSink(null); setUsageSpan(null); });
-
-  // A computer's heartbeat: remembered (name, when last seen) at most every ten minutes, so an offline one can still be listed.
-  const seen = new Map<string, number>();
-  app.addHook("onResponse", async (req, reply) => {
-    if (req.method !== "POST" || reply.statusCode !== 200 || req.url.split("?")[0] !== "/v1/code/runner/heartbeat") return;
-    const b = (req.body ?? {}) as { deviceId?: unknown; name?: unknown; capabilities?: { os?: unknown } };
-    if (typeof b.deviceId !== "string" || !b.deviceId) return;
-    const key = `${String(req.headers["authorization"] ?? "").slice(-24)}|${b.deviceId}`;
-    const now = Date.now();
-    if (now - (seen.get(key) ?? 0) < 10 * 60_000) return;
-    seen.set(key, now);
-    if (seen.size > 5000) seen.clear();
-    const user = await resolveUser(req.headers["authorization"]).catch(() => null);
-    if (!user) return;
-    await store.seeComputer(user.id, { deviceId: b.deviceId, name: typeof b.name === "string" ? b.name : "", os: typeof b.capabilities?.os === "string" ? b.capabilities.os : "" }, now).catch(() => undefined);
-  });
 
   // ------------------------------------------------------------ helpers
 
@@ -166,40 +145,6 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     return { enabled: true, connected, more, github: projects.length ? { repos: projects.length } : null, alone };
   };
 
-  const computersView = async (user: AuthedUser) => {
-    const now = Date.now();
-    const online = deps.jobs ? deps.jobs.devices.onlineFor(user.id, now) : [];
-    for (const d of online) await store.seeComputer(user.id, { deviceId: d.deviceId, name: d.name, os: d.capabilities.os }, now).catch(() => undefined);
-    const rows = await store.listComputers(user.id).catch(() => []);
-    // The desktop app's own rows ("app:<os>", you/store.ts seeDesktopApp): a computer signed in as them whose runner is not on.
-    const known = rows.filter((k) => !k.deviceId.startsWith(APP_COMPUTER));
-    const runnerKinds = new Set([...online.map((d) => computerOs(d.capabilities.os)), ...known.map((k) => computerOs(k.os))]);
-    const signedIn = rows.filter((k) => k.deviceId.startsWith(APP_COMPUTER) && now - k.lastSeen < SIGNED_IN_FOR_MS && !runnerKinds.has(computerOs(k.os)));
-    const on = new Set(online.map((d) => d.deviceId));
-    // What computers did this month: the jobs with a step that ran on one, and the minutes those steps took.
-    let jobs = 0, minutes = 0;
-    if (deps.jobs) {
-      const { report } = await spending.report(user.id).catch(() => ({ report: null }));
-      const since = report?.monthStart ?? now - 31 * 86_400_000;
-      const recent = (await deps.jobs.listJobs(user.id, 60).catch(() => [])).filter((j) => j.updatedAt >= since).slice(0, 30);
-      for (const j of recent) {
-        const steps = await deps.jobs.jobWithSteps(user.id, j.id).then((r) => r.steps, () => []);
-        const mine = steps.filter((s) => s.placement === "desktop" && s.status !== "pending");
-        if (mine.length) { jobs += 1; minutes += mine.reduce((n, s) => n + (s.minutes || 0), 0); }
-      }
-    }
-    return {
-      online: online.map((d) => ({
-        deviceId: d.deviceId, name: d.name || "Your computer", os: d.capabilities.os, allowRun: d.allowRun, busy: d.busy,
-        projects: d.projects === "all" ? "all" : Array.isArray(d.projects) ? (d.projects as readonly string[]).length : "most",
-        liveOnly: d.capabilities.liveOnly, container: d.capabilities.container,
-      })),
-      offline: known.filter((k) => !on.has(k.deviceId)).map((k) => ({ deviceId: k.deviceId, name: k.name || "A computer", os: k.os, lastSeen: k.lastSeen })),
-      signedIn: signedIn.map((k) => ({ deviceId: k.deviceId, name: k.name || "Your computer", os: computerOs(k.os), lastSeen: k.lastSeen })),
-      helped: { jobs, minutes },
-    };
-  };
-
   // ------------------------------------------------------------ the You page
 
   app.get("/v1/you", RL, async (req, reply) => {
@@ -207,12 +152,11 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     if (!user) return reply;
     try {
       const tz = tzOf(user.id, req.query);
-      const [{ report, settings }, usage, ent, apps, computers, profile] = await Promise.all([
+      const [{ report, settings }, usage, ent, apps, profile] = await Promise.all([
         spending.report(user.id, tz),
         spending.usage(user.id, { tz, fresh: true }).catch(() => null),
         getEntitlement(user).catch(() => null),
         appsView(user).catch(() => null),
-        computersView(user).catch(() => null),
         getProfile(user).catch(() => null),
       ]);
       return reply.header("cache-control", "no-store").send({
@@ -224,7 +168,6 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
         usage: usage ? meterOf(usage) : null,
         apps: apps ? { enabled: apps.enabled, connected: apps.connected.map((a) => ({ id: a.id, name: a.name, usedBy: a.usedBy, lastUsedAt: a.lastUsedAt })), github: apps.github, alone: apps.alone } : null,
         language: profile?.language ?? null,
-        computers: computers ? { online: computers.online.map((c) => ({ name: c.name, busy: c.busy, allowRun: c.allowRun })), offline: computers.offline.length, signedIn: computers.signedIn.length, helped: computers.helped } : null,
         settings,
         exportUrl: exportLink(user.id, Date.now())?.url ?? null,
       });
@@ -319,26 +262,6 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
       const tz = tzOf(user.id, req.query);
       const [view, usage] = await Promise.all([billingView(user), spending.usage(user.id, { tz }).catch(() => null)]);
       return reply.header("cache-control", "no-store").send({ ...view, usage: usage ? meterOf(usage) : null, email: user.email ?? null });
-    } catch (err) { return fail(reply, err); }
-  });
-
-  // ------------------------------------------------------------ computers
-
-  app.get("/v1/you/computers", RL, async (req, reply) => {
-    const user = await who(req.headers["authorization"], reply);
-    if (!user) return reply;
-    try { return reply.header("cache-control", "no-store").send(await computersView(user)); } catch (err) { return fail(reply, err); }
-  });
-
-  app.delete<{ Params: { id: string } }>("/v1/you/computers/:id", RL, async (req, reply) => {
-    const user = await who(req.headers["authorization"], reply);
-    if (!user) return reply;
-    try {
-      const id = String(req.params.id ?? "").slice(0, 128);
-      if (deps.jobs?.devices.online(user.id, id, Date.now())) {
-        return reply.code(409).send({ code: "online", message: "This computer is online. Turn off This computer helps on it first." });
-      }
-      return reply.send({ ok: await store.removeComputer(user.id, id) });
     } catch (err) { return fail(reply, err); }
   });
 

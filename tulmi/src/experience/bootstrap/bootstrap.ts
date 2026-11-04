@@ -280,7 +280,7 @@ export function buildBootstrap(
           "desktop.shell": DESKTOP_UI,
           // The one-key router's lists, Ask's grammar, the tray's tones and the
           // rest the desktop kept built in (appLists.ts).
-          ...desktopLists({ botsApp }),
+          ...desktopLists(),
           // Closing the window really closes it, so opening it again starts
           // on the landing page with fresh numbers — not on whatever page it
           // was hidden on an hour ago. The tray, the pill and the hotkey live

@@ -295,16 +295,10 @@ describe("the Settings row and the privacy line", () => {
     return out;
   };
 
-  it("Settings carries the folders row under Ask, with the server's words, only where Ask is on", () => {
-    const on = buildDeskScreen("desk_settings", { personality: {} as never, askSetup: { privacyUrl: "https://x0bot.com/privacy", os: "mac", folders: true } })!;
-    const rows = walk(on.root, "DeskFolders");
-    expect(rows).toHaveLength(1);
-    expect(rows[0].props).toMatchObject({ title: "Folders Ask can use", add: "Add a folder", reset: "Back to the usual three", policyUrl: "https://x0bot.com/privacy" });
-    expect(rows[0].props.lede).toMatch(/system, app or hidden/);
-    const old = buildDeskScreen("desk_settings", { personality: {} as never, askSetup: { privacyUrl: "https://x0bot.com/privacy", os: "mac" } })!;
-    expect(walk(old.root, "DeskFolders")).toHaveLength(0);
-    const off = buildDeskScreen("desk_settings", { personality: {} as never })!;
-    expect(walk(off.root, "DeskFolders")).toHaveLength(0);
+  it("Settings has no folders row: Ask works in the usual folders, as the policy says", () => {
+    const s = buildDeskScreen("desk_settings", { personality: {} as never })!;
+    expect(walk(s.root, "DeskFolders")).toHaveLength(0);
+    expect(PRIVACY_POLICY_HTML).toContain("only inside your Downloads, Desktop and Documents folders");
   });
 
   it("the policy says what goes and what never does", () => {

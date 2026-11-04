@@ -1397,7 +1397,6 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.row.valueGap": 8,
   "desktop.row.valueSize": 15,
   "desktop.runner.height": 740,
-  "desktop.runner.screenId": "",
   "desktop.runner.width": 860,
   "desktop.screen.waitMs": 700,
   "desktop.share.screenId": "bots.share-in",

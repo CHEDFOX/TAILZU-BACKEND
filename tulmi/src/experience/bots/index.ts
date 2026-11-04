@@ -108,7 +108,7 @@ export function botsNav(): NavigationShell {
 export const BOTS_WARM_SCREEN_IDS = [
   "bots.home", "bots.activity", "bots.you", "bots.ask", "bots.tasks", "bots.today", "bots.search", "bots.notes", "bots.chats",
   "bots.keybot", "bots.plan", "bots.travel", "bots.code", "bots.spaces", "bots.make", "bots.store",
-  "bots.usage", "bots.billing", "bots.notify", "bots.computer", "bots.apps", "bots.privacy", "bots.blocked", "bots.settings", "bots.language",
+  "bots.usage", "bots.billing", "bots.notify", "bots.apps", "bots.privacy", "bots.blocked", "bots.settings", "bots.language",
   "bots.keybot.style", "bots.keybot.tone", "bots.keybot.words", "bots.keybot.voices", "bots.keybot.settings", "bots.keybot.haptics", "bots.keybot.name",
   "bots.keybot.history", "bots.keybot.days", "bots.keybot.month", "bots.keybot.speak", "bots.keybot.apps",
 ];

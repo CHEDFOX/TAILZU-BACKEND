@@ -207,8 +207,8 @@ function desktopGrammar(): Record<string, unknown> {
   };
 }
 
-/** Every desktop list above, as the bootstrap's flags. `botsApp`: the Bots app is on for this person. */
-export function desktopLists(o: { botsApp: boolean }): Record<string, unknown> {
+/** Every desktop list above, as the bootstrap's flags. */
+export function desktopLists(): Record<string, unknown> {
   const router: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(DESKTOP_ROUTER)) router[`desktop.router.${k}`] = v;
   return {
@@ -216,8 +216,6 @@ export function desktopLists(o: { botsApp: boolean }): Record<string, unknown> {
     "desktop.router.names": [...DESKTOP_WAKE_NAMES],
     "desktop.agent.grammar": desktopGrammar(),
     "desktop.tones": DESKTOP_TONES.map((t) => ({ ...t })),
-    // "Tailzu Code activity…" opens the Bots app's page for it, with the runner's card on it (DeskRunner).
-    ...(o.botsApp ? { "desktop.runner.screenId": "bots.computer" } : {}),
   };
 }
 

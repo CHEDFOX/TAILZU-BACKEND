@@ -8,7 +8,6 @@ import { LANGUAGE_NAMES } from "../../history/writtenIn.js";
 import { nicknameOf } from "../assistantName.js";
 import { sw as say } from "../settingsWords.js";
 import { isValidTtsVoice, DEFAULT_TTS_VOICE, ttsVoiceById } from "../ttsVoices.js";
-import { askSetupCard, askFoldersCard } from "./askSetup.js";
 import { connectedApps } from "./connectedApps.js";
 import type { DeskContext } from "./context.js";
 import { link, text, stack, screen, page, defRow, n, row, keys, shownIf } from "./kit.js";
@@ -39,7 +38,7 @@ const sw = (key: string, labelText: string): Node => ({
  *   You               the plan, the account and Sign out
  *   Writing           languages, voice and tone, the read-aloud voice, its name
  *   Connected apps    the assistant's apps (only while they are switched on here)
- *   This computer     the shortcut, the pill, Ask's permissions
+ *   This computer     the shortcut, the pill, listening (Ask and Xode need no switch here: privacy policy 10.5, 12.6)
  *   Privacy and data  what is kept, the privacy policy
  *   Help and about    write to us, the terms
  * Every section is spaced the same (a heading, a line, its rows) and every row
@@ -109,13 +108,6 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       defRow("Write on a pause", say("d.pause"), sw("pauseFlush", "Write on a pause")),
       defRow("Live words", say("d.live"), sw("live", "Live words")),
       defRow("Start with the computer", say("d.auto"), sw("autoStart", "Start with the computer")),
-      // Ask's three permissions, always here with their states, so a yes given
-      // once on the home card can be seen and taken back.
-      ...(ctx.askSetup ? [
-        text("Ask", "d-k", { marginTop: 28, marginBottom: 12 }),
-        askSetupCard(ctx.askSetup, "settings"),
-        ...(ctx.askSetup.folders ? [askFoldersCard(ctx.askSetup)] : []),
-      ] : []),
     ]),
 
     // ---- Privacy and data --------------------------------------------------

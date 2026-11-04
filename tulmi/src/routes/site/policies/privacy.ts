@@ -10,7 +10,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "October 31, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "November 4, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
@@ -293,10 +293,12 @@ const PRIVACY_POLICY_BODY = `
 
 <h2>10. Ask, on the desktop app</h2>
 <p>Ask is the helper in the X0 Bot desktop app for Mac and Windows. Tap its key twice and say something about the app in front of you ("where's Export?", "explain this chart"), and it points at the thing, explains it, or does a small job for you. It reads the screen when you call it up, and again after each thing it does for you, to see what changed.</p>
+<p><strong>Talking with X0 Bot.</strong> In the same app you can also have a spoken conversation: tap the key twice and talk, turn after turn, and X0 Bot answers out loud. It knows where you are (the app, the window and the page in front of you) so you can ask about it, and when you ask for something to be done, it hands that to Ask. Everything in this section applies to it too, with the differences in 10.2 and 10.3.</p>
 
 <h3>10.1 What Ask reads on your computer</h3>
 <ul>
   <li><strong>The app in front of you</strong>, through the system's accessibility interface: its buttons, fields and the text in them. On a Mac this needs the Accessibility permission.</li>
+  <li><strong>The whole page or document</strong>, not only the part on your screen, when your question is about it: through the accessibility interface where the app offers it, and otherwise by scrolling the window a screen at a time, reading each, and putting it back exactly where you were. Not while you are dictating.</li>
   <li><strong>The window's pixels</strong>, read into lines of text by your computer's own text recognition (Apple's Vision on a Mac, Windows' own OCR on Windows), on your computer. On a Mac this needs the Screen Recording permission (Screen &amp; System Audio Recording on newer versions of macOS).</li>
   <li><strong>Where your text cursor is</strong>, while you dictate, so Ask's character can sit above it. That position never leaves your computer.</li>
 </ul>
@@ -306,13 +308,14 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li><strong>A text list of what is on the screen:</strong> for each button, field or piece of text, what kind it is, its label, a short value, whether it is checked, selected or greyed out, and a rough position (top left, centre, bottom right and so on), together with the lines of text read off the window's pixels, each with its rough position. Also the app's name (for a browser, with the site's name, taken from the end of the tab's title, as in "Chrome: Gmail"), which field your cursor is in, and the text you have selected, if any.</li>
   <li><strong>What you said:</strong> your spoken question, turned into text by the same speech-to-text providers as dictation and handled the same way (see 1.2); and, while Ask is working on a question, what it has done for it so far. With it go your language setting and your time zone (as its offset from UTC).</li>
-  <li><strong>The names of your files, only when you ask Ask about them:</strong> when you ask Ask to find, sort or tidy files, your computer does the work, only inside the folders you allowed (Downloads, Desktop and Documents unless you change them in Settings), and never in system, app or hidden folders. For a question about your files, the file names, sizes, kinds and dates it needs are sent to the AI model that plans the answer; what is inside a file never leaves your computer, and X0 Bot does not store the names. Moving something to the Trash always asks first.</li>
-  <li><strong>One picture, only when a question needs it and you have allowed it:</strong> a picture of the part of the screen your question is about (the image or chart, or else the window), cut on your computer to below the window's title bar and a browser's tabs and address bar, where it finds them, and no more than 1,024 pixels on its longer side by default. Before one is sent, Ask asks: Allow once, Always for that app (where the app can be named), or Not now. It does not ask again for an app you said Always to, nor at all once you have said yes for every app in the X0 Bot app's Ask setup (see 10.5). Ask's card shows a note when a picture goes with a question.</li>
+  <li><strong>The names of your files, only when you ask Ask about them:</strong> when you ask Ask to find, sort or tidy files, your computer does the work, only inside your Downloads, Desktop and Documents folders, and never in system, app or hidden folders. For a question about your files, the file names, sizes, kinds and dates it needs are sent to the AI model that plans the answer; what is inside a file never leaves your computer, and X0 Bot does not store the names. Moving something to the Trash always asks first.</li>
+  <li><strong>One picture, only when a question needs it:</strong> a picture of the part of the screen your question is about (the image or chart, or else the window), cut on your computer to below the window's title bar and a browser's tabs and address bar, where it finds them, and no more than 1,024 pixels on its longer side by default. Looking when it's needed is on from the start, so Ask does not stop to ask first; you can have it ask before every picture instead (see 10.5). Ask's card shows a note when a picture goes with a question.</li>
+  <li><strong>In a spoken conversation</strong>, besides the above: the window's title and the page's address (never the part after "?" or "#"), the page reduced to its outline and the parts your question is about (at most about 4,000 characters), and the conversation so far. The answer is turned into speech by the providers in Section 3, and spoken on your computer.</li>
 </ul>
 
 <h3>10.3 What Ask never sends</h3>
 <ul>
-  <li><strong>The window's title</strong>, beyond a browser's site name (above). The tabs, headings and other text on the screen are listed as they are shown, even where one of them repeats the title.</li>
+  <li><strong>The window's title</strong>, beyond a browser's site name (above), except in a spoken conversation (10.2). The tabs, headings and other text on the screen are listed as they are shown, even where one of them repeats the title.</li>
   <li><strong>Exact positions</strong> of anything on your screen. Only the rough position above leaves your computer.</li>
   <li><strong>Passwords and addresses:</strong> nothing in a password field; nothing in a browser's address bar, where Ask finds one; and never the part of a web address after "?" or "#", where links carry their one-time codes. Text you have selected is not sent at all if it contains such an address.</li>
   <li><strong>Anything from a private window or a sensitive app.</strong> Ask stops, and sends nothing from the screen, in a private (incognito) browser window, or in an app or page whose name marks it as banking, payments, investing or crypto, tax, health, insurance, a wallet or a password manager; and our servers refuse a request that comes from such an app.</li>
@@ -326,13 +329,23 @@ const PRIVACY_POLICY_BODY = `
   <li>X0 Bot keeps a record of each request to Ask on your computer: how it ended and why, how many steps it took and how long, how many things it changed, and which AI model answered and what that cost. It holds nothing you said and nothing from your screen.</li>
 </ul>
 
-<h3>10.5 How to turn it off</h3>
+<h3>10.5 On from the start, and how to turn it off</h3>
+<p>So that X0 Bot works fully without a row of switches to set, everything in this section is on from the moment you sign in to the desktop app: reading the app in front of you, reading the window's pixels, reading the whole page when your question is about it, and looking at the screen when a question needs a picture. The app does not ask you to allow each one; this section is where we tell you what each does. Your computer's own permissions still apply (below), and X0 Bot never sends anything listed in 10.3.</p>
 <ul>
-  <li><strong>Each time:</strong> answer Not now when Ask asks to look, and no picture is sent.</li>
-  <li><strong>For one app:</strong> an app you said Always to is listed in the X0 Bot menu (the menu bar on a Mac, the system tray on Windows), where you can have Ask ask again for it, or for all of them.</li>
-  <li><strong>For every app:</strong> in the X0 Bot app, "Look at the screen when it's needed" (on the home page until it is set up, and always in Settings under Ask) lets Ask look without asking each time. Turn it off there, and Ask goes back to asking first, except in the apps you said Always to. Signing out turns it off and forgets every Always.</li>
-  <li><strong>Altogether, on a Mac:</strong> without the Accessibility permission Ask cannot read an app's buttons, fields and text, and without Screen Recording it cannot see the window's pixels or take a picture of them; with both off, it reads nothing on your screen. You can turn either off at any time in System Settings &rarr; Privacy &amp; Security.</li>
+  <li><strong>Pictures, for every app:</strong> in the X0 Bot menu (the menu bar on a Mac, the system tray on Windows), "Pictures sent without asking" &rarr; "Ask again for all of them" makes Ask ask before each picture: Allow once, Always for that app (where the app can be named), or Not now. Answer Not now and no picture is sent. An app you said Always to is listed in the same menu, where you can have Ask ask again for it.</li>
+  <li><strong>When you sign out:</strong> every Always is forgotten, and the next person to sign in on that computer starts from the defaults above.</li>
+  <li><strong>Altogether, on a Mac:</strong> macOS itself asks you, the first time, to allow X0 Bot under Accessibility and under Screen Recording; X0 Bot cannot allow them for you. Without Accessibility Ask cannot read an app's buttons, fields and text, and without Screen Recording it cannot see the window's pixels or take a picture of them; with both off, it reads nothing on your screen. You can turn either off at any time in System Settings &rarr; Privacy &amp; Security.</li>
+  <li><strong>Altogether, anywhere:</strong> quit the X0 Bot app, or sign out of it. Ask works only while the app is open and you are signed in, and only when you call it up.</li>
 </ul>
+
+<h3>10.6 What X0 Bot keeps to understand you</h3>
+<p>So that a follow-up works ("send it to Dev too") and "message Riya" goes through the app you use for her, X0 Bot keeps a short record about you, on our servers, and gives it with each request to Ask, to the one key and to a spoken conversation:</p>
+<ul>
+  <li><strong>You:</strong> your name, language and time zone, and what you told your bots.</li>
+  <li><strong>People:</strong> who you ask X0 Bot to message and through which app, how often, and when last (at most 30 people).</li>
+  <li><strong>Your last asks:</strong> the last six things you asked in full, and a short line for the ones before; and what X0 Bot last did for you (an Ask's last words, a routine's last run).</li>
+</ul>
+<p>It never keeps anything from a password field, from X0 Bot's own window, from a private window or a sensitive app (10.3), from a picture, or anything that looks like a password, a code or a secret; and never what you dictate into other apps. A spoken conversation itself is held only in our server's memory and forgotten after 30 minutes without a word. Turn off "Use what you've told your bots" in Settings &rarr; Privacy and nothing is kept or used; clearing what your bots know there clears this record and your conversations too. It is deleted with your account.</p>
 
 <hr>
 
@@ -417,7 +430,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>It asks you first</strong> before it commits or pushes to any other branch (the default branch included), merges a pull request, marks one ready for review, closes one, deletes a branch, changes a workflow file, or adds a first file to an empty repo. A force-push, deleting the default branch, and a commit with something in it that looks like a password or key ask every time, with Face ID on your phone. For a project, you can answer "always" or "never" for an action that asks (except those three), and take it back at any time. When nobody is there to answer, the work waits for you.</li>
   <li><strong>It never</strong> deletes a repo, writes outside the repo, or works around GitHub's branch protection.</li>
   <li><strong>Pull requests you hand over.</strong> If you ask X0 Bot to look after a pull request, it may push fixes to that pull request's branch, answer reviewers' comments and keep one status comment up to date there, without asking each time.</li>
-  <li><strong>Running commands.</strong> A step that needs a computer (installing, building, testing) runs on one of your own computers with the X0 Bot desktop app, where you have allowed it there; or on GitHub's own computers (GitHub Actions), in your repo. For that, X0 Bot makes a temporary branch (named <code>tailzu-run/…</code>) holding a small workflow, the step's commands and a script, and deletes it afterwards. It uses your account's GitHub Actions minutes, and in a public repo anyone can see that branch while it exists. You can tell X0 Bot not to use GitHub's computers. A computer that runs commands is given access that can only read the repo; X0 Bot commits the changes itself, under the rules above.</li>
+  <li><strong>Running commands.</strong> A step that needs a computer (installing, building, testing) runs on one of your own computers with the X0 Bot desktop app open (see 12.6); or on GitHub's own computers (GitHub Actions), in your repo. For that, X0 Bot makes a temporary branch (named <code>tailzu-run/…</code>) holding a small workflow, the step's commands and a script, and deletes it afterwards. It uses your account's GitHub Actions minutes, and in a public repo anyone can see that branch while it exists. You can tell X0 Bot not to use GitHub's computers. A computer that runs commands is given access that can only read the repo; X0 Bot commits the changes itself, under the rules above.</li>
 </ul>
 
 <h3>12.3 Where your code goes</h3>
@@ -445,6 +458,17 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Sign in with GitHub:</strong> disconnecting it in X0 Bot, deleting your account, or leaving it unused for 30 days revokes your token at GitHub and deletes it. You can also revoke it yourself in your GitHub settings, under Applications.</li>
   <li><strong>Deleting your X0 Bot account</strong> does not uninstall the App from GitHub; do that on GitHub.</li>
   <li>What X0 Bot wrote in your repos (branches, commits, pull requests, comments and repos it made) is yours, and stays on GitHub until you change it there.</li>
+</ul>
+
+<h3 id="your-computer">12.6 Xode on your own computer</h3>
+<p>Your own computer is quicker than a cloud computer and costs you nothing, so while the X0 Bot desktop app is open and you are signed in, Xode may run a job's commands (installing, building, testing, and a preview of a site it is working on) there. This is on from the start, for every project you add, without asking you each time; this section is where we tell you how it works.</p>
+<ul>
+  <li><strong>What our server learns of your computer:</strong> while the app is open, a random ID made for this computer, the computer's name (as the system reports it, at most 80 characters), whether it may run work and is busy, and which projects it may run. These are held only in our server's memory, for about a minute after the app last sends them, and never written to our database. With each job it gets back what the commands printed (kept as in 12.4).</li>
+  <li><strong>Where it works:</strong> in a folder of its own inside the app's data, from a read-only copy of the project's code, with a clean environment and a private home folder. It cannot see your passwords, keys or your other files, and it never changes your own copy of the project. X0 Bot commits the changes itself, on GitHub, under the rules in 12.2.</li>
+  <li><strong>What it refuses:</strong> commands that need administrator rights (such as sudo), pushing to GitHub or publishing a package from your computer, and deleting your home folder. If Docker is installed, you can have it work inside a container as well.</li>
+  <li><strong>When it stops on its own:</strong> it pauses when your battery is below 20% or Low Power Mode is on, and runs nothing while the app is closed.</li>
+  <li><strong>What it keeps on your computer:</strong> a log of every command it ran, with anything that looked like a secret taken out, kept for 7 days and then deleted. "Xode activity…" in the X0 Bot menu (the menu bar on a Mac, the system tray on Windows) shows what it is doing and opens that log.</li>
+  <li><strong>How to turn it off:</strong> untick "Use this computer for Xode" in the X0 Bot menu, and your jobs run on GitHub's computers or ours instead; "Stop" there ends what is running. In "Xode activity…" you can also keep a single project off this computer. Quitting the app or signing out stops it too.</li>
 </ul>
 
 <hr>

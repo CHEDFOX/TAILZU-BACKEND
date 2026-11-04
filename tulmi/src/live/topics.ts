@@ -119,7 +119,7 @@ export function topicsForScreen(screenId: string, params: Record<string, unknown
     case "bots.today": return [home, activity, notes, TOPIC.calendar, tasks];
     case "bots.notes": return [notes];
     case "bots.note": return noteTopic(params.id) ? [noteTopic(params.id)] : [notes];
-    case "bots.you": case "bots.billing": case "bots.computer": case "bots.notify": case "bots.privacy":
+    case "bots.you": case "bots.billing": case "bots.notify": case "bots.privacy":
     case "bots.apps": case "bots.app-connect": case "bots.language": return [you];
     case "bots.settings": return [you, keybot];
     case "bots.budget": return [you, code];

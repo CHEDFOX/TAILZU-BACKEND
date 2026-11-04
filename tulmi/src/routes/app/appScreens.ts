@@ -34,7 +34,6 @@ import { getProfile, updateProfile, touchLastSeen } from "../../profile/store.js
 import { pushEngine } from "../../push/index.js";
 import { usageSummary, allowanceFor } from "../../usage/metering.js";
 import { markSeen } from "../../widgets/glanceStore.js";
-import { seeDesktopApp } from "../../you/store.js";
 import { AUTH_RESUME_SCHEME_URL } from "../site/demo.js";
 import { noStoreSdui, clip, gzipLargeJson } from "../../http/helpers.js";
 import { getMediaRegistry } from "./media.js";
@@ -426,8 +425,6 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
       ? await Promise.all([getPersonality(user), getProfile(user)])
       : [{}, null];
     const screenFormFactor = body.capabilities?.device?.formFactor === "desktop" ? "desktop" : "phone";
-    // A desktop signed in as this person is one of their computers, runner on or not (This computer helps lists it).
-    if (user && screenFormFactor === "desktop") seeDesktopApp(user.id, body.capabilities?.device?.os);
     const screenCtx = (screen: string) => ({
       surface: "screen" as const,
       screen,

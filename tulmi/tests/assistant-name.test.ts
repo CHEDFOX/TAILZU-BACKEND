@@ -215,7 +215,7 @@ describe("X0, however it is heard", () => {
   it("the desktop's one key router gets the same ways of hearing it, and the ordinary words as front-only", async () => {
     const { desktopLists } = await import("../src/experience/appLists.js");
     const { NAME_HEARD_FRONT_ONLY } = await import("../src/experience/assistantName.js");
-    const lists = desktopLists({ botsApp: true }) as Record<string, unknown>;
+    const lists = desktopLists() as Record<string, unknown>;
     expect(lists["desktop.router.names"]).toEqual(["X0", "Blip", "Tailzu"]);
     const heard = (lists["desktop.router.heardAs"] as Array<{ name: string; heard: string[] }>).find((h) => h.name === "x0")!;
     for (const f of ["x0", "xo", "x o", "x zero", "ex zero", "ex oh", "zo", "zero bot", "x0 bot", "xo bot"]) expect(heard.heard, f).toContain(f);

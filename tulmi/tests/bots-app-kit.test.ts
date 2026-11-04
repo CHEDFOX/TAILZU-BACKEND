@@ -156,7 +156,7 @@ describe("the frames", () => {
     const [side, main] = s.root!.children!;
     expect(side!.style).toMatchObject({ width: 240, borderRightWidth: 1 });
     const words = JSON.stringify(side);
-    for (const w of ["Bots", "Activity", "You", "Your bots", "Xode", "Gym bot", "Make a bot", "Today", "Notes", "This computer helps", "Settings"]) expect(words).toContain(w);
+    for (const w of ["Bots", "Activity", "You", "Your bots", "Xode", "Gym bot", "Make a bot", "Today", "Notes", "Settings"]) expect(words).toContain(w);
     expect(words).toContain('"screenId":"desk_settings"');
     expect(main!.style).toMatchObject({ overflowY: "auto", flexGrow: 1 });
     expect(checkTree(s.root!)).toEqual([]);

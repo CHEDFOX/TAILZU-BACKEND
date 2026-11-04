@@ -56,10 +56,6 @@ export interface DeskContext {
   /** This window can open the Mac's permission for the computer's sound
    *  (it said "DeskSystemAudio"). */
   allowSystemAudio?: boolean;
-  /** This window draws Ask's one-time setup card (it said "DeskAskSetup",
-   *  which it says only while Ask is on there): where the card's privacy
-   *  link goes, and the computer it is on ("mac", "windows"), when known. */
-  askSetup?: { privacyUrl: string; os?: string; folders?: boolean };
   /** The assistant's connected apps and tasks (CONNECTORS is on, and this
    *  window said "DeskConnectors"): the apps for Settings, the tasks for the
    *  Tasks page. Absent, and neither is drawn. */

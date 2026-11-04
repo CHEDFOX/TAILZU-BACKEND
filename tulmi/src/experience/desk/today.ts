@@ -7,7 +7,6 @@ import type { Node, ScreenResponse } from "../../../../shared/types/sdui.js";
 import { span } from "../phoneLook.js";
 import { sw as say } from "../settingsWords.js";
 import { dayPart } from "../touches.js";
-import { askSetupCard } from "./askSetup.js";
 import { statTile, columns, race, appParts, donutWithLegend, type Part, SERIES, splitBar, trend } from "./charts.js";
 import { type DeskContext, TYPING_WPM } from "./context.js";
 import { stack, text, row, keys, n, room, blip, section, inline, link, twoUp, screen, page } from "./kit.js";
@@ -228,10 +227,7 @@ export function deskToday(ctx: DeskContext): ScreenResponse {
     ...twoUp(weekBlock, trainBlock),
     historyBlock,
   ];
-  // Ask's one-time setup, above the room: the first thing on the page until
-  // every row is on, when the window stops drawing it.
-  const setup = ctx.askSetup ? [askSetupCard(ctx.askSetup, "home")] : [];
-  return screen("desk_today", "Today", [...setup, band, page(body)]);
+  return screen("desk_today", "Today", [band, page(body)]);
 }
 
 function trainLine(p: Personality): string {

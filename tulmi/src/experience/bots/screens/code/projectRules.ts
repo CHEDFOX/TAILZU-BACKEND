@@ -85,7 +85,7 @@ export function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResp
         ])], { gap: 8 }),
         col([sectionLabel("How it works"), listCard([
           row([text("Branch names", { size: 15, lineHeight: 20 }), grow(), text(cut(v.branchExample, 28), { size: 12, mono: true, color: C.meta, lineHeight: 16 })], { gap: 8, paddingVertical: 13, paddingHorizontal: 16 }),
-          listRow({ label: "This computer helps", sub: compSub, value: comp ? (comp.on ? "On" : "Off") : "", onPress: open(SCREENS.computer) }),
+          listRow({ label: "Your computer", sub: compSub, value: comp ? (comp.on ? "On" : "Off") : "", chevron: false }),
         ])], { gap: 8 }),
         col([sectionLabel("Danger area"), dangerCard], { gap: 8 }),
       ],
@@ -114,8 +114,8 @@ export function projectRules(ctx: BotsCtx, v: RulesView | undefined): ScreenResp
       ])),
       section("How it works", "Where the work runs, and how branches are named so you can find them on GitHub.", cardOf([
         row([col([text("Branch names", { size: 15, lineHeight: 20 }), meta("tailzu/ and the job name")], { gap: 2, flexGrow: 1 }), mono(v.branchExample, { size: 12 })], { gap: 16, paddingVertical: 11, paddingHorizontal: 18, borderBottomWidth: 1, borderBottomColor: C.divider }),
-        row([col([text("This computer helps", { size: 15, lineHeight: 20 }), meta(compSub)], { gap: 2, flexGrow: 1 }), meta(comp ? (comp.on ? "On" : "Off") : "Set up", { size: 13 }), icon("chevron", { size: 16, color: C.meta })],
-          { gap: 12, paddingVertical: 11, paddingHorizontal: 18 }, open(SCREENS.computer)),
+        row([col([text("Your computer", { size: 15, lineHeight: 20 }), meta(compSub)], { gap: 2, flexGrow: 1 }), ...(comp ? [meta(comp.on ? "On" : "Off", { size: 13 })] : [])],
+          { gap: 12, paddingVertical: 11, paddingHorizontal: 18 }),
       ])),
       section("Danger area", "Nothing here is deleted. You can connect the project again any time.", dangerCard),
     ],

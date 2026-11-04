@@ -15,7 +15,7 @@ import type { AssistantView } from "../connectors/list.js";
 import type { StatsForUser } from "../history/stats.js";
 import type { Allowance } from "../usage/allowance.js";
 import { DESK_SCREENS, buildDeskScreen } from "./desk/screens.js";
-import { DESKTOP_LATEST, desktopOs, updateFor } from "./desktopRelease.js";
+import { DESKTOP_LATEST, updateFor } from "./desktopRelease.js";
 import { canOnboard } from "./onboard/screens.js";
 import { neuralField, fieldGrowth, FIELD_SIGNAL_AT_REST } from "./phone/neuralField.js";
 import { PAYWALL_CONFIG } from "./phone/paywall.js";
@@ -149,12 +149,6 @@ export function buildScreen(screenId: string, ctx: ScreenContext): ScreenRespons
       legal: { privacy: POLICY.privacy, terms: POLICY.terms },
       free: freeForAll(),
       allowSystemAudio: ctx.can?.has("DeskSystemAudio") === true,
-      // Ask's one-time setup card, for a window that draws it (it says so
-      // only while Ask is on there). Its policy link is the one every
-      // surface uses.
-      askSetup: ctx.can?.has("DeskAskSetup") === true
-        ? { privacyUrl: POLICY.privacy, os: desktopOs(ctx.os) ?? undefined, folders: ctx.can?.has("DeskFolders") === true }
-        : undefined,
       usage: ctx.usage,
       stats: ctx.stats as unknown as StatsForUser | undefined,
       allowance: ctx.allowance,

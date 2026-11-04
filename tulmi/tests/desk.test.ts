@@ -45,10 +45,8 @@ const DESKTOP_COMPONENTS = new Set([
   "SVG", "Gradient", "BlurBackground", "FlipText", "Modal", "ProgressBar",
   "SwipeAction", "NeuralField", "ChatThread", "VoiceToggle", "VoiceButton",
   "VoiceSession", "DeskShell", "Keys",
-  // Sent only to a window that declared DeskAskSetup (Ask is on there).
+  // Sent only to a window that declared DeskAskSetup (Keylessbord's first-run Accessibility row on a Mac).
   "DeskAskSetup",
-  // Sent only to a window that declared DeskFolders (the allowed-folders row under Ask).
-  "DeskFolders",
 ]);
 const DESKTOP_ACTIONS = new Set([
   "navigate", "back", "switchTab", "callEndpoint", "setState", "toggleState",
@@ -169,7 +167,7 @@ describe("the desk pages", () => {
   const ctxs = {
     sample: sampleCtx,
     empty: { personality: {}, language: "en" } as never,
-    // A window where Ask is on: Today and Settings carry its setup card too.
+    // A window where Ask is on: Today and Settings are the same as anywhere else (no setup card).
     ask: { ...(sampleCtx as object), os: "mac", can: new Set(["DeskNotes", "DeskSystemAudio", "DeskAskSetup"]) } as never,
     // A window that shows the assistant: Settings has its apps, Tasks its list.
     assistant: {

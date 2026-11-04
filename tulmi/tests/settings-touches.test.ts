@@ -233,9 +233,8 @@ describe("every Settings action still exists, with the same route and id", () =>
     const screens = all.filter((a) => a.kind === "navigate").map((a) => a.screenId);
     expect(screens).toEqual(expect.arrayContaining(["languages", "desk_voice_read", "desk_assistant_name", "desk_plan"]));
     expect(all.some((a) => a.kind === "signOut")).toBe(true);
-    // And Ask's card and its folders are still on the page.
-    expect(nodes(s, (n) => n.type === "DeskAskSetup")).toHaveLength(1);
-    expect(nodes(s, (n) => n.type === "DeskFolders")).toHaveLength(1);
+    // Ask and its folders are on by default: no setup card and no folders row on the page (privacy policy 10.5).
+    expect(nodes(s, (n) => n.type === "DeskAskSetup" || n.type === "DeskFolders")).toHaveLength(0);
   });
 
   it("a paid desk keeps its Manage link and its Razorpay cancel", () => {

@@ -38,7 +38,6 @@ const you = {
       { id: "google-tasks", name: "Google Tasks", usedBy: ["Plan Ease"], lastUsedAt: NOW - D },
     ],
   },
-  computers: { online: [{ name: "Aanya's MacBook", busy: true, allowRun: true }], offline: 1, helped: { jobs: 6, minutes: 200 } },
   settings, exportUrl: "https://api.x0bot.com/v1/you/export/file?t=x", language: "hinglish",
 };
 
@@ -58,11 +57,6 @@ const billing = {
   plan: { name: "Pro", active: true, store: "razorpay", renews: true, until: utc(2026, 11, 12, 6), since: utc(2026, 7, 12, 6), price: "₹299", period: "a month", paidBy: "UPI autopay", cancel: "razorpay", manageUrl: null },
   invoices: [invoice(1, 10, "0412"), invoice(2, 9, "0388"), invoice(3, 8, "0351"), invoice(4, 7, "0297")],
   usage, email: "aanya.rao@gmail.com",
-};
-
-const computers = {
-  online: [{ deviceId: "mbp", name: "Aanya's MacBook", os: "darwin", allowRun: true, busy: true, projects: "all", liveOnly: false, container: false }],
-  offline: [{ deviceId: "office", name: "Office PC", os: "win32", lastSeen: NOW - 2 * D - 3 * H }], helped: { jobs: 6, minutes: 200 },
 };
 
 const builtin = (slug: string, name: string) => ({ slug, name, colour: "", builtin: true });
@@ -101,7 +95,6 @@ export const YOU_API: Record<string, unknown> = {
   [`GET /v1/you/spend?tz=${IST}`]: { report, settings },
   [`GET /v1/you/usage?tz=${IST}`]: { usage, near: null, out: null, how: "Each month is used in five stretches: 4, 5, 6 and 7 days, then the rest of the month. Each starts fresh." },
   [`GET /v1/you/billing?tz=${IST}`]: billing,
-  "GET /v1/you/computers": computers,
   [`GET /v1/you/notify?tz=${IST}`]: { settings, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you." },
   "GET /v1/you/account": account,
   "GET /v1/you/apps": apps,

@@ -1,10 +1,9 @@
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import type { Node } from "../../shared/types/sdui.js";
 
 // What the apps used to decide or keep, now sent by the server (docs/server-push-audit.md, groups A and B): the
-// words the server sent but never translated, the desktop's lists, the keyboards' word lists and key click, the
-// runner's card on bots.computer, and the native name card retired for the Bots app.
+// words the server sent but never translated, the desktop's lists, the keyboards' word lists and key click, and
+// the native name card retired for the Bots app.
 process.env.OPENROUTER_API_KEY = "k";
 process.env.OPENAI_API_KEY = "k";
 process.env.GROQ_API_KEY = "k";
@@ -49,10 +48,6 @@ const { localize, localizeKeyboardLabels } = await import("../src/experience/i18
 const { DESKTOP_ROUTER, SWIPE_CORE_WORDS, deskVoices } = await import("../src/experience/appLists.js");
 const { GRAMMAR_RULES } = await import("../src/agent/grammar.js");
 const { withKeybotKeyboard } = await import("../src/keybot/keyboard.js");
-const { buildBotsScreen } = await import("../src/experience/bots/index.js");
-const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
-const { walk } = await import("../src/experience/bots/lint.js");
-const { RUNNER_CARD_WORDS } = await import("../src/experience/bots/screens/you/computer.js");
 
 type Flags = Record<string, unknown>;
 const flagsOf = (b: { flags?: unknown }) => (b.flags ?? {}) as Flags;
@@ -129,9 +124,7 @@ describe("A2, B1, B4: the desktop's lists", () => {
     const re = new RegExp(g.politeRequest!.source, g.politeRequest!.flags);
     expect(re.test("Could you open it")).toBe(true);
   });
-  it("the runner's page for the Bots app; nothing of this on a phone", () => {
-    expect(desk["desktop.runner.screenId"]).toBe("bots.computer");
-    expect(flagsOf(buildBootstrap({ onboarded: true, formFactor: "desktop" }))["desktop.runner.screenId"]).toBe("");
+  it("nothing of this on a phone", () => {
     const phone = flagsOf(buildBootstrap({ onboarded: true }));
     expect(phone["desktop.router.greetings"]).toBeUndefined();
     expect(phone["desktop.agent.grammar"]).toEqual({});
@@ -162,28 +155,5 @@ describe("A3, A4, A5: the keyboards", () => {
     // Absence still means something for these.
     expect(ios["kb.dictation.targetApp"]).toBeUndefined();
     expect(ios["kb.look.force"]).toBeUndefined();
-  });
-});
-
-const build = (screenId: string, client: "phone" | "desktop", api: Record<string, unknown>, can: string[] = []) =>
-  buildBotsScreen({
-    screenId, client, tzOffsetMinutes: IST, user: { id: "u1", name: "Aanya", email: "aanya@example.in" },
-    can: new Set(["BotsKit", ...can]), desk: { pages: false, notes: false },
-  }, fakeDeps({ api }));
-const texts = (n: Node): string[] => walk(n).filter((x) => x.type === "Text").map((x) => String(x.props?.content));
-
-describe("B3: Xode on this computer, drawn on bots.computer", () => {
-  const api = { "GET /v1/you/computers": { online: [], offline: [], helped: { jobs: 0, minutes: 0 } } };
-  it("a window that has the card gets it, with every word it shows; any other gets none", async () => {
-    const card = walk((await build("bots.computer", "desktop", api, ["DeskRunner"])).root!).find((n) => n.type === "DeskRunner");
-    expect(card?.props).toEqual({ ...RUNNER_CARD_WORDS });
-    expect(walk((await build("bots.computer", "desktop", api)).root!).some((n) => n.type === "DeskRunner")).toBe(false);
-  });
-  it("its words are translated with the page", async () => {
-    const s = await build("bots.computer", "desktop", api, ["DeskRunner"]);
-    const out = await localize(s, "bn");
-    const card = walk(out.root!).find((n) => n.type === "DeskRunner")!;
-    expect(card.props?.use).toBe(`T:${RUNNER_CARD_WORDS.use}`);
-    expect(card.props?.stateWorking).toBe(`T:${RUNNER_CARD_WORDS.stateWorking}`);
   });
 });

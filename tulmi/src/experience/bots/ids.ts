@@ -39,7 +39,6 @@ export const SCREENS = {
   budget: "bots.budget",             // Budget / DBudget: now the Usage page too (older links)
   billing: "bots.billing",           // Billing / DBilling
   plans: "bots.plans",               // Plans / DPlans
-  computer: "bots.computer",         // Devices / DeskComputer ("This computer helps")
   link: "bots.link",                 // Link a computer: approve a computer's sign-in from the phone (params: l token or c code; screens/link.ts)
   language: "bots.language",         // Language / DLanguage
   notify: "bots.notify",             // Notify / DNotify

@@ -200,18 +200,9 @@ const NODE_TEXT_PROPS = [
 // element the same as a scalar copy prop.
 const NODE_TEXT_ARRAY_PROPS = ["chips", "options", "choices", "items"] as const;
 
-// A node type whose copy is in props of its own: Ask's one-time setup card
-// (desk/askSetup.ts askSetupCard). Its prop names are the window's to read
-// (permissions-spec §4) and cannot become the ones above, so they are named
-// here, for that type only: a generic "on" or "allow" elsewhere may be an
-// identifier. Without this only its `title` was translated, and a German
-// profile read "Lass Ask sehen what you see." over rows and buttons that were
-// all English. Its rows' `key` is an identifier and stays as it is.
+// A node type whose copy is in props of its own, named here for that type only: a generic
+// prop name elsewhere may be an identifier.
 const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { key: string; fields: readonly string[] } }> = {
-  DeskAskSetup: {
-    props: ["eyebrow", "titleEm", "lede", "on", "allow", "turnOff", "restart", "restartButton", "foot", "policyLabel"],
-    rows: { key: "rows", fields: ["title", "sub"] },
-  },
   // The new onboarding (experience/onboard/): what Blip says, and the sign-in
   // controls' own lines. Their {len}, {to} are filled by the app afterwards.
   BlipSpot: { props: ["say"] },
@@ -219,17 +210,11 @@ const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { 
   SwipePill: { props: ["submitLabel"] },
   // The mic button's words while it listens and while it writes (its idle one is a `label`).
   VoiceButton: { props: ["stopLabel", "transcribingLabel"] },
-  // The allowed-folders row under Ask (desk/askSetup.ts askFoldersCard).
-  DeskFolders: {
-    props: ["lede", "usual", "add", "remove", "reset", "none", "refused", "foot", "policyLabel"],
-  },
-  // Tailzu Code on this computer's card on bots.computer (screens/you.ts RUNNER_CARD_WORDS): every word it shows.
-  DeskRunner: {
-    props: ["title", "lede", "use", "safetyLead", "safety", "stateOff", "stateSignedOut", "stateConnecting", "stateOnline", "stateWorking",
-      "statePaused", "pausedBattery", "pausedLowPower", "stateLiveOff", "stateReplaced", "workingLine", "stop", "stopNote", "container",
-      "checkDocker", "dockerRunning", "dockerChecking", "dockerDown", "containerNote", "projects", "noProjects", "allow", "deny", "askAgain",
-      "badgeAsk", "badgeAllowed", "badgeDenied", "ran", "nothingYet", "colTime", "colProject", "colCommand", "colExit", "colTook",
-      "devServer", "notRun", "running", "refused", "timedOut", "stopped", "audit", "workspaces"],
+  // The Mac's own Accessibility row on Keylessbord's first-run steps (firstRun/keyStep.ts, keybotCard.ts, arrivalCard.ts).
+  // Its rows' `key` is an identifier and stays as it is.
+  DeskAskSetup: {
+    props: ["eyebrow", "titleEm", "lede", "on", "allow", "turnOff", "restart", "restartButton"],
+    rows: { key: "rows", fields: ["title", "sub"] },
   },
 };
 

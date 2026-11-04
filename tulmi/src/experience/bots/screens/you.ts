@@ -1,13 +1,13 @@
 /**
- * THE YOU TAB AND WHAT HANGS OFF IT: You, Usage, Billing, This computer helps, What pings you, Privacy, Delete account, Connected apps, Connect an
- * app, and the window's Settings (You.dc.html, Billing, Devices, Notify, Privacy, DeleteAcct, Apps, AppConnect and their D* / Desk* desktop
+ * THE YOU TAB AND WHAT HANGS OFF IT: You, Usage, Billing, What pings you, Privacy, Delete account, Connected apps, Connect an
+ * app, and the window's Settings (You.dc.html, Billing, Notify, Privacy, DeleteAcct, Apps, AppConnect and their D* / Desk* desktop
  * boards; Usage takes the Budget board's place, at bots.usage and the old bots.budget). Plans and Language are built in screens/firstRun.ts
  * (once first-run steps, now pages); they are linked, not built, here.
  *
  * NO MONEY ON ANY OF THEM: no cost, no price, no amount. Use is the usage meter (src/you/usage.ts), the way other AI assistants show it: "This stretch ·
  * 64% used · resets Thu 9 am", "This month · 40% used", a calm line near the limit, and at it a bigger plan offered as an action (the store's
  * own sheet shows its price). Every number is the person's own, from the routes in routes/bots/botsYou.ts (src/you): the meter, the plan and its
- * dates from billing, the computers from runner presence, the connected apps from connectors. A read that fails draws the honest empty state
+ * dates from billing, the connected apps from connectors. A read that fails draws the honest empty state
  * (or ctx.live's meter), never a sample. Every control writes: PUT /v1/you/settings, the existing connector, job, billing and account routes,
  * then a refresh and a short ink toast.
  *
@@ -24,7 +24,6 @@ import {
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, dayMonthOf, goneAt, daysStrip, GRACE_DAYS, keepAccount, scheduleDeletion, DELETION_PATH } from "./accountGrace.js";
 import { PUSH_STATE, withPushCheck, pushOffRow } from "./pushAsk.js";
-import { type ComputersData, computerDesk, computerPhone } from "./you/computer.js";
 import { type DeleteData, goesAway, planWarning, type AccountData, deleteDesk } from "./you/deleteDesk.js";
 import {
   when2, type NotifyData, notifyState, alwaysOn, doneSeg, timeChip, summarySwitch, timePicker, summaryPreview, botSwitch, botSub,
@@ -32,7 +31,7 @@ import {
 } from "./you/notifyDesk.js";
 import { glyph, G, couldNot, heading, columns, openUrl, toast, refresh, oops, dayMonth, exportAction, plural } from "./you/parts.js";
 import {
-  type UsageMeter, spanLabel, resetsLine, meterOf, ring, type YouData, ago, face, youName, signOut, appsLine, computerLine, youDesk,
+  type UsageMeter, spanLabel, resetsLine, meterOf, ring, type YouData, ago, face, youName, signOut, appsLine, youDesk,
   youPhone,
 } from "./you/you.js";
 
@@ -548,7 +547,6 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
     listRow({ label: "Usage", value: usedLine(meterOf(ctx, d?.usage)), onPress: open(SCREENS.usage) }),
     listRow({ label: "What pings you", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
     listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
-    listRow({ label: "This computer helps", value: computerLine(d), onPress: open(SCREENS.computer) }),
   ]);
   const privacy = listCard([
     listRow({ label: "Privacy", onPress: open(SCREENS.privacy) }),
@@ -578,7 +576,6 @@ export const youScreens: BotsScreen[] = [
   screen<YouData>({ id: SCREENS.you, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? youDesk(ctx, d) : youPhone(ctx, d)) }),
   ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({ id, load: (ctx, deps) => deps.api<UsagePage>("GET", `/v1/you/usage?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? usageDesk(ctx, d) : usagePhone(ctx, d)) })),
   screen<BillingData>({ id: SCREENS.billing, load: (ctx, deps) => deps.api<BillingData>("GET", `/v1/you/billing?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? billingDesk(ctx, d) : billingPhone(ctx, d)) }),
-  screen<ComputersData>({ id: SCREENS.computer, load: (_ctx, deps) => deps.api<ComputersData>("GET", "/v1/you/computers"), build: (ctx, d) => (ctx.client === "desktop" ? computerDesk(ctx, d) : computerPhone(ctx, d)) }),
   screen<NotifyData>({ id: SCREENS.notify, load: (ctx, deps) => deps.api<NotifyData>("GET", `/v1/you/notify?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? notifyDesk(ctx, d) : notifyPhone(ctx, d)) }),
   screen<YouData>({ id: SCREENS.privacy, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? privacyDesk(ctx, d) : privacyPhone(ctx, d)) }),
   screen<DeleteData>({

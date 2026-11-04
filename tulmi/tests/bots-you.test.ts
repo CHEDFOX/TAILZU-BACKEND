@@ -34,7 +34,7 @@ import { Spending, holdJobsToUsage, wrapBots } from "../src/you/limits.js";
 import { summaryLine, verdict } from "../src/you/push.js";
 import { DEFAULT_SETTINGS, applyPatch, cleanSettings, inQuietHours } from "../src/you/settings.js";
 import { spendReport } from "../src/you/spend.js";
-import { MemoryYouStore, resetDesktopAppSeenForTests, seeDesktopApp, setYouStoreForTests, youStore } from "../src/you/store.js";
+import { MemoryYouStore, setYouStoreForTests } from "../src/you/store.js";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const MONTH_START = Date.UTC(2026, 9, 1) - IST * MIN;
@@ -56,7 +56,6 @@ const ANSWERS: Record<string, unknown> = {
     plan: { name: "Pro", active: true },
     usage: USAGE,
     apps: { enabled: true, connected: [{ id: "google-calendar", name: "Google Calendar", usedBy: ["Plan Ease", "Gym bot"], lastUsedAt: FIXED_NOW - 2 * MIN }], github: { repos: 2 }, alone: 3 },
-    computers: { online: [{ name: "Aanya's MacBook", busy: false, allowRun: true }], offline: 1, helped: { jobs: 6, minutes: 200 } },
     settings: S, exportUrl: "https://api.x0bot.com/v1/you/export/file?t=x", language: "hinglish",
   },
   "GET /v1/you/spend?tz=330": {
@@ -72,10 +71,6 @@ const ANSWERS: Record<string, unknown> = {
     plan: { name: "Pro", active: true, store: "razorpay", renews: true, until: FIXED_NOW + 15 * DAY, since: FIXED_NOW - 100 * DAY, price: "₹299", period: "a month", paidBy: "UPI autopay", cancel: "razorpay", manageUrl: null },
     invoices: [{ id: "inv_1", number: "TZ-2610-0412", date: FIXED_NOW - 16 * DAY, amountPaise: 29_900, amount: "₹299", status: "paid", url: "https://rzp.io/i/a", what: "X0 Pro" }],
     usage: USAGE, email: "aanya@example.in",
-  },
-  "GET /v1/you/computers": {
-    online: [{ deviceId: "mbp", name: "Aanya's MacBook", os: "darwin", allowRun: true, busy: true, projects: "all", liveOnly: false, container: false }],
-    offline: [{ deviceId: "office", name: "Office PC", os: "win32", lastSeen: FIXED_NOW - 2 * DAY }], helped: { jobs: 6, minutes: 200 },
   },
   "GET /v1/you/notify?tz=330": { settings: S, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you." },
   "GET /v1/you/account": {
@@ -95,7 +90,7 @@ const ANSWERS: Record<string, unknown> = {
 };
 
 const IDS: Array<[string, Record<string, string>?]> = [
-  ["bots.you"], ["bots.usage"], ["bots.budget"], ["bots.billing"], ["bots.computer"], ["bots.notify"], ["bots.privacy"], ["bots.delete-account"], ["bots.apps"],
+  ["bots.you"], ["bots.usage"], ["bots.budget"], ["bots.billing"], ["bots.notify"], ["bots.privacy"], ["bots.delete-account"], ["bots.apps"],
   ["bots.app-connect", { id: "google-calendar" }], ["bots.settings"],
 ];
 
@@ -143,19 +138,6 @@ describe("the You screens", () => {
         expect(t, `${id} ${client}`).not.toContain("What bots may do alone");
       }
     }
-  });
-
-  it("This computer helps: no sales lines, and a computer signed in as them shows with how to let it help", async () => {
-    const none = await build("bots.computer", "phone", { ...ANSWERS, "GET /v1/you/computers": { online: [], offline: [], signedIn: [], helped: { jobs: 0, minutes: 0 } } });
-    expect(texts(none.root)).toContain("No computer yet");
-    for (const gone of ["Your own computers run part of the work, so jobs cost less. It's free, and bots say when they use one.", "Your laptop can run tests and builds for Xode, for free."]) {
-      expect(texts(none.root)).not.toContain(gone);
-    }
-    const mac = await build("bots.computer", "phone", { ...ANSWERS, "GET /v1/you/computers": { online: [], offline: [], signedIn: [{ deviceId: "app:mac", name: "Your Mac", os: "mac", lastSeen: FIXED_NOW }], helped: { jobs: 0, minutes: 0 } } });
-    expect(texts(mac.root)).toEqual(expect.arrayContaining(["Your Mac", "Signed in · Xode is off", "Add a computer"]));
-    expect(texts(mac.root).some((t) => t.includes("To let it help") || t.includes("It shows up here"))).toBe(false);
-    expect(texts(mac.root)).not.toContain("No computer yet");
-    expect(lintTree(mac.root!)).toEqual([]);
   });
 
   it("Delete account is reachable from the phone's Privacy page (App Store 5.1.1(v)), and from the computer's", async () => {
@@ -239,7 +221,7 @@ describe("the You screens", () => {
 
   it("every write goes to a real route", async () => {
     const all = JSON.stringify(await Promise.all(IDS.map(([id, p]) => build(id, "phone", ANSWERS, p))));
-    for (const path of ["/v1/you/settings", "/v1/billing/razorpay/cancel", "/v1/you/computers/office", "/v1/you/data/delete", "/v1/account", "/v1/connectors/google-calendar/connect", "/v1/bots/gym-bot/connectors/google-calendar"]) {
+    for (const path of ["/v1/you/settings", "/v1/billing/razorpay/cancel", "/v1/you/data/delete", "/v1/account", "/v1/connectors/google-calendar/connect", "/v1/bots/gym-bot/connectors/google-calendar"]) {
       expect(all).toContain(path);
     }
   });
@@ -440,27 +422,6 @@ describe("the routes", () => {
     // Ours, for the logs: the month's costs still add up behind the meter.
     expect((await get("/v1/you/spend?tz=330")).json().report).toMatchObject({ monthPaise: 2500, byBot: [{ bot: "code", paise: 2500 }] });
     expect((await app.inject({ method: "PUT", url: "/v1/you/settings", headers: { authorization: "Bearer good" }, payload: { notify: { done: "loud" } } })).statusCode).toBe(400);
-  });
-
-  it("lists the computers, remembers them, and says what they did", async () => {
-    const r = (await get("/v1/you/computers")).json();
-    expect(r.online[0]).toMatchObject({ name: "MacBook", allowRun: true, projects: "all" });
-    expect(r.helped).toEqual({ jobs: 1, minutes: 4 });
-    expect(r.signedIn).toEqual([]);
-  });
-
-  it("a computer signed in to X0 Bot is listed before its runner is on, once per kind of computer", async () => {
-    resetDesktopAppSeenForTests();
-    const now = Date.now();
-    // The desktop app's screen requests: a Windows PC (no runner) and the Mac (whose runner is online, so the runner row says it).
-    seeDesktopApp(UID, "windows", now, youStore());
-    seeDesktopApp(UID, "darwin", now, youStore());
-    seeDesktopApp(UID, "windows", now + 1000, youStore());   // within the window: not written again
-    seeDesktopApp(UID, "ios", now, youStore());              // not a computer
-    const r = (await get("/v1/you/computers")).json();
-    expect(r.signedIn).toEqual([{ deviceId: "app:windows", name: "Your Windows PC", os: "windows", lastSeen: now }]);
-    expect(r.offline).toEqual([]);
-    expect((await get("/v1/you?tz=330")).json().computers).toMatchObject({ signedIn: 1, offline: 0 });
   });
 
   it("the You page carries the month, the plan and the settings", async () => {

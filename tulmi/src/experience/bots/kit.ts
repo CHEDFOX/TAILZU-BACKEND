@@ -919,7 +919,6 @@ export function sidebar(ctx: BotsCtx, active?: string): Node {
     ...(ctx.desk.pages ? [navItem("Today", plain("today", active === "today"), active === "today", open(SCREENS.today), 40)] : []),
     ...(ctx.desk.notes ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", open(SCREENS.notes), 40)] : []),
     grow(),
-    navItem("This computer helps", plain("computer", active === "computer"), active === "computer", open(SCREENS.computer), 40, meta("On")),
     navItem("Settings", plain("settings", active === "settings"), active === "settings", open(settingsId), 40),
   ], {
     width: 240, flexShrink: 0, height: "100%", borderRightWidth: 1, borderRightColor: C.divider, paddingTop: 22, paddingHorizontal: 14, paddingBottom: 18, gap: 2,

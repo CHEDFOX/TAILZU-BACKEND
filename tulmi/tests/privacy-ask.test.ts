@@ -50,16 +50,18 @@ const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.i
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Xode and GitHub"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day Xode, connected apps, bots, files and the Lock Screen got their own sections", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("October 31, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: October 31, 2026");
+  it("is effective from the day Ask and Xode on your computer were on from the start", () => {
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 4, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: November 4, 2026");
   });
 
   it("numbers its sections 1 to 17, once each, in order", () => {
     const nums = [...PRIVACY_POLICY_HTML.matchAll(/<h2(?: id="[a-z-]+")?>(\d+)\. /g)].map((m) => Number(m[1]));
     expect(nums).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
     const subs = [...PRIVACY_POLICY_HTML.matchAll(/<h3>10\.(\d) /g)].map((m) => Number(m[1]));
-    expect(subs).toEqual([1, 2, 3, 4, 5]);
+    expect(subs).toEqual([1, 2, 3, 4, 5, 6]);
+    const xode = [...PRIVACY_POLICY_HTML.matchAll(/<h3(?: id="[a-z-]+")?>12\.(\d) /g)].map((m) => Number(m[1]));
+    expect(xode).toEqual([1, 2, 3, 4, 5, 6]);
     const google = [...PRIVACY_POLICY_HTML.matchAll(/<h3>11\.(\d) /g)].map((m) => Number(m[1]));
     expect(google).toEqual([1, 2, 3, 4, 5, 6]);
   });
@@ -90,12 +92,13 @@ describe("what Ask reads, sends and never sends", () => {
     expect(ask).toContain("Screen Recording permission");
   });
 
-  it("says what it sends: a text list with rough positions, what was said, and one picture only when needed and allowed", () => {
+  it("says what it sends: a text list with rough positions, what was said, and one picture only when needed", () => {
     expect(ask).toContain("A text list of what is on the screen");
     expect(ask).toContain("a rough position (top left, centre, bottom right and so on)");
     expect(ask).toContain("the lines of text read off the window's pixels");
     expect(ask).toContain("What you said");
-    expect(ask).toContain("One picture, only when a question needs it and you have allowed it");
+    expect(ask).toContain("One picture, only when a question needs it");
+    expect(ask).toContain("Looking when it's needed is on from the start");
     expect(ask).toContain("Allow once, Always for that app");
     expect(ask).toContain("Not now");
   });
@@ -200,8 +203,9 @@ describe("where a picture goes, and what is kept", () => {
   it("says the picture is not stored and not logged, and how to turn it off", () => {
     expect(ask).toContain("X0 Bot does not store the picture and does not log it.");
     expect(policy).toContain("Ask: what it reads off your screen, and any picture it sends, is not stored.");
-    expect(ask).toContain(`"Look at the screen when it's needed"`);
-    expect(ask).toContain("Settings under Ask");
+    expect(ask).toContain("10.5 On from the start, and how to turn it off");
+    expect(ask).toContain(`"Pictures sent without asking" → "Ask again for all of them"`);
+    expect(ask).not.toContain("Unlock everything");
     expect(ask).toContain("System Settings → Privacy & Security");
   });
 });
@@ -344,8 +348,8 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: October 31, 2026");
+    expect(res.body).toContain("Effective: November 4, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "October 31, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "November 4, 2026" });
   });
 });
