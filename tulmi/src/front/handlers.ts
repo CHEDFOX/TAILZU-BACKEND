@@ -26,7 +26,7 @@ import { threadStore, type ThreadStore } from "../code/chat/threads.js";
 import { bookBrief, bookForPlan, type ProjectBook } from "../code/project/book.js";
 import type { LiveFiles } from "../code/live/ports.js";
 import { componentArtifact, workspaceFiles } from "../artifacts/kit.js";
-import { unfence } from "../artifacts/edit.js";
+import { contentOf } from "../artifacts/edit.js";
 import { CAP_PAISE, isArtifactError, type Change } from "../artifacts/types.js";
 import { validateArtifact } from "../artifacts/validate.js";
 import type { AgentOrchestrator } from "../code/agent/orchestrator.js";
@@ -427,7 +427,7 @@ async function diagramFrom(d: HandlerDeps, c: RouteCall, basis: string): Promise
     userId: c.userId, tier: "cheap", purpose: "front.diagram", role: "front_diagram", artifact: `<answer>\n${fence(forModel(cut(basis, 3_000)))}\n</answer>`, instruction: "",
     maxTokens: 700, capPaise: Math.min(CAP_PAISE.cheap, c.maxPaise), noClimb: true, ...(c.signal ? { signal: c.signal } : {}),
     accept: (t) => {
-      const content = unfence(t);
+      const content = contentOf(t, "mermaid");
       const checked = validateArtifact({ type: "mermaid", content });
       return checked.ok ? { ok: true, value: content } : { ok: false, reason: checked.errors.join(" ") };
     },

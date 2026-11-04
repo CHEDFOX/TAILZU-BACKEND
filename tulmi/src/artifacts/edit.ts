@@ -37,7 +37,7 @@
  */
 import { createHash } from "node:crypto";
 import { forModel } from "../code/work/model.js";
-import { CAP_PAISE, ArtifactError, type Artifact, type Change, type ChangeHow, type Edit, type MadeBy } from "./types.js";
+import { CAP_PAISE, ArtifactError, type Artifact, type ArtifactType, type Change, type ChangeHow, type Edit, type MadeBy } from "./types.js";
 import { ArtifactModel, type Ran } from "./model.js";
 import { contextAround, elementAt, findElementSpan, linesWindow } from "./scan.js";
 import { validateArtifact } from "./validate.js";
@@ -89,6 +89,21 @@ export function unfence(text: string): string {
   const t = text.trim();
   const m = /^```[\w-]*\n([\s\S]*?)\n?```$/.exec(t);
   return (m ? m[1]! : t).trim();
+}
+
+/**
+ * A whole artifact out of a model's answer: the fence round it taken off, and the words a model may say around it ("Here is an HTML
+ * document that…" before the fence, tips after it) left out, by keeping the largest fenced block. Not for markdown, whose own code
+ * blocks are content, nor for an answer that starts as the artifact itself (a tag, an import), which may carry a fence inside it.
+ */
+export function contentOf(text: string, type: ArtifactType): string {
+  const plain = unfence(text);
+  if (type === "markdown") return plain;
+  const at = plain.indexOf("```");
+  if (at <= 0) return plain;
+  if (/^(?:<|import\b|export\b|const\b|let\b|var\b|function\b|class\b|\/\/|\/\*|["']use client["'])/.test(plain.slice(0, at).trim())) return plain;
+  const blocks = [...plain.matchAll(/```[\w-]*\n([\s\S]*?)\n?```/g)].map((m) => m[1]!.trim()).filter(Boolean);
+  return blocks.length ? blocks.reduce((a, b) => (b.length > a.length ? b : a)) : plain;
 }
 
 /** The <edit> pairs in an answer, in order. A newline just inside a tag is the model's layout, not text. */

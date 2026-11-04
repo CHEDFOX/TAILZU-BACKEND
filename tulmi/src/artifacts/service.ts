@@ -26,7 +26,7 @@ import { callModel, type GatewayDeps } from "../code/brain/gateway.js";
 import { inRequestSpend } from "../code/brain/spend.js";
 import type { CallFn } from "../code/work/model.js";
 import { forModel } from "../code/work/model.js";
-import { EditEngine, FixBook, unfence, type Docs, type FixOutcome, type ViewerError } from "./edit.js";
+import { EditEngine, FixBook, contentOf, type Docs, type FixOutcome, type ViewerError } from "./edit.js";
 import { Limiter, SpendMeter } from "./limits.js";
 import { ArtifactModel } from "./model.js";
 import { LIMITS, type ArtifactType, type DesignKitCss } from "./protocol.js";
@@ -427,7 +427,7 @@ export class ArtifactService implements Docs {
       wantTokens: (tier === "strong" ? 2 : 1) * MAKE_TOKENS[type],
       capPaise: tier === "strong" ? CAP_PAISE.strong : CAP_PAISE.code, ...(o.signal ? { signal: o.signal } : {}),
       accept: (text) => {
-        const content = unfence(text);
+        const content = contentOf(text, type);
         const checked = validateArtifact({ type, content });
         return checked.ok ? { ok: true, value: content } : { ok: false, reason: checked.errors.join(" ") };
       },
