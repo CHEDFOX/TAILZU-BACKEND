@@ -11,9 +11,10 @@
  *   GET    /v1/you/settings             -> { settings }
  *   GET    /v1/you/notify?tz=           -> { settings, today: { done, needs, spentPaise }, line }  "What pings you", with today's summary as it would read
  *   PUT    /v1/you/settings { monthLimitPaise? | monthLimitRupees?, stopAtLimit?, notify?: { done?, summary?, summaryAt?, quiet?, quietFrom?,
- *                                         quietTo?, bot?, on? }, privacy?: { screenPictures?, personalise? } }  -> { settings }  only what was sent changes
+ *                                         quietTo?, bot?, on? }, privacy?: { personalise? } }  -> { settings }  only what was sent changes
  *   GET    /v1/you/billing              -> { plan, invoices, usage }  (src/you/billing.ts; the screens show no price and no amount)
- *   GET    /v1/you/apps                 -> { enabled, connected, more, github }  the connected apps with the bots that use each and when last used
+ *   GET    /v1/you/apps?all=1           -> { enabled, connected, more, github }  the connected apps with the bots that use each and when last used;
+ *                                         `more` is six to connect, or every one with all=1 (the window's Settings)
  *   GET    /v1/you/apps/:id             -> { app, bots, can, cant }  one app, for Connect
  *   GET    /v1/you/account              -> what deleting the account takes: bots, projects, notes, keys, the plan
  *   GET    /v1/you/export               -> the person's data, one JSON file (src/you/data.ts)
@@ -120,7 +121,7 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     return m;
   };
 
-  const appsView = async (user: AuthedUser) => {
+  const appsView = async (user: AuthedUser, all = false) => {
     const c = deps.connectors;
     if (!c) return { enabled: false, connected: [], more: [], github: null as null | { repos: number }, alone: 0 };
     const [conns, own, uses, projects] = await Promise.all([
@@ -132,14 +133,14 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     const connected = defs.filter((d) => byId.get(d.id)?.tokensEnc).map((d) => {
       const conn = byId.get(d.id)!;
       return {
-        id: d.id, name: d.name, category: d.category, level: conn.level, lastUsedAt: conn.lastUsedAt, usedBy: uses.get(d.id) ?? [],
+        id: d.id, name: d.name, category: d.category, oneLine: d.oneLine, auth: d.auth, level: conn.level, lastUsedAt: conn.lastUsedAt, usedBy: uses.get(d.id) ?? [],
         ...(c.hub.needsSignIn(user.id, d.id) ? { needsSignIn: true } : {}),
       };
     }).sort((a, b) => (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0) || a.name.localeCompare(b.name));
-    // Connect more: the apps the person's bots name first, then Google's, then the rest; three at most.
+    // Connect more: the apps the person's bots name first, then Google's, then the rest; six at most, or all of them.
     const rank = (id: string) => (uses.has(id) ? 0 : id.startsWith("google-") ? 1 : 2);
     const more = defs.filter((d) => !byId.get(d.id)?.tokensEnc && !d.custom && !NOT_OFFERED.has(d.id)).sort((a, b) => rank(a.id) - rank(b.id))
-      .slice(0, 6).map((d) => ({ id: d.id, name: d.name, category: d.category, oneLine: d.oneLine, usedBy: uses.get(d.id) ?? [] }));
+      .slice(0, all ? undefined : 6).map((d) => ({ id: d.id, name: d.name, category: d.category, oneLine: d.oneLine, auth: d.auth, usedBy: uses.get(d.id) ?? [] }));
     // What bots may do alone: the changes the person let an app make without asking (connectors' "auto").
     const alone = conns.filter((x) => x.tokensEnc).reduce((n, x) => n + x.autoOk.length, 0);
     return { enabled: true, connected, more, github: projects.length ? { repos: projects.length } : null, alone };
@@ -270,7 +271,8 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
   app.get("/v1/you/apps", RL, async (req, reply) => {
     const user = await who(req.headers["authorization"], reply);
     if (!user) return reply;
-    try { return reply.header("cache-control", "no-store").send(await appsView(user)); } catch (err) { return fail(reply, err); }
+    const all = (req.query as { all?: unknown } | undefined)?.all === "1";
+    try { return reply.header("cache-control", "no-store").send(await appsView(user, all)); } catch (err) { return fail(reply, err); }
   });
 
   app.get<{ Params: { id: string } }>("/v1/you/apps/:id", RL, async (req, reply) => {

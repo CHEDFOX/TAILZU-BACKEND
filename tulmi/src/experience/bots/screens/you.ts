@@ -15,7 +15,7 @@
  */
 
 import { spaceScreens } from "./you/space.js";
-import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sdui.js";
+import type { Node, ActionRef } from "../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, type IconName, box, icon, C, row, FACE, text, whenEq, seq, botAvatar, percent, primaryButton, open, SCREENS, usageMeter,
   whenWords, card, divider, notice, page, title, col, meta, call, listCard, listRow, quietButton, secondaryButton, switchMark, when,
@@ -27,8 +27,9 @@ import { PUSH_STATE, withPushCheck, pushOffRow } from "./pushAsk.js";
 import { type DeleteData, goesAway, planWarning, type AccountData, deleteDesk } from "./you/deleteDesk.js";
 import {
   when2, type NotifyData, notifyState, alwaysOn, doneSeg, timeChip, summarySwitch, timePicker, summaryPreview, botSwitch, botSub,
-  quietSwitch, quietTimes, segments, save, notifyDesk,
+  quietSwitch, quietTimes, save, notifyDesk,
 } from "./you/notifyDesk.js";
+import { type SettingsData, settingsCard } from "./you/settingsCard.js";
 import { glyph, G, couldNot, heading, columns, openUrl, toast, refresh, oops, dayMonth, exportAction, plural } from "./you/parts.js";
 import {
   type UsageMeter, spanLabel, resetsLine, meterOf, ring, type YouData, ago, face, youName, signOut, appsLine, youDesk,
@@ -259,17 +260,6 @@ function neverList(): Node {
   return col(NEVER.map((n) => row([glyph(G.never, 16), body(n, { size: 14 })], { gap: 10 })), { gap: 10 });
 }
 
-function picturesCard(ctx: BotsCtx): Node {
-  return card([
-    text("Screen pictures", { size: 15, weight: 600 }),
-    meta("Ask on your computer takes one to see what's wrong on screen. You see it before it's sent, and it isn't kept.", { size: 12, lineHeight: 17 }),
-    ...(ctx.client === "desktop" ? [segments([{ label: "Ask first", value: "ask" }, { label: "Allow", value: "allow" }], "pictures", (v) => seq(
-      { kind: "ask.picturesAll", on: v === "allow" } as unknown as ActionSpec,
-      save({ privacy: { screenPictures: v } }, v === "allow" ? "Pictures go without asking" : "Ask asks first"),
-    ))] : [meta("Change this in X0 Bot on your computer.", { size: 12 })]),
-  ], { gap: 10, padding: 16 });
-}
-
 const clearPersonal: ActionRef = when2("surePersonal",
   call("POST", "/v1/you/personal/clear", {}, { ok: seq(toast("Cleared"), { kind: "setState", path: "surePersonal", value: false }), fail: oops("clear that") }),
   seq({ kind: "setState", path: "surePersonal", value: true }, toast("Tap Clear again to clear")));
@@ -288,12 +278,11 @@ function personalCard(d: YouData | undefined): Node {
 
 function privacyPhone(ctx: BotsCtx, d: YouData | undefined) {
   return page(ctx, {
-    back: true, nav: "you", title: "Privacy", gap: 18, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false, pictures: d?.settings.privacy.screenPictures ?? "ask" },
+    back: true, nav: "you", title: "Privacy", gap: 18, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false },
     body: [
       title("Privacy"),
       col([sectionLabel("What we keep, and for how long"), listCard(KEPT.map(([l, , v]) => listRow({ label: l, value: v })))], { gap: 8 }),
       col([sectionLabel("What we never do"), neverList()], { gap: 10 }),
-      picturesCard(ctx),
       personalCard(d),
     ],
     footer: [
@@ -307,7 +296,7 @@ function privacyPhone(ctx: BotsCtx, d: YouData | undefined) {
 
 function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
   return page(ctx, {
-    back: true, backTitle: "You", nav: "you", title: "Privacy", maxWidth: 1040, gap: 20, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false, pictures: d?.settings.privacy.screenPictures ?? "ask" },
+    back: true, backTitle: "You", nav: "you", title: "Privacy", maxWidth: 1040, gap: 20, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false },
     body: [
       heading(ctx, "Privacy", "What we keep, and for how long"),
       columns([
@@ -324,7 +313,6 @@ function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
         ], { padding: 20, gap: 12 }),
       ], [
         card([sectionLabel("What we never do"), neverList()], { padding: 20, gap: 12 }),
-        picturesCard(ctx),
         personalCard(d),
       ]),
     ],
@@ -533,9 +521,8 @@ function appConnect(ctx: BotsCtx, d: AppData | undefined) {
 
 // ===================================================================== bots.settings (the window's)
 
+/** The phone's Settings (the window's is a card of its own: you/settingsCard.ts). */
 function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
-  const desk = ctx.client === "desktop";
-  const deskSettingsId = ctx.desk.pages ? "desk_settings" : "settings";
   const account = card([
     sectionLabel("Account"),
     row([face(ctx, 40), col([text(youName(ctx), { size: 15, weight: 600 }), meta(ctx.user?.email ?? "", { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }), button("Sign out", signOut, { kind: "secondary", size: "md" })], { gap: 12 }),
@@ -555,15 +542,13 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
     listRow({ label: "Delete account", onPress: open(SCREENS.deleteAccount) }),
   ]);
   const local = card([
-    sectionLabel(desk ? "On this computer" : "On this phone"),
-    meta(desk ? "Shortcuts, where the pill sits, screen pictures, apps Ask never looks at, and updates." : "Your keyboard: its keys, haptics and how Keylessbord types.", { size: 13, lineHeight: 18 }),
-    button(desk ? "Open computer settings" : "Keyboard settings", desk ? open(deskSettingsId) : botRoute("keybot"), { kind: "secondary", size: "md" }),
+    sectionLabel("On this phone"),
+    meta("Your keyboard: its keys, haptics and how Keylessbord types.", { size: 13, lineHeight: 18 }),
+    button("Keyboard settings", botRoute("keybot"), { kind: "secondary", size: "md" }),
   ], { padding: 18, gap: 10 });
   return page(ctx, {
-    back: !desk, nav: "settings", title: "Settings", ...(desk ? { maxWidth: 1040 } : {}), gap: 20,
-    body: desk
-      ? [heading(ctx, "Settings", "X0 Bot for Mac and Windows"), columns([account, col([sectionLabel("Your bots"), yours], { gap: 8 }), col([sectionLabel("Your data"), privacy], { gap: 8 })], [local])]
-      : [title("Settings"), account, col([sectionLabel("Your bots"), yours], { gap: 8 }), col([sectionLabel("Your data"), privacy], { gap: 8 }), local],
+    back: true, nav: "settings", title: "Settings", gap: 20,
+    body: [title("Settings"), account, col([sectionLabel("Your bots"), yours], { gap: 8 }), col([sectionLabel("Your data"), privacy], { gap: 8 }), local],
   });
 }
 
@@ -599,5 +584,17 @@ export const youScreens: BotsScreen[] = [
     },
     build: (ctx, d) => appConnect(ctx, d),
   }),
-  screen<YouData>({ id: SCREENS.settings, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => settingsPage(ctx, d) }),
+  // The phone: its page, from the You page's answer. The window: a card with everything on it (you/settingsCard.ts), its apps too.
+  screen<YouData | SettingsData>({
+    id: SCREENS.settings,
+    load: async (ctx, deps) => {
+      if (ctx.client !== "desktop") return deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`);
+      const [you, apps] = await Promise.all([
+        deps.api<SettingsData["you"]>("GET", `/v1/you?${tz(ctx)}`).catch(() => undefined),
+        deps.api<SettingsData["apps"]>("GET", "/v1/you/apps?all=1").catch(() => undefined),
+      ]);
+      return { you, apps };
+    },
+    build: (ctx, d) => (ctx.client === "desktop" ? settingsCard(ctx, d as SettingsData | undefined) : settingsPage(ctx, d as YouData | undefined)),
+  }),
 ];

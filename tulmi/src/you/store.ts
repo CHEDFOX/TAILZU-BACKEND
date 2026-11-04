@@ -1,6 +1,6 @@
 /**
- * WHERE THE YOU TAB KEEPS ITS OWN THINGS (supabase/migrations/0041_you.sql): the person's settings (monthly limit, stop at it, what pings them, the
- * screen-picture choice), what each bot answer cost, and the computers that helped before (no longer written; kept for "Download my data").
+ * WHERE THE YOU TAB KEEPS ITS OWN THINGS (supabase/migrations/0041_you.sql): the person's settings (monthly limit, stop at it, what pings them, whether
+ * their bots may use what they told them), what each bot answer cost, and the computers that helped before (no longer written; kept for "Download my data").
  *
  * Supabase with the service key when the server has one, else memory (a restart forgets it, as every other store here). A read that fails is the
  * defaults, never an error page: the screens draw what is true.

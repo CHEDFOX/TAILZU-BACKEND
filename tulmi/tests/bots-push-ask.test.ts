@@ -90,7 +90,7 @@ describe("Home's ask", () => {
 
 describe("What pings you", () => {
   it("says when this phone has notifications off, and turns them on without answering the Home ask", async () => {
-    const api = { [`GET /v1/you/notify?tz=${IST}`]: { settings: { monthLimitPaise: 50000, stopAtLimit: false, notify: { done: "quiet", summary: true, summaryAt: 1260, quiet: true, quietFrom: 1380, quietTo: 420, botsOff: [] }, privacy: { screenPictures: "ask" } }, today: null, line: null } };
+    const api = { [`GET /v1/you/notify?tz=${IST}`]: { settings: { monthLimitPaise: 50000, stopAtLimit: false, notify: { done: "quiet", summary: true, summaryAt: 1260, quiet: true, quietFrom: 1380, quietTo: 420, botsOff: [] }, privacy: {} }, today: null, line: null } };
     const s = await buildBotsScreen(req("bots.notify", "phone"), fakeDeps({ api }));
     expect(lintTree(s.root!)).toEqual([]);
     expect(texts(s.root!)).toContain("Notifications are off on this phone");

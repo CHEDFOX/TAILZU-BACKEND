@@ -157,13 +157,14 @@ describe("the frames", () => {
     expect(side!.style).toMatchObject({ width: 240, borderRightWidth: 1 });
     const words = JSON.stringify(side);
     for (const w of ["Bots", "Activity", "You", "Your bots", "Xode", "Gym bot", "Make a bot", "Today", "Notes", "Settings"]) expect(words).toContain(w);
-    expect(words).toContain('"screenId":"desk_settings"');
+    // Settings is the Bots app's own card (screens/you/settingsCard.ts), not the old desk page.
+    expect(words).toContain('"screenId":"bots.settings"');
     expect(main!.style).toMatchObject({ overflowY: "auto", flexGrow: 1 });
     expect(checkTree(s.root!)).toEqual([]);
-    // Without the desk's pages there is no Today, and Settings is the app's own.
+    // Without the desk's pages there is no Today, and Settings is the same card.
     const plain = JSON.stringify(deskPage(ctxFor("bots.x", "desktop", live, { desk: { pages: false, notes: false } }), { body: [] }).root);
     expect(plain).not.toContain('"screenId":"bots.notes"');
-    expect(plain).toContain('"screenId":"settings"');
+    expect(plain).toContain('"screenId":"bots.settings"');
   });
   it("page() picks the frame by the client", () => {
     expect(page(ctxFor("bots.x", "phone", live), { body: [] }).root!.type).toBe("SafeArea");

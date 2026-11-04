@@ -908,7 +908,6 @@ export function sidebar(ctx: BotsCtx, active?: string): Node {
       : b.working ? text("working", { size: 12, weight: 500, color: b.color }) : undefined;
     return navItem(b.name, dot, active === b.slug, botRoute(b.slug), 38, right);
   });
-  const settingsId = ctx.desk.pages ? "desk_settings" : "settings";
   return col([
     row([tailzuMark(28), text("X0 Bot", { size: 17, weight: 700, tracking: -0.3 })], { gap: 10, paddingHorizontal: 8, paddingBottom: 16 }),
     ...TABS.map((t) => navItem(t.title, tabGlyph(t.id, active === t.id, live.tab, 22), active === t.id, toTab(t.id), 44)),
@@ -919,7 +918,7 @@ export function sidebar(ctx: BotsCtx, active?: string): Node {
     ...(ctx.desk.pages ? [navItem("Today", plain("today", active === "today"), active === "today", open(SCREENS.today), 40)] : []),
     ...(ctx.desk.notes ? [navItem("Notes", plain("notes", active === "notes"), active === "notes", open(SCREENS.notes), 40)] : []),
     grow(),
-    navItem("Settings", plain("settings", active === "settings"), active === "settings", open(settingsId), 40),
+    navItem("Settings", plain("settings", active === "settings"), active === "settings", open(SCREENS.settings), 40),
   ], {
     width: 240, flexShrink: 0, height: "100%", borderRightWidth: 1, borderRightColor: C.divider, paddingTop: 22, paddingHorizontal: 14, paddingBottom: 18, gap: 2,
     backgroundColor: C.paper,
@@ -934,7 +933,7 @@ const ORDER = (b: LiveBot): number => {
 export interface PageOpts {
   /** A top-level page: the phone shows the tab bar with this tab lit; the window lights it in the sidebar. */
   tab?: TabId;
-  /** The window's lit sidebar item when the page is not a tab: a bot's slug, "make", "today", "notes", "computer", "settings". */
+  /** The window's lit sidebar item when the page is not a tab: a bot's slug, "make", "today", "notes", "settings". */
   nav?: string;
   /** The screen's title (the window's title bar, the screen reader). Not drawn: draw a `title()` in the body. */
   title?: string;
@@ -967,6 +966,11 @@ export interface PageOpts {
    * Sent only to a phone whose build pulls a bot (canPullBot); the window and older builds get the page as before.
    */
   pullBot?: Omit<PullBotSpec, "font">;
+  /**
+   * The window draws the body on a card over a soft wash, beside the sidebar, instead of across the whole page (Settings): it reads as
+   * something opened over the app, closed with its own ×. The phone's page is unchanged.
+   */
+  sheet?: boolean;
 }
 
 /** A phone whose build pulls a bot in its pull to refresh (PULL_BOT_CAPABILITY). */
@@ -1052,6 +1056,7 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
  * stays at its foot. The column is at most 880 wide.
  */
 export function deskPage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
+  if (o.sheet) return sheetPage(ctx, o);
   const main = col([
     col([
       ...backNode(o),
@@ -1064,6 +1069,21 @@ export function deskPage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
   const root = row([sidebar(ctx, o.tab ?? o.nav), column], { height: "100%", minHeight: 600, alignItems: "stretch", backgroundColor: C.paper });
   return response(ctx, o, root);
 }
+
+/** The window's sheet (PageOpts.sheet): the sidebar, then a wash with the body on one card, at most 960 wide, that scrolls inside. */
+function sheetPage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
+  const sheet = col(o.body, {
+    width: "100%", maxWidth: o.maxWidth ?? 960, gap: o.gap ?? 18, backgroundColor: C.paper, borderRadius: 24, borderWidth: 1, borderColor: C.line,
+    paddingTop: 22, paddingHorizontal: 26, paddingBottom: 26, boxShadow: "0 24px 60px rgba(10,10,10,.10), 0 2px 8px rgba(10,10,10,.04)",
+  });
+  const wash = col([sheet], {
+    flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%", overflowY: "auto", alignItems: "center",
+    paddingTop: 28, paddingHorizontal: 32, paddingBottom: 28, backgroundColor: SHEET_WASH,
+  });
+  return response(ctx, o, row([sidebar(ctx, o.tab ?? o.nav), wash], { height: "100%", minHeight: 600, alignItems: "stretch", backgroundColor: C.paper }));
+}
+/** Behind a sheet: a shade under the page's white, so the card stands on it. */
+const SHEET_WASH = "#f2f2f0";
 
 /** The page for a screen id that is not built yet: says so, and offers the way back. */
 export function comingSoon(ctx: BotsCtx): ScreenResponse {

@@ -115,6 +115,47 @@ describe("the You screens", () => {
     }
   }
 
+  it("the window's Settings is one card: boxed parts, every app with Connect, its full line only on hover, closed with its ×", async () => {
+    const apps = {
+      enabled: true, github: null,
+      connected: [{ id: "notion", name: "Notion", category: "Docs", oneLine: "Search and write pages in your Notion.", auth: "oauth", level: "draft", lastUsedAt: FIXED_NOW, usedBy: [] }],
+      more: [
+        { id: "google-tasks", name: "Google Tasks", category: "Tasks", oneLine: "See your to-do list and add a task.", auth: "oauth", usedBy: [] },
+        { id: "zapier", name: "Zapier", category: "Automation", oneLine: "Reach thousands of apps through Zapier.", auth: "url", usedBy: [] },
+      ],
+    };
+    const api = { ...ANSWERS, "GET /v1/you/apps?all=1": apps };
+    const draw = (can: string[]) => buildBotsScreen({
+      screenId: "bots.settings", client: "desktop", tzOffsetMinutes: IST, user: { id: UID, name: "Aanya Rao", email: "aanya@example.in" },
+      can: new Set(["BotsKit", ...can]), desk: { pages: true, notes: false },
+    }, fakeDeps({ api }));
+    const s = await draw(["HoverHint"]);
+    expect(lintTree(s.root!)).toEqual([]);
+    const t = texts(s.root);
+    for (const w of ["Settings", "Account", "This computer", "Talking and writing", "Notifications", "Privacy and your data", "Help", "Connected apps",
+      "Plan and billing", "Usage", "Your space", "Spaces and chats", "Blocked people", "Download my data", "Delete account", "What pings you"]) expect(t).toContain(w);
+    // The old desk page's words, which this app no longer says.
+    for (const gone of ["How I work on this computer", "120 of 800 words this month", "See plans"]) expect(t.join(" ")).not.toContain(gone);
+    // A card beside the sidebar: the wash, then the card with its shadow.
+    const [, wash] = s.root!.children!;
+    expect(wash!.style).toMatchObject({ overflowY: "auto", alignItems: "center" });
+    expect(wash!.children![0]!.style).toMatchObject({ borderRadius: 24, boxShadow: expect.any(String) });
+    // Its × goes back to where it was opened.
+    expect(JSON.stringify(s.root)).toContain('{"kind":"navigateBack"}');
+    // Each app: Connect (a link-pasting app opens its page), the connected one says so; the full line is in the hint only.
+    const json = JSON.stringify(s.root);
+    expect(json).toContain('"kind":"connector.connect","id":"google-tasks"');
+    expect(json).toContain('"screenId":"bots.app-connect","params":{"id":"zapier"}');
+    expect(t).toContain("Connected");
+    const hinted = walk(s.root!).filter((n) => (n.props as { hint?: unknown } | undefined)?.hint);
+    expect(hinted).toHaveLength(3);
+    expect(JSON.stringify(hinted)).toContain("See your to-do list and add a task.");
+    // A window that draws no hint gets the tiles alone, and none of the lines.
+    const plain = await draw([]);
+    expect(walk(plain.root!).some((n) => (n.props as { hint?: unknown } | undefined)?.hint)).toBe(false);
+    expect(JSON.stringify(plain.root)).not.toContain("See your to-do list and add a task.");
+  });
+
   it("What pings you: every time can be set to any hour and five minutes, and saves as { h, m, ap }", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.notify", client, ANSWERS);

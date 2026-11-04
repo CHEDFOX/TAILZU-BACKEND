@@ -29,14 +29,14 @@ export interface YouSettings {
   stopAtLimit: boolean;
   notify: NotifySettings;
   /** cleared: Activity rows the person took off their list ("job:<id>", "words:<day>"), newest last. Kept in the privacy column. */
-  privacy: { screenPictures: "ask" | "allow"; personalise: boolean; cleared?: string[]; space?: SpaceMarks };
+  privacy: { personalise: boolean; cleared?: string[]; space?: SpaceMarks };
 }
 
 export const DEFAULT_SETTINGS: YouSettings = {
   monthLimitPaise: DEFAULT_MONTH_BUDGET_PAISE,
   stopAtLimit: false,
   notify: { done: "ping", summary: false, summaryAt: 21 * 60, quiet: false, quietFrom: 23 * 60, quietTo: 7 * 60, botsOff: [] },
-  privacy: { screenPictures: "ask", personalise: true },
+  privacy: { personalise: true },
 };
 
 /** 1,00,00,000 paise a month is the most a stored limit may be. */
@@ -70,7 +70,6 @@ export function cleanSettings(raw: unknown): YouSettings {
       botsOff: Array.isArray(n.botsOff) ? [...new Set(n.botsOff.filter((s): s is string => typeof s === "string" && SLUG.test(s) && s.length <= 64))].slice(0, 50) : [],
     },
     privacy: {
-      screenPictures: p.screenPictures === "allow" ? "allow" : "ask",
       personalise: p.personalise !== false,
       ...(Array.isArray(p.cleared) ? { cleared: cleanCleared(p.cleared) } : {}),
       // Your space's switched-off sections, pinned lines and moved lines (src/you/spaceMarks.ts).
@@ -145,10 +144,6 @@ export function applyPatch(cur: YouSettings, raw: unknown): Patched {
     next.notify.botsOff = [...off].slice(0, 50);
   }
   const p = obj(b.privacy);
-  if (p.screenPictures !== undefined) {
-    if (p.screenPictures !== "ask" && p.screenPictures !== "allow") return { ok: false, message: 'screenPictures is "ask" or "allow".' };
-    next.privacy.screenPictures = p.screenPictures;
-  }
   if (p.personalise !== undefined) {
     if (typeof p.personalise !== "boolean") return { ok: false, message: "personalise is true or false." };
     next.privacy.personalise = p.personalise;

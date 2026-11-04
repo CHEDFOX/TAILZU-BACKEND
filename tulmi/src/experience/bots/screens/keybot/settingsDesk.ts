@@ -64,7 +64,7 @@ export function settingsDesk(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
           when({ falsy: "desktop.oneKey" }, deskToggle("Tap twice to keep listening", "tap", "Hands free. Tap the key again to stop.")),
           when({ truthy: "desktop.oneKey" }, meta("One key for everything. Keylessbord types it, Ask answers it, “take notes” starts notes, and a task goes to the right bot.", { size: 12 })),
           when({ falsy: "desktop.oneKey" }, row([meta("Change these keys in Settings.", { size: 12 }), grow(),
-            quietButton("Open Settings", open(ctx.desk.pages ? "desk_settings" : "settings"), { size: "md" })], { gap: 8 })),
+            quietButton("Open Settings", open(SCREENS.settings), { size: "md" })], { gap: 8 })),
         ]),
         deskCard("Languages", d ? [
           row([...langChips, row([text("+ Add a language", { size: 13, color: C.meta, lineHeight: 17 })], {

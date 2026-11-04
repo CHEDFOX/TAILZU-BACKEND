@@ -15,7 +15,7 @@ const RESETS = utc(2026, 11, 1) - IST * MIN;
 const settings = {
   monthLimitPaise: 50_000, stopAtLimit: true,
   notify: { done: "quiet", summary: true, summaryAt: 1260, quiet: true, quietFrom: 1380, quietTo: 420, botsOff: ["keybot"] },
-  privacy: { screenPictures: "ask" },
+  privacy: {},
 };
 const byBot = [{ bot: "code", paise: 14_200 }, { bot: "keybot", paise: 1800 }, { bot: "plan", paise: 1500 }, { bot: "gym-bot", paise: 900 }];
 
@@ -98,5 +98,7 @@ export const YOU_API: Record<string, unknown> = {
   [`GET /v1/you/notify?tz=${IST}`]: { settings, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you." },
   "GET /v1/you/account": account,
   "GET /v1/you/apps": apps,
+  // The window's Settings card lists every app (screens/you/settingsCard.ts).
+  "GET /v1/you/apps?all=1": apps,
   "GET /v1/you/apps/google-calendar": app,
 };

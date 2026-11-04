@@ -46,7 +46,12 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
   sign-in draws a QR and a typed code (`DeskLinkSignIn`, desktop linkSignIn.js); the phone opens `bots.link` (its camera,
   or You › Link a computer) and approves; the window redeems a one-time sign-in, once.
 * **Existing screens stay reachable** by their ids: `settings`, `keyboard`/keyboard settings, `history`, `paywall`, `personality`…
-  and in a window the desk's `desk_today`, `desk_notes`, `desk_settings` (the sidebar links Today, Meeting notes and Settings to them).
+  and in a window the desk's `desk_today` and `desk_notes` (the sidebar links Today and Meeting notes to them). The sidebar's Settings is
+  `bots.settings`: on the phone a page, in the window a card over a soft wash beside the sidebar (`page({ sheet: true })`,
+  `screens/you/settingsCard.ts`) with every part in a light box: account and plan, this computer's Keylessbord key and switches,
+  talking and writing, notifications, privacy and your data, help, and every connected app as a tile with Connect, whose full line
+  shows on hovering its icon (a stack's `hint`, for a window that declares `HoverHint`). Ask and Xode have no switches there: they
+  are on from the start (privacy policy 10.5, 12.6).
   They draw as today, with the app's own chrome.
 
 ## 2. Where things are
@@ -106,7 +111,7 @@ export const youScreens: BotsScreen[] = [
    set) or the window's (sidebar, a main column at most 880 wide, footer at its foot). Branch on `ctx.client` only where the boards
    differ (bots.home does: `homePhone` / `homeDesk` in screens/shell.ts, **the reference screen: copy its shape**).
 4. A **top-level** page sets `tab: "bots" | "activity" | "you"`; a pushed page sets `back: true` (and `nav:` to light a sidebar item:
-   a bot's slug, `make`, `today`, `notes`, `computer`, `settings`).
+   a bot's slug, `make`, `today`, `notes`, `settings`).
 5. Test it (section 6) and look at it (section 7).
 
 ## 4. Data and actions

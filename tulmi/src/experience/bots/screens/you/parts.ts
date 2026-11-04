@@ -10,7 +10,7 @@ export interface Settings {
   monthLimitPaise: number;
   stopAtLimit: boolean;
   notify: { done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[] };
-  privacy: { screenPictures: "ask" | "allow"; personalise?: boolean };
+  privacy: { personalise?: boolean };
 }
 
 // ===================================================================== small things

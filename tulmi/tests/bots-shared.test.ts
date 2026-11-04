@@ -94,7 +94,7 @@ describe("the switch", () => {
     expect(cleanSettings({}).privacy.personalise).toBe(true);
     expect(cleanSettings({ privacy: { personalise: false } }).privacy.personalise).toBe(false);
     const p = applyPatch(DEFAULT_SETTINGS, { privacy: { personalise: false } });
-    expect(p.ok && p.settings.privacy).toEqual({ screenPictures: "ask", personalise: false });
+    expect(p.ok && p.settings.privacy).toEqual({ personalise: false });
     expect(applyPatch(DEFAULT_SETTINGS, { privacy: { personalise: "no" } })).toMatchObject({ ok: false });
   });
 });

@@ -48,7 +48,7 @@ function actions(root: unknown): Array<Record<string, unknown>> {
  * a field, its clipboard (copyToClipboard), Face ID, the share sheet, the permissions it asks for, a setting kept on the phone.
  */
 const ONLY: Record<"phone" | "desktop", ReadonlySet<string>> = {
-  desktop: new Set(["copyText", "dictate", "desktop.config", "notes.toggle", "connector.connect", "ask.picturesAll"]),
+  desktop: new Set(["copyText", "dictate", "desktop.config", "notes.toggle", "connector.connect"]),
   phone: new Set(["openSettings", "recordVoice", "copyToClipboard", "biometricPrompt", "share", "checkPermission", "requestPushPermission", "devicePref"]),
 };
 
