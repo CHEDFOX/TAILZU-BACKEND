@@ -9,7 +9,8 @@
 # What it does, in order (safe to run again; each step says PASS or FAIL):
 #   1. reads tulmi/.env: CLOUDFLARE_DEPLOY_TOKEN (an API token from the "Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID
 #   2. makes CODE_JOBS_SECRET if the env file has none (the Worker and the server sign every call with it)
-#   3. installs Node 22 if the server has none (the deploy tool needs it; the app itself runs in Docker as before)
+#   3. installs Node 22 if the server has none (the deploy tool needs it; the app itself runs in Docker as before), and the packages
+#      the Worker's build needs (the server code's, in tulmi/node_modules, and the Worker's own)
 #   4. makes the R2 bucket for screenshots (x0-job-shots), if it isn't there
 #   5. deploys the Worker with the server's own settings (GitHub App, the server's address, the Worker's own address), and builds the cloud
 #      runner's container image with Docker
@@ -59,6 +60,10 @@ fi
 ok "node $(node -v)"
 command -v docker >/dev/null && docker info >/dev/null 2>&1 && ok "docker is running (it builds the cloud runner)" || stop "Docker is needed to build the cloud runner's image."
 
+# The Worker bundles some of the server's own code (tulmi/src), and the build finds the packages that code imports (zod, jose, openai,
+# Supabase, tree-sitter) in tulmi/node_modules. The server runs in Docker, so this machine has none: they are installed here for the
+# bundle only, with no install scripts. They never reach the server's image (.dockerignore leaves out every node_modules).
+(cd tulmi && npm ci --omit=dev --ignore-scripts --no-audit --no-fund --silent >/dev/null 2>&1) && ok "the server code's packages are installed (for the Worker's build)" || stop "npm ci failed in tulmi/."
 cd jobs || exit 1
 npm ci --silent >/dev/null 2>&1 && ok "the Worker's packages are installed" || stop "npm ci failed in jobs/."
 W() { npx --no-install wrangler "$@"; }
