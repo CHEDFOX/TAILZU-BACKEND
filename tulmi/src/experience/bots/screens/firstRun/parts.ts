@@ -12,7 +12,7 @@ import {
 
 export const CLAY = PALETTE_HEX.clay!;
 /** The window's setup steps. */
-export const STEPS = ["Sign in", "Name"];
+export const STEPS = ["Sign in", "Start"];
 
 export type Style = Record<string, unknown>;
 
@@ -38,8 +38,8 @@ export const W = {
   restore: "Restore Purchases",
   restoreDone: "Restore finished. If a plan was bought with this Apple ID or Google account, it's active again.",
   restoreErr: "Couldn't restore just now. Try again in a moment.",
-  nameH: "What will you call me?",
-  nameP: "I'm the one in charge. Your other bots report to me and call me by this name. Say it to talk to me.",
+  readyH: "You're all set",
+  readyP: "Your bots are ready. Talk or type to any of them, any time.",
   keyH: "Turn on Keylessbord",
   keyP: "Speak instead of type, in every app",
   wordsH: "Now just talk",

@@ -28,6 +28,7 @@
  *
  * Every route is the signed-in person's own (401 without a session). A part that is off reads as empty.
  */
+import { greetingName } from "./botsFirstRun.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { jobLite } from "../../experience/bots/deps.js";
@@ -353,7 +354,7 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     const before = await store.get(user.id).catch(() => emptyGlanceState());
     const state = withGlance(before, t, Math.max(0, k.flag("x0.lookGapMin", 10)) * 60_000);
     const input: GlanceInput = {
-      now: t, tz, hg, name: (profile?.fullName ?? "").trim().split(/\s+/)[0] ?? "",
+      now: t, tz, hg, name: greetingName(user, profile?.fullName).split(/\s+/)[0] ?? "",
       bots: list.map((b) => ({ slug: b.slug, name: b.name, colour: b.colour, purpose: b.purpose, builtin: b.builtin })),
       jobs: jobs.map(jobLite),
       tasks: tasks.map((x) => ({ id: x.id, state: x.state, title: x.title, approval: x.approval, createdAt: x.createdAt, updatedAt: x.updatedAt })),

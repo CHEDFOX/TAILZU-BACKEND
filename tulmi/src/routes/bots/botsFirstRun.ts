@@ -109,6 +109,16 @@ export function signedInVia(user: Pick<AuthedUser, "provider" | "email" | "phone
  * The name the "About you" step starts with, and where it came from: the one already saved; else, signed in with
  * Google or Apple, the provider's full name; by email, one suggested from the address; by phone, nothing.
  */
+/**
+ * The name to greet them by: the account's own, else the one Google or Apple gave at sign-in (never asked again: App Review 4).
+ * Never a guess from the email: a wrong name in a greeting is worse than none.
+ */
+export function greetingName(user: Pick<AuthedUser, "provider" | "providerName" | "email" | "phone">, saved?: string | null): string {
+  if (saved && saved.trim()) return saved.trim();
+  const via = signedInVia(user);
+  return via === "google" || via === "apple" ? (user.providerName ?? "").trim() : "";
+}
+
 export function startingName(user: Pick<AuthedUser, "provider" | "providerName" | "email" | "phone">, saved?: string | null): { name: string; source: "saved" | "provider" | "email" | null } {
   if (saved && saved.trim()) return { name: saved.trim(), source: "saved" };
   const via = signedInVia(user);

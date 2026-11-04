@@ -87,52 +87,38 @@ describe("the first run's screens", () => {
   });
 });
 
-describe("Name: the stage after sign-in", () => {
+describe("The last step after sign-in: nothing to type, only Start", () => {
   const profileWrite = (x: ActionSpec) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/profile";
-  it("asks nothing about the person: no name, no gender, only what they'll call their bot", async () => {
+  const fields = (n: unknown): number => JSON.stringify(n).split('"type":"TextField"').length - 1;
+  it("asks nothing at all: no field, no name, no gender (App Review 4: a Name field here was read as asking theirs)", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.name-it", client);
       const t = texts(s.root!);
-      expect(t, client).toContain("What will you call me?");
-      for (const gone of ["What's your name?", "About you", "Your name", "You are", "Male"]) expect(t, client).not.toContain(gone);
-      expect(actions(s.root).some((x) => profileWrite(x) && JSON.stringify((x as { body?: unknown }).body).includes("full_name"))).toBe(false);
+      expect(t, client).toContain("You're all set");
+      for (const gone of ["What will you call me?", "What's your name?", "That's my name", "Name", "Your name", "Male"]) expect(t, client).not.toContain(gone);
+      expect(fields(s.root), client).toBe(0);
     }
   });
-  it("Name: the boss bot's name, saved as the assistant's name, and that finishes onboarding (on to Bots)", async () => {
-    const s = await build("bots.name-it", "desktop");
-    const save = actions(s.root).find((x) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/personality") as { body?: unknown; onSuccess?: unknown } | undefined;
-    expect(save?.body).toEqual({ assistantName: "$state.name" });
-    const done = actions(save!.onSuccess);
-    expect(done).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { onboarded: true } }),
-      { kind: "switchTab", tabId: "bots" },
-    ]));
-    expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "setState", path: "name", value: "Jarvis" })]));
-    // Nothing after it any more: no Turn on Keylessbord, no Plans in the run.
-    expect(actions(s.root).some((x) => x.kind === "navigate")).toBe(false);
-    // The one write to the profile on this screen (from its button and from its field's return): the end of onboarding.
-    expect(new Set(actions(s.root).filter(profileWrite).map((x) => JSON.stringify((x as { body?: unknown }).body)))).toEqual(new Set(['{"onboarded":true}']));
+  it("Start finishes onboarding and goes on to Bots; that is the only write", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.name-it", client);
+      const writes = actions(s.root).filter(profileWrite);
+      expect(new Set(writes.map((x) => JSON.stringify((x as { body?: unknown }).body))), client).toEqual(new Set(['{"onboarded":true}']));
+      expect(actions(writes[0]!.onSuccess as never)).toEqual(expect.arrayContaining([{ kind: "switchTab", tabId: "bots" }]));
+      expect(actions(s.root).some((x) => x.kind === "callEndpoint" && (x as { path?: string }).path === "/v1/personality"), client).toBe(false);
+      expect(actions(s.root).some((x) => x.kind === "navigate"), client).toBe(false);
+    }
   });
-  it("draws when nothing could be read", async () => {
+  it("draws with nothing read", async () => {
     const blank = await build("bots.name-it", "phone", { api: {} });
-    expect(blank.state).toMatchObject({ step: 0, name: "X0" });
+    expect(blank.state).toMatchObject({ step: 0 });
     expect(lintTree(blank.root!)).toEqual([]);
   });
-  it("Name asks \"What will you call me?\", starts on X0, and keeps a name they saved before", async () => {
-    for (const client of ["phone", "desktop"] as const) {
-      const s = await build("bots.name-it", client, { api: {} });
-      expect(texts(s.root!), client).toContain("What will you call me?");
-      expect(s.state).toMatchObject({ name: "X0" });
-      expect(JSON.stringify(s.root)).toContain('"placeholder":"X0"');
-    }
-    const named = await build("bots.name-it", "phone", { api: { ...API, "GET /v1/personality": { personality: { assistantName: "Zara" } } } });
-    expect(named.state).toMatchObject({ name: "Zara" });
-  });
-  it("on a build that draws the stage: one stage, Blip cheering on Name", async () => {
+  it("on a build that draws the stage: one stage, Blip cheering", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.name-it", client, { can: STAGE });
       expect(s.root).toMatchObject({ type: "OnboardStage", bind: { step: "step" }, props: { id: "bots.first", first: 2, of: 3, ground: "#ffffff" } });
-      expect(s.root!.children?.map((c) => c.props?.stepId)).toEqual(["name"]);
+      expect(s.root!.children?.map((c) => c.props?.stepId)).toEqual(["ready"]);
       expect(poses(s.root!)).toEqual(["tada"]);
       expect(lintStaged(s.root!), client).toEqual([]);
     }
@@ -159,14 +145,14 @@ describe("About you: a card on Home after a few visits, never in the first run",
       expect(lintTree(s.root!), client).toEqual([]);
     }
   });
-  it("signed in with Apple: the name is optional (App Review 4), only the pick is needed", async () => {
-    for (const name of ["Aanya Rao", ""]) {
-      const s = await build("bots.home", "phone", { api: about({ name, via: "apple", source: name ? "provider" : null }) });
-      expect(JSON.stringify(s.root)).toContain('"placeholder":"Your name (optional)"');
-      expect(s.state).toMatchObject({ aboutName: name });
-      expect(actions(s.root)).toEqual(expect.arrayContaining([expect.objectContaining({
-        kind: "condition", if: { truthy: "aboutGender" }, else: expect.objectContaining({ kind: "toast", message: "Pick one to save." }),
-      })]));
+  it("signed in with Apple: no name field at all (App Review 4); Apple's own name is kept, a guessed one never", async () => {
+    for (const [name, source] of [["Aanya Rao", "provider"], ["", null], ["Aanya", "email"]] as const) {
+      const s = await build("bots.home", "phone", { api: about({ name, via: "apple", source }) });
+      // Home has its own fields (the ask bar): the card's name field is the one that must not be there.
+      expect(JSON.stringify(s.root)).not.toContain('"id":"aboutName"');
+      expect(JSON.stringify(s.root)).not.toContain("Your name");
+      const save = actions(s.root).find((x) => x.kind === "condition" && JSON.stringify((x as { if?: unknown }).if) === '{"truthy":"aboutGender"}') as { then?: { body?: unknown } } | undefined;
+      expect(save?.then?.body).toEqual({ ...(source === "provider" ? { full_name: name } : {}), gender: "$state.aboutGender" });
     }
   });
   it("not due: no card; and one ask at a time, so not while the first-arrival card is due", async () => {

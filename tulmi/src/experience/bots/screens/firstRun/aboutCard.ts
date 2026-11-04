@@ -6,9 +6,9 @@
  * keyboard never covers it while the name is typed. Due by the server
  * (GET /v1/bots/first-run/about: onboarded, a few visits in, the answer still owed, not put off for now).
  *
- *   the name     filled in from what Apple or Google shared, else the account's own, else a guess from the email; theirs
- *                to change. Signed in with Apple it is optional (App Review 4: nothing Apple shares is asked again), and
- *                its empty field says so
+ *   the name     filled in from what Google shared, else the account's own, else a guess from the email; theirs to change.
+ *                Signed in with Apple there is NO name field (App Review 4: nothing Apple shares is asked again): the name
+ *                Apple gave is kept as it is, and only the gender is asked
  *   the gender   Male, Female or Other: the one thing needed to save, so bots write to them right in gendered languages
  *   Save         PUT /v1/profile { full_name, gender } (the profile's own write), the bot's happy moment, and it goes
  *   Not now      PUT /v1/bots/first-run/about: it comes again a few visits later, a few times at most
@@ -52,7 +52,8 @@ export function aboutCard(ctx: BotsCtx, about: About | undefined): Node[] {
   const apple = about.via === "apple";
   const save: ActionSpec = {
     kind: "condition", if: apple ? { truthy: GENDER } : { all: [{ truthy: NAME }, { truthy: GENDER }] },
-    then: call("PUT", "/v1/profile", { full_name: `$state.${NAME}`, gender: `$state.${GENDER}` }, {
+    // Signed in with Apple: the name Apple gave goes in as it is (never typed, never asked), or none.
+    then: call("PUT", "/v1/profile", apple ? { ...(about.source === "provider" && about.name?.trim() ? { full_name: about.name.trim() } : {}), gender: `$state.${GENDER}` } : { full_name: `$state.${NAME}`, gender: `$state.${GENDER}` }, {
       ok: seq({ kind: "haptic", style: "success" } as ActionSpec, setState(SAVED, true)),
       fail: toast("Couldn't save that. Try again."),
     }),
@@ -66,7 +67,7 @@ export function aboutCard(ctx: BotsCtx, about: About | undefined): Node[] {
     title: "Tell your bots about you",
     lines: [line("So your bots know how to address you.")],
     extra: [
-      nameField(NAME, apple ? "Your name (optional)" : "Your name", typed, desk, { capitalize: true, label: "your name", height: 44 }),
+      ...(apple ? [] : [nameField(NAME, "Your name", typed, desk, { capitalize: true, label: "your name", height: 44 })]),
       genderChips(desk),
     ],
     cta: { label: "Save", onPress: save },

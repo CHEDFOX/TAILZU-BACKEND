@@ -3,9 +3,8 @@
  */
 
 import type { Node, ScreenResponse } from "../../../../../../shared/types/sdui.js";
-import { ASSISTANT_NAME } from "../../../assistantName.js";
 import { type BlipPose, blip, type BotsCtx, C, when, col } from "../../kit.js";
-import { nameStep } from "./nameStep.js";
+import { readyStep } from "./readyStep.js";
 import { type Pose, type Figure, respond } from "./parts.js";
 
 /** The same pose as the kit's picture of him, for a build that draws no stage. */
@@ -61,22 +60,17 @@ export function stageScreen(ctx: BotsCtx, o: { title: string; id: string; first:
   }, state);
 }
 
-// ===================================================================== Name: the stage after sign-in
-
-/** GET /v1/personality, as much as this step reads. */
-export interface Persona { personality?: { assistantName?: string } }
-
-export interface AfterSignIn { persona?: Persona }
+// ===================================================================== the stage after sign-in
 
 /**
- * bots.name-it: Name, on the stage Blip walks on to from the gate's (id "bots.first"). Nothing about the person is asked
- * here: their name and gender are the About you card's, on Home after a few visits (aboutCard.ts).
+ * bots.name-it: the last step, on the stage Blip walks on to from the gate's (id "bots.first"): they are in, and Start.
+ * Nothing is typed or asked here (readyStep.ts); the id stays so the apps that open it need no change.
  */
-export function afterSignIn(ctx: BotsCtx, data: AfterSignIn | undefined): ScreenResponse {
+export function afterSignIn(ctx: BotsCtx): ScreenResponse {
   const fig = figureFor(ctx);
   return stageScreen(ctx, {
-    title: "Name", id: "bots.first", first: 2,
-    steps: [nameStep(ctx, fig)],
-    state: { step: 0, name: (data?.persona?.personality?.assistantName ?? "").trim() || ASSISTANT_NAME },
+    title: "Start", id: "bots.first", first: 2,
+    steps: [readyStep(ctx, fig)],
+    state: { step: 0 },
   });
 }

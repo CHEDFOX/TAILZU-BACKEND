@@ -2,6 +2,7 @@
  * The server-driven app: POST /v1/app/bootstrap, POST /v1/app/screen, and the screens' cache version.
  */
 
+import { greetingName } from "../bots/botsFirstRun.js";
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
 import { reportMilestones } from "../../ads/meta.js";
@@ -463,7 +464,8 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         : emptyDeps();
       const screen = await buildBotsScreen({
         screenId: botsId, client: screenFormFactor, params: botsParams, tzOffsetMinutes: tz, can: comps,
-        user: user ? { id: user.id, ...(profile?.fullName ? { name: profile.fullName } : {}), ...(user.email ? { email: user.email } : {}) } : null,
+        // The name they are greeted by: their own, else the one Google or Apple gave (botsFirstRun.ts greetingName).
+        user: user ? { id: user.id, ...(greetingName(user, profile?.fullName) ? { name: greetingName(user, profile?.fullName) } : {}), ...(user.email ? { email: user.email } : {}) } : null,
         desk: { pages: comps.has("DeskShell"), notes: comps.has("DeskNotes") },
       }, deps);
       return reply.send(await localize(withControl(req, reply, screen, screenCtx(botsId)), profile?.language ?? "auto"));

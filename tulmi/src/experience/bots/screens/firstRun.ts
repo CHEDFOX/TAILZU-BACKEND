@@ -46,7 +46,7 @@ import {
   title, type IconName, divider, sectionLabel, button, segmented, type BotsCtx,
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
-import { onStage, stageNode, stageScreen, figureFor, type AfterSignIn, type Persona, afterSignIn } from "./firstRun/afterSignIn.js";
+import { onStage, stageNode, stageScreen, figureFor, afterSignIn } from "./firstRun/afterSignIn.js";
 import { firstWords } from "./firstRun/firstWords.js";
 import { keyOnDesk, keyOnPhone } from "./firstRun/keyStep.js";
 import { type Langs, language } from "./firstRun/language.js";
@@ -519,11 +519,7 @@ export const firstRunScreens: BotsScreen[] = [
   screen({ id: SCREENS.signIn, build: (ctx) => signInPage(ctx) }),
   screen({ id: SCREENS.signCode, build: (ctx) => signCodePage(ctx) }),
   screen<Langs>({ id: SCREENS.language, load: (_ctx, deps) => deps.api<Langs>("GET", "/v1/bots/first-run/languages"), build: language }),
-  screen<AfterSignIn>({
-    id: SCREENS.nameIt,
-    load: async (_ctx, deps) => ({ persona: await deps.api<Persona>("GET", "/v1/personality").catch(() => undefined) }),
-    build: afterSignIn,
-  }),
+  screen({ id: SCREENS.nameIt, build: (ctx) => afterSignIn(ctx) }),
   screen<Words>({
     id: SCREENS.keyOn,
     load: (_ctx, deps) => deps.api<Words>("GET", "/v1/bots/first-run/words"),
