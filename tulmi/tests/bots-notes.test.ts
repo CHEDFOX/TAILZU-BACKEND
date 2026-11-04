@@ -90,6 +90,10 @@ describe("the meetings", () => {
     expect(words).toContain("Stop notes");
     expect(json(desk.root)).toContain('"kind":"notes.toggle"');
     expect(desk.liveTopics).toContain("notes");
+    // A window that stops a named note: Stop says which, so it can never start another (a note left recording after a quit).
+    const named = await buildBotsScreen({ ...req("bots.notes", "desktop"), can: new Set([...req("bots.notes", "desktop").can, "NotesStop"]) }, deps());
+    const recording = (LIST as { notes: Array<{ id: string; status: string }> }).notes.find((n) => n.status === "recording")!;
+    expect(json(named.root)).toContain(`{"kind":"notes.stop","id":"${recording.id}"}`);
     const phone = await buildBotsScreen(req("bots.notes", "phone"), deps());
     expect(texts(phone.root!)).not.toContain("Stop notes");
     expect(texts(phone.root!)).not.toContain("Start notes");

@@ -25,7 +25,7 @@
  * a time, so running out stops the note where it is and keeps what it has.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import type { AudioFormat, Note, Personality } from "../../../shared/types/api.js";
+import type { AudioFormat, Note, NoteSummary, Personality } from "../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { appendHeard, diarize, labelSpeakers, type Track, type Utterance } from "../notes/speakers.js";
 import { organise } from "../notes/organise.js";
@@ -72,6 +72,12 @@ const STILL_RECORDING_MS = 3 * 60_000;
 const FIND_WAIT_MS = 60_000;
 /** An "organising" note this quiet lost its writer (a restart). */
 const STUCK_ORGANISING_MS = 10 * 60_000;
+/**
+ * A note still "recording" this long after it started was left behind (the app quit, crashed or lost the connection before it
+ * could say Stop): the desktop's whole tracks end at about four hours, so none is really still going. It is finished when the
+ * list is read, so Notes never shows a recording that nothing is recording.
+ */
+const ABANDONED_MS = 6 * 60 * 60_000;
 
 /** Background writes still running, by note. Tests await these. */
 const work = new Map<string, Promise<void>>();
@@ -242,13 +248,30 @@ export function registerNotesRoutes(app: FastifyInstance, deps: NotesRouteDeps):
     } catch (err) { return fail(reply, err); }
   };
   app.post<{ Params: { id: string } }>("/v1/notes/:id/finish", { config: RL }, finish(false));
+
+  /** Notes left "recording" (ABANDONED_MS) are finished and written up; the list answers with them as they now are. */
+  async function settleAbandoned(user: AuthedUser, notes: NoteSummary[], now = Date.now()): Promise<NoteSummary[]> {
+    const left = notes.filter((n) => n.status === "recording" && now - Date.parse(n.startedAt) > ABANDONED_MS);
+    if (!left.length) return notes;
+    const settled = new Map<string, NoteSummary["status"]>();
+    for (const n of left) {
+      let started = false;
+      await updateNote(user, n.id, (x) => {
+        if (x.status !== "recording" || work.has(x.id)) return null;
+        started = true;
+        return { ...x, status: "organising", endedAt: x.endedAt ?? new Date(now).toISOString() };
+      }).catch(() => null);
+      if (started) { startWork(user, n.id); settled.set(n.id, "organising"); }
+    }
+    return notes.map((n) => (settled.has(n.id) ? { ...n, status: settled.get(n.id)! } : n));
+  }
   app.post<{ Params: { id: string } }>("/v1/notes/:id/organise", { config: RL }, finish(true));
 
   app.get<{ Querystring: { limit?: string } }>("/v1/notes", { config: RL }, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
     try {
-      return reply.send({ notes: await listNotes(user, Number(req.query.limit) || 100) });
+      return reply.send({ notes: await settleAbandoned(user, await listNotes(user, Number(req.query.limit) || 100)) });
     } catch (err) { return fail(reply, err); }
   });
 
@@ -266,7 +289,7 @@ export function registerNotesRoutes(app: FastifyInstance, deps: NotesRouteDeps):
     const user = await resolveUser(req.headers["authorization"]);
     if (!user) return reply.code(401).send({ code: "unauthorized", message: "Missing or invalid token" });
     try {
-      return reply.send(notesStats(await listNotes(user, 200)));
+      return reply.send(notesStats(await settleAbandoned(user, await listNotes(user, 200))));
     } catch (err) { return fail(reply, err); }
   });
 

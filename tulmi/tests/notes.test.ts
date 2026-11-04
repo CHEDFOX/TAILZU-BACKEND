@@ -197,6 +197,25 @@ describe("the notes routes", () => {
     expect((await app.inject({ method: "GET", url: `/v1/notes/${id}` })).statusCode).toBe(404);
   });
 
+  it("a note left recording for six hours (the app quit before Stop) is finished and written up when the list is read", async () => {
+    const id = (await app.inject({ method: "POST", url: "/v1/notes" })).json().note.id as string;
+    heard.text = "We ship on Friday";
+    await upload(id, "mic", 0);
+    // Still going an hour in: left as it is.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      vi.setSystemTime(Date.now() + 60 * 60_000);
+      expect((await app.inject({ method: "GET", url: "/v1/notes/stats" })).json().recording).toBe(true);
+      // Seven hours: nothing records that long, so it is stopped and written up.
+      vi.setSystemTime(Date.now() + 6 * 60 * 60_000);
+      const list = (await app.inject({ method: "GET", url: "/v1/notes" })).json().notes;
+      expect(list[0]).toMatchObject({ id, status: "organising" });
+      expect((await app.inject({ method: "GET", url: "/v1/notes/stats" })).json().recording).toBe(false);
+    } finally { vi.useRealTimers(); }
+    await notesWork(id);
+    expect((await app.inject({ method: "GET", url: `/v1/notes/${id}` })).json().note.status).toBe("ready");
+  });
+
   it("tells the speakers apart from the whole tracks when it stops", async () => {
     const id = (await app.inject({ method: "POST", url: "/v1/notes" })).json().note.id as string;
     heard.text = "The build is ready and we can test";

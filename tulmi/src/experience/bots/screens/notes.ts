@@ -172,6 +172,16 @@ function figures(ctx: BotsCtx, s: NotesStats): Node {
 
 interface NotesData { notes: NoteSummary[] }
 
+/** A window that stops a named note (NOTES_STOP): its own, or one the server still thinks is recording that it no longer holds. */
+export const NOTES_STOP = "NotesStop";
+/**
+ * Stop: "notes.stop" with the note's id for a window that has it, so Stop always stops, even a note left recording when the app
+ * quit (the window then finishes it on the server). Older windows only toggle, which started a new note in that case.
+ */
+export function stopNotes(ctx: BotsCtx, id: string | undefined): ActionSpec {
+  return (ctx.can.has(NOTES_STOP) && id ? { kind: "notes.stop", id } : { kind: "notes.toggle" }) as ActionSpec;
+}
+
 function notesLoad(_ctx: BotsCtx, deps: { api<T>(m: "GET", p: string): Promise<T> }) {
   return deps.api<NotesData>("GET", "/v1/notes?limit=100");
 }
@@ -259,7 +269,7 @@ function notesPage(ctx: BotsCtx, d: NotesData | undefined) {
   ], { gap: 8 });
   const weekLine = `This week · ${plural(s.week.meetings, "meeting")}${s.week.seconds >= 60 ? ` · ${duration(s.week.seconds / 60)}` : ""}`;
   const start = s.recording
-    ? button("Stop notes", { kind: "notes.toggle" }, { kind: "secondary", icon: "stop" })
+    ? button("Stop notes", stopNotes(ctx, every.find((n) => n.status === "recording")?.id), { kind: "secondary", icon: "stop" })
     : button("Start notes", { kind: "notes.toggle" }, { kind: "primary", icon: "mic" });
   const empty = emptyState({
     pose: q || onlyOpen ? "think" : "listen",
@@ -384,7 +394,10 @@ function notePage(ctx: BotsCtx, d: NoteData | undefined) {
     ...(todos.length ? ["", "To-dos:", ...todos.map((t) => `- [${t.done ? "x" : " "}] ${t.text}${[whoOf(t), t.when].filter(Boolean).length ? ` (${[whoOf(t), t.when].filter(Boolean).join(", ")})` : ""}`)] : []),
     ...(n.highlights.length ? ["", ...n.highlights.map((h) => `${speakerName(n, h.speaker)}: ${h.text}`)] : []),
   ].join("\n").trim();
-  const status = n.status === "recording" ? [notice("Still recording. The notes and to-dos are written when you stop.", { mark: "mic" })]
+  const status = n.status === "recording" ? [
+    notice("Still recording. The notes and to-dos are written when you stop.", { mark: "mic" }),
+    ...(ctx.client === "desktop" && ctx.can.has(NOTES_STOP) ? [button("Stop notes", stopNotes(ctx, n.id), { kind: "secondary", icon: "stop", size: "md" })] : []),
+  ]
     : n.status === "organising" ? [notice("Writing it up. This takes a minute.")]
       : n.status === "failed" ? [notice("Couldn't write this one up. The transcript is kept.")] : [];
   const lines = n.transcript.slice(0, 80);
