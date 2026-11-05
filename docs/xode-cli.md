@@ -96,3 +96,71 @@ key (row-level security on, no policies); a person's rows go with their account.
 database without 0066 (its rows do not write `kind`); a terminal's needs it.
 
 Run it: `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0066"`.
+
+## In the terminal
+
+The tool lives in TAILZU-DESKTOP `cli/` (its own npm package, `@x0bot/xode`, Node 20+, no runtime dependencies). The name
+`xode` on npm belongs to someone else, so the package is scoped; the command it installs is still `xode`.
+
+```
+npx @x0bot/xode login                 # once: a code to approve in X0 Bot
+npx @x0bot/xode                       # chat with Xode about this folder's project
+npx @x0bot/xode "fix the cart rounding"   # one message, then follow the job to its end
+npx @x0bot/xode status | stop | logout
+```
+
+Or `npm i -g @x0bot/xode` and then just `xode …`. Flags: `--new` (a chat of its own instead of the app's), `--project <id>`,
+`--no-runner` (do not offer this computer). Env: `XODE_SERVER` (default https://api.x0bot.com), `XODE_PROJECT`,
+`XODE_RUNNER=0`, `NO_COLOR`.
+
+### What a session does
+
+1. **The folder decides the project.** Outside a git repository xode says so and stops. It reads the remote (origin, else the
+   only one), matches owner/repo to the person's Xode projects (`GET /v1/code/projects`, `fullName`), and offers the GitHub
+   connect link the app uses when the repo is not connected yet (`GET /v1/code/github`, `POST /v1/code/github/connect` or
+   `/signin`), adding the repo as a project once GitHub can see it (`POST /v1/code/projects`, asked first).
+2. **The chat is the app's.** The same thread as the app's Xode chat for this person and project
+   (`screens/codeWork/parts.ts threadFor`, from `user.id` in `GET /v1/auth/device`): talk it over (`POST /v1/bots/code/flow/:project/say`),
+   see the plan as numbered steps, approve it (`/approve`), then follow the job: its live room (`POST /v1/code/jobs/:id/live`, the
+   room's WebSocket), else polling `GET /v1/code/jobs/:id` and `/log`. Stages Understand → Plan → Build → Check → Ship as the job
+   screen derives them (`botsCodeWork/read.ts stageOf`). Questions are answered inline (`/answer`); typing while it works goes to
+   `/work`. Ctrl+C asks, then stops the job (`/stop`).
+3. **This computer does the work.** While xode is open it runs the desktop's runner (`src/runner`) headless, named
+   "<hostname> (terminal)", offering this folder's project only (`onlyProject`), so the router can place the job here. Its
+   guards, audit log and workspace rules are the desktop's.
+4. **The changes come back.** When the job ends (done, or failed after pushing), its branch is fetched into the folder and
+   switched to, then git's own `diff --stat` and the pull request link. With uncommitted changes in the folder nothing is
+   fetched or touched: xode prints the two git commands instead. Never a force, a reset of the person's branch or a stash.
+
+### Files kept on the computer
+
+- The sign-in: the keychain (macOS, `security`, fed on stdin), the secret service (Linux, `secret-tool`), else
+  `~/.config/xode/credentials.json` (folder 700, file 600).
+- `~/.config/xode/state.json`: per server and folder, the project, a `--new` chat's id and the last job.
+- `~/.config/xode/runner/` and `~/.cache/xode/runner/`: the runner's state and its workspaces.
+
+### Develop and test
+
+```
+cd TAILZU-DESKTOP/cli && npm test                 # node --test, a fake server, real git in temp folders
+node dev/demo-server.js 4545                       # a fake server with a slow, realistic session; prints a folder to cd into
+XODE_SERVER=http://127.0.0.1:4545 node bin/xode.js login
+```
+
+A local backend with no database (`DEV_SKIP_AUTH=true`) signs a terminal in from memory, so `xode login` can be tried end to
+end on one machine.
+
+### Publish
+
+`npm pack` first copies the runner into `cli/runner/` (`scripts/bundle-runner.js`, gitignored), so the package stands alone.
+Publishing needs an npm organisation named `x0bot` (npmjs.com → Add organization) on the account that publishes.
+
+```
+cd TAILZU-DESKTOP/cli
+npm test
+npm pack --dry-run
+npm login
+npm publish --access public
+```
+
+Each release: raise `version` in `cli/package.json` first (`npm version patch`).
