@@ -114,7 +114,7 @@ describe("About you: a card on Home after a few visits, never in the first run",
       const s = await build("bots.home", client, { api: about({}) });
       expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Tell your bots about you", "Male", "Female", "Other", "So your bots know how to address you.", "Save", "Not now"]));
       expect(JSON.stringify(s.root)).toContain('"placeholder":"Your name"');
-      expect(s.state).toMatchObject({ aboutName: "Aanya Rao", aboutGender: "", aboutSaved: false, aboutClosed: false });
+      expect(s.state).toMatchObject({ aboutName: "Aanya Rao", aboutGender: "", aboutSaved: false, aboutClosed: false, aboutBotName: "", aboutBotDone: false });
       const all = actions(s.root);
       expect(all).toEqual(expect.arrayContaining([
         expect.objectContaining({ kind: "setState", path: "aboutGender", value: "female" }),
@@ -127,14 +127,45 @@ describe("About you: a card on Home after a few visits, never in the first run",
       expect(lintTree(s.root!), client).toEqual([]);
     }
   });
-  it("signed in with Apple: no name field at all (App Review 4); Apple's own name is kept, a guessed one never", async () => {
-    for (const [name, source] of [["Aanya Rao", "provider"], ["", null], ["Aanya", "email"]] as const) {
+  it("signed in with Apple: the name Apple gave, filled in and editable, never required (App Review 4); no field when Apple gave none", async () => {
+    // Apple gave a name: the field is there, filled with it, and Save needs only the gender (the name goes with it when it is kept).
+    const given = await build("bots.home", "phone", { api: about({ name: "Aanya Rao", via: "apple", source: "provider" }) });
+    expect(JSON.stringify(given.root)).toContain('"id":"aboutName"');
+    expect(given.state).toMatchObject({ aboutName: "Aanya Rao" });
+    const save = actions(given.root).find((x) => x.kind === "condition" && JSON.stringify((x as { if?: unknown }).if) === '{"truthy":"aboutGender"}') as { then?: unknown; else?: unknown } | undefined;
+    expect(save?.else).toMatchObject({ kind: "toast", message: "Pick one to save." });
+    expect(save?.then).toMatchObject({
+      kind: "condition", if: { truthy: "aboutName" },
+      then: { kind: "callEndpoint", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } },
+      else: { kind: "callEndpoint", path: "/v1/profile", body: { gender: "$state.aboutGender" } },
+    });
+    // Apple gave none (or only a guess from a relay address could be made): no name field at all, and the gender alone is saved.
+    for (const [name, source] of [["", null], ["Aanya", "email"]] as const) {
       const s = await build("bots.home", "phone", { api: about({ name, via: "apple", source }) });
       // Home has its own fields (the ask bar): the card's name field is the one that must not be there.
       expect(JSON.stringify(s.root)).not.toContain('"id":"aboutName"');
       expect(JSON.stringify(s.root)).not.toContain("Your name");
-      const save = actions(s.root).find((x) => x.kind === "condition" && JSON.stringify((x as { if?: unknown }).if) === '{"truthy":"aboutGender"}') as { then?: { body?: unknown } } | undefined;
-      expect(save?.then?.body).toEqual({ ...(source === "provider" ? { full_name: name } : {}), gender: "$state.aboutGender" });
+      const only = actions(s.root).find((x) => x.kind === "condition" && JSON.stringify((x as { if?: unknown }).if) === '{"truthy":"aboutGender"}') as { then?: { body?: unknown } } | undefined;
+      expect(only?.then?.body).toEqual({ gender: "$state.aboutGender" });
+    }
+  });
+  it("then a name for the assistant, the card's second step: filled with the one it has, Save name or Keep X0, and the card goes after", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.home", client, { api: about({ botName: "Zara" }) });
+      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Give X0 a name of its own", "Save name", "Keep X0"]));
+      expect(JSON.stringify(s.root)).toContain('"placeholder":"A name for X0"');
+      expect(s.state).toMatchObject({ aboutBotName: "Zara", aboutBotDone: false });
+      // Shown once the first step is saved, until it is answered.
+      const step = walk(s.root!).find((n) => JSON.stringify(n.visibleIf ?? null).includes("aboutSaved") && texts(n).includes("Give X0 a name of its own"))!;
+      expect(step.visibleIf).toEqual({ all: [{ truthy: "aboutSaved" }, { falsy: "aboutBotDone" }] });
+      const all = actions(s.root);
+      expect(all).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { assistantName: "$state.aboutBotName" } }),
+        expect.objectContaining({ kind: "setState", path: "aboutBotDone", value: true }),
+      ]));
+      // Never worded as a question about the person: no "What will you call me?", no "your name" in this step.
+      expect(texts(step)).not.toContain("What will you call me?");
+      expect(lintTree(s.root!), client).toEqual([]);
     }
   });
   it("not due: no card; and one ask at a time, so not while the first-arrival card is due", async () => {

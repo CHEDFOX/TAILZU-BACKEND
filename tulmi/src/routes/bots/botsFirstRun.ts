@@ -1,13 +1,15 @@
 /**
  * Bots app · first run: what its screens read beyond the existing routes (screens/firstRun.ts).
  *
- *   GET /v1/bots/first-run/about       the About you card on Home: { due, name, source, via, gender }. Due once the
- *                                      account is onboarded, from the ABOUT_AFTER_VISITS-th visit, while the answer is
+ *   GET /v1/bots/first-run/about       the About you card on Home: { due, name, source, via, gender, botName }. Due once the
+ *                                      account is onboarded, from the ABOUT_AFTER_VISITS-th (3rd) visit, while the answer is
  *                                      owed (the gender, and the name unless they signed in with Apple: App Review 4),
  *                                      and not put off for now. The name to start from: the account's own, else the
  *                                      sign-in provider's, else one suggested from the email
  *   PUT /v1/bots/first-run/about       "Not now": it comes again ABOUT_AGAIN_VISITS visits later, at most ABOUT_PUT_OFF_MAX
- *                                      times. Saving is PUT /v1/profile { full_name, gender }, after which nothing is owed
+ *                                      times. Saving is PUT /v1/profile { full_name, gender }, after which nothing is owed;
+ *                                      the card's second step names the assistant (PUT /v1/personality { assistantName },
+ *                                      botName is the one it has now), and is never owed
  *   GET /v1/bots/first-run/languages   the Language page's chips (the onboarding's own list) and what is picked
  *   GET /v1/bots/first-run/words       the account's spoken words and audio seconds, all time; with ?w=&s= (a baseline
  *                                      taken when the step opened) also what was said since: First words' numbers
@@ -27,6 +29,7 @@
  */
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
+import { nicknameOf } from "../../experience/assistantName.js";
 import { getEntitlement } from "../../billing/entitlements.js";
 import { fetchPlan, formatPeriod, formatPrice, planFor, razorpayReady, type Market, type Tier } from "../../billing/razorpay.js";
 import { getConfig, type AppConfig } from "../../config.js";
@@ -248,7 +251,7 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
       && (!gender || (!profile.fullName?.trim() && via !== "apple"))
       && visits >= Math.max(ABOUT_AFTER_VISITS, p.botsAboutFrom ?? 0)
       && (p.botsAboutPutOff ?? 0) < ABOUT_PUT_OFF_MAX;
-    return reply.send({ due, ...startingName(user, profile?.fullName), via, gender });
+    return reply.send({ due, ...startingName(user, profile?.fullName), via, gender, botName: nicknameOf(p) ?? "" });
   });
 
   app.put("/v1/bots/first-run/about", rl, async (req, reply) => {

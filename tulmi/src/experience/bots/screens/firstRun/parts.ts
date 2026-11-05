@@ -201,7 +201,7 @@ export const phoneStepBody = (body: Node[], footer: Node[], gap = 18): Node =>
 
 /** GET /v1/bots/first-run/profile (routes/bots/botsFirstRun.ts). */
 /** GET /v1/bots/first-run/about: the About you card (aboutCard.ts), due after a few visits while the answer is owed. */
-export interface About { due: boolean; name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null }
+export interface About { due: boolean; name: string; via: string; source: "saved" | "provider" | "email" | null; gender: string | null; botName?: string }
 
 /** A text field in the boards' look: the ink outline, the clear button. */
 export function nameField(path: string, placeholder: string, onSubmit: ActionRef, desk: boolean, o: { capitalize?: boolean; label: string; height?: number }): Node {

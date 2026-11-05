@@ -42,7 +42,7 @@ section 1 says.
 | --- | --- | --- | --- |
 | Email address | The sign-in address (email code, Sign in with Apple, Google) | `app/src/auth/supabaseClient.ts`; Supabase Auth | Until the account is deleted |
 | Phone number | Only for phone sign-in | `supabaseClient.ts` sendPhoneCode; Supabase Auth | Until deleted |
-| Name | The name the person gives (first run, About you), or the sign-in provider's; shown to people in their Spaces | `PUT /v1/profile` (`tulmi/src/routes/account/profile.ts`), `profiles` (migrations 0003, 0007); `space_members.name` | Until deleted |
+| Name | The name the person gives (the About you card on Home), or the sign-in provider's; shown to people in their Spaces | `PUT /v1/profile` (`tulmi/src/routes/account/profile.ts`), `profiles` (migrations 0003, 0007); `space_members.name` | Until deleted |
 | Gender | Female, male or other, to address the person correctly | `PUT /v1/profile { gender }` | Until deleted |
 | User ID | The account's ID (Supabase), also RevenueCat's app user ID | `tulmi/src/auth/supabase.ts`; `app/src/billing/purchases.ts` | Until deleted |
 | Voice | Audio of dictation and of speaking to bots, sent to be turned into text, then discarded (never stored) | `/v1/transcribe-clean`, `/v1/stream` (`tulmi/src/routes/writing/transcribe.ts`, `routes/writing/transcribe-stream.ts`); OpenAI / Groq | Not stored (processed ephemerally) |
