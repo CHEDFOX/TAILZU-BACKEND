@@ -383,7 +383,7 @@ describe("bots.devices", () => {
 
   it("with none, says how to add one", async () => {
     const s = await build("bots.devices", "phone", undefined, { "GET /v1/auth/devices": { devices: [] } });
-    expect(texts(s.root!)).toEqual(expect.arrayContaining(["No terminal sign-ins", "Run npx @x0bot/xode login in a project folder."]));
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["No terminal sign-ins", "Run npx @xooteqlab/xode login in a project folder."]));
   });
 
   it("Settings opens it, on the phone and in the window", async () => {

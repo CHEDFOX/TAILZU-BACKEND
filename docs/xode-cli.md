@@ -99,7 +99,7 @@ Run it: `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/m
 
 ## In the terminal
 
-The tool lives in TAILZU-DESKTOP `cli/` (its own npm package, `@x0bot/xode`, Node 20+, no runtime dependencies). The name
+The tool lives in TAILZU-DESKTOP `cli/` (its own npm package, `@xooteqlab/xode`, Node 20+, no runtime dependencies). The name
 `xode` on npm belongs to someone else, so the package is scoped; the command it installs is still `xode`.
 
 ```
@@ -110,7 +110,7 @@ xode doctor              # checks the setup, one line each
 xode update              # the command that updates, this version and the newest
 ```
 
-`npx @x0bot/xode` works too, or `npm i -g @x0bot/xode`. `xode login`, `status`, `stop` and `logout` still work but are not
+`npx @xooteqlab/xode` works too, or `npm i -g @xooteqlab/xode`. `xode login`, `status`, `stop` and `logout` still work but are not
 advertised: inside the session they are `/login`, `/status`, `/stop`, `/logout`. Flags: `--new` (a chat of its own instead of
 the app's), `--project <id>`, `--no-runner` (do not offer this computer). Env: `XODE_SERVER` (default https://api.x0bot.com),
 `XODE_PROJECT`, `XODE_RUNNER=0`, `NO_COLOR`, `XODE_NO_UPDATE_CHECK=1`. Exit codes: 0 normal, 1 an error, 2 bad usage.
@@ -155,7 +155,7 @@ there is no redrawing: plain lines, and pickers become a numbered list answered 
 (exit 1). Piped text is added after the question, up to 20 KB (cut with a note).
 
 Once a day at most, in the background (1.5 s at most, never holding up the start), xode asks npm for the newest version
-(`GET https://registry.npmjs.org/@x0bot/xode/latest`) and says in one dim line when there is a newer one.
+(`GET https://registry.npmjs.org/@xooteqlab/xode/latest`) and says in one dim line when there is a newer one.
 
 ### Files kept on the computer
 
@@ -182,14 +182,14 @@ the screen back with a small terminal of their own (`test/screen.js`). A local b
 ### Publish
 
 `npm pack` first copies the runner into `cli/runner/` (`scripts/bundle-runner.js`, gitignored), so the package stands alone.
-Publishing needs an npm organisation named `x0bot` (npmjs.com → Add organization) on the account that publishes.
+Publishing needs the npm organisation `xooteqlab` (it exists) and two-factor sign-in on the account that publishes.
 
 ```
 cd TAILZU-DESKTOP/cli
 npm test
 npm pack --dry-run
 npm login
-npm publish --access public
+npm publish --access public --otp=<the 6-digit code from the authenticator app>
 ```
 
 Each release: raise `version` in `cli/package.json` first (`npm version patch`).

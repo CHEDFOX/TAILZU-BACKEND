@@ -73,7 +73,7 @@ function devicesPage(ctx: BotsCtx, d: DevicesData | undefined) {
       ], { gap: 4 }),
       ...(!list ? [emptyState({ pose: "think", title: "Couldn't load your terminal sign-ins", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : list.length ? [col(list.flatMap((x, i) => [...(i ? [divider()] : []), deviceRow(ctx, x)]), { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" })]
-          : [emptyState({ pose: "hello", title: "No terminal sign-ins", body: "Run npx @x0bot/xode login in a project folder." })]),
+          : [emptyState({ pose: "hello", title: "No terminal sign-ins", body: "Run npx @xooteqlab/xode login in a project folder." })]),
       col([
         text("Signing in a terminal? Type its code", { size: 15, weight: 600, lineHeight: 20 }),
         meta("It's the 8 letters and numbers xode login shows.", { size: 13, lineHeight: 18 }),
