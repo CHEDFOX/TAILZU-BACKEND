@@ -172,3 +172,15 @@ describe("the app", () => {
     expect(s).toContain('"path":"/v1/you/ai-consent","body":{"agree":false}');
   });
 });
+
+describe("the terms and privacy card, for a build that draws a box that scrolls", () => {
+  it("holds the whole of the Terms and the Privacy Policy under the AI summary, and Agree accepts them", async () => {
+    const r = await buildBotsScreen({ screenId: "bots.home", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: "u", name: "Aanya Sharma" }, can: new Set(["BotsKit", "BotsMotion", "Scroll"]), desk: { pages: false, notes: false } }, fakeDeps({ api: { "GET /v1/you/ai-consent": { agreed: false } } }));
+    expect(lintTree(r.root!)).toEqual([]);
+    const s = JSON.stringify(r.root);
+    for (const w of ["Terms and privacy", "trusted AI companies", "By tapping Agree, you accept the Terms of Service and the Privacy Policy below.", '"type":"Scroll"',
+      "Terms of Service", "1. Eligibility", "Privacy Policy", "AI services, and your permission", "Agree", "Not now", "/privacy/providers"]) expect(s).toContain(w);
+    // The policy's own words, not a summary of them.
+    expect(s).toContain("we ask your permission before anything is sent");
+  });
+});

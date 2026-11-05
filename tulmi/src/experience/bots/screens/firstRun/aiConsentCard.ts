@@ -16,7 +16,8 @@
  * Withdrawn in You › Privacy (screens/you: the switch "Send to AI services").
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, botCard, box, canMove, call, col, C, icon, row, seq, text, when } from "../../kit.js";
+import { type BotsCtx, botCard, box, canMove, canScroll, call, col, C, icon, row, scrollBox, seq, text, when } from "../../kit.js";
+import { legalNodes } from "../../legalText.js";
 import { CARD_BOT, line, permitStep, setState, toast } from "./parts.js";
 
 export const AI_CONSENT_PATH = "/v1/you/ai-consent";
@@ -50,14 +51,26 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined): Node[] {
     box([icon("check", { size: 12, color: C.paper, weight: 2.2 })], { width: 20, height: 20, borderRadius: 10, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 }),
     text(s, { size: 14, lineHeight: 20, color: C.ink }),
   ], { gap: 10, alignItems: "center" });
+  const promises = col([promise("Never sold, never used for ads"), promise("Nothing is sent until you agree"), promise("Turn it off anytime in You › Privacy")], { gap: 10 });
+  // A build that draws a box that scrolls in a card gets the whole of the Terms and the Privacy Policy under it, in small type, the
+  // way Apple shows its own terms; Agree accepts them with the AI permission. Else the short card, with the policy a tap away.
+  const full = canScroll(ctx);
+  const smallLink = (label: string, url: string): Node => row([text(label, { size: 12, lineHeight: 16, color: C.grey70, style: { textDecorationLine: "underline" } })], {}, { kind: "openUrl", url, external: true });
+  const terms = [
+    text("By tapping Agree, you accept the Terms of Service and the Privacy Policy below.", { size: 12, lineHeight: 17, color: C.meta }),
+    scrollBox(legalNodes(), {
+      maxHeight: desk ? 260 : 200, gap: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface,
+    }),
+    row([
+      smallLink("Terms", "https://x0bot.com/terms"), smallLink("Privacy", "https://x0bot.com/privacy"),
+      smallLink("Providers", "https://x0bot.com/privacy/providers"), smallLink("Support", "https://x0bot.com/support"),
+    ], { gap: 14, flexWrap: "wrap" }),
+  ];
   const ask = permitStep({
     when: { falsy: AGREED },
-    title: "Your data, your choice",
+    title: full ? "Terms and privacy" : "Your data, your choice",
     lines: [line("X0 Bot uses trusted AI companies to understand you and reply. Only what you say, type or share in the app is sent to them.")],
-    extra: [
-      col([promise("Never sold, never used for ads"), promise("Nothing is sent until you agree"), promise("Turn it off anytime in You › Privacy")], { gap: 10 }),
-      policy,
-    ],
+    extra: full ? [promises, ...terms] : [promises, policy],
     cta: { label: "Agree", onPress: agree },
     quiet: { label: "Not now", onPress: setState(LATER, true) },
   });
@@ -66,7 +79,7 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined): Node[] {
   }));
   if (canMove(ctx)) {
     return [botCard([ask, thanks], {
-      ...CARD_BOT, stageHeight: 72, kind: "custom", overlay: true, width: WIDTH[desk ? "desktop" : "phone"], label: "AI permission",
+      ...CARD_BOT, stageHeight: full ? 48 : 72, kind: "custom", overlay: true, width: WIDTH[desk ? "desktop" : "phone"], label: full ? "Terms and privacy" : "AI permission",
       doneWhen: { truthy: AGREED }, doneDelayMs: 1200, onComplete: setState(CLOSED, true), closeWhen: { any: [{ truthy: CLOSED }, { truthy: LATER }] },
     })];
   }

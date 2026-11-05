@@ -290,6 +290,11 @@ export function botTile(bot: LiveBot, o: { idle: string; onPress?: ActionRef; he
 
 /** A build that draws BotTiles and BotCard (shared/types/sdui.ts, "The living bot tiles"). */
 export const canMove = (ctx: BotsCtx): boolean => ctx.can.has(BOTS_MOTION_CAPABILITY);
+/** A box that scrolls on its own inside a card: the phone's components/Scroll.tsx, the window's nodes.js "Scroll". Only to a build that draws it. */
+export const SCROLL_COMPONENT = "Scroll";
+export const canScroll = (ctx: BotsCtx): boolean => ctx.can.has(SCROLL_COMPONENT);
+/** Its children in a box of their own that scrolls (style: maxHeight, and its look). */
+export const scrollBox = (children: Node[], style: Style = {}): Node => ({ type: SCROLL_COMPONENT, style: { flexDirection: "column", ...style }, children });
 
 /** The words under a bot's name (botLine's, as plain text). */
 export function botLineText(bot: LiveBot, idle: string): string {
