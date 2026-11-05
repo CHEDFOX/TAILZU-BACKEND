@@ -181,15 +181,22 @@ the screen back with a small terminal of their own (`test/screen.js`). A local b
 
 ### Publish
 
-`npm pack` first copies the runner into `cli/runner/` (`scripts/bundle-runner.js`, gitignored), so the package stands alone.
-Publishing needs the npm organisation `xooteqlab` (it exists) and two-factor sign-in on the account that publishes.
+From GitHub (the usual way): raise the version (`cd cli && npm version patch`, commit, push), then Actions → **xode** →
+Run workflow. It tests, then publishes with npm's trusted publishing, so no token or one-time code is kept anywhere. Set
+once on npmjs.com: the package → Settings → Trusted publishing → GitHub Actions: owner `CHEDFOX`, repository
+`TAILZU-DESKTOP`, workflow `xode.yml`. A run whose version is already on npm publishes nothing.
+
+From a computer (needs the npm organisation `xooteqlab` and two-factor sign-in):
 
 ```
 cd TAILZU-DESKTOP/cli
 npm test
-npm pack --dry-run
-npm login
 npm publish --access public --otp=<the 6-digit code from the authenticator app>
 ```
 
-Each release: raise `version` in `cli/package.json` first (`npm version patch`).
+`npm pack` first copies the runner into `cli/runner/` (`scripts/bundle-runner.js`, gitignored), so the package stands alone.
+
+### Install in one line
+
+`curl -fsSL https://x0bot.com/install.sh | bash` (macOS, Linux) or `irm https://x0bot.com/install.ps1 | iex` (Windows): they
+check for Node.js 20+, then run `npm install -g @xooteqlab/xode@latest` (TAILZU-WEB `install.sh`, `install.ps1`).
