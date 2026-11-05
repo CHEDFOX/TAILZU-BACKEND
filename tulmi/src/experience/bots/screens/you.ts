@@ -285,7 +285,7 @@ function personalCard(d: YouData | undefined): Node {
 function aiCard(ai: AiConsent | undefined): Node {
   const on = ai?.agreed === true;
   return listCard([switchRow("Send to AI services", "aiOn", {
-    sub: "Your words, voice and anything you share go to third-party AI providers, only to answer you and keep Spaces safe. Off: bots, dictation and Ask stop.",
+    sub: "What you say, type or share goes to trusted AI companies to answer you. Never sold, never used for ads. Off: bots, dictation and Ask stop.",
     onChange: call("PUT", AI_CONSENT_PATH, { agree: !on }, { ok: seq(toast(on ? "Off. Nothing more is sent." : "On"), refresh), fail: oops("save that") }),
   })]);
 }

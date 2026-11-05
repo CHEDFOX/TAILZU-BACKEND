@@ -145,18 +145,18 @@ describe("the app", () => {
     return buildBotsScreen({ screenId: "bots.home", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: "u", name: "Aanya Sharma" }, can: new Set(["BotsKit", "BotsMotion"]), desk: { pages: false, notes: false } }, fakeDeps({ api }));
   };
 
-  it("asks on Home first, saying what is sent, that it goes to third-party AI providers (the policy names them), and why, with Agree and Not now", async () => {
+  it("asks on Home first, saying what is sent, that it goes to AI companies (the policy names them), and why, with Agree and Not now", async () => {
     const r = await home({ agreed: false }, { "GET /v1/bots/first-run/arrival": { due: true } });
     expect(lintTree(r.root!)).toEqual([]);
     const s = JSON.stringify(r.root);
-    expect(s).toContain("Your data and AI");
-    for (const w of ["voice", "third-party AI providers", "Privacy policy", "Nothing is sent until you agree", "Agree", "Not now", "/v1/you/ai-consent"]) expect(s).toContain(w);
+    expect(s).toContain("Your data, your choice");
+    for (const w of ["trusted AI companies", "Only what you say, type or share", "Never sold, never used for ads", "Nothing is sent until you agree", "Turn it off anytime", "Privacy policy", "Agree", "Not now", "/v1/you/ai-consent"]) expect(s).toContain(w);
     // One ask at a time: the arrival card waits.
     expect(s).not.toContain("uses the microphone");
   });
 
   it("does not ask once they agreed, or when it could not tell", async () => {
-    for (const ai of [{ agreed: true }, undefined]) expect(JSON.stringify((await home(ai)).root)).not.toContain("Your data and AI");
+    for (const ai of [{ agreed: true }, undefined]) expect(JSON.stringify((await home(ai)).root)).not.toContain("Your data, your choice");
   });
 
   it("You › Privacy has the switch to take it back, and one for usage statistics, off by default", async () => {

@@ -16,7 +16,7 @@
  * Withdrawn in You › Privacy (screens/you: the switch "Send to AI services").
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, botCard, canMove, call, col, C, row, seq, text, when } from "../../kit.js";
+import { type BotsCtx, botCard, box, canMove, call, col, C, icon, row, seq, text, when } from "../../kit.js";
 import { CARD_BOT, line, permitStep, setState, toast } from "./parts.js";
 
 export const AI_CONSENT_PATH = "/v1/you/ai-consent";
@@ -42,17 +42,22 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined): Node[] {
     ok: seq({ kind: "haptic", style: "success" } as ActionSpec, setState(AGREED, true)),
     fail: toast("Couldn't save that. Try again."),
   });
-  const policy = row([text("Who they are: Privacy policy", {
+  const policy = row([text("Read our Privacy policy", {
     size: 13, lineHeight: 18, color: C.grey70, style: { textDecorationLine: "underline" },
   })], {}, { kind: "openUrl", url: PRIVACY_URL, external: true });
+  // Three promises, each one the privacy policy makes (section 3, "AI services, and your permission").
+  const promise = (s: string): Node => row([
+    box([icon("check", { size: 12, color: C.paper, weight: 2.2 })], { width: 20, height: 20, borderRadius: 10, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 }),
+    text(s, { size: 14, lineHeight: 20, color: C.ink }),
+  ], { gap: 10, alignItems: "center" });
   const ask = permitStep({
     when: { falsy: AGREED },
-    title: "Your data and AI",
-    lines: [
-      line("To answer you and keep Spaces safe, X0 Bot sends what you give it (your words, voice and anything you share) to third-party AI providers. Nothing is sent until you agree."),
-      line("Change it anytime in You › Privacy."),
+    title: "Your data, your choice",
+    lines: [line("X0 Bot uses trusted AI companies to understand you and reply. Only what you say, type or share in the app is sent to them.")],
+    extra: [
+      col([promise("Never sold, never used for ads"), promise("Nothing is sent until you agree"), promise("Turn it off anytime in You › Privacy")], { gap: 10 }),
+      policy,
     ],
-    extra: [policy],
     cta: { label: "Agree", onPress: agree },
     quiet: { label: "Not now", onPress: setState(LATER, true) },
   });
