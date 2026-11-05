@@ -14,6 +14,7 @@ import {
   SCREENS, meta, RADIUS, page, emptyState, button, shapes, mono, blip, card, divider, sectionLabel, grow,
   picture,
 } from "../../kit.js";
+import { reportAnswer } from "../../reportAction.js";
 
 export const CODE = botLook("code");
 export const MOSS = CODE.color;
@@ -238,6 +239,12 @@ export function mine(s: string, size = 15): Node {
   })], { justifyContent: "flex-end" });
 }
 
+
+/** Xode's answer with "Report" under it (App Review 1.2 and 4.7.1: what a bot makes can be reported; reportAction.ts). */
+export function reportable(box: Node, words: string): Node {
+  return col([box, row([text("Report", { size: 12, lineHeight: 16, color: C.meta })], { paddingLeft: 6, minHeight: 24, alignItems: "center" }, reportAnswer({ bot: "Xode", text: words }))], { gap: 2 });
+}
+
 /**
  * Xode's words: paragraphs, code in mono, the flow it drew, and the files and lines it rests on. Always in a closed box with a faint
  * border, the mirror of the person's own bubble (its tail corner on the other side), so every reply reads as one piece.
@@ -385,7 +392,7 @@ export function donePhone(ctx: BotsCtx, d: DoneData) {
         text(answer ? "Answered." : "Shipped.", { size: 34, weight: 700, tracking: -0.8, lineHeight: 40, align: "center" }),
         row([box([], { width: 10, height: 10, borderRadius: 5, backgroundColor: MOSS }), text(shippedLine(j), { size: 15, lineHeight: 20, style: { flexShrink: 1 } })], { gap: 8 }),
       ], { gap: 12, paddingTop: 8, alignItems: "center" }),
-      ...(answer && j.agent?.report?.text ? [theirs(j.agent.report.text, { size: 14 })] : [row(nums.map((n) => numberTile(n.value, n.label.replace(/ changed$/, ""), undefined, 20, true)), { gap: 8 })]),
+      ...(answer && j.agent?.report?.text ? [reportable(theirs(j.agent.report.text, { size: 14 }), j.agent.report.text)] : [row(nums.map((n) => numberTile(n.value, n.label.replace(/ changed$/, ""), undefined, 20, true)), { gap: 8 })]),
       ...screensOf(j, false),
       ...(note ? [note] : []),
     ],
@@ -412,7 +419,7 @@ export function doneDesk(ctx: BotsCtx, d: DoneData) {
         ], { gap: 10, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
         ...(d.shippedThisWeek ? [col([weekBeads(d.shippedThisWeek, `${d.shippedThisWeek} shipped this week`)], { alignSelf: "flex-end" })] : []),
       ], { gap: 28, alignItems: "center" }),
-      ...(answer && j.agent?.report?.text ? [card([theirs(j.agent.report.text)], { padding: 20 })]
+      ...(answer && j.agent?.report?.text ? [card([reportable(theirs(j.agent.report.text), j.agent.report.text)], { padding: 20 })]
         : [labelled(row(nums.flatMap((n, i) => [...(i ? [divider({ vertical: true })] : []), box([numberTile(n.value, n.label, n.sub, 24)], { flexGrow: 1, flexBasis: 0, paddingVertical: 18, paddingHorizontal: 20 })]),
           { borderWidth: 1, borderColor: C.line, borderRadius: 18, alignItems: "stretch" }), "By the numbers")]),
       ...screensOf(j, true),

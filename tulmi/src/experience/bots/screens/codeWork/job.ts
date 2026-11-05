@@ -9,21 +9,15 @@ import {
 } from "../../../../botsCodeWork/read.js";
 import type { ChatTurn } from "../../../../code/chat/threads.js";
 import { askMoment } from "../../askMoment.js";
-import { reportAnswer } from "../../reportAction.js";
 import { notifyWhenDone, PUSH_STATE, withPushCheck } from "../pushAsk.js";
 import {
   seq, call, col, row, box, text, C, meta, percent, grow, meter, type BotsCtx, statusMark, button, card, spanOf, labelled, icon, open,
   SCREENS, when, FACE, RADIUS, page, stages,
 } from "../../kit.js";
 import {
-  toast, refresh, oops, workMark, type JobData, write, jobPath, field, stopJob, type ChatCtx, threadFor, mine, theirs, MOSS, askCode,
+  toast, refresh, oops, workMark, type JobData, write, jobPath, field, stopJob, type ChatCtx, threadFor, mine, theirs, reportable, MOSS, askCode,
   noProject, head, half, glyph, G, statusLine, linesOf, ASIDE, nothingHere,
 } from "./parts.js";
-
-/** Xode's answer with "Report" under it (App Review 1.2 and 4.7.1: what a bot makes can be reported; reportAction.ts). */
-function reportable(box: Node, words: string): Node {
-  return col([box, row([text("Report", { size: 12, lineHeight: 16, color: C.meta })], { paddingLeft: 6, minHeight: 24, alignItems: "center" }, reportAnswer({ bot: "Xode", text: words }))], { gap: 2 });
-}
 
 /** A yes that the server may first answer with a question ({ needsApproval, approvalId }): say it again with the id. */
 function twoStep(path: string, ok: string): ActionSpec {
@@ -177,7 +171,7 @@ function conversation(d: JobData | undefined, p: { asked?: string; answer?: stri
     }
     const w = d.agent?.waiting;
     if (w?.kind === "question" && w.question && !d.log.some((e) => e.kind === "question" && e.text === w.question)) out.push(theirs(w.question, { size }));
-    if (d.agent?.report?.text) out.push(theirs(d.agent.report.text, { size }));
+    if (d.agent?.report?.text) out.push(reportable(theirs(d.agent.report.text, { size }), d.agent.report.text));
   }
   const turns = p.turns ?? [];
   // The question just asked is the chat's last turn once it is kept; drawn from the params only when it was not.
