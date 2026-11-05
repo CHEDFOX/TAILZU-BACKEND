@@ -150,7 +150,7 @@ describe("the app", () => {
     expect(lintTree(r.root!)).toEqual([]);
     const s = JSON.stringify(r.root);
     expect(s).toContain("Your data, your choice");
-    for (const w of ["leading AI partners", "only see what you choose to share", "Never sold, never used for ads", "Nothing is sent until you agree", "Turn it off anytime", "Privacy policy", "Agree", "Not now", "/v1/you/ai-consent"]) expect(s).toContain(w);
+    for (const w of ["leading AI partners", "They see only what you choose to share.", "Never sold, never used for ads", "Nothing is sent until you agree", "Turn it off anytime", "Privacy policy", "Agree", "Not now", "/v1/you/ai-consent"]) expect(s).toContain(w);
     // One ask at a time: the arrival card waits.
     expect(s).not.toContain("uses the microphone");
   });

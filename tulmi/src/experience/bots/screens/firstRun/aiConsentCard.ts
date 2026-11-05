@@ -69,7 +69,7 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined): Node[] {
   const ask = permitStep({
     when: { falsy: AGREED },
     title: full ? "Terms and privacy" : "Your data, your choice",
-    lines: [line("X0 Bot works with leading AI partners to answer you. They only see what you choose to share with it.")],
+    lines: [line("X0 Bot works with leading AI partners to answer you. They see only what you choose to share.")],
     extra: full ? [promises, ...terms] : [promises, policy],
     cta: { label: "Agree", onPress: agree },
     quiet: { label: "Not now", onPress: setState(LATER, true) },
