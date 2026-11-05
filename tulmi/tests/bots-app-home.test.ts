@@ -243,6 +243,9 @@ describe("bots.home", () => {
         // And with the bots' own tiny bots on their pages.
         const buddy = await buildBotsScreen({ ...req(id, client), can: new Set(["BotsKit", "BotsMotion", "BotBuddy", "WriteOn", "LiveMark", "HeadBar"]) }, fakeDeps());
         expect(checkTree(buddy.root!), `${id} ${client} BotBuddy`).toEqual([]);
+        // And with the new Spaces' blocks and Home's thought (sdui 3i), voice and the window's one key.
+        const family = await buildBotsScreen({ ...req(id, client), can: new Set(["BotsKit", "BotsMotion", "BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "VoiceLive", "DoubleTap", "KitExtras", "ActionParams", "DeskTalkTo"]) }, fakeDeps());
+        expect(checkTree(family.root!), `${id} ${client} 3i`).toEqual([]);
       }
     }
   });

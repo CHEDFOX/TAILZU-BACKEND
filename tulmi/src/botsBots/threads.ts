@@ -17,6 +17,11 @@
  * BLOCKS (blocks.ts), either way round: the one-to-one chat between the two is gone for both (hidden, closed, 404), neither sees the
  * other's messages in a group or a space's chat (nor counts them unread, nor is pinged for them), and neither is offered the other
  * to message or to add to a group.
+ *
+ * A MESSAGE TO ONE PERSON (a space's feed, spaceFeed.ts: to_id): only its sender, that person and the space's admin see it. Every
+ * reader here applies that one rule (sees()): a page, the widget's words, a report, a file, unread counts, pushes and live events.
+ * A chat's last line (last_text, and last_public_ms, the time lists show) is only ever a message to everyone, so a message to one
+ * person never moves anyone else's chat or line.
  */
 import { screenPost } from "./filter.js";
 import { randomUUID } from "node:crypto";
@@ -31,19 +36,26 @@ import type { Publish, Spaces } from "./spaces.js";
 export interface ThreadRow {
   [k: string]: unknown; id: string; kind: "direct" | "group" | "space"; space_id: string | null; name: string; direct_key: string | null;
   created_by: string | null; created_ms: number; last_ms: number; last_text: string;
+  /** When last_text (a line for everyone) was written: what lists show. Null on rows from before migration 0068: last_ms then. */
+  last_public_ms?: number | null;
 }
 export interface ThreadMemberRow {
   [k: string]: unknown; thread_id: string; user_id: string; name: string; joined_ms: number; last_read_ms: number; unread: number; muted: boolean; left_ms: number | null;
 }
 export interface FileRef { id: string; name: string; mime: string; bytes: number; kind: string; owner: string }
-export interface ItemCard { id: string; kind: string; title: string }
+/** A shared thing's card. A grant's (spaceFeed.ts, "/" in a space): kind "grant", id the grant's, and the item it opens. */
+export interface ItemCard { id: string; kind: string; title: string; bot?: string; botName?: string; ownerId?: string; itemId?: string; line?: string }
 export interface MessageRow {
   [k: string]: unknown; id: string; thread_id: string; sender_id: string | null; sender_name: string; text: string; files: FileRef[]; item: ItemCard | null; at_ms: number;
+  /** A message to one person (migration 0068): who. Null or absent: for everyone in the chat. */
+  to_id?: string | null; to_name?: string;
 }
 
 export interface MessageView {
   id: string; from: { userId: string | null; name: string; you: boolean }; text: string; at: number;
   files: Array<{ id: string; name: string; mime: string; bytes: number; kind: string; url: string }>; item: ItemCard | null;
+  /** A message to one person: who (an old build says "To Rohan"). Null: for everyone. */
+  to: { userId: string; name: string; you: boolean } | null;
 }
 export interface ThreadView {
   id: string; kind: ThreadRow["kind"]; name: string; spaceId: string | null; spaceName: string;
@@ -59,7 +71,7 @@ export interface FileLookup {
 }
 
 /** A push for a new message (routes: the push engine). */
-export type MessageNotify = (userId: string, msg: { kind: "space_message"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<void>;
+export type MessageNotify = (userId: string, msg: { kind: "space_message" | "space_feed"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<void>;
 
 const TEXT_MAX = 4000;
 const FILES_MAX = 6;
@@ -71,6 +83,8 @@ const oneLine = (s: string, max: number) => s.replace(/\s+/g, " ").trim().slice(
 const gone = () => new BotError("not_found", "That chat isn't there any more.", 404);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const names = (list: string[]) => (list.length <= 1 ? list[0] ?? "" : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`);
+/** A message for everyone in the chat (not one to one person). */
+const isPublic = (m: Pick<MessageRow, "to_id">): boolean => !m.to_id;
 /** A message as one line (a chat's last line, a report's subject). */
 const lineOf = (m: Pick<MessageRow, "text" | "item" | "files">): string => m.text ? oneLine(m.text, 120) : m.item ? `Shared ${m.item.title}` : (m.files ?? []).length === 1 ? (m.files[0]!.mime.startsWith("image/") ? "Photo" : m.files[0]!.name) : `${(m.files ?? []).length} files`;
 
@@ -137,6 +151,16 @@ export class Threads {
     return !!other && (await this.blocks.hiddenFor(userId)).has(other);
   }
 
+  /** Who sees a message: everyone, for one to everyone; else its sender, the one it is to, and the space's admin (`ownerId`). */
+  private sees(viewer: string, m: Pick<MessageRow, "to_id" | "sender_id">, ownerId: string | null): boolean {
+    return !m.to_id || m.sender_id === viewer || m.to_id === viewer || viewer === ownerId;
+  }
+
+  /** The space's admin, for a space's chat or group (a one-to-one chat has none, and never carries a message to one person). */
+  private async ownerOf(t: ThreadRow): Promise<string | null> {
+    return t.space_id ? this.spaces.ownerOf(t.space_id) : null;
+  }
+
   async canRead(userId: string, threadId: string): Promise<boolean> {
     return this.open(userId, threadId).then(() => true, () => false);
   }
@@ -195,7 +219,8 @@ export class Threads {
     const out: Array<{ threadId: string; messageId: string; chat: string; chatKind: ThreadRow["kind"]; from: string; text: string; at: number; unread: boolean }> = [];
     for (const t of threads.filter((x) => x.last && (o.includeMuted || !x.muted)).slice(0, Math.max(1, Math.min(o.chats ?? 8, 20)))) {
       const newest = await this.messages.before({ thread_id: t.id }, "at_ms", null, 10);
-      const m = newest.find((x) => x.sender_id && x.sender_id !== userId && !hidden.has(x.sender_id));
+      const owner = t.spaceId ? await this.spaces.ownerOf(t.spaceId) : null;
+      const m = newest.find((x) => x.sender_id && x.sender_id !== userId && !hidden.has(x.sender_id) && this.sees(userId, x, owner));
       if (!m) continue;
       out.push({ threadId: t.id, messageId: m.id, chat: t.name, chatKind: t.kind, from: m.sender_name, text: lineOf(m), at: Number(m.at_ms), unread: t.unread > 0 });
     }
@@ -211,20 +236,45 @@ export class Threads {
     const others = members.filter((m) => m.user_id !== userId);
     const post = await this.mayPost(userId, t, all);
     const name = t.kind === "space" ? spaceName : t.kind === "direct" ? (others[0]?.name ?? (await this.people.select({ thread_id: t.id }, { limit: 4 })).find((m) => m.user_id !== userId)?.name ?? "Someone") : (t.name || names(others.map((m) => m.name)));
-    let last = Number(t.last_ms) > Number(t.created_ms) || t.last_text ? { text: t.last_text, at: Number(t.last_ms) } : null;
-    if (last && hidden.size && t.kind !== "direct") {
-      // The chat's last line may be theirs: show the last one you can see instead.
-      const newest = await this.messages.before({ thread_id: t.id }, "at_ms", null, 20);
-      if (newest[0] && newest[0].sender_id && hidden.has(newest[0].sender_id)) {
-        const seen = newest.find((m) => !m.sender_id || !hidden.has(m.sender_id));
-        last = seen ? { text: `${seen.sender_name}: ${lineOf(seen)}`.slice(0, 140), at: Number(seen.at_ms) } : null;
-      }
-    }
+    const last = await this.lastLine(t, hidden);
     return {
       id: t.id, kind: t.kind, name, spaceId: t.space_id, spaceName,
       people: members.map((m) => ({ userId: m.user_id, name: m.name, you: m.user_id === userId })),
       last, unread: Math.max(0, Number(me.unread) || 0), muted: me.muted === true, canPost: post.ok, why: post.why,
     };
+  }
+
+  /**
+   * A chat's last line for someone: the newest message for everyone, and when (last_public_ms; last_ms on a row from before it). A
+   * line from someone with a block between them is passed over for the one before it.
+   */
+  private async lastLine(t: ThreadRow, hidden: Set<string>): Promise<{ text: string; at: number } | null> {
+    const at = Number(t.last_public_ms ?? t.last_ms);
+    let last = at > Number(t.created_ms) || t.last_text ? { text: t.last_text, at } : null;
+    if (last && hidden.size && t.kind !== "direct") {
+      // The chat's last line may be theirs: show the last one you can see instead.
+      const newest = (await this.messages.before({ thread_id: t.id }, "at_ms", null, 20)).filter(isPublic);
+      if (newest[0] && newest[0].sender_id && hidden.has(newest[0].sender_id)) {
+        const seen = newest.find((m) => !m.sender_id || !hidden.has(m.sender_id));
+        last = seen ? { text: `${seen.sender_name}: ${lineOf(seen)}`.slice(0, 140), at: Number(seen.at_ms) } : null;
+      }
+    }
+    return last;
+  }
+
+  /**
+   * A space's feed for the Spaces list: its last line for everyone ("Mom: dinner at 8") and the person's unread count. Reads only:
+   * a space whose feed nobody opened yet has none.
+   */
+  async summaryFor(userId: string, spaceId: string): Promise<{ threadId: string; last: { from: string; text: string; at: number } | null; unread: number }> {
+    const [t] = await this.threads.select({ space_id: spaceId, kind: "space" }, { limit: 1 });
+    if (!t) return { threadId: "", last: null, unread: 0 };
+    const [me] = await this.people.select({ thread_id: t.id, user_id: userId }, { limit: 1 });
+    if (!me || (me.left_ms !== null && me.left_ms !== undefined)) return { threadId: t.id, last: null, unread: 0 };
+    const line = t.last_text ? await this.lastLine(t, await this.blocks.hiddenFor(userId)) : null;
+    const cut = line ? line.text.indexOf(": ") : -1;
+    const last = line && line.text ? (cut > 0 ? { from: line.text.slice(0, cut), text: line.text.slice(cut + 2), at: line.at } : { from: "", text: line.text, at: line.at }) : null;
+    return { threadId: t.id, last, unread: Math.max(0, Number(me.unread) || 0) };
   }
 
   /** Who this person can message (one to one), and where they can start a group. Nobody with a block between you. */
@@ -340,11 +390,12 @@ export class Threads {
       id: r.id, from: { userId: r.sender_id, name: r.sender_name, you: r.sender_id === userId }, text: r.text, at: Number(r.at_ms),
       files: (r.files ?? []).map((f) => ({ id: f.id, name: f.name, mime: f.mime, bytes: f.bytes, kind: f.kind, url: `${this.filePath(r.thread_id, r.id, f.id)}?${signQuery(userId, [r.thread_id, r.id, f.id], this.now())}` })),
       item: r.item ?? null,
+      to: r.to_id ? { userId: r.to_id, name: r.to_name ?? "", you: r.to_id === userId } : null,
     };
   }
 
   async read(userId: string, threadId: string, o: { before?: unknown; limit?: unknown } = {}): Promise<{ thread: ThreadView; messages: MessageView[]; more: boolean; before: number | null }> {
-    const { me } = await this.open(userId, threadId);
+    const { t, me } = await this.open(userId, threadId);
     const before = Number(o.before);
     const limit = Math.max(1, Math.min(Number(o.limit) || PAGE, 60));
     const rows = await this.messages.before({ thread_id: threadId }, "at_ms", Number.isFinite(before) && before > 0 ? before : null, limit + 1);
@@ -356,7 +407,8 @@ export class Threads {
     const thread = await this.viewOf(userId, threadId);
     // The page is cut before anyone's messages are left out, so the next page starts where this one ended.
     const hidden = await this.blocks.hiddenFor(userId);
-    const shown = page.filter((r) => !r.sender_id || !hidden.has(r.sender_id));
+    const owner = await this.ownerOf(t);
+    const shown = page.filter((r) => (!r.sender_id || !hidden.has(r.sender_id)) && this.sees(userId, r, owner));
     // `page` is newest first: the next page is before its oldest.
     return { thread: { ...thread, unread: 0 }, messages: shown.reverse().map((r) => this.viewMessage(userId, r)), more: rows.length > limit, before: page.length ? Number(page[page.length - 1]!.at_ms) : null };
   }
@@ -365,24 +417,31 @@ export class Threads {
   async messageFor(userId: string, threadId: string, messageId: string): Promise<{ m: MessageRow; t: ThreadRow }> {
     const { t } = await this.open(userId, threadId);
     const [m] = UUID.test(messageId) ? await this.messages.select({ id: messageId, thread_id: t.id }, { limit: 1 }) : [];
-    if (!m || (m.sender_id && (await this.blocks.hiddenFor(userId)).has(m.sender_id))) throw new BotError("not_found", "That message isn't there any more.", 404);
+    if (!m || (m.sender_id && (await this.blocks.hiddenFor(userId)).has(m.sender_id)) || !this.sees(userId, m, await this.ownerOf(t))) {
+      throw new BotError("not_found", "That message isn't there any more.", 404);
+    }
     return { m, t };
   }
 
-  /** The admin takes a message out (a report acted on): it goes for everyone, and the chat's last line is the one before it. */
-  async removeMessage(threadId: string, messageId: string): Promise<boolean> {
-    if (!UUID.test(threadId) || !UUID.test(messageId)) return false;
-    const n = await this.messages.remove({ id: messageId, thread_id: threadId });
-    if (!n) return false;
+  /**
+   * The admin takes a message out (a report acted on): it goes for everyone, and the chat's last line is the newest one for everyone
+   * before it. Returns the row taken out (its caller, safety.ts, takes a grant's access away with its card), or null.
+   */
+  async removeMessage(threadId: string, messageId: string): Promise<MessageRow | null> {
+    if (!UUID.test(threadId) || !UUID.test(messageId)) return null;
+    const [row] = await this.messages.select({ id: messageId, thread_id: threadId }, { limit: 1 });
+    if (!row || !(await this.messages.remove({ id: messageId, thread_id: threadId }))) return null;
     const [t] = await this.threads.select({ id: threadId }, { limit: 1 });
     if (t) {
-      const [newest] = await this.messages.before({ thread_id: threadId }, "at_ms", null, 1);
-      await this.threads.update({ id: threadId }, { last_text: newest ? `${newest.sender_name}: ${lineOf(newest)}`.slice(0, 140) : "" });
+      const newest = (await this.messages.before({ thread_id: threadId }, "at_ms", null, 40)).find(isPublic);
+      await this.threads.update({ id: threadId }, newest
+        ? { last_text: `${newest.sender_name}: ${lineOf(newest)}`.slice(0, 140), last_public_ms: Number(newest.at_ms) }
+        : { last_text: "", last_public_ms: Number(t.created_ms) });
     }
     const ids = (await this.people.select({ thread_id: threadId }, { limit: 60 })).map((m) => m.user_id);
     this.publish(ids, `thread:${threadId}`);
     this.publish(ids, "threads");
-    return true;
+    return row;
   }
 
   /**
@@ -419,11 +478,16 @@ export class Threads {
     }
   }
 
-  /** A message from a person (words and their own files). */
-  async send(userId: string, threadId: string, o: { text?: unknown; files?: unknown }): Promise<MessageView> {
-    const text = clean(o.text, TEXT_MAX + 1);
+  /** A message's words as sent: at most 4000 characters (413 past it). */
+  textOf(raw: unknown): string {
+    const text = clean(raw, TEXT_MAX + 1);
     if (text.length > TEXT_MAX) throw new BotError("too_large", `A message can be ${TEXT_MAX} characters.`, 413);
-    const ids = Array.isArray(o.files) ? o.files.map((f) => (typeof f === "string" ? f : (f as { id?: unknown })?.id)).filter((x): x is string => typeof x === "string" && UUID.test(x)) : [];
+    return text;
+  }
+
+  /** The files a message carries: at most six, each the sender's own (sent to POST /v1/files first). */
+  async filesOf(userId: string, raw: unknown): Promise<FileRef[]> {
+    const ids = Array.isArray(raw) ? raw.map((f) => (typeof f === "string" ? f : (f as { id?: unknown })?.id)).filter((x): x is string => typeof x === "string" && UUID.test(x)) : [];
     if (ids.length > FILES_MAX) throw new BotError("too_large", `A message can carry ${FILES_MAX} files.`, 413);
     const files: FileRef[] = [];
     for (const id of [...new Set(ids)]) {
@@ -431,36 +495,58 @@ export class Threads {
       if (!f) throw new BotError("not_found", "One of those files isn't yours, or isn't there any more.", 404);
       files.push({ id: f.id, name: f.name.slice(0, 200), mime: f.mime.slice(0, 100), bytes: f.bytes, kind: f.kind, owner: userId });
     }
+    return files;
+  }
+
+  /** A message from a person (words and their own files), for everyone in the chat. */
+  async send(userId: string, threadId: string, o: { text?: unknown; files?: unknown }): Promise<MessageView> {
+    const text = this.textOf(o.text);
+    const files = await this.filesOf(userId, o.files);
     if (!text && !files.length) throw new BotError("bad_request", "Type something first.");
     // Screened before it is posted (filter.ts, App Review 1.2): the words, and the files' names.
     await screenPost([text, ...files.map((f) => f.name)]);
     return this.post(userId, threadId, { text, files, item: null });
   }
 
-  /** Any message, once its parts are checked (shared.ts posts a shared thing's card through here). */
-  async post(userId: string, threadId: string, m: { text: string; files: FileRef[]; item: ItemCard | null }): Promise<MessageView> {
+  /**
+   * Any message, once its parts are checked (shared.ts posts a shared thing's card through here, spaceFeed.ts the feed's messages).
+   * With `to` (a space's feed only), a message to one person: only they, its sender and the space's admin see it, count it unread or
+   * hear of it live; it is pushed to them alone (to the admin silently: no push), and it never becomes the chat's last line.
+   */
+  async post(userId: string, threadId: string, m: { text: string; files: FileRef[]; item: ItemCard | null; to?: { id: string; name: string } | null }): Promise<MessageView> {
     const { t, me, members } = await this.open(userId, threadId);
     const may = await this.mayPost(userId, t, members);
     if (!may.ok) throw new BotError("not_allowed", may.why, 403);
+    const to = m.to && t.kind === "space" ? m.to : null;
+    const owner = await this.ownerOf(t);
     const at = Math.max(this.now(), Number(t.last_ms) + 1);
-    const row: MessageRow = { id: randomUUID(), thread_id: t.id, sender_id: userId, sender_name: me.name, text: m.text, files: m.files, item: m.item, at_ms: at };
+    const row: MessageRow = {
+      id: randomUUID(), thread_id: t.id, sender_id: userId, sender_name: me.name, text: m.text, files: m.files, item: m.item, at_ms: at,
+      ...(to ? { to_id: to.id, to_name: to.name.slice(0, 40) } : {}),
+    };
     await this.messages.insert(row);
-    const line = lineOf(m);
-    await this.threads.update({ id: t.id }, { last_ms: at, last_text: `${me.name}: ${line}`.slice(0, 140) });
+    // A chat's last line is only ever a message for everyone: lists show it, and its time, to everyone in the chat.
+    // A chat from before last_public_ms keeps the time of its last line for everyone (last_ms, until now) when this one isn't.
+    const before = t.last_public_ms === null || t.last_public_ms === undefined ? { last_public_ms: Number(t.last_ms) } : {};
+    await this.threads.update({ id: t.id }, to ? { last_ms: at, ...before } : { last_ms: at, last_text: `${me.name}: ${lineOf(m)}`.slice(0, 140), last_public_ms: at });
     // Someone with a block between them and the sender never sees this message: it isn't unread for them, and they aren't pinged.
     const unseen = await this.blocks.hiddenFor(userId);
-    for (const p of members) {
+    const seeing = members.filter((p) => p.user_id === userId || (!unseen.has(p.user_id) && this.sees(p.user_id, row, owner)));
+    for (const p of seeing) {
       if (p.user_id === userId) await this.people.update({ thread_id: t.id, user_id: userId }, { last_read_ms: at, unread: 0 });
-      else if (!unseen.has(p.user_id)) await this.people.update({ thread_id: t.id, user_id: p.user_id }, { unread: (Number(p.unread) || 0) + 1 });
+      else await this.people.update({ thread_id: t.id, user_id: p.user_id }, { unread: (Number(p.unread) || 0) + 1 });
     }
-    const everyone = members.map((p) => p.user_id);
-    this.publish(everyone, `thread:${t.id}`);
-    this.publish(everyone, "threads");
-    // A push to each phone, never with the words; none for a muted chat.
+    const ids = seeing.map((p) => p.user_id);
+    this.publish(ids, `thread:${t.id}`);
+    this.publish(ids, "threads");
+    // A push to each phone, never with the words; none for a muted chat. A message to one person pings only them: the admin sees it
+    // in the feed, unannounced. A space's own chat is its feed: its push opens the space (space_feed).
     const chat = t.kind === "direct" ? me.name : t.kind === "space" ? await this.spaces.nameOf(t.space_id ?? "") : (t.name || "Group chat");
-    for (const p of members) {
-      if (p.user_id === userId || p.muted === true || unseen.has(p.user_id)) continue;
-      await this.notify(p.user_id, { kind: "space_message", key: `${t.id}:${row.id}`, vars: { name: me.name, chat: chat || "X0 Bot" }, data: { threadId: t.id } }).catch(() => undefined);
+    for (const p of seeing) {
+      if (p.user_id === userId || p.muted === true || (to && p.user_id !== to.id)) continue;
+      const kind = t.kind === "space" ? "space_feed" : "space_message";
+      const data: Record<string, string> = t.kind === "space" ? { id: t.space_id ?? "" } : { threadId: t.id };
+      await this.notify(p.user_id, { kind, key: `${t.id}:${row.id}`, vars: { name: me.name, chat: chat || "X0 Bot" }, data }).catch(() => undefined);
     }
     return this.viewMessage(userId, row);
   }
@@ -469,8 +555,10 @@ export class Threads {
   async fileOf(userId: string, threadId: string, messageId: string, fileId: string): Promise<FileRef | null> {
     await this.open(userId, threadId).catch(() => { throw gone(); });
     const [m] = UUID.test(messageId) ? await this.messages.select({ id: messageId, thread_id: threadId }, { limit: 1 }) : [];
-    if (m?.sender_id && (await this.blocks.hiddenFor(userId)).has(m.sender_id)) return null;
-    return (m?.files ?? []).find((f) => f.id === fileId) ?? null;
+    if (!m) return null;
+    if (m.sender_id && (await this.blocks.hiddenFor(userId)).has(m.sender_id)) return null;
+    if (!this.sees(userId, m, await this.ownerOf(await this.thread(threadId)))) return null;
+    return (m.files ?? []).find((f) => f.id === fileId) ?? null;
   }
 
   async leave(userId: string, threadId: string): Promise<void> {

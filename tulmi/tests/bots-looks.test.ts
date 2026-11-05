@@ -173,6 +173,8 @@ describe("moments on screens", () => {
     expect(momentProps(new Set(["BotMoments"]), "moonwalk")).toEqual({});
     expect(playsFormat(new Set(["BotMoments", "BotMoments2", "BotMoments3"]))).toBe(3);
     expect(playsFormat(new Set(["BotMoments2"])), "the first name is the promise").toBe(0);
+    const everything = { has: () => true } as unknown as ReadonlySet<string>;
+    expect(playsFormat(everything), "a set that says yes to every name still ends").toBe(99);
     expect(botMoment(ctx(["BotsKit", "BotsMotion", "BotMoments"]), "celebrate")).toEqual({ moment: "celebrate" });
     expect(botMoment(ctx(["BotsKit", "BotsMotion"]), "celebrate")).toEqual({ act: "wave" });
     expect(botMoment(ctx(["BotsKit", "BotMoments"]), "celebrate"), "moments need the living bots too").toEqual({ act: "wave" });

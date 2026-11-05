@@ -11,6 +11,7 @@
 import { sampleApi as botsApi } from "../../../tests/bots-bots-data.js";
 import { CODEWORK_API, PROJECT, JOB_ASK, JOB_LEAD, JOB_DONE, JOB_FAILED, JOB_ANSWER, ART } from "../../../tests/bots-codework-data.js";
 import { keybotApi } from "../../../tests/bots-keybot-data.js";
+import { FEED_ROHAN, FULL_CREATE, FULL_FIRST, FULL_MADE } from "../../../tests/spaces-data.js";
 import { SAMPLE_BOTS } from "../../../src/experience/bots/fixtures.js";
 import type { FakeOpts } from "../../../src/experience/bots/fixtures.js";
 import { SCREENS } from "../../../src/experience/bots/ids.js";
@@ -99,14 +100,25 @@ export const SAMPLES: Sample[] = [
   { id: S.travel, area: "bots", board: "TravelBot", deskBoard: "DTravelBot" },
   { id: S.chat, area: "bots", board: "Chat", params: { slug: "gym-bot" } },
   { id: S.spaces, area: "bots", board: "Spaces", deskBoard: "DSpaces" },
-  // screens/spaces.ts (tests/spaces-data.ts, in the bots area's answers): no boards of their own, drawn in Spaces' look
+  // The new Spaces (screens/spaces/start.ts; famproto/motion's scenes, no boards): the first time, an invitation waiting in his thought,
+  // calling your people, the moment it is made, his thought opened over your spaces.
+  { id: S.spaces, area: "bots", variant: "first", api: { "GET /v1/botsapp/bots/spaces?full=1": FULL_FIRST } },
+  { id: S.spaces, area: "bots", variant: "create", api: { "GET /v1/botsapp/bots/spaces?full=1": FULL_CREATE } },
+  { id: S.spaces, area: "bots", variant: "made", params: { made: "s1" }, api: { "GET /v1/botsapp/bots/spaces?full=1": FULL_MADE } },
+  { id: S.spaces, area: "bots", variant: "thought", params: { thought: "1" } },
+  // screens/spaces.ts (tests/spaces-data.ts, in the bots area's answers): no boards of their own, drawn in Spaces' look. Inside Home: the
+  // feed (screens/spaces/feed.ts), and as Rohan before he tapped OK on the admin's line.
   { id: S.spaces, area: "bots", variant: "home", params: { id: "s1" } },
+  { id: S.spaces, area: "bots", variant: "consent", params: { id: "s1" }, api: { "GET /v1/botsapp/bots/spaces/s1/feed": { ...FEED_ROHAN, space: { ...FEED_ROHAN.space, consented: false } } } },
+  { id: S.spacePeople, area: "bots", params: { id: "s1" } },
+  // Work in space (screens/work.ts): Mom's plans as Home's admin sees them, and her doctor's visit.
+  { id: S.work, area: "bots", params: { bot: "plan", space: "s1", owner: "m" } },
+  { id: S.work, area: "bots", variant: "item", params: { bot: "plan", space: "s1", owner: "m", item: "e:doctor@2026-11-14" } },
   { id: S.spaceBot, area: "bots", variant: "plan", params: { id: "s1", bot: "plan" } },
   { id: S.spaceBot, area: "bots", variant: "code", params: { id: "s1", bot: "code" } },
   { id: S.spaceMemory, area: "bots", params: { id: "s1" } },
   { id: S.spaceMember, area: "bots", params: { id: "s1", member: "r" } },
   { id: S.spaceInvite, area: "bots", params: { id: "s1" } },
-  { id: S.spaceRoles, area: "bots", params: { id: "s1" } },
   { id: S.spaceItem, area: "bots", params: { item: "i-groceries" } },
   { id: S.spacePay, area: "bots", params: { id: "s1" } },
   { id: S.spaceTasks, area: "bots" },

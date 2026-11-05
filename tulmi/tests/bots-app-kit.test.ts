@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Node, SvgShape } from "../../shared/types/sdui.js";
 import {
   blip, botAvatar, button, chips, deskPage, FACE, listCard, listRow, meter, page, percent, phonePage, usageMeter, whenWords, duration, segmented,
-  statusMark, switchRow, tabGlyph, text, timeline, title, C,
+  statusMark, switchRow, tabGlyph, text, timeline, title, C, botStage, dottedButton, liveWords, roamFor, ROAM, col, row, vanish, botCrowd,
+  mentionField, voiceStop,
 } from "../src/experience/bots/kit.js";
 import { ctxFor, sampleLive } from "../src/experience/bots/fixtures.js";
 import { botLook } from "../src/experience/bots/palette.js";
@@ -169,5 +170,72 @@ describe("the frames", () => {
   it("page() picks the frame by the client", () => {
     expect(page(ctxFor("bots.x", "phone", live), { body: [] }).root!.type).toBe("SafeArea");
     expect(page(ctxFor("bots.x", "desktop", live), { body: [] }).root!.type).toBe("Stack");
+  });
+});
+
+describe("the new Spaces' blocks (sdui 3i)", () => {
+  const live = sampleLive();
+  const NEW = new Set(["BotsKit", "BotsMotion", "BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "VoiceLive", "DoubleTap", "KitExtras", "DeskTalkTo"]);
+  const props = { life: "t", kind: "custom" as const, color: C.ink, size: 26, height: 176, label: "Him" };
+
+  it("a stage's press is on him, so his thought may hold buttons; any other pressable may not", () => {
+    const go = { kind: "navigateBack" } as const;
+    expect(checkTree(botStage(props, [button("Send", go, { size: "md" })], { onPress: go }))).toEqual([]);
+    expect(checkTree(col([button("Send", go, { size: "md" })], {}, go))).toEqual(["a pressable inside a pressable (Stack)"]);
+    // Inside something pressable, a stage is still a pressable inside a pressable.
+    expect(checkTree(col([botStage(props, [], { onPress: go })], {}, go))).toEqual(["a pressable inside a pressable (BotStage)"]);
+    // Only the actions given are bound.
+    expect(botStage(props, [], { onPress: go, onDoubleTap: undefined }).on).toEqual({ onPress: go });
+    expect(botStage(props, []).on).toBeUndefined();
+    for (const n of [vanish({ key: "k", goneWhen: { truthy: "x" } }, []), botCrowd({ life: "c", bots: [], size: 22, label: "Bots" }, []), liveWords(),
+      mentionField({ life: "m", placeholder: "Write", draftPath: "d", people: [], bots: [], thingsPath: "/x/:bot", words: { people: "P", bots: "B", empty: "E" } }, voiceStop())]) {
+      expect(checkTree(n), n.type).toEqual([]);
+    }
+  });
+
+  it("the dotted button: a 2 px dotted ink edge, no fill; live words' defaults", () => {
+    const b = dottedButton("Create", { kind: "navigateBack" });
+    expect(b.style).toMatchObject({ borderWidth: 2, borderStyle: "dotted", borderColor: C.ink, borderRadius: 18, height: 44 });
+    expect(b.style?.backgroundColor).toBeUndefined();
+    expect(b.props?.accessibilityLabel).toBe("Create");
+    expect(dottedButton("Create", { kind: "navigateBack" }, { size: "lg" }).style).toMatchObject({ height: 48 });
+    expect(liveWords().props).toEqual({ size: 16, lineHeight: 22, fontFamily: FACE.regular, color: C.ink, freshColor: "#b5b5b5", settleMs: 600 });
+  });
+
+  it("he roams only with the moments this build plays", () => {
+    const plays = roamFor(ctxFor("bots.x", "phone", live, { can: NEW }));
+    expect(plays.moments.length).toBeGreaterThan(0);
+    for (const m of plays.moments) expect(ROAM.moments).toContain(m);
+    expect(roamFor(ctxFor("bots.x", "phone", live, { can: new Set(["BotsKit"]) })).moments).toEqual([]);
+  });
+
+  it("a dock is the phone's footer and the window's foot, outside what scrolls; startAtEnd and talkTo only where they are drawn", () => {
+    const stage = botStage(props, []);
+    const talkTo = { voice: { kind: "voiceLive" as const, mode: "once" as const, statePath: "voice", into: "heard", onHeard: { kind: "refresh" as const } } };
+    const phone = page(ctxFor("bots.x", "phone", live, { can: NEW }), { body: [text("Hi")], dock: [stage], startAtEnd: true, talkTo });
+    const footer = phone.root!.children!.find((c) => c.children?.includes(stage))!;
+    expect(footer.props).toEqual({ keyboard: "above" });
+    expect(phone.root!.children!.find((c) => c.type === "Screen")!.props).toMatchObject({ startAtEnd: true });
+    // The phone has no one key.
+    expect(phone.talkTo).toBeUndefined();
+    const desk = page(ctxFor("bots.x", "desktop", live, { can: NEW }), { body: [text("Hi")], dock: [stage], startAtEnd: true, talkTo });
+    expect(desk.talkTo).toEqual(talkTo);
+    const [, column] = desk.root!.children!;
+    const [scrolling, foot] = column!.children!;
+    expect(scrolling!.style).toMatchObject({ overflowY: "auto", minHeight: 0 });
+    expect(scrolling!.props).toEqual({ startAtEnd: true });
+    expect(JSON.stringify(foot)).toContain('"type":"BotStage"');
+    expect(JSON.stringify(scrolling)).not.toContain('"type":"BotStage"');
+    expect(checkTree(desk.root!)).toEqual([]);
+    // A build without KitExtras or DeskTalkTo is sent neither.
+    const old = page(ctxFor("bots.x", "desktop", live, { can: new Set(["BotsKit"]) }), { body: [text("Hi")], startAtEnd: true, talkTo });
+    expect(JSON.stringify(old)).not.toMatch(/startAtEnd|talkTo/);
+  });
+
+  it("a screen's wrap goes around whatever page it draws, with its state", () => {
+    const ctx = { ...ctxFor("bots.x", "phone", live), wrap: { body: (b: Node[]) => [row([text("Tabs")]), ...b], state: { workTab: "mine" } } };
+    const s = page(ctx, { body: [text("Mine")], state: { x: 1 } });
+    expect(JSON.stringify(s.root)).toMatch(/Tabs.*Mine/);
+    expect(s.state).toMatchObject({ workTab: "mine", x: 1 });
   });
 });

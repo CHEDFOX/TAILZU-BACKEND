@@ -273,22 +273,26 @@ describe("the routes", () => {
     expect((await s.call("GET", `${AREA}/keys/gym-bot/usage`, BOB)).statusCode).toBe(404);
   });
 
-  it("makes a space, invites by code, sets who approves payments, shares bots, and leaves", async () => {
+  it("makes a space, lets someone in by its code, shares bots, and leaves", async () => {
     const s = await served();
     const id = (await s.call("POST", `${AREA}/spaces`, ALICE, { name: "Home" })).json().id;
+    // An old build's link invite: the space's own code (it never names the space to a browser).
     const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`)).json();
-    expect(inv.code).toMatch(/^[A-Z0-9]{8}$/);
+    expect(inv.code).toMatch(/^[A-Z0-9]{6}$/);
     expect(inv.link).toBe(`https://app.x0bot.com/s/bots.spaces?join=${inv.code}`);
     const page = await s.call("GET", `${AREA}/invite/${inv.code}`, null);
     expect(page.headers["content-type"]).toContain("text/html");
-    expect(page.body).toContain("Home");
+    expect(page.body).toContain("You're invited to a space on X0 Bot.");
+    expect(page.body).not.toContain("Home");
     expect((await s.call("POST", `${AREA}/spaces/join`, BOB, { code: "NOPE1234" })).statusCode).toBe(404);
-    expect((await s.call("POST", `${AREA}/spaces/join`, BOB, { code: inv.code.toLowerCase() })).json()).toEqual({ id, name: "Home" });
+    // A code alone asks the admin, who lets him in.
+    expect((await s.call("POST", `${AREA}/spaces/join`, BOB, { code: inv.code.toLowerCase() })).json()).toEqual({ status: "requested" });
+    const [req] = (await s.call("GET", `${AREA}/spaces?full=1`)).json().requests;
+    expect((await s.call("PUT", `${AREA}/spaces/${id}/requests/${req.id}`, ALICE, { decision: "accept" })).json()).toEqual({ status: "joined", name: "Rohan" });
     let home = (await s.call("GET", `${AREA}/spaces`)).json().spaces[0];
-    expect(home.members.map((m: { name: string; canApprove: boolean }) => [m.name, m.canApprove])).toEqual([["Aanya S.", true], ["Rohan", false]]);
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${BOB}`, BOB, { canApprove: true })).statusCode).toBe(403);
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${ALICE}`, ALICE, { canApprove: false })).json().code).toBe("is_admin");
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${BOB}`, ALICE, { canApprove: true });
+    expect(home.members.map((m: { name: string; canApprove: boolean }) => [m.name, m.canApprove])).toEqual([["Aanya S.", true], ["Rohan", true]]);
+    // There are no roles to change any more.
+    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${BOB}`, ALICE, { canApprove: true })).statusCode).toBe(410);
     await s.call("POST", `${AREA}/spaces/${id}/bots`, BOB, { slug: "plan" });
     home = (await s.call("GET", `${AREA}/spaces`, BOB)).json().spaces[0];
     expect(home.bots).toEqual([{ slug: "plan", name: "Plan Ease", colour: "sea", addedBy: "Rohan", byYou: true }]);

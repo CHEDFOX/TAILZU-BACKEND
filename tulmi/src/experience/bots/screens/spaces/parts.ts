@@ -6,7 +6,7 @@ import type { ActionSpec, ActionRef, Node } from "../../../../../../shared/types
 import type { Perm } from "../../../../botsBots/spacePerms.js";
 import {
   type BotsCtx, call, seq, C, FACE, row, col, sectionLabel, box, text, icon, labelled, grow, divider, page, emptyState, SCREENS, meta,
-  button,
+  button, PALETTE_HEX,
 } from "../../kit.js";
 
 export const A = "/v1/botsapp/bots";
@@ -15,14 +15,22 @@ export const MIN = 60_000, DAY = 86_400_000;
 export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // ===================================================================== what the screens read
+// Roles are gone: the server still sends a member's perms, role and roleName (fixed: "Admin" for the space's maker, "Member" for
+// everyone else) and `roles: []`, so older builds keep reading them. These screens go by `maker` and `me.admin`.
 export interface Member { userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number; perms: Perm[]; role: string | null; roleName: string }
 export interface Role { id: string; name: string; perms: Perm[]; preset: boolean }
-interface Invite { code: string; link: string; email: string | null; expiresAt: number; roleName: string; perms: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
+interface Invite { code: string; link: string; email: string | null; expiresAt: number; roleName?: string; perms?: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
 interface SpaceBot { slug: string; name: string; colour: string; addedBy: string; byYou: boolean }
 export interface Space {
   id: string; name: string; mine: boolean; me: { admin: boolean; perms: Perm[] }; members: Member[]; bots: SpaceBot[];
   invite: { code: string; expiresAt: number } | null; roles: Role[]; waiting?: number;
   invites?: Invite[]; activity?: Array<{ id: string; kind: string; text: string; at: number; by: string }> | null;
+  /** The space's own code, shown "7KQ-29D" (GET /spaces/:id, its admin only). */
+  code?: string | null;
+  /** GET /spaces?full=1: open email invites (its admin only), the space chat's last line for everyone, and the person's unread. */
+  invited?: number;
+  last?: { from: string; text: string; at: number } | null;
+  unread?: number;
 }
 interface ListLine { id: string; text: string; done: boolean }
 export interface Item {
@@ -61,14 +69,19 @@ export const shortDate = (ctx: BotsCtx, ms: number) => { const d = localDate(ctx
 
 export const canDo = (s: Space, p: Perm) => s.me.perms.includes(p);
 
+/** TextField's extras (sdui TextFieldExtras, KitExtras): only the new trees pass them. */
+export interface FieldExtras { kind?: "text" | "email" | "code"; autoFocus?: boolean; maxLength?: number }
+
 /** A text field the kit's way: no frame of its own, Geist, 44 tall. Put it in `inputBox`. */
-export function field(id: string, path: string, placeholder: string, o: { onSubmit?: ActionRef; multiline?: boolean; keyboard?: "numeric" | "email-address" } = {}): Node {
+export function field(id: string, path: string, placeholder: string, o: { onSubmit?: ActionRef; multiline?: boolean; keyboard?: "numeric" | "email-address"; extras?: FieldExtras } = {}): Node {
+  const x = o.extras;
   return {
     type: "TextField", id, bind: { value: path },
     props: {
       placeholder, placeholderColor: C.idle, background: "transparent", borderWidth: 0, radius: 0, paddingHorizontal: 0, paddingVertical: 0,
       minHeight: o.multiline ? 72 : 44, color: C.ink, returnKeyType: o.onSubmit ? "send" : "done", ...(o.multiline ? { multiline: true } : {}),
       ...(o.keyboard ? { keyboardType: o.keyboard, autoCapitalize: "none" } : {}),
+      ...(x?.kind ? { keyboard: x.kind } : {}), ...(x?.autoFocus ? { autoFocus: true } : {}), ...(x?.maxLength ? { maxLength: x.maxLength } : {}),
     },
     ...(o.onSubmit ? { on: { onSubmit: o.onSubmit } } : {}),
     style: {
@@ -116,7 +129,7 @@ export function inviteRows(ctx: BotsCtx, s: Space, mailReady: boolean): Node[] {
       : i.mail === "sent" ? "Email sent" : i.mail === "failed" ? "The email didn't go. Send the link yourself."
         : mailReady ? "Email on its way" : "Email waits to go out (email isn't switched on yet). Send the link yourself meanwhile.";
     return col([
-      row([col([text(i.email ?? `Link · ${i.roleName}`, { size: 15, weight: 500, lineHeight: 20, lines: 1 }), meta(`${i.email ? `${i.roleName} · ` : ""}${mail}`, { size: 12, lines: 2 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+      row([col([text(i.email ?? "Link", { size: 15, weight: 500, lineHeight: 20, lines: 1 }), meta(mail, { size: 12, lines: 2 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
         ...(i.byYou || s.me.admin ? [iconButton("close", write("DELETE", `${A}/spaces/${enc(s.id)}/invites/${enc(i.code)}`, undefined, { ok: "Invite taken back" }), "Take it back", 36)] : [])], { gap: 10 }),
       row([
         button(isDesk(ctx) ? "Copy link" : "Share link", isDesk(ctx) ? { kind: "copyText", text: i.link, message: "Link copied" } : { kind: "share", text: msg, title: `Join ${s.name}` }, { kind: "secondary", size: "md", icon: "link" }),
@@ -137,6 +150,22 @@ export const SUB_BOTS: Record<string, { name: string; what: string }> = {
   travel: { name: "Travel", what: "trips" },
   code: { name: "Xode", what: "projects" },
 };
+
+/** The four bots whose things a person shares in a space with "/" (botsBots SHARE_BOTS), as the new screens show them. */
+export const SHARE_BOTS = ["plan", "notes", "travel", "code"] as const;
+export type ShareBot = (typeof SHARE_BOTS)[number];
+const SHARE_LOOK: Record<ShareBot, { name: string; noun: string; color: string }> = {
+  plan: { name: "Plan Ease", noun: "plan", color: PALETTE_HEX.ochre! },
+  notes: { name: "Notes", noun: "note", color: PALETTE_HEX.plum! },
+  travel: { name: "Travel bot", noun: "trip", color: PALETTE_HEX.sea! },
+  code: { name: "Xode", noun: "project", color: PALETTE_HEX.moss! },
+};
+export const isShareBot = (x: unknown): x is ShareBot => typeof x === "string" && (SHARE_BOTS as readonly string[]).includes(x);
+/** A shareable bot's name, its colour (as Home draws it) and what one of its things is called. */
+export const shareLook = (bot: ShareBot) => SHARE_LOOK[bot];
+
+/** A file's size as people read it. */
+export const kb = (bytes: number) => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
 /** The bot's own name for this person ("Plan Ease"), else the sub-bot's. */
 export const subBotName = (ctx: { live: { bots: Array<{ slug: string; name: string }> } }, bot: string): string => ctx.live.bots.find((b) => b.slug === bot)?.name ?? SUB_BOTS[bot]?.name ?? bot;

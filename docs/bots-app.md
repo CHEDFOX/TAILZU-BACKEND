@@ -303,6 +303,43 @@ Sending…, Sent, Couldn't send · Try again; the window's Edit and Cancel), and
 bar keeps an ask the same way while `online` is false (kit `keptOffline`: the ask bar, Ask's own send, the Code bot's "Tell Code bot
 what to do"), clears the field and says "Kept. It will send when you're back."; online, it sends as before.
 
+**Spaces, the family redesign** (shared/types/sdui.ts section 3i; the phone mirrors it in `app/src/sdui/types.ts`). Five nodes, each
+in `KIT_TYPES`, and four names that are not nodes, each declared by name in `capabilities.components`:
+
+* **`BotStage`** (`botStage(props, children, on)`): a full tiny bot on a stage of his own (`life` keeps him across screens and
+  repaints) who roams with catalog moments (`roam`, kit `ROAM` through `roamFor(ctx)`: only moments the build plays), walks out at a side
+  while `outWhen` holds, hops on `cheerWhen`, thinks, listens (`listenWhen`) and holds a **thought**: a box over him joined to his head by
+  three bubbles. At rest it shows `restText` (none: no box), following him; a tap opens it (`openPath`), `fullWhen` grows it near the
+  whole screen. `style` "home" is the dotted box (Home's Ask), "space" the white field (a space's composer, Spaces' top). `veil` blurs
+  the page behind; `place: "low"` walks him down while it is open. `hit: "stage"` makes the whole stage his button (Spaces' top).
+  `children` are the thought's content. His `on` (onPress, onDoubleTap, onDismiss) is bound to his body only, never to the box, so
+  lint lets the box hold buttons (the one exemption from "pressable inside pressable"). A stage holding a rest box is at least
+  `size + 18 + 82 + 48` tall: the box sits inside it, never over the page.
+* **`BotCrowd`** (`botCrowd`): a box of 5 to 9 tiny bots playing, grown taller while `grownWhen` holds (Call Your People sits in it),
+  all cheering on `cheerWhen`; `surprises` is kit `crowdSurprises(ctx)`.
+* **`Vanish`** (`vanish`): its children vaporise while `goneWhen` holds (Create and "Your Own Space"); kept per `key`.
+* **`MentionField`** (`mentionField`): the space's box. "@" picks a person, "/" one of the person's four shareable bots and then one of
+  its things (GET `thingsPath`), or one of `tools`; it writes a `MentionDraft` to `draftPath`; `on.onSubmit` sends it.
+* **`LiveWords`** (`liveWords`): the words a voice session hears, nothing else.
+* **`VoiceLive`** (actions `voiceLive` / `voiceStop`), **`DoubleTap`** (BotStage `onDoubleTap`, BotTileSpec `doubleTap`), **`KitExtras`**
+  (TextField `keyboard` / `autoFocus` / `maxLength`, `startAtEnd` on the page's scroll (page `startAtEnd`), callEndpoint `stay`, dotted
+  borders with a radius, a failed call's `lastError` on the window too) and, the window only, **`DeskTalkTo`** (page `talkTo`: the one
+  key, with X0 in front, talks to the bot on screen).
+
+The gates (kit): **`canSpaces2`** (BotsMotion, BotMoments, BotStage, BotCrowd, Vanish, MentionField, KitExtras, and on the phone
+ActionParams, since the new trees navigate with "$state" params) sends the new Spaces (`screens/spaces/start.ts`, `feed.ts`,
+`peoplePage.ts`) and Work in space's tabs on the bot pages (`screens/work/workTab.ts`, through `BotsCtx.wrap`, which `page()` applies);
+**`canHomeThought`** (BotStage, KitExtras, the moments) Home's Ask as his thought (`screens/shell/homeThought.ts`); **`canVoice`**
+(VoiceLive, LiveWords, DoubleTap) every voice piece: `liveWords`, the voice actions, `onDoubleTap`, a tile's `doubleTap`, `listenWhen`,
+the "double-tap me" lines and `talkTo`; **`canDeskTalk`** (the window, canVoice and DeskTalkTo) is what `response()` asks before it
+sends `talkTo`. The new trees' TextField extras, `stay` and `startAtEnd` go into them only; page `dock` is the phone's footer and the
+window's foot under its scrolling column. Every older build keeps today's screens, with roles gone (no Roles page, no role chips or
+switches) and a code that only asks to join answered "Request sent. The space's admin will let you in." (`joined.status` "requested").
+`tests/spaces-family-screens.test.ts` sweeps every screen with an old build's names and with no voice, and fails if anything of 3i,
+or of voice, reaches them. The screens declare their own copy of what the spaces and work routes answer, so
+`tests/spaces-boot-screens.test.ts` builds each new screen from the real routes' answers (memory tables, tests/spaces-rig.ts), on both
+clients, new and old, and checks that every endpoint a new tree names is a route the server has.
+
 ## 9. Rules, and what not to touch
 
 * **Ids** `bots.<area>[.<thing>]`, lower case, hyphens: take them from `ids.ts`. **Files**: only your `screens/<area>.ts` (and tests).

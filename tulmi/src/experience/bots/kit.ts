@@ -21,6 +21,11 @@ import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTI
 import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
+import {
+  BOT_CROWD_COMPONENT, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
+  MENTION_FIELD_COMPONENT, VANISH_COMPONENT, VOICE_LIVE_CAPABILITY, type BotCrowdProps, type BotRoam, type BotStageProps, type LiveWordsProps,
+  type MentionFieldProps, type TalkTo, type VanishProps,
+} from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -57,6 +62,11 @@ export interface BotsCtx {
   /** The window's own pages that exist for it (the desk: Today, Notes, its settings). */
   desk: { pages: boolean; notes: boolean };
   tzOffsetMinutes: number;
+  /**
+   * Around whatever page this screen's builder draws, and its state: Work in space's tab on a bot's page (screens/work/workTab.ts),
+   * which every page of that bot (Xode's several, Plan's two clients) gets the same way. page() applies it.
+   */
+  wrap?: { body: (body: Node[]) => Node[]; state?: Record<string, unknown> };
 }
 
 // ===================================================================== theme
@@ -415,6 +425,92 @@ export function headBar(children: Node[], at: number): Node {
   return { type: "HeadBar", props: { at }, children };
 }
 
+// ---------------------------------------------------------------- a bot with a thought, a crowd, @ and /, live words (sdui 3i)
+
+/**
+ * A build that draws the new Spaces (Spaces, a space's feed, Work in space's pages): the stage, the crowd, the vanish, the @ and /
+ * field and the kit's extras, with the moments. The new trees navigate with "$state.x" params (Done -> made), which the phone fills
+ * only when it declares ActionParams; the window always fills them and does not declare the name, so it is asked of the phone only.
+ */
+export const canSpaces2 = (ctx: BotsCtx): boolean =>
+  canMoments(ctx) && [BOT_STAGE_COMPONENT, BOT_CROWD_COMPONENT, VANISH_COMPONENT, MENTION_FIELD_COMPONENT, KIT_EXTRAS_CAPABILITY].every((n) => ctx.can.has(n))
+  && (ctx.client === "desktop" || ctx.can.has("ActionParams"));
+/** A build that draws Home's Ask as his thought (a tiny bot walking the bottom with "Ask any bot..." over him). */
+export const canHomeThought = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.can.has(BOT_STAGE_COMPONENT) && ctx.can.has(KIT_EXTRAS_CAPABILITY);
+/**
+ * A build that listens with live words (voiceLive), draws them (LiveWords) and takes a double tap. Every voice piece (liveWords, the
+ * voice actions, onDoubleTap, a tile's doubleTap, listenWhen, the "double-tap me" lines, talkTo) goes only to it: a phone whose stream
+ * module is missing gets the same screens without any of them.
+ */
+export const canVoice = (ctx: BotsCtx): boolean =>
+  ctx.can.has(VOICE_LIVE_CAPABILITY) && ctx.can.has(LIVE_WORDS_COMPONENT) && ctx.can.has(DOUBLE_TAP_CAPABILITY);
+/** The window whose one key talks to the bot on screen while X0 is in front (ScreenResponse.talkTo). */
+export const canDeskTalk = (ctx: BotsCtx): boolean => ctx.client === "desktop" && canVoice(ctx) && ctx.can.has(DESK_TALK_TO_CAPABILITY);
+
+/** Where a stage's own actions go. They run from his hit area only, never from a press inside his thought. */
+export interface StageOn { onPress?: ActionRef; onDoubleTap?: ActionRef; onDismiss?: ActionRef }
+
+/**
+ * A full tiny bot on a stage of his own (BotStage): he roams, walks out and back in, cheers, thinks, listens, and holds a thought
+ * whose content is `children` (shown while it is open, full, or he listens). Only for a build that draws it (canSpaces2,
+ * canHomeThought). Lint lets the thought hold buttons: his own `on` is bound to his body, not to what is in the box.
+ */
+export function botStage(p: BotStageProps, children: Node[], on: StageOn = {}): Node {
+  const acts = Object.fromEntries(Object.entries(on).filter(([, a]) => !!a)) as StageOn;
+  return { type: "BotStage", props: { ...p }, children, ...(Object.keys(acts).length ? { on: acts } : {}) };
+}
+
+/** A box of tiny bots playing (BotCrowd); `children` sit over them at the top of the box. */
+export function botCrowd(p: BotCrowdProps, children: Node[]): Node {
+  return { type: "BotCrowd", props: { ...p }, children };
+}
+
+/** Its children vaporise when `goneWhen` turns true and come back when it turns false (Vanish); kept per `key`. */
+export function vanish(p: VanishProps, children: Node[]): Node {
+  return { type: "Vanish", props: { ...p }, children };
+}
+
+/** The @ and / field (MentionField): it writes a MentionDraft to `draftPath` on every change; `onSubmit` sends it. */
+export function mentionField(p: MentionFieldProps, onSubmit: ActionRef): Node {
+  return { type: "MentionField", props: { ...p }, on: { onSubmit } };
+}
+
+/** The words the voice session hears, as it hears them (LiveWords): the newest light grey, settling to ink. Nothing else. */
+export function liveWords(p: Partial<LiveWordsProps> = {}): Node {
+  return { type: "LiveWords", props: { size: 16, lineHeight: 22, fontFamily: FACE.regular, color: C.ink, freshColor: "#b5b5b5", settleMs: 600, ...p } };
+}
+
+type VoiceLiveSpec = Extract<ActionSpec, { kind: "voiceLive" }>;
+/** Listen with live words, turn by turn (only for canVoice). */
+export const voiceLive = (o: Omit<VoiceLiveSpec, "kind">): ActionSpec => ({ kind: "voiceLive", ...o });
+/** Stop the voice session on this screen; the words not sent yet are dropped. */
+export const voiceStop = (): ActionSpec => ({ kind: "voiceStop" });
+
+/**
+ * A dotted button (the new Spaces' Create): a 2 px dotted ink edge, no fill. md 44 tall (in a thought), lg 48 (under the crowd).
+ * The radius is the prototype's dotted box's: 18. A build without KitExtras may draw a dotted radius as dashed or solid, so it goes
+ * only into the new trees.
+ */
+export function dottedButton(label: string, onPress: ActionRef, o: { size?: "md" | "lg" } = {}): Node {
+  const lg = o.size === "lg";
+  return labelled(row([text(label, { size: lg ? 17 : 15, weight: 600, lineHeight: 20 })], {
+    height: lg ? 48 : 44, paddingHorizontal: lg ? 20 : 16, borderRadius: 18, borderWidth: 2, borderStyle: "dotted", borderColor: C.ink,
+    justifyContent: "center", alignSelf: "flex-start", flexShrink: 0,
+  }, onPress), label);
+}
+
+/** How the person's own bot wanders on a stage: to a spot, a pause, a gesture, again. */
+export const ROAM: BotRoam = { moments: ["dance", "shrug", "juggle", "hiccup", "highfive", "celebrate", "sneeze"], every: [2.4, 3.8], pause: [0.3, 0.9], span: [0.1, 0.9] };
+/** The crowd's surprises: now and then one of them plays one of these. */
+export const CROWD_MOMENTS = { moments: ["dance", "juggle", "shrug", "hiccup", "sneeze", "highfive", "celebrate"], every: 2.6, chance: 0.75 };
+
+/** Only the moments this build plays (the catalog has them, in a format it knows): a moment it can't play is never named. */
+const playable = (ctx: BotsCtx, ids: string[]): string[] => (canMoments(ctx) ? ids.filter((id) => !!momentProps(ctx.can, id).moment) : []);
+/** ROAM, with the moments this build plays. */
+export const roamFor = (ctx: BotsCtx): BotRoam => ({ ...ROAM, moments: playable(ctx, ROAM.moments) });
+/** CROWD_MOMENTS, with the moments this build plays. */
+export const crowdSurprises = (ctx: BotsCtx): BotCrowdProps["surprises"] => ({ ...CROWD_MOMENTS, moments: playable(ctx, CROWD_MOMENTS.moments) });
+
 /** The dashed "Make a bot" tile. */
 export function makeBotTile(o: { onPress?: ActionRef; height?: number; padding?: number } = {}): Node {
   return col([
@@ -737,8 +833,8 @@ export function needsCard(item: NeedsItem, o: { layout?: "column" | "row" } = {}
  * a UPI payment, a yes waiting), as Ask's own send does. Offline, in a build that keeps an outbox, the ask is kept there instead and
  * goes out once the connection is back (`keptOffline`).
  */
-const ASK_PATH = "/v1/shell/ask";
-const answerParams = (message: string): Record<string, unknown> => ({
+export const ASK_PATH = "/v1/shell/ask";
+export const answerParams = (message: string): Record<string, unknown> => ({
   message, answer: "$state.asked.shell.text", bot: "$state.asked.shell.bot.slug", upi: "$state.asked.shell.upi",
   needs: "$state.asked.shell.needs", job: "$state.asked.shell.job",
   // Words about a schedule come back as a routine's card to save (src/routines): its sealed draft.
@@ -861,9 +957,10 @@ export const open = (screenId: string, params?: Record<string, unknown>): Action
   ({ kind: "navigate", screenId, ...(params ? { params } : {}) });
 export const back = (): ActionSpec => ({ kind: "navigateBack" });
 export const toTab = (tab: TabId): ActionSpec => ({ kind: "switchTab", tabId: tab });
-export const call = (method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: Record<string, unknown>, then?: { ok?: ActionRef; fail?: ActionRef; assignTo?: string }): ActionSpec => ({
+/** A write or a read. `stay` (KitExtras, the new trees only): the window does not fetch the screen again after it. */
+export const call = (method: "GET" | "POST" | "PUT" | "DELETE", path: string, body?: Record<string, unknown>, then?: { ok?: ActionRef; fail?: ActionRef; assignTo?: string; stay?: boolean }): ActionSpec => ({
   kind: "callEndpoint", method, path, ...(body ? { body } : {}), ...(then?.assignTo ? { assignTo: then.assignTo } : {}),
-  ...(then?.ok ? { onSuccess: then.ok } : {}), ...(then?.fail ? { onError: then.fail } : {}),
+  ...(then?.ok ? { onSuccess: then.ok } : {}), ...(then?.fail ? { onError: then.fail } : {}), ...(then?.stay ? { stay: true } : {}),
 });
 /** One action after another; absent ones are skipped. */
 export function seq(...actions: Array<ActionRef | undefined>): ActionRef {
@@ -976,6 +1073,18 @@ export interface PageOpts {
    * something opened over the app, closed with its own ×. The phone's page is unchanged.
    */
   sheet?: boolean;
+  /**
+   * Opens scrolled to its end and stays there while new things come in, unless the person scrolled up (a feed, newest at the bottom):
+   * the phone's Screen, the window's scrolling column. Only for a build with KitExtras.
+   */
+  startAtEnd?: boolean;
+  /**
+   * Under the page, outside what scrolls: the phone's footer (as `footer`), the window's foot of the main column (the column becomes
+   * the scrolling part and this, at the window's full height). A bot's stage with his thought.
+   */
+  dock?: Node[];
+  /** The window's one key talks to this screen's bot (only for canDeskTalk; every other build gets none). */
+  talkTo?: TalkTo;
 }
 
 /** A phone whose build pulls a bot in its pull to refresh (PULL_BOT_CAPABILITY). */
@@ -996,7 +1105,9 @@ function pullBotOf(o: NonNullable<PageOpts["pullBot"]>): PullBotSpec | undefined
 
 /** A page for whichever client is asking: phonePage or deskPage. Most screens need only this. */
 export function page(ctx: BotsCtx, o: PageOpts): ScreenResponse {
-  return ctx.client === "desktop" ? deskPage(ctx, o) : phonePage(ctx, o);
+  const w = ctx.wrap;
+  const p = w ? { ...o, body: w.body(o.body), state: { ...(w.state ?? {}), ...(o.state ?? {}) } } : o;
+  return ctx.client === "desktop" ? deskPage(ctx, p) : phonePage(ctx, p);
 }
 
 /**
@@ -1024,8 +1135,12 @@ function response(ctx: BotsCtx, o: PageOpts, root: Node): ScreenResponse {
     state: { ask: "", asking: false, ...(o.state ?? {}) }, ...(o.actions ? { actions: o.actions } : {}), root,
     ...(o.live?.length ? { liveTopics: o.live } : {}),
     ...(pullBot ? { pullBot } : {}),
+    ...(o.talkTo && canDeskTalk(ctx) ? { talkTo: o.talkTo } : {}),
   };
 }
+
+/** Starts at its end: only asked of a build that keeps it (KitExtras), so no older build is sent the prop. */
+const atEnd = (ctx: BotsCtx, o: PageOpts): boolean => !!o.startAtEnd && ctx.can.has(KIT_EXTRAS_CAPABILITY);
 
 const backNode = (o: PageOpts): Node[] =>
   o.back ? [backBar({ title: o.backTitle, onBack: o.back === true ? undefined : o.back, right: o.backRight })] : [];
@@ -1035,6 +1150,8 @@ const backNode = (o: PageOpts): Node[] =>
  * and the tab bar stay put. A top-level page (`tab`) ends with the tab bar.
  */
 export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
+  // A dock is the phone's footer: outside the scroll, over the keyboard.
+  const footer = [...(o.footer ?? []), ...(o.dock ?? [])];
   const root: Node = {
     type: "SafeArea",
     props: { edges: ["top"], barStyle: "dark-content" },
@@ -1043,13 +1160,13 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
       ...(o.pinned ?? []),
       {
         type: "Screen",
-        props: { paddingBottom: 24 },
+        props: { paddingBottom: 24, ...(atEnd(ctx, o) ? { startAtEnd: true } : {}) },
         style: { backgroundColor: C.paper, paddingHorizontal: 20, paddingTop: o.back ? 8 : 16, gap: o.gap ?? 22 },
         children: [...backNode(o), ...o.body],
       },
       // The footer sits outside the scroll, so nothing moved it for the keyboard: its field (the ask bar, "Tell Xode what to do")
       // went under the keyboard as it opened. `keyboard: "above"` keeps it just above the keyboard while one of its fields has it.
-      ...(o.footer?.length ? [{ ...col(o.footer, { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper }), props: { keyboard: "above" } }] : []),
+      ...(footer.length ? [{ ...col(footer, { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper }), props: { keyboard: "above" } }] : []),
       ...(o.tab ? [tabBar(o.tab, ctx.live)] : []),
     ],
   };
@@ -1062,13 +1179,25 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
  */
 export function deskPage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
   if (o.sheet) return sheetPage(ctx, o);
-  const main = col([
+  const docked = !!o.dock?.length;
+  const width = o.maxWidth ?? 880;
+  const scroller = col([
     col([
       ...backNode(o),
       ...o.body,
       ...(o.footer?.length ? [grow(), ...o.footer] : []),
-    ], { maxWidth: o.maxWidth ?? 880, width: "100%", flexGrow: 1, gap: o.gap ?? 28, ...(o.fixed ? { flexShrink: 1, minHeight: 0 } : {}) }),
-  ], { flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%", overflowY: o.fixed ? "hidden" : "auto", paddingTop: 40, paddingHorizontal: 48, paddingBottom: 32 });
+    ], { maxWidth: width, width: "100%", flexGrow: 1, gap: o.gap ?? 28, ...(o.fixed ? { flexShrink: 1, minHeight: 0 } : {}) }),
+  ], {
+    flexGrow: 1, flexShrink: 1, minWidth: 0, ...(docked ? { minHeight: 0 } : { height: "100%" }), overflowY: o.fixed ? "hidden" : "auto",
+    paddingTop: 40, paddingHorizontal: 48, paddingBottom: docked ? 8 : 32,
+  });
+  const scrolling: Node = atEnd(ctx, o) ? { ...scroller, props: { ...(scroller.props ?? {}), startAtEnd: true } } : scroller;
+  // A dock (his stage) at the foot of the window, outside what scrolls: the column scrolls above it.
+  const main = docked
+    ? col([scrolling, col([col(o.dock!, { maxWidth: width, width: "100%" })], { flexShrink: 0, paddingHorizontal: 48, paddingBottom: 16 })], {
+      flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%",
+    })
+    : scrolling;
   // Pinned (a HeadBar): just before the column that scrolls, in a frame of their own, so they stay over its top.
   const column = o.pinned?.length ? col([...o.pinned, main], { flexGrow: 1, flexShrink: 1, minWidth: 0, height: "100%", position: "relative" }) : main;
   const root = row([sidebar(ctx, o.tab ?? o.nav), column], { height: "100%", minHeight: 600, alignItems: "stretch", backgroundColor: C.paper });

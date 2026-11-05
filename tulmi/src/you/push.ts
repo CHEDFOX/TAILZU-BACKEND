@@ -9,8 +9,9 @@
  *   summary      one note a day at their hour, only when they turned it on and something happened that day
  *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan Ease off
  *   routines     a routine they set up ran, or paused itself: sent (they asked for it at that time); in quiet hours without a sound
- *   people       someone in a space gave them a task, planned something for them, or messaged them: sent; in quiet hours without a
- *                sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none: botsBots/threads.ts)
+ *   people       someone in a space gave them a task, planned something for them, messaged them, asked to join or let them in: sent;
+ *                in quiet hours without a sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none:
+ *                botsBots/threads.ts)
  *
  * A person who never opened the screen has the defaults (settings.ts), which are what the pushes did before it: nothing changes for them.
  */
@@ -24,7 +25,7 @@ import type { Spending } from "./limits.js";
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
-const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined"]);
+const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed"]);
 
 /** The person's minute of the day, in their own time. */
 const minuteOf = (now: number, tzOffsetMinutes: number): number => {

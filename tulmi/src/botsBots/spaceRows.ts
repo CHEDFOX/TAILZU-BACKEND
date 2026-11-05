@@ -35,12 +35,14 @@ class SupabasePaged<R extends Row> extends SupabaseTable<R> implements PagedTabl
   }
 }
 
-/** The tables migration 0051 adds, 0057's blocks and reports (botsBots/blocks.ts, safety.ts), and 0063's sharing (spaceShares.ts). */
+/** The tables migration 0051 adds, 0057's blocks and reports (botsBots/blocks.ts, safety.ts), 0063's sharing (spaceShares.ts), and the rest below. */
 const SPACE_TABLES = [
   "space_roles", "space_activity", "space_items", "space_payments", "space_tasks", "threads", "thread_members", "thread_messages", "mail_outbox",
   "user_blocks", "content_reports", "space_bot_shares",
   // migration 0064: what a group's bots know about the group (spaceMemory.ts)
   "space_facts",
+  // migration 0068: join requests the admin lets in (spaceJoin.ts), things shared from a bot (grants.ts), notes on them (work.ts)
+  "space_join_requests", "space_grants", "space_work_notes",
 ] as const;
 export type SpaceTableName = (typeof SPACE_TABLES)[number];
 

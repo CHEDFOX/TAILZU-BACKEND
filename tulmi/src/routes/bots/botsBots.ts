@@ -18,6 +18,7 @@
  *   GET|PUT|DELETE /v1/botsapp/bots/listing/:slug      -> { listed }                      your bot in the store (and its public card), or not
  *   GET    /v1/botsapp/bots/keys/:slug/usage           -> { usage, ratePerMin, dayCapPaise, endpoint }   what its keys used this month
  *   /v1/botsapp/bots/spaces..., /shares, /items..., /threads..., /invite/:code   spaces, sharing, payment requests and messaging: routes/bots/botsSpaces.ts
+ *   /v1/botsapp/bots/work/:bot...                       Work in space on the four bots' pages: routes/bots/work.ts
  *   GET    /v1/botsapp/bots/plan?tz=&week=             -> { connected, today, tomorrow, days, open, suggestion }   from the person's own
  *                                                      calendar and to-dos (src/calendar; their own routes: /v1/botsapp/calendar..., routes/bots/botsCalendar.ts)
  *   POST   /v1/botsapp/bots/plan/move { eventId, start, said }  -> { done, message } (409 when it could not)
@@ -44,6 +45,7 @@ import { openAskStream } from "../../live/askStream.js";
 import { scrub } from "../../bots/run.js";
 import type { BotEvent } from "../../bots/types.js";
 import { registerSpacesRoutes } from "./botsSpaces.js";
+import { registerWorkRoutes } from "./work.js";
 import { registerBotsTripRoutes } from "./botsTrips.js";
 import { registerCalendarRoutes } from "./botsCalendar.js";
 import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
@@ -84,6 +86,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   const guard = () => deps.bots?.guard ?? defaultGuard();
   // Spaces: members, invites, sharing, payment requests, messaging. A bot shared into a space reads its shared things when a member asks it.
   const spacesArea = registerSpacesRoutes(app, deps, { spaces: parts.spaces, trips: parts.trips });
+  // Work in space on each bot's page: what people in your spaces let you see and work on (routes/bots/work.ts).
+  registerWorkRoutes(app, deps, spacesArea);
   // The widgets, a notification's buttons and its reply (routes/bots/widgets.ts): they read and answer through Spaces' parts.
   registerWidgetRoutes(app, deps, spacesArea);
   registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/bots/botsTrips.ts)

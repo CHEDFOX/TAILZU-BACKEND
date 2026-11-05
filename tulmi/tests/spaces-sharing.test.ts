@@ -1,14 +1,15 @@
 /**
  * SPACES FOR FAMILY AND FRIENDS (src/botsBots/{spaces,spacePerms,mail,shared,payments,threads,spaceTasks}.ts, routes/bots/botsSpaces.ts):
  *
- *   - permissions: the admin can do everything and can't be changed; presets and custom roles; nobody gives or takes away what they
- *     can't do; nobody changes someone who can do more than them
- *   - invites by link and by email: an email invite is mailed through the outbox (queued while no provider is plugged in), works once,
- *     on any account; the mail job sends once a mailer is there
- *   - sharing: to a space or a person, lists edited by who may, a file must be the sharer's, and a shared bot reads the space's things
- *   - payment requests: asked, approved by someone else who may, handed to UPI, paid; never money moved here
+ *   - who may: the admin (the space's maker) does everything; every other member does the same fixed set, and only the admin
+ *     invites, removes, renames and makes codes. There are no roles (docs/spaces.md; the join flow is spaces-join.test.ts)
+ *   - invites by email: mailed through the outbox (queued while no provider is plugged in) with the space's code, waiting for the
+ *     invited address, good once; taken back by the admin; the mail job sends once a mailer is there
+ *   - sharing: to a space or a person, lists edited by anyone there, a file must be the sharer's, and the group's bots read the
+ *     space's things
+ *   - payment requests: asked, approved by someone else, handed to UPI, paid; never money moved here
  *   - messaging: one to one and groups, unread counts, older pages, muting, leaving, photos by signed link, and live events
- *   - tasks and plans for others: who may, answering, the push, and the assignee's Plan ("From <name>")
+ *   - tasks and plans for others: answering, the push, and the assignee's Plan ("From <name>")
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
@@ -28,7 +29,7 @@ const EMAIL: Record<string, string> = { [A_]: "aanya.sharma@example.in", [M_]: "
 
 vi.mock("../src/auth/supabase.js", async (orig) => {
   const real = await orig<typeof import("../src/auth/supabase.js")>();
-  return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id && EMAIL[id] ? { id, email: EMAIL[id] } : null; } };
+  return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id && EMAIL[id] ? { id, email: EMAIL[id], emailConfirmed: true } : null; } };
 });
 
 const pushes: Array<{ userId: string; kind: string; vars: Record<string, string> }> = [];
@@ -36,7 +37,7 @@ vi.mock("../src/push/index.js", () => ({
   pushEngine: () => ({ notify: async (userId: string, msg: { kind: string; vars: Record<string, string> }) => { pushes.push({ userId, kind: msg.kind, vars: msg.vars }); return null; } }),
 }));
 
-const { Spaces, INVITE_ORIGIN, inviteLinkOf } = await import("../src/botsBots/spaces.js");
+const { Spaces, INVITE_ORIGIN, inviteLinkOf, showCode } = await import("../src/botsBots/spaces.js");
 const { MailOutbox, NOT_CONFIGURED } = await import("../src/botsBots/mail.js");
 const { MemoryPaged, resetSpaceTablesForTests } = await import("../src/botsBots/spaceRows.js");
 const { resetAreaTablesForTests } = await import("../src/botsBots/rows.js");
@@ -44,7 +45,7 @@ const { registerSpacesRoutes } = await import("../src/routes/bots/botsSpaces.js"
 const { PlanDays } = await import("../src/botsBots/plan.js");
 const { calendar, resetCalendarForTests } = await import("../src/calendar/index.js");
 const { live } = await import("../src/live/bus.js");
-const { permsOf, PRESETS } = await import("../src/botsBots/spacePerms.js");
+const { MEMBER_PERMS } = await import("../src/botsBots/spacePerms.js");
 
 const RL = { rateLimit: { max: 10_000, timeWindow: 60_000 } };
 const AREA = "/v1/botsapp/bots";
@@ -87,14 +88,13 @@ async function served(o: { now?: { t: number } } = {}) {
     const r = await app.inject({ method, url: url.replace(/^https?:\/\/[^/]+/, ""), headers: user ? { authorization: `Bearer ${user}` } : {}, ...(payload !== undefined ? { payload: payload as object } : {}) });
     return { status: r.statusCode, body: r.body ? (() => { try { return r.json(); } catch { return r.body; } })() : null, headers: r.headers, raw: r.rawPayload };
   };
-  /** Home: Aanya (admin), Mom (Family + approves), Rohan (Kid). */
+  /** Home: Aanya (admin), Mom and Rohan, each in by the invitation waiting for their address. */
   const home = async () => {
     const id = (await call("POST", `${AREA}/spaces`, A_, { name: "Home" })).body.id as string;
-    const fam = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { role: "family" })).body;
-    await call("POST", `${AREA}/spaces/join`, M_, { code: fam.code });
-    await call("PUT", `${AREA}/spaces/${id}/members/${M_}`, A_, { perms: [...PRESETS[0]!.perms, "approve", "manage", "remove"] });
-    const kid = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { role: "kid" })).body;
-    await call("POST", `${AREA}/spaces/join`, R_, { code: kid.code });
+    for (const who of [M_, R_]) {
+      const inv = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: EMAIL[who] })).body;
+      await call("PUT", `${AREA}/spaces/invitations/${inv.code}`, who, { decision: "accept", consent: true });
+    }
     return id;
   };
   return { app, call, home, clock, outbox, spaces, parts, media };
@@ -102,120 +102,89 @@ async function served(o: { now?: { t: number } } = {}) {
 
 const memberOf = (space: { members: Array<{ userId: string }> }, id: string) => space.members.find((m) => m.userId === id) as unknown as { perms: string[]; roleName: string; canApprove: boolean };
 
-describe("permissions", () => {
+describe("who may", () => {
   beforeEach(() => { resetSpaceTablesForTests(); resetAreaTablesForTests(); });
 
-  it("makes the maker the admin, who can do everything and can't be changed or removed", async () => {
+  it("makes the maker the admin, and everyone else a member who may do the same things", async () => {
     const s = await served();
     const id = await s.home();
     const d = (await s.call("GET", `${AREA}/spaces/${id}`)).body.space;
     expect(d.me).toMatchObject({ admin: true });
-    expect(memberOf(d, A_).roleName).toBe("Admin");
-    expect(memberOf(d, A_).perms).toContain("tasks");
-    expect(memberOf(d, R_)).toMatchObject({ roleName: "Kid", canApprove: false });
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${A_}`, M_, { role: "guest" })).status).toBe(403);
-    expect((await s.call("DELETE", `${AREA}/spaces/${id}/members/${A_}`, M_)).status).toBe(403);
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${M_}`, M_, { role: "guest" })).body.message).toMatch(/yourself/);
-  });
-
-  it("never lets anyone give or take away what they can't do themselves", async () => {
-    const s = await served();
-    const id = await s.home();
-    // Mom may manage, but not rename: she can't give it, nor make Rohan an admin-like member.
-    const r1 = await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, M_, { perms: ["bots", "rename"] });
-    expect(r1.status).toBe(403);
-    expect(r1.body.message).toMatch(/Rename the space/);
-    // What she can do, she can give.
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, M_, { perms: ["bots", "message", "approve"] })).status).toBe(200);
-    // Rohan, a Kid without "manage", can change no one.
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${M_}`, R_, { role: "guest" })).status).toBe(403);
-    // Someone who can do more than you can't be changed or removed by you.
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, A_, { perms: ["bots", "rename"] });
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, M_, { role: "guest" })).body.message).toMatch(/can do things you can't/);
+    expect(memberOf(d, A_)).toMatchObject({ roleName: "Admin", canApprove: true });
+    expect(memberOf(d, A_).perms).toContain("invite");
+    expect(memberOf(d, M_)).toMatchObject({ roleName: "Member", canApprove: true, perms: [...MEMBER_PERMS] });
+    expect(memberOf(d, R_).perms).toEqual(memberOf(d, M_).perms);
+    expect(d.roles).toEqual([]);
+    // Only the admin invites, removes and renames; nobody removes the admin.
+    expect((await s.call("POST", `${AREA}/spaces/${id}/invite`, M_, { email: "x@example.in" })).status).toBe(403);
     expect((await s.call("DELETE", `${AREA}/spaces/${id}/members/${R_}`, M_)).status).toBe(403);
-    // An invite can't give more than its maker has.
-    expect((await s.call("POST", `${AREA}/spaces/${id}/invite`, M_, { perms: ["rename"] })).status).toBe(403);
-    expect((await s.call("POST", `${AREA}/spaces/${id}/invite`, R_, {})).status).toBe(403);
-  });
-
-  it("keeps roles the admin makes, and their members follow them", async () => {
-    const s = await served();
-    const id = await s.home();
-    expect((await s.call("POST", `${AREA}/spaces/${id}/roles`, M_, { name: "Nani", perms: ["bots"] })).status).toBe(403);
-    const role = (await s.call("POST", `${AREA}/spaces/${id}/roles`, A_, { name: "Nani", perms: ["bots", "message"] })).body.role;
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, A_, { role: role.id });
-    let d = (await s.call("GET", `${AREA}/spaces/${id}`)).body.space;
-    expect(memberOf(d, R_)).toMatchObject({ roleName: "Nani", perms: ["bots", "message"] });
-    await s.call("PUT", `${AREA}/spaces/${id}/roles/${role.id}`, A_, { name: "Nani", perms: ["bots", "message", "share"] });
-    d = (await s.call("GET", `${AREA}/spaces/${id}`)).body.space;
-    expect(memberOf(d, R_).perms).toEqual(["share", "bots", "message"]);
-    await s.call("DELETE", `${AREA}/spaces/${id}/roles/${role.id}`, A_);
-    d = (await s.call("GET", `${AREA}/spaces/${id}`)).body.space;
-    expect(memberOf(d, R_)).toMatchObject({ roleName: "Just for them", perms: ["share", "bots", "message"] });
-  });
-
-  it("reads lists and objects of permissions the same way, dropping unknown names", () => {
-    expect(permsOf(["message", "nope", "bots", "message"])).toEqual(["bots", "message"]);
-    expect(permsOf({ invite: true, rename: false, approve: true })).toEqual(["invite", "approve"]);
+    expect((await s.call("DELETE", `${AREA}/spaces/${id}/members/${A_}`, M_)).status).toBe(403);
+    expect((await s.call("PUT", `${AREA}/spaces/${id}`, M_, { name: "Mom's" })).status).toBe(403);
+    expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${M_}`, A_, { role: "guest" })).status).toBe(410);
+    expect((await s.call("PUT", `${AREA}/spaces/${id}`, A_, { name: "Our home" })).status).toBe(200);
+    expect((await s.call("DELETE", `${AREA}/spaces/${id}/members/${R_}`, A_)).body).toEqual({ deleted: false });
   });
 });
 
-describe("invites by link and by email", () => {
-  it("queues the email, says it waits for a provider, and works once, on any account", async () => {
+describe("invites by email", () => {
+  it("queues the email with the space's code, says it waits for a provider, and is good once, for that address", async () => {
     const s = await served();
     const id = await s.home();
     const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "X@Example.in", role: "guest" })).body;
     expect(inv).toMatchObject({ email: "x@example.in", mail: "queued", mailReady: false });
-    // The link opens the app at joining (a link the apps claim, as bots.link's does).
-    expect(inv.link).toBe(`https://app.example.in/s/bots.spaces?join=${inv.code}`);
+    const code = (await s.call("GET", `${AREA}/spaces/${id}`, A_)).body.space.code as string;
+    // The link opens the app at joining with the space's code (a link the apps claim, as bots.link's does).
+    expect(inv.link).toBe(`https://app.example.in/s/bots.spaces?join=${code.replace("-", "")}`);
     const mail = await s.outbox.byRef("space_invite", inv.code);
-    expect(mail).toMatchObject({ status: "queued", to_email: "x@example.in" });
+    expect(mail).toMatchObject({ status: "queued", to_email: "x@example.in", subject: "Aanya S. invited you to Home on X0 Bot" });
     expect(mail!.body_text).toContain(inv.link);
+    expect(mail!.body_text).toContain(`type this code: ${code}.`);
     expect(await s.outbox.sendDue(NOT_CONFIGURED)).toBe(0);
     expect((await s.outbox.byRef("space_invite", inv.code))!.status).toBe("queued");
-    // The invite page never shows the address: at the link (a browser with no app to hand it to), and at the old address.
+    // The invite page never shows the address: at the link, and at the old address.
     expect((await s.call("GET", inv.link, null)).body).not.toContain("example.in");
     expect((await s.call("GET", `${AREA}/invite/${inv.code}`, null)).body).not.toContain("example.in");
-    // Whoever uses it first is in, whatever email they signed in with (Rohan leaves first, so he can join by it).
-    await s.call("DELETE", `${AREA}/spaces/${id}`, R_);
+    // The invitation waits for x@: Rohan can't take it, X accepts it.
+    expect((await s.call("PUT", `${AREA}/spaces/invitations/${inv.code}`, R_, { decision: "accept" })).status).toBe(404);
     pushes.length = 0;
-    expect((await s.call("POST", `${AREA}/spaces/join`, R_, { code: inv.code })).status).toBe(200);
+    expect((await s.call("PUT", `${AREA}/spaces/invitations/${inv.code}`, X_, { decision: "accept", consent: true })).body).toEqual({ status: "joined", id, name: "Home" });
     // Aanya, who made the invite, is told who came in with it.
     expect(pushes.filter((p) => p.kind === "space_joined")).toEqual([expect.objectContaining({ userId: A_, vars: expect.objectContaining({ space: "Home" }) })]);
-    const d = (await s.call("GET", `${AREA}/spaces/${id}`, R_)).body.space;
-    expect(memberOf(d, R_)).toMatchObject({ roleName: "Guest" });
-    // Used up: nobody else, not even the address it was sent to.
-    expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code: inv.code })).status).toBe(404);
+    expect(memberOf((await s.call("GET", `${AREA}/spaces/${id}`, X_)).body.space, X_)).toMatchObject({ roleName: "Member" });
+    // Used up.
     expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, X_)).body).toEqual({ invite: null });
   });
 
   it("opens the app straight to joining: the link's page opens X0 Bot at Spaces with the code, and keeps the code to type", async () => {
     const s = await served();
     const id = await s.home();
-    const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { role: "family" })).body;
-    const page = await s.call("GET", inv.link, null);
+    const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "x@example.in" })).body;
+    const page = await s.call("GET", `${AREA}/invite/${inv.code}`, null);
     expect(page.status).toBe(200);
     expect(page.headers["content-type"]).toContain("text/html");
     expect(String(page.headers["content-security-policy"])).toContain("default-src 'none'");
+    // An email invite's own code names its space; the space's code (the link) names none (spaces-join.test.ts).
     expect(page.body).toContain("<b>Home</b>");
     expect(page.body).toContain(`href="tulmi://screen/bots.spaces?join=${inv.code}"`);
-    expect(page.body).toContain("Got an invite code?");
+    expect(page.body).toContain("Open X0 Bot, open Spaces, tap your bot, and type this code:");
     expect(page.body).toContain(`>${inv.code}<`);
     expect(page.body).not.toContain("<script");
-    // A phone with no X0 Bot (the link would have opened it) goes to its own store; Android's carries the invite.
+    // A phone with no X0 Bot (the link would have opened it) goes to its own store; Android's carries the code.
     const open = (ua: string, url = inv.link) => s.app.inject({ method: "GET", url: url.replace(/^https?:\/\/[^/]+/, ""), headers: { "user-agent": ua } });
     const iphone = await open("Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 Version/18.1 Mobile/15E148 Safari/604.1");
     expect(iphone.statusCode).toBe(302);
     expect(iphone.headers.location).toBe("https://apps.apple.com/app/id6784811357");
     const android = await open("Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/131.0 Mobile Safari/537.36");
     expect(android.statusCode).toBe(302);
-    expect(android.headers.location).toBe(`https://play.google.com/store/apps/details?id=com.tulmi.app&referrer=join%3D${inv.code}`);
-    // A computer gets the page; so does a phone whose invite doesn't work (no store for a dead invite).
-    expect((await open("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.1 Safari/605.1.15")).statusCode).toBe(200);
+    const joinCode = new URL(inv.link).searchParams.get("join");
+    expect(android.headers.location).toBe(`https://play.google.com/store/apps/details?id=com.tulmi.app&referrer=join%3D${joinCode}`);
+    // A computer gets the page; so does a phone whose code doesn't work (no store for a dead one).
+    const mac = await open("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.1 Safari/605.1.15");
+    expect(mac.statusCode).toBe(200);
+    expect(mac.body).toContain(`>${showCode(joinCode!)}<`);
     const dead = await open("Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X)", "/s/bots.spaces?join=NOPE1234");
     expect(dead.statusCode).toBe(200);
     expect(dead.body).toContain("This invite doesn't work any more.");
-    // A code that isn't one, or one that doesn't work: the plain words, and nothing to open.
     for (const bad of ["NOPE1234", "%3Cscript%3E", ""]) {
       const p = await s.call("GET", `/s/bots.spaces?join=${bad}`, null);
       expect(p.body).toContain("This invite doesn't work any more.");
@@ -227,13 +196,13 @@ describe("invites by link and by email", () => {
     expect((await s.call("GET", `${AREA}/spaces/join/${inv.code}`, null)).status).toBe(401);
     // Without an origin given, the link is the apps' own host.
     expect(INVITE_ORIGIN).toBe("https://app.x0bot.com");
-    expect(inviteLinkOf(INVITE_ORIGIN, "QW3RT7YP")).toBe("https://app.x0bot.com/s/bots.spaces?join=QW3RT7YP");
+    expect(inviteLinkOf(INVITE_ORIGIN, "QW3RT7")).toBe("https://app.x0bot.com/s/bots.spaces?join=QW3RT7");
   });
 
   it("sends queued mail once a mailer is plugged in, retrying a failure", async () => {
     const s = await served();
-    const id = await s.home();
-    await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "x@example.in", role: "guest" });
+    const id = (await s.call("POST", `${AREA}/spaces`, A_, { name: "Home" })).body.id as string;
+    await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "x@example.in" });
     const sent: string[] = [];
     let fail = true;
     const mailer = { configured: true, send: async (m: { to: string; subject: string }) => { if (fail) { fail = false; throw new Error("down"); } sent.push(`${m.to}: ${m.subject}`); } };
@@ -244,50 +213,46 @@ describe("invites by link and by email", () => {
     expect(await s.outbox.sendDue(mailer)).toBe(0);
   });
 
-  it("takes an invite back, and its mail never goes", async () => {
+  it("is taken back by the admin, and its mail never goes", async () => {
     const s = await served();
     const id = await s.home();
-    const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "x@example.in", role: "guest" })).body;
+    const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "x@example.in" })).body;
     expect((await s.call("DELETE", `${AREA}/spaces/${id}/invites/${inv.code}`, R_)).status).toBe(403);
     expect((await s.call("DELETE", `${AREA}/spaces/${id}/invites/${inv.code}`, A_)).status).toBe(200);
     expect((await s.outbox.byRef("space_invite", inv.code))!.status).toBe("cancelled");
-    expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code: inv.code })).status).toBe(404);
+    expect((await s.call("PUT", `${AREA}/spaces/invitations/${inv.code}`, X_, { decision: "accept" })).status).toBe(404);
   });
 
-  it("gives a link invite's joiner no more than its maker can still do", async () => {
+  it("stops every mail still waiting when the admin deletes the space", async () => {
     const s = await served();
     const id = await s.home();
-    const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, M_, { role: "family" })).body;
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${M_}`, A_, { perms: ["invite", "bots"] });
-    await s.call("POST", `${AREA}/spaces/join`, X_, { code: inv.code });
-    const d = (await s.call("GET", `${AREA}/spaces/${id}`, X_)).body.space;
-    expect(memberOf(d, X_).perms).toEqual(["invite", "bots"]);
+    const inv = (await s.call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: "x@example.in" })).body;
+    expect((await s.call("DELETE", `${AREA}/spaces/${id}`, A_)).body).toEqual({ deleted: true });
+    expect((await s.outbox.byRef("space_invite", inv.code))!.status).toBe("cancelled");
   });
 });
 
 describe("sharing", () => {
-  it("shares a list to a space, edited by who may, and read by a bot shared there", async () => {
+  it("shares a list to a space, edited by anyone there, and read by the group's bots", async () => {
     const s = await served();
     const id = await s.home();
     const r = await s.call("POST", `${AREA}/shares`, M_, { kind: "list", title: "Groceries", items: ["Atta 5 kg", "Toor dal"], access: "edit", to: { space: id } });
     expect(r.status).toBe(201);
     const item = r.body.item;
-    // Rohan (Kid: share) adds and ticks; a guest can't edit.
+    // Rohan adds and ticks: everyone in a space may.
     const add = await s.call("PUT", `${AREA}/items/${item.id}`, R_, { op: "add", text: "Paneer" });
     expect(add.body.item.list.map((l: { text: string }) => l.text)).toEqual(["Atta 5 kg", "Toor dal", "Paneer"]);
     await s.call("PUT", `${AREA}/items/${item.id}`, R_, { op: "toggle", line: add.body.item.list[0].id });
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, A_, { role: "guest" });
-    expect((await s.call("PUT", `${AREA}/items/${item.id}`, R_, { op: "add", text: "Milk" })).status).toBe(403);
     expect((await s.call("GET", `${AREA}/items/${item.id}`, R_)).body.item.summary).toBe("1 of 3 done");
     expect((await s.call("GET", `${AREA}/items/${item.id}`, X_)).status).toBe(404);
-    // A bot shared into Home reads it when Mom (who may use the shared bots) asks it; not for someone who may not.
-    await s.call("POST", `${AREA}/spaces/${id}/bots`, A_, { slug: "plan" });
+    // Plan Ease, Notes, Travel bot and Xode are every group's bots: no adding needed. Any other bot reads it once added.
     const ctx = await s.parts.items.forBot(M_, "plan");
     expect(ctx).toHaveLength(1);
     expect(ctx[0]!.text).toContain("Groceries (list, shared by Meera S.): [x] Atta 5 kg; [ ] Toor dal; [ ] Paneer");
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${M_}`, A_, { perms: ["message"] });
-    expect(await s.parts.items.forBot(M_, "plan")).toEqual([]);
     expect(await s.parts.items.forBot(A_, "shop-bot")).toEqual([]);
+    await s.call("POST", `${AREA}/spaces/${id}/bots`, R_, { slug: "shop-bot" });
+    expect(await s.parts.items.forBot(A_, "shop-bot")).toHaveLength(1);
+    expect(await s.parts.items.forBot(X_, "plan")).toEqual([]);
   });
 
   it("checks what it can: a file must be yours, a trip comes from your own trips, a link must be http(s)", async () => {
@@ -325,12 +290,10 @@ describe("sharing", () => {
 });
 
 describe("payment requests", () => {
-  it("asks (what for, to whom, no amount), is approved by someone else who may, hands the UPI payment over without an amount, and is marked paid", async () => {
+  it("asks (what for, to whom, no amount), is approved by anyone else there, hands the UPI payment over without an amount, and is marked paid", async () => {
     const s = await served();
     const id = await s.home();
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, A_, { role: "guest" });
-    expect((await s.call("POST", `${AREA}/spaces/${id}/payments`, R_, { amount: "500", to: "shop@okaxis" })).status).toBe(403);
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, A_, { role: "kid" });
+    expect((await s.call("POST", `${AREA}/spaces/${id}/payments`, X_, { amount: "500", to: "shop@okaxis" })).status).toBe(404);
     expect((await s.call("POST", `${AREA}/spaces/${id}/payments`, R_, { amount: "500", to: "not an id" })).body.code).toBe("bad_vpa");
     const p = (await s.call("POST", `${AREA}/spaces/${id}/payments`, R_, { amount: "1,240", to: "freshbasket@okaxis", name: "Fresh Basket", note: "This week's groceries" })).body.payment;
     expect(p).toMatchObject({ amountPaise: 124_000, status: "waiting", canCancel: true, upi: null });
@@ -405,10 +368,10 @@ describe("messaging", () => {
     expect((await s.call("GET", seen.files[0].url, null)).status).toBe(200);
   });
 
-  it("makes groups from a space's people with the permission, lets people leave, and follows the space", async () => {
+  it("makes groups from a space's people, lets people leave, and follows the space", async () => {
     const s = await served();
     const id = await s.home();
-    expect((await s.call("POST", `${AREA}/threads/group`, R_, { space: id, people: [M_] })).status).toBe(403);
+    expect((await s.call("POST", `${AREA}/threads/group`, X_, { space: id, people: [M_] })).status).toBe(404);
     expect((await s.call("POST", `${AREA}/threads/group`, M_, { space: id, people: [X_] })).status).toBe(404);
     const g = (await s.call("POST", `${AREA}/threads/group`, M_, { space: id, name: "Diwali", people: [A_, R_] })).body.id;
     await s.call("POST", `${AREA}/threads/${g}/messages`, R_, { text: "Crackers?" });
@@ -416,11 +379,8 @@ describe("messaging", () => {
     const chats = (await s.call("GET", `${AREA}/threads`, R_)).body.threads;
     expect(chats.map((t: { name: string; kind: string }) => `${t.kind}:${t.name}`).sort()).toEqual(["group:Diwali", "space:Home"]);
     expect((await s.call("DELETE", `${AREA}/threads/${all}`, R_)).status).toBe(409);
-    // A guest reads the space's chat but can't write in it.
-    await s.call("PUT", `${AREA}/spaces/${id}/members/${R_}`, A_, { perms: ["bots"] });
-    const read = (await s.call("GET", `${AREA}/threads/${all}`, R_)).body.thread;
-    expect(read).toMatchObject({ canPost: false });
-    expect((await s.call("POST", `${AREA}/threads/${all}/messages`, R_, { text: "hi" })).status).toBe(403);
+    // Everyone there writes in the space's own chat.
+    expect((await s.call("GET", `${AREA}/threads/${all}`, R_)).body.thread).toMatchObject({ canPost: true });
     // Leaving a group; leaving the space leaves its chats.
     await s.call("DELETE", `${AREA}/threads/${g}`, A_);
     expect((await s.call("GET", `${AREA}/threads/${g}`, A_)).status).toBe(404);
@@ -435,10 +395,11 @@ describe("tasks and plans for others", () => {
   // or a plan for Oct 29 is "in the past" from Oct 30 on.
   beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"], now: Date.UTC(2026, 9, 28, 6, 0) }); });
   afterEach(() => { vi.useRealTimers(); });
-  it("gives tasks with the permission, tells the person, and takes their answer", async () => {
+  it("gives tasks to people in the space, tells the person, and takes their answer", async () => {
     const s = await served();
     const id = await s.home();
-    expect((await s.call("POST", `${AREA}/spaces/${id}/tasks`, R_, { title: "Water the plants", people: [M_] })).status).toBe(403);
+    expect((await s.call("POST", `${AREA}/spaces/${id}/tasks`, R_, { title: "Water the plants", people: [X_] })).status).toBe(404);
+    expect((await s.call("POST", `${AREA}/spaces/${id}/tasks`, X_, { title: "Water the plants", people: [M_] })).status).toBe(404);
     const t = (await s.call("POST", `${AREA}/spaces/${id}/tasks`, A_, { title: "Pick up the cake", people: [R_, M_], day: "2026-10-29", time: "18:30", place: "Koramangala", tz: 330 })).body.task;
     expect(t).toMatchObject({ kind: "task", place: "Koramangala", allDay: false, at: Date.UTC(2026, 9, 29, 13, 0) });
     expect(pushes.filter((p) => p.kind === "space_task").map((p) => [p.userId, p.vars.name, p.vars.title, p.vars.due])).toEqual([
@@ -583,13 +544,14 @@ describe("what a group's bots know (botsBots/spaceMemory.ts)", () => {
     expect((await s.call("GET", M(id), A_)).body.lines).toEqual([]);
   });
 
-  it("a bot shared into the group reads the group's lines; one that isn't reads nothing", async () => {
+  it("Plan Ease, Notes, Travel bot and Xode read the group's lines; another bot only once it is added", async () => {
     const s = await served();
     const id = await s.home();
     await s.call("POST", M(id), M_, { text: "Dadi is vegetarian" });
-    expect(await s.parts.memory.forBot(A_, "plan")).toEqual([]);
-    await s.call("POST", `${AREA}/spaces/${id}/bots`, A_, { slug: "plan" });
-    const told = await s.parts.memory.forBot(A_, "plan");
-    expect(told).toEqual([{ name: "What Home told its bots", kind: "space", text: "- Dadi is vegetarian (said by Meera S.)" }]);
+    const told = [{ name: "What Home told its bots", kind: "space", text: "- Dadi is vegetarian (said by Meera S.)" }];
+    for (const bot of ["plan", "notes", "travel", "code"]) expect(await s.parts.memory.forBot(A_, bot), bot).toEqual(told);
+    expect(await s.parts.memory.forBot(A_, "shop-bot")).toEqual([]);
+    await s.call("POST", `${AREA}/spaces/${id}/bots`, A_, { slug: "shop-bot" });
+    expect(await s.parts.memory.forBot(A_, "shop-bot")).toEqual(told);
   });
 });

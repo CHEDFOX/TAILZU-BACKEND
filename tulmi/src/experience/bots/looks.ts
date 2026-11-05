@@ -448,11 +448,15 @@ export function looksFlags(): Record<string, unknown> {
 /** A build that plays the catalog (it declares BotMoments), with the living bots. */
 const BOT_MOMENTS = "BotMoments";
 
+/** No build names more formats than this. The bound keeps the count finite for a set that answers yes to every name (the wiring
+ *  test's), which would otherwise never stop. */
+const FORMATS_MAX = 99;
+
 /** The newest recipe format a build plays: 1 for "BotMoments", n for a later build that also declares "BotMoments<n>"; 0 none. */
 export function playsFormat(can: ReadonlySet<string>): number {
   if (!can.has(BOT_MOMENTS)) return 0;
   let f = 1;
-  while (can.has(`${BOT_MOMENTS}${f + 1}`)) f++;
+  while (f < FORMATS_MAX && can.has(`${BOT_MOMENTS}${f + 1}`)) f++;
   return f;
 }
 

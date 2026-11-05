@@ -20,6 +20,7 @@ import { randomUUID } from "node:crypto";
 import { BotError } from "../bots/index.js";
 import { live } from "../live/bus.js";
 import type { Blocks } from "./blocks.js";
+import type { Grants } from "./grants.js";
 import { cleanEmail, type MailOutbox } from "./mail.js";
 import type { SharedItems } from "./shared.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
@@ -89,6 +90,8 @@ export class Safety {
     private readonly now: () => number = Date.now,
     o: {
       outbox?: MailOutbox; rows?: PagedTable<ReportRow>; publish?: Publish; log?: Log; to?: string;
+      /** Things shared from a bot in a space (grants.ts): taking out a card of one takes its access away too. */
+      grants?: Grants | null;
       /** The admin's "suspend": the account can't sign in again. Returns whether it worked. Null: not possible on this server. */
       suspend?: ((userId: string) => Promise<boolean>) | null;
     } = {},
@@ -100,7 +103,9 @@ export class Safety {
     this.log = o.log;
     this.to = cleanEmail(o.to ?? SAFETY_EMAIL) || "support@x0bot.com";
     this.suspendAccount = o.suspend ?? null;
+    this.grants = o.grants ?? null;
   }
+  private readonly grants: Grants | null;
   private readonly outbox: MailOutbox;
   private readonly log?: Log;
   private readonly to: string;
@@ -173,7 +178,7 @@ export class Safety {
       return {
         kind: "message", ref: m.id, threadId: t.id, spaceId: t.space_id, reportedId: m.sender_id, reportedName: m.sender_name || "Someone",
         what: `A message from ${m.sender_name || "someone"} in ${where}`, text,
-        snapshot: { text: m.text.slice(0, 4000), files, item: m.item, sender: m.sender_name, at: Number(m.at_ms), chat: t.kind, where },
+        snapshot: { text: m.text.slice(0, 4000), files, item: m.item, sender: m.sender_name, at: Number(m.at_ms), chat: t.kind, where, ...(m.to_id ? { to: m.to_name ?? "" } : {}) },
       };
     }
     if (q.kind === "item") {
@@ -290,8 +295,13 @@ export class Safety {
     const status = o.status === "dismissed" || o.status === "open" ? o.status : "actioned";
     const done: string[] = [];
     if (o.remove === true) {
-      const took = r.kind === "message" && r.thread_id ? await this.threads.removeMessage(r.thread_id, r.ref)
-        : r.kind === "item" ? await this.items.removeAny(r.ref) : false;
+      let took = false;
+      if (r.kind === "message" && r.thread_id) {
+        const gone = await this.threads.removeMessage(r.thread_id, r.ref);
+        took = !!gone;
+        // A card for a thing shared from a bot: the access it gave goes with it.
+        if (gone?.item?.kind === "grant") await this.grants?.dropForMessage(gone.id, gone.item.id);
+      } else if (r.kind === "item") took = await this.items.removeAny(r.ref);
       done.push(took ? (r.kind === "message" ? "Took the message out" : "Took the shared thing out") : "Nothing to take out (already gone)");
     }
     if (o.suspend === true) {

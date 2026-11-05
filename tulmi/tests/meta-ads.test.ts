@@ -232,7 +232,8 @@ describe("through the server", () => {
   it("the pages the server renders load the pixel, the pay page does not, and the policy says so", async () => {
     expect((await app.inject({ method: "GET", url: "/download" })).body).toContain('src="/site-events.js"');
     expect(siteShell({ title: "Subscribe", main: "", pixel: false })).not.toContain("site-events.js");
-    expect((await app.inject({ method: "GET", url: "/privacy" })).body).toContain("Meta Platforms");
+    // The policy's Service providers page names the company (Section 3 links to it).
+    expect((await app.inject({ method: "GET", url: "/privacy/providers" })).body).toContain("Meta Platforms");
   });
 
   it("the same pages carry Google Tag Manager, high in the head and first in the body; the pay page does not", async () => {

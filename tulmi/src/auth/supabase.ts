@@ -45,6 +45,10 @@ function verifyClient(): SupabaseClient | null {
 export interface AuthedUser {
   id: string;
   email?: string;
+  /** The email was confirmed (Supabase's email_confirmed_at is set): an email code, Google and Apple sign-ins confirm it. An
+   *  invitation to a space waits only for a confirmed address (botsBots/spaceJoin.ts), so an account that merely typed someone's
+   *  address can't take what was meant for them. Unset (false) for a static token and DEV_SKIP_AUTH. */
+  emailConfirmed?: boolean;
   /**
    * E.164 phone, for accounts created through SMS sign-in. Exactly one of
    * `email` / `phone` is set for a single-method account, so neither can be
@@ -138,6 +142,7 @@ export async function resolveUser(
   return {
     id: data.user.id,
     email: data.user.email ?? undefined,
+    emailConfirmed: !!data.user.email_confirmed_at,
     phone: data.user.phone ?? undefined,
     token,
     createdAt: data.user.created_at ?? undefined,

@@ -82,6 +82,8 @@ export interface MailRow {
   created_ms: number;
   next_ms: number;
   sent_ms: number | null;
+  /** Who it went out for (an invite's admin), so a cap on their mail outlives the rows that asked for it. */
+  sent_by?: string | null;
 }
 
 const MAIL_TRIES = 5;
@@ -98,14 +100,21 @@ export function cleanEmail(v: unknown): string {
 export class MailOutbox {
   constructor(private readonly rows: PagedTable<MailRow> = spaceTable<MailRow>("mail_outbox"), private readonly now: () => number = Date.now) {}
 
-  async queue(m: MailMessage & { kind: string; ref?: string }): Promise<MailRow> {
+  async queue(m: MailMessage & { kind: string; ref?: string; by?: string }): Promise<MailRow> {
     const to = cleanEmail(m.to);
     if (!to) throw new Error("not an email address");
     const at = this.now();
     return this.rows.insert({
       id: randomUUID(), to_email: to, subject: m.subject.slice(0, 200), body_text: m.text.slice(0, 20_000), body_html: m.html ? m.html.slice(0, 60_000) : null,
       kind: m.kind.slice(0, 40), ref: (m.ref ?? "").slice(0, 80), status: "queued", attempts: 0, last_error: "", created_ms: at, next_ms: at, sent_ms: null,
+      ...(m.by ? { sent_by: m.by } : {}),
     });
+  }
+
+  /** How many mails of this kind went out for `by` since `sinceMs` (counted up to `max`). Taken back or not: each was asked for. */
+  async sentBy(kind: string, by: string, sinceMs: number, max: number): Promise<number> {
+    const rows = await this.rows.select({ kind, sent_by: by }, { order: "created_ms", desc: true, limit: max + 1 });
+    return rows.filter((r) => Number(r.created_ms) > sinceMs).length;
   }
 
   /** Stop a queued mail (an invite taken back before it went). */

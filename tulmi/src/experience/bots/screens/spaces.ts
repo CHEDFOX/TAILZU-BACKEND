@@ -1,7 +1,11 @@
 /**
- * SPACES WITH FAMILY AND FRIENDS (Spaces / DSpaces, and the boards' look for the rest): the spaces list and one space whole, "What Mom
- * can do", inviting by link or email, the space's roles, one shared thing, asking for a payment, tasks and plans for others, sharing
+ * SPACES WITH FAMILY AND FRIENDS (Spaces / DSpaces, and the boards' look for the rest): the spaces list and one space whole, one person
+ * in a space, inviting by email or the space's code, one shared thing, asking for a payment, tasks and plans for others, sharing
  * anything to a space or a person, the chats and one chat.
+ *
+ * A build that draws the new Spaces (kit canSpaces2) gets spaces/start.ts (Spaces: his thought, the crowd, Call Your People) and
+ * spaces/feed.ts (inside a space: one feed, his thought the box), and spaces/peoplePage.ts behind it; every other build keeps the
+ * screens below, with roles gone and a code that only asks to join saying "Request sent".
  *
  * Data is the routes in routes/bots/botsSpaces.ts (src/botsBots does every permission check; these screens only leave out what won't work).
  * Every write is a call, then a refresh and a short ink toast. Money is "you press pay": a yes hands over the UPI payment (bots.approve).
@@ -9,11 +13,10 @@
  */
 
 import { memoryPage, type GroupMemoryView } from "./spaces/memoryPage.js";
-import type { Node, ActionRef, ActionSpec } from "../../../../../shared/types/sdui.js";
-import { PERMS, PERM_WORDS } from "../../../botsBots/spacePerms.js";
+import type { Node, ActionRef, ActionSpec, Condition } from "../../../../../shared/types/sdui.js";
 import {
   row, text, C, call, seq, col, meta, icon, open, SCREENS, box, statusMark, grow, sectionLabel, button, type BotsCtx, notice, card,
-  primaryButton, page, title, emptyState, toTab, back, switchMark, picture, listRow, quietButton, chips, when, segmented,
+  primaryButton, page, title, emptyState, toTab, back, picture, canSpaces2, listRow, quietButton, chips, when, segmented,
   labelled, divider,
 } from "../kit.js";
 import { canUpload, uploadChip, uploadPick } from "../media.js";
@@ -22,15 +25,18 @@ import { invitePage } from "./spaces/invitePage.js";
 import { idParam, memberPage } from "./spaces/memberPage.js";
 import {
   ifFilled, A, toast, clearState, refresh, rowsCard, rowPad, type Space, personDot, names, inputBox, field, isDesk, type OneSpace, type BotSharing, failed,
-  enc, write, type Role, section, type Item, iconButton, kindBadge, shortDate, canDo, labelledField, type Task, DAY, localDate,
+  enc, write, section, kb, type Item, iconButton, kindBadge, shortDate, canDo, labelledField, type Task, DAY, localDate,
   messagePerson,
 } from "./spaces/parts.js";
 import { iconBox, KIND_WORD, setState, type Targets, sharePage } from "./spaces/sharePage.js";
 import { botPage, type BotPageData, type MineView, type SharedView } from "./spaces/botPage.js";
 import {
   type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
-  openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState,
+  openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState, countDot, quietLinks,
 } from "./spaces/spaceDetail.js";
+import { type FeedRead, feedScreen, fileNode, sharedItemNode } from "./spaces/feed.js";
+import { joinParam, type SpacesFull, startScreen } from "./spaces/start.js";
+import { peoplePage } from "./spaces/peoplePage.js";
 import { said } from "../said.js";
 
 interface Thread {
@@ -39,11 +45,12 @@ interface Thread {
 }
 interface Message {
   id: string; from: { userId: string | null; name: string; you: boolean }; text: string; at: number;
+  /** A message to one person (only its sender, they and the space's admin read it); absent from older servers. */
+  to?: { userId: string; name: string; you: boolean } | null;
   files: Array<{ id: string; name: string; mime: string; bytes: number; kind: string; url: string }>; item: { id: string; kind: string; title: string } | null;
 }
 interface Contacts { people: Array<{ userId: string; name: string; spaces: string[] }>; groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> }
 
-const kb = (bytes: number) => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
 /** A chip that turns a switch in state on and off (a person picked or not). */
 const toggleChip = (label: string, path: string): Node => row([text(label, { size: 13, lineHeight: 17, style: { color: { truthy: path, then: C.paper, else: C.ink } } })], {
@@ -51,7 +58,17 @@ const toggleChip = (label: string, path: string): Node => row([text(label, { siz
 }, { kind: "toggleState", path });
 
 const newSpace = ifFilled("spaceName", call("POST", `${A}/spaces`, { name: "$state.spaceName" }, { assignTo: "made", ok: seq(toast("Space made"), clearState("spaceName"), refresh), fail: toast("Couldn't make it. Try again.", true) }), "Name the space first");
-const joinSpace = ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code" }, { assignTo: "joined", ok: seq(toast("You're in"), clearState("code"), refresh), fail: toast("That code doesn't work any more. Ask for a new one.", true) }), "Enter the invite code");
+/**
+ * A code may only ask to join now (a space's own code, or an invite made for another email): the space's admin lets them in. The
+ * answer says which, so this build says "Request sent" then, and "You're in" only when it was.
+ */
+const REQUESTED: Condition = { eq: ["joined.status", "requested"] };
+const requestSent = (): ActionRef => seq(toast("Request sent. The space's admin will let you in."), clearState("code"));
+const joinSpace = ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code" }, {
+  assignTo: "joined",
+  ok: { kind: "condition", if: REQUESTED, then: requestSent(), else: seq(toast("You're in"), clearState("code"), refresh) },
+  fail: toast("That code doesn't work any more. Ask for a new one.", true),
+}), "Enter the invite code");
 
 /**
  * Chats and what's given to you, at the top of Spaces only when there is something in them (a new message, a thing to do): an empty
@@ -67,10 +84,6 @@ function topRows(d: SpacesData): Node | null {
   ];
   return rows.length ? rowsCard(rows) : null;
 }
-/** The two places that are always there, said quietly under the list. */
-const quietLinks = (): Node => row([link("Chats", open(SCREENS.chats)), meta("·", { size: 13 }), link("Given to you", open(SCREENS.spaceTasks))], { gap: 6, justifyContent: "center" });
-
-const countDot = (n: number) => box([text(n > 99 ? "99+" : String(n), { size: 11, weight: 600, color: C.paper, lineHeight: 14 })], { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 });
 
 /** A space in the list: its faces, its name, and one line: what waits for you there, or who is in it. */
 function spaceRow(s: Space): Node {
@@ -97,13 +110,11 @@ const startSpace = (desk: boolean): Node[] => [
 // An invite's link (https://app.x0bot.com/s/bots.spaces?join=CODE, botsBots/spaces.ts inviteLinkOf) opens Spaces with its code: what
 // it is for and Join, at the top. The code is in Join with a code too, as the way that always works.
 
-/** The code an invite's link carried. */
-const joinParam = (ctx: BotsCtx): string => String(ctx.params.join ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
 
-/** In, then that space. */
+/** In, then that space; or, when the code only asks to join, the request is sent. */
 const joinFromLink = (code: string): ActionRef => call("POST", `${A}/spaces/join`, { code }, {
   assignTo: "joined",
-  ok: seq(toast("You're in"), { kind: "navigate", screenId: SCREENS.spaces, params: { id: "$state.joined.id" }, replace: true } as ActionSpec),
+  ok: { kind: "condition", if: REQUESTED, then: requestSent(), else: seq(toast("You're in"), { kind: "navigate", screenId: SCREENS.spaces, params: { id: "$state.joined.id" }, replace: true } as ActionSpec) },
   fail: toast("That invite doesn't work any more. Ask for a new one.", true),
 });
 
@@ -183,38 +194,6 @@ function spacesDesk(ctx: BotsCtx, d: SpacesData) {
       ...joinCard(ctx, d),
       ...(!d.spaces ? [emptyState({ pose: "think", title: "Couldn't load your spaces", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : [row([nav, col(sel ? spaceDetail(ctx, sel, d.bots) : [emptyState({ pose: "hello", title: list.length ? "Couldn't open that space" : "Bring your people in", body: list.length ? "Pick one on the left." : "Start a space for home, family or friends, then invite them by link or email." })], { flexGrow: 1, flexShrink: 1, minWidth: 0, gap: 24 })], { gap: 28, alignItems: "flex-start" })]),
-    ],
-  });
-}
-
-// ===================================================================== bots.space.roles
-function rolesPage(ctx: BotsCtx, d: OneSpace | undefined) {
-  const s = d?.space;
-  if (!s) return failed(ctx, "Roles");
-  const editing = s.roles.find((r) => !r.preset && r.id === idParam(ctx, "role"));
-  const sid = enc(s.id);
-  const permsBody = Object.fromEntries(PERMS.map((p) => [p, `$state.r_${p}`]));
-  const save = ifFilled("roleName", editing
-    ? write("PUT", `${A}/spaces/${sid}/roles/${enc(editing.id)}`, { name: "$state.roleName", perms: permsBody }, { ok: "Role saved", then: back() })
-    : write("POST", `${A}/spaces/${sid}/roles`, { name: "$state.roleName", perms: permsBody }, { ok: "Role made", then: seq(clearState("roleName"), refresh) }), "Name the role first");
-  const roleRow = (r: Role) => row([
-    col([text(r.name, { size: 15, weight: 500, lineHeight: 20 }), meta(r.perms.length ? r.perms.map((p) => PERM_WORDS[p].label).join(" · ") : "Look at what's shared, nothing more", { size: 12, lines: 2 }),
-      meta(`${plural(s.members.filter((m) => m.role === r.id).length, "person", "people")}${r.preset ? " · X0 Bot's" : ""}`, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-    ...(!r.preset && s.me.admin ? [icon("chevron", { size: 16, color: C.meta })] : []),
-  ], rowPad, !r.preset && s.me.admin ? open(SCREENS.spaceRoles, { id: s.id, role: r.id }) : undefined);
-  return page(ctx, {
-    back: true, title: editing ? editing.name : "Roles", nav: "you", maxWidth: 720, live: [`space:${s.id}`],
-    state: { roleName: editing?.name ?? "", ...Object.fromEntries(PERMS.map((p) => [`r_${p}`, editing ? editing.perms.includes(p) : false])) },
-    body: [
-      col([text(editing ? `Change ${editing.name}` : `Roles in ${s.name}`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(editing ? "Everyone with this role changes with it." : "Family, Kid and Guest are X0 Bot's. Make your own for anyone else.", { size: 13 })], { gap: 4 }),
-      ...(!editing ? [rowsCard(s.roles.map(roleRow))] : []),
-      ...(s.me.admin ? [section(editing ? "Name and what it can do" : "A new role", [
-        inputBox([field("roleName", "roleName", "Name: Grandparent, Cook, Driver…")]),
-        rowsCard(PERMS.map((p) => row([col([text(PERM_WORDS[p].label, { size: 15, lineHeight: 20 }), meta(PERM_WORDS[p].sub, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1 }), switchMark(`r_${p}`)], rowPad, { kind: "toggleState", path: `r_${p}` }))),
-        row([button(editing ? "Save" : "Make the role", save, { kind: "primary", size: "md" }),
-          ...(editing ? [button("Delete it", write("DELETE", `${A}/spaces/${sid}/roles/${enc(editing.id)}`, undefined, { ok: "Role deleted", then: back() }), { kind: "quiet", size: "md" })] : [])], { gap: 8 }),
-        ...(editing ? [meta("Deleting it keeps what it gave people, just for them.", { size: 12 })] : []),
-      ])] : [notice("Only the admin can make roles.", { mark: "lock" })]),
     ],
   });
 }
@@ -418,12 +397,10 @@ function messageNodes(ctx: BotsCtx, r: ThreadRead): Node[] {
     if (!mine && r.thread.kind !== "direct" && lastFrom !== (m.from.userId ?? "")) {
       parts.push(m.from.userId ? row([meta(m.from.name, { size: 12 })], { minHeight: 20 }, open(SCREENS.person, { id: m.from.userId })) : meta(m.from.name, { size: 12 }));
     }
-    for (const f of m.files) {
-      parts.push(f.mime.startsWith("image/")
-        ? box([picture(f.url, desk ? 280 : 220, desk ? 200 : 160, { radius: 14, fit: "cover", background: C.surface, label: f.name })], {}, { kind: "openUrl", url: f.url, external: true })
-        : row([icon("clip", { size: 16 }), text(f.name, { size: 14, lineHeight: 19, lines: 1, style: { flexShrink: 1 } }), meta(kb(f.bytes), { size: 12 })], { gap: 8, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, maxWidth: 280 }, { kind: "openUrl", url: f.url, external: true }));
-    }
-    if (m.item) parts.push(row([kindBadge(m.item.kind, 32), col([text(m.item.title, { size: 14, weight: 500, lineHeight: 19, lines: 2 }), meta(`${KIND_WORD[m.item.kind] ?? "Shared"} · open`, { size: 12 })], { gap: 2, flexShrink: 1 })], { gap: 10, padding: 10, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, maxWidth: 300 }, open(SCREENS.spaceItem, { item: m.item.id })));
+    // A message to one person, read by its sender or the space's admin: say who it went to, so it never reads as one for everyone.
+    if (m.to && !m.to.you) parts.push(meta(`To ${m.to.name}`, { size: 12 }));
+    for (const f of m.files) parts.push(fileNode(f, desk));
+    if (m.item) parts.push(sharedItemNode(m.item));
     if (m.text) {
       parts.push(box([text(m.text, { size: 15, lineHeight: 21, color: mine && !desk ? C.paper : C.ink })], {
         backgroundColor: mine ? (desk ? C.surface : C.ink) : desk ? C.paper : C.surface, ...(desk && !mine ? { borderWidth: 1, borderColor: C.line } : {}),
@@ -523,23 +500,34 @@ const oneSpace = async (deps: Api, id: string): Promise<OneSpace | undefined> =>
 };
 
 export const spacesScreens: BotsScreen[] = [
-  screen<SpacesData>({
+  screen<SpacesData & { full?: SpacesFull; feed?: FeedRead }>({
     id: SCREENS.spaces,
     load: async (ctx, deps) => {
       const id = idParam(ctx), join = joinParam(ctx);
+      // The new Spaces (kit canSpaces2) reads one thing: the feed of a space, or everything Spaces shows (GET /spaces stays as cheap
+      // as it was for Home and the warm pass at launch; ?full=1 is this screen's).
+      if (canSpaces2(ctx)) {
+        if (id) {
+          const before = Number(ctx.params.before) || 0;
+          return { feed: await deps.api<FeedRead>("GET", `${A}/spaces/${enc(id)}/feed${before ? `?before=${before}` : ""}`).catch(() => undefined) };
+        }
+        return { full: await deps.api<SpacesFull>("GET", `${A}/spaces?full=1`).catch(() => undefined) };
+      }
       const [sp, bots, given, one, invite] = await Promise.all([
         deps.api<{ spaces: Space[]; you: string; unread: number }>("GET", `${A}/spaces`).catch(() => undefined),
         deps.api<{ bots: SpacesData["bots"] }>("GET", "/v1/bots").then((r) => r.bots).catch(() => undefined),
         deps.api<{ tasks: Task[] }>("GET", `${A}/tasks/given`).then((r) => r.tasks).catch(() => undefined),
         id ? oneSpace(deps, id) : Promise.resolve(undefined),
-        // An invite's link: what it is for.
-        join ? deps.api<{ invite: JoinInvite | null }>("GET", `${A}/spaces/join/${enc(join)}`).then((r) => r.invite ?? null, () => undefined) : Promise.resolve(undefined),
+        // An invite's link: what it is for. A space's own code (6 characters) is never named by the server, so it isn't asked: the
+        // card says "You're invited to a space" with the code and Join.
+        join && join.length !== 6 ? deps.api<{ invite: JoinInvite | null }>("GET", `${A}/spaces/join/${enc(join)}`).then((r) => r.invite ?? null, () => undefined) : Promise.resolve(undefined),
       ]);
       // The window always shows one: the asked one, else the first.
       const first = !one && ctx.client === "desktop" && sp?.spaces[0] ? await oneSpace(deps, sp.spaces[0].id) : undefined;
       return { spaces: sp?.spaces, you: sp?.you, unread: sp?.unread, bots, given, one: one ?? first, ...(join ? { invite } : {}) };
     },
-    build: (ctx, d) => (isDesk(ctx) ? spacesDesk(ctx, d ?? {}) : d?.one && idParam(ctx) ? spaceOnePhone(ctx, d.one, d) : idParam(ctx) && d?.spaces ? failed(ctx, "This space") : spacesPhone(ctx, d ?? {})),
+    build: (ctx, d) => (canSpaces2(ctx) ? (idParam(ctx) ? feedScreen(ctx, d?.feed) : startScreen(ctx, d?.full))
+      : isDesk(ctx) ? spacesDesk(ctx, d ?? {}) : d?.one && idParam(ctx) ? spaceOnePhone(ctx, d.one, d) : idParam(ctx) && d?.spaces ? failed(ctx, "This space") : spacesPhone(ctx, d ?? {})),
   }),
   screen<BotPageData>({
     id: SCREENS.spaceBot,
@@ -556,7 +544,7 @@ export const spacesScreens: BotsScreen[] = [
   screen<GroupMemoryView>({ id: SCREENS.spaceMemory, load: (ctx, deps) => deps.api<GroupMemoryView>("GET", `${A}/spaces/${enc(idParam(ctx))}/memory`), build: memoryPage }),
   screen<OneSpace>({ id: SCREENS.spaceMember, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: memberPage }),
   screen<OneSpace>({ id: SCREENS.spaceInvite, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: invitePage }),
-  screen<OneSpace>({ id: SCREENS.spaceRoles, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: rolesPage }),
+  screen<OneSpace>({ id: SCREENS.spacePeople, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: peoplePage }),
   screen<OneSpace>({ id: SCREENS.spacePay, load: (ctx, deps) => deps.api<OneSpace>("GET", `${A}/spaces/${enc(idParam(ctx))}`), build: payPage }),
   screen<Item>({ id: SCREENS.spaceItem, load: (ctx, deps) => deps.api<{ item: Item }>("GET", `${A}/items/${enc(idParam(ctx, "item"))}`).then((r) => r.item), build: itemPage }),
   screen<TasksData>({

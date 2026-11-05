@@ -615,6 +615,8 @@ export interface ScreenResponse {
   look?: "desk" | "bots";
   /** Pull to refresh with a bot in it, on this screen's scroll (section 3g; only for a build that declares PULL_BOT_CAPABILITY). */
   pullBot?: PullBotSpec;
+  /** DESK_TALK_TO_CAPABILITY only (section 3i). */
+  talkTo?: TalkTo;
 }
 
 // ===========================================================================
@@ -801,6 +803,9 @@ export const CORE_COMPONENTS = [
 //   Text bind.content   a Text bound to state shows the state's value (the
 //                       window drew bound text only inside the onboarding).
 //
+// TextField's keyboard / autoFocus / maxLength come with KIT_EXTRAS_CAPABILITY
+// (section 3i, TextFieldExtras), only in the trees that need them.
+//
 // And `navigate` resolves "$state.x" in its params on the window too.
 
 /** Declared in capabilities.components by a build that draws the Bots app's kit. */
@@ -875,6 +880,8 @@ export interface BotTileSpec {
   /** A moment he plays (BOT_MOMENTS_CAPABILITY; kit momentProps): once, then his own play again, or as a loop. */
   moment?: string;
   momentMode?: BotMomentMode;
+  /** DOUBLE_TAP_CAPABILITY: a double tap on the tile (its single tap then waits about 260 ms). */
+  doubleTap?: ActionRef;
 }
 
 /**
@@ -958,9 +965,11 @@ export const BOT_BUDDY_COMPONENT = "BotBuddy";
 
 /**
  * play: his own · wave: hello, then play · survey: looks over a list below him · read: dots and lines flow into him · settle: sits ·
- * think: an answer is on its way · carry: an answer is on its way, as a load (a build that declares BOT_BUDDY_CARRY).
+ * think: an answer is on its way · carry: an answer is on its way, as a load (a build that declares BOT_BUDDY_CARRY) · listen: still,
+ * eyes open, head to his thought (section 3i) · stand: still, looking about. Only a build that declares BOT_STAGE_COMPONENT is sent
+ * listen and stand.
  */
-export type BuddyAct = "play" | "wave" | "survey" | "read" | "settle" | "think" | "carry";
+export type BuddyAct = "play" | "wave" | "survey" | "read" | "settle" | "think" | "carry" | "listen" | "stand";
 
 /**
  * Declared by a build whose BotBuddy CARRIES (act "carry", `doneWhen`): the stage is a full-width lane (no `width`) under a
@@ -1239,6 +1248,178 @@ export interface BotSoundsCatalog {
   sounds: BotSound[];
 }
 
+// ---------------------------------------------------------------------------
+// 3i. Spaces, the family redesign: a bot with a thought, a crowd, a vanish, @ and /, live words (docs/bots-app.md, "Spaces")
+// ---------------------------------------------------------------------------
+//
+// Generic blocks the server builds Spaces, Home's Ask and the space feed from. A build declares each name it draws in
+// capabilities.components; the server sends the new screens only to a build that has them all (kit canSpaces2 / canHomeThought),
+// and every other build keeps today's screens.
+
+/** A full tiny bot on a stage of his own that roams with catalog moments, walks out and back in, listens, thinks and cheers, and
+ *  can hold a thought: a box over him, joined to his head by three bubbles, that follows him at rest and opens when tapped. */
+export const BOT_STAGE_COMPONENT = "BotStage";
+/** A box of many tiny bots playing with the real physics (one canvas), that can grow taller and cheer all at once. */
+export const BOT_CROWD_COMPONENT = "BotCrowd";
+/** Its children vaporise (blur, rise, fade, ink specks) when goneWhen turns true, and come back when it turns false. */
+export const VANISH_COMPONENT = "Vanish";
+/** A message field: "@" picks a person (a chip), "/" picks one of the person's bots, then one of its things (a chip). */
+export const MENTION_FIELD_COMPONENT = "MentionField";
+/** The words of the voice session open on this screen, as they are heard: the newest light grey, settling to ink. Nothing else. */
+export const LIVE_WORDS_COMPONENT = "LiveWords";
+/** NOT A COMPONENT: actions voiceLive and voiceStop (live words over /v1/transcribe-stream, a turn ends on a pause). */
+export const VOICE_LIVE_CAPABILITY = "VoiceLive";
+/** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
+export const DOUBLE_TAP_CAPABILITY = "DoubleTap";
+/** NOT A COMPONENT: TextField keyboard / autoFocus / maxLength; Screen, Scroll and (the window) Stack props.startAtEnd;
+ *  callEndpoint.stay; a dotted border with a radius drawn dotted on every platform; a failed call's { code, message } kept at
+ *  state `lastError` (the window too, as the phone already does), so a toast can say the server's reason. */
+export const KIT_EXTRAS_CAPABILITY = "KitExtras";
+/** NOT A COMPONENT, the window only: ScreenResponse.talkTo (the one key, with X0 in front, talks to the bot on screen). */
+export const DESK_TALK_TO_CAPABILITY = "DeskTalkTo";
+
+/** How a bot wanders: walk to a random spot in `span` (fractions of the stage's width), pause, play a random moment, again. */
+export interface BotRoam {
+  moments: string[];
+  /** Seconds between moments, a random value in the range. */
+  every: [number, number];
+  /** Seconds he stands before and after a walk. */
+  pause: [number, number];
+  span?: [number, number];
+}
+
+export interface BotThoughtSpec {
+  /** home: a dotted box (2 px dotted ink, radius 18, white); space: a white field (1 px #d4d4d4, radius 18, soft shadow). */
+  style: "home" | "space";
+  /** The words in the small box riding over him at rest (a tap on it opens it). None: no box at rest. */
+  restText?: string;
+  /** A state path holding true while it is open. The app writes true when the resting box is tapped and false when the veil is
+   *  tapped, Escape is pressed or (phone) back is pressed; the server's actions may write it too. */
+  openPath: string;
+  /** Near the whole screen (an answer coming in). Wins over open. */
+  fullWhen?: Condition;
+  /** square: a square over him (home); wide: the stage's width less the gutters, as tall as its content (space). */
+  shape: "square" | "wide";
+  /** Blur the screen behind it while open or full. */
+  veil: boolean;
+  /** follow: over him; low: while open he walks down near the bottom of the screen and the box fills the space above him. */
+  place: "follow" | "low";
+}
+
+export interface BotStageProps {
+  /** Who he is across screens and repaints: the same life, the same bot, carrying on. */
+  life: string;
+  kind: BotTileKind;
+  color: string;
+  avatar?: BotAvatarRef;
+  /** His height and the stage's, in px. The stage holds everything touchable at rest: him and, with restText, the trail's room and
+   *  the rest box. A client never draws it shorter than size + 18, plus (with restText) the trail's rest room (TRAIL: lift + the
+   *  three sizes + 3 x 7 + gap, about 82 at scale 1) + 48, whatever `height` says. */
+  size: number;
+  height: number;
+  /** What a tap opens: "bot" (default) only his body, the rest of the stage passing touches to the page; "stage" the whole stage
+   *  (a top area that is all his). A double tap is always on his body. */
+  hit?: "bot" | "stage";
+  /** false: he never plays with props (the person's own bot). */
+  toys?: boolean;
+  roam?: BotRoam;
+  /** While it holds he walks out at `outSide` (none: the edge nearer him then, as the prototype does); when it stops he walks back
+   *  in from the edge he left by. */
+  outWhen?: Condition;
+  outSide?: "left" | "right";
+  /** Each time it turns true he gives a happy hop. */
+  cheerWhen?: Condition;
+  thinkWhen?: Condition;
+  /** He stands still and listens (eyes open, head to his thought), his bubbles pulsing with the voice. */
+  listenWhen?: Condition;
+  thought?: BotThoughtSpec;
+  /** What a screen reader says for him. */
+  label: string;
+}
+// on.onPress: a tap on him (or the stage, hit "stage"). on.onDoubleTap (DOUBLE_TAP_CAPABILITY): a double tap / double-click on him
+// (a single tap then waits about 260 ms). on.onDismiss: the open thought was closed by the person (veil, Escape, back), after
+// openPath is false. These run ONLY from his hit area, never from a press inside the box: lint lets the box hold buttons because of
+// that, so a client must not bind them on the stage's outer element.
+// children: the thought's content while it is open, full, or he listens (with listenWhen). At rest the box shows restText.
+
+export interface BotCrowdProps {
+  life: string;
+  /** 5 to 9 tiny bots, each on his own patch, lots of empty space. */
+  bots: Array<{ kind: BotTileKind; color: string; avatar?: BotAvatarRef }>;
+  /** Each bot's height in px. */
+  size: number;
+  /** Its height at rest; none: as tall as it is wide. */
+  height?: number;
+  grownWhen?: Condition;
+  grownHeight?: number;
+  /** While it holds every bot cheers, again and again (a few seconds at most). */
+  cheerWhen?: Condition;
+  surprises?: { moments: string[]; every: number; chance: number };
+  label: string;
+}
+// children: drawn over the bots at the top of the box (the bots keep the floor).
+
+export interface VanishProps {
+  goneWhen: Condition;
+  /** Kept per key: drawn gone at once on a repaint, never replayed. */
+  key: string;
+}
+
+/** What a MentionField writes to its draftPath on every change (empty strings: none). */
+export interface MentionDraft {
+  text: string;
+  toId: string; toName: string;
+  bot: string; botName: string; thingId: string; thingTitle: string;
+}
+export interface MentionFieldProps {
+  life: string;
+  placeholder: string;
+  draftPath: string;
+  people: Array<{ id: string; name: string }>;
+  bots: Array<{ slug: string; name: string; color: string; kind: BotTileKind }>;
+  /** GET path (":bot" replaced) answering { items: Array<{ id: string; title: string; line: string }> }. */
+  thingsPath: string;
+  /** Rows after the bots in the "/" list, each running its action. */
+  tools?: Array<{ id: string; label: string; action: ActionRef }>;
+  words: { people: string; bots: string; empty: string };
+  maxLength?: number;
+  autoFocus?: boolean;
+}
+// on.onSubmit: Enter / the send button, with the draft in draftPath. Before it runs: text starting with "@word" and no person chip
+// is turned into that person's chip when exactly one person's first name is that word (case-insensitive, the "@word" taken out of
+// the text); when more than one matches, the People list opens filtered to it and nothing is sent. The server clears draftPath
+// after sending; the field empties itself (chips too) when draftPath is cleared.
+
+export interface LiveWordsProps {
+  size: number;
+  lineHeight: number;
+  fontFamily: string;
+  color?: string;          // settled words, ink
+  freshColor?: string;     // the newest words, #b5b5b5
+  settleMs?: number;       // 600
+}
+
+/** The window's one key (DESK_TALK_TO_CAPABILITY): with X0 in front, holding it or tapping it twice talks to this screen's bot. */
+export interface TalkTo {
+  /** Run when a key session starts: the window adopts the session the key opened (it never opens a second one). The key's own
+   *  mode wins over voice.mode: a hold or a single tap is one turn, two taps a chat. */
+  voice: Extract<ActionSpec, { kind: "voiceLive" }>;
+}
+
+/**
+ * TextField's extras (KIT_EXTRAS_CAPABILITY), sent only in the new trees:
+ *   keyboard   "text" | "email" | "code". email: the email keyboard, no autocapitalise or autocorrect, textContentType
+ *              emailAddress (the window: type="email", autocapitalize="off"). code: ASCII capitals, no autocorrect, oneTimeCode.
+ *   autoFocus  focus it when it first appears on the screen, by its id: also when a when() shows it later (the email field after
+ *              Create), never again on a repaint.
+ *   maxLength  the most characters it takes.
+ */
+export interface TextFieldExtras {
+  keyboard?: "text" | "email" | "code";
+  autoFocus?: boolean;
+  maxLength?: number;
+}
+
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [
   "scroll", "feature", "list", "centered", "detail", "grid", "hero",
@@ -1279,6 +1460,8 @@ export type ActionSpec =
       onError?: ActionRef;
       /** The state path an answer is written to as it comes (section 3f, ASK_STREAM_CAPABILITY). */
       stream?: string;
+      /** KIT_EXTRAS: the window does not fetch the screen again after this write. */
+      stay?: boolean;
     }
   | { kind: "refresh" }
   // --- local state ---
@@ -1365,6 +1548,18 @@ export type ActionSpec =
   /** A setting kept on this device, not on the account (section 3h: "sounds", on or off; `value` may be "$state.x").
    *  Only for a build that declares BOT_SOUNDS_CAPABILITY. */
   | { kind: "devicePref"; key: "sounds"; value: unknown }
+  // --- live words (section 3i; needs VOICE_LIVE_CAPABILITY) ---
+  /** VOICE_LIVE_CAPABILITY. Listen with live words; a turn ends after `silenceMs` without new words. statePath is "listening" while
+   *  hearing, "sending" while onHeard runs, "" when over. Each turn's words go to `into`, then onHeard runs (awaited). chat: listen
+   *  again after it unless stopWhen holds; it ends on voiceStop, Escape (window), leaving the screen (another screen id or params;
+   *  a refresh or quiet reload of the same screen keeps it), the app going to the background (phone), X0 no longer in front
+   *  (window), quiet (no words for 12 s), or 20 minutes. once: one turn. onBlocked: no microphone permission. The voice level never
+   *  goes into state: the stage reads it. `into` gets the whole turn's words (every segment the stream finalised, then the last
+   *  partial), not only the last segment. */
+  | { kind: "voiceLive"; mode: "once" | "chat"; statePath: string; into: string; silenceMs?: number; language?: string;
+      onHeard: ActionRef; stopWhen?: Condition; onEnd?: ActionRef; onError?: ActionRef; onBlocked?: ActionRef }
+  /** Stop the voice session on this screen; the words of the turn not yet sent are dropped. */
+  | { kind: "voiceStop" }
   // --- permissions ---
   | {
       kind: "requestPermission";

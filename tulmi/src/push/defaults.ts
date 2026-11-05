@@ -134,9 +134,18 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_plan.screenId": "bots.space.tasks",
     "push.space_message.enabled": true,
     "push.space_message.screenId": "bots.chats",
-    // Someone joined a space with your invite (src/botsBots/spaces.ts join): so a code used by the wrong person is seen at once.
+    // Someone joined a space with your invite (src/botsBots/spaceJoin.ts): so a code used by the wrong person is seen at once.
     "push.space_joined.enabled": true,
     "push.space_joined.screenId": "bots.spaces",
+    // Spaces, the family redesign (docs/spaces.md). Someone typed your space's code and asks to come in: it opens Spaces with his
+    // thought open (data.thought "1"), where you let them in. The admin let you in: it opens Spaces (data.id). A message in a space's
+    // feed, to everyone or to you: it opens the space (data.id), never with the words; a message to one person pings only them.
+    "push.space_request.enabled": true,
+    "push.space_request.screenId": "bots.spaces",
+    "push.space_accepted.enabled": true,
+    "push.space_accepted.screenId": "bots.spaces",
+    "push.space_feed.enabled": true,
+    "push.space_feed.screenId": "bots.spaces",
 
     // THE BUTTONS ON A NOTIFICATION (docs/widgets.md): the category each kind carries, one the phone registered from the bootstrap's
     // push.categories (its buttons, their words, icons, text field, foreground or not, and what each calls). "" or absent: none.
@@ -144,6 +153,9 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_task.category": "x0_task",
     "push.space_plan.category": "x0_task",
     "push.space_message.category": "x0_reply",
+    // A space's feed has no Reply button yet: a reply from a notification would go to the old chat route, to everyone in the space,
+    // even when it answers a message to one person. It opens the space, where the reply goes where it should.
+    "push.space_feed.category": "",
     "push.approval.category": "x0_yesno",
 
     // A reminder the person set on their own calendar or a to-do (src/calendar): the Plan, on that day (data.day).
@@ -191,6 +203,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_message.body": "{name} sent a message",
     "push.space_joined.title": "{name} joined {space}",
     "push.space_joined.body": "With your invite. Not who you meant? Remove them in {space}.",
+    "push.space_request.title": "{name} wants to join {space}",
+    "push.space_request.body": "Let them in from Spaces.",
+    "push.space_accepted.title": "You're in {space}",
+    "push.space_accepted.body": "{admin} let you in.",
+    "push.space_feed.title": "{chat}",
+    "push.space_feed.body": "{name} sent a message",
     "push.plan_reminder.title": "{title}",
     "push.plan_reminder.body": "{when}",
     "push.ops_alert.title": "{title}",
@@ -213,7 +231,7 @@ export const EVENT_PUSH_KINDS = [
   "approval",
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
-  "space_task", "space_plan", "space_message", "space_joined",
+  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed",
   "plan_reminder",
   "routine_done", "routine_failed",
   "ops_alert",

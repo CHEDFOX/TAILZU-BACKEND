@@ -22,7 +22,7 @@ import { nicknameOf } from "../../assistantName.js";
 import {
   duration, type BotsCtx, page, hasOutbox, needsCard, askBar, botLook, open, SCREENS, box, text, C, row, col, card, meta, seq, roundButton,
   sectionLabel, grid, icon, grow, botAvatar, botRoute, labelled, back, emptyState, mono, secondaryButton, title, segmented, when,
-  statusMark, button, toTab, call, blip, primaryButton, listCard, listRow,
+  statusMark, button, toTab, call, blip, primaryButton, listCard, listRow, canHomeThought,
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, DELETION_PATH } from "./accountGrace.js";
@@ -42,6 +42,7 @@ import { stepDot, approveTop, approvePay } from "./shell/approvePay.js";
 import { askAnswer } from "./shell/askAnswer.js";
 import { type Route, askCompose } from "./shell/askCompose.js";
 import { type HomeMore, homeHead, homeNotices, hello, tiles, homePull, homePhone } from "./shell/home.js";
+import { HOME_THOUGHT_STATE, homeTalkTo, homeThought } from "./shell/homeThought.js";
 import { offline } from "./shell/offline.js";
 import { field, toast, kbd, couldNot, avatarOf, nameOf } from "./shell/parts.js";
 import { KIND_WORDS, searchField, hitWords, hitIcon, openHit, searchDesk } from "./shell/searchDesk.js";
@@ -60,8 +61,9 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const first = ctx.live.needs[0];
   const { head, pinned } = homeHead(ctx);
   const n = homeNotices(ctx, arrival, more);
+  const thought = canHomeThought(ctx);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: n.state, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
+    tab: "bots", title: "Your bots", state: { ...n.state, ...(thought ? HOME_THOUGHT_STATE : {}) }, pinned, ...(hasNotes(ctx) ? { live: ["notes"] } : {}),
     body: [
       head,
       ...n.leaving,
@@ -73,7 +75,8 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       tiles(ctx, 4, 150, 18, more.notes, more.groups),
       ...routinesRow(ctx, more.routines),
     ],
-    footer: [askBar("desktop", { ctx })],
+    // Ask any bot: his thought at the foot of the window where the build draws it, else the ask bar.
+    ...(thought ? { dock: [homeThought(ctx)], talkTo: homeTalkTo(ctx) } : { footer: [askBar("desktop", { ctx })] }),
   });
 }
 

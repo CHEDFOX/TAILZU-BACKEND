@@ -47,11 +47,12 @@ section 1 says.
 | User ID | The account's ID (Supabase), also RevenueCat's app user ID | `tulmi/src/auth/supabase.ts`; `app/src/billing/purchases.ts` | Until deleted |
 | Voice | Audio of dictation and of speaking to bots, sent to be turned into text, then discarded (never stored) | `/v1/transcribe-clean`, `/v1/stream` (`tulmi/src/routes/writing/transcribe.ts`, `routes/writing/transcribe-stream.ts`); OpenAI / Groq | Not stored (processed ephemerally) |
 | Dictated text and history | What was dictated and the cleaned text, its language and voice | `cleanup_history` (`tulmi/src/history/store.ts`, migrations 0004, 0010) | On by default (section 1.3); 90-day purge of deleted rows; until the account is deleted |
-| Messages | Words, photos and files people send each other in Spaces' chats | `tulmi/src/botsBots/threads.ts`, `thread_messages` (migration 0051) | Until taken out, the space or the account is deleted (a sender's messages stay in others' chats) |
-| Shared things | Lists, plans, notes, links, files, answers shared to a space or a person | `tulmi/src/botsBots/shared.ts`, `space_items` | Until taken out or deleted |
+| Messages | Words, photos and files people send each other in Spaces' chats and a space's feed. A message to one person there is seen by them, its sender and the space's admin (who made the space) | `tulmi/src/botsBots/threads.ts`, `spaceFeed.ts`, `thread_messages` (migrations 0051, 0068 to_id) | Until taken out, the space or the account is deleted (a sender's messages stay in others' chats) |
+| Shared things | Lists, plans, notes, links, files, answers shared to a space or a person; one thing shared from Plan Ease, Notes, Travel bot or Xode (its title and a line), and the notes people add to it | `tulmi/src/botsBots/shared.ts`, `space_items`; `grants.ts`, `work.ts`, `space_grants`, `space_work_notes` (0068) | Until taken out or deleted, or the sharer leaves the space |
+| What a space's admin sees | Once a member was told so when joining: their messages to one person in the space, and their own plans, notes, trips and Xode projects (to read, move a plan's time, and add notes) | `tulmi/src/botsBots/work.ts`, `space_members.consent_ms` (0068) | While they are both in the space |
 | Photos, videos and files | What the person picks or takes to give to a bot or send in a chat (and, with the image and video bots, what they make) | `app/src/sdui/media.ts` uploadFile → `POST /v1/files` (`tulmi/src/routes/files.ts`, `src/media`, `media_items`, a storage bucket) | `MEDIA_KEEP_DAYS` (30 days) unless sent or shared; until deleted |
 | Other user content | Bots' chats and what they remember, asks to bots (200 characters in Activity), meeting notes, the calendar and to-dos, trips and places typed in, Code bot projects | `bot_chat_turns`, `bot_facts` (0038, 0042), `bots_app_events` (0040, 90 days), `notes` (0014), `calendar_events`/`calendar_tasks` (0054), `trips`, `plan_prefs` (0042, 0052), `code_projects` (0020+) | Until deleted |
-| Contacts (people you invite) | Email addresses typed to invite someone to a space; who is in your spaces. The phone's contacts are never read | `tulmi/src/botsBots/spaces.ts` invite, `space_invites.email`, `space_members`; `mail_outbox` | Invites: 7 days; members: until they leave or are removed |
+| Contacts (people you invite) | Email addresses typed to invite someone to a space; who is in your spaces; who asked to join a space with its code (their name, for its admin). The phone's contacts are never read | `tulmi/src/botsBots/spaces.ts` inviteEmail, `spaceJoin.ts`, `space_invites.email`, `space_join_requests` (0068), `space_members`; `mail_outbox` | Invites: 7 days; requests: until the space is deleted; members: until they leave or are removed |
 | Reports and blocks | A report: reason, note, a copy of what was reported; whom a person blocked | `tulmi/src/botsBots/safety.ts`, `blocks.ts`, `content_reports`, `user_blocks` (0057) | Reports: kept as a safety record; blocks: until unblocked or deleted |
 | Purchase history | Which plan, its store, period end (no card numbers) | RevenueCat (`app/src/billing/purchases.ts`), `entitlements` (0008, 0009, 0056); Razorpay on the web and desktop (`razorpay_subscriptions`, 0015) | Until deleted (stores keep their own) |
 | Other financial info | In a space's payment request: the payee's name and UPI ID, a note (and an amount only from older apps) | `tulmi/src/botsBots/payments.ts`, `space_payments` (0051, 0055) | Until the space is deleted |
@@ -81,7 +82,7 @@ Sentry on, PostHog off.
 | Contact Info | Email Address | App Functionality | Sign-in; space invites by email |
 | Contact Info | Phone Number | App Functionality | Phone sign-in only |
 | Contacts | Contacts | App Functionality | Email addresses you type to invite people to a space, and your spaces' members. The phone's contacts are never read |
-| User Content | Emails or Text Messages | App Functionality | Messages in Spaces' chats |
+| User Content | Emails or Text Messages | App Functionality | Messages in Spaces' chats and feeds (a message to one person is also seen by the space's admin) |
 | User Content | Photos or Videos | App Functionality | Photos and videos you give to a bot, send in a chat, or make with the image and video bots |
 | User Content | Audio Data | App Functionality | Dictation and voice asks (turned into text, then discarded) |
 | User Content | Other User Content | App Functionality, Product Personalization | Dictated text and history, bots' chats and memory, notes, calendar and to-dos, shared things, files, reports you make |
@@ -149,7 +150,7 @@ providers acting for X0 Bot are not "shared". "Optional" = the app works without
 | Personal info | Other info | Yes (gender) | No | No | Optional | App functionality, Personalization |
 | Financial info | Purchase history | Yes | No | No | Optional | App functionality, Account management |
 | Financial info | Other financial info | Yes (UPI IDs in payment requests) | No | No | Optional | App functionality |
-| Messages | Other in-app messages | Yes (Spaces' chats) | No | No | Optional | App functionality |
+| Messages | Other in-app messages | Yes (Spaces' chats and feeds) | No | No | Optional | App functionality |
 | Photos and videos | Photos | Yes | No | No | Optional | App functionality |
 | Photos and videos | Videos | Yes | No | No | Optional | App functionality |
 | Audio | Voice or sound recordings | Yes | No | Yes | Optional (needed for dictation) | App functionality |

@@ -101,8 +101,9 @@ routes/            one module per feature, each exporting register…Routes(app,
   ask/             POST /v1/ask, the desktop's on-screen agent (/v1/agent), the phone's Ask, the front door,
                    the one key's brain (/v1/ask/decide), the person's context (/v1/context), the voice chat (/v1/talk)
   billing/         the /pay page, Razorpay, RevenueCat and Razorpay webhooks
-  bots/            the bots platform and every Bots app area (shell, You, bots, Keybot, code, first run, spaces,
-                   trips, calendar, push ask, looks, sounds, safety, widgets), routines, the everyday tools' cards
+  bots/            the bots platform and every Bots app area (shell, You, bots, Keybot, code, first run, spaces and
+                   Work in space (work.ts), trips, calendar, push ask, looks, sounds, safety, widgets), routines, the
+                   everyday tools' cards
   code/            Xode: projects, jobs, the Worker's internal calls
   connectors/      connected apps, apps added by link, the published OAuth client document
   site/            the website's endpoints: SEO pages, demo, download, legal pages (policies/, in the app's look), health,
@@ -117,7 +118,9 @@ experience/        everything the apps draw, built as SDUI JSON
   desk/            the desktop window's pages, one file per page, with their kit, charts and time helpers
   bots/            the Bots app: kit.ts (its UI kit), screens/ (per area: <area>.ts lists its screens, <area>/ holds
                    one file per screen and parts.ts; small areas such as notes, routines are one file), looks, sounds,
-                   live data; screens/finds.ts draws what the everyday tools found
+                   live data; screens/finds.ts draws what the everyday tools found; the new Spaces in screens/spaces/
+                   (start.ts his thought and the crowd, feed.ts inside a space, peoplePage.ts), Work in space in
+                   screens/work.ts and screens/work/workTab.ts, Home's Ask as his thought in screens/shell/homeThought.ts
   keyboard/        buildKeyboardConfig (GET /v1/keyboard/config): keys, tools row, mic
   assistant/       the phone's Connected apps, Tasks, approval sheet, Ask and the You card
   onboard/         the onboarding: sign-in stage, one file per step, the store builds' variant
@@ -157,7 +160,8 @@ bots/              the bots platform: a bot's definition, store, keys, memory, t
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
-botsBots/          the Bots app's own bots behind their screens: plan, travel, shop, spaces, threads, safety, usage
+botsBots/          the Bots app's own bots behind their screens: plan, travel, shop, spaces (members, codes and joining, the feed,
+                   things shared from a bot, Work in space: docs/spaces.md), threads, safety, usage
 botsCode/          the Code bot's rules, intake and history as the Bots app keeps them
 botsCodeWork/      a Xode job read for the Bots app's work screens
 shell/             the Bots app's shell: the activity feed, search, events, sent asks
@@ -194,6 +198,7 @@ ads/               Meta and Google Tag Manager events
 | A phone screen | `tulmi/src/experience/phone/<screen>.ts`; the id → builder table is `phone/screens.ts` |
 | A desktop page | `tulmi/src/experience/desk/<page>.ts`; ids and tabs in `desk/screens.ts` |
 | A Bots app screen | `tulmi/src/experience/bots/screens/<area>/<screen>.ts`, listed in `screens/<area>.ts`; ids in `bots/ids.ts`, entry `bots/index.ts` |
+| The new Spaces' screens (his thought, the crowd, Call Your People, the feed with @ and /, Work in space, Home's Ask as his thought) | `experience/bots/screens/spaces/{start,feed,peoplePage}.ts`, `screens/work.ts`, `screens/work/workTab.ts`, `screens/shell/homeThought.ts`; the blocks in `shared/types/sdui.ts` 3i, kit `canSpaces2`, `canHomeThought`, `canVoice` (docs/bots-app.md section 8) |
 | Blip's moves and poses on the desktop | `shared/bots/blip.json`, `tulmi/src/experience/bots/blip.ts`, routes `routes/bots/blipCatalog.ts` (docs/blip.md) |
 | The bootstrap | `tulmi/src/experience/bootstrap/bootstrap.ts` |
 | The keyboard config | `tulmi/src/experience/keyboard/config.ts` |
@@ -211,6 +216,7 @@ ads/               Meta and Google Tag Manager events
 | The person's context (what the brain and Ask know of someone) | `tulmi/src/context/`, `routes/ask/context.ts` (docs/context.md) |
 | The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
+| Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migration 0068 (docs/spaces.md) |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |
 | The website's own pages (privacy, terms, support, pricing, delete account) | `tulmi/src/routes/site/policies/` (their look in `policies/shell.ts`); the pay page `routes/billing/pay.ts` |
 | Xode | `tulmi/src/code/` and `routes/code/`; jobs on Cloudflare in `jobs/` (docs/code-*.md, docs/cloudflare-jobs.md, docs/github-app.md) |
@@ -293,7 +299,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
 `viewer/docs/artifact-viewer.md`.

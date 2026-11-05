@@ -39,6 +39,7 @@ import { type PickData, pickProjects } from "./code/pickProjects.js";
 import { type CareData, type CarePull, type Comment, prCare } from "./code/prCare.js";
 import { type HomeData, type Branch, projectHome } from "./code/projectHome.js";
 import { type RulesView, projectRules } from "./code/projectRules.js";
+import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
 import { type ReadData, readProject } from "./code/readProject.js";
 
 const get = <T>(deps: BotsDeps, path: string): Promise<T | undefined> => deps.api<T>("GET", path).catch(() => undefined);
@@ -252,7 +253,12 @@ async function loadCare(ctx: BotsCtx, deps: BotsDeps): Promise<CareData | undefi
 
 // ===================================================================== the list
 export const codeScreens: BotsScreen[] = [
-  screen<HomeData>({ id: SCREENS.code, load: loadHome, build: codeHome }),
+  screen<HomeData & { work?: WorkRead }>({
+    id: SCREENS.code,
+    // With the new Spaces: Work in space's people for Xode too (screens/work/workTab.ts), on whichever home page it draws.
+    load: async (ctx, deps) => { const [home, work] = await Promise.all([loadHome(ctx, deps), loadWork(ctx, deps, "code")]); return { ...home, work }; },
+    build: (ctx, d) => codeHome(workCtx(ctx, d?.work), d),
+  }),
   screen<StartData>({ id: SCREENS.codeStart, load: loadStart, build: start }),
   screen<NewData | undefined>({ id: SCREENS.newProject, load: loadNew, build: newProject }),
   screen<PlanData | undefined>({ id: SCREENS.codePlan, load: loadPlan, build: codePlan }),

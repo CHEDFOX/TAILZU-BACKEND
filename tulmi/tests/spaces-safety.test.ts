@@ -29,7 +29,7 @@ const EMAIL: Record<string, string> = { [A_]: "aanya.sharma@example.in", [M_]: "
 
 vi.mock("../src/auth/supabase.js", async (orig) => {
   const real = await orig<typeof import("../src/auth/supabase.js")>();
-  return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id && EMAIL[id] ? { id, email: EMAIL[id] } : null; } };
+  return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id && EMAIL[id] ? { id, email: EMAIL[id], emailConfirmed: true } : null; } };
 });
 
 const pushes: Array<{ userId: string; kind: string }> = [];
@@ -71,12 +71,12 @@ async function served() {
     const r = await app.inject({ method, url, headers: { ...(user ? { authorization: `Bearer ${user}` } : {}), ...headers }, ...(payload !== undefined ? { payload: payload as object } : {}) });
     return { status: r.statusCode, body: r.body ? (() => { try { return r.json(); } catch { return r.body; } })() : null };
   };
-  /** Home: Aanya (admin), Mom (Family), Rohan (Kid). Everyone may message. */
+  /** Home: Aanya (admin), Mom and Rohan, each in by the invitation waiting for their address. Everyone may message. */
   const home = async () => {
     const id = (await call("POST", `${AREA}/spaces`, A_, { name: "Home" })).body.id as string;
-    for (const [who, role] of [[M_, "family"], [R_, "kid"]] as const) {
-      const inv = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { role })).body;
-      expect((await call("POST", `${AREA}/spaces/join`, who, { code: inv.code })).status).toBe(200);
+    for (const who of [M_, R_]) {
+      const inv = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: EMAIL[who] })).body;
+      expect((await call("PUT", `${AREA}/spaces/invitations/${inv.code}`, who, { decision: "accept", consent: true })).body.status).toBe("joined");
     }
     const chat = (await call("POST", `${AREA}/threads/group`, A_, { space: id, people: "all" })).body.id as string;
     return { id, chat };
@@ -302,6 +302,36 @@ describe("the admin", () => {
     const p = (await s.call("POST", `${AREA}/reports`, M_, { kind: "person", id: A_, reason: "other" })).body.report.id as string;
     expect((await s.call("PUT", `/v1/admin/reports/${p}`, null, { status: "dismissed" }, ADMIN)).body.report).toMatchObject({ status: "dismissed" });
     expect((await s.call("PUT", "/v1/admin/reports/00000000-0000-4000-8000-000000000000", null, { status: "dismissed" }, ADMIN)).status).toBe(404);
+  });
+});
+
+describe("a message to one person (a space's feed)", () => {
+  beforeEach(() => { resetSpaceTablesForTests(); resetAreaTablesForTests(); });
+
+  it("is reported only by who can see it, kept with whom it was to, and taken out without its line becoming anyone's", async () => {
+    const s = await served();
+    const { id, chat } = await s.home();
+    await s.say(A_, chat, "Morning");
+    const secret = (await s.call("POST", `${AREA}/spaces/${id}/feed`, R_, { text: "something awful", to: M_ })).body.message.id as string;
+    // Aanya, the admin, sees it, so she may report it too (spaces-feed.test.ts: a bystander can't).
+    expect((await s.call("GET", `${AREA}/reports/preview?kind=message&id=${secret}&thread=${chat}`, A_)).status).toBe(200);
+    const rep = (await s.call("POST", `${AREA}/reports`, M_, { kind: "message", id: secret, thread: chat, reason: "harassment" })).body.report.id as string;
+    const open = (await s.call("GET", "/v1/admin/reports", null, undefined, ADMIN)).body.reports[0];
+    expect(open.snapshot).toMatchObject({ text: "something awful", to: "Meera S." });
+    await s.call("PUT", `/v1/admin/reports/${rep}`, null, { status: "actioned", remove: true }, ADMIN);
+    for (const who of [A_, M_, R_]) expect(await s.texts(who, chat)).toEqual(["Morning"]);
+    const chats = (await s.call("GET", `${AREA}/threads`, R_)).body.threads as Array<{ id: string; last: { text: string } }>;
+    expect(chats.find((t) => t.id === chat)!.last.text).toBe("Aanya S.: Morning");
+  });
+
+  it("stays hidden from the one it was to once they block its sender", async () => {
+    const s = await served();
+    const { id, chat } = await s.home();
+    await s.call("POST", `${AREA}/spaces/${id}/feed`, R_, { text: "Just for you, Mom", to: M_ });
+    expect(await s.texts(M_, chat)).toContain("Just for you, Mom");
+    await s.call("POST", `${AREA}/blocks`, M_, { person: R_ });
+    expect(await s.texts(M_, chat)).not.toContain("Just for you, Mom");
+    expect((await s.call("POST", `${AREA}/spaces/${id}/feed`, R_, { text: "Sorry", to: M_ })).status).toBe(403);
   });
 });
 

@@ -14,6 +14,8 @@ process.env.SITE_DIR = "/tmp/tailzu-test-no-site";
 // eslint-disable-next-line import/first
 import { PRIVACY_POLICY_HTML } from "../src/routes/site/policies/privacy.js";
 // eslint-disable-next-line import/first
+import { PROVIDERS_HTML } from "../src/routes/site/policies/providers.js";
+// eslint-disable-next-line import/first
 import { TERMS_EFFECTIVE, TERMS_HTML } from "../src/routes/site/policies/terms.js";
 // eslint-disable-next-line import/first
 import { SUPPORT_EMAIL, SUPPORT_HTML } from "../src/routes/site/policies/support.js";
@@ -62,6 +64,9 @@ const github = between("12. Xode and GitHub", "13. Other apps you connect");
 const apps = between("13. Other apps you connect", "14. Bots");
 const bots = between("14. Bots", "15. Widgets, Live Activities");
 const lock = between("15. Widgets, Live Activities", "16. Changes to this policy");
+// The companies are named on the Service providers page (/privacy/providers), part of the policy; Section 3 links to it.
+const providers = text(PROVIDERS_HTML);
+const providersOf = (from: string, to: string) => providers.slice(providers.indexOf(from), providers.indexOf(to));
 const terms = text(TERMS_HTML);
 const support = text(SUPPORT_HTML);
 
@@ -85,7 +90,8 @@ describe("Xode and GitHub (privacy, Section 12)", () => {
   });
 
   it("says where the code goes and what is kept, without promising more than the code keeps back", () => {
-    expect(github).toContain("X0 Bot tells OpenRouter to use only providers that neither keep nor train on what they are sent");
+    expect(github).toContain("X0 Bot asks only for providers that neither keep nor train on what they are sent");
+    expect(providersOf("Xode and GitHub (see Section 12)", "Other apps you connect")).toContain("only to providers that neither keep nor train on what they are sent");
     expect(github).toContain("With the App we keep no GitHub token");
     expect(github).toContain("the first 200 characters of the task it was made for");
     expect(github).toContain("the first 500 characters of each task");
@@ -167,8 +173,9 @@ describe("the Lock Screen (privacy, Section 15)", () => {
 
 describe("purchases (privacy 1.3 and Section 3)", () => {
   it("names every processor the code pays through", () => {
-    const s3 = between("3. Third parties we use", "4. Data retention");
-    for (const name of ["RevenueCat", "Apple App Store / Google Play", "Razorpay", "Paddle"]) expect(s3, name).toContain(name);
+    expect(between("3. Service providers we use", "4. Data retention")).toContain("Service providers");
+    const bought = providersOf("Purchases (see 1.3)", "Notifications (see Section 15)");
+    for (const name of ["RevenueCat", "Apple App Store / Google Play", "Razorpay", "Paddle"]) expect(bought, name).toContain(name);
     expect(policy).toContain("We give Razorpay your X0 Bot account ID");
   });
 });

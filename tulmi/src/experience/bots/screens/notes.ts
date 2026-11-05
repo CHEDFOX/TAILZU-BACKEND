@@ -22,6 +22,8 @@ import {
   PALETTE_HEX, SCREENS, type BotsCtx,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
+import type { BotsDeps } from "../live.js";
+import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
 import { shareButton } from "../shareAction.js";
 import { clockOf, dayLabel } from "../../../shell/feed.js";
 import { notesStats, WEEK_MS, type NotesStats } from "../../../notes/stats.js";
@@ -182,8 +184,10 @@ export function stopNotes(ctx: BotsCtx, id: string | undefined): ActionSpec {
   return (ctx.can.has(NOTES_STOP) && id ? { kind: "notes.stop", id } : { kind: "notes.toggle" }) as ActionSpec;
 }
 
-function notesLoad(_ctx: BotsCtx, deps: { api<T>(m: "GET", p: string): Promise<T> }) {
-  return deps.api<NotesData>("GET", "/v1/notes?limit=100");
+/** The meetings, and (the new Spaces) Work in space's people for the Notes bot (screens/work/workTab.ts). */
+async function notesLoad(ctx: BotsCtx, deps: Pick<BotsDeps, "api">): Promise<NotesData & { work?: WorkRead }> {
+  const [notes, work] = await Promise.all([deps.api<NotesData>("GET", "/v1/notes?limit=100"), loadWork(ctx, deps, "notes")]);
+  return { ...notes, work };
 }
 
 /** What a meeting left: "4 to-dos, 3 decisions", "2 to-dos open". Empty before it was looked at, or when it left nothing. */
@@ -462,6 +466,6 @@ function notePage(ctx: BotsCtx, d: NoteData | undefined) {
 // ===================================================================== the list
 
 export const notesScreens: BotsScreen[] = [
-  screen<NotesData>({ id: SCREENS.notes, load: notesLoad, build: notesPage }),
+  screen<NotesData & { work?: WorkRead }>({ id: SCREENS.notes, load: notesLoad, build: (ctx, d) => notesPage(workCtx(ctx, d?.work), d) }),
   screen<NoteData>({ id: SCREENS.note, load: noteLoad, build: notePage }),
 ];

@@ -49,6 +49,12 @@ const whenLine = (ctx: BotsCtx, at: number | null, allDay: boolean) => (at === n
 
 export const link = (label: string, onPress: ActionRef): Node => row([text(label, { size: 13, weight: 500, lineHeight: 18 })], { minHeight: 32, paddingHorizontal: 4 }, onPress);
 
+/** The two places that are always there, said quietly under the list. */
+export const quietLinks = (): Node => row([link("Chats", open(SCREENS.chats)), meta("·", { size: 13 }), link("Given to you", open(SCREENS.spaceTasks))], { gap: 6, justifyContent: "center" });
+
+/** How many new things, in an ink dot. */
+export const countDot = (n: number): Node => box([text(n > 99 ? "99+" : String(n), { size: 11, weight: 600, color: C.paper, lineHeight: 14 })], { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 });
+
 // ===================================================================== bots.spaces: the list
 export interface SpacesData {
   spaces?: Space[]; you?: string; unread?: number; given?: Task[]; one?: { space: Space; items: Item[]; payments: Payment[]; tasks: Task[]; mailReady: boolean };
@@ -64,19 +70,18 @@ export function approversLine(s: Space): string {
   const ask = s.members.filter((m) => !m.canApprove && m.perms.includes("askPay")).map((m) => (m.you ? "you" : m.name));
   return `${names(yes)}${ask.length ? ` · ${names(ask)} can ask` : ""}`;
 }
-export const youAre = (s: Space) => (s.me.admin ? "You're the admin" : `You're ${s.members.find((m) => m.you)?.roleName ?? "in it"}`);
 export const memberName = (m: Member) => (m.you ? `${m.name} (you)` : m.name);
 
 export const openChat = (spaceId: string): ActionRef => call("POST", `${A}/threads/group`, { space: spaceId, people: "all" }, { assignTo: "chat", ok: { kind: "navigate", screenId: SCREENS.thread, params: { id: "$state.chat.id" } }, fail: toast("Couldn't open the chat. Try again.", true) });
 
 // ===================================================================== one space, whole
-function payRow(ctx: BotsCtx, s: Space, p: Payment): Node {
+export function payRow(ctx: BotsCtx, spaceId: string, p: Payment): Node {
   const status = p.status === "waiting" ? (p.canDecide ? "Waiting for your yes" : `Waiting for a yes · asked by ${p.askedBy}`)
     : p.status === "approved" ? `${p.decidedBy} said yes · ${p.canMarkPaid ? "you pay in your UPI app" : "to be paid"}`
       : p.status === "paid" ? `Paid by ${p.decidedBy}${p.paidAt ? ` · ${shortDate(ctx, p.paidAt)}` : ""}`
         : p.status === "declined" ? `${p.decidedBy} said no` : "Taken back";
   const mark = p.status === "paid" ? "done" : p.status === "declined" || p.status === "cancelled" ? "failed" : p.canDecide ? "needs" : "waiting";
-  const base = `${A}/spaces/${enc(s.id)}/payments/${enc(p.id)}`;
+  const base = `${A}/spaces/${enc(spaceId)}/payments/${enc(p.id)}`;
   const approve = call("PUT", base, { decision: "approve" }, {
     assignTo: "decided", ok: seq(toast("Approved. Now pay in your UPI app"), { kind: "navigate", screenId: SCREENS.approve, params: { upi: "$state.decided.payment.upi", bot: "tailzu" } }),
     fail: toast("Couldn't approve it. Someone may have answered.", true),
@@ -129,7 +134,8 @@ export function taskRow(ctx: BotsCtx, t: Task, o: { showSpace?: boolean } = {}):
 }
 
 function memberRow(s: Space, m: Member): Node {
-  const who = row([personDot(m.name, m.you, 32), col([text(memberName(m), { size: 15, lineHeight: 20, lines: 1 }), meta(m.roleName, { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 0 }, open(SCREENS.spaceMember, { id: s.id, member: m.userId }));
+  // No roles any more: the space's maker is its admin, everyone else a member.
+  const who = row([personDot(m.name, m.you, 32), col([text(memberName(m), { size: 15, lineHeight: 20, lines: 1 }), ...(m.maker ? [meta("Admin", { size: 12 })] : [])], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 0 }, open(SCREENS.spaceMember, { id: s.id, member: m.userId }));
   return row([who, ...(!m.you && canDo(s, "message") ? [iconButton("send", messagePerson(m.userId), `Message ${m.name}`)] : []), icon("chevron", { size: 16, color: C.meta })], { ...rowPad, paddingRight: 12 });
 }
 
@@ -214,7 +220,7 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
   ], { gap: 14 });
 
   // What waits on you: three at most; the rest are in the feed below.
-  const needs = [...waiting.map((p) => payRow(ctx, s, p)), ...forMe.map((t) => taskRow(ctx, t))];
+  const needs = [...waiting.map((p) => payRow(ctx, s.id, p)), ...forMe.map((t) => taskRow(ctx, t))];
   const more = needs.length - 3;
   const waitingNow = needs.length
     ? section(`Waiting on you · ${needs.length}`, [rowsCard(needs.slice(0, 3)), ...(more > 0 ? [meta(`${plural(more, "more thing")} in the feed below.`, { size: 12 })] : [])])
@@ -249,7 +255,7 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
   const soonest = (a: Task, b: Task) => (a.at ?? Number.MAX_SAFE_INTEGER) - (b.at ?? Number.MAX_SAFE_INTEGER);
   for (const t of o.tasks.filter((x) => !x.done && !forMe.includes(x)).sort(soonest)) rows[t.kind === "plan" ? "plans" : "tasks"].push(taskRow(ctx, t));
   for (const it of [...o.items].sort((a, b) => b.updatedAt - a.updatedAt)) rows[ITEM_KIND[it.kind] ?? "files"].push(itemRow(ctx, it));
-  for (const p of o.payments.filter((x) => !x.canDecide)) rows.money.push(payRow(ctx, s, p));
+  for (const p of o.payments.filter((x) => !x.canDecide)) rows.money.push(payRow(ctx, s.id, p));
   const kinds = FEED.filter((f) => rows[f.value].length);
   const total = kinds.reduce((n, f) => n + rows[f.value].length, 0);
   const feed: Node[] = total
@@ -283,11 +289,11 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
   const invites = canDo(s, "invite") ? s.invites?.length ?? 0 : 0;
   const peopleRow = row([
     row(s.members.slice(0, 3).map((m) => box([personDot(m.name, m.you, 26)], { marginRight: -6, borderRadius: 16, borderWidth: 2, borderColor: C.paper })), { paddingRight: 6 }),
-    col([text(`People · ${s.members.length}`, { size: 15, weight: 500, lineHeight: 20 }), meta([invites ? `${plural(invites, "invite")} waiting` : "", "roles, bots and settings"].filter(Boolean).join(" · "), { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    col([text(`People · ${s.members.length}`, { size: 15, weight: 500, lineHeight: 20 }), meta([invites ? `${plural(invites, "invite")} waiting` : "", "bots and settings"].filter(Boolean).join(" · "), { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     icon("chevron", { size: 16, color: C.meta }),
   ], { gap: 12, alignItems: "center", padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }, { kind: "toggleState", path: "peopleOpen" } as ActionRef);
   const people = when({ truthy: "peopleOpen" }, col([
-    section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => memberRow(s, m)))], s.me.admin ? link("Roles", open(SCREENS.spaceRoles, { id: s.id })) : undefined),
+    section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => memberRow(s, m)))]),
     ...(invites ? [section(`Invites waiting · ${invites}`, [rowsCard(inviteRows(ctx, s, o.mailReady))])] : []),
     section(`Bots · ${s.bots.length}`, [botsCard(s, mineBots)]),
     ...(canDo(s, "rename") ? [section("Name", [inputBox([field("spaceRename", "spaceRename", s.name, { onSubmit: rename }), button("Rename", rename, { kind: "secondary", size: "md" })])])] : []),

@@ -13,7 +13,7 @@ vi.hoisted(() => {
 });
 
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
-const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
+const { fakeDeps, IST, FIXED_NOW } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { shareTo } = await import("../src/experience/bots/shareAction.js");
 const { spacesApi } = await import("./spaces-data.js");
@@ -47,11 +47,9 @@ describe("Spaces' screens", () => {
       [`PUT ${A}/spaces/s1/payments/p-groceries`, `POST ${A}/spaces/s1/lists`, `PUT ${A}/spaces/s1/tasks/t-nani`, `DELETE ${A}/spaces/s1/invites/QW3RT7YP`, `POST ${A}/threads/group`, `POST ${A}/threads/direct`, `PUT ${A}/spaces/s1`, `DELETE ${A}/spaces/s1`]],
     ["bots.space.bot", { id: "s1", bot: "plan" }, ["Plan Ease in Home", "Mom · shares everything", "Satsang at Shanti's", "Submit pension form", "Not sharing: Rohan.", "What you share here", "Everything", "Pick some", "Nothing", "Dentist", "Renew passport"], [`PUT ${A}/spaces/s1/bots/plan/mine`]],
     ["bots.space.bot", { id: "s1", bot: "code" }, ["Xode in Home", "Rohan · shares some", "school-site", "Working · add the results page · 20 min", "What you share here", "shop"], [`PUT ${A}/spaces/s1/bots/code/mine`]],
-    ["bots.space.member", { id: "s1", member: "r" }, ["What Rohan can do", "Kid", "Give tasks to others", "Plan for others", "Approve payments", "Remove Rohan from Home"], [`PUT ${A}/spaces/s1/members/r`, `DELETE ${A}/spaces/s1/members/r`]],
-    ["bots.space.member", { id: "s1", member: "u" }, ["What you can do", "You made this space, so you can do everything."], []],
-    ["bots.space.invite", { id: "s1" }, ["Bring someone into Home", "Who are they to you?", "Family", "Kid", "Grandparent", "Choose exactly", "Send the invite", "Create the invite link", "Email isn't switched on yet"], [`POST ${A}/spaces/s1/invite`]],
-    ["bots.space.roles", { id: "s1" }, ["Roles in Home", "Grandparent", "Family", "A new role"], [`POST ${A}/spaces/s1/roles`]],
-    ["bots.space.roles", { id: "s1", role: "r-nani" }, ["Change Grandparent", "Delete it"], [`PUT ${A}/spaces/s1/roles/r-nani`, `DELETE ${A}/spaces/s1/roles/r-nani`]],
+    ["bots.space.member", { id: "s1", member: "r" }, ["Rohan", "Home · Member · joined 4 Aug", "Rohan can share, message, give tasks and plans, and ask for money here, like everyone in Home.", "Message Rohan", "Remove Rohan from Home", "Report or block Rohan"], [`DELETE ${A}/spaces/s1/members/r`, `POST ${A}/threads/direct`]],
+    ["bots.space.member", { id: "s1", member: "u" }, ["You", "You made Home, so you are its admin. You can see everyone's work there, let people in and remove them."], []],
+    ["bots.space.invite", { id: "s1" }, ["Bring someone into Home", "Their email", "The space's code", "7KQ-29D", "Anyone with it can ask to join. You let them in.", "Invites waiting · 1", "Send the invite", "Email isn't switched on yet"], [`POST ${A}/spaces/s1/invite`]],
     ["bots.space.item", { item: "i-groceries" }, ["Groceries", "Mom: For the week", "Chakki atta · 5 kg", "Paneer · 400 g"], [`PUT ${A}/items/i-groceries`, `DELETE ${A}/items/i-groceries`]],
     ["bots.space.pay", { id: "s1" }, ["Ask for a payment", "Pay to (UPI ID)", "X0 Bot never pays by itself"], [`POST ${A}/spaces/s1/payments`]],
     ["bots.space.tasks", {}, ["Given to you", "Call Nani", "Home · For you"], [`PUT ${A}/spaces/s1/tasks/t-nani`]],
@@ -103,16 +101,67 @@ describe("Spaces' screens", () => {
     expect(JSON.stringify(approve?.onSuccess)).toContain("$state.decided.payment.upi");
   });
 
-  it("sends the chosen permissions as switches, and only those the person can give", async () => {
-    const { nodes, s } = await build("bots.space.member", "phone", { id: "s2", member: "k" }, spacesApi());
-    // In Studio, Aanya is Family: she can't change anyone (no "Change what others can do").
-    expect(texts(nodes)).toContain("Only someone who can change what others can do may change this.");
-    expect(calls(nodes).filter((c) => c.startsWith("PUT"))).toEqual([]);
-    const home = await build("bots.space.member", "desktop", { id: "s1", member: "m" });
-    const put = actions(home.nodes).find((a) => a.kind === "callEndpoint" && String(a.path).endsWith("/members/m") && (a.body as { perms?: unknown }).perms);
-    expect((put!.body as { perms: Record<string, string> }).perms).toMatchObject({ approve: "$state.p_approve", rename: "$state.p_rename" });
-    expect(home.s.state).toMatchObject({ p_approve: true, p_rename: false });
-    void s;
+  it("has no roles any more: no role chips or switches, and only the space's admin removes people or invites", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      // In Studio, Aanya is a member: Kabir's page has Message and Report, no Remove; the invite page says only the admin invites.
+      const { nodes } = await build("bots.space.member", client, { id: "s2", member: "k" });
+      expect(texts(nodes)).toContain("Kabir can share, message, give tasks and plans, and ask for money here, like everyone in Studio.");
+      expect(calls(nodes).filter((c) => c.startsWith("PUT") || c.startsWith("DELETE"))).toEqual([]);
+      const invite = await build("bots.space.invite", client, { id: "s2" });
+      expect(texts(invite.nodes)).toContain("Only the space's admin can invite people");
+      expect(calls(invite.nodes)).toEqual([]);
+      // Nobody removes the admin.
+      const dev = await build("bots.space.member", client, { id: "s2", member: "d" });
+      expect(texts(dev.nodes)).toContain("Dev made Studio, so they are its admin.");
+      // Not a word of roles, anywhere on the old screens.
+      for (const [id, params] of [["bots.spaces", {}], ["bots.spaces", { id: "s1" }], ["bots.space.member", { id: "s1", member: "r" }], ["bots.space.member", { id: "s1", member: "u" }], ["bots.space.invite", { id: "s1" }]] as const) {
+        const b = await build(id, client, params);
+        expect(texts(b.nodes), `${id} ${client}`).not.toMatch(/\bRoles?\b|Grandparent|Choose exactly|What .* can do/);
+        expect(calls(b.nodes).some((c) => /\/roles|\/members\/[a-z]+$/.test(c) && c.startsWith("PUT")), `${id} ${client}`).toBe(false);
+      }
+    }
+  });
+
+  it("a code that only asks to join says \"Request sent\" on an old build (the box and an invite's link)", async () => {
+    const api = { ...spacesApi(), [`GET ${A}/spaces/join/QW3RT7YP`]: { invite: { name: "Cousins", members: 4, email: null } } };
+    for (const client of ["phone", "desktop"] as const) {
+      const { nodes } = await build("bots.spaces", client, { join: "QW3RT7YP" }, api);
+      const joins = actions(nodes).filter((a) => a.kind === "callEndpoint" && a.path === `${A}/spaces/join`);
+      expect(joins.length, client).toBeGreaterThanOrEqual(2);
+      for (const j of joins) {
+        // An old build sends no consent: it never showed the line about the admin.
+        expect((j.body as Record<string, unknown>).consent, client).toBeUndefined();
+        const ok = j.onSuccess as { kind: string; if: unknown; then: unknown; else: unknown };
+        expect(ok).toMatchObject({ kind: "condition", if: { eq: ["joined.status", "requested"] } });
+        expect(JSON.stringify(ok.then)).toContain("Request sent. The space's admin will let you in.");
+        expect(JSON.stringify(ok.else)).toContain("You're in");
+      }
+    }
+  });
+
+  it("a link with a space's own code: an old build doesn't ask what it is for (it is never named), and still offers Join", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      // The server answers null for it now: asked, the card would say the invite doesn't work.
+      const { nodes } = await build("bots.spaces", client, { join: "7kq-29d" }, { ...spacesApi(), [`GET ${A}/spaces/join/7KQ29D`]: { invite: null } });
+      expect(texts(nodes), client).toContain("You're invited to a space");
+      expect(texts(nodes), client).not.toContain("This invite doesn't work any more. Ask for a new one.");
+      expect(actions(nodes).some((a) => a.kind === "callEndpoint" && a.path === `${A}/spaces/join` && (a.body as { code?: string }).code === "7KQ29D"), client).toBe(true);
+    }
+  });
+
+  it("an old build's chat says who a message to one person went to (its sender and the admin read it there)", async () => {
+    const chat = spacesApi()[`GET ${A}/threads/th-home`] as { messages: Array<Record<string, unknown>> };
+    const withTo = { ...chat, messages: [...chat.messages,
+      { id: "msg5", from: { userId: "u", name: "Aanya", you: true }, to: { userId: "m", name: "Mom", you: false }, text: "Your check-up is Friday", at: FIXED_NOW - 5 * 60_000, files: [], item: null },
+      { id: "msg6", from: { userId: "m", name: "Mom", you: false }, to: { userId: "u", name: "Aanya", you: true }, text: "Thank you beta", at: FIXED_NOW - 60_000, files: [], item: null },
+    ] };
+    for (const client of ["phone", "desktop"] as const) {
+      const { nodes } = await build("bots.thread", client, { id: "th-home" }, { ...spacesApi(), [`GET ${A}/threads/th-home`]: withTo });
+      const t = texts(nodes).split("\n");
+      expect(t.filter((x) => x === "To Mom"), client).toHaveLength(1);
+      // The one it went to sees a message like any other.
+      expect(t.some((x) => x.startsWith("To Aanya")), client).toBe(false);
+    }
   });
 
   it("an invite's link opens Spaces at joining: what it is for and Join at the top, the code in Join with a code too", async () => {

@@ -24,7 +24,7 @@ const EMAIL: Record<string, string> = { [A_]: "aanya.sharma@example.in", [M_]: "
 
 vi.mock("../src/auth/supabase.js", async (orig) => {
   const real = await orig<typeof import("../src/auth/supabase.js")>();
-  return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id && EMAIL[id] ? { id, email: EMAIL[id] } : null; } };
+  return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id && EMAIL[id] ? { id, email: EMAIL[id], emailConfirmed: true } : null; } };
 });
 vi.mock("../src/push/index.js", () => ({ pushEngine: () => ({ notify: async () => null }) }));
 
@@ -114,13 +114,13 @@ async function served(o: { flags?: Flags; labels?: Record<string, string> } = {}
     const r = await app.inject({ method, url, headers: { ...(user ? { authorization: `Bearer ${user}` } : {}), ...headers }, ...(payload !== undefined ? { payload: payload as object } : {}) });
     return { status: r.statusCode, body: r.body ? (() => { try { return r.json(); } catch { return r.body; } })() : null };
   };
-  /** Home: Aanya, Mom (Family), Rohan (Kid). Mom gives Aanya a task, shares a list and says she is running late. */
+  /** Home: Aanya, Mom, Rohan (each in by the invitation to their address). Mom gives Aanya a task, shares a list and says she is running late. */
   const home = async () => {
     const id = (await call("POST", `${AREA}/spaces`, A_, { name: "Home" })).body.id as string;
-    const fam = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { role: "family" })).body;
-    await call("POST", `${AREA}/spaces/join`, M_, { code: fam.code });
-    const kid = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { role: "kid" })).body;
-    await call("POST", `${AREA}/spaces/join`, R_, { code: kid.code });
+    for (const who of [M_, R_]) {
+      const inv = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: EMAIL[who] })).body;
+      await call("PUT", `${AREA}/spaces/invitations/${inv.code}`, who, { decision: "accept", consent: true });
+    }
     clock.t += HOUR;
     const task = (await call("POST", `${AREA}/spaces/${id}/tasks`, M_, { title: "Call Grandma", people: [A_], tz: 330 })).body.task;
     clock.t += 10 * MIN;

@@ -11,8 +11,9 @@ import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, toTab, C, headBar, type PageOpts, hasOutbox,
-  needsCard, askBar, page, when, seq, blip, botLook,
+  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice,
 } from "../../kit.js";
+import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
 import type { LiveBot } from "../../live.js";
 import { type DeletionState, leavingCard } from "../accountGrace.js";
@@ -71,8 +72,10 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     const strip = withNotes && canStrip(ctx) ? notesTileSpec(ctx, notes) : undefined;
     // Now and then an idle bot does something of his own (a sneeze, a hiccup…): the catalog's, for a build that plays them.
     const surprises = homeSurprises(ctx);
+    // A double tap on a bot's own tile is a voice chat with that bot (Home's thought, canVoice); groups and Make a bot have none.
+    const talk = canHomeThought(ctx) && canVoice(ctx);
     const living = botTiles([
-      ...shown.map((b) => botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) })),
+      ...shown.map((b) => ({ ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}) })),
       ...groupsShown.map(groupTileSpec),
       makeTileSpec(open(SCREENS.make)),
     ], { columns, height, padding, gap, ...(strip ? { strip, stripHeight: notesStripHeight(ctx) } : {}), ...(surprises ? { surprises } : {}) });
@@ -165,7 +168,9 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     tiles(ctx, 2, 132, 16, more.notes, more.groups),
     ...routinesRow(ctx, more.routines),
   ];
-  const footer = [askBar("phone", { ctx })];
+  // Ask any bot: his thought where the build draws it (a tiny bot walking the foot of Home), else the ask bar.
+  const thought = canHomeThought(ctx);
+  const footer = [thought ? homeThought(ctx) : askBar("phone", { ctx })];
   // HOME'S WELCOME, where the build plays it (the first visit after onboarding; a visit after a long time away or the first on
   // a newer Home): only the bot waving with his line, for a few seconds. Then he turns and walks off the side, and the card
   // for whatever is missing (the microphone, the keyboard) comes in over him as he goes; with nothing missing it closes by
@@ -176,7 +181,8 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
   const gone: Condition = { truthy: "helloGone" };
   const arrive = (x: Node, i: number): Node => (intro ? { type: "Rise", props: { delayMs: i * 70, fromY: 36, scaleFrom: 0.98 }, visibleIf: gone, children: [x] } : x);
   return page(ctx, {
-    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}) },
+    tab: "bots", title: "Your bots", state: { ...n.state, ...(intro ? { helloSeen: false, helloGone: false } : {}), ...(thought ? HOME_THOUGHT_STATE : {}) },
+    ...(thought ? { talkTo: homeTalkTo(ctx) } : {}),
     pinned: intro ? pinned.map((x) => when(gone, x)) : pinned,
     ...(hasNotes(ctx) ? { live: ["notes"] } : {}), pullBot: homePull(ctx),
     body: intro

@@ -1,18 +1,36 @@
 /**
- * Bots app · spaces: family and friends. Members and what each may do, invites by link or email, what's shared, payment requests, and
- * messaging (src/botsBots/{spaces,spacePerms,shared,payments,threads,mail}.ts; screens in experience/bots/screens/spaces.ts).
- * Registered by routes/bots/botsBots.ts. Every route is the signed-in person's own; every permission is checked in src/botsBots, never here.
+ * Bots app · spaces: family and friends. Members, the admin's invites and the space's code, join requests, the feed (a message to
+ * everyone or to one person, a thing shared from a bot), what's shared, payment requests, and messaging
+ * (src/botsBots/{spaces,spaceJoin,spaceFeed,grants,spacePerms,shared,payments,threads,mail}.ts; docs/spaces.md; screens in
+ * experience/bots/screens/spaces.ts). Registered by routes/bots/botsBots.ts, as is Work in space (routes/bots/work.ts). Every route is
+ * the signed-in person's own; every permission is checked in src/botsBots, never here.
  *
- *   GET    /v1/botsapp/bots/spaces                      -> { spaces, you, unread }      each with `waiting` (payments waiting for your yes)
- *   POST   /v1/botsapp/bots/spaces { name }             -> 201 { id }
- *   GET    /v1/botsapp/bots/spaces/:id                  -> { space, items, payments, tasks, you, mailReady }   one whole (invites and activity as you may see them)
- *   PUT    /v1/botsapp/bots/spaces/:id { name }         rename;   DELETE leave (the admin: delete)
- *   POST   /v1/botsapp/bots/spaces/:id/invite { email?, role?, perms? }  -> { code, link, expiresAt, email, mail, mailReady }
- *   DELETE /v1/botsapp/bots/spaces/:id/invites/:code    take an invite back
- *   POST   /v1/botsapp/bots/spaces/join { code }        -> { id, name }   (an email invite: once, on any account)
- *   GET    /v1/botsapp/bots/spaces/join/:code           -> { invite: { name, members } | null }   what an invite is for, before joining
- *   PUT    /v1/botsapp/bots/spaces/:id/members/:member { role } | { perms } | { canApprove };  DELETE (remove)
- *   POST   /v1/botsapp/bots/spaces/:id/roles { name, perms };  PUT|DELETE .../roles/:role
+ *   GET    /v1/botsapp/bots/spaces                      -> { spaces, you, unread }      each with `waiting` (payments waiting for your yes).
+ *                                                        Home and both apps read it at every launch: it only reads, as it always did
+ *   GET    /v1/botsapp/bots/spaces?full=1               the same, each space also with `invited`, `last` and `unread`, and the person's
+ *                                                        `invitations`, `requests` (theirs to decide), `asked` and `draft` (the new Spaces screen)
+ *   POST   /v1/botsapp/bots/spaces { name }             -> 201 { id }   a real, named space (an old build's Start a space)
+ *   POST   /v1/botsapp/bots/spaces/draft { name? }      -> 201 { draft }   Create: the draft nobody else sees, made if none (a name names it)
+ *   POST   /v1/botsapp/bots/spaces/draft/invite { email }  -> 201 { draft }   Call Your People: an invite mailed at once
+ *   POST   /v1/botsapp/bots/spaces/draft/done { name? } -> { id, name }   Done: the draft is a real space
+ *   DELETE /v1/botsapp/bots/spaces/draft                Back: the draft goes, with its invites and any mail not yet sent
+ *   PUT    /v1/botsapp/bots/spaces/invitations/:code { decision: accept|dismiss, consent? }  -> JoinResult
+ *   POST   /v1/botsapp/bots/spaces/join { code, consent? }  -> JoinResult: joined (the invited address), member, or requested
+ *   GET    /v1/botsapp/bots/spaces/join/:code           -> { invite: { name, members } | null }   what an email invite's code is for,
+ *                                                        before joining (a space's own code: always null, so codes can't be guessed for names)
+ *   GET    /v1/botsapp/bots/spaces/:id                  -> { space, items, payments, tasks, you, mailReady }   one whole (its code for the admin)
+ *   PUT    /v1/botsapp/bots/spaces/:id { name }         rename (the admin);   DELETE leave (the admin: delete)
+ *   POST   /v1/botsapp/bots/spaces/:id/code             -> { code }   the admin makes a new code; the old one stops working
+ *   POST   /v1/botsapp/bots/spaces/:id/invite { email? } -> { code, link, expiresAt, email, mail, mailReady }   the admin (an old build's
+ *                                                        invite: without an email, the space's own code and its link)
+ *   DELETE /v1/botsapp/bots/spaces/:id/invites/:code    take an invite back (the admin)
+ *   PUT    /v1/botsapp/bots/spaces/:id/requests/:rid { decision: accept|dismiss }  -> { status, name }   the admin lets someone in, or not
+ *   PUT    /v1/botsapp/bots/spaces/:id/consent          the member tapped OK on the line about the admin
+ *   GET    /v1/botsapp/bots/spaces/:id/feed?before=&limit=  -> FeedRead
+ *   POST   /v1/botsapp/bots/spaces/:id/feed { text?, to?, thing?: { bot, id }, files?, voice?, everyone? }  -> 201 { message } | 200 { confirm }
+ *   DELETE /v1/botsapp/bots/spaces/:id/grants/:gid       Stop sharing a thing (its sharer, or the admin): the access and its card go
+ *   DELETE /v1/botsapp/bots/spaces/:id/members/:member  remove someone (the admin)
+ *   PUT    /v1/botsapp/bots/spaces/:id/members/:member, POST|PUT|DELETE .../roles...   410 gone: there are no roles any more
  *   POST   /v1/botsapp/bots/spaces/:id/bots { slug };  DELETE .../bots/:slug
  *   GET    /v1/botsapp/bots/spaces/:id/sharing          -> { bots: [{ bot, sharing: [{ userId, name, you, mode }] }] }   who shares what, per bot
  *   GET    /v1/botsapp/bots/spaces/:id/bots/:bot/shared  -> { bot, people: [{ userId, name, you, mode, items }] }   each person's shared items
@@ -23,8 +41,8 @@
  *   POST   /v1/botsapp/bots/spaces/:id/memory { text, section? } -> { line }   a line for the group's bots
  *   DELETE /v1/botsapp/bots/spaces/:id/memory/:line      forget it (the one who wrote it, or the admin)
  *   GET    /v1/botsapp/bots/spaces/:id/activity
- *   GET    /s/bots.spaces?join=CODE                     an invite's link (spaces.ts inviteLinkOf) opened in a browser, not the app: a small
- *                                                      page (no session) that says what it is for, opens Tailzu at joining, and gives the code
+ *   GET    /s/bots.spaces?join=CODE                     a code's link (spaces.ts inviteLinkOf) opened in a browser, not the app: a small
+ *                                                      page (no session) that opens X0 Bot at joining and gives the code to type
  *   GET    /v1/botsapp/bots/invite/:code                the same page, for the links invites had before
  *
  *   GET    /v1/botsapp/bots/share/targets               -> { spaces, people }   where something can be shared
@@ -55,7 +73,7 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
-import { isBotError } from "../../bots/index.js";
+import { BotError, isBotError } from "../../bots/index.js";
 import { attachmentKindOf, type MediaService } from "../../media/index.js";
 import { Blocks } from "../../botsBots/blocks.js";
 import { startMailSender } from "../../botsBots/mail.js";
@@ -65,7 +83,11 @@ import { SharedItems } from "../../botsBots/shared.js";
 import { supabase } from "../../auth/supabase.js";
 import { registerSafetyRoutes, suspendWithSupabase } from "./safety.js";
 import { verifyQuery } from "../../botsBots/spaceLinks.js";
-import { INVITE_CODE_RE, JOIN_SCREEN, type Spaces } from "../../botsBots/spaces.js";
+import { codeOf, INVITE_CODE_RE, isJoinCodeShape, JOIN_SCREEN, showCode, type Spaces } from "../../botsBots/spaces.js";
+import { SpaceJoin, type Joiner } from "../../botsBots/spaceJoin.js";
+import { SpaceFeed } from "../../botsBots/spaceFeed.js";
+import { Grants } from "../../botsBots/grants.js";
+import { Work } from "../../botsBots/work.js";
 import { SpaceTasks } from "../../botsBots/spaceTasks.js";
 import { SpaceShares, type ShareSources } from "../../botsBots/spaceShares.js";
 import { SpaceMemory } from "../../botsBots/spaceMemory.js";
@@ -83,8 +105,10 @@ const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArr
 const param = (req: FastifyRequest, k: string): string => String((req.params as Record<string, unknown>)[k] ?? "");
 const queryOf = (req: FastifyRequest): Record<string, unknown> => (req.query as Record<string, unknown> | undefined) ?? {};
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-/** An invite's code as typed or linked: letters and digits, upper case. */
-const codeOf = (v: unknown): string => String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+/** Who is joining, as spaceJoin.ts reads them: their address counts only once it is confirmed. */
+const joinerOf = (user: AuthedUser): Joiner => ({ id: user.id, email: user.email ?? null, emailConfirmed: user.emailConfirmed === true });
+/** No roles any more: what the old routes for them answer. */
+const GONE = { code: "gone", message: "Roles are gone. Everyone in a space can do the same things; its admin can do a few more." };
 /** Where the app is got (the API's own /download page). */
 const DOWNLOAD = `${(process.env.PUBLIC_ORIGIN || "https://api.x0bot.com").replace(/\/+$/, "")}/download`;
 
@@ -101,17 +125,18 @@ export function storeFor(userAgent: unknown, code: string): string | null {
 }
 
 /**
- * An invite opened in a browser instead of the app: what it is for, a button that opens Tailzu at joining (tulmi://, which the apps
- * register), and the code to type in You › Spaces › Got an invite code?. The code is written into the page only once it has the exact
- * shape of one; no script runs here.
+ * A code opened in a browser instead of the app: a button that opens X0 Bot at joining (tulmi://, which the apps register), and the
+ * code to type in Spaces. A space's own code never expires, so its page names no space (a page that did would let anyone guess codes
+ * and read family names without signing in); only an email invite's own code still says which space. The code is written into the
+ * page only once it has the exact shape of one; no script runs here.
  */
-function invitePage(code: string, s: { name: string; members: number } | null): string {
-  const line = s
-    ? `You're invited to <b>${esc(s.name)}</b> on X0 Bot (${s.members} ${s.members === 1 ? "person" : "people"} so far).`
-    : "This invite doesn't work any more. Ask for a new one.";
+function invitePage(code: string, s: { name: string; members: number } | null, joinCode: boolean): string {
+  const line = !s ? "This invite doesn't work any more. Ask for a new one."
+    : joinCode ? "You're invited to a space on X0 Bot."
+    : `You're invited to <b>${esc(s.name)}</b> on X0 Bot (${s.members} ${s.members === 1 ? "person" : "people"} so far).`;
   const how = s && INVITE_CODE_RE.test(code)
     ? `<a class="btn" href="tulmi://screen/${JOIN_SCREEN}?join=${code}">Open in X0 Bot</a>`
-      + `<p>Or open X0 Bot, go to <b>You → Spaces</b>, tap <b>Got an invite code?</b> and enter:</p><p class="code">${esc(code)}</p>`
+      + `<p>Open X0 Bot, open Spaces, tap your bot, and type this code:</p><p class="code">${esc(joinCode ? showCode(code) : code)}</p>`
       + `<p class="meta">No X0 Bot yet? <a href="${DOWNLOAD}">Get it here</a>, sign in, and open this link again.</p>`
     : "";
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>X0 Bot space invite</title>
@@ -122,10 +147,15 @@ function invitePage(code: string, s: { name: string; members: number } | null): 
 /** Shown inline only when it can't run anything: pictures, PDFs, sound and video. Everything else is a download. */
 const INLINE = /^(image\/(png|jpeg|webp|gif|heic|heif)|application\/pdf|audio\/[a-z0-9.+-]+|video\/(mp4|webm|quicktime))$/;
 
-export interface SpaceParts { spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety; shares: SpaceShares; memory: SpaceMemory }
+export interface SpaceParts {
+  spaces: Spaces; threads: Threads; items: SharedItems; payments: Payments; tasks: SpaceTasks; safety: Safety; shares: SpaceShares; memory: SpaceMemory;
+  /** Invitations, codes and join requests; the feed; things shared from a bot; Work in space (routes/bots/work.ts). */
+  join: SpaceJoin; feed: SpaceFeed; grants: Grants; work: Work;
+}
 
+type SpacePush = "space_task" | "space_plan" | "space_message" | "space_joined" | "space_feed" | "space_request" | "space_accepted";
 /** A push to someone's phones (push/defaults.ts space_*): never throws, and says nothing private. */
-const push = async (userId: string, msg: { kind: "space_task" | "space_plan" | "space_message" | "space_joined"; key: string; vars: Record<string, string>; data: Record<string, string> }) => {
+const push = async (userId: string, msg: { kind: SpacePush; key: string; vars: Record<string, string>; data: Record<string, string> }) => {
   try { await pushEngine()?.notify(userId, msg); } catch { /* a missed push is not a lost task or message: both are in the app */ }
 };
 
@@ -164,11 +194,19 @@ export function spaceParts(spaces: Spaces, o: {
     if (!j?.invitedBy || j.invitedBy === j.userId) return;
     await push(j.invitedBy, { kind: "space_joined", key: `${e.spaceId}:${j.userId}`, vars: { name: j.name, space: j.spaceName ?? "your space" }, data: { spaceId: e.spaceId } });
   });
-  const safety = new Safety(spaces, threads, items, now, { log: o.log, suspend: o.suspend !== undefined ? o.suspend : supabase() ? suspendWithSupabase : null });
-  const shares = new SpaceShares(spaces, o.sources ?? shareSources({ trips: o.trips, now }), now);
+  const sources = o.sources ?? shareSources({ trips: o.trips, now });
+  // A thing shared from a bot ("/" in the feed), and Work in space on each bot's page.
+  const grants = new Grants(spaces, blocks, now);
+  const safety = new Safety(spaces, threads, items, now, { log: o.log, grants, suspend: o.suspend !== undefined ? o.suspend : supabase() ? suspendWithSupabase : null });
+  const shares = new SpaceShares(spaces, sources, now);
   // What the group's bots know about the group: lines members write there, or share from their own space one at a time.
   const memory = new SpaceMemory(spaces, { now, hidden: (u) => blocks.hiddenFor(u) });
-  return { spaces, threads, items, payments: new Payments(spaces, now), tasks, safety, shares, memory };
+  const payments = new Payments(spaces, now);
+  // Coming in: invitations to the invited address, codes, and the admin letting people in.
+  const join = new SpaceJoin(spaces, now, { notify: push, blocks });
+  const feed = new SpaceFeed(spaces, threads, grants, sources, blocks, { payments, tasks });
+  const work = new Work(spaces, grants, shares, sources, undefined, now);
+  return { spaces, threads, items, payments, tasks, safety, shares, memory, join, feed, grants, work };
 }
 
 /** A space as one person sees it: nobody with a block between them in its members (blocks.ts). */
@@ -179,7 +217,7 @@ async function withoutHidden<S extends { members: Array<{ userId: string }> }>(t
 
 export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { spaces: Spaces; trips?: Trips | null; parts?: SpaceParts; sources?: ShareSources }): SpaceParts {
   const p = o.parts ?? spaceParts(o.spaces, { media: deps.media, trips: o.trips ?? null, log: app.log, ...(o.sources ? { sources: o.sources } : {}) });
-  const { spaces, threads, items, payments, tasks, shares, memory } = p;
+  const { spaces, threads, items, payments, tasks, shares, memory, join, feed } = p;
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
 
@@ -217,13 +255,44 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
 
   // ------------------------------------------------------------------ spaces
 
-  app.get(`${AREA}/spaces`, RL, run(async (user) => {
+  app.get(`${AREA}/spaces`, RL, run(async (user, req) => {
+    const q = queryOf(req);
+    const full = q.full === "1" || q.full === "true";
     const list = await Promise.all((await spaces.list(user.id)).map((s) => withoutHidden(threads, user.id, s)));
-    const withWaiting = await Promise.all(list.map(async (s) => ({ ...s, waiting: await payments.waitingFor(user.id, s.id).catch(() => 0) })));
-    const unread = await threads.list(user.id).then((t) => t.unread, () => 0);
-    return { spaces: withWaiting, you: shownName(user), unread };
+    // Without full=1 this is what it always was: Home reads it at every load and both apps at launch, so it only reads.
+    const [rows, unread, invitations, requests, asked, draft] = await Promise.all([
+      Promise.all(list.map(async (s) => {
+        const waiting = await payments.waitingFor(user.id, s.id).catch(() => 0);
+        if (!full) return { ...s, waiting };
+        const [sum, invited] = await Promise.all([threads.summaryFor(user.id, s.id).catch(() => null), spaces.invited(user.id, s.id).catch(() => 0)]);
+        return { ...s, waiting, invited, last: sum?.last ?? null, unread: sum?.unread ?? 0 };
+      })),
+      threads.list(user.id).then((t) => t.unread, () => 0),
+      full ? join.invitationsFor(joinerOf(user)).catch(() => []) : null,
+      full ? join.requestsFor(user.id).catch(() => []) : null,
+      full ? join.askedBy(user.id).catch(() => []) : null,
+      // The person's open draft (Create, Call Your People): its read sweeps their drafts left a day.
+      full ? spaces.draftOf(user.id).catch(() => null) : null,
+    ]);
+    return { spaces: rows, you: shownName(user), unread, ...(full ? { invitations, requests, asked, draft } : {}) };
   }));
   app.post(`${AREA}/spaces`, RL, run(async (user, req, reply) => { const r = await spaces.create(user.id, bodyOf(req.body).name, shownName(user)); reply.code(201); return r; }));
+  // Create on the new Spaces screen (a draft until Done). These, and invitations, come before /spaces/:id.
+  app.post(`${AREA}/spaces/draft`, tight(20), run(async (user, req, reply) => { const draft = await spaces.draft({ id: user.id }, { name: bodyOf(req.body).name }, shownName(user)); reply.code(201); return { draft }; }));
+  app.post(`${AREA}/spaces/draft/invite`, tight(20), run(async (user, req, reply) => { const draft = await spaces.draftInvite({ id: user.id }, bodyOf(req.body).email, shownName(user)); reply.code(201); return { draft }; }));
+  app.post(`${AREA}/spaces/draft/done`, RL, run(async (user, req) => spaces.finishDraft({ id: user.id }, { name: bodyOf(req.body).name }, shownName(user))));
+  app.delete(`${AREA}/spaces/draft`, RL, run(async (user) => { await spaces.dropDraft(user.id); return { ok: true }; }));
+  app.put(`${AREA}/spaces/invitations/:code`, tight(20), run(async (user, req) => {
+    const b = bodyOf(req.body);
+    return join.decideInvitation(joinerOf(user), param(req, "code"), b.decision, b.consent === true, shownName(user));
+  }));
+  // A code: the invited address joins at once; anyone else asks the admin. An old build reads `id` and `name` when it joined.
+  app.post(`${AREA}/spaces/join`, tight(20), run(async (user, req) => {
+    const b = bodyOf(req.body);
+    return join.join(joinerOf(user), b.code, shownName(user), b.consent === true);
+  }));
+  // What an email invite's code is for, before joining (its link opens Spaces with it: screens/spaces.ts). Codes that don't work count.
+  app.get(`${AREA}/spaces/join/:code`, tight(30), run(async (user, req) => ({ invite: await join.peek(user.id, param(req, "code")) })));
   app.get(`${AREA}/spaces/:id`, RL, run(async (user, req) => {
     const id = param(req, "id");
     const space = await withoutHidden(threads, user.id, await spaces.detail(user.id, id));
@@ -232,23 +301,28 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   }));
   app.put(`${AREA}/spaces/:id`, RL, run(async (user, req) => { await spaces.rename(user.id, param(req, "id"), bodyOf(req.body).name); return { ok: true }; }));
   app.delete(`${AREA}/spaces/:id`, RL, run(async (user, req) => spaces.leave(user.id, param(req, "id"))));
-  app.post(`${AREA}/spaces/:id/invite`, tight(20), run(async (user, req) => {
-    const b = bodyOf(req.body);
-    return spaces.invite({ id: user.id }, param(req, "id"), { email: b.email, role: b.role, perms: b.perms });
-  }));
+  app.post(`${AREA}/spaces/:id/code`, tight(20), run(async (user, req) => ({ code: await spaces.newCode({ id: user.id }, param(req, "id")) })));
+  app.post(`${AREA}/spaces/:id/invite`, tight(20), run(async (user, req) => spaces.invite({ id: user.id }, param(req, "id"), { email: bodyOf(req.body).email }, shownName(user))));
   app.delete(`${AREA}/spaces/:id/invites/:code`, RL, run(async (user, req) => { await spaces.revokeInvite(user.id, param(req, "id"), param(req, "code")); return { ok: true }; }));
-  app.post(`${AREA}/spaces/join`, tight(20), run(async (user, req) => spaces.join({ id: user.id, email: user.email ?? null }, bodyOf(req.body).code, shownName(user))));
-  // What an invite is for, before joining (the invite's link opens Spaces with it: screens/spaces.ts).
-  app.get(`${AREA}/spaces/join/:code`, tight(30), run(async (_user, req) => ({ invite: await spaces.peek(codeOf(param(req, "code"))) })));
-  app.put(`${AREA}/spaces/:id/members/:member`, RL, run(async (user, req) => {
-    const b = bodyOf(req.body);
-    if (b.role === undefined && b.perms === undefined) { await spaces.setApprover(user.id, param(req, "id"), param(req, "member"), b.canApprove); return { ok: true }; }
-    return spaces.setPerms(user.id, param(req, "id"), param(req, "member"), { role: b.role, perms: b.perms });
+  app.put(`${AREA}/spaces/:id/requests/:rid`, RL, run(async (user, req) => join.decide(user.id, param(req, "id"), param(req, "rid"), bodyOf(req.body).decision)));
+  app.put(`${AREA}/spaces/:id/consent`, RL, run(async (user, req) => { await spaces.setConsent(user.id, param(req, "id")); return { ok: true }; }));
+  app.get(`${AREA}/spaces/:id/feed`, RL, run(async (user, req) => {
+    const q = queryOf(req);
+    return feed.read(user.id, param(req, "id"), { before: q.before, limit: q.limit });
   }));
+  app.post(`${AREA}/spaces/:id/feed`, tight(90), run(async (user, req, reply) => {
+    const r = await feed.send({ id: user.id, name: shownName(user) }, param(req, "id"), bodyOf(req.body));
+    if ("message" in r) reply.code(201);
+    return r;
+  }));
+  app.delete(`${AREA}/spaces/:id/grants/:gid`, RL, run(async (user, req) => { await feed.unshare(user.id, param(req, "id"), param(req, "gid")); return { ok: true }; }));
+  // There are no roles any more: what an old build asks of them is gone (410), and says so.
+  const gone = run(async () => { throw new BotError(GONE.code, GONE.message, 410); });
+  app.put(`${AREA}/spaces/:id/members/:member`, RL, gone);
   app.delete(`${AREA}/spaces/:id/members/:member`, RL, run(async (user, req) => spaces.leave(user.id, param(req, "id"), param(req, "member"))));
-  app.post(`${AREA}/spaces/:id/roles`, RL, run(async (user, req, reply) => { const b = bodyOf(req.body); reply.code(201); return { role: await spaces.saveRole(user.id, param(req, "id"), { name: b.name, perms: b.perms }) }; }));
-  app.put(`${AREA}/spaces/:id/roles/:role`, RL, run(async (user, req) => { const b = bodyOf(req.body); return { role: await spaces.saveRole(user.id, param(req, "id"), { roleId: param(req, "role"), name: b.name, perms: b.perms }) }; }));
-  app.delete(`${AREA}/spaces/:id/roles/:role`, RL, run(async (user, req) => { await spaces.dropRole(user.id, param(req, "id"), param(req, "role")); return { ok: true }; }));
+  app.post(`${AREA}/spaces/:id/roles`, RL, gone);
+  app.put(`${AREA}/spaces/:id/roles/:role`, RL, gone);
+  app.delete(`${AREA}/spaces/:id/roles/:role`, RL, gone);
   app.post(`${AREA}/spaces/:id/bots`, RL, run(async (user, req) => { await spaces.addBot(user.id, param(req, "id"), bodyOf(req.body).slug); return { ok: true }; }));
   app.delete(`${AREA}/spaces/:id/bots/:slug`, RL, run(async (user, req) => { await spaces.removeBot(user.id, param(req, "id"), param(req, "slug")); return { ok: true }; }));
   // A group's sub-bots: what each person shares from their own Plan, Notes, Travel and Xode (botsBots/spaceShares.ts).
@@ -265,13 +339,16 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   // a phone goes on to its store, a computer gets the page.
   const sendInvite = async (req: FastifyRequest, reply: FastifyReply, raw: unknown) => {
     const code = codeOf(raw);
-    const s = code ? await spaces.peek(code).catch(() => null) : null;
+    // A space's own code is never looked up here: every code of its shape gets the same page (and a phone the same store), so this
+    // page, which needs no session, can't tell a guess that works from one that doesn't. The app checks it when they type it.
+    const joinCode = isJoinCodeShape(code);
+    const s = joinCode ? { name: "", members: 0 } : code ? await spaces.peek(code).catch(() => null) : null;
     const store = s && INVITE_CODE_RE.test(code) ? storeFor(req.headers["user-agent"], code) : null;
     if (store) return reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer").redirect(store, 302);
     return reply.header("content-type", "text/html; charset=utf-8").header("cache-control", "no-store")
       .header("content-security-policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
       .header("referrer-policy", "no-referrer").header("x-robots-tag", "noindex")
-      .send(invitePage(code, s));
+      .send(invitePage(code, s, joinCode));
   };
   app.get(`/s/${JOIN_SCREEN}`, tight(30), async (req, reply) => sendInvite(req, reply, queryOf(req).join));
   app.get(`${AREA}/invite/:code`, tight(30), async (req, reply) => sendInvite(req, reply, param(req, "code")));

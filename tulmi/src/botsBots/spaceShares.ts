@@ -65,9 +65,16 @@ export class SpaceShares {
     return { bot, src: this.sources[bot]! };
   }
 
-  private async rule(spaceId: string, userId: string, bot: ShareBot): Promise<{ mode: ShareMode; items: string[] }> {
+  /** What one person shares in a space from one bot (no row: nothing). Work in space reads it too (work.ts): it is read only there. */
+  async rule(spaceId: string, userId: string, bot: ShareBot): Promise<{ mode: ShareMode; items: string[] }> {
     const [r] = await this.rows.select({ space_id: spaceId, user_id: userId, bot }, { limit: 1 });
     return r ? { mode: r.mode, items: Array.isArray(r.items) ? r.items.map(String) : [] } : { mode: "none", items: [] };
+  }
+
+  /** What everyone shares in a space from one bot, by person (only those who share something). */
+  async rules(spaceId: string, bot: ShareBot): Promise<Map<string, { mode: ShareMode; items: string[] }>> {
+    const rows = await this.rows.select({ space_id: spaceId, bot }, { limit: 200 });
+    return new Map(rows.filter((r) => r.mode !== "none").map((r) => [r.user_id, { mode: r.mode, items: Array.isArray(r.items) ? r.items.map(String) : [] }]));
   }
 
   /** What you share in a space from one bot, and your items to pick from. */

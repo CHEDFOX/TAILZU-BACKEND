@@ -37,6 +37,7 @@ import {
 import * as places from "./botsPlaces.js";
 import { itemAction, addAction, planItemScreens } from "./planItem.js";
 import { tripSearches } from "./finds.js";
+import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
@@ -425,8 +426,8 @@ function planPhone(ctx: BotsCtx, d: PlanRead | undefined) {
 // ===================================================================== bots.travel
 interface TripData { trip: { id: string; place: string; when: string; who: string; packing: Array<{ text: string; done: boolean }>; spots?: string[]; stays?: Array<{ picked: boolean }> } | null; facts: Array<{ id: string; text: string }>; bookings: Array<{ label: string; url: string; at: number; said: string }> }
 
-/** `x`: the trip's weather, places and stays compared (GET .../trip/:id/extras, botsPlaces.ts). */
-interface TravelData { t?: TripData; files?: MediaFile[]; x?: places.TripExtrasView }
+/** `x`: the trip's weather, places and stays compared (GET .../trip/:id/extras, botsPlaces.ts); `work`: Work in space (work/workTab.ts). */
+interface TravelData { t?: TripData; files?: MediaFile[]; x?: places.TripExtrasView; work?: WorkRead }
 
 const TRAVELLY = /ticket|pnr|boarding|itinerary|hotel|booking|flight|train|irctc|visa|passport|e-?ticket|bus|stay|trip/i;
 const GETTING = /train|flight|bus|cab|ticket|irctc|rail|air|uber|ola|route|maps|direction/i;
@@ -702,10 +703,14 @@ export const botsScreens: BotsScreen[] = [
     load: (ctx, deps) => deps.api<Shop>("GET", `${A}/store${ctx.params.q ? `?q=${enc(String(ctx.params.q))}` : ""}`),
     build: (ctx, d) => (isDesk(ctx) ? storeDesk(ctx, d) : storePhone(ctx, d)),
   }),
-  screen<PlanRead>({
+  screen<PlanRead & { work?: WorkRead }>({
     id: SCREENS.plan,
-    load: (ctx, deps) => deps.api<PlanRead>("GET", `${A}/plan?tz=${ctx.tzOffsetMinutes}&week=${planWeek(ctx)}`),
-    build: (ctx, d) => (isDesk(ctx) ? planDesk(ctx, d) : planPhone(ctx, d)),
+    // With the new Spaces: Work in space's people too (screens/work/workTab.ts), never failing the page.
+    load: async (ctx, deps) => {
+      const [plan, work] = await Promise.all([deps.api<PlanRead>("GET", `${A}/plan?tz=${ctx.tzOffsetMinutes}&week=${planWeek(ctx)}`), loadWork(ctx, deps, "plan")]);
+      return { ...plan, work };
+    },
+    build: (ctx, d) => { const c = workCtx(ctx, d?.work); return isDesk(c) ? planDesk(c, d) : planPhone(c, d); },
   }),
   screen<TravelData>({
     id: SCREENS.travel,
@@ -714,12 +719,15 @@ export const botsScreens: BotsScreen[] = [
         deps.api<TripData>("GET", `${A}/trip`).catch(() => undefined),
         deps.api<{ files: MediaFile[] }>("GET", "/v1/files").then((r) => r.files).catch(() => undefined),
       ]);
-      const x = t?.trip
-        ? await deps.api<{ extras: places.TripExtrasView }>("GET", `${A}/trip/${enc(t.trip.id)}/extras?tz=${ctx.tzOffsetMinutes}`).then((r) => r.extras).catch(() => undefined)
-        : undefined;
-      return { t, files, x };
+      const [x, work] = await Promise.all([
+        t?.trip
+          ? deps.api<{ extras: places.TripExtrasView }>("GET", `${A}/trip/${enc(t.trip.id)}/extras?tz=${ctx.tzOffsetMinutes}`).then((r) => r.extras).catch(() => undefined)
+          : Promise.resolve(undefined),
+        loadWork(ctx, deps, "travel"),
+      ]);
+      return { t, files, x, work };
     },
-    build: (ctx, d) => (isDesk(ctx) ? travelDesk(ctx, d ?? {}) : travelPhone(ctx, d ?? {})),
+    build: (ctx, d) => { const c = workCtx(ctx, d?.work); return isDesk(c) ? travelDesk(c, d ?? {}) : travelPhone(c, d ?? {}); },
   }),
   screen<ShareData>({
     id: SCREENS.shareIn,

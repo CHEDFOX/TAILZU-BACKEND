@@ -5,7 +5,8 @@
  *   maker.ts    Make a bot: the draft kept while it is shaped (Bots.draft / test / approve underneath)
  *   shop.ts     Find a bot: Tailzu's ready-made bots and the ones people listed; add a copy
  *   usage.ts    what each API key of a bot used this month
- *   spaces.ts   spaces: members, shared bots, who approves payments, invites by code
+ *   spaces.ts   spaces: members, the admin (its maker; no roles), invites by email, the space's code, drafts, consent
+ *               (the rest of a space, its feed, joining, grants and Work in space: docs/spaces.md has the file list)
  *   plan.ts     Plan Ease's tomorrow and week from the person's own calendar and to-dos (src/calendar), and the change it suggests
  *   trips.ts    the Travel bot's trip: where, when, who, packing, its main places and stays
  *   planTravel.ts, tripExtras.ts   travel times, weather and stays compared, over src/places (look.ts, later.ts: from memory now,

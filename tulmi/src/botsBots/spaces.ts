@@ -1,17 +1,19 @@
 /**
- * SPACES: FAMILY AND FRIENDS. A space has members, each with what they may do (spacePerms.ts), the bots shared into it, invites by link
- * or email, its own roles, and an activity log. What is shared in it, its payment requests and its chats are their own modules
- * (shared.ts, payments.ts, threads.ts) and ask this one who may do what.
+ * SPACES: FAMILY AND FRIENDS. A space has members, the bots shared into it, invites by email, one standing code, and an activity log.
+ * Its maker is its admin, for good; there are no roles (spacePerms.ts): every member may do the same things, and the admin a few more.
+ * What is shared in it, its payment requests, its feed and its join requests are their own modules (shared.ts, payments.ts,
+ * threads.ts, spaceFeed.ts, spaceJoin.ts) and ask this one who may do what (docs/spaces.md).
  *
- *   list(user) / detail(user, space)   the spaces the person is in, and one whole (members, roles, invites, activity as they may see them)
- *   create(user, name, me)             a new space; its maker is its admin, for good
- *   invite(user, space, { email?, role?, perms? })   a code and its link, seven days; with an email, mailed, and good once.
- *                                      The link opens the app at joining (https://app.x0bot.com/s/bots.spaces?join=CODE, a link
- *                                      the apps claim, as bots.link's does); a browser gets a page that opens it, with the code to type
- *   join(user, code, me)               into the space, with what the invite gave (never more than its maker can still do)
- *   setPerms(user, space, member, { role?, perms? })  what someone may do
- *   saveRole / dropRole                the admin's own named roles
- *   addBot / removeBot, rename, leave (or remove someone), activity
+ *   list(user) / detail(user, space)   the spaces the person is in (never a draft), and one whole (members, invites, activity, its code)
+ *   create(user, name, me)             a new, named space (an old build's Start a space); its maker is its admin
+ *   draft / draftInvite / finishDraft / dropDraft / draftOf   Create on the new Spaces screen: the first invite makes a draft nobody
+ *                                      else sees, its mails go at once without a name, Done names it, Back deletes it
+ *   inviteEmail(user, space, email)    the admin invites an address: a row, and a mail with the space's code
+ *   invite(user, space, { email? })    an old build's invite: by email, or (no email) the space's code and its link
+ *   codeFor / newCode                  the space's one code (made the first time it is asked for); the admin can make a new one
+ *   addMember(space, user, name, o)    the one place a member row is written (spaceJoin.ts lets people in through it)
+ *   setConsent / consented             the member saw "The space's admin can see your work and messages there."
+ *   addBot / removeBot, rename, leave (or the admin removes someone), activity
  *   access(user, space) / need(user, space, perm)   who may do what: the other modules' one question
  *
  * Every check is here, on the server: a member who may not do a thing gets 403 in plain words; someone not in the space gets 404 (the
@@ -20,29 +22,40 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { BotError, type Bots } from "../bots/index.js";
 import { live } from "../live/bus.js";
+import { screenPost } from "./filter.js";
 import { cleanEmail, mailerFromEnv, MailOutbox, type Mailer } from "./mail.js";
 import { table, type Table } from "./rows.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
-import { covers, lacking, legacyPerms, PERM_WORDS, PERMS, permNames, permsOf, presetOf, PRESETS, roleFor, type Perm } from "./spacePerms.js";
+import { ADMIN_ONLY, MEMBER_PERMS, PERM_WORDS, PERMS, type Perm } from "./spacePerms.js";
+import { SHARE_BOTS } from "./spaceShares.js";
 
-export interface SpaceRow { [k: string]: unknown; id: string; owner_id: string; name: string; created_ms: number }
+export interface SpaceRow {
+  [k: string]: unknown; id: string; owner_id: string; name: string; created_ms: number;
+  /** The space's own code (6 letters and digits), made the first time it is asked for. */
+  join_code?: string | null;
+  /** Set while its maker is still calling their people: nobody else sees it. */
+  draft_ms?: number | null;
+  /** False while a draft has no name of its own yet. */
+  named?: boolean;
+}
 export interface MemberRow {
   [k: string]: unknown; space_id: string; user_id: string; name: string; can_approve: boolean; joined_ms: number;
-  /** What they may do (absent on a row from before permissions: Family, and approving if they could). */
+  /** Written for a rollback only (always MEMBER_PERMS now): nothing reads it. */
   perms?: string[];
-  /** A preset ("family", "kid", "guest"), one of the space's own roles (its id), or null: just for them. */
   role?: string | null;
+  /** When they saw "The space's admin can see your work and messages there." Null: not yet, so the admin sees only what they share. */
+  consent_ms?: number | null;
 }
 export interface SpaceBotRow { [k: string]: unknown; space_id: string; slug: string; name: string; colour: string; added_by: string; added_ms: number }
 export interface InviteRow {
   [k: string]: unknown; code: string; space_id: string; created_by: string; created_ms: number; expires_ms: number;
   email?: string | null; perms?: string[]; role?: string | null; used_by?: string | null; used_ms?: number | null;
+  /** The invited person said no. */
+  dismissed_ms?: number | null;
 }
-export interface RoleRow { [k: string]: unknown; id: string; space_id: string; name: string; perms: string[]; created_ms: number }
 export interface ActivityRow { [k: string]: unknown; id: string; space_id: string; actor_id: string | null; kind: string; text: string; at_ms: number }
 
 export interface MemberView { userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number; perms: Perm[]; role: string | null; roleName: string }
-export interface RoleView { id: string; name: string; perms: Perm[]; preset: boolean }
 export interface InviteView { code: string; link: string; email: string | null; expiresAt: number; roleName: string; perms: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
 export interface SpaceView {
   id: string;
@@ -52,30 +65,44 @@ export interface SpaceView {
   me: { admin: boolean; perms: Perm[] };
   members: MemberView[];
   bots: Array<{ slug: string; name: string; colour: string; addedBy: string; byYou: boolean }>;
-  /** Your newest link invite still good, if any. */
+  /** Always null now: a space has one code, on its detail for its admin (older builds read this). */
   invite: { code: string; expiresAt: number } | null;
-  roles: RoleView[];
+  /** Always empty: there are no roles (older builds read this). */
+  roles: Array<{ id: string; name: string; perms: Perm[]; preset: boolean }>;
 }
 export interface SpaceDetail extends SpaceView {
-  /** Open invites (all of them for someone who may invite; else none). */
+  /** Open invites, for the admin; none for anyone else. */
   invites: InviteView[];
-  /** The log, newest first, for someone who may see it; null otherwise. */
+  /** The log, newest first. */
   activity: Array<{ id: string; kind: string; text: string; at: number; by: string }> | null;
+  /** The space's code, shown 7KQ-29D: the admin only (made here the first time). */
+  code: string | null;
 }
+/** The maker's open draft on the new Spaces screen. `name` is its own name, or null while it has none. */
+export interface DraftView { id: string; name: string | null; invites: Array<{ code: string; email: string; at: number; mail: "queued" | "sent" | "failed" | null }> }
 
-export interface Access { s: SpaceRow; me: MemberRow; admin: boolean; perms: Perm[]; roles: RoleRow[] }
+export interface Access { s: SpaceRow; me: MemberRow; admin: boolean; perms: Perm[] }
 /** joined.invitedBy: who made the invite that was used (they are told: routes/bots/botsSpaces.ts). */
 export type MemberEvent = { spaceId: string; joined?: { userId: string; name: string; invitedBy?: string; spaceName?: string }; left?: string; deleted?: boolean };
 export type Publish = (userIds: Iterable<string>, topic: string, data?: Record<string, unknown>) => void;
 
-const SPACES_MAX = 10;
-const MEMBERS_MAX = 20;
+export const SPACES_MAX = 10;
+export const MEMBERS_MAX = 20;
 const SPACE_BOTS_MAX = 12;
-const ROLES_MAX = 8;
 const INVITES_A_DAY = 30;
 const INVITE_MS = 7 * 24 * 3600_000;
 const ACTIVITY_KEEP = 200;
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+/** A draft's name until it is named (spaces.name is required). Never shown: DraftView.name is null until then. */
+export const DRAFT_NAME = "New space";
+/** A draft left this long is deleted the next time its maker opens Spaces or starts another. */
+const DRAFT_MS = 24 * 3600_000;
+/** The space's own code: CODE_CHARS, shown 3-3 ("7KQ-29D"). */
+const JOIN_CODE_LEN = 6;
+const CODE_TRIES = 5;
+export const showCode = (c: string): string => `${c.slice(0, 3)}-${c.slice(3)}`;
+/** Whether a code (as codeOf gives it) has the shape of a space's own code; an email invite's is 8 characters. */
+export const isJoinCodeShape = (c: string): boolean => c.length === JOIN_CODE_LEN && [...c].every((ch) => CODE_CHARS.includes(ch));
 /** What an invite code looks like, in a link: anything else is not one. */
 export const INVITE_CODE_RE = /^[A-Z0-9]{6,16}$/;
 
@@ -87,20 +114,27 @@ export const INVITE_ORIGIN = (process.env.DEVICE_LINK_ORIGIN || "https://app.x0b
 /** The screen an invite opens, and its parameter. */
 export const JOIN_SCREEN = "bots.spaces";
 export const inviteLinkOf = (origin: string, code: string): string => `${origin}/s/${JOIN_SCREEN}?join=${code}`;
+/** A code as typed or linked: letters and digits, upper case ("7kq-29d" is 7KQ29D). */
+export const codeOf = (v: unknown): string => String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
 
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const notFound = () => new BotError("not_found", "That space isn't there any more.", 404);
 const forbid = (msg: string) => new BotError("not_allowed", msg, 403);
 /** "m•••@gmail.com": an address shown to someone who may not know it whole. */
 const maskEmail = (e: string): string => { const [l, d] = e.split("@"); return `${(l ?? "").slice(0, 1)}•••@${d ?? ""}`; };
+const isDraft = (s: Pick<SpaceRow, "draft_ms">): boolean => s.draft_ms !== null && s.draft_ms !== undefined;
+const isOpen = (i: InviteRow, now: number): boolean => Number(i.expires_ms) > now && !i.used_by && (i.dismissed_ms === null || i.dismissed_ms === undefined);
 
-function inviteCode(): string {
-  const b = randomBytes(8);
+function randomCode(len: number): string {
+  const b = randomBytes(len);
   return Array.from(b, (x) => CODE_CHARS[x % CODE_CHARS.length]).join("");
 }
 
-/** "You can't invite people in Home." */
-const cant = (perm: Perm, space: string) => forbid(`You can't ${PERM_WORDS[perm].label.charAt(0).toLowerCase()}${PERM_WORDS[perm].label.slice(1)} in ${space}.`);
+/** "You can't give tasks to others in Home.", or for what only the admin does, "Only Home's admin can invite people." */
+function cant(perm: Perm, space: string): BotError {
+  const what = `${PERM_WORDS[perm].label.charAt(0).toLowerCase()}${PERM_WORDS[perm].label.slice(1)}`;
+  return forbid(ADMIN_ONLY.includes(perm) ? `Only ${space}'s admin can ${what}.` : `You can't ${what} in ${space}.`);
+}
 
 export interface SpaceOpts {
   publish?: Publish;
@@ -110,7 +144,7 @@ export interface SpaceOpts {
   origin?: () => string;
   tables?: {
     spaces?: Table<SpaceRow>; members?: Table<MemberRow>; bots?: Table<SpaceBotRow>; invites?: Table<InviteRow>;
-    roles?: PagedTable<RoleRow>; activity?: PagedTable<ActivityRow>;
+    activity?: PagedTable<ActivityRow>;
   };
 }
 
@@ -119,7 +153,6 @@ export class Spaces {
   private readonly members: Table<MemberRow>;
   private readonly shared: Table<SpaceBotRow>;
   private readonly invites: Table<InviteRow>;
-  private readonly roles: PagedTable<RoleRow>;
   private readonly log: PagedTable<ActivityRow>;
   private readonly publish: Publish;
   readonly outbox: MailOutbox;
@@ -133,7 +166,6 @@ export class Spaces {
     this.members = o.tables?.members ?? table<MemberRow>("space_members");
     this.shared = o.tables?.bots ?? table<SpaceBotRow>("space_bots");
     this.invites = o.tables?.invites ?? table<InviteRow>("space_invites");
-    this.roles = o.tables?.roles ?? spaceTable<RoleRow>("space_roles");
     this.log = o.tables?.activity ?? spaceTable<ActivityRow>("space_activity");
     this.publish = o.publish ?? ((ids, topic, data) => live.publish(ids, topic, data));
     this.outbox = o.outbox ?? new MailOutbox(undefined, now);
@@ -155,23 +187,9 @@ export class Spaces {
 
   // ------------------------------------------------------------------ who may do what
 
-  private permsOfRow(m: MemberRow, s: SpaceRow, roles: RoleRow[]): Perm[] {
-    if (m.user_id === s.owner_id) return [...PERMS];
-    const preset = presetOf(m.role);
-    if (preset) return [...preset.perms];
-    const custom = m.role ? roles.find((r) => r.id === m.role) : undefined;
-    if (custom) return permsOf(custom.perms);
-    return Array.isArray(m.perms) ? permsOf(m.perms) : legacyPerms(m.can_approve === true);
-  }
-
-  private roleName(m: MemberRow, s: SpaceRow, roles: RoleRow[], perms: Perm[]): string {
-    if (m.user_id === s.owner_id) return "Admin";
-    const preset = presetOf(m.role);
-    if (preset) return preset.name;
-    const custom = m.role ? roles.find((r) => r.id === m.role) : undefined;
-    if (custom) return custom.name;
-    const same = roleFor(perms, roles.map((r) => ({ id: r.id, perms: permsOf(r.perms) })));
-    return presetOf(same)?.name ?? roles.find((r) => r.id === same)?.name ?? "Just for them";
+  /** No roles: the admin may do everything, everyone else the members' set. */
+  private permsOfRow(m: MemberRow, s: SpaceRow): Perm[] {
+    return m.user_id === s.owner_id ? [...PERMS] : [...MEMBER_PERMS];
   }
 
   /** The space and what this person may do in it; 404 when they aren't in it. */
@@ -180,8 +198,7 @@ export class Spaces {
     if (!s) throw notFound();
     const [me] = await this.members.select({ space_id: spaceId, user_id: userId }, { limit: 1 });
     if (!me) throw notFound();
-    const roles = await this.roles.select({ space_id: spaceId }, { order: "created_ms", limit: ROLES_MAX });
-    return { s, me, admin: s.owner_id === userId, perms: this.permsOfRow(me, s, roles), roles };
+    return { s, me, admin: s.owner_id === userId, perms: this.permsOfRow(me, s) };
   }
 
   /** Like access, and 403 unless they may `perm`. */
@@ -201,82 +218,104 @@ export class Spaces {
   }
 
   async membersOf(spaceId: string): Promise<Array<{ userId: string; name: string }>> {
-    return (await this.members.select({ space_id: spaceId }, { order: "joined_ms", limit: MEMBERS_MAX + 5 })).map((m) => ({ userId: m.user_id, name: m.name }));
+    return (await this.memberRows(spaceId)).map((m) => ({ userId: m.user_id, name: m.name }));
   }
 
-  /** The spaces this person is in, with what they may do in each. */
-  async mine(userId: string): Promise<Array<{ id: string; name: string; perms: Perm[] }>> {
+  /** The member rows as they are, oldest first (the feed and Work in space read who saw the line about the admin). */
+  async memberRows(spaceId: string): Promise<MemberRow[]> {
+    return this.members.select({ space_id: spaceId }, { order: "joined_ms", limit: MEMBERS_MAX + 5 });
+  }
+
+  /** The space's row, or null (a draft too: callers decide). */
+  async spaceRow(spaceId: string): Promise<SpaceRow | null> {
+    if (!spaceId) return null;
+    return (await this.spaces.select({ id: spaceId }, { limit: 1 }))[0] ?? null;
+  }
+
+  /** Who the space's admin is: cheap, for the feed's rule (who sees a message to one person). */
+  async ownerOf(spaceId: string): Promise<string | null> {
+    return (await this.spaceRow(spaceId))?.owner_id ?? null;
+  }
+
+  async isMember(spaceId: string, userId: string): Promise<boolean> {
+    return (await this.members.select({ space_id: spaceId, user_id: userId }, { limit: 1 })).length > 0;
+  }
+
+  /** The spaces this person is in, with what they may do in each. Never a draft: every list a person sees is made from this or list(). */
+  async mine(userId: string): Promise<Array<{ id: string; name: string; perms: Perm[]; admin: boolean }>> {
     const rows = await this.members.select({ user_id: userId }, { order: "joined_ms", limit: SPACES_MAX * 2 });
-    const out: Array<{ id: string; name: string; perms: Perm[] }> = [];
+    const out: Array<{ id: string; name: string; perms: Perm[]; admin: boolean }> = [];
     for (const m of rows) {
       const a = await this.access(userId, m.space_id).catch(() => null);
-      if (a) out.push({ id: a.s.id, name: a.s.name, perms: a.perms });
+      if (a && !isDraft(a.s)) out.push({ id: a.s.id, name: a.s.name, perms: a.perms, admin: a.admin });
     }
     return out;
   }
 
   async nameOf(spaceId: string): Promise<string> {
-    const [s] = await this.spaces.select({ id: spaceId }, { limit: 1 });
-    return s?.name ?? "";
+    return (await this.spaceRow(spaceId))?.name ?? "";
   }
 
   // ------------------------------------------------------------------ reading
 
   private async view(userId: string, a: Access): Promise<SpaceView> {
-    const { s, roles } = a;
+    const { s } = a;
     const people = await this.members.select({ space_id: s.id }, { order: "joined_ms", limit: MEMBERS_MAX });
     const bots = await this.shared.select({ space_id: s.id }, { order: "added_ms", limit: SPACE_BOTS_MAX });
-    const open = (await this.invites.select({ space_id: s.id, created_by: userId }, { order: "created_ms", desc: true, limit: 5 }))
-      .find((i) => !i.email && Number(i.expires_ms) > this.now());
     return {
       id: s.id, name: s.name, mine: a.admin, me: { admin: a.admin, perms: a.perms },
       members: people.map((p) => {
-        const perms = this.permsOfRow(p, s, roles);
+        const admin = p.user_id === s.owner_id;
         return {
-          userId: p.user_id, name: p.name, you: p.user_id === userId, maker: p.user_id === s.owner_id, canApprove: perms.includes("approve"),
-          joinedAt: Number(p.joined_ms) || 0, perms, role: p.user_id === s.owner_id ? "admin" : (p.role ?? null), roleName: this.roleName(p, s, roles, perms),
+          userId: p.user_id, name: p.name, you: p.user_id === userId, maker: admin, canApprove: true,
+          joinedAt: Number(p.joined_ms) || 0, perms: this.permsOfRow(p, s), role: admin ? "admin" : null, roleName: admin ? "Admin" : "Member",
         };
       }),
       bots: bots.map((b) => ({ slug: b.slug, name: b.name, colour: b.colour, addedBy: people.find((p) => p.user_id === b.added_by)?.name ?? "someone", byYou: b.added_by === userId })),
-      invite: open ? { code: open.code, expiresAt: Number(open.expires_ms) } : null,
-      roles: [
-        ...PRESETS.map((p) => ({ id: p.id, name: p.name, perms: [...p.perms], preset: true })),
-        ...roles.map((r) => ({ id: r.id, name: r.name, perms: permsOf(r.perms), preset: false })),
-      ],
+      invite: null,
+      roles: [],
     };
   }
 
+  /** The spaces the person is in, never a draft. It only reads: Home and both apps' launches read it every time. */
   async list(userId: string): Promise<SpaceView[]> {
     const mine = await this.members.select({ user_id: userId }, { order: "joined_ms", limit: SPACES_MAX * 2 });
     const out: SpaceView[] = [];
     for (const m of mine) {
       const a = await this.access(userId, m.space_id).catch(() => null);
-      if (a) out.push(await this.view(userId, a));
+      if (a && !isDraft(a.s)) out.push(await this.view(userId, a));
     }
     return out;
+  }
+
+  /** How many people the admin invited by email who haven't come in yet (open: not used, not taken back, not said no to). */
+  async invited(userId: string, spaceId: string): Promise<number> {
+    const a = await this.access(userId, spaceId).catch(() => null);
+    if (!a?.admin) return 0;
+    const at = this.now();
+    return (await this.invites.select({ space_id: spaceId }, { limit: 200 })).filter((i) => !!i.email && isOpen(i, at)).length;
   }
 
   async detail(userId: string, spaceId: string): Promise<SpaceDetail> {
     const a = await this.access(userId, spaceId);
     const v = await this.view(userId, a);
-    let invites: InviteView[] = [];
-    if (a.perms.includes("invite")) {
-      const rows = (await this.invites.select({ space_id: spaceId }, { order: "created_ms", desc: true, limit: 40 }))
-        .filter((i) => Number(i.expires_ms) > this.now() && !i.used_by);
-      invites = [];
+    const invites: InviteView[] = [];
+    if (a.admin) {
+      const at = this.now();
+      const rows = (await this.invites.select({ space_id: spaceId }, { order: "created_ms", desc: true, limit: 40 })).filter((i) => isOpen(i, at));
+      const code = await this.codeFor(spaceId);
       for (const i of rows.slice(0, 12)) {
-        const perms = await this.invitePerms(i, a.s, a.roles);
         const mail = i.email ? await this.outbox.byRef("space_invite", i.code) : null;
         invites.push({
-          code: i.code, link: this.linkOf(i.code), email: i.email ? (i.created_by === userId || a.admin ? i.email : maskEmail(i.email)) : null,
-          expiresAt: Number(i.expires_ms), perms, roleName: this.inviteRoleName(i, a.roles, perms), byYou: i.created_by === userId,
+          code: i.code, link: this.linkOf(code), email: i.email ?? null,
+          expiresAt: Number(i.expires_ms), perms: [...MEMBER_PERMS], roleName: "Member", byYou: i.created_by === userId,
           by: v.members.find((m) => m.userId === i.created_by)?.name ?? "someone",
           mail: mail ? (mail.status === "sent" ? "sent" : mail.status === "failed" ? "failed" : "queued") : null,
         });
       }
     }
     const activity = a.perms.includes("activity") ? await this.activity(userId, spaceId, 30, v.members) : null;
-    return { ...v, invites, activity };
+    return { ...v, invites, activity, code: a.admin ? showCode(await this.codeFor(spaceId)) : null };
   }
 
   async activity(userId: string, spaceId: string, limit = 30, members?: MemberView[]): Promise<Array<{ id: string; kind: string; text: string; at: number; by: string }>> {
@@ -296,13 +335,26 @@ export class Spaces {
 
   // ------------------------------------------------------------------ making, naming
 
-  async create(userId: string, name: unknown, me: string): Promise<{ id: string }> {
+  /** A space's name, as given: other people see it, so it is screened (422 blocked_content). */
+  private async nameFrom(name: unknown, empty: string): Promise<string> {
     const n = clean(name, 40);
-    if (!n) throw new BotError("bad_request", "Give the space a name, like Home or Studio.");
+    if (!n) throw new BotError("bad_request", empty);
+    await screenPost([n]);
+    return n;
+  }
+
+  private async roomForOneMore(userId: string): Promise<void> {
     if ((await this.members.select({ user_id: userId }, { limit: SPACES_MAX + 1 })).length >= SPACES_MAX) throw new BotError("space_limit", `You can be in ${SPACES_MAX} spaces.`, 409);
+  }
+
+  /** A real, named space at once (an old build's Start a space, and Done with no draft). */
+  async create(userId: string, name: unknown, me: string): Promise<{ id: string }> {
+    const n = await this.nameFrom(name, "Give the space a name, like Home or Studio.");
+    await this.roomForOneMore(userId);
     const id = randomUUID();
     const at = this.now();
     const who = clean(me, 40) || "You";
+    // A real space: draft_ms null and named true are the columns' own defaults (migration 0068).
     await this.spaces.insert({ id, owner_id: userId, name: n, created_ms: at });
     await this.members.insert({ space_id: id, user_id: userId, name: who, can_approve: true, joined_ms: at, perms: [...PERMS], role: null });
     await this.note(id, userId, "made", `${who} made ${n}`);
@@ -313,219 +365,291 @@ export class Spaces {
 
   async rename(userId: string, id: string, name: unknown): Promise<void> {
     const a = await this.need(userId, id, "rename");
-    const n = clean(name, 40);
-    if (!n) throw new BotError("bad_request", "Give the space a name.");
-    if (n === a.s.name) return;
-    await this.spaces.update({ id }, { name: n });
+    const n = await this.nameFrom(name, "Give the space a name.");
+    if (n === a.s.name && a.s.named !== false) return;
+    await this.spaces.update({ id }, { name: n, named: true });
     await this.note(id, userId, "renamed", `${a.me.name} renamed ${a.s.name} to ${n}`);
     await this.changed(id);
   }
 
-  // ------------------------------------------------------------------ invites
+  // ------------------------------------------------------------------ drafts (Create, then Call Your People, then Name your space)
+
+  /** The maker's drafts, youngest first. */
+  private async draftsOf(userId: string): Promise<SpaceRow[]> {
+    // Through their member rows (indexed by person): a draft always has its maker in it.
+    const out: SpaceRow[] = [];
+    for (const m of await this.members.select({ user_id: userId }, { limit: SPACES_MAX * 2 })) {
+      const s = await this.spaceRow(m.space_id);
+      if (s && s.owner_id === userId && isDraft(s)) out.push(s);
+    }
+    return out.sort((a, b) => Number(b.draft_ms) - Number(a.draft_ms));
+  }
+
+  /** Their drafts left a day or more are deleted, as Back would (their mails stop). Only from the Spaces screen and Create: never a list. */
+  private async sweep(userId: string): Promise<SpaceRow | null> {
+    const [open, ...rest] = await this.draftsOf(userId);
+    const stale = [...rest, ...(open && Number(open.draft_ms) <= this.now() - DRAFT_MS ? [open] : [])];
+    for (const d of stale) await this.leave(userId, d.id).catch(() => undefined);
+    return open && !stale.includes(open) ? open : null;
+  }
+
+  private async draftView(s: SpaceRow): Promise<DraftView> {
+    const at = this.now();
+    const rows = (await this.invites.select({ space_id: s.id }, { order: "created_ms", limit: MEMBERS_MAX * 2 })).filter((i) => !!i.email && isOpen(i, at));
+    const invites: DraftView["invites"] = [];
+    for (const i of rows) {
+      const mail = await this.outbox.byRef("space_invite", i.code);
+      invites.push({ code: i.code, email: i.email ?? "", at: Number(i.created_ms), mail: mail ? (mail.status === "sent" ? "sent" : mail.status === "failed" ? "failed" : "queued") : null });
+    }
+    return { id: s.id, name: s.named === false ? null : s.name, invites };
+  }
+
+  /** The maker's open draft, with who it invited, or null. Sweeps their old ones first. */
+  async draftOf(userId: string): Promise<DraftView | null> {
+    const d = await this.sweep(userId);
+    return d ? this.draftView(d) : null;
+  }
+
+  /** The maker's open draft, made if there is none. A name (Make a new space) names it, screened. */
+  async draft(user: { id: string }, o: { name?: unknown }, me: string): Promise<DraftView> {
+    let d = await this.sweep(user.id);
+    const named = o.name === undefined || o.name === null || o.name === "" ? null : await this.nameFrom(o.name, "Give the space a name.");
+    if (!d) {
+      await this.roomForOneMore(user.id);
+      const at = this.now();
+      d = { id: randomUUID(), owner_id: user.id, name: named ?? DRAFT_NAME, created_ms: at, draft_ms: at, named: !!named };
+      await this.spaces.insert(d);
+      await this.members.insert({ space_id: d.id, user_id: user.id, name: clean(me, 40) || "You", can_approve: true, joined_ms: at, perms: [...PERMS], role: null });
+    } else if (named) {
+      await this.spaces.update({ id: d.id }, { name: named, named: true });
+      d = { ...d, name: named, named: true };
+    }
+    this.publish([user.id], "spaces");
+    return this.draftView(d);
+  }
+
+  /** Call Your People: the draft (made if none), and an invite to this address on it. */
+  async draftInvite(user: { id: string }, email: unknown, me: string): Promise<DraftView> {
+    const d = await this.draft(user, {}, me);
+    await this.inviteEmail(user, d.id, email, me);
+    const s = await this.spaceRow(d.id);
+    return s ? this.draftView(s) : d;
+  }
+
+  /** Done: the draft becomes a real space with this name, or its own. No draft: a new real space with the name. */
+  async finishDraft(user: { id: string }, o: { name?: unknown }, me: string): Promise<{ id: string; name: string }> {
+    const d = await this.sweep(user.id);
+    const given = o.name === undefined || o.name === null || o.name === "" ? null : await this.nameFrom(o.name, "Name your space first.");
+    if (!d) {
+      if (!given) throw new BotError("bad_request", "Name your space first.");
+      const { id } = await this.create(user.id, given, me);
+      return { id, name: given };
+    }
+    const name = given ?? (d.named === false ? null : d.name);
+    if (!name) throw new BotError("bad_request", "Name your space first.");
+    await this.spaces.update({ id: d.id }, { name, named: true, draft_ms: null });
+    const [m] = await this.members.select({ space_id: d.id, user_id: user.id }, { limit: 1 });
+    const who = m?.name || clean(me, 40) || "You";
+    await this.note(d.id, user.id, "made", `${who} made ${name}`);
+    await this.emit({ spaceId: d.id, joined: { userId: user.id, name: who } });
+    await this.changed(d.id);
+    return { id: d.id, name };
+  }
+
+  /** Back: the draft goes, with its invites, and any mail still waiting to go. */
+  async dropDraft(userId: string): Promise<void> {
+    for (const d of await this.draftsOf(userId)) await this.leave(userId, d.id);
+    this.publish([userId], "spaces");
+  }
+
+  // ------------------------------------------------------------------ the space's code
 
   private linkOf(code: string): string { return inviteLinkOf(this.origin(), code); }
 
-  /** What an invite gives: its preset or role as it is now, else its own list, else (an invite from before permissions) Family. */
-  private async invitePerms(i: InviteRow, s: SpaceRow, roles?: RoleRow[]): Promise<Perm[]> {
-    const preset = presetOf(i.role);
-    if (preset) return [...preset.perms];
-    const rs = roles ?? await this.roles.select({ space_id: s.id }, { limit: ROLES_MAX });
-    const custom = i.role ? rs.find((r) => r.id === i.role) : undefined;
-    if (custom) return permsOf(custom.perms);
-    // An invite from before permissions has no role at all (migration 0051 makes theirs "family").
-    return Array.isArray(i.perms) && i.role !== undefined ? permsOf(i.perms) : [...presetOf("family")!.perms];
-  }
-
-  private inviteRoleName(i: InviteRow, roles: RoleRow[], perms: Perm[]): string {
-    return presetOf(i.role)?.name ?? roles.find((r) => r.id === i.role)?.name ?? (perms.length ? "Just for them" : "Can only look");
-  }
-
-  /** The permissions a choice names: a preset, one of the space's roles, or a list. Null: none named. */
-  private wanted(a: Access, o: { role?: unknown; perms?: unknown }): { role: string | null; perms: Perm[] } | null {
-    if (typeof o.role === "string" && o.role) {
-      const preset = presetOf(o.role);
-      if (preset) return { role: preset.id, perms: [...preset.perms] };
-      const custom = a.roles.find((r) => r.id === o.role);
-      if (!custom) throw new BotError("not_found", "That role isn't there any more.", 404);
-      return { role: custom.id, perms: permsOf(custom.perms) };
+  /** A code no space has yet: checked first (the memory twin has no unique index), and the database's unique index backs it. */
+  private async freshCode(spaceId: string): Promise<string> {
+    for (let i = 0; i < CODE_TRIES; i += 1) {
+      const c = randomCode(JOIN_CODE_LEN);
+      if ((await this.spaces.select({ join_code: c }, { limit: 1 })).length) continue;
+      try {
+        await this.spaces.update({ id: spaceId }, { join_code: c });
+        return c;
+      } catch { /* taken in the meantime (the unique index): another */ }
     }
-    if (o.perms !== undefined) return { role: null, perms: permsOf(o.perms) };
-    return null;
+    throw new BotError("failed", "Couldn't make a code just now. Try again.", 503);
+  }
+
+  /** The space's code, made the first time it is asked for (not by a list: GET /spaces never writes). */
+  async codeFor(spaceId: string): Promise<string> {
+    const s = await this.spaceRow(spaceId);
+    if (!s) throw notFound();
+    if (s.join_code) return s.join_code;
+    await this.freshCode(spaceId);
+    // Two first asks at once both write: whichever landed is the code.
+    return (await this.spaceRow(spaceId))?.join_code ?? "";
+  }
+
+  /** The admin makes a new code; the old one stops working at once. Shown 7KQ-29D. */
+  async newCode(user: { id: string }, spaceId: string): Promise<string> {
+    const a = await this.access(user.id, spaceId);
+    if (!a.admin) throw forbid(`Only ${a.s.name}'s admin can make a new code.`);
+    const c = await this.freshCode(spaceId);
+    await this.note(spaceId, user.id, "code", `${a.me.name} made a new code`);
+    await this.changed(spaceId);
+    return showCode(c);
+  }
+
+  /** The space a code is for (its own code), or null. */
+  async byCode(code: string): Promise<SpaceRow | null> {
+    if (code.length !== JOIN_CODE_LEN) return null;
+    return (await this.spaces.select({ join_code: code }, { limit: 1 }))[0] ?? null;
+  }
+
+  // ------------------------------------------------------------------ invites
+
+  /**
+   * The admin invites an address: a row (its own code, seven days, good once for that address) and a mail with the space's code. A
+   * draft's mail has no name ("their space"): it goes before the space is named. Up to 30 invite mails a day, counted in the outbox
+   * by who sent them: its rows stay when a space or draft is deleted, so Back on Create can't start the count again. One open invite
+   * an address.
+   */
+  async inviteEmail(user: { id: string }, spaceId: string, emailIn: unknown, me: string): Promise<{ code: string; email: string }> {
+    const a = await this.need(user.id, spaceId, "invite");
+    const email = cleanEmail(emailIn);
+    if (!email) throw new BotError("bad_email", "That doesn't look like an email address.");
+    const at = this.now();
+    if ((await this.outbox.sentBy("space_invite", user.id, at - 24 * 3600_000, INVITES_A_DAY)) >= INVITES_A_DAY) {
+      throw new BotError("invite_limit", `That's ${INVITES_A_DAY} invites today. Try again tomorrow.`, 429);
+    }
+    const open = (await this.invites.select({ space_id: spaceId, email }, { limit: 20 })).some((i) => isOpen(i, at));
+    if (open) throw new BotError("already_invited", "They're already invited.", 409);
+    const code = randomCode(8);
+    await this.invites.insert({
+      code, space_id: spaceId, created_by: user.id, created_ms: at, expires_ms: at + INVITE_MS,
+      email, perms: [...MEMBER_PERMS], role: null, used_by: null, used_ms: null,
+    });
+    const joinCode = await this.codeFor(spaceId);
+    const from = a.me.name || clean(me, 40) || "Someone";
+    const space = a.s.named === false ? "their space" : a.s.name;
+    await this.outbox.queue({
+      to: email, kind: "space_invite", ref: code, by: user.id,
+      subject: `${from} invited you to ${space} on X0 Bot`,
+      text: [
+        `${from} invited you to ${space} on X0 Bot.`,
+        `Sign in to X0 Bot with this email (${email}) and the invite is waiting: open Spaces, tap your bot, and tap Accept.`,
+        `Signing in with another email? Open Spaces, tap your bot, and type this code: ${showCode(joinCode)}. ${from} will let you in.`,
+        "The space's admin can see your work and messages there.",
+        `Get X0 Bot: ${this.linkOf(joinCode)}`,
+        "If you weren't expecting this, you can ignore it.",
+      ].join("\n\n"),
+    });
+    await this.note(spaceId, user.id, "invited", `${from} invited ${maskEmail(email)}`);
+    await this.changed(spaceId);
+    return { code, email };
   }
 
   /**
-   * A code and its link, seven days. With `email`, a mail is queued to it and the invite works once, for whoever uses it first, on any
-   * account; without, anyone with the link can join. Either way it gives what was chosen, never more than you can do.
+   * An old build's invite. The admin only; a role or permissions it names are ignored (there are none). With an email, inviteEmail;
+   * without one (an old build's "link"), no new row: the space's own code and its link.
    */
-  async invite(user: { id: string; name?: string }, id: string, o: { email?: unknown; role?: unknown; perms?: unknown } = {}): Promise<{ code: string; link: string; expiresAt: number; email: string | null; mail: "queued" | null; mailReady: boolean }> {
-    const a = await this.need(user.id, id, "invite");
-    let want = this.wanted(a, o);
-    if (!want) {
-      // Nothing chosen (an older app): Family, as far as you can give it.
-      const fam = presetOf("family")!;
-      want = lacking(a.perms, fam.perms).length ? { role: null, perms: fam.perms.filter((p) => a.perms.includes(p)) } : { role: fam.id, perms: [...fam.perms] };
-    }
-    const missing = lacking(a.perms, want.perms);
-    if (missing.length) throw forbid(`You can't give what you can't do yourself: ${permNames(missing)}.`);
-    const email = o.email === undefined || o.email === "" ? "" : cleanEmail(o.email);
-    if (o.email !== undefined && o.email !== "" && !email) throw new BotError("bad_email", "That doesn't look like an email address.");
+  async invite(user: { id: string }, id: string, o: { email?: unknown } = {}, me = ""): Promise<{ code: string; link: string; expiresAt: number; email: string | null; mail: "queued" | null; mailReady: boolean }> {
+    await this.need(user.id, id, "invite");
     const at = this.now();
-    const recent = (await this.invites.select({ created_by: user.id }, { order: "created_ms", desc: true, limit: INVITES_A_DAY + 1 }))
-      .filter((i) => Number(i.created_ms) > at - 24 * 3600_000);
-    if (recent.length >= INVITES_A_DAY) throw new BotError("invite_limit", `That's ${INVITES_A_DAY} invites today. Try again tomorrow.`, 429);
-    if (email && recent.some((i) => i.email === email && i.space_id === id && Number(i.expires_ms) > at)) {
-      throw new BotError("already_invited", "They already have an invite to this space. Take that one back first to send another.", 409);
+    if (o.email !== undefined && o.email !== "" && o.email !== null) {
+      const r = await this.inviteEmail(user, id, o.email, me);
+      return { code: r.code, link: this.linkOf(await this.codeFor(id)), expiresAt: at + INVITE_MS, email: r.email, mail: "queued", mailReady: this.mailer.configured };
     }
-    const code = inviteCode();
-    await this.invites.insert({
-      code, space_id: id, created_by: user.id, created_ms: at, expires_ms: at + INVITE_MS,
-      email: email || null, perms: want.perms, role: want.role, used_by: null, used_ms: null,
-    });
-    const link = this.linkOf(code);
-    if (email) {
-      const from = a.me.name || "Someone";
-      await this.outbox.queue({
-        to: email, kind: "space_invite", ref: code,
-        subject: `${from} invited you to ${a.s.name} on X0 Bot`,
-        text: [
-          `${from} invited you to ${a.s.name} on X0 Bot.`,
-          `Open this link on your phone to join (it works for seven days): ${link}`,
-          `No X0 Bot yet? The link takes you to the App Store or Google Play. Install it, sign in, and open the link again.`,
-          `Or open X0 Bot, go to You, then Spaces, tap Got an invite code? and enter ${code}.`,
-          `The invite works once. If you weren't expecting this, you can ignore it.`,
-        ].join("\n\n"),
-      });
-      await this.note(id, user.id, "invited", `${from} invited ${maskEmail(email)}`);
-    }
-    await this.changed(id);
-    return { code, link, expiresAt: at + INVITE_MS, email: email || null, mail: email ? "queued" : null, mailReady: this.mailer.configured };
+    const code = await this.codeFor(id);
+    return { code, link: this.linkOf(code), expiresAt: at + INVITE_MS, email: null, mail: null, mailReady: this.mailer.configured };
   }
 
-  /** Take an invite back: its maker, or the admin. A queued mail for it is not sent. */
+  /** Take an invite back (the admin): it stops working, and a mail for it still waiting is not sent. */
   async revokeInvite(userId: string, id: string, code: string): Promise<void> {
     const a = await this.access(userId, id);
-    const [i] = await this.invites.select({ code: clean(code, 16).toUpperCase(), space_id: id }, { limit: 1 });
+    const [i] = await this.invites.select({ code: codeOf(code), space_id: id }, { limit: 1 });
     if (!i) throw new BotError("not_found", "That invite isn't there any more.", 404);
-    if (i.created_by !== userId && !a.admin) throw forbid("Only who made the invite, or the admin, can take it back.");
+    if (!a.admin) throw forbid(`Only ${a.s.name}'s admin can take an invite back.`);
     await this.invites.update({ code: i.code }, { expires_ms: this.now() });
     await this.outbox.cancel("space_invite", i.code);
     await this.changed(id);
   }
 
-  /** What a code is for, without joining: the space's name (the link's page shows it) and how many are in. */
+  /** One invite by its own code, as it is. */
+  async inviteByCode(code: string): Promise<InviteRow | null> {
+    if (!INVITE_CODE_RE.test(code)) return null;
+    return (await this.invites.select({ code }, { limit: 1 }))[0] ?? null;
+  }
+
+  /** The open email invites to this address (spaceJoin.ts narrows them to the invitations it lists). */
+  async invitesTo(email: string): Promise<InviteRow[]> {
+    if (!email) return [];
+    const at = this.now();
+    return (await this.invites.select({ email }, { order: "created_ms", desc: true, limit: 40 })).filter((i) => isOpen(i, at));
+  }
+
+  /** An email invite used once: claimed on the expiry just read, so of two taps only one matches. False: someone was first. */
+  async claimInvite(i: InviteRow, userId: string): Promise<boolean> {
+    const at = this.now();
+    return (await this.invites.update({ code: i.code, expires_ms: i.expires_ms } as Partial<InviteRow>, { used_by: userId, used_ms: at, expires_ms: at })) > 0;
+  }
+
+  /** The invited person said no: it isn't listed again. */
+  async dismissInvite(code: string): Promise<void> {
+    await this.invites.update({ code }, { dismissed_ms: this.now() });
+  }
+
+  /**
+   * What an email invite's own code is for, without joining: the space's name and how many are in. A space's own code is never named
+   * (6 characters that never expire: naming its space would let anyone guess codes and read family names), nor a draft: null.
+   */
   async peek(code: unknown): Promise<{ name: string; members: number } | null> {
-    const c = clean(code, 16).toUpperCase();
-    if (!c) return null;
-    const [inv] = await this.invites.select({ code: c }, { limit: 1 });
-    if (!inv || Number(inv.expires_ms) <= this.now() || inv.used_by) return null;
-    const [s] = await this.spaces.select({ id: inv.space_id }, { limit: 1 });
-    if (!s) return null;
+    const c = codeOf(code);
+    if (!c || isJoinCodeShape(c)) return null;
+    const inv = await this.inviteByCode(c);
+    if (!inv || !isOpen(inv, this.now())) return null;
+    const s = await this.spaceRow(inv.space_id);
+    if (!s || isDraft(s)) return null;
     return { name: s.name, members: (await this.members.select({ space_id: s.id }, { limit: MEMBERS_MAX })).length };
   }
 
-  async join(user: { id: string; email?: string | null }, code: unknown, me: string): Promise<{ id: string; name: string }> {
-    const userId = user.id;
-    const c = clean(code, 16).toUpperCase().replace(/[^A-Z0-9]/g, "");
-    const [inv] = c ? await this.invites.select({ code: c }, { limit: 1 }) : [];
-    if (!inv || Number(inv.expires_ms) <= this.now()) throw new BotError("bad_code", "That code doesn't work. Ask for a new invite.", 404);
-    const [s] = await this.spaces.select({ id: inv.space_id }, { limit: 1 });
-    if (!s) throw new BotError("bad_code", "That space isn't there any more.", 404);
-    const [already] = await this.members.select({ space_id: s.id, user_id: userId }, { limit: 1 });
-    if (already) return { id: s.id, name: s.name };
-    if (inv.email && inv.used_by) throw new BotError("bad_code", "That invite has been used. Ask for a new one.", 404);
-    // It gives what it says, and never more than the person who made it can still do (nothing, once they've left).
-    const roles = await this.roles.select({ space_id: s.id }, { limit: ROLES_MAX });
-    const [maker] = await this.members.select({ space_id: s.id, user_id: inv.created_by }, { limit: 1 });
-    if (!maker) throw new BotError("bad_code", "That invite doesn't work any more. Ask for a new one.", 404);
-    const makerPerms = this.permsOfRow(maker, s, roles);
-    const given = await this.invitePerms(inv, s, roles);
-    const perms = given.filter((p) => makerPerms.includes(p));
-    const role = perms.length === given.length ? (inv.role && inv.role !== "custom" ? inv.role : null) : null;
-    if ((await this.members.select({ space_id: s.id }, { limit: MEMBERS_MAX + 1 })).length >= MEMBERS_MAX) throw new BotError("space_full", `A space can have ${MEMBERS_MAX} people.`, 409);
-    if ((await this.members.select({ user_id: userId }, { limit: SPACES_MAX + 1 })).length >= SPACES_MAX) throw new BotError("space_limit", `You can be in ${SPACES_MAX} spaces.`, 409);
-    if (inv.email) {
-      // One person per email invite, on any account: claim it first (on the expiry just read, so of two taps only one matches), then it's used up.
-      const claimed = await this.invites.update({ code: inv.code, expires_ms: inv.expires_ms } as Partial<InviteRow>, { used_by: userId, used_ms: this.now(), expires_ms: this.now() });
-      if (!claimed) throw new BotError("bad_code", "That invite has been used. Ask for a new one.", 404);
-    }
-    const who = clean(me, 40) || "Someone";
-    await this.members.insert({ space_id: s.id, user_id: userId, name: who, can_approve: perms.includes("approve"), joined_ms: this.now(), perms, role });
-    await this.note(s.id, userId, "joined", `${who} joined`);
-    await this.emit({ spaceId: s.id, joined: { userId, name: who, invitedBy: inv.created_by, spaceName: s.name } });
-    await this.changed(s.id);
-    return { id: s.id, name: s.name };
-  }
-
-  // ------------------------------------------------------------------ what people may do
+  // ------------------------------------------------------------------ members
 
   /**
-   * Change what `memberId` may do: to a preset or role, or to a list. You need "manage"; nobody changes the admin or themselves; and you
-   * may only change someone who can't do more than you, to something that isn't more than you (so you can neither give nor take away
-   * what you can't do yourself).
+   * The one place a member row is written: the caps, the members' set, whether they saw the line about the admin, the "joined" line,
+   * and everyone told (the chats follow; whoever's invite it was hears who came in). spaceJoin.ts calls it.
    */
-  async setPerms(userId: string, id: string, memberId: string, o: { role?: unknown; perms?: unknown }): Promise<{ perms: Perm[]; role: string | null }> {
-    const a = await this.need(userId, id, "manage");
-    if (memberId === a.s.owner_id) throw forbid(`${a.s.name}'s admin can always do everything. That can't change.`);
-    if (memberId === userId) throw forbid("You can't change what you can do yourself. Ask the admin.");
-    const [m] = await this.members.select({ space_id: id, user_id: memberId }, { limit: 1 });
-    if (!m) throw new BotError("not_found", "They aren't in this space.", 404);
-    const before = this.permsOfRow(m, a.s, a.roles);
-    if (!covers(a.perms, before)) throw forbid(`${m.name} can do things you can't (${permNames(lacking(a.perms, before))}), so only someone who can may change them.`);
-    const want = this.wanted(a, o);
-    if (!want) throw new BotError("bad_request", "Say which role, or which things they may do.");
-    const missing = lacking(a.perms, want.perms);
-    if (missing.length) throw forbid(`You can't give what you can't do yourself: ${permNames(missing)}.`);
-    await this.members.update({ space_id: id, user_id: memberId }, { perms: want.perms, role: want.role, can_approve: want.perms.includes("approve") });
-    const added = want.perms.filter((p) => !before.includes(p)), dropped = before.filter((p) => !want.perms.includes(p));
-    if (added.length || dropped.length) {
-      const role = presetOf(want.role)?.name ?? a.roles.find((r) => r.id === want.role)?.name;
-      await this.note(id, userId, "perms", role ? `${a.me.name} made ${m.name} ${role}` : `${a.me.name} changed what ${m.name} can do`);
-    }
-    await this.changed(id);
-    return want;
+  async addMember(s: SpaceRow, user: { id: string }, name: string, o: { consent: boolean; invitedBy?: string }): Promise<void> {
+    if (await this.isMember(s.id, user.id)) return;
+    await this.roomFor(s, user.id);
+    const who = clean(name, 40) || "Someone";
+    const at = this.now();
+    await this.members.insert({ space_id: s.id, user_id: user.id, name: who, can_approve: true, joined_ms: at, perms: [...MEMBER_PERMS], role: null, consent_ms: o.consent ? at : null });
+    await this.note(s.id, user.id, "joined", `${who} joined`);
+    await this.emit({ spaceId: s.id, joined: { userId: user.id, name: who, ...(o.invitedBy ? { invitedBy: o.invitedBy } : {}), spaceName: s.name } });
+    await this.changed(s.id);
   }
 
-  /** The old switch ("who approves payments"): turns approving on or off for someone, through setPerms' rules. */
-  async setApprover(userId: string, id: string, memberId: string, on: unknown): Promise<void> {
-    if (typeof on !== "boolean") throw new BotError("bad_request", "canApprove is true or false.");
-    const a = await this.access(userId, id);
-    if (memberId === a.s.owner_id) throw new BotError("is_admin", `${a.s.name}'s admin can always approve payments.`, 409);
-    const [m] = await this.members.select({ space_id: id, user_id: memberId }, { limit: 1 });
-    if (!m) throw new BotError("not_found", "They aren't in this space.", 404);
-    const cur = this.permsOfRow(m, a.s, a.roles);
-    await this.setPerms(userId, id, memberId, { perms: on ? [...cur, "approve"] : cur.filter((p) => p !== "approve") });
+  /** 409 unless there is room: the space has fewer than 20 people, and the person is in fewer than 10 spaces. */
+  async roomFor(s: SpaceRow, userId: string): Promise<void> {
+    if ((await this.members.select({ space_id: s.id }, { limit: MEMBERS_MAX + 1 })).length >= MEMBERS_MAX) throw new BotError("space_full", `A space can have ${MEMBERS_MAX} people.`, 409);
+    await this.roomForOneMore(userId);
   }
 
-  /** A role of the space's own, made or changed by its admin (`roleId` to change one). Its members follow it. */
-  async saveRole(userId: string, id: string, o: { roleId?: unknown; name?: unknown; perms?: unknown }): Promise<RoleView> {
-    const a = await this.access(userId, id);
-    if (!a.admin) throw forbid("Only the admin can make roles.");
-    const name = clean(o.name, 30);
-    if (!name) throw new BotError("bad_request", "Name the role, like Grandparent or Cook.");
-    if (PRESETS.some((p) => p.name.toLowerCase() === name.toLowerCase())) throw new BotError("bad_request", `${name} is one of X0 Bot's roles already. Pick another name.`);
-    const perms = permsOf(o.perms);
-    if (typeof o.roleId === "string" && o.roleId) {
-      const r = a.roles.find((x) => x.id === o.roleId);
-      if (!r) throw new BotError("not_found", "That role isn't there any more.", 404);
-      await this.roles.update({ id: r.id, space_id: id }, { name, perms });
-      await this.members.update({ space_id: id, role: r.id } as Partial<MemberRow>, { perms, can_approve: perms.includes("approve") });
-      await this.changed(id);
-      return { id: r.id, name, perms, preset: false };
-    }
-    if (a.roles.length >= ROLES_MAX) throw new BotError("role_limit", `A space can have ${ROLES_MAX} roles of its own.`, 409);
-    const rid = randomUUID();
-    await this.roles.insert({ id: rid, space_id: id, name, perms, created_ms: this.now() });
-    await this.changed(id);
-    return { id: rid, name, perms, preset: false };
+  /** The member tapped OK on "The space's admin can see your work and messages here." Once is enough; the admin never needs it. */
+  async setConsent(userId: string, spaceId: string): Promise<void> {
+    const a = await this.access(userId, spaceId);
+    if (a.admin || (a.me.consent_ms !== null && a.me.consent_ms !== undefined)) return;
+    await this.members.update({ space_id: spaceId, user_id: userId }, { consent_ms: this.now() });
+    await this.changed(spaceId);
   }
 
-  /** Delete a role: its members keep what it gave them, just for them. */
-  async dropRole(userId: string, id: string, roleId: string): Promise<void> {
-    const a = await this.access(userId, id);
-    if (!a.admin) throw forbid("Only the admin can delete roles.");
-    if (!(await this.roles.remove({ id: roleId, space_id: id }))) throw new BotError("not_found", "That role isn't there any more.", 404);
-    await this.members.update({ space_id: id, role: roleId } as Partial<MemberRow>, { role: null });
-    await this.changed(id);
+  /** Whether they saw the line about the admin (the admin: always). */
+  async consented(spaceId: string, userId: string): Promise<boolean> {
+    const s = await this.spaceRow(spaceId);
+    if (!s) return false;
+    if (s.owner_id === userId) return true;
+    const [m] = await this.members.select({ space_id: spaceId, user_id: userId }, { limit: 1 });
+    return !!m && m.consent_ms !== null && m.consent_ms !== undefined;
   }
 
   // ------------------------------------------------------------------ bots
@@ -552,19 +676,23 @@ export class Spaces {
     await this.changed(id);
   }
 
-  /** The spaces where this person may use the shared bots and `slug` is one of them. */
+  /**
+   * The spaces whose bots `slug` is. Plan Ease, Notes, Travel bot and Xode are every group's bots (there is no add-a-bot step any
+   * more), so for them it is every space the person is in; any other bot, the spaces it was added to.
+   */
   async spacesWithBot(userId: string, slug: string): Promise<Array<{ id: string; name: string }>> {
     const out: Array<{ id: string; name: string }> = [];
+    const everyGroups = (SHARE_BOTS as readonly string[]).includes(slug);
     for (const s of await this.mine(userId)) {
       if (!s.perms.includes("bots")) continue;
-      if ((await this.shared.select({ space_id: s.id, slug }, { limit: 1 })).length) out.push({ id: s.id, name: s.name });
+      if (everyGroups || (await this.shared.select({ space_id: s.id, slug }, { limit: 1 })).length) out.push({ id: s.id, name: s.name });
     }
     return out;
   }
 
   // ------------------------------------------------------------------ leaving
 
-  /** Leave, or remove `memberId` (needs "remove", and only someone who can't do more than you). The admin leaving deletes the space. */
+  /** Leave, or remove `memberId` (the admin only; nobody removes the admin). The admin leaving deletes the space. */
   async leave(userId: string, id: string, memberId?: string): Promise<{ deleted: boolean }> {
     const a = await this.access(userId, id);
     const who = memberId ?? userId;
@@ -573,15 +701,14 @@ export class Spaces {
       if (who === a.s.owner_id) throw forbid(`Nobody can remove ${a.s.name}'s admin.`);
       const [m] = await this.members.select({ space_id: id, user_id: who }, { limit: 1 });
       if (!m) throw new BotError("not_found", "They aren't in this space.", 404);
-      const theirs = this.permsOfRow(m, a.s, a.roles);
-      if (!covers(a.perms, theirs)) throw forbid(`${m.name} can do things you can't, so you can't remove them.`);
     }
     if (who === a.s.owner_id) {
       const everyone = await this.memberIds(id);
+      // Any invite mail still waiting to go stops with the space.
+      for (const i of await this.invites.select({ space_id: id }, { limit: 500 })) await this.outbox.cancel("space_invite", i.code);
       await this.emit({ spaceId: id, deleted: true });
       await this.shared.remove({ space_id: id });
       await this.invites.remove({ space_id: id });
-      await this.roles.remove({ space_id: id });
       await this.log.remove({ space_id: id });
       await this.members.remove({ space_id: id });
       await this.spaces.remove({ id });

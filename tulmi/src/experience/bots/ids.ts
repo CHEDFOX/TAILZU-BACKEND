@@ -63,15 +63,16 @@ export const SCREENS = {
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)
   // screens/spaces.ts: spaces with family and friends (bots.spaces is built there too), sharing, payments, tasks, messaging
-  spaceMember: "bots.space.member",  // What <name> can do (params: id, member)
-  spaceInvite: "bots.space.invite",  // Invite by link or email (params: id)
-  spaceRoles: "bots.space.roles",    // The space's own roles (params: id, role)
+  spaceMember: "bots.space.member",  // One person in a space: Message, Remove (the admin), Report, Block (params: id, member)
+  spaceInvite: "bots.space.invite",  // Invite by email, and the space's code (params: id)
+  spacePeople: "bots.space.people",  // A space's people, its code, its name, Leave or Delete (params: id; screens/spaces/peoplePage.ts, new builds)
   spaceItem: "bots.space.item",      // One shared thing (params: item)
   spacePay: "bots.space.pay",        // Ask for a payment (params: id)
   spaceTasks: "bots.space.tasks",    // Given to you; a space's tasks; a new task or plan (params: id, new: "task" | "plan")
   spaceBot: "bots.space.bot",        // One of a group's sub-bots: what each person shares from it, and what you do (params: id, bot)
   spaceMemory: "bots.space.memory",  // What a group's bots know: lines anyone there told them (params: id; screens/spaces/memoryPage.ts)
   share: "bots.share",               // Share to a space or person (params: kind, ref, title, text, url, bot)
+  work: "bots.work",                 // Work in space: one person's things in a bot, or one of them (params: bot, space, owner, item?; screens/work.ts)
   chats: "bots.chats",               // Chats (params: id, the open one in the window; new: "group")
   thread: "bots.thread",             // One chat (params: id, before)
   // screens/safety.ts: reporting and blocking (App Review 1.2), no boards: drawn in Spaces' look

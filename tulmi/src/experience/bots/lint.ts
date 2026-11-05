@@ -5,7 +5,7 @@
  *
  * It finds: a node type outside the kit's set (the core types both clients draw), text not set in a Geist face
  * or with a weight of its own or no line height, a border width with no colour, an image without a { url } source,
- * and a pressable inside a pressable (the window would run both).
+ * and a pressable inside a pressable (the window would run both; a BotStage's own press is on the bot, so its thought may hold buttons).
  */
 import type { Node } from "../../../../shared/types/sdui.js";
 import { FACE } from "./kit.js";
@@ -19,8 +19,16 @@ export function walk(n: Node, out: Node[] = []): Node[] {
 
 /** The node types the kit uses: core types both clients draw (desktop src/app/sdui/core.js COMPONENTS, the phone's REGISTRY), and the
  *  living tiles' two (BotTiles, BotCard), which the kit sends only to a build that declares BotsMotion, and BotBuddy and Home's live header (WriteOn, LiveMark, HeadBar) with it,
- *  and Home's welcome (Rise: Home coming in; BlipWalkOut: Blip walking off, or MorphOut sliding him off where a build lacks it), with it too. */
-const KIT_TYPES: ReadonlySet<string> = new Set(["Stack", "Text", "SVG", "Image", "Grid", "Screen", "SafeArea", "TextField", "Scroll", "BotTiles", "BotCard", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "LiveView", "Rise", "MorphOut", "BlipWalkOut"]);
+ *  and Home's welcome (Rise: Home coming in; BlipWalkOut: Blip walking off, or MorphOut sliding him off where a build lacks it), with it too,
+ *  and the new Spaces' and Home's Ask blocks (BotStage, BotCrowd, Vanish, MentionField, LiveWords: sdui 3i), sent only to a build that
+ *  declares them (kit canSpaces2, canHomeThought, canVoice). */
+const KIT_TYPES: ReadonlySet<string> = new Set([
+  "Stack", "Text", "SVG", "Image", "Grid", "Screen", "SafeArea", "TextField", "Scroll", "BotTiles", "BotCard", "BotBuddy", "WriteOn", "LiveMark",
+  "HeadBar", "LiveView", "Rise", "MorphOut", "BlipWalkOut", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords",
+]);
+
+/** A BotStage's press is on the bot (his hit area), never on the thought it holds: a button in the box is not inside a pressable. */
+const PRESS_ON_ITSELF: ReadonlySet<string> = new Set(["BotStage"]);
 
 export function lintTree(root: Node): string[] {
   const bad: string[] = [];
@@ -41,7 +49,7 @@ export function lintTree(root: Node): string[] {
     if (n.type === "Image" && !(n.props?.source as { url?: string } | undefined)?.url) bad.push("an image without a { url } source");
     const press = !!n.on?.onPress;
     if (press && pressed) bad.push(`a pressable inside a pressable (${n.type})`);
-    for (const c of n.children ?? []) visit(c, pressed || press);
+    for (const c of n.children ?? []) visit(c, pressed || (press && !PRESS_ON_ITSELF.has(n.type)));
   };
   visit(root, false);
   return bad;
