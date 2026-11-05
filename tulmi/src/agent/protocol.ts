@@ -270,6 +270,7 @@ export function readStepRequest(
   };
   if (utterance) req.utterance = utterance;
   if (o.privateField === true) req.privateField = true;
+  if (o.privateWindow === true) req.privateWindow = true;
   const language = oneLine(o.language, 16);
   if (/^[A-Za-z][A-Za-z-]*$/.test(language)) req.language = language;
   if (typeof o.tzOffsetMinutes === "number" && Number.isFinite(o.tzOffsetMinutes) && Math.abs(o.tzOffsetMinutes) <= 14 * 60) {

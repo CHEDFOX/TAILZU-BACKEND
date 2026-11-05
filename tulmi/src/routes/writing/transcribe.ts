@@ -1,5 +1,8 @@
 /**
  * POST /v1/transcribe-clean: a recording in, the cleaned text out.
+ *
+ * `privateField`: the screen is off limits (a sensitive app): written from what was said alone. `privateWindow`: said in a private
+ * (incognito) window: written like any other, and nothing of it is kept (no History entry, nothing learned from it).
  */
 
 import type { FastifyInstance } from "fastify";
@@ -56,7 +59,8 @@ export function registerTranscribeRoutes(app: FastifyInstance, deps: TranscribeR
     let fieldKind: FieldKind | undefined; // what kind of field, when the client read it
     let fieldLabel: string | undefined; // its label or placeholder, cleaned
     let surroundings: string | undefined; // what is on the screen around the field
-    let privateField = false; // a private window or a sensitive app: screen off limits
+    let privateField = false; // a sensitive app (or a private window the desktop has off): screen off limits
+    let privateWindow = false; // a private (incognito) window: read as any other, nothing of it kept
     let tzOffsetMinutes: number | undefined; // the device's current UTC offset
     let tone: string | undefined; // active tone override from the client
     let tonePrompt: string | undefined; // the active tone's inline prompt text
@@ -82,6 +86,8 @@ export function registerTranscribeRoutes(app: FastifyInstance, deps: TranscribeR
         surroundings = capSurroundings(part.value);
       } else if (part.fieldname === "privateField") {
         privateField = part.value === "true" || part.value === "1";
+      } else if (part.fieldname === "privateWindow") {
+        privateWindow = part.value === "true" || part.value === "1";
       } else if (part.fieldname === "tzOffsetMinutes") {
         const n = Number(part.value); if (Number.isFinite(n)) tzOffsetMinutes = n;
       } else if (part.fieldname === "tone") {
@@ -146,8 +152,8 @@ export function registerTranscribeRoutes(app: FastifyInstance, deps: TranscribeR
         tone: tone ?? personality.activeTone,
         tonePrompt,
         context,
-        // Nothing off a private window or a sensitive app is read, and the
-        // client sends no selection from one; a stray one is not used either.
+        // Nothing off an off-limits screen is read, and the client sends no
+        // selection from one; a stray one is not used either.
         selection: privateField ? undefined : selection,
         variables: { email: user.email, phone: user.phone },
         recent: await recentRead,
@@ -155,7 +161,8 @@ export function registerTranscribeRoutes(app: FastifyInstance, deps: TranscribeR
         heldStop,
       });
       await recordUsage({ user, source: "rest", ...result.usage });
-      await appendHistoryEntry(
+      // A private window's dictation is not remembered: no History card, nothing learned from it.
+      if (!privateWindow) await appendHistoryEntry(
         user,
         personality,
         {
@@ -178,7 +185,7 @@ export function registerTranscribeRoutes(app: FastifyInstance, deps: TranscribeR
         },
         result.usage.audioSeconds,
       );
-      learnFromUsage(user, personality);
+      if (!privateWindow) learnFromUsage(user, personality);
       desktopDictated(req, user, personality);
       // holdsStops: this server understands heldStop, so a desktop may hold back
       // the full stop that ends a pause stretch and let the next stretch decide

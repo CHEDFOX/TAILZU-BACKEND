@@ -10,7 +10,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "November 4, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "November 5, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
@@ -318,8 +318,10 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>The window's title</strong>, beyond a browser's site name (above), except in a spoken conversation (10.2). The tabs, headings and other text on the screen are listed as they are shown, even where one of them repeats the title.</li>
   <li><strong>Exact positions</strong> of anything on your screen. Only the rough position above leaves your computer.</li>
   <li><strong>Passwords and addresses:</strong> nothing in a password field; nothing in a browser's address bar, where Ask finds one; and never the part of a web address after "?" or "#", where links carry their one-time codes. Text you have selected is not sent at all if it contains such an address.</li>
-  <li><strong>Anything from a private window or a sensitive app.</strong> Ask stops, and sends nothing from the screen, in a private (incognito) browser window, or in an app or page whose name marks it as banking, payments, investing or crypto, tax, health, insurance, a wallet or a password manager; and our servers refuse a request that comes from such an app.</li>
+  <li><strong>Anything from a sensitive app.</strong> Ask stops, and sends nothing from the screen, in an app or page whose name marks it as banking, payments, investing or crypto, tax, health, insurance, a wallet or a password manager; and our servers refuse a request that comes from such an app.</li>
 </ul>
+
+<p><strong>Private (incognito) windows.</strong> When you call Ask, the one key or a spoken conversation up in a private (incognito) browser window, it works there as anywhere else: it reads the window as in 10.1 and sends what 10.2 says. Nothing from a private window is kept after your request is answered: not in what X0 Bot keeps to understand you (10.6), not in your History (what you dictate there is written for you but not saved), and nothing is learned from it. A spoken conversation holds it in our server's memory only while the conversation lasts, for its follow-ups, as for any window. The record of each request to Ask (10.4) is kept as for any request: how it went, never your words or your screen.</p>
 
 <h3>10.4 Where a picture goes, and what is kept</h3>
 <ul>

@@ -18,12 +18,14 @@ The one key's brain and Ask used to start every request nearly blank: the screen
 5. **Folding is by rule.** An ask that leaves the last 6 becomes "send to Riya: the mockups…" in the summary, and the oldest pieces drop once it passes 400 characters. No model is called for it.
 
 ## Where it is used
-- **`POST /v1/ask/decide`**: the block goes into the prompt; the computer's own `last` is used only while the server has kept no asks. The decided ask is kept after the answer (not for a private field, X0 Bot's own window or empty words). The body may carry `tz`.
-- **`POST /v1/agent`**: at a run's first step only, the block goes into the planner's message (`agent/prompt.ts`); later steps have the run's history. A step that ends with DONE puts its SAY words on the matching ask from the last half hour.
+- **`POST /v1/ask/decide`**: the block goes into the prompt; the computer's own `last` is used only while the server has kept no asks. The decided ask is kept after the answer (not for a private field, a private window, X0 Bot's own window or empty words). The body may carry `tz` and `privateWindow`.
+- **`POST /v1/agent`**: at a run's first step only, the block goes into the planner's message (`agent/prompt.ts`); later steps have the run's history. A step that ends with DONE puts its SAY words on the matching ask from the last half hour (not for a step marked `privateWindow`).
 - **`POST /v1/talk`** (docs/talk.md): the block goes to the brain and to the answering model; each turn is kept as an ask, and a spoken answer as its result, under the same rules. Clearing the context clears the person's talks too.
 
 ## What is never kept
-Nothing from a private field, X0 Bot's own window, a sensitive app (`pipeline/sensitive.ts`) or a picture step; nothing that looks like a secret, a password or a code (`code/policy.ts` scanForSecrets, and the words by name); nothing at all while Settings › Privacy "Use what you've told your bots" is off (`privacy.personalise`), and then nothing learned is shown either.
+Nothing from a private field, a private (incognito) window, X0 Bot's own window, a sensitive app (`pipeline/sensitive.ts`) or a picture step; nothing that looks like a secret, a password or a code (`code/policy.ts` scanForSecrets, and the words by name); nothing at all while Settings › Privacy "Use what you've told your bots" is off (`privacy.personalise`), and then nothing learned is shown either.
+
+A private window is not refused. The desktop reads it, acts in it and answers there like anywhere else (unless the server's `desktop.agent.privateWindows` is off; then it refuses one as it does a sensitive app, `privateField`). Each request from one carries `privateWindow: true` (`/v1/agent`, `/v1/ask/decide`, `/v1/talk`, `/v1/transcribe-clean`, `/v1/refine`). The context may still be read for it, so a follow-up works, but nothing of it is written: no ask, no result, no person (`notKept` says `private_window`), no turn in the talk, no decision in the brain's cache, no History entry and nothing learned from its writing.
 
 ## Kept and forgotten
 Migration 0065 (`person_context`): one row per person, written with the service key only, gone with the account. Without it, memory. At most 30 people and 6 asks.

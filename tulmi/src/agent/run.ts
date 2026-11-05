@@ -4,7 +4,9 @@
  * In order, cheapest first, and each stage only when the one before it did
  * not answer:
  *
- *   0. refusals   a private window or a sensitive app, a run past its steps
+ *   0. refusals   an off-limits screen (privateField) or a sensitive app, a run
+ *                 past its steps. A private window (privateWindow) is not one:
+ *                 it is answered like any other, and the route keeps nothing of it.
  *   1. heard      what they said: their words, or the recording transcribed
  *   P. picture    a step that came with a picture goes straight to a model
  *                 that can see, and is answered about it, in show mode
@@ -180,7 +182,8 @@ export async function runStep(ctx: StepContext, deps: StepDeps, sink: EventSink)
   const names = ctx.names ?? [];
   const history = req.history ?? [];
 
-  // 0. The second lock: the device refuses these first.
+  // 0. The second lock: the device refuses these first. A private window
+  // (req.privateWindow) is not refused here: only nothing of it is kept.
   if (req.privateField || sensitiveApp(req.app)) {
     sink.emit({ t: "error", code: "private", message: "Ask doesn't read private windows or sensitive apps." });
     return { path: "refused", words: 0, audioSeconds: 0, code: "private" };

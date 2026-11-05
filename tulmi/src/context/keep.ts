@@ -5,7 +5,8 @@
  *   keepResult(userId, run, d)    an Ask run that ended with DONE: its last words go on the ask it came from
  *   forgetPerson / forgetTurns    the person's own "forget this"
  *
- * Nothing is kept from a private field, X0 Bot's own window or a sensitive app; nothing that looks like a secret, a password or a code;
+ * Nothing is kept from a private field, a private (incognito) window, X0 Bot's own window or a sensitive app: a private window is read
+ * and answered like any other, and remembered never (DecideInput.privateWindow, keepResult's `private`); nothing that looks like a secret, a password or a code;
  * nothing at all while the person has Settings › Privacy "Use what you've told your bots" off (privacy.personalise, bots/shared.ts).
  *
  * The last TURNS_KEPT asks are kept whole. An older one is folded into the summary by rule, no model: "send to Riya: the mockups…", and the
@@ -98,6 +99,7 @@ export function notKept(i: DecideInput, d: AskDecision): string | null {
   if (!i.words.trim()) return "empty";
   if (i.ours) return "ours";
   if (i.field && i.field.private) return "private_field";
+  if (i.privateWindow) return "private_window";
   if (sensitiveApp(i.app) || sensitiveApp(i.title)) return "sensitive_app";
   if (d.by === "rules") return "rules";
   // Dictation is the person's own writing for a text box, not an ask of X0: its words are not kept.
@@ -133,7 +135,7 @@ export async function keepAsk(userId: string, a: { input: DecideInput; decision:
 
 /**
  * What an Ask run did, on the ask it came from: the newest ask in the last half hour, said or made whole in the same words as the run's
- * request, that has no result yet. Nothing when none matches; nothing from a private window or a sensitive app.
+ * request, that has no result yet. Nothing when none matches; nothing from a private window (`private`) or a sensitive app.
  */
 export async function keepResult(
   userId: string,

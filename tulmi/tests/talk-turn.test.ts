@@ -27,7 +27,7 @@ const { talkTurn, TalkSessions, flight, stopTalk, resetTalkSessionsForTests } = 
 const { AskDecideReply, resetAskDecideCacheForTests } = await import("../src/askDecide/index.js");
 const { PersonContext, MemoryContextStore } = await import("../src/context/index.js");
 const { MemoryRoutineStore } = await import("../src/routines/index.js");
-const { registerTalkRoutes } = await import("../src/routes/ask/talk.js");
+const { registerTalkRoutes, readTalkBody } = await import("../src/routes/ask/talk.js");
 const { SpendMeter } = await import("../src/artifacts/limits.js");
 type CallFn = import("../src/code/work/model.js").CallFn;
 type Reply = import("../src/askDecide/index.js").AskDecideReply;
@@ -376,6 +376,26 @@ describe("privacy: the gates keep nothing and ask no model", () => {
     await flush();
     expect(w.sessions.get(ME, "talk_abc123")!.turns).toHaveLength(1);
     expect((await w.store.get(ME))!.turns).toHaveLength(1);
+  });
+
+  it("a private (incognito) window is answered like any other, with its page; the talk holds it for follow-ups, the context keeps nothing", async () => {
+    const w = world();
+    const m = model({ decide: [{ do: "answer" }, { do: "send", to: "Riya" }], say: [{ pieces: ["[talk] Three flights, the cheapest is 4,200."] }] });
+    const r = await turn(w, m, { words: "which flight is cheapest", app: "Chrome", title: "Flights - Incognito", privateWindow: true, page: { text: "Flight A 4,200. Flight B 5,100." } });
+    expect(r.events.at(-1)).toMatchObject({ t: "done", text: "Three flights, the cheapest is 4,200." });
+    expect(m.of("talk.reply")[0]!.user).toContain("Flight A 4,200");
+    // A handoff from one is not kept either.
+    const send = await turn(w, m, { words: "send the cheapest one to Riya", app: "Chrome", privateWindow: true, turn: 1 });
+    expect(send.events.find((e) => e.t === "handoff")).toBeTruthy();
+    await flush();
+    // The talk's own memory (in memory, gone with the talk) has it, so "send that to Riya" works; the person's context does not.
+    expect(w.sessions.get(ME, "talk_abc123")).not.toBeNull();
+    expect(await w.store.get(ME)).toBeNull();
+  });
+
+  it("the talk route takes privateWindow off the body", () => {
+    expect(readTalkBody({ talkId: "talk_abc123", turn: 0, words: "hi", privateWindow: true })).toMatchObject({ privateWindow: true });
+    expect(readTalkBody({ talkId: "talk_abc123", turn: 0, words: "hi", privateWindow: "yes" })).not.toHaveProperty("privateWindow");
   });
 
   it("with the setup card's read off, the page and the selection are not used", async () => {

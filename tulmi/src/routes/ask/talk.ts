@@ -1,7 +1,7 @@
 /**
  * The voice chat (src/talk, docs/talk.md).
  *
- *   POST /v1/talk        { talkId, turn, words, tz?, app?, title?, url?, field?, ours?, page?, grants? }
+ *   POST /v1/talk        { talkId, turn, words, tz?, app?, title?, url?, field?, ours?, privateWindow?, page?, grants? }
  *                        -> NDJSON (application/x-ndjson), one TalkEvent a line: route, mood, text…, handoff, done | error
  *   POST /v1/talk/stop   { talkId } -> { stopped }: the turn in flight in that talk ends with done (what was said so far)
  *
@@ -50,6 +50,7 @@ export function readTalkBody(b: Record<string, unknown>): TalkInput | null {
     ...(base.tz !== undefined ? { tz: base.tz } : {}),
     ...(base.app ? { app: base.app } : {}), ...(base.title ? { title: base.title } : {}), ...(url ? { url } : {}),
     ...(field !== undefined ? { field } : {}), ...(base.ours ? { ours: true } : {}),
+    ...(base.privateWindow ? { privateWindow: true } : {}),
     ...(page ? { page } : {}), ...(base.grants ? { grants: base.grants } : {}),
   };
 }

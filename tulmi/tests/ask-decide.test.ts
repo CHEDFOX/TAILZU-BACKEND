@@ -173,6 +173,14 @@ describe("climbing, and never stuck", () => {
     t += 11 * 60_000;
     expect((await decideAsk(i, ME, { call: m.call, now: () => t })).by).toBe("model");
   });
+
+  it("a private (incognito) window is decided like any other, and its answer is not kept, even for the cache", async () => {
+    const m = model({ cheap: [{ do: "answer", web: true, sure: 0.9 }, { do: "answer", web: true, sure: 0.9 }] });
+    const i = { words: "which of these flights is cheapest", app: "Chrome", field: null, privateWindow: true };
+    expect(await decideAsk(i, ME, { call: m.call })).toMatchObject({ do: "answer", by: "model" });
+    expect((await decideAsk(i, ME, { call: m.call })).by).toBe("model");
+    expect(m.seen).toHaveLength(2);
+  });
 });
 
 describe("permissions: the setup card's answer, asked again only at the turn that needs it", () => {

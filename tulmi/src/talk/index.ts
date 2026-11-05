@@ -25,7 +25,8 @@
  *   4. ANSWER. The road's tier (one up when the brain was unsure), lookups first when it needs fresh facts, ponder first for think; the
  *      words stream as they come. A model that fails before a word was said: the next on its ladder, then one tier up. After words were
  *      said: no second voice, a short apology. The person's stop ends it with what was said.
- *   5. KEEP. The turn goes into the talk, and into the person's context (keepAsk, keepResult: the same privacy rules).
+ *   5. KEEP. The turn goes into the talk, and into the person's context (keepAsk, keepResult: the same privacy rules). A turn said in a
+ *      private (incognito) window (privateWindow) is answered like any other; the talk holds it for its follow-ups, in memory, and the context keeps nothing.
  *
  * The day's front-door allowance (guard/ daily) is read before any model and charged after; nothing left, no model.
  */
@@ -74,6 +75,8 @@ export interface TalkInput {
   url?: string;
   field?: { selection?: string; private?: boolean } | null;
   ours?: boolean;
+  /** Said in a private (incognito) window: answered like any other, nothing of it kept. */
+  privateWindow?: boolean;
   page?: PageText;
   grants?: DecideInput["grants"];
 }
@@ -166,6 +169,7 @@ export async function talkTurn(i: TalkInput, d: TalkDeps, emit: (e: TalkEvent) =
     words, ...(i.app ? { app: i.app } : {}), ...(i.title ? { title: i.title } : {}),
     ...(i.field !== undefined ? { field: i.field === null ? null : { ...(selection ? { selection } : {}) } } : {}),
     ...(i.tz !== undefined ? { tz: i.tz } : {}), ...(i.grants ? { grants: i.grants } : {}),
+    ...(i.privateWindow ? { privateWindow: true } : {}),
     ...(ctx?.text ? { context: { text: ctx.text, turns: ctx.turns } } : {}),
     ...(bots.length ? { bots } : {}),
     ...(session ? { talk: decideLines(session) } : {}),
@@ -187,8 +191,10 @@ export async function talkTurn(i: TalkInput, d: TalkDeps, emit: (e: TalkEvent) =
 
   const keep = (answer: string, found?: TalkFound, goal?: string): void => {
     if (secretish(words) || secretish(answer) || (goal && secretish(goal))) return;
+    // The talk itself holds the turn, in memory, for the follow-ups ("send that to Riya"), and forgets it with the talk.
     sessions.add(userId, i.talkId, { n: i.turn, said: words, answer, kind, ...(goal ? { goal } : {}), ...(found ? { found } : {}) });
-    if (!d.context) return;
+    // A private window's turn is never kept beyond it: not in the person's context.
+    if (i.privateWindow || !d.context) return;
     void d.context.keepAsk(userId, input, decision)
       .then((kept) => (kept && answer ? d.context!.keepResult(userId, { said: words, result: answer, ...(i.app ? { app: i.app } : {}) }) : false))
       .catch((err) => d.log?.warn({ err: (err as Error)?.message }, "talk: turn not kept in the context"));

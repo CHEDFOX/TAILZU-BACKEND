@@ -35,7 +35,8 @@
  *      since saving it would be refused ("Say how often"); it goes to their bots, which make a one-off reminder or to-do of it.
  *   6. RULES ONLY RAISE THE RISK (risk.ts, about twenty languages), never choose the meaning: money and deleting are seen in the words here, whatever the model
  *      said, so a payment or a delete is always confirmed before it happens. A model can never lower a risk the rules saw.
- *   7. THE SAME WORDS IN THE SAME PLACE within ten minutes: the answer from before, nothing asked.
+ *   7. THE SAME WORDS IN THE SAME PLACE within ten minutes: the answer from before, nothing asked. A private (incognito) window's
+ *      answer is not kept for that (privateWindow): it is decided like any other, and remembered never.
  *
  * PERMISSIONS. The person answers the setup card once (read the screen's text, see the screen, send pictures). `grants` is that
  * card's state; `needs` is what this ask will use, and `missing` what the card has not allowed, so the computer asks for that one
@@ -82,6 +83,8 @@ export interface DecideInput {
   field?: { selection?: string; private?: boolean } | null;
   /** Tailzu's own window is in front. */
   ours?: boolean;
+  /** Said in a private (incognito) window: decided like any other, and nothing of it is kept (context/keep.ts, the cache here). */
+  privateWindow?: boolean;
   /** Up to 3 of the person's last asks, newest last, as the computer remembers them: used when the server has kept none (`context`). */
   last?: AskTurn[];
   /** What the server keeps about the person (src/context): their facts, people, asks, open work. Its text is data. */
@@ -260,8 +263,11 @@ async function decideOnce(i: DecideInput, userId: string, d: DecideDeps): Promis
   if (sure < UNSURE && i.field) return typed(i, by, [...reasons, "unsure", "text_box"], sure, paise);
 
   const out = shape(i, words, best, by, reasons, sure, paise, now);
-  kept.set(key, { at: now, d: out });
-  if (kept.size > CACHE_MAX) kept.delete(kept.keys().next().value as string);
+  // A private window's decision is not kept, even for the cache's moment.
+  if (!i.privateWindow) {
+    kept.set(key, { at: now, d: out });
+    if (kept.size > CACHE_MAX) kept.delete(kept.keys().next().value as string);
+  }
   return out;
 }
 

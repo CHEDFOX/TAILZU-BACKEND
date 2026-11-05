@@ -115,6 +115,7 @@ vi.mock("../src/history/store.js", async (importOriginal) => {
 
 const { buildApp } = await import("../src/server.js");
 const { placesNote } = await import("../src/agent/prompt.js");
+const { readStepRequest } = await import("../src/agent/protocol.js");
 const { stableBlock } = await import("../src/principles/roles.js");
 const PLANNER = stableBlock("ask_planner");
 const VISION = stableBlock("ask_vision");
@@ -252,7 +253,7 @@ describe("refused before the stream starts", () => {
 });
 
 describe("refused as an event", () => {
-  it("a private window is a single error event, and nothing is read", async () => {
+  it("an off-limits screen (privateField) is a single error event, and nothing is read", async () => {
     const res = await app.inject({ method: "POST", url: "/v1/agent", ...form(JSON.stringify(step({ privateField: true }))) });
     expect(res.statusCode).toBe(200);
     expect(events(res.payload)).toEqual([{ t: "error", code: "private", message: expect.any(String) }]);
@@ -260,9 +261,21 @@ describe("refused as an event", () => {
     expect(llm.calls).toHaveLength(0);
   });
 
-  it("a sensitive app is refused the same way", async () => {
+  it("a sensitive app is refused the same way, in a private window too", async () => {
     const res = await post(step({ app: "Chase Bank", utterance: "where's transfer?" }));
     expect(res.evs).toEqual([{ t: "error", code: "private", message: expect.any(String) }]);
+    const priv = await post(step({ app: "Chase Bank", utterance: "where's transfer?", privateWindow: true }));
+    expect(priv.evs).toEqual([{ t: "error", code: "private", message: expect.any(String) }]);
+  });
+
+  it("a private (incognito) window is not refused: its step is read and answered like any other", async () => {
+    const res = await post(step({ app: "Chrome", utterance: "scroll down", privateWindow: true }));
+    expect(res.status).toBe(200);
+    expect(res.evs.some((e) => e.t === "error")).toBe(false);
+    expect(res.evs.at(-1)!.t).not.toBe("error");
+    const read = readStepRequest({ ...step({ utterance: "hi", privateWindow: true }) }, { maxElements: 250, screenMaxChars: 24_000 });
+    expect("req" in read && read.req.privateWindow).toBe(true);
+    expect("req" in read && read.req.privateField).toBeUndefined();
   });
 
   it("a step past AGENT_MAX_STEPS is too_many_steps", async () => {
@@ -825,7 +838,7 @@ describe("the picture path: what it answers", () => {
     expect(res.evs.slice(1)).toEqual([{ t: "say", text: "I couldn't make that out in the picture." }, { t: "done" }]);
   });
 
-  it("is still refused in a private window or a sensitive app, before anything is read", async () => {
+  it("is still refused on an off-limits screen or a sensitive app, before anything is read", async () => {
     const res = await postPicture({ privateField: true, utterance: "what's this?" });
     expect(res.evs).toEqual([{ t: "error", code: "private", message: expect.any(String) }]);
     const bank = await postPicture({ app: "Chase Bank", utterance: "what's this?" });

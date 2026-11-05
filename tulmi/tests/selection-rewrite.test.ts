@@ -44,6 +44,9 @@ vi.mock("groq-sdk", () => ({
 }));
 
 const { buildApp } = await import("../src/server.js");
+const { memoryRows } = await import("../src/history/store.js");
+/** What History holds for the signed-in (dev) person, as it stands. */
+const historyNow = () => JSON.stringify(memoryRows("dev-user"));
 
 const SELECTED = "We ship on Friday and we should tell the team.";
 const SPOKEN = /said out loud while the text was selected/;
@@ -103,11 +106,20 @@ describe("POST /v1/transcribe-clean with a selection", () => {
     expect(res.json().replacedSelection).toBeUndefined();
   });
 
-  it("never uses a selection from a private window", async () => {
+  it("never uses a selection from an off-limits screen", async () => {
     const res = await app.inject({ method: "POST", url: "/v1/transcribe-clean", ...form({ selection: SELECTED, privateField: "true" }) });
     expect(res.statusCode).toBe(200);
     expect(res.json().replacedSelection).toBeUndefined();
     expect(seen.calls.map((c) => c.user).join("\n")).not.toContain(SELECTED);
+  });
+
+  it("uses a private window's selection like any other, and keeps nothing of it in History", async () => {
+    const before = historyNow();
+    const res = await app.inject({ method: "POST", url: "/v1/transcribe-clean", ...form({ selection: SELECTED, privateWindow: "true" }) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().replacedSelection).toBe(true);
+    expect(seen.calls[0]!.user).toContain(`<text>\n${SELECTED}\n</text>`);
+    expect(historyNow()).toBe(before);
   });
 
   it("refuses a selection over the text cap", async () => {
@@ -139,10 +151,22 @@ describe("POST /v1/refine with a selection (the live path)", () => {
     expect(seen.calls[0]!.user).not.toMatch(SPOKEN);
   });
 
-  it("never uses a selection from a private window", async () => {
+  it("never uses a selection from an off-limits screen", async () => {
     const res = await app.inject({ method: "POST", url: "/v1/refine", payload: { text: SAID, selection: SELECTED, privateField: true } });
     expect(res.statusCode).toBe(200);
     expect(res.json().replacedSelection).toBeUndefined();
+  });
+
+  it("uses a private window's selection like any other, and keeps nothing of it in History", async () => {
+    const before = historyNow();
+    const res = await app.inject({ method: "POST", url: "/v1/refine", payload: { text: "make it a list for the window seat", selection: SELECTED, privateWindow: true } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().replacedSelection).toBe(true);
+    expect(historyNow()).toBe(before);
+    expect(historyNow()).not.toContain("window seat");
+    // The same from an ordinary window is kept.
+    await app.inject({ method: "POST", url: "/v1/refine", payload: { text: "make it a list for the window seat", selection: SELECTED } });
+    expect(historyNow()).toContain("window seat");
   });
 
   it("refuses a selection over the text cap", async () => {

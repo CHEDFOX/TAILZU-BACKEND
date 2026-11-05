@@ -1,7 +1,7 @@
 /**
  * The one key's brain (src/askDecide, docs/ask-decide.md).
  *
- *   POST /v1/ask/decide { words, app?, title?, field?, ours?, last?, grants?, notesOn?, tz? }
+ *   POST /v1/ask/decide { words, app?, title?, field?, ours?, privateWindow?, last?, grants?, notesOn?, tz? }
  *     -> AskDecision { do, goal, to?, via?, bot?, notes?, screen, web, sure, risk, needs, missing, by }
  *
  * What the person meant by what they said with the key held: write, send, answer, task, routine, notes or a bot, in any
@@ -11,7 +11,8 @@
  *
  * The person's context (src/context) goes into the prompt, so a follow-up and "message Riya" work from any of their computers; the
  * computer's own `last` is used only while the server has kept no asks. The decided ask is kept after the answer is sent (not from a
- * private field, X0 Bot's own window or a sensitive app).
+ * private field, a private window, X0 Bot's own window or a sensitive app). A private (incognito) window, `privateWindow`, is decided
+ * like any other, with the person's context; it only leaves nothing behind.
  */
 import type { FastifyInstance } from "fastify";
 import { resolveUser } from "../../auth/supabase.js";
@@ -55,6 +56,7 @@ export function readDecideBody(b: Record<string, unknown>): DecideInput | null {
     ...(str(b.title, 200) ? { title: str(b.title, 200)! } : {}),
     ...(field !== undefined ? { field } : {}),
     ...(b.ours === true ? { ours: true } : {}),
+    ...(b.privateWindow === true ? { privateWindow: true } : {}),
     ...(last.length ? { last } : {}),
     ...(Object.keys(grants).length ? { grants } : {}),
     ...(b.notesOn === true ? { notesOn: true } : {}),

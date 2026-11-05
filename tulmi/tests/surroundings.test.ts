@@ -2,8 +2,9 @@
  * AROUND: what is on the screen beside the field — the conversation, the
  * recipient, the subject. The owner wants the apps as aware as each OS lets
  * them be. It is other people's words, so it is reference only (the draft
- * path's rule), fenced, capped, and never read at all in a private window or
- * a money/health app.
+ * path's rule), fenced, capped, and never read at all on an off-limits screen
+ * (privateField: a money/health app, or a private window where the desktop has
+ * them off). A private window otherwise (privateWindow) is read like any other.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FastifyInstance } from "fastify";
@@ -73,7 +74,7 @@ describe("where the screen is off limits", () => {
     expect(sensitiveApp("Chrome: Gmail")).toBe(false);
   });
 
-  it("a private window or a sensitive app drops BOTH the screen and their own prior text", async () => {
+  it("an off-limits screen or a sensitive app drops BOTH the screen and their own prior text", async () => {
     llm.answers = ["<intent>x</intent><send>Transfer 500 to Priya.</send>"];
     await assist("transfer 500 to priya", {
       targetApp: "Chase", fieldKind: "message",
@@ -92,6 +93,11 @@ describe("where the screen is off limits", () => {
     llm.answers = ["<intent>x</intent><send>Book the flight.</send>"];
     await assist("book the flight", { targetApp: "Chrome: Kayak", surroundings: "Passenger: ...", privateField: true });
     expect(llm.calls[0]![1]!.content).not.toContain("<around>");
+  });
+
+  it("a private window is not off limits: its screen is read like any other's", () => {
+    expect(screenIsOffLimits({ targetApp: "Chrome: Kayak" })).toBe(false);
+    expect(screenIsOffLimits({ targetApp: "Chase", privateField: false })).toBe(true);
   });
 });
 

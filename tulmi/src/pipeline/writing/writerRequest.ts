@@ -87,7 +87,8 @@ export function writerRequest(input: string, opts: CleanupOptions & WriterExtras
     ? asked.lang.replace(/\b\w/g, (c) => c.toUpperCase())
     : undefined;
   const message = split.message;
-  // THE SCREEN IS OFF LIMITS in a private window or a money/health app: not
+  // THE SCREEN IS OFF LIMITS in a money/health app (privateField; a private
+  // window only where the desktop has them off, else it is read): not
   // the text around the field, and not even their own prior text, which in
   // those apps is a balance or a card number. Everywhere else, both ride.
   const offLimits = screenIsOffLimits(opts);

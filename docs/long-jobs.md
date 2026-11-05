@@ -20,7 +20,7 @@ The job's rules reach the planner only while a job runs (`JOB_NOTE`, a line at t
 | steps (server) | `AGENT_MAX_STEPS` 8 | `AGENT_JOB_MAX_STEPS` 60 (a step carrying a ledger) |
 | time | `desktop.agent.deadlineMs` 60 s | `desktop.agent.jobDeadlineMs` 20 min (a "Your turn" card does not count) |
 
-Every other lock stays: the risk of each action is worked out on the computer and asks for a yes; the same step twice to no effect stops it; Esc stops it; private windows and sensitive apps are never read.
+Every other lock stays: the risk of each action is worked out on the computer and asks for a yes; the same step twice to no effect stops it; Esc stops it; sensitive apps are never read (nor private windows, while `desktop.agent.privateWindows` is off; on, a job in one runs as anywhere else and nothing of it is kept).
 
 ## Tests
 

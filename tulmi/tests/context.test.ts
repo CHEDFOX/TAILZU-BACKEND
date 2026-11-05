@@ -51,7 +51,7 @@ vi.mock("../src/askDecide/index.js", async (orig) => {
 });
 
 const C = await import("../src/context/index.js");
-const { MemoryContextStore, PersonContext, contextFor, keepAsk, keepResult, TURNS_KEPT, PEOPLE_KEPT } = C;
+const { MemoryContextStore, PersonContext, contextFor, keepAsk, keepResult, notKept, TURNS_KEPT, PEOPLE_KEPT } = C;
 const { decideUser } = await import("../src/askDecide/index.js");
 const { agentUserMessage, CONTEXT_NOTE } = await import("../src/agent/prompt.js");
 const { registerContextRoutes } = await import("../src/routes/ask/context.js");
@@ -233,6 +233,33 @@ describe("privacy", () => {
     expect((await w.store.get(ME))!.turns[0]!.result).toBeUndefined();
   });
 
+  it("keeps nothing from a private (incognito) window, though it is decided like any other", async () => {
+    const w = world();
+    expect(notKept({ words: "tell Riya the mockups are ready", app: "Chrome", field: null, privateWindow: true }, decision({ do: "send", to: "Riya", goal: "tell Riya the mockups are ready" }))).toBe("private_window");
+    expect(await ask(w, { words: "tell Riya the mockups are ready", app: "Chrome", field: null, privateWindow: true }, { do: "send", to: "Riya", via: "WhatsApp" })).toBe(false);
+    expect(await w.store.get(ME)).toBeNull();
+    // The same ask from an ordinary window is kept, and its result too.
+    expect(await ask(w, { words: "tell Riya the mockups are ready", app: "Chrome", field: null }, { do: "send", to: "Riya", via: "WhatsApp" })).toBe(true);
+    expect(await keepResult(ME, { said: "tell Riya the mockups are ready", result: "Sent.", app: "Chrome", private: true }, w.deps)).toBe(false);
+    expect((await w.store.get(ME))!.turns[0]!.result).toBeUndefined();
+  });
+
+  it("the decide route reads the context for a private window and keeps nothing of it", async () => {
+    const w = world();
+    await ask(w, { words: "message Riya the mockups are ready", field: null }, { do: "send", to: "Riya", via: "WhatsApp" });
+    const before = JSON.stringify(await w.store.get(ME));
+    const context = new PersonContext({ store: w.store, on: w.deps.on, now: w.deps.now, routines: new (await import("../src/routines/index.js")).MemoryRoutineStore() });
+    const app = Fastify();
+    registerAskDecideRoutes(app, { rateLimit: RL, bots: null, context });
+    brain.inputs = [];
+    const r = await app.inject({ method: "POST", url: "/v1/ask/decide", headers: { authorization: "Bearer u1" }, payload: { words: "send it to Dev too", app: "Chrome", field: null, privateWindow: true } });
+    expect(r.statusCode).toBe(200);
+    expect(brain.inputs[0]!.privateWindow).toBe(true);
+    expect(brain.inputs[0]!.context?.text).toContain("Riya");
+    await flush();
+    expect(JSON.stringify(await w.store.get(ME))).toBe(before);
+  });
+
   it("the decide route keeps nothing and reads nothing for a private field", async () => {
     const w = world();
     const context = new PersonContext({ store: w.store, on: w.deps.on, routines: new (await import("../src/routines/index.js")).MemoryRoutineStore() });
@@ -361,10 +388,33 @@ describe("the wiring", () => {
     await flush();
     expect((await w.store.get(ME))!.turns[0]!.result).toBe("Sent it to Riya.");
 
-    // A private window: no context read, nothing kept.
+    // An off-limits screen (privateField): refused, no context read, nothing kept.
     planner.seen = [];
     const r = await step({ utterance: "message Riya hi", privateField: true });
     expect(r.body).toContain("private");
     expect(planner.seen).toEqual([]);
+  });
+
+  it("the agent route answers a private window's run like any other, and keeps nothing of it", async () => {
+    const w = world();
+    await ask(w, { words: "message Riya that the mockups are ready", field: null }, { do: "send", to: "Riya", via: "WhatsApp" });
+    const context = new PersonContext({ store: w.store, on: w.deps.on, now: w.deps.now, routines: new (await import("../src/routines/index.js")).MemoryRoutineStore() });
+    const app = Fastify();
+    await app.register((await import("@fastify/multipart")).default);
+    registerAgentRoutes(app, { rateLimit: RL, cfg: getConfig(), ledger: new RunLedger({}), connectors: null, context });
+    const step = (o: Record<string, unknown>) => app.inject({
+      method: "POST", url: "/v1/agent", headers: { authorization: "Bearer u1" },
+      payload: { runId: "run_priv01", step: 0, platform: "mac", app: "Chrome", screen: { elements: [{ id: "e1", role: "button", label: "Search" }] }, tzOffsetMinutes: 330, privateWindow: true, ...o },
+    });
+    planner.seen = [];
+    planner.answer = "OPEN WhatsApp\n";
+    const first = await step({ utterance: "message Riya that the mockups are ready" });
+    expect(first.body).not.toContain('"private"');
+    expect(planner.seen[0]).toContain("Search");
+    planner.answer = "SAY Sent it to Riya.\nDONE\n";
+    const last = await step({ step: 1, history: [{ said: "message Riya that the mockups are ready", did: "OPEN WhatsApp", result: "ok" }] });
+    expect(last.body).toContain("Sent it to Riya.");
+    await flush();
+    expect((await w.store.get(ME))!.turns[0]!.result).toBeUndefined();
   });
 });

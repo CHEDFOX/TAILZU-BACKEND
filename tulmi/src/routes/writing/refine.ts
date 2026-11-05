@@ -1,5 +1,8 @@
 /**
  * POST /v1/refine (and /v1/refine/<tone>): typed text in, the text written the best way out.
+ *
+ * `privateField`: the screen is off limits (a sensitive app): written from what was said alone. `privateWindow`: said in a private
+ * (incognito) window: written like any other, and nothing of it is kept (no History entry, nothing learned from it).
  */
 
 import type { FastifyRequest, FastifyReply, FastifyInstance } from "fastify";
@@ -87,7 +90,7 @@ export function registerRefineRoutes(app: FastifyInstance, deps: RefineRouteDeps
         };
         // TEXT WAS SELECTED (the live path's dictation, said with a selection):
         // what they said is about it, so the selection is rewritten, the same
-        // as /v1/transcribe-clean does with one. Never from a private window.
+        // as /v1/transcribe-clean does with one. Never from an off-limits screen.
         const selection = body.privateField !== true && typeof body.selection === "string" && body.selection.trim() ? body.selection : "";
         const refinedText = selection
           ? await editSelection(selection, body.text, writerOpts, { spoken: true })
@@ -102,7 +105,9 @@ export function registerRefineRoutes(app: FastifyInstance, deps: RefineRouteDeps
           });
         const usage = { audioSeconds: 0, words: countWords(refinedText), model: cfg.CLEANUP_MODEL };
         await recordUsage({ user, source: "rest", ...usage });
-        await appendHistoryEntry(user, personality, {
+        // A private window's writing is not remembered: no History card, nothing learned from it.
+        const keep = body.privateWindow !== true;
+        if (keep) await appendHistoryEntry(user, personality, {
           kind: "typing",
           targetApp: body.targetApp || (routeTone ? "Generic" : undefined),
           language: body.language,
@@ -118,7 +123,7 @@ export function registerRefineRoutes(app: FastifyInstance, deps: RefineRouteDeps
           // rewrite carries on from the selection it rewrote.
           context: selection || body.context,
         });
-        learnFromUsage(user, personality);
+        if (keep) learnFromUsage(user, personality);
         desktopDictated(req, user, personality);
         // The same join hint /v1/transcribe-clean gives: the live path pastes
         // this after what the field already holds (`context`). A rewrite takes

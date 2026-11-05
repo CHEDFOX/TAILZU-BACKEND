@@ -25,7 +25,9 @@
  * The person's context (src/context) is read at a run's first step and goes
  * into the planner's message; later steps have the run's own history. A step
  * that ends the run with DONE puts its last words on the ask the run came
- * from. Neither for a private window, a sensitive app or a picture step.
+ * from. Neither for an off-limits screen (privateField), a sensitive app or a
+ * picture step. A private window (privateWindow) is answered like any other,
+ * the context read for it too, but nothing of it is kept.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -249,10 +251,11 @@ export function registerAgentRoutes(app: FastifyInstance, deps: AgentRouteDeps):
     // After the stream has closed: the device already has its answer, and a
     // slow metering or ledger write must not hold it open.
     void watch.end(result, { hungUp });
+    // A private window's is handed over marked so: keepResult keeps nothing of it.
     if (context && sink.ending === "done" && !offLimits) {
       const runSaid = step.history?.find((t) => t.said)?.said ?? heard;
       const did = says || (step.step > 0 ? "done" : "");
-      if (runSaid && did) void context.keepResult(user.id, { said: runSaid, result: did, app: step.app }).catch((err) => req.log.warn({ err: (err as Error)?.message }, "context: result not kept"));
+      if (runSaid && did) void context.keepResult(user.id, { said: runSaid, result: did, app: step.app, ...(step.privateWindow ? { private: true } : {}) }).catch((err) => req.log.warn({ err: (err as Error)?.message }, "context: result not kept"));
     }
     if (result && result.path !== "refused") {
       if (result.path === "picture") recordPicture(user);

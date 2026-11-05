@@ -21,7 +21,7 @@ Two reads go beside `do`, for the voice chat (docs/talk.md) and anything else th
 4. **Never stuck.** Down (after the gateway's own ladder of models), or under 0.45 with a text box in front: typed. No box: Ask, which can ask one question itself.
 5. **Rules only raise the risk** (`askDecide/risk.ts`). Money and deleting are read from the words (`risk`), whatever the model said, so they are always confirmed: in about twenty languages (English, Hinglish, Hindi, Spanish, Portuguese, Italian, French, German, Dutch, Turkish, Indonesian, Swahili, Russian, Arabic, Bengali, Tamil, Korean, Chinese, Japanese), each word a stem at the start of a word, word edges by letters (`\p{L}`), not `\b`, which ends a word at ö or é.
 6. **Words that act are acts** (`askDecide/acts.ts`). A messaging app or mail with a word that sends ("给王经理发微信…", "田中さんにLINEで…送って") is a send even when the model called it talk, and money or a delete it called chat is a task, which Ask asks about first. A question (ending in ?, ？ or ؟) is neither, and dictation into a text box stays dictation.
-7. **Cache.** The same words in the same place within 10 minutes: the answer from before.
+7. **Cache.** The same words in the same place within 10 minutes: the answer from before. A decision for a private (incognito) window (`privateWindow`) is not cached, and not kept in the person's context (docs/context.md).
 
 ## Permissions
 The setup card is answered once (read text, see the screen, send pictures). The computer sends its state as `grants`; the answer's `needs` is what this ask will use and `missing` what the card has not allowed. The computer asks for that one permission at the turn that needs it, and never for one already given.

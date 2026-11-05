@@ -436,11 +436,16 @@ export interface CleanupOptions {
    */
   surroundings?: string;
   /**
-   * The field, or the window, is private: an incognito/private browser
-   * window, or an app the client treats as sensitive. The server then writes
-   * from what they said alone — no surroundings, no prior text kept.
+   * The screen is off limits: an app the client treats as sensitive (or a
+   * private window, where the client has private windows off). The server
+   * then writes from what they said alone — no surroundings, no prior text kept.
    */
   privateField?: boolean;
+  /**
+   * Said in a private (incognito) browser window. Read and written like any
+   * other, and nothing of it is kept: no History entry, nothing learned.
+   */
+  privateWindow?: boolean;
   /**
    * The device's current UTC offset in minutes (e.g. 330 for IST, -480 for
    * PST), when the client sends it. Used for the "this morning / 2 min ago"
@@ -784,9 +789,14 @@ export interface AgentStepRequest {
   platform: "mac" | "win" | "ios" | "android";
   /** The front app's short label, ≤ 60. */
   app: string;
-  /** A private window or a sensitive app: refused ("private"). The device
-   *  refuses first; this is the second lock. */
+  /** An off-limits screen (a sensitive app; a private window where the
+   *  desktop has them off): refused ("private"). The device refuses first;
+   *  this is the second lock. */
   privateField?: boolean;
+  /** Called in a private (incognito) window: the step is read and answered
+   *  like any other, and nothing of it is kept (no result on the person's
+   *  context). Not a refusal. */
+  privateWindow?: boolean;
   language?: string;
   tzOffsetMinutes?: number;
   /** What this computer can do for the planner besides the screen: "DeviceFiles"
