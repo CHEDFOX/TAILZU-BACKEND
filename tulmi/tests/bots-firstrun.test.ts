@@ -109,10 +109,11 @@ describe("after sign-in: straight to Home, nothing asked (App Review 4)", () => 
 
 describe("About you: a card on Home after a few visits, never in the first run", () => {
   const about = (o: Record<string, unknown>) => ({ ...API, "GET /v1/bots/first-run/about": { due: true, name: "Aanya Rao", via: "google", source: "provider", gender: null, ...o } });
-  it("the card: the name filled in from the sign-in, the three genders, Save writes the profile, Not now puts it off", async () => {
+  it("the card: the name filled in from the sign-in, the three genders, Save writes the profile; no way to skip it", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.home", client, { api: about({}) });
-      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Tell your bots about you", "Male", "Female", "Other", "So your bots know how to address you.", "Save", "Not now"]));
+      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Tell your bots about you", "Male", "Female", "Other", "So your bots know how to address you.", "Save"]));
+      expect(texts(s.root!), client).not.toContain("Not now");
       expect(JSON.stringify(s.root)).toContain('"placeholder":"Your name"');
       expect(s.state).toMatchObject({ aboutName: "Aanya Rao", aboutGender: "", aboutSaved: false, aboutClosed: false, aboutBotName: "", aboutBotDone: false });
       const all = actions(s.root);
@@ -122,8 +123,8 @@ describe("About you: a card on Home after a few visits, never in the first run",
           kind: "condition", if: { all: [{ truthy: "aboutName" }, { truthy: "aboutGender" }] }, else: expect.objectContaining({ kind: "toast", message: "Add your name and pick one." }),
         }),
         expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } }),
-        expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/first-run/about" }),
       ]));
+      expect(all.some((x) => (x as { path?: string }).path === "/v1/bots/first-run/about"), client).toBe(false);
       expect(lintTree(s.root!), client).toEqual([]);
     }
   });
@@ -149,10 +150,11 @@ describe("About you: a card on Home after a few visits, never in the first run",
       expect(only?.then?.body).toEqual({ gender: "$state.aboutGender" });
     }
   });
-  it("then a name for the assistant, the card's second step: filled with the one it has, Save name or Keep X0, and the card goes after", async () => {
+  it("then a name for the assistant, the card's second step: filled with the one it has, a name needed, and the card goes after", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.home", client, { api: about({ botName: "Zara" }) });
-      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Give X0 a name of its own", "Save name", "Keep X0"]));
+      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Give X0 a name of its own", "Save name"]));
+      expect(texts(s.root!), client).not.toContain("Keep X0");
       expect(JSON.stringify(s.root)).toContain('"placeholder":"A name for X0"');
       expect(s.state).toMatchObject({ aboutBotName: "Zara", aboutBotDone: false });
       // Shown once the first step is saved, until it is answered.
@@ -161,12 +163,22 @@ describe("About you: a card on Home after a few visits, never in the first run",
       const all = actions(s.root);
       expect(all).toEqual(expect.arrayContaining([
         expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { assistantName: "$state.aboutBotName" } }),
-        expect.objectContaining({ kind: "setState", path: "aboutBotDone", value: true }),
+        expect.objectContaining({ kind: "toast", message: "Type a name for X0." }),
       ]));
+      // Only a saved name closes the step: its one way on is the write's success.
+      const write = all.find((x) => (x as { path?: string }).path === "/v1/personality") as { onSuccess?: unknown } | undefined;
+      expect(JSON.stringify(write?.onSuccess)).toContain('"path":"aboutBotDone"');
       // Never worded as a question about the person: no "What will you call me?", no "your name" in this step.
       expect(texts(step)).not.toContain("What will you call me?");
       expect(lintTree(s.root!), client).toEqual([]);
     }
+  });
+  it("comes back on the step still owed: name and gender saved, it opens on the assistant's name", async () => {
+    const s = await build("bots.home", "phone", { api: about({ name: "Aanya Rao", source: "saved", gender: "female" }) });
+    expect(s.state).toMatchObject({ aboutSaved: true, aboutBotDone: false });
+    // Signed in with Apple, the gender alone is their part.
+    expect((await build("bots.home", "phone", { api: about({ name: "", source: null, via: "apple", gender: "male" }) })).state).toMatchObject({ aboutSaved: true });
+    expect((await build("bots.home", "phone", { api: about({ name: "Aanya", source: "email", gender: null }) })).state).toMatchObject({ aboutSaved: false });
   });
   it("not due: no card; and one ask at a time, so not while the first-arrival card is due", async () => {
     const none = await build("bots.home", "phone", { api: about({ due: false }) });
@@ -549,29 +561,31 @@ describe("the routes", () => {
   });
   afterAll(async () => { await server?.close(); });
   const auth = { authorization: "Bearer test-static-token-0123456789" };
-  it("the About you card: due from the third visit once onboarded, while the answer is owed; Not now puts it off four visits", async () => {
+  it("the About you card: due from the third visit once onboarded, until the name, the gender and the assistant's name are all saved; no putting it off", async () => {
     expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/about" })).statusCode).toBe(401);
     const about = async () => (await server.inject({ method: "GET", url: "/v1/bots/first-run/about", headers: auth })).json();
     // A static token has no sign-in to read, so no name is suggested.
-    expect(await about()).toMatchObject({ due: false, name: "", via: "other", gender: null });
+    expect(await about()).toMatchObject({ due: false, name: "", via: "other", gender: null, botName: "" });
     vi.useFakeTimers({ toFake: ["Date"] });
     try {
       let t = Date.parse("2026-11-03T09:00:00Z");
       const visit = async () => { t += 31 * 60_000; vi.setSystemTime(t); await server.inject({ method: "GET", url: "/v1/bots/first-run/arrival", headers: auth }); };
       expect((await server.inject({ method: "PUT", url: "/v1/profile", headers: auth, payload: { onboarded: true } })).statusCode).toBe(200);
-      for (let i = 0; i < 3; i++) await visit();
-      expect((await about()).due).toBe(true);
-      expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: {} })).statusCode).toBe(200);
-      expect((await about()).due).toBe(false);
-      for (let i = 0; i < 3; i++) await visit();
+      for (let i = 0; i < 2; i++) await visit();
       expect((await about()).due).toBe(false);
       await visit();
       expect((await about()).due).toBe(true);
-      // The pick alone is not enough for someone who did not sign in with Apple: the name too.
+      // There is no "Not now" to send.
+      expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: {} })).statusCode).toBe(404);
+      // The pick alone is not enough for someone who did not sign in with Apple: the name too; and then the assistant's name.
       await server.inject({ method: "PUT", url: "/v1/profile", headers: auth, payload: { gender: "female" } });
       expect((await about()).due).toBe(true);
       await server.inject({ method: "PUT", url: "/v1/profile", headers: auth, payload: { full_name: "Aanya Rao" } });
-      expect(await about()).toMatchObject({ due: false, name: "Aanya Rao", gender: "female" });
+      expect(await about()).toMatchObject({ due: true, name: "Aanya Rao", gender: "female", botName: "" });
+      await visit();
+      expect((await about()).due).toBe(true);
+      expect((await server.inject({ method: "PUT", url: "/v1/personality", headers: auth, payload: { assistantName: "Zara" } })).statusCode).toBe(200);
+      expect(await about()).toMatchObject({ due: false, botName: "Zara" });
     } finally {
       vi.useRealTimers();
     }

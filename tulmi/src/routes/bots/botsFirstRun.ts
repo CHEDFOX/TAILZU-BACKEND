@@ -4,12 +4,11 @@
  *   GET /v1/bots/first-run/about       the About you card on Home: { due, name, source, via, gender, botName }. Due once the
  *                                      account is onboarded, from the ABOUT_AFTER_VISITS-th (3rd) visit, while the answer is
  *                                      owed (the gender, and the name unless they signed in with Apple: App Review 4),
- *                                      and not put off for now. The name to start from: the account's own, else the
+ *                                      or the assistant still has no name of its own. The name to start from: the account's own, else the
  *                                      sign-in provider's, else one suggested from the email
- *   PUT /v1/bots/first-run/about       "Not now": it comes again ABOUT_AGAIN_VISITS visits later, at most ABOUT_PUT_OFF_MAX
- *                                      times. Saving is PUT /v1/profile { full_name, gender }, after which nothing is owed;
- *                                      the card's second step names the assistant (PUT /v1/personality { assistantName },
- *                                      botName is the one it has now), and is never owed
+ *                                      It cannot be put off: it stays due until the name and gender are saved
+ *                                      (PUT /v1/profile { full_name, gender }) and the assistant has a name of its own (the
+ *                                      card's second step, PUT /v1/personality { assistantName }; botName is the one it has)
  *   GET /v1/bots/first-run/languages   the Language page's chips (the onboarding's own list) and what is picked
  *   GET /v1/bots/first-run/words       the account's spoken words and audio seconds, all time; with ?w=&s= (a baseline
  *                                      taken when the step opened) also what was said since: First words' numbers
@@ -211,10 +210,8 @@ const HOME_VERSION = 2;
 const AWAY_DAYS = 14;
 /** One visit: Home opened again within this counts as the same one. */
 const VISIT_MS = 30 * 60_000;
-/** The About you card: first on this visit, again this many visits after a "Not now", and put off at most this often. */
+/** The About you card: due from this visit on, until it is answered. */
 const ABOUT_AFTER_VISITS = 3;
-const ABOUT_AGAIN_VISITS = 4;
-const ABOUT_PUT_OFF_MAX = 3;
 const GENDER_VALUES = new Set(["male", "female", "other"]);
 
 export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaDeps): void {
@@ -258,24 +255,13 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
     const gender = profile?.gender && GENDER_VALUES.has(profile.gender) ? profile.gender : null;
     const via = signedInVia(user);
     const visits = p?.botsVisits ?? 0;
+    // Owed: the gender, the name (unless Apple signed them in: App Review 4), or a name for the assistant.
     const due = !!profile?.onboarded && !!p
-      && (!gender || (!profile.fullName?.trim() && via !== "apple"))
-      && visits >= Math.max(ABOUT_AFTER_VISITS, p.botsAboutFrom ?? 0)
-      && (p.botsAboutPutOff ?? 0) < ABOUT_PUT_OFF_MAX;
+      && (!gender || (!profile.fullName?.trim() && via !== "apple") || !nicknameOf(p))
+      && visits >= ABOUT_AFTER_VISITS;
     return reply.send({ due, ...startingName(user, profile?.fullName), via, gender, botName: nicknameOf(p) ?? "" });
   });
 
-  app.put("/v1/bots/first-run/about", rl, async (req, reply) => {
-    const user = await resolveUser(req.headers["authorization"]);
-    if (!user) return unauthorized(reply);
-    try {
-      await updatePersonality(user, (p) => ({ ...p, botsAboutFrom: (p.botsVisits ?? 0) + ABOUT_AGAIN_VISITS, botsAboutPutOff: (p.botsAboutPutOff ?? 0) + 1 }));
-      return reply.send({ ok: true });
-    } catch (err) {
-      req.log.error(err);
-      return reply.code(500).send({ code: "internal", message: "Couldn't save that" });
-    }
-  });
 
   app.get("/v1/bots/first-run/languages", rl, async (req, reply) => {
     const user = await resolveUser(req.headers["authorization"]);
