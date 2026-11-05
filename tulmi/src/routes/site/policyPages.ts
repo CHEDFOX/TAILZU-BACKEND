@@ -9,6 +9,7 @@ import { POLICY } from "../../experience/policy.js";
 import { sitePage } from "./demo.js";
 import { pricingHtml } from "./policies/pricing.js";
 import { PRIVACY_POLICY_HTML, PRIVACY_POLICY_EFFECTIVE } from "./policies/privacy.js";
+import { PROVIDERS_HTML } from "./policies/providers.js";
 import { SUPPORT_HTML } from "./policies/support.js";
 import { TERMS_HTML, TERMS_EFFECTIVE } from "./policies/terms.js";
 
@@ -31,6 +32,14 @@ export function registerPolicyPageRoutes(app: FastifyInstance, deps: PolicyPageR
     reply.type("text/html; charset=utf-8");
     reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
     return published ?? PRIVACY_POLICY_HTML;
+  });
+
+  // Every service provider, with what it does: part of the privacy policy (its Section 3 links here).
+  app.get("/privacy/providers", async (_req, reply) => {
+    const published = sitePage(cfg.SITE_DIR, "privacy-providers");
+    reply.type("text/html; charset=utf-8");
+    reply.header("Cache-Control", published ? "public, max-age=60" : "public, max-age=3600");
+    return published ?? PROVIDERS_HTML;
   });
 
   app.get("/terms", async (_req, reply) => {

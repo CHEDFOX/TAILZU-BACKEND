@@ -46,6 +46,7 @@ export function sitePages(): Array<{ path: string; lastmod: string; priority: st
     { path: "/pricing", lastmod: CONTENT_UPDATED, priority: "0.7" },
     { path: "/download", lastmod: CONTENT_UPDATED, priority: "0.7" },
     { path: "/privacy", lastmod: iso(PRIVACY_POLICY_EFFECTIVE), priority: "0.3" },
+    { path: "/privacy/providers", lastmod: iso(PRIVACY_POLICY_EFFECTIVE), priority: "0.2" },
     { path: "/terms", lastmod: iso(TERMS_EFFECTIVE), priority: "0.3" },
     { path: "/support", lastmod: iso(SUPPORT_UPDATED), priority: "0.3" },
   ];

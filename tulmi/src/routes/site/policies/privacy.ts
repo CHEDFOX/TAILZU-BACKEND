@@ -99,7 +99,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Activity:</strong> a space keeps a log of who joined, shared, asked and paid, which the people allowed to can see.</li>
   <li><strong>Reports:</strong> when you report a message, something shared or a person, we keep the report: who sent it, who and what it is about, the reason, any note, and a copy of what was reported as it was then. It goes to our support team so it can be acted on within 24 hours, and is kept afterwards as a safety record, including after either account is deleted (without the account). The person reported is not told who reported them.</li>
   <li><strong>Blocks:</strong> we keep whom you blocked, and the name they had then, until you unblock them or delete your account.</li>
-  <li><strong>Checked before it is posted:</strong> every message and shared thing is checked before anyone sees it, against a list of banned words and, if you agreed to AI processing (Section 3), by OpenAI's moderation service. Hate, sexual content, threats and abuse are not posted. Nothing is kept from the check itself.</li>
+  <li><strong>Checked before it is posted:</strong> every message and shared thing is checked before anyone sees it, against a list of banned words and, if you agreed to AI processing (Section 3), by an AI moderation service (see Section 3). Hate, sexual content, threats and abuse are not posted. Nothing is kept from the check itself.</li>
   <li><strong>Reporting a bot's answer:</strong> you can report an answer a bot gave you. We keep the answer as you saw it with the report, to act on it the same way.</li>
 </ul>
 
@@ -108,7 +108,7 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li><strong>What is kept:</strong> the file itself (and, for a video, a few still frames from it), stored with Cloudflare (R2) under your account; the text read from it, in pieces, with anything that looks like a password or key left out; and details such as its name, kind, size, pages or length. A photo's hidden details (EXIF and the like, which can include where and when it was taken) are removed before it is stored; a JPEG keeps only which way up it is.</li>
   <li><strong>For how long:</strong> 30 days from when it was first read (sending the same file again starts the 30 days again), unless you choose to keep it. Then the file, its text and its pieces are deleted. A photo or file you sent in a chat or space is one of these files, so once it is deleted it no longer opens for the others either. Deleting your account deletes all of them; to have one deleted sooner, email <a href="mailto:privacy@x0bot.com">privacy@x0bot.com</a>.</li>
-  <li><strong>Who reads it:</strong> documents, spreadsheets, scanned PDFs and videos are read on our own servers, by software that makes no calls out to the internet. The speech in a recording or a video is turned into text by <strong>Deepgram</strong>. A picture (and up to three frames of a video) is described once by an AI model, sent through <strong>OpenRouter</strong> (see Section 3). When you ask about a file, only the pieces that match your question go to the AI model that answers. Nothing in a file is ever run.</li>
+  <li><strong>Who reads it:</strong> documents, spreadsheets, scanned PDFs and videos are read on our own servers, by software that makes no calls out to the internet. The speech in a recording or a video is turned into text by our speech-to-text provider. A picture (and up to three frames of a video) is described once by an AI model from our AI service providers (see Section 3). When you ask about a file, only the pieces that match your question go to the AI model that answers. Nothing in a file is ever run.</li>
 </ul>
 
 <hr>
@@ -131,100 +131,30 @@ const PRIVACY_POLICY_BODY = `
 
 <hr>
 
-<h2>3. Third parties we use</h2>
+<h2 id="providers">3. Service providers we use</h2>
 
-<p>X0 Bot depends on the following processors to deliver the service. Each has its own privacy policy. Each receives only what it needs for its part of the service, and each is bound, by its agreement with us or its own published terms, to protect your data with the same or equal protection as this policy and Apple's App Store rules require.</p>
+<p>X0 Bot works with a small number of carefully chosen service providers to run the service. Each receives only what it needs for its part, uses it only to provide that part, and is bound, by its agreement with us or its own published terms, to protect your data with the same or equal protection as this policy and Apple's App Store rules require. We never sell your data to any of them.</p>
+
+<ul>
+  <li><strong>AI services:</strong> understand what you say, type or share, and write the answer: speech-to-text, language models, image understanding, and the safety check on what is posted in Spaces.</li>
+  <li><strong>Hosting and storage:</strong> your account, our database, and the files you attach.</li>
+  <li><strong>Payments:</strong> the app stores and payment processors for subscriptions.</li>
+  <li><strong>Notifications:</strong> the services that deliver notifications to your devices.</li>
+  <li><strong>Apps you connect:</strong> Google, GitHub and other apps you choose to connect, which handle what X0 Bot reads or writes there under their own privacy policies.</li>
+  <li><strong>Search and maps:</strong> web search and map services, which receive the words or places searched, never your account.</li>
+  <li><strong>Diagnostics and ad measurement:</strong> crash reports, and, only if you turn them on or allow them, usage statistics and ad measurement.</li>
+</ul>
+
+<p><strong>Every provider, with what it does and a link to its own privacy policy, is listed in <a href="/privacy/providers">Service providers</a>, which is part of this policy.</strong> We keep it up to date, and change its date whenever it changes.</p>
 
 <h3 id="ai">AI services, and your permission</h3>
 <p>Much of X0 Bot works by sending what you give it to third-party AI services, and <strong>we ask your permission before anything is sent</strong>. The first time you open the app, a card on Home says what is sent, to whom, and why, with Agree and Not now. Until you tap Agree, nothing of yours is sent to an AI service, and the features that need one (bots, dictation, Ask, rewriting, notes from recordings) wait.</p>
 <ul>
   <li><strong>What is sent:</strong> the words you type or say to X0 Bot, your voice while you dictate or record, and the photos, files, screenshots or screen you choose to share with a bot, dictation or Ask. When you ask Keylessbord to rewrite, the text around your cursor in that field (never a password field).</li>
-  <li><strong>Who receives it:</strong> OpenAI, Anthropic, Google (Gemini), Groq, Deepgram, Sarvam AI, and OpenRouter, which passes a request to the company that made the model or a cloud service that hosts it (such as DeepSeek, Moonshot AI or Z.ai). Each is listed below with what it does.</li>
+  <li><strong>Who receives it:</strong> the AI services listed in <a href="/privacy/providers#ai">Service providers</a>, each only for its part of the answer.</li>
   <li><strong>Why:</strong> only to give you what you asked for (an answer, a transcript, a rewrite, or a bot's work), and to check what you post in Spaces before it is posted (see 1.8). We do not sell it, and we do not send it for advertising.</li>
   <li><strong>Changing your mind:</strong> turn off <em>Send to AI services</em> in the app under You, Privacy. From then on nothing more of yours is sent. What was sent before is kept as Section 4 says, and you can delete it as Section 5 says.</li>
 </ul>
-
-<h3>Speech-to-text</h3>
-<ul>
-  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — processes voice for transcription. Voice is transient and not retained. OpenAI also turns text into speech when X0 Bot reads something aloud to you.</li>
-  <li><strong>Groq</strong> (groq.com/privacy-policy) — alternative transcription provider.</li>
-  <li><strong>Deepgram</strong> (deepgram.com) — live transcription while you dictate, and the speech in recordings and videos you attach (see 1.9).</li>
-  <li><strong>Sarvam AI</strong> (sarvam.ai) — transcription made for Indian languages, used depending on the language you speak.</li>
-</ul>
-
-<h3>Language refinement</h3>
-<ul>
-  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — refinement, tone matching. Content is transient and not used to train models under our data-processing agreement.</li>
-  <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — routing layer for language models.</li>
-  <li><strong>Anthropic</strong> (anthropic.com/legal/privacy) — used through OpenRouter for premium refinement.</li>
-</ul>
-
-<h3>Ask, on the desktop app (see Section 10)</h3>
-<ul>
-  <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — passes Ask's questions to the AI model that answers them. OpenRouter chooses which provider serves that model: the company that made it, or a cloud service that hosts it.</li>
-  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — answers questions about the text on your screen.</li>
-  <li><strong>Google</strong> (policies.google.com/privacy) — Gemini answers a question that comes with a picture of part of your screen.</li>
-  <li><strong>Anthropic</strong> (anthropic.com/legal/privacy) — Claude answers either kind when the first model cannot.</li>
-  <li>The models under <em>Language refinement</em> above write and rewrite text for Ask (a message it types into a field, a selection it rewrites), and answer a question when none of the models before them could.</li>
-</ul>
-
-<h3>Google apps you connect (see Section 11)</h3>
-<ul>
-  <li><strong>Google</strong> (policies.google.com/privacy) — Google Calendar, Docs, Tasks, Sheets, Forms and Classroom, for the ones you connect, and YouTube's search (see 11.1).</li>
-  <li><strong>OpenRouter</strong>, <strong>OpenAI</strong> and <strong>Anthropic</strong> — the same models that answer Ask's questions about the text on your screen work out what to do in the apps you connect, on your phone and on your computer.</li>
-</ul>
-
-<h3>Xode and GitHub (see Section 12)</h3>
-<ul>
-  <li><strong>GitHub</strong> (docs.github.com/site-policy/privacy-policies/github-general-privacy-statement) — holds the repos you connect; X0 Bot reads and writes there as Section 12 says, and GitHub Actions runs the steps X0 Bot gives it in your repo.</li>
-  <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — passes Xode's work to AI models made by companies such as OpenAI, Anthropic, Google, DeepSeek and Z.ai, chosen by the kind of work, and only to providers that neither keep nor train on what they are sent.</li>
-</ul>
-
-<h3>Other apps you connect, and bots (see Sections 13 and 14)</h3>
-<ul>
-  <li><strong>Each app you connect</strong> (for example Notion, Linear or Todoist) receives what X0 Bot reads or writes there for you, and handles it under its own privacy policy.</li>
-  <li><strong>OpenRouter</strong> — passes a bot's work to AI models made by companies such as OpenAI, Anthropic, Google, DeepSeek and Z.ai, only to providers that neither keep nor train on what they are sent. The models in "Google apps you connect" above work out what to do in the apps you connect when you ask X0 Bot itself.</li>
-  <li><strong>Search and map services</strong> — when a bot searches the web, the words it searches for go to search services such as DuckDuckGo and Brave Search, and it reads public web pages; when the Plan or Travel bot works out a place or a travel time, the places go to map services built on OpenStreetMap. None of them is sent your account.</li>
-</ul>
-
-<h3>Files you attach (see 1.9)</h3>
-<ul>
-  <li><strong>Cloudflare</strong> (cloudflare.com/privacypolicy) — stores the files and photos you attach (R2).</li>
-  <li><strong>Deepgram</strong> — turns the speech in them into text. <strong>OpenRouter</strong> — passes a picture to the AI model that describes it.</li>
-</ul>
-
-<h3>Authentication and database</h3>
-<ul>
-  <li><strong>Supabase</strong> (supabase.com/privacy) — hosts your account, profile, the record of your requests to Ask (see Section 4), your history (unless you turn it off), and the other things this policy says we keep, in secure managed Postgres.</li>
-  <li><strong>Apple Sign In / Google Sign In</strong> — used only if you choose these methods; each provider shares only the fields you authorize.</li>
-</ul>
-
-<h3>Purchases (see 1.3)</h3>
-<ul>
-  <li><strong>RevenueCat</strong> (revenuecat.com/privacy) — manages App Store and Google Play subscriptions, by your X0 Bot account ID.</li>
-  <li><strong>Apple App Store / Google Play</strong> — process the actual payment for subscriptions bought in the apps.</li>
-  <li><strong>Razorpay</strong> (razorpay.com/privacy) — processes payment for subscriptions bought on the web or in the desktop app; receives your X0 Bot account ID from us, and your payment details from you.</li>
-  <li><strong>Paddle</strong> (paddle.com/legal/privacy) — sold, and still handles, web subscriptions bought earlier through it.</li>
-</ul>
-
-<h3>Notifications (see Section 15)</h3>
-<ul>
-  <li><strong>Expo</strong> (expo.dev/privacy) — our servers send notifications through Expo's push service, with the notification's words and your phone's push token.</li>
-  <li><strong>Apple Push Notification service / Firebase Cloud Messaging</strong> — deliver them to your iPhone or Android phone. Our servers also send the Bots at work Live Activity's updates to Apple's service directly (Section 15).</li>
-</ul>
-
-<h3>Advertising measurement</h3>
-<ul>
-  <li><strong>Meta Platforms</strong> (facebook.com/privacy/policy) — measures our Facebook and Instagram ads, from the events described in 1.6.</li>
-</ul>
-
-<h3>Diagnostics (optional)</h3>
-<ul>
-  <li><strong>Sentry</strong> (sentry.io/privacy) — crash and error reporting.</li>
-  <li><strong>PostHog</strong> (posthog.com/privacy) — anonymous product analytics.</li>
-</ul>
-
-<p>These processors receive only the minimum information needed for their specific function.</p>
 
 <hr>
 
@@ -336,7 +266,7 @@ const PRIVACY_POLICY_BODY = `
 
 <h3>10.4 Where a picture goes, and what is kept</h3>
 <ul>
-  <li>A picture goes from our server through <strong>OpenRouter</strong> to the AI model that answers the question: <strong>Google's Gemini</strong>; only if that fails, <strong>Anthropic's Claude</strong>; and if that fails too, the model that refines your dictation (see Section 3), when it is a different one. It goes with the question and the text list above. OpenRouter and the model's provider handle it under their own privacy policies.</li>
+  <li>A picture goes from our server to the AI model that answers the question, from our AI service providers, with a second and a third model ready if the first fails (see Section 3). It goes with the question and the text list above. Each provider handles it under its own privacy policy.</li>
   <li><strong>X0 Bot does not store the picture and does not log it.</strong> It is held in memory only while your question is answered. Our logs record that a picture went with a question, its size in bytes, whether it was of one image or the whole window, and which model and provider answered; never the picture or the text on your screen.</li>
   <li>Ask writes nothing to your History. As with dictation, your usage counts the words Ask writes for you and the seconds you spoke, and we keep a count, in memory, of the pictures sent in the past day, for the daily limit.</li>
   <li>X0 Bot keeps a record of each request to Ask on your computer: how it ended and why, how many steps it took and how long, how many things it changed, and which AI model answered and what that cost. It holds nothing you said and nothing from your screen.</li>
@@ -387,7 +317,7 @@ const PRIVACY_POLICY_BODY = `
 
 <h3>11.3 Where your Google data goes</h3>
 <ul>
-  <li><strong>To the AI model that works out the next step.</strong> What X0 Bot reads in a Google app, at most 1,500 characters at a time, goes from our server with your request through <strong>OpenRouter</strong> to the AI model that answers you: <strong>OpenAI's</strong> model first; <strong>Anthropic's Claude</strong> if that fails; and if that fails too, the model that refines your dictation (see Section 3). With Ask on your computer, the text list of your screen goes with it (see 10.2). X0 Bot tells OpenRouter to use only providers that do not collect it to train models (OpenRouter's data-collection setting is off for every one of these requests). OpenRouter and the model's provider handle it under their own privacy policies, which may let them keep it for a short time after X0 Bot has dropped it.</li>
+  <li><strong>To the AI model that works out the next step.</strong> What X0 Bot reads in a Google app, at most 1,500 characters at a time, goes from our server with your request to the AI model that answers you, from our AI service providers, with a second and a third model ready if the first fails (see Section 3). With Ask on your computer, the text list of your screen goes with it (see 10.2). On every one of these requests, X0 Bot asks only for providers that do not collect it to train models. The providers handle it under their own privacy policies, which may let them keep it for a short time after X0 Bot has dropped it.</li>
   <li><strong>To you.</strong> X0 Bot's answer, and the card asking for your OK, are shown in X0 Bot on your phone or computer.</li>
   <li><strong>To Google.</strong> What you asked X0 Bot to write there: an event and its guests' email addresses, a Doc with your words or your meeting note, a task, rows in a sheet, a form's questions; and the words of a YouTube search (see 11.1). When you connect, X0 Bot also sends Google your X0 Bot account ID, which Google sends straight back so we know the sign-in is yours.</li>
   <li><strong>Nowhere else.</strong> When a change is waiting for your OK, the notification on your phone names only the app. Apart from Supabase, which stores what 11.4 lists, no one else receives your Google data.</li>
@@ -448,7 +378,7 @@ const PRIVACY_POLICY_BODY = `
 
 <h3>12.3 Where your code goes</h3>
 <ul>
-  <li><strong>To AI models.</strong> To do the work, X0 Bot sends your task, parts of your files, and what commands printed, through <strong>OpenRouter</strong>, to AI models made by companies such as OpenAI, Anthropic, Google, DeepSeek and Z.ai, chosen by the kind of work. X0 Bot tells OpenRouter to use only providers that neither keep nor train on what they are sent, and names you to OpenRouter only by a one-way hash, never your account ID. OpenRouter and the model's provider handle it under their own privacy policies.</li>
+  <li><strong>To AI models.</strong> To do the work, X0 Bot sends your task, parts of your files, and what commands printed, to AI models from our AI service providers (see Section 3), chosen by the kind of work. X0 Bot asks only for providers that neither keep nor train on what they are sent, and names you to them only by a one-way hash, never your account ID. Each provider handles it under its own privacy policy.</li>
   <li><strong>To GitHub.</strong> What X0 Bot writes goes into your repo. Its pull requests include a log of what it did.</li>
   <li><strong>Secrets.</strong> Before anything is committed, kept in our records or put in a pull request, X0 Bot looks in it for passwords, keys and tokens. A commit with one asks you every time, and our records keep a note in its place. This check can miss things, so do not put secrets in your code.</li>
   <li><strong>Not into our logs.</strong> Nothing that was sent to the AI models, or came back from them, is written to our logs.</li>
@@ -558,7 +488,7 @@ const PRIVACY_POLICY_BODY = `
 
 <h3>14.4 Where a bot's work goes</h3>
 <ul>
-  <li>A bot's work goes through <strong>OpenRouter</strong> to AI models made by companies such as OpenAI, Anthropic, Google, DeepSeek and Z.ai, only to providers that neither keep nor train on what they are sent. With your message go the bot's rules, what it remembers of you, the parts of its files that match your question (at most 3,500 characters), and what a connected app or a web page returned.</li>
+  <li>A bot's work goes to AI models from our AI service providers (see Section 3), only to providers that neither keep nor train on what they are sent. With your message go the bot's rules, what it remembers of you, the parts of its files that match your question (at most 3,500 characters), and what a connected app or a web page returned.</li>
 </ul>
 
 <hr>

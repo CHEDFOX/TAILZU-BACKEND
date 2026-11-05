@@ -14,6 +14,8 @@ process.env.SITE_DIR = "/tmp/tailzu-test-no-site";
 // eslint-disable-next-line import/first
 import { PRIVACY_POLICY_EFFECTIVE, PRIVACY_POLICY_HTML } from "../src/routes/site/policies/privacy.js";
 // eslint-disable-next-line import/first
+import { PROVIDERS_HTML } from "../src/routes/site/policies/providers.js";
+// eslint-disable-next-line import/first
 import { APP_KNOB_FLAGS } from "../src/experience/appKnobsData.js";
 // eslint-disable-next-line import/first
 import { getConfig } from "../src/config.js";
@@ -46,6 +48,8 @@ import { MemoryRunStore, RunLedger, SWEEP_TIMES } from "../src/runs/index.js";
 
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&rarr;/g, "→").replace(/\s+/g, " ").replace(/ ([,.;:)])/g, "$1");
 const policy = text(PRIVACY_POLICY_HTML);
+/** Service providers (/privacy/providers): part of the policy, and where each provider is named. */
+const providers = text(PROVIDERS_HTML);
 const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.indexOf("11. Google apps you connect"));
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Xode and GitHub"));
 
@@ -182,15 +186,20 @@ describe("where a picture goes, and what is kept", () => {
     expect(ladder[1]).toMatch(/^anthropic\//);
     expect(ladder.at(-1)).toBe(cfg.CLEANUP_MODEL);
     expect(visionLadder(true)[0]).toMatch(/^google\//);
-    expect(ask).toContain("through OpenRouter to the AI model that answers the question: Google's Gemini; only if that fails, Anthropic's Claude; and if that fails too, the model that refines your dictation (see Section 3), when it is a different one.");
+    // The policy says it in general terms; Service providers (part of it) names who does what.
+    expect(ask).toContain("to the AI model that answers the question, from our AI service providers, with a second and a third model ready if the first fails");
+    expect(providers).toContain("Gemini answers a question that comes with a picture of part of your screen");
+    expect(providers).toContain("Claude answers either kind when the first model cannot");
     // The last rung is skipped when it is a model already tried (no model twice).
     const ladderLen = new Set([cfg.AGENT_VISION_MODEL, ...cfg.AGENT_VISION_FALLBACK_MODELS.split(",").map((m) => m.trim()).filter(Boolean), cfg.CLEANUP_MODEL]).size;
     expect(ladder).toHaveLength(ladderLen);
   });
 
-  it("lists Ask's processors in Section 3", () => {
-    const s3 = policy.slice(policy.indexOf("3. Third parties we use"), policy.indexOf("4. Data retention"));
-    const list = s3.slice(s3.indexOf("Ask, on the desktop app"));
+  it("lists Ask's processors in Service providers, which Section 3 links to as part of the policy", () => {
+    const s3 = policy.slice(policy.indexOf("3. Service providers we use"), policy.indexOf("4. Data retention"));
+    expect(PRIVACY_POLICY_HTML).toContain('href="/privacy/providers"');
+    expect(s3).toContain("which is part of this policy");
+    const list = providers.slice(providers.indexOf("Ask, on the desktop app"));
     for (const name of ["OpenRouter", "OpenAI", "Google", "Anthropic"]) expect(list).toContain(name);
     // The text path's first model is OpenAI's, its fallback Anthropic's, and
     // the refinement model is its last rung, as it writes Ask's text.
@@ -276,11 +285,10 @@ describe("the Google apps section", () => {
     expect(modelLadder()[0]).toMatch(/^openai\//);
     expect(modelLadder()[1]).toMatch(/^anthropic\//);
     expect(modelLadder().at(-1)).toBe(getConfig().CLEANUP_MODEL);
-    expect(google).toContain("through OpenRouter to the AI model that answers you: OpenAI's model first; Anthropic's Claude if that fails; and if that fails too, the model that refines your dictation (see Section 3).");
+    expect(google).toContain("to the AI model that answers you, from our AI service providers, with a second and a third model ready if the first fails");
     expect(RESULT_MAX).toBe(1500);
     expect(google).toContain("at most 1,500 characters at a time");
-    const s3 = policy.slice(policy.indexOf("3. Third parties we use"), policy.indexOf("4. Data retention"));
-    expect(s3).toContain("Google apps you connect (see Section 11)");
+    expect(providers).toContain("Google apps you connect (see Section 11)");
   });
 
   it("says how to disconnect, the last-Google-app rule, and what stays", () => {
@@ -353,5 +361,17 @@ describe("served at /privacy", () => {
     expect(res.body).toContain("Effective: November 5, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
     expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "November 5, 2026" });
+  });
+});
+
+describe("Service providers (/privacy/providers), part of the policy", () => {
+  it("is where each AI company is named; the policy itself names none and links there", () => {
+    for (const name of ["OpenAI", "Anthropic", "Gemini", "Groq", "Deepgram", "Sarvam", "OpenRouter", "DeepSeek", "Claude"]) {
+      expect(policy, name).not.toContain(name);
+      expect(providers, name).toContain(name);
+    }
+    expect(PRIVACY_POLICY_HTML).toContain('href="/privacy/providers#ai"');
+    expect(providers).toContain("Part of the X0 Bot Privacy Policy");
+    expect(providers).toContain("only after you agree in the app");
   });
 });
