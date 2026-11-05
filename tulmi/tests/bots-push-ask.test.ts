@@ -4,7 +4,8 @@
  *
  *   - on a phone's Home, once a bot is working or needs the person: a card that says why, then the system's own ask; it reads the
  *     phone's answer as the page appears and shows only while notifications are not allowed
- *   - answered (allowed or Not now) it never comes back; never on a window, never with nothing going on, never over the first-arrival card
+ *   - its one button says Continue and goes straight to the system's prompt, with nothing to put it off (App Review 5.1.1(iv));
+ *     answered either way it never comes back; never on a window, never with nothing going on, never over the first-arrival card
  *   - What pings you says when this phone has notifications off, with a way to turn them on
  *   - the first-day Home has Home's own header: the greeting, the bold time-aware line, the living mark and the compact bar
  */
@@ -65,16 +66,18 @@ describe("Home's ask", () => {
     expect(lintTree(s.root!)).toEqual([]);
     expect(s.state).toMatchObject({ pushGranted: null, pushAsked: false });
     expect(appearing(s.root!)).toContainEqual({ kind: "checkPermission", permission: "notifications", assignTo: "pushGranted" });
-    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Get a ping when a bot needs you", "Turn on notifications", "Not now"]));
+    expect(texts(s.root!)).toEqual(expect.arrayContaining(["Get a ping when a bot needs you", "Continue"]));
+    expect(texts(s.root!)).not.toContain("Not now");
     const working = await buildBotsScreen(req("bots.home", "phone"), fakeDeps({ api: HOME, tasks: [], jobs: SAMPLE_JOBS.filter((j) => j.state !== "waiting_for_you") }));
     expect(texts(working.root!)).toContain("Get a ping when it's done");
-    const card = walk(s.root!).find((n) => !!n.visibleIf && json(n.visibleIf).includes("pushGranted") && texts(n).includes("Turn on notifications"))!;
+    const card = walk(s.root!).find((n) => !!n.visibleIf && json(n.visibleIf).includes("pushGranted") && texts(n).includes("Get a ping when a bot needs you"))!;
     expect(card.visibleIf).toEqual({ all: [{ eq: ["pushGranted", false] }, { falsy: "pushAsked" }] });
     const all = walk(card).flatMap((n) => flat(n.on?.onPress));
     const ask = all.find((a) => a.kind === "requestPushPermission")!;
     expect(flat(ask.onGranted)).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/push-ask", body: { answer: "granted" } }));
     expect(flat(ask.onDenied)).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/push-ask", body: { answer: "dismissed" } }));
-    expect(all).toContainEqual(expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/push-ask", body: { answer: "dismissed" } }));
+    // Nothing but the system's own prompt answers it.
+    expect(all.filter((a) => a.kind === "callEndpoint" && !flat(ask).includes(a))).toEqual([]);
   });
 
   it("not once answered, not on a window, not with nothing going on, not over the first-arrival card", async () => {

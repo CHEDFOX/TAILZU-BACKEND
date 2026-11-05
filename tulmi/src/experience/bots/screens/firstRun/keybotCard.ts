@@ -33,8 +33,8 @@ export function keybotCard(ctx: BotsCtx): Node[] {
     if (ctx.can.has("DeskMicAsk")) {
       const steps = [permitStep({
         when: { falsy: "micGranted" }, title: "Let Keylessbord hear you",
-        lines: [line("Allow the microphone, then say something to try it.")],
-        cta: { label: "Allow microphone", onPress: ask },
+        lines: [line("Keylessbord uses the microphone to hear you. Next, your computer asks you; then say something to try it.")],
+        cta: { label: "Continue", onPress: ask },
       })];
       out.push(when({ falsy: "micGranted" }, canMove(ctx)
         ? botCard(steps, { ...CARD_BOT, kind: "custom", label: "Let Keylessbord hear you" })
@@ -68,8 +68,8 @@ export function keybotCard(ctx: BotsCtx): Node[] {
       // The microphone first; refused, it waits behind the keyboard and comes back once the keyboard is on.
       when: { all: [{ falsy: "micGranted" }, { any: [{ falsy: "micAsked" }, KEYS_ON] }] },
       title: "Let Keylessbord hear you",
-      lines: [line("Allow the microphone, then say something to try it.")],
-      cta: { label: "Allow microphone", onPress: ask },
+      lines: [line("Keylessbord uses the microphone to hear you. Next, your phone asks you; then say something to try it.")],
+      cta: { label: "Continue", onPress: ask },
     }),
     permitStep({
       when: { all: [MIC_SETTLED, KEYS_MISSING] },

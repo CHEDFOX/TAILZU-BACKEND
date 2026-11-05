@@ -15,7 +15,9 @@ export const ARRIVAL_PATH = "/v1/bots/first-run/arrival";
  * THE FIRST ARRIVAL: one card over Home, the first time someone lands in the app (until it is answered or put off;
  * the server keeps that, GET/PUT /v1/bots/first-run/arrival). Step 1 asks for the microphone, for real; allowed or
  * not, the same card moves on to step 2, the keyboard (straight to its settings). Once both are on, a small happy
- * moment and it closes. "Not now" closes it for good. Over a blurred Home (BotCard overlay) where the build draws it,
+ * moment and it closes. The microphone step has one button, Continue, which goes straight to the system's own prompt (App
+ * Review 5.1.1(iv): no "Allow" on our button, no way to put the prompt off); "Not now" is on the later steps only, and closes
+ * the card for good. Over a blurred Home (BotCard overlay) where the build draws it,
  * else a plain card at the top of Home. Nothing at all when there is nothing to ask for.
  */
 export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
@@ -29,9 +31,8 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
   const mic = (whenMic: Condition) => permitStep({
     when: whenMic,
     title: "Let X0 Bot hear you",
-    lines: [line("Allow the microphone for a better experience: talk to any bot, in any app.")],
-    cta: { label: "Allow microphone", onPress: askMic(seq(setState("micGranted", true), setState("micAsked", true)), setState("micAsked", true)) },
-    quiet: notNow,
+    lines: [line("X0 Bot uses the microphone so you can talk to any bot, in any app. Next, your phone asks you.")],
+    cta: { label: "Continue", onPress: askMic(seq(setState("micGranted", true), setState("micAsked", true)), setState("micAsked", true)) },
   });
   let steps: Node[], ready: Condition | undefined, done: Condition | undefined;
   if (desk) {

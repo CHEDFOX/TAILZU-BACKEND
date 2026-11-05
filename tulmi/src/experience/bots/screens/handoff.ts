@@ -114,15 +114,16 @@ export function botsKeyboardPrimer(base: ScreenResponse): ScreenResponse {
   ], { alignItems: "flex-start" });
   return page(base, scroll([
     ...head("One-time setup", "Turn on voice for the keyboard",
-      "iOS requires this app to grant microphone access before the keyboard can use it. Tap Allow, then swipe back to your app — the keyboard mic will work from then on."),
+      "iOS asks this app for the microphone before the keyboard can use it. Tap Continue, then swipe back to your app: the keyboard mic will work from then on."),
     gap(24),
     card([
-      step("1.", "Tap the Allow mic button below"),
-      step("2.", "Approve the iOS microphone prompt"),
+      step("1.", "Tap Continue below"),
+      step("2.", "Answer the iOS microphone prompt"),
       step("3.", "Swipe back to your app and tap the keyboard mic again"),
     ]),
     gap(22),
-    when({ not: { truthy: "micGranted" } }, primaryButton("Allow microphone", "grantMic", { wide: true })),
+    // App Review 5.1.1(iv): our button says Continue and goes straight to the system's prompt; nothing here puts it off.
+    when({ not: { truthy: "micGranted" } }, primaryButton("Continue", "grantMic", { wide: true })),
     { ...when({ truthy: "micGranted" }, card([
       text("You're set", { size: 18, weight: 700, lineHeight: 24 }),
       body("Swipe back to your app now and tap the keyboard mic. It'll work from here on out.", { color: C.grey70 }),
@@ -130,6 +131,6 @@ export function botsKeyboardPrimer(base: ScreenResponse): ScreenResponse {
     gap(10),
     when({ not: { truthy: "micGranted" } }, secondaryButton("Open X0 Bot Settings", "openMainSettings", { wide: true })),
     gap(8),
-    secondaryButton("Cancel", "dismiss", { wide: true }),
+    when({ truthy: "micGranted" }, secondaryButton("Done", "dismiss", { wide: true })),
   ]));
 }

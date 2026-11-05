@@ -454,7 +454,7 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       // Monochrome: white, ink and Geist; the bot in a neutral grey.
       expect(JSON.stringify(card)).not.toMatch(BOT_COLOURS);
       expect(card.props?.color).toBe("#3d3d3d");
-      // Step 1: the microphone, for a better experience; allowed or not, on to step 2.
+      // Step 1: the microphone. App Review 5.1.1(iv): one button, Continue, straight to the system's prompt; nothing puts it off.
       const mic = stepOf(card, "Let X0 Bot hear you")!;
       expect(mic.visibleIf).toEqual({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] });
       const ask = actions(mic).find((x) => x.kind === "requestPermission") as { permission?: string; onGranted?: unknown; onDenied?: unknown; onBlocked?: unknown };
@@ -474,7 +474,11 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
       expect(card.props?.doneDelayMs).toBeGreaterThanOrEqual(2000);
       const closes = [{ kind: "setState", path: "permitClosed", value: true }, expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/first-run/arrival" })];
       expect(actions(card.on?.onComplete)).toEqual(expect.arrayContaining(closes));
-      const notNow = walk(mic).find((x) => x.on?.onPress && texts(x).includes("Not now"));
+      expect(texts(mic)).toContain("Continue");
+      expect(texts(mic)).not.toContain("Not now");
+      expect(texts(mic).join(" ")).not.toMatch(/\bAllow\b/);
+      // "Not now" stays on the keyboard step (no system prompt there), and closes the card for good.
+      const notNow = walk(keys).find((x) => x.on?.onPress && texts(x).includes("Not now"));
       expect(actions(notNow?.on?.onPress)).toEqual(expect.arrayContaining(closes));
       expect(lintTree(s.root!)).toEqual([]);
       // The old cards are gone from Home.

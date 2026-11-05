@@ -57,15 +57,15 @@ export function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
       children: [
         { type: "Overline", props: { content: "One-time setup" } },
         { type: "Heading", props: { content: "Turn on voice for the keyboard" }, style: { fontSize: 28, fontWeight: "800", color: "$color.text", marginTop: 6, marginBottom: 12 } },
-        { type: "Paragraph", props: { content: "iOS requires this app to grant microphone access before the keyboard can use it. Tap Allow, then swipe back to your app — the keyboard mic will work from then on." }, style: { marginBottom: 28 } },
+        { type: "Paragraph", props: { content: "iOS asks this app for the microphone before the keyboard can use it. Tap Continue, then swipe back to your app: the keyboard mic will work from then on." }, style: { marginBottom: 28 } },
         { type: "Card", style: { marginBottom: 22, padding: 16 }, children: [
           { type: "Stack", style: { flexDirection: "row", alignItems: "center", marginBottom: 10 }, children: [
             { type: "Text", props: { content: "1." }, style: { fontSize: 15, fontWeight: "800", color: "$color.primary", width: 24 } },
-            { type: "Text", props: { content: "Tap the Allow mic button below" }, style: { fontSize: 15, color: "$color.text", flex: 1 } },
+            { type: "Text", props: { content: "Tap Continue below" }, style: { fontSize: 15, color: "$color.text", flex: 1 } },
           ] },
           { type: "Stack", style: { flexDirection: "row", alignItems: "center", marginBottom: 10 }, children: [
             { type: "Text", props: { content: "2." }, style: { fontSize: 15, fontWeight: "800", color: "$color.primary", width: 24 } },
-            { type: "Text", props: { content: "Approve the iOS microphone prompt" }, style: { fontSize: 15, color: "$color.text", flex: 1 } },
+            { type: "Text", props: { content: "Answer the iOS microphone prompt" }, style: { fontSize: 15, color: "$color.text", flex: 1 } },
           ] },
           { type: "Stack", style: { flexDirection: "row", alignItems: "center" }, children: [
             { type: "Text", props: { content: "3." }, style: { fontSize: 15, fontWeight: "800", color: "$color.primary", width: 24 } },
@@ -75,7 +75,7 @@ export function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
         {
           type: "Button",
           visibleIf: { not: { truthy: "micGranted" } },
-          props: { label: "Allow microphone", variant: "primary" },
+          props: { label: "Continue", variant: "primary" },
           on: { onPress: "grantMic" },
         },
         {
@@ -96,9 +96,11 @@ export function keyboardPrimerScreen(ctx: ScreenContext): ScreenResponse {
           on: { onPress: "openMainSettings" },
         },
         { type: "Spacer", style: { height: 8 } },
+        // App Review 5.1.1(iv): nothing puts the system's prompt off; once it is answered, Done.
         {
           type: "Button",
-          props: { label: "Cancel", variant: "secondary" },
+          visibleIf: { truthy: "micGranted" },
+          props: { label: "Done", variant: "secondary" },
           on: { onPress: "dismiss" },
         },
       ],
