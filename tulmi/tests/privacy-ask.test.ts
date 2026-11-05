@@ -50,7 +50,7 @@ const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.i
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Xode and GitHub"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day Ask worked in private windows", () => {
+  it("is effective from the day Xode came to the terminal", () => {
     expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 5, 2026");
     expect(PRIVACY_POLICY_HTML).toContain("Effective: November 5, 2026");
   });
@@ -61,7 +61,7 @@ describe("the policy's date and shape", () => {
     const subs = [...PRIVACY_POLICY_HTML.matchAll(/<h3>10\.(\d) /g)].map((m) => Number(m[1]));
     expect(subs).toEqual([1, 2, 3, 4, 5, 6]);
     const xode = [...PRIVACY_POLICY_HTML.matchAll(/<h3(?: id="[a-z-]+")?>12\.(\d) /g)].map((m) => Number(m[1]));
-    expect(xode).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(xode).toEqual([1, 2, 3, 4, 5, 6, 7]);
     const google = [...PRIVACY_POLICY_HTML.matchAll(/<h3>11\.(\d) /g)].map((m) => Number(m[1]));
     expect(google).toEqual([1, 2, 3, 4, 5, 6]);
   });

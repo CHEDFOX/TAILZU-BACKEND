@@ -473,6 +473,14 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>How to turn it off:</strong> untick "Use this computer for Xode" in the X0 Bot menu, and your jobs run on GitHub's computers or ours instead; "Stop" there ends what is running. In "Xode activity…" you can also keep a single project off this computer. Quitting the app or signing out stops it too.</li>
 </ul>
 
+<h3 id="terminal">12.7 Xode in the terminal</h3>
+<ul>
+  <li><strong>Signing in:</strong> <code>xode login</code> shows a short code; you approve it in the X0 Bot app. The terminal then gets a sign-in of its own, which works only for Xode (your projects, its chat and its jobs) and nothing else in your account. We keep only a one-way hash of it, with the computer's name, its system, when it was added and when it was last used (at most every ten minutes).</li>
+  <li><strong>On your computer:</strong> the sign-in is kept in your system's keychain (macOS), its secret service (Linux), or else a file only your user can read (<code>~/.config/xode</code>). It is never printed or written to a log. Beside it, <code>xode</code> keeps which project each folder is and the last job there.</li>
+  <li><strong>What it does there:</strong> while <code>xode</code> is open, your computer can run that folder's project's work, under the rules in 12.6. When a job ends, its branch is brought into the folder only if you have no uncommitted changes there; otherwise it tells you how, and changes nothing.</li>
+  <li><strong>Removing it:</strong> <code>xode logout</code>, or Settings &rarr; Terminal sign-ins in the app, where each one is listed with a Remove button. A removed sign-in stops working at once, or within a minute everywhere.</li>
+</ul>
+
 <hr>
 
 <h2 id="connected-apps">13. Other apps you connect, and apps X0 Bot opens for you</h2>
