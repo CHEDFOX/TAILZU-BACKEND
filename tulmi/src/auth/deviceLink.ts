@@ -11,12 +11,17 @@
  *                     code    8 letters and digits, typed on the phone instead of scanning; finds the token
  *                   Only their SHA-256 is kept, so the table alone signs nobody in.
  *   view            the phone, signed in: what is asking (the computer's name and system, when), by token or code.
- *   decide          the phone, signed in as a real account with an email: approve or refuse, once, while it is pending.
+ *   decide          the phone, signed in as a real account (with an email, for a window): approve or refuse, once, while it is pending.
  *
  * Every value travels in a POST body, never a path or a query, so none of them is in a request log.
  *   poll            the window: token + secret. Waits up to POLL_MAX_MS for an answer. Approved, the request is spent
  *                   in the same step (approved → used, a conditional write), and only the poll that spent it gets the
  *                   session: a second one, or a copy of the token without the secret, gets nothing.
+ *
+ * XODE IN THE TERMINAL (kind "cli", docs/xode-cli.md): the same request, started by `xode login` instead of the window. The
+ * phone (or the window, which can approve a terminal) says yes the same way, and the approved poll gets a DEVICE TOKEN of the
+ * terminal's own (auth/deviceTokens.ts) instead of a session: so no address is needed, and an account with only a phone number
+ * can approve it too.
  *
  * THE SESSION is minted as the review pair's is (routes/account/reviewCode.ts): Supabase's admin API makes a one-time magic link
  * for the account's own address (nothing is sent), and the window gets only its hashed token, which it redeems with its
@@ -26,8 +31,10 @@
  *
  * Nothing here logs a token, a secret, a code or a hashed token.
  */
+import { getConfig } from "../config.js";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { supabase } from "./supabase.js";
+import { deviceTokens } from "./deviceTokens.js";
 
 /** How long a request can be approved: long enough to find the phone, short enough that a photo of the screen is stale. */
 export const LINK_TTL_MS = 5 * 60_000;
@@ -46,14 +53,19 @@ const CODE_LENGTH = 8;
 
 /** A token or a secret as the server makes them: 32 random bytes, base64url. */
 export const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
+/** A code as the server makes them, without its dash (normalizeCode): 8 of its own letters and digits. */
+export const CODE_RE = /^[2-9A-HJ-NP-Z]{8}$/;
 
 export type LinkPlatform = "mac" | "windows" | "linux" | "";
+/** What is signing in: the desktop app's window ("app"), or Xode in a terminal ("cli"). */
+export type LinkKind = "app" | "cli";
 export type StoredStatus = "pending" | "approved" | "denied" | "used";
 /** What the phone and the window are told: a pending request past its time reads "expired". */
 export type LinkStatus = StoredStatus | "expired";
 
 export interface LinkRow {
   id: string;
+  kind: LinkKind;
   tokenHash: string;
   secretHash: string;
   codeHash: string;
@@ -90,12 +102,15 @@ export interface DeviceLinkDeps {
   store: LinkStore;
   /** A one-time sign-in for the account (its hashed token), or why not. */
   mint: (userId: string) => Promise<Minted>;
+  /** A terminal's own token (kind "cli"); absent, an approved terminal's poll answers "failed". */
+  issue?: (userId: string, device: { name: string; platform: LinkPlatform }) => Promise<{ token: string; id: string }>;
   now?: () => number;
   random?: (bytes: number) => Buffer;
 }
 
 export interface Created { token: string; secret: string; code: string; expiresAt: number }
 export interface LinkView {
+  kind: LinkKind;
   deviceName: string;
   platform: LinkPlatform;
   status: LinkStatus;
@@ -107,7 +122,8 @@ export interface LinkRef { token?: unknown; code?: unknown }
 export type PollAnswer =
   | { status: "pending"; expiresAt: number }
   | { status: "expired" | "denied" | "used" | "failed" }
-  | { status: "approved"; tokenHash: string; type: string };
+  | { status: "approved"; tokenHash: string; type: string }
+  | { status: "approved"; deviceToken: string; deviceId: string };
 export type Decision = { ok: true; deviceName: string } | { ok: false; error: "not_found" | "expired" | "decided" | "no_email" | "not_allowed" };
 
 export const hashOf = (s: string): string => createHash("sha256").update(s).digest("hex");
@@ -145,7 +161,7 @@ const cleanPlatform = (raw: unknown): LinkPlatform =>
 const base64url = (b: Buffer): string => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 export interface DeviceLinks {
-  create(o: { deviceName?: unknown; platform?: unknown; ip?: string | null; userAgent?: string | null }): Promise<Created>;
+  create(o: { kind?: LinkKind; deviceName?: unknown; platform?: unknown; ip?: string | null; userAgent?: string | null }): Promise<Created>;
   view(ref: LinkRef): Promise<LinkView | null>;
   decide(ref: LinkRef, user: { id: string; email?: string }, yes: boolean): Promise<Decision>;
   poll(token: string, secret: string, waitMs: number): Promise<PollAnswer | null>;
@@ -180,7 +196,7 @@ export function createDeviceLinks(deps: DeviceLinkDeps): DeviceLinks {
 
   const statusOf = (r: LinkRow, at: number): LinkStatus => (r.status === "pending" && r.expiresAt <= at ? "expired" : r.status);
   const viewOf = (r: LinkRow, at: number): LinkView => ({
-    deviceName: r.deviceName, platform: r.platform, status: statusOf(r, at), createdAt: r.createdAt, expiresAt: r.expiresAt,
+    kind: r.kind, deviceName: r.deviceName, platform: r.platform, status: statusOf(r, at), createdAt: r.createdAt, expiresAt: r.expiresAt,
   });
 
   /** The request a token names (any state), or a typed code (only while pending: a code is short, so it finds nothing else). */
@@ -202,7 +218,7 @@ export function createDeviceLinks(deps: DeviceLinkDeps): DeviceLinks {
       let code = newCode();
       for (let i = 0; i < 3 && (await store.byCode(hashOf(code), at)); i++) code = newCode();
       const row: LinkRow = {
-        id: base64url(random(16)),
+        id: base64url(random(16)), kind: o.kind === "cli" ? "cli" : "app",
         tokenHash: hashOf(token), secretHash: hashOf(secret), codeHash: hashOf(code),
         deviceName: cleanDeviceName(o.deviceName, platform), platform,
         ip: o.ip ? String(o.ip).slice(0, 64) : null, userAgent: o.userAgent ? String(o.userAgent).slice(0, 200) : null,
@@ -218,11 +234,12 @@ export function createDeviceLinks(deps: DeviceLinkDeps): DeviceLinks {
     },
 
     async decide(ref, user, yes) {
-      // A real account: a static bearer is nobody's, and the session the window gets is minted from the address.
+      // A real account: a static bearer is nobody's. The window's session is minted from the address, so approving a window
+      // needs one; a terminal gets a token of its own, so any account can approve it.
       if (!user.id || user.id.startsWith("static-")) return { ok: false, error: "not_allowed" };
-      if (yes && !user.email) return { ok: false, error: "no_email" };
       const r = await rowOf(ref);
       if (!r) return { ok: false, error: "not_found" };
+      if (yes && r.kind === "app" && !user.email) return { ok: false, error: "no_email" };
       const at = now();
       if (r.status === "pending" && r.expiresAt <= at) return { ok: false, error: "expired" };
       if (r.status !== "pending") return { ok: false, error: "decided" };
@@ -256,6 +273,11 @@ export function createDeviceLinks(deps: DeviceLinkDeps): DeviceLinks {
       if (r.expiresAt + EXCHANGE_GRACE_MS <= at || !r.userId) return { status: "expired" };
       const spent = await store.transition(r.id, "approved", "used", { usedAt: at }, at);
       if (!spent || !spent.userId) return { status: "used" };
+      if (spent.kind === "cli") {
+        // The terminal's own token, made now and shown only here: the table keeps its hash.
+        const made = deps.issue ? await deps.issue(spent.userId, { name: spent.deviceName, platform: spent.platform }).catch(() => null) : null;
+        return made ? { status: "approved", deviceToken: made.token, deviceId: made.id } : { status: "failed" };
+      }
       const minted = await deps.mint(spent.userId).catch((): Minted => ({ error: "failed" }));
       if ("error" in minted) return { status: "failed" };
       return { status: "approved", tokenHash: minted.tokenHash, type: minted.type };
@@ -290,20 +312,20 @@ export function memoryLinkStore(): LinkStore & { rows: Map<string, LinkRow> } {
 }
 
 interface DbRow {
-  id: string; token_hash: string; secret_hash: string; code_hash: string; device_name: string; platform: string;
+  id: string; kind?: string; token_hash: string; secret_hash: string; code_hash: string; device_name: string; platform: string;
   ip: string | null; user_agent: string | null; status: StoredStatus; user_id: string | null;
   created_at: string; expires_at: string; decided_at: string | null; used_at: string | null;
 }
 const iso = (ms: number) => new Date(ms).toISOString();
 const ms = (s: string | null): number | null => (s ? Date.parse(s) : null);
 const fromDb = (d: DbRow): LinkRow => ({
-  id: d.id, tokenHash: d.token_hash, secretHash: d.secret_hash, codeHash: d.code_hash, deviceName: d.device_name,
+  id: d.id, kind: d.kind === "cli" ? "cli" : "app", tokenHash: d.token_hash, secretHash: d.secret_hash, codeHash: d.code_hash, deviceName: d.device_name,
   platform: cleanPlatform(d.platform), ip: d.ip, userAgent: d.user_agent, status: d.status, userId: d.user_id,
   createdAt: ms(d.created_at)!, expiresAt: ms(d.expires_at)!, decidedAt: ms(d.decided_at), usedAt: ms(d.used_at),
 });
 
 /**
- * Supabase (migration 0049, public.device_links), through the service client only: the rows are written before there
+ * Supabase (migration 0049, public.device_links; its `kind` column is 0066's), through the service client only: the rows are written before there
  * is an account, and no person reads them directly (row-level security is on with no policies).
  */
 function supabaseLinkStore(): LinkStore | null {
@@ -317,6 +339,8 @@ function supabaseLinkStore(): LinkStore | null {
         id: r.id, token_hash: r.tokenHash, secret_hash: r.secretHash, code_hash: r.codeHash, device_name: r.deviceName,
         platform: r.platform, ip: r.ip, user_agent: r.userAgent, status: r.status, user_id: r.userId,
         created_at: iso(r.createdAt), expires_at: iso(r.expiresAt),
+        // Written only for a terminal, so the window's sign-in keeps working on a database without migration 0066's column.
+        ...(r.kind === "cli" ? { kind: r.kind } : {}),
       });
       fail("insert", error);
     },
@@ -371,5 +395,12 @@ async function mintSignIn(userId: string): Promise<Minted> {
 /** The real service: on whenever the server holds the service key (it can mint then), else null and the routes say so. */
 export function defaultDeviceLinks(): DeviceLinks | null {
   const store = supabaseLinkStore();
-  return store ? createDeviceLinks({ store, mint: mintSignIn }) : null;
+  if (store) return createDeviceLinks({ store, mint: mintSignIn, issue: (userId, d) => deviceTokens().issue({ userId, ...d }) });
+  // A local server with no database (DEV_SKIP_AUTH, which config refuses in production): the terminal's sign-in works from
+  // memory, so `xode login` can be tried end to end on one machine. A window's sign-in still cannot mint a session there.
+  if (getConfig().DEV_SKIP_AUTH) {
+    return (devLinks ??= createDeviceLinks({ store: memoryLinkStore(), mint: async () => ({ error: "failed" }), issue: (userId, d) => deviceTokens().issue({ userId, ...d }) }));
+  }
+  return null;
 }
+let devLinks: DeviceLinks | undefined;

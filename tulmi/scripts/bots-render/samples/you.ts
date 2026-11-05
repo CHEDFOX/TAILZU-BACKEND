@@ -101,4 +101,11 @@ export const YOU_API: Record<string, unknown> = {
   // The window's Settings card lists every app (screens/you/settingsCard.ts).
   "GET /v1/you/apps?all=1": apps,
   "GET /v1/you/apps/google-calendar": app,
+  // Terminal sign-ins (screens/you/devicesPage.ts): Xode in two terminals.
+  "GET /v1/auth/devices": {
+    devices: [
+      { id: "5f0c1a2b-0000-4000-8000-000000000001", name: "Aanya's MacBook Air", platform: "mac", kind: "cli", createdAt: NOW - 3 * D, lastUsedAt: NOW - 20 * MIN },
+      { id: "5f0c1a2b-0000-4000-8000-000000000002", name: "build-box", platform: "linux", kind: "cli", createdAt: NOW - 12 * D, lastUsedAt: null },
+    ],
+  },
 };

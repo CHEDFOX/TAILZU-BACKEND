@@ -4,11 +4,15 @@
  *
  *   bots.link            You › Link a computer: how it goes (the phone's camera opens the computer's QR code), and the
  *                        typed way for a phone that cannot scan: the 8-letter code under the QR. Continue opens the
- *                        page below with that code.
+ *                        page below with that code. In the window, only the typed way, for Xode in a terminal.
  *   bots.link?l=<token>  where the QR's link lands (https://app.x0bot.com/s/bots.link?l=…, a link the app claims)
  *   bots.link?c=<code>   the same, from the typed code
  *                        "Sign in on <computer>?": which computer, when it asked, which account it signs in as, and
  *                        Approve / Not me. Approved, the computer signs itself in a moment later.
+ *                        For Xode in a terminal (kind "cli", `xode login`; docs/xode-cli.md) it says so plainly: "Xode in the
+ *                        terminal on <computer>", that it can work on the person's projects from there, and that it can be
+ *                        removed any time in Settings (Terminal sign-ins, screens/you/devicesPage.ts). The window can approve
+ *                        a terminal too; a window's own sign-in is still the phone's to approve.
  *
  * Reads POST /v1/auth/link/view; writes POST /v1/auth/link/approve and /deny (routes/account/deviceLink.ts). The token or code
  * travels in the bodies only.
@@ -22,6 +26,8 @@ import { screen, type BotsScreen } from "../registry.js";
 
 /** POST /v1/auth/link/view, as this page reads it. */
 export interface LinkData {
+  /** What is signing in: the desktop app's window, or Xode in a terminal. Absent from an older server: the window. */
+  kind?: "app" | "cli";
   deviceName: string;
   platform: "mac" | "windows" | "linux" | "";
   status: "pending" | "approved" | "denied" | "used" | "expired";
@@ -35,8 +41,8 @@ export interface LinkData {
 
 const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
 const toast = (message: string): ActionSpec => ({ kind: "toast", message, tone: "error" } as ActionSpec);
-/** Continue with the typed code, once there is one. */
-const withCode: ActionSpec = { kind: "condition", if: { falsy: "code" }, then: toast("Type the code from your computer first"), else: open(SCREENS.link, { c: "$state.code" }) } as ActionSpec;
+/** Continue with the typed code, once there is one (Terminal sign-ins takes a code the same way). */
+export const withCode: ActionSpec = { kind: "condition", if: { falsy: "code" }, then: toast("Type the code from your computer first"), else: open(SCREENS.link, { c: "$state.code" }) } as ActionSpec;
 
 /** The request this page is about, as the routes take it: the QR's token, or the typed code. */
 function refOf(ctx: BotsCtx): { token: string } | { code: string } | null {
@@ -66,9 +72,9 @@ const finish: ActionRef = toTab("bots");
 
 // ----------------------------------------------------------------- You › Link a computer
 
-function howTo(ctx: BotsCtx) {
-  const desk = ctx.client === "desktop";
-  const codeField: Node = {
+/** The typed code's field, into state `code`; Enter continues. */
+export function codeField(): Node {
+  const field: Node = {
     type: "TextField", id: "link.code", bind: { value: "code" },
     props: {
       placeholder: "K7Q4-2MXP", placeholderColor: C.idle, background: "transparent", borderWidth: 0, radius: 0, paddingHorizontal: 0, paddingVertical: 0,
@@ -80,6 +86,11 @@ function howTo(ctx: BotsCtx) {
       letterSpacing: 2, color: C.ink, borderWidth: 0, backgroundColor: "transparent", outlineStyle: "none",
     },
   };
+  return row([field], { borderWidth: 1.5, borderColor: C.ink, borderRadius: 14, paddingHorizontal: 14, minHeight: 52 });
+}
+
+function howTo(ctx: BotsCtx) {
+  const desk = ctx.client === "desktop";
   return page(ctx, {
     back: true, nav: "settings", title: "Link a computer", gap: 20, state: { code: "" },
     body: [
@@ -92,13 +103,19 @@ function howTo(ctx: BotsCtx) {
         step(2, "Point this phone's camera at the code."),
         step(3, "Tap Approve here. The computer signs itself in."),
       ], { gap: 14 }),
-      ...(desk ? [] : [col([
-        text("No camera? Type the code", { size: 15, weight: 600, lineHeight: 20 }),
-        meta("It's the 8 letters and numbers under the code on the computer.", { size: 13, lineHeight: 18 }),
-        row([codeField], { borderWidth: 1.5, borderColor: C.ink, borderRadius: 14, paddingHorizontal: 14, minHeight: 52 }),
-      ], { gap: 8 })]),
+      desk
+        ? col([
+          text("Signing in Xode in a terminal? Type its code", { size: 15, weight: 600, lineHeight: 20 }),
+          meta("It's the 8 letters and numbers xode login shows.", { size: 13, lineHeight: 18 }),
+          codeField(),
+        ], { gap: 8 })
+        : col([
+          text("No camera? Type the code", { size: 15, weight: 600, lineHeight: 20 }),
+          meta("It's the 8 letters and numbers under the code on the computer, or the one xode login shows.", { size: 13, lineHeight: 18 }),
+          codeField(),
+        ], { gap: 8 }),
     ],
-    ...(desk ? {} : { footer: [primaryButton("Continue", withCode, { wide: true })] }),
+    footer: [primaryButton("Continue", withCode, { wide: !desk })],
   });
 }
 
@@ -118,6 +135,7 @@ function gone(ctx: BotsCtx, head: string, words: string) {
 function approve(ctx: BotsCtx, d: LinkData, ref: { token: string } | { code: string }) {
   const name = d.deviceName;
   const system = SYSTEM[d.platform] ?? "Computer";
+  const cli = d.kind === "cli";
   const decided: ActionRef = { kind: "refresh" };
   const yes = call("POST", "/v1/auth/link/approve", ref, {
     ok: setState("done", "approved"),
@@ -134,16 +152,21 @@ function approve(ctx: BotsCtx, d: LinkData, ref: { token: string } | { code: str
       when(asking, col([
         box([blip("needs", 112)], { alignItems: "center", paddingTop: 4 }),
         col([
-          title(`Sign in on ${name}?`, { align: "center" }),
+          title(cli ? `Xode in the terminal on ${name}` : `Sign in on ${name}?`, { align: "center" }),
           text(`${system} · asked ${askedAgo(ctx, d.createdAt)}`, { size: 15, lineHeight: 22, color: C.grey70, align: "center" }),
+          ...(cli ? [text("It can work on your projects from that terminal. You can remove it any time in Settings.", {
+            size: 15, lineHeight: 22, align: "center",
+          })] : []),
         ], { gap: 6, alignItems: "center" }),
         listCard([
-          listRow({ label: "Computer", value: name, chevron: false }),
+          listRow({ label: cli ? "Terminal on" : "Computer", value: name, chevron: false }),
           ...(d.account ? [listRow({ label: "Signs in as", value: d.account, chevron: false })] : []),
         ]),
         row([
           icon("shield", { size: 18, color: C.grey70 }),
-          text("Approve only if you're at this computer and signing in right now. X0 Bot never asks for this in a message or a call.", {
+          text(cli
+            ? "Approve only if you just ran xode login yourself. X0 Bot never asks for this in a message or a call."
+            : "Approve only if you're at this computer and signing in right now. X0 Bot never asks for this in a message or a call.", {
             size: 13, lineHeight: 19, color: C.grey70, style: { flexShrink: 1 },
           }),
         ], { gap: 10, alignItems: "flex-start" }),
@@ -151,15 +174,17 @@ function approve(ctx: BotsCtx, d: LinkData, ref: { token: string } | { code: str
       when({ eq: ["done", "approved"] }, col([
         box([blip("done", 120)], { alignItems: "center", paddingTop: 12 }),
         col([
-          title(`Signed in on ${name}`, { align: "center" }),
-          text("It's ready on the computer in a moment. You can sign it out from its Settings.", { size: 15, lineHeight: 22, color: C.grey70, align: "center" }),
+          title(cli ? `Xode is signed in on ${name}` : `Signed in on ${name}`, { align: "center" }),
+          text(cli
+            ? "Go back to your terminal. You can remove it any time in Settings, Terminal sign-ins."
+            : "It's ready on the computer in a moment. You can sign it out from its Settings.", { size: 15, lineHeight: 22, color: C.grey70, align: "center" }),
         ], { gap: 8, alignItems: "center" }),
       ], { gap: 18 })),
       when({ eq: ["done", "denied"] }, col([
         box([blip("hello", 120)], { alignItems: "center", paddingTop: 12 }),
         col([
           title("Okay, it stays signed out", { align: "center" }),
-          text("Nothing was shared with that computer.", { size: 15, lineHeight: 22, color: C.grey70, align: "center" }),
+          text(cli ? "Nothing was shared with that terminal." : "Nothing was shared with that computer.", { size: 15, lineHeight: 22, color: C.grey70, align: "center" }),
         ], { gap: 8, alignItems: "center" }),
       ], { gap: 18 })),
     ],
@@ -173,20 +198,28 @@ function approve(ctx: BotsCtx, d: LinkData, ref: { token: string } | { code: str
 function link(ctx: BotsCtx, d: LinkData | undefined) {
   const ref = refOf(ctx);
   if (!ref) return howTo(ctx);
-  if (ctx.client === "desktop") {
-    return gone(ctx, "Approve it on your phone", "Signing in on a computer is approved from X0 Bot on your phone.");
-  }
   if (!d) {
     return "code" in ref
       ? gone(ctx, "That code didn't work", "Check the code on your computer and type it again. It changes every few minutes.")
       : gone(ctx, "We couldn't find that sign-in", "Show a new code on your computer and scan it again.");
   }
+  const cli = d.kind === "cli";
+  // The window can approve a terminal; another window's sign-in is the phone's to approve.
+  if (ctx.client === "desktop" && !cli) {
+    return gone(ctx, "Approve it on your phone", "Signing in on a computer is approved from X0 Bot on your phone.");
+  }
   const expired = d.status === "expired" || (d.status === "pending" && d.expiresAt <= ctx.live.now);
-  if (expired) return gone(ctx, "This code ran out", "Codes last 5 minutes. Show a new one on your computer and scan it again.");
-  if (d.status === "approved" || d.status === "used") return gone(ctx, "Already approved", `${d.deviceName} is signed in.`);
-  if (d.status === "denied") return gone(ctx, "You said not you", "That computer stays signed out. Show a new code there to try again.");
+  if (expired) {
+    return gone(ctx, "This code ran out", cli ? "Codes last 5 minutes. Run xode login again for a new one." : "Codes last 5 minutes. Show a new one on your computer and scan it again.");
+  }
+  if (d.status === "approved" || d.status === "used") return gone(ctx, "Already approved", cli ? `Xode is signed in on ${d.deviceName}.` : `${d.deviceName} is signed in.`);
+  if (d.status === "denied") {
+    return gone(ctx, "You said not you", cli ? "That terminal stays signed out. Run xode login again to try again." : "That computer stays signed out. Show a new code there to try again.");
+  }
   if (!d.canApprove) {
-    return gone(ctx, "Sign in with your number there", "This account uses a phone number to sign in. On the computer, choose Phone and type your number.");
+    return cli
+      ? gone(ctx, "This account can't approve it", "Sign in to X0 Bot with your own account, then try again.")
+      : gone(ctx, "Sign in with your number there", "This account uses a phone number to sign in. On the computer, choose Phone and type your number.");
   }
   return approve(ctx, d, ref);
 }
@@ -196,7 +229,7 @@ export const linkScreens: BotsScreen[] = [
     id: SCREENS.link,
     load: async (ctx, deps) => {
       const ref = refOf(ctx);
-      if (!ref || ctx.client === "desktop") throw new Error("nothing to read");
+      if (!ref) throw new Error("nothing to read");
       return deps.api<LinkData>("POST", "/v1/auth/link/view", ref);
     },
     build: link,

@@ -87,6 +87,8 @@ export const SAMPLES: Sample[] = [
   { id: S.apps, area: "you", board: "Apps", deskBoard: "DApps" },
   { id: S.appConnect, area: "you", board: "AppConnect", deskBoard: "DAppConnect", params: { id: "google-calendar" } },
   { id: S.settings, area: "you", deskBoard: "DeskSettings" },
+  // screens/you/devicesPage.ts: no board of its own
+  { id: S.devices, area: "you" },
   // screens/bots.ts
   { id: S.bot, area: "bots", board: "BotPage", deskBoard: "DBotPage", params: { slug: "gym-bot" } },
   { id: S.make, area: "bots", board: "MakeBot", deskBoard: "DMakeBot" },

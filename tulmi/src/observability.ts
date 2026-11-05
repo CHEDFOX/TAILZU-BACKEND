@@ -37,6 +37,8 @@ export function logUrl(url: string): string {
   if (/^\/v1\/code\/github\/callback(?:[?#]|$)/.test(url)) return "/v1/code/github/callback";
   // The phone's QR link opened in a browser carries a computer's pending sign-in (routes/account/deviceLink.ts).
   if (/^\/s\/bots\.link(?:[?#]|$)/.test(url)) return "/s/bots.link";
+  // The terminal's sign-in page carries its pending code (routes/site/devicePage.ts).
+  if (/^\/device(?:[?#]|$)/.test(url)) return "/device";
   return url;
 }
 

@@ -44,6 +44,7 @@ import {
   type SegmentTiming,
 } from "./live-engines.js";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
+import { isDeviceBearer } from "../../auth/deviceTokens.js";
 import { getPersonality } from "../../personality/store.js";
 import { sttPrompt } from "../../pipeline/stt.js";
 import { vocabularyWithNames } from "../../experience/assistantName.js";
@@ -686,7 +687,8 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
             const headerAuth = req.headers["authorization"];
             const inlineAuth = typeof msg.token === "string" && msg.token
               ? `Bearer ${msg.token}` : undefined;
-            user = await resolveUser(headerAuth ?? inlineAuth);
+            // A terminal's sign-in is only for Xode (http/deviceScope.ts); a token sent in a message is not seen by that hook.
+            user = isDeviceBearer(headerAuth ?? inlineAuth) ? null : await resolveUser(headerAuth ?? inlineAuth);
             if (!user) {
               send({ type: "error", code: "unauthorized", message: STREAM_ERROR_TEXT.unauthorized });
               safeClose();

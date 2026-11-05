@@ -4,20 +4,24 @@
  *   POST /v1/auth/link          the window, signed out: { deviceName?, platform? } → { token, secret, code, url, qr,
  *                               expiresAt, ttlMs, pollMs }. The QR (drawn here, shell/qr.ts: no service is asked) holds
  *                               `url`, which opens bots.link on the phone; `code` is the typed way to the same request.
+ *                               Xode in a terminal (`xode login`, docs/xode-cli.md) sends { kind: "cli", deviceName, platform }
+ *                               and also gets `deviceUrl` (the page it shows, x0bot.com/device) and `deviceUrlWithCode`.
  *   POST /v1/auth/link/poll     the window: { token, secret, wait? } → { status } (pending, approved, denied, expired,
- *                               used, failed); approved, once, with { tokenHash, type } for Supabase's /auth/v1/verify.
- *   POST /v1/auth/link/view     the phone, signed in: { token } or { code } → the computer's name, system, status, times
+ *                               used, failed); approved, once, with { tokenHash, type } for Supabase's /auth/v1/verify,
+ *                               or for a terminal { deviceToken, deviceId }: its own token (auth/deviceTokens.ts).
+ *   POST /v1/auth/link/view     the phone, signed in: { token } or { code } → what is asking (kind, name, system), status, times
  *   POST /v1/auth/link/approve  the phone, signed in: { token } or { code }
  *   POST /v1/auth/link/deny     the phone, signed in: { token } or { code } ("Not me")
  *   GET  /s/bots.link           the QR's link opened in a browser (no app, or links not taken by it): a page that opens
- *                               the app at the same screen, and nothing else
+ *                               the app at the same screen, and nothing else. Takes the QR's ?l=<token> or a typed ?c=<code>
+ *                               (the terminal's page, routes/site/devicePage.ts, links here)
  *
  * Off (404 link_off) on a server that cannot mint a session (no service key). Rate-limited: the two signed-out routes
  * per address, the rest per person (the limiter's own key), the code-taking ones tightest.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
-import { defaultDeviceLinks, LINK_TTL_MS, showCode, TOKEN_RE, type DeviceLinks, type LinkRef } from "../../auth/deviceLink.js";
+import { CODE_RE, defaultDeviceLinks, LINK_TTL_MS, normalizeCode, showCode, TOKEN_RE, type DeviceLinks, type LinkRef } from "../../auth/deviceLink.js";
 import { qrOf, qrPath } from "../../shell/qr.js";
 
 /** Where the QR's link points: a host the phone app claims (associatedDomains, intentFilters), serving /s/* (AASA). */
@@ -25,6 +29,11 @@ const LINK_ORIGIN = (process.env.DEVICE_LINK_ORIGIN || "https://app.x0bot.com").
 /** The phone's screen for it (bots.link, ids.ts) and its parameter. */
 const LINK_SCREEN = "bots.link";
 export const linkUrl = (token: string): string => `${LINK_ORIGIN}/s/${LINK_SCREEN}?l=${token}`;
+/** The same screen, for a typed code (the terminal's page sends a person here). */
+export const linkCodeUrl = (code: string): string => `${LINK_ORIGIN}/s/${LINK_SCREEN}?c=${code}`;
+/** The page a terminal sends the person to (routes/site/devicePage.ts, served at x0bot.com/device through the site's proxy). */
+const DEVICE_PAGE_ORIGIN = (process.env.DEVICE_PAGE_ORIGIN || "https://x0bot.com").replace(/\/+$/, "");
+export const devicePageUrl = (code?: string): string => `${DEVICE_PAGE_ORIGIN}/device${code ? `?c=${code}` : ""}`;
 /** How often the window asks again when a held poll comes back with nothing (it holds for up to 25 s). */
 const POLL_MS = 1_500;
 
@@ -67,9 +76,10 @@ export function registerDeviceLinkRoutes(app: FastifyInstance, opts: DeviceLinkR
 
   app.post("/v1/auth/link", limit(LIMITS.create), async (req, reply) => {
     if (!links) return off(reply);
-    const b = (req.body ?? {}) as { deviceName?: unknown; platform?: unknown };
+    const b = (req.body ?? {}) as { kind?: unknown; deviceName?: unknown; platform?: unknown };
     const ua = req.headers["user-agent"];
-    const made = await links.create({ deviceName: b.deviceName, platform: b.platform, ip: req.ip, userAgent: typeof ua === "string" ? ua : null });
+    const cli = b.kind === "cli";
+    const made = await links.create({ kind: cli ? "cli" : "app", deviceName: b.deviceName, platform: b.platform, ip: req.ip, userAgent: typeof ua === "string" ? ua : null });
     const url = linkUrl(made.token);
     const qr = qrOf(url);
     noStore(reply);
@@ -77,6 +87,7 @@ export function registerDeviceLinkRoutes(app: FastifyInstance, opts: DeviceLinkR
       token: made.token, secret: made.secret, code: showCode(made.code), url,
       ...(qr ? { qr: { size: qr.size + 8, path: qrPath(qr, 4) } } : {}),
       expiresAt: made.expiresAt, ttlMs: LINK_TTL_MS, pollMs: POLL_MS,
+      ...(cli ? { deviceUrl: devicePageUrl(), deviceUrlWithCode: devicePageUrl(made.code) } : {}),
     };
   });
 
@@ -88,6 +99,7 @@ export function registerDeviceLinkRoutes(app: FastifyInstance, opts: DeviceLinkR
     noStore(reply);
     if (!answer) return reply.code(404).send({ code: "not_found" });
     if (answer.status === "failed") req.log.warn("device link: approved, but no sign-in could be made");
+    // A terminal's token is in this answer only: never in a log line.
     return answer;
   });
 
@@ -98,8 +110,10 @@ export function registerDeviceLinkRoutes(app: FastifyInstance, opts: DeviceLinkR
     const view = await links.view(ref(req.body));
     noStore(reply);
     if (!view) return reply.code(404).send({ code: "not_found" });
-    // The session is made from the account's address: without one, the phone says so before anyone presses Approve.
-    return { ...view, canApprove: !!user.email && !user.id.startsWith("static-"), ...(user.email ? { account: user.email } : {}) };
+    // The window's session is made from the account's address: without one, the phone says so before anyone presses Approve.
+    // A terminal gets a token of its own, so any real account can approve it.
+    const real = !user.id.startsWith("static-");
+    return { ...view, canApprove: real && (view.kind === "cli" || !!user.email), ...(user.email ? { account: user.email } : {}) };
   });
 
   for (const [path, yes] of [["/v1/auth/link/approve", true], ["/v1/auth/link/deny", false]] as const) {
@@ -116,11 +130,13 @@ export function registerDeviceLinkRoutes(app: FastifyInstance, opts: DeviceLinkR
   }
 
   // The QR opened in a browser instead of the app. One fixed page: a button to the same screen in the app (tulmi://,
-  // which the app registers) and where to get it. The token is echoed only after matching its exact shape, so nothing
-  // from the address is written into the page as anything but itself; no script runs here at all.
+  // which the app registers) and where to get it. The token or code is echoed only after matching its exact shape, so
+  // nothing from the address is written into the page as anything but itself; no script runs here at all.
   app.get(`/s/${LINK_SCREEN}`, async (req, reply) => {
-    const l = String((req.query as { l?: unknown } | undefined)?.l ?? "");
-    const open = TOKEN_RE.test(l) ? `tulmi://screen/${LINK_SCREEN}?l=${l}` : "";
+    const q = (req.query ?? {}) as { l?: unknown; c?: unknown };
+    const l = String(q.l ?? "");
+    const c = normalizeCode(q.c);
+    const open = TOKEN_RE.test(l) ? `tulmi://screen/${LINK_SCREEN}?l=${l}` : CODE_RE.test(c) ? `tulmi://screen/${LINK_SCREEN}?c=${c}` : "";
     reply.header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
     reply.header("Referrer-Policy", "no-referrer");
     reply.header("X-Robots-Tag", "noindex");

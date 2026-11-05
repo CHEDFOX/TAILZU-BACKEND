@@ -4,7 +4,7 @@
  * Opened from the sidebar, it sits on a card over a soft wash beside the sidebar (kit.ts PageOpts.sheet), not across the whole
  * window, and closes with its own ×. Every part is in a light box of its own, in two columns, with the connected apps across the
  * foot. Everything the phone's You and Settings offer that a computer can use is here: the account and plan, usage, what pings
- * you, your space, spaces and chats, privacy, blocked people, your data, deleting the account, help; and what only a computer has:
+ * you, your space, spaces and chats, privacy, blocked people, terminal sign-ins (Xode in a terminal), your data, deleting the account, help; and what only a computer has:
  * the Keylessbord key and its switches (desktop.config, kept by the app). Ask and Xode on this computer have no switches here:
  * they are on from the start, and the privacy policy says what each does (10.5, 12.6).
  *
@@ -144,6 +144,7 @@ function yourData(d: SettingsData): Node {
     line({ label: "Spaces and chats", sub: "Family and friends", onPress: open(SCREENS.spaces) }),
     line({ label: "Privacy", sub: "What we keep, and for how long", onPress: open(SCREENS.privacy) }),
     line({ label: "Blocked people", onPress: open(SCREENS.blocked) }),
+    line({ label: "Terminal sign-ins", sub: "Xode in a terminal, signed in as you", onPress: open(SCREENS.devices) }),
     line({ label: "Download my data", right: glyph(G.download, 16, C.meta), onPress: exportAction(d.you?.exportUrl ?? null) }),
     line({ label: "Delete account", danger: true, onPress: open(SCREENS.deleteAccount) }),
   ]);

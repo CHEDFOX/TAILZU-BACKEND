@@ -92,6 +92,7 @@ import { initPush, notifyApproval, notifyCodeJob, pushEngine, registerPushRoutes
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/account/reviewCode.js";
 import { registerDeviceLinkRoutes } from "./routes/account/deviceLink.js";
+import { registerDeviceRoutes } from "./routes/account/devices.js";
 import { getConfig } from "./config.js";
 import { resolveUser, supabase } from "./auth/supabase.js";
 import { enforceQuota, recordUsage } from "./usage/metering.js";
@@ -105,6 +106,7 @@ import type { Personality } from "../../shared/types/api.js";
 import { planStream } from "./agent/llm.js";
 import { registerHealthRoutes } from "./routes/site/health.js";
 import { registerPolicyPageRoutes } from "./routes/site/policyPages.js";
+import { registerDevicePageRoutes } from "./routes/site/devicePage.js";
 import { registerBillingRoutes } from "./routes/billing/billing.js";
 import { registerSitePageRoutes } from "./routes/site/sitePages.js";
 import { registerWellKnownRoutes } from "./routes/site/wellKnown.js";
@@ -126,6 +128,7 @@ import { registerHistoryRoutes } from "./routes/account/history.js";
 import { effectiveLanguage } from "./profile/language.js";
 import { registerErrorHandling } from "./http/errors.js";
 import { registerRequestHooks } from "./http/hooks.js";
+import { registerDeviceScope } from "./http/deviceScope.js";
 import { registerPlugins } from "./http/plugins.js";
 import { registerStaticFileRoutes } from "./routes/app/staticFiles.js";
 
@@ -163,6 +166,8 @@ const app = Fastify({
 });
 registerErrorHandling(app);
 registerRequestHooks(app);
+// A terminal's own sign-in (Xode in the terminal, auth/deviceTokens.ts) reaches Xode's routes only: 403 device_scope elsewhere.
+registerDeviceScope(app);
 await registerPlugins(app, { cfg });
 
 // --- Media store -----------------------------------------------------------
@@ -266,6 +271,8 @@ function personalityProblem(p: Personality | undefined): { status: 400 | 413; me
 // --- Pages and public endpoints ---------------------------------------------
 registerHealthRoutes(app, { cfg });
 registerPolicyPageRoutes(app, { cfg });
+// x0bot.com/device: where `xode login` sends the person to approve the terminal.
+registerDevicePageRoutes(app);
 registerBillingRoutes(app, { cfg });
 registerSitePageRoutes(app, { cfg });
 
@@ -516,6 +523,8 @@ registerReviewCodeRoute(app, {
 // Signing in on a computer with the phone: the window's QR, approved on the phone (routes/account/deviceLink.ts, migration 0049).
 // Off (link_off) without the service key, which mints the window's session. Its own limits, per address and per person.
 registerDeviceLinkRoutes(app);
+// Xode in the terminal: its own sign-in (whoami, sign out) and the person's list of them (migration 0066). Limits of their own.
+registerDeviceRoutes(app);
 
 // --- Writing: dictation, typing, the screen and the person's voice ----------
 registerTranscribeRoutes(app, { rateLimit: AUTHED_RL, tooLong, personalityProblem });

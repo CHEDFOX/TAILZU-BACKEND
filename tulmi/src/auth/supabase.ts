@@ -8,6 +8,7 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getConfig } from "../config.js";
 import { digest, sameSecret } from "./secret.js";
+import { DEVICE_TOKEN_PREFIX, deviceTokens } from "./deviceTokens.js";
 
 let client: SupabaseClient | null = null;
 let verifier: SupabaseClient | null = null;
@@ -61,6 +62,9 @@ export interface AuthedUser {
   /** The full name the sign-in provider gave (user_metadata.full_name, or
    *  .name): Google's, and Apple's on the first sign-in. Only a suggestion. */
   providerName?: string;
+  /** Signed in with a terminal's own token (Xode in the terminal, auth/deviceTokens.ts): which terminal. Such a request
+   *  only reaches Xode's routes (http/deviceScope.ts). */
+  deviceId?: string;
 }
 
 /**
@@ -92,6 +96,7 @@ export function dataClientFor(user: AuthedUser): SupabaseClient | null {
  *
  * - In DEV_SKIP_AUTH mode, returns a stable dev user so the pipeline runs with
  *   only Groq + OpenRouter keys.
+ * - A terminal's device token (xdt_…) is read from the server's own table.
  * - Otherwise verifies the Supabase JWT and returns the real user.
  *
  * Returns null when the token is missing/invalid (caller should reject).
@@ -100,12 +105,17 @@ export async function resolveUser(
   authorization: string | undefined,
 ): Promise<AuthedUser | null> {
   const cfg = getConfig();
+  const token = authorization?.replace(/^Bearer\s+/i, "").trim();
+
+  // A terminal's own sign-in (Xode in the terminal, auth/deviceTokens.ts). Its prefix says what it is, so it is checked here,
+  // before the Supabase round-trip, as the static tokens are: against the hash the server keeps, timing-safe, cached a minute.
+  // Before DEV_SKIP_AUTH too, so a removed one is turned away on a dev server as well.
+  if (token?.startsWith(DEVICE_TOKEN_PREFIX)) return deviceTokens().user(token);
 
   if (cfg.DEV_SKIP_AUTH) {
     return { id: "dev-user", email: "dev@flow.local" };
   }
 
-  const token = authorization?.replace(/^Bearer\s+/i, "").trim();
   if (!token) return null;
 
   // Static bearer tokens (desktop app). Checked BEFORE the Supabase round-trip:

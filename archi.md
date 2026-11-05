@@ -92,9 +92,11 @@ observability.ts   logging options and Sentry
 prompts.ts         loads shared/prompts/ (the screen reply's rollback prompts)
 
 http/              HTTP plumbing: error handling, request hooks (cost tally, HTML headers, JSON parser), plugins,
-                   reply helpers, guarded() (idempotency and permits for routes that spend money)
+                   reply helpers, guarded() (idempotency and permits for routes that spend money), deviceScope.ts (a
+                   terminal's device token reaches Xode's routes only: 403 device_scope elsewhere)
 routes/            one module per feature, each exporting register…Routes(app, deps)
-  account/         account deletion, profile, personality, history, device link (QR sign-in), the review sign-in pair
+  account/         account deletion, profile, personality, history, device link (QR sign-in, and `xode login`'s request),
+                   devices.ts (Xode in the terminal: its whoami and sign out, the person's list), the review sign-in pair
   app/             the SDUI app (bootstrap, screen, cache), keyboard config and telemetry, live updates, media, static files
   ask/             POST /v1/ask, the desktop's on-screen agent (/v1/agent), the phone's Ask, the front door,
                    the one key's brain (/v1/ask/decide), the person's context (/v1/context), the voice chat (/v1/talk)
@@ -103,7 +105,8 @@ routes/            one module per feature, each exporting register…Routes(app,
                    trips, calendar, push ask, looks, sounds, safety, widgets), routines, the everyday tools' cards
   code/            Xode: projects, jobs, the Worker's internal calls
   connectors/      connected apps, apps added by link, the published OAuth client document
-  site/            the website's endpoints: SEO pages, demo, download, legal pages (policies/, in the app's look), health
+  site/            the website's endpoints: SEO pages, demo, download, legal pages (policies/, in the app's look), health,
+                   devicePage.ts (x0bot.com/device: approve Xode in the terminal)
   writing/         transcribe (one-shot and live), refine, draft, edit, train, vocabulary, speak, voice sample
   artifacts.ts files.ts notes.ts   artifacts, uploaded files, the desktop's meeting notes
 
@@ -173,7 +176,8 @@ push/              the push engine: plans, timing, Expo tokens
 live/              live updates to every open device (WS /v1/live)
 runs/              the Ask run ledger
 control/           the control plane: live rules over every payload, edited at GET /admin
-auth/              Supabase sessions, JWT checks, Sign in with Apple, device links
+auth/              Supabase sessions, JWT checks, Sign in with Apple, device links; deviceTokens.ts: a terminal's own sign-in
+                   (Xode in the terminal, xdt_ tokens, docs/xode-cli.md)
 billing/           entitlements (RevenueCat) and Razorpay
 usage/             metering, the allowance, request cost, keyboard telemetry
 history/           what was written (store.ts) and the numbers from it (stats.ts)
@@ -197,6 +201,7 @@ ads/               Meta and Google Tag Manager events
 | A request/response shape | `shared/types/api.ts` |
 | An API route | `tulmi/src/routes/<area>/<feature>.ts` (registered in `server.ts`) |
 | Auth and sessions | `tulmi/src/auth/` (Supabase, JWT, Apple); device sign-in `routes/account/deviceLink.ts` |
+| Xode in the terminal's sign-in (`xode login`) | `auth/deviceTokens.ts`, `auth/deviceLink.ts` (kind cli), `routes/account/devices.ts`, `http/deviceScope.ts`, `routes/site/devicePage.ts`, screens `bots/screens/link.ts` and `bots/screens/you/devicesPage.ts`, migration 0066 (docs/xode-cli.md) |
 | Payments | `tulmi/src/routes/billing/`, `tulmi/src/billing/`, `tulmi/src/you/billing.ts`; plans `experience/phone/paywall.ts` |
 | Usage and limits | `tulmi/src/usage/`, `tulmi/src/you/` |
 | The writing pipeline | `tulmi/src/pipeline/cleanup.ts` → `pipeline/writing/`; speech `pipeline/stt.ts` → `pipeline/stt/` |
@@ -287,7 +292,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/ARCHITECTURE.md` (the SDUI model and the keyboard), `docs/SUPABASE.md`, `docs/bots.md`, `docs/bots-app.md`,
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
-`docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/github-app.md`, `docs/pr-care.md`,
+`docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
 `docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),

@@ -1,6 +1,6 @@
 /**
  * THE YOU TAB AND WHAT HANGS OFF IT: You, Usage, Billing, What pings you, Privacy, Delete account, Connected apps, Connect an
- * app, and the window's Settings (You.dc.html, Billing, Notify, Privacy, DeleteAcct, Apps, AppConnect and their D* / Desk* desktop
+ * app, Terminal sign-ins (you/devicesPage.ts), and the window's Settings (You.dc.html, Billing, Notify, Privacy, DeleteAcct, Apps, AppConnect and their D* / Desk* desktop
  * boards; Usage takes the Budget board's place, at bots.usage and the old bots.budget). Plans and Language are built in screens/firstRun.ts
  * (once first-run steps, now pages); they are linked, not built, here.
  *
@@ -15,6 +15,7 @@
  */
 
 import { spaceScreens } from "./you/space.js";
+import { devicesScreens } from "./you/devicesPage.js";
 import type { Node, ActionRef } from "../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, type IconName, box, icon, C, row, FACE, text, whenEq, seq, botAvatar, percent, primaryButton, open, SCREENS, usageMeter,
@@ -538,6 +539,7 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
   const privacy = listCard([
     listRow({ label: "Privacy", onPress: open(SCREENS.privacy) }),
     listRow({ label: "Blocked people", onPress: open(SCREENS.blocked) }),
+    listRow({ label: "Terminal sign-ins", value: "Xode", onPress: open(SCREENS.devices) }),
     listRow({ label: "Download my data", chevron: false, right: glyph(G.download, 18, C.meta), onPress: exportAction(d?.exportUrl ?? null) }),
     listRow({ label: "Delete account", onPress: open(SCREENS.deleteAccount) }),
   ]);
@@ -558,6 +560,7 @@ const tz = (ctx: BotsCtx) => `tz=${Math.round(ctx.tzOffsetMinutes)}`;
 
 export const youScreens: BotsScreen[] = [
   ...spaceScreens, // Your space (screens/you/space.ts)
+  ...devicesScreens, // Terminal sign-ins (screens/you/devicesPage.ts)
   screen<YouData>({ id: SCREENS.you, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? youDesk(ctx, d) : youPhone(ctx, d)) }),
   ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({ id, load: (ctx, deps) => deps.api<UsagePage>("GET", `/v1/you/usage?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? usageDesk(ctx, d) : usagePhone(ctx, d)) })),
   screen<BillingData>({ id: SCREENS.billing, load: (ctx, deps) => deps.api<BillingData>("GET", `/v1/you/billing?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? billingDesk(ctx, d) : billingPhone(ctx, d)) }),

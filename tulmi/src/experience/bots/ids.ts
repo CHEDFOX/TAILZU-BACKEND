@@ -40,6 +40,7 @@ export const SCREENS = {
   billing: "bots.billing",           // Billing / DBilling
   plans: "bots.plans",               // Plans / DPlans
   link: "bots.link",                 // Link a computer: approve a computer's sign-in from the phone (params: l token or c code; screens/link.ts)
+  devices: "bots.devices",           // Terminal sign-ins: Xode in a terminal, each with Remove, and where to type a terminal's code (screens/you/devicesPage.ts; no board)
   language: "bots.language",         // Language / DLanguage
   notify: "bots.notify",             // Notify / DNotify
   privacy: "bots.privacy",           // Privacy / DPrivacy

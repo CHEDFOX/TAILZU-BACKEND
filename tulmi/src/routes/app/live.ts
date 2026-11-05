@@ -24,6 +24,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { live, type LiveBus, type LiveEvent } from "../../live/bus.js";
 import { resolveUser } from "../../auth/supabase.js";
+import { isDeviceBearer } from "../../auth/deviceTokens.js";
 import { getConfig } from "../../config.js";
 
 export const LIVE_PATH = "/v1/live";
@@ -117,6 +118,8 @@ export function registerLiveRoutes(app: FastifyInstance, o: LiveRouteOptions = {
       if (started) return;
       started = true;
       let who: { id: string } | null = null;
+      // A terminal's sign-in is only for Xode (http/deviceScope.ts); a token sent in a message is not seen by that hook.
+      if (isDeviceBearer(authorization)) { refuse(); return; }
       try { who = await resolve(authorization); } catch (err) { req.log.warn({ err }, "live: could not check the session"); }
       if (closed) return;
       if (!who?.id) { refuse(); return; }
