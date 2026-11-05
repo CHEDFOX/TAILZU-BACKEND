@@ -2,10 +2,9 @@
  * THE ABOUT YOU CARD: the person's name and gender, then a name for the assistant, asked on Home from the 3rd visit, never in the
  * first run (App Review 4: nothing comes between sign-in and Home).
  *
- * The same card as the microphone and keyboard one (the bot on a stage, one black pill), and about
- * its size (the same width, a shorter stage, no labels, a compact field and chips), but at the top of Home rather than over it, so the
- * keyboard never covers it while the name is typed. Due by the server
- * (GET /v1/bots/first-run/about: onboarded, a few visits in, the answer still owed, not put off for now).
+ * The same card as the microphone and keyboard one (the bot on a stage, one black pill), the same width, and like it over Home
+ * (a BotCard overlay, Home blurred behind it), where a build draws the living card; the phone app lifts it over the keyboard while
+ * the name is typed. Due by the server (GET /v1/bots/first-run/about: onboarded, a few visits in, an answer still owed).
  *
  *   the name     filled in from the sign-in (what Google or Apple shared), else the account's own, else a guess from the email;
  *                theirs to change. Signed in with Apple it is never required (App Review 4: what Apple shares is not asked again):
@@ -28,7 +27,7 @@ import { type About, CARD_BOT, GENDERS, line, nameField, permitStep, setState, t
 export const ABOUT_PATH = "/v1/bots/first-run/about";
 
 const NAME = "aboutName", GENDER = "aboutGender", SAVED = "aboutSaved", CLOSED = "aboutClosed", BOT = "aboutBotName", NAMED = "aboutBotDone";
-/** The microphone and keyboard card's width (arrivalCard.ts), so the two look like one family. */
+/** The microphone and keyboard card's width (arrivalCard.ts), so the two look like one family. The plain card (no living tiles) is sized to it. */
 const WIDTH = { phone: 330, desktop: 360 };
 
 /** What Home starts with while the card is due. */
@@ -100,11 +99,11 @@ export function aboutCard(ctx: BotsCtx, about: About | undefined): Node[] {
   const thanks = when({ truthy: NAMED }, row([text("Got it. Thanks!", { size: 22, weight: 600, tracking: -0.3, lineHeight: 28 })], { justifyContent: "center", paddingTop: 18, paddingBottom: 26 }));
   const sized = (card: Node): Node => col([card], { width: WIDTH[ctx.client === "desktop" ? "desktop" : "phone"], maxWidth: "100%", alignSelf: "center" });
   if (canMove(ctx)) {
-    return [sized(botCard([ask, nameIt, thanks], {
-      // A shorter stage than the microphone card's, so with the field and the chips the card is about its height.
-      ...CARD_BOT, stageHeight: 72, kind: "custom", label: "About you",
+    return [botCard([ask, nameIt, thanks], {
+      // Over Home like the microphone card. A shorter stage than its, so with the field and the chips the card is about its height.
+      ...CARD_BOT, stageHeight: 72, kind: "custom", overlay: true, width: WIDTH[desk ? "desktop" : "phone"], label: "About you",
       doneWhen: { truthy: NAMED }, doneDelayMs: 1800, onComplete: setState(CLOSED, true), closeWhen: { truthy: CLOSED },
-    }))];
+    })];
   }
   // A build without the living tiles: the same card, plain, its two steps, gone once both are saved.
   return [when({ all: [{ falsy: CLOSED }, { falsy: NAMED }] }, sized(col([ask, nameIt], { borderRadius: 24, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, paddingTop: 6 })))];

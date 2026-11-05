@@ -173,6 +173,13 @@ describe("About you: a card on Home after a few visits, never in the first run",
       expect(lintTree(s.root!), client).toEqual([]);
     }
   });
+  it("sits over Home like the microphone card, where the build draws the living card", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const s = await build("bots.home", client, { api: about({}), can: ["BotsMotion"] });
+      const card = walk(s.root!).find((n) => n.type === "BotCard" && n.props?.label === "About you");
+      expect(card?.props, client).toMatchObject({ overlay: true, width: client === "desktop" ? 360 : 330 });
+    }
+  });
   it("comes back on the step still owed: name and gender saved, it opens on the assistant's name", async () => {
     const s = await build("bots.home", "phone", { api: about({ name: "Aanya Rao", source: "saved", gender: "female" }) });
     expect(s.state).toMatchObject({ aboutSaved: true, aboutBotDone: false });
