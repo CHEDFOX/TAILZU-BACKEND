@@ -57,7 +57,7 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined): Node[] {
   const full = canScroll(ctx);
   const smallLink = (label: string, url: string): Node => row([text(label, { size: 12, lineHeight: 16, color: C.grey70, style: { textDecorationLine: "underline" } })], {}, { kind: "openUrl", url, external: true });
   const terms = [
-    text("By tapping Agree, you accept the Terms of Service and the Privacy Policy below.", { size: 12, lineHeight: 17, color: C.meta }),
+    text("Tap Agree to let X0 Bot work at its full potential. This also accepts the Terms of Service and the Privacy Policy below.", { size: 12, lineHeight: 17, color: C.meta }),
     scrollBox(legalNodes(), {
       maxHeight: desk ? 260 : 200, gap: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.surface,
     }),
