@@ -3,6 +3,7 @@
  */
 
 import type { FastifyInstance } from "fastify";
+import { aiScopeHook } from "../privacy/aiGate.js";
 import { costTallyHook, settleCostTally } from "../usage/cost.js";
 
 export function registerRequestHooks(app: FastifyInstance): void {
@@ -10,6 +11,8 @@ export function registerRequestHooks(app: FastifyInstance): void {
   // gateway add OpenRouter's charge to (Keylessbord's rewrites, the old Ask), written to the meter with its usage row; what is left when the
   // response goes (a request that failed after a model answered) is charged to whoever enforceQuota said it was for.
   app.addHook("preHandler", costTallyHook);
+  // Whose request this is, for the AI permission (privacy/aiGate.ts): nothing of theirs goes to an AI service before they agree.
+  app.addHook("preHandler", aiScopeHook);
   app.addHook("onResponse", async (req) => { await settleCostTally(req); });
 
   // Every HTML page this server renders (the site, the policies, the SEO pages,

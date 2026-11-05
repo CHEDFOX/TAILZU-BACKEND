@@ -99,6 +99,8 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Activity:</strong> a space keeps a log of who joined, shared, asked and paid, which the people allowed to can see.</li>
   <li><strong>Reports:</strong> when you report a message, something shared or a person, we keep the report: who sent it, who and what it is about, the reason, any note, and a copy of what was reported as it was then. It goes to our support team so it can be acted on within 24 hours, and is kept afterwards as a safety record, including after either account is deleted (without the account). The person reported is not told who reported them.</li>
   <li><strong>Blocks:</strong> we keep whom you blocked, and the name they had then, until you unblock them or delete your account.</li>
+  <li><strong>Checked before it is posted:</strong> every message and shared thing is checked before anyone sees it, against a list of banned words and, if you agreed to AI processing (Section 3), by OpenAI's moderation service. Hate, sexual content, threats and abuse are not posted. Nothing is kept from the check itself.</li>
+  <li><strong>Reporting a bot's answer:</strong> you can report an answer a bot gave you. We keep the answer as you saw it with the report, to act on it the same way.</li>
 </ul>
 
 <h3 id="files">1.9 Files and photos you attach</h3>
@@ -131,7 +133,16 @@ const PRIVACY_POLICY_BODY = `
 
 <h2>3. Third parties we use</h2>
 
-<p>X0 Bot depends on the following processors to deliver the service. Each has its own privacy policy.</p>
+<p>X0 Bot depends on the following processors to deliver the service. Each has its own privacy policy. Each receives only what it needs for its part of the service, and each is bound, by its agreement with us or its own published terms, to protect your data with the same or equal protection as this policy and Apple's App Store rules require.</p>
+
+<h3 id="ai">AI services, and your permission</h3>
+<p>Much of X0 Bot works by sending what you give it to third-party AI services, and <strong>we ask your permission before anything is sent</strong>. The first time you open the app, a card on Home says what is sent, to whom, and why, with Agree and Not now. Until you tap Agree, nothing of yours is sent to an AI service, and the features that need one (bots, dictation, Ask, rewriting, notes from recordings) wait.</p>
+<ul>
+  <li><strong>What is sent:</strong> the words you type or say to X0 Bot, your voice while you dictate or record, and the photos, files, screenshots or screen you choose to share with a bot, dictation or Ask. When you ask Keylessbord to rewrite, the text around your cursor in that field (never a password field).</li>
+  <li><strong>Who receives it:</strong> OpenAI, Anthropic, Google (Gemini), Groq, Deepgram, Sarvam AI, and OpenRouter, which passes a request to the company that made the model or a cloud service that hosts it (such as DeepSeek, Moonshot AI or Z.ai). Each is listed below with what it does.</li>
+  <li><strong>Why:</strong> only to give you what you asked for (an answer, a transcript, a rewrite, or a bot's work), and to check what you post in Spaces before it is posted (see 1.8). We do not sell it, and we do not send it for advertising.</li>
+  <li><strong>Changing your mind:</strong> turn off <em>Send to AI services</em> in the app under You, Privacy. From then on nothing more of yours is sent. What was sent before is kept as Section 4 says, and you can delete it as Section 5 says.</li>
+</ul>
 
 <h3>Speech-to-text</h3>
 <ul>
@@ -246,7 +257,7 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Portability</strong> — export your data in a machine-readable format</li>
   <li><strong>Restrict processing</strong> in specific circumstances</li>
   <li><strong>Object</strong> to processing based on legitimate interests</li>
-  <li><strong>Withdraw consent</strong> for optional processing (crash reporting, analytics, tracking) at any time</li>
+  <li><strong>Withdraw consent</strong> at any time: to sending what you give X0 Bot to AI services (You, Privacy, Send to AI services; see Section 3), and to optional processing (usage statistics in the same place, crash reporting, tracking)</li>
   <li><strong>Non-discrimination</strong> — we will not deny service, charge different prices, or provide a different level of service because you exercised any right (CCPA)</li>
   <li><strong>Automated decision-making</strong> — request human review of significant decisions made about you by automated systems. We do not currently make such decisions.</li>
   <li><strong>Authorized agent</strong> — you may designate an authorized agent to make requests on your behalf (CCPA)</li>

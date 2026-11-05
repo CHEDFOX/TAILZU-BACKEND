@@ -26,6 +26,7 @@ import {
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, DELETION_PATH } from "./accountGrace.js";
+import { type AiConsent, AI_CONSENT_PATH } from "./firstRun/aiConsentCard.js";
 import { ABOUT_PATH } from "./firstRun/aboutCard.js";
 import { arrivalCard, ARRIVAL_PATH } from "./firstRun/arrivalCard.js";
 import type { About } from "./firstRun/parts.js";
@@ -316,7 +317,7 @@ export const shellScreens: BotsScreen[] = [
     // Whether the first-arrival card (and the bot's hello) is due (once, after onboarding), the name they gave their bot, whether the
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
-      const [arrival, leaving, push, notes, persona, routines, about, groups] = await Promise.all([
+      const [arrival, leaving, push, notes, persona, routines, about, groups, ai] = await Promise.all([
         deps.api<{ due: boolean; kind?: "first" | "back" }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
@@ -329,15 +330,18 @@ export const shellScreens: BotsScreen[] = [
         deps.api<About>("GET", ABOUT_PATH).catch(() => undefined),
         // The groups (family, friends), each a bot of its own on Home.
         deps.api<{ spaces?: Space[] }>("GET", `${SPACES_API}/spaces`).catch(() => undefined),
+        // The AI permission (firstRun/aiConsentCard.ts): asked before anything else, until they agree.
+        deps.api<AiConsent>("GET", AI_CONSENT_PATH).catch(() => undefined),
       ]);
       return {
         arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality), routines, about,
-        groups: groups?.spaces,
+        groups: groups?.spaces, ai,
       };
     },
     build: (ctx, data) => {
       const arrival = !!data?.arrival, more: HomeMore = {
         leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true, routines: data?.routines, about: data?.about, groups: data?.groups,
+        ai: data?.ai,
       };
       // One Home for everyone, new or not; the bot's hello on top only the first time.
       return ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);

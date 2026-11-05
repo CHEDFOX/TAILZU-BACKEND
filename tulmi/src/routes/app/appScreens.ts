@@ -374,6 +374,9 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
     (bootstrap as unknown as { media?: Record<string, unknown> }).media = getMediaRegistry();
     // The tray's own voices, first beside its tones (appLists.ts deskVoices): per person, so sent here, never a knob.
     if (isDesktop && bootstrap.flags) bootstrap.flags["desktop.voices"] = deskVoices(personality);
+    // Usage statistics (the app's telemetry/analytics.ts, PostHog) only for someone who turned them on in You › Privacy: consent
+    // first, even for anonymous usage (App Review 5.1.1(ii)). A console rule can still turn them off for everyone.
+    if (bootstrap.flags) bootstrap.flags["analytics.enabled"] = personality?.usageStats === true;
     // META: what a new account has reached since it was made, once each
     // (src/ads/meta.ts): signed up, switched the keyboard on, dictated. A
     // desktop reports it from here; a phone is handed it to log through Meta's

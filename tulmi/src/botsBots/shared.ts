@@ -14,6 +14,7 @@
  * read from their own trips. Viewing needs being in the space (or the chat); editing needs "add, edit and remove shared things" in the
  * space (or, shared to a person, an edit share); only lists can be edited.
  */
+import { screenPost } from "./filter.js";
 import { randomUUID } from "node:crypto";
 import { BotError } from "../bots/index.js";
 import { live } from "../live/bus.js";
@@ -177,6 +178,9 @@ export class SharedItems {
     const note = body(b.note, 600);
     if (note) data.note = note;
     if (!title) title = KIND_WORD[kind].charAt(0).toUpperCase() + KIND_WORD[kind].slice(1);
+    // Screened before it is shared (filter.ts, App Review 1.2): its name, words, note and list. A bot's answer is the bot's, and a file's
+    // name and a trip are the sharer's own; they are screened the same.
+    await screenPost([title, data.text, data.note, data.url, data.file?.name, ...(data.list ?? []).map((l) => l.text)]);
 
     const at = this.now();
     let threadId: string | null = null;
@@ -254,6 +258,7 @@ export class SharedItems {
       case "add": {
         const t = clean(b.text, 200);
         if (!t) throw new BotError("bad_request", "Type what to add.");
+        await screenPost([t]);
         if (list.length >= LIST_MAX) throw new BotError("list_full", `A list can have ${LIST_MAX} things.`, 409);
         list.push({ id: randomUUID().slice(0, 8), text: t, done: false });
         break;
@@ -273,6 +278,7 @@ export class SharedItems {
       case "rename": {
         title = clean(b.title, 120);
         if (!title) throw new BotError("bad_request", "Give it a name.");
+        await screenPost([title]);
         break;
       }
       default: throw new BotError("bad_request", "add, toggle, drop, clearDone or rename.");

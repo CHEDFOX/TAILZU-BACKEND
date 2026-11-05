@@ -217,7 +217,8 @@ function jobChoices(job: JobLite): Choice[] {
   const answer = (text: string): ActionSpec => ({
     kind: "callEndpoint", method: "POST", path: `/v1/code/jobs/${job.id}/answer`, body: { answer: text },
     onSuccess: { kind: "sequence", actions: [{ kind: "toast", message: "Sent to Xode" }, { kind: "refresh" }] },
-    onError: { kind: "toast", message: "Couldn't send that. Try again.", tone: "error" },
+    // The server's reason when it gave one (the app keeps it at lastError: the AI permission, a blocked post), else the plain line.
+    onError: { kind: "condition", if: { truthy: "lastError.message" }, then: { kind: "toast", message: "$state.lastError.message", tone: "error" }, else: { kind: "toast", message: "Couldn't send that. Try again.", tone: "error" } },
   });
   const opts = (job.question?.options ?? []).filter((o) => o.trim()).slice(0, 2);
   if (!opts.length) {

@@ -26,6 +26,7 @@
  *
  * ONE VOICE. The pull request carries one "Tailzu status" comment, edited in place (status.ts); replies go under a reviewer's own comment.
  */
+import { aiAllowedFor } from "../../privacy/aiGate.js";
 import { ConnectorError } from "../../connectors/state.js";
 import type { AgentOrchestrator } from "../agent/orchestrator.js";
 import { stateOf, type CareContext, type JobMode } from "../agent/types.js";
@@ -418,6 +419,8 @@ export class PrCare {
   /** Makes a job on the pull request's branch and hands it to the agent. Null when it could not be made (the caller tries again on the next event). */
   private async start(c: Ctx, o: { kind: CareKind; task: string; refs: string[]; care?: Partial<CareContext>; located?: Located; mode?: JobMode; threads?: CareJobRef["threads"] }): Promise<CareJobRef | null> {
     const { row, pull } = c;
+    // The owner has not agreed to AI processing (privacy/aiGate.ts): nothing of theirs is sent, so no job. Tried again on the next event.
+    if (!(await aiAllowedFor(row.userId))) return null;
     try {
       const job = await this.d.jobs.createJob(row.userId, row.projectId, row.branch, o.task, this.d.budgetPaise, { agent: true });
       const care: CareContext = { kind: o.kind, prNumber: row.prNumber, prUrl: pull.url, headSha: pull.headSha, refs: o.refs, ...o.care };

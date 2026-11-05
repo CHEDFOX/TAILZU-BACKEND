@@ -8,10 +8,11 @@
  */
 import OpenAI from "openai";
 import { getConfig } from "../config.js";
+import { guardClient } from "../privacy/aiGate.js";
 
 let client: OpenAI | null = null;
 function openai(): OpenAI {
-  if (!client) client = new OpenAI({ apiKey: getConfig().OPENAI_API_KEY, timeout: 30_000, maxRetries: 1 });
+  if (!client) client = guardClient(new OpenAI({ apiKey: getConfig().OPENAI_API_KEY, timeout: 30_000, maxRetries: 1 }));
   return client;
 }
 

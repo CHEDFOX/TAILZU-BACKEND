@@ -107,6 +107,21 @@ Notes for the questions App Store Connect asks along the way:
   phone's messages.
 * Privacy policy URL: https://x0bot.com/privacy . Account deletion is in the app (You, Delete account) and on the web.
 
+### 3.1 AI processing, posting and reports (App Review 5.1.1, 5.1.2(i), 1.2, 4.7.1; Nov 2026)
+
+* **Permission before anything goes to an AI service.** Home asks first (screens/firstRun/aiConsentCard.ts): what is sent (words,
+  voice, the photos, files or screen they share), to whom (OpenAI, Anthropic, Google, Groq, Deepgram, Sarvam AI, OpenRouter and the
+  model makers behind it), why, Agree and Not now. The server enforces it (src/privacy/aiGate.ts): every call to those hosts asks
+  whether the request's person agreed; dictation's socket, routines and Xode's PR care ask by name. Withdrawn in You › Privacy,
+  "Send to AI services". Kept as personality.aiConsentAt / aiConsentVersion; raise AI_CONSENT_VERSION to ask everyone again.
+  AI_CONSENT_GATE=false switches the enforcement off (emergency only).
+* **Usage statistics** (PostHog) are off until the person turns on "Share usage statistics" in You › Privacy (the bootstrap's
+  `analytics.enabled`, per person; the app's default is off).
+* **Posting in Spaces is screened** before it is posted (src/botsBots/filter.ts): a word list always, OpenAI's moderation model too
+  where OPENAI_API_KEY is set and the sender agreed to AI processing. Refused: 422 blocked_content, with the reason.
+* **A bot's answer can be reported** ("Report" beside "Share", and under Xode's answers): kind "answer" in the same 24-hour queue
+  (migration 0067).
+
 ## 4. Google Play: Data safety
 
 Play Console, App content, Data safety.

@@ -9,6 +9,8 @@ import {
   botKind, icon, labelled,
 } from "../../kit.js";
 import { shareTo } from "../../shareAction.js";
+import { reportAnswer } from "../../reportAction.js";
+import { said } from "../../said.js";
 
 /** This area's routes (routes/bots/botsBots.ts). */
 export const A = "/v1/botsapp/bots";
@@ -172,9 +174,13 @@ export function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<ty
 const dayRule = (label: string): Node => row([box([], { height: 1, flexGrow: 1, backgroundColor: C.divider }), meta(label, { size: 12 }), box([], { height: 1, flexGrow: 1, backgroundColor: C.divider })], { gap: 10 });
 
 /** "Share" under a bot's answer: to a space or a person, as a copy (screens/spaces.ts bots.share). */
-function answerShare(slug: string, t: Turn): Node {
+function answerShare(slug: string, t: Turn, botName = slug): Node {
   const first = t.text.replace(/[*#>`]/g, "").split("\n").map((l) => l.trim()).find(Boolean) ?? "Answer";
-  return row([link("Share", shareTo({ kind: "answer", title: first.length > 60 ? `${first.slice(0, 59)}…` : first, text: t.text, bot: slug }))], { paddingLeft: 0 });
+  // Report: App Review 1.2 and 4.7.1, what a bot makes can be reported (reportAction.ts).
+  return row([
+    link("Share", shareTo({ kind: "answer", title: first.length > 60 ? `${first.slice(0, 59)}…` : first, text: t.text, bot: slug })),
+    link("Report", reportAnswer({ bot: botName, text: t.text, ...(t.id ? { id: t.id } : {}) })),
+  ], { paddingLeft: 0, gap: 16 });
 }
 
 /** The chat: turns oldest first, a day rule where the day changes (the window), the bot's answers with what they leave to do. */
@@ -185,7 +191,8 @@ export function chatTurns(ctx: BotsCtx, bot: { slug: string; colour?: string }, 
   for (const t of turns) {
     const day = dayKeyOf(ctx, t.at);
     if (o.days && day !== lastDay) { out.push(dayRule(dayLabel(ctx, t.at))); lastDay = day; }
-    out.push(t.role === "me" ? bubble(ctx, t.text, o.big) : col([botTurn(ctx, look, t, o.big), answerShare(bot.slug, t)], { gap: 4 }));
+    const name = ctx.live.bots.find((b) => b.slug === bot.slug)?.name ?? bot.slug;
+    out.push(t.role === "me" ? bubble(ctx, t.text, o.big) : col([botTurn(ctx, look, t, o.big), answerShare(bot.slug, t, name)], { gap: 4 }));
   }
   return out;
 }
@@ -195,7 +202,7 @@ function sendToBot(slug: string, path = "say", then?: ActionRef, ctx?: BotsCtx):
   // The words go up as the person's bubble and the box clears at once (askMoment.ts); the answer is written in as it comes.
   const send = call("POST", `${A}/chat/${enc(slug)}`, { message: SENT_WORDS }, {
     ok: seq(setState("sending", false), then ?? refresh, ...momentDone()),
-    fail: failed({ busy: "sending", from: path, then: toast("Couldn't send that. Try again.", true) }),
+    fail: failed({ busy: "sending", from: path, then: said("Couldn't send that. Try again.") }),
   });
   return seq(...momentStart({ message: `$state.${path}`, from: path, busy: "sending" }), ctx ? streamed(ctx, send as ActionSpec) : send);
 }

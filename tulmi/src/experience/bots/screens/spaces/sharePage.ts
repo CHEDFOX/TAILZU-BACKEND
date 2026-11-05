@@ -7,6 +7,7 @@ import {
   icon, box, C, type BotsCtx, call, seq, back, row, col, text, meta, page, emptyState, open, SCREENS, segmented, primaryButton,
 } from "../../kit.js";
 import { toast, A, rowPad, clearState, kindBadge, refresh, section, rowsCard, names, personDot, labelledField, field, isDesk } from "./parts.js";
+import { said } from "../../said.js";
 
 export const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
 
@@ -31,7 +32,7 @@ export function sharePage(ctx: BotsCtx, t: Targets | undefined) {
   };
   const go: ActionSpec = {
     kind: "condition", if: { all: [{ falsy: "toSpace" }, { falsy: "toPerson" }] }, then: toast("Pick a space or a person"),
-    else: call("POST", `${A}/shares`, body, { ok: seq(toast("Shared"), back()), fail: toast("Couldn't share it. You may not be allowed to there.", true) }),
+    else: call("POST", `${A}/shares`, body, { ok: seq(toast("Shared"), back()), fail: said("Couldn't share it. You may not be allowed to there.") }),
   };
   const choice = (label: string, sub: string, path: "toSpace" | "toPerson", value: string, left: Node, ok = true): Node => row([
     left, col([text(label, { size: 15, lineHeight: 20 }), meta(sub, { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),

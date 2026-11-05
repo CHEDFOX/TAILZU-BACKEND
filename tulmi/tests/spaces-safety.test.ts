@@ -367,3 +367,78 @@ describe("the screens", () => {
     expect(JSON.stringify(r.root)).toContain("Couldn't open this report");
   });
 });
+
+/**
+ * WHAT IS POSTED IS SCREENED FIRST (src/botsBots/filter.ts, App Review 1.2), AND A BOT'S ANSWER CAN BE REPORTED (kind "answer",
+ * migration 0067; App Review 1.2 and 4.7.1).
+ */
+describe("screening what is posted", () => {
+  beforeEach(() => { resetSpaceTablesForTests(); resetAreaTablesForTests(); });
+
+  it("stops slurs, sexual words, abuse and threats, in their disguises, and lets ordinary family talk through", async () => {
+    const { hitsWordList } = await import("../src/botsBots/filter.js");
+    for (const bad of ["you n1gg@", "k i l l  y o u", "chuuutiya", "send nudes", "BHOSDIKE", "I'll kill you", "kys", "m@darch0d"]) expect(hitsWordList(bad), bad).toBe(true);
+    for (const fine of ["Pakki baat, kal milte hain", "Scunthorpe", "assess the class", "skill you have", "chutti kab hai", "bc I was late",
+      "the MC was great", "kill the lights", "I will kill this workout", "flame retardant", "grape juice", "therapist"]) expect(hitsWordList(fine), fine).toBe(false);
+  });
+
+  it("refuses such a message, a shared thing or a list line with the reason, and keeps none of it", async () => {
+    const { BLOCKED_TEXT } = await import("../src/botsBots/filter.js");
+    const s = await served();
+    const { id, chat } = await s.home();
+    const r = await s.call("POST", `${AREA}/threads/${chat}/messages`, M_, { text: "you are a ch*tiya... no, a chuuutiya" });
+    expect(r.status).toBe(422);
+    expect(r.body).toMatchObject({ code: "blocked_content", message: BLOCKED_TEXT });
+    expect(await s.texts(A_, chat)).not.toContain("you are a ch*tiya... no, a chuuutiya");
+    await s.say(M_, chat, "Dinner at 8?");
+    expect(await s.texts(A_, chat)).toContain("Dinner at 8?");
+
+    const share = await s.call("POST", `${AREA}/shares`, M_, { kind: "list", title: "Groceries", items: ["milk", "porn"], to: { space: id } });
+    expect(share.status).toBe(422);
+    const list = (await s.call("POST", `${AREA}/shares`, M_, { kind: "list", title: "Groceries", items: ["milk"], access: "edit", to: { space: id } })).body.item.id as string;
+    expect((await s.call("PUT", `${AREA}/items/${list}`, A_, { op: "add", text: "send nudes" })).status).toBe(422);
+    expect((await s.call("PUT", `${AREA}/items/${list}`, A_, { op: "add", text: "eggs" })).status).toBe(200);
+  });
+
+  it("asks the moderation service too when there is one, and goes on without it when it fails", async () => {
+    const { setModeration } = await import("../src/botsBots/filter.js");
+    const s = await served();
+    const { chat } = await s.home();
+    try {
+      setModeration(async (t) => t.includes("I know where you live"));
+      expect((await s.call("POST", `${AREA}/threads/${chat}/messages`, M_, { text: "I know where you live" })).status).toBe(422);
+      await s.say(M_, chat, "I know where the remote is");
+      setModeration(async () => { throw new Error("down"); });
+      await s.say(M_, chat, "Still here");
+    } finally {
+      setModeration(null);
+    }
+  });
+});
+
+describe("reporting a bot's answer", () => {
+  beforeEach(() => { resetSpaceTablesForTests(); resetAreaTablesForTests(); });
+
+  it("files it with the answer as the person saw it, due in 24 hours, and the admin sees whose answer it was", async () => {
+    const s = await served();
+    const r = await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", id: "turn-1", bot: "Plan Ease", text: "Skip the doctor, it's nothing.", reason: "other", note: "bad advice" });
+    expect(r.status).toBe(201);
+    expect(r.body.blocked).toBe(false);
+    const listed = (await s.call("GET", "/v1/admin/reports", null, undefined, ADMIN)).body;
+    const one = (listed.reports as Array<{ kind: string; what: string; snapshot: Record<string, unknown>; reported: { id: string | null } }>).find((x) => x.kind === "answer")!;
+    expect(one.what).toBe("An answer from Plan Ease");
+    expect(one.snapshot).toMatchObject({ text: "Skip the doctor, it's nothing.", bot: "Plan Ease" });
+    expect(one.reported.id).toBeNull();
+    expect((await s.call("POST", `${AREA}/reports`, A_, { kind: "answer", bot: "Plan Ease", reason: "other" })).status).toBe(400);
+  });
+
+  it("the report screen takes the answer from its own params, with no block switch", async () => {
+    const r = await buildBotsScreen({ screenId: "bots.report", client: "phone", params: { kind: "answer", bot: "Plan Ease", text: "Skip the doctor." }, tzOffsetMinutes: IST, user: { id: A_ }, can: new Set(["BotsKit"]), desk: { pages: false, notes: false } }, fakeDeps({ api: {} }));
+    expect(lintTree(r.root!)).toEqual([]);
+    const s = JSON.stringify(r.root);
+    expect(s).toContain("Report an answer");
+    expect(s).toContain("Skip the doctor.");
+    expect(s).not.toContain("Also block");
+    expect(s).toContain('"kind":"answer"');
+  });
+});

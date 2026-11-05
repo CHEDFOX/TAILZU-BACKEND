@@ -55,8 +55,9 @@ export function registerPersonalityRoutes(app: FastifyInstance, deps: Personalit
       // and pinned list. Under the per-user lock (updatePersonality) so this
       // shallow-merge can't clobber a concurrent tone / vocab / pin write.
       // What has been reported to Meta is the server's record, not a setting:
-      // a client that sends it back (or sends it empty) changes nothing.
-      const { adsReported: _serverOwned, ...theirs } = personality;
+      // a client that sends it back (or sends it empty) changes nothing. Nor is the AI permission set here: only its own route
+      // (privacy/aiConsent.ts), when the person taps Agree or switches it off.
+      const { adsReported: _serverOwned, aiConsentAt: _a, aiConsentVersion: _v, aiConsentWithdrawnAt: _w, ...theirs } = personality;
       const merged = await updatePersonality(user, (existing) => ({ ...existing, ...theirs }));
       const res: PersonalityResponse = { personality: merged };
       return reply.send(res);

@@ -33,7 +33,8 @@ export const REASON_WORDS: Record<Reason, string> = {
   spam: "Spam or a scam", harassment: "Bullying or harassment", hate: "Hate speech", sexual: "Sexual content", violence: "Violence or threats",
   self_harm: "Self-harm or suicide", illegal: "Something illegal", other: "Something else",
 };
-const REPORT_KINDS = ["message", "item", "person"] as const;
+// "answer": a bot's answer (App Review 1.2 and 4.7.1: what AI makes can be reported). Migration 0067.
+const REPORT_KINDS = ["message", "item", "person", "answer"] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 /** Every report is acted on within a day (Terms, section 4). */
@@ -147,9 +148,21 @@ export class Safety {
 
   // ------------------------------------------------------------------ what is reported
 
-  private async target(viewer: string, q: { kind?: unknown; id?: unknown; thread?: unknown }): Promise<Target> {
+  private async target(viewer: string, q: { kind?: unknown; id?: unknown; thread?: unknown; text?: unknown; asked?: unknown; bot?: unknown }): Promise<Target> {
     if (!isKind(q.kind)) throw new BotError("bad_request", "Report a message, a shared thing or a person.");
     const id = clean(q.id, 80);
+    if (q.kind === "answer") {
+      // A bot's answer, in the person's own chat with it: what they saw is what the app sends (it is theirs to report). The bot is
+      // no one's account, so there is no one to block; the answer is kept as it was for whoever acts on it.
+      const text = typeof q.text === "string" ? q.text.trim().slice(0, 4000) : "";
+      if (!text) throw new BotError("bad_request", "Which answer?");
+      const bot = clean(q.bot, 40) || "A bot";
+      return {
+        kind: "answer", ref: (id || bot).slice(0, 80), threadId: null, spaceId: null, reportedId: null, reportedName: bot,
+        what: `An answer from ${bot}`, text,
+        snapshot: { text, asked: typeof q.asked === "string" ? q.asked.slice(0, 2000) : "", bot, by: viewer },
+      };
+    }
     if (q.kind === "message") {
       const { m, t } = await this.threads.messageFor(viewer, clean(q.thread, 80), id);
       if (m.sender_id === viewer) throw new BotError("bad_request", "That's your own message.");
@@ -187,7 +200,7 @@ export class Safety {
   }
 
   /** What the report screen shows before sending: who and what, in a line, and the words reported. */
-  async preview(viewer: string, q: { kind?: unknown; id?: unknown; thread?: unknown }): Promise<{ kind: ReportKind; what: string; text: string; person: { userId: string | null; name: string; blockedByYou: boolean } }> {
+  async preview(viewer: string, q: { kind?: unknown; id?: unknown; thread?: unknown; text?: unknown; bot?: unknown }): Promise<{ kind: ReportKind; what: string; text: string; person: { userId: string | null; name: string; blockedByYou: boolean } }> {
     const t = await this.target(viewer, q);
     const blockedByYou = t.reportedId ? await this.blocks.byMe(viewer, t.reportedId) : false;
     return { kind: t.kind, what: t.what, text: t.text.slice(0, 600), person: { userId: t.reportedId, name: t.reportedName, blockedByYou } };
@@ -198,7 +211,7 @@ export class Safety {
   async report(user: { id: string; name: string }, b: Record<string, unknown>): Promise<{ report: { id: string; dueBy: number }; blocked: boolean; again: boolean }> {
     if (!isReason(b.reason)) throw new BotError("bad_request", "Pick why you're reporting it.");
     const reason = b.reason;
-    const t = await this.target(user.id, { kind: b.kind, id: b.id, thread: b.thread });
+    const t = await this.target(user.id, { kind: b.kind, id: b.id, thread: b.thread, text: b.text, asked: b.asked, bot: b.bot });
     const at = this.now();
     const mine = await this.rows.select({ reporter_id: user.id } as Partial<ReportRow>, { order: "created_ms", desc: true, limit: REPORTS_A_DAY + 5 });
     // The same thing reported again while the first is open: that one stands (and nobody is mailed twice).
@@ -250,7 +263,8 @@ export class Safety {
   private view(r: ReportRow): ReportView {
     const s = r.snapshot ?? {};
     const what = r.kind === "message" ? `Message from ${r.reported_name}${typeof s.where === "string" ? ` in ${s.where}` : ""}`
-      : r.kind === "item" ? `${String(s.title ?? "A shared thing")}, shared by ${r.reported_name}` : `The person ${r.reported_name}`;
+      : r.kind === "item" ? `${String(s.title ?? "A shared thing")}, shared by ${r.reported_name}`
+      : r.kind === "answer" ? `An answer from ${r.reported_name}` : `The person ${r.reported_name}`;
     return {
       id: r.id, kind: r.kind, reason: r.reason, reasonWords: REASON_WORDS[r.reason] ?? r.reason, note: r.note, status: r.status, action: r.action,
       createdAt: Number(r.created_ms), dueBy: Number(r.due_ms), overdue: r.status === "open" && Number(r.due_ms) < this.now(),

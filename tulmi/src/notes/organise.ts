@@ -19,6 +19,7 @@
 import OpenAI from "openai";
 import type { Note, NoteSegment } from "../../../shared/types/api.js";
 import { getConfig } from "../config.js";
+import { guardClient } from "../privacy/aiGate.js";
 import { addCostUsd, openRouterUsd } from "../usage/cost.js";
 import type { NoteBody } from "./store.js";
 
@@ -29,14 +30,14 @@ let client: OpenAI | null = null;
 function llm(): OpenAI {
   if (!client) {
     const cfg = getConfig();
-    client = new OpenAI({
+    client = guardClient(new OpenAI({
       apiKey: cfg.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
       // A long transcript is a long read; the refiner's 30 s is not enough.
       timeout: 180_000,
       maxRetries: 2,
       defaultHeaders: { "HTTP-Referer": cfg.OPENROUTER_APP_URL, "X-Title": cfg.OPENROUTER_APP_NAME },
-    });
+    }));
   }
   return client;
 }

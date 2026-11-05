@@ -15,6 +15,7 @@ import {
   quietButton, row, SCREENS, secondaryButton, sectionLabel, seq, switchRow, text, title, when, whenEq, type BotsCtx,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { REASON_WORDS } from "../../../botsBots/safety.js";
 
 const A = "/v1/botsapp/bots";
 const enc = encodeURIComponent;
@@ -81,7 +82,7 @@ function personPage(ctx: BotsCtx, p: Person | undefined) {
 // ===================================================================== bots.report
 
 interface Preview {
-  kind: "message" | "item" | "person"; what: string; text: string; person: { userId: string | null; name: string; blockedByYou: boolean };
+  kind: "message" | "item" | "person" | "answer"; what: string; text: string; person: { userId: string | null; name: string; blockedByYou: boolean };
   reasons: Array<{ id: string; label: string }>;
 }
 
@@ -99,11 +100,13 @@ function reportPage(ctx: BotsCtx, d: Preview | undefined) {
   if (!d) return couldNot(ctx, "This report", "It may have been taken out already, or you can't see it any more.");
   const id = idParam(ctx), thread = idParam(ctx, "thread");
   const who = d.person.name || "them";
-  const heading = d.kind === "message" ? "Report a message" : d.kind === "item" ? "Report something shared" : `Report ${who}`;
+  const heading = d.kind === "message" ? "Report a message" : d.kind === "item" ? "Report something shared" : d.kind === "answer" ? "Report an answer" : `Report ${who}`;
+  // A bot's answer: what the person saw goes with the report (reportAction.ts), since it lives only in their own chat.
+  const answer = d.kind === "answer" ? { text: d.text, bot: d.person.name } : {};
   const canBlock = !!d.person.userId && !d.person.blockedByYou;
   const send: ActionSpec = {
     kind: "condition", if: { falsy: "reason" }, then: toast("Pick why you're reporting it"),
-    else: call("POST", `${A}/reports`, { kind: d.kind || kind, id, ...(thread ? { thread } : {}), reason: "$state.reason", note: "$state.note", block: "$state.block" }, {
+    else: call("POST", `${A}/reports`, { kind: d.kind || kind, id, ...(thread ? { thread } : {}), ...answer, reason: "$state.reason", note: "$state.note", block: "$state.block" }, {
       ok: seq(toast("Thanks. We'll look at it within 24 hours."), back()),
       fail: toast("Couldn't send the report. Try again.", true),
     }),
@@ -119,7 +122,7 @@ function reportPage(ctx: BotsCtx, d: Preview | undefined) {
   return page(ctx, {
     back: true, title: heading, nav: "you", maxWidth: 720, state: { reason: "", note: "", block: false },
     body: [
-      col([title(heading), meta(`We look at every report within 24 hours. ${d.kind === "person" ? who : "They"} won't be told who reported it.`, { size: 13 })], { gap: 4 }),
+      col([title(heading), meta(d.kind === "answer" ? "We look at every report within 24 hours, and use it to stop answers like this." : `We look at every report within 24 hours. ${d.kind === "person" ? who : "They"} won't be told who reported it.`, { size: 13 })], { gap: 4 }),
       col([
         text(d.what, { size: 15, weight: 600, lineHeight: 20 }),
         ...(d.text ? [text(d.text, { size: 14, lineHeight: 20, color: C.grey70, lines: 4 })] : []),
@@ -163,6 +166,15 @@ export const safetyScreens: BotsScreen[] = [
     id: SCREENS.report,
     load: (ctx, deps) => {
       const kind = String(ctx.params.kind ?? "").replace(/[^a-z]/g, "").slice(0, 10);
+      // A bot's answer is in the screen's own params (reportAction.ts): nothing to look up.
+      if (kind === "answer") {
+        const text = String(ctx.params.text ?? "").slice(0, 4000), bot = String(ctx.params.bot ?? "").slice(0, 40) || "A bot";
+        if (!text) return Promise.reject(new Error("no answer to report"));
+        return Promise.resolve({
+          kind: "answer", what: `An answer from ${bot}`, text, person: { userId: null, name: bot, blockedByYou: false },
+          reasons: Object.entries(REASON_WORDS).map(([id, label]) => ({ id, label })),
+        } as Preview);
+      }
       const thread = idParam(ctx, "thread");
       return deps.api<Preview>("GET", `${A}/reports/preview?kind=${enc(kind)}&id=${enc(idParam(ctx))}${thread ? `&thread=${enc(thread)}` : ""}`);
     },

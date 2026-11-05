@@ -318,6 +318,25 @@ export interface Personality {
    */
   retainHistory?: boolean;
 
+  /**
+   * When the person agreed to have what they give X0 Bot (words, voice, the
+   * pictures, files and screens they choose to share) sent to the AI services
+   * that answer them (App Review 5.1.2(i); tulmi/src/privacy/aiConsent.ts).
+   * Unset or null: not agreed, and nothing of theirs is sent. Never inferred.
+   */
+  aiConsentAt?: string | null;
+  /** Which wording they agreed to (AI_CONSENT_VERSION); an older one is asked again. */
+  aiConsentVersion?: number;
+  /** When they last withdrew it, if they did. */
+  aiConsentWithdrawnAt?: string | null;
+
+  /**
+   * Usage statistics from the phone app (PostHog: which screens and buttons are
+   * used), only when the person turned them on in You › Privacy (App Review
+   * 5.1.1(ii): consent first, even for anonymous usage data). Unset: off.
+   */
+  usageStats?: boolean;
+
   // --- Keyboard haptics ------------------------------------------------------
   /**
    * Every key buzzes. The master switch on the Haptics card.

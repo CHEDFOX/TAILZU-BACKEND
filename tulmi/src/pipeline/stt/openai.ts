@@ -4,6 +4,7 @@
 
 import OpenAI, { toFile as toOpenAIFile } from "openai";
 import { getConfig } from "../../config.js";
+import { guardClient } from "../../privacy/aiGate.js";
 import { sttLanguage, sttPrompt } from "./prompt.js";
 import type { SttInput, SttResult } from "./types.js";
 
@@ -12,7 +13,7 @@ function openai(): OpenAI {
   // 60s timeout (transcription of a short clip is fast, but leave headroom),
   // one retry — so a stuck Whisper call can't hold the request open for the
   // SDK default ~10 min.
-  if (!openaiClient) openaiClient = new OpenAI({ apiKey: getConfig().OPENAI_API_KEY, timeout: 60_000, maxRetries: 1 });
+  if (!openaiClient) openaiClient = guardClient(new OpenAI({ apiKey: getConfig().OPENAI_API_KEY, timeout: 60_000, maxRetries: 1 }));
   return openaiClient;
 }
 

@@ -2,6 +2,7 @@
  * The Bots app shell's home screen.
  */
 
+import { type AiConsent, AI_CONSENT_STATE, aiConsentCard, aiConsentDue } from "../firstRun/aiConsentCard.js";
 import type { Node, ActionRef, Condition } from "../../../../../../shared/types/sdui.js";
 import type { NotesStats } from "../../../../notes/stats.js";
 import { ASSISTANT_NAME } from "../../../assistantName.js";
@@ -92,22 +93,24 @@ const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ..
  * What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due
  * (pushAsk.ts), and the About you card (firstRun/aboutCard.ts).
  */
-export interface HomeMore { leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; groups?: Space[] | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
+export interface HomeMore { ai?: AiConsent | undefined; leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; groups?: Space[] | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
 
 /**
- * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the
- * first-arrival card when due; else the About you card when due (a few visits in); else, on a phone, the notifications ask once
+ * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the AI
+ * permission, until the person has agreed (firstRun/aiConsentCard.ts: nothing is sent before); else the first-arrival card when due; else the About you card when due (a few visits in); else, on a phone, the notifications ask once
  * something is working or needs them (its header reads the phone's answer). `state` is what the page starts with.
  */
 export function homeNotices(ctx: BotsCtx, arrival: boolean, more: HomeMore) {
   const leaving = leavingCard(ctx, more.leaving);
-  const firstRun = arrival && !leaving.length;
-  const about = !leaving.length && !firstRun && more.about?.due === true;
-  const push = !leaving.length && !firstRun && !about && pushAskDue(ctx, more.push === true);
+  const ai = !leaving.length && aiConsentDue(more.ai);
+  const firstRun = arrival && !leaving.length && !ai;
+  const about = !leaving.length && !ai && !firstRun && more.about?.due === true;
+  const push = !leaving.length && !ai && !firstRun && !about && pushAskDue(ctx, more.push === true);
   return {
-    state: { ...homeState(firstRun), ...(push ? PUSH_STATE : {}), ...(about ? aboutState(more.about) : {}) },
+    state: { ...homeState(firstRun), ...(ai ? AI_CONSENT_STATE : {}), ...(push ? PUSH_STATE : {}), ...(about ? aboutState(more.about) : {}) },
     head: (n: Node): Node => (push ? withPushCheck(ctx, n) : n),
-    leaving, arrival: firstRun, about: about ? aboutCard(ctx, more.about) : [], push: push ? pushAskCard(ctx, true) : [],
+    // The AI permission rides with the About card's place on the page: one overlay at a time, and never both.
+    leaving, arrival: firstRun, about: ai ? aiConsentCard(ctx, more.ai) : about ? aboutCard(ctx, more.about) : [], push: push ? pushAskCard(ctx, true) : [],
   };
 }
 

@@ -117,8 +117,9 @@ describe("the screen route", () => {
     expect(phone.json()).toMatchObject({ screenId: "bots.home", look: "bots", hideChrome: true });
     expect(phone.body).toContain('"type":"SafeArea"');
     const desk = await post("/v1/app/screen", { screenId: "bots.home", capabilities: caps(["BotsKit", "DeskShell"], "desktop") });
-    // A person who has done nothing yet lands on the empty home (EmptyHome); anyone else on "What should we do?".
-    expect(desk.body).toMatch(/What should we do\?|I'm X0/);
+    // A person who has done nothing yet lands on the empty home (EmptyHome); anyone else on "What should we do?". Someone who has not
+    // agreed to AI processing is asked that first (firstRun/aiConsentCard.ts), and the welcome waits.
+    expect(desk.body).toMatch(/What should we do\?|I'm X0|Before your bots answer you/);
     expect(desk.body).toContain('"screenId":"bots.today"');
     const home = await post("/v1/app/screen", { screenId: "home", capabilities: caps(["BotsKit"]) });
     expect(home.json().screenId).toBe("bots.home");

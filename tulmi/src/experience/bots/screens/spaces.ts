@@ -31,6 +31,7 @@ import {
   type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
   openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState,
 } from "./spaces/spaceDetail.js";
+import { said } from "../said.js";
 
 interface Thread {
   id: string; kind: "direct" | "group" | "space"; name: string; spaceId: string | null; spaceName: string; people: Array<{ userId: string; name: string; you: boolean }>;
@@ -445,7 +446,7 @@ function composer(ctx: BotsCtx, t: Thread): Node {
   const send = { kind: "condition", if: { all: [{ falsy: "say" }, { falsy: "sent.name" }] }, then: toast("Type something first"),
     else: seq(setState("sending", true), call("POST", `${A}/threads/${enc(t.id)}/messages`, { text: "$state.say", files: "$state.files" }, {
       ok: seq(setState("sending", false), clearState("say"), clearState("files"), clearState("sent"), refresh),
-      fail: seq(setState("sending", false), toast("Couldn't send that. Try again.", true)),
+      fail: seq(setState("sending", false), said("Couldn't send that. Try again.")),
     })) } as ActionSpec;
   return col([
     ...(canUpload(ctx) ? [uploadChip("files")] : []),

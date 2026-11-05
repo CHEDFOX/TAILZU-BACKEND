@@ -15,6 +15,7 @@
  * worked out from now. Three failed runs in a row pause it, with why; so does its bot being deleted.
  */
 import { randomUUID } from "node:crypto";
+import { AI_CONSENT_TEXT, aiAllowedFor, asPerson } from "../privacy/aiGate.js";
 import { BotError } from "../bots/types.js";
 import type { BotAnswer, BotDef } from "../bots/types.js";
 import { CODE_SLUG } from "../bots/builtin.js";
@@ -289,8 +290,15 @@ export class Routines {
         this.tell(r.userId);
         return out ?? r;
       }
-      // Its own words, not the chat's last turns: a routine is not a reply to whatever was said last (AskInput.fresh).
-      const answer = await this.bots.ask(r.userId, r.bot, { message: r.task, fresh: true });
+      // The owner has not agreed to AI processing (privacy/aiGate.ts): nothing is sent, and the routine says why. Not a failure of
+      // the routine's own: it is not counted towards pausing it.
+      if (!(await aiAllowedFor(r.userId))) {
+        const out = await this.store.update(r.userId, r.id, { lastAt: at, lastStatus: "failed", lastText: AI_CONSENT_TEXT }, at);
+        this.tell(r.userId);
+        return out ?? r;
+      }
+      // Its own words, not the chat's last turns: a routine is not a reply to whatever was said last (AskInput.fresh). As its owner.
+      const answer = await asPerson(r.userId, () => this.bots.ask(r.userId, r.bot, { message: r.task, fresh: true }));
       status = answer.approvals.length ? "needs" : "done";
       patch = { lastAt: at, lastStatus: status, lastText: (answer.text || "").slice(0, TEXT_MAX), lastPaise: Math.max(0, Math.round(answer.paise)), runs: r.runs + 1, fails: 0, botName: found.def.name };
       await this.o.events?.add(r.userId, { kind: "ask", bot: r.bot, title: r.task, paise: patch.lastPaise ?? 0, amountPaise: 0, payee: "" }, at).catch(() => undefined);

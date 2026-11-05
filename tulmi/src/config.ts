@@ -792,6 +792,11 @@ const EnvSchema = z.object({
    * keeps them (without it they live in memory). ROUTINES_MAX is how many one person may have.
    */
   ROUTINES: bool(true),
+  /**
+   * The AI permission (src/privacy/aiGate.ts, App Review 5.1.2(i)): nothing of a person's is sent to an AI service until they have
+   * tapped Agree. On by default; false lets everyone's requests through again, for an emergency only (the app still asks).
+   */
+  AI_CONSENT_GATE: bool(true),
   ROUTINES_MAX: z.coerce.number().int().min(1).max(200).default(20),
   /**
    * THE PERSON'S CONTEXT (src/context, docs/context.md): who they are, who they message, their last asks, open work and recent results, as

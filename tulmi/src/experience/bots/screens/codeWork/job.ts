@@ -9,6 +9,7 @@ import {
 } from "../../../../botsCodeWork/read.js";
 import type { ChatTurn } from "../../../../code/chat/threads.js";
 import { askMoment } from "../../askMoment.js";
+import { reportAnswer } from "../../reportAction.js";
 import { notifyWhenDone, PUSH_STATE, withPushCheck } from "../pushAsk.js";
 import {
   seq, call, col, row, box, text, C, meta, percent, grow, meter, type BotsCtx, statusMark, button, card, spanOf, labelled, icon, open,
@@ -18,6 +19,11 @@ import {
   toast, refresh, oops, workMark, type JobData, write, jobPath, field, stopJob, type ChatCtx, threadFor, mine, theirs, MOSS, askCode,
   noProject, head, half, glyph, G, statusLine, linesOf, ASIDE, nothingHere,
 } from "./parts.js";
+
+/** Xode's answer with "Report" under it (App Review 1.2 and 4.7.1: what a bot makes can be reported; reportAction.ts). */
+function reportable(box: Node, words: string): Node {
+  return col([box, row([text("Report", { size: 12, lineHeight: 16, color: C.meta })], { paddingLeft: 6, minHeight: 24, alignItems: "center" }, reportAnswer({ bot: "Xode", text: words }))], { gap: 2 });
+}
 
 /** A yes that the server may first answer with a question ({ needsApproval, approvalId }): say it again with the id. */
 function twoStep(path: string, ok: string): ActionSpec {
@@ -149,7 +155,7 @@ function history(turns: readonly ChatTurn[], size: number, show = SHOW_TURNS, fo
       text(clip(t.a.replace(/[#*`_]/g, "").replace(/\s+/g, " ").trim(), FOLDED_ANSWER), { size: size - 2, lineHeight: Math.round((size - 2) * 1.45), color: C.meta }),
     ]), { gap: 10 })));
   }
-  for (const t of full) out.push(mine(t.q, size), t.a ? theirs(t.a, { size }) : meta("Xode didn't send words back.", { size: 13 }));
+  for (const t of full) out.push(mine(t.q, size), t.a ? reportable(theirs(t.a, { size }), t.a) : meta("Xode didn't send words back.", { size: 13 }));
   return out;
 }
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
@@ -182,7 +188,7 @@ function conversation(d: JobData | undefined, p: { asked?: string; answer?: stri
   }
   if (p.asked) {
     out.push(mine(p.asked, size));
-    out.push(p.answer ? theirs(p.answer, { size, ...(p.flow ? { flow: p.flow } : {}) }) : meta("Xode didn't send words back. Ask again?", { size: 13 }));
+    out.push(p.answer ? reportable(theirs(p.answer, { size, ...(p.flow ? { flow: p.flow } : {}) }), p.answer) : meta("Xode didn't send words back. Ask again?", { size: 13 }));
   }
   return out;
 }

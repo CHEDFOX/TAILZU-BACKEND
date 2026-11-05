@@ -18,6 +18,7 @@
  * other's messages in a group or a space's chat (nor counts them unread, nor is pinged for them), and neither is offered the other
  * to message or to add to a group.
  */
+import { screenPost } from "./filter.js";
 import { randomUUID } from "node:crypto";
 import { BotError } from "../bots/index.js";
 import { live } from "../live/bus.js";
@@ -431,6 +432,8 @@ export class Threads {
       files.push({ id: f.id, name: f.name.slice(0, 200), mime: f.mime.slice(0, 100), bytes: f.bytes, kind: f.kind, owner: userId });
     }
     if (!text && !files.length) throw new BotError("bad_request", "Type something first.");
+    // Screened before it is posted (filter.ts, App Review 1.2): the words, and the files' names.
+    await screenPost([text, ...files.map((f) => f.name)]);
     return this.post(userId, threadId, { text, files, item: null });
   }
 

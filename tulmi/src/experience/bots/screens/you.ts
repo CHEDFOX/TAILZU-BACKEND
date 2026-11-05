@@ -25,6 +25,7 @@ import {
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, dayMonthOf, goneAt, daysStrip, GRACE_DAYS, keepAccount, scheduleDeletion, DELETION_PATH } from "./accountGrace.js";
 import { PUSH_STATE, withPushCheck, pushOffRow } from "./pushAsk.js";
+import { type AiConsent, AI_CONSENT_PATH } from "./firstRun/aiConsentCard.js";
 import { type DeleteData, goesAway, planWarning, type AccountData, deleteDesk } from "./you/deleteDesk.js";
 import {
   when2, type NotifyData, notifyState, alwaysOn, doneSeg, timeChip, summarySwitch, timePicker, summaryPreview, botSwitch, botSub,
@@ -277,11 +278,35 @@ function personalCard(d: YouData | undefined): Node {
   ], { gap: 4 });
 }
 
-function privacyPhone(ctx: BotsCtx, d: YouData | undefined) {
+/**
+ * Sending to AI services (privacy/aiConsent.ts): the Home card's Agree, and the way to take it back (App Review 5.1.1(ii): consent
+ * that can be withdrawn as easily). Off, nothing more of theirs is sent: bots, dictation and Ask wait until it is on again.
+ */
+function aiCard(ai: AiConsent | undefined): Node {
+  const on = ai?.agreed === true;
+  return listCard([switchRow("Send to AI services", "aiOn", {
+    sub: "Your words and voice, and the photos, files or screen you share, go to OpenAI, Anthropic, Google, Groq, Deepgram, Sarvam AI and OpenRouter, only to answer you and keep Spaces safe. Off: bots, dictation and Ask stop.",
+    onChange: call("PUT", AI_CONSENT_PATH, { agree: !on }, { ok: seq(toast(on ? "Off. Nothing more is sent." : "On"), refresh), fail: oops("save that") }),
+  })]);
+}
+
+/** Usage statistics (the app's PostHog): off until they turn them on (App Review 5.1.1(ii)). Read by the app at its next start. */
+function statsCard(on: boolean): Node {
+  return listCard([switchRow("Share usage statistics", "statsOn", {
+    sub: "Which screens and buttons you use, never what you say or type. Helps us fix what's hard to use. Takes effect next time you open the app.",
+    onChange: call("PUT", "/v1/personality", { usageStats: !on }, { ok: seq(toast(on ? "Off" : "On"), refresh), fail: oops("save that") }),
+  })]);
+}
+
+type PrivacyData = YouData & { ai?: AiConsent | undefined; stats?: boolean };
+
+function privacyPhone(ctx: BotsCtx, d: PrivacyData | undefined) {
   return page(ctx, {
-    back: true, nav: "you", title: "Privacy", gap: 18, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false },
+    back: true, nav: "you", title: "Privacy", gap: 18, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false, aiOn: d?.ai?.agreed === true, statsOn: d?.stats === true },
     body: [
       title("Privacy"),
+      aiCard(d?.ai),
+      statsCard(d?.stats === true),
       col([sectionLabel("What we keep, and for how long"), listCard(KEPT.map(([l, , v]) => listRow({ label: l, value: v })))], { gap: 8 }),
       col([sectionLabel("What we never do"), neverList()], { gap: 10 }),
       personalCard(d),
@@ -295,11 +320,12 @@ function privacyPhone(ctx: BotsCtx, d: YouData | undefined) {
   });
 }
 
-function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
+function privacyDesk(ctx: BotsCtx, d: PrivacyData | undefined) {
   return page(ctx, {
-    back: true, backTitle: "You", nav: "you", title: "Privacy", maxWidth: 1040, gap: 20, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false },
+    back: true, backTitle: "You", nav: "you", title: "Privacy", maxWidth: 1040, gap: 20, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false, aiOn: d?.ai?.agreed === true, statsOn: d?.stats === true },
     body: [
       heading(ctx, "Privacy", "What we keep, and for how long"),
+      aiCard(d?.ai),
       columns([
         table([{ label: "What", flex: 2 }, { label: "Kept for", flex: 1 }], KEPT.map(([l, s, v]) => [col([text(l, { size: 14 }), meta(s, { size: 12 })], { gap: 2 }), text(v, { size: 14, weight: 500 })])),
         card([
@@ -315,6 +341,7 @@ function privacyDesk(ctx: BotsCtx, d: YouData | undefined) {
       ], [
         card([sectionLabel("What we never do"), neverList()], { padding: 20, gap: 12 }),
         personalCard(d),
+        statsCard(d?.stats === true),
       ]),
     ],
   });
@@ -565,7 +592,17 @@ export const youScreens: BotsScreen[] = [
   ...[SCREENS.usage, SCREENS.budget].map((id) => screen<UsagePage>({ id, load: (ctx, deps) => deps.api<UsagePage>("GET", `/v1/you/usage?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? usageDesk(ctx, d) : usagePhone(ctx, d)) })),
   screen<BillingData>({ id: SCREENS.billing, load: (ctx, deps) => deps.api<BillingData>("GET", `/v1/you/billing?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? billingDesk(ctx, d) : billingPhone(ctx, d)) }),
   screen<NotifyData>({ id: SCREENS.notify, load: (ctx, deps) => deps.api<NotifyData>("GET", `/v1/you/notify?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? notifyDesk(ctx, d) : notifyPhone(ctx, d)) }),
-  screen<YouData>({ id: SCREENS.privacy, load: (ctx, deps) => deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`), build: (ctx, d) => (ctx.client === "desktop" ? privacyDesk(ctx, d) : privacyPhone(ctx, d)) }),
+  screen<PrivacyData>({
+    id: SCREENS.privacy,
+    load: async (ctx, deps) => {
+      const [you, ai, persona] = await Promise.all([
+        deps.api<YouData>("GET", `/v1/you?${tz(ctx)}`),
+        deps.api<AiConsent>("GET", AI_CONSENT_PATH).catch(() => undefined),
+        deps.api<{ personality?: { usageStats?: boolean } }>("GET", "/v1/personality").catch(() => undefined),
+      ]);
+      return { ...you, ai, stats: persona?.personality?.usageStats === true };
+    },
+    build: (ctx, d) => (ctx.client === "desktop" ? privacyDesk(ctx, d) : privacyPhone(ctx, d)) }),
   screen<DeleteData>({
     id: SCREENS.deleteAccount,
     load: async (_ctx, deps) => {

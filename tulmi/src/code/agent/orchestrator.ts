@@ -47,6 +47,7 @@
  *             exactly the ones a server uses, so a retried step, a second Workflow instance or a VPS that is still in
  *             local mode can never run one job twice
  */
+import { asPerson } from "../../privacy/aiGate.js";
 import { randomUUID } from "node:crypto";
 import { ConnectorError } from "../../connectors/state.js";
 import type { WakeKind } from "../jobs/handoff/protocol.js";
@@ -402,7 +403,8 @@ export class AgentOrchestrator {
   private async drive(job: CodeJob, claim: Claim, abort: AbortController): Promise<void> {
     try {
       const state = stateOf(job.checkpoint) ?? initialState(job.task, this.now());
-      await runLoop({ job, state, deps: this.deps, claim, signal: abort.signal });
+      // As its owner: what the loop sends to a model is theirs, and asks their AI permission (privacy/aiGate.ts).
+      await asPerson(job.userId, () => runLoop({ job, state, deps: this.deps, claim, signal: abort.signal }));
     } catch (err) {
       if (err instanceof LostClaim || this.dead) return;
       await this.errored(job, claim, err);

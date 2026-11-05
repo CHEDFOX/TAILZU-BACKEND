@@ -69,6 +69,9 @@ import { createPersonContext } from "./context/index.js";
 import { registerEverydayRoutes } from "./routes/bots/everyday.js";
 import { everyday } from "./everyday/index.js";
 import { createRoutines, routineStore, startRoutines } from "./routines/index.js";
+import { installAiConsent, registerAiConsentRoutes } from "./privacy/aiConsent.js";
+import { installAiFetchGuard } from "./privacy/aiGate.js";
+import { openAiModeration, setModeration } from "./botsBots/filter.js";
 import { startOpsAlerts } from "./ops/alerts.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
@@ -580,6 +583,8 @@ registerPushTokenRoutes(app, {
 // --- The server-driven app, the person's account and the keyboards ----------
 registerAppScreenRoutes(app, { rateLimit: AUTHED_RL, cfg, connectors, bots, jobs: codeJobs });
 registerProfileRoutes(app, { rateLimit: AUTHED_RL, appleSignIn });
+// The AI permission: GET/PUT /v1/you/ai-consent (privacy/aiConsent.ts).
+registerAiConsentRoutes(app, { rateLimit: AUTHED_RL });
 registerAccountRoutes(app, { rateLimit: AUTHED_RL, code, appleSignIn, media, jobs: codeJobs, agent: codeAgent });
 registerKeyboardRoutes(app, { rateLimit: AUTHED_RL, cfg });
 registerHistoryRoutes(app, { rateLimit: AUTHED_RL });
@@ -606,6 +611,12 @@ if (process.env.NODE_ENV !== "test") {
     console.error("[uncaughtException]", err);
     try { captureException(err); } catch { /* observability optional */ }
   });
+
+  // The AI permission (privacy/aiGate.ts): every call to an AI service asks whether its person agreed. Installed here, not in
+  // buildApp, so the tests that build the app are not stopped by it (tests/ai-consent.test.ts installs it itself).
+  if (cfg.AI_CONSENT_GATE) { installAiConsent(); installAiFetchGuard(); }
+  // What is posted in Spaces is screened (botsBots/filter.ts): the word list always, OpenAI's moderation model too where there is a key.
+  if (cfg.OPENAI_API_KEY) setModeration(openAiModeration(cfg.OPENAI_API_KEY));
 
   try {
     const app = await buildApp();

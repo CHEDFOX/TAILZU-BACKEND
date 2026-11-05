@@ -43,6 +43,7 @@ import {
   type LiveEngine,
   type SegmentTiming,
 } from "./live-engines.js";
+import { AI_CONSENT_CODE, AI_CONSENT_TEXT, aiAllowedFor } from "../../privacy/aiGate.js";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { isDeviceBearer } from "../../auth/deviceTokens.js";
 import { getPersonality } from "../../personality/store.js";
@@ -701,6 +702,13 @@ async function transcribeStream(fastify: FastifyInstance): Promise<void> {
               // Already written for the person (metering.enforceQuota): the
               // number, the reset date and the way out.
               send({ type: "error", code: "quota_exceeded", message: over });
+              safeClose();
+              return;
+            }
+            // The AI permission (privacy/aiGate.ts): a person who has not agreed has nothing sent to the speech services. The sign-in
+            // here may be inside the message, which the request's own scope never saw, so it is asked by name.
+            if (!(await aiAllowedFor(user.id))) {
+              send({ type: "error", code: AI_CONSENT_CODE, message: AI_CONSENT_TEXT });
               safeClose();
               return;
             }

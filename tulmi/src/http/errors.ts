@@ -4,6 +4,7 @@
 
 import type { FastifyInstance } from "fastify";
 import { captureException } from "../observability.js";
+import { AI_CONSENT_CODE, AI_CONSENT_TEXT, isAiConsentError } from "../privacy/aiGate.js";
 
 export function registerErrorHandling(app: FastifyInstance): void {
   const isClientError = (err: { statusCode?: number }) =>
@@ -17,7 +18,7 @@ export function registerErrorHandling(app: FastifyInstance): void {
   // and malformed body used to be reported too — noise that buried real errors,
   // and a way for anyone to spend the error-reporting quota by being refused.
   app.addHook("onError", async (req, _reply, err) => {
-    if (!isClientError(err)) captureException(err, { route: req.routeOptions?.url, method: req.method });
+    if (!isClientError(err) && !isAiConsentError(err)) captureException(err, { route: req.routeOptions?.url, method: req.method });
   });
 
   // A 5xx says that something failed, never what. Fastify's default handler
@@ -26,6 +27,8 @@ export function registerErrorHandling(app: FastifyInstance): void {
   // full error goes to the log (and Sentry, via onError above); 4xx keep
   // Fastify's shape, since their message is written for the caller.
   app.setErrorHandler((err, req, reply) => {
+    // The person has not agreed to AI processing (privacy/aiGate.ts): said as it is, so the app can ask them.
+    if (isAiConsentError(err)) return reply.code(403).send({ code: AI_CONSENT_CODE, message: AI_CONSENT_TEXT });
     if (isClientError(err)) return reply.code(err.statusCode!).send(err);
     req.log.error({ err }, "request failed");
     return reply.code(500).send({ code: "internal", message: "Something went wrong. Try again in a moment." });

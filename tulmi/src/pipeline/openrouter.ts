@@ -8,6 +8,7 @@
  */
 import OpenAI from "openai";
 import { getConfig } from "../config.js";
+import { guardClient } from "../privacy/aiGate.js";
 
 let client: OpenAI | null = null;
 /** The one OpenRouter client. Exported for Ask's planner (agent/llm.ts), which
@@ -15,7 +16,8 @@ let client: OpenAI | null = null;
 export function openrouter(): OpenAI {
   if (!client) {
     const cfg = getConfig();
-    client = new OpenAI({
+    // Every call asks first: nothing of a person's is sent before they agree (privacy/aiGate.ts).
+    client = guardClient(new OpenAI({
       apiKey: cfg.OPENROUTER_API_KEY,
       baseURL: "https://openrouter.ai/api/v1",
       // Bound each call so a hung upstream can't pin a request/socket for the
@@ -27,7 +29,7 @@ export function openrouter(): OpenAI {
         "HTTP-Referer": cfg.OPENROUTER_APP_URL,
         "X-Title": cfg.OPENROUTER_APP_NAME,
       },
-    });
+    }));
   }
   return client;
 }
