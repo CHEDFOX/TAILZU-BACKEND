@@ -103,40 +103,68 @@ The tool lives in TAILZU-DESKTOP `cli/` (its own npm package, `@x0bot/xode`, Nod
 `xode` on npm belongs to someone else, so the package is scoped; the command it installs is still `xode`.
 
 ```
-npx @x0bot/xode login                 # once: a code to approve in X0 Bot
-npx @x0bot/xode                       # chat with Xode about this folder's project
-npx @x0bot/xode "fix the cart rounding"   # one message, then follow the job to its end
-npx @x0bot/xode status | stop | logout
+xode                     # in a project's folder: all a person needs (signs in first when nobody is)
+xode "fix the cart"      # the same, with that as the first message; the session stays open after the job
+xode -p "question"       # one answer printed as plain text, then out (cat err.log | xode -p "why does this fail")
+xode doctor              # checks the setup, one line each
+xode update              # the command that updates, this version and the newest
 ```
 
-Or `npm i -g @x0bot/xode` and then just `xode …`. Flags: `--new` (a chat of its own instead of the app's), `--project <id>`,
-`--no-runner` (do not offer this computer). Env: `XODE_SERVER` (default https://api.x0bot.com), `XODE_PROJECT`,
-`XODE_RUNNER=0`, `NO_COLOR`.
+`npx @x0bot/xode` works too, or `npm i -g @x0bot/xode`. `xode login`, `status`, `stop` and `logout` still work but are not
+advertised: inside the session they are `/login`, `/status`, `/stop`, `/logout`. Flags: `--new` (a chat of its own instead of
+the app's), `--project <id>`, `--no-runner` (do not offer this computer). Env: `XODE_SERVER` (default https://api.x0bot.com),
+`XODE_PROJECT`, `XODE_RUNNER=0`, `NO_COLOR`, `XODE_NO_UPDATE_CHECK=1`. Exit codes: 0 normal, 1 an error, 2 bad usage.
 
 ### What a session does
 
-1. **The folder decides the project.** Outside a git repository xode says so and stops. It reads the remote (origin, else the
+1. **One command.** Not signed in (or the sign-in was switched off): the code and the link are shown, xode waits for the
+   approval, then goes straight on; Ctrl+C cancels. The project comes from the folder without a word; xode only speaks when
+   something is wrong. Then a small welcome box (Xode, owner/name, the folder) with one tip, and the `>` prompt.
+2. **The folder decides the project.** Outside a git repository xode says so and stops. It reads the remote (origin, else the
    only one), matches owner/repo to the person's Xode projects (`GET /v1/code/projects`, `fullName`), and offers the GitHub
    connect link the app uses when the repo is not connected yet (`GET /v1/code/github`, `POST /v1/code/github/connect` or
    `/signin`), adding the repo as a project once GitHub can see it (`POST /v1/code/projects`, asked first).
-2. **The chat is the app's.** The same thread as the app's Xode chat for this person and project
-   (`screens/codeWork/parts.ts threadFor`, from `user.id` in `GET /v1/auth/device`): talk it over (`POST /v1/bots/code/flow/:project/say`),
-   see the plan as numbered steps, approve it (`/approve`), then follow the job: its live room (`POST /v1/code/jobs/:id/live`, the
-   room's WebSocket), else polling `GET /v1/code/jobs/:id` and `/log`. Stages Understand → Plan → Build → Check → Ship as the job
-   screen derives them (`botsCodeWork/read.ts stageOf`). Questions are answered inline (`/answer`); typing while it works goes to
-   `/work`. Ctrl+C asks, then stops the job (`/stop`).
-3. **This computer does the work.** While xode is open it runs the desktop's runner (`src/runner`) headless, named
+3. **The chat is the app's.** The same thread as the app's Xode chat for this person and project
+   (`screens/codeWork/parts.ts threadFor`, from `user.id` in `GET /v1/auth/device`); `/clear` (or `--new`) starts a fresh one
+   for the folder. A message goes to `POST /v1/bots/code/flow/:project/say` (Esc or Ctrl+C cancels it while Xode thinks). A new
+   plan is shown as numbered steps and a picker, "Start this plan? 1. Yes 2. No, tell Xode what to change" (arrows and Enter,
+   or the number; Esc is No); yes is `/approve` by its version.
+4. **The job, quietly.** Its live room (`POST /v1/code/jobs/:id/live`, the room's WebSocket), else polling `GET /v1/code/jobs/:id`
+   and `/log`. One line per stage ("● Build", stages as the job screen derives them, `botsCodeWork/read.ts stageOf`), dim
+   lines for what it does, and on a terminal one status line redrawn at the bottom: spinner, stage, time, "esc to stop". The
+   prompt stays open: what is typed goes to `/work`. Its questions come up as the same picker, with "Type your own answer"
+   last (`/answer`); yeses too. Esc shows "Press Esc again to stop the job", and again stops it (`/stop`); Ctrl+C does the same
+   first step. Leaving (Ctrl+C twice, Ctrl+D twice, `/exit`) never stops a job: "Xode keeps working. Run xode here to follow
+   it." The next `xode` in the folder follows it again, or, if it ended meanwhile, reports it and brings its work in.
+5. **This computer does the work.** While xode is open it runs the desktop's runner (`src/runner`) headless, named
    "<hostname> (terminal)", offering this folder's project only (`onlyProject`), so the router can place the job here. Its
-   guards, audit log and workspace rules are the desktop's.
-4. **The changes come back.** When the job ends (done, or failed after pushing), its branch is fetched into the folder and
-   switched to, then git's own `diff --stat` and the pull request link. With uncommitted changes in the folder nothing is
-   fetched or touched: xode prints the two git commands instead. Never a force, a reset of the person's branch or a stash.
+   guards, audit log and workspace rules are the desktop's. It is mentioned only when it matters: "Working on this computer."
+   when a job starts here, or a problem (paused for the battery, taken over, signed out).
+6. **The changes come back.** When the job ends (done, or failed after pushing), its branch is fetched into the folder and
+   switched to, then git's own `diff --stat` and the pull request link; `/diff` shows the whole diff later. With uncommitted
+   changes in the folder nothing is fetched or touched: xode prints the two git commands instead. Never a force, a reset of
+   the person's branch or a stash.
+
+At the prompt: `/` lists the commands (`/help`, `/clear`, `/plan`, `/diff`, `/status`, `/stop`, `/login`, `/logout`, `/exit`);
+`!cmd` runs a shell command in the project's folder, shows its output dim and puts "I ran: cmd / exit code / its last lines"
+in front of the next message; `@` and Tab complete a file from `git ls-files`; Up and Down go through what was typed in this
+folder; a line ending in `\` (or Ctrl+J) goes on to the next line, and a paste is one message. Without a terminal (a pipe)
+there is no redrawing: plain lines, and pickers become a numbered list answered with a number.
+
+`xode -p` never approves a plan, starts a job or offers this computer. Signed out it ends with "Not signed in: run xode"
+(exit 1). Piped text is added after the question, up to 20 KB (cut with a note).
+
+Once a day at most, in the background (1.5 s at most, never holding up the start), xode asks npm for the newest version
+(`GET https://registry.npmjs.org/@x0bot/xode/latest`) and says in one dim line when there is a newer one.
 
 ### Files kept on the computer
 
 - The sign-in: the keychain (macOS, `security`, fed on stdin), the secret service (Linux, `secret-tool`), else
   `~/.config/xode/credentials.json` (folder 700, file 600).
-- `~/.config/xode/state.json`: per server and folder, the project, a `--new` chat's id and the last job.
+- `~/.config/xode/state.json`: per server and folder, the project, a fresh chat's id and the last job.
+- `~/.config/xode/history.json`: what was typed at the prompt, per folder (the last 200; a line mentioning a token, a
+  password, a secret or `key=` is never kept).
+- `~/.config/xode/update.json`: when npm was last asked, and its answer.
 - `~/.config/xode/runner/` and `~/.cache/xode/runner/`: the runner's state and its workspaces.
 
 ### Develop and test
@@ -144,11 +172,12 @@ Or `npm i -g @x0bot/xode` and then just `xode …`. Flags: `--new` (a chat of it
 ```
 cd TAILZU-DESKTOP/cli && npm test                 # node --test, a fake server, real git in temp folders
 node dev/demo-server.js 4545                       # a fake server with a slow, realistic session; prints a folder to cd into
-XODE_SERVER=http://127.0.0.1:4545 node bin/xode.js login
+cd <that folder> && XODE_SERVER=http://127.0.0.1:4545 node <cli>/bin/xode.js
 ```
 
-A local backend with no database (`DEV_SKIP_AUTH=true`) signs a terminal in from memory, so `xode login` can be tried end to
-end on one machine.
+The tests type keys through a pipe with `XODE_KEYS=1` (and draw as a terminal would with `XODE_TTY=1 COLUMNS=60`), and read
+the screen back with a small terminal of their own (`test/screen.js`). A local backend with no database
+(`DEV_SKIP_AUTH=true`) signs a terminal in from memory, so the sign-in can be tried end to end on one machine.
 
 ### Publish
 
