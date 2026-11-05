@@ -129,7 +129,9 @@ pipeline/          the writing pipeline; which language a few words are in (lang
   stt.ts, stt/     speech-to-text: transcribe() and each engine, the prompt, duration probes, transcript checks
   assistPrompt.ts  the writer's data blocks; tts.ts, openrouter.ts, field.ts, compose.ts, session.ts, …
 principles/        the prompt library: one role per model call (roles.ts), composed with compose()
-agent/             the desktop's on-screen agent (Ask): one step, the planner, the resolver, risk; long jobs (docs/long-jobs.md)
+agent/             the desktop's on-screen agent (Ask): one step, the planner, the resolver, risk; long jobs (docs/long-jobs.md).
+                   An off-limits screen (privateField) or a sensitive app is refused; a private window (privateWindow) is
+                   answered like any other and nothing of it is kept (docs/context.md)
 askDecide/         the one key's brain: what the person meant by what they said, in any language; money and deleting in about
                    twenty languages (risk.ts); a send or money said in so many words (acts.ts) (docs/ask-decide.md)
 context/           the person's context: who they are, who they message, their last asks, open work, recent results, as one
@@ -188,6 +190,7 @@ ads/               Meta and Google Tag Manager events
 | A phone screen | `tulmi/src/experience/phone/<screen>.ts`; the id → builder table is `phone/screens.ts` |
 | A desktop page | `tulmi/src/experience/desk/<page>.ts`; ids and tabs in `desk/screens.ts` |
 | A Bots app screen | `tulmi/src/experience/bots/screens/<area>/<screen>.ts`, listed in `screens/<area>.ts`; ids in `bots/ids.ts`, entry `bots/index.ts` |
+| Blip's moves and poses on the desktop | `shared/bots/blip.json`, `tulmi/src/experience/bots/blip.ts`, routes `routes/bots/blipCatalog.ts` (docs/blip.md) |
 | The bootstrap | `tulmi/src/experience/bootstrap/bootstrap.ts` |
 | The keyboard config | `tulmi/src/experience/keyboard/config.ts` |
 | An SDUI node kind or action | `shared/types/sdui.ts` |

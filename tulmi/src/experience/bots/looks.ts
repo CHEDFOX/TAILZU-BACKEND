@@ -41,8 +41,8 @@ export interface LooksCatalog {
 
 /** The names a moment's expression may read, and its built-in functions ([fewest, most] arguments). */
 const MOMENT_VARS = ["t", "u", "T", "D", "beat", "k", "side", "rnd", "rnd2", "W", "x", "px"];
-const CONSTS: Record<string, number> = { pi: Math.PI, tau: Math.PI * 2, e: Math.E };
-const MOMENT_FUNCS: Record<string, [number, number]> = {
+export const CONSTS: Record<string, number> = { pi: Math.PI, tau: Math.PI * 2, e: Math.E };
+export const MOMENT_FUNCS: Record<string, [number, number]> = {
   sin: [1, 1], cos: [1, 1], tan: [1, 1], abs: [1, 1], sqrt: [1, 1], floor: [1, 1], ceil: [1, 1], round: [1, 1], exp: [1, 1], log: [1, 1],
   atan2: [2, 2], min: [1, 8], max: [1, 8], pow: [2, 2], hypot: [1, 8], clamp: [3, 3], smooth: [3, 3], lerp: [3, 3], crest: [1, 1],
   ramp: [3, 4], run: [5, 5], noise: [1, 1], sign: [1, 1], tri: [1, 1], hash: [1, 1],

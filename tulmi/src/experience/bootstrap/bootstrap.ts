@@ -8,6 +8,7 @@ import type { Allowance } from "../../usage/allowance.js";
 import { withAppKnobs } from "../appKnobs.js";
 import { desktopLists } from "../appLists.js";
 import { botsNav, botsFonts, BOTS_WARM_SCREEN_IDS } from "../bots/index.js";
+import { blipFlags } from "../bots/blip.js";
 import { looksFlags } from "../bots/looks.js";
 import { botsAuthTree } from "../bots/screens/firstRun.js";
 import { BOTS_OFFLINE_FLAGS } from "../bots/screens/outbox.js";
@@ -281,6 +282,8 @@ export function buildBootstrap(
           // The one-key router's lists, Ask's grammar, the tray's tones and the
           // rest the desktop kept built in (appLists.ts).
           ...desktopLists(),
+          // Blip's moves and poses (bots/blip.ts): which catalog is current, and where to fetch it.
+          ...blipFlags(),
           // Closing the window really closes it, so opening it again starts
           // on the landing page with fresh numbers — not on whatever page it
           // was hidden on an hour ago. The tray, the pill and the hotkey live
