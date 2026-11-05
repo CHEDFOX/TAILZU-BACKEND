@@ -7,7 +7,7 @@ import type { AppleSignIn } from "../../auth/appleSignIn.js";
 import { resolveUser } from "../../auth/supabase.js";
 import { updatePersonality } from "../../personality/store.js";
 import { getProfile, type Profile, updateProfile } from "../../profile/store.js";
-import { signedInVia } from "../bots/botsFirstRun.js";
+import { providerNameToSave, signedInVia } from "../bots/botsFirstRun.js";
 import { unauthorized } from "../../http/helpers.js";
 
 export interface ProfileRouteDeps {
@@ -84,6 +84,11 @@ export function registerProfileRoutes(app: FastifyInstance, deps: ProfileRouteDe
     }
     if (body.gender === "female" || body.gender === "male" || body.gender === "other") {
       patch.gender = body.gender;
+    }
+    // Onboarded now: the name Google or Apple sent is saved on the account (when it has none and none came with this write).
+    if (patch.onboarded === true && patch.fullName === undefined) {
+      const name = providerNameToSave(user, (await getProfile(user).catch(() => null))?.fullName);
+      if (name) patch.fullName = name;
     }
     try {
       return reply.send(await updateProfile(user, patch));

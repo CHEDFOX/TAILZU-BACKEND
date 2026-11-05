@@ -122,6 +122,17 @@ export function greetingName(user: Pick<AuthedUser, "provider" | "providerName" 
   return via === "google" || via === "apple" ? (user.providerName ?? "").trim() : "";
 }
 
+/**
+ * The name to save on the account as it is onboarded: the one Google or Apple sent with the sign-in, when the account has none yet.
+ * Theirs to change afterwards (PUT /v1/profile { full_name }, the About you card); never a guess from the email, never over a saved one.
+ */
+export function providerNameToSave(user: Pick<AuthedUser, "provider" | "providerName" | "email" | "phone">, saved?: string | null): string | undefined {
+  if (saved && saved.trim()) return undefined;
+  const via = signedInVia(user);
+  const name = (user.providerName ?? "").trim().slice(0, 120);
+  return (via === "google" || via === "apple") && name ? name : undefined;
+}
+
 export function startingName(user: Pick<AuthedUser, "provider" | "providerName" | "email" | "phone">, saved?: string | null): { name: string; source: "saved" | "provider" | "email" | null } {
   if (saved && saved.trim()) return { name: saved.trim(), source: "saved" };
   const via = signedInVia(user);

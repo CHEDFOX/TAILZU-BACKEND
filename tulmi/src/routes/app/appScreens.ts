@@ -2,7 +2,7 @@
  * The server-driven app: POST /v1/app/bootstrap, POST /v1/app/screen, and the screens' cache version.
  */
 
-import { greetingName } from "../bots/botsFirstRun.js";
+import { greetingName, providerNameToSave } from "../bots/botsFirstRun.js";
 import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
 import { reportMilestones } from "../../ads/meta.js";
@@ -244,7 +244,9 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
     // onboarded here, and Home opens on its welcome. The write failing costs the same mark next launch, never the boot.
     const botsIn = botsApp && !!user && !!profile && !profile.onboarded && !isReviewer;
     if (botsIn && user) {
-      updateProfile(user, { onboarded: true }).catch((e) => {
+      // Onboarded with the name Google or Apple sent saved on the account (when it has none), so it is there from the first visit.
+      const name = providerNameToSave(user, profile.fullName);
+      updateProfile(user, { onboarded: true, ...(name ? { fullName: name } : {}) }).catch((e) => {
         req.log.warn({ err: e }, "[boot] could not mark a Bots app account onboarded after sign-in");
       });
     }

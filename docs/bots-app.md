@@ -31,7 +31,8 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
   screen route answers every `bots.*` id, and `home` (where every "go to the app" in today's flows points) becomes `bots.home`.
 * **The first run** (screens/firstRun.ts): Welcome → Sign in → Code in the sign-in gate (`auth.screen` = `botsAuthTree()`), then
   straight to Home and its welcome: nothing is asked once they are in (App Review 4). The boot marks a signed-in account onboarded
-  (routes/app/appScreens.ts). The gate is an OnboardStage with a `BlipSpot` per step, so the apps draw **one Blip** walking across it
+  (routes/app/appScreens.ts), with the name Google or Apple sent saved on it when it has none (`providerNameToSave`; the same on
+  `PUT /v1/profile { onboarded: true }`), theirs to change later. The gate is an OnboardStage with a `BlipSpot` per step, so the apps draw **one Blip** walking across it
   (the phone's BlipHost, the window's blip.js walker). `bots.name-it` is only a hand-off to Home now, for an app that still opens it.
   The name and gender are the About you card's, on Home from the 3rd visit (firstRun/aboutCard.ts): the name filled in from the sign-in and editable (signed in with Apple, never required, and no field when Apple gave none), the gender, then a second step that names the assistant (optional; Keep X0). Language, Turn on Keybot, First
   words and Plans are pages reached from the app.
