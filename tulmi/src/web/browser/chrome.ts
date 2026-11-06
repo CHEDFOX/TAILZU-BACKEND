@@ -16,7 +16,8 @@
  * there. Chrome is also told not to resolve any name itself
  * (--host-resolver-rules), to leave QUIC and WebRTC UDP off, and to do nothing
  * in the background, so nothing it does can bypass the proxy. The profile
- * folder is removed when Chrome is closed.
+ * folder is removed when Chrome is closed, once nothing it started (its process
+ * group) is still running.
  *
  * No sandbox flag unless this process is root (a container usually is), where
  * Chrome refuses to start without --no-sandbox. That trades away the sandbox
@@ -26,7 +27,7 @@
  * Free of the app on purpose: node builtins only.
  */
 import { spawn, type ChildProcess } from "node:child_process";
-import { accessSync, constants, mkdtempSync, readdirSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -101,9 +102,12 @@ export interface LaunchedChrome {
   readonly alive: boolean;
   /** Runs `fn` when the process exits (now, if it already has). */
   onExit(fn: () => void): void;
-  /** Stops Chrome and deletes its profile folder. Safe to call again. */
+  /** Stops Chrome and what it started, and deletes its profile folder: it is gone when this resolves. Safe to call again. */
   close(): Promise<void>;
 }
+
+/** Chrome leads a process group of its own (not on Windows), so that what it started can be found and stopped once it has gone. */
+const GROUPED = process.platform !== "win32";
 
 /** Everything launched and not yet closed, so that a process exiting does not leave Chromes behind. */
 const live = new Set<ChildProcess>();
@@ -111,10 +115,53 @@ let hooked = false;
 function killAllOnExit(): void {
   if (hooked) return;
   hooked = true;
-  process.on("exit", () => { for (const p of live) { try { p.kill("SIGKILL"); } catch { /* gone */ } } });
+  process.on("exit", () => {
+    for (const p of live) { try { if (GROUPED && p.pid) process.kill(-p.pid, "SIGKILL"); else p.kill("SIGKILL"); } catch { /* gone */ } }
+  });
 }
 
 const isRoot = (): boolean => typeof process.getuid === "function" && process.getuid() === 0;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Whether anything in Chrome's process group still runs. Some of what Chrome starts outlives it: after a SIGKILL, and now and then after a SIGTERM, its
+ * zygote, GPU process or network service is still running when its exit is reported, and so are the sandbox's brokers, which open and create files in the
+ * profile for them and do not have it on their command line. Zombies are not counted: they write nothing, and where nobody reaps orphans (a container whose
+ * first process is node) they never go.
+ */
+function groupRunning(pgid: number): boolean {
+  let names: string[];
+  try { names = readdirSync("/proc"); } catch {
+    try { process.kill(-pgid, 0); return true; } catch { return false; }
+  }
+  for (const name of names) {
+    if (!/^\d+$/.test(name)) continue;
+    try {
+      const stat = readFileSync(`/proc/${name}/stat`, "utf8");
+      const [state, , group] = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      if (state !== "Z" && Number(group) === pgid) return true;
+    } catch { /* gone while we looked */ }
+  }
+  return false;
+}
+
+/**
+ * Once Chrome itself has exited: kills what is left of its group and waits for it to go, then deletes the profile folder and looks again, until it is really
+ * gone (within a few seconds). Deleted while one of them still wrote into it, the folder was not removed or was made again, and stayed in the temp directory.
+ */
+async function removeProfile(profile: string, pgid: number | undefined): Promise<void> {
+  const end = Date.now() + 10_000;
+  while (pgid && groupRunning(pgid) && Date.now() < end) {
+    try { process.kill(-pgid, "SIGKILL"); } catch { /* gone */ }
+    await sleep(50);
+  }
+  for (;;) {
+    await rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
+    if (!existsSync(profile) || Date.now() >= end) return;
+    await sleep(100);
+  }
+}
 
 /** Starts Chrome and resolves once it has printed where to talk to it. */
 export async function launch(o: LaunchOptions): Promise<LaunchedChrome> {
@@ -153,7 +200,7 @@ export async function launch(o: LaunchOptions): Promise<LaunchedChrome> {
     "about:blank",
   ];
 
-  const proc = spawn(o.chromePath, args, { stdio: ["ignore", "ignore", "pipe"] });
+  const proc = spawn(o.chromePath, args, { stdio: ["ignore", "ignore", "pipe"], detached: GROUPED });
   live.add(proc);
   killAllOnExit();
 
@@ -170,7 +217,6 @@ export async function launch(o: LaunchOptions): Promise<LaunchedChrome> {
   });
   proc.once("error", () => { alive = false; live.delete(proc); });
 
-  const cleanup = () => rm(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }).catch(() => {});
   let closing: Promise<void> | null = null;
   const close = (): Promise<void> => (closing ??= (async () => {
     if (alive) {
@@ -179,7 +225,7 @@ export async function launch(o: LaunchOptions): Promise<LaunchedChrome> {
       await gone;
       clearTimeout(timer);
     }
-    await cleanup();
+    await removeProfile(profile, GROUPED ? proc.pid : undefined);
   })());
 
   let wsUrl: string;

@@ -189,6 +189,25 @@ describe.skipIf(!posix)("launch, with a Chrome made of a shell script", () => {
     expect(newProfiles()).toEqual([]);
   });
 
+  it.skipIf(!hasProc)("what Chrome started and left running is stopped, and the profile folder is gone when close() resolves", async () => {
+    // Like the sandbox's brokers, the helper does not have the profile on its command line, and it goes on writing into the profile (making the folder
+    // again if it has to) for half a minute after Chrome has gone.
+    const helper = script("helper.sh", 'i=0; while [ $i -lt 3000 ]; do mkdir -p "$P/Default"; : > "$P/Default/f$i"; i=$((i+1)); sleep 0.01; done');
+    const pidFile = join(work, "helper.pid");
+    const chrome = script("outlived.sh", `for a in "$@"; do case "$a" in --user-data-dir=*) P="\${a#--user-data-dir=}";; esac; done\nexport P; "${helper}" </dev/null >/dev/null 2>&1 &\necho $! > "${pidFile}"\nprintf 'DevTools listening on ws://127.0.0.1:1/devtools/browser/x\\n' >&2; exec sleep 30`);
+    const running = (pid: number) => { try { const s = readFileSync(`/proc/${pid}/stat`, "utf8"); return s[s.lastIndexOf(")") + 2] !== "Z"; } catch { return false; } };
+    const c = await launch({ chromePath: chrome, proxyPort: 9 });
+    const [profile] = newProfiles();
+    expect(await eventually(() => existsSync(join(tmpdir(), profile!, "Default")), 5_000)).toBe(true);
+    const helperPid = Number(readFileSync(pidFile, "utf8"));
+    expect(running(helperPid)).toBe(true);
+    await c.close();
+    expect(running(helperPid)).toBe(false);
+    expect(newProfiles()).toEqual([]);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(newProfiles()).toEqual([]); // and nothing made it again
+  });
+
   it("onExit runs when Chrome goes, and at once if it already has", async () => {
     const c = await launch({ chromePath: script("lives.sh", `printf 'DevTools listening on ws://127.0.0.1:1/devtools/browser/x\\n' >&2; exec sleep 30`), proxyPort: 9 });
     let told = 0;

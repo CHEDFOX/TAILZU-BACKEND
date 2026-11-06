@@ -14,6 +14,8 @@ const outDir = vi.hoisted(() => {
   const nodePath = require("node:path") as typeof import("node:path");
   const dir = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "reality-out-"));
   process.env.E2E_OUT_DIR = dir;
+  // This file's own clone cache: which projects are installed is the test's to say, not the machine's (e2e/cache is not in git).
+  process.env.E2E_CACHE_DIR = nodeFs.mkdtempSync(nodePath.join(nodeOs.tmpdir(), "reality-cache-"));
   return dir;
 });
 
@@ -29,6 +31,8 @@ import { newState, runStages, stage4 } from "../e2e/reality/stages.js";
 import { ResultsStore } from "../e2e/reality/store.js";
 import type { Arm, StageEstimate, TaskOutcome } from "../e2e/reality/types.js";
 import { probeKeyNow } from "../e2e/reality/scoreboard.js";
+import { depsDirOf, loadRepos } from "../e2e/repos.js";
+import { CACHE_DIR } from "../e2e/util.js";
 
 const catalog = (): Catalog => ({
   fetchedAt: Date.now(), source: "live",
@@ -48,6 +52,20 @@ const base = (over: Partial<RealityOptions> = {}): RealityOptions => ({
 });
 
 const free = { leftInr: () => Number.POSITIVE_INFINITY, charge: () => undefined };
+
+/** Every project of repos.json recorded as installed in this file's cache, as `npm run e2e:repos -- install` leaves it, without cloning or installing anything. */
+function recordAllInstalled(): void {
+  const state: Record<string, unknown> = {};
+  for (const r of loadRepos()) {
+    state[r.id] = { installedAt: new Date().toISOString(), depDirs: [], installSec: 0, installMB: 0 };
+    if (r.install.manager === "pip") {
+      const python = path.join(depsDirOf(r), r.install.venv ?? "venv", "bin", "python");
+      fs.mkdirSync(path.dirname(python), { recursive: true });
+      fs.writeFileSync(python, "");
+    }
+  }
+  fs.writeFileSync(path.join(CACHE_DIR, "state.json"), JSON.stringify(state));
+}
 
 function sim(scenario: "clear" | "tie" | "mixed", seed = 1): SimExecutor {
   return new SimExecutor({ scenario, seed, fx: 88, catalog: catalog(), outDir: tmp("reality-sim-"), log: () => undefined });
@@ -241,6 +259,8 @@ describe("the estimate", () => {
   });
 
   it("the plans grow: quick about 12 tasks, standard about 24, deep all 71", async () => {
+    // A real plan leaves out the tasks whose project is not installed here, so every project is recorded as installed first.
+    recordAllInstalled();
     const sizes = [];
     for (const plan of ["quick", "standard", "deep"] as const) sizes.push((await buildCtx(base({ plan, estimateOnly: true, mode: "real" }))).sample.ordered.length);
     expect(sizes).toEqual([12, 24, 71]);

@@ -554,7 +554,7 @@
       "stack": "Node API fixture (no dependencies, node:test), 14 files",
       "kind": "node-api",
       "language": "javascript",
-      "pin": "672e51ac5231f89588c13c2308a22be7b3a7c71b",
+      "pin": "56406e1cafeb1380a144f0121eb0ef864d4ef060",
       "depth": 1,
       "workdir": "",
       "install": {
@@ -594,7 +594,7 @@
       "stack": "React app fixture (vitest, testing-library), 15 files",
       "kind": "react-app",
       "language": "javascript",
-      "pin": "83830c0e18564ae6994df761a1ec611815e705c4",
+      "pin": "4aade47cd9c0dc00a2f1d8829da895ac9f60317c",
       "depth": 1,
       "workdir": "",
       "install": {

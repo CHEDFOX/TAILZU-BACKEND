@@ -108,17 +108,19 @@ function hashDir(dir: string): string {
 }
 
 /**
- * A fixture project as a git repository in the clone cache: one commit, made from the folder with a fixed author and date, so the commit hash is the same on
- * every machine for the same files. Rebuilt when the folder changed; installed dependencies are left where they are.
+ * A fixture project as a git repository in the clone cache: one commit, made from the folder with a fixed author and date and without the user's own git
+ * config, so the commit hash is the same on every machine for the same files (a `commit.gpgsign` in ~/.gitconfig signs the commit, and the signature is part
+ * of the hash, so the tasks' pinned commit did not exist on a machine without it). Rebuilt when the folder changed; installed dependencies are left where they are.
  */
 export function ensureFixture(r: RepoSpec): string {
   const hit = fixturePins.get(r.id);
   if (hit) return hit;
   const src = path.join(E2E_DIR, r.fixture!);
   const dir = path.join(CLONES_DIR, r.clone ?? r.id);
-  const hash = hashDir(src);
+  // The marker names the recipe as well as the files, so a clone committed with the user's git config (another hash) is rebuilt once.
+  const hash = `no-user-config ${hashDir(src)}`;
   const marker = path.join(dir, ".git", "fixture-hash");
-  const g = (args: string[]): string => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "tailzu-e2e", GIT_AUTHOR_EMAIL: "e2e@tailzu.local", GIT_COMMITTER_NAME: "tailzu-e2e", GIT_COMMITTER_EMAIL: "e2e@tailzu.local", GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z" } }).trim();
+  const g = (args: string[]): string => execFileSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "tailzu-e2e", GIT_AUTHOR_EMAIL: "e2e@tailzu.local", GIT_COMMITTER_NAME: "tailzu-e2e", GIT_COMMITTER_EMAIL: "e2e@tailzu.local", GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z" } }).trim();
   if (!(fs.existsSync(marker) && fs.readFileSync(marker, "utf8") === hash)) {
     mkdirp(dir);
     for (const e of fs.readdirSync(dir)) if (e !== "node_modules") rmrf(path.join(dir, e));
