@@ -226,7 +226,8 @@ function eventRow(e: FeedEvent, i: FeedInput): FeedRow {
   return {
     id: `ask:${e.id}`, type: "ask", bot: e.bot, title: `“${clip(e.title, 110)}”`, sub: `You asked · ${when}`, at: e.at, mark: "done",
     paise: e.paise,
-    open: { screenId: "bots.ask", params: { message: e.title, bot: e.bot } },
+    // Its own small page (screens/shell/activityItem.ts), not Ask again with the box filled in: a tap here is to look back at it.
+    open: { screenId: "bots.activity.item", params: { id: `ask:${e.id}`, message: e.title, bot: e.bot, at: String(e.at) } },
   };
 }
 

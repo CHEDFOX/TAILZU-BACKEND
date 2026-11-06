@@ -12,6 +12,7 @@ export const SCREENS = {
   // screens/shell.ts: Home and around it, first run, system states
   home: "bots.home",                 // Main / DeskHome (built: the reference screen)
   activity: "bots.activity",         // Activity / DeskActivity
+  activityItem: "bots.activity.item", // One ask from Activity: what was asked, a few numbers, ask again (params: id, message, bot, at)
   ask: "bots.ask",                   // Ask / DAsk, DeskAsk (a minimal answer page is built; replace it)
   search: "bots.search",             // Search / DSearch
   tasks: "bots.tasks",               // Tasks / DTasks

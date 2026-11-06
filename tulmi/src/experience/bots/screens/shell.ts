@@ -38,6 +38,7 @@ import { routinesRow, ROUTINES_PATH, type RoutinesData } from "./routines.js";
 import { FINDS_PATH, isFindsId } from "./finds.js";
 import type { Card } from "../../../everyday/index.js";
 import { type ActivityData, activityDesk, activityPhone } from "./shell/activity.js";
+import { activityItem } from "./shell/activityItem.js";
 import { stepDot, approveTop, approvePay } from "./shell/approvePay.js";
 import { askAnswer } from "./shell/askAnswer.js";
 import { type Route, askCompose } from "./shell/askCompose.js";
@@ -352,6 +353,7 @@ export const shellScreens: BotsScreen[] = [
   }),
   screen({ id: SCREENS.empty, build: (ctx) => emptyHome(ctx) }),
   screen<ActivityData>({ id: SCREENS.activity, load: activityLoad, build: (ctx, d) => (ctx.client === "desktop" ? activityDesk(ctx, d) : activityPhone(ctx, d)) }),
+  screen<ActivityData>({ id: SCREENS.activityItem, load: activityLoad, build: (ctx, d) => activityItem(ctx, d) }),
   screen<Route & { cards?: Card[] }>({
     id: SCREENS.ask,
     // Composing: who would answer what they typed. An answer: the cards its everyday tools found (screens/finds.ts), when it has any.

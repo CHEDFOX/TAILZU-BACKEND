@@ -70,6 +70,8 @@ describe("one feed across everything the bots did", () => {
     expect(by["task:t2"]!.bot).toBe("plan");
     expect(by["task:t2"]!.money).toBeUndefined();
     expect(by["ask:e1"]).toMatchObject({ bot: "travel", paise: 240, type: "ask" });
+    // An ask opens its own small page, not Ask with its box filled in again.
+    expect(by["ask:e1"]!.open).toEqual({ screenId: "bots.activity.item", params: { id: "ask:e1", message: "Mumbai to Goa under ₹5,000", bot: "travel", at: String(FIXED_NOW - 2 * HOUR) } });
     expect(by["pay:e2"]).toMatchObject({ type: "payment", title: "Electricity bill. You pressed pay by UPI.", open: { screenId: "bots.approve", params: { receipt: "e2" } } });
     expect(by["words:2026-10-28"]).toMatchObject({ bot: "keybot", title: "Wrote 412 words by voice", sub: "Keylessbord · WhatsApp, Gmail" });
   });
@@ -433,7 +435,7 @@ describe("the shell's screens", () => {
   });
   it("every screen keeps the kit's rules on both clients, with data and without", async () => {
     const api = { [`GET /v1/shell/activity?tz=${IST}`]: ACTIVITY, "GET /v1/shell/started": { started: false } };
-    for (const id of ["bots.home", "bots.empty-home", "bots.activity", "bots.ask", "bots.search", "bots.tasks", "bots.approve", "bots.offline", "bots.today", "bots.notes", "bots.note"]) {
+    for (const id of ["bots.home", "bots.empty-home", "bots.activity", "bots.activity.item", "bots.ask", "bots.search", "bots.tasks", "bots.approve", "bots.offline", "bots.today", "bots.notes", "bots.note"]) {
       for (const client of both) {
         for (const deps of [fakeDeps(), fakeDeps({ api })]) {
           const s = await buildBotsScreen(req(id, client, id === "bots.approve" ? { upi: UPI } : {}), deps);
@@ -441,6 +443,38 @@ describe("the shell's screens", () => {
         }
       }
     }
+  });
+});
+
+describe("one ask from Activity", () => {
+  const api = { [`GET /v1/shell/activity?tz=${IST}`]: ACTIVITY };
+  const params = { id: "ask:e1", message: "Mumbai to Goa under ₹5,000", bot: "travel", at: String(FIXED_NOW - 2 * HOUR) };
+  it("shows the ask, when, a few numbers and three ways on; none of Ask's composing", async () => {
+    for (const client of both) {
+      const s = await buildBotsScreen(req("bots.activity.item", client, params), fakeDeps({ api }));
+      const t = texts(s.root!);
+      expect(t, client).toEqual(expect.arrayContaining(["“Mumbai to Goa under ₹5,000”", "Ask again", "Clear from Activity", "First", "time you asked this"]));
+      expect(t.some((x) => /^Open /.test(x)), client).toBe(true);
+      expect(t, client).toEqual(expect.arrayContaining(["1", "ask to Travel bot in 7 days", "You asked · Today, 5:40 pm"]));
+      for (const gone of ["Photo", "File", "Screen", "Paste", "Or hand it to", "Or try", "Live"]) expect(t, `${client} ${gone}`).not.toContain(gone);
+      expect(json(s.root)).not.toContain('"type":"TextField"');
+      expect(lintTree(s.root!), client).toEqual([]);
+      const all = json(presses(s.root!));
+      // Ask again: the same words to the same bot, the answer opened as Ask's is.
+      expect(all).toContain('"path":"/v1/shell/ask"');
+      expect(all).toContain('"bot":"travel"');
+      expect(all).toContain('"screenId":"bots.ask"');
+      // Clear: the list forgets this row.
+      expect(all).toContain('"path":"/v1/shell/activity/clear","body":{"id":"ask:e1"}');
+      expect(json(s.state)).toContain("Mumbai to Goa under ₹5,000");
+    }
+  });
+  it("still reads from its own params when Activity could not be read; the front door's ask offers a new one instead of a page", async () => {
+    const s = await buildBotsScreen(req("bots.activity.item", "phone", { ...params, bot: "tailzu" }), fakeDeps());
+    const t = texts(s.root!);
+    expect(t).toEqual(expect.arrayContaining(["“Mumbai to Goa under ₹5,000”", "Ask again", "Ask something new"]));
+    expect(t.some((x) => /in 7 days/.test(x))).toBe(false);
+    expect(lintTree(s.root!)).toEqual([]);
   });
 });
 
