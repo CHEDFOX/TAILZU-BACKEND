@@ -6,13 +6,15 @@
  *                                     in, none to show there too). It never reads anyone's bot (the bot pages are fetched at every
  *                                     launch): people and counts come from grants and shares
  *   person(viewer, bot, space, owner) the one place that lists another person's things: theirs the viewer may see
- *   mine(viewer, bot)                 the viewer's own things ("/" in the feed picks one)
+ *   mine(viewer, bot, { space?, tz? })   the viewer's own things ("/" in the feed picks one); for a space's admin, with its space,
+ *                                     each member's too (ofMember ids), after theirs
  *   item / act                        one thing, and working on it: Change time on a plan event, or Add a note. Its owner also
  *                                     gets who it is shared with (each with Stop sharing: grants.ts revoke)
  *   canWork(viewer, owner, bot, item, space)   who may: "own", "admin", "shared", "view", or nobody (null)
  *
- * WHO MAY. The owner. The space's admin, for a member who saw the line about the admin (consent_ms). Someone a grant reaches
- * (grants.ts). Someone the owner shares that bot with through the old per-bot sharing (spaceShares.ts): that was made read only, so
+ * WHO MAY. The owner. The space's admin, for a member who agreed to the line about the admin as it is now (spacePerms.ts hasConsent).
+ * Someone a grant reaches (grants.ts), whether its owner made it or the admin did ("Shared by Aanya": found under the owner, with the
+ * same access). Someone the owner shares that bot with through the old per-bot sharing (spaceShares.ts): that was made read only, so
  * it stays "view": a look and a note, never a change. Everyone but the owner must name a space both are in now, with no block between
  * them; anything else is the same 404 as a thing that isn't there. Xode's projects are read only for everyone but their owner.
  * Changing a plan's time is for the owner, the admin and someone it was shared with by name: a share to everyone reaches whoever is
@@ -28,10 +30,11 @@ import { BotError } from "../bots/index.js";
 import { calendar, type CalEvent } from "../calendar/index.js";
 import { clockAt, dayOf, dayWords, hhmm, isDayKey, MIN, minuteOf, startOfDay, timeOf, tzOf } from "../calendar/words.js";
 import { screenPost } from "./filter.js";
-import type { GrantReach, Grants } from "./grants.js";
+import { byAdmin, type GrantReach, type GrantRow, type Grants } from "./grants.js";
 import { shownLook, looksIn, lookOf, seen, type PersonLook } from "./personLook.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { isShareBot, type OwnItem, type ShareBot, type ShareSource, type ShareSources, type SpaceShares } from "./spaceShares.js";
+import { hasConsent } from "./spacePerms.js";
 import type { MemberRow, Spaces, SpaceRow } from "./spaces.js";
 
 export interface WorkNoteRow {
@@ -58,15 +61,32 @@ export interface WorkItem {
   /** `bot`: who wrote it, as their tiny bot (the viewer's own: their X0 bot). */
   notes: Array<{ id: string; by: string; you: boolean; bot: PersonLook; text: string; at: number }>;
   can: { time: boolean; note: boolean };
-  /** Its owner only (empty for anyone else): who it is shared with, in which space ("Everyone" for a share to everyone). */
+  /** Its owner only (empty for anyone else): who they shared it with, in which space ("Everyone" for a share to everyone). */
   shared: Array<{ grantId: string; spaceId: string; spaceName: string; to: string }>;
+  /** It reaches the viewer through a share the space's admin made, not its owner: the admin's name ("Shared by Aanya"). */
+  sharedBy?: string;
 }
+/** One of someone's things the viewer may see; `sharedBy` as on WorkItem. */
+export type SharedItem = OwnItem & { sharedBy?: string };
 export type WorkHow = WorkItem["how"];
 
 export const BOT_NAMES: Record<ShareBot, string> = { plan: "Plan Ease", notes: "Notes", travel: "Travel bot", code: "Xode" };
 /** What one thing is called in each bot: plan(s), note(s), trip(s), project(s). */
 const NOUN: Record<ShareBot, string> = { plan: "plan", notes: "note", travel: "trip", code: "project" };
 const nouns = (bot: ShareBot, n: number) => `${n} ${NOUN[bot]}${n === 1 ? "" : "s"}`;
+
+/**
+ * A person's line in Work in space when things of theirs were shared with the viewer: "2 plans shared with you"; a thing only the
+ * space's admin shared says so ("1 plan · Shared by Aanya", or "3 plans shared with you · 1 by Aanya"). Counted by thing, not grant.
+ */
+function sharedLine(bot: ShareBot, gs: GrantRow[], rows: MemberRow[]): string {
+  const byOwner = new Set(gs.filter((g) => !byAdmin(g)).map((g) => g.item_id));
+  const onlyAdmin = new Map(gs.filter((g) => byAdmin(g) && !byOwner.has(g.item_id)).map((g) => [g.item_id, g.by_id!]));
+  const n = byOwner.size + onlyAdmin.size;
+  if (!onlyAdmin.size) return `${nouns(bot, n)} shared with you`;
+  const who = rows.find((r) => r.user_id === [...onlyAdmin.values()][0])?.name ?? "the admin";
+  return byOwner.size ? `${nouns(bot, n)} shared with you · ${onlyAdmin.size} by ${who}` : `${nouns(bot, n)} · Shared by ${who}`;
+}
 
 /** Another person's things an admin sees at once: at most this many. */
 const ADMIN_ITEMS = 50;
@@ -84,7 +104,20 @@ function noteLook(looks: ReadonlyMap<string, PersonLook> | undefined, n: WorkNot
   return looks ? shownLook(looks, n.by_id, viewer) : seen(lookOf(n.by_id), viewer);
 }
 const isDraft = (s: SpaceRow): boolean => s.draft_ms !== null && s.draft_ms !== undefined;
-const consentedRow = (m: MemberRow): boolean => m.consent_ms !== null && m.consent_ms !== undefined;
+
+/**
+ * A member's thing as the admin's "/" list names it (mine with a space): "of:<owner>:<item>". The apps send it back as the thing's id
+ * unchanged (spaceFeed.ts send reads it with memberThing), so the list and the box need nothing new. A user id has no ":".
+ */
+export const ofMember = (ownerId: string, itemId: string): string => `of:${ownerId}:${itemId}`;
+export function memberThing(id: string): { ownerId: string; itemId: string } | null {
+  const m = /^of:([^:]+):([\s\S]+)$/.exec(id);
+  return m ? { ownerId: m[1]!, itemId: m[2]! } : null;
+}
+/** A thing's line in the admin's "/" list: a plan's event by its day and time ("Sat 14 Nov · 7:40 pm"), anything else as it is. */
+function whenOf(bot: ShareBot, i: OwnItem, tz: number): string {
+  return bot === "plan" && i.id.startsWith("e:") && i.line === "Event" && typeof i.at === "number" ? `${dayWords(dayOf(i.at, tz))} · ${clockAt(i.at, tz)}` : i.line;
+}
 
 export class Work {
   private readonly notes: PagedTable<WorkNoteRow>;
@@ -127,9 +160,9 @@ export class Work {
     const out: WorkPerson[] = [];
     for (const m of others) {
       const who = { userId: m.user_id, name: m.name, bot: shownLook(looks, m.user_id, viewer) };
-      if (admin && consentedRow(m)) { out.push({ ...who, how: "admin", line: `All their ${NOUN[bot]}s` }); continue; }
+      if (admin && hasConsent(m)) { out.push({ ...who, how: "admin", line: `All their ${NOUN[bot]}s` }); continue; }
       const gs = granted.get(m.user_id) ?? [];
-      if (gs.length) { out.push({ ...who, how: "shared", line: `${nouns(bot, gs.length)} shared with you` }); continue; }
+      if (gs.length) { out.push({ ...who, how: "shared", line: sharedLine(bot, gs, rows) }); continue; }
       const r = shared.get(m.user_id);
       if (r?.mode === "all") out.push({ ...who, how: "view", line: "Everything they share" });
       else if (r?.mode === "some" && r.items.length) out.push({ ...who, how: "view", line: `${nouns(bot, r.items.length)} shared` });
@@ -150,7 +183,7 @@ export class Work {
       const rows = await this.spaces.memberRows(s.id);
       looksBy.set(s.id, looksIn(rows.map((r) => r.user_id)));
       const me = rows.find((r) => r.user_id === viewer);
-      if (!m.admin && me && consentedRow(me) && !hidden.has(s.owner_id)) {
+      if (!m.admin && me && hasConsent(me) && !hidden.has(s.owner_id)) {
         const adminName = rows.find((r) => r.user_id === s.owner_id)?.name;
         if (adminName && !seenBy.includes(adminName)) seenBy.push(adminName);
       }
@@ -180,28 +213,51 @@ export class Work {
   }
 
   /** What of `ownerId`'s things in `bot` the viewer may see in this space, as their bot lists them now. */
-  async person(viewer: string, botIn: unknown, spaceId: string, ownerId: string): Promise<{ space: { id: string; name: string }; person: WorkPerson; items: OwnItem[] }> {
+  async person(viewer: string, botIn: unknown, spaceId: string, ownerId: string): Promise<{ space: { id: string; name: string }; person: WorkPerson; items: SharedItem[] }> {
     const { bot, src } = this.source(botIn);
-    const { s, person } = await this.personIn(viewer, bot, spaceId, ownerId);
+    const { s, rows, person } = await this.personIn(viewer, bot, spaceId, ownerId);
     const theirs = await this.listOf(src, ownerId);
-    let items: OwnItem[];
+    let items: SharedItem[];
     if (person.how === "admin") items = theirs.slice(0, ADMIN_ITEMS);
     else {
+      // What the owner shared (a grant, or the old per-bot sharing), and what only the admin's shares reach: "Shared by Aanya".
       const ids = new Set<string>();
+      const byWhom = new Map<string, string>();
       const hidden = await this.grants.blocks.hiddenFor(viewer);
       const granted = (await this.grants.reaching(viewer, s.id, bot, [ownerId], hidden)).get(ownerId) ?? [];
-      for (const g of granted) ids.add(g.item_id);
+      for (const g of granted) {
+        if (byAdmin(g)) byWhom.set(g.item_id, g.by_id!);
+        else ids.add(g.item_id);
+      }
       const rule = await this.shares.rule(s.id, ownerId, bot);
       if (rule.mode === "all") for (const i of theirs) ids.add(i.id);
       else if (rule.mode === "some") for (const id of rule.items) ids.add(id);
-      items = theirs.filter((i) => ids.has(i.id));
+      const nameOf = (id: string) => rows.find((r) => r.user_id === id)?.name ?? "the admin";
+      items = theirs.filter((i) => ids.has(i.id) || byWhom.has(i.id)).map((i) => (ids.has(i.id) ? i : { ...i, sharedBy: nameOf(byWhom.get(i.id)!) }));
     }
     return { space: { id: s.id, name: s.name }, person, items };
   }
 
-  async mine(viewer: string, botIn: unknown): Promise<{ items: OwnItem[] }> {
-    const { src } = this.source(botIn);
-    return { items: await this.listOf(src, viewer) };
+  /**
+   * The viewer's own things ("/" in a space's feed picks one). With `space`, for that space's admin alone: theirs first, then each
+   * member's who agreed to the line about the admin as it is now (oldest member first; nobody with a block between them), their ids
+   * made by ofMember and their line saying whose ("Mom's · Sat 14 Nov · 7:40 pm"), so the apps' list needs nothing new. Anyone else
+   * gets their own, as without it. Only this reads the members' bots, when the admin picks a bot in "/".
+   */
+  async mine(viewer: string, botIn: unknown, o: { space?: unknown; tz?: unknown } = {}): Promise<{ items: OwnItem[] }> {
+    const { bot, src } = this.source(botIn);
+    const items = [...(await this.listOf(src, viewer))];
+    const s = typeof o.space === "string" && o.space ? await this.spaces.spaceRow(o.space) : null;
+    if (!s || isDraft(s) || s.owner_id !== viewer) return { items };
+    const tz = tzOf(o.tz);
+    const hidden = await this.grants.blocks.hiddenFor(viewer);
+    for (const m of await this.spaces.memberRows(s.id)) {
+      if (m.user_id === viewer || hidden.has(m.user_id) || !hasConsent(m)) continue;
+      for (const i of (await this.listOf(src, m.user_id)).slice(0, ADMIN_ITEMS)) {
+        items.push({ ...i, id: ofMember(m.user_id, i.id), line: [`${m.name}'s`, whenOf(bot, i, tz)].filter(Boolean).join(" · ") });
+      }
+    }
+    return { items };
   }
 
   // ------------------------------------------------------------------ one thing
@@ -210,8 +266,11 @@ export class Work {
     return (await this.accessOf(viewerId, ownerId, botIn, itemId, spaceId))?.how ?? null;
   }
 
-  /** canWork, and for "shared" how the grant reaches them (a share to them by name, or to everyone). */
-  private async accessOf(viewerId: string, ownerId: string, botIn: unknown, itemId: string, spaceId: string): Promise<{ how: WorkHow; reach?: GrantReach } | null> {
+  /**
+   * canWork, and for "shared" how the grant reaches them (a share to them by name, or to everyone) and, when the admin made it rather
+   * than its owner, the admin's id (`by`).
+   */
+  private async accessOf(viewerId: string, ownerId: string, botIn: unknown, itemId: string, spaceId: string): Promise<{ how: WorkHow; reach?: GrantReach; by?: string | null } | null> {
     if (!isShareBot(botIn) || !this.sources[botIn] || !itemId) return null;
     const bot = botIn;
     if (viewerId === ownerId) return { how: "own" };
@@ -221,16 +280,16 @@ export class Work {
     const owner = rows.find((r) => r.user_id === ownerId);
     if (!owner || !rows.some((r) => r.user_id === viewerId)) return null;
     if (await this.grants.blocks.between(viewerId, ownerId)) return null;
-    if (s.owner_id === viewerId && consentedRow(owner)) return { how: "admin" };
-    const reach = await this.grants.holds(viewerId, s.id, ownerId, bot, itemId);
-    if (reach) return { how: "shared", reach };
+    if (s.owner_id === viewerId && hasConsent(owner)) return { how: "admin" };
+    const held = await this.grants.holds(viewerId, s.id, ownerId, bot, itemId);
+    if (held) return { how: "shared", reach: held.reach, by: held.by };
     const rule = await this.shares.rule(s.id, ownerId, bot);
     if (rule.mode === "some" && rule.items.includes(itemId)) return { how: "view" };
     if (rule.mode === "all" && (await this.listOf(this.sources[bot]!, ownerId)).some((i) => i.id === itemId)) return { how: "view" };
     return null;
   }
 
-  /** Who the owner's thing is shared with, in the spaces they are in now (the owner's page only). */
+  /** Who the owner shared their thing with, in the spaces they are in now (the owner's page only; never a share the admin made). */
   private async sharedWith(ownerId: string, bot: ShareBot, itemId: string): Promise<WorkItem["shared"]> {
     const out: WorkItem["shared"] = [];
     const rowsOf = new Map<string, { s: SpaceRow; rows: MemberRow[] } | null>();
@@ -294,6 +353,7 @@ export class Work {
       how, detail, notes,
       can: { time: !!ev && !ev.fixed && (how === "own" || how === "admin" || access.reach === "one"), note: true },
       shared: how === "own" ? await this.sharedWith(ownerId, bot, itemId) : [],
+      ...(access.by ? { sharedBy: rows.find((r) => r.user_id === access.by)?.name ?? "the admin" } : {}),
     };
   }
 

@@ -346,7 +346,11 @@ clients, new and old, and checks that every endpoint a new tree names is a route
 box, with the look the server picked (`src/botsBots/personLook.ts`: `seed`, `avatar`, `color`); a build without it gets a plain circle
 in their colour, never a letter. The Spaces screens draw people with `personMark` and `facesRow` (`screens/spaces/parts.ts`).
 **`FontBricolage`**: the build has Bricolage Grotesque registered (kit `BRICOLAGE`, three families by weight); kit `messageText` sets a
-message's words in it (16/23, -0.1), in Geist without it. Lint knows Bricolage's faces as the kit's. `tests/spaces-person-bots.test.ts`
+message's words in it (16/23, -0.1), in Geist without it. Lint knows Bricolage's faces as the kit's. A space's feed, and a chat on a
+build with the new Spaces, draw messages with no box (`screens/spaces/feed.ts` `lined`): a 2 px line down one side of each, set with
+`borderLeftWidth`/`borderLeftColor` (theirs, in their colour) or `borderRightWidth`/`borderRightColor` (yours, ink), which both apps
+already draw (the phone's style passes each side; the window makes a side with a width solid), so no build needed an update for it;
+never `borderStyle` with them, which would make the window draw every side. `tests/spaces-person-bots.test.ts`
 checks that no screen of Spaces or Work in space draws an initial, and the sweep in `tests/spaces-family-screens.test.ts` that neither
 reaches a build that doesn't declare it.
 

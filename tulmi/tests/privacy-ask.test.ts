@@ -54,9 +54,9 @@ const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.i
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Xode and GitHub"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day Xode came to the terminal", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 5, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: November 5, 2026");
+  it("is effective from the day a space's admin could share members' things", () => {
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 6, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: November 6, 2026");
   });
 
   it("numbers its sections 1 to 17, once each, in order", () => {
@@ -358,9 +358,9 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: November 5, 2026");
+    expect(res.body).toContain("Effective: November 6, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "November 5, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "November 6, 2026" });
   });
 });
 

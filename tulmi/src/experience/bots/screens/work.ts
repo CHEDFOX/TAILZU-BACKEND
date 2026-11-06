@@ -4,8 +4,9 @@
  * Opened from a bot page's "Work in space" tab (screens/work/workTab.ts) or a card shared in a space's feed ("Open in Plan Ease").
  * Without `item`: one person's things in that bot that this person may work on (GET .../work/:bot/person). With it: the thing, its
  * time and place (a plan's event), the notes people added, and the two things anyone allowed may do: Change time (a plan's event,
- * when it isn't an old read-only share or a share to everyone) and Add a note. The owner sees every change, and who the thing is shared
- * with, each with Stop sharing (src/botsBots/work.ts says who may).
+ * when it isn't an old read-only share or a share to everyone) and Add a note. The owner sees every change, and who they shared the
+ * thing with, each with Stop sharing (src/botsBots/work.ts says who may). A thing the space's admin shared of someone else's is under
+ * its owner too, with "Shared by Aanya".
  *
  * Only the new Spaces' feed and tabs link here; it is plain kit, so any build draws it.
  */
@@ -21,7 +22,8 @@ import type { WorkPerson } from "./work/workTab.js";
 
 // ===================================================================== what it reads (src/botsBots/work.ts, as the routes answer)
 
-interface OwnItem { id: string; title: string; line: string; at: number | null }
+/** `sharedBy`: the space's admin, when only a share the admin made reaches the viewer ("Shared by Aanya"). */
+interface OwnItem { id: string; title: string; line: string; at: number | null; sharedBy?: string }
 interface PersonView { space: { id: string; name: string }; person: WorkPerson; items: OwnItem[] }
 interface WorkItem {
   bot: ShareBot; botName: string; id: string; title: string; line: string; at: number | null;
@@ -31,8 +33,10 @@ interface WorkItem {
   /** `bot`: who wrote it, as their tiny bot (src/botsBots/personLook.ts). */
   notes: Array<{ id: string; by: string; you: boolean; bot?: PersonLookSpec; text: string; at: number }>;
   can: { time: boolean; note: boolean };
-  /** Its owner only: who it is shared with, in which space ("Everyone" for a share to everyone). */
+  /** Its owner only: who they shared it with, in which space ("Everyone" for a share to everyone). */
   shared?: Array<{ grantId: string; spaceId: string; spaceName: string; to: string }>;
+  /** It reaches the viewer through a share the space's admin made, not its owner: the admin ("Shared by Aanya"). */
+  sharedBy?: string;
 }
 interface WorkData { person?: PersonView; item?: WorkItem }
 
@@ -46,15 +50,17 @@ function personPage(ctx: BotsCtx, bot: ShareBot, v: PersonView): ScreenResponse 
   const look = shareLook(bot);
   const p = v.person;
   const how = p.how === "admin" ? "You see these as admin." : p.how === "shared" ? "Shared with you" : "What they share with the space";
+  // Every one of them shared by the space's admin, not by them: said so.
+  const by = v.items.length && v.items.every((i) => i.sharedBy) ? v.items[0]!.sharedBy : "";
   const foot = p.how === "admin" ? `You see ${p.name}'s ${look.noun}s as admin. ${p.name} sees what you change.`
-    : p.how === "shared" ? `${p.name} shared ${v.items.length === 1 ? "this" : "these"} with you. ${p.name} sees what you change.`
+    : p.how === "shared" ? `${by || p.name} shared ${v.items.length === 1 ? "this" : "these"} with you. ${p.name} sees what you change.`
       : `${p.name} shares these with the space. You can add a note.`;
   return page(ctx, {
     back: true, title: p.name, nav: bot, maxWidth: 760, gap: 18, live: [`space:${v.space.id}`],
     body: [
       row([personMark(ctx, { seed: p.userId, bot: p.bot }, 48), col([text(p.name, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(`${v.space.name} · ${how}`, { size: 13 })], { gap: 2, flexShrink: 1 })], { gap: 14 }),
       v.items.length
-        ? col([sectionLabel(`${look.name} · ${p.line}`), rowsCard(v.items.map((i) => listRow({ label: i.title, sub: i.line || undefined, onPress: { kind: "navigate", screenId: SCREENS.work, params: { bot, space: v.space.id, owner: p.userId, item: i.id } } })))], { gap: 8 })
+        ? col([sectionLabel(`${look.name} · ${p.line}`), rowsCard(v.items.map((i) => listRow({ label: i.title, sub: [i.sharedBy ? `Shared by ${i.sharedBy}` : "", i.line].filter(Boolean).join(" · ") || undefined, onPress: { kind: "navigate", screenId: SCREENS.work, params: { bot, space: v.space.id, owner: p.userId, item: i.id } } })))], { gap: 8 })
         : emptyState({ pose: "think", title: "Nothing here right now", body: `When ${p.name} shares something from ${look.name}, it shows here.` }),
       meta(foot, { size: 12 }),
     ],
@@ -88,7 +94,7 @@ function itemPage(ctx: BotsCtx, it: WorkItem): ScreenResponse {
   ];
   const foot = it.how === "own" ? "Only you change these."
     : it.how === "admin" ? `You see ${owner}'s ${look.noun}s as admin. ${owner} sees what you change.`
-      : it.how === "shared" ? `${owner} shared this with you. ${owner} sees what you change.`
+      : it.how === "shared" ? `${it.sharedBy || owner} shared this with you. ${owner} sees what you change.`
         : `${owner} shares this with the space. You can add a note.`;
   // Its owner: who has it, from "/" in a space's feed, and the way to take it back (the card leaves the feed with it).
   const shared = it.how === "own" ? it.shared ?? [] : [];
@@ -104,7 +110,7 @@ function itemPage(ctx: BotsCtx, it: WorkItem): ScreenResponse {
     body: [
       col([
         text(it.title, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }),
-        meta([`${it.owner.you ? "Your" : `${owner}'s`} ${look.noun}`, look.name, it.space.name].filter(Boolean).join(" · "), { size: 13 }),
+        meta([`${it.owner.you ? "Your" : `${owner}'s`} ${look.noun}`, look.name, it.space.name, it.sharedBy ? `Shared by ${it.sharedBy}` : ""].filter(Boolean).join(" · "), { size: 13 }),
         ...(it.line && !it.detail.when ? [meta(it.line, { size: 13 })] : []),
       ], { gap: 4 }),
       ...(lines.length ? [col(lines.flatMap((l, i) => (i ? [divider(), l] : [l])), { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" })] : []),

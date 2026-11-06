@@ -150,9 +150,10 @@ describe("Spaces (bots.spaces)", () => {
       expect(texts(nodes)).not.toContain("Your spaces");
       // An invitation waiting on the first Spaces screen is shown, not hidden behind a tap; he hops for it.
       expect(s.state).toMatchObject({ thOpen: true, news: 1, creating: false, made: false });
-      expect(texts(nodes)).toEqual(expect.arrayContaining(["You have an invitation", "Sharma Family", "Aanya invited you · 3 people", "Asked to join with the code 7KQ-29D. The space's admin will let you in.", "The space's admin can see your work and messages there.", "Have a code?"]));
+      expect(texts(nodes)).toEqual(expect.arrayContaining(["You have an invitation", "Sharma Family", "Aanya invited you · 3 people", "Asked to join with the code 7KQ-29D. The space's admin will let you in.", "The space's admin can see and share your work and messages there.", "Have a code?"]));
       const acc = callTo(stage, "PUT", `${A}/spaces/invitations/SHARMA22`);
-      expect(acc?.body).toEqual({ decision: "accept", consent: true });
+      // Which line it showed goes with the yes (spacePerms.ts lineShown).
+      expect(acc?.body).toEqual({ decision: "accept", consent: true, consentV: 2 });
       expect(texts(nodes)).not.toContain("Make a new space");
       // Every refusal here says the server's own words.
       for (const c of callsIn(s.root)) expect(said(c.onError), `${String(c.path)}`).toBe(true);
@@ -215,7 +216,7 @@ describe("Spaces (bots.spaces)", () => {
       expect(ofType(nodes, "Vanish")).toHaveLength(0);
       const stage = ofType(nodes, "BotStage")[0]!;
       const inThought = texts(walk(stage));
-      for (const w of ["Make a new space", "You have an invitation", "Gym Buddies", "Kabir invited you · 4 people", "Requests", "Ishita wants to join Home", "The space's admin can see your work and messages there.", "Have a code?"]) expect(inThought, w).toContain(w);
+      for (const w of ["Make a new space", "You have an invitation", "Gym Buddies", "Kabir invited you · 4 people", "Requests", "Ishita wants to join Home", "The space's admin can see and share your work and messages there.", "Have a code?"]) expect(inThought, w).toContain(w);
       expect(callTo(stage, "POST", `${A}/spaces/draft`)?.body).toEqual({ name: "$state.newName" });
       expect(callTo(stage, "PUT", `${A}/spaces/invitations/GYM4BUDD`)).toBeTruthy();
       const decisions = callsIn(stage).filter((c) => c.path === `${A}/spaces/invitations/GYM4BUDD`).map((c) => (c.body as { decision: string }).decision);
@@ -223,7 +224,7 @@ describe("Spaces (bots.spaces)", () => {
       const reqs = callsIn(stage).filter((c) => c.path === `${A}/spaces/s1/requests/rq-ishita`).map((c) => (c.body as { decision: string }).decision);
       expect(reqs.sort()).toEqual(["accept", "dismiss"]);
       const join = callTo(stage, "POST", `${A}/spaces/join`)!;
-      expect(join.body).toEqual({ code: "$state.code", consent: true });
+      expect(join.body).toEqual({ code: "$state.code", consent: true, consentV: 2 });
       expect(join.onSuccess).toMatchObject({ kind: "condition", if: { eq: ["joined.status", "requested"] } });
       expect(s.state).toMatchObject({ thOpen: false, news: 2 });
       for (const c of callsIn(s.root)) expect(said(c.onError), `${String(c.path)}`).toBe(true);
@@ -266,7 +267,8 @@ describe("inside a space (bots.spaces?id=)", () => {
       expect(p.height).toBeGreaterThanOrEqual(STAGE_MIN(p.size));
       expect(p.thought).toMatchObject({ style: "space", restText: "Write to everyone, or @ someone", shape: "wide", veil: false, place: "follow" });
       const field = ofType(nodes, "MentionField")[0]!;
-      expect(field.props).toMatchObject({ draftPath: "draft", thingsPath: `${A}/work/:bot/mine`, people: [{ id: "m", name: "Mom" }, { id: "r", name: "Rohan" }] });
+      // The admin's "/" offers every member's things too, after their own (in their day, for a plan's time).
+      expect(field.props).toMatchObject({ draftPath: "draft", thingsPath: `${A}/work/:bot/mine?space=s1&tz=330`, people: [{ id: "m", name: "Mom" }, { id: "r", name: "Rohan" }] });
       expect((field.props!.bots as Array<{ name: string }>).map((b) => b.name)).toEqual(["Plan Ease", "Notes", "Travel bot", "Xode"]);
       expect((field.props!.tools as Array<{ label: string }>).map((x) => x.label)).toEqual(["Ask for money", "Give a task or plan", "Group memory"]);
       // Send keeps the screen as it is (the window would wipe "said" with a fetch) and asks first on a name with no one picked.
@@ -313,11 +315,11 @@ describe("inside a space (bots.spaces?id=)", () => {
       const feed = { ...D.FEED_ROHAN, space: { ...D.FEED_ROHAN.space, consented: false } };
       const { s, nodes } = await build("bots.spaces", client, { params: { id: "s1" }, api: { [`GET ${A}/spaces/s1/feed`]: feed } });
       expect(lintTree(s.root!)).toEqual([]);
-      expect(texts(nodes)).toContain("The space's admin can see your work and messages here.");
+      expect(texts(nodes)).toContain("The space's admin can see and share your work and messages here.");
       expect(ofType(nodes, "MentionField")).toHaveLength(0);
       expect(ofType(nodes, "BotStage")).toHaveLength(0);
       expect(s.talkTo).toBeUndefined();
-      expect(callTo(s.root, "PUT", `${A}/spaces/s1/consent`)).toBeTruthy();
+      expect(callTo(s.root, "PUT", `${A}/spaces/s1/consent`)?.body).toEqual({ consentV: 2 });
     }
   });
 
@@ -413,6 +415,22 @@ describe("Work in space", () => {
       expect(texts(v.nodes)).not.toContain("Change time");
       expect(texts(v.nodes)).toContain("Mom shares this with the space. You can add a note.");
       expect(callsIn(v.s.root).some((c) => (c.body as { op?: string }).op === "time")).toBe(false);
+    }
+  });
+
+  it("a thing the admin shared of Mom's: under Mom, with \"Shared by Aanya\", and the admin said to be who shared it", async () => {
+    const person = { ...D.WORK_PERSON, person: { ...D.WORK_PERSON.person, how: "shared", line: "1 plan · Shared by Aanya" }, items: [{ ...D.WORK_PERSON.items[1]!, sharedBy: "Aanya" }] };
+    const thing = { ...D.WORK_ITEM, how: "shared", sharedBy: "Aanya" };
+    const api = {
+      [`GET ${A}/work/plan/person?space=s1&owner=m`]: person,
+      [`GET ${A}/work/plan/item?space=s1&owner=m&item=${encodeURIComponent("e:doctor@2026-11-14")}&tz=${IST}`]: { item: thing },
+    };
+    for (const client of ["phone", "desktop"] as const) {
+      const p = await build("bots.work", client, { params: { bot: "plan", space: "s1", owner: "m" }, api });
+      expect(texts(p.nodes)).toEqual(expect.arrayContaining(["Mom", "Home · Shared with you", "Doctor, knee check-up", "Shared by Aanya · Fri 14 Nov · 7:40 pm", "Aanya shared this with you. Mom sees what you change."]));
+      const it1 = await build("bots.work", client, { params: { bot: "plan", space: "s1", owner: "m", item: "e:doctor@2026-11-14" }, api });
+      expect(texts(it1.nodes)).toEqual(expect.arrayContaining(["Mom's plan · Plan Ease · Home · Shared by Aanya", "Change time", "Aanya shared this with you. Mom sees what you change."]));
+      expect(texts(it1.nodes)).not.toContain("Stop sharing");
     }
   });
 });

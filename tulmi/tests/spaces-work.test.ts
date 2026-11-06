@@ -69,7 +69,7 @@ describe("sharing one thing with \"/\"", () => {
     expect((await share(s, M_, { thing: { bot: "shop", id: "x" } })).status).toBe(404);
     const r = await share(s, M_, { text: "So you know", to: R_, thing: { bot: "plan", id: s.doctor } });
     expect(r.status).toBe(201);
-    expect(r.body.message.thing).toEqual({ grantId: expect.any(String), bot: "plan", botName: "Plan Ease", ownerId: M_, id: s.doctor, title: "Doctor visit", line: "Event" });
+    expect(r.body.message.thing).toEqual({ grantId: expect.any(String), bot: "plan", botName: "Plan Ease", ownerId: M_, ownerName: "", id: s.doctor, title: "Doctor visit", line: "Event" });
     const cards = async (who: string) => ((await s.call("GET", `${AREA}/spaces/${s.home}/feed`, who)).body.messages as Array<{ thing: unknown }>).filter((m) => m.thing).length;
     expect([await cards(M_), await cards(R_), await cards(A_), await cards(D_)]).toEqual([1, 1, 1, 0]);
     expect((await s.call("GET", `${W("plan")}/mine`, M_)).body.items.map((i: { title: string }) => i.title)).toEqual(["Doctor visit", "Satsang"]);

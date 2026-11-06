@@ -1378,7 +1378,11 @@ export interface MentionFieldProps {
   /** `bot`: the person's own tiny bot (PERSON_BOT_COMPONENT, section 3j), drawn in their row. */
   people: Array<{ id: string; name: string; bot?: Pick<PersonBotProps, "seed" | "avatar" | "color"> }>;
   bots: Array<{ slug: string; name: string; color: string; kind: BotTileKind }>;
-  /** GET path (":bot" replaced) answering { items: Array<{ id: string; title: string; line: string }> }. */
+  /**
+   * GET path (":bot" replaced; it may carry a query, e.g. "?space=s1&tz=330") answering { items: Array<{ id: string; title: string;
+   * line: string }> }. An item's id goes back in the draft as it came: the server shapes it (a space's admin is offered members'
+   * things too, by ids it reads back, each line saying whose: "Mom's · Sat 14 Nov · 7:40 pm").
+   */
   thingsPath: string;
   /** Rows after the bots in the "/" list, each running its action. */
   tools?: Array<{ id: string; label: string; action: ActionRef }>;

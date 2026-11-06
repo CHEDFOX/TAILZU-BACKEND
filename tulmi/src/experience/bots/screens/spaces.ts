@@ -17,8 +17,9 @@ import type { Node, ActionRef, ActionSpec, Condition } from "../../../../../shar
 import {
   row, text, C, call, seq, col, meta, icon, open, SCREENS, box, statusMark, grow, sectionLabel, button, type BotsCtx, notice, card,
   primaryButton, page, title, emptyState, toTab, back, picture, canSpaces2, listRow, quietButton, chips, when, segmented,
-  labelled, divider, type PersonLookSpec,
+  labelled, divider, messageText, type PersonLookSpec,
 } from "../kit.js";
+import { lookOf } from "../../../botsBots/personLook.js";
 import { canUpload, uploadChip, uploadPick } from "../media.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { invitePage } from "./spaces/invitePage.js";
@@ -34,13 +35,16 @@ import {
   type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
   openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState, countDot, quietLinks,
 } from "./spaces/spaceDetail.js";
-import { type FeedRead, FAINT, feedScreen, fileNode, messageBubble, overLine, sharedItemNode } from "./spaces/feed.js";
+import { type FeedRead, feedScreen, fileNode, lined, overLine, setIn, sharedItemNode } from "./spaces/feed.js";
 import { joinParam, type SpacesFull, startScreen } from "./spaces/start.js";
 import { peoplePage } from "./spaces/peoplePage.js";
 import { said } from "../said.js";
 
 interface Thread {
-  /** A one to one chat's people carry `bot`, their tiny bot (src/botsBots/threads.ts viewOf). */
+  /**
+   * A one to one chat's people carry `bot`, their tiny bot (src/botsBots/threads.ts viewOf); read one chat at a time, a group's and a
+   * space chat's people too, as their space has them (each message's line is in its sender's colour).
+   */
   id: string; kind: "direct" | "group" | "space"; name: string; spaceId: string | null; spaceName: string; people: Array<{ userId: string; name: string; you: boolean; bot?: PersonLookSpec }>;
   last: { text: string; at: number } | null; unread: number; muted: boolean; canPost: boolean; why: string;
 }
@@ -388,40 +392,64 @@ function chatsPhone(ctx: BotsCtx, d: ChatsData) {
 
 const dayRule = (label: string): Node => row([box([], { height: 1, flexGrow: 1, backgroundColor: C.divider }), meta(label, { size: 12 }), box([], { height: 1, flexGrow: 1, backgroundColor: C.divider })], { gap: 10 });
 
+/** A message's time, and Report under someone else's (App Review 1.2). */
+function underMessage(ctx: BotsCtx, r: ThreadRead, m: Message): Node {
+  return m.from.you ? meta(clockOf(ctx, m.at), { size: 11 }) : row([
+    meta(clockOf(ctx, m.at), { size: 11 }),
+    labelled(row([meta("Report", { size: 11 })], { minHeight: 20, paddingHorizontal: 4 }, open(SCREENS.report, { kind: "message", id: m.id, thread: r.thread.id })), `Report this message from ${m.from.name}`),
+  ], { gap: 6 });
+}
+
+/**
+ * One message for a build with the new Spaces, as a space's feed draws it (spaces/feed.ts): no box, a 2 px line down the left of
+ * theirs in their own colour and down the right of yours in ink, the words in Bricolage; in a group, their name over every one of
+ * theirs (it opens their page: Message, Report, Block).
+ */
+function linedMessage(ctx: BotsCtx, r: ThreadRead, m: Message): Node {
+  const mine = m.from.you;
+  const desk = isDesk(ctx);
+  const over: Node[] = [];
+  if (!mine && r.thread.kind !== "direct") over.push(setIn(overLine(m.from.name), false, m.from.userId ? open(SCREENS.person, { id: m.from.userId }) : undefined));
+  // A message to one person, read by its sender or the space's admin: say who it went to, so it never reads as one for everyone.
+  if (m.to && !m.to.you) over.push(setIn(overLine(`To ${m.to.name}`), mine));
+  const parts: Node[] = [];
+  for (const f of m.files) parts.push(fileNode(f, desk, true));
+  if (m.item) parts.push(sharedItemNode(m.item, true));
+  if (m.text) parts.push(messageText(ctx, m.text));
+  const color = mine ? C.ink : (m.from.userId ? r.thread.people.find((p) => p.userId === m.from.userId)?.bot?.color ?? lookOf(m.from.userId).color : C.idle);
+  return row([col([...over, lined(parts, mine, color), setIn(underMessage(ctx, r, m), mine)], {
+    gap: 4, maxWidth: desk ? "78%" : "82%", alignItems: mine ? "flex-end" : "flex-start", minWidth: 0,
+  })], { justifyContent: mine ? "flex-end" : "flex-start" });
+}
+
 function messageNodes(ctx: BotsCtx, r: ThreadRead): Node[] {
   const desk = isDesk(ctx);
-  // A build with the new Spaces reads chats the way it reads a space's feed: faint grounds, ink words in Bricolage, grey names.
+  // A build with the new Spaces reads chats the way it reads a space's feed (linedMessage); an older build keeps today's chat.
   const fresh = canSpaces2(ctx);
   const out: Node[] = [];
   let lastDay = "", lastFrom = "";
   for (const m of r.messages) {
     const day = dayKeyOf(ctx, m.at);
     if (day !== lastDay) { out.push(dayRule(dayWords(ctx, m.at))); lastDay = day; lastFrom = ""; }
+    if (fresh) { out.push(linedMessage(ctx, r, m)); continue; }
     const mine = m.from.you;
-    const ground = fresh ? (mine ? FAINT.mine : FAINT.theirs) : undefined;
-    const small = (words: string): Node => (fresh ? overLine(words) : meta(words, { size: 12 }));
+    const small = (words: string): Node => meta(words, { size: 12 });
     const parts: Node[] = [];
-    // A name in a group opens that person's page (bots.person: Message, Report, Block). With no faces (the new Spaces), over every
-    // one of theirs, as in a space's feed; an older build, over the first of a run.
-    if (!mine && r.thread.kind !== "direct" && (fresh || lastFrom !== (m.from.userId ?? ""))) {
+    // A name in a group opens that person's page (bots.person: Message, Report, Block), over the first of a run.
+    if (!mine && r.thread.kind !== "direct" && lastFrom !== (m.from.userId ?? "")) {
       parts.push(m.from.userId ? row([small(m.from.name)], { minHeight: 20 }, open(SCREENS.person, { id: m.from.userId })) : small(m.from.name));
     }
     // A message to one person, read by its sender or the space's admin: say who it went to, so it never reads as one for everyone.
     if (m.to && !m.to.you) parts.push(small(`To ${m.to.name}`));
-    for (const f of m.files) parts.push(fileNode(f, desk, ground));
-    if (m.item) parts.push(sharedItemNode(m.item, ground));
-    if (m.text && fresh) parts.push(messageBubble(ctx, m.text, mine));
-    else if (m.text) {
+    for (const f of m.files) parts.push(fileNode(f, desk));
+    if (m.item) parts.push(sharedItemNode(m.item));
+    if (m.text) {
       parts.push(box([text(m.text, { size: 15, lineHeight: 21, color: mine && !desk ? C.paper : C.ink })], {
         backgroundColor: mine ? (desk ? C.surface : C.ink) : desk ? C.paper : C.surface, ...(desk && !mine ? { borderWidth: 1, borderColor: C.line } : {}),
         paddingVertical: 10, paddingHorizontal: 14, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomLeftRadius: mine ? 18 : 6, borderBottomRightRadius: mine ? 6 : 18,
       }));
     }
-    // Someone else's message can be reported, right under it (App Review 1.2).
-    parts.push(mine ? meta(clockOf(ctx, m.at), { size: 11 }) : row([
-      meta(clockOf(ctx, m.at), { size: 11 }),
-      labelled(row([meta("Report", { size: 11 })], { minHeight: 20, paddingHorizontal: 4 }, open(SCREENS.report, { kind: "message", id: m.id, thread: r.thread.id })), `Report this message from ${m.from.name}`),
-    ], { gap: 6 }));
+    parts.push(underMessage(ctx, r, m));
     out.push(row([col(parts, { gap: 4, maxWidth: desk ? "78%" : "82%", alignItems: mine ? "flex-end" : "flex-start" })], { justifyContent: mine ? "flex-end" : "flex-start" }));
     lastFrom = m.from.userId ?? "";
   }
@@ -473,7 +501,8 @@ function threadBody(ctx: BotsCtx, r: ThreadRead): Node[] {
 function threadPhone(ctx: BotsCtx, r: ThreadRead | undefined) {
   if (!r) return failed(ctx, "This chat", { nav: "you" });
   return page(ctx, {
-    title: r.thread.name, nav: "you", state: { say: "", files: [], sending: false }, live: [`thread:${r.thread.id}`], gap: 14,
+    // 12 between messages for a build with the new Spaces, as in a space's feed.
+    title: r.thread.name, nav: "you", state: { say: "", files: [], sending: false }, live: [`thread:${r.thread.id}`], gap: canSpaces2(ctx) ? 12 : 14,
     body: [threadHead(ctx, r.thread), ...threadBody(ctx, r)],
     footer: Number(ctx.params.before) > 0 ? [] : [composer(ctx, r.thread)],
   });
@@ -489,7 +518,7 @@ function chatsDesk(ctx: BotsCtx, d: ChatsData) {
       : list.length ? [rowsCard(list.map((t) => threadRow(ctx, t, t.id === r?.thread.id)))] : [meta("No chats yet. Message someone in a space you share.", { size: 13 })]),
   ], { width: 320, flexShrink: 0, gap: 14 });
   const right = making ? col([text("New chat", { size: 20, weight: 600, lineHeight: 26 }), ...newChatPart(ctx, d.contacts)], { gap: 18, flexGrow: 1, flexShrink: 1, minWidth: 0 })
-    : r ? col([threadHead(ctx, r.thread), divider(), ...threadBody(ctx, r), ...(Number(ctx.params.before) > 0 ? [] : [composer(ctx, r.thread)])], { gap: 14, flexGrow: 1, flexShrink: 1, minWidth: 0 })
+    : r ? col([threadHead(ctx, r.thread), divider(), ...threadBody(ctx, r), ...(Number(ctx.params.before) > 0 ? [] : [composer(ctx, r.thread)])], { gap: canSpaces2(ctx) ? 12 : 14, flexGrow: 1, flexShrink: 1, minWidth: 0 })
       : col([emptyState({ pose: "hello", title: "Pick a chat", body: "Or start one with New." })], { flexGrow: 1 });
   return page(ctx, {
     title: "Chats", nav: "you", maxWidth: 1180, state: { say: "", files: [], sending: false }, live: ["threads", ...(r ? [`thread:${r.thread.id}`] : [])],

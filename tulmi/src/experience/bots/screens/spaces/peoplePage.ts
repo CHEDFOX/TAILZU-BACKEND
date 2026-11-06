@@ -51,7 +51,7 @@ export function peoplePage(ctx: BotsCtx, d: OneSpace | undefined): ScreenRespons
           row([link("Make a new code", newCode)]),
         ], { gap: 6 })] : []),
         section("Name", [inputBox([field("spaceRename", "spaceRename", s.name, { onSubmit: rename }), button("Save", rename, { kind: "secondary", size: "md" })])]),
-      ] : [meta(`${s.members.find((m) => m.maker)?.name ?? "The admin"} made ${s.name}, so they are its admin. They can see your work and messages here.`, { size: 13 })]),
+      ] : [meta(`${s.members.find((m) => m.maker)?.name ?? "The admin"} made ${s.name}, so they are its admin. They can see and share your work and messages here.`, { size: 13 })]),
       rowsCard([listRow({ label: "Group memory", sub: "What the group's bots know", left: icon("spark", { size: 18 }), onPress: open(SCREENS.spaceMemory, { id: s.id }) })]),
       quietButton(admin ? `Delete ${s.name}` : `Leave ${s.name}`, sure, { size: "md" }),
     ],

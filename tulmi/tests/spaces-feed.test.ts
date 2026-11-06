@@ -181,7 +181,7 @@ describe("the line about the admin", () => {
     expect(read.space).toMatchObject({ consented: false, admin: false, adminName: "Aanya S." });
     expect((await post(s, id, R_, { text: "hi" })).body).toEqual({ code: "consent_needed", message: "Tap OK on the line about the space's admin first." });
     expect((await post(s, id, R_, { text: "hi", thing: { bot: "plan", id: "e:x" } })).status).toBe(403);
-    expect((await s.call("PUT", `${AREA}/spaces/${id}/consent`, R_)).body).toEqual({ ok: true });
+    expect((await s.call("PUT", `${AREA}/spaces/${id}/consent`, R_, { consentV: 2 })).body).toEqual({ ok: true });
     expect((await feed(s, id, R_)).space.consented).toBe(true);
     expect((await post(s, id, R_, { text: "hi" })).status).toBe(201);
     expect((await feed(s, id, A_)).space).toMatchObject({ consented: true, admin: true });

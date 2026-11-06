@@ -76,7 +76,7 @@ async function served() {
     const id = (await call("POST", `${AREA}/spaces`, A_, { name: "Home" })).body.id as string;
     for (const who of [M_, R_]) {
       const inv = (await call("POST", `${AREA}/spaces/${id}/invite`, A_, { email: EMAIL[who] })).body;
-      expect((await call("PUT", `${AREA}/spaces/invitations/${inv.code}`, who, { decision: "accept", consent: true })).body.status).toBe("joined");
+      expect((await call("PUT", `${AREA}/spaces/invitations/${inv.code}`, who, { decision: "accept", consent: true, consentV: 2 })).body.status).toBe("joined");
     }
     const chat = (await call("POST", `${AREA}/threads/group`, A_, { space: id, people: "all" })).body.id as string;
     return { id, chat };

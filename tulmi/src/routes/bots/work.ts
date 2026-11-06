@@ -4,7 +4,9 @@
  * parts. Every route is the signed-in person's own; who may is checked in src/botsBots/work.ts, never here.
  *
  *   GET    /v1/botsapp/bots/work/:bot                   -> WorkRead   the people whose things you may open, per space (reads no one's bot)
- *   GET    /v1/botsapp/bots/work/:bot/mine              -> { items }  your own things ("/" in a space's feed picks one)
+ *   GET    /v1/botsapp/bots/work/:bot/mine?space=&tz=   -> { items }  your own things ("/" in a space's feed picks one); a space's
+ *                                                        admin, with its id, also gets each member's who agreed to the line about
+ *                                                        the admin, after theirs, their line saying whose ("Mom's · Sat 14 Nov · 7:40 pm")
  *   GET    /v1/botsapp/bots/work/:bot/person?space=&owner=   -> { space, person, items }   one person's things you may see
  *   GET    /v1/botsapp/bots/work/:bot/item?space=&owner=&item=&tz=   -> { item }   one thing (its time in your time zone, tz minutes east)
  *   POST   /v1/botsapp/bots/work/:bot/item { space, owner, item, op: time|note, day?, time?, tz?, text? }  -> { item }
@@ -45,7 +47,7 @@ export function registerWorkRoutes(app: FastifyInstance, deps: BotsAreaDeps, par
   const q = (req: FastifyRequest): Record<string, unknown> => (req.query as Record<string, unknown> | undefined) ?? {};
 
   app.get(`${AREA}/work/:bot`, RL, run(async (user, req) => work.read(user.id, param(req, "bot"))));
-  app.get(`${AREA}/work/:bot/mine`, RL, run(async (user, req) => work.mine(user.id, param(req, "bot"))));
+  app.get(`${AREA}/work/:bot/mine`, RL, run(async (user, req) => work.mine(user.id, param(req, "bot"), { space: str(q(req).space), tz: q(req).tz })));
   app.get(`${AREA}/work/:bot/person`, RL, run(async (user, req) => work.person(user.id, param(req, "bot"), str(q(req).space), str(q(req).owner))));
   app.get(`${AREA}/work/:bot/item`, RL, run(async (user, req) => {
     const o = q(req);

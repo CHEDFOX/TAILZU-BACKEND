@@ -29,7 +29,7 @@ export function invitePage(ctx: BotsCtx, d: OneSpace | undefined) {
       col([text(`Bring someone into ${s.name}`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta("They get an email with an invite and the space's code.", { size: 13 })], { gap: 4 }),
       section("Their email", [
         inputBox([field("email", "email", "name@example.com", { keyboard: "email-address", onSubmit: send })]),
-        meta("The email tells them that you, the space's admin, can see their work and messages there.", { size: 12 }),
+        meta("The email tells them that you, the space's admin, can see and share their work and messages there.", { size: 12 }),
       ]),
       ...(code ? [section("The space's code", [
         row([text(code, { size: 17, mono: true, lineHeight: 24, style: { flexGrow: 1 } }), button(isDesk(ctx) ? "Copy" : "Share", shareCode, { kind: "secondary", size: "md" })], { gap: 10 }),

@@ -21,6 +21,7 @@ import {
   type BotsCtx, C, SCREENS, botCrowd, botLook, botStage, box, button, call, col, crowdSurprises, dottedButton, emptyState, icon, meta,
   open, page, primaryButton, roamFor, row, sectionLabel, seq, statusMark, text, vanish, when, type PersonLookSpec,
 } from "../../kit.js";
+import { ADMIN_LINE_THERE, CONSENT_VERSION } from "../../../../botsBots/spacePerms.js";
 import { said } from "../../said.js";
 import { idParam } from "./memberPage.js";
 import { A, clearState, enc, facesRow, facesWidth, field, ifFilled, iconButton, inputBox, isDesk, personMark, refresh, shareLook, toast, type Space } from "./parts.js";
@@ -66,7 +67,7 @@ const heading = (words: string): Node => text(words, { size: 26, weight: 700, tr
 /** An invitation: the space, who invited them, how many are in; Accept (with the line about the admin, which they saw) or Dismiss. */
 function invRow(ctx: BotsCtx, i: Invitation): Node {
   const path = `${A}/spaces/invitations/${enc(i.code)}`;
-  const acc = call("PUT", path, { decision: "accept", consent: true }, {
+  const acc = call("PUT", path, { decision: "accept", consent: true, consentV: CONSENT_VERSION }, {
     ok: seq(toast(`You joined ${i.spaceName}`), setState("thOpen", false), refresh), fail: said("Couldn't join it. Try again."),
   });
   const dis = call("PUT", path, { decision: "dismiss" }, { ok: seq(toast(`Dismissed. ${i.by} can invite you again.`), refresh), fail: said("Couldn't do that. Try again.") });
@@ -89,7 +90,7 @@ function reqRow(ctx: BotsCtx, r: JoinRequestView): Node {
 
 /** Join with a code: in at once when it was an invite for this email, else a request the space's admin answers. */
 function joinAction(): ActionRef {
-  return ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code", consent: true }, {
+  return ifFilled("code", call("POST", `${A}/spaces/join`, { code: "$state.code", consent: true, consentV: CONSENT_VERSION }, {
     assignTo: "joined",
     ok: {
       kind: "condition", if: { eq: ["joined.status", "requested"] },
@@ -119,7 +120,8 @@ function thought(ctx: BotsCtx, L: Layout, d: SpacesFull, focusCode: boolean): No
     ], { gap: 10 }),
     ...(d.requests.length ? [col([sectionLabel("Requests"), ...d.requests.map((r) => reqRow(ctx, r))], { gap: 10 })] : []),
     ...d.asked.map((a) => row([statusMark("waiting"), meta(`Asked to join with the code ${a.code}. The space's admin will let you in.`, { size: 13, style: { flexShrink: 1 } })], { gap: 8 })),
-    meta("The space's admin can see your work and messages there.", { size: 12 }),
+    // The line they agree to by joining (spacePerms.ts ADMIN_LINE: Accept and Join send consent with it, and which line it was).
+    meta(ADMIN_LINE_THERE, { size: 12 }),
     col([
       text("Have a code?", { size: 15, weight: 600, lineHeight: 20 }),
       row([

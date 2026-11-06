@@ -12,7 +12,8 @@
  *   invite(user, space, { email? })    an old build's invite: by email, or (no email) the space's code and its link
  *   codeFor / newCode                  the space's one code (made the first time it is asked for); the admin can make a new one
  *   addMember(space, user, name, o)    the one place a member row is written (spaceJoin.ts lets people in through it)
- *   setConsent / consented             the member saw "The space's admin can see your work and messages there."
+ *   setConsent / consented             the member agreed to ADMIN_LINE (spacePerms.ts: "The space's admin can see and share your
+ *                                      work and messages here."); one who agreed to the line before it is asked once more
  *   addBot / removeBot, rename, leave (or the admin removes someone), activity
  *   access(user, space) / need(user, space, perm)   who may do what: the other modules' one question
  *
@@ -27,7 +28,7 @@ import { cleanEmail, mailerFromEnv, MailOutbox, type Mailer } from "./mail.js";
 import { shownLook, looksIn, type PersonLook } from "./personLook.js";
 import { table, type Table } from "./rows.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
-import { ADMIN_ONLY, MEMBER_PERMS, PERM_WORDS, PERMS, type Perm } from "./spacePerms.js";
+import { ADMIN_LINE_THERE, ADMIN_ONLY, CONSENT_VERSION, hasConsent, MEMBER_PERMS, PERM_WORDS, PERMS, type Perm } from "./spacePerms.js";
 import { SHARE_BOTS } from "./spaceShares.js";
 
 export interface SpaceRow {
@@ -44,8 +45,10 @@ export interface MemberRow {
   /** Written for a rollback only (always MEMBER_PERMS now): nothing reads it. */
   perms?: string[];
   role?: string | null;
-  /** When they saw "The space's admin can see your work and messages there." Null: not yet, so the admin sees only what they share. */
+  /** When they agreed to the line about the admin. Null: not yet, so the admin sees only what they share. */
   consent_ms?: number | null;
+  /** Which line that was (migration 0069): CONSENT_VERSION is ADMIN_LINE; null or 1 the one before it, which said "can see" only. */
+  consent_v?: number | null;
 }
 export interface SpaceBotRow { [k: string]: unknown; space_id: string; slug: string; name: string; colour: string; added_by: string; added_ms: number }
 export interface InviteRow {
@@ -546,7 +549,7 @@ export class Spaces {
         `${from} invited you to ${space} on X0 Bot.`,
         `Sign in to X0 Bot with this email (${email}) and the invite is waiting: open Spaces, tap your bot, and tap Accept.`,
         `Signing in with another email? Open Spaces, tap your bot, and type this code: ${showCode(joinCode)}. ${from} will let you in.`,
-        "The space's admin can see your work and messages there.",
+        ADMIN_LINE_THERE,
         `Get X0 Bot: ${this.linkOf(joinCode)}`,
         "If you weren't expecting this, you can ignore it.",
       ].join("\n\n"),
@@ -623,15 +626,17 @@ export class Spaces {
   // ------------------------------------------------------------------ members
 
   /**
-   * The one place a member row is written: the caps, the members' set, whether they saw the line about the admin, the "joined" line,
-   * and everyone told (the chats follow; whoever's invite it was hears who came in). spaceJoin.ts calls it.
+   * The one place a member row is written: the caps, the members' set, which line about the admin they agreed to (`consent`: 0 none,
+   * else its version, spacePerms.ts), the "joined" line, and everyone told (the chats follow; whoever's invite it was hears who came
+   * in). spaceJoin.ts calls it.
    */
-  async addMember(s: SpaceRow, user: { id: string }, name: string, o: { consent: boolean; invitedBy?: string }): Promise<void> {
+  async addMember(s: SpaceRow, user: { id: string }, name: string, o: { consent: number; invitedBy?: string }): Promise<void> {
     if (await this.isMember(s.id, user.id)) return;
     await this.roomFor(s, user.id);
     const who = clean(name, 40) || "Someone";
     const at = this.now();
-    await this.members.insert({ space_id: s.id, user_id: user.id, name: who, can_approve: true, joined_ms: at, perms: [...MEMBER_PERMS], role: null, consent_ms: o.consent ? at : null });
+    await this.members.insert({ space_id: s.id, user_id: user.id, name: who, can_approve: true, joined_ms: at, perms: [...MEMBER_PERMS], role: null,
+      consent_ms: o.consent > 0 ? at : null, consent_v: o.consent > 0 ? Math.min(o.consent, CONSENT_VERSION) : null });
     await this.note(s.id, user.id, "joined", `${who} joined`);
     await this.emit({ spaceId: s.id, joined: { userId: user.id, name: who, ...(o.invitedBy ? { invitedBy: o.invitedBy } : {}), spaceName: s.name } });
     await this.changed(s.id);
@@ -643,21 +648,25 @@ export class Spaces {
     await this.roomForOneMore(userId);
   }
 
-  /** The member tapped OK on "The space's admin can see your work and messages here." Once is enough; the admin never needs it. */
-  async setConsent(userId: string, spaceId: string): Promise<void> {
+  /**
+   * The member tapped OK on the line about the admin; `shown` is which line their screen showed (spacePerms.ts lineShown). Once is
+   * enough while the line stays the same; one who agreed to the line before it agrees to this one now. A yes from a screen that still
+   * showed the line before counts as that line's, so the feed asks once more. The admin never needs it.
+   */
+  async setConsent(userId: string, spaceId: string, shown: number = CONSENT_VERSION): Promise<void> {
     const a = await this.access(userId, spaceId);
-    if (a.admin || (a.me.consent_ms !== null && a.me.consent_ms !== undefined)) return;
-    await this.members.update({ space_id: spaceId, user_id: userId }, { consent_ms: this.now() });
+    if (a.admin || hasConsent(a.me)) return;
+    await this.members.update({ space_id: spaceId, user_id: userId }, { consent_ms: this.now(), consent_v: Math.max(1, Math.min(shown, CONSENT_VERSION)) });
     await this.changed(spaceId);
   }
 
-  /** Whether they saw the line about the admin (the admin: always). */
+  /** Whether they agreed to the line about the admin as it is now (the admin: always). */
   async consented(spaceId: string, userId: string): Promise<boolean> {
     const s = await this.spaceRow(spaceId);
     if (!s) return false;
     if (s.owner_id === userId) return true;
     const [m] = await this.members.select({ space_id: spaceId, user_id: userId }, { limit: 1 });
-    return !!m && m.consent_ms !== null && m.consent_ms !== undefined;
+    return !!m && hasConsent(m);
   }
 
   // ------------------------------------------------------------------ bots

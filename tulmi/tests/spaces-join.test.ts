@@ -53,7 +53,7 @@ describe("Create: a draft, Call Your People, Name your space", () => {
     const code = (await s.spaces.codeFor(draftId));
     expect(mail.body_text).toContain(`type this code: ${showCode(code)}. Aanya S. will let you in.`);
     expect(mail.body_text).toContain("Sign in to X0 Bot with this email (mom@example.in) and the invite is waiting");
-    expect(mail.body_text).toContain("The space's admin can see your work and messages there.");
+    expect(mail.body_text).toContain("The space's admin can see and share your work and messages there.");
     expect(mail.body_text).toContain(`Get X0 Bot: https://app.example.in/s/bots.spaces?join=${code}`);
     // Nobody else sees it: not Mom's invitations, not a list, not a code (409), not the link's peek.
     expect((await full(s, M_)).invitations).toEqual([]);
@@ -131,7 +131,7 @@ describe("invitations", () => {
     // Someone else can't take Mom's invitation.
     expect((await s.call("PUT", `${AREA}/spaces/invitations/${inv.code}`, R_, { decision: "accept" })).body.code).toBe("bad_code");
     pushes.length = 0;
-    const acc = await s.call("PUT", `${AREA}/spaces/invitations/${inv.code}`, M_, { decision: "accept", consent: true });
+    const acc = await s.call("PUT", `${AREA}/spaces/invitations/${inv.code}`, M_, { decision: "accept", consent: true, consentV: 2 });
     expect(acc.body).toEqual({ status: "joined", id, name: "Home" });
     expect(await s.spaces.consented(id, M_)).toBe(true);
     // Aanya, who made the invite, is told who came in with it.
@@ -181,7 +181,7 @@ describe("a code, and the admin letting people in", () => {
     const heard: string[] = [];
     const stop = live.subscribe(A_, (e) => heard.push(e.topic));
     pushes.length = 0;
-    expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code, consent: true })).body).toEqual({ status: "requested" });
+    expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code, consent: true, consentV: 2 })).body).toEqual({ status: "requested" });
     expect((await s.call("POST", `${AREA}/spaces/join`, X_, { code })).body).toEqual({ status: "requested" });
     stop();
     expect(heard).toContain("spaces");

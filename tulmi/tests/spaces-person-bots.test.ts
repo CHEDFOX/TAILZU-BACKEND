@@ -1,10 +1,11 @@
 /**
- * PEOPLE AS THEIR OWN TINY BOTS, AND THE FEED'S FAINT MESSAGES (src/botsBots/personLook.ts; experience/bots/kit.ts personBot,
+ * PEOPLE AS THEIR OWN TINY BOTS, AND THE FEED'S MESSAGES WITH NO BOX (src/botsBots/personLook.ts; experience/bots/kit.ts personBot,
  * messageText; the Spaces screens, Work in space, Home's one Space card; shared/types/sdui.ts 3j; docs/spaces.md "How people look").
  *
  * No initials anywhere: a person is a PersonBot with the look the server picked (unique in a space, the viewer their own ink Blip), a
- * plain circle in their colour for a build without PersonBot. In the feed, no faces at all: a grey name over theirs, very faint
- * grounds with no edge, and the words in Bricolage (Geist without FontBricolage). Home has one card, "Space".
+ * plain circle in their colour for a build without PersonBot. In the feed, no faces and no box: a grey name over theirs, a 2 px line
+ * down the left of theirs in their own colour and down the right of yours in ink, and the words in Bricolage (Geist without
+ * FontBricolage). Home has one card, "Space".
  */
 import { describe, expect, it, vi } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -55,6 +56,8 @@ const ME = { seed: "u", avatar: "blip", color: "#0a0a0a" };
 /** The node whose child is this exact text. */
 const parentOf = (root: Node, child: Node): Node | undefined => walk(root).find((n) => n.children?.includes(child));
 const textNode = (nodes: Node[], content: string) => nodes.find((n) => n.type === "Text" && n.props?.content === content);
+/** No box: no ground, no edge all round, no rounded corners (a line down one side is not a box). */
+const noBox = (n: Node): boolean => !n.style?.backgroundColor && !n.style?.background && !n.style?.borderWidth && !n.style?.borderRadius;
 
 // ===================================================================== the looks
 
@@ -253,45 +256,91 @@ describe("no initials in Spaces: each person is their own tiny bot", () => {
   });
 });
 
-describe("the feed: no faces, a grey name, faint grounds, Bricolage", () => {
+describe("the feed: no faces, no box, a grey name, a line in their colour, Bricolage", () => {
   for (const client of ["phone", "desktop"] as const) {
     it(`inside Home on the ${client}`, async () => {
       const { s, nodes } = await build("bots.spaces", client, { params: { id: "s1" } });
       expect(initials(nodes)).toEqual([]);
       // No tiny bot for anyone in the feed (his own stage is the box he writes in).
       expect(ofType(nodes, "PersonBot")).toHaveLength(0);
-      // The sender's name over theirs: Geist SemiBold 12/16, #8a8a8a. Their own messages carry none.
+      // The sender's name over theirs: Geist SemiBold 12/16, #8a8a8a, set in 12 (the line and its gap) to sit over the words. Their
+      // own messages carry none.
       for (const name of ["Mom", "Rohan"]) {
-        expect(textNode(nodes, name)?.style, name).toMatchObject({ fontFamily: FACE.semibold, fontSize: 12, lineHeight: 16, color: "#8a8a8a" });
+        const n = textNode(nodes, name)!;
+        expect(n.style, name).toMatchObject({ fontFamily: FACE.semibold, fontSize: 12, lineHeight: 16, color: "#8a8a8a" });
+        expect(parentOf(s.root!, n)!.style, name).toMatchObject({ paddingLeft: 12 });
       }
       expect(texts(nodes)).not.toContain("Aanya");
       expect(textNode(nodes, "To Mom")?.style).toMatchObject({ fontFamily: FACE.semibold, fontSize: 12, lineHeight: 16, color: "#8a8a8a" });
-      // Theirs: a breath of ink, no edge, radius 18, 10 by 14, on the left; the words in Bricolage 16/23.
+      // Theirs: no ground, no box: a 2 px solid line down the left in their own colour, 10 from the words; Bricolage 16/23.
       const theirs = textNode(nodes, "Dinner at 8? Bring the dahi")!;
       expect(theirs.style).toMatchObject({ fontFamily: "Tailzu Bricolage", fontSize: 16, lineHeight: 23, letterSpacing: -0.1, color: C.ink });
-      const theirBox = parentOf(s.root!, theirs)!;
-      expect(theirBox.style).toMatchObject({ backgroundColor: "rgba(10,10,10,0.035)", borderRadius: 18, paddingVertical: 10, paddingHorizontal: 14 });
-      expect(theirBox.style?.borderWidth).toBeUndefined();
-      // Yours: a little more ink, ink words (no black bubble), on the right.
+      const theirLine = parentOf(s.root!, theirs)!;
+      expect(theirLine.style).toMatchObject({ borderLeftWidth: 2, borderLeftColor: D.LOOK.m.color, paddingLeft: 10, alignItems: "flex-start" });
+      expect(noBox(theirLine)).toBe(true);
+      expect(parentOf(s.root!, textNode(nodes, "Can someone drop me at practice tomorrow?")!)!.style).toMatchObject({ borderLeftWidth: 2, borderLeftColor: D.LOOK.r.color });
+      // Yours: on the right, an ink line down the right, 10 from the words, ink words (no black bubble), no name.
       const mine = textNode(nodes, "Your check-up is Friday 7:40, I'll drive you")!;
       expect(mine.style).toMatchObject({ fontFamily: "Tailzu Bricolage", color: C.ink });
-      const myBox = parentOf(s.root!, mine)!;
-      expect(myBox.style).toMatchObject({ backgroundColor: "rgba(10,10,10,0.06)", borderRadius: 18 });
-      expect(myBox.style?.borderWidth).toBeUndefined();
+      const myLine = parentOf(s.root!, mine)!;
+      expect(myLine.style).toMatchObject({ borderRightWidth: 2, borderRightColor: "#0a0a0a", paddingRight: 10, alignItems: "flex-end" });
+      expect(myLine.style?.borderLeftWidth).toBeUndefined();
+      expect(noBox(myLine)).toBe(true);
       const myRow = walk(s.root!).find((n) => n.style?.justifyContent === "flex-end" && walk(n).includes(mine));
       expect(myRow).toBeTruthy();
       expect(nodes.filter((n) => n.style?.backgroundColor === C.ink && walk(n).some((x) => x.type === "Text" && x.style?.color === C.paper && D.FEED.messages.some((m) => m.text === x.props?.content)))).toHaveLength(0);
-      // The shared thing: the same faint ground, no heavy edge, Open in its bot.
-      const open = textNode(nodes, "Doctor, knee check-up")!;
-      const card = walk(s.root!).find((n) => n.style?.width === 256 && walk(n).includes(open))!;
-      expect(card.style).toMatchObject({ backgroundColor: "rgba(10,10,10,0.06)", borderRadius: 18 });
-      expect(card.style?.borderWidth).toBeUndefined();
-      expect(texts(nodes)).toContain("Open in Plan Ease");
+      // No message sits on a ground or in an edge any more: nothing between its row in the feed and its words.
+      for (const m of D.FEED.messages.filter((x) => x.text)) {
+        const words = textNode(nodes, m.text)!;
+        const holders = walk(s.root!).filter((n) => n !== words && walk(n).includes(words));
+        const row = holders.filter((n) => n.style?.flexDirection === "row" && (n.style?.justifyContent === "flex-start" || n.style?.justifyContent === "flex-end")).at(-1)!;
+        expect(walk(row).filter((n) => holders.includes(n)).every(noBox), m.text).toBe(true);
+      }
+      // The shared thing: no box either, by the same line as its message (yours: ink, on the right), its title as words, Open in
+      // its bot a plain link.
+      const title = textNode(nodes, "Doctor, knee check-up")!;
+      expect(title.style).toMatchObject({ fontSize: 15, lineHeight: 20 });
+      const cardLine = parentOf(s.root!, title)!;
+      expect(cardLine.style).toMatchObject({ borderRightWidth: 2, borderRightColor: "#0a0a0a" });
+      expect(noBox(cardLine)).toBe(true);
+      expect(texts(walk(cardLine))).toEqual(expect.arrayContaining(["You shared", "Doctor, knee check-up", "from Plan Ease · Fri, 7:40 pm", "Open in Plan Ease", "Stop sharing"]));
+      const openLink = walk(cardLine).find((n) => n.on?.onPress && walk(n).includes(textNode(nodes, "Open in Plan Ease")!))!;
+      expect(noBox(openLink)).toBe(true);
+      expect(walk(cardLine).some((n) => n.style?.width === 256)).toBe(false);
       // The "@" list: each person's own tiny bot, as the server picked it.
       const field = ofType(nodes, "MentionField")[0]!;
       expect(field.props!.people).toEqual([{ id: "m", name: "Mom", bot: D.LOOK.m }, { id: "r", name: "Rohan", bot: D.LOOK.r }]);
     });
   }
+
+  it("a member's thing the admin shared: no box, by the admin's line, \"Aanya shared Mom's\", Open in Plan Ease; only the admin's \"/\" lists others' things", async () => {
+    const at = D.FEED.messages[0]!.at + 60_000;
+    const thing = { grantId: "g9", bot: "plan", botName: "Plan Ease", ownerId: "m", ownerName: "Mom", id: "e:knee", title: "Doctor, knee check-up", line: "Event" };
+    const goes = { kind: "navigate", screenId: "bots.work", params: { bot: "plan", space: "s1", owner: "m", item: "e:knee" } };
+    const opens = (root: Node) => walk(root).some((n) => JSON.stringify(n.on?.onPress) === JSON.stringify(goes));
+    // Rohan, who it was shared with: the admin's name over it, a line in her colour on the left, no Stop sharing, no "To".
+    const rohan = { ...D.FEED_ROHAN, messages: [{ id: "f9", at, from: { userId: "u", name: "Aanya", you: false }, to: { userId: "r", name: "Rohan", you: true }, text: "", files: [], item: null, thing }] };
+    for (const client of ["phone", "desktop"] as const) {
+      const { s, nodes } = await build("bots.spaces", client, { params: { id: "s1" }, api: { ...(await sampleApi()), ...D.spacesApi(), [`GET ${A}/spaces/s1/feed`]: rohan } });
+      const line = parentOf(s.root!, textNode(nodes, "Doctor, knee check-up")!)!;
+      expect(line.style, client).toMatchObject({ borderLeftWidth: 2, borderLeftColor: D.LOOK.u.color, paddingLeft: 10 });
+      expect(noBox(line)).toBe(true);
+      expect(texts(walk(line))).toEqual(["Aanya shared Mom's", "Doctor, knee check-up", "from Plan Ease · Event", "Open in Plan Ease"]);
+      expect(textNode(nodes, "Aanya")?.style).toMatchObject({ fontFamily: FACE.semibold, fontSize: 12, color: "#8a8a8a" });
+      expect(texts(nodes)).not.toContain("To Rohan");
+      expect(opens(s.root!)).toBe(true);
+      expect(ofType(nodes, "MentionField")[0]!.props!.thingsPath).toBe(`${A}/work/:bot/mine`);
+    }
+    // The admin: "You shared Mom's", "To Rohan" over it, an ink line on the right, and Stop sharing.
+    const admin = { ...D.FEED, messages: [{ id: "f9", at, from: { userId: "u", name: "Aanya", you: true }, to: { userId: "r", name: "Rohan", you: false }, text: "", files: [], item: null, thing }] };
+    const { s, nodes } = await build("bots.spaces", "phone", { params: { id: "s1" }, api: { ...(await sampleApi()), ...D.spacesApi(), [`GET ${A}/spaces/s1/feed`]: admin } });
+    const line = parentOf(s.root!, textNode(nodes, "Doctor, knee check-up")!)!;
+    expect(line.style).toMatchObject({ borderRightWidth: 2, borderRightColor: "#0a0a0a", paddingRight: 10 });
+    expect(texts(walk(line))).toEqual(["You shared Mom's", "Doctor, knee check-up", "from Plan Ease · Event", "Open in Plan Ease", "Stop sharing"]);
+    expect(textNode(nodes, "To Rohan")?.style).toMatchObject({ fontFamily: FACE.semibold, fontSize: 12, lineHeight: 16, color: "#8a8a8a" });
+    expect(parentOf(s.root!, parentOf(s.root!, textNode(nodes, "To Rohan")!)!)!.style).toMatchObject({ paddingRight: 12 });
+    expect(opens(s.root!)).toBe(true);
+  });
 
   it("each of their messages carries their name, a run of them too (no faces to say who); yours carry none", async () => {
     const at = D.FEED.messages[0]!.at;
@@ -335,14 +384,36 @@ describe("the feed: no faces, a grey name, faint grounds, Bricolage", () => {
   });
 
   it("a chat reads the same way for a build with the new Spaces; an older build keeps today's chat", async () => {
-    const fresh = await build("bots.thread", "phone", { params: { id: "th-home" } });
-    const words = textNode(fresh.nodes, "That one. Eggless please!")!;
-    expect(words.style).toMatchObject({ fontFamily: "Tailzu Bricolage", color: C.ink });
-    expect(parentOf(fresh.s.root!, words)!.style).toMatchObject({ backgroundColor: "rgba(10,10,10,0.06)", borderRadius: 18 });
+    for (const client of ["phone", "desktop"] as const) {
+      // The server sends a group's people with their bots, as their space has them (threads.ts read).
+      const base = D.spacesApi()[`GET ${A}/threads/th-home`] as { thread: { people: Array<{ userId: string }> } };
+      const withLooks = { ...base, thread: { ...base.thread, people: base.thread.people.map((p) => ({ ...p, bot: p.userId === "u" ? ME : D.LOOK[p.userId as "m" | "r"] })) } };
+      const fresh = await build("bots.thread", client, { params: { id: "th-home" }, api: { ...(await sampleApi()), ...D.spacesApi(), [`GET ${A}/threads/th-home`]: withLooks } });
+      const words = textNode(fresh.nodes, "That one. Eggless please!")!;
+      expect(words.style).toMatchObject({ fontFamily: "Tailzu Bricolage", color: C.ink });
+      const mine = parentOf(fresh.s.root!, words)!;
+      expect(mine.style, client).toMatchObject({ borderRightWidth: 2, borderRightColor: "#0a0a0a", paddingRight: 10 });
+      expect(noBox(mine)).toBe(true);
+      const theirs = parentOf(fresh.s.root!, textNode(fresh.nodes, "Dinner at 8, everyone home?")!)!;
+      expect(theirs.style, client).toMatchObject({ borderLeftWidth: 2, borderLeftColor: D.LOOK.m.color, paddingLeft: 10 });
+      expect(noBox(theirs)).toBe(true);
+      // Their name over theirs, set in to sit over the words; a shared list by the same line, with no box of its own.
+      const name = fresh.nodes.find((n) => n.type === "Text" && n.props?.content === "Mom" && n.style?.color === "#8a8a8a")!;
+      expect(parentOf(fresh.s.root!, name)!.style).toMatchObject({ paddingLeft: 12 });
+      const list = walk(fresh.s.root!).find((n) => n.on?.onPress && walk(n).includes(textNode(fresh.nodes, "Groceries")!))!;
+      expect(noBox(list)).toBe(true);
+      // A sender the answer has no bot for: the colour their id always has.
+      const bare = await build("bots.thread", client, { params: { id: "th-home" } });
+      expect(parentOf(bare.s.root!, textNode(bare.nodes, "Dinner at 8, everyone home?")!)!.style).toMatchObject({ borderLeftColor: P.lookOf("m").color });
+    }
     const old = await build("bots.thread", "phone", { params: { id: "th-home" }, can: OLD });
     const oldWords = textNode(old.nodes, "That one. Eggless please!")!;
     expect(oldWords.style).toMatchObject({ fontFamily: FACE.regular, color: C.paper });
     expect(parentOf(old.s.root!, oldWords)!.style).toMatchObject({ backgroundColor: C.ink });
+    expect(old.nodes.some((n) => n.style?.borderLeftWidth || n.style?.borderRightWidth)).toBe(false);
+    // An older build's shared list keeps its white card with a line round it.
+    const oldList = walk(old.s.root!).find((n) => n.on?.onPress && walk(n).includes(textNode(old.nodes, "Groceries")!))!;
+    expect(oldList.style).toMatchObject({ borderWidth: 1, backgroundColor: C.paper });
   });
 });
 

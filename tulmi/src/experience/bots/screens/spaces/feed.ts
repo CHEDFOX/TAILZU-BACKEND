@@ -5,28 +5,31 @@
  *
  *   "@"  picks a person: the message goes to them only (and, silently, to the space's admin). Shown "To Mom" to its sender and the admin.
  *   "/"  picks one of the person's bots, then one of its things: whoever it goes to (one person, or everyone) can work on it from that
- *        bot's page (Work in space). The card in the feed opens it there.
+ *        bot's page (Work in space). The card in the feed opens it there. The space's admin is offered every member's things too,
+ *        after their own, each saying whose ("Mom's · Sat 14 Nov · 7:40 pm"): GET .../work/:bot/mine?space= lists them for the admin.
  *
  * Reads GET .../spaces/:id/feed and writes POST .../spaces/:id/feed (src/botsBots/spaceFeed.ts does every check: who sees what, the
  * admin's line, blocks). A name said or typed at the start with no person picked is never sent blind: the server answers `confirm`
  * and the box asks "Send this to Mom only?". Until a member taps OK on the line about the admin, the box is that line instead.
  * Voice (double-tap him; the window's one key) only for a build that listens with live words (canVoice).
  *
- * The messages have no faces: the sender's name, small and grey, over theirs; very faint grounds with no edge (theirs on the left,
- * yours on the right, ink words on both); the words in Bricolage (Geist for a build without FontBricolage). The "@" list carries each
- * person's own tiny bot (docs/spaces.md "How the feed looks").
+ * The messages have no faces and no box: the sender's name, small and grey, over theirs; a 2 px line down the left of theirs in their
+ * own colour and down the right of yours in ink; the words in Bricolage (Geist for a build without FontBricolage). A shared thing is
+ * words by the same line, with "Open in Plan Ease" a plain link. The "@" list carries each person's own tiny bot (docs/spaces.md
+ * "How the feed looks"). Only a build that draws the new Spaces gets this screen, so older builds keep what they have.
  */
 
 import type { ActionRef, ActionSpec, Node, ScreenResponse, TalkTo } from "../../../../../../shared/types/sdui.js";
 import { lookOf } from "../../../../botsBots/personLook.js";
+import { ADMIN_LINE, CONSENT_VERSION } from "../../../../botsBots/spacePerms.js";
 import {
   type BotsCtx, C, SCREENS, box, botKind, botStage, button, call, canPersonBot, canScroll, canVoice, card, col, emptyState, icon, liveWords,
-  mentionField, messageText, meta, open, page, picture, primaryButton, roamFor, row, scrollBox, sectionLabel, seq, text, voiceLive, voiceStop, when,
+  labelled, mentionField, messageText, meta, open, page, picture, primaryButton, roamFor, row, scrollBox, seq, text, voiceLive, voiceStop, when,
   type PersonLookSpec,
 } from "../../kit.js";
 import { said } from "../../said.js";
 import {
-  A, clearState, enc, failed, iconButton, isDesk, kb, kindBadge, refresh, rowsCard, SHARE_BOTS, shareLook, isShareBot, toast,
+  A, clearState, enc, failed, iconButton, isDesk, kb, kindBadge, refresh, rowsCard, SHARE_BOTS, shareLook, toast,
   type Payment, type Task,
 } from "./parts.js";
 import { KIND_WORD } from "./sharePage.js";
@@ -42,7 +45,8 @@ export interface FeedMessage {
   to: { userId: string; name: string; you: boolean } | null;
   text: string;
   files: Array<{ id: string; name: string; mime: string; bytes: number; kind: string; url: string }>;
-  thing: { grantId: string; bot: ShareBotSlug; botName: string; ownerId: string; id: string; title: string; line: string } | null;
+  /** `ownerName`: whose thing it is when the space's admin shared a member's ("" or absent: its sender's own). */
+  thing: { grantId: string; bot: ShareBotSlug; botName: string; ownerId: string; ownerName?: string; id: string; title: string; line: string } | null;
   /** A shared thing from SharedItems (as today's chats show it). */
   item: { id: string; kind: string; title: string } | null;
 }
@@ -59,91 +63,110 @@ export interface FeedRead {
 // ===================================================================== a message's parts (today's chat draws them too)
 
 /**
- * What a card in a message sits on: today's chats a white card with a line round it; the new feed (`faint`, its message's own faint
- * ground) no line at all.
+ * What a card in a message sits on: today's chats a white card with a line round it; the new Spaces (`bare`) nothing at all, the
+ * line beside its message saying whose it is.
  */
-const cardGround = (faint?: string) => (faint ? { backgroundColor: faint } : { borderWidth: 1, borderColor: C.line, backgroundColor: C.paper });
+const cardGround = (bare?: boolean) => (bare ? {} : { borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, borderRadius: 14 });
 
 /** A file in a message: a photo by its signed link in a sized box, any other file as a row; both open it. */
-export function fileNode(f: FeedMessage["files"][number], desk: boolean, faint?: string): Node {
+export function fileNode(f: FeedMessage["files"][number], desk: boolean, bare?: boolean): Node {
   const go: ActionSpec = { kind: "openUrl", url: f.url, external: true };
   return f.mime.startsWith("image/")
     ? box([picture(f.url, desk ? 280 : 220, desk ? 200 : 160, { radius: 14, fit: "cover", background: C.surface, label: f.name })], {}, go)
     : row([icon("clip", { size: 16 }), text(f.name, { size: 14, lineHeight: 19, lines: 1, style: { flexShrink: 1 } }), meta(kb(f.bytes), { size: 12 })], {
-      gap: 8, paddingVertical: 10, paddingHorizontal: 12, borderRadius: faint ? 18 : 14, ...cardGround(faint), maxWidth: 280,
+      gap: 8, ...(bare ? { paddingVertical: 2 } : { paddingVertical: 10, paddingHorizontal: 12 }), ...cardGround(bare), maxWidth: 280,
     }, go);
 }
 
 /** Something shared from the person's things (a list, a trip, a note), opening it. */
-export function sharedItemNode(item: NonNullable<FeedMessage["item"]>, faint?: string): Node {
+export function sharedItemNode(item: NonNullable<FeedMessage["item"]>, bare?: boolean): Node {
   return row([kindBadge(item.kind, 32), col([text(item.title, { size: 14, weight: 500, lineHeight: 19, lines: 2 }), meta(`${KIND_WORD[item.kind] ?? "Shared"} · open`, { size: 12 })], { gap: 2, flexShrink: 1 })], {
-    gap: 10, padding: 10, borderRadius: faint ? 18 : 14, ...cardGround(faint), maxWidth: 300,
+    gap: 10, ...(bare ? { paddingVertical: 2 } : { padding: 10 }), ...cardGround(bare), maxWidth: 300,
   }, open(SCREENS.spaceItem, { item: item.id }));
 }
 
 // ===================================================================== the feed
 
 /**
- * The feed's messages: no faces, the sender's name over theirs, and very faint grounds with no edge: someone else's a breath of ink on
- * the white, the person's own a little more, both with ink words (no black bubble). Their words are in Bricolage (kit messageText).
+ * The feed's messages have no box at all (docs/spaces.md "How the feed looks"): someone else's sit on the left with a 2 px line down
+ * their left side in that person's own colour (their tiny bot's: personLook.ts), the person's own on the right with an ink line down
+ * their right side, and 10 px between the line and the words. A name, a "To Mom" or a time over or under a message is set in by
+ * INDENT, so it sits over the words.
  */
-export const FAINT = { theirs: "rgba(10,10,10,0.035)", mine: "rgba(10,10,10,0.06)" } as const;
-const THEIRS = FAINT.theirs, MINE = FAINT.mine;
-/** The small grey line over a message: who wrote it, or who it went to. Geist SemiBold 12/16. */
+export const LINE = { width: 2, gap: 10 } as const;
+export const INDENT = LINE.width + LINE.gap;
+/** The small grey line over a message: who wrote it, or who it went to. Geist SemiBold 12/16, #8a8a8a. */
 export const overLine = (words: string): Node => text(words, { size: 12, weight: 600, lineHeight: 16, color: C.idle });
-/** A message's words on its faint ground: radius 18, 10 by 14, no edge. */
-export const messageBubble = (ctx: BotsCtx, words: string, mine: boolean): Node =>
-  box([messageText(ctx, words)], { backgroundColor: mine ? MINE : THEIRS, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 18 });
+/** Something over or under a message, set in to sit over its words: from the left for theirs, from the right for yours. */
+export const setIn = (n: Node, mine: boolean, onPress?: ActionRef): Node =>
+  row([n], { ...(mine ? { paddingRight: INDENT, justifyContent: "flex-end" } : { paddingLeft: INDENT }), minHeight: 16 }, onPress);
+/** A message's parts beside its line: theirs on the left in their colour, yours on the right in ink. No ground, no edge round it. */
+export function lined(parts: Node[], mine: boolean, color: string): Node {
+  return col(parts, mine
+    ? { gap: 6, alignItems: "flex-end", borderRightWidth: LINE.width, borderRightColor: C.ink, paddingRight: LINE.gap, minWidth: 0 }
+    : { gap: 6, alignItems: "flex-start", borderLeftWidth: LINE.width, borderLeftColor: color, paddingLeft: LINE.gap, minWidth: 0 });
+}
+/** The line's colour for someone in the feed: their tiny bot's, as the space has them (the answer's people), else their id's own. */
+const colourOf = (people: Array<{ userId: string; bot?: PersonLookSpec }>, userId: string | null): string =>
+  (userId ? people.find((p) => p.userId === userId)?.bot?.color ?? lookOf(userId).color : C.idle);
 
 /** "To Mom": a message to one person, as its sender and the space's admin see it (the recipient sees a plain message). */
 const toLine = (name: string): Node => row([icon("send", { size: 12, color: C.idle }), overLine(`To ${name}`)], { gap: 4 });
 
-/**
- * Stop sharing, under a card: for the one who shared it and the space's admin (the server checks it: grants.ts revoke). The access
- * goes at once and the card leaves the feed for everyone.
- */
-const stopSharing = (f: FeedRead, t: NonNullable<FeedMessage["thing"]>): Node => row([link("Stop sharing", call("DELETE", `${A}/spaces/${enc(f.space.id)}/grants/${enc(t.grantId)}`, undefined, {
-  stay: true, ok: seq(toast("Stopped sharing"), refresh), fail: said("Couldn't stop sharing it. Try again."),
-}))], { justifyContent: "center", minHeight: 28 });
+/** A plain link button: ink words, no box, the height of a finger (Open in Plan Ease, Stop sharing). */
+const linkButton = (label: string, onPress: ActionRef): Node =>
+  labelled(row([text(label, { size: 14, weight: 600, lineHeight: 20 })], { minHeight: 32 }, onPress), label);
 
-/** A thing shared from a bot: who shared it, what, from which bot, and the way to work on it there. On its message's faint ground. */
-function thingCard(f: FeedRead, m: FeedMessage, t: NonNullable<FeedMessage["thing"]>): Node {
-  const look = isShareBot(t.bot) ? shareLook(t.bot) : null;
-  return col([
-    row([box([], { width: 8, height: 8, borderRadius: 4, backgroundColor: look?.color ?? C.idle }), sectionLabel(t.botName)], { gap: 6 }),
-    meta(m.from.you ? "You shared" : `${m.from.name} shared`, { size: 12 }),
+/**
+ * Stop sharing, by a card: for the one who shared it and the space's admin (the server checks it: grants.ts revoke). The access goes
+ * at once and the card leaves the feed for everyone.
+ */
+const stopSharing = (f: FeedRead, t: NonNullable<FeedMessage["thing"]>): Node => linkButton("Stop sharing", call("DELETE", `${A}/spaces/${enc(f.space.id)}/grants/${enc(t.grantId)}`, undefined, {
+  stay: true, ok: seq(toast("Stopped sharing"), refresh), fail: said("Couldn't stop sharing it. Try again."),
+}));
+
+/**
+ * A thing shared from a bot, with no box: who shared it (and whose it is, when the admin shared a member's: "Aanya shared Mom's"),
+ * its title and line as words, and "Open in Plan Ease" as a plain link. It sits by its message's line, in the sharer's colour.
+ */
+function thingParts(f: FeedRead, m: FeedMessage, t: NonNullable<FeedMessage["thing"]>): Node[] {
+  const who = m.from.you ? "You" : m.from.name;
+  return [
+    meta(`${who} shared${t.ownerName ? ` ${t.ownerName}'s` : ""}`, { size: 12 }),
     text(t.title, { size: 15, weight: 600, lineHeight: 20 }),
     meta(`from ${t.botName}${t.line ? ` · ${t.line}` : ""}`, { size: 12 }),
-    button(`Open in ${t.botName}`, open(SCREENS.work, { bot: t.bot, space: f.space.id, owner: t.ownerId, item: t.id }), { kind: "secondary", size: "md", wide: true }),
-    ...(m.from.you || f.space.admin ? [stopSharing(f, t)] : []),
-  ], {
-    width: 256, maxWidth: "100%", gap: 4, paddingTop: 12, paddingHorizontal: 14, paddingBottom: 14, borderRadius: 18, backgroundColor: m.from.you ? MINE : THEIRS,
-  });
+    row([
+      linkButton(`Open in ${t.botName}`, open(SCREENS.work, { bot: t.bot, space: f.space.id, owner: t.ownerId, item: t.id })),
+      ...(m.from.you || f.space.admin ? [stopSharing(f, t)] : []),
+    ], { gap: 16 }),
+  ];
 }
 
 /**
  * One message: theirs on the left with their name over it (every one of theirs: with no faces, the name is what says who), yours on
- * the right with none; "To Mom" over a message to one person.
+ * the right with none; "To Mom" over a message to one person; the time (and Report, under theirs) beneath.
  */
 function feedRow(ctx: BotsCtx, f: FeedRead, m: FeedMessage): Node {
   const mine = m.from.you;
   const desk = isDesk(ctx);
-  const ground = mine ? MINE : THEIRS;
-  const parts: Node[] = [];
-  if (!mine) parts.push(row([overLine(m.from.name)], { paddingLeft: 4, minHeight: 16 }));
+  const over: Node[] = [];
+  if (!mine) over.push(setIn(overLine(m.from.name), false));
   // Only its sender and the space's admin are shown who it went to; to the one it went to, it is a message like any other.
-  if (m.to && (mine || f.space.admin) && !m.to.you) parts.push(row([toLine(m.to.name)], { paddingLeft: 4 }));
-  if (m.thing) parts.push(thingCard(f, m, m.thing));
-  for (const x of m.files) parts.push(fileNode(x, desk, ground));
-  if (m.item) parts.push(sharedItemNode(m.item, ground));
-  if (m.text) parts.push(messageBubble(ctx, m.text, mine));
+  if (m.to && (mine || f.space.admin) && !m.to.you) over.push(setIn(toLine(m.to.name), mine));
+  const parts: Node[] = [];
+  if (m.thing) parts.push(...thingParts(f, m, m.thing));
+  for (const x of m.files) parts.push(fileNode(x, desk, true));
+  if (m.item) parts.push(sharedItemNode(m.item, true));
+  if (m.text) parts.push(messageText(ctx, m.text));
   // Someone else's message can be reported, right under it (App Review 1.2), as in every chat.
-  parts.push(mine ? meta(clockOf(ctx, m.at), { size: 11 }) : row([
+  const under = setIn(mine ? meta(clockOf(ctx, m.at), { size: 11 }) : row([
     meta(clockOf(ctx, m.at), { size: 11 }),
     row([meta("Report", { size: 11 })], { minHeight: 20, paddingHorizontal: 4 }, open(SCREENS.report, { kind: "message", id: m.id, thread: f.space.threadId })),
-  ], { gap: 6 }));
-  const bubble = col(parts, { gap: 4, maxWidth: desk ? "72%" : "84%", alignItems: mine ? "flex-end" : "flex-start", minWidth: 0 });
-  return row([bubble], { justifyContent: mine ? "flex-end" : "flex-start" });
+  ], { gap: 6 }), mine);
+  const message = col([...over, lined(parts, mine, mine ? C.ink : colourOf(f.people, m.from.userId)), under], {
+    gap: 4, maxWidth: desk ? "72%" : "84%", alignItems: mine ? "flex-end" : "flex-start", minWidth: 0,
+  });
+  return row([message], { justifyContent: mine ? "flex-end" : "flex-start" });
 }
 
 const dayRule = (label: string): Node => row([meta(label, { size: 12, weight: 500 })], { justifyContent: "center", paddingTop: 6 });
@@ -223,7 +246,8 @@ function stage(ctx: BotsCtx, f: FeedRead): Node {
     life: `space.compose.${id}`, placeholder: "Write to everyone, or @ someone", draftPath: "draft", autoFocus: true, maxLength: 4000,
     // Each person's own tiny bot in their row of the "@" list, for a build that draws it.
     people: f.people.filter((p) => !p.you).map((p) => ({ id: p.userId, name: p.name, ...(canPersonBot(ctx) ? { bot: p.bot ?? lookOf(p.userId) } : {}) })),
-    bots: shareBots, thingsPath: `${A}/work/:bot/mine`,
+    // The admin's "/" offers every member's things after their own (in the admin's day, for a plan's time).
+    bots: shareBots, thingsPath: f.space.admin ? `${A}/work/:bot/mine?space=${enc(id)}&tz=${ctx.tzOffsetMinutes}` : `${A}/work/:bot/mine`,
     tools: [
       { id: "money", label: "Ask for money", action: open(SCREENS.spacePay, { id }) },
       { id: "task", label: "Give a task or plan", action: open(SCREENS.spaceTasks, { id, new: "task" }) },
@@ -245,13 +269,17 @@ function stage(ctx: BotsCtx, f: FeedRead): Node {
   ], { onPress: tapHim, ...(voice ? { onDoubleTap: voiceTurn(id, "chat") } : {}) });
 }
 
-/** Before a member writes here: the line about the space's admin, once. OK (consent), or the way to leave. */
+/**
+ * Before a member writes here: the line about the space's admin, once (and once more for someone who agreed to the line before it,
+ * which said "can see" only). OK (consent), or the way to leave.
+ */
 function consentCard(f: FeedRead): Node {
   return card([
-    text("The space's admin can see your work and messages here.", { size: 15, lineHeight: 21 }),
+    text(ADMIN_LINE, { size: 15, lineHeight: 21 }),
     meta(`${f.space.adminName} made ${f.space.name}, so they are its admin.`, { size: 12 }),
     row([
-      primaryButton("OK", call("PUT", `${A}/spaces/${enc(f.space.id)}/consent`, undefined, { ok: refresh, fail: said("Couldn't save that. Try again.") }), { size: "md" }),
+      // Which line this card showed goes with the OK, so a card drawn before the line changed is asked once more (spacePerms.ts lineShown).
+      primaryButton("OK", call("PUT", `${A}/spaces/${enc(f.space.id)}/consent`, { consentV: CONSENT_VERSION }, { ok: refresh, fail: said("Couldn't save that. Try again.") }), { size: "md" }),
       link("Leave the space", open(SCREENS.spacePeople, { id: f.space.id })),
     ], { gap: 12 }),
   ], { gap: 10, padding: 16 });
@@ -288,9 +316,10 @@ export function feedScreen(ctx: BotsCtx, f: FeedRead | undefined): ScreenRespons
   const talkTo: TalkTo | undefined = f.space.consented && voice ? { voice: voiceTurn(id, "once") } : undefined;
   // The window: the feed scrolls in its own box over his stage, opening at its newest; a window without one scrolls the page.
   const boxed = desk && canScroll(ctx);
-  const feedBox = boxed ? [{ ...scrollBox(feed, { flexGrow: 1, flexShrink: 1, minHeight: 0, gap: 14 }), props: { startAtEnd: true } }] : feed;
+  const feedBox = boxed ? [{ ...scrollBox(feed, { flexGrow: 1, flexShrink: 1, minHeight: 0, gap: 12 }), props: { startAtEnd: true } }] : feed;
   return page(ctx, {
-    title: f.space.name, nav: "you", gap: 14, maxWidth: 760, startAtEnd: !boxed, ...(boxed ? { fixed: true } : {}),
+    // 12 between messages.
+    title: f.space.name, nav: "you", gap: 12, maxWidth: 760, startAtEnd: !boxed, ...(boxed ? { fixed: true } : {}),
     state: { thOpen: false, draft: EMPTY_DRAFT, voice: "", heard: "", said: null },
     live: [`space:${id}`, `thread:${f.space.threadId}`],
     ...(desk ? {} : { pinned: [col(top, { gap: 10, paddingHorizontal: 20, paddingTop: 6, paddingBottom: 6, backgroundColor: C.paper })] }),

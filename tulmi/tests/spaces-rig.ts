@@ -46,6 +46,7 @@ export async function spacesServer(o: { pushes: Push[]; clock?: { t: number }; s
   const { registerSpacesRoutes, spaceParts } = await import("../src/routes/bots/botsSpaces.js");
   const { registerWorkRoutes } = await import("../src/routes/bots/work.js");
   const { resetCalendarForTests } = await import("../src/calendar/index.js");
+  const { CONSENT_VERSION } = await import("../src/botsBots/spacePerms.js");
   resetAreaTablesForTests();
   resetSpaceTablesForTests();
   resetCalendarForTests();
@@ -72,12 +73,12 @@ export async function spacesServer(o: { pushes: Push[]; clock?: { t: number }; s
     return { status: r.statusCode, body: r.body ? (() => { try { return r.json(); } catch { return r.body; } })() : null, headers: r.headers };
   };
 
-  /** The admin invites `who`'s address; they accept the invitation waiting for them (consent: they saw the line about the admin). */
+  /** The admin invites `who`'s address; they accept the invitation waiting for them (consent: they saw the line about the admin as it is now). */
   const bringIn = async (spaceId: string, who: string, o2: { consent?: boolean; by?: string } = {}) => {
     const by = o2.by ?? A_;
     const r = await call("POST", `${AREA}/spaces/${spaceId}/invite`, by, { email: PEOPLE[who]!.email });
     if (r.status !== 200) throw new Error(`invite failed: ${JSON.stringify(r.body)}`);
-    const acc = await call("PUT", `${AREA}/spaces/invitations/${r.body.code}`, who, { decision: "accept", consent: o2.consent !== false });
+    const acc = await call("PUT", `${AREA}/spaces/invitations/${r.body.code}`, who, { decision: "accept", consent: o2.consent !== false, consentV: CONSENT_VERSION });
     if (acc.status !== 200 || acc.body.status !== "joined") throw new Error(`accept failed: ${JSON.stringify(acc.body)}`);
   };
 

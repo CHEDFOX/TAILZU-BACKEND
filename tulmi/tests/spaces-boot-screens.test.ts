@@ -203,7 +203,7 @@ describe("the new Spaces from the server's answers", () => {
       expect(open?.params, client).toMatchObject({ bot: "plan", space: f.home, owner: M_, item: f.doctor });
       const dev = await draw(f, D_, "bots.spaces", client, { params });
       expect(dev.texts, `${client}: Dev`).not.toContain("Bring the reports");
-      expect(dev.texts, client).toContain("The space's admin can see your work and messages here.");
+      expect(dev.texts, client).toContain("The space's admin can see and share your work and messages here.");
       expect(dev.nodes.filter((n) => n.type === "MentionField"), client).toHaveLength(0);
       expect(dev.s.talkTo, client).toBeUndefined();
       await routesExist(f, mom.s);

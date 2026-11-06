@@ -16,8 +16,8 @@
  *   POST   /v1/botsapp/bots/spaces/draft/invite { email }  -> 201 { draft }   Call Your People: an invite mailed at once
  *   POST   /v1/botsapp/bots/spaces/draft/done { name? } -> { id, name }   Done: the draft is a real space
  *   DELETE /v1/botsapp/bots/spaces/draft                Back: the draft goes, with its invites and any mail not yet sent
- *   PUT    /v1/botsapp/bots/spaces/invitations/:code { decision: accept|dismiss, consent? }  -> JoinResult
- *   POST   /v1/botsapp/bots/spaces/join { code, consent? }  -> JoinResult: joined (the invited address), member, or requested
+ *   PUT    /v1/botsapp/bots/spaces/invitations/:code { decision: accept|dismiss, consent?, consentV? }  -> JoinResult
+ *   POST   /v1/botsapp/bots/spaces/join { code, consent?, consentV? }  -> JoinResult: joined (the invited address), member, or requested
  *   GET    /v1/botsapp/bots/spaces/join/:code           -> { invite: { name, members } | null }   what an email invite's code is for,
  *                                                        before joining (a space's own code: always null, so codes can't be guessed for names)
  *   GET    /v1/botsapp/bots/spaces/:id                  -> { space, items, payments, tasks, you, mailReady }   one whole (its code for the admin)
@@ -27,7 +27,8 @@
  *                                                        invite: without an email, the space's own code and its link)
  *   DELETE /v1/botsapp/bots/spaces/:id/invites/:code    take an invite back (the admin)
  *   PUT    /v1/botsapp/bots/spaces/:id/requests/:rid { decision: accept|dismiss }  -> { status, name }   the admin lets someone in, or not
- *   PUT    /v1/botsapp/bots/spaces/:id/consent          the member tapped OK on the line about the admin
+ *   PUT    /v1/botsapp/bots/spaces/:id/consent { consentV? }   the member tapped OK on the line about the admin (`consentV`: which
+ *                                                        line their screen showed, spacePerms.ts lineShown; none is the line before)
  *   GET    /v1/botsapp/bots/spaces/:id/feed?before=&limit=  -> FeedRead
  *   POST   /v1/botsapp/bots/spaces/:id/feed { text?, to?, thing?: { bot, id }, files?, voice?, everyone? }  -> 201 { message } | 200 { confirm }
  *   DELETE /v1/botsapp/bots/spaces/:id/grants/:gid       Stop sharing a thing (its sharer, or the admin): the access and its card go
@@ -87,6 +88,7 @@ import { registerSafetyRoutes, suspendWithSupabase } from "./safety.js";
 import { verifyQuery } from "../../botsBots/spaceLinks.js";
 import { codeOf, INVITE_CODE_RE, isJoinCodeShape, JOIN_SCREEN, showCode, type Spaces } from "../../botsBots/spaces.js";
 import { SpaceJoin, type Joiner } from "../../botsBots/spaceJoin.js";
+import { lineShown } from "../../botsBots/spacePerms.js";
 import { SpaceFeed } from "../../botsBots/spaceFeed.js";
 import { Grants } from "../../botsBots/grants.js";
 import { Work } from "../../botsBots/work.js";
@@ -292,12 +294,12 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.delete(`${AREA}/spaces/draft`, RL, run(async (user) => { await spaces.dropDraft(user.id); return { ok: true }; }));
   app.put(`${AREA}/spaces/invitations/:code`, tight(20), run(async (user, req) => {
     const b = bodyOf(req.body);
-    return join.decideInvitation(joinerOf(user), param(req, "code"), b.decision, b.consent === true, shownName(user));
+    return join.decideInvitation(joinerOf(user), param(req, "code"), b.decision, b.consent === true ? lineShown(b.consentV) : 0, shownName(user));
   }));
   // A code: the invited address joins at once; anyone else asks the admin. An old build reads `id` and `name` when it joined.
   app.post(`${AREA}/spaces/join`, tight(20), run(async (user, req) => {
     const b = bodyOf(req.body);
-    return join.join(joinerOf(user), b.code, shownName(user), b.consent === true);
+    return join.join(joinerOf(user), b.code, shownName(user), b.consent === true ? lineShown(b.consentV) : 0);
   }));
   // What an email invite's code is for, before joining (its link opens Spaces with it: screens/spaces.ts). Codes that don't work count.
   app.get(`${AREA}/spaces/join/:code`, tight(30), run(async (user, req) => ({ invite: await join.peek(user.id, param(req, "code")) })));
@@ -313,7 +315,7 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.post(`${AREA}/spaces/:id/invite`, tight(20), run(async (user, req) => spaces.invite({ id: user.id }, param(req, "id"), { email: bodyOf(req.body).email }, shownName(user))));
   app.delete(`${AREA}/spaces/:id/invites/:code`, RL, run(async (user, req) => { await spaces.revokeInvite(user.id, param(req, "id"), param(req, "code")); return { ok: true }; }));
   app.put(`${AREA}/spaces/:id/requests/:rid`, RL, run(async (user, req) => join.decide(user.id, param(req, "id"), param(req, "rid"), bodyOf(req.body).decision)));
-  app.put(`${AREA}/spaces/:id/consent`, RL, run(async (user, req) => { await spaces.setConsent(user.id, param(req, "id")); return { ok: true }; }));
+  app.put(`${AREA}/spaces/:id/consent`, RL, run(async (user, req) => { await spaces.setConsent(user.id, param(req, "id"), lineShown(bodyOf(req.body).consentV)); return { ok: true }; }));
   app.get(`${AREA}/spaces/:id/feed`, RL, run(async (user, req) => {
     const q = queryOf(req);
     return feed.read(user.id, param(req, "id"), { before: q.before, limit: q.limit });
