@@ -76,6 +76,7 @@ import { startOpsAlerts } from "./ops/alerts.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerBlipRoutes } from "./routes/bots/blipCatalog.js";
+import { registerLaunchRoutes } from "./routes/app/launchMotion.js";
 import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
 import { jobsHandoffFromConfig } from "./code/jobs/handoff/index.js";
 import { sessionOffers } from "./code/live/offers.js";
@@ -471,6 +472,8 @@ registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).
 registerBlipRoutes(app, { rateLimit: AUTHED_RL });
+// The phone's launch motion, and pushing a new one (experience/phone/launch.ts).
+registerLaunchRoutes(app, { rateLimit: AUTHED_RL });
 const frontRoutes = registerFrontRoutes(app, {
   rateLimit: AUTHED_RL, front, bots,
   // "Ask any bot": a bot shared into a space reads what the space shared, as data, as in its chat.

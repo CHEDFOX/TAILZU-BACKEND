@@ -1,0 +1,64 @@
+{
+  "v": 1,
+  "format": 1,
+  "note": "The phone's launch: the splash's bot pulls himself up over his bar and is gone, hands and all; half a second later his hands come back and grab the bar's middle, one from above and one from below, and twist as the bar is pulled in to them. t is ms since the motion began. docs/launch.md has the format.",
+  "length": 2200,
+  "fade": 220,
+  "pinchAt": 1730,
+  "macros": {
+    "K": [["kv", "ka", "kb"], "clamp((kv - ka)/(kb - ka), 0, 1)"],
+    "ease": [["ev"], "smooth(0, 1, ev)"],
+    "out": [["ov"], "1 - pow(1 - clamp(ov, 0, 1), 3)"],
+    "inOut": [["iv"], "(clamp(iv, 0, 1) < 0.5 ? 4*pow(clamp(iv, 0, 1), 3) : 1 - pow(2 - 2*clamp(iv, 0, 1), 3)/2)"]
+  },
+  "let": [
+    ["letGoL", "690"], ["letGoR", "740"], ["letGoMs", "140"],
+    ["comeL", "1400"], ["comeR", "1450"], ["comeMs", "200"],
+    ["pinch", "1730"], ["suck", "1810"], ["gone", "2120"], ["closeMs", "150"]
+  ],
+  "bar": {
+    "let": [
+      ["gather", "K(t, 420, 560)"], ["pull", "K(t, 560, 900)"], ["free", "K(t, 900, 1250)"],
+      ["sag", "t < 560 ? ease(gather)*1.6 : (t < 900 ? 1.6 + sin(pull*pi)*1.4 : 0)"],
+      ["spring", "t >= 900 ? -sin(free*pi*2.5)*(1 - free)*3.2 : 0"],
+      ["kick", "-(sin(K(t, letGoL, letGoL + 60)*pi) + sin(K(t, letGoR, letGoR + 60)*pi))*1.2"],
+      ["grab", "sin(K(t, comeL + comeMs - 20, comeL + comeMs + 70)*pi)*0.9 - sin(K(t, comeR + comeMs - 20, comeR + comeMs + 70)*pi)*0.9"]
+    ],
+    "dy": "sag + spring + kick + grab"
+  },
+  "head": {
+    "let": [["gather", "K(t, 420, 560)"], ["pull", "K(t, 560, 900)"]],
+    "dy": "ease(gather)*3.5*(1 - ease(K(t, 560, 640))) - inOut(pull)*Z*0.47",
+    "sway": "sin(pull*pi)*-2.5",
+    "sq": "t >= 560 && t < 900 ? 1 - sin(pull*pi)*0.04 : 1",
+    "shut": "(t > 200 && t < 280) || (t > 600 && t < 660) ? 1 : 0",
+    "shown": "t < 900 ? 1 : 0"
+  },
+  "gloves": {
+    "let": [
+      ["letGo", "side ? letGoR : letGoL"], ["come", "side ? comeR : comeL"], ["landed", "come + comeMs"],
+      ["away", "ease(K(t, letGo, letGo + letGoMs))"], ["back", "out(K(t, come, landed))"],
+      ["close", "ease(K(t, gone - closeMs, gone))"], ["coming", "t >= come"],
+      ["held", "side ? mid + half + 1 : mid - half - 1"]
+    ],
+    "grip": "ease(K(t, 560, 680))*0.22 + sin(K(t, landed - 30, landed + 110)*pi)*0.12",
+    "dy": "coming ? 0 : -away*Z*0.06",
+    "edge": "coming ? (side ? 0 : -Z*0.45) : away*(barBottom - barTop)",
+    "lift": "coming ? (1 - back)*Z*0.25*(side ? 1 : -1) : 0",
+    "flip": "coming && !side ? -1 : 1",
+    "gx": "coming ? held + (mid - held)*close - cx : 0",
+    "turn": "sin(K(t, suck, gone)*pi*2)*(1 - close)*10*(side ? 1 : -1)",
+    "size": "1 - close",
+    "shown": "t >= gone ? 0 : (t < letGo + letGoMs ? 1 : (coming ? K(t, come, come + comeMs/2) : 0))"
+  },
+  "strip": {
+    "let": [
+      ["k", "pow(K(K(t, suck, gone), min(1, d)*0.22, min(1, d)*0.22 + 0.78), 2.6)"],
+      ["near", "exp(-d*d*9)"]
+    ],
+    "dx": "-(x - mid)*k",
+    "sx": "1 + k*2.2",
+    "sy": "(1 - ease(K(t, pinch, suck))*0.38*near)*(1 - k*0.85)",
+    "shown": "k >= 0.995 ? 0 : 1"
+  }
+}

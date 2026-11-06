@@ -680,6 +680,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "app.header.paddingTop": 56,
   "app.header.paddingX": 16,
   "app.keyboard.deepLinkMaxAgeMs": 45000,
+  "app.launch": {},
   "app.launchCard.backdrop": "rgba(4,4,6,0.72)",
   "app.launchCard.maxWidth": 360,
   "app.launchCard.padding": 24,

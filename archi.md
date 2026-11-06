@@ -200,6 +200,7 @@ ads/               Meta and Google Tag Manager events
 | A Bots app screen | `tulmi/src/experience/bots/screens/<area>/<screen>.ts`, listed in `screens/<area>.ts`; ids in `bots/ids.ts`, entry `bots/index.ts` |
 | The new Spaces' screens (his thought, the crowd, Call Your People, the feed with @ and /, Work in space, Home's Ask as his thought) | `experience/bots/screens/spaces/{start,feed,peoplePage}.ts`, `screens/work.ts`, `screens/work/workTab.ts`, `screens/shell/homeThought.ts`; the blocks in `shared/types/sdui.ts` 3i, kit `canSpaces2`, `canHomeThought`, `canVoice` (docs/bots-app.md section 8) |
 | Blip's moves and poses on the desktop | `shared/bots/blip.json`, `tulmi/src/experience/bots/blip.ts`, routes `routes/bots/blipCatalog.ts` (docs/blip.md) |
+| The phone's launch motion | `shared/launch/launch.json`, `tulmi/src/experience/phone/launch.ts`, routes `routes/app/launchMotion.ts` (docs/launch.md) |
 | The bootstrap | `tulmi/src/experience/bootstrap/bootstrap.ts` |
 | The keyboard config | `tulmi/src/experience/keyboard/config.ts` |
 | An SDUI node kind or action | `shared/types/sdui.ts` |

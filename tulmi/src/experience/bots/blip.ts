@@ -93,7 +93,7 @@ function checkAst(n: Ast, names: readonly string[], errs: string[], where: strin
   }
 }
 
-function checkNumber(x: unknown, names: readonly string[], macros: Record<string, [string[], string]>, errs: string[], where: string): void {
+export function checkNumber(x: unknown, names: readonly string[], macros: Record<string, [string[], string]>, errs: string[], where: string): void {
   if (typeof x === "number") { if (!Number.isFinite(x)) errs.push(`${where}: not a finite number`); return; }
   if (typeof x !== "string" || !x.trim() || x.length > MAX_SRC) { errs.push(`${where}: a number or an expression`); return; }
   try { checkAst(parse(expandMacros(x, macros)), names, errs, where); } catch (e) { errs.push(`${where}: ${(e as Error).message}`); }
@@ -112,7 +112,7 @@ function checkWord(field: string, x: unknown, names: readonly string[], macros: 
   errs.push(`${where}: a ${field} name, or { if, then, else }`);
 }
 
-function checkLets(spec: unknown, names: string[], macros: Record<string, [string[], string]>, errs: string[], where: string): string[] {
+export function checkLets(spec: unknown, names: string[], macros: Record<string, [string[], string]>, errs: string[], where: string): string[] {
   if (spec === undefined) return names;
   if (!Array.isArray(spec) || spec.length > MAX_LETS) { errs.push(`${where}.let: at most ${MAX_LETS} [name, expression] pairs`); return names; }
   let ns = names.slice();

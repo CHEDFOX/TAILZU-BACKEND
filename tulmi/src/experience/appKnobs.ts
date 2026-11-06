@@ -23,6 +23,8 @@ export const CATALOG_CONDITIONAL: ReadonlySet<string> = new Set([
   "desktop.desk",
   // Setup's Live Activity: present while setup is unfinished, absent once done.
   "liveActivity.setup",
+  // The launch's motion goes to phones only (phone/launch.ts); a desktop has no launch to play.
+  "app.launch",
 ]);
 
 export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags">>(boot: T): T {

@@ -9,6 +9,7 @@ import { withAppKnobs } from "../appKnobs.js";
 import { desktopLists } from "../appLists.js";
 import { botsNav, botsFonts, BOTS_WARM_SCREEN_IDS } from "../bots/index.js";
 import { blipFlags } from "../bots/blip.js";
+import { launchFlags } from "../phone/launch.js";
 import { looksFlags } from "../bots/looks.js";
 import { botsAuthTree } from "../bots/screens/firstRun.js";
 import { BOTS_OFFLINE_FLAGS } from "../bots/screens/outbox.js";
@@ -491,6 +492,10 @@ export function buildBootstrap(
 
         // Phones only: the desktop has no push.
         ...(opts.formFactor !== "desktop" ? { "push.ask": PUSH_ASK } : {}),
+
+        // Phones only: the launch's motion (phone/launch.ts), whole. The app keeps it with this bootstrap and plays it
+        // from its next start; the desktop has no launch.
+        ...(opts.formFactor !== "desktop" ? launchFlags() : {}),
 
         // IN-APP mic capture mode — the app's counterpart to the keyboard's
         // kb.mic.mode, so both surfaces are switchable from here with no app
