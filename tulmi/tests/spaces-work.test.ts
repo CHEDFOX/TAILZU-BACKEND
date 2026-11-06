@@ -35,6 +35,8 @@ const { calendar } = await import("../src/calendar/index.js");
 const { spaceTable } = await import("../src/botsBots/spaceRows.js");
 
 const W = (bot: string) => `${AREA}/work/${bot}`;
+/** A person's tiny bot in a reply (botsBots/personLook.ts): theirs, by their id. */
+const bot = (id: string) => expect.objectContaining({ seed: id, avatar: expect.any(String), color: expect.any(String) });
 const q = (o: Record<string, string>) => new URLSearchParams(o).toString();
 
 async function served() {
@@ -82,7 +84,7 @@ describe("Work in space", () => {
     const page = (await s.call("GET", W("plan"), R_)).body;
     expect(page).toEqual({
       bot: "plan", botName: "Plan Ease", seenBy: ["Aanya S."], notesOnMine: [],
-      spaces: [{ spaceId: s.home, spaceName: "Home", admin: false, people: [{ userId: M_, name: "Mom", how: "shared", line: "1 plan shared with you" }] }],
+      spaces: [{ spaceId: s.home, spaceName: "Home", admin: false, people: [{ userId: M_, name: "Mom", how: "shared", line: "1 plan shared with you", bot: bot(M_) }] }],
     });
     expect(s.reads).toEqual([]);
     const person = (await s.call("GET", `${W("plan")}/person?${q({ space: s.home, owner: M_ })}`, R_)).body;
@@ -126,7 +128,7 @@ describe("Work in space", () => {
     s.reads.length = 0;
     const page = (await s.call("GET", W("plan"), A_)).body;
     expect(page.spaces).toEqual([{ spaceId: s.home, spaceName: "Home", admin: true, people: [
-      { userId: M_, name: "Mom", how: "admin", line: "All their plans" }, { userId: R_, name: "Rohan", how: "admin", line: "All their plans" },
+      { userId: M_, name: "Mom", how: "admin", line: "All their plans", bot: bot(M_) }, { userId: R_, name: "Rohan", how: "admin", line: "All their plans", bot: bot(R_) },
     ] }]);
     expect(page.seenBy).toEqual([]);
     expect(s.reads).toEqual([]);
@@ -156,7 +158,7 @@ describe("Work in space", () => {
     // Every space Dev is in (Home, with nobody to show him yet, too), so the bot page always has Work in space.
     expect((await s.call("GET", W("plan"), D_)).body.spaces).toEqual([
       { spaceId: s.home, spaceName: "Home", admin: false, people: [] },
-      { spaceId: club, spaceName: "Club", admin: false, people: [{ userId: M_, name: "Mom", how: "view", line: "Everything they share" }] },
+      { spaceId: club, spaceName: "Club", admin: false, people: [{ userId: M_, name: "Mom", how: "view", line: "Everything they share", bot: bot(M_) }] },
     ]);
     // A note through Home (Rohan's grant) stays in Home: Dev, working through the club, doesn't see it; Mom sees both.
     await share(s, M_, { to: R_, thing: { bot: "plan", id: s.doctor } });

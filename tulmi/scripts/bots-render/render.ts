@@ -28,6 +28,7 @@
  *   --quiet                         the quiet day: nothing working, nothing waiting (default: the boards' day)
  *   --json <file>                   draw this screen JSON (e.g. one a running server served) instead of building one
  *   --motion                        let the motions run (default: Reduce Motion, so every shot is the same)
+ *   --without PersonBot,FontBricolage  draw it for a build that lacks these (default: the builds as they are now)
  *   --out <dir>   --design <bots-design dir, default $BOTS_DESIGN, else bots-design beside the repos>
  *
  * The data is fixtures.ts's (fakeDeps); a screen's own `load` gets its answers from yours
@@ -148,7 +149,7 @@ export async function buildPhoneBundle(entry = path.join(HERE, "phone/entry.jsx"
 
 const { buildBotsScreen, botsNav } = await import("../../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../../src/experience/bots/fixtures.js");
-const { FACE, botsFonts, BOTS_THEME } = await import("../../src/experience/bots/kit.js");
+const { BRICOLAGE, FACE, botsFonts, BOTS_THEME } = await import("../../src/experience/bots/kit.js");
 
 /** What one render reads: the sample day (fixtures.ts), answers for the screens' own `load`, or a served screen. */
 export interface ScreenData {
@@ -160,15 +161,19 @@ export interface ScreenData {
   quiet?: boolean;
   /** Draw this screen JSON for the screen asked for instead of building it. */
   served?: unknown;
+  /** Names the build does not declare (a build from before them): left out of what the client says, on every screen it asks for. */
+  without?: string[];
 }
 
 const USER = { id: "00000000-0000-4000-8000-00000000aaaa", name: "Aanya Sharma", email: "aanya@example.in" };
 /** The new Spaces' and Home's thought's blocks (shared/types/sdui.ts 3i), with the moments they play and live words. */
 export const SPACES_COMPONENTS = ["BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "VoiceLive", "DoubleTap", "KitExtras"];
-export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "Outbox", ...SPACES_COMPONENTS, "DeskTalkTo"];
+/** People as their own tiny bots, and a space's messages in Bricolage (shared/types/sdui.ts 3j): both builds say these now. */
+export const LOOK_COMPONENTS = ["PersonBot", "FontBricolage"];
+export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "Outbox", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "DeskTalkTo"];
 /** What the phone build declares beyond BotsKit, for the screens drawn here: the living tiles, the media actions, the new Spaces (and the
  *  "$state" params their navigation needs, ActionParams). */
-export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", ...SPACES_COMPONENTS];
+export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS];
 
 /**
  * The builder the stand-in server uses. `misses` collects the api calls the target screen made that had no answer
@@ -184,9 +189,10 @@ function builder(target: string, data: ScreenData, misses: string[]) {
         try { return await api(method as "GET", route, body); } catch (e) { misses.push(`${method} ${route}`); throw e; }
       }) as typeof deps.api;
     }
+    const said = data.without?.length ? comps.filter((c) => !data.without!.includes(c)) : comps;
     return buildBotsScreen({
       screenId: id, client, params: p as Record<string, string>, tzOffsetMinutes: IST, user: USER,
-      can: new Set(["BotsKit", ...comps]), desk: { pages: comps.includes("DeskShell"), notes: comps.includes("DeskNotes") },
+      can: new Set(["BotsKit", ...said]), desk: { pages: said.includes("DeskShell"), notes: said.includes("DeskNotes") },
     }, deps);
   };
 }
@@ -236,15 +242,23 @@ async function spills(page: any, rootSelector: string): Promise<string[]> {
 
 interface Drawn { errors: string[]; spills: string[] }
 
+/** How a render is taken beyond the screen: a taller page, and what to do on it before the shot (type "@" into a field…). */
+export interface Shot {
+  height?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  act?: (page: any) => Promise<void>;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function renderPhone(browser: any, screen: unknown, file: string, motion: boolean): Promise<Drawn> {
+async function renderPhone(browser: any, screen: unknown, file: string, motion: boolean, shot: Shot = {}): Promise<Drawn> {
   const errors: string[] = [];
   const bundle = await phoneBundle();
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, reducedMotion: motion ? "no-preference" : "reduce" });
+  const page = await browser.newPage({ viewport: { width: 390, height: shot.height ?? 844 }, deviceScaleFactor: 2, reducedMotion: motion ? "no-preference" : "reduce" });
   try {
     page.on("pageerror", (e: Error) => errors.push(e.message));
-    const fonts = botsFonts();
-    const faces = Object.values(FACE).map((f) => `@font-face{font-family:"${f}";src:url(${fonts[f]})}`).join("");
+    // Every face the bootstrap can name, Bricolage's too (a screen built without FontBricolage never sets them).
+    const fonts = botsFonts({ bricolage: true });
+    const faces = [...Object.values(FACE), ...Object.values(BRICOLAGE)].map((f) => `@font-face{font-family:"${f}";src:url(${fonts[f]})}`).join("");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await page.route("https://phone.local/**", (r: any) => new URL(r.request().url()).pathname === "/bundle.js"
       ? r.fulfill({ body: bundle, contentType: "text/javascript" })
@@ -257,6 +271,7 @@ async function renderPhone(browser: any, screen: unknown, file: string, motion: 
       throw new Error(`the phone drew nothing (${(e as Error).message.split("\n")[0]}). ${errors.join(" | ")}`);
     }
     await settle(page, motion);
+    if (shot.act) { await shot.act(page); await settle(page, motion); }
     const sp = await spills(page, "#root");
     await page.screenshot({ path: file });
     return { errors, spills: sp };
@@ -266,10 +281,10 @@ async function renderPhone(browser: any, screen: unknown, file: string, motion: 
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function renderDesktop(browser: any, screenId: string, params: Params, build: Build, file: string, motion: boolean): Promise<Drawn> {
+async function renderDesktop(browser: any, screenId: string, params: Params, build: Build, file: string, motion: boolean, shot: Shot = {}): Promise<Drawn> {
   const errors: string[] = [];
   // bypassCSP: the window's policy refuses the checks this script runs in the page (it allows its own scripts only).
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2, bypassCSP: true, reducedMotion: motion ? "no-preference" : "reduce" });
+  const page = await browser.newPage({ viewport: { width: 1280, height: shot.height ?? 800 }, deviceScaleFactor: 2, bypassCSP: true, reducedMotion: motion ? "no-preference" : "reduce" });
   try {
     page.on("pageerror", (e: Error) => errors.push(e.message));
     const session = { access_token: "render-check", refresh_token: "render-check", expires_at: 4_102_444_800 };
@@ -321,6 +336,7 @@ async function renderDesktop(browser: any, screenId: string, params: Params, bui
       await page.waitForTimeout(400);
     }
     await settle(page, motion);
+    if (shot.act) { await shot.act(page); await settle(page, motion); }
     const sp = await spills(page, "#view");
     await page.screenshot({ path: file });
     return { errors, spills: sp };
@@ -377,6 +393,8 @@ export interface RenderOptions extends ScreenData {
   compare?: boolean;
   motion?: boolean;
   design?: string;
+  /** A taller page than the device's (the whole of a long screen), and what to do on it before the shot. */
+  shot?: Shot;
 }
 
 export interface Rendered {
@@ -408,8 +426,8 @@ export async function renderClient(browser: any, o: RenderOptions): Promise<Rend
   const missed = [...new Set(misses)];
   fs.writeFileSync(`${base}.json`, JSON.stringify(screen, null, 1));
   const drawn = o.client === "phone"
-    ? await renderPhone(browser, screen, `${base}.png`, !!o.motion)
-    : await renderDesktop(browser, o.screenId, params, build, `${base}.png`, !!o.motion);
+    ? await renderPhone(browser, screen, `${base}.png`, !!o.motion, o.shot)
+    : await renderDesktop(browser, o.screenId, params, build, `${base}.png`, !!o.motion, o.shot);
   const r: Rendered = { client: o.client, json: `${base}.json`, png: `${base}.png`, screen, ...drawn, misses: missed };
   if (o.board && await renderBoard(browser, o.board, `${base}.board.png`, o.design)) r.board = `${base}.board.png`;
   if (o.compare ?? true) {
@@ -439,6 +457,7 @@ async function main(): Promise<void> {
     api: flag("api") ? JSON.parse(flag("api")!) as Record<string, unknown> : {},
     quiet: has("quiet"),
     ...(flag("json") ? { served: JSON.parse(fs.readFileSync(flag("json")!, "utf8")) } : {}),
+    ...(flag("without") ? { without: flag("without")!.split(",").map((n) => n.trim()).filter(Boolean) } : {}),
   };
   const browser = await launchBrowser();
   let failed = false;

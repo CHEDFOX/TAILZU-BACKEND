@@ -22,6 +22,7 @@ import { live } from "../live/bus.js";
 import type { Blocks } from "./blocks.js";
 import type { Grants } from "./grants.js";
 import { cleanEmail, type MailOutbox } from "./mail.js";
+import { lookOf, type PersonLook } from "./personLook.js";
 import type { SharedItems } from "./shared.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import type { Publish, Spaces } from "./spaces.js";
@@ -62,7 +63,8 @@ export interface ReportView {
   ref: string; threadId: string | null; spaceId: string | null; what: string; snapshot: Record<string, unknown>;
 }
 
-export interface PersonView { userId: string; name: string; spaces: string[]; blockedByYou: boolean; canMessage: boolean }
+/** `bot`: their tiny bot, as the first space you share has them (threads.ts looksKnown), else their own look. */
+export interface PersonView { userId: string; name: string; spaces: string[]; blockedByYou: boolean; canMessage: boolean; bot: PersonLook }
 
 /** What a report is about, resolved for the reporter: who, what, and a copy of it. */
 interface Target {
@@ -122,8 +124,10 @@ export class Safety {
   async person(viewer: string, other: string): Promise<PersonView> {
     const a = await this.known(viewer, other);
     const blockedByYou = await this.blocks.byMe(viewer, other);
-    const canMessage = !(await this.blocks.between(viewer, other)) && (await this.threads.contacts(viewer)).people.some((p) => p.userId === other);
-    return { userId: other, name: a.name, spaces: a.spaces.map((s) => s.name), blockedByYou, canMessage };
+    const contact = (await this.blocks.between(viewer, other)) ? undefined : (await this.threads.contacts(viewer)).people.find((p) => p.userId === other);
+    // Someone you can't message (a block, a space that doesn't let you) still looks as they do in the first space you share.
+    const bot = contact?.bot ?? (await this.threads.looksKnown(viewer)).get(other) ?? lookOf(other);
+    return { userId: other, name: a.name, spaces: a.spaces.map((s) => s.name), blockedByYou, canMessage: !!contact, bot };
   }
 
   async block(viewer: string, other: string): Promise<{ name: string; already: boolean }> {

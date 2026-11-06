@@ -10,20 +10,21 @@
  */
 
 import type { Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, C, SCREENS, canSpaces2, col, icon, meta, open, row, sectionLabel, segmented, text, when } from "../../kit.js";
+import { type BotsCtx, C, SCREENS, canSpaces2, col, icon, meta, open, row, sectionLabel, segmented, text, when, type PersonLookSpec } from "../../kit.js";
 import type { BotsDeps } from "../../live.js";
-import { A, isDesk, names, personDot, rowsCard, shareLook, type ShareBot } from "../spaces/parts.js";
+import { A, isDesk, names, personMark, rowsCard, shareLook, type ShareBot } from "../spaces/parts.js";
 import { ago } from "../spaces/spaceDetail.js";
 
 // ===================================================================== what it reads (src/botsBots/work.ts, as the route answers)
 
-export interface WorkPerson { userId: string; name: string; how: "admin" | "shared" | "view"; line: string }
+/** `bot`: their tiny bot in that space (src/botsBots/personLook.ts). */
+export interface WorkPerson { userId: string; name: string; how: "admin" | "shared" | "view"; line: string; bot?: PersonLookSpec }
 export interface WorkSpace { spaceId: string; spaceName: string; admin: boolean; people: WorkPerson[] }
 export interface WorkRead {
   bot: ShareBot; botName: string; spaces: WorkSpace[];
   /** Admins who can see the viewer's own things in this bot ("Aanya, the space's admin, can see these too."). */
   seenBy: string[];
-  notesOnMine: Array<{ itemId: string; title: string; by: string; text: string; at: number; spaceId: string }>;
+  notesOnMine: Array<{ itemId: string; title: string; by: string; byBot?: PersonLookSpec; text: string; at: number; spaceId: string }>;
 }
 
 /** The bot page's read of Work in space, for a build that draws it; a failed read is the page as it was. */
@@ -43,7 +44,7 @@ export function withWork(ctx: BotsCtx, work: WorkRead | undefined, body: Node[])
   const notes = work.notesOnMine.length ? [col([
     sectionLabel("Notes from your space"),
     rowsCard(work.notesOnMine.map((n) => row([
-      personDot(n.by, false, 28),
+      personMark(ctx, { seed: `${n.spaceId}:${n.by}`, bot: n.byBot }, 28),
       col([text(`${n.by}: ${n.text}`, { size: 14, lineHeight: 19, lines: 2 }), meta(`On ${n.title} · ${ago(ctx, n.at)}`, { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
       ...(mineId ? [icon("chevron", { size: 16, color: C.meta })] : []),
     ], { gap: 12, paddingVertical: 12, paddingHorizontal: 16 }, mineId ? open(SCREENS.work, { bot: work.bot, space: n.spaceId, owner: mineId, item: n.itemId }) : undefined))),
@@ -55,7 +56,7 @@ export function withWork(ctx: BotsCtx, work: WorkRead | undefined, body: Node[])
     sectionLabel(s.spaceName),
     meta(s.admin ? "You see these as admin." : "Only what people share with you.", { size: 12 }),
     s.people.length ? rowsCard(s.people.map((p) => row([
-      personDot(p.name, false, 36),
+      personMark(ctx, { seed: p.userId, bot: p.bot }, 36),
       col([text(p.name, { size: 15, weight: 500, lineHeight: 20, lines: 1 }), meta(p.line, { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
       icon("chevron", { size: 16, color: C.meta }),
     ], { gap: 12, paddingVertical: 12, paddingHorizontal: 16, minHeight: 60 }, open(SCREENS.work, { bot: work.bot, space: s.spaceId, owner: p.userId }))))

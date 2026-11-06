@@ -4,9 +4,9 @@
 
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  icon, box, C, type BotsCtx, call, seq, back, row, col, text, meta, page, emptyState, open, SCREENS, segmented, primaryButton,
+  icon, box, C, type BotsCtx, call, seq, back, row, col, text, meta, page, emptyState, open, SCREENS, segmented, primaryButton, type PersonLookSpec,
 } from "../../kit.js";
-import { toast, A, rowPad, clearState, kindBadge, refresh, section, rowsCard, names, personDot, labelledField, field, isDesk } from "./parts.js";
+import { toast, A, rowPad, clearState, kindBadge, refresh, section, rowsCard, names, personMark, labelledField, field, isDesk } from "./parts.js";
 import { said } from "../../said.js";
 
 export const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
@@ -16,7 +16,8 @@ export const KIND_WORD: Record<string, string> = { list: "List", trip: "Trip", p
 export const iconBox = (name: Parameters<typeof icon>[0]) => box([icon(name, { size: 18 })], { width: 32, height: 32, borderRadius: 10, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 });
 
 // ===================================================================== bots.share: share to a space or person
-export interface Targets { spaces: Array<{ id: string; name: string; canShare: boolean }>; people: Array<{ userId: string; name: string; spaces: string[] }> }
+/** People: `bot`, their tiny bot (the first space you share has it: src/botsBots/threads.ts contacts). */
+export interface Targets { spaces: Array<{ id: string; name: string; canShare: boolean }>; people: Array<{ userId: string; name: string; spaces: string[]; bot?: PersonLookSpec }> }
 
 export function sharePage(ctx: BotsCtx, t: Targets | undefined) {
   const p = ctx.params;
@@ -49,7 +50,7 @@ export function sharePage(ctx: BotsCtx, t: Targets | undefined) {
         : !spaces.length && !people.length ? [emptyState({ pose: "hello", title: "No spaces yet", body: "Make a space for home or friends first. Then you can share anything there.", action: { label: "Spaces", onPress: open(SCREENS.spaces) } })]
           : [
             ...(spaces.length ? [section("To a space", [rowsCard(spaces.map((s) => choice(s.name, s.canShare ? "Everyone in it can see it" : "You can't share things here", "toSpace", s.id, iconBox("folder"), s.canShare)))])] : []),
-            ...(people.length ? [section("To a person", [rowsCard(people.map((m) => choice(m.name, `In ${names(m.spaces)} · goes to your chat`, "toPerson", m.userId, personDot(m.name, false))))])] : []),
+            ...(people.length ? [section("To a person", [rowsCard(people.map((m) => choice(m.name, `In ${names(m.spaces)} · goes to your chat`, "toPerson", m.userId, personMark(ctx, { seed: m.userId, bot: m.bot }))))])] : []),
             ...(editable ? [section("They can", [segmented([{ label: "Change it", value: "edit" }, { label: "Only look", value: "view" }], "access")])] : []),
             labelledField("Say something (if you like)", field("note", "note", "For Sunday's lunch")),
             meta(kind === "file" || kind === "trip" ? "They see a copy of it now, kept with the space or your chat." : "They see a copy of it as it is now.", { size: 12 }),

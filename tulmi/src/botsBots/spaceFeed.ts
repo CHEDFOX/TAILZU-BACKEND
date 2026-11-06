@@ -21,6 +21,7 @@ import type { Blocks } from "./blocks.js";
 import { screenPost } from "./filter.js";
 import type { Grants } from "./grants.js";
 import type { PaymentView, Payments } from "./payments.js";
+import { shownLook, looksIn, type PersonLook } from "./personLook.js";
 import { isShareBot, type ShareBot, type ShareSources } from "./spaceShares.js";
 import type { Spaces } from "./spaces.js";
 import type { SpaceTasks, TaskView } from "./spaceTasks.js";
@@ -42,8 +43,8 @@ export interface FeedMessage {
 }
 export interface FeedRead {
   space: { id: string; name: string; admin: boolean; adminName: string; consented: boolean; threadId: string };
-  /** Blocked people left out. */
-  people: Array<{ userId: string; name: string; you: boolean; admin: boolean }>;
+  /** Blocked people left out. `bot`: their tiny bot in this space (personLook.ts), the viewer's own their X0 bot. */
+  people: Array<{ userId: string; name: string; you: boolean; admin: boolean; bot: PersonLook }>;
   /** Oldest first. */
   messages: FeedMessage[];
   more: boolean; before: number | null;
@@ -96,12 +97,16 @@ export class SpaceFeed {
       this.o.tasks ? this.o.tasks.list(userId, spaceId).catch(() => [] as TaskView[]) : Promise.resolve([] as TaskView[]),
     ]);
     const owner = a.s.owner_id;
+    // Every member's look, oldest first, before anyone is hidden from this viewer (spaces.ts view does the same).
+    const looks = looksIn(rows.map((m) => m.user_id));
     return {
       space: {
         id: a.s.id, name: a.s.name, admin: a.admin, adminName: rows.find((m) => m.user_id === owner)?.name ?? "",
         consented: a.admin || (a.me.consent_ms !== null && a.me.consent_ms !== undefined), threadId,
       },
-      people: rows.filter((m) => !hidden.has(m.user_id)).map((m) => ({ userId: m.user_id, name: m.name, you: m.user_id === userId, admin: m.user_id === owner })),
+      people: rows.filter((m) => !hidden.has(m.user_id)).map((m) => ({
+        userId: m.user_id, name: m.name, you: m.user_id === userId, admin: m.user_id === owner, bot: shownLook(looks, m.user_id, userId),
+      })),
       messages: page.messages.map((m) => this.feedMessage(m)),
       more: page.more, before: page.before,
       payments: pays.filter((p) => p.status === "waiting"),

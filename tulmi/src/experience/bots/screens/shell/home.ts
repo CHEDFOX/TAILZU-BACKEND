@@ -11,7 +11,7 @@ import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, toTab, C, headBar, type PageOpts, hasOutbox,
-  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice,
+  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
@@ -25,7 +25,7 @@ import { hasNotes, notesTileSpec, notesStripHeight, notesStrip } from "../notes.
 import { outboxCard } from "../outbox.js";
 import { pushAskDue, PUSH_STATE, withPushCheck, pushAskCard } from "../pushAsk.js";
 import { routinesRow, type RoutinesData } from "../routines.js";
-import type { Space } from "../spaces/parts.js";
+import { names, type Space } from "../spaces/parts.js";
 import { facesLine } from "../spaces/spaceDetail.js";
 import { idleLine, firstName } from "./parts.js";
 
@@ -45,7 +45,28 @@ const groupColor = (id: string): string => GROUP_COLORS[[...id].reduce((n, c) =>
 /** A group's line on its tile: what waits on you there, else who is in it. */
 const groupLine = (s: Space): string => (s.waiting ? `${s.waiting === 1 ? "1 payment needs" : `${s.waiting} payments need`} your yes` : facesLine(s));
 
-/** A group (a family or friends' space) as a bot on Home: its own tile, opening the group's page. */
+/**
+ * Home's one Space card (a build with the new Spaces), however many spaces there are: the newest thing across them (a payment waiting
+ * for a yes, else the newest line "Mom: Dinner at 8?", else who or what is there); a tap opens Your spaces.
+ */
+const SPACE_CARD_COLOR = GROUP_COLORS[0]!;
+function spaceCardLine(groups: Space[]): string {
+  const waiting = groups.reduce((n, s) => n + (s.waiting ?? 0), 0);
+  if (waiting) return `${waiting === 1 ? "1 payment needs" : `${waiting} payments need`} your yes`;
+  const newest = groups.map((s) => s.last).filter((l): l is NonNullable<Space["last"]> => !!l?.text).sort((a, b) => b.at - a.at)[0];
+  if (newest) return newest.from ? `${newest.from}: ${newest.text}` : newest.text;
+  return groups.length === 1 ? facesLine(groups[0]!) : names(groups.map((s) => s.name));
+}
+function spaceCardSpec(groups: Space[]): BotTileSpec {
+  const line = spaceCardLine(groups);
+  const waiting = groups.some((s) => (s.waiting ?? 0) > 0);
+  return {
+    slug: "spaces", name: "Space", sub: line, color: SPACE_CARD_COLOR, kind: "custom", state: waiting ? "needs" : "idle",
+    action: open(SCREENS.spaces), label: `Space, your people: ${line}`,
+  };
+}
+
+/** A group (a family or friends' space) as a bot on Home: its own tile, opening the group's page (a build without the new Spaces). */
 function groupTileSpec(s: Space): BotTileSpec {
   return {
     slug: `space-${s.id}`, name: s.name, sub: groupLine(s), color: groupColor(s.id), kind: "custom", state: s.waiting ? "needs" : "idle",
@@ -61,7 +82,8 @@ function groupTile(s: Space, height: number, padding: number): Node {
 }
 
 /**
- * Home's grid: the first bots, then the groups as bots of their own (a family, friends: GROUPS_ON_HOME of them), then Make a bot.
+ * Home's grid: the first bots, then the groups (a build with the new Spaces: the one Space card; else each group a bot of its own,
+ * GROUPS_ON_HOME of them), then Make a bot.
  */
 export function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats, groups: Space[] = []): Node {
   const shown = ctx.live.bots.slice(0, 3);
@@ -76,7 +98,7 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     const talk = canHomeThought(ctx) && canVoice(ctx);
     const living = botTiles([
       ...shown.map((b) => ({ ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}) })),
-      ...groupsShown.map(groupTileSpec),
+      ...(canSpaces2(ctx) ? (groups.length ? [spaceCardSpec(groups)] : []) : groupsShown.map(groupTileSpec)),
       makeTileSpec(open(SCREENS.make)),
     ], { columns, height, padding, gap, ...(strip ? { strip, stripHeight: notesStripHeight(ctx) } : {}), ...(surprises ? { surprises } : {}) });
     return withNotes && !strip ? col([living, notesStrip(ctx, notes)], { gap }) : living;

@@ -19,19 +19,19 @@
 import type { ActionRef, ActionSpec, Condition, Node, ScreenResponse } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, C, SCREENS, botCrowd, botLook, botStage, box, button, call, col, crowdSurprises, dottedButton, emptyState, icon, meta,
-  open, page, primaryButton, roamFor, row, sectionLabel, seq, statusMark, text, vanish, when,
+  open, page, primaryButton, roamFor, row, sectionLabel, seq, statusMark, text, vanish, when, type PersonLookSpec,
 } from "../../kit.js";
 import { said } from "../../said.js";
 import { idParam } from "./memberPage.js";
-import { A, clearState, enc, field, ifFilled, iconButton, inputBox, isDesk, personDot, refresh, shareLook, toast, type Space } from "./parts.js";
+import { A, clearState, enc, facesRow, facesWidth, field, ifFilled, iconButton, inputBox, isDesk, personMark, refresh, shareLook, toast, type Space } from "./parts.js";
 import { countDot, facesLine, plural, quietLinks } from "./spaceDetail.js";
 
 // ===================================================================== what it reads (GET .../spaces?full=1, as the route answers)
 
-/** An email invite waiting for this person (src/botsBots/spaceJoin.ts Invitation). */
-export interface Invitation { code: string; spaceId: string; spaceName: string; by: string; people: number; expiresAt: number }
-/** Someone asking to join a space this person made. */
-export interface JoinRequestView { id: string; spaceId: string; spaceName: string; name: string; at: number }
+/** An email invite waiting for this person (src/botsBots/spaceJoin.ts Invitation); `byBot`, the admin who sent it as their tiny bot. */
+export interface Invitation { code: string; spaceId: string; spaceName: string; by: string; byBot?: PersonLookSpec; people: number; expiresAt: number }
+/** Someone asking to join a space this person made; `bot`, the tiny bot they would be there. */
+export interface JoinRequestView { id: string; spaceId: string; spaceName: string; name: string; bot?: PersonLookSpec; at: number }
 /** This person's own open requests: the code they typed (7KQ-29D), never the space's name (a code alone never says whose space it is). */
 export interface MyRequest { id: string; code: string; at: number }
 /** The space they are calling their people into, before it has a name of its own (`name` null until it is named). */
@@ -64,25 +64,25 @@ const heading = (words: string): Node => text(words, { size: 26, weight: 700, tr
 // ===================================================================== his thought
 
 /** An invitation: the space, who invited them, how many are in; Accept (with the line about the admin, which they saw) or Dismiss. */
-function invRow(i: Invitation): Node {
+function invRow(ctx: BotsCtx, i: Invitation): Node {
   const path = `${A}/spaces/invitations/${enc(i.code)}`;
   const acc = call("PUT", path, { decision: "accept", consent: true }, {
     ok: seq(toast(`You joined ${i.spaceName}`), setState("thOpen", false), refresh), fail: said("Couldn't join it. Try again."),
   });
   const dis = call("PUT", path, { decision: "dismiss" }, { ok: seq(toast(`Dismissed. ${i.by} can invite you again.`), refresh), fail: said("Couldn't do that. Try again.") });
   return col([
-    row([personDot(i.by, false, 36), col([text(i.spaceName, { size: 16, weight: 600, lineHeight: 21, lines: 1 }), meta(`${i.by} invited you · ${plural(i.people, "person", "people")}`, { size: 13, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 12 }),
+    row([personMark(ctx, { seed: `${i.spaceId}:${i.by}`, bot: i.byBot }, 36), col([text(i.spaceName, { size: 16, weight: 600, lineHeight: 21, lines: 1 }), meta(`${i.by} invited you · ${plural(i.people, "person", "people")}`, { size: 13, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 12 }),
     row([primaryButton("Accept", acc, { size: "md" }), button("Dismiss", dis, { kind: "secondary", size: "md" })], { gap: 8 }),
   ], { gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper });
 }
 
 /** Someone with the code of a space this person made, asking to come in. */
-function reqRow(r: JoinRequestView): Node {
+function reqRow(ctx: BotsCtx, r: JoinRequestView): Node {
   const path = `${A}/spaces/${enc(r.spaceId)}/requests/${enc(r.id)}`;
   const acc = call("PUT", path, { decision: "accept" }, { ok: seq(toast(`${r.name} joined ${r.spaceName}`), refresh), fail: said("Couldn't let them in. Try again.") });
   const dis = call("PUT", path, { decision: "dismiss" }, { ok: seq(toast(`${r.name} was not let in.`), refresh), fail: said("Couldn't do that. Try again.") });
   return col([
-    row([personDot(r.name, false, 36), text(`${r.name} wants to join ${r.spaceName}`, { size: 15, weight: 500, lineHeight: 20, style: { flexGrow: 1, flexShrink: 1, minWidth: 0 } })], { gap: 12 }),
+    row([personMark(ctx, { seed: r.id, bot: r.bot }, 36), text(`${r.name} wants to join ${r.spaceName}`, { size: 15, weight: 500, lineHeight: 20, style: { flexGrow: 1, flexShrink: 1, minWidth: 0 } })], { gap: 12 }),
     row([primaryButton("Accept", acc, { size: "md" }), button("Dismiss", dis, { kind: "secondary", size: "md" })], { gap: 8 }),
   ], { gap: 12, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper });
 }
@@ -101,7 +101,7 @@ function joinAction(): ActionRef {
 }
 
 /** What his thought holds: making a new space (once they are in one), invitations, requests, the admin's line, the code box. */
-function thought(L: Layout, d: SpacesFull, focusCode: boolean): Node[] {
+function thought(ctx: BotsCtx, L: Layout, d: SpacesFull, focusCode: boolean): Node[] {
   const makeNew = ifFilled("newName", call("POST", `${A}/spaces/draft`, { name: "$state.newName" }, {
     ok: seq(setState("thOpen", false), refresh), fail: said("Couldn't start it. Try again."),
   }), "Name it first");
@@ -115,9 +115,9 @@ function thought(L: Layout, d: SpacesFull, focusCode: boolean): Node[] {
     col([
       // The prototype's words: "You have an invitation", or "Invitations" when there is none (or several).
       sectionLabel(invs.length === 1 ? "You have an invitation" : invs.length ? "You have invitations" : "Invitations"),
-      ...(invs.length ? invs.map(invRow) : [meta("No invitations right now.", { size: 13 })]),
+      ...(invs.length ? invs.map((i) => invRow(ctx, i)) : [meta("No invitations right now.", { size: 13 })]),
     ], { gap: 10 }),
-    ...(d.requests.length ? [col([sectionLabel("Requests"), ...d.requests.map(reqRow)], { gap: 10 })] : []),
+    ...(d.requests.length ? [col([sectionLabel("Requests"), ...d.requests.map((r) => reqRow(ctx, r))], { gap: 10 })] : []),
     ...d.asked.map((a) => row([statusMark("waiting"), meta(`Asked to join with the code ${a.code}. The space's admin will let you in.`, { size: 13, style: { flexShrink: 1 } })], { gap: 8 })),
     meta("The space's admin can see your work and messages there.", { size: 12 }),
     col([
@@ -146,7 +146,7 @@ function inviteAction(): ActionRef {
 /** Done: the draft becomes the space, and Spaces opens on the moment it is ready. */
 const madeNow: ActionSpec = { kind: "navigate", screenId: SCREENS.spaces, params: { made: "$state.madeSpace.id" }, replace: true };
 
-function people(d: SpacesFull): Node {
+function people(ctx: BotsCtx, d: SpacesFull): Node {
   const draft = d.draft;
   // Named already ("Make a new space"): Continue makes it at once, with no empty name field to stop it.
   const cont: ActionRef = draft?.name
@@ -157,7 +157,8 @@ function people(d: SpacesFull): Node {
     ? call("DELETE", `${A}/spaces/draft`, undefined, { ok: seq(setState("creating", false), refresh), fail: said("Couldn't do that. Try again.") })
     : setState("creating", false);
   const invite = inviteAction();
-  const sentRow = (email: string, status: Node): Node => row([personDot(email, false, 28), text(email, { size: 15, lineHeight: 20, lines: 1, style: { flexGrow: 1, flexShrink: 1, minWidth: 0 } }), status], {
+  // Someone called in by email has no account here yet: a tiny bot of their own, by the address.
+  const sentRow = (email: string, status: Node): Node => row([personMark(ctx, { seed: email.toLowerCase() }, 28), text(email, { size: 15, lineHeight: 20, lines: 1, style: { flexGrow: 1, flexShrink: 1, minWidth: 0 } }), status], {
     gap: 10, paddingVertical: 6, paddingLeft: 6, paddingRight: 14, borderRadius: 22, backgroundColor: C.surface,
   });
   return col([
@@ -217,11 +218,15 @@ function madeLines(ctx: BotsCtx, d: SpacesFull, id: string): Node {
 
 // ===================================================================== your spaces
 
-/** A space in the list: its faces, its name, its last line (else who is in it), what is new; a dot when a payment waits on you. */
-function spaceRow2(s: Space): Node {
+/**
+ * A space in the list: up to three of its people's tiny bots (and "+N"), its name, its last line (else who is in it), what is new; a
+ * dot when a payment waits on you.
+ */
+function spaceRow2(ctx: BotsCtx, s: Space): Node {
   const line = s.last ? `${s.last.from}: ${s.last.text}` : s.waiting ? `${plural(s.waiting, "payment")} ${s.waiting === 1 ? "needs" : "need"} your yes` : facesLine(s);
   return row([
-    row(s.members.slice(0, 3).map((m) => box([personDot(m.name, m.you, 30)], { marginRight: -8, borderRadius: 17, borderWidth: 2, borderColor: C.paper })), { paddingRight: 8, width: 82 }),
+    // As wide as three bots and "+N", so the names line up down the list.
+    box([facesRow(ctx, s.members)], { width: facesWidth(ctx), flexShrink: 0 }),
     col([
       text(s.name, { size: 16, weight: 600, lineHeight: 21, lines: 1 }),
       row([...(s.waiting ? [statusMark("needs")] : []), meta(line, { size: 13, lines: 1, style: { flexShrink: 1 } })], { gap: 6 }),
@@ -268,13 +273,13 @@ export function startScreen(ctx: BotsCtx, d: SpacesFull | undefined): ScreenResp
     thought: { style: "space", openPath: "thOpen", shape: "wide", veil: true, place: "low" },
     label: "Your bot. Tap him for invitations and codes.",
     // While Call Your People is open he is out at the side: a tap on the empty top area must not bring him back in.
-  }, [col(thought(L, d, !!code), { padding: 18, gap: 16 })], { onPress: { kind: "condition", if: { falsy: "creating" }, then: setState("thOpen", true) } });
+  }, [col(thought(ctx, L, d, !!code), { padding: 18, gap: 16 })], { onPress: { kind: "condition", if: { falsy: "creating" }, then: setState("thOpen", true) } });
 
   const body: Node[] = [top];
   if (L === "joined") {
     body.push(
       text("Your spaces", { size: 26, weight: 700, tracking: -0.5, lineHeight: 32 }),
-      col(d.spaces.map(spaceRow2), { gap: 10 }),
+      col(d.spaces.map((s) => spaceRow2(ctx, s)), { gap: 10 }),
       quietLinks(),
     );
   } else {
@@ -283,7 +288,7 @@ export function startScreen(ctx: BotsCtx, d: SpacesFull | undefined): ScreenResp
       life: "spaces.crowd", bots: CROWD, size: 22, grownWhen: CREATING, grownHeight: grownHeight(desk, d),
       cheerWhen: MADE, surprises: crowdSurprises(ctx), label: "Tiny bots playing",
     }, [
-      when({ all: [CREATING, { eq: ["step", "people"] }] }, people(d)),
+      when({ all: [CREATING, { eq: ["step", "people"] }] }, people(ctx, d)),
       when({ all: [CREATING, { eq: ["step", "name"] }] }, naming()),
     ]);
     body.push(

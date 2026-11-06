@@ -26,6 +26,7 @@ import {
   MENTION_FIELD_COMPONENT, VANISH_COMPONENT, VOICE_LIVE_CAPABILITY, type BotCrowdProps, type BotRoam, type BotStageProps, type LiveWordsProps,
   type MentionFieldProps, type TalkTo, type VanishProps,
 } from "../../../../shared/types/sdui.js";
+import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -81,8 +82,21 @@ export const FACE = {
   monoMedium: "Tailzu Geist Mono Medium",
 } as const;
 
-/** The phone loads these at boot (bootstrap `fonts`, only for the Bots app); the window bundles the same faces. */
-export function botsFonts(): Record<string, string> {
+/**
+ * The messages' face in a space (sdui 3j): Bricolage Grotesque, a weight per family as Geist's are. Only for a build that declares
+ * FontBricolage (kit messageText); any other gets Geist in the same place.
+ */
+export const BRICOLAGE = {
+  regular: "Tailzu Bricolage",
+  medium: "Tailzu Bricolage Medium",
+  semibold: "Tailzu Bricolage SemiBold",
+} as const;
+
+/**
+ * The phone loads these at boot (bootstrap `fonts`, only for the Bots app); the window bundles the same faces. Bricolage only for a
+ * build that declares FontBricolage, so no other downloads faces it never sets.
+ */
+export function botsFonts(o: { bricolage?: boolean } = {}): Record<string, string> {
   const base = `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}/fonts/`;
   return {
     [FACE.regular]: `${base}geist.ttf?v=1`,
@@ -91,6 +105,11 @@ export function botsFonts(): Record<string, string> {
     [FACE.bold]: `${base}geist-bold.ttf?v=1`,
     [FACE.mono]: `${base}geist-mono.ttf?v=1`,
     [FACE.monoMedium]: `${base}geist-mono-medium.ttf?v=1`,
+    ...(o.bricolage ? {
+      [BRICOLAGE.regular]: `${base}bricolage.ttf?v=1`,
+      [BRICOLAGE.medium]: `${base}bricolage-medium.ttf?v=1`,
+      [BRICOLAGE.semibold]: `${base}bricolage-semibold.ttf?v=1`,
+    } : {}),
   };
 }
 
@@ -485,6 +504,41 @@ type VoiceLiveSpec = Extract<ActionSpec, { kind: "voiceLive" }>;
 export const voiceLive = (o: Omit<VoiceLiveSpec, "kind">): ActionSpec => ({ kind: "voiceLive", ...o });
 /** Stop the voice session on this screen; the words not sent yet are dropped. */
 export const voiceStop = (): ActionSpec => ({ kind: "voiceStop" });
+
+// ---------------------------------------------------------------- people as their own tiny bots, and the messages' face (sdui 3j)
+
+/** A build that draws a person as their tiny bot (PersonBot). */
+export const canPersonBot = (ctx: BotsCtx): boolean => ctx.can.has(PERSON_BOT_COMPONENT);
+/** A build with Bricolage Grotesque registered (FontBricolage). */
+export const canBricolage = (ctx: BotsCtx): boolean => ctx.can.has(FONT_BRICOLAGE_CAPABILITY);
+
+/** A person's look, as the server picked it (src/botsBots/personLook.ts). */
+export type PersonLookSpec = Pick<PersonBotProps, "seed" | "avatar" | "color">;
+
+/**
+ * A person, as their own tiny bot (PersonBot): a size x size box, the bot standing in it, idling. Never initials. A build without
+ * PersonBot gets a plain circle in the person's colour, with no letter in it. `label`: what a screen reader says, when nothing beside
+ * him names the person already.
+ */
+export function personBot(ctx: BotsCtx, look: PersonLookSpec, o: { size?: number; live?: boolean; label?: string; ring?: string } = {}): Node {
+  const size = o.size ?? 32;
+  const box0: Style = { width: size, height: size, flexShrink: 0 };
+  if (!canPersonBot(ctx)) {
+    // `ring`: circles that sit over each other (a space's faces) keep a thin edge of the ground between them, as the dots had.
+    const dot = box([], { ...box0, borderRadius: size / 2, backgroundColor: look.color, ...(o.ring ? { borderWidth: 2, borderColor: o.ring } : {}) });
+    return o.label ? labelled(dot, o.label) : dot;
+  }
+  const props: PersonBotProps = { seed: look.seed, avatar: look.avatar, color: look.color, size, ...(o.live === false ? { live: false } : {}), ...(o.label ? { label: o.label } : {}) };
+  return { type: "PersonBot", props: { ...props }, style: box0 };
+}
+
+/** A message's words in a space: Bricolage Grotesque 400 at 16/23, ink, tracking -0.1 (Geist in its place without FontBricolage). */
+export function messageText(ctx: BotsCtx, content: string, o: { color?: string; lines?: number } = {}): Node {
+  return text(content, {
+    size: 16, lineHeight: 23, tracking: -0.1, color: o.color ?? C.ink, ...(o.lines ? { lines: o.lines } : {}),
+    style: { fontFamily: canBricolage(ctx) ? BRICOLAGE.regular : FACE.regular },
+  });
+}
 
 /**
  * A dotted button (the new Spaces' Create): a 2 px dotted ink edge, no fill. md 44 tall (in a thought), lg 48 (under the crowd).

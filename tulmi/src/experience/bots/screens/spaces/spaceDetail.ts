@@ -9,7 +9,7 @@ import {
 } from "../../kit.js";
 import {
   localDate, DAY, MONTHS, MIN, shortDate, type Space, type Task, type Item, type Payment, names, type Member, A, toast, enc, write, rowPad,
-  kindBadge, iconButton, inputBox, field, personDot, canDo, messagePerson, rowsCard, type OneSpace, ifFilled, clearState, isDesk, section,
+  kindBadge, iconButton, inputBox, field, personMark, facesRow, canDo, messagePerson, rowsCard, type OneSpace, ifFilled, clearState, isDesk, section,
   inviteRows, type BotSharing, subBotName,
 } from "./parts.js";
 
@@ -133,9 +133,9 @@ export function taskRow(ctx: BotsCtx, t: Task, o: { showSpace?: boolean } = {}):
   ], { ...rowPad, gap: 10 });
 }
 
-function memberRow(s: Space, m: Member): Node {
+function memberRow(ctx: BotsCtx, s: Space, m: Member): Node {
   // No roles any more: the space's maker is its admin, everyone else a member.
-  const who = row([personDot(m.name, m.you, 32), col([text(memberName(m), { size: 15, lineHeight: 20, lines: 1 }), ...(m.maker ? [meta("Admin", { size: 12 })] : [])], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 0 }, open(SCREENS.spaceMember, { id: s.id, member: m.userId }));
+  const who = row([personMark(ctx, { seed: m.userId, bot: m.bot }, 32), col([text(memberName(m), { size: 15, lineHeight: 20, lines: 1 }), ...(m.maker ? [meta("Admin", { size: 12 })] : [])], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 0 }, open(SCREENS.spaceMember, { id: s.id, member: m.userId }));
   return row([who, ...(!m.you && canDo(s, "message") ? [iconButton("send", messagePerson(m.userId), `Message ${m.name}`)] : []), icon("chevron", { size: 16, color: C.meta })], { ...rowPad, paddingRight: 12 });
 }
 
@@ -210,7 +210,7 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
 
   const top = col([
     row([
-      row(s.members.slice(0, 4).map((m) => box([personDot(m.name, m.you, desk ? 36 : 34)], { marginRight: -8, borderRadius: 20, borderWidth: 2, borderColor: C.paper })), { paddingRight: 8 }),
+      facesRow(ctx, s.members, { size: desk ? 36 : 34, max: 4 }),
       col([text(s.name, { size: desk ? 26 : 24, weight: 700, tracking: -0.5, lineHeight: desk ? 32 : 30 }), meta(facesLine(s), { size: 13, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     ], { gap: 12, alignItems: "center" }),
     row([
@@ -288,12 +288,12 @@ export function spaceDetail(ctx: BotsCtx, o: OneSpace, mineBots: SpacesData["bot
   const rename = ifFilled("spaceRename", write("PUT", `${A}/spaces/${sid}`, { name: "$state.spaceRename" }, { ok: "Renamed" }), "Type the new name");
   const invites = canDo(s, "invite") ? s.invites?.length ?? 0 : 0;
   const peopleRow = row([
-    row(s.members.slice(0, 3).map((m) => box([personDot(m.name, m.you, 26)], { marginRight: -6, borderRadius: 16, borderWidth: 2, borderColor: C.paper })), { paddingRight: 6 }),
+    facesRow(ctx, s.members, { size: 26 }),
     col([text(`People · ${s.members.length}`, { size: 15, weight: 500, lineHeight: 20 }), meta([invites ? `${plural(invites, "invite")} waiting` : "", "bots and settings"].filter(Boolean).join(" · "), { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     icon("chevron", { size: 16, color: C.meta }),
   ], { gap: 12, alignItems: "center", padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }, { kind: "toggleState", path: "peopleOpen" } as ActionRef);
   const people = when({ truthy: "peopleOpen" }, col([
-    section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => memberRow(s, m)))]),
+    section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => memberRow(ctx, s, m)))]),
     ...(invites ? [section(`Invites waiting · ${invites}`, [rowsCard(inviteRows(ctx, s, o.mailReady))])] : []),
     section(`Bots · ${s.bots.length}`, [botsCard(s, mineBots)]),
     ...(canDo(s, "rename") ? [section("Name", [inputBox([field("spaceRename", "spaceRename", s.name, { onSubmit: rename }), button("Rename", rename, { kind: "secondary", size: "md" })])])] : []),

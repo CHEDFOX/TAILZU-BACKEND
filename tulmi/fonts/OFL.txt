@@ -7,6 +7,8 @@ modified version:
   label.ttf     <- IBM Plex Mono Medium (Reserved Font Name "Plex")
   ui*.ttf       <- Instrument Sans; ui-bold.ttf at weight 700, width 100
   grotesk.ttf   <- Bricolage Grotesque, cut to a static 800 at optical size 24, width 100
+  bricolage*.ttf <- Bricolage Grotesque at 400, 500 and 600 (Google Fonts' static cuts at optical size 14,
+                   width 100, Latin, as Fontsource ships them), the Bots app's message text
   hand.ttf      <- Kalam Regular
   geist*.ttf    <- Geist and Geist Mono (Vercel), the Bots app's faces, unmodified static cuts
                    (Regular, Medium, SemiBold, Bold; Mono Regular, Medium)

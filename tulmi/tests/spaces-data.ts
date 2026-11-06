@@ -13,23 +13,33 @@ const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const MEMBER = ["share", "bots", "addBots", "tasks", "plan", "approve", "askPay", "message", "groups", "activity"];
 const ALL = ["invite", "remove", "manage", "share", "bots", "addBots", "tasks", "plan", "approve", "askPay", "message", "groups", "activity", "rename"];
 const ISH = "https://api.x0bot.com";
+/**
+ * Each person's tiny bot, as the server picks it (src/botsBots/personLook.ts): an avatar from the catalog and a group colour, unique
+ * in each space; the viewer is their own X0 bot (Blip, ink).
+ */
+const ME = { seed: "u", avatar: "blip", color: "#0a0a0a" };
+export const LOOK = {
+  m: { seed: "m", avatar: "sage", color: "#6B8E4E" }, r: { seed: "r", avatar: "scout", color: "#B5654A" },
+  d: { seed: "d", avatar: "bolt", color: "#5B7DB1" }, i: { seed: "i", avatar: "nova", color: "#8A6BB1" }, k: { seed: "k", avatar: "dapper", color: "#B18A3D" },
+  u: { seed: "u", avatar: "pip", color: "#5B7DB1" },
+};
 
 const HOME = {
   id: "s1", name: "Home", mine: true, me: { admin: true, perms: ALL }, invite: null, roles: [], waiting: 1,
   members: [
-    { userId: "u", name: "Aanya", you: true, maker: true, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: ALL, role: "admin", roleName: "Admin" },
-    { userId: "m", name: "Mom", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: MEMBER, role: null, roleName: "Member" },
-    { userId: "r", name: "Rohan", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: MEMBER, role: null, roleName: "Member" },
+    { userId: "u", name: "Aanya", you: true, maker: true, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: ALL, role: "admin", roleName: "Admin", bot: ME },
+    { userId: "m", name: "Mom", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: MEMBER, role: null, roleName: "Member", bot: LOOK.m },
+    { userId: "r", name: "Rohan", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 7, 4), perms: MEMBER, role: null, roleName: "Member", bot: LOOK.r },
   ],
   bots: [{ slug: "plan", name: "Plan Ease", colour: "sea", addedBy: "Aanya", byYou: true }, { slug: "shop-bot", name: "Shop bot", colour: "sand", addedBy: "Mom", byYou: false }],
 };
 const STUDIO = {
   id: "s2", name: "Studio", mine: false, me: { admin: false, perms: MEMBER }, invite: null, roles: [], waiting: 0,
   members: [
-    { userId: "u", name: "Aanya", you: true, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 8, 1), perms: MEMBER, role: null, roleName: "Member" },
-    { userId: "d", name: "Dev", you: false, maker: true, canApprove: true, joinedAt: Date.UTC(2026, 7, 20), perms: ALL, role: "admin", roleName: "Admin" },
-    { userId: "i", name: "Ishita", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 8, 3), perms: MEMBER, role: null, roleName: "Member" },
-    { userId: "k", name: "Kabir", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 8, 9), perms: MEMBER, role: null, roleName: "Member" },
+    { userId: "u", name: "Aanya", you: true, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 8, 1), perms: MEMBER, role: null, roleName: "Member", bot: ME },
+    { userId: "d", name: "Dev", you: false, maker: true, canApprove: true, joinedAt: Date.UTC(2026, 7, 20), perms: ALL, role: "admin", roleName: "Admin", bot: LOOK.d },
+    { userId: "i", name: "Ishita", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 8, 3), perms: MEMBER, role: null, roleName: "Member", bot: LOOK.i },
+    { userId: "k", name: "Kabir", you: false, maker: false, canApprove: true, joinedAt: Date.UTC(2026, 8, 9), perms: MEMBER, role: null, roleName: "Member", bot: LOOK.k },
   ],
   bots: [{ slug: "code", name: "Xode", colour: "pine", addedBy: "Dev", byYou: false }],
 };
@@ -79,7 +89,8 @@ const DETAIL = {
 const THREADS = [
   { id: "th-home", kind: "space", name: "Home", spaceId: "s1", spaceName: "Home", people: [{ userId: "u", name: "Aanya", you: true }, { userId: "m", name: "Mom", you: false }, { userId: "r", name: "Rohan", you: false }],
     last: { text: "Mom: Dinner at 8, everyone home?", at: FIXED_NOW - 12 * MIN }, unread: 2, muted: false, canPost: true, why: "" },
-  { id: "th-mom", kind: "direct", name: "Mom", spaceId: null, spaceName: "", people: [{ userId: "u", name: "Aanya", you: true }, { userId: "m", name: "Mom", you: false }],
+  // One to one: the two carry their tiny bots (Mom as Home has her: threads.ts looksKnown).
+  { id: "th-mom", kind: "direct", name: "Mom", spaceId: null, spaceName: "", people: [{ userId: "u", name: "Aanya", you: true, bot: ME }, { userId: "m", name: "Mom", you: false, bot: LOOK.m }],
     last: { text: "Aanya: Shared Groceries", at: FIXED_NOW - 2 * HOUR }, unread: 0, muted: false, canPost: true, why: "" },
   { id: "th-diwali", kind: "group", name: "Diwali party", spaceId: "s2", spaceName: "Studio", people: [{ userId: "u", name: "Aanya", you: true }, { userId: "i", name: "Ishita", you: false }, { userId: "k", name: "Kabir", you: false }],
     last: { text: "Kabir: I'll bring the diyas", at: FIXED_NOW - DAY }, unread: 0, muted: true, canPost: true, why: "" },
@@ -103,14 +114,14 @@ export const FULL_JOINED = {
     { ...HOME, invited: 1, last: { from: "Mom", text: "Dinner at 8? Bring the dahi", at: FIXED_NOW - 12 * MIN }, unread: 2 },
     { ...STUDIO, last: { from: "Dev", text: "Shared a Xode project with you", at: FIXED_NOW - DAY }, unread: 1 },
   ],
-  invitations: [{ code: "GYM4BUDD", spaceId: "s3", spaceName: "Gym Buddies", by: "Kabir", people: 4, expiresAt: FIXED_NOW + 6 * DAY }],
-  requests: [{ id: "rq-ishita", spaceId: "s1", spaceName: "Home", name: "Ishita", at: FIXED_NOW - 20 * MIN }],
+  invitations: [{ code: "GYM4BUDD", spaceId: "s3", spaceName: "Gym Buddies", by: "Kabir", byBot: LOOK.k, people: 4, expiresAt: FIXED_NOW + 6 * DAY }],
+  requests: [{ id: "rq-ishita", spaceId: "s1", spaceName: "Home", name: "Ishita", bot: LOOK.i, at: FIXED_NOW - 20 * MIN }],
   asked: [], draft: null,
 };
 /** Meera's first time: no space yet, Aanya's invitation waiting for her email. */
 export const FULL_FIRST = {
   you: "Meera", unread: 0, spaces: [],
-  invitations: [{ code: "SHARMA22", spaceId: "s9", spaceName: "Sharma Family", by: "Aanya", people: 3, expiresAt: FIXED_NOW + 6 * DAY }],
+  invitations: [{ code: "SHARMA22", spaceId: "s9", spaceName: "Sharma Family", by: "Aanya", byBot: LOOK.u, people: 3, expiresAt: FIXED_NOW + 6 * DAY }],
   requests: [], asked: [{ id: "rq-mine", code: "7KQ-29D", at: FIXED_NOW - HOUR }], draft: null,
 };
 /** Calling her people: two invites already sent from the draft, before it has a name. */
@@ -127,7 +138,10 @@ export const FULL_MADE = { ...FULL_JOINED, spaces: [{ ...HOME, invited: 2, last:
 /** Inside Home, as Aanya (its admin): the feed, a message to Mom and a plan shared with her, and one between Mom and Rohan. */
 export const FEED = {
   space: { id: "s1", name: "Home", admin: true, adminName: "Aanya", consented: true, threadId: "th-home" },
-  people: [{ userId: "u", name: "Aanya", you: true, admin: true }, { userId: "m", name: "Mom", you: false, admin: false }, { userId: "r", name: "Rohan", you: false, admin: false }],
+  people: [
+    { userId: "u", name: "Aanya", you: true, admin: true, bot: ME }, { userId: "m", name: "Mom", you: false, admin: false, bot: LOOK.m },
+    { userId: "r", name: "Rohan", you: false, admin: false, bot: LOOK.r },
+  ],
   more: true, before: FIXED_NOW - 3 * HOUR,
   messages: [
     { id: "f1", at: FIXED_NOW - 60 * MIN, from: { userId: "m", name: "Mom", you: false }, to: null, text: "Dinner at 8? Bring the dahi", files: [], thing: null, item: null },
@@ -145,7 +159,7 @@ export const FEED = {
 export const FEED_ROHAN = {
   ...FEED,
   space: { ...FEED.space, admin: false },
-  people: FEED.people.map((p) => ({ ...p, you: p.userId === "r" })),
+  people: FEED.people.map((p) => ({ ...p, you: p.userId === "r", bot: p.userId === "r" ? { ...ME, seed: "r" } : p.userId === "u" ? LOOK.u : p.bot })),
   messages: [
     { id: "f5", at: FIXED_NOW - 20 * MIN, from: { userId: "m", name: "Mom", you: false }, to: { userId: "r", name: "Rohan", you: true }, text: "Practice is at 5. Take your water bottle.", files: [], thing: null, item: null },
     { id: "f6", at: FIXED_NOW - 10 * MIN, from: { userId: "r", name: "Rohan", you: true }, to: { userId: "m", name: "Mom", you: false }, text: "Okay Mom", files: [], thing: null, item: null },
@@ -156,14 +170,14 @@ export const FEED_ROHAN = {
 export const WORK_PLAN = {
   bot: "plan", botName: "Plan Ease", seenBy: [],
   spaces: [{ spaceId: "s1", spaceName: "Home", admin: true, people: [
-    { userId: "m", name: "Mom", how: "admin", line: "All their plans" }, { userId: "r", name: "Rohan", how: "admin", line: "All their plans" },
+    { userId: "m", name: "Mom", how: "admin", line: "All their plans", bot: LOOK.m }, { userId: "r", name: "Rohan", how: "admin", line: "All their plans", bot: LOOK.r },
   ] }],
-  notesOnMine: [{ itemId: "e:dentist", title: "Dentist", by: "Mom", text: "I'll come with you", at: FIXED_NOW - 2 * HOUR, spaceId: "s1" }],
+  notesOnMine: [{ itemId: "e:dentist", title: "Dentist", by: "Mom", byBot: LOOK.m, text: "I'll come with you", at: FIXED_NOW - 2 * HOUR, spaceId: "s1" }],
 };
 const DOCTOR = "e:doctor@2026-11-14";
 /** Mom's plans, as Aanya (the admin) sees them, and her doctor's visit. */
 export const WORK_PERSON = {
-  space: { id: "s1", name: "Home" }, person: { userId: "m", name: "Mom", how: "admin", line: "All their plans" },
+  space: { id: "s1", name: "Home" }, person: { userId: "m", name: "Mom", how: "admin", line: "All their plans", bot: LOOK.m },
   items: [
     { id: "e:satsang@2026-11-16", title: "Satsang at Shanti's", line: "Sun 16 Nov · 5 pm", at: FIXED_NOW + 5 * DAY },
     { id: DOCTOR, title: "Doctor, knee check-up", line: "Fri 14 Nov · 7:40 pm", at: FIXED_NOW + 3 * DAY },
@@ -173,7 +187,7 @@ export const WORK_ITEM = {
   bot: "plan", botName: "Plan Ease", id: DOCTOR, title: "Doctor, knee check-up", line: "Fri 14 Nov · 7:40 pm", at: FIXED_NOW + 3 * DAY,
   owner: { userId: "m", name: "Mom", you: false }, space: { id: "s1", name: "Home" }, how: "admin",
   detail: { when: "Fri 14 Nov · 7:40 pm", place: "Dr. Rao's clinic, Indiranagar", day: "2026-11-14", time: "19:40" },
-  notes: [{ id: "wn1", by: "Rohan", you: false, text: "I'll drive you there.", at: FIXED_NOW - HOUR }],
+  notes: [{ id: "wn1", by: "Rohan", you: false, bot: LOOK.r, text: "I'll drive you there.", at: FIXED_NOW - HOUR }],
   can: { time: true, note: true },
 };
 
@@ -186,13 +200,15 @@ export function spacesApi(): Record<string, unknown> {
     [`GET ${A}/work/plan/person?space=s1&owner=m`]: WORK_PERSON,
     [`GET ${A}/work/plan/item?space=s1&owner=m&item=${encodeURIComponent(DOCTOR)}&tz=330`]: { item: WORK_ITEM },
     [`GET ${A}/spaces`]: { you: "Aanya S.", unread: 2, spaces: [HOME, STUDIO] },
+    // Home's one Space card (a build with the new Spaces): each space with its last line.
+    [`GET ${A}/spaces?last=1`]: { you: "Aanya S.", unread: 3, spaces: FULL_JOINED.spaces.map((s) => ({ ...s, invited: undefined })) },
     [`GET ${A}/spaces/s1`]: DETAIL,
     [`GET ${A}/spaces/s2`]: { space: { ...STUDIO, invites: [], activity: null }, items: [], payments: [], tasks: [], you: "Aanya S.", mailReady: false },
     [`GET ${A}/tasks/given`]: { tasks: [NANI] },
     [`GET ${A}/items/i-groceries`]: { item: GROCERIES },
-    [`GET ${A}/share/targets`]: { spaces: [{ id: "s1", name: "Home", canShare: true }, { id: "s2", name: "Studio", canShare: false }], people: [{ userId: "m", name: "Mom", spaces: ["Home"] }, { userId: "r", name: "Rohan", spaces: ["Home"] }] },
+    [`GET ${A}/share/targets`]: { spaces: [{ id: "s1", name: "Home", canShare: true }, { id: "s2", name: "Studio", canShare: false }], people: [{ userId: "m", name: "Mom", spaces: ["Home"], bot: LOOK.m }, { userId: "r", name: "Rohan", spaces: ["Home"], bot: LOOK.r }] },
     [`GET ${A}/threads`]: { threads: THREADS, unread: 2 },
-    [`GET ${A}/threads/contacts`]: { people: [{ userId: "m", name: "Mom", spaces: ["Home"] }, { userId: "r", name: "Rohan", spaces: ["Home"] }], groupSpaces: [{ id: "s1", name: "Home", people: [{ userId: "m", name: "Mom" }, { userId: "r", name: "Rohan" }] }] },
+    [`GET ${A}/threads/contacts`]: { people: [{ userId: "m", name: "Mom", spaces: ["Home"], bot: LOOK.m }, { userId: "r", name: "Rohan", spaces: ["Home"], bot: LOOK.r }], groupSpaces: [{ id: "s1", name: "Home", people: [{ userId: "m", name: "Mom" }, { userId: "r", name: "Rohan" }] }] },
     [`GET ${A}/threads/th-home`]: HOME_CHAT,
     // The group's sub-bots: Mom shares her whole Plan, Rohan one Xode project; Aanya shares nothing yet.
     [`GET ${A}/spaces/s1/sharing`]: { bots: [

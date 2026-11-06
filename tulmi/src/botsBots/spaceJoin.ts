@@ -28,13 +28,16 @@ import { live } from "../live/bus.js";
 import { Blocks } from "./blocks.js";
 import { screenPost } from "./filter.js";
 import { cleanEmail } from "./mail.js";
+import { looksIn, lookOf, type PersonLook } from "./personLook.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { codeOf, isJoinCodeShape, showCode, type InviteRow, type Publish, type SpaceRow, type Spaces } from "./spaces.js";
 
 /** "requested" names no space: the code alone was all they had (the rules at the top). */
 export type JoinResult = { status: "joined" | "member"; id: string; name: string } | { status: "requested" } | { status: "dismissed"; name: string };
-export interface Invitation { code: string; spaceId: string; spaceName: string; by: string; people: number; expiresAt: number }
-export interface JoinRequestView { id: string; spaceId: string; spaceName: string; name: string; at: number }
+/** `byBot`: the admin who invited them, as their tiny bot in that space (personLook.ts). */
+export interface Invitation { code: string; spaceId: string; spaceName: string; by: string; byBot: PersonLook; people: number; expiresAt: number }
+/** `bot`: the one asking, as the tiny bot they would be in that space once let in. */
+export interface JoinRequestView { id: string; spaceId: string; spaceName: string; name: string; bot: PersonLook; at: number }
 /** One of the person's own open requests: the code they typed (shown 7KQ-29D), never the space's name. */
 export interface MyRequest { id: string; code: string; at: number }
 
@@ -100,13 +103,14 @@ export class SpaceJoin {
   // ------------------------------------------------------------------ invitations
 
   /** Whether this invite is one waiting for this person (the rules at the top), with its space. */
-  private async invitation(user: Joiner, i: InviteRow): Promise<{ s: SpaceRow; by: string; people: number } | null> {
+  private async invitation(user: Joiner, i: InviteRow): Promise<{ s: SpaceRow; by: string; byBot: PersonLook; people: number } | null> {
     const s = await this.spaces.spaceRow(i.space_id);
     if (!s || isDraft(s) || i.created_by !== s.owner_id) return null;
     if (await this.spaces.isMember(s.id, user.id)) return null;
     if (await this.blocks.between(user.id, s.owner_id)) return null;
     const rows = await this.spaces.memberRows(s.id);
-    return { s, by: rows.find((m) => m.user_id === s.owner_id)?.name ?? "Someone", people: rows.length };
+    const byBot = looksIn(rows.map((m) => m.user_id)).get(s.owner_id) ?? lookOf(s.owner_id);
+    return { s, by: rows.find((m) => m.user_id === s.owner_id)?.name ?? "Someone", byBot, people: rows.length };
   }
 
   /** The person's confirmed address, or "" (none, not confirmed, or a static token). */
@@ -122,7 +126,7 @@ export class SpaceJoin {
       if (out.length >= INVITATIONS_MAX) break;
       if (out.some((x) => x.spaceId === i.space_id)) continue;
       const w = await this.invitation(user, i);
-      if (w) out.push({ code: i.code, spaceId: w.s.id, spaceName: w.s.name, by: w.by, people: w.people, expiresAt: Number(i.expires_ms) });
+      if (w) out.push({ code: i.code, spaceId: w.s.id, spaceName: w.s.name, by: w.by, byBot: w.byBot, people: w.people, expiresAt: Number(i.expires_ms) });
     }
     return out;
   }
@@ -235,9 +239,12 @@ export class SpaceJoin {
     const hidden = await this.blocks.hiddenFor(adminId);
     const out: JoinRequestView[] = [];
     for (const s of (await this.spaces.mine(adminId)).filter((x) => x.admin)) {
-      for (const r of await this.rows.select({ space_id: s.id, status: "open" }, { limit: REQUESTS_MAX })) {
-        if (!hidden.has(r.user_id)) out.push({ id: r.id, spaceId: s.id, spaceName: s.name, name: r.name, at: Number(r.created_ms) });
-      }
+      const open = (await this.rows.select({ space_id: s.id, status: "open" }, { limit: REQUESTS_MAX })).filter((r) => !hidden.has(r.user_id));
+      if (!open.length) continue;
+      // Each one as the bot they would be there: after everyone in it now, in the order they asked.
+      const members = (await this.spaces.memberRows(s.id)).map((m) => m.user_id);
+      const looks = looksIn([...members, ...[...open].sort((a, b) => Number(a.created_ms) - Number(b.created_ms)).map((r) => r.user_id)]);
+      for (const r of open) out.push({ id: r.id, spaceId: s.id, spaceName: s.name, name: r.name, bot: looks.get(r.user_id) ?? lookOf(r.user_id), at: Number(r.created_ms) });
     }
     return out.sort((a, b) => b.at - a.at).slice(0, REQUESTS_MAX);
   }

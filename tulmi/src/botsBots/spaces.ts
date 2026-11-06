@@ -24,6 +24,7 @@ import { BotError, type Bots } from "../bots/index.js";
 import { live } from "../live/bus.js";
 import { screenPost } from "./filter.js";
 import { cleanEmail, mailerFromEnv, MailOutbox, type Mailer } from "./mail.js";
+import { shownLook, looksIn, type PersonLook } from "./personLook.js";
 import { table, type Table } from "./rows.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { ADMIN_ONLY, MEMBER_PERMS, PERM_WORDS, PERMS, type Perm } from "./spacePerms.js";
@@ -55,7 +56,11 @@ export interface InviteRow {
 }
 export interface ActivityRow { [k: string]: unknown; id: string; space_id: string; actor_id: string | null; kind: string; text: string; at_ms: number }
 
-export interface MemberView { userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number; perms: Perm[]; role: string | null; roleName: string }
+export interface MemberView {
+  userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number; perms: Perm[]; role: string | null; roleName: string;
+  /** Their tiny bot in this space (personLook.ts): the viewer's own is their X0 bot. */
+  bot: PersonLook;
+}
 export interface InviteView { code: string; link: string; email: string | null; expiresAt: number; roleName: string; perms: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
 export interface SpaceView {
   id: string;
@@ -262,6 +267,8 @@ export class Spaces {
     const { s } = a;
     const people = await this.members.select({ space_id: s.id }, { order: "joined_ms", limit: MEMBERS_MAX });
     const bots = await this.shared.select({ space_id: s.id }, { order: "added_ms", limit: SPACE_BOTS_MAX });
+    // Looks from every member, oldest first, before anyone is hidden from this viewer: Mom is the same bot to everyone in it.
+    const looks = looksIn(people.map((p) => p.user_id));
     return {
       id: s.id, name: s.name, mine: a.admin, me: { admin: a.admin, perms: a.perms },
       members: people.map((p) => {
@@ -269,6 +276,7 @@ export class Spaces {
         return {
           userId: p.user_id, name: p.name, you: p.user_id === userId, maker: admin, canApprove: true,
           joinedAt: Number(p.joined_ms) || 0, perms: this.permsOfRow(p, s), role: admin ? "admin" : null, roleName: admin ? "Admin" : "Member",
+          bot: shownLook(looks, p.user_id, userId),
         };
       }),
       bots: bots.map((b) => ({ slug: b.slug, name: b.name, colour: b.colour, addedBy: people.find((p) => p.user_id === b.added_by)?.name ?? "someone", byYou: b.added_by === userId })),

@@ -11,10 +11,10 @@
  */
 
 import type { ActionSpec, Node, ScreenResponse } from "../../../../../shared/types/sdui.js";
-import { type BotsCtx, C, button, call, card, col, divider, emptyState, listRow, meta, page, primaryButton, row, sectionLabel, seq, text, when } from "../kit.js";
+import { type BotsCtx, C, button, call, card, col, divider, emptyState, listRow, meta, page, primaryButton, row, sectionLabel, seq, text, when, type PersonLookSpec } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { said } from "../said.js";
-import { A, enc, failed, field, inputBox, isShareBot, personDot, refresh, rowsCard, shareLook, toast, type ShareBot } from "./spaces/parts.js";
+import { A, enc, failed, field, inputBox, isShareBot, personMark, refresh, rowsCard, shareLook, toast, type ShareBot } from "./spaces/parts.js";
 import { ago } from "./spaces/spaceDetail.js";
 import { SCREENS } from "../ids.js";
 import type { WorkPerson } from "./work/workTab.js";
@@ -28,7 +28,8 @@ interface WorkItem {
   owner: { userId: string; name: string; you: boolean }; space: { id: string; name: string };
   how: "own" | "admin" | "shared" | "view";
   detail: { when?: string; place?: string; notes?: string; day?: string; time?: string };
-  notes: Array<{ id: string; by: string; you: boolean; text: string; at: number }>;
+  /** `bot`: who wrote it, as their tiny bot (src/botsBots/personLook.ts). */
+  notes: Array<{ id: string; by: string; you: boolean; bot?: PersonLookSpec; text: string; at: number }>;
   can: { time: boolean; note: boolean };
   /** Its owner only: who it is shared with, in which space ("Everyone" for a share to everyone). */
   shared?: Array<{ grantId: string; spaceId: string; spaceName: string; to: string }>;
@@ -51,7 +52,7 @@ function personPage(ctx: BotsCtx, bot: ShareBot, v: PersonView): ScreenResponse 
   return page(ctx, {
     back: true, title: p.name, nav: bot, maxWidth: 760, gap: 18, live: [`space:${v.space.id}`],
     body: [
-      row([personDot(p.name, false, 48), col([text(p.name, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(`${v.space.name} · ${how}`, { size: 13 })], { gap: 2, flexShrink: 1 })], { gap: 14 }),
+      row([personMark(ctx, { seed: p.userId, bot: p.bot }, 48), col([text(p.name, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(`${v.space.name} · ${how}`, { size: 13 })], { gap: 2, flexShrink: 1 })], { gap: 14 }),
       v.items.length
         ? col([sectionLabel(`${look.name} · ${p.line}`), rowsCard(v.items.map((i) => listRow({ label: i.title, sub: i.line || undefined, onPress: { kind: "navigate", screenId: SCREENS.work, params: { bot, space: v.space.id, owner: p.userId, item: i.id } } })))], { gap: 8 })
         : emptyState({ pose: "think", title: "Nothing here right now", body: `When ${p.name} shares something from ${look.name}, it shows here.` }),
@@ -119,7 +120,7 @@ function itemPage(ctx: BotsCtx, it: WorkItem): ScreenResponse {
       col([
         sectionLabel("Notes"),
         ...(it.notes.length
-          ? [rowsCard(it.notes.map((n) => row([personDot(n.by, n.you, 28), col([text(n.text, { size: 14, lineHeight: 20 }), meta(`${n.you ? "You" : n.by} · ${ago(ctx, n.at)}`, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 12, paddingVertical: 12, paddingHorizontal: 16, alignItems: "flex-start" })))]
+          ? [rowsCard(it.notes.map((n) => row([personMark(ctx, { seed: n.you ? ctx.user?.id ?? n.id : n.id, bot: n.bot }, 28), col([text(n.text, { size: 14, lineHeight: 20 }), meta(`${n.you ? "You" : n.by} · ${ago(ctx, n.at)}`, { size: 12 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 12, paddingVertical: 12, paddingHorizontal: 16, alignItems: "flex-start" })))]
           : [meta("No notes yet.", { size: 13 })]),
       ], { gap: 8 }),
       ...(it.can.note ? [col([

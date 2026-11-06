@@ -8,12 +8,12 @@
 import type { ActionSpec, ScreenResponse } from "../../../../../../shared/types/sdui.js";
 import { type BotsCtx, C, SCREENS, button, call, col, icon, listRow, meta, open, page, quietButton, row, sectionLabel, seq, text } from "../../kit.js";
 import { said } from "../../said.js";
-import { A, enc, failed, field, ifFilled, inputBox, personDot, refresh, rowPad, rowsCard, section, toast, type OneSpace, type Member } from "./parts.js";
+import { A, enc, failed, field, ifFilled, inputBox, personMark, refresh, rowPad, rowsCard, section, toast, type OneSpace, type Member } from "./parts.js";
 import { facesLine, link } from "./spaceDetail.js";
 
-function personRow(spaceId: string, m: Member) {
+function personRow(ctx: BotsCtx, spaceId: string, m: Member) {
   return row([
-    personDot(m.name, m.you, 32),
+    personMark(ctx, { seed: m.userId, bot: m.bot }, 32),
     text(m.you ? `${m.name} (you)` : m.name, { size: 15, lineHeight: 20, lines: 1, style: { flexGrow: 1, flexShrink: 1, minWidth: 0 } }),
     ...(m.maker ? [meta("Admin", { size: 12 })] : m.you ? [meta("You", { size: 12 })] : []),
     icon("chevron", { size: 16, color: C.meta }),
@@ -41,7 +41,7 @@ export function peoplePage(ctx: BotsCtx, d: OneSpace | undefined): ScreenRespons
     state: { spaceRename: "", sure: false },
     body: [
       col([text(s.name, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta(facesLine(s), { size: 13, lines: 2 })], { gap: 4 }),
-      section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => personRow(s.id, m)))]),
+      section(`People · ${s.members.length}`, [rowsCard(s.members.map((m) => personRow(ctx, s.id, m)))]),
       ...(admin ? [
         button("Call your people", open(SCREENS.spaceInvite, { id: s.id }), { kind: "secondary", size: "md", icon: "plus" }),
         ...(s.code ? [col([

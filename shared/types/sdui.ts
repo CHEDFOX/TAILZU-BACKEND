@@ -1375,7 +1375,8 @@ export interface MentionFieldProps {
   life: string;
   placeholder: string;
   draftPath: string;
-  people: Array<{ id: string; name: string }>;
+  /** `bot`: the person's own tiny bot (PERSON_BOT_COMPONENT, section 3j), drawn in their row. */
+  people: Array<{ id: string; name: string; bot?: Pick<PersonBotProps, "seed" | "avatar" | "color"> }>;
   bots: Array<{ slug: string; name: string; color: string; kind: BotTileKind }>;
   /** GET path (":bot" replaced) answering { items: Array<{ id: string; title: string; line: string }> }. */
   thingsPath: string;
@@ -1419,6 +1420,45 @@ export interface TextFieldExtras {
   autoFocus?: boolean;
   maxLength?: number;
 }
+
+// ---------------------------------------------------------------------------
+// 3j. People as their own tiny bots, and the messages' face (docs/spaces.md "How people look")
+// ---------------------------------------------------------------------------
+//
+// No initials anywhere in Spaces: a person is their own tiny bot, and a space's messages are set in Bricolage Grotesque. Each is a
+// name a build declares in capabilities.components. Without PersonBot the server sends a plain circle in the person's colour (no
+// letter); without FontBricolage it sets the same nodes in Geist.
+
+/**
+ * A person, as their own full tiny bot standing in a size x size box (feet on its floor): drawn by the bots' engine with an avatar
+ * from the catalog and the person's colour, no cloth, no toys. He idles: blinks, a small sway, now and then a small gesture (a rare
+ * one), staggered by `seed` so a list never moves in step. Every PersonBot on a screen runs on one animation loop, and one off
+ * screen is paused. Reduce Motion: a still pose.
+ */
+export const PERSON_BOT_COMPONENT = "PersonBot";
+/**
+ * NOT A COMPONENT: the build has the three Bricolage Grotesque faces registered, each weight a family of its own as Geist's are
+ * ("Tailzu Bricolage" 400, "Tailzu Bricolage Medium" 500, "Tailzu Bricolage SemiBold" 600). The phone loads them as it loads Geist
+ * (the bootstrap's `fonts`); the window bundles them.
+ */
+export const FONT_BRICOLAGE_CAPABILITY = "FontBricolage";
+
+export interface PersonBotProps {
+  /** Who he is (the person's id): what staggers his idling, so two of them never blink together. */
+  seed: string;
+  /** An avatar's id in the looks catalog ("pip", "nova"; the viewer's own bot: "blip"). */
+  avatar: string;
+  /** His colour (#rrggbb). The viewer's own bot: ink #0a0a0a. */
+  color: string;
+  /** The box, square, in px. Default 32. */
+  size?: number;
+  /** false: a still pose (a long list may ask for it). Default true. */
+  live?: boolean;
+  /** What a screen reader says (the person's name); none: he is decoration beside the name. */
+  label?: string;
+}
+// MentionFieldProps.people items may carry `bot: { seed, avatar, color }`: a build that declares PersonBot draws that bot in the
+// person's row of the "@" list (size 28), in place of anything else.
 
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [

@@ -9,6 +9,8 @@
  *                                                        Home and both apps read it at every launch: it only reads, as it always did
  *   GET    /v1/botsapp/bots/spaces?full=1               the same, each space also with `invited`, `last` and `unread`, and the person's
  *                                                        `invitations`, `requests` (theirs to decide), `asked` and `draft` (the new Spaces screen)
+ *   GET    /v1/botsapp/bots/spaces?last=1               the same as without, each space also with `last` and `unread` (Home's Space card);
+ *                                                        it only reads
  *   POST   /v1/botsapp/bots/spaces { name }             -> 201 { id }   a real, named space (an old build's Start a space)
  *   POST   /v1/botsapp/bots/spaces/draft { name? }      -> 201 { draft }   Create: the draft nobody else sees, made if none (a name names it)
  *   POST   /v1/botsapp/bots/spaces/draft/invite { email }  -> 201 { draft }   Call Your People: an invite mailed at once
@@ -258,11 +260,17 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.get(`${AREA}/spaces`, RL, run(async (user, req) => {
     const q = queryOf(req);
     const full = q.full === "1" || q.full === "true";
+    // Home's one Space card says the newest line across the spaces: each one's last line and unread, and none of full=1's sweeps.
+    const lines = q.last === "1" || q.last === "true";
     const list = await Promise.all((await spaces.list(user.id)).map((s) => withoutHidden(threads, user.id, s)));
     // Without full=1 this is what it always was: Home reads it at every load and both apps at launch, so it only reads.
     const [rows, unread, invitations, requests, asked, draft] = await Promise.all([
       Promise.all(list.map(async (s) => {
         const waiting = await payments.waitingFor(user.id, s.id).catch(() => 0);
+        if (!full && lines) {
+          const sum = await threads.summaryFor(user.id, s.id).catch(() => null);
+          return { ...s, waiting, last: sum?.last ?? null, unread: sum?.unread ?? 0 };
+        }
         if (!full) return { ...s, waiting };
         const [sum, invited] = await Promise.all([threads.summaryFor(user.id, s.id).catch(() => null), spaces.invited(user.id, s.id).catch(() => 0)]);
         return { ...s, waiting, invited, last: sum?.last ?? null, unread: sum?.unread ?? 0 };

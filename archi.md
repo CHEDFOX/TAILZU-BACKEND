@@ -161,7 +161,7 @@ routines/          routines: a bot does something on a schedule (reading the wor
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
 botsBots/          the Bots app's own bots behind their screens: plan, travel, shop, spaces (members, codes and joining, the feed,
-                   things shared from a bot, Work in space: docs/spaces.md), threads, safety, usage
+                   things shared from a bot, Work in space, how people look: docs/spaces.md), threads, safety, usage
 botsCode/          the Code bot's rules, intake and history as the Bots app keeps them
 botsCodeWork/      a Xode job read for the Bots app's work screens
 shell/             the Bots app's shell: the activity feed, search, events, sent asks
@@ -216,7 +216,7 @@ ads/               Meta and Google Tag Manager events
 | The person's context (what the brain and Ask know of someone) | `tulmi/src/context/`, `routes/ask/context.ts` (docs/context.md) |
 | The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
-| Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migration 0068 (docs/spaces.md) |
+| Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migration 0068 (docs/spaces.md) |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |
 | The website's own pages (privacy, terms, support, pricing, delete account) | `tulmi/src/routes/site/policies/` (their look in `policies/shell.ts`); the pay page `routes/billing/pay.ts` |
 | Xode | `tulmi/src/code/` and `routes/code/`; jobs on Cloudflare in `jobs/` (docs/code-*.md, docs/cloudflare-jobs.md, docs/github-app.md) |

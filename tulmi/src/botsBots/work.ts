@@ -29,6 +29,7 @@ import { calendar, type CalEvent } from "../calendar/index.js";
 import { clockAt, dayOf, dayWords, hhmm, isDayKey, MIN, minuteOf, startOfDay, timeOf, tzOf } from "../calendar/words.js";
 import { screenPost } from "./filter.js";
 import type { GrantReach, Grants } from "./grants.js";
+import { shownLook, looksIn, lookOf, seen, type PersonLook } from "./personLook.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { isShareBot, type OwnItem, type ShareBot, type ShareSource, type ShareSources, type SpaceShares } from "./spaceShares.js";
 import type { MemberRow, Spaces, SpaceRow } from "./spaces.js";
@@ -40,20 +41,22 @@ export interface WorkNoteRow {
   only_owner?: boolean;
 }
 
-export interface WorkPerson { userId: string; name: string; how: "admin" | "shared" | "view"; line: string }
+/** `bot`: their tiny bot in that space (personLook.ts). */
+export interface WorkPerson { userId: string; name: string; how: "admin" | "shared" | "view"; line: string; bot: PersonLook }
 export interface WorkSpace { spaceId: string; spaceName: string; admin: boolean; people: WorkPerson[] }
 export interface WorkRead {
   bot: ShareBot; botName: string; spaces: WorkSpace[];
   /** Admins who can see the viewer's own things in this bot ("Aanya, the space's admin, can see these too."). */
   seenBy: string[];
-  notesOnMine: Array<{ itemId: string; title: string; by: string; text: string; at: number; spaceId: string }>;
+  notesOnMine: Array<{ itemId: string; title: string; by: string; byBot: PersonLook; text: string; at: number; spaceId: string }>;
 }
 export interface WorkItem {
   bot: ShareBot; botName: string; id: string; title: string; line: string; at: number | null;
   owner: { userId: string; name: string; you: boolean }; space: { id: string; name: string };
   how: "own" | "admin" | "shared" | "view";
   detail: { when?: string; place?: string; notes?: string; day?: string; time?: string };
-  notes: Array<{ id: string; by: string; you: boolean; text: string; at: number }>;
+  /** `bot`: who wrote it, as their tiny bot (the viewer's own: their X0 bot). */
+  notes: Array<{ id: string; by: string; you: boolean; bot: PersonLook; text: string; at: number }>;
   can: { time: boolean; note: boolean };
   /** Its owner only (empty for anyone else): who it is shared with, in which space ("Everyone" for a share to everyone). */
   shared: Array<{ grantId: string; spaceId: string; spaceName: string; to: string }>;
@@ -72,6 +75,14 @@ const NOTES_ON_MINE = 5;
 const NOTE_MAX = 1000;
 
 const gone = () => new BotError("not_found", "That isn't there any more.", 404);
+/**
+ * A note's writer as their tiny bot: as they are in the space it came through when its looks are known, else their own look; a
+ * writer whose account is gone, by their name.
+ */
+function noteLook(looks: ReadonlyMap<string, PersonLook> | undefined, n: WorkNoteRow, viewer: string): PersonLook {
+  if (!n.by_id) return lookOf(`name:${n.by_name}`);
+  return looks ? shownLook(looks, n.by_id, viewer) : seen(lookOf(n.by_id), viewer);
+}
 const isDraft = (s: SpaceRow): boolean => s.draft_ms !== null && s.draft_ms !== undefined;
 const consentedRow = (m: MemberRow): boolean => m.consent_ms !== null && m.consent_ms !== undefined;
 
@@ -111,14 +122,17 @@ export class Work {
     const others = rows.filter((m) => m.user_id !== viewer && !hidden.has(m.user_id));
     const granted = await this.grants.reaching(viewer, s.id, bot, rows.map((m) => m.user_id), hidden);
     const shared = await this.shares.rules(s.id, bot);
+    // Their bots as the space has them (rows come oldest first, every member: spaces.ts memberRows).
+    const looks = looksIn(rows.map((m) => m.user_id));
     const out: WorkPerson[] = [];
     for (const m of others) {
-      if (admin && consentedRow(m)) { out.push({ userId: m.user_id, name: m.name, how: "admin", line: `All their ${NOUN[bot]}s` }); continue; }
+      const who = { userId: m.user_id, name: m.name, bot: shownLook(looks, m.user_id, viewer) };
+      if (admin && consentedRow(m)) { out.push({ ...who, how: "admin", line: `All their ${NOUN[bot]}s` }); continue; }
       const gs = granted.get(m.user_id) ?? [];
-      if (gs.length) { out.push({ userId: m.user_id, name: m.name, how: "shared", line: `${nouns(bot, gs.length)} shared with you` }); continue; }
+      if (gs.length) { out.push({ ...who, how: "shared", line: `${nouns(bot, gs.length)} shared with you` }); continue; }
       const r = shared.get(m.user_id);
-      if (r?.mode === "all") out.push({ userId: m.user_id, name: m.name, how: "view", line: "Everything they share" });
-      else if (r?.mode === "some" && r.items.length) out.push({ userId: m.user_id, name: m.name, how: "view", line: `${nouns(bot, r.items.length)} shared` });
+      if (r?.mode === "all") out.push({ ...who, how: "view", line: "Everything they share" });
+      else if (r?.mode === "some" && r.items.length) out.push({ ...who, how: "view", line: `${nouns(bot, r.items.length)} shared` });
     }
     return out;
   }
@@ -128,10 +142,13 @@ export class Work {
     const hidden = await this.grants.blocks.hiddenFor(viewer);
     const spaces: WorkSpace[] = [];
     const seenBy: string[] = [];
+    // Each space's looks, for the notes below: a note's writer is drawn as they are in the space it came through.
+    const looksBy = new Map<string, Map<string, PersonLook>>();
     for (const m of await this.spaces.mine(viewer)) {
       const s = await this.spaces.spaceRow(m.id);
       if (!s || isDraft(s)) continue;
       const rows = await this.spaces.memberRows(s.id);
+      looksBy.set(s.id, looksIn(rows.map((r) => r.user_id)));
       const me = rows.find((r) => r.user_id === viewer);
       if (!m.admin && me && consentedRow(me) && !hidden.has(s.owner_id)) {
         const adminName = rows.find((r) => r.user_id === s.owner_id)?.name;
@@ -144,7 +161,9 @@ export class Work {
     const on = (await this.notes.select({ owner_id: viewer, bot }, { order: "at_ms", desc: true, limit: 40 }))
       .filter((n) => n.by_id !== viewer && !(n.by_id && hidden.has(n.by_id))).slice(0, NOTES_ON_MINE);
     const titles = on.length ? new Map((await this.listOf(src, viewer)).map((i) => [i.id, i.title])) : new Map<string, string>();
-    const notesOnMine = on.map((n) => ({ itemId: n.item_id, title: titles.get(n.item_id) ?? "", by: n.by_name, text: n.text, at: Number(n.at_ms), spaceId: n.space_id }));
+    const notesOnMine = on.map((n) => ({
+      itemId: n.item_id, title: titles.get(n.item_id) ?? "", by: n.by_name, byBot: noteLook(looksBy.get(n.space_id), n, viewer), text: n.text, at: Number(n.at_ms), spaceId: n.space_id,
+    }));
     return { bot, botName: BOT_NAMES[bot], spaces, seenBy, notesOnMine };
   }
 
@@ -261,9 +280,13 @@ export class Work {
       }
     }
     const adminId = s?.owner_id;
+    const looks = looksIn(rows.map((r) => r.user_id));
     const notes = (await this.notes.select({ owner_id: ownerId, bot, item_id: itemId }, { order: "at_ms", desc: true, limit: NOTES_SHOWN * 3 }))
       .filter((n) => viewer === ownerId || (n.space_id === spaceId && (n.only_owner !== true || n.by_id === viewer || viewer === adminId))).slice(0, NOTES_SHOWN)
-      .map((n) => ({ id: n.id, by: n.by_id === viewer ? "You" : n.by_name, you: n.by_id === viewer, text: n.text, at: Number(n.at_ms) }));
+      .map((n) => ({
+        id: n.id, by: n.by_id === viewer ? "You" : n.by_name, you: n.by_id === viewer, bot: noteLook(n.space_id === spaceId ? looks : undefined, n, viewer), text: n.text,
+        at: Number(n.at_ms),
+      }));
     return {
       bot, botName: BOT_NAMES[bot], id: itemId, title: listed?.title ?? ev?.title ?? "", line: listed?.line ?? (ev?.allDay ? "All day" : "Event"),
       at: listed?.at ?? ev?.start ?? null,

@@ -14,6 +14,7 @@ import { buildApp } from "../src/server.js";
 import { FONTS } from "../src/experience/phone/theme.js";
 import { PHONE_FONT } from "../src/experience/phoneLook.js";
 import { buildBootstrap } from "../src/experience/bootstrap/bootstrap.js";
+import { botsFonts } from "../src/experience/bots/kit.js";
 
 let app: FastifyInstance;
 beforeAll(async () => { app = await buildApp(); await app.ready(); });
@@ -30,6 +31,15 @@ describe("the phone's typefaces", () => {
       const res = await app.inject({ method: "GET", url: path });
       expect(res.statusCode, path).toBe(200);
       expect(res.rawPayload.subarray(0, 4).toString("hex"), path).toBe("00010000");
+    }
+  });
+
+  it("every Bots app face (Geist, and Bricolage for a build that sets it) is a file this server serves", async () => {
+    for (const [name, url] of Object.entries(botsFonts({ bricolage: true }))) {
+      expect(url, name).toMatch(/^https:\/\/.+\/fonts\/[a-z-]+\.ttf\?v=\d+$/);
+      const res = await app.inject({ method: "GET", url: new URL(url).pathname });
+      expect(res.statusCode, name).toBe(200);
+      expect(res.rawPayload.subarray(0, 4).toString("hex"), name).toBe("00010000");
     }
   });
 

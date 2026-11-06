@@ -199,6 +199,8 @@ export function buildBootstrap(
      * behind the sidebar. Absent, the bootstrap is exactly today's.
      */
     botsApp?: boolean;
+    /** The Bots app build has Bricolage Grotesque to register (it said "FontBricolage", sdui 3j): its faces come in `fonts`. */
+    fontBricolage?: boolean;
   } = {},
 ): BootstrapResponse {
   const botsApp = opts.botsApp === true;
@@ -215,7 +217,7 @@ export function buildBootstrap(
     cacheVersion: CACHE_VERSION,
     // Typefaces to register at boot. Empty by default; the app falls back to
     // the platform font and nothing waits on the network.
-    ...(Object.keys(FONTS).length || botsApp ? { fonts: botsApp ? { ...FONTS, ...botsFonts() } : FONTS } : {}),
+    ...(Object.keys(FONTS).length || botsApp ? { fonts: botsApp ? { ...FONTS, ...botsFonts({ bricolage: opts.fontBricolage === true }) } : FONTS } : {}),
     theme: THEME,
     navigation: nav,
     // The server owns onboarding AND the intro. Intro plays whenever all 4

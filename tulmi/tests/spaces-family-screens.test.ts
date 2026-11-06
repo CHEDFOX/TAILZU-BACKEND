@@ -93,6 +93,10 @@ describe("the gates", () => {
         // A computer's sign-in code field (screens/link.ts) has had maxLength since before KitExtras (the phone's TextInput takes it).
         if (!voiceOnly && o.type === "TextField" && ("keyboard" in p || "autoFocus" in p || ("maxLength" in p && o.id !== "link.code"))) bad.push(`TextField ${String(o.id)} extras`);
         if (!voiceOnly && "startAtEnd" in p) bad.push(`${o.type} startAtEnd`);
+        // Neither build declares 3j: no tiny bots for people, no Bricolage, and no `bot` in the "@" list.
+        if (o.type === "PersonBot") bad.push("node PersonBot");
+        if (/Bricolage/.test(String((o.style as Record<string, unknown> | undefined)?.fontFamily ?? ""))) bad.push(`${o.type} in Bricolage`);
+        if (o.type === "MentionField" && ((p.people ?? []) as Array<Record<string, unknown>>).some((x) => "bot" in x)) bad.push("MentionField people bot");
         if ((o.on as Record<string, unknown> | undefined)?.onDoubleTap) bad.push(`${o.type} onDoubleTap`);
       }
       if (o.kind === "voiceLive" || o.kind === "voiceStop") bad.push(`action ${String(o.kind)}`);
@@ -435,7 +439,7 @@ describe("Home's Ask, as his thought", () => {
       for (const a of answered) expect(a.visibleIf).toEqual({ truthy: "asked.shell.bot.name" });
       const tiles = ofType(nodes, "BotTiles")[0]!.props!.tiles as Array<{ slug: string; doubleTap?: unknown }>;
       for (const t of tiles) {
-        if (t.slug === "make" || t.slug.startsWith("space-")) expect(t.doubleTap, t.slug).toBeUndefined();
+        if (t.slug === "make" || t.slug === "spaces" || t.slug.startsWith("space-")) expect(t.doubleTap, t.slug).toBeUndefined();
         else expect(t.doubleTap, t.slug).toMatchObject({ kind: "sequence", actions: [{ kind: "setState", path: "askBot", value: t.slug }, { kind: "voiceLive", mode: "chat" }] });
       }
       if (client === "desktop") expect(s.talkTo).toMatchObject({ voice: { kind: "voiceLive", mode: "once", into: "ask" } });

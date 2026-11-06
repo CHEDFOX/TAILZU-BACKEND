@@ -131,7 +131,7 @@ function sampleFor(t: Target, c: Client): Sample | undefined {
  */
 const STAGE = ["OnboardStage", "BlipSpot"];
 // The window: its microphone too (desk-bridge.js answers for it), so its first-arrival card asks for it.
-const COMPS: Record<Client, string[]> = { phone: [...STAGE, "BotsMotion", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "ActionParams", ...R.SPACES_COMPONENTS], desktop: [...R.DESKTOP_COMPONENTS, ...STAGE, "DeskMicAsk"] };
+const COMPS: Record<Client, string[]> = { phone: [...STAGE, "BotsMotion", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "ActionParams", ...R.SPACES_COMPONENTS, ...R.LOOK_COMPONENTS], desktop: [...R.DESKTOP_COMPONENTS, ...STAGE, "DeskMicAsk"] };
 
 /**
  * The first arrival: Home carries its card (the microphone, then the keyboard, over a blurred Home) as it does the
@@ -167,7 +167,7 @@ async function missing(c: Client): Promise<unknown> {
 function bootstrap(c: Client): unknown {
   const common = { onboarded: true, landedBefore: true, botsApp: true, entitled: true, signedIn: true, languagesSet: true, profileComplete: true, wordsEver: 5196 };
   const boot = (c === "phone"
-    ? buildBootstrap({ ...common, platform: "ios" })
+    ? buildBootstrap({ ...common, platform: "ios", fontBricolage: true })
     : buildBootstrap({ ...common, formFactor: "desktop", os: "mac", desk: true, deskNotes: true, deskTasks: true })) as { flags?: Record<string, unknown> };
   // No live channel here: the stand-in API answers from files, and the page may not open a socket.
   boot.flags = { ...(boot.flags ?? {}), "live.enabled": false };

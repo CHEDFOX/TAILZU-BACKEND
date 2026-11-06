@@ -3,10 +3,11 @@
  */
 
 import type { ActionSpec, ActionRef, Node } from "../../../../../../shared/types/sdui.js";
+import { lookOf, seen } from "../../../../botsBots/personLook.js";
 import type { Perm } from "../../../../botsBots/spacePerms.js";
 import {
   type BotsCtx, call, seq, C, FACE, row, col, sectionLabel, box, text, icon, labelled, grow, divider, page, emptyState, SCREENS, meta,
-  button, PALETTE_HEX,
+  button, PALETTE_HEX, personBot, canPersonBot, type PersonLookSpec,
 } from "../../kit.js";
 
 export const A = "/v1/botsapp/bots";
@@ -17,7 +18,8 @@ export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "
 // ===================================================================== what the screens read
 // Roles are gone: the server still sends a member's perms, role and roleName (fixed: "Admin" for the space's maker, "Member" for
 // everyone else) and `roles: []`, so older builds keep reading them. These screens go by `maker` and `me.admin`.
-export interface Member { userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number; perms: Perm[]; role: string | null; roleName: string }
+/** `bot`: their tiny bot in this space (src/botsBots/personLook.ts). */
+export interface Member { userId: string; name: string; you: boolean; maker: boolean; canApprove: boolean; joinedAt: number; perms: Perm[]; role: string | null; roleName: string; bot?: PersonLookSpec }
 export interface Role { id: string; name: string; perms: Perm[]; preset: boolean }
 interface Invite { code: string; link: string; email: string | null; expiresAt: number; roleName?: string; perms?: Perm[]; byYou: boolean; by: string; mail: "queued" | "sent" | "failed" | null }
 interface SpaceBot { slug: string; name: string; colour: string; addedBy: string; byYou: boolean }
@@ -95,12 +97,34 @@ export function inputBox(children: Node[], o: { radius?: number; pad?: number } 
 }
 export const labelledField = (label: string, f: Node) => col([sectionLabel(label), inputBox([f])], { gap: 8 });
 
-const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase();
-export function personDot(name: string, you: boolean, size = 32): Node {
-  return box([text(initial(name), { size: 13, weight: 600, color: you ? C.paper : C.grey70, lineHeight: 16 })], {
-    width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center", flexShrink: 0,
-    backgroundColor: you ? C.ink : C.surface, borderWidth: you ? 0 : 1, borderColor: C.outline,
-  });
+/**
+ * A person, as their own tiny bot (kit personBot), never their initials: the look the server gave them (`bot`), else the one their
+ * id (`seed`) always has, the viewer being their own X0 bot. A build without PersonBot gets a plain circle in their colour.
+ */
+export function personMark(ctx: BotsCtx, who: { seed: string; bot?: PersonLookSpec | null }, size = 32, o: { label?: string; ring?: string } = {}): Node {
+  return personBot(ctx, who.bot ?? seen(lookOf(who.seed), ctx.user?.id), { size, ...o });
+}
+
+/**
+ * A space's faces in a list: up to three of its people's tiny bots side by side, a little over each other (the others first, then
+ * the viewer), and "+N" for the rest. `ground`: what they stand on (a circle without PersonBot keeps an edge of it).
+ *
+ * A tiny bot fills well under half his box's width (he stands in its middle, with room for a shrug), so the boxes go much further
+ * over each other than circles do (FACES_OVER) for the bots themselves to touch.
+ */
+const FACES_OVER = { bot: 0.55, circle: 0.22 } as const;
+const facesOver = (ctx: BotsCtx, size: number): number => Math.round(size * (canPersonBot(ctx) ? FACES_OVER.bot : FACES_OVER.circle));
+/** How wide a list's faces are at most (all `max` of them and "+N"): a list sets them in this, so the names line up down it. */
+export const facesWidth = (ctx: BotsCtx, size = 28, max = 3): number => size + (max - 1) * (size - facesOver(ctx, size)) + 20;
+export function facesRow(ctx: BotsCtx, members: Member[], o: { size?: number; max?: number; ground?: string } = {}): Node {
+  const size = o.size ?? 28, max = o.max ?? 3;
+  const shown = [...members.filter((m) => !m.you), ...members.filter((m) => m.you)].slice(0, max);
+  const more = members.length - shown.length;
+  const over = facesOver(ctx, size);
+  return row([
+    ...shown.map((m, i) => box([personMark(ctx, { seed: m.userId, bot: m.bot }, size, { ring: o.ground ?? C.paper })], i ? { marginLeft: -over } : {})),
+    ...(more > 0 ? [text(`+${more}`, { size: 12, weight: 600, lineHeight: 16, color: C.meta, style: { paddingLeft: 4 } })] : []),
+  ], { alignItems: "center", flexShrink: 0 });
 }
 export function iconButton(name: Parameters<typeof icon>[0], onPress: ActionRef, label: string, size = 40): Node {
   return labelled(box([icon(name, { size: 18, color: C.grey70 })], { width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center", flexShrink: 0 }, onPress), label);

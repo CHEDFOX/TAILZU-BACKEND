@@ -193,9 +193,15 @@ describe("the line about the admin", () => {
     const id = await s.family([M_, R_]);
     for (let i = 1; i <= 35; i += 1) { s.clock.t += 1000; await post(s, id, M_, { text: `Line ${i}` }); }
     const first = await feed(s, id, R_);
+    // Each with their tiny bot (botsBots/personLook.ts): theirs from the space, the viewer's own their X0 bot.
+    const bot = (id: string) => expect.objectContaining({ seed: id, avatar: expect.any(String), color: expect.stringMatching(/^#[0-9A-F]{6}$/) });
     expect(first.people).toEqual([
-      { userId: A_, name: "Aanya S.", you: false, admin: true }, { userId: M_, name: "Mom", you: false, admin: false }, { userId: R_, name: "Rohan", you: true, admin: false },
+      { userId: A_, name: "Aanya S.", you: false, admin: true, bot: bot(A_) }, { userId: M_, name: "Mom", you: false, admin: false, bot: bot(M_) },
+      { userId: R_, name: "Rohan", you: true, admin: false, bot: { seed: R_, avatar: "blip", color: "#0a0a0a" } },
     ]);
+    // Three people, three colours and three avatars of their own.
+    const others = first.people.slice(0, 2).map((p: { bot: { avatar: string; color: string } }) => p.bot);
+    expect(new Set(others.map((b: { color: string }) => b.color)).size).toBe(2);
     expect(first.messages).toHaveLength(30);
     expect(first.more).toBe(true);
     const older = (await s.call("GET", `${AREA}/spaces/${id}/feed?before=${first.before}`, R_)).body;

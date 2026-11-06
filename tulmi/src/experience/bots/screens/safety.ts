@@ -12,10 +12,11 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
   back, box, C, call, col, divider, emptyState, FACE, grow, icon, listCard, listRow, meta, notice, open, page, primaryButton,
-  quietButton, row, SCREENS, secondaryButton, sectionLabel, seq, switchRow, text, title, when, whenEq, type BotsCtx,
+  quietButton, row, SCREENS, secondaryButton, sectionLabel, seq, switchRow, text, title, when, whenEq, type BotsCtx, type PersonLookSpec,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import { REASON_WORDS } from "../../../botsBots/safety.js";
+import { personMark } from "./spaces/parts.js";
 
 const A = "/v1/botsapp/bots";
 const enc = encodeURIComponent;
@@ -25,13 +26,6 @@ const refresh: ActionSpec = { kind: "refresh" };
 const toast = (message: string, error = false): ActionSpec => ({ kind: "toast", message, ...(error ? { tone: "error" as const } : {}) });
 const idParam = (ctx: BotsCtx, k = "id"): string => String(ctx.params[k] ?? "").replace(/[^a-zA-Z0-9-]/g, "").slice(0, 64);
 const shortDate = (ctx: BotsCtx, ms: number) => { const d = new Date(ms + ctx.tzOffsetMinutes * 60_000); return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`; };
-
-function personDot(name: string, size = 48): Node {
-  return box([text((name.trim()[0] ?? "?").toUpperCase(), { size: Math.round(size * 0.36), weight: 600, color: C.grey70, lineHeight: Math.round(size * 0.44) })], {
-    width: size, height: size, borderRadius: size / 2, alignItems: "center", justifyContent: "center", flexShrink: 0,
-    backgroundColor: C.surface, borderWidth: 1, borderColor: C.outline,
-  });
-}
 
 function couldNot(ctx: BotsCtx, what: string, body = "It may have gone, or the connection dropped. Try again.") {
   return page(ctx, { back: true, title: what, nav: "you", body: [emptyState({ pose: "think", title: `Couldn't open ${what.toLowerCase()}`, body, action: { label: "Try again", onPress: refresh } })] });
@@ -51,7 +45,8 @@ const BLOCK_MEANS = "You won't see each other's messages or anything they share,
 
 // ===================================================================== bots.person
 
-interface Person { userId: string; name: string; spaces: string[]; blockedByYou: boolean; canMessage: boolean }
+/** `bot`: their tiny bot (src/botsBots/safety.ts person). */
+interface Person { userId: string; name: string; spaces: string[]; blockedByYou: boolean; canMessage: boolean; bot?: PersonLookSpec }
 
 function personPage(ctx: BotsCtx, p: Person | undefined) {
   if (!p) return couldNot(ctx, "This person", "You can only see someone you share a space or a chat with.");
@@ -66,7 +61,7 @@ function personPage(ctx: BotsCtx, p: Person | undefined) {
   return page(ctx, {
     back: true, title: p.name, nav: "you", maxWidth: 720, state: { sure: false }, live: ["blocks", "spaces", "threads"],
     body: [
-      row([personDot(p.name), col([title(p.name, { size: 24 }), meta(p.spaces.length ? `In ${p.spaces.join(", ")}` : "You've chatted before", { size: 13, lines: 2 })], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 14 }),
+      row([personMark(ctx, { seed: p.userId, bot: p.bot }, 48), col([title(p.name, { size: 24 }), meta(p.spaces.length ? `In ${p.spaces.join(", ")}` : "You've chatted before", { size: 13, lines: 2 })], { gap: 2, flexShrink: 1, minWidth: 0 })], { gap: 14 }),
       ...(p.blockedByYou ? [notice(`You blocked ${p.name}. ${BLOCK_MEANS}`, { mark: "lock" })] : []),
       listCard(rows),
       ...(p.blockedByYou ? [] : [when({ truthy: "sure" }, col([
@@ -149,7 +144,7 @@ function blockedPage(ctx: BotsCtx, d: BlockedData | undefined) {
       ...(!list ? [emptyState({ pose: "think", title: "Couldn't load who you blocked", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } })]
         : list.length ? [col(list.flatMap((b, i) => [
           ...(i ? [divider()] : []),
-          row([personDot(b.name, 36), col([text(b.name, { size: 15, weight: 500, lineHeight: 20, lines: 1 }), meta(`Blocked ${shortDate(ctx, b.at)}`, { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 }), grow(),
+          row([personMark(ctx, { seed: b.userId }, 36), col([text(b.name, { size: 15, weight: 500, lineHeight: 20, lines: 1 }), meta(`Blocked ${shortDate(ctx, b.at)}`, { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 }), grow(),
             secondaryButton("Unblock", unblockAction(b.userId, b.name), { size: "md" })], { gap: 12, paddingVertical: 12, paddingHorizontal: 16 }),
         ]), { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" })]
           : [emptyState({ pose: "hello", title: "Nobody blocked", body: "To block someone, open their name in a chat or a space." })]),

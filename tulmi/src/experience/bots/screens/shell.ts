@@ -22,7 +22,7 @@ import { nicknameOf } from "../../assistantName.js";
 import {
   duration, type BotsCtx, page, hasOutbox, needsCard, askBar, botLook, open, SCREENS, box, text, C, row, col, card, meta, seq, roundButton,
   sectionLabel, grid, icon, grow, botAvatar, botRoute, labelled, back, emptyState, mono, secondaryButton, title, segmented, when,
-  statusMark, button, toTab, call, blip, primaryButton, listCard, listRow, canHomeThought,
+  statusMark, button, toTab, call, blip, primaryButton, listCard, listRow, canHomeThought, canSpaces2,
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, DELETION_PATH } from "./accountGrace.js";
@@ -331,8 +331,8 @@ export const shellScreens: BotsScreen[] = [
         deps.api<RoutinesData>("GET", ROUTINES_PATH).catch(() => undefined),
         // The About you card (firstRun/aboutCard.ts): due after a few visits, while the name and gender are owed.
         deps.api<About>("GET", ABOUT_PATH).catch(() => undefined),
-        // The groups (family, friends), each a bot of its own on Home.
-        deps.api<{ spaces?: Space[] }>("GET", `${SPACES_API}/spaces`).catch(() => undefined),
+        // The groups (family, friends): each a bot of its own on Home, or (the new Spaces) one Space card with their newest line.
+        deps.api<{ spaces?: Space[] }>("GET", `${SPACES_API}/spaces${canSpaces2(ctx) ? "?last=1" : ""}`).catch(() => undefined),
         // The AI permission (firstRun/aiConsentCard.ts): asked before anything else, until they agree.
         deps.api<AiConsent>("GET", AI_CONSENT_PATH).catch(() => undefined),
       ]);

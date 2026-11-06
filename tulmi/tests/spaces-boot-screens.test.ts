@@ -37,6 +37,7 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { sampleApi } = await import("./bots-bots-data.js");
+const P = await import("../src/botsBots/personLook.js");
 
 type Client = "phone" | "desktop";
 const NEW = ["BotsKit", "BotsMotion", "BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "VoiceLive", "DoubleTap", "KitExtras"];
@@ -237,6 +238,59 @@ describe("the new Spaces from the server's answers", () => {
       const mom = await draw(f, M_, "bots.space.people", client, { params: { id: f.home } });
       expect(mom.texts, client).not.toContain("Make a new code");
     }
+  });
+
+  it("people as their own tiny bots: one look per person in a space, the same to everyone, the viewer's own ink Blip", async () => {
+    const f = await family();
+    const can = (client: Client) => [...canOf(client, NEW), "PersonBot", "FontBricolage"];
+    const looks = async (who: string) => new Map(((await f.call("GET", `${AREA}/spaces/${f.home}`, who)).body.space.members as Array<{ userId: string; bot: { seed: string; avatar: string; color: string } }>).map((m) => [m.userId, m.bot]));
+    const byAanya = await looks(A_), byMom = await looks(M_);
+    // Four people in Home (Aanya, Mom, Rohan, Dev): four colours, four avatars.
+    const others = [M_, R_, D_].map((id) => byAanya.get(id)!);
+    expect(new Set([...others, byMom.get(A_)!].map((b) => b.color)).size).toBe(4);
+    expect(new Set([...others, byMom.get(A_)!].map((b) => b.avatar)).size).toBe(4);
+    // Mom is the same bot to Aanya and to Dev; to herself she is her own X0 bot.
+    expect((await looks(D_)).get(M_)).toEqual(byAanya.get(M_));
+    expect(byMom.get(M_)).toEqual({ seed: M_, avatar: "blip", color: "#0a0a0a" });
+    // Outside the space (a one to one chat, the contacts) Rohan is the bot he is in Home, not the one his id alone would give him.
+    expect(byAanya.get(R_)).not.toEqual(P.lookOf(R_));
+    const direct = (await f.call("POST", `${AREA}/threads/direct`, A_, { person: R_ })).body.id as string;
+    const inList = ((await f.call("GET", `${AREA}/threads`, A_)).body.threads as Array<{ id: string; people: Array<{ userId: string; bot?: unknown }> }>).find((t) => t.id === direct)!;
+    expect(inList.people.find((p) => p.userId === R_)!.bot).toEqual(byAanya.get(R_));
+    expect(inList.people.find((p) => p.userId === A_)!.bot).toEqual({ seed: A_, avatar: "blip", color: "#0a0a0a" });
+    const opened = (await f.call("GET", `${AREA}/threads/${direct}`, A_)).body.thread as { people: Array<{ userId: string; bot?: unknown }> };
+    expect(opened.people.find((p) => p.userId === R_)!.bot).toEqual(byAanya.get(R_));
+    const contacts = (await f.call("GET", `${AREA}/threads/contacts`, A_)).body.people as Array<{ userId: string; bot: unknown }>;
+    expect(contacts.find((p) => p.userId === R_)!.bot).toEqual(byAanya.get(R_));
+    // A space's own chat names no faces: its people carry none.
+    const spaceChat = ((await f.call("GET", `${AREA}/threads`, A_)).body.threads as Array<{ kind: string; people: Array<{ bot?: unknown }> }>).find((t) => t.kind === "space")!;
+    expect(spaceChat.people.every((p) => p.bot === undefined)).toBe(true);
+    for (const client of ["phone", "desktop"] as const) {
+      const people = await draw(f, M_, "bots.space.people", client, { params: { id: f.home }, can: can(client) });
+      const drawn = people.nodes.filter((n) => n.type === "PersonBot").map((n) => n.props as { seed: string; avatar: string; color: string });
+      expect(drawn.map(({ seed, avatar, color }) => ({ seed, avatar, color })), client).toEqual([A_, M_, R_, D_].map((id) => byMom.get(id)));
+      expect(people.texts.filter((t) => /^[A-Z]$/.test(t)), client).toEqual([]);
+      // The "@" list carries them too.
+      const feed = await draw(f, M_, "bots.spaces", client, { params: { id: f.home }, can: can(client) });
+      const field = feed.nodes.find((n) => n.type === "MentionField")!;
+      expect(field.props!.people, client).toEqual([A_, R_, D_].map((id) => expect.objectContaining({ id, bot: byMom.get(id) })));
+      expect(feed.nodes.filter((n) => n.type === "PersonBot"), `${client}: no faces in the feed`).toHaveLength(0);
+    }
+    // Home's Space card reads each space's last line, and none of the full list's extras.
+    await f.call("POST", `${AREA}/spaces/${f.home}/feed`, M_, { text: "Dinner at 8?" });
+    const last = (await f.call("GET", `${AREA}/spaces?last=1`, A_)).body;
+    expect(last.spaces[0]).toMatchObject({ last: { from: expect.any(String), text: "Dinner at 8?" }, unread: expect.any(Number) });
+    expect(last.invitations).toBeUndefined();
+    expect((await f.call("GET", `${AREA}/spaces`, A_)).body.spaces[0].last).toBeUndefined();
+    // Someone asking with the code: the bot they would be once in, after everyone there now.
+    const code = String((await f.call("GET", `${AREA}/spaces/${f.home}`, A_)).body.space.code).replace("-", "");
+    await f.call("POST", `${AREA}/spaces/join`, X_, { code, consent: true });
+    const full = (await f.call("GET", `${AREA}/spaces?full=1`, A_)).body;
+    expect(full.requests[0].bot).toEqual(P.looksIn([A_, M_, R_, D_, X_]).get(X_));
+    // An invitation waiting: the admin who sent it, as Home has them.
+    await f.call("POST", `${AREA}/spaces/${f.home}/invite`, A_, { email: "mom.k@example.in" });
+    const k = (await f.call("GET", `${AREA}/spaces?full=1`, K_)).body;
+    expect(k.invitations[0].byBot).toEqual(byMom.get(A_));
   });
 
   it("a bot page has Work in space for anyone in a space, and lists who shared with you there", async () => {

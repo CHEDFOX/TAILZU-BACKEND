@@ -17,14 +17,14 @@ import type { Node, ActionRef, ActionSpec, Condition } from "../../../../../shar
 import {
   row, text, C, call, seq, col, meta, icon, open, SCREENS, box, statusMark, grow, sectionLabel, button, type BotsCtx, notice, card,
   primaryButton, page, title, emptyState, toTab, back, picture, canSpaces2, listRow, quietButton, chips, when, segmented,
-  labelled, divider,
+  labelled, divider, type PersonLookSpec,
 } from "../kit.js";
 import { canUpload, uploadChip, uploadPick } from "../media.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { invitePage } from "./spaces/invitePage.js";
 import { idParam, memberPage } from "./spaces/memberPage.js";
 import {
-  ifFilled, A, toast, clearState, refresh, rowsCard, rowPad, type Space, personDot, names, inputBox, field, isDesk, type OneSpace, type BotSharing, failed,
+  ifFilled, A, toast, clearState, refresh, rowsCard, rowPad, type Space, personMark, facesRow, facesWidth, names, inputBox, field, isDesk, type OneSpace, type BotSharing, failed,
   enc, write, section, kb, type Item, iconButton, kindBadge, shortDate, canDo, labelledField, type Task, DAY, localDate,
   messagePerson,
 } from "./spaces/parts.js";
@@ -34,13 +34,14 @@ import {
   type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
   openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState, countDot, quietLinks,
 } from "./spaces/spaceDetail.js";
-import { type FeedRead, feedScreen, fileNode, sharedItemNode } from "./spaces/feed.js";
+import { type FeedRead, FAINT, feedScreen, fileNode, messageBubble, overLine, sharedItemNode } from "./spaces/feed.js";
 import { joinParam, type SpacesFull, startScreen } from "./spaces/start.js";
 import { peoplePage } from "./spaces/peoplePage.js";
 import { said } from "../said.js";
 
 interface Thread {
-  id: string; kind: "direct" | "group" | "space"; name: string; spaceId: string | null; spaceName: string; people: Array<{ userId: string; name: string; you: boolean }>;
+  /** A one to one chat's people carry `bot`, their tiny bot (src/botsBots/threads.ts viewOf). */
+  id: string; kind: "direct" | "group" | "space"; name: string; spaceId: string | null; spaceName: string; people: Array<{ userId: string; name: string; you: boolean; bot?: PersonLookSpec }>;
   last: { text: string; at: number } | null; unread: number; muted: boolean; canPost: boolean; why: string;
 }
 interface Message {
@@ -49,7 +50,8 @@ interface Message {
   to?: { userId: string; name: string; you: boolean } | null;
   files: Array<{ id: string; name: string; mime: string; bytes: number; kind: string; url: string }>; item: { id: string; kind: string; title: string } | null;
 }
-interface Contacts { people: Array<{ userId: string; name: string; spaces: string[] }>; groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> }
+/** People: `bot`, their tiny bot (as the first space you share has them: src/botsBots/threads.ts contacts). */
+interface Contacts { people: Array<{ userId: string; name: string; spaces: string[]; bot?: PersonLookSpec }>; groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> }
 
 
 /** A chip that turns a switch in state on and off (a person picked or not). */
@@ -86,10 +88,10 @@ function topRows(d: SpacesData): Node | null {
 }
 
 /** A space in the list: its faces, its name, and one line: what waits for you there, or who is in it. */
-function spaceRow(s: Space): Node {
+function spaceRow(ctx: BotsCtx, s: Space): Node {
   const line = s.waiting ? `${plural(s.waiting, "payment")} ${s.waiting === 1 ? "needs" : "need"} your yes` : facesLine(s);
   return row([
-    row(s.members.slice(0, 3).map((m) => box([personDot(m.name, m.you, 30)], { marginRight: -8, borderRadius: 17, borderWidth: 2, borderColor: C.paper })), { paddingRight: 8, width: 82 }),
+    box([facesRow(ctx, s.members)], { width: facesWidth(ctx), flexShrink: 0 }),
     col([text(s.name, { size: 16, weight: 600, lineHeight: 21, lines: 1 }), row([...(s.waiting ? [statusMark("needs")] : []), meta(line, { size: 12, lines: 1 })], { gap: 6, alignItems: "center" })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     icon("chevron", { size: 16, color: C.meta }),
   ], { ...rowPad, gap: 10, alignItems: "center" }, open(SCREENS.spaces, { id: s.id }));
@@ -147,7 +149,7 @@ function spacesPhone(ctx: BotsCtx, d: SpacesData) {
         : [
           ...[topRows(d)].filter((n): n is Node => !!n),
           ...(list.length
-            ? [rowsCard(list.map((s) => spaceRow(s))), quietLinks()]
+            ? [rowsCard(list.map((s) => spaceRow(ctx, s))), quietLinks()]
             : [emptyState({ pose: "hello", title: "Bring your people in", body: "A space for home, family or friends: shared lists and plans, money decided together, and everyone in the loop." })]),
         ]),
       joinBox(),
@@ -177,7 +179,7 @@ function spacesDesk(ctx: BotsCtx, d: SpacesData) {
     sectionLabel(`Your spaces · ${list.length}`),
     ...list.map((s) => col([
       row([col([text(s.name, { size: 16, weight: 600, lineHeight: 21 }), meta(spaceCount(s), { size: 12 })], { gap: 2, flexGrow: 1 }),
-        row(s.members.slice(0, 4).map((m) => box([personDot(m.name, m.you, 28)], { marginRight: -6, borderRadius: 16, borderWidth: 2, borderColor: s.id === sel?.space.id ? C.surface : C.paper })), { paddingRight: 6 })], { gap: 8 }),
+        facesRow(ctx, s.members, { max: 4, ground: s.id === sel?.space.id ? C.surface : C.paper })], { gap: 8 }),
       ...(s.waiting ? [row([statusMark("needs"), text(`${plural(s.waiting, "payment")} ${s.waiting === 1 ? "needs" : "need"} your yes`, { size: 13, color: C.grey70, lineHeight: 18 })], { gap: 8 })] : []),
     ], { gap: 10, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: s.id === sel?.space.id ? C.surface : C.line, ...(s.id === sel?.space.id ? { backgroundColor: C.surface } : {}) }, open(SCREENS.spaces, { id: s.id }))),
     meta("What happens in a space stays in that space.", { size: 12, lineHeight: 17 }),
@@ -330,22 +332,24 @@ function newTaskPage(ctx: BotsCtx, s: Space, kind: "task" | "plan") {
 interface ChatsData { threads?: Thread[]; unread?: number; contacts?: Contacts; open?: ThreadRead }
 interface ThreadRead { thread: Thread; messages: Message[]; more: boolean; before: number | null }
 
-function threadAvatar(t: Thread, size = 40): Node {
-  if (t.kind === "direct") return personDot(t.name, false, size);
+function threadAvatar(ctx: BotsCtx, t: Thread, size = 40): Node {
+  // One to one: the other person, as their own tiny bot.
+  const other = t.kind === "direct" ? t.people.find((p) => !p.you) : undefined;
+  if (t.kind === "direct") return personMark(ctx, { seed: other?.userId ?? t.id, bot: other?.bot }, size);
   return box([icon(t.kind === "space" ? "folder" : "person", { size: Math.round(size * 0.45), color: C.grey70 })], { width: size, height: size, borderRadius: size / 2, backgroundColor: C.surface, alignItems: "center", justifyContent: "center", flexShrink: 0 });
 }
 
 function threadRow(ctx: BotsCtx, t: Thread, selected = false): Node {
   const sub = t.last?.text || (t.kind === "space" ? `Everyone in ${t.spaceName}` : t.kind === "group" ? `${names(t.people.filter((p) => !p.you).map((p) => p.name))} · ${t.spaceName}` : "Say hello");
   return row([
-    threadAvatar(t),
+    threadAvatar(ctx, t),
     col([row([text(t.name, { size: 15, weight: t.unread ? 600 : 500, lineHeight: 20, lines: 1, style: { flexShrink: 1 } }), ...(t.muted ? [meta("Muted", { size: 11 })] : [])], { gap: 6 }),
       meta(sub, { size: 13, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     col([meta(t.last ? ago(ctx, t.last.at) : "", { size: 12, lines: 1 }), ...(t.unread && !t.muted ? [countDot(t.unread)] : [])], { gap: 4, alignItems: "flex-end", flexShrink: 0 }),
   ], { ...rowPad, ...(selected ? { backgroundColor: C.surface } : {}) }, open(isDesk(ctx) ? SCREENS.chats : SCREENS.thread, { id: t.id }));
 }
 
-function newChatPart(c: Contacts | undefined): Node[] {
+function newChatPart(ctx: BotsCtx, c: Contacts | undefined): Node[] {
   if (!c) return [];
   const people = c.people;
   const groups = c.groupSpaces;
@@ -359,7 +363,7 @@ function newChatPart(c: Contacts | undefined): Node[] {
     ], { ...rowPad, gap: 10 });
   };
   return [
-    ...(people.length ? [section("Message someone", [rowsCard(people.map((p) => row([personDot(p.name, false), col([text(p.name, { size: 15, lineHeight: 20 }), meta(`In ${names(p.spaces)}`, { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }), icon("send", { size: 16, color: C.meta })], rowPad, messagePerson(p.userId))))])] : []),
+    ...(people.length ? [section("Message someone", [rowsCard(people.map((p) => row([personMark(ctx, { seed: p.userId, bot: p.bot }), col([text(p.name, { size: 15, lineHeight: 20 }), meta(`In ${names(p.spaces)}`, { size: 12, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }), icon("send", { size: 16, color: C.meta })], rowPad, messagePerson(p.userId))))])] : []),
     ...(groups.length ? [section("Start a group", [rowsCard(groups.map(groupOf))])] : []),
   ];
 }
@@ -368,7 +372,7 @@ function chatsPhone(ctx: BotsCtx, d: ChatsData) {
   const list = d.threads;
   const making = String(ctx.params.new ?? "") === "chat";
   if (making) {
-    return page(ctx, { back: true, title: "New chat", nav: "you", body: [col([title("New chat"), meta("With people in your spaces, one to one or as a group.", { size: 13 })], { gap: 4 }), ...(d.contacts && (d.contacts.people.length || d.contacts.groupSpaces.length) ? newChatPart(d.contacts) : [emptyState({ pose: "hello", title: "No one to message yet", body: "Invite people to a space first. You can message anyone in a space you share, if the space lets you." })])] });
+    return page(ctx, { back: true, title: "New chat", nav: "you", body: [col([title("New chat"), meta("With people in your spaces, one to one or as a group.", { size: 13 })], { gap: 4 }), ...(d.contacts && (d.contacts.people.length || d.contacts.groupSpaces.length) ? newChatPart(ctx, d.contacts) : [emptyState({ pose: "hello", title: "No one to message yet", body: "Invite people to a space first. You can message anyone in a space you share, if the space lets you." })])] });
   }
   return page(ctx, {
     back: true, title: "Chats", nav: "you", live: ["threads", "spaces"],
@@ -386,22 +390,28 @@ const dayRule = (label: string): Node => row([box([], { height: 1, flexGrow: 1, 
 
 function messageNodes(ctx: BotsCtx, r: ThreadRead): Node[] {
   const desk = isDesk(ctx);
+  // A build with the new Spaces reads chats the way it reads a space's feed: faint grounds, ink words in Bricolage, grey names.
+  const fresh = canSpaces2(ctx);
   const out: Node[] = [];
   let lastDay = "", lastFrom = "";
   for (const m of r.messages) {
     const day = dayKeyOf(ctx, m.at);
     if (day !== lastDay) { out.push(dayRule(dayWords(ctx, m.at))); lastDay = day; lastFrom = ""; }
     const mine = m.from.you;
+    const ground = fresh ? (mine ? FAINT.mine : FAINT.theirs) : undefined;
+    const small = (words: string): Node => (fresh ? overLine(words) : meta(words, { size: 12 }));
     const parts: Node[] = [];
-    // A name in a group opens that person's page (bots.person: Message, Report, Block).
-    if (!mine && r.thread.kind !== "direct" && lastFrom !== (m.from.userId ?? "")) {
-      parts.push(m.from.userId ? row([meta(m.from.name, { size: 12 })], { minHeight: 20 }, open(SCREENS.person, { id: m.from.userId })) : meta(m.from.name, { size: 12 }));
+    // A name in a group opens that person's page (bots.person: Message, Report, Block). With no faces (the new Spaces), over every
+    // one of theirs, as in a space's feed; an older build, over the first of a run.
+    if (!mine && r.thread.kind !== "direct" && (fresh || lastFrom !== (m.from.userId ?? ""))) {
+      parts.push(m.from.userId ? row([small(m.from.name)], { minHeight: 20 }, open(SCREENS.person, { id: m.from.userId })) : small(m.from.name));
     }
     // A message to one person, read by its sender or the space's admin: say who it went to, so it never reads as one for everyone.
-    if (m.to && !m.to.you) parts.push(meta(`To ${m.to.name}`, { size: 12 }));
-    for (const f of m.files) parts.push(fileNode(f, desk));
-    if (m.item) parts.push(sharedItemNode(m.item));
-    if (m.text) {
+    if (m.to && !m.to.you) parts.push(small(`To ${m.to.name}`));
+    for (const f of m.files) parts.push(fileNode(f, desk, ground));
+    if (m.item) parts.push(sharedItemNode(m.item, ground));
+    if (m.text && fresh) parts.push(messageBubble(ctx, m.text, mine));
+    else if (m.text) {
       parts.push(box([text(m.text, { size: 15, lineHeight: 21, color: mine && !desk ? C.paper : C.ink })], {
         backgroundColor: mine ? (desk ? C.surface : C.ink) : desk ? C.paper : C.surface, ...(desk && !mine ? { borderWidth: 1, borderColor: C.line } : {}),
         paddingVertical: 10, paddingHorizontal: 14, borderTopLeftRadius: 18, borderTopRightRadius: 18, borderBottomLeftRadius: mine ? 18 : 6, borderBottomRightRadius: mine ? 6 : 18,
@@ -441,7 +451,7 @@ function threadHead(ctx: BotsCtx, t: Thread): Node {
   const other = t.kind === "direct" ? t.people.find((p) => !p.you) : undefined;
   return row([
     ...(isDesk(ctx) ? [] : [labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back")]),
-    threadAvatar(t, 36),
+    threadAvatar(ctx, t, 36),
     col([text(t.name, { size: 17, weight: 600, lineHeight: 22, lines: 1 }), meta(people, { size: 12, lines: 1 })], { gap: 1, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     link(t.muted ? "Unmute" : "Mute", write("PUT", `${A}/threads/${tid}`, { muted: !t.muted }, { ok: t.muted ? "Unmuted" : "Muted" })),
     ...(other ? [iconButton("more", open(SCREENS.person, { id: other.userId }), `Report or block ${other.name}`, 40)] : []),
@@ -478,7 +488,7 @@ function chatsDesk(ctx: BotsCtx, d: ChatsData) {
     ...(!d.threads ? [emptyState({ pose: "think", title: "Couldn't load your chats", action: { label: "Try again", onPress: refresh } })]
       : list.length ? [rowsCard(list.map((t) => threadRow(ctx, t, t.id === r?.thread.id)))] : [meta("No chats yet. Message someone in a space you share.", { size: 13 })]),
   ], { width: 320, flexShrink: 0, gap: 14 });
-  const right = making ? col([text("New chat", { size: 20, weight: 600, lineHeight: 26 }), ...newChatPart(d.contacts)], { gap: 18, flexGrow: 1, flexShrink: 1, minWidth: 0 })
+  const right = making ? col([text("New chat", { size: 20, weight: 600, lineHeight: 26 }), ...newChatPart(ctx, d.contacts)], { gap: 18, flexGrow: 1, flexShrink: 1, minWidth: 0 })
     : r ? col([threadHead(ctx, r.thread), divider(), ...threadBody(ctx, r), ...(Number(ctx.params.before) > 0 ? [] : [composer(ctx, r.thread)])], { gap: 14, flexGrow: 1, flexShrink: 1, minWidth: 0 })
       : col([emptyState({ pose: "hello", title: "Pick a chat", body: "Or start one with New." })], { flexGrow: 1 });
   return page(ctx, {

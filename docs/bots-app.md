@@ -206,7 +206,8 @@ Builds the screen with the fixtures, draws it with **the apps' own renderers** (
 1280 x 800; the phone: its sdui renderer through react-native-web at 390 x 844 with a 12 pt status bar inset) and the boards beside
 them. Look at `scripts/bots-render/out/<id>.<client>.compare.png`. Options: `--client phone|desktop`, `--params '{"slug":"plan"}'`,
 `--quiet` (nothing working or waiting), `--api '{"GET /v1/…": {…}}'` (answers for your `load`), `--json served.json` (draw a screen a
-running server sent), `--motion` (default is Reduce Motion, so shots are stable), `--design <bots-design dir>` (or `$BOTS_DESIGN`).
+running server sent), `--motion` (default is Reduce Motion, so shots are stable), `--without PersonBot,FontBricolage` (draw it for a
+build that lacks these names; by default both clients say what their builds say now), `--design <bots-design dir>` (or `$BOTS_DESIGN`).
 First run installs react-native-web, react-dom and esbuild into `scripts/bots-render/.deps` (gitignored). The phone's native-only
 modules are stubbed; text is set by the browser, so a line may break a word apart from a device. Boards: `bots-design/project`.
 Blip (`blip(pose)`) is an animated WebP, which Reduce Motion does not stop, so two shots of a screen with him can differ.
@@ -339,6 +340,15 @@ switches) and a code that only asks to join answered "Request sent. The space's 
 or of voice, reaches them. The screens declare their own copy of what the spaces and work routes answer, so
 `tests/spaces-boot-screens.test.ts` builds each new screen from the real routes' answers (memory tables, tests/spaces-rig.ts), on both
 clients, new and old, and checks that every endpoint a new tree names is a route the server has.
+
+**People as their own tiny bots, and the messages' face** (sdui 3j; docs/spaces.md "How people look"). One node and one name:
+**`PersonBot`** (kit `personBot(ctx, look, { size, live, label })`, in `KIT_TYPES`): a person's full tiny bot standing in a size x size
+box, with the look the server picked (`src/botsBots/personLook.ts`: `seed`, `avatar`, `color`); a build without it gets a plain circle
+in their colour, never a letter. The Spaces screens draw people with `personMark` and `facesRow` (`screens/spaces/parts.ts`).
+**`FontBricolage`**: the build has Bricolage Grotesque registered (kit `BRICOLAGE`, three families by weight); kit `messageText` sets a
+message's words in it (16/23, -0.1), in Geist without it. Lint knows Bricolage's faces as the kit's. `tests/spaces-person-bots.test.ts`
+checks that no screen of Spaces or Work in space draws an initial, and the sweep in `tests/spaces-family-screens.test.ts` that neither
+reaches a build that doesn't declare it.
 
 ## 9. Rules, and what not to touch
 

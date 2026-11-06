@@ -1283,6 +1283,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.live.default": false,
   "desktop.media.playTickMs": 250,
   "desktop.media.progressMs": 150,
+  "desktop.mention.botSize": 28,
   "desktop.mention.listWidth": 320,
   "desktop.mention.lives": 12,
   "desktop.meter.barHeight": 10,
@@ -1381,6 +1382,21 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "desktop.page.treeChars": 40000,
   "desktop.paste.delayMs": 120,
   "desktop.pauseFlush.default": true,
+  "desktop.personBot.everyS": [
+    16,
+    36
+  ],
+  "desktop.personBot.firstS": [
+    4,
+    24
+  ],
+  "desktop.personBot.fps": 30,
+  "desktop.personBot.gapS": 2.5,
+  "desktop.personBot.gestures": [
+    "shrug",
+    "react.look"
+  ],
+  "desktop.personBot.lives": 96,
   "desktop.pie.centerLabelSize": 11,
   "desktop.pie.centerSize": 19,
   "desktop.pie.legendSize": 12.5,
@@ -2047,6 +2063,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "ui.LiveView.text": "#0A0A0A",
   "ui.LiveWords.settleMs": 600,
   "ui.LiveWords.tickMs": 50,
+  "ui.MentionField.botSize": 28,
   "ui.MentionField.chip": "#f2f2f2",
   "ui.MentionField.listMax": 240,
   "ui.MorphOut.collapseIn": [
@@ -2069,6 +2086,21 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
   "ui.MorphOut.fadeAt": 0.82,
   "ui.MorphOut.size": 128,
   "ui.MorphOut.windup": 0.16,
+  "ui.PersonBot.everyS": [
+    16,
+    36
+  ],
+  "ui.PersonBot.firstS": [
+    4,
+    24
+  ],
+  "ui.PersonBot.fps": 30,
+  "ui.PersonBot.gapS": 2.5,
+  "ui.PersonBot.gestures": [
+    "shrug",
+    "react.look"
+  ],
+  "ui.PersonBot.seenMs": 500,
   "ui.Rise.defaults": {
     "delayMs": 0,
     "fromY": 120,

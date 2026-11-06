@@ -3,12 +3,12 @@
  *
  *   expect(lintTree(screen.root!)).toEqual([]);   // in every screen's test
  *
- * It finds: a node type outside the kit's set (the core types both clients draw), text not set in a Geist face
- * or with a weight of its own or no line height, a border width with no colour, an image without a { url } source,
+ * It finds: a node type outside the kit's set (the core types both clients draw), text not set in one of the kit's faces (Geist,
+ * or Bricolage for a space's messages) or with a weight of its own or no line height, a border width with no colour, an image without a { url } source,
  * and a pressable inside a pressable (the window would run both; a BotStage's own press is on the bot, so its thought may hold buttons).
  */
 import type { Node } from "../../../../shared/types/sdui.js";
-import { FACE } from "./kit.js";
+import { BRICOLAGE, FACE } from "./kit.js";
 
 /** Every node of a tree, depth first. */
 export function walk(n: Node, out: Node[] = []): Node[] {
@@ -21,10 +21,10 @@ export function walk(n: Node, out: Node[] = []): Node[] {
  *  living tiles' two (BotTiles, BotCard), which the kit sends only to a build that declares BotsMotion, and BotBuddy and Home's live header (WriteOn, LiveMark, HeadBar) with it,
  *  and Home's welcome (Rise: Home coming in; BlipWalkOut: Blip walking off, or MorphOut sliding him off where a build lacks it), with it too,
  *  and the new Spaces' and Home's Ask blocks (BotStage, BotCrowd, Vanish, MentionField, LiveWords: sdui 3i), sent only to a build that
- *  declares them (kit canSpaces2, canHomeThought, canVoice). */
+ *  declares them (kit canSpaces2, canHomeThought, canVoice), and a person's own tiny bot (PersonBot: sdui 3j, kit canPersonBot). */
 const KIT_TYPES: ReadonlySet<string> = new Set([
   "Stack", "Text", "SVG", "Image", "Grid", "Screen", "SafeArea", "TextField", "Scroll", "BotTiles", "BotCard", "BotBuddy", "WriteOn", "LiveMark",
-  "HeadBar", "LiveView", "Rise", "MorphOut", "BlipWalkOut", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords",
+  "HeadBar", "LiveView", "Rise", "MorphOut", "BlipWalkOut", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "PersonBot",
 ]);
 
 /** A BotStage's press is on the bot (his hit area), never on the thought it holds: a button in the box is not inside a pressable. */
@@ -32,13 +32,13 @@ const PRESS_ON_ITSELF: ReadonlySet<string> = new Set(["BotStage"]);
 
 export function lintTree(root: Node): string[] {
   const bad: string[] = [];
-  const faces = new Set<string>(Object.values(FACE));
+  const faces = new Set<string>([...Object.values(FACE), ...Object.values(BRICOLAGE)]);
   const visit = (n: Node, pressed: boolean) => {
     if (!KIT_TYPES.has(n.type)) bad.push(`type ${n.type}`);
     const st = (n.style ?? {}) as Record<string, unknown>;
     if (n.type === "Text") {
       const what = `text "${String(n.props?.content ?? "").slice(0, 30)}"`;
-      if (!faces.has(String(st.fontFamily))) bad.push(`${what} has no Geist face`);
+      if (!faces.has(String(st.fontFamily))) bad.push(`${what} has no kit face`);
       if (st.fontWeight !== "normal") bad.push(`${what} sets a weight`);
       if (typeof st.lineHeight !== "number") bad.push(`${what} has no line height`);
     }

@@ -19,6 +19,7 @@ import { isOurPayPage } from "../../domains.js";
 import { deskVoices } from "../../experience/appLists.js";
 import { ASSISTANT_SCREENS } from "../../experience/assistant/screens.js";
 import { buildBootstrap } from "../../experience/bootstrap/bootstrap.js";
+import { FONT_BRICOLAGE_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { botsAppOn, botsOnly, isBotsScreen, botsDepsFor, emptyDeps, buildBotsScreen } from "../../experience/bots/index.js";
 import { BOTS_HANDOFF_IDS } from "../../experience/bots/screens/handoff.js";
 import { bumpCacheVersion, currentCacheVersion } from "../../experience/cacheVersion.js";
@@ -252,6 +253,8 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
     }
     const bootstrap = buildBootstrap({
       botsApp,
+      // Bricolage's three faces only to a Bots app build that sets them (sdui 3j FontBricolage).
+      fontBricolage: botsApp && (reqBody.capabilities?.components ?? []).includes(FONT_BRICOLAGE_CAPABILITY),
       onboarded: isReviewer || botsIn || (!newOnboarding && micGranted && keyboardReady) || dictatedBefore || (profile?.onboarded ?? false),
       // Have they ever been inside the app before? A reviewer always has — a
       // fresh account walked into You on every submission otherwise, which is

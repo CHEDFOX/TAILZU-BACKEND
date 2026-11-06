@@ -28,6 +28,7 @@ import { randomUUID } from "node:crypto";
 import { BotError } from "../bots/index.js";
 import { live } from "../live/bus.js";
 import { Blocks } from "./blocks.js";
+import { lookOf, looksIn, selfLook, type PersonLook } from "./personLook.js";
 import { signQuery } from "./spaceLinks.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
 import { pickedIds } from "./spacePerms.js";
@@ -59,7 +60,8 @@ export interface MessageView {
 }
 export interface ThreadView {
   id: string; kind: ThreadRow["kind"]; name: string; spaceId: string | null; spaceName: string;
-  people: Array<{ userId: string; name: string; you: boolean }>;
+  /** A one to one chat's two people carry `bot`: the other as their tiny bot wherever no space decides it (looksKnown), you your own. */
+  people: Array<{ userId: string; name: string; you: boolean; bot?: PersonLook }>;
   last: { text: string; at: number } | null; unread: number; muted: boolean;
   /** Can write here now; when not, `why` says why in a line. */
   canPost: boolean; why: string;
@@ -198,8 +200,11 @@ export class Threads {
     for (const s of await this.spaces.mine(userId)) await this.spaceThread(s.id).catch(() => undefined);
     const rows = (await this.people.select({ user_id: userId }, { limit: GROUPS_MAX + 40 })).filter((m) => m.left_ms === null || m.left_ms === undefined);
     const out: ThreadView[] = [];
+    // The looks of the people in one to one chats: worked out once for the whole list, and only if there is such a chat.
+    let known: Promise<Map<string, PersonLook>> | undefined;
+    const looks = () => (known ??= this.looksKnown(userId));
     for (const r of rows) {
-      const v = await this.viewOf(userId, r.thread_id).catch(() => null);
+      const v = await this.viewOf(userId, r.thread_id, looks).catch(() => null);
       if (v) out.push(v);
     }
     out.sort((a, b) => (b.last?.at ?? 0) - (a.last?.at ?? 0) || a.name.localeCompare(b.name));
@@ -227,7 +232,7 @@ export class Threads {
     return out.sort((a, b) => b.at - a.at);
   }
 
-  private async viewOf(userId: string, threadId: string): Promise<ThreadView> {
+  private async viewOf(userId: string, threadId: string, looks: () => Promise<Map<string, PersonLook>> = () => this.looksKnown(userId)): Promise<ThreadView> {
     const { t, me, members: all } = await this.open(userId, threadId);
     const hidden = await this.blocks.hiddenFor(userId);
     // Someone with a block between you is left out of a group's people (they are still in it, unseen).
@@ -237,9 +242,12 @@ export class Threads {
     const post = await this.mayPost(userId, t, all);
     const name = t.kind === "space" ? spaceName : t.kind === "direct" ? (others[0]?.name ?? (await this.people.select({ thread_id: t.id }, { limit: 4 })).find((m) => m.user_id !== userId)?.name ?? "Someone") : (t.name || names(others.map((m) => m.name)));
     const last = await this.lastLine(t, hidden);
+    // One to one: the other person as the same tiny bot their page and the contacts show (a chat with no space has none of its own).
+    const known = t.kind === "direct" ? await looks() : null;
+    const botOf = (id: string): PersonLook => (id === userId ? selfLook(userId) : known?.get(id) ?? lookOf(id));
     return {
       id: t.id, kind: t.kind, name, spaceId: t.space_id, spaceName,
-      people: members.map((m) => ({ userId: m.user_id, name: m.name, you: m.user_id === userId })),
+      people: members.map((m) => ({ userId: m.user_id, name: m.name, you: m.user_id === userId, ...(known ? { bot: botOf(m.user_id) } : {}) })),
       last, unread: Math.max(0, Number(me.unread) || 0), muted: me.muted === true, canPost: post.ok, why: post.why,
     };
   }
@@ -277,16 +285,39 @@ export class Threads {
     return { threadId: t.id, last, unread: Math.max(0, Number(me.unread) || 0) };
   }
 
-  /** Who this person can message (one to one), and where they can start a group. Nobody with a block between you. */
-  async contacts(userId: string): Promise<{ people: Array<{ userId: string; name: string; spaces: string[] }>; groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> }> {
-    const people = new Map<string, { userId: string; name: string; spaces: string[] }>();
+  /**
+   * Everyone this person shares a space with, as their tiny bot in the first of those spaces (oldest first, as `Spaces.mine` lists
+   * them; whatever that space lets the person do), so someone looks the same in a one to one chat, the contacts and their page as
+   * there. The person themself is not in it.
+   */
+  async looksKnown(userId: string): Promise<Map<string, PersonLook>> {
+    const known = new Map<string, PersonLook>();
+    for (const s of await this.spaces.mine(userId)) this.learnLooks(known, userId, (await this.spaces.membersOf(s.id)).map((m) => m.userId));
+    return known;
+  }
+
+  /** A space's looks (its members, oldest first) into `known`, for anyone not met in an earlier space. */
+  private learnLooks(known: Map<string, PersonLook>, userId: string, ids: string[]): void {
+    for (const [id, look] of looksIn(ids)) if (id !== userId && !known.has(id)) known.set(id, look);
+  }
+
+  /**
+   * Who this person can message (one to one), and where they can start a group. Nobody with a block between you. Each person's `bot`
+   * is their tiny bot in the first space they share (looksKnown), so they look the same here as there.
+   */
+  async contacts(userId: string): Promise<{ people: Array<{ userId: string; name: string; spaces: string[]; bot: PersonLook }>; groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> }> {
+    const people = new Map<string, { userId: string; name: string; spaces: string[]; bot: PersonLook }>();
     const groupSpaces: Array<{ id: string; name: string; people: Array<{ userId: string; name: string }> }> = [];
     const hidden = await this.blocks.hiddenFor(userId);
+    const known = new Map<string, PersonLook>();
     for (const s of await this.spaces.mine(userId)) {
-      const ms = (await this.spaces.membersOf(s.id)).filter((m) => m.userId !== userId && !hidden.has(m.userId));
+      const all = await this.spaces.membersOf(s.id);
+      // Every space counts for how someone looks, the ones that don't let you message them too (looksKnown does the same).
+      this.learnLooks(known, userId, all.map((m) => m.userId));
+      const ms = all.filter((m) => m.userId !== userId && !hidden.has(m.userId));
       if (s.perms.includes("message")) {
         for (const m of ms) {
-          const p = people.get(m.userId) ?? { userId: m.userId, name: m.name, spaces: [] };
+          const p = people.get(m.userId) ?? { userId: m.userId, name: m.name, spaces: [], bot: known.get(m.userId) ?? lookOf(m.userId) };
           p.spaces.push(s.name);
           people.set(m.userId, p);
         }

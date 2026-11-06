@@ -17,6 +17,7 @@ plans for each other, and what the group tells its bots. This file is the rules 
 | `spaceShares.ts` | The old per-bot sharing (everything or picked items), read only |
 | `shared.ts`, `payments.ts`, `spaceTasks.ts`, `spaceMemory.ts` | Shared things, payment requests, tasks and plans, group memory |
 | `safety.ts`, `blocks.ts`, `filter.ts` | Reports, blocks, and the screen on everything posted |
+| `personLook.ts` | How a person looks: their own tiny bot (an avatar from the catalog and a group colour), never initials |
 
 ## The admin, and no roles
 
@@ -123,6 +124,57 @@ isn't there.
 - The bot page's list (`GET /work/:bot`) never reads anyone's bot: people and counts come from grants, shares and member rows. Only
   `GET /work/:bot/person` lists another person's things.
 
+## How people look
+
+No initials anywhere: not in a space's people, the "@" list, an invitation, a request to join, the spaces list, Work in space on the
+bots' pages, the share page or someone's page. A person is their own tiny bot (sdui 3j `PersonBot`): a full bot standing in a square
+box, drawn by the bots' engine, idling (a blink, a small sway, now and then a small gesture, staggered by `seed`); Reduce Motion, a
+still pose. A build without `PersonBot` gets a plain circle in the person's colour, with no letter.
+
+- **The server picks the look** (`personLook.ts`): an avatar from `pip dot bolt sage scout dapper nova` (only those the looks catalog
+  has; one it drops is skipped, so nobody else's changes) and a colour from the group palette `#5B7DB1 #B5654A #6B8E4E #8A6BB1
+  #B18A3D`, both from a hash of the person's id (FNV-1a), so the same id looks the same everywhere.
+- **Unique in a space where it can be.** The members, oldest first, each keep their own look unless someone before them has it; a
+  clash goes to the one who joined later, who takes the next avatar and the next colour nobody there has yet. Avatar and colour are
+  picked apart: up to five people all have their own colour, up to seven their own avatar. Looks are worked out from every member,
+  before anyone is hidden from the viewer, so Mom is the same bot to everyone in the space.
+- **The viewer is their own X0 bot**: ink `#0a0a0a`, the `blip` look.
+- Where it is carried: each member (`bot`) in `GET /spaces` and `GET /spaces/:id`, the feed's `people`, Work in space's people and
+  notes (`bot`, `byBot`), an invitation (`byBot`: the admin who sent it, as that space has them), a request (`bot`: the one asking, as
+  they would be once let in), `threads/contacts` and `share/targets` (`bot`: as the first space you share has them), someone's page
+  (`bot`), a one to one chat's two people (`threads` and a thread's `thread.people[].bot`). An address called in by email has no
+  account yet: its bot is by the address. The screens fall back to the id's own look when an answer has none.
+- **Outside a space** (a one to one chat, the contacts, the share page's people, someone's page) a person is the bot they are in the
+  first space you share with them (`Threads.looksKnown`: your spaces oldest first, whatever each lets you do), so Mom in your chats is
+  the Mom of your Home.
+- The "@" list's people carry `bot: { seed, avatar, color }` (only to a build that declares `PersonBot`), and both apps draw the bot
+  in the person's row.
+- A spaces-list row shows up to three of its people's bots side by side, a little over each other (the others first, then you), and
+  "+N" for the rest. A bot fills well under half his box, so the boxes overlap by 0.55 of their side (circles, without `PersonBot`,
+  by 0.22) and the bots just touch; the list sets them in a column as wide as three and "+N" (`facesWidth`), so the names line up.
+
+## How the feed looks
+
+- **No faces.** Each of someone else's messages has their name over it (Geist SemiBold 12/16, `#8a8a8a`; every one, not only the
+  first of a run: with no faces, the name is what says who); your own have none. "To Mom" over a message to one person stays, in the
+  same small grey.
+- **Very faint grounds, no edge**, radius 18, 10 by 14: someone else's `rgba(10,10,10,0.035)`, on the left; yours
+  `rgba(10,10,10,0.06)`, on the right, with ink words (no black bubble). A shared thing's card is on the same ground with no line
+  round it, and keeps "Open in <bot>"; a file and a shared item the same.
+- **The words in Bricolage Grotesque** (OFL), 400 at 16/23, ink, tracking -0.1 (kit `messageText`). A build declares `FontBricolage`
+  when it has the three faces registered ("Tailzu Bricolage", "Tailzu Bricolage Medium", "Tailzu Bricolage SemiBold": the weight is
+  the family, as with Geist); the phone gets them in the bootstrap's `fonts` (`tulmi/fonts/bricolage*.ttf`, named only to a build
+  that declares it), the window bundles them. Without it the same nodes are set in Geist.
+- A build with the new Spaces reads its chats (`bots.thread`) the same way, a group's names over every message too; an older build
+  keeps today's chat.
+
+## Home's Space card
+
+A build with the new Spaces has one card on Home for all of them, titled **Space**, however many spaces there are. Its line is the
+newest thing across them: a payment waiting for your yes first ("1 payment needs your yes"), else the newest line ("Mom: Dinner at
+8?"), else who is in it (one space) or their names. A tap opens Your spaces. In no space, no card. An older build keeps a tile per
+group, as before.
+
 ## Group memory and the group's bots
 
 Plan Ease, Notes, Travel bot and Xode are every group's bots: they read what is shared in each of the person's spaces and what
@@ -132,7 +184,7 @@ the group told its bots, with no adding step. Any other bot reads a space only o
 
 `GET /spaces` is read at every Home load and at both apps' launch, so it only reads, as it always did. The new Spaces screen asks
 `GET /spaces?full=1` for each space's last line, unread count and open invites, and the person's invitations, requests, asks and
-draft. Drafts are in no list anyone sees (`Spaces.mine` and `list` skip them).
+draft. Home's Space card asks `GET /spaces?last=1`: each space's last line and unread count, and nothing else (it only reads too). Drafts are in no list anyone sees (`Spaces.mine` and `list` skip them).
 
 ## Rolling back
 
