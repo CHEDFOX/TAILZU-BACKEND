@@ -257,7 +257,7 @@ function stage(ctx: BotsCtx, f: FeedRead): Node {
   }, sendAction(id));
   const tapHim: ActionRef = voice ? { kind: "condition", if: { truthy: "voice" }, then: voiceStop(), else: openBox } : openBox;
   return botStage({
-    life: "space.me", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: desk ? 184 : 176, toys: false, roam: roamFor(ctx),
+    life: "space.me", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: desk ? 140 : 136, toys: false, roam: roamFor(ctx),
     // Listening for the whole voice chat, sending included: the box keeps its words between turns, never the rest pill.
     ...(voice ? { listenWhen: { truthy: "voice" }, thinkWhen: { eq: ["voice", "sending"] } } : {}),
     thought: { style: "space", restText: "Write to everyone, or @ someone", openPath: "thOpen", shape: "wide", veil: false, place: "follow" },

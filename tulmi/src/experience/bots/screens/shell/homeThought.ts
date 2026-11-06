@@ -121,7 +121,7 @@ export function homeThought(ctx: BotsCtx): Node {
   ];
   const tapHim: ActionRef = voice ? { kind: "condition", if: { truthy: "voice" }, then: voiceStop(), else: setState("askOpen", true) } : setState("askOpen", true);
   return botStage({
-    life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: desk ? 184 : 176, toys: false, roam: roamFor(ctx),
+    life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: desk ? 140 : 136, toys: false, roam: roamFor(ctx),
     thinkWhen: { all: [asking, { falsy: "reply.text" }] }, cheerWhen: { truthy: "asked.shell.text" },
     // Listening while the voice turn is on, sending included: no one-frame shrink to the pill before the box goes full.
     ...(voice ? { listenWhen: { truthy: "voice" } } : {}),
