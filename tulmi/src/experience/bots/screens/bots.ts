@@ -14,10 +14,10 @@ import { withoutAmounts } from "../../../shell/parse.js";
 import {
   type BotsCtx, page, emptyState, toTab, row, labelled, box, icon, back, botAvatar, col, text, grow, open, SCREENS, listRow, meta, mono,
   headerBuddy, quietButton, body, C, chip, listCard, title, sectionLabel, notice, primaryButton, call, card, grid, divider, seq, button,
-  infoChip, when, chips, statusMark, meter, roundButton, needsCard, type LiveBot, secondaryButton, blip,
+  infoChip, when, chips, statusMark, meter, roundButton, needsCard, type LiveBot, secondaryButton, blip, hasSpaces, canPersonBot,
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
-import { shareButton } from "../shareAction.js";
+import { shareButtonsFor } from "../shareAction.js";
 import { usesLine, apiLine, stateLine, starters, liveOf, botDesk } from "./bots/botDesk.js";
 import { type EditData, editParts, type App, editDesk } from "./bots/editDesk.js";
 import { type KeysData, keysParts, snippets, copyAction, codeBlock, type KeyView, type Usage, keysDesk } from "./bots/keysDesk.js";
@@ -38,6 +38,13 @@ import * as places from "./botsPlaces.js";
 import { itemAction, addAction, planItemScreens } from "./planItem.js";
 import { tripSearches } from "./finds.js";
 import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
+import { planGoPage, planTodayDesk, planTodayPhone, planWeekPage, type PlanTodayData, type PlanWeekData } from "./bots/planPage.js";
+import { capturePage, planGoLoad, planInScreens, shareCapture, type CaptureView } from "./bots/planIn.js";
+import { planPeopleScreens } from "./bots/planSend.js";
+import { planOn } from "../../../botsBots/planSwitch.js";
+
+/** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
+const planV2 = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx);
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
@@ -508,7 +515,7 @@ function travelParts(ctx: BotsCtx, d: TravelData) {
   const remembers = facts.length ? col([sectionLabel("Travel bot remembers"), ...facts.slice(0, 5).map((f) => dotLine(f.text))], { gap: 6 }) : null;
   const needs = s.travelNeeds.slice(0, 2).map((n) => needsCard(n));
   // Share the trip with a space or a person (a copy, with its packing list: screens/spaces.ts bots.share).
-  const over = trip ? row([shareButton({ kind: "trip", ref: trip.id, title: `Trip to ${trip.place}` }), quietButton("Trip over", write("DELETE", `${A}/trip/${enc(trip.id)}`, undefined, { ok: "Trip cleared" }), { size: "md" })], { gap: 4 }) : null;
+  const over = trip ? row([...shareButtonsFor(ctx, { kind: "trip", ref: trip.id, title: `Trip to ${trip.place}` }), quietButton("Trip over", write("DELETE", `${A}/trip/${enc(trip.id)}`, undefined, { ok: "Trip cleared" }), { size: "md" })], { gap: 4 }) : null;
   return { look, s, trip, headLine, segments, files, remembers, needs, over };
 }
 
@@ -618,7 +625,8 @@ function shareDesk(ctx: BotsCtx, d: ShareData) {
         ...bots.map((b) => when({ eq: ["bot", b.slug] }, meta(shareLineFor(b.slug, b.name), { size: 12.5, lineHeight: 18 }))),
         when({ truthy: "sendingShare" }, row([statusMark("working", { color: C.ink }), meta("Sending…", { size: 13 })], { gap: 8 })),
       ], { gap: 8, paddingTop: 16, borderTopWidth: 1, borderTopColor: C.divider }),
-      row([quietButton("Cancel", back(), { size: "md" }), grow(), secondaryButton("Share with a space or person", sharePeople(s), { size: "md", icon: "share" }), primaryButton("Send", shareSend(ctx, s, d), { size: "md" })], { gap: 12 }),
+      // To a space or a person only while Spaces is on (kit hasSpaces): with it off, every person to share with is out of sight too.
+      row([quietButton("Cancel", back(), { size: "md" }), grow(), ...(hasSpaces(ctx) ? [secondaryButton("Share with a space or person", sharePeople(s), { size: "md", icon: "share" })] : []), primaryButton("Send", shareSend(ctx, s, d), { size: "md" })], { gap: 12 }),
     ],
   });
 }
@@ -703,15 +711,28 @@ export const botsScreens: BotsScreen[] = [
     load: (ctx, deps) => deps.api<Shop>("GET", `${A}/store${ctx.params.q ? `?q=${enc(String(ctx.params.q))}` : ""}`),
     build: (ctx, d) => (isDesk(ctx) ? storeDesk(ctx, d) : storePhone(ctx, d)),
   }),
-  screen<PlanRead & { work?: WorkRead }>({
+  screen<(PlanRead & { work?: WorkRead }) | (PlanTodayData & { work?: WorkRead })>({
     id: SCREENS.plan,
-    // With the new Spaces: Work in space's people too (screens/work/workTab.ts), never failing the page.
+    // The simpler page (screens/bots/planPage.ts) where it's on; else the week, with Work in space's people too (screens/work/workTab.ts),
+    // never failing the page. The simpler page has no Work in space tab: what others set is on the list already, with their tiny bot.
     load: async (ctx, deps) => {
+      if (planV2(ctx)) return deps.api<PlanTodayData>("GET", `${A}/plan/today?tz=${ctx.tzOffsetMinutes}`);
       const [plan, work] = await Promise.all([deps.api<PlanRead>("GET", `${A}/plan?tz=${ctx.tzOffsetMinutes}&week=${planWeek(ctx)}`), loadWork(ctx, deps, "plan")]);
       return { ...plan, work };
     },
-    build: (ctx, d) => { const c = workCtx(ctx, d?.work); return isDesk(c) ? planDesk(c, d) : planPhone(c, d); },
+    build: (ctx, d) => {
+      if (planV2(ctx)) { const v = d && "v" in d && d.v === 2 ? d : undefined; return isDesk(ctx) ? planTodayDesk(ctx, v) : planTodayPhone(ctx, v); }
+      const old = d && !("v" in d) ? d : undefined;
+      const c = workCtx(ctx, old?.work);
+      return isDesk(c) ? planDesk(c, old) : planPhone(c, old);
+    },
   }),
+  screen<PlanWeekData>({
+    id: SCREENS.planWeek,
+    load: (ctx, deps) => deps.api("GET", `${A}/plan/week?tz=${ctx.tzOffsetMinutes}`),
+    build: (ctx, d) => planWeekPage(ctx, d),
+  }),
+  screen<{ url?: string }>({ id: SCREENS.planGo, load: (ctx, deps) => planGoLoad(ctx, deps), build: (ctx, d) => planGoPage(ctx, d) }),
   screen<TravelData>({
     id: SCREENS.travel,
     load: async (ctx, deps) => {
@@ -729,7 +750,7 @@ export const botsScreens: BotsScreen[] = [
     },
     build: (ctx, d) => { const c = workCtx(ctx, d?.work); return isDesk(c) ? travelDesk(c, d ?? {}) : travelPhone(c, d ?? {}); },
   }),
-  screen<ShareData>({
+  screen<ShareData & { capture?: CaptureView }>({
     id: SCREENS.shareIn,
     load: async (ctx, deps) => {
       type Got = { file: MediaFile; attachment: Attachment };
@@ -737,14 +758,21 @@ export const botsScreens: BotsScreen[] = [
         .filter((g): g is Got => !!g?.file && !!g.attachment);
       const text0 = String(ctx.params.text ?? ""), url = String(ctx.params.url ?? "");
       if (!got.length && !text0 && !url) return {};
+      // What is Plan Ease's (a circular, a bill, a ticket) becomes its card here, with no bot picker (screens/bots/planIn.ts).
+      const capture = await shareCapture(ctx, deps, got.map((g) => g.file.id), text0);
+      if (capture) return { capture };
       const name = got.map((g) => g.file.name).join(", ").slice(0, 200);
       const sug = await deps.api<{ pick: string | null; ask: string; line: string }>("POST", `${A}/share/suggest`, { ...(name ? { name } : {}), ...(text0 ? { text: text0 } : {}), ...(url ? { url } : {}) }).catch(() => undefined);
       const files = got.length ? { file: got[0]!.file, attachment: got[0]!.attachment, files: got.map((g) => g.file), attachments: got.map((g) => g.attachment) } : {};
       return { ...files, pick: sug?.pick ?? null, ...(sug ? { ask: sug.ask, line: sug.line } : {}) };
     },
-    build: (ctx, d) => (isDesk(ctx) ? shareDesk(ctx, d ?? {}) : sharePhone(ctx, d ?? {})),
+    build: (ctx, d) => (d?.capture ? capturePage(ctx, d.capture, { share: true }) : isDesk(ctx) ? shareDesk(ctx, d ?? {}) : sharePhone(ctx, d ?? {})),
   }),
   screen({ id: SCREENS.avatars, build: (ctx) => avatarsPage(ctx) }),
   // Plan's own calendar, one event or to-do at a time (screens/planItem.ts).
   ...planItemScreens,
+  // Plan Ease's link page and capture card (screens/bots/planIn.ts).
+  ...planInScreens,
+  // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
+  ...planPeopleScreens,
 ];

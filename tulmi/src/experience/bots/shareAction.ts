@@ -5,9 +5,13 @@
  *
  *   button("Share", shareTo({ kind: "trip", ref: trip.id, title: `Trip to ${trip.place}` }), { kind: "secondary", icon: "share" })
  *   shareButton({ kind: "answer", title: "Plan for Sunday", text: answer, bot: "plan" })
+ *   ...shareButtonsFor(ctx, { kind: "note", ref: note.id, title: note.title })    none while Spaces is switched off
+ *
+ * Every person you can share with is someone in your spaces, so while Spaces is switched off (SPACES_ENABLED, kit hasSpaces) an item
+ * has no Share for a space or person at all: never a button that leads nowhere.
  */
 import type { ActionSpec, Node } from "../../../../shared/types/sdui.js";
-import { button, SCREENS } from "./kit.js";
+import { button, hasSpaces, SCREENS, type BotsCtx } from "./kit.js";
 
 export type ShareKind = "list" | "trip" | "plan" | "note" | "file" | "link" | "answer" | "preview" | "text";
 
@@ -39,4 +43,9 @@ export function shareTo(item: Shareable): ActionSpec {
 /** A quiet "Share" pill for an item's page. */
 export function shareButton(item: Shareable, o: { size?: "md" | "lg"; label?: string } = {}): Node {
   return button(o.label ?? "Share", shareTo(item), { kind: "secondary", size: o.size ?? "md", icon: "share" });
+}
+
+/** The same pill, to spread into a row: none while Spaces is switched off (kit hasSpaces). */
+export function shareButtonsFor(ctx: BotsCtx, item: Shareable, o: { size?: "md" | "lg"; label?: string } = {}): Node[] {
+  return hasSpaces(ctx) ? [shareButton(item, o)] : [];
 }

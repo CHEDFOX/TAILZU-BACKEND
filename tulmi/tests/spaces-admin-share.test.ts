@@ -94,6 +94,21 @@ describe("the admin's \"/\"", () => {
     expect((await mine(s, A_, momsClub)).body.items.map((i: { title: string }) => i.title)).toEqual(["Aanya's dentist"]);
   });
 
+  it("never lists a member's bills or waits, to the admin or to the member: only their to-dos and events leave for a space", async () => {
+    const s = await served();
+    const cal = calendar();
+    await cal.addTask(M_, { title: "Credit card", day: "2026-11-14", tz: 330 }, { kind: "me" }, null, { kind: "due", amount_paise: 1_250_000 });
+    await cal.addTask(M_, { title: "Biopsy results", day: "2026-11-13", tz: 330 }, { kind: "me" }, null, { kind: "wait" });
+    await cal.addTask(M_, { title: "Buy flowers", day: "2026-11-14", tz: 330 });
+    const titles = async (who: string) => ((await mine(s, who)).body.items as Array<{ title: string }>).map((i) => i.title);
+    expect(await titles(A_)).toEqual(["Aanya's dentist", "Buy flowers", "Doctor visit", "Satsang"]);
+    expect(await titles(M_)).toEqual(["Buy flowers", "Doctor visit", "Satsang"]);
+    // Sharing one by its id is refused too: it isn't in the list it is looked up in.
+    const all = await calendar().list(M_, { from: "2026-11-09", to: "2026-12-10" });
+    const bill = [...all.tasks, ...all.open].find((t) => t.title === "Credit card")!;
+    expect((await post(s, A_, { to: R_, thing: { bot: "plan", id: ofMember(M_, `t:${bill.id}`) } })).status).toBe(404);
+  });
+
   it("leaves out a member with a block between them and the admin", async () => {
     const s = await served();
     await s.parts.threads.blocks.block(M_, A_, "Aanya S.");

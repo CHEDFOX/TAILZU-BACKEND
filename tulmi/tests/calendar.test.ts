@@ -36,6 +36,10 @@ const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { verdict } = await import("../src/you/push.js");
 const { DEFAULT_SETTINGS } = await import("../src/you/settings.js");
 const { rig, ALICE, toolCall } = await import("./bots-rig.js");
+const { resetConfigForTests } = await import("../src/config.js");
+/** Plan Ease's reminders switched off (PLAN_V2_REMINDERS=false): the reminders and the form as they were (tests/plan-ease.test.ts has them on). */
+const remindersOff = () => { vi.stubEnv("PLAN_V2_REMINDERS", "false"); resetConfigForTests(); };
+const switchesBack = () => { vi.unstubAllEnvs(); resetConfigForTests(); };
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 /** Wed 28 Oct 2026, 7:40 pm in India (the boards' day). */
@@ -167,6 +171,7 @@ describe("the person's own calendar and to-dos", () => {
 
 describe("reminders", () => {
   it("are sent once when due, moved on to the next start, and not sent long after", async () => {
+    remindersOff();
     const clock = { t: ist(29, 6) };
     const { c } = cal(clock);
     await c.addEvent(U, { title: "Gym", day: "2026-10-29", time: "7:00", repeat: "daily", tz: IST, place: "Cult, HSR Layout" });
@@ -187,6 +192,7 @@ describe("reminders", () => {
     expect(await c.remind(send)).toBe(0);
     clock.t = ist(3, 6, 46, 11);
     expect(await c.remind(send)).toBe(1);
+    switchesBack();
   });
 
   it("follow the person's say: sent, quietly in quiet hours, not with Plan Ease off", () => {
@@ -300,6 +306,7 @@ describe("the screens", () => {
   });
 
   it("adds an event or a to-do, changes one, and answers someone else's, on both clients", async () => {
+    remindersOff();
     const { c, dentist, cake } = await planApi();
     const rohan = (await c.list("u", { from: "2026-10-29", to: "2026-10-29", tz: IST })).events.find((e) => e.title === "Pick up Rohan")!;
     const build = async (client: "phone" | "desktop", params: Record<string, string>, api: Record<string, unknown> = {}) =>
@@ -322,6 +329,7 @@ describe("the screens", () => {
       expect(calls(theirs.root!)).toEqual(expect.arrayContaining(["PUT /v1/botsapp/bots/spaces/sp1/tasks/st1", `POST /v1/botsapp/calendar/cant/${rohan.id}`]));
       expect(calls(theirs.root!).some((x) => x.startsWith("PUT /v1/botsapp/calendar/events"))).toBe(false);
     }
+    switchesBack();
   });
 });
 

@@ -71,6 +71,9 @@
  *
  * Email goes through the outbox (src/botsBots/mail.ts); with no provider plugged in it waits there and the screens say so.
  *
+ * With Spaces off (SPACES_ENABLED=false; botsBots/spacesSwitch.ts) every route above answers 404 spaces_off before the session, the
+ * browser's invite page says the invite doesn't work, and invite mails wait in the outbox. Reporting and blocking stay on.
+ *
  * Reporting and blocking (routes/bots/safety.ts) are registered here too, on the same parts. A block hides the two from each other in the
  * lists above as well: a space's members, the people to message or share to (src/botsBots/blocks.ts).
  */
@@ -97,6 +100,7 @@ import { SpaceShares, type ShareSources } from "../../botsBots/spaceShares.js";
 import { SpaceMemory } from "../../botsBots/spaceMemory.js";
 import { shareSources } from "../../botsBots/shareSources.js";
 import { Threads, type FileRef } from "../../botsBots/threads.js";
+import { spacesGate, spacesOn } from "../../botsBots/spacesSwitch.js";
 import type { Trips } from "../../botsBots/trips.js";
 import { pushEngine } from "../../push/index.js";
 import { calendar } from "../../calendar/index.js";
@@ -222,8 +226,11 @@ async function withoutHidden<S extends { members: Array<{ userId: string }> }>(t
 export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { spaces: Spaces; trips?: Trips | null; parts?: SpaceParts; sources?: ShareSources }): SpaceParts {
   const p = o.parts ?? spaceParts(o.spaces, { media: deps.media, trips: o.trips ?? null, log: app.log, ...(o.sources ? { sources: o.sources } : {}) });
   const { spaces, threads, items, payments, tasks, shares, memory, join, feed } = p;
-  const RL = { config: deps.rateLimit };
-  const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
+  // Every route here is Spaces': while SPACES_ENABLED is off each answers 404 spaces_off before the session (botsBots/spacesSwitch.ts).
+  // The reporting and blocking routes registered below keep their own options and stay on: a bot's answer can be reported anyway.
+  const RL = { config: deps.rateLimit, onRequest: spacesGate };
+  const limit = (max: number) => ({ rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } });
+  const tight = (max: number) => ({ config: limit(max), onRequest: spacesGate });
 
   const stopMail = startMailSender({ outbox: spaces.outbox, mailer: spaces.mailer, log: app.log });
   app.addHook("onClose", async () => { stopMail(); });
@@ -352,7 +359,9 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
     // A space's own code is never looked up here: every code of its shape gets the same page (and a phone the same store), so this
     // page, which needs no session, can't tell a guess that works from one that doesn't. The app checks it when they type it.
     const joinCode = isJoinCodeShape(code);
-    const s = joinCode ? { name: "", members: 0 } : code ? await spaces.peek(code).catch(() => null) : null;
+    // With Spaces off no code is looked up: the page says the invite doesn't work, as it does for one that ran out.
+    const on = spacesOn();
+    const s = !on ? null : joinCode ? { name: "", members: 0 } : code ? await spaces.peek(code).catch(() => null) : null;
     const store = s && INVITE_CODE_RE.test(code) ? storeFor(req.headers["user-agent"], code) : null;
     if (store) return reply.header("cache-control", "no-store").header("referrer-policy", "no-referrer").redirect(store, 302);
     return reply.header("content-type", "text/html; charset=utf-8").header("cache-control", "no-store")
@@ -360,7 +369,8 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
       .header("referrer-policy", "no-referrer").header("x-robots-tag", "noindex")
       .send(invitePage(code, s, joinCode));
   };
-  app.get(`/s/${JOIN_SCREEN}`, tight(30), async (req, reply) => sendInvite(req, reply, queryOf(req).join));
+  // A browser's page, not the API: with Spaces off it is still a page (one saying the invite doesn't work), never a JSON 404.
+  app.get(`/s/${JOIN_SCREEN}`, { config: limit(30) }, async (req, reply) => sendInvite(req, reply, queryOf(req).join));
   app.get(`${AREA}/invite/:code`, tight(30), async (req, reply) => sendInvite(req, reply, param(req, "code")));
 
   // ------------------------------------------------------------------ sharing

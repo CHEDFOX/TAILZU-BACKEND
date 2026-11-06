@@ -7,7 +7,9 @@
  *                not sent for a bot they turned off
  *   the rest     the engine's own reminders (Keylessbord's streak, the week): not sent in quiet hours, nor with Keylessbord turned off
  *   summary      one note a day at their hour, only when they turned it on and something happened that day
- *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan Ease off
+ *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan Ease off.
+ *                Plan Ease's own kinds (botsBots/planKinds.ts: plan_event, plan_todo, the day notes...) are told apart there, each
+ *                with its group: Plan Ease's (as the reminders), a person's word (as people), or never a sound (the morning note)
  *   routines     a routine they set up ran, or paused itself: sent (they asked for it at that time); in quiet hours without a sound
  *   people       someone in a space gave them a task, planned something for them, messaged them, asked to join or let them in: sent;
  *                in quiet hours without a sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none:
@@ -20,6 +22,7 @@ import type { Connectors } from "../connectors/index.js";
 import type { PushVerdict } from "../push/engine.js";
 import { pushEngine } from "../push/index.js";
 import { clock, inQuietHours, type YouSettings } from "./settings.js";
+import { planVerdictGroup } from "../botsBots/planKinds.js";
 import type { Spending } from "./limits.js";
 
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
@@ -40,6 +43,13 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   if (NEEDS_YOU.has(kind)) return quiet ? "silent" : "send";
   if (kind === "bots_summary") return !n.summary ? "drop" : quiet ? "silent" : "send";
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
+  // Every kind of Plan Ease's, from its one list (planKinds.ts), so a new one is never left to the Keylessbord branch below.
+  const plan = planVerdictGroup(kind);
+  if (plan === "plan") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
+  if (plan === "silent") return n.botsOff.includes("plan") ? "drop" : "silent";
+  if (plan === "people") return quiet ? "silent" : "send";
+  // A person's word that never makes a sound (who took a family ask, the one nudge): sent, whatever Plan Ease's switch says.
+  if (plan === "quiet") return "silent";
   if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
   if (kind === "routine_done" || kind === "routine_failed") return quiet ? "silent" : "send";
   if (kind === "ops_alert") return "send";
@@ -84,6 +94,13 @@ export async function dayOf(userId: string, o: { spending: Spending; jobs: JobRo
   return { done, needs, spentPaise };
 }
 
+/**
+ * Whether today's summary rides in Plan Ease's evening note instead (botsBots/planEase.ts rides): then it isn't sent on its own. Set by
+ * routes/bots/botsBots.ts; unset, every summary goes as before.
+ */
+let summaryRide: ((userId: string, day: string) => Promise<boolean>) | null = null;
+export function setSummaryRide(fn: ((userId: string, day: string) => Promise<boolean>) | null): void { summaryRide = fn; }
+
 const TICK_MS = 5 * 60_000;
 /** A summary is sent in the half hour after the chosen minute; the engine's claim makes it once a day. */
 const WINDOW_MIN = 30;
@@ -102,9 +119,11 @@ export function startSummaries(o: { spending: Spending; jobs: JobRouter | null; 
         const minute = minuteOf(now, tz);
         const since = (minute - p.settings.notify.summaryAt + 1440) % 1440;
         if (since >= WINDOW_MIN) continue;
+        const local = new Date(now + tz * 60_000).toISOString().slice(0, 10);
+        // One evening push, not two: Plan Ease's evening note carries the line tonight.
+        if (summaryRide && await summaryRide(p.userId, local).catch(() => false)) continue;
         const line = summaryLine(await dayOf(p.userId, { ...o, now, tz }));
         if (!line) continue;
-        const local = new Date(now + tz * 60_000).toISOString().slice(0, 10);
         await engine.notify(p.userId, { kind: "bots_summary", key: local, vars: { time: clock(p.settings.notify.summaryAt), line } }, now).catch(() => null);
       }
     } catch (err) {

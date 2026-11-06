@@ -1,7 +1,7 @@
 /**
  * WHERE A PERSON'S OWN ITEMS COME FROM, FOR SHARING INTO A GROUP (spaceShares.ts): one ShareSource a bot.
  *
- *   plan     their calendar: events in the next 30 days (from yesterday) and their open to-dos (src/calendar)
+ *   plan     their calendar: events in the next 30 days (from yesterday) and their open to-dos (src/calendar); never a bill or a wait
  *   notes    their meeting notes, newest first (src/notes)
  *   travel   their trips, newest first (trips.ts)
  *   code     their Xode projects, each with what Xode is doing on it now or did last (src/code)
@@ -43,7 +43,9 @@ export function shareSources(o: { trips?: Trips | null; now?: () => number }): S
         const t = now();
         const got = await calendar().list(userId, { from: dayKey(t - DAY), to: dayKey(t + 30 * DAY) });
         const events: OwnItem[] = got.events.map((e) => ({ id: `e:${e.id}`, title: e.title, line: e.allDay ? "All day" : "Event", at: e.start }));
-        const todos: OwnItem[] = [...got.tasks, ...got.open].filter((x) => !x.done)
+        // A bill or a wait is the person's own business (the amount, who they're chasing): it never leaves for a space, from the
+        // person's "/" or from the admin's view of theirs. Only to-dos do.
+        const todos: OwnItem[] = [...got.tasks, ...got.open].filter((x) => !x.done && x.kind !== "due" && x.kind !== "wait")
           .map((x) => ({ id: `t:${x.id}`, title: x.title, line: "To-do", at: x.at ?? (x.due ? Date.parse(`${x.due}T00:00:00Z`) : null) }));
         const seen = new Set<string>();
         return [...events, ...todos].filter((i) => (seen.has(i.id) ? false : (seen.add(i.id), true)))

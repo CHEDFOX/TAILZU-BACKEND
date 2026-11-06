@@ -2,11 +2,11 @@
  * What several of the Bots area's screens share.
  */
 
-import type { ActionSpec, ActionRef, Node } from "../../../../../../shared/types/sdui.js";
+import { PUSH_BUTTON_CAPABILITY, type ActionSpec, type ActionRef, type Node } from "../../../../../../shared/types/sdui.js";
 import { SENT_WORDS, done as momentDone, failed, start as momentStart, streamed, askMoment } from "../../askMoment.js";
 import {
   call, seq, botLook, type BotsCtx, C, FACE, row, roundButton, text, box, shapes, divider, col, button, botAvatar, meta, open, SCREENS,
-  botKind, icon, labelled,
+  botKind, icon, labelled, hasSpaces,
 } from "../../kit.js";
 import { shareTo } from "../../shareAction.js";
 import { reportAnswer } from "../../reportAction.js";
@@ -33,6 +33,18 @@ export interface Turn { id: string; role: "me" | "bot"; text: string; at: number
 export const refresh: ActionSpec = { kind: "refresh" };
 export const toast = (message: string, error = false): ActionSpec => ({ kind: "toast", message, ...(error ? { tone: "error" as const } : {}) });
 export const setState = (path: string, value: unknown): ActionSpec => ({ kind: "setState", path, value });
+
+/**
+ * A notification's hand-off screen (Pay, Send, No, Open map), and what it may do. From inside the app (a page's own button) it opens
+ * the other app at once ("go"). From a push, only the button that says so does ("go"): a tap just to look opens the Plan ("look"), so
+ * looking never opens WhatsApp or UPI, nor counts as sent. A build that can't tell a tap from a button (no PushButton: the pressed
+ * button's id in the `button` param) gets one button here instead ("ask"): one more tap, never a hand-off nobody asked for.
+ */
+export function handoffOf(ctx: BotsCtx, buttons: readonly string[]): "go" | "look" | "ask" {
+  if (ctx.params.pushId === undefined || ctx.params.pushId === null || ctx.params.pushId === "") return "go";
+  if (!ctx.can.has(PUSH_BUTTON_CAPABILITY)) return "ask";
+  return buttons.includes(String(ctx.params.button ?? "")) ? "go" : "look";
+}
 export const clearState = (path: string): ActionSpec => ({ kind: "clearState", path });
 
 /** A write: the call, then a quiet toast and a refresh; a failure says so in plain words. */
@@ -173,12 +185,12 @@ export function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<ty
 
 const dayRule = (label: string): Node => row([box([], { height: 1, flexGrow: 1, backgroundColor: C.divider }), meta(label, { size: 12 }), box([], { height: 1, flexGrow: 1, backgroundColor: C.divider })], { gap: 10 });
 
-/** "Share" under a bot's answer: to a space or a person, as a copy (screens/spaces.ts bots.share). */
-function answerShare(slug: string, t: Turn, botName = slug): Node {
+/** "Share" under a bot's answer: to a space or a person, as a copy (screens/spaces.ts bots.share); only Report while Spaces is off. */
+function answerShare(ctx: BotsCtx, slug: string, t: Turn, botName = slug): Node {
   const first = t.text.replace(/[*#>`]/g, "").split("\n").map((l) => l.trim()).find(Boolean) ?? "Answer";
   // Report: App Review 1.2 and 4.7.1, what a bot makes can be reported (reportAction.ts).
   return row([
-    link("Share", shareTo({ kind: "answer", title: first.length > 60 ? `${first.slice(0, 59)}…` : first, text: t.text, bot: slug })),
+    ...(hasSpaces(ctx) ? [link("Share", shareTo({ kind: "answer", title: first.length > 60 ? `${first.slice(0, 59)}…` : first, text: t.text, bot: slug }))] : []),
     link("Report", reportAnswer({ bot: botName, text: t.text, ...(t.id ? { id: t.id } : {}) })),
   ], { paddingLeft: 0, gap: 16 });
 }
@@ -192,13 +204,13 @@ export function chatTurns(ctx: BotsCtx, bot: { slug: string; colour?: string }, 
     const day = dayKeyOf(ctx, t.at);
     if (o.days && day !== lastDay) { out.push(dayRule(dayLabel(ctx, t.at))); lastDay = day; }
     const name = ctx.live.bots.find((b) => b.slug === bot.slug)?.name ?? bot.slug;
-    out.push(t.role === "me" ? bubble(ctx, t.text, o.big) : col([botTurn(ctx, look, t, o.big), answerShare(bot.slug, t, name)], { gap: 4 }));
+    out.push(t.role === "me" ? bubble(ctx, t.text, o.big) : col([botTurn(ctx, look, t, o.big), answerShare(ctx, bot.slug, t, name)], { gap: 4 }));
   }
   return out;
 }
 
 /** Sends what is typed at `path` to the bot (POST .../chat/:slug), then shows it. */
-function sendToBot(slug: string, path = "say", then?: ActionRef, ctx?: BotsCtx): ActionRef {
+export function sendToBot(slug: string, path = "say", then?: ActionRef, ctx?: BotsCtx): ActionRef {
   // The words go up as the person's bubble and the box clears at once (askMoment.ts); the answer is written in as it comes.
   const send = call("POST", `${A}/chat/${enc(slug)}`, { message: SENT_WORDS }, {
     ok: seq(setState("sending", false), then ?? refresh, ...momentDone()),

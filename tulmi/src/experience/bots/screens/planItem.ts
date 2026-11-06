@@ -12,10 +12,19 @@
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
-  back, C, call, chips, col, emptyState, FACE, icon, meta, notice, open, page, primaryButton, quietButton, row, SCREENS, secondaryButton, sectionLabel,
-  segmented, seq, text, when, type BotsCtx,
+  back, C, call, canPersonBot, chips, col, emptyState, FACE, icon, labelled, messageText, meta, notice, open, page, personBot, primaryButton, quietButton, row,
+  SCREENS, secondaryButton, sectionLabel, segmented, seq, text, when, type BotsCtx,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
+import { planOn } from "../../../botsBots/planSwitch.js";
+import { captureFoot, duePage, linkedPage } from "./bots/planIn.js";
+import { setState } from "./bots/parts.js";
+
+/**
+ * With Plan Ease's reminders on (PLAN_V2_REMINDERS) the form has no Remind and no How long: the defaults decide (15 minutes before an
+ * event, 10 am on a to-do's day, an hour long), and "remind me an hour before" said in the box still works.
+ */
+const defaultsDecide = (): boolean => planOn("reminders");
 
 const CAL = "/v1/botsapp/calendar";
 const SPACES = "/v1/botsapp/bots/spaces";
@@ -28,13 +37,25 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export interface EventView {
   id: string; seriesId: string; title: string; notes: string; place: string; where?: string; start: number; end: number; allDay: boolean; day: string;
   repeat: string; remindMin: number | null; from: string | null; source: string; fixed: boolean; spaceId?: string; taskId?: string; spaceName?: string;
+  captureId?: string;
 }
 /** GET /v1/botsapp/calendar/tasks/:id (CalTask). */
 export interface TaskView {
   id: string; title: string; notes: string; list: string; due: string | null; at: number | null; done: boolean; doneAt: number | null; remindMin: number | null;
   from: string | null; source: string; fixed: boolean; spaceId?: string; taskId?: string; spaceName?: string; noteId?: string; todoId?: string;
+  /** A bill (step 3) and what a capture added (screens/bots/planIn.ts). */
+  kind?: string; amountPaise?: number; payee?: string; payLink?: string; repeat?: string; captureId?: string;
 }
-interface ItemData { event?: EventView; task?: TaskView }
+/** A work meeting (step 2, GET .../plan/linked/:ref): read only, from the person's work calendar. */
+type Meeting = Parameters<typeof linkedPage>[1];
+/** What the details add to the item (GET .../plan/details: botsBots/planEase.ts ItemDetails). */
+interface Details {
+  before: Array<{ id: string; title: string; day: string | null; done: boolean }>;
+  moves: Array<{ at: number; day: string; time: string; label: string }>;
+  leave?: string;
+  note?: { look: Parameters<typeof personBot>[1]; name: string; text: string };
+}
+interface ItemData { event?: EventView; task?: TaskView; meeting?: Meeting; details?: Details }
 
 const toast = (message: string, error = false): ActionSpec => ({ kind: "toast", message, ...(error ? { tone: "error" as const } : {}) });
 const isDesk = (ctx: BotsCtx) => ctx.client === "desktop";
@@ -93,10 +114,10 @@ function eventFields(ctx: BotsCtx, o: { extraDay?: string | null; series?: boole
     labelledField("What", field("ttl", "ttl", "Dentist Fri 5 pm")),
     ...(o.series ? [] : [section("Day", [chips(dayOptions(ctx, o.extraDay), "day")])]),
     section("Time", [chips([{ label: "All day", value: "" }, ...TIMES], "time"), inputBox([field("time", "time", "Or type a time, like 17:30")])]),
-    when({ truthy: "time" }, section("How long", [segmented(LENGTHS, "mins")])),
+    ...(defaultsDecide() ? [] : [when({ truthy: "time" }, section("How long", [segmented(LENGTHS, "mins")]))]),
     labelledField("Where (if it matters)", field("place", "place", "Indiranagar, Dr. Mehta's clinic…")),
     section("Repeat", [chips(REPEATS, "repeat")]),
-    section("Remind me", [chips(REMINDS, "remind")]),
+    ...(defaultsDecide() ? [] : [section("Remind me", [chips(REMINDS, "remind")])]),
     labelledField("Notes", field("notes", "notes", "Bring the old X-rays", { multiline: true })),
   ];
 }
@@ -106,7 +127,7 @@ function taskFields(ctx: BotsCtx, o: { extraDay?: string | null } = {}): Node[] 
     labelledField("To do", field("ttl", "ttl", "Pay the electricity bill by Fri")),
     section("Due", [chips([{ label: "No day", value: "" }, ...dayOptions(ctx, o.extraDay)], "day")]),
     when({ truthy: "day" }, section("Time", [chips([{ label: "Any time", value: "" }, ...TIMES], "time"), inputBox([field("ttime", "time", "Or type a time, like 17:30")])])),
-    when({ truthy: "day" }, section("Remind me", [chips(REMINDS.filter((r) => r.value !== "15"), "tremind")])),
+    ...(defaultsDecide() ? [] : [when({ truthy: "day" }, section("Remind me", [chips(REMINDS.filter((r) => r.value !== "15"), "tremind")]))]),
     labelledField("Notes", field("notes", "notes", "The account number is on the last bill", { multiline: true })),
   ];
 }
@@ -114,9 +135,11 @@ function taskFields(ctx: BotsCtx, o: { extraDay?: string | null } = {}): Node[] 
 const tz = (ctx: BotsCtx) => ctx.tzOffsetMinutes;
 const eventBody = (ctx: BotsCtx, o: { day?: boolean } = {}): Record<string, unknown> => ({
   title: "$state.ttl", ...(o.day === false ? {} : { day: "$state.day" }), time: "$state.time", minutes: "$state.mins", place: "$state.place", notes: "$state.notes",
-  repeat: "$state.repeat", remind: "$state.remind", tz: tz(ctx),
+  repeat: "$state.repeat", ...(defaultsDecide() ? {} : { remind: "$state.remind" }), tz: tz(ctx),
 });
-const taskBody = (ctx: BotsCtx): Record<string, unknown> => ({ title: "$state.ttl", day: "$state.day", time: "$state.time", notes: "$state.notes", remind: "$state.tremind", tz: tz(ctx) });
+const taskBody = (ctx: BotsCtx): Record<string, unknown> => ({
+  title: "$state.ttl", day: "$state.day", time: "$state.time", notes: "$state.notes", ...(defaultsDecide() ? {} : { remind: "$state.tremind" }), tz: tz(ctx),
+});
 
 /** Only when the field at `path` has something in it. */
 const ifFilled = (path: string, then: ActionRef, empty: string): ActionSpec => ({ kind: "condition", if: { falsy: path }, then: toast(empty), else: then });
@@ -141,7 +164,7 @@ function addPage(ctx: BotsCtx) {
     then: call("POST", `${CAL}/tasks`, taskBody(ctx), { ok: done("Added to your to-dos"), fail: failed("Couldn't add it. Check the day and the time.") }),
     else: call("POST", `${CAL}/events`, eventBody(ctx), { ok: done("On your calendar"), fail: failed("Couldn't add it. Check the day and the time.") }),
   }, "Say what it is first");
-  return shell(ctx, "Add to your Plan", "Only you see it. Plan Ease plans around it, and reminds you when you ask.", [
+  return shell(ctx, "Add to your Plan", defaultsDecide() ? "Only you see it. Plan Ease reminds you when it's time." : "Only you see it. Plan Ease reminds you when you ask.", [
     segmented([{ label: "Event", value: "event" }, { label: "To-do", value: "task" }], "kind"),
     when({ eq: ["kind", "event"] }, col(eventFields(ctx, { extraDay: day }), { gap: 18 })),
     when({ eq: ["kind", "task"] }, col(taskFields(ctx, { extraDay: day }), { gap: 18 })),
@@ -156,6 +179,7 @@ function fromLine(x: { from: string | null; source: string; spaceName?: string }
   if (!x.from) return "";
   if (x.source === "space") return x.from === "You" ? `You set this in ${x.spaceName ?? "your space"}` : `From ${x.from}${x.spaceName ? ` · in ${x.spaceName}` : ""}`;
   if (x.source === "note") return `From your meeting “${x.from}”`;
+  if (x.source === "capture") return `From the ${x.from}`;
   return `Added by ${x.from}`;
 }
 
@@ -186,6 +210,7 @@ function eventPage(ctx: BotsCtx, e: EventView) {
     ? [quietButton("Take out this day", call("DELETE", `${base}?one=1`, undefined, { ok: done("Taken out of that day"), fail: failed("Couldn't take it out. Try again.") }), { size: "md" }),
       quietButton("Take out every time", call("DELETE", base, undefined, { ok: done("Taken out"), fail: failed("Couldn't take it out. Try again.") }), { size: "md" })]
     : [quietButton("Take it out", call("DELETE", base, undefined, { ok: done("Taken out"), fail: failed("Couldn't take it out. Try again.") }), { size: "md" })];
+  remove.push(...captureFoot(ctx, e.captureId, e.from));
   const sub = [series ? `${REPEAT_WORDS[e.repeat] ?? "Repeats"} · changes apply every time` : whenLine, fromLine(e)].filter(Boolean).join(" · ");
   const lenMin = e.allDay ? 60 : Math.round((e.end - e.start) / MIN);
   return shell(ctx, e.title, sub, [...eventFields(ctx, { extraDay: e.day, series }), row(remove, { gap: 8, flexWrap: "wrap" })], [primaryButton("Save", save, { wide: !isDesk(ctx) })], {
@@ -202,20 +227,145 @@ function taskPage(ctx: BotsCtx, t: TaskView) {
   if (t.fixed && t.spaceId && t.taskId) {
     return theirsPage(ctx, { kind: "task", title: t.title, lines: [dueLine, t.notes], spaceId: t.spaceId, taskId: t.taskId, id: t.id, from: t.from, source: t.source, spaceName: t.spaceName, done: t.done });
   }
+  if (t.kind === "due") return duePage(ctx, { ...t, ...(t.repeat ? { repeat: t.repeat } : {}) });
   const save = ifFilled("ttl", call("PUT", base, taskBody(ctx), { ok: done("Saved"), fail: failed() }), "Say what the to-do is first");
   const tick = call("PUT", base, { done: !t.done, tz: tz(ctx) }, { ok: done(t.done ? "Back on your list" : "Done"), fail: failed("Couldn't tick it. Try again.") });
+  // Waiting on someone (step 4, botsBots/planWaits.ts): Send opens WhatsApp with the follow-up written, Sorted closes it.
+  const marks = t.kind === "wait" && !t.done && planOn("waits") ? [row([
+    primaryButton("Send", open(SCREENS.planSend, { item: `pt:${t.id}`, go: "send", from: "page" }), { size: "md" }),
+    secondaryButton("Sorted", call("POST", "/v1/widgets/act", { item: `pt:${t.id}`, action: "sorted" }, { ok: done("Sorted"), fail: failed("Couldn't do that. Try again.") }), { size: "md", icon: "check" }),
+  ], { gap: 8, flexWrap: "wrap" })] : [secondaryButton(t.done ? "Not done yet" : "Mark done", tick, { size: "md", icon: "check" })];
   return shell(ctx, t.done ? `${t.title} · done` : t.title, [dueLine, fromLine(t)].filter(Boolean).join(" · "), [
-    secondaryButton(t.done ? "Not done yet" : "Mark done", tick, { size: "md", icon: "check" }),
+    ...marks,
     ...taskFields(ctx, { extraDay: t.due }),
     row([quietButton("Take it out", call("DELETE", base, undefined, { ok: done("Taken out"), fail: failed("Couldn't take it out. Try again.") }), { size: "md" })], { gap: 8 }),
+    ...captureFoot(ctx, t.captureId, t.from),
   ], [primaryButton("Save", save, { wide: !isDesk(ctx) })], {
     ttl: t.title, day: t.due ?? "", time: t.at !== null ? hhmm(ctx, t.at) : "", notes: t.notes, tremind: t.remindMin === null ? "" : String(t.remindMin),
   });
 }
 
+// ------------------------------------------------------------------ the details (the new Plan, design A3)
+
+/** The details sheet is the new Plan's (PLAN_V2_PAGE, a build that draws PersonBot); an older build keeps the form, and `edit` opens it. */
+const detailsOn = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx) && ctx.params.edit !== "1";
+const NO_DETAILS: Details = { before: [], moves: [] };
+const ACT_PATH = "/v1/widgets/act";
+/** One of Plan Ease's buttons through the act door, then a word and back. */
+const actThen = (ctx: BotsCtx, item: string, action: string, message: string): ActionSpec =>
+  call("POST", ACT_PATH, { item, action, key: `${item}:${action}:${ctx.live.now}`.slice(0, 120) }, { ok: done(message), fail: failed("Couldn't do that. Try again.") }) as ActionSpec;
+/** The form, to change one thing: what tapping a line of the details opens. */
+const editOf = (kind: "event" | "task", id: string): ActionSpec => open(SCREENS.planItem, { kind, id, edit: "1" });
+
+/** A line of the details: 15/21 ink, tappable when it can be changed. */
+function line(words: string, onPress?: ActionRef, o: { grey?: boolean } = {}): Node {
+  const t = text(words, { size: 15, lineHeight: 21, ...(o.grey ? { color: C.meta } : {}) });
+  return onPress ? labelled(row([t], { minHeight: 32, alignItems: "center" }, onPress), `${words}. Tap to change it.`) : t;
+}
+
+/** "Buy fruit costume · by Wed", each with its tick. */
+function beforeLines(ctx: BotsCtx, before: Details["before"]): Node[] {
+  if (!before.length) return [];
+  return [col([
+    sectionLabel("Before"),
+    ...before.map((b) => row([
+      tickBox(b.done, actThen(ctx, `pt:${b.id}`, b.done ? "undone" : "done", b.done ? "Back on your list" : "Done"), b.done ? `${b.title}. Done.` : `${b.title}. Tap when it's done.`),
+      text(`${b.title}${b.day ? ` · by ${dayName(ctx, b.day) === "Today" || dayName(ctx, b.day) === "Tomorrow" ? dayName(ctx, b.day).toLowerCase() : WEEKDAYS[keyDate(b.day).getUTCDay()]}` : ""}`,
+        { size: 15, lineHeight: 21, color: b.done ? C.meta : C.ink, style: { flexShrink: 1 } }),
+    ], { gap: 12, alignItems: "center", minHeight: 40 })),
+  ], { gap: 2 })];
+}
+
+/** Someone's note on it: their tiny bot and their words (Bricolage), in a faint message container. */
+function noteLine(ctx: BotsCtx, n: Details["note"]): Node[] {
+  if (!n) return [];
+  return [row([personBot(ctx, n.look, { size: 22, label: n.name }), box1([messageText(ctx, `${n.name}: ${n.text}`, { lines: 3 })])], { gap: 10, alignItems: "flex-start" })];
+}
+const box1 = (kids: Node[]): Node => col(kids, { flexGrow: 1, flexShrink: 1, minWidth: 0, borderWidth: 1, borderColor: C.line, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 10 });
+
+/** Where it came from: the only place the source shows. */
+function sourceLine(x: { from: string | null; source: string; spaceName?: string }): string {
+  if (x.source === "link") return "From your work calendar";
+  return fromLine(x) || "Added by you";
+}
+
+function detailsShell(ctx: BotsCtx, title: string, lines: Node[], extra: Node[], buttons: Node[], state: Record<string, unknown> = {}) {
+  return page(ctx, {
+    back: true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), nav: "plan", title, maxWidth: 560, gap: 18, state,
+    body: [
+      text(title, { size: 20, weight: 600, lineHeight: 26 }),
+      col(lines, { gap: 6, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
+      ...extra,
+    ],
+    footer: [row(buttons, { gap: 10, flexWrap: "wrap" })],
+  });
+}
+
+/** An event of the person's own: When, Where (with the leave-by), Before, From, Notes; [Move] [Take it out]. */
+function eventDetails(ctx: BotsCtx, e: EventView, x: Details) {
+  const series = !!e.repeat;
+  const whenWords = e.allDay ? `${keyWords(e.day)}, all day` : `${keyWords(e.day)} · ${clockOf(ctx, e.start)} to ${clockOf(ctx, e.end)}`;
+  const edit = editOf("event", e.id);
+  const place = [e.place || e.where || "", x.leave ?? ""].filter(Boolean).join(" · ");
+  const base = `${CAL}/events/${enc(e.id)}`;
+  const takeOut = series
+    ? [quietButton("Take out this day", call("DELETE", `${base}?one=1`, undefined, { ok: done("Taken out of that day"), fail: failed("Couldn't take it out. Try again.") }), { size: "md" })]
+    : [quietButton("Take it out", call("DELETE", base, undefined, { ok: done("Taken out"), fail: failed("Couldn't take it out. Try again.") }), { size: "md" })];
+  // Move: the times we picked, then "Another time" (the form). Only the person's own movable thing; a booked one is changed by its line.
+  const moveTo = (m: Details["moves"][number]) => call("PUT", base, { day: m.day, time: m.time, tz: tz(ctx) }, { ok: done(`Moved to ${m.label}`), fail: failed("Couldn't move it. Try again.") });
+  const moving = x.moves.length ? [when({ truthy: "moving" }, col([
+    sectionLabel("Move to"),
+    row([...x.moves.slice(0, 3).map((m) => secondaryButton(m.label, moveTo(m), { size: "md" })), quietButton("Another time", edit, { size: "md" })], { gap: 8, flexWrap: "wrap" }),
+  ], { gap: 8 }))] : [];
+  const buttons = [
+    ...(x.moves.length ? [primaryButton("Move", setState("moving", true), { size: "md" })] : []),
+    ...takeOut,
+  ];
+  return detailsShell(ctx, e.title, [
+    line(series ? `${whenWords} · ${(REPEAT_WORDS[e.repeat] ?? "Repeats").toLowerCase()}` : whenWords, edit),
+    ...(place ? [line(place, edit)] : []),
+    line(sourceLine(e), undefined, { grey: true }),
+    ...(e.notes ? [line(e.notes, edit, { grey: true })] : []),
+  ], [...beforeLines(ctx, x.before), ...noteLine(ctx, x.note), ...moving, ...captureFoot(ctx, e.captureId, e.from)], buttons, { moving: false });
+}
+
+/** A to-do of the person's own: [Done] [Later] [Take it out]. A wait: "Waiting on Rahul", [Send] [Sorted] [Take it out]. */
+function taskDetails(ctx: BotsCtx, t: TaskView & { who?: string }, x: Details) {
+  const edit = editOf("task", t.id);
+  const item = `pt:${t.id}`;
+  const dueWords = t.due ? `${keyWords(t.due)}${t.at !== null ? ` · ${clockOf(ctx, t.at)}` : ""}` : "No day yet";
+  const takeOut = quietButton("Take it out", call("DELETE", `${CAL}/tasks/${enc(t.id)}`, undefined, { ok: done("Taken out"), fail: failed("Couldn't take it out. Try again.") }), { size: "md" });
+  const wait = t.kind === "wait" && planOn("waits");
+  const buttons = t.done
+    ? [secondaryButton("Not done yet", actThen(ctx, item, "undone", "Back on your list"), { size: "md" }), takeOut]
+    : wait
+      ? [
+        primaryButton("Send", open(SCREENS.planSend, { item, go: "send", from: "page" }), { size: "md" }),
+        secondaryButton("Sorted", actThen(ctx, item, "sorted", "Sorted"), { size: "md" }),
+        takeOut,
+      ]
+      : [
+        primaryButton("Done", actThen(ctx, item, "done", "Done"), { size: "md" }),
+        ...(t.due ? [secondaryButton("Later", actThen(ctx, item, "later", "I'll remind you later"), { size: "md" })] : []),
+        takeOut,
+      ];
+  const who = wait ? t.who || t.notes.replace(/^Waiting on\s+/i, "").replace(/\.$/, "") : "";
+  const ownNotes = t.notes && !(wait && /^Waiting on /i.test(t.notes)) ? t.notes : "";
+  return detailsShell(ctx, t.done ? `${t.title} · done` : t.title, [
+    ...(wait && who ? [line(`Waiting on ${who}`)] : []),
+    line(wait && t.due ? `By ${keyWords(t.due)}` : dueWords, edit),
+    line(sourceLine(t), undefined, { grey: true }),
+    ...(ownNotes ? [line(ownNotes, edit, { grey: true })] : []),
+  ], [...noteLine(ctx, x.note), ...captureFoot(ctx, t.captureId, t.from)], buttons);
+}
+
 function itemPage(ctx: BotsCtx, d: ItemData | undefined) {
   const id = String(ctx.params.id ?? "");
   if (!id) return addPage(ctx);
+  if (d?.meeting) return linkedPage(ctx, d.meeting);
+  // The new Plan's details (a build that draws the new page): up to 6 lines and 3 buttons; tapping a line opens the form to change it.
+  if (detailsOn(ctx) && d?.event && !(d.event.fixed && d.event.spaceId)) return eventDetails(ctx, d.event, d.details ?? NO_DETAILS);
+  if (detailsOn(ctx) && d?.task && d.task.kind !== "due" && !(d.task.fixed && d.task.spaceId)) return taskDetails(ctx, d.task, d.details ?? NO_DETAILS);
   if (d?.event) return eventPage(ctx, d.event);
   if (d?.task) return taskPage(ctx, d.task);
   return page(ctx, {
@@ -230,8 +380,19 @@ export const planItemScreens: BotsScreen[] = [
     load: async (ctx, deps) => {
       const id = String(ctx.params.id ?? "");
       if (!id) return {};
-      if (ctx.params.kind === "task") return { task: (await deps.api<{ task: TaskView }>("GET", `${CAL}/tasks/${enc(id)}`)).task };
-      return { event: (await deps.api<{ event: EventView }>("GET", `${CAL}/events/${enc(id)}?tz=${ctx.tzOffsetMinutes}`)).event };
+      // A meeting from the person's work calendar (step 2): its own read, never the calendar's.
+      if (/^wk-/.test(id)) return { meeting: (await deps.api<{ meeting: Meeting }>("GET", `/v1/botsapp/bots/plan/linked/${enc(id)}?tz=${ctx.tzOffsetMinutes}`)).meeting };
+      const kind = ctx.params.kind === "task" ? "task" : "event";
+      // The details' extras (its before steps, the leave-by, a note on it, Move's times), read beside the item; without them it still opens.
+      const details = detailsOn(ctx)
+        ? deps.api<Details>("GET", `/v1/botsapp/bots/plan/details?kind=${kind}&id=${enc(id)}&tz=${ctx.tzOffsetMinutes}`).catch(() => undefined)
+        : Promise.resolve(undefined);
+      if (kind === "task") {
+        const [t, x] = await Promise.all([deps.api<{ task: TaskView }>("GET", `${CAL}/tasks/${enc(id)}`), details]);
+        return { task: t.task, ...(x ? { details: x } : {}) };
+      }
+      const [e, x] = await Promise.all([deps.api<{ event: EventView }>("GET", `${CAL}/events/${enc(id)}?tz=${ctx.tzOffsetMinutes}`), details]);
+      return { event: e.event, ...(x ? { details: x } : {}) };
     },
     build: itemPage,
   }),

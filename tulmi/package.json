@@ -60,6 +60,7 @@
     "fastify": "^4.28.1",
     "fastify-plugin": "^6.0.0",
     "groq-sdk": "^0.7.0",
+    "ical.js": "2.2.1",
     "jose": "^6.2.3",
     "openai": "^4.67.3",
     "tree-sitter-wasm": "2.0.4",

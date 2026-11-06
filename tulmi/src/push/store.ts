@@ -14,7 +14,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LogEntry } from "./plan.js";
 import type { Moment } from "./timing.js";
 
-export interface Token { platform: "ios" | "android"; token: string; updatedAt: number }
+/** A phone to reach. `caps`: what its binary said it can do with a push (push/tokens.ts PUSH_CAPS), empty for an older one. */
+export interface Token { platform: "ios" | "android"; token: string; updatedAt: number; caps?: string[] }
 
 export interface Candidate {
   userId: string;
@@ -57,26 +58,36 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // ------------------------------------------------------------------ Supabase
 
 export class SupabasePushStore implements PushStore {
+  /** Migration 0075 (push_tokens.caps) not run yet: tokens are read without it, so nobody stops being reached. Per process. */
+  private capsMissing = false;
+
   constructor(private readonly sb: SupabaseClient, private readonly warn: (msg: string) => void = console.warn) {}
 
   async candidates(now: number, onlyUser?: string): Promise<Candidate[]> {
     const byUser = new Map<string, Candidate>();
     for (let from = 0; ; from += 1000) {
-      let q = this.sb
-        .from("push_tokens")
-        .select("user_id, platform, token, updated_at");
-      if (onlyUser) q = q.eq("user_id", onlyUser);
-      const { data, error } = await q
-        .order("user_id")
-        .range(from, from + 999);
+      const page = (withCaps: boolean) => {
+        let q = this.sb
+          .from("push_tokens")
+          .select(withCaps ? "user_id, platform, token, updated_at, caps" : "user_id, platform, token, updated_at");
+        if (onlyUser) q = q.eq("user_id", onlyUser);
+        return q.order("user_id").range(from, from + 999);
+      };
+      let { data, error } = await page(!this.capsMissing);
+      if (error && !this.capsMissing && /does not exist|could not find|schema cache/i.test(error.message)) {
+        this.capsMissing = true;
+        this.warn("[push] push_tokens.caps missing — run migration 0075. Reading tokens without it until then.");
+        ({ data, error } = await page(false));
+      }
       if (error) { this.warn(`[push] push_tokens read failed: ${error.message}`); break; }
-      for (const r of (data ?? []) as Array<{ user_id: string; platform: string; token: string; updated_at: string }>) {
+      for (const r of (data ?? []) as unknown as Array<{ user_id: string; platform: string; token: string; updated_at: string; caps?: unknown }>) {
         if (r.platform !== "ios" && r.platform !== "android") continue;
         if (typeof r.token !== "string" || !r.token) continue;
         const c = byUser.get(r.user_id) ?? {
           userId: r.user_id, tokens: [], lastSeenAt: null, createdAt: null, locale: null, entitled: false, tzOffsetMin: null,
         };
-        c.tokens.push({ platform: r.platform, token: r.token, updatedAt: ms(r.updated_at) ?? 0 });
+        const caps = Array.isArray(r.caps) ? r.caps.filter((x): x is string => typeof x === "string") : [];
+        c.tokens.push({ platform: r.platform, token: r.token, updatedAt: ms(r.updated_at) ?? 0, ...(caps.length ? { caps } : {}) });
         byUser.set(r.user_id, c);
       }
       if (!data || data.length < 1000) break;

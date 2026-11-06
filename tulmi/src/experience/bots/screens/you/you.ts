@@ -5,7 +5,7 @@
 import { type ActionSpec, type Node, BOT_SOUNDS_CAPABILITY, type ActionRef } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, box, shapes, C, percent, text, meta, whenWords, listCard, switchRow, page, row, col, open, SCREENS, card, usageMeter,
-  listRow, icon, secondaryButton, grow, sectionLabel, button,
+  listRow, icon, secondaryButton, grow, sectionLabel, button, hasSpaces,
 } from "../../kit.js";
 import { type Settings, local, DAY_MS, dayMonth, clock, plural, columns, glyph, G, exportAction } from "./parts.js";
 
@@ -136,8 +136,8 @@ export function youPhone(ctx: BotsCtx, d: YouData | undefined) {
       listCard([
         // What your bots know about you, in sections (screens/you/space.ts).
         listRow({ label: "Your space", value: "What bots know", onPress: open(SCREENS.youSpace) }),
-        // Family and friends: spaces, what's shared, tasks, payment requests and chats (screens/spaces.ts).
-        listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
+        // Family and friends: spaces, what's shared, tasks, payment requests and chats (screens/spaces.ts). None while Spaces is off.
+        ...(hasSpaces(ctx) ? [listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) })] : []),
         listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),
         // Sign in on a computer by scanning its code (screens/link.ts).
         listRow({ label: "Link a computer", value: "Scan to sign in", onPress: open(SCREENS.link) }),

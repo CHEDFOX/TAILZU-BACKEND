@@ -321,11 +321,15 @@ describe("the routes", () => {
     expect((await s.call("GET", `${AREA}/plan?tz=330`)).json().suggestion).toBeNull();
   });
 
-  it("finds no suggestion on a day with room, and moves the one with fewer people", () => {
+  it("finds no suggestion on a day with room, moves the person's own one whoever is in it, and leaves back-to-back calls alone", () => {
     const tomorrow = "2026-10-29";
     expect(suggestionFor(WEEK.filter((e) => e.id !== "e12"), tomorrow, 330, new Set())).toBeNull();
+    // How many people are in each no longer decides (it was never known): the earlier of the two, both the person's own, moves.
     const busy = WEEK.map((e) => (e.id === "e11" ? { ...e, people: 2 } : e.id === "e12" ? { ...e, people: 0 } : e));
-    expect(suggestionFor(busy, tomorrow, 330, new Set())?.eventId).toBe("e12");
+    expect(suggestionFor(busy, tomorrow, 330, new Set())?.eventId).toBe("e11");
+    // Two video calls with no time between them: nobody travels, nothing to move.
+    const calls = WEEK.map((e) => (e.id === "e11" ? { ...e, where: "Video call", place: undefined } : e.id === "e12" ? { ...e, where: "Zoom", start: e.start - 15 * 60_000 } : e));
+    expect(suggestionFor(calls, tomorrow, 330, new Set())).toBeNull();
   });
 
   it("reads nothing it can't, instead of guessing", async () => {

@@ -22,6 +22,11 @@ export interface PushMessage {
   /** The notification category the phone registered (its buttons: Reply, Done, Yes / No); push.<kind>.category. */
   categoryId?: string;
   priority?: "default" | "normal" | "high";
+  /**
+   * iOS only, passed to Apple by Expo: "passive" waits quietly in the list (no sound, the screen stays dark), which needs nothing from
+   * Apple; "time-sensitive" breaks through Focus and needs the app's entitlement. Absent: Apple's own "active".
+   */
+  interruptionLevel?: "passive" | "active" | "time-sensitive";
 }
 
 export interface Ticket {

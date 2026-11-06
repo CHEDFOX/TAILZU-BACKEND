@@ -11,7 +11,7 @@ import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, toTab, C, headBar, type PageOpts, hasOutbox,
-  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2,
+  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
@@ -27,7 +27,7 @@ import { pushAskDue, PUSH_STATE, withPushCheck, pushAskCard } from "../pushAsk.j
 import { routinesRow, type RoutinesData } from "../routines.js";
 import { names, type Space } from "../spaces/parts.js";
 import { facesLine } from "../spaces/spaceDetail.js";
-import { idleLine, firstName } from "./parts.js";
+import { idleLine as idleLineOf, firstName } from "./parts.js";
 
 // ===================================================================== home
 
@@ -85,8 +85,12 @@ function groupTile(s: Space, height: number, padding: number): Node {
  * Home's grid: the first bots, then the groups (a build with the new Spaces: the one Space card; else each group a bot of its own,
  * GROUPS_ON_HOME of them), then Make a bot.
  */
-export function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats, groups: Space[] = []): Node {
+export function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats, spacesIn: Space[] = [], planLine = ""): Node {
   const shown = ctx.live.bots.slice(0, 3);
+  // Plan Ease's tile says the one thing that matters next, as its page does (botsBots/planDay.ts), when it isn't busy with something.
+  const idleLine = (b: LiveBot, client: BotsCtx["client"]) => (b.slug === "plan" && planLine && !b.working ? planLine : idleLineOf(b, client));
+  // Spaces switched off: no Space card and no group tiles, whatever was read (kit hasSpaces).
+  const groups = hasSpaces(ctx) ? spacesIn : [];
   const groupsShown = groups.slice(0, GROUPS_ON_HOME);
   const gap = columns === 4 ? 14 : 12;
   const withNotes = hasNotes(ctx);
@@ -118,7 +122,7 @@ const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ..
  * What Home's load reads beside the live state: the account's deletion date (accountGrace.ts), whether the notifications ask is due
  * (pushAsk.ts), and the About you card (firstRun/aboutCard.ts).
  */
-export interface HomeMore { ai?: AiConsent | undefined; leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; groups?: Space[] | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
+export interface HomeMore { planLine?: string | undefined; ai?: AiConsent | undefined; leaving?: DeletionState | undefined; push?: boolean; about?: About | undefined; groups?: Space[] | undefined; notes?: NotesStats | undefined; botName?: string | undefined; back?: boolean; routines?: RoutinesData | undefined }
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the AI
@@ -187,7 +191,7 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...(hasOutbox(ctx) ? outboxCard(ctx) : []),
     ...(first ? [needsCard(first)] : []),
     ...n.push,
-    tiles(ctx, 2, 132, 16, more.notes, more.groups),
+    tiles(ctx, 2, 132, 16, more.notes, more.groups, more.planLine),
     ...routinesRow(ctx, more.routines),
   ];
   // Ask any bot: his thought where the build draws it (a tiny bot walking the foot of Home), else the ask bar.

@@ -18,6 +18,42 @@ plans for each other, and what the group tells its bots. This file is the rules 
 | `shared.ts`, `payments.ts`, `spaceTasks.ts`, `spaceMemory.ts` | Shared things, payment requests, tasks and plans, group memory |
 | `safety.ts`, `blocks.ts`, `filter.ts` | Reports, blocks, and the screen on everything posted |
 | `personLook.ts` | How a person looks: their own tiny bot (an avatar from the catalog and a group colour), never initials |
+| `spacesSwitch.ts` | The switch (`SPACES_ENABLED`): whether Spaces shows at all ("Turning Spaces off") |
+| `planAsks.ts` | Plan Ease's family asks, repeats and turns: tasks of kind "ask" (migration 0074). An open one is in nobody's list and on nobody's day; once taken it is that person's task like any other. See `plan-ease-people.md` |
+
+## Turning Spaces off
+
+Spaces can be hidden until it is ready, with one server setting, `SPACES_ENABLED` (`config.ts`, on unless set to `false`). Nothing
+is deleted or changed while it is off: turning it back on brings back every space, message, share, task and invite as it was.
+
+On the server, from the repo (DEPLOY.md has the ssh line):
+
+```bash
+./deploy/set-env.sh SPACES_ENABLED=false && ./deploy/ship.sh   # off
+./deploy/set-env.sh SPACES_ENABLED=true && ./deploy/ship.sh    # on again
+./deploy/set-env.sh --show SPACES_ENABLED                      # which it is now
+```
+
+`set-env.sh` writes the line in `tulmi/.env`; `ship.sh` rebuilds so the server reads it. Every build, old or new, follows the server
+the next time it reads a page: no app update is needed.
+
+While it is off (`botsBots/spacesSwitch.ts`):
+
+- **The routes.** Every Spaces route (`routes/bots/botsSpaces.ts`: spaces, invites, the invite page under `/v1`, sharing, shared
+  things, payments, tasks, chats) and every Work in space route (`routes/bots/work.ts`) answers 404 `{ code: "spaces_off" }` before
+  the session, as does sharing a line from Your space with a group. Reporting and blocking stay on. The browser's page for an invite
+  link (`/s/bots.spaces?join=`) still answers, saying the invite doesn't work, and names no space.
+- **The screens** (kit `hasSpaces`). A link, a widget row or a notification into any of Spaces' screens (`bots.spaces`, every
+  `bots.space.*`, `bots.share`, `bots.work`, `bots.chats`, `bots.thread`, `bots.person`) opens Home. Home has no Space card and no
+  group tiles. You, Settings and Blocked people have no "Spaces and chats". The bots' pages have no Work in space tab and no notes from
+  a space. A thing's Share, a bot's answer's Share and "Share with a space or person" are gone. The bootstrap doesn't warm Spaces' pages
+  and the Home Screen's long press has no Spaces.
+- **What reaches people.** No push of Spaces goes (every `space_*` kind: `push/engine.ts`). Invite mails wait in the outbox, looked at
+  again each hour, and go once it is on. The widgets have no From your people. The bots read nothing a space shared or told them, so
+  Ask never brings a space into an answer. What a space gave someone is kept on their days but not shown or reminded of.
+- **For new work.** Anything new that is Spaces' asks `spacesOn()` first, or a screen asks `hasSpaces(ctx)`: a new route takes
+  `onRequest: spacesGate`, a new push kind starts with `space_`, and a family ask from Home's Ask or Plan Ease's box is never offered
+  while it is off.
 
 ## The admin, and no roles
 

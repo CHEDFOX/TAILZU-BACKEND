@@ -59,6 +59,12 @@ export const SCREENS = {
   store: "bots.store",               // BotStore / DBotStore
   plan: "bots.plan",                 // PlanBot / DPlanBot (params: week, day)
   planItem: "bots.plan.item",        // no board: add or change an event or a to-do on the person's own calendar (screens/planItem.ts; params: kind, id, day)
+  planWeek: "bots.plan.week",        // Plan Ease's "See the week": a plain list by day, or one day's rows (screens/bots/planPage.ts; params: day)
+  planGo: "bots.plan.go",            // a notification's hand-off: opens Maps (and later UPI, WhatsApp) at once, then the Plan (params: go, to, mode)
+  planLink: "bots.plan.link",        // Plan Ease's "Link your calendar": Google, Outlook or iPhone, one field (screens/bots/planIn.ts; params: again)
+  planCapture: "bots.plan.capture",  // one capture card: "4 things from the school circular", Add all (screens/bots/planIn.ts; params: id)
+  planCaptureItem: "bots.plan.capture.item", // a capture row's sheet: title, day, time, who (screens/bots/planIn.ts; params: id, item)
+  planSend: "bots.plan.send",        // a wait's hand-off: WhatsApp (or mail) with the follow-up at once, then the Plan (screens/bots/planSend.ts; params: item, go, from)
   travel: "bots.travel",             // TravelBot / DTravelBot
   chat: "bots.chat",                 // Chat (params: slug)
   spaces: "bots.spaces",             // Spaces / DSpaces

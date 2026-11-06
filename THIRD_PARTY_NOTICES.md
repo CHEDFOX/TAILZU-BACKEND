@@ -1,6 +1,6 @@
 # Third-party notices
 
-Tailzu's Code bot uses the open-source work below. Everything the product uses is under the MIT licence (the tools used only to test it, never shipped, are listed apart in "Test-only tools"); the licence text, with each copyright holder's line, follows the table. Dependencies are pinned to exact versions (`tulmi/package.json`, `jobs/package.json`). Nothing from an AGPL, GPL or other copyleft project is used.
+Tailzu's Code bot uses the open-source work below. Everything the product uses is under the MIT licence, except ical.js (MPL-2.0), which Plan Ease uses unchanged (the tools used only to test it, never shipped, are listed apart in "Test-only tools"); the licence text, with each copyright holder's line, follows the table. Dependencies are pinned to exact versions (`tulmi/package.json`, `jobs/package.json`). Nothing from an AGPL, GPL or other strong copyleft project is used.
 
 ## What is used, and where
 
@@ -22,6 +22,8 @@ Tailzu's Code bot uses the open-source work below. Everything the product uses i
 | tree-sitter-dart | via tree-sitter-wasm | MIT | (c) 2020-2023 UserNobody14 and others | Grammar |
 | tree-sitter-html | via tree-sitter-wasm | MIT | (c) 2014 Max Brunsfeld | Grammar |
 | [Gitleaks](https://github.com/gitleaks/gitleaks) default rules (`config/gitleaks.toml`) | config format `minVersion = "v8.25.0"` (fetched 27 Oct 2026, release v8.30.1 era) | MIT | (c) 2019 Zachary Rice | The secret scan's provider rules. Vendored unchanged at `tulmi/third_party/gitleaks/gitleaks.toml` with its `LICENSE`; translated by `tulmi/scripts/gen-gitleaks.ts` into `tulmi/src/code/secrets/gitleaksRules.ts` |
+
+| [ical.js](https://github.com/kewisch/ical.js) | 2.2.1 | MPL-2.0 | (c) Philipp Kewisch and the ical.js contributors (originally from the Mozilla project) | Reading a linked work calendar's iCalendar file: its repeats, the days taken out of them, moved starts and time zones (`tulmi/src/botsBots/planIcs.ts`). Used as published on npm, unmodified; MPL-2.0's terms cover its own files only, and their source is at the link |
 
 `tree-sitter-wasm` does not publish which commit of each upstream grammar it built; the licence of each upstream repository (the ones named above) was read on 27 Oct 2026 and is MIT. The grammars' copyright lines are as their repositories state them.
 

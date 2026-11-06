@@ -1,7 +1,7 @@
 /**
  * Which account a phone's push token belongs to.
  *
- *   POST /v1/push/register    { token, platform, appVersion? } — this phone is mine
+ *   POST /v1/push/register    { token, platform, appVersion?, caps? } — this phone is mine
  *   POST /v1/push/unregister  { token }                        — not mine any more (sign-out)
  *
  * A TOKEN BELONGS TO A PHONE, NOT TO AN ACCOUNT. Rows are keyed (user,
@@ -23,9 +23,25 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
+/**
+ * What a phone's binary says it can do with a push (the app's device/binaryCore.ts pushCaps), kept with its token: only names the
+ * engine reads (push/engine.ts), so a list a newer app sends cannot grow the row. "PushTimeSensitive": the iOS Time Sensitive
+ * entitlement is signed in, so a leave-by or a bill due today may break through Focus.
+ */
+export const PUSH_CAPS = ["PushTimeSensitive"] as const;
+export type PushCap = (typeof PUSH_CAPS)[number];
+export const pushCapsOf = (v: unknown): PushCap[] =>
+  Array.isArray(v) ? PUSH_CAPS.filter((c) => v.includes(c)) : [];
+
+export interface PushTokenRow { userId: string; platform: "ios" | "android"; token: string; appVersion?: string | null; caps?: unknown }
+
+/** Postgres 42703 / PostgREST PGRST204: the column is not there yet (its migration not run). */
+const missingColumn = (e: { code?: string; message?: string } | null | undefined): boolean =>
+  !!e && (e.code === "42703" || e.code === "PGRST204" || /does not exist|could not find|schema cache/i.test(e.message ?? ""));
+
 export interface PushTokenStore {
   /** Record this token for this account, taking it from any other account. */
-  register(row: { userId: string; platform: "ios" | "android"; token: string; appVersion?: string | null }): Promise<void>;
+  register(row: PushTokenRow): Promise<void>;
   /** Forget this token for this account. Another account's row is not touched. */
   unregister(userId: string, token: string): Promise<void>;
 }
@@ -33,7 +49,10 @@ export interface PushTokenStore {
 export class SupabasePushTokens implements PushTokenStore {
   constructor(private readonly sb: SupabaseClient, private readonly warn: (msg: string, err?: unknown) => void = console.warn) {}
 
-  async register(row: { userId: string; platform: "ios" | "android"; token: string; appVersion?: string | null }): Promise<void> {
+  /** Migration 0075 (caps) not run yet: tokens are kept without it, so a deploy before the migration never loses a phone. */
+  private capsMissing = false;
+
+  async register(row: PushTokenRow): Promise<void> {
     // Taken from the others FIRST: if the upsert below then fails, the phone
     // reaches nobody until the next launch retries, which is the safe way to
     // be wrong. Service role, so RLS (own rows only) does not hide them.
@@ -41,16 +60,23 @@ export class SupabasePushTokens implements PushTokenStore {
     if (drop.error) this.warn("push_tokens: could not take the token from other accounts", drop.error);
     // (user, platform) is the key, so a phone that gets a new token overwrites
     // its own old one rather than adding a second.
-    const { error } = await this.sb.from("push_tokens").upsert(
-      {
-        user_id: row.userId,
-        platform: row.platform,
-        token: row.token,
-        app_version: row.appVersion ?? null,
-        updated_at: new Date().toISOString(),
-      },
+    const base: Record<string, unknown> = {
+      user_id: row.userId,
+      platform: row.platform,
+      token: row.token,
+      app_version: row.appVersion ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    const upsert = (withCaps: boolean) => this.sb.from("push_tokens").upsert(
+      withCaps ? { ...base, caps: pushCapsOf(row.caps) } : base,
       { onConflict: "user_id,platform" },
     );
+    let { error } = await upsert(!this.capsMissing);
+    if (error && !this.capsMissing && missingColumn(error)) {
+      this.capsMissing = true;
+      this.warn("push_tokens.caps missing — run migration 0075. Keeping tokens without it until then.");
+      ({ error } = await upsert(false));
+    }
     if (error) this.warn("push_tokens upsert failed", error);
   }
 
@@ -62,12 +88,12 @@ export class SupabasePushTokens implements PushTokenStore {
 
 /** For tests: the same two rules over an array. */
 export class MemoryPushTokens implements PushTokenStore {
-  rows: Array<{ userId: string; platform: string; token: string; appVersion: string | null }> = [];
+  rows: Array<{ userId: string; platform: string; token: string; appVersion: string | null; caps: PushCap[] }> = [];
 
-  async register(row: { userId: string; platform: "ios" | "android"; token: string; appVersion?: string | null }): Promise<void> {
+  async register(row: PushTokenRow): Promise<void> {
     this.rows = this.rows.filter((r) => r.token !== row.token || r.userId === row.userId);
     this.rows = this.rows.filter((r) => !(r.userId === row.userId && r.platform === row.platform));
-    this.rows.push({ userId: row.userId, platform: row.platform, token: row.token, appVersion: row.appVersion ?? null });
+    this.rows.push({ userId: row.userId, platform: row.platform, token: row.token, appVersion: row.appVersion ?? null, caps: pushCapsOf(row.caps) });
   }
 
   async unregister(userId: string, token: string): Promise<void> {
@@ -79,6 +105,9 @@ const registerSchema = z.object({
   token: z.string().min(4).max(256),
   platform: z.enum(["ios", "android"]),
   appVersion: z.string().max(40).optional(),
+  // What the binary can do with a push (PUSH_CAPS): read with pushCapsOf, so a name this server doesn't know, or a list it can't
+  // read, is dropped and the token is still kept.
+  caps: z.unknown().optional(),
 });
 const unregisterSchema = z.object({ token: z.string().min(4).max(256) });
 

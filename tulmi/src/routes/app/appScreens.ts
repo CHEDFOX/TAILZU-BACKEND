@@ -293,6 +293,11 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
       // assistant's connected apps are switched on.
       deskTasks: !!connectors && Array.isArray(reqBody.capabilities?.components)
         && reqBody.capabilities!.components!.includes("DeskConnectors"),
+      // Plan Ease on the desktop (the app release): its notices, and "add this".
+      deskNotices: Array.isArray(reqBody.capabilities?.components)
+        && reqBody.capabilities!.components!.includes("DeskNotices"),
+      deskAddThis: Array.isArray(reqBody.capabilities?.components)
+        && reqBody.capabilities!.components!.includes("DeskAddThis"),
       isReviewer,
       // The address the app should offer a password field for. Sent to everyone
       // because knowing it grants nothing — the password is the credential and it
@@ -437,7 +442,7 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
     const user = await resolveUser(req.headers["authorization"]);
     // A tapped push opens its screen with the push's data as the params, so its
     // id comes back here: the engine counts it as answered (src/push).
-    if (user && typeof body.params?.pushId === "string") pushEngine()?.markOpened(user.id, body.params.pushId);
+    if (user && typeof body.params?.pushId === "string") pushEngine()?.markOpened(user.id, body.params.pushId, typeof body.params.kind === "string" ? body.params.kind.slice(0, 40) : undefined);
     const [personality, profile] = user
       ? await Promise.all([getPersonality(user), getProfile(user)])
       : [{}, null];

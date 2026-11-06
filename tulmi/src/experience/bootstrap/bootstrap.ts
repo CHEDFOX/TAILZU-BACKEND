@@ -7,7 +7,8 @@ import { getConfig } from "../../config.js";
 import type { Allowance } from "../../usage/allowance.js";
 import { withAppKnobs } from "../appKnobs.js";
 import { desktopLists } from "../appLists.js";
-import { botsNav, botsFonts, BOTS_WARM_SCREEN_IDS } from "../bots/index.js";
+import { planOn } from "../../botsBots/planSwitch.js";
+import { botsNav, botsFonts, botsWarmScreenIds } from "../bots/index.js";
 import { blipFlags } from "../bots/blip.js";
 import { launchFlags } from "../phone/launch.js";
 import { looksFlags } from "../bots/looks.js";
@@ -50,6 +51,14 @@ const APP_STORE_ID = /^\d{6,}$/.test(process.env.APP_STORE_ID ?? "")
  * as fast if SMS delivery goes bad in a region.
  */
 const AUTH_ENABLE_PHONE = process.env.AUTH_ENABLE_PHONE !== "false";
+
+/**
+ * "Add this" carries what is on a desktop's screen to Plan Ease's one box: a build that can (DeskAddThis), with the app release, the
+ * simpler page and capture all on (a box without capture would read "add this" as a to-do called "this").
+ */
+function deskAddThisOn(opts: { deskAddThis?: boolean; formFactor?: string }): boolean {
+  return opts.deskAddThis === true && opts.formFactor === "desktop" && planOn("app") && planOn("page") && planOn("capture");
+}
 
 export function buildBootstrap(
   opts: {
@@ -168,6 +177,13 @@ export function buildBootstrap(
     /** The desk's window can show the assistant's Tasks (it said
      *  "DeskConnectors") and connected apps are on: it gets the Tasks tab. */
     deskTasks?: boolean;
+    /** The desktop shows the server's notices from a live socket of its own
+     *  (it said "DeskNotices": its main process, src/main/notices.js), so
+     *  Plan Ease's reach it there while it is in use (live/notices.ts). */
+    deskNotices?: boolean;
+    /** The desktop carries what is on its screen to Plan Ease's one box with
+     *  "add this" (it said "DeskAddThis": src/dictation/addThis.js). */
+    deskAddThis?: boolean;
     /** Signed in at all — setup's first step. */
     signedIn?: boolean;
     /** Words ever written, for setup's last step: a first sentence said. */
@@ -283,8 +299,15 @@ export function buildBootstrap(
         ...(opts.formFactor === "desktop" ? {
           "desktop.shell": DESKTOP_UI,
           // The one-key router's lists, Ask's grammar, the tray's tones and the
-          // rest the desktop kept built in (appLists.ts).
-          ...desktopLists(),
+          // rest the desktop kept built in (appLists.ts). "Add this" words are
+          // only in the lists of a build that carries the screen with them.
+          ...desktopLists({ addThis: deskAddThisOn(opts) }),
+          // Plan Ease's notices on this computer while it is in use (the app
+          // release, PLAN_V2_APP): only a build that shows them is told to.
+          ...(opts.deskNotices === true && planOn("app") ? { "desktop.notices.enabled": true } : {}),
+          // "Add this": the box reads what is on the screen (planEase.ts box
+          // `seen`), so a build that sends it is told it may.
+          ...(deskAddThisOn(opts) ? { "desktop.plan.addThis": true } : {}),
           // Blip's moves and poses (bots/blip.ts): which catalog is current, and where to fetch it.
           ...blipFlags(),
           // Closing the window really closes it, so opening it again starts
@@ -775,6 +798,6 @@ export function buildBootstrap(
       return card ? { launchCard: card } : {};
     })(),
     cacheTtlSeconds: 300,
-    warmScreenIds: botsApp ? BOTS_WARM_SCREEN_IDS : WARM_SCREEN_IDS,
+    warmScreenIds: botsApp ? botsWarmScreenIds() : WARM_SCREEN_IDS,
   });
 }

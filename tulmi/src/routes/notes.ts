@@ -29,6 +29,7 @@ import type { AudioFormat, Note, NoteSummary, Personality } from "../../../share
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { appendHeard, diarize, labelSpeakers, type Track, type Utterance } from "../notes/speakers.js";
 import { organise } from "../notes/organise.js";
+import { noteReady } from "../notes/ready.js";
 import { findOnce, findingNow, needsFinding, tickTodo } from "../notes/extract.js";
 import { notesStats } from "../notes/stats.js";
 import {
@@ -115,6 +116,9 @@ async function organiseInBackground(user: AuthedUser, id: string): Promise<void>
     ? { ...n, ...body, status: "ready", organised: true }
     : { ...n, status: n.transcript.length ? "failed" : "ready", organised: false });
   await finding;
+  // Ready, with its to-dos: Plan Ease may turn the named ones into one card (notes/ready.ts). Never holds the note up.
+  const ready = await getNote(user, id).catch(() => null);
+  if (ready && ready.status === "ready") noteReady(user.id, ready);
 }
 
 function startWork(user: AuthedUser, id: string) {

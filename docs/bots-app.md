@@ -375,9 +375,13 @@ A change made on one device shows on the other's open screen within about a seco
   upgrade's `Authorization`), never a token in the URL; then `{ type: "event", topic, at }` for every change of that person's,
   pings both ways every 25 s, at most 8 sockets a person (the oldest goes, 4008), renewed every 30 min (4000). One process holds
   every socket; for several, give `live.setRelay` (`src/live/bus.ts`) a Postgres LISTEN/NOTIFY or Redis fan-out to `bus.deliver`.
-* **An answer's words** (`ask:<id>`, `src/live/askStream.ts`): the one topic whose `data` is content, not a hint: the words of an
+* **An answer's words** (`ask:<id>`, `src/live/askStream.ts`): a topic whose `data` is content, not a hint: the words of an
   answer as they are written, to the person who asked, under the id their asking screen made. The apps hand it to the call that is
   listening (the phone's `askStream.ts`, the window's `askStreamTake`) and never reload for it.
+* **Plan Ease's notices on a computer** (`notice`, `src/live/notices.ts`): the other topic with content: a Plan Ease push's lock-safe
+  words, only to a socket that said `{ type: "notices" }` (a desktop's main process) while that computer was used in the last 10
+  minutes (`{ type: "here", idleMs }` / `{ away: true }`, kept in memory per socket, never stored or logged). The phone's copy is then
+  silent; `{ id, gone: true }` takes one off once it is answered anywhere (docs/plan-ease.md section 7).
 * **Topics** (`src/live/topics.ts`, both tables in one place): `home`, `bots`, `bot:<slug>`, `activity`, `tasks`, `calendar`, `code`,
   `job:<id>`, `notes`, `note:<id>`, `keybot`, `you`; Spaces and messaging name their own (`space:<id>`, `thread:<id>`, `threads`), and
   the calendar publishes its own (`calendar`, `tasks`, `bot:plan`) from wherever it changes (section 11).
@@ -415,8 +419,15 @@ the Bots app no longer reads or offers Google Calendar or Google Tasks.
   Plan bot by the calendar job, bots/door.ts). A bot made with the old ids (`google-calendar`, `google-tasks`) gets these.
 * **Spaces** (`botsBots/spaceTasks.ts`): a task or a plan given to someone lands on their own days, "From <name>", for everyone; their
   tick there is Done in the space, "Can't do it" (there or here) takes it off, taken out of the space it goes.
-* **Reminders**: every minute the due ones go through the push engine as `plan_reminder` (push/defaults.ts; You's "What pings you":
-  sent, quietly in quiet hours, not with Plan bot off), claimed by moving the next one on, so two servers never send one twice.
+* **Reminders**: every minute the due ones go through the push engine, claimed by moving the next one on, so two servers never send one
+  twice (You's "What pings you": sent, quietly in quiet hours, not with Plan bot off). With `PLAN_V2_REMINDERS` (on by default) they are
+  Plan Ease's own kinds, `plan_event`, `plan_todo`, `plan_leave` and `plan_many`, with Done and Later on a to-do, 10 am on a to-do's day
+  and close ones merged; off, the one `plan_reminder` as before. docs/plan-ease.md has the rest: the simpler Plan page, the day notes,
+  the widget line, and where the next steps plug in.
+* **The work calendar and what comes in** (`PLAN_V2_LINKS`, `PLAN_V2_CAPTURE`; routes in `routes/bots/planIn.ts`): a work calendar
+  linked by its secret address (read every 30 minutes, kept sealed, its meetings on the days and in the chat's list, never moved), and a
+  share, a drop or pasted words read into one card ("4 things from the school circular", Add all). Bills are to-dos of kind `due` with
+  Paid, and Pay only with a safe link. docs/plan-ease.md, section 6.
 * **Not offered any more**: Google Calendar and Google Tasks in You › Connected apps (shown only to switch one off if it was
   connected), the Plan, Today and Tasks prompts, Make a bot's and a bot's Edit list. Their connectors (`src/connectors/google/calendar.ts`,
   `tasks.ts`) and the old app's routes are left as they were; other Google apps (Docs for meeting notes, Sheets, Forms, Classroom) are unchanged.

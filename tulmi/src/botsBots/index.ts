@@ -8,6 +8,8 @@
  *   spaces.ts   spaces: members, the admin (its maker; no roles), invites by email, the space's code, drafts, consent
  *               (the rest of a space, its feed, joining, grants and Work in space: docs/spaces.md has the file list)
  *   plan.ts     Plan Ease's tomorrow and week from the person's own calendar and to-dos (src/calendar), and the change it suggests
+ *   planEase.ts Plan Ease, the simpler one (docs/plan-ease.md): its page, its one box, its buttons, its day notes and leave-by
+ *               reminders, over planDay.ts, planNeeds.ts, planRows.ts, planBox.ts, planNotes.ts, planKinds.ts, planSafe.ts, planPrefs.ts
  *   trips.ts    the Travel bot's trip: where, when, who, packing, its main places and stays
  *   planTravel.ts, tripExtras.ts   travel times, weather and stays compared, over src/places (look.ts, later.ts: from memory now,
  *               the rest looked up after and the screen told); stays.ts, tripDates.ts
@@ -27,6 +29,7 @@ import { KeyUsage } from "./usage.js";
 import { places as serverPlaces, type Places } from "../places/index.js";
 import { Later } from "./later.js";
 import { PlanTravelling } from "./planTravel.js";
+import { PlanEase, setPlanEase } from "./planEase.js";
 import { webStaySource, type StaySource } from "./stays.js";
 import { TripExtrasReader } from "./tripExtras.js";
 
@@ -41,6 +44,7 @@ export { type PlanTravel, type PlanLeg } from "./planTravel.js";
 export { TripExtrasReader, type TripExtras } from "./tripExtras.js";
 export { type StaySource, type StayRow } from "./stays.js";
 export { resetAreaTablesForTests, MemoryTable } from "./rows.js";
+export { PlanEase, planEase } from "./planEase.js";
 
 export interface BotsAreaParts {
   chat: BotChat | null;
@@ -49,6 +53,8 @@ export interface BotsAreaParts {
   usage: KeyUsage;
   spaces: Spaces;
   plan: PlanDays;
+  /** Plan Ease, the simpler one: its page, box, buttons and notes (planEase.ts), over the same travel times. */
+  ease: PlanEase;
   trips: Trips;
   /** A trip's weather, places and stays compared (routes/bots/botsTrips.ts). */
   tripExtras: TripExtrasReader;
@@ -69,13 +75,19 @@ export function botsAreaParts(o: {
   const places = o.places ?? serverPlaces();
   const later = o.later ?? new Later();
   const trips = new Trips(now);
+  const travel = new PlanTravelling({ places, later, now, ...(o.waitMs !== undefined ? { waitMs: o.waitMs } : {}) });
+  // The server's one: Home, Today, the widget and the reminder sweep ask the same one the page does.
+  const ease = new PlanEase({ travel, now });
+  ease.attach();
+  setPlanEase(ease);
   return {
     chat: o.bots ? new BotChat(o.bots, now) : null,
     maker: o.bots ? new BotMaker(o.bots, now) : null,
     shop: o.bots ? new BotShop(o.bots, appName, now) : null,
     usage: new KeyUsage(now),
     spaces: new Spaces(o.bots, now),
-    plan: new PlanDays(reader, null, now, undefined, new PlanTravelling({ places, later, now, ...(o.waitMs !== undefined ? { waitMs: o.waitMs } : {}) })),
+    plan: new PlanDays(reader, null, now, undefined, travel),
+    ease,
     trips,
     tripExtras: new TripExtrasReader({ places, later, trips, source: o.stays !== undefined ? o.stays : webStaySource(), now, ...(o.waitMs !== undefined ? { waitMs: o.waitMs } : {}) }),
   };

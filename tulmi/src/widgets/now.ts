@@ -29,6 +29,8 @@ export interface NowInput {
   tzOffsetMinutes: number;
   /** The person is in at least one space (the empty state says what to do either way). */
   inSpaces: boolean;
+  /** Spaces is switched off (SPACES_ENABLED=false): From your people is off, as widgets.people.enabled=false makes it. */
+  spacesOff?: boolean;
   people: { messages: PeopleMessage[]; shared: PeopleShared[]; tasks: PeopleTask[] };
   needs: { jobs: JobLite[]; approvals: PendingApproval[]; tasks: PeopleTask[]; codeBotName: string };
   /** The narrow token can be had (widgets.token.enabled, and a store to keep it in). */
@@ -393,7 +395,7 @@ function section(k: WidgetKnobs, which: "people" | "needs", rows: NowRow[], on: 
 export function buildNow(i: NowInput, payload: WidgetsPayload): NowDoc {
   const k = widgetKnobs(payload);
   const all = k.flag("widgets.enabled", true);
-  const peopleOn = all && k.flag("widgets.people.enabled", true);
+  const peopleOn = all && !i.spacesOff && k.flag("widgets.people.enabled", true);
   const needsOn = all && k.flag("widgets.needs.enabled", true);
   const people = section(k, "people", peopleOn ? peopleRows(i, k) : [], peopleOn, linkOf(k, i.inSpaces ? "people" : "peopleEmpty"));
   const needs = section(k, "needs", needsOn ? needsRows(i, k) : [], needsOn, linkOf(k, "needsEmpty"));

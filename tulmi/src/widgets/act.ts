@@ -6,7 +6,10 @@
  *   a0, a1…   answer a bot's question with its first, second… answer           job:<id>:<q>          needs.answer
  *   yes / no  say yes or no to a connected app's call waiting for one            task:<id>[:<approval>] needs.answer
  *   done      tick a task or plan someone in a space gave you                    stask:<space>:<task>   task.done
+ *   a family ask's own (take, in, cant, ask and their Undos) on the same stask: item are Plan Ease's (botsBots/planAsks.ts)
  *   reply     send a message to a chat (the words come with it)                  thread:<id>            session only
+ *   Plan Ease's own: done / later on a to-do, move / keep on a Move card, and what later steps add (pt:, pe:, pm:, pc:), each answered by
+ *   botsBots/planEase.ts through the calendar the Plan page uses; a widget needs task.done for a to-do, needs.answer for a card
  *
  * WHO MAY. Everything is the person's own: the services check it again (a job is its owner's, a task's yes is its owner's, a space
  * task only for whom it is for, a chat only for who may write there). A widget's token (token.ts) may only do what its scopes say,
@@ -15,6 +18,9 @@
  * notification alike. A question's answer is its OWN answer, read again here: a button sends `a0`, never words, and an item minted
  * for one question (its fingerprint) never answers the next.
  *
+ * EVERYWHERE. An answer takes the notice about that item off the person's computers too (live/notices.ts), as the next read takes it off
+ * the page and the widget.
+ *
  * ONCE. Each answer is claimed under a key before it runs (the app's own key, or the item and the button): a retry of one that
  * went through gets the first answer (`repeat: true`), one still out gets 409 in_progress, and one that failed is let go so trying
  * again does try again. A reply must bring its own key (two "ok"s minutes apart are two messages). Migration 0058 (quick_actions),
@@ -22,7 +28,8 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
-import { parseItem, questionMark, type QuickItem } from "./items.js";
+import { itemId, parseItem, questionMark, type QuickItem } from "./items.js";
+import { noticeGone } from "../live/notices.js";
 import type { WidgetScope } from "./token.js";
 
 export const KEEP_DAYS = 7;
@@ -118,6 +125,14 @@ export interface ActParts {
     approve(userId: string, taskId: string, approvalId?: string): Promise<{ status: string; error?: { message?: string } }>;
     deny(userId: string, taskId: string): Promise<{ status: string }>;
   } | null;
+  /**
+   * Plan Ease (botsBots/planEase.ts): which buttons its items have and what a widget needs to press one (`scope`; null: no such button),
+   * and the answer. One door for the page, the widget and a notification, so an answer in one place is gone from all of them.
+   */
+  plan?: {
+    scope(item: QuickItem, action: string): WidgetScope | "session" | null;
+    act(userId: string, item: QuickItem, action: string): Promise<ActResult>;
+  } | null;
   /** A Xode job: its question now (jobs/router.ts + deps.ts jobLite), and the answer (agent/orchestrator.ts answer). */
   jobs: {
     question(userId: string, jobId: string): Promise<{ text: string; options: string[] } | null>;
@@ -141,19 +156,25 @@ export interface ActRequest { item: unknown; action: unknown; text?: unknown; ke
 export interface ActResult { status: number; body: Record<string, unknown> }
 
 const MAX_REPLY = 4000;
-const ok = (state: string, extra: Record<string, unknown> = {}): ActResult => ({ status: 200, body: { ok: true, state, ...extra } });
-const no = (status: number, code: string, message: string): ActResult => ({ status, body: { ok: false, code, message } });
+export const ok = (state: string, extra: Record<string, unknown> = {}): ActResult => ({ status: 200, body: { ok: true, state, ...extra } });
+export const no = (status: number, code: string, message: string): ActResult => ({ status, body: { ok: false, code, message } });
 
 /** Which kind of row an item is, for widgets.needs.modes. */
 function modeKind(item: QuickItem): string {
-  return item.kind === "job" ? "question" : item.kind === "task" ? "approval" : item.kind === "stask" ? "task" : item.kind;
+  return item.kind === "job" ? "question" : item.kind === "task" ? "approval" : item.kind === "stask" ? "task" : isPlanItem(item) ? "plan" : item.kind;
 }
 
+const isPlanItem = (item: QuickItem): item is Extract<QuickItem, { kind: "pt" | "pe" | "pm" | "pc" | "pl" }> =>
+  item.kind === "pt" || item.kind === "pe" || item.kind === "pm" || item.kind === "pc" || item.kind === "pl";
+
 /** What a button needs to be allowed, by what answers it. */
-function scopeFor(item: QuickItem, action: string): WidgetScope | "session" | null {
+function scopeFor(item: QuickItem, action: string, parts: ActParts): WidgetScope | "session" | null {
+  if (isPlanItem(item)) return parts.plan ? parts.plan.scope(item, action) : null;
   if (item.kind === "job" && /^a\d{1,2}$/.test(action)) return "needs.answer";
   if (item.kind === "task" && (action === "yes" || action === "no")) return "needs.answer";
   if (item.kind === "stask" && action === "done") return "task.done";
+  // A family ask's buttons on a space task (I'll do it, I'm in, Can't do it, Ask): Plan Ease's, through the same door.
+  if (item.kind === "stask") return parts.plan ? parts.plan.scope(item, action) : null;
   if (item.kind === "thread" && action === "reply") return "session";
   return null;
 }
@@ -183,7 +204,7 @@ export class QuickActs {
     const item = parseItem(req.item);
     const action = typeof req.action === "string" ? req.action : "";
     if (!item || !/^[a-z0-9_]{1,24}$/.test(action)) return no(400, "bad_request", "That isn't something that can be answered here.");
-    const need = scopeFor(item, action);
+    const need = scopeFor(item, action, this.parts);
     if (!need) return no(400, "bad_request", "That button doesn't do anything here.");
     if (via.kind === "widget") {
       // A widget's token: only its scopes, only where the server lets a widget answer in place, never a reply.
@@ -210,12 +231,15 @@ export class QuickActs {
       if (out.status === 200) await this.store.done(userId, key, out.body, this.now());
       else await this.store.release(userId, key);
     } catch { /* the answer stands; only a retry's shortcut is lost */ }
+    // Answered here, so gone from their computers' notices too (live/notices.ts: a notice's id is the item its buttons answer).
+    if (out.status === 200) noticeGone(userId, itemId(item));
     return out;
   }
 
   private async perform(userId: string, item: QuickItem, action: string, text: string, policy: ActPolicy): Promise<ActResult> {
     switch (item.kind) {
       case "stask": {
+        if (action !== "done") return this.parts.plan ? this.parts.plan.act(userId, item, action) : no(404, "off", "That isn't there any more.");
         if (!this.parts.spaceTasks) return no(404, "off", "That isn't there any more.");
         await this.parts.spaceTasks.answer(userId, item.spaceId, item.taskId, { status: "done" });
         return ok("done");
@@ -253,6 +277,10 @@ export class QuickActs {
         if (!said) return no(400, "bad_request", "That isn't one of its answers.");
         await j.answer(userId, item.jobId, said);
         return ok("done");
+      }
+      case "pt": case "pe": case "pm": case "pc": case "pl": {
+        if (!this.parts.plan) return no(404, "off", "That isn't there any more.");
+        return this.parts.plan.act(userId, item, action);
       }
       default:
         return no(400, "bad_request", "That can only be opened.");

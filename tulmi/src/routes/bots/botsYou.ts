@@ -34,6 +34,7 @@ import { getEntitlement } from "../../billing/entitlements.js";
 import { setSpendSource, type UsageLive as LiveUsage } from "../../experience/bots/live.js";
 import { listNotes } from "../../notes/store.js";
 import { setPushGate } from "../../push/engine.js";
+import { pushEngine } from "../../push/index.js";
 import { billingView } from "../../you/billing.js";
 import { deleteMyData, exportLink, exportLinkUser, gatherExport } from "../../you/data.js";
 import { holdJobsToUsage, Spending, wrapBots } from "../../you/limits.js";
@@ -43,10 +44,11 @@ import { setUsageSpan } from "../../you/span.js";
 import { howLine, nearLine, outLine, type UsageNow } from "../../you/usage.js";
 import { getProfile } from "../../profile/store.js";
 import { dayOf, pushGate, startSummaries, summaryLine } from "../../you/push.js";
+import { setPlanSummary } from "../../botsBots/planEase.js";
 import { clearShared, dropSharedCache } from "../../bots/shared.js";
 import { forgetAll as forgetContext } from "../../context/index.js";
 import { talkSessions } from "../../talk/session.js";
-import { applyPatch } from "../../you/settings.js";
+import { applyPatch, clock } from "../../you/settings.js";
 import { youStore } from "../../you/store.js";
 
 import type { BotsAreaDeps } from "./botsArea.js";
@@ -91,7 +93,18 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
   setPushGate(pushGate(spending));
   setSpendSource(async (botsDeps, tz) => botsDeps.api<{ limitPaise: number; monthPaise: number; usage?: LiveUsage }>("GET", `/v1/you/live?tz=${Math.round(tz)}`));
   const stopSummaries = startSummaries({ spending, jobs: deps.jobs, connectors: deps.connectors, log: app.log });
-  app.addHook("onClose", async () => { stopSummaries(); setUsageGate(null); setCostSink(null); setUsageSpan(null); });
+  // The Daily summary rides in Plan Ease's evening note (botsBots/planEase.ts): its line, for a person who has it on, and how it goes
+  // alone on an evening with no note.
+  setPlanSummary({
+    line: async (userId, tz, now) => {
+      const s = await spending.store.getSettings(userId);
+      if (!s.notify.summary) return null;
+      const line = summaryLine(await dayOf(userId, { spending, jobs: deps.jobs, connectors: deps.connectors, now, tz }));
+      return line ? { line, time: clock(s.notify.summaryAt) } : null;
+    },
+    alone: async (userId, s, day) => pushEngine()?.notify(userId, { kind: "bots_summary", key: day, vars: { time: s.time, line: s.line } }),
+  });
+  app.addHook("onClose", async () => { stopSummaries(); setUsageGate(null); setCostSink(null); setUsageSpan(null); setPlanSummary(null); });
 
   // ------------------------------------------------------------ helpers
 

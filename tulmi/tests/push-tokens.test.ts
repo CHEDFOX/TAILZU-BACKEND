@@ -32,7 +32,7 @@ describe("a push token after switching accounts", () => {
     // A signs out without reaching the server (offline, expired session); B
     // signs in on the same phone. A's row with that token must go.
     expect((await post(app, "/v1/push/register", "B", { token: "ExponentPushToken[phone-1]", platform: "ios" })).statusCode).toBe(200);
-    expect(tokens.rows).toEqual([{ userId: "B", platform: "ios", token: "ExponentPushToken[phone-1]", appVersion: null }]);
+    expect(tokens.rows).toEqual([{ userId: "B", platform: "ios", token: "ExponentPushToken[phone-1]", appVersion: null, caps: [] }]);
     await app.close();
   });
 

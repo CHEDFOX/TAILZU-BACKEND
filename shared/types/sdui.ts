@@ -1446,6 +1446,11 @@ export const PERSON_BOT_COMPONENT = "PersonBot";
  * (the bootstrap's `fonts`); the window bundles them.
  */
 export const FONT_BRICOLAGE_CAPABILITY = "FontBricolage";
+/**
+ * NOT A COMPONENT (the phone): a notification button that opens the app (Pay, Send, No, Open map) hands its id to the push's screen as
+ * the `button` param; a plain tap on the notification has none. The hand-off screens open WhatsApp, UPI or Maps only for the button.
+ */
+export const PUSH_BUTTON_CAPABILITY = "PushButton";
 
 export interface PersonBotProps {
   /** Who he is (the person's id): what staggers his idling, so two of them never blink together. */

@@ -4,8 +4,11 @@
  *
  *   client → server   { type: "auth", token }   the first message, unless the upgrade carried `Authorization: Bearer …`
  *                     { type: "pong" }          the answer to a ping (any message counts as alive)
+ *                     { type: "notices", v, buttons }        after "ready": this socket shows Plan Ease's notices (a desktop's)
+ *                     { type: "here", idleMs } | { away }     how long since that computer was used (live/notices.ts)
  *   server → client   { type: "ready", heartbeatMs }
  *                     { type: "event", topic, at, data? }   a hint; the screen's own load decides what it shows
+ *                                               (topic "notice" carries a notice's words, and only to a socket that shows them)
  *                     { type: "ping", at }      every heartbeatMs, with a WebSocket ping frame beside it
  *                     { type: "error", code: "unauthorized" }, then close 4401
  *
@@ -26,6 +29,7 @@ import { live, type LiveBus, type LiveEvent } from "../../live/bus.js";
 import { resolveUser } from "../../auth/supabase.js";
 import { isDeviceBearer } from "../../auth/deviceTokens.js";
 import { getConfig } from "../../config.js";
+import { NOTICE_TOPIC, openSeat, type DeskSeat } from "../../live/notices.js";
 
 export const LIVE_PATH = "/v1/live";
 export const CLOSE = { unauthorized: 4401, tooMany: 4008, renew: 4000, stopping: 1001 } as const;
@@ -85,6 +89,8 @@ export function registerLiveRoutes(app: FastifyInstance, o: LiveRouteOptions = {
     let stop: (() => void) | null = null;
     let beat: ReturnType<typeof setInterval> | null = null;
     let life: ReturnType<typeof setTimeout> | null = null;
+    /** Set once the socket says it shows notices (a desktop's main process): who is at that computer, in memory only. */
+    let seat: DeskSeat | null = null;
 
     const send = (m: Record<string, unknown>): void => {
       if (closed || socket.readyState !== 1) return;
@@ -98,6 +104,8 @@ export function registerLiveRoutes(app: FastifyInstance, o: LiveRouteOptions = {
       if (life) clearTimeout(life);
       stop?.();
       stop = null;
+      seat?.close();
+      seat = null;
       everyone.delete(conn);
       if (userId) {
         const set = open.get(userId);
@@ -134,7 +142,11 @@ export function registerLiveRoutes(app: FastifyInstance, o: LiveRouteOptions = {
         const oldest = set.values().next().value as Conn;
         oldest.close(CLOSE.tooMany, "too many");
       }
-      stop = bus.subscribe(userId, (e: LiveEvent) => send({ type: "event", topic: e.topic, at: e.at, ...(e.data ? { data: e.data } : {}) }));
+      stop = bus.subscribe(userId, (e: LiveEvent) => {
+        // A notice's words go only where they are shown, not to every screen the person has open.
+        if (e.topic === NOTICE_TOPIC && !seat) return;
+        send({ type: "event", topic: e.topic, at: e.at, ...(e.data ? { data: e.data } : {}) });
+      });
       send({ type: "ready", heartbeatMs });
       beat = setInterval(() => {
         if (!alive) { cleanup(); try { socket.terminate(); } catch { /* gone */ } return; }
@@ -157,7 +169,12 @@ export function registerLiveRoutes(app: FastifyInstance, o: LiveRouteOptions = {
       if (m.type === "auth" && !started) {
         const token = typeof m.token === "string" ? m.token.trim() : "";
         void begin(token ? `Bearer ${token}` : undefined);
+        return;
       }
+      // Signed in only. Never logged: when someone last used their computer is theirs.
+      if (!userId) return;
+      if (m.type === "notices") seat = openSeat(userId, conn, { buttons: m.buttons === true });
+      else if (m.type === "here" && seat) seat.here(m.away === true ? null : Number(m.idleMs));
     });
     socket.on("close", cleanup);
     socket.on("error", cleanup);

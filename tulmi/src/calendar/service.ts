@@ -8,6 +8,14 @@
  *   quick(user, words, { day, tz, kind })  a line ("Dentist Fri 5 pm") made into an event or a to-do (words.ts readLine)
  *   landSpace(user, item) / unlandSpace(taskId, user?)    a space's task or plan for this person, kept on their days "From <name>"
  *   remind(now, send)                     every reminder that is due, sent once (the push engine), and the next one worked out
+ *   later(user, taskId)                   a to-do's reminder put off ("Later": an hour, or 9 am tomorrow after 8 pm; 3 times at most)
+ *   tzOf(user)                            the person's offset, as their apps last said it (kept beside them: onTz / loadTz)
+ *
+ * PLAN EASE'S REMINDERS (PLAN_V2_REMINDERS, botsBots/planSwitch.ts; docs/plan-ease.md). A reminder says what it is, lock-safe
+ * (botsBots/planSafe.ts: no amount, a health visit is "Appointment"): an event is "Design review at 6 pm" with its place, a to-do is its
+ * title with Done and Later. A to-do with a day and no time is reminded at 10 am that day. Two or more due within 10 minutes go as one
+ * push with no buttons ("2 things at 6 pm: dentist, call Mom"). An event whose leave-by reminder went (planEase.ts) is not reminded
+ * again, and Plan Ease's own reminders (not the person's timed ones) stop at 6 a day (the policy, setReminderPolicy). Off: as before.
  *
  * `source` says where a thing came from: the person, a bot ("Plan Ease"), someone in a space, a meeting's to-do. Someone else's plan
  * or task is theirs to change: here it can be ticked, or said no to ("Can't do it", through the space), and nothing else.
@@ -18,7 +26,12 @@ import { BotError } from "../bots/types.js";
 import { livePublish } from "../live/writes.js";
 import { botTopic, TOPIC } from "../live/topics.js";
 import { nextReminder, occurrences, startDay, taskReminder } from "./repeat.js";
-import { calendarRows, eventRow, resetCalendarRowsForTests, taskRow, type CalendarRows, type EventRow, type Source, type TaskRow } from "./store.js";
+import { calendarRows, eventRow, resetCalendarRowsForTests, taskRow, type CalendarRows, type EventRow, type Source, type TaskKind, type TaskRow } from "./store.js";
+import { spacesOn } from "../botsBots/spacesSwitch.js";
+import { planOn } from "../botsBots/planSwitch.js";
+import { safeTitle, lockSafe, looksHealth } from "../botsBots/planSafe.js";
+import { dueAgainAt, dueReminder } from "../botsBots/planDue.js";
+import type { PlanKindId } from "../botsBots/planKinds.js";
 import {
   DAY, MIN, REPEATS, clockAt, dayFrom, dayName, dayOf, isDayKey, minuteOf, readLine, shiftDay, startOfDay, timeOf, tzOf, type Repeat,
 } from "./words.js";
@@ -40,11 +53,18 @@ export interface CalEvent {
   source: Source["kind"];
   /** Someone else's: only they change it. */
   fixed: boolean;
-  spaceId?: string; taskId?: string; spaceName?: string;
+  /** A space's: who set it (their id, for their tiny bot). */
+  spaceId?: string; taskId?: string; spaceName?: string; byId?: string;
+  /** The capture that added it (botsBots/planCapture.ts): "From the school circular", and Undo for the lot. */
+  captureId?: string;
 }
 
 export interface CalTask {
   id: string; title: string; notes: string; list: string;
+  /** A to-do, a bill (step 3) or a wait (step 4): botsBots/planRows.ts draws each its way. */
+  kind: TaskKind;
+  /** How many times its reminder was put off with Later. */
+  snoozes: number;
   /** The day it's due, or null. */
   due: string | null;
   /** When it's due, when a time was said. */
@@ -54,13 +74,35 @@ export interface CalTask {
   from: string | null;
   source: Source["kind"];
   fixed: boolean;
-  spaceId?: string; taskId?: string; spaceName?: string;
+  spaceId?: string; taskId?: string; spaceName?: string; byId?: string;
   noteId?: string; todoId?: string;
+  /** A bill (kind "due", botsBots/planDue.ts): its amount (shown only in the app), payee and safe pay link; whether it comes monthly. */
+  amountPaise?: number; payee?: string; payLink?: string; repeat?: "monthly";
+  /** The capture that added it, and the event or to-do a "before" step gets ready for. */
+  captureId?: string; prepFor?: string;
+  /** A wait (kind "wait", botsBots/planWaits.ts): who it waits on ("Rahul", "the plumber"). */
+  who?: string;
+}
+
+/** What a bill or a capture's to-do carries beyond a to-do (0072's columns: only written when given). */
+export interface TaskMore {
+  kind?: TaskKind; amount_paise?: number | null; payee?: string | null; pay_link?: string | null; repeat?: "" | "monthly";
+  prep_for?: string | null; capture_id?: string | null;
 }
 
 export interface Listed { events: CalEvent[]; tasks: CalTask[]; open: CalTask[] }
 
-export type ReminderSend = (userId: string, msg: { kind: "plan_reminder"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<unknown>;
+export type ReminderSend = (userId: string, msg: { kind: "plan_reminder" | PlanKindId; key: string; vars: Record<string, string>; data: Record<string, string>; category?: string }) => Promise<unknown>;
+
+/**
+ * What Plan Ease says about a reminder before it goes (botsBots/planEase.ts): whether a leave-by reminder already went for that start
+ * (then the event's own is not sent too), and whether one more of its own pushes fits today (at most 6; the person's own timed
+ * reminders don't count). Unset: every one goes.
+ */
+export interface ReminderPolicy {
+  leaveSent(userId: string, eventId: string, start: number): Promise<boolean>;
+  spend(userId: string, day: string): Promise<boolean>;
+}
 /** A space's task, answered from the person's own list (their tick, or a no): spaceTasks.ts answer, wired by routes/bots/botsSpaces.ts. */
 export type SpaceAnswer = (userId: string, spaceId: string, taskId: string, status: "done" | "todo" | "cant") => Promise<unknown>;
 
@@ -83,6 +125,12 @@ const DEFAULT_REMIND_MIN = 15;
 const REMIND_MAX = 7 * 24 * 60;
 /** A reminder this late (the server was down) is not sent: the moment has passed. */
 const LATE_MS = 6 * 60 * MIN;
+/** Plan Ease's reminders: a to-do with a day and no time is reminded at 10 am that day. */
+const TASK_DAY_MINUTE = 10 * 60;
+/** Reminders due this close together go as one push. */
+const MERGE_MS = 10 * MIN;
+/** "Later" puts a to-do's reminder off this many times at most; then it stays quietly in the app. */
+export const LATER_MAX = 3;
 
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const longText = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\r/g, "").trim().slice(0, max) : "");
@@ -95,10 +143,11 @@ function fromOf(s: Source): string | null {
     case "bot": return s.name;
     case "space": return s.name;
     case "note": return s.title || "A meeting";
+    case "capture": return s.label || "a share";
     default: return null;
   }
 }
-const spaceBits = (s: Source) => (s.kind === "space" ? { spaceId: s.spaceId, taskId: s.taskId, spaceName: s.space } : {});
+const spaceBits = (s: Source) => (s.kind === "space" ? { spaceId: s.spaceId, taskId: s.taskId, spaceName: s.space, ...(s.by ? { byId: s.by } : {}) } : {});
 /** A space's thing is fixed for the person it's for; their own (set for themselves, "You") they can change. */
 const fixedOf = (s: Source) => s.kind === "space" && s.name !== "You";
 
@@ -111,12 +160,30 @@ function remindOf(v: unknown, fallback: number | null): number | null {
   return Math.min(REMIND_MAX, n);
 }
 
+/**
+ * What a space gave the person (source "space") is kept but not shown, and never reminded of, while Spaces is switched off
+ * (SPACES_ENABLED=false, botsBots/spacesSwitch.ts): their days look as if Spaces were not there, and it all comes back when it is on.
+ */
+const hiddenNow = (source: string): boolean => source === "space" && !spacesOn();
+
+/** One reminder that came due, claimed, with what its push says (before merging). */
+interface DueReminder {
+  userId: string; at: number; title: string; clock: string; own: boolean;
+  msg: Parameters<ReminderSend>[1];
+}
+
+/** "dentist", "call Mom", "PTM": a title as the middle of a sentence (an all-capitals word keeps its capitals). */
+const inLine = (t: string): string => (/^[A-Z][a-z]/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t);
+
 export class Calendar {
   private readonly rows: CalendarRows;
   private readonly now: () => number;
   private readonly publish: (userId: string) => void;
   private readonly tzs = new Map<string, number>();
   private spaceAnswer: SpaceAnswer | null = null;
+  private policy: ReminderPolicy | null = null;
+  private tzSaid: ((userId: string, tz: number) => void) | null = null;
+  private tzLoad: ((userId: string) => Promise<number | null>) | null = null;
 
   constructor(o: { rows?: CalendarRows; now?: () => number; publish?: (userId: string) => void } = {}) {
     this.rows = o.rows ?? calendarRows();
@@ -127,13 +194,42 @@ export class Calendar {
   /** Spaces answer here when the person ticks, or says no to, something a space gave them (routes/bots/botsSpaces.ts). */
   onSpaceAnswer(fn: SpaceAnswer | null): void { this.spaceAnswer = fn; }
 
-  /** The person's offset, as their apps last said it (India's when never said): what "today" is for a bot's words. */
+  /** Plan Ease's say on each reminder (botsBots/planEase.ts). */
+  setReminderPolicy(p: ReminderPolicy | null): void { this.policy = p; }
+
+  /**
+   * Where the person's offset is kept beside them (plan_prefs.tz_min, botsBots/planEase.ts): told when their apps say a new one, asked
+   * when this server has not heard it yet. Without it, one server's memory, as before.
+   */
+  keepTz(o: { said: (userId: string, tz: number) => void; load: (userId: string) => Promise<number | null> } | null): void {
+    this.tzSaid = o?.said ?? null;
+    this.tzLoad = o?.load ?? null;
+  }
+
+  /** The person's offset, as their apps last said it to this server (India's when never said): what "today" is for a bot's words. */
   tzFor(userId: string): number { return this.tzs.get(userId) ?? 330; }
+
+  /** The same, from where it is kept when this server has not heard it (a restart, a second server). */
+  async tzOf(userId: string): Promise<number> {
+    const known = this.tzs.get(userId);
+    if (known !== undefined || !this.tzLoad) return known ?? 330;
+    const kept = await this.tzLoad(userId).catch(() => null);
+    if (kept === null || kept === undefined) return 330;
+    this.remember(userId, kept);
+    return kept;
+  }
+
+  private remember(userId: string, t: number): void {
+    this.tzs.set(userId, t);
+    if (this.tzs.size > 50_000) this.tzs.delete(this.tzs.keys().next().value!);
+  }
+
   private seeTz(userId: string, tz: unknown): number {
     const t = tzOf(tz, this.tzFor(userId));
     if (tz !== undefined && tz !== null && tz !== "") {
-      this.tzs.set(userId, t);
-      if (this.tzs.size > 50_000) this.tzs.delete(this.tzs.keys().next().value!);
+      const was = this.tzs.get(userId);
+      this.remember(userId, t);
+      if (was !== t && this.tzSaid) { try { this.tzSaid(userId, t); } catch { /* kept in memory still */ } }
     }
     return t;
   }
@@ -149,14 +245,19 @@ export class Calendar {
       id: series && o ? `${r.id}@${o.day}` : r.id, seriesId: r.id, title: r.title, notes: r.notes, place: r.place, ...(where ? { where } : {}),
       start: r.all_day ? startOfDay(day, tz) : start, end: r.all_day ? startOfDay(day, tz) + Math.max(DAY, end - start) : end, allDay: r.all_day, day,
       repeat: r.repeat, remindMin: r.remind_min, from: fromOf(r.source), source: r.source.kind, fixed: fixedOf(r.source), ...spaceBits(r.source),
+      ...(r.capture_id ? { captureId: r.capture_id } : {}),
     };
   }
 
   private taskView(r: TaskRow): CalTask {
     const s = r.source;
     return {
-      id: r.id, title: r.title, notes: r.notes, list: r.list, due: r.due_day, at: r.due_ms, done: r.done, doneAt: r.done_ms, remindMin: r.remind_min,
+      id: r.id, title: r.title, notes: r.notes, list: r.list, kind: r.kind ?? "todo", snoozes: r.snoozes ?? 0,
+      due: r.due_day, at: r.due_ms, done: r.done, doneAt: r.done_ms, remindMin: r.remind_min,
       from: fromOf(s), source: s.kind, fixed: fixedOf(s), ...spaceBits(s), ...(s.kind === "note" ? { noteId: s.noteId, todoId: s.todoId } : {}),
+      ...(r.amount_paise ? { amountPaise: Number(r.amount_paise) } : {}), ...(r.payee ? { payee: r.payee } : {}), ...(r.pay_link ? { payLink: r.pay_link } : {}),
+      ...(r.repeat === "monthly" ? { repeat: "monthly" as const } : {}), ...(r.capture_id ? { captureId: r.capture_id } : {}), ...(r.prep_for ? { prepFor: r.prep_for } : {}),
+      ...(typeof r.who_name === "string" && r.who_name ? { who: r.who_name } : {}),
     };
   }
 
@@ -176,17 +277,17 @@ export class Calendar {
       const r = eventRow(raw);
       for (const occ of occurrences(r, fromMs, toMs)) {
         const v = this.eventView(r, occ, tz);
-        if (v.day >= o.from && v.day <= to) events.push(v);
+        if (v.day >= o.from && v.day <= to && !hiddenNow(v.source)) events.push(v);
       }
     }
     events.sort((a, b) => a.day.localeCompare(b.day) || Number(b.allDay) - Number(a.allDay) || a.start - b.start || a.title.localeCompare(b.title));
-    const tasks = taskRows.map((t) => this.taskView(taskRow(t))).sort((a, b) => String(a.due).localeCompare(String(b.due)) || Number(a.done) - Number(b.done) || (a.at ?? Infinity) - (b.at ?? Infinity));
-    return { events: events.slice(0, LIST_MAX), tasks, open: open.map((t) => this.taskView(taskRow(t))).filter((t) => !t.due) };
+    const tasks = taskRows.map((t) => this.taskView(taskRow(t))).filter((t) => !hiddenNow(t.source)).sort((a, b) => String(a.due).localeCompare(String(b.due)) || Number(a.done) - Number(b.done) || (a.at ?? Infinity) - (b.at ?? Infinity));
+    return { events: events.slice(0, LIST_MAX), tasks, open: open.map((t) => this.taskView(taskRow(t))).filter((t) => !t.due && !hiddenNow(t.source)) };
   }
 
   /** The open to-dos: overdue and due soon first, then the ones with no day. */
   async openTasks(userId: string): Promise<CalTask[]> {
-    const rows = (await this.rows.tasks.open(userId, OPEN_MAX)).map((t) => this.taskView(taskRow(t)));
+    const rows = (await this.rows.tasks.open(userId, OPEN_MAX)).map((t) => this.taskView(taskRow(t))).filter((t) => !hiddenNow(t.source));
     return rows.sort((a, b) => (a.due ? 0 : 1) - (b.due ? 0 : 1) || String(a.due).localeCompare(String(b.due)) || (a.at ?? Infinity) - (b.at ?? Infinity));
   }
 
@@ -281,7 +382,7 @@ export class Calendar {
   }
 
   private reminderFor(r: EventRow): number | null { return nextReminder(r, this.now())?.at ?? null; }
-  private taskReminderFor(r: TaskRow): number | null { return taskReminder(r, this.now()); }
+  private taskReminderFor(r: TaskRow): number | null { return taskReminder(r, this.now(), planOn("reminders") ? TASK_DAY_MINUTE : undefined); }
 
   private async countGuard(userId: string, which: "events" | "tasks"): Promise<void> {
     const n = (await this.rows[which].select({ user_id: userId }, { limit: ROWS_MAX })).length;
@@ -290,7 +391,7 @@ export class Calendar {
 
   // ------------------------------------------------------------------ events
 
-  async addEvent(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }): Promise<CalEvent> {
+  async addEvent(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, more: { capture_id?: string } = {}): Promise<CalEvent> {
     const tz = this.seeTz(userId, raw.tz);
     const b = this.fromWords(raw, tz);
     const title = clean(b.title, 120);
@@ -303,7 +404,7 @@ export class Calendar {
       start_ms: w.start, end_ms: w.end, all_day: w.allDay, tz_min: tz,
       repeat: this.repeatOf(b.repeat), repeat_until: this.untilOf(b.until, tz, null), skips: [],
       remind_min: remindOf(b.remind, w.allDay ? null : DEFAULT_REMIND_MIN), next_remind_ms: null,
-      source: by, source_key: null, created_ms: at, updated_ms: at,
+      source: by, source_key: null, created_ms: at, updated_ms: at, ...(more.capture_id ? { capture_id: more.capture_id } : {}),
     };
     row.next_remind_ms = this.reminderFor(row);
     await this.rows.events.insert(row);
@@ -386,7 +487,7 @@ export class Calendar {
     return { day, at: t === null ? null : startOfDay(day, tz) + t * MIN };
   }
 
-  async addTask(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, key: string | null = null): Promise<CalTask> {
+  async addTask(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, key: string | null = null, more: TaskMore = {}): Promise<CalTask> {
     const tz = this.seeTz(userId, raw.tz);
     const b = this.fromWords(raw, tz, { task: true });
     const title = clean(b.title, 120);
@@ -397,8 +498,11 @@ export class Calendar {
     const row: TaskRow = {
       id: randomUUID(), user_id: userId, title, notes: longText(b.notes, 1000), list: clean(b.list, 40),
       due_day: d.day, due_ms: d.at, tz_min: tz, done: false, done_ms: null,
-      remind_min: remindOf(b.remind, d.at !== null ? 0 : null), next_remind_ms: null,
+      // A to-do with a time is reminded at the time; with only a day, at 10 am that day (Plan Ease's reminders), else none unless asked.
+      remind_min: remindOf(b.remind, d.at !== null || (d.day && planOn("reminders")) ? 0 : null), next_remind_ms: null,
       source: by, source_key: key, created_ms: at, updated_ms: at,
+      // A bill or a capture's to-do: only the columns given are written (a plain to-do writes none of 0072's).
+      ...Object.fromEntries(Object.entries(more).filter(([, v]) => v !== undefined && v !== null && v !== "")),
     };
     row.next_remind_ms = this.taskReminderFor(row);
     await this.rows.tasks.insert(row);
@@ -416,10 +520,18 @@ export class Calendar {
     const d = this.due(raw, tz, row);
     const next: TaskRow = {
       ...row, title, notes: raw.notes !== undefined ? longText(raw.notes, 1000) : row.notes, list: raw.list !== undefined ? clean(raw.list, 40) : row.list,
-      due_day: d.day, due_ms: d.at, tz_min: tz, remind_min: remindOf(raw.remind, row.remind_min), updated_ms: this.now(),
+      // Given a day it had none of, it gets the day's reminder (Plan Ease's reminders), unless one was said.
+      due_day: d.day, due_ms: d.at, tz_min: tz, remind_min: remindOf(raw.remind, row.remind_min ?? (d.day && !row.due_day && planOn("reminders") ? 0 : null)), updated_ms: this.now(),
       ...(raw.done !== undefined ? { done: raw.done === true, done_ms: raw.done === true ? this.now() : null } : {}),
     };
     next.next_remind_ms = this.taskReminderFor(next);
+    // A wait's check-back is its reminder (botsBots/planWaits.ts reads check_ms): a new day or time moves it too, to the promised day
+    // at 6 pm (a visit: 4 pm), or an hour after a time said; else the row would say "by Tue" and still ask on the old day.
+    if (row.kind === "wait" && !next.done && (d.day !== row.due_day || d.at !== row.due_ms) && (d.day || d.at !== null)) {
+      const visit = (row as { came?: unknown }).came === true;
+      next.check_ms = d.at !== null ? d.at + 60 * 60_000 : Date.parse(`${d.day}T00:00:00Z`) - tz * 60_000 + (visit ? 16 : 18) * 60 * 60_000;
+      next.asked_ms = null;
+    }
     await this.rows.tasks.update({ id: row.id, user_id: userId }, next);
     this.publish(userId);
     return this.taskView(next);
@@ -508,7 +620,7 @@ export class Calendar {
   async landSpace(userId: string, it: SpaceItem): Promise<void> {
     const key = `space:${it.taskId}`;
     const source: Source = { kind: "space", spaceId: it.spaceId, taskId: it.taskId, by: it.by, name: it.name, space: it.spaceName };
-    const tz = this.tzFor(userId);
+    const tz = await this.tzOf(userId);
     const at = this.now();
     try {
       if (it.kind === "plan") {
@@ -572,6 +684,7 @@ export class Calendar {
 
   /** Every reminder that is due: claimed by moving it on (so two servers never send one twice), then sent. How many went. */
   async remind(send: ReminderSend, limit = 200): Promise<number> {
+    if (planOn("reminders")) return this.remindPlan(send, limit);
     const now = this.now();
     let sent = 0;
     for (const raw of await this.rows.events.due(now, limit)) {
@@ -580,7 +693,7 @@ export class Calendar {
       const was = nextReminder(r, due - 1);
       const next = was ? nextReminder(r, Math.max(was.at, now)) : nextReminder(r, now);
       const claimed = await this.rows.events.update({ id: r.id, next_remind_ms: due }, { next_remind_ms: next?.at ?? null });
-      if (!claimed || !was || now - was.at > LATE_MS) continue;
+      if (!claimed || !was || now - was.at > LATE_MS || hiddenNow(r.source.kind)) continue;
       const today = dayOf(now, r.tz_min);
       const when = r.all_day
         ? `${dayName(was.day, today)}, all day`
@@ -595,7 +708,7 @@ export class Calendar {
       const t = taskRow(raw);
       const due = t.next_remind_ms!;
       const claimed = await this.rows.tasks.update({ id: t.id, next_remind_ms: due }, { next_remind_ms: null });
-      if (!claimed || t.done || now - due > LATE_MS || !t.due_day) continue;
+      if (!claimed || t.done || now - due > LATE_MS || !t.due_day || hiddenNow(t.source.kind)) continue;
       const today = dayOf(now, t.tz_min);
       await send(t.user_id, {
         kind: "plan_reminder", key: `task:${t.id}:${due}`,
@@ -605,6 +718,126 @@ export class Calendar {
       sent += 1;
     }
     return sent;
+  }
+
+  /** Plan Ease's reminders (PLAN_V2_REMINDERS): lock-safe words and buttons, 10 am for a to-do with only a day, close ones merged. */
+  private async remindPlan(send: ReminderSend, limit: number): Promise<number> {
+    const now = this.now();
+    const due: DueReminder[] = [];
+    // Read up to 10 minutes ahead: someone with one due now has the next ten minutes' sent with it, as one push. The rest wait their turn.
+    const [evRows, taskRows] = await Promise.all([this.rows.events.due(now + MERGE_MS, limit), this.rows.tasks.due(now + MERGE_MS, limit)]);
+    const users = new Set([...evRows, ...taskRows].filter((r) => Number(r.next_remind_ms) <= now).map((r) => r.user_id));
+    for (const raw of evRows) {
+      if (!users.has(raw.user_id)) continue;
+      const r = eventRow(raw);
+      const at = r.next_remind_ms!;
+      const was = nextReminder(r, at - 1);
+      const next = was ? nextReminder(r, Math.max(was.at, now, at)) : nextReminder(r, now);
+      const claimed = await this.rows.events.update({ id: r.id, next_remind_ms: at }, { next_remind_ms: next?.at ?? null });
+      if (!claimed || !was || now - was.at > LATE_MS || hiddenNow(r.source.kind)) continue;
+      if (!r.all_day && this.policy && await this.policy.leaveSent(r.user_id, r.id, was.start).catch(() => false)) continue;
+      const today = dayOf(now, r.tz_min);
+      const title = safeTitle(r.title);
+      const clock = r.all_day ? "" : clockAt(was.start, r.tz_min);
+      const onDay = dayName(was.day, today);
+      // Its place only when neither it nor the title says health: "Dr. Mehta's clinic" is no one else's business.
+      const where = looksHealth(r.title) || looksHealth(r.place) ? undefined : whereOf(r.place);
+      due.push({
+        userId: r.user_id, at: was.at, title, clock, own: true,
+        msg: {
+          kind: "plan_event", key: `event:${r.id}:${was.start}`,
+          vars: {
+            title: lockSafe(r.all_day ? title : `${title} at ${clock}`, 120),
+            body: lockSafe([onDay === "Today" ? "" : onDay, where && !/https?:/i.test(where) ? where : ""].filter(Boolean).join(" · ") || "Today", 120),
+          },
+          data: { day: was.day, event: r.repeat ? `${r.id}@${was.day}` : r.id },
+        },
+      });
+    }
+    for (const raw of taskRows) {
+      if (!users.has(raw.user_id)) continue;
+      const t = taskRow(raw);
+      const at = t.next_remind_ms!;
+      // A bill comes once more at 6 pm that day if it isn't paid by then (botsBots/planDue.ts): its next reminder is set as it is claimed.
+      const bill = t.kind === "due" && planOn("capture");
+      const claimed = await this.rows.tasks.update({ id: t.id, next_remind_ms: at }, { next_remind_ms: bill && !t.done ? dueAgainAt(t, at) : null });
+      if (!claimed || t.done || now - at > LATE_MS || !t.due_day || hiddenNow(t.source.kind)) continue;
+      const today = dayOf(now, t.tz_min);
+      const title = safeTitle(t.title);
+      if (bill) {
+        // "Electricity due today" [Pay] [Paid]: Plan Ease's own, so it counts toward the day's six. Never its amount.
+        due.push({ userId: t.user_id, at, title, clock: "", own: false, msg: dueReminder(t, today, at) });
+        continue;
+      }
+      const timed = t.due_ms !== null;
+      // Its own timed reminder is the person's; the day's 10 am one and a Later are Plan Ease's, and count toward the day's six.
+      const own = timed && (t.snoozes ?? 0) === 0;
+      const onDay = dayName(t.due_day, today);
+      due.push({
+        userId: t.user_id, at, title, clock: timed ? clockAt(t.due_ms!, t.tz_min) : "", own,
+        msg: {
+          kind: "plan_todo", key: `task:${t.id}:${at}`,
+          vars: { title: lockSafe(title, 120), body: timed ? (onDay === "Today" ? "Now" : `${onDay}, ${clockAt(t.due_ms!, t.tz_min)}`) : onDay === "Today" ? "Today" : onDay },
+          data: { day: t.due_day, task: t.id, item: `pt:${t.id}` },
+          // After Later three times, Done is the only button: it stays quietly in the app after this.
+          ...((t.snoozes ?? 0) >= LATER_MAX ? { category: "x0_todo_last" } : {}),
+        },
+      });
+    }
+    let sent = 0;
+    const byUser = new Map<string, DueReminder[]>();
+    for (const d of due) byUser.set(d.userId, [...(byUser.get(d.userId) ?? []), d]);
+    for (const [userId, all] of byUser) {
+      all.sort((a, b) => a.at - b.at);
+      // A push with any of Plan Ease's own reminders in it counts once toward the day's six; past them, only the person's own go.
+      const ours = all.some((d) => !d.own);
+      const day = dayOf(now, this.tzFor(userId));
+      const fits = !ours || !this.policy || await this.policy.spend(userId, day).catch(() => true);
+      const list = fits ? all : all.filter((d) => d.own);
+      if (!list.length) continue;
+      if (list.length === 1) {
+        await send(userId, list[0]!.msg).catch(() => undefined);
+        sent += 1;
+        continue;
+      }
+      // One push for all of them, with no buttons: a Done on "2 things at 6 pm" couldn't say which one.
+      const first = list[0]!;
+      const names = list.map((d) => inLine(d.title));
+      await send(userId, {
+        kind: "plan_many", key: `many:${list.map((d) => d.msg.key).join("|").slice(0, 160)}`,
+        vars: {
+          title: lockSafe(`${list.length} things${first.clock ? ` at ${first.clock}` : " now"}`, 60),
+          body: lockSafe(names.slice(0, 3).join(", ") + (names.length > 3 ? `, ${names.length - 3} more` : ""), 120),
+        },
+        data: { day: String(first.msg.data.day ?? "") },
+      }).catch(() => undefined);
+      sent += 1;
+    }
+    return sent;
+  }
+
+  /**
+   * "Later" on a to-do's reminder: an hour from now, or 9 am tomorrow when it's after 8 pm. Three times at most: after that it stays
+   * quietly in the app (`quiet`), with no more reminders.
+   */
+  async later(userId: string, id: unknown): Promise<{ quiet: boolean; at: number | null }> {
+    if (typeof id !== "string" || !UUID.test(id)) throw gone("task");
+    const [r] = await this.rows.tasks.select({ id, user_id: userId }, { limit: 1 });
+    if (!r) throw gone("task");
+    const t = taskRow(r);
+    if (t.done) return { quiet: true, at: null };
+    const now = this.now();
+    const snoozes = (t.snoozes ?? 0) + 1;
+    if (snoozes > LATER_MAX) {
+      await this.rows.tasks.update({ id: t.id, user_id: userId }, { next_remind_ms: null, updated_ms: now });
+      return { quiet: true, at: null };
+    }
+    const tz = t.tz_min;
+    const minute = minuteOf(now, tz);
+    const at = minute >= 20 * 60 ? startOfDay(shiftDay(dayOf(now, tz), 1), tz) + 9 * 60 * MIN : now + 60 * MIN;
+    await this.rows.tasks.update({ id: t.id, user_id: userId }, { snoozes, next_remind_ms: at, updated_ms: now });
+    this.publish(userId);
+    return { quiet: false, at };
   }
 }
 

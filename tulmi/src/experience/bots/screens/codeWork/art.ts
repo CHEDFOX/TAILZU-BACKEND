@@ -10,7 +10,7 @@ import {
   call, seq, liveView, box, row, text, whenEq, C, labelled, col, meta, when, statusMark, open, SCREENS, type BotsCtx, page, button,
   sectionLabel, card, grow, meter, icon, botAvatar, emptyState,
 } from "../../kit.js";
-import { shareButton } from "../../shareAction.js";
+import { shareButtonsFor } from "../../shareAction.js";
 import { type JobData, toast, refresh, glyph, G, oops, MOSS, head, field, statusLine, backButton, write, CODE } from "./parts.js";
 
 // ===================================================================== artifacts: design and preview
@@ -255,7 +255,7 @@ function phoneFrame(inner: Node, width: number): Node {
 }
 
 /** Share the preview with a space or a person: its name and version, as a card (screens/spaces.ts bots.share). */
-const previewShare = (art: ArtifactRead): Node => shareButton({ kind: "preview", ref: art.artifact.id, title: art.artifact.title, text: `A live preview Xode made: ${art.artifact.title}, version ${art.version}.` });
+const previewShare = (ctx: BotsCtx, art: ArtifactRead): Node[] => shareButtonsFor(ctx, { kind: "preview", ref: art.artifact.id, title: art.artifact.title, text: `A live preview Xode made: ${art.artifact.title}, version ${art.version}.` });
 
 function previewPhone(ctx: BotsCtx, d: ArtData) {
   const { art } = d;
@@ -276,7 +276,7 @@ function previewPhone(ctx: BotsCtx, d: ArtData) {
       field("change", "Make this bigger and say 'Book now'", changeAction(art), { ink: true }),
       changing(),
       meta(`Only the part you picked changes. v${head0} stays, so you can go back.`, { size: 12 }),
-      previewShare(art),
+      ...previewShare(ctx, art),
     ],
     state: { sel: "", selName: "Tap a part", change: "", changing: false, showVersions: false, ...liveState(live) },
   });
@@ -299,7 +299,7 @@ function previewDesk(ctx: BotsCtx, d: ArtData) {
           box([text("Desktop", { size: 13, weight: 500, lineHeight: 17, align: "center" })], { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 10, backgroundColor: whenEq("frame", "desktop", C.paper, "transparent") }, { kind: "setState", path: "frame", value: "desktop" }),
         ], { gap: 2 })], { padding: 3, borderRadius: 12, backgroundColor: C.surface }),
         ...(live ? [liveMode({ compact: true })] : []),
-        previewShare(art),
+        ...previewShare(ctx, art),
       ], { gap: 12 }),
       row([
         col([sectionLabel("Versions"), ...versionRows(ctx, d), meta("Every change makes a new version. Older ones stay.", { size: 12, lineHeight: 17 })], { width: 220, flexShrink: 0, gap: 6 }),

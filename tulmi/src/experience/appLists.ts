@@ -187,6 +187,31 @@ export const DESKTOP_ROUTER = {
   ],
 } as const;
 
+/**
+ * "ADD THIS" (the desktop's addThis.js, for a build that declares DeskAddThis): words that hand Plan Ease what is on the screen, and
+ * the words that point at it. Only such a build is sent them: the server's lists replace the desktop's own, and an older one would send
+ * "save this" to Plan Ease with nothing to save. The same as the desktop's router.js, so the copy on the computer cannot drift.
+ */
+export const DESKTOP_ADD_THIS = {
+  tasks: [
+    { slug: "plan", re: "^(?:add|put|save|keep) (?:this|that|these|those|it)(?: \\S+){0,3} (?:to|on|in|into|for) (?:my |the )?(?:plan|plan ease|planease|calendar|schedule|day|list|to do list|todo list|to dos|todos)(?: |$)" },
+    { slug: "plan", re: "^(?:add|save) (?:this|these)(?: (?:email|mail|message|event|invite|meeting|reminder|page|bill|date))?$" },
+    { slug: "plan", re: "(?:^| )(?:isko|ise|isse|ye|yeh|inko|inhe) (?:\\S+ ){0,3}(?:plan|calendar|list) (?:me|mein|mai|par|pe) (?:add|daal|dal|daalo|dalo|rakh|rakho|likh|likho)(?: |$)" },
+    { slug: "plan", re: "(?:^| )(?:isko|iske|is) (?:\\S+ ){0,2}(?:baare|bare) (?:me|mein|mai) yaad (?:dila|dilana|dilao|dila do|dilaana)(?: |$)" },
+  ],
+  pointsAt: [
+    "(?:^| )(?:this|these|those)(?: |$)",
+    "(?:^| )(?:add|save|put|keep|about|of|for) (?:that|it)(?: |$)",
+    "(?:^| )(?:ye|yeh|isko|ise|isse|iska|iske|inko|inhe|inka)(?: |$)",
+    "(?:^| )is (?:email|mail|message|page|cheez|chiz|invite|meeting|bill)(?: |$)",
+    "(?:^| )(?:यह|ये|इसे|इसको|इसका|इसके|इन्हें|इनको)(?: |$)",
+  ],
+  notThings: [
+    "(?:^| )(?:this|these|that|next) (?:morning|afternoon|evening|night|week|weekend|month|year|time|summer|winter|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)(?= |$)",
+    "(?:^| )(?:ye|yeh|is|iss) (?:hafte|hafta|week|mahine|mahina|saal|baar|shaam|subah|raat)(?= |$)",
+  ],
+} as const;
+
 /** The names it answers to, besides the person's own for it (desktop.router.names): X0, the guide, and its old name. */
 const DESKTOP_WAKE_NAMES = ["X0", "Blip", "Tailzu"] as const;
 
@@ -207,10 +232,18 @@ function desktopGrammar(): Record<string, unknown> {
   };
 }
 
-/** Every desktop list above, as the bootstrap's flags. */
-export function desktopLists(): Record<string, unknown> {
+/** Every desktop list above, as the bootstrap's flags. With `addThis` (a build that carries the screen), the "add this" words too. */
+export function desktopLists(o: { addThis?: boolean } = {}): Record<string, unknown> {
   const router: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(DESKTOP_ROUTER)) router[`desktop.router.${k}`] = v;
+  if (o.addThis) {
+    // Plan Ease's "add this" tasks go after its own, so "add <thing> to my calendar" still reads as it did.
+    const tasks = DESKTOP_ROUTER.tasks as readonly { slug: string; re: string }[];
+    const lastPlan = tasks.map((t) => t.slug).lastIndexOf("plan");
+    router["desktop.router.tasks"] = [...tasks.slice(0, lastPlan + 1), ...DESKTOP_ADD_THIS.tasks, ...tasks.slice(lastPlan + 1)];
+    router["desktop.router.pointsAt"] = DESKTOP_ADD_THIS.pointsAt;
+    router["desktop.router.notThings"] = DESKTOP_ADD_THIS.notThings;
+  }
   return {
     ...router,
     "desktop.router.names": [...DESKTOP_WAKE_NAMES],

@@ -30,6 +30,9 @@ import { calendar as sharedCalendar, startReminders, type Calendar } from "../..
 import { getNote } from "../../notes/store.js";
 import { tickTodo } from "../../notes/extract.js";
 import { pushEngine } from "../../push/index.js";
+import { planOn } from "../../botsBots/planSwitch.js";
+import { planWaits } from "../../botsBots/planWaits.js";
+import { noteWho } from "../../botsBots/planWaitWords.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 
 const CALENDAR = "/v1/botsapp/calendar";
@@ -107,6 +110,16 @@ export function registerCalendarRoutes(app: FastifyInstance, deps: Pick<BotsArea
     const note = UUID.test(noteId) && TODO_ID.test(todoId) ? await getNote(user, noteId) : null;
     const todo = note?.todos?.find((t) => t.id === todoId);
     if (!note || !todo) { reply.code(404); return { code: "not_found", message: "That to-do isn't in the meeting any more." }; }
+    // Someone else's ("Rahul sends the numbers by Thursday", its "who" a real name): a wait, checked back on by itself (Plan Ease step
+    // 4, botsBots/planWaits.ts). "You", "Speaker 2" and "Others" are never someone to chase: those stay the person's own to-do.
+    if (planOn("waits") && !todo.done && noteWho(todo.who, note.people) && !(await cal.fromNote(user.id, noteId))[todoId]) {
+      const t = Number(bodyOf(req.body).tz);
+      const w = await planWaits().fromNote(user.id, {
+        noteId, todoId, noteTitle: note.title, text: todo.text, ...(todo.who ? { who: todo.who } : {}), ...(todo.when ? { when: todo.when } : {}),
+        people: note.people, tz: Number.isFinite(t) ? Math.max(-720, Math.min(840, Math.round(t))) : await cal.tzOf(user.id),
+      });
+      if (w) { reply.code(201); return { task: await cal.task(user.id, w.id) }; }
+    }
     const task = await cal.addFromNote(user.id, { noteId, todoId, noteTitle: note.title, text: todo.text, ...(todo.when ? { when: todo.when } : {}), done: todo.done, tz: bodyOf(req.body).tz });
     reply.code(201);
     return { task };

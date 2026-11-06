@@ -20,7 +20,7 @@ import { en as connectorWords } from "../../../../connectors/words.js";
 import { LANGUAGE_NAMES } from "../../../../history/writtenIn.js";
 import { appIconNode } from "../../../appIcons.js";
 import {
-  type BotsCtx, box, icon, C, row, text, open, SCREENS, page, col, meta, secondaryButton, switchMark, when, back, seq, percent,
+  type BotsCtx, box, icon, C, row, text, open, SCREENS, page, col, meta, secondaryButton, switchMark, when, back, seq, percent, hasSpaces,
 } from "../../kit.js";
 import { kbd } from "../keybotParts.js";
 import { glyph, G, openUrl, toast, refresh, oops, exportAction, type Settings } from "./parts.js";
@@ -138,10 +138,11 @@ function pings(d: SettingsData): Node {
   ]);
 }
 
-function yourData(d: SettingsData): Node {
+function yourData(ctx: BotsCtx, d: SettingsData): Node {
   return part("Privacy and your data", [
     line({ label: "Your space", sub: "What your bots know about you", onPress: open(SCREENS.youSpace) }),
-    line({ label: "Spaces and chats", sub: "Family and friends", onPress: open(SCREENS.spaces) }),
+    // None while Spaces is switched off (kit hasSpaces).
+    ...(hasSpaces(ctx) ? [line({ label: "Spaces and chats", sub: "Family and friends", onPress: open(SCREENS.spaces) })] : []),
     line({ label: "Privacy", sub: "What we keep, and for how long", onPress: open(SCREENS.privacy) }),
     line({ label: "Blocked people", onPress: open(SCREENS.blocked) }),
     line({ label: "Terminal sign-ins", sub: "Xode in a terminal, signed in as you", onPress: open(SCREENS.devices) }),
@@ -218,7 +219,7 @@ export function settingsCard(ctx: BotsCtx, d: SettingsData | undefined): ReturnT
       ], { gap: 12, paddingBottom: 4 }),
       row([
         col([account(ctx, data), thisComputer(), pings(data)], { gap: 14, flexGrow: 1, flexBasis: 0, minWidth: 0 }),
-        col([writing(data), yourData(data), help()], { gap: 14, flexGrow: 1, flexBasis: 0, minWidth: 0 }),
+        col([writing(data), yourData(ctx, data), help()], { gap: 14, flexGrow: 1, flexBasis: 0, minWidth: 0 }),
       ], { gap: 14, alignItems: "flex-start" }),
       apps(ctx, data),
     ],

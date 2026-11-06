@@ -7,7 +7,8 @@
  *   PUT    /v1/bots/you/space/:section/use        { on } -> { on }  may bots use this section (its lines stay)
  *   PUT    /v1/bots/you/space/lines/:key          { pinned?, section?, text? } -> { line }  every bot's copy alike
  *   DELETE /v1/bots/you/space/lines/:key          -> { forgot }  gone from every bot that kept it
- *   POST   /v1/bots/you/space/lines/:key/share    { space } -> { line }  that one line, for one group's bots (never Money)
+ *   POST   /v1/bots/you/space/lines/:key/share    { space } -> { line }  that one line, for one group's bots (never Money).
+ *                                                 While Spaces is off (SPACES_ENABLED=false): 404 spaces_off, and no group is listed
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
@@ -20,6 +21,7 @@ import type { PlanPrefsRow } from "../../botsBots/planTravel.js";
 import { table } from "../../botsBots/rows.js";
 import type { Trips } from "../../botsBots/trips.js";
 import { getProfile } from "../../profile/store.js";
+import { spacesGate, spacesOn } from "../../botsBots/spacesSwitch.js";
 import { SpaceError, UserSpace } from "../../you/space.js";
 import { isSection, KEY } from "../../you/spaceMarks.js";
 import type { BotsAreaDeps } from "./botsArea.js";
@@ -36,7 +38,8 @@ export function userSpace(o: { spaces?: Spaces; trips?: Trips | null; sources?: 
   return new UserSpace({
     sources: o.sources ?? shareSources({ trips: o.trips ?? null }),
     ...(o.spaces ? {
-      groups: async (userId: string) => (await o.spaces!.list(userId)).map((s) => ({ id: s.id, name: s.name, people: s.members.filter((m) => !m.you).map((m) => m.name) })),
+      // No groups while Spaces is off (botsBots/spacesSwitch.ts): the People section lists none, and no line can be shared with one.
+      groups: async (userId: string) => (spacesOn() ? await o.spaces!.list(userId) : []).map((s) => ({ id: s.id, name: s.name, people: s.members.filter((m) => !m.you).map((m) => m.name) })),
     } : {}),
     home: async (userId: string) => (await prefs.select({ user_id: userId }, { limit: 1 }))[0]?.home ?? "",
   });
@@ -87,7 +90,8 @@ export function registerYouSpaceRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   }));
 
   // One line, shared with one group by the person's own tap: nothing else of their space goes with it. Money never does.
-  app.post(`${SPACE_PATH}/lines/:key/share`, RL, run(async (user, req) => {
+  // Sharing with a group is Spaces': 404 spaces_off while it is off.
+  app.post(`${SPACE_PATH}/lines/:key/share`, { ...RL, onRequest: spacesGate }, run(async (user, req) => {
     if (!o.groups) throw new SpaceError(404, "groups_off", "Groups aren't switched on here.");
     const key = keyOf(req);
     const line = await space.lineOf(user.id, key);

@@ -25,6 +25,7 @@ const { BRICOLAGE, C, FACE, botsFonts, messageText, personBot } = await import("
 const P = await import("../src/botsBots/personLook.js");
 const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
 const { sampleApi } = await import("./bots-bots-data.js");
+const { resetConfigForTests } = await import("../src/config.js");
 const D = await import("./spaces-data.js");
 
 const A = "/v1/botsapp/bots";
@@ -197,6 +198,8 @@ describe("no initials in Spaces: each person is their own tiny bot", () => {
   });
 
   it("Work in space on a bot's page, someone's things and one of them: their tiny bots, never a letter", async () => {
+    // Plan Ease's week page has the tab; its simpler page (PLAN_V2_PAGE) has none: someone's plans are on their page, bots.work, below.
+    vi.stubEnv("PLAN_V2_PAGE", "false"); resetConfigForTests();
     for (const client of ["phone", "desktop"] as const) {
       const tab = await build("bots.plan", client);
       expect(initials(tab.nodes)).toEqual([]);
@@ -207,6 +210,7 @@ describe("no initials in Spaces: each person is their own tiny bot", () => {
       expect(bots(item.nodes)).toEqual([{ ...D.LOOK.r, size: 28 }]);
       expect(initials(item.nodes)).toEqual([]);
     }
+    vi.unstubAllEnvs(); resetConfigForTests();
   });
 
   it("a build without PersonBot: plain circles in each person's colour, no letter; an older build the same, in today's screens", async () => {

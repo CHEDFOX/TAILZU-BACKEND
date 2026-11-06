@@ -16,6 +16,7 @@
 import { randomUUID } from "node:crypto";
 import { getConfig } from "../config.js";
 import { spaceTable, type PagedTable } from "./spaceRows.js";
+import { isSpaceMail, spacesOn } from "./spacesSwitch.js";
 
 export interface MailMessage { to: string; subject: string; text: string; html?: string }
 
@@ -88,6 +89,8 @@ export interface MailRow {
 
 const MAIL_TRIES = 5;
 const BACKOFF_MS = [60_000, 5 * 60_000, 30 * 60_000, 2 * 3600_000, 6 * 3600_000];
+/** How long a Spaces mail waits before it is looked at again while Spaces is off (spacesSwitch.ts). */
+const HELD_MS = 3600_000;
 const EMAIL = /^[^\s@<>()[\]\\,;:"]{1,64}@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
 
 /** A plain, lower-case address, or "" when it isn't one. */
@@ -134,6 +137,12 @@ export class MailOutbox {
     const due = (await this.rows.select({ status: "queued" }, { order: "next_ms", limit: max * 3 })).filter((r) => Number(r.next_ms) <= at).slice(0, max);
     let sent = 0;
     for (const r of due) {
+      // While Spaces is off its invites stay queued, untouched but for when they are looked at next, so they never hold up the rest
+      // (a report to the team still goes). Once it is on again they go out on the next run.
+      if (isSpaceMail(String(r.kind)) && !spacesOn()) {
+        await this.rows.update({ id: r.id, status: "queued" }, { next_ms: at + HELD_MS });
+        continue;
+      }
       // Claim it, so two runs never send one mail twice.
       if (!(await this.rows.update({ id: r.id, status: "queued" }, { status: "sending" }))) continue;
       try {

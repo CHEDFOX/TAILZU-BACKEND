@@ -59,6 +59,14 @@ export interface GlanceInput {
   state: Pick<GlanceState, "seen" | "all" | "sinceAt">;
   /** The AI digest's line, when there is one (digest.ts). */
   digest?: string | null;
+  /**
+   * Plan Ease (botsBots/planEase.ts line): its line, lock-safe ("Sat · PTM 9:30, leave 9:00"), its lock words, whether a leave-by within
+   * 2 hours leads the lock screen, and its one question with up to 2 buttons (answered at the same act door). Absent: nothing of it.
+   */
+  plan?: {
+    line: { line: string; lock: { inline: string; title: string; line: string }; leads: boolean } | null;
+    needs: { item: string; question: string; buttons: Array<{ id: string; label: string; primary?: boolean }>; until: number; openOnly?: boolean } | null;
+  } | null;
 }
 
 // ------------------------------------------------------------------ what the widget gets
@@ -82,7 +90,8 @@ export interface GlanceBot {
 
 export interface GlanceNeedsItem {
   id: string;
-  kind: "question" | "approval";
+  /** A bot's question, a connected app's yes, or Plan Ease's one question (its card, planNeeds.ts). */
+  kind: "question" | "approval" | "plan";
   bot: string; botName: string; face: string | null;
   question: string;
   choices: GlanceChoice[];
@@ -128,6 +137,33 @@ export interface GlanceV2 {
   lock: { inline: string; title: string; line: string };
   links: { ask: string; home: string; mic: string };
   words: Record<string, string>;
+  /** Only for a build that asked (steps=1): lines that take over at their own minute (glanceSteps). */
+  steps?: GlanceStep[];
+}
+
+/**
+ * A line that takes over at its own minute, with no new glance (the app release; the app's glanceCore.ts GlanceStep, X0Glance.swift,
+ * TailzuX0Widget.kt). From `at`, `line` is that bot's row line (while the row is idle) and `lock` the lock screen's words (unless the
+ * widget leads with a question), each until the next step that sets them.
+ */
+export interface GlanceStep { at: number; bot: string; line: string; lock: { inline: string; title: string; line: string } | null }
+
+/**
+ * Plan Ease's line as it will read later (botsBots/planDay.ts widgetSteps), as steps: each moment's row line, and its lock words by the
+ * rule glanceV2Of uses now (the plan's own words while a leave-by is within 2 hours, or on a quiet lock screen; else the glance's
+ * own, `base`, which is what it shows with no plan line). The glance's case is today's: a question still leads over any of these.
+ */
+export function glanceSteps(
+  g: Pick<GlanceV2, "case">,
+  base: Pick<GlanceV2, "lock" | "bots">,
+  later: ReadonlyArray<{ at: number; widget: { line: string; lock: { inline: string; title: string; line: string }; leads: boolean } | null }>,
+): GlanceStep[] {
+  const idle = base.bots.find((b) => b.slug === "plan")?.line ?? "";
+  return later.slice(0, 16).map(({ at, widget }) => {
+    const planLock = widget && g.case !== "needs" && (widget.leads || g.case === "quiet") ? widget.lock : null;
+    const lock = planLock ? { inline: planLock.inline, title: planLock.title, line: planLock.line } : { ...base.lock };
+    return { at, bot: "plan", line: widget?.line || idle, lock };
+  }).filter((s) => s.line || s.lock);
 }
 
 /** Something that changed since the person last looked: what the summary counts and the AI digest is told. `words` null when private. */
@@ -181,7 +217,7 @@ function inPlace(k: WidgetKnobs, kind: string): boolean {
  * A Xode job's question or yes as a needs item, or null when it waits for neither. The id is the /v1/widgets row's (a question's
  * fingerprint, so a stale button never answers the next one); a yes to a plan has no row there, and is open-only here.
  */
-export function jobNeedsItem(j: JobLite, w: X0Words, botName: string, link: string): GlanceNeedsItem | null {
+export function jobNeedsItem(j: JobLite, w: X0Words, botName: string, link: string): (GlanceNeedsItem & { kind: "question" }) | null {
   if (j.state !== "waiting_for_you") return null;
   const k = w.k;
   const decideLink = linkOf(k, "question", { jobId: j.id });
@@ -269,6 +305,18 @@ export function glanceV2Of(i: GlanceInput, payload: WidgetsPayload): GlanceV2 {
       return taskNeedsItem(t, w, nameOf(bot), bot, linkFor(bot));
     }),
   ].filter((x): x is GlanceNeedsItem => !!x).sort((a, b) => a.at - b.at);
+  // Plan Ease's one question, in the same spot with its buttons ("Move the grocery run to Sat 11 am?" [Move it] [Keep]): its words are
+  // the card's, already lock-safe; it is answered at the act door like the rest.
+  const pn = on ? i.plan?.needs : null;
+  // An open-only one (its answer needs the app: planEase.ts widgetCard) has no choices: a tap opens X0 Bot.
+  if (pn && pn.item && (pn.buttons.length || pn.openOnly)) {
+    const answerable = !pn.openOnly && pn.buttons.length > 0 && inPlace(k, "plan") && pn.buttons.length <= WIDGET_LIMITS.choices;
+    allNeeds.push({
+      id: pn.item, kind: "plan", bot: "plan", botName: nameOf("plan"), face: faceOf("plan"), question: cutAtWord(pn.question, WIDGET_LIMITS.result * 2),
+      choices: answerable ? pn.buttons.slice(0, 2).map((b, n) => ({ id: b.id, label: cutAtWord(b.label, WIDGET_LIMITS.choice) || b.label, ...(n === 0 ? { primary: true } : {}) })) : [],
+      decideLink: linkOf(k, "botBuiltin", { slug: "plan" }), private: false, answerable, link: linkFor("plan"), at: i.now,
+    });
+  }
   const items = allNeeds.slice(0, Math.max(0, k.flag("x0.needs.max", 3)));
 
   // The newest finished job the person has not seen, within the window.
@@ -295,14 +343,18 @@ export function glanceV2Of(i: GlanceInput, payload: WidgetsPayload): GlanceV2 {
 
   // The bots, in Home's order: what needs them, then working, then a finish not seen yet, then the rest.
   const finishedBy = new Map<string, JobLite>(last ? [["code", last]] : []);
+  const planLine = on ? i.plan?.line ?? null : null;
   const rows = live.bots.map((b, order): GlanceBot & { rank: number; order: number } => {
     const fin = finishedBy.get(b.slug);
-    const state: GlanceBotState = b.state === "needs" ? "needs" : b.state === "working" ? "working" : fin ? (fin.state === "failed" ? "failed" : "done") : "idle";
+    const planNeeds = b.slug === "plan" && allNeeds.some((n) => n.kind === "plan");
+    const state: GlanceBotState = b.state === "needs" || planNeeds ? "needs" : b.state === "working" ? "working" : fin ? (fin.state === "failed" ? "failed" : "done") : "idle";
     const first = allNeeds.find((n) => n.bot === b.slug);
     const line = b.working ? (b.doing || eventLine("working", undefined, { bot: b.name }, w.fill))
       : state === "needs" ? (first && !first.private ? first.question : eventLine("needs", undefined, { bot: b.name }, w.fill))
         : fin ? doneLine(fin, w, b.name)
-          : eventLine("idle", undefined, { bot: b.name }, w.fill);
+          // Plan Ease's own line: what is next on their day, said so it stays true until its time.
+          : b.slug === "plan" && planLine?.line ? planLine.line
+            : eventLine("idle", undefined, { bot: b.name }, w.fill);
     const face = faceOf(b.slug);
     return {
       slug: b.slug, name: b.name, color: b.color, face, faceUrl: face ? headUrl(face) ?? null : null, state, needs: b.needs, working: b.working,
@@ -314,7 +366,7 @@ export function glanceV2Of(i: GlanceInput, payload: WidgetsPayload): GlanceV2 {
     slug: r.slug, name: r.name, color: r.color, face: r.face, faceUrl: r.faceUrl, state: r.state, needs: r.needs, working: r.working, line: r.line, link: r.link,
   }));
 
-  const counts = { working: live.working.length, needs: live.needs.length };
+  const counts = { working: live.working.length, needs: live.needs.length + (allNeeds.some((n) => n.kind === "plan") ? 1 : 0) };
   const kase: GlanceCase = counts.needs > 0 ? "needs" : lastDone ? "done" : counts.working > 0 || job ? "working" : "quiet";
 
   // The greeting, as Home writes it, and the line under it.
@@ -349,7 +401,11 @@ export function glanceV2Of(i: GlanceInput, payload: WidgetsPayload): GlanceV2 {
       : eventLine("working", undefined, { bot: shown.find((b) => b.working)?.name ?? codeName }, w.fill),
     line: job ? `${word("x0.word.step", "Step {stage} of {of}", { stage: job.stage, of: job.of })} · ${job.stageName}` : (shown.find((b) => b.working)?.line ?? ""),
   } : { title: word("x0.word.brand", "X0"), line: summary || greeting.line };
-  const lockOut = { inline: kase === "quiet" ? word("x0.word.ready", "Ready") : lock.title, title: lock.title, line: lock.line };
+  // A leave-by within 2 hours leads the lock screen even while bots work (a timed thing beats a progress bar); a quiet lock screen says
+  // what is next on the day. Needs-you still comes first.
+  const planLock = planLine && kase !== "needs" && (planLine.leads || kase === "quiet") ? planLine.lock : null;
+  const lockOut = planLock ? { inline: planLock.inline, title: planLock.title, line: planLock.line }
+    : { inline: kase === "quiet" ? word("x0.word.ready", "Ready") : lock.title, title: lock.title, line: lock.line };
 
   const links = k.obj<Record<string, unknown>>("x0.links", {});
   const link = (key: "ask" | "home" | "mic", fallback: string) => (typeof links[key] === "string" ? (links[key] as string) : fallback);

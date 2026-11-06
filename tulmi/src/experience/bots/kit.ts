@@ -68,6 +68,11 @@ export interface BotsCtx {
    * which every page of that bot (Xode's several, Plan's two clients) gets the same way. page() applies it.
    */
   wrap?: { body: (body: Node[]) => Node[]; state?: Record<string, unknown> };
+  /**
+   * False while Spaces is switched off (SPACES_ENABLED, botsBots/spacesSwitch.ts): no screen shows a way into it (hasSpaces). Absent
+   * is on, so a test's ctx draws Spaces as it always did.
+   */
+  spaces?: boolean;
 }
 
 // ===================================================================== theme
@@ -454,7 +459,12 @@ export function headBar(children: Node[], at: number): Node {
 export const canSpaces2 = (ctx: BotsCtx): boolean =>
   canMoments(ctx) && [BOT_STAGE_COMPONENT, BOT_CROWD_COMPONENT, VANISH_COMPONENT, MENTION_FIELD_COMPONENT, KIT_EXTRAS_CAPABILITY].every((n) => ctx.can.has(n))
   && (ctx.client === "desktop" || ctx.can.has("ActionParams"));
-/** A build that draws Home's Ask as his thought (a tiny bot walking the bottom with "Ask any bot..." over him). */
+/**
+ * Is Spaces on for this screen? Off (SPACES_ENABLED=false), nothing shows a way into it: no Space card or group tiles on Home, no
+ * Spaces in You or Settings, no Work in space on a bot's page, no "Share with a space or person". Any build, old or new.
+ */
+export const hasSpaces = (ctx: BotsCtx): boolean => ctx.spaces !== false;
+/** A build that draws Home's Ask as his thought (a tiny bot walking the bottom with "Talk freely" over him). */
 export const canHomeThought = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.can.has(BOT_STAGE_COMPONENT) && ctx.can.has(KIT_EXTRAS_CAPABILITY);
 /**
  * A build that listens with live words (voiceLive), draws them (LiveWords) and takes a double tap. Every voice piece (liveWords, the
@@ -533,9 +543,12 @@ export function personBot(ctx: BotsCtx, look: PersonLookSpec, o: { size?: number
 }
 
 /** A message's words in a space: Bricolage Grotesque 400 at 16/23, ink, tracking -0.1 (Geist in its place without FontBricolage). */
-export function messageText(ctx: BotsCtx, content: string, o: { color?: string; lines?: number } = {}): Node {
+export function messageText(ctx: BotsCtx, content: string, o: { color?: string; lines?: number; size?: 14 | 16; bind?: string } = {}): Node {
+  // 16/23 for a message; 14/19 where it is a row's one grey line (a person's note on it).
+  const small = o.size === 14;
   return text(content, {
-    size: 16, lineHeight: 23, tracking: -0.1, color: o.color ?? C.ink, ...(o.lines ? { lines: o.lines } : {}),
+    size: small ? 14 : 16, lineHeight: small ? 19 : 23, tracking: -0.1, color: o.color ?? C.ink, ...(o.lines ? { lines: o.lines } : {}),
+    ...(o.bind ? { bind: o.bind } : {}),
     style: { fontFamily: canBricolage(ctx) ? BRICOLAGE.regular : FACE.regular },
   });
 }

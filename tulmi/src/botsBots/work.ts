@@ -200,6 +200,21 @@ export class Work {
     return { bot, botName: BOT_NAMES[bot], spaces, seenBy, notesOnMine };
   }
 
+  /**
+   * Only the notes others left on the viewer's own things in `bot`, newest first, each writer as their tiny bot in the space it came
+   * through (Plan Ease puts the newest on its row: botsBots/planEase.ts notesOf). No titles: the viewer's page has its own.
+   */
+  async notesOnMine(viewer: string, botIn: unknown): Promise<WorkRead["notesOnMine"]> {
+    const { bot } = this.source(botIn);
+    const hidden = await this.grants.blocks.hiddenFor(viewer);
+    const on = (await this.notes.select({ owner_id: viewer, bot }, { order: "at_ms", desc: true, limit: 40 }))
+      .filter((n) => n.by_id !== viewer && !(n.by_id && hidden.has(n.by_id))).slice(0, NOTES_ON_MINE);
+    if (!on.length) return [];
+    const looksBy = new Map<string, Map<string, PersonLook>>();
+    for (const id of new Set(on.map((n) => n.space_id))) looksBy.set(id, looksIn((await this.spaces.memberRows(id)).map((r) => r.user_id)));
+    return on.map((n) => ({ itemId: n.item_id, title: "", by: n.by_name, byBot: noteLook(looksBy.get(n.space_id), n, viewer), text: n.text, at: Number(n.at_ms), spaceId: n.space_id }));
+  }
+
   /** The space, its member rows and the viewer's view of `ownerId` there; 404 unless read() would list them. */
   private async personIn(viewer: string, bot: ShareBot, spaceId: string, ownerId: string): Promise<{ s: SpaceRow; rows: MemberRow[]; person: WorkPerson }> {
     const s = await this.spaces.spaceRow(spaceId);

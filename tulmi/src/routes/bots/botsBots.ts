@@ -23,6 +23,14 @@
  *                                                      calendar and to-dos (src/calendar; their own routes: /v1/botsapp/calendar..., routes/bots/botsCalendar.ts)
  *   POST   /v1/botsapp/bots/plan/move { eventId, start, said }  -> { done, message } (409 when it could not)
  *   POST   /v1/botsapp/bots/plan/skip { key }          -> { ok }
+ *   GET    /v1/botsapp/bots/plan/today?tz=             -> PlanPage   Plan Ease, the simpler one (botsBots/planEase.ts, planDay.ts): the one next thing,
+ *                                                      the one Needs-you card, Today and Tomorrow, the days after. 404 plan_v2_off while PLAN_V2_PAGE is off
+ *   GET    /v1/botsapp/bots/plan/week?tz=              -> { today, days: [{ key, date, rows }] }   "See the week": seven days from today
+ *   POST   /v1/botsapp/bots/plan/box { words, tz, seen? } -> BoxReply   what the one box understood, done (planBox.ts); kind "chat": the screen sends
+ *                                                      the words to the Plan Ease chat (its own route, its consent gate, its budget)
+ *   GET    /v1/botsapp/bots/plan/line?tz=              -> { next, widget, needs }   the one thing for Home, the widget's line, the card it asks
+ *   GET    /v1/botsapp/bots/plan/details?kind=&id=&tz= -> { before, moves, leave?, note? }   what an item's details add (design A3)
+ *   (Plan Ease's buttons answer at POST /v1/widgets/act: pt:, pm:, pe: items, routes/bots/widgets.ts)
  *   GET    /v1/botsapp/bots/trip                       -> { trip, facts, bookings };  POST { place, when, who };  PUT/DELETE .../trip/:id
  *   POST   /v1/botsapp/bots/trip/:id/packing { text };  POST .../packing/starter;  PUT .../packing/:i (toggle);  DELETE .../packing/:i
  *   POST   /v1/botsapp/bots/share/suggest { name?, text?, url? }   -> { pick, by, ask, line }   the front door's pick of a bot (Bots.target)
@@ -45,11 +53,19 @@ import { openAskStream } from "../../live/askStream.js";
 import { scrub } from "../../bots/run.js";
 import type { BotEvent } from "../../bots/types.js";
 import { registerSpacesRoutes } from "./botsSpaces.js";
+import { spacesOn } from "../../botsBots/spacesSwitch.js";
 import { registerWorkRoutes } from "./work.js";
 import { registerBotsTripRoutes } from "./botsTrips.js";
 import { registerCalendarRoutes } from "./botsCalendar.js";
 import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
 import { registerWidgetRoutes } from "./widgets.js";
+import { registerPlanInRoutes } from "./planIn.js";
+import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
+import { planOn } from "../../botsBots/planSwitch.js";
+import { pushEngine } from "../../push/index.js";
+import { setPushOpenHook } from "../../push/engine.js";
+import { setSummaryRide } from "../../you/push.js";
+import { isHinglish } from "../../connectors/words.js";
 
 export const AREA = "/v1/botsapp/bots";
 
@@ -89,7 +105,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   // Work in space on each bot's page: what people in your spaces let you see and work on (routes/bots/work.ts).
   registerWorkRoutes(app, deps, spacesArea);
   // The widgets, a notification's buttons and its reply (routes/bots/widgets.ts): they read and answer through Spaces' parts.
-  registerWidgetRoutes(app, deps, spacesArea);
+  registerWidgetRoutes(app, deps, spacesArea, { plan: parts.ease });
+  registerPlanInRoutes(app, deps, { ease: parts.ease, spaces: spacesArea }); // Plan Ease: the work calendar's link, captures, bills (routes/bots/planIn.ts)
   registerBotsTripRoutes(app, deps, parts); // a trip's weather, places and stays; Plan Ease's home (routes/bots/botsTrips.ts)
   registerCalendarRoutes(app, deps); // the person's own calendar and to-dos, and their reminders (routes/bots/botsCalendar.ts)
   // Your space: what your bots know about you, in sections, beside your own things (routes/bots/botsYouSpace.ts).
@@ -145,7 +162,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     try {
       const out = await guarded(guard(), req, reply, s.user, "ask", async (stop) => {
         const slug = param(req, "slug").toLowerCase(), message = bodyOf(req.body).message;
-        const shared = await spacesArea.items.forBot(s.user.id, slug).catch(() => []);
+        // With Spaces off a bot reads nothing a space shared (botsBots/spacesSwitch.ts).
+        const shared = spacesOn() ? await spacesArea.items.forBot(s.user.id, slug).catch(() => []) : [];
         const r = await parts.chat!.send(s.user.id, slug, message, stop, shared, live);
         // Activity: written down as an answer through Ask is (shell/events.ts), once per answer: a repeat is replayed, not run again.
         await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: String(message), paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
@@ -275,6 +293,36 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
 
   app.post(`${AREA}/plan/skip`, RL, run(false, async (user, req) => { await parts.plan.skip(user.id, bodyOf(req.body).key); return { ok: true }; }));
 
+  // ------------------------------------------------------------------ Plan Ease, the simpler one (botsBots/planEase.ts)
+
+  // Its day notes and leave-by reminders go through the push engine, in the app's language; an opened note counts (the quiet rule).
+  parts.ease.wire({
+    send: async (userId, msg) => pushEngine()?.notify(userId, msg as Parameters<NonNullable<ReturnType<typeof pushEngine>>["notify"]>[1]),
+    hinglish: async (userId) => isHinglish((await pushEngine()?.candidate(userId, Date.now()))?.locale ?? ""),
+  });
+  setPushOpenHook((userId, kind) => { void parts.ease.opened(userId, kind).catch(() => undefined); });
+  setSummaryRide((userId, day) => parts.ease.rides(userId, day));
+  const stopPlan = parts.ease.start(app.log);
+  app.addHook("onClose", async () => { stopPlan(); setPushOpenHook(null); setSummaryRide(null); });
+
+  /** Plan Ease's page and box: 404 plan_v2_off while PLAN_V2_PAGE is off (the app keeps the week page). */
+  const v2 = (fn: (user: AuthedUser, req: FastifyRequest, reply: FastifyReply) => Promise<unknown>) =>
+    run(false, async (user, req, reply) => {
+      if (!planOn("page")) { reply.code(404); return { code: "plan_v2_off", message: "That isn't switched on here." }; }
+      return fn(user, req, reply);
+    });
+  const tzQ = (req: FastifyRequest) => { const t = Number(query(req, "tz") ?? 330); return Number.isFinite(t) ? t : 330; };
+
+  app.get(`${AREA}/plan/today`, RL, v2(async (user, req) => parts.ease.read(user.id, tzQ(req))));
+  app.get(`${AREA}/plan/week`, RL, v2(async (user, req) => parts.ease.week(user.id, tzQ(req))));
+  app.get(`${AREA}/plan/line`, RL, v2(async (user, req) => parts.ease.line(user.id, tzQ(req))));
+  // An item's details beyond the item (design A3): its before steps, the leave-by, a note on it, Move's 3 times (planEase.ts details).
+  app.get(`${AREA}/plan/details`, RL, v2(async (user, req) => parts.ease.details(user.id, query(req, "kind"), query(req, "id"), tzQ(req))));
+  // A desktop's "add this" adds `seen` (what was on its screen, up to 12k characters), only from a build the bootstrap told it may.
+  app.post(`${AREA}/plan/box`, tight(30), v2(async (user, req) => { const b = bodyOf(req.body); return parts.ease.box(user.id, b.words, b.tz ?? 330, b.seen); }));
+  // Waiting on someone and family asks (steps 4 and 5): their jobs, pushes and the wait's hand-off (routes/bots/botsPlanPeople.ts).
+  registerPlanPeopleRoutes(app, deps, { spaces: spacesArea, ease: parts.ease });
+
   // ------------------------------------------------------------------ the travel bot's trip
 
   app.get(`${AREA}/trip`, RL, run(false, async (user) => {
@@ -324,9 +372,10 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     return { message: shareMessage(str(b.what, 600), { name: str(b.name, 200), text: str(b.text, 6000), url: str(b.url, 2000) }) };
   }));
 
-  // What the groups shared with the bot, and what each group told its bots (botsBots/spaceMemory.ts).
+  // What the groups shared with the bot, and what each group told its bots (botsBots/spaceMemory.ts). Nothing while Spaces is off.
   return {
     sharedFor: async (userId, slug) => {
+      if (!spacesOn()) return [];
       const [shared, told] = await Promise.all([spacesArea.items.forBot(userId, slug.toLowerCase()), spacesArea.memory.forBot(userId, slug.toLowerCase()).catch(() => [])]);
       return [...shared, ...told];
     },

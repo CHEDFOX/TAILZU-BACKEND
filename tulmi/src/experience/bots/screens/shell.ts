@@ -22,7 +22,7 @@ import { nicknameOf } from "../../assistantName.js";
 import {
   duration, type BotsCtx, page, hasOutbox, needsCard, askBar, botLook, open, SCREENS, box, text, C, row, col, card, meta, seq, roundButton,
   sectionLabel, grid, icon, grow, botAvatar, botRoute, labelled, back, emptyState, mono, secondaryButton, title, segmented, when,
-  statusMark, button, toTab, call, blip, primaryButton, listCard, listRow, canHomeThought, canSpaces2,
+  statusMark, button, toTab, call, blip, primaryButton, listCard, listRow, canHomeThought, canSpaces2, hasSpaces, canPersonBot,
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, DELETION_PATH } from "./accountGrace.js";
@@ -49,6 +49,7 @@ import { field, toast, kbd, couldNot, avatarOf, nameOf } from "./shell/parts.js"
 import { KIND_WORDS, searchField, hitWords, hitIcon, openHit, searchDesk } from "./shell/searchDesk.js";
 import { type TasksData, tasksLine, taskChoices, taskRowNode, upcomingNodes, tasksDesk } from "./shell/tasksDesk.js";
 import { type TodayData, today } from "./shell/today.js";
+import { planOn } from "../../../botsBots/planSwitch.js";
 
 /** "4 things done this week · 2 h saved", or the nearest true thing. */
 export function weekLine(week: { done: number; minutesSaved: number }): string {
@@ -73,7 +74,7 @@ function homeDesk(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       // The first time here: one card for this computer's microphone and Accessibility, over Home, and the bot saying hello.
       ...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []),
       ...(first ? [needsCard(first, { layout: "row" })] : []),
-      tiles(ctx, 4, 150, 18, more.notes, more.groups),
+      tiles(ctx, 4, 150, 18, more.notes, more.groups, more.planLine),
       ...routinesRow(ctx, more.routines),
     ],
     // Ask any bot: his thought at the foot of the window where the build draws it, else the ask bar.
@@ -159,7 +160,7 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       ...(n.arrival ? arrivalCard(ctx) : []),
       hello(ctx, more),
       // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started.
-      tiles(ctx, 2, 132, 16, more.notes, more.groups),
+      tiles(ctx, 2, 132, 16, more.notes, more.groups, more.planLine),
       ...routinesRow(ctx, more.routines),
       col([
         row([
@@ -321,7 +322,7 @@ export const shellScreens: BotsScreen[] = [
     // Whether the first-arrival card (and the bot's hello) is due (once, after onboarding), the name they gave their bot, whether the
     // account has a deletion date, (a phone) whether the notifications ask was ever answered, and Notes' week for its tile.
     load: async (ctx, deps) => {
-      const [arrival, leaving, push, notes, persona, routines, about, groups, ai] = await Promise.all([
+      const [arrival, leaving, push, notes, persona, routines, about, groups, ai, plan] = await Promise.all([
         deps.api<{ due: boolean; kind?: "first" | "back" }>("GET", ARRIVAL_PATH).catch(() => undefined),
         deps.api<DeletionState>("GET", DELETION_PATH).catch(() => undefined),
         ctx.client === "phone" ? deps.api<{ due: boolean }>("GET", PUSH_ASK_PATH).catch(() => undefined) : Promise.resolve(undefined),
@@ -333,19 +334,23 @@ export const shellScreens: BotsScreen[] = [
         // The About you card (firstRun/aboutCard.ts): due after a few visits, while the name and gender are owed.
         deps.api<About>("GET", ABOUT_PATH).catch(() => undefined),
         // The groups (family, friends): each a bot of its own on Home, or (the new Spaces) one Space card with their newest line.
-        deps.api<{ spaces?: Space[] }>("GET", `${SPACES_API}/spaces${canSpaces2(ctx) ? "?last=1" : ""}`).catch(() => undefined),
+        // None while Spaces is switched off (kit hasSpaces).
+        hasSpaces(ctx) ? deps.api<{ spaces?: Space[] }>("GET", `${SPACES_API}/spaces${canSpaces2(ctx) ? "?last=1" : ""}`).catch(() => undefined) : Promise.resolve(undefined),
         // The AI permission (firstRun/aiConsentCard.ts): asked before anything else, until they agree.
         deps.api<AiConsent>("GET", AI_CONSENT_PATH).catch(() => undefined),
+        // Plan Ease's one thing for its tile, when its simpler page is on (botsBots/planEase.ts line).
+        // Only for a build that draws the new Plan page (PersonBot): an older one keeps today's page, and Home says nothing of the new.
+        planOn("page") && canPersonBot(ctx) ? deps.api<{ next?: string }>("GET", `/v1/botsapp/bots/plan/line?tz=${ctx.tzOffsetMinutes}`).catch(() => undefined) : Promise.resolve(undefined),
       ]);
       return {
         arrival: arrival?.due === true, back: arrival?.kind === "back", leaving, push: push?.due === true, notes, botName: nicknameOf(persona?.personality), routines, about,
-        groups: groups?.spaces, ai,
+        groups: groups?.spaces, ai, ...(plan?.next ? { planLine: plan.next } : {}),
       };
     },
     build: (ctx, data) => {
       const arrival = !!data?.arrival, more: HomeMore = {
         leaving: data?.leaving, push: data?.push === true, notes: data?.notes, botName: data?.botName, back: data?.back === true, routines: data?.routines, about: data?.about, groups: data?.groups,
-        ai: data?.ai,
+        ai: data?.ai, planLine: data?.planLine,
       };
       // One Home for everyone, new or not; the bot's hello on top only the first time.
       return ctx.client === "desktop" ? homeDesk(ctx, arrival, more) : homePhone(ctx, arrival, more);
@@ -371,5 +376,17 @@ export const shellScreens: BotsScreen[] = [
     build: (ctx, d) => (upiOf(ctx.params.upi) ? approvePay(ctx, String(ctx.params.upi)) : ctx.params.receipt ? approveReceipt(ctx, d) : approveTask(ctx, d)),
   }),
   screen({ id: SCREENS.offline, build: (ctx) => offlineKept(ctx, offline(ctx)) }),
-  screen<TodayData>({ id: SCREENS.today, load: (ctx, deps) => deps.api<TodayData>("GET", `/v1/shell/today?tz=${ctx.tzOffsetMinutes}`), build: today }),
+  screen<TodayData>({
+    id: SCREENS.today,
+    load: async (ctx, deps) => {
+      // Plan Ease's one card, the page's own (botsBots/planEase.ts line's `card`: its draft, its buttons that open a page), when its
+      // simpler page is on and this build draws it; never failing Today.
+      const [d, plan] = await Promise.all([
+        deps.api<TodayData>("GET", `/v1/shell/today?tz=${ctx.tzOffsetMinutes}`),
+        planOn("page") && canPersonBot(ctx) ? deps.api<{ card?: TodayData["planNeeds"] }>("GET", `/v1/botsapp/bots/plan/line?tz=${ctx.tzOffsetMinutes}`).catch(() => undefined) : Promise.resolve(undefined),
+      ]);
+      return { ...d, ...(plan?.card ? { planNeeds: plan.card } : {}) };
+    },
+    build: today,
+  }),
 ];

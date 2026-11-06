@@ -15,7 +15,7 @@
  *
  * Withdrawn in You › Privacy (screens/you: the switch "Send to AI services").
  */
-import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import { type BotsCtx, botCard, box, canMove, canScroll, call, col, C, icon, row, scrollBox, seq, text, when } from "../../kit.js";
 import { legalNodes } from "../../legalText.js";
 import { CARD_BOT, line, permitStep, setState, toast } from "./parts.js";
@@ -35,12 +35,15 @@ export const AI_CONSENT_STATE = { [AGREED]: false, [LATER]: false, [CLOSED]: fal
 /** Whether Home asks: a signed-in person who has not agreed. Unknown (the read failed): not asked this time. */
 export const aiConsentDue = (c: AiConsent | undefined): boolean => !!c && c.agreed === false;
 
-/** The card, while it is due; nothing otherwise. */
-export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined): Node[] {
+/**
+ * The card, while it is due; nothing otherwise. `then` runs after Agree, `later` after Not now (Plan Ease's capture card: read it now,
+ * or add it as a plain to-do instead).
+ */
+export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined, o: { then?: ActionRef; later?: ActionRef } = {}): Node[] {
   if (!aiConsentDue(c)) return [];
   const desk = ctx.client === "desktop";
   const agree = call("PUT", AI_CONSENT_PATH, { agree: true }, {
-    ok: seq({ kind: "haptic", style: "success" } as ActionSpec, setState(AGREED, true)),
+    ok: seq({ kind: "haptic", style: "success" } as ActionSpec, setState(AGREED, true), ...(o.then ? [o.then] : [])),
     fail: toast("Couldn't save that. Try again."),
   });
   const policy = row([text("Read our Privacy policy", {
@@ -72,7 +75,7 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined): Node[] {
     lines: [line("X0 Bot works with leading AI partners to answer you. They see only what you choose to share.")],
     extra: full ? [promises, ...terms] : [promises, policy],
     cta: { label: "Agree", onPress: agree },
-    quiet: { label: "Not now", onPress: setState(LATER, true) },
+    quiet: { label: "Not now", onPress: o.later ? seq(setState(LATER, true), o.later) : setState(LATER, true) },
   });
   const thanks = when({ truthy: AGREED }, row([text("You're all set.", { size: 22, weight: 600, tracking: -0.3, lineHeight: 28 })], {
     justifyContent: "center", paddingTop: 18, paddingBottom: 26,

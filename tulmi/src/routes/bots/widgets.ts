@@ -35,8 +35,10 @@ import { isHinglish } from "../../connectors/words.js";
 import { x0Words } from "../../widgets/glance.js";
 import { ACTIVITY_TOKEN_RE, activityTokenStore, JOB_ID_RE, markSeen, type ActivityTokenStore, type GlanceStore } from "../../widgets/glanceStore.js";
 import { TOPIC, jobTopic } from "../../live/topics.js";
+import { spacesOn } from "../../botsBots/spacesSwitch.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import type { SpaceParts } from "./botsSpaces.js";
+import type { PlanEase } from "../../botsBots/planEase.js";
 
 type Body = Record<string, unknown>;
 const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArray(b) ? (b as Body) : {});
@@ -57,19 +59,24 @@ export interface WidgetRouteOptions {
   apnsSender?: ConstructorParameters<typeof ActivityPusher>[0]["sender"];
   /** What the person has seen (an answer marks its thing seen). */
   glance?: GlanceStore;
+  /** Plan Ease, whose buttons answer here too (botsBots/planEase.ts). */
+  plan?: PlanEase;
 }
 
 /** Said once a process: the Live Activity pushes are off. */
 let saidApnsOff = false;
 
 /** The services an answer goes through, from what the server runs (any may be off). */
-export function actPartsOf(deps: BotsAreaDeps, parts: Pick<SpaceParts, "tasks" | "threads">): ActParts {
+export function actPartsOf(deps: BotsAreaDeps, parts: Pick<SpaceParts, "tasks" | "threads">, plan: PlanEase | null = null): ActParts {
   const c = deps.connectors;
   const jobs = deps.jobs;
   const agent = deps.agent ?? null;
   return {
-    spaceTasks: parts.tasks,
-    threads: parts.threads,
+    // A space's task and a chat are Spaces': while it is off a button or a reply on one answers that it isn't there (spacesSwitch.ts).
+    get spaceTasks() { return spacesOn() ? parts.tasks : null; },
+    get threads() { return spacesOn() ? parts.threads : null; },
+    // Plan Ease's own items (pt:, pe:, pm:): a to-do's Done and Later, a Move card's Move it and Keep, the box's Undo.
+    plan: plan ? { scope: (item, action) => plan.scope(item, action), act: (userId, item, action) => plan.act(userId, item, action) } : null,
     approvals: c ? {
       async risk(userId, taskId) {
         const t = await c.store.getTask(userId, taskId);
@@ -94,7 +101,7 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
   const now = o.now ?? Date.now;
   const config = o.config ?? widgetsConfig;
   const tokens = o.tokens ?? new WidgetTokens(widgetTokenStore(), now);
-  const acts = o.acts ?? new QuickActs(actPartsOf(deps, parts), undefined, now);
+  const acts = o.acts ?? new QuickActs(actPartsOf(deps, parts, o.plan ?? null), undefined, now);
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
 
@@ -129,17 +136,19 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
   async function gather(user: AuthedUser, tz: number, payload: ReturnType<WidgetsConfigFor>): Promise<NowInput> {
     const k = widgetKnobs(payload);
     const on = k.flag("widgets.enabled", true);
-    const peopleOn = on && k.flag("widgets.people.enabled", true);
+    // From your people is all Spaces': while it is off nothing of it is read, and the widgets have no such section (buildNow).
+    const spaces = spacesOn();
+    const peopleOn = spaces && on && k.flag("widgets.people.enabled", true);
     const needsOn = on && k.flag("widgets.needs.enabled", true);
     const safe = <T>(p: Promise<T>, empty: T): Promise<T> => p.catch(() => empty);
-    const mine = await safe(parts.spaces.mine(user.id), []);
+    const mine = spaces ? await safe(parts.spaces.mine(user.id), []) : [];
     const names = new Map(mine.map((s) => [s.id, s.name]));
     const [messages, shared, given, jobs, waiting] = await Promise.all([
       peopleOn ? safe(parts.threads.recentFrom(user.id, { chats: k.flag("widgets.people.chats", 8), includeMuted: k.flag("widgets.people.includeMuted", false) }), []) : Promise.resolve([]),
       peopleOn ? Promise.all(mine.map((s) => safe(parts.items.list(user.id, s.id), []).then((items) => items.filter((i) => !i.byYou).slice(0, 10)
         .map((i): PeopleShared => ({ itemId: i.id, spaceId: i.spaceId, spaceName: names.get(i.spaceId ?? "") ?? "", by: i.by, title: i.title, at: i.at }))))).then((x) => x.flat())
         : Promise.resolve([] as PeopleShared[]),
-      safe(parts.tasks.givenTo(user.id), []),
+      spaces ? safe(parts.tasks.givenTo(user.id), []) : Promise.resolve([]),
       needsOn && deps.jobs ? safe(deps.jobs.listJobs(user.id, 50).then((js) => js.map(jobLite)), [] as JobLite[]) : Promise.resolve([] as JobLite[]),
       needsOn && deps.connectors ? safe(deps.connectors.tasks.list(user.id, 20), []) : Promise.resolve([]),
     ]);
@@ -154,7 +163,7 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
       };
     });
     return {
-      now: now(), tzOffsetMinutes: tz, inSpaces: mine.length > 0,
+      now: now(), tzOffsetMinutes: tz, inSpaces: mine.length > 0, ...(spaces ? {} : { spacesOff: true }),
       people: { messages, shared, tasks: peopleOn ? theirs : [] },
       needs: { jobs, approvals, tasks: needsOn ? theirs : [], codeBotName: k.label("widgets.who.code", "Xode") },
       tokenReady: k.flag("widgets.token.enabled", true),

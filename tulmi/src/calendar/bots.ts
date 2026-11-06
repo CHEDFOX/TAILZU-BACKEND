@@ -13,7 +13,8 @@
 import type { BotConnectors, ConnectorStatus, ConnectorToolInfo } from "../bots/ports.js";
 import type { UseOutcome } from "../connectors/tasks.js";
 import type { Calendar, CalEvent, CalTask } from "./service.js";
-import { clockAt, dayName, dayOf, dayWords, isDayKey, shiftDay } from "./words.js";
+import { clockAt, dayName, dayOf, dayWords, isDayKey, shiftDay, startOfDay } from "./words.js";
+import { sourceLines } from "../botsBots/planSources.js";
 
 const OWN_APPS = ["calendar", "tasks"] as const;
 type OwnApp = (typeof OWN_APPS)[number];
@@ -114,7 +115,7 @@ function taskBody(a: Record<string, unknown>, tz: number): Record<string, unknow
 
 /** One tool call on the person's own days: the words the bot reads back. */
 async function runOwnTool(cal: Calendar, userId: string, app: OwnApp, tool: string, args: Record<string, unknown>, botName: string): Promise<UseOutcome> {
-  const tz = cal.tzFor(userId);
+  const tz = await cal.tzOf(userId);
   const today = dayOf(Date.now(), tz);
   const by = { kind: "bot" as const, name: botName.replace(/\s+bot\s+bot$/i, " bot").replace(/\s+/g, " ").trim().slice(0, 40) || "A bot" };
   const day = (v: unknown, fallback: string): string => { const t = str(v); return t && isDayKey(t) ? t : fallback; };
@@ -125,7 +126,11 @@ async function runOwnTool(cal: Calendar, userId: string, app: OwnApp, tool: stri
           const from = day(args.from, today);
           const to = day(args.to, shiftDay(from, 6));
           const r = await cal.list(userId, { from, to: to < from ? from : to, tz });
-          return { kind: "result", text: r.events.length ? r.events.map((e) => eventLine(e, tz, today)).join("\n") : `Nothing on the calendar from ${dayWords(from)} to ${dayWords(to)}.` };
+          // The person's work calendar too (botsBots/planSources.ts: its meetings, read only), when they linked one.
+          const end = to < from ? from : to;
+          const work = await sourceLines(userId, { from, to: end, fromMs: startOfDay(from, tz), toMs: startOfDay(shiftDay(end, 1), tz), tz, now: Date.now() }).catch(() => [] as string[]);
+          const lines = [...r.events.map((e) => eventLine(e, tz, today)), ...work];
+          return { kind: "result", text: lines.length ? lines.join("\n") : `Nothing on the calendar from ${dayWords(from)} to ${dayWords(to)}.` };
         }
         case "add_event": {
           const e = await cal.addEvent(userId, eventBody(args, tz), by);
@@ -198,7 +203,7 @@ export function withOwnDays(base: BotConnectors | null, cal: Calendar): BotConne
     async tools(userId, id) {
       const o = ownAppOf(id);
       if (!o) return base ? base.tools(userId, id) : [];
-      const today = dayOf(Date.now(), cal.tzFor(userId));
+      const today = dayOf(Date.now(), await cal.tzOf(userId));
       return o === "calendar" ? calendarTools(today) : taskTools(today);
     },
     async use(userId, runId, said, line, opts) {

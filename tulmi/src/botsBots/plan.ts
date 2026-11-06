@@ -133,6 +133,15 @@ function isoAt(ms: number, tz: number): string {
 
 const ROOM_MIN = 30;
 
+/** Not a place: a video link, a call, "online". */
+const VIRTUAL = /https?:\/\/|www\.|meet\.google|zoom|teams|webex|video|online|virtual|\bcall\b|phone|hangout|skype|whatsapp|gmeet|\bremote\b|\btbd\b/i;
+
+/** Where an event is, when it is somewhere one travels to (not a video link, not a call): its location's words, or null. */
+export function placeText(e: Pick<PlanEvent, "place" | "where">): string | null {
+  const t = (e.place ?? e.where ?? "").trim();
+  return t && !VIRTUAL.test(t) ? t : null;
+}
+
 /** The first free slot of `len` on each of the three days after `day` (not Sunday), 10 am to 6 pm on the half hour, clear of everything by 15 minutes. */
 function freeSlots(events: PlanEvent[], day: string, len: number, tz: number): number[] {
   const out: number[] = [];
@@ -173,8 +182,10 @@ function bestSlot(events: PlanEvent[], move: PlanEvent, tomorrow: string, slots:
 }
 
 /**
- * Tomorrow's first clash, or two things with less than half an hour between them: move the one with fewer people in it to the first free
- * slot in the next three days. Null when tomorrow is fine, or every such suggestion was kept as it was.
+ * Tomorrow's first clash, or two things in two real places with too little time to get between them (the trip and ten minutes when
+ * the trip is known, else half an hour): move the person's own one (the earlier, when both are theirs) to the first free slot in the next
+ * three days. Two video calls back to back are fine: nobody travels between them. Null when tomorrow is fine, or every such suggestion
+ * was kept as it was.
  */
 export function suggestionFor(events: PlanEvent[], tomorrow: string, tz: number, skipped: ReadonlySet<string>, travel?: TravelCtx): Suggestion | null {
   const day = events.filter((e) => !e.allDay && dayOf(e.start, tz) === tomorrow).sort((a, b) => a.start - b.start);
@@ -182,10 +193,12 @@ export function suggestionFor(events: PlanEvent[], tomorrow: string, tz: number,
     const a = day[i]!, b = day[i + 1]!;
     const gap = (b.start - a.end) / MIN;
     const trip = gap >= 0 ? travel?.between(a, b) : undefined;
-    if (gap >= (trip ? trip + 10 : ROOM_MIN)) continue;
+    // A gap only matters between two real places; an overlap always does.
+    const places = !!placeText(a) && !!placeText(b);
+    if (gap >= 0 && (!places || gap >= (trip !== undefined ? trip + 10 : ROOM_MIN))) continue;
     // Someone else's plan is theirs to change: the other one moves, and two of theirs are left alone.
     if (a.fixed && b.fixed) continue;
-    const move = a.fixed ? b : b.fixed ? a : a.people > 0 && b.people === 0 ? b : a;
+    const move = a.fixed ? b : b.fixed ? a : a;
     const other = move === a ? b : a;
     const key = `move:${move.id}:${move.start}`;
     if (skipped.has(key)) continue;
@@ -213,7 +226,7 @@ export function suggestionFor(events: PlanEvent[], tomorrow: string, tz: number,
 
 // ------------------------------------------------------------------ reading the person's own calendar
 
-const planEvent = (e: CalEvent): PlanEvent => ({
+export const planEvent = (e: CalEvent): PlanEvent => ({
   id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay, ...(e.where ? { where: e.where } : {}), ...(e.place && e.place !== e.where ? { place: e.place } : {}),
   people: 0, ...(e.from ? { from: e.from } : {}), ...(e.fixed ? { fixed: true } : {}), ...(e.repeat ? { repeat: e.repeat } : {}),
   ...(e.spaceId ? { spaceId: e.spaceId, taskId: e.taskId } : {}),

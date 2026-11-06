@@ -15,6 +15,10 @@
  * ON THEIR OWN DAYS. A task or a plan lands on each person's own calendar and to-dos (src/calendar landSpace), "From <name>", for
  * everyone: their Plan, Today, reminders and bots see it like the rest of their day. Their tick there is their Done here (the calendar
  * answers through answer()); "Can't do it" (here or there) takes it off their days; taken out, or the person gone, it goes too.
+ *
+ * FAMILY ASKS (kind "ask", Plan Ease step 5: planAsks.ts, migration 0074) live in the same table. While one is open nobody has it, so it
+ * is in no one's list here and on no one's day; once taken it is that person's task like any other, and planAsks.ts lands it (with its
+ * own title, and no "gave you a task" push). Its Done and "Can't do it" are heard there too (onAnswer).
  */
 import { randomUUID } from "node:crypto";
 import { BotError } from "../bots/index.js";
@@ -30,7 +34,7 @@ export type SpaceDays = Pick<Calendar, "landSpace" | "unlandSpace">;
 export type TaskKind = "task" | "plan";
 export type TaskState = "todo" | "done" | "cant";
 export interface TaskRow {
-  [k: string]: unknown; id: string; space_id: string; kind: TaskKind; title: string; notes: string; assignees: string[];
+  [k: string]: unknown; id: string; space_id: string; kind: TaskKind | "ask"; title: string; notes: string; assignees: string[];
   states: Record<string, { status: TaskState; note: string; at: number }>;
   set_by: string; set_name: string;
   /** When it's due (a task) or starts (a plan); null: no time. */
@@ -56,6 +60,10 @@ export interface TaskView {
 export type TaskNotify = (userId: string, msg: { kind: "space_task" | "space_plan"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<void>;
 
 const TASKS_OPEN_MAX = 100;
+/** A family ask nobody has taken yet (or not even sent: the asker's preview): in nobody's list, on nobody's day. */
+const openAsk = (r: TaskRow): boolean => r.kind === "ask" && !r.taken_by;
+/** Told when someone answers for their part (planAsks.ts: a turn's Done moves it on, a "Can't do it" passes it on). */
+export type TaskAnswered = (userId: string, row: TaskRow, status: TaskState) => Promise<void>;
 const MIN = 60_000, DAY = 86_400_000;
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -88,6 +96,7 @@ export class SpaceTasks {
   private readonly publish: (ids: Iterable<string>, topic: string) => void;
   private readonly notify: TaskNotify;
   private readonly days: SpaceDays | null;
+  private readonly answered: TaskAnswered[] = [];
 
   constructor(private readonly spaces: Spaces, private readonly now: () => number = Date.now, o: { rows?: PagedTable<TaskRow>; publish?: (ids: Iterable<string>, topic: string) => void; notify?: TaskNotify; days?: SpaceDays | null } = {}) {
     this.rows = o.rows ?? spaceTable<TaskRow>("space_tasks");
@@ -115,7 +124,7 @@ export class SpaceTasks {
     const people = r.assignees.map((id) => ({ userId: id, name: names.get(id) ?? "Someone", you: id === userId, status: r.states?.[id]?.status ?? "todo" as TaskState, note: r.states?.[id]?.note ?? "" }));
     const mine = people.find((p) => p.you);
     return {
-      id: r.id, spaceId: r.space_id, spaceName, kind: r.kind, title: r.title, notes: r.notes, place: r.place,
+      id: r.id, spaceId: r.space_id, spaceName, kind: r.kind === "ask" ? "task" : r.kind, title: r.title, notes: r.notes, place: r.place,
       at: r.at_ms === null || r.at_ms === undefined ? null : Number(r.at_ms), end: r.end_ms === null || r.end_ms === undefined ? null : Number(r.end_ms), allDay: r.all_day === true,
       setBy: r.set_by === userId ? "You" : r.set_name, byYou: r.set_by === userId, people,
       mine: mine ? { status: mine.status, note: mine.note } : null,
@@ -129,9 +138,13 @@ export class SpaceTasks {
     return new Map((await this.spaces.membersOf(spaceId)).map((m) => [m.userId, m.name]));
   }
 
+  /** Someone answered for their part (Done, back to do, "Can't do it"), from here or their own day. */
+  onAnswer(fn: TaskAnswered): void { this.answered.push(fn); }
+
   /** On (or off) the days of the people it's for, as each of them said: off for "can't do it", ticked for done. */
   private async land(r: TaskRow, spaceName: string, only?: string): Promise<void> {
-    if (!this.days) return;
+    // A family ask lands through planAsks.ts, with its own words ("Plants · your turn"), only once someone has it.
+    if (!this.days || r.kind === "ask") return;
     for (const p of r.assignees) {
       if (only && p !== only) continue;
       const st = r.states?.[p]?.status ?? "todo";
@@ -148,7 +161,7 @@ export class SpaceTasks {
   async list(userId: string, spaceId: string): Promise<TaskView[]> {
     const a = await this.spaces.access(userId, spaceId);
     const names = await this.names(spaceId);
-    const rows = await this.rows.before({ space_id: spaceId }, "created_ms", null, TASKS_OPEN_MAX * 2);
+    const rows = (await this.rows.before({ space_id: spaceId }, "created_ms", null, TASKS_OPEN_MAX * 2)).filter((r) => !openAsk(r));
     const out = rows.map((r) => this.view(userId, r, names, a.s.name, a.admin));
     const key = (t: TaskView) => (t.at ?? Number.MAX_SAFE_INTEGER);
     return [...out.filter((t) => !t.done).sort((x, y) => key(x) - key(y)), ...out.filter((t) => t.done)];
@@ -219,6 +232,7 @@ export class SpaceTasks {
   async answer(userId: string, spaceId: string, id: string, b: Record<string, unknown>): Promise<TaskView> {
     const a = await this.spaces.access(userId, spaceId);
     const r = await this.one(spaceId, id);
+    if (openAsk(r)) throw new BotError("not_waiting", "Nobody has this yet. Tap I'll do it in Plan Ease.", 409);
     if (!r.assignees.includes(userId)) throw new BotError("not_allowed", "Only who it's for can say how it went.", 403);
     const status: TaskState | null = b.status === "done" || b.status === "cant" || b.status === "todo" ? b.status : null;
     if (!status) throw new BotError("bad_request", "done, todo or cant.");
@@ -231,6 +245,7 @@ export class SpaceTasks {
     }
     await this.spaces.changed(spaceId);
     this.publish([userId], "plan");
+    for (const fn of this.answered) await fn(userId, { ...r, states }, status).catch(() => undefined);
     return this.view(userId, { ...r, states }, await this.names(spaceId), a.s.name, a.admin);
   }
 

@@ -5,7 +5,7 @@
 import type { Node, ActionRef } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, box, text, C, meta, row, col, card, type LiveBot, seq, call, SCREENS, whenEq, page, emptyState, back, grow, sectionLabel,
-  botAvatar, listCard, when, statusMark, primaryButton, quietButton,
+  botAvatar, listCard, when, statusMark, primaryButton, quietButton, hasSpaces,
 } from "../../kit.js";
 import { shareTo } from "../../shareAction.js";
 import { plural, shortDate, lookOf, ifFilled, setState, A, toast, inputBox, field } from "./parts.js";
@@ -133,7 +133,8 @@ export function sharePhone(ctx: BotsCtx, d: ShareData) {
         when({ truthy: "sendingShare" }, row([statusMark("working", { color: C.ink }), meta("Sending…", { size: 13 })], { gap: 8 })),
       ], { gap: 8 }),
     ],
-    footer: [primaryButton("Send", shareSend(ctx, s, d), { wide: true }), quietButton("Share with a space or person", sharePeople(s), { wide: true, size: "md" })],
+    // To a space or a person only while Spaces is on (kit hasSpaces).
+    footer: [primaryButton("Send", shareSend(ctx, s, d), { wide: true }), ...(hasSpaces(ctx) ? [quietButton("Share with a space or person", sharePeople(s), { wide: true, size: "md" })] : [])],
   });
 }
 

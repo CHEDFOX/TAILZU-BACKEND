@@ -11,6 +11,8 @@
  *   GET    /v1/botsapp/bots/work/:bot/item?space=&owner=&item=&tz=   -> { item }   one thing (its time in your time zone, tz minutes east)
  *   POST   /v1/botsapp/bots/work/:bot/item { space, owner, item, op: time|note, day?, time?, tz?, text? }  -> { item }
  *
+ * With Spaces off (SPACES_ENABLED=false) every route answers 404 spaces_off.
+ *
  * :bot is plan, notes, travel or code (404 otherwise). An item's id goes in the query or the body, never the path: a plan's look
  * like e:<id>@2026-11-14, and the other bots' are theirs to shape.
  */
@@ -20,6 +22,7 @@ import { isBotError } from "../../bots/index.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import type { SpaceParts } from "./botsSpaces.js";
 import { AREA, shownName } from "./botsBots.js";
+import { spacesGate } from "../../botsBots/spacesSwitch.js";
 
 type Body = Record<string, unknown>;
 const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArray(b) ? (b as Body) : {});
@@ -28,8 +31,9 @@ const str = (v: unknown, max = 200): string => (typeof v === "string" ? v.slice(
 
 export function registerWorkRoutes(app: FastifyInstance, deps: BotsAreaDeps, parts: Pick<SpaceParts, "work">): void {
   const { work } = parts;
-  const RL = { config: deps.rateLimit };
-  const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
+  // Work in space is Spaces': while SPACES_ENABLED is off every route answers 404 spaces_off before the session (botsBots/spacesSwitch.ts).
+  const RL = { config: deps.rateLimit, onRequest: spacesGate };
+  const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } }, onRequest: spacesGate });
 
   const run = (fn: (user: AuthedUser, req: FastifyRequest, reply: FastifyReply) => Promise<unknown>) =>
     async (req: FastifyRequest, reply: FastifyReply) => {

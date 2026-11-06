@@ -20,6 +20,10 @@ import { knobsOf, plan, timingKnobs, type Decision, type Facts } from "./plan.js
 import { isQuiet } from "./timing.js";
 import { tokenHash, type Candidate, type PushStore, type TicketRecord } from "./store.js";
 import { pushItemOf } from "../widgets/items.js";
+import { isSpacePush, spacesOn } from "../botsBots/spacesSwitch.js";
+import { planKind } from "../botsBots/planKinds.js";
+import { planOn } from "../botsBots/planSwitch.js";
+import { deskHere, noticeIdOf, sendNotice } from "../live/notices.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -32,6 +36,8 @@ type Deliverable = Pick<Extract<Decision, { sendAt: number }>, "sendAt" | "title
   periodKey: string;
   /** Extra data for the screen it opens (an approval's task id). Never screenId, pushId or kind. */
   data?: Record<string, string>;
+  /** This one push's buttons, when not its kind's (an evening note that carries a question has that question's). */
+  category?: string;
 };
 
 /**
@@ -42,6 +48,11 @@ export type PushVerdict = "send" | "silent" | "drop";
 export type PushGate = (p: { userId: string; kind: string; data?: Record<string, string>; tzOffsetMin: number | null; now: number }) => Promise<PushVerdict> | PushVerdict;
 let pushGate: PushGate | null = null;
 export function setPushGate(g: PushGate | null): void { pushGate = g; }
+
+/** Who hears that a push of a kind was opened (markOpened). One listener; null takes it away. */
+export type PushOpenHook = (userId: string, kind: string) => void;
+let openHook: PushOpenHook | null = null;
+export function setPushOpenHook(fn: PushOpenHook | null): void { openHook = fn; }
 
 export interface TickReport {
   at: string;
@@ -57,6 +68,11 @@ export interface TickReport {
   /** Dry runs only: who would get what, and when. */
   preview?: Array<{ userId: string; kind: string; sendAt: string; basis: string; title: string; body: string }>;
 }
+
+const priorityOf = (v: unknown): PushMessage["priority"] => (v === "high" || v === "normal" ? v : "default");
+/** The token's binary has the Time Sensitive entitlement (its caps at registration, push/tokens.ts). */
+const TIME_SENSITIVE_CAP = "PushTimeSensitive";
+const interruption = (v: unknown): PushMessage["interruptionLevel"] | undefined => (v === "passive" || v === "active" || v === "time-sensitive" ? v : undefined);
 
 export class PushEngine {
   private plans = new Map<string, { at: number; decision: Decision }>();
@@ -260,11 +276,15 @@ export class PushEngine {
    */
   async notify(
     userId: string,
-    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number>; data?: Record<string, string> },
+    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number>; data?: Record<string, string>; category?: string },
     now = Date.now(),
   ): Promise<{ sent: boolean; dropped: number } | null> {
-    const c = await this.candidate(userId, now);
-    if (!c?.tokens.length) return null;
+    // Spaces switched off (SPACES_ENABLED=false): none of its pushes goes, whoever asks for one (botsBots/spacesSwitch.ts).
+    if (isSpacePush(msg.kind) && !spacesOn()) return null;
+    // No phone: still Plan Ease's notice on a computer in use (live/notices.ts), when the person has one.
+    const c = (await this.candidate(userId, now))
+      ?? (this.toDesk(userId, msg.kind, now) ? { userId, tokens: [], lastSeenAt: null, createdAt: null, locale: null, entitled: false, tzOffsetMin: null } : null);
+    if (!c || (!c.tokens.length && !this.toDesk(userId, msg.kind, now))) return null;
     const payload = this.configFor(c, now);
     const k = knobsOf(payload);
     if (!k.flag(`push.${msg.kind}.enabled`, true)) return null;
@@ -273,11 +293,18 @@ export class PushEngine {
       title: k.label(`push.${msg.kind}.title`, "", msg.vars),
       body: k.label(`push.${msg.kind}.body`, "", msg.vars),
       screenId: k.flag(`push.${msg.kind}.screenId`, "home"),
-      ttlSec: Math.max(60, Math.round(k.flag("push.smart.ttlMin", 180) * 60)),
+      // A kind may say how long a phone that is off may still be given it (push.<kind>.ttlMin): a leave-by is no use an hour late.
+      ttlSec: Math.max(60, Math.round(k.flag(`push.${msg.kind}.ttlMin`, k.flag("push.smart.ttlMin", 180)) * 60)),
       ...(msg.data ? { data: msg.data } : {}),
+      ...(msg.category !== undefined ? { category: msg.category } : {}),
     };
     const res = await this.deliver(c, d, payload, now);
     return res ? { sent: res.sent, dropped: res.dropped } : null;
+  }
+
+  /** Plan Ease's push goes to a computer of theirs too: one in use that shows notices (the app release's switch, PLAN_V2_APP). */
+  private toDesk(userId: string, kind: string, now: number): boolean {
+    return !!planKind(kind) && planOn("app") && deskHere(userId, now);
   }
 
   /** Claim, send to every phone, record. Null when someone else claimed it. */
@@ -294,20 +321,48 @@ export class PushEngine {
     // THE BUTTONS. A kind the server gives a category (push.<kind>.category: the phone registered its buttons from the bootstrap's
     // push.categories) carries it, and the item those buttons answer (data.item, src/widgets/items.ts) goes with the data. No
     // category: no buttons, as before. A category id is letters, digits and _ only (iOS and Android both read it).
-    const category = k.flag(`push.${d.kind}.category`, "");
+    const category = d.category ?? k.flag(`push.${d.kind}.category`, "");
     const categoryId = /^[A-Za-z0-9_]{1,40}$/.test(category) ? category : "";
     const item = pushItemOf(d.kind, d.data);
+    // iOS: how loud it may be (push.<kind>.interruptionLevel). The morning note is "passive": it waits quietly in the list. A leave-by
+    // or a bill due today is "time-sensitive", which breaks through Focus, but only on a phone whose binary has the entitlement (its
+    // token's caps): another is sent Apple's own level, as before the app release.
+    // In the person's quiet hours ("silent") nothing breaks through Focus or Sleep: a time-sensitive kind goes as an ordinary one.
+    const asked = interruption(k.flag(`push.${d.kind}.interruptionLevel`, ""));
+    const level = verdict === "silent" && asked === "time-sensitive" ? "active" : asked;
+    const levelFor = (t: Candidate["tokens"][number]): PushMessage["interruptionLevel"] | undefined =>
+      level !== "time-sensitive" ? level : planOn("app") && t.platform === "ios" && t.caps?.includes(TIME_SENSITIVE_CAP) ? level : undefined;
+    // THE COMPUTER IN USE (live/notices.ts): Plan Ease's push is shown there too, decided once with the phone's copy (the verdict above,
+    // this one claim; the daily cap and merging came before), and the phone's copy then comes without a sound, so nothing rings twice.
+    const desk = this.toDesk(c.userId, d.kind, now);
+    if (desk) {
+      const params: Record<string, string> = { pushId: id, kind: d.kind };
+      for (const [key, v] of Object.entries(d.data ?? {})) if (Object.keys(params).length < 8 && !(key in params)) params[key] = v;
+      sendNotice(c.userId, {
+        id: noticeIdOf(item, d.periodKey), kind: d.kind, title: d.title, body: d.body, screenId: d.screenId, params,
+        ...(item ? { item } : {}), ...(categoryId ? { category: categoryId } : {}),
+        silent: verdict === "silent", until: now + d.ttlSec * 1000,
+      });
+    }
+    if (!c.tokens.length) {
+      // Only the computer heard it: it counts as sent (the cap, the notes' "opened" count), and there is no ticket to check.
+      await this.store.settle(id, { status: desk ? "sent" : "failed", sentAt: now, tickets: [], ...(desk ? {} : { error: "no_token" }) });
+      return { sent: desk, dropped: 0, id };
+    }
     const messages: PushMessage[] = c.tokens.map((t) => ({
       to: t.token,
       title: d.title,
       body: d.body,
-      sound: verdict === "silent" ? null : "default",
+      sound: verdict === "silent" || desk ? null : "default",
       // A channel per kind when the server names one (push.<kind>.channelId: the
       // phone makes the channels push.android.channels lists), so Plan reminders or
       // Xode pings can be muted on their own; else the one channel, as ever.
       channelId: k.flag(`push.${d.kind}.channelId`, k.flag("push.android.channelId", "default")),
       ttl: d.ttlSec,
-      priority: "default",
+      // A kind the server marks "high" (push.<kind>.priority: a leave-by, a reminder at its time) wakes an Android phone in Doze; the
+      // rest go as before. High only for pushes that always show something, as Google asks.
+      priority: priorityOf(k.flag(`push.${d.kind}.priority`, "default")),
+      ...(levelFor(t) ? { interruptionLevel: levelFor(t) } : {}),
       // The app opens data.screenId and hands the rest to the screen as its
       // params, so pushId comes back to us with the tap (see markOpened).
       data: { ...d.data, ...(item ? { item } : {}), screenId: d.screenId, pushId: id, kind: d.kind },
@@ -355,9 +410,13 @@ export class PushEngine {
     return { checked: rows.length, dropped };
   }
 
-  /** A tap on a push opened the app: remember it, for fatigue and for the numbers. */
-  markOpened(userId: string, pushId: string): void {
+  /**
+   * A tap on a push opened the app: remember it, for fatigue and for the numbers. With its kind (the push's data.kind, back with the
+   * tap), whoever listens hears it too: Plan Ease's day notes count an opened note (botsBots/planNotes.ts).
+   */
+  markOpened(userId: string, pushId: string, kind?: string): void {
     void this.store.markOpened(userId, pushId, Date.now()).catch(() => { /* a stat */ });
+    if (kind && openHook) { try { openHook(userId, kind); } catch { /* a stat */ } }
   }
 
   /** Sent, opened and failed per reason, over the last `days`. Numbers only. */

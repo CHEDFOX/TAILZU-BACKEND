@@ -7,7 +7,7 @@ import {
   type BotsCtx, SCREENS, call, seq, col, row, statusMark, text, C, button, meta, divider, box, sectionLabel, grow, icon, listRow, listCard,
   card, chip, open, page, botAvatar, title, headerBuddy, secondaryButton, emptyState, notice,
 } from "../../kit.js";
-import { shareButton } from "../../shareAction.js";
+import { shareButtonsFor } from "../../shareAction.js";
 import * as places from "../botsPlaces.js";
 import { tickBox, tickAction, itemAction, addAction } from "../planItem.js";
 import {
@@ -89,7 +89,7 @@ export function planShare(ctx: BotsCtx, d: PlanRead, day: PlanDay | undefined): 
   if (!day) return [];
   const lines = [...day.events.map((e) => `${e.allDay ? "All day" : clockOf(ctx, e.start)} · ${e.title}${e.where ? ` · ${e.where}` : ""}`), ...day.tasks.filter((t) => !t.done).map((t) => `To do · ${t.title}`)];
   const label = dayLabelOf(d, day.key);
-  return lines.length ? [shareButton({ kind: "plan", title: `${label} · ${keyWords(day.key)}`, text: lines.join("\n") }, { label: `Share ${label === "Today" || label === "Tomorrow" ? label.toLowerCase() : label}` })] : [];
+  return lines.length ? shareButtonsFor(ctx, { kind: "plan", title: `${label} · ${keyWords(day.key)}`, text: lines.join("\n") }, { label: `Share ${label === "Today" || label === "Tomorrow" ? label.toLowerCase() : label}` }) : [];
 }
 
 /** The to-dos with no day, ticked off here. */

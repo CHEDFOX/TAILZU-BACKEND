@@ -350,6 +350,20 @@ export class Bots {
     return Math.max(0, def.budgets.dailyPaise - this.daily.usedPaise(`${userId}|${def.id}`));
   }
 
+  /**
+   * What a bot's own work outside its chat cost today (Plan Ease reading a shared circular, botsBots/planCapture.ts), on the same day
+   * meter its chat is held to: the two share one budget.
+   */
+  spendToday(userId: string, botId: string, paise: number): void {
+    if (paise > 0 && /^[a-z0-9-]{1,64}$/.test(botId)) this.daily.add(`${userId}|${botId}`, paise);
+  }
+
+  /** What a built-in bot may still spend today on that same meter, in paise (its work outside the chat asks before it spends). */
+  leftToday(userId: string, slug: string): number {
+    const def = builtinBot(slug);
+    return def ? this.dailyLeft(userId, def) : 0;
+  }
+
   /** The owner talks to a bot. A message that starts with /name and names one of its commands runs the command. */
   async ask(userId: string, ref: string, input: AskInput): Promise<BotAnswer> {
     const found = await this.resolve(userId, ref);

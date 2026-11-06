@@ -9,6 +9,40 @@
 import type { BootstrapResponse } from "../../../shared/types/sdui.js";
 import { APP_KNOB_FLAGS, APP_KNOB_LABELS } from "./appKnobsData.js";
 import { KEYBOARD_KNOBS } from "./keyboardKnobsData.js";
+import { spacesOn } from "../botsBots/spacesSwitch.js";
+import { PLAN_CATEGORIES, PLAN_CHANNELS } from "../botsBots/planKinds.js";
+import { planOn } from "../botsBots/planSwitch.js";
+
+/** The Home Screen's long-press actions, a list per platform (appKnobsData.ts). */
+const QUICK_ACTIONS = ["app.quickActions.android", "app.quickActions.ios"] as const;
+
+/** Spaces switched off (SPACES_ENABLED, botsBots/spacesSwitch.ts): the long press has no Spaces either. */
+function withoutSpacesAction(flags: Record<string, unknown>): Record<string, unknown> {
+  if (spacesOn()) return flags;
+  const out = { ...flags };
+  for (const k of QUICK_ACTIONS) {
+    const list = out[k];
+    if (Array.isArray(list)) out[k] = list.filter((a) => (a as { id?: unknown } | null)?.id !== "spaces");
+  }
+  return out;
+}
+
+/**
+ * Plan Ease's notification buttons and Android channels (botsBots/planKinds.ts), after the app's own: the phone registers the buttons at
+ * launch and makes the channels at its next push registration. A category or channel the app already lists is left as it is. While its
+ * reminders are switched off (PLAN_V2_REMINDERS) no push carries them, so none is listed.
+ */
+function withPlanPush(flags: Record<string, unknown>): Record<string, unknown> {
+  if (!planOn("reminders")) return flags;
+  const out = { ...flags };
+  const cats = Array.isArray(out["push.categories"]) ? (out["push.categories"] as Array<{ id?: unknown }>) : [];
+  const haveCats = new Set(cats.map((c) => c?.id));
+  out["push.categories"] = [...cats, ...PLAN_CATEGORIES.filter((c) => !haveCats.has(c.id)).map((c) => ({ id: c.id, actions: c.actions.map((a) => ({ ...a })) }))];
+  const chans = Array.isArray(out["push.android.channels"]) ? (out["push.android.channels"] as Array<{ id?: unknown }>) : [];
+  const haveChans = new Set(chans.map((c) => c?.id));
+  out["push.android.channels"] = [...chans, ...PLAN_CHANNELS.filter((c) => !haveChans.has(c.id)).map((c) => ({ ...c }))];
+  return out;
+}
 
 /**
  * Flags whose ABSENCE means something ("no arrival prompt this launch"). The
@@ -44,7 +78,7 @@ export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags
   return {
     ...boot,
     labels: { ...APP_KNOB_LABELS, ...(boot.labels ?? {}) },
-    flags: { ...fill, ...(boot.flags ?? {}) } as T["flags"],
+    flags: withPlanPush(withoutSpacesAction({ ...fill, ...(boot.flags ?? {}) })) as T["flags"],
   };
 }
 

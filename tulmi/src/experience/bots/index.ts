@@ -28,6 +28,7 @@ import { notesScreens } from "./screens/notes.js";
 import { routinesScreens } from "./screens/routines.js";
 import { workScreens } from "./screens/work.js";
 import { joinTopics, topicsForScreen } from "../../live/topics.js";
+import { isSpacesScreen, spacesOn } from "../../botsBots/spacesSwitch.js";
 
 export { isBotsScreen, screen, type BotsScreen } from "./registry.js";
 export { botsDepsFor, emptyDeps, type BotsServices } from "./deps.js";
@@ -114,6 +115,11 @@ export const BOTS_WARM_SCREEN_IDS = [
   "bots.keybot.history", "bots.keybot.days", "bots.keybot.month", "bots.keybot.speak", "bots.keybot.apps",
 ];
 
+/** The pages fetched at launch, for the bootstrap: without Spaces' own while Spaces is switched off (they would only be Home). */
+export function botsWarmScreenIds(spaces: boolean = spacesOn()): string[] {
+  return spaces ? [...BOTS_WARM_SCREEN_IDS] : BOTS_WARM_SCREEN_IDS.filter((id) => !isSpacesScreen(id));
+}
+
 /** What a request says about itself (routes/app/appScreens.ts fills it in). */
 export interface BotsRequest {
   screenId: string;
@@ -123,6 +129,8 @@ export interface BotsRequest {
   can: ReadonlySet<string>;
   desk: BotsCtx["desk"];
   tzOffsetMinutes?: number;
+  /** Is Spaces on (SPACES_ENABLED)? Absent: the server's switch. */
+  spaces?: boolean;
 }
 
 /**
@@ -132,11 +140,15 @@ export interface BotsRequest {
 export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise<ScreenResponse> {
   const tz = req.tzOffsetMinutes ?? 0;
   const live = await loadLive(deps, tz);
+  // Spaces switched off: a link, a widget row or a notification into one of its screens opens Home, with none of its params.
+  const spaces = req.spaces ?? spacesOn();
+  const away = !spaces && isSpacesScreen(req.screenId);
+  const screenId = away ? "bots.home" : req.screenId;
   const ctx: BotsCtx = {
-    screenId: req.screenId, client: req.client, params: req.params ?? {}, live, user: req.user, can: req.can,
-    desk: req.desk, tzOffsetMinutes: tz,
+    screenId, client: req.client, params: away ? {} : req.params ?? {}, live, user: req.user, can: req.can,
+    desk: req.desk, tzOffsetMinutes: tz, ...(spaces ? {} : { spaces: false }),
   };
-  const def = BOTS_SCREENS.get(req.screenId);
+  const def = BOTS_SCREENS.get(screenId);
   if (!def) return comingSoon(ctx);
   const data = def.load ? await def.load(ctx, deps).catch(() => undefined) : undefined;
   return withLiveTopics(await def.build(ctx, data), ctx.params);

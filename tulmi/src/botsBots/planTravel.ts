@@ -19,8 +19,11 @@ import { countryForOffset, distanceKm } from "../places/index.js";
 import { botTopic } from "../live/topics.js";
 import { type Later } from "./later.js";
 import { lookNow, type Look } from "./look.js";
-import { clock, dayOf, type PlanEvent, type Suggestion, type TravelCtx } from "./plan.js";
-import { table, type Table } from "./rows.js";
+import { clock, dayOf, placeText, type PlanEvent, type Suggestion, type TravelCtx } from "./plan.js";
+import { type Table } from "./rows.js";
+import { planPrefs, planPrefsOver, type LeaveRow, type PlanPrefs, type PlanPrefsRow, type ShownMove } from "./planPrefs.js";
+
+export type { PlanPrefsRow } from "./planPrefs.js";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 const STOPS_MAX = 8;
@@ -60,23 +63,10 @@ export interface PlanTravel {
   credits: Credit[];
 }
 
-export interface PlanPrefsRow {
-  [k: string]: unknown;
-  user_id: string;
-  home: string;
-  saves: Array<{ key: string; min: number; at: number }>;
-  updated_ms: number;
-}
-
-/** Not a place: a video link, a call, "online". */
-const VIRTUAL = /https?:\/\/|www\.|meet\.google|zoom|teams|webex|video|online|virtual|\bcall\b|phone|hangout|skype|whatsapp|gmeet|\bremote\b|\btbd\b/i;
 /** Likely out in the open: rain and heat matter. */
 const OUTDOOR = /\b(park|garden|trek|hike|hiking|run|running|jog|marathon|cycl\w*|ride|match|cricket|football|tennis|golf|beach|picnic|walk|zoo|fort|lake|stadium|ground|outdoors?|festival|mela|fair|rooftop|terrace|swim\w*|pool|market|bazaar|sightseeing)\b/i;
 
-export function placeText(e: Pick<PlanEvent, "place" | "where">): string | null {
-  const t = (e.place ?? e.where ?? "").trim();
-  return t && !VIRTUAL.test(t) ? t : null;
-}
+export { placeText } from "./plan.js";
 
 const clean = (s: unknown, max: number) => (typeof s === "string" ? s.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const same = (a: LatLon, b: LatLon) => distanceKm(a, b) < 0.15;
@@ -94,40 +84,68 @@ function weatherFor(f: Forecast, start: number, end: number): { kind: "rain" | "
 }
 
 export class PlanTravelling {
-  private readonly prefs: Table<PlanPrefsRow>;
+  private readonly prefs: PlanPrefs;
   private readonly now: () => number;
-  /** The last suggestion each person was shown, with what it would save: a yes to it is written down from here, never from the app. */
-  private shown = new Map<string, { eventId: string; startIso: string; key: string; savedMin?: number }>();
 
   constructor(private readonly o: { places: Places; later: Later; waitMs?: number; now?: () => number; prefs?: Table<PlanPrefsRow> }) {
-    this.prefs = o.prefs ?? table<PlanPrefsRow>("plan_prefs");
     this.now = o.now ?? Date.now;
+    this.prefs = o.prefs ? planPrefsOver(o.prefs, this.now) : planPrefs(this.now);
   }
 
   get on(): boolean { return this.o.places.locates && this.o.places.routes; }
 
   private async row(userId: string): Promise<PlanPrefsRow | null> {
-    try { return (await this.prefs.select({ user_id: userId }, { limit: 1 }))[0] ?? null; } catch { return null; }
+    try { return await this.prefs.get(userId); } catch { return null; }
   }
 
   async setHome(userId: string, words: unknown): Promise<string> {
     const home = clean(words, 120);
-    const had = await this.row(userId);
-    await this.prefs.upsert({ user_id: userId, home, saves: had?.saves ?? [], updated_ms: this.now() }, ["user_id"]);
+    await this.prefs.patch(userId, { home });
     return home;
   }
 
+  /**
+   * The person said yes to a move: what it saved is written down, against the suggestion they were last shown. That one is kept in
+   * plan_prefs (not one server's memory), so a restart or a second server still gives the credit.
+   */
   async moved(userId: string, eventId: string, startIso: string): Promise<void> {
-    const s = this.shown.get(userId);
-    if (!s || s.eventId !== eventId || s.startIso !== startIso || !s.savedMin || s.savedMin <= 0) return;
     const had = await this.row(userId);
+    const s = had?.shown;
+    if (!s || s.eventId !== eventId || s.startIso !== startIso || !s.savedMin || s.savedMin <= 0) return;
     const saves = (had?.saves ?? []).filter((x) => x.key !== s.key);
     saves.push({ key: s.key, min: s.savedMin, at: this.now() });
-    await this.prefs.upsert({ user_id: userId, home: had?.home ?? "", saves: saves.slice(-SAVES_KEPT), updated_ms: this.now() }, ["user_id"]);
-    this.shown.delete(userId);
+    await this.prefs.patch(userId, { saves: saves.slice(-SAVES_KEPT), shown: null });
   }
 
-  async plan(userId: string, o: { tz: number; events: PlanEvent[]; tomorrow: string; suggest: (ctx?: TravelCtx) => Suggestion | null }): Promise<{ travel: PlanTravel; suggestion: Suggestion | null }> {
+  /** The suggestion shown, kept for moved(); written only when it changed. Plan Ease's Move card says its own (planEase.ts). */
+  async keepShown(userId: string, had: PlanPrefsRow | null | undefined, s: Pick<Suggestion, "eventId" | "startIso" | "key" | "savedMin"> | null): Promise<void> {
+    if (had === undefined) had = await this.row(userId);
+    const next: ShownMove | null = s ? { eventId: s.eventId, startIso: s.startIso, key: s.key, ...(s.savedMin ? { savedMin: s.savedMin } : {}) } : null;
+    if (JSON.stringify(had?.shown ?? null) === JSON.stringify(next)) return;
+    if (!had && !next) return;
+    await this.prefs.patch(userId, { shown: next }).catch(() => undefined);
+  }
+
+  /**
+   * The day's leave-by times, for the leave-by reminder (planEase.ts): each event's, with whether its reminder went (kept as it was for
+   * one that is still the same), and the next one due. Other days' are kept; those past are dropped.
+   */
+  private async keepLeaves(userId: string, had: PlanPrefsRow | null, day: string, tz: number, legs: PlanLeg[], events: PlanEvent[]): Promise<void> {
+    const now = this.now();
+    const was = had?.leaves ?? [];
+    const mine = legs.filter((l) => l.leaveBy > now - 60 * MIN).map((l): LeaveRow => {
+      const e = events.find((x) => x.id === l.toId);
+      const old = was.find((x) => x.eventId === l.toId && x.start === (e?.start ?? 0));
+      return { eventId: l.toId, start: e?.start ?? l.leaveBy, leaveBy: l.leaveBy, minutes: l.minutes, mode: l.mode, to: l.to, title: e?.title ?? "", ...(old?.sent ? { sent: true } : {}) };
+    });
+    const others = was.filter((x) => dayOf(x.start, tz) !== day && x.start > now);
+    const leaves = [...others, ...mine].sort((a, b) => a.leaveBy - b.leaveBy).slice(0, 24);
+    if (JSON.stringify(leaves) === JSON.stringify(was)) return;
+    const due = leaves.filter((x) => !x.sent).map((x) => x.leaveBy - 10 * MIN).sort((a, b) => a - b)[0] ?? null;
+    await this.prefs.patch(userId, { leaves, next_leave_ms: due === null ? null : Math.max(due, now) }).catch(() => undefined);
+  }
+
+  async plan(userId: string, o: { tz: number; events: PlanEvent[]; tomorrow: string; suggest: (ctx?: TravelCtx) => Suggestion | null; keepShown?: boolean }): Promise<{ travel: PlanTravel; suggestion: Suggestion | null }> {
     const prefs = await this.row(userId);
     const home = prefs?.home ?? "";
     const savedWeekMin = (prefs?.saves ?? []).filter((s) => s.at >= this.now() - 7 * DAY).reduce((n, s) => n + s.min, 0);
@@ -218,10 +236,9 @@ export class PlanTravelling {
       return { suggestion, legs, headsUp, homeFound: !home || !!homePoint };
     };
 
-    const { value, pending } = await lookNow({ places, later: this.o.later, userId, key: "plan", topics: [botTopic("plan")], waitMs: this.o.waitMs ?? 1200, compute });
-    if (value.suggestion) this.shown.set(userId, { eventId: value.suggestion.eventId, startIso: value.suggestion.startIso, key: value.suggestion.key, ...(value.suggestion.savedMin ? { savedMin: value.suggestion.savedMin } : {}) });
-    else this.shown.delete(userId);
-    if (this.shown.size > 20_000) this.shown.delete(this.shown.keys().next().value!);
+    const { value, pending } = await lookNow({ places, later: this.o.later, userId, key: `plan:${o.tomorrow}`, topics: [botTopic("plan")], waitMs: this.o.waitMs ?? 1200, compute });
+    if (o.keepShown !== false) await this.keepShown(userId, prefs, value.suggestion);
+    if (this.on) await this.keepLeaves(userId, prefs, o.tomorrow, o.tz, value.legs, tomorrowEvents);
     return {
       suggestion: value.suggestion,
       travel: {

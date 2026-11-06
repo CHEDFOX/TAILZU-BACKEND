@@ -22,7 +22,7 @@
  *   GET  /v1/shell/glance?tz=                for the natives (iOS widgets, the live activity): bots and their live state, what needs the
  *                                            person, Keylessbord's words today, the current Xode job's stage. Small, no words to translate.
  *                                            The shape older builds read (v: 1), unchanged
- *   GET  /v1/shell/glance?v=2&tz=&lang=      the X0 widget's whole document (src/widgets/glance.ts; docs/widget-glance-v2.md): what it leads
+ *   GET  /v1/shell/glance?v=2&tz=&lang=[&steps=1]  the X0 widget's whole document (src/widgets/glance.ts; docs/widget-glance-v2.md): what it leads
  *                                            with, the greeting, a summary line, the week, the bots, what needs the person (answered through
  *                                            POST /v1/widgets/act), the job at work, the last thing done, the Lock Screen's lines, the words
  *
@@ -56,7 +56,10 @@ import { youStore } from "../../you/store.js";
 import type { CallFn } from "../../code/work/model.js";
 import { digestFor } from "../../widgets/digest.js";
 import { widgetsConfig, type WidgetsConfigFor } from "../../widgets/config.js";
-import { glanceChanges, glanceV2Of, type GlanceInput } from "../../widgets/glance.js";
+import { planEase } from "../../botsBots/planEase.js";
+import { planOn } from "../../botsBots/planSwitch.js";
+import { lockSafe } from "../../botsBots/planSafe.js";
+import { glanceChanges, glanceSteps, glanceV2Of, type GlanceInput } from "../../widgets/glance.js";
 import { emptyGlanceState, glanceStore, withGlance, type GlanceStore } from "../../widgets/glanceStore.js";
 import { widgetKnobs } from "../../widgets/now.js";
 
@@ -337,11 +340,15 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
   const glanceV2 = async (req: FastifyRequest, reply: FastifyReply, user: AuthedUser, tz: number): Promise<FastifyReply> => {
     const t = now();
     const q = (req.query ?? {}) as Record<string, unknown>;
-    const [jobs, tasks, list, minutes, profile] = await Promise.all([
+    const wantSteps = String(q.steps ?? "") === "1" && planOn("app");
+    const [jobs, tasks, list, minutes, profile, plan] = await Promise.all([
       readJobs(deps, user.id), readTasks(deps, user.id),
       deps.bots ? deps.bots.list(user.id).catch(() => []) : Promise.resolve([]),
       saved(user, tz).catch(() => 0),
       (o.profile ?? getProfile)(user).catch(() => null),
+      // Plan Ease's line and its one question (botsBots/planEase.ts), when its simpler page is on; the widget never fails for it. A build
+      // whose widgets switch their lines on their own (steps=1, the app release) is given the line as it will read later on too.
+      planOn("page") ? planEase().line(user.id, tz, { steps: wantSteps }).catch(() => null) : Promise.resolve(null),
     ]);
     const asked = req.headers["x-app-language"];
     const lang = (typeof asked === "string" && asked) || (typeof q.lang === "string" && q.lang.slice(0, 32)) || profile?.language || "";
@@ -359,6 +366,13 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       jobs: jobs.map(jobLite),
       tasks: tasks.map((x) => ({ id: x.id, state: x.state, title: x.title, approval: x.approval, createdAt: x.createdAt, updatedAt: x.updatedAt })),
       minutesSaved: minutes, state,
+      ...(plan ? {
+        plan: {
+          line: plan.widget ? { line: plan.widget.line, lock: plan.widget.lock, leads: plan.widget.leads } : null,
+          // Outside the app: its words with no amount in them (botsBots/planSafe.ts).
+          needs: plan.needs ? { item: plan.needs.item, question: lockSafe(plan.needs.question, 80), buttons: plan.needs.buttons, until: plan.needs.until } : null,
+        },
+      } : {}),
     };
     // The AI digest, when it is on and enough moved: written once per change, waited for a moment at most (src/widgets/digest.ts).
     let digest: string | null = null;
@@ -372,6 +386,13 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       }
     }
     const g = glanceV2Of({ ...input, digest }, payload);
+    // The steps: Plan Ease's line from each moment it changes, and the lock words then (widgets/glance.ts glanceSteps). `base` is the
+    // glance with no plan line, for the moments the plan doesn't lead the lock screen.
+    if (wantSteps && plan?.steps?.length && input.plan) {
+      const base = glanceV2Of({ ...input, digest, plan: { ...input.plan, line: null } }, payload);
+      const steps = glanceSteps(g, base, plan.steps);
+      if (steps.length) g.steps = steps;
+    }
     await store.update(user.id, (s) => ({ ...s, lastAt: state.lastAt, sinceAt: state.sinceAt })).catch((err) => req.log.warn({ err: (err as Error)?.name }, "shell: glance not remembered"));
     return reply.header("cache-control", "private, no-store").send(g);
   };

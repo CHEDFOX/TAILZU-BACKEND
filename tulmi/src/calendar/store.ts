@@ -20,7 +20,8 @@ export type Source =
   | { kind: "me" }
   | { kind: "bot"; name: string }
   | { kind: "space"; spaceId: string; taskId: string; by: string; name: string; space: string }
-  | { kind: "note"; noteId: string; todoId: string; title: string };
+  | { kind: "note"; noteId: string; todoId: string; title: string }
+  | { kind: "capture"; captureId: string; label: string };
 
 export interface EventRow {
   [k: string]: unknown;
@@ -30,7 +31,13 @@ export interface EventRow {
   remind_min: number | null; next_remind_ms: number | null;
   source: Source; source_key: string | null;
   created_ms: number; updated_ms: number;
+  /** 0072: the capture that added it (botsBots/planCapture.ts). Written only on a capture's event. */
+  capture_id?: string | null;
 }
+
+/** What a to-do is (migration 0070): a to-do, a bill to pay (step 3), or waiting on someone (step 4). planRows.ts draws each. */
+export type TaskKind = "todo" | "due" | "wait";
+export const TASK_KINDS: readonly TaskKind[] = ["todo", "due", "wait"];
 
 export interface TaskRow {
   [k: string]: unknown;
@@ -40,6 +47,22 @@ export interface TaskRow {
   remind_min: number | null; next_remind_ms: number | null;
   source: Source; source_key: string | null;
   created_ms: number; updated_ms: number;
+  /**
+   * 0070's two columns. Never written on an insert (the database's defaults, "todo" and 0), so a server ahead of its migration still
+   * adds to-dos; read as those defaults when a row has none.
+   */
+  kind?: TaskKind;
+  snoozes?: number;
+  /**
+   * 0072's columns, written only on a bill or a capture's to-do (botsBots/planDue.ts, planCapture.ts): a due's amount, payee and safe pay
+   * link, whether it comes each month, the event or to-do a "before" step gets ready for, the capture that added it.
+   */
+  amount_paise?: number | null;
+  payee?: string | null;
+  pay_link?: string | null;
+  repeat?: "" | "monthly";
+  prep_for?: string | null;
+  capture_id?: string | null;
 }
 
 export interface EventTable extends Table<EventRow> {
@@ -70,6 +93,9 @@ export function taskRow(r: TaskRow): TaskRow {
     ...r, due_ms: numOrNull(r.due_ms), tz_min: num(r.tz_min), done: r.done === true, done_ms: numOrNull(r.done_ms), remind_min: numOrNull(r.remind_min),
     next_remind_ms: numOrNull(r.next_remind_ms), created_ms: num(r.created_ms), updated_ms: num(r.updated_ms), list: r.list ?? "",
     source: r.source && typeof r.source === "object" ? r.source : { kind: "me" },
+    kind: TASK_KINDS.includes(r.kind as TaskKind) ? (r.kind as TaskKind) : "todo", snoozes: Number.isFinite(Number(r.snoozes)) ? Number(r.snoozes) : 0,
+    // Only when the row has them (a server ahead of 0072 never writes a column that isn't there).
+    ...(r.amount_paise !== undefined ? { amount_paise: numOrNull(r.amount_paise) } : {}),
   };
 }
 

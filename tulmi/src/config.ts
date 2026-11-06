@@ -793,6 +793,62 @@ const EnvSchema = z.object({
    */
   ROUTINES: bool(true),
   /**
+   * SPACES (src/botsBots/spacesSwitch.ts, docs/spaces.md "Turning Spaces off"): family and friends, chats with them, sharing to them, and
+   * Work in space on the bots' pages. On by default. SPACES_ENABLED=false hides all of it until it is ready: no Space card or group tiles
+   * on Home, no Spaces in You or the window's settings, no Work in space on the bots' pages, nothing to share to, no pushes or invite
+   * mails from it, and every Spaces and Work in space route answers 404 spaces_off (a link or a notification into it opens Home).
+   * Nothing is deleted: true brings every space back as it was.
+   */
+  SPACES_ENABLED: bool(true),
+  /**
+   * PLAN EASE, THE SIMPLER ONE (docs/plan-ease.md), one switch per step so each can be turned off on its own. On by default; false puts
+   * that step back as it was, and nothing it kept is deleted.
+   *   PLAN_V2_REMINDERS  step 0: a reminder says what it is with at most 2 buttons (Done and Later on a to-do, Open map on a leave-by),
+   *                      a to-do with a day gets one at 10 am, close ones go as one push, and each kind has its own channel and expiry.
+   *                      False: the old "plan_reminder" push with no buttons, and the item form keeps its Remind and How long fields.
+   *   PLAN_V2_PAGE       step 1: the simple Plan Ease page (the one next thing, one Needs-you card, Today and Tomorrow, one box), its line
+   *                      on Home and the widget, and Today's "Plan Ease suggests" from the same card. Only a build that draws a person
+   *                      as their tiny bot (PersonBot) gets the page; an older one keeps the week page it has. False: the week page.
+   *   PLAN_V2_NOTES      step 1: the evening "tomorrow" note and the morning note when the day changed (no sound), with the Daily
+   *                      summary folded in. False: no notes, and the Daily summary goes on its own as before.
+   */
+  PLAN_V2_REMINDERS: bool(true),
+  PLAN_V2_PAGE: bool(true),
+  PLAN_V2_NOTES: bool(true),
+  /**
+   * PLAN_V2_LINKS      step 2: the work calendar by its link (botsBots/planLinks.ts): pasted once (Google, Outlook or iCloud, or a code
+   *                    from x0bot.com/cal), read every 30 minutes, its meetings on the page, in the notes, the clash check and the chat's
+   *                    list, kept locked. Needs migration 0071 and CONNECTOR_TOKEN_KEY (the link is sealed with it). False: no link page,
+   *                    no offer card, nothing fetched; links already kept stay as they are.
+   * PLAN_V2_CAPTURE    step 3: what's shared, dropped or pasted becomes one card ("4 things from the school circular", Add all), and
+   *                    bills due with Paid (botsBots/planCapture.ts, planDue.ts). Needs migration 0072. False: the share screen's bot
+   *                    picker as before, and the box reads a bill as a plain to-do.
+   */
+  PLAN_V2_LINKS: bool(true),
+  PLAN_V2_CAPTURE: bool(true),
+  /**
+   * PLAN_V2_WAITS      step 4: waiting on someone (botsBots/planWaits.ts): "Rahul will send the numbers by Thursday" in the box, or a
+   *                    meeting's to-do that is someone else's, is checked back on by itself ("Still waiting on Rahul. Send this?" with
+   *                    the follow-up written, [Send] opens WhatsApp). Needs migration 0073. False: the box reads it as a plain to-do,
+   *                    no check-backs; waits already kept stay on the list as to-dos.
+   * PLAN_V2_ASKS       step 5: family asks, repeats and turns in a space (botsBots/planAsks.ts): "Who picks Kabir up Wednesday?" goes
+   *                    to the family with [I'll do it], the first tap wins, one quiet nudge, turns that pass on with [Can't do it].
+   *                    Only while SPACES_ENABLED is on too. Needs migration 0074, and every server on this code first: an older
+   *                    server lists an open ask as a task to everyone (0074's note), so keep it false through a mixed deploy. False:
+   *                    the box sends it to the chat as before; asks already made stay in the space, and nothing more is pushed for them.
+   */
+  PLAN_V2_WAITS: bool(true),
+  PLAN_V2_ASKS: bool(true),
+  /**
+   * PLAN_V2_APP        the app release (design B11), only for a binary that says it can: a leave-by or a bill due today breaks through
+   *                    Focus on an iPhone with the Time Sensitive entitlement (its token's caps, migration 0075); the X0 widget is sent
+   *                    lines that switch at their own minute (a build that asks with steps=1); and a desktop that declares DeskNotices
+   *                    shows Plan Ease's notices while it is in use (the phone's copy then comes without a sound), and one that
+   *                    declares DeskAddThis carries what is on its screen to the one box ("add this"). False: every build gets what
+   *                    an older one does.
+   */
+  PLAN_V2_APP: bool(true),
+  /**
    * The AI permission (src/privacy/aiGate.ts, App Review 5.1.2(i)): nothing of a person's is sent to an AI service until they have
    * tapped Agree. On by default; false lets everyone's requests through again, for an emergency only (the app still asks).
    */

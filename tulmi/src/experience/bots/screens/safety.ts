@@ -12,7 +12,7 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
 import {
   back, box, C, call, col, divider, emptyState, FACE, grow, icon, listCard, listRow, meta, notice, open, page, primaryButton,
-  quietButton, row, SCREENS, secondaryButton, sectionLabel, seq, switchRow, text, title, when, whenEq, type BotsCtx, type PersonLookSpec,
+  quietButton, row, SCREENS, secondaryButton, sectionLabel, seq, switchRow, text, title, when, whenEq, type BotsCtx, type PersonLookSpec, hasSpaces,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
 import { REASON_WORDS } from "../../../botsBots/safety.js";
@@ -147,8 +147,9 @@ function blockedPage(ctx: BotsCtx, d: BlockedData | undefined) {
           row([personMark(ctx, { seed: b.userId }, 36), col([text(b.name, { size: 15, weight: 500, lineHeight: 20, lines: 1 }), meta(`Blocked ${shortDate(ctx, b.at)}`, { size: 12 })], { gap: 2, flexShrink: 1, minWidth: 0 }), grow(),
             secondaryButton("Unblock", unblockAction(b.userId, b.name), { size: "md" })], { gap: 12, paddingVertical: 12, paddingHorizontal: 16 }),
         ]), { borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: "hidden" })]
-          : [emptyState({ pose: "hello", title: "Nobody blocked", body: "To block someone, open their name in a chat or a space." })]),
-      quietButton("Spaces and chats", open(SCREENS.spaces), { size: "md" }),
+          : [emptyState({ pose: "hello", title: "Nobody blocked", body: hasSpaces(ctx) ? "To block someone, open their name in a chat or a space." : "People you block show here." })]),
+      // No way into Spaces while it is switched off (kit hasSpaces).
+      ...(hasSpaces(ctx) ? [quietButton("Spaces and chats", open(SCREENS.spaces), { size: "md" })] : []),
     ],
   });
 }

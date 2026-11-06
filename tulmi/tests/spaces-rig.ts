@@ -37,7 +37,7 @@ export const FILE_M = "aaaaaaaa-0000-4000-8000-00000000000b";
 
 export interface OwnItem { id: string; title: string; line: string; at: number | null }
 
-export async function spacesServer(o: { pushes: Push[]; clock?: { t: number }; sources?: Record<string, { list(userId: string): Promise<OwnItem[]> }> } ) {
+export async function spacesServer(o: { pushes: Push[]; clock?: { t: number }; sources?: Record<string, { list(userId: string): Promise<OwnItem[]> }>; routes?: Array<{ method: string; url: string }> } ) {
   const Fastify = (await import("fastify")).default;
   const { Spaces } = await import("../src/botsBots/spaces.js");
   const { MailOutbox, NOT_CONFIGURED } = await import("../src/botsBots/mail.js");
@@ -62,6 +62,8 @@ export async function spacesServer(o: { pushes: Push[]; clock?: { t: number }; s
     bytesOf: async (i: { id: string }) => Buffer.from(`bytes of ${i.id}`),
   };
   const app = Fastify();
+  // Every route the two register, for a test that walks them all (spaces-off.test.ts).
+  if (o.routes) app.addHook("onRoute", (r) => { for (const m of [r.method].flat()) o.routes!.push({ method: String(m), url: r.url }); });
   const deps = { rateLimit: { rateLimit: { max: 10_000, timeWindow: 60_000 } }, bots: null, code: null, jobs: null, connectors: null, media: media as never, artifacts: null } as never;
   // Every part on the test's clock.
   const parts = spaceParts(spaces, { now, media: media as never, origin: "https://api.example.in", ...(o.sources ? { sources: o.sources as never } : {}) });

@@ -5,12 +5,13 @@
  * on: everyone with their OK for the space's admin, else who shared something with them). A tap opens that person's things (bots.work).
  *
  * GET .../work/:bot never reads another person's bot (these pages are fetched at launch): the rows carry people and counts only.
- * A build without the new Spaces (kit canSpaces2), or a person in no space, gets the page as it was. Anyone in a space gets both tabs,
+ * A build without the new Spaces (kit canSpaces2), a person in no space, or anyone while Spaces is switched off (kit hasSpaces), gets
+ * the page as it was: no tabs, and no notes from a space. Anyone in a space gets both tabs,
  * with a line where nobody has shared anything yet, and the line saying the space's admin can see their things.
  */
 
 import type { Node } from "../../../../../../shared/types/sdui.js";
-import { type BotsCtx, C, SCREENS, canSpaces2, col, icon, meta, open, row, sectionLabel, segmented, text, when, type PersonLookSpec } from "../../kit.js";
+import { type BotsCtx, C, SCREENS, canSpaces2, col, hasSpaces, icon, meta, open, row, sectionLabel, segmented, text, when, type PersonLookSpec } from "../../kit.js";
 import type { BotsDeps } from "../../live.js";
 import { A, isDesk, names, personMark, rowsCard, shareLook, type ShareBot } from "../spaces/parts.js";
 import { ago } from "../spaces/spaceDetail.js";
@@ -29,11 +30,11 @@ export interface WorkRead {
 
 /** The bot page's read of Work in space, for a build that draws it; a failed read is the page as it was. */
 export async function loadWork(ctx: BotsCtx, deps: Pick<BotsDeps, "api">, bot: ShareBot): Promise<WorkRead | undefined> {
-  if (!canSpaces2(ctx)) return undefined;
+  if (!canSpaces2(ctx) || !hasSpaces(ctx)) return undefined;
   return deps.api<WorkRead>("GET", `${A}/work/${bot}`).catch(() => undefined);
 }
 
-const shows = (ctx: BotsCtx, work: WorkRead | undefined): work is WorkRead => canSpaces2(ctx) && !!work?.spaces.length;
+const shows = (ctx: BotsCtx, work: WorkRead | undefined): work is WorkRead => canSpaces2(ctx) && hasSpaces(ctx) && !!work?.spaces.length;
 
 /** "Your work" then the page's own body, and "Work in space": the two tabs under the page's head (its first node). */
 export function withWork(ctx: BotsCtx, work: WorkRead | undefined, body: Node[]): Node[] {

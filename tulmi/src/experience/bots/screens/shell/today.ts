@@ -6,7 +6,7 @@ import type { Node } from "../../../../../../shared/types/sdui.js";
 import { type FeedRow, longDate } from "../../../../shell/feed.js";
 import {
   type BotsCtx, col, text, C, row, grow, meta, box, botLook, botAvatar, botRoute, duration, labelled, divider, emptyState, open, SCREENS,
-  sectionLabel, icon, statusMark, notice, choiceRow, title, page,
+  sectionLabel, icon, statusMark, notice, choiceRow, title, page, call, button, messageText,
 } from "../../kit.js";
 import { addAction } from "../planItem.js";
 import { kbd, openNeed, openRow, markOf, nameOf, couldNot, avatarOf, colorOf } from "./parts.js";
@@ -16,6 +16,27 @@ export interface TodayData {
   calendar: { connected: boolean; events: Array<{ start: number | null; end: number | null; title: string; with?: string; when: string }> | null };
   rows: FeedRow[];
   keybot: { words: number; minutesSaved: number; byHour: Array<{ hour: number; words: number }>; byApp: Array<{ app: string; words: number }> };
+  /** Plan Ease's one Needs-you card (GET .../plan/line, botsBots/planEase.ts), when its simpler page is on: what "Plan Ease suggests" shows. */
+  planNeeds?: {
+    question: string; reason: string; item: string; message?: string;
+    buttons: Array<{ id: string; label: string; primary?: boolean; open?: { screen: string; params?: Record<string, string> } }>;
+  } | null;
+}
+
+/** "Plan Ease suggests", from its real Needs-you queue: the one card, answered through the act door as on the Plan page. */
+function planSuggests(ctx: BotsCtx, n: NonNullable<TodayData["planNeeds"]>): Node {
+  const act = (id: string) => call("POST", "/v1/widgets/act", { item: n.item, action: id, key: `${n.item}:${id}:${ctx.live.now}`.slice(0, 120) }, { ok: { kind: "toast", message: "Done" }, fail: { kind: "toast", message: "Couldn't do that. Try again.", tone: "error" }, stay: true });
+  // A button that needs a page of its own (Send opens WhatsApp with the draft, "No" asks if they're coming) opens it, as on the Plan page.
+  const press = (b: NonNullable<TodayData["planNeeds"]>["buttons"][number]) => (b.open ? open(b.open.screen, b.open.params) : act(b.id));
+  return col([
+    row([avatarOf(ctx, "plan", 30), text("Plan Ease suggests", { size: 15, weight: 600, lineHeight: 20 })], { gap: 10 }),
+    col([
+      row([statusMark("needs", { color: colorOf(ctx, "plan") }), col([text(n.question, { size: 14, weight: 600, lineHeight: 19 }), ...(n.reason ? [text(n.reason, { size: 14, lineHeight: 19, color: C.grey70 })] : [])], { gap: 2, flexShrink: 1 })], { gap: 10, alignItems: "flex-start" }),
+      // The draft, as the person will send it: their words, in a faint message container.
+      ...(n.message ? [col([messageText(ctx, n.message, { lines: 4 })], { borderWidth: 1, borderColor: C.line, borderRadius: 14, padding: 12 })] : []),
+      row(n.buttons.slice(0, 2).map((b) => button(b.label, press(b), { kind: b.primary ? "primary" : "secondary", size: "md" })), { gap: 8, flexWrap: "wrap" }),
+    ], { gap: 10, paddingVertical: 12, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: C.line }),
+  ], { gap: 12, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line });
 }
 
 const hourWord = (h: number) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "am" : "pm"}`;
@@ -118,7 +139,8 @@ export function today(ctx: BotsCtx, d: TodayData | undefined) {
     : !d.calendar.events ? notice("Couldn't read your calendar just now")
       : !d.calendar.events.length ? col([notice("Nothing on your calendar today", { mark: "check" }), row([icon("plus", { size: 14 }), text("Add to today", { size: 13, weight: 500, lineHeight: 18 })], { gap: 4, minHeight: 36, alignSelf: "flex-start" }, addAction(today))], { gap: 6 })
         : col([calendarGrid(ctx, d), row([text("Open Plan", { size: 13, weight: 500, lineHeight: 18 }), icon("chevron", { size: 14 })], { gap: 2, minHeight: 36, alignSelf: "flex-start" }, open(SCREENS.plan, { day: today }))], { gap: 6 });
-  const suggests = plan.length ? [col([
+  // With Plan Ease's simpler page, its real queue feeds the card (the old one came only from Google approvals, no longer offered).
+  const suggests = d?.planNeeds ? [planSuggests(ctx, d.planNeeds)] : plan.length ? [col([
     row([avatarOf(ctx, "plan", 30), text("Plan Ease suggests", { size: 15, weight: 600, lineHeight: 20 }), grow(), text(plan.length === 1 ? "1 idea for today" : `${plan.length} ideas for today`, { size: 12, weight: 500, color: colorOf(ctx, "plan"), lineHeight: 16 })], { gap: 10 }),
     ...plan.map((n, i) => col([
       row([statusMark("needs"), col([text(n.question, { size: 14, weight: 600, lineHeight: 19 }), ...(n.detail ? [text(n.detail, { size: 14, lineHeight: 19, color: C.grey70 })] : [])], { gap: 2, flexShrink: 1 })], { gap: 10, alignItems: "flex-start" }),

@@ -20,7 +20,7 @@ import type { Node, ActionRef } from "../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, type IconName, box, icon, C, row, FACE, text, whenEq, seq, botAvatar, percent, primaryButton, open, SCREENS, usageMeter,
   whenWords, card, divider, notice, page, title, col, meta, call, listCard, listRow, quietButton, secondaryButton, switchMark, when,
-  sectionLabel, switchRow, body, grow, table, button, back, emptyState, shapes, botLook, botRoute,
+  sectionLabel, switchRow, body, grow, table, button, back, emptyState, shapes, botLook, botRoute, hasSpaces,
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { type DeletionState, dayMonthOf, goneAt, daysStrip, GRACE_DAYS, keepAccount, scheduleDeletion, DELETION_PATH } from "./accountGrace.js";
@@ -558,7 +558,8 @@ function settingsPage(ctx: BotsCtx, d: YouData | undefined) {
     row([text("Plan", { size: 14 }), grow(), meta(d ? d.plan.name : "", { size: 13 }), icon("chevron", { size: 16, color: C.meta })], { gap: 8, minHeight: 32 }, open(SCREENS.billing)),
   ], { padding: 18, gap: 12 });
   const yours = listCard([
-    listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) }),
+    // None while Spaces is switched off (kit hasSpaces).
+    ...(hasSpaces(ctx) ? [listRow({ label: "Spaces and chats", value: "Family and friends", onPress: open(SCREENS.spaces) })] : []),
     listRow({ label: "Usage", value: usedLine(meterOf(ctx, d?.usage)), onPress: open(SCREENS.usage) }),
     listRow({ label: "What pings you", value: d?.settings.notify.quiet ? "Quiet hours on" : "", onPress: open(SCREENS.notify) }),
     listRow({ label: "Connected apps", value: appsLine(d), onPress: open(SCREENS.apps) }),

@@ -30,7 +30,7 @@ dropped; a bot's work is never refused over these words; a single word longer th
 
 The fill-in lines are knobs `x0.fill.{needs,working,done,failed,idle}` (`.hg` for Hinglish) of the "widgets" control surface.
 
-## 2. GET /v1/shell/glance?v=2&tz=<minutes>[&lang=hinglish][&platform=ios|android]
+## 2. GET /v1/shell/glance?v=2&tz=<minutes>[&lang=hinglish][&platform=ios|android][&steps=1]
 
 Signed-in person's own. `v` absent → today's v1 shape, unchanged (older builds). Words are Hinglish when the `x-app-language`
 header (or `lang`, or the profile's language) is Hinglish. v2 (built by tulmi `src/widgets/glance.ts`):
@@ -106,6 +106,26 @@ What the server guarantees (knobs of the "widgets" surface, `x0.*`, in tulmi `sr
   "Step 3 of 5 · Build"; done: `title` the result, `line` "PR #131 is ready".
 - `words.working`, `words.step` and `words.minIn` keep their `{n}` / `{stage}` / `{of}` slots for the widget to fill.
 - `refreshAfterSec`: 300 while a bot works (`x0.refreshSec.working`), else 900 (`x0.refreshSec`).
+- `steps` (only with `steps=1`, from a binary that declares `GlanceSteps`, and while `PLAN_V2_APP` is on): lines that take over at their
+  own minute with no new glance, so the widget's words stay true while the app isn't opened. Oldest first, 16 at most, within the next
+  36 hours (the app keeps 16 within 48):
+
+  ```jsonc
+  "steps": [
+    { "at": 1762936200000, "bot": "plan", "line": "Appointment 6:00, leave 5:30",        // from 3:30 pm: the leave-by's last 2 hours
+      "lock": { "inline": "Leave by 5:30 · Appointme…", "title": "Leave by 5:30 pm", "line": "Appointment, 6 pm" } },
+    { "at": 1762943400000, "bot": "plan", "line": "Next: Appointment 6 pm",             // the leave-by has passed
+      "lock": { "inline": "Ready", "title": "X0", "line": "All quiet" } },
+    { "at": 1762972200000, "bot": "plan", "line": "Fri · PTM 9:30 am", "lock": { … } }  // midnight: tomorrow is today
+  ]
+  ```
+
+  From `at`, `line` is that bot's row line (only while the row is idle: asking, working or done keeps its own) and `lock` the lock
+  screen's words (unless the widget leads with a question), each until the next step that sets them. Today they are Plan Ease's
+  (tulmi `src/botsBots/planDay.ts` widgetSteps): its line at each moment it changes (a leave-by's last 2 hours, the leave-by, each
+  start, midnight), and the lock words for that moment by the same rule as `lock` (the plan's own while a leave-by is within 2 hours or
+  the lock screen is quiet, else the glance's own). Every word is lock-safe (`planSafe.ts`: no amount, a health visit is
+  "Appointment"). A build that doesn't ask gets no `steps`, and lines worded to stay true until their time passes.
 
 ## 3. Situation lines (summary when no AI digest)
 

@@ -154,9 +154,13 @@ The person's open screens are told (`livePublish`).
   | `space_message` | `x0_reply` |
   | `space_task`, `space_plan` | `x0_task` |
   | `approval` | `x0_yesno` |
+  | `plan_todo` | `x0_todo` (Done, Later; `x0_todo_last`, Done only, after Later three times) |
+  | `plan_leave` | `x0_leave` (Open map: it opens `bots.plan.go`, which hands off to Maps) |
+  | `plan_evening` | none, or `x0_move` (Move it, Keep) when it asks the Move card's question |
 
-  The engine sends `categoryId` to Expo and adds `data.item`, the item the buttons answer. A kind with no category gets no
-  buttons. Any other kind can be given one, for example `push.plan_reminder.category`.
+  The engine sends `categoryId` to Expo and adds `data.item`, the item the buttons answer. One push may carry its own category
+  (`notify({ category })`). A kind with no category gets no buttons. Plan Ease's categories and Android channels are listed once in
+  `botsBots/planKinds.ts` and added to the bootstrap by `experience/appKnobs.ts` (docs/plan-ease.md).
 * **The categories' buttons are the app's bootstrap knob `push.categories`**, registered on launch whenever they change, so a new
   category or a renamed button needs no release. Each button has:
   * a title;

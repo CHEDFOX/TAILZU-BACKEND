@@ -8,8 +8,11 @@
  * user (platform, language, named users, a percentage, a date window, an
  * experiment) before the planner reads it, and removing the rule restores it.
  *
- * Kept free of imports so the control plane can preview it without a cycle.
+ * Kept free of imports so the control plane can preview it without a cycle, but one: Plan Ease's kinds (botsBots/planKinds.ts), itself
+ * free of imports, so each of its kinds is said once.
  */
+import { PLAN_KIND_IDS, planPushFlags, planPushLabels } from "../botsBots/planKinds.js";
+
 export interface PushPayload {
   flags: Record<string, unknown>;
   labels: Record<string, string>;
@@ -161,6 +164,9 @@ export const PUSH_DEFAULTS: PushPayload = {
     // A reminder the person set on their own calendar or a to-do (src/calendar): the Plan, on that day (data.day).
     "push.plan_reminder.enabled": true,
     "push.plan_reminder.screenId": "bots.plan",
+    // Plan Ease's own kinds (botsBots/planKinds.ts): a reminder that says what it is, with at most 2 buttons, and the day notes. Each has
+    // its screen, buttons, channel, priority and expiry (push.<kind>.priority / .ttlMin / .interruptionLevel, read by push/engine.ts).
+    ...planPushFlags(),
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
@@ -211,6 +217,7 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_feed.body": "{name} sent a message",
     "push.plan_reminder.title": "{title}",
     "push.plan_reminder.body": "{when}",
+    ...planPushLabels(),
     "push.ops_alert.title": "{title}",
     "push.ops_alert.body": "{body}",
     "push.routine_done.title": "{bot}: {task}",
@@ -232,7 +239,7 @@ export const EVENT_PUSH_KINDS = [
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
   "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed",
-  "plan_reminder",
+  "plan_reminder", ...PLAN_KIND_IDS,
   "routine_done", "routine_failed",
   "ops_alert",
 ] as const;
