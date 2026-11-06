@@ -1,0 +1,51 @@
+name: Deploy
+
+# Main goes live by itself: once CI passes on a push to main, GitHub logs in to the server and runs deploy/ship.sh (pull,
+# rebuild, prove it is live). The key it logs in with can do nothing else: the server's authorized_keys forces that one
+# command for it, whatever is asked. The key and the server's host line are the repo's Actions secrets VPS_SSH_KEY and
+# VPS_KNOWN_HOSTS. Nothing is checked out or built here, so no code from the repo runs with them.
+#
+# By hand: Actions → Deploy → Run workflow (on main). Migrations and settings stay by hand (deploy/migrate.sh, deploy/set-env.sh).
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# One deploy at a time, in order; a deploy under way is never cut off.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  ship:
+    # A run by hand on main, or a CI run that passed on a push to this repository's main (a fork's pull request from a branch
+    # it named main never deploys).
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Ship
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VPS_SSH_KEY" ] || [ -z "$VPS_KNOWN_HOSTS" ]; then
+            echo "Add VPS_SSH_KEY and VPS_KNOWN_HOSTS in Settings → Secrets and variables → Actions."; exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          umask 077
+          # A key pasted from Windows can carry \r; ssh refuses it then.
+          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/deploy
+          printf '%s\n' "$VPS_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
+          ssh -T -i ~/.ssh/deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts -o ServerAliveInterval=30 root@91.108.104.168 ship
