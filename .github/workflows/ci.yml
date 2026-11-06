@@ -16,16 +16,19 @@ concurrency:
 jobs:
   typecheck:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The suite alone takes about 5 minutes on a runner.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: tulmi
     steps:
       - uses: actions/checkout@v4
 
+      # The server's own Node (tulmi/Dockerfile: node:22-slim). Node 20 has no WebSocket of its own, which the server and its
+      # tests rely on, so the suite failed here while it passed on the server's Node.
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: tulmi/package-lock.json
 
