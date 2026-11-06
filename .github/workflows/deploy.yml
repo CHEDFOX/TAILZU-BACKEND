@@ -44,8 +44,19 @@ jobs:
           fi
           install -m 700 -d ~/.ssh
           umask 077
-          # A key pasted from Windows can carry \r; ssh refuses it then.
-          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/deploy
+          # The key as it was pasted into the secret, put back whole: a paste can lose its line breaks (one long line), gain \r
+          # (Windows) or spaces, or drop the BEGIN and END lines. ssh reads none of those ("error in libcrypto").
+          if printf '%s' "$VPS_SSH_KEY" | grep -q '^ *ssh-ed25519 '; then
+            echo "VPS_SSH_KEY holds the public key (ssh-ed25519 …). Paste the private one: from -----BEGIN OPENSSH PRIVATE KEY----- to -----END OPENSSH PRIVATE KEY-----."; exit 1
+          fi
+          body="$(printf '%s' "$VPS_SSH_KEY" | tr -d '\r' | sed -e 's/-----BEGIN OPENSSH PRIVATE KEY-----//g' -e 's/-----END OPENSSH PRIVATE KEY-----//g' | tr -d ' \t\n')"
+          { echo "-----BEGIN OPENSSH PRIVATE KEY-----"; printf '%s\n' "$body" | fold -w 70; echo "-----END OPENSSH PRIVATE KEY-----"; } > ~/.ssh/deploy
+          if ! ssh-keygen -y -f ~/.ssh/deploy > /dev/null 2>&1; then
+            echo "VPS_SSH_KEY is not a whole private key ($(printf '%s' "$body" | wc -c) characters read)."
+            echo "Paste everything the key command printed, from -----BEGIN OPENSSH PRIVATE KEY----- to -----END OPENSSH PRIVATE KEY-----."; exit 1
+          fi
+          # Its fingerprint (public, safe to show): the same as  ssh-keygen -lf ~/.ssh/github_deploy.pub  on the server.
+          ssh-keygen -lf ~/.ssh/deploy
           printf '%s\n' "$VPS_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
           ssh -T -i ~/.ssh/deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts -o ServerAliveInterval=30 root@91.108.104.168 ship
