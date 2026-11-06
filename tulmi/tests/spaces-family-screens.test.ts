@@ -442,7 +442,7 @@ describe("Home's Ask, as his thought", () => {
       const { s, nodes } = await build("bots.home", client, { can, api: {} });
       expect(lintTree(s.root!)).toEqual([]);
       const stage = ofType(nodes, "BotStage")[0]!;
-      expect(stage.props).toMatchObject({ life: "home.ask", thought: { style: "home", restText: "Ask any bot...", openPath: "askOpen", fullWhen: { truthy: "sent" }, shape: "square", veil: true } });
+      expect(stage.props).toMatchObject({ life: "home.ask", thought: { style: "home", restText: "Talk freely", openPath: "askOpen", fullWhen: { truthy: "sent" }, shape: "square", veil: true } });
       expect((stage.props as { height: number }).height).toBeGreaterThanOrEqual((stage.props as { size: number }).size + 18 + 43 + 48);
       expect(s.state).toMatchObject({ askOpen: false, askBot: "any", voice: "" });
       // No ask bar: every field asking any bot is his thought's.

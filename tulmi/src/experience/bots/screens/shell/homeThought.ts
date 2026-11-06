@@ -1,6 +1,6 @@
 /**
  * HOME'S ASK, AS HIS THOUGHT (for a build that draws it: kit canHomeThought; docs/bots-app.md "Spaces"): a tiny bot walks the bottom of
- * Home with a dotted box riding over him, "Ask any bot...". A tap grows it into a square and blurs Home behind; what is typed goes to
+ * Home with a dotted box riding over him, "Talk freely". A tap grows it into a square and blurs Home behind; what is typed goes to
  * Ask any bot (POST /v1/shell/ask, the same door as the ask bar), the box grows to near the whole screen, he thinks, and the right bot's
  * answer comes in inside it (streamed where the build can), with Open for the whole answer on the Ask screen.
  *
@@ -109,7 +109,7 @@ export function homeThought(ctx: BotsCtx): Node {
     ])),
     when({ falsy: "voice" }, row([
       box([
-        when({ falsy: "sent" }, askField("ask", "Ask any bot...", send)),
+        when({ falsy: "sent" }, askField("ask", "Talk freely", send)),
         when(sent, askField("askMore", "Ask a follow-up...", send)),
       ], { flexGrow: 1, flexShrink: 1, minWidth: 0 }),
       roundButton("send", send, { size: 40, label: "Send" }),
@@ -125,7 +125,7 @@ export function homeThought(ctx: BotsCtx): Node {
     thinkWhen: { all: [asking, { falsy: "reply.text" }] }, cheerWhen: { truthy: "asked.shell.text" },
     // Listening while the voice turn is on, sending included: no one-frame shrink to the pill before the box goes full.
     ...(voice ? { listenWhen: { truthy: "voice" } } : {}),
-    thought: { style: "home", restText: "Ask any bot...", openPath: "askOpen", fullWhen: sent, shape: "square", veil: true, place: "follow" },
+    thought: { style: "home", restText: "Talk freely", openPath: "askOpen", fullWhen: sent, shape: "square", veil: true, place: "follow" },
     label: voice ? `Ask any bot. ${desk ? "Double-click" : "Double-tap"} him to talk.` : "Ask any bot.",
   }, [col(children, { padding: 18, gap: 14 })], {
     onPress: tapHim,
