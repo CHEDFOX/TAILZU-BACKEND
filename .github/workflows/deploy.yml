@@ -14,7 +14,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions: {}
+# Read only: the migrations folder and deploy/LIVE_MIGRATION are checked out to be compared, nothing from them is run.
+permissions:
+  contents: read
 
 # One deploy at a time, in order; a deploy under way is never cut off.
 concurrency:
@@ -33,6 +35,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            deploy
+            tulmi/supabase/migrations
+
+      # New code must not go live before the tables it uses: a migration in the repo newer than deploy/LIVE_MIGRATION (the last
+      # one run on the database, written down once it has been) stops the deploy and says what to run. The code goes live with
+      # that same command, and LIVE_MIGRATION is moved up after it.
+      - name: Migrations are on the database
+        run: |
+          set -euo pipefail
+          live="$(tr -dc '0-9' < deploy/LIVE_MIGRATION)"
+          newer="$(ls tulmi/supabase/migrations | grep -oE '^[0-9]{4}' | sort -u | awk -v l="$live" '$1+0 > l+0' | tr '\n' ' ')"
+          if [ -n "$newer" ]; then
+            echo "::error::Migrations ${newer}are not on the database yet. Run on the server, from the repo: git pull --ff-only && ./deploy/migrate.sh ${newer}&& ./deploy/ship.sh"
+            exit 1
+          fi
+
       - name: Ship
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
