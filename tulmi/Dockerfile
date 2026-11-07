@@ -19,6 +19,17 @@ COPY tulmi/ /app/tulmi/
 COPY shared/ /app/shared/
 RUN npm run build
 
+# ---- migrations --------------------------------------------------------------
+# A deploy runs the new database migrations here, while the image is built: before the running server is touched, so new code never
+# runs before its tables and a failed migration only stops the build (tulmi/supabase/migrate-pending.sh). Only a deploy build runs them
+# (DEPLOY_MIGRATIONS=1 and tulmi/.env as the build secret app_env, both from docker-compose.yml); any other build skips this.
+FROM postgres:17-alpine AS migrate
+ARG DEPLOY_MIGRATIONS=0
+COPY tulmi/supabase/migrations/ /migrations/
+COPY tulmi/supabase/LIVE_MIGRATION /LIVE_MIGRATION
+COPY tulmi/supabase/migrate-pending.sh /migrate-pending.sh
+RUN --mount=type=secret,id=app_env DEPLOY_MIGRATIONS="$DEPLOY_MIGRATIONS" sh /migrate-pending.sh && touch /migrated
+
 # ---- 3. runtime -------------------------------------------------------------
 FROM node:22-slim AS runtime
 
@@ -53,6 +64,8 @@ COPY --from=build /app/tulmi/icons ./icons
 COPY --from=build /app/tulmi/brand ./brand
 # Prompts (.md) are read at runtime and are not emitted by tsc.
 COPY --from=build /app/shared /app/shared
+# The image is only made once the migrations above ended well (this is what makes the build wait for them).
+COPY --from=migrate /migrated /app/.migrated
 
 # Drop root: node:22-slim ships a non-root `node` user (uid 1000). Make sure it
 # owns everything the process touches — INCLUDING the /data volume mount used

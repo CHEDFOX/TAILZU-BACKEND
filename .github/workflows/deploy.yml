@@ -5,7 +5,8 @@ name: Deploy
 # command for it, whatever is asked. The key and the server's host line are the repo's Actions secrets VPS_SSH_KEY and
 # VPS_KNOWN_HOSTS. Nothing is checked out or built here, so no code from the repo runs with them.
 #
-# By hand: Actions → Deploy → Run workflow (on main). Migrations and settings stay by hand (deploy/migrate.sh, deploy/set-env.sh).
+# By hand: Actions → Deploy → Run workflow (on main). New migrations run on the server first, before the new code replaces the old
+# (the Dockerfile's migrate stage, while the image is built); settings stay by hand (deploy/set-env.sh).
 
 on:
   workflow_run:
@@ -14,9 +15,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-# Read only: the migrations folder and deploy/LIVE_MIGRATION are checked out to be compared, nothing from them is run.
-permissions:
-  contents: read
+permissions: {}
 
 # One deploy at a time, in order; a deploy under way is never cut off.
 concurrency:
@@ -35,25 +34,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            deploy
-            tulmi/supabase/migrations
-
-      # New code must not go live before the tables it uses: a migration in the repo newer than deploy/LIVE_MIGRATION (the last
-      # one run on the database, written down once it has been) stops the deploy and says what to run. The code goes live with
-      # that same command, and LIVE_MIGRATION is moved up after it.
-      - name: Migrations are on the database
-        run: |
-          set -euo pipefail
-          live="$(tr -dc '0-9' < deploy/LIVE_MIGRATION)"
-          newer="$(ls tulmi/supabase/migrations | grep -oE '^[0-9]{4}' | sort -u | awk -v l="$live" '$1+0 > l+0' | tr '\n' ' ')"
-          if [ -n "$newer" ]; then
-            echo "::error::Migrations ${newer}are not on the database yet. Run on the server, from the repo: git pull --ff-only && ./deploy/migrate.sh ${newer}&& ./deploy/ship.sh"
-            exit 1
-          fi
-
       - name: Ship
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}

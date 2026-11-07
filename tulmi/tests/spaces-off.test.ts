@@ -53,8 +53,10 @@ const switchOn = () => { vi.unstubAllEnvs(); resetConfigForTests(); };
 afterEach(switchOn);
 
 describe("the switch", () => {
-  it("is on unless SPACES_ENABLED says false", () => {
-    expect(spacesOn()).toBe(true);
+  it("is off unless SPACES_ENABLED says true (off on the server until it is ready)", () => {
+    vi.stubEnv("SPACES_ENABLED", undefined);
+    resetConfigForTests();
+    expect(spacesOn()).toBe(false);
     switchOff();
     expect(spacesOn()).toBe(false);
     vi.stubEnv("SPACES_ENABLED", "true");

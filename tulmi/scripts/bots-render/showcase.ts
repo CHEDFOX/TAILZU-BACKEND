@@ -21,6 +21,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 process.env.PUBLIC_ORIGIN = "https://api.local";
+// Spaces is off on the server until it is ready (SPACES_ENABLED); the renders draw it, as the screens were designed. Set it to false to see it off.
+process.env.SPACES_ENABLED ??= "true";
 
 const R = await import("./render.js");
 const { SAMPLES, apiFor } = await import("./samples/index.js");

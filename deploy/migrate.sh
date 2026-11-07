@@ -3,6 +3,10 @@
 # Runs database migrations (tulmi/supabase/migrations) on the live database, by number, from the server's env file, so the
 # database address is never typed or printed. Each file runs whole or not at all; the migrations are written to be safe to run again.
 #
+# A deploy runs the new ones itself while its image is built, before the new code (tulmi/supabase/migrate-pending.sh, the Dockerfile's
+# migrate stage).
+# This is for running one again by hand.
+#
 #   ssh root@91.108.104.168 'cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0062 0063 0064 0065'
 #   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/migrate.sh'                 lists the latest migrations
 #

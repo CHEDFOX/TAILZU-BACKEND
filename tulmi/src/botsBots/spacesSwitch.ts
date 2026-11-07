@@ -22,14 +22,14 @@ export const SPACES_OFF = { code: "spaces_off", message: "Spaces isn't on yet." 
 /**
  * Is Spaces on? Read on every call (the config is parsed once and cached, so this is cheap), so a test can flip it with
  * resetConfigForTests. A process whose config can't be read (only a unit test with none set up) reads the variable itself, the
- * same way config.ts does: unset is on, anything but "true" is off.
+ * same way config.ts does: off unless it says "true".
  */
 export function spacesOn(): boolean {
   try {
     return getConfig().SPACES_ENABLED;
   } catch {
     const v = process.env.SPACES_ENABLED;
-    return v == null ? true : v.toLowerCase() === "true";
+    return v != null && v.toLowerCase() === "true";
   }
 }
 

@@ -44,6 +44,8 @@ import { fileURLToPath } from "node:url";
 import type { FakeOpts } from "../../src/experience/bots/fixtures.js";
 
 process.env.PUBLIC_ORIGIN = "https://api.local";
+// Spaces is off on the server until it is ready (SPACES_ENABLED); the renders draw it, as the screens were designed. Set it to false to see it off.
+process.env.SPACES_ENABLED ??= "true";
 
 export const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TULMI = path.resolve(HERE, "../..");

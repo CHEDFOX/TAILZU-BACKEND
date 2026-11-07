@@ -326,6 +326,12 @@ docker compose down                            # stop Flow (other apps unaffecte
 git pull && docker compose up -d --build       # deploy a new version
 ```
 
+A deploy runs the new database migrations itself, while the new image is built and before the running server is touched (the
+Dockerfile's `migrate` stage, `tulmi/supabase/migrate-pending.sh`, with `tulmi/.env` as a build secret): new code never runs before its
+tables, and a failed migration stops the build with its error while the server keeps serving. It runs every migration newer than
+`tulmi/supabase/LIVE_MIGRATION`; move that number up once a deploy has run them. Every push to `main` deploys itself once CI passes
+(`.github/workflows/deploy.yml`).
+
 ## Why this won't break your other apps
 
 - Flow's container is isolated; the compose project is namespaced (`tulmi-*`),

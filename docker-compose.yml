@@ -20,6 +20,13 @@ services:
     build:
       context: .
       dockerfile: tulmi/Dockerfile
+      # The build runs the new database migrations first (the Dockerfile's migrate stage, tulmi/supabase/migrate-pending.sh), before the
+      # running container is touched: a failed one stops the build and the server keeps serving. It reads SUPABASE_DB_URL from tulmi/.env,
+      # given as a build secret (never kept in the image), as the nightly backup does.
+      args:
+        DEPLOY_MIGRATIONS: "1"
+      secrets:
+        - app_env
     env_file:
       - tulmi/.env
     environment:
@@ -137,3 +144,8 @@ volumes:
   tulmi_control:
   # Xode's copy of each project's code (one gzipped file a project; swept after 30 days unused).
   tulmi_code:
+
+# tulmi/.env for the image build's migrate stage only (backend.build.secrets above): mounted for that one step, never in the image.
+secrets:
+  app_env:
+    file: ./tulmi/.env

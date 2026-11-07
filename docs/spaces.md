@@ -23,14 +23,15 @@ plans for each other, and what the group tells its bots. This file is the rules 
 
 ## Turning Spaces off
 
-Spaces can be hidden until it is ready, with one server setting, `SPACES_ENABLED` (`config.ts`, on unless set to `false`). Nothing
-is deleted or changed while it is off: turning it back on brings back every space, message, share, task and invite as it was.
+Spaces is hidden until it is ready, with one server setting, `SPACES_ENABLED` (`config.ts`): off unless it is set to `true` (the tests
+run with it on). Nothing is deleted or changed while it is off: turning it on brings back every space, message, share, task and invite
+as it was.
 
 On the server, from the repo (DEPLOY.md has the ssh line):
 
 ```bash
-./deploy/set-env.sh SPACES_ENABLED=false && ./deploy/ship.sh   # off
-./deploy/set-env.sh SPACES_ENABLED=true && ./deploy/ship.sh    # on again
+./deploy/set-env.sh SPACES_ENABLED=true && ./deploy/ship.sh    # on
+./deploy/set-env.sh SPACES_ENABLED=false && ./deploy/ship.sh   # off again
 ./deploy/set-env.sh --show SPACES_ENABLED                      # which it is now
 ```
 

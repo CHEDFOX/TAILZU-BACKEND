@@ -794,12 +794,12 @@ const EnvSchema = z.object({
   ROUTINES: bool(true),
   /**
    * SPACES (src/botsBots/spacesSwitch.ts, docs/spaces.md "Turning Spaces off"): family and friends, chats with them, sharing to them, and
-   * Work in space on the bots' pages. On by default. SPACES_ENABLED=false hides all of it until it is ready: no Space card or group tiles
+   * Work in space on the bots' pages. OFF until it is ready (the owner's call): SPACES_ENABLED=true shows it. Off hides all of it: no Space card or group tiles
    * on Home, no Spaces in You or the window's settings, no Work in space on the bots' pages, nothing to share to, no pushes or invite
    * mails from it, and every Spaces and Work in space route answers 404 spaces_off (a link or a notification into it opens Home).
-   * Nothing is deleted: true brings every space back as it was.
+   * Nothing is deleted: true brings every space back as it was. The tests run with it on (tests/setup.ts), as they were written.
    */
-  SPACES_ENABLED: bool(true),
+  SPACES_ENABLED: bool(false),
   /**
    * PLAN EASE, THE SIMPLER ONE (docs/plan-ease.md), one switch per step so each can be turned off on its own. On by default; false puts
    * that step back as it was, and nothing it kept is deleted.
