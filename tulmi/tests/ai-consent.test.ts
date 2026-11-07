@@ -174,12 +174,18 @@ describe("the app", () => {
 });
 
 describe("the terms and privacy card, for a build that draws a box that scrolls", () => {
-  it("holds the whole of the Terms and the Privacy Policy in the scroll, with one line above it, and Agree accepts them", async () => {
+  it("one line, then Privacy, Terms and Support as tabs over the box that scrolls the one picked; Agree accepts them", async () => {
     const r = await buildBotsScreen({ screenId: "bots.home", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: "u", name: "Aanya Sharma" }, can: new Set(["BotsKit", "BotsMotion", "Scroll"]), desk: { pages: false, notes: false } }, fakeDeps({ api: { "GET /v1/you/ai-consent": { agreed: false } } }));
     expect(lintTree(r.root!)).toEqual([]);
     const s = JSON.stringify(r.root);
-    for (const w of ["Terms and privacy", "Tap Agree to let X0 Bot work at its full potential: what you share goes to its AI partners to answer you. This also accepts the Terms of Service and the Privacy Policy below.", '"type":"Scroll"',
-      "Terms of Service", "1. Eligibility", "Privacy Policy", "AI services, and your permission", "Agree", "Not now", "/privacy/providers"]) expect(s).toContain(w);
+    for (const w of ["Terms and privacy", '"Tap Agree to let X0 Bot work at its full potential."', '"type":"Scroll"', '"Privacy"', '"Terms"', '"Support"',
+      "Terms of Service", "1. Eligibility", "Privacy Policy", "AI services, and your permission", "support@x0bot.com", "Agree", "Not now"]) expect(s).toContain(w);
+    // One box a page, each shown by its tab; Privacy first (also when the card's state was not started).
+    expect(s.match(/"type":"Scroll"/g)?.length).toBe(3);
+    for (const p of ["terms", "support", "privacy"]) expect(s).toContain(`"kind":"setState","path":"aiPage","value":"${p}"`);
+    expect(JSON.stringify(r.state)).toContain('"aiPage":"privacy"');
+    // No links out under the box any more (Providers, and the pages themselves, are in the tabs' text).
+    expect(s).not.toContain('"url":"https://x0bot.com/privacy/providers"');
     // The policy's own words, not a summary of them.
     expect(s).toContain("we ask your permission before anything is sent");
     // No separate part above the scroll: the summary line and its three ticks are the short card's only.
