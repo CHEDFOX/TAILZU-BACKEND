@@ -175,7 +175,7 @@ export const LOOK_COMPONENTS = ["PersonBot", "FontBricolage"];
 export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "Outbox", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "DeskTalkTo"];
 /** What the phone build declares beyond BotsKit, for the screens drawn here: the living tiles, the media actions, the new Spaces (and the
  *  "$state" params their navigation needs, ActionParams). */
-export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS];
+export const PHONE_COMPONENTS = ["BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "VoiceRecord", "Outbox", "ActionParams", "Scroll", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS];
 
 /**
  * The builder the stand-in server uses. `misses` collects the api calls the target screen made that had no answer
