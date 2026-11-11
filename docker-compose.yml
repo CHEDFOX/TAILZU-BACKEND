@@ -106,6 +106,38 @@ services:
     pids_limit: 512
     restart: unless-stopped
 
+  # THE ORACLE WORKER (oracle-worker/, docs/oracle.md, DEPLOY.md): Plutto's oracle for the Oracle bot. OPTIONAL: it only starts with the `oracle` profile,
+  #
+  #   docker compose --profile oracle up -d --build
+  #
+  # with ORACLE_WORKER_SECRET, OPENROUTER_API_KEY and OPENAI_API_KEY in the `.env` beside this file (compose reads it for itself; the secret is also in
+  # tulmi/.env, with ORACLE_WORKER_URL=http://oracle-worker:8000). It is given those three and nothing else of the server's: not tulmi/.env, whose
+  # database and Supabase keys it has no use for. Unlike the media worker it needs the internet (the models), so it is on the default network, but it
+  # has no port on the host and answers only a signed request. Read-only, no capabilities, not root; what it writes is scratch in /tmp, gone with the
+  # container: nothing a person asked is kept there.
+  oracle-worker:
+    profiles: ["oracle"]
+    build:
+      context: ./oracle-worker
+    image: tailzu-oracle-worker
+    environment:
+      ORACLE_WORKER_SECRET: ${ORACLE_WORKER_SECRET:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ORACLE_PROFILE: bot
+      ORACLE_WORKER_CONCURRENCY: ${ORACLE_WORKER_CONCURRENCY:-8}
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${ORACLE_WORKER_MEMORY:-1g}
+    cpus: ${ORACLE_WORKER_CPUS:-1}
+    pids_limit: 256
+    restart: unless-stopped
+
   # OPTIONAL reverse proxy with automatic HTTPS. It claims ports 80 and 443, so
   # ONLY use this if nothing else on the VPS is using them. If you already run
   # nginx/Apache/Caddy for your other apps, DON'T enable this — instead add a

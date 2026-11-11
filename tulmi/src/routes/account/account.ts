@@ -133,6 +133,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       ["code_chat_threads", null], ["code_project_settings", null], ["code_pr_care", null],
       // The bots platform (migration 0038): their bots, the API keys (only hashes), saved commands, and what their bots remember of them.
       ["bots", null], ["bot_keys", null], ["bot_commands", null], ["bot_facts", null], ["bot_threads", null],
+      // The Oracle (migration 0078): when and where they were born, and the route of their last question.
+      ["oracle_people", null],
       // Apple's token for revoking the sign-in (migration 0061), revoked just above.
       ["apple_sign_in", null],
     ];

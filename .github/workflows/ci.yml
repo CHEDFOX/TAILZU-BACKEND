@@ -127,6 +127,25 @@ jobs:
         run: npx wrangler deploy --dry-run --outdir dist
         working-directory: viewer
 
+  # The oracle worker (oracle-worker/): Plutto's oracle behind a signed endpoint. Offline tests: the pipeline and the models are stood in for.
+  oracle-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install
+        run: pip install -r requirements-dev.txt
+        working-directory: oracle-worker
+
+      - name: Test
+        run: python -m pytest -q
+        working-directory: oracle-worker
+
   docker-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15

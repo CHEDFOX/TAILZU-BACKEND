@@ -28,6 +28,7 @@ import { routinesRow, type RoutinesData } from "../routines.js";
 import { names, type Space } from "../spaces/parts.js";
 import { facesLine } from "../spaces/spaceDetail.js";
 import { idleLine as idleLineOf, firstName } from "./parts.js";
+import { oracleTileLook } from "../bots/oraclePage.js";
 
 // ===================================================================== home
 
@@ -101,7 +102,11 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     // A double tap on a bot's own tile is a voice chat with that bot (Home's thought, canVoice); groups and Make a bot have none.
     const talk = canHomeThought(ctx) && canVoice(ctx);
     const living = botTiles([
-      ...shown.map((b) => ({ ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}) })),
+      ...shown.map((b) => ({
+        ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}),
+        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts).
+        ...(b.slug === "oracle" ? oracleTileLook(ctx) : {}),
+      })),
       ...(canSpaces2(ctx) ? (groups.length ? [spaceCardSpec(groups)] : []) : groupsShown.map(groupTileSpec)),
       makeTileSpec(open(SCREENS.make)),
     ], { columns, height, padding, gap, ...(strip ? { strip, stripHeight: notesStripHeight(ctx) } : {}), ...(surprises ? { surprises } : {}) });

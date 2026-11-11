@@ -1,0 +1,1 @@
+"""Vastu Shastra"""

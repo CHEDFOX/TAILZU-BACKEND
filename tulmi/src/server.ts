@@ -75,6 +75,7 @@ import { openAiModeration, setModeration } from "./botsBots/filter.js";
 import { startOpsAlerts } from "./ops/alerts.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
+import { registerOracleRoutes } from "./routes/bots/oracle.js";
 import { registerBlipRoutes } from "./routes/bots/blipCatalog.js";
 import { registerLaunchRoutes } from "./routes/app/launchMotion.js";
 import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
@@ -469,6 +470,8 @@ registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
+// The Oracle's card: when and where a person was born, for the Oracle to read their sky from (src/oracle, docs/oracle.md).
+registerOracleRoutes(app, { rateLimit: AUTHED_RL, bots });
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).
 registerBlipRoutes(app, { rateLimit: AUTHED_RL });

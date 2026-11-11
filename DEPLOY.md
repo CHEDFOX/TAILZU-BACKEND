@@ -1110,3 +1110,39 @@ the safety model, the endpoint and its limits: `docs/bots.md`.
    A bot keeps, for its owner and until they forget it or delete the bot or the account, a few short facts they told it and a short summary of the talk.
    An app calling with a key never reads or writes that memory.
 7. **Back out:** `BOTS=false` and a restart. The routes answer 404; the rows and keys stay, and work again when it is turned back on.
+
+### The Oracle: a bot that reads a person's sky (`ORACLE_WORKER_URL`)
+
+A built-in bot that answers questions about a person's life from their birth chart, with Plutto's oracle as its engine, run as a container of its own
+(`oracle-worker/`). It needs `BOTS` on (above). Without `ORACLE_WORKER_URL` and `ORACLE_WORKER_SECRET` the Oracle is not among the bots and
+`/v1/oracle/*` answers `404 oracle_off`. Full story, the models and the money: `docs/oracle.md`.
+
+1. **Migration.** `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0078"`. It makes `oracle_people` (a person's
+   birth details and the route their last question took), owner-only, deleted with the account. Without `SUPABASE_SERVICE_KEY` it lives in memory.
+2. **The keys.** `openssl rand -hex 32` is the secret (64 hex characters, no `$`).
+   * In the `.env` beside `docker-compose.yml` (compose reads it for itself, as for the media worker): `ORACLE_WORKER_SECRET=<the secret>`,
+     `OPENROUTER_API_KEY=<the same key as in tulmi/.env>` and `OPENAI_API_KEY=<the same>` (**secrets, `.env` only**). The worker is given these three
+     and nothing else of the server's.
+   * In `tulmi/.env`: `ORACLE_WORKER_SECRET=<the secret>` and `ORACLE_WORKER_URL=http://oracle-worker:8000`.
+3. **Start it.**
+
+   ```bash
+   docker compose --profile oracle up -d --build
+   docker compose --profile oracle ps            # oracle-worker: healthy
+   ```
+
+   It wants about 1 GB of memory (`ORACLE_WORKER_MEMORY`) and one CPU (`ORACLE_WORKER_CPUS`), and answers 8 questions at
+   once (`ORACLE_WORKER_CONCURRENCY`; one more waits 20 seconds, then is told it is busy). It has no port on the host, runs read-only as a user that
+   is not root, and keeps nothing: its scratch is in `/tmp`, gone with the container.
+4. **Switch it on.** `docker compose up -d --build` (the backend reads the two settings at start), or `./deploy/ship.sh`.
+5. **Check.** `docker compose exec backend wget -qO- http://oracle-worker:8000/healthz` answers `{"ok":true,"models":true,"meaning":true}`
+   (`"models":false`: the OpenRouter key is not in the `.env` beside `docker-compose.yml`; `"meaning":false`: nor the OpenAI key, and every question
+   shows the model the whole list of subsystems, slower and dearer). In the Bots app, pick the Oracle in Ask's list of
+   bots (or write "@oracle"); keep a birth date, time and place on its page and ask it something ("will this year bring a new job?"). The words arrive as they are
+   written: in the model test the first came 6 to 21 seconds after the question (the engine's own work, then the model thinking), the whole
+   answer in 13 to 27. `docker compose logs oracle-worker` shows which model answered when one was down, never what was asked.
+6. **Licence.** The engine computes the planets with the Swiss Ephemeris (`pyswisseph`), AGPL-3.0 unless the Swiss Ephemeris Professional Licence is
+   bought from Astrodienst: under the AGPL, the people using the Oracle must be able to get the worker's source.
+7. **Add to the privacy policy.** For the Oracle, a person's birth date, time and place are kept until they change them, delete their data or their
+   account; what they ask goes to the model providers like any bot's message, and nothing of it is logged.
+8. **Back out:** remove `ORACLE_WORKER_URL` from `tulmi/.env` and restart; then `docker compose --profile oracle stop oracle-worker`. The rows stay.

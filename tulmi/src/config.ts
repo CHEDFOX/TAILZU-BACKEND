@@ -760,6 +760,13 @@ const EnvSchema = z.object({
   MEDIA_INGEST: bool(false),
   MEDIA_WORKER_URL: z.string().trim().optional(),
   MEDIA_WORKER_SECRET: z.string().optional(),
+  /**
+   * THE ORACLE (src/oracle, oracle-worker/, docs/oracle.md): a built-in bot that reads a person's sky with Plutto's oracle, which runs as its own Python
+   * service. ORACLE_WORKER_URL (http://oracle-worker:8000 in docker-compose) and ORACLE_WORKER_SECRET (SECRET: .env only, 32+ characters, the same on
+   * both sides; every call is HMAC-signed the media worker's way). Without both the Oracle is not among the bots at all.
+   */
+  ORACLE_WORKER_URL: z.string().trim().optional(),
+  ORACLE_WORKER_SECRET: z.string().optional(),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -1813,6 +1820,8 @@ export function getConfig(): AppConfig {
     const r2 = [env.R2_ACCOUNT_ID, env.R2_ACCESS_KEY_ID, env.R2_SECRET_ACCESS_KEY, env.R2_BUCKET];
     if (r2.some(Boolean) && !r2.every(Boolean)) console.warn("[config] R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET are not all set: files are read but their bytes are not kept.");
     if (Boolean(env.MEDIA_WORKER_URL) !== Boolean(env.MEDIA_WORKER_SECRET)) console.warn("[config] MEDIA_WORKER_URL and MEDIA_WORKER_SECRET go together: without both there is no worker, so office files and scanned PDFs are not read.");
+    if (Boolean(env.ORACLE_WORKER_URL) !== Boolean(env.ORACLE_WORKER_SECRET)) console.warn("[config] ORACLE_WORKER_URL and ORACLE_WORKER_SECRET go together: without both the Oracle is not among the bots.");
+    if (env.ORACLE_WORKER_SECRET && env.ORACLE_WORKER_SECRET.length < 32) console.warn("[config] ORACLE_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
     if (env.MEDIA_WORKER_SECRET && env.MEDIA_WORKER_SECRET.length < 32) console.warn("[config] MEDIA_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   }
 

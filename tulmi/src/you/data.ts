@@ -122,7 +122,7 @@ export async function deleteMyData(userId: string, d: Pick<DataDeps, "media">, l
   const cleared: string[] = [];
   // The bytes are in a bucket, not in the database: they go first, then the rows below.
   try { await d.media?.forAccountDelete(userId); } catch (err) { log?.error({ err }, "you: delete file bytes"); }
-  for (const table of ["cleanup_history", "bot_facts", "bot_threads", "code_chat_threads", "notes", "media_items"]) {
+  for (const table of ["cleanup_history", "bot_facts", "bot_threads", "oracle_people", "code_chat_threads", "notes", "media_items"]) {
     try {
       const { error } = await admin.from(table).delete().eq("user_id", userId);
       if (error) log?.error({ err: error }, `you: delete ${table}`); else cleared.push(table);

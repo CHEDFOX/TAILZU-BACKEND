@@ -92,7 +92,7 @@ export const LIMITS = {
 
 /** Slugs nobody may take: the built-in bots, Notes (its own tile on Home), and words the routes use. */
 export const RESERVED_SLUGS: readonly string[] = [
-  "code", "keybot", "plan", "travel", "notes", "me", "new", "draft", "approve", "export", "any", "admin", "api", "v1", "bots", "bot", "tailzu", "test", "keys", "memory", "commands",
+  "code", "keybot", "plan", "travel", "oracle", "notes", "me", "new", "draft", "approve", "export", "any", "admin", "api", "v1", "bots", "bot", "tailzu", "test", "keys", "memory", "commands",
 ];
 
 // ------------------------------------------------------------------ what a message became

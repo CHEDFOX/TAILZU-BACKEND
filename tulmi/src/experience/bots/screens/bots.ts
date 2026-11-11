@@ -1,5 +1,5 @@
 /**
- * THE BOTS THEMSELVES: a bot's page and its chat, Make a bot, Edit, its keys, Find a bot, Plan Ease, the Travel bot, Spaces, sending a
+ * THE BOTS THEMSELVES: a bot's page and its chat, Make a bot, Edit, its keys, Find a bot, Plan Ease, the Travel bot, the Oracle, Spaces, sending a
  * shared file or link to a bot, and Blip's five moments (BotPage, Chat, MakeBot, BotEdit, BotKeys, BotStore, PlanBot, TravelBot, Spaces,
  * ShareIn, Avatars; D<Board> in the window).
  *
@@ -42,23 +42,29 @@ import { planGoPage, planTodayDesk, planTodayPhone, planWeekPage, type PlanToday
 import { capturePage, planGoLoad, planInScreens, shareCapture, type CaptureView } from "./bots/planIn.js";
 import { planPeopleScreens } from "./bots/planSend.js";
 import { planOn } from "../../../botsBots/planSwitch.js";
+import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
 
 /** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
 const planV2 = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx);
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
-async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number): Promise<BotPageData> {
+async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number): Promise<OraclePageData> {
   const slug = slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat] = await Promise.all([
+  const [bot, memory, linked, chat, sky] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
     deps.api<{ turns: Turn[] }>("GET", `${A}/chat/${enc(slug)}?limit=${turnsLimit}`).then((r) => r.turns).catch(() => undefined),
+    // The Oracle's own card: when and where they were born (routes/bots/oracle.ts).
+    slug === "oracle" ? deps.api<OracleSkyView>("GET", "/v1/oracle/sky").catch(() => undefined) : Promise.resolve(undefined),
   ]);
-  return { bot, memory, linked, turns: chat };
+  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}) };
 }
+
+/** The Oracle is the chat and nothing in its way: its bot page and its chat are one page (screens/bots/oraclePage.ts). */
+const isOracle = (d: BotPageData): boolean => d.bot?.slug === "oracle" && d.bot.builtin;
 
 function noBot(ctx: BotsCtx): ReturnType<typeof page> {
   return page(ctx, {
@@ -662,15 +668,15 @@ function avatarsPage(ctx: BotsCtx) {
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
 export const botsScreens: BotsScreen[] = [
-  screen<BotPageData>({
+  screen<OraclePageData>({
     id: SCREENS.bot,
-    load: (ctx, deps) => loadBot(ctx, deps, isDesk(ctx) ? 30 : 6),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
+    load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : 6),
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
   }),
-  screen<BotPageData>({
+  screen<OraclePageData>({
     id: SCREENS.chat,
     load: (ctx, deps) => loadBot(ctx, deps, 30),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : chatPage(ctx, d)),
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : chatPage(ctx, d)),
   }),
   screen<{ draft: DraftView | null }>({
     id: SCREENS.make,

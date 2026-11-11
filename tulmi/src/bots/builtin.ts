@@ -1,13 +1,17 @@
 /**
- * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL, IN THE SAME FORMAT AS A BOT A PERSON MAKES.
+ * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE WHERE ITS SERVICE IS SET UP), IN THE SAME FORMAT AS A BOT A PERSON MAKES.
  *
  * Everything is a bot. These four are defined in code (ownerId null, nobody can change or delete them) and every person has them. The
  * Xode's own flows are the front door's and Xode's, exactly as they were: when it is the bot that answers, the message goes
  * down the front door's roads (docs/front-door.md) and this definition is only what the person sees, picks by and sets standing choices
  * against. The other three run like any bot: their rules, their skills, the person's connected apps, their memory.
  *
+ * The Oracle (src/oracle, docs/oracle.md) reads a person's sky with Plutto's oracle, a service of its own: its words come from there, and its rules
+ * here are what the person reads and the front door picks by. It is listed only where ORACLE_WORKER_URL and ORACLE_WORKER_SECRET are set.
+ *
  * One colour each, from the natural palette.
  */
+import { getConfig } from "../config.js";
 import { PALETTE, type BotDef, type BotSkills } from "./types.js";
 
 const skills = (on: Partial<BotSkills>): BotSkills => ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on });
@@ -20,6 +24,7 @@ const PURPOSE = {
   keybot: "Writes, rewrites and replies in your own voice, in any language you mix.",
   plan: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.",
   travel: "Plans trips: routes, stays and timings, with sources.",
+  oracle: "Reads your birth chart and the world's divination traditions to answer what you ask about your life, love, work and timing.",
 } as const;
 
 const DEFS: readonly BotDef[] = [
@@ -76,12 +81,38 @@ const DEFS: readonly BotDef[] = [
   },
 ];
 
-/** The four, as copies (a caller cannot change them). */
-export function builtinBots(): BotDef[] {
-  return DEFS.map((d) => ({ ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } }));
+const ORACLE: BotDef = {
+  id: "oracle", ownerId: null, slug: "oracle", name: "Oracle", colour: "plum",
+  purpose: PURPOSE.oracle,
+  principles: [
+    "Read from the person's own birth details; ask for them when a question needs a chart.",
+    "Say what is true of their life in plain words, never the machinery, unless they ask for it.",
+    "Give dates only where the data gives them.",
+    "Every hard thing comes with what eases it.",
+  ],
+  // Its reading is its own service's (src/oracle): no tools here.
+  skills: skills({}),
+  knowledge: [], tone: "close, unhurried and certain", visibility: "private", budgets: { perRequestPaise: 600, dailyPaise: 5000 },
+};
+
+/** The Oracle is listed only where its service is set up. */
+export function oracleOn(): boolean {
+  try {
+    const c = getConfig();
+    return Boolean(c.ORACLE_WORKER_URL && c.ORACLE_WORKER_SECRET);
+  } catch {
+    return false;
+  }
 }
 
-export const isBuiltinSlug = (slug: string): boolean => DEFS.some((d) => d.slug === slug);
+const defs = (): readonly BotDef[] => (oracleOn() ? [...DEFS, ORACLE] : DEFS);
+
+/** The built-ins, as copies (a caller cannot change them). */
+export function builtinBots(): BotDef[] {
+  return defs().map((d) => ({ ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } }));
+}
+
+export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || DEFS.some((d) => d.slug === slug);
 
 export function builtinBot(slug: string): BotDef | null {
   return builtinBots().find((d) => d.slug === slug || d.id === slug) ?? null;

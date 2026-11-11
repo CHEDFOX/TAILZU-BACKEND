@@ -12,6 +12,8 @@
  *                   cap (meter.ts), which is the smaller of the bot's per-request budget and what is left of its day
  *   6. memory       after an owner's chat turn: facts and the rolling summary (memory.ts)
  *
+ * The Oracle is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts).
+ *
  * THE MONEY: the cap is checked before every call by the gateway (a call whose worst case would pass it is refused, never made). A request that
  * runs dry after its tools worked returns what it has, with a note; one that cannot even start is a 402.
  *
@@ -37,6 +39,7 @@ import { scopeMessage } from "./scope.js";
 import type { BotStore } from "./store.js";
 import { buildTools, CALLS_PER_STEP, newRecord } from "./tools.js";
 import { BotError, type BotAnswer, type BotDef, type BotEvent } from "./types.js";
+import { ORACLE_SLUG, runOracle, type OracleDeps } from "../oracle/run.js";
 
 export interface RunDeps {
   store: BotStore;
@@ -46,6 +49,8 @@ export interface RunDeps {
   now?: () => number;
   /** Whether the owner's personalise switch is on (shared.ts); the You store when not given. */
   shared?: Pick<SharedDeps, "on">;
+  /** The Oracle's store, service and place finder (src/oracle); the server's own when not given. */
+  oracle?: OracleDeps;
 }
 
 export interface RunRequest {
@@ -98,6 +103,8 @@ export function runBot(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
 }
 
 async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
+  // The Oracle's words are its own service's (src/oracle/run.ts): the sky, the turns, the route; no tool loop.
+  if (r.bot.ownerId === null && r.bot.slug === ORACLE_SLUG) return runOracle(d, r);
   const t0 = (d.now ?? Date.now)();
   const bot = r.bot;
   const emit = r.emit ?? (() => undefined);
