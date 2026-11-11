@@ -1134,7 +1134,8 @@ A built-in bot that answers questions about a person's life from their birth cha
    It wants about 1 GB of memory (`ORACLE_WORKER_MEMORY`) and one CPU (`ORACLE_WORKER_CPUS`), and answers 8 questions at
    once (`ORACLE_WORKER_CONCURRENCY`; one more waits 20 seconds, then is told it is busy). It has no port on the host, runs read-only as a user that
    is not root, and keeps nothing: its scratch is in `/tmp`, gone with the container.
-4. **Switch it on.** `docker compose up -d --build` (the backend reads the two settings at start), or `./deploy/ship.sh`.
+4. **Switch it on.** `docker compose up -d --build` (the backend reads the two settings at start), or `./deploy/ship.sh`. `ship.sh` rebuilds the
+   backend only: after a change under `oracle-worker/`, run step 3's first line again.
 5. **Check.** `docker compose exec backend wget -qO- http://oracle-worker:8000/healthz` answers `{"ok":true,"models":true,"meaning":true}`
    (`"models":false`: the OpenRouter key is not in the `.env` beside `docker-compose.yml`; `"meaning":false`: nor the OpenAI key, and every question
    shows the model the whole list of subsystems, slower and dearer). In the Bots app, pick the Oracle in Ask's list of
