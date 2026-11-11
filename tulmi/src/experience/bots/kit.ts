@@ -27,6 +27,7 @@ import {
   type MentionFieldProps, type TalkTo, type VanishProps,
 } from "../../../../shared/types/sdui.js";
 import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
+import { BOT_CALL_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -473,6 +474,11 @@ export const canHomeThought = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.
  */
 export const canVoice = (ctx: BotsCtx): boolean =>
   ctx.can.has(VOICE_LIVE_CAPABILITY) && ctx.can.has(LIVE_WORDS_COMPONENT) && ctx.can.has(DOUBLE_TAP_CAPABILITY);
+/**
+ * A phone whose JS takes Plan Ease's calls (BOT_CALL_CAPABILITY): it draws the call screen's pieces (speak.loud and onDone, voiceLive
+ * duplex, Text format "elapsed"). Every other build, and the window, gets the call as a record (screens/bots/planCall.ts).
+ */
+export const canCall = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(BOT_CALL_CAPABILITY);
 /** The window whose one key talks to the bot on screen while X0 is in front (ScreenResponse.talkTo). */
 export const canDeskTalk = (ctx: BotsCtx): boolean => ctx.client === "desktop" && canVoice(ctx) && ctx.can.has(DESK_TALK_TO_CAPABILITY);
 
@@ -1179,9 +1185,10 @@ export function page(ctx: BotsCtx, o: PageOpts): ScreenResponse {
 
 /**
  * Pages the phone must never show from what it kept: a decision or a job in flight (an approval, a Xode job and its
- * question, a link to approve, the lock), and Offline (which is its own record of what waits).
+ * question, a link to approve, the lock), Offline (which is its own record of what waits), and a call (ringing one moment,
+ * over the next).
  */
-const NEVER_KEPT = /^bots\.(code\.|attach$|done$|failed$|approve$|offline$|link$|lock$)/;
+const NEVER_KEPT = /^bots\.(code\.|attach$|done$|failed$|approve$|offline$|link$|lock$|plan\.call$)/;
 
 /**
  * Pages that only change when the person changes them (settings, a bot's voice, the people they blocked): kept ten

@@ -9,7 +9,8 @@ import {
 } from "../../kit.js";
 import { type Settings, toast, refresh, oops, clock, botOf, heading, couldNot, columns, glyph, G } from "./parts.js";
 
-export interface NotifyData { settings: Settings; today: { done: number; needs: number; spentPaise: number } | null; line: string | null }
+/** `name`: the name Plan Ease calls as ("Zara", else "X0"); `calls`: calls can come here (BOT_CALLS), so the Calls row is drawn. */
+export interface NotifyData { settings: Settings; today: { done: number; needs: number; spentPaise: number } | null; line: string | null; name?: string; calls?: boolean }
 
 /** A setting saved: PUT /v1/you/settings, a short toast, a refresh. */
 export const save = (b: Record<string, unknown>, ok: string): ActionRef => call("PUT", "/v1/you/settings", b, { ok: seq(toast(ok), refresh), fail: oops() });
@@ -77,13 +78,18 @@ export function timePicker(key: ClockKey, field: "summaryAt" | "quietFrom" | "qu
 }
 
 export const notifyState = (s: Settings, ctx: BotsCtx) => ({
-  done: s.notify.done, summary: s.notify.summary, quiet: s.notify.quiet, edit: "",
+  done: s.notify.done, summary: s.notify.summary, quiet: s.notify.quiet, calls: s.notify.calls !== false, edit: "",
   ...clockState("sum", s.notify.summaryAt), ...clockState("qf", s.notify.quietFrom), ...clockState("qt", s.notify.quietTo),
   ...Object.fromEntries(ctx.live.bots.map((b) => [`bot_${b.slug.replace(/-/g, "_")}`, !s.notify.botsOff.includes(b.slug)])),
 });
 export const doneSeg = (width?: number) => segments([{ label: "Quiet", value: "quiet" }, { label: "Ping", value: "ping" }], "done",
   (v) => save({ notify: { done: v } }, v === "ping" ? "Done pings you" : "Done comes without a sound"), width);
 export const summarySwitch = () => seq({ kind: "toggleState", path: "summary" }, when2("summary", save({ notify: { summary: true } }, "Daily summary on"), save({ notify: { summary: false } }, "Daily summary off")));
+/** Calls on or off, saved (after the switch has flipped `calls`): the phone's switchRow flips it first, the window's box with callsSwitch. */
+export const callsSave = (): ActionRef => when2("calls", save({ notify: { calls: true } }, "Calls on"), save({ notify: { calls: false } }, "Calls off"));
+export const callsSwitch = () => seq({ kind: "toggleState", path: "calls" }, callsSave());
+/** What the Calls row says: "Zara calls you when it's time to leave or a bill is due today". */
+export const callsLine = (d: NotifyData): string => `${d.name || "X0"} calls you when it's time to leave or a bill is due today`;
 export const quietSwitch = () => seq({ kind: "toggleState", path: "quiet" }, when2("quiet", save({ notify: { quiet: true } }, "Quiet hours on"), save({ notify: { quiet: false } }, "Quiet hours off")));
 export const botSwitch = (slug: string) => {
   const path = `bot_${slug.replace(/-/g, "_")}`;
@@ -139,6 +145,11 @@ export function notifyDesk(ctx: BotsCtx, d: NotifyData | undefined) {
           timePicker("sum", "summaryAt", "Summary time changed"),
           sectionLabel("Tonight's summary, as it will look"),
           summaryPreview(ctx, d),
+          // "X0 is calling" (botsBots/planCall.ts): only while calls can come here, so the screen never promises one that won't.
+          ...(d.calls ? [
+            divider(),
+            row([col([text("Calls", { size: 15, weight: 600 }), meta(callsLine(d), { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }), box([switchMark("calls")], {}, callsSwitch())], { gap: 12 }),
+          ] : []),
         ], { padding: 20, gap: 14 }),
         card([
           row([glyph(G.moon, 18), col([text("Quiet hours", { size: 15, weight: 600 }), meta("Every night", { size: 12 })], { flexGrow: 1, gap: 2 }), switchMark("quiet")], { gap: 12 }, quietSwitch()),

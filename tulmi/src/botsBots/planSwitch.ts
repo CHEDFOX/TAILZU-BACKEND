@@ -11,17 +11,18 @@
  *   planOn("asks")        family asks, repeats and turns in a space, with Spaces on too (planAsks.ts)
  *   planOn("app")         the app release, for binaries that say they can: Time Sensitive pushes, widget steps, desktop notices and
  *                         "add this" (push/engine.ts, routes/bots/botsShell.ts, live/notices.ts, experience/bootstrap/bootstrap.ts)
+ *   planOn("calls")       "X0 is calling" (planCall.ts): with planOn("app") too (BOT_CALLS, not a PLAN_V2_ step: callsOn() reads all three)
  *
  * Read on every call (the config is parsed once and cached), so a test can flip one with resetConfigForTests. Without a config (a unit
  * test that set none up) it reads the variable the way config.ts does: unset is on, anything but "true" is off.
  */
 import { getConfig } from "../config.js";
 
-export type PlanStep = "reminders" | "page" | "notes" | "links" | "capture" | "waits" | "asks" | "app";
+export type PlanStep = "reminders" | "page" | "notes" | "links" | "capture" | "waits" | "asks" | "app" | "calls";
 
-const KEY: Record<PlanStep, "PLAN_V2_REMINDERS" | "PLAN_V2_PAGE" | "PLAN_V2_NOTES" | "PLAN_V2_LINKS" | "PLAN_V2_CAPTURE" | "PLAN_V2_WAITS" | "PLAN_V2_ASKS" | "PLAN_V2_APP"> = {
+const KEY: Record<PlanStep, "PLAN_V2_REMINDERS" | "PLAN_V2_PAGE" | "PLAN_V2_NOTES" | "PLAN_V2_LINKS" | "PLAN_V2_CAPTURE" | "PLAN_V2_WAITS" | "PLAN_V2_ASKS" | "PLAN_V2_APP" | "BOT_CALLS"> = {
   reminders: "PLAN_V2_REMINDERS", page: "PLAN_V2_PAGE", notes: "PLAN_V2_NOTES", links: "PLAN_V2_LINKS", capture: "PLAN_V2_CAPTURE",
-  waits: "PLAN_V2_WAITS", asks: "PLAN_V2_ASKS", app: "PLAN_V2_APP",
+  waits: "PLAN_V2_WAITS", asks: "PLAN_V2_ASKS", app: "PLAN_V2_APP", calls: "BOT_CALLS",
 };
 
 export function planOn(step: PlanStep): boolean {
@@ -33,3 +34,9 @@ export function planOn(step: PlanStep): boolean {
     return v == null ? true : v.toLowerCase() === "true";
   }
 }
+
+/**
+ * Calls ring at all: BOT_CALLS, the app release (a call is a newer build's), and reminders (without them neither a leave-by nor a bill's
+ * push exists to turn into one).
+ */
+export const callsOn = (): boolean => planOn("calls") && planOn("app") && planOn("reminders");

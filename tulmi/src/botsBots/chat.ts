@@ -84,6 +84,18 @@ export class BotChat {
     return { answer, turns: [turnOf(mine), turnOf(theirs)] };
   }
 
+  /**
+   * A bot turn that no message asked for: what Plan Ease said when a call was answered (botsBots/planCall.ts). The chat page then shows
+   * how the call began, and the history gives the person's next words ("move it") their subject.
+   */
+  async note(userId: string, slug: string, text: string): Promise<void> {
+    const said = String(text ?? "").trim();
+    if (!said) return;
+    const bot = slug.toLowerCase();
+    await this.turns.insert({ id: randomUUID(), user_id: userId, bot, role: "bot", text: said.slice(0, LIMITS.message), extra: {}, at_ms: this.now() });
+    await this.prune(userId, bot);
+  }
+
   async clear(userId: string, slug: string): Promise<number> {
     return this.turns.remove({ user_id: userId, bot: slug.toLowerCase() });
   }

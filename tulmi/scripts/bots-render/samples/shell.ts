@@ -25,7 +25,9 @@ export function shellApi(): Record<string, unknown> {
     { id: "e2", kind: "paid" as const, bot: "plan", title: "Electricity bill", paise: 0, amountPaise: 184000, payee: "BESCOM", at: N - 19 * HOUR },
   ];
   const words = [{ day: "2026-10-28", at: N - 4 * HOUR, words: 412, apps: ["WhatsApp", "Gmail"] }];
-  const rows = feedOf({ now: N, tzOffsetMinutes: IST, jobs, tasks, events, words, projects: { p1: "Storefront" } });
+  // A call from Plan Ease nobody answered this afternoon, at 4:55 pm (botsBots/planCall.ts): "Missed call from Zara".
+  const calls = [{ id: "c3", name: "Zara", line: "Leave by 5:05 pm for parent-teacher meeting", at: N - 165 * MIN }];
+  const rows = feedOf({ now: N, tzOffsetMinutes: IST, jobs, tasks, events, words, calls, projects: { p1: "Storefront" } });
   const week = weekOf(rows, N - 3 * DAY, 200);
 
   const search = searchAll("salon", {

@@ -856,6 +856,13 @@ const EnvSchema = z.object({
    */
   PLAN_V2_APP: bool(true),
   /**
+   * BOT_CALLS   "X0 is calling" (botsBots/planCall.ts; docs/plan-ease.md "Calls"): a leave-by or a bill due today rings a phone whose
+   *             JS takes calls (token cap BotCall) instead of the push, for a person with Calls on in What pings you, outside quiet
+   *             hours, with no computer in use, at most 3 a day and 15 minutes apart. Needs migration 0079 and PLAN_V2_APP. False:
+   *             every push goes as before; calls already placed still finish.
+   */
+  BOT_CALLS: bool(true),
+  /**
    * The AI permission (src/privacy/aiGate.ts, App Review 5.1.2(i)): nothing of a person's is sent to an AI service until they have
    * tapped Agree. On by default; false lets everyone's requests through again, for an emergency only (the app still asks).
    */

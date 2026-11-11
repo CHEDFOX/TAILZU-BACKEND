@@ -4,7 +4,8 @@
  *   monthLimitPaise   kept from when a person set their own monthly limit; no screen sets or shows it now. The limits are ours, per plan, and
  *   stopAtLimit       the person sees only the usage meter (usage.ts, limits.ts). Both stay readable for older clients.
  *   notify            what pings them (push.ts reads it): needs you always does; done "quiet" (sent without a sound) or "ping"; a daily summary at an
- *                     hour; quiet hours, when nothing makes a sound and done waits; bots turned off (their done pings stop; needs you still comes).
+ *                     hour; quiet hours, when nothing makes a sound and done waits; bots turned off (their done pings stop; needs you still comes);
+ *                     Calls, Plan Ease calling the phone for a leave-by or a bill due today instead of the push (on by default).
  *                     The defaults are what the pushes did before the screen existed: done pings, no summary, no quiet hours.
  *   privacy           the screen-picture choice they made on the desktop ("ask" first, or "allow"), so the screens show it back; and whether
  *                     what they told their bots personalises every answer (personalise, on unless they turn it off: src/bots/shared.ts)
@@ -22,6 +23,8 @@ export interface NotifySettings {
   quietTo: number;
   /** Bots whose done pings are off, by slug. */
   botsOff: string[];
+  /** Plan Ease calls the phone when it's time to leave or a bill is due today (botsBots/planCall.ts). On unless they turn it off. */
+  calls: boolean;
 }
 
 export interface YouSettings {
@@ -35,7 +38,7 @@ export interface YouSettings {
 export const DEFAULT_SETTINGS: YouSettings = {
   monthLimitPaise: DEFAULT_MONTH_BUDGET_PAISE,
   stopAtLimit: false,
-  notify: { done: "ping", summary: false, summaryAt: 21 * 60, quiet: false, quietFrom: 23 * 60, quietTo: 7 * 60, botsOff: [] },
+  notify: { done: "ping", summary: false, summaryAt: 21 * 60, quiet: false, quietFrom: 23 * 60, quietTo: 7 * 60, botsOff: [], calls: true },
   privacy: { personalise: true },
 };
 
@@ -68,6 +71,7 @@ export function cleanSettings(raw: unknown): YouSettings {
       quietFrom: minuteOfDay(n.quietFrom, d.notify.quietFrom),
       quietTo: minuteOfDay(n.quietTo, d.notify.quietTo),
       botsOff: Array.isArray(n.botsOff) ? [...new Set(n.botsOff.filter((s): s is string => typeof s === "string" && SLUG.test(s) && s.length <= 64))].slice(0, 50) : [],
+      calls: n.calls !== false,
     },
     privacy: {
       personalise: p.personalise !== false,
@@ -80,7 +84,7 @@ export function cleanSettings(raw: unknown): YouSettings {
 
 /** The most Activity rows a person's cleared list keeps: the oldest drop off (by then they are past the feed's days anyway). */
 const CLEARED_MAX = 600;
-const FEED_ID = /^(job|task|ask|pay|words):[A-Za-z0-9_.:-]{1,80}$/;
+const FEED_ID = /^(job|task|ask|pay|words|call):[A-Za-z0-9_.:-]{1,80}$/;
 const cleanCleared = (v: unknown[]): string[] => [...new Set(v.filter((x): x is string => typeof x === "string" && FEED_ID.test(x)))].slice(-CLEARED_MAX);
 
 /** One more Activity row cleared from the list; null when the id isn't one. */
@@ -118,7 +122,7 @@ export function applyPatch(cur: YouSettings, raw: unknown): Patched {
     if (n.done !== "quiet" && n.done !== "ping") return { ok: false, message: 'done is "quiet" or "ping".' };
     next.notify.done = n.done;
   }
-  for (const k of ["summary", "quiet"] as const) {
+  for (const k of ["summary", "quiet", "calls"] as const) {
     if (n[k] !== undefined) {
       if (typeof n[k] !== "boolean") return { ok: false, message: `${k} is true or false.` };
       next.notify[k] = n[k] as boolean;

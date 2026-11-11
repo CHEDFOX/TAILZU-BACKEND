@@ -30,6 +30,7 @@
  *                                                      the words to the Plan Ease chat (its own route, its consent gate, its budget)
  *   GET    /v1/botsapp/bots/plan/line?tz=              -> { next, widget, needs }   the one thing for Home, the widget's line, the card it asks
  *   GET    /v1/botsapp/bots/plan/details?kind=&id=&tz= -> { before, moves, leave?, note? }   what an item's details add (design A3)
+ *   /v1/botsapp/bots/plan/calls/...                    "X0 is calling": the call screen's doors (routes/bots/planCalls.ts)
  *   (Plan Ease's buttons answer at POST /v1/widgets/act: pt:, pm:, pe: items, routes/bots/widgets.ts)
  *   GET    /v1/botsapp/bots/trip                       -> { trip, facts, bookings };  POST { place, when, who };  PUT/DELETE .../trip/:id
  *   POST   /v1/botsapp/bots/trip/:id/packing { text };  POST .../packing/starter;  PUT .../packing/:i (toggle);  DELETE .../packing/:i
@@ -61,6 +62,7 @@ import { registerYouSpaceRoutes, userSpace } from "./botsYouSpace.js";
 import { registerWidgetRoutes } from "./widgets.js";
 import { registerPlanInRoutes } from "./planIn.js";
 import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
+import { registerPlanCallRoutes } from "./planCalls.js";
 import { planOn } from "../../botsBots/planSwitch.js";
 import { pushEngine } from "../../push/index.js";
 import { setPushOpenHook } from "../../push/engine.js";
@@ -322,6 +324,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   app.post(`${AREA}/plan/box`, tight(30), v2(async (user, req) => { const b = bodyOf(req.body); return parts.ease.box(user.id, b.words, b.tz ?? 330, b.seen); }));
   // Waiting on someone and family asks (steps 4 and 5): their jobs, pushes and the wait's hand-off (routes/bots/botsPlanPeople.ts).
   registerPlanPeopleRoutes(app, deps, { spaces: spacesArea, ease: parts.ease });
+  // "X0 is calling" (botsBots/planCall.ts): a leave-by or a bill due today rings a phone that takes calls; the call's doors and sweep.
+  registerPlanCallRoutes(app, deps, { chat: parts.chat ?? null, guard: guard() });
 
   // ------------------------------------------------------------------ the travel bot's trip
 

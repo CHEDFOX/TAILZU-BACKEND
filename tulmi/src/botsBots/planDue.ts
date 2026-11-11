@@ -20,6 +20,7 @@ import type { BoxSlot } from "./planBox.js";
 import type { DayItem, RowCtx, RowKind, RowView } from "./planRows.js";
 import { lockSafe, looksHealth, safeTitle } from "./planSafe.js";
 import { planOn } from "./planSwitch.js";
+import type { CallSeed } from "./planCallWords.js";
 import { dayFrom, readLine } from "../calendar/words.js";
 
 const MIN = 60_000, HOUR = 60 * MIN;
@@ -195,7 +196,7 @@ export const dueAgainAt = (t: Pick<DueTask, "due_day" | "tz_min">, at: number): 
  * The push for a bill on its day: "Electricity due today" / "BESCOM", [Pay] [Paid] with a safe link, else [Paid] alone. The tap and Pay
  * open the hand-off screen, which opens the pay link (a button can't open another app by itself).
  */
-export function dueReminder(t: DueTask, today: string, at: number): { kind: "plan_due"; key: string; vars: Record<string, string>; data: Record<string, string>; category: string } {
+export function dueReminder(t: DueTask, today: string, at: number): { kind: "plan_due"; key: string; vars: Record<string, string>; data: Record<string, string>; category: string; call?: CallSeed } {
   const title = safeTitle(t.title);
   const payee = t.payee && !looksHealth(t.payee) && !looksHealth(t.title) ? lockSafe(t.payee, 60) : "";
   const day = t.due_day ?? today;
@@ -204,6 +205,8 @@ export function dueReminder(t: DueTask, today: string, at: number): { kind: "pla
     vars: { title: lockSafe(`${short(title)} ${day === today ? "due today" : "due"}`, 80), body: payee || "Tap to see it" },
     data: { day, task: t.id, item: `pt:${t.id}`, ...(t.pay_link ? { go: "pay" } : {}) },
     category: t.pay_link ? "x0_due" : "x0_paid",
+    // "X0 is calling" (planCall.ts): a bill due today may ring instead. The server's own: never put in the push.
+    ...(day === today ? { call: { source: "due" as const, item: `pt:${t.id}`, taskId: t.id, day, tz: t.tz_min, title: t.title, payee: t.payee ?? "", pay: !!t.pay_link } } : {}),
   };
 }
 

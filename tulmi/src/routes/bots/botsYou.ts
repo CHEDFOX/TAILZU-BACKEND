@@ -9,7 +9,8 @@
  *   GET    /v1/you/spend?tz=            -> { report, settings }  ours: the month's costs by bot and by day, the biggest jobs (src/you/spend.ts).
  *                                          No screen shows it any more
  *   GET    /v1/you/settings             -> { settings }
- *   GET    /v1/you/notify?tz=           -> { settings, today: { done, needs, spentPaise }, line }  "What pings you", with today's summary as it would read
+ *   GET    /v1/you/notify?tz=           -> { settings, today: { done, needs, spentPaise }, line, name, calls }  "What pings you", with today's
+ *                                         summary as it would read, the name Plan Ease calls as, and whether calls are on here (BOT_CALLS)
  *   PUT    /v1/you/settings { monthLimitPaise? | monthLimitRupees?, stopAtLimit?, notify?: { done?, summary?, summaryAt?, quiet?, quietFrom?,
  *                                         quietTo?, bot?, on? }, privacy?: { personalise? } }  -> { settings }  only what was sent changes
  *   GET    /v1/you/billing              -> { plan, invoices, usage }  (src/you/billing.ts; the screens show no price and no amount)
@@ -49,6 +50,9 @@ import { clearShared, dropSharedCache } from "../../bots/shared.js";
 import { forgetAll as forgetContext } from "../../context/index.js";
 import { talkSessions } from "../../talk/session.js";
 import { applyPatch, clock } from "../../you/settings.js";
+import { ASSISTANT_NAME, nicknameOf } from "../../experience/assistantName.js";
+import { getPersonality } from "../../personality/store.js";
+import { callsOn } from "../../botsBots/planSwitch.js";
 import { youStore } from "../../you/store.js";
 
 import type { BotsAreaDeps } from "./botsArea.js";
@@ -259,11 +263,15 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
     if (!user) return reply;
     try {
       const tz = tzOf(user.id, req.query);
-      const [settings, today] = await Promise.all([
+      const [settings, today, personality] = await Promise.all([
         store.getSettings(user.id),
         dayOf(user.id, { spending, jobs: deps.jobs, connectors: deps.connectors, now: Date.now(), tz }).catch(() => null),
+        getPersonality(user).catch(() => null),
       ]);
-      return reply.header("cache-control", "no-store").send({ settings, today, line: today ? summaryLine(today) : null });
+      // The Calls row says the name it calls as (Keylessbord's "What you call it", else X0), and shows only while calls can come.
+      return reply.header("cache-control", "no-store").send({
+        settings, today, line: today ? summaryLine(today) : null, name: nicknameOf(personality) ?? ASSISTANT_NAME, calls: callsOn(),
+      });
     } catch (err) { return fail(reply, err); }
   });
 

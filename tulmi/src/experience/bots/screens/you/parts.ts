@@ -9,7 +9,8 @@ import { type BotsCtx, botLook, C, shapes, row, col, title, meta, card, body, se
 export interface Settings {
   monthLimitPaise: number;
   stopAtLimit: boolean;
-  notify: { done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[] };
+  /** calls: Plan Ease calls for a leave-by or a bill due today (absent from an older server: on). */
+  notify: { done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[]; calls?: boolean };
   privacy: { personalise?: boolean };
 }
 

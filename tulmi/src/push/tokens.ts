@@ -26,9 +26,11 @@ import { z } from "zod";
 /**
  * What a phone's binary says it can do with a push (the app's device/binaryCore.ts pushCaps), kept with its token: only names the
  * engine reads (push/engine.ts), so a list a newer app sends cannot grow the row. "PushTimeSensitive": the iOS Time Sensitive
- * entitlement is signed in, so a leave-by or a bill due today may break through Focus.
+ * entitlement is signed in, so a leave-by or a bill due today may break through Focus. "BotCall": the app's JS takes a call
+ * (botsBots/planCall.ts): it handles the call's pushes, draws the call screen and clears a stale ring. "BotRingtone": the iPhone has the
+ * ringtone in its app group's Library/Sounds, so a ring may name it (a new tone comes with a new file name and a new cap).
  */
-export const PUSH_CAPS = ["PushTimeSensitive"] as const;
+export const PUSH_CAPS = ["PushTimeSensitive", "BotCall", "BotRingtone"] as const;
 export type PushCap = (typeof PUSH_CAPS)[number];
 export const pushCapsOf = (v: unknown): PushCap[] =>
   Array.isArray(v) ? PUSH_CAPS.filter((c) => v.includes(c)) : [];

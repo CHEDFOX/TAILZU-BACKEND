@@ -43,6 +43,9 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   if (NEEDS_YOU.has(kind)) return quiet ? "silent" : "send";
   if (kind === "bots_summary") return !n.summary ? "drop" : quiet ? "silent" : "send";
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
+  // A call (botsBots/planCall.ts): only with Calls on, Plan Ease on, and never in quiet hours (then the push goes, without a sound).
+  if (kind === "plan_call") return n.calls && !n.botsOff.includes("plan") && !quiet ? "send" : "drop";
+  if (kind === "plan_call_missed") return "send";
   // Every kind of Plan Ease's, from its one list (planKinds.ts), so a new one is never left to the Keylessbord branch below.
   const plan = planVerdictGroup(kind);
   if (plan === "plan") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";

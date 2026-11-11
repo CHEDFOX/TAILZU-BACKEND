@@ -11,7 +11,7 @@
  * Kept free of imports so the control plane can preview it without a cycle, but one: Plan Ease's kinds (botsBots/planKinds.ts), itself
  * free of imports, so each of its kinds is said once.
  */
-import { PLAN_KIND_IDS, planPushFlags, planPushLabels } from "../botsBots/planKinds.js";
+import { CALL_KIND_IDS, PLAN_KIND_IDS, callPushFlags, callPushLabels, planPushFlags, planPushLabels } from "../botsBots/planKinds.js";
 
 export interface PushPayload {
   flags: Record<string, unknown>;
@@ -167,6 +167,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     // Plan Ease's own kinds (botsBots/planKinds.ts): a reminder that says what it is, with at most 2 buttons, and the day notes. Each has
     // its screen, buttons, channel, priority and expiry (push.<kind>.priority / .ttlMin / .interruptionLevel, read by push/engine.ts).
     ...planPushFlags(),
+    // "X0 is calling" (botsBots/planCall.ts): a leave-by or a bill due today rings instead, on a phone that takes calls.
+    ...callPushFlags(),
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
@@ -218,6 +220,7 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.plan_reminder.title": "{title}",
     "push.plan_reminder.body": "{when}",
     ...planPushLabels(),
+    ...callPushLabels(),
     "push.ops_alert.title": "{title}",
     "push.ops_alert.body": "{body}",
     "push.routine_done.title": "{bot}: {task}",
@@ -239,7 +242,7 @@ export const EVENT_PUSH_KINDS = [
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
   "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed",
-  "plan_reminder", ...PLAN_KIND_IDS,
+  "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
   "ops_alert",
 ] as const;

@@ -20,6 +20,7 @@ import { YOU_API } from "./you.js";
 import KEYBOT_API from "./keybot.json";
 import FIRSTRUN_API from "./firstrun.json";
 import CODE from "./code.json";
+import { CALL_API } from "./planCall.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -97,6 +98,14 @@ export const SAMPLES: Sample[] = [
   { id: S.keys, area: "bots", board: "BotKeys", deskBoard: "DBotKeys", params: { slug: "gym-bot" } },
   { id: S.store, area: "bots", board: "BotStore", deskBoard: "DBotStore" },
   { id: S.plan, area: "bots", board: "PlanBot", deskBoard: "DPlanBot" },
+  // "X0 is calling" (screens/bots/planCall.ts; samples/planCall.ts): ringing (with AI, and a bill without it), missed, Call back pressed
+  // on the notification (and on one whose call ended since: answered late, then hung up), ended. The window draws each as a record.
+  { id: S.planCall, area: "bots", variant: "ringing", params: { call: "c1", state: "ringing", button: "p_answer" }, api: CALL_API },
+  { id: S.planCall, area: "bots", variant: "bill", params: { call: "c2", state: "ringing" }, api: CALL_API },
+  { id: S.planCall, area: "bots", variant: "missed", params: { call: "c3", state: "missed" }, api: CALL_API },
+  { id: S.planCall, area: "bots", variant: "callback", params: { call: "c3", state: "missed", button: "p_callback" }, api: CALL_API },
+  { id: S.planCall, area: "bots", variant: "callback-ended", params: { call: "c4", state: "missed", button: "p_callback" }, api: CALL_API },
+  { id: S.planCall, area: "bots", variant: "ended", params: { call: "c4" }, api: CALL_API },
   { id: S.travel, area: "bots", board: "TravelBot", deskBoard: "DTravelBot" },
   { id: S.chat, area: "bots", board: "Chat", params: { slug: "gym-bot" } },
   { id: S.spaces, area: "bots", board: "Spaces", deskBoard: "DSpaces" },

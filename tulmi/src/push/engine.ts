@@ -18,12 +18,13 @@ import type { EventPushKind, PushPayload } from "./defaults.js";
 import type { PushMessage, PushSender, Ticket } from "./expo.js";
 import { knobsOf, plan, timingKnobs, type Decision, type Facts } from "./plan.js";
 import { isQuiet } from "./timing.js";
-import { tokenHash, type Candidate, type PushStore, type TicketRecord } from "./store.js";
+import { tokenHash, type Candidate, type PushStore, type TicketRecord, type Token } from "./store.js";
 import { pushItemOf } from "../widgets/items.js";
 import { isSpacePush, spacesOn } from "../botsBots/spacesSwitch.js";
 import { planKind } from "../botsBots/planKinds.js";
 import { planOn } from "../botsBots/planSwitch.js";
 import { deskHere, noticeIdOf, sendNotice } from "../live/notices.js";
+import type { CallSeed } from "../botsBots/planCall.js";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
@@ -53,6 +54,28 @@ export function setPushGate(g: PushGate | null): void { pushGate = g; }
 export type PushOpenHook = (userId: string, kind: string) => void;
 let openHook: PushOpenHook | null = null;
 export function setPushOpenHook(fn: PushOpenHook | null): void { openHook = fn; }
+
+/**
+ * THE CALL (botsBots/planCall.ts): asked before a leave-by or a bill due today is sent; the tokens it rang get no push. `gate` is the
+ * person's own say for a kind, as deliver() would ask it. Null, or an empty set: the push goes to every phone, as before.
+ */
+export type CallHook = (p: {
+  c: Candidate; msg: { kind: string; key: string; vars?: Record<string, string | number>; data?: Record<string, string>; call?: CallSeed };
+  payload: PushPayload; now: number; gate: (kind: string) => Promise<PushVerdict>;
+}) => Promise<{ rang: ReadonlySet<string> } | null>;
+let callHook: CallHook | null = null;
+export function setCallHook(h: CallHook | null): void { callHook = h; }
+
+/**
+ * One push of a call (a ring, or the missed call), exactly as the call decided it: to these tokens, with this sound and level each. No
+ * gate, no computer, no category from flags (planCall.ts asked all of that before it rang).
+ */
+export interface RingPush {
+  kind: "plan_call" | "plan_call_missed"; periodKey: string; title: string; body: string; tokens: Token[];
+  data: Record<string, string>; screenId: string; ttlSec: number; categoryId: string; channelId: string;
+  priority: "high" | "normal"; collapseId: string;
+  sound: (t: Token) => string | null; level: (t: Token) => PushMessage["interruptionLevel"] | undefined;
+}
 
 export interface TickReport {
   at: string;
@@ -276,18 +299,32 @@ export class PushEngine {
    */
   async notify(
     userId: string,
-    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number>; data?: Record<string, string>; category?: string },
+    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number>; data?: Record<string, string>; category?: string; call?: CallSeed },
     now = Date.now(),
   ): Promise<{ sent: boolean; dropped: number } | null> {
     // Spaces switched off (SPACES_ENABLED=false): none of its pushes goes, whoever asks for one (botsBots/spacesSwitch.ts).
     if (isSpacePush(msg.kind) && !spacesOn()) return null;
     // No phone: still Plan Ease's notice on a computer in use (live/notices.ts), when the person has one.
-    const c = (await this.candidate(userId, now))
+    let c = (await this.candidate(userId, now))
       ?? (this.toDesk(userId, msg.kind, now) ? { userId, tokens: [], lastSeenAt: null, createdAt: null, locale: null, entitled: false, tzOffsetMin: null } : null);
     if (!c || (!c.tokens.length && !this.toDesk(userId, msg.kind, now))) return null;
     const payload = this.configFor(c, now);
     const k = knobsOf(payload);
     if (!k.flag(`push.${msg.kind}.enabled`, true)) return null;
+    // THE CALL: a leave-by or a bill due today rings a phone that takes calls instead (planCall.ts decides, and says why not). Never
+    // with a computer in use: that keeps its notice and the phone's silent copy, as before. The seed is the server's own: it never goes
+    // into the push.
+    if (callHook && msg.call && (msg.kind === "plan_leave" || msg.kind === "plan_due") && c.tokens.length && !this.toDesk(userId, msg.kind, now)) {
+      let rang: ReadonlySet<string> = new Set();
+      const seen = c;
+      try { rang = (await callHook({ c: seen, msg, payload, now, gate: (kind) => this.verdictOf(seen, kind, msg.data, now) }))?.rang ?? rang; }
+      catch { /* the push goes as before */ }
+      if (rang.size) {
+        const rest = c.tokens.filter((t) => !rang.has(t.token));
+        if (!rest.length) return { sent: true, dropped: 0 };
+        c = { ...c, tokens: rest };
+      }
+    }
     const d = {
       kind: msg.kind, periodKey: `${msg.kind}:${msg.key}`, sendAt: now,
       title: k.label(`push.${msg.kind}.title`, "", msg.vars),
@@ -307,13 +344,16 @@ export class PushEngine {
     return !!planKind(kind) && planOn("app") && deskHere(userId, now);
   }
 
+  /** The person's own say for a push of `kind` (the gate), or "send" when there is none or it fails. */
+  private async verdictOf(c: Candidate, kind: string, data: Record<string, string> | undefined, now: number): Promise<PushVerdict> {
+    if (!pushGate) return "send";
+    try { return await pushGate({ userId: c.userId, kind, ...(data ? { data } : {}), tzOffsetMin: c.tzOffsetMin, now }); } catch { return "send"; }
+  }
+
   /** Claim, send to every phone, record. Null when someone else claimed it. */
   async deliver(c: Candidate, d: Deliverable, payload: PushPayload, now: number):
     Promise<{ sent: boolean; dropped: number; id: string } | null> {
-    let verdict: PushVerdict = "send";
-    if (pushGate) {
-      try { verdict = await pushGate({ userId: c.userId, kind: d.kind, ...(d.data ? { data: d.data } : {}), tzOffsetMin: c.tzOffsetMin, now }); } catch { verdict = "send"; }
-    }
+    const verdict = await this.verdictOf(c, d.kind, d.data, now);
     if (verdict === "drop") return null;
     const id = await this.store.claim({ userId: c.userId, kind: d.kind, periodKey: d.periodKey, plannedAt: d.sendAt });
     if (!id) return null;
@@ -388,6 +428,44 @@ export class PushEngine {
       if (r.error === "DeviceNotRegistered") { await this.store.dropToken(c.userId, r.platform, r.tokenHash); dropped++; }
     }
     return { sent, dropped, id };
+  }
+
+  /**
+   * One push of a call (botsBots/planCall.ts): claimed under its own period ("plan_call:<id>:1"), so a second server or a retry never
+   * sends it twice; sent to the tokens the call chose, settled and its disowned tokens dropped, as deliver does. `ok`: the tokens whose
+   * ticket came back ok (the rest get the reminder's own push). Null when it was claimed already.
+   */
+  async ring(c: Candidate, r: RingPush, now = Date.now()): Promise<{ sent: boolean; id: string; ok: ReadonlySet<string> } | null> {
+    const id = await this.store.claim({ userId: c.userId, kind: r.kind, periodKey: r.periodKey, plannedAt: now });
+    if (!id) return null;
+    if (!r.tokens.length) {
+      await this.store.settle(id, { status: "failed", sentAt: now, tickets: [], error: "no_token" });
+      return { sent: false, id, ok: new Set() };
+    }
+    const messages: PushMessage[] = r.tokens.map((t) => {
+      const level = r.level(t);
+      return {
+        to: t.token, title: r.title, body: r.body, sound: r.sound(t), channelId: r.channelId, priority: r.priority, ttl: r.ttlSec,
+        ...(level ? { interruptionLevel: level } : {}),
+        categoryId: r.categoryId, collapseId: r.collapseId, tag: r.collapseId,
+        data: { ...r.data, screenId: r.screenId, pushId: id, kind: r.kind },
+      };
+    });
+    let tickets: Ticket[];
+    try {
+      tickets = await this.sender.send(messages);
+    } catch (e) {
+      tickets = messages.map((): Ticket => ({ status: "error", error: (e as Error)?.name === "AbortError" ? "timeout" : "send_threw" }));
+    }
+    const records: TicketRecord[] = r.tokens.map((t, i) => ({
+      platform: t.platform, tokenHash: tokenHash(t.token), ticketId: tickets[i]?.id, status: tickets[i]?.status ?? "error", error: tickets[i]?.error,
+    }));
+    const ok = new Set(r.tokens.filter((_t, i) => records[i]!.status === "ok").map((t) => t.token));
+    await this.store.settle(id, { status: ok.size ? "sent" : "failed", sentAt: now, tickets: records, error: ok.size ? undefined : records[0]?.error });
+    for (const rec of records) {
+      if (rec.error === "DeviceNotRegistered") await this.store.dropToken(c.userId, rec.platform, rec.tokenHash);
+    }
+    return { sent: ok.size > 0, id, ok };
   }
 
   /** Receipts come a while after the send; drop the tokens they disown. */

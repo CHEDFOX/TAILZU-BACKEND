@@ -65,6 +65,7 @@ export const SCREENS = {
   planCapture: "bots.plan.capture",  // one capture card: "4 things from the school circular", Add all (screens/bots/planIn.ts; params: id)
   planCaptureItem: "bots.plan.capture.item", // a capture row's sheet: title, day, time, who (screens/bots/planIn.ts; params: id, item)
   planSend: "bots.plan.send",        // a wait's hand-off: WhatsApp (or mail) with the follow-up at once, then the Plan (screens/bots/planSend.ts; params: item, go, from)
+  planCall: "bots.plan.call",        // a call from Plan Ease: ringing → talking, missed, ended (screens/bots/planCall.ts; params: call, state, button)
   travel: "bots.travel",             // TravelBot / DTravelBot
   chat: "bots.chat",                 // Chat (params: slug)
   spaces: "bots.spaces",             // Spaces / DSpaces

@@ -10,8 +10,8 @@ import type { BootstrapResponse } from "../../../shared/types/sdui.js";
 import { APP_KNOB_FLAGS, APP_KNOB_LABELS } from "./appKnobsData.js";
 import { KEYBOARD_KNOBS } from "./keyboardKnobsData.js";
 import { spacesOn } from "../botsBots/spacesSwitch.js";
-import { PLAN_CATEGORIES, PLAN_CHANNELS } from "../botsBots/planKinds.js";
-import { planOn } from "../botsBots/planSwitch.js";
+import { CALL_CATEGORIES, PLAN_CATEGORIES, PLAN_CHANNELS } from "../botsBots/planKinds.js";
+import { callsOn, planOn } from "../botsBots/planSwitch.js";
 
 /** The Home Screen's long-press actions, a list per platform (appKnobsData.ts). */
 const QUICK_ACTIONS = ["app.quickActions.android", "app.quickActions.ios"] as const;
@@ -30,14 +30,17 @@ function withoutSpacesAction(flags: Record<string, unknown>): Record<string, unk
 /**
  * Plan Ease's notification buttons and Android channels (botsBots/planKinds.ts), after the app's own: the phone registers the buttons at
  * launch and makes the channels at its next push registration. A category or channel the app already lists is left as it is. While its
- * reminders are switched off (PLAN_V2_REMINDERS) no push carries them, so none is listed.
+ * reminders are switched off (PLAN_V2_REMINDERS) no push carries them, so none is listed. A call's buttons (Answer, Not now, Call back)
+ * come too while calls are on (BOT_CALLS): an older JS registers them harmlessly, since no push of its uses them. A call's channels never
+ * do: the phone's own JS makes them (planKinds.ts CALL_CHANNELS).
  */
 function withPlanPush(flags: Record<string, unknown>): Record<string, unknown> {
   if (!planOn("reminders")) return flags;
   const out = { ...flags };
   const cats = Array.isArray(out["push.categories"]) ? (out["push.categories"] as Array<{ id?: unknown }>) : [];
   const haveCats = new Set(cats.map((c) => c?.id));
-  out["push.categories"] = [...cats, ...PLAN_CATEGORIES.filter((c) => !haveCats.has(c.id)).map((c) => ({ id: c.id, actions: c.actions.map((a) => ({ ...a })) }))];
+  const ours = callsOn() ? [...PLAN_CATEGORIES, ...CALL_CATEGORIES] : PLAN_CATEGORIES;
+  out["push.categories"] = [...cats, ...ours.filter((c) => !haveCats.has(c.id)).map((c) => ({ id: c.id, actions: c.actions.map((a) => ({ ...a, ...(a.call ? { call: { ...a.call } } : {}) })) }))];
   const chans = Array.isArray(out["push.android.channels"]) ? (out["push.android.channels"] as Array<{ id?: unknown }>) : [];
   const haveChans = new Set(chans.map((c) => c?.id));
   out["push.android.channels"] = [...chans, ...PLAN_CHANNELS.filter((c) => !haveChans.has(c.id)).map((c) => ({ ...c }))];

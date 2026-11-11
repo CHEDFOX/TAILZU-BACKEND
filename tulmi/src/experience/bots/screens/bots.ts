@@ -39,6 +39,8 @@ import { itemAction, addAction, planItemScreens } from "./planItem.js";
 import { tripSearches } from "./finds.js";
 import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
 import { planGoPage, planTodayDesk, planTodayPhone, planWeekPage, type PlanTodayData, type PlanWeekData } from "./bots/planPage.js";
+import { planCallPage } from "./bots/planCall.js";
+import { CALLS, type CallView } from "../../../botsBots/planCallWords.js";
 import { capturePage, planGoLoad, planInScreens, shareCapture, type CaptureView } from "./bots/planIn.js";
 import { planPeopleScreens } from "./bots/planSend.js";
 import { planOn } from "../../../botsBots/planSwitch.js";
@@ -739,6 +741,12 @@ export const botsScreens: BotsScreen[] = [
     build: (ctx, d) => planWeekPage(ctx, d),
   }),
   screen<{ url?: string }>({ id: SCREENS.planGo, load: (ctx, deps) => planGoLoad(ctx, deps), build: (ctx, d) => planGoPage(ctx, d) }),
+  // "X0 is calling" (botsBots/planCall.ts): the call, ringing to talking, missed, or ended; a record on the window (screens/bots/planCall.ts).
+  screen<CallView>({
+    id: SCREENS.planCall,
+    load: (ctx, deps) => deps.api<CallView>("GET", `${CALLS}/${enc(String(ctx.params.call ?? ""))}`),
+    build: (ctx, d) => planCallPage(ctx, d),
+  }),
   screen<TravelData>({
     id: SCREENS.travel,
     load: async (ctx, deps) => {

@@ -32,6 +32,7 @@ import { planOn } from "../botsBots/planSwitch.js";
 import { safeTitle, lockSafe, looksHealth } from "../botsBots/planSafe.js";
 import { dueAgainAt, dueReminder } from "../botsBots/planDue.js";
 import type { PlanKindId } from "../botsBots/planKinds.js";
+import type { CallSeed } from "../botsBots/planCallWords.js";
 import {
   DAY, MIN, REPEATS, clockAt, dayFrom, dayName, dayOf, isDayKey, minuteOf, readLine, shiftDay, startOfDay, timeOf, tzOf, type Repeat,
 } from "./words.js";
@@ -92,7 +93,8 @@ export interface TaskMore {
 
 export interface Listed { events: CalEvent[]; tasks: CalTask[]; open: CalTask[] }
 
-export type ReminderSend = (userId: string, msg: { kind: "plan_reminder" | PlanKindId; key: string; vars: Record<string, string>; data: Record<string, string>; category?: string }) => Promise<unknown>;
+/** `call`: what "X0 is calling" needs if the reminder rings instead (botsBots/planCall.ts): the server's own, never put in the push. */
+export type ReminderSend = (userId: string, msg: { kind: "plan_reminder" | PlanKindId; key: string; vars: Record<string, string>; data: Record<string, string>; category?: string; call?: CallSeed }) => Promise<unknown>;
 
 /**
  * What Plan Ease says about a reminder before it goes (botsBots/planEase.ts): whether a leave-by reminder already went for that start

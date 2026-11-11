@@ -119,6 +119,11 @@ export interface PlanButton {
   act?: string;
   /** Open the push's screen (a hand-off to Maps, WhatsApp or UPI happens there: a button cannot open another app by itself). */
   open?: true;
+  /**
+   * Call this route in the background, without opening the app (a call's Not now). The phone fills `{data.call}` from the push's data,
+   * and dismisses the notification on a 2xx (F:src/notifications/actions.ts).
+   */
+  call?: { method: "POST"; path: string };
 }
 export interface PlanCategory { id: string; actions: PlanButton[] }
 
@@ -203,4 +208,59 @@ export function planPushLabels(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const k of PLAN_PUSH_KINDS) { out[`push.${k.kind}.title`] = k.title; out[`push.${k.kind}.body`] = k.body; }
   return out;
+}
+
+// ------------------------------------------------------------------ THE CALL (planCall.ts)
+
+/**
+ * "X0 is calling" (planCall.ts; docs/plan-ease.md "Calls"). Not in PLAN_PUSH_KINDS: a call is never sent through notify() (the engine's
+ * ring() sends it, with what the call decided), its channels are not in PLAN_CHANNELS, its Not now is neither an act nor an open, and a
+ * computer in use must never be shown one (toDesk reads planKind). So it is said here, on its own.
+ */
+export const CALL_KIND_IDS = ["plan_call", "plan_call_missed"] as const;
+
+/** The ringing call's buttons (Answer opens the call screen; Not now ends it in the background) and the missed call's (Call back). */
+export const CALL_CATEGORIES: readonly PlanCategory[] = [
+  { id: "x0_call", actions: [
+    { id: "p_answer", title: "Answer", icon: "waveform", foreground: true, destructive: false, auth: false, open: true },
+    { id: "p_notnow", title: "Not now", icon: "xmark", foreground: false, destructive: false, auth: false,
+      call: { method: "POST", path: "/v1/botsapp/bots/plan/calls/{data.call}/decline" } },
+  ] },
+  { id: "x0_call_missed", actions: [
+    { id: "p_callback", title: "Call back", icon: "arrow.uturn.left", foreground: true, destructive: false, auth: false, open: true },
+  ] },
+];
+
+/**
+ * The Android channels a call goes on. Made by the phone's own JS (F:src/notifications/calls.ts), never listed in the bootstrap's
+ * push.android.channels: an older JS would make "calls" from that list without its call-like vibration, and Android never changes a
+ * channel once it is made. "calls_ring" is kept for a later store build that packs the ringtone as a raw resource (a channel's sound is
+ * fixed at birth, so that one needs a name of its own).
+ */
+export const CALL_CHANNELS = { ring: "calls", missed: "calls_missed" } as const;
+
+/** The call's control-plane flags (push/defaults.ts spreads them in). */
+export function callPushFlags(): Record<string, unknown> {
+  return {
+    "push.plan_call.enabled": true,
+    // true: an iPhone whose binary lacks the Time Sensitive entitlement gets the push as today, not a call (docs/plan-ease.md "Calls").
+    "push.plan_call.needTimeSensitive": false,
+    "push.plan_call.screenId": "bots.plan.call",
+    "push.plan_call.category": "x0_call",
+    "push.plan_call.channelId": CALL_CHANNELS.ring,
+    "push.plan_call_missed.enabled": true,
+    "push.plan_call_missed.screenId": "bots.plan.call",
+    "push.plan_call_missed.category": "x0_call_missed",
+    "push.plan_call_missed.channelId": CALL_CHANNELS.missed,
+  };
+}
+
+/** The call's words: {name} is the caller's name, {line} the reminder's lock-safe line (planSafe.ts). */
+export function callPushLabels(): Record<string, string> {
+  return {
+    "push.plan_call.title": "{name} is calling",
+    "push.plan_call.body": "{line}",
+    "push.plan_call_missed.title": "Missed call from {name}",
+    "push.plan_call_missed.body": "{line}",
+  };
 }

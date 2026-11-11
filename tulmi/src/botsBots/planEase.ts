@@ -22,7 +22,7 @@ import { dayName as calDayName, dayOf, dayWords as calDayWords, shiftDay, startO
 import { botTopic, TOPIC } from "../live/topics.js";
 import { livePublish } from "../live/writes.js";
 import { ok, no, type ActResult } from "../widgets/act.js";
-import { eventIdOf, type QuickItem } from "../widgets/items.js";
+import { eventIdOf, eventRefOf, itemId, type QuickItem } from "../widgets/items.js";
 import type { WidgetScope } from "../widgets/token.js";
 import { planEvent, placeText, type PlanSkipRow } from "./plan.js";
 import { boxAnswer, type BoxReply } from "./planBox.js";
@@ -35,6 +35,7 @@ import { dayItems, rowOf, type DayItem, type RowNote, type RowView } from "./pla
 import { looksHealth, lockSafe, safeTitle } from "./planSafe.js";
 import { planOn } from "./planSwitch.js";
 import type { PlanTravelling } from "./planTravel.js";
+import type { CallSeed } from "./planCallWords.js";
 import { table, type Table } from "./rows.js";
 import { PLAN_IN_ACTS } from "./planInActs.js";
 import { WAIT_ACTS } from "./planWaits.js";
@@ -81,7 +82,7 @@ export function notesOf(more: Readonly<Record<string, unknown>> | undefined): Ma
 const hhmm = (ms: number, tz: number): string => { const d = new Date(ms + tz * MIN); return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`; };
 
 /** What a note or a leave-by reminder is sent with (the push engine's notify). */
-export type PlanSend = (userId: string, msg: { kind: string; key: string; vars: Record<string, string>; data?: Record<string, string>; category?: string }) => Promise<unknown>;
+export type PlanSend = (userId: string, msg: { kind: string; key: string; vars: Record<string, string>; data?: Record<string, string>; category?: string; call?: CallSeed }) => Promise<unknown>;
 
 /** The Daily summary's line for today, when the person has it on and something happened (you/push.ts); null otherwise. */
 export type SummaryLine = (userId: string, tz: number, now: number) => Promise<{ line: string; time: string } | null>;
@@ -665,10 +666,16 @@ export class PlanEase {
         const title = safeTitle(l.title);
         const what = title === "Appointment" ? "your appointment" : inLine(title.split(" · ")[0]!.trim() || title);
         const to = looksHealth(l.to) || looksHealth(l.title) ? "" : l.to;
+        const day = dayOf(l.start, tz);
         await this.send(row.user_id, {
           kind: "plan_leave", key: `leave:${l.eventId}:${l.start}`,
           vars: { title: lockSafe(`Leave by ${clockOf(l.leaveBy, tz)} for ${what}`, 100), body: lockSafe(`${l.minutes} min ${l.mode === "walk" ? "walk" : "drive"}${to ? ` to ${to}` : ""}`, 100) },
-          data: { day: dayOf(l.start, tz), go: "map", ...(l.to ? { to: l.to } : {}), mode: l.mode === "walk" ? "walking" : "driving" },
+          data: { day, go: "map", ...(l.to ? { to: l.to } : {}), mode: l.mode === "walk" ? "walking" : "driving" },
+          // "X0 is calling" (planCall.ts): what a call needs if this rings instead. The server's own: never put in the push.
+          call: {
+            source: "leave", item: itemId({ kind: "pe", eventRef: eventRefOf(l.eventId), day }), eventId: l.eventId, day, tz,
+            title: l.title, place: l.to, start: l.start, leaveBy: l.leaveBy, minutes: l.minutes, mode: l.mode === "walk" ? "walk" : "drive",
+          },
         }).catch(() => undefined);
         sent += 1;
       }

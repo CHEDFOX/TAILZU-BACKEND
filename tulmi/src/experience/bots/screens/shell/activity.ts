@@ -13,7 +13,7 @@ import { toast, avatarOf, colorOf, openRow, stageBars, openNeed, couldNot, markO
 // ===================================================================== activity
 export interface ActivityData { now: number; week: { done: number; paise: number; minutesSaved: number }; rows: FeedRow[] }
 
-const KIND_OF: Record<FeedRow["type"], "jobs" | "payments" | "words"> = { job: "jobs", task: "jobs", ask: "jobs", payment: "payments", words: "words" };
+const KIND_OF: Record<FeedRow["type"], "jobs" | "payments" | "words"> = { job: "jobs", task: "jobs", ask: "jobs", payment: "payments", words: "words", call: "jobs" };
 
 /** Rows grouped by the person's day, newest day first. */
 function byDay(rows: FeedRow[], now: number, tz: number): Array<{ label: string; rows: FeedRow[] }> {
@@ -137,7 +137,8 @@ export function activityDesk(ctx: BotsCtx, data: ActivityData | undefined) {
       cell(text(clockOf(r.at, tz), { size: 12.5, color: C.meta, lineHeight: 17 }), COLS.time),
       cell(row([avatarOf(ctx, r.bot, 26), text(nameOf(ctx, r.bot), { size: 13, weight: 500, lineHeight: 17, lines: 1, style: { flexShrink: 1 } })], { gap: 8 }), COLS.bot),
       cell(col([text(r.title, { size: 14, lineHeight: 19, lines: 2 }), ...(r.sub ? [meta(r.sub, { lines: 1 })] : [])], { gap: 2 })),
-      cell(r.open ? row([text("Receipt", { size: 13, weight: 500, lineHeight: 17 }), icon("chevron", { size: 14 })], { gap: 2, minHeight: 32 }, openRow(r)) : box([]), COLS.proof),
+      // A missed call has no receipt: its link opens the call (Call back is there).
+      cell(r.open ? row([text(r.type === "call" ? "Open" : "Receipt", { size: 13, weight: 500, lineHeight: 17 }), icon("chevron", { size: 14 })], { gap: 2, minHeight: 32 }, openRow(r)) : box([]), COLS.proof),
       cell(clearX(r), COLS.clear),
     ], { gap: 14 }),
     clearCard(r),

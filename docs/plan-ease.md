@@ -22,6 +22,7 @@ off puts that step back as it was, and nothing it kept is deleted.
 | `PLAN_V2_LINKS` | 2 | The work calendar by its link: the link page, the read every 30 minutes, its meetings on the days, the offer card once and the "stopped" card. Needs migration 0071 and `CONNECTOR_TOKEN_KEY`. | No link page, no card, nothing read. Links already kept stay as they are. |
 | `PLAN_V2_CAPTURE` | 3 | What's shared, dropped or pasted becomes one card. Bills due with Paid, and Pay only with a safe link. Needs migration 0072. | The share screen's bot picker as before, and a bill in the box is a plain to-do. |
 | `PLAN_V2_APP` | app release | Only for a binary that says it can (section 7): Time Sensitive leave-bys and bills due today, widget steps, desktop notices and "add this". Needs migration 0075 for Time Sensitive. | Every build gets what an older one does. |
+| `BOT_CALLS` | calls | "X0 is calling" (section 8): a leave-by or a bill due today rings a phone whose JS takes calls, instead of the push. Needs migration 0079 and `PLAN_V2_APP`. | Every push goes as before; calls already placed still finish. |
 
 ```bash
 ./deploy/set-env.sh PLAN_V2_NOTES=false && ./deploy/ship.sh   # notes off
@@ -269,3 +270,72 @@ Each piece is sent only to a binary that says it has it, because an over-the-air
 
 The notices' presence is this process's, like the live bus: with several processes, share it where the bus gets its relay.
 
+## 8. Calls (`BOT_CALLS`)
+
+"X0 is calling": at the moments Plan Ease must not let slip, it rings the phone instead of pushing. The service is
+`botsBots/planCall.ts` (words and limits: `planCallWords.ts`), its doors `routes/bots/planCalls.ts`, its screen
+`experience/bots/screens/bots/planCall.ts`, its table `plan_calls` (migration 0079). The contract both apps code against is the calls
+spec's section 1 (names, payloads, categories, channels, endpoints, states, timings); this section is how the server does it.
+
+**It is an ordinary notification.** No CallKit, PushKit or VoIP, nothing that looks like the phone's own call screen. The title is
+"<Name> is calling", where the name is the person's own name for it (Keylessbord's "What you call it", `nicknameOf`), else X0. The body is
+the reminder's own lock-safe line. Buttons: **Answer** (opens the call screen; a tap on the notification is Answer too) and **Not now**
+(a background call to `.../decline`, which answers 200 whatever happens, so the button never says it failed).
+
+**What rings.** Only a single `plan_leave` (leave-by) or a single `plan_due` for a bill due today: the two kinds already sent
+time-sensitive. `leavesTick` and `dueReminder` hand the engine a server-only seed (`call`: the raw title, ids, place, times) beside the
+push message; it never goes into a push. The engine asks the call (`setCallHook`) before it builds the push, and the phones that took the
+ring get no push. It never rings, and the push goes the existing way, when:
+
+- the person's quiet hours are on (the reminder itself would go silent), Calls is off in What pings you, or Plan Ease is off;
+- a computer is in use (the desk notice and the phone's silent copy, as before);
+- no phone has the `BotCall` cap (older JS, or an Android phone whose Reminders or Calls channel is blocked or missing);
+- `push.plan_call.needTimeSensitive` is true and the iPhone lacks the entitlement (false by default: phones without Time Sensitive are
+  rung at Apple's default level, as today's leave-by is; the owner to confirm);
+- a call is ringing or on; 3 server calls today already; under 15 minutes since the last call (a Call back counts for the 15 minutes, not
+  the 3);
+- the reminder already placed a call (`source_key` is unique; looked up before the limits, which that very call would trip, so the
+  same reminder again sends nothing to the phones it rang); the ring's ticket failed on every phone (the call is marked `not_sent`);
+  the table is missing (deploy before the migration);
+- a merged `plan_many`, or anything without a seed.
+
+A phone whose ring ticket failed gets the push, and nothing more of the call: ring 2 and the missed call go only to the phones that took
+ring 1 (the row's `rang`, hashes of their tokens, never the tokens). A phone with the ringtone (`BotRingtone`) is sent `sound: "x0_ring_1.wav"`, any other
+`"default"`. Lock-screen words only ever come from `planSafe.ts` (no amounts, health as "Appointment"); push data is only
+`{ call, state, day, screenId, pushId, kind }`.
+
+**States and timings.** `ringing` → `answered` | `declined` | `missed`; `answered` → `ended`. Every change is a compare-and-swap. Ring 1
+at 0 s (ttl 40), ring 2 at +23 s (same `collapseId`/`tag`, so it replaces ring 1; ttl 20, and never later than 5 s before the window
+ends), the missed call at +45 s ("Missed call from <Name>", no sound, `passive` on iOS, the reminder's own expiry), unless answered or
+declined. A late Answer (Face ID) still connects for 120 s after the window. An answered call with no turn for 5 minutes is ended
+(`timeout`). Timers run in the process; a sweep every 10 s over `next_ms` catches what a restart lost, sends no ring after the window and
+no missed push after its expiry. Calls older than 90 days are deleted by the sweep.
+
+**The screen** (`bots.plan.call`, never kept). Talk mode, on a phone with `BotCall`: it answers as it opens, Plan Ease speaks first
+("It's time to leave for the parent-teacher meeting at Green Valley School. Want me to do anything?"), then turn by turn the person talks
+(`voiceLive` once, `duplex`) and `.../say` hands the words to the Plan Ease chat with the call's facts attached; the reply is said aloud
+(two sentences at most). "No", "that's all", "bas" close the call with no chat call; after 8 turns it closes too. The item card carries
+its own buttons (Open map and Move; Pay and Paid), and one that leaves the screen ends the call first. Missed mode: "Missed call ·
+8:12 am", Call back (a new call of the person's own, answered at once, which ignores the limits); Call back pressed on the missed-call
+notification calls back as the screen opens, even for a call that ended since (answered late, then hung up). Ended mode. A record on the window and
+on any build without `BotCall`. The look is Plan Ease's: ochre on the bot and the status dot, Geist, the bot on his stage; no green or
+red, no round phone buttons.
+
+**Consent and microphone.** With the AI permission the voice is the server's (`GET .../voice/:n`, the person's TTS voice and read speed,
+under their quota, made ahead at answer and say time). Without it the opening is spoken by the phone (`speak`, nothing leaves it), only
+the item's buttons are offered, and `say` and `voice` answer 403. The microphone is checked, never asked for by a tap: without it the
+Continue card asks (and offers Open Settings when blocked).
+
+**Activity.** A missed call is a row of its own ("Missed call from Zara", the line and the time; it opens the missed call). It is read
+straight from `plan_calls` in `feedFor`, and Home's tasks and the Today page never list or count it.
+
+**Caps.** Token caps (`POST /v1/push/register`): `BotCall` (this JS takes calls), `BotRingtone` (the iPhone has `x0_ring_1.wav` in its app
+group's Library/Sounds; a new tone gets a new file name and a new cap). SDUI capability `BotCall` (`speak.loud`/`onDone`,
+`voiceLive.duplex`, Text `format: "elapsed"`). The phone makes the Android channels `calls` and `calls_missed` itself; the server never
+lists them. `calls_ring` is reserved for a later store build that packs the ringtone as a raw resource (a channel's sound is fixed once
+made).
+
+**Known leftovers (v1).** With two call-capable phones, answering on one leaves the other's ringing notification until its app opens. A
+missed push already sent can't be recalled when a late Answer arrives (the phone clears it on tap if it is shown). An Answer or Not now in
+the milliseconds after ring 2 is claimed can still be followed by ring 2 (the phone clears a stale ring later). Not now pressed offline is
+sent when the app next comes to the front. The voice made ahead lives in one server's memory; a GET that reaches another synthesises again.

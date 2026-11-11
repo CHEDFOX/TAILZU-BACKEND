@@ -29,7 +29,7 @@ import { type AiConsent, AI_CONSENT_PATH } from "./firstRun/aiConsentCard.js";
 import { type DeleteData, goesAway, planWarning, type AccountData, deleteDesk } from "./you/deleteDesk.js";
 import {
   when2, type NotifyData, notifyState, alwaysOn, doneSeg, timeChip, summarySwitch, timePicker, summaryPreview, botSwitch, botSub,
-  quietSwitch, quietTimes, save, notifyDesk,
+  quietSwitch, quietTimes, save, notifyDesk, callsSave, callsLine,
 } from "./you/notifyDesk.js";
 import { type SettingsData, settingsCard } from "./you/settingsCard.js";
 import { glyph, G, couldNot, heading, columns, openUrl, toast, refresh, oops, dayMonth, exportAction, plural } from "./you/parts.js";
@@ -222,6 +222,8 @@ function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
       listCard([
         listRow({ left: box([], { width: 8, height: 8, borderRadius: 4, backgroundColor: C.ink }), label: "Needs you", sub: "A bot is waiting on your answer", right: alwaysOn(), chevron: false }),
         listRow({ left: box([], { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: C.ink }), label: "Done", sub: "Quiet: no sound. Ping: with sound", right: doneSeg(116), chevron: false }),
+        // "X0 is calling" (botsBots/planCall.ts): only while calls can come here. switchRow flips `calls` first, so only the save goes.
+        ...(d.calls ? [switchRow("Calls", "calls", { left: glyph(G.bell, 18), sub: callsLine(d), onChange: callsSave() })] : []),
         row([
           glyph(G.rules, 18),
           col([text("Daily summary", { size: 15 }), row([meta("One note at", { size: 12 }), timeChip("sum", s.notify.summaryAt)], { gap: 8 })], { flexGrow: 1, flexShrink: 1, gap: 6 }),
