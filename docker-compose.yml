@@ -108,11 +108,11 @@ services:
 
   # THE ORACLE WORKER (oracle-worker/, docs/oracle.md, DEPLOY.md): Plutto's oracle for the Oracle bot. OPTIONAL: it only starts with the `oracle` profile,
   #
-  #   docker compose --profile oracle up -d --build
+  #   ./deploy/oracle-up.sh
   #
-  # with ORACLE_WORKER_SECRET, OPENROUTER_API_KEY and OPENAI_API_KEY in the `.env` beside this file (compose reads it for itself; the secret is also in
-  # tulmi/.env, with ORACLE_WORKER_URL=http://oracle-worker:8000). It is given those three and nothing else of the server's: not tulmi/.env, whose
-  # database and Supabase keys it has no use for. Unlike the media worker it needs the internet (the models), so it is on the default network, but it
+  # which copies ORACLE_WORKER_SECRET, OPENROUTER_API_KEY and OPENAI_API_KEY from tulmi/.env into the `.env` beside this file (compose reads it for
+  # itself) and starts it. It is given those three and nothing else of the server's: not tulmi/.env, whose database and Supabase keys it has no use
+  # for. Unlike the media worker it needs the internet (the models), so it is on the default network, but it
   # has no port on the host and answers only a signed request. Read-only, no capabilities, not root; what it writes is scratch in /tmp, gone with the
   # container: nothing a person asked is kept there.
   oracle-worker:

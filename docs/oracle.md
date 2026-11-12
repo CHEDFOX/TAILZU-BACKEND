@@ -117,16 +117,17 @@ a day. A request whose cap cannot cover one answer (250 paise) is refused before
 
 | Where | Key | |
 | --- | --- | --- |
-| `tulmi/.env` | `ORACLE_WORKER_URL` | `http://oracle-worker:8000`; with the secret, the Oracle is among the bots |
-| `tulmi/.env` and the `.env` beside `docker-compose.yml` | `ORACLE_WORKER_SECRET` | **secret**, 32+ characters (`openssl rand -hex 32`), the same on both sides |
-| the `.env` beside `docker-compose.yml` | `OPENROUTER_API_KEY`, `OPENAI_API_KEY` | **secrets**: the models; OpenAI for the search by meaning (without it, each question shows the model the whole list) |
+| `tulmi/.env` | `ORACLE_WORKER_URL` | `http://oracle-worker:8000`; with the secret, the Oracle is among the bots (`deploy/oracle-up.sh` sets it) |
+| `tulmi/.env` | `ORACLE_WORKER_SECRET` | **secret**, signs every call (`deploy/oracle-up.sh` makes it) |
+| `tulmi/.env` | `OPENROUTER_API_KEY`, `OPENAI_API_KEY` | **secrets** the server already has: the models; OpenAI for the search by meaning (without it, each question shows the model the whole list) |
 | compose | `ORACLE_WORKER_CONCURRENCY`, `ORACLE_WORKER_MEMORY`, `ORACLE_WORKER_CPUS` | answers at once (8), memory (1g), CPUs (1) |
 
-The worker is given those keys and nothing else of the server's. Started anywhere with more (the whole `tulmi/.env`, say), it drops the database,
+`tulmi/.env` is the only file to edit. Compose reads only the `.env` beside `docker-compose.yml` for itself, so `deploy/oracle-up.sh` copies the
+worker's three keys there and starts it; run it again after one of them changes. The worker is given those keys and nothing else of the server's. Started anywhere with more (the whole `tulmi/.env`, say), it drops the database,
 Supabase, payment and push names before the engine is loaded (`server/config.py`), so Plutto's memory store keeps its files in `/tmp` and never
 creates its tables in another database. `GET /healthz` says whether the model keys arrived (`"models"`, `"meaning"`), never what they are.
 
-Deploy steps are in DEPLOY.md ("The Oracle"). `BOTS` must be on. Without `ORACLE_WORKER_URL` and `ORACLE_WORKER_SECRET` the Oracle is not listed and
+Deploy steps are in DEPLOY.md ("The Oracle"): `./deploy/oracle-up.sh && ./deploy/ship.sh` (migration 0078 runs on deploy). `BOTS` must be on. Without `ORACLE_WORKER_URL` and `ORACLE_WORKER_SECRET` the Oracle is not listed and
 `/v1/oracle/*` answers 404 `oracle_off`.
 
 **Licence.** The engine computes the planets with the Swiss Ephemeris (`pyswisseph`), which is AGPL-3.0 unless the Swiss Ephemeris Professional

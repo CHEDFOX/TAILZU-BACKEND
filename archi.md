@@ -61,7 +61,8 @@ oracle-worker/           Python service (FastAPI): the Oracle bot's engine, Plut
 shared/types/            the wire contracts: api.ts (requests and responses), sdui.ts (screens, nodes, actions)
 shared/bots/             the bots' looks and moments (looks.json) and sounds (sounds.json, sounds/*.m4a)
 shared/prompts/          the screen reply's old prompt files, kept so REPLY_PROMPT_VERSION can roll back
-deploy/                  ship.sh (the deploy), migrate.sh (runs migrations by number), set-env.sh (plain settings in .env), cloudflare.sh (Xode's jobs
+deploy/                  ship.sh (the deploy), migrate.sh (runs migrations by number), set-env.sh (plain settings in .env), oracle-up.sh (the Oracle's
+                         worker, with the server's keys), cloudflare.sh (Xode's jobs
                          on Cloudflare), backup-db.sh (the nightly database backup to R2), Caddyfile, the desktop-release receiver, GitHub App
                          helpers, and the .well-known files for app links
 docs/                    one document per subsystem (listed under "Where to find" below)
