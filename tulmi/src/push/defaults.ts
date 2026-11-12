@@ -181,6 +181,14 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.mail_urgent.screenId": "bots.mail.reply",
     "push.mail_paused.enabled": true,
     "push.mail_paused.screenId": "bots.bot",
+    // The meeting bot (src/meet, docs/meet.md): the notes are ready (they open the note), it waits to be let in, or it could not join (both
+    // open the meeting). Never a word of what was said.
+    "push.meet_ready.enabled": true,
+    "push.meet_ready.screenId": "bots.note",
+    "push.meet_waiting.enabled": true,
+    "push.meet_waiting.screenId": "bots.meet.meeting",
+    "push.meet_failed.enabled": true,
+    "push.meet_failed.screenId": "bots.meet.meeting",
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
@@ -245,6 +253,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.mail_urgent.body": "{what} has a draft waiting for you.",
     "push.mail_paused.title": "{business}",
     "push.mail_paused.body": "Today's AI allowance is used up. New mail waits for you.",
+    "push.meet_ready.title": "{title}",
+    "push.meet_ready.body": "Your meeting notes are ready.",
+    "push.meet_waiting.title": "{title}",
+    "push.meet_waiting.body": "{name} is waiting to be let in.",
+    "push.meet_failed.title": "{title}",
+    "push.meet_failed.body": "{name} couldn't join: {why}",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -263,6 +277,7 @@ export const EVENT_PUSH_KINDS = [
   "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
   "mail_needs_you", "mail_urgent", "mail_paused",
+  "meet_ready", "meet_waiting", "meet_failed",
   "ops_alert",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

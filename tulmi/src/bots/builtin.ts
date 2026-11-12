@@ -1,5 +1,5 @@
 /**
- * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE AND THE MAIL BOT WHERE THEIR SERVICES ARE SET UP), IN THE SAME FORMAT AS A
+ * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE, THE MAIL BOT AND THE MEETING BOT WHERE THEIR SERVICES ARE SET UP), IN THE SAME FORMAT AS A
  * BOT A PERSON MAKES.
  *
  * Everything is a bot. These four are defined in code (ownerId null, nobody can change or delete them) and every person has them. The
@@ -14,9 +14,14 @@
  * are the worker's; its chat here runs the usual loop with the business's mail in numbers and one line a message (mail/digest.ts). Its name is a
  * placeholder until it is given one. It is listed only where MAIL_WORKER_URL and MAIL_WORKER_SECRET are set.
  *
+ * The meeting bot (src/meet, docs/meet.md) joins a person's video calls through Recall.ai, keeps each meeting in a note and answers in its chat
+ * and out loud; its chat here runs the usual loop with their meetings as its knowledge (meet/digest.ts). Its name is a placeholder too. It is
+ * listed only where RECALL_API_KEY is set.
+ *
  * One colour each, from the natural palette.
  */
 import { getConfig } from "../config.js";
+import { MEET_SLUG } from "../meet/types.js";
 import { PALETTE, type BotDef, type BotSkills } from "./types.js";
 
 const skills = (on: Partial<BotSkills>): BotSkills => ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on });
@@ -31,6 +36,7 @@ const PURPOSE = {
   travel: "Plans trips: routes, stays and timings, with sources.",
   oracle: "Reads your birth chart and the world's divination traditions to answer what you ask about your life, love, work and timing.",
   mail: "Keeps your business's email: sorts what arrives, drafts the replies in your voice, and tells you what needs you.",
+  meet: "Joins your video calls: takes the notes, answers what people ask in the chat and out loud, and turns what was agreed into your to-dos.",
 } as const;
 
 const DEFS: readonly BotDef[] = [
@@ -117,6 +123,31 @@ const MAIL: BotDef = {
   knowledge: [], tone: "plain and brief", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
 };
 
+export { MEET_SLUG };
+
+const MEET: BotDef = {
+  id: MEET_SLUG, ownerId: null, slug: MEET_SLUG, name: "Meetings", colour: "moss",
+  purpose: PURPOSE.meet,
+  principles: [
+    "Answer from what was said in their meetings; never invent who said what, a number or a decision.",
+    "Say first what was decided and who will do what.",
+    "Never say it joined, left or said something in a call: that is on the meetings page.",
+    "Keep other people's words to what the answer needs.",
+  ],
+  // Its meetings are its own service's (src/meet): no tools here; the chat reads their meetings and notes (meet/digest.ts).
+  skills: skills({}),
+  knowledge: [], tone: "plain and brief", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
+};
+
+/** The meeting bot is listed only where Recall is set up. */
+export function meetOn(): boolean {
+  try {
+    return Boolean(getConfig().RECALL_API_KEY);
+  } catch {
+    return false;
+  }
+}
+
 /** The mail bot is listed only where its service is set up. */
 export function mailOn(): boolean {
   try {
@@ -137,14 +168,14 @@ export function oracleOn(): boolean {
   }
 }
 
-const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : [])];
+const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : [])];
 
 /** The built-ins, as copies (a caller cannot change them). */
 export function builtinBots(): BotDef[] {
   return defs().map((d) => ({ ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } }));
 }
 
-export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || DEFS.some((d) => d.slug === slug);
+export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || DEFS.some((d) => d.slug === slug);
 
 export function builtinBot(slug: string): BotDef | null {
   return builtinBots().find((d) => d.slug === slug || d.id === slug) ?? null;

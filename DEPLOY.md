@@ -1196,3 +1196,58 @@ mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/pos
 6. **Back out:** remove `MAIL_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh` (the mail bot leaves X0 Bot); then
    `docker compose --profile mail stop mail-worker`. The mailboxes and their mail stay on the mail server.
 
+
+### Meetings: a bot in your video calls (`RECALL_API_KEY`)
+
+A built-in bot that a person sends into a Google Meet, Zoom, Teams or Webex call with a pasted link. It takes the notes (each meeting becomes a
+Note), answers what people ask it in the call, out loud or in the chat, and can join the calendar's meetings by itself. Recall.ai sends the bot
+into the call; there is no container to run. It needs `BOTS` on (above). Without `RECALL_API_KEY` the meeting bot is not among the bots and
+`/v1/meet/*` answers `404 meet_off`. Full story, the money and the privacy: `docs/meet.md`.
+
+1. **A Recall.ai account.** Sign up at recall.ai on **Pay As You Go**. In its dashboard, make an **API key**, and read the **workspace
+   verification secret** (API Keys, the one that starts `whsec_`). Pay As You Go accounts are in the region `us-west-2`.
+2. **Put them in `tulmi/.env` on the server.** Three keys, two of them **secrets**. `PUBLIC_ORIGIN` must already be the API's public https
+   origin: the bot's live webhook and its stage page are addressed from it.
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && nano tulmi/.env'
+   ```
+
+   ```
+   RECALL_API_KEY=<the API key>
+   RECALL_REGION=us-west-2
+   RECALL_WEBHOOK_SECRET=whsec_<the verification secret>
+   PUBLIC_ORIGIN=https://api.x0bot.com
+   ```
+
+   Optional: `MEET_MODEL` (the model that answers and keeps the notes so far; Claude Haiku 5.5 by default), `MEET_SPEAKING_VARIANT` (`web_4_core`, or
+   `web` for the cheaper bot that speaks), `MEET_DAILY_MINUTES` (a person's bot minutes per 24 hours, 240 by default) and `MEET_LANGUAGE` (the
+   language it listens for, `en`). With `RECALL_API_KEY` and no `RECALL_WEBHOOK_SECRET` the server warns at start: bots can join, but Recall's
+   status webhook is refused.
+3. **Tell Recall where to send the bot's status.** In Recall's dashboard, Webhooks, add the endpoint
+
+   ```
+   https://api.x0bot.com/v1/meet/recall
+   ```
+
+   with these events: `bot.joining_call`, `bot.in_waiting_room`, `bot.in_call_not_recording`, `bot.in_call_recording`, `bot.call_ended`,
+   `bot.done` and `bot.fatal`. This is set once. (The live transcript and chat need no setting: each bot is given its own address as it is made.)
+4. **Migration and deploy.** 0082 runs on deploy with the others (`tulmi/supabase/migrate-pending.sh`; by hand:
+   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0082"`). It makes `meet_settings`, `meetings` and
+   `meeting_asks`, the server's alone and deleted with the account. Without `SUPABASE_SERVICE_KEY` they live in memory.
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/ship.sh'
+   ```
+5. **Check.** In X0 Bot the meeting bot ("Meetings", a placeholder name) is among the bots. Paste a Google Meet link on its page and tap Join;
+   let it in from the call (a push says it is waiting). Say "X0, what have we covered so far?": it answers out loud, and in the chat with
+   "Answer out loud" off. When the call ends, a push says the notes are ready and opens the note. `docker compose logs backend` shows a failed
+   call by its kind, never a word that was said.
+6. **The stage's event stream must not be buffered.** The speaking bot's page listens to `/v1/meet/stage/<token>/events`. The route sends
+   `X-Accel-Buffering: no`, which nginx honours, so nothing needs changing unless a proxy in front strips that header; then turn buffering off for
+   `/v1/meet/stage/` (`proxy_buffering off;`) there. The symptom is a bot that answers in the chat but stays silent out loud.
+7. **Add to the privacy policy.** For the meeting bot: everyone in the call sees the bot join and its chat line; the transcript is kept in the
+   person's Note until they delete it or their account; we keep no audio, Recall keeps its recording for 7 days; what the bot answers from is the
+   meeting's transcript, never the person's other data; a push never carries a word from the call.
+8. **Back out:** remove `RECALL_API_KEY` from `tulmi/.env` and `./deploy/ship.sh` (the meeting bot leaves X0 Bot). Bots already in a call stay
+   there until it ends; remove the endpoint in Recall's dashboard if you like. The rows and the notes stay.

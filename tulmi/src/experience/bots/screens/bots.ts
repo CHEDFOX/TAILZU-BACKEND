@@ -54,6 +54,8 @@ import { loadMail, mailScreens } from "./bots/mailScreens.js";
 import { mailInboxScreens } from "./bots/mailInbox.js";
 import { mailAliasScreens } from "./bots/mailAliases.js";
 import type { MailData } from "./bots/mailParts.js";
+import { meetPage, type MeetPageData } from "./bots/meetPage.js";
+import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
 import type { About } from "./firstRun/parts.js";
 
 /** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
@@ -63,10 +65,10 @@ const homeFor = (ctx: BotsCtx): boolean => planV2(ctx) && homeOn();
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
-async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean } = {}): Promise<OraclePageData & MailPageData> {
+async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean } = {}): Promise<OraclePageData & MailPageData & MeetPageData> {
   const slug = slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat, sky, about, mail] = await Promise.all([
+  const [bot, memory, linked, chat, sky, about, mail, meet] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
@@ -77,14 +79,18 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
     slug === "oracle" ? deps.api<About>("GET", "/v1/bots/first-run/about").catch(() => undefined) : Promise.resolve(undefined),
     // The mail bot's page: its businesses' mail (routes/bots/mail.ts), on bots.bot only (its chat is the usual one).
     slug === "mail" && o.mail ? loadMail(ctx, deps).catch((): MailData => ({ down: true })) : Promise.resolve(undefined),
+    // The meeting bot's page: its meetings (routes/bots/meet.ts), on bots.bot only (its chat is the usual one).
+    slug === "meet" && o.meet ? loadMeet(ctx, deps).catch((): MeetData => ({ down: true })) : Promise.resolve(undefined),
   ]);
-  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}) };
+  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}) };
 }
 
 /** The Oracle is the chat and nothing in its way: its bot page and its chat are one page (screens/bots/oraclePage.ts). */
 const isOracle = (d: BotPageData): boolean => d.bot?.slug === "oracle" && d.bot.builtin;
 /** The mail bot's page is its mail (screens/bots/mailPage.ts); its chat is the usual chat. */
 const isMail = (d: BotPageData): boolean => d.bot?.slug === "mail" && d.bot.builtin;
+/** The meeting bot's page is its meetings (screens/bots/meetPage.ts); its chat is the usual chat. */
+const isMeet = (d: BotPageData): boolean => d.bot?.slug === "meet" && d.bot.builtin;
 
 function noBot(ctx: BotsCtx): ReturnType<typeof page> {
   return page(ctx, {
@@ -688,10 +694,10 @@ function avatarsPage(ctx: BotsCtx) {
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
 export const botsScreens: BotsScreen[] = [
-  screen<OraclePageData & MailPageData>({
+  screen<OraclePageData & MailPageData & MeetPageData>({
     id: SCREENS.bot,
-    load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : slugParam(ctx) === "mail" ? 1 : 6, { mail: true }),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
+    load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : slugParam(ctx) === "mail" || slugParam(ctx) === "meet" ? 1 : 6, { mail: true, meet: true }),
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isMeet(d) ? meetPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
   }),
   screen<OraclePageData>({
     id: SCREENS.chat,
@@ -820,6 +826,7 @@ export const botsScreens: BotsScreen[] = [
   ...mailScreens,
   ...mailInboxScreens,
   ...mailAliasScreens,
+  ...meetScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
   ...planPeopleScreens,
   // Follow-through (botsBots/planFollow.ts): one followed item, and who does an item.

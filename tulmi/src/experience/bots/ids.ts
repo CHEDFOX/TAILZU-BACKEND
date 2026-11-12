@@ -83,6 +83,8 @@ export const SCREENS = {
   mailAddresses: "bots.mail.addresses", // a domain's addresses (aliases): each with its folder, sender name, AI mode, auto-reply; add one (params: b)
   mailAddress: "bots.mail.address",  // one address: folder name, sender name, how it answers, auto-reply, removing it (params: b, aid)
   mailRules: "bots.mail.rules",      // a domain's rules: each as a sentence, on or off, removed; add one (params: b)
+  // screens/bots/meetScreens.ts: the meeting bot (its page is bots.bot with slug "meet", screens/bots/meetPage.ts)
+  meetMeeting: "bots.meet.meeting",  // one meeting: where it stands, who is in it, Leave, Answer out loud, the notes so far, what it answered (params: m)
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)
   // screens/spaces.ts: spaces with family and friends (bots.spaces is built there too), sharing, payments, tasks, messaging

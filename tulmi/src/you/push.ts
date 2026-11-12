@@ -16,6 +16,8 @@
  *                botsBots/threads.ts)
  *   mail         the mail bot: a business's message needs their answer, an urgent one has a draft, or its AI paused for the day: sent; in
  *                quiet hours without a sound; not with the mail bot turned off
+ *   meet         the meeting bot: the notes are ready, it waits to be let in, or it could not join: sent; in quiet hours without a sound;
+ *                not with the meeting bot turned off
  *
  * A person who never opened the screen has the defaults (settings.ts), which are what the pushes did before it: nothing changes for them.
  */
@@ -31,6 +33,8 @@ const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "co
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
 /** The mail bot's (push/defaults.ts): a customer is waiting, so they go, quietly in quiet hours; not with the mail bot off. */
 const MAIL = new Set(["mail_needs_you", "mail_urgent", "mail_paused"]);
+/** The meeting bot's (push/defaults.ts): a call is waiting or its notes are ready, so they go, quietly in quiet hours; not with the meeting bot off. */
+const MEET = new Set(["meet_ready", "meet_waiting", "meet_failed"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
 const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed"]);
 
@@ -59,6 +63,7 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   if (plan === "quiet") return "silent";
   if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
   if (MAIL.has(kind)) return n.botsOff.includes("mail") ? "drop" : quiet ? "silent" : "send";
+  if (MEET.has(kind)) return n.botsOff.includes("meet") ? "drop" : quiet ? "silent" : "send";
   if (kind === "routine_done" || kind === "routine_failed") return quiet ? "silent" : "send";
   if (kind === "ops_alert") return "send";
   if (DONE.has(kind)) {

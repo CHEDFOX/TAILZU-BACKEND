@@ -781,6 +781,25 @@ const EnvSchema = z.object({
    */
   MAIL_WORKER_URL: z.string().trim().optional(),
   MAIL_WORKER_SECRET: z.string().optional(),
+  /**
+   * THE MEETING BOT (src/meet, docs/meet.md): a person's bot in their video calls, sent by Recall.ai into Google Meet, Zoom, Teams or Webex. It
+   * takes the call's notes (a note in Notes), answers questions in the chat and out loud, and joins the calendar's meetings by itself when asked.
+   * RECALL_API_KEY (SECRET: .env only) from Recall's dashboard; RECALL_REGION the region its account is in (Pay As You Go: us-west-2). Recall
+   * signs every webhook (the live transcript and chat, and the bot's status) with the workspace verification secret, RECALL_WEBHOOK_SECRET
+   * (SECRET, "whsec_…", Recall's dashboard, API Keys); its status webhook is set in Recall's dashboard to <PUBLIC_ORIGIN>/v1/meet/recall.
+   * Without RECALL_API_KEY the meeting bot is not among the bots at all.
+   */
+  RECALL_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  RECALL_REGION: z.enum(["us-east-1", "us-west-2", "eu-central-1", "ap-northeast-1"]).default("us-west-2"),
+  RECALL_WEBHOOK_SECRET: z.string().trim().optional().transform((v) => v || undefined),
+  /** The model the meeting bot answers and keeps its notes with (OpenRouter's name): a fast one, since people wait for it in the call. */
+  MEET_MODEL: z.string().default("anthropic/claude-haiku-5.5"),
+  /** The bot that speaks shows our stage page as its camera (Recall's Output Media), on its 4-core bot ($0.10 an hour more) unless "web". */
+  MEET_SPEAKING_VARIANT: z.enum(["web", "web_4_core"]).default("web_4_core"),
+  /** How many minutes of meetings one person's bot may sit in, in any 24 hours (Recall bills by the minute). */
+  MEET_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(240),
+  /** The language Recall's live transcript listens for (its recallai_streaming language_code). */
+  MEET_LANGUAGE: z.string().trim().default("en"),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -1902,6 +1921,7 @@ export function getConfig(): AppConfig {
   // The mail bot: half set is a bot that is quietly missing. Warned, not refused.
   if (Boolean(env.MAIL_WORKER_URL) !== Boolean(env.MAIL_WORKER_SECRET)) console.warn("[config] MAIL_WORKER_URL and MAIL_WORKER_SECRET go together: without both the mail bot is not among the bots.");
   if (env.MAIL_WORKER_SECRET && env.MAIL_WORKER_SECRET.length < 32) console.warn("[config] MAIL_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
+  if (env.RECALL_API_KEY && !env.RECALL_WEBHOOK_SECRET) console.warn("[config] RECALL_API_KEY without RECALL_WEBHOOK_SECRET: the meeting bot can join calls, but Recall's status webhook is refused (it cannot be checked). Add the workspace verification secret (whsec_…) from Recall's dashboard.");
 
   // Bots: a pepper that is missing or short makes keys that a leaked table could be tested against. Warned, not refused: the rest of the server is unaffected.
   if (env.BOTS) {

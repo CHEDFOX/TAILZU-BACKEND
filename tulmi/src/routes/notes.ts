@@ -28,8 +28,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AudioFormat, Note, NoteSummary, Personality } from "../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { appendHeard, diarize, labelSpeakers, type Track, type Utterance } from "../notes/speakers.js";
-import { organise } from "../notes/organise.js";
-import { noteReady } from "../notes/ready.js";
+import { organiseNote } from "../notes/finish.js";
 import { findOnce, findingNow, needsFinding, tickTodo } from "../notes/extract.js";
 import { notesStats } from "../notes/stats.js";
 import {
@@ -69,8 +68,6 @@ const SYSTEM_AUDIO = new Set(["ok", "denied", "unavailable"]);
 
 /** A recording note written to this recently is still being recorded. */
 const STILL_RECORDING_MS = 3 * 60_000;
-/** The longest a written-up note waits for its to-dos before it is ready without them (they land when they come). */
-const FIND_WAIT_MS = 60_000;
 /** An "organising" note this quiet lost its writer (a restart). */
 const STUCK_ORGANISING_MS = 10 * 60_000;
 /**
@@ -91,11 +88,11 @@ function fail(reply: FastifyReply, err: unknown) {
   throw err;
 }
 
-/** Speakers in, then the writer. Runs after the finish has answered. */
+/** Speakers in, then the writer (notes/finish.ts, the step the meeting bot's notes end with too). Runs after the finish has answered. */
 async function organiseInBackground(user: AuthedUser, id: string): Promise<void> {
   const d = diarized.get(id);
   diarized.delete(id);
-  let note = await getNote(user, id);
+  const note = await getNote(user, id);
   if (!note) return;
   if (d && (d.mic?.us.length || d.system?.us.length)) {
     const labelled = labelSpeakers(d.mic?.us ?? null, d.system?.us ?? null, d.mic?.at ?? 0, d.system?.at ?? 0);
@@ -104,21 +101,10 @@ async function organiseInBackground(user: AuthedUser, id: string): Promise<void>
     const live = note.transcript.reduce((s, x) => s + countWords(x.text), 0);
     const heard = labelled.reduce((s, x) => s + countWords(x.text), 0);
     if (labelled.length && heard >= live * 0.5) {
-      note = (await updateNote(user, id, (n) => ({ ...n, transcript: labelled }))) ?? note;
+      await updateNote(user, id, (n) => ({ ...n, transcript: labelled }));
     }
   }
-  // The transcript is final now: its to-dos and decisions are read beside the writer (notes/extract.ts), once. The
-  // note is ready when both are, so "your notes are ready" has its to-dos; a read slower than FIND_WAIT_MS lands after.
-  const finding = findOnce(user, id);
-  const body = await organise(note);
-  await Promise.race([finding, new Promise((r) => setTimeout(r, FIND_WAIT_MS).unref?.())]);
-  await updateNote(user, id, (n) => body
-    ? { ...n, ...body, status: "ready", organised: true }
-    : { ...n, status: n.transcript.length ? "failed" : "ready", organised: false });
-  await finding;
-  // Ready, with its to-dos: Plan Ease may turn the named ones into one card (notes/ready.ts). Never holds the note up.
-  const ready = await getNote(user, id).catch(() => null);
-  if (ready && ready.status === "ready") noteReady(user.id, ready);
+  await organiseNote(user, id);
 }
 
 function startWork(user: AuthedUser, id: string) {

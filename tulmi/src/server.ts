@@ -77,6 +77,11 @@ import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
 import { registerMailRoutes } from "./routes/bots/mail.js";
+import { registerMeetRoutes } from "./routes/bots/meet.js";
+import { meetService } from "./meet/service.js";
+import { meetStore } from "./meet/store.js";
+import { googleEvents, startAutoJoin } from "./meet/calendar.js";
+import { GoogleSession } from "./connectors/google/oauth.js";
 import { registerBlipRoutes } from "./routes/bots/blipCatalog.js";
 import { registerLaunchRoutes } from "./routes/app/launchMotion.js";
 import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
@@ -476,6 +481,24 @@ registerOracleRoutes(app, { rateLimit: AUTHED_RL, bots });
 // The mail bot's pages: a business's mail on our mail server, passed to its worker inside the person's account, and the worker's signed
 // notice that mail needs a person (src/mail, docs/mail.md).
 registerMailRoutes(app, { rateLimit: AUTHED_RL, bots });
+// The meeting bot (src/meet, docs/meet.md): a bot in a person's video calls through Recall.ai, Recall's two signed webhooks and the stage page
+// its voice plays through. With a Google Calendar connected it joins their calendar's meetings by itself (the sweep, every five minutes).
+registerMeetRoutes(app, {
+  rateLimit: AUTHED_RL, bots,
+  calendarConnected: async (userId) => {
+    if (!connectors) return false;
+    return (await connectors.store.listConnections(userId)).some((c) => c.connectorId === "google-calendar" && Boolean(c.tokensEnc));
+  },
+});
+if (connectors && meetService()) {
+  const stopAutoJoin = startAutoJoin({
+    store: meetStore(),
+    source: googleEvents(new GoogleSession({ store: connectors.store, google: connectors.google })),
+    schedule: (u, ev) => meetService()!.schedule(u, ev),
+    cancel: (u, id) => meetService()!.cancel(u, id),
+  });
+  app.addHook("onClose", async () => { stopAutoJoin(); });
+}
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).
 registerBlipRoutes(app, { rateLimit: AUTHED_RL });

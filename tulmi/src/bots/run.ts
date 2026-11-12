@@ -13,7 +13,7 @@
  *   6. memory       after an owner's chat turn: facts and the rolling summary (memory.ts)
  *
  * The Oracle is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts). The mail bot runs it with its
- * business's mail as its knowledge (src/mail/digest.ts).
+ * business's mail as its knowledge (src/mail/digest.ts), and the meeting bot with the person's meetings (src/meet/digest.ts).
  *
  * THE MONEY: the cap is checked before every call by the gateway (a call whose worst case would pass it is refused, never made). A request that
  * runs dry after its tools worked returns what it has, with a note; one that cannot even start is a 402.
@@ -41,7 +41,8 @@ import type { BotStore } from "./store.js";
 import { buildTools, CALLS_PER_STEP, newRecord } from "./tools.js";
 import { BotError, type BotAnswer, type BotDef, type BotEvent } from "./types.js";
 import { ORACLE_SLUG, runOracle, type OracleDeps } from "../oracle/run.js";
-import { MAIL_SLUG } from "./builtin.js";
+import { MAIL_SLUG, MEET_SLUG } from "./builtin.js";
+import { meetDigest } from "../meet/digest.js";
 import { mailDigest } from "../mail/digest.js";
 import type { MailWorker } from "../mail/worker.js";
 
@@ -154,7 +155,11 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const mail = bot.ownerId === null && bot.slug === MAIL_SLUG
     ? await mailDigest(r.userId, { ...(d.mail?.worker !== undefined ? { worker: d.mail.worker } : {}), ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}), now: (d.now ?? Date.now)() }).catch(() => null)
     : null;
-  const knowledge = [know?.text, mail].filter((x): x is string => !!x?.trim()).join("\n\n");
+  // The meeting bot reads their meetings and what was said in them (meet/digest.ts).
+  const meet = bot.ownerId === null && bot.slug === MEET_SLUG
+    ? await meetDigest(r.userId, { ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}), now: (d.now ?? Date.now)() }).catch(() => null)
+    : null;
+  const knowledge = [know?.text, mail, meet].filter((x): x is string => !!x?.trim()).join("\n\n");
 
   const kit = await buildTools({
     bot, userId: r.userId, runId, ...(r.projectId ? { projectId: r.projectId } : {}), ports: d.ports, meter, call, ...(d.gateway ? { gateway: d.gateway } : {}),
