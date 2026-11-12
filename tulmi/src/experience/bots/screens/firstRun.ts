@@ -40,7 +40,7 @@
 import type { ActionSpec, Node, ActionRef, Condition, ScreenResponse } from "../../../../../shared/types/sdui.js";
 import {
   PALETTE_HEX, shapes, C, row, text, box, meta, botLook, botAvatar, tailzuMark, col, FACE, icon, primaryButton, SCREENS, seq, when, grow,
-  title, type IconName, divider, sectionLabel, button, segmented, type BotsCtx,
+  title, button, segmented, type BotsCtx,
 } from "../kit.js";
 import { type BotsScreen, screen } from "../registry.js";
 import { onStage, stageNode, stageScreen, figureFor, afterSignIn } from "./firstRun/afterSignIn.js";
@@ -49,7 +49,7 @@ import { keyOnDesk, keyOnPhone } from "./firstRun/keyStep.js";
 import { type Langs, language } from "./firstRun/language.js";
 import {
   CLAY, W, go, setState, type Figure, link, type DeskOpts, deskFig, deskFoot, chevron, phoneHeading, deskHeading, deskBack, back,
-  gateStep, deskBody, phoneStepBody, type Words,
+  gateStep, deskBody, deskHeader, phoneStepBody, type Words,
 } from "./firstRun/parts.js";
 import { type Plans, plansScreen } from "./firstRun/plansScreen.js";
 
@@ -225,40 +225,28 @@ function welcomePhone(start: ActionRef, fig: Figure): { body: Node[]; footer: No
       row([fourDots()], { justifyContent: "center", paddingTop: 22 }),
       { type: "Stack", style: { flexGrow: 1.3, flexShrink: 1 } },
     ],
-    footer: [primaryButton(W.start, start, { wide: true }), link(W.haveAccount, start, { center: true })],
+    // One way on: Start opens Sign in, which is the same for a new person and someone with an account.
+    footer: [primaryButton(W.start, start, { wide: true })],
   };
 }
 
-const FIRST_BOTS: Array<{ slug: string; name: string; line: string }> = [
-  { slug: "code", name: "Xode", line: "Fixes bugs in your code, and asks before anything ships." },
-  { slug: "keybot", name: "Keylessbord", line: "Speak instead of type, in every app." },
-  { slug: "plan", name: "Plan Ease", line: "Plans your day. Moves things only when you say yes." },
-  { slug: "travel", name: "Travel bot", line: "Tickets, refunds and the waiting on hold." },
-];
-
-function welcomeDesk(start: ActionRef, fig: Figure): DeskOpts {
-  const rows: Node[] = [
-    ...FIRST_BOTS.map((b) => ({ look: botLook(b.slug), name: b.name, line: b.line })),
-    { look: { color: PALETTE_HEX.pine!, icon: "spark" as IconName }, name: "Your own bots", line: "Make one for anything, like a Gym bot." },
-  ].map((b) => row([
-    botAvatar(b.look, 40),
-    col([text(b.name, { size: 15, weight: 600, lineHeight: 20 }), text(b.line, { size: 13, lineHeight: 18, color: C.grey70 })], { gap: 2, minWidth: 0, flexShrink: 1 }),
-  ], { gap: 14, paddingVertical: 13, paddingHorizontal: 18 }));
-  const list: Node[] = [];
-  rows.forEach((r, i) => { if (i) list.push(divider()); list.push(r); });
-  return {
-    title: "Welcome", right: meta("About a minute", { size: 13 }),
-    left: [
-      deskFig(fig, "wave", 172),
-      col([title(W.welcomeH, { lineHeight: 31 }), text(W.welcomeP, { size: 15, lineHeight: 22, color: C.grey70, style: { maxWidth: 400 } })], { gap: 6 }),
-      row([fourDots(), meta("Free to start · about a minute", { size: 12 })], { gap: 12, paddingTop: 4 }),
-    ],
-    main: [col([
-      row([sectionLabel("Your first bots"), grow(), meta("Each one does one job", { size: 12 })], { paddingTop: 14, paddingHorizontal: 18, paddingBottom: 4, gap: 10 }),
-      ...list,
-    ], { borderRadius: 18, borderWidth: 1, borderColor: C.line, overflow: "hidden" })],
-    foot: deskFoot(null, [link(W.haveAccount, start), button(W.start, start, { size: "lg" })]),
-  };
+/**
+ * The window's Welcome: one column in the middle of the window, as the phone's, a little larger: Blip waving, the words,
+ * the four dots and Start. (No list of bots here: they meet you on Home.)
+ */
+function welcomeDeskBody(start: ActionRef, fig: Figure): Node[] {
+  return [
+    deskHeader(meta("About a minute", { size: 13 })),
+    col([
+      row([fig("wave", 196)], { justifyContent: "center" }),
+      col([
+        title(W.welcomeH, { align: "center", lineHeight: 31 }),
+        text(W.welcomeP, { size: 16, lineHeight: 24, color: C.grey70, align: "center", style: { maxWidth: 440 } }),
+      ], { alignItems: "center", gap: 10 }),
+      row([fourDots(), meta("Free to start · about a minute", { size: 12 })], { gap: 12, justifyContent: "center" }),
+      box([button(W.start, start, { size: "lg" })], { paddingTop: 8, alignItems: "center" }),
+    ], { flexGrow: 1, justifyContent: "center", alignItems: "center", gap: 20, width: "100%", maxWidth: 640, alignSelf: "center" }),
+  ];
 }
 
 // ----------------------------------------------------------------- Sign in
@@ -434,9 +422,9 @@ export function botsAuthTree(o: BotsAuthOpts): Record<string, unknown> {
   let entry: Node;
   let code: Node;
   if (desktop) {
-    const wd = welcomeDesk(start, onStage), sd = signInDesk("gate", o, toWelcome, onStage), cd = codeDesk("gate", onStage);
+    const sd = signInDesk("gate", o, toWelcome, onStage), cd = codeDesk("gate", onStage);
     entry = gateStep(true, [
-      when(welcomeOn, col(deskBody(wd), { gap: 22, flexGrow: 1 })),
+      when(welcomeOn, col(welcomeDeskBody(start, onStage), { gap: 22, flexGrow: 1 })),
       when(signOn, col(deskBody(sd), { gap: 22, flexGrow: 1 })),
     ], { props: { stepId: "entry" } });
     code = gateStep(true, deskBody(cd), { props: { stepId: "code" } });
@@ -464,7 +452,7 @@ function authPage(ctx: BotsCtx, title: string, step: Node, state: Record<string,
 function welcomePage(ctx: BotsCtx): ScreenResponse {
   const start = go(SCREENS.signIn);
   const fig = figureFor(ctx);
-  if (ctx.client === "desktop") return authPage(ctx, "Welcome", gateStep(true, deskBody(welcomeDesk(start, fig)), { props: { stepId: "welcome" } }));
+  if (ctx.client === "desktop") return authPage(ctx, "Welcome", gateStep(true, welcomeDeskBody(start, fig), { props: { stepId: "welcome" } }));
   const w = welcomePhone(start, fig);
   return authPage(ctx, "Welcome", gateStep(false, [col([...w.body, col(w.footer, { gap: 6, paddingTop: 8 })], { flexGrow: 1 })], { props: { stepId: "welcome" } }));
 }
