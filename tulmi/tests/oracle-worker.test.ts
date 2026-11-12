@@ -51,6 +51,12 @@ describe("the oracle's service", () => {
     const sent = JSON.parse(body.toString("utf8"));
     expect(sent).toMatchObject({ message: "When will I marry?", session: "oracle:abc", stream: true, last_route: { picks: ["bphs.navamsa"] } });
     expect(sent.birth).toEqual({ year: 1994, month: 7, day: 13, hour: 9, minute: 30, lat: 19.07, lng: 72.87, place: "Mumbai" });
+
+    // Their name and gender go with the birth details, and only with them.
+    await w.answer({ ...ASK, person: { name: "Aanya Sharma", gender: "female" } }, () => undefined);
+    expect(JSON.parse((seen!.init.body as Buffer).toString("utf8")).birth).toMatchObject({ name: "Aanya Sharma", gender: "female", place: "Mumbai" });
+    await w.answer({ ...ASK, sky: null, person: { name: "Aanya Sharma", gender: "female" } }, () => undefined);
+    expect(JSON.parse((seen!.init.body as Buffer).toString("utf8")).birth).toBeNull();
   });
 
   it("says in words when the service cannot answer", async () => {

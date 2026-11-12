@@ -1137,10 +1137,14 @@ A built-in bot that answers questions about a person's life from their birth cha
    It wants about 1 GB of memory (`ORACLE_WORKER_MEMORY`) and one CPU (`ORACLE_WORKER_CPUS`), and answers 8 questions at
    once (`ORACLE_WORKER_CONCURRENCY`; one more waits 20 seconds, then is told it is busy). It has no port on the host, runs read-only as a user that
    is not root, and keeps nothing: its scratch is in `/tmp`, gone with the container.
+   **Place suggestions (recommended).** The birthplace card suggests towns and cities as the person types. For Google's suggestions, put
+   `GOOGLE_PLACES_API_KEY=<the key>` in `tulmi/.env` by hand (**a secret**; the key Plutto uses works: it needs the Places API enabled in its Google
+   Cloud project), then `./deploy/ship.sh`. Without it the card uses the server's own geocoder (the cities table, then `PLACES_GEOCODER`).
 3. **Check.** `docker compose exec backend wget -qO- http://oracle-worker:8000/healthz` answers `{"ok":true,"models":true,"meaning":true}`
    (`"models":false`: there is no `OPENROUTER_API_KEY` in `tulmi/.env`, or the script was not run since it was added; `"meaning":false`: the same for
    `OPENAI_API_KEY`, and every question shows the model the whole list of subsystems, slower and dearer). In the Bots app, pick the Oracle in Ask's list of
-   bots (or write "@oracle"); keep a birth date, time and place on its page and ask it something ("will this year bring a new job?"). The words arrive as they are
+   bots (or write "@oracle"); its cards ask for the birth date and time, the place (with suggestions as you type) and, if the app lacks them,
+   name and gender. Then ask it something ("will this year bring a new job?"). The words arrive as they are
    written: in the model test the first came 6 to 21 seconds after the question (the engine's own work, then the model thinking), the whole
    answer in 13 to 27. `docker compose logs oracle-worker` shows which model answered when one was down, never what was asked.
 4. **Licence.** The engine computes the planets with the Swiss Ephemeris (`pyswisseph`), AGPL-3.0 unless the Swiss Ephemeris Professional Licence is

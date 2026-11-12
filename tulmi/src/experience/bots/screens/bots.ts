@@ -45,6 +45,7 @@ import { capturePage, planGoLoad, planInScreens, shareCapture, type CaptureView 
 import { planPeopleScreens } from "./bots/planSend.js";
 import { planOn } from "../../../botsBots/planSwitch.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
+import type { About } from "./firstRun/parts.js";
 
 /** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
 const planV2 = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx);
@@ -54,15 +55,17 @@ const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowe
 async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number): Promise<OraclePageData> {
   const slug = slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat, sky] = await Promise.all([
+  const [bot, memory, linked, chat, sky, about] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
     deps.api<{ turns: Turn[] }>("GET", `${A}/chat/${enc(slug)}?limit=${turnsLimit}`).then((r) => r.turns).catch(() => undefined),
     // The Oracle's own card: when and where they were born (routes/bots/oracle.ts).
     slug === "oracle" ? deps.api<OracleSkyView>("GET", "/v1/oracle/sky").catch(() => undefined) : Promise.resolve(undefined),
+    // And whether its last card is owed: the person's name and gender, as the About you card reads them.
+    slug === "oracle" ? deps.api<About>("GET", "/v1/bots/first-run/about").catch(() => undefined) : Promise.resolve(undefined),
   ]);
-  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}) };
+  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}), ...(about ? { about } : {}) };
 }
 
 /** The Oracle is the chat and nothing in its way: its bot page and its chat are one page (screens/bots/oraclePage.ts). */

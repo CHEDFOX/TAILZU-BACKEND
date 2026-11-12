@@ -161,7 +161,8 @@ code/              Xode (docs/code-*.md); code/flow/: read, agree a plan, work t
   work/ newproject/ prcare/ resources/ secrets/   locating code, starting projects, PR care, library research, secret scanning
   github.ts oauth.ts policy.ts projects.ts …      the GitHub App and sign-in, the permission tiers, projects
 bots/              the bots platform: a bot's definition, store, keys, memory, tools, and running one (docs/bots.md)
-oracle/            the Oracle bot: birth details from words, the person's sky, the oracle worker's client, a turn (docs/oracle.md)
+oracle/            the Oracle bot: birth details from words, the birthplace search (Google Places), the person's sky, the oracle worker's
+                   client, a turn (docs/oracle.md)
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
@@ -221,7 +222,7 @@ ads/               Meta and Google Tag Manager events
 | The bots platform | `tulmi/src/bots/` (docs/bots.md); the Bots app areas `botsBots/`, `botsCode/`, `shell/`, `keybot/`, `you/` (docs/bots-app.md) |
 | The person's context (what the brain and Ask know of someone) | `tulmi/src/context/`, `routes/ask/context.ts` (docs/context.md) |
 | The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
-| The Oracle bot (a reading of the person's sky) | `tulmi/src/oracle/`, `routes/bots/oracle.ts`, the page `experience/bots/screens/bots/oraclePage.ts`, the engine `oracle-worker/`, migration 0078 (docs/oracle.md) |
+| The Oracle bot (a reading of the person's sky) | `tulmi/src/oracle/`, `routes/bots/oracle.ts`, the page `experience/bots/screens/bots/oraclePage.ts` and its cards `oracleCards.ts`, the engine `oracle-worker/`, migration 0078 (docs/oracle.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |

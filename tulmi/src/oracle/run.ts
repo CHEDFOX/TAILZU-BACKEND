@@ -3,7 +3,8 @@
  *
  *   runOracle(deps, req) -> BotAnswer          bots/run.ts sends the Oracle's turns here; every other bot runs the usual loop
  *
- *   1. the sky       when and where they were born (store.ts). Not known yet and the message holds it ("13 July 1994, 9:30 am, Mumbai")? It is read
+ *   1. the sky       when and where they were born (store.ts), read only once it is whole (the cards keep the when first), with their name and
+ *                    gender from the profile (the About you card's, or the Oracle's last card). Not known yet and the message holds it ("13 July 1994, 9:30 am, Mumbai")? It is read
  *                    (birth.ts), the place found (places/), kept, and said back in the notes. Still not known: the oracle answers without a chart
  *                    and asks for it when the question needs one
  *   2. the turns     what the bot's thread kept (memory.ts), as for any bot; an API caller sends its own
@@ -20,9 +21,11 @@ import type { Place } from "../places/types.js";
 import { memoryFor, recentTurnsOf, rememberTurn } from "../bots/memory.js";
 import { scrub, type RunDeps, type RunRequest } from "../bots/run.js";
 import { BotError, type BotAnswer } from "../bots/types.js";
-import { readBirth, skyLine, skyOf, type Sky } from "./birth.js";
+import type { AuthedUser } from "../auth/supabase.js";
+import { getProfile } from "../profile/store.js";
+import { isComplete, readBirth, skyLine, skyOf, type Sky } from "./birth.js";
 import { oracleStore, type OracleStore } from "./store.js";
-import { oracleWorker, OracleUnavailable, type OracleWorker } from "./worker.js";
+import { oracleWorker, OracleUnavailable, type OraclePerson, type OracleWorker } from "./worker.js";
 
 export const ORACLE_SLUG = "oracle";
 /** The least one answer needs, in paise (about 2.3 US cents for the reply and the calls before it). */
@@ -34,6 +37,16 @@ export interface OracleDeps {
   worker?: OracleWorker | null;
   places?: { place(q: string): Promise<Place | null> };
   fx?: number;
+  /** Their name and gender (the profile's when not given). */
+  person?: (userId: string) => Promise<OraclePerson | null>;
+}
+
+/** Their name and gender as the profile has them: "other", and anything unknown, is left out (the engine reads only male and female). */
+export async function profilePerson(userId: string): Promise<OraclePerson | null> {
+  const p = await getProfile({ id: userId } as AuthedUser);
+  const name = p.fullName?.trim().slice(0, 80);
+  const gender = p.gender === "male" || p.gender === "female" ? p.gender : undefined;
+  return name || gender ? { ...(name ? { name } : {}), ...(gender ? { gender } : {}) } : null;
 }
 
 /** The service is told who is asking only as a hash: enough to keep one model for one person's conversation, nothing more. */
@@ -65,13 +78,14 @@ export async function runOracle(d: RunDeps & { oracle?: OracleDeps }, r: RunRequ
   const notes: string[] = [];
 
   emit({ t: "status", stage: "reading" });
-  const [row, mem] = await Promise.all([
+  const [row, mem, person] = await Promise.all([
     store.get(r.userId).catch(() => null),
     remember ? memoryFor(d.store, r.userId, bot.id).catch(() => ({ facts: [], thread: null })) : Promise.resolve({ facts: [], thread: null }),
+    (d.oracle?.person ?? profilePerson)(r.userId).catch(() => null),
   ]);
 
   // Birth details in the message: kept when there were none yet, or when a whole new set is given.
-  let sky = row?.sky ?? null;
+  let sky: Sky | null = isComplete(row?.sky) ? row!.sky as Sky : null;
   let route = row?.route ?? null;
   const said = await skyFromWords(r.message, find);
   if (said.sky && remember) {
@@ -86,7 +100,7 @@ export async function runOracle(d: RunDeps & { oracle?: OracleDeps }, r: RunRequ
   const history = r.history?.length ? r.history : remember && !r.fresh ? recentTurnsOf(mem.thread) : [];
   let answer;
   try {
-    answer = await worker.answer({ message: r.message, history, sky, route, session: sessionOf(r.userId) },
+    answer = await worker.answer({ message: r.message, history, sky, person, route, session: sessionOf(r.userId) },
       (e) => { if (e.t === "status") emit(e); else r.onText?.(e.text); }, r.signal);
   } catch (err) {
     if ((err as { name?: unknown } | null)?.name === "AbortError") throw err;

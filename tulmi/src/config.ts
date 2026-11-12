@@ -767,6 +767,12 @@ const EnvSchema = z.object({
    */
   ORACLE_WORKER_URL: z.string().trim().optional(),
   ORACLE_WORKER_SECRET: z.string().optional(),
+  /**
+   * The Oracle's birthplace search (src/oracle/places.ts): Google's Places suggestions as the person types, and the place's
+   * coordinates once they pick one. A SECRET (.env only); the key needs the Places API enabled (the one Plutto uses). Without it the
+   * search falls back to the server's own: the cities table and PLACES_GEOCODER.
+   */
+  GOOGLE_PLACES_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),

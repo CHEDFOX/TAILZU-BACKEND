@@ -9,17 +9,18 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
-import type { Sky } from "./birth.js";
+import type { SkyDraft } from "./birth.js";
 
 export interface OracleRow {
-  sky: Sky | null;
+  /** When and where they were born; while the cards are filled in, the when alone (birth.ts isComplete tells). */
+  sky: SkyDraft | null;
   route: unknown;
   updatedAt: number;
 }
 
 export interface OracleStore {
   get(userId: string): Promise<OracleRow | null>;
-  setSky(userId: string, sky: Sky | null, now: number): Promise<void>;
+  setSky(userId: string, sky: SkyDraft | null, now: number): Promise<void>;
   setRoute(userId: string, route: unknown, now: number): Promise<void>;
   forget(userId: string): Promise<void>;
 }
@@ -44,7 +45,7 @@ export class MemoryOracleStore implements OracleStore {
     while (this.rows.size > MEMORY_MAX) this.rows.delete(this.rows.keys().next().value!);
   }
 
-  async setSky(userId: string, sky: Sky | null, now: number): Promise<void> { this.put(userId, { sky, route: null }, now); }
+  async setSky(userId: string, sky: SkyDraft | null, now: number): Promise<void> { this.put(userId, { sky, route: null }, now); }
   async setRoute(userId: string, route: unknown, now: number): Promise<void> { this.put(userId, { route: route ?? null }, now); }
   async forget(userId: string): Promise<void> { this.rows.delete(userId); }
 }
@@ -56,10 +57,10 @@ export class SupabaseOracleStore implements OracleStore {
     const { data, error } = await this.db.from("oracle_people").select("sky, last_route, updated_at").eq("user_id", userId).maybeSingle();
     if (error) throw new Error("oracle_people read failed");
     if (!data) return null;
-    return { sky: (data.sky as Sky | null) ?? null, route: data.last_route ?? null, updatedAt: Date.parse(String(data.updated_at)) || 0 };
+    return { sky: (data.sky as SkyDraft | null) ?? null, route: data.last_route ?? null, updatedAt: Date.parse(String(data.updated_at)) || 0 };
   }
 
-  async setSky(userId: string, sky: Sky | null, now: number): Promise<void> {
+  async setSky(userId: string, sky: SkyDraft | null, now: number): Promise<void> {
     // A new sky starts a new conversation with the oracle: the last route was read against the old one.
     const { error } = await this.db.from("oracle_people").upsert({ user_id: userId, sky, last_route: null, updated_at: new Date(now).toISOString() }, { onConflict: "user_id" });
     if (error) throw new Error("oracle_people write failed");

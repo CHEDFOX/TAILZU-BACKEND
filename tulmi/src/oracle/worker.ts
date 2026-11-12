@@ -14,10 +14,15 @@ import type { Sky } from "./birth.js";
 
 export interface OracleTurn { role: "user" | "assistant"; content: string }
 
+/** Who is asking, from their profile: the oldest ways of reading a life use the name, and some read a woman's chart differently from a man's. */
+export interface OraclePerson { name?: string; gender?: "male" | "female" }
+
 export interface OracleAsk {
   message: string;
   history: OracleTurn[];
   sky: Sky | null;
+  /** Sent with the birth details only (the engine reads them per request, never into its shared chart cache). */
+  person?: OraclePerson | null;
   route: unknown;
   /** Not the person's id: a hash of it, so the service can keep one model for the whole conversation (core/llm.py on its side). */
   session: string;
@@ -66,7 +71,11 @@ export function oracleWorker(o: { fetchFn?: FetchFn; url?: string; secret?: stri
     async answer(ask, on, signal) {
       const body = Buffer.from(JSON.stringify({
         message: ask.message, history: ask.history,
-        birth: ask.sky ? { year: ask.sky.year, month: ask.sky.month, day: ask.sky.day, hour: ask.sky.hour, minute: ask.sky.minute, lat: ask.sky.lat, lng: ask.sky.lng, place: ask.sky.place.slice(0, 120) } : null,
+        birth: ask.sky ? {
+          year: ask.sky.year, month: ask.sky.month, day: ask.sky.day, hour: ask.sky.hour, minute: ask.sky.minute, lat: ask.sky.lat, lng: ask.sky.lng,
+          place: ask.sky.place.slice(0, 120),
+          ...(ask.person?.name ? { name: ask.person.name.slice(0, 80) } : {}), ...(ask.person?.gender ? { gender: ask.person.gender } : {}),
+        } : null,
         last_route: ask.route ?? null, session: ask.session, language: (ask.language ?? "en").slice(0, 16), stream: true,
       }), "utf8");
       const timestamp = Math.floor(now() / 1000);

@@ -21,18 +21,33 @@ export interface BirthRead {
   placeWords: string;
 }
 
-/** What the oracle's engine reads (oracle-worker/server/answer.py Birth). */
-export interface Sky {
+/** When they were born: the local time at the birthplace (noon, marked not known, when the time was not given). */
+export interface BirthWhen {
   year: number;
   month: number;
   day: number;
   hour: number;
   minute: number;
+  timeKnown: boolean;
+}
+
+/** What the oracle's engine reads (oracle-worker/server/answer.py Birth). */
+export interface Sky extends BirthWhen {
   lat: number;
   lng: number;
   place: string;
-  timeKnown: boolean;
 }
+
+/** What is kept while the cards are filled in: the when first (its card), the place after (its card). Only a whole one is read. */
+export type SkyDraft = BirthWhen & Partial<Pick<Sky, "lat" | "lng" | "place">>;
+
+/** A sky the engine can read: when, and where on the map. */
+export function isComplete(s: SkyDraft | null | undefined): s is Sky {
+  return !!s && Number.isFinite(s.lat) && Number.isFinite(s.lng) && typeof s.place === "string" && s.place.length > 0;
+}
+
+/** The when of a reading (or of a sky). */
+export const whenOf = (r: BirthWhen): BirthWhen => ({ year: r.year, month: r.month, day: r.day, hour: r.hour, minute: r.minute, timeKnown: r.timeKnown });
 
 const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
@@ -105,9 +120,20 @@ export function skyOf(r: BirthRead, place: Place): Sky {
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+/** "13 July 1994": the date as the card asks for it back. */
+export const dateWords = (s: BirthWhen): string => `${s.day} ${MONTH_NAMES[s.month - 1]} ${s.year}`;
+
+/** "9:30 am", or "" when the time is not known. */
+export function timeWords(s: BirthWhen): string {
+  if (!s.timeKnown) return "";
+  const h = s.hour % 12 === 0 ? 12 : s.hour % 12;
+  return `${h}:${String(s.minute).padStart(2, "0")} ${s.hour < 12 ? "am" : "pm"}`;
+}
+
+/** "13 July 1994, 9:30 am" (or "time not known"). */
+export const whenLine = (s: BirthWhen): string => `${dateWords(s)}, ${timeWords(s) || "time not known"}`;
+
 /** "13 July 1994, 9:30 am, Mumbai" (or "time not known"): how the card and the chat say it back. */
 export function skyLine(s: Pick<Sky, "year" | "month" | "day" | "hour" | "minute" | "place" | "timeKnown">): string {
-  const h = s.hour % 12 === 0 ? 12 : s.hour % 12;
-  const time = s.timeKnown ? `${h}:${String(s.minute).padStart(2, "0")} ${s.hour < 12 ? "am" : "pm"}` : "time not known";
-  return `${s.day} ${MONTH_NAMES[s.month - 1]} ${s.year}, ${time}, ${s.place.split(",")[0]}`;
+  return `${whenLine(s)}, ${s.place.split(",")[0]}`;
 }

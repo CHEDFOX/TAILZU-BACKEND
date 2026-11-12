@@ -3,24 +3,25 @@
  *
  *   the head       back, the Oracle, its line, and (once there are turns) one of its two characters on a stage of his own: the Wanderer (undyed
  *                  camel wool, a staff and a lantern) or the Seer (midnight cloth, a crystal and cards), one on one day and the other on the next
- *   the sky        before anything is asked, a card for when and where they were born (date, time if known, place), kept by PUT /v1/oracle/sky;
- *                  once kept, one quiet line with Change. Birth details typed into the chat are read and kept the same way
+ *   the cards      what the Oracle needs, asked one card after another over the page (oracleCards.ts): when they were born, where, and their
+ *                  name and gender if the app does not have them. Once kept, the sky is one quiet line with Change, which opens the cards again.
+ *                  Birth details typed into the chat are read and kept too
  *   the chat       the turns; before the first, the day's character big on a card of his own, and a few first questions to start from
  *   the ask bar    the bots' own (parts.ts chatBar): the words stream in as the Oracle writes them
  */
 import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, page, row, col, text, box, icon, labelled, back, grow, card, body, meta, chip, when, primaryButton, quietButton, C,
+  type BotsCtx, page, row, col, text, box, icon, labelled, back, grow, card, chip, meta, quietButton, primaryButton, C,
   botBuddy, canBuddy, canMoments, botMoment, botAvatar, emptyState,
 } from "../../kit.js";
-import { type BotPageData, ANSWERING, askBot, chatBar, chatTurns, field, inputBox, isDesk, lookOf, setState, write } from "./parts.js";
+import type { About } from "../firstRun/parts.js";
+import { cardsDue, cardsState, openCards, oracleCards } from "./oracleCards.js";
+import { type BotPageData, ANSWERING, askBot, chatBar, chatTurns, isDesk, lookOf } from "./parts.js";
 
-/** What the page reads of the Oracle's own store (GET /v1/oracle/sky). */
-export interface OracleSkyView { sky: { place: string } | null; line: string | null }
-export type OraclePageData = BotPageData & { sky?: OracleSkyView };
-
-const SKY = "/v1/oracle/sky";
-const EDIT = "oracle_edit";
+/** What the page reads of the Oracle's own store (GET /v1/oracle/sky): the sky once it is whole, the when as soon as it is kept. */
+export interface OracleSkyView { sky: { place: string } | null; line: string | null; when?: { date: string; time: string; line: string } | null }
+/** And the person's name and gender (the About you card's read, GET /v1/bots/first-run/about). */
+export type OraclePageData = BotPageData & { sky?: OracleSkyView; about?: About };
 const STARTERS = [
   "What is this year asking of me?",
   "When will I meet the right person?",
@@ -62,8 +63,8 @@ function character(ctx: BotsCtx, color: string): Node[] {
  * Before the first question: the day's character, big, on a card of his own (a build that cannot draw him: Blip's empty state). The same life
  * as the head's, and the head shows him only once there are turns, so one character is on the page and the first answer moves him up there.
  */
-function stage(ctx: BotsCtx, color: string, title: string, line: string): Node {
-  if (!canBuddy(ctx)) return emptyState({ pose: "listen", title, body: line });
+function stage(ctx: BotsCtx, color: string, title: string, line: string, add = false): Node {
+  if (!canBuddy(ctx)) return emptyState({ pose: "listen", title, body: line, ...(add ? { action: { label: "Add your birth details", onPress: openCards() } } : {}) });
   const c = characterOf(ctx);
   const desk = isDesk(ctx);
   return card([
@@ -73,25 +74,8 @@ function stage(ctx: BotsCtx, color: string, title: string, line: string): Node {
     }),
     text(title, { size: 16, weight: 600, align: "center" }),
     text(line, { size: 13, color: C.meta, align: "center", lineHeight: 18 }),
+    ...(add ? [primaryButton("Add your birth details", openCards())] : []),
   ], { dashed: true, gap: 10, padding: 24, style: { alignItems: "center" } });
-}
-
-const fieldBox = (id: string, path: string, placeholder: string): Node => inputBox([field(id, path, placeholder)], { radius: 14 });
-
-function skyCard(): Node {
-  const save = write("PUT", SKY, { date: `$state.oracle_date`, time: `$state.oracle_time`, place: `$state.oracle_place` },
-    { ok: "Kept. Ask away.", fail: "Couldn't read that. Check the date and the town." });
-  return card([
-    text("When and where were you born?", { size: 17, weight: 600, lineHeight: 22 }),
-    body("The Oracle reads your sky from it. The time sharpens the reading; leave it empty if you don't know it.", { color: C.grey70 }),
-    col([
-      fieldBox("oracle_date", "oracle_date", "Date, like 13 July 1994"),
-      fieldBox("oracle_time", "oracle_time", "Time, like 9:30 am"),
-      fieldBox("oracle_place", "oracle_place", "Town or city, like Mumbai"),
-    ], { gap: 8 }),
-    row([primaryButton("Keep it", save)], { gap: 8 }),
-    meta("Kept for the Oracle only. You can change it, or remove it, any time.", { size: 12 }),
-  ], { gap: 12 });
 }
 
 function skyLineRow(line: string): Node {
@@ -99,7 +83,7 @@ function skyLineRow(line: string): Node {
     icon("spark", { size: 16, color: C.meta }),
     text(line, { size: 13, lineHeight: 18, color: C.grey70, lines: 1, style: { flexShrink: 1 } }),
     grow(),
-    quietButton("Change", setState(EDIT, true), { size: "md" }),
+    quietButton("Change", openCards(), { size: "md" }),
   ], { gap: 8, paddingVertical: 4 });
 }
 
@@ -120,21 +104,23 @@ export function oraclePage(ctx: BotsCtx, d: OraclePageData) {
       name, grow(), ...up,
     ], { gap: 6 });
 
-  const sky: Node[] = known
-    ? [when({ falsy: EDIT }, skyLineRow(known)), when({ truthy: EDIT }, skyCard())]
-    : [skyCard()];
+  const sky: Node[] = known ? [skyLineRow(known)] : [];
+  // The cards over the page while something is owed, with the day's character on their stage.
+  const c = characterOf(ctx);
+  const cards = oracleCards(ctx, d, { color: look.color, ...(canMoments(ctx) ? { avatar: c.avatar, moment: botMoment(ctx, c.moment, "once") } : {}) });
   const talk: Node[] = turns.length
     ? chatTurns(ctx, bot, turns, { big: !isDesk(ctx), days: isDesk(ctx) || turns.length > 6 })
     : known
       ? [stage(ctx, look.color, "Ask the Oracle anything", "Love, work, money, health, timing, or a choice in front of you."),
         row(STARTERS.map((s) => chip(s, { onPress: askBot(bot.slug, s) })), { gap: 8, flexWrap: "wrap" })]
-      : [stage(ctx, look.color, "Ask the Oracle anything", "It answers best once it knows when and where you were born.")];
+      : [stage(ctx, look.color, "Ask the Oracle anything", "It answers best once it knows when and where you were born.", true)];
 
   return page(ctx, {
     back: isDesk(ctx), title: bot.name, nav: bot.slug, ...(isDesk(ctx) ? { maxWidth: 720 } : {}),
     pullBot: { top: true, bottom: true, newAt: "bottom", ...(d.turns ? { items: d.turns.map((t) => t.id) } : {}) },
-    body: [head, ...sky, ...talk],
+    body: [...cards, head, ...sky, ...talk],
     footer: [chatBar(ctx, bot.slug, bot.name, "Ask the Oracle…")],
     gap: 18,
+    ...(cardsDue(ctx, d) ? { state: cardsState(ctx, d) } : {}),
   });
 }

@@ -9,7 +9,7 @@ vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY
 const { ALICE, rig } = await import("./bots-rig.js");
 const { builtinBots, builtinBot } = await import("../src/bots/builtin.js");
 const { resetConfigForTests } = await import("../src/config.js");
-const { runOracle, sessionOf, ORACLE_MIN_PAISE } = await import("../src/oracle/run.js");
+const { runOracle, sessionOf, ORACLE_MIN_PAISE, profilePerson } = await import("../src/oracle/run.js");
 const { MemoryOracleStore } = await import("../src/oracle/store.js");
 const { MemoryBotStore } = await import("../src/bots/store.js");
 const { OracleUnavailable } = await import("../src/oracle/worker.js");
@@ -69,6 +69,31 @@ describe("a turn with the Oracle", () => {
     expect((await store.get(ALICE))!.sky).toMatchObject({ place: "Mumbai, Maharashtra, India" });
     expect(a.paise).toBe(220);                                         // 0.025 dollars at 88 rupees
     expect(a.bot).toEqual({ slug: "oracle", name: "Oracle", colour: "plum", builtin: true });
+  });
+
+  it("reads a sky only once it is whole, and sends their name and gender with it", async () => {
+    on();
+    const f = fakeWorker(() => ({ text: "This year asks you to choose." }));
+    const store = new MemoryOracleStore();
+    const when = { year: 1994, month: 7, day: 13, hour: 9, minute: 30, timeKnown: true };
+    await store.setSky(ALICE, when, 1);                                  // the first card kept, the second not yet
+    const d = deps(f.worker, store);
+    const withPerson = { ...d, oracle: { ...d.oracle, person: async () => ({ name: "Aanya Sharma", gender: "female" as const }) } };
+    await runOracle(withPerson, req("What is this year asking of me?"));
+    expect(f.asked[0]!.sky).toBeNull();
+    await store.setSky(ALICE, { ...when, lat: 19.07, lng: 72.87, place: "Mumbai, Maharashtra, India" }, 2);
+    await runOracle(withPerson, req("What is this year asking of me?"));
+    expect(f.asked[1]).toMatchObject({ sky: { place: "Mumbai, Maharashtra, India" }, person: { name: "Aanya Sharma", gender: "female" } });
+  });
+
+  it("takes name and gender from the profile, leaving out what the engine does not read", async () => {
+    const { updateProfile } = await import("../src/profile/store.js");
+    const who = { id: "77777777-7777-4777-8777-777777777777" } as never;
+    expect(await profilePerson("77777777-7777-4777-8777-777777777777")).toBeNull();
+    await updateProfile(who, { fullName: "  Aanya Sharma ", gender: "other" });
+    expect(await profilePerson("77777777-7777-4777-8777-777777777777")).toEqual({ name: "Aanya Sharma" });
+    await updateProfile(who, { gender: "female" });
+    expect(await profilePerson("77777777-7777-4777-8777-777777777777")).toEqual({ name: "Aanya Sharma", gender: "female" });
   });
 
   it("sends the route of the last question back, and asks without a chart when it has none", async () => {

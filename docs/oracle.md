@@ -46,16 +46,32 @@ Its purpose is in everyday words (life, love, work, a chart), so those are not c
 of expenses is not a reading. Words that are also names or amounts (Rashi, Dasha, राशि as a sum) never count alone. Between two bots, the tiny tier
 decides, as for any bot.
 
-## 2. Birth details
+## 2. Birth details, and the cards that ask for them
 
-The Oracle needs the date, the time (when known) and the place of birth. They come two ways, read by the same rules (`oracle/birth.ts`, no model):
+The Oracle needs the date, the time (when known) and the place of birth, and reads better with the person's name and gender. They come two ways:
 
-* **the card** on the Oracle's page: date, time, place (`PUT /v1/oracle/sky`);
-* **the chat**: "13 July 1994, 9:30 am, Mumbai" or "13/07/1994 subah 9 baje Delhi" in a message is read, kept, and said back in the notes.
+* **The cards** (`experience/bots/screens/bots/oracleCards.ts`), the first time someone opens the Oracle: one card over its page, the way the
+  microphone and keyboard card and the About you card ask (a BotCard overlay, the page blurred behind it), with the day's character on its stage.
+  One step after another, each kept as soon as it is answered, so leaving halfway loses nothing:
+  1. **When**: the date, and the time if they know it (`PUT /v1/oracle/sky { date, time }`). "Not now" puts the card away for this visit; the
+     Oracle answers without a chart, and its page offers the card again.
+  2. **Where**: the town or city, with suggestions as they type (`GET /v1/oracle/places`); a tap keeps one (`PUT { placeId, place, session }`),
+     Keep finds what they typed (`PUT { place }`). With `GOOGLE_PLACES_API_KEY` the suggestions are Google's (`oracle/places.ts`: the Places API
+     Plutto uses, autocomplete then details, towns and cities only, one session per card so a search and its pick are billed together). Without
+     it, or when Google refuses, the server's own: the cities table, then `PLACES_GEOCODER`. The app shows no list from state, so the
+     suggestions are five rows, each shown while the search's answer has one.
+  3. **You**: their name and gender, only when the app does not have them (the About you card's read, `GET /v1/bots/first-run/about`, and its
+     write, `PUT /v1/profile`, so every bot has them; a name guessed from the email does not count as theirs). Signed in with Apple, the name is
+     never required (App Review 4).
+  Then "Ask away", the character's happy moment, and the page with the sky's line. **Change** on that line opens the cards again, filled in.
+  A build without the living card gets the same steps in a plain card at the top of the page.
+* **The chat**: "13 July 1994, 9:30 am, Mumbai" or "13/07/1994 subah 9 baje Delhi" in a message is read, kept, and said back in the notes.
 
-A date is day before month (05/07/1994 is the 5th of July) unless the first number cannot be a month. A time not given is noon, marked as not known,
-and the reading is gentler about the hour. The place is found with the server's geocoder (`places/`): the cities table first, then the configured
-geocoder. Without birth details the Oracle still answers, from what it can read, and asks for them when a question needs a chart.
+Both are read by the same rules (`oracle/birth.ts`, no model). A date is day before month (05/07/1994 is the 5th of July) unless the first number
+cannot be a month. A time not given is noon, marked as not known, and the reading is gentler about the hour. A sky is read only once it is whole
+(the cards keep the when first). The name and gender go to the engine with the birth details: several of its systems read a woman's chart as a
+man's without the gender ("Other" is not sent: the engine reads only male and female). Without birth details the Oracle still answers, from what it
+can read, and asks for them when a question needs a chart.
 
 ## 3. The page and the looks
 
@@ -120,6 +136,7 @@ a day. A request whose cap cannot cover one answer (250 paise) is refused before
 | `tulmi/.env` | `ORACLE_WORKER_URL` | `http://oracle-worker:8000`; with the secret, the Oracle is among the bots (`deploy/oracle-up.sh` sets it) |
 | `tulmi/.env` | `ORACLE_WORKER_SECRET` | **secret**, signs every call (`deploy/oracle-up.sh` makes it) |
 | `tulmi/.env` | `OPENROUTER_API_KEY`, `OPENAI_API_KEY` | **secrets** the server already has: the models; OpenAI for the search by meaning (without it, each question shows the model the whole list) |
+| `tulmi/.env` | `GOOGLE_PLACES_API_KEY` | **secret**, optional: the birthplace card's suggestions from Google (the Places API Plutto uses; Plutto's key works). Read by the server, not the worker |
 | compose | `ORACLE_WORKER_CONCURRENCY`, `ORACLE_WORKER_MEMORY`, `ORACLE_WORKER_CPUS` | answers at once (8), memory (1g), CPUs (1) |
 
 `tulmi/.env` is the only file to edit. Compose reads only the `.env` beside `docker-compose.yml` for itself, so `deploy/oracle-up.sh` copies the
@@ -153,9 +170,12 @@ the engine): a change to how Plutto's chat replies belongs there too.
 * `tulmi/tests/oracle-worker.test.ts`: signed the media worker's way, streamed, failures said in words.
 * `tulmi/tests/oracle-run.test.ts`: listed only where set up; birth details kept from the chat; the route sent back; the person never named to the
   worker; the money; down and not configured; "Ask any bot" sends a reading there, and a name, an amount or a plain plan elsewhere.
-* `tulmi/tests/oracle-routes.test.ts`: the card over HTTP.
-* `tulmi/tests/oracle-page.test.ts`: the page: the card first, one character (big on his stage, then small in the head), the Wanderer one day and
-  the Seer the next, the card behind Change once kept, the plain empty state for a build that cannot draw him.
+* `tulmi/tests/oracle-routes.test.ts`: the cards over HTTP: whole or in parts (the when, then the place), suggestions, what is missing in words.
+* `tulmi/tests/oracle-page.test.ts`: the cards (when, where with five suggestion rows, name and gender only when owed; what is kept is passed;
+  Change opens them again; the plain card) and the page (one character, big on his stage, then small in the head; the Wanderer one day and the
+  Seer the next).
+* `tulmi/tests/oracle-places.test.ts`: Google's suggestions and the picked place in one session, the server's own when Google refuses or there is
+  no key, and neither the key nor anything typed in a log line.
 * `oracle-worker/tests/`: the signature (the media worker's vector), the answer streamed with the pipeline and the model stood in for, a failure,
   and the server's database and payment keys never reaching the engine.
 
