@@ -244,8 +244,10 @@ Each later step adds entries to lists. No existing line changes:
 - **Left alone.** A card read after the person left the share screen gets one push, "Read the school circular: 4 things" [Add all]
   [Look]. It becomes a Needs-you card, comes once in the evening note, and goes after 7 days.
 - **Consent and money.** Nothing is sent before the person's yes. Every call goes through the gate and runs as them. Without the yes,
-  the card shows the existing AI card, with two choices: Agree reads it; "Not now" (said on the card) turns words with dates into things
-  by the rules, and a photo into one to-do with its file. Reading is charged to the person (`chargedTo(user, "plan")`) and added to Plan
+  nothing here asks for it (Home's card is asked once, `firstRun/aiConsentCard.ts`): words with dates become the card's things to tick
+  by the rules at once (Add all adds them, as after an AI read), and a photo, or words with nothing found, one to-do with its file. A
+  card left from before, still waiting for a yes, is read as soon as it is opened (by AI with the yes, else by the rules); one never
+  opened goes with the nightly sweep after its 7 days, as it did before. Reading is charged to the person (`chargedTo(user, "plan")`) and added to Plan
   Ease's own day meter (`Bots.spendToday`). Before a read, what is left is the smaller of reading's ₹5 a day (`plan_prefs.capture_paise`,
   the true total) and what the day meter still has (`Bots.leftToday`), and a read starts only with its estimate left (2 paise for the
   tiny look, 20 for words, 40 for a photo). It holds back up to one share's ₹1.50 first, in one change that only lands while the row is
@@ -360,7 +362,7 @@ red, no round phone buttons.
 
 **Consent and microphone.** With the AI permission the voice is the server's (`GET .../voice/:n`, the person's TTS voice and read speed,
 under their quota, made ahead at answer and say time). Without it the opening is spoken by the phone (`speak`, nothing leaves it), only
-the item's buttons are offered, and `say` and `voice` answer 403. The microphone is checked, never asked for by a tap: without it the
+the item's buttons are offered, the screen says nothing about AI (Home's card is the one ask), and `say` and `voice` answer 403. The microphone is checked, never asked for by a tap: without it the
 Continue card asks (and offers Open Settings when blocked).
 
 **Activity.** A missed call is a row of its own ("Missed call from Zara", the line and the time; it opens the missed call). It is read

@@ -21,6 +21,7 @@ import KEYBOT_API from "./keybot.json";
 import FIRSTRUN_API from "./firstrun.json";
 import CODE from "./code.json";
 import { CALL_API } from "./planCall.js";
+import { CAPTURE_API, CIRCULAR_WORDS, PHOTO_ID, RULES_ID } from "./planCapture.js";
 import { FOLLOW_API, TASK_ID } from "./planFollow.js";
 import { phoneApi } from "./followPhone.js";
 import { MAKE_API, MAKE_OFF_API, MAKE_PARAMS, MAKE_STATES, MADE_KEY, PLAN_DAY_API } from "./planMake.js";
@@ -59,6 +60,8 @@ const S = SCREENS;
 export const SAMPLES: Sample[] = [
   // screens/shell.ts
   { id: S.home, area: "shell", board: "Main", deskBoard: "DeskHome" },
+  // The AI permission, due: signed in, not agreed, and not answered since the wording last changed (firstRun/aiConsentCard.ts).
+  { id: S.home, area: "shell", variant: "ai", api: { "GET /v1/you/ai-consent": { agreed: false, asked: false } } },
   { id: S.activity, area: "shell", board: "Activity", deskBoard: "DeskActivity" },
   { id: S.ask, area: "shell", board: "Ask", deskBoard: "DAsk", params: { message: ASK } },
   { id: S.search, area: "shell", board: "Search", deskBoard: "DSearch", params: { q: "salon" } },
@@ -171,6 +174,10 @@ export const SAMPLES: Sample[] = [
   { id: S.chats, area: "bots" },
   { id: S.thread, area: "bots", params: { id: "th-home" } },
   { id: S.shareIn, area: "bots", board: "ShareIn", deskBoard: "DShareIn", params: { file: "f-9" } },
+  // Plan Ease's capture card for someone without a yes to AI (samples/planCapture.ts): the rules' card at once, nothing asks.
+  { id: S.shareIn, area: "bots", variant: "plan", params: { text: CIRCULAR_WORDS }, api: CAPTURE_API },
+  { id: S.planCapture, area: "bots", variant: "rules", params: { id: RULES_ID }, api: CAPTURE_API },
+  { id: S.planCapture, area: "bots", variant: "photo", params: { id: PHOTO_ID }, api: CAPTURE_API },
   { id: S.avatars, area: "bots", board: "Avatars" },
   // screens/keybot.ts
   { id: S.keybot, area: "keybot", board: "Keylessbord", deskBoard: "DKeybot" },

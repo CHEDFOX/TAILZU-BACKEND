@@ -5,7 +5,8 @@
  *
  *   talk     a phone whose JS takes calls (kit canCall), the call ringing, answered, or missed but still inside the grace: it answers,
  *            Plan Ease speaks first (the server voice with the person's AI permission, else the phone's own voice: nothing leaves the
- *            phone), then turn by turn the person talks back (only with that permission and a build that listens: kit canVoice)
+ *            phone), then turn by turn the person talks back (only with that permission and a build that listens: kit canVoice).
+ *            Without it the call simply plays, and says nothing about AI: Home's card is the one place that asks
  *   missed   "Missed call · 8:12 am", the reminder's line, Call back (the person's own call about the same thing). Call back pressed on the
  *            missed-call notification lands here whatever became of the call since (answered late and hung up, say), and calls back
  *   ended    the call is over, or was declined
@@ -22,7 +23,7 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import { BOT_STAGE_COMPONENT } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, C, SCREENS, botAvatar, botStage, box, call, canCall, canVoice, card, col, labelled, liveWords, meta, open, page, primaryButton,
+  type BotsCtx, C, SCREENS, botAvatar, botStage, box, call, canCall, canVoice, card, col, liveWords, meta, open, page, primaryButton,
   quietButton, row, secondaryButton, seq, statusMark, text, voiceLive, voiceStop, when,
 } from "../../kit.js";
 import { couldNot } from "../you/parts.js";
@@ -216,9 +217,6 @@ export function planCallPage(ctx: BotsCtx, v?: CallView) {
       ]),
       him(ctx, v, voice),
       col(words(voice), { gap: 8, alignItems: "stretch", minHeight: 56, paddingHorizontal: 4 }),
-      ...(!v.ai ? [labelled(row([meta("To talk back, turn on AI for X0 Bot in You › Privacy.", { size: 13, lineHeight: 18, align: "center" })], {
-        justifyContent: "center", minHeight: 32, alignItems: "center",
-      }, seq("hangup", open(SCREENS.privacy))), "To talk back, turn on AI for X0 Bot in You, Privacy")] : []),
       ...(voice ? [when({ truthy: "micCard" }, card([
         text(`Let ${v.name} hear you`, { size: 16, weight: 600, lineHeight: 21 }),
         meta(`${v.name} uses the microphone to hear your answer. Next, your phone asks you.`, { size: 13, lineHeight: 18 }),

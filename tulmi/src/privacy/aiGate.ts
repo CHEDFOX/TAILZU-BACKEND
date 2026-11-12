@@ -20,8 +20,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export const AI_CONSENT_CODE = "ai_consent_needed";
-/** What a person is told when something they asked for was not sent. */
-export const AI_CONSENT_TEXT = "X0 Bot needs your OK before it sends anything to AI services. Open X0 Bot and tap Agree, or turn it on in You › Privacy.";
+/**
+ * What a person is told when something they asked for was not sent. Points only at You › Privacy (Home's card is asked once). Its first
+ * 40 characters never change: older clients, and isAiConsentError, know it by them.
+ */
+export const AI_CONSENT_TEXT = "X0 Bot needs your OK before it sends anything to AI services. Turn it on in You › Privacy.";
 
 /** Who receives it, as the Home card and the privacy policy name them (section 3). */
 export const AI_SERVICES = [

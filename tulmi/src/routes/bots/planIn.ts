@@ -11,8 +11,6 @@
  *   POST   /v1/botsapp/bots/plan/capture/:id/toggle { item }   -> { capture }
  *   PUT    /v1/botsapp/bots/plan/capture/:id/items/:item { title, day, time, who }   -> { capture }
  *   GET    /v1/botsapp/bots/plan/capture/:id/who       -> { people }                  who in their family spaces a row can be given to
- *   POST   /v1/botsapp/bots/plan/capture/:id/consent   -> { capture }                 read now (after their yes to AI)
- *   POST   /v1/botsapp/bots/plan/capture/:id/plain     -> { n, line }                 no yes to AI: by the rules, or one to-do with the file
  *   GET    /v1/botsapp/bots/plan/pay/:taskId           -> { url }                     a bill's safe pay link (a notification's Pay)
  *   (Add all, Undo, Paid and "No thanks" answer at POST /v1/widgets/act: pc:, pt:, pl: items, botsBots/planInActs.ts)
  *
@@ -124,8 +122,6 @@ export function registerPlanInRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   app.get(`${AREA}/capture/:id`, RL, run("capture", async (user, req) => ({ capture: await capture.view(user.id, param(req, "id")) })));
   app.post(`${AREA}/capture/:id/toggle`, RL, run("capture", async (user, req) => ({ capture: await capture.toggle(user.id, param(req, "id"), bodyOf(req.body).item) })));
   app.put(`${AREA}/capture/:id/items/:item`, RL, run("capture", async (user, req) => ({ capture: await capture.edit(user.id, param(req, "id"), param(req, "item"), bodyOf(req.body)) })));
-  app.post(`${AREA}/capture/:id/consent`, tight(20), run("capture", async (user, req) => ({ capture: await capture.consented(user.id, param(req, "id")) })));
-  app.post(`${AREA}/capture/:id/plain`, tight(20), run("capture", async (user, req) => capture.plain(user.id, param(req, "id"))));
 
   app.get(`${AREA}/capture/:id/who`, RL, run("capture", async (user) => {
     // The people in the spaces where they may give tasks (a family space), each once, as their tiny bot. Never anyone else.

@@ -11,6 +11,7 @@ import { getPersonality, updatePersonality, upsertPresetTone } from "../../perso
 import { inferStyle } from "../../pipeline/cleanup.js";
 import { enforceQuota } from "../../usage/metering.js";
 import { unauthorized } from "../../http/helpers.js";
+import type { AiAnswered } from "../../privacy/aiConsent.js";
 
 export interface PersonalityRouteDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -56,8 +57,8 @@ export function registerPersonalityRoutes(app: FastifyInstance, deps: Personalit
       // shallow-merge can't clobber a concurrent tone / vocab / pin write.
       // What has been reported to Meta is the server's record, not a setting:
       // a client that sends it back (or sends it empty) changes nothing. Nor is the AI permission set here: only its own route
-      // (privacy/aiConsent.ts), when the person taps Agree or switches it off.
-      const { adsReported: _serverOwned, aiConsentAt: _a, aiConsentVersion: _v, aiConsentWithdrawnAt: _w, ...theirs } = personality;
+      // (privacy/aiConsent.ts), when the person taps Agree or Not now, or switches it.
+      const { adsReported: _serverOwned, aiConsentAt: _a, aiConsentVersion: _v, aiConsentWithdrawnAt: _w, aiConsentAskedVersion: _q, ...theirs } = personality as AiAnswered;
       const merged = await updatePersonality(user, (existing) => ({ ...existing, ...theirs }));
       const res: PersonalityResponse = { personality: merged };
       return reply.send(res);

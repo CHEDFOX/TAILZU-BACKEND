@@ -114,9 +114,12 @@ Notes for the questions App Store Connect asks along the way:
 
 * **Permission before anything goes to an AI service.** Home asks first (screens/firstRun/aiConsentCard.ts): what is sent (words,
   voice, the photos, files or screen they share), to whom (OpenAI, Anthropic, Google, Groq, Deepgram, Sarvam AI, OpenRouter and the
-  model makers behind it), why, Agree and Not now. The server enforces it (src/privacy/aiGate.ts): every call to those hosts asks
-  whether the request's person agreed; dictation's socket, routines and Xode's PR care ask by name. Withdrawn in You › Privacy,
-  "Send to AI services". Kept as personality.aiConsentAt / aiConsentVersion; raise AI_CONSENT_VERSION to ask everyone again.
+  model makers behind it), why, Agree and Not now. Asked once: Agree, Not now and the switch off are each kept as the answer
+  (personality.aiConsentAskedVersion; Not now only records it and never takes back a yes, which only the switch does), and the card
+  comes back only when what is sent changes (AI_CONSENT_VERSION goes up). No other screen asks: without a yes, Plan Ease's capture
+  takes the rules road and its call plays in the phone's voice, saying nothing about AI. The server enforces it (src/privacy/aiGate.ts): every call to those hosts asks whether the request's person agreed; dictation's
+  socket, routines and Xode's PR care ask by name, and a refusal says to turn it on in You › Privacy. On or off anytime there, "Send to
+  AI services". Kept as personality.aiConsentAt / aiConsentVersion; raise AI_CONSENT_VERSION to ask everyone again.
   AI_CONSENT_GATE=false switches the enforcement off (emergency only).
 * **A call from Plan Ease** ("X0 is calling", docs/plan-ease.md section 8): what the person says on the call and the bot's replies go
   to AI services only with that permission, through the Plan Ease chat (its own gate and budget) and the voice service that reads the

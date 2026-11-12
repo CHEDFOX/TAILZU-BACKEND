@@ -10,7 +10,8 @@
  *   capture.addAll(user, id)        every ticked thing: events, to-dos, bills with their amount, "before" steps as to-dos, and what is
  *                                  given to someone as a task in the family space. "Added 3 things · Undo"
  *   capture.undo / takeOut          all of what it added, out again
- *   capture.plain(user, id)         without a yes to AI: words with a date become items by the rules; a photo is one to-do with the file
+ *                                  Without a yes to AI nothing is asked here (Home's card is the one place): words with a date become
+ *                                  the card's things by the rules at once; a photo, or nothing found, is one to-do with the file
  *   capture.tick()                  every minute: a photo that waited for the day's reading to start again; a read cut off by a restart
  *   capture.sweep()                 nightly: cards and their files past 7 days
  *
@@ -20,7 +21,8 @@
  * calendar/words.ts, past ones dropped, what's already on the plan marked, amounts read, a link kept only when it is in the source word
  * for word, 8 things at most). A failure of both: one to-do, "Look at the {label}", with the file.
  *
- * CONSENT AND MONEY. Nothing is sent before the person's yes to AI (privacy/aiGate.ts: every call asks, and runs as the person). Each
+ * CONSENT AND MONEY. Nothing is sent before the person's yes to AI (privacy/aiGate.ts: every call asks, and runs as the person), and
+ * without it nothing here asks for one: the rules road, as above. Each
  * read is charged to them (usage/cost.ts chargedTo, "plan"), added to Plan Ease's own day meter (the chat's ₹8, bots/service.ts), and
  * kept in plan_prefs.capture_paise, which is what is checked: reading shares may spend ₹5 of the day, so the chat always has ₹3. Past
  * that, words take the rules road and a photo waits for after midnight. Nothing ever tells the person about money or limits.
@@ -93,6 +95,7 @@ const LEFT_MS = 20_000;
 /** A read cut off (a restart) is read again after this long. */
 const STALE_MS = 3 * MIN;
 
+/** "consent": a card from before, left waiting for a yes to AI on the card. None is made now; looking at one reads it (view). */
 export type CaptureState = "reading" | "waiting" | "consent" | "ready" | "added" | "dismissed" | "failed";
 export type CaptureKind = "event" | "todo" | "due" | "wait";
 
@@ -143,8 +146,6 @@ export interface CaptureView {
   button: string;
   /** After Add all: "Added 3 things", with Undo for 10 seconds (and "I'll remind you each month" when a bill came two months running). */
   added?: { n: number; line: string };
-  /** While it waits for the person's yes to AI. */
-  consent?: true;
   /** It couldn't be read: what it became instead. */
   fallback?: string;
 }
@@ -495,25 +496,21 @@ export class PlanCapture {
       label: guessLabel(words, file?.name ?? ""), file_id: file?.id ?? null, in_hash: inHash, items: [] as CaptureItem[],
       added: {}, paise: 0, seen_ms: now, told_ms: null, created_ms: now, updated_ms: now, expires_ms: now + KEEP_MS,
     };
-    if (s.seen) {
-      // What was on a desktop's screen is never stored. With a yes to AI it is read now, from memory; without one it takes the rules
-      // road at once (no AI), and only the things found are kept, as any card's are.
-      if (consent) {
-        const row: CaptureRow = { ...base, state: "reading" };
-        await this.store.insert(row);
-        this.startRead(row, text);
-        return { capture: viewOf(row) };
-      }
-      const items = rulesItems(text, now, tz, await this.onPlan(userId, dayOf(now, tz), tz));
-      if (!items.length) return { plan: false };
-      const row: CaptureRow = { ...base, state: "ready", items };
+    if (!consent) {
+      // No yes to AI: nothing is asked and nothing is sent. The rules road at once: the words' own dates become the card's things, to
+      // tick as any card's; nothing found, or a photo (from the Plan page's +), one to-do with the file. What was on a desktop's screen
+      // is never stored, so with nothing found there it is not Plan Ease's.
+      const items = words ? rulesItems(words, now, tz, await this.onPlan(userId, dayOf(now, tz), tz)) : [];
+      if (!items.length && s.seen) return { plan: false };
+      const row: CaptureRow = { ...base, state: items.length ? "ready" : "failed", items };
       await this.store.insert(row);
-      this.ready(row);
+      if (items.length) this.ready(row); else await this.fallback(row, tz);
       return { capture: viewOf(row) };
     }
-    const row: CaptureRow = { ...base, ...(text ? { words: text } : {}), state: consent ? "reading" : "consent" };
+    // With the yes: read now. What was on a desktop's screen is read from memory, never stored.
+    const row: CaptureRow = { ...base, ...(text && !s.seen ? { words: text } : {}), state: "reading" };
     await this.store.insert(row);
-    if (consent) this.startRead(row, text || null);
+    this.startRead(row, text || null);
     return { capture: viewOf(row) };
   }
 
@@ -565,16 +562,6 @@ export class PlanCapture {
     return r.capture;
   }
 
-  /** The person said yes to AI on the card: it is read now. */
-  async consented(userId: string, id: unknown): Promise<CaptureView> {
-    const r = await this.get(userId, id);
-    if (r.state !== "consent") return this.view(userId, r.id);
-    if (!(await this.aiOk(userId))) return this.view(userId, r.id);
-    const next = await this.save(r, { state: "reading" });
-    this.startRead(next, null);
-    return viewOf(next);
-  }
-
   private startRead(row: CaptureRow, text: string | null): void {
     if (this.reading.has(row.id)) return;
     const p = this.read(row, text).catch(() => undefined).finally(() => this.reading.delete(row.id));
@@ -609,8 +596,10 @@ export class PlanCapture {
       return this.readers.text(extractPrompt(today), `<shared>\n${words.slice(0, TEXT_MAX)}\n</shared>`);
     }, row) : null;
     if (ans === "spent" || !consent) {
-      // Today's reading is spent (or the yes was taken back): words take the rules road; a photo waits for after midnight.
-      if (photo) { await this.save(row, { state: consent ? "waiting" : "consent" }); this.publish(userId); return; }
+      // Today's reading is spent: words take the rules road; a photo waits for after midnight. The yes taken back since: the rules road
+      // too, and a photo is one to-do with its file.
+      if (photo && consent) { await this.save(row, { state: "waiting" }); this.publish(userId); return; }
+      if (photo) { await this.fallback(row, tz); return; }
       const items = rulesItems(words, now, tz, onPlan);
       row = await this.save(row, { state: items.length ? "ready" : "failed", items, label: row.label, words: null });
       if (!items.length) await this.fallback(row, tz);
@@ -753,7 +742,9 @@ export class PlanCapture {
 
   /** The card for the screen. Looking at it counts (a card looked at is never pushed). */
   async view(userId: string, id: unknown): Promise<CaptureView> {
-    const r = await this.get(userId, id);
+    let r = await this.get(userId, id);
+    // A card from before, left waiting for a yes on the card: read now (by AI with their yes, else by the rules: read() asks).
+    if (r.state === "consent") { r = await this.save(r, { state: "reading" }); this.startRead(r, null); }
     if (r.state === "reading" && this.now() - r.updated_ms > STALE_MS && !this.reading.has(r.id)) this.startRead(r, null);
     if ((r.seen_ms ?? 0) < this.now() - 1000) await this.store.update({ id: r.id, user_id: userId }, { seen_ms: this.now() }).catch(() => undefined);
     return viewOf(r);
@@ -886,23 +877,6 @@ export class PlanCapture {
     for (const id of a.events ?? []) await this.d.calendar.removeEvent(userId, id).catch(() => undefined);
     for (const id of a.tasks ?? []) await this.d.calendar.removeTask(userId, id).catch(() => undefined);
     for (const s of a.space ?? []) await this.d.takeBackTask?.(userId, s.spaceId, s.taskId).catch(() => undefined);
-  }
-
-  /** Without a yes to AI: words with a date become items by the rules, a photo one to-do with the file. Never read later behind their back. */
-  async plain(userId: string, id: unknown): Promise<{ n: number; line: string }> {
-    const r = await this.get(userId, id);
-    if (r.state !== "consent") return { n: 0, line: "" };
-    const tz = await this.tz(userId);
-    const file = r.file_id && this.d.files ? await this.d.files.get(userId, r.file_id).catch(() => null) : null;
-    const words = r.words ?? (file && file.kind !== "image" ? file.text : "");
-    const now = this.now();
-    const items = words ? rulesItems(words, now, tz, await this.onPlan(userId, dayOf(now, tz), tz)) : [];
-    if (!items.length) {
-      await this.fallback(r, tz);
-      return { n: 1, line: `Added: Look at the ${safeLabel(r.label)}` };
-    }
-    const next = await this.save(r, { state: "ready", items });
-    return this.addAll(userId, next.id);
   }
 
   // ------------------------------------------------------------------ on the person's days
@@ -1127,7 +1101,8 @@ export function viewOf(r: CaptureRow): CaptureView {
   const reading = r.state === "reading" || r.state === "waiting";
   const v: CaptureView = {
     id: r.id, state: r.state, label,
-    title: reading ? `Reading the ${label}…` : r.state === "consent" ? `The ${label}` : n ? `${n === 1 ? "1 thing" : `${n} things`} from the ${label}` : `Nothing to add from the ${label}`,
+    // Not read (no yes to AI, or both readers failed): named, never "nothing to add", since nothing looked.
+    title: reading ? `Reading the ${label}…` : r.state === "failed" ? `The ${label}` : n ? `${n === 1 ? "1 thing" : `${n} things`} from the ${label}` : `Nothing to add from the ${label}`,
     rows: shown.map((x) => ({
       id: x.id, tick: x.tick, title: x.kind === "due" && x.amountPaise ? `${x.title} · ${rupees(x.amountPaise)}` : x.title,
       line: lineOf(x), dateAsk: !x.day, ...(x.who && spacesOn() ? { person: { id: x.who.id, name: x.who.name } } : {}),
@@ -1140,7 +1115,6 @@ export function viewOf(r: CaptureRow): CaptureView {
     const k = shown.filter((x) => x.tick).length || m;
     v.added = { n: k, line: `Added ${k === 1 ? "1 thing" : `${k} things`}${r.added.monthly ? ". I'll remind you each month" : ""}` };
   }
-  if (r.state === "consent") v.consent = true;
   if (r.state === "failed") v.fallback = `Added: Look at the ${safeLabel(label)}`;
   return v;
 }

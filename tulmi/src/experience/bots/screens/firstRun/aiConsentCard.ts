@@ -3,26 +3,27 @@
  * permission before anything is). The server holds the answer and enforces it (privacy/aiConsent.ts, privacy/aiGate.ts); this is
  * where it is asked.
  *
- * First of Home's asks (shell/home.ts homeNotices), over Home like the microphone card (a BotCard overlay), for as long as the person
- * has not agreed (GET /v1/you/ai-consent). It says what goes (their words and voice, and the photos, files or screen they choose to
- * share), to whom (third-party AI providers; the privacy policy names each, one tap away), why (to answer them and keep Spaces safe),
- * and that nothing goes until they agree.
+ * First of Home's asks (shell/home.ts homeNotices), over Home like the microphone card (a BotCard overlay), asked once per wording
+ * (GET /v1/you/ai-consent: not agreed, and not answered since AI_CONSENT_VERSION last went up). It says what goes (their words and
+ * voice, and the photos, files or screen they choose to share), to whom (third-party AI providers; the privacy policy names each, one
+ * tap away), why (to answer them and keep Spaces safe), and that nothing goes until they agree. The only screen that asks.
  *
  *   Agree     PUT /v1/you/ai-consent { agree: true }; the card goes
- *   Not now   the card goes for this visit; nothing is sent, and a bot, dictation or Ask says it needs their OK (AI_CONSENT_TEXT).
- *             The card is back on the next visit. (Not a pre-prompt to a system permission, so "Not now" is right here: the choice
- *             must be free.)
+ *   Not now   PUT /v1/you/ai-consent { agree: false, later: true }: the answer is kept, nothing is granted or sent (and a yes given on
+ *             another device is never taken back), and the card goes until what is sent changes (a new AI_CONSENT_VERSION). A bot,
+ *             dictation or Ask says it needs their OK in You › Privacy (AI_CONSENT_TEXT). (Not a pre-prompt to a system permission, so
+ *             "Not now" is right here: the choice must be free.)
  *
- * Withdrawn in You › Privacy (screens/you: the switch "Send to AI services").
+ * On or off anytime in You › Privacy (screens/you: the switch "Send to AI services"); off is an answer too.
  */
-import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../shared/types/sdui.js";
+import type { ActionSpec, Condition, Node } from "../../../../../../shared/types/sdui.js";
 import { type BotsCtx, botCard, box, canMove, canScroll, call, col, C, icon, labelled, row, scrollBox, seq, text, when } from "../../kit.js";
 import { type LegalPage, legalPage } from "../../legalText.js";
 import { CARD_BOT, line, permitStep, setState, toast } from "./parts.js";
 
 export const AI_CONSENT_PATH = "/v1/you/ai-consent";
-/** What Home reads: whether they agreed. */
-export interface AiConsent { agreed: boolean }
+/** What Home reads: whether they agreed, and whether they answered this wording (Agree, Not now or off). */
+export interface AiConsent { agreed: boolean; asked?: boolean }
 
 const AGREED = "aiAgreed", LATER = "aiLater", CLOSED = "aiClosed";
 /** Which page the scroll box shows: Privacy first (unset is Privacy too, for a screen that does not start the card's state). */
@@ -38,20 +39,20 @@ const PRIVACY_URL = "https://x0bot.com/privacy#ai";
 /** What Home starts with while the card is due. */
 export const AI_CONSENT_STATE = { [AGREED]: false, [LATER]: false, [CLOSED]: false, [PAGE]: "privacy" } as const;
 
-/** Whether Home asks: a signed-in person who has not agreed. Unknown (the read failed): not asked this time. */
-export const aiConsentDue = (c: AiConsent | undefined): boolean => !!c && c.agreed === false;
+/** Whether Home asks: a signed-in person who has not agreed and has not answered this wording. Unknown (the read failed): not asked. */
+export const aiConsentDue = (c: AiConsent | undefined): boolean => !!c && c.agreed === false && c.asked !== true;
 
-/**
- * The card, while it is due; nothing otherwise. `then` runs after Agree, `later` after Not now (Plan Ease's capture card: read it now,
- * or add it as a plain to-do instead).
- */
-export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined, o: { then?: ActionRef; later?: ActionRef } = {}): Node[] {
+/** The card, while it is due; nothing otherwise. */
+export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined): Node[] {
   if (!aiConsentDue(c)) return [];
   const desk = ctx.client === "desktop";
   const agree = call("PUT", AI_CONSENT_PATH, { agree: true }, {
-    ok: seq({ kind: "haptic", style: "success" } as ActionSpec, setState(AGREED, true), ...(o.then ? [o.then] : [])),
+    ok: seq({ kind: "haptic", style: "success" } as ActionSpec, setState(AGREED, true)),
     fail: toast("Couldn't save that. Try again."),
   });
+  // Not now: the card goes at once, and the answer is kept (a failed save only means it is asked once more next visit). Only an answer:
+  // the switch's off is what takes a yes back.
+  const later = seq(setState(LATER, true), call("PUT", AI_CONSENT_PATH, { agree: false, later: true }));
   const policy = row([text("Read our Privacy policy", {
     size: 13, lineHeight: 18, color: C.grey70, style: { textDecorationLine: "underline" },
   })], {}, { kind: "openUrl", url: PRIVACY_URL, external: true });
@@ -60,7 +61,7 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined, o: { then?
     box([icon("check", { size: 12, color: C.paper, weight: 2.2 })], { width: 20, height: 20, borderRadius: 10, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 }),
     text(s, { size: 14, lineHeight: 20, color: C.ink }),
   ], { gap: 10, alignItems: "center" });
-  const promises = col([promise("Never sold, never used for ads"), promise("Nothing is sent until you agree"), promise("Turn it off anytime in You › Privacy")], { gap: 10 });
+  const promises = col([promise("Never sold, never used for ads"), promise("Nothing is sent until you agree"), promise("Turn it on or off anytime in You › Privacy")], { gap: 10 });
   // A build that draws a box that scrolls in a card gets one line, then three tabs (Privacy, Terms, Support) over a box that scrolls
   // the whole of the one picked, in small type, the way Apple shows its own terms; Agree accepts the Terms and the Privacy Policy with
   // the AI permission. The Privacy Policy is the one shown first: its section 3 is what goes to AI services and to whom. Else the short
@@ -77,7 +78,8 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined, o: { then?
       setState(PAGE, t.page)), `${t.label}, show it below`);
   };
   const terms = [
-    text("Tap Agree to let X0 Bot work at its full potential.", { size: 13, lineHeight: 18, color: C.meta }),
+    // "You › Privacy" kept on one line (no-break spaces).
+    text("Tap Agree to let X0 Bot work at its full potential. Turn AI on or off anytime in You\u00a0›\u00a0Privacy.", { size: 13, lineHeight: 18, color: C.meta }),
     col([
       row(TABS.map(tab), { gap: 18 }),
       ...TABS.map((t) => when(onPage(t.page), scrollBox(legalPage(t.page), {
@@ -91,7 +93,7 @@ export function aiConsentCard(ctx: BotsCtx, c: AiConsent | undefined, o: { then?
     lines: full ? [] : [line("X0 Bot works with leading AI partners to answer you. They see only what you choose to share.")],
     extra: full ? terms : [promises, policy],
     cta: { label: "Agree", onPress: agree },
-    quiet: { label: "Not now", onPress: o.later ? seq(setState(LATER, true), o.later) : setState(LATER, true) },
+    quiet: { label: "Not now", onPress: later },
   });
   const thanks = when({ truthy: AGREED }, row([text("You're all set.", { size: 22, weight: 600, tracking: -0.3, lineHeight: 28 })], {
     justifyContent: "center", paddingTop: 18, paddingBottom: 26,

@@ -455,9 +455,12 @@ function capRig(t0: number, o: { consent?: boolean; answer?: unknown; picture?: 
   const removed: string[] = [];
   const spent: number[] = [];
   const reads: string[] = [];
+  const store = memoryCaptureStore();
+  // Their yes to AI, as the gate would read it now (taken back mid-way by `yes(false)`).
+  let ok = o.consent !== false;
   const capture = new PlanCapture({
-    calendar: r.c, prefs: r.prefs, store: memoryCaptureStore(), now: () => r.clock.t, tzOf: async () => IST, usdInr: () => 100,
-    aiOk: async () => o.consent !== false,
+    calendar: r.c, prefs: r.prefs, store, now: () => r.clock.t, tzOf: async () => IST, usdInr: () => 100,
+    aiOk: async () => ok,
     readers: {
       text: async (_s, user) => { reads.push(user); return { text: JSON.stringify(o.answer ?? { label: "school circular", items: [] }), usd: 0.001 }; },
       picture: async () => { reads.push("picture"); return { text: JSON.stringify(o.picture ?? o.answer ?? { items: [] }), usd: 0.003 }; },
@@ -475,7 +478,7 @@ function capRig(t0: number, o: { consent?: boolean; answer?: unknown; picture?: 
   setPlanCapture(capture);
   setAddDue((userId, d) => capture.addDue(userId, d));
   addPlanSource({ name: "captures", more: (u) => capture.briefs(u), evening: (u, w) => capture.eveningLine(u, w.asked), morning: (u) => capture.morningLine(u) });
-  return { ...r, capture, files, removed, spent, reads };
+  return { ...r, capture, files, removed, spent, reads, store, yes: (v: boolean) => { ok = v; } };
 }
 
 const CIRCULAR = {
@@ -657,29 +660,71 @@ describe("getting things in", () => {
     expect(l.events.map((e) => e.title)).toContain("Parent-teacher meeting");
   });
 
-  it("without a yes to AI: nothing is read; words become things by the rules, a photo one to-do with its file", async () => {
+  it("without a yes to AI: nothing is asked and nothing is read; words take the rules road at once, a photo is one to-do with its file", async () => {
     const r = capRig(ist(6, 10), { consent: false, answer: CIRCULAR });
     const look = await r.capture.look(U, { text: "PTM on Sat 14 Nov at 9:30 am\nSports day next month\nDress-up day Fri 13 Nov", from: "plan", tz: IST });
-    const id = "capture" in look ? look.capture.id : "";
-    expect("capture" in look && look.capture.consent).toBe(true);
+    // The rules' card at once, as any card: its things ticked, one button. Nothing waits on a yes, nothing in it asks for one.
+    const v = "capture" in look ? look.capture : null;
+    expect(v).toMatchObject({ state: "ready", button: "Add all" });
+    expect(v!.rows).toHaveLength(2);
+    expect(JSON.stringify(v)).not.toMatch(/consent|AI/);
     expect(r.reads).toEqual([]);
-    const res = await r.capture.plain(U, id);
-    expect(res.n).toBe(2);
+    expect(await r.capture.addAll(U, v!.id)).toMatchObject({ n: 2 });
     expect(r.reads).toEqual([]);
     r.files.set("f1", { id: "f1", userId: U, kind: "image", mime: "image/jpeg", name: "IMG_2041.jpg", text: "" });
     const photo = await r.capture.look(U, { files: ["f1"], from: "plan", tz: IST });
-    const pid = "capture" in photo ? photo.capture.id : "";
-    const out = await r.capture.plain(U, pid);
-    expect(out.line).toBe("Added: Look at the photo");
+    expect("capture" in photo && photo.capture).toMatchObject({ state: "failed", title: "The photo", fallback: "Added: Look at the photo" });
+    const l = await r.c.list(U, { from: "2026-11-06", to: "2026-11-20", tz: IST });
+    expect(l.tasks.find((t) => t.title === "Look at the photo")).toBeTruthy();
     expect(r.reads).toEqual([]);
     expect(r.removed).toEqual([]);
+    // The routes that asked are gone with the card that called them.
+    expect("plain" in r.capture || "consented" in r.capture).toBe(false);
+  });
+
+  it("the yes taken back while a photo waits for the day's reading: one to-do with its file, nothing read", async () => {
+    const r = capRig(ist(6, 10), { answer: CIRCULAR });
+    await r.prefs.patch(U, { capture_day: "2026-11-06", capture_paise: DAY_PAISE });
+    r.files.set("f2", { id: "f2", userId: U, kind: "image", mime: "image/png", name: "notice.png", text: "" });
+    const photo = await r.capture.look(U, { files: ["f2"], from: "plan", tz: IST });
+    const pid = "capture" in photo ? photo.capture.id : "";
+    await r.capture.settled(pid);
+    expect((await r.capture.view(U, pid)).state).toBe("waiting");
+    r.yes(false);
+    r.clock.t = ist(7, 0, 5);
+    await r.capture.tick();
+    await r.capture.settled(pid);
+    expect(await r.capture.view(U, pid)).toMatchObject({ state: "failed", fallback: "Added: Look at the photo" });
+    expect(r.reads).toEqual([]);
+  });
+
+  it("a card left from before, waiting for a yes on the card, is read once opened: by the rules without one, by AI with it", async () => {
+    const r = capRig(ist(6, 10), { consent: false, answer: CIRCULAR });
+    const old = (id: string) => ({
+      id, user_id: U, source: "text" as const, label: "school circular", file_id: null, in_hash: id, items: [], state: "consent" as const,
+      words: CIRCULAR_TEXT, added: {}, paise: 0, seen_ms: null, told_ms: null, created_ms: r.clock.t - HOUR, updated_ms: r.clock.t - HOUR, expires_ms: r.clock.t + 6 * DAY,
+    });
+    const a = "cccccccc-0000-4000-8000-0000000000a1", b = "cccccccc-0000-4000-8000-0000000000b2";
+    await r.store.insert(old(a));
+    await r.store.insert(old(b));
+    await r.capture.view(U, a);
+    await r.capture.settled(a);
+    const ruled = await r.capture.view(U, a);
+    expect(ruled.state).toBe("ready");
+    expect(ruled.rows.length).toBeGreaterThan(0);
+    expect(r.reads).toEqual([]);
+    r.yes(true);
+    await r.capture.view(U, b);
+    await r.capture.settled(b);
+    expect((await r.capture.view(U, b)).title).toBe("4 things from the school circular");
+    expect(r.reads).toHaveLength(1);
   });
 
   it("never keeps a shared file past its week, the one a \"Look at the photo\" to-do points at too (it was never read: it may be health)", async () => {
     const r = capRig(ist(6, 10), { consent: false });
     r.files.set("rx", { id: "rx", userId: U, kind: "image", mime: "image/jpeg", name: "IMG_3001.jpg", text: "" });
     const photo = await r.capture.look(U, { files: ["rx"], from: "plan", tz: IST });
-    await r.capture.plain(U, "capture" in photo ? photo.capture.id : "");
+    expect("capture" in photo && photo.capture.fallback).toBe("Added: Look at the photo");
     expect(r.removed).toEqual([]);
     r.clock.t += 7 * 24 * 60 * MIN + MIN;
     expect(await r.capture.sweep()).toBe(1);

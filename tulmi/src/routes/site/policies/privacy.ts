@@ -150,12 +150,12 @@ const PRIVACY_POLICY_BODY = `
 <p><strong>Every provider, with what it does and a link to its own privacy policy, is listed in <a href="/privacy/providers">Service providers</a>, which is part of this policy.</strong> We keep it up to date, and change its date whenever it changes.</p>
 
 <h3 id="ai">AI services, and your permission</h3>
-<p>Much of X0 Bot works by sending what you give it to third-party AI services, and <strong>we ask your permission before anything is sent</strong>. The first time you open the app, a card on Home says what is sent, to whom, and why, with Agree and Not now. Until you tap Agree, nothing of yours is sent to an AI service, and the features that need one (bots, dictation, Ask, rewriting, notes from recordings) wait.</p>
+<p>Much of X0 Bot works by sending what you give it to third-party AI services, and <strong>we ask your permission before anything is sent</strong>. The first time you open the app, a card on Home says what is sent, to whom, and why, with Agree and Not now. We ask once and remember your answer, Not now included; we ask again only if what is sent, or to whom, changes. Until you agree, nothing of yours is sent to an AI service, and the features that need one (bots, dictation, Ask, rewriting, notes from recordings) wait.</p>
 <ul>
   <li><strong>What is sent:</strong> the words you type or say to X0 Bot, your voice while you dictate or record, and the photos, files, screenshots or screen you choose to share with a bot, dictation or Ask. When you ask Keylessbord to rewrite, the text around your cursor in that field (never a password field).</li>
   <li><strong>Who receives it:</strong> the AI services listed in <a href="/privacy/providers#ai">Service providers</a>, each only for its part of the answer.</li>
   <li><strong>Why:</strong> only to give you what you asked for (an answer, a transcript, a rewrite, or a bot's work), and to check what you post in Spaces before it is posted (see 1.8). We do not sell it, and we do not send it for advertising.</li>
-  <li><strong>Changing your mind:</strong> turn off <em>Send to AI services</em> in the app under You, Privacy. From then on nothing more of yours is sent. What was sent before is kept as Section 4 says, and you can delete it as Section 5 says.</li>
+  <li><strong>Changing your mind:</strong> turn <em>Send to AI services</em> on or off anytime in the app under You, Privacy. Off, nothing more of yours is sent from then on. What was sent before is kept as Section 4 says, and you can delete it as Section 5 says.</li>
 </ul>
 
 <hr>

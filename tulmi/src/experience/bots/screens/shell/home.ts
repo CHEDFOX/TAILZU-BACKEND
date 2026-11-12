@@ -155,7 +155,7 @@ export interface HomeMore { planLine?: string | undefined; ai?: AiConsent | unde
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the AI
- * permission, until the person has agreed (firstRun/aiConsentCard.ts: nothing is sent before); else the first-arrival card when due; else the About you card when due (a few visits in); else, on a phone, the notifications ask once
+ * permission, once per wording (firstRun/aiConsentCard.ts: nothing is sent before a yes); else the first-arrival card when due; else the About you card when due (a few visits in); else, on a phone, the notifications ask once
  * something is working or needs them (its header reads the phone's answer). `state` is what the page starts with.
  */
 export function homeNotices(ctx: BotsCtx, arrival: boolean, more: HomeMore) {

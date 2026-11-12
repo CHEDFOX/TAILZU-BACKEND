@@ -960,7 +960,7 @@ describe("the call screen", () => {
     expect(json).not.toMatch(/#(?:2e7d32|4caf50|e53935|f44336|ff0000|00ff00)/i);
   });
 
-  it("talk mode without voice on this build, or without the AI permission: no listening, the device voice, the item's buttons and End call", async () => {
+  it("talk mode without voice on this build, or without the AI permission: no listening, the device voice, the item's buttons and End call, and no word of AI", async () => {
     const quiet = await callScreen("phone", V, { can: VOICELESS });
     expect(lintTree(quiet.s.root!)).toEqual([]);
     expect(quiet.texts).not.toContain("Tap to talk");
@@ -968,7 +968,10 @@ describe("the call screen", () => {
     expect(actionsIn(quiet.s).find((a) => a.path === `${B}/answer`)).toMatchObject({ body: { talk: false } });
     const noAi = await callScreen("phone", { ...V, ai: false });
     expect(lintTree(noAi.s.root!)).toEqual([]);
-    expect(noAi.texts).toContain("To talk back, turn on AI for X0 Bot in You › Privacy.");
+    // The call simply plays: Home's card is the one place that asks for AI, so nothing here says it, or opens You › Privacy.
+    expect(noAi.texts.filter((t) => /\bAI\b|privacy|turn on/i.test(t))).toEqual([]);
+    expect(JSON.stringify(noAi.s)).not.toContain("bots.privacy");
+    expect(noAi.texts).toEqual(expect.arrayContaining(["End call"]));
     expect(noAi.texts).not.toContain("Tap to talk");
     expect(noAi.nodes.some((n) => n.type === "LiveWords")).toBe(false);
   });

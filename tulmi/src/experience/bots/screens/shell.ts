@@ -338,7 +338,7 @@ export const shellScreens: BotsScreen[] = [
         // The groups (family, friends): each a bot of its own on Home, or (the new Spaces) one Space card with their newest line.
         // None while Spaces is switched off (kit hasSpaces).
         hasSpaces(ctx) ? deps.api<{ spaces?: Space[] }>("GET", `${SPACES_API}/spaces${canSpaces2(ctx) ? "?last=1" : ""}`).catch(() => undefined) : Promise.resolve(undefined),
-        // The AI permission (firstRun/aiConsentCard.ts): asked before anything else, until they agree.
+        // The AI permission (firstRun/aiConsentCard.ts): asked before anything else, once per wording (agreed, or answered).
         deps.api<AiConsent>("GET", AI_CONSENT_PATH).catch(() => undefined),
         // Plan Ease's one thing for its tile, when its simpler page is on (botsBots/planEase.ts line).
         // Only for a build that draws the new Plan page (PersonBot): an older one keeps today's page, and Home says nothing of the new.
