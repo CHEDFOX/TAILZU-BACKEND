@@ -173,7 +173,7 @@ export interface CheckView {
   /** No drafts left (after Take out): the screen goes back to the empty card. */
   empty?: boolean;
   /**
-   * Check only: the card's own What words still look messy by 4.2's `unsure` list, and setup.ai is not "off". Shows "Read it
+   * Check only: the card's own What words still look messy by 4.2's `unsure` list, and setup.ai is "on". Shows "Read it
    * with AI" (1.2). Never set by the draft route, and it never calls a model by itself.
    */
   messy?: boolean;
@@ -187,8 +187,11 @@ export interface MakeSetup {
   people: Array<{ id: string; name: string; me: boolean; look: PersonLook }>;
   /** followOn(). */
   follow: boolean;
-  /** "off": PLAN_V2_MAKE_AI off or no reader; "on": they said yes to AI; "ask": the "Turn on AI" line and card may show. */
-  ai: "on" | "ask" | "off";
+  /**
+   * "on": they said yes to AI (asked once, after onboarding: firstRun/aiConsentCard.ts); "off": no yes, PLAN_V2_MAKE_AI off or no reader.
+   * This screen never asks for AI itself: with "off" it reads with the rules only and says nothing about AI.
+   */
+  ai: "on" | "off";
   invite: { screen: string; params?: Record<string, string> } | null;
 }
 

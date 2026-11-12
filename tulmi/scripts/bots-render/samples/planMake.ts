@@ -5,10 +5,11 @@
  *   PLAN_DAY_API   GET .../plan/day: today in full (an all-day birthday, a leave-by with Open map, a must row, rain, a tight leg, Mom's
  *                  follow line, Dad's medicine, free time, a to-do, a bill with Pay, a done to-do), one Needs-you card, three to-dos with no
  *                  day, travel credits; tomorrow; an empty Saturday; and today just after Done ("Added: …", the new row outlined)
- *   MAKE_API       GET .../plan/make (the real PlanMake.setup): You, Dad, Mom and Riya, follow-through on, AI to ask, an invite (MAKE_OFF:
+ *   MAKE_API       GET .../plan/make (the real PlanMake.setup): You, Dad, Mom and Riya, follow-through on, AI on (they said yes after
+ *                  onboarding), an invite (MAKE_OFF:
  *                  follow-through off)
  *   MAKE_STATES    the card's states (Sample.state): filled by hand; and as the screen's own actions leave them after the real PlanMake's
- *                  answers: looks good, notes, a stop, two drafts, the AI card, who is Nani, a bill's preview, a day's answer, What
+ *                  answers: looks good, notes, a stop, two drafts, who is Nani, a bill's preview, a day's answer, What
  *                  words still messy after Check ("Read it with AI")
  *
  * Every answer is the real service's, worked out once when this file loads: the home's from PlanEase.day (botsBots/planThread.ts threadOf,
@@ -167,10 +168,10 @@ const PICKER = {
   }),
 } as unknown as FollowPeople;
 
-/** GET .../plan/make as the real PlanMake.setup answers it (planMakeService.ts): the picker's people, and the AI to ask (no yes yet). */
+/** GET .../plan/make as the real PlanMake.setup answers it (planMakeService.ts): the picker's people, and AI on (their yes after onboarding). */
 async function makeSetup(): Promise<MakeSetup> {
   const { PlanMake } = await import("../../../src/botsBots/planMakeService.js");
-  const capture = { aiOk: async () => false } as unknown as PlanCapture;
+  const capture = { aiOk: async () => true } as unknown as PlanCapture;
   const make = new PlanMake({ ease: () => { throw new Error("not read by setup"); }, calendar: () => { throw new Error("not read by setup"); }, people: () => PICKER, capture: () => capture, now: () => FIXED_NOW, looks: spaceLooks });
   return make.setup(ME, IST);
 }
@@ -182,7 +183,7 @@ export const MAKE_OFF_API: Record<string, unknown> = { [MAKE]: { ...SETUP, peopl
 /**
  * The check face's states (Sample.state), each the state the screen's own actions leave after a real answer: PlanMake.draft (the box's
  * Send, ON_FILL) and PlanMake.check (Check, ON_CHECK) over the boards' calendar, at the boards' moment (Wednesday 28 October, 7:40 pm),
- * with the picker's people and no yes to AI yet (setup says "ask"; a read asked for answers "consent", so the rules' drafts come back).
+ * with the picker's people and their yes to AI; no model is called (a read asked for answers "failed"), so the rules' drafts come back.
  */
 async function makeStates(): Promise<Record<string, Record<string, unknown>>> {
   const { PlanEase } = await import("../../../src/botsBots/planEase.js");
@@ -193,7 +194,7 @@ async function makeStates(): Promise<Record<string, Record<string, unknown>>> {
   const { setAddDue } = await import("../../../src/botsBots/planDue.js");
   const { c, now } = await boardCalendar();
   const ease = new PlanEase({ calendar: c, prefs: memoryPlanPrefs(now), skips: new MemoryTable(), now });
-  const capture = { aiOk: async () => false, readWords: async () => "consent" } as unknown as PlanCapture;
+  const capture = { aiOk: async () => true, readWords: async () => "failed" } as unknown as PlanCapture;
   const make = new PlanMake({
     ease: () => ease, calendar: () => c, people: () => PICKER, capture: () => capture, now, settingsOf: async () => structuredClone(DEFAULT_SETTINGS),
   });
@@ -225,8 +226,6 @@ async function makeStates(): Promise<Record<string, Record<string, unknown>>> {
     stop: await checked({ title: "Call the bank", time: "other", timeWords: "8 am" }),
     // Two things with their own times in one line: two drafts, one Done.
     multi: await sent("Dentist Fri 5 pm and haircut Sat 11 am"),
-    // Words the rules can't read for sure, no yes to AI: the rules' draft, "Turn on AI", and the AI card opened.
-    consent: { ...(await sent("meet Rahul around 7ish after his class")), aiAsk: true },
     // "Nani" is not one of their X0 people: who is Nani?, and her tablets are must not miss.
     whoIs: await sent("remind Nani to take her tablets at 8 every morning"),
     // A bill: a preview first, added only on Done (the box's due slot reads bills while capture's addDue is wired, as on the server).

@@ -198,7 +198,8 @@ export class PlanMake {
       }
     }
     const cap = this.d.capture();
-    const ai: MakeSetup["ai"] = this.aiOff() || !cap ? "off" : (await cap.aiOk(userId)) ? "on" : "ask";
+    // AI permission is asked once, after onboarding: without that yes this screen reads with the rules and never asks.
+    const ai: MakeSetup["ai"] = !this.aiOff() && cap && (await cap.aiOk(userId)) ? "on" : "off";
     return { today, tomorrow: shiftDay(today, 1), people, follow, ai, invite };
   }
 
@@ -348,7 +349,8 @@ export class PlanMake {
     const key = randomUUID();
     if (!next.length) return { drafts: [], d: emptyCard(day0 ?? ctx.today), at: "0", view: viewOf([], ctx), key };
     atOut = Math.min(atOut, next.length - 1);
-    const messy = !!d && messyOf(next[at] ?? next[atOut]!, { fromCard: true, aiOn: !this.aiOff() });
+    // "Read it with AI" only for someone who said yes to AI (after onboarding); without it the screen offers no AI.
+    const messy = !!d && messyOf(next[at] ?? next[atOut]!, { fromCard: true, aiOn: !this.aiOff() }) && (await this.d.capture()!.aiOk(userId));
     return { drafts, d: drafts[atOut]!, at: String(atOut), view: viewOf(next, ctx, { messy }), key };
   }
 

@@ -568,10 +568,10 @@ fields (title, day, time, repeat, an unmatched name, place). Never the contact l
 checked again: a who or a place is kept only when the person wrote it, importance never comes from the model, and anything odd falls
 back to the rules' draft. When the rules were unsure and no read was used, the check face says why: "X0 filled in what it could. Check
 who it's for." (a name that matched nobody), "… Check the day and the time." (a number, two weekdays, "after lunch"), or "… Check it
-before Done." (anything else, or more than one reason). Without a yes the check face says "X0 can read messy words better with AI." [Turn on AI], which opens the AI
-card; Agree reads the same words again (words that came from "Read it with AI" go again as the card's own, `keep: "1"`, so the card's
-picks and the other drafts stay). Check itself never calls a model: when the card's own What words still look messy it offers
-"Some words were hard to read." [Read it with AI], and only a tap sends them, through the same read and bounds (`keep: "1"`: it fills
+before Done." (anything else, or more than one reason). "Plan something" never asks for AI itself: the permission is asked once, after
+onboarding (`firstRun/aiConsentCard.ts`). Without that yes, setup says `ai: "off"`, the rules read everything, and the screen says
+nothing about AI (no "Turn on AI", no AI card). Check itself never calls a model: with the yes, when the card's own What words still look
+messy it offers "Some words were hard to read." [Read it with AI], and only a tap sends them, through the same read and bounds (`keep: "1"`: it fills
 only what the card left empty and keeps who, must not miss, place and repeat as picked).
 
 **Done.** The server first looks up the rows this key already made: when there are any (a retry after a lost answer), it answers those
@@ -613,7 +613,7 @@ toast). Desktop 0.4.7, with no KitExtras and no PersonBot, keeps the week page a
 takes 0082).
 
 **Render samples**: `scripts/bots-render/samples/planMake.ts` (the home today, tomorrow, an empty day, after Done, an older build and no
-walking bot; the card empty and filled, the check face looking good, with notes, with a stop, with two drafts, the AI card, who is Nani,
+walking bot; the card empty and filled, the check face looking good, with notes, with a stop, with two drafts, who is Nani,
 the What words still messy ("Read it with AI"), a bill's preview, a day's answer, follow-through off, an older build). Every answer in them is the real service's, worked out when the file
 loads over one calendar in memory: the home's from `PlanEase.day`, the card's from `PlanMake.setup`, `.draft` and `.check` (each check
 face is the state the screen's own ON_FILL or ON_CHECK leaves after that answer). A sample may start in a state (`Sample.state`,
@@ -623,7 +623,7 @@ face is the state the screen's own ON_FILL or ON_CHECK leaves after that answer)
 `plan-home-screens`, `plan-make-screens` (the trees); and `plan-make-join`, which builds both screens as the server serves them and
 drives them the way the apps run them (the phone's rules and the window's: strict and `String()` compares, an empty list false), every
 call going to the real routes (`registerBotsBotsRoutes`: `plan/day`, `plan/box`, the act door, the make routes) over one calendar: the
-box, the card, a fix, Take out, Change at a slot, Done and its retry, `fix_first` and the check again, Read it with AI and Agree, a
+box, the card, a fix, Take out, Change at a slot, Done and its retry, `fix_first` and the check again, no AI without the yes, Read it with AI with it, a
 bill's preview and its Undo, the home's query, its Undo and a tick.
 
 **Not in v1.**

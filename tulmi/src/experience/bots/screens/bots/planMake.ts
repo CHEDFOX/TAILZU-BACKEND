@@ -28,7 +28,6 @@ import {
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
 import { said } from "../../said.js";
-import { aiConsentCard, AI_CONSENT_STATE } from "../firstRun/aiConsentCard.js";
 import { dayOptions, planAddForm } from "../planItem.js";
 import { afterBox, boxPicks, boxPlus, boxReply } from "./planPage.js";
 import { A, DAY, clearState, dayKeyOf, field, inputBox, isDesk, lookOf, setState, toast } from "./parts.js";
@@ -63,9 +62,8 @@ export function setupFallback(ctx: BotsCtx): MakeSetup {
 export function makeState(ctx: BotsCtx, setup: MakeSetup): Record<string, unknown> {
   return {
     step: "edit", d: emptyCard(openDay(ctx, setup.today)), at: "0", list: [], chk: {},
-    // lastSay / lastKeep: the last words read and whether they were the card's own What ("1", Read it with AI), for REFILL after Agree.
-    say: "", lastSay: "", lastKeep: "", busy: "", pre: {}, boxed: {}, askQ: "", askBusy: false, boxPick: false,
-    showPlace: false, showRepeat: false, aiAsk: false, ...AI_CONSENT_STATE,
+    say: "", busy: "", pre: {}, boxed: {}, askQ: "", askBusy: false, boxPick: false,
+    showPlace: false, showRepeat: false,
     // Done's key: written from an answer's res.key (ON_FILL, ON_CHECK), never made here.
     key: "",
   };
@@ -107,16 +105,12 @@ function draftCall(ctx: BotsCtx, words: string, o: { keep?: boolean } = {}): Act
 
 /** The box's Send. */
 export const sendAction = (ctx: BotsCtx): ActionSpec => IDLE(cond({ falsy: "say" }, toast("Type something first"),
-  seq(setState("busy", "fill"), setState("lastSay", "$state.say"), setState("lastKeep", ""), draftCall(ctx, "$state.say"))));
+  seq(setState("busy", "fill"), draftCall(ctx, "$state.say"))));
 /**
- * After Agree on the AI card: the last words again, now with the person's yes. Words that were the card's own What (Read it with AI)
- * go again as the card's (`keep`): read as box words they would replace every draft and drop the card's who, must not miss and day.
+ * "Read it with AI": the card's own What words through the box's one AI path; the read fills only what the card left empty. Only for
+ * someone who said yes to AI after onboarding (setup.ai "on"): this screen never asks for AI itself.
  */
-const refillAction = (ctx: BotsCtx): ActionSpec => IDLE(cond({ falsy: "lastSay" }, seq(), seq(setState("busy", "fill"),
-  cond({ eq: ["lastKeep", "1"] }, draftCall(ctx, "$state.lastSay", { keep: true }), draftCall(ctx, "$state.lastSay")))));
-/** "Read it with AI": the card's own What words through the box's one AI path; the read fills only what the card left empty. */
-const readAiAction = (ctx: BotsCtx): ActionSpec => IDLE(seq(setState("busy", "fill"), setState("lastSay", "$state.d.title"), setState("lastKeep", "1"),
-  draftCall(ctx, "$state.d.title", { keep: true })));
+const readAiAction = (ctx: BotsCtx): ActionSpec => IDLE(seq(setState("busy", "fill"), draftCall(ctx, "$state.d.title", { keep: true })));
 
 /** POST .../make/check with `body`, the check face from its answer. */
 function checkCall(ctx: BotsCtx, body: Record<string, unknown>, fail = "Couldn't check that. Try again."): ActionSpec {
@@ -176,7 +170,6 @@ const pillText = (content: string, bind?: string): Node => text(content, { size:
 const wordButton = (content: string, onPress: ActionRef, o: { grey?: boolean; size?: number } = {}): Node =>
   row([text(content, { size: o.size ?? 14, weight: o.grey ? 400 : 500, lineHeight: (o.size ?? 14) + 5, color: o.grey ? C.meta : C.ink })], { minHeight: o.size && o.size < 14 ? 32 : 36, alignItems: "center" }, onPress);
 /** `n` also held by an existing visibleIf: both must hold. */
-const andWhen = (c: Condition, n: Node): Node => ({ ...n, visibleIf: n.visibleIf ? { all: [c, n.visibleIf] } : c });
 
 const TIME_LABEL: Record<string, string> = { "09:00": "9 am", "12:00": "12 pm", "16:00": "4 pm", "18:00": "6 pm", "20:00": "8 pm" };
 const REPEATS = [{ label: "Once", value: "" }, { label: "Every day", value: "daily" }, { label: "Every week", value: "weekly" }, { label: "Every month", value: "monthly" }];
@@ -303,7 +296,7 @@ function checkFace(ctx: BotsCtx, setup: MakeSetup): Node {
     when({ truthy: "chk.extra" }, meta("", { size: 13, lineHeight: 18, bind: "chk.extra" })),
     when({ truthy: "chk.unsure" }, meta("", { size: 13, lineHeight: 18, bind: "chk.unsure" })),
     // The owner's "ai checks", on the card: Check (rules) says the What words still look messy; the read happens only on a tap.
-    ...(setup.ai !== "off" ? [when({ all: [{ truthy: "chk.messy" }, { eq: ["busy", ""] }] }, row([
+    ...(setup.ai === "on" ? [when({ all: [{ truthy: "chk.messy" }, { eq: ["busy", ""] }] }, row([
       meta("Some words were hard to read.", { size: 13, lineHeight: 18 }), wordButton("Read it with AI", readAiAction(ctx), { size: 13 }),
     ], { gap: 6, flexWrap: "wrap", alignItems: "center" }))] : []),
     when({ eq: ["busy", "check"] }, row([statusMark("working", { color: OCHRE, size: 8 }), meta("Checking…", { size: 13 })], { gap: 8, alignItems: "center", minHeight: 44 })),
@@ -352,18 +345,6 @@ function previewPart(ctx: BotsCtx): Node {
   ], { gap: 8, padding: 14, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper }));
 }
 
-/** "X0 can read messy words better with AI. Turn on AI", and the AI card (only when setup says ask). */
-function aiParts(ctx: BotsCtx, setup: MakeSetup): Node[] {
-  if (setup.ai !== "ask") return [];
-  const turnOn = seq(setState("aiLater", false), setState("aiClosed", false), setState("aiAsk", true));
-  return [
-    when({ all: [{ eq: ["step", "check"] }, { truthy: "chk.unsure" }] }, row([
-      meta("X0 can read messy words better with AI.", { size: 13, lineHeight: 18 }), wordButton("Turn on AI", turnOn, { size: 13 }),
-    ], { gap: 6, flexWrap: "wrap", alignItems: "center" })),
-    ...aiConsentCard(ctx, { agreed: false }, { then: refillAction(ctx), later: setState("aiAsk", false) }).map((n) => andWhen({ truthy: "aiAsk" }, n)),
-  ];
-}
-
 // ------------------------------------------------------------------ the screen
 
 export function makePage(ctx: BotsCtx, setup: MakeSetup) {
@@ -385,7 +366,7 @@ export function makePage(ctx: BotsCtx, setup: MakeSetup) {
     back: true, ...(desk ? { backTitle: "Plan Ease", maxWidth: 640 } : {}), title: "Plan something", nav: "plan", gap: 16, state,
     // The box's answers (a bill's preview, a day's answer, the chat's) sit under the header, above the card: below the edit face's long
     // card they were off the phone's screen, and the person had to scroll to find what their words did.
-    body: [head, previewPart(ctx), ...boxReply(ctx, { pill: true }), cardNode, ...aiParts(ctx, setup)],
+    body: [head, previewPart(ctx), ...boxReply(ctx, { pill: true }), cardNode],
     // The box at the bottom, outside what scrolls: the phone's footer, the window's foot (a footer there scrolls with the column and
     // sits under a long card, off the window).
     dock: [typeBox(ctx)],

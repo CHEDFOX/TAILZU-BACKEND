@@ -284,7 +284,7 @@ describe("Plan something, driven through the real routes", () => {
     it(`${client}: the box's Send fills the check face (make/draft), Done adds it (make), the home opens on its day with Added, and Undo takes it out`, async () => {
       const m = await makeScreen(S, client, { from: "plan", day: "2026-11-12" });
       // The screen's own load: GET .../plan/make, the real setup.
-      expect(S.sent[0]).toMatchObject({ method: "GET", path: `${MK}?tz=${IST}`, status: 200, answer: { today: "2026-11-12", follow: true, ai: "ask" } });
+      expect(S.sent[0]).toMatchObject({ method: "GET", path: `${MK}?tz=${IST}`, status: 200, answer: { today: "2026-11-12", follow: true, ai: "off" } });
       expect(m.words()).toEqual(expect.arrayContaining(["For who", "You", "Dad", "Sunita Sharma"]));
       m.type("say", "Dentist Sat 5 pm");
       await m.submit("say");
@@ -491,27 +491,37 @@ describe("Plan something, driven through the real routes", () => {
     expect(await tasks()).toEqual([]);
   });
 
-  it("Read it with AI: the card's What through make/draft with keep 1; no yes, no read and the Turn on AI line; with the yes, one read of the words only", async () => {
+  it("without a yes to AI (asked once, after onboarding): no Read it with AI, no read, and nothing here asks for AI", async () => {
+    const m = await makeScreen(S, "phone", { from: "plan", day: "2026-11-12" });
+    m.type("d.title", "meet Rahul around 7ish after his class");
+    await m.tap("Check");
+    expect(m.get("chk.messy")).toBeFalsy();
+    expect(m.words()).not.toContain("Read it with AI");
+    // The box's messy words: the rules' draft and its unsure line, no read, no Turn on AI.
+    await m.tap("Change");
+    m.type("say", "meet Rahul around 7ish after his class");
+    await m.submit("say");
+    expect(posts(S, `${MK}/draft`).at(-1)).toMatchObject({ status: 200 });
+    expect(m.words()).toContain("X0 filled in what it could. Check the day and the time.");
+    for (const w of ["Turn on AI", "X0 can read messy words better with AI.", "Agree", "Read it with AI"]) expect(m.words()).not.toContain(w);
+    expect(S.reads).toHaveLength(0);
+  });
+
+  it("Read it with AI, with their yes: the card's What through make/draft with keep 1, one read of the words only", async () => {
+    S.yes(true);
     const m = await makeScreen(S, "phone", { from: "plan", day: "2026-11-12" });
     m.type("d.title", "meet Rahul around 7ish after his class");
     await m.tap("Check");
     expect(m.get("chk.messy")).toBe(true);
     expect(m.words()).toEqual(expect.arrayContaining(["Some words were hard to read.", "Read it with AI"]));
     const list = structuredClone(m.get("list"));
+    S.answer({ items: [{ title: "Meet Rahul", day: "2026-11-12", time: "19:00", time_said: false, repeat: "", weekdays: [], who: "Rahul", place: "" }], change: false });
     await m.tap("Read it with AI");
     const read = posts(S, `${MK}/draft`).at(-1)!;
     expect(read).toMatchObject({ status: 200, body: { words: "meet Rahul around 7ish after his class", keep: "1", tz: IST, at: "0", day: "2026-11-12", list, d: (list as unknown[])[0] } });
     expect(Object.keys(read.body as object).sort()).toEqual(["at", "d", "day", "keep", "list", "tz", "words"]);
-    expect(S.reads).toHaveLength(0);
-    expect(m.words()).toEqual(expect.arrayContaining(["X0 filled in what it could. Check the day and the time.", "X0 can read messy words better with AI.", "Turn on AI"]));
-    // With the person's yes: Check, then Read it with AI reads once, only the words.
-    S.yes(true);
-    S.answer({ items: [{ title: "Meet Rahul", day: "2026-11-12", time: "19:00", time_said: false, repeat: "", weekdays: [], who: "Rahul", place: "" }], change: false });
-    await m.tap("Change");
-    await m.tap("Check");
-    await m.tap("Read it with AI");
     expect(S.reads).toHaveLength(1);
-    expect(S.reads[0]!.user).toBe("<message>Meet Rahul around 7ish after his class</message>");
+    expect(S.reads[0]!.user).toBe("<message>meet Rahul around 7ish after his class</message>");
     expect(S.reads[0]!.user).not.toMatch(/Dad|Sunita/);
     expect(m.words()).toEqual(expect.arrayContaining(["Today · 7 pm", "7 am or 7 pm?"]));
     // Check, its fixes and Done never read.
@@ -520,22 +530,18 @@ describe("Plan something, driven through the real routes", () => {
     expect(S.reads).toHaveLength(1);
   });
 
-  it("Read it with AI with no yes, then Turn on AI and Agree: the card's words are read again as the card's (keep 1), its picks stay", async () => {
+  it("Read it with AI fills only what the card left empty: its picks stay (keep 1)", async () => {
+    S.yes(true);
     const m = await makeScreen(S, "phone", { from: "plan", day: "2026-11-12" });
     m.type("d.title", "meet Rahul around 7ish after his class");
     await m.tap("Sat 14");
     await m.tap("Dad");
     await m.tap("Must not miss");
     await m.tap("Check");
-    await m.tap("Read it with AI");
-    expect(S.reads).toHaveLength(0);
     expect(m.get("d")).toMatchObject({ day: "2026-11-14", who: DAD, imp: "must" });
-    await m.tap("Turn on AI");
-    expect(m.words()).toContain("Agree");
     S.answer({ items: [{ title: "Meet Rahul", day: null, time: "19:00", time_said: false, repeat: "", weekdays: [], who: "Rahul", place: "" }], change: false });
-    await m.tap("Agree");
-    const refill = posts(S, `${MK}/draft`).at(-1)!;
-    expect(refill).toMatchObject({ status: 200, body: { words: "meet Rahul around 7ish after his class", keep: "1" } });
+    await m.tap("Read it with AI");
+    expect(posts(S, `${MK}/draft`).at(-1)).toMatchObject({ status: 200, body: { words: "meet Rahul around 7ish after his class", keep: "1" } });
     expect(S.reads).toHaveLength(1);
     // The reading filled only what the card left empty (the time); Dad, must not miss and Saturday stay as picked.
     expect(m.get("d")).toMatchObject({ title: "Meet Rahul", day: "2026-11-14", who: DAD, imp: "must" });
@@ -594,8 +600,7 @@ describe("the sample states the renders draw are the real answers", () => {
       notes: ["Medicine", "Tomorrow · 9 am", "For Dad · reminded at 9 am", "Must not miss", "Clashes with Studio standup at 9:30 am.", "Move to 10:30 am", "9 am or 9 pm?", "X0 marked it must not miss: it's medicine.", "Keep normal"],
       stop: ["Call the bank", "Today · 8 am", "That time has passed.", "Tomorrow, same time", "Today, 8 pm"],
       multi: ["Dentist", "Haircut", "Sat 31 Oct · 11 am", "Adds 2 things to your Plan.", "Take out"],
-      consent: ["Meet Rahul around 7ish after his class", "X0 filled in what it could. Check the day and the time.", "Turn on AI", "Agree"],
-      whoIs: ["Take her tablets (Nani)", "Every day · 8 am", "Who is Nani? Pick them.", "Pick", "X0 filled in what it could. Check who it's for.", "Turn on AI"],
+      whoIs: ["Take her tablets (Nani)", "Every day · 8 am", "Who is Nani? Pick them.", "Pick", "X0 filled in what it could. Check who it's for."],
       messy: ["meet Rahul around 7ish after his class", "Some words were hard to read.", "Read it with AI"],
       bill: ["Looks like a bill. Add it?", "Electricity ₹2,140 · due Sat 14 Nov"],
       boxDay: ["Open chat"],

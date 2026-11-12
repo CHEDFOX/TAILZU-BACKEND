@@ -119,7 +119,7 @@ export const SAMPLES: Sample[] = [
   // day's answer, follow-through off, and an older build (the old add form).
   ...([
     ["edit", undefined], ["edit-filled", "filled"], ["check-good", "good"], ["check-notes", "notes"], ["check-stop", "stop"], ["check-multi", "multi"],
-    ["consent", "consent"], ["who-is", "whoIs"], ["bill-preview", "bill"], ["box-answer", "boxDay"], ["check-messy", "messy"],
+    ["who-is", "whoIs"], ["bill-preview", "bill"], ["box-answer", "boxDay"], ["check-messy", "messy"],
   ] as const).map(([variant, st]) => ({ id: S.planMake, area: "bots" as const, variant, params: MAKE_PARAMS, api: MAKE_API, ...(st ? { state: MAKE_STATES[st] } : {}) })),
   { id: S.planMake, area: "bots", variant: "follow-off", params: MAKE_PARAMS, api: MAKE_OFF_API },
   { id: S.planMake, area: "bots", variant: "old-build", params: MAKE_PARAMS, api: MAKE_API, without: ["PersonBot"] },

@@ -173,8 +173,8 @@ describe("Plan something: the card", () => {
   });
 
   it("Read it with AI shows only on chk.messy, never when setup.ai is off, and posts make/draft with keep 1 and the card's What", async () => {
-    for (const ai of ["ask", "on"] as const) {
-      const { nodes, s } = await draw("phone", { setup: { ai } });
+    {
+      const { nodes, s } = await draw("phone", { setup: { ai: "on" } });
       const read = pressable(nodes, "Read it with AI")[0]!;
       const conds = withConds(s.root!).find((c) => c.n === read)!.conds;
       expect(JSON.stringify(conds)).toContain(JSON.stringify({ truthy: "chk.messy" }));
@@ -237,7 +237,6 @@ describe("Plan something: the card", () => {
     const say = nodes.find((n) => n.type === "TextField" && n.bind?.value === "say")!;
     const box = flat(say.on?.onSubmit).find((a) => a.kind === "callEndpoint")!;
     expect(box).toMatchObject({ method: "POST", path: `${MK}/draft`, body: { words: "$state.say", tz: IST, d: "$state.d", list: "$state.list", at: "$state.at", day: "2026-10-28" }, assignTo: "res", stay: true });
-    expect(flat(say.on?.onSubmit)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "setState", path: "lastSay", value: "$state.say" })]));
     expect(labelledSend(nodes)?.on?.onPress).toEqual(say.on?.onSubmit);
     // The box's answer: drafts (the check face), a preview, or the box's own reply (the chat, a capture card, a link).
     const fill = flat(box.onSuccess);
@@ -287,21 +286,13 @@ describe("Plan something: the card", () => {
     expect(noInvite.texts).not.toContain("Invite");
   });
 
-  it("the AI line and card only when setup says ask, and only on a check face that came from the box with unsure set", async () => {
-    const { nodes, s } = await draw("phone", { setup: { ai: "ask" } });
-    const conds = withConds(s.root!);
-    const turnOn = pressable(nodes, "Turn on AI")[0]!;
-    expect(JSON.stringify(conds.find((c) => c.n === turnOn)!.conds)).toContain(JSON.stringify({ all: [{ eq: ["step", "check"] }, { truthy: "chk.unsure" }] }));
-    expect(flat(turnOn.on?.onPress)).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "setState", path: "aiAsk", value: true })]));
-    // The AI card shows only while aiAsk; Agree saves the yes, then the last words go again.
-    const card = nodes.find((n) => n.type === "BotCard")!;
-    expect(JSON.stringify(card.visibleIf)).toContain(JSON.stringify({ truthy: "aiAsk" }));
-    const agree = callsTo(nodes, "/v1/you/ai-consent")[0]!;
-    expect(flat(agree.onSuccess).find((a) => a.kind === "callEndpoint")).toMatchObject({ path: `${MK}/draft`, body: { words: "$state.lastSay" } });
-    for (const ai of ["on", "off"] as const) {
-      const other = await draw("phone", { setup: { ai } });
-      expect(other.texts).not.toContain("Turn on AI");
-      expect(other.nodes.some((n) => n.type === "BotCard")).toBe(false);
+  it("never asks for AI itself (it is asked once, after onboarding): no Turn on AI line, no AI card, nothing that saves a yes", async () => {
+    for (const client of ["phone", "desktop"] as const) for (const ai of ["on", "off"] as const) {
+      const { nodes, texts } = await draw(client, { setup: { ai } });
+      expect(texts).not.toContain("Turn on AI");
+      expect(texts.some((t) => /better with AI/.test(t))).toBe(false);
+      expect(nodes.some((n) => n.type === "BotCard")).toBe(false);
+      expect(callsTo(nodes, "/v1/you/ai-consent")).toEqual([]);
     }
   });
 
@@ -360,7 +351,7 @@ describe("Plan something: the card", () => {
       }
     }
     // The sample states are only state: the tree they draw is the one linted above.
-    expect(Object.keys(MAKE_STATES)).toEqual(expect.arrayContaining(["filled", "good", "notes", "stop", "multi", "consent", "whoIs", "bill", "boxDay"]));
+    expect(Object.keys(MAKE_STATES)).toEqual(expect.arrayContaining(["filled", "good", "notes", "stop", "multi", "whoIs", "bill", "boxDay"]));
   });
 });
 

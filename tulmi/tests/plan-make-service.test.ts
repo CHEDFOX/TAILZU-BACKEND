@@ -102,9 +102,10 @@ const drafted = (r: MakeDraftReply) => { if (r.kind !== "draft") throw new Error
 const KEY = () => crypto.randomUUID();
 
 describe("the AI read", () => {
-  it("no yes to AI: no read, rules draft, setup says ask", async () => {
+  it("no yes to AI (asked once, after onboarding): no read, rules draft, setup says off, and Check never says messy", async () => {
     const r = rig(ist(12, 10), { consent: false });
-    expect((await r.make.setup(U, IST)).ai).toBe("ask");
+    expect((await r.make.setup(U, IST)).ai).toBe("off");
+    expect((await r.make.check(U, { list: [], d: card({ title: "meet Rahul around 7ish after his class" }), at: "0", tz: IST, day0: "2026-11-12" })).view.messy).toBeUndefined();
     const d = drafted(await r.make.draft(U, { words: "meet Rahul around 7ish after his class", tz: IST }));
     expect(r.reads).toEqual([]);
     expect(d).toMatchObject({ how: "rules", view: { unsure: "X0 filled in what it could. Check the day and the time." } });
@@ -211,7 +212,7 @@ describe("the AI read", () => {
     expect(d.drafts.map((x) => x.title)).toEqual(["Haircut", "Meet Rahul at the cafe"]);
     expect(d.drafts[1]).toMatchObject({ who: DAD, imp: "must", place: "Indiranagar", time: "other", timeWords: "7 pm" });
     expect(d.at).toBe("1");
-    // Without a yes: the rules' reading of the What, the picks kept, and unsure (the "Turn on AI" line).
+    // Without a yes: the rules' reading of the What, the picks kept, and unsure.
     const no = rig(ist(12, 10), { consent: false });
     const n = drafted(await no.make.draft(U, { words: mine.title, keep: "1", tz: IST, d: mine, list: [other, mine], at: "1" }));
     expect(no.reads).toEqual([]);
