@@ -43,6 +43,8 @@ import { planCallPage } from "./bots/planCall.js";
 import { CALLS, type CallView } from "../../../botsBots/planCallWords.js";
 import { capturePage, planGoLoad, planInScreens, shareCapture, type CaptureView } from "./bots/planIn.js";
 import { planPeopleScreens } from "./bots/planSend.js";
+import { planFollowScreens } from "./bots/planFollow.js";
+import { followPhoneScreens } from "./bots/followPhone.js";
 import { planOn } from "../../../botsBots/planSwitch.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
 import { mailPage, type MailPageData } from "./bots/mailPage.js";
@@ -800,4 +802,8 @@ export const botsScreens: BotsScreen[] = [
   ...mailScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
   ...planPeopleScreens,
+  // Follow-through (botsBots/planFollow.ts): one followed item, and who does an item.
+  ...planFollowScreens,
+  // Follow-through's real phone call (botsBots/followPhone.ts): the person's own number.
+  ...followPhoneScreens,
 ];

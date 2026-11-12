@@ -66,6 +66,9 @@ export const SCREENS = {
   planCaptureItem: "bots.plan.capture.item", // a capture row's sheet: title, day, time, who (screens/bots/planIn.ts; params: id, item)
   planSend: "bots.plan.send",        // a wait's hand-off: WhatsApp (or mail) with the follow-up at once, then the Plan (screens/bots/planSend.ts; params: item, go, from)
   planCall: "bots.plan.call",        // a call from Plan Ease: ringing → talking, missed, ended (screens/bots/planCall.ts; params: call, state, button)
+  planFollow: "bots.plan.follow",    // one followed item: who has it, what X0 did, Done / Later / Can't (screens/bots/planFollow.ts; params: follow, button)
+  planFollowPeople: "bots.plan.follow.people", // who does an item: you and your X0 people, in order (screens/bots/planFollow.ts; params: kind, id)
+  planPhone: "bots.plan.phone",      // a real phone call's own number: add it, prove it (call X0 once), change or remove it (screens/bots/followPhone.ts)
   travel: "bots.travel",             // TravelBot / DTravelBot
   chat: "bots.chat",                 // Chat (params: slug)
   // screens/bots/mailScreens.ts: the mail bot (its page is bots.bot with slug "mail", screens/bots/mailPage.ts; no board)

@@ -20,6 +20,7 @@ import { placeText } from "./plan.js";
 import { PLAN_IN_NEEDS } from "./planInCards.js";
 import { WAIT_NEEDS } from "./planWaits.js";
 import { ASK_NEEDS } from "./planAsks.js";
+import { FOLLOW_NEEDS } from "./planFollow.js";
 
 const MIN = 60_000, DAY = 24 * 60 * MIN;
 
@@ -53,8 +54,9 @@ export interface NeedsCard {
   /** Only on the page: never on the widget or in a note (its buttons open a page there, like the work calendar's Link it). */
   inApp?: true;
   /**
-   * A card whose answer needs the app (Send opens WhatsApp, a "No" that opens it): its question as said where it can't be answered
-   * ("Still waiting on Rahul", with no "Send this?"). On the widget it is open-only: a tap opens X0 Bot, where both buttons are.
+   * Its question as said outside the app (the widget, the Lock Screen). A card whose answer needs the app (Send opens WhatsApp, a "No"
+   * that opens it): "Still waiting on Rahul", with no "Send this?", and on the widget it is open-only (a tap opens X0 Bot, where both
+   * buttons are). A card whose buttons answer in place keeps them there with these words (a follow's: "A reminder from Rahul").
    */
   outside?: string;
   /** On the widget: no buttons, a tap opens the app (a card whose answer needs it). */
@@ -225,7 +227,7 @@ const HOME: NeedsType = {
 // ------------------------------------------------------------------ the steps to come plug in here
 
 /** Step 2: "link" (Show your work calendar here too?) and "linkStopped". Step 3: "capture". Step 4: "wait", "came". Step 5: "ask", "nobody". */
-const LATER_TYPES: readonly NeedsType[] = [...PLAN_IN_NEEDS, WAIT_NEEDS, ASK_NEEDS];
+const LATER_TYPES: readonly NeedsType[] = [...PLAN_IN_NEEDS, WAIT_NEEDS, ASK_NEEDS, FOLLOW_NEEDS];
 
 export const NEEDS_TYPES: readonly NeedsType[] = [MOVE, HOME, ...LATER_TYPES];
 

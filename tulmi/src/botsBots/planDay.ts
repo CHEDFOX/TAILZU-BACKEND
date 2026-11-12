@@ -48,6 +48,8 @@ export interface PlanInput {
   needs: NeedsCard | null;
   /** The newest note someone left on an item, by row id: its grey line (inside the app only). */
   notes?: ReadonlyMap<string, RowNote>;
+  /** Follow-through's line for a followed item of today, by row id (planFollow.ts followLinesOf). */
+  follow?: ReadonlyMap<string, string>;
 }
 
 /** The big line: words, with the part to show in ochre (the leave-by time) said apart. */
@@ -100,8 +102,9 @@ const short = (t: string) => t.split(" · ")[0]!.trim() || t;
 /** "2 more", the same words everywhere. */
 export const more = (n: number): string => `${n} more`;
 
-const rowCtx = (i: Pick<PlanInput, "tz" | "now" | "leaves" | "clashes" | "notes">): RowCtx => ({
+const rowCtx = (i: Pick<PlanInput, "tz" | "now" | "leaves" | "clashes" | "notes" | "follow">): RowCtx => ({
   tz: i.tz, now: i.now, clock: (ms) => clockOf(ms, i.tz), leaves: i.leaves, clashes: i.clashes, ...(i.notes ? { notes: i.notes } : {}),
+  ...(i.follow ? { follow: i.follow } : {}),
 });
 
 /** Done last, the rest in time order (timed first, then the day's to-dos). */

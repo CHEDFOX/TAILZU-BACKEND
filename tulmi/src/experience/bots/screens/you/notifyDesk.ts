@@ -10,7 +10,15 @@ import {
 import { type Settings, toast, refresh, oops, clock, botOf, heading, couldNot, columns, glyph, G } from "./parts.js";
 
 /** `name`: the name Plan Ease calls as ("Zara", else "X0"); `calls`: calls can come here (BOT_CALLS), so the Calls row is drawn. */
-export interface NotifyData { settings: Settings; today: { done: number; needs: number; spentPaise: number } | null; line: string | null; name?: string; calls?: boolean }
+export interface NotifyData {
+  settings: Settings; today: { done: number; needs: number; spentPaise: number } | null; line: string | null; name?: string; calls?: boolean;
+  /** Follow-through is on here (PLAN_V2_FOLLOW): the Must not miss part shows. */
+  follow?: boolean;
+  /** The people whose must-not-miss items may ring this person louder and call them, by name. */
+  followFrom?: Array<{ id: string; name: string }>;
+  /** A real phone call can go here (the phone channel set up), and this person's own number as they see it. */
+  phone?: { number: { state: "none" | "pending" | "verified" | "stopped"; display: string; setup?: { screen: string; params?: Record<string, string> } } | null } | null;
+}
 
 /** A setting saved: PUT /v1/you/settings, a short toast, a refresh. */
 export const save = (b: Record<string, unknown>, ok: string): ActionRef => call("PUT", "/v1/you/settings", b, { ok: seq(toast(ok), refresh), fail: oops() });
@@ -79,6 +87,7 @@ export function timePicker(key: ClockKey, field: "summaryAt" | "quietFrom" | "qu
 
 export const notifyState = (s: Settings, ctx: BotsCtx) => ({
   done: s.notify.done, summary: s.notify.summary, quiet: s.notify.quiet, calls: s.notify.calls !== false, edit: "",
+  follow: s.notify.follow !== false, followTell: s.notify.followTell !== false, ringMax: String(s.notify.ringMax ?? 6), phoneCall: s.notify.phoneCall === true,
   ...clockState("sum", s.notify.summaryAt), ...clockState("qf", s.notify.quietFrom), ...clockState("qt", s.notify.quietTo),
   ...Object.fromEntries(ctx.live.bots.map((b) => [`bot_${b.slug.replace(/-/g, "_")}`, !s.notify.botsOff.includes(b.slug)])),
 });
@@ -88,8 +97,53 @@ export const summarySwitch = () => seq({ kind: "toggleState", path: "summary" },
 /** Calls on or off, saved (after the switch has flipped `calls`): the phone's switchRow flips it first, the window's box with callsSwitch. */
 export const callsSave = (): ActionRef => when2("calls", save({ notify: { calls: true } }, "Calls on"), save({ notify: { calls: false } }, "Calls off"));
 export const callsSwitch = () => seq({ kind: "toggleState", path: "calls" }, callsSave());
-/** What the Calls row says: "Zara calls you when it's time to leave or a bill is due today". */
-export const callsLine = (d: NotifyData): string => `${d.name || "X0"} calls you when it's time to leave or a bill is due today`;
+/** What the Calls row says: "Zara calls you when it's time to leave or a bill is due today" (and must-not-miss reminders, with follow-through). */
+export const callsLine = (d: NotifyData): string => `${d.name || "X0"} calls you when it's time to leave or a bill is due today${d.follow ? ", and for must-not-miss reminders" : ""}`;
+
+// ------------------------------------------------------------------ Must not miss (follow-through)
+
+const flip = (path: string, on: string, off: string, key: string): ActionRef => seq({ kind: "toggleState", path }, when2(path, save({ notify: { [key]: true } }, on), save({ notify: { [key]: false } }, off)));
+const saveOnly = (path: string, on: string, off: string, key: string): ActionRef => when2(path, save({ notify: { [key]: true } }, on), save({ notify: { [key]: false } }, off));
+/** "Calls +91 98••• ••210", "Confirm your number first": the real call's line, from the phone channel. */
+const phoneLine = (d: NotifyData): string => {
+  const n = d.phone?.number;
+  if (n?.state === "verified") return `Only to ${n.display}, never in quiet hours`;
+  if (n?.state === "pending") return "Confirm your number first";
+  if (n?.state === "stopped") return "You stopped calls from a call";
+  return "Add your number first";
+};
+
+/** The Must not miss rows (follow-through), as data for both the phone's list and the window's card. Empty unless d.follow. */
+export function followRows(d: NotifyData): Array<{ label: string; sub: string; path?: string; press?: ActionRef; save?: ActionRef; chips?: Node; open?: ActionRef; openLabel?: string }> {
+  if (!d.follow) return [];
+  const rows: Array<{ label: string; sub: string; path?: string; press?: ActionRef; save?: ActionRef; chips?: Node; open?: ActionRef; openLabel?: string }> = [
+    { label: "Keep at it", sub: "Louder pings, then a call, until you say done", path: "follow", press: flip("follow", "Keep at it on", "Keep at it off", "follow"), save: saveOnly("follow", "Keep at it on", "Keep at it off", "follow") },
+    { label: "Tell the next person", sub: "If you don't answer, X0 tells the next person on it", path: "followTell", press: flip("followTell", "On", "Off", "followTell"), save: saveOnly("followTell", "On", "Off", "followTell") },
+    // Each chip saves its own number (never read back from state).
+    { label: "Louder pings a day", sub: "Louder pings and calls, at most", chips: row([3, 6, 10].map((n) => box([text(String(n), { size: 13, lineHeight: 17, style: { color: whenEq("ringMax", String(n), C.paper, C.ink) } })], {
+      paddingVertical: 8, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, borderColor: whenEq("ringMax", String(n), C.ink, C.outline),
+      backgroundColor: whenEq("ringMax", String(n), C.ink, C.paper),
+    }, seq({ kind: "setState", path: "ringMax", value: String(n) }, save({ notify: { ringMax: n } }, `${n} a day`)))), { gap: 8 }) },
+  ];
+  if (d.phone) {
+    rows.push({
+      label: "X0 may call my phone if I miss something important", sub: phoneLine(d), path: "phoneCall",
+      press: flip("phoneCall", "X0 may call your phone", "No phone calls", "phoneCall"), save: saveOnly("phoneCall", "X0 may call your phone", "No phone calls", "phoneCall"),
+      // The number's own screen: to add or confirm it, or (once confirmed) to change or remove it.
+      ...(d.phone.number?.setup ? {
+        open: { kind: "navigate", screenId: d.phone.number.setup.screen, params: d.phone.number.setup.params ?? {} } as ActionSpec,
+        openLabel: d.phone.number.state === "verified" ? "Your number for calls" : d.phone.number.state === "stopped" ? "Turn calls back on" : "Set up your number",
+      } : {}),
+    });
+  }
+  return rows;
+}
+
+/** "People who can ring you louder": each with Remove (their must-not-miss items then only send notifications). */
+export function followFromRows(d: NotifyData): Array<{ name: string; remove: ActionRef }> {
+  if (!d.follow) return [];
+  return (d.followFrom ?? []).map((p) => ({ name: p.name, remove: save({ notify: { followFrom: { id: p.id, on: false } } }, `Just notifications from ${p.name}`) }));
+}
 export const quietSwitch = () => seq({ kind: "toggleState", path: "quiet" }, when2("quiet", save({ notify: { quiet: true } }, "Quiet hours on"), save({ notify: { quiet: false } }, "Quiet hours off")));
 export const botSwitch = (slug: string) => {
   const path = `bot_${slug.replace(/-/g, "_")}`;
@@ -151,6 +205,22 @@ export function notifyDesk(ctx: BotsCtx, d: NotifyData | undefined) {
             row([col([text("Calls", { size: 15, weight: 600 }), meta(callsLine(d), { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }), box([switchMark("calls")], {}, callsSwitch())], { gap: 12 }),
           ] : []),
         ], { padding: 20, gap: 14 }),
+        // Must not miss (follow-through, botsBots/planFollow.ts): only while it is on here.
+        ...(d.follow ? [card([
+          text("Must not miss", { size: 15, weight: 600 }),
+          ...followRows(d).flatMap((r, i) => [
+            ...(i ? [divider()] : []),
+            r.chips
+              ? row([col([text(r.label, { size: 14 }), meta(r.sub, { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }), r.chips], { gap: 12 })
+              : row([col([text(r.label, { size: 14 }), meta(r.sub, { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }), box([switchMark(r.path!)], {}, r.press)], { gap: 12 }),
+            ...(r.open ? [row([text(r.openLabel ?? "Set up your number", { size: 13, lineHeight: 17 }), icon("chevron", { size: 14 })], { gap: 4 }, r.open)] : []),
+          ]),
+          ...(followFromRows(d).length ? [
+            divider(),
+            sectionLabel("People who can ring you louder"),
+            ...followFromRows(d).map((p) => row([text(p.name, { size: 14, style: { flexGrow: 1 } }), button("Remove", p.remove, { kind: "quiet", size: "md" })], { gap: 12 })),
+          ] : []),
+        ], { padding: 20, gap: 12 })] : []),
         card([
           row([glyph(G.moon, 18), col([text("Quiet hours", { size: 15, weight: 600 }), meta("Every night", { size: 12 })], { flexGrow: 1, gap: 2 }), switchMark("quiet")], { gap: 12 }, quietSwitch()),
           quietTimes(s),

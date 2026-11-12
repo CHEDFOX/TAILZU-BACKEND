@@ -10,6 +10,7 @@
  *   payment   a payment the person said they made in their UPI app from bots.approve (shell/events.ts): never one we made
  *   words     Keylessbord: the words they spoke instead of typed on a day (history), and in which apps
  *   call      a call from Plan Ease nobody answered (botsBots/planCall.ts): "Missed call from X0", with the reminder's own line
+ *   follow    a followed item someone else said done, someone couldn't do, or a must-not-miss one nobody did (botsBots/planFollow.ts)
  *
  * No money on any row: what a bot's work cost stays ours (`paise`, for the logs; no screen draws it), and a payment says who and
  * what it was for, never the amount.
@@ -17,14 +18,14 @@
 import { CONNECTOR_BOT } from "../experience/bots/live.js";
 import type { NeedsWords } from "../widgets/botWords.js";
 
-export type FeedType = "job" | "task" | "ask" | "payment" | "words" | "call";
+export type FeedType = "job" | "task" | "ask" | "payment" | "words" | "call" | "follow";
 export type FeedMark = "working" | "needs" | "done" | "failed" | "waiting";
 
 /** Where a row goes when it is tapped: a Bots app screen and its params. */
 export interface FeedOpen { screenId: string; params?: Record<string, string> }
 
 export interface FeedRow {
-  /** "job:<id>", "task:<id>", "ask:<id>", "pay:<id>", "words:<YYYY-MM-DD>", "call:<id>". */
+  /** "job:<id>", "task:<id>", "ask:<id>", "pay:<id>", "words:<YYYY-MM-DD>", "call:<id>", "follow:<followId>:<what>". */
   id: string;
   type: FeedType;
   /** The bot's slug ("code", "keybot", a person's own), or "tailzu" for the assistant itself. */
@@ -86,6 +87,14 @@ export interface FeedWords { day: string; at: number; words: number; apps: strin
 /** A missed call (botsBots/planCall.ts missedSince): the name it called as and the reminder's lock-safe line. */
 export interface FeedCall { id: string; name: string; line: string; at: number }
 
+/** How an answer came, as a follow's Activity row says it. */
+export type FeedFollowVia = "app" | "ring" | "call" | "item";
+/**
+ * A followed item's news (botsBots/planFollow.ts activitySince): someone else said done, someone couldn't do it, or a must-not-miss one
+ * nobody did. `title` is the item's own (inside the app the full title is fine).
+ */
+export interface FeedFollow { id: string; follow: string; what: "done_by" | "passed" | "missed"; who: string; title: string; at: number; via: FeedFollowVia | null }
+
 export interface FeedInput {
   now: number;
   tzOffsetMinutes: number;
@@ -94,6 +103,7 @@ export interface FeedInput {
   events: FeedEvent[];
   words: FeedWords[];
   calls?: FeedCall[];
+  follows?: FeedFollow[];
   /** project id -> its name ("Salon booking app"), for a job's second line. */
   projects?: Record<string, string>;
   /** How far back, in days (7). */
@@ -256,6 +266,20 @@ function callRow(c: FeedCall, i: FeedInput): FeedRow {
   };
 }
 
+const VIA_WORDS: Record<FeedFollowVia, string> = { app: "In X0", ring: "X0 call", call: "Phone call", item: "On Plan" };
+
+/** "Mom said done" / "Dad can't do it" / "Not done: Mom's medicine", with the title, the time and how: a tap opens the follow page. */
+function followRow(f: FeedFollow, i: FeedInput): FeedRow {
+  const who = clip(f.who || "Someone", 24);
+  const title = f.what === "done_by" ? `${who} said done` : f.what === "passed" ? `${who} can't do it` : `Not done: ${clip(f.title, 60)}`;
+  const sub = [f.what === "missed" ? "" : clip(f.title, 60), clockOf(f.at, i.tzOffsetMinutes), f.via ? VIA_WORDS[f.via] : ""].filter(Boolean).join(" · ");
+  return {
+    id: `follow:${f.follow}:${f.what}`, type: "follow", bot: "plan", title, sub, at: f.at,
+    mark: f.what === "done_by" ? "done" : f.what === "passed" ? "waiting" : "failed",
+    open: { screenId: "bots.plan.follow", params: { follow: f.follow } },
+  };
+}
+
 /** The feed, newest first, the last `days` days (what waits for the person or is working is kept whatever its age). */
 export function feedOf(i: FeedInput): FeedRow[] {
   const since = dayStartOf(i.now, i.tzOffsetMinutes) - ((i.days ?? 7) - 1) * 86_400_000;
@@ -265,6 +289,7 @@ export function feedOf(i: FeedInput): FeedRow[] {
     ...i.events.map((e) => eventRow(e, i)),
     ...i.words.filter((w) => w.words > 0).map(wordsRow),
     ...(i.calls ?? []).map((c) => callRow(c, i)),
+    ...(i.follows ?? []).map((f) => followRow(f, i)),
   ];
   return rows
     .filter((r) => r.at >= since || r.mark === "needs" || r.mark === "working")
@@ -283,7 +308,7 @@ export function weekOf(rows: readonly FeedRow[], weekStart: number, minutesSaved
 
 /** The filters the feed offers, by type: Jobs (the work bots did), Payments, Words. */
 export const FEED_KINDS: Record<"jobs" | "payments" | "words", FeedType[]> = {
-  jobs: ["job", "task", "ask", "call"],
+  jobs: ["job", "task", "ask", "call", "follow"],
   payments: ["payment"],
   words: ["words"],
 };

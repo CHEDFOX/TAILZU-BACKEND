@@ -877,6 +877,38 @@ const EnvSchema = z.object({
    */
   BOT_CALLS: bool(true),
   /**
+   * PLAN_V2_FOLLOW   follow-through (botsBots/planFollow.ts; docs/plan-ease.md "Follow-through"): must-not-miss items and items with
+   *                  people on them are followed until someone says done (a push, a louder push, X0 is calling, a real phone call for
+   *                  someone who turned that on, then telling the next person), with Done / Later / Can't from the app. Only people the
+   *                  person is connected with in X0 can be on an item, by the same rules as messaging. Needs migration 0081. False: every
+   *                  reminder goes exactly as before; follows already open stop where they are.
+   */
+  PLAN_V2_FOLLOW: bool(true),
+  /**
+   * CHANNEL_PHONE_CALLS   real phone calls (press 1 done, 2 later, 3 can't) as a must-not-miss item's loud step, only to X0 users who
+   *                       turned it on themselves in What pings you for their own proved number (botsBots/followPhone.ts, Plivo).
+   *                       Separate from BOT_CALLS ("X0 is calling" in the app). OFF, and stays off unless every key below and
+   *                       CONNECTOR_TOKEN_KEY are set and the number's TRAI A2P declaration is filed (docs/follow-channels.md). The
+   *                       auth token is a secret: the env file only. PLIVO_ALLOWED_PREFIXES: the number prefixes a real call may go to,
+   *                       comma-separated; others are never called (cost).
+   */
+  CHANNEL_PHONE_CALLS: bool(false),
+  PLIVO_AUTH_ID: z.string().trim().optional(),
+  PLIVO_AUTH_TOKEN: z.string().optional(),
+  PLIVO_FROM_NUMBER: z.string().trim().optional(),
+  PLIVO_VOICE_EN: z.string().trim().default("Polly.Raveena"),
+  PLIVO_VOICE_HI: z.string().trim().default("Polly.Aditi"),
+  PLIVO_ALLOWED_PREFIXES: z.string().trim().default("+91"),
+  /**
+   * The cost ceilings for real phone calls (botsBots/planFollow.ts, through plan_reach_caps). The per-person caps (their ringMax, and
+   * push.follow.phoneDayMax) protect the person; these protect the bill: one asker's many items, or a bug that loops, can never spend more
+   * than this in a day. Past one, the phone step is skipped and the ladder goes on to the tell. 0 stops real calls without turning them off.
+   *   FOLLOW_CALL_ASKER_DAY_MAX   real phone calls for one asker's items in a day
+   *   FOLLOW_CALL_DAY_MAX         real phone calls for the whole server in a UTC day
+   */
+  FOLLOW_CALL_ASKER_DAY_MAX: z.coerce.number().int().min(0).default(6),
+  FOLLOW_CALL_DAY_MAX: z.coerce.number().int().min(0).default(100),
+  /**
    * The AI permission (src/privacy/aiGate.ts, App Review 5.1.2(i)): nothing of a person's is sent to an AI service until they have
    * tapped Agree. On by default; false lets everyone's requests through again, for an emergency only (the app still asks).
    */

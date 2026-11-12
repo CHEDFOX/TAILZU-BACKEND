@@ -9,8 +9,9 @@
  *   GET    /v1/you/spend?tz=            -> { report, settings }  ours: the month's costs by bot and by day, the biggest jobs (src/you/spend.ts).
  *                                          No screen shows it any more
  *   GET    /v1/you/settings             -> { settings }
- *   GET    /v1/you/notify?tz=           -> { settings, today: { done, needs, spentPaise }, line, name, calls }  "What pings you", with today's
- *                                         summary as it would read, the name Plan Ease calls as, and whether calls are on here (BOT_CALLS)
+ *   GET    /v1/you/notify?tz=           -> { settings, today: { done, needs, spentPaise }, line, name, calls, follow, followFrom, phone }  "What
+ *                                         pings you", with today's summary as it would read, the name Plan Ease calls as, whether calls are on
+ *                                         here (BOT_CALLS), and follow-through's part (PLAN_V2_FOLLOW): who may ring them louder, a real call
  *   PUT    /v1/you/settings { monthLimitPaise? | monthLimitRupees?, stopAtLimit?, notify?: { done?, summary?, summaryAt?, quiet?, quietFrom?,
  *                                         quietTo?, bot?, on? }, privacy?: { personalise? } }  -> { settings }  only what was sent changes
  *   GET    /v1/you/billing              -> { plan, invoices, usage }  (src/you/billing.ts; the screens show no price and no amount)
@@ -52,7 +53,9 @@ import { talkSessions } from "../../talk/session.js";
 import { applyPatch, clock } from "../../you/settings.js";
 import { ASSISTANT_NAME, nicknameOf } from "../../experience/assistantName.js";
 import { getPersonality } from "../../personality/store.js";
-import { callsOn } from "../../botsBots/planSwitch.js";
+import { callsOn, followOn } from "../../botsBots/planSwitch.js";
+import { planFollows } from "../../botsBots/planFollow.js";
+import { followChannels, phoneReady } from "../../botsBots/planFollowChannels.js";
 import { youStore } from "../../you/store.js";
 
 import type { BotsAreaDeps } from "./botsArea.js";
@@ -268,9 +271,15 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
         dayOf(user.id, { spending, jobs: deps.jobs, connectors: deps.connectors, now: Date.now(), tz }).catch(() => null),
         getPersonality(user).catch(() => null),
       ]);
+      // Follow-through's part (only while it is on): who may ring this person louder, by name (an id no longer in their X0 people reads
+      // "Someone" and can still be removed), and whether a real phone call can go here at all, with their own number as they see it.
+      const follow = followOn();
+      const names = follow && settings.notify.followFrom.length ? await planFollows().contactsOf(user.id).catch(() => new Map<string, string>()) : new Map<string, string>();
+      const phone = follow && phoneReady() ? { number: await followChannels().phone?.numberOf?.(user.id).catch(() => null) ?? null } : null;
       // The Calls row says the name it calls as (Keylessbord's "What you call it", else X0), and shows only while calls can come.
       return reply.header("cache-control", "no-store").send({
         settings, today, line: today ? summaryLine(today) : null, name: nicknameOf(personality) ?? ASSISTANT_NAME, calls: callsOn(),
+        follow, followFrom: follow ? settings.notify.followFrom.map((id) => ({ id, name: names.get(id) ?? "Someone" })) : [], phone,
       });
     } catch (err) { return fail(reply, err); }
   });

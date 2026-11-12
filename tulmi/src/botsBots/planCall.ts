@@ -6,6 +6,9 @@
  *
  *   hook                  asked by the push engine before a leave-by or a bill due today goes (push/engine.ts setCallHook): rings the
  *                         phones that take calls, or says why not (and the push goes the existing way)
+ *   ring(user, seed, o)   follow-through's call step (planFollow.ts): the same checks and the same ring, with no push of its own; says
+ *                         why not ({ none }) and the ladder carries on
+ *   closeFor(user, key)   a followed item said done: its ringing call ends (no ring 2, no missed call)
  *   advance(id)           a call's next step, from its timers and from the sweep: ring 2 at +23 s, the missed call at +45 s (both only to
  *                         the phones that took ring 1), an answered call left alone 5 minutes ended
  *   start(log)            the sweep every 10 s (a restart loses the timers, never a step) and the 90-day clean-up
@@ -28,6 +31,7 @@ import { pushEngine } from "../push/index.js";
 import { knobsOf } from "../push/plan.js";
 import { tokenHash, type Candidate, type Token } from "../push/store.js";
 import { clockAt } from "../calendar/words.js";
+import { deskHere } from "../live/notices.js";
 import { MemoryTable, SupabaseTable, type Table } from "./rows.js";
 import { callsOn, planOn } from "./planSwitch.js";
 import {
@@ -62,7 +66,7 @@ export interface CallRow {
   [k: string]: unknown;
   id: string;
   user_id: string;
-  source: "leave" | "due";
+  source: "leave" | "due" | "follow";
   source_key: string;
   origin: "server" | "user";
   parent_id: string | null;
@@ -245,29 +249,10 @@ export class PlanCalls {
       // The reminder's own verdict first: a push that would go silent (quiet hours) or not at all never becomes a ring. Then the call's
       // own: the Calls switch, Plan Ease's, quiet hours (you/push.ts verdict).
       if ((await gate(msg.kind)) !== "send" || (await gate("plan_call")) !== "send") return this.none("what pings you");
-      const rows = (await this.table.select({ user_id: c.userId }, { order: "ring_at_ms", desc: true, limit: 20 })).map(callRowOf);
-      const blocked = blockedBy(rows, now, seed.tz);
-      if (blocked) return this.none(blocked);
-      const row: CallRow = {
-        id: randomUUID(), user_id: c.userId, source: seed.source, source_key: msg.key, origin: "server", parent_id: null, state: "ringing", why: null,
-        name: (await this.name(c.userId).catch(() => ASSISTANT_NAME)) || ASSISTANT_NAME, item: seed.item, seed,
-        line: String(msg.vars?.title ?? ""), more: String(msg.vars?.body ?? ""), opening: "", turns: [], tz_min: seed.tz,
-        ring_at_ms: now, ring_until_ms: now + RING_MS, next_ms: now + RING2_MS, rings: 1, rang: [], answered_ms: null, ended_ms: null,
-      };
-      const placed = await this.place(row);
-      if (placed === "failed") return this.none("not placed");
+      const r = await this.placeCall(c, seed, { key: msg.key, line: String(msg.vars?.title ?? ""), more: String(msg.vars?.body ?? ""), tokens, now });
+      if ("none" in r) return this.none(r.none);
       // Another server got there between the look above and this insert.
-      if (placed !== "placed") return this.again(placed.taken, tokens);
-      const r = await this.sendRing(c, row, tokens, 1, 40, now).catch(() => null);
-      if (!r?.ok.size) {
-        await this.table.update({ id: row.id, user_id: row.user_id, state: "ringing" }, { state: "ended", why: "not_sent", next_ms: null, ended_ms: now }).catch(() => 0);
-        return this.none("not sent");
-      }
-      // Ring 2 and the missed call follow only to the phones that took this one (rangAmong). A write that fails leaves it empty: then
-      // every phone that takes calls, as before.
-      await this.table.update({ id: row.id, user_id: row.user_id }, { rang: [...r.ok].map((t) => tokenHash(t)) }).catch(() => 0);
-      this.later(row);
-      this.log.info({}, "[calls] rang");
+      if ("taken" in r) return this.again(r.taken, tokens);
       // Only the phones that took the ring skip the push: one whose ticket failed still hears the reminder.
       return { rang: r.ok };
     } catch (err) {
@@ -275,6 +260,76 @@ export class PlanCalls {
       return null;
     }
   };
+
+  /**
+   * What the hook and ring() share once a call may ring: the limits (one at a time, 3 a day, 15 minutes apart), the row, ring 1, the
+   * phones that took it, ring 2 and the missed call on their timers. `none` says why not; `taken` is a call another server placed first.
+   */
+  private async placeCall(c: Candidate, seed: CallSeed, o: { key: string; line: string; more: string; tokens: Token[]; now: number }):
+    Promise<{ row: CallRow; ok: ReadonlySet<string> } | { taken: CallRow } | { none: string }> {
+    const now = o.now;
+    const rows = (await this.table.select({ user_id: c.userId }, { order: "ring_at_ms", desc: true, limit: 20 })).map(callRowOf);
+    const blocked = blockedBy(rows, now, seed.tz);
+    if (blocked) return { none: blocked };
+    const row: CallRow = {
+      id: randomUUID(), user_id: c.userId, source: seed.source, source_key: o.key, origin: "server", parent_id: null, state: "ringing", why: null,
+      name: (await this.name(c.userId).catch(() => ASSISTANT_NAME)) || ASSISTANT_NAME, item: seed.item, seed,
+      line: o.line, more: o.more, opening: "", turns: [], tz_min: seed.tz,
+      ring_at_ms: now, ring_until_ms: now + RING_MS, next_ms: now + RING2_MS, rings: 1, rang: [], answered_ms: null, ended_ms: null,
+    };
+    const placed = await this.place(row);
+    if (placed === "failed") return { none: "not_sent" };
+    if (placed !== "placed") return { taken: placed.taken };
+    const r = await this.sendRing(c, row, o.tokens, 1, 40, now).catch(() => null);
+    if (!r?.ok.size) {
+      await this.table.update({ id: row.id, user_id: row.user_id, state: "ringing" }, { state: "ended", why: "not_sent", next_ms: null, ended_ms: now }).catch(() => 0);
+      return { none: "not_sent" };
+    }
+    // Ring 2 and the missed call follow only to the phones that took this one (rangAmong). A write that fails leaves it empty: then
+    // every phone that takes calls, as before.
+    await this.table.update({ id: row.id, user_id: row.user_id }, { rang: [...r.ok].map((t) => tokenHash(t)) }).catch(() => 0);
+    this.later(row);
+    this.log.info({}, "[calls] rang");
+    return { row, ok: r.ok };
+  }
+
+  /**
+   * FOLLOW-THROUGH'S CALL STEP (planFollow.ts): the same checks and steps as the hook, without any push of its own. Calls switched off
+   * or the call flag off ("off"), no phone that takes calls ("no_phone"), a computer in use ("desk"), this climb called already
+   * ("called"), What pings you says no (Calls off, quiet hours: "quiet"), or the limits ("busy", "day_max", "too_soon"). Never throws:
+   * the ladder never assumes it rang.
+   */
+  async ring(userId: string, seed: Extract<CallSeed, { source: "follow" }>, o: { key: string; line: string; more: string; now?: number }): Promise<{ id: string } | { none: string }> {
+    try {
+      if (!callsOn()) return { none: "off" };
+      const engine = this.engine();
+      if (!engine) return { none: "off" };
+      const now = o.now ?? this.now();
+      const c = await engine.candidate(userId, now);
+      if (!c || !c.tokens.length) return { none: "no_phone" };
+      const k = knobsOf(engine.configFor(c, now));
+      if (!k.flag("push.plan_call.enabled", true)) return { none: "off" };
+      if (deskHere(userId, now)) return { none: "desk" };
+      const tokens = callTokens(c.tokens, k.flag<boolean>("push.plan_call.needTimeSensitive", false));
+      if (!tokens.length) return { none: "no_phone" };
+      if (await this.byKey(userId, o.key)) return { none: "called" };
+      if ((await engine.gateFor(c, "plan_call", now)) !== "send") return { none: "quiet" };
+      const r = await this.placeCall(c, seed, { key: o.key, line: o.line, more: o.more, tokens, now });
+      if ("none" in r) return { none: r.none };
+      if ("taken" in r) return { none: "called" };
+      return { id: r.row.id };
+    } catch (err) {
+      this.log.warn({ err: (err as Error)?.message }, "[calls] follow ring failed");
+      return { none: "not_sent" };
+    }
+  }
+
+  /** A followed item said done: its call still ringing ends now (no ring 2, no missed call). Anything else stays as it is. */
+  async closeFor(userId: string, sourceKey: string, now = this.now()): Promise<void> {
+    const had = await this.byKey(userId, sourceKey).catch(() => null);
+    if (!had || had.state !== "ringing") return;
+    await this.table.update({ id: had.id, user_id: userId, state: "ringing" }, { state: "ended", why: "done", next_ms: null, ended_ms: now }).catch(() => 0);
+  }
 
   /** The call this reminder (its push key) placed, if it placed one. */
   private async byKey(userId: string, sourceKey: string): Promise<CallRow | null> {
@@ -349,8 +404,9 @@ export class PlanCalls {
     return engine.ring(c, push, now);
   }
 
-  /** The reminder's own expiry (push.<kind>.ttlMin): a missed leave-by is no use an hour on; a bill's lasts the day. */
+  /** The reminder's own expiry (push.<kind>.ttlMin): a missed leave-by is no use an hour on; a bill's lasts the day; a follow's an hour. */
   private missedTtlSec(row: CallRow, k: ReturnType<typeof knobsOf>): number {
+    if (row.source === "follow") return Math.max(60, Math.round(k.flag("push.plan_follow.ttlMin", 60) * 60));
     const kind = row.source === "leave" ? "plan_leave" : "plan_due";
     return Math.max(60, Math.round(k.flag(`push.${kind}.ttlMin`, row.source === "leave" ? 20 : 8 * 60) * 60));
   }
@@ -482,7 +538,8 @@ export class PlanCalls {
     }
     if (row.state !== "answered") return { state: row.state };
     const ai = await this.consent(user.id).catch(() => false);
-    const talk = talkAsked === true && ai;
+    // A followed item's call never asks "Want me to do anything?": its Done, Later and Can't are on the screen.
+    const talk = talkAsked === true && ai && row.source !== "follow";
     fresh = fresh || row.opening === "" || (row.answered_ms !== null && now - row.answered_ms < FRESH_MS);
     let opening = row.opening;
     if (fresh) {

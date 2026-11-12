@@ -16,11 +16,13 @@ import { SAMPLE_BOTS } from "../../../src/experience/bots/fixtures.js";
 import type { FakeOpts } from "../../../src/experience/bots/fixtures.js";
 import { SCREENS } from "../../../src/experience/bots/ids.js";
 import { shellApi, UPI, ASK } from "./shell.js";
-import { YOU_API } from "./you.js";
+import { NOTIFY_FOLLOW, YOU_API } from "./you.js";
 import KEYBOT_API from "./keybot.json";
 import FIRSTRUN_API from "./firstrun.json";
 import CODE from "./code.json";
 import { CALL_API } from "./planCall.js";
+import { FOLLOW_API, TASK_ID } from "./planFollow.js";
+import { phoneApi } from "./followPhone.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -84,6 +86,8 @@ export const SAMPLES: Sample[] = [
   { id: S.youSpace, area: "you" },
   ...["about", "day", "people", "money", "timeline"].map((id) => ({ id: S.youSpaceSection, area: "you" as const, variant: id, params: { id } })),
   { id: S.notify, area: "you", board: "Notify", deskBoard: "DNotify" },
+  // What pings you with follow-through's Must not miss (and a real phone call set up, someone who may ring louder).
+  { id: S.notify, area: "you", variant: "follow", api: { "GET /v1/you/notify?tz=330": NOTIFY_FOLLOW } },
   { id: S.privacy, area: "you", board: "Privacy", deskBoard: "DPrivacy" },
   { id: S.deleteAccount, area: "you", board: "DeleteAcct", deskBoard: "DDeleteAcct" },
   { id: S.apps, area: "you", board: "Apps", deskBoard: "DApps" },
@@ -106,6 +110,16 @@ export const SAMPLES: Sample[] = [
   { id: S.planCall, area: "bots", variant: "callback", params: { call: "c3", state: "missed", button: "p_callback" }, api: CALL_API },
   { id: S.planCall, area: "bots", variant: "callback-ended", params: { call: "c4", state: "missed", button: "p_callback" }, api: CALL_API },
   { id: S.planCall, area: "bots", variant: "ended", params: { call: "c4" }, api: CALL_API },
+  // Follow-through (screens/bots/planFollow.ts; samples/planFollow.ts): the asker's view with every step, Mom holding Priya's pickup (the
+  // Allow card), the next person once told, done; who does an item; a to-do's details with Must not miss and Who.
+  { id: S.planFollow, area: "bots", variant: "asker", params: { follow: "f1" }, api: FOLLOW_API },
+  { id: S.planFollow, area: "bots", variant: "holder", params: { follow: "f2" }, api: FOLLOW_API },
+  { id: S.planFollow, area: "bots", variant: "backup", params: { follow: "f3" }, api: FOLLOW_API },
+  { id: S.planFollow, area: "bots", variant: "done", params: { follow: "f4" }, api: FOLLOW_API },
+  { id: S.planFollowPeople, area: "bots", params: { kind: "task", id: TASK_ID }, api: FOLLOW_API },
+  { id: S.planItem, area: "bots", variant: "follow", params: { kind: "task", id: TASK_ID }, api: FOLLOW_API },
+  // Follow-through's real phone call (screens/bots/followPhone.ts; samples/followPhone.ts): the person's own number in each state.
+  ...(["none", "pending", "verified", "stopped", "off"] as const).map((v) => ({ id: S.planPhone, area: "bots" as const, variant: v, api: phoneApi(v) })),
   { id: S.travel, area: "bots", board: "TravelBot", deskBoard: "DTravelBot" },
   { id: S.chat, area: "bots", board: "Chat", params: { slug: "gym-bot" } },
   { id: S.spaces, area: "bots", board: "Spaces", deskBoard: "DSpaces" },

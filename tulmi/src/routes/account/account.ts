@@ -4,6 +4,7 @@
 
 import type { FastifyRequest, FastifyInstance } from "fastify";
 import { deleteViewerData } from "../../artifacts/index.js";
+import { planFollows } from "../../botsBots/planFollow.js";
 import type { AppleSignIn } from "../../auth/appleSignIn.js";
 import { resolveUser, supabase } from "../../auth/supabase.js";
 import type { AgentOrchestrator } from "../../code/agent/orchestrator.js";
@@ -153,6 +154,9 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     }
 
     try { await deleteViewerData(admin, user.id); } catch (err) { req.log.error({ err }, "delete artifact_data"); }
+    // Plan Ease's follow-through (migration 0081): numbers other people kept for this person go (plan_numbers.member_id also cascades),
+    // and their name leaves other people's follows. Their own follows, steps and phone go with the account just below.
+    try { await planFollows().forget(user.id); } catch (err) { req.log.error({ err }, "forget follow person"); }
 
     // Deleting the auth user takes anything missed above with it (cascade).
     try {

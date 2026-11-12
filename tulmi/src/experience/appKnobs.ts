@@ -10,8 +10,8 @@ import type { BootstrapResponse } from "../../../shared/types/sdui.js";
 import { APP_KNOB_FLAGS, APP_KNOB_LABELS } from "./appKnobsData.js";
 import { KEYBOARD_KNOBS } from "./keyboardKnobsData.js";
 import { spacesOn } from "../botsBots/spacesSwitch.js";
-import { CALL_CATEGORIES, PLAN_CATEGORIES, PLAN_CHANNELS } from "../botsBots/planKinds.js";
-import { callsOn, planOn } from "../botsBots/planSwitch.js";
+import { CALL_CATEGORIES, FOLLOW_CATEGORIES, PLAN_CATEGORIES, PLAN_CHANNELS } from "../botsBots/planKinds.js";
+import { callsOn, followOn, planOn } from "../botsBots/planSwitch.js";
 
 /** The Home Screen's long-press actions, a list per platform (appKnobsData.ts). */
 const QUICK_ACTIONS = ["app.quickActions.android", "app.quickActions.ios"] as const;
@@ -39,7 +39,8 @@ function withPlanPush(flags: Record<string, unknown>): Record<string, unknown> {
   const out = { ...flags };
   const cats = Array.isArray(out["push.categories"]) ? (out["push.categories"] as Array<{ id?: unknown }>) : [];
   const haveCats = new Set(cats.map((c) => c?.id));
-  const ours = callsOn() ? [...PLAN_CATEGORIES, ...CALL_CATEGORIES] : PLAN_CATEGORIES;
+  // Follow-through's buttons (Done, Later, Can't...) only while PLAN_V2_FOLLOW is on; the call's only while calls ring.
+  const ours = [...PLAN_CATEGORIES, ...(followOn() ? FOLLOW_CATEGORIES : []), ...(callsOn() ? CALL_CATEGORIES : [])];
   out["push.categories"] = [...cats, ...ours.filter((c) => !haveCats.has(c.id)).map((c) => ({ id: c.id, actions: c.actions.map((a) => ({ ...a, ...(a.call ? { call: { ...a.call } } : {}) })) }))];
   const chans = Array.isArray(out["push.android.channels"]) ? (out["push.android.channels"] as Array<{ id?: unknown }>) : [];
   const haveChans = new Set(chans.map((c) => c?.id));

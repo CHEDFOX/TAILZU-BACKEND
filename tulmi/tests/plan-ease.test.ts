@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { Calendar, memoryCalendarRows } = await import("../src/calendar/index.js");
 const { safeTitle, noAmounts, looksHealth, lockSafe } = await import("../src/botsBots/planSafe.js");
-const { PLAN_PUSH_KINDS, PLAN_KIND_IDS, PLAN_CATEGORIES, PLAN_CHANNELS, planPushFlags } = await import("../src/botsBots/planKinds.js");
+const { PLAN_PUSH_KINDS, PLAN_KIND_IDS, PLAN_CATEGORIES, FOLLOW_CATEGORIES, PLAN_CHANNELS, planPushFlags } = await import("../src/botsBots/planKinds.js");
 const { EVENT_PUSH_KINDS, PUSH_DEFAULTS } = await import("../src/push/defaults.js");
 const { verdict } = await import("../src/you/push.js");
 const { DEFAULT_SETTINGS } = await import("../src/you/settings.js");
@@ -129,7 +129,8 @@ describe("the push kinds", () => {
       expect(PUSH_DEFAULTS.flags[`push.${k.kind}.ttlMin`]).toBe(k.ttlMin);
       expect(PUSH_DEFAULTS.labels[`push.${k.kind}.title`]).toBeTruthy();
       expect(PLAN_CHANNELS.map((c) => c.id)).toContain(k.channel);
-      if (k.category) expect(PLAN_CATEGORIES.map((c) => c.id)).toContain(k.category);
+      // Follow-through's buttons are their own list, registered only while PLAN_V2_FOLLOW is on (planKinds.ts FOLLOW_CATEGORIES).
+      if (k.category) expect([...PLAN_CATEGORIES, ...FOLLOW_CATEGORIES].map((c) => c.id)).toContain(k.category);
     }
     expect(planPushFlags()["push.plan_morning.interruptionLevel"]).toBe("passive");
   });

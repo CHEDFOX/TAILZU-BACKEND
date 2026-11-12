@@ -29,7 +29,7 @@ import { type AiConsent, AI_CONSENT_PATH } from "./firstRun/aiConsentCard.js";
 import { type DeleteData, goesAway, planWarning, type AccountData, deleteDesk } from "./you/deleteDesk.js";
 import {
   when2, type NotifyData, notifyState, alwaysOn, doneSeg, timeChip, summarySwitch, timePicker, summaryPreview, botSwitch, botSub,
-  quietSwitch, quietTimes, save, notifyDesk, callsSave, callsLine,
+  quietSwitch, quietTimes, save, notifyDesk, callsSave, callsLine, followRows, followFromRows,
 } from "./you/notifyDesk.js";
 import { type SettingsData, settingsCard } from "./you/settingsCard.js";
 import { glyph, G, couldNot, heading, columns, openUrl, toast, refresh, oops, dayMonth, exportAction, plural } from "./you/parts.js";
@@ -232,6 +232,17 @@ function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
       ]),
       timePicker("sum", "summaryAt", "Summary time changed"),
       when({ truthy: "summary" }, summaryPreview(ctx, d)),
+      // Must not miss (follow-through, botsBots/planFollow.ts): only while it is on here.
+      ...(d.follow ? [col([
+        sectionLabel("Must not miss"),
+        listCard(followRows(d).flatMap((r) => [
+          r.chips
+            ? col([col([text(r.label, { size: 15, lineHeight: 20 }), meta(r.sub, { size: 12 })], { gap: 2 }), r.chips], { gap: 10, paddingVertical: 14, paddingHorizontal: 16 })
+            : switchRow(r.label, r.path!, { sub: r.sub, ...(r.save ? { onChange: r.save } : {}) }),
+          ...(r.open ? [listRow({ label: r.openLabel ?? "Set up your number", onPress: r.open })] : []),
+        ])),
+        ...(followFromRows(d).length ? [listCard(followFromRows(d).map((p) => listRow({ label: p.name, right: quietButton("Remove", p.remove, { size: "md" }), chevron: false })), { title: "People who can ring you louder" })] : []),
+      ], { gap: 8 })] : []),
       col([
         sectionLabel("By bot"),
         listCard(ctx.live.bots.map((b) => { const sw = botSwitch(b.slug); return switchRow(b.name, sw.path, { left: botAvatar(b, 28), ...(botSub(b.slug) ? { sub: botSub(b.slug)! } : {}), onChange: sw.saveIt }); })),

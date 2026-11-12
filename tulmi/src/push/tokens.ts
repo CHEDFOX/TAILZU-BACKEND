@@ -28,9 +28,12 @@ import { z } from "zod";
  * engine reads (push/engine.ts), so a list a newer app sends cannot grow the row. "PushTimeSensitive": the iOS Time Sensitive
  * entitlement is signed in, so a leave-by or a bill due today may break through Focus. "BotCall": the app's JS takes a call
  * (botsBots/planCall.ts): it handles the call's pushes, draws the call screen and clears a stale ring. "BotRingtone": the iPhone has the
- * ringtone in its app group's Library/Sounds, so a ring may name it (a new tone comes with a new file name and a new cap).
+ * ringtone in its app group's Library/Sounds, so a ring may name it (a new tone comes with a new file name and a new cap). "PushTapSeen":
+ * the app's JS tells two pushes that share one notification id apart (categoriesCore.ts tapSeenKey, by push id), so a push may carry a
+ * collapse id (a follow's climb replaces itself in the tray); an older JS remembers a tap by notification id alone and would drop the
+ * second push's press, so it never gets one.
  */
-export const PUSH_CAPS = ["PushTimeSensitive", "BotCall", "BotRingtone"] as const;
+export const PUSH_CAPS = ["PushTimeSensitive", "BotCall", "BotRingtone", "PushTapSeen"] as const;
 export type PushCap = (typeof PUSH_CAPS)[number];
 export const pushCapsOf = (v: unknown): PushCap[] =>
   Array.isArray(v) ? PUSH_CAPS.filter((c) => v.includes(c)) : [];

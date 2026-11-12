@@ -22,6 +22,8 @@ import { screen, type BotsScreen } from "../../registry.js";
 import { aiConsentCard } from "../firstRun/aiConsentCard.js";
 import { A, clearState, field, inputBox, isDesk, lookOf, refresh, setState, toast } from "./parts.js";
 import { lookOf as personLookOf, type PersonLook } from "../../../../botsBots/personLook.js";
+import type { ItemFollow } from "../../../../botsBots/planFollow.js";
+import { followSection, followState } from "./planFollow.js";
 
 const ACT = "/v1/widgets/act";
 const OCHRE = lookOf("plan").color;
@@ -281,11 +283,11 @@ const rupeesOf = (paise: number): string => {
 };
 
 /** A bill: its amount and payee (inside the app), when it's due, and Pay (only with a safe link), Paid, Take it out. */
-export function duePage(ctx: BotsCtx, t: DueView) {
+export function duePage(ctx: BotsCtx, t: DueView, follow?: ItemFollow) {
   const doneBack = (m: string): ActionRef => seq(toast(m), back());
   const title = t.amountPaise ? `${t.title} ${rupeesOf(t.amountPaise)}` : t.title;
   return page(ctx, {
-    back: true, title: t.title, nav: "plan", maxWidth: 560,
+    back: true, title: t.title, nav: "plan", maxWidth: 560, ...(t.done ? {} : { state: followState(follow) }),
     body: [
       text(t.done ? `${title} · paid` : title, { size: 20, weight: 600, lineHeight: 26 }),
       col([
@@ -294,6 +296,8 @@ export function duePage(ctx: BotsCtx, t: DueView) {
         ...(t.from ? [text(`From the ${t.from}`, { size: 15, lineHeight: 21, color: C.meta })] : [text("Added by you", { size: 15, lineHeight: 21, color: C.meta })]),
       ], { gap: 6, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
       ...(!t.payLink && !t.done ? [notice("Pay it from your bank or UPI app.")] : []),
+      // Follow-through: Must not miss, who pays it (anyone on it who says paid stops it for everyone), its open follow.
+      ...(t.done ? [] : followSection("task", t.id, follow)),
       ...captureFoot(ctx, t.captureId, t.from),
     ],
     footer: [row([

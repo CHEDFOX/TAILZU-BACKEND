@@ -23,6 +23,8 @@ off puts that step back as it was, and nothing it kept is deleted.
 | `PLAN_V2_CAPTURE` | 3 | What's shared, dropped or pasted becomes one card. Bills due with Paid, and Pay only with a safe link. Needs migration 0072. | The share screen's bot picker as before, and a bill in the box is a plain to-do. |
 | `PLAN_V2_APP` | app release | Only for a binary that says it can (section 7): Time Sensitive leave-bys and bills due today, widget steps, desktop notices and "add this". Needs migration 0075 for Time Sensitive. | Every build gets what an older one does. |
 | `BOT_CALLS` | calls | "X0 is calling" (section 8): a leave-by or a bill due today rings a phone whose JS takes calls, instead of the push. Needs migration 0079 and `PLAN_V2_APP`. | Every push goes as before; calls already placed still finish. |
+| `PLAN_V2_FOLLOW` | follow-through | Must-not-miss items, and items with someone else on them, are followed until someone says done (section 9). Only people the person is connected with in X0 can be on an item. Needs migration 0081. | Every reminder goes exactly as before; follows already open stop where they are. |
+| `CHANNEL_PHONE_CALLS` (off) | follow-through | A real phone call as a must-not-miss item's loud step, only to someone who turned it on for their own proved number (section 9). Stays off unless every Plivo key and `CONNECTOR_TOKEN_KEY` are set and the TRAI declaration is filed. | The phone step passes quietly; the switch in What pings you is hidden. |
 
 ```bash
 ./deploy/set-env.sh PLAN_V2_NOTES=false && ./deploy/ship.sh   # notes off
@@ -339,3 +341,112 @@ made).
 missed push already sent can't be recalled when a late Answer arrives (the phone clears it on tap if it is shown). An Answer or Not now in
 the milliseconds after ring 2 is claimed can still be followed by ring 2 (the phone clears a stale ring later). Not now pressed offline is
 sent when the app next comes to the front. The voice made ahead lives in one server's memory; a GET that reaches another synthesises again.
+
+## 9. Follow-through (`PLAN_V2_FOLLOW`)
+
+"Every item becomes a job that is not finished until someone says it's done." The ladder is `botsBots/planFollow.ts` (words and rules:
+`planFollowWords.ts`; who can be on an item: `planFollowPeople.ts`; tables: `planFollowStore.ts`, migration 0081; numbers and caps:
+`planReach.ts`; the phone seam: `planFollowChannels.ts`), its routes `routes/bots/planFollows.ts`, its screens
+`experience/bots/screens/bots/planFollow.ts`. The build spec, with the owner's changes at its top, is the follow-through SPEC.md.
+
+**The owner's example, minute by minute** (Mom's medicine at 9 pm, Mom then Dad on it, Spaces on, Mom said Allow once):
+
+- 9:00 Mom's phone: "A reminder from Rahul · 9 pm" (her lock screen never says "medicine"), [Done] [Later] [Can't].
+- 9:05 no Done: the same, louder ("Not done yet · 9 pm", time-sensitive where the iPhone allows).
+- 9:10 still nothing: "X0 is calling" on Mom's phone (planCall's own rules: never in quiet hours, 3 a day, 15 minutes apart).
+- 9:15 a real phone call to Mom's own number, only if she turned that on herself and the phone channel is set up (press 1, 2 or 3).
+- 9:20 Rahul: "Mom hasn't said done" · "The 9 pm reminder", with [Call] (when he keeps Mom's number for his Call button) or [Look], and
+  [Done]. On the follow page: Call Mom, Message Mom (their chat in X0), I'll do it.
+
+**Who gets a follow.** An occurrence that is must not miss (the person said so, or the rules: medicine at a time, a pickup at a time, a bill
+due today, a flight or train), or that has someone other than the asker on it. A normal item that is only the person's own keeps today's
+reminder exactly. Keep at it off (What pings you) makes the person's own must items behave as today too. A wait never has one.
+
+**Who can be on an item (the owner's change).** The asker, and only people the asker is connected with in X0, by exactly the rules
+messaging uses: `threads.ts contacts` (a space they share in which the asker may message, no block either way, Spaces on). Friends and
+family are spaces; a two-person space counts. There is no other people list and no other invite path: a name or someone not among
+them is not saved, X0 says "Mom isn't in your X0 people yet. Invite them to a space, then add them here." and offers the space invite the
+Spaces screens use (the asker's own space's invite, else Spaces); the item is saved with the people who count. With Spaces off, only the
+asker. Everyone on an item has X0: nothing is ever sent to a number or an address of someone without it.
+
+**Checked again before every reach.** Before each push, louder push, X0 call, real call and tell to someone else, the same rules are read
+again. Someone who left the shared space, has a block either way, or whom the asker may no longer message, or with Spaces off, is
+skipped (no push, no call), the job goes to the next person on it, and the asker is told once: in their own push when it comes back to
+them ("Dad isn't in your X0 people · 9 pm"), else "Dad isn't in your X0 people · Mom has it now", or with nobody left, [I'll do it].
+Answers from someone no longer connected count for nothing, and their cards and the follow page are gone for them. A ringing "X0 is
+calling" ends for someone who said Can't, was skipped or was taken off the item. **A read of those rules that fails is not a no**: nobody
+is skipped, passed on or told about for it; the step waits a minute and tries again, an answer still counts, and saving who does it says
+"Couldn't check your X0 people just now. Try again." (nothing is dropped from the item).
+
+**What the other person gets respects their own settings.** Their quiet hours (the push engine's verdict: a push in quiet hours goes
+without a sound, X0 is calling never rings); their daily limit for louder pings and calls (What pings you: 3, 6 or 10); a muted chat
+with the asker (nothing from that asker's items reaches them, not a push and not a card on their Plan or widget, and the asker hears "X0
+couldn't reach Mom"); their own yes before anything
+louder than a push from someone else's item (Allow on the follow page, kept in `notify.followFrom`, removable in What pings you); and
+never 10 pm to 7 am for someone else's item when they set no quiet hours.
+
+**The ladder and its timings** (push-surface flags `push.follow.*`, read once per sweep): normal = the push, then nothing (missed after 6
+hours, quietly). Must = push at the time, louder +5, X0 is calling +10, a real call +15 (only for someone who turned it on), tell +20. A
+bill climbs from its 6 pm: its 10 am push and its 6 pm push are the bill's own (Pay, Paid), then X0 is calling at 6:10 pm and the tell at
+6:20 pm. The push always goes first (after downtime it goes late and the climb starts again from then); a late sweep takes only the latest
+due step. Later: must +15 minutes, normal +1 hour (9 am tomorrow after 8 pm), or In 15 min / In 1 hour / This evening / Tomorrow morning;
+three Laters, then Done or Can't. Can't hands it to the next person at once (the asker hears quietly); from the last person, the asker
+hears "Nobody can do it" with I'll do it. A must item that is only the asker's has nobody to tell at +20: that step reads "skipped:
+nobody else to tell" and the Plan line stays "Must not miss · not done yet" (never "told the family"). The asker's own leave-by counts as
+an event's push only when the asker holds it; someone else on it still gets theirs.
+
+**Changing who does it while a follow is open** rebuilds the order from the new list: someone taken off never gets the job or the tell,
+someone added joins the order, the holder taken off passes it to the first who can (with nobody left, the asker), and "just me" makes it
+the asker's. **A Done after the follow closed** (missed at 3 am, or dropped) still counts while the item itself is open: the item is
+ticked or the bill marked paid. **Un-ticking on purpose** on the Plan after someone said done is kept as the asker's answer, so the
+hourly repair of a close cut short never ticks it again (or makes next month's bill again).
+
+**Rules that always hold.**
+
+| Rule | Where |
+| --- | --- |
+| No calls in quiet hours | X0 is calling asks the push gate (`plan_call`); the real call's `canCall` says "quiet"; someone else's item also never 10 pm to 7 am for a person with no quiet hours |
+| A daily limit on rings | `plan_reach_caps`: louder pings, X0 calls and real calls per person under their ringMax; real calls also under `push.follow.phoneDayMax`, `FOLLOW_CALL_ASKER_DAY_MAX` and `FOLLOW_CALL_DAY_MAX`; a cap is given back when nothing went |
+| Never the same reminder twice | one step row per (follow, climb, rung, person), claimed before anything is sent; push_log keys; `pf:<id>:<n>` items and the 60-second same-answer guard |
+| Nothing paid or sent without your OK | Done on a bill records it paid (no payment anywhere); nobody gets anything without being in your X0 people; louder steps on someone else's item need their Allow; a real call needs their own switch |
+| A bill paid by anyone stops it for everyone | one bill row and one follow per due day; Done from anyone on it closes it, ticks the bill once, and next month's bill carries the same people |
+| Rules decide, not AI | importance, the ladder, every word: fixed rules and templates. Messy input still goes through the box and capture as before |
+
+**Replies, from anywhere, to one door** (`PlanFollows.reply`): the app's buttons (push, Plan card, follow page, call screen) through the
+act door on `pf:<followId>:<n>`, and the real call's keypad (1 done, 2 later, 3 can't). Every answer is kept on the follow with how it came.
+
+**Who sees what.** The asker: the item page's Must not miss, Who and the open follow's line; the follow page with every step (sent,
+opened, skipped and why) and every answer; a Needs-you card once told or when nobody can; Activity rows (someone else said done, can't,
+a must item missed). The holder: their pushes, a Needs-you card, the follow page (what, when, who asked, when the asker hears). The next
+person: the tell when the asker holds it, and the follow page. Lock screens and pushes to someone else never carry an amount, a place, or
+a health or medicine title (`followTitle`, `forOthers`, `lockSafe`). The Needs-you card keeps its words in the app; on the widget, the
+Lock Screen and a Live Activity it says only what the push says (its `outside` words: "A reminder from Rahul", or "Appointment" for the
+person's own medicine). A follow's pushes share one collapse id (one line in the tray) only on phones whose app says `PushTapSeen` (the
+JS that tells same-id pushes apart); older phones get each push on its own line.
+
+**The real phone call.** Off by default (`CHANNEL_PHONE_CALLS`), for X0 users only, never someone without the app. The person turns it on
+in What pings you ("X0 may call my phone if I miss something important") for their own number, proved theirs by a call from it that types
+the code their own setup screen shows (one call proves one account; one account per number; 9 is kept by the number: `plan_phones`,
+`plan_phone_stops`, Backend B's `followPhone.ts` and `docs/follow-channels.md`). At most 3 real calls a day to one number, whichever
+accounts it is on. The switch shows only while the channel is set up.
+
+**Push kinds and buttons.** plan_follow, plan_follow_loud, plan_follow_tell, plan_follow_none, plan_follow_passed, plan_follow_done,
+space_follow, space_follow_loud, space_follow_tell, space_follow_done; buttons x0_follow (Done, Later, Can't), x0_follow_last (Done,
+Can't), x0_follow_tell (Call, Done), x0_follow_check (Look, Done), x0_follow_none (I'll do it), registered only while the switch is on.
+
+**Migration 0081** adds `importance` and `people` to `calendar_tasks` and `calendar_events` (written only when set, so a server ahead of
+its migration still writes rows), and `plan_follows`, `plan_follow_steps`, `plan_reach_caps`, `plan_numbers` (gone with either account),
+`plan_phones` (with `pending_code`, one account per proved number), `plan_phone_stops`; 'follow' as a `plan_calls` source. It can be run
+again. Deleting an account also takes the numbers others kept for that person and their name from other people's follows
+(`PlanFollows.forget`, from `routes/account/account.ts`).
+
+**Not in v1.** Waits keep their own check-backs. The box reading "remind Mom to ..." (Who is set on the item page). Messages written by
+AI (fixed templates only). Two people who each captured the same bill are not matched. Nobody without X0, by any channel (the owner's
+change: no reply page, no WhatsApp).
+
+**Known limits.** planCall's 3 calls a day are shared with leave-bys and bills; a call quietly not placed (busy, too soon) is a skipped
+step and the ladder goes on. Quiet hours are off by default for app users, so a person's own must items can ring at night unless they set
+them (someone else's never 10 pm to 7 am). iOS can't prove a push arrived: no answer is taken as maybe not seen and the next step comes on
+time. A phone registers the new buttons at its next start; until then a press opens the follow page, where the same buttons are. A
+followed bill rings at 6:10 pm instead of 10 am. Someone's louder steps wait for their own Allow. A restart can lose the one rung that was
+being sent (never sent twice, by design). "Told once" is once per occurrence: a daily item tells the asker again the next day.

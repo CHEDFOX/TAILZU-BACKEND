@@ -986,7 +986,11 @@ export class PlanCapture {
     const open = (await this.d.calendar.list(userId, { from: next, to: next, tz }).catch(() => null))?.tasks ?? [];
     const there = open.find((x) => x.kind === "due" && x.title === t.title);
     if (paid && !there) {
-      await this.d.calendar.addTask(userId, { title: t.title, day: next, time: "", tz }, { kind: "me" }, null, { kind: "due", repeat: "monthly", payee: t.payee ?? null, pay_link: t.payLink ?? null });
+      // Next month's bill carries who does it and how important it is (follow-through, 0081), only when they are set.
+      await this.d.calendar.addTask(userId, { title: t.title, day: next, time: "", tz }, { kind: "me" }, null, {
+        kind: "due", repeat: "monthly", payee: t.payee ?? null, pay_link: t.payLink ?? null,
+        ...(t.importance ? { importance: t.importance } : {}), ...(t.people?.length ? { people: t.people } : {}),
+      });
     } else if (!paid && there && !there.amountPaise && !there.done) {
       await this.d.calendar.removeTask(userId, there.id).catch(() => undefined);
     }

@@ -33,13 +33,15 @@ import { changesSince, eveningMinute, eveningNote, morningAt, morningNote, OPENS
 import { planPrefs, type PlanPrefs, type PlanPrefsRow } from "./planPrefs.js";
 import { dayItems, rowOf, type DayItem, type RowNote, type RowView } from "./planRows.js";
 import { looksHealth, lockSafe, safeTitle } from "./planSafe.js";
-import { planOn } from "./planSwitch.js";
+import { followOn, planOn } from "./planSwitch.js";
 import type { PlanTravelling } from "./planTravel.js";
 import type { CallSeed } from "./planCallWords.js";
 import { table, type Table } from "./rows.js";
 import { PLAN_IN_ACTS } from "./planInActs.js";
 import { WAIT_ACTS } from "./planWaits.js";
 import { ASK_ACTS } from "./planAsks.js";
+import { FOLLOW_ACTS, followLinesOf, planFollows, type ItemFollow } from "./planFollow.js";
+import type { FollowCandidate } from "../calendar/index.js";
 import { beforeNote, sourceEvening, sourceItems, sourceMore, sourceMorning, sourceSeen, type SourceWindow } from "./planSources.js";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -62,6 +64,8 @@ export interface ItemDetails {
   leave?: string;
   /** The newest note someone in a space left on it, with their tiny bot (inside the app only). */
   note?: RowNote;
+  /** Follow-through (PLAN_V2_FOLLOW, planFollow.ts): how important it is, who does it, and its open follow's line. */
+  follow?: ItemFollow;
 }
 
 /**
@@ -148,8 +152,9 @@ export const PLAN_ACTS: Record<string, Record<string, PlanAct>> = {
 };
 // Steps 2 and 3's buttons (planInActs.ts): a bill's Paid, a capture's Add all and Undo, the work calendar offer's No thanks.
 for (const [kind, acts] of Object.entries(PLAN_IN_ACTS)) PLAN_ACTS[kind] = { ...(PLAN_ACTS[kind] ?? {}), ...acts };
-// Steps 4 and 5's: a wait's Sorted, Send, Yes and No (planWaits.ts); a family ask's Ask, I'll do it, I'm in, Can't do it (planAsks.ts).
-for (const [kind, acts] of Object.entries({ pt: WAIT_ACTS, stask: ASK_ACTS })) PLAN_ACTS[kind] = { ...(PLAN_ACTS[kind] ?? {}), ...acts };
+// Steps 4, 5 and 6's: a wait's Sorted, Send, Yes and No (planWaits.ts); a family ask's Ask, I'll do it, I'm in, Can't do it (planAsks.ts);
+// a followed item's Done, Later, Can't, I'll do it, Undone, Allow and Not now (planFollow.ts, pf:<followId>:<n>).
+for (const [kind, acts] of Object.entries({ pt: WAIT_ACTS, stask: ASK_ACTS, pf: FOLLOW_ACTS })) PLAN_ACTS[kind] = { ...(PLAN_ACTS[kind] ?? {}), ...acts };
 
 export class PlanEase {
   readonly calendar: Calendar;
@@ -159,6 +164,8 @@ export class PlanEase {
   private readonly now: () => number;
   private send: PlanSend | null;
   private hinglish: ((userId: string) => Promise<boolean>) | null;
+  /** Follow-through's arming (planFollow.ts arm), wired at boot: asked by the calendar before a reminder goes. */
+  private followArm: ((userId: string, c: FollowCandidate) => Promise<boolean>) | null = null;
   /** People whose row this server has seen to (their offset kept, a note time set), so it isn't read on every request. */
   private readonly ensured = new Set<string>();
 
@@ -176,9 +183,10 @@ export class PlanEase {
   get answers(): Table<PlanSkipRow> { return this.skips; }
 
   /** The push engine's notify (wired at boot: routes/bots/botsBots.ts), and who says the app's language. */
-  wire(o: { send?: PlanSend | null; hinglish?: ((userId: string) => Promise<boolean>) | null }): void {
+  wire(o: { send?: PlanSend | null; hinglish?: ((userId: string) => Promise<boolean>) | null; follow?: ((userId: string, c: FollowCandidate) => Promise<boolean>) | null }): void {
     if (o.send !== undefined) this.send = o.send;
     if (o.hinglish !== undefined) this.hinglish = o.hinglish;
+    if (o.follow !== undefined) this.followArm = o.follow;
   }
 
   /**
@@ -205,6 +213,8 @@ export class PlanEase {
       await this.prefs.patch(userId, { sent: { day, n: n + 1 } });
       return true;
     },
+    /** Follow-through: this occurrence is followed (planFollow.ts), so the calendar's own push is not sent. */
+    follow: async (userId: string, c: FollowCandidate): Promise<boolean> => (this.followArm ? this.followArm(userId, c) : false),
   };
 
   // ------------------------------------------------------------------ the person's days
@@ -289,7 +299,7 @@ export class PlanEase {
     const l = await this.load(userId, tz);
     const { cards, ctx } = await this.cards(userId, l, tz);
     return {
-      ...planPage({ now: this.now(), tz, today: l.today, tomorrow: l.tomorrow, items: l.items, leaves: l.leaves, clashes: this.clashLines(ctx), needs: cards[0] ?? null, notes: notesOf(l.more) }),
+      ...planPage({ now: this.now(), tz, today: l.today, tomorrow: l.tomorrow, items: l.items, leaves: l.leaves, clashes: this.clashLines(ctx), needs: cards[0] ?? null, notes: notesOf(l.more), follow: followLinesOf(l.more) }),
       travel: { on: !!this.travel?.on },
     };
   }
@@ -311,6 +321,10 @@ export class PlanEase {
     if (leave) out.leave = `leave by ${clockOf(leave.leaveBy, tz)}, ${leave.minutes} min ${leave.mode === "walk" ? "walk" : "drive"}`;
     const note = notesOf(l.more).get(`${kind === "event" ? "e" : "t"}:${id}`);
     if (note) out.note = note;
+    if (followOn()) {
+      const follow = await planFollows().itemFollow(userId, kind, id).catch(() => null);
+      if (follow) out.follow = follow;
+    }
     if (it && kind === "event") {
       const ctx = this.needsCtx({ tz, today: l.today, tomorrow: l.tomorrow, items: l.items, skipped: new Map(), leaves: l.leaves, row: l.row, more: l.more });
       out.moves = freeTimes(ctx, it).map((at) => {
@@ -705,18 +719,19 @@ export class PlanEase {
  */
 const noteCard = (c: NeedsCard): boolean => !!c.item && c.buttons.length > 0 && !c.inApp && (!!c.category || c.type === "move");
 
-/** The card the widget asks: its buttons that answer in place (one that opens a page stays in the app). */
 /**
  * The card the widget asks, with the buttons that answer there (one that opens a page, like a capture's Look, is left in the app). A
  * card whose answer needs the app (its `outside` words: Send opens WhatsApp, "No" opens it with "are you coming?") is not half
- * answerable there: it goes open-only, in those words ("Still waiting on Rahul"), and a tap opens X0 Bot where both buttons are.
+ * answerable there: it goes open-only, in those words ("Still waiting on Rahul"), and a tap opens X0 Bot where both buttons are. A card
+ * with `outside` words and buttons that answer in place keeps its buttons but says only those words (a follow's card: "A reminder from
+ * Rahul", never the asker's title).
  */
 function widgetCard(cards: NeedsCard[]): NeedsCard | null {
   for (const c of cards) {
     if (!c.item || c.inApp || !c.buttons.length) continue;
     if (c.outside !== undefined && c.buttons.some((b) => b.open)) return { ...c, question: c.outside, buttons: [], openOnly: true };
     const buttons = c.buttons.filter((b) => !b.open);
-    if (buttons.length) return { ...c, buttons };
+    if (buttons.length) return { ...c, ...(c.outside !== undefined ? { question: c.outside } : {}), buttons };
   }
   return null;
 }

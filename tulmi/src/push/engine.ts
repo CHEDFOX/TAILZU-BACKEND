@@ -39,6 +39,8 @@ type Deliverable = Pick<Extract<Decision, { sendAt: number }>, "sendAt" | "title
   data?: Record<string, string>;
   /** This one push's buttons, when not its kind's (an evening note that carries a question has that question's). */
   category?: string;
+  /** Pushes that share it replace one another in the tray (a follow's climb: botsBots/planFollow.ts). */
+  collapseId?: string;
 };
 
 /**
@@ -50,10 +52,16 @@ export type PushGate = (p: { userId: string; kind: string; data?: Record<string,
 let pushGate: PushGate | null = null;
 export function setPushGate(g: PushGate | null): void { pushGate = g; }
 
-/** Who hears that a push of a kind was opened (markOpened). One listener; null takes it away. */
-export type PushOpenHook = (userId: string, kind: string) => void;
+/** Who hears that a push of a kind was opened (markOpened), with the push's id as the phone gave it back. One slot; null takes it away. */
+export type PushOpenHook = (userId: string, kind: string, pushId: string) => void;
 let openHook: PushOpenHook | null = null;
 export function setPushOpenHook(fn: PushOpenHook | null): void { openHook = fn; }
+/** More listeners beside the slot (follow-through marks a step opened: botsBots/planFollow.ts). Returns the way to take it away. */
+const openHooks = new Set<PushOpenHook>();
+export function addPushOpenHook(fn: PushOpenHook): () => void {
+  openHooks.add(fn);
+  return () => { openHooks.delete(fn); };
+}
 
 /**
  * THE CALL (botsBots/planCall.ts): asked before a leave-by or a bill due today is sent; the tokens it rang get no push. `gate` is the
@@ -95,6 +103,8 @@ export interface TickReport {
 const priorityOf = (v: unknown): PushMessage["priority"] => (v === "high" || v === "normal" ? v : "default");
 /** The token's binary has the Time Sensitive entitlement (its caps at registration, push/tokens.ts). */
 const TIME_SENSITIVE_CAP = "PushTimeSensitive";
+/** The token's JS tells pushes that share a notification id apart by push id (push/tokens.ts): only it gets a collapse id. */
+const TAP_SEEN_CAP = "PushTapSeen";
 const interruption = (v: unknown): PushMessage["interruptionLevel"] | undefined => (v === "passive" || v === "active" || v === "time-sensitive" ? v : undefined);
 
 export class PushEngine {
@@ -299,9 +309,9 @@ export class PushEngine {
    */
   async notify(
     userId: string,
-    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number>; data?: Record<string, string>; category?: string; call?: CallSeed },
+    msg: { kind: EventPushKind; key: string; vars?: Record<string, string | number>; data?: Record<string, string>; category?: string; call?: CallSeed; collapseId?: string },
     now = Date.now(),
-  ): Promise<{ sent: boolean; dropped: number } | null> {
+  ): Promise<{ sent: boolean; dropped: number; id?: string } | null> {
     // Spaces switched off (SPACES_ENABLED=false): none of its pushes goes, whoever asks for one (botsBots/spacesSwitch.ts).
     if (isSpacePush(msg.kind) && !spacesOn()) return null;
     // No phone: still Plan Ease's notice on a computer in use (live/notices.ts), when the person has one.
@@ -334,9 +344,15 @@ export class PushEngine {
       ttlSec: Math.max(60, Math.round(k.flag(`push.${msg.kind}.ttlMin`, k.flag("push.smart.ttlMin", 180)) * 60)),
       ...(msg.data ? { data: msg.data } : {}),
       ...(msg.category !== undefined ? { category: msg.category } : {}),
+      ...(msg.collapseId ? { collapseId: msg.collapseId } : {}),
     };
     const res = await this.deliver(c, d, payload, now);
-    return res ? { sent: res.sent, dropped: res.dropped } : null;
+    return res ? { sent: res.sent, dropped: res.dropped, id: res.id } : null;
+  }
+
+  /** The person's own say for a push of `kind` now (you/push.ts verdict): "send", "silent" or "drop". planCall.ts ring() asks it. */
+  public gateFor(c: Candidate, kind: string, now: number): Promise<PushVerdict> {
+    return this.verdictOf(c, kind, undefined, now);
   }
 
   /** Plan Ease's push goes to a computer of theirs too: one in use that shows notices (the app release's switch, PLAN_V2_APP). */
@@ -407,6 +423,9 @@ export class PushEngine {
       // params, so pushId comes back to us with the tap (see markOpened).
       data: { ...d.data, ...(item ? { item } : {}), screenId: d.screenId, pushId: id, kind: d.kind },
       ...(categoryId ? { categoryId } : {}),
+      // A collapse id becomes the iOS notification id: only a phone whose JS keys its handled taps by push id too gets one (an older JS
+      // would take the second push of a follow for one it already handled and drop its press).
+      ...(d.collapseId && t.caps?.includes(TAP_SEEN_CAP) ? { collapseId: d.collapseId, tag: d.collapseId } : {}),
     }));
     let tickets: Ticket[];
     try {
@@ -494,7 +513,9 @@ export class PushEngine {
    */
   markOpened(userId: string, pushId: string, kind?: string): void {
     void this.store.markOpened(userId, pushId, Date.now()).catch(() => { /* a stat */ });
-    if (kind && openHook) { try { openHook(userId, kind); } catch { /* a stat */ } }
+    if (!kind) return;
+    if (openHook) { try { openHook(userId, kind, pushId); } catch { /* a stat */ } }
+    for (const fn of openHooks) { try { fn(userId, kind, pushId); } catch { /* a stat */ } }
   }
 
   /** Sent, opened and failed per reason, over the last `days`. Numbers only. */

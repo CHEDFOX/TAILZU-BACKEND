@@ -63,6 +63,8 @@ import { registerWidgetRoutes } from "./widgets.js";
 import { registerPlanInRoutes } from "./planIn.js";
 import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
 import { registerPlanCallRoutes } from "./planCalls.js";
+import { registerPlanFollowRoutes } from "./planFollows.js";
+import { registerFollowChannelRoutes } from "./followChannels.js";
 import { planOn } from "../../botsBots/planSwitch.js";
 import { pushEngine } from "../../push/index.js";
 import { setPushOpenHook } from "../../push/engine.js";
@@ -326,6 +328,10 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   registerPlanPeopleRoutes(app, deps, { spaces: spacesArea, ease: parts.ease });
   // "X0 is calling" (botsBots/planCall.ts): a leave-by or a bill due today rings a phone that takes calls; the call's doors and sweep.
   registerPlanCallRoutes(app, deps, { chat: parts.chat ?? null, guard: guard() });
+  // Follow-through (botsBots/planFollow.ts): must-not-miss items and items with people on them, followed until someone says done. Then
+  // its real phone call (botsBots/followPhone.ts, off by default): the person's own number, and Plivo's callbacks.
+  registerPlanFollowRoutes(app, deps, { spaces: spacesArea, ease: parts.ease });
+  registerFollowChannelRoutes(app, deps);
 
   // ------------------------------------------------------------------ the travel bot's trip
 

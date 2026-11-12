@@ -58,7 +58,8 @@ import { digestFor } from "../../widgets/digest.js";
 import { widgetsConfig, type WidgetsConfigFor } from "../../widgets/config.js";
 import { planEase } from "../../botsBots/planEase.js";
 import { planCalls } from "../../botsBots/planCall.js";
-import { planOn } from "../../botsBots/planSwitch.js";
+import { planFollows } from "../../botsBots/planFollow.js";
+import { followOn, planOn } from "../../botsBots/planSwitch.js";
 import { lockSafe } from "../../botsBots/planSafe.js";
 import { glanceChanges, glanceSteps, glanceV2Of, type GlanceInput } from "../../widgets/glance.js";
 import { emptyGlanceState, glanceStore, withGlance, type GlanceStore } from "../../widgets/glanceStore.js";
@@ -122,14 +123,16 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
   const feedFor = async (user: AuthedUser, tz: number, days = 7): Promise<{ rows: FeedRow[]; voiceRows: Array<{ at: number; words: number; app?: string }> }> => {
     const t = now();
     const since = dayStartOf(t, tz) - (days - 1) * 86_400_000;
-    const [jobs, tasks, evs, projects, voiceRows, calls] = await Promise.all([
+    const [jobs, tasks, evs, projects, voiceRows, calls, follows] = await Promise.all([
       readJobs(deps, user.id), readTasks(deps, user.id), events().list(user.id, since).catch(() => []), readProjects(deps, user.id),
       voice(user, since).catch(() => []),
       // Plan Ease's calls nobody answered (botsBots/planCall.ts): "Missed call from X0". A missing table (before 0078) is none.
       planCalls().missedSince(user.id, since).catch(() => []),
+      // Followed items (botsBots/planFollow.ts): someone else said done, someone can't, a must-not-miss one nobody did. None before 0081.
+      followOn() ? planFollows().activitySince(user.id, since).catch(() => []) : Promise.resolve([]),
     ]);
     const rows = feedOf({
-      now: t, tzOffsetMinutes: tz, days, jobs: jobs.map(feedJob), tasks, events: evs, words: wordsByDay(voiceRows, tz, appName), calls,
+      now: t, tzOffsetMinutes: tz, days, jobs: jobs.map(feedJob), tasks, events: evs, words: wordsByDay(voiceRows, tz, appName), calls, follows,
       projects: Object.fromEntries(projects.map((p) => [p.id, p.name])),
     });
     return { rows, voiceRows };

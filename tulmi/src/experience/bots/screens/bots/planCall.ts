@@ -75,6 +75,21 @@ function itemActions(ctx: BotsCtx, v: CallView, hangup: boolean): Node[] {
       ...(c.eventId ? [secondaryButton("Move", leaving(go(SCREENS.planItem, { kind: "event", id: c.eventId, ...(day ? { day } : {}) })), md)] : []),
     ];
   }
+  if (v.source === "follow") {
+    // A followed item (follow-through): Done, Later, Can't, answered through the act door on the climb it rang for (pf:<id>:<n>).
+    const answer = (action: string, label: string, msg: string, primary = false) => {
+      const act = call("POST", ACT, { item: c.item, action, key: `${c.item}:${action}:${ctx.live.now}`.slice(0, 120) }, {
+        ok: seq(toast(msg), setState("followDone", true), ...(hangup ? ["hangup" as const] : [])), fail: toast("Couldn't do that. Try again.", true), stay: true,
+      });
+      return primary ? primaryButton(label, act, md) : secondaryButton(label, act, md);
+    };
+    return [
+      when({ falsy: "followDone" }, row([
+        answer("done", "Done", "Done", true), answer("later", "Later", "I'll remind you later"), answer("cant", "Can't", "I'll ask the next one"),
+      ], { gap: 10, flexWrap: "wrap" })),
+      when({ truthy: "followDone" }, row([statusMark("done"), meta("Answered", { size: 14, lineHeight: 19 })], { gap: 8, minHeight: 44, alignItems: "center" })),
+    ];
+  }
   const paid = call("POST", ACT, { item: c.item, action: "paid", key: `${c.item}:paid:${ctx.live.now}`.slice(0, 120) }, {
     ok: seq(toast("Marked paid"), setState("paidDone", true)), fail: toast("Couldn't do that. Try again.", true), stay: true,
   });

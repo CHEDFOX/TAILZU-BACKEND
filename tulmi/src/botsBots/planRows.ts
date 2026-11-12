@@ -20,6 +20,8 @@ import { lookOf, type PersonLook } from "./personLook.js";
 import { looksHealth } from "./planSafe.js";
 import { DUE_ROW } from "./planDue.js";
 import { WAIT_ROW } from "./planWaits.js";
+import { followOn } from "./planSwitch.js";
+import { autoMust, effectiveMust } from "./planFollowWords.js";
 
 const MIN = 60_000;
 
@@ -56,6 +58,8 @@ export interface DayItem {
   captureId?: string;
   /** A wait (kind "wait", planWaits.ts): who it waits on, for its grey line ("Waiting on Rahul · by Thu"). */
   who?: string;
+  /** Follow-through (planFollow.ts): how important the person set it (absent: the rules decide). */
+  importance?: "normal" | "must";
 }
 
 const byOf = (x: { source: string; from: string | null; fixed: boolean; byId?: string }): DayItem["by"] =>
@@ -67,6 +71,7 @@ export function eventItem(e: CalEvent): DayItem {
     ref: "event", id: e.id, kind: "event", title: e.title, day: e.day, start: e.allDay ? null : e.start, end: e.allDay ? null : e.end, allDay: e.allDay,
     ...(e.where ? { where: e.where } : {}), ...(e.place ? { place: e.place } : {}), done: false, fixed: e.fixed, source: e.source,
     ...(by ? { by } : {}), ...(e.repeat ? { repeat: e.repeat } : {}), ...(e.captureId ? { captureId: e.captureId } : {}),
+    ...(e.importance ? { importance: e.importance } : {}),
   };
 }
 
@@ -78,6 +83,7 @@ export function taskItem(t: CalTask): DayItem {
     ...(t.amountPaise ? { amountPaise: t.amountPaise } : {}), ...(t.payee ? { payee: t.payee } : {}), ...(t.payLink ? { payLink: t.payLink } : {}),
     ...(t.who ? { who: t.who } : {}),
     ...(t.captureId ? { captureId: t.captureId } : {}),
+    ...(t.importance ? { importance: t.importance } : {}),
   };
 }
 
@@ -135,6 +141,8 @@ export interface RowCtx {
   clashes: ReadonlyMap<string, string>;
   /** The newest note someone left on it, by row id ("e:<id>", "t:<id>"). */
   notes?: ReadonlyMap<string, RowNote>;
+  /** Follow-through's grey line for a followed item of today, by row id ("Mom · not done yet", "Mom said done": planFollow.ts). */
+  follow?: ReadonlyMap<string, string>;
 }
 
 export interface RowKind {
@@ -194,5 +202,17 @@ const STEP_5_ROWS: readonly RowKind[] = [];
 export const ROW_KINDS: readonly RowKind[] = [...STEP_3_ROWS, ...STEP_4_ROWS, ...STEP_5_ROWS, TODO, EVENT];
 
 export function rowOf(it: DayItem, ctx: RowCtx, kinds: readonly RowKind[] = ROW_KINDS): RowView {
-  return (kinds.find((k) => k.match(it)) ?? (it.ref === "task" ? TODO : EVENT)).row(it, ctx);
+  const row = (kinds.find((k) => k.match(it)) ?? (it.ref === "task" ? TODO : EVENT)).row(it, ctx);
+  // Follow-through (planFollow.ts): a followed item's own line ("Mom · not done yet") takes the grey line's place.
+  const followed = ctx.follow?.get(row.id);
+  if (followed) { const { note: _n, ...rest } = row; return { ...rest, line: followed }; }
+  // A must-not-miss item still to do says so, only while follow-through is on (off, the rows read exactly as before).
+  if (!followOn() || it.done || row.note) return row;
+  const today = new Date(ctx.now + ctx.tz * MIN).toISOString().slice(0, 10);
+  const why = autoMust({
+    kind: it.ref === "event" ? "event" : it.kind === "event" ? "todo" : it.kind, title: it.title, timed: it.start !== null && !it.allDay,
+    dueDay: it.ref === "task" ? it.day || null : null, today,
+  });
+  if (!effectiveMust(it.importance ?? null, why)) return row;
+  return { ...row, line: row.line ? `Must not miss · ${row.line}` : "Must not miss" };
 }

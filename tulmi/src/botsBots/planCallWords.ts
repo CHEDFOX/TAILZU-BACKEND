@@ -16,6 +16,7 @@
  */
 import { cutAt, lockSafe, looksHealth, safeTitle, APPOINTMENT } from "./planSafe.js";
 import { clockAt, dayOf, hhmm, minuteOf } from "../calendar/words.js";
+import { looksMed } from "./planFollowWords.js";
 
 /** Where the call's routes live (routes/bots/planCalls.ts). */
 export const CALLS = "/v1/botsapp/bots/plan/calls";
@@ -55,7 +56,9 @@ export const SWEEP_MS = 10_000;
  */
 export type CallSeed =
   | { source: "leave"; item: string; eventId: string; day: string; tz: number; title: string; place: string; start: number; leaveBy: number; minutes: number; mode: "drive" | "walk" }
-  | { source: "due"; item: string; taskId: string; day: string; tz: number; title: string; payee: string; pay: boolean };
+  | { source: "due"; item: string; taskId: string; day: string; tz: number; title: string; payee: string; pay: boolean }
+  // A followed item's call step (planFollow.ts): `item` is pf:<followId>:<n>, the climb it rang for; `asker` is "" for the person's own.
+  | { source: "follow"; item: string; followId: string; day: string; tz: number; title: string; at: number; asker: string };
 
 export type CallState = "ringing" | "answered" | "declined" | "missed" | "ended";
 
@@ -66,7 +69,7 @@ export interface CallView {
   origin: "server" | "user";
   /** The name it called as (kept at ring time). */
   name: string;
-  source: "leave" | "due";
+  source: "leave" | "due" | "follow";
   /** The lock-safe reminder line (the ring's body). */
   line: string;
   ringAt: number;
@@ -91,6 +94,8 @@ export interface CallView {
     taskId?: string;
     /** A bill with a safe pay link. */
     pay?: boolean;
+    /** A followed item's call: its follow (the screen's Done, Later and Can't answer pf:<followId>:<n>, the card's item). */
+    followId?: string;
   };
 }
 
@@ -127,6 +132,15 @@ function billOf(title: string, capital: boolean): string {
   return first.length > 1 && first === first.toUpperCase() ? t : lowerFirst(t);
 }
 
+/** A followed item as it may be said: "your reminder" for anything that looks like health or medicine (the phone may be on speaker). */
+function followWhat(title: string): string {
+  if (looksMed(title)) return "your reminder";
+  const t = cutAt(sayable(title), 80);
+  if (!t || t === APPOINTMENT) return "your reminder";
+  const first = t.split(/\s+/)[0] ?? "";
+  return first.length > 1 && first === first.toUpperCase() ? t : lowerFirst(t);
+}
+
 /**
  * What the bot says first. A live call says what the moment is; a Call back says why it called, and whether the thing has started.
  * `talk`: the person can answer (AI permission and a screen that listens), so it asks. Never a "$": the phone fills "$state." in speech.
@@ -140,6 +154,14 @@ export function openingLine(seed: CallSeed, o: { back: boolean; talk: boolean; n
     if (!o.back) line = `It's time to leave ${prep} ${what}${at}.`;
     else if (o.now < seed.start) line = `I called because it was time to leave ${prep} ${what}${at}. It starts at ${clockAt(seed.start, o.tz)}.`;
     else line = `I called because it was time to leave ${prep} ${what}. It started at ${clockAt(seed.start, o.tz)}.`;
+  } else if (seed.source === "follow") {
+    const what = followWhat(seed.title);
+    const asker = cutAt(seed.asker, 24);
+    line = o.back
+      ? `I called because ${asker ? `${asker} asked me to remind you about` : "it was time for"} ${what}.`
+      : asker ? `${asker} asked me to remind you: ${what}.` : `It's time for ${what}.`;
+    // A followed item's call never asks "Want me to do anything?": Done, Later and Can't are on the screen.
+    return line.replace(/\$/g, "");
   } else {
     line = o.back ? `I called because ${billOf(seed.title, false)} is due today.` : `${billOf(seed.title, true)} is due today.`;
   }
@@ -157,6 +179,10 @@ export function missedBody(line: string, more: string): string {
 /** The call screen's item card, inside the app: the full title, its leave-by or due line, and what its buttons need. */
 export function cardOf(seed: CallSeed, tz: number): CallView["card"] {
   const title = cutAt(seed.title, 120);
+  if (seed.source === "follow") {
+    const asker = cutAt(seed.asker, 24);
+    return { title, item: seed.item, followId: seed.followId, sub: `${asker ? `From ${asker} · ` : ""}${clockAt(seed.at, tz)}` };
+  }
   if (seed.source === "leave") {
     const place = cutAt(seed.place, 80);
     return {
@@ -210,8 +236,10 @@ export function endsCall(words: string): boolean {
 /** The facts the Plan Ease chat reads with each turn of the call (an attachment, read as data): what, which one, and what was said. */
 export function callContext(seed: CallSeed, opening: string, tz: number): string {
   const clock = (ms: number) => hhmm(minuteOf(ms, tz));
-  const lines = [`What: ${seed.title}`, `Kind: ${seed.source === "leave" ? "leave-by" : "bill due today"}`];
-  if (seed.source === "leave") {
+  const lines = [`What: ${seed.title}`, `Kind: ${seed.source === "leave" ? "leave-by" : seed.source === "follow" ? "a reminder X0 is following through" : "bill due today"}`];
+  if (seed.source === "follow") {
+    lines.push(`Follow id: ${seed.followId}`, `Day: ${seed.day}`, `At: ${clock(seed.at)}`);
+  } else if (seed.source === "leave") {
     lines.push(`Event id: ${seed.eventId}`, `Day: ${seed.day}`, `Starts: ${clock(seed.start)}`, `Leave by: ${clock(seed.leaveBy)}`,
       `${seed.minutes} min ${seed.mode === "walk" ? "walk" : "drive"}`, ...(seed.place ? [`Place: ${seed.place}`] : []));
   } else {

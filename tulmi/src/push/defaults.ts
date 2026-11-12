@@ -11,7 +11,7 @@
  * Kept free of imports so the control plane can preview it without a cycle, but one: Plan Ease's kinds (botsBots/planKinds.ts), itself
  * free of imports, so each of its kinds is said once.
  */
-import { CALL_KIND_IDS, PLAN_KIND_IDS, callPushFlags, callPushLabels, planPushFlags, planPushLabels } from "../botsBots/planKinds.js";
+import { CALL_KIND_IDS, PLAN_KIND_IDS, callPushFlags, callPushLabels, followPushFlags, planPushFlags, planPushLabels } from "../botsBots/planKinds.js";
 
 export interface PushPayload {
   flags: Record<string, unknown>;
@@ -169,6 +169,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     ...planPushFlags(),
     // "X0 is calling" (botsBots/planCall.ts): a leave-by or a bill due today rings instead, on a phone that takes calls.
     ...callPushFlags(),
+    // Follow-through (botsBots/planFollow.ts): the ladder's timings, read once per sweep.
+    ...followPushFlags(),
 
     // The mail bot (src/mail, docs/mail.md): a business's message needs a person's answer, an urgent one has a draft waiting, or the
     // business's AI paused for the day (its allowance spent). Never with the mail's words: the business and what kind of message it is.

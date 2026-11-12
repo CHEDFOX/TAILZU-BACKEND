@@ -109,3 +109,11 @@ export const YOU_API: Record<string, unknown> = {
     ],
   },
 };
+
+/** What pings you with follow-through on (PLAN_V2_FOLLOW): Must not miss, a real phone call set up, Priya allowed to ring louder. */
+export const NOTIFY_FOLLOW = {
+  settings: { ...settings, notify: { ...settings.notify, follow: true, followTell: true, ringMax: 6, followFrom: ["aaaaaaaa-0000-4000-8000-000000000001"], phoneCall: true } },
+  today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you.", name: "Zara", calls: true,
+  follow: true, followFrom: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", name: "Priya" }],
+  phone: { number: { state: "verified", display: "+91 98••• ••210", setup: { screen: "bots.plan.phone" } } },
+};
