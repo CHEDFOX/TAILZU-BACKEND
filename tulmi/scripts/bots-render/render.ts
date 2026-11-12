@@ -29,6 +29,7 @@
  *   --json <file>                   draw this screen JSON (e.g. one a running server served) instead of building one
  *   --motion                        let the motions run (default: Reduce Motion, so every shot is the same)
  *   --without PersonBot,FontBricolage  draw it for a build that lacks these (default: the builds as they are now)
+ *   --state '{"step":"check"}'      merge this into the screen's state before it is drawn (a moment that is state, not params)
  *   --out <dir>   --design <bots-design dir, default $BOTS_DESIGN, else bots-design beside the repos>
  *
  * The data is fixtures.ts's (fakeDeps); a screen's own `load` gets its answers from yours
@@ -165,6 +166,8 @@ export interface ScreenData {
   served?: unknown;
   /** Names the build does not declare (a build from before them): left out of what the client says, on every screen it asks for. */
   without?: string[];
+  /** Merged into the screen's own state before it is drawn (a moment that is state, not params: "Plan something"'s check face). */
+  state?: Record<string, unknown>;
 }
 
 const USER = { id: "00000000-0000-4000-8000-00000000aaaa", name: "Aanya Sharma", email: "aanya@example.in" };
@@ -192,13 +195,20 @@ function builder(target: string, data: ScreenData, misses: string[]) {
       }) as typeof deps.api;
     }
     const said = data.without?.length ? comps.filter((c) => !data.without!.includes(c)) : comps;
-    return buildBotsScreen({
+    const screen = await buildBotsScreen({
       screenId: id, client, params: p as Record<string, string>, tzOffsetMinutes: IST, user: USER,
       can: new Set(["BotsKit", ...said]), desk: { pages: said.includes("DeskShell"), notes: said.includes("DeskNotes") },
     }, deps);
+    return data.state && id === target ? withState(screen, data.state) : screen;
   };
 }
 type Build = ReturnType<typeof builder>;
+
+/** The screen with `state` merged over its own (top-level keys: a key given replaces the screen's). */
+export function withState<T>(screen: T, state: Record<string, unknown>): T {
+  const s = screen as T & { state?: Record<string, unknown> };
+  return { ...s, state: { ...(s.state ?? {}), ...state } };
+}
 
 /** Fonts and Blip, from tulmi/fonts and tulmi/blip, for https://api.local. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -460,6 +470,7 @@ async function main(): Promise<void> {
     quiet: has("quiet"),
     ...(flag("json") ? { served: JSON.parse(fs.readFileSync(flag("json")!, "utf8")) } : {}),
     ...(flag("without") ? { without: flag("without")!.split(",").map((n) => n.trim()).filter(Boolean) } : {}),
+    ...(flag("state") ? { state: JSON.parse(flag("state")!) as Record<string, unknown> } : {}),
   };
   const browser = await launchBrowser();
   let failed = false;

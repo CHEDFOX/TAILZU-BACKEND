@@ -36,7 +36,7 @@ interface RowView {
   note?: { look: PersonLook; name: string; text: string };
   open: { kind: "event" | "task"; id: string };
 }
-interface NeedsCard {
+export interface NeedsCard {
   type: string; key: string; question: string; reason: string; message?: string; item: string;
   person?: { look: PersonLook; name: string };
   buttons: Array<{ id: string; label: string; primary?: boolean; done?: string; undo?: string; open?: { screen: string; params?: Record<string, string> } }>;
@@ -55,7 +55,7 @@ const ACT = "/v1/widgets/act";
 const OCHRE = lookOf("plan").color;
 
 /** A press of one of Plan Ease's buttons, through the act door; its own key, so pressing it again later is a new answer. */
-const act = (ctx: BotsCtx, item: string, action: string, then?: { ok?: ActionRef; fail?: ActionRef }): ActionSpec =>
+export const act = (ctx: BotsCtx, item: string, action: string, then?: { ok?: ActionRef; fail?: ActionRef }): ActionSpec =>
   call("POST", ACT, { item, action, key: `${item}:${action}:${ctx.live.now}`.slice(0, 120) }, {
     ok: then?.ok ?? seq(), fail: then?.fail ?? toast("Couldn't do that. Try again.", true), stay: true,
   }) as ActionSpec;
@@ -90,8 +90,11 @@ function nextPart(ctx: BotsCtx, n: PlanTodayData["next"]): Node {
   ], { gap: 6 });
 }
 
-/** The one Needs-you card: the ochre dot, the question, one grey reason, one or two buttons. Answered: a grey line with Undo. */
-function needsPart(ctx: BotsCtx, c: NeedsCard): Node {
+/**
+ * The one Needs-you card: the ochre dot, the question, one grey reason, one or two buttons. Answered: a grey line with Undo. Also the
+ * threaded home's (screens/bots/planHome.ts), above the day.
+ */
+export function needsPart(ctx: BotsCtx, c: NeedsCard): Node {
   const desk = isDesk(ctx);
   const label = row([box([], { width: 9, height: 9, borderRadius: 5, backgroundColor: OCHRE }), text("Needs you", { size: 12, weight: 600, tracking: 0.4, upper: true, lineHeight: 16 })], { gap: 8 });
   const buttons = c.buttons.slice(0, 2).map((b) => {
@@ -157,20 +160,44 @@ function dayPart(ctx: BotsCtx, d: PlanTodayData["days"][number]): Node[] {
   ], { gap: 2 })];
 }
 
+// ------------------------------------------------------------------ the box (here, and on "Plan something": screens/bots/planMake.ts)
+
+/** From the Plan's own +, what is shared is always Plan Ease's: the capture card, never the bot picker. */
+const shareIn = (pick: "photo" | "camera" | "file") => uploadPick(pick, "boxFiles", open(SCREENS.shareIn, { file: "$state.sent.file.id", from: "plan" }));
+
 /**
- * The one box: "Tell me anything, or add a photo". The server says what it was (POST .../plan/box): added (a grey line with Undo), a
- * day's answer, or the chat's (sent to the Plan Ease chat as before). The + picks a photo, a camera shot or a file, and the share-in
- * screen reads it.
+ * The box's +, for a build that uploads: the phone opens Photo, Camera and File (boxPicks, at state boxPick); the window picks a file.
+ * Nothing for a build without uploads.
  */
-function planBox(ctx: BotsCtx): Node {
+export function boxPlus(ctx: BotsCtx): Node[] {
   const desk = isDesk(ctx);
-  // A reply that opens a page: pasted words read into a capture card, "link my work calendar" (botsBots/planInBox.ts).
+  return canUpload(ctx)
+    ? [labelled(box([icon("plus", { size: 22 })], { width: 40, height: 40, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+      desk ? shareIn("file") : { kind: "condition", if: { truthy: "boxPick" }, then: setState("boxPick", false), else: setState("boxPick", true) } as ActionSpec), desk ? "Add a file" : "Add a photo or a file")]
+    : [];
+}
+
+/** The phone's Photo, Camera and File, over the box while its + is open (state boxPick). */
+export function boxPicks(ctx: BotsCtx): Node[] {
+  return !isDesk(ctx) && canUpload(ctx) ? [when({ truthy: "boxPick" }, row([
+    secondaryButton("Photo", seq(clearState("boxPick"), shareIn("photo")), { size: "md" }),
+    secondaryButton("Camera", seq(clearState("boxPick"), shareIn("camera")), { size: "md" }),
+    secondaryButton("File", seq(clearState("boxPick"), shareIn("file")), { size: "md" }),
+  ], { gap: 8, flexWrap: "wrap" }))] : [];
+}
+
+/**
+ * What runs once the box's answer is at state `boxed` (POST .../plan/box, or "Plan something"'s draft route answering kind "box"): the
+ * chat's question asks the Plan Ease chat (its own route, its consent gate and its budget, as before); pasted words read into a capture
+ * card open it; "link my work calendar" opens the link page (botsBots/planInBox.ts); anything else clears the box.
+ */
+export function afterBox(_ctx: BotsCtx): ActionRef {
   const boxOpens: ActionRef = {
     kind: "condition", if: { eq: ["boxed.open.screen", SCREENS.planCapture] }, then: open(SCREENS.planCapture, { id: "$state.boxed.capture" }),
     else: { kind: "condition", if: { eq: ["boxed.open.screen", SCREENS.planLink] }, then: open(SCREENS.planLink), else: seq() } as ActionSpec,
   } as ActionSpec;
-  // Anything else is the Plan Ease chat's (its own route, its consent gate and its budget, as before). The question and its answer
-  // stay here under the box, the answer in a faint message container, with the chat a tap away: the person never has to go looking.
+  // The question and its answer stay here under the box, the answer in a faint message container, with the chat a tap away: the person
+  // never has to go looking.
   const askChat: ActionRef = seq(
     setState("askQ", "$state.say"), clearState("say"), clearState("asked"), setState("askBusy", true),
     call("POST", `${A}/chat/plan`, { message: "$state.askQ" }, {
@@ -178,31 +205,21 @@ function planBox(ctx: BotsCtx): Node {
       fail: seq(setState("askBusy", false), clearState("askQ"), said("Couldn't ask that. Try again.")),
     }),
   );
-  const send: ActionRef = {
-    kind: "condition", if: { falsy: "say" }, then: toast("Type something first"),
-    else: call("POST", `${A}/plan/box`, { words: "$state.say", tz: ctx.tzOffsetMinutes }, {
-      assignTo: "boxed", stay: true,
-      ok: { kind: "condition", if: { eq: ["boxed.kind", "chat"] }, then: askChat, else: seq(clearState("say"), clearState("askQ"), boxOpens) } as ActionSpec,
-      fail: toast("Couldn't add that. Try again.", true),
-    }),
-  } as ActionSpec;
-  // From the Plan's own +, what is shared is always Plan Ease's: the capture card, never the bot picker.
-  const shareIn = (pick: "photo" | "camera" | "file") => uploadPick(pick, "boxFiles", open(SCREENS.shareIn, { file: "$state.sent.file.id", from: "plan" }));
-  const plus = canUpload(ctx)
-    ? [labelled(box([icon("plus", { size: 22 })], { width: 40, height: 40, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-      desk ? shareIn("file") : { kind: "condition", if: { truthy: "boxPick" }, then: setState("boxPick", false), else: setState("boxPick", true) } as ActionSpec), desk ? "Add a file" : "Add a photo or a file")]
-    : [];
-  const input = row([
-    ...plus,
-    field("say", "say", desk ? "Tell me anything, or drop a file here" : "Tell me anything, or add a photo", { onSubmit: send }),
-    labelled(box([icon("send", { size: 18, color: C.paper })], { width: 40, height: 40, borderRadius: 20, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 }, send), "Send"),
-  ], { gap: 8, alignItems: "center", borderWidth: 1, borderColor: C.line, borderRadius: 28, paddingLeft: plus.length ? 8 : 18, paddingRight: 6, paddingVertical: 4, minHeight: 52, backgroundColor: C.paper });
-  const picks = !desk && canUpload(ctx) ? [when({ truthy: "boxPick" }, row([
-    secondaryButton("Photo", seq(clearState("boxPick"), shareIn("photo")), { size: "md" }),
-    secondaryButton("Camera", seq(clearState("boxPick"), shareIn("camera")), { size: "md" }),
-    secondaryButton("File", seq(clearState("boxPick"), shareIn("file")), { size: "md" }),
-  ], { gap: 8, flexWrap: "wrap" }))] : [];
-  // The reply, one grey line under the box, with Undo for what was added; a day's answer is its rows' line with the chat a tap away.
+  return { kind: "condition", if: { eq: ["boxed.kind", "chat"] }, then: askChat, else: seq(clearState("say"), clearState("askQ"), boxOpens) } as ActionSpec;
+}
+
+/**
+ * The box's answer, under it: one grey line with Undo for what was added (a family ask's preview with its [Ask]; a day's answer with the
+ * chat a tap away), then a question for the chat: what was asked, "Thinking…" or the answer, and "Open chat".
+ */
+export function boxReply(ctx: BotsCtx, o: { pill?: boolean } = {}): Node[] {
+  // "Open chat": a small outlined pill where the box's answers sit over a card ("Plan something"), so it reads as a button and not a
+  // stray grey caption when it wraps; the simple page keeps its grey word.
+  const openChat = (extra: Record<string, unknown> = {}): Node => (o.pill
+    ? row([text("Open chat", { size: 13, weight: 500, lineHeight: 18 })], {
+      minHeight: 32, paddingHorizontal: 12, borderRadius: 16, borderWidth: 1, borderColor: C.outline, alignItems: "center", justifyContent: "center", alignSelf: "flex-start",
+    }, open(SCREENS.chat, { slug: "plan" }))
+    : row([text("Open chat", { size: 14, color: C.meta, lineHeight: 19 })], { minHeight: 32, ...extra }, open(SCREENS.chat, { slug: "plan" })));
   const reply = when({ truthy: "boxed.line" }, row([
     // A family ask's preview: tapping its words puts them back in the box, to change the day, the time or the space.
     row([text("", { size: 14, color: C.meta, lineHeight: 19, bind: "boxed.line", style: { flexShrink: 1 } })], { flexShrink: 1 },
@@ -213,16 +230,37 @@ function planBox(ctx: BotsCtx): Node {
       call("POST", ACT, { item: "$state.boxed.act.item", action: "$state.boxed.act.action" }, { assignTo: "boxed", ok: seq(), fail: toast("Couldn't do that. Try again.", true), stay: true }))),
     when({ truthy: "boxed.undo.item" }, row([text("Undo", { size: 14, weight: 500, lineHeight: 19 })], { minHeight: 32, paddingHorizontal: 6 },
       call("POST", ACT, { item: "$state.boxed.undo.item", action: "$state.boxed.undo.action", key: `boxundo:${ctx.live.now}` }, { ok: clearState("boxed"), fail: toast("Couldn't undo that.", true), stay: true }))),
-    when({ eq: ["boxed.kind", "day"] }, row([text("Open chat", { size: 14, color: C.meta, lineHeight: 19 })], { minHeight: 32, paddingHorizontal: 6 }, open(SCREENS.chat, { slug: "plan" }))),
+    when({ eq: ["boxed.kind", "day"] }, openChat({ paddingHorizontal: 6 })),
   ], { gap: 6, alignItems: "center", flexWrap: "wrap" }));
-  // A question for the chat: what was asked, then "Thinking…" or the answer in a faint message container, and "Open chat".
   const asked = when({ truthy: "askQ" }, col([
     text("", { size: 14, color: C.meta, lineHeight: 19, bind: "askQ", lines: 2 }),
     when({ truthy: "askBusy" }, meta("Thinking…", { size: 14 })),
     when({ truthy: "asked.text" }, box([messageText(ctx, "", { lines: 12, bind: "asked.text" })], { borderWidth: 1, borderColor: C.line, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 })),
-    row([text("Open chat", { size: 14, color: C.meta, lineHeight: 19 })], { minHeight: 32, alignSelf: "flex-start" }, open(SCREENS.chat, { slug: "plan" })),
+    openChat({ alignSelf: "flex-start" }),
   ], { gap: 6 }));
-  return col([...picks, input, reply, asked], { gap: 8 });
+  return [reply, asked];
+}
+
+/**
+ * The one box: "Tell me anything, or add a photo". The server says what it was (POST .../plan/box): added (a grey line with Undo), a
+ * day's answer, or the chat's (sent to the Plan Ease chat as before). The + picks a photo, a camera shot or a file, and the share-in
+ * screen reads it.
+ */
+function planBox(ctx: BotsCtx): Node {
+  const desk = isDesk(ctx);
+  const send: ActionRef = {
+    kind: "condition", if: { falsy: "say" }, then: toast("Type something first"),
+    else: call("POST", `${A}/plan/box`, { words: "$state.say", tz: ctx.tzOffsetMinutes }, {
+      assignTo: "boxed", stay: true, ok: afterBox(ctx), fail: toast("Couldn't add that. Try again.", true),
+    }),
+  } as ActionSpec;
+  const plus = boxPlus(ctx);
+  const input = row([
+    ...plus,
+    field("say", "say", desk ? "Tell me anything, or drop a file here" : "Tell me anything, or add a photo", { onSubmit: send }),
+    labelled(box([icon("send", { size: 18, color: C.paper })], { width: 40, height: 40, borderRadius: 20, backgroundColor: C.ink, alignItems: "center", justifyContent: "center", flexShrink: 0 }, send), "Send"),
+  ], { gap: 8, alignItems: "center", borderWidth: 1, borderColor: C.line, borderRadius: 28, paddingLeft: plus.length ? 8 : 18, paddingRight: 6, paddingVertical: 4, minHeight: 52, backgroundColor: C.paper });
+  return col([...boxPicks(ctx), input, ...boxReply(ctx)], { gap: 8 });
 }
 
 const noRead = () => emptyState({ pose: "think", title: "Couldn't read your days", body: "Check your connection and try again.", action: { label: "Try again", onPress: refresh } });

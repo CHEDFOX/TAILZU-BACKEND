@@ -45,7 +45,9 @@ import { capturePage, planGoLoad, planInScreens, shareCapture, type CaptureView 
 import { planPeopleScreens } from "./bots/planSend.js";
 import { planFollowScreens } from "./bots/planFollow.js";
 import { followPhoneScreens } from "./bots/followPhone.js";
-import { planOn } from "../../../botsBots/planSwitch.js";
+import { homeOn, planOn } from "../../../botsBots/planSwitch.js";
+import { planHomeDesk, planHomePhone, planDayQuery, type PlanDayData } from "./bots/planHome.js";
+import { planMakeScreens } from "./bots/planMake.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
 import { mailPage, type MailPageData } from "./bots/mailPage.js";
 import { loadMail, mailScreens } from "./bots/mailScreens.js";
@@ -54,6 +56,8 @@ import type { About } from "./firstRun/parts.js";
 
 /** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
 const planV2 = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx);
+/** The threaded home (screens/bots/planHome.ts): the same builds, with PLAN_V2_HOME too; off, the simpler page as it was. */
+const homeFor = (ctx: BotsCtx): boolean => planV2(ctx) && homeOn();
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
@@ -731,16 +735,26 @@ export const botsScreens: BotsScreen[] = [
     load: (ctx, deps) => deps.api<Shop>("GET", `${A}/store${ctx.params.q ? `?q=${enc(String(ctx.params.q))}` : ""}`),
     build: (ctx, d) => (isDesk(ctx) ? storeDesk(ctx, d) : storePhone(ctx, d)),
   }),
-  screen<(PlanRead & { work?: WorkRead }) | (PlanTodayData & { work?: WorkRead })>({
+  screen<(PlanRead & { work?: WorkRead }) | (PlanTodayData & { work?: WorkRead }) | (PlanDayData & { work?: WorkRead })>({
     id: SCREENS.plan,
-    // The simpler page (screens/bots/planPage.ts) where it's on; else the week, with Work in space's people too (screens/work/workTab.ts),
-    // never failing the page. The simpler page has no Work in space tab: what others set is on the list already, with their tiny bot.
+    // The threaded home (screens/bots/planHome.ts) where it's on, with Work in space's tabs as the week page had them; else the simpler
+    // page (screens/bots/planPage.ts); else the week, with Work in space's people too (screens/work/workTab.ts), never failing the page.
+    // The simpler page has no Work in space tab: what others set is on the list already, with their tiny bot.
     load: async (ctx, deps) => {
+      if (homeFor(ctx)) {
+        const [day, work] = await Promise.all([deps.api<PlanDayData>("GET", `${A}/plan/day?${planDayQuery(ctx)}`), loadWork(ctx, deps, "plan")]);
+        return { ...day, work };
+      }
       if (planV2(ctx)) return deps.api<PlanTodayData>("GET", `${A}/plan/today?tz=${ctx.tzOffsetMinutes}`);
       const [plan, work] = await Promise.all([deps.api<PlanRead>("GET", `${A}/plan?tz=${ctx.tzOffsetMinutes}&week=${planWeek(ctx)}`), loadWork(ctx, deps, "plan")]);
       return { ...plan, work };
     },
     build: (ctx, d) => {
+      if (homeFor(ctx)) {
+        const v = d && "v" in d && d.v === 3 ? d : undefined;
+        const c = workCtx(ctx, d?.work);
+        return isDesk(c) ? planHomeDesk(c, v) : planHomePhone(c, v);
+      }
       if (planV2(ctx)) { const v = d && "v" in d && d.v === 2 ? d : undefined; return isDesk(ctx) ? planTodayDesk(ctx, v) : planTodayPhone(ctx, v); }
       const old = d && !("v" in d) ? d : undefined;
       const c = workCtx(ctx, old?.work);
@@ -797,6 +811,8 @@ export const botsScreens: BotsScreen[] = [
   screen({ id: SCREENS.avatars, build: (ctx) => avatarsPage(ctx) }),
   // Plan's own calendar, one event or to-do at a time (screens/planItem.ts).
   ...planItemScreens,
+  // "Plan something": the card, Check, Done, and the box that fills it (screens/bots/planMake.ts).
+  ...planMakeScreens,
   // Plan Ease's link page and capture card (screens/bots/planIn.ts).
   ...planInScreens,
   ...mailScreens,

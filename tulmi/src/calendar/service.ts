@@ -433,9 +433,13 @@ export class Calendar {
 
   // ------------------------------------------------------------------ events
 
-  async addEvent(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, more: { capture_id?: string; people?: PersonRef[] } = {}): Promise<CalEvent> {
+  /**
+   * `more.key`: the row's source_key ("make:<key>:<n>", "Plan something"'s Done: idempotent through the unique (user_id, source_key)).
+   * `more.parsed`: the body was already read and checked (Done): the title is never read again for a day, a time or a place.
+   */
+  async addEvent(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, more: { capture_id?: string; people?: PersonRef[]; key?: string; parsed?: boolean } = {}): Promise<CalEvent> {
     const tz = this.seeTz(userId, raw.tz);
-    const b = this.fromWords(raw, tz);
+    const b = more.parsed ? raw : this.fromWords(raw, tz);
     const title = clean(b.title, 120);
     if (!title) throw bad("Say what it is, like Dentist.");
     const w = this.when(b, tz);
@@ -447,7 +451,7 @@ export class Calendar {
       repeat: this.repeatOf(b.repeat), repeat_until: this.untilOf(b.until, tz, null), skips: [],
       // A flight or a train with no reminder said gets two hours, time to get there (follow-through on; new events only).
       remind_min: remindOf(b.remind, w.allDay ? null : followOn() && looksTravel(title) ? FLIGHT_REMIND_MIN : DEFAULT_REMIND_MIN), next_remind_ms: null,
-      source: by, source_key: null, created_ms: at, updated_ms: at, ...(more.capture_id ? { capture_id: more.capture_id } : {}),
+      source: by, source_key: typeof more.key === "string" && more.key ? more.key.slice(0, 200) : null, created_ms: at, updated_ms: at, ...(more.capture_id ? { capture_id: more.capture_id } : {}),
       // 0081's columns only when given: a server ahead of its migration still adds events.
       ...(importanceOf(raw.importance) ? { importance: importanceOf(raw.importance) } : {}),
       ...(Array.isArray(more.people) && more.people.length ? { people: cleanPeople(more.people) } : {}),
@@ -533,9 +537,10 @@ export class Calendar {
     return { day, at: t === null ? null : startOfDay(day, tz) + t * MIN };
   }
 
-  async addTask(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, key: string | null = null, more: TaskMore = {}): Promise<CalTask> {
+  /** `o.parsed`: the body was already read and checked ("Plan something"'s Done): the title is never read again. Not a TaskMore field (those are columns). */
+  async addTask(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, key: string | null = null, more: TaskMore = {}, o: { parsed?: boolean } = {}): Promise<CalTask> {
     const tz = this.seeTz(userId, raw.tz);
-    const b = this.fromWords(raw, tz, { task: true });
+    const b = o.parsed ? raw : this.fromWords(raw, tz, { task: true });
     const title = clean(b.title, 120);
     if (!title) throw bad("Say what the to-do is.");
     const d = this.due(b, tz);
@@ -655,6 +660,29 @@ export class Calendar {
     await this.rows.events.update({ id: row.id, user_id: userId }, write);
     this.publish(userId);
     return this.eventView(next);
+  }
+
+  /**
+   * The rows one "Plan something" Done made (planMakeService.ts): `make:<key>:0` to `make:<key>:<n-1>` on both lists, exact selects,
+   * the person's own only. For Done's idempotency, Undo, and the home's "Added: …" (planEase.ts day).
+   */
+  async keyed(userId: string, key: string, n: number): Promise<Array<{ kind: "event" | "task"; id: string; title: string; day: string; start: number | null; allDay: boolean; repeat: string; created: number; sourceKey: string }>> {
+    if (!UUID.test(key) || !Number.isInteger(n) || n < 1 || n > 21) return [];
+    const keys = Array.from({ length: n }, (_, i) => `make:${key}:${i}`);
+    const found = await Promise.all(keys.map(async (k) => {
+      const [e] = await this.rows.events.select({ user_id: userId, source_key: k }, { limit: 1 });
+      if (e) {
+        const r = eventRow(e);
+        return { kind: "event" as const, id: r.id, title: r.title, day: startDay(r), start: r.all_day ? null : r.start_ms, allDay: r.all_day, repeat: r.repeat, created: Number(r.created_ms), sourceKey: k };
+      }
+      const [t] = await this.rows.tasks.select({ user_id: userId, source_key: k }, { limit: 1 });
+      if (t) {
+        const r = taskRow(t);
+        return { kind: "task" as const, id: r.id, title: r.title, day: r.due_day ?? "", start: r.due_ms, allDay: false, repeat: "", created: Number(r.created_ms), sourceKey: k };
+      }
+      return null;
+    }));
+    return found.filter((x): x is NonNullable<typeof x> => !!x);
   }
 
   /** The to-dos made from a meeting's to-dos: { todoId: taskId }. */

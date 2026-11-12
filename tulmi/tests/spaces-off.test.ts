@@ -186,10 +186,14 @@ describe("the screens", () => {
     });
 
     it(`on the ${client}: Plan Ease's simpler page has no Work in space, and reads nothing of Spaces either way`, async () => {
+      // The simpler page is the fallback (PLAN_V2_HOME off); the threaded home has Work in space as the week page did, and only while on.
+      vi.stubEnv("PLAN_V2_HOME", "false"); resetConfigForTests();
       const on = await draw("bots.plan", client);
       expect(on.texts).not.toContain("Work in space");
       expect(spacesReads(on.paths)).toEqual([]);
-      switchOff();
+      switchOff(); vi.stubEnv("PLAN_V2_HOME", "false"); resetConfigForTests();
+      expect(spacesReads((await draw("bots.plan", client)).paths)).toEqual([]);
+      vi.unstubAllEnvs(); switchOff();
       expect(spacesReads((await draw("bots.plan", client)).paths)).toEqual([]);
     });
 

@@ -555,3 +555,18 @@ describe("the day notes", () => {
 });
 
 void DAY;
+
+// ===================================================================== the simple page keeps a follow line (PLAN_V2_HOME off)
+
+describe("the one next thing and follow-through", () => {
+  it("keeps the picked item's follow line as its grey line", async () => {
+    const r = rig(ist(12, 9));
+    const e = await r.c.addEvent(U, { title: "Pick up Kabir", day: "2026-11-12", time: "15:00", place: "School", tz: IST });
+    const items = (await r.c.list(U, { from: "2026-11-12", to: "2026-11-13", tz: IST })).events.map((x) => ({
+      ref: "event" as const, id: x.id, kind: "event" as const, title: x.title, day: x.day, start: x.start, end: x.end, allDay: false, done: false, fixed: false, source: "me", where: "School",
+    }));
+    const base = { now: ist(12, 9), tz: IST, today: "2026-11-12", tomorrow: "2026-11-13", items, leaves: new Map(), clashes: new Map(), needs: null };
+    expect(planPage(base).next).toMatchObject({ big: "Pick up Kabir at 3 pm", grey: "School" });
+    expect(planPage({ ...base, follow: new Map([[`e:${e.id}`, "Mom · not done yet"]]) }).next).toMatchObject({ big: "Pick up Kabir at 3 pm", grey: "Mom · not done yet" });
+  });
+});

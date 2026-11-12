@@ -418,7 +418,7 @@ export function botBuddy(o: BotBuddyProps): Node {
  * colour and play, as busy as the bot is, facing the person when it needs them. `lookTo`: where the page's ask field
  * is; `thinkWhen`: the state that holds while an answer is on its way. Small: the header's height.
  */
-export function headerBuddy(ctx: BotsCtx, slug: string, o: { color?: string; lookTo?: BotBuddyProps["lookTo"]; thinkWhen?: Condition; width?: number } = {}): Node[] {
+export function headerBuddy(ctx: BotsCtx, slug: string, o: { color?: string; lookTo?: BotBuddyProps["lookTo"]; thinkWhen?: Condition; width?: number; moment?: string } = {}): Node[] {
   if (!canBuddy(ctx)) return [];
   const desk = ctx.client === "desktop";
   const bot = ctx.live.bots.find((b) => b.slug === slug);
@@ -426,6 +426,8 @@ export function headerBuddy(ctx: BotsCtx, slug: string, o: { color?: string; loo
     kind: botKind(slug), color: o.color ?? bot?.color ?? botLook(slug).color, life: `page.${slug}`, width: o.width ?? (desk ? 150 : 76), height: desk ? 56 : 44, size: desk ? 34 : 28,
     state: bot?.working ? "working" : bot?.needs ? "needs" : "idle",
     ...(o.lookTo ? { lookTo: o.lookTo } : {}), ...(o.thinkWhen ? { thinkWhen: o.thinkWhen } : {}),
+    // A moment from the catalog, played once as the page opens (the Plan home after Done: "celebrate"); only a build that plays them.
+    ...(o.moment && canMoments(ctx) ? botMoment(ctx, o.moment, "once") : {}),
   })];
 }
 
@@ -742,9 +744,11 @@ export function segmented(options: Array<{ label: string; value: string }>, path
   }, seq({ kind: "setState", path, value: opt.value }, o.onChange))), { padding: 3, borderRadius: 12, backgroundColor: C.surface, gap: 2 });
 }
 
-/** A switch's look (40 x 24, ink when on, #e0e0e0 when off), following a state path. Not pressable itself. */
-export function switchMark(path: string): Node {
-  const on: Condition = { truthy: path };
+/**
+ * A switch's look (40 x 24, ink when on, #e0e0e0 when off), following a state path. Not pressable itself. `on`: when it shows on
+ * (default: the path is truthy; "Plan something"'s Must not miss: { eq: ["d.imp", "must"] }).
+ */
+export function switchMark(path: string, on: Condition = { truthy: path }): Node {
   return row([box([], { width: 18, height: 18, borderRadius: 9, backgroundColor: C.paper })], {
     width: 40, height: 24, borderRadius: 12, padding: 3, flexShrink: 0,
     backgroundColor: { ...on, then: C.ink, else: C.track }, justifyContent: { ...on, then: "flex-end", else: "flex-start" },
@@ -1185,10 +1189,11 @@ export function page(ctx: BotsCtx, o: PageOpts): ScreenResponse {
 
 /**
  * Pages the phone must never show from what it kept: a decision or a job in flight (an approval, a Xode job and its
- * question, a link to approve, the lock), Offline (which is its own record of what waits), and a call (ringing one moment,
- * over the next).
+ * question, a link to approve, the lock), Offline (which is its own record of what waits), a call (ringing one moment,
+ * over the next), and "Plan something" (its drafts live in its state: a kept copy drawn first, then the fresh one swapped in with a new
+ * Store, would wipe what was typed).
  */
-const NEVER_KEPT = /^bots\.(code\.|attach$|done$|failed$|approve$|offline$|link$|lock$|plan\.call$)/;
+const NEVER_KEPT = /^bots\.(code\.|attach$|done$|failed$|approve$|offline$|link$|lock$|plan\.call$|plan\.make$)/;
 
 /**
  * Pages that only change when the person changes them (settings, a bot's voice, the people they blocked): kept ten

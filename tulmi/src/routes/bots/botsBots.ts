@@ -26,6 +26,9 @@
  *   GET    /v1/botsapp/bots/plan/today?tz=             -> PlanPage   Plan Ease, the simpler one (botsBots/planEase.ts, planDay.ts): the one next thing,
  *                                                      the one Needs-you card, Today and Tomorrow, the days after. 404 plan_v2_off while PLAN_V2_PAGE is off
  *   GET    /v1/botsapp/bots/plan/week?tz=              -> { today, days: [{ key, date, rows }] }   "See the week": seven days from today
+ *   GET    /v1/botsapp/bots/plan/day?tz=&day=&week=&made=&n=   -> PlanDayData   the threaded home (botsBots/planThread.ts): one day as a
+ *                                                      thread, the strip, one Needs-you card, "Added: …" after Done. 404 plan_v2_off too
+ *   /v1/botsapp/bots/plan/make...                      "Plan something": the card, Check, Done, Undo (routes/bots/planMake.ts)
  *   POST   /v1/botsapp/bots/plan/box { words, tz, seen? } -> BoxReply   what the one box understood, done (planBox.ts); kind "chat": the screen sends
  *                                                      the words to the Plan Ease chat (its own route, its consent gate, its budget)
  *   GET    /v1/botsapp/bots/plan/line?tz=              -> { next, widget, needs }   the one thing for Home, the widget's line, the card it asks
@@ -65,6 +68,7 @@ import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
 import { registerPlanCallRoutes } from "./planCalls.js";
 import { registerPlanFollowRoutes } from "./planFollows.js";
 import { registerFollowChannelRoutes } from "./followChannels.js";
+import { registerPlanMakeRoutes } from "./planMake.js";
 import { planOn } from "../../botsBots/planSwitch.js";
 import { pushEngine } from "../../push/index.js";
 import { setPushOpenHook } from "../../push/engine.js";
@@ -318,6 +322,11 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   const tzQ = (req: FastifyRequest) => { const t = Number(query(req, "tz") ?? 330); return Number.isFinite(t) ? t : 330; };
 
   app.get(`${AREA}/plan/today`, RL, v2(async (user, req) => parts.ease.read(user.id, tzQ(req))));
+  // The threaded home (PLAN_V2_HOME; planThread.ts): one day as a thread. The query holds only tz, day, week, made (a uuid) and n.
+  app.get(`${AREA}/plan/day`, RL, v2(async (user, req, reply) => {
+    void reply.header("cache-control", "no-store");
+    return parts.ease.day(user.id, tzQ(req), query(req, "day"), { week: query(req, "week"), made: query(req, "made"), n: query(req, "n") });
+  }));
   app.get(`${AREA}/plan/week`, RL, v2(async (user, req) => parts.ease.week(user.id, tzQ(req))));
   app.get(`${AREA}/plan/line`, RL, v2(async (user, req) => parts.ease.line(user.id, tzQ(req))));
   // An item's details beyond the item (design A3): its before steps, the leave-by, a note on it, Move's 3 times (planEase.ts details).
@@ -332,6 +341,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   // its real phone call (botsBots/followPhone.ts, off by default): the person's own number, and Plivo's callbacks.
   registerPlanFollowRoutes(app, deps, { spaces: spacesArea, ease: parts.ease });
   registerFollowChannelRoutes(app, deps);
+  // "Plan something" (botsBots/planMakeService.ts): the card, Check, Done and Undo; after follow-through, whose setItem Done uses.
+  registerPlanMakeRoutes(app, deps, { ease: parts.ease });
 
   // ------------------------------------------------------------------ the travel bot's trip
 

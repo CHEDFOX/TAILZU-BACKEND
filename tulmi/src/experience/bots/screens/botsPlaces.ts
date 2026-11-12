@@ -109,7 +109,7 @@ const SKY_PATH: Record<Sky | "heat", string> = {
   storm: "M7 14h10.5a3.6 3.6 0 0 0 .4-7.18A5.6 5.6 0 0 0 6.6 5.6 4.2 4.2 0 0 0 7 14zM12.5 15.5l-2 3.5h3l-2 3.5",
   snow: "M7 15h10.5a3.6 3.6 0 0 0 .4-7.18A5.6 5.6 0 0 0 6.6 6.6 4.2 4.2 0 0 0 7 15zM9 19h.01M12 20.5h.01M15 19h.01",
 };
-function skyGlyph(kind: Sky | "heat", size = 22, color: string = C.ink): Node {
+export function skyGlyph(kind: Sky | "heat", size = 22, color: string = C.ink): Node {
   return {
     type: "SVG",
     props: { viewBox: "0 0 24 24", d: SKY_PATH[kind], fill: "none", stroke: color, strokeWidth: 1.9, strokeLinecap: "round", strokeLinejoin: "round", accessibilityLabel: kind === "heat" ? "hot" : kind },

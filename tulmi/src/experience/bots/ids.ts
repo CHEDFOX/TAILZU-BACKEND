@@ -57,7 +57,7 @@ export const SCREENS = {
   edit: "bots.edit",                 // BotEdit / DBotEdit (params: slug)
   keys: "bots.keys",                 // BotKeys / DBotKeys (params: slug)
   store: "bots.store",               // BotStore / DBotStore
-  plan: "bots.plan",                 // PlanBot / DPlanBot (params: week, day)
+  plan: "bots.plan",                 // PlanBot / DPlanBot (params: week, day; the threaded home: made, n after "Plan something"'s Done)
   planItem: "bots.plan.item",        // no board: add or change an event or a to-do on the person's own calendar (screens/planItem.ts; params: kind, id, day)
   planWeek: "bots.plan.week",        // Plan Ease's "See the week": a plain list by day, or one day's rows (screens/bots/planPage.ts; params: day)
   planGo: "bots.plan.go",            // a notification's hand-off: opens Maps (and later UPI, WhatsApp) at once, then the Plan (params: go, to, mode)
@@ -68,6 +68,7 @@ export const SCREENS = {
   planCall: "bots.plan.call",        // a call from Plan Ease: ringing → talking, missed, ended (screens/bots/planCall.ts; params: call, state, button)
   planFollow: "bots.plan.follow",    // one followed item: who has it, what X0 did, Done / Later / Can't (screens/bots/planFollow.ts; params: follow, button)
   planFollowPeople: "bots.plan.follow.people", // who does an item: you and your X0 people, in order (screens/bots/planFollow.ts; params: kind, id)
+  planMake: "bots.plan.make",        // "Plan something": the card (what, when, for who, must not miss), Check, Change, Done, and the box that fills it (screens/bots/planMake.ts; params: from, day, kind, focus)
   planPhone: "bots.plan.phone",      // a real phone call's own number: add it, prove it (call X0 once), change or remove it (screens/bots/followPhone.ts)
   travel: "bots.travel",             // TravelBot / DTravelBot
   chat: "bots.chat",                 // Chat (params: slug)

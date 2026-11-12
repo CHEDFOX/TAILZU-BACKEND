@@ -5,7 +5,9 @@
  *
  *   read(user, tz)          the Plan page (planDay.ts): the one next thing, the one Needs-you card, Today and Tomorrow, the week after
  *   week(user, tz)          "See the week": seven days from today, each day's rows
+ *   day(user, tz, day?, o)  the threaded home (PLAN_V2_HOME; planThread.ts): one day as a thread, the strip, Needs-you, "Added: …"
  *   box(user, words, tz, seen?)  what the one box understood (planBox.ts), done; `seen`: what a desktop's "add this" carried
+ *   slotOf(user, words, tz) which of the box's slots would take the words, nothing done ("Plan something", planMakeService.ts)
  *   act(user, item, action) a button, from the page, the widget or a notification (the act door, widgets/act.ts): PLAN_ACTS
  *   line(user, tz)          Home's line (the one thing), the widget's line and lock words, and the card the widget asks
  *   policy                  what the reminder sweep asks (calendar/service.ts ReminderPolicy): a leave-by already sent, the day's 6
@@ -25,23 +27,25 @@ import { ok, no, type ActResult } from "../widgets/act.js";
 import { eventIdOf, eventRefOf, itemId, type QuickItem } from "../widgets/items.js";
 import type { WidgetScope } from "../widgets/token.js";
 import { planEvent, placeText, type PlanSkipRow } from "./plan.js";
-import { boxAnswer, type BoxReply } from "./planBox.js";
+import { boxAnswer, boxSlotFor, type BoxCtx, type BoxReply } from "./planBox.js";
 import { seenOf } from "./planInBox.js";
-import { clockOf, longDate, planPage, weekday, widgetLine, widgetSteps, type Leave, type PlanPage, type WidgetLine } from "./planDay.js";
+import { clockOf, longDate, nextThing, planPage, weekday, weekLines, widgetLine, widgetSteps, type Leave, type PlanPage, type WidgetLine } from "./planDay.js";
 import { HOME_SHOWN, clashesOf, freeTimes, movable, needsYou, noteLinesOf, type NeedsCard, type NeedsCtx } from "./planNeeds.js";
 import { changesSince, eveningMinute, eveningNote, morningAt, morningNote, OPENS_KEPT, signature, type NoteWords } from "./planNotes.js";
 import { planPrefs, type PlanPrefs, type PlanPrefsRow } from "./planPrefs.js";
-import { dayItems, rowOf, type DayItem, type RowNote, type RowView } from "./planRows.js";
+import type { PersonLook } from "./personLook.js";
+import { dayItems, rowOf, taskItem, type DayItem, type RowCtx, type RowNote, type RowView } from "./planRows.js";
+import { ADDED_MS, addedOf, dayLabel, dayParam, defaultDay, emptyWords, followOpen, shareOf, stripOf, threadOf, type PlanDayData } from "./planThread.js";
 import { looksHealth, lockSafe, safeTitle } from "./planSafe.js";
 import { followOn, planOn } from "./planSwitch.js";
-import type { PlanTravelling } from "./planTravel.js";
+import type { PlanTravel, PlanTravelling } from "./planTravel.js";
 import type { CallSeed } from "./planCallWords.js";
 import { table, type Table } from "./rows.js";
 import { PLAN_IN_ACTS } from "./planInActs.js";
 import { WAIT_ACTS } from "./planWaits.js";
 import { ASK_ACTS } from "./planAsks.js";
 import { FOLLOW_ACTS, followLinesOf, planFollows, type ItemFollow } from "./planFollow.js";
-import type { FollowCandidate } from "../calendar/index.js";
+import type { CalTask, FollowCandidate } from "../calendar/index.js";
 import { beforeNote, sourceEvening, sourceItems, sourceMore, sourceMorning, sourceSeen, type SourceWindow } from "./planSources.js";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
@@ -166,6 +170,7 @@ export class PlanEase {
   private hinglish: ((userId: string) => Promise<boolean>) | null;
   /** Follow-through's arming (planFollow.ts arm), wired at boot: asked by the calendar before a reminder goes. */
   private followArm: ((userId: string, c: FollowCandidate) => Promise<boolean>) | null = null;
+  private peopleLooks: ((userId: string) => Promise<ReadonlyMap<string, PersonLook>>) | null = null;
   /** People whose row this server has seen to (their offset kept, a note time set), so it isn't read on every request. */
   private readonly ensured = new Set<string>();
 
@@ -183,10 +188,15 @@ export class PlanEase {
   get answers(): Table<PlanSkipRow> { return this.skips; }
 
   /** The push engine's notify (wired at boot: routes/bots/botsBots.ts), and who says the app's language. */
-  wire(o: { send?: PlanSend | null; hinglish?: ((userId: string) => Promise<boolean>) | null; follow?: ((userId: string, c: FollowCandidate) => Promise<boolean>) | null }): void {
+  wire(o: {
+    send?: PlanSend | null; hinglish?: ((userId: string) => Promise<boolean>) | null; follow?: ((userId: string, c: FollowCandidate) => Promise<boolean>) | null;
+    /** How a person's X0 people look to them (follow-through's looksOf: their space's looks), for the home's rows. */
+    looks?: ((userId: string) => Promise<ReadonlyMap<string, PersonLook>>) | null;
+  }): void {
     if (o.send !== undefined) this.send = o.send;
     if (o.hinglish !== undefined) this.hinglish = o.hinglish;
     if (o.follow !== undefined) this.followArm = o.follow;
+    if (o.looks !== undefined) this.peopleLooks = o.looks;
   }
 
   /**
@@ -219,14 +229,18 @@ export class PlanEase {
 
   // ------------------------------------------------------------------ the person's days
 
-  /** Today and the days after, as DayItems, and today's and tomorrow's leave-by times when places are on. */
-  private async load(userId: string, tz: number, o: { travel?: boolean } = {}): Promise<{ items: DayItem[]; leaves: Map<string, Leave>; today: string; tomorrow: string; row: PlanPrefsRow | null; events: CalEvent[]; more: Record<string, unknown> }> {
+  /**
+   * Today and the days after (or `range`: the home's week, planThread.ts), as DayItems, and today's and tomorrow's leave-by times when
+   * places are on, with each of those two days' whole travel (legs, weather, credits, pending, home) for the home.
+   */
+  private async load(userId: string, tz: number, o: { travel?: boolean; range?: { from: string; to: string } } = {}): Promise<{ items: DayItem[]; leaves: Map<string, Leave>; today: string; tomorrow: string; row: PlanPrefsRow | null; events: CalEvent[]; more: Record<string, unknown>; open: CalTask[]; travels: Record<string, PlanTravel> }> {
     const now = this.now();
     const today = dayOf(now, tz), tomorrow = shiftDay(today, 1);
+    const from = o.range?.from ?? today, to = o.range?.to ?? shiftDay(today, READ_DAYS);
     // What lives outside the own calendar (planSources.ts: the work calendar's meetings) is on the same days, read at the same time.
-    const w = this.window(tz, today, now);
+    const w = o.range ? { from, to, fromMs: startOfDay(from, tz), toMs: startOfDay(shiftDay(to, 1), tz), tz, now } : this.window(tz, today, now);
     const [listed, row, extra, more] = await Promise.all([
-      this.calendar.list(userId, { from: today, to: shiftDay(today, READ_DAYS), tz }),
+      this.calendar.list(userId, { from, to, tz }),
       this.prefs.get(userId).catch(() => null),
       sourceItems(userId, w),
       sourceMore(userId, w),
@@ -235,14 +249,17 @@ export class PlanEase {
     const leaves = new Map<string, Leave>();
     for (const l of row?.leaves ?? []) if (l.start > now) leaves.set(l.eventId, { leaveBy: l.leaveBy, minutes: l.minutes, mode: l.mode, to: l.to });
     const travel = this.travel;
+    const travels: Record<string, PlanTravel> = {};
     if (o.travel !== false && travel?.on) {
       // Both days at once, so the page waits for its lookups once (planTravel.ts: 1.2 s at most), not twice.
-      const got = await Promise.all([today, tomorrow].map((day) => travel.plan(userId, {
+      const days = [today, tomorrow];
+      const got = await Promise.all(days.map((day) => travel.plan(userId, {
         tz, events: listed.events.filter((e) => e.day === day).map(planEvent), tomorrow: day, suggest: () => null, keepShown: false,
       }).catch(() => null)));
       for (const r of got) for (const leg of r?.travel.legs ?? []) leaves.set(leg.toId, { leaveBy: leg.leaveBy, minutes: leg.minutes, mode: leg.mode, to: leg.to });
+      got.forEach((r, i) => { if (r) travels[days[i]!] = r.travel; });
     }
-    return { items, leaves, today, tomorrow, row, events: listed.events, more };
+    return { items, leaves, today, tomorrow, row, events: listed.events, more, open: listed.open, travels };
   }
 
   /** The days the page reads, for the sources. */
@@ -268,10 +285,10 @@ export class PlanEase {
     };
   }
 
-  /** Two booked things that can't both happen: "Clashes with design review" on both rows. */
-  private clashLines(ctx: NeedsCtx): Map<string, string> {
+  /** Two booked things that can't both happen: "Clashes with design review" on both rows. `days`: today and tomorrow unless said. */
+  private clashLines(ctx: NeedsCtx, days?: string[]): Map<string, string> {
     const out = new Map<string, string>();
-    for (const c of clashesOf(ctx)) {
+    for (const c of clashesOf(ctx, days)) {
       if (movable(c.a) || movable(c.b)) continue;
       const name = (it: DayItem) => inLine(it.title.split(" · ")[0]!.trim() || it.title);
       if (!out.has(c.a.id)) out.set(c.a.id, `Clashes with ${name(c.b)}`);
@@ -299,7 +316,7 @@ export class PlanEase {
     const l = await this.load(userId, tz);
     const { cards, ctx } = await this.cards(userId, l, tz);
     return {
-      ...planPage({ now: this.now(), tz, today: l.today, tomorrow: l.tomorrow, items: l.items, leaves: l.leaves, clashes: this.clashLines(ctx), needs: cards[0] ?? null, notes: notesOf(l.more), follow: followLinesOf(l.more) }),
+      ...planPage({ now: this.now(), tz, today: l.today, tomorrow: l.tomorrow, items: l.items, leaves: l.leaves, clashes: this.clashLines(ctx), needs: cards[0] ?? null, notes: notesOf(l.more), follow: followLinesOf(l.more), me: userId }),
       travel: { on: !!this.travel?.on },
     };
   }
@@ -339,12 +356,80 @@ export class PlanEase {
   async week(userId: string, tzIn: number): Promise<{ today: string; days: Array<{ key: string; date: string; rows: RowView[] }> }> {
     const tz = clampTz(tzIn);
     const l = await this.load(userId, tz, { travel: false });
-    const ctx = { tz, now: this.now(), clock: (ms: number) => clockOf(ms, tz), leaves: l.leaves, clashes: new Map<string, string>(), notes: notesOf(l.more) };
+    const ctx = { tz, now: this.now(), clock: (ms: number) => clockOf(ms, tz), leaves: l.leaves, clashes: new Map<string, string>(), notes: notesOf(l.more), me: userId };
     const days = Array.from({ length: 7 }, (_, n) => shiftDay(l.today, n)).map((key) => ({
       key, date: longDate(key),
       rows: l.items.filter((it) => it.day === key).map((it) => rowOf(it, ctx)).sort((a, b) => Number(a.done) - Number(b.done) || a.at - b.at),
     }));
     return { today: l.today, days };
+  }
+
+  /**
+   * THE THREADED HOME (PLAN_V2_HOME; planThread.ts, screens/bots/planHome.ts): one day as a thread, its week strip, the one Needs-you
+   * card, to-dos with no day, the days after (the window's rail), and today's or tomorrow's travel whole. `day`: a day within 8 weeks
+   * either way, else the old `week` param, else today (tomorrow from 5 pm once today is done). `made` and `n`: after Done, the rows
+   * made in the last 10 minutes say "Added: …" and are outlined.
+   */
+  async day(userId: string, tzIn: number, dayIn?: unknown, o: { week?: unknown; made?: unknown; n?: unknown } = {}): Promise<PlanDayData> {
+    const tz = clampTz(tzIn);
+    await Promise.all([this.seen(userId, tz), sourceSeen(userId, tz, this.now())]);
+    const now = this.now();
+    const today = dayOf(now, tz), tomorrow = shiftDay(today, 1);
+    // After Done: the rows it made, read back (only the person's own, only the last 10 minutes). Read first: a day further than the
+    // strip reaches is taken when Done just made something on it, so the home lands on the new item's day however far.
+    const made = typeof o.made === "string" && /^[0-9a-f-]{36}$/i.test(o.made) ? o.made : null;
+    const n = Number(o.n);
+    const keyed = made && Number.isInteger(n) && n >= 1 && n <= 21 ? await this.calendar.keyed(userId, made, n).catch(() => []) : [];
+    const added = keyed.length ? addedOf(keyed, { now, tz, today }) : null;
+    // The week the strip shows, the days the page reads and the window's days after it always fit: from that week's Monday (or today)
+    // to its Sunday, six days after the day, or 8 days on, whichever is last.
+    const said = dayParam(dayIn, o.week, today, added ? keyed.filter((r) => r.created >= now - ADDED_MS).map((r) => r.day).filter(Boolean) : []);
+    const span = (d: string) => {
+      const mon = shiftDay(d, -((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7));
+      const to = [shiftDay(mon, 6), shiftDay(d, 6), shiftDay(today, READ_DAYS)].sort().at(-1)!;
+      return { from: mon < today ? mon : today, to };
+    };
+    // Today's week (and 8 days on) also holds tomorrow's week, so the default day never needs a second read. A day further than one
+    // read reaches (the calendar lists 92 days at most; only a far day Done just made something on) is read on its own beside today's.
+    const want = span(said ?? today);
+    const far = want.to > shiftDay(want.from, 90);
+    const l = await this.load(userId, tz, { range: far ? span(today) : want });
+    if (far && said) {
+      const mon = shiftDay(said, -((new Date(`${said}T00:00:00Z`).getUTCDay() + 6) % 7));
+      const listed = await this.calendar.list(userId, { from: mon, to: [shiftDay(mon, 6), shiftDay(said, 6)].sort().at(-1)!, tz }).catch(() => null);
+      const have = new Set(l.items.map((it) => `${it.ref}:${it.id}`));
+      if (listed) l.items.push(...dayItems(listed).filter((it) => !have.has(`${it.ref}:${it.id}`)));
+    }
+    const follow = followLinesOf(l.more);
+    const day = said ?? defaultDay(l.items, now, tz, followOpen(follow));
+    const near = (it: DayItem) => it.day >= today && it.day <= shiftDay(today, READ_DAYS);
+    const { cards } = await this.cards(userId, { ...l, items: l.items.filter(near) }, tz);
+    const clashCtx = this.needsCtx({ tz, today, tomorrow, items: l.items, skipped: new Map(), leaves: l.leaves, row: l.row, more: l.more });
+    const clashes = this.clashLines(clashCtx, [day, today, tomorrow]);
+    const notes = notesOf(l.more);
+    // People as their space shows them (follow-through's looksOf), the same tiny bot on a row as in "Plan something" and their space.
+    const looks = this.peopleLooks ? await this.peopleLooks(userId).catch(() => new Map<string, PersonLook>()) : new Map<string, PersonLook>();
+    const rowCtx: RowCtx = { tz, now, clock: (ms) => clockOf(ms, tz), leaves: l.leaves, clashes, notes, follow, me: userId, looks };
+    const travel = l.travels[day];
+    const thread = threadOf(l.items, { day, now, tz, me: userId, ...(travel ? { travel } : {}), rowCtx, fresh: added?.fresh ?? new Set() });
+    const label = dayLabel(day, today), date = longDate(day);
+    // The head line is today's and tomorrow's whatever day is shown, with the travel saved this week.
+    const next = nextThing({ now, tz, today, tomorrow, items: l.items.filter((it) => it.day === today || it.day === tomorrow), leaves: l.leaves, clashes, follow, notes, me: userId });
+    const saved = (l.travels[today] ?? l.travels[tomorrow])?.savedWeekMin ?? 0;
+    return {
+      v: 3, today, tomorrow, day, label, date,
+      head: `${next.big}${saved ? ` · ${saved} min saved` : ""}`,
+      strip: stripOf(day, today, l.items),
+      needs: cards[0] ?? null,
+      thread,
+      empty: thread.length ? "" : emptyWords(label),
+      open: l.open.map((t) => rowOf(taskItem(t), rowCtx)).sort((a, b) => Number(a.done) - Number(b.done) || a.title.localeCompare(b.title)),
+      // The window's rail: the six days after the day shown (tomorrow too, when today is), only the ones with something on them.
+      week: weekLines({ items: l.items, tz, tomorrow: day }).filter((w) => w.line),
+      ...(travel ? { travel } : {}),
+      share: shareOf(label, date, thread, l.items),
+      ...(added && made ? { added: { line: added.line, key: made, n } } : {}),
+    };
   }
 
   async box(userId: string, wordsIn: unknown, tzIn: unknown, seenIn?: unknown): Promise<BoxReply> {
@@ -356,21 +441,34 @@ export class PlanEase {
     if (typeof words !== "string" || !words.trim()) throw new BotError("bad_request", "Say what to add, like Dentist Fri 5 pm.");
     if (words.length > 2000) throw new BotError("too_large", "That's a lot of words. Try a shorter one.", 413);
     const tz = clampTz(Number(tzIn));
+    const reply = await boxAnswer(words, this.boxCtx(userId, tz, seen));
+    // Notes said back on (or off) in the box: the next one's time is worked out afresh.
+    if (reply.slot === "notes") { this.ensured.delete(userId); await this.ensure(userId, tz, { reschedule: true }); }
+    return reply;
+  }
+
+  /** What the box's slots read and run with (planBox.ts BoxCtx): the same for box() and slotOf(). */
+  private boxCtx(userId: string, tz: number, seen?: BoxCtx["seen"] | null): BoxCtx {
     const now = this.now();
     const today = dayOf(now, tz);
     const l = { load: () => this.load(userId, tz, { travel: false }) };
-    const reply = await boxAnswer(words, {
+    return {
       userId, now, tz, today, calendar: this.calendar, prefs: this.prefs, ...(seen ? { seen } : {}),
       dayWords: (k) => calDayWords(k), dayName: (k) => calDayName(k, today),
       dayRows: async (day) => {
         const got = await l.load();
-        const ctx = { tz, now, clock: (ms: number) => clockOf(ms, tz), leaves: got.leaves, clashes: new Map<string, string>() };
+        const ctx = { tz, now, clock: (ms: number) => clockOf(ms, tz), leaves: got.leaves, clashes: new Map<string, string>(), me: userId };
         return got.items.filter((it) => it.day === day).map((it) => rowOf(it, ctx)).sort((a, b) => a.at - b.at);
       },
-    });
-    // Notes said back on (or off) in the box: the next one's time is worked out afresh.
-    if (reply.slot === "notes") { this.ensured.delete(userId); await this.ensure(userId, tz, { reschedule: true }); }
-    return reply;
+    };
+  }
+
+  /**
+   * Which of the box's slots would take these words (planBox.ts boxSlotFor): the read alone, nothing done. "Plan something"
+   * (planMakeService.ts) asks first, so an item is always a draft before Done and a bill or a wait is a preview.
+   */
+  slotOf(userId: string, words: string, tzIn: unknown): string {
+    return boxSlotFor(words, this.boxCtx(userId, clampTz(Number(tzIn))));
   }
 
   // ------------------------------------------------------------------ the act door
@@ -435,7 +533,7 @@ export class PlanEase {
     const l = await this.load(userId, tz, { travel: false });
     const { cards, ctx } = await this.cards(userId, l, tz);
     const now = this.now();
-    const page = planPage({ now, tz, today: l.today, tomorrow: l.tomorrow, items: l.items, leaves: l.leaves, clashes: this.clashLines(ctx), needs: cards[0] ?? null });
+    const page = planPage({ now, tz, today: l.today, tomorrow: l.tomorrow, items: l.items, leaves: l.leaves, clashes: this.clashLines(ctx), needs: cards[0] ?? null, me: userId });
     const day = { items: l.items, leaves: l.leaves, now, tz, today: l.today, tomorrow: l.tomorrow };
     return {
       next: page.next.rung === 6 ? "" : page.next.big,

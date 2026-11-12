@@ -102,9 +102,9 @@ const inputBox = (children: Node[]): Node => row(children, { gap: 8, borderWidth
 const labelledField = (label: string, f: Node): Node => col([sectionLabel(label), inputBox([f])], { gap: 8 });
 const section = (label: string, kids: Node[]): Node => col([sectionLabel(label), ...kids], { gap: 8 });
 
-/** Today and the next six days, and `extra` (the day it is on) when it is not among them. */
-function dayOptions(ctx: BotsCtx, extra?: string | null): Array<{ label: string; value: string }> {
-  const keys = Array.from({ length: 7 }, (_, i) => keyOf(ctx, ctx.live.now + i * DAY));
+/** Today and the next six days, and `extra` (the day it is on) when it is not among them. Also "Plan something"'s When chips. */
+export function dayOptions(ctx: BotsCtx, extra?: string | null, count = 7): Array<{ label: string; value: string }> {
+  const keys = Array.from({ length: count }, (_, i) => keyOf(ctx, ctx.live.now + i * DAY));
   if (extra && !keys.includes(extra)) keys.unshift(extra);
   return keys.map((k) => ({ label: dayName(ctx, k) === keyWords(k) ? `${WEEKDAYS[keyDate(k).getUTCDay()]} ${keyDate(k).getUTCDate()}` : dayName(ctx, k), value: k }));
 }
@@ -407,8 +407,19 @@ export const planItemScreens: BotsScreen[] = [
   }),
 ];
 
-/** Plan's "Add" (the day it starts on). */
-export const addAction = (day?: string, kind: "event" | "task" = "event"): ActionSpec => open(SCREENS.planItem, { kind, ...(day ? { day } : {}) });
+/**
+ * The old add form (bots.plan.item with no id, as before): "Plan something" (screens/bots/planMake.ts) draws it for a build that can't
+ * keep its drafts (no PersonBot, a window without KitExtras, a phone without ActionParams) or with PLAN_V2_MAKE or PLAN_V2_PAGE off.
+ * It reads `day` and `kind` as it always did.
+ */
+export const planAddForm = addPage;
+
+/**
+ * Plan's "Add" (the day it starts on; "task" for "Add a to-do"): "Plan something" (bots.plan.make), which draws the old form where it
+ * must. Every Add opens it: the old week page, Today, Tasks.
+ */
+export const addAction = (day?: string, kind?: "event" | "task"): ActionSpec =>
+  open(SCREENS.planMake, { ...(day ? { day } : {}), ...(kind === "task" ? { kind } : {}) });
 /** One event or to-do of the person's own calendar. */
 export const itemAction = (kind: "event" | "task", id: string): ActionSpec => open(SCREENS.planItem, { kind, id });
 /** A to-do's tick on a list (Plan's day, its open to-dos): the call, then the toast and a refresh. */

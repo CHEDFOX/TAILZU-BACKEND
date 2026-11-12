@@ -17,7 +17,7 @@
  * amount until its own bill comes: we never guess one.
  */
 import type { BoxSlot } from "./planBox.js";
-import type { DayItem, RowCtx, RowKind, RowView } from "./planRows.js";
+import type { DayItem, RowBase, RowCtx, RowKind } from "./planRows.js";
 import { lockSafe, looksHealth, safeTitle } from "./planSafe.js";
 import { planOn } from "./planSwitch.js";
 import type { CallSeed } from "./planCallWords.js";
@@ -135,7 +135,7 @@ export const dueTitle = (it: Pick<DayItem, "title" | "amountPaise">): string => 
 export const DUE_ROW: RowKind = {
   kind: "due", step: 3,
   match: (it) => it.ref === "task" && it.kind === "due",
-  row(it: DayItem, ctx: RowCtx): RowView {
+  row(it: DayItem, ctx: RowCtx): RowBase {
     const today = dayKey(ctx.now, ctx.tz);
     const title = dueTitle(it);
     return {

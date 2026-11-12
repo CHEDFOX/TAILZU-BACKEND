@@ -121,6 +121,10 @@ Notes for the questions App Store Connect asks along the way:
 * **A call from Plan Ease** ("X0 is calling", docs/plan-ease.md section 8): what the person says on the call and the bot's replies go
   to AI services only with that permission, through the Plan Ease chat (its own gate and budget) and the voice service that reads the
   replies aloud. Without it, the opening line is spoken by the phone's own voice and nothing of the call leaves the phone.
+* **"Plan something"** (docs/plan-ease.md section 10) may send the words a person types in its box (300 characters at most), and for a
+  change the card's own fields, to the AI providers already listed. This happens only with their AI permission, only when the rules
+  could not read the words, and only on Plan Ease's own budget. No contact list and no picked person's name is sent; another person's
+  name goes only when the person typed it. Nothing is kept by X0 from the read: the draft lives on the screen until Done.
 * **Usage statistics** (PostHog) are off until the person turns on "Share usage statistics" in You › Privacy (the bootstrap's
   `analytics.enabled`, per person; the app's default is off).
 * **Posting in Spaces is screened** before it is posted (src/botsBots/filter.ts): a word list always, OpenAI's moderation model too

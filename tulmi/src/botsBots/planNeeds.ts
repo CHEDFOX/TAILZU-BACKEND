@@ -111,12 +111,13 @@ const timed = (it: DayItem): it is DayItem & { start: number; end: number } => i
 export const movable = (it: DayItem): boolean => it.ref === "event" && !isBooked(it);
 
 /**
- * Today's and tomorrow's two timed things that can't both happen: they overlap, or (both in real places, the trip known) there isn't
- * the trip and ten minutes between them. Back-to-back calls never are. Each pair once, in time order, with the gap.
+ * Today's and tomorrow's (or `days`': the home's threaded day, planEase.ts day) two timed things that can't both happen: they overlap,
+ * or (both in real places, the trip known) there isn't the trip and ten minutes between them. Back-to-back calls never are. Each pair
+ * once, in time order, with the gap.
  */
-export function clashesOf(ctx: Pick<NeedsCtx, "items" | "now" | "tz" | "today" | "tomorrow" | "travel">): Array<{ a: DayItem; b: DayItem; gapMin: number; trip?: number }> {
+export function clashesOf(ctx: Pick<NeedsCtx, "items" | "now" | "tz" | "today" | "tomorrow" | "travel">, days: readonly string[] = [ctx.today, ctx.tomorrow]): Array<{ a: DayItem; b: DayItem; gapMin: number; trip?: number }> {
   const out: Array<{ a: DayItem; b: DayItem; gapMin: number; trip?: number }> = [];
-  for (const day of [ctx.today, ctx.tomorrow]) {
+  for (const day of [...new Set(days)]) {
     const list = ctx.items.filter((it) => timed(it) && it.ref === "event" && !it.done && !it.free && it.day === day && it.end! > ctx.now).sort((x, y) => x.start! - y.start!);
     for (let i = 0; i + 1 < list.length; i += 1) {
       const a = list[i]!, b = list[i + 1]!;
@@ -130,18 +131,30 @@ export function clashesOf(ctx: Pick<NeedsCtx, "items" | "now" | "tz" | "today" |
   return out;
 }
 
+/**
+ * The first free start of `len` on the day `from` falls on, from `from`, on the half hour, within `hours` (minutes after midnight),
+ * clear of every busy timed event by 15 minutes (a meeting marked free never is in the way). Null when that day has none. Also
+ * "Plan something"'s clash fix (planMake.ts: "Move to 7:30 pm", 9 am to 9 pm).
+ */
+export function freeHalfHour(items: readonly DayItem[], from: number, len: number, tz: number, hours: { from: number; to: number }): number | null {
+  const busy = items.filter((it) => timed(it) && it.ref === "event" && !it.free && !it.done);
+  const k = dayOf(from, tz);
+  const open = startOfDay(k, tz) + hours.from * MIN, close = startOfDay(k, tz) + hours.to * MIN;
+  for (let t = Math.max(open, Math.ceil(from / (30 * MIN)) * 30 * MIN); t + len <= close; t += 30 * MIN) {
+    if (busy.every((e) => t + len + 15 * MIN <= e.start! || t >= e.end! + 15 * MIN)) return t;
+  }
+  return null;
+}
+
 /** The first free start of `len` from `from`, within the hours, clear of everything by 15 minutes, on the half hour; over 3 days. */
 function freeSlot(ctx: NeedsCtx, len: number, from: number, without: DayItem): number | null {
   const hours = ctx.hours ?? { from: 9 * 60, to: 20 * 60 };
-  const busy = ctx.items.filter((it) => timed(it) && it.id !== without.id && it.ref === "event" && !it.free);
+  const items = ctx.items.filter((it) => it.id !== without.id);
   const first = dayOf(from, ctx.tz);
   for (let d = 0; d <= 3; d += 1) {
     const k = shiftDay(first, d);
-    const open = startOfDay(k, ctx.tz) + hours.from * MIN, close = startOfDay(k, ctx.tz) + hours.to * MIN;
-    let t = Math.max(open, Math.ceil(from / (30 * MIN)) * 30 * MIN);
-    for (; t + len <= close; t += 30 * MIN) {
-      if (busy.every((e) => t + len + 15 * MIN <= e.start! || t >= e.end! + 15 * MIN)) return t;
-    }
+    const t = freeHalfHour(items, d === 0 ? from : startOfDay(k, ctx.tz), len, ctx.tz, hours);
+    if (t !== null) return t;
   }
   return null;
 }

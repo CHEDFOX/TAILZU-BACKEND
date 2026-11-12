@@ -40,7 +40,8 @@ export function registerPlanFollowRoutes(app: FastifyInstance, deps: Pick<BotsAr
 
   follows.wire({
     // Who a person can reach: exactly whom messaging lets them message (threads.ts contacts), only while Spaces is on.
-    contacts: async (userId) => (spacesOn() ? (await threads.contacts(userId)).people.map((p) => ({ userId: p.userId, name: p.name })) : []),
+    // With their tiny bot as the person is shown it (looksKnown): Plan draws them as their space does.
+    contacts: async (userId) => (spacesOn() ? (await threads.contacts(userId)).people.map((p) => ({ userId: p.userId, name: p.name, bot: p.bot })) : []),
     muted: (userId, otherId) => threads.directMuted(userId, otherId),
     spaceDone: async (userId, spaceId, taskId) => { await tasks.answer(userId, spaceId, taskId, { status: "done" }); },
     spend: (userId, day) => o.ease.policy.spend(userId, day),
@@ -53,7 +54,7 @@ export function registerPlanFollowRoutes(app: FastifyInstance, deps: Pick<BotsAr
       return own ? { screen: "bots.space.invite", params: { id: own.id } } : { screen: "bots.spaces" };
     },
   });
-  o.ease.wire({ follow: (userId, c) => follows.arm(userId, c) });
+  o.ease.wire({ follow: (userId, c) => follows.arm(userId, c), looks: (userId) => follows.looksOf(userId) });
   o.ease.calendar.setTickHook((userId, taskId, what) => { void follows.taskTicked(userId, taskId, what).catch(() => undefined); });
   // The push id comes from the phone: only a step that went to that same person is marked opened.
   const unhook = addPushOpenHook((userId, kind, pushId) => {
@@ -62,7 +63,7 @@ export function registerPlanFollowRoutes(app: FastifyInstance, deps: Pick<BotsAr
   plugFollows();
   const stop = follows.start(app.log);
   app.addHook("onClose", async () => {
-    stop(); unhook(); o.ease.calendar.setTickHook(null); o.ease.wire({ follow: null }); removePlanSource("follow");
+    stop(); unhook(); o.ease.calendar.setTickHook(null); o.ease.wire({ follow: null, looks: null }); removePlanSource("follow");
   });
 
   const run = (fn: (user: AuthedUser, req: FastifyRequest, reply: FastifyReply) => Promise<unknown>) =>

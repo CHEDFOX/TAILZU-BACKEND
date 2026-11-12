@@ -6,6 +6,7 @@
  *   timeOf("5:30 pm")             1050: minutes after midnight ("17:30" and "7:00" on a 24-hour clock, "5 pm", "noon"), or null
  *   dayFrom("fri", today)         "2026-10-30": a day said in words ("today", "kal", "next friday", "30 Oct", "30/10"), or null
  *   readLine(words, now, tz)      a line ("Dentist Friday 5 pm at Indiranagar") as what, when, how long, where, and whether it is a to-do
+ *   timeSaid("6:30")              a time typed in a card's time field, and whether its am or pm was guessed ("Plan something")
  *
  * India-first: "kal" is tomorrow, "parso" the day after, "5 baje" 5 o'clock, "shaam" the evening, dates day first (30/10). A bare hour
  * from 1 to 7 is in the afternoon or evening ("at 6" is 6 pm), 8 to 11 the morning, unless the words say which.
@@ -94,6 +95,33 @@ export function timeOf(raw: unknown): number | null {
   return clock(Number(m[1]), Number(m[2] ?? 0), m[3]);
 }
 
+/** A part of the day said with an hour: "shaam", "in the evening", "at night". */
+const PART_WORD = /(?:^|\s)(?:in the |at |this )?(morning|afternoon|evening|night|tonight|subah|dopahar|shaam|raat)(?=\s|$)/;
+
+/**
+ * A time typed in "Plan something"'s card (PLAN_V2_MAKE; botsBots/planMake.ts), and whether its am or pm was guessed. am or pm said,
+ * a part of the day said ("shaam 5 baje", "7 in the evening"), "17:30" or "06:30" (an hour of 13 or more, or a leading 0) are exact;
+ * a bare "6:30" or "7" with nothing else is guessed the way every line is (1 to 7 later in the day, 8 to 11 the morning) and says so,
+ * so the card can ask "7 am or 7 pm?". timeOf is not changed: the forms and the bots read "7:00" as 24-hour, as before.
+ */
+export function timeSaid(raw: unknown): { minute: number; guessed: boolean } | null {
+  if (typeof raw !== "string") return null;
+  let s = raw.trim().toLowerCase().replace(/\s+/g, " ");
+  if (!s) return null;
+  if (s in PARTS) return { minute: PARTS[s]!, guessed: false };
+  let part: number | undefined;
+  const p = PART_WORD.exec(s);
+  if (p) { part = PARTS[p[1]!]; s = `${s.slice(0, p.index)} ${s.slice(p.index + p[0].length)}`.replace(/\s+/g, " ").trim(); }
+  const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?(?:\s*baje)?$/.exec(s);
+  if (!m) return null;
+  const h = Number(m[1]), mm = Number(m[2] ?? 0);
+  if (h > 23 || mm > 59) return null;
+  if (m[3]) { const t = clock(h, mm, m[3]); return t === null ? null : { minute: t, guessed: false }; }
+  if (part !== undefined) { const t = clock(h, mm, undefined, part); return t === null ? null : { minute: t, guessed: false }; }
+  if (h >= 13 || m[1]!.startsWith("0")) return { minute: h * 60 + mm, guessed: false };
+  return { minute: guessHour(h) * 60 + mm, guessed: true };
+}
+
 // ------------------------------------------------------------------ a day
 
 const WEEKDAY_WORDS: Array<[RegExp, number]> = [
@@ -177,6 +205,10 @@ export interface ReadLine {
   minutes?: number;
   place?: string;
   repeat?: Repeat;
+  /** "every Tue and Thu": the weekdays of a weekly repeat on more than one day (Sunday 0), in order; `day` is the first coming one. */
+  days?: number[];
+  /** The time came from an hour with no am or pm and no part of the day ("at 9", "6:30", "7 baje"): its half of the day was guessed. */
+  guessed?: boolean;
   /** "remind me", "to do", "task", "by Friday": a to-do rather than something on the calendar. */
   task: boolean;
   /** "remind me": a reminder at the time. */
@@ -186,13 +218,24 @@ export interface ReadLine {
 
 const DAY_RE = String.raw`(?:day after tomorrow|tomorrow|tmrw|tmr|today|tonight|aaj|kal|parso|(?:next |this )?(?:sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)(?:day|nesday|sday|rsday|urday)?|\d{1,2}(?:st|nd|rd|th)?(?: of)? (?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]* \d{1,2}(?:st|nd|rd|th)?|\d{1,2}/\d{1,2}(?:/\d{2,4})?|\d{4}-\d{2}-\d{2})`;
 const TIME_RE = String.raw`\d{1,2}(?:[:.]\d{2})?\s*(?:am|pm|a\.m\.|p\.m\.)`;
+/** A whole weekday word ("tue", "tues", "tuesday"), never the start of another word ("month" is not Monday). */
+const WD = String.raw`(?:sun(?:day)?|mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:r|rs|rsday)?|fri(?:day)?|sat(?:urday)?)(?![a-z])`;
+
+/**
+ * What readLine leaves in the words, as they are (`readLine(..., { skip })`): the day words, the time words, the repeat words, a part of
+ * the day ("morning"). "Plan something"'s Check (botsBots/planMake.ts) reads the card's What words only into what the person left as
+ * it was, so words it may not use stay in the title ("Friday prayer 1 pm" on Saturday keeps "Friday prayer"). The box and the old form
+ * never pass it.
+ */
+export interface ReadSkip { day?: boolean; time?: boolean; repeat?: boolean; part?: boolean }
 
 /**
  * What a line of words asks for: "add dentist Friday 5 pm at Indiranagar" is { title: "Dentist", day, time: 17:00, place: "Indiranagar" }.
  * `now` and `tz` decide what "today" is; a time with no day is today, or tomorrow once it has passed.
  */
-export function readLine(words: string, now: number, tz: number, o: { place?: boolean } = {}): ReadLine {
+export function readLine(words: string, now: number, tz: number, o: { place?: boolean; skip?: ReadSkip } = {}): ReadLine {
   const today = dayOf(now, tz);
+  const sk = o.skip ?? {};
   let s = ` ${words.replace(/\s+/g, " ").trim()} `;
   const out: ReadLine = { title: "", task: false };
   const take = (re: RegExp, fn: (m: RegExpExecArray) => boolean | void): void => {
@@ -211,18 +254,41 @@ export function readLine(words: string, now: number, tz: number, o: { place?: bo
   take(/\s(?:to|on|in|onto)\s+(?:my\s+)?(?:calendar|cal)\b/i, () => undefined);
   take(/\s(?:to|on|in|onto)\s+my\s+(?:plan|day)\s*[.!]?\s*$/i, () => undefined);
 
-  // repeats
-  take(/\s(?:every ?day|daily|roz)\b/i, () => { out.repeat = "daily"; });
-  take(/\s(?:every weekday|weekdays|on weekdays)\b/i, () => { out.repeat = "weekdays"; });
-  take(/\severy (sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)[a-z]*\b/i, (m) => { out.repeat = "weekly"; out.day = dayFrom(m[1]!, today) ?? undefined; out.daySaid = !!out.day; });
-  take(/\s(?:every week|weekly)\b/i, () => { out.repeat = "weekly"; });
-  take(/\s(?:every month|monthly)\b/i, () => { out.repeat = "monthly"; });
-  take(/\s(?:every year|yearly|annually)\b/i, () => { out.repeat = "yearly"; });
+  // repeats. "every night" (also "har raat", "roz subah") is daily at that part of the day, with an hour after it read in that part
+  // ("every evening 8" is 8 pm); the words leave the title.
+  let part: number | undefined;
+  if (!sk.repeat && !sk.time && !sk.part) take(/\s(?:every|har|roz)\s+(morning|afternoon|evening|night|subah|dopahar|shaam|raat)(?:\s+(?:at\s+)?(\d{1,2})(?:[:.](\d{2}))?(?:\s*baje\b)?(?![\d:.]|\s*(?:am|pm|a\.m\.|p\.m\.|min|mins|minutes|h|hr|hrs|hours?|st|nd|rd|th|km|kg|people)\b))?(?=[\s,.!])/i, (m) => {
+    out.repeat = "daily";
+    part = PARTS[m[1]!.toLowerCase()];
+    if (m[2] !== undefined) {
+      const t = clock(Number(m[2]), Number(m[3] ?? 0), undefined, part);
+      if (t !== null) out.time = t;
+    }
+  });
+  if (!sk.repeat) {
+    take(/\s(?:every ?day|daily|roz)\b/i, () => { out.repeat = "daily"; });
+    take(/\s(?:every weekday|weekdays|on weekdays)\b/i, () => { out.repeat = "weekdays"; });
+    // "every month" before the weekdays, and whole weekday words only, so "every month" is never weekly on Monday.
+    take(/\s(?:every month|monthly)\b/i, () => { out.repeat = "monthly"; });
+    if (!sk.day) take(new RegExp(String.raw`\severy\s+(${WD}(?:\s*(?:,\s*(?:and\s+)?|&|and)\s*${WD})*)\b`, "i"), (m) => {
+      const days = [...new Set(m[1]!.split(/\s*(?:,|&|\band\b)\s*/i).map((w) => weekdayWord(w.trim().toLowerCase())).filter((d): d is number => d !== null))];
+      if (!days.length) return false;
+      out.repeat = "weekly";
+      // The first coming one (today, when it is one of them).
+      const first = days.map((d) => nextWeekday(today, d, false)).sort()[0]!;
+      out.day = first; out.daySaid = true;
+      if (days.length > 1) out.days = days.sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
+    });
+    take(/\s(?:every week|weekly)\b/i, () => { out.repeat = "weekly"; });
+    take(/\s(?:every year|yearly|annually)\b/i, () => { out.repeat = "yearly"; });
+  }
   take(/\sall[- ]day\b/i, () => { out.allDay = true; });
 
   // a part of the day, read first so "7 in the evening" is 7 pm
-  let part: number | undefined;
-  take(/\s(in the |this |kal |aaj |tomorrow |today )?(morning|afternoon|evening|night|tonight|subah|dopahar|shaam|raat)\b/i, (m) => {
+  const partRe = sk.day
+    ? /\s(in the |this )?(morning|afternoon|evening|night|subah|dopahar|shaam|raat)\b/i
+    : /\s(in the |this |kal |aaj |tomorrow |today )?(morning|afternoon|evening|night|tonight|subah|dopahar|shaam|raat)\b/i;
+  if (part === undefined && !sk.part && !sk.time) take(partRe, (m) => {
     part = PARTS[m[2]!.toLowerCase()];
     const pre = (m[1] ?? "").trim().toLowerCase();
     const d = pre === "kal" || pre === "tomorrow" ? shiftDay(today, 1) : pre === "aaj" || pre === "today" || m[2]!.toLowerCase() === "tonight" ? today : null;
@@ -230,7 +296,7 @@ export function readLine(words: string, now: number, tz: number, o: { place?: bo
   });
 
   // a time, or a range
-  take(new RegExp(String.raw`\s(?:from\s+)?(\d{1,2}(?:[:.]\d{2})?)\s*(am|pm|a\.m\.|p\.m\.)?\s*(?:-|–|to|till|until)\s*(\d{1,2}(?:[:.]\d{2})?)\s*(am|pm|a\.m\.|p\.m\.)(?=\s)`, "i"), (m) => {
+  if (!sk.time) take(new RegExp(String.raw`\s(?:from\s+)?(\d{1,2}(?:[:.]\d{2})?)\s*(am|pm|a\.m\.|p\.m\.)?\s*(?:-|–|to|till|until)\s*(\d{1,2}(?:[:.]\d{2})?)\s*(am|pm|a\.m\.|p\.m\.)(?=\s)`, "i"), (m) => {
     const [h1, m1] = m[1]!.split(/[:.]/).map(Number), [h2, m2] = m[3]!.split(/[:.]/).map(Number);
     const end = clock(h2!, m2 ?? 0, m[4]);
     let start = clock(h1!, m1 ?? 0, m[2] ?? m[4]);
@@ -238,25 +304,28 @@ export function readLine(words: string, now: number, tz: number, o: { place?: bo
     if (start === null || end === null) return false;
     out.time = start; out.end = end > start ? end : undefined;
   });
-  if (out.time === undefined) {
+  if (out.time === undefined && !sk.time) {
     take(new RegExp(String.raw`\s(?:at\s+|@\s*|by\s+)?(${TIME_RE})(?=[\s,.!])`, "i"), (m) => {
       const t = timeOf(m[1]!);
       if (t === null) return false;
       out.time = t;
     });
   }
-  if (out.time === undefined) {
-    take(/\s(?:at\s+|@\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*baje\b/i, (m) => { const t = clock(Number(m[1]), Number(m[2] ?? 0), undefined, part); if (t === null) return false; out.time = t; });
+  // An hour with no am or pm and no part of the day: guessed (1 to 7 later in the day, 8 to 11 the morning), and said so. An hour of
+  // 13 or more, or one written with a leading 0 ("06:30"), is not a guess.
+  const guess = (h: string) => part === undefined && Number(h) >= 1 && Number(h) <= 12 && !h.startsWith("0");
+  if (out.time === undefined && !sk.time) {
+    take(/\s(?:at\s+|@\s*)?(\d{1,2})(?:[:.](\d{2}))?\s*baje\b/i, (m) => { const t = clock(Number(m[1]), Number(m[2] ?? 0), undefined, part); if (t === null) return false; out.time = t; if (guess(m[1]!)) out.guessed = true; });
   }
-  if (out.time === undefined) {
+  if (out.time === undefined && !sk.time) {
     take(/\s(?:at\s+|@\s*)(\d{1,2})(?:[:.](\d{2}))?(?=[\s,.!])(?!\s*(?:min|mins|minutes|h|hr|hrs|hours?|st|nd|rd|th|people|km)\b)/i, (m) => {
-      const t = clock(Number(m[1]), Number(m[2] ?? 0), undefined, part); if (t === null) return false; out.time = t;
+      const t = clock(Number(m[1]), Number(m[2] ?? 0), undefined, part); if (t === null) return false; out.time = t; if (guess(m[1]!)) out.guessed = true;
     });
   }
-  if (out.time === undefined) {
-    take(/\s(\d{1,2})[:](\d{2})(?=[\s,.!])/i, (m) => { const t = clock(Number(m[1]), Number(m[2]), undefined, part); if (t === null) return false; out.time = t; });
+  if (out.time === undefined && !sk.time) {
+    take(/\s(\d{1,2})[:](\d{2})(?=[\s,.!])/i, (m) => { const t = clock(Number(m[1]), Number(m[2]), undefined, part); if (t === null) return false; out.time = t; if (guess(m[1]!)) out.guessed = true; });
   }
-  if (out.time === undefined && part !== undefined) out.time = part;
+  if (out.time === undefined && part !== undefined && !sk.time) out.time = part;
 
   // how long
   take(/\sfor\s+(?:an?|one)\s+hour\b/i, () => { out.minutes = 60; });
@@ -267,7 +336,7 @@ export function readLine(words: string, now: number, tz: number, o: { place?: bo
   });
 
   // a day
-  if (!out.day) {
+  if (!out.day && !sk.day) {
     take(new RegExp(String.raw`\s(?:(on|by|due|before)\s+)?(${DAY_RE})(?=[\s,.!])`, "i"), (m) => {
       const d = dayFrom(m[2]!, today);
       if (!d) return false;
@@ -287,7 +356,7 @@ export function readLine(words: string, now: number, tz: number, o: { place?: bo
   if (out.time !== undefined && !out.day) out.day = out.time > minuteOf(now, tz) ? today : shiftDay(today, 1);
   if (out.repeat && !out.day) out.day = today;
   if (!out.task && out.time === undefined && !out.allDay) out.task = true;
-  if (out.allDay) { out.time = undefined; out.end = undefined; }
+  if (out.allDay) { out.time = undefined; out.end = undefined; delete out.guessed; }
 
   const title = s.replace(/\s+/g, " ").trim()
     .replace(/^(?:to|and|then|on|at|for|by)\s+/i, "")

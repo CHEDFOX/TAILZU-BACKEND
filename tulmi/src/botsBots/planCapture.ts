@@ -65,6 +65,23 @@ export const SHARE_PAISE = 150;
  * reserves up to SHARE_PAISE before it calls and settles at its real price after.
  */
 const NEED_PAISE = { glance: 2, text: 20, picture: 40 } as const;
+/**
+ * "Plan something"'s draft read (planMakeService.ts) starts only while at least this much of today's reading is left (₹1), so drafts
+ * never use up what a photo or a pasted notice needs later that day: drafts can take at most ₹4 of the ₹5.
+ */
+export const DRAFT_FLOOR = 100;
+
+/**
+ * The day reading's ₹5 is counted on: today, or the day already on the row when that is up to one day later (an offset that moved, a
+ * trip east). The count only starts again when the day really moves on: an earlier or the same day never wipes what was spent, so no
+ * offset, sent or saved, makes a second "new day" of the same one.
+ */
+export function budgetDay(row: PlanPrefsRow | null | undefined, today: string): string {
+  const had = (row as { capture_day?: unknown } | null | undefined)?.capture_day;
+  return typeof had === "string" && had > today && had <= shiftDay(today, 1) ? had : today;
+}
+/** The draft read is small and quick: 5 s a model, 8 s in all, 400 tokens out. */
+const DRAFT_READ = { timeoutMs: 5_000, totalMs: 8_000, maxTokens: 400, where: "plan:draft" } as const;
 /** Below this the reader wasn't sure: unticked, "Date?". */
 const SURE = 0.7;
 /** What is read of a long file: about 12k tokens. */
@@ -181,10 +198,13 @@ const rowOf = (r: CaptureRow): CaptureRow => ({
 /** One call's answer and what it cost. */
 export interface ReadAnswer { text: string; usd: number }
 
+/** A text read's bounds: per model, in all (the fallback is skipped with less than 2.5 s left), tokens out, and where it is counted. */
+export interface ReadOpts { timeoutMs?: number; totalMs?: number; maxTokens?: number; where?: string }
+
 /** The reading calls (tests hand in their own; the server's go through OpenRouter, the consent gate and the cost tally). */
 export interface Readers {
-  /** Words: the cheap text tier, JSON out. */
-  text(system: string, user: string): Promise<ReadAnswer>;
+  /** Words: the cheap text tier, JSON out. `o`: "Plan something"'s small draft read (fake readers may ignore it). */
+  text(system: string, user: string, o?: ReadOpts): Promise<ReadAnswer>;
   /** A photo: the picture tier, with the rules themselves. */
   picture(system: string, user: string, image: { mime: string; data: Buffer }): Promise<ReadAnswer>;
   /** The share screen's one tiny look at a photo: is it a notice, a bill, a ticket or an appointment? */
@@ -195,11 +215,14 @@ const ladder = (first: string, rest: string): string[] => [...new Set([first, ..
 
 /** The server's: OpenRouter's client (every call asks the consent gate first), each tier in turn, the next only when one fails. */
 export function serverReaders(): Readers {
-  const call = async (models: string[], build: (model: string) => Record<string, unknown>, where: string): Promise<ReadAnswer> => {
+  const call = async (models: string[], build: (model: string) => Record<string, unknown>, where: string, o: ReadOpts = {}): Promise<ReadAnswer> => {
     let last: unknown = null;
-    for (const model of models) {
+    const until = o.totalMs ? Date.now() + o.totalMs : null;
+    for (const [i, model] of models.entries()) {
+      // Too little time left in all for another model: stop here (the person gets the rules' answer).
+      if (i > 0 && until !== null && until - Date.now() < 2_500) break;
       try {
-        const res = await openrouter().chat.completions.create({ ...build(model), model, ...({ usage: { include: true } } as Record<string, unknown>) } as never, { timeout: 25_000, maxRetries: 0 });
+        const res = await openrouter().chat.completions.create({ ...build(model), model, ...({ usage: { include: true } } as Record<string, unknown>) } as never, { timeout: o.timeoutMs ?? 25_000, maxRetries: 0 });
         const usd = openRouterUsd(res, { where, model });
         addCostUsd(usd);
         const text = (res as { choices?: Array<{ message?: { content?: string | null } }> }).choices?.[0]?.message?.content ?? "";
@@ -217,10 +240,10 @@ export function serverReaders(): Readers {
   const json = { response_format: { type: "json_object" } };
   const dataUrl = (i: { mime: string; data: Buffer }) => `data:${i.mime};base64,${i.data.toString("base64")}`;
   return {
-    text: (system, user) => call(ladder(cfg().CLEANUP_MODEL, cfg().AGENT_FALLBACK_MODELS), (model) => ({
-      temperature: 0, max_tokens: 1800, ...json, reasoning: reasoningFor(model),
+    text: (system, user, o = {}) => call(ladder(cfg().CLEANUP_MODEL, cfg().AGENT_FALLBACK_MODELS), (model) => ({
+      temperature: 0, max_tokens: o.maxTokens ?? 1800, ...json, reasoning: reasoningFor(model),
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
-    }), "plan:capture"),
+    }), o.where ?? "plan:capture", o),
     picture: (system, user, image) => call(ladder(cfg().AGENT_VISION_MODEL, cfg().AGENT_VISION_FALLBACK_MODELS), (model) => ({
       temperature: 0, max_tokens: 1200, ...json, reasoning: reasoningFor(model),
       messages: [{ role: "system", content: system }, { role: "user", content: [{ type: "text", text: user }, { type: "image_url", image_url: { url: dataUrl(image), detail: "high" } }] }],
@@ -262,11 +285,12 @@ Rules:
 
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
 const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
-const isClock = (v: unknown): v is string => typeof v === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v);
+/** "17:30", "9:05": a clock a reader gave (also "Plan something"'s AI read, planMake.ts checkAi). */
+export const isClock = (v: unknown): v is string => typeof v === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v);
 const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9ऀ-ॿ ]+/g, " ").replace(/\b(?:the|a|an|day|meeting|for|of|to)\b/g, " ").replace(/\s+/g, " ").trim();
 
-/** Two titles that say the same thing ("PTM" and "Parent-teacher meeting" are kept apart; "PTM Sat" and "PTM" are one). */
-function alike(a: string, b: string): boolean {
+/** Two titles that say the same thing ("PTM" and "Parent-teacher meeting" are kept apart; "PTM Sat" and "PTM" are one). Also planMake.ts's "already". */
+export function alike(a: string, b: string): boolean {
   const x = norm(a), y = norm(b);
   if (!x || !y) return false;
   if (x === y || x.includes(y) || y.includes(x)) return true;
@@ -276,7 +300,7 @@ function alike(a: string, b: string): boolean {
 }
 
 /** A day the reader gave, read again: an ISO day as it is, else its words through the calendar's own reader. Null when unsure. */
-function dayAgain(v: unknown, today: string): string | null {
+export function dayAgain(v: unknown, today: string): string | null {
   if (isDay(v)) return v;
   if (typeof v === "string" && v.trim()) return dayFrom(v.trim(), today);
   return null;
@@ -405,7 +429,23 @@ export class PlanCapture {
     if (Number.isFinite(given)) return Promise.resolve(Math.max(-720, Math.min(840, Math.round(given!))));
     return this.d.tzOf ? this.d.tzOf(userId).catch(() => 330) : this.d.calendar.tzOf(userId);
   }
-  private aiOk(userId: string): Promise<boolean> { return (this.d.aiOk ?? aiAllowedFor)(userId).catch(() => false); }
+  /** Their stored yes to AI (privacy/aiGate.ts; every call asks the gate again). "Plan something"'s setup asks it too. */
+  aiOk(userId: string): Promise<boolean> { return (this.d.aiOk ?? aiAllowedFor)(userId).catch(() => false); }
+
+  /**
+   * One small read of a person's words for "Plan something" (planMakeService.ts): their yes, one at a time (never waits: "busy" while
+   * another of theirs runs), Plan Ease's budget with today's last ₹1 kept for shares ("spent"). The same paid road as every read
+   * (paidRead: held, settled, as the person, charged to them). null: the read failed; its error is never logged (it can echo the words).
+   */
+  async readWords(userId: string, _tz: number, system: string, user: string): Promise<ReadAnswer | "consent" | "spent" | "busy" | null> {
+    if (!(await this.aiOk(userId))) return "consent";
+    // The budget's day is the person's own (their saved offset), never the offset this request says: a screen that flipped it on
+    // every send would make each read the first of a new day, and the ₹4 a day would stop nothing.
+    const tz = await this.tz(userId);
+    // No await between the check and paidRead taking the slot: two sends at once never both read.
+    if (this.paying.has(userId)) return "busy";
+    return this.paidRead(userId, tz, DRAFT_FLOOR, () => this.readers.text(system, user, DRAFT_READ));
+  }
 
   private async get(userId: string, id: unknown): Promise<CaptureRow> {
     if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new BotError("not_found", "That isn't there any more.", 404);
@@ -643,7 +683,7 @@ export class PlanCapture {
    */
   private async budgetLeft(userId: string, tz: number): Promise<number> {
     const row = await this.d.prefs.get(userId).catch(() => null);
-    return this.leftOf(userId, row, dayOf(this.now(), tz));
+    return this.leftOf(userId, row, budgetDay(row, dayOf(this.now(), tz)));
   }
 
   private leftOf(userId: string, row: PlanPrefsRow | null, today: string): number {
@@ -658,10 +698,10 @@ export class PlanCapture {
    * the row is still as it was read (updated_ms), so two servers reading at once never both pass. 0: not enough is left for `need`.
    */
   private async reserve(userId: string, tz: number, need: number): Promise<number> {
-    const today = dayOf(this.now(), tz);
     for (let i = 0; i < 6; i += 1) {
       const had = (await this.d.prefs.get(userId).catch(() => null)) ?? await this.d.prefs.patch(userId, {}).catch(() => null);
       if (!had) return 0;
+      const today = budgetDay(had, dayOf(this.now(), tz));
       const left = this.leftOf(userId, had, today);
       if (left < need) return 0;
       const hold = Math.min(SHARE_PAISE, left);
@@ -677,10 +717,9 @@ export class PlanCapture {
   /** After the read: what was held back is given back, and what it really cost is put on the row, the day meter and the card. */
   private async settle(userId: string, tz: number, held: number, usd: number, row?: CaptureRow): Promise<void> {
     const paise = usd > 0 ? Math.max(1, Math.ceil(usd * (this.d.usdInr?.() ?? getConfig().CODE_USD_INR) * 100)) : 0;
-    const today = dayOf(this.now(), tz);
     for (let i = 0; i < 6; i += 1) {
       const had = await this.d.prefs.get(userId).catch(() => null);
-      if (!had || had.capture_day !== today) break;
+      if (!had || had.capture_day !== budgetDay(had, dayOf(this.now(), tz))) break;
       const at = Math.max(this.now(), had.updated_ms + 1);
       const next = Math.min(100_000, Math.max(0, Number(had.capture_paise ?? 0) - held + paise));
       const moved = await this.d.prefs.table.update({ user_id: userId, updated_ms: had.updated_ms } as Partial<PlanPrefsRow>,

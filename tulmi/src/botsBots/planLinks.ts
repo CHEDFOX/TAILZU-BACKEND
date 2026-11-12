@@ -533,7 +533,7 @@ export class PlanLinks {
   }
 
   /** One meeting, for its details. */
-  async meeting(userId: string, ref: string, tz: number): Promise<(DayItem & { people: number; provider: LinkRow["provider"] }) | null> {
+  async meeting(userId: string, ref: string, tz: number): Promise<(Omit<DayItem, "people"> & { people: number; provider: LinkRow["provider"] }) | null> {
     if (!/^wk-[A-Za-z0-9_-]{8,30}$/.test(ref)) return null;
     const r = await this.store.byRef(userId, ref);
     if (!r) return null;

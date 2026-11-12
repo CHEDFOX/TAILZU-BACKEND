@@ -21,7 +21,7 @@ import { looksHealth } from "./planSafe.js";
 import { DUE_ROW } from "./planDue.js";
 import { WAIT_ROW } from "./planWaits.js";
 import { followOn } from "./planSwitch.js";
-import { autoMust, effectiveMust } from "./planFollowWords.js";
+import { autoMust, effectiveMust, firstName, type PersonRef } from "./planFollowWords.js";
 
 const MIN = 60_000;
 
@@ -60,6 +60,8 @@ export interface DayItem {
   who?: string;
   /** Follow-through (planFollow.ts): how important the person set it (absent: the rules decide). */
   importance?: "normal" | "must";
+  /** Follow-through (planFollow.ts): who does it, in order (the first is reminded first). Absent when nobody was put on it. */
+  people?: PersonRef[];
 }
 
 const byOf = (x: { source: string; from: string | null; fixed: boolean; byId?: string }): DayItem["by"] =>
@@ -71,7 +73,7 @@ export function eventItem(e: CalEvent): DayItem {
     ref: "event", id: e.id, kind: "event", title: e.title, day: e.day, start: e.allDay ? null : e.start, end: e.allDay ? null : e.end, allDay: e.allDay,
     ...(e.where ? { where: e.where } : {}), ...(e.place ? { place: e.place } : {}), done: false, fixed: e.fixed, source: e.source,
     ...(by ? { by } : {}), ...(e.repeat ? { repeat: e.repeat } : {}), ...(e.captureId ? { captureId: e.captureId } : {}),
-    ...(e.importance ? { importance: e.importance } : {}),
+    ...(e.importance ? { importance: e.importance } : {}), ...(e.people && e.people.length ? { people: e.people } : {}),
   };
 }
 
@@ -83,7 +85,7 @@ export function taskItem(t: CalTask): DayItem {
     ...(t.amountPaise ? { amountPaise: t.amountPaise } : {}), ...(t.payee ? { payee: t.payee } : {}), ...(t.payLink ? { payLink: t.payLink } : {}),
     ...(t.who ? { who: t.who } : {}),
     ...(t.captureId ? { captureId: t.captureId } : {}),
-    ...(t.importance ? { importance: t.importance } : {}),
+    ...(t.importance ? { importance: t.importance } : {}), ...(t.people && t.people.length ? { people: t.people } : {}),
   };
 }
 
@@ -125,7 +127,19 @@ export interface RowView {
   open: { kind: "event" | "task"; id: string };
   /** For the order: when it is. */
   at: number;
+  /**
+   * Must not miss (follow-through, planFollowWords.ts effectiveMust): the person's switch, else the rules. Only for an open item and
+   * only while follow-through is on; also when the follow line took the grey line's place (the thread still says it).
+   */
+  must: boolean;
+  /** The grey line is follow-through's own line for the item ("Mom · not done yet"): drawn as it is. */
+  followed: boolean;
+  /** Who does it, when that is someone else (the first person on the item, not the viewer): their tiny bot and name. */
+  who?: { look: PersonLook; name: string };
 }
+
+/** What a row kind draws: the row before rowOf adds what every kind shares (must not miss, the follow line, who does it). */
+export type RowBase = Omit<RowView, "must" | "followed" | "who">;
 
 /** Someone's note on the person's own item (Work in space's notes on mine), newest: the row's grey line, inside the app only. */
 export interface RowNote { look: PersonLook; name: string; text: string }
@@ -143,6 +157,15 @@ export interface RowCtx {
   notes?: ReadonlyMap<string, RowNote>;
   /** Follow-through's grey line for a followed item of today, by row id ("Mom · not done yet", "Mom said done": planFollow.ts). */
   follow?: ReadonlyMap<string, string>;
+  /** The viewer's id: an item whose first person is someone else is "for" them (RowView.who). */
+  me?: string;
+  /** Drawn in the home's thread (planThread.ts): the leave-by is its own step and the time is the label, so the grey line says neither. */
+  thread?: boolean;
+  /**
+   * How the viewer's X0 people look to them, by id (follow-through's looksOf: threads.ts contacts' `bot`, the first space they share),
+   * so a person is the same tiny bot on a row, in "Plan something"'s For who and in their space. Anyone else: their own look.
+   */
+  looks?: ReadonlyMap<string, PersonLook>;
 }
 
 export interface RowKind {
@@ -150,41 +173,59 @@ export interface RowKind {
   /** The step it came with. */
   step: number;
   match(it: DayItem): boolean;
-  row(it: DayItem, ctx: RowCtx): RowView;
+  row(it: DayItem, ctx: RowCtx): RowBase;
 }
 
-const personOf = (it: DayItem): RowView["person"] => (it.by ? { look: lookOf(it.by.id), name: it.by.name } : undefined);
+/** A person's tiny bot: as the viewer's X0 people show them (RowCtx.looks, the space's looks), else their own look. */
+const lookIn = (ctx: Pick<RowCtx, "looks">, id: string): PersonLook => ctx.looks?.get(id) ?? lookOf(id);
+const personOf = (it: DayItem, ctx: Pick<RowCtx, "looks"> = {}): RowView["person"] => (it.by ? { look: lookIn(ctx, it.by.id), name: it.by.name } : undefined);
 const sortAt = (it: DayItem): number => it.start ?? (Date.parse(`${it.day}T00:00:00Z`) + 23 * 60 * MIN);
 
-/** A to-do: its tick on the left; a time, when it has one, as its grey line. */
+/**
+ * "For Dad": someone else does it (the first person on it is not the viewer), only while follow-through is on (off, nobody else is
+ * reminded, so no row says it is for them). Their first name as the person knew them when they were put on it.
+ */
+function forWords(it: DayItem, ctx: RowCtx): string {
+  const first = it.people?.[0];
+  if (!first || first.id === ctx.me || !followOn()) return "";
+  return `For ${firstName(first.name ?? "Someone")}`;
+}
+
+/** A to-do: its tick on the left; a time, when it has one, as its grey line ("For Dad · 5 pm" when someone else does it). */
 const TODO: RowKind = {
   kind: "todo", step: 0,
   match: (it) => it.ref === "task",
   row(it, ctx) {
     const clash = ctx.clashes.get(it.id);
     const note = clash ? undefined : ctx.notes?.get(`t:${it.id}`);
+    // In the thread the time is the step's label, so the grey line doesn't say it again.
+    const clock = !ctx.thread && it.start !== null ? ctx.clock(it.start) : "";
+    const own = [forWords(it, ctx), clock].filter(Boolean).join(" · ");
     return {
       id: `t:${it.id}`, kind: "todo", time: "",
       tick: { item: `pt:${it.id}`, action: it.done ? "undone" : "done", label: it.done ? `${it.title}. Done. Tap to put it back.` : `${it.title}. Tap when it's done.` },
-      title: it.title, line: clash ?? (note ? `${note.name}: ${note.text}` : it.start !== null ? ctx.clock(it.start) : ""), ...(note ? { note } : {}),
-      ...(personOf(it) ? { person: personOf(it)! } : {}), done: it.done, open: { kind: "task", id: it.id }, at: sortAt(it),
+      title: it.title, line: clash ?? (note ? `${note.name}: ${note.text}` : own), ...(note ? { note } : {}),
+      ...(personOf(it, ctx) ? { person: personOf(it, ctx)! } : {}), done: it.done, open: { kind: "task", id: it.id }, at: sortAt(it),
     };
   },
 };
 
-/** An event: its time on the left; the grey line is a clash with something booked, else when to leave, else where. */
+/**
+ * An event: its time on the left; the grey line is a clash with something booked, else when to leave (not in the thread, where the
+ * leave-by is its own step), else a person's word on it, else who does it and where ("For Dad · Indiranagar").
+ */
 const EVENT: RowKind = {
   kind: "event", step: 0,
   match: (it) => it.ref === "event",
   row(it, ctx) {
-    const leave = ctx.leaves.get(it.id);
-    // One grey line, the most pressing first: a clash, when to leave, a person's word on it, where.
+    const leave = ctx.thread ? undefined : ctx.leaves.get(it.id);
+    // One grey line, the most pressing first: a clash, when to leave, a person's word on it, who does it and where.
     const clash = ctx.clashes.get(it.id);
     const note = clash || leave ? undefined : ctx.notes?.get(`e:${it.id}`);
-    const line = clash ?? (leave ? `Leave by ${ctx.clock(leave.leaveBy)}` : note ? `${note.name}: ${note.text}` : it.where ?? "");
+    const line = clash ?? (leave ? `Leave by ${ctx.clock(leave.leaveBy)}` : note ? `${note.name}: ${note.text}` : [forWords(it, ctx), it.where ?? ""].filter(Boolean).join(" · "));
     return {
       id: `e:${it.id}`, kind: "event", time: it.allDay || it.start === null ? "All day" : ctx.clock(it.start), title: it.title, line, ...(note ? { note } : {}),
-      ...(personOf(it) ? { person: personOf(it)! } : {}), done: false, open: { kind: "event", id: it.id }, at: sortAt(it),
+      ...(personOf(it, ctx) ? { person: personOf(it, ctx)! } : {}), done: false, open: { kind: "event", id: it.id }, at: sortAt(it),
     };
   },
 };
@@ -201,18 +242,34 @@ const STEP_5_ROWS: readonly RowKind[] = [];
 /** Most particular first: the first that matches draws the item. */
 export const ROW_KINDS: readonly RowKind[] = [...STEP_3_ROWS, ...STEP_4_ROWS, ...STEP_5_ROWS, TODO, EVENT];
 
-export function rowOf(it: DayItem, ctx: RowCtx, kinds: readonly RowKind[] = ROW_KINDS): RowView {
-  const row = (kinds.find((k) => k.match(it)) ?? (it.ref === "task" ? TODO : EVENT)).row(it, ctx);
-  // Follow-through (planFollow.ts): a followed item's own line ("Mom · not done yet") takes the grey line's place.
-  const followed = ctx.follow?.get(row.id);
-  if (followed) { const { note: _n, ...rest } = row; return { ...rest, line: followed }; }
-  // A must-not-miss item still to do says so, only while follow-through is on (off, the rows read exactly as before).
-  if (!followOn() || it.done || row.note) return row;
+/** Must not miss, for an open item while follow-through is on (off, the rows read exactly as before). */
+function mustOf(it: DayItem, ctx: RowCtx): boolean {
+  if (!followOn() || it.done) return false;
   const today = new Date(ctx.now + ctx.tz * MIN).toISOString().slice(0, 10);
   const why = autoMust({
     kind: it.ref === "event" ? "event" : it.kind === "event" ? "todo" : it.kind, title: it.title, timed: it.start !== null && !it.allDay,
     dueDay: it.ref === "task" ? it.day || null : null, today,
   });
-  if (!effectiveMust(it.importance ?? null, why)) return row;
+  return effectiveMust(it.importance ?? null, why);
+}
+
+/** Who does it, when the first person on it is not the viewer; only while follow-through is on (off, nobody else is reminded). */
+function doerOf(it: DayItem, ctx: RowCtx): RowView["who"] {
+  const first = it.people?.[0];
+  if (!first || first.id === ctx.me || !followOn()) return undefined;
+  return { look: lookIn(ctx, first.id), name: first.name ?? "Someone" };
+}
+
+export function rowOf(it: DayItem, ctx: RowCtx, kinds: readonly RowKind[] = ROW_KINDS): RowView {
+  const base = (kinds.find((k) => k.match(it)) ?? (it.ref === "task" ? TODO : EVENT)).row(it, ctx);
+  const must = mustOf(it, ctx);
+  const who = doerOf(it, ctx);
+  const shared = { must, ...(who ? { who } : {}) };
+  // Follow-through (planFollow.ts): a followed item's own line ("Mom · not done yet") takes the grey line's place.
+  const followLine = ctx.follow?.get(base.id);
+  if (followLine) { const { note: _n, ...rest } = base; return { ...rest, line: followLine, followed: true, ...shared }; }
+  const row: RowView = { ...base, followed: false, ...shared };
+  // A must-not-miss item still to do says so in its grey line (not over a person's note, which is drawn as their words).
+  if (!must || row.note) return row;
   return { ...row, line: row.line ? `Must not miss · ${row.line}` : "Must not miss" };
 }

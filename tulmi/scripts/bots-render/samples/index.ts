@@ -23,6 +23,7 @@ import CODE from "./code.json";
 import { CALL_API } from "./planCall.js";
 import { FOLLOW_API, TASK_ID } from "./planFollow.js";
 import { phoneApi } from "./followPhone.js";
+import { MAKE_API, MAKE_OFF_API, MAKE_PARAMS, MAKE_STATES, MADE_KEY, PLAN_DAY_API } from "./planMake.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -42,6 +43,10 @@ export interface Sample {
   api?: Record<string, unknown>;
   /** fakeDeps overrides (the live reads every screen gets). */
   fake?: Omit<FakeOpts, "api" | "calls">;
+  /** Merged into the built screen's state before drawing (a moment that is state, not params: "Plan something"'s check face). */
+  state?: Record<string, unknown>;
+  /** Names the build does not declare: drawn for an older build (render.ts --without). */
+  without?: string[];
 }
 
 /** Xode's project and jobs in code.json. */
@@ -101,7 +106,23 @@ export const SAMPLES: Sample[] = [
   { id: S.edit, area: "bots", board: "BotEdit", deskBoard: "DBotEdit", params: { slug: "gym-bot" } },
   { id: S.keys, area: "bots", board: "BotKeys", deskBoard: "DBotKeys", params: { slug: "gym-bot" } },
   { id: S.store, area: "bots", board: "BotStore", deskBoard: "DBotStore" },
-  { id: S.plan, area: "bots", board: "PlanBot", deskBoard: "DPlanBot" },
+  // Plan Ease's home, the threaded day (screens/bots/planHome.ts; samples/planMake.ts): today in full, tomorrow, an empty Saturday, just
+  // after "Plan something"'s Done; an older build (the week page, unchanged) and a build without the walking bot (the still avatar).
+  { id: S.plan, area: "bots", variant: "home", board: "PlanBot", deskBoard: "DPlanBot", api: PLAN_DAY_API },
+  { id: S.plan, area: "bots", variant: "tomorrow", params: { day: "2026-10-29" }, api: PLAN_DAY_API },
+  { id: S.plan, area: "bots", variant: "empty", params: { day: "2026-10-31" }, api: PLAN_DAY_API },
+  { id: S.plan, area: "bots", variant: "added", params: { day: "2026-10-28", made: MADE_KEY, n: 1 }, api: PLAN_DAY_API },
+  { id: S.plan, area: "bots", variant: "old-build", api: PLAN_DAY_API, without: ["PersonBot"] },
+  { id: S.plan, area: "bots", variant: "no-buddy", api: PLAN_DAY_API, without: ["BotBuddy", "BotsMotion"] },
+  // "Plan something" (screens/bots/planMake.ts; samples/planMake.ts): the empty card from the home, the card filled, the check face
+  // (looks good, notes with fixes, a stop, two drafts, the AI card, who is Nani, What still messy: Read it with AI), a bill's preview, a
+  // day's answer, follow-through off, and an older build (the old add form).
+  ...([
+    ["edit", undefined], ["edit-filled", "filled"], ["check-good", "good"], ["check-notes", "notes"], ["check-stop", "stop"], ["check-multi", "multi"],
+    ["consent", "consent"], ["who-is", "whoIs"], ["bill-preview", "bill"], ["box-answer", "boxDay"], ["check-messy", "messy"],
+  ] as const).map(([variant, st]) => ({ id: S.planMake, area: "bots" as const, variant, params: MAKE_PARAMS, api: MAKE_API, ...(st ? { state: MAKE_STATES[st] } : {}) })),
+  { id: S.planMake, area: "bots", variant: "follow-off", params: MAKE_PARAMS, api: MAKE_OFF_API },
+  { id: S.planMake, area: "bots", variant: "old-build", params: MAKE_PARAMS, api: MAKE_API, without: ["PersonBot"] },
   // "X0 is calling" (screens/bots/planCall.ts; samples/planCall.ts): ringing (with AI, and a bill without it), missed, Call back pressed
   // on the notification (and on one whose call ended since: answered late, then hung up), ended. The window draws each as a record.
   { id: S.planCall, area: "bots", variant: "ringing", params: { call: "c1", state: "ringing", button: "p_answer" }, api: CALL_API },

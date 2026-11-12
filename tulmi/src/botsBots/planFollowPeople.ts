@@ -65,8 +65,8 @@ export class FollowPeople {
     return this.inviteFor(userId).catch(() => null);
   }
 
-  /** "Mom isn't in your X0 people yet. Invite them to a space, then add them here." */
-  private missingWords(list: string[]): string {
+  /** "Mom isn't in your X0 people yet. Invite them to a space, then add them here." (Also "Plan something"'s MadeView.missing.) */
+  missingLine(list: string[]): string {
     const names = list.map((n) => (n === MISSING_ID ? "That person" : firstName(n)));
     const who = names.length === 1 ? names[0]! : names.length === 2 ? `${names[0]} and ${names[1]!.replace(/^That person$/, "that person")}` : `${names.length} people`;
     const verb = names.length === 1 ? "isn't" : "aren't";
@@ -130,7 +130,7 @@ export class FollowPeople {
       ...(importance !== undefined ? { importance } : {}), must: view?.must ?? false, ...(r ? { people: r.refs.map((x) => x.id) } : {}),
     }).catch(() => undefined);
     const out: SetItemOut = { follow: view, missing: r?.missing ?? [] };
-    if (out.missing.length) { out.message = this.missingWords(out.missing); out.invite = await this.invite(userId); }
+    if (out.missing.length) { out.message = this.missingLine(out.missing); out.invite = await this.invite(userId); }
     return out;
   }
 

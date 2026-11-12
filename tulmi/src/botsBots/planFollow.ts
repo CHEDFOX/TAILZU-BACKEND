@@ -57,6 +57,7 @@ import {
   type FollowVia, type LadderStep, type LaterChoice, type MustWhy, type PersonHow, type PersonKey, type PushWordsIn, type StepChannel,
   type StepRung, type StepState,
 } from "./planFollowWords.js";
+import type { PersonLook } from "./personLook.js";
 import type { NeedsCard, NeedsType } from "./planNeeds.js";
 import { capGive, capTakeAll } from "./planReach.js";
 import { addPlanSource } from "./planSources.js";
@@ -83,8 +84,11 @@ const KEEP_CLOSED_MS = 90 * DAY;
 type Log = { info(o: object, m: string): void; warn(o: object, m: string): void };
 const SILENT: Log = { info: () => undefined, warn: () => undefined };
 
-/** Someone in the asker's X0 people (threads.ts contacts): their id and the name the asker knows them by. */
-export interface FollowContact { userId: string; name: string }
+/**
+ * Someone in the asker's X0 people (threads.ts contacts): their id, the name the asker knows them by, and their tiny bot as the asker is
+ * shown it (threads.ts looksKnown: the first space they share), so Plan draws them as their space does.
+ */
+export interface FollowContact { userId: string; name: string; bot?: PersonLook }
 
 /**
  * Someone's X0 people could not be read just now (spaces, members or blocks failed to load). Never the same as "not in their people":
@@ -257,6 +261,16 @@ export class PlanFollows {
       this.log.warn({ err: (err as Error)?.message }, "[follow] X0 people not read");
       throw new PeopleUnread();
     }
+  }
+
+  /**
+   * How someone's X0 people look to them, by id (their space's looks, threads.ts contacts' `bot`): Plan's rows and "Plan something"'s For
+   * who draw a person as their space does. Empty while Spaces is off or when they could not be read (each then has their own look).
+   */
+  async looksOf(userId: string): Promise<Map<string, PersonLook>> {
+    if (!spacesOn() || !this.contacts) return new Map();
+    const list = await this.contacts(userId).catch(() => [] as FollowContact[]);
+    return new Map(list.flatMap((p) => (p.bot ? [[p.userId, p.bot] as [string, PersonLook]] : [])));
   }
 
   /** For words only (the name in a push or on a call): [] when they could not be read. Never for who may be reached. */

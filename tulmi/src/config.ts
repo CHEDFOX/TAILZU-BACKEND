@@ -837,7 +837,28 @@ const EnvSchema = z.object({
   PLAN_V2_PAGE: bool(true),
   PLAN_V2_NOTES: bool(true),
   /**
-   * PLAN_V2_LINKS      step 2: the work calendar by its link (botsBots/planLinks.ts): pasted once (Google, Outlook or iCloud, or a code
+   * PLAN_V2_PAGE keeps its meaning: the new data path (GET .../plan/today, /week, /line, /details, /box, /day), Home's Plan line, the
+   * widget and lock line, the desktop's "add this", the item details sheet, and the Plan page for a build that draws PersonBot. False:
+   * everything as before PLAN_V2 (the week page, the old form), whatever the switches below say.
+   *
+   * PLAN_V2_HOME     the Plan page is the threaded day again (screens/bots/planHome.ts; botsBots/planThread.ts): the header's walking
+   *                  bot and + (both open "Plan something"), the week strip, one day as a thread with leave-by and free-time lines,
+   *                  follow-through lines, must-not-miss and people's tiny bots on every row, one Needs-you card, no box (the box is on
+   *                  "Plan something"). False: the simple page (the one next thing, Today and Tomorrow, one box), as it was.
+   * PLAN_V2_MAKE     "Plan something" (bots.plan.make; botsBots/planMake.ts, planMakeService.ts, routes/bots/planMake.ts): a card
+   *                  (what, when, repeat, for who, must not miss, where), Check (rules, free), Change, Done, and a box that fills
+   *                  the card. Done creates through the calendar and follow-through's own setItem. No migration. False: + and the
+   *                  top area still open bots.plan.make, which then draws the old add form, and /plan/make* answer 404 make_off.
+   * PLAN_V2_MAKE_AI  "Plan something" may ask an AI model to read messy words into the card, only with the person's yes to AI
+   *                  (privacy/aiGate.ts) and inside Plan Ease's day budget (the reading share, planCapture.ts), only when the rules
+   *                  are unsure; the code checks every answer again and decides people and must-not-miss itself. False: rules only,
+   *                  never a model call.
+   */
+  PLAN_V2_HOME: bool(true),
+  PLAN_V2_MAKE: bool(true),
+  PLAN_V2_MAKE_AI: bool(true),
+  /**
+   * PLAN_V2_LINKS     step 2: the work calendar by its link (botsBots/planLinks.ts): pasted once (Google, Outlook or iCloud, or a code
    *                    from x0bot.com/cal), read every 30 minutes, its meetings on the page, in the notes, the clash check and the chat's
    *                    list, kept locked. Needs migration 0071 and CONNECTOR_TOKEN_KEY (the link is sealed with it). False: no link page,
    *                    no offer card, nothing fetched; links already kept stay as they are.
