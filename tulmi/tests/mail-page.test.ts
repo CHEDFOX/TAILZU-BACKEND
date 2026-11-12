@@ -254,3 +254,43 @@ describe("a business's screens", () => {
     expect(callsOf(brief.every()).find((c) => c.path.endsWith("/brief/draft"))).toMatchObject({ assignTo: "mb" });
   });
 });
+
+describe("the mail bot's look", () => {
+  const ORACLE_P = "Reads your birth chart and the world's divination traditions to answer what you ask about your life, love, work and timing.";
+  const withBoth = [...SAMPLE_BOTS.slice(0, 4), { slug: "oracle", name: "Oracle", colour: "plum", purpose: ORACLE_P, builtin: true },
+    { slug: "mail", name: "Mail", colour: "sand", purpose: PURPOSE, builtin: true }, SAMPLE_BOTS[4]!];
+  const home = async (can: string[]) => {
+    const s = await buildBotsScreen({ screenId: "bots.home", client: "phone", params: {}, tzOffsetMinutes: IST, user: { id: "u1", name: "Aanya" }, can: new Set(can), desk: { pages: false, notes: false } },
+      fakeDeps({ bots: withBoth }));
+    return walk(s.root as Node);
+  };
+
+  it("puts the Oracle and the mail bot on Home's grid, the mail bot as the postie filing letters on a loop; the rest stay chips", async () => {
+    const nodes = await home([...DRAWS, "BotTilesStrip"]);
+    const grid = nodes.find((n) => n.type === "BotTiles")!;
+    const tiles = (grid.props as { tiles: Array<Record<string, unknown>> }).tiles;
+    expect(tiles.map((t) => t.slug)).toEqual(expect.arrayContaining(["oracle", "mail"]));
+    expect(tiles.find((t) => t.slug === "mail")).toMatchObject({ avatar: "postie", moment: "m.sort", momentMode: "loop", sub: "Answers your business mail" });
+    expect(tiles.find((t) => t.slug === "oracle")).toMatchObject({ sub: "Reads your sky" });
+    expect(tiles.some((t) => t.slug === "travel")).toBe(false);
+    const chips = nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content));
+    expect(chips).toEqual(expect.arrayContaining(["More bots", "Travel bot", "Gym bot"]));
+    expect(lintTree(nodes[0]!)).toEqual([]);
+  });
+
+  it("gives a build that cannot play looks plain tiles, the Oracle and the mail bot still among them", async () => {
+    const nodes = await home(["BotsKit"]);
+    const texts = nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content));
+    expect(texts).toEqual(expect.arrayContaining(["Oracle", "Reads your sky", "Mail", "Answers your business mail"]));
+    expect(nodes.some((n) => n.type === "BotTiles")).toBe(false);
+  });
+
+  it("wears him on the set-up card (catching the first letter) and in the page's head (stamping one and sending it off)", async () => {
+    const setup = await build({ overview: { businesses: [BIZ({ ready: false })], waiting: [], today: ZERO } });
+    expect(setup.card?.props).toMatchObject({ avatar: "postie", moment: "m.catch" });
+    const p = await build({ overview: { businesses: [BIZ()], waiting: [], today: ZERO } });
+    const buddy = p.nodes.find((n) => n.type === "BotBuddy");
+    expect(buddy?.props).toMatchObject({ avatar: "postie", moment: "m.stamp", life: "page.mail" });
+  });
+});
+

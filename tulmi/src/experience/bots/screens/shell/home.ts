@@ -29,6 +29,7 @@ import { names, type Space } from "../spaces/parts.js";
 import { facesLine } from "../spaces/spaceDetail.js";
 import { idleLine as idleLineOf, firstName } from "./parts.js";
 import { oracleTileLook } from "../bots/oraclePage.js";
+import { mailTileLook } from "../bots/mailPage.js";
 
 // ===================================================================== home
 
@@ -86,8 +87,17 @@ function groupTile(s: Space, height: number, padding: number): Node {
  * Home's grid: the first bots, then the groups (a build with the new Spaces: the one Space card; else each group a bot of its own,
  * GROUPS_ON_HOME of them), then Make a bot.
  */
+/** Built-ins with a look of their own, on Home's grid beside the first three wherever they are set up (docs/oracle.md, docs/mail.md). */
+const FEATURED: readonly string[] = ["oracle", "mail"];
+
+/** The bots Home's grid draws: the first three, then the Oracle and the mail bot. */
+export function homeShown(ctx: BotsCtx): LiveBot[] {
+  const first = ctx.live.bots.slice(0, 3);
+  return [...first, ...ctx.live.bots.filter((b) => b.builtin && FEATURED.includes(b.slug) && !first.includes(b))];
+}
+
 export function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats, spacesIn: Space[] = [], planLine = ""): Node {
-  const shown = ctx.live.bots.slice(0, 3);
+  const shown = homeShown(ctx);
   // Plan Ease's tile says the one thing that matters next, as its page does (botsBots/planDay.ts), when it isn't busy with something.
   const idleLine = (b: LiveBot, client: BotsCtx["client"]) => (b.slug === "plan" && planLine && !b.working ? planLine : idleLineOf(b, client));
   // Spaces switched off: no Space card and no group tiles, whatever was read (kit hasSpaces).
@@ -104,8 +114,8 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     const living = botTiles([
       ...shown.map((b) => ({
         ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}),
-        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts).
-        ...(b.slug === "oracle" ? oracleTileLook(ctx) : {}),
+        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts); the mail bot, the postie filing letters (mailPage.ts).
+        ...(b.slug === "oracle" && b.builtin ? oracleTileLook(ctx) : b.slug === "mail" && b.builtin ? mailTileLook(ctx) : {}),
       })),
       ...(canSpaces2(ctx) ? (groups.length ? [spaceCardSpec(groups)] : []) : groupsShown.map(groupTileSpec)),
       makeTileSpec(open(SCREENS.make)),
@@ -121,11 +131,12 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
 }
 
 /**
- * The bots past Home's first three (the Travel bot, the Oracle, the mail bot, the ones they made): one chip each, so every bot has a way
- * in on the phone. The window lists them all in its sidebar.
+ * The bots Home's grid does not draw (the Travel bot, the ones they made): one chip each, so every bot has a way in on the phone. The
+ * window lists them all in its sidebar.
  */
 export function moreBots(ctx: BotsCtx): Node[] {
-  const rest = ctx.live.bots.slice(3);
+  const shown = new Set(homeShown(ctx).map((b) => b.slug));
+  const rest = ctx.live.bots.filter((b) => !shown.has(b.slug));
   if (!rest.length) return [];
   return [col([
     sectionLabel("More bots"),

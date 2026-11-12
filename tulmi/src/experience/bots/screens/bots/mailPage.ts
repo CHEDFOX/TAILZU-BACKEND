@@ -11,16 +11,27 @@
  *
  * Before anything arrives, one line says that mail comes once the domain points here, with the records a tap away.
  */
-import type { Node } from "../../../../../../shared/types/sdui.js";
+import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, page, row, col, text, box, icon, labelled, back, grow, card, chip, meta, notice, quietButton, primaryButton, C, botAvatar, listCard,
-  sectionLabel, open, SCREENS,
+  sectionLabel, open, SCREENS, canMoments, botMoment, canBuddy, botBuddy,
 } from "../../kit.js";
 import { addBusiness, mailCards, mailCardsDue, mailCardsState } from "./mailCards.js";
 import { MAIL_SLUG, MODE_WORDS, type MailData, type MailRunView, runRow, shownBusiness } from "./mailParts.js";
 import { type BotPageData, askBot, chatBar, isDesk, lookOf } from "./parts.js";
 
 export type MailPageData = BotPageData & { mail?: MailData };
+
+/** The mail bot's look (shared/bots/looks.json): the postie, in a navy cap, his postal-red satchel at his back with a letter peeking out. */
+export const POSTIE = "postie";
+
+/** The mail bot's tile on Home: the postie catching the letters as they drop in and filing each in his bag (m.sort, on a loop), for a build
+ *  that plays looks; else a plain tile. */
+export function mailTileLook(ctx: BotsCtx): Pick<BotTileSpec, "avatar" | "moment" | "momentMode"> {
+  if (!canMoments(ctx)) return {};
+  const m = botMoment(ctx, "m.sort", "loop");
+  return { avatar: POSTIE, ...(m.moment ? { moment: m.moment, ...(m.momentMode ? { momentMode: m.momentMode } : {}) } : {}) };
+}
 
 const STARTERS = ["What needs me today?", "Summarize this week's mail", "Any unhappy customers?"];
 const SHOWN = 5;
@@ -54,11 +65,16 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
   ], { gap: 1, flexShrink: 1 });
   const settings = b ? [labelled(box([icon("settings", { size: 20, color: C.ink })], { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
     open(SCREENS.mailSettings, { b: b.id })), "Settings")] : [];
+  // The postie in the head, as the Oracle's page has its character: he stamps a letter and sends it off as the page opens.
+  const postie = b && canBuddy(ctx) ? [botBuddy({
+    kind: "custom", color: look.color, life: "page.mail", width: desk ? 150 : 64, height: desk ? 60 : 48, size: desk ? 38 : 30, state: "idle",
+    avatar: POSTIE, lookTo: "down", ...botMoment(ctx, "m.stamp", "once"),
+  })] : [];
   const head = desk
-    ? row([botAvatar(look, 30), name, grow(), ...settings], { gap: 10 })
+    ? row([botAvatar(look, 30), name, grow(), ...postie, ...settings], { gap: 10 })
     : row([
       labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back"),
-      name, grow(), ...settings,
+      name, grow(), ...postie, ...settings,
     ], { gap: 6 });
 
   // A chip per business, once there are two or more: the page shows one at a time.
@@ -67,7 +83,8 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
     chip("Add", { dashed: true, onPress: addBusiness() }),
   ], { gap: 8, flexWrap: "wrap" })] : [];
 
-  const cards = mailCards(ctx, m, { color: look.color });
+  // The set-up card's stage: the postie, catching the first letter as the card opens.
+  const cards = mailCards(ctx, m, { color: look.color, ...(canMoments(ctx) ? { avatar: POSTIE, moment: botMoment(ctx, "m.catch", "once") } : {}) });
   const body: Node[] = [...cards, head, ...switcher];
 
   if (m.down) {

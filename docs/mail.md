@@ -157,8 +157,14 @@ answered.
 A built-in bot (`slug` "mail", the name "Mail" a placeholder until it is given one, colour sand, the envelope icon), listed only where
 `MAIL_WORKER_URL` and `MAIL_WORKER_SECRET` are set (`bots/builtin.ts`). Its pages are the app's own, built on the server from the kit, so
 they change with no release, and both apps draw them: the phone (TAILZU-FRONTEND) and the window (TAILZU-DESKTOP), each checked with its own
-renderer (`tulmi/scripts/bots-render`). It is reached from the phone's Home as a chip under the three tiles ("More bots", with every other bot
-past the first three), from the window's sidebar ("Your bots"), from Ask's list of bots and by @mail.
+renderer (`tulmi/scripts/bots-render`). It is on Home's grid beside the first three, with the Oracle (`shell/home.ts homeShown`), on the phone
+and in the window; in the window's sidebar ("Your bots"); in Ask's list of bots; and by @mail.
+
+**Its look** (`shared/bots/looks.json`, played by the apps' own engine, so it needs no release): **the postie**, in a navy cap, a postal-red
+satchel at his back with a letter peeking out of it (avatar `postie`; parts `mailbag`, `envelope`, `stamper`, `postmark`). On Home's tile he
+catches the letters as they drop in and files each in his bag, on a loop (`m.sort`), as Xode juggles his bits; on the set-up card a letter flies
+in and he catches it, reads who it is from and tucks it away (`m.catch`); in the page's head he stamps a letter twice and sends it off with a wave
+(`m.stamp`). A build that cannot play looks gets the plain tile and Blip.
 
 | What | Where |
 | --- | --- |

@@ -115,7 +115,7 @@ function modeChoice(title: string, line1: string, onPress: ActionRef, recommende
 /**
  * The cards, while they are due; nothing otherwise. `look`: the bot's colour.
  */
-export function mailCards(ctx: BotsCtx, d: MailData, look: { color: string }): Node[] {
+export function mailCards(ctx: BotsCtx, d: MailData, look: { color: string; avatar?: string; moment?: Record<string, unknown> }): Node[] {
   if (!mailCardsDue(ctx, d)) return [];
   const desk = ctx.client === "desktop";
   const living = canMove(ctx);
@@ -145,7 +145,7 @@ export function mailCards(ctx: BotsCtx, d: MailData, look: { color: string }): N
       cta: { label: "Next", onPress: make },
       ...(ctx.params.add === "1" ? { quiet: { label: "Cancel", onPress: again() } } : {}),
     });
-    return frame([step], { living, desk, color: look.color, done: { truthy: MC.made } });
+    return frame([step], { living, desk, look, done: { truthy: MC.made } });
   }
 
   const id = b!.id;
@@ -212,15 +212,16 @@ export function mailCards(ctx: BotsCtx, d: MailData, look: { color: string }): N
     quiet: { label: "Skip for now", onPress: skip },
   });
 
-  return frame([dnsStep, modeStep, briefStep], { living, desk, color: look.color, done: allKept, business: id });
+  return frame([dnsStep, modeStep, briefStep], { living, desk, look, done: allKept, business: id });
 }
 
 /** The living card over the page (the page blurred behind it), or the plain one at the top for a build without it. */
-function frame(steps: Node[], o: { living: boolean; desk: boolean; color: string; done: Condition; business?: string }): Node[] {
+function frame(steps: Node[], o: { living: boolean; desk: boolean; look: { color: string; avatar?: string; moment?: Record<string, unknown> }; done: Condition; business?: string }): Node[] {
   const doneLine = when(o.done, row([text(o.business ? "All set." : "Made.", { size: 22, weight: 600, tracking: -0.3, lineHeight: 28 })], { justifyContent: "center", paddingTop: 18, paddingBottom: 26 }));
   if (o.living) {
     return [botCard([...steps, doneLine], {
-      kind: "custom", color: o.color, stageHeight: 96, overlay: true, width: WIDTH[o.desk ? "desktop" : "phone"], label: "The mail bot",
+      kind: "custom", color: o.look.color, stageHeight: 96, overlay: true, width: WIDTH[o.desk ? "desktop" : "phone"], label: "The mail bot",
+      ...(o.look.avatar ? { avatar: o.look.avatar } : {}), ...(o.look.moment ?? {}),
       doneWhen: o.done, doneDelayMs: 1600, onComplete: seq(setState(MC.closed, true), again(o.business)), closeWhen: { truthy: MC.closed },
     })];
   }

@@ -19,8 +19,12 @@ export function idleLine(bot: LiveBot, client: "phone" | "desktop"): string {
     case "keybot": return client === "desktop" ? "Hold a key, speak, done" : "Your keyboard, everywhere";
     case "plan": return "Plans your day";
     case "travel": return "Plans your trips";
-    default: return bot.purpose.length > 40 ? bot.purpose.slice(0, 39).trimEnd() + "…" : bot.purpose;
+    // The Oracle and the mail bot, where they are set up (bot.builtin: a person's own bot of that name keeps its own line).
+    case "oracle": if (bot.builtin) return "Reads your sky"; break;
+    case "mail": if (bot.builtin) return "Answers your business mail"; break;
+    default: break;
   }
+  return bot.purpose.length > 40 ? bot.purpose.slice(0, 39).trimEnd() + "…" : bot.purpose;
 }
 
 /** A bot's name, from the live list (or the built-in words, or "Tailzu"). */

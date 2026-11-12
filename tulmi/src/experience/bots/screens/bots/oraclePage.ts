@@ -40,9 +40,8 @@ export function characterOf(ctx: BotsCtx): (typeof CHARACTERS)[number] {
   return CHARACTERS[day % 2]!;
 }
 
-/** The Oracle's tile wears the day's character and plays his small story once, for a build that plays looks; else it is a plain tile. Home's grid
- *  draws the first three bots (the Oracle is a chip under it, "More bots", and in the window's sidebar), so the tile shows only once the Oracle
- *  is given one of the three places (docs/oracle.md section 3). */
+/** The Oracle's tile on Home's grid (beside the first three, shell/home.ts homeShown) wears the day's character and plays his small story once,
+ *  for a build that plays looks; else it is a plain tile (docs/oracle.md section 3). */
 export function oracleTileLook(ctx: BotsCtx): Pick<BotTileSpec, "avatar" | "moment" | "momentMode"> {
   if (!canMoments(ctx)) return {};
   const c = characterOf(ctx);
