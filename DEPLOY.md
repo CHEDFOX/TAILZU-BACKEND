@@ -1120,19 +1120,17 @@ A built-in bot that answers questions about a person's life from their birth cha
 1. **Migration.** 0078 runs on deploy with the others (`tulmi/supabase/migrate-pending.sh`; by hand:
    `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0078"`). It makes `oracle_people` (a person's birth details and
    the route their last question took), owner-only, deleted with the account. Without `SUPABASE_SERVICE_KEY` it lives in memory.
-2. **Start it, and switch it on.** The keys are the ones `tulmi/.env` already has (`OPENROUTER_API_KEY`, and `OPENAI_API_KEY` for the search by
-   meaning). `deploy/oracle-up.sh` makes `ORACLE_WORKER_SECRET` and sets `ORACLE_WORKER_URL` in `tulmi/.env` when they are not there, hands the worker
-   its three keys (it is given those and nothing else of the server's), and builds and starts it; `ship.sh` then restarts the backend with the two
-   settings. Neither prints a value.
+2. **Start it, and switch it on.** The worker reads `tulmi/.env`, as the backend does: the keys are the ones it already has (`OPENROUTER_API_KEY`,
+   and `OPENAI_API_KEY` for the search by meaning). `deploy/oracle-up.sh` makes `ORACLE_WORKER_SECRET` and sets `ORACLE_WORKER_URL` there when they
+   are not, and builds and starts the worker; `ship.sh` then restarts the backend with the two settings. Neither prints a value.
 
    ```bash
    ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/oracle-up.sh && ./deploy/ship.sh'
    ssh root@91.108.104.168 'cd ~/tulmi && docker compose --profile oracle ps'     # oracle-worker: healthy
    ```
 
-   Compose reads only the `.env` beside `docker-compose.yml` for itself, so the script copies the three keys there; `tulmi/.env` stays the one to
-   edit. **Run the script again after a key changes in `tulmi/.env`, or after a change under `oracle-worker/`** (`ship.sh` rebuilds the backend
-   only).
+   Once it is set up, **`./deploy/ship.sh` rebuilds and restarts the worker with the backend** and checks that it answers with its model keys (a
+   FAIL line in its verdict when not), so a change under `oracle-worker/`, or a key changed in `tulmi/.env`, reaches it at the next deploy.
 
    It wants about 1 GB of memory (`ORACLE_WORKER_MEMORY`) and one CPU (`ORACLE_WORKER_CPUS`), and answers 8 questions at
    once (`ORACLE_WORKER_CONCURRENCY`; one more waits 20 seconds, then is told it is busy). It has no port on the host, runs read-only as a user that
@@ -1141,7 +1139,7 @@ A built-in bot that answers questions about a person's life from their birth cha
    `GOOGLE_PLACES_API_KEY=<the key>` in `tulmi/.env` by hand (**a secret**; the key Plutto uses works: it needs the Places API enabled in its Google
    Cloud project), then `./deploy/ship.sh`. Without it the card uses the server's own geocoder (the cities table, then `PLACES_GEOCODER`).
 3. **Check.** `docker compose exec backend wget -qO- http://oracle-worker:8000/healthz` answers `{"ok":true,"models":true,"meaning":true}`
-   (`"models":false`: there is no `OPENROUTER_API_KEY` in `tulmi/.env`, or the script was not run since it was added; `"meaning":false`: the same for
+   (`"models":false`: there is no `OPENROUTER_API_KEY` in `tulmi/.env`, or the worker was not restarted since it was added; `"meaning":false`: the same for
    `OPENAI_API_KEY`, and every question shows the model the whole list of subsystems, slower and dearer). In the Bots app, pick the Oracle in Ask's list of
    bots (or write "@oracle"); its cards ask for the birth date and time, the place (with suggestions as you type) and, if the app lacks them,
    name and gender. Then ask it something ("will this year bring a new job?"). The words arrive as they are

@@ -12,7 +12,8 @@ from dataclasses import dataclass
 
 # The engine is Plutto's whole backend config: it would take a database, Supabase, payment and push keys from the environment
 # if it found them, and its memory store creates Plutto's tables on any DATABASE_URL. The worker keeps nothing and charges
-# nobody, so those names never reach it, whatever environment it is started in: the memory is files in /tmp instead.
+# nobody, so those names never reach it, whatever environment it is started in (docker-compose gives it the server's tulmi/.env): the memory
+# is files in /tmp instead.
 NOT_THE_WORKERS = ("DATABASE_URL", "SUPABASE_", "REVENUECAT_", "RAZORPAY_", "WEB_PUSH_", "NOTIFY_", "ADMIN_SECRET")
 for _name in [n for n in os.environ if n.startswith(NOT_THE_WORKERS)]:
     del os.environ[_name]

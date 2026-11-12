@@ -143,10 +143,12 @@ a day. A request whose cap cannot cover one answer (250 paise) is refused before
 | `tulmi/.env` | `GOOGLE_PLACES_API_KEY` | **secret**, optional: the birthplace card's suggestions from Google (the Places API Plutto uses; Plutto's key works). Read by the server, not the worker |
 | compose | `ORACLE_WORKER_CONCURRENCY`, `ORACLE_WORKER_MEMORY`, `ORACLE_WORKER_CPUS` | answers at once (8), memory (1g), CPUs (1) |
 
-`tulmi/.env` is the only file to edit. Compose reads only the `.env` beside `docker-compose.yml` for itself, so `deploy/oracle-up.sh` copies the
-worker's three keys there and starts it; run it again after one of them changes. The worker is given those keys and nothing else of the server's. Started anywhere with more (the whole `tulmi/.env`, say), it drops the database,
-Supabase, payment and push names before the engine is loaded (`server/config.py`), so Plutto's memory store keeps its files in `/tmp` and never
-creates its tables in another database. `GET /healthz` says whether the model keys arrived (`"models"`, `"meaning"`), never what they are.
+One env file, `tulmi/.env`: the worker reads it as the backend does (the engine is the owner's own Plutto). It drops the database, Supabase,
+payment and push names before the engine is loaded (`server/config.py`), so Plutto's memory store keeps its files in `/tmp` and never creates its
+tables in the server's database; the only other names the two share are `HOST` and `PORT`, which the worker never uses (it starts on its own
+port). `deploy/oracle-up.sh` switches it on once; after that `./deploy/ship.sh` rebuilds and restarts it with the backend and checks that it
+answers, so a change to it, or a key changed in `tulmi/.env`, reaches it at the next deploy. `GET /healthz` says whether the model keys arrived
+(`"models"`, `"meaning"`), never what they are.
 
 Deploy steps are in DEPLOY.md ("The Oracle"): `./deploy/oracle-up.sh && ./deploy/ship.sh` (migration 0078 runs on deploy). `BOTS` must be on. Without `ORACLE_WORKER_URL` and `ORACLE_WORKER_SECRET` the Oracle is not listed and
 `/v1/oracle/*` answers 404 `oracle_off`.

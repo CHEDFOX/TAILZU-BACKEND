@@ -108,22 +108,20 @@ services:
 
   # THE ORACLE WORKER (oracle-worker/, docs/oracle.md, DEPLOY.md): Plutto's oracle for the Oracle bot. OPTIONAL: it only starts with the `oracle` profile,
   #
-  #   ./deploy/oracle-up.sh
+  #   ./deploy/oracle-up.sh      (once: it makes ORACLE_WORKER_SECRET and sets ORACLE_WORKER_URL in tulmi/.env; then ship.sh keeps it up to date)
   #
-  # which copies ORACLE_WORKER_SECRET, OPENROUTER_API_KEY and OPENAI_API_KEY from tulmi/.env into the `.env` beside this file (compose reads it for
-  # itself) and starts it. It is given those three and nothing else of the server's: not tulmi/.env, whose database and Supabase keys it has no use
-  # for. Unlike the media worker it needs the internet (the models), so it is on the default network, but it
-  # has no port on the host and answers only a signed request. Read-only, no capabilities, not root; what it writes is scratch in /tmp, gone with the
-  # container: nothing a person asked is kept there.
+  # It reads tulmi/.env, like the backend. The engine is the owner's own Plutto, and the worker drops the database, Supabase, payment and push
+  # names before the engine loads (oracle-worker/server/config.py), so its memory never touches the server's database. Unlike the media worker
+  # it needs the internet (the models), so it is on the default network, but it has no port on the host and answers only a signed request.
+  # Read-only, no capabilities, not root; what it writes is scratch in /tmp, gone with the container: nothing a person asked is kept there.
   oracle-worker:
     profiles: ["oracle"]
     build:
       context: ./oracle-worker
     image: tailzu-oracle-worker
+    env_file:
+      - tulmi/.env
     environment:
-      ORACLE_WORKER_SECRET: ${ORACLE_WORKER_SECRET:-}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ORACLE_PROFILE: bot
       ORACLE_WORKER_CONCURRENCY: ${ORACLE_WORKER_CONCURRENCY:-8}
     read_only: true
