@@ -1,6 +1,6 @@
 # Third-party notices
 
-Tailzu's Code bot uses the open-source work below. Everything the product uses is under the MIT licence, except ical.js (MPL-2.0), which Plan Ease uses unchanged (the tools used only to test it, never shipped, are listed apart in "Test-only tools"); the licence text, with each copyright holder's line, follows the table. Dependencies are pinned to exact versions (`tulmi/package.json`, `jobs/package.json`). Nothing from an AGPL, GPL or other strong copyleft project is used.
+Tailzu's Code bot uses the open-source work below. Everything the product uses is under the MIT licence, except ical.js (MPL-2.0), which Plan Ease uses unchanged (the tools used only to test it, never shipped, are listed apart in "Test-only tools"); the licence text, with each copyright holder's line, follows the table. Dependencies are pinned to exact versions (`tulmi/package.json`, `jobs/package.json`, `oracle-worker/requirements.txt`). Nothing from an AGPL, GPL or other strong copyleft project is used, with one exception: the Oracle's worker computes the planets with the Swiss Ephemeris (pyswisseph), which is AGPL-3.0 unless the Swiss Ephemeris Professional Licence is bought (its row below). The Oracle's engine itself (`oracle-worker/app/`) is the owner's own Plutto, not third-party work.
 
 ## What is used, and where
 
@@ -23,7 +23,6 @@ Tailzu's Code bot uses the open-source work below. Everything the product uses i
 | tree-sitter-html | via tree-sitter-wasm | MIT | (c) 2014 Max Brunsfeld | Grammar |
 | [Gitleaks](https://github.com/gitleaks/gitleaks) default rules (`config/gitleaks.toml`) | config format `minVersion = "v8.25.0"` (fetched 27 Oct 2026, release v8.30.1 era) | MIT | (c) 2019 Zachary Rice | The secret scan's provider rules. Vendored unchanged at `tulmi/third_party/gitleaks/gitleaks.toml` with its `LICENSE`; translated by `tulmi/scripts/gen-gitleaks.ts` into `tulmi/src/code/secrets/gitleaksRules.ts` |
 
-| Plutto's oracle (`oracle-worker/app/`) | copied by `oracle-worker/sync_plutto.py` | the owner's own code | (c) CHEDFOX | The Oracle bot's engine and reply (docs/oracle.md) |
 | [pyswisseph](https://github.com/astrorigin/pyswisseph) (the Swiss Ephemeris, by Astrodienst) and its ephemeris file `seas_18.se1` | 2.10.3.2 | AGPL-3.0, or the Swiss Ephemeris Professional Licence | (c) Astrodienst AG; (c) Stanislas Marquis | The planets' places for the Oracle (oracle-worker). Under AGPL-3.0 the worker's source must be offered to the people who use the Oracle; the Professional Licence (bought from Astrodienst) lifts that. Plutto runs on the same terms |
 | [ical.js](https://github.com/kewisch/ical.js) | 2.2.1 | MPL-2.0 | (c) Philipp Kewisch and the ical.js contributors (originally from the Mozilla project) | Reading a linked work calendar's iCalendar file: its repeats, the days taken out of them, moved starts and time zones (`tulmi/src/botsBots/planIcs.ts`). Used as published on npm, unmodified; MPL-2.0's terms cover its own files only, and their source is at the link |
 
