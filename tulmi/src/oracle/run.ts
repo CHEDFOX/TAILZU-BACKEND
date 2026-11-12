@@ -4,9 +4,9 @@
  *   runOracle(deps, req) -> BotAnswer          bots/run.ts sends the Oracle's turns here; every other bot runs the usual loop
  *
  *   1. the sky       when and where they were born (store.ts), read only once it is whole (the cards keep the when first), with their name and
- *                    gender from the profile (the About you card's, or the Oracle's last card). Not known yet and the message holds it ("13 July 1994, 9:30 am, Mumbai")? It is read
- *                    (birth.ts), the place found (places/), kept, and said back in the notes. Still not known: the oracle answers without a chart
- *                    and asks for it when the question needs one
+ *                    gender from the profile (the About you card's, or the Oracle's last card). Not known yet and the message holds it ("13 July
+ *                    1994, 9:30 am, Mumbai")? It is read (birth.ts), the place found (places/), kept, and said back in the notes. Still no whole
+ *                    sky: there is no reading. The engine is not asked, nothing is charged, and the answer sends them to the cards
  *   2. the turns     what the bot's thread kept (memory.ts), as for any bot; an API caller sends its own
  *   3. the answer    the service (worker.ts), streamed: its words go out as they come, then the route is kept for the next turn
  *   4. memory        after an owner's chat turn, as for any bot
@@ -48,6 +48,11 @@ export async function profilePerson(userId: string): Promise<OraclePerson | null
   const gender = p.gender === "male" || p.gender === "female" ? p.gender : undefined;
   return name || gender ? { ...(name ? { name } : {}), ...(gender ? { gender } : {}) } : null;
 }
+
+/** What it says instead of a reading while it has no whole chart (no model is asked for these). */
+export const NEEDS_SKY = "To read this, I need to know when and where you were born: the date, the time if you know it, and the town. The Oracle's cards ask for them. Then ask me again.";
+export const NEEDS_PLACE = "I have the day you were born, but not the town yet. Add it on the Oracle's card, then ask me again.";
+export const FOUND_NOT = "I couldn't find that birthplace on the map. Try the nearest city, or pick it on the Oracle's card.";
 
 /** The service is told who is asking only as a hash: enough to keep one model for one person's conversation, nothing more. */
 export const sessionOf = (userId: string): string => `oracle:${createHash("sha256").update(`oracle:${userId}`).digest("hex").slice(0, 24)}`;
@@ -93,8 +98,19 @@ export async function runOracle(d: RunDeps & { oracle?: OracleDeps }, r: RunRequ
     route = null;
     await store.setSky(r.userId, sky, now()).catch(() => undefined);
     notes.push(`Kept your birth details: ${skyLine(sky)}.`);
-  } else if (!sky && said.missing === "found") {
-    notes.push("I couldn't find that birthplace on the map. Try the nearest city.");
+  }
+
+  // No reading without a chart: the engine is not asked and nothing is charged. They are sent to the cards (the Oracle's page) instead.
+  if (!sky) {
+    const text = said.missing === "found" ? FOUND_NOT : row?.sky ? NEEDS_PLACE : NEEDS_SKY;
+    r.onText?.(text);
+    emit({ t: "text", text });
+    const out: BotAnswer = {
+      bot: { slug: bot.slug, name: bot.name, colour: bot.colour, builtin: bot.ownerId === null },
+      text, paise: 0, tools: [], approvals: [], artifacts: [], opens: [], notes: [], ...(r.pickedBy ? { pickedBy: r.pickedBy } : {}), ms: now() - t0,
+    };
+    emit({ t: "result", result: out });
+    return out;
   }
 
   const history = r.history?.length ? r.history : remember && !r.fresh ? recentTurnsOf(mem.thread) : [];

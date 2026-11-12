@@ -3,8 +3,8 @@
  * one card over the Oracle's page (a BotCard overlay, the page blurred behind it) with the day's character on its stage, and one step after the
  * other, each kept as soon as it is answered, so leaving halfway loses nothing:
  *
- *   1. when      the date of birth, and the time if they know it: PUT /v1/oracle/sky { date, time }. "Not now" puts the card away for this
- *                visit (the Oracle answers without a chart, and the page offers the card again)
+ *   1. when      the date of birth, and the time if they know it: PUT /v1/oracle/sky { date, time }. There is no putting the cards off: the
+ *                Oracle reads nothing without a chart (oracle/run.ts refuses too). Opened by Change, with a sky kept, Cancel leaves it as it was
  *   2. where     the town or city, with suggestions as they type (GET /v1/oracle/places: Google's with GOOGLE_PLACES_API_KEY, else the
  *                server's own); a tap keeps one (PUT { placeId, place, session }), Keep finds what they typed (PUT { place })
  *   3. you       their name and gender, only when the app does not have them (the About you card's own read, GET /v1/bots/first-run/about,
@@ -113,6 +113,7 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
     }),
     else: toast("Add the date you were born."),
   } as ActionSpec;
+  const editing = ctx.params.edit === "1" && !!d.sky?.sky;
   const whenStep = permitStep({
     when: { falsy: OC.when },
     title: "When were you born?",
@@ -122,7 +123,7 @@ export function oracleCards(ctx: BotsCtx, d: OracleCardsData, look: { color: str
       cardField(OC.time, "Time, like 9:30 am", desk, { label: "the time", onSubmit: saveWhen }),
     ],
     cta: { label: "Next", onPress: saveWhen },
-    quiet: { label: "Not now", onPress: setState(OC.closed, true) },
+    ...(editing ? { quiet: { label: "Cancel", onPress: again() } } : {}),
   });
 
   // 2. Where: the search as they type, and five rows for what it found.

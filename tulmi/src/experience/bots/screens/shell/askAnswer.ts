@@ -4,7 +4,7 @@
 
 import type { Node } from "../../../../../../shared/types/sdui.js";
 import { upiOf } from "../../../../shell/parse.js";
-import { type BotsCtx, row, box, body, C, col, icon, meta, statusMark, text, grow, open, SCREENS, toTab, page, askBar } from "../../kit.js";
+import { type BotsCtx, row, box, body, button, C, col, icon, meta, statusMark, text, grow, open, SCREENS, toTab, page, askBar } from "../../kit.js";
 import type { Card } from "../../../../everyday/index.js";
 import { findsCards } from "../finds.js";
 import { isRoutineToken, routineCard, routineCardState } from "../routines.js";
@@ -35,6 +35,8 @@ export function askAnswer(ctx: BotsCtx, cards?: Card[]) {
     row([slug ? avatarOf(ctx, slug, 24) : icon("spark", { size: 16, color: C.meta }), meta(by ? `${by} answered` : "Answered by your bots", { size: 12 })], { gap: 6 }),
     ...(answer ? [body(answer, { lineHeight: 22 })] : []),
   ], { gap: 8 }));
+  // The Oracle answered: its own page is a tap away (its cards ask for the birth details it reads nothing without).
+  if (slug === "oracle") blocks.push(row([button("Open the Oracle", open(SCREENS.chat, { slug: "oracle" }), { kind: "secondary", size: "md" })]));
   // What the everyday tools found: flights, hotels, money, weather, as cards that link out (screens/finds.ts).
   blocks.push(...findsCards(ctx, cards));
   if (job) {

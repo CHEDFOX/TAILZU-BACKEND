@@ -113,13 +113,14 @@ export function oraclePage(ctx: BotsCtx, d: OraclePageData) {
     : known
       ? [stage(ctx, look.color, "Ask the Oracle anything", "Love, work, money, health, timing, or a choice in front of you."),
         row(STARTERS.map((s) => chip(s, { onPress: askBot(bot.slug, s) })), { gap: 8, flexWrap: "wrap" })]
-      : [stage(ctx, look.color, "Ask the Oracle anything", "It answers best once it knows when and where you were born.", true)];
+      : [stage(ctx, look.color, "Ask the Oracle anything", "It reads your sky, so first it needs to know when and where you were born.", true)];
 
   return page(ctx, {
     back: isDesk(ctx), title: bot.name, nav: bot.slug, ...(isDesk(ctx) ? { maxWidth: 720 } : {}),
     pullBot: { top: true, bottom: true, newAt: "bottom", ...(d.turns ? { items: d.turns.map((t) => t.id) } : {}) },
     body: [...cards, head, ...sky, ...talk],
-    footer: [chatBar(ctx, bot.slug, bot.name, "Ask the Oracle…")],
+    // Nothing to ask until the sky is kept: the Oracle reads nothing without it (and oracle/run.ts refuses too).
+    footer: known ? [chatBar(ctx, bot.slug, bot.name, "Ask the Oracle…")] : [],
     gap: 18,
     ...(cardsDue(ctx, d) ? { state: cardsState(ctx, d) } : {}),
   });

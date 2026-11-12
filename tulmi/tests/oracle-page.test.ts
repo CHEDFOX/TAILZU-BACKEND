@@ -106,6 +106,14 @@ describe("the Oracle's cards", () => {
     expect(p.every()).toContainEqual(expect.objectContaining({ kind: "condition", then: { kind: "navigate", screenId: "bots.chat", params: { slug: "oracle" }, replace: true } }));
   });
 
+  it("cannot be put off: there is no Not now, and only Change's cards (a sky already kept) can be left as they were", async () => {
+    const first = await oraclePage({ about: UNKNOWN });
+    expect(walk(first.card!).some((n) => n.props?.content === "Not now")).toBe(false);
+    expect(walk(first.card!).some((n) => n.props?.content === "Cancel")).toBe(false);
+    const change = await oraclePage({ sky: WHOLE, about: KNOWN, edit: true, screen: "bots.chat" });
+    expect(walk(change.card!).some((n) => n.props?.content === "Cancel")).toBe(true);
+  });
+
   it("ask for name and gender only when they are owed", () => {
     expect(needsYou(KNOWN as never)).toBe(false);
     expect(needsYou(UNKNOWN as never)).toBe(true);
@@ -123,6 +131,25 @@ describe("the Oracle's page", () => {
     expect(p.buddies[0]).toMatchObject({ kind: "custom", life: "page.oracle", avatar: expect.stringMatching(/^(wanderer|seer)$/) });
     expect(Number(p.buddies[0]!.size)).toBeGreaterThan(60);
     expect(p.texts).toContain("Add your birth details");
+  });
+
+  it("has nothing to ask with until the sky is kept, and the ask bar once it is", async () => {
+    const bar = (p: Awaited<ReturnType<typeof oraclePage>>) => p.nodes.some((n) => n.type === "TextField" && n.props?.placeholder === "Ask the Oracle…");
+    expect(bar(await oraclePage({ about: KNOWN }))).toBe(false);
+    expect(bar(await oraclePage({ sky: { sky: null, line: null, when: { date: "13 July 1994", time: "", line: "13 July 1994, time not known" } }, about: KNOWN }))).toBe(false);
+    expect(bar(await oraclePage({ sky: WHOLE, about: KNOWN }))).toBe(true);
+  });
+
+  it("is a tap away from Ask's answer when the Oracle answered", async () => {
+    const deps = fakeDeps({ bots: [...SAMPLE_BOTS, { slug: "oracle", name: "Oracle", colour: "plum", purpose: ORACLE.purpose, builtin: true }] });
+    const s = await buildBotsScreen({
+      screenId: "bots.ask", client: "phone", params: { message: "meri shaadi kab hogi", answer: "To read this, I need to know when and where you were born.", bot: "oracle" },
+      tzOffsetMinutes: IST, user: { id: "u1", name: "Aanya" }, can: new Set(DRAWS), desk: { pages: false, notes: false },
+    }, deps);
+    const nodes = walk(s.root as Node);
+    const open = nodes.find((n) => n.props?.label === "Open the Oracle" || n.props?.content === "Open the Oracle");
+    expect(open).toBeDefined();
+    expect(JSON.stringify(nodes.map((n) => n.on ?? {}))).toContain('"screenId":"bots.chat","params":{"slug":"oracle"}');
   });
 
   it("is the Wanderer on one day and the Seer on the next", async () => {

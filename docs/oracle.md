@@ -53,8 +53,8 @@ The Oracle needs the date, the time (when known) and the place of birth, and rea
 * **The cards** (`experience/bots/screens/bots/oracleCards.ts`), the first time someone opens the Oracle: one card over its page, the way the
   microphone and keyboard card and the About you card ask (a BotCard overlay, the page blurred behind it), with the day's character on its stage.
   One step after another, each kept as soon as it is answered, so leaving halfway loses nothing:
-  1. **When**: the date, and the time if they know it (`PUT /v1/oracle/sky { date, time }`). "Not now" puts the card away for this visit; the
-     Oracle answers without a chart, and its page offers the card again.
+  1. **When**: the date, and the time if they know it (`PUT /v1/oracle/sky { date, time }`). The cards cannot be put off: there is no reading
+     without a chart. Only Change's cards, with a sky already kept, have a Cancel.
   2. **Where**: the town or city, with suggestions as they type (`GET /v1/oracle/places`); a tap keeps one (`PUT { placeId, place, session }`),
      Keep finds what they typed (`PUT { place }`). With `GOOGLE_PLACES_API_KEY` the suggestions are Google's (`oracle/places.ts`: the Places API
      Plutto uses, autocomplete then details, towns and cities only, one session per card so a search and its pick are billed together). Without
@@ -70,8 +70,12 @@ The Oracle needs the date, the time (when known) and the place of birth, and rea
 Both are read by the same rules (`oracle/birth.ts`, no model). A date is day before month (05/07/1994 is the 5th of July) unless the first number
 cannot be a month. A time not given is noon, marked as not known, and the reading is gentler about the hour. A sky is read only once it is whole
 (the cards keep the when first). The name and gender go to the engine with the birth details: several of its systems read a woman's chart as a
-man's without the gender ("Other" is not sent: the engine reads only male and female). Without birth details the Oracle still answers, from what it
-can read, and asks for them when a question needs a chart.
+man's without the gender ("Other" is not sent: the engine reads only male and female).
+
+**No reading without a chart.** Until the sky is whole the Oracle's page has no ask bar, and wherever else a question reaches it ("Ask any bot",
+@oracle, Ask's list of bots) the turn refuses before anything is asked (`oracle/run.ts`): the engine is not called, nothing is charged, and the
+answer says what is missing (the birth details, the town, or a place not found) and sends them to the cards. Ask's answer from the Oracle has
+"Open the Oracle".
 
 ## 3. The page and the looks
 
@@ -168,12 +172,12 @@ the engine): a change to how Plutto's chat replies belongs there too.
 
 * `tulmi/tests/oracle-birth.test.ts`: the ways people write a date, a time and a place; Hinglish times; nothing made up.
 * `tulmi/tests/oracle-worker.test.ts`: signed the media worker's way, streamed, failures said in words.
-* `tulmi/tests/oracle-run.test.ts`: listed only where set up; birth details kept from the chat; the route sent back; the person never named to the
-  worker; the money; down and not configured; "Ask any bot" sends a reading there, and a name, an amount or a plain plan elsewhere.
+* `tulmi/tests/oracle-run.test.ts`: listed only where set up; birth details kept from the chat; nothing read, asked or charged without a whole sky;
+  name and gender sent with it; the route sent back; the person never named to the worker; the money; down and not configured; "Ask any bot" sends a reading there, and a name, an amount or a plain plan elsewhere.
 * `tulmi/tests/oracle-routes.test.ts`: the cards over HTTP: whole or in parts (the when, then the place), suggestions, what is missing in words.
 * `tulmi/tests/oracle-page.test.ts`: the cards (when, where with five suggestion rows, name and gender only when owed; what is kept is passed;
-  Change opens them again; the plain card) and the page (one character, big on his stage, then small in the head; the Wanderer one day and the
-  Seer the next).
+  no putting them off, Cancel only in Change's; the plain card) and the page (no ask bar until the sky is kept; one character, big on his stage,
+  then small in the head; the Wanderer one day and the Seer the next; "Open the Oracle" on Ask's answer).
 * `tulmi/tests/oracle-places.test.ts`: Google's suggestions and the picked place in one session, the server's own when Google refuses or there is
   no key, and neither the key nor anything typed in a log line.
 * `oracle-worker/tests/`: the signature (the media worker's vector), the answer streamed with the pipeline and the model stood in for, a failure,

@@ -9,7 +9,7 @@ vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY
 const { ALICE, rig } = await import("./bots-rig.js");
 const { builtinBots, builtinBot } = await import("../src/bots/builtin.js");
 const { resetConfigForTests } = await import("../src/config.js");
-const { runOracle, sessionOf, ORACLE_MIN_PAISE, profilePerson } = await import("../src/oracle/run.js");
+const { runOracle, sessionOf, ORACLE_MIN_PAISE, profilePerson, NEEDS_SKY, NEEDS_PLACE, FOUND_NOT } = await import("../src/oracle/run.js");
 const { MemoryOracleStore } = await import("../src/oracle/store.js");
 const { MemoryBotStore } = await import("../src/bots/store.js");
 const { OracleUnavailable } = await import("../src/oracle/worker.js");
@@ -39,6 +39,9 @@ const MUMBAI = { place: async (q: string) => (/mumbai/i.test(q) ? { lat: 19.07, 
 function deps(worker: unknown, store = new MemoryOracleStore()) {
   return { store: new MemoryBotStore(), call: (async () => { throw new Error("no model in this test"); }) as never, now: () => Date.UTC(2026, 10, 11), oracle: { worker: worker as never, store, places: MUMBAI } };
 }
+
+const WHOLE = { year: 1994, month: 7, day: 13, hour: 9, minute: 30, timeKnown: true, lat: 19.07, lng: 72.87, place: "Mumbai, Maharashtra, India" };
+async function withSky(): Promise<InstanceType<typeof MemoryOracleStore>> { const s = new MemoryOracleStore(); await s.setSky(ALICE, WHOLE, 1); return s; }
 
 const req = (message: string, o: Record<string, unknown> = {}) => ({
   bot: builtinBot("oracle")!, userId: ALICE, message, surface: "chat" as const, capPaise: 600, ...o,
@@ -79,11 +82,12 @@ describe("a turn with the Oracle", () => {
     await store.setSky(ALICE, when, 1);                                  // the first card kept, the second not yet
     const d = deps(f.worker, store);
     const withPerson = { ...d, oracle: { ...d.oracle, person: async () => ({ name: "Aanya Sharma", gender: "female" as const }) } };
-    await runOracle(withPerson, req("What is this year asking of me?"));
-    expect(f.asked[0]!.sky).toBeNull();
+    const half = await runOracle(withPerson, req("What is this year asking of me?"));
+    expect(f.asked).toHaveLength(0);                                    // half a sky is not read
+    expect(half.text).toBe(NEEDS_PLACE);
     await store.setSky(ALICE, { ...when, lat: 19.07, lng: 72.87, place: "Mumbai, Maharashtra, India" }, 2);
     await runOracle(withPerson, req("What is this year asking of me?"));
-    expect(f.asked[1]).toMatchObject({ sky: { place: "Mumbai, Maharashtra, India" }, person: { name: "Aanya Sharma", gender: "female" } });
+    expect(f.asked[0]).toMatchObject({ sky: { place: "Mumbai, Maharashtra, India" }, person: { name: "Aanya Sharma", gender: "female" } });
   });
 
   it("takes name and gender from the profile, leaving out what the engine does not read", async () => {
@@ -96,13 +100,24 @@ describe("a turn with the Oracle", () => {
     expect(await profilePerson("77777777-7777-4777-8777-777777777777")).toEqual({ name: "Aanya Sharma", gender: "female" });
   });
 
-  it("sends the route of the last question back, and asks without a chart when it has none", async () => {
+  it("reads nothing without a chart: the engine is not asked, nothing is charged, and the answer sends them to the cards", async () => {
     on();
-    const f = fakeWorker((ask) => ({ text: ask.sky ? "With your chart." : "Tell me when and where you were born.", route: { picks: ["kp.dba_timing"] } }));
-    const store = new MemoryOracleStore();
-    const d = deps(f.worker, store);
+    const f = fakeWorker(() => ({ text: "A reading." }));
+    const said: string[] = [];
+    const a = await runOracle(deps(f.worker), req("Will I be happy?", { onText: (t: string) => said.push(t) }));
+    expect(f.asked).toHaveLength(0);
+    expect(a).toMatchObject({ text: NEEDS_SKY, paise: 0, notes: [] });
+    expect(said).toEqual([NEEDS_SKY]);
+    const lost = await runOracle(deps(f.worker), req("13 July 1994, 9:30 am, Atlantis. Will I be happy?"));
+    expect(lost.text).toBe(FOUND_NOT);
+    expect(f.asked).toHaveLength(0);
+  });
+
+  it("sends the route of the last question back", async () => {
+    on();
+    const f = fakeWorker(() => ({ text: "With your chart.", route: { picks: ["kp.dba_timing"] } }));
+    const d = deps(f.worker, await withSky());
     await runOracle(d, req("Will I be happy?"));
-    expect(f.asked[0]!.sky).toBeNull();
     expect(f.asked[0]!.route).toBeNull();
     await runOracle(d, req("and when?"));
     expect(f.asked[1]!.route).toEqual({ picks: ["kp.dba_timing"] });
@@ -114,7 +129,7 @@ describe("a turn with the Oracle", () => {
     await expect(runOracle(deps(f.worker), req("hi", { capPaise: ORACLE_MIN_PAISE - 1 }))).rejects.toMatchObject({ code: "budget", status: 402 });
     expect(f.asked).toHaveLength(0);
     const down = { answer: async () => { throw new OracleUnavailable("models_down", "No model now. Try again in a moment."); } };
-    await expect(runOracle(deps(down), req("hi"))).rejects.toMatchObject({ code: "model_down", status: 503, message: "No model now. Try again in a moment." });
+    await expect(runOracle(deps(down, await withSky()), req("hi"))).rejects.toMatchObject({ code: "model_down", status: 503, message: "No model now. Try again in a moment." });
     await expect(runOracle(deps(null), req("hi"))).rejects.toMatchObject({ code: "not_configured", status: 503 });
   });
 });
