@@ -156,7 +156,9 @@ answered.
 
 A built-in bot (`slug` "mail", the name "Mail" a placeholder until it is given one, colour sand, the envelope icon), listed only where
 `MAIL_WORKER_URL` and `MAIL_WORKER_SECRET` are set (`bots/builtin.ts`). Its pages are the app's own, built on the server from the kit, so
-they change with no release.
+they change with no release, and both apps draw them: the phone (TAILZU-FRONTEND) and the window (TAILZU-DESKTOP), each checked with its own
+renderer (`tulmi/scripts/bots-render`). It is reached from the phone's Home as a chip under the three tiles ("More bots", with every other bot
+past the first three), from the window's sidebar ("Your bots"), from Ask's list of bots and by @mail.
 
 | What | Where |
 | --- | --- |

@@ -94,9 +94,10 @@ lantern) and **the Seer** (midnight cloth, a cowl and a cape, a crystal and card
 the `custom` kind with an avatar of its own, so no app update is needed: phones fetch the catalog (v2) when the bootstrap names it; the starter copy
 inside each app is refreshed at its next release.
 
-**Home.** Home's grid draws the first three bots (Xode, Keylessbord, Plan Ease), so the Oracle has no tile there: it is reached from Ask's list of
-bots, from "Ask any bot" and by its name. Its tile already wears the day's character wherever one is drawn (`oracleTileLook`), so giving it a place
-on Home is a change to Home's grid only. Handing the tile from one character to the other on the same visit (one walks off, the other peeks in and
+**Home.** Home's grid draws the first three bots (Xode, Keylessbord, Plan Ease); on the phone every other bot, the Oracle among them, is a chip
+under it ("More bots", `shell/home.ts moreBots`), and the window lists every bot in its sidebar ("Your bots"). It is also reached from Ask's list
+of bots, from "Ask any bot" and by its name. Its tile already wears the day's character wherever one is drawn (`oracleTileLook`), so giving it one
+of the three tiles is a change to Home's grid only. Handing the tile from one character to the other on the same visit (one walks off, the other peeks in and
 enters) needs a tile that holds two avatars: an app update, for later.
 
 ## 4. The models, and when one is down

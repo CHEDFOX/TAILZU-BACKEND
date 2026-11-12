@@ -42,7 +42,7 @@ import { activityItem } from "./shell/activityItem.js";
 import { stepDot, approveTop, approvePay } from "./shell/approvePay.js";
 import { askAnswer } from "./shell/askAnswer.js";
 import { type Route, askCompose } from "./shell/askCompose.js";
-import { type HomeMore, homeHead, homeNotices, hello, tiles, homePull, homePhone } from "./shell/home.js";
+import { type HomeMore, homeHead, homeNotices, hello, tiles, homePull, homePhone, moreBots } from "./shell/home.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought } from "./shell/homeThought.js";
 import { offline } from "./shell/offline.js";
 import { field, toast, kbd, couldNot, avatarOf, nameOf } from "./shell/parts.js";
@@ -161,6 +161,8 @@ function emptyHome(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       hello(ctx, more),
       // The bots they already have (Keylessbord, Code, Plan, Travel), as Home shows them once they've started.
       tiles(ctx, 2, 132, 16, more.notes, more.groups, more.planLine),
+      // And every other bot a chip, so none is out of reach on the phone (the Oracle, the mail bot, their own).
+      ...moreBots(ctx),
       ...routinesRow(ctx, more.routines),
       col([
         row([
