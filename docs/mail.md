@@ -36,8 +36,9 @@ X0 Bot (the app) ──> the backend ──signed──> mail-worker ──JMAP�
 
 ## 2. A business
 
-One per domain (`acme.in`), made with its main address (`hello@`) and any others (`support@`, `billing@`). Mail to any of them arrives in one
-mailbox, in the Inbox and in that address's folder. Each address has an AI mode:
+One per domain (`acme.in`), and as many domains as a person likes, each with its own mailbox, addresses, rules and company personality. Each
+is made with its main address (`hello@`) and takes any number of aliases (`support@`, `billing@`). Mail to any of them arrives in one
+mailbox, in the Inbox (All mail) and in that address's folder, as in Xooteq Mail. Each address has an AI mode:
 
 | Mode | What happens |
 | --- | --- |
@@ -87,7 +88,10 @@ the backend), measured over the last 24 hours: once spent, its AI pauses (the ma
 All under `/v1/o/:owner/...`, signed with `MAIL_WORKER_SECRET` (the media and Oracle workers' scheme: `tulmi/src/media/worker.ts`
 `workerSignature`). The list, with each body: `mail-worker/server/routes/x0.ts`. In short: the account's businesses (list, make, change,
 delete), a business's DNS records, its addresses and their modes, its brief, its activity, a reply (read beside the message it answers,
-change, write again as asked, send now, stop, throw away), the brief drafted from the website, a mail-app password, the overview (the
+change, write again as asked, send now, stop, throw away), the brief drafted from the website, a mail-app password, the mailbox
+(`server/inbox.ts`: its folders, a folder's conversations a page at a time, one conversation, archive, delete, spam, read, star, mail sent
+from any address, new or as a reply or a forward, and mail written by the AI), the rules (read as sentences, added, turned on or off,
+removed), the overview (the
 businesses, what waits for a person by priority, the last 24 hours in numbers), the spend per day, and every business of an account at once
 (the account was deleted). Errors are `{ code, message }`, the message in words for a person.
 
@@ -135,17 +139,30 @@ the backend and checks that it answers set up.
 * `mail-worker/test/api.test.ts`: against a stand-in mail server: the signature (the shared vector), no replay, one account each, a business
   made with its domain and mailbox and every address in Draft, a domain already on the mail server refused, a mode and the allowance, the brief,
   the webhook kept to the worker's own domains, a business and an account deleted with their mailboxes.
+* `mail-worker/test/inbox.test.ts`: the mailbox against the stand-in mail server: its folders (All mail, the main address's own and each
+  alias's once there are aliases, the system folders), a folder's conversations newest first with the AI's tag, an alias's own mail and the
+  main address's without it, one conversation read (and marked read), archive, delete, spam and back, mail sent from an address (a reply
+  with Re: and its references, a forward with the original), the AI writing a new email, and the rules as sentences, turned off and removed.
 * `mail-worker/test/engine.test.ts`: the engine end to end against a stand-in mail server (`test/fakeStalwart.ts`) and a stand-in model: a
   message sorted, drafted and waiting in the overview with its cost; the urgent one and the escalation told to X0 Bot (signed, without the
   mail's words), the newsletter not; the activity without the mail server's ids, the model or the cost; the facts narrowed; the honesty
   rule; a person's change kept and shown to the next reply; a draft written again as asked, then sent once; a newsletter filed without a
   model call; the brief drafted from a site's own pages, and the addresses never read.
 * `tulmi/tests/mail-routes.test.ts`: the bot listed only where it is set up, its slug reserved; every page's call passed inside the person's
-  account with only the fields it takes (never the allowance), a bad id refused before the worker hears of it, the worker's refusals in its
-  words; the client's signature and its errors; the notice pushed to the right person once (a replay, an old or unsigned one refused).
-* `tulmi/tests/mail-page.test.ts`: the set-up cards (the business, then the records with Copy, how it answers, what it knows), the plain
-  card for an older build, the page (needs you first, answered, filed, the day's numbers, a chip per business), a reply (Send with the
-  changes first, Keep, Throw away, written again, Stop), the settings, the records and the brief; every tree through the app's linter.
+  account with only the fields it takes (never the allowance), the mailbox's folder and page only when they are its own, an address's
+  auto-reply put together from the form's flat fields, a bad id, conversation, action or rule refused before the worker hears of it, the
+  worker's refusals in its words; the client's signature and its errors; the notice pushed to the right person once (a replay, an old or
+  unsigned one refused).
+* `tulmi/tests/mail-page.test.ts`: the set-up cards (the business, then the records with Copy, then the company personality read from the
+  website as the records are kept and shown as read, Keep or Change it, its own page going on to the last step, then how it answers; not
+  read again when set up again unless asked), the plain card
+  for an older build, the page (the mailbox's rows with what is unread, needs you, answered, filed, the day's numbers, a chip per domain and
+  Add a domain), a reply (Send with the changes first, Keep, Throw away, written again, Stop), the settings' rows, the records and the
+  company personality; every tree through the app's linter.
+* `tulmi/tests/mail-inbox.test.ts`: the mailbox (a chip per folder and per domain, its conversations, a page at a time, an unknown folder
+  read as All mail), one conversation (oldest first, attachments, Archive, Delete, Spam or Back to inbox, the AI's draft), writing (from any
+  address, a reply from the address it came to, a forward, the AI writing it), a domain's addresses (an alias added with its folder; one
+  address's folder, name, AI mode and auto-reply; removed on a second yes, never the main one) and its rules.
 * `tulmi/tests/mail-chat.test.ts`: the chat's digest (the day, what needs a person, the latest, a stranger's subject fenced), the mail bot's
   turn with it as knowledge in one call; found by its own phrases, never by "write an email"; its pushes and the person's switches.
 
@@ -174,31 +191,58 @@ in and he catches it, reads who it is from and tucks it away (`m.catch`); in the
 | What the chat knows | `tulmi/src/mail/digest.ts` |
 | The page | `experience/bots/screens/bots/mailPage.ts` (bots.bot with slug "mail") |
 | The set-up cards | `experience/bots/screens/bots/mailCards.ts` |
-| A reply, the records, the brief, a business's settings | `experience/bots/screens/bots/mailScreens.ts` (bots.mail.reply, .dns, .brief, .settings) |
+| A reply, the records, the company personality, a business's settings | `experience/bots/screens/bots/mailScreens.ts` (bots.mail.reply, .dns, .brief, .settings) |
+| The mailbox: a folder, a conversation, writing | `experience/bots/screens/bots/mailInbox.ts` (bots.mail.inbox, .thread, .compose) |
+| A domain's addresses (aliases) and its rules | `experience/bots/screens/bots/mailAliases.ts` (bots.mail.addresses, .address, .rules) |
 
 **Set-up**, one card over the page with its stage on top (the Oracle's way), each step kept as it is answered:
 
 1. **The business**: its name and its domain. Its mailbox (`hello@`) is made on our mail server. Nothing to bring.
 2. **Point the domain here**: the four records it needs (MX, SPF, DKIM, DMARC), each with Copy and its live check; Check again. Mail
-   arrives once the MX is in; Next never waits on it.
-3. **How it answers**: Drafts for you (every reply waits for a person; the start) or Sends by itself (after a short wait; money, legal
+   arrives once the MX is in; Next never waits on it. Next also starts reading the domain's website ("Analysing leafandco.in…", one model
+   call), for the next card.
+3. **Company personality**: how the business sounds and what it knows (about, voice, facts, rules), read from its website and shown as
+   read. The AI writes every email with it. **Keep** keeps it; **Change it** keeps it too (what was read is not lost), then opens its own
+   page in the card's place, whose Keep (or Back) goes on to the last step (`params step=mode`). Kept, the business is set up (`ready`);
+   later it is in the settings. Neither goes while the website is still being read. The card shows no fields: a card over the page does not
+   scroll, and four long fields with a keyboard up would push Keep off a small phone. Set up again with a personality already kept, the
+   website is not read again unless they tap "Read leafandco.in again".
+4. **How it answers**: Drafts for you (every reply waits for a person; the start) or Sends by itself (after a short wait; money, legal
    matters, complaints and anything unsure still wait). Every address of the business, the same way.
-4. **What it knows**: Fill from the website drafts it; the person reads it and keeps it, or skips with the careful defaults. Kept, the
-   business is set up (`ready`).
 
-**The page**: the business's address and how it answers, and its settings; a chip per business when there are several (Add makes another).
-Before anything arrives, one line says that mail comes once the domain points here, with the records a tap away. Then the last 24 hours in
-numbers, and three lists: **Needs you** (a message a person should answer, then drafts, then replies about to go by themselves, urgent ones
+**The page**: the domain's main address and how it answers, and its settings; a chip per domain, and **Add a domain** (any number). Before
+anything arrives, one line says that mail comes once the domain points here, with the records a tap away. Then the last 24 hours in
+numbers; **the mailbox**, as Xooteq Mail's side bar has it: All mail (every address), the main address's own and each alias's (once there
+are aliases), Sent and the other folders, each with what is unread, and **Write**; and three lists: **Needs you** (a message a person should answer, then drafts, then replies about to go by themselves, urgent ones
 first, each with the AI's one line, the sender, the kind and when), **Answered** and **Filed** (with why: a newsletter, automatic mail, the
 AI paused). At its foot, the chat: "What needs me today?", "Summarize this week's mail".
+
+**The mailbox** (`bots.mail.inbox`): a chip per domain (when there are several) and per folder: All mail, the main address's own, each
+alias's, Drafts, Sent, Archive, Spam, Trash and any other folder, with what is unread. A folder's conversations, newest first, 30 a page
+(Newer, Older): who, how many, the subject, the start of the last message, when, unread, starred, and what the AI did ("AI draft", "Needs
+you", "AI answered"). **One conversation** (`bots.mail.thread`): oldest first, each message whole with its attachments' names; Archive,
+Delete, Spam (Back to inbox from Trash or Spam), Mark unread, Star; the AI's draft a tap away ("See the draft"); Reply and Forward.
+
+**Writing** (`bots.mail.compose`): new mail, a reply or a forward, from any of the domain's addresses (a reply from the address it was sent
+to). To, Cc, Subject, the message. **Write with AI**: for a reply, "Answer it", "Say no, kindly" or their own words, in the business's voice;
+for new mail, what it is about, and the AI writes the subject and the message. They read it and send it. The signature goes under it.
+
+**A domain's addresses** (`bots.mail.addresses`, from its settings): the main address and each alias, with its folder, how it answers and
+its auto-reply; another alias added with its folder's name (any number). **One address** (`bots.mail.address`): its folder's name (an
+alias's), the name it sends as, how the AI answers it (Drafts, Sends, Off), and its auto-reply (on or off, subject, message, once per sender
+every day, 3 days or a week). An alias is removed on a second yes; the main address never is.
+
+**Rules** (`bots.mail.rules`): each a sentence ("When From contains "invoice": move to Billing"), turned on or off, removed; another added
+from one condition (From, To, Subject or Message contains…) and one action (move to a folder, mark as read, star, forward, delete). They run
+on each message as it arrives, in order, before the AI reads it.
 
 **A reply** (from Needs you, or a push): the message, how it was sorted, and its draft to change. Shorter, Warmer, More formal, Offer a
 call, or their own words write it again (still a draft). **Send** saves their words first when they changed them (the AI learns from what
 they changed) and sends; Keep keeps it as a draft; Throw away. A reply about to go by itself says when, with Stop.
 
-**A business's settings**: each address and how it answers (Drafts, Sends, Off), another address, the AI's last 24 hours (paused when its
-allowance is spent), what it knows, the domain's records, set it up again, another business, a mail app's password and servers, and removing
-the business (only on a second yes).
+**A business's settings**: Addresses, Company personality, Rules and Domain records, each its own screen; the AI's last 24 hours (paused
+when its allowance is spent); Set it up again; Add a domain; a mail app's password and servers; and removing the business (only on a second
+yes).
 
 **The chat** runs the bots' usual loop with no tools: its knowledge is the business's mail as the worker sorted it (`mail/digest.ts`): the
 day in numbers, what waits for a person first, the latest 30 after, one line each. It cannot send or change a reply: it says where to.

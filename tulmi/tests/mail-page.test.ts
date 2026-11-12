@@ -1,9 +1,11 @@
 /**
- * THE MAIL BOT'S SCREENS (screens/bots/mailPage.ts, mailCards.ts, mailScreens.ts): with no business, its first card asks for the business; a
- * business not yet set up gets the records, how it answers and what it knows, one card after another, each kept as it is answered; a set-up
- * business shows what needs a person first, then what was answered and filed, and asks its chat about the mail; a reply is the message beside
- * its draft, with Send, Keep, Throw away and "write it again"; a business's settings change how each address answers and remove it only on a
- * second yes. Every tree is drawn by the shipped app (the linter), on the phone and in the window.
+ * THE MAIL BOT'S SCREENS (screens/bots/mailPage.ts, mailCards.ts, mailScreens.ts, mailInbox.ts, mailAliases.ts): with no business, its first
+ * card asks for the business; a business not yet set up gets the records, then its company personality (read from its website as the records
+ * are kept, theirs to change now or later), then how it answers, one card after another, each kept as it is answered; a set-up business shows
+ * its mailbox (all mail, the main address's own, each alias's), what needs a person, what was answered and filed, and a chip per domain; the
+ * mailbox reads a folder, a conversation and writes mail from any address; a domain's addresses and rules are its own screens; a reply is the
+ * message beside its draft, with Send, Keep, Throw away and "write it again"; a business's settings open its addresses, personality, rules and
+ * records, and remove it only on a second yes. Every tree is drawn by the shipped app (the linter), on the phone and in the window.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -42,7 +44,7 @@ const BRIEF = { profile: { about: "", voice: "Warm, clear and brief.", knowledge
 
 async function build(o: {
   screen?: string; params?: Record<string, string>; client?: "phone" | "desktop"; can?: string[];
-  overview?: unknown; runs?: unknown[]; reply?: unknown; business?: unknown;
+  overview?: unknown; runs?: unknown[]; reply?: unknown; business?: unknown; brief?: unknown; folders?: unknown; api?: Record<string, unknown>;
 } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
   const deps = fakeDeps({
@@ -53,9 +55,11 @@ async function build(o: {
       "GET /v1/mail/overview": o.overview ?? { businesses: [], waiting: [], today: ZERO },
       "GET /v1/mail/businesses/leaf-co/activity?limit=40": { runs: o.runs ?? [] },
       "GET /v1/mail/businesses/leaf-co/dns": DNS,
-      "GET /v1/mail/businesses/leaf-co/brief": BRIEF,
+      "GET /v1/mail/businesses/leaf-co/brief": o.brief ?? BRIEF,
       "GET /v1/mail/businesses/leaf-co": { business: o.business ?? BIZ() },
+      ...(o.folders ? { "GET /v1/mail/businesses/leaf-co/folders": { folders: o.folders } } : {}),
       ...(o.reply ? { "GET /v1/mail/businesses/leaf-co/replies/7": o.reply } : {}),
+      ...(o.api ?? {}),
     },
   });
   const s = await buildBotsScreen({
@@ -94,7 +98,7 @@ describe("the mail bot's set-up", () => {
     expect(p.texts).toContain("Your business's email, answered");
   });
 
-  it("then the records with Copy, how it answers, and what it knows, each kept as it is answered", async () => {
+  it("then the records with Copy, the company personality, and how it answers, each kept as it is answered", async () => {
     const p = await build({ overview: { businesses: [BIZ({ ready: false, addresses: [address(1, "hello"), address(2, "support")] })], waiting: [], today: ZERO } });
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Point leafandco.in here");
@@ -108,21 +112,62 @@ describe("the mail bot's set-up", () => {
       ["/v1/mail/businesses/leaf-co/addresses/1", { aiMode: "draft" }], ["/v1/mail/businesses/leaf-co/addresses/2", { aiMode: "draft" }],
       ["/v1/mail/businesses/leaf-co/addresses/1", { aiMode: "send" }],
     ]));
-    // What it knows: drafted from the website into the fields, then kept.
+    // The records' Next keeps them and reads the domain's website: the company personality fills in from it.
+    const next = p.every().find((a) => a.kind === "sequence" && JSON.stringify(a).includes('"mc_dns"') && JSON.stringify(a).includes("/brief/draft"));
+    expect(next).toBeTruthy();
     const fill = callsOf(p.every()).find((c) => c.path.endsWith("/brief/draft"))!;
     expect(fill).toMatchObject({ method: "POST", assignTo: "mc_draft" });
-    expect(p.fields).toEqual(expect.arrayContaining(["mc_draft.draft.about", "mc_draft.draft.knowledge"]));
-    const keep = callsOf(p.every()).find((c) => c.method === "PUT" && c.path === "/v1/mail/businesses/leaf-co/brief" && Object.keys(c.body as object).length)!;
-    expect(keep.body).toEqual({ about: "$state.mc_draft.draft.about", knowledge: "$state.mc_draft.draft.knowledge", voice: "$state.mc_draft.draft.voice", policies: "$state.mc_draft.draft.policies" });
+    // The personality, after the records, shown as read (no fields on the card: no room for them with a keyboard up). Keep keeps it;
+    // Change it keeps it too, then opens its own page in the card's place.
+    expect(p.texts).toEqual(expect.arrayContaining(["Company personality", "Keep", "Change it", "Analysing leafandco.in…", "About", "Voice", "Facts", "Rules"]));
+    expect(p.fields.some((f) => f.startsWith("mc_draft"))).toBe(false);
+    const shown = p.nodes.filter((n) => n.type === "Text" && (n.bind as { content?: string } | undefined)?.content?.startsWith("mc_draft.draft.")).map((n) => (n.bind as { content: string }).content);
+    expect(shown).toEqual(["mc_draft.draft.about", "mc_draft.draft.voice", "mc_draft.draft.knowledge", "mc_draft.draft.policies"]);
+    const keeps = callsOf(p.every()).filter((c) => c.method === "PUT" && c.path === "/v1/mail/businesses/leaf-co/brief");
+    expect(keeps).toHaveLength(2);
+    for (const keep of keeps) expect(keep.body).toEqual({ about: "$state.mc_draft.draft.about", knowledge: "$state.mc_draft.draft.knowledge", voice: "$state.mc_draft.draft.voice", policies: "$state.mc_draft.draft.policies" });
+    expect(keeps.map((k) => k.onSuccess)).toEqual(expect.arrayContaining([{ kind: "navigate", screenId: "bots.mail.brief", params: { b: "leaf-co", from: "setup" }, replace: true }]));
+    // Not while the website is still being read: what it reads would land after the card moved on.
+    const guarded = p.every().filter((a) => a.kind === "condition" && JSON.stringify((a as { if: unknown }).if) === JSON.stringify({ truthy: "mc_busy" }));
+    expect(guarded).toHaveLength(2);
+    // The order: the records, the personality once they are kept, how it answers once both are.
+    const steps = p.nodes.map((n) => (n as { visibleIf?: unknown }).visibleIf).filter(Boolean).map((c) => JSON.stringify(c));
+    expect(steps).toContain(JSON.stringify({ all: [{ truthy: "mc_dns" }, { falsy: "mc_brief" }] }));
+    expect(steps).toContain(JSON.stringify({ all: [{ truthy: "mc_dns" }, { truthy: "mc_brief" }, { falsy: "mc_mode" }] }));
     // The brief's careful defaults start the fields, so keeping them never empties the rules.
     expect(p.state.mc_draft).toEqual({ draft: { about: "", knowledge: "", voice: "Warm, clear and brief.", policies: "Never promise refunds." } });
     expect(p.card?.props).toMatchObject({ overlay: true, doneWhen: { all: [{ truthy: "mc_dns" }, { truthy: "mc_mode" }, { truthy: "mc_brief" }] } });
   });
 
+  it("does not read the website again when set up again with a personality kept, unless they ask", async () => {
+    const p = await build({ params: { b: "leaf-co", setup: "1" }, overview: { businesses: [BIZ()], waiting: [], today: ZERO }, brief: { ...BRIEF, saved: true } });
+    expect(p.lint).toEqual([]);
+    const next = p.every().filter((a) => a.kind === "sequence" && JSON.stringify(a).includes('"mc_dns"'));
+    expect(next.length).toBeGreaterThan(0);
+    expect(next.some((a) => JSON.stringify(a).includes("/brief/draft"))).toBe(false);
+    expect(p.texts).toContain("Read leafandco.in again");
+  });
+
+  it("opens at how it answers after the personality was changed on its own page, which goes on there kept or not", async () => {
+    const p = await build({ params: { b: "leaf-co", setup: "1", step: "mode" }, overview: { businesses: [BIZ()], waiting: [], today: ZERO }, brief: { ...BRIEF, saved: true } });
+    expect(p.lint).toEqual([]);
+    expect(p.state).toMatchObject({ mc_dns: true, mc_brief: true, mc_mode: false });
+    expect(p.texts).toContain("How should it answer?");
+    const brief = await build({ screen: "bots.mail.brief", params: { b: "leaf-co", from: "setup" } });
+    expect(brief.lint).toEqual([]);
+    const toMode = { kind: "navigate", screenId: "bots.bot", params: { slug: "mail", b: "leaf-co", setup: "1", step: "mode" }, replace: true };
+    const keep = callsOf(brief.every()).find((c) => c.method === "PUT" && c.path === "/v1/mail/businesses/leaf-co/brief")!;
+    expect(JSON.stringify(keep.onSuccess)).toContain(JSON.stringify(toMode));
+    expect(JSON.stringify(brief.s)).toContain(JSON.stringify(toMode));
+    // Opened from the settings, it stays a page of its own.
+    const plain = await build({ screen: "bots.mail.brief", params: { b: "leaf-co" } });
+    expect(JSON.stringify(plain.s)).not.toContain('"step":"mode"');
+  });
+
   it("gives a build without the living card the same steps in a plain card", async () => {
     const p = await build({ can: ["BotsKit"], overview: { businesses: [BIZ({ ready: false })], waiting: [], today: ZERO } });
     expect(p.card).toBeUndefined();
-    expect(p.texts).toEqual(expect.arrayContaining(["Point leafandco.in here", "How should it answer?", "What should it know?"]));
+    expect(p.texts).toEqual(expect.arrayContaining(["Point leafandco.in here", "Company personality", "How should it answer?"]));
     expect(p.lint).toEqual([]);
   });
 });
@@ -170,10 +215,37 @@ describe("the mail bot's page", () => {
     expect(p.every().some((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.dns")).toBe(true);
   });
 
-  it("shows one business at a time, with a chip for each", async () => {
+  it("shows its mailbox: all mail, the main address's own and each alias's with what is unread, then the other folders, and Write", async () => {
+    const folders = [
+      { key: "inbox", id: "in", name: "Inbox", role: "inbox", kind: "system", unread: 3, total: 40 },
+      { key: "main", id: "in", name: "Hello", role: null, kind: "address", unread: 0, total: 0, email: "hello@leafandco.in" },
+      { key: "f-sup", id: "sup", name: "Support", role: null, kind: "address", unread: 2, total: 9, email: "support@leafandco.in" },
+      { key: "sent", id: "snt", name: "Sent", role: "sent", kind: "system", unread: 0, total: 12 },
+    ];
+    const p = await build({ overview, runs, folders });
+    expect(p.lint).toEqual([]);
+    expect(p.calls.some((c) => c.path === "/v1/mail/businesses/leaf-co/folders")).toBe(true);
+    const t = p.texts;
+    expect(t).toEqual(expect.arrayContaining(["Mailbox", "All mail", "Every address of leafandco.in", "3", "hello@leafandco.in", "The main address's own",
+      "support@leafandco.in", "Support folder", "2", "Sent and other folders", "Write"]));
+    const opens = p.every().filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.inbox").map((a) => (a as { params: Record<string, string> }).params.folder);
+    expect(opens).toEqual(expect.arrayContaining(["inbox", "main", "f-sup", "sent"]));
+    expect(p.every().some((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.compose")).toBe(true);
+  });
+
+  it("opens All mail and Sent even when the folders couldn't be read", async () => {
+    const p = await build({ overview, runs });
+    expect(p.texts).toEqual(expect.arrayContaining(["All mail", "hello@leafandco.in", "Sent and other folders"]));
+  });
+
+  it("shows one domain at a time, with a chip for each, and adds another", async () => {
     const two = { ...overview, businesses: [BIZ(), BIZ({ id: "tea-house", name: "Tea House", domain: "teahouse.in", email: "hello@teahouse.in" })] };
     const p = await build({ overview: two, runs });
-    expect(p.texts).toEqual(expect.arrayContaining(["Leaf & Co", "Tea House", "Add", "Every business, last 24 hours"]));
+    expect(p.texts).toEqual(expect.arrayContaining(["leafandco.in", "teahouse.in", "Add a domain", "Every domain, last 24 hours"]));
+    expect(p.every().some((a) => a.kind === "navigate" && (a as { params?: Record<string, string> }).params?.add === "1")).toBe(true);
+    // One domain still has Add a domain beside it.
+    const one = await build({ overview, runs });
+    expect(one.texts).toContain("Add a domain");
   });
 
   it("draws in the window too", async () => {
@@ -230,12 +302,15 @@ describe("a reply", () => {
 });
 
 describe("a business's screens", () => {
-  it("changes how each address answers, adds one, and removes the business only on a second yes", async () => {
+  it("opens its addresses, personality, rules and records, sets it up again, adds a domain, and removes it only on a second yes", async () => {
     const p = await build({ screen: "bots.mail.settings", params: { b: "leaf-co" }, business: BIZ({ addresses: [address(1, "hello"), address(2, "support", { aiMode: "send" })] }) });
     expect(p.lint).toEqual([]);
-    const modes = callsOf(p.every()).filter((c) => /addresses\/\d+$/.test(c.path) && c.method === "PUT");
-    expect(modes).toHaveLength(6);
-    expect(callsOf(p.every()).some((c) => c.method === "POST" && c.path === "/v1/mail/businesses/leaf-co/addresses")).toBe(true);
+    expect(p.texts).toEqual(expect.arrayContaining(["Addresses", "Company personality", "Rules", "Domain records", "Set it up again", "Add a domain"]));
+    const to = p.every().filter((a) => a.kind === "navigate").map((a) => (a as { screenId: string }).screenId);
+    expect(to).toEqual(expect.arrayContaining(["bots.mail.addresses", "bots.mail.brief", "bots.mail.rules", "bots.mail.dns"]));
+    const params = p.every().filter((a) => a.kind === "navigate").map((a) => (a as { params?: Record<string, string> }).params ?? {});
+    expect(params.some((x) => x.setup === "1" && x.b === "leaf-co")).toBe(true);
+    expect(params.some((x) => x.add === "1")).toBe(true);
     expect(p.texts).toContain("Remove Leaf & Co");
     expect(p.state.ms_sure).toBe(false);
     const remove = callsOf(p.every()).find((c) => c.method === "DELETE" && c.path === "/v1/mail/businesses/leaf-co")!;
@@ -244,12 +319,13 @@ describe("a business's screens", () => {
     expect(p.texts.some((t) => t.includes("mx.mail.example.online") && t.includes("hello@leafandco.in"))).toBe(true);
   });
 
-  it("lists the domain's records with their checks, and what the AI knows with Fill from the website", async () => {
+  it("lists the domain's records with their checks, and the company personality with Fill from the website", async () => {
     const dns = await build({ screen: "bots.mail.dns", params: { b: "leaf-co" } });
     expect(dns.lint).toEqual([]);
     expect(dns.texts).toContain("1 of 4 in place");
     const brief = await build({ screen: "bots.mail.brief", params: { b: "leaf-co" } });
     expect(brief.lint).toEqual([]);
+    expect(brief.texts).toContain("Company personality");
     expect(brief.fields).toEqual(expect.arrayContaining(["mb.draft.about", "mb.draft.voice", "mb.draft.knowledge", "mb.draft.policies", "mb_sig"]));
     expect(callsOf(brief.every()).find((c) => c.path.endsWith("/brief/draft"))).toMatchObject({ assignTo: "mb" });
   });

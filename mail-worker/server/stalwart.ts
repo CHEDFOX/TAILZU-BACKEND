@@ -64,7 +64,7 @@ async function jmap(auth: Auth, using: string[], methodCalls: Invocation[]): Pro
 }
 
 /** The result of one call, or a StalwartError carrying what was refused. */
-function unwrap(name: string, inv: Invocation): Record<string, unknown> {
+export function unwrap(name: string, inv: Invocation): Record<string, unknown> {
   const [kind, res] = inv;
   if (kind === "error") throw new StalwartError(`${name}: ${String(res.description ?? res.type)}`, res);
   for (const k of ["notCreated", "notUpdated", "notDestroyed"]) {

@@ -12,7 +12,8 @@ import { neutral } from "../bots/prompt.js";
 import { asUntrustedFile } from "../media/untrusted.js";
 import { mailWorker, MailError, ownerOf, type MailWorker } from "./worker.js";
 
-export interface MailAddressView { id: number; email: string; label: string; isPrimary: boolean; aiMode: "draft" | "send" | "off"; displayName: string; autoReply: string | null }
+export interface MailAutoReply { enabled: boolean; subject: string; body: string; days: number; start?: string; end?: string }
+export interface MailAddressView { id: number; email: string; label: string; isPrimary: boolean; aiMode: "draft" | "send" | "off"; displayName: string; autoReply: MailAutoReply | null }
 export interface MailBusinessView {
   id: string; name: string; domain: string; email: string; signature: string;
   /** Its brief was kept once: the set-up is done. */

@@ -1,8 +1,11 @@
 /**
  * THE MAIL BOT'S PAGE (src/mail, docs/mail.md section 9): bots.bot with slug "mail". Its chat is the usual bots.chat; this is its mail.
  *
- *   the head       back, the bot's name, the business's address and how it answers, and its settings; a chip per business when there are several
- *   the cards      the set-up, over the page, while it is due (mailCards.ts): the business, its domain's records, how it answers, what it knows
+ *   the head       back, the bot's name, the domain's main address and how it answers, and its settings; a chip per domain, and Add a domain
+ *   the cards      the set-up, over the page, while it is due (mailCards.ts): the business, its domain's records, its company personality (read
+ *                  from its website, theirs to change), how it answers
+ *   the mailbox    All mail, the main address's own and each alias's (once there are aliases), with what is unread, then Sent and the other
+ *                  folders; each opens the mailbox (mailInbox.ts), and Write writes from any of its addresses
  *   needs you      what waits for a person, most important first: a message the AI thinks a person should answer, then drafts, then replies about
  *                  to go by themselves. Each opens its reply (mailScreens.ts): the message, the draft, Send
  *   answered       the latest replies that went
@@ -14,10 +17,11 @@
 import type { BotTileSpec, Node } from "../../../../../../shared/types/sdui.js";
 import {
   type BotsCtx, page, row, col, text, box, icon, labelled, back, grow, card, chip, meta, notice, quietButton, primaryButton, C, botAvatar, listCard,
-  sectionLabel, open, SCREENS, canMoments, botMoment, canBuddy, botBuddy,
+  listRow, sectionLabel, open, SCREENS, canMoments, botMoment, canBuddy, botBuddy,
 } from "../../kit.js";
 import { addBusiness, mailCards, mailCardsDue, mailCardsState } from "./mailCards.js";
-import { MAIL_SLUG, MODE_WORDS, type MailData, type MailRunView, runRow, shownBusiness } from "./mailParts.js";
+import { openInbox, writeButton } from "./mailInbox.js";
+import { type FolderView, MAIL_SLUG, type MailBusinessView, MODE_WORDS, type MailData, type MailRunView, runRow, shownBusiness } from "./mailParts.js";
 import { type BotPageData, askBot, chatBar, isDesk, lookOf } from "./parts.js";
 
 export type MailPageData = BotPageData & { mail?: MailData };
@@ -42,6 +46,25 @@ function stat(n: number, label: string): Node {
     text(String(n), { size: 22, weight: 600, lineHeight: 26, tracking: -0.3 }),
     text(label, { size: 12, color: C.meta, lineHeight: 16 }),
   ], { gap: 2, flexGrow: 1, flexBasis: 0, minWidth: 0 });
+}
+
+/**
+ * The mailbox, as Xooteq Mail's side bar has it: All mail (every address), then the main address's own and each alias's, then Sent and the
+ * other folders, with what is unread on the right. Without its folders (the worker didn't answer them), All mail and Sent still open it.
+ */
+function mailbox(b: MailBusinessView, folders: FolderView[] | undefined): Node {
+  const all = folders?.find((f) => f.key === "inbox");
+  const own = (folders ?? []).filter((f) => f.kind === "address");
+  const unread = (f?: FolderView) => (f?.unread ? String(f.unread) : undefined);
+  const rows: Node[] = [
+    listRow({ label: "All mail", sub: own.length ? `Every address of ${b.domain}` : b.email, strong: !!all?.unread, ...(all?.unread ? { value: unread(all) } : {}), onPress: openInbox(b.id, "inbox") }),
+    ...own.map((f) => listRow({ label: f.email ?? f.name, sub: f.key === "main" ? "The main address's own" : `${f.name} folder`, strong: !!f.unread, ...(f.unread ? { value: unread(f) } : {}), onPress: openInbox(b.id, f.key) })),
+    listRow({ label: "Sent and other folders", sub: "Sent, Drafts, Archive, Spam, Trash", onPress: openInbox(b.id, "sent") }),
+  ];
+  return col([
+    row([sectionLabel("Mailbox"), grow(), writeButton(b.id)], { gap: 8, alignItems: "center" }),
+    listCard(rows),
+  ], { gap: 8 });
 }
 
 /** A section of messages: its label, its rows in one card, or a quiet line when there are none. */
@@ -77,10 +100,10 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
       name, grow(), ...postie, ...settings,
     ], { gap: 6 });
 
-  // A chip per business, once there are two or more: the page shows one at a time.
-  const switcher: Node[] = list.length > 1 ? [row([
-    ...list.map((x) => chip(x.name, { selected: x.id === b?.id, onPress: { kind: "navigate", screenId: SCREENS.bot, params: { slug: MAIL_SLUG, b: x.id }, replace: true } })),
-    chip("Add", { dashed: true, onPress: addBusiness() }),
+  // A chip per domain (the page shows one at a time), and another domain a tap away: each has its own mailbox, addresses and personality.
+  const switcher: Node[] = b ? [row([
+    ...list.map((x) => chip(x.domain, { selected: x.id === b.id, onPress: { kind: "navigate", screenId: SCREENS.bot, params: { slug: MAIL_SLUG, b: x.id }, replace: true } })),
+    chip("Add a domain", { dashed: true, onPress: addBusiness() }),
   ], { gap: 8, flexWrap: "wrap" })] : [];
 
   // The set-up card's stage: the postie, catching the first letter as the card opens.
@@ -108,10 +131,11 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
     const t = m.overview?.today;
     if (t) {
       body.push(col([
-        sectionLabel(list.length > 1 ? "Every business, last 24 hours" : "Last 24 hours"),
+        sectionLabel(list.length > 1 ? "Every domain, last 24 hours" : "Last 24 hours"),
         row([stat(t.received, "Arrived"), stat(t.answered, "Answered"), stat(t.drafted + t.needsPerson, "Waiting"), stat(t.filed, "Filed")], { gap: 12 }),
       ], { gap: 10 }));
     }
+    body.push(mailbox(b, m.folders));
     body.push(section("Needs you", waiting.map((r) => runRow(ctx, b.id, r)), "Nothing waits for you."));
     body.push(section("Answered", runs.filter((r) => r.status === "sent").slice(0, SHOWN).map((r) => runRow(ctx, b.id, r)), "No replies have gone yet."));
     body.push(section("Filed", runs.filter((r) => r.status === "skipped").slice(0, SHOWN).map((r) => runRow(ctx, b.id, r)), "Nothing filed yet."));
@@ -125,6 +149,6 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
     body,
     footer: b && !m.down ? [chatBar(ctx, bot.slug, bot.name, "Ask about your mail…", open(SCREENS.chat, { slug: bot.slug }))] : [],
     gap: 18,
-    ...(mailCardsDue(ctx, m) ? { state: mailCardsState(m) } : {}),
+    ...(mailCardsDue(ctx, m) ? { state: mailCardsState(ctx, m) } : {}),
   });
 }

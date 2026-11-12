@@ -22,6 +22,16 @@
  *   POST   /v1/o/:owner/businesses/:id/replies/:run/stop    a scheduled one waits as a draft
  *   DELETE /v1/o/:owner/businesses/:id/replies/:run         thrown away
  *   POST   /v1/o/:owner/businesses/:id/mail-app-password    { password }: for a phone or desktop mail app
+ *   GET    /v1/o/:owner/businesses/:id/folders              all its mail, the main address's own, one per alias, the system folders, others
+ *   GET    /v1/o/:owner/businesses/:id/messages?folder=&page=  a folder's conversations, newest first, 30 a page, each with the AI's last word
+ *   GET    /v1/o/:owner/businesses/:id/threads/:tid         one conversation, every message's text (the unread ones marked read)
+ *   POST   /v1/o/:owner/businesses/:id/threads/:tid/:action read, unread, star, unstar, archive, trash, junk, inbox
+ *   POST   /v1/o/:owner/businesses/:id/send                 { from, to, cc?, subject, text, replyTo? | forward? }: sent from one of its addresses
+ *   POST   /v1/o/:owner/businesses/:id/write                { replyTo?, from?, instruction }: the AI writes it, a draft for the person
+ *   GET    /v1/o/:owner/businesses/:id/rules                each rule as a sentence
+ *   POST   /v1/o/:owner/businesses/:id/rules                { name?, field, op, value, action, target? }: one rule added
+ *   DELETE /v1/o/:owner/businesses/:id/rules/:rid           removed
+ *   POST   /v1/o/:owner/businesses/:id/rules/:rid/toggle    on, or off
  *   GET    /v1/o/:owner/overview                            the businesses, what waits for a person, and the last 24 hours in numbers
  *   GET    /v1/o/:owner/spend?since=                        what each business's AI spent per day, for the account's bill
  *   DELETE /v1/o/:owner                                     every business of the account, with its mail (the account was deleted)
@@ -38,15 +48,26 @@ import { getProfile, saveProfile } from "../ai/prompt.ts";
 import { AiError } from "../ai/model.ts";
 import { activityView, allowance, cancelScheduled, counts, discardDraft, draftView, editDraft, rewriteDraft, sendNow, spend, waiting } from "../ai/engine.ts";
 import { draftBrief } from "../ai/brief.ts";
+import { act, addRule, folders, messages, removeRule, ruleViews, send, thread, toggleRule, write, type ThreadAction } from "../inbox.ts";
 import { NonceCache, refused } from "../security.ts";
 
 const OWNER = /^[A-Za-z0-9:_-]{8,80}$/;
 const nonces = new NonceCache();
 
-type P = { owner: string; id?: string; aid?: string; run?: string };
+type P = { owner: string; id?: string; aid?: string; run?: string; tid?: string; action?: string; rid?: string };
 const params = (req: FastifyRequest) => req.params as P;
 const body = (req: FastifyRequest) => (req.body ?? {}) as Record<string, unknown>;
 const business = (req: FastifyRequest): Company => getCompany(String(params(req).id), params(req).owner);
+const threadIdOf = (req: FastifyRequest): string => {
+  const t = String(params(req).tid ?? "");
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(t)) throw new InputError("No such conversation.");
+  return t;
+};
+const ruleIdOf = (req: FastifyRequest): number => {
+  const n = Number(params(req).rid);
+  if (!Number.isInteger(n) || n < 1) throw new InputError("No such rule.");
+  return n;
+};
 const runId = (req: FastifyRequest): number => {
   const n = Number(params(req).run);
   if (!Number.isInteger(n) || n < 1) throw new InputError("No such reply.");
@@ -153,6 +174,33 @@ export async function x0Routes(app: FastifyInstance) {
     await setMailAppPassword(business(req).id, body(req).password);
     return { ok: true };
   }));
+
+  // The mailbox itself (inbox.ts): its folders, its conversations, what can be done to one, mail sent from it, and its rules.
+  app.get("/v1/o/:owner/businesses/:id/folders", route(async (req) => ({ folders: await folders(business(req)) })));
+  app.get("/v1/o/:owner/businesses/:id/messages", route(async (req) => {
+    const q = (req.query ?? {}) as { folder?: unknown; page?: unknown };
+    return messages(business(req), { ...(typeof q.folder === "string" ? { folder: q.folder.slice(0, 80) } : {}), page: Number(q.page) || 0 });
+  }));
+  app.get("/v1/o/:owner/businesses/:id/threads/:tid", route(async (req) => thread(business(req), threadIdOf(req))));
+  app.post("/v1/o/:owner/businesses/:id/threads/:tid/:action", route(async (req) => {
+    await act(business(req), threadIdOf(req), String(params(req).action) as ThreadAction);
+    return { ok: true };
+  }));
+  app.post("/v1/o/:owner/businesses/:id/send", route(async (req) => {
+    const b = body(req);
+    return { ok: true, ...(await send(business(req), { from: b.from, to: b.to, cc: b.cc, subject: b.subject, text: b.text, replyTo: b.replyTo, forward: b.forward })) };
+  }));
+  app.post("/v1/o/:owner/businesses/:id/write", route(async (req) => {
+    const b = body(req);
+    return write(business(req), { replyTo: b.replyTo, from: b.from, instruction: b.instruction });
+  }));
+  app.get("/v1/o/:owner/businesses/:id/rules", route((req) => ({ rules: ruleViews(business(req).id) })));
+  app.post("/v1/o/:owner/businesses/:id/rules", route(async (req) => {
+    const b = body(req);
+    return { rules: await addRule(business(req).id, { name: b.name, field: b.field, op: b.op, value: b.value, action: b.action, target: b.target }) };
+  }));
+  app.delete("/v1/o/:owner/businesses/:id/rules/:rid", route(async (req) => ({ rules: await removeRule(business(req).id, ruleIdOf(req)) })));
+  app.post("/v1/o/:owner/businesses/:id/rules/:rid/toggle", route(async (req) => ({ rules: await toggleRule(business(req).id, ruleIdOf(req)) })));
 
   app.get("/v1/o/:owner/overview", route((req) => {
     const list = listCompanies(params(req).owner);

@@ -24,8 +24,9 @@ anything here. Taken, with what changed:
 | `server/routes/hooks.ts` | `routes/hooks.ts` | the new-mail webhook, for this worker's own businesses only |
 | `server/routes/x0.ts`, `security.ts`, `cli.ts` | new | the signed API X0 Bot's server calls; its signature check (the media and Oracle workers' scheme); the worker's own webhook registration |
 | `server/notice.ts` | new | the one call out: X0 Bot's server is told, signed, when mail needs a person (an escalation, an urgent draft, the AI paused), for a push; never the mail's words |
+| `server/inbox.ts` | the web app's `folders.ts`, `threadActions.ts`, the composer | the mailbox for X0 Bot's screens, spoken by the worker instead of the browser: its folders (all mail, the main address's own and each alias's, the system folders), a folder's conversations a page at a time with what the AI did, one conversation, archive, delete, spam, read, star, mail sent from any address (new, a reply, a forward), the AI writing a new one, and the rules one at a time |
 | `test/unit.test.ts` | `test/unit.test.ts` | without the logins and sealed keys |
-| `test/api.test.ts`, `engine.test.ts`, `fakeStalwart.ts` | new | the signed API and the engine end to end, against a stand-in mail server and a stand-in model |
+| `test/api.test.ts`, `engine.test.ts`, `inbox.test.ts`, `fakeStalwart.ts` | new | the signed API, the engine and the mailbox end to end, against a stand-in mail server and a stand-in model |
 
 Not taken: the web dashboard, its owners and sessions, the sign-in mails and Postal's sending apps, the apps' Users databases, the
 contact forms.

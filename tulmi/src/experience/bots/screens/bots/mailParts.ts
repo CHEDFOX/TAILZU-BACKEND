@@ -2,11 +2,11 @@
  * What the mail bot's screens share (docs/mail.md section 9): what they read, its words, and one message as a row.
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
-import type { MailBusinessView, MailCounts, MailOverview, MailRunView } from "../../../../mail/digest.js";
+import type { MailAddressView, MailBusinessView, MailCounts, MailOverview, MailRunView } from "../../../../mail/digest.js";
 import { type BotsCtx, C, col, icon, row, SCREENS, statusMark, text } from "../../kit.js";
 import { clockOf, DAY, MIN, shortDate } from "./parts.js";
 
-export type { MailBusinessView, MailCounts, MailOverview, MailRunView };
+export type { MailAddressView, MailBusinessView, MailCounts, MailOverview, MailRunView };
 
 /** The mail bot's routes (routes/bots/mail.ts). */
 export const MAIL = "/v1/mail";
@@ -24,6 +24,18 @@ export interface ReplyView {
   message: { from: string; subject: string; date: string; text: string } | null;
 }
 
+/** The mailbox (the worker's inbox.ts): its folders, a folder's conversations, one conversation, its rules. */
+export interface FolderView { key: string; id: string; name: string; role: string | null; kind: "system" | "address" | "folder"; unread: number; total: number; email?: string }
+export interface Person { name: string; email: string }
+export interface MessageRow { id: string; threadId: string; from: Person; to: Person[]; subject: string; preview: string; at: number; unread: boolean; starred: boolean; count: number; ai?: { run: number; status: string } }
+export interface MessagesView { folder: FolderView; folders: FolderView[]; page: number; more: boolean; total: number; messages: MessageRow[] }
+export interface ThreadMessage { id: string; from: Person; to: Person[]; cc: Person[]; at: number; text: string; unread: boolean; mine: boolean; attachments: Array<{ name: string; size: number; type: string }> }
+export interface ThreadView { threadId: string; subject: string; starred: boolean; where: string[]; messages: ThreadMessage[]; ai?: { run: number; status: string } }
+export interface RuleView { id: number; name: string; enabled: boolean; line: string }
+
+/** A folder's name as the person reads it: the Inbox is all the mail. */
+export const folderName = (f: Pick<FolderView, "key" | "name">): string => (f.key === "inbox" ? "All mail" : f.name);
+
 /** What the mail bot's page reads besides the bot (bots.ts loadBot): the overview, the business shown, its latest, and its set-up's needs. */
 export interface MailData {
   overview?: MailOverview;
@@ -34,6 +46,8 @@ export interface MailData {
   brief?: { profile: BriefView; saved: boolean };
   /** The worker could not be reached. */
   down?: boolean;
+  /** The business shown's folders, for its mailbox's rows (all mail, the main address's, each alias's). */
+  folders?: FolderView[];
 }
 
 /** A business id as it may stand in a path or a param. */

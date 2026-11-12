@@ -51,6 +51,8 @@ import { planMakeScreens } from "./bots/planMake.js";
 import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
 import { mailPage, type MailPageData } from "./bots/mailPage.js";
 import { loadMail, mailScreens } from "./bots/mailScreens.js";
+import { mailInboxScreens } from "./bots/mailInbox.js";
+import { mailAliasScreens } from "./bots/mailAliases.js";
 import type { MailData } from "./bots/mailParts.js";
 import type { About } from "./firstRun/parts.js";
 
@@ -816,6 +818,8 @@ export const botsScreens: BotsScreen[] = [
   // Plan Ease's link page and capture card (screens/bots/planIn.ts).
   ...planInScreens,
   ...mailScreens,
+  ...mailInboxScreens,
+  ...mailAliasScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
   ...planPeopleScreens,
   // Follow-through (botsBots/planFollow.ts): one followed item, and who does an item.

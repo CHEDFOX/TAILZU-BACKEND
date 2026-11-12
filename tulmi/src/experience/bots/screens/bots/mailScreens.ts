@@ -5,9 +5,10 @@
  *                        own words, writes it again (still a draft). Send sends it (their changes first, which the AI learns from); Keep
  *                        keeps it as a draft; Throw away. A reply about to go by itself says when, with Stop. A push opens it
  *   bots.mail.dns        params b: the records to add at the domain's DNS, each checked live, with Copy; Check again
- *   bots.mail.brief      params b: what the AI knows and how it writes (about, voice, facts, rules, sign-off), with Fill from the website
- *   bots.mail.settings   params b: each address and how it answers (Drafts, Sends, Off), another address, the AI's day, the records and the
- *                        brief, set-up again, another business, a mail app's password and servers, and removing the business
+ *   bots.mail.brief      params b, from?: the company personality: how it sounds and what it knows (about, voice, facts, rules, sign-off),
+ *                        with Fill from the website. Opened from the set-up's card (from=setup), Keep and Back go on to its last step
+ *   bots.mail.settings   params b: the domain's addresses (mailAliases.ts), its personality, its rules and its records, the AI's day, set-up
+ *                        again, another domain, a mail app's password and servers, and removing the business
  *
  * Every write goes to routes/bots/mail.ts, which passes it to the worker inside the person's own account.
  */
@@ -18,10 +19,11 @@ import {
 } from "../../kit.js";
 import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
-import { addBusiness, mailField, needsBusiness, needsSetup, openSetup, recordRow } from "./mailCards.js";
+import { addBusiness, mailField, needsBusiness, needsSetup, openSetup, recordRow, toModeStep } from "./mailCards.js";
+import { openAddresses, openRules } from "./mailAliases.js";
 import {
-  bizParam, type BriefView, type DnsView, KIND_LABEL, MAIL, MAIL_SLUG, type MailBusinessView, type MailData, type MailOverview, type MailRunView,
-  MODE_WORDS, type ReplyView, senderOf, shownBusiness,
+  bizParam, type BriefView, type DnsView, type FolderView, KIND_LABEL, MAIL, MAIL_SLUG, type MailBusinessView, type MailData, type MailOverview, type MailRunView,
+  type ReplyView, senderOf, shownBusiness,
 } from "./mailParts.js";
 import { clockOf, isDesk, setState } from "./parts.js";
 
@@ -42,12 +44,14 @@ export async function loadMail(ctx: BotsCtx, deps: Deps): Promise<MailData> {
   const b = shownBusiness(ctx, overview);
   if (!b) return { overview };
   const setup = !needsBusiness(ctx, { overview }) && needsSetup(ctx, { overview });
-  const [runs, dns, brief] = await Promise.all([
+  const [runs, dns, brief, folders] = await Promise.all([
     deps.api<{ runs: MailRunView[] }>("GET", `${MAIL}/businesses/${b.id}/activity?limit=40`).then((r) => r.runs).catch(() => [] as MailRunView[]),
     setup ? deps.api<DnsView>("GET", `${MAIL}/businesses/${b.id}/dns`).catch(() => undefined) : Promise.resolve(undefined),
     setup ? deps.api<{ profile: BriefView; saved: boolean }>("GET", `${MAIL}/businesses/${b.id}/brief`).catch(() => undefined) : Promise.resolve(undefined),
+    // The mailbox's rows on the page: all mail, the main address's, each alias's, with what is unread.
+    deps.api<{ folders: FolderView[] }>("GET", `${MAIL}/businesses/${b.id}/folders`).then((r) => r.folders).catch(() => undefined),
   ]);
-  return { overview, runs, ...(dns ? { dns } : {}), ...(brief ? { brief } : {}) };
+  return { overview, runs, ...(dns ? { dns } : {}), ...(brief ? { brief } : {}), ...(folders ? { folders } : {}) };
 }
 
 // ===================================================================== a reply
@@ -168,8 +172,10 @@ export function briefPage(ctx: BotsCtx, d: BriefData | undefined) {
   const desk = isDesk(ctx);
   const p = d?.brief?.profile;
   const biz = d?.business;
-  if (!p || !biz) return page(ctx, { back: true, backTitle: "What it knows", title: "What it knows", body: [notice("This couldn't be read just now. Try again in a moment.")] });
+  if (!p || !biz) return page(ctx, { back: true, backTitle: "Company personality", title: "Company personality", body: [notice("This couldn't be read just now. Try again in a moment.")] });
   const B = `${MAIL}/businesses/${b}/brief`;
+  // From the set-up's card: kept or not, the set-up goes on to how it answers (the card's page was replaced by this one).
+  const fromSetup = ctx.params.from === "setup";
   const fill = seq(setState("mb_busy", true), call("POST", `${B}/draft`, {}, {
     assignTo: "mb", ok: seq(setState("mb_busy", false), said("Drafted from the website. Read it, then keep it.")),
     fail: seq(setState("mb_busy", false), toast(`Couldn't read ${biz.domain}. Write it yourself, or try again later.`)),
@@ -177,17 +183,17 @@ export function briefPage(ctx: BotsCtx, d: BriefData | undefined) {
   const keep = call("PUT", B, {
     about: "$state.mb.draft.about", voice: "$state.mb.draft.voice", knowledge: "$state.mb.draft.knowledge", policies: "$state.mb.draft.policies",
     signature: "$state.mb_sig",
-  }, { ok: said("Kept. The next replies use it."), fail: toast("Couldn't save it. Try again.") });
+  }, { ok: fromSetup ? seq(said("Kept."), toModeStep(b)) : said("Kept. The next replies use it."), fail: toast("Couldn't save it. Try again.") });
   const field = (label: string, sub: string, path: string, placeholder: string, minHeight: number): Node => col([
     text(label, { size: 15, weight: 600, lineHeight: 20 }), meta(sub, { size: 12, lineHeight: 16 }),
     mailField(path, placeholder, desk, { label, multiline: true, minHeight }),
   ], { gap: 6 });
   return page(ctx, {
-    back: true, backTitle: "What it knows", title: "What it knows", ...(desk ? { maxWidth: 720 } : {}),
+    back: fromSetup ? toModeStep(b) : true, backTitle: "Company personality", title: "Company personality", ...(desk ? { maxWidth: 720 } : {}),
     body: [
       col([
         text(biz.name, { size: 20, weight: 600, lineHeight: 25, tracking: -0.3 }),
-        meta("The AI answers only from what is here and what the email says, and asks a person when these don't say.", { size: 13, lineHeight: 18 }),
+        meta("How the business sounds and what it knows. The AI writes every email with it, answers only from it and from the email, and asks a person when these don't say.", { size: 13, lineHeight: 18 }),
       ], { gap: 6 }),
       row([secondaryButton(`Fill from ${biz.domain}`, fill, { size: "md", icon: "spark" })], { gap: 8 }),
       when({ truthy: "mb_busy" }, meta(`Reading ${biz.domain}…`, { size: 13 })),
@@ -213,25 +219,6 @@ export function settingsPage(ctx: BotsCtx, d: SettingsData | undefined) {
   if (!biz) return page(ctx, { back: true, backTitle: "Business", title: "Business", body: [notice("This couldn't be read just now. Try again in a moment.")] });
   const desk = isDesk(ctx);
   const BZ = `${MAIL}/businesses/${b}`;
-
-  const modeChips = (aid: number, now: string): Node => row((["draft", "send", "off"] as const).map((mode) => chip(MODE_WORDS[mode]!, {
-    selected: now === mode,
-    onPress: call("PUT", `${BZ}/addresses/${aid}`, { aiMode: mode }, { ok: seq(said(`${MODE_WORDS[mode]}.`), refresh), fail: toast("Couldn't change that. Try again.") }),
-  })), { gap: 6, flexWrap: "wrap" });
-  const addresses = listCard(biz.addresses.map((a) => col([
-    row([
-      col([text(a.email, { size: 15, weight: 500, lineHeight: 20, lines: 1 }), ...(a.label ? [meta(a.label, { size: 12 })] : [])], { flexShrink: 1, minWidth: 0, gap: 2 }),
-      { type: "Stack", style: { flexGrow: 1 } },
-      ...(a.isPrimary ? [meta("Main", { size: 12 })] : [quietButton("Remove", call("DELETE", `${BZ}/addresses/${a.id}`, undefined, { ok: seq(said("Removed."), refresh), fail: toast("Couldn't remove it. Try again.") }), { size: "md" })]),
-    ], { gap: 8, alignItems: "center" }),
-    modeChips(a.id, a.aiMode),
-  ], { gap: 10, paddingVertical: 14, paddingHorizontal: 16 })), { title: "Addresses, and how each answers" });
-  const addAddress: ActionSpec = {
-    kind: "condition", if: { truthy: "ms_local" },
-    then: call("POST", `${BZ}/addresses`, { local: "$state.ms_local" }, { ok: seq(setState("ms_local", ""), said("Added. It drafts replies, to start."), refresh), fail: toast("Couldn't add it. Use letters, numbers, dots or dashes.") }),
-    else: toast(`Type the part before @${biz.domain}, like support.`),
-  } as ActionSpec;
-
   const used = biz.allowance.capUsd > 0 ? Math.min(1, biz.allowance.spentUsd / biz.allowance.capUsd) : 0;
   const mailApp = biz.mailApp;
   const setPassword: ActionSpec = {
@@ -247,21 +234,20 @@ export function settingsPage(ctx: BotsCtx, d: SettingsData | undefined) {
   return page(ctx, {
     back: true, backTitle: biz.name, title: biz.name, ...(desk ? { maxWidth: 720 } : {}),
     body: [
-      addresses,
-      col([
-        mailField("ms_local", "Another address, like support", desk, { label: "the address", onSubmit: addAddress }),
-        secondaryButton("Add address", addAddress, { size: "md" }),
-      ], { gap: 8 }),
+      listCard([
+        listRow({ label: "Addresses", sub: `${biz.addresses.map((a) => a.email.split("@")[0] + "@").join(", ")}: folders, names, how each answers, auto-replies`, onPress: openAddresses(b) }),
+        listRow({ label: "Company personality", sub: "About, voice, facts, rules, sign-off", onPress: { kind: "navigate", screenId: SCREENS.mailBrief, params: { b } } }),
+        listRow({ label: "Rules", sub: "What happens to mail as it arrives", onPress: openRules(b) }),
+        listRow({ label: "Domain records", sub: `What ${biz.domain} needs, each checked`, onPress: { kind: "navigate", screenId: SCREENS.mailDns, params: { b } } }),
+      ], { title: biz.domain }),
       col([
         sectionLabel("The AI, last 24 hours"),
         meter(used, 1, { label: used >= 1 ? "Paused until its use ages: new mail waits for you" : "Its allowance", valueText: `${Math.round(used * 100)}%` }),
       ], { gap: 8 }),
       listCard([
-        listRow({ label: "What it knows", sub: "About, voice, facts, rules, sign-off", onPress: { kind: "navigate", screenId: SCREENS.mailBrief, params: { b } } }),
-        listRow({ label: "Domain records", sub: `What ${biz.domain} needs, each checked`, onPress: { kind: "navigate", screenId: SCREENS.mailDns, params: { b } } }),
-        listRow({ label: "Set it up again", sub: "Records, how it answers, what it knows", onPress: openSetup(b) }),
-        listRow({ label: "Add a business", sub: "Another domain, with its own mailbox", onPress: addBusiness() }),
-      ], { title: "The business" }),
+        listRow({ label: "Set it up again", sub: "Records, personality, how it answers", onPress: openSetup(b) }),
+        listRow({ label: "Add a domain", sub: "Another domain, with its own mailbox, addresses and personality", onPress: addBusiness() }),
+      ]),
       col([
         sectionLabel("A mail app too"),
         meta(mailApp ? `Incoming ${mailApp.incoming} (IMAP, 993), outgoing ${mailApp.outgoing} (SMTP, 465), user ${mailApp.user}.` : "Set a password to read the mail in a phone's or a computer's mail app.", { size: 13, lineHeight: 18 }),
@@ -277,7 +263,7 @@ export function settingsPage(ctx: BotsCtx, d: SettingsData | undefined) {
         ], { gap: 10 })),
       ], { gap: 8 }),
     ],
-    state: { ms_local: "", ms_pw: "", ms_sure: false },
+    state: { ms_pw: "", ms_sure: false },
     gap: 20,
   });
 }

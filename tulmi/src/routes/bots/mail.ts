@@ -10,9 +10,10 @@
  *   DELETE /v1/mail/businesses/:id                            the business and its mailbox (its mail goes with it)
  *   GET    /v1/mail/businesses/:id/dns                        the records to add at the domain's DNS, each checked live
  *   POST   /v1/mail/businesses/:id/addresses                  { local, label? }
- *   PUT    /v1/mail/businesses/:id/addresses/:aid             { label?, aiMode?, displayName?, autoReply? } (the worker's PATCH)
+ *   PUT    /v1/mail/businesses/:id/addresses/:aid             { label?, aiMode?, displayName?, autoReply? }, or the auto-reply flat
+ *                                                             (autoReplyEnabled, autoReplySubject, autoReplyBody, autoReplyDays) (the worker's PATCH)
  *   DELETE /v1/mail/businesses/:id/addresses/:aid
- *   GET    /v1/mail/businesses/:id/brief                      { profile, saved }: what the AI knows and how it writes
+ *   GET    /v1/mail/businesses/:id/brief                      { profile, saved }: the company personality: how it writes, what it knows
  *   PUT    /v1/mail/businesses/:id/brief                      { profile } or its fields flat ({ about, knowledge, ... }): kept
  *   POST   /v1/mail/businesses/:id/brief/draft                { url? }: a brief drafted from the business's website, not kept
  *   GET    /v1/mail/businesses/:id/activity?limit=            the latest messages, as the AI sorted them and what it did
@@ -23,6 +24,16 @@
  *   POST   /v1/mail/businesses/:id/replies/:run/stop          a reply about to go waits as a draft
  *   DELETE /v1/mail/businesses/:id/replies/:run               thrown away
  *   POST   /v1/mail/businesses/:id/mail-app-password          { password }: for a mail app on a phone or a computer
+ *   GET    /v1/mail/businesses/:id/folders                    all its mail, the main address's own, one per alias, the system folders
+ *   GET    /v1/mail/businesses/:id/messages?folder=&page=     a folder's conversations, 30 a page, newest first
+ *   GET    /v1/mail/businesses/:id/threads/:tid               one conversation (its unread messages marked read)
+ *   POST   /v1/mail/businesses/:id/threads/:tid/:action       read, unread, star, unstar, archive, trash, junk, inbox
+ *   POST   /v1/mail/businesses/:id/send                       { from, to, cc?, subject, text, replyTo? | forward? }
+ *   POST   /v1/mail/businesses/:id/write                      { replyTo?, from?, instruction }: the AI writes it
+ *   GET    /v1/mail/businesses/:id/rules                      each rule as a sentence
+ *   POST   /v1/mail/businesses/:id/rules                      { name?, field, op, value, action, target? }
+ *   DELETE /v1/mail/businesses/:id/rules/:rid
+ *   POST   /v1/mail/businesses/:id/rules/:rid/toggle
  *
  *   POST   /v1/mail/notice                                    THE WORKER'S, signed with MAIL_WORKER_SECRET: { owner, business, name, status,
  *                                                             run?, kind?, priority? }. The person behind the owner (mail/owners.ts) gets a push
@@ -64,6 +75,10 @@ const NOTICE = `${BASE}/notice`;
 const B = `${BASE}/businesses/:id`;
 const ID = /^[a-z0-9-]{1,80}$/;
 const NUM = /^[1-9][0-9]{0,11}$/;
+const TID = /^[A-Za-z0-9_-]{1,64}$/;
+const ACTION = /^(read|unread|star|unstar|archive|trash|junk|inbox)$/;
+/** What a query may hold, by its name: a folder's key, a page. */
+const QUERY: Record<string, RegExp> = { limit: /^[0-9]{1,4}$/, page: /^[0-9]{1,4}$/, folder: /^(inbox|main|drafts|sent|archive|junk|trash|f-[A-Za-z0-9_-]{1,64})$/ };
 const NOTICE_MAX = 4 * 1024;
 
 /** What a brief may hold: the rest of a body is not passed on. */
@@ -71,7 +86,7 @@ const BRIEF_FIELDS = ["about", "voice", "knowledge", "policies", "signature", "r
 
 type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 /** Each route the pages call: the fields of its body passed on (none: no body), and whether making it keeps whose account it is. */
-const ROUTES: ReadonlyArray<{ method: Method; path: string; to?: Method; body?: readonly string[]; brief?: true; keepOwner?: true; query?: readonly string[] }> = [
+const ROUTES: ReadonlyArray<{ method: Method; path: string; to?: Method; body?: readonly string[]; brief?: true; address?: true; keepOwner?: true; query?: readonly string[] }> = [
   { method: "GET", path: `${BASE}/overview` },
   { method: "GET", path: `${BASE}/businesses` },
   { method: "POST", path: `${BASE}/businesses`, body: ["name", "domain", "local"], keepOwner: true },
@@ -80,7 +95,7 @@ const ROUTES: ReadonlyArray<{ method: Method; path: string; to?: Method; body?: 
   { method: "DELETE", path: B },
   { method: "GET", path: `${B}/dns` },
   { method: "POST", path: `${B}/addresses`, body: ["local", "label"] },
-  { method: "PUT", path: `${B}/addresses/:aid`, to: "PATCH", body: ["label", "aiMode", "displayName", "autoReply"] },
+  { method: "PUT", path: `${B}/addresses/:aid`, to: "PATCH", body: ["label", "aiMode", "displayName", "autoReply"], address: true },
   { method: "DELETE", path: `${B}/addresses/:aid` },
   { method: "GET", path: `${B}/brief` },
   { method: "PUT", path: `${B}/brief`, brief: true },
@@ -93,6 +108,16 @@ const ROUTES: ReadonlyArray<{ method: Method; path: string; to?: Method; body?: 
   { method: "POST", path: `${B}/replies/:run/stop` },
   { method: "DELETE", path: `${B}/replies/:run` },
   { method: "POST", path: `${B}/mail-app-password`, body: ["password"] },
+  { method: "GET", path: `${B}/folders` },
+  { method: "GET", path: `${B}/messages`, query: ["folder", "page"] },
+  { method: "GET", path: `${B}/threads/:tid` },
+  { method: "POST", path: `${B}/threads/:tid/:action` },
+  { method: "POST", path: `${B}/send`, body: ["from", "to", "cc", "subject", "text", "replyTo", "forward"] },
+  { method: "POST", path: `${B}/write`, body: ["replyTo", "from", "instruction"] },
+  { method: "GET", path: `${B}/rules` },
+  { method: "POST", path: `${B}/rules`, body: ["name", "field", "op", "value", "action", "target"] },
+  { method: "DELETE", path: `${B}/rules/:rid` },
+  { method: "POST", path: `${B}/rules/:rid/toggle` },
 ];
 
 /** Each kind of message, as the push names it ("A complaint needs your answer."). */
@@ -104,6 +129,21 @@ export const KIND_WORDS: Record<string, string> = {
 
 const pick = (b: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> =>
   Object.fromEntries(fields.filter((f) => b[f] !== undefined).map((f) => [f, b[f]]));
+
+/** An address's change. The app's forms send the auto-reply's fields flat ({ autoReplyEnabled, autoReplySubject, autoReplyBody,
+ *  autoReplyDays }): they are put together here, as the worker takes them. */
+function addressOf(b: Record<string, unknown>): Record<string, unknown> {
+  const out = pick(b, ["label", "aiMode", "displayName", "autoReply"]);
+  if (["autoReplyEnabled", "autoReplySubject", "autoReplyBody", "autoReplyDays"].some((k) => b[k] !== undefined)) {
+    out.autoReply = {
+      enabled: b.autoReplyEnabled === true || b.autoReplyEnabled === "true",
+      subject: typeof b.autoReplySubject === "string" ? b.autoReplySubject : "",
+      body: typeof b.autoReplyBody === "string" ? b.autoReplyBody : "",
+      days: Number(b.autoReplyDays) || 1,
+    };
+  }
+  return out;
+}
 
 /** A brief's fields; an empty voice or rules is left out, so the worker keeps what it had (an empty rules field would drop "never promise a
  *  refund" with it), while the facts and the about may be emptied. */
@@ -136,19 +176,21 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
         const got = await begin(req, reply);
         if (!got) return reply;
         const p = (req.params ?? {}) as Record<string, string>;
-        if ((p.id !== undefined && !ID.test(p.id)) || (p.aid !== undefined && !NUM.test(p.aid)) || (p.run !== undefined && !NUM.test(p.run))) {
+        if ((p.id !== undefined && !ID.test(p.id)) || (p.aid !== undefined && !NUM.test(p.aid)) || (p.run !== undefined && !NUM.test(p.run))
+          || (p.tid !== undefined && !TID.test(p.tid)) || (p.action !== undefined && !ACTION.test(p.action)) || (p.rid !== undefined && !NUM.test(p.rid))) {
           return reply.code(404).send({ code: "not_found", message: "Not found." });
         }
         // The worker's path is this one inside the account: /v1/o/<owner>/businesses/...
         let rest = (req.url.split("?")[0] ?? "").slice(BASE.length);
         if (r.query) {
           const q = (req.query ?? {}) as Record<string, unknown>;
-          const kept = r.query.filter((k) => typeof q[k] === "string" && /^[0-9]{1,4}$/.test(q[k] as string)).map((k) => `${k}=${q[k]}`);
+          const kept = r.query.filter((k) => typeof q[k] === "string" && (QUERY[k] ?? /^$/).test(q[k] as string)).map((k) => `${k}=${encodeURIComponent(q[k] as string)}`);
           if (kept.length) rest += `?${kept.join("&")}`;
         }
         const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
         const body = r.brief
           ? { profile: briefOf(b.profile && typeof b.profile === "object" ? b.profile as Record<string, unknown> : b) }
+          : r.address ? addressOf(b)
           : r.body ? pick(b, r.body) : r.method === "GET" || r.method === "DELETE" ? undefined : {};
         const owner = ownerOf(got.user.id);
         try {

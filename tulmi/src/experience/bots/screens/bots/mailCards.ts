@@ -3,13 +3,16 @@
  * stage on top, one step after the other, each kept as soon as it is answered, so leaving halfway loses nothing:
  *
  *   1. the business   its name and its domain: POST /v1/mail/businesses. The domain and its mailbox (hello@) are made on our mail server, and
- *                     the page comes back with the business, for the rest. Also "Add a business" in its settings (params add=1)
+ *                     the page comes back with the business, for the rest. Also "Add a domain", on the page and in its settings (params add=1)
  *   2. the records    what to add at the domain's DNS (MX, SPF, DKIM, DMARC), each with Copy and its live check; "Check again" reads them
- *                     again. Mail arrives once the MX is in: it can take a while, so Next never waits on it
- *   3. how it answers Drafts for you (the start: every reply waits for a person to send) or Sends by itself (after a short wait; money, legal
+ *                     again. Mail arrives once the MX is in: it can take a while, so Next never waits on it. Next also reads the domain's
+ *                     website (POST .../brief/draft, a model call)
+ *   3. personality    the company personality, read from the website: about, voice, facts and rules, shown as read. Keep keeps it (PUT
+ *                     the brief); Change it keeps it too, then opens its own page to change (a card over the page has no room for four
+ *                     long fields with a keyboard up), whose Keep comes back here for the last step (params step=mode). Kept: the
+ *                     business is set up (`ready`); it can be changed later in its settings
+ *   4. how it answers Drafts for you (the start: every reply waits for a person to send) or Sends by itself (after a short wait; money, legal
  *                     matters, complaints and anything unsure still wait): PUT each address's mode
- *   4. what it knows  "Fill from my website" drafts it from the business's own pages (a model call), and the person reads it and keeps it: PUT
- *                     the brief. "Skip for now" keeps the careful defaults. Kept: the business is set up (`ready`)
  *   then              "All set.", the bot's happy moment, and the page
  *
  * Steps 2 to 4 are due while the business shown is not set up, or when its settings ask (params setup=1). A build without the living card
@@ -37,12 +40,14 @@ export const needsSetup = (ctx: BotsCtx, d: MailData): boolean => {
 };
 export const mailCardsDue = (ctx: BotsCtx, d: MailData): boolean => needsBusiness(ctx, d) || needsSetup(ctx, d);
 
-/** What the page starts with while the cards are due. */
-export function mailCardsState(d: MailData): Record<string, unknown> {
+/** What the page starts with while the cards are due. Back from changing the personality (params step=mode), the records and the personality
+ *  are already kept: the card opens at how it answers. */
+export function mailCardsState(ctx: BotsCtx, d: MailData): Record<string, unknown> {
   const p: Partial<BriefView> = d.brief?.profile ?? {};
+  const atMode = ctx.params.step === "mode";
   return {
     [MC.name]: "", [MC.domain]: "", [MC.made]: false,
-    [MC.dns]: false, [MC.mode]: false, [MC.brief]: false, [MC.busy]: false, [MC.closed]: false,
+    [MC.dns]: atMode, [MC.mode]: false, [MC.brief]: atMode, [MC.busy]: false, [MC.closed]: false,
     // The brief's fields, as "Fill from my website" answers them ({ draft, pages }), so its answer lands in the same places.
     [MC.draft]: { draft: { about: p.about ?? "", knowledge: p.knowledge ?? "", voice: p.voice ?? "", policies: p.policies ?? "" } },
   };
@@ -50,8 +55,10 @@ export function mailCardsState(d: MailData): Record<string, unknown> {
 
 /** The mail bot's page again, as it is now (the business made, or the set-up done). */
 const again = (business?: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.bot, params: { slug: MAIL_SLUG, ...(business ? { b: business } : {}) }, replace: true });
-/** Opens the cards again for a business (its settings' "Set-up again"), or for a new one ("Add a business"). */
+/** Opens the cards again for a business (its settings' "Set it up again"), or for a new domain ("Add a domain"). */
 export const openSetup = (business: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.bot, params: { slug: MAIL_SLUG, b: business, setup: "1" } });
+/** The set-up's last step (how it answers), after the personality was changed on its own page: that page is replaced, so nothing stale is behind. */
+export const toModeStep = (business: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.bot, params: { slug: MAIL_SLUG, b: business, setup: "1", step: "mode" }, replace: true });
 export const addBusiness = (): ActionSpec => ({ kind: "navigate", screenId: SCREENS.bot, params: { slug: MAIL_SLUG, add: "1" } });
 
 /** A one-line field in the cards' look (oracleCards.ts cardField's), or a taller one for the brief. */
@@ -135,7 +142,7 @@ export function mailCards(ctx: BotsCtx, d: MailData, look: { color: string; avat
     } as ActionSpec;
     const step = permitStep({
       when: { falsy: MC.made },
-      title: d.overview?.businesses.length ? "Another business" : "Your business's email",
+      title: d.overview?.businesses.length ? "Another domain" : "Your business's email",
       lines: [line("Its name, and the domain its email is on. We make its mailbox on our mail server; the AI that answers is ours too. Nothing to bring.")],
       extra: [
         mailField(MC.name, "Business name, like Leaf & Co", desk, { label: "the name", capitalize: true }),
@@ -156,7 +163,13 @@ export function mailCards(ctx: BotsCtx, d: MailData, look: { color: string; avat
     ...(living ? [] : [{ kind: "condition", if: allKept, then: again(id) } as ActionSpec]),
   );
 
-  // 2. The records.
+  // 2. The records. Next reads the domain's website as they go on (a model call), and the personality card fills in with it; set up again
+  //    with a personality already kept, it is not read again unless they ask.
+  const analyse = seq(setState(MC.busy, true), call("POST", `${MAIL}/businesses/${id}/brief/draft`, {}, {
+    assignTo: MC.draft,
+    ok: setState(MC.busy, false),
+    fail: seq(setState(MC.busy, false), toast(`Couldn't read ${b!.domain}. Write the personality yourself, or later.`)),
+  }));
   const records = (d.dns?.records ?? []).filter((r) => r.required);
   const dnsStep = permitStep({
     when: { falsy: MC.dns },
@@ -164,55 +177,59 @@ export function mailCards(ctx: BotsCtx, d: MailData, look: { color: string; avat
     lines: [line(`Add these where ${b!.domain} was bought (GoDaddy, Cloudflare…). Mail arrives once the MX is in: minutes to a few hours.`)],
     extra: records.length
       ? [col(records.map((r) => recordRow(ctx, r)), { gap: 0 })]
-      : [line("The records couldn't be read just now. They are in the business's settings, under Domain records.")],
-    cta: { label: "Next", onPress: kept(MC.dns) },
+      : [line("The records couldn't be read just now. They are in the domain's settings, under Domain records.")],
+    cta: { label: "Next", onPress: d.brief?.saved ? kept(MC.dns) : seq(kept(MC.dns), analyse) },
     quiet: { label: "Check again", onPress: { kind: "refresh" } as ActionSpec },
   });
 
-  // 3. How it answers: every address of the business, the same way.
-  // One address after the other, and the step is kept only once every one of them took it.
+  // 3. The company personality: read from the website, shown as read. Keep keeps it; Change it keeps it too (what was read is not lost),
+  //    then opens its own page, which comes back here for the last step. Later, it is in the settings.
+  const P = `${MC.draft}.draft`;
+  const personality = { about: `$state.${P}.about`, voice: `$state.${P}.voice`, knowledge: `$state.${P}.knowledge`, policies: `$state.${P}.policies` };
+  const brief = `${MAIL}/businesses/${id}/brief`;
+  const reading = toast(`Still reading ${b!.domain}…`);
+  const keep: ActionSpec = { kind: "condition", if: { truthy: MC.busy }, then: reading,
+    else: call("PUT", brief, personality, { ok: kept(MC.brief), fail: toast("Couldn't save that. Try again.") }) } as ActionSpec;
+  const change: ActionSpec = { kind: "condition", if: { truthy: MC.busy }, then: reading,
+    else: call("PUT", brief, personality, { ok: { kind: "navigate", screenId: SCREENS.mailBrief, params: { b: id, from: "setup" }, replace: true }, fail: toast("Couldn't save that. Try again.") }) } as ActionSpec;
+  const tag = (s: string) => text(s, { size: 11, weight: 600, tracking: 0.4, upper: true, color: C.meta, lineHeight: 15 });
+  const block = (k: string, label: string): Node => when({ truthy: `${P}.${k}` }, col([
+    tag(label), text("", { bind: `${P}.${k}`, size: 14, color: C.ink, lineHeight: 19, lines: 3 }),
+  ], { gap: 3 }));
+  const personalityStep = permitStep({
+    when: { all: [{ truthy: MC.dns }, { falsy: MC.brief }] },
+    title: "Company personality",
+    lines: [line(`How ${b!.name} sounds and what it knows, read from ${b!.domain}. The AI writes every email with it. Change it now, or later in its settings.`)],
+    extra: [
+      when({ truthy: MC.busy }, row([icon("spark", { size: 16, color: C.ink }), text(`Analysing ${b!.domain}…`, { size: 14, weight: 500, lineHeight: 18 })], { gap: 8, alignItems: "center", paddingVertical: 6 })),
+      when({ falsy: MC.busy }, col([
+        block("about", "About"), block("voice", "Voice"), block("knowledge", "Facts"), block("policies", "Rules"),
+        when({ all: [{ falsy: `${P}.about` }, { falsy: `${P}.knowledge` }] }, text(`Nothing about ${b!.name} could be read from ${b!.domain} yet. Change it to write it, or do it later.`, { size: 13, color: C.grey70, lineHeight: 18 })),
+      ], { gap: 12, padding: 14, borderRadius: 16, backgroundColor: C.surface })),
+      ...(d.brief?.saved ? [labelled(row([icon("spark", { size: 16, color: C.ink }), text(`Read ${b!.domain} again`, { size: 14, weight: 500, lineHeight: 18 })],
+        { gap: 8, minHeight: 40, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: C.outline, alignSelf: "flex-start", alignItems: "center" }, analyse), `Read ${b!.domain} again`)] : []),
+    ],
+    cta: { label: "Keep", onPress: keep },
+    quiet: { label: "Change it", onPress: change },
+  });
+
+  // 4. How it answers: every address of the domain, the same way. One address after the other, and the step is kept only once every one
+  //    of them took it.
   const setMode = (mode: "draft" | "send"): ActionRef => b!.addresses.reduceRight<ActionRef>(
     (next, a) => call("PUT", `${MAIL}/businesses/${id}/addresses/${a.id}`, { aiMode: mode }, { ok: next, fail: toast("Couldn't save that. Try again.") }),
     kept(MC.mode),
   );
   const modeStep = permitStep({
-    when: { all: [{ truthy: MC.dns }, { falsy: MC.mode }] },
+    when: { all: [{ truthy: MC.dns }, { truthy: MC.brief }, { falsy: MC.mode }] },
     title: "How should it answer?",
     lines: [line("You can change it any time, for each address.")],
     extra: [
       modeChoice(MODE_WORDS.draft!, "Every reply waits in Drafts for you to read, change and send.", setMode("draft"), true),
       modeChoice(MODE_WORDS.send!, "Replies go after a few minutes unless you stop them. Money, legal matters, complaints and anything it is unsure of still wait for you.", setMode("send")),
     ],
-    quiet: { label: "Back", onPress: setState(MC.dns, false) },
   });
 
-  // 4. What it knows: drafted from the website, read, kept.
-  const fill = seq(setState(MC.busy, true), call("POST", `${MAIL}/businesses/${id}/brief/draft`, {}, {
-    assignTo: MC.draft,
-    ok: setState(MC.busy, false),
-    fail: seq(setState(MC.busy, false), toast(`Couldn't read ${b!.domain}. Write it yourself, or try again later.`)),
-  }));
-  const keep = call("PUT", `${MAIL}/businesses/${id}/brief`, {
-    about: `$state.${MC.draft}.draft.about`, knowledge: `$state.${MC.draft}.draft.knowledge`,
-    voice: `$state.${MC.draft}.draft.voice`, policies: `$state.${MC.draft}.draft.policies`,
-  }, { ok: kept(MC.brief), fail: toast("Couldn't save that. Try again.") });
-  const skip = call("PUT", `${MAIL}/businesses/${id}/brief`, {}, { ok: kept(MC.brief), fail: toast("Couldn't save that. Try again.") });
-  const briefStep = permitStep({
-    when: { all: [{ truthy: MC.dns }, { truthy: MC.mode }, { falsy: MC.brief }] },
-    title: "What should it know?",
-    lines: [line(`What ${b!.name} does, and the facts a reply may use: prices, hours, delivery, returns. It answers only from these, and asks you when they don't say.`)],
-    extra: [
-      labelled(row([icon("spark", { size: 16, color: C.ink }), text(`Fill from ${b!.domain}`, { size: 14, weight: 500, lineHeight: 18 })],
-        { gap: 8, minHeight: 44, paddingHorizontal: 14, borderRadius: 22, borderWidth: 1, borderColor: C.outline, alignSelf: "flex-start", alignItems: "center" }, fill), `Fill from ${b!.domain}`),
-      when({ truthy: MC.busy }, line(`Reading ${b!.domain}…`)),
-      mailField(`${MC.draft}.draft.about`, `What ${b!.name} does, and for whom`, desk, { label: "about", multiline: true, minHeight: 80 }),
-      mailField(`${MC.draft}.draft.knowledge`, "Facts: prices, hours, delivery, returns, links", desk, { label: "the facts", multiline: true, minHeight: 120 }),
-    ],
-    cta: { label: "Keep", onPress: keep },
-    quiet: { label: "Skip for now", onPress: skip },
-  });
-
-  return frame([dnsStep, modeStep, briefStep], { living, desk, look, done: allKept, business: id });
+  return frame([dnsStep, personalityStep, modeStep], { living, desk, look, done: allKept, business: id });
 }
 
 /** The living card over the page (the page blurred behind it), or the plain one at the top for a build without it. */

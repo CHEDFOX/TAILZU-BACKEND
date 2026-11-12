@@ -11,10 +11,27 @@ export function fakeStalwart() {
   const calls: { method: string; args: Record<string, unknown> }[] = [];
   const submitted: string[] = [];
   let seq = 1;
-  const MAILBOXES = [
+  const MAILBOXES: { id: string; name: string; role: string | null; parentId: string | null }[] = [
     { id: "in", name: "Inbox", role: "inbox", parentId: null }, { id: "dr", name: "Drafts", role: "drafts", parentId: null },
     { id: "se", name: "Sent", role: "sent", parentId: null }, { id: "jk", name: "Junk", role: "junk", parentId: null },
+    { id: "tr", name: "Trash", role: "trash", parentId: null },
   ];
+  /** A JMAP filter over one stored email: inMailbox, and AND / OR / NOT of filters. */
+  const matches = (e: FakeEmail, f: Record<string, unknown> | undefined): boolean => {
+    if (!f) return true;
+    if (f.operator) {
+      const cs = (f.conditions ?? []) as Record<string, unknown>[];
+      return f.operator === "AND" ? cs.every((c) => matches(e, c)) : f.operator === "OR" ? cs.some((c) => matches(e, c)) : !cs.some((c) => matches(e, c));
+    }
+    if (typeof f.inMailbox === "string") return !!e.mailboxIds[f.inMailbox];
+    return true;
+  };
+  const counts = (id: string) => {
+    const inIt = emails.filter((e) => e.mailboxIds[id]);
+    const threads = new Set(inIt.map((e) => e.threadId));
+    const unread = new Set(inIt.filter((e) => !e.keywords.$seen).map((e) => e.threadId));
+    return { totalThreads: threads.size, unreadThreads: unread.size };
+  };
   const pick = (e: FakeEmail, props?: string[]) => (props ? Object.fromEntries(Object.entries(e).filter(([k]) => k === "id" || props.includes(k))) : e);
 
   const server = http.createServer((req, res) => {
@@ -37,7 +54,10 @@ export function fakeStalwart() {
         let ids = a.ids as string[] | undefined;
         if (ref) {
           const prev = done.get(ref.resultOf) ?? {};
-          ids = ref.path === "/ids" ? (prev.ids as string[]) : ((prev.list as { emailIds: string[] }[]) ?? []).flatMap((t) => t.emailIds);
+          const list = (prev.list ?? []) as Record<string, unknown>[];
+          ids = ref.path === "/ids" ? (prev.ids as string[])
+            : ref.path === "/list/*/threadId" ? [...new Set(list.map((x) => String(x.threadId)))]
+            : list.flatMap((t) => (t.emailIds as string[]) ?? []);
         }
         const answer = ((): [string, Record<string, unknown>] => {
           const x = /^x:(\w+)\/(get|set)$/.exec(m);
@@ -50,15 +70,26 @@ export function fakeStalwart() {
             return [m, { created }];
           }
           switch (m) {
-            case "Mailbox/get": return [m, { list: MAILBOXES }];
-            case "Mailbox/set": return [m, { created: {} }];
+            case "Mailbox/get": return [m, { list: MAILBOXES.map((b) => ({ ...b, ...counts(b.id) })) }];
+            case "Mailbox/set": {
+              const created: Record<string, { id: string }> = {};
+              for (const [k, v] of Object.entries((a.create ?? {}) as Record<string, { name: string; role?: string; parentId?: string }>)) {
+                const id = `mb${seq++}`; MAILBOXES.push({ id, name: v.name, role: v.role ?? null, parentId: v.parentId ?? null }); created[k] = { id };
+              }
+              return [m, { created }];
+            }
             case "SieveScript/validate": return [m, { error: null }];
             case "SieveScript/get": return [m, { list: [] }];
             case "SieveScript/set": return [m, { created: { s: { id: "s1" } } }];
             case "Identity/get": return [m, { list: [{ id: "i1", email: "hello@shop.test" }, { id: "i2", email: "support@shop.test" }] }];
-            case "Email/query": return [m, { ids: [...emails].sort((p, q) => (p.receivedAt < q.receivedAt ? 1 : -1)).slice(0, Number(a.limit ?? 100)).map((e) => e.id) }];
+            case "Email/query": {
+              let found = [...emails].filter((e) => matches(e, a.filter as Record<string, unknown> | undefined)).sort((p, q) => (p.receivedAt < q.receivedAt ? 1 : -1));
+              if (a.collapseThreads) { const seen = new Set<string>(); found = found.filter((e) => (seen.has(e.threadId) ? false : (seen.add(e.threadId), true))); }
+              const position = Number(a.position ?? 0), limit = Number(a.limit ?? 100);
+              return [m, { ids: found.slice(position, position + limit).map((e) => e.id), total: found.length, position }];
+            }
             case "Email/get": return [m, { list: (ids ?? []).map((i) => emails.find((e) => e.id === i)).filter(Boolean).map((e) => pick(e!, a.properties as string[] | undefined)) }];
-            case "Thread/get": return [m, { list: ((a.ids ?? []) as string[]).map((t) => ({ id: t, emailIds: emails.filter((e) => e.threadId === t).map((e) => e.id) })) }];
+            case "Thread/get": return [m, { list: (ids ?? []).map((t) => ({ id: t, emailIds: emails.filter((e) => e.threadId === t).sort((p, q) => (p.receivedAt < q.receivedAt ? -1 : 1)).map((e) => e.id) })).filter((t) => t.emailIds.length) }];
             case "Email/set": {
               const created: Record<string, { id: string }> = {};
               for (const [k, v] of Object.entries((a.create ?? {}) as Record<string, Record<string, unknown>>)) {
@@ -74,6 +105,7 @@ export function fakeStalwart() {
                 if (!e) continue;
                 for (const [k, v] of Object.entries(patch)) {
                   if (k.startsWith("keywords/")) { const kw = k.slice(9); if (v === null) delete e.keywords[kw]; else e.keywords[kw] = true; }
+                  if (k === "mailboxIds") e.mailboxIds = { ...(v as Record<string, boolean>) };
                 }
               }
               for (const d of (a.destroy ?? []) as string[]) { const i = emails.findIndex((e) => e.id === d); if (i >= 0) emails.splice(i, 1); }
@@ -96,10 +128,14 @@ export function fakeStalwart() {
     });
   });
 
-  /** A message arriving in the mailbox, as Stalwart would hold it. */
-  function deliver(o: { id: string; messageId: string; from: string; name?: string; to: string; subject: string; text: string; headers?: Record<string, string> }): FakeEmail {
+  /** A folder of its own (an alias's, as the business's Sieve script would make it). */
+  function folder(id: string, name: string): void { MAILBOXES.push({ id, name, role: null, parentId: null }); }
+
+  /** A message arriving in the mailbox, as Stalwart would hold it (in the Inbox, and in `also` folders as a Sieve script would file it). */
+  function deliver(o: { id: string; messageId: string; from: string; name?: string; to: string; subject: string; text: string; headers?: Record<string, string>; thread?: string; also?: string[] }): FakeEmail {
     const e = {
-      id: o.id, threadId: `t-${o.id}`, mailboxIds: { in: true }, keywords: {}, receivedAt: new Date(Date.now() + seq++).toISOString(),
+      id: o.id, threadId: o.thread ?? `t-${o.id}`, mailboxIds: { in: true, ...Object.fromEntries((o.also ?? []).map((x) => [x, true])) }, keywords: {},
+      receivedAt: new Date(Date.now() + seq++).toISOString(), preview: o.text.slice(0, 120),
       from: [{ name: o.name ?? null, email: o.from }], to: [{ email: o.to }], subject: o.subject, messageId: [o.messageId.replace(/^<|>$/g, "")],
       textBody: [{ partId: "1", type: "text/plain" }], bodyValues: { "1": { value: o.text } }, ...(o.headers ?? {}),
     } as unknown as FakeEmail;
@@ -108,7 +144,7 @@ export function fakeStalwart() {
   }
 
   return {
-    store, emails, calls, submitted, deliver,
+    store, emails, calls, submitted, deliver, folder,
     listen: () => new Promise<number>((r) => server.listen(0, "127.0.0.1", () => r((server.address() as { port: number }).port))),
     close: () => new Promise<void>((r) => server.close(() => r())),
   };

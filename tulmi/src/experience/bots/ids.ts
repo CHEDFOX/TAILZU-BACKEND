@@ -76,7 +76,13 @@ export const SCREENS = {
   mailReply: "bots.mail.reply",      // a draft beside the message it answers: change, write again, send, throw away (params: b, run)
   mailDns: "bots.mail.dns",          // the records to add at the domain's DNS, each checked live, with Copy (params: b)
   mailBrief: "bots.mail.brief",      // what the AI knows and how it writes, with Fill from my website (params: b)
-  mailSettings: "bots.mail.settings", // a business: its addresses and how each answers, its sign-off, its mail app, removing it (params: b)
+  mailSettings: "bots.mail.settings", // a domain's settings: its addresses, personality, records, rules, mail app, removing it (params: b)
+  mailInbox: "bots.mail.inbox",      // the mailbox: all mail, the main address's, each alias's, the system folders, a page at a time (params: b, folder, page)
+  mailThread: "bots.mail.thread",    // one conversation: its messages, Reply, Forward, Archive, Delete, Spam, Unread, Star, the AI's draft (params: b, tid, folder)
+  mailCompose: "bots.mail.compose",  // write: new, a reply or a forward, from any of its addresses, with Write with AI (params: b, tid, re | fwd)
+  mailAddresses: "bots.mail.addresses", // a domain's addresses (aliases): each with its folder, sender name, AI mode, auto-reply; add one (params: b)
+  mailAddress: "bots.mail.address",  // one address: folder name, sender name, how it answers, auto-reply, removing it (params: b, aid)
+  mailRules: "bots.mail.rules",      // a domain's rules: each as a sentence, on or off, removed; add one (params: b)
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)
   // screens/spaces.ts: spaces with family and friends (bots.spaces is built there too), sharing, payments, tasks, messaging

@@ -1,6 +1,7 @@
 /**
  * THE MAIL BOT OVER HTTP (routes/bots/mail.ts, mail/worker.ts, mail/owners.ts): off unless it is set up; each page's call passed to the worker
- * inside the person's own account (a hash, never their id), with only the fields it takes (never a business's AI allowance); a bad id refused
+ * inside the person's own account (a hash, never their id), with only the fields it takes (never a business's AI allowance), the mailbox's
+ * folder and page only when they are one of its own, and an address's auto-reply put together from the form's flat fields; a bad id refused
  * before the worker hears of it; the worker's refusals in its own words; every call signed; the worker's notice that mail needs a person
  * pushed to the right person once, never with the mail's words; and an account deleted with its businesses.
  */
@@ -110,6 +111,52 @@ describe("the mail bot", () => {
     expect((await a.inject({ method: "GET", url: "/v1/mail/businesses/Leaf_Co%2F..%2Fx" })).statusCode).toBe(404);
     expect((await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/replies/abc" })).statusCode).toBe(404);
     expect((await a.inject({ method: "PUT", url: "/v1/mail/businesses/leaf-co/addresses/0", payload: { aiMode: "off" } })).statusCode).toBe(404);
+    expect(calls).toEqual([]);
+  });
+
+  it("passes the mailbox, the addresses and the rules on the same way: only a known folder, a page, the fields each takes", async () => {
+    const { a, calls } = await app();
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/folders" });
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=f-Ab_9&page=2&limit=999" });
+    // A folder that is not one of the mailbox's keys is not passed on.
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/messages?folder=..%2Foverview&page=x" });
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/threads/T-1_a" });
+    await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/threads/T-1_a/archive", payload: { all: true } });
+    await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/send", payload: { from: "hello@leafandco.in", to: "asha@customer.test", cc: "", subject: "Hi", text: "Hello.", replyTo: "m1", bcc: "x@y.z", headers: { a: 1 } } });
+    await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/write", payload: { instruction: "Say thanks", from: "hello@leafandco.in", model: "big" } });
+    await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/rules" });
+    await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/rules", payload: { field: "from", op: "contains", value: "invoice", action: "move", target: "Billing", script: "x" } });
+    await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/rules/4/toggle" });
+    await a.inject({ method: "DELETE", url: "/v1/mail/businesses/leaf-co/rules/4" });
+    // The address form sends the auto-reply flat; the worker takes it whole.
+    await a.inject({ method: "PUT", url: "/v1/mail/businesses/leaf-co/addresses/2", payload: {
+      label: "Support", displayName: "Leaf Support", autoReplyEnabled: true, autoReplySubject: "Got it", autoReplyBody: "Back soon.", autoReplyDays: "3", aiMode: "off",
+    } });
+    await a.inject({ method: "PUT", url: "/v1/mail/businesses/leaf-co/addresses/2", payload: { autoReplyEnabled: false } });
+
+    expect(calls.map(({ method, path, body }) => ({ method, path, body }))).toEqual([
+      { method: "GET", path: "/businesses/leaf-co/folders", body: undefined },
+      { method: "GET", path: "/businesses/leaf-co/messages?folder=f-Ab_9&page=2", body: undefined },
+      { method: "GET", path: "/businesses/leaf-co/messages", body: undefined },
+      { method: "GET", path: "/businesses/leaf-co/threads/T-1_a", body: undefined },
+      { method: "POST", path: "/businesses/leaf-co/threads/T-1_a/archive", body: {} },
+      { method: "POST", path: "/businesses/leaf-co/send", body: { from: "hello@leafandco.in", to: "asha@customer.test", cc: "", subject: "Hi", text: "Hello.", replyTo: "m1" } },
+      { method: "POST", path: "/businesses/leaf-co/write", body: { instruction: "Say thanks", from: "hello@leafandco.in" } },
+      { method: "GET", path: "/businesses/leaf-co/rules", body: undefined },
+      { method: "POST", path: "/businesses/leaf-co/rules", body: { field: "from", op: "contains", value: "invoice", action: "move", target: "Billing" } },
+      { method: "POST", path: "/businesses/leaf-co/rules/4/toggle", body: {} },
+      { method: "DELETE", path: "/businesses/leaf-co/rules/4", body: undefined },
+      { method: "PATCH", path: "/businesses/leaf-co/addresses/2", body: { label: "Support", aiMode: "off", displayName: "Leaf Support", autoReply: { enabled: true, subject: "Got it", body: "Back soon.", days: 3 } } },
+      { method: "PATCH", path: "/businesses/leaf-co/addresses/2", body: { autoReply: { enabled: false, subject: "", body: "", days: 1 } } },
+    ]);
+  });
+
+  it("refuses an unknown action, a bad conversation or a bad rule before the worker hears of it", async () => {
+    const { a, calls } = await app();
+    expect((await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/threads/T1/destroy" })).statusCode).toBe(404);
+    expect((await a.inject({ method: "GET", url: "/v1/mail/businesses/leaf-co/threads/a.b" })).statusCode).toBe(404);
+    expect((await a.inject({ method: "DELETE", url: "/v1/mail/businesses/leaf-co/rules/0" })).statusCode).toBe(404);
+    expect((await a.inject({ method: "POST", url: "/v1/mail/businesses/leaf-co/rules/x1/toggle" })).statusCode).toBe(404);
     expect(calls).toEqual([]);
   });
 
