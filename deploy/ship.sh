@@ -72,6 +72,24 @@ if grep -qE '^ORACLE_WORKER_URL=.+' "$ENV_FILE" && grep -qE '^ORACLE_WORKER_SECR
     bad "the Oracle's worker did not build (docker compose --profile oracle up -d --build oracle-worker shows why)"
   fi
 fi
+
+# The mail worker (docs/mail.md), where it is set up: the same, so a change to it or to tulmi/.env reaches it too.
+if grep -qE '^MAIL_WORKER_URL=.+' "$ENV_FILE" && grep -qE '^MAIL_WORKER_SECRET=.+' "$ENV_FILE"; then
+  step "The mail worker"
+  if docker compose --profile mail up -d --build mail-worker; then
+    mh=""
+    for i in $(seq 1 45); do
+      mh=$(docker compose exec -T backend wget -qO- http://mail-worker:5300/healthz 2>/dev/null || true)
+      printf '%s' "$mh" | grep -q '"ok":true' && break
+      sleep 2
+    done
+    if printf '%s' "$mh" | grep -q '"ready":true'; then ok "the mail worker answers, set up"
+    elif printf '%s' "$mh" | grep -q '"ok":true'; then bad "the mail worker answers but is not set up: $(printf '%s' "$mh" | sed -n 's/.*"missing":\(\[[^]]*\]\).*/\1/p') (./deploy/mail-up.sh)"
+    else bad "the mail worker never answered (docker compose logs mail-worker)"; fi
+  else
+    bad "the mail worker did not build (docker compose --profile mail up -d --build mail-worker shows why)"
+  fi
+fi
 fi
 
 # --------------------------------------------------------------------- serving

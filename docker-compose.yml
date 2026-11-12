@@ -136,6 +136,43 @@ services:
     pids_limit: 256
     restart: unless-stopped
 
+  # THE MAIL WORKER (mail-worker/, docs/mail.md, DEPLOY.md): the mail bot's engine, copied from Xooteq Mail and tuned for any business.
+  # OPTIONAL: it only starts with the `mail` profile,
+  #
+  #   ./deploy/mail-up.sh      (once: it takes the mail server's values into tulmi/.env, makes the worker's secrets, starts it and
+  #                             registers its new-mail webhook; then ship.sh keeps it up to date)
+  #
+  # The mailboxes are on the mail server Xooteq Mail runs on this VPS (Stalwart owns port 25, and only one program can): the worker joins
+  # its Docker network (MAIL_STALWART_NETWORK, postal_default by default) as x0-mail-worker, and reaches it as http://stalwart:8080. Its
+  # own records (businesses, briefs, the AI log) are in the mail_worker_data volume. It reads tulmi/.env, like the backend. No port on the
+  # host: only the backend (signed calls) and the mail server (its signed webhook) reach it. Read-only, no capabilities, not root.
+  mail-worker:
+    profiles: ["mail"]
+    build:
+      context: ./mail-worker
+    image: tailzu-mail-worker
+    env_file:
+      - tulmi/.env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - mail_worker_data:/data
+    networks:
+      default: {}
+      stalwart:
+        aliases: [x0-mail-worker]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: ${MAIL_WORKER_MEMORY:-512m}
+    cpus: ${MAIL_WORKER_CPUS:-1}
+    pids_limit: 256
+    restart: unless-stopped
+
   # OPTIONAL reverse proxy with automatic HTTPS. It claims ports 80 and 443, so
   # ONLY use this if nothing else on the VPS is using them. If you already run
   # nginx/Apache/Caddy for your other apps, DON'T enable this — instead add a
@@ -162,10 +199,16 @@ networks:
   # Only the backend and the media worker are on it, and it has no route out: a file cannot make the worker call anything.
   media:
     internal: true
+  # The mail server's own network (Xooteq Mail's compose project in /opt/postal), joined only by the mail worker, only when it runs.
+  stalwart:
+    external: true
+    name: ${MAIL_STALWART_NETWORK:-postal_default}
 
 volumes:
   caddy_data:
   caddy_config:
+  # The mail worker's records: the businesses, their briefs and addresses' modes, and the AI log (the mail itself is on the mail server).
+  mail_worker_data:
   # Media store for admin-uploaded assets (icons, brand marks, splash images,
   # audio, video, SVGs). Files live under /data/media inside the container;
   # this named volume keeps them across `docker compose up -d --build`.

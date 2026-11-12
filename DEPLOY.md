@@ -1151,3 +1151,29 @@ A built-in bot that answers questions about a person's life from their birth cha
    account; what they ask goes to the model providers like any bot's message, and nothing of it is logged.
 6. **Back out:** remove `ORACLE_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh`; then `docker compose --profile oracle stop oracle-worker`. The
    rows stay.
+
+### Mail: a bot that runs a business's email (`MAIL_WORKER_URL`)
+
+The mail bot's engine, copied from Xooteq Mail and tuned for any business, runs as a container of its own (`mail-worker/`). Each business's
+mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/postal`), which stays as it is. Full story: `docs/mail.md`.
+
+1. **The mail server first.** Xooteq Mail's mail server must be set up and running here (xooteq-mail's `workspace-setup.sh`), with port 25 open.
+2. **Start it, and switch it on.** `deploy/mail-up.sh` takes the mail server's admin login, mail domain and the VPS's address from
+   `/opt/postal/.env` into `tulmi/.env`, makes the worker's two secrets and its address, builds and starts it on the mail server's network, and
+   registers its own new-mail webhook there (beside Xooteq Mail's, which is not touched); `ship.sh` then restarts the backend with the settings.
+   Neither prints a value. The AI is `OPENROUTER_API_KEY`, which the server already has.
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/mail-up.sh && ./deploy/ship.sh'
+   ```
+
+   From then on **`./deploy/ship.sh` rebuilds and restarts the worker with the backend** and checks that it answers set up (a FAIL line in its
+   verdict when not). If the mail server's Docker network is not `postal_default`, put `MAIL_STALWART_NETWORK=<it>` in the `.env` beside
+   `docker-compose.yml`.
+3. **Check.** `docker compose exec backend wget -qO- http://mail-worker:5300/healthz` answers `{"ok":true,"ready":true}` (with `"missing"`
+   naming what is not set otherwise). In Xooteq Mail's own dashboard, the mail bot's businesses show among the mailboxes it did not make.
+4. **Add to the privacy policy.** For the mail bot: a business's mail is kept on our mail server in its own mailbox until the business or the
+   account is deleted; what the AI reads of a message goes to the model provider to write the reply; nothing of it is logged.
+5. **Back out:** remove `MAIL_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh`; then `docker compose --profile mail stop mail-worker`. The
+   mailboxes and their mail stay on the mail server.
+

@@ -146,6 +146,29 @@ jobs:
         run: python -m pytest -q
         working-directory: oracle-worker
 
+  # The mail worker (mail-worker/): the mail engine copied from Xooteq Mail, behind a signed API. Offline tests: a stand-in mail server.
+  mail-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+        working-directory: mail-worker
+
+      - name: Typecheck
+        run: npm run typecheck
+        working-directory: mail-worker
+
+      - name: Test
+        run: npm test
+        working-directory: mail-worker
+
   docker-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
