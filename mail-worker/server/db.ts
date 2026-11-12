@@ -37,6 +37,15 @@ const migrations: string[] = [
    CREATE INDEX ai_runs_company ON ai_runs(company_id, created_at);
    CREATE UNIQUE INDEX ai_runs_once ON ai_runs(company_id, message_id) WHERE message_id IS NOT NULL;
    CREATE INDEX ai_runs_due ON ai_runs(status, send_at);`,
+  // Each message sorted: what kind it is, how urgent, and one line of what the sender wants (shown in X0 Bot, the skipped ones too).
+  // And the team's own changes to the AI's drafts, the last few of which teach later replies its way of writing.
+  `ALTER TABLE ai_runs ADD COLUMN kind TEXT;
+   ALTER TABLE ai_runs ADD COLUMN priority TEXT;
+   ALTER TABLE ai_runs ADD COLUMN summary TEXT;
+   CREATE TABLE ai_examples (
+     id INTEGER PRIMARY KEY, company_id TEXT NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+     subject TEXT NOT NULL DEFAULT '', ai_text TEXT NOT NULL, final_text TEXT NOT NULL, created_at INTEGER NOT NULL);
+   CREATE INDEX ai_examples_company ON ai_examples(company_id, created_at);`,
 ];
 
 db.exec("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)");

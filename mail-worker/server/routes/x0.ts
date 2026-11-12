@@ -13,13 +13,16 @@
  *   DELETE /v1/o/:owner/businesses/:id/addresses/:aid
  *   GET    /v1/o/:owner/businesses/:id/brief                what the AI knows and how it writes
  *   PUT    /v1/o/:owner/businesses/:id/brief                { profile }
+ *   POST   /v1/o/:owner/businesses/:id/brief/draft          { url? }: a brief drafted from the business's website (its domain by default), not kept
  *   GET    /v1/o/:owner/businesses/:id/activity?limit=      every message the AI looked at, what it did and why
  *   GET    /v1/o/:owner/businesses/:id/replies/:run         a draft beside the message it answers
- *   PUT    /v1/o/:owner/businesses/:id/replies/:run         { text }: new words (a scheduled one stops)
+ *   PUT    /v1/o/:owner/businesses/:id/replies/:run         { text }: new words (a scheduled one stops); the AI learns from them
+ *   POST   /v1/o/:owner/businesses/:id/replies/:run/rewrite { instruction }: written again as asked, still a draft
  *   POST   /v1/o/:owner/businesses/:id/replies/:run/send    sent now
  *   POST   /v1/o/:owner/businesses/:id/replies/:run/stop    a scheduled one waits as a draft
  *   DELETE /v1/o/:owner/businesses/:id/replies/:run         thrown away
  *   POST   /v1/o/:owner/businesses/:id/mail-app-password    { password }: for a phone or desktop mail app
+ *   GET    /v1/o/:owner/overview                            the businesses, what waits for a person, and the last 24 hours in numbers
  *   GET    /v1/o/:owner/spend?since=                        what each business's AI spent per day, for the account's bill
  *   DELETE /v1/o/:owner                                     every business of the account, with its mail (the account was deleted)
  *
@@ -33,7 +36,8 @@ import { check, expected } from "../dns.ts";
 import { domains, StalwartError } from "../stalwart.ts";
 import { getProfile, saveProfile } from "../ai/prompt.ts";
 import { AiError } from "../ai/model.ts";
-import { allowance, cancelScheduled, discardDraft, draftView, editDraft, listRuns, sendNow, spend } from "../ai/engine.ts";
+import { allowance, cancelScheduled, counts, discardDraft, draftView, editDraft, listRuns, rewriteDraft, sendNow, spend, waiting } from "../ai/engine.ts";
+import { draftBrief } from "../ai/brief.ts";
 import { NonceCache, refused } from "../security.ts";
 
 const OWNER = /^[A-Za-z0-9:_-]{8,80}$/;
@@ -113,6 +117,12 @@ export async function x0Routes(app: FastifyInstance) {
 
   app.get("/v1/o/:owner/businesses/:id/brief", route((req) => getProfile(business(req).id)));
   app.put("/v1/o/:owner/businesses/:id/brief", route((req) => ({ profile: saveProfile(business(req).id, (body(req).profile ?? {}) as Record<string, unknown>) })));
+  app.post("/v1/o/:owner/businesses/:id/brief/draft", route(async (req) => {
+    const c = business(req);
+    if (!allowance(c).left) throw new AiError("This business's AI allowance for the last 24 hours is used up. It frees up as that spend ages.", 429);
+    const url = typeof body(req).url === "string" ? String(body(req).url).slice(0, 300) : undefined;
+    return draftBrief(c, url);
+  }));
 
   app.get("/v1/o/:owner/businesses/:id/activity", route((req) => {
     const limit = Math.min(200, Math.max(1, Number((req.query as { limit?: string }).limit) || 50));
@@ -123,6 +133,7 @@ export async function x0Routes(app: FastifyInstance) {
     await editDraft(business(req).id, runId(req), String(body(req).text ?? ""));
     return { ok: true };
   }));
+  app.post("/v1/o/:owner/businesses/:id/replies/:run/rewrite", route(async (req) => rewriteDraft(business(req).id, runId(req), String(body(req).instruction ?? ""))));
   app.post("/v1/o/:owner/businesses/:id/replies/:run/send", route(async (req) => {
     await sendNow(business(req).id, runId(req));
     return { ok: true };
@@ -141,6 +152,11 @@ export async function x0Routes(app: FastifyInstance) {
     return { ok: true };
   }));
 
+  app.get("/v1/o/:owner/overview", route((req) => {
+    const list = listCompanies(params(req).owner);
+    const ids = list.map((c) => c.id);
+    return { businesses: list.map(view), waiting: waiting(ids), today: counts(ids, Date.now() - 86_400_000) };
+  }));
   app.get("/v1/o/:owner/spend", route((req) => {
     const since = Math.max(0, Number((req.query as { since?: string }).since) || Date.now() - 31 * 86_400_000);
     return { days: spend(listCompanies(params(req).owner).map((c) => c.id), since) };

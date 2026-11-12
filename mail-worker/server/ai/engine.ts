@@ -22,7 +22,8 @@ import { db, now } from "../db.ts";
 import { companyForAddress, getCompany, type Company, type CompanyAddress } from "../companies.ts";
 import { Mailbox } from "../stalwart.ts";
 import { AiError, complete } from "./model.ts";
-import { getProfile, REPLY_SCHEMA, systemPrompt, userPrompt, type ReplyAnswer, type ThreadMessage } from "./prompt.ts";
+import { getProfile, KINDS, PRIORITIES, relevantKnowledge, REPLY_SCHEMA, systemPrompt, userPrompt, type Example, type Kind, type Priority,
+  type ReplyAnswer, type ThreadMessage } from "./prompt.ts";
 
 type Addr = { name?: string | null; email: string };
 type JEmail = {
@@ -170,18 +171,38 @@ async function threadContext(box: Mailbox, e: JEmail, ourEmails: Set<string>): P
     .map((m) => ({ from: fmt(m.from), date: m.sentAt ?? m.receivedAt, subject: m.subject ?? "", body: bodyText(m), ours: ourEmails.has(m.from?.[0]?.email?.toLowerCase() ?? "") }));
 }
 
+/** The team's last few changes to the AI's drafts, newest last. */
+export function examplesOf(companyId: string, n = 3): Example[] {
+  return (db.prepare("SELECT subject, ai_text AS ai, final_text AS final FROM ai_examples WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT ?")
+    .all(companyId, n) as Example[]).reverse();
+}
+
+/** A kind for a message skipped without asking the model, from why it was skipped. */
+export function kindOfSkip(reason: string): Kind {
+  if (/list|newsletter|bulk/i.test(reason)) return "notification";
+  if (/automatic|no-reply/i.test(reason)) return "notification";
+  if (/junk/i.test(reason)) return "spam";
+  return "other";
+}
+
 export async function writeReply(company: Company, address: CompanyAddress, e: JEmail, box: Mailbox, instruction?: string): Promise<ReplyAnswer & { model: string; costUsd: number }> {
   const { profile } = getProfile(company.id);
   const ours = new Set(company.addresses.map((a) => a.email.toLowerCase()));
   const thread = await threadContext(box, e, ours);
+  const body = bodyText(e);
+  // The facts this email needs, when there are more than fit; and the team's last few changes to the AI's drafts, to write their way.
+  const narrowed = { ...profile, knowledge: relevantKnowledge(profile.knowledge, `${e.subject ?? ""}\n${body}\n${thread.slice(-2).map((m) => m.body).join("\n")}`) };
   const r = await complete({
-    system: systemPrompt({ company: company.name, domain: company.domain, address: address.email, label: address.isPrimary ? "" : address.label, profile, instruction }),
-    user: userPrompt(thread, { from: fmt(e.from), to: address.email, date: e.sentAt ?? e.receivedAt, subject: e.subject ?? "", body: bodyText(e), ours: false }),
+    system: systemPrompt({ company: company.name, domain: company.domain, address: address.email, label: address.isPrimary ? "" : address.label, profile: narrowed, instruction, examples: examplesOf(company.id) }),
+    user: userPrompt(thread, { from: fmt(e.from), to: address.email, date: e.sentAt ?? e.receivedAt, subject: e.subject ?? "", body, ours: false }),
     schema: REPLY_SCHEMA as unknown as Record<string, unknown>,
   });
   const a = r.data as Partial<ReplyAnswer>;
   const decision = a.decision === "reply" || a.decision === "escalate" || a.decision === "ignore" ? a.decision : "escalate";
-  return { decision, reply: String(a.reply ?? "").trim(), reason: String(a.reason ?? "").trim().slice(0, 300), model: r.model, costUsd: r.costUsd };
+  const kind: Kind = (KINDS as readonly string[]).includes(String(a.kind)) ? a.kind as Kind : "other";
+  const priority: Priority = (PRIORITIES as readonly string[]).includes(String(a.priority)) ? a.priority as Priority : "normal";
+  const summary = String(a.summary ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+  return { decision, reply: String(a.reply ?? "").trim(), reason: String(a.reason ?? "").trim().slice(0, 300), kind, priority, summary, model: r.model, costUsd: r.costUsd };
 }
 
 function signed(reply: string, company: Company, signature: string): string {
@@ -245,11 +266,11 @@ async function handle(job: Job): Promise<void> {
     const ourDomains = new Set([company.domain, config.mailDomain]);
     const boxes = (await box.call("Mailbox/get", { properties: ["role"] })).list as { id: string; role: string | null }[];
     const skip = skipReason(e, ourDomains, boxes.find((b) => b.role === "junk")?.id);
-    if (skip) { update(runId, { status: "skipped", reason: skip }); return; }
+    if (skip) { update(runId, { status: "skipped", reason: skip, kind: kindOfSkip(skip), priority: "low" }); return; }
 
     if (!allowance(company).left) { update(runId, { status: "skipped", reason: "the AI allowance for the last 24 hours is used up" }); return; }
     const answer = await writeReply(company, address, e, box);
-    update(runId, { model: answer.model, cost_usd: answer.costUsd });
+    update(runId, { model: answer.model, cost_usd: answer.costUsd, kind: answer.kind, priority: answer.priority, summary: answer.summary });
     if (answer.decision === "ignore" || !answer.reply) {
       update(runId, { status: "skipped", reason: answer.reason || "no answer needed" });
       return;
@@ -410,14 +431,26 @@ export async function draftView(companyId: string, runId: number): Promise<{ sta
   };
 }
 
-/** New words for a waiting draft: it becomes a plain draft (a scheduled one stops) for the person to send. */
-export async function editDraft(companyId: string, runId: number, text: string): Promise<void> {
+/** The draft without the sign-off the engine added, for comparing what the AI wrote with what a person sent. */
+function unsigned(text: string, company: Company): string {
+  const { profile } = getProfile(company.id);
+  let t = text.trim();
+  for (const sig of [profile.signature, company.signature].map((x) => (x ?? "").trim()).filter(Boolean)) if (t.endsWith(sig)) t = t.slice(0, -sig.length).trim();
+  return t;
+}
+
+/**
+ * New words for a waiting draft: it becomes a plain draft (a scheduled one stops) for the person to send. With `learn`, a person wrote
+ * them: what the AI had written and what they wrote instead are kept (the last 20 per business), and the last few teach later replies.
+ */
+async function replaceDraft(companyId: string, runId: number, text: string, o: { reason: string; learn: boolean }): Promise<void> {
   const r = runOf(companyId, runId);
   if (!WAITING.has(r.status) || !r.draft_id) throw new AiError("That reply was already sent or thrown away.", 409);
   const words = text.trim().slice(0, 20000);
   if (!words) throw new AiError("Write something, or throw the draft away.", 400);
-  const box = new Mailbox(getCompany(companyId).email);
-  const old = ((await box.call("Email/get", { ids: [r.draft_id], properties: ["mailboxIds", "keywords", "from", "to", "cc", "subject", "inReplyTo", "references"] })).list as Record<string, unknown>[])[0];
+  const company = getCompany(companyId);
+  const box = new Mailbox(company.email);
+  const old = ((await box.call("Email/get", { ids: [r.draft_id], properties: ["mailboxIds", "keywords", "from", "to", "cc", "subject", "inReplyTo", "references", "textBody", "bodyValues"], fetchTextBodyValues: true, maxBodyValueBytes: 60000 })).list as Record<string, unknown>[])[0];
   if (!old) throw new AiError("That draft is gone: it was sent or deleted.", 404);
   const keywords = { ...(old.keywords as Record<string, boolean>) };
   delete keywords.$ai_scheduled;
@@ -432,7 +465,43 @@ export async function editDraft(companyId: string, runId: number, text: string):
   });
   const draftId = (res.created as Record<string, { id: string }>).d.id;
   if (r.email_id) await box.call("Email/set", { update: { [r.email_id]: { "keywords/$ai_scheduled": null } } }).catch(() => {});
-  db.prepare("UPDATE ai_runs SET draft_id = ?, status = 'drafted', reason = ?, send_at = NULL WHERE id = ?").run(draftId, "changed by a person", runId);
+  db.prepare("UPDATE ai_runs SET draft_id = ?, status = 'drafted', reason = ?, send_at = NULL WHERE id = ?").run(draftId, o.reason, runId);
+  if (o.learn) {
+    const before = unsigned(bodyText(old as unknown as JEmail), company), after = unsigned(words, company);
+    if (before && after && before !== after) {
+      db.prepare("INSERT INTO ai_examples (company_id, subject, ai_text, final_text, created_at) VALUES (?, ?, ?, ?, ?)")
+        .run(companyId, String(old.subject ?? "").slice(0, 200), before.slice(0, 4000), after.slice(0, 4000), now());
+      db.prepare("DELETE FROM ai_examples WHERE company_id = ? AND id NOT IN (SELECT id FROM ai_examples WHERE company_id = ? ORDER BY created_at DESC, id DESC LIMIT 20)")
+        .run(companyId, companyId);
+    }
+  }
+}
+
+/** A person's own words for a waiting draft. */
+export async function editDraft(companyId: string, runId: number, text: string): Promise<void> {
+  await replaceDraft(companyId, runId, text, { reason: "changed by a person", learn: true });
+}
+
+/** The draft written again as the person asks ("shorter", "say we ship on Monday"); it stays a draft for them to send. */
+export async function rewriteDraft(companyId: string, runId: number, instruction: string): Promise<{ text: string }> {
+  const r = runOf(companyId, runId);
+  if (!WAITING.has(r.status) || !r.draft_id || !r.email_id) throw new AiError("That reply was already sent or thrown away.", 409);
+  const ask = instruction.trim().slice(0, 2000);
+  if (!ask) throw new AiError("Say how to change it.", 400);
+  const company = getCompany(companyId);
+  if (!allowance(company).left) throw new AiError("This business's AI allowance for the last 24 hours is used up. It frees up as that spend ages.", 429);
+  const address = company.addresses.find((a) => a.email === r.address) ?? company.addresses.find((a) => a.isPrimary)!;
+  const box = new Mailbox(company.email);
+  const got = (await box.call("Email/get", { ids: [r.email_id, r.draft_id], properties: EMAIL_PROPS, fetchTextBodyValues: true, fetchHTMLBodyValues: true, maxBodyValueBytes: 60000 })).list as JEmail[];
+  const e = got.find((x) => x.id === r.email_id), draft = got.find((x) => x.id === r.draft_id);
+  if (!e || !draft) throw new AiError("That message or its draft is gone.", 404);
+  const a = await writeReply(company, address, e, box, `Change the current draft as the team asks: "${ask}". Keep what they did not ask to change.\n\nThe current draft:\n${unsigned(bodyText(draft), company)}`);
+  db.prepare("UPDATE ai_runs SET cost_usd = cost_usd + ?, model = ? WHERE id = ?").run(a.costUsd, a.model, runId);
+  if (!a.reply) throw new AiError("The AI did not write a new draft; change it by hand.", 502);
+  const { profile } = getProfile(company.id);
+  const text = signed(a.reply, company, profile.signature);
+  await replaceDraft(companyId, runId, text, { reason: `rewritten as asked: ${ask.slice(0, 120)}`, learn: false });
+  return { text };
 }
 
 /** Sends a waiting draft now, as it stands. */
@@ -472,4 +541,31 @@ export function spend(companyIds: string[], sinceMs: number): { companyId: strin
   return db.prepare(`SELECT company_id AS companyId, strftime('%Y-%m-%d', created_at / 1000, 'unixepoch') AS day, SUM(cost_usd) AS usd, COUNT(*) AS replies
     FROM ai_runs WHERE company_id IN (${marks}) AND created_at >= ? AND cost_usd > 0 GROUP BY company_id, day ORDER BY day`).all(...companyIds, sinceMs) as
     { companyId: string; day: string; usd: number; replies: number }[];
+}
+
+/** What waits for a person across an account's businesses: the escalations first, then drafts, then the replies about to go. */
+export function waiting(companyIds: string[], limit = 50): Record<string, unknown>[] {
+  if (!companyIds.length) return [];
+  const marks = companyIds.map(() => "?").join(",");
+  return db.prepare(`SELECT id, company_id AS companyId, address, sender, subject, kind, priority, summary, status, reason, send_at AS sendAt, created_at AS createdAt
+    FROM ai_runs WHERE company_id IN (${marks}) AND status IN ('needs_person', 'drafted', 'scheduled')
+    ORDER BY CASE status WHEN 'needs_person' THEN 0 WHEN 'drafted' THEN 1 ELSE 2 END, CASE priority WHEN 'urgent' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END, created_at DESC
+    LIMIT ?`).all(...companyIds, limit) as Record<string, unknown>[];
+}
+
+/** What happened since `sinceMs`: messages looked at, answered, waiting as drafts, needing a person, filed without an answer. */
+export function counts(companyIds: string[], sinceMs: number): { received: number; answered: number; drafted: number; needsPerson: number; filed: number } {
+  const zero = { received: 0, answered: 0, drafted: 0, needsPerson: 0, filed: 0 };
+  if (!companyIds.length) return zero;
+  const marks = companyIds.map(() => "?").join(",");
+  const rows = db.prepare(`SELECT status, COUNT(*) AS n FROM ai_runs WHERE company_id IN (${marks}) AND created_at >= ? AND message_id IS NOT NULL GROUP BY status`)
+    .all(...companyIds, sinceMs) as { status: string; n: number }[];
+  for (const r of rows) {
+    zero.received += r.n;
+    if (r.status === "sent") zero.answered += r.n;
+    else if (r.status === "drafted" || r.status === "scheduled") zero.drafted += r.n;
+    else if (r.status === "needs_person") zero.needsPerson += r.n;
+    else if (r.status === "skipped") zero.filed += r.n;
+  }
+  return zero;
 }

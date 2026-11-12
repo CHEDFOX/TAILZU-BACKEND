@@ -48,10 +48,29 @@ phone or a computer can be added with a password the business sets. A business d
 ## 3. How a reply is written
 
 New mail -> the webhook -> the address's mode -> the message read from the mailbox -> skipped when it is a newsletter, a mailing list, bulk
-mail, a robot or no-reply sender, from the business's own domain, or in Junk -> **one model call** with the business's brief (what it
-does, how it sounds, the facts it may use, its rules, the sign-off) and the thread's last five messages, the email fenced off as data and
-never as instructions -> reply, escalate (a person should answer; a kind holding reply is drafted) or ignore -> a draft, or a send after
-the wait. Every decision is logged with why.
+mail, a robot or no-reply sender, from the business's own domain, or in Junk (filed as low priority, no model call) -> **one model call**
+with the business's brief (what it does, how it sounds, its rules, the sign-off), the facts it may use, the team's last changes to drafts,
+and the thread's last five messages, the email fenced off as data and never as instructions -> reply, escalate (a person should answer; a
+kind holding reply is drafted) or ignore -> a draft, or a send after the wait. Every decision is logged with why.
+
+The same call sorts the message, so the page can put what matters first:
+
+| | |
+| --- | --- |
+| **kind** | question, support, sales, order, billing, complaint, partnership, job, personal, notification, spam, other |
+| **priority** | urgent (an unhappy customer, money, something that stops their work, a deadline), normal, low |
+| **summary** | one line: what the sender wants |
+
+* **The brief, first from the website.** "Fill from my website" reads the business's home page and up to three of its own pages that say
+  what it sells and how (about, pricing, services, FAQ, shipping, returns, contact) and drafts the brief in one model call; the person reads
+  it and keeps it. Pages are read only from public addresses (every address a name resolves to is checked as the connection is made, on
+  every redirect too), on ports 80 and 443, 8 seconds and a megabyte at most.
+* **Long facts, narrowed.** Up to 6,000 characters of facts go in whole; beyond that, the first part (what the business is) and the parts
+  that share the most words with the email.
+* **Learning from the team.** When a person changes a draft before sending it, the AI's words and theirs are kept (the last 20 per
+  business), and the last three are shown to the model as how the team writes: their way of writing, never their facts.
+* **Written again as asked.** A person can ask for a draft to be changed ("shorter", "offer a call") and it is written again, still a draft.
+* **Honest about what it is.** The AI never claims to be a person; a sender who sincerely asks gets a person.
 
 ## 4. The AI and the money
 
@@ -65,8 +84,9 @@ the backend), measured over the last 24 hours: once spent, its AI pauses (the ma
 All under `/v1/o/:owner/...`, signed with `MAIL_WORKER_SECRET` (the media and Oracle workers' scheme: `tulmi/src/media/worker.ts`
 `workerSignature`). The list, with each body: `mail-worker/server/routes/x0.ts`. In short: the account's businesses (list, make, change,
 delete), a business's DNS records, its addresses and their modes, its brief, its activity, a reply (read beside the message it answers,
-change, send now, stop, throw away), a mail-app password, the spend per day, and every business of an account at once (the account was
-deleted). Errors are `{ code, message }`, the message in words for a person.
+change, write again as asked, send now, stop, throw away), the brief drafted from the website, a mail-app password, the overview (the
+businesses, what waits for a person by priority, the last 24 hours in numbers), the spend per day, and every business of an account at once
+(the account was deleted). Errors are `{ code, message }`, the message in words for a person.
 
 The mail server's webhook is `POST /hooks/stalwart`, signed with `MAIL_WEBHOOK_SECRET` (`node server/cli.ts webhook` registers it, beside
 Xooteq Mail's own, which is not touched). Mail for a domain that is not one of the worker's businesses is left alone.
@@ -99,6 +119,10 @@ the backend and checks that it answers set up.
 * `mail-worker/test/api.test.ts`: against a stand-in mail server: the signature (the shared vector), no replay, one account each, a business
   made with its domain and mailbox and every address in Draft, a domain already on the mail server refused, a mode and the allowance, the brief,
   the webhook kept to the worker's own domains, a business and an account deleted with their mailboxes.
+* `mail-worker/test/engine.test.ts`: the engine end to end against a stand-in mail server (`test/fakeStalwart.ts`) and a stand-in model: a
+  message sorted, drafted and waiting in the overview with its cost; the facts narrowed; the honesty rule; a person's change kept and shown
+  to the next reply; a draft written again as asked, then sent once; a newsletter filed without a model call; the brief drafted from a site's
+  own pages, and the addresses never read.
 
 **Needs a live check**: the worker on the VPS beside the real mail server; a business made, its records added, a message received and
 answered.
@@ -107,5 +131,4 @@ answered.
 
 The bot in X0 Bot (its name comes later): set-up cards in the app's own look (the business, its domain with the records and their checks, its
 addresses, the brief, Draft or Send), its page (what needs a person, what was answered, what was filed), chat, and a notice when mail needs a
-person. The engine tuned for any business: each message sorted by kind with its priority and a one-line summary, the brief first drafted from
-the business's website, the team's changes to drafts teaching later replies, and long facts narrowed to what each email needs.
+person.
