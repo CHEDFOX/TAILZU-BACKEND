@@ -7,7 +7,10 @@
 //          which also covers Postal, same IP) plus whatever the domain had.
 //   DKIM   the public halves of Stalwart's signing keys for the domain.
 //   DMARC  what receivers do with mail that fails both.
-// Optional: SRV records that let mail apps find the server by themselves.
+// Optional: SRV records that let mail apps find the server by themselves, listed only while mail apps connect under the same name the
+// records use (MAIL_APP_DOMAIN = MAIL_BRAND_DOMAIN): a business is never shown the mail server's own name beside X0 Bot's.
+//
+// Records written with the mail server's own names (before MAIL_BRAND_DOMAIN) still deliver to it, so they are found too.
 import { Resolver } from "node:dns/promises";
 import { config, hosts } from "./config.ts";
 
@@ -30,6 +33,8 @@ export type DnsRecord = {
 
 const resolver = new Resolver({ timeout: 4000, tries: 2 });
 resolver.setServers(["1.1.1.1", "8.8.8.8"]);
+/** What a check asks of DNS (a test hands in its own). */
+export type Lookup = Pick<Resolver, "resolveMx" | "resolveTxt" | "resolveSrv">;
 
 const rel = (name: string, domain: string) => (name === domain ? "@" : name.endsWith("." + domain) ? name.slice(0, -domain.length - 1) : name);
 const norm = (s: string) => s.toLowerCase().replace(/\.$/, "");
@@ -60,6 +65,8 @@ export function expected(domain: string, zone: string): DnsRecord[] {
   recs.push(
     { kind: "DMARC", type: "TXT", name: `_dmarc.${d}`, host: "_dmarc", value: `v=DMARC1; p=quarantine; adkim=r; aspf=r`, required: true,
       why: "Tells receivers to quarantine mail that claims the domain but fails SPF and DKIM." },
+  );
+  if (config.appDomain === config.brandDomain) recs.push(
     { kind: "SRV", type: "SRV", name: `_imaps._tcp.${d}`, host: "_imaps._tcp", value: `0 1 993 ${hosts.imap}`, required: false,
       why: "Optional: mail apps find the incoming server by themselves." },
     { kind: "SRV", type: "SRV", name: `_submissions._tcp.${d}`, host: "_submissions._tcp", value: `0 1 465 ${hosts.smtp}`, required: false,
@@ -68,15 +75,18 @@ export function expected(domain: string, zone: string): DnsRecord[] {
   return recs;
 }
 
-async function txt(name: string): Promise<string[]> {
+async function txt(name: string, dns: Lookup): Promise<string[]> {
   try {
-    return (await resolver.resolveTxt(name)).map((chunks) => chunks.join(""));
+    return (await dns.resolveTxt(name)).map((chunks) => chunks.join(""));
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code;
     if (code === "ENODATA" || code === "ENOTFOUND") return [];
     throw e;
   }
 }
+
+/** An SPF record that already lets this server send: our include (X0 Bot's name, or the mail server's own), or its address. */
+const coversSpf = (t: string): boolean => [hosts.spfInclude, ...hosts.spfAlso].some((h) => t.includes(`include:${h}`)) || (!!config.vpsIp && t.includes(`ip4:${config.vpsIp}`));
 
 /** SPF with our include merged into what the domain already has. */
 export function mergeSpf(current: string | undefined): string {
@@ -90,41 +100,42 @@ export function mergeSpf(current: string | undefined): string {
   return s;
 }
 
-export async function check(records: DnsRecord[]): Promise<DnsRecord[]> {
+export async function check(records: DnsRecord[], dns: Lookup = resolver): Promise<DnsRecord[]> {
   return Promise.all(records.map(async (r) => {
     try {
       if (r.kind === "MX") {
         let mx: { exchange: string; priority: number }[] = [];
-        try { mx = await resolver.resolveMx(r.name); } catch (e) { if (!["ENODATA", "ENOTFOUND"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e; }
+        try { mx = await dns.resolveMx(r.name); } catch (e) { if (!["ENODATA", "ENOTFOUND"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e; }
         const current = mx.sort((a, b) => a.priority - b.priority).map((m) => `${m.priority} ${norm(m.exchange)}`);
-        const ours = mx.some((m) => norm(m.exchange) === norm(r.value));
-        const others = mx.filter((m) => norm(m.exchange) !== norm(r.value));
+        const mine = new Set([r.value, ...hosts.mxAlso].map(norm));
+        const ours = mx.some((m) => mine.has(norm(m.exchange)));
+        const others = mx.filter((m) => !mine.has(norm(m.exchange)));
         return { ...r, current, status: !mx.length ? "missing" : ours && !others.length ? "ok" : "differs",
           note: ours && others.length ? "Remove the other MX records, or some mail keeps going to the old provider."
             : !ours && mx.length ? `Mail for this domain still goes to ${norm(mx[0].exchange)}.` : undefined } as DnsRecord;
       }
       if (r.kind === "SPF") {
-        const all = (await txt(r.name)).filter((t) => /^v=spf1/i.test(t));
-        const covers = (t: string) => t.includes(`include:${hosts.spfInclude}`) || (config.vpsIp && t.includes(`ip4:${config.vpsIp}`));
+        const all = (await txt(r.name, dns)).filter((t) => /^v=spf1/i.test(t));
+        const covers = coversSpf;
         if (!all.length) return { ...r, current: [], status: "missing" } as DnsRecord;
         if (all.length > 1) return { ...r, current: all, status: "differs", note: "There is more than one SPF record: keep one, merged." } as DnsRecord;
         return { ...r, current: all, status: covers(all[0]) ? "ok" : "differs", value: covers(all[0]) ? all[0] : mergeSpf(all[0]),
           note: covers(all[0]) ? undefined : "Replace the existing SPF record with this merged one." } as DnsRecord;
       }
       if (r.kind === "DKIM") {
-        const all = await txt(r.name);
+        const all = await txt(r.name, dns);
         const key = (s: string) => /p=([^;\s]+)/.exec(s.replace(/\s/g, ""))?.[1];
         const ok = all.some((t) => key(t) && key(t) === key(r.value));
         return { ...r, current: all, status: ok ? "ok" : all.length ? "differs" : "missing" } as DnsRecord;
       }
       if (r.kind === "DMARC") {
-        const all = (await txt(r.name)).filter((t) => /^v=DMARC1/i.test(t));
+        const all = (await txt(r.name, dns)).filter((t) => /^v=DMARC1/i.test(t));
         return { ...r, current: all, status: all.length ? "ok" : "missing",
           note: all.length && !/p=(quarantine|reject)/i.test(all[0]) ? "Present, with a relaxed policy (p=none): fine while you move, tighten later." : undefined } as DnsRecord;
       }
       // SRV
       let srv: { name: string; port: number; priority: number; weight: number }[] = [];
-      try { srv = await resolver.resolveSrv(r.name); } catch (e) { if (!["ENODATA", "ENOTFOUND"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e; }
+      try { srv = await dns.resolveSrv(r.name); } catch (e) { if (!["ENODATA", "ENOTFOUND"].includes((e as NodeJS.ErrnoException).code ?? "")) throw e; }
       const target = r.value.split(" ").pop()!;
       return { ...r, current: srv.map((s) => `${s.priority} ${s.weight} ${s.port} ${s.name}`),
         status: srv.some((s) => norm(s.name) === norm(target)) ? "ok" : srv.length ? "differs" : "missing" } as DnsRecord;

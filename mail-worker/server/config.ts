@@ -11,6 +11,12 @@ function env(name: string, fallback?: string): string {
 }
 
 const mailDomain = env("MAIL_DOMAIN", "mail.example.com");
+/** The name the businesses see in the records they add (X0 Bot's: mail.x0bot.com): mx.<it> and spf.<it>, each made at X0 Bot's DNS (an A
+ *  record to this VPS, the SPF the mail server's own lists), so the mail server, and Xooteq Mail on it, is not changed. Empty: its own. */
+const brandDomain = env("MAIL_BRAND_DOMAIN", mailDomain);
+/** The name mail apps connect to (incoming, outgoing, and the optional SRV records that point at them). A mail app checks the server's
+ *  certificate against it, so it stays the mail server's own until that certificate also covers smtp.<brand> and mx.<brand>. */
+const appDomain = env("MAIL_APP_DOMAIN", mailDomain);
 
 export const config = {
   port: Number(env("MAIL_WORKER_PORT", "5300")),
@@ -23,8 +29,11 @@ export const config = {
   webhookSecret: env("MAIL_WEBHOOK_SECRET", ""),
   /** X0 Bot's server signs every call to this worker with it, the media and Oracle workers' way (security.ts). */
   workerSecret: env("MAIL_WORKER_SECRET", ""),
-  /** The platform domain: mx.<it> receives, smtp.<it> sends, spf.<it> lists the IP. */
+  /** The mail server's own domain: mx.<it> receives, smtp.<it> sends, spf.<it> lists the IP. */
   mailDomain,
+  /** What the businesses see instead (MAIL_BRAND_DOMAIN), and what mail apps connect to (MAIL_APP_DOMAIN). */
+  brandDomain,
+  appDomain,
   vpsIp: env("VPS_IP", ""),
   dataDir: env("DATA_DIR", path.resolve("data")),
   /** Our AI (nobody brings a key): OpenRouter, best model first; "model@low" sets its thinking effort. */
@@ -47,10 +56,13 @@ export function assertReady(): string[] {
   return missing;
 }
 
-/** The hosts mail apps and DNS records point at. */
+/** The hosts mail apps and DNS records point at, read from the config each time (a test changes it). */
 export const hosts = {
-  mx: `mx.${mailDomain}`,
-  smtp: `smtp.${mailDomain}`,
-  imap: `mx.${mailDomain}`,
-  spfInclude: `spf.${mailDomain}`,
+  get mx(): string { return `mx.${config.brandDomain}`; },
+  get spfInclude(): string { return `spf.${config.brandDomain}`; },
+  get smtp(): string { return `smtp.${config.appDomain}`; },
+  get imap(): string { return `mx.${config.appDomain}`; },
+  /** The mail server's own names. They still deliver to it, so a domain pointed at them before the brand's is found too. */
+  get mxAlso(): string[] { return config.brandDomain === config.mailDomain ? [] : [`mx.${config.mailDomain}`]; },
+  get spfAlso(): string[] { return config.brandDomain === config.mailDomain ? [] : [`spf.${config.mailDomain}`]; },
 };

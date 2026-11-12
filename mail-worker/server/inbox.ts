@@ -6,7 +6,7 @@
 import { db, now } from "./db.ts";
 import { getCompany, InputError, listRules, saveRules, type Company, type CompanyAddress } from "./companies.ts";
 import { Mailbox, unwrap } from "./stalwart.ts";
-import { allowance, bodyText, sendDraft, suggestReply, textToHtml } from "./ai/engine.ts";
+import { allowance, bodyText, newMessageId, sendDraft, suggestReply, textToHtml } from "./ai/engine.ts";
 import { AiError, complete } from "./ai/model.ts";
 import { getProfile } from "./ai/prompt.ts";
 import type { Action, Condition, Rule } from "./sieve.ts";
@@ -252,6 +252,7 @@ export async function send(company: Company, input: { from?: unknown; to?: unkno
   const made = await box.call("Email/set", { create: { d: {
     mailboxIds: { [drafts]: true }, keywords: { $draft: true, $seen: true },
     from: [{ name: address.displayName || company.name, email: address.email }], to, ...(cc.length ? { cc } : {}), subject, ...threading,
+    messageId: newMessageId(company),
     bodyValues: { t: { value: text }, h: { value: textToHtml(text) } },
     textBody: [{ partId: "t", type: "text/plain" }], htmlBody: [{ partId: "h", type: "text/html" }],
   } } });

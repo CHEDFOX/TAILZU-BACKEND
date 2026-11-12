@@ -12,7 +12,8 @@ process.env.MAIL_DOMAIN = "mail.example.online";
 process.env.VPS_IP = "203.0.113.7";
 
 const { compile, q } = await import("../server/sieve.ts");
-const { dkimFromZone, expected, mergeSpf } = await import("../server/dns.ts");
+const { check, dkimFromZone, expected, mergeSpf } = await import("../server/dns.ts");
+const { config, hosts } = await import("../server/config.ts");
 const { skipReason, stripHtml, textToHtml, bodyText } = await import("../server/ai/engine.ts");
 const { parseJsonAnswer } = await import("../server/ai/model.ts");
 const { verifyWebhook } = await import("../server/crypto.ts");
@@ -80,6 +81,37 @@ test("SPF: our include is merged into what the domain had", () => {
   assert.equal(mergeSpf(undefined), "v=spf1 mx include:spf.mail.example.online ~all");
   assert.equal(mergeSpf("v=spf1 include:_spf.google.com ~all"), "v=spf1 mx include:_spf.google.com include:spf.mail.example.online ~all");
   assert.equal(mergeSpf("v=spf1 mx include:zoho.in -all"), "v=spf1 mx include:zoho.in include:spf.mail.example.online -all");
+});
+
+test("the records name X0 Bot's mail domain, never the mail server's, and a domain pointed at the server's own names is still found", async () => {
+  const was = { brand: config.brandDomain, app: config.appDomain };
+  config.brandDomain = "mail.x0bot.example";
+  try {
+    const recs = expected("x.test", ZONE);
+    assert.equal(recs[0].value, "mx.mail.x0bot.example");
+    assert.equal(recs[1].value, "v=spf1 mx include:spf.mail.x0bot.example ~all");
+    assert.equal(mergeSpf("v=spf1 include:_spf.google.com ~all"), "v=spf1 mx include:_spf.google.com include:spf.mail.x0bot.example ~all");
+    // Mail apps still connect under the mail server's own name (its certificate's): the optional records that would name it are left out.
+    assert.deepEqual(recs.map((r) => r.kind), ["MX", "SPF", "DKIM", "DKIM", "DMARC"]);
+    assert.ok(recs.every((r) => !r.value.includes("mail.example.online")));
+    const dns = (mx: string, spf: string) => ({
+      resolveMx: async () => [{ exchange: mx, priority: 10 }],
+      resolveTxt: async (name: string) => (name === "x.test" ? [[spf]] : []),
+      resolveSrv: async () => [],
+    }) as never;
+    // Pointed at X0 Bot's names, or at the mail server's own (the same server): found either way.
+    assert.deepEqual((await check(recs.slice(0, 2), dns("mx.mail.x0bot.example", "v=spf1 mx include:spf.mail.x0bot.example ~all"))).map((r) => r.status), ["ok", "ok"]);
+    assert.deepEqual((await check(recs.slice(0, 2), dns("mx.mail.example.online.", "v=spf1 mx include:spf.mail.example.online ~all"))).map((r) => r.status), ["ok", "ok"]);
+    const elsewhere = await check(recs.slice(0, 2), dns("aspmx.l.google.com", "v=spf1 include:_spf.google.com ~all"));
+    assert.deepEqual(elsewhere.map((r) => r.status), ["differs", "differs"]);
+    assert.equal(elsewhere[1].value, "v=spf1 mx include:_spf.google.com include:spf.mail.x0bot.example ~all");
+    // Once the mail server's certificate covers X0 Bot's names, mail apps connect under them, and the optional records come back.
+    config.appDomain = "mail.x0bot.example";
+    assert.deepEqual(expected("x.test", ZONE).filter((r) => r.kind === "SRV").map((r) => r.value), ["0 1 993 mx.mail.x0bot.example", "0 1 465 smtp.mail.x0bot.example"]);
+    assert.deepEqual([hosts.imap, hosts.smtp], ["mx.mail.x0bot.example", "smtp.mail.x0bot.example"]);
+  } finally {
+    config.brandDomain = was.brand; config.appDomain = was.app;
+  }
 });
 
 const mail = (over: Record<string, unknown> = {}) => ({

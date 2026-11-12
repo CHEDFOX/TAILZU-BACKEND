@@ -110,6 +110,8 @@ test("mail sent from an alias: new, a reply in its thread, a forward with the or
   assert.deepEqual(sent.from, [{ name: "Leaf & Co", email: "support@shop.test" }]);
   assert.deepEqual(sent.to, [{ name: "Asha", email: "asha@customer.test" }, { email: "ravi@customer.test" }]);
   assert.equal(mail.submitted.includes(fresh.json.id), true);
+  // Its Message-ID is on the business's own domain, not the mail server's name.
+  assert.match(sent.messageId[0], /^[0-9a-f-]{36}@shop\.test$/);
   const reply = await call("POST", `${B}/send`, { to: "asha@customer.test", text: "On its way.", replyTo: "m1" });
   const r = mail.emails.find((e) => e.id === reply.json.id)! as any;
   assert.equal(r.subject, "Re: Where is my order?");

@@ -1174,9 +1174,25 @@ mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/pos
    naming what is not set otherwise). In Xooteq Mail's own dashboard, the mail bot's businesses show among the mailboxes it did not make.
    In X0 Bot the mail bot is among the bots (its name is a placeholder until it is given one); its set-up cards make a business. Its table
    (`mail_owners`, migration 0080, for the push when mail needs a person) is made by the deploy itself.
-4. **Add to the privacy policy.** For the mail bot: a business's mail is kept on our mail server in its own mailbox until the business or the
+4. **X0 Bot's name in the records.** Out of the box the records a business adds name the mail server's own domain
+   (`mx.mail.xooteq.online`). To have them say X0 Bot's, make two names at x0bot.com's DNS (Hostinger) that lead to the same server, then
+   switch them on. The mail server, and Xooteq Mail on it, is not changed; domains already pointed at the old names keep working and are
+   still shown as found.
+
+   | Type | Name (at x0bot.com) | Value |
+   | --- | --- | --- |
+   | A | `mx.mail` | `91.108.104.168` (an A record: an MX may not point at a CNAME) |
+   | TXT | `spf.mail` | the same text as `spf.mail.xooteq.online` (`dig +short TXT spf.mail.xooteq.online`) |
+
+   Once `dig +short A mx.mail.x0bot.com` and `dig +short TXT spf.mail.x0bot.com` answer, put `MAIL_BRAND_DOMAIN=mail.x0bot.com` in
+   `tulmi/.env` and `./deploy/ship.sh`. The records then read `MX 10 mx.mail.x0bot.com` and `v=spf1 mx include:spf.mail.x0bot.com ~all`.
+   Mail apps (the settings' incoming and outgoing servers, and the optional SRV records) keep the mail server's own name: a mail app checks
+   the server's certificate against it. When that certificate also covers `mx.mail.x0bot.com` and `smtp.mail.x0bot.com` (add an A record
+   for `smtp.mail` too), set `MAIL_APP_DOMAIN=mail.x0bot.com` and ship again. What stays the mail server's own either way: its name in the
+   `Received` lines of a message's headers (it is the server Xooteq Mail shares).
+5. **Add to the privacy policy.** For the mail bot: a business's mail is kept on our mail server in its own mailbox until the business or the
    account is deleted; what the AI reads of a message goes to the model provider to write the reply; nothing of it is logged; a push says
    the business and the kind of message, never its words.
-5. **Back out:** remove `MAIL_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh` (the mail bot leaves X0 Bot); then
+6. **Back out:** remove `MAIL_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh` (the mail bot leaves X0 Bot); then
    `docker compose --profile mail stop mail-worker`. The mailboxes and their mail stay on the mail server.
 

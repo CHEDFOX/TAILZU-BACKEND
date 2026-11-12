@@ -17,6 +17,7 @@
 // From Xooteq Mail's dashboard (dashboard/server/ai/engine.ts). Changed here: our AI writes (model.ts), within each business's daily
 // allowance; mail from the business's own domain is skipped, not mail from every domain on the server (two businesses here may write
 // to each other).
+import { randomUUID } from "node:crypto";
 import { config } from "../config.ts";
 import { db, now } from "../db.ts";
 import { companyForAddress, getCompany, type Company, type CompanyAddress } from "../companies.ts";
@@ -206,6 +207,9 @@ export async function writeReply(company: Company, address: CompanyAddress, e: J
   return { decision, reply: String(a.reply ?? "").trim(), reason: String(a.reason ?? "").trim().slice(0, 300), kind, priority, summary, model: r.model, costUsd: r.costUsd };
 }
 
+/** A new message's Message-ID, on the business's own domain: left to the mail server, it would carry the server's own name. */
+export const newMessageId = (company: Pick<Company, "domain">): string[] => [`${randomUUID()}@${company.domain}`];
+
 function signed(reply: string, company: Company, signature: string): string {
   const sig = (signature || company.signature || "").trim();
   return sig ? `${reply.trim()}\n\n${sig}` : reply.trim();
@@ -224,6 +228,7 @@ export async function saveDraft(box: Mailbox, company: Company, address: Company
     from: [{ name: address.displayName || company.name, email: address.email }],
     to,
     subject,
+    messageId: newMessageId(company),
     ...(e.messageId?.length ? { inReplyTo: e.messageId, references: [...(e.references ?? []), ...e.messageId] } : {}),
     bodyValues: { t: { value: text }, h: { value: textToHtml(text) } },
     textBody: [{ partId: "t", type: "text/plain" }],
@@ -264,7 +269,7 @@ async function handle(job: Job): Promise<void> {
     if (!e) { update(runId, { status: "error", reason: "the message was not found in the mailbox" }); return; }
     update(runId, { email_id: e.id, thread_id: e.threadId, sender: e.from?.[0]?.email ?? null, subject: e.subject ?? null });
 
-    const ourDomains = new Set([company.domain, config.mailDomain]);
+    const ourDomains = new Set([company.domain, config.mailDomain, config.brandDomain]);
     const boxes = (await box.call("Mailbox/get", { properties: ["role"] })).list as { id: string; role: string | null }[];
     const skip = skipReason(e, ourDomains, boxes.find((b) => b.role === "junk")?.id);
     if (skip) { update(runId, { status: "skipped", reason: skip, kind: kindOfSkip(skip), priority: "low" }); return; }
@@ -469,6 +474,7 @@ async function replaceDraft(companyId: string, runId: number, text: string, o: {
   const res = await box.call("Email/set", {
     create: { d: {
       mailboxIds: old.mailboxIds, keywords, from: old.from, to: old.to, ...(old.cc ? { cc: old.cc } : {}), subject: old.subject,
+      messageId: newMessageId(company),
       ...(old.inReplyTo ? { inReplyTo: old.inReplyTo } : {}), ...(old.references ? { references: old.references } : {}),
       bodyValues: { t: { value: words }, h: { value: textToHtml(words) } },
       textBody: [{ partId: "t", type: "text/plain" }], htmlBody: [{ partId: "h", type: "text/html" }],

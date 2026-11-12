@@ -100,6 +100,10 @@ test("a message is sorted, drafted for a person, and waits in the overview; the 
   orderRun = run.id;
   assert.deepEqual([run.status, run.kind, run.priority, run.summary], ["drafted", "order", "urgent", "Asks when order 1234 will ship"]);
   assert.equal(run.cost_usd, 0.0021);
+  // The draft answers in the thread, with a Message-ID on the business's own domain, not the mail server's name.
+  const draft = mail.emails.find((e) => e.id === run.draft_id) as unknown as { messageId: string[]; inReplyTo: string[] };
+  assert.match(draft.messageId[0]!, /^[0-9a-f-]{36}@shop\.test$/);
+  assert.deepEqual(draft.inReplyTo, ["m1@customer"]);
   const sys = asked.at(-1)!.system;
   assert.match(sys, /Orders ship from Pune/);                         // the section the email needs
   assert.doesNotMatch(sys, /Care 79/);                                // not the ones it does not

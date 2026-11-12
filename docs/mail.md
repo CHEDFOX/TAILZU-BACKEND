@@ -46,7 +46,10 @@ mailbox, in the Inbox (All mail) and in that address's folder, as in Xooteq Mail
 | **Send** | the reply waits a few minutes (the brief's delay) and goes, unless stopped; anything about money, legal matters or a complaint, anything the AI is unsure of, and a sender's 4th message of the day become drafts instead |
 | **Off** | nobody answers but a person |
 
-The domain's DNS records (MX, SPF, DKIM, DMARC) are listed with a live check of each; mail arrives once the MX points here. A mail app on a
+The domain's DNS records (MX, SPF, DKIM, DMARC) are listed with a live check of each; mail arrives once the MX points here. They name
+X0 Bot's mail domain (`MAIL_BRAND_DOMAIN`, `mx.mail.x0bot.com`), never the mail server's own (`mail.xooteq.online`, which Xooteq Mail shares):
+the brand's names are A and TXT records at x0bot.com leading to the same server. A domain pointed at the old names still delivers and is
+still shown as found. Each message the business sends carries a Message-ID on its own domain. A mail app on a
 phone or a computer can be added with a password the business sets. A business deleted takes its mailbox and its mail with it.
 
 ## 3. How a reply is written
@@ -124,6 +127,8 @@ carries no words of the mail, waits at most five seconds and never stops the mai
 | `tulmi/.env` | `STALWART_ADMIN_USER`, `STALWART_ADMIN_SECRET`, `MAIL_DOMAIN`, `VPS_IP` | the mail server's, taken from `/opt/postal/.env` by the script |
 | `tulmi/.env` | `OPENROUTER_API_KEY` | **secret** the server already has: the AI |
 | `tulmi/.env` | `MAIL_MODELS`, `MAIL_DAILY_USD` | optional: the models, best first; one business's daily AI allowance in US dollars |
+| `tulmi/.env` | `MAIL_BRAND_DOMAIN` | optional: the name the records say (`mail.x0bot.com`: `mx.mail.x0bot.com`, `spf.mail.x0bot.com`) instead of the mail server's own; both made at x0bot.com's DNS first (DEPLOY.md, "Mail", step 4) |
+| `tulmi/.env` | `MAIL_APP_DOMAIN` | optional: the name mail apps connect to, and the optional SRV records; set to the brand's only once the mail server's certificate covers it |
 | the `.env` beside `docker-compose.yml` | `MAIL_STALWART_NETWORK` | optional: the mail server's Docker network, `postal_default` by default |
 | `docker-compose.yml` | `MAIL_NOTIFY_URL` | where the worker says mail needs a person: `http://backend:8080/v1/mail/notice`, set there |
 
