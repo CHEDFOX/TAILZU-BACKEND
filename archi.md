@@ -59,7 +59,8 @@ media-worker/            Python service (FastAPI): office files, hard PDFs, pict
 oracle-worker/           Python service (FastAPI): the Oracle bot's engine, Plutto's oracle copied in (app/, by sync_plutto.py)
                          and the signed /v1/answer around it (server/) (docs/oracle.md)
 mail-worker/             Node service (Fastify): the mail bot's engine, Xooteq Mail's copied in and tuned (mailboxes on the mail
-                         server, filing, AI replies), behind a signed API (docs/mail.md, mail-worker/README.md)
+                         server, filing, each message sorted, AI replies), behind a signed API, with a signed notice back to the
+                         backend when mail needs a person (docs/mail.md, mail-worker/README.md)
 shared/types/            the wire contracts: api.ts (requests and responses), sdui.ts (screens, nodes, actions)
 shared/bots/             the bots' looks and moments (looks.json) and sounds (sounds.json, sounds/*.m4a)
 shared/prompts/          the screen reply's old prompt files, kept so REPLY_PROMPT_VERSION can roll back
@@ -165,6 +166,8 @@ code/              Xode (docs/code-*.md); code/flow/: read, agree a plan, work t
 bots/              the bots platform: a bot's definition, store, keys, memory, tools, and running one (docs/bots.md)
 oracle/            the Oracle bot: birth details from words, the birthplace search (Google Places), the person's sky, the oracle worker's
                    client, a turn (docs/oracle.md)
+mail/              the mail bot: the mail worker's signed client and the account's hash (worker.ts), which person a hash is, for the
+                   push (owners.ts), what its chat knows (digest.ts) (docs/mail.md)
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
@@ -225,7 +228,7 @@ ads/               Meta and Google Tag Manager events
 | The person's context (what the brain and Ask know of someone) | `tulmi/src/context/`, `routes/ask/context.ts` (docs/context.md) |
 | The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
 | The Oracle bot (a reading of the person's sky) | `tulmi/src/oracle/`, `routes/bots/oracle.ts`, the page `experience/bots/screens/bots/oraclePage.ts` and its cards `oracleCards.ts`, the engine `oracle-worker/`, migration 0078 (docs/oracle.md) |
-| The mail bot (a business's email: mailboxes, filing, AI replies) | the engine `mail-worker/` (its API `mail-worker/server/routes/x0.ts`), `deploy/mail-up.sh` (docs/mail.md) |
+| The mail bot (a business's email: mailboxes, filing, AI replies) | `tulmi/src/mail/`, `routes/bots/mail.ts`, the page `experience/bots/screens/bots/mailPage.ts`, its cards `mailCards.ts`, its other screens `mailScreens.ts` (shared parts `mailParts.ts`), the engine `mail-worker/` (its API `mail-worker/server/routes/x0.ts`), `deploy/mail-up.sh`, migration 0080 (docs/mail.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |

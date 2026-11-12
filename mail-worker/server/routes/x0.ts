@@ -2,7 +2,7 @@
  * WHAT X0 BOT'S SERVER ASKS OF THE MAIL WORKER: every route signed (security.ts), every route inside one X0 account (`:owner`, in the
  * signed path, so no call can reach another account's businesses: another's is "no such business").
  *
- *   GET    /v1/o/:owner/businesses                          the account's businesses, their addresses and modes
+ *   GET    /v1/o/:owner/businesses                          the account's businesses, their addresses and modes, whether each is set up
  *   POST   /v1/o/:owner/businesses                          { name, domain, local?, aliases?, dailyUsd? }: the domain and its mailbox made
  *   GET    /v1/o/:owner/businesses/:id                      one
  *   PATCH  /v1/o/:owner/businesses/:id                      { name?, signature?, dailyUsd? }
@@ -11,10 +11,10 @@
  *   POST   /v1/o/:owner/businesses/:id/addresses            { local, label? }
  *   PATCH  /v1/o/:owner/businesses/:id/addresses/:aid       { label?, aiMode?, displayName?, autoReply? }
  *   DELETE /v1/o/:owner/businesses/:id/addresses/:aid
- *   GET    /v1/o/:owner/businesses/:id/brief                what the AI knows and how it writes
+ *   GET    /v1/o/:owner/businesses/:id/brief                { profile, saved }: what the AI knows and how it writes; saved once a person kept one
  *   PUT    /v1/o/:owner/businesses/:id/brief                { profile }
  *   POST   /v1/o/:owner/businesses/:id/brief/draft          { url? }: a brief drafted from the business's website (its domain by default), not kept
- *   GET    /v1/o/:owner/businesses/:id/activity?limit=      every message the AI looked at, what it did and why
+ *   GET    /v1/o/:owner/businesses/:id/activity?limit=      every message the AI looked at: how it was sorted, what it did and why
  *   GET    /v1/o/:owner/businesses/:id/replies/:run         a draft beside the message it answers
  *   PUT    /v1/o/:owner/businesses/:id/replies/:run         { text }: new words (a scheduled one stops); the AI learns from them
  *   POST   /v1/o/:owner/businesses/:id/replies/:run/rewrite { instruction }: written again as asked, still a draft
@@ -29,14 +29,14 @@
  * Errors: { code, message } with the message in words for a person; 400 bad input, 404 not found, 409 too late, 401 not signed.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { config } from "../config.ts";
+import { config, hosts } from "../config.ts";
 import { createCompany, deleteCompany, getCompany, InputError, listCompanies, setMailAppPassword, updateAddress, updateCompany,
   addAddress, removeAddress, type Company } from "../companies.ts";
 import { check, expected } from "../dns.ts";
 import { domains, StalwartError } from "../stalwart.ts";
 import { getProfile, saveProfile } from "../ai/prompt.ts";
 import { AiError } from "../ai/model.ts";
-import { allowance, cancelScheduled, counts, discardDraft, draftView, editDraft, listRuns, rewriteDraft, sendNow, spend, waiting } from "../ai/engine.ts";
+import { activityView, allowance, cancelScheduled, counts, discardDraft, draftView, editDraft, rewriteDraft, sendNow, spend, waiting } from "../ai/engine.ts";
 import { draftBrief } from "../ai/brief.ts";
 import { NonceCache, refused } from "../security.ts";
 
@@ -53,11 +53,13 @@ const runId = (req: FastifyRequest): number => {
   return n;
 };
 
-/** What X0 Bot shows of a business: never the mail server's own ids. */
+/** What X0 Bot shows of a business: never the mail server's own ids. `ready` once its brief was kept (X0 Bot's set-up asks until then). */
 export function view(c: Company) {
   const a = allowance(c);
   return {
-    id: c.id, name: c.name, domain: c.domain, email: c.email, signature: c.signature,
+    id: c.id, name: c.name, domain: c.domain, email: c.email, signature: c.signature, ready: getProfile(c.id).saved,
+    // Where a phone's or a computer's mail app connects (once the business set a mail-app password).
+    mailApp: { incoming: hosts.imap, outgoing: hosts.smtp, user: c.email },
     allowance: { spentUsd: Math.round(a.spentUsd * 10_000) / 10_000, capUsd: a.capUsd },
     addresses: c.addresses.map((x) => ({ id: x.id, email: x.email, label: x.label, isPrimary: x.isPrimary, aiMode: x.aiMode, displayName: x.displayName, autoReply: x.autoReply })),
   };
@@ -126,7 +128,7 @@ export async function x0Routes(app: FastifyInstance) {
 
   app.get("/v1/o/:owner/businesses/:id/activity", route((req) => {
     const limit = Math.min(200, Math.max(1, Number((req.query as { limit?: string }).limit) || 50));
-    return { runs: listRuns(business(req).id, limit) };
+    return { runs: activityView(business(req).id, limit) };
   }));
   app.get("/v1/o/:owner/businesses/:id/replies/:run", route(async (req) => draftView(business(req).id, runId(req))));
   app.put("/v1/o/:owner/businesses/:id/replies/:run", route(async (req) => {

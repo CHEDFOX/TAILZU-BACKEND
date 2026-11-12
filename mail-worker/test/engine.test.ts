@@ -18,7 +18,7 @@ const SECRET = "test-secret-0123456789abcdef0123456789";
 Object.assign(process.env, {
   DATA_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "x0-mail-engine-")), STALWART_URL: `http://127.0.0.1:${port}`, STALWART_ADMIN_USER: "admin",
   STALWART_ADMIN_SECRET: "admin-secret", MAIL_WORKER_SECRET: SECRET, MAIL_WEBHOOK_SECRET: "hook-secret", MAIL_DOMAIN: "mail.example.online",
-  VPS_IP: "203.0.113.7", OPENROUTER_API_KEY: "test-key",
+  VPS_IP: "203.0.113.7", OPENROUTER_API_KEY: "test-key", MAIL_NOTIFY_URL: "http://backend.test/v1/mail/notice",
 });
 
 const { buildApp } = await import("../server/app.ts");
@@ -28,6 +28,7 @@ const { relevantKnowledge, systemPrompt, DEFAULT_PROFILE } = await import("../se
 const { isPublicAddress, readSite, draftBrief } = await import("../server/ai/brief.ts");
 const { getCompany } = await import("../server/companies.ts");
 const { db } = await import("../server/db.ts");
+const { useNoticeFetch } = await import("../server/notice.ts");
 const app = await buildApp();
 after(() => app.close());
 
@@ -40,6 +41,21 @@ useFetch(async (_url, init) => {
   const a = answers.shift() ?? { decision: "ignore", reply: "", reason: "nothing", kind: "other", priority: "low", summary: "" };
   return { status: 200, json: async () => ({ model: b.model, choices: [{ message: { content: JSON.stringify(a) } }], usage: { cost: 0.0021 } }) };
 });
+
+// ---- the notices X0 Bot's server would get, each checked for its signature ----
+const notices: Record<string, unknown>[] = [];
+useNoticeFetch(async (url, init) => {
+  const u = new URL(url);
+  const h = init.headers;
+  const want = sign(SECRET, { timestamp: Number(h["x-tailzu-timestamp"]), nonce: h["x-tailzu-nonce"]!, method: "POST", pathWithQuery: u.pathname, body: init.body });
+  assert.equal(h["x-tailzu-signature"], want);
+  notices.push(JSON.parse(init.body.toString()));
+  return { ok: true };
+});
+const noticeFor = async (run: number) => {
+  for (let i = 0; i < 50 && !notices.some((n) => n.run === run); i++) await new Promise((r) => setTimeout(r, 20));
+  return notices.find((n) => n.run === run);
+};
 
 const A = "owner:aaaaaaaaaaaaaaaaaaaaaaaa";
 async function call(method: string, url: string, payload?: unknown) {
@@ -93,6 +109,12 @@ test("a message is sorted, drafted for a person, and waits in the overview; the 
   assert.equal(o.waiting[0].summary, "Asks when order 1234 will ship");
   assert.equal(o.waiting[0].priority, "urgent");
   assert.deepEqual(o.today, { received: 1, answered: 0, drafted: 1, needsPerson: 0, filed: 0 });
+  // Urgent, so the owner is told, without a word of the mail.
+  assert.deepEqual(await noticeFor(orderRun), { owner: A, business: id, name: "Leaf & Co", status: "drafted", run: orderRun, kind: "order", priority: "urgent" });
+  // The page's list: how each was sorted, never the mail server's ids, the model or the cost.
+  const act = (await call("GET", `/v1/o/${A}/businesses/${id}/activity`)).json.runs[0];
+  assert.deepEqual(Object.keys(act).sort(), ["address", "createdAt", "id", "kind", "priority", "reason", "sendAt", "sender", "status", "subject", "summary"]);
+  assert.equal((await call("GET", `/v1/o/${A}/businesses/${id}/brief`)).json.saved, true);
 });
 
 test("a person's change is kept, and teaches the next reply their way of writing", async () => {
@@ -109,6 +131,7 @@ test("a person's change is kept, and teaches the next reply their way of writing
   const run = await settled("<m2@customer>");
   assert.equal(run.status, "needs_person");
   assert.match(asked.at(-1)!.system, /How the team changed earlier drafts[\s\S]*leaves our Pune studio/);
+  assert.equal((await noticeFor(run.id))?.status, "needs_person");
 });
 
 test("a draft is written again as asked, and sent", async () => {
@@ -131,6 +154,7 @@ test("a newsletter is filed without asking the model", async () => {
   const run = await settled("<m3@news>");
   assert.deepEqual([run.status, run.kind, run.priority], ["skipped", "notification", "low"]);
   assert.equal(asked.length, before);
+  assert.equal(notices.some((n) => n.run === run.id), false);
 });
 
 test("long facts are narrowed; short ones are kept whole", () => {

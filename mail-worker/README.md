@@ -23,6 +23,7 @@ anything here. Taken, with what changed:
 | `server/config.ts`, `db.ts`, `crypto.ts`, `app.ts`, `main.ts` | the same names | cut to the mail: no dashboard login, web app, sealed keys, Postal sending apps or app users; a schema of its own |
 | `server/routes/hooks.ts` | `routes/hooks.ts` | the new-mail webhook, for this worker's own businesses only |
 | `server/routes/x0.ts`, `security.ts`, `cli.ts` | new | the signed API X0 Bot's server calls; its signature check (the media and Oracle workers' scheme); the worker's own webhook registration |
+| `server/notice.ts` | new | the one call out: X0 Bot's server is told, signed, when mail needs a person (an escalation, an urgent draft, the AI paused), for a push; never the mail's words |
 | `test/unit.test.ts` | `test/unit.test.ts` | without the logins and sealed keys |
 | `test/api.test.ts`, `engine.test.ts`, `fakeStalwart.ts` | new | the signed API and the engine end to end, against a stand-in mail server and a stand-in model |
 

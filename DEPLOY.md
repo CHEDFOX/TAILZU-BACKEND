@@ -1172,8 +1172,11 @@ mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/pos
    `docker-compose.yml`.
 3. **Check.** `docker compose exec backend wget -qO- http://mail-worker:5300/healthz` answers `{"ok":true,"ready":true}` (with `"missing"`
    naming what is not set otherwise). In Xooteq Mail's own dashboard, the mail bot's businesses show among the mailboxes it did not make.
+   In X0 Bot the mail bot is among the bots (its name is a placeholder until it is given one); its set-up cards make a business. Its table
+   (`mail_owners`, migration 0080, for the push when mail needs a person) is made by the deploy itself.
 4. **Add to the privacy policy.** For the mail bot: a business's mail is kept on our mail server in its own mailbox until the business or the
-   account is deleted; what the AI reads of a message goes to the model provider to write the reply; nothing of it is logged.
-5. **Back out:** remove `MAIL_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh`; then `docker compose --profile mail stop mail-worker`. The
-   mailboxes and their mail stay on the mail server.
+   account is deleted; what the AI reads of a message goes to the model provider to write the reply; nothing of it is logged; a push says
+   the business and the kind of message, never its words.
+5. **Back out:** remove `MAIL_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh` (the mail bot leaves X0 Bot); then
+   `docker compose --profile mail stop mail-worker`. The mailboxes and their mail stay on the mail server.
 

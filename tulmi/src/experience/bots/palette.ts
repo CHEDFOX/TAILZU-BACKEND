@@ -50,6 +50,8 @@ const BUILTIN: Record<string, { color: string; icon: IconName }> = {
   keybot: { color: PALETTE_HEX.clay!, icon: "keyboard" },
   plan: { color: PALETTE_HEX.ochre!, icon: "calendar" },
   travel: { color: PALETTE_HEX.sea!, icon: "pin" },
+  // The mail bot (src/mail), where its service is set up: a colour no other built-in wears.
+  mail: { color: PALETTE_HEX.sand!, icon: "mail" },
   tailzu: { color: C.ink, icon: "spark" },
 };
 

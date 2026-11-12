@@ -21,6 +21,7 @@ import { config } from "../config.ts";
 import { db, now } from "../db.ts";
 import { companyForAddress, getCompany, type Company, type CompanyAddress } from "../companies.ts";
 import { Mailbox } from "../stalwart.ts";
+import { notice } from "../notice.ts";
 import { AiError, complete } from "./model.ts";
 import { getProfile, KINDS, PRIORITIES, relevantKnowledge, REPLY_SCHEMA, systemPrompt, userPrompt, type Example, type Kind, type Priority,
   type ReplyAnswer, type ThreadMessage } from "./prompt.ts";
@@ -268,7 +269,11 @@ async function handle(job: Job): Promise<void> {
     const skip = skipReason(e, ourDomains, boxes.find((b) => b.role === "junk")?.id);
     if (skip) { update(runId, { status: "skipped", reason: skip, kind: kindOfSkip(skip), priority: "low" }); return; }
 
-    if (!allowance(company).left) { update(runId, { status: "skipped", reason: "the AI allowance for the last 24 hours is used up" }); return; }
+    if (!allowance(company).left) {
+      update(runId, { status: "skipped", reason: "the AI allowance for the last 24 hours is used up" });
+      void notice({ owner: company.owner, business: company.id, name: company.name, status: "paused" });
+      return;
+    }
     const answer = await writeReply(company, address, e, box);
     update(runId, { model: answer.model, cost_usd: answer.costUsd, kind: answer.kind, priority: answer.priority, summary: answer.summary });
     if (answer.decision === "ignore" || !answer.reply) {
@@ -296,7 +301,12 @@ async function handle(job: Job): Promise<void> {
     }
     if (mode === "draft") {
       await box.call("Email/set", { update: { [e.id]: { "keywords/$ai_draft": true } } });
-      update(runId, { status: answer.decision === "escalate" ? "needs_person" : "drafted", reason: why, draft_id: draftId, mode });
+      const status = answer.decision === "escalate" ? "needs_person" : "drafted";
+      update(runId, { status, reason: why, draft_id: draftId, mode });
+      // The owner hears of what needs them: a message only a person should answer, or an urgent one. Every other draft waits on the page.
+      if (status === "needs_person" || answer.priority === "urgent") {
+        void notice({ owner: company.owner, business: company.id, name: company.name, status, run: runId, kind: answer.kind, priority: answer.priority });
+      }
       return;
     }
     await sendDraft(box, draftId, address.email);
@@ -325,10 +335,10 @@ export async function suggestReply(companyId: string, emailId: string, fromAddre
   return { text: signed(a.reply || "", company, profile.signature), decision: a.decision, reason: a.reason, model: a.model };
 }
 
-export function listRuns(companyId?: string, limit = 100): Record<string, unknown>[] {
-  return (companyId
-    ? db.prepare("SELECT * FROM ai_runs WHERE company_id = ? ORDER BY created_at DESC LIMIT ?").all(companyId, limit)
-    : db.prepare("SELECT * FROM ai_runs ORDER BY created_at DESC LIMIT ?").all(limit)) as Record<string, unknown>[];
+/** What X0 Bot shows of one message the AI looked at: never the mail server's ids, the model or what it cost (the AI is ours). */
+export function activityView(companyId: string, limit = 50): Record<string, unknown>[] {
+  return db.prepare(`SELECT id, address, sender, subject, kind, priority, summary, status, reason, send_at AS sendAt, created_at AS createdAt
+    FROM ai_runs WHERE company_id = ? AND message_id IS NOT NULL ORDER BY created_at DESC LIMIT ?`).all(companyId, limit) as Record<string, unknown>[];
 }
 
 // ---- replies waiting to be sent (send mode with a delay) ----
@@ -405,7 +415,8 @@ export async function sendScheduledNow(companyId: string, runId: number): Promis
 
 // ---- a person's say over a draft (X0 Bot's page): read it beside the message it answers, change it, send it, or throw it away ----
 type RunRow = { id: number; company_id: string; address: string | null; email_id: string | null; thread_id: string | null; sender: string | null;
-  subject: string | null; mode: string | null; status: string; reason: string | null; draft_id: string | null; send_at: number | null };
+  subject: string | null; mode: string | null; status: string; reason: string | null; draft_id: string | null; send_at: number | null;
+  kind: string | null; priority: string | null; summary: string | null };
 
 function runOf(companyId: string, runId: number): RunRow {
   const r = db.prepare("SELECT * FROM ai_runs WHERE id = ? AND company_id = ?").get(runId, companyId) as RunRow | undefined;
@@ -416,7 +427,7 @@ const WAITING = new Set(["drafted", "needs_person", "scheduled"]);
 
 /** The draft's words and the message it answers. */
 export async function draftView(companyId: string, runId: number): Promise<{ status: string; reason: string; sendAt: number | null; to: string; subject: string; text: string;
-  message: { from: string; subject: string; date: string; text: string } | null }> {
+  kind: string | null; priority: string | null; summary: string | null; message: { from: string; subject: string; date: string; text: string } | null }> {
   const r = runOf(companyId, runId);
   if (!r.draft_id) throw new AiError("This one has no draft.", 404);
   const box = new Mailbox(getCompany(companyId).email);
@@ -427,6 +438,7 @@ export async function draftView(companyId: string, runId: number): Promise<{ sta
   const m = r.email_id ? list.find((e) => e.id === r.email_id) : undefined;
   return {
     status: r.status, reason: r.reason ?? "", sendAt: r.send_at, to: fmt(d.to), subject: d.subject ?? "", text: bodyText(d),
+    kind: r.kind ?? null, priority: r.priority ?? null, summary: r.summary ?? null,
     message: m ? { from: fmt(m.from), subject: m.subject ?? "", date: m.sentAt ?? m.receivedAt, text: bodyText(m).slice(0, 20000) } : null,
   };
 }

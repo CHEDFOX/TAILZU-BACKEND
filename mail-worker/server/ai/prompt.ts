@@ -31,9 +31,10 @@ export const DEFAULT_PROFILE: Profile = {
   maxAutoPerSenderPerDay: 3,
 };
 
-export function getProfile(companyId: string): { profile: Profile } {
+/** The business's brief, the defaults filled in; `saved` once a person kept one (X0 Bot's set-up asks for it until then). */
+export function getProfile(companyId: string): { profile: Profile; saved: boolean } {
   const row = db.prepare("SELECT profile FROM ai_profiles WHERE company_id = ?").get(companyId) as { profile: string } | undefined;
-  return { profile: { ...DEFAULT_PROFILE, ...json<Partial<Profile>>(row?.profile, {}) } };
+  return { profile: { ...DEFAULT_PROFILE, ...json<Partial<Profile>>(row?.profile, {}) }, saved: !!row };
 }
 
 export function saveProfile(companyId: string, input: Partial<Record<keyof Profile, unknown>>): Profile {

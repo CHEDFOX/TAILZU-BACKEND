@@ -14,6 +14,8 @@
  *   people       someone in a space gave them a task, planned something for them, messaged them, asked to join or let them in: sent;
  *                in quiet hours without a sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none:
  *                botsBots/threads.ts)
+ *   mail         the mail bot: a business's message needs their answer, an urgent one has a draft, or its AI paused for the day: sent; in
+ *                quiet hours without a sound; not with the mail bot turned off
  *
  * A person who never opened the screen has the defaults (settings.ts), which are what the pushes did before it: nothing changes for them.
  */
@@ -27,6 +29,8 @@ import type { Spending } from "./limits.js";
 
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
+/** The mail bot's (push/defaults.ts): a customer is waiting, so they go, quietly in quiet hours; not with the mail bot off. */
+const MAIL = new Set(["mail_needs_you", "mail_urgent", "mail_paused"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
 const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed"]);
 
@@ -54,6 +58,7 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   // A person's word that never makes a sound (who took a family ask, the one nudge): sent, whatever Plan Ease's switch says.
   if (plan === "quiet") return "silent";
   if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
+  if (MAIL.has(kind)) return n.botsOff.includes("mail") ? "drop" : quiet ? "silent" : "send";
   if (kind === "routine_done" || kind === "routine_failed") return quiet ? "silent" : "send";
   if (kind === "ops_alert") return "send";
   if (DONE.has(kind)) {

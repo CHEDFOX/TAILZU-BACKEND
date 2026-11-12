@@ -12,7 +12,8 @@
  *                   cap (meter.ts), which is the smaller of the bot's per-request budget and what is left of its day
  *   6. memory       after an owner's chat turn: facts and the rolling summary (memory.ts)
  *
- * The Oracle is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts).
+ * The Oracle is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts). The mail bot runs it with its
+ * business's mail as its knowledge (src/mail/digest.ts).
  *
  * THE MONEY: the cap is checked before every call by the gateway (a call whose worst case would pass it is refused, never made). A request that
  * runs dry after its tools worked returns what it has, with a note; one that cannot even start is a 402.
@@ -40,6 +41,9 @@ import type { BotStore } from "./store.js";
 import { buildTools, CALLS_PER_STEP, newRecord } from "./tools.js";
 import { BotError, type BotAnswer, type BotDef, type BotEvent } from "./types.js";
 import { ORACLE_SLUG, runOracle, type OracleDeps } from "../oracle/run.js";
+import { MAIL_SLUG } from "./builtin.js";
+import { mailDigest } from "../mail/digest.js";
+import type { MailWorker } from "../mail/worker.js";
 
 export interface RunDeps {
   store: BotStore;
@@ -51,6 +55,8 @@ export interface RunDeps {
   shared?: Pick<SharedDeps, "on">;
   /** The Oracle's store, service and place finder (src/oracle); the server's own when not given. */
   oracle?: OracleDeps;
+  /** The mail bot's worker (src/mail); the server's own when not given. */
+  mail?: { worker?: MailWorker | null };
 }
 
 export interface RunRequest {
@@ -144,6 +150,11 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
     : r.message;
   const know = bot.skills.files && bot.knowledge.length ? await retrieve(d.ports.media, r.userId, bot.knowledge, lookup) : null;
   if (know) notes.push(...know.notes);
+  // The mail bot reads the business's mail as the worker sorted it (mail/digest.ts): its numbers, and one line a message.
+  const mail = bot.ownerId === null && bot.slug === MAIL_SLUG
+    ? await mailDigest(r.userId, { ...(d.mail?.worker !== undefined ? { worker: d.mail.worker } : {}), ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}), now: (d.now ?? Date.now)() }).catch(() => null)
+    : null;
+  const knowledge = [know?.text, mail].filter((x): x is string => !!x?.trim()).join("\n\n");
 
   const kit = await buildTools({
     bot, userId: r.userId, runId, ...(r.projectId ? { projectId: r.projectId } : {}), ports: d.ports, meter, call, ...(d.gateway ? { gateway: d.gateway } : {}),
@@ -155,7 +166,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const user = botUserMessage({
     bot: { ...bot, skills: bot.skills },
     ...(facts.length ? { facts } : {}), ...(mem.thread?.summary ? { summary: mem.thread.summary } : {}),
-    ...(know?.text ? { knowledge: know.text } : {}), ...(r.attached?.length ? { attached: r.attached } : {}), ...(history.length ? { history } : {}), ...(kit.notConnected.length ? { notConnected: kit.notConnected } : {}),
+    ...(knowledge ? { knowledge } : {}), ...(r.attached?.length ? { attached: r.attached } : {}), ...(history.length ? { history } : {}), ...(kit.notConnected.length ? { notConnected: kit.notConnected } : {}),
     ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}),
     message: r.message,
   });

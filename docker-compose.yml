@@ -145,7 +145,8 @@ services:
   # The mailboxes are on the mail server Xooteq Mail runs on this VPS (Stalwart owns port 25, and only one program can): the worker joins
   # its Docker network (MAIL_STALWART_NETWORK, postal_default by default) as x0-mail-worker, and reaches it as http://stalwart:8080. Its
   # own records (businesses, briefs, the AI log) are in the mail_worker_data volume. It reads tulmi/.env, like the backend. No port on the
-  # host: only the backend (signed calls) and the mail server (its signed webhook) reach it. Read-only, no capabilities, not root.
+  # host: only the backend (signed calls) and the mail server (its signed webhook) reach it, and it reaches the backend only to say that mail
+  # needs a person (signed too). Read-only, no capabilities, not root.
   mail-worker:
     profiles: ["mail"]
     build:
@@ -155,6 +156,8 @@ services:
       - tulmi/.env
     environment:
       DATA_DIR: /data
+      # Where it tells the backend that mail needs a person (a push to the business's owner), signed with MAIL_WORKER_SECRET.
+      MAIL_NOTIFY_URL: http://backend:8080/v1/mail/notice
     volumes:
       - mail_worker_data:/data
     networks:

@@ -68,6 +68,11 @@ export const SCREENS = {
   planCall: "bots.plan.call",        // a call from Plan Ease: ringing → talking, missed, ended (screens/bots/planCall.ts; params: call, state, button)
   travel: "bots.travel",             // TravelBot / DTravelBot
   chat: "bots.chat",                 // Chat (params: slug)
+  // screens/bots/mailScreens.ts: the mail bot (its page is bots.bot with slug "mail", screens/bots/mailPage.ts; no board)
+  mailReply: "bots.mail.reply",      // a draft beside the message it answers: change, write again, send, throw away (params: b, run)
+  mailDns: "bots.mail.dns",          // the records to add at the domain's DNS, each checked live, with Copy (params: b)
+  mailBrief: "bots.mail.brief",      // what the AI knows and how it writes, with Fill from my website (params: b)
+  mailSettings: "bots.mail.settings", // a business: its addresses and how each answers, its sign-off, its mail app, removing it (params: b)
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)
   // screens/spaces.ts: spaces with family and friends (bots.spaces is built there too), sharing, payments, tasks, messaging

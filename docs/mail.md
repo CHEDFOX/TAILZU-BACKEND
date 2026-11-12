@@ -13,14 +13,16 @@ for any business (`mail-worker/`, where it came from and what changed: `mail-wor
 * [6. Privacy](#6-privacy)
 * [7. Configuration and deploy](#7-configuration-and-deploy)
 * [8. Tests](#8-tests)
-* [9. Still to come](#9-still-to-come)
+* [9. The bot in X0 Bot](#9-the-bot-in-x0-bot)
+* [10. Still to come](#10-still-to-come)
 
 ## 1. How it fits
 
 ```
 X0 Bot (the app) ──> the backend ──signed──> mail-worker ──JMAP──> the mail server (Stalwart, /opt/postal, Xooteq Mail's)
-                                                  ^                       │
-                                                  └──── signed webhook ───┘  new mail, as it arrives
+       ^                 ^   │                 │    ^                       │
+       └── push ─────────┘   └──── signed ─────┘    └──── signed webhook ───┘  new mail, as it arrives
+         (mail needs you)       notice: mail needs a person
 ```
 
 * **The mail server** is the one Xooteq Mail runs on this VPS: Stalwart holds the mailboxes (it owns port 25, and only one program can) and
@@ -29,7 +31,8 @@ X0 Bot (the app) ──> the backend ──signed──> mail-worker ──JMAP�
 * **The worker** (`mail-worker/`, Node, TypeScript run by Node itself) keeps what the mail server has no place for: the businesses and whose
   X0 account each is, each address's folder, auto-reply and AI mode, the rules, each business's brief, and the AI log with what each reply
   cost (SQLite, in the `mail_worker_data` volume).
-* **The backend** calls it with signed requests, inside one X0 account each (the account is a hash in the signed path).
+* **The backend** calls it with signed requests, inside one X0 account each (the account is a hash in the signed path), and hears back once,
+  signed the same way, when mail needs a person: it pushes to that person's phone (section 9).
 
 ## 2. A business
 
@@ -91,23 +94,36 @@ businesses, what waits for a person by priority, the last 24 hours in numbers), 
 The mail server's webhook is `POST /hooks/stalwart`, signed with `MAIL_WEBHOOK_SECRET` (`node server/cli.ts webhook` registers it, beside
 Xooteq Mail's own, which is not touched). Mail for a domain that is not one of the worker's businesses is left alone.
 
+**The worker's one call out** (`mail-worker/server/notice.ts`): when a message needs a person (the AI escalated it), when a draft is urgent,
+or when a business's AI paused because its allowance is spent (at most once in twelve hours), it posts `{ owner, business, name, status,
+run?, kind?, priority? }` to `MAIL_NOTIFY_URL` (docker-compose: the backend's `POST /v1/mail/notice`), signed with `MAIL_WORKER_SECRET`. It
+carries no words of the mail, waits at most five seconds and never stops the mail: a missed notice is a message that waits on the page.
+
 ## 6. Privacy
 
-* The worker is told whose business it is only as a hash of the X0 account.
+* The worker is told whose business it is only as a hash of the X0 account. The backend keeps which person a hash is (`mail_owners`,
+  migration 0080, the server's alone) only to find their phone for a push.
 * The mail stays on our mail server, in the business's own mailbox. What the AI reads of a message goes to the model provider to write the
   reply, like any bot's message. Nothing a person wrote is logged by the worker (no request log; errors by their kind only).
-* A business deleted, or the account deleted, removes its mailbox, its mail and its records.
+* A push says the business and what kind of message it is ("Leaf & Co: A complaint needs your answer."), never a word of the mail.
+* The chat reads the mail as the worker sorted it (who, the subject, the kind and its one line), never the mail's own text, fenced as a
+  stranger's words.
+* A business deleted, or the account deleted, removes its mailbox, its mail and its records. "Delete my data" does not: a business's mail
+  is the business's, removed from its settings.
 
 ## 7. Configuration and deploy
 
 | Where | Key | |
 | --- | --- | --- |
-| `tulmi/.env` | `MAIL_WORKER_URL`, `MAIL_WORKER_SECRET` | the worker's address and the secret every call is signed with (`deploy/mail-up.sh` sets and makes them) |
+| `tulmi/.env` | `MAIL_WORKER_URL`, `MAIL_WORKER_SECRET` | the worker's address and the secret every call is signed with, both ways (`deploy/mail-up.sh` sets and makes them). Both set: the mail bot is among the bots |
 | `tulmi/.env` | `MAIL_WEBHOOK_SECRET` | **secret**: the mail server signs its webhook with it (made by the script) |
 | `tulmi/.env` | `STALWART_ADMIN_USER`, `STALWART_ADMIN_SECRET`, `MAIL_DOMAIN`, `VPS_IP` | the mail server's, taken from `/opt/postal/.env` by the script |
 | `tulmi/.env` | `OPENROUTER_API_KEY` | **secret** the server already has: the AI |
 | `tulmi/.env` | `MAIL_MODELS`, `MAIL_DAILY_USD` | optional: the models, best first; one business's daily AI allowance in US dollars |
 | the `.env` beside `docker-compose.yml` | `MAIL_STALWART_NETWORK` | optional: the mail server's Docker network, `postal_default` by default |
+| `docker-compose.yml` | `MAIL_NOTIFY_URL` | where the worker says mail needs a person: `http://backend:8080/v1/mail/notice`, set there |
+
+The backend's `mail_owners` table is migration 0080, which the deploy runs by itself.
 
 Deploy steps are in DEPLOY.md ("Mail"): `./deploy/mail-up.sh && ./deploy/ship.sh`. After that `ship.sh` rebuilds and restarts the worker with
 the backend and checks that it answers set up.
@@ -120,15 +136,75 @@ the backend and checks that it answers set up.
   made with its domain and mailbox and every address in Draft, a domain already on the mail server refused, a mode and the allowance, the brief,
   the webhook kept to the worker's own domains, a business and an account deleted with their mailboxes.
 * `mail-worker/test/engine.test.ts`: the engine end to end against a stand-in mail server (`test/fakeStalwart.ts`) and a stand-in model: a
-  message sorted, drafted and waiting in the overview with its cost; the facts narrowed; the honesty rule; a person's change kept and shown
-  to the next reply; a draft written again as asked, then sent once; a newsletter filed without a model call; the brief drafted from a site's
-  own pages, and the addresses never read.
+  message sorted, drafted and waiting in the overview with its cost; the urgent one and the escalation told to X0 Bot (signed, without the
+  mail's words), the newsletter not; the activity without the mail server's ids, the model or the cost; the facts narrowed; the honesty
+  rule; a person's change kept and shown to the next reply; a draft written again as asked, then sent once; a newsletter filed without a
+  model call; the brief drafted from a site's own pages, and the addresses never read.
+* `tulmi/tests/mail-routes.test.ts`: the bot listed only where it is set up, its slug reserved; every page's call passed inside the person's
+  account with only the fields it takes (never the allowance), a bad id refused before the worker hears of it, the worker's refusals in its
+  words; the client's signature and its errors; the notice pushed to the right person once (a replay, an old or unsigned one refused).
+* `tulmi/tests/mail-page.test.ts`: the set-up cards (the business, then the records with Copy, how it answers, what it knows), the plain
+  card for an older build, the page (needs you first, answered, filed, the day's numbers, a chip per business), a reply (Send with the
+  changes first, Keep, Throw away, written again, Stop), the settings, the records and the brief; every tree through the app's linter.
+* `tulmi/tests/mail-chat.test.ts`: the chat's digest (the day, what needs a person, the latest, a stranger's subject fenced), the mail bot's
+  turn with it as knowledge in one call; found by its own phrases, never by "write an email"; its pushes and the person's switches.
 
 **Needs a live check**: the worker on the VPS beside the real mail server; a business made, its records added, a message received and
 answered.
 
-## 9. Still to come
+## 9. The bot in X0 Bot
 
-The bot in X0 Bot (its name comes later): set-up cards in the app's own look (the business, its domain with the records and their checks, its
-addresses, the brief, Draft or Send), its page (what needs a person, what was answered, what was filed), chat, and a notice when mail needs a
-person.
+A built-in bot (`slug` "mail", the name "Mail" a placeholder until it is given one, colour sand, the envelope icon), listed only where
+`MAIL_WORKER_URL` and `MAIL_WORKER_SECRET` are set (`bots/builtin.ts`). Its pages are the app's own, built on the server from the kit, so
+they change with no release.
+
+| What | Where |
+| --- | --- |
+| The routes its pages call, passed to the worker inside the person's account | `tulmi/src/routes/bots/mail.ts` (the list at its top) |
+| The signed client, the account's hash, the notice's check | `tulmi/src/mail/worker.ts` |
+| Which person a hash is, for the push | `tulmi/src/mail/owners.ts`, migration 0080 |
+| What the chat knows | `tulmi/src/mail/digest.ts` |
+| The page | `experience/bots/screens/bots/mailPage.ts` (bots.bot with slug "mail") |
+| The set-up cards | `experience/bots/screens/bots/mailCards.ts` |
+| A reply, the records, the brief, a business's settings | `experience/bots/screens/bots/mailScreens.ts` (bots.mail.reply, .dns, .brief, .settings) |
+
+**Set-up**, one card over the page with its stage on top (the Oracle's way), each step kept as it is answered:
+
+1. **The business**: its name and its domain. Its mailbox (`hello@`) is made on our mail server. Nothing to bring.
+2. **Point the domain here**: the four records it needs (MX, SPF, DKIM, DMARC), each with Copy and its live check; Check again. Mail
+   arrives once the MX is in; Next never waits on it.
+3. **How it answers**: Drafts for you (every reply waits for a person; the start) or Sends by itself (after a short wait; money, legal
+   matters, complaints and anything unsure still wait). Every address of the business, the same way.
+4. **What it knows**: Fill from the website drafts it; the person reads it and keeps it, or skips with the careful defaults. Kept, the
+   business is set up (`ready`).
+
+**The page**: the business's address and how it answers, and its settings; a chip per business when there are several (Add makes another).
+Before anything arrives, one line says that mail comes once the domain points here, with the records a tap away. Then the last 24 hours in
+numbers, and three lists: **Needs you** (a message a person should answer, then drafts, then replies about to go by themselves, urgent ones
+first, each with the AI's one line, the sender, the kind and when), **Answered** and **Filed** (with why: a newsletter, automatic mail, the
+AI paused). At its foot, the chat: "What needs me today?", "Summarize this week's mail".
+
+**A reply** (from Needs you, or a push): the message, how it was sorted, and its draft to change. Shorter, Warmer, More formal, Offer a
+call, or their own words write it again (still a draft). **Send** saves their words first when they changed them (the AI learns from what
+they changed) and sends; Keep keeps it as a draft; Throw away. A reply about to go by itself says when, with Stop.
+
+**A business's settings**: each address and how it answers (Drafts, Sends, Off), another address, the AI's last 24 hours (paused when its
+allowance is spent), what it knows, the domain's records, set it up again, another business, a mail app's password and servers, and removing
+the business (only on a second yes).
+
+**The chat** runs the bots' usual loop with no tools: its knowledge is the business's mail as the worker sorted it (`mail/digest.ts`): the
+day in numbers, what waits for a person first, the latest 30 after, one line each. It cannot send or change a reply: it says where to.
+
+**Found** by an @mail, by its own phrases ("my business email", "customer emails waiting", "mail bot"), or by the small model when unsure;
+never by "write an email" or "reply to this mail", which are Keylessbord's (`bots/door.ts`, WORD_NAME: its placeholder name is an
+everyday word; given a real name, it moves to NAME_ONLY).
+
+**Pushes** (`push/defaults.ts`, the person's switches in `you/push.ts`): `mail_needs_you` ("A complaint needs your answer.") and
+`mail_urgent` ("An order has a draft waiting for you.") open the reply; `mail_paused` ("Today's AI allowance is used up. New mail waits for
+you.") opens the page. They come as a customer is waiting: quietly in quiet hours, never with the mail bot turned off. Every other draft
+waits on the page.
+
+## 10. Still to come
+
+Its name (the owner's, later). A live check on the VPS: a business made from the app, its records added, a message received, its push, a
+reply sent from the app. A message filed while the AI was paused has no draft yet: it is answered from a mail app for now.

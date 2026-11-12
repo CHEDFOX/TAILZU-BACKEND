@@ -170,6 +170,16 @@ export const PUSH_DEFAULTS: PushPayload = {
     // "X0 is calling" (botsBots/planCall.ts): a leave-by or a bill due today rings instead, on a phone that takes calls.
     ...callPushFlags(),
 
+    // The mail bot (src/mail, docs/mail.md): a business's message needs a person's answer, an urgent one has a draft waiting, or the
+    // business's AI paused for the day (its allowance spent). Never with the mail's words: the business and what kind of message it is.
+    // The first two open the reply (data.b, data.run); the pause opens the mail bot (data.slug).
+    "push.mail_needs_you.enabled": true,
+    "push.mail_needs_you.screenId": "bots.mail.reply",
+    "push.mail_urgent.enabled": true,
+    "push.mail_urgent.screenId": "bots.mail.reply",
+    "push.mail_paused.enabled": true,
+    "push.mail_paused.screenId": "bots.bot",
+
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
     "push.lowWords.screenId": "paywall",
@@ -227,6 +237,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.routine_done.body": "{line}",
     "push.routine_failed.title": "Routine paused: {task}",
     "push.routine_failed.body": "{bot} couldn't do it 3 times in a row. {line}",
+    "push.mail_needs_you.title": "{business}",
+    "push.mail_needs_you.body": "{what} needs your answer.",
+    "push.mail_urgent.title": "{business}: urgent",
+    "push.mail_urgent.body": "{what} has a draft waiting for you.",
+    "push.mail_paused.title": "{business}",
+    "push.mail_paused.body": "Today's AI allowance is used up. New mail waits for you.",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -244,6 +260,7 @@ export const EVENT_PUSH_KINDS = [
   "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed",
   "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
+  "mail_needs_you", "mail_urgent", "mail_paused",
   "ops_alert",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

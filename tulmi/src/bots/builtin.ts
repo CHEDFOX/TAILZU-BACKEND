@@ -1,5 +1,6 @@
 /**
- * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE WHERE ITS SERVICE IS SET UP), IN THE SAME FORMAT AS A BOT A PERSON MAKES.
+ * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE AND THE MAIL BOT WHERE THEIR SERVICES ARE SET UP), IN THE SAME FORMAT AS A
+ * BOT A PERSON MAKES.
  *
  * Everything is a bot. These four are defined in code (ownerId null, nobody can change or delete them) and every person has them. The
  * Xode's own flows are the front door's and Xode's, exactly as they were: when it is the bot that answers, the message goes
@@ -8,6 +9,10 @@
  *
  * The Oracle (src/oracle, docs/oracle.md) reads a person's sky with Plutto's oracle, a service of its own: its words come from there, and its rules
  * here are what the person reads and the front door picks by. It is listed only where ORACLE_WORKER_URL and ORACLE_WORKER_SECRET are set.
+ *
+ * The mail bot (src/mail, docs/mail.md) keeps a business's email with its own service (mail-worker/): the mailboxes, the sorting and the replies
+ * are the worker's; its chat here runs the usual loop with the business's mail in numbers and one line a message (mail/digest.ts). Its name is a
+ * placeholder until it is given one. It is listed only where MAIL_WORKER_URL and MAIL_WORKER_SECRET are set.
  *
  * One colour each, from the natural palette.
  */
@@ -25,6 +30,7 @@ const PURPOSE = {
   plan: "Turns a goal into short ordered steps with timings, and puts them on your calendar and task list.",
   travel: "Plans trips: routes, stays and timings, with sources.",
   oracle: "Reads your birth chart and the world's divination traditions to answer what you ask about your life, love, work and timing.",
+  mail: "Keeps your business's email: sorts what arrives, drafts the replies in your voice, and tells you what needs you.",
 } as const;
 
 const DEFS: readonly BotDef[] = [
@@ -95,6 +101,32 @@ const ORACLE: BotDef = {
   knowledge: [], tone: "close, unhurried and certain", visibility: "private", budgets: { perRequestPaise: 600, dailyPaise: 5000 },
 };
 
+export const MAIL_SLUG = "mail";
+
+const MAIL: BotDef = {
+  id: MAIL_SLUG, ownerId: null, slug: MAIL_SLUG, name: "Mail", colour: "sand",
+  purpose: PURPOSE.mail,
+  principles: [
+    "Answer from the business's own mail and numbers; never invent a message, a sender or a figure.",
+    "Say first what needs a person.",
+    "Never say a reply was sent, changed or thrown away: that is done on the mail page, by them.",
+    "Keep a customer's words to what the answer needs.",
+  ],
+  // Its mail is its own service's (src/mail): no tools here; the chat reads the business's mail in numbers and one line a message.
+  skills: skills({}),
+  knowledge: [], tone: "plain and brief", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
+};
+
+/** The mail bot is listed only where its service is set up. */
+export function mailOn(): boolean {
+  try {
+    const c = getConfig();
+    return Boolean(c.MAIL_WORKER_URL && c.MAIL_WORKER_SECRET);
+  } catch {
+    return false;
+  }
+}
+
 /** The Oracle is listed only where its service is set up. */
 export function oracleOn(): boolean {
   try {
@@ -105,14 +137,14 @@ export function oracleOn(): boolean {
   }
 }
 
-const defs = (): readonly BotDef[] => (oracleOn() ? [...DEFS, ORACLE] : DEFS);
+const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : [])];
 
 /** The built-ins, as copies (a caller cannot change them). */
 export function builtinBots(): BotDef[] {
   return defs().map((d) => ({ ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } }));
 }
 
-export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || DEFS.some((d) => d.slug === slug);
+export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || DEFS.some((d) => d.slug === slug);
 
 export function builtinBot(slug: string): BotDef | null {
   return builtinBots().find((d) => d.slug === slug || d.id === slug) ?? null;

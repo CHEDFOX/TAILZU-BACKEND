@@ -33,6 +33,8 @@ export const config = {
   models: env("MAIL_MODELS", "anthropic/claude-sonnet-5.5@low,google/gemini-3.8-flash@low").split(",").map((m) => m.trim()).filter(Boolean),
   /** What one business's AI may spend in a day, in US dollars, unless X0's server sets its own (the plan's). */
   dailyUsd: Number(env("MAIL_DAILY_USD", "1")),
+  /** Where the worker tells X0 Bot's server that mail needs a person (a push to the business's owner), signed like every call. Empty: no notices. */
+  noticeUrl: env("MAIL_NOTIFY_URL", ""),
 };
 
 export function assertReady(): string[] {

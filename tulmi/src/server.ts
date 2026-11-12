@@ -76,6 +76,7 @@ import { startOpsAlerts } from "./ops/alerts.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
+import { registerMailRoutes } from "./routes/bots/mail.js";
 import { registerBlipRoutes } from "./routes/bots/blipCatalog.js";
 import { registerLaunchRoutes } from "./routes/app/launchMotion.js";
 import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
@@ -472,6 +473,9 @@ registerBotsPushAskRoutes(app, botsAreaDeps);
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 // The Oracle's card: when and where a person was born, for the Oracle to read their sky from (src/oracle, docs/oracle.md).
 registerOracleRoutes(app, { rateLimit: AUTHED_RL, bots });
+// The mail bot's pages: a business's mail on our mail server, passed to its worker inside the person's account, and the worker's signed
+// notice that mail needs a person (src/mail, docs/mail.md).
+registerMailRoutes(app, { rateLimit: AUTHED_RL, bots });
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).
 registerBlipRoutes(app, { rateLimit: AUTHED_RL });

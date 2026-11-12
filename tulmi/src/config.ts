@@ -773,6 +773,14 @@ const EnvSchema = z.object({
    * search falls back to the server's own: the cities table and PLACES_GEOCODER.
    */
   GOOGLE_PLACES_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  /**
+   * THE MAIL BOT (src/mail, mail-worker/, docs/mail.md): a built-in bot that keeps a business's email on our mail server and answers it with our AI,
+   * run by its own service. MAIL_WORKER_URL (http://mail-worker:5300 in docker-compose) and MAIL_WORKER_SECRET (SECRET: .env only, 32+ characters, the
+   * same on both sides; every call is HMAC-signed the media worker's way, and so is the worker's notice when mail needs a person). Without both the
+   * mail bot is not among the bots at all. deploy/mail-up.sh sets both.
+   */
+  MAIL_WORKER_URL: z.string().trim().optional(),
+  MAIL_WORKER_SECRET: z.string().optional(),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -1837,6 +1845,10 @@ export function getConfig(): AppConfig {
     if (env.ORACLE_WORKER_SECRET && env.ORACLE_WORKER_SECRET.length < 32) console.warn("[config] ORACLE_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
     if (env.MEDIA_WORKER_SECRET && env.MEDIA_WORKER_SECRET.length < 32) console.warn("[config] MEDIA_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   }
+
+  // The mail bot: half set is a bot that is quietly missing. Warned, not refused.
+  if (Boolean(env.MAIL_WORKER_URL) !== Boolean(env.MAIL_WORKER_SECRET)) console.warn("[config] MAIL_WORKER_URL and MAIL_WORKER_SECRET go together: without both the mail bot is not among the bots.");
+  if (env.MAIL_WORKER_SECRET && env.MAIL_WORKER_SECRET.length < 32) console.warn("[config] MAIL_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
 
   // Bots: a pepper that is missing or short makes keys that a leaked table could be tested against. Warned, not refused: the rest of the server is unaffected.
   if (env.BOTS) {
