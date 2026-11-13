@@ -2,28 +2,30 @@
  * THE CINEMA BOT'S FILM AND SHOT PAGES (src/cinema, routes/bots/cinema.ts), and what its bot page reads.
  *
  *   bots.cinema.film   params f: one film, as far as it has come. Top to bottom, the thing to decide first:
- *     the head         the title, the logline, where it stands in words, the frame and what it has cost
- *     the decision     what the film waits for, as one card at the top: the storyboard's price and Make the storyboard (script); the film's
- *                      price, what is kept back for retakes, and Film it (board); Add ₹… (more money); the film itself, its first still with
- *                      a play mark, Watch, Download, Share and the subtitles (done); otherwise what is happening now, in a line
+ *     the head         the title, the logline, where it stands in words, the frame
+ *     the decision     what the film waits for, as one card at the top: Make the storyboard (script); Film it (board); that it has reached
+ *                      today's limit and carries on tomorrow, with the plans (hold "budget"); the film itself, its first still with a play
+ *                      mark, Watch, Download, Share and the subtitles (done); otherwise what is happening now, in a line
  *     the script       (script) the look in a line, who is in it, and the shots as a numbered list, each opening its shot page
  *     the storyboard   (after) the stills as a grid, the way a storyboard is pinned up: each tile its still, its number, size and seconds, a
  *                      mark for where it stands (waiting, working, done, needs you) and what happens; each opens its shot page
  *     change           a change to the whole film in plain words (a change to one shot is on its page)
  *     your cast, notes, Stop, Delete (a second yes)
  *
- *   bots.cinema.shot   params f, n: one shot. Its still, large; where it stands, the model and the seconds; its card in full (what happens,
- *                      the acting, the camera, the composition, the light, the air, how it ends, the lines, the voice-over, the sound, what it
- *                      is for); the takes tried, each with the model, the checker's mark and what it said; Try again when it gave up; and a
- *                      change to this shot only.
+ *   bots.cinema.shot   params f, n: one shot. Its still, large; where it stands; its card in full (what happens, the acting, the camera,
+ *                      the composition, the light, the air, how it ends, the lines, the voice-over, the sound, what it is for); the takes tried,
+ *                      each with what the checker said in words; Try again when it gave up; and a change to this shot only.
+ *
+ * Never a model's name, a prompt, a score, a provider's own words or a cost (the person's plan covers their films): the pages read the
+ * film as the person sees it (src/cinema/public.ts).
  *
  * The bot's page itself is cinemaPage.ts. Every still and film is opened by a signed link of ours (src/cinema/media.ts), made fresh each
  * time a page is drawn.
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
-import { mean } from "../../../../cinema/qc.js";
+import type { CardView, FilmPublic, TakeView } from "../../../../cinema/public.js";
 import type { CinemaOverview, FilmView } from "../../../../cinema/service.js";
-import { CINEMA_SLUG, type Film, type FilmRow, type ShotCard, type ShotStatus, type Take } from "../../../../cinema/types.js";
+import { CINEMA_SLUG, type Film, type FilmRow, type ShotStatus } from "../../../../cinema/types.js";
 import { botTopic } from "../../../../live/topics.js";
 import {
   type BotsCtx, type Mark, page, row, col, box, text, card, meta, notice, primaryButton, secondaryButton, quietButton, sectionLabel, listCard, listRow,
@@ -43,8 +45,6 @@ const idParam = (v: unknown): string => (/^[A-Za-z0-9_-]{1,64}$/.test(String(v ?
 
 /** A link of ours as a full address (the apps open full addresses); a full address or a data URL as it is. */
 export const abs = (path: string): string => (/^(https?:\/\/|data:)/.test(path) ? path : `${process.env.PUBLIC_ORIGIN || "https://api.x0bot.com"}${path}`);
-/** Money in rupees, as people say it. */
-export const rupees = (paise: number): string => `₹${Math.max(0, Math.ceil(paise / 100)).toLocaleString("en-IN")}`;
 const plain = (s: string | null | undefined): string => String(s ?? "").trim().replace(/^[@\s]+/, "");
 
 /** What the bot's page reads: the overview, or that it could not be read. */
@@ -64,13 +64,13 @@ export const waitsForYou = (f: Pick<FilmRow, "status" | "hold">): boolean => !!f
 
 /** Where a film stands, in words. */
 export function statusLine(f: Pick<FilmRow, "status" | "hold" | "shots" | "done">): string {
-  if (f.hold === "budget") return "Waiting for you: it needs a little more money";
+  if (f.hold === "budget") return "Paused: today's limit is reached";
   if (f.hold === "shot") return "Waiting for you: a shot needs a look";
   switch (f.status) {
     case "writing": return "Writing the script…";
     case "script": return "Script ready: read it and say go";
     case "boarding": return "Drawing the storyboard…";
-    case "board": return "Storyboard ready: approve the price";
+    case "board": return "Storyboard ready: look it over and say go";
     case "rendering": return f.shots ? `Filming: ${f.done} of ${f.shots} shots done` : "Filming…";
     case "cutting": return "Cutting the film…";
     case "done": return "Ready to watch";
@@ -86,13 +86,9 @@ const SHOT_MARK: Record<ShotStatus, Mark> = {
   planned: "waiting", boarding: "working", boarded: "done", queued: "waiting", rendering: "working", checking: "working", ok: "done", failed: "needs",
 };
 
-const SIZE_WORDS: Record<ShotCard["size"], string> = {
+const SIZE_WORDS: Record<CardView["size"], string> = {
   "extreme-wide": "Extreme wide", wide: "Wide", full: "Full", medium: "Medium", "medium-close": "Medium close", close: "Close-up", "extreme-close": "Extreme close-up", insert: "Insert",
 };
-
-/** A model's id in words: "kwaivgi/kling-v3.0-std" is "Kling v3.0 Std". */
-export const modelName = (id: string): string =>
-  (id.split("/").pop() ?? id).split("-").map((w) => (/^v?\d/.test(w) ? w : `${w[0]?.toUpperCase() ?? ""}${w.slice(1)}`)).join(" ");
 
 /** A still's height for a width, by the film's frame. */
 const heightFor = (w: number, aspect: Film["aspect"]): number => Math.round(aspect === "9:16" ? (w * 16) / 9 : aspect === "1:1" ? w : (w * 9) / 16);
@@ -113,7 +109,7 @@ function stillOrSpace(v: FilmView, key: string | null | undefined, w: number, la
 }
 
 /** One tile of the storyboard: the still, the number, size and seconds with where it stands, and what happens. Opens the shot. */
-function tile(ctx: BotsCtx, v: FilmView, c: ShotCard): Node {
+function tile(ctx: BotsCtx, v: FilmView, c: CardView): Node {
   const st = v.film.shots.find((s) => s.n === c.n);
   const w = tileWidth(ctx, v.film.aspect);
   const status = st?.status ?? "planned";
@@ -164,26 +160,24 @@ function decision(ctx: BotsCtx, v: FilmView): Node | null {
     ], { gap: 12 });
   }
   if (f.hold === "budget") {
-    const add = Math.max(5_000, Math.ceil((v.price?.reserve ?? f.budgetPaise * 0.25) / 100) * 100);
     return card([
-      text("It needs a little more money to carry on", { size: 15, weight: 600, lineHeight: 20 }),
-      meta(`${rupees(f.spentPaise)} of ${rupees(f.budgetPaise)} spent. What you don't use is never taken.`, { size: 13, lineHeight: 18 }),
-      primaryButton(`Add ${rupees(add)}`, call("POST", `${F}/raise`, { paise: add }, { ok: seq(said("Carrying on."), refresh), fail: toast("Couldn't add that. Check today's limit.") }), { size: "md" }),
+      text("Paused for today", { size: 16, weight: 600, lineHeight: 21 }),
+      meta("This film has reached today's limit. It carries on by itself tomorrow, or sooner with a bigger plan.", { size: 13, lineHeight: 18 }),
+      row([secondaryButton("See plans", { kind: "navigate", screenId: SCREENS.plans } as ActionSpec, { size: "md" })]),
     ], { gap: 10 });
   }
-  if (f.status === "script" && v.board) {
+  if (f.status === "script") {
     return card([
-      text(`The storyboard costs ${rupees(v.board.paise)}`, { size: 16, weight: 600, lineHeight: 21 }),
-      meta(`${v.board.stills} stills and ${v.board.sheets} reference pictures, so every face and place stays the same.${v.price ? ` The whole film will be about ${rupees(v.price.paise)}; you'll see the exact price with the storyboard.` : ""}`, { size: 13, lineHeight: 18 }),
-      primaryButton(`Make the storyboard · ${rupees(v.board.paise)}`, call("POST", `${F}/approve-script`, {}, { ok: seq(said("Drawing your storyboard."), refresh), fail: toast("Couldn't start. Check today's limit.") }), { size: "md" }),
-      meta("Read the shots below first. Change anything in your words before you say go.", { size: 12 }),
+      text("Ready for the storyboard", { size: 16, weight: 600, lineHeight: 21 }),
+      meta("Next, a still for every shot and reference pictures of each person and place, so every face stays the same from shot to shot. Read the shots below first, and change anything in your words before you say go.", { size: 13, lineHeight: 18 }),
+      row([primaryButton("Make the storyboard", call("POST", `${F}/approve-script`, {}, { ok: seq(said("Drawing your storyboard."), refresh), fail: toast("Couldn't start just now. Try again.") }), { size: "md" })]),
     ], { gap: 10 });
   }
-  if (f.status === "board" && v.price) {
+  if (f.status === "board") {
     return card([
-      text(`Filming costs up to ${rupees(v.price.paise)}`, { size: 16, weight: 600, lineHeight: 21 }),
-      meta(`${rupees(v.price.video)} for ${cards.length} shots (${Math.round(v.price.seconds)}s), up to ${rupees(v.price.reserve)} for retakes the checker asks for, ${rupees(v.price.extras)} for music. What isn't used is never taken.`, { size: 13, lineHeight: 18 }),
-      primaryButton(`Film it · ${rupees(v.price.paise)}`, call("POST", `${F}/approve-board`, {}, { ok: seq(said("Filming has started."), refresh), fail: toast("Couldn't start. Check today's limit.") }), { size: "md" }),
+      text("Ready to film", { size: 16, weight: 600, lineHeight: 21 }),
+      meta(`Each of the ${cards.length} shots is filmed from its still, checked, and made again if it isn't right, then cut together with the voice-over, music and subtitles.`, { size: 13, lineHeight: 18 }),
+      row([primaryButton("Film it", call("POST", `${F}/approve-board`, {}, { ok: seq(said("Filming has started."), refresh), fail: toast("Couldn't start just now. Try again.") }), { size: "md" })]),
     ], { gap: 10 });
   }
   const now: Partial<Record<Film["status"], string>> = {
@@ -205,7 +199,7 @@ function filmPage(ctx: BotsCtx, d: { view?: FilmView }) {
       gap: 18,
     });
   }
-  const f: Film = v.film;
+  const f: FilmPublic = v.film;
   const F = `${CINEMA}/films/${f.id}`;
   const cards = f.script?.shots ?? [];
   const done = f.shots.filter((s) => s.status === "ok").length;
@@ -213,7 +207,7 @@ function filmPage(ctx: BotsCtx, d: { view?: FilmView }) {
     col([
       text(v.title, { size: desk ? 24 : 21, weight: 600, lineHeight: 28 }),
       f.script?.bible.logline ? meta(plain(f.script.bible.logline), { size: 13, lineHeight: 18 }) : meta(plain(f.idea).slice(0, 160), { size: 13, lineHeight: 18 }),
-      meta([statusLine({ status: f.status, hold: f.hold, shots: cards.length, done }), f.aspect, f.spentPaise ? `${rupees(f.spentPaise)} spent` : ""].filter(Boolean).join(" · "), { size: 12 }),
+      meta([statusLine({ status: f.status, hold: f.hold, shots: cards.length, done }), f.aspect].join(" · "), { size: 12 }),
     ], { gap: 4 }),
   ];
   if (f.status === "failed") body.push(notice(plain(f.error) || "This film couldn't be made.", { mark: "close" }));
@@ -289,15 +283,15 @@ function filmPage(ctx: BotsCtx, d: { view?: FilmView }) {
 const part = (label: string, value: string | null | undefined): Node | null =>
   plain(value) ? col([sectionLabel(label), text(plain(value), { size: 14, lineHeight: 20 })], { gap: 4 }) : null;
 
-/** A take, as the checker saw it. */
-function takeRow(t: Take, i: number, people: boolean, chosen: boolean): Node {
-  const score = t.verdict ? `${mean(t.verdict, people).toFixed(1)}/10` : "";
+/** A take, as the checker saw it, in words. */
+function takeRow(t: TakeView, i: number, chosen: boolean): Node {
+  const note = t.check?.notes[0] ? plain(t.check.notes[0]) : "";
   const sub = t.status === "running" ? "Filming…"
-    : t.status === "failed" ? `The video service failed${t.error ? `: ${plain(t.error)}` : ""}`
-    : !t.verdict ? "Being checked…"
-    : chosen ? (t.verdict.pass ? "Kept: it passed the check" : `Kept as the best${t.verdict.issues[0] ? `; ${plain(t.verdict.issues[0].note)}` : ""}`)
-    : t.verdict.pass ? "Passed" : `Sent back${t.verdict.issues[0] ? `: ${plain(t.verdict.issues[0].note)}` : ""}`;
-  return listRow({ label: [`Take ${i}`, modelName(t.model), score].filter(Boolean).join(" · "), sub, strong: chosen, chevron: false });
+    : t.status === "failed" ? "It didn't come through, so it was made again"
+    : !t.check ? "Being checked…"
+    : chosen ? (t.check.pass ? "Kept: it passed every check" : `Kept as the best of the takes${note ? `; ${note}` : ""}`)
+    : t.check.pass ? "Passed" : `Sent back${note ? `: ${note}` : ""}`;
+  return listRow({ label: `Take ${i}`, sub, strong: chosen, chevron: false });
 }
 
 function shotPage(ctx: BotsCtx, d: { view?: FilmView; n?: number }) {
@@ -327,7 +321,7 @@ function shotPage(ctx: BotsCtx, d: { view?: FilmView; n?: number }) {
     stillOrSpace(v, st?.still, w, `Shot ${c.n}`),
     row([
       statusMark(SHOT_MARK[status], { size: 8, still: true }),
-      meta([SHOT_WORDS[status], v.models[c.n]].filter(Boolean).join(" · "), { size: 13 }),
+      meta(SHOT_WORDS[status], { size: 13 }),
     ], { gap: 8, alignItems: "center" }),
   ];
   if (status === "failed") {
@@ -349,7 +343,7 @@ function shotPage(ctx: BotsCtx, d: { view?: FilmView; n?: number }) {
   ].filter((x): x is Node => !!x));
   if (mine.length) {
     const all = f.takes.filter((t) => t.n === c.n);
-    body.push(listCard(mine.map((t) => takeRow(t, all.indexOf(t) + 1, c.cast.length > 0, st?.take === t.id)), { title: "Takes" }));
+    body.push(listCard(mine.map((t) => takeRow(t, all.indexOf(t) + 1, st?.take === t.id)), { title: "Takes" }));
   }
   if (f.status !== "writing" && f.status !== "stopped") {
     const revise = {

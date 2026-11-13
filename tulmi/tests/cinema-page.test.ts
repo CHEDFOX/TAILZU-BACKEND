@@ -1,7 +1,7 @@
 /**
  * THE CINEMA BOT'S SCREENS (screens/bots/cinemaPage.ts, cinemaScreens.ts): its page (a new film, a picture, the films, the pictures, the
- * cast, today's spending) and a film's page at each step (the script and its storyboard price, the storyboard and the film's price, a shot
- * that needs the person, more money, the finished film). Every tree is drawn by the shipped app (the linter), on the phone and the window.
+ * cast) and a film's page at each step (the script, the storyboard, a shot that needs the person, a film paused for today, the finished film),
+ * and a shot's page. Never a model, a score or a cost. Every tree is drawn by the shipped app (the linter), on the phone and the window.
  */
 import { describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,7 @@ const { buildBotsScreen } = await import("../src/experience/bots/index.js");
 const { fakeDeps, IST, SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
 const { walk, lintTree } = await import("../src/experience/bots/lint.js");
 const { film: filmOf } = await import("./cinema-rig.js");
+const { publicFilm } = await import("../src/cinema/public.js");
 
 const DRAWS = ["BotsKit", "BotsMotion", "BotBuddy", "BotMoments"];
 const PURPOSE = "Makes films and videos shot by shot from your idea, and pictures.";
@@ -20,8 +21,8 @@ const BOT = {
   slug: "cinema", name: "Cinema", colour: "stone", builtin: true, publicCard: false, tone: "", principles: [], purpose: PURPOSE,
   skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] },
 };
-const ROW = { id: "f1", title: "Chai in the Rain", status: "board", hold: null, aspect: "9:16", shots: 4, done: 0, seconds: 20, spentPaise: 900, budgetPaise: 1200, poster: "/v1/cinema/media/u/u1/cinema/films/f1/still-1.png?exp=1&sig=x", updatedAt: 1 };
-const OVERVIEW = (o: Record<string, unknown> = {}) => ({ films: [], pictures: [], cast: [], spentToday: 0, dailyCap: 300_000, ...o });
+const ROW = { id: "f1", title: "Chai in the Rain", status: "board", hold: null, aspect: "9:16", shots: 4, done: 0, seconds: 20, poster: "/v1/cinema/media/u/u1/cinema/films/f1/still-1.png?exp=1&sig=x", updatedAt: 1 };
+const OVERVIEW = (o: Record<string, unknown> = {}) => ({ films: [], pictures: [], cast: [], ...o });
 
 function view(over: Record<string, unknown> = {}, filmOver: Record<string, unknown> = {}) {
   const f = filmOf({ status: "board", budgetPaise: 1200, spentPaise: 900, ...filmOver });
@@ -29,8 +30,7 @@ function view(over: Record<string, unknown> = {}, filmOver: Record<string, unkno
   const links: Record<string, string> = {};
   f.shots.forEach((s) => { links[s.still!] = `/v1/cinema/media/${s.still}?exp=1&sig=x`; });
   return {
-    film: f, title: "Chai in the Rain", links, models: { 1: "Kling v3.0 Std", 2: "Veo 3.1 Fast" }, dayLeft: 100_000,
-    board: { sheets: 5, stills: 7, paise: 2600 }, price: { shots: [], missing: [], video: 8000, reserve: 3200, extras: 400, paise: 11600, seconds: 20 },
+    film: publicFilm(f), title: "Chai in the Rain", links,
     ...over,
   };
 }
@@ -85,26 +85,26 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     const p = await build({ client, overview: OVERVIEW({ films: [ROW], pictures: [{ id: "p1", words: "a poster", url: "/v1/cinema/media/u/u1/cinema/pictures/p1.png?exp=1&sig=x" }] }) });
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Chai in the Rain");
-    expect(p.texts.some((t) => t.includes("Storyboard ready: approve the price"))).toBe(true);
+    expect(p.texts.some((t) => t.includes("Storyboard ready: look it over and say go"))).toBe(true);
     expect(p.images.every((u) => u.startsWith("https://"))).toBe(true);
     expect(p.images).toHaveLength(2);
   });
 
-  it("a film's script shows the shots and the storyboard's price", async () => {
+  it("a film's script asks to make the storyboard, and lists the shots", async () => {
     const p = await build({ client, ...FILM, film: view({}, { status: "script", spentPaise: 0, budgetPaise: 0 }) });
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("The shots");
-    expect(p.texts).toContain("The storyboard costs ₹26");
+    expect(p.texts).toContain("Ready for the storyboard");
     expect(p.texts.some((x) => x.startsWith("1. Rain sweeps down the lane"))).toBe(true);
     expect(p.paths).toContain("POST /v1/cinema/films/f1/approve-script");
     expect(p.paths).toContain("POST /v1/cinema/films/f1/revise");
   });
 
-  it("a film's storyboard puts the price first, then the stills as a grid, each opening its shot", async () => {
+  it("a film's storyboard puts Film it first, then the stills as a grid, each opening its shot", async () => {
     const p = await build({ client, ...FILM, film: view() });
     expect(p.lint).toEqual([]);
-    expect(p.texts).toContain("Filming costs up to ₹116");
-    expect(p.texts.indexOf("Filming costs up to ₹116")).toBeLessThan(p.texts.indexOf("Storyboard"));
+    expect(p.texts).toContain("Ready to film");
+    expect(p.texts.indexOf("Ready to film")).toBeLessThan(p.texts.indexOf("Storyboard"));
     expect(p.images.length).toBe(4);
     expect(p.paths).toContain("POST /v1/cinema/films/f1/approve-board");
     expect(p.navs.filter((n) => n.screenId === "bots.cinema.shot").map((n) => n.params?.n)).toEqual(["1", "2", "3", "4"]);
@@ -114,22 +114,35 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     const v = view({}, { status: "rendering" });
     v.film.shots[2]!.status = "failed";
     v.film.shots[2]!.error = "Shot 3 did not come out right in 3 takes.";
-    const verdict = (s: number, note: string | null) => ({ scores: { identity: s, action: s, camera: s, quality: s, continuity: s }, issues: note ? [{ kind: "anatomy", major: true, note }] : [], fix: null, pass: !note });
     v.film.takes = [
-      { id: "t1", n: 3, model: "kwaivgi/kling-v3.0-std", of: "x", job: "j", prompt: "", seconds: 5, status: "done", paise: 60, video: null, lastFrame: null, verdict: verdict(5, "her hand passes through the glass"), error: null, startedAt: 0, endedAt: 1, polledAt: null },
-      { id: "t2", n: 3, model: "google/veo-3.1-fast", of: "x", job: "j", prompt: "", seconds: 5, status: "running", paise: 60, video: null, lastFrame: null, verdict: null, error: null, startedAt: 0, endedAt: null, polledAt: null },
-    ] as never;
+      { id: "t1", n: 3, status: "done", seconds: 5, check: { pass: false, notes: ["her hand passes through the glass"] }, startedAt: 0, endedAt: 1 },
+      { id: "t2", n: 3, status: "failed", seconds: 5, check: null, startedAt: 0, endedAt: 1 },
+      { id: "t3", n: 3, status: "running", seconds: 5, check: null, startedAt: 0, endedAt: null },
+    ];
     const p = await build({ client, screen: "bots.cinema.shot", params: { f: "f1", n: "3" }, film: v });
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Shot 3");
     expect(p.texts).toContain("he glances up at the roof, a small smile; his wrist lifts the kettle high so the chai froths");
     expect(p.texts.some((x) => x.includes("a slow push-in from medium to medium-close"))).toBe(true);
-    expect(p.texts).toContain("Take 1 · Kling v3.0 Std · 5.0/10");
+    expect(p.texts).toContain("Take 1");
     expect(p.texts).toContain("Sent back: her hand passes through the glass");
+    expect(p.texts).toContain("It didn't come through, so it was made again");
     expect(p.texts).toContain("Filming…");
     expect(p.paths).toContain("POST /v1/cinema/films/f1/shots/3/retry");
     expect(p.paths).toContain("POST /v1/cinema/films/f1/revise");
     expect(p.bodies).toContainEqual({ note: "$state.cs_note", n: 3 });
+  });
+
+  it("never shows a model's name, a score, a prompt or a cost, on any page", async () => {
+    const pages = [
+      await build({ client, overview: OVERVIEW({ films: [ROW] }) }),
+      await build({ client, ...FILM, film: view({}, { status: "script", spentPaise: 0, budgetPaise: 0 }) }),
+      await build({ client, ...FILM, film: view() }),
+      await build({ client, screen: "bots.cinema.shot", params: { f: "f1", n: "2" }, film: view() }),
+      await build({ client, ...FILM, film: view({}, { status: "rendering", hold: "budget" }) }),
+    ];
+    const words = pages.flatMap((p) => p.texts).join(" ");
+    expect(words).not.toMatch(/kling|seedance|veo|wan |hailuo|runway|gemini|nano banana|seedream|gpt|openrouter|\/10\b|prompt|₹|\bcosts?\b|\bprice\b|\bspent\b|\bpaise\b/i);
   });
 
   it("a shot that cannot be read says so", async () => {
@@ -138,14 +151,15 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect(p.texts).toContain("This shot couldn't be read. The film may have changed.");
   });
 
-  it("a film that waits for money offers to add some; a shot that gave up offers to try again", async () => {
+  it("a film paused for today says so and offers the plans, never a price; a shot that gave up says it needs you", async () => {
     const v = view({}, { status: "rendering", hold: "budget" });
     v.film.shots[2]!.status = "failed";
     v.film.shots[2]!.error = "Shot 3 did not come out right in 3 takes.";
     const p = await build({ client, ...FILM, film: v });
     expect(p.lint).toEqual([]);
-    expect(p.texts).toContain("It needs a little more money to carry on");
-    expect(p.paths).toContain("POST /v1/cinema/films/f1/raise");
+    expect(p.texts).toContain("Paused for today");
+    expect(p.navs.some((n) => n.screenId === "bots.plans")).toBe(true);
+    expect(p.paths.some((x) => x.includes("raise"))).toBe(false);
     expect(p.texts).toContain("Needs you");
     expect(p.navs.some((n) => n.screenId === "bots.cinema.shot" && n.params?.n === "3")).toBe(true);
   });

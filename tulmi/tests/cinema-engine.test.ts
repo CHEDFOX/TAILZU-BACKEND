@@ -132,7 +132,8 @@ describe("the router", () => {
     const silent = models.filter((m) => !m.audio);
     const c = card(1, { lines: [{ who: "ravi", text: "Haan" }] });
     expect(route({ card: c, style: "live", aspect: "16:9", tier: "premium", models: silent })).toEqual([]);
-    expect(whyNone({ card: c, style: "live", aspect: "16:9", tier: "premium", models: silent })).toMatch(/speak lines/);
+    expect(whyNone({ card: c, style: "live", aspect: "16:9", tier: "premium", models: silent })).toBe("Spoken lines can't be filmed at this quality; move them to the voice-over or raise the quality.");
+    expect(whyNone({ card: card(1), style: "live", aspect: "16:9", tier: "premium", models: [] })).not.toMatch(/model/i);
   });
 
   it("uses the picture models that spell for words, and a vector model for a logo", () => {

@@ -272,7 +272,7 @@ export interface Film {
   updatedAt: number;
 }
 
-/** A film as a list row. */
+/** A film as a list row (never a cost: the person's plan covers their films). */
 export interface FilmRow {
   id: string;
   title: string;
@@ -282,8 +282,6 @@ export interface FilmRow {
   shots: number;
   done: number;
   seconds: number;
-  spentPaise: number;
-  budgetPaise: number;
   /** A signed link to a still to show for it. */
   poster: string | null;
   updatedAt: number;

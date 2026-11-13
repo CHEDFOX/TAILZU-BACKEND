@@ -106,10 +106,10 @@ export function afterCheck(card: ShotCard, shot: Pick<ShotState, "blamed">, take
     return { kind: "retake", fix: v?.fix ?? null, blame: blame && !shot.blamed.includes(blame) ? blame : null };
   }
   if (best && keepable(best, people)) {
-    const why = checked.length >= MAX_TRIES ? `kept the best of ${checked.length} takes` : "kept the best take so far: the film's money would not cover another";
+    const why = checked.length >= MAX_TRIES ? `kept the best of ${checked.length} takes` : "kept the best take so far";
     return { kind: "best", take: best.id, note: `Shot ${card.n}: ${why}${best.verdict?.issues[0] ? ` (${best.verdict.issues[0].note})` : ""}.` };
   }
-  return { kind: "wait", why: unsafe ? "The model made something we will not use. Change the shot's words and try again." : `Shot ${card.n} did not come out right in ${checked.length} takes. Change its words or the model, and try again.` };
+  return { kind: "wait", why: unsafe ? "That shot came out as something we won't use. Change its words and try again." : `Shot ${card.n} did not come out right in ${checked.length} takes. Change its words and try again.` };
 }
 
 /** The best checked take: the highest mean, never an unsafe one. */

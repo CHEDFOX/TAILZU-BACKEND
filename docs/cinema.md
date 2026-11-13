@@ -32,12 +32,12 @@ story, sound and the edit are left to the person. This bot works the other way r
 | --- | --- |
 | The person picks a model and a preset | The person says what they want; the router picks the model per shot from what the shot needs (faces, motion, physics, a camera move, spoken lines, words in frame), within the quality they chose |
 | One clip at a time, no story | A director writes a bible (who, where, the look) and a shot list with film grammar: an establishing shot, varied sizes, one action and one camera move a shot, the 180-degree rule, cutting on action |
-| Every attempt costs video money | Everything is a still first (a few rupees). The storyboard and the voice-over are agreed before a second of video is bought, and every shot is animated *from its agreed still*, so what was agreed is what is filmed |
+| Every attempt costs video money | Everything is a still first (cheap). The storyboard and the voice-over are looked over before a second of video is made, and every shot is animated *from its agreed still*, so what was agreed is what is filmed |
 | A face changes from clip to clip | Reference sheets for each person and place seen more than once, and one look frame for the colour and light, passed with every still; the motion prompt never re-describes the picture |
 | The person checks every clip and pays for the bad ones | A vision model checks every still and every take against the shot card; a failed take is retaken with a fix line, or on another model when the fault is the model's (bodies, melting, physics). After three takes the best is kept, with a note |
 | Stitching, voice-over, music and subtitles are done elsewhere | The cut is made here: dissolves where asked, the voice-over placed and measured, the music ducked under it, subtitles, loudness for phones |
 | Change one thing, start again | A change in plain words, to the film or to one shot: only what it touches is made again (a new line is a new take from the same still; a new coat is a new still and a new take; the cut follows) |
-| Credits, and surprise charges | A price in rupees, twice, before anything is spent; never a paisa past what was agreed; what is not used is never taken |
+| Credits, and surprise charges | No credits and no prices: the person's plan covers their films. They say go twice (the script, the storyboard); the money is ours to watch, within limits per film, per day and per plan |
 
 Hindi and Hinglish are first-class: the script, the lines, the voice-over and the subtitles are written in the person's language.
 
@@ -48,15 +48,16 @@ Hindi and Hinglish are first-class: the script, the lines, the voice-over and th
 | Status | What is happening | Who moves it on |
 | --- | --- | --- |
 | `writing` | the director writes the bible and the shot list (`plan.ts direct`, the strong tier) | by itself, about a minute |
-| `script` | the person reads it, changes anything in plain words (`revise`), sees the storyboard's price | **the person**: Make the storyboard (`approve-script`) |
+| `script` | the person reads it and changes anything in plain words (`revise`) | **the person**: Make the storyboard (`approve-script`) |
 | `boarding` | the look frame, the reference sheets, the stills (two for a shot with people; the eye keeps the better), the voice-over | by itself |
-| `board` | the storyboard, with the model each shot will use and the film's price | **the person**: Film it (`approve-board`) |
+| `board` | the storyboard | **the person**: Film it (`approve-board`) |
 | `rendering` | each shot animated from its still, checked, retaken | by itself |
 | `cutting` | the cut | by itself |
 | `done` | the film, ready to watch, download and share | a change sends it back to `rendering` |
 
 `failed` (something could not be got past) and `stopped` (the person stopped it) end it. `Film.hold` says why a moving film waits: `budget`
-(the next step would pass what was agreed: Add ₹…) or `shot` (a shot the eye gave up on: Try again, or change it).
+(the film has reached a limit and is paused for today: it carries on by itself, or sooner with a bigger plan) or `shot` (a shot the eye gave up on:
+Try again, or change it).
 
 **How it moves.** `flow.ts steps(film)` is one pure function that looks at a film and says what to do now: make a sheet, a still, a voice-over,
 a take; ask how a take is going; check one; cut; or move the status. The service (`service.ts`) runs the steps every few seconds (`tick`), a
@@ -168,7 +169,7 @@ one kept, one more pair with the fix when neither passes.
 * **words**: the lines and the voice-over as a soft subtitle track and an `.srt` beside it.
 
 The voice-over is recorded while the storyboard is drawn (`pipeline/tts.ts`, in the film's voice) and measured: a shot whose words need more
-seconds is given them before the price, so words are never cut to fit.
+seconds is given them before anything is filmed, so words are never cut to fit.
 
 ## 7. Pictures
 
@@ -183,15 +184,19 @@ picture by name. `cinema_cast`, `POST /v1/cinema/films/:id/cast/:key`.
 
 ## 8. Money
 
-* **Two prices, both in rupees, both agreed before anything is spent.** The storyboard (`quote.ts boardQuote`: the look frame, the sheets, the
-  stills, the voice-over; a quarter more is set aside for stills the eye sends back) and the film (`filmQuote`: each shot at its model's price
-  for its seconds, 40% kept back for retakes, the music). The reserve is "up to": what is not used is never taken.
-* **Never past what was agreed.** Before a paid step starts, what it will cost is set aside; a step the money left does not cover is not
-  started, and the film holds for the person (`hold: "budget"`, a push, Add ₹…).
-* **Caps.** One film may not be agreed past `CINEMA_FILM_MAX_PAISE` (₹1,500), nor a person's day past `CINEMA_DAILY_PAISE` (₹3,000). Approving a
-  price and making a picture ask the plan's allowance first (`enforceQuota`).
+The person never sees a cost: no prices, no rupees, no credits. Their plan covers their films, and the money is ours to watch:
+
+* **A budget per film, from the quotes, never shown.** Saying go to the script sets the film's budget to the storyboard's quote (`quote.ts
+  boardQuote`: the look frame, the sheets, the stills, the voice-over, and a quarter more for stills the eye sends back); saying go to the
+  storyboard adds the film's quote (`filmQuote`: each shot at its model's rate for its seconds, 40% for retakes, the music).
+* **Never past the budget.** Before a paid step starts, what it will cost is set aside; a step the budget does not cover is not started.
+* **Extended by itself.** When the retakes need more, the service adds a quarter at a time (`extend`), as long as the plan's allowance says
+  yes (`enforceQuota`) and it stays under `CINEMA_FILM_MAX_PAISE` for one film (₹1,500 by default) and `CINEMA_DAILY_PAISE` for one person's
+  day (₹3,000). Past them the film is paused for today (`hold: "budget"`, a push): its page says it carries on tomorrow, or sooner with a
+  bigger plan, and offers the plans. Saying go to a script or a storyboard, and making a picture, ask the plan's allowance first too.
 * **Recorded.** Every call is put on the person's usage meter as the "cinema" bot (`chargeUsd`) and on the film (`spentPaise`), at the cost
-  OpenRouter reports where it reports one. Writing the script and reading a picture's ask are on the meter but not in the film's price.
+  OpenRouter reports where it reports one. Writing the script and reading a picture's ask are on the meter but not in the film's budget.
+* **Never sent to the app.** The routes answer without budgets, spend or prices (`public.ts`), and the bot's chat never speaks of them.
 
 ## 9. What the server answers
 
@@ -205,16 +210,21 @@ each time a screen is drawn; never the storage's own address. Refusals are `{ co
 
 * **The bot's page** (`bots.bot`, slug `cinema`): the films waiting for the person first (a script or a storyboard to approve, more money, a
   shot to look at); a new film (their words; Length, Frame and Quality as segmented controls; Write the script); a picture; the other films
-  with their first still; the pictures; the cast; what was agreed today.
-* **A film** (`bots.cinema.film`, params `f`): the title and where it stands, then the decision as one card at the top (the storyboard's
-  price and Make the storyboard; the film's price with what is kept for retakes and Film it; Add ₹…; the finished film's still with a play mark,
-  Watch, Download, Share, the subtitles; or what is happening now). Then the script (the look, who is in it, the shots as a numbered list) or
+  with their first still; the pictures; the cast.
+* **A film** (`bots.cinema.film`, params `f`): the title and where it stands, then the decision as one card at the top (Make the
+  storyboard; Film it; paused for today, with the plans; the finished film's still with a play mark, Watch, Download, Share or Copy link, the
+  subtitles; or what is happening now). Then the script (the look, who is in it, the shots as a numbered list) or
   the storyboard as a grid of stills (four across in the window, two on the phone), each tile with its number, size, seconds, a mark for where
   it stands and what happens. A change to the whole film; the cast; the notes; Stop and Delete.
-* **A shot** (`bots.cinema.shot`, params `f`, `n`): its still, large; where it stands and the model; its card in full (what it is for, what
-  happens, the acting, the camera, the frame, the light, the air, how it ends, the lines, the voice-over, the sound); the takes, each with the
-  model, the checker's mark and what it said ("Sent back: her hand passes through the glass"); Try again when it gave up; a change to this
-  shot only.
+* **A shot** (`bots.cinema.shot`, params `f`, `n`): its still, large; where it stands; its card in full (what it is for, what happens, the
+  acting, the camera, the frame, the light, the air, how it ends, the lines, the voice-over, the sound); the takes, each with what the
+  checker said in words ("Sent back: her hand passes through the glass"); Try again when it gave up; a change to this shot only.
+
+**What the person never sees.** The models, the prompts, the provider's jobs, the models a retake passed over, the fix lines, the
+checker's numbers and every cost stay on the server: the routes answer with the film as the person sees it (`public.ts publicFilm`, `publicPicture`), so
+not even the app's traffic carries them. A shot that cannot be made says what to change ("Spoken lines can't be filmed at this quality"),
+never which models there are; a provider's own error text is never shown. The bot's chat is told never to name the models either. The
+prompts are our craft, and the models are ours to change from one day to the next.
 
 The render check draws every one of them on both clients from `scripts/bots-render/samples/cinema.ts`:
 `cd tulmi && npx tsx scripts/bots-render/showcase.ts --only cinema`.

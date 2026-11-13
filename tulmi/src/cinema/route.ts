@@ -102,11 +102,11 @@ function can(m: CatalogModel, i: RouteInput): boolean {
   return true;
 }
 
-/** Why no model can do a shot, in a few words for a person. */
+/** Why a shot cannot be made, in a few words for a person: what to change, never which models there are. */
 export function whyNone(i: RouteInput): string {
-  if (!i.models.length) return "No video model is available right now.";
-  if (!i.models.some((m) => !m.aspects.length || m.aspects.includes(i.aspect))) return `No model makes ${i.aspect} video right now.`;
-  if (i.card.lines.length && !i.models.some((m) => m.audio && tierRank(m.tier) <= tierRank(i.tier))) return "No model in this quality can speak lines; move them to the voice-over or raise the quality.";
-  if (i.card.link === "continue" && !i.models.some((m) => m.last)) return "No model can carry this shot on from the one before; make it a cut.";
-  return "No model in this quality can make this shot; raise the quality.";
+  if (!i.models.length) return "Video can't be made just now. Try again in a few minutes.";
+  if (!i.models.some((m) => !m.aspects.length || m.aspects.includes(i.aspect))) return `${i.aspect} video can't be made just now; pick another frame.`;
+  if (i.card.lines.length && !i.models.some((m) => m.audio && tierRank(m.tier) <= tierRank(i.tier))) return "Spoken lines can't be filmed at this quality; move them to the voice-over or raise the quality.";
+  if (i.card.link === "continue" && !i.models.some((m) => m.last)) return "This shot can't carry straight on from the one before; make it a cut.";
+  return "This shot can't be made at this quality; raise the quality.";
 }

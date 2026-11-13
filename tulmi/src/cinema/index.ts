@@ -19,6 +19,7 @@ import { synthesize } from "../pipeline/tts.js";
 import { aiAllowedFor } from "../privacy/aiGate.js";
 import { pushEngine } from "../push/index.js";
 import { chargeUsd, ttsUsd } from "../usage/cost.js";
+import { enforceQuota } from "../usage/metering.js";
 import { cut, frames, seconds } from "./ffmpeg.js";
 import { fetchVideo, liveModels, makeImage, makeMusic, startVideo, videoStatus } from "./openrouter.js";
 import type { Think } from "./plan.js";
@@ -71,6 +72,7 @@ export function buildCinemaService(): CinemaService {
     },
     charge: (userId, usd) => chargeUsd(userId, usd, CINEMA_SLUG),
     aiAllowed: aiAllowedFor,
+    allowance: (userId) => enforceQuota({ id: userId }),
     notify,
     live: (userId) => livePublish(userId, [botTopic(CINEMA_SLUG)]),
     fx: cfg.CODE_USD_INR,

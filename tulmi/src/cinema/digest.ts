@@ -1,7 +1,7 @@
 /**
- * WHAT THE CINEMA BOT'S CHAT KNOWS: the person's films (where each stands, its shots, what it cost, why it waits) and their latest pictures,
- * as one fenced block of their own data (bots/run.ts puts it in the turn's knowledge). It never holds a link or a key, only words, so the
- * chat can say "your chai film is waiting for you to approve its storyboard" and point at the page.
+ * WHAT THE CINEMA BOT'S CHAT KNOWS: the person's films (where each stands, its shots, why it waits) and their latest pictures,
+ * as one fenced block of their own data (bots/run.ts puts it in the turn's knowledge). It never holds a link, a key, a model or a cost,
+ * only words, so the chat can say "your chai film is waiting for you to look at its storyboard" and point at the page.
  */
 import { neutral } from "../bots/prompt.js";
 import { asUntrustedFile } from "../media/untrusted.js";
@@ -12,9 +12,9 @@ const NONE = "They have not made a film or a picture yet. To begin, they describ
 
 const STATUS: Record<string, string> = {
   writing: "the director is writing it",
-  script: "its script is waiting for them to read and approve",
+  script: "its script is waiting for them to read and say go",
   boarding: "its storyboard is being made",
-  board: "its storyboard and price are waiting for them to approve",
+  board: "its storyboard is waiting for them to say go",
   rendering: "its shots are being made",
   cutting: "it is being cut",
   done: "finished",
@@ -31,8 +31,8 @@ export async function cinemaDigest(userId: string, o: { store?: CinemaStore } = 
     const title = f.script?.bible.title || f.idea.slice(0, 60);
     const shots = f.script?.shots.length ?? 0;
     const ok = f.shots.filter((s) => s.status === "ok").length;
-    const wait = f.hold === "budget" ? "; waiting for more money to be agreed" : f.hold === "shot" ? `; a shot needs them: ${f.shots.find((s) => s.error)?.error ?? "it did not come out right"}` : "";
-    lines.push(`- "${title}" (${f.aspect}, ${f.tier}, ${shots} shots, ${ok} made): ${STATUS[f.status] ?? f.status}${wait}. Spent ₹${(f.spentPaise / 100).toFixed(0)} of ₹${(f.budgetPaise / 100).toFixed(0)} agreed.`);
+    const wait = f.hold === "budget" ? "; it has reached today's limit and carries on tomorrow" : f.hold === "shot" ? `; a shot needs them: ${f.shots.find((s) => s.error)?.error ?? "it did not come out right"}` : "";
+    lines.push(`- "${title}" (${f.aspect}, ${f.tier}, ${shots} shots, ${ok} made): ${STATUS[f.status] ?? f.status}${wait}.`);
     if (f.notes[0]) lines.push(`  Note: ${f.notes[0]}`);
   }
   if (pictures.length) lines.push(`Latest pictures: ${pictures.map((p) => `"${p.words.slice(0, 60)}"`).join("; ")}.`);

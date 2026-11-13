@@ -3,14 +3,13 @@
  * and pictures are made.
  *
  *   the head       back, the bot's name, and a line: what is waiting for the person, else what it does
- *   waiting        first, the films that wait for the person (a script or a storyboard to approve, more money, a shot to look at)
+ *   waiting        first, the films that wait for the person (a script or a storyboard to say go to, a shot to look at, today's limit)
  *   a new film     what the film is (in their words); Length (15, 30, 60 seconds), Frame (wide, vertical, square) and Quality (draft, standard,
- *                  premium) as segmented controls; and Write the script. Nothing is spent on pictures or video until they approve a price
+ *                  premium) as segmented controls; and Write the script. Nothing is made until they say go to the script, then the storyboard
  *   a picture      what the picture is, and Make it: a poster, a product shot, a portrait, a logo
  *   your films     the others, each with its first still, where it stands and what it cost; each opens its page (cinemaScreens.ts)
  *   your pictures  the latest, each opening full size
  *   your cast      the people kept from films, to use again
- *   today          what was agreed today, of the day's limit
  *   the ask bar    the bots' own (parts.ts chatBar): "Ask about your films…" goes to the cinema bot's chat
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
@@ -21,7 +20,7 @@ import {
 } from "../../kit.js";
 import { toast } from "../firstRun/parts.js";
 import { mailField } from "./mailCards.js";
-import { abs, CINEMA, openFilm, rupees, statusLine, waitsForYou, type CinemaData } from "./cinemaScreens.js";
+import { abs, CINEMA, openFilm, statusLine, waitsForYou, type CinemaData } from "./cinemaScreens.js";
 import { type BotPageData, chatBar, isDesk, lookOf, setState } from "./parts.js";
 
 export type CinemaPageData = BotPageData & { cinema?: CinemaData };
@@ -52,7 +51,7 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
   } else {
     const filmRow = (f: (typeof o.films)[number]) => listRow({
       label: plain(f.title) || "New film",
-      sub: [statusLine(f), f.seconds ? `${Math.round(f.seconds)}s` : "", f.spentPaise ? rupees(f.spentPaise) : ""].filter(Boolean).join(" · "),
+      sub: [statusLine(f), f.seconds ? `${Math.round(f.seconds)}s` : ""].filter(Boolean).join(" · "),
       strong: waitsForYou(f),
       ...(f.poster ? { left: picture(abs(f.poster), 44, 44, { radius: 8, fit: "cover", background: C.surface }) } : {}),
       onPress: openFilm(f.id),
@@ -76,7 +75,7 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
       option("Frame", segmented([{ label: "Wide", value: "16:9" }, { label: "Vertical", value: "9:16" }, { label: "Square", value: "1:1" }], "cn_aspect")),
       option("Quality", segmented([{ label: "Draft", value: "draft" }, { label: "Standard", value: "standard" }, { label: "Premium", value: "premium" }], "cn_tier")),
       row([primaryButton("Write the script", write, { size: "md" })]),
-      meta("You read the script and see every price before anything is made.", { size: 12 }),
+      meta("You read the script and see the storyboard before anything is filmed.", { size: 12 }),
     ], { gap: 10 }));
 
     const make = {
@@ -96,7 +95,7 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
     if (!o.films.length && !o.pictures.length) {
       body.push(card([
         row([icon("spark", { size: 28, color: look.color })], { justifyContent: "center" }),
-        text("Say what you want to see. A director writes the shots, you approve a storyboard and a price, and each shot is filmed by the model that suits it, checked, and cut together with voice-over and music.", { size: 14, color: C.ink, align: "center", lineHeight: 20 }),
+        text("Say what you want to see. A director writes the shots, you look over the storyboard, and each shot is filmed by the camera that suits it, checked, and cut together with voice-over and music.", { size: 14, color: C.ink, align: "center", lineHeight: 20 }),
       ], { dashed: true, gap: 10, padding: 22, style: { alignItems: "center" } }));
     }
 
@@ -119,7 +118,6 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
       })), { title: "Your cast" }));
     }
 
-    body.push(meta(`${rupees(o.spentToday)} of ${rupees(o.dailyCap)} agreed today`, { size: 12 }));
   }
 
   return page(ctx, {

@@ -1,10 +1,11 @@
 /**
  * THE CINEMA BOT'S ENGINE ROOM, A WHOLE FILM (src/cinema/service.ts), with every model and provider faked:
  *
- *   - the idea becomes a script; nothing is spent on stills before the person approves it, nor on video before they approve the price
+ *   - the idea becomes a script; nothing is made before the person says go to it, no video before they say go to the storyboard
  *   - the storyboard: the look frame, the sheets, two stills for a shot with people, the voice-over (which lengthens its shot to fit)
  *   - the takes: each from its still, a take the eye fails is retaken with the fix, the film is cut, the person is told
- *   - every rupee is on the person's meter and the film's spend, and the spend never passes what was agreed
+ *   - every rupee is on the person's meter and the film's spend, and the spend never passes the film's budget; no cost is ever sent to the app
+ *   - a film whose retakes need more is extended by itself within the limits, and pauses for today past them
  *   - a film is its owner's alone; the day's cap and the film's cap refuse more; consent is asked first
  *   - a changed line makes one new take and a new cut, nothing else
  *   - a picture: read, made, looked at, kept
@@ -41,7 +42,7 @@ const SCRIPT = {
 const good = { scores: { identity: 9, action: 9, camera: 8, quality: 9, continuity: 9 }, issues: [], fix: null };
 const bad = { scores: { identity: 8, action: 4, camera: 8, quality: 8, continuity: 8 }, issues: [{ kind: "action", major: true, note: "no glass" }], fix: "Meera clearly takes the glass" };
 
-function rig(o: { consent?: boolean; dailyPaise?: number; filmMaxPaise?: number; failFirstTakeOf?: number } = {}) {
+function rig(o: { consent?: boolean; dailyPaise?: number; filmMaxPaise?: number; failFirstTakeOf?: number; allowance?: string | null } = {}) {
   const store = new MemoryCinemaStore();
   const blobs = new Map<string, Buffer>();
   const charged: number[] = [];
@@ -89,6 +90,7 @@ function rig(o: { consent?: boolean; dailyPaise?: number; filmMaxPaise?: number;
     media,
     charge: (_u, usd) => charged.push(usd),
     aiAllowed: async () => o.consent ?? true,
+    allowance: async () => o.allowance ?? null,
     notify: async (_u, msg) => { pushes.push(msg.kind); },
     live: () => undefined,
     fx: 88,
@@ -120,8 +122,6 @@ describe("a whole film", () => {
     await r.svc.idle();
     let v = await r.svc.film("u1", made.film.id);
     expect(v.film.status).toBe("script");
-    expect(v.board!.paise).toBeGreaterThan(0);
-    expect(v.price!.paise).toBeGreaterThan(0);
 
     await r.svc.tick();
     await r.svc.idle();
@@ -151,7 +151,9 @@ describe("a whole film", () => {
     const shot3 = r.calls.videos.filter((x) => x.prompt.includes("Lo, garam chai"));
     expect(shot3.length).toBe(2);
     expect(shot3[1]!.prompt).toContain("Important: Meera clearly takes the glass.");
-    expect(done.spentPaise).toBeLessThanOrEqual(done.budgetPaise);
+    const kept = (await r.store.getFilm("u1", made.film.id))!;
+    expect(kept.spentPaise).toBeGreaterThan(0);
+    expect(kept.spentPaise).toBeLessThanOrEqual(kept.budgetPaise);
     expect(r.charged.reduce((a, b) => a + b, 0)).toBeGreaterThan(0);
     expect(done.shots.every((s) => s.status === "ok")).toBe(true);
 
@@ -160,18 +162,28 @@ describe("a whole film", () => {
     expect(changed.film.shots.find((s) => s.n === 3)!.status).toBe("queued");
     expect(changed.film.shots.find((s) => s.n === 1)!.status).toBe("ok");
     const before = r.calls.videos.length;
-    await r.svc.tick();
-    await r.svc.idle();
-    const short = (await r.svc.film("u1", made.film.id)).film;
-    if (short.hold === "budget") {
-      expect(r.calls.videos.length).toBe(before);
-      expect(r.pushes).toContain("cinema_hold");
-      await r.svc.raise("u1", made.film.id, 20_000);
-    }
     const again = await r.until("u1", made.film.id, "done");
+    expect(r.pushes).not.toContain("cinema_hold");
     expect(r.calls.videos.length - before).toBe(1);
     expect(r.calls.cuts).toBe(2);
     expect(again.cut.of).not.toBe(done.cut.of);
+  });
+
+  it("pauses a film for today when it would need more than the plan allows, and says nothing of money", async () => {
+    const r = rig({ failFirstTakeOf: 3, allowance: "You've reached this stretch's limit." });
+    const made = await r.svc.create("u1", { idea: "a 12 second ad for my chai stall", length: 12 });
+    await r.svc.idle();
+    await r.svc.approveScript("u1", made.film.id);
+    await r.until("u1", made.film.id, "board");
+    await r.svc.approveBoard("u1", made.film.id);
+    await r.until("u1", made.film.id, "done");
+    await r.svc.revise("u1", made.film.id, { note: "make Ravi say beta", n: 3 });
+    const before = r.calls.videos.length;
+    for (let i = 0; i < 5; i++) { await r.svc.tick(); await r.svc.idle(); r.clock.t += 30_000; }
+    const v = await r.svc.film("u1", made.film.id);
+    expect(v.film.hold).toBe("budget");
+    expect(r.calls.videos.length).toBe(before);
+    expect(r.pushes).toContain("cinema_hold");
   });
 
   it("says a script left unwritten by a restart has failed, so it can be started again", async () => {
@@ -197,6 +209,20 @@ describe("a whole film", () => {
     expect(r.calls.images).toBe(images);
   });
 
+  it("never sends a model, a prompt, a provider's job or a blamed model to the app", async () => {
+    const r = rig({ failFirstTakeOf: 3 });
+    const made = await r.svc.create("u1", { idea: "a 12 second ad for my chai stall", length: 12 });
+    await r.svc.idle();
+    await r.svc.approveScript("u1", made.film.id);
+    await r.until("u1", made.film.id, "board");
+    await r.svc.approveBoard("u1", made.film.id);
+    await r.until("u1", made.film.id, "done");
+    const sent = JSON.stringify(await r.svc.film("u1", made.film.id)) + JSON.stringify(await r.svc.overview("u1"));
+    expect(sent).not.toMatch(/kwaivgi|bytedance|google\/|alibaba|minimax|runway\/|"prompt"|"job"|"blamed"|"model"|"pin"|"fix"|"scores"|[Pp]aise|"board"|"price"|spentToday|dailyCap|dayLeft|₹/);
+    const p = await r.svc.picture("u1", { words: "a poster that says CHAI" });
+    expect(JSON.stringify(p)).not.toMatch(/"model"|"key"|"ownerId"|"paise"/);
+  });
+
   it("is its owner's alone", async () => {
     const r = rig();
     const made = await r.svc.create("u1", { idea: "a chai ad" });
@@ -209,11 +235,12 @@ describe("a whole film", () => {
     await expect(r.svc.create("u1", { idea: "a chai ad" })).rejects.toMatchObject({ status: 403, code: "ai_consent_needed" });
   });
 
-  it("refuses a price over the film's cap or the day's", async () => {
+  it("refuses a film past the film's cap or the day's, in words without a price", async () => {
     const r = rig({ filmMaxPaise: 100 });
     const made = await r.svc.create("u1", { idea: "a chai ad", length: 12 });
     await r.svc.idle();
     await expect(r.svc.approveScript("u1", made.film.id)).rejects.toMatchObject({ code: "cinema_film_cap" });
+    await expect(r.svc.approveScript("u1", made.film.id)).rejects.toThrow(/^[^₹]*$/);
     const day = rig({ dailyPaise: 100 });
     const m2 = await day.svc.create("u1", { idea: "a chai ad", length: 12 });
     await day.svc.idle();

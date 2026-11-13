@@ -162,7 +162,7 @@ export interface PictureOut { bytes: Buffer; type: string; model: string; usd: n
 export async function makePicture(d: PictureDeps, p: PictureAsk): Promise<PictureOut> {
   const route: ImageAsk = { kind: p.ask.kind, text: p.ask.text, refs: p.refs.length, aspect: p.ask.aspect, tier: p.tier, pin: p.pin ?? null };
   const choices = routeImage(route, d.models);
-  if (!choices.length) throw Object.assign(new Error("No picture model can make this right now."), { status: 503, code: "no_model" });
+  if (!choices.length) throw Object.assign(new Error("That picture can't be made just now. Try again in a few minutes."), { status: 503, code: "no_model" });
   let usd = 0;
   let best: { bytes: Buffer; type: string; model: string; verdict: ImageVerdict | null } | null = null;
   let fix: string | null = null;

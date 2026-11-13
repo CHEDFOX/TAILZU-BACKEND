@@ -4,9 +4,8 @@
  *   GET    /v1/cinema/overview                       their films, pictures and cast, and today's spending
  *   POST   /v1/cinema/films                          { idea, length?, aspect?, tier?, voice?, cast?, language? } -> 201 FilmView (status writing)
  *   GET    /v1/cinema/films/:id                      -> FilmView
- *   POST   /v1/cinema/films/:id/approve-script       the storyboard's price agreed: the stills begin -> FilmView
- *   POST   /v1/cinema/films/:id/approve-board        the film's price agreed: the takes begin -> FilmView
- *   POST   /v1/cinema/films/:id/raise                { paise } more money for a film that holds for it -> FilmView
+ *   POST   /v1/cinema/films/:id/approve-script       Make the storyboard: the stills begin -> FilmView
+ *   POST   /v1/cinema/films/:id/approve-board        Film it: the takes begin -> FilmView
  *   POST   /v1/cinema/films/:id/revise               { note, n? } a change in plain words, to the film or to shot n -> FilmView
  *   POST   /v1/cinema/films/:id/shots/:n/retry       { model? } a shot that gave up, tried again (on that model) -> FilmView
  *   POST   /v1/cinema/films/:id/stop                 -> FilmView
@@ -18,8 +17,8 @@
  * Anyone with the link (the signature is the key, media.ts):
  *   GET    /v1/cinema/media/<key>?exp=&sig=          a still, a take, a film or its subtitles
  *
- * Always registered. With BOTS off or the bot not switched on (CINEMA), every route is 404 { code: "cinema_off" }. Approving a price and
- * making a picture ask the person's plan allowance first (usage/metering enforceQuota). Nothing a person typed is logged.
+ * Always registered. With BOTS off or the bot not switched on (CINEMA), every route is 404 { code: "cinema_off" }. Saying go to a storyboard
+ * or a film, and making a picture, ask the person's plan allowance first (usage/metering enforceQuota). Nothing a person typed is logged.
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
@@ -107,13 +106,6 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
       try { return send(reply, await run(got.s, got.user.id, idOf(req))); } catch (err) { return fail(reply, err); }
     });
   }
-
-  app.post(`${BASE}/films/:id/raise`, rl, async (req, reply) => {
-    const got = await begin(req, reply);
-    if (!got) return reply;
-    if (!(await allowed(got.user, reply))) return reply;
-    try { return send(reply, await got.s.raise(got.user.id, idOf(req), Number(body(req).paise))); } catch (err) { return fail(reply, err); }
-  });
 
   app.post(`${BASE}/films/:id/revise`, rl, async (req, reply) => {
     const got = await begin(req, reply);

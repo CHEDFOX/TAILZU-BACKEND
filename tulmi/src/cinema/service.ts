@@ -8,14 +8,16 @@
  *
  * Every step runs AS THE FILM'S OWNER (privacy/aiGate asPerson): their AI consent is asked for each call to OpenRouter, and what it cost
  * is put on their meter (usage/cost chargeUsd, as the "cinema" bot) and on the film (spentPaise). Before a paid step starts, what it will
- * cost is set aside (`reserved`), so steps running at once cannot pass what the person agreed to.
+ * cost is set aside (`reserved`), so steps running at once cannot pass the film's budget.
  *
- * Money the person agrees to:
- *   approveScript   the storyboard's price (quote.ts boardQuote, plus a quarter for stills the eye sends back)
- *   approveBoard    the film's price (quote.ts filmQuote: the takes, a reserve for retakes, the music)
- *   raise           more, when a film holds for it
- * Each is refused over CINEMA_FILM_MAX_PAISE for the film or CINEMA_DAILY_PAISE for the person's day. Writing the script and the bot's
- * own reading of a picture are on the person's meter but not the film's price.
+ * The person never sees a cost (their plan covers the films): they say go twice, Make the storyboard and Film it, and the budget is ours,
+ * a guard rail set from the quotes (quote.ts):
+ *   approveScript   the storyboard's quote (boardQuote, plus a quarter for stills the eye sends back)
+ *   approveBoard    the film's quote (filmQuote: the takes, a reserve for retakes, the music)
+ *   extend          when the retakes need more, by itself (a quarter more at a time), as long as the plan's allowance says yes and it
+ *                   stays under CINEMA_FILM_MAX_PAISE for the film and CINEMA_DAILY_PAISE for the person's day; past those the film waits
+ *                   (hold "budget") and its page says it carries on tomorrow
+ * Writing the script and the bot's own reading of a picture are on the person's meter but not the film's budget.
  *
  * Pushes (push/engine): the storyboard is ready (cinema_board), the film waits for them (cinema_hold), the film is ready (cinema_ready).
  * Never a word of the film in a push: its title only.
@@ -29,9 +31,10 @@ import { stillModel, type CatalogImageModel } from "./imageModels.js";
 import { castKey, filmKey, pictureKey, signMedia } from "./media.js";
 import type { CatalogModel } from "./models.js";
 import { makePicture, readAsk } from "./pictures.js";
+import { publicFilm, publicPicture, type FilmPublic, type PictureView } from "./public.js";
 import { direct, revise, type Think } from "./plan.js";
 import { afterCheck, checkBrief, parseVerdict, PROVIDER_FAILS } from "./qc.js";
-import { boardQuote, candidatesFor, filmQuote, type BoardQuote, type FilmQuote } from "./quote.js";
+import { boardQuote, candidatesFor, filmQuote } from "./quote.js";
 import { route, whyNone } from "./route.js";
 import type { Picture, CinemaStore } from "./store.js";
 import { ASPECTS, TIERS, type Aspect, type Character, type Film, type FilmRow, type ShotCard, type Take, type Tier, type Verdict } from "./types.js";
@@ -80,6 +83,8 @@ export interface CinemaDeps {
   /** Onto the person's usage meter, in dollars. */
   charge: (userId: string, usd: number) => void;
   aiAllowed: (userId: string) => Promise<boolean>;
+  /** The plan's allowance: its refusal in words, or null (usage/metering enforceQuota). Asked before a film is extended by itself. */
+  allowance?: (userId: string) => Promise<string | null>;
   notify: CinemaNotify;
   /** Tells the person's open screens to read again. */
   live: (userId: string) => void;
@@ -91,26 +96,19 @@ export interface CinemaDeps {
   log?: (line: string) => void;
 }
 
-/** A film as a screen reads it: the film, its prices, and links to everything it made. */
+/** A film as a screen reads it: the film as the person sees it (public.ts: never a model, a prompt, a provider's job or a cost), and
+ *  links to everything it made. Never a cost: the person's plan covers their films. */
 export interface FilmView {
-  film: Film;
+  film: FilmPublic;
   title: string;
-  board: BoardQuote | null;
-  price: FilmQuote | null;
   /** Signed links, by media key. */
   links: Record<string, string>;
-  /** The model each shot will use or used, by shot. */
-  models: Record<number, string>;
-  /** Paise the person may still agree to today. */
-  dayLeft: number;
 }
 
 export interface CinemaOverview {
   films: FilmRow[];
-  pictures: (Picture & { url: string })[];
+  pictures: PictureView[];
   cast: (Character & { url: string | null })[];
-  spentToday: number;
-  dailyCap: number;
 }
 
 const dataUrl = (bytes: Buffer, type: string): string => `data:${type};base64,${bytes.toString("base64")}`;
@@ -141,10 +139,8 @@ export class CinemaService {
     const [films, pictures, cast] = await Promise.all([this.d.store.listFilms(userId, MAX_FILMS_LISTED), this.d.store.listPictures(userId, 24), this.d.store.cast(userId)]);
     return {
       films: films.map(rowOf),
-      pictures: pictures.map((p) => ({ ...p, url: signMedia(p.key) })),
+      pictures: pictures.map((p) => publicPicture(p, signMedia(p.key))),
       cast: cast.map((c) => ({ ...c, url: c.ref ? signMedia(c.ref) : null })),
-      spentToday: this.spentToday(userId),
-      dailyCap: this.d.dailyPaise,
     };
   }
 
@@ -236,20 +232,6 @@ export class CinemaService {
     return this.view(out);
   }
 
-  /** More money for a film that holds for it. */
-  async raise(userId: string, id: string, paise: number): Promise<FilmView> {
-    const f = await this.mine(userId, id);
-    const add = Math.round(paise);
-    if (!(add > 0)) throw new CinemaError(400, "Say how much more.", "bad_request");
-    this.canAgree(userId, f, add);
-    const out = await this.update(userId, id, (x) => {
-      x.budgetPaise += add;
-      if (x.hold === "budget") x.hold = null;
-    });
-    this.addDay(userId, add);
-    return this.view(out);
-  }
-
   /** A change in plain words, to the whole film or to one shot. Only what it touches is made again. */
   async revise(userId: string, id: string, o: { note: string; n?: number }): Promise<FilmView> {
     const f = await this.mine(userId, id);
@@ -275,7 +257,7 @@ export class CinemaService {
     return this.view(out);
   }
 
-  /** Try a shot that gave up again, optionally on a model the person picks. */
+  /** Try a shot that gave up again. (`model` pins one for it: for an operator, never offered on a screen.) */
   async retry(userId: string, id: string, n: number, o: { model?: string | null } = {}): Promise<FilmView> {
     const f = await this.mine(userId, id);
     if (!f.script?.shots.some((s) => s.n === n)) throw new CinemaError(404, "There is no such shot.", "not_found");
@@ -327,11 +309,11 @@ export class CinemaService {
   }
 
   /** A picture, made now. `photos` are the person's own (data URLs), for an edit. */
-  async picture(userId: string, o: { words: string; photos?: { url: string; type: string }[]; tier?: string }): Promise<Picture & { url: string }> {
+  async picture(userId: string, o: { words: string; photos?: { url: string; type: string }[]; tier?: string }): Promise<PictureView> {
     const words = o.words.trim();
     if (words.length < 2) throw new CinemaError(400, "Say what the picture should show.", "bad_request");
     await this.consent(userId);
-    if (this.spentToday(userId) >= this.d.dailyPaise) throw new CinemaError(429, "Today's spending on films and pictures is used up. It starts again tomorrow.", "cinema_day");
+    if (this.spentToday(userId) >= this.d.dailyPaise) throw new CinemaError(429, "Today's films and pictures are used up. It starts again tomorrow, or see the plans.", "cinema_day");
     const tier = (TIERS as readonly string[]).includes(o.tier ?? "") ? (o.tier as Tier) : "standard";
     const cast = await this.d.store.cast(userId);
     const photos = (o.photos ?? []).slice(0, 4);
@@ -363,7 +345,7 @@ export class CinemaService {
     const p: Picture = { id, ownerId: userId, words, kind, model: out.model, key, type: out.type, paise, note: out.note, createdAt: this.now() };
     await this.d.store.addPicture(p);
     this.d.live(userId);
-    return { ...p, url: signMedia(key) };
+    return publicPicture(p, signMedia(key));
   }
 
   async deletePicture(userId: string, id: string): Promise<void> {
@@ -436,6 +418,8 @@ export class CinemaService {
     const left = f.budgetPaise - f.spentPaise - (this.reserved.get(f.id) ?? 0);
     for (const s of steps(f, { now: this.now(), busy, cost, left })) {
       if (s.kind === "move") {
+        // Short of budget: extended by itself within the limits, and the next tick carries on; past them, the film waits.
+        if (s.hold === "budget" && f.hold !== "budget" && (await this.extend(f))) continue;
         await this.move(f, s.status, s.hold);
         continue;
       }
@@ -494,7 +478,7 @@ export class CinemaService {
   private async sheet(f: Film, of: "character" | "place" | "look", key: string, images: CatalogImageModel[]): Promise<void> {
     const b = f.script!.bible;
     const m = stillModel(images, 0);
-    if (!m) throw new CinemaError(503, "No picture model is available.", "no_model");
+    if (!m) throw new CinemaError(503, "Pictures can't be made just now. Try again in a few minutes.", "no_model");
     const prompt = of === "look" ? lookPrompt(b) : of === "character" ? characterSheetPrompt(b.characters.find((c) => c.key === key)!, b) : placeSheetPrompt(b.places.find((p) => p.key === key)!, b);
     const aspect = of === "look" ? f.aspect : of === "character" ? "3:2" : "16:9";
     const img = await this.d.media.image({ model: m.id, prompt, aspect });
@@ -513,7 +497,7 @@ export class CinemaService {
     const card = f.script!.shots.find((c) => c.n === n)!;
     const b = f.script!.bible;
     const m = stillModel(images, 3);
-    if (!m) throw new CinemaError(503, "No picture model is available.", "no_model");
+    if (!m) throw new CinemaError(503, "Pictures can't be made just now. Try again in a few minutes.", "no_model");
     const refs = stillRefs(card, b, m.maxRefs);
     const refUrls: string[] = [];
     for (const r of refs) {
@@ -632,7 +616,7 @@ export class CinemaService {
     const failed = x.takes.filter((t) => t.n === n && t.of === of && t.status === "failed");
     const last = failed.at(-1);
     if (last && failed.filter((t) => t.model === last.model).length >= PROVIDER_FAILS && !st.blamed.includes(last.model)) st.blamed.push(last.model);
-    if (failed.length >= PROVIDER_FAILS * 2) Object.assign(st, { failedOf: of, error: last?.error ?? "The video service could not make this shot." });
+    if (failed.length >= PROVIDER_FAILS * 2) Object.assign(st, { failedOf: of, error: `Shot ${n} couldn't be made just now. Try again, or change its words.` });
   }
 
   private async poll(f: Film, takeId: string): Promise<void> {
@@ -816,12 +800,21 @@ export class CinemaService {
   }
 
   private canAgree(userId: string, f: Film, add: number): void {
-    if (f.budgetPaise + add > this.d.filmMaxPaise) throw new CinemaError(402, `That is more than one film may cost (₹${Math.floor(this.d.filmMaxPaise / 100)}). Make it shorter or lower the quality.`, "cinema_film_cap");
-    if (this.spentToday(userId) + add > this.d.dailyPaise) throw new CinemaError(429, "That is more than today's spending on films and pictures allows. It starts again tomorrow.", "cinema_day");
+    if (f.budgetPaise + add > this.d.filmMaxPaise) throw new CinemaError(402, "This film is bigger than one film can be. Make it shorter or choose a lower quality.", "cinema_film_cap");
+    if (this.spentToday(userId) + add > this.d.dailyPaise) throw new CinemaError(429, "Today's films and pictures are used up. It starts again tomorrow, or see the plans.", "cinema_day");
+  }
+
+  /** A quarter more budget for a film whose retakes need it, within the film's and the day's limits and the plan's allowance. */
+  private async extend(f: Film): Promise<boolean> {
+    const add = Math.min(Math.max(500, Math.ceil(f.budgetPaise * 0.25)), this.d.filmMaxPaise - f.budgetPaise, this.d.dailyPaise - this.spentToday(f.ownerId));
+    if (add < 100) return false;
+    if (this.d.allowance && (await this.d.allowance(f.ownerId).catch(() => null))) return false;
+    await this.update(f.ownerId, f.id, (x) => { x.budgetPaise += add; });
+    this.addDay(f.ownerId, add);
+    return true;
   }
 
   private async view(f: Film): Promise<FilmView> {
-    const models = await this.d.models().catch(() => ({ video: [], image: [] }));
     const links: Record<string, string> = {};
     const link = (k: string | null | undefined) => { if (k) links[k] = signMedia(k); };
     const b = f.script?.bible;
@@ -832,18 +825,7 @@ export class CinemaService {
     f.takes.forEach((t) => { if (f.shots.some((s) => s.take === t.id)) link(t.video); });
     link(f.cut.video);
     link(f.cut.srt);
-    const shotModels: Record<number, string> = {};
-    if (f.script) {
-      for (const card of f.script.shots) {
-        const chosen = f.takes.find((t) => t.id === shotOf(f, card.n)?.take);
-        const next = route({ card, style: f.script.bible.style, aspect: f.aspect, tier: f.tier, models: models.video, blamed: shotOf(f, card.n)?.blamed ?? [] })[0];
-        const id = chosen?.model ?? next?.model.id;
-        if (id) shotModels[card.n] = models.video.find((m) => m.id === id)?.name ?? id;
-      }
-    }
-    const board = f.script && (f.status === "script" || f.status === "boarding") ? boardQuote(f.script, stillModel(models.image, 3), this.d.fx) : null;
-    const price = f.script && (f.status === "board" || f.status === "script" || f.hold === "budget") ? filmQuote(f.script, f, models.video, this.d.fx) : null;
-    return { film: f, title: b?.title || "New film", board, price, links, models: shotModels, dayLeft: Math.max(0, this.d.dailyPaise - this.spentToday(f.ownerId)) };
+    return { film: publicFilm(f), title: b?.title || "New film", links };
   }
 }
 
@@ -860,7 +842,7 @@ export function rowOf(f: Film): FilmRow {
   const poster = f.shots.find((s) => s.still)?.still ?? f.script?.bible.lookRef ?? null;
   return {
     id: f.id, title: f.script?.bible.title || "New film", status: f.status, hold: f.hold, aspect: f.aspect, shots: f.script?.shots.length ?? 0, done,
-    seconds: f.cut.seconds || (f.script?.shots.reduce((n, s) => n + s.seconds, 0) ?? 0), spentPaise: f.spentPaise, budgetPaise: f.budgetPaise,
+    seconds: f.cut.seconds || (f.script?.shots.reduce((n, s) => n + s.seconds, 0) ?? 0),
     poster: poster ? signMedia(poster) : null, updatedAt: f.updatedAt,
   };
 }

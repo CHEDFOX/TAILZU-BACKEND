@@ -151,10 +151,11 @@ const CINEMA: BotDef = {
   id: CINEMA_SLUG, ownerId: null, slug: CINEMA_SLUG, name: "Cinema", colour: "stone",
   purpose: PURPOSE.cinema,
   principles: [
-    "Answer from their own films and pictures; never invent a shot, a price or a model.",
-    "Say first what is waiting for them: a script, a storyboard, a price, a shot.",
-    "Never say a film was made, approved or paid for: that is done on the cinema page, by them.",
+    "Answer from their own films and pictures; never invent a shot or a detail.",
+    "Say first what is waiting for them: a script, a storyboard, a shot.",
+    "Never say a film was made or approved: that is done on the cinema page, by them.",
     "To make or change a film or a picture, point them to the cinema page.",
+    "Never name the AI models or services behind a film or a picture, nor what anything costs.",
   ],
   // Its films are its own service's (src/cinema): no tools here; the chat reads their films and pictures (cinema/digest.ts).
   skills: skills({}),
