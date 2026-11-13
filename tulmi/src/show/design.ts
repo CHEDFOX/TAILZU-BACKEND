@@ -35,12 +35,12 @@ const ANSWER_CHARS = 2_400;
 const ASKED_CHARS = 600;
 const LINKS_SHOWN = 8;
 
-/** Whether drawing is on (BOT_SHOW, config.ts). On when the settings cannot be read. */
+/** Whether drawing is on (BOT_SHOW, config.ts; off by default). Off when the settings cannot be read. */
 export function showOn(): boolean {
   try {
-    return getConfig().BOT_SHOW !== false;
+    return getConfig().BOT_SHOW === true;
   } catch {
-    return true;
+    return false;
   }
 }
 

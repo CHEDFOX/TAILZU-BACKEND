@@ -1,6 +1,6 @@
 # Being built right now (read before you start)
 
-Updated 13 Nov 2026, 22:40 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 13 Nov 2026, 23:00 UTC. One session is building the items below. Do not edit the files they hold until the item is
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
 
 ## Landed today (on main, every switch off by default)
@@ -35,6 +35,17 @@ Next, after those land: the renderer wiring (`src/sdui/Renderer.tsx`, `actions.t
 (`TAILZU-BACKEND/shared/types/sdui.ts`, `tulmi/src/experience/sdui2/**`, `tulmi/src/routes/app/**`) and the desktop copy
 (`TAILZU-DESKTOP/src/app/sdui/v2/**`, `nodes.js`, `core.js`).
 
+## In progress (server: TAILZU-BACKEND)
+
+- **What a bot draws under its words** (`docs/show.md`, behind `BOT_SHOW`, off by default; server only, nothing new in the apps):
+  after a bot answers in its chat, the `bot_show` role picks building blocks or none (a choice to tap, a callout, steps, a table,
+  a chart, next questions, a form, a drawing), drawn as monochrome dot art whose pieces spring in on `Rise`, with Blip beside a
+  drawing now and then. Built on `claude/keen-allen-podunv`, not on main yet. Holds `tulmi/src/show/**`,
+  `tulmi/src/experience/bots/show.ts`, `tulmi/src/experience/bots/screens/bots/parts.ts` (`botTurn`, `chatTurns`),
+  `tulmi/src/bots/run.ts` (step 7), `tulmi/src/botsBots/chat.ts` (picks), the chat POST in `tulmi/src/routes/bots/botsBots.ts`, the
+  `bot_show` role in `tulmi/src/principles/roles.ts`, `docs/show.md`. It touches none of the files the phone items hold, and
+  leaves `shared/types/sdui.ts` exactly as main has it.
+
 ## Numbers in use
 
 - Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days. Take the next free number and
@@ -43,4 +54,7 @@ Next, after those land: the renderer wiring (`src/sdui/Renderer.tsx`, `actions.t
 
 ## Notes from other sessions
 
-(none yet)
+- From the bot drawings (server): once "motion and gestures on any node" lands, the drawings in
+  `tulmi/src/experience/bots/show.ts` (`SPRING`, `piecesOf`) can move to it, for real physics on the window too (today a Rise is a
+  real spring on the phone and a CSS ease on the window) and a touch that pushes the dots. Nothing to do on the phone's side for
+  it; just say here when it is on main.

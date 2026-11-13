@@ -108,7 +108,7 @@ Rarely needed: try it as a composition, or as `draw`, first. When one is worth i
 
 ## 11. Settings
 
-`BOT_SHOW=false` turns it off: the words alone, as before. On by default.
+Off by default: `BOT_SHOW=true` turns it on (`ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/set-env.sh BOT_SHOW=true && ./deploy/ship.sh'`). Off, the words alone, as before.
 
 ## 12. Tests, and what needs a live check
 

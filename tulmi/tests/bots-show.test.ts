@@ -3,7 +3,7 @@
  *
  *   - after the words, the drawing is asked for where the answer is drawn (the app's chat; never an API caller, never over a yes, never a "Done."),
  *     and kept on the answer
- *   - its call comes off the request's money; BOT_SHOW=false turns it off
+ *   - its call comes off the request's money; it is off unless BOT_SHOW=true
  *   - a link may come from a tool's result, never from the bot's own words
  *   - the chat keeps it with the bot's turn, and the person can answer it: a tap sends words; picks and a form come back as words
  *   - the chat draws it with the kit's own parts on the phone and in the window: live on the last turn, still (with the pick) on an older one
@@ -50,6 +50,7 @@ const model = (words: string | ((s: Sent, n: number) => unknown), drawn: unknown
 const made = async (r: Awaited<ReturnType<typeof rig>>, over: Record<string, unknown> = {}) => (await r.bots.create(ALICE, def({ slug: "buddy", ...over }))).bot;
 
 describe("in the run", () => {
+  beforeEach(() => { process.env.BOT_SHOW = "true"; resetConfigForTests(); });
   afterEach(() => { delete process.env.BOT_SHOW; resetConfigForTests(); });
 
   it("draws after the words and keeps it on the answer, its cost on the request", async () => {
@@ -81,8 +82,8 @@ describe("in the run", () => {
     expect(r.model.of("bot.show")).toHaveLength(0);
   });
 
-  it("is off with BOT_SHOW=false", async () => {
-    process.env.BOT_SHOW = "false";
+  it("is off unless BOT_SHOW=true", async () => {
+    delete process.env.BOT_SHOW;
     resetConfigForTests();
     const r = await rig(model(QUESTION));
     await made(r);
@@ -111,7 +112,8 @@ describe("in the run", () => {
 });
 
 describe("in the chat", () => {
-  beforeEach(() => resetAreaTablesForTests());
+  beforeEach(() => { resetAreaTablesForTests(); process.env.BOT_SHOW = "true"; resetConfigForTests(); });
+  afterEach(() => { delete process.env.BOT_SHOW; resetConfigForTests(); });
 
   async function served(words: string | ((s: Sent, n: number) => unknown) = QUESTION, drawn: unknown = DRAWN) {
     const r = await rig(model(words, drawn));

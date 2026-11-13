@@ -833,10 +833,10 @@ const EnvSchema = z.object({
   /**
    * WHAT A BOT DRAWS UNDER ITS WORDS (src/show, docs/show.md): after a bot answers in the app's chat, one small call decides whether a choice to tap, a
    * callout, the steps, a table, a chart, next questions or a drawing would help, and draws it from the building blocks the apps already draw (no
-   * release). An answer it would not help (a greeting, "Done.") is never asked about, and what it costs comes off the bot's request. BOT_SHOW=false
-   * turns it off: the words alone, as before.
+   * release). An answer it would not help (a greeting, "Done.") is never asked about, and what it costs comes off the bot's request. Off by
+   * default (the words alone, as before); BOT_SHOW=true turns it on.
    */
-  BOT_SHOW: bool(true),
+  BOT_SHOW: bool(false),
   /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which
