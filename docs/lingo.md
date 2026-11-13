@@ -171,7 +171,52 @@ ordinary bot loop with the course as its knowledge (`digest.ts`) — the pair, t
 the words due now with the ones never said marked. So "what should I practise?" is answered from the real table in
 one model call, and the conversation can be steered onto what is about to be forgotten.
 
-## 9. What is built
+## 9. The sentence bank: not writing the exercises
+
+A sentence pair IS an exercise. "Me gustaría un café" against "I would like a coffee" is already something to type,
+something to hear, and a set of words to put in order — with nothing written by anybody. So the quickest way to a
+good lesson is not to invent sentences but to pour in a public corpus and pick well from it.
+
+`lingo_sentences` (migration 0089) is that bank, and it is **shared by everybody**: no `user_id`, nobody's data,
+poured in once. `src/lingo/sentences.ts` reads it, `scripts/lingo-seed.ts` fills it:
+
+```bash
+npx tsx scripts/lingo-seed.ts --lang es --gloss en --file ~/tatoeba-es-en.tsv --licence CC0-1.0
+```
+
+The file comes from Tatoeba's **Custom exports → Sentence pairs**, which gives a TSV for any pair of languages.
+Both shapes of that export are read, with usernames and without. Any TSV of a sentence and its translation works,
+so this is not really tied to one corpus.
+
+### The licence gate
+
+This is the part worth being careful about. A corpus is thousands of people's writing, **each under whatever
+licence that person chose**, and only some of it may appear in something people pay for. So the licence and the
+author are kept PER ROW, and one function decides (`usable`):
+
+| | |
+| --- | --- |
+| Allowed | `CC0-1.0`, `PD` — ask for nothing; `CC-BY-*` — allowed, must credit the author |
+| Refused | non-commercial, share-alike, no-derivatives, **and a blank licence**, which in a corpus usually means nobody said |
+
+A refused row is **never stored** — not stored and filtered later, never stored. `credits()` gathers who must be
+named, by corpus, so a credits screen can be built from what was actually shown.
+
+What that ruled out, after reading the licences rather than assuming them: **Tatoeba's audio** (licensed per clip,
+some of it non-commercial, and a blank licence means it may not leave Tatoeba — the server's own speech is used
+instead) and **kaikki.org / Wiktionary** (CC BY-SA, whose share-alike would reach anything derived from it).
+
+### Finding one
+
+`using(lang, gloss, word)` finds the sentences that use a word, **through the same folding that marks an answer**,
+so the bank and the marking can never disagree about what a word is. It searches the folded text rather than
+splitting on spaces, which is the only way that works in a script that has none.
+
+`around(lang, gloss, maxWords)` finds sentences of about a length, for a level. How long a sentence is depends on
+its SCRIPT, not on whether it happens to contain a space: words where the script separates them, characters where
+it does not.
+
+## 10. What is built
 
 Built, tested and typechecked: the tables, the shapes (`types.ts`), the scheduler (`schedule.ts`), the marking
 (`grade.ts`), what is kept (`store.ts`), a session (`session.ts`), the chat's knowledge (`digest.ts`), the doors
@@ -182,14 +227,16 @@ chat. Every exercise is drawn with node kinds the apps ALREADY draw — `Chip`, 
 `VoiceButton`, `VoiceLive`, `BotCall` — so none of this needs an app release, now or later.
 
 Not built yet: a page of its own (it uses the standard bot page until it earns one), the screens that draw an
-exercise, and the call that rings somebody to talk.
+exercise, drawing a session's sentences from the bank rather than from the person's own items, and the call that
+rings somebody to talk.
 
 There is no seeded course and there is not going to be one. A course cannot be hand-written a hundred times over, so
 the items come from the model and from use: `source` records which, and the table fills with what this person
 actually reaches for. A word list for a particular pair can be poured in later where one exists, but nothing waits
 on it and no pair is anybody's first.
 
-## 10. Tests
+## 11. Tests
 
-`lingo-schedule.test.ts`, `lingo-grade.test.ts` and `lingo-session.test.ts` are pure: no store, no model, no clock
-of their own, and nothing in them needs a key. `lingo-routes.test.ts` runs the real routes over the memory store.
+`lingo-schedule.test.ts`, `lingo-grade.test.ts`, `lingo-session.test.ts` and `lingo-sentences.test.ts` are pure:
+no store, no model, no clock of their own, and nothing in them needs a key. `lingo-routes.test.ts` runs the real
+routes over the memory store.
