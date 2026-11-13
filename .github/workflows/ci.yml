@@ -35,6 +35,11 @@ jobs:
       - name: Install (frozen)
         run: npm ci --no-audit --no-fund
 
+      # The server image installs ffmpeg (tulmi/Dockerfile): words read aloud are encoded with it, and its tests run it. The
+      # runner image stopped carrying it, so it is installed here as the server does.
+      - name: ffmpeg, as on the server
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -82,7 +87,8 @@ jobs:
   # The artifact viewer Worker (viewer/). Its vendored libraries (~8 MB) are not committed: `npm run build` fetches the pinned packages from
   # npm (viewer/vendor-src/package-lock.json) and bundles them; `--verify` checks the result against viewer/vendor.lock.json.
   viewer:
-    runs-on: ubuntu-latest
+    # Playwright 1.56 has no Chromium for Ubuntu 26.04, which ubuntu-latest now is: held on 24.04 until Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
