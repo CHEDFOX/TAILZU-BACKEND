@@ -6,7 +6,8 @@
 
 import { type BotsCtx, page, emptyState, call, seq, col, text, meta, row, primaryButton, button, C } from "../../kit.js";
 import { said } from "../../said.js";
-import { type OneSpace, failed, enc, A, clearState, toast, refresh, ifFilled, field, section, rowsCard, inviteRows, isDesk, inputBox } from "./parts.js";
+import { type OneSpace, failed, enc, A, clearState, toast, refresh, ifFilled, field, mailPreview, PREVIEW_STATE, section, rowsCard, inviteRows, isDesk, inputBox } from "./parts.js";
+import { pickContact } from "./pickContact.js";
 
 // ===================================================================== bots.space.invite
 export function invitePage(ctx: BotsCtx, d: OneSpace | undefined) {
@@ -24,11 +25,13 @@ export function invitePage(ctx: BotsCtx, d: OneSpace | undefined) {
   const shareCode = isDesk(ctx) ? { kind: "copyText" as const, text: code, message: "Code copied" } : { kind: "share" as const, text: words, title: `Join ${s.name}` };
   return page(ctx, {
     back: true, title: `Invite to ${s.name}`, nav: "you", maxWidth: 720, live: [`space:${s.id}`],
-    state: { email: "" },
+    state: { email: "", ...PREVIEW_STATE },
     body: [
       col([text(`Bring someone into ${s.name}`, { size: 22, weight: 700, tracking: -0.4, lineHeight: 28 }), meta("They get an email with an invite and the space's code.", { size: 13 })], { gap: 4 }),
       section("Their email", [
         inputBox([field("email", "email", "name@example.com", { keyboard: "email-address", onSubmit: send })]),
+        ...pickContact(ctx),
+        ...mailPreview(s.mailPreview),
         meta("The email tells them that you, the space's admin, can see and share their work and messages there.", { size: 12 }),
       ]),
       ...(code ? [section("The space's code", [

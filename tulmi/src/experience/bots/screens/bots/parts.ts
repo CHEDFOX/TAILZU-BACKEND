@@ -2,6 +2,7 @@
  * What several of the Bots area's screens share.
  */
 
+import type { Moves } from "../../../../bots/healthDays.js";
 import { PUSH_BUTTON_CAPABILITY, type ActionSpec, type ActionRef, type Node } from "../../../../../../shared/types/sdui.js";
 import { SENT_WORDS, done as momentDone, failed, start as momentStart, streamed, askMoment } from "../../askMoment.js";
 import {
@@ -22,7 +23,8 @@ export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // ===================================================================== what the screens read
 export interface BotView {
   slug: string; name: string; colour: string; purpose: string; principles: string[]; tone: string; builtin: boolean; publicCard: boolean;
-  skills: { web: boolean; files: boolean; artifacts: boolean; code: boolean; research: boolean; connectors: string[] };
+  /** `health`: Apple Health / Health Connect on a fitness bot the person made (docs: perms §4). Absent on an old answer. */
+  skills: { web: boolean; files: boolean; artifacts: boolean; code: boolean; research: boolean; health?: boolean; connectors: string[] };
 }
 interface Fact { id: string; text: string; createdAt: number }
 export interface Memory { facts: Fact[]; summary: string; turns: number }
@@ -232,7 +234,11 @@ export function chatBar(ctx: BotsCtx, slug: string, name: string, placeholder?: 
 }
 
 // ===================================================================== bots.bot and bots.chat
-export interface BotPageData { bot?: BotView; memory?: Memory; linked?: Linked[]; turns?: Turn[] }
+export interface BotPageData {
+  bot?: BotView; memory?: Memory; linked?: Linked[]; turns?: Turn[];
+  /** Counts for the Moves line, from GET /v1/bots/:slug; only the owner's own fitness bot with its switch on has one. */
+  moves?: Moves;
+}
 
 /** While a chat message is on its way to the bot and its answer is coming (sendToBot's `sending`): the bot thinks. */
 export const ANSWERING = { truthy: "sending" };

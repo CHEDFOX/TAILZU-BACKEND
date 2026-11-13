@@ -52,7 +52,9 @@ section 1 says.
 | What a space's admin sees and shares | Once a member agreed to "The space's admin can see and share your work and messages here.": their messages to one person in the space, and their own plans, notes, trips and Xode projects (to read, move a plan's time, add notes, and share one with someone in the space or everyone there; the member is not told of each share, and only the admin stops it) | `tulmi/src/botsBots/work.ts`, `grants.ts`, `spaceFeed.ts`, `space_members.consent_ms` (0068) and `consent_v` (0069) | While they are both in the space |
 | Photos, videos and files | What the person picks or takes to give to a bot or send in a chat (and, with the image and video bots, what they make) | `app/src/sdui/media.ts` uploadFile → `POST /v1/files` (`tulmi/src/routes/files.ts`, `src/media`, `media_items`, a storage bucket) | `MEDIA_KEEP_DAYS` (30 days) unless sent or shared; until deleted |
 | Other user content | Bots' chats and what they remember, asks to bots (200 characters in Activity), meeting notes, the calendar and to-dos, trips and places typed in, Code bot projects | `bot_chat_turns`, `bot_facts` (0038, 0042), `bots_app_events` (0040, 90 days), `notes` (0014), `calendar_events`/`calendar_tasks` (0054), `trips`, `plan_prefs` (0042, 0052), `code_projects` (0020+) | Until deleted |
-| Contacts (people you invite) | Email addresses typed to invite someone to a space; who is in your spaces; who asked to join a space with its code (their name, for its admin). The phone's contacts are never read | `tulmi/src/botsBots/spaces.ts` inviteEmail, `spaceJoin.ts`, `space_invites.email`, `space_join_requests` (0068), `space_members`; `mail_outbox` | Invites: 7 days; requests: until the space is deleted; members: until they leave or are removed |
+| Contacts (people you invite) | Email addresses **typed, or picked from the phone's own contact picker**, to invite someone to a space; who is in your spaces; who asked to join a space with its code (their name, for its admin). The picker runs outside the app, needs no permission, and hands back only the one address tapped: **the address book itself is never read, uploaded, hashed, counted or matched** | `tulmi/src/botsBots/spaces.ts` inviteEmail, `inviteMail.ts`, `spaceJoin.ts`, `space_invites.email`, `space_join_requests` (0068), `space_members`; `mail_outbox`; the picker: `app/modules/tulmi-perms` `pickEmail`, SDUI action `contact.pick` | Invites: open 7 days, the row deleted 7 days after it expires; the invite mail deleted 7 days after it was queued once sent, failed or cancelled (`botsBots/inviteSweeper.ts`); requests: until the space is deleted; members: until they leave or are removed. Both go with the account |
+| Where your day starts (coarse location) | The NAME of an area ("HSR Layout, Bengaluru"), typed, or filled in by one tap on *Use my location* on Plan Ease's day-starts card. On that tap the phone takes one foreground fix and **the phone's own geocoder** (Apple's on iPhone, Google's on Android) turns it into the area's parts; only those words reach JavaScript and only they are sent, after the person reads them and taps Save. **No coordinate ever reaches X0 Bot's servers**, and no street, house number or postcode is kept. Location while the app is closed is never asked for | `app/modules/tulmi-perms` `locationArea` (iOS `CLLocationManager` + `CLGeocoder`, accuracy 1 km; Android `LocationManager` network provider + `Geocoder`, `ACCESS_COARSE_LOCATION` only), SDUI action `location.area`, `PUT /v1/botsapp/bots/plan/home` → `planTravel.setHome`, `plan_prefs.home` | Until the person changes it, forgets it (You › Privacy › What this phone shares), or deletes the account |
+| Health and fitness | Only for a bot the person made about fitness, and only after they switch on *Count my workouts* on its edit page: their **daily step total**, and each **workout's kind and minutes**. Nothing else — no heart rate, sleep, weight, routes, raw samples, times finer than a day, or which device or app it came from. Read only while that bot's page is open, at most once an hour, never in the background, and never written back to Apple Health or Health Connect. **Never sent to any AI service, never used for ads or marketing, never sold, never in a notification, widget or the phone's page cache** | `@kingstinct/react-native-healthkit` (iOS) / `react-native-health-connect` (Android) through `app/src/device/natives.ts`, SDUI action `health.sync`, `POST /v1/bots/:slug/health/days` (`routes/bots/botHealth.ts`), `bots/healthDays.ts`, `bot_health_days` (0090) | 31 days, swept by the clock; deleted the moment the switch goes off, with the bot, with Delete my data and with the account; gone from the encrypted backups within 30 days |
 | People on a reminder | Who does one of the person's own items, in order: only people already in their X0 people (a space they share), as their account id and the name the person knows them by; whether an item is must not miss; every step X0 took for it (pushed, called, skipped and why) and every answer (Done, Later, Can't, and how). Optionally a number the person types for someone on their items, sealed, only to open their own phone's dialler (X0 never calls or messages it). Nothing is ever sent to anyone without X0 | `tulmi/src/botsBots/planFollow.ts`, `planFollowPeople.ts`, `calendar_tasks.people`/`calendar_events.people`, `plan_follows`, `plan_follow_steps`, `plan_numbers` (0081) | Follows: 90 days after they close; numbers: until removed, or until either account is deleted. A person's own account deletion also removes every number others saved for them (`plan_numbers.member_id` cascades, and `PlanFollows.forget` runs in the delete) and clears their name from other people's follows (shown as "Someone") |
 | Phone number for real calls | Only if the person turns on "X0 may call my phone if I miss something important" (off by default, and only once real calls are set up): their own number, proved theirs by a call from it typing the code their screen shows, sealed, and when they agreed. A number whose owner pressed 9 on a call is kept only as a keyed hash, so X0 never calls it again (a do-not-call list: no number, no account). The calling provider (Plivo) gets the number and the reminder's lock-safe words for each call | `tulmi/src/botsBots/planFollowChannels.ts`, `plan_phones`, `plan_phone_stops` (0081), Backend B's `followPhone.ts` | The number: until they remove it or the account is deleted; the do-not-call hash: until a fresh proving call from that phone lifts it |
 | Reports and blocks | A report: reason, note, a copy of what was reported; whom a person blocked | `tulmi/src/botsBots/safety.ts`, `blocks.ts`, `content_reports`, `user_blocks` (0057) | Reports: kept as a safety record; blocks: until unblocked or deleted |
@@ -64,10 +66,12 @@ section 1 says.
 | Push token | To deliver notifications the person allowed | `app/src/notifications/push.ts`, `push_tokens` (0005) | Until sign-out or deletion |
 | Advertising ID (Android) | Read by Meta's SDK, for ad measurement | `app/src/telemetry/meta.ts`, `advertiserIDCollectionEnabled` in `app.config.ts` | Meta's policy |
 
-**Not collected:** precise or coarse location (no location permission or API; places for Travel and Plan are typed text, and the
-time zone offset is a setting), the phone's contacts, calendars or reminders (the app keeps its own calendar on the server),
-health or fitness, browsing history, search history, the music library, Bluetooth, motion data, payment card numbers, the IDFA on
-iPhone. Typing in the keyboard is never sent except when the person uses the mic or a refine action, and never from secure fields.
+**Not collected:** precise location (nothing finer than an area's name is ever kept, and the iPhone prompt starts on
+approximate), location while the app is closed (no Always permission, no background location, no geofence), the phone's
+**address book** (the system picker hands back one address and the book is never read), the phone's calendars or reminders (the
+app keeps its own calendar on the server), any health type but daily steps and workouts, browsing history, search history, the
+music library, Bluetooth, motion data, payment card numbers, the IDFA on iPhone. Typing in the keyboard is never sent except
+when the person uses the mic or a refine action, and never from secure fields.
 
 ## 3. App Store: App Privacy
 
@@ -83,7 +87,10 @@ Sentry on, PostHog off.
 | Contact Info | Name | App Functionality | Profile; shown to people in your spaces |
 | Contact Info | Email Address | App Functionality | Sign-in; space invites by email |
 | Contact Info | Phone Number | App Functionality | Phone sign-in only |
-| Contacts | Contacts | App Functionality | Email addresses you type to invite people to a space, and your spaces' members. The phone's contacts are never read |
+| Contacts | Contacts | App Functionality | Email addresses you type **or pick from your contacts** to invite people to a space, and your spaces' members. The address book itself is never read |
+| Location | Coarse Location | App Functionality | The area your day starts from, when you tap *Use my location* (the name only, never a coordinate) |
+| Health and Fitness | Health | App Functionality | Daily steps and workouts, for a fitness bot you switched on |
+| Health and Fitness | Fitness | App Functionality | The same daily steps and workouts (declare only in a release whose build reads them) |
 | User Content | Emails or Text Messages | App Functionality | Messages in Spaces' chats and feeds (a message to one person is also seen by the space's admin) |
 | User Content | Photos or Videos | App Functionality | Photos and videos you give to a bot, send in a chat, or make with the image and video bots |
 | User Content | Audio Data | App Functionality | Dictation and voice asks (turned into text, then discarded) and the live voice of a call from Plan Ease (not stored by X0 Bot; its words are kept in the Plan Ease chat) |
@@ -99,8 +106,10 @@ Sentry on, PostHog off.
 
 **Data Not Linked to You:** none.
 
-**Not collected:** Health and Fitness, Financial Info's payment info and credit info, Location (precise and coarse), Sensitive
-Info, Browsing History, Search History, Identifiers' Device ID (no IDFA; with Meta off on iPhone), Usage Data's Advertising Data.
+**Not collected:** Financial Info's payment info and credit info, **Precise Location** (nothing precise is collected; the
+prompt starts on approximate and only an area's name is kept), Sensitive Info, Browsing History, Search History, Identifiers'
+Device ID (no IDFA; with Meta off on iPhone), Usage Data's Advertising Data. Every type above is **linked** to the account,
+used for **App Functionality**, and **not used for tracking**.
 
 Notes for the questions App Store Connect asks along the way:
 
@@ -178,7 +187,9 @@ providers acting for X0 Bot are not "shared". "Optional" = the app works without
 | Audio | Voice or sound recordings | Yes (dictation, and the live voice of a call from Plan Ease) | No | Yes | Optional (needed for dictation) | App functionality |
 | Files and docs | Files and docs | Yes (files given to a bot or sent in a chat) | No | No | Optional | App functionality |
 | Calendar | Calendar events | Yes (the app's own calendar, events the person adds; not the phone's) | No | No | Optional | App functionality |
-| Contacts | Contacts | Yes (emails typed to invite people, and spaces' members; not the phone's contacts) | No | No | Optional | App functionality |
+| Contacts | Contacts | Yes (emails typed **or picked from the phone's contact picker** to invite people, and spaces' members; the address book itself is never read) | No | No | Optional | App functionality |
+| Location | Approximate location | Yes (the name of the area your day starts from, when you tap *Use my location*) | No | Yes | Optional | App functionality |
+| Health and fitness | Fitness info | Yes (daily steps and workouts, for a fitness bot you switched on) — **only in a release whose Android build has Health Connect** | No | Yes | Optional | App functionality |
 | App activity | App interactions | Yes (usage counts) | No | No | Required | App functionality, Analytics |
 | App activity | Other user-generated content | Yes (dictated text and history, bots' chats, notes, shared things, reports) | No | No | Optional | App functionality, Personalization |
 | App activity | Other actions | Yes (install, opens and three milestones, to Meta) | **Yes, Meta** | No | Required | Advertising or marketing, Analytics |
@@ -186,9 +197,15 @@ providers acting for X0 Bot are not "shared". "Optional" = the app works without
 | App info and performance | Diagnostics | Yes (keyboard counters, performance traces) | No | No | Required | Analytics |
 | Device or other IDs | Device or other IDs | Yes (push token; the advertising ID, read by Meta's SDK) | **Yes, Meta** (advertising ID) | No | Required | App functionality (push), Advertising or marketing, Analytics (advertising ID) |
 
-**Not collected:** Location (approximate and precise), Web browsing, Health and fitness, Payment info (cards are handled by Google
-Play), Credit score, Race and ethnicity, Political or religious beliefs, Sexual orientation, Address, SMS or MMS, Emails, Music files,
-Other audio files, Installed apps, In-app search history, Contacts from the phone.
+**Not collected:** Precise location, Web browsing, Health info (only Fitness info above, and only with Health Connect in the
+build), Payment info (cards are handled by Google Play), Credit score, Race and ethnicity, Political or religious beliefs,
+Sexual orientation, Address, SMS or MMS, Emails, Music files, Other audio files, Installed apps, In-app search history,
+**the phone's address book** (the system picker returns one address and needs no permission).
+
+**Deletion answers:** everything above is deleted on request (You › Privacy › Delete my data, or Delete account, or
+x0bot.com/delete-account). Steps and workouts are also deleted the moment the person switches the bot's row off, and after 31
+days whether or not they do. Our database backups are encrypted and kept 30 days, so anything deleted is gone from them within
+30 days.
 
 If Meta is switched off on Android too (`ads.meta.enabled` false for `android`, or no `META_APP_ID` in the build), change "Other
 actions" and the advertising ID to not collected and not shared, and answer "No" to sharing overall.
@@ -196,8 +213,12 @@ actions" and the advertising ID to not collected and not shared, and answer "No"
 **Android permissions the build asks for** (`app/app.config.ts`, after this change): microphone (`RECORD_AUDIO`, dictation and the
 keyboard), notifications (`POST_NOTIFICATIONS`), camera (`CAMERA`, from expo-image-picker and expo-camera: taking a photo to use),
 biometrics (`USE_BIOMETRIC`, approvals), billing, network state, vibrate, and storage up to Android 12 only (`READ/WRITE_EXTERNAL_STORAGE`
-with `maxSdkVersion` 32). `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO` and `READ_MEDIA_VISUAL_USER_SELECTED` are
-blocked: the system photo picker needs no permission. No contacts, calendar or location permission is in the build.
+with `maxSdkVersion` 32), **`ACCESS_COARSE_LOCATION`** (one foreground fix on *Use my location*), and, only in a build with the
+Android health switch on, **`android.permission.health.READ_STEPS`** and **`android.permission.health.READ_EXERCISE`**.
+`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `READ_MEDIA_AUDIO` and `READ_MEDIA_VISUAL_USER_SELECTED` are blocked: the system photo
+picker needs no permission. So are `ACCESS_FINE_LOCATION`, `ACCESS_BACKGROUND_LOCATION`, `FOREGROUND_SERVICE_LOCATION`,
+`READ_CONTACTS`, `WRITE_CONTACTS` and `ACTIVITY_RECOGNITION`, so no library can merge one in. **No contacts permission is in
+the build**: the contact picker is an `ACTION_PICK` intent and needs none. No calendar permission is in the build.
 
 ## 5. Keep it true
 

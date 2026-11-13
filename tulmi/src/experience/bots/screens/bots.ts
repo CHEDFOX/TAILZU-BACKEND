@@ -57,6 +57,8 @@ import type { MailData } from "./bots/mailParts.js";
 import { meetPage, type MeetPageData } from "./bots/meetPage.js";
 import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
 import type { About } from "./firstRun/parts.js";
+import type { Moves } from "../../../bots/healthDays.js";
+import { HEALTH_PAGE_STATE, healthRefresh, movesLine } from "./bots/health.js";
 
 /** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
 const planV2 = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx);
@@ -68,8 +70,8 @@ const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowe
 async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean } = {}): Promise<OraclePageData & MailPageData & MeetPageData> {
   const slug = slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat, sky, about, mail, meet] = await Promise.all([
-    deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
+  const [one, memory, linked, chat, sky, about, mail, meet] = await Promise.all([
+    deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
     deps.api<{ turns: Turn[] }>("GET", `${A}/chat/${enc(slug)}?limit=${turnsLimit}`).then((r) => r.turns).catch(() => undefined),
@@ -82,7 +84,16 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
     // The meeting bot's page: its meetings (routes/bots/meet.ts), on bots.bot only (its chat is the usual one).
     slug === "meet" && o.meet ? loadMeet(ctx, deps).catch((): MeetData => ({ down: true })) : Promise.resolve(undefined),
   ]);
-  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}) };
+  // THE MOVES COUNTS, on their own route and only for a bot that is counting (docs: perms §4.6). They are asked for after
+  // the bot is known, and only then, so a page that can never show them never reads a health row, and nothing on the bot's
+  // own route carries one.
+  const moves = one?.bot?.skills.health
+    ? await deps.api<{ moves: Moves | null }>("GET", `/v1/bots/${enc(slug)}/health/moves`).then((r) => r.moves).catch(() => undefined)
+    : undefined;
+  return {
+    bot: one?.bot, memory, linked, turns: chat, ...(moves ? { moves } : {}),
+    ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}),
+  };
 }
 
 /** The Oracle is the chat and nothing in its way: its bot page and its chat are one page (screens/bots/oraclePage.ts). */
@@ -129,12 +140,17 @@ function botPhone(ctx: BotsCtx, d: BotPageData) {
   ];
   return page(ctx, {
     title: bot.name, nav: bot.slug,
+    // A page that draws a health number is never kept on the device (kit page keep), so none of it reaches the phone's
+    // AsyncStorage cache and from there the device backup and iCloud (docs: perms §4.6).
+    ...(bot.skills.health ? { keep: false as const, state: { ...HEALTH_PAGE_STATE } } : {}),
     body: [
       phoneHead(look, bot.name, stateLine(ctx, bot), undefined, headerBuddy(ctx, bot.slug, { color: look.color, lookTo: "down", thinkWhen: ANSWERING })),
       ...(turns.length
         ? [col(chatTurns(ctx, bot, turns), { gap: 14 }), ...(d.turns && d.turns.length > 2 ? [quietButton("See the whole chat", open(SCREENS.chat, { slug: bot.slug }), { size: "md" })] : [])]
         : [col([body(bot.purpose, { color: C.grey70 }), row(starters(bot.slug, bot.purpose).map((s) => chip(s, { onPress: askBot(bot.slug, s) })), { gap: 8, flexWrap: "wrap" })], { gap: 12 })]),
-      listCard(info),
+      listCard([...movesLine(ctx, bot, d.moves), ...info]),
+      // The numbers come in while the page is open, and only then: ask: false never prompts (docs: perms §4.3).
+      ...healthRefresh(ctx, bot),
     ],
     footer: [chatBar(ctx, bot.slug, bot.name)],
   });
@@ -208,6 +224,8 @@ function editPhone(ctx: BotsCtx, d: EditData) {
   const done = bot.builtin ? back() : call("PUT", `/v1/bots/${enc(bot.slug)}`, { name: "$state.name" }, { ok: back(), fail: toast("Couldn't save the name. Try again.", true) });
   return page(ctx, {
     title: `Edit ${bot.name}`, nav: bot.slug, state: p.state,
+    // The health row is on this page, so it is never kept on the device (docs: perms §4.6).
+    ...(bot.skills.health ? { keep: false as const } : {}),
     body: [
       row([
         box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()),

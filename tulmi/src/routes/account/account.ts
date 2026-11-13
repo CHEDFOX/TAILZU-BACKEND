@@ -4,6 +4,7 @@
 
 import type { FastifyRequest, FastifyInstance } from "fastify";
 import { deleteViewerData } from "../../artifacts/index.js";
+import { forgetInvitesOf } from "../../botsBots/inviteSweeper.js";
 import { planFollows } from "../../botsBots/planFollow.js";
 import type { AppleSignIn } from "../../auth/appleSignIn.js";
 import { resolveUser, supabase } from "../../auth/supabase.js";
@@ -140,6 +141,9 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       ["code_chat_threads", null], ["code_project_settings", null], ["code_pr_care", null],
       // The bots platform (migration 0038): their bots, the API keys (only hashes), saved commands, and what their bots remember of them.
       ["bots", null], ["bot_keys", null], ["bot_commands", null], ["bot_facts", null], ["bot_threads", null],
+      // A fitness bot's daily steps and workouts (migration 0090). It cascades from the account and from the bot; it is listed
+      // here so the most sensitive thing X0 Bot holds goes first and by name, not only by a cascade nobody can see.
+      ["bot_health_days", null],
       // The Oracle (migration 0078): when and where they were born, and the route of their last question.
       ["oracle_people", null],
       // The mail bot (migration 0080): the hash its worker knows their account by, for the push.
@@ -162,6 +166,10 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     // Plan Ease's follow-through (migration 0081): numbers other people kept for this person go (plan_numbers.member_id also cascades),
     // and their name leaves other people's follows. Their own follows, steps and phone go with the account just below.
     try { await planFollows().forget(user.id); } catch (err) { req.log.error({ err }, "forget follow person"); }
+    // The invites they sent and the mail those invites queued (botsBots/inviteSweeper.ts). Neither goes with the account on its
+    // own: an invite cascades from its SPACE, and an outbox row has no foreign key to anyone. Both hold someone else's address,
+    // kept only because this person typed or picked it, so both go with this person.
+    try { await forgetInvitesOf(user.id); } catch (err) { req.log.error({ err }, "forget invites and their mail"); }
 
     // Deleting the auth user takes anything missed above with it (cascade).
     try {

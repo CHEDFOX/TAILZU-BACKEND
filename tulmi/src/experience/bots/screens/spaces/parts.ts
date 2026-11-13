@@ -29,11 +29,15 @@ export interface Space {
   invites?: Invite[]; activity?: Array<{ id: string; kind: string; text: string; at: number; by: string }> | null;
   /** The space's own code, shown "7KQ-29D" (GET /spaces/:id, its admin only). */
   code?: string | null;
+  /** The invite mail as the person invited will read it (its admin only), for the preview before Send. */
+  mailPreview?: MailPreview;
   /** GET /spaces?full=1: open email invites (its admin only), the space chat's last line for everyone, and the person's unread. */
   invited?: number;
   last?: { from: string; text: string; at: number } | null;
   unread?: number;
 }
+/** src/botsBots/inviteMail.ts: the sender as the recipient sees it, the subject, and the body. */
+export interface MailPreview { sender: string; subject: string; text: string }
 interface ListLine { id: string; text: string; done: boolean }
 export interface Item {
   id: string; kind: string; title: string; spaceId: string | null; threadId: string | null; by: string; byYou: boolean; at: number; updatedAt: number;
@@ -194,3 +198,29 @@ export const kb = (bytes: number) => (bytes >= 1_048_576 ? `${(bytes / 1_048_576
 /** The bot's own name for this person ("Plan Ease"), else the sub-bot's. */
 export const subBotName = (ctx: { live: { bots: Array<{ slug: string; name: string }> } }, bot: string): string => ctx.live.bots.find((b) => b.slug === bot)?.name ?? SUB_BOTS[bot]?.name ?? bot;
 
+
+// ===================================================================== the invite mail, before it is sent
+
+/** The state the preview's "See the whole email" needs, to merge into a screen's own. */
+export const PREVIEW_STATE = { mailOpen: false };
+
+/**
+ * WHAT THE INVITE WILL LOOK LIKE TO THEM, before the person taps Send (App Review 5.1.2(v): "a clear description of how the
+ * message will appear to the recipient before sending it (for example, What will the message say? Who will appear to be the
+ * sender?)"). The sender and the subject are always out; the body is one tap away, so the box stays small.
+ *
+ * Every word comes from `inviteMail()`, the same function that writes the mail, so what is shown is what goes.
+ */
+export function mailPreview(p: MailPreview | undefined): Node[] {
+  if (!p) return [];
+  const toggle: ActionSpec = { kind: "toggleState", path: "mailOpen" };
+  return [col([
+    row([meta("From", { size: 12, style: { width: 54, flexShrink: 0 } }), meta(p.sender, { size: 12, style: { flexShrink: 1 } })], { gap: 6 }),
+    row([meta("Subject", { size: 12, style: { width: 54, flexShrink: 0 } }), meta(p.subject, { size: 12, style: { flexShrink: 1 } })], { gap: 6 }),
+    row([text("See the whole email", { size: 13, weight: 500, lineHeight: 18 }), icon("chevron", { size: 14, color: C.meta })],
+      { gap: 4, minHeight: 36, alignItems: "center" }, toggle),
+    { ...box([text(p.text, { size: 12, lineHeight: 18, color: C.grey70 })], {
+      padding: 12, borderRadius: 14, backgroundColor: C.surface,
+    }), visibleIf: { truthy: "mailOpen" } },
+  ], { gap: 2 })];
+}

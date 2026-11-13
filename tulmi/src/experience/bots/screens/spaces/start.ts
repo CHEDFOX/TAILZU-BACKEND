@@ -24,7 +24,8 @@ import {
 import { ADMIN_LINE_THERE, CONSENT_VERSION } from "../../../../botsBots/spacePerms.js";
 import { said } from "../../said.js";
 import { idParam } from "./memberPage.js";
-import { A, clearState, enc, facesRow, facesWidth, field, ifFilled, iconButton, inputBox, isDesk, personMark, refresh, shareLook, toast, type Space } from "./parts.js";
+import { A, clearState, enc, facesRow, facesWidth, field, ifFilled, iconButton, inputBox, isDesk, mailPreview, personMark, PREVIEW_STATE, refresh, shareLook, toast, type MailPreview, type Space } from "./parts.js";
+import { pickContact } from "./pickContact.js";
 import { countDot, facesLine, plural, quietLinks } from "./spaceDetail.js";
 
 // ===================================================================== what it reads (GET .../spaces?full=1, as the route answers)
@@ -36,10 +37,21 @@ export interface JoinRequestView { id: string; spaceId: string; spaceName: strin
 /** This person's own open requests: the code they typed (7KQ-29D), never the space's name (a code alone never says whose space it is). */
 export interface MyRequest { id: string; code: string; at: number }
 /** The space they are calling their people into, before it has a name of its own (`name` null until it is named). */
-export interface DraftView { id: string; name: string | null; invites: Array<{ code: string; email: string; at: number; mail: "queued" | "sent" | "failed" | null }> }
+export interface DraftView {
+  id: string; name: string | null;
+  invites: Array<{ code: string; email: string; at: number; mail: "queued" | "sent" | "failed" | null }>;
+  /** The invite mail as the person called in will read it (src/botsBots/inviteMail.ts), for the preview before Invite. */
+  mailPreview?: MailPreview;
+}
 export interface SpacesFull {
   spaces: Space[]; you: string; unread: number;
   invitations: Invitation[]; requests: JoinRequestView[]; asked: MyRequest[]; draft: DraftView | null;
+  /**
+   * The invite mail as it will read before there is any draft at all (botsBots/spaces.ts blankPreview). The first Invite
+   * is what makes the draft, so without this the very first invite a person ever sends would have no preview in front of
+   * it, which is the one App Review 5.1.2(v) asks for.
+   */
+  mailPreview?: MailPreview;
 }
 
 type Layout = "first" | "create" | "made" | "joined";
@@ -175,6 +187,9 @@ function people(ctx: BotsCtx, d: SpacesFull): Node {
       when({ falsy: "sending" }, primaryButton("Invite", invite, { size: "md" })),
       when({ truthy: "sending" }, button("Sending", undefined, { kind: "disabled", size: "md" })),
     ], { gap: 8 }),
+    // The phone's own contact picker, and what the invite will look like to them: the same two on the space's Invite page.
+    ...pickContact(ctx),
+    ...mailPreview(draft?.mailPreview ?? d.mailPreview),
     ...(draft?.invites ?? []).map((i) => sentRow(i.email, i.mail === "failed"
       ? meta("Didn't send", { size: 13 })
       : row([icon("check", { size: 14 }), text("Sent", { size: 13, weight: 600, lineHeight: 16 })], { gap: 4 }))),
@@ -305,7 +320,7 @@ export function startScreen(ctx: BotsCtx, d: SpacesFull | undefined): ScreenResp
   return page(ctx, {
     back: !desk, title: "Spaces", nav: "you", gap: 18, maxWidth: 720,
     state: {
-      code, thOpen, news: d.invitations.length + d.requests.length, creating: !!d.draft, step: "people", email: "", sending: false, sendingEmail: "",
+      code, thOpen, news: d.invitations.length + d.requests.length, creating: !!d.draft, step: "people", email: "", sending: false, sendingEmail: "", ...PREVIEW_STATE,
       spaceName: "", newName: "", made: !!made,
     },
     live: ["spaces", ...d.spaces.map((s) => `space:${s.id}`)],

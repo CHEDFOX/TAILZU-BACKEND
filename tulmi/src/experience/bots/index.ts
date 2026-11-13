@@ -129,6 +129,8 @@ export interface BotsRequest {
   can: ReadonlySet<string>;
   desk: BotsCtx["desk"];
   tzOffsetMinutes?: number;
+  /** Which phone is asking (capabilities.platform). Absent for the window and for a client that does not say. */
+  platform?: BotsCtx["platform"];
   /** Is Spaces on (SPACES_ENABLED)? Absent: the server's switch. */
   spaces?: boolean;
 }
@@ -146,7 +148,7 @@ export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise
   const screenId = away ? "bots.home" : req.screenId;
   const ctx: BotsCtx = {
     screenId, client: req.client, params: away ? {} : req.params ?? {}, live, user: req.user, can: req.can,
-    desk: req.desk, tzOffsetMinutes: tz, ...(spaces ? {} : { spaces: false }),
+    desk: req.desk, tzOffsetMinutes: tz, ...(req.platform ? { platform: req.platform } : {}), ...(spaces ? {} : { spaces: false }),
   };
   const def = BOTS_SCREENS.get(screenId);
   if (!def) return comingSoon(ctx);

@@ -76,13 +76,13 @@ describe("the caps", () => {
 describe("the skills schema", () => {
   it("is five switches and a list of apps, off unless turned on", () => {
     const r = ok();
-    expect(r.ok && r.value.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [] });
+    expect(r.ok && r.value.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, health: false, connectors: [] });
     const on = ok({ skills: { web: true, connectors: ["google-calendar", "google-calendar", "c_0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f"] } });
-    expect(on.ok && on.value.skills).toEqual({ web: true, files: false, artifacts: false, code: false, research: false, connectors: ["google-calendar", "c_0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f"] });
+    expect(on.ok && on.value.skills).toEqual({ web: true, files: false, artifacts: false, code: false, research: false, health: false, connectors: ["google-calendar", "c_0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f"] });
   });
 
   it("refuses a skill that does not exist, a switch that is not a boolean, and an app that is not named by its id", () => {
-    expect(errors({ skills: { teleport: true } }).join()).toMatch(/skills has web, files, artifacts, code, research and connectors, and nothing else/);
+    expect(errors({ skills: { teleport: true } }).join()).toMatch(/skills has web, files, artifacts, code, research, health and connectors, and nothing else/);
     expect(errors({ skills: { web: "yes" } }).join()).toMatch(/skills\.web is true or false/);
     expect(errors({ skills: { connectors: ["Google Calendar"] } }).join()).toMatch(/a connector is named by its id/);
     expect(errors({ skills: { connectors: Array.from({ length: 13 }, (_, i) => `app-${i}`) } }).join()).toMatch(/at most 12 connected apps/);

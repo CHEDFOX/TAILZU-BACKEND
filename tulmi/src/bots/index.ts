@@ -18,11 +18,13 @@
  *   door.ts       "Ask any bot": the front door picks the best bot, rules first, the tiny tier when unsure
  *   ports.ts      the seams to the connectors, the files, the artifact core, Xode and the web
  *   service.ts    Bots: all of the above, owner only
+ *   healthService.ts  a fitness bot's days, kept away from service.ts on purpose (docs: perms §4.6)
  *
  * Off unless BOTS=true (config.ts). Nothing here reaches a network or a store unless it is called to; every piece takes its dependencies as
  * arguments, so the tests drive it with fakes.
  */
 import { getConfig } from "../config.js";
+import { attachHealth } from "./healthService.js";
 import { Bots, type BotsOptions } from "./service.js";
 
 export * from "./types.js";
@@ -38,5 +40,9 @@ export function createBots(o: BotsOptions & { force?: boolean } = {}): Bots | nu
   if (!getConfig().BOTS && !o.force) return null;
   const { force: _force, ...rest } = o;
   void _force;
-  return new Bots(rest);
+  const bots = new Bots(rest);
+  // The days a fitness bot counted are handed to `Bots` as two closures and never as an import (docs: perms §4.6): it runs
+  // models, so it must not be able to READ one, but switching the row off has to delete them in the same request.
+  attachHealth(bots);
+  return bots;
 }

@@ -115,18 +115,34 @@ export async function gatherExport(user: AuthedUser, d: DataDeps, now: number): 
   };
 }
 
-/** Chats, notes and files go; the account, the plan, the bots and the projects stay. */
+/**
+ * Chats, notes and files go; the account, the plan, the bots and the projects stay.
+ *
+ * The bots stay, so the days a fitness bot counted would stay with them: they go here too, and every bot of this person has
+ * its health switch turned off, so nothing starts counting again by itself. Delete my data means it (docs: perms §4.5).
+ */
 export async function deleteMyData(userId: string, d: Pick<DataDeps, "media">, log?: { error: (o: object, m: string) => void }): Promise<{ ok: boolean; cleared: string[] }> {
   const admin = supabase();
   if (!admin) return { ok: false, cleared: [] };
   const cleared: string[] = [];
   // The bytes are in a bucket, not in the database: they go first, then the rows below.
   try { await d.media?.forAccountDelete(userId); } catch (err) { log?.error({ err }, "you: delete file bytes"); }
-  for (const table of ["cleanup_history", "bot_facts", "bot_threads", "oracle_people", "code_chat_threads", "notes", "media_items"]) {
+  for (const table of ["cleanup_history", "bot_facts", "bot_threads", "bot_health_days", "oracle_people", "code_chat_threads", "notes", "media_items"]) {
     try {
       const { error } = await admin.from(table).delete().eq("user_id", userId);
       if (error) log?.error({ err: error }, `you: delete ${table}`); else cleared.push(table);
     } catch (err) { log?.error({ err }, `you: delete ${table}`); }
   }
+  // The bots stay, so their switches are turned off by hand: a bot left with skills.health true and no days would draw a row
+  // saying it is counting when it is not. Each bot's other skills are kept, so this reads them and writes them back.
+  try {
+    const { data, error } = await admin.from("bots").select("id, skills").eq("user_id", userId);
+    if (error) log?.error({ err: error }, "you: read bots to switch health off");
+    for (const b of (data ?? []) as Array<{ id: string; skills: Record<string, unknown> | null }>) {
+      if (b.skills?.health !== true) continue;
+      const { error: e } = await admin.from("bots").update({ skills: { ...b.skills, health: false } }).eq("id", b.id);
+      if (e) log?.error({ err: e }, "you: switch health off");
+    }
+  } catch (err) { log?.error({ err }, "you: switch health off"); }
   return { ok: cleared.length > 0, cleared };
 }

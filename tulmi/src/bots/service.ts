@@ -36,6 +36,7 @@ import { builtinBot, builtinBots, CODE_SLUG, colourFor, isBuiltinSlug } from "./
 import { draftBot, type Draft } from "./builder.js";
 import { checkCommand, expand } from "./commands.js";
 import { pickBot } from "./door.js";
+import type { HealthBotRef } from "./healthService.js";
 import { bearerKey, hashKey, maskKey, newKey, prefixOf } from "./keys.js";
 import { memoryFor, recentTurnsOf } from "./memory.js";
 import { Meter } from "./meter.js";
@@ -125,6 +126,16 @@ export type Target =
 
 const notFound = (): BotError => new BotError("not_found", "There is no such bot.", 404);
 
+/** Exactly `{ skills: { health: false } }` and nothing else: the row's own off switch, and no other change riding with it. */
+function onlyHealthOff(p: Record<string, unknown>): boolean {
+  const keys = Object.keys(p);
+  if (keys.length !== 1 || keys[0] !== "skills") return false;
+  const s = p.skills;
+  if (!s || typeof s !== "object" || Array.isArray(s)) return false;
+  const inner = Object.keys(s as Record<string, unknown>);
+  return inner.length === 1 && inner[0] === "health" && (s as { health: unknown }).health === false;
+}
+
 /**
  * What one turn OF A CALL is metered with (routes/bots/planCalls.ts `say`). A call is never refused, shortened or stopped for money
  * (the owner's answer), so the bot's own per-answer ₹ figure does not hold here: what the engine needs is a bound a spoken turn never
@@ -186,6 +197,10 @@ export class Bots {
   }
 
   /** Nothing runs for a person whose bots are stopped (their account waits to be deleted). */
+  /** Set by `useHealth`. Absent only in a test that made `Bots` by hand; then there are no days to drop either. */
+  private healthOff?: (userId: string, botId: string) => Promise<void>;
+  private healthExport?: (userId: string) => Promise<unknown[]>;
+
   private async notStopped(userId: string): Promise<void> {
     if (await this.stopped(userId)) throw new BotError("account_leaving", LEAVING_MESSAGE, 403);
   }
@@ -271,7 +286,9 @@ export class Bots {
     if (value.slug && (isBuiltinSlug(slug) || (await this.store.getBySlug(slug)))) throw new BotError("slug_taken", "That address is taken. Pick another.", 409);
     const stored: StoredBot = {
       id: randomUUID(), ownerId: userId, slug, name: value.name, colour: value.colour ?? colourFor(slug, mine.map((b) => b.colour)), purpose: value.purpose, principles: value.principles,
-      skills: value.skills, knowledge: value.knowledge, tone: value.tone, visibility: "private", budgets: value.budgets, publicCard: value.publicCard === true, createdAt: now, updatedAt: now,
+      // Health is never on at creation, whatever the body said: only the phone's own switch turns it on, through
+      // POST /v1/bots/:slug/health/days { enable: true } (docs: perms §4.5). approve() and the Find-a-bot copy go through here.
+      skills: { ...value.skills, health: false }, knowledge: value.knowledge, tone: value.tone, visibility: "private", budgets: value.budgets, publicCard: value.publicCard === true, createdAt: now, updatedAt: now,
     };
     // A slug made from the name is made different until it is free; one the person typed is theirs to fix.
     for (let i = 0; ; i += 1) {
@@ -294,9 +311,13 @@ export class Bots {
   }
 
   async update(userId: string, ref: string, patch: unknown): Promise<{ bot: BotView; warnings: string[] }> {
-    const cur = await this.mine(userId, ref);
     if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new BotError("bad_request", "The body is a JSON object with what to change.");
     const p = patch as Record<string, unknown>;
+    // SWITCHING HEALTH OFF, ON ITS OWN, goes straight through (docs: perms §4.5). The row's words promise the days go in
+    // the same request, so stopping must not depend on the rest of the bot still being valid: check() refuses a bot whose
+    // connected app has since gone away, and that would leave a person unable to stop the counting.
+    if (onlyHealthOff(p)) return this.healthOffOnly(userId, ref);
+    const cur = await this.mine(userId, ref);
     const merged = {
       name: cur.name, slug: cur.slug, colour: cur.colour, purpose: cur.purpose, principles: cur.principles, skills: cur.skills, knowledge: cur.knowledge, tone: cur.tone,
       visibility: "private", budgets: cur.budgets, publicCard: cur.publicCard, ...p,
@@ -307,6 +328,12 @@ export class Bots {
     const { value, warnings } = this.parse(merged);
     const more = await this.check(userId, value);
     if (value.slug && value.slug !== cur.slug && (isBuiltinSlug(value.slug) || (await this.store.getBySlug(value.slug)))) throw new BotError("slug_taken", "That address is taken. Pick another.", 409);
+    // Health goes off from here (the row's own switch, and link/unlink and PATCH, which share this path), and never on: turning
+    // it on is the phone flow's alone, because it is the only thing that can ask the person's phone first (docs: perms §4.5).
+    if (value.skills.health && !cur.skills.health) throw new BotError("health_off", "Turn this on from the switch in the app.", 409);
+    // The days go BEFORE the write, so a write that fails never leaves days the export can no longer see (exportAll lists
+    // them only for a bot whose switch is on).
+    if (cur.skills.health && !value.skills.health) await this.healthOff?.(userId, cur.id);
     let next: StoredBot | null;
     try {
       next = await this.store.updateBot(userId, cur.id, {
@@ -319,6 +346,44 @@ export class Bots {
     }
     if (!next) throw notFound();
     return { bot: viewOf(defOf(next), next), warnings: [...warnings, ...more] };
+  }
+
+  /** The straight off path: the days, then the one field. Nothing else of the bot is read, parsed, checked or written. */
+  private async healthOffOnly(userId: string, ref: string): Promise<{ bot: BotView; warnings: string[] }> {
+    const cur = await this.mine(userId, ref);
+    if (cur.skills.health === true) await this.healthOff?.(userId, cur.id);
+    const next = await this.store.updateBot(userId, cur.id, { skills: { ...cur.skills, health: false } }, this.now());
+    if (!next) throw notFound();
+    return { bot: viewOf(defOf(next), next), warnings: [] };
+  }
+
+  // ------------------------------------------------------------------ the fitness bot's days (docs: perms §4.5)
+
+  /**
+   * WHAT THE HEALTH FLOW BORROWS (docs: perms §4.6). This file never imports `bots/healthDays.ts`: it runs models, so a
+   * step count must not be reachable from here at all, and `tests/health-never.test.ts` holds that. `bots/healthService.ts`
+   * owns the days and uses these three, none of which is about a number, plus the two hooks below.
+   */
+  async forHealth(userId: string, ref: string): Promise<HealthBotRef> {
+    const b = await this.mine(userId, ref);
+    return { id: b.id, slug: b.slug, name: b.name, purpose: b.purpose, healthOn: b.skills.health === true };
+  }
+
+  /** Writes `skills.health` alone. Turning it ON has exactly one caller: the phone's POST, through healthService. */
+  async setHealthSkill(userId: string, ref: string, on: boolean): Promise<boolean> {
+    const cur = await this.mine(userId, ref);
+    return !!(await this.store.updateBot(userId, cur.id, { skills: { ...cur.skills, health: on } }, this.now()));
+  }
+
+  /** The person's own bots whose switch is on, for the export's list. */
+  async botsCounting(userId: string): Promise<Array<{ id: string; slug: string }>> {
+    return (await this.store.listBots(userId)).filter((b) => b.skills.health === true).map((b) => ({ id: b.id, slug: b.slug }));
+  }
+
+  /** Filled in once by `attachHealth` (bots/index.ts), so this file can delete days it may not read. */
+  useHealth(o: { off: (userId: string, botId: string) => Promise<void>; exportOf: (userId: string) => Promise<unknown[]> }): void {
+    this.healthOff = o.off;
+    this.healthExport = o.exportOf;
   }
 
   async remove(userId: string, ref: string): Promise<void> {
@@ -345,7 +410,7 @@ export class Bots {
     if (left <= 0) throw new BotError("bot_daily_limit", "You've used what the test console may spend today. It starts again tomorrow.", 429);
     const def: BotDef = {
       id: "draft", ownerId: userId, slug: value.slug ?? slugOf(value.name), name: value.name, colour: value.colour ?? "stone", purpose: value.purpose, principles: value.principles,
-      skills: value.skills, knowledge: value.knowledge, tone: value.tone, visibility: "private", budgets: value.budgets,
+      skills: { ...value.skills, health: false }, knowledge: value.knowledge, tone: value.tone, visibility: "private", budgets: value.budgets,
     };
     const answer = await runBot(this.runDeps(), {
       bot: def, userId, message, surface: "test", capPaise: Math.min(def.budgets.perRequestPaise, left), ...this.rest(input),
@@ -631,7 +696,9 @@ export class Bots {
   /** Everything a person holds here, for the export: their bots, keys (masked), commands and what their bots remember. */
   async exportAll(userId: string): Promise<{
     bots: BotView[]; keys: Array<KeyView & { bot: string }>; commands: Array<Command & { bot: string }>;
-    memory: Array<{ bot: string; facts: string[]; summary: string }>; exportedAt: number;
+    memory: Array<{ bot: string; facts: string[]; summary: string }>;
+    /** A fitness bot's days (docs: perms §4.5), filled in by bots/healthService.ts. Shapeless here on purpose. */
+    health: unknown[]; exportedAt: number;
   }> {
     const mine = await this.store.listBots(userId);
     const everyone = [...builtinBots().map((b) => ({ id: b.id, slug: b.slug })), ...mine.map((b) => ({ id: b.id, slug: b.slug }))];
@@ -647,7 +714,9 @@ export class Bots {
     // What all their bots use (shared.ts), under the name the Privacy screen gives it.
     const shared = await this.store.listFacts(userId, SHARED_ID);
     if (shared.length) memory.push({ bot: "all your bots", facts: shared.map((f) => f.text), summary: "" });
-    return { bots: mine.map((b) => viewOf(defOf(b), b)), keys, commands, memory, exportedAt: this.now() };
+    // The days a fitness bot counted (docs: perms §4.5): the person's own, so they are in their download.
+    const health = (await this.healthExport?.(userId)) ?? [];
+    return { bots: mine.map((b) => viewOf(defOf(b), b)), keys, commands, memory, health, exportedAt: this.now() };
   }
 }
 
