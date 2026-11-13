@@ -25,6 +25,7 @@ import { CAPTURE_API, CIRCULAR_WORDS, PHOTO_ID, RULES_ID } from "./planCapture.j
 import { FOLLOW_API, TASK_ID } from "./planFollow.js";
 import { phoneApi } from "./followPhone.js";
 import { MAKE_API, MAKE_OFF_API, MAKE_PARAMS, MAKE_STATES, MADE_KEY, PLAN_DAY_API } from "./planMake.js";
+import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API } from "./cinema.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -57,6 +58,8 @@ const J_PLAN = "7c1d2e3f-0000-4000-8000-000000000004";
 const codeVariant = (v: keyof typeof CODE.variants): Record<string, unknown> => CODE.variants[v];
 
 const S = SCREENS;
+/** The cinema bot among the person's bots (it is listed only where CINEMA=true). */
+const CINEMA_FAKE = { slug: "cinema", name: "Cinema", colour: "stone", purpose: "Makes films and videos shot by shot from your idea, and pictures.", builtin: true } as (typeof SAMPLE_BOTS)[number];
 export const SAMPLES: Sample[] = [
   // screens/shell.ts
   { id: S.home, area: "shell", board: "Main", deskBoard: "DeskHome" },
@@ -105,6 +108,14 @@ export const SAMPLES: Sample[] = [
   { id: S.devices, area: "you" },
   // screens/bots.ts
   { id: S.bot, area: "bots", board: "BotPage", deskBoard: "DBotPage", params: { slug: "gym-bot" } },
+  // screens/bots/cinemaPage.ts and cinemaScreens.ts (samples/cinema.ts): the cinema bot's page, empty and with films, and one film at each step.
+  { id: S.bot, area: "bots", variant: "cinema", params: { slug: "cinema" }, api: CINEMA_PAGE_API(CINEMA_OVERVIEW), fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
+  { id: S.bot, area: "bots", variant: "cinema-empty", params: { slug: "cinema" }, api: CINEMA_PAGE_API({ ...CINEMA_OVERVIEW, films: [], pictures: [], cast: [], spentToday: 0 }), fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
+  ...(Object.keys(CINEMA_FILMS) as (keyof typeof CINEMA_FILMS)[]).map((step) => ({
+    id: S.cinemaFilm, area: "bots" as const, variant: step, params: { f: "f1" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS[step]() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] },
+  })),
+  { id: S.cinemaShot, area: "bots", variant: "board", params: { f: "f1", n: "2" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS.board() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
+  { id: S.cinemaShot, area: "bots", variant: "needs-you", params: { f: "f1", n: "3" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS.filming() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   { id: S.make, area: "bots", board: "MakeBot", deskBoard: "DMakeBot" },
   { id: S.edit, area: "bots", board: "BotEdit", deskBoard: "DBotEdit", params: { slug: "gym-bot" } },
   { id: S.keys, area: "bots", board: "BotKeys", deskBoard: "DBotKeys", params: { slug: "gym-bot" } },

@@ -86,7 +86,8 @@ export const SCREENS = {
   // screens/bots/meetScreens.ts: the meeting bot (its page is bots.bot with slug "meet", screens/bots/meetPage.ts)
   meetMeeting: "bots.meet.meeting",  // one meeting: where it stands, who is in it, Leave, Answer out loud, the notes so far, what it answered (params: m)
   // screens/bots/cinemaScreens.ts: the cinema bot (its page is bots.bot with slug "cinema", screens/bots/cinemaPage.ts)
-  cinemaFilm: "bots.cinema.film",    // one film: the script, the storyboard and its price, the shots as they are filmed, the finished film (params: f)
+  cinemaFilm: "bots.cinema.film",    // one film: what it waits for, the script or the storyboard grid, the finished film (params: f)
+  cinemaShot: "bots.cinema.shot",    // one shot: its still, its card in full, the takes and what the checker said, change this shot (params: f, n)
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)
   // screens/spaces.ts: spaces with family and friends (bots.spaces is built there too), sharing, payments, tasks, messaging

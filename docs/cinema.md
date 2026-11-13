@@ -201,6 +201,24 @@ media route. Every still, take and film is opened by a signed link of ours (`med
 each time a screen is drawn; never the storage's own address. Refusals are `{ code, message }`: `cinema_off`, `not_found`, `wrong_status`,
 `no_model`, `cinema_film_cap`, `cinema_day`, `quota_exceeded`, `ai_consent_needed`, `bad_photo`, `bad_link`.
 
+**The screens** (`experience/bots/screens/bots/cinemaPage.ts`, `cinemaScreens.ts`; drawn by the apps from the server, no app release):
+
+* **The bot's page** (`bots.bot`, slug `cinema`): the films waiting for the person first (a script or a storyboard to approve, more money, a
+  shot to look at); a new film (their words; Length, Frame and Quality as segmented controls; Write the script); a picture; the other films
+  with their first still; the pictures; the cast; what was agreed today.
+* **A film** (`bots.cinema.film`, params `f`): the title and where it stands, then the decision as one card at the top (the storyboard's
+  price and Make the storyboard; the film's price with what is kept for retakes and Film it; Add ₹…; the finished film's still with a play mark,
+  Watch, Download, Share, the subtitles; or what is happening now). Then the script (the look, who is in it, the shots as a numbered list) or
+  the storyboard as a grid of stills (four across in the window, two on the phone), each tile with its number, size, seconds, a mark for where
+  it stands and what happens. A change to the whole film; the cast; the notes; Stop and Delete.
+* **A shot** (`bots.cinema.shot`, params `f`, `n`): its still, large; where it stands and the model; its card in full (what it is for, what
+  happens, the acting, the camera, the frame, the light, the air, how it ends, the lines, the voice-over, the sound); the takes, each with the
+  model, the checker's mark and what it said ("Sent back: her hand passes through the glass"); Try again when it gave up; a change to this
+  shot only.
+
+The render check draws every one of them on both clients from `scripts/bots-render/samples/cinema.ts`:
+`cd tulmi && npx tsx scripts/bots-render/showcase.ts --only cinema`.
+
 **Pushes** (`push/defaults.ts`): `cinema_board` (the storyboard is ready), `cinema_hold` (the film waits for you), `cinema_ready` (the film is
 ready), each opening the film's page; quiet in quiet hours, none with the bot turned off; never a word of the film but its title.
 

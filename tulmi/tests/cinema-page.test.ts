@@ -63,6 +63,8 @@ async function build(o: { screen?: string; params?: Record<string, string>; clie
     texts: nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content)),
     images: nodes.filter((n) => n.type === "Image").map((n) => String((n.props?.source as { url?: string })?.url)),
     paths: nodes.flatMap((n) => Object.values(n.on ?? {}) as ActionSpec[]).flatMap(flat).filter((a) => a.kind === "callEndpoint").map((a) => `${(a as { method: string }).method} ${(a as { path: string }).path}`),
+    bodies: nodes.flatMap((n) => Object.values(n.on ?? {}) as ActionSpec[]).flatMap(flat).filter((a) => a.kind === "callEndpoint").map((a) => (a as { body?: unknown }).body),
+    navs: nodes.flatMap((n) => Object.values(n.on ?? {}) as ActionSpec[]).flatMap(flat).filter((a) => a.kind === "navigate") as Array<{ screenId: string; params?: Record<string, string> }>,
   };
 }
 
@@ -93,19 +95,47 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("The shots");
     expect(p.texts).toContain("The storyboard costs ₹26");
-    expect(p.texts.some((x) => x.startsWith("Camera: a slow push-in"))).toBe(true);
-    expect(p.texts.some((x) => x.startsWith("For: the viewer feels"))).toBe(true);
+    expect(p.texts.some((x) => x.startsWith("1. Rain sweeps down the lane"))).toBe(true);
     expect(p.paths).toContain("POST /v1/cinema/films/f1/approve-script");
     expect(p.paths).toContain("POST /v1/cinema/films/f1/revise");
   });
 
-  it("a film's storyboard shows each still, the model, and the film's price", async () => {
+  it("a film's storyboard puts the price first, then the stills as a grid, each opening its shot", async () => {
     const p = await build({ client, ...FILM, film: view() });
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Filming costs up to ₹116");
-    expect(p.texts).toContain("Kling v3.0 Std");
+    expect(p.texts.indexOf("Filming costs up to ₹116")).toBeLessThan(p.texts.indexOf("Storyboard"));
     expect(p.images.length).toBe(4);
     expect(p.paths).toContain("POST /v1/cinema/films/f1/approve-board");
+    expect(p.navs.filter((n) => n.screenId === "bots.cinema.shot").map((n) => n.params?.n)).toEqual(["1", "2", "3", "4"]);
+  });
+
+  it("a shot's page shows its card in full, the takes with what the checker said, and changes this shot only", async () => {
+    const v = view({}, { status: "rendering" });
+    v.film.shots[2]!.status = "failed";
+    v.film.shots[2]!.error = "Shot 3 did not come out right in 3 takes.";
+    const verdict = (s: number, note: string | null) => ({ scores: { identity: s, action: s, camera: s, quality: s, continuity: s }, issues: note ? [{ kind: "anatomy", major: true, note }] : [], fix: null, pass: !note });
+    v.film.takes = [
+      { id: "t1", n: 3, model: "kwaivgi/kling-v3.0-std", of: "x", job: "j", prompt: "", seconds: 5, status: "done", paise: 60, video: null, lastFrame: null, verdict: verdict(5, "her hand passes through the glass"), error: null, startedAt: 0, endedAt: 1, polledAt: null },
+      { id: "t2", n: 3, model: "google/veo-3.1-fast", of: "x", job: "j", prompt: "", seconds: 5, status: "running", paise: 60, video: null, lastFrame: null, verdict: null, error: null, startedAt: 0, endedAt: null, polledAt: null },
+    ] as never;
+    const p = await build({ client, screen: "bots.cinema.shot", params: { f: "f1", n: "3" }, film: v });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("Shot 3");
+    expect(p.texts).toContain("he glances up at the roof, a small smile; his wrist lifts the kettle high so the chai froths");
+    expect(p.texts.some((x) => x.includes("a slow push-in from medium to medium-close"))).toBe(true);
+    expect(p.texts).toContain("Take 1 · Kling v3.0 Std · 5.0/10");
+    expect(p.texts).toContain("Sent back: her hand passes through the glass");
+    expect(p.texts).toContain("Filming…");
+    expect(p.paths).toContain("POST /v1/cinema/films/f1/shots/3/retry");
+    expect(p.paths).toContain("POST /v1/cinema/films/f1/revise");
+    expect(p.bodies).toContainEqual({ note: "$state.cs_note", n: 3 });
+  });
+
+  it("a shot that cannot be read says so", async () => {
+    const p = await build({ client, screen: "bots.cinema.shot", params: { f: "f1", n: "9" }, film: view() });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("This shot couldn't be read. The film may have changed.");
   });
 
   it("a film that waits for money offers to add some; a shot that gave up offers to try again", async () => {
@@ -116,7 +146,8 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("It needs a little more money to carry on");
     expect(p.paths).toContain("POST /v1/cinema/films/f1/raise");
-    expect(p.paths).toContain("POST /v1/cinema/films/f1/shots/3/retry");
+    expect(p.texts).toContain("Needs you");
+    expect(p.navs.some((n) => n.screenId === "bots.cinema.shot" && n.params?.n === "3")).toBe(true);
   });
 
   it("a finished film can be watched, downloaded and shared", async () => {
@@ -126,7 +157,7 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Watch");
     expect(p.texts).toContain("Download");
-    expect(p.texts).toContain("Share");
+    expect(p.texts).toContain(client === "desktop" ? "Copy link" : "Share");
   });
 
   it("a film that cannot be read says so", async () => {
