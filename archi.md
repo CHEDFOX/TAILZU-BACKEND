@@ -11,6 +11,8 @@
   replace: no unused files, exports or commented-out code.
 - **Server first.** Screens and logic go on the server (TAILZU-BACKEND, server-driven screens) when they can, so no app release is
   needed. Render new screens (`tulmi/scripts/bots-render`) and look at them.
+- **Build the renderer way.** Before adding a screen, a visual or anything a client draws, read `docs/renderer.md`: use the
+  blocks and catalogs, not new client components.
 - **Data.** A new table needs the next numbered migration in `tulmi/supabase/migrations`, safe to run again; give the owner the command:
   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh <number>"`.
 - **Commits.** Author `CHEDFOX <madefox6666@gmail.com>`, with no trailers (no co-author or session lines). Commits, code, comments and
