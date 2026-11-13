@@ -254,7 +254,7 @@ function draw(node: NLookNode, c: Ctx, depth = 0): string {
   switch (node.type) {
     case "V": return `<div style="display:flex;flex-direction:column;gap:${num(p.gap)}px;align-items:${flexAlign(p.align)};${st}">${kids}</div>`;
     case "H": return `<div style="display:flex;flex-direction:row;gap:${num(p.gap)}px;align-items:${flexAlign(p.align)};${st}">${kids}</div>`;
-    case "Z": return `<div style="position:relative;display:grid;place-items:${p.align === "end" ? "end" : p.align === "center" ? "center" : "start"};${st}">${(node.children ?? []).map((k) => `<div style="grid-area:1/1;width:100%;height:100%">${draw(k, inner, depth + 1)}</div>`).join("")}</div>`;
+    case "Z": { const zAt = p.align === "end" ? "flex-end" : p.align === "center" ? "center" : "flex-start"; return `<div style="position:relative;display:grid;${(node.children ?? []).some((k) => k.type === "Ring") ? "width:100%;height:100%;" : ""}place-items:${p.align === "end" ? "end" : p.align === "center" ? "center" : "start"};${st}">${(node.children ?? []).map((k) => `<div style="grid-area:1/1;width:100%;height:100%;${k.type === "Ring" || k.type === "Shape" ? "" : `display:flex;align-items:${zAt};justify-content:${zAt}`}">${draw(k, inner, depth + 1)}</div>`).join("")}</div>`; }
     case "Spacer": return `<div style="flex:1 1 auto;min-height:${num(p.min)}px;min-width:${num(p.min)}px"></div>`;
     case "Grid": return `<div style="display:grid;grid-template-columns:repeat(${Math.max(1, Math.min(4, num(p.cols, 1)))},1fr);gap:${num(p.gap)}px;${st}">${kids}</div>`;
     case "Text": return text(p, c, st);

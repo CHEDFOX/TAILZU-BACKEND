@@ -268,10 +268,10 @@ the truth.
 
 | id | surface | what it is |
 |---|---|---|
-| `x0.plain` | widget | the end of every widget fallback chain: a name and one line, in nothing but palette roles |
+| `x0.plain` | widget | the end of every widget fallback chain: a name and one line in palette roles, with the card's bot beside the name |
 | `x0.base` | widget | what today's X0 widget draws, as data |
 | `x0.dusk` | widget | the evening face: a bot still, a drawn horizon, the lead line in `display` |
-| `x0.slab` | widget | numbers first. No picture of any kind — the cheap end of the format, and the one to reach for on a tight phone |
+| `x0.slab` | widget | numbers first; the only picture is the card's own bot, small — the cheap end of the format, and the one to reach for on a tight phone |
 | `bots.plain` | activity | the end of the Live Activity chain |
 | `bots.base` | activity | what today's "Bots at work" draws |
 | `bots.night` | activity | a readable-across-the-room timer, the stage names, and the ETA from `vars` |

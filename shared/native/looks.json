@@ -100,13 +100,17 @@
               "props": {"gap": 6, "align": "center"},
               "children": [
                 {
-                  "type": "Image",
+                  "type": "Bot",
                   "if": {"case": ["needs"]},
-                  "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
-                  "style": {"corner": 10, "bg": "surface"}
+                  "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 18},
+                  "fallback": {
+                    "type": "Image",
+                    "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill"},
+                    "style": {"corner": 9, "bg": "surface"}
+                  }
                 },
-                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
-                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
                 {
                   "type": "Text",
                   "props": {"text": "{{greeting.hello}}", "font": "brand", "size": 15, "weight": 600, "lines": 1},
@@ -131,13 +135,17 @@
               "props": {"gap": 10, "align": "center"},
               "children": [
                 {
-                  "type": "Image",
+                  "type": "Bot",
                   "if": {"case": ["needs"]},
-                  "props": {"src": "face:{{needs.items[0].face}}", "size": 30, "fit": "fill", "alt": "pose:blip"},
-                  "style": {"corner": 15, "bg": "surface"}
+                  "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 32},
+                  "fallback": {
+                    "type": "Image",
+                    "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill"},
+                    "style": {"corner": 16, "bg": "surface"}
+                  }
                 },
-                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 30}},
-                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 30}},
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
                 {
                   "type": "V",
                   "props": {"gap": 4, "align": "start"},
@@ -160,10 +168,14 @@
               "props": {"gap": 10, "align": "center"},
               "children": [
                 {
-                  "type": "Image",
+                  "type": "Bot",
                   "if": {"case": ["needs"]},
-                  "props": {"src": "face:{{needs.items[0].face}}", "size": 34, "fit": "fill", "alt": "pose:blip"},
-                  "style": {"corner": 17, "bg": "surface"}
+                  "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 34},
+                  "fallback": {
+                    "type": "Image",
+                    "props": {"src": "face:{{needs.items[0].face}}", "size": 34, "fit": "fill"},
+                    "style": {"corner": 17, "bg": "surface"}
+                  }
                 },
                 {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 34}},
                 {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 34}},
@@ -181,14 +193,43 @@
         },
         "inline": {"type": "Text", "props": {"text": "{{lock.inline}}", "lines": 1}},
         "rect": {
-          "type": "V",
-          "props": {"gap": 2, "align": "start"},
+          "type": "H",
+          "props": {"gap": 6, "align": "center"},
           "children": [
-            {"type": "Text", "props": {"text": "{{lock.title}}", "font": "brand", "size": 14, "weight": 600, "lines": 1}},
-            {"type": "Text", "props": {"text": "{{lock.line}}", "font": "sans", "size": 13, "weight": 400, "lines": 2, "tint": "meta"}}
+            {
+              "type": "Bot",
+              "if": {"case": ["needs"]},
+              "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 18},
+              "fallback": {"type": "Image", "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill"}, "style": {"corner": 9, "bg": "surface"}}
+            },
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
+            {
+              "type": "V",
+              "props": {"gap": 2, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{lock.title}}", "font": "brand", "size": 14, "weight": 600, "lines": 1}},
+                {"type": "Text", "props": {"text": "{{lock.line}}", "font": "sans", "size": 13, "weight": 400, "lines": 2, "tint": "meta"}}
+              ]
+            }
           ]
         },
-        "circle": {"type": "Kit", "props": {"name": "mark"}}
+        "circle": {
+          "type": "Z",
+          "props": {"align": "center"},
+          "children": [
+            {
+              "type": "Bot",
+              "if": {"case": ["needs"]},
+              "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 32},
+              "fallback": {"type": "Image", "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill"}, "style": {"corner": 16, "bg": "surface"}}
+            },
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
+            {"type": "Kit", "if": {"case": ["quiet"]}, "props": {"name": "mark"}}
+          ],
+          "fallback": {"type": "Kit", "props": {"name": "mark"}}
+        }
       }
     },
     "x0.base": {
@@ -518,13 +559,13 @@
           "props": {"gap": 6, "align": "center"},
           "children": [
             {
-              "type": "Image",
+              "type": "Bot",
               "if": {"case": ["needs"]},
-              "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
-              "style": {"corner": 10, "bg": "surface"}
+              "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 18},
+              "fallback": {"type": "Image", "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill"}, "style": {"corner": 9, "bg": "surface"}}
             },
-            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
-            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
             {
               "type": "V",
               "props": {"gap": 2, "align": "start"},
@@ -543,13 +584,14 @@
         },
         "circle": {
           "type": "Z",
+          "props": {"align": "center"},
           "children": [
             {"type": "Ring", "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "width": 4}, "if": {"case": ["working"]}},
             {
-              "type": "Image",
+              "type": "Bot",
               "if": {"case": ["needs"]},
-              "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill", "alt": "pose:blip"},
-              "style": {"corner": 16, "bg": "surface"}
+              "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 32},
+              "fallback": {"type": "Image", "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill"}, "style": {"corner": 16, "bg": "surface"}}
             },
             {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
             {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
@@ -1075,13 +1117,13 @@
           "props": {"gap": 6, "align": "center"},
           "children": [
             {
-              "type": "Image",
+              "type": "Bot",
               "if": {"case": ["needs"]},
-              "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
-              "style": {"corner": 10, "bg": "surface"}
+              "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 18},
+              "fallback": {"type": "Image", "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill"}, "style": {"corner": 9, "bg": "surface"}}
             },
-            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
-            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
             {
               "type": "V",
               "props": {"gap": 2, "align": "start"},
@@ -1094,13 +1136,14 @@
         },
         "circle": {
           "type": "Z",
+          "props": {"align": "center"},
           "children": [
             {"type": "Ring", "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "width": 4}, "if": {"case": ["working"]}},
             {
-              "type": "Image",
+              "type": "Bot",
               "if": {"case": ["needs"]},
-              "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill", "alt": "pose:blip"},
-              "style": {"corner": 16, "bg": "surface"}
+              "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 32},
+              "fallback": {"type": "Image", "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill"}, "style": {"corner": 16, "bg": "surface"}}
             },
             {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
             {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
@@ -1128,13 +1171,17 @@
               "props": {"gap": 6, "align": "center"},
               "children": [
                 {
-                  "type": "Image",
+                  "type": "Bot",
                   "if": {"case": ["needs"]},
-                  "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
-                  "style": {"corner": 10, "bg": "surface"}
+                  "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 18},
+                  "fallback": {
+                    "type": "Image",
+                    "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill"},
+                    "style": {"corner": 9, "bg": "surface"}
+                  }
                 },
-                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
-                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
                 {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "tint": "meta"}}
               ]
             },
@@ -1224,10 +1271,14 @@
               "props": {"gap": 8, "align": "center"},
               "children": [
                 {
-                  "type": "Image",
+                  "type": "Bot",
                   "if": {"case": ["needs"]},
-                  "props": {"src": "face:{{needs.items[0].face}}", "size": 24, "fit": "fill", "alt": "pose:blip"},
-                  "style": {"corner": 12, "bg": "surface"}
+                  "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 24},
+                  "fallback": {
+                    "type": "Image",
+                    "props": {"src": "face:{{needs.items[0].face}}", "size": 24, "fit": "fill"},
+                    "style": {"corner": 12, "bg": "surface"}
+                  }
                 },
                 {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 24}},
                 {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 24}},
@@ -1259,9 +1310,9 @@
                   "props": {"gap": 10, "align": "center"},
                   "children": [
                     {
-                      "type": "Image",
-                      "props": {"src": "face:{{it.face}}", "size": 22, "fit": "fill", "alt": "pose:blip"},
-                      "style": {"corner": 11, "bg": "surface"}
+                      "type": "Bot",
+                      "props": {"who": "{{it.bot}}", "moment": "rest", "at": 0.6, "size": 24},
+                      "fallback": {"type": "Image", "props": {"src": "face:{{it.face}}", "size": 24, "fit": "fill"}, "style": {"corner": 12, "bg": "surface"}}
                     },
                     {"type": "Text", "props": {"text": "{{it.botName}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}},
                     {"type": "Spacer", "props": {"min": 0}},
@@ -1275,19 +1326,27 @@
               ]
             },
             {"type": "Spacer", "props": {"min": 0}},
-            {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 13, "weight": 400, "lines": 2}}
+            {
+              "type": "H",
+              "props": {"gap": 8, "align": "center"},
+              "children": [
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 24}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 24}},
+                {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 13, "weight": 400, "lines": 2}}
+              ]
+            }
           ]
         },
         "inline": {"type": "Text", "props": {"text": "{{lock.inline}}", "lines": 1}},
         "rect": {
           "type": "H",
-          "props": {"gap": 6, "align": "center"},
+          "props": {"gap": 10, "align": "center"},
           "children": [
             {
-              "type": "Image",
+              "type": "Bot",
               "if": {"case": ["needs"]},
-              "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill", "alt": "pose:blip"},
-              "style": {"corner": 9, "bg": "surface"}
+              "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 18},
+              "fallback": {"type": "Image", "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill"}, "style": {"corner": 9, "bg": "surface"}}
             },
             {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
             {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
@@ -1307,16 +1366,16 @@
           "props": {"gap": 1, "align": "center"},
           "children": [
             {
-              "type": "Image",
+              "type": "Bot",
               "if": {"case": ["needs"]},
-              "props": {"src": "face:{{needs.items[0].face}}", "size": 22, "fit": "fill", "alt": "pose:blip"},
-              "style": {"corner": 11, "bg": "surface"}
+              "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 24},
+              "fallback": {"type": "Image", "props": {"src": "face:{{needs.items[0].face}}", "size": 24, "fit": "fill"}, "style": {"corner": 12, "bg": "surface"}}
             },
-            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 22}},
-            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 22}},
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 24}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 24}},
             {
               "type": "Text",
-              "props": {"text": "{{counts.needs}}", "font": "display", "size": 20, "weight": 700, "digits": "mono", "lines": 1, "align": "center"}
+              "props": {"text": "{{counts.needs}}", "font": "display", "size": 22, "weight": 700, "digits": "mono", "lines": 1, "align": "center"}
             }
           ],
           "fallback": {"type": "Kit", "props": {"name": "mark"}}
@@ -1502,13 +1561,17 @@
               "props": {"gap": 6, "align": "center"},
               "children": [
                 {
-                  "type": "Image",
+                  "type": "Bot",
                   "if": {"case": ["needs"]},
-                  "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
-                  "style": {"corner": 10, "bg": "surface"}
+                  "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 18},
+                  "fallback": {
+                    "type": "Image",
+                    "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill"},
+                    "style": {"corner": 9, "bg": "surface"}
+                  }
                 },
-                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
-                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
                 {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "tint": "meta"}}
               ]
             },
@@ -1532,13 +1595,17 @@
                   "props": {"gap": 10, "align": "center"},
                   "children": [
                     {
-                      "type": "Image",
+                      "type": "Bot",
                       "if": {"case": ["needs"]},
-                      "props": {"src": "face:{{needs.items[0].face}}", "size": 30, "fit": "fill", "alt": "pose:blip"},
-                      "style": {"corner": 15, "bg": "surface"}
+                      "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 32},
+                      "fallback": {
+                        "type": "Image",
+                        "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill"},
+                        "style": {"corner": 16, "bg": "surface"}
+                      }
                     },
-                    {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 30}},
-                    {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 30}},
+                    {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
+                    {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
                     {
                       "type": "V",
                       "props": {"gap": 2, "align": "start"},
@@ -1660,13 +1727,17 @@
               "props": {"gap": 6, "align": "center"},
               "children": [
                 {
-                  "type": "Image",
+                  "type": "Bot",
                   "if": {"case": ["needs"]},
-                  "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
-                  "style": {"corner": 10, "bg": "surface"}
+                  "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 18},
+                  "fallback": {
+                    "type": "Image",
+                    "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill"},
+                    "style": {"corner": 9, "bg": "surface"}
+                  }
                 },
-                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
-                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
                 {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 14, "weight": 600, "lines": 1, "tint": "meta"}}
               ]
             },
@@ -1689,13 +1760,17 @@
                   "props": {"gap": 10, "align": "center"},
                   "children": [
                     {
-                      "type": "Image",
+                      "type": "Bot",
                       "if": {"case": ["needs"]},
-                      "props": {"src": "face:{{needs.items[0].face}}", "size": 30, "fit": "fill", "alt": "pose:blip"},
-                      "style": {"corner": 15, "bg": "surface"}
+                      "props": {"who": "{{needs.items[0].bot}}", "moment": "rest", "at": 0.6, "size": 32},
+                      "fallback": {
+                        "type": "Image",
+                        "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill"},
+                        "style": {"corner": 16, "bg": "surface"}
+                      }
                     },
-                    {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 30}},
-                    {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 30}},
+                    {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
+                    {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
                     {
                       "type": "V",
                       "props": {"gap": 2, "align": "start"},
@@ -1726,7 +1801,15 @@
           "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
           "children": [
             {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 18, "weight": 600, "lines": 1, "tint": "meta"}},
-            {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 14, "weight": 400, "lines": 3}},
+            {
+              "type": "H",
+              "props": {"gap": 8, "align": "center"},
+              "children": [
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 24}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 24}},
+                {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 14, "weight": 400, "lines": 3}}
+              ]
+            },
             {"type": "Shape", "props": {"kind": "rect", "fill": "line"}, "style": {"h": 1, "w": "fill"}},
             {
               "type": "Each",
@@ -1737,9 +1820,9 @@
                   "props": {"gap": 10, "align": "start"},
                   "children": [
                     {
-                      "type": "Image",
-                      "props": {"src": "face:{{it.face}}", "size": 24, "fit": "fill", "alt": "pose:blip"},
-                      "style": {"corner": 12, "bg": "surface"}
+                      "type": "Bot",
+                      "props": {"who": "{{it.bot}}", "moment": "rest", "at": 0.6, "size": 24},
+                      "fallback": {"type": "Image", "props": {"src": "face:{{it.face}}", "size": 24, "fit": "fill"}, "style": {"corner": 12, "bg": "surface"}}
                     },
                     {"type": "Text", "props": {"text": "{{it.botName}}", "font": "sans", "size": 13, "weight": 400, "lines": 1}}
                   ]
