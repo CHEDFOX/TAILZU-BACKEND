@@ -434,7 +434,8 @@ describe("the step's row and its calls", () => {
     await q.end(result());
     const row = await store.get("u1", "run_q1");
     expect(row!.turns).toEqual([{ said: asked.said, did: "ASK" }]);
-    expect(JSON.stringify(row)).not.toMatch(/3200|greenpark/);
+    // 3200 as a word: the row's timestamps are long runs of digits that can hold it by chance (1794532007347).
+    expect(JSON.stringify(row)).not.toMatch(/\b3200\b|greenpark/);
 
     // The answer, on this server: read with the question's words.
     const took = await ledger.takeFollowUp("u1", "run_q2", 0);
