@@ -342,7 +342,8 @@ export function freeformGuide(s: AgentState): string {
       : "2. If the request leaves open WHAT to build (several reasonable designs, names or behaviours, or it does not say what is wrong), ask_user once, with two or three concrete options, before you change code. After that, decide and note.",
     "3. A bug: reproduce it first (a small script or the test that covers it, with run) and see it fail; then look for the cause, which may be far from where it shows. "
       + "A script to try something goes inside the run command (a heredoc into /tmp), never in write_file: every file you write is committed.",
-    "4. Change the code with edit_file. When you rename something or change what a function takes or returns, grep for every use and update them all: code, types, docs, tests.",
+    "4. Change the code with edit_file (replace_all for a name used all through a file). When you rename something or change what a function takes or returns, "
+      + "grep for every use and update them all: code, types, docs, tests.",
     "5. Prove it by running it: the project's tests that cover it, or your script, and see them pass. Do not study the test tools' own code: the project's tests show how they are used.",
     "6. Call done with what you changed and why (the server then runs the project's checks, and may ask you for one focused test of the change).",
   ].join("\n");

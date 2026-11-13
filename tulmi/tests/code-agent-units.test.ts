@@ -23,7 +23,7 @@ vi.hoisted(() => {
 });
 noNetwork();
 
-const { Changeset, Refused, checkedText, editablePath, replaceOnce, secretKinds } = await import("../src/code/agent/changeset.js");
+const { Changeset, Refused, checkedText, editablePath, replaceEvery, replaceOnce, secretKinds } = await import("../src/code/agent/changeset.js");
 const { CHECK_MARK, checkCommands, failingNames, parseMarkers, resultsOf, wrapCheck } = await import("../src/code/agent/checks.js");
 const { buildContext, capWrapped, dataBlock, digestOf, fold, projectContext, renderResult } = await import("../src/code/agent/context.js");
 const { stableBlock } = await import("../src/principles/index.js");
@@ -96,6 +96,14 @@ describe("replacing text exactly once", () => {
     expect(() => replaceOnce("f.ts", text, "", "x")).toThrow(/old is needed/);
     expect(() => replaceOnce("f.ts", text, "line one", undefined)).toThrow(/new is needed/);
     expect(() => replaceOnce("f.ts", text, "line one", "line one")).toThrow(/nothing would change/);
+  });
+
+  it("points a model that meant every copy at replace_all, which changes them all and says how many", () => {
+    expect(() => replaceOnce("f.ts", text, "return a + b;", "x")).toThrow(/or say replace_all to change every one/);
+    expect(replaceEvery("f.ts", text, "a + b", "a - b")).toEqual({ text: "line one\nreturn a - b;\nline three\nreturn a - b;\n", count: 2 });
+    expect(replaceEvery("f.ts", "one\n", "one", "two")).toEqual({ text: "two\n", count: 1 });
+    expect(() => replaceEvery("f.ts", text, "return a - b;", "x")).toThrow(/That text is not in f\.ts/);
+    expect(() => replaceEvery("f.ts", text, "", "x")).toThrow(/old is needed/);
   });
 });
 

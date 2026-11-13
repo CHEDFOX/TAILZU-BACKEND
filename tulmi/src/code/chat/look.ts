@@ -236,7 +236,8 @@ export async function investigate(i: LookInput): Promise<Looked> {
       res = await call({
         tier: i.tier, messages, maxTokens: i.maxTokens, purpose: "front.code_answer", userId: i.model.userId, budget: { maxPaise: left },
         tools: acting ? [...(i.acts?.defs ?? [])] : [...defs], toolChoice: last && !acting ? ("none" as const) : ("auto" as const), ...(i.model.signal ? { signal: i.model.signal } : {}),
-        ...(held === null ? words ?? {} : {}),
+        // The look only adds to its messages, so Claude reads what came before from its prompt cache (gateway.ts PROMPT CACHING).
+        growing: true, ...(held === null ? words ?? {} : {}),
       }, i.model.gateway);
     } catch (err) {
       if (isAbort(err) || step === 1) throw err;

@@ -287,6 +287,72 @@ describe("the staged edits and the copy", () => {
   });
 });
 
+describe("edit_file", () => {
+  it("changes every copy with replace_all, says how many, and stages the file once", async () => {
+    const t = rig();
+    const all = await t.run("edit_file", { path: "src/index.ts", old: "slug", new: "toSlug", replace_all: true });
+    expect(all).toMatchObject({ ok: true, content: "Edited src/index.ts (2 places). It is staged, not committed." });
+    expect(t.tools.changes.get("src/index.ts")!.content).toBe('import { toSlug } from "./util";\nexport const title = toSlug("My App");\n');
+    const once = await t.run("edit_file", { path: "src/util.ts", old: "  // TODO: trim the dashes\n", new: "" });
+    expect(once.content).toBe("Edited src/util.ts. It is staged, not committed.");
+    expect(t.tools.changes.paths()).toEqual(["src/index.ts", "src/util.ts"]);
+  });
+
+  it("without replace_all, points at it when the text is there more than once, and stages nothing", async () => {
+    const t = rig();
+    const out = await t.run("edit_file", { path: "src/index.ts", old: "slug", new: "toSlug" });
+    expect(out.ok).toBe(false);
+    expect(out.content).toMatch(/That text is in src\/index\.ts 2 times\..*replace_all/);
+    expect(t.tools.changes.empty).toBe(true);
+  });
+
+  it("still refuses a secret that replace_all would write", async () => {
+    const t = rig();
+    const out = await t.run("edit_file", { path: "src/index.ts", old: "slug", new: FAKE_STRIPE, replace_all: true });
+    expect(out.ok).toBe(false);
+    expect(t.tools.changes.empty).toBe(true);
+  });
+});
+
+describe("looks side by side (a turn's run of them, phases.ts executeCalls)", () => {
+  it("ask the copy about itself once, and give it the staged edits once, however many are waiting", async () => {
+    const t = rig();
+    await t.run("write_file", { path: "a.ts", content: "a\n" });
+    const before = t.ws.reads.length;
+    const outs = await Promise.all([t.run("grep", { pattern: "slug" }), t.run("read_file", { path: "src/util.ts" }), t.run("glob", { pattern: "*.ts" }), t.run("list_dir", { path: "src" })]);
+    expect(outs.map((o) => o.ok)).toEqual([true, true, true, true]);
+    expect(t.room!.count("status")).toBe(1);
+    expect(t.room!.count("setOverlay")).toBe(1);
+    expect(t.ws.reads.length).toBe(before);
+  });
+
+  it("read GitHub's tree once, and a file once, when there is no copy", async () => {
+    const t = rig({ room: null });
+    const outs = await Promise.all([
+      t.run("glob", { pattern: "*.ts" }), t.run("list_dir", { path: "src" }), t.run("read_file", { path: "src/util.ts" }), t.run("read_file", { path: "src/util.ts", from: 2, to: 3 }),
+    ]);
+    expect(outs.map((o) => o.ok)).toEqual([true, true, true, true]);
+    expect(t.ws.treeCalls).toBe(1);
+    expect(t.ws.reads.filter((p) => p === "src/util.ts")).toEqual(["src/util.ts"]);
+  });
+
+  it("keep nothing they asked for before the branch moved", async () => {
+    const t = rig({ room: null });
+    // GitHub's tree is held until the branch has moved.
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const tree = t.ws.tree.bind(t.ws);
+    t.ws.tree = async () => { const out = await tree(); await held; return out; };
+    const reading = t.run("glob", { pattern: "*.ts" });
+    while (t.ws.treeCalls === 0) await new Promise((r) => setImmediate(r));
+    t.tools.invalidate();
+    release();
+    await reading;
+    await t.run("glob", { pattern: "*.ts" });
+    expect(t.ws.treeCalls).toBe(2);
+  });
+});
+
 describe("a run", () => {
   it("says how long a command took to the second, when it was quick", async () => {
     const runs: Array<{ tag: string; commands: string[] }> = [];

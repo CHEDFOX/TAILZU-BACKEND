@@ -135,6 +135,11 @@ export interface CallInput<T = unknown> {
   firstTextMs?: number;
   /** Streaming: the words shown so far are void (that model failed after writing; the next one starts over). */
   onReset?: () => void;
+  /**
+   * The messages only grow at their end from one call to the next (a tool loop: the free-form job's transcript, the code chat's look). For a model that
+   * caches only where it is told (Claude), the conversation up to the last message is marked, so the next call reads it from the cache (PROMPT CACHING below).
+   */
+  growing?: boolean;
 }
 
 export interface CallResult<T = unknown> {
@@ -175,6 +180,8 @@ export interface TrailEntry {
   reasoningRetried?: boolean;
   /** The answer ran out of room (finish_reason "length") with nothing written, the thinking having taken it all: asked again at once with a larger allowance. */
   grown?: boolean;
+  /** The request was refused with the prompt cache's mark on the conversation: asked again at once without it. */
+  unmarked?: boolean;
 }
 
 /** The job's budget, or this call's own, would be passed by the next call. Catch it to ask for less or to stop. */
@@ -349,6 +356,64 @@ function toWire(messages: readonly ChatMessage[]): unknown[] {
     }
     return m;
   });
+}
+
+// ------------------------------------------------------------ prompt caching
+
+/**
+ * PROMPT CACHING. Most providers keep a prompt they were just sent and charge a repeat of its start at a fraction, by themselves (OpenAI, DeepSeek,
+ * Gemini, Z.AI, Moonshot, Grok). Claude caches only where the request marks it (OpenRouter's `cache_control`, four marks at most; a read costs a tenth
+ * of the input price and a write a quarter more; from 512 tokens on the 5.x models; kept five minutes). So for Claude:
+ *
+ *   - The system block is marked on every call. It is the same bytes for every call of a role (principles/), so the tools and the system block are read
+ *     from the cache by every job and every message after the first. Ask has always sent this mark (agent/llm.ts).
+ *   - With `growing` (a loop whose messages only grow at their end), the last message before the final one is marked too: the next call finds that place
+ *     again and reads everything before it from the cache, paying in full only for what is new. The final message is left out because in the job's
+ *     transcript it is the status, written afresh every turn (agent/context.ts). Only a user or a tool message's text is marked; an assistant message is
+ *     passed over for the one before it.
+ *
+ * A request refused with the conversation's mark is asked again at once without it, on the same model; if that works, the model is not sent the mark again
+ * while the process lives. The system block's mark is never the reason: it is the one placement every route takes.
+ */
+export const cachesOnlyWhenMarked = (model: string): boolean => familyOf(model) === "anthropic";
+
+const EPHEMERAL = { type: "ephemeral" } as const;
+
+/** Models that refused a request for the conversation's mark and took it without: not sent one again. */
+const marksRefused = new Set<string>();
+
+export function resetCacheMarksForTests(): void {
+  marksRefused.clear();
+}
+
+const hasText = (content: unknown): boolean =>
+  (typeof content === "string" && content.length > 0)
+  || (Array.isArray(content) && content.some((p) => (p as { type?: unknown })?.type === "text"));
+
+/** Text content with the cache's mark on its last text part (a string becomes one text part). */
+function markText(content: unknown): unknown {
+  if (typeof content === "string") return content ? [{ type: "text", text: content, cache_control: EPHEMERAL }] : content;
+  if (!Array.isArray(content)) return content;
+  let last = -1;
+  content.forEach((p, i) => { if ((p as { type?: unknown })?.type === "text") last = i; });
+  return last < 0 ? content : content.map((p, i) => (i === last ? { ...(p as object), cache_control: EPHEMERAL } : p));
+}
+
+/** Wire messages with Claude's cache marks: the system block, and with `growing` the last user or tool message before the final message. */
+export function withCacheMarks(wire: readonly unknown[], o: { growing: boolean }): unknown[] {
+  const out = [...wire] as Array<Record<string, unknown>>;
+  const sys = out.findIndex((m) => m.role === "system");
+  if (sys >= 0) out[sys] = { ...out[sys], content: markText(out[sys]!.content) };
+  if (o.growing) {
+    for (let i = out.length - 2; i > sys; i -= 1) {
+      const m = out[i]!;
+      if ((m.role === "user" || m.role === "tool") && hasText(m.content)) {
+        out[i] = { ...m, content: markText(m.content) };
+        break;
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -590,13 +655,14 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
   /**
    * One request to one model. Throws CallFailure (climb), BudgetExceeded, or an AbortError. `ticket` is the model's breakers, told how it went.
    * `lowest`: the model has just said it cannot think "none". `bigger`: the last try wrote nothing because the thinking took all the room.
+   * `unmarked`: the last try was refused with the cache's mark on the conversation (PROMPT CACHING).
    */
-  async function oneCall(model: string, messages: readonly ChatMessage[], ticket: Ticket | null, how: { lowest?: boolean; bigger?: boolean } = {}): Promise<Completion> {
+  async function oneCall(model: string, messages: readonly ChatMessage[], ticket: Ticket | null, how: { lowest?: boolean; bigger?: boolean; unmarked?: boolean } = {}): Promise<Completion> {
     if (input.signal?.aborted) throw abortError();
     const reasoning = reasoningOf(model, how.lowest === true);
     const tokens = tokensFor(reasoning, how.bigger === true);
     await guard(model, messages, tokens);
-    const body = requestBody(model, messages, reasoning, tokens);
+    const body = requestBody(model, messages, reasoning, tokens, how.unmarked === true);
     const offSent = reasoningIsOff(body.reasoning);
     const ctrl = new AbortController();
     let timedOut = false;
@@ -723,8 +789,14 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     return bigger || forced ? maxTokensWithReasoning(maxTokens, reasoning, { retry: bigger }) : maxTokens;
   }
 
-  function requestBody(model: string, messages: readonly ChatMessage[], reasoning: Record<string, unknown>, tokens: number): Record<string, unknown> {
+  /** Whether a request to this model carries the cache's mark on the conversation (PROMPT CACHING). */
+  function marksConversation(model: string): boolean {
+    return input.growing === true && cachesOnlyWhenMarked(model) && !marksRefused.has(model);
+  }
+
+  function requestBody(model: string, messages: readonly ChatMessage[], reasoning: Record<string, unknown>, tokens: number, unmarked: boolean): Record<string, unknown> {
     const temperature = temperatureFor(model);
+    const wire = toWire(messages);
     return {
       model,
       // Only providers that neither keep nor train on what they are sent: a job's
@@ -736,7 +808,7 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
       reasoning,
       ...(temperature === undefined ? {} : { temperature }),
       ...(userId ? { user: hashedUser(userId) } : {}),
-      messages: toWire(messages),
+      messages: cachesOnlyWhenMarked(model) ? withCacheMarks(wire, { growing: !unmarked && marksConversation(model) }) : wire,
       ...(input.tools?.length
         ? {
           tools: input.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })),
@@ -756,12 +828,17 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
     let grown = false;
 
     const attempt = async (messages: readonly ChatMessage[]): Promise<Completion> => {
-      const how: { lowest?: boolean; bigger?: boolean } = {};
+      const how: { lowest?: boolean; bigger?: boolean; unmarked?: boolean } = {};
       // The failure the larger try was made for: if the money does not cover that try, this is what happened, and the ladder climbs as it always did.
       let cutShort: CallFailure | undefined;
       for (;;) {
         try {
-          return await oneCall(model, messages, ticket, how);
+          const done = await oneCall(model, messages, ticket, how);
+          if (how.unmarked && marksConversation(model)) {
+            marksRefused.add(model);
+            log.warn({ model, purpose: input.purpose }, "code brain: a request with the prompt cache's mark on the conversation was refused and worked without it; not sent to this model again");
+          }
+          return done;
         } catch (err) {
           // Words were shown and this try failed: they are void before anything is tried again.
           if (shown > 0 && (err as { name?: unknown } | null)?.name !== "AbortError") { shown = 0; input.onReset?.(); }
@@ -781,6 +858,13 @@ export async function callModel<T = unknown>(input: CallInput<T>, deps: GatewayD
             entry.grown = true;
             cutShort = err;
             how.bigger = true;
+            continue;
+          }
+          // Refused (400, 422) with the cache's mark on the conversation: once, on this model, without it. Remembered only if that works, since a request
+          // can be refused for something else.
+          if (err instanceof CallFailure && err.kind === "http" && (err.status === 400 || err.status === 422) && !how.unmarked && marksConversation(model)) {
+            how.unmarked = true;
+            entry.unmarked = true;
             continue;
           }
           if (err instanceof CallFailure && err.kind === "http" && (transient(err.status) || err.dropped) && !retried) {

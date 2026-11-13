@@ -8,7 +8,8 @@
  *   - a check this change broke: fix rounds with the failure in front of the model, then a pass; three failing rounds stop
  *     the job with a report and commit nothing; a check that was already failing is flagged and does not block;
  *   - the baseline: recorded on a runner, reused when it is fresh, unknown (and said so) when no computer can run it;
- *   - what the loop does on its own account: it reads nothing it should not, the route's record of each round is kept.
+ *   - what the loop does on its own account: it reads nothing it should not, the route's record of each round is kept;
+ *   - a turn's looks answered side by side, in the order asked, with one checkpoint write for them.
  */
 import { describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
@@ -24,6 +25,7 @@ noNetwork();
 
 const { agentRig, call, done, checkLine, UTIL_TASK, UTIL_PLAN, UTIL_EDIT } = await import("./agent-rig.js");
 type Rig = Awaited<ReturnType<typeof agentRig>>;
+type Turn = import("./agent-rig.js").Turn;
 
 const BUG = { path: "src/util.ts", old: UTIL_EDIT.old, new: '  return s.toLowerCase().replace(/\\s+/g, "-").trim(); // BUG\n' };
 
@@ -269,6 +271,31 @@ describe("the tools", () => {
     expect(turn.messages).toMatch(/<tool_data tool="run" label="npm test">[\s\S]*boom: the thing failed[\s\S]*<\/tool_data>/);
     const log = await r.worklog.list(job.id);
     expect(log.find((e) => e.kind === "command" && e.text.startsWith("npm test"))!.data).toMatchObject({ exitCode: 1, callId: expect.any(String) });
+  });
+
+  it("answer a turn's looks side by side: every result in the order asked, and the state saved once for them", async () => {
+    const r = await agentRig();
+    const looks: Turn = { calls: [
+      { name: "read_file", args: { path: "src/util.ts" } }, { name: "grep", args: { pattern: "slug\\(" } }, { name: "read_file", args: { path: "src/index.ts" } },
+      { name: "list_dir", args: { path: "src" } },
+    ] };
+    r.model.push(looks, call("edit_file", UTIL_EDIT), done("Trimmed."));
+    // The checkpoint writes made while the looks are answered: from the end of the turn that asked for them to the start of the next.
+    let writes = 0;
+    let counting = false;
+    const cas = r.jobStore.casJob.bind(r.jobStore);
+    r.jobStore.casJob = (async (...a: Parameters<typeof cas>) => { if (counting && a[2]?.checkpoint) writes += 1; return cas(...a); }) as typeof cas;
+    r.model.afterTurn = (n) => { if (n === 1) counting = true; };
+    r.model.beforeTurn = (n) => { if (n === 2) counting = false; };
+    const { job } = await run(r);
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    // One write for the turn itself, one for its four looks (one a call, as before: five).
+    expect(writes).toBe(2);
+    const sent = r.model.seen[1]!.messages;
+    const at = (text: string) => sent.indexOf(text);
+    expect(at("src/util.ts, lines 1-")).toBeGreaterThan(-1);
+    expect(at("src/util.ts, lines 1-")).toBeLessThan(at("src/index.ts, lines 1-"));
+    expect(sent).toContain("index.ts\nlegacy.ts\nutil.test.ts\nutil.ts");
   });
 
   it("refuse an edit that is not exact or not unique, say so, and count a turn of only failures as a bad one", async () => {

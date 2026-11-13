@@ -125,6 +125,8 @@ export class WorkLog {
   private readonly now: () => number;
   private readonly quietMax: number;
   private n: number | null = null;
+  /** The count being read: entries added side by side (a turn's looks) wait for the one read. */
+  private counting: Promise<number> | null = null;
 
   constructor(readonly jobId: string, o: WorkLogOptions = {}) {
     this.store = o.store ?? worklogStore();
@@ -135,7 +137,11 @@ export class WorkLog {
   async add(kind: WorkKind, e: EntryInput): Promise<WorkEntry | null> {
     if (!WORK_KINDS.includes(kind)) return null;
     try {
-      this.n ??= await this.store.count(this.jobId);
+      if (this.n === null) {
+        this.counting ??= this.store.count(this.jobId).finally(() => { this.counting = null; });
+        const n = await this.counting;
+        this.n ??= n;
+      }
       if (this.n >= ENTRIES_MAX || (this.n >= this.quietMax && (kind === "read" || kind === "note"))) return null;
       const row: NewWorkEntry = { at: this.now(), kind, text: redactText(e.text, 1500) };
       const files = cleanFiles(e.files);

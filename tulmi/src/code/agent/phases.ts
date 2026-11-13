@@ -48,7 +48,7 @@ import { getConfig } from "../../config.js";
 import { buildContext, digestOf, fold, projectContext } from "./context.js";
 import { isStrategy, type ContextStrategy } from "./mask.js";
 import { designDue, designLines } from "./design.js";
-import { WITHHELD_ARGS, argsHoldSecret } from "./tools.js";
+import { WITHHELD_ARGS, argsHoldSecret, type ToolOutcome } from "./tools.js";
 import { SAID_KEEP } from "../live/limits.js";
 import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
@@ -380,11 +380,52 @@ export function holdQuestion(r: Pick<Run, "state">): string | null {
     + "Ask only if going on would delete their data or spend their money, or needs something only they have (a key, an account, a file): then call ask_user again now.";
 }
 
-/** Carries out the calls of a turn that have no result yet, writing each result into the state as it comes. */
+/**
+ * THE TOOLS THAT ONLY LOOK. A turn's run of two or more of them is answered side by side, LOOKS_AT_ONCE at a time, their results kept in the order the model
+ * asked, and the state saved once for the run instead of once a call. A server that dies in the middle of a run asks them all again, which changes nothing:
+ * they stage nothing, run nothing and ask no one. Every other call is carried out alone, in order, and saved as soon as it is done, so an edit is never made twice.
+ */
+const LOOKS: ReadonlySet<string> = new Set(["read_file", "list_dir", "grep", "glob", "search_code", "suggest_files", "project_map"]);
+export const LOOKS_AT_ONCE = 4;
+
+/** How many calls from i on are looks, within the turn's allowance. */
+function looksFrom(calls: Exchange["calls"], i: number): number {
+  let j = i;
+  while (j < Math.min(calls.length, CALLS_PER_TURN) && LOOKS.has(calls[j]!.name)) j += 1;
+  return j - i;
+}
+
+/** f over the items, at most `width` at a time, the answers in the items' order. */
+async function sideBySide<T, U>(items: readonly T[], width: number, f: (x: T) => Promise<U>): Promise<U[]> {
+  const out = new Array<U>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(width, items.length) }, async () => {
+    while (next < items.length) {
+      const k = next++;
+      out[k] = await f(items[k]!);
+    }
+  }));
+  return out;
+}
+
+const recordOf = (out: ToolOutcome): ResultRecord => ({
+  ok: out.ok, content: out.content, ...(out.data !== undefined ? { data: out.data } : {}), ...(out.label ? { label: out.label } : {}), ...(out.wrapped ? { wrapped: true } : {}),
+});
+
+/** Carries out the calls of a turn that have no result yet, writing each result into the state as it comes (a run of looks: when the run is done). */
 async function executeCalls(r: Run, ex: Exchange): Promise<void> {
   const w = r.state.work;
   const startOk = ex.results.filter((x) => x.ok).length;
   for (let i = ex.results.length; i < ex.calls.length; i += 1) {
+    const looks = w.finished ? 0 : looksFrom(ex.calls, i);
+    if (looks > 1) {
+      const run = ex.calls.slice(i, i + looks);
+      const outs = await sideBySide(run, LOOKS_AT_ONCE, (c) => r.tools.exec(callOf(c, r.held)));
+      run.forEach((c, k) => { ex.results.push(recordOf(outs[k]!)); r.held.delete(c.id); });
+      await r.save();
+      i += looks - 1;
+      continue;
+    }
     const c = ex.calls[i]!;
     let result: ResultRecord;
     if (w.finished) {
@@ -405,7 +446,7 @@ async function executeCalls(r: Run, ex: Exchange): Promise<void> {
       result = { ok: true, content: `The person answered: ${q.answer}` };
     } else {
       const out = await r.tools.exec(callOf(c, r.held));
-      result = { ok: out.ok, content: out.content, ...(out.data !== undefined ? { data: out.data } : {}), ...(out.label ? { label: out.label } : {}), ...(out.wrapped ? { wrapped: true } : {}) };
+      result = recordOf(out);
       if (out.control?.type === "ask") {
         // The call is answered when the person answers: the turn stays half done, and the job waits.
         w.asked = (w.asked ?? 0) + 1;
@@ -640,6 +681,9 @@ async function modelTurn(r: Run): Promise<void> {
     res = await call({
       tier: route.tier, ...(route.model ? { model: route.model } : {}), ...(reasoning ? { reasoning } : {}), messages: ctx.messages, tools: [...r.tools.defs()], toolChoice: "auto",
       purpose: "agent.work", budget: "job", jobId: r.jobId, userId: r.userId, step: w.turns, maxTokens: room, signal: r.signal,
+      // A kept transcript only grows at its end, so Claude reads the turns before from its prompt cache (gateway.ts PROMPT CACHING); the other strategies
+      // rewrite the task block every turn, which a mark after it would only pay to write again.
+      growing: strategy === "transcript",
     }, d.gateway);
   } catch (err) {
     if ((err as { name?: string })?.name === "ModelUnavailable") {

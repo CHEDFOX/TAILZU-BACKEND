@@ -166,22 +166,38 @@ export class Changeset {
   clear(): void { this.rev += 1; this.staged.length = 0; }
 }
 
-/** Replaces `old` with `next` in `text` when `old` occurs exactly once. Otherwise a Refused that says what was found. */
-export function replaceOnce(path: string, text: string, old: unknown, next: unknown): string {
+/** The two texts of an edit, checked: the old one to find, the new one to put in its place. */
+function pairOf(old: unknown, next: unknown): { old: string; next: string } {
   if (typeof old !== "string" || old === "") throw new Refused("old is needed: the exact text to replace, copied from the file, with enough around it to be the only one.");
   if (typeof next !== "string") throw new Refused("new is needed: the text to put in its place (it may be empty to remove the old text).");
   if (old === next) throw new Refused("old and new are the same, so nothing would change.");
-  const first = text.indexOf(old);
-  if (first < 0) {
-    const line = old.split("\n").find((l) => l.trim().length > 6)?.trim();
-    const near = line && text.includes(line) ? ` A line of it, ${JSON.stringify(line.slice(0, 60))}, is there, so the difference is in the spacing or the lines around it: read the file again and copy the text exactly.` : " Read the file again and copy the text exactly, spaces and all.";
-    throw new Refused(`That text is not in ${path}.${near}`);
-  }
-  const second = text.indexOf(old, first + old.length);
+  return { old, next };
+}
+
+/** What to say when the old text is not in the file: where it differs, when a line of it is there. */
+function notThere(path: string, text: string, old: string): Refused {
+  const line = old.split("\n").find((l) => l.trim().length > 6)?.trim();
+  const near = line && text.includes(line) ? ` A line of it, ${JSON.stringify(line.slice(0, 60))}, is there, so the difference is in the spacing or the lines around it: read the file again and copy the text exactly.` : " Read the file again and copy the text exactly, spaces and all.";
+  return new Refused(`That text is not in ${path}.${near}`);
+}
+
+/** Replaces `old` with `next` in `text` when `old` occurs exactly once. Otherwise a Refused that says what was found. */
+export function replaceOnce(path: string, text: string, old: unknown, next: unknown): string {
+  const p = pairOf(old, next);
+  const first = text.indexOf(p.old);
+  if (first < 0) throw notThere(path, text, p.old);
+  const second = text.indexOf(p.old, first + p.old.length);
   if (second >= 0) {
-    let n = 0;
-    for (let at = text.indexOf(old); at >= 0; at = text.indexOf(old, at + old.length)) n += 1;
-    throw new Refused(`That text is in ${path} ${n} times. Include more of the lines around it so it is the only one.`);
+    const n = text.split(p.old).length - 1;
+    throw new Refused(`That text is in ${path} ${n} times. Include more of the lines around it so it is the only one, or say replace_all to change every one.`);
   }
-  return text.slice(0, first) + next + text.slice(first + old.length);
+  return text.slice(0, first) + p.next + text.slice(first + p.old.length);
+}
+
+/** Every copy of the old text replaced (a rename in one file): at least one must be there. */
+export function replaceEvery(path: string, text: string, old: unknown, next: unknown): { text: string; count: number } {
+  const p = pairOf(old, next);
+  const parts = text.split(p.old);
+  if (parts.length < 2) throw notThere(path, text, p.old);
+  return { text: parts.join(p.next), count: parts.length - 1 };
 }

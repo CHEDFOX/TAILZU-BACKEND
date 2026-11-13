@@ -10,7 +10,7 @@
  *                                      each with why, and the tests near the first ones. No model. A free-form job's map of where to look, never a gate
  *   project_map {action, query?, path?} the project map (project/map.ts): find the components a request means, open one's card with each function's
  *                                      lines as they are NOW (checked against the file with the staged edits), or where a new thing of a kind goes
- *   edit_file {path, old, new}         an exact replace of text that occurs once; STAGES it
+ *   edit_file {path, old, new, replace_all?}  an exact replace of text that occurs once (replace_all: every copy of it); STAGES it
  *   write_file {path, content}         stages a whole file
  *   delete_file {path}                 stages a deletion
  *   run {cmd, why, timeoutSec?}        on a runner, with the staged edits laid over the checkout; 3 minutes unless it asks for more (10 at most)
@@ -57,7 +57,7 @@ import { WEB_TOOLS, type WebTools } from "../webTools.js";
 import { cleanFinding, redactText, type WorkLog } from "../work/index.js";
 import { fusedFor } from "../work/locate.js";
 import { needsWords, widgetWords, type NeedsWords } from "../../widgets/botWords.js";
-import { Changeset, Refused, checkedText, editablePath, replaceOnce } from "./changeset.js";
+import { Changeset, Refused, checkedText, editablePath, replaceEvery, replaceOnce } from "./changeset.js";
 import { lockedWords, TESTS_ASKED, weakenedTests } from "./testlock.js";
 import type { PathGuard } from "../team/guard.js";
 import type { RunOutcome, RunSpec } from "./runner.js";
@@ -127,8 +127,8 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "edit_file",
-    description: "Replace text in a file. `old` is copied exactly from the file and occurs ONCE (add surrounding lines to make it so); `new` replaces it. Staged, not committed.",
-    parameters: obj({ path: { type: "string", maxLength: 500 }, old: { type: "string" }, new: { type: "string" } }, ["path", "old", "new"]),
+    description: "Replace text in a file: `old`, copied exactly, occurs ONCE (add lines around it to make it so); `new` replaces it; replace_all: every copy. Staged, not committed.",
+    parameters: obj({ path: { type: "string", maxLength: 500 }, old: { type: "string" }, new: { type: "string" }, replace_all: { type: "boolean" } }, ["path", "old", "new"]),
   },
   {
     name: "write_file",
@@ -232,14 +232,26 @@ const str = (v: unknown): string | undefined => (typeof v === "string" ? v : und
 const int = (v: unknown): number | undefined => (typeof v === "number" && Number.isInteger(v) && v > 0 ? v : undefined);
 const short = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+type Tree = { files: Set<string>; sizes: Map<string, number>; dirs: Map<string, Set<string>>; truncated: boolean };
+
+/**
+ * A turn's looks are answered side by side (phases.ts executeCalls), so what several of them may ask for at once (the branch's tree, a file of it, the
+ * job's copy of the code) is asked for once, and the others wait for that answer.
+ */
 export class Tools {
   readonly changes: Changeset;
-  private tree: { files: Set<string>; sizes: Map<string, number>; dirs: Map<string, Set<string>>; truncated: boolean } | null = null;
+  private tree: Tree | null = null;
+  private treeLoading: Promise<Tree> | null = null;
   /** What the job's copy of the code said about itself, once asked (undefined: not asked yet). */
   private liveStatus: LiveStatus | null | undefined;
-  /** The staged edits the copy was last given. */
+  private liveAsking: Promise<void> | null = null;
+  /** The staged edits the copy was last given, and the giving under way. */
   private overlayRev = -1;
+  private overlaySending: Promise<void> | null = null;
+  /** Bumped when the branch moves: an answer asked for before that is not kept. */
+  private generation = 0;
   private branchTexts = new Map<string, string | null>();
+  private branchReading = new Map<string, Promise<string | null>>();
   /** `callId:kind` of the entries already in the work log: a call picked up again after a crash is not logged twice. */
   private logged = new Set<string>();
 
@@ -249,12 +261,17 @@ export class Tools {
 
   /** The branch moved (a commit): what was read of it is stale. */
   invalidate(): void {
+    this.generation += 1;
     this.tree = null;
+    this.treeLoading = null;
     this.branchTexts.clear();
+    this.branchReading.clear();
     // The job's copy of the code is of the commit before this one: thrown away, and made again at the next need.
     if (this.env.files?.reset) {
       this.liveStatus = undefined;
+      this.liveAsking = null;
       this.overlayRev = -1;
+      this.overlaySending = null;
       void this.env.files.reset().catch(() => undefined);
     }
   }
@@ -278,8 +295,18 @@ export class Tools {
 
   // ------------------------------------------------------------- the branch
 
-  private async loadTree() {
+  private async loadTree(): Promise<Tree> {
     if (this.tree) return this.tree;
+    if (!this.treeLoading) {
+      const gen = this.generation;
+      const loading = this.fetchTree().then((t) => { if (gen === this.generation) this.tree = t; return t; });
+      this.treeLoading = loading;
+      loading.then(() => { if (this.treeLoading === loading) this.treeLoading = null; }, () => { if (this.treeLoading === loading) this.treeLoading = null; });
+    }
+    return this.treeLoading;
+  }
+
+  private async fetchTree(): Promise<Tree> {
     const t = await this.env.ws.tree();
     const files = new Set<string>();
     const sizes = new Map<string, number>();
@@ -292,13 +319,23 @@ export class Tools {
       const parts = e.path.split("/");
       for (let i = 0; i < parts.length; i += 1) add(parts.slice(0, i).join("/"), i === parts.length - 1 ? parts[i]! : `${parts[i]!}/`);
     }
-    this.tree = { files, sizes, dirs, truncated: t.truncated };
-    return this.tree;
+    return { files, sizes, dirs, truncated: t.truncated };
   }
 
   /** A file's text on the work branch, or null when it is not there. A file we cannot read (binary, too big) is a Refused. */
   private async branchText(path: string): Promise<string | null> {
     if (this.branchTexts.has(path)) return this.branchTexts.get(path)!;
+    const pending = this.branchReading.get(path);
+    if (pending) return pending;
+    const gen = this.generation;
+    const reading = this.readBranch(path, gen);
+    this.branchReading.set(path, reading);
+    const clear = () => { if (this.branchReading.get(path) === reading) this.branchReading.delete(path); };
+    reading.then(clear, clear);
+    return reading;
+  }
+
+  private async readBranch(path: string, gen: number): Promise<string | null> {
     let text: string | null;
     try {
       text = (await this.env.ws.read(path)).text;
@@ -307,6 +344,7 @@ export class Tools {
       else if (err instanceof ConnectorError && (err.code === "too_large" || err.code === "binary_file" || err.code === "not_a_file")) throw new Refused(err.message);
       else throw err;
     }
+    if (gen !== this.generation) return text;
     if (this.branchTexts.size > 200) this.branchTexts.clear();
     this.branchTexts.set(path, text);
     return text;
@@ -368,15 +406,29 @@ export class Tools {
     const f = this.env.files;
     if (!f) return null;
     if (this.liveStatus === undefined) {
-      try { this.liveStatus = await f.status(); } catch { this.liveStatus = null; }
+      if (!this.liveAsking) {
+        const gen = this.generation;
+        // Started inside a promise, so a copy that throws at once is a copy that is down, as one that rejects is.
+        const asking = Promise.resolve().then(() => f.status()).then((st) => st, () => null).then((st) => { if (gen === this.generation) this.liveStatus = st; });
+        this.liveAsking = asking;
+        void asking.then(() => { if (this.liveAsking === asking) this.liveAsking = null; });
+      }
+      await this.liveAsking;
     }
     const st = this.liveStatus;
     if (!st || !(forSearch ? st.ready || st.remote : st.ready && !st.remote)) return null;
     if (this.overlayRev !== this.changes.rev) {
-      try {
-        await f.setOverlay(this.changes.toOverlayUnchecked());
-        this.overlayRev = this.changes.rev;
-      } catch { return null; }
+      if (!this.overlaySending) {
+        const rev = this.changes.rev;
+        const gen = this.generation;
+        const sending = Promise.resolve().then(() => f.setOverlay(this.changes.toOverlayUnchecked()))
+          .then(() => { if (gen === this.generation) this.overlayRev = rev; }, () => undefined);
+        this.overlaySending = sending;
+        void sending.then(() => { if (this.overlaySending === sending) this.overlaySending = null; });
+      }
+      await this.overlaySending;
+      // Not given (the copy refused it), or given an older set than what is staged now: GitHub answers this one.
+      if (this.overlayRev !== this.changes.rev) return null;
     }
     return f;
   }
@@ -715,12 +767,15 @@ export class Tools {
     this.changes.assertOwned(path);
     const before = await this.current(path);
     if (before === null) throw new Refused(`There is no file ${path} to edit. Use write_file to create it.`);
-    const next = checkedText(path, replaceOnce(path, before, a.old, a.new), before);
+    // replace_all: every copy (a name used all through the file), in one call instead of one call a copy, each with lines around it to make it the only one.
+    const done = a.replace_all === true ? replaceEvery(path, before, a.old, a.new) : { text: replaceOnce(path, before, a.old, a.new), count: 1 };
+    const next = checkedText(path, done.text, before);
     const original = await this.branchText(path);
     this.keepTests(path, original, next);
     this.changes.stage(path, next, { existed: original !== null, original });
-    await this.log(call, "edit", `Edited ${path}.`, [path], { action: original === null ? "create" : "edit" });
-    return { ok: true, content: `Edited ${path}. It is staged, not committed.` };
+    const places = done.count > 1 ? ` (${done.count} places)` : "";
+    await this.log(call, "edit", `Edited ${path}${places}.`, [path], { action: original === null ? "create" : "edit" });
+    return { ok: true, content: `Edited ${path}${places}. It is staged, not committed.` };
   }
 
   private async writeFile(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
