@@ -1,7 +1,10 @@
 # Being built right now (read before you start)
 
-Updated 13 Nov 2026, 23:00 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 13 Nov 2026, 23:30 UTC. One session is building the items below. Do not edit the files they hold until the item is
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
+
+**How to build things now:** read `TAILZU-BACKEND/docs/renderer.md` before adding any screen, visual, animation or widget
+look. The apps are renderers: build server data with the existing blocks and catalogs, not new client components.
 
 ## Landed today (on main, every switch off by default)
 
@@ -12,39 +15,38 @@ marked landed here; if you must, write a line under "Notes from other sessions" 
   behind `PERM_LOCATION`, `PERM_CONTACT_PICK`, `PERM_HEALTH_IOS`, `PERM_HEALTH_ANDROID` (`docs/perms.md`).
 - The runtime check: `tools/ci/check-runtime.mjs` and `app/native-inputs.lock` (phone). Native additions need no runtime
   bump; changing an existing native package does. Run `node tools/ci/check-runtime.mjs --write` after native changes.
-
-## In progress (phone: TAILZU-FRONTEND/app)
-
-Needed in the next store build:
 - **Safety net** (one bad node cannot crash a screen; `sdui.safe` / `sdui.off` / `sdui.motion` switches; crash-loop safe
-  mode). Holds `src/sdui/Renderer.tsx`, `src/sdui/knobs.ts`, `src/sdui/safety*`, `src/sdui/client/capabilities.ts`.
-- **Launch animation from the server** (`GET /v1/launch`). Holds `src/launch/**`, `src/storage.ts`.
+  mode), frontend `7ddcf31`. Not switched on until V1: the server sends no `sdui.*` knob yet.
+- **Launch animation from the server**, frontend `7ddcf31`. It rides the bootstrap as `app.launch`.
+- **Paint, device facts, phone-local values, shell and data blocks**, frontend `7ddcf31`. Not switched on until V1: no
+  screen can reach them.
 
-The new building blocks (over the air, no store build; `pure` spec):
-- Kernel: `src/sdui/kernel/**` (new), generated into `TAILZU-DESKTOP/src/app/sdui/kernel.js` and
-  `TAILZU-BACKEND/shared/sdui/kernel.cjs` (never edit those two by hand).
-- Motion and gestures on any node: `src/sdui/motion/**`, `src/sdui/gesture/**`, `src/sdui/components/Screen.tsx`, `Scroll.tsx`.
-- Lists, inputs, media: `src/sdui/components/{List,Each,Video,Audio,Camera}.tsx`, `src/sdui/components/input/**`,
-  `src/sdui/components/index.ts`.
-- Paint, device facts, phone-local values: `src/sdui/theme/style.ts`, `src/sdui/components/blur.tsx`,
-  `src/sdui/device/facts.ts`, `src/sdui/local.ts`.
-- Shell and data: `src/sdui/shell/**`, `src/sdui/client/endpoint.ts`, `src/sdui/live/subscribe.ts`, `src/sdui/offline/**`.
-- Shared: `tools/knobs/app-knobs.json`, `tools/ci/marked-regions.mjs`.
+## In progress (started 13 Nov 2026, 23:30 UTC)
 
-Next, after those land: the renderer wiring (`src/sdui/Renderer.tsx`, `actions.ts`, `state.ts`), the server's screen checker
-(`TAILZU-BACKEND/shared/types/sdui.ts`, `tulmi/src/experience/sdui2/**`, `tulmi/src/routes/app/**`) and the desktop copy
-(`TAILZU-DESKTOP/src/app/sdui/v2/**`, `nodes.js`, `core.js`).
+All the building blocks are on main but not connected yet (see `docs/renderer.md`, section 3). Three jobs connect them now:
+- **Phone renderer wiring (V1).** Holds `app/src/sdui/Renderer.tsx`, `actions.ts`, `state.ts`, `types.ts`, `registry.ts`,
+  `fill.ts`, `client/capabilities.ts`, `live/live.ts`, `components/Screen.tsx`, the SDUI app root and navigation files, and
+  the new `app/src/sdui/blocks/**`.
+- **Server screen checker (S1).** Holds `TAILZU-BACKEND/shared/types/sdui.ts`, `tulmi/src/experience/sdui2/**` (new),
+  `tulmi/src/experience/bots/lint.ts`, `tulmi/src/experience/phone/launch.ts`, the screen route in `tulmi/src/routes/app/**`,
+  and adds `SDUI_V2` / `SDUI_V2_USERS` to `config.ts` (off by default).
+- **Desktop copy (D1).** Holds `TAILZU-DESKTOP/src/app/sdui/v2/**` (new), `src/app/sdui/kernel.js` (generated),
+  `core.js`, `nodes.js`, `app.html`.
 
-## In progress (server: TAILZU-BACKEND)
+Do not build screens with the new blocks until these land; until then use what `docs/renderer.md` section 2 lists.
 
-- **What a bot draws under its words** (`docs/show.md`, behind `BOT_SHOW`, off by default; server only, nothing new in the apps):
-  after a bot answers in its chat, the `bot_show` role picks building blocks or none (a choice to tap, a callout, steps, a table,
-  a chart, next questions, a form, a drawing), drawn as monochrome dot art whose pieces spring in on `Rise`, with Blip beside a
-  drawing now and then. Built on `claude/keen-allen-podunv`, not on main yet. Holds `tulmi/src/show/**`,
+## In progress (server: the bot drawings, started 13 Nov 2026)
+
+- **What a bot draws under its words** (`docs/show.md`; behind `BOT_SHOW`, off, staged by `BOT_SHOW_USERS`; server only,
+  today's kit only, per `docs/renderer.md` section 2): after a bot answers in its chat, the `bot_show` role picks building
+  blocks or none, drawn as monochrome dot art (SVG circles) whose pieces spring in on `Rise` on the newest answer, with Blip
+  (`BotBuddy`) beside a drawing now and then; every Rise and BotBuddy carries a `fallback`, and a chat screen holds a dot budget
+  so it stays inside the screen limits. Built on `claude/keen-allen-podunv`, not on main yet. Holds `tulmi/src/show/**`,
   `tulmi/src/experience/bots/show.ts`, `tulmi/src/experience/bots/screens/bots/parts.ts` (`botTurn`, `chatTurns`),
-  `tulmi/src/bots/run.ts` (step 7), `tulmi/src/botsBots/chat.ts` (picks), the chat POST in `tulmi/src/routes/bots/botsBots.ts`, the
-  `bot_show` role in `tulmi/src/principles/roles.ts`, `docs/show.md`. It touches none of the files the phone items hold, and
-  leaves `shared/types/sdui.ts` exactly as main has it.
+  `tulmi/src/bots/run.ts` (step 7), `tulmi/src/botsBots/chat.ts` (picks), the chat POST in `tulmi/src/routes/bots/botsBots.ts`,
+  the `bot_show` role in `tulmi/src/principles/roles.ts`, `docs/show.md`. It leaves `shared/types/sdui.ts` and
+  `tulmi/src/experience/bots/lint.ts` exactly as main has them, and adds `BOT_SHOW` / `BOT_SHOW_USERS` to `config.ts` next to
+  `LINGO`, away from where S1 adds `SDUI_V2`.
 
 ## Numbers in use
 
@@ -54,7 +56,6 @@ Next, after those land: the renderer wiring (`src/sdui/Renderer.tsx`, `actions.t
 
 ## Notes from other sessions
 
-- From the bot drawings (server): once "motion and gestures on any node" lands, the drawings in
-  `tulmi/src/experience/bots/show.ts` (`SPRING`, `piecesOf`) can move to it, for real physics on the window too (today a Rise is a
-  real spring on the phone and a CSS ease on the window) and a touch that pushes the dots. Nothing to do on the phone's side for
-  it; just say here when it is on main.
+- From the bot drawings (server), for S1 and V1: the drawings use `Rise` pieces for their motion today. Once `motion` (SPEC 2.5)
+  can reach a screen, they move to it and stop sending Rise, inside the 64 animated nodes; nothing to do on your side but say
+  here when it is on main.
