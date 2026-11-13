@@ -1,0 +1,122 @@
+{
+  "v": 2,
+  "at": 1763040000000,
+  "refreshAfterSec": 300,
+  "case": "done",
+  "greeting": {
+    "hello": "Evening, Riya",
+    "line": "Nothing needs you right now.",
+    "part": "evening"
+  },
+  "summary": "Xode finished the cart fix.",
+  "week": {
+    "done": 9,
+    "minutesSaved": 74,
+    "dots": 5,
+    "line": "9 done this week"
+  },
+  "bots": [
+    {
+      "slug": "code",
+      "name": "Xode",
+      "color": "#8FB6FF",
+      "face": "code",
+      "faceUrl": null,
+      "state": "working",
+      "needs": 0,
+      "working": true,
+      "line": "Fixing the cart total",
+      "link": "tulmi://bot/code"
+    },
+    {
+      "slug": "plan",
+      "name": "Plan bot",
+      "color": "#FFC98F",
+      "face": "plan",
+      "faceUrl": null,
+      "state": "idle",
+      "needs": 0,
+      "working": false,
+      "line": "PTM at 9:30",
+      "link": "tulmi://bot/plan"
+    },
+    {
+      "slug": "keybot",
+      "name": "Keylessbord",
+      "color": "#C9A6FF",
+      "face": "keybot",
+      "faceUrl": null,
+      "state": "idle",
+      "needs": 0,
+      "working": false,
+      "line": "Quiet today",
+      "link": "tulmi://bot/keybot"
+    },
+    {
+      "slug": "travel",
+      "name": "Travel bot",
+      "color": "#9FE3C5",
+      "face": "travel",
+      "faceUrl": null,
+      "state": "done",
+      "needs": 0,
+      "working": false,
+      "line": "Tickets held",
+      "link": "tulmi://bot/travel"
+    }
+  ],
+  "more": 1,
+  "needs": {
+    "count": 0,
+    "items": []
+  },
+  "job": null,
+  "counts": {
+    "working": 0,
+    "needs": 0
+  },
+  "lock": {
+    "inline": "Done",
+    "title": "Done",
+    "line": "Cart total rounding is fixed"
+  },
+  "links": {
+    "ask": "tulmi://screen/bots.ask",
+    "home": "tulmi://",
+    "mic": "tulmi://screen/bots.ask?voice=1"
+  },
+  "words": {
+    "needsYou": "Needs you",
+    "ready": "Ready",
+    "ask": "Ask any bot…",
+    "brand": "X0",
+    "youDecide": "You decide",
+    "working": "{n} working",
+    "step": "Step {stage} of {of}",
+    "minIn": "{n} min in",
+    "seePr": "See the PR",
+    "done": "Done",
+    "answered": "Answered",
+    "finish": "Open X0 to finish",
+    "doneSeePr": "Done · See the PR",
+    "min": "{n} min",
+    "pr": "PR #{n}",
+    "sending": "Sending…",
+    "gone": "Already answered",
+    "failed": "Open X0 to finish"
+  },
+  "lastDone": {
+    "id": "j0",
+    "bot": "code",
+    "botName": "Xode",
+    "face": "code",
+    "result": "Cart total rounding is fixed",
+    "endedAt": 1763039640000,
+    "minutes": 14,
+    "pr": {
+      "number": 131,
+      "url": "https://github.com/tailzu/app/pull/131"
+    },
+    "link": "tulmi://job/j0"
+  }
+}

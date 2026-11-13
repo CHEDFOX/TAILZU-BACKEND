@@ -1,5 +1,5 @@
 /**
- * CALLS' ROWS (migration 0087_rooms.sql): one row a room. Its link's code is kept twice: hashed, to find the room by a link, and sealed, so its
+ * CALLS' ROWS (migration 0090_rooms.sql): one row a room. Its link's code is kept twice: hashed, to find the room by a link, and sealed, so its
  * host can see and share the link again (rooms/link.ts). Who is in it now and every time people were in it are on the row, from LiveKit's
  * webhook; who waits in the lobby is not (rooms/lobby.ts, in memory: a knock lasts minutes).
  *

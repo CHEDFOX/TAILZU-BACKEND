@@ -1,0 +1,46 @@
+{
+  "note": "The path grammar: M L Q C Z O. It is shared by the bots' looks, the animation format, nlook shapes and the keyboard's `path` mark, so one set of cases keeps four parsers honest: NLookPath.swift, NLookPaint.kt, KBPath.swift and KbPath.kt. The Swift and Kotlin parser cores are kept byte-identical inside marked regions, and CI diffs them.",
+
+  "cases": [
+
+    { "id": "ok.lines", "d": "M 4 12 L 60 12 L 60 20 Z", "expect": "ok",
+      "why": "Move, two lines, close. The oldest shape there is." },
+
+    { "id": "ok.quadratic", "d": "M 0 20 Q 30 0 60 20", "expect": "ok",
+      "why": "The quadratic the bots' looks format 1 already uses everywhere." },
+
+    { "id": "ok.cubic", "d": "M 4 12 C 30 2 90 2 116 12", "expect": "ok",
+      "why": "C is the animation spec's format-2 addition (C c1x c1y c2x c2y x y). Every native parser accepts it FROM DAY ONE, so a path drawn for an animation scene stays drawable as a widget shape or a key print without waiting for a second build." },
+
+    { "id": "ok.circle", "d": "O 0 0 0.06", "expect": "ok",
+      "why": "O is a circle: cx cy r. The bots' looks use it for dots and puffs." },
+
+    { "id": "ok.manyCircles", "d": "O 0 0 0.06 O 0.055 -0.022 0.045 O -0.05 -0.018 0.042", "expect": "ok",
+      "why": "Repeated commands without repeating the letter, as the looks file already writes them." },
+
+    { "id": "unknown.command.dropsPath", "d": "M 0 0 A 10 10 0 0 1 20 20", "expect": "dropped",
+      "at": "the A command",
+      "why": "An unknown command drops ONLY that path, never the shape around it and never the design. Arcs are not in the grammar: C covers what we need and keeps every parser small." },
+
+    { "id": "bad.oddNumbers.dropsPath", "d": "M 0 0 L 10", "expect": "dropped",
+      "at": "the L with one number",
+      "why": "A command with the wrong count of numbers is not guessed at." },
+
+    { "id": "bad.notANumber.dropsPath", "d": "M 0 0 L ten 10", "expect": "dropped",
+      "why": "A token that is not a number drops the path. There is no expression evaluation anywhere in this format." },
+
+    { "id": "limit.dChars.dropsPath", "expect": "dropped",
+      "at": "d longer than 900 characters",
+      "generate": { "repeat": "L 1 1 ", "toChars": 1000 },
+      "why": "A path is 900 characters at most, and a Shape holds at most 12 of them. On Android each path becomes an alpha-mask bitmap, so a path is not free." },
+
+    { "id": "limit.pathsPerShape.clamped", "expect": "clamped",
+      "keep": "the first 12 paths",
+      "generate": { "paths": 20 },
+      "why": "Over twelve, the extras are dropped and the shape still draws." },
+
+    { "id": "ok.inKeyMark", "surface": "keyboard", "d": "M 4 12 C 30 2 90 2 116 12", "expect": "ok",
+      "why": "The same path as a key print: `path` is the one new mark shape in this build, beside the rect, line, circle and bars that already ship." }
+
+  ]
+}

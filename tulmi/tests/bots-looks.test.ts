@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify from "fastify";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const CONTROL = mkdtempSync(join(tmpdir(), "tz-looks-"));
 const ENV = {
@@ -21,8 +21,8 @@ Object.assign(process.env, ENV);
 import { resetConfigForTests } from "../src/config.js";
 // eslint-disable-next-line import/first
 import {
-  activeLooks, checkLooks, checkMomentExpression, dropPushed, fileCatalog, idleSurprises, looksFlags, momentProps, playsFormat, pushLooks, pushedFile,
-  resetLooksForTests, type LooksCatalog,
+  activeLooks, activeFormat, canScenes, checkLooks, checkMomentExpression, dropPushed, fileCatalog, idleSurprises, looksCan, looksFlags, momentProps,
+  offMoments, playsFormat, pushLooks, pushedFile, resetLooksForTests, servedLooks, setOffMoments, type LooksCatalog,
 } from "../src/experience/bots/looks.js";
 // eslint-disable-next-line import/first
 import { registerBotLooksRoutes } from "../src/routes/bots/botLooks.js";
@@ -121,9 +121,10 @@ describe("the catalog served, pushed and taken back", () => {
     expect(pushLooks({ ...c, v: c.v })).toMatchObject({ ok: false, status: 409 });
     const broken = pushLooks({ ...c, v: c.v + 1, moments: { x: { dur: 0, tracks: [] } } });
     expect(broken).toMatchObject({ ok: false, status: 400 });
-    expect(pushLooks({ ...c, v: c.v + 1 }, { dry: true })).toEqual({ ok: true, v: c.v + 1 });
+    // Warnings (a scene that does not fit one node size, so that moment plays its fallback act there) are not a no.
+    expect(pushLooks({ ...c, v: c.v + 1 }, { dry: true })).toMatchObject({ ok: true, v: c.v + 1 });
     expect(activeLooks()?.v).toBe(c.v);
-    expect(pushLooks({ ...c, v: c.v + 1 })).toEqual({ ok: true, v: c.v + 1 });
+    expect(pushLooks({ ...c, v: c.v + 1 })).toMatchObject({ ok: true, v: c.v + 1 });
     expect(activeLooks()?.v).toBe(c.v + 1);
     resetLooksForTests();
     expect(activeLooks()?.v, "kept on the control volume").toBe(c.v + 1);
@@ -190,5 +191,148 @@ describe("moments on screens", () => {
     };
     expect((await home(["BotsKit", "BotsMotion", "BotMoments"]))?.props?.surprises).toEqual({ every: c.idle!.every, chance: c.idle!.chance, moments: c.idle!.moments });
     expect((await home(["BotsKit", "BotsMotion"]))?.props?.surprises).toBeUndefined();
+  });
+});
+
+describe("looks format 2: the projection served, the kill list, and the highest v ever", () => {
+  const F2 = new Set(["BotMoments", "BotMoments2"]);
+  const F1 = new Set(["BotMoments"]);
+
+  it("a build that plays only format 1 is served exactly what it was served before: { v, url }, and no scenes", () => {
+    const c = catalog();
+    expect(looksFlags()).toEqual({ "bots.looks": { v: c.v, url: `/v1/bots/looks?v=${c.v}` } });
+    expect(looksFlags(1)).toEqual({ "bots.looks": { v: c.v, url: `/v1/bots/looks?v=${c.v}` } });
+    const cut = servedLooks(1)!;
+    expect(cut.scenes).toBeUndefined();
+    expect(cut.format).toBe(1);
+    expect(Object.values(cut.moments ?? {}).every((m) => (m.format ?? 1) === 1)).toBe(true);
+  });
+
+  it("a build that plays format 2 gets its format, the f URL and the kill list", () => {
+    const c = catalog();
+    expect(looksFlags(2)).toEqual({ "bots.looks": { v: c.v, f: 2, url: `/v1/bots/looks?v=${c.v}&f=2`, off: [] } });
+    setOffMoments(["p.pond"]);
+    expect(offMoments()).toEqual(["p.pond"]);
+    expect(looksFlags(2)).toMatchObject({ "bots.looks": { off: ["p.pond"] } });
+    // A moment switched off plays its fallback act, even on a build that could play it.
+    expect(momentProps(F2, "p.pond")).toEqual({ act: "survey" });
+    setOffMoments([]);
+    expect(momentProps(F2, "p.pond")).toEqual({ moment: "p.pond" });
+    expect(setOffMoments(["NOT AN ID"])).toMatchObject({ ok: false });
+  });
+
+  it("a format-2 recipe goes to a build that plays it, and its act to every other", () => {
+    expect(momentProps(F1, "p.pond")).toEqual({ act: "survey" });
+    expect(momentProps(new Set(), "p.pond")).toEqual({ act: "survey" });
+    expect(momentProps(F2, "p.pond", "loop")).toEqual({ moment: "p.pond", momentMode: "loop" });
+    expect(canScenes(F2)).toBe(true);
+    expect(canScenes(F1)).toBe(false);
+    expect(activeFormat()).toBe(2);
+    // Home's surprises never carry one a build cannot play, or one switched off.
+    const c = catalog();
+    const idle = (c.idle?.moments ?? []) as string[];
+    expect(idleSurprises(F1)?.moments.every((m) => idle.includes(m))).toBe(true);
+  });
+
+  it("GET carries f: the ETag says which cut it is, and no f means the format-1 one", async () => {
+    const app = Fastify();
+    registerBotLooksRoutes(app, { rateLimit: undefined });
+    await app.ready();
+    const c = catalog();
+    const one = await app.inject({ method: "GET", url: "/v1/bots/looks" });
+    expect(one.headers.etag).toBe(`"looks-${c.v}"`);
+    expect(one.json().scenes).toBeUndefined();
+    const two = await app.inject({ method: "GET", url: `/v1/bots/looks?v=${c.v}&f=2` });
+    expect(two.headers.etag).toBe(`"looks-${c.v}-f2"`);
+    expect(Object.keys(two.json().scenes ?? {})).toContain("pond");
+    const again = await app.inject({ method: "GET", url: "/v1/bots/looks?f=2", headers: { "if-none-match": String(two.headers.etag) } });
+    expect(again.statusCode).toBe(304);
+    // f is clamped, never trusted: a newer format than this server knows is served as the newest it does.
+    const wild = await app.inject({ method: "GET", url: "/v1/bots/looks?f=99" });
+    expect(wild.headers.etag).toBe(`"looks-${c.v}-f2"`);
+    const low = await app.inject({ method: "GET", url: "/v1/bots/looks?f=zero" });
+    expect(low.headers.etag).toBe(`"looks-${c.v}"`);
+    await app.close();
+  });
+
+  it("each (v, f) URL keeps one catalog forever: a push at or below the highest ever served is refused, even after a DELETE", () => {
+    const c = catalog();
+    expect(pushLooks({ ...c, v: c.v + 1 })).toMatchObject({ ok: true, v: c.v + 1 });
+    dropPushed();
+    expect(activeLooks()?.v).toBe(c.v);
+    expect(pushLooks({ ...c, v: c.v + 1 })).toMatchObject({ ok: false, status: 409 });
+    expect(pushLooks({ ...c, v: c.v + 2 })).toMatchObject({ ok: true, v: c.v + 2 });
+  });
+
+  it("the off route is the admin's, and it comes back", async () => {
+    const app = Fastify();
+    registerBotLooksRoutes(app, { rateLimit: undefined });
+    await app.ready();
+    const admin = { "x-admin-secret": ENV.ADMIN_SECRET };
+    expect((await app.inject({ method: "PUT", url: "/v1/admin/bots/looks/off", payload: { off: [] } })).statusCode).toBe(401);
+    const set = await app.inject({ method: "PUT", url: "/v1/admin/bots/looks/off", headers: admin, payload: { off: ["p.pond"] } });
+    expect(set.json()).toEqual({ ok: true, off: ["p.pond"] });
+    expect((await app.inject({ method: "GET", url: "/v1/admin/bots/looks/off", headers: admin })).json()).toEqual({ ok: true, off: ["p.pond"] });
+    const bad = await app.inject({ method: "PUT", url: "/v1/admin/bots/looks/off", headers: admin, payload: { off: ["NOPE"] } });
+    expect(bad.statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe("the launch-dark switch on format 2 (BOTS_SCENES)", () => {
+  const F2 = new Set(["BotMoments", "BotMoments2", "DeskShell", "FontBricolage"]);
+  const scenes = (on: string | null, users?: string) => {
+    if (on === null) delete process.env.BOTS_SCENES; else process.env.BOTS_SCENES = on;
+    if (users === undefined) delete process.env.BOTS_SCENES_USERS; else process.env.BOTS_SCENES_USERS = users;
+    resetConfigForTests();
+  };
+  afterEach(() => scenes(null));
+
+  it("off, and off by default: a BotMoments2 build is served exactly what a format-1 build is", () => {
+    for (const setting of [null, "false"]) {
+      scenes(setting);
+      const can = looksCan(F2);
+      expect(can.has("BotMoments2")).toBe(false);
+      expect(can.has("BotMoments")).toBe(true);
+      // Nothing else is touched: the gate drops BotMoments<n >= 2> and no other name.
+      expect([...can].sort()).toEqual(["BotMoments", "DeskShell", "FontBricolage"]);
+      expect(playsFormat(can)).toBe(1);
+      expect(canScenes(can)).toBe(false);
+      // The bootstrap's flag is then the one today's builds already get, byte for byte.
+      const c = catalog();
+      expect(looksFlags(playsFormat(can))).toEqual({ "bots.looks": { v: c.v, url: `/v1/bots/looks?v=${c.v}` } });
+      // And the pond goes out as its fallback act, to a build that could have played it.
+      expect(momentProps(can, "p.pond")).toEqual({ act: "survey" });
+    }
+  });
+
+  it("on: the build keeps its format, gets the f URL and the kill list, and is sent the moment itself", () => {
+    scenes("true");
+    const can = looksCan(F2);
+    expect(can).toBe(F2);
+    expect(playsFormat(can)).toBe(2);
+    expect(canScenes(can)).toBe(true);
+    const c = catalog();
+    expect(looksFlags(playsFormat(can))).toEqual({ "bots.looks": { v: c.v, f: 2, url: `/v1/bots/looks?v=${c.v}&f=2`, off: [] } });
+    expect(momentProps(can, "p.pond")).toEqual({ moment: "p.pond" });
+  });
+
+  it("with a list of accounts, only those accounts get it, whoever else asks", () => {
+    scenes("true", " u-owner , u-office ");
+    expect(playsFormat(looksCan(F2, "u-owner"))).toBe(2);
+    expect(playsFormat(looksCan(F2, "u-office"))).toBe(2);
+    expect(playsFormat(looksCan(F2, "u-someone"))).toBe(1);
+    expect(playsFormat(looksCan(F2))).toBe(1);
+    // An empty list means the switch alone decides.
+    scenes("true", "");
+    expect(playsFormat(looksCan(F2, "u-someone"))).toBe(2);
+  });
+
+  it("a later format is gated the same way, and a build with no BotMoments at all is left alone", () => {
+    scenes(null);
+    const f9 = new Set(["BotMoments", "BotMoments2", "BotMoments9"]);
+    expect([...looksCan(f9)]).toEqual(["BotMoments"]);
+    const none = new Set(["DeskShell"]);
+    expect([...looksCan(none)]).toEqual(["DeskShell"]);
   });
 });

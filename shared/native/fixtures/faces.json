@@ -1,0 +1,149 @@
+{
+  "note": "Keyboard face and skin cases (shared/types/keyboardFace.ts). A skin is authored on the SERVER and expanded into the key tree config.ts already builds; the phone ships primitives only and never sees a skin object. These cases check both ends: what the expansion may produce, and what a renderer must refuse even if it somehow arrives.",
+
+  "faceCases": [
+
+    { "id": "ok.legend", "expect": "ok",
+      "why": "The plainest print: a legend in a bundled face. The key keeps insertKey, shift casing, the accent tray and the fast in-place re-title.",
+      "face": { "label": "a", "font": "brand", "size": 22, "weight": 500, "color": "#F4F1EA" } },
+
+    { "id": "ok.subAndCorner", "expect": "ok",
+      "why": "A second legend and a corner glyph: what a long press would give, printed where a person can see it.",
+      "face": { "label": "a", "sub": "@", "subPos": "top-right", "corner": "·", "opacity": 0.35 } },
+
+    { "id": "ok.markPath", "expect": "ok",
+      "why": "A vector print in the shared grammar. This is the one new mark shape in this build; rect, line, circle and bars already ship on the mic key.",
+      "face": { "layer": "behind", "mark": { "viewBox": [0, 0, 120, 24], "shapes": [ { "kind": "path", "d": "M 4 12 C 30 2 90 2 116 12", "color": "#FFFFFF", "width": 2 } ] } } },
+
+    { "id": "ok.markWithProgram", "expect": "ok",
+      "constraint": "at most 3 keys in one config",
+      "why": "The motion language that already ships on the mic key, unchanged: numbers only, no I/O, bounded repeats, unknown means 0. It already stops under Reduce Motion, is already capped in frames per second, and already turns a bad program into a still picture. This spec does not widen it, which is what keeps the build inside App Review 2.5.2.",
+      "face": { "mark": { "viewBox": [0, 0, 48, 48], "shapes": [ { "id": "r", "kind": "circle", "cx": 24, "cy": 24, "r": 10 } ] }, "program": { "r.r": "10 + 2 * sin(t)" } } },
+
+    { "id": "program.pressPosition.rejected", "expect": "dropped",
+      "at": "press.x / press.y / since.press in the program context",
+      "why": "There is NO press position in a program's context. A key position is a letter, and prints do not need it: giving a program the press point would be the one way a skin could learn something about typing.",
+      "face": { "mark": { "viewBox": [0, 0, 48, 48], "shapes": [ { "id": "r", "kind": "circle", "cx": 24, "cy": 24, "r": 10 } ] }, "program": { "r.cx": "press.x" } } },
+
+    { "id": "art.onHost", "expect": "ok",
+      "why": "Face art by content hash, from the compiled-in art host, listed in skin.manifest and fetched in ONE batch when the config arrives. It is decoded at the key's frame size x scale (never above 160 px), not at kb.images.maxEdgePx, which is in POINTS and would mean 768 px on a 3x phone.",
+      "face": { "art": "aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899@3.png" },
+      "manifest": { "art": ["aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899@3.png"] } },
+
+    { "id": "art.foreignHost.rejected", "expect": "dropped",
+      "at": "the art name",
+      "why": "The art host is a COMPILED-IN allow-list in both TulmiImageLoaders (exactly api.x0bot.com and api.tailzu.space, https only). Today a config push could make the keyboard fetch from any host; that is a T0 fix, not a T1 nicety. A skin can never carry a tracking pixel.",
+      "face": { "art": "url:https://cdn.example.net/key.png" } },
+
+    { "id": "face.art.url.rejected", "expect": "dropped",
+      "at": "the art name",
+      "why": "Art is the BARE manifest name, <sha256>@<scale>.png, even when the URL names our own host. Each phone builds the address from its own compiled host, so no host ever travels in a config and a binary in the field cannot be pointed anywhere new. The server's lint once kept only the last / segment of this, which let a foreign host through the check and then be silently dropped by both phones.",
+      "face": { "art": "url:https://api.x0bot.com/v1/native/art/aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899@3.png" },
+      "manifest": { "art": ["aa11bb22cc33dd44ee55ff6677889900aabbccddeeff00112233445566778899@3.png"] } },
+
+    { "id": "face.icon.url.rejected", "expect": "dropped",
+      "at": "icon.url",
+      "why": "An icon is sf, asset or emoji. There is no url form: a picture goes through `art`, by content hash. The iOS face already reads only the three, so a url icon could only ever be a fetch we did not mean to allow.",
+      "face": { "label": "a", "icon": { "url": "https://api.x0bot.com/key.png" } } },
+
+    { "id": "art.notInManifest.rejected", "expect": "dropped",
+      "at": "the art key",
+      "why": "The renderer reads ONLY the cache. A file that was not in the manifest was never prefetched, so drawing it would mean a fetch during a session — which would tie a request to a keystroke. Missing art means the flat colour for that session.",
+      "face": { "art": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff@3.png" },
+      "manifest": { "art": [] } },
+
+    { "id": "art.animated.rejected", "expect": "dropped",
+      "at": "an animated GIF or APNG in a face",
+      "why": "No animated raster in a face in format 1: thirty animated keys is a different class of cost from one mic key. Use a mark with `program` for motion, which is budgeted and capped at 3 keys.",
+      "face": { "art": "ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00ff00@3.png", "artKind": "gif" } },
+
+    { "id": "face.withAction.rejected", "expect": "dropped",
+      "at": "`on` inside a face",
+      "why": "THE FIRST LAW: a key never changes what it does. A face is paint. config.ts strips `on`, `actions`, `callEndpoint`, URLs outside the art host and anything that reads typed text from skin input, and the renderer refuses them again. App Review 4.4.1.",
+      "face": { "label": "a", "on": { "onPress": { "kind": "openUrl", "url": "https://example.com" } } } },
+
+    { "id": "face.withLayout.rejected", "expect": "dropped",
+      "at": "`rows` inside a face",
+      "why": "Key positions come only from the tree the server already builds. A skin cannot move, add or remove a key.",
+      "face": { "label": "a", "rows": [["q", "w", "e"]] } }
+
+  ],
+
+  "pressCases": [
+    { "id": "press.fade", "expect": "ok", "press": { "kind": "fade", "ms": 120 }, "why": "Today's effect, and the fallback for everything else." },
+    { "id": "press.pop", "expect": "ok", "press": { "kind": "pop", "ms": 140, "scale": 1.08, "dy": -2, "ease": "spring" }, "why": "Scale and lift, with the server's numbers." },
+    { "id": "press.glow", "expect": "ok", "press": { "kind": "glow", "ms": 160, "color": "#FFFFFF40" }, "why": "A wash of colour." },
+    { "id": "press.unknown.fallsToFade", "expect": "clamped", "keep": "fade", "press": { "kind": "shatter", "ms": 300 },
+      "why": "An unknown kind falls back to fade, exactly as Reduce Motion does." },
+    { "id": "press.overMs.clamped", "expect": "clamped", "keep": "400 ms", "press": { "kind": "pop", "ms": 1200 },
+      "why": "400 ms at most. A press effect is visual only: it runs AFTER the commit and never delays insertText." },
+
+    { "id": "press.overScale.clamped", "expect": "clamped", "keep": "scale 1.12", "press": { "kind": "pop", "ms": 140, "scale": 1.6 },
+      "why": "One press block goes to both phones, so one clamp holds for both: 0.9 to 1.12. On a key about 32 pt wide with the usual 6 pt gap, 1.12 grows about 1.9 pt a side and stays inside its half of the gap. Before this, iPhone clamped at 1.4 and Android at 1.1, so the same skin felt different on each." },
+
+    { "id": "press.overDy.clamped", "expect": "clamped", "keep": "dy -6", "press": { "kind": "pop", "ms": 140, "dy": -20 },
+      "why": "-6 to 6, about half the row gap, in points on iPhone and dp on Android." },
+
+    { "id": "press.pop.defaultsWritten", "expect": "clamped", "keep": "ms 140, scale 1.08, dy 0", "press": { "kind": "pop" },
+      "why": "The server writes ms, scale and dy explicitly into every pop, so no phone default ever decides how a skin looks. The two renderers have different built-in defaults." },
+
+    { "id": "press.heldAndReleased", "expect": "ok", "press": { "kind": "pop", "ms": 140, "scale": 1.08, "dy": -2 },
+      "state": { "down": "eases to (scale, dy) over ms and HOLDS", "up": "settles over ms from wherever it is", "again": "starts from the current value" },
+      "why": "A pressed STATE, not a release bounce, and the same on both phones: iPhone already ships one (KBPress.begin at keyTouchDown, end at keyTouchUp). A release-only bounce would make the same skin feel different on each phone, and on the commit-on-down path a glow that appears only after the lift reads as lag — the letter is already in the field. The key's own view is never transformed: the paint moves and the hit rect does not." }
+  ],
+
+  "budgetCases": [
+
+    { "id": "budget.facedKeys.clamped", "expect": "clamped", "keep": "64 faced keys",
+      "generate": { "facedKeys": 90 },
+      "why": "64 faced keys per config. Above that the extras keep their plain titles." },
+
+    { "id": "budget.animatedKeys.clamped", "expect": "clamped", "keep": "3 animated keys; the rest draw their mark at t = 0",
+      "generate": { "programKeys": 12 },
+      "why": "At most 3 keys animate, enforced IN THE VIEW. A non-animated faced key never starts a CADisplayLink — each TulmiMarkView owns one, so thirty of them idling would cost frames for nothing." },
+
+    { "id": "budget.liveImages.clamped", "expect": "clamped", "keep": "under 6 MB of live images; the rest draw the flat colour",
+      "generate": { "artKeys": 40, "pxEach": 160 },
+      "why": "The live-image budget counts width x height x 4 for images attached to LIVE key views. The 12-image cache cap does not help here: it only evicts dictionary entries, not what is on screen." },
+
+    { "id": "budget.fonts.clamped", "expect": "clamped", "keep": "2 hooked fonts, 300 KB each",
+      "generate": { "fonts": 5 },
+      "why": "At most 2 hooked fonts per keyboard config, TTF or OTF, 300 KB each, registered at runtime. A font that fails to register means the design's next font, then sans." }
+
+  ],
+
+  "guardCases": [
+
+    { "id": "guard.firstStrikes.plainMode", "expect": "plain",
+      "why": "The trial marker is the config's sha, set when a config AND its prefetched art are applied, and cleared only on a CLEAN FINISH (iOS viewDidDisappear, Android onFinishInputView) — never on a 20 second timer, so a memory death once art and animated keys have built up is still counted. Two strikes on a skinned config switch that sha to plain mode: face, press, fontFamily and art are ignored; the tree and the colours stay, because those are today's features." },
+
+    { "id": "guard.plainModeReportsBad", "expect": "header",
+      "header": "X-Tulmi-Keyboard-Bad: clay-dusk",
+      "why": "Plain mode also tells the server, which then sends the unskinned tree to that device." },
+
+    { "id": "guard.furtherStrikes.bundledSnapshot", "expect": "bundled",
+      "why": "Two more strikes, or an unskinned config that still dies, fall back to today's behaviour: drop the cached config and use the bundled snapshot. That snapshot stays UNSKINNED and unchanged in this build, so the no-Full-Access keyboard and the guard's last resort never depend on new code." },
+
+    { "id": "guard.androidIsNew", "expect": "plain",
+      "why": "Android has no crash guard at all today. This is new code in TulmiKeyboardService.kt: a marker in the tulmi_kb prefs, the sha of config_json, and two strikes." }
+
+  ],
+
+  "privacyCases": [
+
+    { "id": "privacy.noFetchOnKeyPress", "expect": "zeroRequests",
+      "how": "Type a hundred characters and switch layouts five times, with a proxy log running.",
+      "why": "EVERY fetch happens at keyboard open: the config (TTL 60 s), then one batch of every art file and font in the manifest. Nothing is fetched on a key press or a layout switch, so no request can be tied to a keystroke even when the art differs per key." },
+
+    { "id": "privacy.requestCarriesNoText", "expect": "ok",
+      "carries": ["platform (User-Agent)", "build stamp", "X-Tulmi-Keyboard-Can", "X-Tulmi-Keyboard-Bad", "language", "the person's token"],
+      "neverCarries": ["typed text", "documentContextBeforeInput", "suggestions", "timings", "the host app"],
+      "why": "No typed text ever leaves the device. The token is there so the server can apply the person's own skin pick, nothing else." },
+
+    { "id": "privacy.telemetry", "expect": "ok",
+      "carries": ["skin id", "render-failure counts", "budget-drop counts", "keyMs", "keysOverFrame", "remountMs"],
+      "neverCarries": ["per-key press counts"],
+      "why": "There is no per-key press counting, ever. The speed counters already exist; they are only tagged with the skin id so a skin that regresses can be stopped." }
+
+  ]
+}

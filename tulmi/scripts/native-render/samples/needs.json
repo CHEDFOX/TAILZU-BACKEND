@@ -1,0 +1,174 @@
+{
+  "v": 2,
+  "at": 1763040000000,
+  "refreshAfterSec": 300,
+  "case": "needs",
+  "greeting": {
+    "hello": "Evening, Riya",
+    "line": "Nothing needs you right now.",
+    "part": "evening"
+  },
+  "summary": "Three things moved since you last looked.",
+  "week": {
+    "done": 9,
+    "minutesSaved": 74,
+    "dots": 5,
+    "line": "9 done this week"
+  },
+  "bots": [
+    {
+      "slug": "code",
+      "name": "Xode",
+      "color": "#8FB6FF",
+      "face": "code",
+      "faceUrl": null,
+      "state": "working",
+      "needs": 0,
+      "working": true,
+      "line": "Fixing the cart total",
+      "link": "tulmi://bot/code"
+    },
+    {
+      "slug": "plan",
+      "name": "Plan bot",
+      "color": "#FFC98F",
+      "face": "plan",
+      "faceUrl": null,
+      "state": "idle",
+      "needs": 0,
+      "working": false,
+      "line": "PTM at 9:30",
+      "link": "tulmi://bot/plan"
+    },
+    {
+      "slug": "keybot",
+      "name": "Keylessbord",
+      "color": "#C9A6FF",
+      "face": "keybot",
+      "faceUrl": null,
+      "state": "idle",
+      "needs": 0,
+      "working": false,
+      "line": "Quiet today",
+      "link": "tulmi://bot/keybot"
+    },
+    {
+      "slug": "travel",
+      "name": "Travel bot",
+      "color": "#9FE3C5",
+      "face": "travel",
+      "faceUrl": null,
+      "state": "done",
+      "needs": 0,
+      "working": false,
+      "line": "Tickets held",
+      "link": "tulmi://bot/travel"
+    }
+  ],
+  "more": 1,
+  "needs": {
+    "count": 2,
+    "items": [
+      {
+        "id": "job:j1:q1",
+        "kind": "question",
+        "bot": "code",
+        "botName": "Xode",
+        "face": "code",
+        "question": "Round half up or half even on the cart total?",
+        "choices": [
+          {
+            "id": "a0",
+            "label": "Half up",
+            "primary": true
+          },
+          {
+            "id": "a1",
+            "label": "Half even"
+          }
+        ],
+        "decideLink": "tulmi://question/j1",
+        "private": false,
+        "answerable": true,
+        "link": "tulmi://bot/code",
+        "at": 1763039760000
+      },
+      {
+        "id": "task:t9:ap",
+        "kind": "approval",
+        "bot": "plan",
+        "botName": "Plan bot",
+        "face": "plan",
+        "question": "Move the grocery run to Saturday 11 am?",
+        "choices": [
+          {
+            "id": "yes",
+            "label": "Move it",
+            "primary": true
+          },
+          {
+            "id": "no",
+            "label": "Keep"
+          }
+        ],
+        "decideLink": "tulmi://question/t9",
+        "private": false,
+        "answerable": true,
+        "link": "tulmi://bot/plan",
+        "at": 1763038440000
+      }
+    ]
+  },
+  "job": {
+    "id": "j1",
+    "bot": "code",
+    "task": "Fix the cart total rounding",
+    "stage": 3,
+    "of": 5,
+    "stageName": "Build",
+    "stages": [
+      "Read",
+      "Plan",
+      "Build",
+      "Check",
+      "Done"
+    ],
+    "startedAt": 1763038980000,
+    "link": "tulmi://job/j1",
+    "phase": "needs"
+  },
+  "counts": {
+    "working": 1,
+    "needs": 2
+  },
+  "lock": {
+    "inline": "2 need you",
+    "title": "Needs you",
+    "line": "Xode and Plan bot are waiting."
+  },
+  "links": {
+    "ask": "tulmi://screen/bots.ask",
+    "home": "tulmi://",
+    "mic": "tulmi://screen/bots.ask?voice=1"
+  },
+  "words": {
+    "needsYou": "Needs you",
+    "ready": "Ready",
+    "ask": "Ask any bot…",
+    "brand": "X0",
+    "youDecide": "You decide",
+    "working": "{n} working",
+    "step": "Step {stage} of {of}",
+    "minIn": "{n} min in",
+    "seePr": "See the PR",
+    "done": "Done",
+    "answered": "Answered",
+    "finish": "Open X0 to finish",
+    "doneSeePr": "Done · See the PR",
+    "min": "{n} min",
+    "pr": "PR #{n}",
+    "sending": "Sending…",
+    "gone": "Already answered",
+    "failed": "Open X0 to finish"
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "id": "clay-dusk",
+  "format": 1,
+  "label": "Clay dusk",
+  "blurb": "Warm clay keys at night, with the long-press symbol printed on every letter.",
+  "dark": true,
+  "note": "THE FIRST SKIN, and deliberately the cheapest one that is still worth having. It fetches NOTHING: no art, no hooked font, an empty manifest — so a session with this skin makes exactly the same requests as a session with no skin, and the privacy promise (every fetch happens when the config arrives, never on a key press) is kept by having nothing to fetch at all. What it adds is paint the keyboard could not do before: the symbol a long press would give, printed small in each letter key's top-right corner; the two home-row nubs typists feel for; one drawn path across the space bar; and a press that lifts instead of only fading. Skins are authored HERE, on the server, and expanded into the key tree config.ts already builds (experience/keyboard/skin.ts). The phone never sees this file, has no skin resolver and has no precedence chain: it ships primitives only.",
+
+  "theme": {
+    "dark": {
+      "background": "#17120F",
+      "key": "#2A211C",
+      "keyText": "#F4F1EA",
+      "keyPressed": "#3A2E27",
+      "accent": "#E8C9A0",
+      "keyRadius": 7,
+      "keyShadow": true
+    },
+    "light": {
+      "background": "#EFE8E1",
+      "key": "#FFFDFA",
+      "keyText": "#2A211C",
+      "keyPressed": "#E3D8CD",
+      "accent": "#9A6B3C",
+      "keyRadius": 7,
+      "keyShadow": true
+    }
+  },
+
+  "font": "brand",
+  "press": { "kind": "pop", "ms": 140, "scale": 1.08, "dy": -2, "ease": "spring" },
+
+  "flags": {
+    "kb.callout.radius": 10,
+    "kb.accentTray.radius": 10
+  },
+
+  "faces": {
+    "all": { "layer": "behind", "font": "brand", "weight": 500 },
+    "types": {
+      "SpaceKey": {
+        "layer": "behind",
+        "inset": 10,
+        "opacity": 0.3,
+        "mark": {
+          "viewBox": [0, 0, 120, 24],
+          "fit": "box",
+          "shapes": [
+            { "kind": "path", "d": "M 4 16 C 34 4 86 4 116 16", "color": "#E8C9A0", "width": 1.5, "cap": "round" }
+          ]
+        }
+      },
+      "ShiftKey": { "corner": "⇧", "opacity": 0.3 },
+      "BackspaceKey": { "corner": "⌫", "opacity": 0.3 }
+    },
+    "chars": {
+      "a": { "sub": "à", "subPos": "top-right", "opacity": 0.38 },
+      "c": { "sub": "ç", "subPos": "top-right", "opacity": 0.38 },
+      "e": { "sub": "é", "subPos": "top-right", "opacity": 0.38 },
+      "f": { "corner": "·", "opacity": 0.5 },
+      "i": { "sub": "í", "subPos": "top-right", "opacity": 0.38 },
+      "j": { "corner": "·", "opacity": 0.5 },
+      "n": { "sub": "ñ", "subPos": "top-right", "opacity": 0.38 },
+      "o": { "sub": "ó", "subPos": "top-right", "opacity": 0.38 },
+      "s": { "sub": "ß", "subPos": "top-right", "opacity": 0.38 },
+      "u": { "sub": "ú", "subPos": "top-right", "opacity": 0.38 },
+      "y": { "sub": "ý", "subPos": "top-right", "opacity": 0.38 },
+      "z": { "sub": "ž", "subPos": "top-right", "opacity": 0.38 }
+    }
+  },
+
+  "budget": { "decodedKB": 6000, "animatedKeys": 3 },
+  "manifest": { "art": [], "fonts": [] }
+}

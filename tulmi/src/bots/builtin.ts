@@ -37,6 +37,7 @@ const PURPOSE = {
   oracle: "Reads your birth chart and the world's divination traditions to answer what you ask about your life, love, work and timing.",
   mail: "Keeps your business's email: sorts what arrives, drafts the replies in your voice, and tells you what needs you.",
   meet: "Joins your video calls: takes the notes, answers what people ask in the chat and out loud, and turns what was agreed into your to-dos.",
+  lingo: "Teaches you a language by talking with you, and brings each word back exactly when you are about to forget it.",
 } as const;
 
 const DEFS: readonly BotDef[] = [
@@ -123,6 +124,24 @@ const MAIL: BotDef = {
   knowledge: [], tone: "plain and brief", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
 };
 
+export const LINGO_SLUG = "lingo";
+
+const LINGO: BotDef = {
+  id: LINGO_SLUG, ownerId: null, slug: LINGO_SLUG, name: "Lingo", colour: "stone",
+  purpose: PURPOSE.lingo,
+  principles: [
+    "Speak the language they are learning, at the level they are at, and translate only what they are stuck on.",
+    "Correct what they said, once, in a line, and then carry on the conversation.",
+    "Bring the conversation round to the words they are due to practise.",
+    "Never say a word is learned until they have said it out loud.",
+    "Their own words, the ones they reached for, come before anything off a list.",
+  ],
+  // Its words, its scheduling and its marking are its own (src/lingo): no tools here. Its chat reads their course.
+  skills: skills({}),
+  knowledge: [], tone: "patient, warm, and never sarcastic about a mistake", visibility: "private",
+  budgets: { perRequestPaise: 200, dailyPaise: 2000 },
+};
+
 export { MEET_SLUG };
 
 const MEET: BotDef = {
@@ -138,6 +157,15 @@ const MEET: BotDef = {
   skills: skills({}),
   knowledge: [], tone: "plain and brief", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
 };
+
+/** Lingo is listed only where it is switched on. It needs no service of its own. */
+export function lingoOn(): boolean {
+  try {
+    return Boolean(getConfig().LINGO);
+  } catch {
+    return false;
+  }
+}
 
 /** The meeting bot is listed only where Recall is set up. */
 export function meetOn(): boolean {
@@ -168,14 +196,14 @@ export function oracleOn(): boolean {
   }
 }
 
-const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : [])];
+const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(lingoOn() ? [LINGO] : [])];
 
 /** The built-ins, as copies (a caller cannot change them). */
 export function builtinBots(): BotDef[] {
   return defs().map((d) => ({ ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } }));
 }
 
-export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || DEFS.some((d) => d.slug === slug);
+export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || slug === LINGO.slug || DEFS.some((d) => d.slug === slug);
 
 export function builtinBot(slug: string): BotDef | null {
   return builtinBots().find((d) => d.slug === slug || d.id === slug) ?? null;

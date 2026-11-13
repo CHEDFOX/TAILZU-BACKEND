@@ -12,6 +12,7 @@ import { botsNav, botsFonts, botsWarmScreenIds } from "../bots/index.js";
 import { blipFlags } from "../bots/blip.js";
 import { launchFlags } from "../phone/launch.js";
 import { looksFlags } from "../bots/looks.js";
+import { nativeLooksFlags, nativeSwitches } from "../native/catalog.js";
 import { botsAuthTree } from "../bots/screens/firstRun.js";
 import { BOTS_OFFLINE_FLAGS } from "../bots/screens/outbox.js";
 import { soundsFlags } from "../bots/sounds.js";
@@ -218,6 +219,13 @@ export function buildBootstrap(
     botsApp?: boolean;
     /** The Bots app build has Bricolage Grotesque to register (it said "FontBricolage", sdui 3j): its faces come in `fonts`. */
     fontBricolage?: boolean;
+    /** The newest looks format this build may be served (bots/looks.ts, after the BOTS_SCENES gate). 1 or absent: today's flag, byte for byte. */
+    looksFormat?: number;
+    /**
+     * Who is asking. Only the nlook catalog reads it, and only to decide whether to name a catalog at all: the flag starts
+     * the phone's whole sync, so a person no targeting rule could ever name a design for is told nothing (catalog.ts).
+     */
+    userId?: string;
   } = {},
 ): BootstrapResponse {
   const botsApp = opts.botsApp === true;
@@ -341,7 +349,13 @@ export function buildBootstrap(
         // The Bots app: its pages draw their own tab bar and sidebar; "bots.looks" names the bots' catalog (bots/looks.ts).
         // "bots.sounds" names the bots' sounds (bots/sounds.ts): pull-a-bot's and the moments'.
         ...(botsApp ? {
-          "bots.app": true, ...BOTS_OFFLINE_FLAGS, ...looksFlags(), ...soundsFlags(),
+          // "native.looks" names the nlook catalog the widgets and the Live Activity draw from (experience/native/catalog.ts).
+          // Nothing at all while NATIVE_LOOKS is off, which is the default: every widget then draws the view in its own build.
+          "bots.app": true, ...BOTS_OFFLINE_FLAGS, ...looksFlags(opts.looksFormat ?? 1), ...soundsFlags(), ...nativeLooksFlags(opts.userId),
+          // The two switches the app reads through `bool()`, which reads bootstrap.flags and nothing else. Both launch dark,
+          // and both are GLOBAL: unlike a design, neither has a `when.users` stage, so their device checks come first.
+          "widgets.notice.enabled": nativeSwitches().notice,
+          "widgets.activity.pushStart": getConfig().ACTIVITY_PUSH_START === true,
           // Never the old app's screens: buying goes to the Bots app's Plans, and the settings button and the profile card to You.
           "paywall.screenId": "bots.plans", "nav.settingsScreenId": "bots.you", "profile.hostScreenId": "bots.you",
         } : {}),

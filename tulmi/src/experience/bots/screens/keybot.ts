@@ -26,6 +26,7 @@
  */
 
 import type { Node, ActionSpec, ActionRef } from "../../../../../shared/types/sdui.js";
+import { KEY_SKIN_1 } from "../../../../../shared/types/keyboardFace.js";
 import type { KeybotStatsView } from "../../../keybot/stats.js";
 import { TONE_PRESETS, TONE_GROUP_DEFS, TONE_SAID } from "../../../keybot/tones.js";
 import type {
@@ -394,6 +395,40 @@ function segRow(label: string, options: Array<{ label: string; value: string }>,
     { gap: 10, paddingVertical: 10, paddingLeft: 16, paddingRight: 12, minHeight: 52 });
 }
 
+/** A skin's card: its name, one line about it, and whether it is the one in use. */
+function skinCard(skin: NonNullable<KeybotSettingsView["skins"]>[number]): Node {
+  return col([
+    row([text(skin.label, { size: 14, weight: 600, lineHeight: 18 }), grow(),
+      when({ eq: ["kb.skin", skin.id] }, meta("In use", { size: 12 }))], { paddingHorizontal: 2 }),
+    meta(skin.blurb, { size: 12 }),
+  ], {
+    gap: 4, padding: 12, borderRadius: 18, borderWidth: 1.5, borderColor: whenEq("kb.skin", skin.id, CLAY, C.line), flexGrow: 1, flexBasis: 0, minWidth: 0,
+  }, seq({ kind: "setState", path: "kb.skin", value: skin.id }, kbSave("skin")));
+}
+
+/**
+ * THE SKIN PICKER. Shown only when this release has skins AND this phone's own binary says its keyboard can draw them
+ * (KeySkin1, declared by the same binary as the keyboard): a build whose keyboard would ignore a face must never be offered one.
+ * On iPhone the keyboard needs Full Access to fetch its config at all, so the page says so rather than letting a pick quietly
+ * do nothing. Android has no such switch: the IME is in the same APK.
+ */
+function skinSection(ctx: BotsCtx, d: KeybotSettingsView): Node[] {
+  if (!d.skins?.length || !ctx.can.has(KEY_SKIN_1)) return [];
+  return [col([
+    sectionLabel("Printed keys"),
+    row([
+      col([
+        row([text("None", { size: 14, weight: 600, lineHeight: 18 }), grow(), when({ eq: ["kb.skin", ""] }, meta("In use", { size: 12 }))], { paddingHorizontal: 2 }),
+        meta("Plain keys, the way they are now.", { size: 12 }),
+      ], { gap: 4, padding: 12, borderRadius: 18, borderWidth: 1.5, borderColor: whenEq("kb.skin", "", CLAY, C.line), flexGrow: 1, flexBasis: 0, minWidth: 0 },
+      seq({ kind: "setState", path: "kb.skin", value: "" }, kbSave("skin"))),
+      ...d.skins!.slice(0, 3).map(skinCard),
+    ], { gap: 10, alignItems: "stretch" }),
+    meta("A skin only paints. Keys keep doing exactly what they do, and nothing you type ever leaves your phone.", { size: 12 }),
+    ...(ctx.client === "phone" ? [meta("On iPhone the keyboard needs Full Access to pick this up; without it, it keeps the look it was built with.", { size: 12 })] : []),
+  ], { gap: 8 })];
+}
+
 function settingsPhone(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
   if (!d) return page(ctx, { nav: "keybot", title: "Keyboard", gap: 14, body: [phoneHead("Keyboard"), couldntLoad("your keyboard")] });
   const langs = d.languages.map((l) => l.label).join(", ") || "Not set";
@@ -403,6 +438,7 @@ function settingsPhone(ctx: BotsCtx, d: KeybotSettingsView | undefined) {
       phoneHead("Keyboard"),
       col([sectionLabel("Look"), row([lookCard("light", "Light", "Bright keys"), lookCard("dark", "Dark", "Easy at night")], { gap: 10, alignItems: "stretch" }),
         when({ eq: ["kb.look", "phone"] }, meta("Follows your phone until you pick one.", { size: 12 }))], { gap: 8 }),
+      ...skinSection(ctx, d),
       col([sectionLabel("Feel"), box([
         segRow("Haptics", [{ label: "Off", value: "off" }, { label: "Light", value: "light" }, { label: "Strong", value: "strong" }], "kb.haptics", kbSave("haptics")),
         divider(),

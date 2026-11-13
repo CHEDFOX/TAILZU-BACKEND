@@ -1225,11 +1225,8 @@ on this server. LiveKit carries the video and the sound. Without the three setti
    `ROOM_MAX_PEOPLE` (the most people in one call, 10). With only some of the three set, the server warns at start.
 3. **Tell LiveKit where to send who joins and leaves.** In the project's settings, Webhooks, add `https://api.x0bot.com/v1/rooms/livekit`,
    signed with the same API key. This is set once.
-4. **Migration and deploy.** 0087 makes `rooms`, the server's alone and deleted with the account:
-
-   ```bash
-   ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0087"
-   ```
+4. **Migration and deploy.** 0090 makes `rooms`, the server's alone and deleted with the account. It runs on deploy with the others
+   (`tulmi/supabase/migrate-pending.sh`; by hand: `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0090"`).
 
    ```bash
    ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/ship.sh'

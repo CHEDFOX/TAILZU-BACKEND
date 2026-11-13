@@ -147,6 +147,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       ["oracle_people", null],
       // The mail bot (migration 0080): the hash its worker knows their account by, for the push.
       ["mail_owners", null],
+      // Lingo (migration 0087): the languages they were learning, and every word and phrase with it.
+      ["lingo_items", null], ["lingo_learners", null],
       // Apple's token for revoking the sign-in (migration 0061), revoked just above.
       ["apple_sign_in", null],
     ];

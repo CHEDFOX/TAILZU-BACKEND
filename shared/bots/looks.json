@@ -1,6 +1,6 @@
 {
-  "v": 3,
-  "format": 1,
+  "v": 4,
+  "format": 2,
   "note": "The bots' looks and moments (docs/bots-app.md, 'Looks and moments'). Data the apps draw and play: change it, raise v by one, and the apps take it at their next start. tulmi/src/experience/bots/looks.ts checks every field; the apps' starter copy is generated from this file.",
   "parts": {
     "puff": { "note": "A small cloud.", "draw": [
@@ -361,6 +361,27 @@
   },
   "kinds": { "code": "code", "keybot": "keybot", "plan": "plan", "travel": "travel", "notes": "notes", "make": "make", "custom": "custom" },
   "idle": { "every": 30, "chance": 0.2, "moments": ["fart", "sneeze", "hiccup", "shrug", "dance"] },
+  "scenes": { "pond": {
+    "format": 2, "label": "A dotted pond; a fish leaps; taps ring it; his voice ripples it",
+    "box": [2.6, 1.0], "still": 1.5, "tap": true, "events": ["fish.go"],
+    "vars": { "open": "smooth(0, 0.7, t) * (1 - smooth(D - 0.6, D, t))", "leap": "ev.fish.go" },
+    "emit": [["pond.loud", "level > 0.6"]],
+    "els": [
+      { "id": "water", "kind": "dots", "back": true, "grid": "hex", "cols": 26, "rows": 7, "gap": 0.1,
+        "rmax": 0.04, "pal": ["$color", "ink"],
+        "r": "0.018*open*(1 - smooth(1.0, 1.3, d))*(0.6 + 0.4*crest(d*6 - t*3) + 0.8*level*crest(d*9 - t*7) + 1.2*(tapt < 1.6)*crest((hypot(qx - tapx, qy - tapy) - tapt*1.4)*8))",
+        "paint": "hash(i + rnd) > 0.93 ? 1 : 0" },
+      { "id": "fish", "kind": "group", "show": "leap < 1.2",
+        "x": { "k": [[0, -0.5], [1.2, 0.5, "inout"]], "by": "leap" },
+        "y": { "k": [[0, 0.1], [0.6, -0.7, "out"], [1.2, 0.1, "in"]], "by": "leap" },
+        "rot": { "spring": "0.9*cos(leap*2.6)", "k": 120, "damp": 0.7 },
+        "els": [
+          { "id": "body", "kind": "shape", "fill": "$color",
+            "d": "M -0.12 0 Q 0 -0.08 0.12 0 Q 0 0.08 -0.12 0 Z",
+            "morph": ["M -0.12 0 Q 0 -0.11 0.12 0 Q 0 0.05 -0.12 0 Z"], "m": "0.5 + 0.5*sin(leap*14)" },
+          { "id": "eye", "kind": "shape", "fill": "ink", "d": "O 0.07 -0.015 0.012" },
+          { "id": "tail", "kind": "chain", "n": 6, "len": 0.14, "from": "body:-0.12,0",
+            "g": 0.4, "drag": 0.9, "stiff": 0.6, "dots": 0.012, "paint": "$color" } ] } ] } },
   "moments": {
     "dance": {
       "label": "Dances", "dur": 2, "mode": "loop", "bpm": 120, "still": 0.25, "fallback": "wave",
@@ -997,6 +1018,19 @@
         {"do": "arm", "at": 3.1, "to": 4.8, "hand": "front", "x": 0.27, "y": "-0.22 + 0.035*sin(tau*(T - 3.1)/0.36)", "k": 700},
         {"do": "mouth", "at": 3.2, "to": 4.9, "state": "smile", "v": 0.75},
         {"do": "eyes", "at": 3.3, "to": 5.2, "state": "happy"}
+      ]
+    },
+    "p.pond": {
+      "format": 2, "label": "Fishing pond", "dur": 6, "fallback": "survey", "still": 1.5,
+      "tracks": [
+        {"do": "crouch", "at": 0, "to": 0.5, "v": 0.4},
+        {"do": "scene", "at": 0.3, "to": 6, "scene": "pond", "on": "ground", "x": 0.9, "y": 0, "back": true},
+        {"do": "event", "at": 1.8, "name": "fish.go"},
+        {"do": "event", "at": 3.0, "name": "fish.splash"},
+        {"do": "look", "after": "fish.go", "target": "point", "x": 0.9, "y": -0.6},
+        {"do": "emit", "after": "fish.splash", "part": "drop", "from": "ground", "x": 1.4, "n": 8, "vy": -1.5, "spread": 0.8},
+        {"do": "eyes", "after": "fish.splash", "state": "happy"},
+        {"do": "glow", "after": "pond.loud", "v": 6}
       ]
     }
   }

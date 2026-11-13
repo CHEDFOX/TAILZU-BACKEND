@@ -149,7 +149,7 @@ call is full.", "Today's call minutes are used up…").
 | `tulmi/.env` | `ROOM_DAILY_MINUTES`, `ROOM_MAX_PEOPLE` | optional: 600 and 10 |
 | LiveKit's dashboard | Webhooks | `https://api.x0bot.com/v1/rooms/livekit`, set once |
 
-Migration 0087 (`rooms`). Steps: DEPLOY.md, "Calls".
+Migration 0090 (`rooms`), run by the deploy with the others. Steps: DEPLOY.md, "Calls".
 
 ## 9. Tests
 

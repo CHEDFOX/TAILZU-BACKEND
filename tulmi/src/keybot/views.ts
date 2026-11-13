@@ -19,6 +19,7 @@
 import type { HistoryEntry, Personality } from "../../../shared/types/api.js";
 import type { StatsForUser } from "../history/stats.js";
 import { LANGS } from "../experience/languages.js";
+import { skinChoices } from "../experience/keyboard/skin.js";
 import { DEFAULT_TTS_VOICE, isValidTtsVoice, TTS_VOICES, ttsVoiceById, type TtsVoice } from "../experience/ttsVoices.js";
 import { applyPresetOverrides } from "../experience/personalityPresets.js";
 import { nicknameOf } from "../experience/assistantName.js";
@@ -342,10 +343,15 @@ export function historyView(entries: HistoryEntry[], p: Personality, q?: string)
 // ------------------------------------------------------------------ settings
 
 export interface KeybotSettingsView {
-  /** look "phone": nothing picked, so the keyboard follows the phone's light or dark. */
-  keyboard: { look: "light" | "dark" | "phone"; haptics: "off" | "light" | "strong"; height: "short" | "normal" | "tall"; sounds: "on" | "off" | "phone"; holdSpace: boolean; keyAt: "left" | "right" | "top" };
+  /** look "phone": nothing picked, so the keyboard follows the phone's light or dark. `skin` "": no skin, today's keys. */
+  keyboard: { look: "light" | "dark" | "phone"; haptics: "off" | "light" | "strong"; height: "short" | "normal" | "tall"; sounds: "on" | "off" | "phone"; holdSpace: boolean; keyAt: "left" | "right" | "top"; skin: string };
   /** The languages they write in, in their order. */
   languages: Array<{ value: string; label: string }>;
+  /**
+   * The skins this release can print with (experience/keyboard/skin.ts). Empty while the switch is off, and the page then shows no
+   * picker at all — so a build whose keyboard cannot draw faces is never offered something it would ignore.
+   */
+  skins?: Array<{ id: string; label: string; blurb: string; dark: boolean }>;
 }
 
 /** The keyboard's choices, each defaulting to what the keyboard does when nothing is chosen (keyboard.ts): it follows
@@ -359,6 +365,7 @@ function keyboardChoices(prefs: KeybotPrefs, p?: Personality): KeybotSettingsVie
     sounds: k.sounds === true ? "on" : k.sounds === false ? "off" : "phone",
     holdSpace: k.holdSpace ?? false,
     keyAt: k.keyAt ?? "top",
+    skin: k.skin ?? "",
   };
 }
 
@@ -369,9 +376,11 @@ export function languageLabel(v: string): string {
   return LANGS.find((l) => l.code === v)?.name ?? (v === "en" ? "English" : v);
 }
 
-export function settingsView(p: Personality, prefs: KeybotPrefs): KeybotSettingsView {
+export function settingsView(p: Personality, prefs: KeybotPrefs, userId?: string): KeybotSettingsView {
   return {
     keyboard: keyboardChoices(prefs, p),
     languages: (p.languages ?? []).map(String).filter(Boolean).map((value) => ({ value, label: languageLabel(value) })),
+    // Empty while KEYBOARD_SKINS is off, and while KEYBOARD_SKINS_USERS names anyone this person is not: no picker then.
+    skins: skinChoices(userId),
   };
 }

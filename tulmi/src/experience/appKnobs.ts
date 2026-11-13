@@ -63,6 +63,10 @@ export const CATALOG_CONDITIONAL: ReadonlySet<string> = new Set([
   "liveActivity.setup",
   // The launch's motion goes to phones only (phone/launch.ts); a desktop has no launch to play.
   "app.launch",
+  // The nlook catalog. The manifest lists it as `{}` (from the app's own `obj("native.looks", {})`), and the phone reads
+  // `{}` as off — but "nothing at all while the switch is off" (native/catalog.ts) should stay exactly that, not an empty
+  // object in every bootstrap. The flag is present only when a catalog is actually being served to this person.
+  "native.looks",
 ]);
 
 export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags">>(boot: T): T {

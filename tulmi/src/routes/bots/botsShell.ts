@@ -61,8 +61,12 @@ import { planCalls } from "../../botsBots/planCall.js";
 import { planFollows } from "../../botsBots/planFollow.js";
 import { followOn, planOn } from "../../botsBots/planSwitch.js";
 import { lockSafe } from "../../botsBots/planSafe.js";
-import { glanceChanges, glanceSteps, glanceV2Of, type GlanceInput } from "../../widgets/glance.js";
-import { emptyGlanceState, glanceStore, withGlance, type GlanceStore } from "../../widgets/glanceStore.js";
+import { boardNameOf, glanceChanges, glanceSteps, glanceV2Of, x0Words, type GlanceInput } from "../../widgets/glance.js";
+import { glanceLook } from "../../experience/native/target.js";
+import { designSince } from "../../experience/native/catalog.js";
+import { widgetVars } from "../../experience/native/bind.js";
+import { NLOOK_CAPS } from "../../../../shared/types/nlook.js";
+import { badLookIds, emptyGlanceState, glanceStore, withGlance, type GlanceStore } from "../../widgets/glanceStore.js";
 import { widgetKnobs } from "../../widgets/now.js";
 
 /** Words a minute a person types: the product's standing figure (experience/desk/context.ts, history/stats.ts). */
@@ -401,7 +405,33 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       const steps = glanceSteps(g, base, plan.steps);
       if (steps.length) g.steps = steps;
     }
-    await store.update(user.id, (s) => ({ ...s, lastAt: state.lastAt, sinceAt: state.sinceAt })).catch((err) => req.log.warn({ err: (err as Error)?.name }, "shell: glance not remembered"));
+    // THE SERVER-DRAWN LOOK (experience/native/*; docs/native-looks.md). A build that can draw nlook sends the catalog version it
+    // HOLDS as `nl`, and the names of what it can draw as `can`; the server then names a design for each SURFACE this phone
+    // has — the two widget kinds and "Bots at work" — but only one whose `since` is at or below that number and which this
+    // phone has not reported bad. Nothing added when the switch is off, the build says nothing, or no design passes: the
+    // widget then draws the view compiled into its own build.
+    //
+    // This is also the only request that knows THIS phone, so it is where the pushed surfaces are named too: the iPhone's
+    // Live Activity reads `look.bots` for its own in-app updates, and the Android notice reads it for every post.
+    const nl = Math.max(0, Math.round(Number(q.nl)) || 0);
+    const can = new Set(String(q.can ?? "").split(",").map((x) => x.trim()).filter(Boolean).slice(0, 8));
+    // Only a NativeLook1 build ever sends `nl`, so the number says the capability as well as the version.
+    if (nl > 0) can.add(NLOOK_CAPS.look1);
+    if (can.has(NLOOK_CAPS.look1)) {
+      const look = glanceLook({
+        can, platform: q.platform === "android" ? "android" : "ios", userId: user.id, nl,
+        bad: badLookIds(before, designSince),
+        // Board names are words, so they come from the same knobs the rest of the glance is worded from.
+        boardName: (id) => boardNameOf(id, x0Words(payload, hg)),
+        ...(() => {
+          const vars = widgetVars({ now: t, sinceAt: before.sinceAt, moved: glanceChanges(input, payload).length });
+          return vars ? { vars } : {};
+        })(),
+      });
+      if (look) Object.assign(g, look);
+    }
+    await store.update(user.id, (s) => ({ ...s, lastAt: state.lastAt, sinceAt: state.sinceAt }))
+      .catch((err) => req.log.warn({ err: (err as Error)?.name }, "shell: glance not remembered"));
     return reply.header("cache-control", "private, no-store").send(g);
   };
 

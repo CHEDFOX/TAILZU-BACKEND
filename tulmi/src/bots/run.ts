@@ -13,7 +13,8 @@
  *   6. memory       after an owner's chat turn: facts and the rolling summary (memory.ts)
  *
  * The Oracle is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts). The mail bot runs it with its
- * business's mail as its knowledge (src/mail/digest.ts), and the meeting bot with the person's meetings (src/meet/digest.ts).
+ * business's mail as its knowledge (src/mail/digest.ts), the meeting bot with the person's meetings (src/meet/digest.ts), and Lingo with the
+ * language course they are on and the words due today (src/lingo/digest.ts).
  *
  * THE MONEY: the cap is checked before every call by the gateway (a call whose worst case would pass it is refused, never made). A request that
  * runs dry after its tools worked returns what it has, with a note; one that cannot even start is a 402.
@@ -41,9 +42,10 @@ import type { BotStore } from "./store.js";
 import { buildTools, CALLS_PER_STEP, newRecord } from "./tools.js";
 import { BotError, type BotAnswer, type BotDef, type BotEvent } from "./types.js";
 import { ORACLE_SLUG, runOracle, type OracleDeps } from "../oracle/run.js";
-import { MAIL_SLUG, MEET_SLUG } from "./builtin.js";
+import { LINGO_SLUG, MAIL_SLUG, MEET_SLUG } from "./builtin.js";
 import { meetDigest } from "../meet/digest.js";
 import { mailDigest } from "../mail/digest.js";
+import { lingoDigest } from "../lingo/digest.js";
 import type { MailWorker } from "../mail/worker.js";
 
 export interface RunDeps {
@@ -159,7 +161,12 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const meet = bot.ownerId === null && bot.slug === MEET_SLUG
     ? await meetDigest(r.userId, { ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}), now: (d.now ?? Date.now)() }).catch(() => null)
     : null;
-  const knowledge = [know?.text, mail, meet].filter((x): x is string => !!x?.trim()).join("\n\n");
+  // Lingo reads the course this person is on and which words are due (lingo/digest.ts), so the conversation can be
+  // steered onto the ones they are about to forget.
+  const lingo = bot.ownerId === null && bot.slug === LINGO_SLUG
+    ? await lingoDigest(r.userId, { now: (d.now ?? Date.now)() }).catch(() => null)
+    : null;
+  const knowledge = [know?.text, mail, meet, lingo].filter((x): x is string => !!x?.trim()).join("\n\n");
 
   const kit = await buildTools({
     bot, userId: r.userId, runId, ...(r.projectId ? { projectId: r.projectId } : {}), ports: d.ports, meter, call, ...(d.gateway ? { gateway: d.gateway } : {}),

@@ -1,0 +1,109 @@
+{
+  "note": "Bind path cases. The table is closed (shared/types/nlook.ts BIND_PATHS) and mirrors glance v2's own field names, so a design binds what the server already sends and nothing else. The renderer evaluates paths against the glance AS OF the current timeline step, so today's `steps` keep working with no new glance.",
+
+  "cases": [
+
+    { "id": "known.widget", "path": "job.stageName", "surface": "widget", "expect": "ok", "sensitive": false,
+      "why": "A plain glance field." },
+
+    { "id": "known.activity", "path": "stageName", "surface": "activity", "expect": "ok", "sensitive": false,
+      "why": "The same thing on the Activity, under ContentState's own name." },
+
+    { "id": "wrongSurface", "path": "greeting.hello", "surface": "activity", "expect": "empty",
+      "why": "A GLANCE path on an Activity resolves to empty: the push carries a ContentState, not a glance. words.* is the one exception, and it is not an exception to this rule — see words.onActivity." },
+
+    { "id": "unknown.path", "path": "job.mood", "surface": "widget", "expect": "empty",
+      "why": "An unknown path gives an empty string, and a Text that resolves to empty HIDES. That is how an older build degrades quietly instead of drawing a hole where a word should be." },
+
+    { "id": "sensitive.question", "path": "needs.items[].question", "surface": "widget", "expect": "ok", "sensitive": true,
+      "onLockRoot": "the lock-safe fill when the item is private",
+      "why": "The privacy rule lives in the RENDERER, not in each design: a design cannot opt out. On accessory families and on activity.lock a sensitive path resolves to the lock-safe fill, and on iOS the text is also wrapped in privacySensitive() so a locked phone redacts it." },
+
+    { "id": "sensitive.task", "path": "job.task", "surface": "widget", "expect": "ok", "sensitive": true,
+      "why": "A task line can quote whatever the person asked for." },
+
+    { "id": "sensitive.activityQuestion", "path": "question", "surface": "activity", "expect": "ok", "sensitive": true,
+      "why": "The same rule on the Lock Screen banner. activity.ts already applies it to the alert text; this is the same promise for the drawn words." },
+
+    { "id": "vars.known", "path": "vars.eta", "surface": "activity", "expect": "ok", "sensitive": true,
+      "why": "vars.* is SENSITIVE BY DEFAULT. The renderer cannot classify a free string, so on lock and accessory roots it is treated as private words." },
+
+    { "id": "vars.nested.rejected", "path": "vars.plan.eta", "surface": "activity", "expect": "empty",
+      "why": "vars is one level deep. Two segments under the prefix is not a path this build knows." },
+
+    { "id": "words.known", "path": "words.step", "surface": "widget", "expect": "ok", "sensitive": false,
+      "fills": { "stage": "job.stage", "of": "job.of" },
+      "why": "The widget knobs' words, in the person's language. A word's own slots are filled by the closed WORD_SLOTS table in nlook.ts, never by the design." },
+
+    { "id": "words.onActivity", "path": "words.step", "surface": "activity", "expect": "ok", "sensitive": false,
+      "fills": { "stage": "stage", "of": "of" },
+      "why": "Words DO resolve on the Activity, from the last glance the app stored (the App Group on iOS, the x0.glance prefs on Android), which is how BotsWords already reads them today. The push never carries words. The slots are filled from ContentState's own names." },
+
+    { "id": "words.slotWithNoFill", "path": "words.working", "surface": "activity", "expect": "empty",
+      "why": "THE OTHER HALF OF THE RULE. \"{n} working\" has a slot no Activity can fill: ContentState has no running count. A word with an unfillable slot resolves to EMPTY and the Text hides, so a bare \"{n}\" never prints on a Lock Screen." },
+
+    { "id": "words.sameWordOnWidget", "path": "words.working", "surface": "widget", "expect": "ok", "sensitive": false,
+      "fills": { "n": "counts.working" },
+      "why": "The same word, on the surface that can fill it. One table, two answers — which is why \"filled as today\" had to be written down." },
+
+    { "id": "indexed.first", "path": "needs.items[0].botName", "surface": "widget", "expect": "ok", "sensitive": false,
+      "why": "A list may be reached by a LITERAL index, 0 to 7. That is still a closed form — a number written in the design, never computed — and it is how a widget leads with the first question, the way today's views already do." },
+
+    { "id": "indexed.keepsSensitive", "path": "needs.items[0].question", "surface": "widget", "expect": "ok", "sensitive": true,
+      "why": "THE CASE THAT MATTERS. A sensitive item name stays sensitive through an index. If the mark were lost here, a question would print in full on a locked phone — which is the whole thing the rule exists to stop." },
+
+    { "id": "indexed.nestedList", "path": "needs.items[0].choices[1].label", "surface": "widget", "expect": "ok", "sensitive": false,
+      "why": "A list inside a list, both indexed: the answers to the first question. A choice label is a button's face, not private words." },
+
+    { "id": "indexed.overSeven", "path": "needs.items[9].question", "surface": "widget", "expect": "empty",
+      "why": "Indexes run 0 to 7, the same bound as Each. Beyond that it is not a path this build knows." },
+
+    { "id": "indexed.unknownField", "path": "needs.items[0].mood", "surface": "widget", "expect": "empty",
+      "why": "An index reaches only the names the list declares." },
+
+    { "id": "each.item", "path": "it.label", "surface": "widget", "inside": "Each over needs.items[].choices", "expect": "ok",
+      "why": "Inside an Each a child binds it.<name>, and the names come from the list's own items." },
+
+    { "id": "each.item.keepsSensitive", "path": "it.question", "surface": "widget", "inside": "Each over needs.items", "expect": "ok", "sensitive": true,
+      "why": "The same privacy mark through an `it.` as through an index. One table, one rule, four renderers." },
+
+    { "id": "each.scalarList", "path": "it", "surface": "activity", "inside": "Each over stages", "expect": "ok",
+      "why": "stages and job.stages are lists of plain strings, so a child binds `it`, not `it.something`." },
+
+    { "id": "each.scalarList.withField", "path": "it.name", "surface": "activity", "inside": "Each over stages", "expect": "empty",
+      "why": "The other half: a scalar list has no fields to reach." },
+
+    { "id": "each.of.indexedList", "of": "needs.items[0].choices", "surface": "widget", "expect": "ok",
+      "resolvesTo": "needs.items[].choices",
+      "why": "An index in an Each's `of` picks WHICH item, not which list, so it normalises to the same key." },
+
+    { "id": "each.item.unknownName", "path": "it.mood", "surface": "widget", "inside": "Each over bots", "expect": "empty",
+      "why": "An it.* name the list does not have is empty, like any unknown path." },
+
+    { "id": "each.outsideEach", "path": "it.label", "surface": "widget", "inside": null, "expect": "empty",
+      "why": "it.* outside an Each has nothing to point at." },
+
+    { "id": "template.twoSlots", "template": "{{job.stageName}} · {{words.step}}", "surface": "widget", "expect": "ok",
+      "why": "A template is text with slots, never an expression. Two slots, one separator." },
+
+    { "id": "template.stageOfOnActivity", "template": "{{stage}}/{{of}}", "surface": "activity", "expect": "ok",
+      "why": "How the island's compact right is written in format 1. stage and of are plain ContentState numbers, so the \"3/5\" today's view hard-codes needs no word key of its own." },
+
+    { "id": "template.unknownSlotHides", "template": "{{job.mood}}", "surface": "widget", "expect": "empty",
+      "why": "THE HIDE RULE: a Text hides when EVERY slot in it resolved empty. Literal characters around the slots do not keep it alive." },
+
+    { "id": "template.allSlotsEmptyHides", "template": "({{job.mood}})", "surface": "widget", "expect": "empty",
+      "why": "The same rule with punctuation around the slot, which is the case that decides it: a design must never be able to leave \"()\" sitting on a Home Screen." },
+
+    { "id": "template.partialKeepsText", "template": "{{job.stageName}} ({{job.mood}})", "surface": "widget", "expect": "ok",
+      "keep": "the literal text and the slot that resolved",
+      "why": "One empty slot of two does not hide the Text: a slot resolved, so there are real words to draw. Only an all-empty result hides." },
+
+    { "id": "timer.dateBind", "path": "job.startedAt", "surface": "widget", "kind": "date", "expect": "ok",
+      "why": "A date path may drive Text(timerInterval:) on iOS or a Chronometer on Android. A timer is the only thing in a widget that moves without a new entry." },
+
+    { "id": "timer.onTextBind.rejected", "path": "job.stageName", "surface": "widget", "asTimer": true, "expect": "empty",
+      "why": "A timer needs a date. Pointing one at a text path draws nothing rather than a nonsense clock." }
+
+  ]
+}
