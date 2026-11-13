@@ -35,10 +35,17 @@ const ANSWER_CHARS = 2_400;
 const ASKED_CHARS = 600;
 const LINKS_SHOWN = 8;
 
-/** Whether drawing is on (BOT_SHOW, config.ts; off by default). Off when the settings cannot be read. */
-export function showOn(): boolean {
+/**
+ * Whether drawing is on for this account (BOT_SHOW, config.ts; off by default). BOT_SHOW_USERS, while it has any name in it, is the
+ * stage before everyone: only those accounts. Read as the other stages are (experience/bots/looks.ts looksCan). Off when the
+ * settings cannot be read.
+ */
+export function showOn(userId?: string): boolean {
   try {
-    return getConfig().BOT_SHOW === true;
+    const cfg = getConfig();
+    if (cfg.BOT_SHOW !== true) return false;
+    const only = String(cfg.BOT_SHOW_USERS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    return !only.length || (!!userId && only.includes(userId));
   } catch {
     return false;
   }

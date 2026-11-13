@@ -13,13 +13,16 @@
  * server gives it, its own delay, its own travel; the window plays the same delay and travel eased in CSS. How a picture comes in
  * suits it (SPRING): a bar and a meter in short runs left to right, growing from small; a line segment by segment, dropping in from
  * above; a drawing shape by shape, gathering from its middle. Only an answer that has just come in (`fresh`) comes in; any other is
- * drawn at home. A tap on a picture brings its dots in again on their springs, on any answer (`taps.<key>` swaps two faces of it, so
- * each tap mounts a new one). A build without BotsMotion gets the same dots, still. Blip, when the drawing asks for him
+ * drawn at home. On the newest answer a tap on a picture brings its dots in again on their springs (`taps.<key>` swaps two faces of
+ * it, so a tap mounts a new one). A build without BotsMotion gets the same dots, still. Blip, when the drawing asks for him
  * (`shown.blip`), stands beside the first picture: on the newest answer a living bot of the engine's own physics (BotBuddy), in
  * ink; on an older answer, or a build without him alive, his pose's picture.
  *
  * Every node is the kit's Stack, Text, SVG, Image, Grid, TextField and Rise, or BotBuddy for the builds that say it (lint.ts holds it
- * to that), so no app needs anything new. A box hands its children the room it has (`room`, points), so a picture fits its box.
+ * to that), so no app needs anything new (docs/renderer.md section 2). Every Rise and BotBuddy carries a `fallback` (the same dots
+ * still, his pose), so a client that lacks one or has it switched off (`sdui.off`) still draws the picture. A chat screen hands its
+ * turns one dot budget (`budget`, newest answer first) and a picture is thinned to what is left, so a long chat stays inside the
+ * screen limits (512 KB). A box hands its children the room it has (`room`, points), so a picture fits its box.
  *
  * Only the LATEST turn is live (`o.live`): its choices, suggestions and form can be tapped and sent. An older turn draws the same
  * blocks still: a choice shows what the person picked (the turn after it says), and suggestions and forms are left out. Asking blocks
@@ -27,7 +30,7 @@
  * `show.<key>` with the turn's id, and the server turns them into words (show/answer.ts).
  */
 import type { ActionRef, ActionSpec, Condition, Node, SvgShape } from "../../../../shared/types/sdui.js";
-import { BAR_ROW, barsPic, drawPic, glyphPic, linePic, meterPic, type DotPic, type GlyphKind } from "../../show/dots.js";
+import { BAR_ROW, barsPic, drawPic, glyphPic, linePic, meterPic, thinPic, type DotPic, type GlyphKind } from "../../show/dots.js";
 import type { Block, BlipAct, Shown } from "../../show/types.js";
 import type { BlipPose } from "./art.js";
 import { done as momentDone, failed, start as momentStart, streamed } from "./askMoment.js";
@@ -44,8 +47,10 @@ export interface ShowOpts {
   turn: string;
   /** The chat's latest turn: its asking blocks can be used, and Blip is alive beside it. */
   live: boolean;
-  /** The answer has just come in: its pictures spring in. Any other is drawn at home (a tap still springs its dots). */
+  /** The answer has just come in: its pictures spring in. Any other is drawn at home. */
   fresh?: boolean;
+  /** What is left of the screen's dot budget, shared by every turn of a chat (each copy of a dot counts); none: no limit. */
+  budget?: { left: number };
   /** What the person said next, for an older turn: which options of a choice they picked. */
   picked?: string;
 }
@@ -66,9 +71,11 @@ export const SPRING = {
 } as const;
 export type SpringKind = keyof typeof SPRING;
 
-/** The most pieces a picture is cut into (each a Rise), and the most dots a picture may have to answer a tap (it is sent three times). */
-const MAX_PIECES = 24;
+/** The most pieces a picture is cut into (each a Rise), and the most dots a picture may have to answer a tap (it is sent once more). */
+const MAX_PIECES = 12;
 const TAP_DOTS = 400;
+/** A picture thinned below this many dots is not worth drawing: its words (labels, values, caption) stand alone. */
+const MIN_DOTS = 24;
 
 /** A dotted edge: the kit's dotted border (a build without KitExtras may draw a dotted radius dashed or solid). */
 const dottedEdge = (color: string = C.dashed, width = 1.5) => ({ borderWidth: width, borderStyle: "dotted", borderColor: color });
@@ -111,36 +118,50 @@ export function piecesOf(pic: DotPic, kind: SpringKind): Array<{ pic: DotPic; de
   return out;
 }
 
-/** The picture springing in: its pieces stacked on one canvas, each a Rise with its own delay and the spring that suits the picture. */
-function springIn(pic: DotPic, kind: SpringKind): Node {
+/**
+ * The picture springing in: its pieces stacked on one canvas, each a Rise with its own delay and the spring that suits the picture.
+ * `fallback`: each Rise also carries its dots still, for a client that lacks Rise or has it switched off (docs/renderer.md section 4).
+ */
+function springIn(pic: DotPic, kind: SpringKind, fallback: boolean): Node {
   const sp = SPRING[kind];
   const at = { position: "absolute", left: 0, top: 0, width: pic.w, height: pic.h };
-  return box(piecesOf(pic, kind).map((p) => ({
-    type: "Rise",
-    props: { delayMs: p.delayMs, fromY: sp.fromY, scaleFrom: sp.scaleFrom, stiffness: sp.stiffness, damping: sp.damping, mass: sp.mass },
-    style: at,
-    children: [stillDots(p.pic)!],
-  })), { width: pic.w, height: pic.h, position: "relative", flexShrink: 0 });
+  return box(piecesOf(pic, kind).map((p) => {
+    const still = stillDots(p.pic)!;
+    return {
+      type: "Rise",
+      props: { delayMs: p.delayMs, fromY: sp.fromY, scaleFrom: sp.scaleFrom, stiffness: sp.stiffness, damping: sp.damping, mass: sp.mass },
+      style: at,
+      children: [still],
+      ...(fallback ? { fallback: { ...still, style: { ...(still.style ?? {}), ...at } } } : {}),
+    };
+  }), { width: pic.w, height: pic.h, position: "relative", flexShrink: 0 });
 }
 
 /**
- * A picture of dots, as the build can: springing in when its answer has just come in, and answering a tap by springing its dots in
- * again (three faces swapped by `taps.<key>`: as it came, then two springing ones in turn, so every tap mounts a new one); still on a
- * build without BotsMotion.
+ * A picture of dots, as the build can: springing in when its answer has just come in, and on the newest answer answering a tap by
+ * springing its dots in again (two faces swapped by `taps.<key>`, so a tap mounts the other one); still on a build without
+ * BotsMotion. It takes what it can of the screen's dot budget, every copy of a dot counted, and is thinned to fit.
  */
-function dotsNode(ctx: BotsCtx, pic: DotPic, o: { kind: SpringKind; key: string; fresh: boolean; label?: string }): Node | null {
-  if (!pic.d.length) return null;
-  if (!canMove(ctx)) return stillDots(pic, o.label);
-  const first = o.fresh ? springIn(pic, o.kind) : stillDots(pic)!;
-  if (pic.d.length / 5 > TAP_DOTS) return o.label ? labelled(first, o.label) : first;
+function dotsNode(ctx: BotsCtx, pic0: DotPic, o: { kind: SpringKind; key: string; fresh: boolean; live: boolean; budget?: { left: number }; label?: string }): Node | null {
+  const n0 = pic0.d.length / 5;
+  if (!n0) return null;
+  const moves = canMove(ctx);
+  const tappable = moves && o.live && n0 <= TAP_DOTS;
+  // Copies of every dot this picture sends: the first face (with its fallback when it springs), and the tap's face.
+  const copies = (moves && o.fresh ? 2 : 1) + (tappable ? 1 : 0);
+  const fits = o.budget ? Math.floor(o.budget.left / copies) : n0;
+  if (fits < Math.min(MIN_DOTS, n0)) return null;
+  const pic = thinPic(pic0, fits);
+  if (o.budget) o.budget.left -= (pic.d.length / 5) * copies;
+  if (!moves) return stillDots(pic, o.label);
+  const first = o.fresh ? springIn(pic, o.kind, true) : stillDots(pic)!;
+  if (!tappable) return o.label ? labelled(first, o.label) : first;
   const path = `taps.${o.key.replace(/[^A-Za-z0-9_]/g, "_")}`;
   const face = (c: Condition, n: Node): Node => when(c, n);
-  const tap: ActionSpec = { kind: "condition", if: { eq: [path, "a"] }, then: { kind: "setState", path, value: "b" }, else: { kind: "setState", path, value: "a" } };
   const node = box([
     face({ falsy: path }, first),
-    face({ eq: [path, "a"] }, springIn(pic, o.kind)),
-    face({ eq: [path, "b"] }, springIn(pic, o.kind)),
-  ], { width: pic.w, height: pic.h, flexShrink: 0 }, tap);
+    face({ truthy: path }, springIn(pic, o.kind, false)),
+  ], { width: pic.w, height: pic.h, flexShrink: 0 }, { kind: "toggleState", path });
   return o.label ? labelled(node, o.label) : node;
 }
 
@@ -237,7 +258,7 @@ function bars(ctx: BotsCtx, b: Extract<Block, { type: "chart" }>, room: number, 
     text(s, { size: 12, weight: strong ? 600 : 400, color: strong ? C.ink : C.meta, lineHeight: BAR_ROW, lines: 1, ...(right ? { align: "right" as const } : {}), style: { height: BAR_ROW } });
   return row([
     col(b.items.map((i) => cell(i.label)), { width: label, flexShrink: 0 }),
-    dotsNode(ctx, pic, { kind: "bars", key, fresh: !!o.fresh, label: spoken(b) }) ?? box([]),
+    dotsNode(ctx, pic, { kind: "bars", key, fresh: !!o.fresh, live: o.live, ...(o.budget ? { budget: o.budget } : {}), label: spoken(b) }) ?? box([]),
     col(b.items.map((i) => cell(fmtNum(i.value, b.unit), true, true)), { width: value, flexShrink: 0, alignItems: "flex-end" }),
   ], { gap: gapW, alignItems: "flex-start" });
 }
@@ -249,7 +270,7 @@ function line(ctx: BotsCtx, b: Extract<Block, { type: "chart" }>, room: number, 
   const first = b.items[0]!, last = b.items[b.items.length - 1]!;
   return col([
     row([meta(`${first.label} ${fmtNum(first.value, b.unit)}`, { size: 12 }), box([], { flexGrow: 1 }), meta(`${last.label} ${fmtNum(last.value, b.unit)}`, { size: 12 })]),
-    dotsNode(ctx, linePic(b.items, w), { kind: "line", key, fresh: !!o.fresh, label: spoken(b) }) ?? box([]),
+    dotsNode(ctx, linePic(b.items, w), { kind: "line", key, fresh: !!o.fresh, live: o.live, ...(o.budget ? { budget: o.budget } : {}), label: spoken(b) }) ?? box([]),
     row([meta(`low ${fmtNum(Math.min(...vals), b.unit)}`, { size: 11 }), box([], { flexGrow: 1 }), meta(`high ${fmtNum(Math.max(...vals), b.unit)}`, { size: 11 })]),
   ], { gap: 6, width: w, maxWidth: "100%" });
 }
@@ -258,7 +279,7 @@ function line(ctx: BotsCtx, b: Extract<Block, { type: "chart" }>, room: number, 
 function drawing(ctx: BotsCtx, b: Extract<Block, { type: "draw" }>, room: number, o: ShowOpts, key: string): Node | null {
   let w = Math.min(room, Math.max(b.width, 160));
   if ((w * b.height) / b.width > 360) w = (360 * b.width) / b.height;
-  const pic = dotsNode(ctx, drawPic(b, Math.round(w)), { kind: "draw", key, fresh: !!o.fresh, ...(b.label ? { label: b.label } : {}) });
+  const pic = dotsNode(ctx, drawPic(b, Math.round(w)), { kind: "draw", key, fresh: !!o.fresh, live: o.live, ...(o.budget ? { budget: o.budget } : {}), ...(b.label ? { label: b.label } : {}) });
   if (!pic) return null;
   return b.label ? col([pic, meta(b.label, { size: 12 })], { gap: 6, alignSelf: "flex-start" }) : pic;
 }
@@ -360,7 +381,7 @@ function node(ctx: BotsCtx, b: Block, o: ShowOpts, room: number, key: string): N
       const pct = Math.round((b.value / b.max) * 100);
       return col([
         row([meta(b.label ?? "", { size: 12 }), box([], { flexGrow: 1 }), text(`${pct}%`, { size: 12, weight: 600, lineHeight: 16 })]),
-        dotsNode(ctx, meterPic(b.value, b.max, w), { kind: "meter", key, fresh: !!o.fresh, label: `${b.label ? `${b.label} ` : ""}${pct}%` }) ?? box([]),
+        dotsNode(ctx, meterPic(b.value, b.max, w), { kind: "meter", key, fresh: !!o.fresh, live: o.live, ...(o.budget ? { budget: o.budget } : {}), label: `${b.label ? `${b.label} ` : ""}${pct}%` }) ?? box([]),
       ], { gap: 6, width: w, maxWidth: "100%" });
     }
     case "steps": return steps(b);
@@ -408,13 +429,15 @@ const BLIP_W = { phone: 60, desktop: 84 } as const;
 /** Blip beside a drawing: alive (the engine's own physics, in ink) on the newest answer where the build has him, else his pose. */
 function blipNode(ctx: BotsCtx, act: BlipAct, o: ShowOpts): Node {
   const desk = ctx.client === "desktop";
+  const pose = box([blip(POSE[act], desk ? 60 : 52)], { width: BLIP_W[ctx.client], alignItems: "center", flexShrink: 0 });
   if (o.live && canBuddy(ctx)) {
-    return botBuddy({
+    // His pose's picture as the fallback, for a client that has BotBuddy switched off.
+    return { ...botBuddy({
       kind: "custom", color: C.ink, life: `show.${o.turn}`, width: BLIP_W[ctx.client], height: desk ? 66 : 56, size: desk ? 34 : 30,
       state: "idle", act, lookTo: "left", label: "Blip",
-    });
+    }), fallback: pose };
   }
-  return box([blip(POSE[act], desk ? 60 : 52)], { width: BLIP_W[ctx.client], alignItems: "center", flexShrink: 0 });
+  return pose;
 }
 
 /** The blocks Blip may stand beside: the pictures, and what asks something of the person. */

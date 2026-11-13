@@ -248,6 +248,8 @@ The switches that exist today (`tulmi/src/config.ts`):
 | `PERM_HEALTH_IOS_USERS` | empty | the iPhone account list |
 | `PERM_HEALTH_ANDROID` | off | the same row on Android (Health Connect); stays off until Google has approved the form |
 | `PERM_HEALTH_ANDROID_USERS` | empty | the account list for the stage before Google's own list arrives |
+| `BOT_SHOW` | off | what a bot draws under its words in its chat: monochrome dot art from today's kit, springing in on `Rise` (`docs/show.md`) |
+| `BOT_SHOW_USERS` | empty | the first accounts to get bot drawings |
 
 `ACTIVITY_PUSH_START`, `ANDROID_BOTS_NOTICE`, `PERM_LOCATION` and `PERM_CONTACT_PICK` are global: they have no
 per-account stage, so their device checks come before they go on in production.

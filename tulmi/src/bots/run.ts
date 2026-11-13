@@ -253,7 +253,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
 
   // What to draw under the words, where they are drawn (`draw`): never for an API caller, never over a yes the person is being asked
   // (its own card is that), never for words that were cut for a secret. Its call is charged to the request as it goes (meter.wrap).
-  const draws = r.draw === true && r.surface !== "api" && !r.signal?.aborted && !record.approvals.length && !clean.cleaned && showOn()
+  const draws = r.draw === true && r.surface !== "api" && !r.signal?.aborted && !record.approvals.length && !clean.cleaned && showOn(r.userId)
     && worthDrawing(text, { links: read.list(1).length });
   const drawing = draws
     ? drawFor({ call, ...(d.gateway ? { gateway: d.gateway } : {}), userId: r.userId, leftPaise: meter.left(), ...(r.signal ? { signal: r.signal } : {}) },

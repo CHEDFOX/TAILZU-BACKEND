@@ -85,7 +85,15 @@ Nothing here asks the apps for anything new: the motion is made from the **Rise*
 
 On the **phone** a Rise is a real damped spring (stiffness, damping and mass, all from the server: it overshoots a little and settles, as a weight on a spring does). The **window** plays the same delay and the same travel eased in CSS; it has no spring of its own, and giving it one would be an app change.
 
-Only an answer that has **just come in** springs in (the chat's newest turn, within two minutes: `parts.ts FRESH_MS`); a refresh later, or an older answer, draws the picture at home, so scrolling the chat never replays it. A **tap** on a picture brings its dots in again on their springs, on any answer: the picture holds three faces, as it came and two that spring in, and the tap swaps them through `taps.<key>` (`setState` in a `condition`, `visibleIf` on each face), so every tap mounts a new face. A picture of more than 400 dots does not answer taps (it would be sent three times), nor is it cut into more than 24 pieces. A build without BotsMotion gets the same dots, still. Reduce Motion is the apps' own: a Rise lands in place.
+Only an answer that has **just come in** springs in (the chat's newest turn, within two minutes: `parts.ts FRESH_MS`); a refresh later, or an older answer, draws the picture at home, so scrolling the chat never replays it. On the newest answer a **tap** on a picture brings its dots in again on their springs: the picture holds two faces, as it came and one that springs in, and the tap swaps them (`toggleState` on `taps.<key>`, `visibleIf` on each face), so a tap mounts the other face. A picture of more than 400 dots does not answer taps (it would be sent once more), and none is cut into more than 12 pieces. A build without BotsMotion gets the same dots, still. Reduce Motion is the apps' own: a Rise lands in place.
+
+It keeps to `docs/renderer.md`:
+
+* **Today's kit only** (section 2): Stack, SVG, Rise, BotBuddy, the actions `toggleState` and `callEndpoint`, `visibleIf`. None of the blocks that are not reachable yet (section 3).
+* **A fallback on every node a client might not have** (section 4): every Rise carries its piece's dots, still, and Blip's BotBuddy his pose's picture, so a client that has either switched off (`sdui.off`) draws the picture all the same.
+* **The screen limits** (section 5): a chat screen hands its turns one dot budget (`parts.ts SCREEN_DOTS`, 5,000 dots, every copy counted, about 275 KB at most), the newest answer first; an older picture is thinned to what is left (`dots.ts thinPic`), and one that would keep fewer than 24 dots leaves only its words (labels, values, caption). Only the newest answer sends a picture twice (the tap's face) or with its fallbacks.
+* **Launch dark** (section 6): `BOT_SHOW` off, staged by `BOT_SHOW_USERS`.
+* **Rise is a single-feature node** (section 7.1, being undone): once `motion` (SPEC 2.5) can reach a screen, the pieces move to it and Rise goes, inside its 64 animated nodes; then the window gets real springs too.
 
 ## 7. Blip
 
@@ -108,7 +116,11 @@ Rarely needed: try it as a composition, or as `draw`, first. When one is worth i
 
 ## 11. Settings
 
-Off by default: `BOT_SHOW=true` turns it on (`ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/set-env.sh BOT_SHOW=true && ./deploy/ship.sh'`). Off, the words alone, as before.
+Off by default: `BOT_SHOW=true` turns it on. `BOT_SHOW_USERS` (comma-separated account ids) is the stage before everyone: while it names anyone, only they get drawings. Off, the words alone, as before.
+
+```
+ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/set-env.sh BOT_SHOW=true BOT_SHOW_USERS=<your account id> && ./deploy/ship.sh'
+```
 
 ## 12. Tests, and what needs a live check
 

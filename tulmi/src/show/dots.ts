@@ -288,6 +288,16 @@ function keepInside(d: number[], w: number, h: number): number[] {
   return out;
 }
 
+/** A picture held to `max` dots by keeping every k-th (a screen's budget, experience/bots/show.ts); unchanged when it already fits. */
+export function thinPic(pic: DotPic, max: number): DotPic {
+  const n = pic.d.length / 5;
+  if (n <= max) return pic;
+  const every = Math.ceil(n / Math.max(1, max));
+  const d: number[] = [];
+  for (let i = 0; i < n; i += every) d.push(...pic.d.slice(i * 5, i * 5 + 5));
+  return { w: pic.w, h: pic.h, d };
+}
+
 // ===================================================================== small marks
 
 export type GlyphKind = "info" | "tip" | "warn" | "good";

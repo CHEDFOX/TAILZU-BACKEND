@@ -31,7 +31,7 @@ const { registerBotsBotsRoutes, AREA } = await import("../src/routes/bots/botsBo
 const { botsAreaParts, resetAreaTablesForTests } = await import("../src/botsBots/index.js");
 const { MemoryEventStore } = await import("../src/shell/events.js");
 const { resetConfigForTests } = await import("../src/config.js");
-const { chatTurns } = await import("../src/experience/bots/screens/bots/parts.js");
+const { chatTurns, SCREEN_DOTS } = await import("../src/experience/bots/screens/bots/parts.js");
 type Turn = import("../src/experience/bots/screens/bots/parts.js").Turn;
 const { showNodes, piecesOf, SPRING } = await import("../src/experience/bots/show.js");
 const { barsPic } = await import("../src/show/dots.js");
@@ -51,7 +51,7 @@ const made = async (r: Awaited<ReturnType<typeof rig>>, over: Record<string, unk
 
 describe("in the run", () => {
   beforeEach(() => { process.env.BOT_SHOW = "true"; resetConfigForTests(); });
-  afterEach(() => { delete process.env.BOT_SHOW; resetConfigForTests(); });
+  afterEach(() => { delete process.env.BOT_SHOW; delete process.env.BOT_SHOW_USERS; resetConfigForTests(); });
 
   it("draws after the words and keeps it on the answer, its cost on the request", async () => {
     const r = await rig(model(QUESTION));
@@ -80,6 +80,18 @@ describe("in the run", () => {
     await made(r);
     expect((await r.bots.ask(ALICE, "buddy", { message: "plan a weekend", fresh: true })).show).toBeUndefined();
     expect(r.model.of("bot.show")).toHaveLength(0);
+  });
+
+  it("is staged by BOT_SHOW_USERS: while it names anyone, only they get drawings", async () => {
+    process.env.BOT_SHOW_USERS = "someone-else";
+    resetConfigForTests();
+    const r = await rig(model(QUESTION));
+    await made(r);
+    expect((await r.bots.ask(ALICE, "buddy", { message: "plan a weekend", draw: true })).show).toBeUndefined();
+    process.env.BOT_SHOW_USERS = `someone-else, ${ALICE}`;
+    resetConfigForTests();
+    expect((await r.bots.ask(ALICE, "buddy", { message: "plan a weekend again", draw: true })).show).toBeDefined();
+    delete process.env.BOT_SHOW_USERS;
   });
 
   it("is off unless BOT_SHOW=true", async () => {
@@ -231,19 +243,54 @@ describe("on the screen", () => {
     expect(JSON.stringify(none)).not.toContain("taps.");
   });
 
-  it("answers a tap on a picture by springing its dots in again, on any answer", () => {
+  it("answers a tap on the newest answer's picture by springing its dots in again; an older answer's is not tappable", () => {
     for (const fresh of [true, false]) {
       const nodes = showNodes(alive("phone"), { blocks: [shown.blocks[4]!] }, { ...o, live: true, fresh });
       const pic = walk({ type: "Stack", children: nodes }).find((n) => n.on?.onPress)!;
       // kept under the turn and the block's place in the drawing (here the only one)
       const path = `taps.${o.turn.replace(/-/g, "_")}_0`;
-      expect(pic.on!.onPress).toEqual({ kind: "condition", if: { eq: [path, "a"] }, then: { kind: "setState", path, value: "b" }, else: { kind: "setState", path, value: "a" } });
-      // three faces: as it came, then two that spring in, one mounted at a time
-      expect(pic.children!.map((c) => c.visibleIf)).toEqual([{ falsy: path }, { eq: [path, "a"] }, { eq: [path, "b"] }]);
+      expect(pic.on!.onPress).toEqual({ kind: "toggleState", path });
+      // two faces, one mounted at a time: as it came, and one that springs in
+      expect(pic.children!.map((c) => c.visibleIf)).toEqual([{ falsy: path }, { truthy: path }]);
       expect(typeOf([pic.children![1]!], "Rise").length).toBeGreaterThan(1);
-      expect(typeOf([pic.children![2]!], "Rise").length).toBeGreaterThan(1);
       expect(pic.props?.accessibilityLabel).toBe("Stay 6,400, Food 3,200");
     }
+    const old = showNodes(alive("phone"), { blocks: [shown.blocks[4]!] }, { ...o, live: false });
+    expect(walk({ type: "Stack", children: old }).some((n) => n.on?.onPress)).toBe(false);
+    expect(JSON.stringify(old)).not.toContain("taps.");
+  });
+
+  it("gives every Rise and Blip a fallback, so a client that has them switched off still draws the picture", () => {
+    const nodes = showNodes(alive("phone"), { ...shown, blip: "survey" as const }, { ...o, live: true, fresh: true });
+    const first = typeOf(nodes, "Stack").filter((n) => (n.visibleIf as { falsy?: string } | undefined)?.falsy?.startsWith("taps."));
+    const rises = first.flatMap((f) => typeOf([f], "Rise"));
+    expect(rises.length).toBeGreaterThan(0);
+    for (const r of rises) {
+      expect(r.fallback?.type).toBe("SVG");
+      expect((r.fallback!.style as Record<string, unknown>).position).toBe("absolute");
+      expect(r.fallback!.props?.shapes).toEqual(r.children![0]!.props?.shapes);
+    }
+    const buddy = typeOf(nodes, "BotBuddy")[0]!;
+    expect(typeOf([buddy.fallback!], "Image")).toHaveLength(1);
+  });
+
+  it("holds a whole chat to one dot budget, the newest answer first, thinning the older ones", () => {
+    const big = checkShown({ blocks: [{ type: "draw", width: 100, height: 100, shapes: Array.from({ length: 30 }, (_v, k) => ({ circle: [50, 50, 45 - k], fill: "ink", stroke: "ink" })) }] }, { seen: { has: () => false } })!;
+    const at = Date.UTC(2026, 9, 28, 9);
+    const base = { opens: [], approvals: [], paise: 0 };
+    const turns: Turn[] = [];
+    for (let i = 0; i < 12; i++) {
+      turns.push({ id: `m${i}`, role: "me", text: "draw it", at: at + i * 2, ...base });
+      turns.push({ id: `b${i}`, role: "bot", text: "Here it is.", at: at + i * 2 + 1, ...base, show: big });
+    }
+    const nodes = chatTurns(alive("phone"), { slug: "travel" }, turns);
+    const dotsOf = (n: unknown) => typeOf([n], "SVG").reduce((sum, x) => sum + (((x.props?.shapes as unknown[] | undefined) ?? []).length), 0);
+    const total = dotsOf({ type: "Stack", children: nodes });
+    expect(total).toBeLessThanOrEqual(SCREEN_DOTS + 200);
+    // the newest answer kept the most dots; the oldest got what was left, or only its words
+    const perTurn = nodes.filter((_n, i) => i % 2 === 1).map(dotsOf);
+    expect(perTurn.at(-1)!).toBeGreaterThan(perTurn[0]!);
+    expect(JSON.stringify(nodes).length).toBeLessThan(512 * 1024);
   });
 
   it("cuts a picture into pieces that hold every dot once, never more than 24, in the order they come in", () => {
