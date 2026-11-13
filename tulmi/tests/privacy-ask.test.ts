@@ -54,9 +54,9 @@ const ask = policy.slice(policy.indexOf("10. Ask, on the desktop app"), policy.i
 const google = policy.slice(policy.indexOf("11. Google apps you connect"), policy.indexOf("12. Xode and GitHub"));
 
 describe("the policy's date and shape", () => {
-  it("is effective from the day a space's admin could share members' things", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 6, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: November 6, 2026");
+  it("is effective from the day Plan Ease could call and be talked back to", () => {
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 12, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: November 12, 2026");
   });
 
   it("numbers its sections 1 to 17, once each, in order", () => {
@@ -358,9 +358,9 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: November 6, 2026");
+    expect(res.body).toContain("Effective: November 12, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "November 6, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "November 12, 2026" });
   });
 });
 
@@ -373,5 +373,16 @@ describe("Service providers (/privacy/providers), part of the policy", () => {
     expect(PRIVACY_POLICY_HTML).toContain('href="/privacy/providers#ai"');
     expect(providers).toContain("Part of the X0 Bot Privacy Policy");
     expect(providers).toContain("only after you agree in the app");
+  });
+
+  // A call from Plan Ease has two AI parts: the live voice, and the model that decides what is worth a call.
+  it("names who holds a call's voice and who routes the model that decides a call", () => {
+    const calls = providers.slice(providers.indexOf("Calls from Plan Ease (see 1.2)"), providers.indexOf("Ask, on the desktop app"));
+    expect(calls).toContain("holds the live voice conversation when Plan Ease calls you");
+    expect(calls).toContain("abuse-monitoring logs are kept up to 30 days and not used for training");
+    expect(calls).toContain("routes the text model that decides which things on your Plan are worth a call");
+    // The policy's own words stay general: the provider, not the company.
+    const section = policy.slice(policy.indexOf("Calls from Plan Ease."), policy.indexOf("Which things Plan Ease calls about."));
+    expect(section).toContain("our realtime voice provider (see Section 3)");
   });
 });

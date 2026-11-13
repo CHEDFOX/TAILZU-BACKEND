@@ -29,6 +29,7 @@
  *   --json <file>                   draw this screen JSON (e.g. one a running server served) instead of building one
  *   --motion                        let the motions run (default: Reduce Motion, so every shot is the same)
  *   --without PersonBot,FontBricolage  draw it for a build that lacks these (default: the builds as they are now)
+ *   --with VoiceRealtime            draw it for a build that ALSO declares these (one that is not out yet)
  *   --state '{"step":"check"}'      merge this into the screen's state before it is drawn (a moment that is state, not params)
  *   --out <dir>   --design <bots-design dir, default $BOTS_DESIGN, else bots-design beside the repos>
  *
@@ -166,6 +167,8 @@ export interface ScreenData {
   served?: unknown;
   /** Names the build does not declare (a build from before them): left out of what the client says, on every screen it asks for. */
   without?: string[];
+  /** Names the build declares as well (one that is not out yet, like a store build's VoiceRealtime): added to what it says. */
+  with?: string[];
   /** Merged into the screen's own state before it is drawn (a moment that is state, not params: "Plan something"'s check face). */
   state?: Record<string, unknown>;
 }
@@ -194,7 +197,8 @@ function builder(target: string, data: ScreenData, misses: string[]) {
         try { return await api(method as "GET", route, body); } catch (e) { misses.push(`${method} ${route}`); throw e; }
       }) as typeof deps.api;
     }
-    const said = data.without?.length ? comps.filter((c) => !data.without!.includes(c)) : comps;
+    const base = data.without?.length ? comps.filter((c) => !data.without!.includes(c)) : comps;
+    const said = data.with?.length ? [...new Set([...base, ...data.with])] : base;
     const screen = await buildBotsScreen({
       screenId: id, client, params: p as Record<string, string>, tzOffsetMinutes: IST, user: USER,
       can: new Set(["BotsKit", ...said]), desk: { pages: said.includes("DeskShell"), notes: said.includes("DeskNotes") },
@@ -470,6 +474,7 @@ async function main(): Promise<void> {
     quiet: has("quiet"),
     ...(flag("json") ? { served: JSON.parse(fs.readFileSync(flag("json")!, "utf8")) } : {}),
     ...(flag("without") ? { without: flag("without")!.split(",").map((n) => n.trim()).filter(Boolean) } : {}),
+    ...(flag("with") ? { with: flag("with")!.split(",").map((n) => n.trim()).filter(Boolean) } : {}),
     ...(flag("state") ? { state: JSON.parse(flag("state")!) as Record<string, unknown> } : {}),
   };
   const browser = await launchBrowser();

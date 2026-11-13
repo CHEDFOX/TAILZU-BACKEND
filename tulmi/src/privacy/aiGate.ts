@@ -8,6 +8,8 @@
  *
  *   aiScopeHook          Fastify preHandler: the request's sign-in is remembered for everything its handler awaits
  *   asPerson(id, work)   work outside a request (a routine, a job) runs as its owner
+ *   asService(work)      work that is nobody's: it sends nothing of a person's and must run even after they said no. ONE use only:
+ *                        hanging up a realtime call (realtime/openaiCalls.ts), which is what a withdrawal has to do
  *   aiAllowed()          whether the person this work is for may have it sent to an AI service (no check installed, or no person: yes)
  *   aiAllowedFor(id)     the same for a named person
  *   guardClient(c)       an OpenAI SDK client (OpenRouter, OpenAI) whose every call asks aiAllowed() first; a "no" is a 403 the SDK
@@ -59,6 +61,13 @@ export function aiScopeHook(req: { headers: Record<string, unknown> }, _reply: u
 
 /** `work` as `userId`'s: what it sends to an AI service is theirs (a routine, a job, a note organised later). */
 export function asPerson<T>(userId: string, work: () => T): T { return scope.run({ userId }, work); }
+
+/**
+ * `work` as nobody's: no sign-in, no person, so the gate has nothing to ask and lets it through. It is for the one request that
+ * carries no personal data and must still go out after a person takes their permission back: hanging up their live call
+ * (realtime/openaiCalls.ts). Nothing else may use it — anything with a person's words, voice or facts in it goes through asPerson.
+ */
+export function asService<T>(work: () => T): T { return scope.run({}, work); }
 
 export async function aiAllowed(): Promise<boolean> {
   const who = scope.getStore();

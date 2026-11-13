@@ -350,18 +350,23 @@ declined. A late Answer (Face ID) still connects for 120 s after the window. An 
 (`timeout`). Timers run in the process; a sweep every 10 s over `next_ms` catches what a restart lost, sends no ring after the window and
 no missed push after its expiry. Calls older than 90 days are deleted by the sweep.
 
+**A live call opens with a mild "Hello."**, in English, whatever language follows. There is no app-language logic anywhere in a call:
+the realtime call follows whatever language the person speaks from their first words. A turn call — every build without the realtime
+switch — opens on the moment itself, with no greeting, exactly as it always has.
+
 **The screen** (`bots.plan.call`, never kept). Talk mode, on a phone with `BotCall`: it answers as it opens, Plan Ease speaks first
 ("It's time to leave for the parent-teacher meeting at Green Valley School. Want me to do anything?"), then turn by turn the person talks
 (`voiceLive` once, `duplex`) and `.../say` hands the words to the Plan Ease chat with the call's facts attached; the reply is said aloud
 (two sentences at most). "No", "that's all", "bas" close the call with no chat call; after 8 turns it closes too. The item card carries
 its own buttons (Open map and Move; Pay and Paid), and one that leaves the screen ends the call first. Missed mode: "Missed call ·
-8:12 am", Call back (a new call of the person's own, answered at once, which ignores the limits); Call back pressed on the missed-call
+8:12 am", Call back (a new call of the person's own, answered at once, which ignores the ring limits — its own limit is 10 Call backs
+in a day, `BACK_MAX`, past which `.../back` answers 429 `back_day_max`); Call back pressed on the missed-call
 notification calls back as the screen opens, even for a call that ended since (answered late, then hung up). Ended mode. A record on the window and
 on any build without `BotCall`. The look is Plan Ease's: ochre on the bot and the status dot, Geist, the bot on his stage; no green or
 red, no round phone buttons.
 
 **Consent and microphone.** With the AI permission the voice is the server's (`GET .../voice/:n`, the person's TTS voice and read speed,
-under their quota, made ahead at answer and say time). Without it the opening is spoken by the phone (`speak`, nothing leaves it), only
+made ahead at answer and say time, under their quota unless the realtime switch is on for them: see "No money limit"). Without it the opening is spoken by the phone (`speak`, nothing leaves it), only
 the item's buttons are offered, the screen says nothing about AI (Home's card is the one ask), and `say` and `voice` answer 403. The microphone is checked, never asked for by a tap: without it the
 Continue card asks (and offers Open Settings when blocked).
 
@@ -378,6 +383,66 @@ made).
 missed push already sent can't be recalled when a late Answer arrives (the phone clears it on tap if it is shown). An Answer or Not now in
 the milliseconds after ring 2 is claimed can still be followed by ring 2 (the phone clears a stale ring later). Not now pressed offline is
 sent when the app next comes to the front. The voice made ahead lives in one server's memory; a GET that reaches another synthesises again.
+
+### Realtime voice (`PLAN_CALL_REALTIME`, `PLAN_CALL_RT_ALLOW`)
+
+An answered call can be held as **one live voice conversation** instead of turn by turn. The session manager is
+`botsBots/planCallLive.ts` (its words, numbers and prompt: `planCallLiveWords.ts`), the OpenAI link `realtime/openaiCalls.ts`, the voice
+map `realtime/voices.ts`, the columns migration 0085. It ships dark: with the switch off, and for every build that does not declare the
+SDUI capability `VoiceRealtime` (a store build only), the call is today's turn call, byte for byte.
+
+> **Run migration 0085 BEFORE this server is deployed**, not before the switch is turned on. Every new call row carries the live part's
+> own columns, so on a database without 0085 PostgREST would refuse the insert and every leave-by, bill-due and follow-through ring
+> would stop, with the switch off as well. `rowForInsert` (`botsBots/planCall.ts`) leaves those columns out while they hold their
+> defaults, so a ring still gets through if the order slips; a judged ring and the live part itself still need the migration. 0086 is
+> the judge's own and is only needed before `PLAN_CALL_JUDGE` goes on.
+
+- **How it runs.** The phone's audio goes straight to OpenAI over WebRTC; our server does the SDP exchange with its own key
+  (`POST .../calls/:id/live`) and holds its own socket on the same call. The phone never holds an OpenAI credential of any kind. Through
+  that socket the server runs every tool, re-checks the AI permission on every turn, records each response's cost, runs the idle end and
+  the hard length, and writes the transcript. `POST .../live/ready` makes the bot speak the opening; `POST .../live/stop` parks the live
+  part when the app goes to the background or a cellular call comes in.
+- **The tools** are Plan Ease's own kit, held to `VOICE_TOOLS`: the calendar and to-dos may be listed, added and changed, never removed,
+  and there are no artifact tools. The call's own actions (Paid, Done, Later, Can't) run through Plan Ease's buttons after a read-back.
+- **No money limit, where this switch is on for the person** (`realtimeFor`, which `.../say` and `.../voice/:n` ask as well, so the
+  turn call a fallback lands on is free of money too). A call of theirs is never refused, shortened or stopped for cost: not the
+  plan quota, not the spend gate, not Plan Ease's ₹8 day budget, and no `usage_events` row is written for it. Its voice goes through
+  `speakFor(..., { call: true })`, which asks no quota and writes no usage row, so a person whose usage meter is used up still hears the
+  call. **With the switch off — every build today — the turn call is held to all three exactly as it always has been**, and nothing
+  about money changes for anybody until the switch goes on. What each call cost is RECORDED, for the owner only: `plan_calls.cost_usd` — the live responses and transcription from the
+  manager's own running total, and a turn's answer and a turn's voice through `planCall.bumpCost` — and `usd`/`paise` in the one
+  `[calls] live` log line at the end. The manager writes its total as an absolute value, so a turn or a read that arrives while this
+  process still holds the session closes the live part first (`live.fellBack`, the row marked `fell_back`) and only then adds to the
+  row: the two cannot lose each other's dollars, and a closed session's idle or length timer can no longer end the call. A day's
+  reading:
+  `select date_trunc('day', to_timestamp(ring_at_ms/1000)) d, count(*), sum(cost_usd), sum(rt_sec) from plan_calls group by 1 order by 1 desc;`
+- **What can end a call by itself** is technical only: the idle end (OpenAI's own nudge on silence, then a short goodbye twelve seconds
+  later; speech arms it again, so a later silence is nudged again instead of running to the length), a hard maximum length of 15 minutes
+  (`PLAN_CALL_RT_MAX_SEC`) against a stuck session — the goodbye at 14:45, the hangup at 15:00 — and the AI permission: taken back, the
+  call is hung up at once. A session the client changed under us is tampering and ends the call: wiped instructions (an empty string
+  included) are caught, and so is turn taking the server never sent — the one change worth making from a modified app, since it is what
+  switches the idle end off. An echo of the server's own settings beyond the updates it asked for does not end the call: ending a real
+  call because the service echoed one of its own accord would be worse than the change, which the hard length bounds in any case. Each
+  one is a warn line and one on the call's own count, which the `[calls] live` line always carries as `unasked` (0 when there were none).
+  Two `live` requests at once cannot make two sessions: the slot is claimed before the first await, and the second gets 409 `rt_live`.
+- **Anything that breaks falls back** to the turn call with no tap from the person: a non-200, a dropped socket, no `ready` in 15 seconds,
+  a restart (the boot sweep hangs up every orphan). A call that fell back stays a turn call and never goes live again.
+- **S0, server only.** `OPENAI_TTS_MODEL` now defaults to `gpt-realtime-2.1-mini`, and `pipeline/tts.ts` reads text aloud over the
+  realtime socket whenever the model name starts with `gpt-realtime`. That covers `POST /v1/speak`, the read-aloud bubble and a turn
+  call's voice, so every phone gets it at once — OpenAI removes `gpt-4o-mini-tts`, `tts-1` and `tts-1-hd` on 2027-01-06.
+  **One fallback, while there is still one:** a realtime read that fails (any error, or no audio) is read once more through the speech
+  endpoint on `gpt-4o-mini-tts`, so nothing a person asked to be read aloud goes silent. From 2027-01-06 there is nothing to fall back
+  to, so the error stands. The fallback is logged by its reason only (`[tts] realtime read failed…`), never with the words.
+
+### Which items get a call (`PLAN_CALL_JUDGE`)
+
+Today's two rules — a leave-by, and a bill due today — are the floor: they ring for everyone, and nothing ever turns them off. On top of
+them, with the person's AI permission and their Calls setting on, an AI reads every item added to or changed on their Plan and decides
+whether it is important enough to phone them about, and when. Everything it judges necessary gets the call: a judged ring skips the three
+calls a day and does not count toward them, and a floor ring for an item the judge wants is placed the same way. The person's own Calls
+setting, their quiet hours, one call at a time and the 15-minute gap still hold, and one guard of its own: no second call about the same
+item within an hour. There is **no cap on judged rings in a day** — everything the AI judges necessary gets the call. The seam between
+the call and the judge is one file, `botsBots/planCallSeam.ts`. The judge itself is **docs/plan-call-judge.md**.
 
 ## 9. Follow-through (`PLAN_V2_FOLLOW`)
 
@@ -612,7 +677,7 @@ Words are 1 to 2000 characters (413 over); the AI read only ever sees 300 or few
 **The phone and the desktop need nothing.** Every part is one both shipped builds already draw (Stack, Text, TextField, BotBuddy,
 PersonBot; setState, toggleInArray, condition, callEndpoint with `assignTo` and `stay`, navigate with `$state` params, navigateBack,
 toast). Desktop 0.4.7, with no KitExtras and no PersonBot, keeps the week page and the old form. No migration (if one is ever needed, it
-takes 0082).
+takes the next free number).
 
 **Render samples**: `scripts/bots-render/samples/planMake.ts` (the home today, tomorrow, an empty day, after Done, an older build and no
 walking bot; the card empty and filled, the check face looking good, with notes, with a stop, with two drafts, who is Nani,

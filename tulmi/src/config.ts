@@ -87,6 +87,12 @@ const bool = (def: boolean) =>
     .optional()
     .transform((v) => (v == null ? def : v.toLowerCase() === "true"));
 
+/**
+ * A setting whose own default must win over a blank line in the .env. dotenv reads `KEY=` as "", and zod's `.default()` only fills in
+ * what is missing: a template copied with the line left empty would otherwise hand the code an empty address or an empty price table.
+ */
+const orDefault = (def: string) => z.preprocess((v) => (v == null || String(v).trim() === "" ? undefined : v), z.string().trim().default(def));
+
 /** A plan's five stretches in US dollars, as written ("4,8,6,10,7"): five positive amounts, or the config fails at boot with the setting named. */
 const stretchesUsd = (def: string) => z.preprocess((v) => (v == null || String(v).trim() === "" ? def : v), StretchesUsd);
 
@@ -917,6 +923,43 @@ const EnvSchema = z.object({
    */
   BOT_CALLS: bool(true),
   /**
+   * THE REALTIME CALL (botsBots/planCallLive.ts; docs/plan-ease.md "Calls"): an answered call held as one live voice conversation with
+   * OpenAI's realtime model instead of turn by turn. Needs migration 0085, BOT_CALLS and a phone whose binary says it can
+   * (capability VoiceRealtime). Off: every build gets today's turn call, and nothing is sent to the realtime service.
+   *   PLAN_CALL_REALTIME        the master switch
+   *   PLAN_CALL_RT_ALLOW        who may get it while the switch is on, comma-separated user ids. Empty: nobody. "*": everyone
+   *   OPENAI_REALTIME_MODEL     the model the call runs on
+   *   OPENAI_REALTIME_EFFORT    its reasoning effort (minimal | low | medium | high)
+   *   PLAN_CALL_RT_MAX_SEC      the hard maximum length of one call's live part, summed over reconnects. Technical safety against a
+   *                             stuck session, never a money cap: a call is never refused, shortened or stopped for cost
+   *   OPENAI_REALTIME_PRICES    USD per 1M tokens per model, used ONLY to record what a call cost. An unknown model is priced as the
+   *                             dearest one, so a mistake records too much, never too little
+   *   OPENAI_REALTIME_CALLS_URL / OPENAI_REALTIME_SIDEBAND_URL   the two addresses (test seams)
+   * The call's own key is OPENAI_API_KEY, in the .env only, never sent to a phone and never logged.
+   */
+  PLAN_CALL_REALTIME: bool(false),
+  PLAN_CALL_RT_ALLOW: z.string().trim().default(""),
+  OPENAI_REALTIME_MODEL: z.string().trim().default("gpt-realtime-2.1-mini"),
+  OPENAI_REALTIME_EFFORT: z.string().trim().toLowerCase().optional()
+    .transform((v) => (v === "minimal" || v === "medium" || v === "high" ? v : "low")),
+  PLAN_CALL_RT_MAX_SEC: z.coerce.number().int().min(60).max(3600).default(900),
+  // The three below are read as unset when the .env leaves them empty (orDefault): a copied template must never hand the call, or the
+  // read-aloud that shares the same address, an empty URL or an empty price table.
+  OPENAI_REALTIME_PRICES: orDefault(
+    '{"gpt-realtime-2.1-mini":{"text_in":0.6,"text_cached":0.06,"text_out":2.4,"audio_in":10,"audio_cached":0.3,"audio_out":20},'
+    + '"gpt-realtime-2.1":{"text_in":4,"text_cached":0.4,"text_out":24,"audio_in":32,"audio_cached":0.4,"audio_out":64}}'),
+  OPENAI_REALTIME_CALLS_URL: orDefault("https://api.openai.com/v1/realtime/calls"),
+  OPENAI_REALTIME_SIDEBAND_URL: orDefault("wss://api.openai.com/v1/realtime"),
+  /**
+   * THE CALL JUDGE (botsBots/planCallJudge.ts; docs/plan-call-judge.md): with the person's AI yes and their Calls on, an AI reads every
+   * item added to or changed on their Plan and decides whether it is important enough to phone them about, and when. Needs migration
+   * 0086. Off: only the floor rings (a leave-by, a bill due today), exactly as today.
+   *   PLAN_CALL_JUDGE        the switch
+   *   PLAN_CALL_JUDGE_ALLOW  who it works for while it is on, comma-separated user ids. Empty: nobody. "*": everyone
+   */
+  PLAN_CALL_JUDGE: bool(false),
+  PLAN_CALL_JUDGE_ALLOW: z.string().trim().default(""),
+  /**
    * PLAN_V2_FOLLOW   follow-through (botsBots/planFollow.ts; docs/plan-ease.md "Follow-through"): must-not-miss items and items with
    *                  people on them are followed until someone says done (a push, a louder push, X0 is calling, a real phone call for
    *                  someone who turned that on, then telling the next person), with Done / Later / Can't from the app. Only people the
@@ -1240,8 +1283,11 @@ const EnvSchema = z.object({
   OPENROUTER_APP_NAME: z.string().default("Tulmi"),
 
   // --- Text-to-speech (voice output: read-aloud / screen-clarify) ---
-  // Uses OPENAI_API_KEY. gpt-4o-mini-tts is cheap, multilingual, and steerable.
-  OPENAI_TTS_MODEL: z.string().default("gpt-4o-mini-tts"),
+  // Uses OPENAI_API_KEY. A name that starts with "gpt-realtime" reads text aloud over the realtime socket
+  // (pipeline/tts.ts synthesizeRealtime); anything else goes to the speech endpoint. OpenAI removes
+  // gpt-4o-mini-tts, tts-1 and tts-1-hd on 2027-01-06, so the default is the realtime model. A realtime read
+  // that fails is read once more on gpt-4o-mini-tts until that date; from it, the error stands.
+  OPENAI_TTS_MODEL: z.string().default("gpt-realtime-2.1-mini"),
   TTS_VOICE: z.string().default("alloy"),
   TTS_FORMAT: z.enum(["mp3", "opus", "aac", "flac", "wav", "pcm"]).default("mp3"),
 

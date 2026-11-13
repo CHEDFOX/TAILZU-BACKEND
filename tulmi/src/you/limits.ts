@@ -177,13 +177,20 @@ export class Spending {
 
 const WRAPPED = Symbol.for("tailzu.you.limits");
 
-/** The bots platform's three ways in, held to the meter and written down. Once per instance. */
+/**
+ * The bots platform's three ways in, held to the meter and written down. Once per instance. `voiceKit` is NOT wrapped: it hands a
+ * call its bot's own voice and tools and spends nothing of its own, and a call is never held to the meter anyway.
+ */
 export function wrapBots(bots: Bots, spending: Spending): void {
   const b = bots as Bots & { [WRAPPED]?: true };
   if (b[WRAPPED]) return;
   b[WRAPPED] = true;
   const ask = bots.ask.bind(bots), test = bots.test.bind(bots), withKey = bots.askWithKey.bind(bots), ownerOfKey = bots.ownerOfKey.bind(bots);
   bots.ask = async (userId, ref, input) => {
+    // A turn of a call X0 made, where the live call is switched on for the person (the route sets the flag), is never held to their
+    // spend gate and never recorded on it: such a call is not refused, shortened or stopped for money (the owner's answer). What it
+    // cost is on the call's own row instead (plan_calls.cost_usd). Without the flag the turn is gated and recorded like any other.
+    if (input.call) return ask(userId, ref, input);
     await spending.gate(userId);
     const a = await ask(userId, ref, input);
     spending.record(userId, a.bot.slug, a.paise);

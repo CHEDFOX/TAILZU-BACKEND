@@ -20,7 +20,7 @@ const BODY = `
 
 <h3>Speech-to-text</h3>
 <ul>
-  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — processes voice for transcription. Voice is transient and not retained. OpenAI also turns text into speech when X0 Bot reads something aloud to you.</li>
+  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — processes voice for transcription and turns text into speech when X0 Bot reads something aloud to you; it also holds the live voice conversation when Plan Ease calls you. OpenAI keeps no audio as application data; its abuse-monitoring logs are kept up to 30 days and not used for training.</li>
   <li><strong>Groq</strong> (groq.com/privacy-policy) — alternative transcription provider.</li>
   <li><strong>Deepgram</strong> (deepgram.com) — live transcription while you dictate, and the speech in recordings and videos you attach (see 1.9).</li>
   <li><strong>Sarvam AI</strong> (sarvam.ai) — transcription made for Indian languages, used depending on the language you speak.</li>
@@ -31,6 +31,12 @@ const BODY = `
   <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — refinement, tone matching. Content is transient and not used to train models under our data-processing agreement.</li>
   <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — routing layer for language models.</li>
   <li><strong>Anthropic</strong> (anthropic.com/legal/privacy) — used through OpenRouter for premium refinement.</li>
+</ul>
+
+<h3>Calls from Plan Ease (see 1.2)</h3>
+<ul>
+  <li><strong>OpenAI</strong> (openai.com/policies/privacy-policy) — holds the live voice conversation when Plan Ease calls you: it hears what you say and answers in a voice. No audio is kept as application data; its abuse-monitoring logs are kept up to 30 days and not used for training.</li>
+  <li><strong>OpenRouter</strong> (openrouter.ai/privacy) — routes the text model that decides which things on your Plan are worth a call, and the one that answers you in a call that runs turn by turn.</li>
 </ul>
 
 <h3>Ask, on the desktop app (see Section 10)</h3>

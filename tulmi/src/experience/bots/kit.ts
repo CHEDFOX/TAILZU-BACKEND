@@ -27,7 +27,7 @@ import {
   type MentionFieldProps, type TalkTo, type VanishProps,
 } from "../../../../shared/types/sdui.js";
 import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
-import { BOT_CALL_CAPABILITY } from "../../../../shared/types/sdui.js";
+import { BOT_CALL_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -481,6 +481,11 @@ export const canVoice = (ctx: BotsCtx): boolean =>
  * duplex, Text format "elapsed"). Every other build, and the window, gets the call as a record (screens/bots/planCall.ts).
  */
 export const canCall = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(BOT_CALL_CAPABILITY);
+/**
+ * A phone whose BINARY can hold a live voice call (VOICE_REALTIME_CAPABILITY, declared only by a store build that links the native
+ * client). Every other build — and every older binary — gets today's turn-by-turn call, byte for byte.
+ */
+export const canRealtimeCall = (ctx: BotsCtx): boolean => canCall(ctx) && canVoice(ctx) && ctx.can.has(VOICE_REALTIME_CAPABILITY);
 /** The window whose one key talks to the bot on screen while X0 is in front (ScreenResponse.talkTo). */
 export const canDeskTalk = (ctx: BotsCtx): boolean => ctx.client === "desktop" && canVoice(ctx) && ctx.can.has(DESK_TALK_TO_CAPABILITY);
 
@@ -522,6 +527,12 @@ type VoiceLiveSpec = Extract<ActionSpec, { kind: "voiceLive" }>;
 export const voiceLive = (o: Omit<VoiceLiveSpec, "kind">): ActionSpec => ({ kind: "voiceLive", ...o });
 /** Stop the voice session on this screen; the words not sent yet are dropped. */
 export const voiceStop = (): ActionSpec => ({ kind: "voiceStop" });
+
+type VoiceCallSpec = Extract<ActionSpec, { kind: "voiceCall" }>;
+/** Hold the call as one live voice conversation (only for canRealtimeCall). */
+export const voiceCall = (o: Omit<VoiceCallSpec, "kind">): ActionSpec => ({ kind: "voiceCall", ...o });
+/** warm: get the microphone and the offer ready while the call is being answered. end: the live call stops now. */
+export const voiceCallSet = (op: "warm" | "end"): ActionSpec => ({ kind: "voiceCallSet", op });
 
 // ---------------------------------------------------------------- people as their own tiny bots, and the messages' face (sdui 3j)
 

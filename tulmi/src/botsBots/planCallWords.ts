@@ -10,12 +10,15 @@
  *   endsCall(words)         "no", "bye", "that's all", "bas": the person is done, and nothing more is asked of the chat
  *   callContext(...)        the facts the Plan Ease chat is handed with each turn (what it is, its ids, what was said)
  *   blockedBy(rows, ...)    why a call may not ring now: one already on, three today, or the last one under 15 minutes ago
+ *   backsToday(rows, ...)   how many Call backs the person has already made today (BACK_MAX is the day's own limit)
+ *   turnCallTurns(turns)    the turns a turn call made (a realtime reply is not one of them)
  *
  * The words said aloud follow the lock-screen rules (planSafe.ts): an appointment is "your appointment", there is never an amount, and
  * a health place is left out. Someone may be standing beside the person when the phone speaks.
  */
 import { cutAt, lockSafe, looksHealth, safeTitle, APPOINTMENT } from "./planSafe.js";
-import { clockAt, dayOf, hhmm, minuteOf } from "../calendar/words.js";
+import { clockAt, dayOf, dayWords, hhmm, minuteOf } from "../calendar/words.js";
+import type { ItemSeed } from "./planCallSeam.js";
 import { looksMed } from "./planFollowWords.js";
 
 /** Where the call's routes live (routes/bots/planCalls.ts). */
@@ -42,6 +45,11 @@ export const GAP_MS = 15 * 60_000;
 export const STALE_RING_MS = 50_000;
 /** The person's turns per call. */
 export const MAX_TURNS = 8;
+/**
+ * Call backs per person per local day. A Call back is the person's own call and skips every ring limit, so without this one an ended
+ * call could be rung again and again from the same button, each time for a fresh set of MAX_TURNS turns.
+ */
+export const BACK_MAX = 10;
 /** An answer this recent still speaks the opening (a retry after a lost response). */
 export const FRESH_MS = 10_000;
 /** The safety-net sweep. */
@@ -58,7 +66,9 @@ export type CallSeed =
   | { source: "leave"; item: string; eventId: string; day: string; tz: number; title: string; place: string; start: number; leaveBy: number; minutes: number; mode: "drive" | "walk" }
   | { source: "due"; item: string; taskId: string; day: string; tz: number; title: string; payee: string; pay: boolean }
   // A followed item's call step (planFollow.ts): `item` is pf:<followId>:<n>, the climb it rang for; `asker` is "" for the person's own.
-  | { source: "follow"; item: string; followId: string; day: string; tz: number; title: string; at: number; asker: string };
+  | { source: "follow"; item: string; followId: string; day: string; tz: number; title: string; at: number; asker: string }
+  // A call the call judge asked for, about one thing on the Plan (planCallSeam.ts; docs/plan-call-judge.md).
+  | ItemSeed;
 
 export type CallState = "ringing" | "answered" | "declined" | "missed" | "ended";
 
@@ -69,7 +79,7 @@ export interface CallView {
   origin: "server" | "user";
   /** The name it called as (kept at ring time). */
   name: string;
-  source: "leave" | "due" | "follow";
+  source: "leave" | "due" | "follow" | "item";
   /** The lock-safe reminder line (the ring's body). */
   line: string;
   ringAt: number;
@@ -81,6 +91,10 @@ export interface CallView {
   late: boolean;
   /** The person has agreed to AI (privacy/aiConsent.ts): the server voice, and talking back. */
   ai: boolean;
+  /** A realtime call is allowed for this call right now (the switch, the key, the allow-list, live time left). No money is asked. */
+  rt: boolean;
+  /** What the call has already done out loud: "paid", "done", "later", "cant" (the screen ticks its buttons from it). */
+  acted: string[];
   card: {
     /** The full title, as the Plan page shows it (inside the app). */
     title: string;
@@ -96,6 +110,8 @@ export interface CallView {
     pay?: boolean;
     /** A followed item's call: its follow (the screen's Done, Later and Can't answer pf:<followId>:<n>, the card's item). */
     followId?: string;
+    /** A judged call (source "item"): which kind of thing it is, so the screen knows which buttons to draw. */
+    kind?: "event" | "todo" | "due" | "wait";
   };
 }
 
@@ -141,13 +157,51 @@ function followWhat(title: string): string {
   return first.length > 1 && first === first.toUpperCase() ? t : lowerFirst(t);
 }
 
+/** A bill's due day as it is said: today, tomorrow, or the day by name. */
+function dueWhen(day: string, now: number, tz: number): string {
+  const today = dayOf(now, tz);
+  if (day === today) return "due today";
+  if (day === dayOf(now + 24 * 60 * 60_000, tz)) return "due tomorrow";
+  return `due on ${dayWords(day)}`;
+}
+
+/** What a judged call says first (the judge picked the item and the moment; §11.10). `lead` is the minutes before the item's time. */
+function itemOpening(seed: ItemSeed, o: { back: boolean; now: number; tz: number }): string {
+  const clock = clockAt(seed.at, o.tz);
+  if (seed.kind === "due") {
+    const when = dueWhen(seed.day, o.now, o.tz);
+    return o.back ? `I called about ${billOf(seed.title, false)}, ${when}.` : `${billOf(seed.title, true)} is ${when}.`;
+  }
+  if (seed.kind === "event") {
+    const { what } = goingTo(seed.title);
+    const place = looksHealth(seed.title) || looksHealth(seed.place) ? "" : lockSafe(seed.place, 60);
+    const at = place ? `, at ${place}` : "";
+    if (o.back) return `I called about ${what} at ${clock}.`;
+    if (seed.allDay) return `A reminder: ${what} today${at}.`;
+    return seed.lead > 0 ? `A reminder: ${what} at ${clock}${at}.` : `${upperFirst(what)} is starting now.`;
+  }
+  const what = followWhat(seed.title);
+  if (o.back) return `I called about ${what} at ${clock}.`;
+  return seed.lead > 0 ? `A reminder: ${what} at ${clock}.` : `It's time for ${what}.`;
+}
+
 /**
  * What the bot says first. A live call says what the moment is; a Call back says why it called, and whether the thing has started.
  * `talk`: the person can answer (AI permission and a screen that listens), so it asks. Never a "$": the phone fills "$state." in speech.
+ *
+ * `hello`: A LIVE CALL OPENS WITH A MILD "Hello.", in English, whatever language follows (the realtime call then follows the person
+ * from there). A turn call opens on the moment itself, as every build already does: the opening word rides on the realtime switch and
+ * changes nothing until it is on.
  */
-export function openingLine(seed: CallSeed, o: { back: boolean; talk: boolean; now: number; tz: number }): string {
+export function openingLine(seed: CallSeed, o: { back: boolean; talk: boolean; now: number; tz: number; hello?: boolean }): string {
+  return `${o.hello ? "Hello. " : ""}${body(seed, o)}`.replace(/\$/g, "");
+}
+
+function body(seed: CallSeed, o: { back: boolean; talk: boolean; now: number; tz: number }): string {
   let line: string;
-  if (seed.source === "leave") {
+  if (seed.source === "item") {
+    line = itemOpening(seed, o);
+  } else if (seed.source === "leave") {
     const { prep, what } = goingTo(seed.title);
     const place = looksHealth(seed.title) || looksHealth(seed.place) ? "" : lockSafe(seed.place, 60);
     const at = place ? ` at ${place}` : "";
@@ -161,12 +215,12 @@ export function openingLine(seed: CallSeed, o: { back: boolean; talk: boolean; n
       ? `I called because ${asker ? `${asker} asked me to remind you about` : "it was time for"} ${what}.`
       : asker ? `${asker} asked me to remind you: ${what}.` : `It's time for ${what}.`;
     // A followed item's call never asks "Want me to do anything?": Done, Later and Can't are on the screen.
-    return line.replace(/\$/g, "");
+    return line;
   } else {
     line = o.back ? `I called because ${billOf(seed.title, false)} is due today.` : `${billOf(seed.title, true)} is due today.`;
   }
   if (o.talk) line += " Want me to do anything?";
-  return line.replace(/\$/g, "");
+  return line;
 }
 
 // ------------------------------------------------------------------ the missed call and the card
@@ -179,6 +233,23 @@ export function missedBody(line: string, more: string): string {
 /** The call screen's item card, inside the app: the full title, its leave-by or due line, and what its buttons need. */
 export function cardOf(seed: CallSeed, tz: number): CallView["card"] {
   const title = cutAt(seed.title, 120);
+  if (seed.source === "item") {
+    const base = { title, item: seed.item, kind: seed.kind, ...(seed.eventId ? { eventId: seed.eventId } : {}), ...(seed.taskId ? { taskId: seed.taskId } : {}) };
+    if (seed.kind === "event") {
+      const place = cutAt(seed.place, 80);
+      const when = seed.allDay ? "Today" : clockAt(seed.at, tz);
+      return {
+        ...base, mode: "driving", sub: place ? `${when} · ${place}` : when,
+        ...(seed.place ? { to: seed.place.slice(0, 160) } : {}),
+      };
+    }
+    if (seed.kind === "due") {
+      const payee = cutAt(seed.payee, 60);
+      const when = seed.day === dayOf(seed.at, tz) ? "due today" : `due ${dayWords(seed.day)}`;
+      return { ...base, pay: seed.pay, sub: payee ? `To ${payee} · ${when}` : upperFirst(when) };
+    }
+    return { ...base, sub: seed.allDay ? "Today" : clockAt(seed.at, tz) };
+  }
   if (seed.source === "follow") {
     const asker = cutAt(seed.asker, 24);
     return { title, item: seed.item, followId: seed.followId, sub: `${asker ? `From ${asker} · ` : ""}${clockAt(seed.at, tz)}` };
@@ -233,11 +304,27 @@ export function endsCall(words: string): boolean {
   return !!ends[w.length];
 }
 
-/** The facts the Plan Ease chat reads with each turn of the call (an attachment, read as data): what, which one, and what was said. */
-export function callContext(seed: CallSeed, opening: string, tz: number): string {
+const ITEM_KIND: Readonly<Record<ItemSeed["kind"], string>> = {
+  event: "an item the call judge picked (event)", todo: "an item the call judge picked (to-do)",
+  due: "an item the call judge picked (bill)", wait: "an item the call judge picked (waiting on someone)",
+};
+
+/**
+ * The facts the Plan Ease chat reads with each turn of the call (an attachment, read as data): what, which one, and what was said.
+ * `why` is the call judge's one-line reason, when it said to call about this: it is context for the bot, never read out word for word.
+ */
+export function callContext(seed: CallSeed, opening: string, tz: number, why?: string): string {
   const clock = (ms: number) => hhmm(minuteOf(ms, tz));
-  const lines = [`What: ${seed.title}`, `Kind: ${seed.source === "leave" ? "leave-by" : seed.source === "follow" ? "a reminder X0 is following through" : "bill due today"}`];
-  if (seed.source === "follow") {
+  const lines = [`What: ${seed.title}`, `Kind: ${seed.source === "leave" ? "leave-by" : seed.source === "follow" ? "a reminder X0 is following through" : seed.source === "item" ? ITEM_KIND[seed.kind] : "bill due today"}`];
+  if (seed.source === "item") {
+    if (seed.eventId) lines.push(`Event id: ${seed.eventId}`);
+    if (seed.taskId) lines.push(`To-do id: ${seed.taskId}`);
+    lines.push(`Day: ${seed.day}`,
+      `When: ${seed.allDay ? "all day" : clock(seed.at)}${seed.lead > 0 ? ` (${seed.lead} min after this call)` : ""}`,
+      ...(seed.place ? [`Place: ${seed.place}`] : []),
+      ...(seed.kind === "due" ? [...(seed.payee ? [`Payee: ${seed.payee}`] : []), `Pay link: ${seed.pay ? "yes" : "no"}`] : []),
+      `Must-not-miss: ${seed.must ? "yes" : "no"}`);
+  } else if (seed.source === "follow") {
     lines.push(`Follow id: ${seed.followId}`, `Day: ${seed.day}`, `At: ${clock(seed.at)}`);
   } else if (seed.source === "leave") {
     lines.push(`Event id: ${seed.eventId}`, `Day: ${seed.day}`, `Starts: ${clock(seed.start)}`, `Leave by: ${clock(seed.leaveBy)}`,
@@ -245,6 +332,8 @@ export function callContext(seed: CallSeed, opening: string, tz: number): string
   } else {
     lines.push(`To-do id: ${seed.taskId}`, `Due: ${seed.day}`, ...(seed.payee ? [`Payee: ${seed.payee}`] : []), `Pay link: ${seed.pay ? "yes" : "no"}`);
   }
+  const reason = cutAt(String(why ?? "").replace(/\s+/g, " ").trim(), 160);
+  if (reason) lines.push(`Why it matters: ${reason}`);
   if (opening) lines.push(`You said: "${opening}"`);
   return lines.join("\n");
 }
@@ -254,18 +343,41 @@ export function callContext(seed: CallSeed, opening: string, tz: number): string
 /** As much of a call as the limits read. */
 export interface LimitRow {
   state: string; why?: string | null; origin: string; ring_at_ms: number; ring_until_ms: number; next_ms: number | null;
+  /** It rang because the call judge said call: it neither counts toward the 3 a day nor is held to them. */
+  judged?: boolean | null;
 }
 
 /**
  * Why a call may not ring now, over the person's newest calls: one ringing or on ("busy"), three server calls today already
  * ("day_max"), or the last call rang under 15 minutes ago ("too_soon"). A ring that never left counts for nothing. The person's own Call
  * backs count for busy and for the 15 minutes (a ring two minutes after hanging up is what that rule forbids), not for the three.
+ *
+ * A JUDGED RING SKIPS THE THREE A DAY, and no judged call counts toward them for anybody else's ring either: the owner's answer is
+ * that everything the AI judges necessary gets the call, and three would run out by the afternoon. Busy, quiet hours and the
+ * 15-minute gap still hold: a phone cannot take two calls at once.
  */
-export function blockedBy(rows: readonly LimitRow[], now: number, tz: number): "busy" | "day_max" | "too_soon" | null {
+export function blockedBy(rows: readonly LimitRow[], now: number, tz: number, o: { judged?: boolean } = {}): "busy" | "day_max" | "too_soon" | null {
   const real = rows.filter((r) => r.why !== "not_sent");
   if (real.some((r) => (r.state === "ringing" && r.ring_until_ms > now) || (r.state === "answered" && (r.next_ms ?? 0) > now))) return "busy";
   const today = dayOf(now, tz);
-  if (real.filter((r) => r.origin === "server" && dayOf(r.ring_at_ms, tz) === today).length >= DAY_MAX) return "day_max";
+  if (!o.judged && real.filter((r) => r.origin === "server" && !r.judged && dayOf(r.ring_at_ms, tz) === today).length >= DAY_MAX) return "day_max";
   if (real.some((r) => now - r.ring_at_ms < GAP_MS)) return "too_soon";
   return null;
+}
+
+/**
+ * How many Call backs the person has already made in this local day. A Call back is theirs, so it is held to none of the ring limits
+ * above — but it is held to BACK_MAX, so the button cannot be pressed into an endless string of fresh calls.
+ */
+export function backsToday(rows: readonly LimitRow[], now: number, tz: number): number {
+  const today = dayOf(now, tz);
+  return rows.filter((r) => r.origin === "user" && r.why !== "not_sent" && dayOf(r.ring_at_ms, tz) === today).length;
+}
+
+/**
+ * The turns a TURN call made. A realtime reply carries `rt`, and MAX_TURNS is the turn call's own limit: without this, nine realtime
+ * replies before a fallback would close the call at the person's first typed turn.
+ */
+export function turnCallTurns(turns: readonly { rt?: boolean }[] | null | undefined): number {
+  return (turns ?? []).filter((t) => t?.rt !== true).length;
 }

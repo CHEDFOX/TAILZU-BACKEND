@@ -1269,6 +1269,9 @@ export const MENTION_FIELD_COMPONENT = "MentionField";
 export const LIVE_WORDS_COMPONENT = "LiveWords";
 /** NOT A COMPONENT: actions voiceLive and voiceStop (live words over /v1/transcribe-stream, a turn ends on a pause). */
 export const VOICE_LIVE_CAPABILITY = "VoiceLive";
+/** NOT A COMPONENT (the phone, a store build only): the actions voiceCall and voiceCallSet — Plan Ease's call held as one live voice
+ *  conversation instead of turn by turn (docs/plan-ease.md "Calls"). A build that does not declare it gets today's call unchanged. */
+export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
 export const DOUBLE_TAP_CAPABILITY = "DoubleTap";
 /** NOT A COMPONENT: TextField keyboard / autoFocus / maxLength; Screen, Scroll and (the window) Stack props.startAtEnd;
@@ -1620,6 +1623,20 @@ export type ActionSpec =
       duplex?: boolean }
   /** Stop the voice session on this screen; the words of the turn not yet sent are dropped. */
   | { kind: "voiceStop" }
+  // --- a live voice call (needs VOICE_REALTIME_CAPABILITY) ---
+  /** VOICE_REALTIME_CAPABILITY. A live voice call: POST `path` {sdp, resume} -> {sdp, maxSec}; then POST `${path}/ready`; leaving the app
+   *  or an audio interruption is POST `${path}/stop`. Writes the phase into `phasePath` (connecting | speaking | listening | thinking |
+   *  idle | ended), the bot's words as they are spoken into `saidPath`, the person's last words into `heardPath`, and {spoke} into
+   *  `statePath`. After a tool turn it re-reads `viewPath` and sets each `actedState[action]` key to true for every action in the view's
+   *  `acted`. Ends on voiceCallSet end, leaving the screen (another screen id or params; a refresh of the same screen keeps it), the app
+   *  going to the background or an audio interruption (then onIdle), the reply's maxSec + 10 s, or the server hanging up (re-reads
+   *  viewPath: ended -> onEnded, answered -> onFallback). onBlocked: no microphone permission. Any throw while loading the native module
+   *  or opening the mic -> onFallback. The level never goes into state: the stage reads it. */
+  | { kind: "voiceCall"; path: string; viewPath: string; resume?: boolean;
+      statePath: string; phasePath: string; saidPath: string; heardPath: string; actedState?: Record<string, string>;
+      onEnded?: ActionRef; onIdle?: ActionRef; onFallback?: ActionRef; onBlocked?: ActionRef }
+  /** VOICE_REALTIME_CAPABILITY. warm: get the mic and the offer ready while the call is answered (only if mic permission is already granted). */
+  | { kind: "voiceCallSet"; op: "warm" | "end" }
   // --- permissions ---
   | {
       kind: "requestPermission";

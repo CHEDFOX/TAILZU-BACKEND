@@ -6,7 +6,9 @@
  *   talk     a phone whose JS takes calls (kit canCall), the call ringing, answered, or missed but still inside the grace: it answers,
  *            Plan Ease speaks first (the server voice with the person's AI permission, else the phone's own voice: nothing leaves the
  *            phone), then turn by turn the person talks back (only with that permission and a build that listens: kit canVoice).
- *            Without it the call simply plays, and says nothing about AI: Home's card is the one place that asks
+ *            Without it the call simply plays, and says nothing about AI: Home's card is the one place that asks.
+ *            A STORE BUILD THAT CAN HOLD A LIVE CALL (kit canRealtimeCall) and a call the server says may have one (v.rt) gets the same
+ *            screen in its live mode: one conversation instead of turns. Anything that breaks falls back to the turns, with no tap
  *   missed   "Missed call · 8:12 am", the reminder's line, Call back (the person's own call about the same thing). Call back pressed on the
  *            missed-call notification lands here whatever became of the call since (answered late and hung up, say), and calls back
  *   ended    the call is over, or was declined
@@ -23,8 +25,8 @@
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import { BOT_STAGE_COMPONENT } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, C, SCREENS, botAvatar, botStage, box, call, canCall, canVoice, card, col, liveWords, meta, open, page, primaryButton,
-  quietButton, row, secondaryButton, seq, statusMark, text, voiceLive, voiceStop, when,
+  type BotsCtx, C, SCREENS, botAvatar, botStage, box, call, canCall, canRealtimeCall, canVoice, card, col, liveWords, meta, open, page,
+  primaryButton, quietButton, row, secondaryButton, seq, statusMark, text, voiceCall, voiceCallSet, voiceLive, voiceStop, when,
 } from "../../kit.js";
 import { couldNot } from "../you/parts.js";
 import { clearState, isDesk, lookOf, setState, toast } from "./parts.js";
@@ -76,6 +78,27 @@ function itemActions(ctx: BotsCtx, v: CallView, hangup: boolean): Node[] {
       ...(c.eventId ? [secondaryButton("Move", leaving(go(SCREENS.planItem, { kind: "event", id: c.eventId, ...(day ? { day } : {}) })), md)] : []),
     ];
   }
+  if (v.source === "item") {
+    // A call the call judge asked for: the item's own buttons. An event is moved with Move (a call never removes anything).
+    const day = c.item.split(":")[2] ?? "";
+    if (c.kind === "event") {
+      return [
+        ...(c.to ? [secondaryButton("Open map", leaving(go(SCREENS.planGo, { go: "map", to: c.to, mode: c.mode ?? "driving" })), md)] : []),
+        ...(c.eventId ? [secondaryButton("Move", leaving(go(SCREENS.planItem, { kind: "event", id: c.eventId, ...(day ? { day } : {}) })), md)] : []),
+      ];
+    }
+    if (c.kind === "due") return billActions(ctx, v, leaving);
+    const tick = (action: "done" | "later", label: string, msg: string, primary = false) => {
+      const act = call("POST", ACT, { item: c.item, action, key: `${c.item}:${action}:${ctx.live.now}`.slice(0, 120) }, {
+        ok: seq(toast(msg), setState("itemDone", true)), fail: toast("Couldn't do that. Try again.", true), stay: true,
+      });
+      return primary ? primaryButton(label, act, md) : secondaryButton(label, act, md);
+    };
+    return [
+      when({ falsy: "itemDone" }, row([tick("done", "Done", "Done", true), tick("later", "Later", "I'll remind you later")], { gap: 10, flexWrap: "wrap" })),
+      when({ truthy: "itemDone" }, row([statusMark("done"), meta("Answered", { size: 14, lineHeight: 19 })], { gap: 8, minHeight: 44, alignItems: "center" })),
+    ];
+  }
   if (v.source === "follow") {
     // A followed item (follow-through): Done, Later, Can't, answered through the act door on the climb it rang for (pf:<id>:<n>).
     const answer = (action: string, label: string, msg: string, primary = false) => {
@@ -91,6 +114,13 @@ function itemActions(ctx: BotsCtx, v: CallView, hangup: boolean): Node[] {
       when({ truthy: "followDone" }, row([statusMark("done"), meta("Answered", { size: 14, lineHeight: 19 })], { gap: 8, minHeight: 44, alignItems: "center" })),
     ];
   }
+  return billActions(ctx, v, leaving);
+}
+
+/** A bill's own buttons: Pay (it leaves the screen, so the call ends first) and Paid. */
+function billActions(ctx: BotsCtx, v: CallView, leaving: (to: ActionSpec) => ActionRef): Node[] {
+  const c = v.card;
+  const md = { size: "md" as const };
   const paid = call("POST", ACT, { item: c.item, action: "paid", key: `${c.item}:paid:${ctx.live.now}`.slice(0, 120) }, {
     ok: seq(toast("Marked paid"), setState("paidDone", true)), fail: toast("Couldn't do that. Try again.", true), stay: true,
   });
@@ -129,17 +159,33 @@ function him(ctx: BotsCtx, v: CallView, voice: boolean): Node {
   return row([box([], { width: STAGE_NUDGE, flexShrink: 0 }), box([stage], { width: STAGE_W, flexShrink: 0 })], { justifyContent: "center" });
 }
 
-/** The named actions of a call in talk mode (the contract's 3.17). `voice`: the person can talk back on this build. */
-function talkActions(v: CallView, voice: boolean): Record<string, ActionSpec> {
+/** Which of the view's own actions a live call ticks off from the server's `acted` after a tool turn. */
+function actedState(v: CallView): Record<string, string> {
+  if (v.source === "follow") return { done: "followDone", later: "followDone", cant: "followDone" };
+  if (v.source === "item") {
+    if (v.card.kind === "due") return { paid: "paidDone" };
+    if (v.card.kind === "event") return {};
+    return { done: "itemDone", later: "itemDone" };
+  }
+  return { paid: "paidDone" };
+}
+
+/**
+ * The named actions of a call in talk mode (the contract's 3.17). `voice`: the person can talk back on this build. `rt`: this build and
+ * this call can hold one live conversation. Today's turn actions stay whatever happens: the fallback is made of them.
+ */
+function talkActions(v: CallView, voice: boolean, rt: boolean): Record<string, ActionSpec> {
   const B = `${CALLS}/${v.id}`;
   const speak0: ActionSpec = { kind: "speak", text: "$state.ans.opening", loud: true, onDone: "afterSpeak" };
   const speakN: ActionSpec = { kind: "speak", text: "$state.turn.spoken", loud: true, onDone: "afterSpeak" };
   const idle = setState("phase", "idle");
+  const answer: ActionSpec = {
+    kind: "callEndpoint", method: "POST", path: `${B}/answer`, body: { talk: voice, ...(rt ? { rt: true } : {}) }, assignTo: "ans", stay: true,
+    onSuccess: "answered", onError: setState("phase", "failed"),
+  };
   const acts: Record<string, ActionSpec> = {
-    start: cond({ falsy: "ans" }, {
-      kind: "callEndpoint", method: "POST", path: `${B}/answer`, body: { talk: voice }, assignTo: "ans", stay: true,
-      onSuccess: "answered", onError: setState("phase", "failed"),
-    }),
+    // With a live call to come, the microphone and the offer are made ready beside the answer, so the bot speaks sooner.
+    start: cond({ falsy: "ans" }, rt ? seq(voiceCallSet("warm"), answer) : answer),
     // Answered: speak first only when this is the answer that connected it (a reload or a second tap stays quiet). Anything else (missed
     // past the grace, ended, declined): the screen is drawn again from the server, in that mode.
     answered: cond({ eq: ["ans.state", "answered"] },
@@ -151,11 +197,11 @@ function talkActions(v: CallView, voice: boolean): Record<string, ActionSpec> {
       voice ? { kind: "checkPermission", permission: "microphone", onGranted: "listen", onDenied: idle } : idle)),
     // Its failure is ignored: the sweep ends an answered call after 5 minutes alone. Never from onDisappear: a rebuild of the screen
     // would end a call the person is still on.
-    hangup: seq(setState("phase", "ended"), ...(voice ? [voiceStop()] : []), { kind: "stopAudio" }, { kind: "stopMedia" },
+    hangup: seq(setState("phase", "ended"), ...(rt ? [voiceCallSet("end")] : []), ...(voice ? [voiceStop()] : []), { kind: "stopAudio" }, { kind: "stopMedia" },
       { kind: "callEndpoint", method: "POST", path: `${B}/end`, body: {}, stay: true }) as ActionSpec,
   };
   if (!voice) return acts;
-  return {
+  const turns: Record<string, ActionSpec> = {
     ...acts,
     listen: seq(setState("micCard", false), setState("phase", "listening"), voiceLive({
       mode: "once", statePath: "voice", into: "heard", silenceMs: 1000, duplex: true, onHeard: "reply",
@@ -178,13 +224,48 @@ function talkActions(v: CallView, voice: boolean): Record<string, ActionSpec> {
     spoke: seq(setState("said", "$state.turn.text"), setState("phase", "speaking"),
       cond({ truthy: "turn.voice" }, { kind: "playAudio", url: `${B}/voice/$state.turn.turn`, id: "call", onEnd: "afterSpeak", onError: speakN }, speakN)) as ActionSpec,
   };
+  if (!rt) return turns;
+  // THE LIVE CALL. The turn actions above stay as they are: a live call that cannot start, or breaks, falls into them with no tap.
+  const live = (resume: boolean): ActionSpec => voiceCall({
+    path: `${B}/live`, viewPath: B, ...(resume ? { resume: true } : {}),
+    statePath: "rt", phasePath: "phase", saidPath: "said", heardPath: "heard", actedState: actedState(v),
+    onEnded: setState("phase", "ended"), onIdle: idle, onFallback: "rtFallback",
+    onBlocked: seq(setState("mode", "turns"), setState("micCard", true), setState("micBlocked", true), idle),
+  });
+  return {
+    ...turns,
+    // Answered freshly: the live call starts. Anything else (a reload, a second tap) sits idle, as it does today.
+    answered: cond({ eq: ["ans.state", "answered"] },
+      cond({ truthy: "ans.fresh" }, seq(setState("phase", "connecting"), "rtGo"), idle),
+      { kind: "refresh" }),
+    // No microphone yet: the call plays the opening and shows the mic card, exactly as today.
+    rtGo: {
+      kind: "checkPermission", permission: "microphone", onGranted: "rtCall",
+      onDenied: seq(setState("mode", "turns"), setState("phase", "speaking"), setState("said", "$state.ans.opening"), "say0"),
+    },
+    rtCall: live(false),
+    rtResume: live(true),
+    // The live part could not start, or it broke: carry on turn by turn. If the bot was never heard, the opening is played now.
+    rtFallback: seq(setState("mode", "turns"), cond({ truthy: "rt.spoke" },
+      seq(setState("phase", "speaking"), "afterSpeak"),
+      seq(setState("phase", "speaking"), setState("said", "$state.ans.opening"), "say0"))) as ActionSpec,
+    // Tap to talk: the turns' own listen after a fallback, the live call again while it is still live.
+    talk: cond({ eq: ["mode", "turns"] }, { kind: "checkPermission", permission: "microphone", onGranted: "listen", onDenied: setState("micCard", true) }, "rtResume"),
+  };
 }
 
-/** The words of the call, centred: what is heard while listening, the reply as it streams in, else what was last said. */
-function words(voice: boolean): Node[] {
+/**
+ * The words of the call, centred: what is heard while listening, the reply as it streams in, else what was last said. A live call has
+ * no partial words to show (nothing comes back as it is spoken), so while it listens it shows the last thing the person said.
+ */
+function words(voice: boolean, rt: boolean): Node[] {
   const big = { size: 20, lineHeight: 28, align: "center" as const };
+  const listening = col([
+    rt ? text("", { ...big, bind: "heard" }) : liveWords({ size: 20, lineHeight: 28 }),
+    meta("Listening…", { size: 13, lineHeight: 18 }),
+  ], { gap: 8, alignItems: "center" });
   return [
-    ...(voice ? [when({ eq: ["phase", "listening"] }, col([liveWords({ size: 20, lineHeight: 28 }), meta("Listening…", { size: 13, lineHeight: 18 })], { gap: 8, alignItems: "center" }))] : []),
+    ...(voice ? [when({ eq: ["phase", "listening"] }, listening)] : []),
     when({ eq: ["phase", "thinking"] }, col([
       when({ truthy: "reply.text" }, text("", { ...big, bind: "reply.text" })),
       when({ falsy: "reply.text" }, row([statusMark("working", { color: C.ink }), meta("Thinking", { size: 13, lineHeight: 18 })], { gap: 8, justifyContent: "center", alignItems: "center" })),
@@ -202,6 +283,9 @@ export function planCallPage(ctx: BotsCtx, v?: CallView) {
   }
   const mode = callMode(ctx, v);
   const voice = mode === "talk" && canVoice(ctx) && v.ai;
+  // One live conversation instead of turns: only a store build that can hold it, and only when the server says this call may have one
+  // (the switch, the key, the allow-list, live time left). No money is asked. When it is false the screen is today's, byte for byte.
+  const rt = mode === "talk" && voice && canRealtimeCall(ctx) && v.rt;
   const desk = isDesk(ctx);
   const head = (statusLine: Node[]): Node => col([...statusLine, text(v.name, { size: 30, weight: 600, lineHeight: 36, align: "center" })], {
     gap: 6, alignItems: "stretch", paddingTop: 24,
@@ -216,7 +300,7 @@ export function planCallPage(ctx: BotsCtx, v?: CallView) {
         when({ eq: ["phase", "failed"] }, status(statusWords("Couldn't connect"))),
       ]),
       him(ctx, v, voice),
-      col(words(voice), { gap: 8, alignItems: "stretch", minHeight: 56, paddingHorizontal: 4 }),
+      col(words(voice, rt), { gap: 8, alignItems: "stretch", minHeight: 56, paddingHorizontal: 4 }),
       ...(voice ? [when({ truthy: "micCard" }, card([
         text(`Let ${v.name} hear you`, { size: 16, weight: 600, lineHeight: 21 }),
         meta(`${v.name} uses the microphone to hear your answer. Next, your phone asks you.`, { size: 13, lineHeight: 18 }),
@@ -225,11 +309,14 @@ export function planCallPage(ctx: BotsCtx, v?: CallView) {
       ], { gap: 10 }))] : []),
       itemCard(ctx, v, true),
     ];
+    // On a live call there is one button: End call. Stop belongs to the turns, so it is drawn only once the call has fallen into
+    // them (mode "turns"); Tap to talk stays, because an idle live call resumes with it.
+    const onTurns = (n: Node): Node => (rt ? when({ eq: ["mode", "turns"] }, n) : n);
     const footer: Node[] = [
       row([
         ...(voice ? [
           when({ eq: ["phase", "idle"] }, box([secondaryButton("Tap to talk", "talk", { wide: true })], { flexGrow: 1, flexBasis: 0 })),
-          when({ eq: ["phase", "listening"] }, box([secondaryButton("Stop", voiceStop(), { wide: true })], { flexGrow: 1, flexBasis: 0 })),
+          onTurns(when({ eq: ["phase", "listening"] }, box([secondaryButton("Stop", voiceStop(), { wide: true })], { flexGrow: 1, flexBasis: 0 }))),
         ] : []),
         when({ not: { in: ["phase", ["ended", "failed"]] } }, box([primaryButton("End call", "hangup", { wide: true })], { flexGrow: 1, flexBasis: 0 })),
         when({ eq: ["phase", "ended"] }, box([primaryButton("Done", toPlan, { wide: true })], { flexGrow: 1 })),
@@ -238,8 +325,11 @@ export function planCallPage(ctx: BotsCtx, v?: CallView) {
     ];
     return page(ctx, {
       nav: "plan", title: `Call with ${v.name}`, gap: 18,
-      state: { phase: "connecting", ans: null, said: "", heard: "", voice: "", reply: null, turn: null, micCard: false, micBlocked: false, paidDone: false },
-      actions: talkActions(v, voice),
+      state: {
+        phase: "connecting", ans: null, said: "", heard: "", voice: "", reply: null, turn: null, micCard: false, micBlocked: false,
+        paidDone: false, ...(v.source === "item" ? { itemDone: false } : {}), ...(rt ? { mode: "rt", rt: { spoke: false } } : {}),
+      },
+      actions: talkActions(v, voice, rt),
       body: [{ ...col(body, { gap: 18 }), on: { onAppear: "start" } }],
       footer,
     });

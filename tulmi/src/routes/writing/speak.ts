@@ -2,7 +2,8 @@
  * POST /v1/speak: text in, spoken audio out.
  *
  * speakFor() is the body of it, for anything else on the server that reads words aloud in the person's voice and at their speed, under
- * their quota (a call's voice: routes/bots/planCalls.ts).
+ * their quota — except a call's voice for a person the live call is switched on for (routes/bots/planCalls.ts), which passes
+ * `call: true` and is never held to money at all. With that switch off, a call's voice is read under their quota like any other.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -46,19 +47,27 @@ export function registerSpeakRoutes(app: FastifyInstance, deps: SpeakRouteDeps):
   });
 }
 
-/** What reading aloud gave: the audio, or why not (429 over the quota, 500 the voice service failed). */
-export type SpokenAudio = { audio: Buffer; contentType: string } | { status: 429 | 500; code: string; message: string };
+/** What reading aloud gave: the audio and what it cost, or why not (429 over the quota, 500 the voice service failed). */
+export type SpokenAudio = { audio: Buffer; contentType: string; usd: number } | { status: 429 | 500; code: string; message: string };
 
 /**
  * Words read aloud for this person: their quota first, at the speed they chose on Keylessbord's Read aloud page, in `o.voice` when it
  * is one of the curated voices, else theirs (else the default). What it cost goes on the request's tally and the usage row.
+ *
+ * `o.call` is a call's voice where the live call is switched on for the person (routes/bots/planCalls.ts): such a call is never
+ * refused, shortened or charged for money, so that path asks no quota, writes no usage row and adds nothing to the request's tally.
+ * What it cost still comes back as `usd`, and the caller records it on the call's own row for the owner to read. False, the read is
+ * an ordinary one: the quota is asked and the usage row is written.
  */
 export async function speakFor(
   user: AuthedUser, text: string, cfg: Pick<AppConfig, "OPENAI_TTS_MODEL">,
-  o: { voice?: string; format?: SpeakRequest["format"]; instructions?: string; onError?: (err: unknown) => void } = {},
+  o: { voice?: string; format?: SpeakRequest["format"]; instructions?: string; call?: boolean; onError?: (err: unknown) => void } = {},
 ): Promise<SpokenAudio> {
   // How fast to read: the speed they chose on Keylessbord's Read aloud page (normal when none).
-  const [quota, prefs] = await Promise.all([enforceQuota(user), getPrefs(user).catch(() => ({} as KeybotPrefs))]);
+  const [quota, prefs] = await Promise.all([
+    o.call ? null : enforceQuota(user),
+    getPrefs(user).catch(() => ({} as KeybotPrefs)),
+  ]);
   if (quota) return { status: 429, code: "quota_exceeded", message: quota };
   const speed = readSpeed(prefs);
 
@@ -77,23 +86,27 @@ export async function speakFor(
   }
 
   try {
-    const { audio, contentType } = await synthesize({
+    const out = await synthesize({
       text,
       voice,
       format: o.format,
       instructions: o.instructions,
       ...(speed !== 1 ? { speed } : {}),
     });
-    // What reading it aloud cost, on the request's tally for the usage meter (usage/cost.ts): the row below writes it.
-    addCostUsd(ttsUsd(text.length + (o.instructions?.length ?? 0)));
-    await recordUsage({
-      user,
-      source: "rest",
-      audioSeconds: 0,
-      words: countWords(text),
-      model: cfg.OPENAI_TTS_MODEL,
-    });
-    return { audio, contentType };
+    // What the read really cost when the voice service said (the realtime path), else what its characters cost.
+    const usd = out.usd ?? ttsUsd(text.length + (o.instructions?.length ?? 0));
+    if (!o.call) {
+      // On the request's tally for the usage meter (usage/cost.ts): the row below writes it. A call does neither.
+      addCostUsd(usd);
+      await recordUsage({
+        user,
+        source: "rest",
+        audioSeconds: 0,
+        words: countWords(text),
+        model: cfg.OPENAI_TTS_MODEL,
+      });
+    }
+    return { audio: out.audio, contentType: out.contentType, usd };
   } catch (err) {
     o.onError?.(err);
     return { status: 500, code: "internal", message: "TTS failed" };

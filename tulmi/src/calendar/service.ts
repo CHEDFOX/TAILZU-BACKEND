@@ -126,6 +126,11 @@ export type FollowCandidate =
 
 /** Told when a to-do is ticked, un-ticked or taken out (follow-through closes its follow: botsBots/planFollow.ts taskTicked). */
 export type TickHook = (userId: string, taskId: string, what: "done" | "undone" | "gone") => void;
+/**
+ * An item written on the Plan, as the call judge hears it (botsBots/planCallJudge.ts). `id` is the row id: an event's own row, never
+ * "<id>@<day>". Fire and forget: called after the write succeeded, never awaited, and a hook that throws never undoes the write.
+ */
+export type ChangeHook = (userId: string, ref: { kind: "event" | "task"; id: string }, what: "added" | "changed" | "done" | "gone") => void;
 /** A space's task, answered from the person's own list (their tick, or a no): spaceTasks.ts answer, wired by routes/bots/botsSpaces.ts. */
 export type SpaceAnswer = (userId: string, spaceId: string, taskId: string, status: "done" | "todo" | "cant") => Promise<unknown>;
 
@@ -218,6 +223,7 @@ export class Calendar {
   private tzSaid: ((userId: string, tz: number) => void) | null = null;
   private tzLoad: ((userId: string) => Promise<number | null>) | null = null;
   private tickHook: TickHook | null = null;
+  private changeHook: ChangeHook | null = null;
 
   constructor(o: { rows?: CalendarRows; now?: () => number; publish?: (userId: string) => void } = {}) {
     this.rows = o.rows ?? calendarRows();
@@ -233,6 +239,14 @@ export class Calendar {
 
   /** Who hears a to-do ticked, un-ticked or taken out (follow-through, wired by routes/bots/planFollows.ts). Fire and forget. */
   setTickHook(fn: TickHook | null): void { this.tickHook = fn; }
+
+  /** Who hears every item written (the call judge, wired by routes/bots/planCallJudge.ts). Fire and forget. */
+  setChangeHook(fn: ChangeHook | null): void { this.changeHook = fn; }
+
+  private changed(userId: string, ref: { kind: "event" | "task"; id: string }, what: "added" | "changed" | "done" | "gone"): void {
+    if (!this.changeHook) return;
+    try { this.changeHook(userId, ref, what); } catch { /* the write stands */ }
+  }
 
   private ticked(userId: string, taskId: string, what: "done" | "undone" | "gone"): void {
     if (!this.tickHook) return;
@@ -459,6 +473,7 @@ export class Calendar {
     row.next_remind_ms = this.reminderFor(row);
     await this.rows.events.insert(row);
     this.publish(userId);
+    this.changed(userId, { kind: "event", id: row.id }, "added");
     return this.eventView(row, undefined, tz);
   }
 
@@ -484,6 +499,7 @@ export class Calendar {
     next.next_remind_ms = this.reminderFor(next);
     await this.rows.events.update({ id: row.id, user_id: userId }, next);
     this.publish(userId);
+    this.changed(userId, { kind: "event", id: row.id }, "changed");
     return this.eventView(next, undefined, tz);
   }
 
@@ -500,6 +516,7 @@ export class Calendar {
       await this.rows.events.remove({ id: row.id, user_id: userId });
     }
     this.publish(userId);
+    this.changed(userId, { kind: "event", id: row.id }, o.one ? "changed" : "gone");
   }
 
   /** To another start, the same length (Plan Ease's suggestion, said yes to). One start of a series moves alone. */
@@ -516,12 +533,14 @@ export class Calendar {
       one.next_remind_ms = this.reminderFor(one);
       await this.rows.events.insert(one);
       this.publish(userId);
+      this.changed(userId, { kind: "event", id: one.id }, "added");
       return this.eventView(one);
     }
     const next: EventRow = { ...row, start_ms: startMs, end_ms: startMs + (row.all_day ? 60 * MIN : row.end_ms - row.start_ms), all_day: false, updated_ms: this.now() };
     next.next_remind_ms = this.reminderFor(next);
     await this.rows.events.update({ id: row.id, user_id: userId }, next);
     this.publish(userId);
+    this.changed(userId, { kind: "event", id: row.id }, "changed");
     return this.eventView(next);
   }
 
@@ -563,6 +582,7 @@ export class Calendar {
     row.next_remind_ms = this.taskReminderFor(row);
     await this.rows.tasks.insert(row);
     this.publish(userId);
+    this.changed(userId, { kind: "task", id: row.id }, "added");
     return this.taskView(row);
   }
 
@@ -590,6 +610,7 @@ export class Calendar {
     }
     await this.rows.tasks.update({ id: row.id, user_id: userId }, next);
     this.publish(userId);
+    this.changed(userId, { kind: "task", id: row.id }, "changed");
     return this.taskView(next);
   }
 
@@ -604,6 +625,7 @@ export class Calendar {
     }
     this.publish(userId);
     this.ticked(userId, row.id, done ? "done" : "undone");
+    this.changed(userId, { kind: "task", id: row.id }, done ? "done" : "changed");
     return this.taskView(next);
   }
 
@@ -613,6 +635,7 @@ export class Calendar {
     await this.rows.tasks.remove({ id: row.id, user_id: userId });
     this.publish(userId);
     this.ticked(userId, row.id, "gone");
+    this.changed(userId, { kind: "task", id: row.id }, "gone");
   }
 
   // ------------------------------------------------------------------ follow-through's parts (0081)
@@ -644,6 +667,7 @@ export class Calendar {
       }
       await this.rows.tasks.update({ id: row.id, user_id: userId }, write);
       this.publish(userId);
+      this.changed(userId, { kind: "task", id: row.id }, "changed");
       return this.taskView(next);
     }
     const { row } = await this.eventRowOf(userId, ref.id);
@@ -659,6 +683,7 @@ export class Calendar {
     }
     await this.rows.events.update({ id: row.id, user_id: userId }, write);
     this.publish(userId);
+    this.changed(userId, { kind: "event", id: row.id }, "changed");
     return this.eventView(next);
   }
 
@@ -763,6 +788,7 @@ export class Calendar {
         row.next_remind_ms = this.reminderFor(row);
         if (had) await this.rows.events.update({ id: row.id, user_id: userId }, row);
         else await this.rows.events.insert(row);
+        this.changed(userId, { kind: "event", id: row.id }, had ? "changed" : "added");
       } else {
         const [had] = await this.rows.tasks.select({ user_id: userId, source_key: key }, { limit: 1 });
         const day = it.at === null ? null : it.allDay ? dayOf(it.at, tz) : dayOf(it.at, tz);
@@ -776,6 +802,7 @@ export class Calendar {
         row.next_remind_ms = this.taskReminderFor(row);
         if (had) await this.rows.tasks.update({ id: row.id, user_id: userId }, row);
         else await this.rows.tasks.insert(row);
+        this.changed(userId, { kind: "task", id: row.id }, it.done ? "done" : had ? "changed" : "added");
       }
       this.publish(userId);
     } catch { /* a space's task is still in the space */ }
@@ -787,11 +814,13 @@ export class Calendar {
     const match = userId ? { user_id: userId, source_key: key } : { source_key: key };
     try {
       const who = new Set<string>();
-      for (const r of await this.rows.events.select(match, { limit: 100 })) who.add(r.user_id);
-      for (const r of await this.rows.tasks.select(match, { limit: 100 })) who.add(r.user_id);
+      const removed: Array<{ userId: string; kind: "event" | "task"; id: string }> = [];
+      for (const r of await this.rows.events.select(match, { limit: 100 })) { who.add(r.user_id); removed.push({ userId: r.user_id, kind: "event", id: r.id }); }
+      for (const r of await this.rows.tasks.select(match, { limit: 100 })) { who.add(r.user_id); removed.push({ userId: r.user_id, kind: "task", id: r.id }); }
       await this.rows.events.remove(match);
       await this.rows.tasks.remove(match);
       for (const u of who) this.publish(u);
+      for (const g of removed) this.changed(g.userId, { kind: g.kind, id: g.id }, "gone");
     } catch { /* nothing to take out */ }
   }
 

@@ -7,6 +7,9 @@
  *   PUT /v1/you/ai-consent { agree }               -> { agreed, at }   Agree on the card (true), or the switch in You › Privacy
  *   PUT /v1/you/ai-consent { agree: false, later } -> { agreed, at }   Not now on the card: the answer only, a yes is never taken back
  *
+ * Switched off here, the seam's listeners run at once (botsBots/planCallSeam.ts aiConsentWentOff): a live call is hung up, and the
+ * call judge deletes the person's judgements. One that fails never undoes the "no".
+ *
  * Asked once per wording, on Home (screens/firstRun/aiConsentCard.ts), before anything is sent. Agree, Not now and the switch off are
  * each an answer, kept: the card does not come back until the wording (AI_CONSENT_VERSION) changes. Not now sends nothing, and every
  * bot, dictation and Ask waits until they turn it on in You › Privacy. Withdrawn there at any time: from then on nothing more is sent.
@@ -18,6 +21,7 @@ import type { FastifyInstance } from "fastify";
 import type { Personality } from "../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../auth/supabase.js";
 import { getPersonality, updatePersonality } from "../personality/store.js";
+import { aiConsentWentOff } from "../botsBots/planCallSeam.js";
 import { AI_SERVICES, installAiCheck } from "./aiGate.js";
 
 /** The wording agreed to. Raise it when what is sent, or to whom, changes: everyone is asked again. */
@@ -71,6 +75,9 @@ export async function setAiConsent(user: AuthedUser, agree: boolean, now = new D
     // Off grants nothing. Withdrawn only when there was a yes to take back.
     : { ...p, ...asked, aiConsentAt: null, ...(p.aiConsentAt ? { aiConsentWithdrawnAt: at } : {}) }));
   remember(known, user.id, { ok: agreedIn(next), at: Date.now() });
+  // Switched off: whoever is in the middle of something hears about it at once (botsBots/planCallSeam.ts). A live call is hung up,
+  // and the call judge deletes what it kept. Never throws into the write: the "no" stands whatever a listener does.
+  if (!agree) await aiConsentWentOff(user.id).catch(() => undefined);
   return next;
 }
 

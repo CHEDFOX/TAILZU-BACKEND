@@ -117,7 +117,8 @@ const defaultNotify: MeetNotify = async (userId, msg) => { await pushEngine()?.n
 /** The server's speech, as an mp3, on the meter of whoever's work is running (the answer's chargedTo). */
 async function speakMp3(text: string): Promise<{ audio: Buffer; contentType: string }> {
   const out = await synthesize({ text, format: "mp3", instructions: SPEAK_HOW });
-  addCostUsd(ttsUsd(text.length + SPEAK_HOW.length));
+  // What the read really cost when the voice service said so (the realtime path), else what its characters cost on a speech model.
+  addCostUsd(out.usd ?? ttsUsd(text.length + SPEAK_HOW.length));
   return out;
 }
 

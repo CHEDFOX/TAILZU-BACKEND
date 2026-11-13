@@ -10,7 +10,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "November 6, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "November 12, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
@@ -39,6 +39,8 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Text you dictate or refine</strong> is used to produce refined output and is saved to your history so you can review it later. You can turn history off, or delete it, in Settings.</li>
   <li><strong>Personality preferences</strong> (tone, vocabulary, personal dictionary) are stored so refinement can match your voice.</li>
   <li><strong>What you ask X0 Bot to do on your phone</strong>: the first 80 characters are kept for 30 days, so the You tab can show your recent requests, and your words for a day when a request failed having changed nothing, so you can try it again with one tap (see 11.4). Of what you ask Ask on your computer, none of your words are kept, apart from your Tasks list (see 11.4).</li>
+  <li><strong>Calls from Plan Ease.</strong> When Plan Ease calls you and you talk back, your voice streams live to our realtime voice provider (see Section 3), which hears you and answers in a voice. The words of the call, what you said and what Plan Ease said, are kept as messages in your Plan Ease chat. X0 Bot stores no audio. That provider keeps your voice only in its abuse-monitoring logs, for up to 30 days, and does not train on it. Only with your permission to send to AI services.</li>
+  <li><strong>Which things Plan Ease calls about.</strong> With your permission to send to AI services, when you add or change something on your Plan, Plan Ease's AI looks at it (its title, time, place, who is on it, and for a bill its amount and payee), with the rest of that day, to decide whether it is important enough to call you about, and when. It keeps only that decision and a one-line reason, and deletes them when you take the permission back or delete your account. Without that permission, Plan Ease calls only when it is time to leave or a bill is due today.</li>
 </ul>
 
 <h3>1.3 Purchase information</h3>
@@ -174,6 +176,8 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Widgets and notifications:</strong> a widget's key lasts a day; the outcome of an answer given from a widget or a notification is kept for seven days. See Section 15.</li>
   <li><strong>Purchases:</strong> our record of a subscription is kept until you delete your account. See 1.3.</li>
   <li><strong>Account:</strong> kept until you delete it. When you choose Delete account in the app, your account and everything kept with it are deleted 7 days later. Until then nothing is removed and your bots stop working; sign in and choose Keep my account to keep it as it was. Where the app says deleting cannot be undone, it is deleted straight away. You can also ask for deletion without the app, by signing in with your email at <a href="https://x0bot.com/delete-account">x0bot.com/delete-account</a>, which lists what is deleted and what is kept. Messages you sent in chats with other people stay in those chats for them, under the name you had; reports (see 1.8) are kept as a safety record; and the app stores and payment processors keep their own records of purchases.</li>
+  <li><strong>A call's voice:</strong> not stored. Its words are kept in your Plan Ease chat until you clear it or delete your account.</li>
+  <li><strong>Plan Ease's call decisions:</strong> kept while the item is on your Plan, at most 30 days after it is gone.</li>
   <li><strong>Diagnostic logs:</strong> retained by Sentry / PostHog for up to 90 days per their standard retention.</li>
 </ul>
 

@@ -186,6 +186,8 @@ connectors/        connected apps over MCP: catalog, OAuth, egress guard, routin
 artifacts/         things bots make (pages, components, diagrams): store, versions, edits, screenshots (docs/artifacts.md)
 media/             files: sniffing, chunks, PDFs, tables, speech, the media worker client (docs/media.md)
 web/               reading pages, searching (search/), research, the safe fetch guard, a headless browser (browser/)
+realtime/          OpenAI's realtime voice: the SDP exchange, the server's sideband and the hangup for a live call
+                   (openaiCalls.ts), and the voice map the call and the read-aloud share (voices.ts)
 places/            geocoding, travel times and weather for the travel bots
 widgets/           home-screen widgets and Live Activities (glance, APNs)
 push/              the push engine: plans, timing, Expo tokens
@@ -233,6 +235,7 @@ ads/               Meta and Google Tag Manager events
 | The meeting bot (a bot in video calls: notes, answers, auto-join) | `tulmi/src/meet/` (`types.ts`, `recall.ts` Recall's client, `store.ts`, `words.ts`, `brain.ts`, `stage.ts` the speaking bot's page, `calendar.ts` auto-join, `digest.ts` the chat's knowledge, `service.ts` the engine, `room.ts` one meeting's live state, `people.ts` a space's admin and their people), `notes/finish.ts` (a finished note organised, shared with the note-taker), `routes/bots/meet.ts`, the page `experience/bots/screens/bots/meetPage.ts`, its meeting `meetScreens.ts`, migrations 0082 and 0083 (docs/meet.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
+| Plan Ease's calls ("X0 is calling") | `tulmi/src/botsBots/planCall.ts` and `planCallWords.ts` (the ring, the limits, the words), `planCallLive.ts` and `planCallLiveWords.ts` (the live voice call), `planCallSeam.ts` (the one seam with the call judge), `src/realtime/` (the link to OpenAI), the judge that decides which things are worth a call `planCallJudge.ts`, `planCallJudgeWords.ts` and `planCallJudgeStore.ts` with `routes/bots/planCallJudge.ts` and migration 0086 (docs/plan-call-judge.md), routes `routes/bots/planCalls.ts`, the screen `experience/bots/screens/bots/planCall.ts`, migrations 0079 and 0085 (docs/plan-ease.md "Calls") |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |
 | The website's own pages (privacy, terms, support, pricing, delete account) | `tulmi/src/routes/site/policies/` (their look in `policies/shell.ts`); the pay page `routes/billing/pay.ts` |
 | Xode | `tulmi/src/code/` and `routes/code/`; jobs on Cloudflare in `jobs/` (docs/code-*.md, docs/cloudflare-jobs.md, docs/github-app.md) |

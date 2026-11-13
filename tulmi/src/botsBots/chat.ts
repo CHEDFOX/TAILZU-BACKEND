@@ -4,6 +4,8 @@
  *   recent(user, slug)          the last turns, oldest first (the bot's page and the chat draw them)
  *   send(user, slug, message)   asks the bot (Bots.ask: its rules, skills, apps, memory, budget) with the last turns as history, and keeps both turns
  *   clear(user, slug)           starts the chat over (what the bot remembers is its memory, forgotten on its own routes)
+ *   note(user, slug, text)      one bot turn no message asked for (how a call began)
+ *   noteTurn(user, slug, r, t)  one turn of either side, kept as it was said: a live call's words, as the chat page shows a typed chat
  *
  * The bot's memory (src/bots/memory.ts) keeps facts and a short summary; this keeps the words, so the page can show them. Xode
  * answers through the front door (its own page), not here.
@@ -57,8 +59,12 @@ export class BotChat {
 
   /** `attached`: what the person's spaces shared with this bot (shared.ts forBot), read as data. */
   /** `live`: the answer's words as they are written and what it is doing (an app that listens: live/askStream.ts). */
+  /**
+   * `o.call`: this turn is part of a call the live switch is on for. Such a call is never stopped for money (Bots.ask then asks no
+   * day budget and no spend gate). False or absent, the turn is held to both, exactly as a chat turn is.
+   */
   async send(userId: string, slug: string, message: unknown, signal?: AbortSignal, attached: Array<{ name: string; kind: string; text: string }> = [],
-    live: Pick<AskInput, "onText" | "onReset" | "emit"> = {}): Promise<{ answer: BotAnswer; turns: ChatTurn[] }> {
+    live: Pick<AskInput, "onText" | "onReset" | "emit"> = {}, o: { call?: boolean } = {}): Promise<{ answer: BotAnswer; turns: ChatTurn[] }> {
     if (typeof message !== "string" || !message.trim()) throw new BotError("bad_request", "Type what you want to ask first.");
     if (message.length > LIMITS.message) throw new BotError("too_large", `A message may be ${LIMITS.message} characters at most.`, 413);
     const found = await this.bots.resolve(userId, slug);
@@ -67,7 +73,7 @@ export class BotChat {
     const said = message.trim();
     const before = await this.recent(userId, found.def.slug, LIMITS.history.turns);
     const history = before.map((t) => ({ role: t.role === "me" ? "user" as const : "assistant" as const, content: t.text.slice(0, LIMITS.history.chars) }));
-    const answer = await this.bots.ask(userId, found.def.slug, { message: said, history, ...(signal ? { signal } : {}), ...(attached.length ? { attached } : {}), ...live });
+    const answer = await this.bots.ask(userId, found.def.slug, { message: said, history, ...(signal ? { signal } : {}), ...(attached.length ? { attached } : {}), ...live, ...(o.call ? { call: true as const } : {}) });
     const at = this.now();
     const mine: ChatTurnRow = { id: randomUUID(), user_id: userId, bot: found.def.slug, role: "me", text: said, extra: {}, at_ms: at };
     const theirs: ChatTurnRow = {
@@ -93,6 +99,18 @@ export class BotChat {
     if (!said) return;
     const bot = slug.toLowerCase();
     await this.turns.insert({ id: randomUUID(), user_id: userId, bot, role: "bot", text: said.slice(0, LIMITS.message), extra: {}, at_ms: this.now() });
+    await this.prune(userId, bot);
+  }
+
+  /**
+   * ONE TURN OF A LIVE CALL, kept as the person and the bot said it (botsBots/planCallLive.ts). No model is asked: the words have
+   * already been spoken. The chat page then shows a call the way it shows a typed chat, and the next typed message has its subject.
+   */
+  async noteTurn(userId: string, slug: string, role: "me" | "bot", text: string): Promise<void> {
+    const said = String(text ?? "").trim();
+    if (!said) return;
+    const bot = slug.toLowerCase();
+    await this.turns.insert({ id: randomUUID(), user_id: userId, bot, role, text: said.slice(0, LIMITS.message), extra: {}, at_ms: this.now() });
     await this.prune(userId, bot);
   }
 

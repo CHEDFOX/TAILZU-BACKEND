@@ -14,6 +14,11 @@
  *   start(log)            the sweep every 10 s (a restart loses the timers, never a step) and the 90-day clean-up
  *   view / answer / decline / end / back   the call screen's and the notification's doors (routes/bots/planCalls.ts)
  *   said / voiceText / prepare / voice     a reply kept for the voice route, and the voice made ahead so it plays at once
+ *   ringItem(user, seed)  a call the call judge asked for, about one thing on the Plan (planCallSeam.ts): every follow-ring check
+ *                         except the 3 a day, which a judged ring skips and does not count toward
+ *   facts(user, row)      the call's facts for the chat and for the live session, with the judge's reason when it gave one
+ *   addCost / markRt / noteActed / liveRows   what the realtime part writes on the row (planCallLive.ts)
+ *   bumpCost(user, id, usd)   one more piece of what the call cost, for the parts with no running total: a turn and its voice
  *   missedSince(user, t)  missed calls for Activity (shell/feed.ts)
  *
  * Every change of state is a compare-and-swap on it (and on next_ms where a timer acts), so two servers or two timers never both act;
@@ -32,15 +37,18 @@ import { knobsOf } from "../push/plan.js";
 import { tokenHash, type Candidate, type Token } from "../push/store.js";
 import { clockAt } from "../calendar/words.js";
 import { deskHere } from "../live/notices.js";
+import { getConfig } from "../config.js";
 import { MemoryTable, SupabaseTable, type Table } from "./rows.js";
 import { callsOn, planOn } from "./planSwitch.js";
+import { GOODBYE_LEAD_SEC, inAllowList, maxSecOf } from "./planCallLiveWords.js";
+import { callJudge, type ItemSeed, type RingNone } from "./planCallSeam.js";
 import {
-  CALLS, FRESH_MS, GRACE_MS, RING2_MS, RING_MS, SWEEP_MS, TALK_IDLE_MS, blockedBy, cardOf, missedBody, openingLine,
-  type CallSeed, type CallState, type CallView,
+  BACK_MAX, CALLS, FRESH_MS, GRACE_MS, RING2_MS, RING_MS, SWEEP_MS, TALK_IDLE_MS, backsToday, blockedBy, callContext, cardOf,
+  missedBody, openingLine, type CallSeed, type CallState, type CallView,
 } from "./planCallWords.js";
 
 export type { CallSeed, CallState, CallView } from "./planCallWords.js";
-export { CALLS, DAY_MAX, FRESH_MS, GAP_MS, GRACE_MS, MAX_TURNS, RING2_MS, RING_MS, STALE_RING_MS, SWEEP_MS, TALK_IDLE_MS } from "./planCallWords.js";
+export { BACK_MAX, CALLS, DAY_MAX, FRESH_MS, GAP_MS, GRACE_MS, MAX_TURNS, RING2_MS, RING_MS, STALE_RING_MS, SWEEP_MS, TALK_IDLE_MS } from "./planCallWords.js";
 
 /** The iPhone's ringtone, as a phone with the BotRingtone cap installed it in its app group's Library/Sounds. */
 export const RINGTONE = "x0_ring_1.wav";
@@ -57,21 +65,24 @@ const TURNS_KEPT = 12;
 /** Voice made ahead is kept this long, and this many at most (one server's memory). */
 const VOICE_KEEP_MS = 2 * 60_000;
 const VOICE_MAX = 200;
+/** A judged ring is not placed when a call about the same item rang this recently, whatever rang it. */
+export const ITEM_RECENT_MS = 60 * 60_000;
 
 // ------------------------------------------------------------------ the row (migration 0079)
 
-export interface CallTurn { n: number; said: string; at: number }
+/** `rt`: the bot said it on a live call. MAX_TURNS is the turn call's own limit (planCallWords.ts turnCallTurns). */
+export interface CallTurn { n: number; said: string; at: number; rt?: true }
 
 export interface CallRow {
   [k: string]: unknown;
   id: string;
   user_id: string;
-  source: "leave" | "due" | "follow";
+  source: "leave" | "due" | "follow" | "item";
   source_key: string;
   origin: "server" | "user";
   parent_id: string | null;
   state: CallState;
-  why: "not_sent" | "timeout" | "hung_up" | "done" | null;
+  why: "not_sent" | "timeout" | "hung_up" | "done" | "max_len" | "idle" | "consent" | null;
   name: string;
   item: string;
   seed: CallSeed;
@@ -88,6 +99,18 @@ export interface CallRow {
   rang: string[];
   answered_ms: number | null;
   ended_ms: number | null;
+  // ---- the live part (migration 0085)
+  /** The OpenAI id of the current or last live part. */
+  rt_call: string | null;
+  rt_state: "starting" | "live" | "stopped" | "ended" | "fell_back" | null;
+  /** Live seconds used over every part: the hard length reads it. */
+  rt_sec: number;
+  /** What this call cost. A RECORD FOR THE OWNER, NEVER A CAP: no call is refused, shortened or stopped for money. */
+  cost_usd: number;
+  /** The call's own actions already done out loud: "paid", "done", "later", "cant". */
+  acted: string[];
+  /** It rang because the call judge said call: not counted toward the 3 a day, and not held to them. */
+  judged: boolean;
 }
 
 const num = (v: unknown, d = 0): number => (v === null || v === undefined || !Number.isFinite(Number(v)) ? d : Number(v));
@@ -104,7 +127,26 @@ export function callRowOf(r: Record<string, unknown>): CallRow {
     tz_min: num(r.tz_min, 330), ring_at_ms: num(r.ring_at_ms), ring_until_ms: num(r.ring_until_ms), next_ms: numOrNull(r.next_ms),
     rings: num(r.rings, 1), answered_ms: numOrNull(r.answered_ms), ended_ms: numOrNull(r.ended_ms),
     parent_id: typeof r.parent_id === "string" ? r.parent_id : null, why: (r.why ?? null) as CallRow["why"],
+    rt_call: typeof r.rt_call === "string" ? r.rt_call : null, rt_state: (r.rt_state ?? null) as CallRow["rt_state"],
+    rt_sec: num(r.rt_sec), cost_usd: num(r.cost_usd),
+    acted: Array.isArray(r.acted) ? (r.acted as unknown[]).filter((x): x is string => typeof x === "string") : [],
+    judged: r.judged === true,
   };
+}
+
+/**
+ * A NEW ROW AS THE INSERT SENDS IT. The live part's own columns (migration 0085) are left out while they still hold their defaults,
+ * so a server carrying this code before that migration has run still rings: PostgREST refuses a column it does not know, place()
+ * reads that as "failed", and every leave-by, bill due and follow-through call would stop without a word. markRt, addCost and
+ * noteActed write those columns later, and they only ever run for a call that really went live or that the judge asked for.
+ */
+export function rowForInsert(row: CallRow): CallRow {
+  const fresh = row.rt_call === null && row.rt_state === null && row.rt_sec === 0 && row.cost_usd === 0
+    && row.acted.length === 0 && row.judged === false;
+  if (!fresh) return row;
+  const { rt_call: _c, rt_state: _s, rt_sec: _n, cost_usd: _u, acted: _a, judged: _j, ...rest } = row;
+  void _c; void _s; void _n; void _u; void _a; void _j;
+  return rest as CallRow;
 }
 
 /** The calls table, with the two reads across everyone: the sweep's due calls, and the clean-up. */
@@ -113,6 +155,8 @@ export interface CallTable extends Table<CallRow> {
   due(now: number, limit: number): Promise<CallRow[]>;
   /** Deletes every call that rang before `before`. */
   clean(before: number): Promise<void>;
+  /** Calls still marked starting or live, across everyone: the boot sweep hangs them up. */
+  liveRows(limit: number): Promise<CallRow[]>;
 }
 
 function withSweep(t: Table<CallRow>, client: SupabaseClient | null): CallTable {
@@ -137,6 +181,13 @@ function withSweep(t: Table<CallRow>, client: SupabaseClient | null): CallTable 
       const { error } = await client.from("plan_calls").delete().lt("ring_at_ms", before);
       if (error) throw new Error(`plan_calls clean: ${error.message}`);
     },
+    liveRows: async (limit) => {
+      if (mem) return mem.rows.filter((r) => r.rt_state === "starting" || r.rt_state === "live").slice(0, limit).map(copy);
+      if (!client) return [];
+      const { data, error } = await client.from("plan_calls").select("*").in("rt_state", ["starting", "live"]).limit(limit);
+      if (error) throw new Error(`plan_calls live: ${error.message}`);
+      return ((data ?? []) as Array<Record<string, unknown>>).map(callRowOf);
+    },
   };
 }
 
@@ -150,8 +201,8 @@ export const memoryCallTable = (): CallTable => withSweep(new MemoryTable<CallRo
 
 // ------------------------------------------------------------------ the service
 
-/** Words read aloud (routes/writing/speak.ts speakFor), or why not. */
-export type CallAudio = { audio: Buffer; contentType: string } | { status: number; code: string; message: string };
+/** Words read aloud (routes/writing/speak.ts speakFor), with what the read cost, or why not. */
+export type CallAudio = { audio: Buffer; contentType: string; usd?: number } | { status: number; code: string; message: string };
 
 export interface PlanCallsDeps {
   table?: CallTable;
@@ -165,6 +216,25 @@ export interface PlanCallsDeps {
 }
 type Log = { info(o: object, m: string): void; warn(o: object, m: string): void };
 const QUIET: Log = { info: () => undefined, warn: () => undefined };
+
+/**
+ * What the call service needs of the live session manager (botsBots/planCallLive.ts), wired at boot. Null everywhere a build has no
+ * realtime call, and then every call behaves exactly as it did.
+ */
+export interface LiveCalls {
+  /** The session is built ahead and kept for two minutes, so the phone's offer is answered at once. */
+  prepare(user: AuthedUser, id: string): void;
+  /** Ends the live part of this call (the call itself may stay answered). */
+  stop(id: string, why: string): Promise<void>;
+  /** The turn call is taking over: the live part closes and writes its total, before the turn puts anything more on the row. */
+  fellBack(userId: string, id: string): Promise<void>;
+  /** Every live call of this person ends now (they took their AI permission back). */
+  stopFor(userId: string): Promise<void>;
+  /** At boot: every row another process left marked live is hung up. */
+  sweepOrphans(): Promise<void>;
+  /** Whether this call is live on this process right now. */
+  isLive(id: string): boolean;
+}
 
 /** The answer route's reply (section 1.7 of the contract). */
 export type AnswerOut =
@@ -200,7 +270,11 @@ export class PlanCalls {
   /** What the call's voice route reads aloud and the note of how a call began: the server's chat and voice (routes/bots/planCalls.ts). */
   private chat: { note(userId: string, slug: string, text: string): Promise<void> } | null = null;
   private speak: ((user: AuthedUser, text: string) => Promise<CallAudio>) | null = null;
+  /** The realtime session manager, when this build has one (routes/bots/planCalls.ts wires it). */
+  private live: LiveCalls | null = null;
   private readonly voices = new Map<string, { at: number; audio: Promise<CallAudio> }>();
+  /** The cost writes of one call, one after another (bumpCost). */
+  private readonly bumps = new Map<string, Promise<void>>();
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private lastClean = 0;
 
@@ -214,9 +288,10 @@ export class PlanCalls {
   }
 
   /** The chat that keeps how a call began, and the voice that reads it (wired at boot: routes/bots/planCalls.ts). */
-  wire(o: { chat?: PlanCalls["chat"]; speak?: PlanCalls["speak"]; log?: Log }): void {
+  wire(o: { chat?: PlanCalls["chat"]; speak?: PlanCalls["speak"]; live?: LiveCalls | null; log?: Log }): void {
     if (o.chat !== undefined) this.chat = o.chat;
     if (o.speak !== undefined) this.speak = o.speak;
+    if (o.live !== undefined) this.live = o.live;
     if (o.log) this.log = o.log;
   }
 
@@ -249,7 +324,10 @@ export class PlanCalls {
       // The reminder's own verdict first: a push that would go silent (quiet hours) or not at all never becomes a ring. Then the call's
       // own: the Calls switch, Plan Ease's, quiet hours (you/push.ts verdict).
       if ((await gate(msg.kind)) !== "send" || (await gate("plan_call")) !== "send") return this.none("what pings you");
-      const r = await this.placeCall(c, seed, { key: msg.key, line: String(msg.vars?.title ?? ""), more: String(msg.vars?.body ?? ""), tokens, now });
+      // The call judge's say about this very item (planCallSeam.ts). It can only ADD: a floor ring the judge wants is placed judged,
+      // so the 3 a day neither stops it nor counts it. No verdict ever refuses a leave-by or a bill due today.
+      const judged = await this.judged(c.userId, seed.item);
+      const r = await this.placeCall(c, seed, { key: msg.key, line: String(msg.vars?.title ?? ""), more: String(msg.vars?.body ?? ""), tokens, now, judged });
       if ("none" in r) return this.none(r.none);
       // Another server got there between the look above and this insert.
       if ("taken" in r) return this.again(r.taken, tokens);
@@ -265,17 +343,18 @@ export class PlanCalls {
    * What the hook and ring() share once a call may ring: the limits (one at a time, 3 a day, 15 minutes apart), the row, ring 1, the
    * phones that took it, ring 2 and the missed call on their timers. `none` says why not; `taken` is a call another server placed first.
    */
-  private async placeCall(c: Candidate, seed: CallSeed, o: { key: string; line: string; more: string; tokens: Token[]; now: number }):
+  private async placeCall(c: Candidate, seed: CallSeed, o: { key: string; line: string; more: string; tokens: Token[]; now: number; judged?: boolean }):
     Promise<{ row: CallRow; ok: ReadonlySet<string> } | { taken: CallRow } | { none: string }> {
     const now = o.now;
     const rows = (await this.table.select({ user_id: c.userId }, { order: "ring_at_ms", desc: true, limit: 20 })).map(callRowOf);
-    const blocked = blockedBy(rows, now, seed.tz);
+    const blocked = blockedBy(rows, now, seed.tz, { judged: !!o.judged });
     if (blocked) return { none: blocked };
     const row: CallRow = {
       id: randomUUID(), user_id: c.userId, source: seed.source, source_key: o.key, origin: "server", parent_id: null, state: "ringing", why: null,
       name: (await this.name(c.userId).catch(() => ASSISTANT_NAME)) || ASSISTANT_NAME, item: seed.item, seed,
       line: o.line, more: o.more, opening: "", turns: [], tz_min: seed.tz,
       ring_at_ms: now, ring_until_ms: now + RING_MS, next_ms: now + RING2_MS, rings: 1, rang: [], answered_ms: null, ended_ms: null,
+      rt_call: null, rt_state: null, rt_sec: 0, cost_usd: 0, acted: [], judged: !!o.judged,
     };
     const placed = await this.place(row);
     if (placed === "failed") return { none: "not_sent" };
@@ -300,6 +379,24 @@ export class PlanCalls {
    * the ladder never assumes it rang.
    */
   async ring(userId: string, seed: Extract<CallSeed, { source: "follow" }>, o: { key: string; line: string; more: string; now?: number }): Promise<{ id: string } | { none: string }> {
+    // Follow-through's own ring reads the verdict too: when the judge wants this item called, the 3 a day do not stop the ladder.
+    return this.ringNow(userId, seed, o, { judged: await this.judged(userId, seed.item), where: "follow" });
+  }
+
+  /**
+   * THE CALL JUDGE'S RING (planCallSeam.ts CallRinger): a call for one thing on the Plan, at the moment the judge picked. Every check
+   * a follow-through ring has, EXCEPT the 3 a day, which a judged ring skips and does not count toward (the owner's answer: there are
+   * no limits, everything the AI judges necessary gets the call). There is NO cap on judged rings in a day. The one guard of its own
+   * is `item_recent`, so two calls never come about the same thing within the hour. Never throws.
+   */
+  readonly ringItem = async (userId: string, seed: ItemSeed, o: { key: string; line: string; more: string; now?: number }): Promise<{ id: string } | { none: RingNone }> => {
+    const r = await this.ringNow(userId, seed, o, { judged: true, where: "judged" });
+    return "id" in r ? r : { none: r.none as RingNone };
+  };
+
+  /** What ring() and ringItem() share: the checks, then the row, the ring and its timers. */
+  private async ringNow(userId: string, seed: CallSeed, o: { key: string; line: string; more: string; now?: number },
+    w: { judged: boolean; where: "follow" | "judged" }): Promise<{ id: string } | { none: string }> {
     try {
       if (!callsOn()) return { none: "off" };
       const engine = this.engine();
@@ -314,14 +411,47 @@ export class PlanCalls {
       if (!tokens.length) return { none: "no_phone" };
       if (await this.byKey(userId, o.key)) return { none: "called" };
       if ((await engine.gateFor(c, "plan_call", now)) !== "send") return { none: "quiet" };
-      const r = await this.placeCall(c, seed, { key: o.key, line: o.line, more: o.more, tokens, now });
+      if (w.where === "judged") {
+        const guard = await this.judgedGuards(userId, seed, now);
+        if (guard) return { none: guard };
+      }
+      const r = await this.placeCall(c, seed, { key: o.key, line: o.line, more: o.more, tokens, now, judged: w.judged });
       if ("none" in r) return { none: r.none };
       if ("taken" in r) return { none: "called" };
       return { id: r.row.id };
     } catch (err) {
-      this.log.warn({ err: (err as Error)?.message }, "[calls] follow ring failed");
+      this.log.warn({ err: (err as Error)?.message }, `[calls] ${w.where} ring failed`);
       return { none: "not_sent" };
     }
+  }
+
+  /** The judged ring's one guard: a call about the same item rang in the last hour. There is no cap on judged rings in a day. */
+  private async judgedGuards(userId: string, seed: CallSeed, now: number): Promise<"item_recent" | null> {
+    const rows = (await this.table.select({ user_id: userId }, { order: "ring_at_ms", desc: true, limit: 40 })).map(callRowOf)
+      .filter((r) => r.why !== "not_sent");
+    if (rows.some((r) => r.item === seed.item && now - r.ring_at_ms < ITEM_RECENT_MS)) return "item_recent";
+    return null;
+  }
+
+  /** Whether the call judge says this item is worth a call. Null, off, or a failure all mean "no change": today's ring, exactly. */
+  private async judged(userId: string, item: string): Promise<boolean> {
+    const v = await callJudge()?.verdictFor(userId, item).catch(() => null) ?? null;
+    return v?.call === true;
+  }
+
+  /** The judge's one-line reason for this call, when it said to call. "" otherwise. Never said out loud word for word. */
+  private async whyOf(userId: string, row: Pick<CallRow, "seed" | "item">): Promise<string> {
+    if (row.seed.source === "item") return row.seed.why ?? "";
+    const v = await callJudge()?.verdictFor(userId, row.item).catch(() => null) ?? null;
+    return v?.call ? (v.why ?? "") : "";
+  }
+
+  /**
+   * The call's facts, as the Plan Ease chat and the live session both read them (data, never instructions), with "Why it matters"
+   * when the judge gave a reason. One indexed read at most.
+   */
+  async facts(userId: string, row: Pick<CallRow, "seed" | "item" | "opening" | "tz_min">): Promise<string> {
+    return callContext(row.seed, row.opening, row.tz_min, await this.whyOf(userId, row));
   }
 
   /** A followed item said done: its call still ringing ends now (no ring 2, no missed call). Anything else stays as it is. */
@@ -352,7 +482,7 @@ export class PlanCalls {
     try {
       const had = await this.byKey(row.user_id, row.source_key);
       if (had) return { taken: had };
-      await this.table.insert(row);
+      await this.table.insert(rowForInsert(row));
       return "placed";
     } catch (err) {
       // A second server inserted it first: Supabase's error arrives as a plain message (rows.ts), and memory has no unique index.
@@ -455,6 +585,7 @@ export class PlanCalls {
       return;
     }
     if (row.state === "answered") {
+      if (this.live?.isLive(id)) await this.live.stop(id, "timeout").catch(() => undefined);
       await this.table.update({ id, state: "answered", next_ms: row.next_ms }, { state: "ended", why: "timeout", next_ms: null, ended_ms: now });
     }
   }
@@ -475,6 +606,8 @@ export class PlanCalls {
   /** The sweep every 10 s, one pass at a time. Returns the stop (which also drops this process's timers). */
   start(log?: Log): () => void {
     if (log) this.log = log;
+    // A restart leaves rows marked live that no socket holds any more: hang them up once, so OpenAI is not left talking to nobody.
+    void this.live?.sweepOrphans().catch((err) => this.log.warn({ err: (err as Error)?.message }, "[calls] orphan sweep failed"));
     let busy = false;
     let warned = 0;
     const timer = setInterval(() => {
@@ -511,6 +644,8 @@ export class PlanCalls {
       missedClock: clockAt(row.ring_at_ms, row.tz_min), answeredAt: row.answered_ms, endedAt: row.ended_ms,
       late: row.state === "ringing" || (row.state === "missed" && now <= row.ring_until_ms + GRACE_MS),
       ai: await this.consent(userId).catch(() => false),
+      rt: realtimeOn(userId, row),
+      acted: row.acted,
       card: cardOf(row.seed, row.tz_min),
     };
   }
@@ -520,7 +655,7 @@ export class PlanCalls {
    * `fresh`: this request answered it, nothing has been said yet, or it was answered under 10 s ago (a retry after a lost response): only
    * then does the screen speak. `talk` asks "Want me to do anything?" only when the screen can listen AND the person agreed to AI.
    */
-  async answer(user: AuthedUser, id: string, talkAsked: unknown): Promise<AnswerOut | null> {
+  async answer(user: AuthedUser, id: string, talkAsked: unknown, rtAsked: unknown = false): Promise<AnswerOut | null> {
     let row = await this.get(user.id, id);
     if (!row) return null;
     const now = this.now();
@@ -541,18 +676,24 @@ export class PlanCalls {
     // A followed item's call never asks "Want me to do anything?": its Done, Later and Can't are on the screen.
     const talk = talkAsked === true && ai && row.source !== "follow";
     fresh = fresh || row.opening === "" || (row.answered_ms !== null && now - row.answered_ms < FRESH_MS);
+    // A realtime call makes no voice ahead: the model speaks the opening itself over the live link, and voice/0 is made on demand
+    // only if the call falls back. The live session is built now instead, so the phone's offer is answered at once.
+    const rt = rtAsked === true && ai && realtimeOn(user.id, row);
     let opening = row.opening;
     if (fresh) {
-      const line = openingLine(row.seed, { back: row.origin === "user", talk, now, tz: row.tz_min });
+      // The mild "Hello." belongs to the live call, which then follows whatever language the person speaks. A turn call — every
+      // build without the realtime switch — opens on the moment itself, word for word as it always has.
+      const line = openingLine(row.seed, { back: row.origin === "user", talk, now, tz: row.tz_min, hello: rt });
       if (line !== row.opening) {
         await this.table.update({ id, user_id: user.id }, { opening: line });
         if (ai) {
-          this.prepare(user, id, 0, line);
+          if (!rt) this.prepare(user, id, 0, line);
           await this.chat?.note(user.id, "plan", line).catch(() => undefined);
         }
       }
       opening = line;
     }
+    if (rt) this.live?.prepare(user, id);
     return { state: "answered", opening, voice: ai ? `${CALLS}/${id}/voice/0` : null, answeredAt: row.answered_ms, fresh };
   }
 
@@ -567,9 +708,11 @@ export class PlanCalls {
   }
 
   /** End call: an answered call ends; a ringing one is declined; anything else stays. Null: no such call of theirs. */
-  async end(userId: string, id: string, why: "hung_up" | "done" = "hung_up"): Promise<{ ok: true; state: CallState } | null> {
+  async end(userId: string, id: string, why: NonNullable<CallRow["why"]> = "hung_up"): Promise<{ ok: true; state: CallState } | null> {
     const row = await this.get(userId, id);
     if (!row) return null;
+    // The live part goes first: the person hung up, so nothing more should be heard or generated.
+    if (this.live?.isLive(id)) await this.live.stop(id, why).catch(() => undefined);
     const now = this.now();
     if (row.state === "answered") {
       const won = await this.table.update({ id, user_id: userId, state: "answered" }, { state: "ended", why, next_ms: null, ended_ms: now });
@@ -584,34 +727,39 @@ export class PlanCalls {
   }
 
   /**
-   * Call back: the person's own call, about the same thing, answered as it starts (it never rings, and the limits don't apply). A call
-   * still ringing or on is that call. Null: no such call of theirs; "off": calls are switched off.
+   * Call back: the person's own call, about the same thing, answered as it starts (it never rings, and the ring limits don't apply). A
+   * call still ringing or on is that call. Null: no such call of theirs; "off": calls are switched off; "limit": they have made
+   * BACK_MAX Call backs in this day already — the one limit a Call back has, so the button cannot be pressed into an endless string
+   * of fresh calls, each with its own set of turns.
    */
-  async back(userId: string, id: string): Promise<{ call: string } | "off" | null> {
+  async back(userId: string, id: string): Promise<{ call: string } | "off" | "limit" | null> {
     if (!callsOn()) return "off";
     const parent = await this.get(userId, id);
     if (!parent) return null;
     if (parent.state === "ringing" || parent.state === "answered") return { call: parent.id };
     const now = this.now();
+    const mine = (await this.table.select({ user_id: userId, origin: "user" }, { order: "ring_at_ms", desc: true, limit: BACK_MAX + 1 })).map(callRowOf);
+    if (backsToday(mine, now, parent.tz_min) >= BACK_MAX) return "limit";
     const row: CallRow = {
       id: randomUUID(), user_id: userId, source: parent.source, source_key: `back:${parent.id}:${now}`, origin: "user", parent_id: parent.id,
       state: "answered", why: null, name: parent.name, item: parent.item, seed: parent.seed, line: parent.line, more: parent.more,
       opening: "", turns: [], tz_min: parent.tz_min, ring_at_ms: now, ring_until_ms: now, next_ms: now + TALK_IDLE_MS, rings: 0, rang: [],
       answered_ms: now, ended_ms: null,
+      rt_call: null, rt_state: null, rt_sec: 0, cost_usd: 0, acted: [], judged: parent.judged,
     };
-    await this.table.insert(row);
+    await this.table.insert(rowForInsert(row));
     return { call: row.id };
   }
 
   // ------------------------------------------------------------------ talking
 
-  /** A spoken reply kept for the voice route; the call stays open another 5 minutes. Its turn number. */
-  async said(userId: string, id: string, spoken: string): Promise<number> {
+  /** A spoken reply kept for the voice route; the call stays open another 5 minutes. Its turn number. `rt`: said on the live link. */
+  async said(userId: string, id: string, spoken: string, o: { rt?: boolean } = {}): Promise<number> {
     const row = await this.get(userId, id);
     if (!row) return 0;
     const now = this.now();
     const n = (row.turns.reduce((m, t) => Math.max(m, Number(t.n) || 0), 0)) + 1;
-    const turns = [...row.turns, { n, said: spoken, at: now }].slice(-TURNS_KEPT);
+    const turns = [...row.turns, { n, said: spoken, at: now, ...(o.rt ? { rt: true as const } : {}) }].slice(-TURNS_KEPT);
     await this.table.update({ id, user_id: userId, state: "answered" }, { turns, next_ms: now + TALK_IDLE_MS });
     return n;
   }
@@ -630,8 +778,17 @@ export class PlanCalls {
     const now = this.now();
     for (const [k, v] of this.voices) if (now - v.at > VOICE_KEEP_MS) this.voices.delete(k);
     while (this.voices.size >= VOICE_MAX) this.voices.delete(this.voices.keys().next().value as string);
-    const speak = this.speak;
-    this.voices.set(`${id}:${n}`, { at: now, audio: speak(user, text).catch((): CallAudio => ({ status: 500, code: "tts_failed", message: "Couldn't read that aloud." })) });
+    this.voices.set(`${id}:${n}`, { at: now, audio: this.readAloud(user, id, text) });
+  }
+
+  /** One read aloud, with what it cost put on the call's own row. Never throws: a read that fails is a 500 for that one turn. */
+  private readAloud(user: AuthedUser, id: string, text: string): Promise<CallAudio> {
+    const speak = this.speak!;
+    return speak(user, text).then((out) => {
+      // A record for the owner, not a cap: the read already happened, and nothing waits on the write.
+      if (!("status" in out) && out.usd) void this.bumpCost(user.id, id, out.usd);
+      return out;
+    }).catch((): CallAudio => ({ status: 500, code: "tts_failed", message: "Couldn't read that aloud." }));
   }
 
   /** Turn `n` read aloud for this person's call: made ahead, or now. Null: no such call of theirs, or no such turn. */
@@ -646,7 +803,53 @@ export class PlanCalls {
       this.voices.delete(key);
     }
     if (!this.speak) return { status: 500, code: "tts_failed", message: "Couldn't read that aloud." };
-    return this.speak(user, text).catch((): CallAudio => ({ status: 500, code: "tts_failed", message: "Couldn't read that aloud." }));
+    return this.readAloud(user, id, text);
+  }
+
+  // ------------------------------------------------------------------ the live part's marks (planCallLive.ts writes through these)
+
+  /**
+   * What this call has cost so far, in US dollars. A RECORD FOR THE OWNER, NEVER A CAP: nothing here refuses, shortens or stops a
+   * call, nothing is charged to the person's day budget, spend gate or plan quota, and no usage row is written. `sum` is the
+   * manager's own running total, which is the source: a write that fails is picked up by the next one.
+   */
+  async addCost(userId: string, id: string, sum: number): Promise<void> {
+    await this.table.update({ id, user_id: userId }, { cost_usd: Math.max(0, Number(sum) || 0) }).catch(() => 0);
+  }
+
+  /**
+   * One more piece of cost on this call, in US dollars: the row is read again, `usd` is added, and the sum written. For the parts
+   * that have no running total of their own — a turn's answer and a turn's voice. Same record, same promise: never a cap.
+   *
+   * One at a time per call, so a turn and its voice landing together cannot lose each other's dollars.
+   */
+  async bumpCost(userId: string, id: string, usd: number): Promise<void> {
+    const add = Math.max(0, Number(usd) || 0);
+    if (!add) return;
+    const after = (this.bumps.get(id) ?? Promise.resolve()).then(async () => {
+      const row = await this.get(userId, id).catch(() => null);
+      if (row) await this.addCost(userId, id, row.cost_usd + add);
+    }).catch(() => undefined);
+    this.bumps.set(id, after);
+    await after;
+    if (this.bumps.get(id) === after) this.bumps.delete(id);
+  }
+
+  /** The live part's own marks: its OpenAI id, where it is, and how many live seconds it has used. */
+  async markRt(userId: string, id: string, p: Partial<Pick<CallRow, "rt_call" | "rt_state" | "rt_sec">>): Promise<void> {
+    await this.table.update({ id, user_id: userId }, p).catch(() => 0);
+  }
+
+  /** A call-local action the bot did out loud ("paid", "done", "later", "cant"): the screen ticks its button from it. */
+  async noteActed(userId: string, id: string, name: string): Promise<void> {
+    const row = await this.get(userId, id).catch(() => null);
+    if (!row || row.acted.includes(name)) return;
+    await this.table.update({ id, user_id: userId }, { acted: [...row.acted, name].slice(-8) }).catch(() => 0);
+  }
+
+  /** Every row still marked starting or live, across everyone: the boot sweep's own read. */
+  async liveRows(limit = 200): Promise<CallRow[]> {
+    return this.table.liveRows(limit).catch(() => []);
   }
 
   // ------------------------------------------------------------------ Activity
@@ -656,6 +859,27 @@ export class PlanCalls {
     const rows = await this.table.select({ user_id: userId, state: "missed", origin: "server" }, { order: "ring_at_ms", desc: true, limit: 50 });
     return rows.map(callRowOf).filter((r) => r.ring_at_ms >= since).map((r) => ({ id: r.id, name: r.name, line: r.line, at: r.ring_at_ms }));
   }
+}
+
+/**
+ * Whether realtime calls are switched on for this person at all: the switch, a key, the Calls switch and the allow-list. NO MONEY IS
+ * ASKED — not Plan Ease's day budget, not the spend gate, not the plan quota. The route asks this first, so it can tell a person
+ * whose live time is used up (`rt_max_len`) from one the switch is simply off for (`rt_off`).
+ */
+export function realtimeFor(userId: string): boolean {
+  const cfg = getConfig();
+  if (!cfg.PLAN_CALL_REALTIME || !cfg.OPENAI_API_KEY || !callsOn()) return false;
+  return inAllowList(cfg.PLAN_CALL_RT_ALLOW, userId);
+}
+
+/**
+ * Whether this call may have a live part right now: realtime is on for the person, the call has not fallen back (it never flaps), and
+ * it has live time left (the hard length against a stuck session, never a money cap). This is the screen's own `rt`.
+ */
+export function realtimeOn(userId: string, row: Pick<CallRow, "rt_sec" | "rt_state">): boolean {
+  if (!realtimeFor(userId)) return false;
+  if (row.rt_state === "fell_back") return false;
+  return maxSecOf(row.rt_sec, getConfig().PLAN_CALL_RT_MAX_SEC) > GOODBYE_LEAD_SEC;
 }
 
 let shared: PlanCalls | null = null;

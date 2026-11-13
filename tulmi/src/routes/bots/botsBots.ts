@@ -66,6 +66,7 @@ import { registerWidgetRoutes } from "./widgets.js";
 import { registerPlanInRoutes } from "./planIn.js";
 import { registerPlanPeopleRoutes } from "./botsPlanPeople.js";
 import { registerPlanCallRoutes } from "./planCalls.js";
+import { registerPlanCallJudge } from "./planCallJudge.js";
 import { registerPlanFollowRoutes } from "./planFollows.js";
 import { registerFollowChannelRoutes } from "./followChannels.js";
 import { registerPlanMakeRoutes } from "./planMake.js";
@@ -340,6 +341,8 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   // Follow-through (botsBots/planFollow.ts): must-not-miss items and items with people on them, followed until someone says done. Then
   // its real phone call (botsBots/followPhone.ts, off by default): the person's own number, and Plivo's callbacks.
   registerPlanFollowRoutes(app, deps, { spaces: spacesArea, ease: parts.ease });
+  // The call judge (botsBots/planCallJudge.ts, PLAN_CALL_JUDGE): an AI picks which things on the Plan get a call, and when. No route.
+  registerPlanCallJudge(app, { ease: parts.ease });
   registerFollowChannelRoutes(app, deps);
   // "Plan something" (botsBots/planMakeService.ts): the card, Check, Done and Undo; after follow-through, whose setItem Done uses.
   registerPlanMakeRoutes(app, deps, { ease: parts.ease });

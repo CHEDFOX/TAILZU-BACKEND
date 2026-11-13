@@ -17,6 +17,10 @@
  * THE SKILLS ARE THE GATE. The model is offered exactly these definitions, and run() refuses a call to any other name: a model that makes up a tool
  * (because a rule, a file or a page told it to) gets "there is no such tool" and nothing runs. The owner's rules cannot add one.
  *
+ * `allow` NARROWS IT FURTHER. A caller may pass a name filter (a voice call does: botsBots/planCallLiveWords.ts VOICE_TOOLS), and a name
+ * it refuses gets neither a definition nor a handler — so run()'s own gate refuses it even if the model names it anyway. That is how a
+ * call can offer "add an event" without ever being able to remove one.
+ *
  * CONNECTED APPS. A tool that only reads runs. A change asks the owner: connectors/tasks.ts turns it into a card with the exact words and nothing is called
  * until they say yes; after a yes to that kind of change (or "Allow" on an app they added) it runs by itself, as it does for the assistant. What an app
  * returns is data, fenced; what is waiting for the owner comes back to the bot as "waiting", so it never says a thing is done that is not. An app the owner
@@ -63,6 +67,8 @@ export interface ToolEnv {
   gateway?: GatewayDeps;
   signal?: AbortSignal;
   record: ToolRecord;
+  /** Which tool names may be built at all. A name it refuses gets no definition AND no handler, so run() refuses it too. */
+  allow?: (name: string) => boolean;
 }
 
 export interface ToolResult { content: string; ok: boolean }
@@ -134,9 +140,16 @@ const timed = <T>(p: Promise<T>, ms: number): Promise<T | null> => {
 
 export async function buildTools(env: ToolEnv): Promise<ToolKit> {
   const { bot, userId, ports } = env;
-  const defs: ToolDef[] = [];
+  const allow = env.allow ?? (() => true);
+  const all: ToolDef[] = [];
+  // The one place a name is kept or dropped: a dropped name reaches neither the model nor a handler.
+  const defs = {
+    push(d: ToolDef) { if (allow(d.name)) all.push(d); },
+    get list(): ToolDef[] { return all; },
+  };
   type Handler = (args: Record<string, unknown>, call: ToolCall) => Promise<ToolResult>;
-  const handlers = new Map<string, Handler>();
+  const kept = new Map<string, Handler>();
+  const handlers = { set(name: string, h: Handler) { if (allow(name)) kept.set(name, h); }, get: (name: string) => kept.get(name) };
   const notConnected: string[] = [];
   const pending: Array<() => Promise<void>> = [];
 
@@ -274,7 +287,7 @@ export async function buildTools(env: ToolEnv): Promise<ToolKit> {
   }
 
   return {
-    defs,
+    defs: all,
     notConnected,
     async run(call) {
       env.record.tools.push(call.name);

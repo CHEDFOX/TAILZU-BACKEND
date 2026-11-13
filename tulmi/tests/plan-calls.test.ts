@@ -27,7 +27,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 });
 
 const W = await import("../src/botsBots/planCallWords.js");
-const { PlanCalls, memoryCallTable, setPlanCalls, callTokens, RING_MS, RING2_MS, GRACE_MS, TALK_IDLE_MS, MAX_TURNS, CALLS } = await import("../src/botsBots/planCall.js");
+const { PlanCalls, memoryCallTable, setPlanCalls, callTokens, BACK_MAX, RING_MS, RING2_MS, GRACE_MS, TALK_IDLE_MS, MAX_TURNS, CALLS } = await import("../src/botsBots/planCall.js");
 const { MemoryPushStore, tokenHash } = await import("../src/push/store.js");
 const { PushEngine, setPushGate, setCallHook } = await import("../src/push/engine.js");
 const { PUSH_DEFAULTS } = await import("../src/push/defaults.js");
@@ -142,6 +142,12 @@ describe("what a call says", () => {
     expect(W.openingLine({ ...SEED, title: "Rahul's birthday party", place: "Koramangala" }, { ...live, talk: false })).toBe("It's time to leave for Rahul's birthday party at Koramangala.");
     expect(W.openingLine({ ...SEED, title: "Gym", place: "" }, { ...live, talk: false })).toBe("It's time to leave for the gym.");
     expect(W.openingLine({ ...SEED, title: "Mr Sharma", place: "" }, { ...live, talk: false })).toBe("It's time to leave for Mr Sharma.");
+  });
+  it("greets only when it is asked to: the mild 'Hello.' belongs to the live call, and a turn call opens on the moment itself", () => {
+    expect(W.openingLine(SEED, { ...live, talk: false, hello: true })).toBe("Hello. It's time to leave for the parent-teacher meeting at Green Valley School.");
+    expect(W.openingLine(SEED, { ...live, talk: false, hello: false })).toBe("It's time to leave for the parent-teacher meeting at Green Valley School.");
+    expect(W.openingLine(SEED, { ...live, talk: false })).toBe(W.openingLine(SEED, { ...live, talk: false, hello: false }));
+    expect(W.openingLine(BILL, { back: true, talk: false, now: NOW, tz: IST, hello: true })).toBe("Hello. I called because electricity bill is due today.");
   });
   it("says an appointment and no place for anything that looks like health, and never an amount or a $", () => {
     expect(W.openingLine({ ...SEED, title: "Dr. Mehta", place: "Apollo Clinic" }, { ...live, talk: false })).toBe("It's time to leave for your appointment.");
@@ -792,6 +798,22 @@ describe("the call's doors", () => {
     expect([off.statusCode, off.json().code]).toEqual([404, "calls_off"]);
   });
 
+  it("Call back has one limit of its own: BACK_MAX a day, so the button cannot be pressed into an endless string of calls", async () => {
+    // The person's own calls earlier today, every one of them already over: the ring limits ignore them, this one does not.
+    for (let i = 0; i < BACK_MAX; i += 1) {
+      await table.insert(callRow({ origin: "user", state: "ended", ring_at_ms: NOW - (i + 1) * MIN, ended_ms: NOW - (i + 1) * MIN }));
+    }
+    const missed = await put({ state: "missed", next_ms: null });
+    const over = await post(U, `${CALLS}/${missed.id}/back`);
+    expect([over.statusCode, over.json().code]).toEqual([429, "back_day_max"]);
+    // Yesterday's own calls count for nothing: the day is the person's own.
+    for (const r of await table.select({ user_id: U, origin: "user" })) {
+      await table.update({ id: r.id }, { ring_at_ms: Number(r.ring_at_ms) - 24 * HOUR });
+    }
+    const again = await post(U, `${CALLS}/${missed.id}/back`);
+    expect(again.statusCode).toBe(201);
+  });
+
   it("say: one turn by voice to the Plan Ease chat, with the call's facts, said aloud and kept for the voice", async () => {
     const c = await put({ state: "answered", answered_ms: NOW, next_ms: NOW + TALK_IDLE_MS, opening: "It's time to leave." });
     clock = NOW + 20_000;
@@ -1028,6 +1050,71 @@ describe("the call screen", () => {
     const none = await callScreen("phone", null);
     expect(lintTree(none.s.root!)).toEqual([]);
     expect(none.texts).toContain("Couldn't load this call.");
+  });
+});
+
+describe("the call screen in its live mode", () => {
+  const RT = [...PHONE, "VoiceRealtime"];
+  const LIVE: CallView = { ...V, state: "answered", late: false, answeredAt: NOW, rt: true, acted: [] };
+  const ITEM_SEED: CallSeed = {
+    source: "item", item: "pe:ev-visa:2026-11-12", kind: "event", eventId: "ev-visa", day: "2026-11-12", tz: IST,
+    title: "Visa appointment", place: "VFS Global", at: ist(12, 11, 30), allDay: false, payee: "", pay: false, must: true,
+    lead: 120, why: "A slot they cannot get again.",
+  };
+
+  it("holds one live conversation: voiceCall, the warm offer, and End call alone while it runs", async () => {
+    const { s } = await callScreen("phone", LIVE, { can: RT });
+    expect(lintTree(s.root!)).toEqual([]);
+    const acts = actionsIn(s);
+    const live = acts.find((a) => a.kind === "voiceCall")!;
+    expect(live).toMatchObject({
+      path: `${B}/live`, viewPath: B, statePath: "rt", phasePath: "phase", saidPath: "said", heardPath: "heard",
+      onFallback: "rtFallback",
+    });
+    expect(live.actedState).toEqual({ paid: "paidDone" });
+    expect(acts.some((a) => a.kind === "voiceCallSet" && a.op === "warm")).toBe(true);
+    expect(acts.some((a) => a.kind === "voiceCallSet" && a.op === "end")).toBe(true);
+    expect(acts.find((a) => a.kind === "callEndpoint" && a.path === `${B}/answer`)).toMatchObject({ body: { talk: true, rt: true } });
+    expect(s.state).toMatchObject({ mode: "rt", rt: { spoke: false } });
+    // The turns are still all there: the fallback is made of them.
+    expect(Object.keys(s.actions ?? {})).toEqual(expect.arrayContaining(["say0", "listen", "reply", "spoke", "rtGo", "rtCall", "rtResume", "rtFallback"]));
+  });
+
+  it("without the capability, the screen is today's, node for node", async () => {
+    const withRt = await callScreen("phone", LIVE, { can: PHONE });
+    const asToday = await callScreen("phone", { ...LIVE, rt: false }, { can: PHONE });
+    expect(withRt.s.root).toEqual(asToday.s.root);
+    expect(withRt.s.actions).toEqual(asToday.s.actions);
+    expect(withRt.s.state).toEqual(asToday.s.state);
+    expect(JSON.stringify(withRt.s)).not.toContain("voiceCall");
+  });
+
+  it("and without the AI permission, or when the server says no, there is no live call either", async () => {
+    for (const view of [{ ...LIVE, ai: false }, { ...LIVE, rt: false }]) {
+      const r = await callScreen("phone", view, { can: RT });
+      expect(lintTree(r.s.root!)).toEqual([]);
+      expect(JSON.stringify(r.s)).not.toContain("voiceCall");
+      expect(r.s.state).not.toHaveProperty("mode");
+    }
+  });
+
+  it("a call the judge asked for about an event: Open map and Move, and nothing to tick", async () => {
+    const view: CallView = { ...LIVE, source: "item", card: W.cardOf(ITEM_SEED, IST) };
+    const r = await callScreen("phone", view, { can: RT });
+    expect(lintTree(r.s.root!)).toEqual([]);
+    expect(r.texts).toEqual(expect.arrayContaining(["Visa appointment", "Open map", "Move", "End call"]));
+    // Nothing to tick on an event: moving it is Move. ("Done" is the ended call's own footer button.)
+    expect(r.texts).not.toContain("Later");
+    expect(actionsIn(r.s).find((a) => a.kind === "voiceCall")!.actedState).toEqual({});
+  });
+
+  it("a call the judge asked for about a to-do: Done and Later, ticked from what the call did out loud", async () => {
+    const todo: CallSeed = { ...ITEM_SEED, kind: "todo", item: "pt:t9", taskId: "t9", eventId: undefined, place: "" };
+    const r = await callScreen("phone", { ...LIVE, source: "item", card: W.cardOf(todo, IST) }, { can: RT });
+    expect(lintTree(r.s.root!)).toEqual([]);
+    expect(r.texts).toEqual(expect.arrayContaining(["Done", "Later"]));
+    expect(actionsIn(r.s).find((a) => a.kind === "voiceCall")!.actedState).toEqual({ done: "itemDone", later: "itemDone" });
+    expect(r.s.state).toMatchObject({ itemDone: false });
   });
 });
 

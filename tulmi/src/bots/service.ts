@@ -4,6 +4,8 @@
  *   list / get / create / update / remove   a person's bots, and the four Tailzu ships (builtin.ts); a built-in is read-only
  *   draft / approve / test                  make a bot from a sentence (builder.ts), save it only when the person approves, talk to a draft before saving
  *   ask                                     the owner talks to a bot (run.ts), `/name` runs a saved command (commands.ts)
+ *   voiceKit                                a built-in bot's own voice, memory, history and tools, for a live voice call to run on
+ *                                           (botsBots/planCallLive.ts). It asks no day budget: a call is never stopped for money
  *   askWithKey                              the endpoint for the person's own apps: a key per bot, hashed, revocable, rate-limited, budgeted
  *   createKey / listKeys / revokeKey        keys: shown once, then only a masked prefix
  *   commands / memory / connectors          saved commands, what a bot remembers (and forgetting it), the apps linked to a bot
@@ -17,11 +19,16 @@
  *
  * THE MONEY. A request is held to the smaller of the bot's per-request budget, what is left of its day (per owner and bot), and for a key what is left of
  * the key's day. The day's meters are in memory like every other limit of the server (a restart forgets a day at most).
+ *
+ * ONE EXCEPTION: A CALL. `AskInput.call` says this turn is part of a call X0 made (botsBots/planCall.ts). A call is never refused,
+ * shortened or stopped for money (the owner's answer), so it asks no day budget and adds nothing to one; what it cost is recorded on
+ * the call's own row instead. The bot's per-request budget still holds, because that ends one runaway answer, never the call.
  */
 import { randomUUID } from "node:crypto";
 import { Limiter, SpendMeter } from "../artifacts/limits.js";
 import type { GatewayDeps } from "../code/brain/gateway.js";
 import type { CallFn } from "../code/work/model.js";
+import { compose } from "../principles/index.js";
 import { getConfig } from "../config.js";
 import type { Guard } from "../guard/index.js";
 import type { FrontCtx } from "../front/types.js";
@@ -30,11 +37,14 @@ import { draftBot, type Draft } from "./builder.js";
 import { checkCommand, expand } from "./commands.js";
 import { pickBot } from "./door.js";
 import { bearerKey, hashKey, maskKey, newKey, prefixOf } from "./keys.js";
+import { memoryFor, recentTurnsOf } from "./memory.js";
+import { Meter } from "./meter.js";
 import { runBot } from "./run.js";
 import type { BotPorts } from "./ports.js";
-import type { Attached, Turn } from "./prompt.js";
+import { botUserMessage, MEMORY_SHOWN, type Attached, type Turn } from "./prompt.js";
+import { buildTools, newRecord, type ToolKit } from "./tools.js";
 import { botStore, SlugTaken, type BotStore, type Command, type Fact, type KeyRow } from "./store.js";
-import { forgetSharedTexts, SHARED_ID } from "./shared.js";
+import { forgetSharedTexts, sharedFacts, usableForBots, SHARED_ID } from "./shared.js";
 import { BotError, LIMITS, type BotAnswer, type BotDef, type BotEvent, type BotView, type StoredBot } from "./types.js";
 import { parseBotInput, slugOf, type CleanInput, type Limits } from "./validate.js";
 import { isLeaving, LEAVING_MESSAGE } from "../you/deletion.js";
@@ -94,6 +104,12 @@ export interface AskInput {
   /** Not a turn in the chat (a routine running on its schedule): answered from its own words, without the thread's last turns,
    *  so a chat in another language or about something else does not lead it. What it answers is still kept. */
   fresh?: boolean;
+  /**
+   * A turn of a call X0 made (botsBots/planCall.ts) where the live call is switched on for the person: no day budget is asked and
+   * nothing is added to one, so such a call can never be cut off mid-sentence for money. Its cost goes on the call's row
+   * (plan_calls.cost_usd), for the owner to read. False or absent — every build today — and the turn is a chat turn like any other.
+   */
+  call?: boolean;
 }
 
 export interface KeyAnswer {
@@ -108,6 +124,20 @@ export type Target =
   | { kind: "bot"; bot: BotDef; by: "name" | "rules" | "model" | "chosen"; message: string; confidence: number; reasons: string[]; paise: number };
 
 const notFound = (): BotError => new BotError("not_found", "There is no such bot.", 404);
+
+/**
+ * What one turn OF A CALL is metered with (routes/bots/planCalls.ts `say`). A call is never refused, shortened or stopped for money
+ * (the owner's answer), so the bot's own per-answer ₹ figure does not hold here: what the engine needs is a bound a spoken turn never
+ * reaches, there against a runaway tool loop and nothing else. What the turn really cost is recorded on the call's row.
+ *
+ * Why this figure cannot bind: one turn is at most MAX_TURNS (5) model calls of at most 4,000 tokens of scope, which is about ₹30 at
+ * the rates Plan Ease's tiers are priced at, or about ₹90 on a dearer fallback model — ten to thirty times under ₹1,000. The real
+ * bounds on a turn are those: the turns in a row, the scope, and the call's own hard length.
+ */
+const CALL_RUN_PAISE = 100_000;
+
+/** The model door a live voice call's tools get: none of them asks a model, so asking is a mistake, not a spend. */
+const NO_MODEL: CallFn = async () => { throw new BotError("not_configured", "A call's tools do not ask a model.", 503); };
 
 const defOf = (b: StoredBot): BotDef => ({
   id: b.id, ownerId: b.ownerId, slug: b.slug, name: b.name, colour: b.colour, purpose: b.purpose, principles: [...b.principles],
@@ -374,13 +404,61 @@ export class Bots {
     let message = this.messageOf(input.message);
     const ran = expand(await this.store.listCommands(userId, def.id), message);
     if (ran) message = ran.message;
-    const left = this.dailyLeft(userId, def);
+    // A call asks no day budget and adds nothing to one: it is never stopped for money. Everything else is held to its day as before.
+    const left = input.call ? CALL_RUN_PAISE : this.dailyLeft(userId, def);
     if (left <= 0) throw new BotError("bot_daily_limit", `${def.name} has used its budget for today. It starts again tomorrow, or you can raise it in the bot's settings.`, 429);
     const answer = await runBot(this.runDeps(), {
-      bot: def, userId, message, surface: ran ? "command" : "chat", capPaise: Math.min(def.budgets.perRequestPaise, left), ...this.rest(input),
+      // A call's turn is metered against a runaway loop, not against a budget: no ₹ cap of the bot's holds a person mid-sentence.
+      bot: def, userId, message, surface: ran ? "command" : "chat",
+      capPaise: input.call ? CALL_RUN_PAISE : Math.min(def.budgets.perRequestPaise, left), ...this.rest(input),
     });
-    this.daily.add(`${userId}|${def.id}`, answer.paise);
+    if (!input.call) this.daily.add(`${userId}|${def.id}`, answer.paise);
     return answer;
+  }
+
+  /**
+   * A BUILT-IN BOT'S OWN VOICE AND TOOLS, FOR A LIVE VOICE CALL (botsBots/planCallLive.ts). The same pieces run.ts puts in front of
+   * the model for a chat turn: X0's stable system text, what the bot remembers of the person, its summary, the last turns, and its
+   * tool kit — here held to the names `allow` keeps, so a call can add an event but never remove one.
+   *
+   * IT ASKS NO DAY BUDGET. A call is never refused or stopped for money; what it costs is recorded on the call's row. `kit.settled()`
+   * and `runId` are the caller's to finish with when the call ends, as run.ts does at the end of a turn.
+   */
+  async voiceKit(userId: string, slug: string, o: { allow?: (name: string) => boolean; history?: Turn[]; tzOffsetMinutes?: number } = {}):
+    Promise<{ system: string; context: string; kit: ToolKit; runId: string; name: string } | null> {
+    const found = await this.resolve(userId, slug);
+    if (!found || found.def.ownerId !== null) return null;
+    await this.notStopped(userId);
+    const bot = found.def;
+    const runId = `bot:${bot.id}:${randomUUID()}`;
+    const [mem, shared] = await Promise.all([
+      memoryFor(this.store, userId, bot.id).catch(() => ({ facts: [], thread: null })),
+      sharedFacts(userId, "", { store: this.store }).catch(() => [] as string[]),
+    ]);
+    const own = (await usableForBots(userId, mem.facts, { store: this.store }).catch(() => [])).map((fa) => fa.text);
+    const seen = new Set(own.map((fa) => fa.toLowerCase()));
+    const extra = shared.filter((fa) => !seen.has(fa.toLowerCase()));
+    const facts = [...own.slice(-Math.max(0, MEMORY_SHOWN - extra.length)), ...extra];
+    const history = o.history?.length ? o.history : recentTurnsOf(mem.thread);
+    const meter = new Meter(bot.budgets.perRequestPaise);
+    const record = newRecord();
+    const kit = await buildTools({
+      // No tool a call may use asks a model (VOICE_TOOLS is the calendar, the to-dos, weather and currency), so there is no model
+      // door here: one that tried would be told so, instead of quietly spending.
+      bot, userId, runId, ports: this.ports, meter, call: this.call ?? NO_MODEL,
+      ...(this.gateway ? { gateway: this.gateway } : {}), record, ...(o.allow ? { allow: o.allow } : {}),
+    });
+    // The user message run.ts builds, without the person's own words: it is the call's context, not a question.
+    const whole = botUserMessage({
+      bot, ...(facts.length ? { facts } : {}), ...(mem.thread?.summary ? { summary: mem.thread.summary } : {}),
+      ...(history.length ? { history } : {}), ...(o.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: o.tzOffsetMinutes } : {}),
+      message: "",
+    });
+    return {
+      system: compose("bot_run").map((m) => ("content" in m && typeof m.content === "string" ? m.content : "")).filter(Boolean).join("\n\n"),
+      context: whole.split("Message:\n<<<")[0]!.trim(),
+      kit, runId, name: bot.name,
+    };
   }
 
   /**

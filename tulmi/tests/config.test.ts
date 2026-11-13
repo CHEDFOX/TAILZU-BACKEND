@@ -141,3 +141,45 @@ describe("the entitlement the server filters on", () => {
     expect(getConfig().REVENUECAT_ENTITLEMENT).toBe("TAILZU AIR,unlimited");
   });
 });
+
+describe("the realtime call's addresses, when the .env leaves them empty", () => {
+  // A SETTING LEFT BLANK IN A COPIED TEMPLATE IS NOT A SETTING.
+  //
+  // DEPLOY.md says `cp .env.example tulmi/.env`, and the template used to carry
+  // OPENAI_REALTIME_SIDEBAND_URL= with nothing after it. dotenv reads that as ""
+  // and zod's .default() only fills in what is missing, so the server booted
+  // with an empty address — and since the read-aloud voice goes through the very
+  // same address, every read-aloud bubble and every turn-call voice failed with
+  // "Invalid URL", on every phone, whether or not the call switch was on.
+  function baselineEnv() {
+    resetEnv();
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    process.env.GROQ_API_KEY = "test-groq-key";
+    process.env.DEV_SKIP_AUTH = "true";
+  }
+
+  it("falls back to the code's own addresses and price table", async () => {
+    baselineEnv();
+    process.env.OPENAI_REALTIME_SIDEBAND_URL = "";
+    process.env.OPENAI_REALTIME_CALLS_URL = "";
+    process.env.OPENAI_REALTIME_PRICES = "";
+    const getConfig = await loadFreshConfig();
+    const cfg = getConfig();
+    expect(cfg.OPENAI_REALTIME_SIDEBAND_URL).toBe("wss://api.openai.com/v1/realtime");
+    expect(cfg.OPENAI_REALTIME_CALLS_URL).toBe("https://api.openai.com/v1/realtime/calls");
+    // The address the read-aloud builds from it is a URL again.
+    expect(() => new URL(`${cfg.OPENAI_REALTIME_SIDEBAND_URL}?model=gpt-realtime-2.1-mini`)).not.toThrow();
+    const { pricesOf } = await import("../src/botsBots/planCallLiveWords.js");
+    expect(pricesOf(cfg.OPENAI_REALTIME_PRICES)["gpt-realtime-2.1-mini"]!.audio_out).toBe(20);
+  });
+
+  it("still takes a test seam, or a price table, when one is really set", async () => {
+    baselineEnv();
+    process.env.OPENAI_REALTIME_SIDEBAND_URL = "ws://127.0.0.1:9/seam";
+    process.env.OPENAI_REALTIME_PRICES = '{"gpt-realtime-2.1-mini":{"audio_out":1}}';
+    const getConfig = await loadFreshConfig();
+    expect(getConfig().OPENAI_REALTIME_SIDEBAND_URL).toBe("ws://127.0.0.1:9/seam");
+    const { pricesOf } = await import("../src/botsBots/planCallLiveWords.js");
+    expect(pricesOf(getConfig().OPENAI_REALTIME_PRICES)["gpt-realtime-2.1-mini"]!.audio_out).toBe(1);
+  });
+});

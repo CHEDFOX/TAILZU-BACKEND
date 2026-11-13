@@ -45,7 +45,7 @@ section 1 says.
 | Name | The name the person gives (the About you card on Home), or the sign-in provider's; shown to people in their Spaces | `PUT /v1/profile` (`tulmi/src/routes/account/profile.ts`), `profiles` (migrations 0003, 0007); `space_members.name` | Until deleted |
 | Gender | Female, male or other, to address the person correctly | `PUT /v1/profile { gender }` | Until deleted |
 | User ID | The account's ID (Supabase), also RevenueCat's app user ID | `tulmi/src/auth/supabase.ts`; `app/src/billing/purchases.ts` | Until deleted |
-| Voice | Audio of dictation and of speaking to bots, sent to be turned into text, then discarded (never stored) | `/v1/transcribe-clean`, `/v1/stream` (`tulmi/src/routes/writing/transcribe.ts`, `routes/writing/transcribe-stream.ts`); OpenAI / Groq | Not stored (processed ephemerally) |
+| Voice | Audio of dictation and of speaking to bots, sent to be turned into text, then discarded (never stored); and, on a call from Plan Ease, the live voice conversation streamed to OpenAI's realtime service (no audio stored by X0 Bot; its words are kept in the Plan Ease chat) | `/v1/transcribe-clean`, `/v1/stream` (`tulmi/src/routes/writing/transcribe.ts`, `routes/writing/transcribe-stream.ts`); `POST /v1/botsapp/bots/plan/calls/:id/live` (`tulmi/src/botsBots/planCallLive.ts`); OpenAI / Groq | Not stored (processed ephemerally) |
 | Dictated text and history | What was dictated and the cleaned text, its language and voice | `cleanup_history` (`tulmi/src/history/store.ts`, migrations 0004, 0010) | On by default (section 1.3); 90-day purge of deleted rows; until the account is deleted |
 | Messages | Words, photos and files people send each other in Spaces' chats and a space's feed. A message to one person there is seen by them, its sender and the space's admin (who made the space) | `tulmi/src/botsBots/threads.ts`, `spaceFeed.ts`, `thread_messages` (migrations 0051, 0068 to_id) | Until taken out, the space or the account is deleted (a sender's messages stay in others' chats) |
 | Shared things | Lists, plans, notes, links, files, answers shared to a space or a person; one thing shared from Plan Ease, Notes, Travel bot or Xode (its title and a line, whose it is and who shared it: its owner, or the space's admin), and the notes people add to it | `tulmi/src/botsBots/shared.ts`, `space_items`; `grants.ts`, `work.ts`, `space_grants` (`by_id`: 0069), `space_work_notes` (0068) | Until taken out or deleted, or its owner leaves the space |
@@ -86,7 +86,7 @@ Sentry on, PostHog off.
 | Contacts | Contacts | App Functionality | Email addresses you type to invite people to a space, and your spaces' members. The phone's contacts are never read |
 | User Content | Emails or Text Messages | App Functionality | Messages in Spaces' chats and feeds (a message to one person is also seen by the space's admin) |
 | User Content | Photos or Videos | App Functionality | Photos and videos you give to a bot, send in a chat, or make with the image and video bots |
-| User Content | Audio Data | App Functionality | Dictation and voice asks (turned into text, then discarded) |
+| User Content | Audio Data | App Functionality | Dictation and voice asks (turned into text, then discarded) and the live voice of a call from Plan Ease (not stored by X0 Bot; its words are kept in the Plan Ease chat) |
 | User Content | Other User Content | App Functionality, Product Personalization | Dictated text and history, bots' chats and memory, notes, calendar and to-dos, shared things, files, reports you make |
 | Identifiers | User ID | App Functionality | The account ID (and RevenueCat's app user ID) |
 | Purchases | Purchase History | App Functionality | Subscriptions through Apple (RevenueCat) |
@@ -104,8 +104,9 @@ Info, Browsing History, Search History, Identifiers' Device ID (no IDFA; with Me
 
 Notes for the questions App Store Connect asks along the way:
 
-* Audio: it is sent to OpenAI or Groq to be turned into text and not stored by X0 Bot. Apple counts data kept only long enough to
-  answer the request as not collected, but the providers may hold it briefly under their own terms, so it is declared.
+* Audio: it is sent to OpenAI or Groq to be turned into text, or, on a call from Plan Ease, streamed live to OpenAI's realtime voice
+  service, and not stored by X0 Bot. Apple counts data kept only long enough to answer the request as not collected, but the
+  providers may hold it briefly under their own terms, so it is declared.
 * Photos or Videos and Emails or Text Messages are only what the person chooses to send; nothing reads the photo library or the
   phone's messages.
 * Privacy policy URL: https://x0bot.com/privacy . Account deletion is in the app (You, Delete account) and on the web.
@@ -122,8 +123,17 @@ Notes for the questions App Store Connect asks along the way:
   AI services". Kept as personality.aiConsentAt / aiConsentVersion; raise AI_CONSENT_VERSION to ask everyone again.
   AI_CONSENT_GATE=false switches the enforcement off (emergency only).
 * **A call from Plan Ease** ("X0 is calling", docs/plan-ease.md section 8): what the person says on the call and the bot's replies go
-  to AI services only with that permission, through the Plan Ease chat (its own gate and budget) and the voice service that reads the
-  replies aloud. Without it, the opening line is spoken by the phone's own voice and nothing of the call leaves the phone.
+  to AI services only with that permission, through the Plan Ease chat and the voice service that reads the replies aloud. Without it,
+  the opening line is spoken by the phone's own voice and nothing of the call leaves the phone. On a store build that can hold a live
+  call, and with that permission, the person's voice streams live to OpenAI's realtime voice service, which hears them and answers in a
+  voice: X0 Bot stores no audio, OpenAI keeps it only in abuse-monitoring logs for up to 30 days and does not train on it, and the
+  words of the call are kept as messages in the person's Plan Ease chat. The permission taken back hangs up a live call at once.
+  A call is never held to any money limit; what it cost is recorded on its own row for the owner (plan_calls.cost_usd).
+* **Which things Plan Ease calls about** (docs/plan-call-judge.md): with that permission and the person's Calls setting on, when they add
+  or change something on their Plan, Plan Ease's AI reads that item (its title, time, place, who is on it, and for a bill its amount and
+  payee) with the rest of that day, and decides whether it is important enough to call about, and when. Only the decision and a one-line
+  reason are kept; they go when the permission is taken back, with the account, and 30 days after the item. Without the permission,
+  Plan Ease calls only when it is time to leave or a bill is due today.
 * **"Plan something"** (docs/plan-ease.md section 10) may send the words a person types in its box (300 characters at most), and for a
   change the card's own fields, to the AI providers already listed. This happens only with their AI permission, only when the rules
   could not read the words, and only on Plan Ease's own budget. No contact list and no picked person's name is sent; another person's
@@ -165,7 +175,7 @@ providers acting for X0 Bot are not "shared". "Optional" = the app works without
 | Messages | Other in-app messages | Yes (Spaces' chats and feeds) | No | No | Optional | App functionality |
 | Photos and videos | Photos | Yes | No | No | Optional | App functionality |
 | Photos and videos | Videos | Yes | No | No | Optional | App functionality |
-| Audio | Voice or sound recordings | Yes | No | Yes | Optional (needed for dictation) | App functionality |
+| Audio | Voice or sound recordings | Yes (dictation, and the live voice of a call from Plan Ease) | No | Yes | Optional (needed for dictation) | App functionality |
 | Files and docs | Files and docs | Yes (files given to a bot or sent in a chat) | No | No | Optional | App functionality |
 | Calendar | Calendar events | Yes (the app's own calendar, events the person adds; not the phone's) | No | No | Optional | App functionality |
 | Contacts | Contacts | Yes (emails typed to invite people, and spaces' members; not the phone's contacts) | No | No | Optional | App functionality |

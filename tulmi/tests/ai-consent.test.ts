@@ -10,6 +10,8 @@
  *     answer, kept; only a yes grants), and the gate sees it at once; a general personality write cannot set any of it
  *   - Home asks first (before the arrival and About cards), with what is sent, to whom, Agree and Not now, and only until it is answered
  *     for this wording; You › Privacy has the switch
+ *   - the doors that need the permission answer 403 without it, the realtime call's own door among them (botsBots/planCallSeam.ts also
+ *     runs every listener when the switch goes off, so a live call is hung up at once)
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
@@ -100,6 +102,26 @@ describe("the gate", () => {
     } finally {
       globalThis.fetch = before;
     }
+  });
+
+  it("runs every consent-off listener, each on its own, so a live call is hung up the moment the switch goes off", async () => {
+    const seam = await import("../src/botsBots/planCallSeam.js");
+    const ran: string[] = [];
+    const offs = [
+      seam.onAiConsentOff((u) => { ran.push(`live:${u}`); }),
+      seam.onAiConsentOff(() => { throw new Error("one listener's trouble"); }),
+      seam.onAiConsentOff(async (u) => { ran.push(`judge:${u}`); }),
+    ];
+    consent.installAiConsent();
+    const a = app();
+    const r = await a.inject({ method: "PUT", url: consent.AI_CONSENT_PATH, headers: as("omar"), payload: { agree: false } });
+    expect(r.statusCode).toBe(200);
+    expect(ran.sort()).toEqual([`judge:${PEOPLE.omar}`, `live:${PEOPLE.omar}`]);
+    // A yes runs none of them.
+    ran.length = 0;
+    await a.inject({ method: "PUT", url: consent.AI_CONSENT_PATH, headers: as("omar"), payload: { agree: true } });
+    expect(ran).toEqual([]);
+    for (const off of offs) off();
   });
 
   it("knows a request's person from its sign-in, and answers a refused call 403 with words to act on", async () => {
