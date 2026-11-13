@@ -11,6 +11,7 @@
 import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Answer, Brain, Question } from "../src/meet/brain.js";
+import type { MeetPeople } from "../src/meet/people.js";
 import type { BotInput, RecallClient } from "../src/meet/recall.js";
 import type { Meeting } from "../src/meet/store.js";
 import type { ClipInput, StageHub } from "../src/meet/types.js";
@@ -37,7 +38,11 @@ const INTRO = 'Hi, I\'m X0 Bot, taking notes for Aanya. Say "X0 Bot" or message 
 
 beforeEach(() => { resetNotesForTests(); });
 
-function rig(o: { connected?: boolean; recall?: boolean; ai?: boolean; flushMs?: number; notesEveryMs?: number; owner?: string } = {}) {
+function rig(o: {
+  connected?: boolean; recall?: boolean; ai?: boolean; flushMs?: number; notesEveryMs?: number; owner?: string;
+  /** Each person's first name, and whether each said yes to AI (in a space, the admin and the member are two people). */
+  names?: Record<string, string>; aiFor?: (userId: string) => boolean; people?: MeetPeople;
+} = {}) {
   const clock = { t: T0 };
   const store = new MemoryMeetStore();
   const calls = { create: [] as BotInput[], deleted: [] as string[], left: [] as string[], chat: [] as Array<{ bot: string; message: string }> };
@@ -87,19 +92,20 @@ function rig(o: { connected?: boolean; recall?: boolean; ai?: boolean; flushMs?:
     store, recall: o.recall === false ? null : recall, brain, stage,
     tts: async (text) => { spoken.push(text); return { audio: Buffer.from("mp3 bytes"), contentType: "audio/mpeg" }; },
     notify: async (userId, msg) => { pushes.push({ userId, ...msg }); },
-    ownerName: async () => o.owner ?? "Aanya",
+    ownerName: async (userId) => o.names?.[userId] ?? o.owner ?? "Aanya",
     origin: "https://api.test/",
     now: () => clock.t,
-    aiAllowed: async () => o.ai ?? true,
+    aiAllowed: async (userId) => (o.aiFor ? o.aiFor(userId) : o.ai ?? true),
     organise: async (userId, noteId) => {
       organised.push(noteId);
       return updateNote({ id: userId }, noteId, (n) => ({ ...n, status: "ready", organised: true, title: "Budget review", summary: "They kept the budget." }));
     },
     flushMs: o.flushMs ?? 60_000,
     notesEveryMs: o.notesEveryMs ?? 3_600_000,
+    ...(o.people ? { people: o.people } : {}),
   };
   const svc = new MeetService(deps);
-  return { svc, again: () => new MeetService(deps), store, calls, rc, st, asked, noted, br, spoken, pushes, organised, clock };
+  return { svc, again: () => new MeetService(deps), deps, store, calls, rc, st, asked, noted, br, spoken, pushes, organised, clock };
 }
 type Rig = ReturnType<typeof rig>;
 
@@ -107,7 +113,7 @@ type Rig = ReturnType<typeof rig>;
 const row = (o: Partial<Meeting> = {}): Meeting => ({
   id: randomUUID(), userId: USER, botId: null, tokenHash: randomUUID(), url: "https://meet.google.com/xyz-abcd-xyz", platform: "google_meet",
   title: "Earlier", status: "done", voice: false, source: "link", eventKey: null, joinAt: null, startedAt: null, endedAt: null, noteId: null,
-  liveNotes: null, participants: [], error: null, createdAt: T0, updatedAt: T0, ...o,
+  liveNotes: null, participants: [], error: null, createdAt: T0, updatedAt: T0, spaceId: null, byId: null, ...o,
 });
 
 const tokenOf = (i: BotInput): string => /\/v1\/meet\/live\/([A-Za-z0-9_-]+)\/$/.exec(i.liveUrl)![1]!;
@@ -704,5 +710,154 @@ describe("the person's", () => {
     await broken.svc.schedule(USER, { key: "evt-9", title: "Later", startMs: T0 + 30 * MIN, url: MEET, platform: "google_meet" });
     broken.rc.deleteAnswer = new Error("Recall is down");
     await expect(broken.svc.forAccountDelete(USER)).resolves.toBeUndefined();
+  });
+});
+
+describe("in a space", () => {
+  const ADMIN = "u-admin";
+  const MEMBER = "u-member";
+  const STRANGER = "u-stranger";
+  const SPACE = "s-home";
+  const NAMES = { [ADMIN]: "Aanya", [MEMBER]: "Ravi", [STRANGER]: "Sam" };
+  /** Aanya is the admin of Home, where Ravi agreed to the line about her (people.ts decides that; here it is given). */
+  const home = (o: { off?: boolean } = {}): MeetPeople => ({
+    async membersOf(adminId) { return !o.off && adminId === ADMIN ? [{ userId: MEMBER, name: "Ravi Kumar", spaceId: SPACE }] : []; },
+    async adminsOf(memberId) { return !o.off && memberId === MEMBER ? [{ userId: ADMIN, name: "Aanya Sharma", spaceId: SPACE, memberName: "Ravi Kumar" }] : []; },
+  });
+
+  it("the admin sends the bot to a member's meeting: the member's in every way, and the member is told", async () => {
+    const r = rig({ people: home(), names: NAMES });
+    await r.svc.saveSettings(MEMBER, { botName: "Nova", voice: false });
+    const view = await r.svc.join(ADMIN, { url: MEET, title: "Ravi's standup", forUser: MEMBER });
+    expect(view).toMatchObject({ status: "joining", owner: { id: MEMBER, name: "Ravi Kumar" }, voice: false });
+    expect(view.by).toBeUndefined();
+    await r.svc.idle();
+    expect(await r.store.get(view.id)).toMatchObject({ userId: MEMBER, byId: ADMIN, spaceId: SPACE, voice: false, botId: "bot-1" });
+    expect(r.calls.create[0]).toMatchObject({ botName: "Nova", metadata: { meeting: view.id } });
+    expect(r.calls.create[0]!.intro).toContain("taking notes for Ravi.");
+    expect(r.calls.create[0]!.stageUrl).toBeUndefined();
+    // The member is told who sent it, and to what; their admin is not told of what they sent themself.
+    expect(r.pushes).toEqual([{ userId: MEMBER, kind: "space_meet_sent", key: `${view.id}:sent`, vars: { name: "Aanya", title: "Ravi's standup" }, data: { m: view.id } }]);
+
+    // The member sees it among their own, sent by their admin; the admin among their people's, with whose it is.
+    const mine = await r.svc.overview(MEMBER);
+    expect(mine.live).toEqual([expect.objectContaining({ id: view.id, by: "Aanya Sharma" })]);
+    expect(mine.live[0]!.owner).toBeUndefined();
+    expect(mine).toMatchObject({ people: [], sendFor: [] });
+    const theirs = await r.svc.overview(ADMIN);
+    expect(theirs.live).toEqual([]);
+    expect(theirs.sendFor).toEqual([{ id: MEMBER, name: "Ravi Kumar" }]);
+    expect(theirs.people).toEqual([expect.objectContaining({ id: view.id, owner: { id: MEMBER, name: "Ravi Kumar" } })]);
+    expect(theirs.people[0]!.by).toBeUndefined();
+  });
+
+  it("refuses someone who isn't theirs to look after, a member without the OK for AI, and a member past their minutes", async () => {
+    const r = rig({ people: home(), names: NAMES, aiFor: (u) => u !== STRANGER });
+    await expect(r.svc.join(ADMIN, { url: MEET, forUser: STRANGER })).rejects.toMatchObject({
+      status: 404, code: "not_your_person", message: "You can send it only for someone in a space you look after.",
+    });
+    await expect(r.svc.join(STRANGER, { url: MEET, forUser: MEMBER })).rejects.toMatchObject({ status: 404, code: "not_your_person" });
+    await expect(rig({ people: home({ off: true }) }).svc.join(ADMIN, { url: MEET, forUser: MEMBER })).rejects.toMatchObject({ code: "not_your_person" });
+    await expect(r.svc.join(ADMIN, { url: "https://example.com/x", forUser: MEMBER })).rejects.toMatchObject({ status: 400, code: "bad_link" });
+
+    const noAi = rig({ people: home(), names: NAMES, aiFor: (u) => u !== MEMBER });
+    await expect(noAi.svc.join(ADMIN, { url: MEET, forUser: MEMBER })).rejects.toMatchObject({
+      status: 403, code: "ai_consent_needed", message: "Ravi Kumar hasn't turned on AI services in X0 Bot yet.",
+    });
+
+    const full = rig({ people: home(), names: NAMES });
+    await full.store.add(row({ userId: MEMBER, startedAt: T0 - 5 * 60 * MIN, endedAt: T0 - 60 * MIN }));
+    await expect(full.svc.join(ADMIN, { url: MEET, forUser: MEMBER })).rejects.toMatchObject({ status: 429, code: "meet_cap" });
+    // The admin's own minutes are theirs: their meeting goes.
+    await expect(full.svc.join(ADMIN, { url: MEET })).resolves.toMatchObject({ status: "joining" });
+    expect(r.calls.create).toHaveLength(0);
+    expect(r.pushes).toEqual([]);
+
+    // Sending it for themself is their own join.
+    const self = rig({ people: home(), names: NAMES });
+    const own = await self.svc.join(ADMIN, { url: MEET, forUser: ADMIN });
+    expect(await self.store.get(own.id)).toMatchObject({ userId: ADMIN, byId: null });
+  });
+
+  it("a member taking the bot to a meeting tells their admin, with their name and its title only", async () => {
+    const r = rig({ people: home(), names: NAMES });
+    const a = await r.svc.join(MEMBER, { url: MEET, title: "Standup" });
+    const b = await r.svc.join(MEMBER, { url: "https://zoom.us/j/123456789" });
+    await r.svc.schedule(MEMBER, { key: "evt-1", title: "Planning", startMs: T0 + 30 * MIN, url: "https://meet.google.com/qrs-tuvw-xyz", platform: "google_meet" });
+    await r.svc.idle();
+    const sched = (await r.store.list(MEMBER)).find((m) => m.source === "calendar")!;
+    expect(r.pushes).toEqual(expect.arrayContaining([
+      { userId: ADMIN, kind: "space_meet", key: `${a.id}:admin:${ADMIN}`, vars: { name: "Ravi Kumar", title: "Standup" }, data: { m: a.id } },
+      { userId: ADMIN, kind: "space_meet", key: `${b.id}:admin:${ADMIN}`, vars: { name: "Ravi Kumar", title: "a meeting" }, data: { m: b.id } },
+      { userId: ADMIN, kind: "space_meet", key: `${sched.id}:admin:${ADMIN}`, vars: { name: "Ravi Kumar", title: "Planning" }, data: { m: sched.id } },
+    ]));
+    expect(r.pushes).toHaveLength(3);
+    // Nothing of the call ever reaches the admin by push.
+    const { token, botId } = { token: tokenOf(r.calls.create[0]!), botId: (await r.store.get(a.id))!.botId! };
+    await r.svc.onStatus(status("bot.in_call_recording", botId, a.id));
+    await r.svc.onLive(token, line(ASHA, "The budget is forty thousand"));
+    await r.svc.onStatus(status("bot.call_ended", botId, a.id));
+    await r.svc.idle();
+    const toAdmin = r.pushes.filter((p) => p.userId === ADMIN);
+    expect(toAdmin.map((p) => p.kind)).toEqual(["space_meet", "space_meet", "space_meet"]);
+    expect(JSON.stringify(toAdmin)).not.toContain("forty thousand");
+
+    // The admin's own meetings tell nobody.
+    const own = rig({ people: home(), names: NAMES });
+    await own.svc.join(ADMIN, { url: MEET });
+    await own.svc.idle();
+    expect(own.pushes).toEqual([]);
+  });
+
+  it("the admin reads a member's meeting, read only, and sees their latest meetings; nobody else does", async () => {
+    const r = rig({ people: home(), names: NAMES });
+    await r.store.add(row({ userId: MEMBER, status: "done", startedAt: T0 - 3 * 60 * MIN, endedAt: T0 - 2 * 60 * MIN, title: "Earlier" }));
+    await r.store.add(row({ userId: MEMBER, status: "cancelled", title: "Called off" }));
+    // Someone else's meeting (USER is in nobody's space here), and the member's own.
+    const { id } = await inCall(r);
+    const view = await r.svc.join(MEMBER, { url: "https://meet.google.com/qrs-tuvw-xyz", title: "Ravi's call" });
+    await r.svc.idle();
+    const mine = (await r.svc.meeting(MEMBER, view.id))!;
+    expect(mine.readOnly).toBeUndefined();
+    expect(mine.meeting.owner).toBeUndefined();
+
+    const seen = (await r.svc.meeting(ADMIN, view.id))!;
+    expect(seen).toMatchObject({ readOnly: true, meeting: { id: view.id, owner: { id: MEMBER, name: "Ravi Kumar" } }, asks: [] });
+    expect(await r.svc.meeting(STRANGER, view.id)).toBeNull();
+    expect(await r.svc.meeting(ADMIN, id)).toBeNull();
+
+    const o = await r.svc.overview(ADMIN);
+    expect(o.people.map((m) => m.title)).toEqual(["Ravi's call", "Earlier"]);
+    expect(o.people.every((m) => m.owner?.id === MEMBER)).toBe(true);
+
+    // Read only: the admin can't change it, send its bot away or call it off, when they didn't send it.
+    await expect(r.svc.setVoice(ADMIN, view.id, true)).rejects.toMatchObject({ status: 404 });
+    await expect(r.svc.leave(ADMIN, view.id)).rejects.toMatchObject({ status: 404 });
+    expect(await r.svc.cancel(ADMIN, view.id)).toBe(false);
+    expect(r.calls.left).toEqual([]);
+  });
+
+  it("the admin who sent the bot may send it away or call it off, while the member is still theirs", async () => {
+    const r = rig({ people: home(), names: NAMES });
+    const view = await r.svc.join(ADMIN, { url: MEET, title: "Ravi's standup", forUser: MEMBER });
+    await r.svc.idle();
+    const botId = (await r.store.get(view.id))!.botId!;
+    await r.svc.onStatus(status("bot.in_call_recording", botId, view.id));
+    // The member may change its voice; the admin may not.
+    await expect(r.svc.setVoice(ADMIN, view.id, false)).rejects.toMatchObject({ status: 404 });
+    expect((await r.svc.setVoice(MEMBER, view.id, false)).by).toBe("Aanya Sharma");
+    const left = await r.svc.leave(ADMIN, view.id);
+    expect(left).toMatchObject({ id: view.id, status: "in_call", owner: { id: MEMBER, name: "Ravi Kumar" } });
+    expect(r.calls.left).toEqual([botId]);
+    expect(await r.svc.cancel(ADMIN, view.id)).toBe(true);
+
+    // Once the member is no longer theirs to look after (they left, a block, Spaces off), it is not the admin's to stop.
+    const gone = rig({ people: home(), names: NAMES });
+    const sent = await gone.svc.join(ADMIN, { url: MEET, forUser: MEMBER });
+    await gone.svc.idle();
+    const after = new MeetService({ ...gone.deps, people: home({ off: true }) });
+    await expect(after.leave(ADMIN, sent.id)).rejects.toMatchObject({ status: 404 });
+    expect(await after.cancel(ADMIN, sent.id)).toBe(false);
+    expect(await after.meeting(ADMIN, sent.id)).toBeNull();
   });
 });

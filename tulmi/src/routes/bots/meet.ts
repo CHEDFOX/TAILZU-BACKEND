@@ -2,9 +2,11 @@
  * THE MEETING BOT'S ROUTES (src/meet, docs/meet.md): what its pages call, Recall's two signed webhooks, and the stage page the bot shows
  * as its camera. The shapes are in src/meet/types.ts; the work is MeetService's (src/meet/service.ts).
  *
- *   GET    /v1/meet/overview                          the live, upcoming and recent meetings, the settings, today's minutes
- *   POST   /v1/meet/join                              { url, title?, voice? }: a bot sent into the call now (201)
- *   GET    /v1/meet/meetings/:id                      one meeting and what was asked of the bot in it
+ *   GET    /v1/meet/overview                          the live, upcoming and recent meetings, the settings, today's minutes; for a space's
+ *                                                     admin, their members' meetings too and who they may send the bot for
+ *   POST   /v1/meet/join                              { url, title?, voice?, forUser? }: a bot sent into the call now (201); forUser, a
+ *                                                     member's id: into that member's meeting, for them
+ *   GET    /v1/meet/meetings/:id                      one meeting and what was asked of the bot in it (a member's, read only, for their admin)
  *   POST   /v1/meet/meetings/:id/leave                the bot leaves the call
  *   PUT    /v1/meet/meetings/:id                      { voice }: answers out loud, or in the chat, from now on
  *   DELETE /v1/meet/meetings/:id                      a scheduled one: its bot is called off
@@ -36,7 +38,7 @@ import type { MeetSettings } from "../../meet/store.js";
 /** What the routes need of src/meet/service.ts's MeetService. */
 export interface MeetRoutesService {
   overview(userId: string, o: { calendar: boolean }): Promise<MeetOverview>;
-  join(userId: string, o: { url: string; title?: string; voice?: boolean }): Promise<MeetingView>;
+  join(userId: string, o: { url: string; title?: string; voice?: boolean; forUser?: string }): Promise<MeetingView>;
   meeting(userId: string, id: string): Promise<MeetingDetail | null>;
   leave(userId: string, id: string): Promise<MeetingView>;
   setVoice(userId: string, id: string, on: boolean): Promise<MeetingView>;
@@ -121,9 +123,13 @@ export function registerMeetRoutes(app: FastifyInstance, deps: MeetRouteDeps): v
     if (typeof b.url !== "string" || !b.url.trim() || b.url.length > 2000) return bad(reply, "Paste the meeting's link.");
     if (b.title !== undefined && (typeof b.title !== "string" || b.title.length > 200)) return bad(reply, "The title is too long.");
     if (b.voice !== undefined && typeof b.voice !== "boolean") return bad(reply, "voice is true or false.");
-    const input: { url: string; title?: string; voice?: boolean } = { url: b.url.trim() };
+    // A member of a space the person is the admin of: the bot goes to that member's meeting, for them (the service checks whose).
+    // The page sends its "For" chip as it is: "" (Me) is the person themselves, as no forUser is.
+    if (b.forUser !== undefined && b.forUser !== "" && (typeof b.forUser !== "string" || !UUID.test(b.forUser))) return bad(reply, "forUser is someone's id.");
+    const input: { url: string; title?: string; voice?: boolean; forUser?: string } = { url: b.url.trim() };
     if (typeof b.title === "string") input.title = b.title;
     if (typeof b.voice === "boolean") input.voice = b.voice;
+    if (typeof b.forUser === "string" && b.forUser) input.forUser = b.forUser;
     try { return send(reply, { meeting: await got.s.join(got.user.id, input) }, 201); } catch (err) { return fail(reply, err); }
   });
 

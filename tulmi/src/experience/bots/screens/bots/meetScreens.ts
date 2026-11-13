@@ -4,7 +4,9 @@
  *   bots.meet.meeting   params m: one meeting. Its title, where it stands (joining, in the call, scheduled, ended, couldn't join), the
  *                       platform in words and who is in it. In the call: Leave the call, Answer out loud, and the notes so far (the points
  *                       and who does what). Scheduled: Call it off, on a second yes. With a note: Open the notes. Under it, each question
- *                       people asked the bot, with its answer and whether it was said out loud or in the chat. Gone: a card and a way back
+ *                       people asked the bot, with its answer and whether it was said out loud or in the chat. Gone: a card and a way back.
+ *                       An admin looking at a member's meeting (readOnly) sees whose it is and the notes, with no Leave, switch, call-off or note;
+ *                       a meeting the admin sent the bot to says "Sent by"
  *
  * The page itself is meetPage.ts. Everything here is the person's own (routes/bots/meet.ts): nothing is read from the call but the notes.
  */
@@ -110,6 +112,7 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
   const asks = d?.detail?.asks ?? [];
   const M = `${MEET}/meetings/${m.id}`;
   const live = isLive(m);
+  const ro = !!d?.detail?.readOnly;
   const title = plain(m.title) || "Meeting";
 
   const out = call("DELETE", M, undefined, { ok: seq(said("Called off."), toMeetPage), fail: toast("Couldn't call it off. Try again.") });
@@ -120,6 +123,8 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
       text(title, { size: 20, weight: 600, lineHeight: 25, tracking: -0.3 }),
       row([live ? statusMark("working", { size: 9 }) : statusMark(m.status === "failed" ? "failed" : m.status === "scheduled" ? "waiting" : "done", { size: 9 }),
         meta(statusLine(ctx, m), { size: 13, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 8, alignItems: "center" }),
+      ...(ro && m.owner ? [meta(`${plain(m.owner.name) || "A member"}'s meeting`, { size: 13, lineHeight: 18 })] : []),
+      ...(m.by ? [meta(`Sent by ${plain(m.by)}`, { size: 13, lineHeight: 18 })] : []),
       meta([PLATFORM_WORDS[m.platform] ?? "Video call", m.startedAt && m.endedAt ? lengthOf(m) : ""].filter(Boolean).join(" · "), { size: 12 }),
     ], { gap: 6 }),
   ];
@@ -128,12 +133,14 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
     body.push(col([sectionLabel("In the call"), row(m.participants.map((p) => chip(plain(p) || "Guest")), { gap: 6, flexWrap: "wrap" })], { gap: 8 }));
   }
 
-  if (live) {
+  if (live && !ro) {
     body.push(listCard([switchRow("Answer out loud", "mm_voice", {
       sub: "On, it says its answers. Off, it writes them in the call's chat.",
       onChange: call("PUT", M, { voice: "$state.mm_voice" }, { fail: toast("Couldn't change that. Try again.") }),
     })]));
     body.push(secondaryButton("Leave the call", leave, { size: "md" }));
+  }
+  if (live) {
     const n = m.liveNotes;
     body.push(col([
       sectionLabel("Notes so far"),
@@ -144,7 +151,7 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
     ], { gap: 8 }));
   }
 
-  if (m.status === "scheduled") {
+  if (m.status === "scheduled" && !ro) {
     body.push(col([
       when({ falsy: "mm_sure" }, quietButton("Call it off", setState("mm_sure", true), { size: "md" })),
       when({ truthy: "mm_sure" }, card([
@@ -155,7 +162,7 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
     ], { gap: 8 }));
   }
 
-  if (m.noteId) body.push(primaryButton("Open the notes", { kind: "navigate", screenId: SCREENS.note, params: { id: m.noteId } } as ActionSpec, { size: "md" }));
+  if (m.noteId && !ro) body.push(primaryButton("Open the notes", { kind: "navigate", screenId: SCREENS.note, params: { id: m.noteId } } as ActionSpec, { size: "md" }));
 
   if (asks.length) body.push(col([sectionLabel("Questions it answered"), ...asks.map(askCard)], { gap: 8 }));
 

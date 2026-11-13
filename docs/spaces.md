@@ -257,6 +257,10 @@ group, as before.
 Plan Ease, Notes, Travel bot and Xode are every group's bots: they read what is shared in each of the person's spaces and what
 the group told its bots, with no adding step. Any other bot reads a space only once it is added to it.
 
+The meeting bot follows the line about the admin too (docs/meet.md, "In a space"): a space's admin sees the meetings of each member who
+agreed to it, is told when one takes the bot to a meeting (`space_meet`), and may send the bot to a member's meeting for them
+(`space_meet_sent`). The Oracle stays private: no admin ever sees a member's chart or readings.
+
 ## Lists stay cheap
 
 `GET /spaces` is read at every Home load and at both apps' launch, so it only reads, as it always did. The new Spaces screen asks

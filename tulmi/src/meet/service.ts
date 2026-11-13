@@ -14,6 +14,13 @@
  *                            the next event is never kept waiting; it never throws
  *   leave / cancel           the bot sent away, or a scheduled one called off
  *
+ * IN A SPACE (people.ts; docs/spaces.md, the admin and the line about the admin): a space's admin sees the meetings of each member who
+ * agreed to the line as it is now, with no block between them (overview's people, a meeting read only), is pushed when such a member takes
+ * the bot to a meeting (space_meet), and may send the bot to a member's meeting for them (join's forUser). That meeting is the member's in
+ * every way (their consent, their minutes, their settings, their note, their pushes; they are told: space_meet_sent); it names the admin
+ * who sent it (by), who may also send its bot away or call it off. Never a word of what was said in a push. Nothing of it while Spaces is
+ * off, since there are no people then.
+ *
  * Each meeting has a secret token, in its bot's two addresses (/v1/meet/live/<token>/ and /v1/meet/stage/<token>); only its hash is kept.
  * Every model call runs as the person (privacy/aiGate.ts asPerson) and goes on their meter (usage/cost.ts chargedTo). A person's meetings are
  * capped at MEET_DAILY_MINUTES over the last 24 hours. What a meeting needs while its bot is in the call is room.ts's, in memory; after a
@@ -33,6 +40,7 @@ import { getProfile } from "../profile/store.js";
 import { pushEngine } from "../push/index.js";
 import { addCostUsd, chargedTo, ttsUsd } from "../usage/cost.js";
 import { brain, type Brain } from "./brain.js";
+import { NO_PEOPLE, type MeetPeople } from "./people.js";
 import { chatParts, recall, RecallError, type BotInput, type RecallBot, type RecallClient } from "./recall.js";
 import {
   botIdOf, chatOf, cleanText, eventOf, FLUSH_LINES, heardOf, personOf, QUEUE_MAX, Room, WAKE_WAIT_MS, type Ask, type Chat, type Heard,
@@ -76,11 +84,16 @@ export interface MeetServiceDeps {
   flushMs?: number;
   /** How often the notes so far are written while the call goes on (3 minutes). */
   notesEveryMs?: number;
+  /** Who is whose space admin (people.ts spacePeople); nobody by default. */
+  people?: MeetPeople;
 }
 
 const DAY_MS = 24 * 60 * 60_000;
 const LIST_MAX = 200;
 const RECENT_MAX = 20;
+/** A space's admin sees each member's latest few meetings, and at most this many in all. */
+const PEOPLE_EACH = 10;
+const PEOPLE_MAX = 20;
 /** New lines since the last notes pass before another is worth a model call. */
 const NOTES_MIN_LINES = 8;
 const ENDED_MAX = 5_000;
@@ -110,6 +123,11 @@ async function speakMp3(text: string): Promise<{ audio: Buffer; contentType: str
 
 const said = (err: unknown): string => (err instanceof Error ? err.message : "error").slice(0, 200);
 const countWords = (t: string): number => (t.trim() ? t.trim().split(/\s+/).length : 0);
+const firstWord = (name: string | null | undefined): string => cleanText(name, 40).split(" ")[0] ?? "";
+/** When a meeting happens or happened: its start, else when it is booked for, else when it was made. */
+const whenOf = (m: Meeting): number => m.startedAt ?? m.joinAt ?? m.createdAt;
+/** Someone a space's admin may send the bot for (people.ts membersOf). */
+type Member = { userId: string; name: string; spaceId: string };
 
 /** One meeting as the person sees it: never the bot's id or the meeting's token. */
 function viewOf(m: Meeting): MeetingView {
@@ -164,6 +182,7 @@ export class MeetService {
   private readonly organise: (userId: string, noteId: string) => Promise<Note | null>;
   private readonly flushMs: number;
   private readonly notesEveryMs: number;
+  private people: MeetPeople;
 
   /** The meetings with a bot in the call, by id; each token's hash to its meeting; rooms being rebuilt after a restart. */
   private readonly rooms = new Map<string, Room>();
@@ -192,36 +211,49 @@ export class MeetService {
       ?? ((userId, noteId) => asPerson(userId, () => chargedTo(userId, "meet", () => organiseNote({ id: userId }, noteId))));
     this.flushMs = d.flushMs ?? 8_000;
     this.notesEveryMs = d.notesEveryMs ?? 180_000;
+    this.people = d.people ?? NO_PEOPLE;
+  }
+
+  /** Who is whose space admin, from now on (the server's, once Spaces is made: setMeetPeople). */
+  setPeople(p: MeetPeople): void {
+    this.people = p;
   }
 
   // ------------------------------------------------------------------ the person's
 
   async overview(userId: string, o: { calendar?: boolean } = {}): Promise<MeetOverview> {
-    const [settings, all] = await Promise.all([this.store.settings(userId), this.store.list(userId, LIST_MAX)]);
-    const when = (m: Meeting): number => m.startedAt ?? m.joinAt ?? m.createdAt;
+    const [settings, all, members] = await Promise.all([
+      this.store.settings(userId), this.store.list(userId, LIST_MAX), this.membersOf(userId),
+    ]);
+    // Their own meetings a space's admin sent the bot to: "Sent by Aanya", the admin as their space has them.
+    const senders = all.some((m) => m.byId && m.byId !== userId) ? await this.adminNames(userId) : new Map<string, string>();
+    const own = async (list: Meeting[]): Promise<MeetingView[]> => Promise.all(list.map((m) => this.viewFor(userId, m, { senders })));
     return {
       settings,
       botName: settings.botName || DEFAULT_BOT_NAME,
-      live: all.filter((m) => LIVE_STATUSES.has(m.status)).map(viewOf),
-      upcoming: all.filter((m) => m.status === "scheduled").sort((a, b) => (a.joinAt ?? a.createdAt) - (b.joinAt ?? b.createdAt)).map(viewOf),
+      live: await own(all.filter((m) => LIVE_STATUSES.has(m.status))),
+      upcoming: await own(all.filter((m) => m.status === "scheduled").sort((a, b) => (a.joinAt ?? a.createdAt) - (b.joinAt ?? b.createdAt))),
       // Over: done, ended, failed. A cancelled one was never held (a calendar event moved, or the person called it off).
-      recent: all.filter((m) => m.status === "done" || m.status === "ended" || m.status === "failed")
-        .sort((a, b) => when(b) - when(a)).slice(0, RECENT_MAX).map(viewOf),
+      recent: await own(all.filter((m) => m.status === "done" || m.status === "ended" || m.status === "failed")
+        .sort((a, b) => whenOf(b) - whenOf(a)).slice(0, RECENT_MAX)),
       minutesToday: Math.round(this.minutesIn(all)),
       minutesCap: getConfig().MEET_DAILY_MINUTES,
       calendar: o.calendar ?? false,
+      people: await this.peopleMeetings(userId, members),
+      sendFor: members.map((p) => ({ id: p.userId, name: p.name })),
     };
   }
 
-  async join(userId: string, input: { url: string; title?: string; voice?: boolean }): Promise<MeetingView> {
+  async join(userId: string, input: { url: string; title?: string; voice?: boolean; forUser?: string }): Promise<MeetingView> {
     if (!this.recall) throw new MeetError(503, "The meeting bot isn't set up on this server.", "meet_off");
     const link = meetingOf(input?.url);
     if (!link) throw new MeetError(400, "That isn't a meeting link (Google Meet, Zoom, Teams or Webex).", "bad_link");
+    if (typeof input.forUser === "string" && input.forUser && input.forUser !== userId) return this.joinFor(userId, input.forUser, link, input);
     if (!(await this.aiAllowed(userId))) throw new MeetError(403, AI_CONSENT_TEXT, "ai_consent_needed");
     const all = await this.store.list(userId, LIST_MAX);
     // One bot a call: pasting the link again answers the bot already there.
     const there = all.find((m) => LIVE_STATUSES.has(m.status) && m.url === link.url);
-    if (there) return viewOf(there);
+    if (there) return this.viewFor(userId, there);
     if (this.minutesIn(all) >= getConfig().MEET_DAILY_MINUTES) {
       throw new MeetError(429, "Today's meeting time is used up. It comes back over the next day.", "meet_cap");
     }
@@ -230,7 +262,36 @@ export class MeetService {
     this.publish(userId);
     // Recall may answer 507 (no bot free) and be asked again for minutes: the person has the meeting at once, "joining".
     this.track(this.send(meeting, bot));
+    // A member's admins are told they took the bot to a meeting (never a word of it).
+    this.track(this.tellAdmins(meeting));
     return viewOf(meeting);
+  }
+
+  /**
+   * The bot sent to a member's meeting by their space's admin: the member's meeting in every way (their consent, their minutes, their
+   * settings and name), the admin named as who sent it. The member is told.
+   */
+  private async joinFor(adminId: string, forUser: string, link: MeetingLink, input: { title?: string; voice?: boolean }): Promise<MeetingView> {
+    const member = (await this.membersOf(adminId)).find((p) => p.userId === forUser);
+    if (!member) throw new MeetError(404, "You can send it only for someone in a space you look after.", "not_your_person");
+    if (!(await this.aiAllowed(member.userId))) {
+      throw new MeetError(403, `${member.name} hasn't turned on AI services in X0 Bot yet.`, "ai_consent_needed");
+    }
+    const all = await this.store.list(member.userId, LIST_MAX);
+    const there = all.find((m) => LIVE_STATUSES.has(m.status) && m.url === link.url);
+    if (there) return this.viewFor(adminId, there, { owner: member });
+    if (this.minutesIn(all) >= getConfig().MEET_DAILY_MINUTES) {
+      throw new MeetError(429, `${member.name}'s meeting time is used up today. It comes back over the next day.`, "meet_cap");
+    }
+    const owner = (await this.owner(member.userId)) || firstWord(member.name);
+    const { meeting, bot } = await this.prepare(member.userId, {
+      link, title: input.title, voice: input.voice, source: "link", byId: adminId, spaceId: member.spaceId, owner,
+    });
+    await this.store.add(meeting);
+    this.publish(member.userId, adminId);
+    this.track(this.send(meeting, bot));
+    this.track(this.tellMember(meeting, adminId));
+    return this.viewFor(adminId, meeting, { owner: member });
   }
 
   async schedule(userId: string, ev: { key: string; title: string; startMs: number; url: string; platform: Platform }): Promise<MeetingView | null> {
@@ -253,6 +314,7 @@ export class MeetService {
       // A bot asked for more than ten minutes ahead is kept for the meeting: Recall answers at once.
       const made = await this.recall.createBot(bot);
       row = (await this.store.update(meeting.id, { botId: made.id })) ?? { ...meeting, botId: made.id };
+      this.track(this.tellAdmins(row));
     } catch (err) {
       row = (await this.store.update(meeting.id, { status: "failed", error: failText(err), endedAt: this.now() }).catch(() => null)) ?? row;
     }
@@ -260,55 +322,68 @@ export class MeetService {
     return viewOf(row);
   }
 
-  async meeting(userId: string, id: string): Promise<MeetingDetail | null> {
+  /** Their own meeting; or, read only, one of a member of a space they are the admin of. Null for anyone else. */
+  async meeting(viewer: string, id: string): Promise<MeetingDetail | null> {
     const m = UUID.test(id) ? await this.store.get(id) : null;
-    if (!m || m.userId !== userId) return null;
-    return { meeting: viewOf(m), asks: await this.store.asks(id) };
+    if (!m) return null;
+    if (m.userId === viewer) return { meeting: await this.viewFor(viewer, m), asks: await this.store.asks(id) };
+    const member = (await this.membersOf(viewer)).find((p) => p.userId === m.userId);
+    if (!member) return null;
+    return { meeting: await this.viewFor(viewer, m, { owner: member }), asks: await this.store.asks(id), readOnly: true };
   }
 
-  /** The bot leaves the call. Its status stays as it is until Recall says the call ended (bot.call_ended). */
-  async leave(userId: string, id: string): Promise<MeetingView> {
-    const m = await this.own(userId, id);
-    if (!LIVE_STATUSES.has(m.status)) return viewOf(m);
+  /**
+   * The bot leaves the call: the owner's say, or the admin's who sent it (while the owner is still theirs to look after). Its status stays
+   * as it is until Recall says the call ended (bot.call_ended).
+   */
+  async leave(viewer: string, id: string): Promise<MeetingView> {
+    const got = await this.stoppable(viewer, id);
+    if (!got) throw new MeetError(404, "No such meeting.", "not_found");
+    const { m, owner } = got;
+    if (!LIVE_STATUSES.has(m.status)) return this.viewFor(viewer, m, { owner });
     if (!m.botId) {
       // Recall has not answered yet (no bot was free, and it is being asked again): the meeting is called off now, its bot when it comes.
       const row = (await this.store.update(m.id, { status: "cancelled", endedAt: this.now() })) ?? m;
       this.close(m.id);
-      this.publish(userId);
-      return viewOf(row);
+      this.publish(m.userId, m.byId);
+      return this.viewFor(viewer, row, { owner });
     }
     this.markLeaving(m.id);
     const botId = m.botId;
     if (this.recall) await viaRecall(() => this.recall!.leaveCall(botId));
-    this.publish(userId);
-    return viewOf(m);
+    this.publish(m.userId, m.byId);
+    return this.viewFor(viewer, m, { owner });
   }
 
-  /** Answers out loud (when the stage is open too), or in the chat, from now on. */
+  /** Answers out loud (when the stage is open too), or in the chat, from now on. The owner's alone. */
   async setVoice(userId: string, id: string, on: boolean): Promise<MeetingView> {
     const m = await this.own(userId, id);
     const voice = !!on;
     const row = (await this.store.update(m.id, { voice })) ?? { ...m, voice };
     const room = this.rooms.get(m.id);
     if (room) room.voice = voice;
-    this.publish(userId);
-    return viewOf(row);
+    this.publish(m.userId, m.byId);
+    return this.viewFor(userId, row);
   }
 
-  /** A scheduled meeting's bot called off; a live one sent away. False when it is not theirs, or is already over. */
-  async cancel(userId: string, id: string): Promise<boolean> {
-    const m = UUID.test(id) ? await this.store.get(id) : null;
-    if (!m || m.userId !== userId) return false;
+  /**
+   * A scheduled meeting's bot called off; a live one sent away. The owner's say, or the admin's who sent it. False when it is neither's,
+   * or is already over.
+   */
+  async cancel(viewer: string, id: string): Promise<boolean> {
+    const got = await this.stoppable(viewer, id);
+    if (!got) return false;
+    const { m } = got;
     if (m.status === "scheduled") {
       const botId = m.botId;
       if (botId) await viaRecall(() => this.callOff(botId));
       await this.store.update(m.id, { status: "cancelled" });
       this.close(m.id);
-      this.publish(userId);
+      this.publish(m.userId, m.byId);
       return true;
     }
     if (LIVE_STATUSES.has(m.status)) {
-      await this.leave(userId, id);
+      await this.leave(viewer, id);
       return true;
     }
     return false;
@@ -415,7 +490,7 @@ export class MeetService {
   private async move(m: Meeting, status: MeetStatus): Promise<boolean> {
     if (OVER.has(m.status) || m.status === status || RANK[status] < RANK[m.status]) return false;
     await this.store.update(m.id, { status });
-    this.publish(m.userId);
+    this.publish(m.userId, m.byId);
     return true;
   }
 
@@ -424,7 +499,7 @@ export class MeetService {
     let row = m;
     if (m.status !== "in_call" || m.startedAt === null) {
       row = (await this.store.update(m.id, { status: "in_call", startedAt: m.startedAt ?? this.now() })) ?? { ...m, status: "in_call" };
-      this.publish(m.userId);
+      this.publish(m.userId, m.byId);
     }
     const room = await this.roomFor(row);
     if (room.closed) return;
@@ -457,7 +532,7 @@ export class MeetService {
     const came = room?.cameNames() ?? [];
     const row = (await this.store.update(m.id, { status: "ended", endedAt: this.now(), ...(came.length ? { participants: came } : {}) }))
       ?? { ...m, status: "ended" as const, endedAt: this.now() };
-    this.publish(m.userId);
+    this.publish(m.userId, m.byId);
     this.track(this.writeUp({ ...row, noteId: row.noteId ?? room?.noteId ?? null }, "done"));
   }
 
@@ -471,7 +546,7 @@ export class MeetService {
     const came = room?.cameNames() ?? [];
     const row = (await this.store.update(m.id, { status: "failed", error: why, endedAt: this.now(), ...(came.length ? { participants: came } : {}) }))
       ?? { ...m, status: "failed" as const, error: why };
-    this.publish(m.userId);
+    this.publish(m.userId, m.byId);
     await this.push(m.userId, {
       kind: "meet_failed", key: `${m.id}:failed`, vars: { title: m.title || "Your meeting", name: room?.botName ?? await this.botNameOf(m), why }, data: { m: m.id },
     });
@@ -524,7 +599,7 @@ export class MeetService {
       console.warn(`[meet] a meeting's write-up failed: ${said(err)}`);
       if (then) await this.store.update(m.id, { status: then }).catch(() => null);
     } finally {
-      this.publish(m.userId);
+      this.publish(m.userId, m.byId);
     }
   }
 
@@ -783,7 +858,7 @@ export class MeetService {
     if (room.title) await updateNote(user, note.id, (n) => ({ ...n, title: room.title }));
     room.noteId = note.id;
     await this.store.update(room.id, { noteId: note.id });
-    this.publish(room.userId);
+    this.publish(room.userId, room.byId);
     return note.id;
   }
 
@@ -801,7 +876,7 @@ export class MeetService {
       if (!notes || room.closed) return;
       room.notesAt = upto;
       await this.store.update(room.id, { liveNotes: { points: notes.points, actions: notes.actions, at: this.now() } });
-      this.publish(room.userId);
+      this.publish(room.userId, room.byId);
     } catch (err) {
       console.warn(`[meet] the notes so far could not be written: ${said(err)}`);
     }
@@ -820,7 +895,7 @@ export class MeetService {
       while (room.peopleDirty && !room.closed) {
         room.peopleDirty = false;
         await this.store.update(room.id, { participants: room.names() });
-        this.publish(room.userId);
+        this.publish(room.userId, room.byId);
       }
     } catch (err) {
       console.warn(`[meet] who is in a call could not be saved: ${said(err)}`);
@@ -900,14 +975,18 @@ export class MeetService {
 
   // ------------------------------------------------------------------ the rest
 
-  /** The row of a meeting to ask about, and Recall's bot for it. */
+  /**
+   * The row of a meeting to ask about, and Recall's bot for it: the owner's settings (its voice, its name), and the owner's first name in
+   * its introduction. One a space's admin sends for a member names the admin and the space.
+   */
   private async prepare(userId: string, o: {
     link: MeetingLink; title?: string; voice?: boolean; source: "link" | "calendar"; eventKey?: string; joinAt?: number;
+    byId?: string; spaceId?: string; owner?: string;
   }): Promise<{ meeting: Meeting; bot: BotInput }> {
     const cfg = getConfig();
     const settings = await this.store.settings(userId);
     const botName = settings.botName || DEFAULT_BOT_NAME;
-    const owner = await this.owner(userId);
+    const owner = o.owner ?? (await this.owner(userId));
     const voice = typeof o.voice === "boolean" ? o.voice : settings.voice;
     // The meeting's key: in its bot's addresses, kept here only as a hash.
     const token = randomBytes(24).toString("base64url");
@@ -916,7 +995,7 @@ export class MeetService {
       id: randomUUID(), userId, botId: null, tokenHash: hashToken(token), url: o.link.url, platform: o.link.platform,
       title: cleanText(o.title, 200), status: o.source === "calendar" ? "scheduled" : "joining", voice, source: o.source,
       eventKey: o.eventKey ?? null, joinAt: o.joinAt ?? null, startedAt: null, endedAt: null, noteId: null, liveNotes: null,
-      participants: [], error: null, createdAt: now, updatedAt: now,
+      participants: [], error: null, createdAt: now, updatedAt: now, spaceId: o.spaceId ?? null, byId: o.byId ?? null,
     };
     const bot: BotInput = {
       meetingUrl: o.link.url,
@@ -943,12 +1022,12 @@ export class MeetService {
       if (cur && cur.status === "joining" && !cur.botId) {
         await this.store.update(m.id, { status: "failed", error: failText(err), endedAt: this.now() }).catch(() => null);
       }
-      this.publish(m.userId);
+      this.publish(m.userId, m.byId);
       return;
     }
     const row = await this.store.update(m.id, { botId: made.id });
     if (row?.status === "cancelled") await this.callOff(made.id).catch((err) => console.warn(`[meet] a bot could not be called off: ${said(err)}`));
-    this.publish(m.userId);
+    this.publish(m.userId, m.byId);
   }
 
   /** A bot not yet sent is deleted; one Recall has already sent (405) is asked to leave instead. */
@@ -961,6 +1040,102 @@ export class MeetService {
     const m = UUID.test(id) ? await this.store.get(id) : null;
     if (!m || m.userId !== userId) throw new MeetError(404, "No such meeting.", "not_found");
     return m;
+  }
+
+  /** A meeting the viewer may send its bot away from or call off: theirs, or one they sent for a member who is still theirs to look after. */
+  private async stoppable(viewer: string, id: string): Promise<{ m: Meeting; owner?: Member } | null> {
+    const m = UUID.test(id) ? await this.store.get(id) : null;
+    if (!m) return null;
+    if (m.userId === viewer) return { m };
+    if (!m.byId || m.byId !== viewer) return null;
+    const owner = (await this.membersOf(viewer)).find((p) => p.userId === m.userId);
+    return owner ? { m, owner } : null;
+  }
+
+  // ------------------------------------------------------------------ in a space
+
+  /** The members of the spaces they are the admin of (people.ts); nobody when that can't be read. */
+  private async membersOf(adminId: string): Promise<Member[]> {
+    try { return await this.people.membersOf(adminId); } catch (err) {
+      console.warn(`[meet] a space's members could not be read: ${said(err)}`);
+      return [];
+    }
+  }
+
+  /** The admins of the spaces they are a member of, by id, with their names as those spaces have them. */
+  private async adminNames(memberId: string): Promise<Map<string, string>> {
+    try {
+      return new Map((await this.people.adminsOf(memberId)).map((a) => [a.userId, a.name]));
+    } catch (err) {
+      console.warn(`[meet] a member's admins could not be read: ${said(err)}`);
+      return new Map();
+    }
+  }
+
+  /**
+   * A meeting as the viewer sees it: whose it is, when it is not theirs (a member's, seen by their admin), and who sent the bot, when that
+   * was a space's admin and not the viewer ("Sent by Aanya"). The sender's name is as the owner's space has it, else their own first name.
+   */
+  private async viewFor(viewer: string, m: Meeting, o: { owner?: Member; senders?: Map<string, string> } = {}): Promise<MeetingView> {
+    const v = viewOf(m);
+    if (m.userId !== viewer) {
+      const owner = o.owner ?? (await this.membersOf(viewer)).find((p) => p.userId === m.userId);
+      if (owner) v.owner = { id: owner.userId, name: owner.name };
+    }
+    if (m.byId && m.byId !== viewer) {
+      // The names the caller already has (a list of meetings), or the owner's admins read now (one meeting).
+      const known = o.senders ? o.senders.get(m.byId) : (await this.adminNames(m.userId)).get(m.byId);
+      v.by = known || (await this.owner(m.byId)) || "your space's admin";
+    }
+    return v;
+  }
+
+  /** The meetings of the members they see: each member's latest few (none called off), newest first, at most PEOPLE_MAX. */
+  private async peopleMeetings(viewer: string, members: Member[]): Promise<MeetingView[]> {
+    const all: Array<{ m: Meeting; owner: Member }> = [];
+    for (const owner of members) {
+      const list = await this.store.list(owner.userId, PEOPLE_EACH).catch(() => [] as Meeting[]);
+      for (const m of list) if (m.status !== "cancelled") all.push({ m, owner });
+    }
+    all.sort((a, b) => whenOf(b.m) - whenOf(a.m));
+    // Who sent which: the senders other than the viewer are named once each (a member of two spaces may have two admins).
+    const senders = new Map<string, string>();
+    const views: MeetingView[] = [];
+    for (const { m, owner } of all.slice(0, PEOPLE_MAX)) {
+      if (m.byId && m.byId !== viewer && !senders.has(m.byId)) {
+        senders.set(m.byId, (await this.adminNames(m.userId)).get(m.byId) || (await this.owner(m.byId)) || "Someone");
+      }
+      views.push(await this.viewFor(viewer, m, { owner, senders }));
+    }
+    return views;
+  }
+
+  /**
+   * A member took the bot to a meeting (their own link, or their calendar): each admin who sees their meetings is pushed, with the
+   * member's name and the meeting's title, never a word of the call. Not for one an admin sent.
+   */
+  private async tellAdmins(m: Meeting): Promise<void> {
+    if (m.byId) return;
+    let admins: Array<{ userId: string; memberName: string }>;
+    try { admins = await this.people.adminsOf(m.userId); } catch (err) {
+      console.warn(`[meet] a member's admins could not be read: ${said(err)}`);
+      return;
+    }
+    for (const a of admins) {
+      if (a.userId === m.userId) continue;
+      await this.push(a.userId, {
+        kind: "space_meet", key: `${m.id}:admin:${a.userId}`, vars: { name: a.memberName || "Someone", title: m.title || "a meeting" }, data: { m: m.id },
+      });
+      this.publish(a.userId);
+    }
+  }
+
+  /** A space's admin sent the bot to a member's meeting: the member is told who, and to what. */
+  private async tellMember(m: Meeting, adminId: string): Promise<void> {
+    const name = (await this.owner(adminId)) || firstWord((await this.adminNames(m.userId)).get(adminId)) || "Your space's admin";
+    await this.push(m.userId, {
+      kind: "space_meet_sent", key: `${m.id}:sent`, vars: { name, title: m.title || "your meeting" }, data: { m: m.id },
+    });
   }
 
   /** The person's first name, or "" (never an error). */
@@ -990,8 +1165,10 @@ export class MeetService {
     try { await this.notify(userId, msg); } catch { /* a missed push is not a lost meeting: it is on the meeting's page */ }
   }
 
-  private publish(userId: string): void {
+  /** The meeting bot's pages hear of a change: the owner's, and the space admin's who sent the bot, when one did. */
+  private publish(userId: string, also?: string | null): void {
     livePublish(userId, [botTopic(MEET_SLUG)]);
+    if (also && also !== userId) livePublish(also, [botTopic(MEET_SLUG)]);
   }
 
   /** Work that goes on after its caller has its answer: never an unhandled rejection, and idle() waits for it. */
@@ -1010,12 +1187,21 @@ async function firstNameOf(userId: string): Promise<string> {
 }
 
 let shared: MeetService | null = null;
+let sharedPeople: MeetPeople | null = null;
 
 /** The server's shared instance when recall() is set (store meetStore(), brain(), stageHub() from ./stage.js), else null. */
 export function meetService(): MeetService | null {
   if (shared) return shared;
   const client = recall();
   if (!client) return null;
-  shared = new MeetService({ store: meetStore(), recall: client, brain: brain(), stage: stageHub(), ownerName: firstNameOf });
+  shared = new MeetService({
+    store: meetStore(), recall: client, brain: brain(), stage: stageHub(), ownerName: firstNameOf, ...(sharedPeople ? { people: sharedPeople } : {}),
+  });
   return shared;
+}
+
+/** Who is whose space admin, for the server's instance: set on it now, or kept for it if it is not made yet (server.ts, once Spaces is). */
+export function setMeetPeople(p: MeetPeople): void {
+  sharedPeople = p;
+  shared?.setPeople(p);
 }

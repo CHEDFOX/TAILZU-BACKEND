@@ -1,6 +1,10 @@
 /**
- * THE MEETING BOT'S ROWS (migration 0082_meetings.sql): each person's settings, each meeting its bot was sent to, and what people asked
- * it in the call. The transcript is the meeting's note (src/notes).
+ * THE MEETING BOT'S ROWS (migrations 0082_meetings.sql, 0083_meetings_spaces.sql): each person's settings, each meeting its bot was sent
+ * to, and what people asked it in the call. The transcript is the meeting's note (src/notes).
+ *
+ * A meeting is always its owner's (user_id): their note, their minutes, their push. One a space's admin sent the bot to, for a member,
+ * also names the admin (by_id) and the space (space_id); those two are written only when set, so a database without 0083 still keeps
+ * every other meeting.
  *
  * The server's alone (no policy lets a token read or write them); they go with the account. The memory twin is what tests and a server
  * with no Supabase use; it is bounded.
@@ -40,6 +44,10 @@ export interface Meeting {
   error: string | null;
   createdAt: number;
   updatedAt: number;
+  /** The space whose admin sent the bot, for its member (the owner); null when the owner sent it. */
+  spaceId: string | null;
+  /** The admin who sent the bot, when it was not the owner. */
+  byId: string | null;
 }
 
 export interface MeetAsk { askedBy: string; question: string; answer: string; how: "voice" | "chat"; at: number }
@@ -111,6 +119,8 @@ interface Row {
   id: string; user_id: string; bot_id: string | null; token_hash: string; url: string; platform: Platform; title: string; status: MeetStatus;
   voice: boolean; source: "link" | "calendar"; event_key: string | null; join_at: string | null; started_at: string | null; ended_at: string | null;
   note_id: string | null; live_notes: LiveNotes | null; participants: string[] | null; error: string | null; created_at: string; updated_at: string;
+  /** Migration 0083: absent before it was run. */
+  space_id?: string | null; by_id?: string | null;
 }
 
 const ms = (s: string | null): number | null => (s ? Date.parse(s) || null : null);
@@ -121,7 +131,7 @@ function fromRow(r: Row): Meeting {
     id: r.id, userId: r.user_id, botId: r.bot_id, tokenHash: r.token_hash, url: r.url, platform: r.platform, title: r.title ?? "",
     status: r.status, voice: !!r.voice, source: r.source, eventKey: r.event_key, joinAt: ms(r.join_at), startedAt: ms(r.started_at),
     endedAt: ms(r.ended_at), noteId: r.note_id, liveNotes: r.live_notes ?? null, participants: Array.isArray(r.participants) ? r.participants : [],
-    error: r.error, createdAt: ms(r.created_at) ?? 0, updatedAt: ms(r.updated_at) ?? 0,
+    error: r.error, createdAt: ms(r.created_at) ?? 0, updatedAt: ms(r.updated_at) ?? 0, spaceId: r.space_id ?? null, byId: r.by_id ?? null,
   };
 }
 
@@ -135,6 +145,9 @@ function toRow(p: Partial<Meeting>): Record<string, unknown> {
     ["participants", "participants", (v) => v], ["error", "error", (v) => v],
   ];
   for (const [k, col, f] of map) if (p[k] !== undefined) out[col] = f(p[k]);
+  // 0083's columns only when they say something, so a database that has not run it still takes every meeting nobody else sent.
+  if (p.spaceId) out.space_id = p.spaceId;
+  if (p.byId) out.by_id = p.byId;
   return out;
 }
 

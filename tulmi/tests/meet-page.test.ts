@@ -78,8 +78,8 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     expect(p.live).toContain("bot:meet");
     expect(p.state).toMatchObject({ mt_url: "", mt_voice: true, ms_auto: false, ms_voice: true });
     const join = callsOf(p.every()).find((c) => c.path === "/v1/meet/join")!;
-    expect(join).toMatchObject({ method: "POST", body: { url: "$state.mt_url", voice: "$state.mt_voice" } });
-    expect(JSON.stringify(join.onSuccess)).toContain("Joining. Let it in if your call asks.");
+    expect(join).toMatchObject({ method: "POST", body: { url: "$state.mt_url", voice: "$state.mt_voice", forUser: "$state.mt_for" } });
+    expect(JSON.stringify(join.onSuccess)).toContain("Joining. Let it in if the call asks.");
     expect(JSON.stringify(join.onSuccess)).toContain('"mt_url"');
     // An empty field is a toast, not a call.
     const guard = p.every().find((a) => a.kind === "condition" && JSON.stringify(a).includes("/v1/meet/join")) as { if: unknown; else: { message: string } };
@@ -146,6 +146,33 @@ describe.each<Client>(["phone", "desktop"])("the meeting bot's page on the %s", 
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("The meetings couldn't be read just now. Pull to try again.");
     expect(p.fields).not.toContain("mt_url");
+  });
+
+
+  it("for an admin: For chips, the join carrying forUser, and the members' meetings", async () => {
+    const p = await build({ client, overview: OVERVIEW({
+      sendFor: [{ id: "u2", name: "Ravi" }, { id: "u3", name: "Meera" }],
+      people: [
+        meeting("p1", { status: "in_call", title: "Sales call", owner: { id: "u2", name: "Ravi" }, participants: ["Ravi", "Zed"] }),
+        meeting("p2", { status: "scheduled", title: "Review", owner: { id: "u3", name: "Meera" }, by: "Aanya" }),
+      ],
+      recent: [meeting("r9", { status: "ended", title: "Sync", by: "Aanya", startedAt: FIXED_NOW - 3_600_000, endedAt: FIXED_NOW - 3_000_000 })],
+    }) });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toEqual(expect.arrayContaining(["For", "Me", "Ravi", "Meera", "Your people's meetings", "Ravi · Sales call", "Meera · Review", "In the call · 2 people"]));
+    expect(p.state.mt_for).toBe("");
+    const chips = p.every().filter((a) => a.kind === "setState" && (a as { path: string }).path === "mt_for").map((a) => (a as unknown as { value: string }).value);
+    expect(chips).toEqual(expect.arrayContaining(["", "u2", "u3"]));
+    expect(callsOf(p.every()).find((c) => c.path === "/v1/meet/join")).toMatchObject({ body: { forUser: "$state.mt_for" } });
+    expect(navs(p.every(), "bots.meet.meeting").map((n) => n.params)).toEqual(expect.arrayContaining([{ m: "p1" }, { m: "p2" }]));
+    expect(p.texts.some((t) => /· Sent by Aanya$/.test(t))).toBe(true);
+    expect(p.texts).not.toContain("Paste a meeting link and your bot joins the call. It takes the notes, answers questions in the chat and out loud, and turns what was agreed into your to-dos.");
+  });
+
+  it("without anyone to send it for: no For chips and no people section", async () => {
+    const p = await build({ client });
+    expect(p.texts).not.toContain("For");
+    expect(p.texts).not.toContain("Your people's meetings");
   });
 
   it("never starts a text with @, whatever the call was titled", async () => {
@@ -221,6 +248,36 @@ describe.each<Client>(["phone", "desktop"])("one meeting on the %s", (client) =>
     expect(p.lint).toEqual([]);
     expect(p.texts).toEqual(expect.arrayContaining(["Notes ready", "Open the notes"]));
     expect(navs(p.every(), "bots.note").map((n) => n.params)).toEqual([{ id: "n3" }]);
+  });
+
+
+  it("read only (an admin looking at a member's meeting): whose it is, the notes, and nothing to press", async () => {
+    const p = await build({ ...MEETING_PAGE, client, detail: {
+      readOnly: true,
+      meeting: meeting("m1", {
+        status: "in_call", owner: { id: "u2", name: "Ravi" }, by: "Aanya", noteId: "n5", participants: ["Ravi"], joinAt: null,
+        liveNotes: { points: ["Prices stay"], actions: [{ who: "Ravi", what: "call back" }], at: FIXED_NOW },
+      }),
+      asks: [{ askedBy: "Ravi", question: "Any dates?", answer: "Friday.", how: "chat", at: FIXED_NOW }],
+    } });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toEqual(expect.arrayContaining(["Ravi's meeting", "Sent by Aanya", "Notes so far", "Prices stay", "Ravi: call back", "Questions it answered", "Friday.", "Ravi"]));
+    expect(p.texts).not.toContain("Leave the call");
+    expect(p.texts).not.toContain("Answer out loud");
+    expect(p.texts).not.toContain("Open the notes");
+    expect(callsOf(p.every())).toEqual([]);
+    expect(navs(p.every(), "bots.note")).toEqual([]);
+    const sched = await build({ ...MEETING_PAGE, client, detail: { readOnly: true, meeting: meeting("m1", { owner: { id: "u2", name: "Ravi" } }), asks: [] } });
+    expect(sched.lint).toEqual([]);
+    expect(sched.texts).not.toContain("Call it off");
+    expect(callsOf(sched.every())).toEqual([]);
+  });
+
+  it("their own, with the admin who sent the bot named", async () => {
+    const p = await build({ ...MEETING_PAGE, client, detail: { meeting: meeting("m1", { by: "Aanya" }), asks: [] } });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("Sent by Aanya");
+    expect(p.texts).toContain("Call it off");
   });
 
   it("gone: says so, with a way back", async () => {

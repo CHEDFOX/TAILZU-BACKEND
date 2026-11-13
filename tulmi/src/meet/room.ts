@@ -93,7 +93,9 @@ export function personOf(body: unknown): Person | null {
 
 export class Room {
   readonly id: string;
+  /** Whose meeting it is (their note, their meter), and the space's admin who sent the bot for them, if one did. */
   readonly userId: string;
+  readonly byId: string | null;
   readonly tokenHash: string;
   readonly title: string;
   /** The name it shows in the call, and what it answers to (wakeNames, and the whole name as people read it off the screen). */
@@ -140,6 +142,7 @@ export class Room {
   constructor(m: Meeting, botName: string, owner: string) {
     this.id = m.id;
     this.userId = m.userId;
+    this.byId = m.byId ?? null;
     this.tokenHash = m.tokenHash;
     this.title = m.title;
     this.botName = botName;

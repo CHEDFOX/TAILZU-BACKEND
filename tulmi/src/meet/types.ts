@@ -4,7 +4,9 @@
  *
  * Routes (routes/bots/meet.ts), the signed-in person's:
  *   GET    /v1/meet/overview                 -> MeetOverview
- *   POST   /v1/meet/join                     { url, title?, voice? } -> 201 { meeting: MeetingView }
+ *   POST   /v1/meet/join                     { url, title?, voice?, forUser? } -> 201 { meeting: MeetingView }
+ *                                             forUser: a member of a space the person is the admin of (MeetOverview.sendFor): the bot
+ *                                             joins that member's meeting, for them (their note, their push; the admin "sent" it)
  *   GET    /v1/meet/meetings/:id             -> MeetingDetail
  *   POST   /v1/meet/meetings/:id/leave       -> { meeting: MeetingView }
  *   PUT    /v1/meet/meetings/:id             { voice } -> { meeting: MeetingView }     (answers out loud, or in the chat, from now on)
@@ -20,6 +22,11 @@
  *   POST   /v1/meet/stage/:token/clips/:clip/done      { how: "ended" | "stopped" }
  *
  * Screens: bots.bot with slug "meet" (screens/bots/meetPage.ts) and bots.meet.meeting, params { m } (screens/bots/meetScreens.ts).
+ *
+ * In a space (docs/spaces.md: the admin, and the line about the admin): the space's admin sees the meetings of each member who agreed to
+ * the line as it is now, with no block between them (MeetOverview.people, a meeting read only), is told when such a member takes the bot
+ * to a meeting (space_meet), and may send the bot to a member's meeting for them (join's forUser; the member is told: space_meet_sent).
+ * Nothing of it while Spaces is off (botsBots/spacesSwitch.ts).
  */
 import type { LiveNotes, MeetAsk, MeetSettings, MeetStatus } from "./store.js";
 import type { Platform } from "./words.js";
@@ -50,7 +57,14 @@ export interface MeetingView {
   /** Why it could not join, in a few words for a person. */
   error: string | null;
   liveNotes: LiveNotes | null;
+  /** Whose meeting it is, when it is not the viewer's (a member's, seen by their space's admin). */
+  owner?: { id: string; name: string };
+  /** Who sent the bot, when it was not the meeting's owner (the space's admin, for a member). */
+  by?: string;
 }
+
+/** Someone the person can send the bot for: a member of a space they are the admin of. */
+export interface MeetPerson { id: string; name: string }
 
 export interface MeetOverview {
   settings: MeetSettings;
@@ -66,9 +80,14 @@ export interface MeetOverview {
   minutesCap: number;
   /** Whether its calendar can be read (Google Calendar connected), for auto-join. */
   calendar: boolean;
+  /** The members of their spaces whose meetings they see (live, coming up and recent, newest first, at most 20), each with its owner. */
+  people: MeetingView[];
+  /** Who they may send the bot for (join's forUser). Empty when they are no space's admin, or Spaces is off. */
+  sendFor: MeetPerson[];
 }
 
-export interface MeetingDetail { meeting: MeetingView; asks: MeetAsk[] }
+/** readOnly: the viewer is the owner's space admin, seeing it (no Leave, no switch, no call-off). */
+export interface MeetingDetail { meeting: MeetingView; asks: MeetAsk[]; readOnly?: boolean }
 
 /** A spoken answer, played through the stage page. */
 export interface ClipInput { text: string; audio: Buffer; contentType: string }
@@ -101,9 +120,11 @@ export interface StageHub {
   close(meetingId: string): void;
 }
 
-export type MeetPushKind = "meet_ready" | "meet_waiting" | "meet_failed";
+export type MeetPushKind = "meet_ready" | "meet_waiting" | "meet_failed" | "space_meet" | "space_meet_sent";
 /**
  * A push (push/defaults.ts, you/push.ts). meet_ready: { title } -> bots.note { id: noteId }; meet_waiting: { title, name } and
- * meet_failed: { title, name, why } -> bots.meet.meeting { m }. Never a word of what was said.
+ * meet_failed: { title, name, why } -> bots.meet.meeting { m }. space_meet (to a space's admin: a member took the bot to a meeting):
+ * { name: the member, title } and space_meet_sent (to a member: their admin sent the bot to their meeting): { name: the admin, title },
+ * both -> bots.meet.meeting { m }. Never a word of what was said.
  */
 export type MeetNotify = (userId: string, msg: { kind: MeetPushKind; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<unknown>;

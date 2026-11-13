@@ -11,9 +11,9 @@
  *                Plan Ease's own kinds (botsBots/planKinds.ts: plan_event, plan_todo, the day notes...) are told apart there, each
  *                with its group: Plan Ease's (as the reminders), a person's word (as people), or never a sound (the morning note)
  *   routines     a routine they set up ran, or paused itself: sent (they asked for it at that time); in quiet hours without a sound
- *   people       someone in a space gave them a task, planned something for them, messaged them, asked to join or let them in: sent;
- *                in quiet hours without a sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none:
- *                botsBots/threads.ts)
+ *   people       someone in a space gave them a task, planned something for them, messaged them, asked to join or let them in, took
+ *                the meeting bot to a meeting (to the space's admin) or sent it to theirs (to a member): sent; in quiet hours without a
+ *                sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none: botsBots/threads.ts)
  *   mail         the mail bot: a business's message needs their answer, an urgent one has a draft, or its AI paused for the day: sent; in
  *                quiet hours without a sound; not with the mail bot turned off
  *   meet         the meeting bot: the notes are ready, it waits to be let in, or it could not join: sent; in quiet hours without a sound;
@@ -36,7 +36,7 @@ const MAIL = new Set(["mail_needs_you", "mail_urgent", "mail_paused"]);
 /** The meeting bot's (push/defaults.ts): a call is waiting or its notes are ready, so they go, quietly in quiet hours; not with the meeting bot off. */
 const MEET = new Set(["meet_ready", "meet_waiting", "meet_failed"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
-const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed"]);
+const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent"]);
 
 /** The person's minute of the day, in their own time. */
 const minuteOf = (now: number, tzOffsetMinutes: number): number => {

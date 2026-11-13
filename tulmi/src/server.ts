@@ -78,8 +78,11 @@ import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
 import { registerMailRoutes } from "./routes/bots/mail.js";
 import { registerMeetRoutes } from "./routes/bots/meet.js";
-import { meetService } from "./meet/service.js";
+import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
+import { spacePeople } from "./meet/people.js";
+import { botsAreaParts } from "./botsBots/index.js";
+import { Blocks } from "./botsBots/blocks.js";
 import { googleEvents, startAutoJoin } from "./meet/calendar.js";
 import { GoogleSession } from "./connectors/google/oauth.js";
 import { registerBlipRoutes } from "./routes/bots/blipCatalog.js";
@@ -467,7 +470,9 @@ registerTalkRoutes(app, { rateLimit: AUTHED_RL, bots, context: personContext });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent, routines };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);
-const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);
+// The bots area's parts, made once here so the meeting bot reads the same Spaces (who is whose admin) as its routes do.
+const botsParts = botsAreaParts({ bots, connectors });
+const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts });
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
 // The Xode flow (code/flow, routes/bots/botsXode.ts): read and hear the direction, agree a plan, approve it, judge each message against it.
@@ -490,6 +495,9 @@ registerMeetRoutes(app, {
     return (await connectors.store.listConnections(userId)).some((c) => c.connectorId === "google-calendar" && Boolean(c.tokensEnc));
   },
 });
+// In a space, its admin sees the meetings of the members who agreed to the line about the admin, is told when they take the bot to one,
+// and may send it to theirs (meet/people.ts; nobody while Spaces is off).
+setMeetPeople(spacePeople({ spaces: botsParts.spaces, blocks: new Blocks(Date.now, { log: app.log }) }));
 if (connectors && meetService()) {
   const stopAutoJoin = startAutoJoin({
     store: meetStore(),

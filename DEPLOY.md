@@ -1232,8 +1232,9 @@ into the call; there is no container to run. It needs `BOTS` on (above). Without
 
    with these events: `bot.joining_call`, `bot.in_waiting_room`, `bot.in_call_not_recording`, `bot.in_call_recording`, `bot.call_ended`,
    `bot.done` and `bot.fatal`. This is set once. (The live transcript and chat need no setting: each bot is given its own address as it is made.)
-4. **Migration and deploy.** 0082 runs on deploy with the others (`tulmi/supabase/migrate-pending.sh`; by hand:
-   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0082"`). It makes `meet_settings`, `meetings` and
+4. **Migration and deploy.** 0082 and 0083 run on deploy with the others (`tulmi/supabase/migrate-pending.sh`; by hand:
+   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0082 && ./deploy/migrate.sh 0083"`; 0083 adds a
+   meeting's space and who sent the bot, for a space's admin sending it for a member). It makes `meet_settings`, `meetings` and
    `meeting_asks`, the server's alone and deleted with the account. Without `SUPABASE_SERVICE_KEY` they live in memory.
 
    ```bash

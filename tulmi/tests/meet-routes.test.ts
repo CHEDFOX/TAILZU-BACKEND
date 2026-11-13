@@ -1,6 +1,6 @@
 /**
  * THE MEETING BOT OVER HTTP (routes/bots/meet.ts): off without BOTS or its service; the person's routes passing their own id and only
- * the validated fields, a bad id refused, the service's errors in their own words; Recall's status webhook refused unsigned, never twice for one
+ * the validated fields (a space admin's forUser too, only as an id), a bad id refused, the service's errors in their own words; Recall's status webhook refused unsigned, never twice for one
  * id; its live webhook answered at once and processed in order per meeting; the stage page with its policy, its clips, its done, and its
  * event stream closed when the page goes.
  */
@@ -123,6 +123,29 @@ describe("the person's routes", () => {
     expect(svc.calls[6]!.args).toEqual(["dev-user", { autoJoin: true, botName: "Sam" }]);
   });
 
+  it("pass the member a space's admin sends the bot for, and the service's refusal in its own words", async () => {
+    const { a, svc } = await app();
+    const member = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+    const r = await a.inject({ method: "POST", url: "/v1/meet/join", payload: { url: "https://meet.google.com/abc-defg-hij", forUser: member } });
+    expect(r.statusCode).toBe(201);
+    expect(svc.calls[0]).toEqual({ fn: "join", args: ["dev-user", { url: "https://meet.google.com/abc-defg-hij", forUser: member }] });
+
+    const refusing = fakeService();
+    (refusing.service as unknown as { join: () => Promise<never> }).join = async () => {
+      throw new MeetErr(404, "You can send it only for someone in a space you look after.", "not_your_person");
+    };
+    const no = await app({ service: refusing.service });
+    const res = await no.a.inject({ method: "POST", url: "/v1/meet/join", payload: { url: "https://meet.google.com/abc-defg-hij", forUser: member } });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toEqual({ code: "not_your_person", message: "You can send it only for someone in a space you look after." });
+
+    // The page sends its "For" chip as it is: "" (Me) is the person's own meeting, as no forUser is.
+    const self = await app();
+    const mine = await self.a.inject({ method: "POST", url: "/v1/meet/join", payload: { url: "https://meet.google.com/abc-defg-hij", forUser: "" } });
+    expect(mine.statusCode).toBe(201);
+    expect(self.svc.calls[0]).toEqual({ fn: "join", args: ["dev-user", { url: "https://meet.google.com/abc-defg-hij" }] });
+  });
+
   it("says calendar false when it is not asked about", async () => {
     const { a, svc } = await app({ calendarConnected: undefined });
     await a.inject({ method: "GET", url: "/v1/meet/overview" });
@@ -134,6 +157,7 @@ describe("the person's routes", () => {
     const bodies: Array<[string, string, unknown]> = [
       ["POST", "/v1/meet/join", {}], ["POST", "/v1/meet/join", { url: "" }], ["POST", "/v1/meet/join", { url: "x".repeat(2001) }],
       ["POST", "/v1/meet/join", { url: "https://x.y", title: "t".repeat(201) }], ["POST", "/v1/meet/join", { url: "https://x.y", voice: "yes" }],
+      ["POST", "/v1/meet/join", { url: "https://x.y", forUser: "not-an-id" }], ["POST", "/v1/meet/join", { url: "https://x.y", forUser: 7 }],
       ["PUT", `/v1/meet/meetings/${MID}`, {}], ["PUT", `/v1/meet/meetings/${MID}`, { voice: "on" }],
       ["PUT", "/v1/meet/settings", { botName: "n".repeat(41) }], ["PUT", "/v1/meet/settings", { autoJoin: "yes" }],
     ];

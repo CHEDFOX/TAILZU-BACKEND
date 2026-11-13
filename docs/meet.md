@@ -178,6 +178,23 @@ the stage page (in Recall's bot) <──── GET /v1/meet/stage/<token>/events
 * **Event stream.** The route sends `X-Accel-Buffering: no` and a ping every 15 seconds, so a proxy in front does not hold it back
   (DEPLOY.md, "Meetings", step 6).
 
+## 5b. In a space
+
+The rules are Spaces' own (docs/spaces.md: the admin, and the line about the admin). `tulmi/src/meet/people.ts` asks them, walking the
+person's spaces the way Work in space does (`botsBots/work.ts`): a space's admin "has" each member who agreed to the line as it is now,
+with no block between them, in a space that is not a draft. Nothing of this while Spaces is off.
+
+- **The admin sees their people's meetings.** The meeting bot's page lists "Your people's meetings" (live, coming up and recent), each
+  "Ravi · Supplier call"; one opens read only: who is there, the notes so far, the questions it answered, with no Leave, switch or call-off.
+  The note itself stays the member's, and their admin opens it through Notes' Work in space, as with every other note.
+- **The admin is told.** When such a member takes the bot to a meeting (by a link, or a calendar meeting joined by itself), each of their
+  admins gets a push, `space_meet` ("Ravi took the meeting bot to Supplier call."), opening that meeting. Never a word from the call.
+- **The admin can send the bot for a member.** The page's "For" chips list those members; joining for one makes the meeting the
+  member's: their AI consent, their day's minutes, their settings and name in the bot's chat line, their note and their push. The member is
+  told, `space_meet_sent` ("Aanya sent the meeting bot to your meeting."). The admin who sent it can still stop it (Leave, Call it off) while
+  the member is theirs; only the member changes how it answers.
+- **Rows.** A meeting keeps which space it came through and who sent it (`space_id`, `by_id`, migration 0083).
+
 ## 6. The AI and the money
 
 **Recall bills per minute of bot time**, to us:
@@ -331,6 +348,7 @@ A built-in bot (`slug` "meet", the name "Meetings" a placeholder until it is giv
 | The engine (joining, the cap, the webhooks, the live events) | `tulmi/src/meet/service.ts` |
 | One meeting's live state, and Recall's live events read | `tulmi/src/meet/room.ts` |
 | A finished note organised (shared with the note-taker's route) | `tulmi/src/notes/finish.ts` |
+| A space's admin and their people (who sees whose meetings, who the bot is sent for) | `tulmi/src/meet/people.ts`, migration 0083 |
 | The page | `experience/bots/screens/bots/meetPage.ts` (bots.bot with slug "meet") |
 | A meeting | `experience/bots/screens/bots/meetScreens.ts` (bots.meet.meeting, params `m`) |
 

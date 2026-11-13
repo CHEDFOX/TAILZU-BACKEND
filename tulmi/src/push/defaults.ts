@@ -189,6 +189,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.meet_waiting.screenId": "bots.meet.meeting",
     "push.meet_failed.enabled": true,
     "push.meet_failed.screenId": "bots.meet.meeting",
+    // The meeting bot in a space (docs/spaces.md): a member took the bot to a meeting (to the space's admin, who sees their meetings), or
+    // the admin sent the bot to a member's meeting (to that member). Both open the meeting (data.m); never a word of what was said.
+    "push.space_meet.enabled": true,
+    "push.space_meet.screenId": "bots.meet.meeting",
+    "push.space_meet_sent.enabled": true,
+    "push.space_meet_sent.screenId": "bots.meet.meeting",
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
@@ -259,6 +265,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.meet_waiting.body": "{name} is waiting to be let in.",
     "push.meet_failed.title": "{title}",
     "push.meet_failed.body": "{name} couldn't join: {why}",
+    "push.space_meet.title": "{name}",
+    "push.space_meet.body": "took the meeting bot to {title}.",
+    "push.space_meet_sent.title": "{name}",
+    "push.space_meet_sent.body": "sent the meeting bot to {title}.",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -273,7 +283,7 @@ export const EVENT_PUSH_KINDS = [
   "approval",
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
-  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed",
+  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent",
   "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
   "mail_needs_you", "mail_urgent", "mail_paused",
