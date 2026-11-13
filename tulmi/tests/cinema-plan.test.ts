@@ -47,6 +47,27 @@ describe("making a script safe to spend money on", () => {
     expect(script.bible.lookRef).toBeNull();
   });
 
+  it("keeps the detailed fields the prompts are written from, and drops acting from a shot with nobody in it", () => {
+    const r = raw();
+    ((r.bible as Record<string, unknown>).look as Record<string, unknown>).grade = "warm highlights, teal shadows";
+    ((r.bible as Record<string, unknown>).look as Record<string, unknown>).texture = "fine grain";
+    ((r.bible as Record<string, unknown>).characters as Record<string, unknown>[])[0]!.voice = "low and warm";
+    Object.assign((r.shots as Record<string, unknown>[])[1]!, {
+      intent: "comfort", performance: "a small smile", camera: "slow push-in, focus racks to his face", composition: "kettle foreground left", atmosphere: "steam curling",
+    });
+    Object.assign((r.shots as Record<string, unknown>[])[0]!, { performance: "nobody to act" });
+    const { script } = normalize(r, { length: 15, language: "hi" });
+    expect(script.bible.look).toMatchObject({ grade: "warm highlights, teal shadows", texture: "fine grain" });
+    expect(script.bible.characters[0]!.voice).toBe("low and warm");
+    expect(script.shots[1]).toMatchObject({ intent: "comfort", performance: "a small smile", camera: "slow push-in, focus racks to his face", composition: "kettle foreground left", atmosphere: "steam curling" });
+    expect(script.shots[0]!.performance).toBe("");
+  });
+
+  it("asks the director for every detail the prompts need", async () => {
+    const { DIRECTOR_SYSTEM } = await import("../src/cinema/plan.js");
+    for (const field of ['"intent"', '"performance"', '"camera"', '"composition"', '"atmosphere"', '"grade"', '"texture"', '"voice"']) expect(DIRECTOR_SYSTEM).toContain(field);
+  });
+
   it("brings the seconds to the length asked for", () => {
     const { script } = normalize(raw(), { length: 30, language: "en" });
     const total = script.shots.reduce((n, s) => n + s.seconds, 0);

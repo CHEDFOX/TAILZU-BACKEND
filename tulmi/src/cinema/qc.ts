@@ -143,13 +143,18 @@ export function checkBrief(card: ShotCard, bible: Bible, kind: "still" | "take")
       ? "You are checking one storyboard still for a film before it is animated. Image 1 is the still; any images after it are the reference sheets of the people and the place, in the order listed."
       : "You are checking one generated video take for a film. Image 1 is the approved still the take started from; the next images are frames from the take, in time order. If a final image is labelled as the previous shot's last frame, check continuity against it.",
     `Shot ${card.n}: ${card.size}, ${card.angle} angle, ${card.move} camera, ${card.lens}mm, ${card.seconds}s.`,
-    `It should show: ${card.frame}`,
+    card.intent ? `What the shot is for: ${card.intent}` : "",
+    `It should show: ${card.frame}${card.composition ? ` Composition: ${card.composition}` : ""}`,
     kind === "take" ? `What happens: ${card.action}` : "",
+    kind === "take" && card.performance ? `The acting to look for: ${card.performance}` : "",
+    kind === "take" && card.camera ? `The camera: ${card.camera}` : "",
+    kind === "take" && card.end ? `How it should end: ${card.end}` : "",
     cast.length ? `People who must look exactly like this:\n${cast.join("\n")}` : "Nobody should be in frame unless the action says so.",
     card.text ? `These words must be readable and spelled exactly: "${card.text}".` : "There must be no text, captions or watermarks.",
     lines.length && kind === "take" ? `Lines spoken (lips should move with them): ${lines.join(" ")}` : "",
     `Look of the film: ${bible.look.palette}; ${bible.look.light}; ${bible.look.stock}.`,
     'Answer with JSON only: {"scores":{"identity":0-10,"action":0-10,"camera":0-10,"quality":0-10,"continuity":0-10},"issues":[{"kind":"identity|wardrobe|action|camera|anatomy|artifact|morph|text|continuity|physics|framing|lipsync|safety","major":true|false,"note":"a few words"}],"fix":"one short instruction for the next attempt, or null"}',
-    "Be strict about faces, hands, bodies, melting or morphing, and anything that contradicts the shot. Mark a problem major only if a viewer would notice it at once.",
+    "Score action on whether the take delivers what the shot is for: the action, the acting and the ending as described. Score camera on the move, its speed and the focus.",
+    "Be strict about faces, hands, bodies, melting or morphing, and anything that contradicts the shot. Mark a problem major only if a viewer would notice it at once. The fix is one concrete instruction about what must be seen (\"his right hand stays on the kettle handle\"), not a general wish.",
   ].filter(Boolean).join("\n");
 }

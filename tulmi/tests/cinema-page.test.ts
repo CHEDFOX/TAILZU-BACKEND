@@ -93,6 +93,8 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("The shots");
     expect(p.texts).toContain("The storyboard costs ₹26");
+    expect(p.texts.some((x) => x.startsWith("Camera: a slow push-in"))).toBe(true);
+    expect(p.texts.some((x) => x.startsWith("For: the viewer feels"))).toBe(true);
     expect(p.paths).toContain("POST /v1/cinema/films/f1/approve-script");
     expect(p.paths).toContain("POST /v1/cinema/films/f1/revise");
   });

@@ -46,7 +46,7 @@ export interface Craft {
   tier: Tier;
   dialect: Dialect;
   s: Record<Trait, number>;
-  /** The longest prompt it reads well, in characters. */
+  /** The longest prompt it reads well, in characters: Veo about 200 words; Kling tighter and motion-led; Seedance its full labelled timeline. */
   maxPrompt: number;
 }
 
@@ -61,24 +61,24 @@ const s = (realism: number, faces: number, motion: number, physics: number, came
  *                                  realism faces motion physics camera stylized dialogue text consistency
  */
 export const CRAFT: Readonly<Record<string, Craft>> = {
-  "google/veo-3.1": { tier: "premium", dialect: "veo", s: s(5, 5, 4, 5, 4, 3, 5, 3, 4), maxPrompt: 1800 },
-  "google/veo-3.1-fast": { tier: "standard", dialect: "veo", s: s(4, 4, 4, 4, 4, 3, 4, 3, 4), maxPrompt: 1800 },
+  "google/veo-3.1": { tier: "premium", dialect: "veo", s: s(5, 5, 4, 5, 4, 3, 5, 3, 4), maxPrompt: 1500 },
+  "google/veo-3.1-fast": { tier: "standard", dialect: "veo", s: s(4, 4, 4, 4, 4, 3, 4, 3, 4), maxPrompt: 1500 },
   "google/veo-3.1-lite": { tier: "draft", dialect: "veo", s: s(3, 3, 3, 3, 3, 3, 3, 2, 3), maxPrompt: 1500 },
-  "kwaivgi/kling-v3.0-pro": { tier: "premium", dialect: "kling", s: s(4, 4, 5, 4, 5, 4, 3, 2, 4), maxPrompt: 2000 },
-  "kwaivgi/kling-v3.0-std": { tier: "standard", dialect: "kling", s: s(4, 4, 4, 3, 4, 4, 3, 2, 4), maxPrompt: 2000 },
+  "kwaivgi/kling-v3.0-pro": { tier: "premium", dialect: "kling", s: s(4, 4, 5, 4, 5, 4, 3, 2, 4), maxPrompt: 1000 },
+  "kwaivgi/kling-v3.0-std": { tier: "standard", dialect: "kling", s: s(4, 4, 4, 3, 4, 4, 3, 2, 4), maxPrompt: 1000 },
   "bytedance/seedance-2.5": { tier: "premium", dialect: "seedance", s: s(4, 4, 5, 4, 5, 4, 4, 3, 5), maxPrompt: 2000 },
   "bytedance/seedance-2.0": { tier: "standard", dialect: "seedance", s: s(4, 4, 4, 4, 4, 4, 3, 3, 5), maxPrompt: 2000 },
   "bytedance/seedance-2.0-fast": { tier: "draft", dialect: "seedance", s: s(3, 3, 4, 3, 4, 4, 3, 2, 4), maxPrompt: 2000 },
-  "alibaba/wan-3.0": { tier: "standard", dialect: "wan", s: s(4, 4, 4, 4, 4, 4, 3, 3, 4), maxPrompt: 1500 },
-  "minimax/hailuo-3": { tier: "standard", dialect: "hailuo", s: s(4, 3, 4, 5, 4, 4, 2, 4, 3), maxPrompt: 1500 },
+  "alibaba/wan-3.0": { tier: "standard", dialect: "wan", s: s(4, 4, 4, 4, 4, 4, 3, 3, 4), maxPrompt: 1300 },
+  "minimax/hailuo-3": { tier: "standard", dialect: "hailuo", s: s(4, 3, 4, 5, 4, 4, 2, 4, 3), maxPrompt: 1300 },
   "runway/gen-4.5": { tier: "premium", dialect: "runway", s: s(4, 4, 5, 4, 5, 5, 0, 2, 4), maxPrompt: 1000 },
-  "google/gemini-omni-1.2-flash": { tier: "draft", dialect: "veo", s: s(3, 3, 3, 3, 3, 3, 4, 3, 3), maxPrompt: 1800 },
-  "kwaivgi/kling-video-o1": { tier: "standard", dialect: "kling", s: s(4, 4, 4, 4, 4, 4, 3, 2, 5), maxPrompt: 2000 },
+  "google/gemini-omni-1.2-flash": { tier: "draft", dialect: "veo", s: s(3, 3, 3, 3, 3, 3, 4, 3, 3), maxPrompt: 1500 },
+  "kwaivgi/kling-video-o1": { tier: "standard", dialect: "kling", s: s(4, 4, 4, 4, 4, 4, 3, 2, 5), maxPrompt: 1000 },
   "bytedance/seedance-2.0-mini": { tier: "draft", dialect: "seedance", s: s(3, 3, 3, 3, 3, 3, 2, 2, 4), maxPrompt: 2000 },
-  "alibaba/wan-3.0-prime": { tier: "standard", dialect: "wan", s: s(4, 4, 4, 4, 4, 4, 3, 3, 4), maxPrompt: 1500 },
-  "alibaba/wan-2.7": { tier: "draft", dialect: "wan", s: s(3, 3, 3, 3, 3, 4, 2, 2, 3), maxPrompt: 1500 },
-  "alibaba/happyhorse-1.1": { tier: "standard", dialect: "generic", s: s(4, 4, 4, 3, 4, 4, 0, 2, 4), maxPrompt: 1500 },
-  "minimax/hailuo-3-max": { tier: "draft", dialect: "hailuo", s: s(4, 3, 4, 4, 3, 3, 0, 3, 3), maxPrompt: 1500 },
+  "alibaba/wan-3.0-prime": { tier: "standard", dialect: "wan", s: s(4, 4, 4, 4, 4, 4, 3, 3, 4), maxPrompt: 1300 },
+  "alibaba/wan-2.7": { tier: "draft", dialect: "wan", s: s(3, 3, 3, 3, 3, 4, 2, 2, 3), maxPrompt: 1300 },
+  "alibaba/happyhorse-1.1": { tier: "standard", dialect: "generic", s: s(4, 4, 4, 3, 4, 4, 0, 2, 4), maxPrompt: 1300 },
+  "minimax/hailuo-3-max": { tier: "draft", dialect: "hailuo", s: s(4, 3, 4, 4, 3, 3, 0, 3, 3), maxPrompt: 1300 },
 };
 
 /** The resolution each tier renders at; clamped to what the model has (renderRes). */

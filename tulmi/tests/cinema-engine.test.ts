@@ -175,14 +175,14 @@ describe("the prompts", () => {
     expect(motionPrompt(card(1), b, { dialect: "kling", maxChars: 2000, audio: false, seconds: 5 })).toContain("Ends on: Ravi looks up at the rain, smiling.");
     const busy = motionPrompt(card(3, { motion: 3, cast: ["meera"] }), b, { dialect: "seedance", maxChars: 2000, audio: true, seconds: 8 });
     expect(busy).toContain("TIMELINE: [0-6s]");
-    expect(busy).toContain("[6-8s] the movement settles");
+    expect(busy).toContain("[6-8s] The movement settles");
     expect(busy).toContain("ENDING STATE");
     expect(busy).toContain("no music");
   });
 
   it("writes lines the way Kling reads them", () => {
     const c = card(4, { lines: [{ who: "ravi", text: "Andar aa jao" }, { who: "meera", text: "Shukriya" }] });
-    expect(motionPrompt(c, b, { dialect: "kling", maxChars: 2000, audio: true, seconds: 6 })).toContain('[Ravi]: "Andar aa jao" Immediately, [Meera]: "Shukriya"');
+    expect(motionPrompt(c, b, { dialect: "kling", maxChars: 2000, audio: true, seconds: 6 })).toContain('[Ravi, low, warm, unhurried Mumbai Hindi]: "Andar aa jao" Immediately, [Meera, quick, bright, a little breathless]: "Shukriya"');
   });
 
   it("asks for the words in frame when a shot has them", () => {
@@ -192,8 +192,8 @@ describe("the prompts", () => {
   it("describes what moves, not the still, and writes lines the way the model reads them", () => {
     const c = card(4, { lines: [{ who: "ravi", text: "Andar aa jao" }] });
     const p = motionPrompt(c, b, { dialect: "veo", maxChars: 1800, audio: true, seconds: 6 });
-    expect(p).toContain('Ravi says: "Andar aa jao"');
-    expect(p).not.toContain("faded blue kurta");
+    expect(p).toContain('Ravi says in a low, warm, unhurried Mumbai Hindi voice: "Andar aa jao"');
+    expect(p).not.toContain("indigo cotton kurta");
     expect(p).toContain("Audio:");
     expect(p).toContain("No music");
     expect(motionPrompt(c, b, { dialect: "runway", maxChars: 1000, audio: false, seconds: 6 })).not.toContain("Audio:");
@@ -210,6 +210,63 @@ describe("the prompts", () => {
 
   it("carries the fix from a failed take", () => {
     expect(motionPrompt(card(1), b, { dialect: "kling", maxChars: 2000, audio: false, seconds: 5, fix: "keep his left hand on the kettle" })).toContain("Important: Keep his left hand on the kettle.");
+  });
+
+  it("puts everything that is seen into the still: lens and depth, layers, people in full, atmosphere, light, grade, texture, purpose, a quality lock", () => {
+    const p = stillPrompt(card(2, { size: "close" }), b, 14);
+    for (const want of [
+      "Close-up, eye-level, 35mm lens, shallow depth of field, focus on the eyes",
+      "Composition: The kettle and tumblers in the foreground left",
+      "a small scar on his left eyebrow",
+      "Wearing: A faded indigo cotton kurta",
+      "Setting: The chai stall, a tin-roofed wooden stall",
+      "Atmosphere: Steam curling from the kettle",
+      "Lighting: Soft cool daylight from the street behind, a bare 3200K bulb",
+      "Colour grade: Warm highlights, teal shadows",
+      "Texture: 35mm film; fine grain, soft halation",
+      "Purpose: The viewer feels the comfort of a hot chai",
+      "anatomically correct hands with five fingers",
+    ]) expect(p).toContain(want);
+  });
+
+  it("puts everything that moves into the motion: the acting, the camera in detail, the air, the physics, the purpose, the sound", () => {
+    const p = motionPrompt(card(2, { physics: true, crowd: true }), b, { dialect: "veo", maxChars: 1500, audio: true, seconds: 6 });
+    for (const want of [
+      "Camera: A slow push-in from medium to medium-close over the shot, focus holding on his hands then racking to his face",
+      "Performance: He glances up at the roof, a small smile",
+      "Atmosphere: Steam curling",
+      "Physics: real weight and momentum",
+      "Background people move naturally and independently",
+      "Purpose: The viewer feels the comfort",
+      "Audio: Rain on tin, kettle. No music, no subtitles.",
+      "Ends on: Ravi looks up at the rain, smiling.",
+    ]) expect(p).toContain(want);
+    expect(p.length).toBeLessThanOrEqual(1500);
+  });
+
+  it("writes a busy Seedance shot beat by beat, each beat with its own share of the seconds", () => {
+    const c = card(4, { action: "Ravi hands Meera a glass. She wraps both hands round it. She takes a first sip.", motion: 2 });
+    const p = motionPrompt(c, b, { dialect: "seedance", maxChars: 2000, audio: true, seconds: 8 });
+    expect(p).toContain("[0-2s] Ravi hands Meera a glass. [2-4s] She wraps both hands round it. [4-6s] She takes a first sip. [6-8s] The movement settles and holds.");
+    expect(p).toContain("PERFORMANCE:");
+    expect(p).toContain("CONTINUITY:");
+  });
+
+  it("keeps every prompt within the length its model reads best, and keeps what matters most", () => {
+    for (const m of videoModels()) {
+      const p = motionPrompt(card(3, { cast: ["meera"], lines: [{ who: "meera", text: "Ek chai, please!" }], physics: true }), b, { dialect: m.dialect, maxChars: m.maxPrompt, audio: m.audio, seconds: 6 });
+      expect(p.length, m.id).toBeLessThanOrEqual(m.maxPrompt);
+      expect(p, m.id).toContain("Ravi pours chai");
+      expect(p, m.id).toMatch(/Ends on:|ENDING STATE/);
+    }
+  });
+
+  it("still writes a prompt for a card from before the detailed fields", () => {
+    const old = { ...card(1) } as Record<string, unknown>;
+    for (const k of ["intent", "performance", "camera", "composition", "atmosphere"]) delete old[k];
+    const c = old as unknown as Parameters<typeof motionPrompt>[0];
+    expect(motionPrompt(c, b, { dialect: "veo", maxChars: 1500, audio: false, seconds: 5 })).toContain("Camera: The camera holds completely still");
+    expect(stillPrompt(c, b, 14)).not.toContain("undefined");
   });
 
   it("changes only the fingerprints a change touches", () => {

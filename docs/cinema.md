@@ -90,24 +90,59 @@ OpenRouter's prices are read in all three ways it writes them: dollars a second,
 
 ## 4. The prompts
 
-One shot card, written once, becomes (`compile.ts`):
+The result comes from the detail, and the detail starts with the director. Every shot card is written in full (`plan.ts`
+`DIRECTOR_SYSTEM`): concrete, visual, specific, with no empty words, and with the result first:
 
-* **the look frame**: one key-art picture of the film, given to every still as its style reference;
-* **the still**: the opening frame as a film still, each reference image named by its number and given one role ("the face, hair, build and
-  clothes of Ravi; not the background or the pose", "the colour grade, the light and the film texture only");
-* **the motion**: what changes from the still, in the model's own way. Subject and action first (a model weighs the start most); one camera
-  move and its lens; the shot's last moment named ("Ends on: …"); the empty words taken out (cinematic, epic, stunning…); no model names,
-  durations or aspect ratios in the words; the sound said the model's way, with "no music" (the film's music is added in the cut). Veo reads
-  `Ravi says: "…"` and `Audio:` / `SFX:`; Kling reads `[Ravi]: "…"`; a busy Seedance shot is a timeline (STARTING STATE, every second
-  covered, a settling moment, ENDING STATE). Over a model's cap, the light goes first, then the sound, never the action or the ending.
+| Field | What the director writes | Where it goes |
+| --- | --- | --- |
+| `intent` | what the viewer should feel or understand by the shot's end | the still, the motion, the eye's check |
+| `frame`, `composition` | the opening instant; the layers (foreground, subject, background), the subject's place, where the eye goes, the space left | the still |
+| `action` | what moves, in order, with direction and speed | the motion (a Seedance timeline: one beat per sentence) |
+| `performance` | two to four visible cues of the acting ("her eyes drop to the cup, a small smile"), never a named feeling | the motion, the eye's check |
+| `camera` | the one move: speed, direction, the framing it starts and ends on, what the focus does | the motion, the eye's check |
+| `light` | the key's direction and quality, its colour temperature, the practicals, the fill and rim, the time of day | the still, the motion |
+| `atmosphere` | what moves in the air and the place: rain, steam, dust in a beam, wind in fabric | the still, the motion |
+| `end` | the last moment, as a still | the motion ("Ends on:" / ENDING STATE), the eye's check |
+| `sound` | the ambience, then the effects tied to what happens | the motion's audio |
+| people | `look` (age, skin, face, eyes, hair, marks, build, posture), `wardrobe` (every garment's colour, fabric, fit), `voice` (pitch, pace, accent) | sheets and stills; the voice in every spoken line |
+| the look | palette, light, lens character, stock, colour `grade`, `texture` | the look frame, every sheet and still |
+
+The person reads the acting, the camera and the intent in the script and can change any of it in plain words before anything is made.
+
+One card then becomes (`compile.ts`):
+
+* **the look frame**: one key-art picture of the film (the logline, a composition with depth, the light, the lens, the palette, the grade, the
+  texture, the mood), given to every still as its style reference;
+* **the reference sheets**: each person front and three-quarter on grey, 85mm at f/8, soft even light, every detail of face and clothes; each
+  place empty, 24mm, deep focus, every material and prop in view;
+* **the still** (300 words or more; image models read long labelled prompts well): the shot, angle, lens and depth of field (a close-up's
+  background melts away, a wide holds everything sharp), the scene, the composition, each person in full, the setting, the atmosphere, the
+  lighting setup, the palette, the grade, the texture, the mood, the purpose, each reference image named by its number with one role ("the
+  face, hair, build and clothes of Ravi; not the background or the pose", "the colour grade, the light and the film texture only"), and a
+  quality lock (skin texture, eyes with catchlights, hands with five fingers, coherent perspective; for animation, on-model drawing);
+* **the motion**: what changes from the still, in the model's own way and at the length it reads best (`models.ts maxPrompt`): Veo about 200
+  words, camera first, the acting, `Ravi says in a low, warm voice: "…"`, `Audio:`; Kling tighter and motion-led, `[Ravi, low warm voice]:
+  "…"`; a busy Seedance shot as a labelled timeline (STARTING STATE, CAMERA, each beat with its seconds, a settling moment, PERFORMANCE,
+  ENDING STATE, CONTINUITY, ATMOSPHERE, PHYSICS, AUDIO); Runway short, no sound. Every motion prompt: the action first (a model weighs the start
+  most), one camera move with its speed and focus, the acting cues, the atmosphere moving, physics when water, cloth or fire is in it, crowds
+  kept apart, the ending named, the purpose, the identity kept, the sound with "no music" (the film's music is added in the cut), the empty
+  words (cinematic, epic, stunning…) taken out, no model names, durations or aspect ratios in the words. Never a re-description of the still:
+  that is what makes faces drift and clothes change. Over a model's cap, the light goes first, then the sound, the purpose and the atmosphere;
+  never the action, the camera or the ending.
 
 Kling's sound cannot be told "no music", so a Kling take is silent unless someone speaks in it (`wantsAudio`).
+
+**Pictures** get the same treatment (`pictures.ts`): an art director's brief of 120 to 220 words in ten parts (subject in full, the moment, the
+setting, the composition and text space, the lens and focus, the lighting setup, the colours and grade, the medium, the mood, and for a poster
+the exact words with their typeface, size, placement and hierarchy), decided by what the picture is for, then a quality lock by kind (a
+portrait's eyes tack-sharp, a product exact in shape and label, a logo bold and flat, an edit changing only what was asked).
 
 ## 5. The eye and the retakes
 
 Every still and every take is looked at by a vision model (`qc.ts`): the shot card, who must look like what, the agreed still, frames from the
 take, and for a shot that continues or stays in the same place, the last frame of the shot before. It answers five scores (identity, action,
-camera, quality, continuity), the problems it saw and one line that would fix them. What passes is decided in code: no major problem, nothing
+camera, quality, continuity), the problems it saw and one concrete line that would fix them; it is told the shot's intent, the acting, the
+camera move and the ending, and marks the take on whether it delivers them. What passes is decided in code: no major problem, nothing
 under 6, a weighted mean of 7.
 
 | After a take is checked | |

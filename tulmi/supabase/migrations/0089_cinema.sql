@@ -5,7 +5,8 @@
 --                  they agreed to and what has been spent (paise), and the film itself as one JSON body: the script (bible and shot list), each
 --                  shot's progress, every take tried, the cut, and the notes for the person
 -- cinema_pictures  one row a picture the bot made: the words asked, its kind, the model, the media key of the picture, what it cost
--- cinema_cast      the people a person keeps and uses again across films and pictures, with the media key of their reference sheet
+-- cinema_cast      the people a person keeps and uses again across films and pictures: their look, clothes and voice, and the media key of
+--                  their reference sheet
 --
 -- The pictures, stills, takes and films are blobs in R2 under u/<person>/cinema/; these rows only name them. Written and read by the server
 -- with the service key only: row level security is on and there is no policy, so no token reads or writes them. Rows go with the account
@@ -55,6 +56,7 @@ create table if not exists public.cinema_cast (
   name       text not null check (char_length(name) <= 40),
   look       text not null default '',
   wardrobe   text not null default '',
+  voice      text not null default '',
   ref        text,
   created_at timestamptz not null default now(),
   primary key (user_id, key)

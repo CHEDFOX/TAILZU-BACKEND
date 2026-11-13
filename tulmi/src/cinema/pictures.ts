@@ -33,9 +33,23 @@ export interface ReadAsk {
   cast: string[];
 }
 
-const READ_SYSTEM = `You turn a person's request for a picture into a brief for an image model. Answer with JSON only:
-{"kind":"photo|portrait|product|poster|illustration|logo|edit","text":"words that must appear in the picture exactly, or null","aspect":"1:1|4:5|3:4|2:3|9:16|16:9|3:2|4:3|21:9","prompt":"the picture described for an image model: subject, what they do, where, light, lens or medium, style, mood; concrete visible details; no empty words like cinematic, epic, stunning, masterpiece, 8k","cast":["keys of the listed people the request names"]}
-Rules: "edit" when they sent photos and want them changed; then say in the prompt what to change and what to keep. Keep their language for any words in the picture. Never real people's likenesses unless it is an edit of the photo they sent, never brands they did not ask for, nothing sexual involving minors, no gore or hate.`;
+const READ_SYSTEM = `You are an art director and photographer. You turn a person's request for a picture into a brief an image model will follow exactly. Image models only know what you write: be concrete, visual and specific, with precise nouns, materials, colours, directions and measures. Vague words (beautiful, cinematic, epic, stunning, masterpiece, 8k) make generic pictures; leave them out.
+
+First decide what the picture is FOR (sell a product, announce a sale, flatter a face, explain a thing, set a mood) and make every choice serve that result. Then write the brief, covering in this order, each in a sentence or two:
+1. Subject: who or what, in full: age, skin tone, face, eyes, hair, build, expression and pose for a person; shape, material, colour, finish, size and brand details they asked for for a product.
+2. Action and moment: what is happening at this instant.
+3. Setting: the place, its materials, props, time of day and weather.
+4. Composition: the framing (close-up, medium, wide), the angle, where the subject sits (thirds, centre), the foreground and background, the negative space (and where text will go, for a poster).
+5. Camera: the lens in mm, the aperture and depth of field, the focus point.
+6. Lighting: the key light's direction and quality, the colour temperature, the fill, the rim or back light, the practicals, reflections.
+7. Colour: three or four named colours, the grade, the contrast.
+8. Texture and medium: photograph (film stock or digital), illustration (medium and style), 3D render, vector.
+9. Mood: two or three words of feeling.
+10. Text, for a poster or a label: the exact words, the typeface style (bold condensed sans, elegant serif, hand lettering), the size and placement, the colour and the hierarchy.
+Rules: "edit" when they sent photos and want them changed: say exactly what to change and what must stay as it is (the face, the product, the background). Keep their language for any words in the picture. Never real people's likenesses unless it is an edit of the photo they sent, never brands they did not ask for, nothing sexual involving minors, no gore or hate.
+
+Answer with JSON only:
+{"kind":"photo|portrait|product|poster|illustration|logo|edit","text":"words that must appear in the picture exactly, or null","aspect":"1:1|4:5|3:4|2:3|9:16|16:9|3:2|4:3|21:9","prompt":"the brief: 120 to 220 words, the ten parts above as one flowing description","cast":["keys of the listed people the request names"]}`;
 
 export async function readAsk(think: Think, words: string, o: { photos: number; cast: readonly Character[] }): Promise<ReadAsk> {
   const user = [
@@ -43,7 +57,7 @@ export async function readAsk(think: Think, words: string, o: { photos: number; 
     o.photos ? `They sent ${o.photos} photo(s) with it.` : "No photos came with it.",
     o.cast.length ? `People they have: ${o.cast.map((c) => `${c.key} (${c.name})`).join(", ")}` : "",
   ].filter(Boolean).join("\n");
-  const r = await think({ purpose: "cinema.picture.read", tier: "cheap", system: READ_SYSTEM, user, maxTokens: 900, capPaise: 40 });
+  const r = await think({ purpose: "cinema.picture.read", tier: "cheap", system: READ_SYSTEM, user, maxTokens: 1400, capPaise: 60 });
   return normalizeAsk(r.json ?? r.text, words, o);
 }
 
@@ -63,14 +77,27 @@ export function normalizeAsk(raw: unknown, words: string, o: { photos: number; c
   if (kind === "edit" && !o.photos) kind = "photo";
   const text = typeof r.text === "string" && r.text.trim() && r.text.trim().toLowerCase() !== "null" ? r.text.trim().slice(0, 60) : null;
   const aspect = typeof r.aspect === "string" && (ASPECTS as readonly string[]).includes(r.aspect) ? r.aspect : kind === "logo" ? "1:1" : kind === "poster" ? "2:3" : "1:1";
-  const prompt = plain(typeof r.prompt === "string" && r.prompt.trim() ? r.prompt.trim().slice(0, 1500) : words.slice(0, 1500));
+  const prompt = plain(typeof r.prompt === "string" && r.prompt.trim() ? r.prompt.trim().slice(0, 2400) : words.slice(0, 2400));
   const cast = (Array.isArray(r.cast) ? r.cast : []).filter((k): k is string => typeof k === "string" && o.cast.some((c) => c.key === k)).slice(0, 4);
   return { kind, text, aspect, prompt, cast };
 }
 
-/** The words the image model reads: the brief, each reference's one role, the rule on text. */
+/** What makes each kind of picture hold up, said to the model every time. */
+const QUALITY: Partial<Record<ImageKind, string>> = {
+  photo: "Photographic realism: natural skin texture, realistic eyes with catchlights, anatomically correct hands with five fingers, true-to-life materials, coherent perspective.",
+  portrait: "Portrait quality: tack-sharp focus on the eyes, natural skin texture with pores, flattering but honest light, anatomically correct hands, the background softly out of focus.",
+  product: "Product photography quality: the product exact in shape, colour, label and proportions, crisp edges, accurate reflections and shadows, clean, uncluttered background.",
+  poster: "Poster quality: a clear visual hierarchy, a strong focal point, the text area kept clean and legible, balanced margins.",
+  illustration: "Illustration quality: consistent style and line work, readable shapes, a coherent palette, no stray marks.",
+  logo: "Logo quality: simple, bold, balanced shapes that read at small sizes, flat colours, no gradients unless asked, no mock-up, on a plain background.",
+  edit: "Edit quality: change only what was asked; keep everything else in the photo exactly as it is, the same face, product, light and perspective.",
+};
+
+/** The words the image model reads: the brief, the quality lock for its kind, each reference's one role, the rule on text. */
 export function picturePrompt(a: ReadAsk, refs: { role: string }[]): string {
   const parts = [a.prompt];
+  const lock = QUALITY[a.kind];
+  if (lock) parts.push(lock);
   refs.forEach((r, i) => parts.push(`Reference image ${i + 1}: ${r.role}.`));
   if (a.text) parts.push(`The words "${a.text}" appear exactly as written, spelled correctly, clearly readable; no other text.`);
   else if (a.kind !== "logo") parts.push("No text, captions, logos or watermarks.");

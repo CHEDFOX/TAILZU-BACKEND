@@ -42,15 +42,21 @@ export interface Look {
   lens: string;
   /** The film stock or the animation's look: "35mm film grain", "hand-painted 2D". */
   stock: string;
+  /** The colour grade: "warm highlights, teal shadows, gentle contrast, lifted blacks". */
+  grade: string;
+  /** The texture of the image: "fine grain, soft halation on highlights, slight lens bloom". */
+  texture: string;
 }
 
 export interface Character {
   /** Its handle in the shot list: lower case, a-z 0-9 and hyphens. */
   key: string;
   name: string;
-  /** Face, age, hair, build: what makes them the same person in every shot. */
+  /** Face, age, skin, eyes, hair, marks, build, posture: what makes them the same person in every shot. */
   look: string;
   wardrobe: string;
+  /** How they sound when they speak: pitch, pace, accent, manner ("low, warm, unhurried Mumbai Hindi"). */
+  voice: string;
   /** Media key of the reference sheet (a front view and a three-quarter view), once made. */
   ref: string | null;
 }
@@ -106,6 +112,8 @@ export interface ShotCard {
   n: number;
   /** What this shot does for the story, in a line. */
   beat: string;
+  /** The result the shot is for: what the viewer should feel or understand by its end. */
+  intent: string;
   size: ShotSize;
   angle: Angle;
   move: Move;
@@ -117,16 +125,25 @@ export interface ShotCard {
   place: string;
   /** What happens in the shot, in order. */
   action: string;
-  /** The opening frame, as a still: the composition. */
+  /** The acting, as two to four visible cues: what faces, hands and bodies do ("his jaw tightens; he looks down; his thumb rubs the rim"). */
+  performance: string;
+  /** The camera in detail: the move's speed and direction, where it starts and ends, what the focus does. */
+  camera: string;
+  /** The opening frame, as a still: who and what is where. */
   frame: string;
+  /** The frame's layers and balance: foreground, subject, background, where the eye goes, the space left. */
+  composition: string;
+  /** What moves in the air and the place: rain, steam, dust, wind, haze, light flicker. */
+  atmosphere: string;
   /** How the shot ends: its last moment, the place the model animates towards. */
   end: string;
+  /** The light: the key's direction and quality, its colour temperature, the practicals, the fill and the rim. */
   light: string;
   seconds: number;
   lines: Line[];
   /** Voice-over heard over this shot, or null. */
   vo: string | null;
-  /** Sound in the shot: ambience and effects. */
+  /** Sound in the shot: the ambience, then the effects tied to what happens. */
   sound: string;
   link: Link;
   /** How much moves: 0 almost nothing, 3 fast action. */

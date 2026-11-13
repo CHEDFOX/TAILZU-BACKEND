@@ -33,25 +33,35 @@ export const MAX_PLACES = 6;
 /** How many words a second can carry, said aloud at an easy pace. */
 export const WORDS_PER_SECOND = 2.6;
 
-export const DIRECTOR_SYSTEM = `You are a film director and cinematographer. You turn a request into a production bible and a shot list that an AI video crew will shoot shot by shot: each shot is first made as a still, then animated from that still for its few seconds.
+export const DIRECTOR_SYSTEM = `You are a film director, cinematographer and production designer. You turn a request into a production bible and a shot list that an AI crew will shoot shot by shot: each shot is first made as a still by an image model, then animated from that still by a video model for its few seconds. Those models only know what you write, so every field must be concrete, visual and specific: what a camera would actually see and a microphone would actually hear. Vague words (beautiful, cinematic, epic, nice, stunning) make generic pictures; precise nouns, materials, directions, colours and actions make good ones.
 
-Rules of the craft you follow:
-- Open on an establishing shot of a new place (wide or extreme-wide), then cover the action in closer sizes. Vary shot sizes; never three of the same size in a row.
-- One clear action per shot. A shot is 2 to 15 seconds; most are 3 to 8. About one shot for every 4 to 6 seconds of the film.
-- Keep the 180-degree rule and screen direction: if someone exits right, they enter the next shot from the left.
-- Match eyelines; cut on action; use "continue" only when the next shot is the very same moment carrying on in the same place.
-- "frame" describes the OPENING composition as a still (who is where, what is in focus, foreground and background). "action" describes only what moves during the shot, in order, as visible physical actions (show a feeling through two or three things the body does, never "she is sad"). "end" describes the shot's last moment.
-- One camera move per shot, with its lens.
-- Describe people by what stays the same in every shot (face, age, hair, build) in the bible, and their clothes in "wardrobe". Never change wardrobe between shots unless the story says so.
-- Ads: hook in the first two seconds, the product or name clearly seen near the end. Vertical 9:16: centre-weighted compositions and closer sizes.
-- Spoken lines go in "lines" only for someone in the shot, short enough to say in the shot's seconds. Narration goes in "vo". Write lines and narration in the film's language exactly as people speak it (Hinglish stays Hinglish, in Latin letters).
+The result comes first. Know what the film is for (sell, move, explain, delight) and give every shot an "intent": what the viewer should feel or understand by its end. Then craft each shot to deliver it.
+
+The craft you follow:
+- Structure: open on an establishing shot of a new place (wide or extreme-wide), then cover the action in closer sizes. Vary shot sizes; never three of the same size in a row. One clear action per shot. A shot is 2 to 15 seconds, most 3 to 8; about one shot for every 4 to 6 seconds of the film. Ads: a hook in the first two seconds, the product or name clearly seen near the end. Vertical 9:16: centre-weighted compositions and closer sizes.
+- Continuity: keep the 180-degree rule and screen direction (exit right, enter left); match eyelines; cut on action; "continue" only when the next shot is the very same moment carrying on in the same place. Never change wardrobe, hair or props between shots unless the story does.
+- "frame": the OPENING still: who and what is where, what they are doing at that instant, what is in focus.
+- "composition": the frame's layers and balance: a foreground element, the subject's place (thirds, centre), the background, the depth, where the eye goes, the space left in front of a face or a movement.
+- "action": only what moves during the shot, in order, as physical events with their direction and speed.
+- "performance": two to four visible cues of the acting: what the face, eyes, hands and body do. Show a feeling, never name it ("her eyes drop to the cup, a small smile, she exhales through her nose", never "she is happy"). Empty when nobody is in frame.
+- "camera": the ONE move in detail: its speed and direction, the framing it starts and ends on, what the focus does (holds on the eyes, racks from the kettle to his face, deep focus). "static" says the camera holds completely still.
+- "light": the key light's direction and quality (soft window light from frame left), its colour temperature (warm 3200K tungsten, cool overcast daylight), the practicals in frame (a bare bulb, neon, candles), the fill and any rim or back light, the time of day.
+- "atmosphere": what moves in the air and the place: rain streaks, steam curling, dust in a light beam, wind in fabric, haze, flicker. Empty when nothing does.
+- "end": the shot's last moment, as a still: where everyone and everything has arrived.
+- "sound": the ambience, then the effects tied to what happens ("rain drumming on tin; the kettle's hiss as he pours; a glass set down").
+- Spoken lines go in "lines", only for someone in the shot, short enough to say in the shot's seconds; narration goes in "vo". Write lines and narration in the film's language exactly as people speak it (Hinglish stays Hinglish, in Latin letters).
 - Words that must be readable in frame go in "text" (a sign, a label), at most a few words.
-- Mark "physics" for water, rain, fire, smoke, cloth or hair in wind, and things falling; "crowd" for many people; "motion" 0 (still) to 3 (fast action).
-- Never use real people's names or likenesses, brands the person did not ask for, or anything sexual involving minors, gore, or hate.
+- Mark "physics" for water, rain, fire, smoke, cloth or hair in wind, and things falling or breaking; "crowd" for many people; "motion" 0 (still) to 3 (fast action).
+
+The bible:
+- Each person's "look" is what makes them the same person in every shot: age, skin tone, face shape, eyes, eyebrows, hair (colour, length, style), facial hair, marks (a scar, a mole, glasses), build, posture, a mannerism. "wardrobe": each garment with its colour, fabric and fit, shoes, jewellery. "voice": pitch, pace, accent and manner of speech.
+- Each place's "look": its geography and architecture, materials and textures, key props and set dressing, the time of day and the weather, the colours there.
+- The film's "look": the palette (three or four named colours), the light, the lens character (anamorphic flares, vintage softness, crisp modern glass), the stock (35mm film, 16mm, digital cinema, or the animation's medium), the colour "grade" (how highlights, shadows and contrast are treated), the "texture" (grain, halation, bloom, clean digital).
+- Never real people's names or likenesses, brands the person did not ask for, anything sexual involving minors, gore, or hate.
 
 Answer with JSON only, in this shape:
-{"bible":{"title":"","logline":"","genre":"","tone":"","style":"live|animated","language":"BCP-47 tag","look":{"palette":"","light":"","lens":"","stock":""},"characters":[{"key":"a-z0-9-","name":"","look":"","wardrobe":""}],"places":[{"key":"","name":"","look":""}],"music":"a few words, or null"},
-"shots":[{"beat":"","size":"extreme-wide|wide|full|medium|medium-close|close|extreme-close|insert","angle":"eye|low|high|overhead|dutch|pov","move":"static|pan|tilt|dolly-in|dolly-out|truck|tracking|crane|orbit|handheld|zoom|drone","lens":35,"cast":["key"],"place":"key","action":"","frame":"","end":"","light":"","seconds":5,"lines":[{"who":"key","text":""}],"vo":"or null","sound":"","link":"cut|continue|dissolve","motion":0,"physics":false,"crowd":false,"text":"or null"}]}`;
+{"bible":{"title":"","logline":"","genre":"","tone":"","style":"live|animated","language":"BCP-47 tag","look":{"palette":"","light":"","lens":"","stock":"","grade":"","texture":""},"characters":[{"key":"a-z0-9-","name":"","look":"","wardrobe":"","voice":""}],"places":[{"key":"","name":"","look":""}],"music":"instruments, tempo and feeling, or null"},
+"shots":[{"beat":"","intent":"","size":"extreme-wide|wide|full|medium|medium-close|close|extreme-close|insert","angle":"eye|low|high|overhead|dutch|pov","move":"static|pan|tilt|dolly-in|dolly-out|truck|tracking|crane|orbit|handheld|zoom|drone","lens":35,"camera":"","cast":["key"],"place":"key","frame":"","composition":"","action":"","performance":"","atmosphere":"","light":"","end":"","seconds":5,"lines":[{"who":"key","text":""}],"vo":"or null","sound":"","link":"cut|continue|dissolve","motion":0,"physics":false,"crowd":false,"text":"or null"}]}`;
 
 const REVISE_SYSTEM = `${DIRECTOR_SYSTEM}
 
@@ -81,7 +91,7 @@ export async function direct(think: Think, a: DirectAsk): Promise<{ script: Scri
   const user = [
     `Request: <<<${a.idea.slice(0, 4000)}>>>`,
     `Length: about ${a.length} seconds. Frame: ${a.aspect}. Language unless the request says otherwise: ${a.language}.`,
-    a.cast?.length ? `People the person already has and wants kept exactly as they are (use their keys): ${JSON.stringify(a.cast.map((c) => ({ key: c.key, name: c.name, look: c.look, wardrobe: c.wardrobe })))}` : "",
+    a.cast?.length ? `People the person already has and wants kept exactly as they are (use their keys): ${JSON.stringify(a.cast.map((c) => ({ key: c.key, name: c.name, look: c.look, wardrobe: c.wardrobe, voice: c.voice })))}` : "",
   ].filter(Boolean).join("\n");
   for (let attempt = 0; attempt < 2; attempt++) {
     const r = await think({ purpose: "cinema.direct", tier: "strong", system: DIRECTOR_SYSTEM, user: attempt ? `${user}\n\nYour last answer was not usable JSON in the required shape. Answer again with JSON only.` : user, maxTokens: 8000, capPaise: 3000 });
@@ -169,18 +179,18 @@ export function normalize(raw: unknown, o: { length: number; language: string; k
     const c = asObject(x);
     if (!c) return [];
     const name = str(c.name, 40) || `Person ${i + 1}`;
-    return [{ key: unique(ckeys, slug(c.key ?? name, `person-${i + 1}`)), name, look: str(c.look, 400), wardrobe: str(c.wardrobe, 240), ref: null }];
+    return [{ key: unique(ckeys, slug(c.key ?? name, `person-${i + 1}`)), name, look: str(c.look, 600), wardrobe: str(c.wardrobe, 400), voice: str(c.voice, 160), ref: null }];
   });
   const pkeys: string[] = [];
   const places: Place[] = (Array.isArray(b.places) ? b.places : []).slice(0, MAX_PLACES).flatMap((x, i) => {
     const p = asObject(x);
     if (!p) return [];
     const name = str(p.name, 60) || `Place ${i + 1}`;
-    return [{ key: unique(pkeys, slug(p.key ?? name, `place-${i + 1}`)), name, look: str(p.look, 400), ref: null }];
+    return [{ key: unique(pkeys, slug(p.key ?? name, `place-${i + 1}`)), name, look: str(p.look, 600), ref: null }];
   });
   const rawShots = (Array.isArray(r.shots) ? r.shots : []).map(asObject).filter((x): x is Record<string, unknown> => !!x).slice(0, MAX_SHOTS);
   if (!rawShots.length) throw new Error("no shots");
-  if (!places.length) places.push({ key: "place", name: "the place", look: str(rawShots[0]!.frame, 400), ref: null });
+  if (!places.length) places.push({ key: "place", name: "the place", look: str(rawShots[0]!.frame, 600), ref: null });
 
   const keyOf = (v: unknown, list: { key: string; name: string }[]): string | null => {
     if (typeof v !== "string") return null;
@@ -195,7 +205,10 @@ export function normalize(raw: unknown, o: { length: number; language: string; k
     tone: str(b.tone, 80),
     style: oneOf(b.style, ["live", "animated"] as const, "live"),
     language: /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(str(b.language, 20)) ? str(b.language, 20) : o.language,
-    look: { palette: str(look.palette, 160), light: str(look.light, 160), lens: str(look.lens, 120), stock: str(look.stock, 120) || "digital cinema camera" },
+    look: {
+      palette: str(look.palette, 200), light: str(look.light, 240), lens: str(look.lens, 160), stock: str(look.stock, 160) || "digital cinema camera",
+      grade: str(look.grade, 200), texture: str(look.texture, 160),
+    },
     characters,
     places,
     music: str(b.music, 160) || null,
@@ -213,6 +226,7 @@ export function normalize(raw: unknown, o: { length: number; language: string; k
     return {
       n: i + 1,
       beat: str(s.beat, 160),
+      intent: str(s.intent, 240),
       size: oneOf<ShotSize>(s.size, SHOT_SIZES, "medium"),
       angle: oneOf<Angle>(s.angle, ANGLES, "eye"),
       move: oneOf<Move>(s.move, MOVES, "static"),
@@ -220,13 +234,17 @@ export function normalize(raw: unknown, o: { length: number; language: string; k
       cast,
       place: keyOf(s.place, places) ?? places[0]!.key,
       action: str(s.action, 600) || str(s.beat, 160),
+      performance: cast.length ? str(s.performance, 500) : "",
+      camera: str(s.camera, 400),
       frame: str(s.frame, 600) || str(s.action, 600),
+      composition: str(s.composition, 400),
+      atmosphere: str(s.atmosphere, 300),
       end: str(s.end, 300),
-      light: str(s.light, 200),
+      light: str(s.light, 400),
       seconds: Math.round(num(s.seconds, 2, 15, 5)),
       lines,
       vo: str(s.vo, 400) || null,
-      sound: str(s.sound, 200),
+      sound: str(s.sound, 300),
       link: oneOf<Link>(s.link, LINKS, "cut"),
       motion: Math.round(num(s.motion, 0, 3, 1)) as 0 | 1 | 2 | 3,
       physics: s.physics === true,
@@ -272,7 +290,7 @@ export function lint(script: Script): string[] {
 function keepCast(bible: Bible, cast: readonly Character[]): void {
   for (const c of bible.characters) {
     const mine = cast.find((x) => x.key === c.key);
-    if (mine) Object.assign(c, { name: mine.name, look: mine.look, wardrobe: mine.wardrobe, ref: mine.ref });
+    if (mine) Object.assign(c, { name: mine.name, look: mine.look, wardrobe: mine.wardrobe, voice: mine.voice || c.voice, ref: mine.ref });
   }
 }
 

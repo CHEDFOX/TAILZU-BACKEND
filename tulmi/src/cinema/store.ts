@@ -228,10 +228,10 @@ export class SupabaseCinemaStore implements CinemaStore {
   async cast(userId: string): Promise<Character[]> {
     const { data, error } = await this.db.from("cinema_cast").select("*").eq("user_id", userId).order("created_at", { ascending: true }).limit(50);
     if (error) throw new Error("cinema_cast read failed");
-    return (data as { key: string; name: string; look: string; wardrobe: string; ref: string | null }[]).map((r) => ({ key: r.key, name: r.name, look: r.look, wardrobe: r.wardrobe, ref: r.ref }));
+    return (data as { key: string; name: string; look: string; wardrobe: string; voice: string | null; ref: string | null }[]).map((r) => ({ key: r.key, name: r.name, look: r.look, wardrobe: r.wardrobe, voice: r.voice ?? "", ref: r.ref }));
   }
   async putCast(userId: string, c: Character): Promise<void> {
-    const { error } = await this.db.from("cinema_cast").upsert({ user_id: userId, key: c.key, name: c.name, look: c.look, wardrobe: c.wardrobe, ref: c.ref }, { onConflict: "user_id,key" });
+    const { error } = await this.db.from("cinema_cast").upsert({ user_id: userId, key: c.key, name: c.name, look: c.look, wardrobe: c.wardrobe, voice: c.voice, ref: c.ref }, { onConflict: "user_id,key" });
     if (error) throw new Error("cinema_cast upsert failed");
   }
   async dropCast(userId: string, key: string): Promise<void> {

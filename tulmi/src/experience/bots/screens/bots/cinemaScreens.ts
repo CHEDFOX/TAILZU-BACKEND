@@ -94,6 +94,9 @@ function shotCard(ctx: BotsCtx, v: FilmView, card_: ShotCard): Node {
     ], { gap: 8, flexWrap: "wrap" }),
     card_.beat ? meta(plain(card_.beat), { size: 12, lineHeight: 16 }) : null,
     text(plain(card_.action), { size: 14, lineHeight: 19 }),
+    f.status === "script" && card_.performance ? meta(`Acting: ${plain(card_.performance)}`, { size: 12, lineHeight: 16 }) : null,
+    f.status === "script" && card_.camera ? meta(`Camera: ${plain(card_.camera)}`, { size: 12, lineHeight: 16 }) : null,
+    f.status === "script" && card_.intent ? meta(`For: ${plain(card_.intent)}`, { size: 12, lineHeight: 16 }) : null,
     ...card_.lines.map((l) => text(`${who(l.who)}: “${plain(l.text)}”`, { size: 13, lineHeight: 18, color: C.ink })),
     card_.vo ? meta(`Voice-over: “${plain(card_.vo)}”`, { size: 12, lineHeight: 16 }) : null,
     row([

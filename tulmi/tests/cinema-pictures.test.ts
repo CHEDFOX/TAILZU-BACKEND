@@ -31,6 +31,8 @@ describe("reading the ask", () => {
     expect(p).toContain("Reference image 1: the face of Ravi.");
     expect(p).toContain('"Ravi\'s Chai" appear exactly as written');
     expect(picturePrompt({ kind: "photo", text: null, aspect: "1:1", prompt: "x", cast: [] }, [])).toContain("No text");
+    expect(picturePrompt({ kind: "product", text: null, aspect: "1:1", prompt: "x", cast: [] }, [])).toContain("the product exact in shape, colour, label and proportions");
+    expect(picturePrompt({ kind: "edit", text: null, aspect: "1:1", prompt: "x", cast: [] }, [])).toContain("change only what was asked");
   });
 
   it("makes two where faces or words are involved", () => {
