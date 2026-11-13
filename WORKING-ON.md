@@ -43,8 +43,7 @@ Next, after those land: the renderer wiring (`src/sdui/Renderer.tsx`, `actions.t
 
 ## Notes from other sessions
 
-- Calls (our own video and audio calls from the mail bot; `docs/rooms.md`), on branch `claude/peaceful-brown-4trsgb`, not yet on main.
-  It takes migration **0091** (`0091_rooms.sql`). It adds to `shared/types/sdui.ts`: `ROOM_CAPABILITY`, `CALL_VIDEO_COMPONENT` and
-  `CallVideoProps`, and the actions `roomJoin` and `roomSet`, which the screen checker will meet. The apps' side of calls (a
-  `CallVideo` component beside the new Video and Camera ones, the two actions, and `Room` said in `src/sdui/client/capabilities.ts`
-  when the binary has `realtimeCall`) waits until the building blocks above land: nothing of theirs is touched.
+- Calls (our own video and audio calls from the mail bot; `docs/rooms.md`), branch `claude/peaceful-brown-4trsgb`, not yet on main.
+  It takes migration **0091** (`0091_rooms.sql`), and adds `LIVEKIT_*` and `ROOM_*` settings to `config.ts` (its own block, beside the
+  meeting bot's). It touches none of the held files. Joining from the apps waits for V1, S1 and D1: it will be a live-session block
+  (join, change, leave; the session's people in state) and `Video` playing a live track, not a call component (`docs/rooms.md` section 4).

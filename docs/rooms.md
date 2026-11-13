@@ -2,7 +2,7 @@
 
 Video and audio calls of our own, with nothing to connect: no Zoom, Meet or Teams account, no app or sign-up for the people invited. The mail
 bot starts them under a business's name. A call has a link (`x0bot.com/m/abc-defg-hij`). Anyone holding it asks to come in, and the host lets
-them in. X0 Bot's apps join from their own call screen, drawn by the app, never a web page.
+them in. X0 Bot's apps will join from a call screen that is server data like every other (section 4), never a web page.
 
 * [1. How it fits](#1-how-it-fits)
 * [2. A call, from Start to End](#2-a-call-from-start-to-end)
@@ -18,7 +18,7 @@ them in. X0 Bot's apps join from their own call screen, drawn by the app, never 
 ## 1. How it fits
 
 ```
-X0 Bot's call screen ──pass──> LiveKit <──pass── a guest (step 3: our join page at x0bot.com/m/<code>)
+X0 Bot's call screen ──pass──> LiveKit <──pass── a guest (to come: our join page at x0bot.com/m/<code>)
         │                         │
         │ POST /v1/rooms/:id/join  │ signed webhook: who joins and leaves, a room closed
         v                         v
@@ -77,28 +77,24 @@ Every screen is the server's, drawn by both apps (`experience/bots/screens/bots/
 * **Calls on the mail page**: Start a call, and the latest three calls (on now, someone waiting, when it was last on). Shown only while
   calls are switched on and the business is the person's to call from (their own, or a member's as their space's admin; never addresses
   given to them).
-* **One call** (`bots.mail.call`, params `b`, `r`): Join with video or Audio only (into the call, below); who waits, with Let in and Not now;
-  who is in, a guest with Remove; the link with Copy and Share; "Ask before letting people in"; End the call for everyone. A push that someone
-  waits opens it. It is read again as people come and go (live topic `room:<id>`).
+* **One call** (`bots.mail.call`, params `b`, `r`): who waits, with Let in and Not now; who is in, a guest with Remove; the link with Copy
+  and Share; "Ask before letting people in"; End the call for everyone. A push that someone waits opens it. It is read again as people come
+  and go (live topic `room:<id>`). Joining from the app says it comes with the app's next update.
 
-* **In a call** (`bots.room`, params `r`, `b`, `video`; `screens/bots/callRoom.ts`): the call's title and where it stands (Connecting…, On
-  the call, who is speaking, Reconnecting…, Call ended, Couldn't connect); who waits, with Let in and Not now, without leaving the call; the
-  video; and the controls: Mute, Camera, Flip and Speaker on the phone, Share screen on a computer, Hang up. Hanging up, or the host ending the
-  call, goes back to the call's screen.
+**Joining from the apps comes as a block, not a call component** (`docs/renderer.md`: the apps are renderers, and a new kind of thing a
+screen can say goes in the vocabulary as data every screen can use). The plan, built once the renderer wiring (V1), the server's screen
+checker (S1) and the desktop copy (D1) have landed (`WORKING-ON.md`):
 
-**The call screen is the server's too.** The app holds the call and draws its video; everything else is drawn from the backend like any
-other screen (`shared/types/sdui.ts`):
-
-| Piece | What the app does |
+| Piece | What it is |
 | --- | --- |
-| `roomJoin` (action, run as the screen opens) | gets a pass from `POST /v1/rooms/:id/join`, connects to LiveKit, and writes where the call stands into the screen's state: `phase`, `mic`, `cam`, `speaker`, `sharing`, `people`, `speaking`. The screen's words and buttons read that state. A refresh of the same screen keeps the call |
-| `CallVideo` (component) | draws the call's video in the layout the server gives (grid, speaker, or one person), each person's video or their initial with the camera off, a ring on whoever speaks |
-| `roomSet` (action) | mic, camera, speaker or screen sharing on or off, flip the camera, hang up |
+| A live-session block | actions to join, change (mic, camera, speaker, screen, flip) and leave a live session, from a pass the server gives (`POST /v1/rooms/:id/join`); the session written into the screen's state: where it stands, the person's own mic and camera, and the people in it (name, speaking, mic, camera) |
+| `Video` playing a live track | the media block's `Video` given the person's own camera or someone's in the session |
+| The call screen | server data: `Each` over the people, each a tile whose name, ring and marks are expressions on that state; the buttons read it too |
 
-Only a build that says it holds our calls gets them (`Room`). The phone says it when its binary links WebRTC, which the store build being
-prepared does (Plan Ease's live call added it); the window always can. After that build, the call's JavaScript and every change to the
-screen come without a store build. Any other build sees the call and its link, and a line saying joining comes with the app's next update.
-It is never sent to a web page.
+The same block serves every live thing to come (a call, a voice bot, a live room in a space), not only this one. A phone says it only where
+its binary links WebRTC: the next store build does (Plan Ease's live call added it), so the block itself comes over the air. LiveKit's
+JavaScript client runs on that library; LiveKit's own copy of WebRTC cannot come in, because changing a native package already linked would
+change the phone's runtime, which stays as it is (`docs/renderer.md`, "The runtime rule"). That needs one check on a real phone first.
 
 ## 5. Limits and the money
 
@@ -178,17 +174,15 @@ All in `tulmi/tests/`.
 * `rooms-routes.test.ts`: off without calls; the host's routes with the person's own id and only the checked fields; the link's routes; the
   webhook signed over the exact bytes; the mail bot's calls under the business's own name, for its owner and their space's admin, never for a
   member who only answers addresses.
-* `rooms-page.test.ts`: Calls on the mail page, only when on; one call's screen with Join into the call for a build that holds calls, never a
-  web page for any other; the link, the lobby, who is in, End on a second yes, an ended call, one that isn't there; in a call: `roomJoin` as
-  it opens (audio only with the camera off), `CallVideo`, the controls as `roomSet` on the phone and on a computer, where the call stands from
-  its state, Let in without leaving, the microphone asked for, and no call for a build without it; every tree through the app's linter.
+* `rooms-page.test.ts`: Calls on the mail page, only when on; one call's screen: the link, the lobby, who is in, End on a second yes,
+  joining said to come with the next update and never a web page, an ended call, one that isn't there; every tree through the app's linter.
 
-**Needs a live check**: a LiveKit project set up, a call started from the app, its webhook reaching the server signed.
+**Needs a live check**: a LiveKit project set up, a call made from the mail page, its webhook reaching the server signed.
 
 ## 10. Still to come
 
-1. **The apps' three pieces**: `roomJoin`, `CallVideo` and `roomSet` in the phone (JavaScript on the WebRTC the coming store build links; the
-   phone says `Room` when its binary has it) and in the window (a release). The screens are already the server's.
+1. **Joining from the apps**: the live-session block and `Video` playing a live track (section 4), after V1, S1 and D1 land; then the call
+   screen as server data. First, one check on a real phone: LiveKit's JavaScript client on the WebRTC the next store build links.
 2. **The mail bot puts calls in emails**: the AI sees when a customer wants to talk and its reply carries the link and a calendar invite
    from the business's address; Add a call when writing. And **our join page** at `x0bot.com/m/<code>` for people without X0 Bot (the
    website sends `/m/*` to this server), using the link's routes above.

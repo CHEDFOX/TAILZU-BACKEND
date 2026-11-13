@@ -84,7 +84,6 @@ export const SCREENS = {
   mailAddress: "bots.mail.address",  // one address: folder name, sender name, how it answers, auto-reply, removing it (params: b, aid)
   mailRules: "bots.mail.rules",      // a domain's rules: each as a sentence, on or off, removed; add one (params: b)
   mailCall: "bots.mail.call",        // one call (src/rooms): its link, Join, who waits with Let in, who is in, the lobby, End (screens/bots/mailCalls.ts; params: b, r)
-  room: "bots.room",                 // in a call: its video (CallVideo), who waits with Let in, mic, camera, hang up (screens/bots/callRoom.ts; params: r, b, video)
   // screens/bots/meetScreens.ts: the meeting bot (its page is bots.bot with slug "meet", screens/bots/meetPage.ts)
   meetMeeting: "bots.meet.meeting",  // one meeting: where it stands, who is in it, Leave, Answer out loud, the notes so far, what it answered (params: m)
   spaces: "bots.spaces",             // Spaces / DSpaces

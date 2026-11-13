@@ -3,24 +3,22 @@
  *
  *   on its page      Calls: Start a call, then the latest calls, each opening its screen. Shown only when calls are switched on and the business
  *                    is the person's to call from (their own, or a member's as their space's admin; never addresses given to them)
- *   bots.mail.call   params b, r: one call. Join with video or audio only, into the call's screen (callRoom.ts, a build that holds our calls:
- *                    ROOM_CAPABILITY; any other is told it comes in the app's next update, never sent to a web page); its link, with Copy and
- *                    Share; who waits at the door, with Let in and Not now; who is in, a guest with Remove; "Ask before letting people in";
- *                    End for everyone, on a second yes. Read again as people come and go (its live topic room:<id>). A push that someone
- *                    waits opens it
+ *   bots.mail.call   params b, r: one call. Its link, with Copy and Share; who waits at the door, with Let in and Not now; who is in, a
+ *                    guest with Remove; "Ask before letting people in"; End for everyone, on a second yes. Read again as people come and go
+ *                    (its live topic room:<id>). A push that someone waits opens it. Joining from the apps comes with the live-call block
+ *                    (docs/rooms.md section 10); until then it says so, and is never a web page
  *
  * Every write goes to routes/bots/rooms.ts (the call) or routes/bots/mail.ts (a new call, under the business).
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import type { RoomView } from "../../../../rooms/types.js";
 import {
-  type BotsCtx, C, call, canRoom, card, col, icon, listCard, listRow, meta, notice, page, primaryButton, quietButton, row,
+  type BotsCtx, C, call, card, col, icon, listCard, listRow, meta, notice, page, primaryButton, quietButton, row,
   secondaryButton, sectionLabel, seq, statusMark, text, when, grow, SCREENS,
 } from "../../kit.js";
 import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
 import { copyAction } from "./keysDesk.js";
-import { openRoom } from "./callRoom.js";
 import { bizParam, MAIL, MAIL_SLUG } from "./mailParts.js";
 import { clockOf, isDesk, plural, setState, shortDate } from "./parts.js";
 
@@ -74,16 +72,12 @@ export function callsSection(ctx: BotsCtx, business: string, calls: RoomView[] |
 
 export type CallData = { room?: RoomView };
 
-/** Join: the call's screen in the call (callRoom.ts), with video or audio only. */
-function joinButtons(ctx: BotsCtx, b: string, r: RoomView): Node[] {
-  if (r.status === "ended") return [];
-  if (!canRoom(ctx)) {
-    return [notice("Joining opens in X0 Bot's own call screen, which comes with the app's next update. Your link is ready to share now.", { mark: "phone" })];
-  }
-  return [row([
-    primaryButton("Join with video", openRoom(b, r.id, true), { size: "md" }),
-    secondaryButton("Audio only", openRoom(b, r.id, false), { size: "md" }),
-  ], { gap: 8, flexWrap: "wrap" })];
+/**
+ * Joining. The apps join from a call screen built as server data, once the renderer has a block for a live call (docs/rooms.md section 10):
+ * until then the call's page says so. Never a web page.
+ */
+function joinLine(r: RoomView): Node[] {
+  return r.status === "ended" ? [] : [notice("Joining from X0 Bot comes with the app's next update.", { mark: "phone" })];
 }
 
 function linkCard(ctx: BotsCtx, r: RoomView): Node {
@@ -155,7 +149,7 @@ export function callPage(ctx: BotsCtx, d: CallData | undefined) {
         meta(`${r.host} · ${standing(ctx, r)}`, { size: 13 }),
       ], { gap: 2 }),
       ...(ended ? [notice("This call has ended, and its link no longer works. Start a new one from the mail page.", { mark: "check" })] : []),
-      ...joinButtons(ctx, b, r),
+      ...joinLine(r),
       ...waiting,
       ...people,
       ...(ended ? [] : [linkCard(ctx, r)]),

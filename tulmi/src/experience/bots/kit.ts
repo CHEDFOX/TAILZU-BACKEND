@@ -23,11 +23,11 @@ import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../.
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import {
   BOT_CROWD_COMPONENT, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
-  MENTION_FIELD_COMPONENT, VANISH_COMPONENT, VOICE_LIVE_CAPABILITY, type BotCrowdProps, type BotRoam, type BotStageProps, type CallVideoProps, type LiveWordsProps,
+  MENTION_FIELD_COMPONENT, VANISH_COMPONENT, VOICE_LIVE_CAPABILITY, type BotCrowdProps, type BotRoam, type BotStageProps, type LiveWordsProps,
   type MentionFieldProps, type TalkTo, type VanishProps,
 } from "../../../../shared/types/sdui.js";
 import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
-import { BOT_CALL_CAPABILITY, ROOM_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
+import { BOT_CALL_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { CONTACT_PICK_CAPABILITY, HEALTH_CAPABILITY, LOCATION_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { getConfig } from "../../config.js";
 import { healthAllowed } from "../../bots/healthGate.js";
@@ -496,12 +496,6 @@ export const canCall = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.
  * client). Every other build — and every older binary — gets today's turn-by-turn call, byte for byte.
  */
 export const canRealtimeCall = (ctx: BotsCtx): boolean => canCall(ctx) && canVoice(ctx) && ctx.can.has(VOICE_REALTIME_CAPABILITY);
-/**
- * A build that holds our calls (ROOM_CAPABILITY: its binary links WebRTC): the call screen is ours (screens/bots/callRoom.ts), the app holds
- * the call and draws its video (CallVideo, roomJoin, roomSet). Every other build is shown the call and its link, and told it comes in the
- * app's next update; never a web page.
- */
-export const canRoom = (ctx: BotsCtx): boolean => ctx.can.has(ROOM_CAPABILITY);
 /** The window whose one key talks to the bot on screen while X0 is in front (ScreenResponse.talkTo). */
 export const canDeskTalk = (ctx: BotsCtx): boolean => ctx.client === "desktop" && canVoice(ctx) && ctx.can.has(DESK_TALK_TO_CAPABILITY);
 
@@ -584,17 +578,6 @@ type VoiceCallSpec = Extract<ActionSpec, { kind: "voiceCall" }>;
 export const voiceCall = (o: Omit<VoiceCallSpec, "kind">): ActionSpec => ({ kind: "voiceCall", ...o });
 /** warm: get the microphone and the offer ready while the call is being answered. end: the live call stops now. */
 export const voiceCallSet = (op: "warm" | "end"): ActionSpec => ({ kind: "voiceCallSet", op });
-
-type RoomJoinSpec = Extract<ActionSpec, { kind: "roomJoin" }>;
-/** Hold one of our calls on this screen (only for canRoom). */
-export const roomJoin = (o: Omit<RoomJoinSpec, "kind">): ActionSpec => ({ kind: "roomJoin", ...o });
-/** The call held on this screen: mic, camera, speaker or screen on or off (value, else the other way), flip the camera, or hang up. */
-export const roomSet = (op: Extract<ActionSpec, { kind: "roomSet" }>["op"], value?: boolean): ActionSpec =>
-  ({ kind: "roomSet", op, ...(value === undefined ? {} : { value }) });
-/** The video of the call this screen holds (CallVideo, only for canRoom). */
-export function callVideo(p: CallVideoProps, style: Style = {}): Node {
-  return { type: "CallVideo", props: { ...p }, style };
-}
 
 // ---------------------------------------------------------------- people as their own tiny bots, and the messages' face (sdui 3j)
 

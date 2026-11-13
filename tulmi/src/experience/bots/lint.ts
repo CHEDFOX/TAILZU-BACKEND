@@ -21,12 +21,10 @@ export function walk(n: Node, out: Node[] = []): Node[] {
  *  living tiles' two (BotTiles, BotCard), which the kit sends only to a build that declares BotsMotion, and BotBuddy and Home's live header (WriteOn, LiveMark, HeadBar) with it,
  *  and Home's welcome (Rise: Home coming in; BlipWalkOut: Blip walking off, or MorphOut sliding him off where a build lacks it), with it too,
  *  and the new Spaces' and Home's Ask blocks (BotStage, BotCrowd, Vanish, MentionField, LiveWords: sdui 3i), sent only to a build that
- *  declares them (kit canSpaces2, canHomeThought, canVoice), a person's own tiny bot (PersonBot: sdui 3j, kit canPersonBot), and a call's
- *  video (CallVideo, sent only to a build that holds our calls: kit canRoom). */
+ *  declares them (kit canSpaces2, canHomeThought, canVoice), and a person's own tiny bot (PersonBot: sdui 3j, kit canPersonBot). */
 const KIT_TYPES: ReadonlySet<string> = new Set([
   "Stack", "Text", "SVG", "Image", "Grid", "Screen", "SafeArea", "TextField", "Scroll", "BotTiles", "BotCard", "BotBuddy", "WriteOn", "LiveMark",
   "HeadBar", "LiveView", "Rise", "MorphOut", "BlipWalkOut", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "PersonBot",
-  "CallVideo",
 ]);
 
 /** A BotStage's press is on the bot (his hit area), never on the thought it holds: a button in the box is not inside a pressable. */

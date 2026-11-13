@@ -131,7 +131,7 @@ export function topicsForScreen(screenId: string, params: Record<string, unknown
     case "bots.store": return [bots];
     case "bots.plan": return [botTopic("plan"), TOPIC.calendar, tasks];
     case "bots.travel": return [botTopic("travel")];
-    case "bots.mail.call": case "bots.room": return list(roomTopic(params.r));
+    case "bots.mail.call": return list(roomTopic(params.r));
     case "bots.code": case "bots.code.plan": case "bots.code.review": case "bots.code.pr-care": case "bots.code.rules": return [code];
     case "bots.code.job": case "bots.code.team": return jobTopic(params.id) ? [jobTopic(params.id)] : [code];
     case "bots.failed": return list(jobTopic(params.id));
