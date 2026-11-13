@@ -19,7 +19,6 @@ export const W = {
   welcomeH: "Hi, I'm X0.",
   welcomeP: "Everything here is a bot. Tell them what you need; they do the work.",
   start: "Start",
-  haveAccount: "I already have an account",
   phoneH: "Your phone number",
   phoneP: "We text you a 6-digit code. New here? This makes your account.",
   emailH: "Your email",
@@ -132,7 +131,7 @@ export interface DeskOpts {
 }
 
 /** The window's header: the mark and Tailzu, and something on the right. */
-function deskHeader(right: Node | null): Node {
+export function deskHeader(right: Node | null): Node {
   return row([
     row([tailzuMark(26), text("X0 Bot", { size: 17, weight: 700, tracking: -0.3, lineHeight: 22 })], { gap: 10 }),
     grow(),
