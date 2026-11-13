@@ -1487,7 +1487,6 @@ export interface PersonBotProps {
 // MentionFieldProps.people items may carry `bot: { seed, avatar, color }`: a build that declares PersonBot draws that bot in the
 // person's row of the "@" list (size 28), in place of anything else.
 
-
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [
   "scroll", "feature", "list", "centered", "detail", "grid", "hero",
