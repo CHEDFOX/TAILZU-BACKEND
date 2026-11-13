@@ -167,6 +167,7 @@ export const KEYBOARD_KNOBS: {
         "Excited"
       ],
       "kb.longPress.ms": 500,
+      "kb.media.readTimeoutMs": 10000,
       "kb.mic.bot": "",
       "kb.mic.bot.body": "#E2C59A",
       "kb.mic.bot.clay": "#C9683F",

@@ -1390,6 +1390,42 @@ const EnvSchema = z.object({
    */
   WIDGET_DIGEST: bool(false),
   /**
+   * THE NATIVE LOOKS (shared/native/looks.json; docs/native-looks.md): the Home Screen widgets, the iOS Live Activity, the Android
+   * ongoing notice and the keyboard's skins drawn from DATA by native interpreters in the store build, instead of from the
+   * hand-written native views.
+   *
+   * EVERY ONE OF THESE SHIPS OFF. Launch dark is the whole plan: until the owner's own phone has been through the device
+   * checklist, an old build and a new build must see exactly what they see today, and turning one of these off again must put
+   * every phone back on its native view at its next open with nothing to uninstall.
+   *
+   *   NATIVE_LOOKS         the master switch: the bootstrap flag, GET /v1/native/looks, and `look` on any glance. Off: no flag,
+   *                        no catalog, no look, and every widget draws the view compiled into its build
+   *   NATIVE_ACTIVITY      Live Activity designs on their own (iOS). Needs NATIVE_LOOKS. Off: pushes carry no `look` and the
+   *                        hand-drawn banner and island regions draw, region by region
+   *   KEYBOARD_SKINS       the keyboard's skin expansion (experience/keyboard/skin.ts) and the Keybot skin picker. Off: the key
+   *                        tree is exactly today's, whatever a keyboard says it can draw
+   *   KEYBOARD_SKINS_USERS a comma-separated list of account ids. Set, only those accounts get a skinned tree or the picker,
+   *                        even with KEYBOARD_SKINS on — the keyboard's own testers' stage, since a key tree has no `targets`
+   *                        the way a design does. Empty (the default) means the switch alone decides
+   *   ACTIVITY_PUSH_START  "Bots at work" may be STARTED by a push while the app is shut (iOS 17.2+, ActivityPushStart). Off:
+   *                        start tokens are not kept and nothing is pushed to them; the app still starts its own activity
+   *   ANDROID_BOTS_NOTICE  the Android ongoing "Bots at work" notice (LiveUpdate1). Off: nothing is sent and Android has no
+   *                        notice, which is what it has today
+   *   BOTS_SCENES          looks format 2 (scenes) for builds that declare BotMoments2. Off: every build is treated as format
+   *                        1: the bootstrap's `bots.looks` is today's { v, url }, screens send each format-2 moment's
+   *                        fallback act, and nothing names a scene
+   *   BOTS_SCENES_USERS    a comma-separated list of account ids. Set, only those accounts get format 2 even with BOTS_SCENES
+   *                        on (the owner's device checks, then internal accounts). Empty (the default): the switch decides
+   */
+  NATIVE_LOOKS: bool(false),
+  NATIVE_ACTIVITY: bool(false),
+  KEYBOARD_SKINS: bool(false),
+  KEYBOARD_SKINS_USERS: orDefault(""),
+  ACTIVITY_PUSH_START: bool(false),
+  ANDROID_BOTS_NOTICE: bool(false),
+  BOTS_SCENES: bool(false),
+  BOTS_SCENES_USERS: orDefault(""),
+  /**
    * Shared secret for RevenueCat's webhook.
    *
    * RevenueCat sends it as the Authorization header, verbatim, on every event.

@@ -21,6 +21,7 @@ import { ASSISTANT_SCREENS } from "../../experience/assistant/screens.js";
 import { buildBootstrap } from "../../experience/bootstrap/bootstrap.js";
 import { FONT_BRICOLAGE_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { botsAppOn, botsOnly, isBotsScreen, botsDepsFor, emptyDeps, buildBotsScreen } from "../../experience/bots/index.js";
+import { looksCan, playsFormat } from "../../experience/bots/looks.js";
 import { BOTS_HANDOFF_IDS } from "../../experience/bots/screens/handoff.js";
 import { bumpCacheVersion, currentCacheVersion } from "../../experience/cacheVersion.js";
 import { localize } from "../../experience/i18n.js";
@@ -131,6 +132,9 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         /** What the bundle can render; the desk is sent only to one that
          *  declares DeskShell. */
         components?: string[];
+        /** The bots' catalog as this build has it (anim/SPEC.md 3.9): version, format, whether it compiled, and
+         *  the first scenes that went wrong or that its governor slowed. Nothing about the person. */
+        looks?: unknown;
       };
     };
     // WHICH BUNDLE IS ACTUALLY RUNNING.
@@ -157,6 +161,22 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
       },
       "[boot] client bundle",
     );
+    // THE BOTS' CATALOG, AS THIS BUILD HAS IT (anim/SPEC.md 3.9), so a push is never a silent no-op. Only when
+    // there is something to say: the catalog did not compile, or a scene went wrong or was slowed on the device.
+    // The whole report is at most 512 bytes and holds nothing about the person; it is clipped again here.
+    const looksSaid = reqBody.capabilities?.looks as
+      { v?: number; f?: number; ok?: boolean; why?: string; bad?: string[]; slow?: string[] } | undefined;
+    if (looksSaid && typeof looksSaid === "object"
+      && (looksSaid.ok === false || !!looksSaid.bad?.length || !!looksSaid.slow?.length)) {
+      req.log.warn(
+        {
+          looks: clip(JSON.stringify(looksSaid), 512),
+          bundle: clip(reqBody.capabilities?.bundle, 40) || "unknown",
+          platform: clip(reqBody.capabilities?.platform, 20) || "unknown",
+        },
+        "[boot] the bots' catalog is not playing on this build",
+      );
+    }
     // The server's own view of both, so the app never has to guess and a
     // modified client cannot claim either. Read in parallel with everything
     // else, so this costs no extra latency.
@@ -253,8 +273,11 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
     }
     const bootstrap = buildBootstrap({
       botsApp,
+      // Only the nlook catalog's flag reads this, to keep the sync off the phones of people no rule names.
+      ...(user ? { userId: user.id } : {}),
       // Bricolage's three faces only to a Bots app build that sets them (sdui 3j FontBricolage).
       fontBricolage: botsApp && (reqBody.capabilities?.components ?? []).includes(FONT_BRICOLAGE_CAPABILITY),
+      looksFormat: playsFormat(looksCan(new Set((reqBody.capabilities?.components ?? []).map(String)), user?.id)),
       onboarded: isReviewer || botsIn || (!newOnboarding && micGranted && keyboardReady) || dictatedBefore || (profile?.onboarded ?? false),
       // Have they ever been inside the app before? A reviewer always has — a
       // fresh account walked into You on every submission otherwise, which is
@@ -474,7 +497,9 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
       if (user && botsId === "bots.code.job" && typeof botsParams?.id === "string") void markSeen(user.id, { ids: [botsParams.id] });
       else if (user && botsId === "bots.activity") void markSeen(user.id, { all: true });
       const tz = typeof body.tzOffsetMinutes === "number" && Number.isFinite(body.tzOffsetMinutes) ? body.tzOffsetMinutes : 0;
-      const comps = new Set(Array.isArray(body.capabilities?.components) ? body.capabilities!.components!.map(String) : []);
+      // Through the looks' own gate: with BOTS_SCENES off, a BotMoments2 build is treated as a format-1 one here
+      // too, so momentProps, idleSurprises, playable and canScenes all send what today's builds already get.
+      const comps = looksCan(new Set(Array.isArray(body.capabilities?.components) ? body.capabilities!.components!.map(String) : []), user?.id);
       const deps = user
         ? botsDepsFor({
             bots, jobs: codeJobs, connectors,

@@ -20,3 +20,6 @@ __pycache__/
 media-worker/.venv/
 media-worker/.pytest_cache/
 .pytest_cache/
+
+# Native look previews: rendered on demand by tulmi/scripts/native-render, not kept in git.
+tulmi/scripts/native-render/out/

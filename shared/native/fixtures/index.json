@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "note": "THE SHARED FIXTURES. One set of cases, read by all five sides so they cannot drift: the server's clean (tulmi/src/experience/native/clean.ts), the phone's cleanNativeLooks (src/native/looksCore.ts), the iOS decode and clamp (NLookModel.swift), the Android planner (NLookPlan.kt) and the keyboard's face drawers. A case is a design, a face or a path with the verdict every side must reach. If two sides disagree on a case, the case is the referee, not either implementation.",
+
+  "verdicts": {
+    "ok": "Passes clean unchanged. Every node and key survives.",
+    "clamped": "Passes, but something inside is dropped or capped. `keep` says what must still be there; `drop` says what must be gone.",
+    "dropped": "The whole design (or face) is refused. The REST of the catalog is kept: one bad design never refuses the catalog.",
+    "skipped": "Not refused, just not for this build: its format is higher than the build draws. It is skipped alone and the server never names it."
+  },
+
+  "files": [
+    { "path": "designs.json", "what": "Widget designs: the good ones, every structural limit edge, unknown nodes and style keys, a format that is too new, Android nesting and expansion. A case may also carry a `bar` block (the data to draw it against and the stage names each renderer must draw, with their roles), which is how the one Bar rule is settled." },
+    { "path": "activity.json", "what": "Live Activity designs and ContentState bodies: region node caps, the 3.5 KB body guard, vars clamping, the lenient decode of old and new JSON." },
+    { "path": "binds.json", "what": "Bind paths: known, unknown, sensitive on a lock or accessory root, vars.* on a lock root, Each over a list, words and their slots on each surface, templates and the hide rule." },
+    { "path": "paths.json", "what": "The M L Q C Z O path grammar: valid paths, a C path from the animation format, an unknown command, an over-long d." },
+    { "path": "faces.json", "what": "Keyboard faces and skins: a valid face, a mark with a path shape, press kinds, the budgets, and the things a skin may never carry." }
+  ],
+
+  "rules": [
+    "Unknown degrades, never throws: an unknown node draws its `fallback`, then nothing; an unknown style key is ignored; an unknown colour becomes `ink`.",
+    "A design whose `format` is too new is skipped ALONE. The catalog around it is served as usual.",
+    "Every limit in shared/types/nlook.ts NLOOK_LIMITS is checked three times: on publish, on the phone before writing, and in native code before drawing.",
+    "A drop is never a crash and never a blank widget: the chain is the node's fallback, then the design's `fallback` design, then today's hand-written native view.",
+    "A word's own slots ({n}, {stage}, {of}) are filled only by WORD_SLOTS in shared/types/nlook.ts. A word with a slot this surface cannot fill resolves to EMPTY, so a raw \"{n}\" never prints.",
+    "A Text hides when EVERY slot in it resolved empty, punctuation and all. One empty slot of two does not hide a Text that still has words.",
+    "`Bar` draws one segment per stage with `of` clamped to 1-8, and puts the stage names under it ONLY when `segments` resolves to exactly `of` names: the done ones `meta`, the current one bold in `ink`, the rest `dim`. Any other count draws segments alone.",
+    "A palette scheme may leave `dim`, `outline` and `hollow` out. ROLE_FALLBACK resolves them (meta, line, line) rather than losing the node.",
+    "`align` is ACROSS the stack: on V it is leading/center/trailing, on H it is top/center/bottom, by box and never by text baseline. On Z it is both axes at once. Spacing ALONG a stack is `gap` and `Spacer` only, so the only values are start, center and end; anything else is refused at publish and drawn as `start` on a phone."
+  ]
+}

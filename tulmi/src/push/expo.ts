@@ -32,6 +32,20 @@ export interface PushMessage {
   collapseId?: string;
   /** Android: replaces a shown notification with the same tag. */
   tag?: string;
+  /**
+   * DATA ONLY (Android): no notification is shown. The title and the body are dropped before the message goes, so the phone's
+   * background task is woken with nothing but `data` and draws whatever it draws itself — which is how the ongoing "Bots at
+   * work" notice is reposted while the app is shut (src/widgets/notice.ts). A force-stopped app receives nothing, by Android's
+   * own rule, and that is fine: the notice is gone then too.
+   */
+  dataOnly?: true;
+  /**
+   * iOS's half of the same idea, passed to Apple by Expo as `_contentAvailable: true`: a BACKGROUND push, shown by nothing,
+   * that wakes the app's background task with `data` alone. Apple requires priority 5 for one, so it always goes at
+   * `priority: "normal"` — a content-available message at high priority is throttled, and on Android a high-priority
+   * message that shows nothing teaches FCM to deprioritize the app. Title, body and sound are dropped, as with dataOnly.
+   */
+  contentAvailable?: true;
 }
 
 export interface Ticket {
@@ -91,7 +105,14 @@ export class ExpoSender implements PushSender {
   async send(messages: PushMessage[]): Promise<Ticket[]> {
     const out: Ticket[] = [];
     for (let i = 0; i < messages.length; i += 100) {
-      const chunk = messages.slice(i, i + 100);
+      // A data-only or content-available message goes with no title and no body at all: sending empty strings would still
+      // draw an empty row. Expo's own name for the iOS background push is `_contentAvailable`, and Apple needs priority 5.
+      const chunk = messages.slice(i, i + 100).map((m) => {
+        if (!m.dataOnly && !m.contentAvailable) return m;
+        const out: Record<string, unknown> = { ...m, title: undefined, body: undefined, sound: undefined, dataOnly: undefined, contentAvailable: undefined };
+        if (m.contentAvailable) { out._contentAvailable = true; out.priority = "normal"; }
+        return out as unknown as PushMessage;
+      });
       try {
         const r = await this.post("/send", chunk);
         const data = (r.json as { data?: unknown })?.data;

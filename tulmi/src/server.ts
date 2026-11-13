@@ -75,6 +75,7 @@ import { openAiModeration, setModeration } from "./botsBots/filter.js";
 import { startOpsAlerts } from "./ops/alerts.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
+import { registerNativeLooksRoutes } from "./routes/app/nativeLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
 import { registerMailRoutes } from "./routes/bots/mail.js";
 import { registerMeetRoutes } from "./routes/bots/meet.js";
@@ -481,6 +482,9 @@ registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
+// The native looks: the nlook catalog the widgets and the Live Activity draw, and the art and fonts they draw with
+// (experience/native/*, docs/native-looks.md). Answers 404 while NATIVE_LOOKS is off, which is the default.
+registerNativeLooksRoutes(app, { rateLimit: AUTHED_RL });
 // The Oracle's card: when and where a person was born, for the Oracle to read their sky from (src/oracle, docs/oracle.md).
 registerOracleRoutes(app, { rateLimit: AUTHED_RL, bots });
 // Who is whose space admin (meet/people.ts; nobody while Spaces is off), made once from the bots area's Spaces: the meeting bot and the mail

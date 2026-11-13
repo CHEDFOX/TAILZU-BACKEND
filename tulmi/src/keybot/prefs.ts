@@ -46,6 +46,8 @@ export const prefsPatchSchema = z.object({
     sounds: z.preprocess((v) => (v === "on" ? true : v === "off" ? false : v), z.boolean()).optional(),
     holdSpace: z.boolean().optional(),
     keyAt: z.enum(["left", "right", "top"]).optional(),
+    /** A skin the keyboard prints with (shared/native/skins, expanded by experience/keyboard/skin.ts). "" is none. */
+    skin: z.string().trim().max(40).regex(/^[a-z0-9-]*$/).optional(),
   }).strict().optional(),
 }).strict();
 

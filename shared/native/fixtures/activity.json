@@ -1,0 +1,196 @@
+{
+  "note": "Live Activity cases: the region roots, their node caps, and the ContentState that travels in the push. The 4 KB cap is Apple's; ours is 3.5 KB, and the server, BotsLiveActivity.parse() and the JS activity plan must all land on the same answer for the same input. Activity.request and update above 4 KB fail SILENTLY, which is why this is measured three times rather than trusted once.",
+
+  "designCases": [
+
+    {
+      "id": "ok.allRegions",
+      "expect": "ok",
+      "why": "Every activity root at once. A region a design does not hold falls back on its own to today's hand-drawn region, so a partial design is normal, not an error.",
+      "design": {
+        "id": "a.all", "format": 1, "surface": "activity", "palette": "island",
+        "roots": {
+          "lock": { "type": "V", "children": [ { "type": "Text", "props": { "text": "{{botName}}" } }, { "type": "Text", "props": { "text": "{{stageName}}" } } ] },
+          "island.leading": { "type": "Text", "props": { "text": "{{botName}}" } },
+          "island.trailing": { "type": "Text", "props": { "text": "{{stage}}/{{of}}" } },
+          "island.center": { "type": "Text", "props": { "text": "{{stageName}}" } },
+          "island.bottom": { "type": "Bar", "props": { "value": "{{stage}}", "of": "{{of}}", "track": "hollow" } },
+          "compact.leading": { "type": "Bot", "props": { "who": "$bot", "moment": "work", "at": 0.4, "size": 18 } },
+          "compact.trailing": { "type": "Text", "props": { "text": "{{stage}}/{{of}}" } },
+          "minimal": { "type": "Bot", "props": { "who": "$bot", "moment": "work", "at": 0.4, "size": 18 } }
+        }
+      }
+    },
+
+    {
+      "id": "ok.partialRegions",
+      "expect": "ok",
+      "why": "Only the lock banner is redesigned. Every island region keeps today's hand-drawn view, region by region.",
+      "design": {
+        "id": "a.lock-only", "format": 1, "surface": "activity", "fallback": "bots.plain", "palette": "island",
+        "roots": { "lock": { "type": "Text", "props": { "text": "{{stageName}}" } } }
+      }
+    },
+
+    {
+      "id": "grid.notOnActivity.dropped",
+      "expect": "clamped",
+      "at": "the Grid in roots.lock",
+      "drop": "the Grid node",
+      "keep": "the sibling Text",
+      "why": "An activity region has no Grid: the regions are small and the layout must stay cheap to re-render on every push.",
+      "design": {
+        "id": "a.grid", "format": 1, "surface": "activity", "palette": "island",
+        "roots": {
+          "lock": {
+            "type": "V",
+            "children": [
+              { "type": "Grid", "props": { "cols": 2 }, "children": [ { "type": "Text", "props": { "text": "a" } } ] },
+              { "type": "Text", "props": { "text": "{{stageName}}" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "each.activityMax3.clamped",
+      "expect": "clamped",
+      "at": "Each.max = 8 on an activity",
+      "keep": "3 copies",
+      "why": "On an activity an Each is 3 copies at most, whatever the design asks for: more would not fit a region and would cost push bytes for nothing.",
+      "design": {
+        "id": "a.each", "format": 1, "surface": "activity", "palette": "island",
+        "roots": { "lock": { "type": "Each", "props": { "of": "choices", "max": 8, "as": "it" }, "children": [ { "type": "Text", "props": { "text": "{{it.label}}" } } ] } }
+      }
+    },
+
+    {
+      "id": "limit.minimalNodes.clamped",
+      "expect": "clamped",
+      "at": "roots.minimal",
+      "keep": "3 nodes",
+      "why": "The minimal region is 3 nodes; compact is 6; each island region is 20; the lock banner is 50. The generator repeats a Text 6 times in minimal.",
+      "generate": { "root": "minimal", "repeatNode": { "type": "Text", "props": { "text": "m" } }, "times": 6 },
+      "design": {
+        "id": "a.minimal-big", "format": 1, "surface": "activity", "palette": "island",
+        "roots": { "minimal": { "type": "V", "children": [] } }
+      }
+    },
+
+    {
+      "id": "art.perRegionCap",
+      "expect": "ok",
+      "why": "One art key can be used in BOTH the island and the banner, so the cap is applied per region at load: island at most 135 px, lock at most 252 px. Without that, an island would decode a banner-sized image inside the extension's ~30 MB.",
+      "catalogArt": [ { "key": "dusk.sky", "sha256": "0000000000000000000000000000000000000000000000000000000000000002", "w": 1200, "h": 1146, "bytes": 182000, "scales": [2, 3] } ],
+      "design": {
+        "id": "a.art", "format": 1, "surface": "activity", "palette": "island", "art": ["dusk.sky"],
+        "roots": {
+          "lock": { "type": "Image", "props": { "src": "art:dusk.sky", "fit": "fill", "alt": "pose:blip" } },
+          "island.leading": { "type": "Image", "props": { "src": "art:dusk.sky", "fit": "fill", "alt": "pose:blip" } }
+        }
+      }
+    }
+
+  ],
+
+  "stateCases": [
+
+    {
+      "id": "state.old.decodes",
+      "expect": "ok",
+      "why": "A body from today's server, with none of the new fields. The decode is lenient and every new field is optional, so an old push must still render on a new build.",
+      "state": {
+        "bot": "code", "botName": "Code bot", "face": "code", "task": "Fix the widget glance", "stage": 3, "of": 5,
+        "stageName": "Build", "stages": ["Read", "Plan", "Build", "Check", "Done"], "startedAt": 1763000000000,
+        "phase": "working", "link": "tulmi://job/abc"
+      }
+    },
+
+    {
+      "id": "state.private.decodes",
+      "expect": "ok",
+      "why": "THE T0 BUG. The server already sends `private` and `failed` (activity.ts), and today's ContentState CodingKeys omits them, so iOS drops both. Both copies of BotsAtWorkAttributes must decode them, inside the BEGIN/END markers, and a CI script diffs the marked region in both files.",
+      "state": {
+        "bot": "code", "botName": "Code bot", "face": "code", "task": "Rotate the keys", "stage": 4, "of": 5,
+        "stageName": "Check", "stages": ["Read", "Plan", "Build", "Check", "Done"], "startedAt": 1763000000000,
+        "phase": "needs", "question": "Code bot needs you", "private": true, "itemId": "n1", "itemKind": "approval",
+        "decideLink": "tulmi://question/n1", "link": "tulmi://job/abc"
+      }
+    },
+
+    {
+      "id": "state.failed.decodes",
+      "expect": "ok",
+      "why": "The other half of the same bug: a job that ended with a problem. `failed` tells the view to draw the result as a problem, not a success.",
+      "state": {
+        "bot": "code", "botName": "Code bot", "face": "code", "task": "Ship the build", "stage": 5, "of": 5,
+        "stageName": "Done", "stages": ["Read", "Plan", "Build", "Check", "Done"], "startedAt": 1763000000000,
+        "phase": "done", "result": "Stopped: the tests did not pass", "failed": true, "minutes": 12, "link": "tulmi://job/abc"
+      }
+    },
+
+    {
+      "id": "state.look.andVars",
+      "expect": "ok",
+      "why": "The push names a design that is ALREADY on the phone and carries only data. The 4 KB cap limits the data, never the design: the design waits in the App Group and the Activity's views read it from there (FlowActivity.swift already reads that group).",
+      "state": {
+        "bot": "code", "botName": "Code bot", "face": "code", "task": "Fix the widget glance", "stage": 3, "of": 5,
+        "stageName": "Build", "stages": ["Read", "Plan", "Build", "Check", "Done"], "startedAt": 1763000000000,
+        "phase": "working", "link": "tulmi://job/abc",
+        "look": "bots.night", "vars": { "eta": "about 4 min", "files": "12" }
+      }
+    },
+
+    {
+      "id": "state.look.missingOnPhone",
+      "expect": "clamped",
+      "at": "look = \"bots.autumn\"",
+      "keep": "today's hand-drawn regions",
+      "why": "A design named by a push that the phone does not hold draws today's view, every region. The app refetches the catalog on its next run; nothing is ever downloaded during a render.",
+      "state": {
+        "bot": "code", "botName": "Code bot", "face": "code", "task": "x", "stage": 1, "of": 5,
+        "stageName": "Read", "stages": ["Read", "Plan", "Build", "Check", "Done"], "startedAt": 1763000000000,
+        "phase": "working", "link": "tulmi://job/abc", "look": "bots.autumn"
+      }
+    },
+
+    {
+      "id": "vars.overKeyCount.clamped",
+      "expect": "clamped",
+      "at": "vars",
+      "keep": "the first 12 keys",
+      "why": "vars is 12 keys, a key 24 characters, a value 120. It is the one way a future design binds new data without another change to the frozen struct, so it is clamped rather than refused.",
+      "generate": { "varsKeys": 20 },
+      "state": {
+        "bot": "code", "botName": "Code bot", "face": "code", "task": "x", "stage": 1, "of": 5,
+        "stageName": "Read", "stages": ["Read"], "startedAt": 1763000000000, "phase": "working",
+        "link": "tulmi://job/abc", "vars": {}
+      }
+    },
+
+    {
+      "id": "body.overBudget.dropsVars",
+      "expect": "clamped",
+      "at": "the encoded body, over 3.5 KB",
+      "drop": "vars first, then the stage names are trimmed",
+      "keep": "a body under 3.5 KB, always",
+      "why": "The server measures the encoded body and drops in this exact order; parse() and the JS plan do the same, so the three agree. There is no size guard in activity.ts today, which is why this case exists.",
+      "generate": { "varsKeys": 12, "varsValueChars": 120, "stageNameChars": 120, "stages": 12 },
+      "state": {
+        "bot": "code", "botName": "Code bot", "face": "code", "task": "A long task line that is itself near the text cap",
+        "stage": 3, "of": 12, "stageName": "Build", "stages": [], "startedAt": 1763000000000, "phase": "working",
+        "link": "tulmi://job/abc", "vars": {}
+      }
+    },
+
+    {
+      "id": "body.maximal.underCap",
+      "expect": "ok",
+      "why": "The worst body the server can legally build — every field at its cap, in the longest language — must still encode under 3.5 KB. Worth a property test over random job states in every language, not one example.",
+      "generate": { "everyFieldAtCap": true, "language": "longest" },
+      "state": {}
+    }
+
+  ]
+}

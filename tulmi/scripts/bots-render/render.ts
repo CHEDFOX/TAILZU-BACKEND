@@ -31,6 +31,10 @@
  *   --without PersonBot,FontBricolage  draw it for a build that lacks these (default: the builds as they are now)
  *   --with VoiceRealtime            draw it for a build that ALSO declares these (one that is not out yet)
  *   --state '{"step":"check"}'      merge this into the screen's state before it is drawn (a moment that is state, not params)
+ *   --format 2                     draw it for a build that plays looks format 2 (shorthand for --with BotMoments2)
+ *   --catalog shared/bots/looks.json   draw the bots with THIS catalog, cut down to that format by the shared projection:
+ *                                  the window fetches it through the bootstrap's "bots.looks" flag and the phone reads it as
+ *                                  its kept copy, so both draw the scenes with their own engines (anim/SPEC.md 5.5)
  *   --out <dir>   --design <bots-design dir, default $BOTS_DESIGN, else bots-design beside the repos>
  *
  * The data is fixtures.ts's (fakeDeps); a screen's own `load` gets its answers from yours
@@ -151,6 +155,9 @@ export async function buildPhoneBundle(entry = path.join(HERE, "phone/entry.jsx"
 
 // ------------------------------------------------------------------ the screens
 
+// The projection the server and the phone's release script share, so a preview is cut down exactly as a build is served.
+const { projectLooks, formatOfCatalog, LOOKS_FORMAT_MAX } = await import("../../src/experience/bots/project.js");
+
 const { buildBotsScreen, botsNav } = await import("../../src/experience/bots/index.js");
 const { fakeDeps, IST } = await import("../../src/experience/bots/fixtures.js");
 const { BRICOLAGE, FACE, botsFonts, BOTS_THEME } = await import("../../src/experience/bots/kit.js");
@@ -171,6 +178,8 @@ export interface ScreenData {
   with?: string[];
   /** Merged into the screen's own state before it is drawn (a moment that is state, not params: "Plan something"'s check face). */
   state?: Record<string, unknown>;
+  /** A catalog to draw instead of the build's own starter pack, already cut down to the format `f` (--catalog). */
+  looks?: { v: number; f: number; spec: unknown };
 }
 
 const USER = { id: "00000000-0000-4000-8000-00000000aaaa", name: "Aanya Sharma", email: "aanya@example.in" };
@@ -266,12 +275,17 @@ export interface Shot {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function renderPhone(browser: any, screen: unknown, file: string, motion: boolean, shot: Shot = {}): Promise<Drawn> {
+async function renderPhone(browser: any, screen: unknown, file: string, motion: boolean, shot: Shot = {}, looks?: ScreenData["looks"]): Promise<Drawn> {
   const errors: string[] = [];
   const bundle = await phoneBundle();
   const page = await browser.newPage({ viewport: { width: 390, height: shot.height ?? 844 }, deviceScaleFactor: 2, reducedMotion: motion ? "no-preference" : "reduce" });
   try {
     page.on("pageerror", (e: Error) => errors.push(e.message));
+    // --catalog: the phone's own LooksStore reads it as the copy the server last sent (looks.ts's AsyncStorage key),
+    // so the catalog is compiled and drawn by the app's own code, not by anything this script does.
+    if (looks) {
+      await page.addInitScript({ content: `try { localStorage.setItem("tz.botLooks.f2", ${JSON.stringify(JSON.stringify({ f: looks.f, spec: looks.spec }))}); } catch {}` });
+    }
     // Every face the bootstrap can name, Bricolage's too (a screen built without FontBricolage never sets them).
     const fonts = botsFonts({ bricolage: true });
     const faces = [...Object.values(FACE), ...Object.values(BRICOLAGE)].map((f) => `@font-face{font-family:"${f}";src:url(${fonts[f]})}`).join("");
@@ -297,8 +311,9 @@ async function renderPhone(browser: any, screen: unknown, file: string, motion: 
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function renderDesktop(browser: any, screenId: string, params: Params, build: Build, file: string, motion: boolean, shot: Shot = {}): Promise<Drawn> {
+async function renderDesktop(browser: any, screenId: string, params: Params, build: Build, file: string, motion: boolean, shot: Shot = {}, looks?: ScreenData["looks"]): Promise<Drawn> {
   const errors: string[] = [];
+  const LOOKS_PATH = looks ? `/v1/bots/looks?v=${looks.v}&f=${looks.f}` : "";
   // bypassCSP: the window's policy refuses the checks this script runs in the page (it allows its own scripts only).
   const page = await browser.newPage({ viewport: { width: 1280, height: shot.height ?? 800 }, deviceScaleFactor: 2, bypassCSP: true, reducedMotion: motion ? "no-preference" : "reduce" });
   try {
@@ -326,10 +341,16 @@ async function renderDesktop(browser: any, screenId: string, params: Params, bui
     await page.route("https://api.local/**", async (r: any) => {
       const u = new URL(r.request().url());
       if (u.pathname === "/v1/app/bootstrap") {
+        // --catalog: the flag the window's own btLooksSync() reads, so it fetches and compiles the catalog itself.
+        const looksFlag = looks ? { "bots.looks": { v: looks.v, f: looks.f, url: LOOKS_PATH, off: [] } } : {};
         return r.fulfill({ contentType: "application/json", body: JSON.stringify({
           schemaVersion: 1, theme: { ...BOTS_THEME, space: {}, radius: {}, font: { sizes: {}, weights: {} } }, navigation: botsNav(),
-          initialScreenId: "bots.home", flags: { "bots.app": true, "desktop.desk": true }, labels: {},
+          initialScreenId: "bots.home", flags: { "bots.app": true, "desktop.desk": true, ...looksFlag }, labels: {},
         }) });
+      }
+      if (looks && u.pathname + u.search === LOOKS_PATH) {
+        console.log(`bots-render: the window fetched the catalog (v${looks.v}, format ${looks.f})`);
+        return r.fulfill({ contentType: "application/json", body: JSON.stringify(looks.spec) });
       }
       if (u.pathname === "/v1/app/screen") {
         const body = JSON.parse(r.request().postData() || "{}");
@@ -442,8 +463,8 @@ export async function renderClient(browser: any, o: RenderOptions): Promise<Rend
   const missed = [...new Set(misses)];
   fs.writeFileSync(`${base}.json`, JSON.stringify(screen, null, 1));
   const drawn = o.client === "phone"
-    ? await renderPhone(browser, screen, `${base}.png`, !!o.motion, o.shot)
-    : await renderDesktop(browser, o.screenId, params, build, `${base}.png`, !!o.motion, o.shot);
+    ? await renderPhone(browser, screen, `${base}.png`, !!o.motion, o.shot, o.looks)
+    : await renderDesktop(browser, o.screenId, params, build, `${base}.png`, !!o.motion, o.shot, o.looks);
   const r: Rendered = { client: o.client, json: `${base}.json`, png: `${base}.png`, screen, ...drawn, misses: missed };
   if (o.board && await renderBoard(browser, o.board, `${base}.board.png`, o.design)) r.board = `${base}.board.png`;
   if (o.compare ?? true) {
@@ -462,7 +483,7 @@ async function main(): Promise<void> {
   const has = (name: string): boolean => argv.includes(`--${name}`);
   const screenId = argv[0];
   if (!screenId || screenId.startsWith("--")) {
-    console.error("usage: npx tsx scripts/bots-render/render.ts <bots.screen> [--board Main] [--desk-board DeskHome] [--client phone|desktop|both] [--params JSON] [--quiet] [--json file] [--motion]");
+    console.error("usage: npx tsx scripts/bots-render/render.ts <bots.screen> [--board Main] [--desk-board DeskHome] [--client phone|desktop|both] [--params JSON] [--quiet] [--json file] [--motion] [--catalog looks.json] [--format 2]");
     process.exit(1);
   }
   const clients: Client[] = (flag("client") ?? "both") === "both" ? ["phone", "desktop"] : [flag("client") as Client];
@@ -477,6 +498,18 @@ async function main(): Promise<void> {
     ...(flag("with") ? { with: flag("with")!.split(",").map((n) => n.trim()).filter(Boolean) } : {}),
     ...(flag("state") ? { state: JSON.parse(flag("state")!) as Record<string, unknown> } : {}),
   };
+  // --format N: the build declares BotMoments<N> as well, so the screens send it format-N moments.
+  // --catalog <file>: that catalog, cut down to the same format, drawn by both clients' own code.
+  const fmt = flag("format") ? Math.max(1, Math.min(LOOKS_FORMAT_MAX, Math.floor(Number(flag("format"))) || 1)) : 0;
+  if (fmt > 1) data.with = [...(data.with ?? []), `BotMoments${fmt}`];
+  if (flag("catalog")) {
+    const spec = JSON.parse(fs.readFileSync(flag("catalog")!, "utf8")) as { v?: number };
+    const f = fmt || Math.min(LOOKS_FORMAT_MAX, formatOfCatalog(spec));
+    const cut = projectLooks(spec, f) as { v?: number };
+    data.looks = { v: Math.max(1, Number(cut.v) || 1), f, spec: cut };
+    if (!fmt && f > 1) data.with = [...(data.with ?? []), `BotMoments${f}`];
+    console.log(`bots-render: catalog v${data.looks.v}, cut to format ${f}`);
+  }
   const browser = await launchBrowser();
   let failed = false;
   try {

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 
 // The Bots app behind its switch: the bootstrap's shape with it off (today's, unchanged) and on, and the screen
@@ -17,6 +17,7 @@ process.env.BOTS_APP = "true";
 
 const { buildBootstrap } = await import("../src/experience/bootstrap/bootstrap.js");
 const { buildApp } = await import("../src/server.js");
+const { resetConfigForTests } = await import("../src/config.js");
 
 describe("the bootstrap", () => {
   it("off: today's tabs, landing and fonts, with nothing of the Bots app", () => {
@@ -138,5 +139,41 @@ describe("the screen route", () => {
     expect(flow.json().screenId).toBe("flow_arm");
     const boot = await post("/v1/app/bootstrap", { capabilities: only });
     expect(boot.json().navigation.tabs.map((t: { id: string }) => t.id)).toEqual(["bots", "activity", "you"]);
+  });
+});
+
+describe("format 2 through the real bootstrap route (BOTS_SCENES)", () => {
+  let server: FastifyInstance;
+  beforeAll(async () => { server = await buildApp(); await server.ready(); });
+  afterAll(async () => { await server.close(); });
+  const scenes = (on: string | null) => {
+    if (on === null) delete process.env.BOTS_SCENES; else process.env.BOTS_SCENES = on;
+    resetConfigForTests();
+  };
+  afterEach(() => scenes(null));
+  const looksOf = async (components: string[]) => {
+    const r = await server.inject({
+      method: "POST", url: "/v1/app/bootstrap", headers: { authorization: "Bearer test-static-token-0123456789" },
+      payload: { capabilities: { platform: "ios", appVersion: "1.0.0", components, device: { formFactor: "phone", width: 390, height: 844 } } },
+    });
+    expect(r.statusCode).toBe(200);
+    return r.json().flags["bots.looks"] as { v: number; f?: number; url: string; off?: string[] };
+  };
+
+  it("off: a BotMoments2 build gets the same flag as a format-1 build, with no f", async () => {
+    scenes(null);
+    const f1 = await looksOf(["BotsKit", "BotMoments"]);
+    const f2 = await looksOf(["BotsKit", "BotMoments", "BotMoments2"]);
+    expect(f2).toEqual(f1);
+    expect(f2.f).toBeUndefined();
+  });
+
+  it("on: a BotMoments2 build gets f 2 and its URL; a format-1 build still gets today's flag", async () => {
+    scenes("true");
+    const f2 = await looksOf(["BotsKit", "BotMoments", "BotMoments2"]);
+    expect(f2.f).toBe(2);
+    expect(f2.url).toContain("&f=2");
+    expect(Array.isArray(f2.off)).toBe(true);
+    expect((await looksOf(["BotsKit", "BotMoments"])).f).toBeUndefined();
   });
 });

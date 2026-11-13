@@ -1,0 +1,1759 @@
+{
+  "v": 4,
+  "format": 1,
+  "note": "The native looks: Home Screen and Lock Screen widgets, and the iOS Live Activity, as data (shared/types/nlook.ts). Change it, raise v by one, and phones take it at their next open. Every design here is a BUNDLED DEFAULT that draws what today's native views draw, so a phone that holds nothing else still has something to fall back to that is not blank. The server cleans every design on publish, the phone cleans again before writing, and native code clamps a third time; anything unknown, too new, too big or broken draws the hand-written native view instead. v NEVER repeats: the server keeps a high-water mark, so a rollback re-serves under a higher number.",
+  "palettes": {
+    "ink": {
+      "note": "The app's own palette (experience/bots/palette.ts), white and ink with greys. THE one source: it replaces the widgets.look literals, iOS X0Palette and Android WidgetInk. The legacy widgets.look knob is a CHECKED COPY of these colours, not a generated one (defaults.ts stays import-free): legacyLookOf(palette) in experience/native/catalog.ts rebuilds it and a test deep-equals the two, so drift fails the build. The knob keeps its own shape and does not gain dim, outline or hollow. Colour belongs to bots alone ($color), never to the frame.",
+      "dark": {
+        "ground": "#0A0A0A",
+        "ink": "#FFFFFF",
+        "meta": "#A3A3A3",
+        "dim": "#8A8A8A",
+        "line": "#262626",
+        "outline": "#3D3D3D",
+        "hollow": "#4A4A4A",
+        "surface": "#171717",
+        "accent": "#FFFFFF"
+      },
+      "light": {
+        "ground": "#FFFFFF",
+        "ink": "#0A0A0A",
+        "meta": "#5C5C5C",
+        "dim": "#6E6E6E",
+        "line": "#E6E6E6",
+        "outline": "#D4D4D4",
+        "hollow": "#C9C9C9",
+        "surface": "#F5F5F5",
+        "accent": "#0A0A0A"
+      },
+      "alpha": {"dim": 0.64, "rule": 0.15}
+    },
+    "island": {
+      "note": "The Dynamic Island is always black, whatever the phone's appearance. Both schemes are the same on purpose.",
+      "dark": {
+        "ground": "#000000",
+        "ink": "#FFFFFF",
+        "meta": "#A3A3A3",
+        "dim": "#8A8A8A",
+        "line": "#2C2C2C",
+        "outline": "#3D3D3D",
+        "hollow": "#4A4A4A",
+        "surface": "#171717",
+        "accent": "#FFFFFF"
+      },
+      "light": {
+        "ground": "#000000",
+        "ink": "#FFFFFF",
+        "meta": "#A3A3A3",
+        "dim": "#8A8A8A",
+        "line": "#2C2C2C",
+        "outline": "#3D3D3D",
+        "hollow": "#4A4A4A",
+        "surface": "#171717",
+        "accent": "#FFFFFF"
+      },
+      "alpha": {"dim": 0.64, "rule": 0.15}
+    },
+    "dusk": {
+      "note": "The evening palette: the same ink and white, settled down. Deeper ground, a softer rule, a little more air between the greys. Still NO colour of its own — colour belongs to bots alone ($color), never to the frame — so a dusk design on a tinted or Always-On screen degrades exactly as an ink one does.",
+      "dark": {
+        "ground": "#0B0B0C",
+        "ink": "#FAFAFA",
+        "meta": "#9B9BA2",
+        "dim": "#7E7E86",
+        "line": "#1E1E21",
+        "outline": "#33333A",
+        "hollow": "#42424A",
+        "surface": "#141416",
+        "accent": "#FAFAFA"
+      },
+      "light": {
+        "ground": "#FAFAF9",
+        "ink": "#121214",
+        "meta": "#60606A",
+        "dim": "#70707A",
+        "line": "#E8E8E6",
+        "outline": "#D6D6D3",
+        "hollow": "#C8C8C5",
+        "surface": "#F1F1EF",
+        "accent": "#121214"
+      },
+      "alpha": {"dim": 0.64, "rule": 0.15}
+    }
+  },
+  "designs": {
+    "x0.plain": {
+      "id": "x0.plain",
+      "format": 1,
+      "surface": "widget",
+      "palette": "ink",
+      "note": "The end of every widget fallback chain: a name and one line, in nothing but palette roles, with the bot whose card it is beside the name when a card is shown. It fits every family and can never be over a limit, so a phone always has somewhere to land before it gives up and draws the native view.",
+      "roots": {
+        "small": {
+          "type": "V",
+          "props": {"gap": 4, "align": "start"},
+          "style": {"pad": 14, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 6, "align": "center"},
+              "children": [
+                {
+                  "type": "Image",
+                  "if": {"case": ["needs"]},
+                  "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
+                  "style": {"corner": 10, "bg": "surface"}
+                },
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{greeting.hello}}", "font": "brand", "size": 15, "weight": 600, "lines": 1},
+                  "style": {"bg": "ground"}
+                }
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 2}},
+            {
+              "type": "Text",
+              "props": {"text": "{{lock.line}}", "font": "sans", "size": 13, "weight": 400, "lines": 3, "minScale": 0.9, "tint": "meta"}
+            }
+          ]
+        },
+        "medium": {
+          "type": "V",
+          "props": {"gap": 4, "align": "start"},
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 10, "align": "center"},
+              "children": [
+                {
+                  "type": "Image",
+                  "if": {"case": ["needs"]},
+                  "props": {"src": "face:{{needs.items[0].face}}", "size": 30, "fit": "fill", "alt": "pose:blip"},
+                  "style": {"corner": 15, "bg": "surface"}
+                },
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 30}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 30}},
+                {
+                  "type": "V",
+                  "props": {"gap": 4, "align": "start"},
+                  "children": [
+                    {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "brand", "size": 16, "weight": 600, "lines": 1}},
+                    {"type": "Text", "props": {"text": "{{lock.line}}", "font": "sans", "size": 14, "weight": 400, "lines": 2, "tint": "meta"}}
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "large": {
+          "type": "V",
+          "props": {"gap": 6, "align": "start"},
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 10, "align": "center"},
+              "children": [
+                {
+                  "type": "Image",
+                  "if": {"case": ["needs"]},
+                  "props": {"src": "face:{{needs.items[0].face}}", "size": 34, "fit": "fill", "alt": "pose:blip"},
+                  "style": {"corner": 17, "bg": "surface"}
+                },
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 34}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 34}},
+                {
+                  "type": "V",
+                  "props": {"gap": 6, "align": "start"},
+                  "children": [
+                    {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "brand", "size": 18, "weight": 600, "lines": 1}},
+                    {"type": "Text", "props": {"text": "{{lock.line}}", "font": "sans", "size": 15, "weight": 400, "lines": 3, "tint": "meta"}}
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        "inline": {"type": "Text", "props": {"text": "{{lock.inline}}", "lines": 1}},
+        "rect": {
+          "type": "V",
+          "props": {"gap": 2, "align": "start"},
+          "children": [
+            {"type": "Text", "props": {"text": "{{lock.title}}", "font": "brand", "size": 14, "weight": 600, "lines": 1}},
+            {"type": "Text", "props": {"text": "{{lock.line}}", "font": "sans", "size": 13, "weight": 400, "lines": 2, "tint": "meta"}}
+          ]
+        },
+        "circle": {"type": "Kit", "props": {"name": "mark"}}
+      }
+    },
+    "x0.base": {
+      "id": "x0.base",
+      "format": 1,
+      "surface": "widget",
+      "fallback": "x0.plain",
+      "palette": "ink",
+      "note": "What today's X0 widget draws, as data: it leads with whatever matters most (a question, a job, the last thing done, else the greeting), exactly as X0Widget.swift and TailzuX0Widget.kt do. Accessory roots draw only the glance's own lock words, never a question's.",
+      "roots": {
+        "small": {
+          "type": "Z",
+          "style": {"pad": 14, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "V",
+              "if": {"case": ["needs"]},
+              "props": {"gap": 6, "align": "start"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 8, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 16, "bg": "surface"}
+                    },
+                    {"type": "Text", "props": {"text": "{{needs.items[0].botName}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}}
+                  ]
+                },
+                {
+                  "type": "Text",
+                  "props": {"text": "{{needs.items[0].question}}", "font": "sans", "size": 13, "weight": 400, "lines": 3, "minScale": 0.85},
+                  "style": {"sensitive": true}
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Button",
+                  "props": {"act": {"item": "{{needs.items[0].id}}", "action": "{{needs.items[0].choices[0].id}}"}},
+                  "if": {"canAnswer": true},
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "text": "{{needs.items[0].choices[0].label}}",
+                        "font": "brand",
+                        "size": 13,
+                        "weight": 600,
+                        "lines": 1,
+                        "align": "center",
+                        "tint": "ground"
+                      },
+                      "style": {"pad": [6, 12, 6, 12], "bg": "ink", "corner": 14, "w": "fill"}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["working"]},
+              "props": {"gap": 6, "align": "start"},
+              "children": [
+                {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{job.task}}", "font": "brand", "size": 14, "weight": 600, "lines": 2},
+                  "style": {"sensitive": true}
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{words.step}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"},
+                  "style": {"bg": "ground"}
+                },
+                {
+                  "type": "Bar",
+                  "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "segments": "job.stages", "color": "$color", "track": "line"},
+                  "style": {"h": 4, "w": "fill", "corner": 2}
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["done"]},
+              "props": {"gap": 6, "align": "start"},
+              "children": [
+                {"type": "Bot", "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{lastDone.result}}", "font": "brand", "size": 14, "weight": 600, "lines": 3},
+                  "style": {"sensitive": true}
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {"type": "Text", "props": {"text": "{{lastDone.botName}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["quiet"]},
+              "props": {"gap": 6, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}},
+                {"type": "Text", "props": {"text": "{{greeting.line}}", "font": "brand", "size": 15, "weight": 600, "lines": 3}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {"type": "Kit", "props": {"name": "beads", "props": {"value": "{{week.dots}}"}}, "style": {"h": 10}},
+                {"type": "Kit", "props": {"name": "askBar"}, "style": {"h": 30, "w": "fill"}}
+              ]
+            }
+          ]
+        },
+        "medium": {
+          "type": "Z",
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "V",
+              "if": {"case": ["needs"]},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "props": {"src": "face:{{needs.items[0].face}}", "size": 34, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 17, "bg": "surface"}
+                    },
+                    {
+                      "type": "V",
+                      "props": {"gap": 2, "align": "start"},
+                      "children": [
+                        {"type": "Text", "props": {"text": "{{needs.items[0].botName}}", "font": "brand", "size": 14, "weight": 600, "lines": 1}},
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{needs.items[0].question}}", "font": "sans", "size": 14, "weight": 400, "lines": 2},
+                          "style": {"sensitive": true}
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "H",
+                  "props": {"gap": 8, "align": "start"},
+                  "if": {"canAnswer": true},
+                  "children": [
+                    {
+                      "type": "Each",
+                      "props": {"of": "needs.items[0].choices", "max": 3, "as": "it"},
+                      "children": [
+                        {
+                          "type": "Button",
+                          "props": {"act": {"item": "{{needs.items[0].id}}", "action": "{{it.id}}"}},
+                          "children": [
+                            {
+                              "type": "Text",
+                              "props": {"text": "{{it.label}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "align": "center"},
+                              "style": {"pad": [6, 12, 6, 12], "bg": "surface", "corner": 14, "border": {"color": "outline", "width": 1}}
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["working"]},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "start"},
+                  "children": [
+                    {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 34}},
+                    {
+                      "type": "V",
+                      "props": {"gap": 2, "align": "start"},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{job.task}}", "font": "brand", "size": 14, "weight": 600, "lines": 2},
+                          "style": {"sensitive": true}
+                        },
+                        {"type": "Text", "props": {"text": "{{words.step}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                      ]
+                    },
+                    {"type": "Spacer", "props": {"min": 0}},
+                    {
+                      "type": "Text",
+                      "props": {
+                        "text": "{{job.startedAt}}",
+                        "font": "mono",
+                        "size": 12,
+                        "weight": 400,
+                        "relative": "job.startedAt",
+                        "digits": "mono",
+                        "lines": 1,
+                        "tint": "meta"
+                      }
+                    }
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Bar",
+                  "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "segments": "job.stages", "color": "$color", "track": "line"},
+                  "style": {"h": 4, "w": "fill", "corner": 2}
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["done"]},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "start"},
+                  "children": [
+                    {"type": "Bot", "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 34}},
+                    {
+                      "type": "V",
+                      "props": {"gap": 2, "align": "start"},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{lastDone.result}}", "font": "brand", "size": 14, "weight": 600, "lines": 2},
+                          "style": {"sensitive": true}
+                        },
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{lastDone.botName}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["quiet"]},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}},
+                {"type": "Text", "props": {"text": "{{greeting.line}}", "font": "brand", "size": 16, "weight": 600, "lines": 2}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "H",
+                  "props": {"gap": 8, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Each",
+                      "props": {"of": "bots", "max": 5, "as": "it"},
+                      "children": [
+                        {
+                          "type": "Image",
+                          "props": {"src": "face:{{it.face}}", "size": 26, "fit": "fill", "alt": "pose:blip"},
+                          "style": {"corner": 13, "bg": "surface"}
+                        }
+                      ]
+                    },
+                    {"type": "Spacer", "props": {"min": 0}},
+                    {"type": "Text", "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                  ]
+                },
+                {"type": "Kit", "props": {"name": "askBar"}, "style": {"h": 32, "w": "fill"}}
+              ]
+            }
+          ]
+        },
+        "large": {
+          "type": "V",
+          "props": {"gap": 10, "align": "start"},
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {"type": "Text", "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+              ]
+            },
+            {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 14, "weight": 400, "lines": 2}},
+            {"type": "Shape", "props": {"kind": "rect", "fill": "line"}, "style": {"h": 1, "w": "fill"}},
+            {
+              "type": "Each",
+              "props": {"of": "bots", "max": 6, "as": "it"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "props": {"src": "face:{{it.face}}", "size": 28, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 14, "bg": "surface"}
+                    },
+                    {
+                      "type": "V",
+                      "props": {"gap": 1, "align": "start"},
+                      "children": [
+                        {"type": "Text", "props": {"text": "{{it.name}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}},
+                        {"type": "Text", "props": {"text": "{{it.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}},
+            {"type": "Kit", "props": {"name": "askBar"}, "style": {"h": 34, "w": "fill"}}
+          ]
+        },
+        "inline": {"type": "Text", "props": {"text": "{{lock.inline}}", "lines": 1}},
+        "rect": {
+          "type": "H",
+          "props": {"gap": 6, "align": "center"},
+          "children": [
+            {
+              "type": "Image",
+              "if": {"case": ["needs"]},
+              "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
+              "style": {"corner": 10, "bg": "surface"}
+            },
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+            {
+              "type": "V",
+              "props": {"gap": 2, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{lock.title}}", "font": "brand", "size": 14, "weight": 600, "lines": 1}},
+                {"type": "Text", "props": {"text": "{{lock.line}}", "font": "sans", "size": 13, "weight": 400, "lines": 2}},
+                {
+                  "type": "Bar",
+                  "if": {"case": ["working"]},
+                  "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "track": "line"},
+                  "style": {"h": 3, "w": "fill", "corner": 2}
+                }
+              ]
+            }
+          ]
+        },
+        "circle": {
+          "type": "Z",
+          "children": [
+            {"type": "Ring", "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "width": 4}, "if": {"case": ["working"]}},
+            {
+              "type": "Image",
+              "if": {"case": ["needs"]},
+              "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill", "alt": "pose:blip"},
+              "style": {"corner": 16, "bg": "surface"}
+            },
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
+            {"type": "Kit", "if": {"case": ["quiet"]}, "props": {"name": "mark"}}
+          ],
+          "fallback": {"type": "Kit", "props": {"name": "mark"}}
+        }
+      }
+    },
+    "bots.plain": {
+      "id": "bots.plain",
+      "format": 1,
+      "surface": "activity",
+      "palette": "island",
+      "note": "The end of the Live Activity fallback chain: the bot's name and the stage, in roles only. Each region a design does not hold falls back on its own to today's hand-drawn region, so this is only ever a last resort for a region that IS named.",
+      "roots": {
+        "lock": {
+          "type": "H",
+          "props": {"gap": 10, "align": "start"},
+          "style": {"pad": 14, "w": "fill"},
+          "children": [
+            {
+              "type": "Image",
+              "props": {"src": "face:{{face}}", "size": 30, "fit": "fill", "alt": "pose:blip"},
+              "style": {"corner": 15, "bg": "surface"}
+            },
+            {
+              "type": "V",
+              "props": {"gap": 2, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{botName}}", "font": "brand", "size": 14, "weight": 600, "lines": 1}},
+                {"type": "Text", "props": {"text": "{{stageName}}", "font": "sans", "size": 13, "weight": 400, "lines": 1, "tint": "meta"}}
+              ]
+            }
+          ]
+        },
+        "compact.leading": {"type": "Image", "props": {"src": "face:{{face}}", "size": 18, "fit": "fill", "alt": "pose:blip"}},
+        "compact.trailing": {"type": "Text", "props": {"text": "{{stage}}/{{of}}", "font": "mono", "size": 13, "weight": 600, "digits": "mono", "lines": 1}},
+        "minimal": {"type": "Image", "props": {"src": "face:{{face}}", "size": 18, "fit": "fill", "alt": "pose:blip"}}
+      }
+    },
+    "bots.base": {
+      "id": "bots.base",
+      "format": 1,
+      "surface": "activity",
+      "fallback": "bots.plain",
+      "palette": "island",
+      "note": "What today's \"Bots at work\" draws, as data: the Lock Screen banner and every island region (BotsActivity.swift). A question's words are marked sensitive, so on a locked phone they are redacted and the lock-safe fill is used instead — the same rule activity.ts already applies to the alert.",
+      "roots": {
+        "lock": {
+          "type": "V",
+          "props": {"gap": 8, "align": "start"},
+          "style": {"pad": 14, "w": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 10, "align": "start"},
+              "children": [
+                {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
+                {
+                  "type": "V",
+                  "props": {"gap": 2, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{task}}", "font": "brand", "size": 14, "weight": 600, "lines": 2},
+                      "style": {"sensitive": true}
+                    },
+                    {"type": "Text", "props": {"text": "{{stageName}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{startedAt}}", "font": "mono", "size": 12, "weight": 600, "timer": "startedAt", "digits": "mono", "lines": 1}
+                }
+              ]
+            },
+            {
+              "type": "Text",
+              "if": {"phase": ["needs"]},
+              "props": {"text": "{{question}}", "font": "sans", "size": 14, "weight": 400, "lines": 2},
+              "style": {"sensitive": true}
+            },
+            {
+              "type": "H",
+              "if": {"phase": ["needs"], "canAnswer": true},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {
+                  "type": "Each",
+                  "props": {"of": "choices", "max": 3, "as": "it"},
+                  "children": [
+                    {
+                      "type": "Button",
+                      "props": {"act": {"item": "{{itemId}}", "action": "{{it.id}}"}},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{it.label}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "align": "center"},
+                          "style": {"pad": [6, 12, 6, 12], "bg": "surface", "corner": 14, "border": {"color": "outline", "width": 1}}
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Bar",
+              "if": {"phase": ["working"]},
+              "props": {"value": "{{stage}}", "of": "{{of}}", "segments": "stages", "color": "$color", "track": "line"},
+              "style": {"h": 4, "w": "fill", "corner": 2}
+            },
+            {
+              "type": "Text",
+              "if": {"phase": ["done"]},
+              "props": {"text": "{{result}}", "font": "sans", "size": 14, "weight": 400, "lines": 2},
+              "style": {"sensitive": true}
+            }
+          ]
+        },
+        "island.leading": {
+          "type": "H",
+          "props": {"gap": 6, "align": "start"},
+          "children": [
+            {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 24}},
+            {"type": "Text", "props": {"text": "{{botName}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}}
+          ]
+        },
+        "island.trailing": {
+          "type": "Text",
+          "props": {
+            "text": "{{startedAt}}",
+            "font": "mono",
+            "size": 13,
+            "weight": 500,
+            "timer": "startedAt",
+            "digits": "mono",
+            "lines": 1,
+            "align": "end",
+            "tint": "meta"
+          }
+        },
+        "island.center": {"type": "Text", "props": {"text": "{{stageName}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "align": "center", "tint": "meta"}},
+        "island.bottom": {
+          "type": "V",
+          "props": {"gap": 6, "align": "start"},
+          "children": [
+            {"type": "Text", "props": {"text": "{{task}}", "font": "sans", "size": 13, "weight": 400, "lines": 2}, "style": {"sensitive": true}},
+            {
+              "type": "Bar",
+              "props": {"value": "{{stage}}", "of": "{{of}}", "segments": "stages", "color": "$color", "track": "hollow"},
+              "style": {"h": 4, "w": "fill", "corner": 2}
+            }
+          ]
+        },
+        "compact.leading": {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+        "compact.trailing": {
+          "type": "Text",
+          "props": {"text": "{{stage}}/{{of}}", "font": "mono", "size": 13, "weight": 600, "digits": "mono", "lines": 1, "tint": "$color"}
+        },
+        "minimal": {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}}
+      }
+    },
+    "x0.dusk": {
+      "id": "x0.dusk",
+      "format": 1,
+      "surface": "widget",
+      "fallback": "x0.base",
+      "palette": "dusk",
+      "note": "THE EVENING FACE of the X0 widget, and the first design that is a design rather than today's view written down. Three things make it its own: the bot is a STILL from the bots' own catalog (drawn on the phone, so it keeps that person's colours and nothing personal is sent anywhere to render it), a drawn horizon sits behind everything as the one piece of furniture, and the lead line is set in `display` rather than `brand`. It leads on the same four cases as x0.base, because what matters most does not change with the hour. Accessory roots stay on the glance's own lock words: a question never goes on a Lock Screen in full.",
+      "roots": {
+        "small": {
+          "type": "Z",
+          "style": {"pad": 14, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "Shape",
+              "props": {"kind": "path", "viewBox": [0, 0, 150, 150], "d": "M 0 120 C 44 104 106 104 150 120", "stroke": "line", "width": 1.5},
+              "style": {"w": "fill", "h": "fill"}
+            },
+            {
+              "type": "V",
+              "if": {"case": ["needs"]},
+              "props": {"gap": 6, "align": "start"},
+              "children": [
+                {
+                  "type": "Image",
+                  "props": {"src": "face:{{needs.items[0].face}}", "size": 30, "fit": "fill", "alt": "pose:blip"},
+                  "style": {"corner": 15, "bg": "surface"}
+                },
+                {
+                  "type": "Text",
+                  "props": {"text": "{{needs.items[0].question}}", "font": "display", "size": 15, "weight": 600, "lines": 3, "minScale": 0.8},
+                  "style": {"sensitive": true}
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Button",
+                  "if": {"canAnswer": true},
+                  "props": {"act": {"item": "{{needs.items[0].id}}", "action": "{{needs.items[0].choices[0].id}}"}},
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "text": "{{needs.items[0].choices[0].label}}",
+                        "font": "brand",
+                        "size": 13,
+                        "weight": 600,
+                        "lines": 1,
+                        "align": "center",
+                        "tint": "ground"
+                      },
+                      "style": {"pad": [6, 12, 6, 12], "bg": "ink", "corner": 14, "w": "fill"}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["working"]},
+              "props": {"gap": 6, "align": "start"},
+              "children": [
+                {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.45, "size": 36}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{job.task}}", "font": "display", "size": 15, "weight": 600, "lines": 2},
+                  "style": {"sensitive": true}
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Text",
+                  "props": {
+                    "text": "{{job.startedAt}}",
+                    "font": "mono",
+                    "size": 12,
+                    "weight": 400,
+                    "relative": "job.startedAt",
+                    "digits": "mono",
+                    "lines": 1,
+                    "tint": "meta"
+                  }
+                },
+                {
+                  "type": "Bar",
+                  "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "segments": "job.stages", "color": "$color", "track": "hollow"},
+                  "style": {"h": 3, "w": "fill", "corner": 2}
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["done"]},
+              "props": {"gap": 6, "align": "start"},
+              "children": [
+                {"type": "Bot", "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 36}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{lastDone.result}}", "font": "display", "size": 15, "weight": 600, "lines": 3},
+                  "style": {"sensitive": true}
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {"type": "Text", "props": {"text": "{{words.min}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["quiet"]},
+              "props": {"gap": 6, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "display", "size": 17, "weight": 600, "lines": 1}},
+                {"type": "Text", "props": {"text": "{{greeting.line}}", "font": "sans", "size": 13, "weight": 400, "lines": 2, "tint": "meta"}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {"type": "Bot", "props": {"who": "$bot", "moment": "settle", "at": 0.7, "size": 34}},
+                {"type": "Kit", "props": {"name": "askBar"}, "style": {"h": 30, "w": "fill"}}
+              ]
+            }
+          ]
+        },
+        "medium": {
+          "type": "Z",
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "Shape",
+              "props": {"kind": "path", "viewBox": [0, 0, 330, 155], "d": "M 0 128 C 96 110 234 110 330 128", "stroke": "line", "width": 1.5},
+              "style": {"w": "fill", "h": "fill"}
+            },
+            {
+              "type": "V",
+              "if": {"case": ["needs"]},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "props": {"src": "face:{{needs.items[0].face}}", "size": 34, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 17, "bg": "surface"}
+                    },
+                    {
+                      "type": "V",
+                      "props": {"gap": 2, "align": "start"},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{needs.items[0].botName}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "tint": "meta"}
+                        },
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{needs.items[0].question}}", "font": "display", "size": 15, "weight": 600, "lines": 2},
+                          "style": {"sensitive": true}
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "H",
+                  "if": {"canAnswer": true},
+                  "props": {"gap": 8, "align": "center"},
+                  "children": [
+                    {
+                      "type": "Each",
+                      "props": {"of": "needs.items[0].choices", "max": 3, "as": "it"},
+                      "children": [
+                        {
+                          "type": "Button",
+                          "props": {"act": {"item": "{{needs.items[0].id}}", "action": "{{it.id}}"}},
+                          "children": [
+                            {
+                              "type": "Text",
+                              "props": {"text": "{{it.label}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "align": "center"},
+                              "style": {"pad": [6, 14, 6, 14], "bg": "surface", "corner": 14, "border": {"color": "outline", "width": 1}}
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["working"]},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 12, "align": "center"},
+                  "children": [
+                    {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.45, "size": 40}},
+                    {
+                      "type": "V",
+                      "props": {"gap": 2, "align": "start"},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{job.task}}", "font": "display", "size": 15, "weight": 600, "lines": 2},
+                          "style": {"sensitive": true}
+                        },
+                        {"type": "Text", "props": {"text": "{{words.step}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                      ]
+                    },
+                    {"type": "Spacer", "props": {"min": 0}},
+                    {
+                      "type": "Text",
+                      "props": {
+                        "text": "{{job.startedAt}}",
+                        "font": "mono",
+                        "size": 13,
+                        "weight": 500,
+                        "relative": "job.startedAt",
+                        "digits": "mono",
+                        "lines": 1,
+                        "align": "end",
+                        "tint": "meta"
+                      }
+                    }
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Bar",
+                  "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "segments": "job.stages", "color": "$color", "track": "hollow"},
+                  "style": {"h": 3, "w": "fill", "corner": 2}
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["done"]},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 12, "align": "center"},
+                  "children": [
+                    {"type": "Bot", "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 40}},
+                    {
+                      "type": "V",
+                      "props": {"gap": 2, "align": "start"},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{lastDone.result}}", "font": "display", "size": 15, "weight": 600, "lines": 2},
+                          "style": {"sensitive": true}
+                        },
+                        {"type": "Text", "props": {"text": "{{words.min}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                      ]
+                    }
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Button",
+                  "if": {"has": "lastDone.pr"},
+                  "props": {"open": "{{lastDone.pr.url}}"},
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{words.seePr}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "align": "center"},
+                      "style": {"pad": [6, 14, 6, 14], "bg": "surface", "corner": 14, "border": {"color": "outline", "width": 1}}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "V",
+              "if": {"case": ["quiet"]},
+              "props": {"gap": 8, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "display", "size": 18, "weight": 600, "lines": 1}},
+                {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 13, "weight": 400, "lines": 2}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "H",
+                  "props": {"gap": 8, "align": "center"},
+                  "children": [
+                    {
+                      "type": "Each",
+                      "props": {"of": "bots", "max": 5, "as": "it"},
+                      "children": [
+                        {
+                          "type": "Image",
+                          "props": {"src": "face:{{it.face}}", "size": 26, "fit": "fill", "alt": "pose:blip"},
+                          "style": {"corner": 13, "bg": "surface"}
+                        }
+                      ]
+                    },
+                    {"type": "Spacer", "props": {"min": 0}},
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "align": "end", "tint": "meta"}
+                    }
+                  ]
+                },
+                {"type": "Kit", "props": {"name": "askBar"}, "style": {"h": 32, "w": "fill"}}
+              ]
+            }
+          ]
+        },
+        "large": {
+          "type": "V",
+          "props": {"gap": 10, "align": "start"},
+          "style": {"pad": 18, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 10, "align": "center"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "display", "size": 20, "weight": 600, "lines": 1}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {"type": "Bot", "props": {"who": "$bot", "moment": "settle", "at": 0.7, "size": 34}}
+              ]
+            },
+            {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 14, "weight": 400, "lines": 2}},
+            {"type": "Shape", "props": {"kind": "rect", "fill": "line"}, "style": {"h": 1, "w": "fill"}},
+            {
+              "type": "Each",
+              "props": {"of": "bots", "max": 6, "as": "it"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "center"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "props": {"src": "face:{{it.face}}", "size": 28, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 14, "bg": "surface"}
+                    },
+                    {
+                      "type": "V",
+                      "props": {"gap": 1, "align": "start"},
+                      "children": [
+                        {"type": "Text", "props": {"text": "{{it.name}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}},
+                        {"type": "Text", "props": {"text": "{{it.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}},
+            {
+              "type": "Shape",
+              "props": {"kind": "path", "viewBox": [0, 0, 330, 24], "d": "M 0 18 C 96 6 234 6 330 18", "stroke": "line", "width": 1.5},
+              "style": {"h": 24, "w": "fill"}
+            },
+            {"type": "Kit", "props": {"name": "askBar"}, "style": {"h": 34, "w": "fill"}}
+          ]
+        },
+        "inline": {"type": "Text", "props": {"text": "{{lock.inline}}", "lines": 1}},
+        "rect": {
+          "type": "H",
+          "props": {"gap": 6, "align": "center"},
+          "children": [
+            {
+              "type": "Image",
+              "if": {"case": ["needs"]},
+              "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
+              "style": {"corner": 10, "bg": "surface"}
+            },
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+            {
+              "type": "V",
+              "props": {"gap": 2, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{lock.title}}", "font": "brand", "size": 14, "weight": 600, "lines": 1}},
+                {"type": "Text", "props": {"text": "{{lock.line}}", "font": "sans", "size": 13, "weight": 400, "lines": 2, "tint": "meta"}}
+              ]
+            }
+          ]
+        },
+        "circle": {
+          "type": "Z",
+          "children": [
+            {"type": "Ring", "props": {"value": "{{job.stage}}", "of": "{{job.of}}", "width": 4}, "if": {"case": ["working"]}},
+            {
+              "type": "Image",
+              "if": {"case": ["needs"]},
+              "props": {"src": "face:{{needs.items[0].face}}", "size": 32, "fit": "fill", "alt": "pose:blip"},
+              "style": {"corner": 16, "bg": "surface"}
+            },
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 32}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 32}},
+            {"type": "Kit", "if": {"case": ["quiet"]}, "props": {"name": "mark"}}
+          ],
+          "fallback": {"type": "Kit", "props": {"name": "mark"}}
+        }
+      }
+    },
+    "x0.slab": {
+      "id": "x0.slab",
+      "format": 1,
+      "surface": "widget",
+      "fallback": "x0.base",
+      "palette": "dusk",
+      "note": "NUMBERS FIRST. The second real design, and deliberately the opposite of x0.dusk: no art and no drawn picture beyond the card's own bot (its dotted still, or its face when it asks) — one big count, one caption, one rule and a line of words. It exists to prove the cheap end of the format works as well as the rich end: every root here is text, a rule and at most one small bot, so it costs almost nothing to decode, it draws identically in tinted and Always-On modes, and it is the design to reach for when a phone is tight on memory. The count is `counts.needs` when something waits and `counts.working` when something is running, chosen by `if` rather than by arithmetic, because format 1 has no arithmetic.",
+      "roots": {
+        "small": {
+          "type": "V",
+          "props": {"gap": 2, "align": "start"},
+          "style": {"pad": 14, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 6, "align": "center"},
+              "children": [
+                {
+                  "type": "Image",
+                  "if": {"case": ["needs"]},
+                  "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
+                  "style": {"corner": 10, "bg": "surface"}
+                },
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+                {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "tint": "meta"}}
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}},
+            {
+              "type": "Text",
+              "if": {"case": ["needs"]},
+              "props": {"text": "{{counts.needs}}", "font": "display", "size": 40, "weight": 700, "digits": "mono", "lines": 1, "change": "numeric"}
+            },
+            {
+              "type": "Text",
+              "if": {"case": ["needs"]},
+              "props": {"text": "{{words.needsYou}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}
+            },
+            {
+              "type": "Text",
+              "if": {"case": ["working"]},
+              "props": {"text": "{{job.stage}}", "font": "display", "size": 40, "weight": 700, "digits": "mono", "lines": 1, "change": "numeric"}
+            },
+            {
+              "type": "Text",
+              "if": {"case": ["working"]},
+              "props": {"text": "{{words.step}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}
+            },
+            {
+              "type": "Text",
+              "if": {"case": ["done", "quiet"]},
+              "props": {"text": "{{week.done}}", "font": "display", "size": 40, "weight": 700, "digits": "mono", "lines": 1, "change": "numeric"}
+            },
+            {
+              "type": "Text",
+              "if": {"case": ["done", "quiet"]},
+              "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 2, "tint": "meta"}
+            }
+          ]
+        },
+        "medium": {
+          "type": "V",
+          "props": {"gap": 8, "align": "start"},
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 16, "align": "end"},
+              "style": {"w": "fill"},
+              "children": [
+                {
+                  "type": "V",
+                  "props": {"gap": 2, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{counts.needs}}", "font": "display", "size": 40, "weight": 700, "digits": "mono", "lines": 1, "change": "numeric"}
+                    },
+                    {"type": "Text", "props": {"text": "{{words.needsYou}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "V",
+                  "props": {"gap": 2, "align": "end"},
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {
+                        "text": "{{counts.working}}",
+                        "font": "display",
+                        "size": 40,
+                        "weight": 700,
+                        "digits": "mono",
+                        "lines": 1,
+                        "align": "end",
+                        "change": "numeric"
+                      }
+                    },
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{words.working}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "align": "end", "tint": "meta"}
+                    }
+                  ]
+                }
+              ]
+            },
+            {"type": "Shape", "props": {"kind": "rect", "fill": "line"}, "style": {"h": 1, "w": "fill"}},
+            {
+              "type": "H",
+              "props": {"gap": 8, "align": "center"},
+              "children": [
+                {
+                  "type": "Image",
+                  "if": {"case": ["needs"]},
+                  "props": {"src": "face:{{needs.items[0].face}}", "size": 24, "fit": "fill", "alt": "pose:blip"},
+                  "style": {"corner": 12, "bg": "surface"}
+                },
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 24}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 24}},
+                {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 13, "weight": 400, "lines": 2}}
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}},
+            {"type": "Text", "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+          ]
+        },
+        "large": {
+          "type": "V",
+          "props": {"gap": 12, "align": "start"},
+          "style": {"pad": 18, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {"type": "Text", "props": {"text": "{{greeting.hello}}", "font": "brand", "size": 15, "weight": 600, "lines": 1}},
+            {
+              "type": "Text",
+              "props": {"text": "{{counts.needs}}", "font": "display", "size": 56, "weight": 700, "digits": "mono", "lines": 1, "change": "numeric"}
+            },
+            {"type": "Text", "props": {"text": "{{words.needsYou}}", "font": "sans", "size": 13, "weight": 400, "lines": 1, "tint": "meta"}},
+            {"type": "Shape", "props": {"kind": "rect", "fill": "line"}, "style": {"h": 1, "w": "fill"}},
+            {
+              "type": "Each",
+              "props": {"of": "needs.items", "max": 4, "as": "it"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "center"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "props": {"src": "face:{{it.face}}", "size": 22, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 11, "bg": "surface"}
+                    },
+                    {"type": "Text", "props": {"text": "{{it.botName}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}},
+                    {"type": "Spacer", "props": {"min": 0}},
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{it.question}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "align": "end", "tint": "meta"},
+                      "style": {"sensitive": true, "maxW": 180}
+                    }
+                  ]
+                }
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}},
+            {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 13, "weight": 400, "lines": 2}}
+          ]
+        },
+        "inline": {"type": "Text", "props": {"text": "{{lock.inline}}", "lines": 1}},
+        "rect": {
+          "type": "H",
+          "props": {"gap": 6, "align": "center"},
+          "children": [
+            {
+              "type": "Image",
+              "if": {"case": ["needs"]},
+              "props": {"src": "face:{{needs.items[0].face}}", "size": 18, "fit": "fill", "alt": "pose:blip"},
+              "style": {"corner": 9, "bg": "surface"}
+            },
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 18}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 18}},
+            {"type": "Text", "props": {"text": "{{counts.needs}}", "font": "display", "size": 26, "weight": 700, "digits": "mono", "lines": 1}},
+            {
+              "type": "V",
+              "props": {"gap": 0, "align": "start"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{lock.title}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}},
+                {"type": "Text", "props": {"text": "{{lock.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+              ]
+            }
+          ]
+        },
+        "circle": {
+          "type": "V",
+          "props": {"gap": 1, "align": "center"},
+          "children": [
+            {
+              "type": "Image",
+              "if": {"case": ["needs"]},
+              "props": {"src": "face:{{needs.items[0].face}}", "size": 22, "fit": "fill", "alt": "pose:blip"},
+              "style": {"corner": 11, "bg": "surface"}
+            },
+            {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 22}},
+            {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 22}},
+            {
+              "type": "Text",
+              "props": {"text": "{{counts.needs}}", "font": "display", "size": 20, "weight": 700, "digits": "mono", "lines": 1, "align": "center"}
+            }
+          ],
+          "fallback": {"type": "Kit", "props": {"name": "mark"}}
+        }
+      }
+    },
+    "bots.night": {
+      "id": "bots.night",
+      "format": 1,
+      "surface": "activity",
+      "fallback": "bots.base",
+      "palette": "island",
+      "note": "THE LIVE ACTIVITY AT NIGHT. The island is always black whatever the phone's appearance, so this design is dark by definition rather than by choice. Three differences from bots.base: the banner leads with the running timer at a size you can read across a room, the stage list is drawn as its own row of names rather than only as a bar, and the island's bottom region carries the ETA from `vars` when the server has one (a free string the frozen ContentState has no field for, and the reason `vars` exists). Every region missing here falls back on its own to today's hand-drawn one, region by region.",
+      "roots": {
+        "lock": {
+          "type": "V",
+          "props": {"gap": 8, "align": "start"},
+          "style": {"pad": 14, "w": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 12, "align": "center"},
+              "children": [
+                {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.45, "size": 34}},
+                {
+                  "type": "V",
+                  "props": {"gap": 2, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{task}}", "font": "display", "size": 15, "weight": 600, "lines": 2},
+                      "style": {"sensitive": true}
+                    },
+                    {"type": "Text", "props": {"text": "{{stageName}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Text",
+                  "props": {
+                    "text": "{{startedAt}}",
+                    "font": "mono",
+                    "size": 20,
+                    "weight": 500,
+                    "timer": "startedAt",
+                    "digits": "mono",
+                    "lines": 1,
+                    "align": "end",
+                    "tint": "meta"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "H",
+              "if": {"phase": ["working"]},
+              "props": {"gap": 6, "align": "center"},
+              "children": [
+                {
+                  "type": "Each",
+                  "props": {"of": "stages", "max": 3, "as": "it"},
+                  "children": [
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{it}}", "font": "sans", "size": 11, "weight": 400, "lines": 1, "tint": "meta"},
+                      "style": {"opacity": 0.6}
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Text",
+              "if": {"phase": ["needs"]},
+              "props": {"text": "{{question}}", "font": "sans", "size": 14, "weight": 400, "lines": 2},
+              "style": {"sensitive": true}
+            },
+            {
+              "type": "H",
+              "if": {"phase": ["needs"], "canAnswer": true},
+              "props": {"gap": 8, "align": "center"},
+              "children": [
+                {
+                  "type": "Each",
+                  "props": {"of": "choices", "max": 3, "as": "it"},
+                  "children": [
+                    {
+                      "type": "Button",
+                      "props": {"act": {"item": "{{itemId}}", "action": "{{it.id}}"}},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{it.label}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "align": "center"},
+                          "style": {"pad": [6, 14, 6, 14], "bg": "surface", "corner": 14, "border": {"color": "outline", "width": 1}}
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Bar",
+              "if": {"phase": ["working"]},
+              "props": {"value": "{{stage}}", "of": "{{of}}", "segments": "stages", "color": "$color", "track": "hollow"},
+              "style": {"h": 4, "w": "fill", "corner": 2}
+            },
+            {
+              "type": "Text",
+              "if": {"phase": ["done"]},
+              "props": {"text": "{{result}}", "font": "sans", "size": 14, "weight": 400, "lines": 2},
+              "style": {"sensitive": true}
+            }
+          ]
+        },
+        "island.leading": {
+          "type": "H",
+          "props": {"gap": 6, "align": "center"},
+          "children": [
+            {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.45, "size": 24}},
+            {"type": "Text", "props": {"text": "{{botName}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}}
+          ]
+        },
+        "island.trailing": {
+          "type": "Text",
+          "props": {
+            "text": "{{startedAt}}",
+            "font": "mono",
+            "size": 13,
+            "weight": 500,
+            "timer": "startedAt",
+            "digits": "mono",
+            "lines": 1,
+            "align": "end",
+            "tint": "meta"
+          }
+        },
+        "island.center": {"type": "Text", "props": {"text": "{{stageName}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "align": "center", "tint": "meta"}},
+        "island.bottom": {
+          "type": "V",
+          "props": {"gap": 6, "align": "start"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 8, "align": "center"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{task}}", "font": "sans", "size": 13, "weight": 400, "lines": 1}, "style": {"sensitive": true}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{vars.eta}}", "font": "mono", "size": 12, "weight": 400, "digits": "mono", "lines": 1, "align": "end", "tint": "meta"},
+                  "style": {"sensitive": true}
+                }
+              ]
+            },
+            {
+              "type": "Bar",
+              "props": {"value": "{{stage}}", "of": "{{of}}", "segments": "stages", "color": "$color", "track": "hollow"},
+              "style": {"h": 4, "w": "fill", "corner": 2}
+            }
+          ]
+        },
+        "compact.leading": {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.45, "size": 18}},
+        "compact.trailing": {"type": "Text", "props": {"text": "{{stage}}/{{of}}", "font": "mono", "size": 13, "weight": 600, "digits": "mono", "lines": 1}},
+        "minimal": {"type": "Bot", "props": {"who": "$bot", "moment": "work", "at": 0.45, "size": 18}}
+      }
+    },
+    "board.night": {
+      "id": "board.night",
+      "format": 1,
+      "surface": "widget",
+      "fallback": "board.base",
+      "palette": "dusk",
+      "note": "A BOARD for the spare \"X0 Board\" kind, in the evening palette: the week as beads, the count that waits, and the people's faces under a rule. The board kind is an AppIntentConfiguration whose one parameter picks which board to show, so a second board is a design in this catalog, never a second widget kind — and a shipped widget kind can never be removed, which is why there is exactly one. It falls back to board.base, the bundled default that keeps the kind from ever being empty at review or on first run (App Review 2.3.1).",
+      "roots": {
+        "small": {
+          "type": "V",
+          "props": {"gap": 4, "align": "start"},
+          "style": {"pad": 14, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 6, "align": "center"},
+              "children": [
+                {
+                  "type": "Image",
+                  "if": {"case": ["needs"]},
+                  "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
+                  "style": {"corner": 10, "bg": "surface"}
+                },
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+                {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 13, "weight": 600, "lines": 1, "tint": "meta"}}
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}},
+            {"type": "Kit", "props": {"name": "beads", "props": {"value": "{{week.dots}}"}}, "style": {"h": 10, "w": "fill"}},
+            {"type": "Text", "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 2, "tint": "meta"}}
+          ]
+        },
+        "medium": {
+          "type": "V",
+          "props": {"gap": 10, "align": "start"},
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 16, "align": "end"},
+              "style": {"w": "fill"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "center"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "if": {"case": ["needs"]},
+                      "props": {"src": "face:{{needs.items[0].face}}", "size": 30, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 15, "bg": "surface"}
+                    },
+                    {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 30}},
+                    {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 30}},
+                    {
+                      "type": "V",
+                      "props": {"gap": 2, "align": "start"},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {
+                            "text": "{{counts.needs}}",
+                            "font": "display",
+                            "size": 34,
+                            "weight": 600,
+                            "digits": "mono",
+                            "lines": 1,
+                            "change": "numeric"
+                          }
+                        },
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{words.needsYou}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{words.working}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "align": "end", "tint": "meta"}
+                }
+              ]
+            },
+            {"type": "Kit", "props": {"name": "beads", "props": {"value": "{{week.dots}}"}}, "style": {"h": 10, "w": "fill"}},
+            {"type": "Spacer", "props": {"min": 0}},
+            {"type": "Text", "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+          ]
+        },
+        "large": {
+          "type": "V",
+          "props": {"gap": 12, "align": "start"},
+          "style": {"pad": 18, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 10, "align": "center"},
+              "children": [
+                {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 17, "weight": 600, "lines": 1, "tint": "meta"}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {
+                  "type": "Text",
+                  "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "align": "end", "tint": "meta"}
+                }
+              ]
+            },
+            {"type": "Kit", "props": {"name": "beads", "props": {"value": "{{week.dots}}"}}, "style": {"h": 12, "w": "fill"}},
+            {"type": "Shape", "props": {"kind": "rect", "fill": "line"}, "style": {"h": 1, "w": "fill"}},
+            {
+              "type": "Each",
+              "props": {"of": "bots", "max": 6, "as": "it"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "center"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "props": {"src": "face:{{it.face}}", "size": 26, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 13, "bg": "surface"}
+                    },
+                    {"type": "Text", "props": {"text": "{{it.name}}", "font": "brand", "size": 13, "weight": 600, "lines": 1}},
+                    {"type": "Spacer", "props": {"min": 0}},
+                    {
+                      "type": "Text",
+                      "props": {"text": "{{it.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "align": "end", "tint": "meta"},
+                      "style": {"maxW": 170}
+                    }
+                  ]
+                }
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}},
+            {"type": "Kit", "props": {"name": "askBar"}, "style": {"h": 34, "w": "fill"}}
+          ]
+        }
+      }
+    },
+    "bu.base": {
+      "id": "bu.base",
+      "format": 1,
+      "surface": "liveupdate",
+      "palette": "ink",
+      "note": "Android's ongoing \"Bots at work\" notice: a template fill, not a canvas, because Android 16 Live Updates refuse custom layouts. The chip is what the status bar and Always-On show, so it binds only non-sensitive paths; the notice is posted VISIBILITY_PRIVATE with a public version built from this same lock-safe fill.",
+      "fill": {
+        "title": "{{botName}}",
+        "text": "{{stageName}}",
+        "sub": "{{words.step}}",
+        "chip": "{{stage}}/{{of}}",
+        "progress": {"segments": "stages", "at": "{{stage}}", "color": "$color", "track": "line"},
+        "tracker": "bot:$bot.work@0.4",
+        "large": "bot:$bot.rest@0.6",
+        "color": "$color",
+        "actions": [{"label": "{{words.youDecide}}", "open": "{{decideLink}}"}]
+      }
+    },
+    "board.base": {
+      "id": "board.base",
+      "format": 1,
+      "surface": "widget",
+      "fallback": "x0.plain",
+      "palette": "ink",
+      "note": "The bundled default board for the spare \"X0 Board\" kind, so that kind is NEVER empty at review or on first run (App Review 2.3.1). A shipped widget kind can never be removed, so this design must keep working for as long as the kind exists. The medium's second column is ONE line: words.working is already \"{n} working\", so a count above it would read \"3\" over \"3 working\". That line stays at 12pt and the row aligns \"end\" ON PURPOSE, so it sits on the \"Needs you\" caption's baseline and the needs count stays the only big number; at 34pt it would crowd out week.line in longer languages. The row is wrapped in a V with a trailing Spacer so it sits at the TOP on both platforms (SwiftUI would otherwise centre it in a fill-height frame), and the H carries w:fill so its Spacer can push week.line to the right edge on Android.",
+      "roots": {
+        "small": {
+          "type": "V",
+          "props": {"gap": 4, "align": "start"},
+          "style": {"pad": 14, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 6, "align": "center"},
+              "children": [
+                {
+                  "type": "Image",
+                  "if": {"case": ["needs"]},
+                  "props": {"src": "face:{{needs.items[0].face}}", "size": 20, "fit": "fill", "alt": "pose:blip"},
+                  "style": {"corner": 10, "bg": "surface"}
+                },
+                {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 20}},
+                {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 20}},
+                {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 14, "weight": 600, "lines": 1, "tint": "meta"}}
+              ]
+            },
+            {"type": "Text", "props": {"text": "{{counts.needs}}", "font": "display", "size": 34, "weight": 600, "digits": "mono", "lines": 1}},
+            {"type": "Text", "props": {"text": "{{words.needsYou}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}}
+          ]
+        },
+        "medium": {
+          "type": "V",
+          "props": {"gap": 0, "align": "start"},
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {
+              "type": "H",
+              "props": {"gap": 16, "align": "end"},
+              "style": {"w": "fill"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "center"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "if": {"case": ["needs"]},
+                      "props": {"src": "face:{{needs.items[0].face}}", "size": 30, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 15, "bg": "surface"}
+                    },
+                    {"type": "Bot", "if": {"case": ["working"]}, "props": {"who": "$bot", "moment": "work", "at": 0.4, "size": 30}},
+                    {"type": "Bot", "if": {"case": ["done"]}, "props": {"who": "$bot", "moment": "rest", "at": 0.6, "size": 30}},
+                    {
+                      "type": "V",
+                      "props": {"gap": 2, "align": "start"},
+                      "children": [
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{counts.needs}}", "font": "display", "size": 34, "weight": 600, "digits": "mono", "lines": 1}
+                        },
+                        {
+                          "type": "Text",
+                          "props": {"text": "{{words.needsYou}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {"type": "Text", "props": {"text": "{{words.working}}", "font": "sans", "size": 12, "weight": 400, "lines": 1, "tint": "meta"}},
+                {"type": "Spacer", "props": {"min": 0}},
+                {"type": "Text", "props": {"text": "{{week.line}}", "font": "sans", "size": 12, "weight": 400, "lines": 2, "tint": "meta"}}
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}}
+          ]
+        },
+        "large": {
+          "type": "V",
+          "props": {"gap": 10, "align": "start"},
+          "style": {"pad": 16, "bg": "ground", "w": "fill", "h": "fill"},
+          "children": [
+            {"type": "Text", "props": {"text": "{{words.brand}}", "font": "brand", "size": 18, "weight": 600, "lines": 1, "tint": "meta"}},
+            {"type": "Text", "props": {"text": "{{summary}}", "font": "sans", "size": 14, "weight": 400, "lines": 3}},
+            {"type": "Shape", "props": {"kind": "rect", "fill": "line"}, "style": {"h": 1, "w": "fill"}},
+            {
+              "type": "Each",
+              "props": {"of": "needs.items", "max": 4, "as": "it"},
+              "children": [
+                {
+                  "type": "H",
+                  "props": {"gap": 10, "align": "start"},
+                  "children": [
+                    {
+                      "type": "Image",
+                      "props": {"src": "face:{{it.face}}", "size": 24, "fit": "fill", "alt": "pose:blip"},
+                      "style": {"corner": 12, "bg": "surface"}
+                    },
+                    {"type": "Text", "props": {"text": "{{it.botName}}", "font": "sans", "size": 13, "weight": 400, "lines": 1}}
+                  ]
+                }
+              ]
+            },
+            {"type": "Spacer", "props": {"min": 0}},
+            {"type": "Kit", "props": {"name": "askBar"}, "style": {"h": 34, "w": "fill"}}
+          ]
+        }
+      }
+    }
+  },
+  "art": [],
+  "fonts": [],
+  "targets": []
+}

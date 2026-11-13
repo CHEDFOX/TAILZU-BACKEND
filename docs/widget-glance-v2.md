@@ -188,6 +188,49 @@ Server push (optional, off until configured): APNs Live Activity pushes for the 
   (`{bot} needs you` / the question, or "Open X0 to answer" when private); the end is `event: end`, priority 10, `dismissal-date` 15
   minutes on. The token is deleted at the end, or when Apple says it is gone. Migration 0059 keeps the tokens.
 
+## 6a. The server-drawn look (docs/native-looks.md)
+
+Everything above is the DATA. What draws it became data too: a build that says `NativeLook1` can be told which design to draw,
+and the design itself waits on the phone. Off by default (`NATIVE_LOOKS`), and then every widget draws the view compiled into
+its own build — exactly as it does today.
+
+- **The glance request** gains `&nl=<the nlook catalog version this phone holds>` and `&can=NativeLook1,…`. Only a build that
+  can draw one sends `nl`, so the number says the capability as well as the version.
+- **The glance answer** gains `"look"`, `"palette": "dusk"`, `"boards"` and `"vars"`.
+  - `look` is a design id per SURFACE: `x0` (the X0 widget), `board` (the spare "X0 Board" kind, WidgetBoard1 only) and
+    `bots` — "Bots at work" on THIS phone, which is the Live Activity's design on iOS (needs `NATIVE_ACTIVITY`) and the
+    ongoing notice's on Android (needs `ANDROID_BOTS_NOTICE` and a `LiveUpdate1` build). One surface per platform, so one
+    key. **The glance is the only place `bots` is named.** On iOS the app's own in-process updates can set it from nowhere
+    else, so without it every local update would clear what the last APNs push named and the views would flap; on Android
+    the binary reads it from the stored glance and ignores anything a push says.
+  - `vars` is a free map of things a design may bind that the glance has no field for (today: `moved` and `since`, both
+    numbers the server counted, so both are safe on a Lock Screen).
+  - `boards` is `[{ id, name }]`, at most 12: what the "X0 Board" widget's own settings offer, already in this person's
+    language and already filtered to what this phone can draw. `board.base` is not in it — the widget lists "Overview"
+    itself — and a board with no name is left out. Neither phone may make a name out of a design id.
+- **A design is named only when all four are true**: the build says it can draw the format, the design's `since` is at or below
+  that phone's `nl`, the design is for this surface and platform, and this person has not reported it bad. Otherwise the
+  `fallback` chain is walked, and otherwise no `look` is sent at all.
+- **`POST /v1/widgets/activity-token`** gains `nl` too, so a Live Activity push can name a design that phone holds. The push
+  then carries `look` and `vars` in the content state (both optional and leniently decoded), and the whole body is measured
+  and trimmed to 3.5 KB — `vars` first, then the stage names (`src/experience/native/size.ts`). A push has no request to ask
+  on, so it asks `target.ts` itself, with the same `bad` list the glance uses; a test asserts the two agree.
+- **There is no `?preview=`.** An internal account is named in a targeting rule's `when.users`, which reaches the widgets,
+  the Live Activity and the Android notice alike, because all four surfaces ask through `pickDesign` with a `userId`. A query
+  parameter reached only the glance, and the server honoured it for any signed-in account.
+- **The bootstrap's `native.looks` flag goes only to someone a rule could name**, because that flag is what starts the whole
+  sync (fetch the catalog, fetch the art, draw the bot stills, write a version folder). With `targets` empty, turning
+  `NATIVE_LOOKS` on starts that on nobody.
+- **`POST /v1/widgets/activity-start-token`** keeps the person's push-to-start token (iOS 17.2+, `ACTIVITY_PUSH_START`), so
+  "Bots at work" can begin on the Lock Screen while the app is shut. One per person, never a second banner.
+- **`POST /v1/widgets/looks/bad`** is how a phone says a design killed a widget. The server stops naming it for that person.
+- **Android** has no Live Activity and now has an ongoing notice instead (`ANDROID_BOTS_NOTICE`): the same content state, sent
+  as a data-only push with no title and no body, drawn by the phone (`src/widgets/notice.ts`). The push carries the state and
+  NOTHING ELSE — its design is `look.bots` on the glance, and its language is the profile's, as for every other push. Nothing
+  about a phone is remembered in `widget_glance` for it: an `nl` kept per PERSON would let an iPhone's glance set the number
+  an Android notice is judged by, and it could only ever go up, which after a reinstall is the one direction that breaks the
+  promise that a phone is never named a design it does not hold.
+
 ## 7. Widgets kept and retired
 
 Retired: The Month (words left) and Needs you — removed from the widget bundle / manifest. Kept: From your people

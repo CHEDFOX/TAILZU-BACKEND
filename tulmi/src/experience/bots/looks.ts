@@ -19,10 +19,18 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getConfig } from "../../config.js";
 import { evaluate, parse, type Ast, type Ctx } from "../motionLang.js";
+import { LOOKS_FORMAT_MAX, formatOfCatalog, projectLooks } from "./project.js";
+import { checkWithEngines, enginesHere } from "./looksEngine.js";
 
-/** The looks format the apps of this release play (core.ts LOOKS_FORMAT). */
+/**
+ * The format this file's own check knows: 1. It is run on the catalog cut down to format 1 (project.mjs), so it
+ * never sees a scene or a format-2 recipe; those are checked by the real engines instead (looksEngine.ts).
+ */
 const LOOKS_FORMAT = 1;
+/** The newest format any engine here plays, and so the highest `f` a build may ask for. */
+export { LOOKS_FORMAT_MAX };
 
 export type BuddyActName = "play" | "wave" | "survey" | "read" | "settle" | "think" | "carry";
 
@@ -133,12 +141,20 @@ export function checkMomentExpression(src: string): string {
 // ---------------------------------------------------------------- the check
 
 /** Everything wrong with a catalog (as the apps would find it), in words; none: it plays. */
-export function checkLooks(spec: unknown): string[] {
+export function checkLooks(raw: unknown): string[] {
   const errs: string[] = [];
-  if (!isRec(spec)) return ["the catalog is an object"];
-  for (const k of Object.keys(spec)) if (!["v", "format", "note", "parts", "avatars", "moments", "kinds", "idle"].includes(k)) errs.push(`unknown field ${k}`);
-  if (typeof spec.v !== "number" || !Number.isInteger(spec.v) || spec.v < 1) errs.push("v: a whole number from 1");
-  if (spec.format != null && spec.format !== LOOKS_FORMAT) errs.push(`format: ${LOOKS_FORMAT} (the apps of this release)`);
+  if (!isRec(raw)) return ["the catalog is an object"];
+  const KNOWN = ["v", "format", "note", "parts", "avatars", "moments", "kinds", "idle", "scenes"];
+  for (const k of Object.keys(raw)) if (!KNOWN.includes(k)) errs.push(`unknown field ${k}`);
+  if (typeof raw.v !== "number" || !Number.isInteger(raw.v) || raw.v < 1) errs.push("v: a whole number from 1");
+  if (raw.format != null && !(typeof raw.format === "number" && Number.isInteger(raw.format) && raw.format >= 1 && raw.format <= LOOKS_FORMAT_MAX)) {
+    errs.push(`format: a whole number from 1 to ${LOOKS_FORMAT_MAX}`);
+  }
+  // Everything below is the format-1 check, run on the catalog cut down to format 1: that is what an installed
+  // build is really served, and what it must compile. Scenes and format-2 recipes are checked by the real
+  // engines instead (looksEngine.ts), because only they know how to read one.
+  let spec: Record<string, unknown>;
+  try { spec = projectLooks(raw, LOOKS_FORMAT) as Record<string, unknown>; } catch (e) { errs.push((e as Error).message); return errs; }
   const parts = isRec(spec.parts) ? spec.parts : {};
   if (spec.parts != null && !isRec(spec.parts)) errs.push("parts: an object");
   for (const [id, p] of Object.entries(parts)) checkPart(id, p, errs);
@@ -376,8 +392,22 @@ export function pushedFile(): string {
   return join(process.env.CONTROL_DIR || "/data/control", "bot-looks.json");
 }
 
+/** The highest v ever served, kept beside it: every (v, f) URL must keep one content forever (SPEC 5.2). */
+export function highFile(): string {
+  return join(process.env.CONTROL_DIR || "/data/control", "bot-looks-high.json");
+}
+
+/** The per-moment kill list (PUT /v1/admin/bots/looks/off): format-2 builds leave these out and play the act. */
+export function offFile(): string {
+  return join(process.env.CONTROL_DIR || "/data/control", "bot-looks-off.json");
+}
+
 let fileLooks: LooksCatalog | null | undefined;
 let pushed: LooksCatalog | null | undefined;
+let highV: number | undefined;
+let offIds: string[] | undefined;
+/** The projections served now, worked out once per format and thrown away when the catalog changes. */
+const projections = new Map<number, LooksCatalog>();
 
 /** The catalog in the repo (shared/bots/looks.json), read once. Null when it cannot be found or read. */
 export function fileCatalog(): LooksCatalog | null {
@@ -407,40 +437,139 @@ export function activeLooks(): LooksCatalog | null {
 }
 
 /**
- * Push a catalog without a deploy (PUT /v1/admin/bots/looks): checked as the apps would compile it, and its v must be
- * above the one served now. Kept on the control volume, so a restart keeps it, until a deploy brings a file with a
- * higher v (or it is taken back: dropPushed).
+ * The catalog as a build of format `f` is served it (shared/bots/project.mjs). f=1 is what every build before this
+ * round gets, and for a catalog with nothing above format 1 it is the file itself, byte for byte.
  */
-export function pushLooks(spec: unknown, o: { dry?: boolean } = {}): { ok: true; v: number } | { ok: false; status: number; errors: string[] } {
+export function servedLooks(f: number): LooksCatalog | null {
+  const c = activeLooks();
+  if (!c) return null;
+  const want = Math.max(1, Math.min(LOOKS_FORMAT_MAX, Math.floor(Number(f) || 1)));
+  const had = projections.get(want);
+  if (had) return had;
+  let cut: LooksCatalog;
+  try { cut = projectLooks(c, want) as unknown as LooksCatalog; } catch { return null; }
+  projections.set(want, cut);
+  return cut;
+}
+
+/** The moments the owner has switched off (they play their fallback act instead). */
+export function offMoments(): string[] {
+  if (offIds !== undefined) return offIds;
+  try {
+    const p = offFile();
+    const raw = existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as unknown) : [];
+    offIds = Array.isArray(raw) ? raw.map(String).slice(0, 64) : [];
+  } catch { offIds = []; }
+  return offIds;
+}
+
+/** Switch moments off, or back on with an empty list. Kept on the control volume, like a pushed catalog. */
+export function setOffMoments(list: unknown): { ok: true; off: string[] } | { ok: false; errors: string[] } {
+  if (!Array.isArray(list) || list.length > 64) return { ok: false, errors: ["off: a list of at most 64 moment ids"] };
+  const ids = list.map(String);
+  const bad = ids.filter((id) => !/^[a-z][a-z0-9_.-]{0,31}$/.test(id));
+  if (bad.length) return { ok: false, errors: [`off: not moment ids (${bad.slice(0, 3).join(", ")})`] };
+  const p = offFile();
+  mkdirSync(dirname(p), { recursive: true });
+  writeFileSync(`${p}.tmp`, JSON.stringify(ids));
+  renameSync(`${p}.tmp`, p);
+  offIds = ids;
+  return { ok: true, off: ids };
+}
+
+/** The highest v ever served, so a (v, f) URL can never carry two different catalogs (SPEC 5.2). */
+export function highestServed(): number {
+  if (highV !== undefined) return highV;
+  try {
+    const p = highFile();
+    const raw = existsSync(p) ? (JSON.parse(readFileSync(p, "utf8")) as { v?: unknown }) : null;
+    highV = Number(raw?.v) || 0;
+  } catch { highV = 0; }
+  const f = fileCatalog();
+  if (f && f.v > highV) highV = f.v;
+  return highV;
+}
+
+function rememberServed(v: number): void {
+  if (v <= highestServed()) return;
+  highV = v;
+  try {
+    const p = highFile();
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(`${p}.tmp`, JSON.stringify({ v }));
+    renameSync(`${p}.tmp`, p);
+  } catch { /* the volume is read-only: the rule then holds only until a restart */ }
+}
+
+/**
+ * Push a catalog without a deploy (PUT /v1/admin/bots/looks). Three checks, in order: this file's own, on the
+ * catalog cut down to format 1; every engine beside this build, on the projection it would really be served; and,
+ * for the format-2 engine, a simulation of every format-2 moment. Its v must be above the highest ever served, not
+ * only the one served now, so that a URL a phone kept can never come back with other pictures.
+ */
+export function pushLooks(spec: unknown, o: { dry?: boolean } = {}): { ok: true; v: number; warnings?: string[] } | { ok: false; status: number; errors: string[] } {
   const errors = checkLooks(spec);
   if (errors.length) return { ok: false, status: 400, errors };
-  const c = spec as LooksCatalog, now = activeLooks();
-  if (now && c.v <= now.v) return { ok: false, status: 409, errors: [`v must be above ${now.v}, the one served now`] };
-  if (o.dry) return { ok: true, v: c.v };
+  // Nothing above format 1 is published unchecked: with no engine of that format beside this build the checks
+  // would pass by saying nothing, and a scene the fleet cannot play would go out (anim/SPEC.md 5.3).
+  const format = formatOfCatalog(spec);
+  if (format > 1 && !enginesHere().some((e) => e.format >= format)) {
+    return { ok: false, status: 503, errors: [`no format-${format} engine beside this build: shared/bots/engines is missing or short, so this catalog cannot be checked`] };
+  }
+  const engines = checkWithEngines(spec);
+  if (engines.errors.length) return { ok: false, status: 400, errors: engines.errors };
+  const c = spec as LooksCatalog;
+  if (typeof c.v !== "number") return { ok: false, status: 400, errors: ["v: a whole number from 1"] };
+  if ((c.format ?? 1) > LOOKS_FORMAT_MAX) return { ok: false, status: 400, errors: [`format ${c.format}: newer than this server`] };
+  const high = highestServed();
+  if (c.v <= high) return { ok: false, status: 409, errors: [`v must be above ${high}, the highest ever served`] };
+  if (o.dry) return { ok: true, v: c.v, ...(engines.warnings.length ? { warnings: engines.warnings } : {}) };
   const p = pushedFile();
   mkdirSync(dirname(p), { recursive: true });
   writeFileSync(`${p}.tmp`, JSON.stringify(c));
   renameSync(`${p}.tmp`, p);
   pushed = c;
-  return { ok: true, v: c.v };
+  projections.clear();
+  rememberServed(c.v);
+  return { ok: true, v: c.v, ...(engines.warnings.length ? { warnings: engines.warnings } : {}) };
 }
 
 /** Take a pushed catalog back: the file's is served again (the apps follow the flag down). */
 export function dropPushed(): void {
   try { rmSync(pushedFile(), { force: true }); } catch { /* nothing kept */ }
   pushed = null;
+  projections.clear();
 }
 
 /** Tests: forget what was read. */
 export function resetLooksForTests(): void {
   fileLooks = undefined;
   pushed = undefined;
+  highV = undefined;
+  offIds = undefined;
+  projections.clear();
+  try { rmSync(highFile(), { force: true }); } catch { /* nothing kept */ }
+  try { rmSync(offFile(), { force: true }); } catch { /* nothing kept */ }
 }
 
-/** The bootstrap's word on the catalog: its version, and where an app fetches it. Nothing when there is none. */
-export function looksFlags(): Record<string, unknown> {
+/**
+ * The bootstrap's word on the catalog: its version, and where an app fetches it. A build that plays only format 1
+ * gets exactly what it got before this round, byte for byte; one that plays more also gets its format and the
+ * kill list (SPEC 2.7).
+ */
+export function looksFlags(looksFormat = 1): Record<string, unknown> {
   const c = activeLooks();
-  return c ? { "bots.looks": { v: c.v, url: `/v1/bots/looks?v=${c.v}` } } : {};
+  if (!c) return {};
+  const f = Math.max(1, Math.min(LOOKS_FORMAT_MAX, Math.floor(looksFormat) || 1));
+  rememberServed(c.v);
+  if (f <= 1) return { "bots.looks": { v: c.v, url: `/v1/bots/looks?v=${c.v}` } };
+  return { "bots.looks": { v: c.v, f, url: `/v1/bots/looks?v=${c.v}&f=${f}`, off: offMoments() } };
+}
+
+/** The highest format any item in the catalog served now asks for. */
+export function activeFormat(): number {
+  const c = activeLooks();
+  return c ? formatOfCatalog(c) : 1;
 }
 
 // ---------------------------------------------------------------- for screens
@@ -467,9 +596,15 @@ export function playsFormat(can: ReadonlySet<string>): number {
 export function momentProps(can: ReadonlySet<string>, id: string, mode?: "once" | "loop"): { moment?: string; momentMode?: "once" | "loop"; act?: BuddyActName } {
   const m = activeLooks()?.moments?.[id];
   if (!m) return {};
-  const format = typeof m.format === "number" ? m.format : 1;
-  if (format <= playsFormat(can)) return { moment: id, ...(mode ? { momentMode: mode } : {}) };
+  if (playsHere(can, id, m)) return { moment: id, ...(mode ? { momentMode: mode } : {}) };
   return { act: (m.fallback as BuddyActName) ?? "play" };
+}
+
+/** Does this build play this recipe: its format, and it is not switched off. */
+function playsHere(can: ReadonlySet<string>, id: string, m: { format?: number }): boolean {
+  const format = typeof m.format === "number" ? m.format : 1;
+  if (format > playsFormat(can)) return false;
+  return !(format > 1 && offMoments().includes(id));
 }
 
 /** Home's rare idle surprises (BotTiles `surprises`), from the catalog's `idle`, for a build that plays them. */
@@ -477,5 +612,48 @@ export function idleSurprises(can: ReadonlySet<string>): { every: number; chance
   if (!can.has(BOT_MOMENTS)) return undefined;
   const c = activeLooks(), i = c?.idle;
   if (!i || !Array.isArray(i.moments) || !i.moments.length || !(Number(i.chance) > 0)) return undefined;
-  return { every: Number(i.every) || 30, chance: Number(i.chance), moments: i.moments.filter((m) => !!c?.moments?.[m]) };
+  const moments = i.moments.filter((id) => { const m = c?.moments?.[id]; return !!m && playsHere(can, id, m); });
+  if (!moments.length) return undefined;
+  return { every: Number(i.every) || 30, chance: Number(i.chance), moments };
+}
+
+/** A build that plays scenes (format 2): the screens use it where a moment is only worth sending to one. */
+export function canScenes(can: ReadonlySet<string>): boolean {
+  return playsFormat(can) >= 2;
+}
+
+/** The switch itself: `BOTS_SCENES` and `BOTS_SCENES_USERS` in config.ts, read the way keyboard/skin.ts reads its own pair. */
+function scenesSwitch(): { on: boolean; users: string } {
+  const cfg = getConfig();
+  return { on: cfg.BOTS_SCENES === true, users: String(cfg.BOTS_SCENES_USERS ?? "") };
+}
+
+/**
+ * THE LAUNCH-DARK GATE ON FORMAT 2 (H15-Q1). Everything that decides a format reads the capabilities through this,
+ * so the bootstrap's flag, the moments the screens send and the idle surprises can never disagree: with the switch
+ * off, a build that declares BotMoments2 is served exactly what a format-1 build is, byte for byte, and every
+ * format-2 moment goes out as its fallback act.
+ *
+ * `BOTS_SCENES_USERS`, when it has any name in it, is the stage before that: only those accounts (the owner's
+ * device checks, then the office) get format 2 even with the switch on. Empty means the switch alone decides.
+ * The list is read exactly as the keyboard's testers' stage reads its own (experience/keyboard/skin.ts).
+ *
+ * Both default to off, so until someone turns the switch on nothing is served format 2 at all: the dark launch the
+ * owner asked for. Turning it off again needs no change on either client — a flag with no `f` reads as format 1,
+ * which is not the (v, 2) they kept, so the phone and the window fetch the format-1 cut again.
+ */
+export function looksCan(can: ReadonlySet<string>, userId?: string): ReadonlySet<string> {
+  const s = scenesSwitch();
+  if (s.on) {
+    const only = s.users.split(",").map((x) => x.trim()).filter(Boolean);
+    if (!only.length || (!!userId && only.includes(userId))) return can;
+  }
+  // Shut: every BotMoments<n> for n >= 2 is dropped, and nothing else is touched.
+  const out = new Set<string>();
+  for (const c of can) {
+    const m = /^BotMoments(\d+)$/.exec(c);
+    if (m && Number(m[1]) >= 2) continue;
+    out.add(c);
+  }
+  return out;
 }
