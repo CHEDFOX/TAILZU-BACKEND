@@ -189,6 +189,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.meet_waiting.screenId": "bots.meet.meeting",
     "push.meet_failed.enabled": true,
     "push.meet_failed.screenId": "bots.meet.meeting",
+    "push.cinema_board.enabled": true,
+    "push.cinema_board.screenId": "bots.cinema.film",
+    "push.cinema_hold.enabled": true,
+    "push.cinema_hold.screenId": "bots.cinema.film",
+    "push.cinema_ready.enabled": true,
+    "push.cinema_ready.screenId": "bots.cinema.film",
     // The meeting bot in a space (docs/spaces.md): a member took the bot to a meeting (to the space's admin, who sees their meetings), or
     // the admin sent the bot to a member's meeting (to that member). Both open the meeting (data.m); never a word of what was said.
     "push.space_meet.enabled": true,
@@ -272,6 +278,12 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.meet_waiting.body": "{name} is waiting to be let in.",
     "push.meet_failed.title": "{title}",
     "push.meet_failed.body": "{name} couldn't join: {why}",
+    "push.cinema_board.title": "{title}",
+    "push.cinema_board.body": "Your storyboard is ready. Look it over and say go.",
+    "push.cinema_hold.title": "{title}",
+    "push.cinema_hold.body": "Your film is waiting for you.",
+    "push.cinema_ready.title": "{title}",
+    "push.cinema_ready.body": "Your film is ready to watch.",
     "push.space_meet.title": "{name}",
     "push.space_meet.body": "took the meeting bot to {title}.",
     "push.space_meet_sent.title": "{name}",
@@ -300,6 +312,7 @@ export const EVENT_PUSH_KINDS = [
   "routine_done", "routine_failed",
   "mail_needs_you", "mail_urgent", "mail_paused",
   "meet_ready", "meet_waiting", "meet_failed",
+  "cinema_board", "cinema_hold", "cinema_ready",
   "ops_alert",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

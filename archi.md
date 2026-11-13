@@ -172,6 +172,11 @@ mail/              the mail bot: the mail worker's signed client and the account
 lingo/             Lingo, the language bot: the shapes (types.ts), when to ask something again (schedule.ts, FSRS),
                    and marking an answer on the server (grade.ts). Conversation is the lesson; a word is not learned
                    until it has been said out loud (docs/lingo.md)
+cinema/            the cinema bot: films made shot by shot and pictures, every model through OpenRouter (docs/cinema.md). types.ts the shapes;
+                   models.ts and imageModels.ts the models (OpenRouter's live lists and our judgment); route.ts which model films which shot;
+                   compile.ts the prompts and fingerprints; plan.ts the director; quote.ts the prices; qc.ts the eye and the retakes; flow.ts what
+                   a film needs next (pure); cut.ts the edit and ffmpeg.ts ffmpeg; pictures.ts a picture; openrouter.ts the image, video and music
+                   APIs; store.ts, media.ts (keys and signed links), digest.ts (what its chat knows), service.ts (the tick, the money), index.ts
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
@@ -236,6 +241,7 @@ ads/               Meta and Google Tag Manager events
 | The Oracle bot (a reading of the person's sky) | `tulmi/src/oracle/`, `routes/bots/oracle.ts`, the page `experience/bots/screens/bots/oraclePage.ts` and its cards `oracleCards.ts`, the engine `oracle-worker/`, migration 0078 (docs/oracle.md) |
 | The mail bot (a business's email: mailboxes, filing, AI replies) | `tulmi/src/mail/`, `routes/bots/mail.ts`, the page `experience/bots/screens/bots/mailPage.ts`, its cards `mailCards.ts`, its other screens `mailScreens.ts`, its mailbox `mailInbox.ts` (a folder, a conversation, writing), a domain's addresses and rules `mailAliases.ts` (shared parts `mailParts.ts`), the engine `mail-worker/` (its API `mail-worker/server/routes/x0.ts`, its mailbox `mail-worker/server/inbox.ts`), `deploy/mail-up.sh`, migration 0080, the mail bot in a space `tulmi/src/mail/access.ts` and migration 0084 (docs/mail.md) |
 | The meeting bot (a bot in video calls: notes, answers, auto-join) | `tulmi/src/meet/` (`types.ts`, `recall.ts` Recall's client, `store.ts`, `words.ts`, `brain.ts`, `stage.ts` the speaking bot's page, `calendar.ts` auto-join, `digest.ts` the chat's knowledge, `service.ts` the engine, `room.ts` one meeting's live state, `people.ts` a space's admin and their people), `notes/finish.ts` (a finished note organised, shared with the note-taker), `routes/bots/meet.ts`, the page `experience/bots/screens/bots/meetPage.ts`, its meeting `meetScreens.ts`, migrations 0082 and 0083 (docs/meet.md) |
+| The cinema bot (films shot by shot, pictures: a director's script, a storyboard, each shot filmed by the model that suits it, checked and retaken, cut with voice-over, music and subtitles) | `tulmi/src/cinema/` (`types.ts`, `models.ts`, `imageModels.ts`, `route.ts`, `compile.ts`, `plan.ts`, `quote.ts`, `qc.ts`, `flow.ts`, `cut.ts`, `ffmpeg.ts`, `pictures.ts`, `openrouter.ts`, `store.ts`, `media.ts`, `digest.ts`, `service.ts`, `index.ts`), `routes/bots/cinema.ts`, the page `experience/bots/screens/bots/cinemaPage.ts`, the film page `cinemaScreens.ts`, migration 0089 (docs/cinema.md) |
 | Lingo (the language bot: spaced repetition, marking on the server, talking rather than tapping) | `tulmi/src/lingo/` (`types.ts`, `schedule.ts` the FSRS scheduler, `grade.ts` the marking), migration 0087 (docs/lingo.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
@@ -322,7 +328,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/cinema.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
 `viewer/docs/artifact-viewer.md`.

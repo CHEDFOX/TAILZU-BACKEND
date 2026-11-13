@@ -56,6 +56,8 @@ import { mailAliasScreens } from "./bots/mailAliases.js";
 import type { MailData } from "./bots/mailParts.js";
 import { meetPage, type MeetPageData } from "./bots/meetPage.js";
 import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
+import { cinemaPage, type CinemaPageData } from "./bots/cinemaPage.js";
+import { cinemaScreens, loadCinema, type CinemaData } from "./bots/cinemaScreens.js";
 import type { About } from "./firstRun/parts.js";
 
 /** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
@@ -65,10 +67,10 @@ const homeFor = (ctx: BotsCtx): boolean => planV2(ctx) && homeOn();
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
-async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean } = {}): Promise<OraclePageData & MailPageData & MeetPageData> {
+async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean; cinema?: boolean } = {}): Promise<OraclePageData & MailPageData & MeetPageData & CinemaPageData> {
   const slug = slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat, sky, about, mail, meet] = await Promise.all([
+  const [bot, memory, linked, chat, sky, about, mail, meet, cinema] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
@@ -81,8 +83,10 @@ async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["lo
     slug === "mail" && o.mail ? loadMail(ctx, deps).catch((): MailData => ({ down: true })) : Promise.resolve(undefined),
     // The meeting bot's page: its meetings (routes/bots/meet.ts), on bots.bot only (its chat is the usual one).
     slug === "meet" && o.meet ? loadMeet(ctx, deps).catch((): MeetData => ({ down: true })) : Promise.resolve(undefined),
+    // The cinema bot's page: its films and pictures (routes/bots/cinema.ts), on bots.bot only (its chat is the usual one).
+    slug === "cinema" && o.cinema ? loadCinema(ctx, deps).catch((): CinemaData => ({ down: true })) : Promise.resolve(undefined),
   ]);
-  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}) };
+  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}), ...(cinema ? { cinema } : {}) };
 }
 
 /** The Oracle is the chat and nothing in its way: its bot page and its chat are one page (screens/bots/oraclePage.ts). */
@@ -91,6 +95,8 @@ const isOracle = (d: BotPageData): boolean => d.bot?.slug === "oracle" && d.bot.
 const isMail = (d: BotPageData): boolean => d.bot?.slug === "mail" && d.bot.builtin;
 /** The meeting bot's page is its meetings (screens/bots/meetPage.ts); its chat is the usual chat. */
 const isMeet = (d: BotPageData): boolean => d.bot?.slug === "meet" && d.bot.builtin;
+/** The cinema bot's page is where films and pictures are made (screens/bots/cinemaPage.ts); its chat is the usual chat. */
+const isCinema = (d: BotPageData): boolean => d.bot?.slug === "cinema" && d.bot.builtin;
 
 function noBot(ctx: BotsCtx): ReturnType<typeof page> {
   return page(ctx, {
@@ -694,10 +700,10 @@ function avatarsPage(ctx: BotsCtx) {
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
 export const botsScreens: BotsScreen[] = [
-  screen<OraclePageData & MailPageData & MeetPageData>({
+  screen<OraclePageData & MailPageData & MeetPageData & CinemaPageData>({
     id: SCREENS.bot,
-    load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : slugParam(ctx) === "mail" || slugParam(ctx) === "meet" ? 1 : 6, { mail: true, meet: true }),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isMeet(d) ? meetPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
+    load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : ["mail", "meet", "cinema"].includes(slugParam(ctx)) ? 1 : 6, { mail: true, meet: true, cinema: true }),
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isMeet(d) ? meetPage(ctx, d) : isCinema(d) ? cinemaPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
   }),
   screen<OraclePageData>({
     id: SCREENS.chat,
@@ -827,6 +833,7 @@ export const botsScreens: BotsScreen[] = [
   ...mailInboxScreens,
   ...mailAliasScreens,
   ...meetScreens,
+  ...cinemaScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
   ...planPeopleScreens,
   // Follow-through (botsBots/planFollow.ts): one followed item, and who does an item.

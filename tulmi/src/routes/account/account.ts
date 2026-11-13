@@ -14,6 +14,7 @@ import type { MediaService } from "../../media/service.js";
 import { registerAccountDeletionRoutes } from "./accountDeletion.js";
 import { mailForAccountDelete } from "../../mail/worker.js";
 import { meetService } from "../../meet/service.js";
+import { cinemaService } from "../../cinema/service.js";
 import { unauthorized } from "../../http/helpers.js";
 
 export interface AccountRouteDeps {
@@ -115,6 +116,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     if (!(await mailForAccountDelete(user.id))) req.log.error("account delete: the mail worker could not remove the businesses' mailboxes");
     // Their meetings' bots are called off and their notes' calls forgotten (src/meet); best effort, it never fails the delete.
     try { await meetService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: the meeting bot could not be called off"); }
+    // Their films' and pictures' files are in a bucket (src/cinema): they go, with the films' rows; best effort, it never fails the delete.
+    try { await cinemaService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: the cinema bot's files could not be removed"); }
 
     const summary = {
       personality: false, profile: false, usageEvents: 0,

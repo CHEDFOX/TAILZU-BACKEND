@@ -1,5 +1,5 @@
 /**
- * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE, THE MAIL BOT AND THE MEETING BOT WHERE THEIR SERVICES ARE SET UP), IN THE SAME FORMAT AS A
+ * THE BOTS TAILZU ITSELF SHIPS: CODE, KEYBOT, PLAN AND TRAVEL (AND THE ORACLE, THE MAIL BOT, THE MEETING BOT AND THE CINEMA BOT WHERE THEY ARE SET UP), IN THE SAME FORMAT AS A
  * BOT A PERSON MAKES.
  *
  * Everything is a bot. These four are defined in code (ownerId null, nobody can change or delete them) and every person has them. The
@@ -18,9 +18,14 @@
  * and out loud; its chat here runs the usual loop with their meetings as its knowledge (meet/digest.ts). Its name is a placeholder too. It is
  * listed only where RECALL_API_KEY is set.
  *
+ * The cinema bot (src/cinema, docs/cinema.md) makes films shot by shot and pictures, with every model reached through OpenRouter; its page is
+ * where films are made, and its chat runs the usual loop with their films and pictures as its knowledge (cinema/digest.ts). It is listed only
+ * where CINEMA=true.
+ *
  * One colour each, from the natural palette.
  */
 import { getConfig } from "../config.js";
+import { CINEMA_SLUG } from "../cinema/types.js";
 import { MEET_SLUG } from "../meet/types.js";
 import { PALETTE, type BotDef, type BotSkills } from "./types.js";
 
@@ -37,6 +42,7 @@ const PURPOSE = {
   oracle: "Reads your birth chart and the world's divination traditions to answer what you ask about your life, love, work and timing.",
   mail: "Keeps your business's email: sorts what arrives, drafts the replies in your voice, and tells you what needs you.",
   meet: "Joins your video calls: takes the notes, answers what people ask in the chat and out loud, and turns what was agreed into your to-dos.",
+  cinema: "Makes films and videos shot by shot from your idea, and pictures: posters, product shots, portraits and logos.",
 } as const;
 
 const DEFS: readonly BotDef[] = [
@@ -139,6 +145,31 @@ const MEET: BotDef = {
   knowledge: [], tone: "plain and brief", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
 };
 
+export { CINEMA_SLUG };
+
+const CINEMA: BotDef = {
+  id: CINEMA_SLUG, ownerId: null, slug: CINEMA_SLUG, name: "Cinema", colour: "stone",
+  purpose: PURPOSE.cinema,
+  principles: [
+    "Answer from their own films and pictures; never invent a shot, a price or a model.",
+    "Say first what is waiting for them: a script, a storyboard, a price, a shot.",
+    "Never say a film was made, approved or paid for: that is done on the cinema page, by them.",
+    "To make or change a film or a picture, point them to the cinema page.",
+  ],
+  // Its films are its own service's (src/cinema): no tools here; the chat reads their films and pictures (cinema/digest.ts).
+  skills: skills({}),
+  knowledge: [], tone: "warm and concrete", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 1000 },
+};
+
+/** The cinema bot is listed only where it is switched on. */
+export function cinemaOn(): boolean {
+  try {
+    return getConfig().CINEMA;
+  } catch {
+    return false;
+  }
+}
+
 /** The meeting bot is listed only where Recall is set up. */
 export function meetOn(): boolean {
   try {
@@ -168,14 +199,14 @@ export function oracleOn(): boolean {
   }
 }
 
-const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : [])];
+const defs = (): readonly BotDef[] => [...DEFS, ...(oracleOn() ? [ORACLE] : []), ...(mailOn() ? [MAIL] : []), ...(meetOn() ? [MEET] : []), ...(cinemaOn() ? [CINEMA] : [])];
 
 /** The built-ins, as copies (a caller cannot change them). */
 export function builtinBots(): BotDef[] {
   return defs().map((d) => ({ ...d, principles: [...d.principles], skills: { ...d.skills, connectors: [...d.skills.connectors] }, knowledge: [], budgets: { ...d.budgets } }));
 }
 
-export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || DEFS.some((d) => d.slug === slug);
+export const isBuiltinSlug = (slug: string): boolean => slug === ORACLE.slug || slug === MAIL.slug || slug === MEET.slug || slug === CINEMA.slug || DEFS.some((d) => d.slug === slug);
 
 export function builtinBot(slug: string): BotDef | null {
   return builtinBots().find((d) => d.slug === slug || d.id === slug) ?? null;

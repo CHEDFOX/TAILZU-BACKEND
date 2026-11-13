@@ -79,6 +79,9 @@ import { registerNativeLooksRoutes } from "./routes/app/nativeLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
 import { registerMailRoutes } from "./routes/bots/mail.js";
 import { registerMeetRoutes } from "./routes/bots/meet.js";
+import { registerCinemaRoutes } from "./routes/bots/cinema.js";
+import { buildCinemaService } from "./cinema/index.js";
+import { cinemaOn } from "./bots/builtin.js";
 import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
 import { spacePeople } from "./meet/people.js";
@@ -514,6 +517,14 @@ if (connectors && meetService()) {
     cancel: (u, id) => meetService()!.cancel(u, id),
   });
   app.addHook("onClose", async () => { stopAutoJoin(); });
+}
+// The cinema bot (src/cinema, docs/cinema.md): films made shot by shot and pictures, every model through OpenRouter. Its tick moves each film
+// on (the stills, the takes, the checks, the cut) every few seconds; only while it is switched on (CINEMA=true) and BOTS is on.
+const cinema = bots && cinemaOn() ? buildCinemaService() : null;
+registerCinemaRoutes(app, { rateLimit: AUTHED_RL, bots, service: cinema });
+if (cinema) {
+  const stopCinema = cinema.start();
+  app.addHook("onClose", async () => { stopCinema(); });
 }
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).

@@ -806,6 +806,18 @@ const EnvSchema = z.object({
   MEET_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(240),
   /** The language Recall's live transcript listens for (its recallai_streaming language_code). */
   MEET_LANGUAGE: z.string().trim().default("en"),
+  /**
+   * THE CINEMA BOT (src/cinema, docs/cinema.md): films made shot by shot (a director's script and shot list, a storyboard of stills, each shot
+   * animated by the video model that suits it, checked by eye and retaken, cut with voice-over, music and subtitles), and pictures. Every model
+   * is reached through OPENROUTER_API_KEY (its image and video APIs): nothing else to set up. CINEMA=true puts it among the bots.
+   * CINEMA_MEDIA_SECRET (SECRET: .env only) signs the links the apps open stills and films by; when not set a secret is made at each start
+   * (links are made fresh each time a screen is drawn, so nothing breaks). CINEMA_FILM_MAX_PAISE is the most one film may be agreed at, and
+   * CINEMA_DAILY_PAISE what one person may spend on films and pictures in a day (both on top of their plan's allowance).
+   */
+  CINEMA: bool(false),
+  CINEMA_MEDIA_SECRET: z.string().optional(),
+  CINEMA_FILM_MAX_PAISE: z.coerce.number().int().min(100).max(10_000_000).default(150_000),
+  CINEMA_DAILY_PAISE: z.coerce.number().int().min(100).max(10_000_000).default(300_000),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),

@@ -104,6 +104,11 @@ const MAIL = /\b(?:(?:my|our)\s+business(?:'s)?\s+(?:e-?mails?|mails?|inbox)|bus
  *  invite", which are Plan Ease's and Keylessbord's. */
 const MEET = /\b(?:(?:join|attend|sit\s+in\s+on|record)\s+(?:my|our|this|the)\s+(?:\w+\s+)?(?:meeting|call|standup|sync)s?|meeting\s+bot|(?:notes?|summary|summari[sz]e|recap|minutes|decisions?|action\s+items?|to-?dos?)\s+(?:from|of|for)\s+(?:my|our|the|today'?s|yesterday'?s|this\s+morning'?s|last)\s+(?:\w+\s+)?(?:meeting|call|standup|sync)s?|what\s+(?:did|have)\s+(?:we|they)\s+(?:decide|agree)\w*\s+(?:in|at|on)\s+(?:the|my|our|today'?s|yesterday'?s|that|this|last)\s+(?:\w+\s+)?(?:meeting|call|standup|sync))\b/i;
 
+/** The cinema bot's: making a film, a video, an ad, a reel or an animation, or a picture (a poster, a logo, a product shot), in so many words.
+ *  Never "send me the video" or "edit my photo caption", which are no ask to make one. */
+const CINEMA = /\b(?:(?:make|create|generate|shoot|produce|direct|animate|render)\s+(?:me\s+|us\s+)?(?:a|an|my|our|the|some|\d+)?\s*(?:\w+\s+){0,3}?(?:film|movie|video|short\s+film|reel|trailer|teaser|ad\s+film|video\s+ad|commercial|music\s+video|animation|cartoon|storyboard|poster|logo|thumbnail|product\s+shot|portrait|illustration|image|picture)s?|(?:video|film|movie|reel|ad|poster|logo|photo|image|picture|tasveer|animation)\s+(?:bana(?:o|do|a\s+do|na\s+hai)|banake\s+do)|(?:text|image|photo)[-\s]to[-\s]video|cinema\s+bot)\b/i;
+const CINEMA_HI = hindi(["वीडियो\\s*बना", "(?:फ़|फ)िल्म\\s*बना", "पोस्टर\\s*बना", "तस्वीर\\s*बना", "(?:फ़|फ)ोटो\\s*बना", "विज्ञापन\\s*बना"]);
+
 /** Built-ins whose purpose is in everyday words (the Oracle's: life, love, work, timing, a chart; the mail bot's: email, replies, voice): those
  *  words are no sign of what it does, and would pull a love letter, a chart of expenses or "write an email to my boss" its way. Each is found by
  *  its name, by its lines in HINTS, or by the model when unsure. */
@@ -119,6 +124,7 @@ const HINTS: Readonly<Record<string, ReadonlyArray<{ re: RegExp; points: number;
   oracle: [{ re: ORACLE, points: 9, id: "oracle:reading" }, { re: ORACLE_HI, points: 9, id: "oracle:reading_hi" }],
   mail: [{ re: MAIL, points: 8, id: "mail:business_mail" }],
   meet: [{ re: MEET, points: 8, id: "meet:meetings" }],
+  cinema: [{ re: CINEMA, points: 8, id: "cinema:make" }, { re: CINEMA_HI, points: 8, id: "cinema:make_hi" }],
 };
 
 // ------------------------------------------------------------------ the rules

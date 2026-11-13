@@ -85,6 +85,8 @@ export const SCREENS = {
   mailRules: "bots.mail.rules",      // a domain's rules: each as a sentence, on or off, removed; add one (params: b)
   // screens/bots/meetScreens.ts: the meeting bot (its page is bots.bot with slug "meet", screens/bots/meetPage.ts)
   meetMeeting: "bots.meet.meeting",  // one meeting: where it stands, who is in it, Leave, Answer out loud, the notes so far, what it answered (params: m)
+  // screens/bots/cinemaScreens.ts: the cinema bot (its page is bots.bot with slug "cinema", screens/bots/cinemaPage.ts)
+  cinemaFilm: "bots.cinema.film",    // one film: the script, the storyboard and its price, the shots as they are filmed, the finished film (params: f)
   spaces: "bots.spaces",             // Spaces / DSpaces
   avatars: "bots.avatars",           // Avatars (the five moments)
   // screens/spaces.ts: spaces with family and friends (bots.spaces is built there too), sharing, payments, tasks, messaging
