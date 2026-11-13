@@ -27,7 +27,7 @@ import {
   type MentionFieldProps, type TalkTo, type VanishProps,
 } from "../../../../shared/types/sdui.js";
 import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
-import { BOT_CALL_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
+import { BOT_CALL_CAPABILITY, ROOM_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -486,6 +486,11 @@ export const canCall = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.
  * client). Every other build — and every older binary — gets today's turn-by-turn call, byte for byte.
  */
 export const canRealtimeCall = (ctx: BotsCtx): boolean => canCall(ctx) && canVoice(ctx) && ctx.can.has(VOICE_REALTIME_CAPABILITY);
+/**
+ * A build with the app's own call screen for our calls (ROOM_CAPABILITY, said by the binary: the phone's store build, the window's release
+ * with it). Every other build is shown the call and its link, and told it opens in the app's next update; never a web page.
+ */
+export const canRoom = (ctx: BotsCtx): boolean => ctx.can.has(ROOM_CAPABILITY);
 /** The window whose one key talks to the bot on screen while X0 is in front (ScreenResponse.talkTo). */
 export const canDeskTalk = (ctx: BotsCtx): boolean => ctx.client === "desktop" && canVoice(ctx) && ctx.can.has(DESK_TALK_TO_CAPABILITY);
 
@@ -533,6 +538,10 @@ type VoiceCallSpec = Extract<ActionSpec, { kind: "voiceCall" }>;
 export const voiceCall = (o: Omit<VoiceCallSpec, "kind">): ActionSpec => ({ kind: "voiceCall", ...o });
 /** warm: get the microphone and the offer ready while the call is being answered. end: the live call stops now. */
 export const voiceCallSet = (op: "warm" | "end"): ActionSpec => ({ kind: "voiceCallSet", op });
+
+type RoomJoinSpec = Extract<ActionSpec, { kind: "roomJoin" }>;
+/** One of our calls on the app's own call screen (only for canRoom). */
+export const roomJoin = (o: Omit<RoomJoinSpec, "kind">): ActionSpec => ({ kind: "roomJoin", ...o });
 
 // ---------------------------------------------------------------- people as their own tiny bots, and the messages' face (sdui 3j)
 

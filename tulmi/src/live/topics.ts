@@ -15,6 +15,7 @@
  *   code       Xode's lists: jobs, projects, rules, PR care
  *   job:<id>   one Xode job: its progress, its question, its end
  *   notes      the meeting notes list;  note:<id>  one meeting's notes (its transcript grows while it records)
+ *   room:<id>  one call (src/rooms): who is in it, who waits at its door (published by rooms/service.ts, from LiveKit's webhook and the lobby)
  *   keybot     Keylessbord: its settings, words, voices, history, stats
  *   you        You and account settings: profile, plan, notifications, connected apps
  *
@@ -47,6 +48,8 @@ const idOf = (v: unknown): string => {
 export const botTopic = (slug: unknown): string => (idOf(slug) ? `bot:${idOf(slug).toLowerCase()}` : "");
 export const jobTopic = (id: unknown): string => (idOf(id) ? `job:${idOf(id)}` : "");
 export const noteTopic = (id: unknown): string => (idOf(id) ? `note:${idOf(id)}` : "");
+/** One call (src/rooms): who is in it, who waits at its door. */
+export const roomTopic = (id: unknown): string => (idOf(id) ? `room:${idOf(id)}` : "");
 
 const WRITES = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 /** The Bots app's own area (routes/bots/botsBots.ts AREA). */
@@ -128,6 +131,7 @@ export function topicsForScreen(screenId: string, params: Record<string, unknown
     case "bots.store": return [bots];
     case "bots.plan": return [botTopic("plan"), TOPIC.calendar, tasks];
     case "bots.travel": return [botTopic("travel")];
+    case "bots.mail.call": return list(roomTopic(params.r));
     case "bots.code": case "bots.code.plan": case "bots.code.review": case "bots.code.pr-care": case "bots.code.rules": return [code];
     case "bots.code.job": case "bots.code.team": return jobTopic(params.id) ? [jobTopic(params.id)] : [code];
     case "bots.failed": return list(jobTopic(params.id));

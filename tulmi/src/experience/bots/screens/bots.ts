@@ -53,6 +53,7 @@ import { mailPage, type MailPageData } from "./bots/mailPage.js";
 import { loadMail, mailScreens } from "./bots/mailScreens.js";
 import { mailInboxScreens } from "./bots/mailInbox.js";
 import { mailAliasScreens } from "./bots/mailAliases.js";
+import { mailCallScreens } from "./bots/mailCalls.js";
 import type { MailData } from "./bots/mailParts.js";
 import { meetPage, type MeetPageData } from "./bots/meetPage.js";
 import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
@@ -826,6 +827,7 @@ export const botsScreens: BotsScreen[] = [
   ...mailScreens,
   ...mailInboxScreens,
   ...mailAliasScreens,
+  ...mailCallScreens,
   ...meetScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
   ...planPeopleScreens,

@@ -78,6 +78,8 @@ import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
 import { registerMailRoutes } from "./routes/bots/mail.js";
 import { registerMeetRoutes } from "./routes/bots/meet.js";
+import { registerRoomsRoutes } from "./routes/bots/rooms.js";
+import { roomService } from "./rooms/service.js";
 import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
 import { spacePeople } from "./meet/people.js";
@@ -510,6 +512,15 @@ if (connectors && meetService()) {
     cancel: (u, id) => meetService()!.cancel(u, id),
   });
   app.addHook("onClose", async () => { stopAutoJoin(); });
+}
+// Calls (src/rooms, docs/rooms.md): our own video and audio rooms, carried by LiveKit. The mail bot makes its calls under a business
+// (routes/bots/mail.ts); the host's call, the link's way in and LiveKit's webhook are here. Every minute: calls too long or over the day's
+// minutes closed, rooms unused for a month ended, the lobby swept.
+registerRoomsRoutes(app, { rateLimit: AUTHED_RL });
+if (roomService()) {
+  const roomTick = setInterval(() => { void roomService()!.tick().catch((err) => app.log.warn({ err: (err as Error)?.message }, "rooms: tick failed")); }, 60_000);
+  roomTick.unref();
+  app.addHook("onClose", async () => { clearInterval(roomTick); });
 }
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).

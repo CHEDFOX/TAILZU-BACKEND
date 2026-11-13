@@ -806,6 +806,22 @@ const EnvSchema = z.object({
   MEET_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(240),
   /** The language Recall's live transcript listens for (its recallai_streaming language_code). */
   MEET_LANGUAGE: z.string().trim().default("en"),
+  /**
+   * CALLS (src/rooms, docs/rooms.md): our own video and audio rooms. The mail bot's calls start here; a link (ROOM_LINK_ORIGIN/m/<code>)
+   * lets anyone in after the host lets them in, and X0 Bot's own apps join from their own call screen. The media goes through LiveKit:
+   * LIVEKIT_URL is the project's address (wss://<project>.livekit.cloud, or a server of our own), LIVEKIT_API_KEY and LIVEKIT_API_SECRET
+   * (SECRET: .env only) the project's key pair, with which every pass and every server call is signed, and with which LiveKit signs its
+   * webhook (set in LiveKit's dashboard to <PUBLIC_ORIGIN>/v1/rooms/livekit). Without all three there are no calls anywhere.
+   */
+  LIVEKIT_URL: z.string().trim().optional().transform((v) => v || undefined),
+  LIVEKIT_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  LIVEKIT_API_SECRET: z.string().trim().optional().transform((v) => v || undefined),
+  /** Where a call's link points: <origin>/m/<code> (the website sends /m/* to this server). */
+  ROOM_LINK_ORIGIN: z.string().trim().default("https://x0bot.com"),
+  /** How many minutes of calls one person's rooms may hold, in any 24 hours (LiveKit bills by the minute). */
+  ROOM_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(600),
+  /** How many people one call may hold, the host among them. */
+  ROOM_MAX_PEOPLE: z.coerce.number().int().min(2).max(50).default(10),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -1969,6 +1985,8 @@ export function getConfig(): AppConfig {
   if (Boolean(env.MAIL_WORKER_URL) !== Boolean(env.MAIL_WORKER_SECRET)) console.warn("[config] MAIL_WORKER_URL and MAIL_WORKER_SECRET go together: without both the mail bot is not among the bots.");
   if (env.MAIL_WORKER_SECRET && env.MAIL_WORKER_SECRET.length < 32) console.warn("[config] MAIL_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   if (env.RECALL_API_KEY && !env.RECALL_WEBHOOK_SECRET) console.warn("[config] RECALL_API_KEY without RECALL_WEBHOOK_SECRET: the meeting bot can join calls, but Recall's status webhook is refused (it cannot be checked). Add the workspace verification secret (whsec_…) from Recall's dashboard.");
+  const livekit = [env.LIVEKIT_URL, env.LIVEKIT_API_KEY, env.LIVEKIT_API_SECRET];
+  if (livekit.some(Boolean) && !livekit.every(Boolean)) console.warn("[config] LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET go together: without all three there are no calls.");
 
   // Bots: a pepper that is missing or short makes keys that a leaked table could be tested against. Warned, not refused: the rest of the server is unaffected.
   if (env.BOTS) {

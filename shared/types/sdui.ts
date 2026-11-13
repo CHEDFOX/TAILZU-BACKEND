@@ -1272,6 +1272,10 @@ export const VOICE_LIVE_CAPABILITY = "VoiceLive";
 /** NOT A COMPONENT (the phone, a store build only): the actions voiceCall and voiceCallSet — Plan Ease's call held as one live voice
  *  conversation instead of turn by turn (docs/plan-ease.md "Calls"). A build that does not declare it gets today's call unchanged. */
 export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
+/** NOT A COMPONENT (the phone's store build, the window's release): the action roomJoin — one of our own calls (src/rooms, docs/rooms.md)
+ *  on the app's own call screen, drawn by the app, never a web page. Said by the binary, as VoiceRealtime is: the call is native code. A build
+ *  that does not declare it is never sent roomJoin, and its screens say the call opens in the app's next update. */
+export const ROOM_CAPABILITY = "Room";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
 export const DOUBLE_TAP_CAPABILITY = "DoubleTap";
 /** NOT A COMPONENT: TextField keyboard / autoFocus / maxLength; Screen, Scroll and (the window) Stack props.startAtEnd;
@@ -1637,6 +1641,15 @@ export type ActionSpec =
       onEnded?: ActionRef; onIdle?: ActionRef; onFallback?: ActionRef; onBlocked?: ActionRef }
   /** VOICE_REALTIME_CAPABILITY. warm: get the mic and the offer ready while the call is answered (only if mic permission is already granted). */
   | { kind: "voiceCallSet"; op: "warm" | "end" }
+  // --- one of our own calls (needs ROOM_CAPABILITY) ---
+  /** ROOM_CAPABILITY. Opens the app's own call screen (src/rooms, docs/rooms.md): POST `path` -> { url, pass, identity, name, room: { id,
+   *  title, host }, host, expiresAt }; the app connects to `url` with `pass` (LiveKit) and draws the call itself: each person's video, or their
+   *  name while their camera is off, the one speaking first; mute, camera on or off, flip camera (the phone), speaker (the phone), share the
+   *  screen (the window), hang up. `video` false starts with the camera off (an audio call). `panel`, a screen of ours, is drawn beside the
+   *  video (the window) or in a sheet (the phone) and read again on its live topics: who waits at the door with Let in, who is in, End for
+   *  everyone. Hang up, or the call closed or ended -> onEnd. onBlocked: no microphone permission. Failing to connect -> onError. */
+  | { kind: "roomJoin"; path: string; video?: boolean; panel?: { screenId: string; params?: Record<string, unknown> };
+      onEnd?: ActionRef; onBlocked?: ActionRef; onError?: ActionRef }
   // --- permissions ---
   | {
       kind: "requestPermission";

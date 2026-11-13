@@ -1199,6 +1199,45 @@ mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/pos
    `docker compose --profile mail stop mail-worker`. The mailboxes and their mail stay on the mail server.
 
 
+### Calls: our own video and audio calls (`LIVEKIT_URL`)
+
+Video and audio calls of our own, started from the mail bot ("Start a call" on a business's page). Its link (`x0bot.com/m/<code>`) lets anyone
+ask to come in, and the host lets them in. X0 Bot's apps join from their own call screen. The rooms, the links, the lobby and the minutes are
+on this server. LiveKit carries the video and the sound. Without the three settings there are no calls, and `/v1/rooms/*` answers
+`404 rooms_off`. Full story: `docs/rooms.md`.
+
+1. **A LiveKit project.** Sign up at livekit.io (LiveKit Cloud) and make a project. In its settings, under Keys, make an API key. Copy three
+   things: the project's URL (`wss://<project>.livekit.cloud`), the API key and the API secret. (Later, a LiveKit server of our own on its
+   own machine takes the same three settings, so nothing else changes. Not on this VPS: video needs a lot of bandwidth and open UDP ports.)
+2. **Put them in `tulmi/.env` on the server.** The secret by hand, so it never sits in the shell's history:
+
+   ```bash
+   ssh -t root@91.108.104.168 'cd ~/tulmi && nano tulmi/.env'
+   ```
+
+   ```
+   LIVEKIT_URL=wss://<project>.livekit.cloud
+   LIVEKIT_API_KEY=<the API key>
+   LIVEKIT_API_SECRET=<the API secret>
+   ```
+
+   Optional: `ROOM_LINK_ORIGIN` (where links point, `https://x0bot.com`), `ROOM_DAILY_MINUTES` (a person's call minutes per 24 hours, 600) and
+   `ROOM_MAX_PEOPLE` (the most people in one call, 10). With only some of the three set, the server warns at start.
+3. **Tell LiveKit where to send who joins and leaves.** In the project's settings, Webhooks, add `https://api.x0bot.com/v1/rooms/livekit`,
+   signed with the same API key. This is set once.
+4. **Migration and deploy.** 0087 makes `rooms`, the server's alone and deleted with the account:
+
+   ```bash
+   ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0087"
+   ```
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/ship.sh'
+   ```
+5. **Check.** On the mail bot's page, Calls has Start a call. A new call shows its link with Copy and Share. Joining needs an app build that
+   has the call screen (the `Room` capability). Until then the call's screen says so.
+6. **Back out:** remove the three settings from `tulmi/.env` and `./deploy/ship.sh` (Calls leaves the mail page). The rows stay.
+
 ### Meetings: a bot in your video calls (`RECALL_API_KEY`)
 
 A built-in bot that a person sends into a Google Meet, Zoom, Teams or Webex call with a pasted link. It takes the notes (each meeting becomes a
