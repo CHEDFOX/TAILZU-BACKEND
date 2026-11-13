@@ -287,7 +287,8 @@ worker is then made inside the business owner's account, whoever asks. Anything 
   opens by itself.
 - **The lists.** The overview and the list of businesses carry the person's own, each member's (`access: "admin"`, with its `owner`) and
   the ones they answer for (`access: "handler"`, only their addresses). What waits for a person counts all three (for a handler, only their
-  addresses'); the day in numbers is their own. `people` is who they can give an address to.
+  addresses'); the day in numbers is their own, so the page shows it only on their own business. `people` is who they can give an
+  address to.
 - **Rows** (migration 0084): `mail_businesses`, whose each business is (kept when it is made, filled in for an older one whenever its
   owner's list is read; a business it hasn't heard of is the asker's own, and the worker says no if it isn't), and `mail_handlers`, an
   address its owner gave a member. A row does nothing while that person is not a member (they left, a block, Spaces off) and works again

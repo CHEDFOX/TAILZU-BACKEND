@@ -137,10 +137,13 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
         ...(accessOf(b) === "handler" ? [] : [quietButton("Domain records", open(SCREENS.mailDns, { b: b.id }), { size: "md" })]),
       ], { gap: 6 }));
     }
-    const t = m.overview?.today;
+    // The day in numbers is the person's own businesses' (the worker counts inside their own account), so it shows on their own business
+    // only: never on a member's (seen as their admin) or on addresses given to them, where it would be someone else's page with their numbers.
+    const t = accessOf(b) === "own" ? m.overview?.today : undefined;
     if (t) {
+      const owned = list.filter((x) => accessOf(x) === "own").length;
       body.push(col([
-        sectionLabel(list.length > 1 ? "Every domain, last 24 hours" : "Last 24 hours"),
+        sectionLabel(owned > 1 ? "Every domain, last 24 hours" : "Last 24 hours"),
         row([stat(t.received, "Arrived"), stat(t.answered, "Answered"), stat(t.drafted + t.needsPerson, "Waiting"), stat(t.filed, "Filed")], { gap: 12 }),
       ], { gap: 10 }));
     }

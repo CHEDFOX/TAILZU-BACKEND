@@ -400,6 +400,17 @@ describe.each(["phone", "desktop"] as const)("the mail page for a space's admin 
     expect(p.texts).toContain("Ravi's business. As their space's admin you can see and change everything.");
     expect(navTo(p.every(), "bots.mail.settings")).toHaveLength(1);
     expect(p.texts).toEqual(expect.arrayContaining(["All mail", "Sent and other folders", "Write"]));
+    // The day in numbers is the admin's own mail: it is not shown on Ravi's page.
+    expect(p.texts).not.toContain("Last 24 hours");
+    expect(p.texts).not.toContain("Every domain, last 24 hours");
+  });
+
+  it("counts only the person's own domains in the day's heading, and shows it on their own business", async () => {
+    const p = await build({ client, overview: { businesses: [mine, theirs, given], waiting: [], today: ZERO }, params: { b: "mine-co" } });
+    expect(p.lint).toEqual([]);
+    // Three chips, but one business of their own: its numbers are that domain's.
+    expect(p.texts).toContain("Last 24 hours");
+    expect(p.texts).not.toContain("Every domain, last 24 hours");
   });
 
   it("tells a handler which addresses are theirs, and shows no settings, no set-up, no All mail, no Sent: only their addresses' folders and Write", async () => {
@@ -418,6 +429,7 @@ describe.each(["phone", "desktop"] as const)("the mail page for a space's admin 
     expect(p.texts).not.toContain("Domain records");
     expect(p.texts).not.toEqual(expect.arrayContaining(["All mail"]));
     expect(p.texts).not.toContain("Sent and other folders");
+    expect(p.texts).not.toContain("Last 24 hours");
     expect(p.texts).toEqual(expect.arrayContaining(["Mailbox", "orders@teahouse.in", "4", "help@teahouse.in", "Write", "Add a domain", "Needs you"]));
     const opens = navTo(p.every(), "bots.mail.inbox").map((a) => (a as { params: Record<string, string> }).params.folder);
     expect(opens.sort()).toEqual(["f-h", "f-o"]);
