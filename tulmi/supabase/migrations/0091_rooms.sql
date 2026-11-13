@@ -13,7 +13,7 @@
 -- Written and read by the server with the service key only: row level security is on and there is no policy, so no token reads or writes
 -- it. Rows go with the account (on delete cascade).
 --
--- Run in your Supabase SQL editor after 0089. It can be run again. Without it the server keeps calls in memory, and a restart forgets them
+-- Run in your Supabase SQL editor after 0090. It can be run again. Without it the server keeps calls in memory, and a restart forgets them
 -- (a link made before it no longer works).
 
 create table if not exists public.rooms (

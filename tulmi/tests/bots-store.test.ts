@@ -22,7 +22,7 @@ type KeyRow = import("../src/bots/store.js").KeyRow;
 const ID = "33333333-3333-4333-8333-333333333333";
 const bot = (over: Partial<StoredBot> = {}): StoredBot => ({
   id: ID, ownerId: ALICE, slug: "workout-buddy", name: "Workout buddy", colour: "sea", purpose: "Plans workouts.", principles: ["Be brief."],
-  skills: { web: true, files: false, artifacts: false, code: false, research: false, connectors: ["google-calendar"] }, knowledge: [], tone: "upbeat", visibility: "private",
+  skills: { web: true, files: false, artifacts: false, code: false, research: false, health: false, connectors: ["google-calendar"] }, knowledge: [], tone: "upbeat", visibility: "private",
   budgets: { perRequestPaise: 150, dailyPaise: 800 }, publicCard: false, createdAt: 1000, updatedAt: 1000, ...over,
 });
 const key = (over: Partial<KeyRow> = {}): KeyRow => ({ id: "44444444-4444-4444-8444-444444444444", botId: ID, userId: ALICE, hash: "a".repeat(64), prefix: "tzb_abcd", label: "app", createdAt: 5, lastUsedAt: null, revokedAt: null, ...over });
@@ -155,7 +155,7 @@ describe("the Supabase twin", () => {
       created_at: "2026-10-27T00:00:00.000Z", updated_at: "2026-10-27T00:00:00.000Z",
     });
     expect(made).toMatchObject({ id: ID, ownerId: ALICE, slug: "workout-buddy", colour: "sea", publicCard: false, visibility: "private" });
-    expect(made.skills).toEqual({ web: true, files: false, artifacts: false, code: false, research: false, connectors: ["google-calendar"] });
+    expect(made.skills).toEqual({ web: true, files: false, artifacts: false, code: false, research: false, health: false, connectors: ["google-calendar"] });
   });
 
   it("says a slug is taken when the unique index does", async () => {
@@ -185,7 +185,7 @@ describe("the Supabase twin", () => {
     const t = stub([{ data: row({ colour: "neon", skills: null, principles: null, knowledge: "x", budgets: null, public_card: null }), error: null }]);
     const b = (await new SupabaseBotStore(t.sb).getBot(ALICE, ID))!;
     expect(b).toMatchObject({ colour: "stone", principles: [], knowledge: [], publicCard: false, budgets: { perRequestPaise: 1, dailyPaise: 1 } });
-    expect(b.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [] });
+    expect(b.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, health: false, connectors: [] });
     expect(await new SupabaseBotStore(stub([{ data: null, error: null }]).sb).getBot(ALICE, ID)).toBeNull();
     await expect(new SupabaseBotStore(stub([{ data: null, error: { message: "connection reset" } }]).sb).getBot(ALICE, ID)).rejects.toThrow(/bot store: read: connection reset/);
   });

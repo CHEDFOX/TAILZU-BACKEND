@@ -1782,6 +1782,7 @@ export const APP_KNOB_FLAGS: Record<string, unknown> = {
     40,
     15
   ],
+  "health.syncEveryMs": 3600000,
   "iap.packageFallback": "first",
   "kb.flow.armOnForeground": false,
   "kb.flow.armScreenId": "flow_arm",

@@ -22,8 +22,10 @@
  */
 import { randomBytes, randomUUID } from "node:crypto";
 import { BotError, type Bots } from "../bots/index.js";
+import { getConfig } from "../config.js";
 import { live } from "../live/bus.js";
 import { screenPost } from "./filter.js";
+import { inviteMail, inviteSender, type InviteMailOut } from "./inviteMail.js";
 import { cleanEmail, mailerFromEnv, MailOutbox, type Mailer } from "./mail.js";
 import { shownLook, looksIn, type PersonLook } from "./personLook.js";
 import { table, type Table } from "./rows.js";
@@ -85,9 +87,16 @@ export interface SpaceDetail extends SpaceView {
   activity: Array<{ id: string; kind: string; text: string; at: number; by: string }> | null;
   /** The space's code, shown 7KQ-29D: the admin only (made here the first time). */
   code: string | null;
+  /** The invite mail as the person they invite will read it, for the Invite screen's preview (App Review 5.1.2(v)). */
+  mailPreview?: InviteMailOut;
 }
 /** The maker's open draft on the new Spaces screen. `name` is its own name, or null while it has none. */
-export interface DraftView { id: string; name: string | null; invites: Array<{ code: string; email: string; at: number; mail: "queued" | "sent" | "failed" | null }> }
+export interface DraftView {
+  id: string; name: string | null;
+  invites: Array<{ code: string; email: string; at: number; mail: "queued" | "sent" | "failed" | null }>;
+  /** The invite mail as the person they call in will read it, for Spaces' start screen preview (App Review 5.1.2(v)). */
+  mailPreview?: InviteMailOut;
+}
 
 export interface Access { s: SpaceRow; me: MemberRow; admin: boolean; perms: Perm[] }
 /** joined.invitedBy: who made the invite that was used (they are told: routes/bots/botsSpaces.ts). */
@@ -326,7 +335,8 @@ export class Spaces {
       }
     }
     const activity = a.perms.includes("activity") ? await this.activity(userId, spaceId, 30, v.members) : null;
-    return { ...v, invites, activity, code: a.admin ? showCode(await this.codeFor(spaceId)) : null };
+    const preview = a.admin ? await this.mailPreview(spaceId, a.me.name, a.s.named === false ? "their space" : a.s.name) : null;
+    return { ...v, invites, activity, code: a.admin ? showCode(await this.codeFor(spaceId)) : null, ...(preview ? { mailPreview: preview } : {}) };
   }
 
   async activity(userId: string, spaceId: string, limit = 30, members?: MemberView[]): Promise<Array<{ id: string; kind: string; text: string; at: number; by: string }>> {
@@ -412,7 +422,36 @@ export class Spaces {
       const mail = await this.outbox.byRef("space_invite", i.code);
       invites.push({ code: i.code, email: i.email ?? "", at: Number(i.created_ms), mail: mail ? (mail.status === "sent" ? "sent" : mail.status === "failed" ? "failed" : "queued") : null });
     }
-    return { id: s.id, name: s.named === false ? null : s.name, invites };
+    const [m] = await this.members.select({ space_id: s.id, user_id: s.owner_id }, { limit: 1 });
+    const preview = await this.mailPreview(s.id, m?.name ?? "", s.named === false ? "their space" : s.name);
+    return { id: s.id, name: s.named === false ? null : s.name, invites, mailPreview: preview };
+  }
+
+  /**
+   * The invite mail as the person invited will read it: the sender as they see it, the subject, and the body. The Invite screens
+   * show it before anything is sent, and `inviteEmail` writes the outbox row from the same function, so the two cannot drift
+   * (App Review 5.1.2(v)). "their email" stands in the address slot: nothing is typed yet and nothing has gone.
+   */
+  /**
+   * THE SAME PREVIEW BEFORE THERE IS ANY SPACE AT ALL. Spaces' start screen draws Add from contacts before the first
+   * Invite, and the first Invite is what makes the draft, so until then there is no space, no code and no draft to take a
+   * preview from — and App Review 5.1.2(v) wants the preview BEFORE anything is sent, which is exactly then. The same pure
+   * `inviteMail()` writes it, with the words standing in for the three things that do not exist yet.
+   */
+  blankPreview(who: string): InviteMailOut {
+    const from = who || "Someone";
+    const mail = inviteMail({
+      from, space: "their space", email: "their email", joinCode: "the space's code",
+      link: `${this.origin()}/s/${JOIN_SCREEN}`, adminLine: ADMIN_LINE_THERE,
+    });
+    return { sender: inviteSender(getConfig().MAIL_FROM, from), ...mail };
+  }
+
+  private async mailPreview(spaceId: string, who: string, space: string): Promise<InviteMailOut> {
+    const joinCode = await this.codeFor(spaceId);
+    const from = who || "Someone";
+    const mail = inviteMail({ from, space, email: "their email", joinCode: showCode(joinCode), link: this.linkOf(joinCode), adminLine: ADMIN_LINE_THERE });
+    return { sender: inviteSender(getConfig().MAIL_FROM, from), ...mail };
   }
 
   /** The maker's open draft, with who it invited, or null. Sweeps their old ones first. */
@@ -542,18 +581,10 @@ export class Spaces {
     const joinCode = await this.codeFor(spaceId);
     const from = a.me.name || clean(me, 40) || "Someone";
     const space = a.s.named === false ? "their space" : a.s.name;
-    await this.outbox.queue({
-      to: email, kind: "space_invite", ref: code, by: user.id,
-      subject: `${from} invited you to ${space} on X0 Bot`,
-      text: [
-        `${from} invited you to ${space} on X0 Bot.`,
-        `Sign in to X0 Bot with this email (${email}) and the invite is waiting: open Spaces, tap your bot, and tap Accept.`,
-        `Signing in with another email? Open Spaces, tap your bot, and type this code: ${showCode(joinCode)}. ${from} will let you in.`,
-        ADMIN_LINE_THERE,
-        `Get X0 Bot: ${this.linkOf(joinCode)}`,
-        "If you weren't expecting this, you can ignore it.",
-      ].join("\n\n"),
-    });
+    // The same pure function the Invite screens show the sender before they send (inviteMail.ts): one set of words, so the
+    // preview App Review 5.1.2(v) asks for cannot drift from the mail that really goes.
+    const mail = inviteMail({ from, space, email, joinCode: showCode(joinCode), link: this.linkOf(joinCode), adminLine: ADMIN_LINE_THERE });
+    await this.outbox.queue({ to: email, kind: "space_invite", ref: code, by: user.id, subject: mail.subject, text: mail.text });
     await this.note(spaceId, user.id, "invited", `${from} invited ${maskEmail(email)}`);
     await this.changed(spaceId);
     return { code, email };

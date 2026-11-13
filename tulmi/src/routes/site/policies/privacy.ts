@@ -10,7 +10,7 @@
  */
 import { siteShell } from "./shell.js";
 import { crumbsLd, pageLd } from "../../../seo/head.js";
-export const PRIVACY_POLICY_EFFECTIVE = "November 12, 2026";
+export const PRIVACY_POLICY_EFFECTIVE = "November 13, 2026";
 
 const PRIVACY_POLICY_BODY = `
 <h1>Privacy Policy</h1>
@@ -70,7 +70,23 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Camera</strong> — used only when you choose to take a photo or video to use in the app.</li>
   <li><strong>Face ID / Touch ID / biometric authentication</strong> — used on your device to confirm it's you before a bot does something you approve. Biometric data never leaves your device.</li>
   <li><strong>Clipboard</strong> — read only when you paste into the app. We never read the clipboard in the background.</li>
-  <li><strong>Not used:</strong> the app does not ask for your contacts, your device's calendars or reminders, your location, Bluetooth, motion and fitness data, your music library, or the system's speech recognition. Your calendar and to-dos in the app are its own, kept with your account.</li>
+  <li id="location"><strong>Location (while you are using the app)</strong> — read only when you tap <em>Use my location</em> on Plan Ease's "Where does your day start?" card. X0 Bot asks your phone for your position once, and your phone's own map service (Apple's on iPhone, Google's on Android) turns that position into the name of an area. <strong>That map service sees the position; X0 Bot's servers never do.</strong> You read the area's name and tap Save, and only then is it stored — the name alone, like "HSR Layout, Bengaluru", never a street, a house number, a postcode or a coordinate. It is used with the map services in Section 3 to work out your travel times, exactly as an area you typed always has been. Nothing is read in the background, and nothing is read again unless you tap the button again. To forget it: You, Privacy, <em>What this phone shares</em>, <em>Where your day starts</em>, Forget.</li>
+  <li id="contacts"><strong>Your contacts (no permission, and the book is never read)</strong> — on a space's Invite page, and in the email box when you start a space, <em>Add from contacts</em> opens your phone's own contact picker. That picker runs outside X0 Bot: it asks for nothing, and it hands back only the one email address you tapped, into the field, exactly as if you had typed it. X0 Bot never reads, uploads, hashes or counts your address book, and never matches it against who else uses X0 Bot. The address goes nowhere until you tap <em>Send the invite</em>. An invitee's address is kept while the invite is open (seven days) and deleted within fourteen; the invite mail is deleted within seven days of being sent, failing or being taken back; and both go when you delete your account.</li>
+  <li><strong>Apple Health and Health Connect</strong> — see "Apple Health and Health Connect" below.</li>
+  <li><strong>Not used:</strong> the app does not ask for your device's calendars or reminders, Bluetooth, your music library, the system's speech recognition, your location while the app is closed (so it cannot tell you when you have arrived somewhere), or your address book. Your calendar and to-dos in the app are its own, kept with your account.</li>
+</ul>
+
+<h3 id="health">1.5.1 Apple Health and Health Connect</h3>
+
+<p>A bot you make yourself about fitness (say "Gym Buddy") has one switch on its edit page: <em>Count my workouts from Apple Health</em>, or <em>from Health Connect</em> on Android. It is off until you turn it on, and a card tells you all of this before your phone asks you anything.</p>
+
+<ul>
+  <li><strong>What is read:</strong> your daily step total, and your workouts — what kind each was, and how long. <strong>Nothing else:</strong> no heart rate, no sleep, no weight, no routes or GPS, no raw samples, no times finer than a day, and nothing about the device or app the numbers came from. X0 Bot never writes anything back to Apple Health or Health Connect.</li>
+  <li><strong>When:</strong> only while you have that bot's page or edit page open, and at most once an hour. There is no background delivery, so the numbers are as of the last time you opened the bot, and the bot's page says so.</li>
+  <li><strong>What leaves your phone:</strong> a daily summary for that one bot — the day, the step total, and each workout's kind and minutes. Your phone works the days out in your own time zone and adds the totals up before it sends them.</li>
+  <li><strong>How long:</strong> 31 days. Older days are deleted automatically. Switching the row off deletes every day it counted, in the same moment, and deleting the bot or your account deletes them too. They go from our encrypted backups within 30 days.</li>
+  <li><strong>Where it never goes:</strong> <strong>never to any AI service</strong> — no model sees a health number of yours, so nothing of it can appear in a bot's answer, in what a bot remembers, in its running summary, or in what all your bots know. Never in a notification, a widget, a Live Activity or the app's own records. Never for advertising or marketing, never sold, never shared with data brokers, insurers or credit agencies, and never written to iCloud or any device backup (the pages that show it are never kept on your phone). It is encrypted in transit and at rest.</li>
+  <li><strong>Reading and deleting it:</strong> it is in your data download, it is deleted by <em>Delete my data</em>, and it goes with your account. You can also turn the switch off at any time, from the bot's edit page.</li>
 </ul>
 
 <h3>1.6 Advertising measurement (Meta)</h3>
@@ -156,6 +172,7 @@ const PRIVACY_POLICY_BODY = `
 <ul>
   <li><strong>What is sent:</strong> the words you type or say to X0 Bot, your voice while you dictate or record, and the photos, files, screenshots or screen you choose to share with a bot, dictation or Ask. When you ask Keylessbord to rewrite, the text around your cursor in that field (never a password field).</li>
   <li><strong>Who receives it:</strong> the AI services listed in <a href="/privacy/providers#ai">Service providers</a>, each only for its part of the answer.</li>
+  <li><strong>Never sent:</strong> health data from Apple Health or Health Connect. A fitness bot's steps and workouts are counted on its own page and never reach an AI service of any kind.</li>
   <li><strong>Why:</strong> only to give you what you asked for (an answer, a transcript, a rewrite, or a bot's work), and to check what you post in Spaces before it is posted (see 1.8). We do not sell it, and we do not send it for advertising.</li>
   <li><strong>Changing your mind:</strong> turn <em>Send to AI services</em> on or off anytime in the app under You, Privacy. Off, nothing more of yours is sent from then on. What was sent before is kept as Section 4 says, and you can delete it as Section 5 says.</li>
 </ul>
@@ -178,6 +195,10 @@ const PRIVACY_POLICY_BODY = `
   <li><strong>Account:</strong> kept until you delete it. When you choose Delete account in the app, your account and everything kept with it are deleted 7 days later. Until then nothing is removed and your bots stop working; sign in and choose Keep my account to keep it as it was. Where the app says deleting cannot be undone, it is deleted straight away. You can also ask for deletion without the app, by signing in with your email at <a href="https://x0bot.com/delete-account">x0bot.com/delete-account</a>, which lists what is deleted and what is kept. Messages you sent in chats with other people stay in those chats for them, under the name you had; reports (see 1.8) are kept as a safety record; and the app stores and payment processors keep their own records of purchases.</li>
   <li><strong>A call's voice:</strong> not stored. Its words are kept in your Plan Ease chat until you clear it or delete your account.</li>
   <li><strong>Plan Ease's call decisions:</strong> kept while the item is on your Plan, at most 30 days after it is gone.</li>
+  <li><strong>Where your day starts:</strong> the area's name, kept until you change it, forget it (You, Privacy, <em>What this phone shares</em>) or delete your account. See 1.5.</li>
+  <li><strong>Invites:</strong> an invitee's email address is kept while the invite is open (seven days) and deleted within fourteen; the invite mail is deleted within seven days of being sent, failing or being taken back; both go when you delete your account. See 1.5.</li>
+  <li><strong>Apple Health and Health Connect:</strong> daily steps and workouts for a fitness bot you switched on, kept 31 days, deleted the moment you switch it off, and gone from our encrypted backups within 30 days. See 1.5.1.</li>
+  <li><strong>Our backups:</strong> the database is backed up nightly, encrypted, and the backups are kept 30 days. Anything deleted above is gone from them within 30 days.</li>
   <li><strong>Diagnostic logs:</strong> retained by Sentry / PostHog for up to 90 days per their standard retention.</li>
 </ul>
 

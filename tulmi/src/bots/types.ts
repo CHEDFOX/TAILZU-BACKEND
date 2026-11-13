@@ -24,6 +24,14 @@ export interface BotSkills {
   code: boolean;
   /** A researched answer that cites its pages. */
   research: boolean;
+  /**
+   * Apple Health / Health Connect: the bot's page counts the owner's daily steps and workouts (docs: perms §4).
+   *
+   * Not a tool and not a skill a model ever sees. ONLY the phone's own switch sets it, through
+   * `POST /v1/bots/:slug/health/days { enable: true }`: every other write path forces it false, and an update that tries to
+   * turn it on is refused. Turning it off deletes the days in the same request. Default false.
+   */
+  health: boolean;
   /** Connected apps the bot may use, by connector id. A write still asks the person. */
   connectors: string[];
 }
