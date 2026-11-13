@@ -825,6 +825,12 @@ const EnvSchema = z.object({
    */
   BOTS: bool(false),
   /**
+   * LINGO, THE LANGUAGE BOT (src/lingo, docs/lingo.md): learning a language by talking rather than tapping. Off unless LINGO=true, and then it is
+   * among the bots like any other. It needs no service of its own: the words come from the model, the voice from the server's own speech, and the
+   * screens from node kinds the apps already draw, so turning it on needs no release. No language is built in; a course is a pair of tags.
+   */
+  LINGO: bool(false),
+  /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which
    * cannot draw it, keeps the app it has. The phone's builds declare BotsOnly and get it whatever this says; it is the desktop this decides.

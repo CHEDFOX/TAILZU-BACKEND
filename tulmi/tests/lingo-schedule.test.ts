@@ -95,20 +95,20 @@ describe("the learning step is carried between sessions", () => {
 
 describe("whether an item is theirs", () => {
   it("is not learned on the scheduler's word alone: it has to have been said", () => {
-    const held: LingoItem = item({ spoken: 0, memory: { ...freshMemory(T0), state: "review", stability: 30, reps: 5, lastMs: T0 } });
+    const held: LingoItem = item({ spoken: 0, memory: { ...freshMemory(T0), difficulty: 5, state: "review", stability: 30, reps: 5, lastMs: T0 } });
     expect(learned(held)).toBe(false);
     expect(learned({ ...held, spoken: SPOKEN_TO_LEARN })).toBe(true);
   });
 
   it("is not learned while it is still being held only briefly", () => {
-    const shaky: LingoItem = item({ spoken: 9, memory: { ...freshMemory(T0), state: "review", stability: 2, reps: 3, lastMs: T0 } });
+    const shaky: LingoItem = item({ spoken: 9, memory: { ...freshMemory(T0), difficulty: 5, state: "review", stability: 2, reps: 3, lastMs: T0 } });
     expect(learned(shaky)).toBe(false);
   });
 });
 
 describe("what a session reaches for", () => {
   const held = (name: string, stability: number, dueMs: number): LingoItem =>
-    item({ item: name, memory: { ...freshMemory(T0), state: "review", stability, reps: 3, dueMs, lastMs: T0 } });
+    item({ item: name, memory: { ...freshMemory(T0), difficulty: 5, state: "review", stability, reps: 3, dueMs, lastMs: T0 } });
 
   it("takes what is due, the most forgotten first", () => {
     const solid = held("solid", 60, T0 + DAY);

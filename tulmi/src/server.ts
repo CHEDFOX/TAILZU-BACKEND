@@ -78,6 +78,7 @@ import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
 import { registerMailRoutes } from "./routes/bots/mail.js";
 import { registerMeetRoutes } from "./routes/bots/meet.js";
+import { registerLingoRoutes } from "./routes/bots/lingo.js";
 import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
 import { spacePeople } from "./meet/people.js";
@@ -490,6 +491,10 @@ const spacesPeople = spacePeople({ spaces: botsParts.spaces, blocks: new Blocks(
 // worker's signed notice that mail needs a person (src/mail, docs/mail.md). In a space, an admin reaches a member's businesses whole, and a
 // member answers only the addresses its owner gave them (mail/access.ts).
 registerMailRoutes(app, { rateLimit: AUTHED_RL, bots, people: spacesPeople });
+// Lingo (src/lingo, docs/lingo.md): the language bot. The course a person is on, the session in front of them, and the answers, which are
+// marked here and never in the app. Off unless LINGO is set; it needs no service of its own.
+registerLingoRoutes(app, { rateLimit: AUTHED_RL, bots });
+
 // The meeting bot (src/meet, docs/meet.md): a bot in a person's video calls through Recall.ai, Recall's two signed webhooks and the stage page
 // its voice plays through. With a Google Calendar connected it joins their calendar's meetings by itself (the sweep, every five minutes).
 registerMeetRoutes(app, {

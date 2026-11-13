@@ -120,20 +120,76 @@ Six kinds (`types.ts` `EXERCISE_KINDS`), and the order is the point:
 
 The first four exist to get an item ready for the last two. They are the whole of most language apps.
 
-## 6. What is built
+## 6. A session
 
-Built, tested and typechecked: the tables, the shapes (`types.ts`), the scheduler (`schedule.ts`) and the marking
-(`grade.ts`), with 46 tests over the two pure modules, seven of them on scripts that are not alphabets.
+`session.ts`, pure like the rest. `plan(items, learner, now)` gives back what to do now.
 
-Not built yet: the store, the routes, the bot's definition in `bots/builtin.ts`, its page, the session builder and
-the call that rings somebody to talk. They come next, in that order.
+**What is nearly forgotten comes first** — that is the whole point of scheduling. A few never-seen items are mixed in
+behind them (at most a third of a session) so it is never only revision, and the ones the person reached for
+themselves come before anything off a list. Length follows the minutes they asked for, about four exercises a minute.
+
+**An item climbs.** Which shape it gets is decided by how well it is held, never at random (`shapeFor`):
+
+| Where the item is | What it gets |
+| --- | --- |
+| never met, or just lost | `choose` — recognise it. Asking somebody to produce a word they have not met teaches nothing but frustration |
+| going in | `listen`, then `chips` |
+| held, but never said enough | **`say`**, and it stays there until it has been said enough times to count |
+| held and said | `write`, or `chips` for a phrase |
+
+That last row is the mechanism behind the whole idea. A tapping exercise is not the lesson; it is how a word gets
+ready to be spoken, and an item that is never asked for out loud never finishes.
+
+The same item on the same day is always offered the same way (a seeded shuffle), so a reload is not a different
+question. The wrong answers offered in `choose` are taken from the person's own course, so they are plausible.
+
+## 7. The doors
+
+`routes/bots/lingo.ts`. Off unless `BOTS` and `LINGO` are both set, and then every route is 404 `lingo_off`.
+
+```
+GET    /v1/lingo/courses          every course, the one opened last first, each with its progress
+PUT    /v1/lingo/course           start or change one: { target, from, level?, goalMin?, calls?, voice? }
+DELETE /v1/lingo/course/:target   the course and every word of it
+POST   /v1/lingo/words            { target, items: [{ item, gloss, kind?, source? }] } -> { added }
+POST   /v1/lingo/session          { target } -> { exercises, progress }
+POST   /v1/lingo/answer           { target, item, kind, said? | picked? | chips? } -> { mark, dueMs, spoken, learned, streakDays }
+```
+
+**The app cannot mark itself.** `/v1/lingo/answer` takes what the person *did* — which option, what they typed, what
+they said — and never whether it was right. The exercise is rebuilt on the server from the stored item, so what is
+accepted comes from the table. An app that sends a verdict, its own list of right answers, or a count of times
+spoken is simply not listened to, and there is a test that sends all of those at once and still gets "wrong".
+
+A course is a pair of language tags, checked against the shape of BCP-47 and nothing else. **There is no list of
+languages anywhere in Lingo**, so any pair works the day somebody asks for it.
+
+## 8. The bot
+
+`bots/builtin.ts`, slug `lingo`, colour `stone`, listed only where `LINGO=true`. It has no tools: its chat runs the
+ordinary bot loop with the course as its knowledge (`digest.ts`) — the pair, the level, the streak, the counts, and
+the words due now with the ones never said marked. So "what should I practise?" is answered from the real table in
+one model call, and the conversation can be steered onto what is about to be forgotten.
+
+## 9. What is built
+
+Built, tested and typechecked: the tables, the shapes (`types.ts`), the scheduler (`schedule.ts`), the marking
+(`grade.ts`), what is kept (`store.ts`), a session (`session.ts`), the chat's knowledge (`digest.ts`), the doors
+(`routes/bots/lingo.ts`) and the bot itself. 79 tests, seven of them on scripts that are not alphabets.
+
+Turn it on with `LINGO=true` in the server's `.env` and Lingo is in the bots list, with the standard bot page and
+chat. Every exercise is drawn with node kinds the apps ALREADY draw — `Chip`, `TextField`, `WordChips`, `AudioPlay`,
+`VoiceButton`, `VoiceLive`, `BotCall` — so none of this needs an app release, now or later.
+
+Not built yet: a page of its own (it uses the standard bot page until it earns one), the screens that draw an
+exercise, and the call that rings somebody to talk.
 
 There is no seeded course and there is not going to be one. A course cannot be hand-written a hundred times over, so
 the items come from the model and from use: `source` records which, and the table fills with what this person
 actually reaches for. A word list for a particular pair can be poured in later where one exists, but nothing waits
 on it and no pair is anybody's first.
 
-## 7. Tests
+## 10. Tests
 
-`tulmi/tests/lingo-schedule.test.ts` and `tulmi/tests/lingo-grade.test.ts`. Both are pure: no store, no model, no
-clock of their own, and nothing in them needs a key.
+`lingo-schedule.test.ts`, `lingo-grade.test.ts` and `lingo-session.test.ts` are pure: no store, no model, no clock
+of their own, and nothing in them needs a key. `lingo-routes.test.ts` runs the real routes over the memory store.
