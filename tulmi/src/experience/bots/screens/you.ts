@@ -32,6 +32,8 @@ import {
   quietSwitch, quietTimes, save, notifyDesk, callsSave, callsLine, followRows, followFromRows,
 } from "./you/notifyDesk.js";
 import { type SettingsData, settingsCard } from "./you/settingsCard.js";
+import { CONTACTS, HEALTH, LOCATE } from "./permitWords.js";
+import { contactPickLive, healthLive, locationLive } from "../kit.js";
 import { glyph, G, couldNot, heading, columns, openUrl, toast, refresh, oops, dayMonth, exportAction, plural } from "./you/parts.js";
 import {
   type UsageMeter, spanLabel, resetsLine, meterOf, ring, type YouData, ago, face, youName, signOut, appsLine, youDesk,
@@ -258,12 +260,21 @@ function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
 }
 
 // ===================================================================== bots.privacy
-const KEPT: Array<[string, string, string]> = [
+/**
+ * What is kept and for how long. The three rows this build added are drawn only where the thing can exist: with the
+ * launch-dark switches off (every binary before the store build is out, and the window) the Privacy screen must not
+ * describe features the person has no way to use. The invite row stays whatever the switches say — an invite's email is
+ * kept and swept the same whether it was typed or picked — and only its words follow the picker.
+ */
+const keptRows = (ctx: BotsCtx): Array<[string, string, string]> => [
   ["Chats with your bots", "What they remember. Forget any of it", "Till you delete"],
   ["What you ask on your phone", "The first 80 characters, for Activity", "30 days"],
   ["Keylessbord voice", "Only the text stays, if you keep history", "Not kept"],
   ["Screen pictures", "Only ones you allowed, while answering", "Not kept"],
   ["Your account and bots", "Projects, settings, connected apps", "Till you delete"],
+  ...(locationLive() ? [["Where your day starts", "The area's name, if you tapped Use my location", "Till you forget it"] as [string, string, string]] : []),
+  ["An invite's email", contactPickLive() ? "Only the one you typed or picked, to send it" : "Only the one you typed, to send it", "14 days"],
+  ...(healthLive(ctx) ? [["Steps and workouts", "Only for a fitness bot you switched on", "31 days"] as [string, string, string]] : []),
 ];
 const NEVER = ["Sell your data, to anyone", "Train AI models on your data", "Open folders you didn't share"];
 
@@ -313,6 +324,31 @@ function statsCard(on: boolean): Node {
 
 type PrivacyData = YouData & { ai?: AiConsent | undefined; stats?: boolean };
 
+/**
+ * WHAT THIS PHONE SHARES (docs: perms §7.4): the three things that come from the phone itself, each saying what is read, what
+ * is kept, and the way to stop it. The forget here is the same PUT the day-starts card's Forget sends.
+ *
+ * Drawn on every client, not only a phone with the capabilities: a person reading Privacy on the window should be able to
+ * read what their phone does and forget the area from there too. But only the rows whose feature is LIVE for them — each
+ * one follows its own launch-dark switch, so a build that cannot do any of this has the Privacy screen it had before, and
+ * nobody is told about a button that is not there. The whole card goes when no row is left.
+ */
+function phoneSharesCard(ctx: BotsCtx): Node[] {
+  const forget: ActionRef = call("PUT", "/v1/botsapp/bots/plan/home", { home: "" }, { ok: seq(toast("Forgotten"), refresh), fail: oops("forget that") });
+  const shareRow = (label: string, sub: string, right?: Node): Node => listRow({ label, sub, chevron: false, ...(right ? { right } : {}) });
+  const rows = [
+    ...(locationLive() ? [shareRow(LOCATE.shareRow, LOCATE.shareSub, quietButton(LOCATE.forget, forget, { size: "md" }))] : []),
+    ...(contactPickLive() ? [shareRow(CONTACTS.shareRow, CONTACTS.shareSub)] : []),
+    ...(healthLive(ctx) ? [shareRow(HEALTH.shareRow, HEALTH.shareSub)] : []),
+  ];
+  if (!rows.length) return [];
+  return [col([
+    sectionLabel("What this phone shares"),
+    listCard(rows),
+    meta("Each one happens only when you tap it, and never on its own.", { size: 12 }),
+  ], { gap: 8 })];
+}
+
 function privacyPhone(ctx: BotsCtx, d: PrivacyData | undefined) {
   return page(ctx, {
     back: true, nav: "you", title: "Privacy", gap: 18, state: { sureData: false, surePersonal: false, personal: d?.settings.privacy.personalise !== false, aiOn: d?.ai?.agreed === true, statsOn: d?.stats === true },
@@ -320,8 +356,9 @@ function privacyPhone(ctx: BotsCtx, d: PrivacyData | undefined) {
       title("Privacy"),
       aiCard(d?.ai),
       statsCard(d?.stats === true),
-      col([sectionLabel("What we keep, and for how long"), listCard(KEPT.map(([l, , v]) => listRow({ label: l, value: v })))], { gap: 8 }),
+      col([sectionLabel("What we keep, and for how long"), listCard(keptRows(ctx).map(([l, , v]) => listRow({ label: l, value: v })))], { gap: 8 }),
       col([sectionLabel("What we never do"), neverList()], { gap: 10 }),
+      ...phoneSharesCard(ctx),
       personalCard(d),
     ],
     footer: [
@@ -340,7 +377,7 @@ function privacyDesk(ctx: BotsCtx, d: PrivacyData | undefined) {
       heading(ctx, "Privacy", "What we keep, and for how long"),
       aiCard(d?.ai),
       columns([
-        table([{ label: "What", flex: 2 }, { label: "Kept for", flex: 1 }], KEPT.map(([l, s, v]) => [col([text(l, { size: 14 }), meta(s, { size: 12 })], { gap: 2 }), text(v, { size: 14, weight: 500 })])),
+        table([{ label: "What", flex: 2 }, { label: "Kept for", flex: 1 }], keptRows(ctx).map(([l, s, v]) => [col([text(l, { size: 14 }), meta(s, { size: 12 })], { gap: 2 }), text(v, { size: 14, weight: 500 })])),
         card([
           sectionLabel("Your data"),
           row([
@@ -353,6 +390,7 @@ function privacyDesk(ctx: BotsCtx, d: PrivacyData | undefined) {
         ], { padding: 20, gap: 12 }),
       ], [
         card([sectionLabel("What we never do"), neverList()], { padding: 20, gap: 12 }),
+        ...phoneSharesCard(ctx),
         personalCard(d),
         statsCard(d?.stats === true),
       ]),

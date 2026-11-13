@@ -33,7 +33,7 @@ describe("a draft", () => {
       name: "Workout planner", slug: "workout-planner", colour: "sea", purpose: "Plans my workouts and checks my calendar.", principles: ["Plan workouts around my calendar.", "Keep each plan to one week."],
       knowledge: [], tone: "upbeat and brief", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 800 },
     });
-    expect(d.definition.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, connectors: ["google-calendar"] });
+    expect(d.definition.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, health: false, connectors: ["google-calendar"] });
     expect(PALETTE).toContain(d.definition.colour);
     expect(d.tests).toEqual(["Plan my workouts for next week.", "What does my calendar look like tomorrow?", "Move Thursday's session to Friday."]);
     expect(d.tier).toBe("cheap");

@@ -1439,6 +1439,31 @@ const EnvSchema = z.object({
   BOTS_SCENES: bool(false),
   BOTS_SCENES_USERS: orDefault(""),
   /**
+   * THE PHONE'S OWN THINGS (docs: perms). Each is off, so a server deployed before the store build draws none of the three
+   * buttons, and an older binary that declares no capability would not get them anyway.
+   *
+   *   PERM_LOCATION            "Use my location" on Plan Ease's "Where does your day start?" card. Off: the card is today's,
+   *                            with the field alone
+   *   PERM_CONTACT_PICK        "Add from contacts" on a space's Invite page and on Spaces' start screen (the system's own
+   *                            picker, no permission). Off: the email field alone, as today
+   *   PERM_HEALTH_IOS          the fitness bot's "Count my workouts from Apple Health" row, on iPhone
+   *   PERM_HEALTH_IOS_USERS    a comma-separated list of account ids. Set, only those accounts get the row on iPhone, even
+   *                            with PERM_HEALTH_IOS on. Empty (the default) means the switch alone decides
+   *   PERM_HEALTH_ANDROID      the same row on Android, where it reads Health Connect. Stays off until Google has approved
+   *                            the Health Connect form and a build carries the library
+   *   PERM_HEALTH_ANDROID_USERS  the account list for the stage between the first Health Connect build and Google's own list
+   *                            reaching Health Connect: Play's review account and our test accounts reach the row (so the
+   *                            reviewer sees the screen the declaration is for), nobody else does
+   *
+   * The route that stores the days reads the same pair, so a row the server would not draw is a row the route refuses.
+   */
+  PERM_LOCATION: bool(false),
+  PERM_CONTACT_PICK: bool(false),
+  PERM_HEALTH_IOS: bool(false),
+  PERM_HEALTH_IOS_USERS: orDefault(""),
+  PERM_HEALTH_ANDROID: bool(false),
+  PERM_HEALTH_ANDROID_USERS: orDefault(""),
+  /**
    * Shared secret for RevenueCat's webhook.
    *
    * RevenueCat sends it as the Authorization header, verbatim, on every event.

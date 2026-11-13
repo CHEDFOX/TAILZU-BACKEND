@@ -52,6 +52,7 @@ import { registerCodeInternalRoutes } from "./routes/code/codeInternal.js";
 import { createBots } from "./bots/index.js";
 import { botPorts } from "./bots/wire.js";
 import { registerBotRoutes } from "./routes/bots/bots.js";
+import { registerBotHealthRoutes } from "./routes/bots/botHealth.js";
 import { registerBotsShellRoutes } from "./routes/bots/botsShell.js";
 import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
@@ -437,6 +438,8 @@ const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, l
 // apps (same permission tiers), the files, the artifact core, Xode's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
 const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
+// A fitness bot's days, on their own, away from the file that hosts POST .../ask (docs: perms §4.6).
+registerBotHealthRoutes(app, { rateLimit: AUTHED_RL, bots });
 // Routines (src/routines, docs/routines.md): a bot does something on a schedule, without being asked each time. On with the bots platform
 // unless ROUTINES=false; every minute the ones that are due run as their owner, through the bot's own road. Migration 0062 keeps them.
 const routines = createRoutines({

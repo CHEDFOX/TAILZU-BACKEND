@@ -1291,6 +1291,15 @@ export const KIT_EXTRAS_CAPABILITY = "KitExtras";
 /** NOT A COMPONENT, the window only: ScreenResponse.talkTo (the one key, with X0 in front, talks to the bot on screen). */
 export const DESK_TALK_TO_CAPABILITY = "DeskTalkTo";
 
+/** NOT A COMPONENT (the phone, a store build only): the action location.area — one foreground fix, named by the phone's own
+ *  geocoder. Declared by a JS check that the build's native module has `locationArea` (docs: perms). */
+export const LOCATION_CAPABILITY = "Location1";
+/** NOT A COMPONENT (the phone, a store build only): the action contact.pick — the system's own contact picker, no permission. */
+export const CONTACT_PICK_CAPABILITY = "ContactPick1";
+/** NOT A COMPONENT (the phone, a store build only): the action health.sync — daily steps and workouts from Apple Health or
+ *  Health Connect, read on the phone and posted straight to the server. */
+export const HEALTH_CAPABILITY = "Health1";
+
 /** How a bot wanders: walk to a random spot in `span` (fractions of the stage's width), pause, play a random moment, again. */
 export interface BotRoam {
   moments: string[];
@@ -1513,7 +1522,9 @@ export type ActionSpec =
   | { kind: "switchTab"; tabId: string }
   /** `handoff: true` holds the link to the assistant's hand-off list (the phone's isHandoffUrl), not every link openUrl takes. A build without it ignores it. */
   | { kind: "openUrl"; url: string; external?: boolean; handoff?: boolean }
-  | { kind: "openSettings"; target?: "app" | "keyboard" }
+  /** `healthConnect` (Android, a build with Health Connect): its own permissions page, where a person who refused twice
+   *  turns the bot's reading back on. Anywhere else it falls back to the app's own settings. */
+  | { kind: "openSettings"; target?: "app" | "keyboard" | "healthConnect" }
   | { kind: "openInAppBrowser"; url: string }
   | { kind: "dismiss" }
   // --- data & network ---
@@ -1647,6 +1658,22 @@ export type ActionSpec =
       onEnded?: ActionRef; onIdle?: ActionRef; onFallback?: ActionRef; onBlocked?: ActionRef }
   /** VOICE_REALTIME_CAPABILITY. warm: get the mic and the offer ready while the call is answered (only if mic permission is already granted). */
   | { kind: "voiceCallSet"; op: "warm" | "end" }
+  // --- the phone's own things: where you are, one contact, your workouts ---
+  /** Phone, LOCATION_CAPABILITY (docs: perms). One foreground fix, named by the phone's OS geocoder (which sends the point to
+   *  Apple or Google, as part of the phone's own system); only the area's words reach `assignTo`. Asks the system first only
+   *  when `ask` (the card's Continue). The point never reaches JavaScript, and never reaches this server. */
+  | { kind: "location.area"; assignTo: string; ask?: boolean;
+      onFound?: ActionRef; onNone?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef; onError?: ActionRef }
+  /** Phone, CONTACT_PICK_CAPABILITY. The system's own contact picker; no permission, so no card in front of it. Only the ONE
+   *  email the person tapped reaches `assignTo`; the address book is never read. */
+  | { kind: "contact.pick"; assignTo: string; onPicked?: ActionRef; onCancel?: ActionRef; onError?: ActionRef }
+  /** Phone, HEALTH_CAPABILITY. Reads daily step totals and workouts for `days` (31 at most), sums them on the phone, and POSTs
+   *  them to `path`, which must match /^\/v1\/bots\/[a-z0-9]+(?:-[a-z0-9]+)*\/health\/days$/ (else refused before any read, so a
+   *  screen bug can never send health data to a route that reaches an AI service). Asks only when `ask`; `enable` rides on the
+   *  first POST. No health value ever reaches state. */
+  | { kind: "health.sync"; path: string; days?: number; ask?: boolean; enable?: boolean;
+      onSynced?: ActionRef; onEmpty?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef;
+      onUnavailable?: ActionRef; onError?: ActionRef }
   // --- permissions ---
   | {
       kind: "requestPermission";

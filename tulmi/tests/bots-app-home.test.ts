@@ -1,4 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// This file only draws screens; it signs nobody in. Privacy reads the launch-dark PERM_* switches (docs: perms §7.4), and
+// reading any config at all needs auth set up or this said.
+vi.hoisted(() => {
+  process.env.NODE_ENV = "test";
+  process.env.OPENROUTER_API_KEY = "k";
+  process.env.GROQ_API_KEY = "k";
+  process.env.DEV_SKIP_AUTH = "true";
+});
 import type { ActionSpec, Node } from "../../shared/types/sdui.js";
 import { botsAppOn, BOTS_SCREENS, buildBotsScreen } from "../src/experience/bots/index.js";
 import { approvalLine, jobLite } from "../src/experience/bots/deps.js";

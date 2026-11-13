@@ -66,6 +66,41 @@ const SAYS: Readonly<Record<string, readonly string[]>> = {
 
 const stem = (w: string): string => (w.length > 4 && w.endsWith("ing") ? w.slice(0, -3) : w.length > 3 && w.endsWith("es") ? w.slice(0, -2) : w.length > 3 && w.endsWith("s") && !w.endsWith("ss") ? w.slice(0, -1) : w);
 
+/**
+ * The words of a text, lower-case, no stop words, STEMMED, and nothing added: `wordsOf` without its "what people say"
+ * expansion (docs: perms §4.2).
+ *
+ * The health row needs the plain words, not the neighbourhood of meanings the front door wants: "money" must not pull in
+ * "budget" when the question is only whether this is a fitness bot.
+ */
+export function stemsOf(text: string): Set<string> {
+  const out = new Set<string>();
+  for (const raw of text.normalize("NFKC").toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) {
+    if (raw.length < 3 || STOP.has(raw)) continue;
+    out.add(stem(raw));
+  }
+  return out;
+}
+
+/**
+ * THE WORDS THAT MAKE A BOT A FITNESS BOT (docs: perms §4.2). Both sides go through the same stemmer, so a word and its stem
+ * always meet: "runs" and "run", "walking" and "walk".
+ *
+ * This is a WORD test, not a substring one. The old `/gym|fit|workout|run/` in palette.ts matches "profit", "outfit",
+ * "benefit" and "brunch", and the health row is the one place where a wrong match means a health permission offered to someone
+ * who never asked for it. "Run my week" still matches, which is harmless: the row is opt-in and says exactly what it does.
+ */
+const FITNESS: ReadonlySet<string> = new Set([
+  "gym", "workout", "workouts", "exercise", "exercises", "fitness", "run", "runs", "running", "jog", "jogging",
+  "yoga", "walk", "walks", "walking", "steps", "cardio", "kasrat", "vyayam",
+].map(stem));
+
+/** Does this bot's name or purpose say it is about fitness? */
+export function isFitnessBot(name: string, purpose: string): boolean {
+  for (const w of stemsOf(`${name} ${purpose}`)) if (FITNESS.has(w)) return true;
+  return false;
+}
+
 /** The words of a text, lower-case, no stop words, stemmed, and what people say for them added. */
 export function wordsOf(text: string): Set<string> {
   const out = new Set<string>();

@@ -510,6 +510,7 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         : emptyDeps();
       const screen = await buildBotsScreen({
         screenId: botsId, client: screenFormFactor, params: botsParams, tzOffsetMinutes: tz, can: comps,
+        ...(screenFormFactor === "desktop" ? {} : { platform: platformOf(body.capabilities?.platform) }),
         // The name they are greeted by: their own, else the one Google or Apple gave (botsFirstRun.ts greetingName).
         user: user ? { id: user.id, ...(greetingName(user, profile?.fullName) ? { name: greetingName(user, profile?.fullName) } : {}), ...(user.email ? { email: user.email } : {}) } : null,
         desk: { pages: comps.has("DeskShell"), notes: comps.has("DeskNotes") },

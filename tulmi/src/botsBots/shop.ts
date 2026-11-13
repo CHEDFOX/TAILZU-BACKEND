@@ -54,7 +54,8 @@ interface Template {
   id: string; name: string; colour: Colour; purpose: string; about: string; principles: string[]; skills: BotSkills; tone: string; will: string; wont: string;
 }
 
-const skills = (on: Partial<BotSkills>): BotSkills => ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on });
+// `health` last and never spread over: a copy added from Find a bot starts with it off, whatever the listing says.
+const skills = (on: Partial<BotSkills>): BotSkills => ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on, health: false });
 
 /** Tailzu's ready-made bots: real definitions, added as the person's own copy. */
 const READY_MADE: readonly Template[] = [

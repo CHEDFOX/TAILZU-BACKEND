@@ -9,11 +9,13 @@
  * nothing, never a made-up number. Colour stays with the bots: Plan Ease's ochre on its leave-by lines, the Travel bot's sea on its pick.
  * Nothing here books or pays: a stay opens its own site, "you book and pay there".
  */
-import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../shared/types/sdui.js";
 import {
-  botLook, box, button, C, call, card, chip, col, divider, FACE, grid, grow, icon, listCard, listRow, meta, notice, roundButton, row, sectionLabel,
+  botLook, box, button, C, call, canLocate, card, chip, col, divider, FACE, grid, grow, icon, listCard, listRow, meta, notice, roundButton, row, sectionLabel,
   seq, statusMark, text, when, type BotsCtx,
 } from "../kit.js";
+import { line, permitStep } from "./firstRun/parts.js";
+import { LOCATE, locateLines } from "./permitWords.js";
 
 const A = "/v1/botsapp/bots";
 const MIN = 60_000;
@@ -57,8 +59,14 @@ interface Opened { label: string; url: string; at: number; said: string }
 
 /** The trip screen's own state (forms), to merge into its page state. */
 export const TRIP_STATE = { s_open: false, s_name: "", s_url: "", s_area: "", spot: "" };
-/** The plan screen's own state. */
-export const PLAN_STATE = { home_edit: false, home: "" };
+/**
+ * The plan screen's own state.
+ *
+ * `locGranted` is read once when the card appears (checkPermission, which never prompts), so a phone that already said yes goes
+ * straight to the fix with no card in the way. `home_locate` opens the card. `home_near` holds the AREA'S WORDS the phone's own
+ * geocoder came back with — never a coordinate, which never reaches JavaScript at all. Nothing is stored until Save.
+ */
+export const PLAN_STATE = { home_edit: false, home: "", home_locate: false, home_near: "", locGranted: false, locBlocked: false };
 
 // ===================================================================== small parts
 
@@ -181,8 +189,67 @@ export function legListRows(ctx: BotsCtx, t: PlanTravelView | undefined): Node[]
   }));
 }
 
+// --------------------------------------------------------------- "Use my location" (docs: perms §2)
+
+/**
+ * THE ONE TAP THAT FILLS IN THE AREA. Only a store build's phone that declares Location1 and only while PERM_LOCATION is on
+ * (kit canLocate); the window and every older binary get the card exactly as it is today, with the field alone.
+ *
+ * What happens: `checkPermission` on appear (it never prompts), so a phone that has already said yes skips the card. A tap with
+ * nothing granted opens the card — Continue and no second choice (5.1.1(iv)) — and Continue is the only thing that asks. The fix
+ * is taken natively and named by the PHONE'S OWN geocoder, which is what sends the point to Apple or Google; only the area's
+ * WORDS come back, into `home_near`. Nothing is stored until the person reads them and taps Save, which is the same
+ * `PUT .../plan/home` a typed area has always used. The server never sees a coordinate, so there is no new route.
+ */
+function locatePart(ctx: BotsCtx): Node[] {
+  if (!canLocate(ctx)) return [];
+  const area = (ask: boolean): ActionSpec => ({
+    kind: "location.area", assignTo: "home_near", ...(ask ? { ask: true } : {}),
+    onFound: seq(setState("home_locate", false), setState("locGranted", true)),
+    onNone: seq(setState("home_locate", false), toast(LOCATE.none)),
+    onError: seq(setState("home_locate", false), toast(LOCATE.none)),
+    onDenied: seq(setState("home_locate", false), toast(LOCATE.denied)),
+    onBlocked: seq(setState("home_locate", false), setState("locBlocked", true)),
+  } as unknown as ActionSpec);
+  // Granted already: the fix straight away, no card. Not yet: the card, whose Continue asks.
+  const tap: ActionSpec = { kind: "condition", if: { truthy: "locGranted" }, then: area(false), else: setState("home_locate", true) };
+  const ios: Condition = { not: { platform: "android" } };
+  return [
+    when({ all: [{ falsy: "home_locate" }, { falsy: "home_near" }, { falsy: "locBlocked" }] },
+      button(LOCATE.button, tap, { kind: "secondary", size: "md", icon: "pin" })),
+    // The card. permitStep gives it its one black pill and no quiet second choice, as every card before a system prompt does.
+    permitStep({
+      when: { truthy: "home_locate" }, title: LOCATE.title,
+      lines: [
+        when(ios, line(locateLines("ios")[0]!)), when({ platform: "android" }, line(locateLines("android")[0]!)),
+        line(LOCATE.lines[1]!), line(LOCATE.lines[2]!),
+      ],
+      cta: { label: LOCATE.cta, onPress: area(true) },
+    }),
+    // Found: the words, read before anything is stored.
+    when({ truthy: "home_near" }, col([
+      text(LOCATE.confirm, { size: 13, weight: 500, lineHeight: 18 }),
+      row([
+        text("", { size: 15, weight: 600, lineHeight: 20, bind: "home_near", style: { flexGrow: 1, flexShrink: 1 } }),
+        button(LOCATE.save, write("PUT", `${A}/plan/home`, { home: "$state.home_near" }, "Saved", seq(setState("home_near", ""), setState("home_edit", false))), { kind: "primary", size: "md" }),
+      ], { gap: 10, alignItems: "center" }),
+      row([text(LOCATE.type, { size: 13, weight: 500, lineHeight: 18, color: C.meta })], { minHeight: 44, alignItems: "center" }, setState("home_near", "")),
+    ], { gap: 8 })),
+    // Turned off in Settings: the system will not ask again, so Settings is the only useful thing to offer.
+    when({ truthy: "locBlocked" }, col([
+      meta(LOCATE.blocked, { size: 12 }),
+      row([
+        button(LOCATE.openSettings, { kind: "openSettings", target: "app" } as ActionSpec, { kind: "secondary", size: "md" }),
+        row([text(LOCATE.type, { size: 13, weight: 500, lineHeight: 18, color: C.meta })], { minHeight: 44, paddingHorizontal: 6, alignItems: "center" }, setState("locBlocked", false)),
+      ], { gap: 8, alignItems: "center" }),
+    ], { gap: 6 })),
+    // Never prompts: it only reads what the answer already is, so the button can skip the card for a phone that said yes.
+    { ...box([], { height: 0 }), on: { onAppear: { kind: "checkPermission", permission: "location", assignTo: "locGranted" } as ActionSpec } },
+  ];
+}
+
 /** Where the day starts: asked once (so the first trip and the minutes saved can count from home), then a quiet line to change it. */
-export function homePart(_ctx: BotsCtx, t: PlanTravelView | undefined): Node[] {
+export function homePart(ctx: BotsCtx, t: PlanTravelView | undefined): Node[] {
   if (!t?.on) return [];
   const save = ifFilled("home", write("PUT", `${A}/plan/home`, { home: "$state.home" }, "Saved", setState("home_edit", false)), "Write where your day starts");
   const form = col([
@@ -193,6 +260,7 @@ export function homePart(_ctx: BotsCtx, t: PlanTravelView | undefined): Node[] {
       text("Where does your day start?", { size: 15, weight: 600, lineHeight: 20 }),
       meta("Plan Ease then times the trip to your first stop, and counts the travel a change saves you. Only your area, not your address.", { size: 13 }),
       form,
+      ...locatePart(ctx),
     ], { dashed: true, gap: 10 })];
   }
   return [col([
