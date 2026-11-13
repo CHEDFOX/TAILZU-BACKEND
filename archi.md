@@ -127,7 +127,8 @@ experience/        everything the apps draw, built as SDUI JSON
                    one file per screen and parts.ts; small areas such as notes, routines are one file), looks, sounds,
                    live data; screens/finds.ts draws what the everyday tools found; the new Spaces in screens/spaces/
                    (start.ts his thought and the crowd, feed.ts inside a space, peoplePage.ts), Work in space in
-                   screens/work.ts and screens/work/workTab.ts, Home's Ask as his thought in screens/shell/homeThought.ts
+                   screens/work.ts and screens/work/workTab.ts, Home's Ask as his thought in screens/shell/homeThought.ts;
+                   show.ts draws what a bot drew under its words (src/show) with the kit's own parts
   keyboard/        buildKeyboardConfig (GET /v1/keyboard/config): keys, tools row, mic
   assistant/       the phone's Connected apps, Tasks, approval sheet, Ask and the You card
   onboard/         the onboarding: sign-in stage, one file per step, the store builds' variant
@@ -177,6 +178,10 @@ lingo/             Lingo, the language bot: the shapes (types.ts), when to ask s
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
+show/              what a bot draws under its words, from building blocks that compose rather than a list of widgets:
+                   the blocks and their caps (types.ts), the checker (check.ts), the addresses a turn read (links.ts),
+                   the step that decides after each answer whether a drawing helps and which (design.ts, role bot_show),
+                   and the person's picks back into words (answer.ts) (docs/show.md)
 botsBots/          the Bots app's own bots behind their screens: plan, travel, shop, spaces (members, codes and joining, the feed,
                    things shared from a bot, Work in space, how people look: docs/spaces.md), threads, safety, usage
 botsCode/          the Code bot's rules, intake and history as the Bots app keeps them
@@ -242,6 +247,7 @@ ads/               Meta and Google Tag Manager events
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
 | Plan Ease's calls ("X0 is calling") | `tulmi/src/botsBots/planCall.ts` and `planCallWords.ts` (the ring, the limits, the words), `planCallLive.ts` and `planCallLiveWords.ts` (the live voice call), `planCallSeam.ts` (the one seam with the call judge), `src/realtime/` (the link to OpenAI), the judge that decides which things are worth a call `planCallJudge.ts`, `planCallJudgeWords.ts` and `planCallJudgeStore.ts` with `routes/bots/planCallJudge.ts` and migration 0086 (docs/plan-call-judge.md), routes `routes/bots/planCalls.ts`, the screen `experience/bots/screens/bots/planCall.ts`, migrations 0079 and 0085 (docs/plan-ease.md "Calls") |
+| What a bot draws under its words (a choice to tap, a callout, steps, a table, a chart, next questions, a form, a drawing) | `tulmi/src/show/` (blocks, checker, the designer step, picks into words), the step in `bots/run.ts`, kept in `botsBots/chat.ts`, drawn by `experience/bots/show.ts` from `screens/bots/parts.ts`, role `bot_show` (docs/show.md) |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |
 | The website's own pages (privacy, terms, support, pricing, delete account) | `tulmi/src/routes/site/policies/` (their look in `policies/shell.ts`); the pay page `routes/billing/pay.ts` |
 | Xode | `tulmi/src/code/` and `routes/code/`; jobs on Cloudflare in `jobs/` (docs/code-*.md, docs/cloudflare-jobs.md, docs/github-app.md) |
@@ -324,7 +330,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/everyday.md`, `docs/show.md`, `docs/artifacts.md`, `docs/spaces.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
 `viewer/docs/artifact-viewer.md`.

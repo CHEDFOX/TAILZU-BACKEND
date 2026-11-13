@@ -11,6 +11,8 @@ import {
 import { shareTo } from "../../shareAction.js";
 import { reportAnswer } from "../../reportAction.js";
 import { said } from "../../said.js";
+import { showNodes } from "../../show.js";
+import type { Shown } from "../../../../show/types.js";
 
 /** This area's routes (routes/bots/botsBots.ts). */
 export const A = "/v1/botsapp/bots";
@@ -27,7 +29,11 @@ export interface BotView {
 interface Fact { id: string; text: string; createdAt: number }
 export interface Memory { facts: Fact[]; summary: string; turns: number }
 export interface Linked { id: string; name: string; status: "connected" | "not_connected" | "unavailable" }
-export interface Turn { id: string; role: "me" | "bot"; text: string; at: number; opens: Array<{ label: string; url: string }>; approvals: Array<{ taskId: string; connector: string; preview: string }>; paise: number }
+export interface Turn {
+  id: string; role: "me" | "bot"; text: string; at: number; opens: Array<{ label: string; url: string }>; approvals: Array<{ taskId: string; connector: string; preview: string }>; paise: number;
+  /** What the bot drew under its words (src/show). */
+  show?: Shown;
+}
 
 // ===================================================================== small helpers
 export const refresh: ActionSpec = { kind: "refresh" };
@@ -124,8 +130,11 @@ export function colourDot(name: string, o: { chosen: boolean; taken?: string; on
 
 // ===================================================================== a bot's answer, and the chat
 
-/** A bot's text as blocks: paragraphs, and runs of "- " lines as a card with the bot's colour on its edge (the boards' plan table). */
-function answerBlocks(textIn: string, color: string, size = 14): Node[] {
+/**
+ * A bot's text as blocks: paragraphs, and runs of "- " lines as a card with the bot's colour on its edge (the boards' plan table).
+ * `lists: false`: the lists are left out, because what the bot drew shows them (a choice, a table, the steps: show/types.ts lists).
+ */
+function answerBlocks(textIn: string, color: string, size = 14, o: { lists?: boolean } = {}): Node[] {
   const out: Node[] = [];
   const lines = textIn.replace(/\r/g, "").split("\n");
   let para: string[] = [];
@@ -133,6 +142,7 @@ function answerBlocks(textIn: string, color: string, size = 14): Node[] {
   const flushPara = () => { if (para.join(" ").trim()) out.push(text(para.join(" ").replace(/\*\*/g, "").trim(), { size, lineHeight: Math.round(size * 1.45) })); para = []; };
   const flushList = () => {
     if (!list.length) return;
+    if (o.lists === false) { list = []; return; }
     const rows: Node[] = [];
     list.forEach((l, i) => {
       if (i) rows.push(divider());
@@ -153,7 +163,7 @@ function answerBlocks(textIn: string, color: string, size = 14): Node[] {
   }
   flushPara();
   flushList();
-  return out.length ? out : [text("…", { size, lineHeight: 20 })];
+  return out.length || o.lists === false ? out : [text("…", { size, lineHeight: 20 })];
 }
 
 /** What a bot turn leaves to do: the changes waiting for the person's yes (still waiting), and the links to finish in another app. */
@@ -177,8 +187,15 @@ export function bubble(ctx: BotsCtx, s: string, big = false): Node {
   ], { justifyContent: "flex-end" });
 }
 
-export function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<typeof botAvatar>[0]["icon"]; head?: string }, t: Turn, big = false): Node {
-  const blocks = [...answerBlocks(t.text, look.color, big ? 15 : 14), ...turnActions(ctx, t)];
+/**
+ * A bot's turn: its words, what it drew under them (show.ts), and what it leaves to do. `draw.live`: the chat's latest turn, whose
+ * choices and form can be used; `draw.picked`: what the person said next, for an older one.
+ */
+export function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<typeof botAvatar>[0]["icon"]; head?: string }, t: Turn, big = false,
+  draw?: { slug: string; live: boolean; picked?: string }): Node {
+  const drawn = t.show && draw ? showNodes(ctx, t.show, { slug: draw.slug, turn: t.id, color: look.color, live: draw.live, ...(draw.picked !== undefined ? { picked: draw.picked } : {}) }) : [];
+  const words = answerBlocks(t.text, look.color, big ? 15 : 14, drawn.length && t.show?.lists === "drawn" ? { lists: false } : {});
+  const blocks = [...words, ...drawn, ...turnActions(ctx, t)];
   if (!isDesk(ctx)) return col(blocks, { gap: 12 });
   return row([botAvatar(look, 26), col(blocks, { gap: 10, flexGrow: 1, flexShrink: 1, minWidth: 0 })], { gap: 10, alignItems: "flex-start", maxWidth: "92%" });
 }
@@ -200,12 +217,15 @@ export function chatTurns(ctx: BotsCtx, bot: { slug: string; colour?: string }, 
   const look = lookOf(bot.slug, bot.colour);
   const out: Node[] = [];
   let lastDay = "";
-  for (const t of turns) {
+  turns.forEach((t, i) => {
     const day = dayKeyOf(ctx, t.at);
     if (o.days && day !== lastDay) { out.push(dayRule(dayLabel(ctx, t.at))); lastDay = day; }
     const name = ctx.live.bots.find((b) => b.slug === bot.slug)?.name ?? bot.slug;
-    out.push(t.role === "me" ? bubble(ctx, t.text, o.big) : col([botTurn(ctx, look, t, o.big), answerShare(ctx, bot.slug, t, name)], { gap: 4 }));
-  }
+    // What it drew: live on the chat's last turn; on an older one, still, with what the person said next.
+    const next = turns[i + 1];
+    const draw = { slug: bot.slug, live: i === turns.length - 1, ...(next?.role === "me" ? { picked: next.text } : {}) };
+    out.push(t.role === "me" ? bubble(ctx, t.text, o.big) : col([botTurn(ctx, look, t, o.big, draw), answerShare(ctx, bot.slug, t, name)], { gap: 4 }));
+  });
   return out;
 }
 

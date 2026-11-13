@@ -11,6 +11,8 @@
  *   5. the loop     the model answers or calls tools, at most five turns. Every call of the request, tools' and memory's included, is held to the request's
  *                   cap (meter.ts), which is the smaller of the bot's per-request budget and what is left of its day
  *   6. memory       after an owner's chat turn: facts and the rolling summary (memory.ts)
+ *   7. the drawing  beside the memory, where the answer is drawn (the app's chat asks: `draw`; never an API caller): whether a choice, a
+ *                   callout, the steps, a table, a chart, next questions or a drawing would help the words, and which (src/show/design.ts)
  *
  * The Oracle is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts). The mail bot runs it with its
  * business's mail as its knowledge (src/mail/digest.ts), the meeting bot with the person's meetings (src/meet/digest.ts), and Lingo with the
@@ -47,6 +49,8 @@ import { meetDigest } from "../meet/digest.js";
 import { mailDigest } from "../mail/digest.js";
 import { lingoDigest } from "../lingo/digest.js";
 import type { MailWorker } from "../mail/worker.js";
+import { drawFor, SHOW_CAP_PAISE, showOn, worthDrawing } from "../show/design.js";
+import { Seen } from "../show/links.js";
 
 export interface RunDeps {
   store: BotStore;
@@ -87,6 +91,8 @@ export interface RunRequest {
   tzOffsetMinutes?: number;
   /** Not a turn in the chat (a routine): no earlier turns from the thread (service.ts AskInput.fresh). */
   fresh?: boolean;
+  /** The answer is drawn where it goes (the app's chat): ask what to draw under its words (step 7). Never for an API caller. */
+  draw?: boolean;
 }
 
 /** How many turns the model gets: tool rounds, then one to say the answer. */
@@ -167,6 +173,11 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
     ? await lingoDigest(r.userId, { now: (d.now ?? Date.now)() }).catch(() => null)
     : null;
   const knowledge = [know?.text, mail, meet, lingo].filter((x): x is string => !!x?.trim()).join("\n\n");
+  // The addresses this turn reads: the only ones a drawing may link to or show (show/links.ts). Every tool's result joins them below.
+  const read = new Seen();
+  read.add(r.message);
+  for (const a of r.attached ?? []) read.add(a.text);
+  read.add(knowledge);
 
   const kit = await buildTools({
     bot, userId: r.userId, runId, ...(r.projectId ? { projectId: r.projectId } : {}), ports: d.ports, meter, call, ...(d.gateway ? { gateway: d.gateway } : {}),
@@ -220,6 +231,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
       for (const c of calls) {
         emit({ t: "status", stage: `tool:${c.name}` });
         const out = await kit.run(c);
+        read.add(out.content);
         messages.push({ role: "tool", tool_call_id: c.id, content: out.content });
       }
       for (const c of res.toolCalls.slice(CALLS_PER_STEP)) messages.push({ role: "tool", tool_call_id: c.id, content: "Skipped: too many tool calls in one step. Ask again if it still matters." });
@@ -239,19 +251,28 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   if (record.approvals.length) notes.push(`${record.approvals.length === 1 ? "A change is" : "Changes are"} waiting for your yes in X0 Bot.`);
   emit({ t: "text", text });
 
-  // What the owner told it, and how the talk is going.
-  if (remember && !r.signal?.aborted) {
-    const learned = await rememberTurn(
+  // What to draw under the words, where they are drawn (`draw`): never for an API caller, never over a yes the person is being asked
+  // (its own card is that), never for words that were cut for a secret. Its call is charged to the request as it goes (meter.wrap).
+  const draws = r.draw === true && r.surface !== "api" && !r.signal?.aborted && !record.approvals.length && !clean.cleaned && showOn()
+    && worthDrawing(text, { links: read.list(1).length });
+  const drawing = draws
+    ? drawFor({ call, ...(d.gateway ? { gateway: d.gateway } : {}), userId: r.userId, leftPaise: meter.left(), ...(r.signal ? { signal: r.signal } : {}) },
+      { asked: r.message, answer: text, seen: read }).catch(() => null)
+    : Promise.resolve(null);
+  // What the owner told it, and how the talk is going: beside the drawing, with what the drawing may take kept back.
+  const remembering = remember && !r.signal?.aborted
+    ? rememberTurn(
       { store: d.store, call: base, ...(d.gateway ? { gateway: d.gateway } : {}), ...(d.now ? { now: d.now } : {}), ...(d.shared ? { shared: d.shared } : {}) },
-      { userId: r.userId, botId: bot.id, said: r.message, answered: text, leftPaise: meter.left(), ...(r.signal ? { signal: r.signal } : {}) },
-    ).catch(() => null);
-    if (learned) meter.add(learned.paise);
-  }
+      { userId: r.userId, botId: bot.id, said: r.message, answered: text, leftPaise: Math.max(0, meter.left() - (draws ? SHOW_CAP_PAISE : 0)), ...(r.signal ? { signal: r.signal } : {}) },
+    ).catch(() => null)
+    : Promise.resolve(null);
+  const [shown, learned] = await Promise.all([drawing, remembering]);
+  if (learned) meter.add(learned.paise);
 
   const answer: BotAnswer = {
     bot: { slug: bot.slug, name: bot.name, colour: bot.colour, builtin: bot.ownerId === null },
     text, paise: meter.spent, tools: record.tools, approvals: record.approvals, artifacts: record.artifacts, opens: record.opens,
-    notes: [...new Set(notes)], ...(r.pickedBy ? { pickedBy: r.pickedBy } : {}), ms: (d.now ?? Date.now)() - t0,
+    notes: [...new Set(notes)], ...(r.pickedBy ? { pickedBy: r.pickedBy } : {}), ...(shown ? { show: shown } : {}), ms: (d.now ?? Date.now)() - t0,
   };
   // What the everyday tools found: kept for the answer's page, which draws them as cards.
   const finds = record.cards.length && d.ports.everyday ? d.ports.everyday.keep(r.userId, record.cards) : "";

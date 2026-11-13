@@ -48,6 +48,7 @@ const { BotDraftReply } = await import("../src/bots/builder.js");
 const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
+const { ShowReply } = await import("../src/show/design.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { PlanSchema: FrontPlanReply } = await import("../src/front/handlers.js");
 const { INTENTS: FRONT_INTENTS, LENGTHS: FRONT_LENGTHS, VISUAL_KINDS } = await import("../src/front/types.js");
@@ -300,6 +301,7 @@ const BUDGET: Record<(typeof ROLE_IDS)[number], number> = {
   talk_reply: 1779, // 1617 measured
   bot_run: 1516, // 1379 measured
   bot_memory: 1163, // 1058 measured
+  bot_show: 2662, // 2420 measured
   widget_digest: 853, // 776 measured
   ask_planner: 4904, // 4458 measured
   ask_vision: 4519, // 4108 measured
@@ -383,6 +385,7 @@ describe("the contracts say what the parsers read", () => {
     ["bot_pick", BotPickReply],
     ["ask_decide", AskDecideReply],
     ["bot_memory", BotMemoryReply],
+    ["bot_show", ShowReply],
     ["widget_digest", DigestReply],
   ];
 
