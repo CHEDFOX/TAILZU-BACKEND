@@ -24,7 +24,7 @@
  *   POST   /v1/o/:owner/businesses/:id/mail-app-password    { password }: for a phone or desktop mail app
  *   GET    /v1/o/:owner/businesses/:id/folders              all its mail, the main address's own, one per alias, the system folders, others
  *   GET    /v1/o/:owner/businesses/:id/messages?folder=&page=  a folder's conversations, newest first, 30 a page, each with the AI's last word
- *   GET    /v1/o/:owner/businesses/:id/threads/:tid         one conversation, every message's text (the unread ones marked read)
+ *   GET    /v1/o/:owner/businesses/:id/threads/:tid?peek=   one conversation, every message's text (the unread ones marked read; peek=1: left as they are)
  *   POST   /v1/o/:owner/businesses/:id/threads/:tid/:action read, unread, star, unstar, archive, trash, junk, inbox
  *   POST   /v1/o/:owner/businesses/:id/send                 { from, to, cc?, subject, text, replyTo? | forward? }: sent from one of its addresses
  *   POST   /v1/o/:owner/businesses/:id/write                { replyTo?, from?, instruction }: the AI writes it, a draft for the person
@@ -181,7 +181,7 @@ export async function x0Routes(app: FastifyInstance) {
     const q = (req.query ?? {}) as { folder?: unknown; page?: unknown };
     return messages(business(req), { ...(typeof q.folder === "string" ? { folder: q.folder.slice(0, 80) } : {}), page: Number(q.page) || 0 });
   }));
-  app.get("/v1/o/:owner/businesses/:id/threads/:tid", route(async (req) => thread(business(req), threadIdOf(req))));
+  app.get("/v1/o/:owner/businesses/:id/threads/:tid", route(async (req) => thread(business(req), threadIdOf(req), { peek: (req.query as { peek?: unknown }).peek === "1" })));
   app.post("/v1/o/:owner/businesses/:id/threads/:tid/:action", route(async (req) => {
     await act(business(req), threadIdOf(req), String(params(req).action) as ThreadAction);
     return { ok: true };

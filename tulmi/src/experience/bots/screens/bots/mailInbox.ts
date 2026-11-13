@@ -6,9 +6,11 @@
  *                       each alias's, Sent, Drafts, Archive, Spam, Trash, any other), then the folder's conversations, newest first, 30 a page:
  *                       who, the subject, the start of the last message, when, how many, unread, starred, and what the AI did with it
  *   bots.mail.thread    params b, tid, folder: one conversation, oldest first, each message whole with its attachments' names; Reply,
- *                       Forward, Archive, Delete, Spam (or Back to inbox), Unread, Star; the AI's draft a tap away
+ *                       Forward, Archive, Delete, Spam (or Back to inbox), Unread, Star, and Share with a space or person (the conversation as
+ *                       text, oldest first; none while Spaces is off); the AI's draft a tap away
  *   bots.mail.compose   params b, tid, re | fwd: new mail, a reply or a forward, from any of the domain's addresses; Write with AI writes it
- *                       (a reply in the business's voice, or a new email from what they ask), and they send it
+ *                       (a reply in the business's voice, or a new email from what they ask), and they send it. A reply and a forward send
+ *                       the conversation's tid with the mail and with the AI's write, so the server files them in it
  *
  * Every call goes to routes/bots/mail.ts, which passes it to the worker (its inbox.ts) inside the person's own account.
  */
@@ -24,6 +26,7 @@ import {
   ago, bizParam, folderName, MAIL, MAIL_SLUG, type MailBusinessView, type MessageRow, type MessagesView, openReply, type ThreadView,
 } from "./mailParts.js";
 import { clockOf, isDesk, setState, shortDate } from "./parts.js";
+import { shareButtonsFor } from "../../shareAction.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
@@ -112,6 +115,12 @@ export type ThreadData = { thread?: ThreadView; gone?: string };
 
 const size = (n: number) => (n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
+/** The conversation oldest first, "name, date:" then the text of each, cut to what a share keeps (about 4000 characters). */
+function conversationText(ctx: BotsCtx, t: ThreadView): string {
+  const out = [...t.messages].sort((a, b) => a.at - b.at).map((m) => `${nameOf(m.from)}, ${shortDate(ctx, m.at)}:\n${m.text.trim() || "(no text)"}`).join("\n\n");
+  return out.slice(0, 4000);
+}
+
 export function threadPage(ctx: BotsCtx, d: ThreadData | undefined) {
   const b = bizParam(ctx.params.b), tid = tidParam(ctx.params.tid), folder = folderParam(ctx.params.folder);
   const back = openInbox(b, folder, 0, true);
@@ -130,6 +139,7 @@ export function threadPage(ctx: BotsCtx, d: ThreadData | undefined) {
       : [chip("Archive", { onPress: doIt("archive", "Archived.") }), chip("Delete", { onPress: doIt("trash", "In Trash.") }), chip("Spam", { onPress: doIt("junk", "Marked as spam.") })]),
     chip("Mark unread", { onPress: doIt("unread", "Marked unread.") }),
     chip(t.starred ? "Unstar" : "Star", { onPress: doIt(t.starred ? "unstar" : "star", t.starred ? "Unstarred." : "Starred.", false) }),
+    ...shareButtonsFor(ctx, { kind: "text", title: t.subject || "Conversation", text: conversationText(ctx, t), bot: "mail" }, { size: "md" }),
   ], { gap: 8, flexWrap: "wrap" });
 
   const ai: Node[] = t.ai ? [row([
@@ -198,13 +208,14 @@ export function composePage(ctx: BotsCtx, d: ComposeData | undefined) {
 
   const busy = (on: boolean) => setState("cm_busy", on);
   const writeAI = (instruction: string): ActionRef => seq(busy(true), call("POST", `${MAIL}/businesses/${b}/write`, {
-    instruction, from: "$state.cm_from", ...(mode === "reply" ? { replyTo: re } : {}),
+    instruction, from: "$state.cm_from", ...(mode === "reply" ? { replyTo: re } : {}), ...(mode !== "new" && tid ? { tid } : {}),
   }, { assignTo: "cmw", ok: busy(false), fail: seq(busy(false), toast("The AI couldn't write it just now. Write it yourself, or try again.")) }));
   const asked: ActionSpec = { kind: "condition", if: { truthy: "cm_ask" }, then: seq(writeAI("$state.cm_ask"), setState("cm_ask", "")), else: toast("Say what it should say.") } as ActionSpec;
   const done = tid ? { kind: "navigate", screenId: SCREENS.mailThread, params: { b, tid, folder: "inbox" }, replace: true } as ActionSpec : openInbox(b, "sent", 0, true);
   const send = call("POST", `${MAIL}/businesses/${b}/send`, {
     from: "$state.cm_from", to: "$state.cm_to", cc: "$state.cm_cc", subject: `$state.${subjectPath}`, text: "$state.cmw.text",
     ...(mode === "reply" ? { replyTo: re } : mode === "forward" ? { forward: fwd } : {}),
+    ...(mode !== "new" && tid ? { tid } : {}),
   }, { ok: seq(said("Sent."), done), fail: toast("Couldn't send it. Check the addresses and try again.") });
 
   const label = (s: string) => text(s, { size: 12, weight: 600, tracking: 0.4, upper: true, color: C.meta, lineHeight: 15 });

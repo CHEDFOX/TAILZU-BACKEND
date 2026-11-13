@@ -44,7 +44,7 @@ const BRIEF = { profile: { about: "", voice: "Warm, clear and brief.", knowledge
 
 async function build(o: {
   screen?: string; params?: Record<string, string>; client?: "phone" | "desktop"; can?: string[];
-  overview?: unknown; runs?: unknown[]; reply?: unknown; business?: unknown; brief?: unknown; folders?: unknown; api?: Record<string, unknown>;
+  overview?: unknown; runs?: unknown[]; spaces?: boolean; reply?: unknown; business?: unknown; brief?: unknown; folders?: unknown; api?: Record<string, unknown>;
 } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
   const deps = fakeDeps({
@@ -64,7 +64,7 @@ async function build(o: {
   });
   const s = await buildBotsScreen({
     screenId: o.screen ?? "bots.bot", client: o.client ?? "phone", params: { slug: "mail", ...(o.params ?? {}) }, tzOffsetMinutes: IST,
-    user: { id: "u1", name: "Aanya" }, can: new Set(o.can ?? DRAWS), desk: { pages: false, notes: false },
+    user: { id: "u1", name: "Aanya" }, ...(o.spaces === false ? { spaces: false } : {}), can: new Set(o.can ?? DRAWS), desk: { pages: false, notes: false },
   }, deps);
   const root = s.root as Node;
   const nodes = walk(root);
@@ -370,3 +370,56 @@ describe("the mail bot's look", () => {
   });
 });
 
+const OWNER = { id: "u7", name: "Ravi Kumar" };
+const FOLDERS_OWN = [
+  { key: "inbox", id: "in", name: "Inbox", role: "inbox", kind: "system", unread: 3, total: 40 },
+  { key: "main", id: "in", name: "Hello", role: null, kind: "address", unread: 0, total: 0, email: "hello@leafandco.in" },
+  { key: "f-sup", id: "sup", name: "Support", role: null, kind: "address", unread: 2, total: 9, email: "support@leafandco.in" },
+  { key: "sent", id: "snt", name: "Sent", role: "sent", kind: "system", unread: 0, total: 12 },
+];
+const navTo = (acts: ActionSpec[], screenId: string) => acts.filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === screenId);
+
+describe.each(["phone", "desktop"] as const)("the mail page for a space's admin and for a handler, on the %s", (client) => {
+  const mine = BIZ({ id: "mine-co", name: "Mine", domain: "mine.in" });
+  const theirs = BIZ({ id: "leaf-co", access: "admin", owner: OWNER });
+  const given = BIZ({
+    id: "tea-co", name: "Tea House", domain: "teahouse.in", access: "handler", owner: { id: "u8", name: "Meera Rao" },
+    addresses: [["orders", 5], ["help", 6], ["bills", 7]].map(([l, id]) => ({ ...address(id as number, l as string), email: `${l}@teahouse.in`, isPrimary: false })),
+  });
+
+  it("gives every business its chip: own by its domain, a member's with the owner's first name, a handler's with the first address and +N", async () => {
+    const p = await build({ client, overview: { businesses: [mine, theirs, given], waiting: [], today: ZERO }, params: { b: "leaf-co" } });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toEqual(expect.arrayContaining(["mine.in", "Ravi · leafandco.in", "Meera · orders@teahouse.in +2"]));
+    expect(p.texts).not.toContain("leafandco.in");
+  });
+
+  it("tells the admin whose business it is, and keeps everything: settings, set-up, All mail, Sent", async () => {
+    const p = await build({ client, overview: { businesses: [theirs], waiting: [], today: ZERO }, runs: [RUN(1)], folders: FOLDERS_OWN, params: { b: "leaf-co" } });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("Ravi's business. As their space's admin you can see and change everything.");
+    expect(navTo(p.every(), "bots.mail.settings")).toHaveLength(1);
+    expect(p.texts).toEqual(expect.arrayContaining(["All mail", "Sent and other folders", "Write"]));
+  });
+
+  it("tells a handler which addresses are theirs, and shows no settings, no set-up, no All mail, no Sent: only their addresses' folders and Write", async () => {
+    const folders = [
+      { key: "f-o", id: "o", name: "Orders", role: null, kind: "address", unread: 4, total: 9, email: "orders@teahouse.in" },
+      { key: "f-h", id: "h", name: "Help", role: null, kind: "address", unread: 0, total: 2, email: "help@teahouse.in" },
+    ];
+    // Not set up (ready: false) and with a setup param: still nothing of the owner's set-up is offered.
+    const p = await build({ client, overview: { businesses: [{ ...given, ready: false }], waiting: [], today: ZERO }, runs: [], folders, params: { b: "tea-co", setup: "1" },
+      api: { "GET /v1/mail/businesses/tea-co/activity?limit=40": { runs: [] }, "GET /v1/mail/businesses/tea-co/folders": { folders } } });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("Meera gave you orders@teahouse.in, help@teahouse.in and bills@teahouse.in to answer.");
+    expect(navTo(p.every(), "bots.mail.settings")).toHaveLength(0);
+    expect(p.card).toBeUndefined();
+    expect(p.texts).not.toContain("Point teahouse.in here");
+    expect(p.texts).not.toContain("Domain records");
+    expect(p.texts).not.toEqual(expect.arrayContaining(["All mail"]));
+    expect(p.texts).not.toContain("Sent and other folders");
+    expect(p.texts).toEqual(expect.arrayContaining(["Mailbox", "orders@teahouse.in", "4", "help@teahouse.in", "Write", "Add a domain", "Needs you"]));
+    const opens = navTo(p.every(), "bots.mail.inbox").map((a) => (a as { params: Record<string, string> }).params.folder);
+    expect(opens.sort()).toEqual(["f-h", "f-o"]);
+  });
+});

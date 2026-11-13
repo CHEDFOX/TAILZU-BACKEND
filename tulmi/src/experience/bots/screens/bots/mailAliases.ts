@@ -2,10 +2,12 @@
  * A DOMAIN'S ADDRESSES (ALIASES) AND ITS RULES (docs/mail.md section 9), as Xooteq Mail's settings have them.
  *
  *   bots.mail.addresses  params b: every address of the domain (the main one, then each alias), each with its folder, how it answers and
- *                        whether it auto-replies; another alias added with its folder's name. Mail to any of them arrives in All mail and in
+ *                        whether it auto-replies and who answers it; another alias added with its folder's name. Mail to any of them arrives in All mail and in
  *                        that address's folder
  *   bots.mail.address    params b, aid: one address: its folder's name (an alias's), the name people see it from, how the AI answers it
- *                        (Drafts, Sends, Off), its auto-reply (on or off, subject, message, once per sender every 1, 3 or 7 days); an alias is
+ *                        (Drafts, Sends, Off), who answers it (chips of the people in the owner's spaces, from the overview: a tap gives the
+ *                        address to one, POST .../handlers, or takes it back, DELETE .../handlers/<id>; none to choose from: a line says to add
+ *                        them to a space first), its auto-reply (on or off, subject, message, once per sender every 1, 3 or 7 days); an alias is
  *                        removed on a second yes
  *   bots.mail.rules      params b: each rule as a sentence ("When From contains invoice: move to Billing"), on or off, removed; another added
  *                        from one condition and one action. Rules run on each message as it arrives, in order, before the AI reads it
@@ -18,7 +20,7 @@ import {
 import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
 import { mailField } from "./mailCards.js";
-import { bizParam, MAIL, type MailAddressView, type MailBusinessView, MODE_WORDS, type RuleView } from "./mailParts.js";
+import { accessOf, bizParam, firstName, listOf, MAIL, type MailAddressView, type MailBusinessView, type MailOverview, type MailPerson, MODE_WORDS, type RuleView } from "./mailParts.js";
 import { isDesk, setState } from "./parts.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
@@ -31,7 +33,9 @@ export const openRules = (b: string): ActionSpec => ({ kind: "navigate", screenI
 
 /** "Support folder · Drafts for you · Auto-reply on": an address in a line. */
 function addressLine(a: MailAddressView): string {
-  return [a.isPrimary ? "The main address" : `${a.label || "Its"} folder`, MODE_WORDS[a.aiMode] ?? "", a.autoReply?.enabled ? "Auto-reply on" : ""].filter(Boolean).join(" · ");
+  const who = (a.handledBy ?? []).slice(0, 2).map(firstName);
+  return [a.isPrimary ? "The main address" : `${a.label || "Its"} folder`, MODE_WORDS[a.aiMode] ?? "", a.autoReply?.enabled ? "Auto-reply on" : "",
+    who.length ? `${listOf(who)} ${who.length > 1 ? "answer" : "answers"} it` : ""].filter(Boolean).join(" · ");
 }
 
 export type AddressesData = { business?: MailBusinessView };
@@ -71,7 +75,7 @@ export function addressesPage(ctx: BotsCtx, d: AddressesData | undefined) {
   });
 }
 
-export type AddressData = { business?: MailBusinessView };
+export type AddressData = { business?: MailBusinessView; people?: MailPerson[] };
 
 export function addressPage(ctx: BotsCtx, d: AddressData | undefined) {
   const b = bizParam(ctx.params.b), aid = aidParam(ctx.params.aid);
@@ -89,12 +93,27 @@ export function addressPage(ctx: BotsCtx, d: AddressData | undefined) {
     fail: toast("Couldn't remove it. Try again."),
   });
   const r = a.autoReply;
+  // Who answers it: the owner's (or their admin's) choice among people in their spaces. A tap on a chosen one takes the address back.
+  const handlers = (a.handledBy ?? []).map((p) => p.id);
+  const people = d.people ?? [];
+  const mine = accessOf(d.business) !== "handler";
+  const toggle = (p: MailPerson): ActionSpec => handlers.includes(p.id)
+    ? call("DELETE", `${A}/handlers/${p.id}`, undefined, { ok: seq(said(`${firstName(p)} doesn't answer it any more.`), refresh), fail: toast("Couldn't change that. Try again.") }) as ActionSpec
+    : call("POST", `${A}/handlers`, { memberId: p.id }, { ok: seq(said(`${firstName(p)} answers it now.`), refresh), fail: toast("Couldn't change that. Try again.") }) as ActionSpec;
+  const answers: Node[] = !mine ? [] : people.length
+    ? [col([
+      text("Who answers it", { size: 15, weight: 600, lineHeight: 20 }),
+      meta("They see and answer only this address's mail, and send only from it. Settings stay yours.", { size: 12, lineHeight: 16 }),
+      row(people.map((p) => chip(firstName(p), { selected: handlers.includes(p.id), onPress: toggle(p) })), { gap: 6, flexWrap: "wrap" }),
+    ], { gap: 8 })]
+    : [meta("People in your spaces can answer an address. Add them to a space first.", { size: 13, lineHeight: 18 })];
   const label = (s: string, sub?: string): Node => col([text(s, { size: 15, weight: 600, lineHeight: 20 }), ...(sub ? [meta(sub, { size: 12, lineHeight: 16 })] : [])], { gap: 2 });
   return page(ctx, {
     back: true, backTitle: a.email, title: a.email, ...(desk ? { maxWidth: 720 } : {}),
     body: [
       ...(a.isPrimary ? [] : [col([label("Folder", "Its mail is filed here, and stays in All mail."), mailField("ma_label", "Support", desk, { label: "the folder's name", capitalize: true })], { gap: 8 })]),
       col([label("Sends as", "The name people see it from. Empty: the business's name."), mailField("ma_name", d.business.name, desk, { label: "the name it sends as", capitalize: true })], { gap: 8 }),
+      ...answers,
       col([label("How the AI answers it"), row((["draft", "send", "off"] as const).map((m) => chip(MODE_WORDS[m]!, { selected: a.aiMode === m, onPress: mode(m) })), { gap: 6, flexWrap: "wrap" })], { gap: 8 }),
       col([
         listCard([switchRow("Auto-reply", "ma_auto", { sub: "A short note back to everyone who writes, even while the AI drafts or a person is away." })]),
@@ -187,8 +206,12 @@ export const mailAliasScreens: BotsScreen[] = [
     id: SCREENS.mailAddress,
     load: async (ctx, deps: Deps) => {
       const b = bizParam(ctx.params.b);
-      const business = b ? await deps.api<{ business: MailBusinessView }>("GET", `${MAIL}/businesses/${b}`).then((r) => r.business).catch(() => undefined) : undefined;
-      return business ? { business } : {};
+      if (!b) return {};
+      const [business, people] = await Promise.all([
+        deps.api<{ business: MailBusinessView }>("GET", `${MAIL}/businesses/${b}`).then((r) => r.business).catch(() => undefined),
+        deps.api<MailOverview>("GET", `${MAIL}/overview`).then((r) => r.people ?? []).catch(() => [] as MailPerson[]),
+      ]);
+      return business ? { business, people } : {};
     },
     build: (ctx, d) => addressPage(ctx, d),
   }),

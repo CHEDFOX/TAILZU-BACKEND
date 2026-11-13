@@ -1172,8 +1172,10 @@ mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/pos
    `docker-compose.yml`.
 3. **Check.** `docker compose exec backend wget -qO- http://mail-worker:5300/healthz` answers `{"ok":true,"ready":true}` (with `"missing"`
    naming what is not set otherwise). In Xooteq Mail's own dashboard, the mail bot's businesses show among the mailboxes it did not make.
-   In X0 Bot the mail bot is among the bots (its name is a placeholder until it is given one); its set-up cards make a business. Its table
-   (`mail_owners`, migration 0080, for the push when mail needs a person) is made by the deploy itself.
+   In X0 Bot the mail bot is among the bots (its name is a placeholder until it is given one); its set-up cards make a business. Its tables
+   are made by the deploy itself: `mail_owners` (migration 0080, for the push when mail needs a person) and `mail_businesses` and
+   `mail_handlers` (0084, the mail bot in a space: whose each business is, and the addresses an owner gave members to answer; by hand:
+   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0084"`).
 4. **X0 Bot's name in the records.** Out of the box the records a business adds name the mail server's own domain
    (`mx.mail.xooteq.online`). To have them say X0 Bot's, make two names at x0bot.com's DNS (Hostinger) that lead to the same server, then
    switch them on. The mail server, and Xooteq Mail on it, is not changed; domains already pointed at the old names keep working and are

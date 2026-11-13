@@ -1,7 +1,8 @@
 // Telling X0 Bot's server that mail needs a person, so it can push to the business's owner: a message that needs a person's answer, an
 // urgent draft, or the AI paused because the business's allowance is spent. Signed with MAIL_WORKER_SECRET the same way X0 Bot signs its
 // calls here (security.ts), to MAIL_NOTIFY_URL (docker-compose points it at the backend). It carries no words of the mail: the business,
-// the run and how it was sorted. It never throws and never waits long: a missed notice is not a lost message, which waits on the page.
+// the run, how it was sorted and the business's address it came to (X0 Bot also tells the people the owner gave that address to answer).
+// It never throws and never waits long: a missed notice is not a lost message, which waits on the page.
 import crypto from "node:crypto";
 import { config } from "./config.ts";
 import { sign } from "./security.ts";
@@ -14,6 +15,8 @@ export type Notice = {
   run?: number;
   kind?: string | null;
   priority?: string | null;
+  /** The business's address the message came to (a run's; none for "paused", which is the whole business's). */
+  address?: string | null;
 };
 
 type FetchFn = (url: string, init: { method: string; body: Buffer; headers: Record<string, string>; signal: AbortSignal }) => Promise<{ ok: boolean }>;

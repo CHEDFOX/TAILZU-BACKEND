@@ -78,7 +78,10 @@ test("conversations per folder, newest first: all of them, the main address's, a
   assert.equal((await call("GET", `${B}/messages?folder=nope`)).json.folder.key, "inbox");
 });
 
-test("a conversation, oldest first, is marked read as it is opened", async () => {
+test("a conversation, oldest first, is marked read as it is opened; only looked at (peek), it is left as it was", async () => {
+  const peeked = (await call("GET", `${B}/threads/t-m1?peek=1`)).json;
+  assert.deepEqual(peeked.messages.map((m: any) => [m.from.email, m.to.map((x: any) => x.email), m.unread]), [["asha@customer.test", ["hello@shop.test"], true], ["asha@customer.test", ["hello@shop.test"], true]]);
+  assert.equal((await call("GET", `${B}/messages?folder=inbox`)).json.messages[0].unread, true);
   const t = (await call("GET", `${B}/threads/t-m1`)).json;
   assert.equal(t.subject, "Where is my order?");
   assert.deepEqual(t.messages.map((m: any) => [m.text, m.unread]), [["My order 1234 has not come.", true], ["Any news?", true]]);

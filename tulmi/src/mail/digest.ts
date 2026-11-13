@@ -13,9 +13,23 @@ import { asUntrustedFile } from "../media/untrusted.js";
 import { mailWorker, MailError, ownerOf, type MailWorker } from "./worker.js";
 
 export interface MailAutoReply { enabled: boolean; subject: string; body: string; days: number; start?: string; end?: string }
-export interface MailAddressView { id: number; email: string; label: string; isPrimary: boolean; aiMode: "draft" | "send" | "off"; displayName: string; autoReply: MailAutoReply | null }
+/** Someone in the person's spaces (docs/spaces.md): a member of a space they are the admin of. */
+export interface MailPerson { id: string; name: string }
+export interface MailAddressView {
+  id: number; email: string; label: string; isPrimary: boolean; aiMode: "draft" | "send" | "off"; displayName: string; autoReply: MailAutoReply | null;
+  /** The members its owner gave it to handle (routes/bots/mail.ts, mail/access.ts): shown to its owner and to the owner's admin. */
+  handledBy?: MailPerson[];
+}
 export interface MailBusinessView {
   id: string; name: string; domain: string; email: string; signature: string;
+  /**
+   * How the person reaches it (mail/access.ts): their own; a member's, as that member's space admin (everything, read and write); or
+   * addresses its owner gave them to handle (only those addresses: their folders, conversations and drafts, sending from them; no settings,
+   * records, personality or rules). Absent: their own.
+   */
+  access?: "own" | "admin" | "handler";
+  /** Whose it is, when it is not the person's own. */
+  owner?: MailPerson;
   /** Its brief was kept once: the set-up is done. */
   ready: boolean;
   /** Where a mail app connects, once the business set a mail-app password. */
@@ -28,7 +42,11 @@ export interface MailRunView {
   kind: string | null; priority: string | null; summary: string | null; status: string; reason: string | null; sendAt: number | null; createdAt: number;
 }
 export interface MailCounts { received: number; answered: number; drafted: number; needsPerson: number; filed: number }
-export interface MailOverview { businesses: MailBusinessView[]; waiting: MailRunView[]; today: MailCounts }
+export interface MailOverview {
+  businesses: MailBusinessView[]; waiting: MailRunView[]; today: MailCounts;
+  /** Who the person can give an address to handle: the members of the spaces they are the admin of (empty while Spaces is off). */
+  people?: MailPerson[];
+}
 
 /** Each status in the words the page uses. */
 export const STATUS_WORDS: Record<string, string> = {

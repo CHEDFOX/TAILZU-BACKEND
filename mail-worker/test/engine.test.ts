@@ -113,8 +113,8 @@ test("a message is sorted, drafted for a person, and waits in the overview; the 
   assert.equal(o.waiting[0].summary, "Asks when order 1234 will ship");
   assert.equal(o.waiting[0].priority, "urgent");
   assert.deepEqual(o.today, { received: 1, answered: 0, drafted: 1, needsPerson: 0, filed: 0 });
-  // Urgent, so the owner is told, without a word of the mail.
-  assert.deepEqual(await noticeFor(orderRun), { owner: A, business: id, name: "Leaf & Co", status: "drafted", run: orderRun, kind: "order", priority: "urgent" });
+  // Urgent, so the owner is told, without a word of the mail: the address it came to, so the people who answer it are told too.
+  assert.deepEqual(await noticeFor(orderRun), { owner: A, business: id, name: "Leaf & Co", status: "drafted", run: orderRun, kind: "order", priority: "urgent", address: "hello@shop.test" });
   // The page's list: how each was sorted, never the mail server's ids, the model or the cost.
   const act = (await call("GET", `/v1/o/${A}/businesses/${id}/activity`)).json.runs[0];
   assert.deepEqual(Object.keys(act).sort(), ["address", "createdAt", "id", "kind", "priority", "reason", "sendAt", "sender", "status", "subject", "summary"]);
@@ -125,6 +125,8 @@ test("a person's change is kept, and teaches the next reply their way of writing
   const v = (await call("GET", `/v1/o/${A}/businesses/${id}/replies/${orderRun}`)).json;
   assert.match(v.text, /ship within 2 working days/);
   assert.equal(v.message.from, "Asha <asha@customer.test>");
+  // The address it was written for: X0 Bot shows it only to the owner and to the people who answer that address.
+  assert.equal(v.address, "hello@shop.test");
   assert.deepEqual((await call("PUT", `/v1/o/${A}/businesses/${id}/replies/${orderRun}`, { text: "Hi Asha! Your bag leaves our Pune studio by Thursday. Warmly, Leaf" })).json, { ok: true });
   const ex = db.prepare("SELECT subject, ai_text, final_text FROM ai_examples WHERE company_id = ?").all(id) as Record<string, string>[];
   assert.equal(ex.length, 1);
@@ -136,6 +138,7 @@ test("a person's change is kept, and teaches the next reply their way of writing
   assert.equal(run.status, "needs_person");
   assert.match(asked.at(-1)!.system, /How the team changed earlier drafts[\s\S]*leaves our Pune studio/);
   assert.equal((await noticeFor(run.id))?.status, "needs_person");
+  assert.equal((await noticeFor(run.id))?.address, "hello@shop.test");
 });
 
 test("a draft is written again as asked, and sent", async () => {

@@ -116,8 +116,11 @@ export async function messages(company: Company, o: { folder?: string; page?: nu
 const THREAD_PROPS = ["id", "threadId", "mailboxIds", "keywords", "from", "to", "cc", "replyTo", "subject", "receivedAt", "sentAt", "messageId",
   "references", "textBody", "htmlBody", "bodyValues", "attachments"];
 
-/** One conversation, oldest first, every message's text; the unread ones are marked read as it is opened. */
-export async function thread(company: Company, threadId: string) {
+/**
+ * One conversation, oldest first, every message's text; the unread ones are marked read as it is opened. With `peek` it is only looked at
+ * and left as it was: X0 Bot checks a conversation is one a person may open before it is opened for them.
+ */
+export async function thread(company: Company, threadId: string, o: { peek?: boolean } = {}) {
   const box = new Mailbox(company.email);
   const [, g] = await box.request([
     ["Thread/get", { ids: [threadId] }, "t"],
@@ -126,7 +129,7 @@ export async function thread(company: Company, threadId: string) {
   const list = ((unwrap("Email/get", g!).list ?? []) as Email[]).sort((a, b) => (a.receivedAt < b.receivedAt ? -1 : 1));
   if (!list.length) throw new InputError("No such conversation: it was deleted.");
   const unseen = list.filter((e) => !e.keywords?.$seen).map((e) => e.id);
-  if (unseen.length) await box.call("Email/set", { update: Object.fromEntries(unseen.map((id) => [id, { "keywords/$seen": true }])) });
+  if (unseen.length && !o.peek) await box.call("Email/set", { update: Object.fromEntries(unseen.map((id) => [id, { "keywords/$seen": true }])) });
   const roles = new Map((await boxesOf(box)).map((b) => [b.id, b.role ?? "folder"]));
   const last = list[list.length - 1]!;
   return {

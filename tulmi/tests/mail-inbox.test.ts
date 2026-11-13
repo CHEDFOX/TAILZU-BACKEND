@@ -53,7 +53,7 @@ const RULES = [
   { id: 2, name: "", enabled: false, line: "When Subject contains \"sale\": mark as read" },
 ];
 
-async function build(screenId: string, params: Record<string, string>, o: { client?: "phone" | "desktop"; api?: Record<string, unknown> } = {}) {
+async function build(screenId: string, params: Record<string, string>, o: { client?: "phone" | "desktop"; api?: Record<string, unknown>; spaces?: boolean } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
   const deps = fakeDeps({
     bots: [...SAMPLE_BOTS, { slug: "mail", name: "Mail", colour: "sand", purpose: "Mail", builtin: true }], calls,
@@ -67,7 +67,7 @@ async function build(screenId: string, params: Record<string, string>, o: { clie
     },
   });
   const s = await buildBotsScreen({
-    screenId, client: o.client ?? "phone", params, tzOffsetMinutes: IST, user: { id: "u1", name: "Aanya" }, can: new Set(DRAWS), desk: { pages: false, notes: false },
+    screenId, client: o.client ?? "phone", params, tzOffsetMinutes: IST, user: { id: "u1", name: "Aanya" }, ...(o.spaces === false ? { spaces: false } : {}), can: new Set(DRAWS), desk: { pages: false, notes: false },
   }, deps);
   const root = s.root as Node;
   const nodes = walk(root);
@@ -240,5 +240,96 @@ describe("a domain's addresses and rules", () => {
     expect(c.some((x) => x.method === "POST" && x.path === `${B}/rules/1/toggle`)).toBe(true);
     expect(c.some((x) => x.method === "DELETE" && x.path === `${B}/rules/2`)).toBe(true);
     expect(c.find((x) => x.method === "POST" && x.path === `${B}/rules`)?.body).toEqual({ field: "$state.mr_field", op: "contains", value: "$state.mr_value", action: "$state.mr_action", target: "$state.mr_target" });
+  });
+});
+
+describe("sharing and handing over addresses", () => {
+  const shares = (p: { every: () => ActionSpec[] }) => navs(p.every()).filter((a) => a.screenId === "bots.share");
+
+  it.each(["phone", "desktop"] as const)("a conversation has Share with a space or person, as text, oldest first, on the %s", async (client) => {
+    const p = await build("bots.mail.thread", { b: "leaf-co", tid: "t1", folder: "inbox" }, { client });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("Share");
+    const sh = shares(p);
+    expect(sh).toHaveLength(1);
+    const params = sh[0]!.params as Record<string, string>;
+    expect(params).toMatchObject({ kind: "text", title: "Where is my order?", bot: "mail" });
+    expect(params.text.startsWith("Asha, ")).toBe(true);
+    expect(params.text.indexOf("Hi, I ordered on Monday")).toBeLessThan(params.text.indexOf("It ships tomorrow."));
+    expect(params.text).toContain("Leaf & Co, ");
+    expect(params.text.length).toBeLessThanOrEqual(4000);
+  });
+
+  it("a long conversation is cut to about 4000 characters", async () => {
+    const long = THREAD({ messages: [{ ...THREAD().messages[0]!, text: "x".repeat(9000) }] });
+    const p = await build("bots.mail.thread", { b: "leaf-co", tid: "t1", folder: "inbox" }, { api: { [`GET ${B}/threads/t1`]: long } });
+    expect((shares(p)[0]!.params as Record<string, string>).text.length).toBe(4000);
+  });
+
+  it("has no Share while Spaces is off", async () => {
+    const p = await build("bots.mail.thread", { b: "leaf-co", tid: "t1", folder: "inbox" }, { spaces: false });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).not.toContain("Share");
+    expect(shares(p)).toHaveLength(0);
+  });
+
+  it("a reply and a forward send the conversation's tid with the mail and with the AI's write; new mail has none", async () => {
+    const re = await build("bots.mail.compose", { b: "leaf-co", tid: "t1", re: "m1" });
+    expect(callsOf(re.every()).find((c) => c.path === `${B}/send`)!.body).toMatchObject({ replyTo: "m1", tid: "t1" });
+    const writes = callsOf(re.every()).filter((c) => c.path === `${B}/write`);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.every((c) => (c.body as { tid?: string }).tid === "t1")).toBe(true);
+    const fwd = await build("bots.mail.compose", { b: "leaf-co", tid: "t1", fwd: "m2" });
+    expect(callsOf(fwd.every()).find((c) => c.path === `${B}/send`)!.body).toMatchObject({ forward: "m2", tid: "t1" });
+    const fresh = await build("bots.mail.compose", { b: "leaf-co" });
+    expect(callsOf(fresh.every()).find((c) => c.path === `${B}/send`)!.body).not.toHaveProperty("tid");
+  });
+
+  const RAVI = { id: "u2", name: "Ravi Kumar" }, MEERA = { id: "u3", name: "Meera" };
+  const withHandlers = BIZ({ addresses: [address(1, "hello"), address(2, "support", { label: "Support", handledBy: [RAVI] })] });
+  const addressApi = (people: unknown, business: unknown = withHandlers) => ({
+    [`GET ${B}`]: { business }, "GET /v1/mail/overview": { businesses: [business], waiting: [], today: {}, ...(people ? { people } : {}) },
+  });
+
+  it.each(["phone", "desktop"] as const)("an address's page: Who answers it, a chip per person; a tap on a chosen one takes it back, on another gives it, on the %s", async (client) => {
+    const p = await build("bots.mail.address", { b: "leaf-co", aid: "2" }, { client, api: addressApi([RAVI, MEERA]) });
+    expect(p.lint).toEqual([]);
+    expect(p.calls.some((c) => c.path === "/v1/mail/overview")).toBe(true);
+    expect(p.texts).toEqual(expect.arrayContaining(["Who answers it", "Ravi", "Meera"]));
+    const c = callsOf(p.every());
+    expect(c.find((x) => x.method === "DELETE" && x.path === `${B}/addresses/2/handlers/u2`)).toBeTruthy();
+    const give = c.find((x) => x.method === "POST" && x.path === `${B}/addresses/2/handlers`)!;
+    expect(give.body).toEqual({ memberId: "u3" });
+    expect(JSON.stringify(give.onSuccess)).toContain("Meera answers it now.");
+    expect(JSON.stringify(c.find((x) => x.method === "DELETE")!.onSuccess)).toContain("Ravi doesn't answer it any more.");
+    expect(c.some((x) => x.method === "POST" && x.path === `${B}/addresses/2/handlers` && (x.body as { memberId: string }).memberId === "u2")).toBe(false);
+    expect(c.some((x) => x.method === "DELETE" && x.path.endsWith("/handlers/u3"))).toBe(false);
+    // Ravi (who answers it) is the filled chip; Meera is not.
+    const fill = (name: string) => p.nodes.find((n) => n.type === "Stack" && JSON.stringify(n.on ?? {}).includes(name === "Ravi" ? "handlers/u2" : '"memberId":"u3"'));
+    expect(JSON.stringify(fill("Ravi")!.style)).toContain('"backgroundColor":"#');
+    expect(JSON.stringify(fill("Ravi")!.style)).not.toEqual(JSON.stringify(fill("Meera")!.style));
+  });
+
+  it("without people in their spaces: one line says to add them first", async () => {
+    const p = await build("bots.mail.address", { b: "leaf-co", aid: "2" }, { api: addressApi(undefined) });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("People in your spaces can answer an address. Add them to a space first.");
+    expect(p.texts).not.toContain("Who answers it");
+  });
+
+  it("a handler sees no section about who answers", async () => {
+    const mine = { ...withHandlers, access: "handler", owner: RAVI };
+    const p = await build("bots.mail.address", { b: "leaf-co", aid: "2" }, { api: addressApi([MEERA], mine) });
+    expect(p.texts).not.toContain("Who answers it");
+    expect(p.texts).not.toContain("People in your spaces can answer an address. Add them to a space first.");
+  });
+
+  it("the Addresses list names who answers each one, at most two", async () => {
+    const biz = BIZ({ addresses: [address(1, "hello", { handledBy: [RAVI, MEERA, { id: "u4", name: "Sam" }] }), address(2, "support", { label: "Support", handledBy: [RAVI] }), address(3, "info")] });
+    const p = await build("bots.mail.addresses", { b: "leaf-co" }, { api: { [`GET ${B}`]: { business: biz } } });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toEqual(expect.arrayContaining([
+      "The main address · Drafts for you · Ravi and Meera answer it", "Support folder · Drafts for you · Ravi answers it",
+    ]));
   });
 });

@@ -309,8 +309,9 @@ async function handle(job: Job): Promise<void> {
       const status = answer.decision === "escalate" ? "needs_person" : "drafted";
       update(runId, { status, reason: why, draft_id: draftId, mode });
       // The owner hears of what needs them: a message only a person should answer, or an urgent one. Every other draft waits on the page.
+      // The address it came to goes with it: X0 Bot tells the people who answer that address too.
       if (status === "needs_person" || answer.priority === "urgent") {
-        void notice({ owner: company.owner, business: company.id, name: company.name, status, run: runId, kind: answer.kind, priority: answer.priority });
+        void notice({ owner: company.owner, business: company.id, name: company.name, status, run: runId, kind: answer.kind, priority: answer.priority, address: address.email });
       }
       return;
     }
@@ -430,9 +431,9 @@ function runOf(companyId: string, runId: number): RunRow {
 }
 const WAITING = new Set(["drafted", "needs_person", "scheduled"]);
 
-/** The draft's words and the message it answers. */
-export async function draftView(companyId: string, runId: number): Promise<{ status: string; reason: string; sendAt: number | null; to: string; subject: string; text: string;
-  kind: string | null; priority: string | null; summary: string | null; message: { from: string; subject: string; date: string; text: string } | null }> {
+/** The draft's words and the message it answers, and the address it was written for (X0 Bot lets a person who answers that address see it). */
+export async function draftView(companyId: string, runId: number): Promise<{ status: string; reason: string; sendAt: number | null; address: string | null; to: string;
+  subject: string; text: string; kind: string | null; priority: string | null; summary: string | null; message: { from: string; subject: string; date: string; text: string } | null }> {
   const r = runOf(companyId, runId);
   if (!r.draft_id) throw new AiError("This one has no draft.", 404);
   const box = new Mailbox(getCompany(companyId).email);
@@ -442,7 +443,7 @@ export async function draftView(companyId: string, runId: number): Promise<{ sta
   if (!d) throw new AiError("That draft is gone: it was sent or deleted.", 404);
   const m = r.email_id ? list.find((e) => e.id === r.email_id) : undefined;
   return {
-    status: r.status, reason: r.reason ?? "", sendAt: r.send_at, to: fmt(d.to), subject: d.subject ?? "", text: bodyText(d),
+    status: r.status, reason: r.reason ?? "", sendAt: r.send_at, address: r.address ?? null, to: fmt(d.to), subject: d.subject ?? "", text: bodyText(d),
     kind: r.kind ?? null, priority: r.priority ?? null, summary: r.summary ?? null,
     message: m ? { from: fmt(m.from), subject: m.subject ?? "", date: m.sentAt ?? m.receivedAt, text: bodyText(m).slice(0, 20000) } : null,
   };

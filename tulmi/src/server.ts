@@ -483,9 +483,13 @@ registerBotsPushAskRoutes(app, botsAreaDeps);
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 // The Oracle's card: when and where a person was born, for the Oracle to read their sky from (src/oracle, docs/oracle.md).
 registerOracleRoutes(app, { rateLimit: AUTHED_RL, bots });
-// The mail bot's pages: a business's mail on our mail server, passed to its worker inside the person's account, and the worker's signed
-// notice that mail needs a person (src/mail, docs/mail.md).
-registerMailRoutes(app, { rateLimit: AUTHED_RL, bots });
+// Who is whose space admin (meet/people.ts; nobody while Spaces is off), made once from the bots area's Spaces: the meeting bot and the mail
+// bot read the same people.
+const spacesPeople = spacePeople({ spaces: botsParts.spaces, blocks: new Blocks(Date.now, { log: app.log }) });
+// The mail bot's pages: a business's mail on our mail server, passed to its worker inside the account of the business's owner, and the
+// worker's signed notice that mail needs a person (src/mail, docs/mail.md). In a space, an admin reaches a member's businesses whole, and a
+// member answers only the addresses its owner gave them (mail/access.ts).
+registerMailRoutes(app, { rateLimit: AUTHED_RL, bots, people: spacesPeople });
 // The meeting bot (src/meet, docs/meet.md): a bot in a person's video calls through Recall.ai, Recall's two signed webhooks and the stage page
 // its voice plays through. With a Google Calendar connected it joins their calendar's meetings by itself (the sweep, every five minutes).
 registerMeetRoutes(app, {
@@ -497,7 +501,7 @@ registerMeetRoutes(app, {
 });
 // In a space, its admin sees the meetings of the members who agreed to the line about the admin, is told when they take the bot to one,
 // and may send it to theirs (meet/people.ts; nobody while Spaces is off).
-setMeetPeople(spacePeople({ spaces: botsParts.spaces, blocks: new Blocks(Date.now, { log: app.log }) }));
+setMeetPeople(spacesPeople);
 if (connectors && meetService()) {
   const stopAutoJoin = startAutoJoin({
     store: meetStore(),

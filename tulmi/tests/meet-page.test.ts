@@ -30,7 +30,7 @@ const OVERVIEW = (o: Record<string, unknown> = {}) => ({
 });
 
 type Client = "phone" | "desktop";
-async function build(o: { screen?: string; params?: Record<string, string>; client?: Client; overview?: unknown; detail?: unknown; down?: boolean } = {}) {
+async function build(o: { screen?: string; params?: Record<string, string>; client?: Client; overview?: unknown; detail?: unknown; down?: boolean; spaces?: boolean } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
   const deps = fakeDeps({
     bots: [...SAMPLE_BOTS, { slug: "meet", name: "Meetings", colour: "moss", purpose: PURPOSE, builtin: true }], calls,
@@ -43,7 +43,7 @@ async function build(o: { screen?: string; params?: Record<string, string>; clie
   });
   const s = await buildBotsScreen({
     screenId: o.screen ?? "bots.bot", client: o.client ?? "phone", params: o.screen ? (o.params ?? {}) : { slug: "meet", ...(o.params ?? {}) }, tzOffsetMinutes: IST,
-    user: { id: "u1", name: "Aanya" }, can: new Set(DRAWS), desk: { pages: false, notes: false },
+    user: { id: "u1", name: "Aanya" }, ...(o.spaces === false ? { spaces: false } : {}), can: new Set(DRAWS), desk: { pages: false, notes: false },
   }, deps);
   const root = s.root as Node;
   const nodes = walk(root);
@@ -285,5 +285,43 @@ describe.each<Client>(["phone", "desktop"])("one meeting on the %s", (client) =>
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("This meeting isn't here any more.");
     expect(navs(p.every(), "bots.bot").find((n) => n.params?.slug === "meet")).toMatchObject({ replace: true });
+  });
+});
+
+describe.each<Client>(["phone", "desktop"])("sharing a meeting on the %s", (client) => {
+  const shares = (p: { every: () => ActionSpec[] }) => navs(p.every(), "bots.share");
+  const noted = (o: Record<string, unknown> = {}) => ({
+    meeting: meeting("m1", { status: "done", noteId: "n3", joinAt: null, title: "Design review", liveNotes: { points: ["Launch moves to March"], actions: [{ who: "Ravi", what: "send the plan" }], at: FIXED_NOW }, ...o }),
+    asks: [{ askedBy: "Asha", question: "When is the launch?", answer: "In March.", how: "voice", at: FIXED_NOW }],
+  });
+
+  it("has Share with the notes, who does what and the questions it answered", async () => {
+    const p = await build({ ...MEETING_PAGE, client, detail: noted() });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("Share");
+    const sh = shares(p);
+    expect(sh).toHaveLength(1);
+    const params = sh[0]!.params as Record<string, string>;
+    expect(params).toMatchObject({ kind: "text", title: "Design review", bot: "meet" });
+    expect(params.text).toContain("Launch moves to March");
+    expect(params.text).toContain("Who does what:");
+    expect(params.text).toContain("Ravi: send the plan");
+    expect(params.text).toContain("Q: When is the launch?\nA: In March.");
+    expect(params.text.indexOf("Launch moves")).toBeLessThan(params.text.indexOf("Who does what:"));
+  });
+
+  it("has Share when only a question was answered, and none when there is nothing to share", async () => {
+    const onlyAsks = await build({ ...MEETING_PAGE, client, detail: { ...noted({ liveNotes: null }) } });
+    expect(shares(onlyAsks)).toHaveLength(1);
+    const nothing = await build({ ...MEETING_PAGE, client, detail: { meeting: meeting("m1"), asks: [] } });
+    expect(nothing.texts).not.toContain("Share");
+    expect(shares(nothing)).toHaveLength(0);
+  });
+
+  it("has no Share while Spaces is off", async () => {
+    const p = await build({ ...MEETING_PAGE, client, detail: noted(), spaces: false });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).not.toContain("Share");
+    expect(shares(p)).toHaveLength(0);
   });
 });

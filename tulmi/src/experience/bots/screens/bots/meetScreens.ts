@@ -8,6 +8,8 @@
  *                       An admin looking at a member's meeting (readOnly) sees whose it is and the notes, with no Leave, switch, call-off or note;
  *                       a meeting the admin sent the bot to says "Sent by"
  *
+ * With notes or answers there is also a Share with a space or person (the notes and the Q and A as text; none while Spaces is off).
+ *
  * The page itself is meetPage.ts. Everything here is the person's own (routes/bots/meet.ts): nothing is read from the call but the notes.
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
@@ -20,6 +22,7 @@ import {
 import { type BotsScreen, screen } from "../../registry.js";
 import { toast } from "../firstRun/parts.js";
 import { clockOf, dayKeyOf, isDesk, setState, shortDate } from "./parts.js";
+import { shareButtonsFor } from "../../shareAction.js";
 
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
@@ -165,6 +168,15 @@ export function meetingPage(ctx: BotsCtx, d: MeetingData | undefined) {
   if (m.noteId && !ro) body.push(primaryButton("Open the notes", { kind: "navigate", screenId: SCREENS.note, params: { id: m.noteId } } as ActionSpec, { size: "md" }));
 
   if (asks.length) body.push(col([sectionLabel("Questions it answered"), ...asks.map(askCard)], { gap: 8 }));
+
+  // Share with a space or person: the notes so far and the questions it answered, as text. Only when there is something to share.
+  const n = m.liveNotes;
+  const noted = [
+    ...(n?.points.length ? n.points.map((p) => plain(p)) : []),
+    ...(n?.actions.length ? ["Who does what:", ...n.actions.map((a) => (plain(a.who) ? `${plain(a.who)}: ${plain(a.what)}` : plain(a.what)))] : []),
+    ...(asks.length ? ["Questions it answered:", ...asks.map((a) => `Q: ${plain(a.question)}\nA: ${plain(a.answer)}`)] : []),
+  ];
+  if (noted.length) body.push(...shareButtonsFor(ctx, { kind: "text", title: plain(m.title) || "Meeting notes", text: noted.join("\n"), bot: "meet" }));
 
   return page(ctx, {
     back: true, backTitle: "Meetings", title, nav: MEET_SLUG, ...(desk ? { maxWidth: 720 } : {}),

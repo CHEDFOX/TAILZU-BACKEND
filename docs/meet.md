@@ -194,6 +194,8 @@ with no block between them, in a space that is not a draft. Nothing of this whil
   told, `space_meet_sent` ("Aanya sent the meeting bot to your meeting."). The admin who sent it can still stop it (Leave, Call it off) while
   the member is theirs; only the member changes how it answers.
 - **Rows.** A meeting keeps which space it came through and who sent it (`space_id`, `by_id`, migration 0083).
+- **Share.** A meeting with notes or answers has Share: the notes so far and the questions it answered, as text, to a space or a person
+  (docs/spaces.md "Sharing one thing"). None while Spaces is off.
 
 ## 6. The AI and the money
 

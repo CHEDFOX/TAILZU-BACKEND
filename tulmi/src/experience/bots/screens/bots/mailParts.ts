@@ -2,11 +2,41 @@
  * What the mail bot's screens share (docs/mail.md section 9): what they read, its words, and one message as a row.
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
-import type { MailAddressView, MailBusinessView, MailCounts, MailOverview, MailRunView } from "../../../../mail/digest.js";
+import type { MailAddressView, MailBusinessView, MailCounts, MailOverview, MailPerson, MailRunView } from "../../../../mail/digest.js";
 import { type BotsCtx, C, col, icon, row, SCREENS, statusMark, text } from "../../kit.js";
 import { clockOf, DAY, MIN, shortDate } from "./parts.js";
 
-export type { MailAddressView, MailBusinessView, MailCounts, MailOverview, MailRunView };
+export type { MailAddressView, MailBusinessView, MailCounts, MailOverview, MailPerson, MailRunView };
+
+/** A text from a person's name never starts with "@": the apps read that as a mention. */
+const plainName = (s: string | undefined): string => String(s ?? "").trim().replace(/^[@\s]+/, "");
+/** The first word of a person's name ("Ravi Kumar" -> "Ravi"), else "Someone". */
+export const firstName = (p: MailPerson | undefined): string => plainName(p?.name).split(/\s+/)[0] || "Someone";
+
+/** How the person reaches a business: their own (absent), a member's as the space's admin, or addresses given to them to answer. */
+export const accessOf = (b: Pick<MailBusinessView, "access">): "own" | "admin" | "handler" => b.access ?? "own";
+
+/** A business's chip on the page: its domain; "Ravi · domain" for a member's, "Ravi · hello@domain +1" for addresses given to the person. */
+export function businessChip(b: MailBusinessView): string {
+  const a = accessOf(b);
+  if (a === "admin") return `${firstName(b.owner)} · ${b.domain}`;
+  if (a === "handler") {
+    const first = b.addresses[0]?.email ?? b.domain;
+    return `${firstName(b.owner)} · ${first}${b.addresses.length > 1 ? ` +${b.addresses.length - 1}` : ""}`;
+  }
+  return b.domain;
+}
+
+/** "a, b and c". */
+export const listOf = (xs: string[]): string => (xs.length < 2 ? (xs[0] ?? "") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+
+/** The line under the head for a business that is not the person's own; none for their own. */
+export function accessLine(b: MailBusinessView): string | undefined {
+  const a = accessOf(b);
+  if (a === "admin") return `${firstName(b.owner)}'s business. As their space's admin you can see and change everything.`;
+  if (a === "handler") return `${firstName(b.owner)} gave you ${listOf(b.addresses.map((x) => x.email))} to answer.`;
+  return undefined;
+}
 
 /** The mail bot's routes (routes/bots/mail.ts). */
 export const MAIL = "/v1/mail";
@@ -53,11 +83,13 @@ export interface MailData {
 /** A business id as it may stand in a path or a param. */
 export const bizParam = (v: unknown): string => String(v ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 80);
 
-/** The business shown: the one asked for, else the first still being set up, else the first. */
+/** The business shown: the one asked for, else the first of their own still being set up, else their first, else the first. */
 export function shownBusiness(ctx: BotsCtx, o: MailOverview | undefined): MailBusinessView | undefined {
   const list = o?.businesses ?? [];
   const asked = bizParam(ctx.params.b);
-  return list.find((b) => b.id === asked) ?? list.find((b) => !b.ready) ?? list[0];
+  // Unasked, their own come first: a member's business (seen as their admin) or one they answer for never opens on its own.
+  const own = list.filter((b) => !b.access || b.access === "own");
+  return list.find((b) => b.id === asked) ?? own.find((b) => !b.ready) ?? own[0] ?? list[0];
 }
 
 export const KIND_LABEL: Record<string, string> = {

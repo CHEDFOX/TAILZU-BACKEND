@@ -193,6 +193,7 @@ in and he catches it, reads who it is from and tucks it away (`m.catch`); in the
 | The routes its pages call, passed to the worker inside the person's account | `tulmi/src/routes/bots/mail.ts` (the list at its top) |
 | The signed client, the account's hash, the notice's check | `tulmi/src/mail/worker.ts` |
 | Which person a hash is, for the push | `tulmi/src/mail/owners.ts`, migration 0080 |
+| Whose each business is, and who else reaches it in a space (section 9b) | `tulmi/src/mail/access.ts`, migration 0084 |
 | What the chat knows | `tulmi/src/mail/digest.ts` |
 | The page | `experience/bots/screens/bots/mailPage.ts` (bots.bot with slug "mail") |
 | The set-up cards | `experience/bots/screens/bots/mailCards.ts` |
@@ -260,6 +261,38 @@ everyday word; given a real name, it moves to NAME_ONLY).
 `mail_urgent` ("An order has a draft waiting for you.") open the reply; `mail_paused` ("Today's AI allowance is used up. New mail waits for
 you.") opens the page. They come as a customer is waiting: quietly in quiet hours, never with the mail bot turned off. Every other draft
 waits on the page.
+
+**Share** (on a conversation, under its actions): the conversation as text, to a space or a person, the way a meeting's notes are shared
+(docs/spaces.md "Sharing one thing"). None while Spaces is off.
+
+## 9b. In a space
+
+The rules are Spaces' own (docs/spaces.md: the admin, and the line about the admin), asked through the meeting bot's `tulmi/src/meet/people.ts`:
+a member is someone in a space the other person is the admin of (not a draft), who agreed to the line as it is now, with no block between
+them. Nothing of this while Spaces is off: then each person reaches only their own businesses. `tulmi/src/mail/access.ts` decides, on every
+call, how the person reaches the business it names (theirs, a member's as their admin, or addresses given to them), and the call to the
+worker is then made inside the business owner's account, whoever asks. Anything else is the same 404 as a business that isn't there.
+
+- **An address given to a member.** One address's screen has **Who answers it**: a chip for each member of the owner's spaces; a tap gives
+  the address to them, another takes it back (`POST` and `DELETE …/addresses/:aid/handlers`). The member is told, `space_mail_handle`
+  ("Aanya gave you support@leafandco.in to answer."). On their mail page the business is a chip "Aanya · support@leafandco.in", with a line
+  under the head saying which addresses are theirs. They see only those addresses' folders (never All mail, Sent, Drafts or the others),
+  the conversations that involve them and the AI's drafts for them, and they write and answer only from those addresses. The settings, the
+  records, the company personality, the rules and the other addresses stay the owner's. A push for mail that needs a person goes to the
+  address's handlers too, never with a word of the mail. The address list says who answers each ("· Ravi answers it").
+- **A member's own business: their admin has all of it.** When a member sets up a business, each of their admins is told, `space_mail`
+  ("Ravi set up mail for leafandco.in."), and reaches it in full, read and write, as its owner does: the mailbox, the drafts, sending, the
+  settings, the records, the personality, the rules, and giving its addresses. On the admin's page it is a chip "Ravi · leafandco.in", with
+  the line "Ravi's business. As their space's admin you can see and change everything." Their own business opens first; a member's never
+  opens by itself.
+- **The lists.** The overview and the list of businesses carry the person's own, each member's (`access: "admin"`, with its `owner`) and
+  the ones they answer for (`access: "handler"`, only their addresses). What waits for a person counts all three (for a handler, only their
+  addresses'); the day in numbers is their own. `people` is who they can give an address to.
+- **Rows** (migration 0084): `mail_businesses`, whose each business is (kept when it is made, filled in for an older one whenever its
+  owner's list is read; a business it hasn't heard of is the asker's own, and the worker says no if it isn't), and `mail_handlers`, an
+  address its owner gave a member. A row does nothing while that person is not a member (they left, a block, Spaces off) and works again
+  once they are; it goes when the owner takes the address back, removes the address or the business, or an account goes.
+- **The Oracle stays private**: no admin ever sees a member's chart or readings.
 
 ## 10. Still to come
 

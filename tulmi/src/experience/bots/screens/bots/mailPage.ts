@@ -1,7 +1,11 @@
 /**
  * THE MAIL BOT'S PAGE (src/mail, docs/mail.md section 9): bots.bot with slug "mail". Its chat is the usual bots.chat; this is its mail.
  *
- *   the head       back, the bot's name, the domain's main address and how it answers, and its settings; a chip per domain, and Add a domain
+ *   the head       back, the bot's name, the domain's main address and how it answers, and its settings; a chip per domain, and Add a domain.
+ *                  Every business the person reaches has a chip: their own by its domain, a member's (they are its space's admin) as "Ravi · domain",
+ *                  addresses an owner gave them to answer as "Ravi · hello@domain +1". Under the head, a line says whose it is: the admin can see
+ *                  and change everything; a handler is told which addresses are theirs. A handler's page has no settings, no set-up cards, and
+ *                  a Mailbox of only their addresses' folders (no All mail, no Sent and other folders); Write still writes from their addresses
  *   the cards      the set-up, over the page, while it is due (mailCards.ts): the business, its domain's records, its company personality (read
  *                  from its website, theirs to change), how it answers
  *   the mailbox    All mail, the main address's own and each alias's (once there are aliases), with what is unread, then Sent and the other
@@ -21,7 +25,9 @@ import {
 } from "../../kit.js";
 import { addBusiness, mailCards, mailCardsDue, mailCardsState } from "./mailCards.js";
 import { openInbox, writeButton } from "./mailInbox.js";
-import { type FolderView, MAIL_SLUG, type MailBusinessView, MODE_WORDS, type MailData, type MailRunView, runRow, shownBusiness } from "./mailParts.js";
+import {
+  accessLine, accessOf, businessChip, type FolderView, MAIL_SLUG, type MailBusinessView, MODE_WORDS, type MailData, type MailRunView, runRow, shownBusiness,
+} from "./mailParts.js";
 import { type BotPageData, askBot, chatBar, isDesk, lookOf } from "./parts.js";
 
 export type MailPageData = BotPageData & { mail?: MailData };
@@ -53,13 +59,15 @@ function stat(n: number, label: string): Node {
  * other folders, with what is unread on the right. Without its folders (the worker didn't answer them), All mail and Sent still open it.
  */
 function mailbox(b: MailBusinessView, folders: FolderView[] | undefined): Node {
+  const handler = accessOf(b) === "handler";
   const all = folders?.find((f) => f.key === "inbox");
   const own = (folders ?? []).filter((f) => f.kind === "address");
   const unread = (f?: FolderView) => (f?.unread ? String(f.unread) : undefined);
+  // A handler sees only the addresses given to them: no All mail, no Sent and other folders.
   const rows: Node[] = [
-    listRow({ label: "All mail", sub: own.length ? `Every address of ${b.domain}` : b.email, strong: !!all?.unread, ...(all?.unread ? { value: unread(all) } : {}), onPress: openInbox(b.id, "inbox") }),
+    ...(handler ? [] : [listRow({ label: "All mail", sub: own.length ? `Every address of ${b.domain}` : b.email, strong: !!all?.unread, ...(all?.unread ? { value: unread(all) } : {}), onPress: openInbox(b.id, "inbox") })]),
     ...own.map((f) => listRow({ label: f.email ?? f.name, sub: f.key === "main" ? "The main address's own" : `${f.name} folder`, strong: !!f.unread, ...(f.unread ? { value: unread(f) } : {}), onPress: openInbox(b.id, f.key) })),
-    listRow({ label: "Sent and other folders", sub: "Sent, Drafts, Archive, Spam, Trash", onPress: openInbox(b.id, "sent") }),
+    ...(handler ? [] : [listRow({ label: "Sent and other folders", sub: "Sent, Drafts, Archive, Spam, Trash", onPress: openInbox(b.id, "sent") })]),
   ];
   return col([
     row([sectionLabel("Mailbox"), grow(), writeButton(b.id)], { gap: 8, alignItems: "center" }),
@@ -86,7 +94,7 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
     text(bot.name, { size: desk ? 17 : 19, weight: 600, lineHeight: desk ? 22 : 24 }),
     meta(line, { size: 12, lines: 1 }),
   ], { gap: 1, flexShrink: 1 });
-  const settings = b ? [labelled(box([icon("settings", { size: 20, color: C.ink })], { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  const settings = b && accessOf(b) !== "handler" ? [labelled(box([icon("settings", { size: 20, color: C.ink })], { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
     open(SCREENS.mailSettings, { b: b.id })), "Settings")] : [];
   // The postie in the head, as the Oracle's page has its character: he stamps a letter and sends it off as the page opens.
   const postie = b && canBuddy(ctx) ? [botBuddy({
@@ -102,13 +110,14 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
 
   // A chip per domain (the page shows one at a time), and another domain a tap away: each has its own mailbox, addresses and personality.
   const switcher: Node[] = b ? [row([
-    ...list.map((x) => chip(x.domain, { selected: x.id === b.id, onPress: { kind: "navigate", screenId: SCREENS.bot, params: { slug: MAIL_SLUG, b: x.id }, replace: true } })),
+    ...list.map((x) => chip(businessChip(x), { selected: x.id === b.id, onPress: { kind: "navigate", screenId: SCREENS.bot, params: { slug: MAIL_SLUG, b: x.id }, replace: true } })),
     chip("Add a domain", { dashed: true, onPress: addBusiness() }),
   ], { gap: 8, flexWrap: "wrap" })] : [];
 
   // The set-up card's stage: the postie, catching the first letter as the card opens.
+  const who = b ? accessLine(b) : undefined;
   const cards = mailCards(ctx, m, { color: look.color, ...(canMoments(ctx) ? { avatar: POSTIE, moment: botMoment(ctx, "m.catch", "once") } : {}) });
-  const body: Node[] = [...cards, head, ...switcher];
+  const body: Node[] = [...cards, head, ...switcher, ...(who ? [meta(who, { size: 13, lineHeight: 18 })] : [])];
 
   if (m.down) {
     body.push(notice("The mail service couldn't be reached just now. Pull to try again.", { mark: "close" }));
@@ -125,7 +134,7 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
     if (!runs.length && !waiting.length) {
       body.push(col([
         notice(`Nothing has arrived yet. Mail starts once ${b.domain} points here.`, { mark: "mail" }),
-        quietButton("Domain records", open(SCREENS.mailDns, { b: b.id }), { size: "md" }),
+        ...(accessOf(b) === "handler" ? [] : [quietButton("Domain records", open(SCREENS.mailDns, { b: b.id }), { size: "md" })]),
       ], { gap: 6 }));
     }
     const t = m.overview?.today;

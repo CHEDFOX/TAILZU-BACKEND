@@ -36,7 +36,8 @@ export const needsBusiness = (ctx: BotsCtx, d: MailData): boolean => !d.down && 
 /** The other steps are due: the business shown is not set up yet, or its settings asked for them again. */
 export const needsSetup = (ctx: BotsCtx, d: MailData): boolean => {
   const b = shownBusiness(ctx, d.overview);
-  return !!b && !needsBusiness(ctx, d) && (!b.ready || ctx.params.setup === "1");
+  // Set-up is the owner's: a handler is given addresses to answer, never the business's records, personality or rules.
+  return !!b && b.access !== "handler" && !needsBusiness(ctx, d) && (!b.ready || ctx.params.setup === "1");
 };
 export const mailCardsDue = (ctx: BotsCtx, d: MailData): boolean => needsBusiness(ctx, d) || needsSetup(ctx, d);
 

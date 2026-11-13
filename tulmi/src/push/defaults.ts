@@ -195,6 +195,13 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_meet.screenId": "bots.meet.meeting",
     "push.space_meet_sent.enabled": true,
     "push.space_meet_sent.screenId": "bots.meet.meeting",
+    // The mail bot in a space (docs/mail.md, src/mail/access.ts): a member set up mail for a business (to the space's admin, who reaches it
+    // whole), or a business's owner gave a member one of its addresses to answer (to that member). Both open the mail bot on that business
+    // (data.slug "mail", data.b); never a word of the mail.
+    "push.space_mail.enabled": true,
+    "push.space_mail.screenId": "bots.bot",
+    "push.space_mail_handle.enabled": true,
+    "push.space_mail_handle.screenId": "bots.bot",
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
@@ -269,6 +276,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.space_meet.body": "took the meeting bot to {title}.",
     "push.space_meet_sent.title": "{name}",
     "push.space_meet_sent.body": "sent the meeting bot to {title}.",
+    "push.space_mail.title": "{name}",
+    "push.space_mail.body": "set up mail for {domain}.",
+    "push.space_mail_handle.title": "{name}",
+    "push.space_mail_handle.body": "gave you {address} to answer.",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -284,6 +295,7 @@ export const EVENT_PUSH_KINDS = [
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
   "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent",
+  "space_mail", "space_mail_handle",
   "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
   "mail_needs_you", "mail_urgent", "mail_paused",

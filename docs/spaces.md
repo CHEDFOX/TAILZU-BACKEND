@@ -259,7 +259,10 @@ the group told its bots, with no adding step. Any other bot reads a space only o
 
 The meeting bot follows the line about the admin too (docs/meet.md, "In a space"): a space's admin sees the meetings of each member who
 agreed to it, is told when one takes the bot to a meeting (`space_meet`), and may send the bot to a member's meeting for them
-(`space_meet_sent`). The Oracle stays private: no admin ever sees a member's chart or readings.
+(`space_meet_sent`). The mail bot too (docs/mail.md, "In a space"): a business's owner gives addresses to members to answer
+(`space_mail_handle`; they see and send only that address's mail), and a space's admin has a member's own business in full, read and
+write, and is told when one is set up (`space_mail`). A meeting's notes and a mail conversation can be shared to a space or a person
+like anything else. The Oracle stays private: no admin ever sees a member's chart or readings.
 
 ## Lists stay cheap
 
