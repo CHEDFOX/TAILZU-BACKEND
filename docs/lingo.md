@@ -76,6 +76,31 @@ The band that decides whether a language app feels fair is `close`:
 Every prompt is marked against a **list** of accepted answers, not one. A grader that knows only one right answer is
 the single most common reason a learner is told they are wrong when they are not.
 
+### Every script is a first-class script
+
+No language is the one this was built for with the rest bolted on. The rules are about **writing systems**, and the
+ones that are not alphabets get as much care as the ones that are.
+
+**The vowels of an abugida or an abjad are marks, not letters.** Unicode files Devanagari matras, Tamil vowel signs
+and Arabic harakat under `\p{M}`, so the obvious way to strip punctuation — keep `\p{L}`, `\p{N}` and spaces — eats
+them. It turns "coffee" in Devanagari into two bare consonants and a vocalised Arabic word into single letters. Both
+sides of a comparison are spoilt the same way, so **exact matches still pass and nothing looks broken**, while
+different words quietly collapse onto each other and Arabic written the ordinary way, unvocalised, is marked wrong
+against an answer that carries its harakat. `tidy` keeps every mark.
+
+`fold` then takes away only the marks **a writer routinely leaves off** — Latin, Greek and Cyrillic accents, Arabic
+harakat, Hebrew niqqud, the Indic nukta — listed as explicit code-point ranges in `grade.ts`, each with its reason.
+The Indic **vowel signs are deliberately not in that list**: Unicode calls them marks and they are nothing of the
+kind, since dropping one makes a different word.
+
+**A script written a character at a time gets no slip budget at all.** Chinese, Japanese and Korean are not spelt
+out letter by letter; each character is picked whole off a candidate list, so a slipped stroke is not something that
+happens and a neighbouring character is simply a different word. `slipBudget` returns 0 for them, and `gradeSpoken`
+gives them no extra room either — the machine in the middle does not slip a stroke.
+
+The word-order check splits on spaces, so a script that does not put spaces between its words simply never matches
+there, which is the right answer for it.
+
 **Speech is marked more kindly than typing** (`gradeSpoken`). Speech-to-text drops the marks over letters, invents
 punctuation and mishears small words, and none of that is the learner's fault; spelling is not what is being tested
 out loud. It gets one slip more than the typed budget, and the first slip still passes outright.
@@ -98,10 +123,15 @@ The first four exist to get an item ready for the last two. They are the whole o
 ## 6. What is built
 
 Built, tested and typechecked: the tables, the shapes (`types.ts`), the scheduler (`schedule.ts`) and the marking
-(`grade.ts`), with 39 tests over the two pure modules.
+(`grade.ts`), with 46 tests over the two pure modules, seven of them on scripts that are not alphabets.
 
-Not built yet: the store, the routes, the bot's definition in `bots/builtin.ts`, its page, the session builder, the
-seeding of a new course, and the call that rings somebody to talk. They come next, in that order.
+Not built yet: the store, the routes, the bot's definition in `bots/builtin.ts`, its page, the session builder and
+the call that rings somebody to talk. They come next, in that order.
+
+There is no seeded course and there is not going to be one. A course cannot be hand-written a hundred times over, so
+the items come from the model and from use: `source` records which, and the table fills with what this person
+actually reaches for. A word list for a particular pair can be poured in later where one exists, but nothing waits
+on it and no pair is anybody's first.
 
 ## 7. Tests
 

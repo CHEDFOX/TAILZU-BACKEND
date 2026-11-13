@@ -42,10 +42,10 @@ describe("how far apart two answers are", () => {
   });
 
   it("allows a short answer no slips at all", () => {
-    expect(slipBudget(4)).toBe(0);
-    expect(slipBudget(7)).toBe(1);
-    expect(slipBudget(20)).toBe(2);
-    expect(slipBudget(40)).toBe(3);
+    expect(slipBudget("abcd")).toBe(0);
+    expect(slipBudget("abcdefg")).toBe(1);
+    expect(slipBudget("a".repeat(20))).toBe(2);
+    expect(slipBudget("a".repeat(40))).toBe(3);
   });
 });
 
@@ -136,5 +136,55 @@ describe("one of a few offered meanings", () => {
   it("is right or wrong, with nothing in between", () => {
     expect(gradeChoice(2, 2, ["a", "b", "c"])).toMatchObject({ verdict: "right", matched: "c" });
     expect(gradeChoice(0, 2, ["a", "b", "c"])).toMatchObject({ verdict: "wrong", why: "word", matched: null });
+  });
+});
+
+describe("every script is a first-class script", () => {
+  // The vowels of an abugida or an abjad are MARKS to Unicode, not letters. A grader that strips "everything that is
+  // not a letter" eats them, and then two different words quietly become the same answer.
+  it("keeps a word whole in a script whose vowels are marks", () => {
+    for (const w of ["\u0915\u0949\u095E\u0940", "\u0B95\u0BBE\u0BAA\u0BBF", "\u0C95\u0CBE\u0CAB\u0CBF"]) {
+      expect(tidy(w)).toBe(w.normalize("NFC").toLowerCase());
+      expect(tidy(w)).not.toContain(" ");
+    }
+  });
+
+  it("does not let two different words collapse onto each other", () => {
+    // "coffee" and "phlegm" share their consonants and differ only in the vowel marks.
+    expect(gradeText("\u0915\u092B", ["\u0915\u0949\u095E\u0940"])).toMatchObject({ verdict: "wrong" });
+  });
+
+  it("accepts Arabic written the ordinary way against an answer that carries its harakat", () => {
+    const bare = "\u0642\u0647\u0648\u0629";
+    const vocalised = "\u0642\u064E\u0647\u0652\u0648\u064E\u0629";
+    expect(fold(bare)).toBe(fold(vocalised));
+    expect(gradeText(bare, [vocalised]).verdict).not.toBe("wrong");
+  });
+
+  it("treats an Indic nukta as a mark a writer leaves off, not a different word", () => {
+    expect(gradeText("\u0915\u0949\u092B\u0940", ["\u0915\u0949\u095E\u0940"]).verdict).not.toBe("wrong");
+  });
+
+  it("forgives nothing in a script written a character at a time", () => {
+    // Characters are picked off a list, not spelt out, so a slipped stroke is not a thing that happens: a
+    // neighbouring character is simply a different word.
+    expect(slipBudget("\u6211\u559C\u6B22\u5496\u5561")).toBe(0);
+    expect(slipBudget("\u30B3\u30FC\u30D2\u30FC\u304C\u597D\u304D")).toBe(0);
+    expect(gradeText("\u30B3\u30FC\u30D2\u30FC\u304C\u597D\u3055", ["\u30B3\u30FC\u30D2\u30FC\u304C\u597D\u304D"]))
+      .toMatchObject({ verdict: "wrong", why: "word" });
+    expect(gradeSpoken("\u6211\u559C\u6B22\u8336", ["\u6211\u559C\u6B22\u5496\u5561"]))
+      .toMatchObject({ verdict: "wrong" });
+  });
+
+  it("still marks those scripts right when they are right", () => {
+    expect(gradeText("\u6211\u559C\u6B22\u5496\u5561", ["\u6211\u559C\u6B22\u5496\u5561"])).toMatchObject({ verdict: "right" });
+    expect(gradeText("\u0915\u0949\u095E\u0940", ["\u0915\u0949\u095E\u0940"])).toMatchObject({ verdict: "right" });
+  });
+
+  it("says nothing in English: every reason is a code", () => {
+    const reasons = ["", "accent", "spelling", "order", "word", "silence"];
+    for (const m of [gradeText("", ["a"]), gradeText("pato", ["gato"]), gradeText("como estas", ["c\u00F3mo est\u00E1s"])]) {
+      expect(reasons).toContain(m.why);
+    }
   });
 });
