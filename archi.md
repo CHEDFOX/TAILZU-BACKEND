@@ -2,6 +2,8 @@
 
 ## Working rules (every change, every session)
 
+- **Read `WORKING-ON.md` first.** It says what other sessions are building right now and which files they hold. Add your own
+  item when you start something big, keep off files another item holds, and remove your item when it lands.
 - **Branch.** Work on `main` in all four repos (TAILZU-BACKEND, TAILZU-FRONTEND, TAILZU-DESKTOP, TAILZU-WEB), starting from the latest
   `main`. No pull requests unless the owner asks.
 - **Organising.** One feature or component per file, in folders by area; no catch-all files. Adding, moving or removing a file means
