@@ -326,6 +326,12 @@ docker compose down                            # stop Flow (other apps unaffecte
 git pull && docker compose up -d --build       # deploy a new version
 ```
 
+A deploy runs the new database migrations itself, while the new image is built and before the running server is touched (the
+Dockerfile's `migrate` stage, `tulmi/supabase/migrate-pending.sh`, with `tulmi/.env` as a build secret): new code never runs before its
+tables, and a failed migration stops the build with its error while the server keeps serving. It runs every migration newer than
+`tulmi/supabase/LIVE_MIGRATION`; move that number up once a deploy has run them. Every push to `main` deploys itself once CI passes
+(`.github/workflows/deploy.yml`).
+
 ## Why this won't break your other apps
 
 - Flow's container is isolated; the compose project is namespaced (`tulmi-*`),
@@ -1104,3 +1110,147 @@ the safety model, the endpoint and its limits: `docs/bots.md`.
    A bot keeps, for its owner and until they forget it or delete the bot or the account, a few short facts they told it and a short summary of the talk.
    An app calling with a key never reads or writes that memory.
 7. **Back out:** `BOTS=false` and a restart. The routes answer 404; the rows and keys stay, and work again when it is turned back on.
+
+### The Oracle: a bot that reads a person's sky (`ORACLE_WORKER_URL`)
+
+A built-in bot that answers questions about a person's life from their birth chart, with Plutto's oracle as its engine, run as a container of its own
+(`oracle-worker/`). It needs `BOTS` on (above). Without `ORACLE_WORKER_URL` and `ORACLE_WORKER_SECRET` the Oracle is not among the bots and
+`/v1/oracle/*` answers `404 oracle_off`. Full story, the models and the money: `docs/oracle.md`.
+
+1. **Migration.** 0078 runs on deploy with the others (`tulmi/supabase/migrate-pending.sh`; by hand:
+   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0078"`). It makes `oracle_people` (a person's birth details and
+   the route their last question took), owner-only, deleted with the account. Without `SUPABASE_SERVICE_KEY` it lives in memory.
+2. **Start it, and switch it on.** The worker reads `tulmi/.env`, as the backend does: the keys are the ones it already has (`OPENROUTER_API_KEY`,
+   and `OPENAI_API_KEY` for the search by meaning). `deploy/oracle-up.sh` makes `ORACLE_WORKER_SECRET` and sets `ORACLE_WORKER_URL` there when they
+   are not, and builds and starts the worker; `ship.sh` then restarts the backend with the two settings. Neither prints a value.
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/oracle-up.sh && ./deploy/ship.sh'
+   ssh root@91.108.104.168 'cd ~/tulmi && docker compose --profile oracle ps'     # oracle-worker: healthy
+   ```
+
+   Once it is set up, **`./deploy/ship.sh` rebuilds and restarts the worker with the backend** and checks that it answers with its model keys (a
+   FAIL line in its verdict when not), so a change under `oracle-worker/`, or a key changed in `tulmi/.env`, reaches it at the next deploy.
+
+   It wants about 1 GB of memory (`ORACLE_WORKER_MEMORY`) and one CPU (`ORACLE_WORKER_CPUS`), and answers 8 questions at
+   once (`ORACLE_WORKER_CONCURRENCY`; one more waits 20 seconds, then is told it is busy). It has no port on the host, runs read-only as a user that
+   is not root, and keeps nothing: its scratch is in `/tmp`, gone with the container.
+   **Place suggestions (recommended).** The birthplace card suggests towns and cities as the person types. For Google's suggestions, put
+   `GOOGLE_PLACES_API_KEY=<the key>` in `tulmi/.env` by hand (**a secret**; the key Plutto uses works: it needs the Places API enabled in its Google
+   Cloud project), then `./deploy/ship.sh`. Without it the card uses the server's own geocoder (the cities table, then `PLACES_GEOCODER`).
+3. **Check.** `docker compose exec backend wget -qO- http://oracle-worker:8000/healthz` answers `{"ok":true,"models":true,"meaning":true}`
+   (`"models":false`: there is no `OPENROUTER_API_KEY` in `tulmi/.env`, or the worker was not restarted since it was added; `"meaning":false`: the same for
+   `OPENAI_API_KEY`, and every question shows the model the whole list of subsystems, slower and dearer). In the Bots app, pick the Oracle in Ask's list of
+   bots (or write "@oracle"); its cards ask for the birth date and time, the place (with suggestions as you type) and, if the app lacks them,
+   name and gender. Then ask it something ("will this year bring a new job?"). The words arrive as they are
+   written: in the model test the first came 6 to 21 seconds after the question (the engine's own work, then the model thinking), the whole
+   answer in 13 to 27. `docker compose logs oracle-worker` shows which model answered when one was down, never what was asked.
+4. **Licence.** The engine computes the planets with the Swiss Ephemeris (`pyswisseph`), AGPL-3.0 unless the Swiss Ephemeris Professional Licence is
+   bought from Astrodienst: under the AGPL, the people using the Oracle must be able to get the worker's source.
+5. **Add to the privacy policy.** For the Oracle, a person's birth date, time and place are kept until they change them, delete their data or their
+   account; what they ask goes to the model providers like any bot's message, and nothing of it is logged.
+6. **Back out:** remove `ORACLE_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh`; then `docker compose --profile oracle stop oracle-worker`. The
+   rows stay.
+
+### Mail: a bot that runs a business's email (`MAIL_WORKER_URL`)
+
+The mail bot's engine, copied from Xooteq Mail and tuned for any business, runs as a container of its own (`mail-worker/`). Each business's
+mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/postal`), which stays as it is. Full story: `docs/mail.md`.
+
+1. **The mail server first.** Xooteq Mail's mail server must be set up and running here (xooteq-mail's `workspace-setup.sh`), with port 25 open.
+2. **Start it, and switch it on.** `deploy/mail-up.sh` takes the mail server's admin login, mail domain and the VPS's address from
+   `/opt/postal/.env` into `tulmi/.env`, makes the worker's two secrets and its address, builds and starts it on the mail server's network, and
+   registers its own new-mail webhook there (beside Xooteq Mail's, which is not touched); `ship.sh` then restarts the backend with the settings.
+   Neither prints a value. The AI is `OPENROUTER_API_KEY`, which the server already has.
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/mail-up.sh && ./deploy/ship.sh'
+   ```
+
+   From then on **`./deploy/ship.sh` rebuilds and restarts the worker with the backend** and checks that it answers set up (a FAIL line in its
+   verdict when not). If the mail server's Docker network is not `postal_default`, put `MAIL_STALWART_NETWORK=<it>` in the `.env` beside
+   `docker-compose.yml`.
+3. **Check.** `docker compose exec backend wget -qO- http://mail-worker:5300/healthz` answers `{"ok":true,"ready":true}` (with `"missing"`
+   naming what is not set otherwise). In Xooteq Mail's own dashboard, the mail bot's businesses show among the mailboxes it did not make.
+   In X0 Bot the mail bot is among the bots (its name is a placeholder until it is given one); its set-up cards make a business. Its tables
+   are made by the deploy itself: `mail_owners` (migration 0080, for the push when mail needs a person) and `mail_businesses` and
+   `mail_handlers` (0084, the mail bot in a space: whose each business is, and the addresses an owner gave members to answer; by hand:
+   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0084"`).
+4. **X0 Bot's name in the records.** Out of the box the records a business adds name the mail server's own domain
+   (`mx.mail.xooteq.online`). To have them say X0 Bot's, make two names at x0bot.com's DNS (Hostinger) that lead to the same server, then
+   switch them on. The mail server, and Xooteq Mail on it, is not changed; domains already pointed at the old names keep working and are
+   still shown as found.
+
+   | Type | Name (at x0bot.com) | Value |
+   | --- | --- | --- |
+   | A | `mx.mail` | `91.108.104.168` (an A record: an MX may not point at a CNAME) |
+   | TXT | `spf.mail` | the same text as `spf.mail.xooteq.online` (`dig +short TXT spf.mail.xooteq.online`) |
+
+   Once `dig +short A mx.mail.x0bot.com` and `dig +short TXT spf.mail.x0bot.com` answer, put `MAIL_BRAND_DOMAIN=mail.x0bot.com` in
+   `tulmi/.env` and `./deploy/ship.sh`. The records then read `MX 10 mx.mail.x0bot.com` and `v=spf1 mx include:spf.mail.x0bot.com ~all`.
+   Mail apps (the settings' incoming and outgoing servers, and the optional SRV records) keep the mail server's own name: a mail app checks
+   the server's certificate against it. When that certificate also covers `mx.mail.x0bot.com` and `smtp.mail.x0bot.com` (add an A record
+   for `smtp.mail` too), set `MAIL_APP_DOMAIN=mail.x0bot.com` and ship again. What stays the mail server's own either way: its name in the
+   `Received` lines of a message's headers (it is the server Xooteq Mail shares).
+5. **Add to the privacy policy.** For the mail bot: a business's mail is kept on our mail server in its own mailbox until the business or the
+   account is deleted; what the AI reads of a message goes to the model provider to write the reply; nothing of it is logged; a push says
+   the business and the kind of message, never its words.
+6. **Back out:** remove `MAIL_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh` (the mail bot leaves X0 Bot); then
+   `docker compose --profile mail stop mail-worker`. The mailboxes and their mail stay on the mail server.
+
+
+### Meetings: a bot in your video calls (`RECALL_API_KEY`)
+
+A built-in bot that a person sends into a Google Meet, Zoom, Teams or Webex call with a pasted link. It takes the notes (each meeting becomes a
+Note), answers what people ask it in the call, out loud or in the chat, and can join the calendar's meetings by itself. Recall.ai sends the bot
+into the call; there is no container to run. It needs `BOTS` on (above). Without `RECALL_API_KEY` the meeting bot is not among the bots and
+`/v1/meet/*` answers `404 meet_off`. Full story, the money and the privacy: `docs/meet.md`.
+
+1. **A Recall.ai account.** Sign up at recall.ai on **Pay As You Go**. In its dashboard, make an **API key**, and read the **workspace
+   verification secret** (API Keys, the one that starts `whsec_`). Pay As You Go accounts are in the region `us-west-2`.
+2. **Put them in `tulmi/.env` on the server.** Three keys, two of them **secrets**. `PUBLIC_ORIGIN` must already be the API's public https
+   origin: the bot's live webhook and its stage page are addressed from it.
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && nano tulmi/.env'
+   ```
+
+   ```
+   RECALL_API_KEY=<the API key>
+   RECALL_REGION=us-west-2
+   RECALL_WEBHOOK_SECRET=whsec_<the verification secret>
+   PUBLIC_ORIGIN=https://api.x0bot.com
+   ```
+
+   Optional: `MEET_MODEL` (the model that answers and keeps the notes so far; Claude Haiku 5.5 by default), `MEET_SPEAKING_VARIANT` (`web_4_core`, or
+   `web` for the cheaper bot that speaks), `MEET_DAILY_MINUTES` (a person's bot minutes per 24 hours, 240 by default) and `MEET_LANGUAGE` (the
+   language it listens for, `en`). With `RECALL_API_KEY` and no `RECALL_WEBHOOK_SECRET` the server warns at start: bots can join, but Recall's
+   status webhook is refused.
+3. **Tell Recall where to send the bot's status.** In Recall's dashboard, Webhooks, add the endpoint
+
+   ```
+   https://api.x0bot.com/v1/meet/recall
+   ```
+
+   with these events: `bot.joining_call`, `bot.in_waiting_room`, `bot.in_call_not_recording`, `bot.in_call_recording`, `bot.call_ended`,
+   `bot.done` and `bot.fatal`. This is set once. (The live transcript and chat need no setting: each bot is given its own address as it is made.)
+4. **Migration and deploy.** 0082 and 0083 run on deploy with the others (`tulmi/supabase/migrate-pending.sh`; by hand:
+   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0082 && ./deploy/migrate.sh 0083"`; 0083 adds a
+   meeting's space and who sent the bot, for a space's admin sending it for a member). It makes `meet_settings`, `meetings` and
+   `meeting_asks`, the server's alone and deleted with the account. Without `SUPABASE_SERVICE_KEY` they live in memory.
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/ship.sh'
+   ```
+5. **Check.** In X0 Bot the meeting bot ("Meetings", a placeholder name) is among the bots. Paste a Google Meet link on its page and tap Join;
+   let it in from the call (a push says it is waiting). Say "X0, what have we covered so far?": it answers out loud, and in the chat with
+   "Answer out loud" off. When the call ends, a push says the notes are ready and opens the note. `docker compose logs backend` shows a failed
+   call by its kind, never a word that was said.
+6. **The stage's event stream must not be buffered.** The speaking bot's page listens to `/v1/meet/stage/<token>/events`. The route sends
+   `X-Accel-Buffering: no`, which nginx honours, so nothing needs changing unless a proxy in front strips that header; then turn buffering off for
+   `/v1/meet/stage/` (`proxy_buffering off;`) there. The symptom is a bot that answers in the chat but stays silent out loud.
+7. **Add to the privacy policy.** For the meeting bot: everyone in the call sees the bot join and its chat line; the transcript is kept in the
+   person's Note until they delete it or their account; we keep no audio, Recall keeps its recording for 7 days; what the bot answers from is the
+   meeting's transcript, never the person's other data; a push never carries a word from the call.
+8. **Back out:** remove `RECALL_API_KEY` from `tulmi/.env` and `./deploy/ship.sh` (the meeting bot leaves X0 Bot). Bots already in a call stay
+   there until it ends; remove the endpoint in Recall's dashboard if you like. The rows and the notes stay.

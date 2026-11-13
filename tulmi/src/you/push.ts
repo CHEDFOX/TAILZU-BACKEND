@@ -11,9 +11,14 @@
  *                Plan Ease's own kinds (botsBots/planKinds.ts: plan_event, plan_todo, the day notes...) are told apart there, each
  *                with its group: Plan Ease's (as the reminders), a person's word (as people), or never a sound (the morning note)
  *   routines     a routine they set up ran, or paused itself: sent (they asked for it at that time); in quiet hours without a sound
- *   people       someone in a space gave them a task, planned something for them, messaged them, asked to join or let them in: sent;
- *                in quiet hours without a sound. A person's word, not a bot's: no bot being off stops it (a muted chat sends none:
- *                botsBots/threads.ts)
+ *   people       someone in a space gave them a task, planned something for them, messaged them, asked to join or let them in, took
+ *                the meeting bot to a meeting (to the space's admin) or sent it to theirs (to a member), set up mail for a business (to
+ *                the space's admin) or gave them one of its addresses to answer (to a member): sent; in quiet hours without a sound. A
+ *                person's word, not a bot's: no bot being off stops it (a muted chat sends none: botsBots/threads.ts)
+ *   mail         the mail bot: a business's message needs their answer, an urgent one has a draft, or its AI paused for the day: sent; in
+ *                quiet hours without a sound; not with the mail bot turned off
+ *   meet         the meeting bot: the notes are ready, it waits to be let in, or it could not join: sent; in quiet hours without a sound;
+ *                not with the meeting bot turned off
  *
  * A person who never opened the screen has the defaults (settings.ts), which are what the pushes did before it: nothing changes for them.
  */
@@ -27,8 +32,15 @@ import type { Spending } from "./limits.js";
 
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
+/** The mail bot's (push/defaults.ts): a customer is waiting, so they go, quietly in quiet hours; not with the mail bot off. */
+const MAIL = new Set(["mail_needs_you", "mail_urgent", "mail_paused"]);
+/** The meeting bot's (push/defaults.ts): a call is waiting or its notes are ready, so they go, quietly in quiet hours; not with the meeting bot off. */
+const MEET = new Set(["meet_ready", "meet_waiting", "meet_failed"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */
-const PEOPLE = new Set(["space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed"]);
+const PEOPLE = new Set([
+  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent",
+  "space_mail", "space_mail_handle",
+]);
 
 /** The person's minute of the day, in their own time. */
 const minuteOf = (now: number, tzOffsetMinutes: number): number => {
@@ -43,6 +55,9 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   if (NEEDS_YOU.has(kind)) return quiet ? "silent" : "send";
   if (kind === "bots_summary") return !n.summary ? "drop" : quiet ? "silent" : "send";
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
+  // A call (botsBots/planCall.ts): only with Calls on, Plan Ease on, and never in quiet hours (then the push goes, without a sound).
+  if (kind === "plan_call") return n.calls && !n.botsOff.includes("plan") && !quiet ? "send" : "drop";
+  if (kind === "plan_call_missed") return "send";
   // Every kind of Plan Ease's, from its one list (planKinds.ts), so a new one is never left to the Keylessbord branch below.
   const plan = planVerdictGroup(kind);
   if (plan === "plan") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
@@ -51,6 +66,8 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
   // A person's word that never makes a sound (who took a family ask, the one nudge): sent, whatever Plan Ease's switch says.
   if (plan === "quiet") return "silent";
   if (PEOPLE.has(kind)) return quiet ? "silent" : "send";
+  if (MAIL.has(kind)) return n.botsOff.includes("mail") ? "drop" : quiet ? "silent" : "send";
+  if (MEET.has(kind)) return n.botsOff.includes("meet") ? "drop" : quiet ? "silent" : "send";
   if (kind === "routine_done" || kind === "routine_failed") return quiet ? "silent" : "send";
   if (kind === "ops_alert") return "send";
   if (DONE.has(kind)) {

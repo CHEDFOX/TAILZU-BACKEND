@@ -350,6 +350,17 @@ export class Threads {
     return { people: [...people.values()].sort((a, b) => a.name.localeCompare(b.name)), groupSpaces };
   }
 
+  /**
+   * Whether this person muted their one-to-one chat with `otherId` (Plan Ease's follow-through respects it: no ping from that person's
+   * items, planFollow.ts). False when there is no such chat.
+   */
+  async directMuted(userId: string, otherId: string): Promise<boolean> {
+    const [t] = await this.threads.select({ direct_key: [userId, otherId].sort().join(":") }, { limit: 1 });
+    if (!t) return false;
+    const [me] = await this.people.select({ thread_id: t.id, user_id: userId }, { limit: 1 });
+    return me?.muted === true;
+  }
+
   // ------------------------------------------------------------------ starting one
 
   private async addMember(threadId: string, userId: string, name: string): Promise<void> {

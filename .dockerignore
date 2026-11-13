@@ -47,8 +47,12 @@ tulmi/scripts/
 !tulmi/scripts/live-check.ts
 !tulmi/scripts/speech-check.ts
 !tulmi/scripts/apple-signin-check.ts
-# Supabase SQL ships out-of-band via the SQL editor, not in the image.
+# Supabase SQL is not in the image. The migrations, their runner and LIVE_MIGRATION are in the build context for the Dockerfile's
+# migrate stage, which runs the new ones on the database during a deploy build (none of it reaches the runtime image).
 tulmi/supabase/
+!tulmi/supabase/migrations/
+!tulmi/supabase/migrate-pending.sh
+!tulmi/supabase/LIVE_MIGRATION
 # The reality-check harness (recorded runs, bake-offs) runs from a laptop, never in the image. Its bake-off reads
 # scripts/eval-prompts.ts, which is left out above, so with it in the context `tsc` failed the image build.
 tulmi/e2e/

@@ -78,7 +78,10 @@ describe("bots.home", () => {
       "Xode", "Working · fixing cart", "Keylessbord", "Your keyboard, everywhere", "Plan Ease", "Make a bot", "Bots", "Activity", "You"]) {
       expect(words, w).toContain(w);
     }
-    expect(words).not.toContain("Travel bot");
+    // The board's three tiles; every other bot is a chip under them ("More bots"), so none is out of reach on the phone.
+    expect(words).toContain("More bots");
+    expect(words.filter((w) => w === "Travel bot")).toHaveLength(1);
+    expect(words.filter((w) => w === "Gym bot")).toHaveLength(1);
     const acts = presses(s.root!);
     expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.code" });
     expect(acts).toContainEqual({ kind: "navigate", screenId: "bots.keybot" });

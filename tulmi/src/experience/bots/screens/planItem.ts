@@ -16,8 +16,10 @@ import {
   SCREENS, secondaryButton, sectionLabel, segmented, seq, text, when, type BotsCtx,
 } from "../kit.js";
 import { screen, type BotsScreen } from "../registry.js";
-import { planOn } from "../../../botsBots/planSwitch.js";
+import { followOn, planOn } from "../../../botsBots/planSwitch.js";
+import type { ItemFollow } from "../../../botsBots/planFollow.js";
 import { captureFoot, duePage, linkedPage } from "./bots/planIn.js";
+import { followSection, followState, importanceField } from "./bots/planFollow.js";
 import { setState } from "./bots/parts.js";
 
 /**
@@ -54,6 +56,8 @@ interface Details {
   moves: Array<{ at: number; day: string; time: string; label: string }>;
   leave?: string;
   note?: { look: Parameters<typeof personBot>[1]; name: string; text: string };
+  /** Follow-through (PLAN_V2_FOLLOW): Must not miss, Who, and the open follow's line. */
+  follow?: ItemFollow;
 }
 interface ItemData { event?: EventView; task?: TaskView; meeting?: Meeting; details?: Details }
 
@@ -98,9 +102,9 @@ const inputBox = (children: Node[]): Node => row(children, { gap: 8, borderWidth
 const labelledField = (label: string, f: Node): Node => col([sectionLabel(label), inputBox([f])], { gap: 8 });
 const section = (label: string, kids: Node[]): Node => col([sectionLabel(label), ...kids], { gap: 8 });
 
-/** Today and the next six days, and `extra` (the day it is on) when it is not among them. */
-function dayOptions(ctx: BotsCtx, extra?: string | null): Array<{ label: string; value: string }> {
-  const keys = Array.from({ length: 7 }, (_, i) => keyOf(ctx, ctx.live.now + i * DAY));
+/** Today and the next six days, and `extra` (the day it is on) when it is not among them. Also "Plan something"'s When chips. */
+export function dayOptions(ctx: BotsCtx, extra?: string | null, count = 7): Array<{ label: string; value: string }> {
+  const keys = Array.from({ length: count }, (_, i) => keyOf(ctx, ctx.live.now + i * DAY));
   if (extra && !keys.includes(extra)) keys.unshift(extra);
   return keys.map((k) => ({ label: dayName(ctx, k) === keyWords(k) ? `${WEEKDAYS[keyDate(k).getUTCDay()]} ${keyDate(k).getUTCDate()}` : dayName(ctx, k), value: k }));
 }
@@ -109,11 +113,12 @@ const LENGTHS = [{ label: "30 min", value: "30" }, { label: "1 h", value: "60" }
 const REPEATS = [{ label: "Once", value: "" }, { label: "Daily", value: "daily" }, { label: "Weekdays", value: "weekdays" }, { label: "Weekly", value: "weekly" }, { label: "Monthly", value: "monthly" }, { label: "Yearly", value: "yearly" }];
 const REMINDS = [{ label: "None", value: "" }, { label: "At the time", value: "0" }, { label: "15 min before", value: "15" }, { label: "1 h before", value: "60" }, { label: "A day before", value: "1440" }];
 
-function eventFields(ctx: BotsCtx, o: { extraDay?: string | null; series?: boolean } = {}): Node[] {
+function eventFields(ctx: BotsCtx, o: { extraDay?: string | null; series?: boolean; add?: boolean } = {}): Node[] {
   return [
     labelledField("What", field("ttl", "ttl", "Dentist Fri 5 pm")),
     ...(o.series ? [] : [section("Day", [chips(dayOptions(ctx, o.extraDay), "day")])]),
     section("Time", [chips([{ label: "All day", value: "" }, ...TIMES], "time"), inputBox([field("time", "time", "Or type a time, like 17:30")])]),
+    ...(o.add && followOn() ? [importanceField()] : []),
     ...(defaultsDecide() ? [] : [when({ truthy: "time" }, section("How long", [segmented(LENGTHS, "mins")]))]),
     labelledField("Where (if it matters)", field("place", "place", "Indiranagar, Dr. Mehta's clinic…")),
     section("Repeat", [chips(REPEATS, "repeat")]),
@@ -122,23 +127,27 @@ function eventFields(ctx: BotsCtx, o: { extraDay?: string | null; series?: boole
   ];
 }
 
-function taskFields(ctx: BotsCtx, o: { extraDay?: string | null } = {}): Node[] {
+function taskFields(ctx: BotsCtx, o: { extraDay?: string | null; add?: boolean } = {}): Node[] {
   return [
     labelledField("To do", field("ttl", "ttl", "Pay the electricity bill by Fri")),
     section("Due", [chips([{ label: "No day", value: "" }, ...dayOptions(ctx, o.extraDay)], "day")]),
     when({ truthy: "day" }, section("Time", [chips([{ label: "Any time", value: "" }, ...TIMES], "time"), inputBox([field("ttime", "time", "Or type a time, like 17:30")])])),
+    ...(o.add && followOn() ? [importanceField()] : []),
     ...(defaultsDecide() ? [] : [when({ truthy: "day" }, section("Remind me", [chips(REMINDS.filter((r) => r.value !== "15"), "tremind")]))]),
     labelledField("Notes", field("notes", "notes", "The account number is on the last bill", { multiline: true })),
   ];
 }
 
 const tz = (ctx: BotsCtx) => ctx.tzOffsetMinutes;
-const eventBody = (ctx: BotsCtx, o: { day?: boolean } = {}): Record<string, unknown> => ({
+const eventBody = (ctx: BotsCtx, o: { day?: boolean; add?: boolean } = {}): Record<string, unknown> => ({
   title: "$state.ttl", ...(o.day === false ? {} : { day: "$state.day" }), time: "$state.time", minutes: "$state.mins", place: "$state.place", notes: "$state.notes",
   repeat: "$state.repeat", ...(defaultsDecide() ? {} : { remind: "$state.remind" }), tz: tz(ctx),
+  // How important (follow-through): empty means the rules decide.
+  ...(o.add && followOn() ? { importance: "$state.imp" } : {}),
 });
-const taskBody = (ctx: BotsCtx): Record<string, unknown> => ({
+const taskBody = (ctx: BotsCtx, o: { add?: boolean } = {}): Record<string, unknown> => ({
   title: "$state.ttl", day: "$state.day", time: "$state.time", notes: "$state.notes", ...(defaultsDecide() ? {} : { remind: "$state.tremind" }), tz: tz(ctx),
+  ...(o.add && followOn() ? { importance: "$state.imp" } : {}),
 });
 
 /** Only when the field at `path` has something in it. */
@@ -161,15 +170,15 @@ function addPage(ctx: BotsCtx) {
   const day = isKey(ctx.params.day) ? ctx.params.day : keyOf(ctx, ctx.live.now);
   const save = ifFilled("ttl", {
     kind: "condition", if: { eq: ["kind", "task"] },
-    then: call("POST", `${CAL}/tasks`, taskBody(ctx), { ok: done("Added to your to-dos"), fail: failed("Couldn't add it. Check the day and the time.") }),
-    else: call("POST", `${CAL}/events`, eventBody(ctx), { ok: done("On your calendar"), fail: failed("Couldn't add it. Check the day and the time.") }),
+    then: call("POST", `${CAL}/tasks`, taskBody(ctx, { add: true }), { ok: done("Added to your to-dos"), fail: failed("Couldn't add it. Check the day and the time.") }),
+    else: call("POST", `${CAL}/events`, eventBody(ctx, { add: true }), { ok: done("On your calendar"), fail: failed("Couldn't add it. Check the day and the time.") }),
   }, "Say what it is first");
   return shell(ctx, "Add to your Plan", defaultsDecide() ? "Only you see it. Plan Ease reminds you when it's time." : "Only you see it. Plan Ease reminds you when you ask.", [
     segmented([{ label: "Event", value: "event" }, { label: "To-do", value: "task" }], "kind"),
-    when({ eq: ["kind", "event"] }, col(eventFields(ctx, { extraDay: day }), { gap: 18 })),
-    when({ eq: ["kind", "task"] }, col(taskFields(ctx, { extraDay: day }), { gap: 18 })),
+    when({ eq: ["kind", "event"] }, col(eventFields(ctx, { extraDay: day, add: true }), { gap: 18 })),
+    when({ eq: ["kind", "task"] }, col(taskFields(ctx, { extraDay: day, add: true }), { gap: 18 })),
   ], [primaryButton("Add", save, { wide: !isDesk(ctx) })], {
-    kind, ttl: "", day, time: "", mins: "60", place: "", notes: "", repeat: "", remind: "15", tremind: "",
+    kind, ttl: "", day, time: "", mins: "60", place: "", notes: "", repeat: "", remind: "15", tremind: "", imp: "",
   });
 }
 
@@ -221,13 +230,13 @@ function eventPage(ctx: BotsCtx, e: EventView) {
 
 // ------------------------------------------------------------------ change a to-do
 
-function taskPage(ctx: BotsCtx, t: TaskView) {
+function taskPage(ctx: BotsCtx, t: TaskView, x?: Details) {
   const dueLine = t.due ? `Due ${dayName(ctx, t.due)}${t.at !== null ? `, ${clockOf(ctx, t.at)}` : ""}` : "No day";
   const base = `${CAL}/tasks/${enc(t.id)}`;
   if (t.fixed && t.spaceId && t.taskId) {
     return theirsPage(ctx, { kind: "task", title: t.title, lines: [dueLine, t.notes], spaceId: t.spaceId, taskId: t.taskId, id: t.id, from: t.from, source: t.source, spaceName: t.spaceName, done: t.done });
   }
-  if (t.kind === "due") return duePage(ctx, { ...t, ...(t.repeat ? { repeat: t.repeat } : {}) });
+  if (t.kind === "due") return duePage(ctx, { ...t, ...(t.repeat ? { repeat: t.repeat } : {}) }, x?.follow);
   const save = ifFilled("ttl", call("PUT", base, taskBody(ctx), { ok: done("Saved"), fail: failed() }), "Say what the to-do is first");
   const tick = call("PUT", base, { done: !t.done, tz: tz(ctx) }, { ok: done(t.done ? "Back on your list" : "Done"), fail: failed("Couldn't tick it. Try again.") });
   // Waiting on someone (step 4, botsBots/planWaits.ts): Send opens WhatsApp with the follow-up written, Sorted closes it.
@@ -326,7 +335,7 @@ function eventDetails(ctx: BotsCtx, e: EventView, x: Details) {
     ...(place ? [line(place, edit)] : []),
     line(sourceLine(e), undefined, { grey: true }),
     ...(e.notes ? [line(e.notes, edit, { grey: true })] : []),
-  ], [...beforeLines(ctx, x.before), ...noteLine(ctx, x.note), ...moving, ...captureFoot(ctx, e.captureId, e.from)], buttons, { moving: false });
+  ], [...followSection("event", e.id, x.follow), ...beforeLines(ctx, x.before), ...noteLine(ctx, x.note), ...moving, ...captureFoot(ctx, e.captureId, e.from)], buttons, { moving: false, ...followState(x.follow) });
 }
 
 /** A to-do of the person's own: [Done] [Later] [Take it out]. A wait: "Waiting on Rahul", [Send] [Sorted] [Take it out]. */
@@ -356,7 +365,7 @@ function taskDetails(ctx: BotsCtx, t: TaskView & { who?: string }, x: Details) {
     line(wait && t.due ? `By ${keyWords(t.due)}` : dueWords, edit),
     line(sourceLine(t), undefined, { grey: true }),
     ...(ownNotes ? [line(ownNotes, edit, { grey: true })] : []),
-  ], [...noteLine(ctx, x.note), ...captureFoot(ctx, t.captureId, t.from)], buttons);
+  ], [...(wait ? [] : followSection("task", t.id, x.follow)), ...noteLine(ctx, x.note), ...captureFoot(ctx, t.captureId, t.from)], buttons, wait ? {} : followState(x.follow));
 }
 
 function itemPage(ctx: BotsCtx, d: ItemData | undefined) {
@@ -367,7 +376,7 @@ function itemPage(ctx: BotsCtx, d: ItemData | undefined) {
   if (detailsOn(ctx) && d?.event && !(d.event.fixed && d.event.spaceId)) return eventDetails(ctx, d.event, d.details ?? NO_DETAILS);
   if (detailsOn(ctx) && d?.task && d.task.kind !== "due" && !(d.task.fixed && d.task.spaceId)) return taskDetails(ctx, d.task, d.details ?? NO_DETAILS);
   if (d?.event) return eventPage(ctx, d.event);
-  if (d?.task) return taskPage(ctx, d.task);
+  if (d?.task) return taskPage(ctx, d.task, d.details);
   return page(ctx, {
     back: true, nav: "plan", title: "Plan",
     body: [emptyState({ pose: "think", title: "It isn't there any more", body: "It may have been taken out, or the connection dropped.", action: { label: "Back to Plan", onPress: open(SCREENS.plan) } })],
@@ -398,8 +407,19 @@ export const planItemScreens: BotsScreen[] = [
   }),
 ];
 
-/** Plan's "Add" (the day it starts on). */
-export const addAction = (day?: string, kind: "event" | "task" = "event"): ActionSpec => open(SCREENS.planItem, { kind, ...(day ? { day } : {}) });
+/**
+ * The old add form (bots.plan.item with no id, as before): "Plan something" (screens/bots/planMake.ts) draws it for a build that can't
+ * keep its drafts (no PersonBot, a window without KitExtras, a phone without ActionParams) or with PLAN_V2_MAKE or PLAN_V2_PAGE off.
+ * It reads `day` and `kind` as it always did.
+ */
+export const planAddForm = addPage;
+
+/**
+ * Plan's "Add" (the day it starts on; "task" for "Add a to-do"): "Plan something" (bots.plan.make), which draws the old form where it
+ * must. Every Add opens it: the old week page, Today, Tasks.
+ */
+export const addAction = (day?: string, kind?: "event" | "task"): ActionSpec =>
+  open(SCREENS.planMake, { ...(day ? { day } : {}), ...(kind === "task" ? { kind } : {}) });
 /** One event or to-do of the person's own calendar. */
 export const itemAction = (kind: "event" | "task", id: string): ActionSpec => open(SCREENS.planItem, { kind, id });
 /** A to-do's tick on a list (Plan's day, its open to-dos): the call, then the toast and a refresh. */

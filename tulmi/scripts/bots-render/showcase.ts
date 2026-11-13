@@ -21,6 +21,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 process.env.PUBLIC_ORIGIN = "https://api.local";
+// Spaces is off on the server until it is ready (SPACES_ENABLED); the renders draw it, as the screens were designed. Set it to false to see it off.
+process.env.SPACES_ENABLED ??= "true";
 
 const R = await import("./render.js");
 const { SAMPLES, apiFor } = await import("./samples/index.js");
@@ -54,7 +56,8 @@ async function loadError(s: Sample, client: Client, params: Record<string, strin
   if (!def?.load) return undefined;
   const deps = fakeDeps({ ...s.fake, api });
   const live = await loadLive(deps, IST);
-  const ctx = ctxFor(s.id, client, live, { params, ...(client === "desktop" ? { can: new Set(["BotsKit", ...R.DESKTOP_COMPONENTS]) } : {}) });
+  const comps = (client === "desktop" ? R.DESKTOP_COMPONENTS : R.PHONE_COMPONENTS).filter((c: string) => !(s.without ?? []).includes(c));
+  const ctx = ctxFor(s.id, client, live, { params, can: new Set(["BotsKit", ...comps]) });
   try { await def.load(ctx, deps); return undefined; } catch (e) { return (e as Error).message.slice(0, 200); }
 }
 
@@ -89,7 +92,10 @@ async function one(s: Sample, client: Client): Promise<Result> {
   if (boardPng) res.boardPng = boardPng;
   else if (boardName) res.problems.push({ kind: "failed", detail: `board ${boardName} could not be drawn` });
   try {
-    const r = await R.renderClient(browser, { screenId: s.id, client, params, api, fake: s.fake, out: path.join(OUT, "screens"), base: `${nameOf(s)}.${client}`, compare: false, design: DESIGN });
+    const r = await R.renderClient(browser, {
+      screenId: s.id, client, params, api, fake: s.fake, out: path.join(OUT, "screens"), base: `${nameOf(s)}.${client}`, compare: false, design: DESIGN,
+      ...(s.state ? { state: s.state } : {}), ...(s.without?.length ? { without: s.without } : {}),
+    });
     res.png = r.png;
     res.json = r.json;
     for (const e of r.errors) res.problems.push({ kind: "failed", detail: `page error: ${e}` });

@@ -1,5 +1,5 @@
 /**
- * THE BOTS THEMSELVES: a bot's page and its chat, Make a bot, Edit, its keys, Find a bot, Plan Ease, the Travel bot, Spaces, sending a
+ * THE BOTS THEMSELVES: a bot's page and its chat, Make a bot, Edit, its keys, Find a bot, Plan Ease, the Travel bot, the Oracle, the mail bot, Spaces, sending a
  * shared file or link to a bot, and Blip's five moments (BotPage, Chat, MakeBot, BotEdit, BotKeys, BotStore, PlanBot, TravelBot, Spaces,
  * ShareIn, Avatars; D<Board> in the window).
  *
@@ -39,26 +39,58 @@ import { itemAction, addAction, planItemScreens } from "./planItem.js";
 import { tripSearches } from "./finds.js";
 import { loadWork, workCtx, type WorkRead } from "./work/workTab.js";
 import { planGoPage, planTodayDesk, planTodayPhone, planWeekPage, type PlanTodayData, type PlanWeekData } from "./bots/planPage.js";
+import { planCallPage } from "./bots/planCall.js";
+import { CALLS, type CallView } from "../../../botsBots/planCallWords.js";
 import { capturePage, planGoLoad, planInScreens, shareCapture, type CaptureView } from "./bots/planIn.js";
 import { planPeopleScreens } from "./bots/planSend.js";
-import { planOn } from "../../../botsBots/planSwitch.js";
+import { planFollowScreens } from "./bots/planFollow.js";
+import { followPhoneScreens } from "./bots/followPhone.js";
+import { homeOn, planOn } from "../../../botsBots/planSwitch.js";
+import { planHomeDesk, planHomePhone, planDayQuery, type PlanDayData } from "./bots/planHome.js";
+import { planMakeScreens } from "./bots/planMake.js";
+import { oraclePage, type OracleSkyView, type OraclePageData } from "./bots/oraclePage.js";
+import { mailPage, type MailPageData } from "./bots/mailPage.js";
+import { loadMail, mailScreens } from "./bots/mailScreens.js";
+import { mailInboxScreens } from "./bots/mailInbox.js";
+import { mailAliasScreens } from "./bots/mailAliases.js";
+import type { MailData } from "./bots/mailParts.js";
+import { meetPage, type MeetPageData } from "./bots/meetPage.js";
+import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
+import type { About } from "./firstRun/parts.js";
 
 /** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
 const planV2 = (ctx: BotsCtx): boolean => planOn("page") && canPersonBot(ctx);
+/** The threaded home (screens/bots/planHome.ts): the same builds, with PLAN_V2_HOME too; off, the simpler page as it was. */
+const homeFor = (ctx: BotsCtx): boolean => planV2(ctx) && homeOn();
 
 const slugParam = (ctx: BotsCtx): string => String(ctx.params.slug ?? "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 40);
 
-async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number): Promise<BotPageData> {
+async function loadBot(ctx: BotsCtx, deps: Parameters<NonNullable<BotsScreen["load"]>>[1], turnsLimit: number, o: { mail?: boolean; meet?: boolean } = {}): Promise<OraclePageData & MailPageData & MeetPageData> {
   const slug = slugParam(ctx);
   if (!slug) return {};
-  const [bot, memory, linked, chat] = await Promise.all([
+  const [bot, memory, linked, chat, sky, about, mail, meet] = await Promise.all([
     deps.api<{ bot?: BotView }>("GET", `/v1/bots/${enc(slug)}`).then((r) => r.bot).catch(() => undefined),
     deps.api<Memory>("GET", `/v1/bots/${enc(slug)}/memory`).catch(() => undefined),
     deps.api<{ connectors: Linked[] }>("GET", `/v1/bots/${enc(slug)}/connectors`).then((r) => r.connectors).catch(() => undefined),
     deps.api<{ turns: Turn[] }>("GET", `${A}/chat/${enc(slug)}?limit=${turnsLimit}`).then((r) => r.turns).catch(() => undefined),
+    // The Oracle's own card: when and where they were born (routes/bots/oracle.ts).
+    slug === "oracle" ? deps.api<OracleSkyView>("GET", "/v1/oracle/sky").catch(() => undefined) : Promise.resolve(undefined),
+    // And whether its last card is owed: the person's name and gender, as the About you card reads them.
+    slug === "oracle" ? deps.api<About>("GET", "/v1/bots/first-run/about").catch(() => undefined) : Promise.resolve(undefined),
+    // The mail bot's page: its businesses' mail (routes/bots/mail.ts), on bots.bot only (its chat is the usual one).
+    slug === "mail" && o.mail ? loadMail(ctx, deps).catch((): MailData => ({ down: true })) : Promise.resolve(undefined),
+    // The meeting bot's page: its meetings (routes/bots/meet.ts), on bots.bot only (its chat is the usual one).
+    slug === "meet" && o.meet ? loadMeet(ctx, deps).catch((): MeetData => ({ down: true })) : Promise.resolve(undefined),
   ]);
-  return { bot, memory, linked, turns: chat };
+  return { bot, memory, linked, turns: chat, ...(sky ? { sky } : {}), ...(about ? { about } : {}), ...(mail ? { mail } : {}), ...(meet ? { meet } : {}) };
 }
+
+/** The Oracle is the chat and nothing in its way: its bot page and its chat are one page (screens/bots/oraclePage.ts). */
+const isOracle = (d: BotPageData): boolean => d.bot?.slug === "oracle" && d.bot.builtin;
+/** The mail bot's page is its mail (screens/bots/mailPage.ts); its chat is the usual chat. */
+const isMail = (d: BotPageData): boolean => d.bot?.slug === "mail" && d.bot.builtin;
+/** The meeting bot's page is its meetings (screens/bots/meetPage.ts); its chat is the usual chat. */
+const isMeet = (d: BotPageData): boolean => d.bot?.slug === "meet" && d.bot.builtin;
 
 function noBot(ctx: BotsCtx): ReturnType<typeof page> {
   return page(ctx, {
@@ -662,15 +694,15 @@ function avatarsPage(ctx: BotsCtx) {
 type Deps = Parameters<NonNullable<BotsScreen["load"]>>[1];
 
 export const botsScreens: BotsScreen[] = [
-  screen<BotPageData>({
+  screen<OraclePageData & MailPageData & MeetPageData>({
     id: SCREENS.bot,
-    load: (ctx, deps) => loadBot(ctx, deps, isDesk(ctx) ? 30 : 6),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
+    load: (ctx, deps) => loadBot(ctx, deps, slugParam(ctx) === "oracle" || isDesk(ctx) ? 30 : slugParam(ctx) === "mail" || slugParam(ctx) === "meet" ? 1 : 6, { mail: true, meet: true }),
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : isMail(d) ? mailPage(ctx, d) : isMeet(d) ? meetPage(ctx, d) : isDesk(ctx) ? botDesk(ctx, d) : botPhone(ctx, d)),
   }),
-  screen<BotPageData>({
+  screen<OraclePageData>({
     id: SCREENS.chat,
     load: (ctx, deps) => loadBot(ctx, deps, 30),
-    build: (ctx, d) => (!d?.bot ? noBot(ctx) : chatPage(ctx, d)),
+    build: (ctx, d) => (!d?.bot ? noBot(ctx) : isOracle(d) ? oraclePage(ctx, d) : chatPage(ctx, d)),
   }),
   screen<{ draft: DraftView | null }>({
     id: SCREENS.make,
@@ -711,16 +743,26 @@ export const botsScreens: BotsScreen[] = [
     load: (ctx, deps) => deps.api<Shop>("GET", `${A}/store${ctx.params.q ? `?q=${enc(String(ctx.params.q))}` : ""}`),
     build: (ctx, d) => (isDesk(ctx) ? storeDesk(ctx, d) : storePhone(ctx, d)),
   }),
-  screen<(PlanRead & { work?: WorkRead }) | (PlanTodayData & { work?: WorkRead })>({
+  screen<(PlanRead & { work?: WorkRead }) | (PlanTodayData & { work?: WorkRead }) | (PlanDayData & { work?: WorkRead })>({
     id: SCREENS.plan,
-    // The simpler page (screens/bots/planPage.ts) where it's on; else the week, with Work in space's people too (screens/work/workTab.ts),
-    // never failing the page. The simpler page has no Work in space tab: what others set is on the list already, with their tiny bot.
+    // The threaded home (screens/bots/planHome.ts) where it's on, with Work in space's tabs as the week page had them; else the simpler
+    // page (screens/bots/planPage.ts); else the week, with Work in space's people too (screens/work/workTab.ts), never failing the page.
+    // The simpler page has no Work in space tab: what others set is on the list already, with their tiny bot.
     load: async (ctx, deps) => {
+      if (homeFor(ctx)) {
+        const [day, work] = await Promise.all([deps.api<PlanDayData>("GET", `${A}/plan/day?${planDayQuery(ctx)}`), loadWork(ctx, deps, "plan")]);
+        return { ...day, work };
+      }
       if (planV2(ctx)) return deps.api<PlanTodayData>("GET", `${A}/plan/today?tz=${ctx.tzOffsetMinutes}`);
       const [plan, work] = await Promise.all([deps.api<PlanRead>("GET", `${A}/plan?tz=${ctx.tzOffsetMinutes}&week=${planWeek(ctx)}`), loadWork(ctx, deps, "plan")]);
       return { ...plan, work };
     },
     build: (ctx, d) => {
+      if (homeFor(ctx)) {
+        const v = d && "v" in d && d.v === 3 ? d : undefined;
+        const c = workCtx(ctx, d?.work);
+        return isDesk(c) ? planHomeDesk(c, v) : planHomePhone(c, v);
+      }
       if (planV2(ctx)) { const v = d && "v" in d && d.v === 2 ? d : undefined; return isDesk(ctx) ? planTodayDesk(ctx, v) : planTodayPhone(ctx, v); }
       const old = d && !("v" in d) ? d : undefined;
       const c = workCtx(ctx, old?.work);
@@ -733,6 +775,12 @@ export const botsScreens: BotsScreen[] = [
     build: (ctx, d) => planWeekPage(ctx, d),
   }),
   screen<{ url?: string }>({ id: SCREENS.planGo, load: (ctx, deps) => planGoLoad(ctx, deps), build: (ctx, d) => planGoPage(ctx, d) }),
+  // "X0 is calling" (botsBots/planCall.ts): the call, ringing to talking, missed, or ended; a record on the window (screens/bots/planCall.ts).
+  screen<CallView>({
+    id: SCREENS.planCall,
+    load: (ctx, deps) => deps.api<CallView>("GET", `${CALLS}/${enc(String(ctx.params.call ?? ""))}`),
+    build: (ctx, d) => planCallPage(ctx, d),
+  }),
   screen<TravelData>({
     id: SCREENS.travel,
     load: async (ctx, deps) => {
@@ -771,8 +819,18 @@ export const botsScreens: BotsScreen[] = [
   screen({ id: SCREENS.avatars, build: (ctx) => avatarsPage(ctx) }),
   // Plan's own calendar, one event or to-do at a time (screens/planItem.ts).
   ...planItemScreens,
+  // "Plan something": the card, Check, Done, and the box that fills it (screens/bots/planMake.ts).
+  ...planMakeScreens,
   // Plan Ease's link page and capture card (screens/bots/planIn.ts).
   ...planInScreens,
+  ...mailScreens,
+  ...mailInboxScreens,
+  ...mailAliasScreens,
+  ...meetScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
   ...planPeopleScreens,
+  // Follow-through (botsBots/planFollow.ts): one followed item, and who does an item.
+  ...planFollowScreens,
+  // Follow-through's real phone call (botsBots/followPhone.ts): the person's own number.
+  ...followPhoneScreens,
 ];

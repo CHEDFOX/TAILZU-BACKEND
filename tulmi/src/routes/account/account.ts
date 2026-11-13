@@ -4,6 +4,7 @@
 
 import type { FastifyRequest, FastifyInstance } from "fastify";
 import { deleteViewerData } from "../../artifacts/index.js";
+import { planFollows } from "../../botsBots/planFollow.js";
 import type { AppleSignIn } from "../../auth/appleSignIn.js";
 import { resolveUser, supabase } from "../../auth/supabase.js";
 import type { AgentOrchestrator } from "../../code/agent/orchestrator.js";
@@ -11,6 +12,8 @@ import type { Code } from "../../code/index.js";
 import type { JobRouter } from "../../code/jobs/router.js";
 import type { MediaService } from "../../media/service.js";
 import { registerAccountDeletionRoutes } from "./accountDeletion.js";
+import { mailForAccountDelete } from "../../mail/worker.js";
+import { meetService } from "../../meet/service.js";
 import { unauthorized } from "../../http/helpers.js";
 
 export interface AccountRouteDeps {
@@ -108,6 +111,10 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     if (appleSignIn && !(await appleSignIn.forAccountDelete(user.id))) req.log.warn("account delete: the Apple sign-in could not be revoked at Apple");
     // The bytes of their files are in a bucket, not in the database: they go first (the rows go with the account just below).
     try { await media?.forAccountDelete(user.id); } catch (err) { req.log.error({ err }, "delete media bytes"); }
+    // Their businesses' mailboxes and mail are on our mail server, kept by the mail worker (src/mail): they go too.
+    if (!(await mailForAccountDelete(user.id))) req.log.error("account delete: the mail worker could not remove the businesses' mailboxes");
+    // Their meetings' bots are called off and their notes' calls forgotten (src/meet); best effort, it never fails the delete.
+    try { await meetService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: the meeting bot could not be called off"); }
 
     const summary = {
       personality: false, profile: false, usageEvents: 0,
@@ -133,6 +140,10 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
       ["code_chat_threads", null], ["code_project_settings", null], ["code_pr_care", null],
       // The bots platform (migration 0038): their bots, the API keys (only hashes), saved commands, and what their bots remember of them.
       ["bots", null], ["bot_keys", null], ["bot_commands", null], ["bot_facts", null], ["bot_threads", null],
+      // The Oracle (migration 0078): when and where they were born, and the route of their last question.
+      ["oracle_people", null],
+      // The mail bot (migration 0080): the hash its worker knows their account by, for the push.
+      ["mail_owners", null],
       // Apple's token for revoking the sign-in (migration 0061), revoked just above.
       ["apple_sign_in", null],
     ];
@@ -146,6 +157,9 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     }
 
     try { await deleteViewerData(admin, user.id); } catch (err) { req.log.error({ err }, "delete artifact_data"); }
+    // Plan Ease's follow-through (migration 0081): numbers other people kept for this person go (plan_numbers.member_id also cascades),
+    // and their name leaves other people's follows. Their own follows, steps and phone go with the account just below.
+    try { await planFollows().forget(user.id); } catch (err) { req.log.error({ err }, "forget follow person"); }
 
     // Deleting the auth user takes anything missed above with it (cascade).
     try {

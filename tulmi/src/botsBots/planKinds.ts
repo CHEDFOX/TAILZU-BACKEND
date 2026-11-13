@@ -9,7 +9,7 @@
  *   push/engine.ts         push.<kind>.priority, push.<kind>.ttlMin and push.<kind>.interruptionLevel
  *   experience/appKnobs.ts the buttons (PLAN_CATEGORIES) and the Android channels (PLAN_CHANNELS) the phone registers from the bootstrap
  *
- * ADDING A KIND (a later step): add one entry to its own list below (STAGE_3 bills, STAGE_4 waits, STAGE_5 family), its category and
+ * ADDING A KIND (a later step): add one entry to its own list below (STAGE_3 bills, STAGE_4 waits, STAGE_5 family, STAGE_6 follow), its category and
  * channel if new, and the act it answers (planEase.ts PLAN_ACTS). Nothing else needs a line changed. Button ids are unique across every
  * category the phone knows (x0_reply's "reply", x0_task's "done", x0_yesno's "yes" / "no" are taken), and a category has 3 at most.
  *
@@ -97,11 +97,34 @@ const STAGE_2: readonly PlanPushKind[] = [
   { kind: "plan_decide", step: 2, screenId: "bots.plan", category: "", channel: "plan_notes", priority: "normal", ttlMin: 6 * 60, verdict: "plan", title: "{title}", body: "{body}" },
 ];
 
-export const PLAN_PUSH_KINDS: readonly PlanPushKind[] = [...STAGE_0_1, ...STAGE_2, ...STAGE_3, ...STAGE_4, ...STAGE_5];
+/**
+ * Step 6 (follow-through, planFollow.ts; PLAN_V2_FOLLOW): a must-not-miss item, or one with someone else on it, followed until someone
+ * says done. The holder's push (Done, Later, Can't) and its louder copy, the asker told when nobody answered, nobody left (I'll do it),
+ * and the quiet ones that replace what is in the tray (passed on, done). space_* go to someone in the asker's X0 people, so Spaces' own
+ * switch stops them.
+ */
+const STAGE_6: readonly PlanPushKind[] = [
+  { kind: "plan_follow", step: 6, screenId: "bots.plan.follow", category: "x0_follow", channel: "plan_reminders", priority: "high", ttlMin: 60, verdict: "plan", title: "{title}", body: "{body}" },
+  { kind: "plan_follow_loud", step: 6, screenId: "bots.plan.follow", category: "x0_follow", channel: "plan_reminders", priority: "high", ttlMin: 30, interruptionLevel: "time-sensitive", verdict: "plan", title: "{title}", body: "{body}" },
+  { kind: "plan_follow_tell", step: 6, screenId: "bots.plan.follow", category: "x0_follow_check", channel: "plan_reminders", priority: "high", ttlMin: 120, verdict: "plan", title: "{title}", body: "{body}" },
+  { kind: "plan_follow_none", step: 6, screenId: "bots.plan.follow", category: "x0_follow_none", channel: "plan_reminders", priority: "high", ttlMin: 240, verdict: "plan", title: "{title}", body: "{body}" },
+  { kind: "plan_follow_passed", step: 6, screenId: "bots.plan.follow", category: "", channel: "plan_notes", priority: "normal", ttlMin: 120, interruptionLevel: "passive", verdict: "quiet", title: "{title}", body: "{body}" },
+  { kind: "plan_follow_done", step: 6, screenId: "bots.plan.follow", category: "", channel: "plan_notes", priority: "normal", ttlMin: 120, interruptionLevel: "passive", verdict: "quiet", title: "{title}", body: "{body}" },
+  { kind: "space_follow", step: 6, screenId: "bots.plan.follow", category: "x0_follow", channel: "family", priority: "high", ttlMin: 60, verdict: "people", title: "{title}", body: "{body}" },
+  { kind: "space_follow_loud", step: 6, screenId: "bots.plan.follow", category: "x0_follow", channel: "plan_reminders", priority: "high", ttlMin: 30, interruptionLevel: "time-sensitive", verdict: "people", title: "{title}", body: "{body}" },
+  { kind: "space_follow_tell", step: 6, screenId: "bots.plan.follow", category: "x0_follow_check", channel: "family", priority: "high", ttlMin: 120, verdict: "people", title: "{title}", body: "{body}" },
+  { kind: "space_follow_done", step: 6, screenId: "bots.plan.follow", category: "", channel: "family", priority: "normal", ttlMin: 120, interruptionLevel: "passive", verdict: "quiet", title: "{title}", body: "{body}" },
+];
+
+export const PLAN_PUSH_KINDS: readonly PlanPushKind[] = [...STAGE_0_1, ...STAGE_2, ...STAGE_3, ...STAGE_4, ...STAGE_5, ...STAGE_6];
+
+/** Step 6's kinds (planFollowWords.ts FollowPushKind). */
+export const FOLLOW_KIND_IDS = ["plan_follow", "plan_follow_loud", "plan_follow_tell", "plan_follow_none", "plan_follow_passed",
+  "plan_follow_done", "space_follow", "space_follow_loud", "space_follow_tell", "space_follow_done"] as const;
 
 /** The kinds' names, typed, for push/defaults.ts EVENT_PUSH_KINDS. A new kind is added here too. */
 export const PLAN_KIND_IDS = ["plan_event", "plan_leave", "plan_todo", "plan_many", "plan_evening", "plan_morning", "plan_decide", "plan_due",
-  "plan_wait", "plan_came", "space_ask", "space_ask_nudge", "space_ask_none", "space_ask_taken", "space_turn"] as const;
+  "plan_wait", "plan_came", "space_ask", "space_ask_nudge", "space_ask_none", "space_ask_taken", "space_turn", ...FOLLOW_KIND_IDS] as const;
 export type PlanKindId = (typeof PLAN_KIND_IDS)[number];
 
 export const planKind = (kind: string): PlanPushKind | undefined => PLAN_PUSH_KINDS.find((k) => k.kind === kind);
@@ -119,6 +142,11 @@ export interface PlanButton {
   act?: string;
   /** Open the push's screen (a hand-off to Maps, WhatsApp or UPI happens there: a button cannot open another app by itself). */
   open?: true;
+  /**
+   * Call this route in the background, without opening the app (a call's Not now). The phone fills `{data.call}` from the push's data,
+   * and dismisses the notification on a 2xx (F:src/notifications/actions.ts).
+   */
+  call?: { method: "POST"; path: string };
 }
 export interface PlanCategory { id: string; actions: PlanButton[] }
 
@@ -172,6 +200,35 @@ export const PLAN_CATEGORIES: readonly PlanCategory[] = [
   ] },
 ];
 
+/**
+ * Step 6's buttons (follow-through, planFollow.ts), registered only while PLAN_V2_FOLLOW is on (experience/appKnobs.ts). Done comes first,
+ * so a desktop's notice (its first two act or open buttons) shows Done and Later. Every act answers the push's pf:<followId>:<n>.
+ */
+export const FOLLOW_CATEGORIES: readonly PlanCategory[] = [
+  { id: "x0_follow", actions: [
+    { id: "f_done", title: "Done", icon: "checkmark", foreground: false, destructive: false, auth: false, act: "done" },
+    { id: "f_later", title: "Later", icon: "clock", foreground: false, destructive: false, auth: false, act: "later" },
+    { id: "f_cant", title: "Can't", icon: "xmark", foreground: false, destructive: false, auth: false, act: "cant" },
+  ] },
+  // After the last Later: Done or Can't.
+  { id: "x0_follow_last", actions: [
+    { id: "f_done2", title: "Done", icon: "checkmark", foreground: false, destructive: false, auth: false, act: "done" },
+    { id: "f_cant2", title: "Can't", icon: "xmark", foreground: false, destructive: false, auth: false, act: "cant" },
+  ] },
+  // The asker told, with a number they keep for the holder: Call opens the follow page, which dials from the asker's own phone.
+  { id: "x0_follow_tell", actions: [
+    { id: "f_call", title: "Call", icon: "phone", foreground: true, destructive: false, auth: false, open: true },
+    { id: "f_done3", title: "Done", icon: "checkmark", foreground: false, destructive: false, auth: false, act: "done" },
+  ] },
+  { id: "x0_follow_check", actions: [
+    { id: "f_look", title: "Look", icon: "eye", foreground: true, destructive: false, auth: false, open: true },
+    { id: "f_done5", title: "Done", icon: "checkmark", foreground: false, destructive: false, auth: false, act: "done" },
+  ] },
+  { id: "x0_follow_none", actions: [
+    { id: "f_mine", title: "I'll do it", icon: "hand.raised", foreground: false, destructive: false, auth: false, act: "take" },
+  ] },
+];
+
 // ------------------------------------------------------------------ the Android channels
 
 /** Made by the phone at its next push registration. Importance can't change once made, so each is right the first time. */
@@ -203,4 +260,80 @@ export function planPushLabels(): Record<string, string> {
   const out: Record<string, string> = {};
   for (const k of PLAN_PUSH_KINDS) { out[`push.${k.kind}.title`] = k.title; out[`push.${k.kind}.body`] = k.body; }
   return out;
+}
+
+// ------------------------------------------------------------------ THE CALL (planCall.ts)
+
+/**
+ * "X0 is calling" (planCall.ts; docs/plan-ease.md "Calls"). Not in PLAN_PUSH_KINDS: a call is never sent through notify() (the engine's
+ * ring() sends it, with what the call decided), its channels are not in PLAN_CHANNELS, its Not now is neither an act nor an open, and a
+ * computer in use must never be shown one (toDesk reads planKind). So it is said here, on its own.
+ */
+export const CALL_KIND_IDS = ["plan_call", "plan_call_missed"] as const;
+
+/** The ringing call's buttons (Answer opens the call screen; Not now ends it in the background) and the missed call's (Call back). */
+export const CALL_CATEGORIES: readonly PlanCategory[] = [
+  { id: "x0_call", actions: [
+    { id: "p_answer", title: "Answer", icon: "waveform", foreground: true, destructive: false, auth: false, open: true },
+    { id: "p_notnow", title: "Not now", icon: "xmark", foreground: false, destructive: false, auth: false,
+      call: { method: "POST", path: "/v1/botsapp/bots/plan/calls/{data.call}/decline" } },
+  ] },
+  { id: "x0_call_missed", actions: [
+    { id: "p_callback", title: "Call back", icon: "arrow.uturn.left", foreground: true, destructive: false, auth: false, open: true },
+  ] },
+];
+
+/**
+ * The Android channels a call goes on. Made by the phone's own JS (F:src/notifications/calls.ts), never listed in the bootstrap's
+ * push.android.channels: an older JS would make "calls" from that list without its call-like vibration, and Android never changes a
+ * channel once it is made. "calls_ring" is kept for a later store build that packs the ringtone as a raw resource (a channel's sound is
+ * fixed at birth, so that one needs a name of its own).
+ */
+export const CALL_CHANNELS = { ring: "calls", missed: "calls_missed" } as const;
+
+/** The call's control-plane flags (push/defaults.ts spreads them in). */
+export function callPushFlags(): Record<string, unknown> {
+  return {
+    "push.plan_call.enabled": true,
+    // true: an iPhone whose binary lacks the Time Sensitive entitlement gets the push as today, not a call (docs/plan-ease.md "Calls").
+    "push.plan_call.needTimeSensitive": false,
+    "push.plan_call.screenId": "bots.plan.call",
+    "push.plan_call.category": "x0_call",
+    "push.plan_call.channelId": CALL_CHANNELS.ring,
+    "push.plan_call_missed.enabled": true,
+    "push.plan_call_missed.screenId": "bots.plan.call",
+    "push.plan_call_missed.category": "x0_call_missed",
+    "push.plan_call_missed.channelId": CALL_CHANNELS.missed,
+  };
+}
+
+/** The call's words: {name} is the caller's name, {line} the reminder's lock-safe line (planSafe.ts). */
+export function callPushLabels(): Record<string, string> {
+  return {
+    "push.plan_call.title": "{name} is calling",
+    "push.plan_call.body": "{line}",
+    "push.plan_call_missed.title": "Missed call from {name}",
+    "push.plan_call_missed.body": "{line}",
+  };
+}
+
+// ------------------------------------------------------------------ FOLLOW-THROUGH'S TIMINGS (planFollow.ts)
+
+/**
+ * The follow ladder's timings, as control-plane flags on the push surface (push/defaults.ts spreads them in; planFollow.ts followTimings
+ * reads them, falling back to planFollowWords.ts FOLLOW_TIMINGS). Server flags, not phone knobs.
+ */
+export function followPushFlags(): Record<string, unknown> {
+  return {
+    "push.follow.loudAfterMin": 5,
+    "push.follow.callAfterMin": 10,
+    "push.follow.phoneAfterMin": 15,
+    "push.follow.tellAfterMin": 20,
+    "push.follow.missAfterMin": 360,
+    "push.follow.laterMustMin": 15,
+    "push.follow.laterMin": 60,
+    "push.follow.laterMax": 3,
+    "push.follow.phoneDayMax": 3,
+    "push.follow.lateSkipMin": 5,
+  };
 }

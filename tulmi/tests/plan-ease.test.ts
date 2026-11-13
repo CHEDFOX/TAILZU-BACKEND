@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { Calendar, memoryCalendarRows } = await import("../src/calendar/index.js");
 const { safeTitle, noAmounts, looksHealth, lockSafe } = await import("../src/botsBots/planSafe.js");
-const { PLAN_PUSH_KINDS, PLAN_KIND_IDS, PLAN_CATEGORIES, PLAN_CHANNELS, planPushFlags } = await import("../src/botsBots/planKinds.js");
+const { PLAN_PUSH_KINDS, PLAN_KIND_IDS, PLAN_CATEGORIES, FOLLOW_CATEGORIES, PLAN_CHANNELS, planPushFlags } = await import("../src/botsBots/planKinds.js");
 const { EVENT_PUSH_KINDS, PUSH_DEFAULTS } = await import("../src/push/defaults.js");
 const { verdict } = await import("../src/you/push.js");
 const { DEFAULT_SETTINGS } = await import("../src/you/settings.js");
@@ -129,7 +129,8 @@ describe("the push kinds", () => {
       expect(PUSH_DEFAULTS.flags[`push.${k.kind}.ttlMin`]).toBe(k.ttlMin);
       expect(PUSH_DEFAULTS.labels[`push.${k.kind}.title`]).toBeTruthy();
       expect(PLAN_CHANNELS.map((c) => c.id)).toContain(k.channel);
-      if (k.category) expect(PLAN_CATEGORIES.map((c) => c.id)).toContain(k.category);
+      // Follow-through's buttons are their own list, registered only while PLAN_V2_FOLLOW is on (planKinds.ts FOLLOW_CATEGORIES).
+      if (k.category) expect([...PLAN_CATEGORIES, ...FOLLOW_CATEGORIES].map((c) => c.id)).toContain(k.category);
     }
     expect(planPushFlags()["push.plan_morning.interruptionLevel"]).toBe("passive");
   });
@@ -554,3 +555,18 @@ describe("the day notes", () => {
 });
 
 void DAY;
+
+// ===================================================================== the simple page keeps a follow line (PLAN_V2_HOME off)
+
+describe("the one next thing and follow-through", () => {
+  it("keeps the picked item's follow line as its grey line", async () => {
+    const r = rig(ist(12, 9));
+    const e = await r.c.addEvent(U, { title: "Pick up Kabir", day: "2026-11-12", time: "15:00", place: "School", tz: IST });
+    const items = (await r.c.list(U, { from: "2026-11-12", to: "2026-11-13", tz: IST })).events.map((x) => ({
+      ref: "event" as const, id: x.id, kind: "event" as const, title: x.title, day: x.day, start: x.start, end: x.end, allDay: false, done: false, fixed: false, source: "me", where: "School",
+    }));
+    const base = { now: ist(12, 9), tz: IST, today: "2026-11-12", tomorrow: "2026-11-13", items, leaves: new Map(), clashes: new Map(), needs: null };
+    expect(planPage(base).next).toMatchObject({ big: "Pick up Kabir at 3 pm", grey: "School" });
+    expect(planPage({ ...base, follow: new Map([[`e:${e.id}`, "Mom · not done yet"]]) }).next).toMatchObject({ big: "Pick up Kabir at 3 pm", grey: "Mom · not done yet" });
+  });
+});

@@ -51,6 +51,8 @@ export const ICONS = {
   clip: "M20 11.5l-7.6 7.6a5 5 0 0 1-7.1-7.1l8.1-8.1a3.3 3.3 0 0 1 4.7 4.7l-8.1 8.1a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4",
   folder: "M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z",
   shield: "M12 3l7 3v5.5c0 4.4-3 7.9-7 9.5-4-1.6-7-5.1-7-9.5V6zM9 12l2 2 4-4",
+  // The mail bot: an envelope.
+  mail: rect(3, 5.5, 18, 13, 2.5) + "M3.8 7.5l8.2 6 8.2-6",
   pr: circ(6, 6, 2.2) + circ(6, 18, 2.2) + circ(18, 18, 2.2) + "M6 8.2v7.6M18 15.8V10a3 3 0 0 0-3-3h-4M13 4.5L10.5 7 13 9.5",
   // A person's own bots, by what they are for.
   dumbbell: "M6.5 8v8M17.5 8v8M3.5 10v4M20.5 10v4M6.5 12h11",

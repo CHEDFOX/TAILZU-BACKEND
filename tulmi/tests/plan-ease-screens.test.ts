@@ -8,7 +8,7 @@
  *   - the engine: a kind's own priority, expiry, iOS loudness, and one push's own buttons
  *   - the widget: Plan Ease's line, its question in the needs spot, and a leave-by leading the lock screen
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
 import type { Node } from "../../shared/types/sdui.js";
 
@@ -49,6 +49,8 @@ const ist = (month: number, day: number, h: number, m = 0) => Date.UTC(2026, mon
 const NEW = ["BotsKit", "BotsMotion", "KitExtras", "PersonBot", "FontBricolage", "FileUpload"];
 
 afterEach(() => { vi.unstubAllEnvs(); resetConfigForTests(); });
+/** The simpler page is the fallback now (PLAN_V2_HOME off); the threaded home is tests/plan-home-screens.test.ts. */
+const simplePage = () => beforeEach(() => { vi.stubEnv("PLAN_V2_HOME", "false"); resetConfigForTests(); });
 
 /** Plan Ease's page as GET .../plan/today answers it on the boards' day: tomorrow has a clash, the dentist has a leave-by. */
 async function todayApi() {
@@ -89,6 +91,7 @@ function actions(nodes: Node[]): Array<Record<string, unknown>> {
 }
 
 describe("the page", () => {
+  simplePage();
   it("shows the one next thing, one card, Today and Tomorrow, See the week and one box, on the phone", async () => {
     const { page, api } = await todayApi();
     expect(page.next).toMatchObject({ rung: 4, big: "Today: school trip fee ₹300" });
@@ -144,6 +147,7 @@ describe("the page", () => {
 });
 
 describe("the page's box and a thing's details", () => {
+  simplePage();
   it("answers a question under the box: what was asked, then the chat's answer in a faint message container, with Open chat", async () => {
     const { api } = await todayApi();
     const d = await draw("bots.plan", "phone", { api });

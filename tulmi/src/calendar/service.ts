@@ -28,10 +28,12 @@ import { botTopic, TOPIC } from "../live/topics.js";
 import { nextReminder, occurrences, startDay, taskReminder } from "./repeat.js";
 import { calendarRows, eventRow, resetCalendarRowsForTests, taskRow, type CalendarRows, type EventRow, type Source, type TaskKind, type TaskRow } from "./store.js";
 import { spacesOn } from "../botsBots/spacesSwitch.js";
-import { planOn } from "../botsBots/planSwitch.js";
+import { followOn, planOn } from "../botsBots/planSwitch.js";
+import { autoMust, cleanPeople, effectiveMust, looksTravel, type PersonRef } from "../botsBots/planFollowWords.js";
 import { safeTitle, lockSafe, looksHealth } from "../botsBots/planSafe.js";
 import { dueAgainAt, dueReminder } from "../botsBots/planDue.js";
 import type { PlanKindId } from "../botsBots/planKinds.js";
+import type { CallSeed } from "../botsBots/planCallWords.js";
 import {
   DAY, MIN, REPEATS, clockAt, dayFrom, dayName, dayOf, isDayKey, minuteOf, readLine, shiftDay, startOfDay, timeOf, tzOf, type Repeat,
 } from "./words.js";
@@ -57,6 +59,9 @@ export interface CalEvent {
   spaceId?: string; taskId?: string; spaceName?: string; byId?: string;
   /** The capture that added it (botsBots/planCapture.ts): "From the school circular", and Undo for the lot. */
   captureId?: string;
+  /** Follow-through (0081, botsBots/planFollow.ts): how important it is as set (absent: the rules decide) and who does it. Only when kept. */
+  importance?: "normal" | "must";
+  people?: PersonRef[];
 }
 
 export interface CalTask {
@@ -82,17 +87,25 @@ export interface CalTask {
   captureId?: string; prepFor?: string;
   /** A wait (kind "wait", botsBots/planWaits.ts): who it waits on ("Rahul", "the plumber"). */
   who?: string;
+  /** Follow-through (0081): as on CalEvent. */
+  importance?: "normal" | "must";
+  people?: PersonRef[];
 }
 
-/** What a bill or a capture's to-do carries beyond a to-do (0072's columns: only written when given). */
+/**
+ * What a bill or a capture's to-do carries beyond a to-do (0072's columns: only written when given). 0081's importance and people too
+ * (next month's bill carries them: botsBots/planCapture.ts paid), written only when set and non-empty.
+ */
 export interface TaskMore {
   kind?: TaskKind; amount_paise?: number | null; payee?: string | null; pay_link?: string | null; repeat?: "" | "monthly";
   prep_for?: string | null; capture_id?: string | null;
+  importance?: "normal" | "must" | null; people?: PersonRef[];
 }
 
 export interface Listed { events: CalEvent[]; tasks: CalTask[]; open: CalTask[] }
 
-export type ReminderSend = (userId: string, msg: { kind: "plan_reminder" | PlanKindId; key: string; vars: Record<string, string>; data: Record<string, string>; category?: string }) => Promise<unknown>;
+/** `call`: what "X0 is calling" needs if the reminder rings instead (botsBots/planCall.ts): the server's own, never put in the push. */
+export type ReminderSend = (userId: string, msg: { kind: "plan_reminder" | PlanKindId; key: string; vars: Record<string, string>; data: Record<string, string>; category?: string; call?: CallSeed }) => Promise<unknown>;
 
 /**
  * What Plan Ease says about a reminder before it goes (botsBots/planEase.ts): whether a leave-by reminder already went for that start
@@ -102,7 +115,17 @@ export type ReminderSend = (userId: string, msg: { kind: "plan_reminder" | PlanK
 export interface ReminderPolicy {
   leaveSent(userId: string, eventId: string, start: number): Promise<boolean>;
   spend(userId: string, day: string): Promise<boolean>;
+  /** Plan Ease's follow-through (botsBots/planFollow.ts): true when this occurrence is followed, so its own push is not sent. */
+  follow?(userId: string, c: FollowCandidate): Promise<boolean>;
 }
+
+/** A reminder that came due, as follow-through's arming hook sees it (calendar remindPlan, after the claim). */
+export type FollowCandidate =
+  | { kind: "event"; row: EventRow; at: number; start: number; day: string; leftAlready: boolean }
+  | { kind: "task"; row: TaskRow; at: number };
+
+/** Told when a to-do is ticked, un-ticked or taken out (follow-through closes its follow: botsBots/planFollow.ts taskTicked). */
+export type TickHook = (userId: string, taskId: string, what: "done" | "undone" | "gone") => void;
 /** A space's task, answered from the person's own list (their tick, or a no): spaceTasks.ts answer, wired by routes/bots/botsSpaces.ts. */
 export type SpaceAnswer = (userId: string, spaceId: string, taskId: string, status: "done" | "todo" | "cant") => Promise<unknown>;
 
@@ -122,6 +145,8 @@ const OPEN_MAX = 200;
 const ROWS_MAX = 5000;
 /** A timed event's reminder when none was said; an all-day one and a to-do have none unless asked. */
 const DEFAULT_REMIND_MIN = 15;
+/** A new flight or train's reminder when none was said (follow-through on): two hours before, time to get there. */
+export const FLIGHT_REMIND_MIN = 120;
 const REMIND_MAX = 7 * 24 * 60;
 /** A reminder this late (the server was down) is not sent: the moment has passed. */
 const LATE_MS = 6 * 60 * MIN;
@@ -172,6 +197,14 @@ interface DueReminder {
   msg: Parameters<ReminderSend>[1];
 }
 
+/** "normal" or "must" as said; anything else is not written (null: the rules decide). */
+const importanceOf = (v: unknown): "normal" | "must" | undefined => (v === "normal" || v === "must" ? v : undefined);
+/** 0081's columns for a view, only when the row kept them. */
+const followView = (r: { importance?: "normal" | "must" | null; people?: PersonRef[] }) => ({
+  ...(r.importance === "normal" || r.importance === "must" ? { importance: r.importance } : {}),
+  ...(r.people && r.people.length ? { people: r.people } : {}),
+});
+
 /** "dentist", "call Mom", "PTM": a title as the middle of a sentence (an all-capitals word keeps its capitals). */
 const inLine = (t: string): string => (/^[A-Z][a-z]/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t);
 
@@ -184,6 +217,7 @@ export class Calendar {
   private policy: ReminderPolicy | null = null;
   private tzSaid: ((userId: string, tz: number) => void) | null = null;
   private tzLoad: ((userId: string) => Promise<number | null>) | null = null;
+  private tickHook: TickHook | null = null;
 
   constructor(o: { rows?: CalendarRows; now?: () => number; publish?: (userId: string) => void } = {}) {
     this.rows = o.rows ?? calendarRows();
@@ -196,6 +230,14 @@ export class Calendar {
 
   /** Plan Ease's say on each reminder (botsBots/planEase.ts). */
   setReminderPolicy(p: ReminderPolicy | null): void { this.policy = p; }
+
+  /** Who hears a to-do ticked, un-ticked or taken out (follow-through, wired by routes/bots/planFollows.ts). Fire and forget. */
+  setTickHook(fn: TickHook | null): void { this.tickHook = fn; }
+
+  private ticked(userId: string, taskId: string, what: "done" | "undone" | "gone"): void {
+    if (!this.tickHook) return;
+    try { this.tickHook(userId, taskId, what); } catch { /* the tick stands */ }
+  }
 
   /**
    * Where the person's offset is kept beside them (plan_prefs.tz_min, botsBots/planEase.ts): told when their apps say a new one, asked
@@ -245,7 +287,7 @@ export class Calendar {
       id: series && o ? `${r.id}@${o.day}` : r.id, seriesId: r.id, title: r.title, notes: r.notes, place: r.place, ...(where ? { where } : {}),
       start: r.all_day ? startOfDay(day, tz) : start, end: r.all_day ? startOfDay(day, tz) + Math.max(DAY, end - start) : end, allDay: r.all_day, day,
       repeat: r.repeat, remindMin: r.remind_min, from: fromOf(r.source), source: r.source.kind, fixed: fixedOf(r.source), ...spaceBits(r.source),
-      ...(r.capture_id ? { captureId: r.capture_id } : {}),
+      ...(r.capture_id ? { captureId: r.capture_id } : {}), ...followView(r),
     };
   }
 
@@ -257,7 +299,7 @@ export class Calendar {
       from: fromOf(s), source: s.kind, fixed: fixedOf(s), ...spaceBits(s), ...(s.kind === "note" ? { noteId: s.noteId, todoId: s.todoId } : {}),
       ...(r.amount_paise ? { amountPaise: Number(r.amount_paise) } : {}), ...(r.payee ? { payee: r.payee } : {}), ...(r.pay_link ? { payLink: r.pay_link } : {}),
       ...(r.repeat === "monthly" ? { repeat: "monthly" as const } : {}), ...(r.capture_id ? { captureId: r.capture_id } : {}), ...(r.prep_for ? { prepFor: r.prep_for } : {}),
-      ...(typeof r.who_name === "string" && r.who_name ? { who: r.who_name } : {}),
+      ...(typeof r.who_name === "string" && r.who_name ? { who: r.who_name } : {}), ...followView(r),
     };
   }
 
@@ -391,9 +433,13 @@ export class Calendar {
 
   // ------------------------------------------------------------------ events
 
-  async addEvent(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, more: { capture_id?: string } = {}): Promise<CalEvent> {
+  /**
+   * `more.key`: the row's source_key ("make:<key>:<n>", "Plan something"'s Done: idempotent through the unique (user_id, source_key)).
+   * `more.parsed`: the body was already read and checked (Done): the title is never read again for a day, a time or a place.
+   */
+  async addEvent(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, more: { capture_id?: string; people?: PersonRef[]; key?: string; parsed?: boolean } = {}): Promise<CalEvent> {
     const tz = this.seeTz(userId, raw.tz);
-    const b = this.fromWords(raw, tz);
+    const b = more.parsed ? raw : this.fromWords(raw, tz);
     const title = clean(b.title, 120);
     if (!title) throw bad("Say what it is, like Dentist.");
     const w = this.when(b, tz);
@@ -403,8 +449,12 @@ export class Calendar {
       id: randomUUID(), user_id: userId, title, notes: longText(b.notes, 1000), place: clean(b.place, 160),
       start_ms: w.start, end_ms: w.end, all_day: w.allDay, tz_min: tz,
       repeat: this.repeatOf(b.repeat), repeat_until: this.untilOf(b.until, tz, null), skips: [],
-      remind_min: remindOf(b.remind, w.allDay ? null : DEFAULT_REMIND_MIN), next_remind_ms: null,
-      source: by, source_key: null, created_ms: at, updated_ms: at, ...(more.capture_id ? { capture_id: more.capture_id } : {}),
+      // A flight or a train with no reminder said gets two hours, time to get there (follow-through on; new events only).
+      remind_min: remindOf(b.remind, w.allDay ? null : followOn() && looksTravel(title) ? FLIGHT_REMIND_MIN : DEFAULT_REMIND_MIN), next_remind_ms: null,
+      source: by, source_key: typeof more.key === "string" && more.key ? more.key.slice(0, 200) : null, created_ms: at, updated_ms: at, ...(more.capture_id ? { capture_id: more.capture_id } : {}),
+      // 0081's columns only when given: a server ahead of its migration still adds events.
+      ...(importanceOf(raw.importance) ? { importance: importanceOf(raw.importance) } : {}),
+      ...(Array.isArray(more.people) && more.people.length ? { people: cleanPeople(more.people) } : {}),
     };
     row.next_remind_ms = this.reminderFor(row);
     await this.rows.events.insert(row);
@@ -487,14 +537,18 @@ export class Calendar {
     return { day, at: t === null ? null : startOfDay(day, tz) + t * MIN };
   }
 
-  async addTask(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, key: string | null = null, more: TaskMore = {}): Promise<CalTask> {
+  /** `o.parsed`: the body was already read and checked ("Plan something"'s Done): the title is never read again. Not a TaskMore field (those are columns). */
+  async addTask(userId: string, raw: Record<string, unknown>, by: Source = { kind: "me" }, key: string | null = null, more: TaskMore = {}, o: { parsed?: boolean } = {}): Promise<CalTask> {
     const tz = this.seeTz(userId, raw.tz);
-    const b = this.fromWords(raw, tz, { task: true });
+    const b = o.parsed ? raw : this.fromWords(raw, tz, { task: true });
     const title = clean(b.title, 120);
     if (!title) throw bad("Say what the to-do is.");
     const d = this.due(b, tz);
     await this.countGuard(userId, "tasks");
     const at = this.now();
+    // 0081's columns only when set (an empty people list would still write the column, and fail before the migration).
+    const { importance: moreImp, people: morePeople, ...more0072 } = more;
+    const imp = importanceOf(raw.importance) ?? importanceOf(moreImp);
     const row: TaskRow = {
       id: randomUUID(), user_id: userId, title, notes: longText(b.notes, 1000), list: clean(b.list, 40),
       due_day: d.day, due_ms: d.at, tz_min: tz, done: false, done_ms: null,
@@ -502,7 +556,9 @@ export class Calendar {
       remind_min: remindOf(b.remind, d.at !== null || (d.day && planOn("reminders")) ? 0 : null), next_remind_ms: null,
       source: by, source_key: key, created_ms: at, updated_ms: at,
       // A bill or a capture's to-do: only the columns given are written (a plain to-do writes none of 0072's).
-      ...Object.fromEntries(Object.entries(more).filter(([, v]) => v !== undefined && v !== null && v !== "")),
+      ...Object.fromEntries(Object.entries(more0072).filter(([, v]) => v !== undefined && v !== null && v !== "")),
+      ...(imp ? { importance: imp } : {}),
+      ...(Array.isArray(morePeople) && morePeople.length ? { people: cleanPeople(morePeople) } : {}),
     };
     row.next_remind_ms = this.taskReminderFor(row);
     await this.rows.tasks.insert(row);
@@ -547,6 +603,7 @@ export class Calendar {
       await this.spaceAnswer(userId, row.source.spaceId, row.source.taskId, done ? "done" : "todo").catch(() => undefined);
     }
     this.publish(userId);
+    this.ticked(userId, row.id, done ? "done" : "undone");
     return this.taskView(next);
   }
 
@@ -555,6 +612,77 @@ export class Calendar {
     this.noChange(row);
     await this.rows.tasks.remove({ id: row.id, user_id: userId });
     this.publish(userId);
+    this.ticked(userId, row.id, "gone");
+  }
+
+  // ------------------------------------------------------------------ follow-through's parts (0081)
+
+  /**
+   * How important an item is and who does it (botsBots/planFollowPeople.ts setItem, which checks the people first): the person's own
+   * rows only, the series row for "<id>@<day>". Only the given fields are written. An item that is now must or has people and had no
+   * reminder gets one (a to-do with a day at its time or 10 am, an event 15 minutes before), and only then is its next reminder worked
+   * out: one that had a reminder keeps its next one as it is (a bill's 6 pm, set when its 10 am was claimed).
+   */
+  async setFollow(userId: string, ref: { kind: "task" | "event"; id: string }, f: { importance?: "normal" | "must" | null; people?: PersonRef[] }): Promise<CalTask | CalEvent> {
+    const patch: { importance?: "normal" | "must" | null; people?: PersonRef[] } = {};
+    if (f.importance !== undefined) patch.importance = f.importance === "normal" || f.importance === "must" ? f.importance : null;
+    if (f.people !== undefined) patch.people = cleanPeople(f.people);
+    const now = this.now();
+    const wantsFollow = (r: { importance?: "normal" | "must" | null; people?: PersonRef[] }, why: ReturnType<typeof autoMust>): boolean =>
+      effectiveMust(r.importance ?? null, why) || (r.people ?? []).some((p) => p.id !== userId);
+    if (ref.kind === "task") {
+      const row = await this.taskRowOf(userId, ref.id);
+      if (fixedOf(row.source)) throw new BotError("not_allowed", "Only who set it can change it.", 403);
+      const next: TaskRow = { ...row, ...patch, updated_ms: now };
+      const why = autoMust({ kind: row.kind ?? "todo", title: row.title, timed: row.due_ms !== null, dueDay: row.due_day, today: dayOf(now, row.tz_min) });
+      const write: Partial<TaskRow> = { ...patch, updated_ms: now };
+      if (wantsFollow(next, why) && (row.remind_min === null || row.remind_min === undefined) && row.due_day) {
+        next.remind_min = 0;
+        next.next_remind_ms = this.taskReminderFor(next);
+        write.remind_min = 0;
+        write.next_remind_ms = next.next_remind_ms;
+      }
+      await this.rows.tasks.update({ id: row.id, user_id: userId }, write);
+      this.publish(userId);
+      return this.taskView(next);
+    }
+    const { row } = await this.eventRowOf(userId, ref.id);
+    if (fixedOf(row.source)) throw new BotError("not_allowed", "Only who set it can change it.", 403);
+    const next: EventRow = { ...row, ...patch, updated_ms: now };
+    const why = autoMust({ kind: "event", title: row.title, timed: !row.all_day, dueDay: null, today: dayOf(now, row.tz_min) });
+    const write: Partial<EventRow> = { ...patch, updated_ms: now };
+    if (wantsFollow(next, why) && (row.remind_min === null || row.remind_min === undefined)) {
+      next.remind_min = DEFAULT_REMIND_MIN;
+      next.next_remind_ms = this.reminderFor(next);
+      write.remind_min = DEFAULT_REMIND_MIN;
+      write.next_remind_ms = next.next_remind_ms;
+    }
+    await this.rows.events.update({ id: row.id, user_id: userId }, write);
+    this.publish(userId);
+    return this.eventView(next);
+  }
+
+  /**
+   * The rows one "Plan something" Done made (planMakeService.ts): `make:<key>:0` to `make:<key>:<n-1>` on both lists, exact selects,
+   * the person's own only. For Done's idempotency, Undo, and the home's "Added: …" (planEase.ts day).
+   */
+  async keyed(userId: string, key: string, n: number): Promise<Array<{ kind: "event" | "task"; id: string; title: string; day: string; start: number | null; allDay: boolean; repeat: string; created: number; sourceKey: string }>> {
+    if (!UUID.test(key) || !Number.isInteger(n) || n < 1 || n > 21) return [];
+    const keys = Array.from({ length: n }, (_, i) => `make:${key}:${i}`);
+    const found = await Promise.all(keys.map(async (k) => {
+      const [e] = await this.rows.events.select({ user_id: userId, source_key: k }, { limit: 1 });
+      if (e) {
+        const r = eventRow(e);
+        return { kind: "event" as const, id: r.id, title: r.title, day: startDay(r), start: r.all_day ? null : r.start_ms, allDay: r.all_day, repeat: r.repeat, created: Number(r.created_ms), sourceKey: k };
+      }
+      const [t] = await this.rows.tasks.select({ user_id: userId, source_key: k }, { limit: 1 });
+      if (t) {
+        const r = taskRow(t);
+        return { kind: "task" as const, id: r.id, title: r.title, day: r.due_day ?? "", start: r.due_ms, allDay: false, repeat: "", created: Number(r.created_ms), sourceKey: k };
+      }
+      return null;
+    }));
+    return found.filter((x): x is NonNullable<typeof x> => !!x);
   }
 
   /** The to-dos made from a meeting's to-dos: { todoId: taskId }. */
@@ -735,7 +863,10 @@ export class Calendar {
       const next = was ? nextReminder(r, Math.max(was.at, now, at)) : nextReminder(r, now);
       const claimed = await this.rows.events.update({ id: r.id, next_remind_ms: at }, { next_remind_ms: next?.at ?? null });
       if (!claimed || !was || now - was.at > LATE_MS || hiddenNow(r.source.kind)) continue;
-      if (!r.all_day && this.policy && await this.policy.leaveSent(r.user_id, r.id, was.start).catch(() => false)) continue;
+      const left = !r.all_day && !!this.policy && await this.policy.leaveSent(r.user_id, r.id, was.start).catch(() => false);
+      // Followed (botsBots/planFollow.ts): the ladder sends this occurrence's push, so the calendar's own is not sent.
+      if (this.policy?.follow && await this.policy.follow(r.user_id, { kind: "event", row: r, at: was.at, start: was.start, day: was.day, leftAlready: left }).catch(() => false)) continue;
+      if (left) continue;
       const today = dayOf(now, r.tz_min);
       const title = safeTitle(r.title);
       const clock = r.all_day ? "" : clockAt(was.start, r.tz_min);
@@ -762,6 +893,8 @@ export class Calendar {
       const bill = t.kind === "due" && planOn("capture");
       const claimed = await this.rows.tasks.update({ id: t.id, next_remind_ms: at }, { next_remind_ms: bill && !t.done ? dueAgainAt(t, at) : null });
       if (!claimed || t.done || now - at > LATE_MS || !t.due_day || hiddenNow(t.source.kind)) continue;
+      // Followed (botsBots/planFollow.ts): the ladder sends it, a bill's 10 am and its 6 pm alike (the claim above still sets the 6 pm).
+      if (this.policy?.follow && await this.policy.follow(t.user_id, { kind: "task", row: t, at }).catch(() => false)) continue;
       const today = dayOf(now, t.tz_min);
       const title = safeTitle(t.title);
       if (bill) {

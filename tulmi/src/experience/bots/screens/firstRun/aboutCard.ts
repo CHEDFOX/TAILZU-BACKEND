@@ -38,10 +38,10 @@ export function aboutState(about: About | undefined): Record<string, unknown> {
   return { [NAME]: about?.name ?? "", [GENDER]: gender, [SAVED]: saved, [CLOSED]: false, [BOT]: about?.botName ?? "", [NAMED]: false };
 }
 
-/** The three choices as chips: picked is ink with a tick. */
-function genderChips(desk: boolean): Node {
+/** The three choices as chips: picked is ink with a tick. `path`: where the pick is kept (the Oracle's card keeps its own). */
+export function genderChips(desk: boolean, path: string = GENDER): Node {
   return row(GENDERS.map((g) => {
-    const on: Condition = { eq: [GENDER, g.value] };
+    const on: Condition = { eq: [path, g.value] };
     const c = (then: string, otherwise: string) => ({ ...on, then, else: otherwise });
     return labelled(row([
       when(on, icon("check", { size: 14, color: C.paper, weight: 2 })),
@@ -49,7 +49,7 @@ function genderChips(desk: boolean): Node {
     ], {
       gap: 6, height: 36, paddingHorizontal: 14, borderRadius: 18, borderWidth: 1, justifyContent: "center",
       borderColor: c(C.ink, C.outline), backgroundColor: c(C.ink, C.paper), flexGrow: desk ? 0 : 1, flexBasis: desk ? "auto" : 0,
-    }, setState(GENDER, g.value)), g.label);
+    }, setState(path, g.value)), g.label);
   }), { gap: 8 });
 }
 

@@ -14,6 +14,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
 import { MemoryTable, SupabaseTable, type Table } from "../botsBots/rows.js";
 import type { Repeat } from "./words.js";
+import { cleanPeople, type PersonRef } from "../botsBots/planFollowWords.js";
 
 /** Where a thing came from: the person, a bot, someone in a space, or a meeting's to-do. */
 export type Source =
@@ -33,6 +34,12 @@ export interface EventRow {
   created_ms: number; updated_ms: number;
   /** 0072: the capture that added it (botsBots/planCapture.ts). Written only on a capture's event. */
   capture_id?: string | null;
+  /**
+   * 0081 (follow-through, botsBots/planFollow.ts): how important it is (null: the rules decide) and who does it, in order. Written only when
+   * given and read only when the row has them, so a server ahead of its migration still writes rows (a change writes the row back whole).
+   */
+  importance?: "normal" | "must" | null;
+  people?: PersonRef[];
 }
 
 /** What a to-do is (migration 0070): a to-do, a bill to pay (step 3), or waiting on someone (step 4). planRows.ts draws each. */
@@ -63,6 +70,9 @@ export interface TaskRow {
   repeat?: "" | "monthly";
   prep_for?: string | null;
   capture_id?: string | null;
+  /** 0081 (follow-through): as on EventRow, written only when given, read only when there. */
+  importance?: "normal" | "must" | null;
+  people?: PersonRef[];
 }
 
 export interface EventTable extends Table<EventRow> {
@@ -79,6 +89,14 @@ export interface CalendarRows { events: EventTable; tasks: TaskTable }
 const num = (v: unknown): number => Number(v);
 const numOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
+/** 0081's two columns, only when the raw row has them (never a default key: a whole-row write would hit a missing column). */
+function followBits(r: { importance?: unknown; people?: unknown }): { importance?: "normal" | "must" | null; people?: PersonRef[] } {
+  return {
+    ...(r.importance !== undefined ? { importance: r.importance === "normal" || r.importance === "must" ? r.importance : null } : {}),
+    ...(r.people !== undefined ? { people: cleanPeople(r.people) } : {}),
+  };
+}
+
 /** Supabase hands bigints back as numbers or strings: one shape either way. */
 export function eventRow(r: EventRow): EventRow {
   return {
@@ -86,6 +104,7 @@ export function eventRow(r: EventRow): EventRow {
     remind_min: numOrNull(r.remind_min), next_remind_ms: numOrNull(r.next_remind_ms), created_ms: num(r.created_ms), updated_ms: num(r.updated_ms),
     skips: Array.isArray(r.skips) ? r.skips : [], repeat: (r.repeat ?? "") as Repeat, all_day: r.all_day === true,
     source: r.source && typeof r.source === "object" ? r.source : { kind: "me" },
+    ...followBits(r),
   };
 }
 export function taskRow(r: TaskRow): TaskRow {
@@ -96,6 +115,7 @@ export function taskRow(r: TaskRow): TaskRow {
     kind: TASK_KINDS.includes(r.kind as TaskKind) ? (r.kind as TaskKind) : "todo", snoozes: Number.isFinite(Number(r.snoozes)) ? Number(r.snoozes) : 0,
     // Only when the row has them (a server ahead of 0072 never writes a column that isn't there).
     ...(r.amount_paise !== undefined ? { amount_paise: numOrNull(r.amount_paise) } : {}),
+    ...followBits(r),
   };
 }
 

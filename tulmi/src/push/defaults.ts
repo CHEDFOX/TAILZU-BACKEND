@@ -11,7 +11,7 @@
  * Kept free of imports so the control plane can preview it without a cycle, but one: Plan Ease's kinds (botsBots/planKinds.ts), itself
  * free of imports, so each of its kinds is said once.
  */
-import { PLAN_KIND_IDS, planPushFlags, planPushLabels } from "../botsBots/planKinds.js";
+import { CALL_KIND_IDS, PLAN_KIND_IDS, callPushFlags, callPushLabels, followPushFlags, planPushFlags, planPushLabels } from "../botsBots/planKinds.js";
 
 export interface PushPayload {
   flags: Record<string, unknown>;
@@ -167,6 +167,41 @@ export const PUSH_DEFAULTS: PushPayload = {
     // Plan Ease's own kinds (botsBots/planKinds.ts): a reminder that says what it is, with at most 2 buttons, and the day notes. Each has
     // its screen, buttons, channel, priority and expiry (push.<kind>.priority / .ttlMin / .interruptionLevel, read by push/engine.ts).
     ...planPushFlags(),
+    // "X0 is calling" (botsBots/planCall.ts): a leave-by or a bill due today rings instead, on a phone that takes calls.
+    ...callPushFlags(),
+    // Follow-through (botsBots/planFollow.ts): the ladder's timings, read once per sweep.
+    ...followPushFlags(),
+
+    // The mail bot (src/mail, docs/mail.md): a business's message needs a person's answer, an urgent one has a draft waiting, or the
+    // business's AI paused for the day (its allowance spent). Never with the mail's words: the business and what kind of message it is.
+    // The first two open the reply (data.b, data.run); the pause opens the mail bot (data.slug).
+    "push.mail_needs_you.enabled": true,
+    "push.mail_needs_you.screenId": "bots.mail.reply",
+    "push.mail_urgent.enabled": true,
+    "push.mail_urgent.screenId": "bots.mail.reply",
+    "push.mail_paused.enabled": true,
+    "push.mail_paused.screenId": "bots.bot",
+    // The meeting bot (src/meet, docs/meet.md): the notes are ready (they open the note), it waits to be let in, or it could not join (both
+    // open the meeting). Never a word of what was said.
+    "push.meet_ready.enabled": true,
+    "push.meet_ready.screenId": "bots.note",
+    "push.meet_waiting.enabled": true,
+    "push.meet_waiting.screenId": "bots.meet.meeting",
+    "push.meet_failed.enabled": true,
+    "push.meet_failed.screenId": "bots.meet.meeting",
+    // The meeting bot in a space (docs/spaces.md): a member took the bot to a meeting (to the space's admin, who sees their meetings), or
+    // the admin sent the bot to a member's meeting (to that member). Both open the meeting (data.m); never a word of what was said.
+    "push.space_meet.enabled": true,
+    "push.space_meet.screenId": "bots.meet.meeting",
+    "push.space_meet_sent.enabled": true,
+    "push.space_meet_sent.screenId": "bots.meet.meeting",
+    // The mail bot in a space (docs/mail.md, src/mail/access.ts): a member set up mail for a business (to the space's admin, who reaches it
+    // whole), or a business's owner gave a member one of its addresses to answer (to that member). Both open the mail bot on that business
+    // (data.slug "mail", data.b); never a word of the mail.
+    "push.space_mail.enabled": true,
+    "push.space_mail.screenId": "bots.bot",
+    "push.space_mail_handle.enabled": true,
+    "push.space_mail_handle.screenId": "bots.bot",
 
     "push.lowWords.enabled": false,
     "push.lowWords.fraction": 0.1,
@@ -218,12 +253,33 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.plan_reminder.title": "{title}",
     "push.plan_reminder.body": "{when}",
     ...planPushLabels(),
+    ...callPushLabels(),
     "push.ops_alert.title": "{title}",
     "push.ops_alert.body": "{body}",
     "push.routine_done.title": "{bot}: {task}",
     "push.routine_done.body": "{line}",
     "push.routine_failed.title": "Routine paused: {task}",
     "push.routine_failed.body": "{bot} couldn't do it 3 times in a row. {line}",
+    "push.mail_needs_you.title": "{business}",
+    "push.mail_needs_you.body": "{what} needs your answer.",
+    "push.mail_urgent.title": "{business}: urgent",
+    "push.mail_urgent.body": "{what} has a draft waiting for you.",
+    "push.mail_paused.title": "{business}",
+    "push.mail_paused.body": "Today's AI allowance is used up. New mail waits for you.",
+    "push.meet_ready.title": "{title}",
+    "push.meet_ready.body": "Your meeting notes are ready.",
+    "push.meet_waiting.title": "{title}",
+    "push.meet_waiting.body": "{name} is waiting to be let in.",
+    "push.meet_failed.title": "{title}",
+    "push.meet_failed.body": "{name} couldn't join: {why}",
+    "push.space_meet.title": "{name}",
+    "push.space_meet.body": "took the meeting bot to {title}.",
+    "push.space_meet_sent.title": "{name}",
+    "push.space_meet_sent.body": "sent the meeting bot to {title}.",
+    "push.space_mail.title": "{name}",
+    "push.space_mail.body": "set up mail for {domain}.",
+    "push.space_mail_handle.title": "{name}",
+    "push.space_mail_handle.body": "gave you {address} to answer.",
     "push.lowWords.title": "{n} words left",
     "push.lowWords.body": "Enough for today. More any time.",
   },
@@ -238,9 +294,12 @@ export const EVENT_PUSH_KINDS = [
   "approval",
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
-  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed",
-  "plan_reminder", ...PLAN_KIND_IDS,
+  "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent",
+  "space_mail", "space_mail_handle",
+  "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
+  "mail_needs_you", "mail_urgent", "mail_paused",
+  "meet_ready", "meet_waiting", "meet_failed",
   "ops_alert",
 ] as const;
 export type EventPushKind = (typeof EVENT_PUSH_KINDS)[number];

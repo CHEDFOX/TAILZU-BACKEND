@@ -9,7 +9,7 @@
  *   1. @name           the message opens with a bot's slug: that bot, for nothing, and the @name is taken off the words
  *   2. the rules       each bot is scored from what is known for free, the same words always giving the same answer:
  *                        - its purpose and name against the message (words stemmed, Hinglish and Hindi read through a small table of what people say)
- *                        - what a built-in is for (Keylessbord writes and rewrites, Plan plans, Travel travels) in English, Hinglish and Hindi
+ *                        - what a built-in is for (Keylessbord writes and rewrites, Plan plans, Travel travels, the Oracle reads a sky) in English, Hinglish and Hindi
  *                        - the front door's own reading of the message (a question about code in a project is Xode's)
  *                        - the apps the message names or the job it describes, against the connected apps a bot was given (connectors/intent.ts)
  *                        - what the bot can do: an attached file wants Files, a chart wants Artifacts, "the latest" wants Web or Research
@@ -91,10 +91,34 @@ const TRAVEL_HI = hindi(["(?:यात्रा|सफर|सफ़र|घूम
 /** Live lookups the Travel bot has tools for (src/everyday): the weather somewhere, and money in another currency. */
 const LIVE = /\b(?:weather|forecast|temperature|will\s+it\s+rain|rain(?:ing)?\s+(?:in|at|tomorrow|today)|exchange\s+rate|convert\s+[\d.,]+|currency|in\s+(?:rupees|dollars|euros|pounds|dirhams)|(?:usd|eur|gbp|aed|inr)\s+(?:to|in)\s+(?:usd|eur|gbp|aed|inr)|mausam|barish|kitne\s+rupa(?:ye|ya|y))\b/i;
 
+/** A reading asked for in so many words (the Oracle, where its service is set up): never a bare word that is also a name or an amount
+ *  ("Rashi", "Dasha", राशि as a sum) or a plain "future", "luck" or "Saturday" (शनिवार). */
+const ORACLE = /\b(?:astrolog\w*|horoscopes?|zodiac|(?:star|sun|moon|rising)\s+signs?|ascendant|(?:birth|natal)\s+chart|tarot|numerolog\w*|i\s+ching|retrograde|saturn\s+return|what\s+(?:do|does)\s+(?:the|my)\s+stars?\s+(?:say|hold)|lucky\s+(?:number|colou?r|day|stone|gem)|(?:when|will)\s+(?:will\s+)?i\s+(?:ever\s+)?(?:get\s+married|marry|find\s+love|meet\s+my\s+(?:soulmate|partner))|kunda?li|rashifal|(?:meri|mera|my|apni)\s+rashi|jyotish\w*|nakshatras?|(?:maha|antar)dasha|(?:my|meri|current|running|which)\s+dasha|manglik|mangal\s+dosh|sade\s*sati|muhurat|muhurta|mahurat|guna?\s+milan|shaadi\s+kab|kab\s+hogi\s+(?:meri\s+)?shaadi|bhavishyavani|(?:meri|mera|apni)\s+kismat|kismat\s+(?:kaisi|mein|me))\b/i;
+const ORACLE_HI = hindi(["कु(?:ं|ण्)?डली", "राशिफल", "मेरी\\s*राशि", "ज्योतिष", "भविष्यवाणी", "नक्षत्र", "टैरो", "शादी\\s*कब", "कब\\s*होगी\\s*(?:मेरी\\s*)?शादी", "मांगलिक", "साढ़े\\s*साती", "महादशा", "मुहूर्त"]);
+
+/** The business's own mail, asked about in so many words (the mail bot, where its service is set up): never "write an email", which is
+ *  Keylessbord's, nor a bare "mail" or "inbox". */
+const MAIL = /\b(?:(?:my|our)\s+business(?:'s)?\s+(?:e-?mails?|mails?|inbox)|business\s+(?:e-?mail|mail)\s+(?:inbox|bot)|customer\s+(?:e-?mails?|mails?)\s+(?:waiting|pending|today|this\s+week)|(?:e-?mails?|mails?)\s+(?:waiting\s+for\s+me|that\s+need\s+me|needing\s+me)|mail\s+bot)\b/i;
+
+/** The meeting bot's: joining a call, or what came out of one, in so many words. Never "schedule a meeting with Rahul" or "write a meeting
+ *  invite", which are Plan Ease's and Keylessbord's. */
+const MEET = /\b(?:(?:join|attend|sit\s+in\s+on|record)\s+(?:my|our|this|the)\s+(?:\w+\s+)?(?:meeting|call|standup|sync)s?|meeting\s+bot|(?:notes?|summary|summari[sz]e|recap|minutes|decisions?|action\s+items?|to-?dos?)\s+(?:from|of|for)\s+(?:my|our|the|today'?s|yesterday'?s|this\s+morning'?s|last)\s+(?:\w+\s+)?(?:meeting|call|standup|sync)s?|what\s+(?:did|have)\s+(?:we|they)\s+(?:decide|agree)\w*\s+(?:in|at|on)\s+(?:the|my|our|today'?s|yesterday'?s|that|this|last)\s+(?:\w+\s+)?(?:meeting|call|standup|sync))\b/i;
+
+/** Built-ins whose purpose is in everyday words (the Oracle's: life, love, work, timing, a chart; the mail bot's: email, replies, voice): those
+ *  words are no sign of what it does, and would pull a love letter, a chart of expenses or "write an email to my boss" its way. Each is found by
+ *  its name, by its lines in HINTS, or by the model when unsure. */
+const NAME_ONLY: ReadonlySet<string> = new Set(["oracle", "mail", "meet"]);
+/** Built-ins whose very name is an everyday word (the mail bot's placeholder, "Mail": "reply to this mail" is Keylessbord's; the meeting bot's, "Meetings": "schedule a meeting" is Plan Ease's). Neither their
+ *  name nor their purpose scores: only their lines in HINTS, an @name, or the model when unsure. A real name given, it moves to NAME_ONLY. */
+const WORD_NAME: ReadonlySet<string> = new Set(["mail", "meet"]);
+
 const HINTS: Readonly<Record<string, ReadonlyArray<{ re: RegExp; points: number; id: string }>>> = {
   keybot: [{ re: KEYBOT, points: 8, id: "keybot:write" }, { re: KEYBOT_HI, points: 8, id: "keybot:write_hi" }],
   plan: [{ re: PLAN, points: 7, id: "plan:plan" }, { re: PLAN_HI, points: 7, id: "plan:plan_hi" }],
   travel: [{ re: TRAVEL, points: 9, id: "travel:trip" }, { re: TRAVEL_HI, points: 9, id: "travel:trip_hi" }, { re: LIVE, points: 8, id: "travel:live" }],
+  oracle: [{ re: ORACLE, points: 9, id: "oracle:reading" }, { re: ORACLE_HI, points: 9, id: "oracle:reading_hi" }],
+  mail: [{ re: MAIL, points: 8, id: "mail:business_mail" }],
+  meet: [{ re: MEET, points: 8, id: "meet:meetings" }],
 };
 
 // ------------------------------------------------------------------ the rules
@@ -130,7 +154,7 @@ export function scoreBots(
   if (intent) collect(intent);
 
   // How many of the bots each word is in the purpose or name of: a word only one bot has says more than one every bot has.
-  const vocabs = bots.map((b) => wordsOf(`${b.name} ${b.purpose}`));
+  const vocabs = bots.map((b) => wordsOf(b.ownerId === null && WORD_NAME.has(b.slug) ? "" : NAME_ONLY.has(b.slug) && b.ownerId === null ? b.name : `${b.name} ${b.purpose}`));
   const df = new Map<string, number>();
   for (const v of vocabs) for (const w of v) df.set(w, (df.get(w) ?? 0) + 1);
 

@@ -11,17 +11,29 @@
  *   planOn("asks")        family asks, repeats and turns in a space, with Spaces on too (planAsks.ts)
  *   planOn("app")         the app release, for binaries that say they can: Time Sensitive pushes, widget steps, desktop notices and
  *                         "add this" (push/engine.ts, routes/bots/botsShell.ts, live/notices.ts, experience/bootstrap/bootstrap.ts)
+ *   planOn("calls")       "X0 is calling" (planCall.ts): with planOn("app") too (BOT_CALLS, not a PLAN_V2_ step: callsOn() reads all three)
+ *   followOn()            follow-through (planFollow.ts): must-not-miss items and items with people on them, followed until someone says done
+ *                         (PLAN_V2_FOLLOW, with PLAN_V2_REMINDERS: arming rides the reminder sweep)
+ *   homeOn()              the threaded Plan home (PLAN_V2_HOME, with PLAN_V2_PAGE; planThread.ts, screens/bots/planHome.ts)
+ *   makeOn()              "Plan something": the card, Check, Done and its box (PLAN_V2_MAKE, with PLAN_V2_PAGE; planMake.ts)
+ *   makeAiOn()            "Plan something" may ask the AI to read messy words (PLAN_V2_MAKE_AI, with makeOn())
  *
  * Read on every call (the config is parsed once and cached), so a test can flip one with resetConfigForTests. Without a config (a unit
  * test that set none up) it reads the variable the way config.ts does: unset is on, anything but "true" is off.
  */
 import { getConfig } from "../config.js";
 
-export type PlanStep = "reminders" | "page" | "notes" | "links" | "capture" | "waits" | "asks" | "app";
+export type PlanStep =
+  | "reminders" | "page" | "notes" | "links" | "capture" | "waits" | "asks" | "app" | "calls" | "follow" | "home" | "make" | "makeAi";
 
-const KEY: Record<PlanStep, "PLAN_V2_REMINDERS" | "PLAN_V2_PAGE" | "PLAN_V2_NOTES" | "PLAN_V2_LINKS" | "PLAN_V2_CAPTURE" | "PLAN_V2_WAITS" | "PLAN_V2_ASKS" | "PLAN_V2_APP"> = {
+type PlanKey =
+  | "PLAN_V2_REMINDERS" | "PLAN_V2_PAGE" | "PLAN_V2_NOTES" | "PLAN_V2_LINKS" | "PLAN_V2_CAPTURE" | "PLAN_V2_WAITS" | "PLAN_V2_ASKS"
+  | "PLAN_V2_APP" | "BOT_CALLS" | "PLAN_V2_FOLLOW" | "PLAN_V2_HOME" | "PLAN_V2_MAKE" | "PLAN_V2_MAKE_AI";
+
+const KEY: Record<PlanStep, PlanKey> = {
   reminders: "PLAN_V2_REMINDERS", page: "PLAN_V2_PAGE", notes: "PLAN_V2_NOTES", links: "PLAN_V2_LINKS", capture: "PLAN_V2_CAPTURE",
-  waits: "PLAN_V2_WAITS", asks: "PLAN_V2_ASKS", app: "PLAN_V2_APP",
+  waits: "PLAN_V2_WAITS", asks: "PLAN_V2_ASKS", app: "PLAN_V2_APP", calls: "BOT_CALLS", follow: "PLAN_V2_FOLLOW",
+  home: "PLAN_V2_HOME", make: "PLAN_V2_MAKE", makeAi: "PLAN_V2_MAKE_AI",
 };
 
 export function planOn(step: PlanStep): boolean {
@@ -33,3 +45,19 @@ export function planOn(step: PlanStep): boolean {
     return v == null ? true : v.toLowerCase() === "true";
   }
 }
+
+/**
+ * Calls ring at all: BOT_CALLS, the app release (a call is a newer build's), and reminders (without them neither a leave-by nor a bill's
+ * push exists to turn into one).
+ */
+export const callsOn = (): boolean => planOn("calls") && planOn("app") && planOn("reminders");
+
+/** Follow-through (planFollow.ts): PLAN_V2_FOLLOW, with reminders (a follow is armed when an item's own reminder comes due). */
+export const followOn = (): boolean => planOn("follow") && planOn("reminders");
+
+/** The threaded home (with the new data path). */
+export const homeOn = (): boolean => planOn("page") && planOn("home");
+/** "Plan something" (with the new data path). */
+export const makeOn = (): boolean => planOn("page") && planOn("make");
+/** "Plan something" may ask the AI. */
+export const makeAiOn = (): boolean => makeOn() && planOn("makeAi");

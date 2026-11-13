@@ -10,7 +10,8 @@
  *   capture.addAll(user, id)        every ticked thing: events, to-dos, bills with their amount, "before" steps as to-dos, and what is
  *                                  given to someone as a task in the family space. "Added 3 things · Undo"
  *   capture.undo / takeOut          all of what it added, out again
- *   capture.plain(user, id)         without a yes to AI: words with a date become items by the rules; a photo is one to-do with the file
+ *                                  Without a yes to AI nothing is asked here (Home's card is the one place): words with a date become
+ *                                  the card's things by the rules at once; a photo, or nothing found, is one to-do with the file
  *   capture.tick()                  every minute: a photo that waited for the day's reading to start again; a read cut off by a restart
  *   capture.sweep()                 nightly: cards and their files past 7 days
  *
@@ -20,7 +21,8 @@
  * calendar/words.ts, past ones dropped, what's already on the plan marked, amounts read, a link kept only when it is in the source word
  * for word, 8 things at most). A failure of both: one to-do, "Look at the {label}", with the file.
  *
- * CONSENT AND MONEY. Nothing is sent before the person's yes to AI (privacy/aiGate.ts: every call asks, and runs as the person). Each
+ * CONSENT AND MONEY. Nothing is sent before the person's yes to AI (privacy/aiGate.ts: every call asks, and runs as the person), and
+ * without it nothing here asks for one: the rules road, as above. Each
  * read is charged to them (usage/cost.ts chargedTo, "plan"), added to Plan Ease's own day meter (the chat's ₹8, bots/service.ts), and
  * kept in plan_prefs.capture_paise, which is what is checked: reading shares may spend ₹5 of the day, so the chat always has ₹3. Past
  * that, words take the rules road and a photo waits for after midnight. Nothing ever tells the person about money or limits.
@@ -65,6 +67,23 @@ export const SHARE_PAISE = 150;
  * reserves up to SHARE_PAISE before it calls and settles at its real price after.
  */
 const NEED_PAISE = { glance: 2, text: 20, picture: 40 } as const;
+/**
+ * "Plan something"'s draft read (planMakeService.ts) starts only while at least this much of today's reading is left (₹1), so drafts
+ * never use up what a photo or a pasted notice needs later that day: drafts can take at most ₹4 of the ₹5.
+ */
+export const DRAFT_FLOOR = 100;
+
+/**
+ * The day reading's ₹5 is counted on: today, or the day already on the row when that is up to one day later (an offset that moved, a
+ * trip east). The count only starts again when the day really moves on: an earlier or the same day never wipes what was spent, so no
+ * offset, sent or saved, makes a second "new day" of the same one.
+ */
+export function budgetDay(row: PlanPrefsRow | null | undefined, today: string): string {
+  const had = (row as { capture_day?: unknown } | null | undefined)?.capture_day;
+  return typeof had === "string" && had > today && had <= shiftDay(today, 1) ? had : today;
+}
+/** The draft read is small and quick: 5 s a model, 8 s in all, 400 tokens out. */
+const DRAFT_READ = { timeoutMs: 5_000, totalMs: 8_000, maxTokens: 400, where: "plan:draft" } as const;
 /** Below this the reader wasn't sure: unticked, "Date?". */
 const SURE = 0.7;
 /** What is read of a long file: about 12k tokens. */
@@ -76,6 +95,7 @@ const LEFT_MS = 20_000;
 /** A read cut off (a restart) is read again after this long. */
 const STALE_MS = 3 * MIN;
 
+/** "consent": a card from before, left waiting for a yes to AI on the card. None is made now; looking at one reads it (view). */
 export type CaptureState = "reading" | "waiting" | "consent" | "ready" | "added" | "dismissed" | "failed";
 export type CaptureKind = "event" | "todo" | "due" | "wait";
 
@@ -126,8 +146,6 @@ export interface CaptureView {
   button: string;
   /** After Add all: "Added 3 things", with Undo for 10 seconds (and "I'll remind you each month" when a bill came two months running). */
   added?: { n: number; line: string };
-  /** While it waits for the person's yes to AI. */
-  consent?: true;
   /** It couldn't be read: what it became instead. */
   fallback?: string;
 }
@@ -181,10 +199,13 @@ const rowOf = (r: CaptureRow): CaptureRow => ({
 /** One call's answer and what it cost. */
 export interface ReadAnswer { text: string; usd: number }
 
+/** A text read's bounds: per model, in all (the fallback is skipped with less than 2.5 s left), tokens out, and where it is counted. */
+export interface ReadOpts { timeoutMs?: number; totalMs?: number; maxTokens?: number; where?: string }
+
 /** The reading calls (tests hand in their own; the server's go through OpenRouter, the consent gate and the cost tally). */
 export interface Readers {
-  /** Words: the cheap text tier, JSON out. */
-  text(system: string, user: string): Promise<ReadAnswer>;
+  /** Words: the cheap text tier, JSON out. `o`: "Plan something"'s small draft read (fake readers may ignore it). */
+  text(system: string, user: string, o?: ReadOpts): Promise<ReadAnswer>;
   /** A photo: the picture tier, with the rules themselves. */
   picture(system: string, user: string, image: { mime: string; data: Buffer }): Promise<ReadAnswer>;
   /** The share screen's one tiny look at a photo: is it a notice, a bill, a ticket or an appointment? */
@@ -195,11 +216,14 @@ const ladder = (first: string, rest: string): string[] => [...new Set([first, ..
 
 /** The server's: OpenRouter's client (every call asks the consent gate first), each tier in turn, the next only when one fails. */
 export function serverReaders(): Readers {
-  const call = async (models: string[], build: (model: string) => Record<string, unknown>, where: string): Promise<ReadAnswer> => {
+  const call = async (models: string[], build: (model: string) => Record<string, unknown>, where: string, o: ReadOpts = {}): Promise<ReadAnswer> => {
     let last: unknown = null;
-    for (const model of models) {
+    const until = o.totalMs ? Date.now() + o.totalMs : null;
+    for (const [i, model] of models.entries()) {
+      // Too little time left in all for another model: stop here (the person gets the rules' answer).
+      if (i > 0 && until !== null && until - Date.now() < 2_500) break;
       try {
-        const res = await openrouter().chat.completions.create({ ...build(model), model, ...({ usage: { include: true } } as Record<string, unknown>) } as never, { timeout: 25_000, maxRetries: 0 });
+        const res = await openrouter().chat.completions.create({ ...build(model), model, ...({ usage: { include: true } } as Record<string, unknown>) } as never, { timeout: o.timeoutMs ?? 25_000, maxRetries: 0 });
         const usd = openRouterUsd(res, { where, model });
         addCostUsd(usd);
         const text = (res as { choices?: Array<{ message?: { content?: string | null } }> }).choices?.[0]?.message?.content ?? "";
@@ -217,10 +241,10 @@ export function serverReaders(): Readers {
   const json = { response_format: { type: "json_object" } };
   const dataUrl = (i: { mime: string; data: Buffer }) => `data:${i.mime};base64,${i.data.toString("base64")}`;
   return {
-    text: (system, user) => call(ladder(cfg().CLEANUP_MODEL, cfg().AGENT_FALLBACK_MODELS), (model) => ({
-      temperature: 0, max_tokens: 1800, ...json, reasoning: reasoningFor(model),
+    text: (system, user, o = {}) => call(ladder(cfg().CLEANUP_MODEL, cfg().AGENT_FALLBACK_MODELS), (model) => ({
+      temperature: 0, max_tokens: o.maxTokens ?? 1800, ...json, reasoning: reasoningFor(model),
       messages: [{ role: "system", content: system }, { role: "user", content: user }],
-    }), "plan:capture"),
+    }), o.where ?? "plan:capture", o),
     picture: (system, user, image) => call(ladder(cfg().AGENT_VISION_MODEL, cfg().AGENT_VISION_FALLBACK_MODELS), (model) => ({
       temperature: 0, max_tokens: 1200, ...json, reasoning: reasoningFor(model),
       messages: [{ role: "system", content: system }, { role: "user", content: [{ type: "text", text: user }, { type: "image_url", image_url: { url: dataUrl(image), detail: "high" } }] }],
@@ -262,11 +286,12 @@ Rules:
 
 const clean = (s: unknown, max: number): string => (typeof s === "string" ? s.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max) : "");
 const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
-const isClock = (v: unknown): v is string => typeof v === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v);
+/** "17:30", "9:05": a clock a reader gave (also "Plan something"'s AI read, planMake.ts checkAi). */
+export const isClock = (v: unknown): v is string => typeof v === "string" && /^([01]?\d|2[0-3]):[0-5]\d$/.test(v);
 const norm = (t: string) => t.toLowerCase().replace(/[^a-z0-9ऀ-ॿ ]+/g, " ").replace(/\b(?:the|a|an|day|meeting|for|of|to)\b/g, " ").replace(/\s+/g, " ").trim();
 
-/** Two titles that say the same thing ("PTM" and "Parent-teacher meeting" are kept apart; "PTM Sat" and "PTM" are one). */
-function alike(a: string, b: string): boolean {
+/** Two titles that say the same thing ("PTM" and "Parent-teacher meeting" are kept apart; "PTM Sat" and "PTM" are one). Also planMake.ts's "already". */
+export function alike(a: string, b: string): boolean {
   const x = norm(a), y = norm(b);
   if (!x || !y) return false;
   if (x === y || x.includes(y) || y.includes(x)) return true;
@@ -276,7 +301,7 @@ function alike(a: string, b: string): boolean {
 }
 
 /** A day the reader gave, read again: an ISO day as it is, else its words through the calendar's own reader. Null when unsure. */
-function dayAgain(v: unknown, today: string): string | null {
+export function dayAgain(v: unknown, today: string): string | null {
   if (isDay(v)) return v;
   if (typeof v === "string" && v.trim()) return dayFrom(v.trim(), today);
   return null;
@@ -405,7 +430,23 @@ export class PlanCapture {
     if (Number.isFinite(given)) return Promise.resolve(Math.max(-720, Math.min(840, Math.round(given!))));
     return this.d.tzOf ? this.d.tzOf(userId).catch(() => 330) : this.d.calendar.tzOf(userId);
   }
-  private aiOk(userId: string): Promise<boolean> { return (this.d.aiOk ?? aiAllowedFor)(userId).catch(() => false); }
+  /** Their stored yes to AI (privacy/aiGate.ts; every call asks the gate again). "Plan something"'s setup asks it too. */
+  aiOk(userId: string): Promise<boolean> { return (this.d.aiOk ?? aiAllowedFor)(userId).catch(() => false); }
+
+  /**
+   * One small read of a person's words for "Plan something" (planMakeService.ts): their yes, one at a time (never waits: "busy" while
+   * another of theirs runs), Plan Ease's budget with today's last ₹1 kept for shares ("spent"). The same paid road as every read
+   * (paidRead: held, settled, as the person, charged to them). null: the read failed; its error is never logged (it can echo the words).
+   */
+  async readWords(userId: string, _tz: number, system: string, user: string): Promise<ReadAnswer | "consent" | "spent" | "busy" | null> {
+    if (!(await this.aiOk(userId))) return "consent";
+    // The budget's day is the person's own (their saved offset), never the offset this request says: a screen that flipped it on
+    // every send would make each read the first of a new day, and the ₹4 a day would stop nothing.
+    const tz = await this.tz(userId);
+    // No await between the check and paidRead taking the slot: two sends at once never both read.
+    if (this.paying.has(userId)) return "busy";
+    return this.paidRead(userId, tz, DRAFT_FLOOR, () => this.readers.text(system, user, DRAFT_READ));
+  }
 
   private async get(userId: string, id: unknown): Promise<CaptureRow> {
     if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) throw new BotError("not_found", "That isn't there any more.", 404);
@@ -455,25 +496,21 @@ export class PlanCapture {
       label: guessLabel(words, file?.name ?? ""), file_id: file?.id ?? null, in_hash: inHash, items: [] as CaptureItem[],
       added: {}, paise: 0, seen_ms: now, told_ms: null, created_ms: now, updated_ms: now, expires_ms: now + KEEP_MS,
     };
-    if (s.seen) {
-      // What was on a desktop's screen is never stored. With a yes to AI it is read now, from memory; without one it takes the rules
-      // road at once (no AI), and only the things found are kept, as any card's are.
-      if (consent) {
-        const row: CaptureRow = { ...base, state: "reading" };
-        await this.store.insert(row);
-        this.startRead(row, text);
-        return { capture: viewOf(row) };
-      }
-      const items = rulesItems(text, now, tz, await this.onPlan(userId, dayOf(now, tz), tz));
-      if (!items.length) return { plan: false };
-      const row: CaptureRow = { ...base, state: "ready", items };
+    if (!consent) {
+      // No yes to AI: nothing is asked and nothing is sent. The rules road at once: the words' own dates become the card's things, to
+      // tick as any card's; nothing found, or a photo (from the Plan page's +), one to-do with the file. What was on a desktop's screen
+      // is never stored, so with nothing found there it is not Plan Ease's.
+      const items = words ? rulesItems(words, now, tz, await this.onPlan(userId, dayOf(now, tz), tz)) : [];
+      if (!items.length && s.seen) return { plan: false };
+      const row: CaptureRow = { ...base, state: items.length ? "ready" : "failed", items };
       await this.store.insert(row);
-      this.ready(row);
+      if (items.length) this.ready(row); else await this.fallback(row, tz);
       return { capture: viewOf(row) };
     }
-    const row: CaptureRow = { ...base, ...(text ? { words: text } : {}), state: consent ? "reading" : "consent" };
+    // With the yes: read now. What was on a desktop's screen is read from memory, never stored.
+    const row: CaptureRow = { ...base, ...(text && !s.seen ? { words: text } : {}), state: "reading" };
     await this.store.insert(row);
-    if (consent) this.startRead(row, text || null);
+    this.startRead(row, text || null);
     return { capture: viewOf(row) };
   }
 
@@ -525,16 +562,6 @@ export class PlanCapture {
     return r.capture;
   }
 
-  /** The person said yes to AI on the card: it is read now. */
-  async consented(userId: string, id: unknown): Promise<CaptureView> {
-    const r = await this.get(userId, id);
-    if (r.state !== "consent") return this.view(userId, r.id);
-    if (!(await this.aiOk(userId))) return this.view(userId, r.id);
-    const next = await this.save(r, { state: "reading" });
-    this.startRead(next, null);
-    return viewOf(next);
-  }
-
   private startRead(row: CaptureRow, text: string | null): void {
     if (this.reading.has(row.id)) return;
     const p = this.read(row, text).catch(() => undefined).finally(() => this.reading.delete(row.id));
@@ -569,8 +596,10 @@ export class PlanCapture {
       return this.readers.text(extractPrompt(today), `<shared>\n${words.slice(0, TEXT_MAX)}\n</shared>`);
     }, row) : null;
     if (ans === "spent" || !consent) {
-      // Today's reading is spent (or the yes was taken back): words take the rules road; a photo waits for after midnight.
-      if (photo) { await this.save(row, { state: consent ? "waiting" : "consent" }); this.publish(userId); return; }
+      // Today's reading is spent: words take the rules road; a photo waits for after midnight. The yes taken back since: the rules road
+      // too, and a photo is one to-do with its file.
+      if (photo && consent) { await this.save(row, { state: "waiting" }); this.publish(userId); return; }
+      if (photo) { await this.fallback(row, tz); return; }
       const items = rulesItems(words, now, tz, onPlan);
       row = await this.save(row, { state: items.length ? "ready" : "failed", items, label: row.label, words: null });
       if (!items.length) await this.fallback(row, tz);
@@ -643,7 +672,7 @@ export class PlanCapture {
    */
   private async budgetLeft(userId: string, tz: number): Promise<number> {
     const row = await this.d.prefs.get(userId).catch(() => null);
-    return this.leftOf(userId, row, dayOf(this.now(), tz));
+    return this.leftOf(userId, row, budgetDay(row, dayOf(this.now(), tz)));
   }
 
   private leftOf(userId: string, row: PlanPrefsRow | null, today: string): number {
@@ -658,10 +687,10 @@ export class PlanCapture {
    * the row is still as it was read (updated_ms), so two servers reading at once never both pass. 0: not enough is left for `need`.
    */
   private async reserve(userId: string, tz: number, need: number): Promise<number> {
-    const today = dayOf(this.now(), tz);
     for (let i = 0; i < 6; i += 1) {
       const had = (await this.d.prefs.get(userId).catch(() => null)) ?? await this.d.prefs.patch(userId, {}).catch(() => null);
       if (!had) return 0;
+      const today = budgetDay(had, dayOf(this.now(), tz));
       const left = this.leftOf(userId, had, today);
       if (left < need) return 0;
       const hold = Math.min(SHARE_PAISE, left);
@@ -677,10 +706,9 @@ export class PlanCapture {
   /** After the read: what was held back is given back, and what it really cost is put on the row, the day meter and the card. */
   private async settle(userId: string, tz: number, held: number, usd: number, row?: CaptureRow): Promise<void> {
     const paise = usd > 0 ? Math.max(1, Math.ceil(usd * (this.d.usdInr?.() ?? getConfig().CODE_USD_INR) * 100)) : 0;
-    const today = dayOf(this.now(), tz);
     for (let i = 0; i < 6; i += 1) {
       const had = await this.d.prefs.get(userId).catch(() => null);
-      if (!had || had.capture_day !== today) break;
+      if (!had || had.capture_day !== budgetDay(had, dayOf(this.now(), tz))) break;
       const at = Math.max(this.now(), had.updated_ms + 1);
       const next = Math.min(100_000, Math.max(0, Number(had.capture_paise ?? 0) - held + paise));
       const moved = await this.d.prefs.table.update({ user_id: userId, updated_ms: had.updated_ms } as Partial<PlanPrefsRow>,
@@ -714,7 +742,9 @@ export class PlanCapture {
 
   /** The card for the screen. Looking at it counts (a card looked at is never pushed). */
   async view(userId: string, id: unknown): Promise<CaptureView> {
-    const r = await this.get(userId, id);
+    let r = await this.get(userId, id);
+    // A card from before, left waiting for a yes on the card: read now (by AI with their yes, else by the rules: read() asks).
+    if (r.state === "consent") { r = await this.save(r, { state: "reading" }); this.startRead(r, null); }
     if (r.state === "reading" && this.now() - r.updated_ms > STALE_MS && !this.reading.has(r.id)) this.startRead(r, null);
     if ((r.seen_ms ?? 0) < this.now() - 1000) await this.store.update({ id: r.id, user_id: userId }, { seen_ms: this.now() }).catch(() => undefined);
     return viewOf(r);
@@ -849,23 +879,6 @@ export class PlanCapture {
     for (const s of a.space ?? []) await this.d.takeBackTask?.(userId, s.spaceId, s.taskId).catch(() => undefined);
   }
 
-  /** Without a yes to AI: words with a date become items by the rules, a photo one to-do with the file. Never read later behind their back. */
-  async plain(userId: string, id: unknown): Promise<{ n: number; line: string }> {
-    const r = await this.get(userId, id);
-    if (r.state !== "consent") return { n: 0, line: "" };
-    const tz = await this.tz(userId);
-    const file = r.file_id && this.d.files ? await this.d.files.get(userId, r.file_id).catch(() => null) : null;
-    const words = r.words ?? (file && file.kind !== "image" ? file.text : "");
-    const now = this.now();
-    const items = words ? rulesItems(words, now, tz, await this.onPlan(userId, dayOf(now, tz), tz)) : [];
-    if (!items.length) {
-      await this.fallback(r, tz);
-      return { n: 1, line: `Added: Look at the ${safeLabel(r.label)}` };
-    }
-    const next = await this.save(r, { state: "ready", items });
-    return this.addAll(userId, next.id);
-  }
-
   // ------------------------------------------------------------------ on the person's days
 
   /** The cards waiting (Needs-you, planInCards.ts): read, not answered, not past their week. */
@@ -986,7 +999,11 @@ export class PlanCapture {
     const open = (await this.d.calendar.list(userId, { from: next, to: next, tz }).catch(() => null))?.tasks ?? [];
     const there = open.find((x) => x.kind === "due" && x.title === t.title);
     if (paid && !there) {
-      await this.d.calendar.addTask(userId, { title: t.title, day: next, time: "", tz }, { kind: "me" }, null, { kind: "due", repeat: "monthly", payee: t.payee ?? null, pay_link: t.payLink ?? null });
+      // Next month's bill carries who does it and how important it is (follow-through, 0081), only when they are set.
+      await this.d.calendar.addTask(userId, { title: t.title, day: next, time: "", tz }, { kind: "me" }, null, {
+        kind: "due", repeat: "monthly", payee: t.payee ?? null, pay_link: t.payLink ?? null,
+        ...(t.importance ? { importance: t.importance } : {}), ...(t.people?.length ? { people: t.people } : {}),
+      });
     } else if (!paid && there && !there.amountPaise && !there.done) {
       await this.d.calendar.removeTask(userId, there.id).catch(() => undefined);
     }
@@ -1084,7 +1101,8 @@ export function viewOf(r: CaptureRow): CaptureView {
   const reading = r.state === "reading" || r.state === "waiting";
   const v: CaptureView = {
     id: r.id, state: r.state, label,
-    title: reading ? `Reading the ${label}…` : r.state === "consent" ? `The ${label}` : n ? `${n === 1 ? "1 thing" : `${n} things`} from the ${label}` : `Nothing to add from the ${label}`,
+    // Not read (no yes to AI, or both readers failed): named, never "nothing to add", since nothing looked.
+    title: reading ? `Reading the ${label}…` : r.state === "failed" ? `The ${label}` : n ? `${n === 1 ? "1 thing" : `${n} things`} from the ${label}` : `Nothing to add from the ${label}`,
     rows: shown.map((x) => ({
       id: x.id, tick: x.tick, title: x.kind === "due" && x.amountPaise ? `${x.title} · ${rupees(x.amountPaise)}` : x.title,
       line: lineOf(x), dateAsk: !x.day, ...(x.who && spacesOn() ? { person: { id: x.who.id, name: x.who.name } } : {}),
@@ -1097,7 +1115,6 @@ export function viewOf(r: CaptureRow): CaptureView {
     const k = shown.filter((x) => x.tick).length || m;
     v.added = { n: k, line: `Added ${k === 1 ? "1 thing" : `${k} things`}${r.added.monthly ? ". I'll remind you each month" : ""}` };
   }
-  if (r.state === "consent") v.consent = true;
   if (r.state === "failed") v.fallback = `Added: Look at the ${safeLabel(label)}`;
   return v;
 }

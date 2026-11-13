@@ -69,7 +69,9 @@ desktop builds from this change on). `BOTS_APP_TESTERS=a@x.in,b@y.in` narrows it
 | `…/bots/deps.ts` | the real `BotsDeps` (routes/app/appScreens.ts builds one per request) |
 | `…/bots/registry.ts` | `screen({ id, load?, build })` |
 | `…/bots/screens/{shell,you,bots,keybot,code,firstRun}.ts` | **the screens, one file per area: yours** |
-| `…/bots/screens/planItem.ts` | Plan's add / change an event or a to-do (`bots.plan.item`), registered with bots.ts's list (section 11) |
+| `…/bots/screens/planItem.ts` | Plan's add / change an event or a to-do (`bots.plan.item`), registered with bots.ts's list (section 11); its add form is also "Plan something"'s for an older build (`planAddForm`) |
+| `…/bots/screens/bots/planHome.ts` | Plan Ease's home, the threaded day (`bots.plan` with `PLAN_V2_HOME`): the header's walking bot and +, the week strip, the thread, one Needs-you card ([plan-ease.md](plan-ease.md) section 2) |
+| `…/bots/screens/bots/planMake.ts` | "Plan something" (`bots.plan.make`): the card, Check, Change, Done, and the box that fills it ([plan-ease.md](plan-ease.md) section 10) |
 | `…/bots/screens/safety.ts` | Reporting and blocking in Spaces (App Review 1.2): someone's page (`bots.person`), the report screen (`bots.report`), Blocked people (`bots.blocked`). Rules: `src/botsBots/{blocks,safety}.ts`; routes: `routes/bots/safety.ts` (with the admin's `/v1/admin/reports`, the console's Reports tab); migration 0057 |
 | `…/bots/screens/keybot{Stats,You,Parts}.ts` | Keybot's other pages: the old Stats tab's cards (month, day, apps, speak, days), the old You tab's Voice, Haptics and name pages, and Keybot's small parts and charts ([bots-keybot-parity.md](bots-keybot-parity.md)) |
 | `…/bots/index.ts` | joins the screen files, bootstrap nav, the switch, `buildBotsScreen` |
@@ -207,7 +209,9 @@ Builds the screen with the fixtures, draws it with **the apps' own renderers** (
 them. Look at `scripts/bots-render/out/<id>.<client>.compare.png`. Options: `--client phone|desktop`, `--params '{"slug":"plan"}'`,
 `--quiet` (nothing working or waiting), `--api '{"GET /v1/…": {…}}'` (answers for your `load`), `--json served.json` (draw a screen a
 running server sent), `--motion` (default is Reduce Motion, so shots are stable), `--without PersonBot,FontBricolage` (draw it for a
-build that lacks these names; by default both clients say what their builds say now), `--design <bots-design dir>` (or `$BOTS_DESIGN`).
+build that lacks these names; by default both clients say what their builds say now), `--state '{"step":"check"}'` (merge this into the
+screen's state before drawing: a moment that is state, not params; a sample's `state` and `without` do the same in showcase.ts),
+`--design <bots-design dir>` (or `$BOTS_DESIGN`).
 First run installs react-native-web, react-dom and esbuild into `scripts/bots-render/.deps` (gitignored). The phone's native-only
 modules are stubbed; text is set by the browser, so a line may break a word apart from a device. Boards: `bots-design/project`.
 Blip (`blip(pose)`) is an animated WebP, which Reduce Motion does not stop, so two shots of a screen with him can differ.
@@ -412,7 +416,9 @@ the Bots app no longer reads or offers Google Calendar or Google Tasks.
   `…/notes/:noteId[/:todoId]` (a meeting's to-dos on the list). `GET /v1/botsapp/bots/plan` reads the same store (`calendarPlanReader`).
 * **Screens**: Plan (`bots.plan`, bots.ts) shows the person's days with nothing to connect: the phone has a week strip (`week`, `day`
   params; a reminder's tap opens its day) and the day's timeline; the window the week. Each event and to-do opens `bots.plan.item`
-  (screens/planItem.ts: add, change, take out, a series' one day; someone else's shows Done and Can't do it), a to-do's ring ticks it.
+  (screens/planItem.ts: change, take out, a series' one day; someone else's shows Done and Can't do it), a to-do's ring ticks it. Every
+  Add opens `bots.plan.make` ("Plan something", screens/bots/planMake.ts), which draws the old add form for a build that can't keep its
+  drafts. A build that draws PersonBot gets the threaded home (screens/bots/planHome.ts, `PLAN_V2_HOME`; docs/plan-ease.md section 2).
   Today's calendar and Tasks' Upcoming (routes/bots/botsShell.ts) read it too; a meeting's to-do has "Add to my tasks" (screens/notes.ts).
 * **Bots** (`calendar/bots.ts`): "calendar" and "tasks" are two apps every bot can be given, always on (`withOwnDays`, wired in
   bots/wire.ts over the connected apps). The Plan bot has both, so "add dentist Friday 5 pm" in Ask or its chat adds it (Ask picks the

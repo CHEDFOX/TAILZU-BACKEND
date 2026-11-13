@@ -1,0 +1,21 @@
+{
+  "name": "x0-mail-worker",
+  "private": true,
+  "type": "module",
+  "description": "X0 Bot's mail: mailboxes on the mail server, filing and auto-replies, and replies the AI writes in each business's voice",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/main.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.ts"
+  },
+  "dependencies": {
+    "fastify": "5.12.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3"
+  }
+}

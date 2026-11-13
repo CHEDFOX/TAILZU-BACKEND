@@ -47,18 +47,25 @@ README.md                what the repo is, quick start
 DEPLOY.md                deploying to the VPS (and every optional service), step by step
 THIRD_PARTY_NOTICES.md   licences of vendored material
 .env.example             the server's settings, every one explained (copy to tulmi/.env); tulmi/.env.example points here
-docker-compose.yml       the VPS: backend, optional media worker (profile media), optional Caddy (profile https)
+docker-compose.yml       the VPS: backend, optional media worker (profile media), optional Oracle worker (profile oracle),
+                         optional mail worker (profile mail), optional Caddy (profile https)
 .dockerignore            what the backend image is built from (tulmi/, shared/, three scripts run in the container)
-.github/workflows/ci.yml typecheck, tests and build for tulmi/, jobs/ and viewer/; the Docker image build
+.github/workflows/ci.yml typecheck, tests and build for tulmi/, jobs/ and viewer/; the workers' pytest; the Docker image build
 
 tulmi/                   the server (Node 20+, TypeScript, Fastify): everything below "tulmi/src" in this file
 jobs/                    Cloudflare Worker: Xode's jobs as Workflows, the cron ticker, the live session's Durable Objects
 viewer/                  Cloudflare Worker: the artifact viewer, a sandboxed site that renders what bots make
 media-worker/            Python service (FastAPI): office files, hard PDFs, pictures and video for the server
+oracle-worker/           Python service (FastAPI): the Oracle bot's engine, Plutto's oracle copied in (app/, by sync_plutto.py)
+                         and the signed /v1/answer around it (server/) (docs/oracle.md)
+mail-worker/             Node service (Fastify): the mail bot's engine, Xooteq Mail's copied in and tuned (mailboxes on the mail
+                         server, filing, each message sorted, AI replies), behind a signed API, with a signed notice back to the
+                         backend when mail needs a person (docs/mail.md, mail-worker/README.md)
 shared/types/            the wire contracts: api.ts (requests and responses), sdui.ts (screens, nodes, actions)
 shared/bots/             the bots' looks and moments (looks.json) and sounds (sounds.json, sounds/*.m4a)
 shared/prompts/          the screen reply's old prompt files, kept so REPLY_PROMPT_VERSION can roll back
-deploy/                  ship.sh (the deploy), migrate.sh (runs migrations by number), set-env.sh (plain settings in .env), cloudflare.sh (Xode's jobs
+deploy/                  ship.sh (the deploy), migrate.sh (runs migrations by number), set-env.sh (plain settings in .env), oracle-up.sh and mail-up.sh
+                         (switch on the Oracle's and the mail workers), cloudflare.sh (Xode's jobs
                          on Cloudflare), backup-db.sh (the nightly database backup to R2), Caddyfile, the desktop-release receiver, GitHub App
                          helpers, and the .well-known files for app links
 docs/                    one document per subsystem (listed under "Where to find" below)
@@ -157,6 +164,11 @@ code/              Xode (docs/code-*.md); code/flow/: read, agree a plan, work t
   work/ newproject/ prcare/ resources/ secrets/   locating code, starting projects, PR care, library research, secret scanning
   github.ts oauth.ts policy.ts projects.ts …      the GitHub App and sign-in, the permission tiers, projects
 bots/              the bots platform: a bot's definition, store, keys, memory, tools, and running one (docs/bots.md)
+oracle/            the Oracle bot: birth details from words, the birthplace search (Google Places), the person's sky, the oracle worker's
+                   client, a turn (docs/oracle.md)
+mail/              the mail bot: the mail worker's signed client and the account's hash (worker.ts), which person a hash is, for the
+                   push (owners.ts), what its chat knows (digest.ts), whose each business is and who else reaches it in a space
+                   (access.ts) (docs/mail.md)
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
@@ -216,6 +228,9 @@ ads/               Meta and Google Tag Manager events
 | The bots platform | `tulmi/src/bots/` (docs/bots.md); the Bots app areas `botsBots/`, `botsCode/`, `shell/`, `keybot/`, `you/` (docs/bots-app.md) |
 | The person's context (what the brain and Ask know of someone) | `tulmi/src/context/`, `routes/ask/context.ts` (docs/context.md) |
 | The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
+| The Oracle bot (a reading of the person's sky) | `tulmi/src/oracle/`, `routes/bots/oracle.ts`, the page `experience/bots/screens/bots/oraclePage.ts` and its cards `oracleCards.ts`, the engine `oracle-worker/`, migration 0078 (docs/oracle.md) |
+| The mail bot (a business's email: mailboxes, filing, AI replies) | `tulmi/src/mail/`, `routes/bots/mail.ts`, the page `experience/bots/screens/bots/mailPage.ts`, its cards `mailCards.ts`, its other screens `mailScreens.ts`, its mailbox `mailInbox.ts` (a folder, a conversation, writing), a domain's addresses and rules `mailAliases.ts` (shared parts `mailParts.ts`), the engine `mail-worker/` (its API `mail-worker/server/routes/x0.ts`, its mailbox `mail-worker/server/inbox.ts`), `deploy/mail-up.sh`, migration 0080, the mail bot in a space `tulmi/src/mail/access.ts` and migration 0084 (docs/mail.md) |
+| The meeting bot (a bot in video calls: notes, answers, auto-join) | `tulmi/src/meet/` (`types.ts`, `recall.ts` Recall's client, `store.ts`, `words.ts`, `brain.ts`, `stage.ts` the speaking bot's page, `calendar.ts` auto-join, `digest.ts` the chat's knowledge, `service.ts` the engine, `room.ts` one meeting's live state, `people.ts` a space's admin and their people), `notes/finish.ts` (a finished note organised, shared with the note-taker), `routes/bots/meet.ts`, the page `experience/bots/screens/bots/meetPage.ts`, its meeting `meetScreens.ts`, migrations 0082 and 0083 (docs/meet.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |
@@ -226,15 +241,15 @@ ads/               Meta and Google Tag Manager events
 | Knobs (labels and flags the apps read) | generated `experience/appKnobsData.ts` and `keyboardKnobsData.ts`, merged in `experience/appKnobs.ts`; live rules in `control/` |
 | Database | `tulmi/supabase/migrations/`, `tulmi/supabase/full_schema.sql` (docs/SUPABASE.md) |
 | Deploy | `deploy/ship.sh`, `docker-compose.yml`, `tulmi/Dockerfile`, DEPLOY.md |
-| Tests | `tulmi/tests/` (vitest), `jobs/test/` and `jobs/bundle-test/` (workerd), `viewer/unit`, `viewer/test`, `viewer/e2e`, `media-worker/tests` (pytest) |
+| Tests | `tulmi/tests/` (vitest), `jobs/test/` and `jobs/bundle-test/` (workerd), `viewer/unit`, `viewer/test`, `viewer/e2e`, `media-worker/tests` and `oracle-worker/tests` (pytest), `mail-worker/test` (node --test) |
 
 ## How the parts connect
 
 **Entry points.** `tulmi/src/server.ts` is the server: `buildApp()` makes the Fastify instance (tests call it and
 use `app.inject()`), and the block at the end listens and starts the push engine when not under test. The Docker
 image runs `node dist/tulmi/src/server.js`. `jobs/src/index.ts` is the Cloudflare jobs Worker (it imports the
-server's own code from `tulmi/src`), `viewer/src/index.ts` the artifact viewer Worker, and
-`media-worker/app/main.py` the media worker.
+server's own code from `tulmi/src`), `viewer/src/index.ts` the artifact viewer Worker,
+`media-worker/app/main.py` the media worker, and `oracle-worker/server/main.py` the Oracle's worker.
 
 **A request.** Fastify → the hooks in `src/http` (error handling, the request's cost tally, the JSON parser that
 keeps signed webhook bodies) → the route module's handler, which resolves the user (`auth/supabase.ts`
@@ -283,7 +298,7 @@ with signed calls both ways (`code/jobs/handoff/`).
   (`tulmi/e2e/README.md`).
 - **Deploy**: on the VPS the repo root is `~/tulmi`; `./deploy/ship.sh` pulls, rebuilds with docker compose and
   checks what matters is live. DEPLOY.md covers the first setup and every optional service (Caddy, the media
-  worker, the jobs Worker, the GitHub App, push, payments). Database changes go through
+  worker, the Oracle, the jobs Worker, the GitHub App, push, payments). Database changes go through
   `tulmi/supabase/migrations/` (docs/SUPABASE.md).
 - **Scripts run in the container**: `scripts/live-check.ts`, `scripts/speech-check.ts` and
   `scripts/apple-signin-check.ts` (`docker compose exec backend node dist/tulmi/scripts/<name>.js`; the
@@ -300,7 +315,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
 `viewer/docs/artifact-viewer.md`.

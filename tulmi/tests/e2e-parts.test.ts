@@ -361,7 +361,8 @@ describe("the contestants' table, the grid's cost, the public benchmarks", () =>
     expect(p.benchmarks.map((b) => b.id.split("@")[0])).toEqual(["terminal-bench", "SWE-bench Pro (public, V2)"]);
     expect(p.howTo.join("\n")).toMatch(/harbor run -d terminal-bench\/terminal-bench@4\.0\.0/);
     expect(p.howTo.join("\n")).toMatch(/uv tool install harbor==\d+\.\d+\.\d+/);
-  });
+    // Two `docker info` probes, each allowed 15 s (checkDocker): on a busy CI runner with a daemon they can take more than vitest's 5 s.
+  }, 35_000);
 });
 
 describe("the report's Contestants and Parts sections", () => {

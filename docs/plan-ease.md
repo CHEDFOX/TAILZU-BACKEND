@@ -17,11 +17,17 @@ off puts that step back as it was, and nothing it kept is deleted.
 | Switch | Step | On | Off |
 | --- | --- | --- | --- |
 | `PLAN_V2_REMINDERS` | 0 | Reminders say what they are, with Done and Later on a to-do and Open map on a leave-by. A to-do with a day is reminded at 10 am. Close ones go as one push. Each kind has its own channel, priority and expiry. The item form has no Remind and no How long. | The old `plan_reminder` push with no buttons, and the form as it was. |
-| `PLAN_V2_PAGE` | 1 | The simple Plan page, its line on Home and the widget, and Today's "Plan Ease suggests" from the same card. Only a build that draws a person as their tiny bot (`PersonBot`) gets the page. An older build keeps the week page. | The week page everywhere, and its routes answer 404 `plan_v2_off`. |
+| `PLAN_V2_PAGE` | 1 | The new data path: the Plan page for a build that draws a person as their tiny bot (`PersonBot`), its line on Home and the widget, and Today's "Plan Ease suggests" from the same card. An older build keeps the week page. It keeps this meaning: off turns off everything new, whatever the three switches below say. | The week page everywhere (and the old add form), and its routes answer 404 `plan_v2_off`. |
+| `PLAN_V2_HOME` | home | The Plan page is the threaded day again (section 2): the header's walking bot and +, the week strip, one day as a thread, one Needs-you card, no box. | The simple page as it was (the one next thing, Today and Tomorrow, one box). |
+| `PLAN_V2_MAKE` | plan something | "Plan something" (section 10): the card, Check (rules, free), Change, Done, and a box that fills the card. No migration. | + and the top area still open `bots.plan.make`, which draws the old add form, and `/plan/make*` answer 404 `make_off`. |
+| `PLAN_V2_MAKE_AI` | plan something | "Plan something" may ask an AI model to read messy words, only with the person's yes to AI and inside Plan Ease's day budget. | Rules only, never a model call. |
 | `PLAN_V2_NOTES` | 1 | The evening "tomorrow" note, the morning note when it adds something, and the Daily summary folded into the evening one. | No notes. The Daily summary goes on its own as before. |
 | `PLAN_V2_LINKS` | 2 | The work calendar by its link: the link page, the read every 30 minutes, its meetings on the days, the offer card once and the "stopped" card. Needs migration 0071 and `CONNECTOR_TOKEN_KEY`. | No link page, no card, nothing read. Links already kept stay as they are. |
 | `PLAN_V2_CAPTURE` | 3 | What's shared, dropped or pasted becomes one card. Bills due with Paid, and Pay only with a safe link. Needs migration 0072. | The share screen's bot picker as before, and a bill in the box is a plain to-do. |
 | `PLAN_V2_APP` | app release | Only for a binary that says it can (section 7): Time Sensitive leave-bys and bills due today, widget steps, desktop notices and "add this". Needs migration 0075 for Time Sensitive. | Every build gets what an older one does. |
+| `BOT_CALLS` | calls | "X0 is calling" (section 8): a leave-by or a bill due today rings a phone whose JS takes calls, instead of the push. Needs migration 0079 and `PLAN_V2_APP`. | Every push goes as before; calls already placed still finish. |
+| `PLAN_V2_FOLLOW` | follow-through | Must-not-miss items, and items with someone else on them, are followed until someone says done (section 9). Only people the person is connected with in X0 can be on an item. Needs migration 0081. | Every reminder goes exactly as before; follows already open stop where they are. |
+| `CHANNEL_PHONE_CALLS` (off) | follow-through | A real phone call as a must-not-miss item's loud step, only to someone who turned it on for their own proved number (section 9). Stays off unless every Plivo key and `CONNECTOR_TOKEN_KEY` are set and the TRAI declaration is filed. | The phone step passes quietly; the switch in What pings you is hidden. |
 
 ```bash
 ./deploy/set-env.sh PLAN_V2_NOTES=false && ./deploy/ship.sh   # notes off
@@ -33,6 +39,38 @@ leave-by is worked out, and the page's one thing falls to the next rung, so noth
 `./deploy/set-env.sh --show PLACES_GEOCODER PLACES_ROUTER`.
 
 ## 2. What the person sees
+
+**The home** (`PLAN_V2_HOME`, the default for a build that draws `PersonBot`; `experience/bots/screens/bots/planHome.ts`, data from
+`GET /v1/botsapp/bots/plan/day?tz&day&week&made&n`, worked out in `botsBots/planThread.ts` from the new rows, `planRows.ts rowOf`). The
+owner asked for the Plan page "like before, with all the plans and all threaded": the old phone page, fed by the new data.
+
+- **The header.** Back, then the top area: Plan Ease's avatar, its name, its ochre line ("Leave by 5:30 pm for the dentist", "Dentist at
+  6 pm · 2 more today", "Nothing planned yet", with " · 40 min saved" when travel says so) and its walking tiny bot (BotBuddy). The top
+  area is one pressable row: a tap opens "Plan something" with the box ready. The **+** beside it opens "Plan something" too (the
+  window: a "Plan something" button). A build without BotBuddy has the still avatar in the same row. After Done the bot plays
+  "celebrate" once (BotMoments).
+- **"Added: Dentist, Fri 13 Nov, 5 pm" · Undo** after "Plan something"'s Done, for 10 minutes (the clock's "5 pm" never splits over two
+  lines); the new rows have their own mark for those 10 minutes: Plan Ease's ochre edge on a light ochre ground and "Just added" over
+  their words, never the ink edge Must not miss has. Done lands on the new item's day however far: a day past the strip's 8 weeks is
+  taken when Done just made a row on it (its strip then has no arrows).
+- **The week strip**: Monday to Sunday, a dot on a day with anything open, today ringed; the arrows go a week back or on, up to 8 weeks.
+- **One Needs-you card** above the day, when there is a question (follow-through's "Mom hasn't said done" is urgent, so it comes first).
+- **The day as a thread**: times on the left, a line joining the items; the leave-by before an event (Open map within 15 minutes of
+  leaving), a tight leg ("Only 15 min to get there"), the weather after it, and free time of 90 minutes or more between items (it ends
+  at the next busy event or open to-do with a time: Dad's 10 pm medicine is never inside a "Free · …" line). The time labels read as
+  the old page's ("6:00 pm", "9:30 am"); the free and leave lines keep "6 pm". Each row's grey line says Must not miss first, how long,
+  and where (beside Pay it has two lines, so a bill's "Due today" is never cut); a followed row shows its follow line ("Mom · not done
+  yet"); someone else's item says "For Dad" with Dad's tiny bot, the same tiny bot their space and "Plan something"'s For who show
+  (follow-through's `looksOf`, from the person's X0 people). To-dos and bills keep their tick (the act door) and Pay. Done items and
+  events already over fade. It opens on today; after 5 pm, with nothing left open today and no item of today still being followed
+  ("Mom · not done yet" on the 9 pm medicine keeps it on today at 9:20 pm), on tomorrow (follow lines exist for today's items only).
+- **To-dos with no day**, ticked off here (no Add: the + does it), **Share**, and **where the day starts**.
+- **No box and no chips.** The box is on "Plan something" (section 10), so there is one place that reads words.
+
+The window has the same day, with "Coming up" (the six days after the one shown, tomorrow too when today is shown, only days with
+something on) and the to-dos with no day on the right. Work in space's tabs sit under the header, as on the week page.
+
+**The simple page** is the fallback (`PLAN_V2_HOME=false`), as below.
 
 **The page** (`experience/bots/screens/bots/planPage.ts`, data from `GET /v1/botsapp/bots/plan/today`, worked out in
 `botsBots/planDay.ts`):
@@ -206,8 +244,10 @@ Each later step adds entries to lists. No existing line changes:
 - **Left alone.** A card read after the person left the share screen gets one push, "Read the school circular: 4 things" [Add all]
   [Look]. It becomes a Needs-you card, comes once in the evening note, and goes after 7 days.
 - **Consent and money.** Nothing is sent before the person's yes. Every call goes through the gate and runs as them. Without the yes,
-  the card shows the existing AI card, with two choices: Agree reads it; "Not now" (said on the card) turns words with dates into things
-  by the rules, and a photo into one to-do with its file. Reading is charged to the person (`chargedTo(user, "plan")`) and added to Plan
+  nothing here asks for it (Home's card is asked once, `firstRun/aiConsentCard.ts`): words with dates become the card's things to tick
+  by the rules at once (Add all adds them, as after an AI read), and a photo, or words with nothing found, one to-do with its file. A
+  card left from before, still waiting for a yes, is read as soon as it is opened (by AI with the yes, else by the rules); one never
+  opened goes with the nightly sweep after its 7 days, as it did before. Reading is charged to the person (`chargedTo(user, "plan")`) and added to Plan
   Ease's own day meter (`Bots.spendToday`). Before a read, what is left is the smaller of reading's ₹5 a day (`plan_prefs.capture_paise`,
   the true total) and what the day meter still has (`Bots.leftToday`), and a read starts only with its estimate left (2 paise for the
   tiny look, 20 for words, 40 for a photo). It holds back up to one share's ₹1.50 first, in one change that only lands while the row is
@@ -269,3 +309,329 @@ Each piece is sent only to a binary that says it has it, because an over-the-air
 
 The notices' presence is this process's, like the live bus: with several processes, share it where the bus gets its relay.
 
+## 8. Calls (`BOT_CALLS`)
+
+"X0 is calling": at the moments Plan Ease must not let slip, it rings the phone instead of pushing. The service is
+`botsBots/planCall.ts` (words and limits: `planCallWords.ts`), its doors `routes/bots/planCalls.ts`, its screen
+`experience/bots/screens/bots/planCall.ts`, its table `plan_calls` (migration 0079). The contract both apps code against is the calls
+spec's section 1 (names, payloads, categories, channels, endpoints, states, timings); this section is how the server does it.
+
+**It is an ordinary notification.** No CallKit, PushKit or VoIP, nothing that looks like the phone's own call screen. The title is
+"<Name> is calling", where the name is the person's own name for it (Keylessbord's "What you call it", `nicknameOf`), else X0. The body is
+the reminder's own lock-safe line. Buttons: **Answer** (opens the call screen; a tap on the notification is Answer too) and **Not now**
+(a background call to `.../decline`, which answers 200 whatever happens, so the button never says it failed).
+
+**What rings.** Only a single `plan_leave` (leave-by) or a single `plan_due` for a bill due today: the two kinds already sent
+time-sensitive. `leavesTick` and `dueReminder` hand the engine a server-only seed (`call`: the raw title, ids, place, times) beside the
+push message; it never goes into a push. The engine asks the call (`setCallHook`) before it builds the push, and the phones that took the
+ring get no push. It never rings, and the push goes the existing way, when:
+
+- the person's quiet hours are on (the reminder itself would go silent), Calls is off in What pings you, or Plan Ease is off;
+- a computer is in use (the desk notice and the phone's silent copy, as before);
+- no phone has the `BotCall` cap (older JS, or an Android phone whose Reminders or Calls channel is blocked or missing);
+- `push.plan_call.needTimeSensitive` is true and the iPhone lacks the entitlement (false by default: phones without Time Sensitive are
+  rung at Apple's default level, as today's leave-by is; the owner to confirm);
+- a call is ringing or on; 3 server calls today already; under 15 minutes since the last call (a Call back counts for the 15 minutes, not
+  the 3);
+- the reminder already placed a call (`source_key` is unique; looked up before the limits, which that very call would trip, so the
+  same reminder again sends nothing to the phones it rang); the ring's ticket failed on every phone (the call is marked `not_sent`);
+  the table is missing (deploy before the migration);
+- a merged `plan_many`, or anything without a seed.
+
+A phone whose ring ticket failed gets the push, and nothing more of the call: ring 2 and the missed call go only to the phones that took
+ring 1 (the row's `rang`, hashes of their tokens, never the tokens). A phone with the ringtone (`BotRingtone`) is sent `sound: "x0_ring_1.wav"`, any other
+`"default"`. Lock-screen words only ever come from `planSafe.ts` (no amounts, health as "Appointment"); push data is only
+`{ call, state, day, screenId, pushId, kind }`.
+
+**States and timings.** `ringing` → `answered` | `declined` | `missed`; `answered` → `ended`. Every change is a compare-and-swap. Ring 1
+at 0 s (ttl 40), ring 2 at +23 s (same `collapseId`/`tag`, so it replaces ring 1; ttl 20, and never later than 5 s before the window
+ends), the missed call at +45 s ("Missed call from <Name>", no sound, `passive` on iOS, the reminder's own expiry), unless answered or
+declined. A late Answer (Face ID) still connects for 120 s after the window. An answered call with no turn for 5 minutes is ended
+(`timeout`). Timers run in the process; a sweep every 10 s over `next_ms` catches what a restart lost, sends no ring after the window and
+no missed push after its expiry. Calls older than 90 days are deleted by the sweep.
+
+**The screen** (`bots.plan.call`, never kept). Talk mode, on a phone with `BotCall`: it answers as it opens, Plan Ease speaks first
+("It's time to leave for the parent-teacher meeting at Green Valley School. Want me to do anything?"), then turn by turn the person talks
+(`voiceLive` once, `duplex`) and `.../say` hands the words to the Plan Ease chat with the call's facts attached; the reply is said aloud
+(two sentences at most). "No", "that's all", "bas" close the call with no chat call; after 8 turns it closes too. The item card carries
+its own buttons (Open map and Move; Pay and Paid), and one that leaves the screen ends the call first. Missed mode: "Missed call ·
+8:12 am", Call back (a new call of the person's own, answered at once, which ignores the limits); Call back pressed on the missed-call
+notification calls back as the screen opens, even for a call that ended since (answered late, then hung up). Ended mode. A record on the window and
+on any build without `BotCall`. The look is Plan Ease's: ochre on the bot and the status dot, Geist, the bot on his stage; no green or
+red, no round phone buttons.
+
+**Consent and microphone.** With the AI permission the voice is the server's (`GET .../voice/:n`, the person's TTS voice and read speed,
+under their quota, made ahead at answer and say time). Without it the opening is spoken by the phone (`speak`, nothing leaves it), only
+the item's buttons are offered, the screen says nothing about AI (Home's card is the one ask), and `say` and `voice` answer 403. The microphone is checked, never asked for by a tap: without it the
+Continue card asks (and offers Open Settings when blocked).
+
+**Activity.** A missed call is a row of its own ("Missed call from Zara", the line and the time; it opens the missed call). It is read
+straight from `plan_calls` in `feedFor`, and Home's tasks and the Today page never list or count it.
+
+**Caps.** Token caps (`POST /v1/push/register`): `BotCall` (this JS takes calls), `BotRingtone` (the iPhone has `x0_ring_1.wav` in its app
+group's Library/Sounds; a new tone gets a new file name and a new cap). SDUI capability `BotCall` (`speak.loud`/`onDone`,
+`voiceLive.duplex`, Text `format: "elapsed"`). The phone makes the Android channels `calls` and `calls_missed` itself; the server never
+lists them. `calls_ring` is reserved for a later store build that packs the ringtone as a raw resource (a channel's sound is fixed once
+made).
+
+**Known leftovers (v1).** With two call-capable phones, answering on one leaves the other's ringing notification until its app opens. A
+missed push already sent can't be recalled when a late Answer arrives (the phone clears it on tap if it is shown). An Answer or Not now in
+the milliseconds after ring 2 is claimed can still be followed by ring 2 (the phone clears a stale ring later). Not now pressed offline is
+sent when the app next comes to the front. The voice made ahead lives in one server's memory; a GET that reaches another synthesises again.
+
+## 9. Follow-through (`PLAN_V2_FOLLOW`)
+
+"Every item becomes a job that is not finished until someone says it's done." The ladder is `botsBots/planFollow.ts` (words and rules:
+`planFollowWords.ts`; who can be on an item: `planFollowPeople.ts`; tables: `planFollowStore.ts`, migration 0081; numbers and caps:
+`planReach.ts`; the phone seam: `planFollowChannels.ts`), its routes `routes/bots/planFollows.ts`, its screens
+`experience/bots/screens/bots/planFollow.ts`. The build spec, with the owner's changes at its top, is the follow-through SPEC.md.
+
+**The owner's example, minute by minute** (Mom's medicine at 9 pm, Mom then Dad on it, Spaces on, Mom said Allow once):
+
+- 9:00 Mom's phone: "A reminder from Rahul · 9 pm" (her lock screen never says "medicine"), [Done] [Later] [Can't].
+- 9:05 no Done: the same, louder ("Not done yet · 9 pm", time-sensitive where the iPhone allows).
+- 9:10 still nothing: "X0 is calling" on Mom's phone (planCall's own rules: never in quiet hours, 3 a day, 15 minutes apart).
+- 9:15 a real phone call to Mom's own number, only if she turned that on herself and the phone channel is set up (press 1, 2 or 3).
+- 9:20 Rahul: "Mom hasn't said done" · "The 9 pm reminder", with [Call] (when he keeps Mom's number for his Call button) or [Look], and
+  [Done]. On the follow page: Call Mom, Message Mom (their chat in X0), I'll do it.
+
+**Who gets a follow.** An occurrence that is must not miss (the person said so, or the rules: medicine at a time, a pickup at a time, a bill
+due today, a flight or train), or that has someone other than the asker on it. A normal item that is only the person's own keeps today's
+reminder exactly. Keep at it off (What pings you) makes the person's own must items behave as today too. A wait never has one.
+
+**Who can be on an item (the owner's change).** The asker, and only people the asker is connected with in X0, by exactly the rules
+messaging uses: `threads.ts contacts` (a space they share in which the asker may message, no block either way, Spaces on). Friends and
+family are spaces; a two-person space counts. There is no other people list and no other invite path: a name or someone not among
+them is not saved, X0 says "Mom isn't in your X0 people yet. Invite them to a space, then add them here." and offers the space invite the
+Spaces screens use (the asker's own space's invite, else Spaces); the item is saved with the people who count. With Spaces off, only the
+asker. Everyone on an item has X0: nothing is ever sent to a number or an address of someone without it.
+
+**Checked again before every reach.** Before each push, louder push, X0 call, real call and tell to someone else, the same rules are read
+again. Someone who left the shared space, has a block either way, or whom the asker may no longer message, or with Spaces off, is
+skipped (no push, no call), the job goes to the next person on it, and the asker is told once: in their own push when it comes back to
+them ("Dad isn't in your X0 people · 9 pm"), else "Dad isn't in your X0 people · Mom has it now", or with nobody left, [I'll do it].
+Answers from someone no longer connected count for nothing, and their cards and the follow page are gone for them. A ringing "X0 is
+calling" ends for someone who said Can't, was skipped or was taken off the item. **A read of those rules that fails is not a no**: nobody
+is skipped, passed on or told about for it; the step waits a minute and tries again, an answer still counts, and saving who does it says
+"Couldn't check your X0 people just now. Try again." (nothing is dropped from the item).
+
+**What the other person gets respects their own settings.** Their quiet hours (the push engine's verdict: a push in quiet hours goes
+without a sound, X0 is calling never rings); their daily limit for louder pings and calls (What pings you: 3, 6 or 10); a muted chat
+with the asker (nothing from that asker's items reaches them, not a push and not a card on their Plan or widget, and the asker hears "X0
+couldn't reach Mom"); their own yes before anything
+louder than a push from someone else's item (Allow on the follow page, kept in `notify.followFrom`, removable in What pings you); and
+never 10 pm to 7 am for someone else's item when they set no quiet hours.
+
+**The ladder and its timings** (push-surface flags `push.follow.*`, read once per sweep): normal = the push, then nothing (missed after 6
+hours, quietly). Must = push at the time, louder +5, X0 is calling +10, a real call +15 (only for someone who turned it on), tell +20. A
+bill climbs from its 6 pm: its 10 am push and its 6 pm push are the bill's own (Pay, Paid), then X0 is calling at 6:10 pm and the tell at
+6:20 pm. The push always goes first (after downtime it goes late and the climb starts again from then); a late sweep takes only the latest
+due step. Later: must +15 minutes, normal +1 hour (9 am tomorrow after 8 pm), or In 15 min / In 1 hour / This evening / Tomorrow morning;
+three Laters, then Done or Can't. Can't hands it to the next person at once (the asker hears quietly); from the last person, the asker
+hears "Nobody can do it" with I'll do it. A must item that is only the asker's has nobody to tell at +20: that step reads "skipped:
+nobody else to tell" and the Plan line stays "Must not miss · not done yet" (never "told the family"). The asker's own leave-by counts as
+an event's push only when the asker holds it; someone else on it still gets theirs.
+
+**Changing who does it while a follow is open** rebuilds the order from the new list: someone taken off never gets the job or the tell,
+someone added joins the order, the holder taken off passes it to the first who can (with nobody left, the asker), and "just me" makes it
+the asker's. **A Done after the follow closed** (missed at 3 am, or dropped) still counts while the item itself is open: the item is
+ticked or the bill marked paid. **Un-ticking on purpose** on the Plan after someone said done is kept as the asker's answer, so the
+hourly repair of a close cut short never ticks it again (or makes next month's bill again).
+
+**Rules that always hold.**
+
+| Rule | Where |
+| --- | --- |
+| No calls in quiet hours | X0 is calling asks the push gate (`plan_call`); the real call's `canCall` says "quiet"; someone else's item also never 10 pm to 7 am for a person with no quiet hours |
+| A daily limit on rings | `plan_reach_caps`: louder pings, X0 calls and real calls per person under their ringMax; real calls also under `push.follow.phoneDayMax`, `FOLLOW_CALL_ASKER_DAY_MAX` and `FOLLOW_CALL_DAY_MAX`; a cap is given back when nothing went |
+| Never the same reminder twice | one step row per (follow, climb, rung, person), claimed before anything is sent; push_log keys; `pf:<id>:<n>` items and the 60-second same-answer guard |
+| Nothing paid or sent without your OK | Done on a bill records it paid (no payment anywhere); nobody gets anything without being in your X0 people; louder steps on someone else's item need their Allow; a real call needs their own switch |
+| A bill paid by anyone stops it for everyone | one bill row and one follow per due day; Done from anyone on it closes it, ticks the bill once, and next month's bill carries the same people |
+| Rules decide, not AI | importance, the ladder, every word: fixed rules and templates. Messy input still goes through the box and capture as before |
+
+**Replies, from anywhere, to one door** (`PlanFollows.reply`): the app's buttons (push, Plan card, follow page, call screen) through the
+act door on `pf:<followId>:<n>`, and the real call's keypad (1 done, 2 later, 3 can't). Every answer is kept on the follow with how it came.
+
+**Who sees what.** The asker: the item page's Must not miss, Who and the open follow's line; the follow page with every step (sent,
+opened, skipped and why) and every answer; a Needs-you card once told or when nobody can; Activity rows (someone else said done, can't,
+a must item missed). The holder: their pushes, a Needs-you card, the follow page (what, when, who asked, when the asker hears). The next
+person: the tell when the asker holds it, and the follow page. Lock screens and pushes to someone else never carry an amount, a place, or
+a health or medicine title (`followTitle`, `forOthers`, `lockSafe`). The Needs-you card keeps its words in the app; on the widget, the
+Lock Screen and a Live Activity it says only what the push says (its `outside` words: "A reminder from Rahul", or "Appointment" for the
+person's own medicine). A follow's pushes share one collapse id (one line in the tray) only on phones whose app says `PushTapSeen` (the
+JS that tells same-id pushes apart); older phones get each push on its own line.
+
+**The real phone call.** Off by default (`CHANNEL_PHONE_CALLS`), for X0 users only, never someone without the app. The person turns it on
+in What pings you ("X0 may call my phone if I miss something important") for their own number, proved theirs by a call from it that types
+the code their own setup screen shows (one call proves one account; one account per number; 9 is kept by the number: `plan_phones`,
+`plan_phone_stops`, Backend B's `followPhone.ts` and `docs/follow-channels.md`). At most 3 real calls a day to one number, whichever
+accounts it is on. The switch shows only while the channel is set up.
+
+**Push kinds and buttons.** plan_follow, plan_follow_loud, plan_follow_tell, plan_follow_none, plan_follow_passed, plan_follow_done,
+space_follow, space_follow_loud, space_follow_tell, space_follow_done; buttons x0_follow (Done, Later, Can't), x0_follow_last (Done,
+Can't), x0_follow_tell (Call, Done), x0_follow_check (Look, Done), x0_follow_none (I'll do it), registered only while the switch is on.
+
+**Migration 0081** adds `importance` and `people` to `calendar_tasks` and `calendar_events` (written only when set, so a server ahead of
+its migration still writes rows), and `plan_follows`, `plan_follow_steps`, `plan_reach_caps`, `plan_numbers` (gone with either account),
+`plan_phones` (with `pending_code`, one account per proved number), `plan_phone_stops`; 'follow' as a `plan_calls` source. It can be run
+again. Deleting an account also takes the numbers others kept for that person and their name from other people's follows
+(`PlanFollows.forget`, from `routes/account/account.ts`).
+
+**Not in v1.** Waits keep their own check-backs. The box reading "remind Mom to ..." (Who is set on the item page). Messages written by
+AI (fixed templates only). Two people who each captured the same bill are not matched. Nobody without X0, by any channel (the owner's
+change: no reply page, no WhatsApp).
+
+**Known limits.** planCall's 3 calls a day are shared with leave-bys and bills; a call quietly not placed (busy, too soon) is a skipped
+step and the ladder goes on. Quiet hours are off by default for app users, so a person's own must items can ring at night unless they set
+them (someone else's never 10 pm to 7 am). iOS can't prove a push arrived: no answer is taken as maybe not seen and the next step comes on
+time. A phone registers the new buttons at its next start; until then a press opens the follow page, where the same buttons are. A
+followed bill rings at 6:10 pm instead of 10 am. Someone's louder steps wait for their own Allow. A restart can lose the one rung that was
+being sent (never sent twice, by design). "Told once" is once per occurrence: a daily item tells the asker again the next day.
+
+## 10. Plan something (`PLAN_V2_MAKE`, `PLAN_V2_MAKE_AI`)
+
+The owner's words: "add sign and tapping the top area will open the plan creation screen. The screen will have a card to create the plan
+custom manually: what, for who and time and all; ai checks, done, change, done. Type box at the bottom: tell ai what to do, it will
+create and show; user change or done."
+
+`bots.plan.make` (`experience/bots/screens/bots/planMake.ts`; rules `botsBots/planMake.ts`, service `planMakeService.ts`, routes
+`routes/bots/planMake.ts`). Params: `from` ("plan" from the home), `day`, `kind` ("task" from "Add a to-do"), `focus` ("box" from the top
+area). Every other "Add" (the week page, Today, Tasks: `planItem.ts addAction`) opens it too. A `day` before today (a past day the home's
+strip was on) opens the card on today, so a plain Check is never "That time has passed".
+
+**The card.** What; When (Today, Tomorrow and the next 3 days, No day, Other day; a day further on is written back as Other day and its
+words); Time, under its own label (Any time, 9 am, 12 pm, 4 pm, 6 pm, 8 pm, Other time), so What, When, Time, For who, Must not miss and
+Check fit one 390 × 844 phone screen above the box; For who
+(each of the person's X0 people as their tiny bot, You first, only with follow-through on and someone to pick: "They get the reminder on
+their phone."); one Must not miss switch ("X0 keeps reminding until it's done."; off means X0 decides); "+ Repeat" and "+ Place", closed
+until tapped or filled by the box. Then **Check**. There is no "if not done, pass to": who comes next is set on the item page's "Who does
+it", which already orders people. Check reads the What words by rules into what the person left as it was ("Dentist Fri 5 pm" with
+nothing picked is Dentist, Fri, 5 pm), and only the words it uses leave the title: "Friday prayer 1 pm" on a picked Saturday stays
+"Friday prayer" at 1 pm, "Morning walk 7 am" stays "Morning walk" at 7 am.
+
+**Check (rules, free, always).** The check face is titled "X0 checked": up to 3 drafts, each with its head ("Medicine (Mom)" while an
+unmatched name stays), when ("Fri 13 Nov · 5 pm", "Every Tue and Thu · 5 pm", "To do · no day"), for who ("For Dad · reminded at 8:45 pm":
+what Done will really do, with Dad's tiny bot; a repeat made after today's reminder minute says "reminded tomorrow at 4:45 pm", the
+first one that really comes, since a repeat's reminder is never shortened), Must not miss, where, and up to 3 notes, stops first, each
+with at most 2 fixes, then "Looks good" when there are none. With a stop the face drops its tick and Done is a plain outline (it only
+says the stop): the fixes are the next step. A draft with no name still shows "Say what it is." with [Fill it in]. With 2 or 3 drafts each has Change and Take out, and there is one Done for all ("Adds 2 things to your
+Plan."). The checks:
+
+| Check | Stop? | Words | Fixes |
+| --- | --- | --- | --- |
+| `no_title` | stop | "Say what it is." | Fill it in |
+| `bad_day` | stop | "X0 couldn't read that day. Pick one." | Pick |
+| `bad_time` | stop | "X0 couldn't read that time. Try one like 5:30 pm." | Pick |
+| `too_far` | stop | "That's more than a year away. Pick a closer day." | Pick |
+| `past` | stop | "That time has passed." | Tomorrow, same time; Today, 9 pm |
+| `day_for_follow` | stop | "Pick a day so X0 can remind Dad." | Today, Tomorrow |
+| `time_for_follow` | stop | "Pick a time so X0 can remind Dad." | 9 am, 8 pm |
+| `late_for_follow` | stop | "It's past 10 am, so pick a time for X0 to remind Dad." | the next two whole hours (to 9 pm), else Tomorrow |
+| `not_connected` | note | "Mom isn't in your X0 people yet, so it's for you." | Invite |
+| `not_contact` | note | "That person isn't in your X0 people now, so it's for you." | Pick |
+| `who_is` | note | "Who is Mom? Pick them." | Pick |
+| `for_name` | note | "Remind Dad instead of you?" | Remind Dad |
+| `ampm` | note | "9 am or 9 pm?" (before the clash: a clash is worked out on the guessed half of the day) | 9 am, 9 pm |
+| `clash` | note | "Clashes with Parent-teacher meeting at 6:15 pm." | Move to the next free half hour |
+| `already` | note | "Dentist is already on your Plan for Fri 13 Nov." | none |
+| `must_auto` | note | "X0 marked it must not miss: it's medicine." | Keep normal |
+| `follow_off` | note | "You turned off follow-ups in What pings you. X0 reminds you once." | none |
+| `no_time_repeat` | note | "No time, so X0 won't remind you." | 9 am, 8 pm |
+
+With follow-through off, who-words and must-words are not read at all (they stay in the title), and none of the who, must or follow
+checks is made. No check reads anything of the other person's: only their name, from the person's own X0 people.
+
+**The box** at the bottom: "Tell X0, like Dentist Fri 5 pm" (the example teaches the shape the rules read best). It does everything the
+old box did, and makes drafts:
+- plan words ("Dentist Fri 5 pm and remind Mom about medicine at 9 every night") become up to 3 drafts, shown checked; a 4th or more:
+  "X0 took the first 3. Tell it the rest after.";
+- "make it 8 pm", "add Dad", "every day" change the card on screen and nothing else;
+- a bill or a wait shows a preview first ("Looks like a bill. Add it?" [Done] [Change]); a bill's says what Done would add, read by the
+  box's own due reader ("Electricity ₹2,140 · due Sat 14 Nov"); the words leave the box while the preview shows, and Change puts them
+  back; Done runs the box's own bill or wait path, with its own Undo;
+- a family ask keeps its preview with [Ask]; nothing is sent until [Ask];
+- a pasted notice opens its own capture card with its own Add all; notes on or off change the person's own setting; a day's question is
+  answered under the box (with "Open chat" as a small pill); anything else goes to the Plan Ease chat (its own gate and budget), with
+  the answer under the box: a polite ask with nothing to plan in it ("Can you remind me tomorrow at 5?") too, as the old box did;
+- the + adds a photo, a camera shot or a file (the window: a file), read by the share-in screen.
+
+Its answers that are not drafts (a bill's or a wait's preview, a day's answer, the chat's) show under the header, above the card, so
+they are on screen when they come; drafts show on the card's check face. The box stays at the bottom: the phone's footer over the
+keyboard, the window's foot outside the scrolling column (`page({ dock })`), never under a long card.
+
+**The AI read** (`PLAN_V2_MAKE_AI`). AI only reads messy words; the rules decide times, people, must not miss, clashes and caps. A read
+is asked only when all of these hold: the switch and Plan Ease's reader are on; the words are a plan item of 300 characters or fewer; the
+rules found them unsure (a bare number left in the title, a name that matched nobody, two weekdays, "after lunch", Devanagari, and the
+like: "Dentist Fri 5 pm" and "Buy 2 kg rice" never cost anything); the person said yes to AI (`privacy/aiGate.ts`); no other read is
+running for them; and at least ₹1 of today's reading is left. It comes out of capture's reading share of Plan Ease's day budget, at most
+₹4 of draft reading a day per person. The budget's day is the person's own (their saved offset), never the offset a request sends, and
+an earlier or the same day never starts the count again (`planCapture.ts budgetDay`): flipping the offset on every send makes no new day. What is sent: the words, inside `<message>…</message>`, and, only for a change, the card's own
+fields (title, day, time, repeat, an unmatched name, place). Never the contact list, and never a picked person's name. Every answer is
+checked again: a who or a place is kept only when the person wrote it, importance never comes from the model, and anything odd falls
+back to the rules' draft. When the rules were unsure and no read was used, the check face says why: "X0 filled in what it could. Check
+who it's for." (a name that matched nobody), "… Check the day and the time." (a number, two weekdays, "after lunch"), or "… Check it
+before Done." (anything else, or more than one reason). "Plan something" never asks for AI itself: the permission is asked once, after
+onboarding (`firstRun/aiConsentCard.ts`). Without that yes, setup says `ai: "off"`, the rules read everything, and the screen says
+nothing about AI (no "Turn on AI", no AI card). Check itself never calls a model: with the yes, when the card's own What words still look
+messy it offers "Some words were hard to read." [Read it with AI], and only a tap sends them, through the same read and bounds (`keep: "1"`: it fills
+only what the card left empty and keeps who, must not miss, place and repeat as picked).
+
+**Done.** The server first looks up the rows this key already made: when there are any (a retry after a lost answer), it answers those
+rows and checks nothing again, so a Done that worked at 4:56 is never refused at 4:59 with "That time has passed". Otherwise it checks
+every draft again (a stop answers 400 `fix_first`, and the screen checks again to show it), then makes each
+row through the calendar (`Calendar.addEvent` / `addTask`, with `parsed: true` so the checked title is saved exactly as shown) and,
+only when an importance or someone was picked, follow-through's own `setItem`. Nobody is told at Done: the follow starts when the item's
+reminder comes due ("X0 reminds Dad at 8:45 pm"); an event made inside its reminder window gets a shortened reminder so it still comes.
+Done is idempotent: its key comes from the server in every draft and check answer (never made by the screen), the rows are
+`make:<key>:<n>` under the calendar's unique `(user_id, source_key)`, a retry answers the same rows, and one Done per key runs at a time.
+From the home, Done lands on the home on the new item's day with "Added: …" and **Undo** (`POST .../plan/make/undo`, which takes out
+exactly those rows); from anywhere else it goes back with a toast. A failure half way takes out what that Done made, and only that: a row
+another request made first (the unique key, another server) is used but never taken out by this one.
+
+**The screen's state.** Drafts live only in the screen's state; the server keeps none and there is no table. Every action is behind a
+busy guard (Check, Done and the preview's Done are hidden while anything is on its way), and the screen is never kept
+(`kit.ts NEVER_KEPT`), so a kept copy never wipes what was typed. It is drawn only for a build whose state survives an answer: PersonBot,
+and a window with KitExtras or a phone with ActionParams. Any other build, or `PLAN_V2_MAKE` or `PLAN_V2_PAGE` off, gets the old add form
+(`planItem.ts planAddForm`) with its `day` and `kind`. Known limit: the phone fetches the screen again when the connection comes back or
+after a deploy, and that drops the drafts; nothing is ever made twice, because the key goes with them.
+
+**Routes** (`routes/bots/planMake.ts`; all resolve the user, `cache-control: no-store`; no words, titles, names or places in any log):
+
+| Route | Body / query | Answer | Rate limit |
+| --- | --- | --- | --- |
+| `GET /v1/botsapp/bots/plan/day` | `?tz&day&week&made&n` | the home (`PlanDayData`) | `RL` |
+| `GET /v1/botsapp/bots/plan/make` | `?tz` | `MakeSetup`: today, the people (You first, at most 20), follow, ai on/ask/off, the invite | `RL` |
+| `POST .../plan/make/draft` | `{ words, tz, d?, list?, at?, day?, keep? }` | drafts, a preview, or the box's answer | 20 a minute |
+| `POST .../plan/make/check` | `{ list, d?, at?, tz, day0?, fix?, drop? }` | the drafts checked again, with a fresh key | 60 a minute |
+| `POST .../plan/make` | `{ key, list, tz }` | what Done made (`MadeView`) | 20 a minute |
+| `POST .../plan/make/undo` | `{ key, n }` | `{ ok, removed }` | 20 a minute |
+
+Words are 1 to 2000 characters (413 over); the AI read only ever sees 300 or fewer. With `PLAN_V2_MAKE` off the make routes answer 404
+`make_off`; with `PLAN_V2_PAGE` off `plan/day` answers 404 `plan_v2_off`.
+
+**The phone and the desktop need nothing.** Every part is one both shipped builds already draw (Stack, Text, TextField, BotBuddy,
+PersonBot; setState, toggleInArray, condition, callEndpoint with `assignTo` and `stay`, navigate with `$state` params, navigateBack,
+toast). Desktop 0.4.7, with no KitExtras and no PersonBot, keeps the week page and the old form. No migration (if one is ever needed, it
+takes 0082).
+
+**Render samples**: `scripts/bots-render/samples/planMake.ts` (the home today, tomorrow, an empty day, after Done, an older build and no
+walking bot; the card empty and filled, the check face looking good, with notes, with a stop, with two drafts, who is Nani,
+the What words still messy ("Read it with AI"), a bill's preview, a day's answer, follow-through off, an older build). Every answer in them is the real service's, worked out when the file
+loads over one calendar in memory: the home's from `PlanEase.day`, the card's from `PlanMake.setup`, `.draft` and `.check` (each check
+face is the state the screen's own ON_FILL or ON_CHECK leaves after that answer). A sample may start in a state (`Sample.state`,
+`render.ts --state`).
+
+**Tests**: `plan-make-words`, `plan-make`, `plan-make-service`, `plan-make-routes`, `plan-thread` (the rules, the service, the routes);
+`plan-home-screens`, `plan-make-screens` (the trees); and `plan-make-join`, which builds both screens as the server serves them and
+drives them the way the apps run them (the phone's rules and the window's: strict and `String()` compares, an empty list false), every
+call going to the real routes (`registerBotsBotsRoutes`: `plan/day`, `plan/box`, the act door, the make routes) over one calendar: the
+box, the card, a fix, Take out, Change at a slot, Done and its retry, `fix_first` and the check again, no AI without the yes, Read it with AI with it, a
+bill's preview and its Undo, the home's query, its Undo and a tick.
+
+**Not in v1.**
+- Voice in the box (the phone's keyboard mic types into it; `media.ts listenAction` is the later path).
+- Remembering "Mom is Sunita": X0 asks "Who is Mom? Pick them." every time.
+- Telling the other person at Done: follow-through tells them at the reminder time.
+- Bills and waits as drafts with amount and payee fields: they keep their own box path, with a preview first.
+- "If not done, pass to" on the card: one person per item at creation; the next one is added on the item page's "Who does it".
+- The thread's leave-by, weather and credit lines for days other than today and tomorrow, as before.

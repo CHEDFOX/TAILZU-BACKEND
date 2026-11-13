@@ -86,12 +86,25 @@ describe("the capture card", () => {
     expect(picker.texts).toContain("Send to a bot");
   });
 
-  it("asks for the yes to AI first, with two choices: Agree reads it, Not now adds it as one to-do", async () => {
-    const d = await draw("bots.plan.capture", "phone", { params: { id: CAPTURE.id }, api: { [`GET ${A}/plan/capture/${CAPTURE.id}`]: { capture: { ...CAPTURE, state: "consent", consent: true, rows: [], title: "The school circular", button: "" } } } });
-    expect(d.texts).not.toContain("Just add it as a to-do");
-    expect(d.texts.some((t) => /Not now adds it as one to-do/.test(t))).toBe(true);
-    expect(actions(d.s.root).filter((a) => a.kind === "callEndpoint" && /\/plain$/.test(String(a.path)))).toHaveLength(1);
-    expect(actions(d.s.root).some((a) => a.kind === "callEndpoint" && a.path === "/v1/you/ai-consent")).toBe(true);
+  it("never asks for AI: without a yes the card is the server's rules card (or one to-do for a photo), with no AI card and no word of AI", async () => {
+    const { CAPTURE_API, RULES_ID, PHOTO_ID, CIRCULAR_WORDS } = await import("../scripts/bots-render/samples/planCapture.js");
+    const drawn = [
+      ...(["phone", "desktop"] as const).map((c) => draw("bots.plan.capture", c, { params: { id: RULES_ID }, api: CAPTURE_API })),
+      draw("bots.plan.capture", "phone", { params: { id: PHOTO_ID }, api: CAPTURE_API }),
+      draw("bots.share-in", "phone", { params: { text: CIRCULAR_WORDS }, api: CAPTURE_API }),
+      // Even handed the old answer that waited on a yes (`consent: true`), the card draws no ask.
+      draw("bots.plan.capture", "phone", { params: { id: CAPTURE.id }, api: { [`GET ${A}/plan/capture/${CAPTURE.id}`]: { capture: { ...CAPTURE, state: "consent", consent: true, rows: [], title: "The school circular", button: "" } } } }),
+    ];
+    for (const d of await Promise.all(drawn)) {
+      expect(lintTree(d.s.root!)).toEqual([]);
+      expect(d.texts.filter((t) => /\bAI\b|agree|needs your OK|not now|privacy/i.test(t))).toEqual([]);
+      expect(d.nodes.some((n) => n.type === "BotCard")).toBe(false);
+      expect(actions(d.s.root).filter((a) => a.kind === "callEndpoint" && /ai-consent|\/consent$|\/plain$/.test(String(a.path)))).toEqual([]);
+    }
+    const [rules, , photo, share] = await Promise.all(drawn);
+    expect(rules!.texts).toEqual(expect.arrayContaining(["3 things from the school circular", "Field trip fee · ₹300", "Add all"]));
+    expect(share!.texts).toContain("3 things from the school circular");
+    expect(photo!.texts).toEqual(expect.arrayContaining(["The photo", "Added: Look at the photo", "Open Plan"]));
   });
 
   it("gives an older build nothing of the newer kit", async () => {

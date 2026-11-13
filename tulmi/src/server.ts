@@ -75,6 +75,16 @@ import { openAiModeration, setModeration } from "./botsBots/filter.js";
 import { startOpsAlerts } from "./ops/alerts.js";
 import { eventStore as routineEvents } from "./shell/events.js";
 import { registerBotLooksRoutes } from "./routes/bots/botLooks.js";
+import { registerOracleRoutes } from "./routes/bots/oracle.js";
+import { registerMailRoutes } from "./routes/bots/mail.js";
+import { registerMeetRoutes } from "./routes/bots/meet.js";
+import { meetService, setMeetPeople } from "./meet/service.js";
+import { meetStore } from "./meet/store.js";
+import { spacePeople } from "./meet/people.js";
+import { botsAreaParts } from "./botsBots/index.js";
+import { Blocks } from "./botsBots/blocks.js";
+import { googleEvents, startAutoJoin } from "./meet/calendar.js";
+import { GoogleSession } from "./connectors/google/oauth.js";
 import { registerBlipRoutes } from "./routes/bots/blipCatalog.js";
 import { registerLaunchRoutes } from "./routes/app/launchMotion.js";
 import { registerBotSoundsRoutes } from "./routes/bots/botSounds.js";
@@ -460,7 +470,9 @@ registerTalkRoutes(app, { rateLimit: AUTHED_RL, bots, context: personContext });
 const botsAreaDeps = { rateLimit: AUTHED_RL, bots, code, jobs: codeJobs, connectors, media, artifacts, agent: codeAgent, routines };
 registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);
-const botsArea = registerBotsBotsRoutes(app, botsAreaDeps);
+// The bots area's parts, made once here so the meeting bot reads the same Spaces (who is whose admin) as its routes do.
+const botsParts = botsAreaParts({ bots, connectors });
+const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts });
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
 // The Xode flow (code/flow, routes/bots/botsXode.ts): read and hear the direction, agree a plan, approve it, judge each message against it.
@@ -469,6 +481,36 @@ registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
+// The Oracle's card: when and where a person was born, for the Oracle to read their sky from (src/oracle, docs/oracle.md).
+registerOracleRoutes(app, { rateLimit: AUTHED_RL, bots });
+// Who is whose space admin (meet/people.ts; nobody while Spaces is off), made once from the bots area's Spaces: the meeting bot and the mail
+// bot read the same people.
+const spacesPeople = spacePeople({ spaces: botsParts.spaces, blocks: new Blocks(Date.now, { log: app.log }) });
+// The mail bot's pages: a business's mail on our mail server, passed to its worker inside the account of the business's owner, and the
+// worker's signed notice that mail needs a person (src/mail, docs/mail.md). In a space, an admin reaches a member's businesses whole, and a
+// member answers only the addresses its owner gave them (mail/access.ts).
+registerMailRoutes(app, { rateLimit: AUTHED_RL, bots, people: spacesPeople });
+// The meeting bot (src/meet, docs/meet.md): a bot in a person's video calls through Recall.ai, Recall's two signed webhooks and the stage page
+// its voice plays through. With a Google Calendar connected it joins their calendar's meetings by itself (the sweep, every five minutes).
+registerMeetRoutes(app, {
+  rateLimit: AUTHED_RL, bots,
+  calendarConnected: async (userId) => {
+    if (!connectors) return false;
+    return (await connectors.store.listConnections(userId)).some((c) => c.connectorId === "google-calendar" && Boolean(c.tokensEnc));
+  },
+});
+// In a space, its admin sees the meetings of the members who agreed to the line about the admin, is told when they take the bot to one,
+// and may send it to theirs (meet/people.ts; nobody while Spaces is off).
+setMeetPeople(spacesPeople);
+if (connectors && meetService()) {
+  const stopAutoJoin = startAutoJoin({
+    store: meetStore(),
+    source: googleEvents(new GoogleSession({ store: connectors.store, google: connectors.google })),
+    schedule: (u, ev) => meetService()!.schedule(u, ev),
+    cancel: (u, id) => meetService()!.cancel(u, id),
+  });
+  app.addHook("onClose", async () => { stopAutoJoin(); });
+}
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).
 registerBlipRoutes(app, { rateLimit: AUTHED_RL });

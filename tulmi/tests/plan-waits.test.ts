@@ -312,6 +312,8 @@ describe("waiting on: on the screen", () => {
   };
 
   it("draws the card with the draft as a message, and Send opens the hand-off", async () => {
+    // The simpler page (PLAN_V2_HOME off): its box carries the reply's button; the threaded home draws the same card (planHome.ts).
+    vi.stubEnv("PLAN_V2_HOME", "false"); resetConfigForTests();
     const r = rig(ist(10, 10));
     await r.ease.box(U, "Rahul will send the numbers by Thursday", IST);
     r.clock.t = ist(12, 18, 1);

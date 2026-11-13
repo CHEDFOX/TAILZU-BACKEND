@@ -12,6 +12,7 @@
  * And for the item details (screens/planItem.ts): a work meeting ("From your work calendar", no buttons, "Change it in your work
  * calendar."), a bill (Pay when the link is safe, Paid, Take it out), and "Take out all from the circular" at the foot of anything a
  * capture added. Every row and line comes worked out from the server (botsBots/planCapture.ts, planLinks.ts): this only draws them.
+ * Nothing here asks for AI (Home's card is the one place): without a yes, the server reads a capture by the rules.
  */
 import { KIT_EXTRAS_CAPABILITY, type ActionRef, type ActionSpec, type Node } from "../../../../../../shared/types/sdui.js";
 import {
@@ -19,9 +20,10 @@ import {
   secondaryButton, sectionLabel, seq, text, when, notice,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
-import { aiConsentCard } from "../firstRun/aiConsentCard.js";
 import { A, clearState, field, inputBox, isDesk, lookOf, refresh, setState, toast } from "./parts.js";
 import { lookOf as personLookOf, type PersonLook } from "../../../../botsBots/personLook.js";
+import type { ItemFollow } from "../../../../botsBots/planFollow.js";
+import { followSection, followState } from "./planFollow.js";
 
 const ACT = "/v1/widgets/act";
 const OCHRE = lookOf("plan").color;
@@ -35,7 +37,7 @@ const MIN = 60_000, DAY = 86_400_000;
 export interface CaptureView {
   id: string; state: string; label: string; title: string;
   rows: Array<{ id: string; tick: boolean; title: string; line: string; dateAsk: boolean; person?: { id: string; name: string } }>;
-  already: string; button: string; added?: { n: number; line: string }; consent?: true; fallback?: string;
+  already: string; button: string; added?: { n: number; line: string }; fallback?: string;
 }
 interface LinkView { id: string; provider: string; name: string; hint: string; stopped: boolean }
 interface Meeting { title: string; day: string; start: number | null; end: number | null; allDay: boolean; where?: string; place?: string; people: number; provider: string }
@@ -95,15 +97,6 @@ function captureCard(ctx: BotsCtx, v: CaptureView, o: { share: boolean }): Node[
   }
   if (v.state === "failed") {
     return [col([head, meta(v.fallback ?? "", { size: 14 })], { gap: 6 }), secondaryButton("Open Plan", toPlan, { size: "md" })];
-  }
-  if (v.consent) {
-    const read = call("POST", `${A}/plan/capture/${enc(v.id)}/consent`, {}, { ok: refresh, fail: toast("Couldn't read it. Try again.", true), ...keep(ctx) });
-    const plain = call("POST", `${A}/plan/capture/${enc(v.id)}/plain`, {}, { assignTo: "capPlain", ok: seq(toast("$state.capPlain.line"), o.share ? toPlan : back()), fail: toast("Couldn't add it. Try again.", true), ...keep(ctx) });
-    // Two choices, not three: the AI card's Agree reads it; its Not now adds it as one to-do (said here, so it is no surprise).
-    return [
-      col([head, meta("Plan Ease reads it to find the dates and what to do. That needs your OK first. Not now adds it as one to-do.", { size: 14, lines: 3 })], { gap: 6 }),
-      ...aiConsentCard(ctx, { agreed: false }, { then: read, later: plain }),
-    ];
   }
   // Added: where the card was, a grey line and Undo for 10 seconds (kept through the screen's live reload); then the things live on
   // the person's days.
@@ -281,11 +274,11 @@ const rupeesOf = (paise: number): string => {
 };
 
 /** A bill: its amount and payee (inside the app), when it's due, and Pay (only with a safe link), Paid, Take it out. */
-export function duePage(ctx: BotsCtx, t: DueView) {
+export function duePage(ctx: BotsCtx, t: DueView, follow?: ItemFollow) {
   const doneBack = (m: string): ActionRef => seq(toast(m), back());
   const title = t.amountPaise ? `${t.title} ${rupeesOf(t.amountPaise)}` : t.title;
   return page(ctx, {
-    back: true, title: t.title, nav: "plan", maxWidth: 560,
+    back: true, title: t.title, nav: "plan", maxWidth: 560, ...(t.done ? {} : { state: followState(follow) }),
     body: [
       text(t.done ? `${title} · paid` : title, { size: 20, weight: 600, lineHeight: 26 }),
       col([
@@ -294,6 +287,8 @@ export function duePage(ctx: BotsCtx, t: DueView) {
         ...(t.from ? [text(`From the ${t.from}`, { size: 15, lineHeight: 21, color: C.meta })] : [text("Added by you", { size: 15, lineHeight: 21, color: C.meta })]),
       ], { gap: 6, padding: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line }),
       ...(!t.payLink && !t.done ? [notice("Pay it from your bank or UPI app.")] : []),
+      // Follow-through: Must not miss, who pays it (anyone on it who says paid stops it for everyone), its open follow.
+      ...(t.done ? [] : followSection("task", t.id, follow)),
       ...captureFoot(ctx, t.captureId, t.from),
     ],
     footer: [row([

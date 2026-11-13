@@ -10,6 +10,7 @@
  *   reply     send a message to a chat (the words come with it)                  thread:<id>            session only
  *   Plan Ease's own: done / later on a to-do, move / keep on a Move card, and what later steps add (pt:, pe:, pm:, pc:), each answered by
  *   botsBots/planEase.ts through the calendar the Plan page uses; a widget needs task.done for a to-do, needs.answer for a card
+ *   a followed item's Done, Later, Can't and I'll do it (follow-through)                                    pf:<followId>:<n>      task.done
  *
  * WHO MAY. Everything is the person's own: the services check it again (a job is its owner's, a task's yes is its owner's, a space
  * task only for whom it is for, a chat only for who may write there). A widget's token (token.ts) may only do what its scopes say,
@@ -164,8 +165,8 @@ function modeKind(item: QuickItem): string {
   return item.kind === "job" ? "question" : item.kind === "task" ? "approval" : item.kind === "stask" ? "task" : isPlanItem(item) ? "plan" : item.kind;
 }
 
-const isPlanItem = (item: QuickItem): item is Extract<QuickItem, { kind: "pt" | "pe" | "pm" | "pc" | "pl" }> =>
-  item.kind === "pt" || item.kind === "pe" || item.kind === "pm" || item.kind === "pc" || item.kind === "pl";
+const isPlanItem = (item: QuickItem): item is Extract<QuickItem, { kind: "pt" | "pe" | "pm" | "pc" | "pl" | "pf" }> =>
+  item.kind === "pt" || item.kind === "pe" || item.kind === "pm" || item.kind === "pc" || item.kind === "pl" || item.kind === "pf";
 
 /** What a button needs to be allowed, by what answers it. */
 function scopeFor(item: QuickItem, action: string, parts: ActParts): WidgetScope | "session" | null {
@@ -278,7 +279,7 @@ export class QuickActs {
         await j.answer(userId, item.jobId, said);
         return ok("done");
       }
-      case "pt": case "pe": case "pm": case "pc": case "pl": {
+      case "pt": case "pe": case "pm": case "pc": case "pl": case "pf": {
         if (!this.parts.plan) return no(404, "off", "That isn't there any more.");
         return this.parts.plan.act(userId, item, action);
       }

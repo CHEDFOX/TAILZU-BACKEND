@@ -15,7 +15,8 @@ export interface PushMessage {
   title: string;
   body: string;
   data?: Record<string, unknown>;
-  sound?: "default" | null;
+  /** "default", a file in the app's Library/Sounds (iOS: a call's "x0_ring_1.wav"), or null for none. */
+  sound?: string | null;
   channelId?: string;
   /** Seconds a push may wait for an offline phone before it is dropped. */
   ttl?: number;
@@ -27,6 +28,10 @@ export interface PushMessage {
    * Apple; "time-sensitive" breaks through Focus and needs the app's entitlement. Absent: Apple's own "active".
    */
   interruptionLevel?: "passive" | "active" | "time-sensitive";
+  /** One notification per call (botsBots/planCall.ts): replaces the one already shown on iOS, and coalesces messages in transit. */
+  collapseId?: string;
+  /** Android: replaces a shown notification with the same tag. */
+  tag?: string;
 }
 
 export interface Ticket {

@@ -39,6 +39,8 @@ export function logUrl(url: string): string {
   if (/^\/s\/bots\.link(?:[?#]|$)/.test(url)) return "/s/bots.link";
   // The terminal's sign-in page carries its pending code (routes/site/devicePage.ts).
   if (/^\/device(?:[?#]|$)/.test(url)) return "/device";
+  // A real phone call's callbacks carry the follow, the person and our MAC in their query (botsBots/followPhone.ts): never logged.
+  if (/^\/v1\/channels\/plivo\//.test(url)) return url.replace(/[?#].*$/, "");
   return url;
 }
 

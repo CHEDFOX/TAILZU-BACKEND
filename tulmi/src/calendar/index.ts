@@ -14,7 +14,7 @@
 import type { Calendar, ReminderSend } from "./service.js";
 import { clockAt, dayName, dayOf, hhmm, minuteOf, shiftDay } from "./words.js";
 
-export { Calendar, calendar, resetCalendarForTests, type CalEvent, type CalTask, type Listed, type SpaceItem, type SpaceAnswer, type ReminderSend } from "./service.js";
+export { Calendar, calendar, resetCalendarForTests, type CalEvent, type CalTask, type Listed, type SpaceItem, type SpaceAnswer, type ReminderSend, type FollowCandidate, type TaskMore } from "./service.js";
 export { withOwnDays } from "./bots.js";
 export { memoryCalendarRows, type Source, type EventRow, type TaskRow, type CalendarRows } from "./store.js";
 export { readLine, timeOf, dayFrom, type Repeat } from "./words.js";

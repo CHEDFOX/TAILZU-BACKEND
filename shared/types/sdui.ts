@@ -1451,6 +1451,11 @@ export const FONT_BRICOLAGE_CAPABILITY = "FontBricolage";
  * the `button` param; a plain tap on the notification has none. The hand-off screens open WhatsApp, UPI or Maps only for the button.
  */
 export const PUSH_BUTTON_CAPABILITY = "PushButton";
+/** NOT A COMPONENT (the phone): the call screen's pieces — speak.loud, speak.onDone and "$state" in speak.text; voiceLive.duplex;
+ *  Text format "elapsed". Also a push-token cap: this JS takes Plan Ease's calls (docs/plan-ease.md "Calls"). */
+export const BOT_CALL_CAPABILITY = "BotCall";
+// Text props, format "elapsed" (BOT_CALL_CAPABILITY; the phone's components/Text.tsx, elapsedCore.ts): content is a start time (epoch
+// ms, or ISO); shows "m:ss" (or "h:mm:ss" past an hour) since then, ticking every second; never negative.
 
 export interface PersonBotProps {
   /** Who he is (the person's id): what staggers his idling, so two of them never blink together. */
@@ -1529,7 +1534,11 @@ export type ActionSpec =
   | { kind: "snackbar"; message: string; actionLabel?: string; onAction?: ActionRef }
   | { kind: "playMedia"; url: string }
   | { kind: "stopMedia" }
-  | { kind: "speak"; text: string; voice?: string }
+  | { kind: "speak"; text: string; voice?: string;
+      /** BOT_CALL_CAPABILITY: play on the speaker even with the silent switch on (the audio session set to playback first). */
+      loud?: boolean;
+      /** BOT_CALL_CAPABILITY: when it has been said, stopped or failed (once). */
+      onDone?: ActionRef }
   | { kind: "confetti" }
   // --- system / sharing / clipboard ---
   | { kind: "share"; text?: string; url?: string; title?: string }
@@ -1606,7 +1615,9 @@ export type ActionSpec =
    *  goes into state: the stage reads it. `into` gets the whole turn's words (every segment the stream finalised, then the last
    *  partial), not only the last segment. */
   | { kind: "voiceLive"; mode: "once" | "chat"; statePath: string; into: string; silenceMs?: number; language?: string;
-      onHeard: ActionRef; stopWhen?: Condition; onEnd?: ActionRef; onError?: ActionRef; onBlocked?: ActionRef }
+      onHeard: ActionRef; stopWhen?: Condition; onEnd?: ActionRef; onError?: ActionRef; onBlocked?: ActionRef;
+      /** BOT_CALL_CAPABILITY: one audio session that plays and records, held between turns (a screen that answers out loud). */
+      duplex?: boolean }
   /** Stop the voice session on this screen; the words of the turn not yet sent are dropped. */
   | { kind: "voiceStop" }
   // --- permissions ---

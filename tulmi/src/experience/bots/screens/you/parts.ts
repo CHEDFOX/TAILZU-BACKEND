@@ -9,7 +9,12 @@ import { type BotsCtx, botLook, C, shapes, row, col, title, meta, card, body, se
 export interface Settings {
   monthLimitPaise: number;
   stopAtLimit: boolean;
-  notify: { done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[] };
+  /** calls: Plan Ease calls for a leave-by or a bill due today (absent from an older server: on). */
+  notify: {
+    done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[]; calls?: boolean;
+    /** Follow-through (absent from an older server): Keep at it, Tell the next person, louder pings a day, who may ring louder, a real call. */
+    follow?: boolean; followTell?: boolean; ringMax?: number; followFrom?: string[]; phoneCall?: boolean;
+  };
   privacy: { personalise?: boolean };
 }
 

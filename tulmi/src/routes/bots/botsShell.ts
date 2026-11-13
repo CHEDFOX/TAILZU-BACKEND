@@ -57,7 +57,9 @@ import type { CallFn } from "../../code/work/model.js";
 import { digestFor } from "../../widgets/digest.js";
 import { widgetsConfig, type WidgetsConfigFor } from "../../widgets/config.js";
 import { planEase } from "../../botsBots/planEase.js";
-import { planOn } from "../../botsBots/planSwitch.js";
+import { planCalls } from "../../botsBots/planCall.js";
+import { planFollows } from "../../botsBots/planFollow.js";
+import { followOn, planOn } from "../../botsBots/planSwitch.js";
 import { lockSafe } from "../../botsBots/planSafe.js";
 import { glanceChanges, glanceSteps, glanceV2Of, type GlanceInput } from "../../widgets/glance.js";
 import { emptyGlanceState, glanceStore, withGlance, type GlanceStore } from "../../widgets/glanceStore.js";
@@ -121,12 +123,16 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
   const feedFor = async (user: AuthedUser, tz: number, days = 7): Promise<{ rows: FeedRow[]; voiceRows: Array<{ at: number; words: number; app?: string }> }> => {
     const t = now();
     const since = dayStartOf(t, tz) - (days - 1) * 86_400_000;
-    const [jobs, tasks, evs, projects, voiceRows] = await Promise.all([
+    const [jobs, tasks, evs, projects, voiceRows, calls, follows] = await Promise.all([
       readJobs(deps, user.id), readTasks(deps, user.id), events().list(user.id, since).catch(() => []), readProjects(deps, user.id),
       voice(user, since).catch(() => []),
+      // Plan Ease's calls nobody answered (botsBots/planCall.ts): "Missed call from X0". A missing table (before 0078) is none.
+      planCalls().missedSince(user.id, since).catch(() => []),
+      // Followed items (botsBots/planFollow.ts): someone else said done, someone can't, a must-not-miss one nobody did. None before 0081.
+      followOn() ? planFollows().activitySince(user.id, since).catch(() => []) : Promise.resolve([]),
     ]);
     const rows = feedOf({
-      now: t, tzOffsetMinutes: tz, days, jobs: jobs.map(feedJob), tasks, events: evs, words: wordsByDay(voiceRows, tz, appName),
+      now: t, tzOffsetMinutes: tz, days, jobs: jobs.map(feedJob), tasks, events: evs, words: wordsByDay(voiceRows, tz, appName), calls, follows,
       projects: Object.fromEntries(projects.map((p) => [p.id, p.name])),
     });
     return { rows, voiceRows };
@@ -294,7 +300,8 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
     try {
       const today = dayStartOf(now(), tz);
       const [{ rows, voiceRows }, upcoming] = await Promise.all([feedFor(user, tz, 1), upcomingForShell(calendar(), user.id, now(), tz)]);
-      const mine = rows.filter((r) => r.type !== "words" && (r.at >= today || r.mark === "needs" || r.mark === "working"));
+      // A missed call is not one of the day's tasks: it is in Activity, never counted here.
+      const mine = rows.filter((r) => r.type !== "words" && r.type !== "call" && (r.at >= today || r.mark === "needs" || r.mark === "working"));
       const words = voiceRows.filter((v) => v.at >= today).reduce((n, v) => n + v.words, 0);
       const dueToday = (upcoming.todos ?? []).filter((t) => t.overdue || /^today\b/i.test(t.due ?? "")).length;
       const took = mine.filter((r) => r.mark === "done" || r.mark === "working").length;
@@ -313,7 +320,8 @@ export function registerBotsShellRoutes(app: FastifyInstance, deps: BotsAreaDeps
       const [{ rows, voiceRows }, days] = await Promise.all([feedFor(user, tz, 1), todayForShell(calendar(), user.id, now(), tz)]);
       const day = wordsDay(voiceRows.filter((v) => v.at >= today), tz);
       return reply.send({
-        calendar: days, rows: rows.filter((r) => r.type !== "words"),
+        // The day's work: never the words (the Keylessbord card has them), nor a missed call (Activity's, as on Home's tasks).
+        calendar: days, rows: rows.filter((r) => r.type !== "words" && r.type !== "call"),
         keybot: { ...day, minutesSaved: Math.round(day.words / TYPING_WPM) },
       });
     } catch (err) { return fail(req, reply, err); }

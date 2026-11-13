@@ -30,8 +30,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 /** Today shows this many rows, then "2 more"; Tomorrow this many. */
 export const TODAY_ROWS = 6;
 export const TOMORROW_ROWS = 3;
-/** From this hour Tomorrow comes first, and Today keeps only what is still open. */
-const EVENING_HOUR = 17;
+/** From this hour Tomorrow comes first, and Today keeps only what is still open (the home opens on tomorrow then: planThread.ts). */
+export const EVENING_HOUR = 17;
 
 export interface Leave { leaveBy: number; minutes: number; mode: string; to: string }
 
@@ -48,6 +48,10 @@ export interface PlanInput {
   needs: NeedsCard | null;
   /** The newest note someone left on an item, by row id: its grey line (inside the app only). */
   notes?: ReadonlyMap<string, RowNote>;
+  /** Follow-through's line for a followed item of today, by row id (planFollow.ts followLinesOf). */
+  follow?: ReadonlyMap<string, string>;
+  /** The viewer's id: an item whose first person is someone else says "For Dad" (planRows.ts). */
+  me?: string;
 }
 
 /** The big line: words, with the part to show in ochre (the leave-by time) said apart. */
@@ -100,8 +104,9 @@ const short = (t: string) => t.split(" · ")[0]!.trim() || t;
 /** "2 more", the same words everywhere. */
 export const more = (n: number): string => `${n} more`;
 
-const rowCtx = (i: Pick<PlanInput, "tz" | "now" | "leaves" | "clashes" | "notes">): RowCtx => ({
+const rowCtx = (i: Pick<PlanInput, "tz" | "now" | "leaves" | "clashes" | "notes" | "follow" | "me">): RowCtx => ({
   tz: i.tz, now: i.now, clock: (ms) => clockOf(ms, i.tz), leaves: i.leaves, clashes: i.clashes, ...(i.notes ? { notes: i.notes } : {}),
+  ...(i.follow ? { follow: i.follow } : {}), ...(i.me ? { me: i.me } : {}),
 });
 
 /** Done last, the rest in time order (timed first, then the day's to-dos). */
@@ -112,7 +117,14 @@ const ordered = (rows: RowView[]): RowView[] => [...rows].sort((a, b) => Number(
 const open = (it: DayItem) => !it.done;
 const isTimed = (it: DayItem) => it.start !== null && !it.allDay;
 
+/** The one thing; its grey line is its follow line when it has one ("Mom · not done yet"), so the simple page never loses it. */
 export function nextThing(i: Omit<PlanInput, "needs">): NextThing {
+  const next = ladder(i);
+  const followed = next.rowId ? i.follow?.get(next.rowId) : undefined;
+  return followed ? { ...next, grey: followed } : next;
+}
+
+function ladder(i: Omit<PlanInput, "needs">): NextThing {
   const today = i.items.filter((it) => it.day === i.today && open(it));
   const tomorrow = i.items.filter((it) => it.day === i.tomorrow && open(it));
   const id = (it: DayItem) => `${it.ref === "event" ? "e" : "t"}:${it.id}`;

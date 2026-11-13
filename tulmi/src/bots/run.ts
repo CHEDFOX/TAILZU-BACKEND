@@ -12,6 +12,9 @@
  *                   cap (meter.ts), which is the smaller of the bot's per-request budget and what is left of its day
  *   6. memory       after an owner's chat turn: facts and the rolling summary (memory.ts)
  *
+ * The Oracle is the one bot that does not run this loop: its turns go to its own service (src/oracle/run.ts). The mail bot runs it with its
+ * business's mail as its knowledge (src/mail/digest.ts), and the meeting bot with the person's meetings (src/meet/digest.ts).
+ *
  * THE MONEY: the cap is checked before every call by the gateway (a call whose worst case would pass it is refused, never made). A request that
  * runs dry after its tools worked returns what it has, with a note; one that cannot even start is a 402.
  *
@@ -37,6 +40,11 @@ import { scopeMessage } from "./scope.js";
 import type { BotStore } from "./store.js";
 import { buildTools, CALLS_PER_STEP, newRecord } from "./tools.js";
 import { BotError, type BotAnswer, type BotDef, type BotEvent } from "./types.js";
+import { ORACLE_SLUG, runOracle, type OracleDeps } from "../oracle/run.js";
+import { MAIL_SLUG, MEET_SLUG } from "./builtin.js";
+import { meetDigest } from "../meet/digest.js";
+import { mailDigest } from "../mail/digest.js";
+import type { MailWorker } from "../mail/worker.js";
 
 export interface RunDeps {
   store: BotStore;
@@ -46,6 +54,10 @@ export interface RunDeps {
   now?: () => number;
   /** Whether the owner's personalise switch is on (shared.ts); the You store when not given. */
   shared?: Pick<SharedDeps, "on">;
+  /** The Oracle's store, service and place finder (src/oracle); the server's own when not given. */
+  oracle?: OracleDeps;
+  /** The mail bot's worker (src/mail); the server's own when not given. */
+  mail?: { worker?: MailWorker | null };
 }
 
 export interface RunRequest {
@@ -98,6 +110,8 @@ export function runBot(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
 }
 
 async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
+  // The Oracle's words are its own service's (src/oracle/run.ts): the sky, the turns, the route; no tool loop.
+  if (r.bot.ownerId === null && r.bot.slug === ORACLE_SLUG) return runOracle(d, r);
   const t0 = (d.now ?? Date.now)();
   const bot = r.bot;
   const emit = r.emit ?? (() => undefined);
@@ -137,6 +151,15 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
     : r.message;
   const know = bot.skills.files && bot.knowledge.length ? await retrieve(d.ports.media, r.userId, bot.knowledge, lookup) : null;
   if (know) notes.push(...know.notes);
+  // The mail bot reads the business's mail as the worker sorted it (mail/digest.ts): its numbers, and one line a message.
+  const mail = bot.ownerId === null && bot.slug === MAIL_SLUG
+    ? await mailDigest(r.userId, { ...(d.mail?.worker !== undefined ? { worker: d.mail.worker } : {}), ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}), now: (d.now ?? Date.now)() }).catch(() => null)
+    : null;
+  // The meeting bot reads their meetings and what was said in them (meet/digest.ts).
+  const meet = bot.ownerId === null && bot.slug === MEET_SLUG
+    ? await meetDigest(r.userId, { ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}), now: (d.now ?? Date.now)() }).catch(() => null)
+    : null;
+  const knowledge = [know?.text, mail, meet].filter((x): x is string => !!x?.trim()).join("\n\n");
 
   const kit = await buildTools({
     bot, userId: r.userId, runId, ...(r.projectId ? { projectId: r.projectId } : {}), ports: d.ports, meter, call, ...(d.gateway ? { gateway: d.gateway } : {}),
@@ -148,7 +171,7 @@ async function runBotRequest(d: RunDeps, r: RunRequest): Promise<BotAnswer> {
   const user = botUserMessage({
     bot: { ...bot, skills: bot.skills },
     ...(facts.length ? { facts } : {}), ...(mem.thread?.summary ? { summary: mem.thread.summary } : {}),
-    ...(know?.text ? { knowledge: know.text } : {}), ...(r.attached?.length ? { attached: r.attached } : {}), ...(history.length ? { history } : {}), ...(kit.notConnected.length ? { notConnected: kit.notConnected } : {}),
+    ...(knowledge ? { knowledge } : {}), ...(r.attached?.length ? { attached: r.attached } : {}), ...(history.length ? { history } : {}), ...(kit.notConnected.length ? { notConnected: kit.notConnected } : {}),
     ...(r.tzOffsetMinutes !== undefined ? { tzOffsetMinutes: r.tzOffsetMinutes } : {}),
     message: r.message,
   });

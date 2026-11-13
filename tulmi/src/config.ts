@@ -760,6 +760,46 @@ const EnvSchema = z.object({
   MEDIA_INGEST: bool(false),
   MEDIA_WORKER_URL: z.string().trim().optional(),
   MEDIA_WORKER_SECRET: z.string().optional(),
+  /**
+   * THE ORACLE (src/oracle, oracle-worker/, docs/oracle.md): a built-in bot that reads a person's sky with Plutto's oracle, which runs as its own Python
+   * service. ORACLE_WORKER_URL (http://oracle-worker:8000 in docker-compose) and ORACLE_WORKER_SECRET (SECRET: .env only, 32+ characters, the same on
+   * both sides; every call is HMAC-signed the media worker's way). Without both the Oracle is not among the bots at all.
+   */
+  ORACLE_WORKER_URL: z.string().trim().optional(),
+  ORACLE_WORKER_SECRET: z.string().optional(),
+  /**
+   * The Oracle's birthplace search (src/oracle/places.ts): Google's Places suggestions as the person types, and the place's
+   * coordinates once they pick one. A SECRET (.env only); the key needs the Places API enabled (the one Plutto uses). Without it the
+   * search falls back to the server's own: the cities table and PLACES_GEOCODER.
+   */
+  GOOGLE_PLACES_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  /**
+   * THE MAIL BOT (src/mail, mail-worker/, docs/mail.md): a built-in bot that keeps a business's email on our mail server and answers it with our AI,
+   * run by its own service. MAIL_WORKER_URL (http://mail-worker:5300 in docker-compose) and MAIL_WORKER_SECRET (SECRET: .env only, 32+ characters, the
+   * same on both sides; every call is HMAC-signed the media worker's way, and so is the worker's notice when mail needs a person). Without both the
+   * mail bot is not among the bots at all. deploy/mail-up.sh sets both.
+   */
+  MAIL_WORKER_URL: z.string().trim().optional(),
+  MAIL_WORKER_SECRET: z.string().optional(),
+  /**
+   * THE MEETING BOT (src/meet, docs/meet.md): a person's bot in their video calls, sent by Recall.ai into Google Meet, Zoom, Teams or Webex. It
+   * takes the call's notes (a note in Notes), answers questions in the chat and out loud, and joins the calendar's meetings by itself when asked.
+   * RECALL_API_KEY (SECRET: .env only) from Recall's dashboard; RECALL_REGION the region its account is in (Pay As You Go: us-west-2). Recall
+   * signs every webhook (the live transcript and chat, and the bot's status) with the workspace verification secret, RECALL_WEBHOOK_SECRET
+   * (SECRET, "whsec_…", Recall's dashboard, API Keys); its status webhook is set in Recall's dashboard to <PUBLIC_ORIGIN>/v1/meet/recall.
+   * Without RECALL_API_KEY the meeting bot is not among the bots at all.
+   */
+  RECALL_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  RECALL_REGION: z.enum(["us-east-1", "us-west-2", "eu-central-1", "ap-northeast-1"]).default("us-west-2"),
+  RECALL_WEBHOOK_SECRET: z.string().trim().optional().transform((v) => v || undefined),
+  /** The model the meeting bot answers and keeps its notes with (OpenRouter's name): a fast one, since people wait for it in the call. */
+  MEET_MODEL: z.string().default("anthropic/claude-haiku-5.5"),
+  /** The bot that speaks shows our stage page as its camera (Recall's Output Media), on its 4-core bot ($0.10 an hour more) unless "web". */
+  MEET_SPEAKING_VARIANT: z.enum(["web", "web_4_core"]).default("web_4_core"),
+  /** How many minutes of meetings one person's bot may sit in, in any 24 hours (Recall bills by the minute). */
+  MEET_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(240),
+  /** The language Recall's live transcript listens for (its recallai_streaming language_code). */
+  MEET_LANGUAGE: z.string().trim().default("en"),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -794,12 +834,12 @@ const EnvSchema = z.object({
   ROUTINES: bool(true),
   /**
    * SPACES (src/botsBots/spacesSwitch.ts, docs/spaces.md "Turning Spaces off"): family and friends, chats with them, sharing to them, and
-   * Work in space on the bots' pages. On by default. SPACES_ENABLED=false hides all of it until it is ready: no Space card or group tiles
+   * Work in space on the bots' pages. OFF until it is ready (the owner's call): SPACES_ENABLED=true shows it. Off hides all of it: no Space card or group tiles
    * on Home, no Spaces in You or the window's settings, no Work in space on the bots' pages, nothing to share to, no pushes or invite
    * mails from it, and every Spaces and Work in space route answers 404 spaces_off (a link or a notification into it opens Home).
-   * Nothing is deleted: true brings every space back as it was.
+   * Nothing is deleted: true brings every space back as it was. The tests run with it on (tests/setup.ts), as they were written.
    */
-  SPACES_ENABLED: bool(true),
+  SPACES_ENABLED: bool(false),
   /**
    * PLAN EASE, THE SIMPLER ONE (docs/plan-ease.md), one switch per step so each can be turned off on its own. On by default; false puts
    * that step back as it was, and nothing it kept is deleted.
@@ -816,7 +856,28 @@ const EnvSchema = z.object({
   PLAN_V2_PAGE: bool(true),
   PLAN_V2_NOTES: bool(true),
   /**
-   * PLAN_V2_LINKS      step 2: the work calendar by its link (botsBots/planLinks.ts): pasted once (Google, Outlook or iCloud, or a code
+   * PLAN_V2_PAGE keeps its meaning: the new data path (GET .../plan/today, /week, /line, /details, /box, /day), Home's Plan line, the
+   * widget and lock line, the desktop's "add this", the item details sheet, and the Plan page for a build that draws PersonBot. False:
+   * everything as before PLAN_V2 (the week page, the old form), whatever the switches below say.
+   *
+   * PLAN_V2_HOME     the Plan page is the threaded day again (screens/bots/planHome.ts; botsBots/planThread.ts): the header's walking
+   *                  bot and + (both open "Plan something"), the week strip, one day as a thread with leave-by and free-time lines,
+   *                  follow-through lines, must-not-miss and people's tiny bots on every row, one Needs-you card, no box (the box is on
+   *                  "Plan something"). False: the simple page (the one next thing, Today and Tomorrow, one box), as it was.
+   * PLAN_V2_MAKE     "Plan something" (bots.plan.make; botsBots/planMake.ts, planMakeService.ts, routes/bots/planMake.ts): a card
+   *                  (what, when, repeat, for who, must not miss, where), Check (rules, free), Change, Done, and a box that fills
+   *                  the card. Done creates through the calendar and follow-through's own setItem. No migration. False: + and the
+   *                  top area still open bots.plan.make, which then draws the old add form, and /plan/make* answer 404 make_off.
+   * PLAN_V2_MAKE_AI  "Plan something" may ask an AI model to read messy words into the card, only with the person's yes to AI
+   *                  (privacy/aiGate.ts) and inside Plan Ease's day budget (the reading share, planCapture.ts), only when the rules
+   *                  are unsure; the code checks every answer again and decides people and must-not-miss itself. False: rules only,
+   *                  never a model call.
+   */
+  PLAN_V2_HOME: bool(true),
+  PLAN_V2_MAKE: bool(true),
+  PLAN_V2_MAKE_AI: bool(true),
+  /**
+   * PLAN_V2_LINKS     step 2: the work calendar by its link (botsBots/planLinks.ts): pasted once (Google, Outlook or iCloud, or a code
    *                    from x0bot.com/cal), read every 30 minutes, its meetings on the page, in the notes, the clash check and the chat's
    *                    list, kept locked. Needs migration 0071 and CONNECTOR_TOKEN_KEY (the link is sealed with it). False: no link page,
    *                    no offer card, nothing fetched; links already kept stay as they are.
@@ -848,6 +909,45 @@ const EnvSchema = z.object({
    *                    an older one does.
    */
   PLAN_V2_APP: bool(true),
+  /**
+   * BOT_CALLS   "X0 is calling" (botsBots/planCall.ts; docs/plan-ease.md "Calls"): a leave-by or a bill due today rings a phone whose
+   *             JS takes calls (token cap BotCall) instead of the push, for a person with Calls on in What pings you, outside quiet
+   *             hours, with no computer in use, at most 3 a day and 15 minutes apart. Needs migration 0079 and PLAN_V2_APP. False:
+   *             every push goes as before; calls already placed still finish.
+   */
+  BOT_CALLS: bool(true),
+  /**
+   * PLAN_V2_FOLLOW   follow-through (botsBots/planFollow.ts; docs/plan-ease.md "Follow-through"): must-not-miss items and items with
+   *                  people on them are followed until someone says done (a push, a louder push, X0 is calling, a real phone call for
+   *                  someone who turned that on, then telling the next person), with Done / Later / Can't from the app. Only people the
+   *                  person is connected with in X0 can be on an item, by the same rules as messaging. Needs migration 0081. False: every
+   *                  reminder goes exactly as before; follows already open stop where they are.
+   */
+  PLAN_V2_FOLLOW: bool(true),
+  /**
+   * CHANNEL_PHONE_CALLS   real phone calls (press 1 done, 2 later, 3 can't) as a must-not-miss item's loud step, only to X0 users who
+   *                       turned it on themselves in What pings you for their own proved number (botsBots/followPhone.ts, Plivo).
+   *                       Separate from BOT_CALLS ("X0 is calling" in the app). OFF, and stays off unless every key below and
+   *                       CONNECTOR_TOKEN_KEY are set and the number's TRAI A2P declaration is filed (docs/follow-channels.md). The
+   *                       auth token is a secret: the env file only. PLIVO_ALLOWED_PREFIXES: the number prefixes a real call may go to,
+   *                       comma-separated; others are never called (cost).
+   */
+  CHANNEL_PHONE_CALLS: bool(false),
+  PLIVO_AUTH_ID: z.string().trim().optional(),
+  PLIVO_AUTH_TOKEN: z.string().optional(),
+  PLIVO_FROM_NUMBER: z.string().trim().optional(),
+  PLIVO_VOICE_EN: z.string().trim().default("Polly.Raveena"),
+  PLIVO_VOICE_HI: z.string().trim().default("Polly.Aditi"),
+  PLIVO_ALLOWED_PREFIXES: z.string().trim().default("+91"),
+  /**
+   * The cost ceilings for real phone calls (botsBots/planFollow.ts, through plan_reach_caps). The per-person caps (their ringMax, and
+   * push.follow.phoneDayMax) protect the person; these protect the bill: one asker's many items, or a bug that loops, can never spend more
+   * than this in a day. Past one, the phone step is skipped and the ladder goes on to the tell. 0 stops real calls without turning them off.
+   *   FOLLOW_CALL_ASKER_DAY_MAX   real phone calls for one asker's items in a day
+   *   FOLLOW_CALL_DAY_MAX         real phone calls for the whole server in a UTC day
+   */
+  FOLLOW_CALL_ASKER_DAY_MAX: z.coerce.number().int().min(0).default(6),
+  FOLLOW_CALL_DAY_MAX: z.coerce.number().int().min(0).default(100),
   /**
    * The AI permission (src/privacy/aiGate.ts, App Review 5.1.2(i)): nothing of a person's is sent to an AI service until they have
    * tapped Agree. On by default; false lets everyone's requests through again, for an emergency only (the app still asks).
@@ -1813,8 +1913,15 @@ export function getConfig(): AppConfig {
     const r2 = [env.R2_ACCOUNT_ID, env.R2_ACCESS_KEY_ID, env.R2_SECRET_ACCESS_KEY, env.R2_BUCKET];
     if (r2.some(Boolean) && !r2.every(Boolean)) console.warn("[config] R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET are not all set: files are read but their bytes are not kept.");
     if (Boolean(env.MEDIA_WORKER_URL) !== Boolean(env.MEDIA_WORKER_SECRET)) console.warn("[config] MEDIA_WORKER_URL and MEDIA_WORKER_SECRET go together: without both there is no worker, so office files and scanned PDFs are not read.");
+    if (Boolean(env.ORACLE_WORKER_URL) !== Boolean(env.ORACLE_WORKER_SECRET)) console.warn("[config] ORACLE_WORKER_URL and ORACLE_WORKER_SECRET go together: without both the Oracle is not among the bots.");
+    if (env.ORACLE_WORKER_SECRET && env.ORACLE_WORKER_SECRET.length < 32) console.warn("[config] ORACLE_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
     if (env.MEDIA_WORKER_SECRET && env.MEDIA_WORKER_SECRET.length < 32) console.warn("[config] MEDIA_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   }
+
+  // The mail bot: half set is a bot that is quietly missing. Warned, not refused.
+  if (Boolean(env.MAIL_WORKER_URL) !== Boolean(env.MAIL_WORKER_SECRET)) console.warn("[config] MAIL_WORKER_URL and MAIL_WORKER_SECRET go together: without both the mail bot is not among the bots.");
+  if (env.MAIL_WORKER_SECRET && env.MAIL_WORKER_SECRET.length < 32) console.warn("[config] MAIL_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
+  if (env.RECALL_API_KEY && !env.RECALL_WEBHOOK_SECRET) console.warn("[config] RECALL_API_KEY without RECALL_WEBHOOK_SECRET: the meeting bot can join calls, but Recall's status webhook is refused (it cannot be checked). Add the workspace verification secret (whsec_…) from Recall's dashboard.");
 
   // Bots: a pepper that is missing or short makes keys that a leaked table could be tested against. Warned, not refused: the rest of the server is unaffected.
   if (env.BOTS) {

@@ -92,6 +92,33 @@ describe("repeats and reminders", () => {
 });
 
 describe("the person's own calendar and to-dos", () => {
+  it("addEvent and addTask with parsed: true keep the title, day and time as given; without it they read the title as before", async () => {
+    // Thu 29 Oct, 10 am: "Friday prayer" on Sat, "Morning walk" every day with no time, "Weekly review", "Lunch at Taj".
+    const { c } = cal({ t: ist(29, 10) });
+    const prayer = await c.addTask(U, { title: "Friday prayer", day: "2026-10-31", time: "", tz: IST }, { kind: "me" }, "make:k:0", {}, { parsed: true });
+    expect(prayer).toMatchObject({ title: "Friday prayer", due: "2026-10-31", at: null });
+    const walk = await c.addEvent(U, { title: "Morning walk", day: "2026-10-29", time: "", repeat: "daily", tz: IST }, { kind: "me" }, { key: "make:k:1", parsed: true });
+    expect(walk).toMatchObject({ title: "Morning walk", allDay: true, repeat: "daily", day: "2026-10-29" });
+    const review = await c.addEvent(U, { title: "Weekly review", day: "2026-10-30", time: "16:00", tz: IST }, { kind: "me" }, { parsed: true });
+    expect(review).toMatchObject({ title: "Weekly review", repeat: "" });
+    const lunch = await c.addTask(U, { title: "Lunch at Taj", day: "2026-10-30", time: "", tz: IST }, { kind: "me" }, null, {}, { parsed: true });
+    expect(lunch.title).toBe("Lunch at Taj");
+    // The key is the row's source_key: Calendar.keyed finds exactly those rows, the person's own.
+    expect((await c.keyed(U, "0f8fad5b-d9cb-469f-a165-70867728950e", 2))).toEqual([]);
+    const k = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    await c.addEvent(U, { title: "Dentist", day: "2026-10-30", time: "17:00", tz: IST }, { kind: "me" }, { key: `make:${k}:0`, parsed: true });
+    await c.addTask(U, { title: "Buy fruit", day: "2026-10-31", time: "", tz: IST }, { kind: "me" }, `make:${k}:1`, {}, { parsed: true });
+    expect((await c.keyed(U, k, 2)).map((r) => [r.kind, r.title, r.day, r.sourceKey])).toEqual([["event", "Dentist", "2026-10-30", `make:${k}:0`], ["task", "Buy fruit", "2026-10-31", `make:${k}:1`]]);
+    expect(await c.keyed(V, k, 2)).toEqual([]);
+    expect(await c.keyed(U, "nope", 2)).toEqual([]);
+    expect(await c.keyed(U, k, 22)).toEqual([]);
+    // Without parsed, the old form and the box read the title as they always did.
+    const old = await c.addTask(U, { title: "Friday prayer", day: "2026-10-31", time: "", tz: IST });
+    expect(old).toMatchObject({ title: "Prayer", due: "2026-10-30" });
+    const oldWalk = await c.addEvent(U, { title: "Morning walk", day: "2026-10-29", time: "", repeat: "daily", tz: IST });
+    expect(oldWalk).toMatchObject({ title: "Walk", allDay: false });
+  });
+
   it("adds, lists, changes, moves and takes out, and says so live", async () => {
     const { c, published } = cal();
     const e = await c.addEvent(U, { title: "Dentist · Dr. Mehta", day: "2026-10-29", time: "18:00", minutes: 45, place: "Indiranagar, 100 Feet Road", tz: IST });

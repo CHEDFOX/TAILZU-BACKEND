@@ -14,7 +14,7 @@ const RESETS = utc(2026, 11, 1) - IST * MIN;
 
 const settings = {
   monthLimitPaise: 50_000, stopAtLimit: true,
-  notify: { done: "quiet", summary: true, summaryAt: 1260, quiet: true, quietFrom: 1380, quietTo: 420, botsOff: ["keybot"] },
+  notify: { done: "quiet", summary: true, summaryAt: 1260, quiet: true, quietFrom: 1380, quietTo: 420, botsOff: ["keybot"], calls: true },
   privacy: {},
 };
 const byBot = [{ bot: "code", paise: 14_200 }, { bot: "keybot", paise: 1800 }, { bot: "plan", paise: 1500 }, { bot: "gym-bot", paise: 900 }];
@@ -95,7 +95,7 @@ export const YOU_API: Record<string, unknown> = {
   [`GET /v1/you/spend?tz=${IST}`]: { report, settings },
   [`GET /v1/you/usage?tz=${IST}`]: { usage, near: null, out: null, how: "Each month is used in five stretches: 4, 5, 6 and 7 days, then the rest of the month. Each starts fresh." },
   [`GET /v1/you/billing?tz=${IST}`]: billing,
-  [`GET /v1/you/notify?tz=${IST}`]: { settings, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you." },
+  [`GET /v1/you/notify?tz=${IST}`]: { settings, today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you.", name: "Zara", calls: true },
   "GET /v1/you/account": account,
   "GET /v1/you/apps": apps,
   // The window's Settings card lists every app (screens/you/settingsCard.ts).
@@ -108,4 +108,12 @@ export const YOU_API: Record<string, unknown> = {
       { id: "5f0c1a2b-0000-4000-8000-000000000002", name: "build-box", platform: "linux", kind: "cli", createdAt: NOW - 12 * D, lastUsedAt: null },
     ],
   },
+};
+
+/** What pings you with follow-through on (PLAN_V2_FOLLOW): Must not miss, a real phone call set up, Priya allowed to ring louder. */
+export const NOTIFY_FOLLOW = {
+  settings: { ...settings, notify: { ...settings.notify, follow: true, followTell: true, ringMax: 6, followFrom: ["aaaaaaaa-0000-4000-8000-000000000001"], phoneCall: true } },
+  today: { done: 5, needs: 1, spentPaise: 1100 }, line: "5 things done, 1 needs you.", name: "Zara", calls: true,
+  follow: true, followFrom: [{ id: "aaaaaaaa-0000-4000-8000-000000000001", name: "Priya" }],
+  phone: { number: { state: "verified", display: "+91 98••• ••210", setup: { screen: "bots.plan.phone" } } },
 };

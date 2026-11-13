@@ -53,6 +53,43 @@ for i in $(seq 1 60); do
   sleep 2
 done
 [ "${code:-}" = "200" ] && ok "healthz answers ($((i*2))s)" || bad "healthz never answered"
+
+# The Oracle's worker (docs/oracle.md), where it is set up: rebuilt and restarted with the backend, so a change to it or to tulmi/.env
+# reaches it too. One that fails leaves the backend up (the Oracle says it can't be reached) and fails the verdict below.
+if grep -qE '^ORACLE_WORKER_URL=.+' "$ENV_FILE" && grep -qE '^ORACLE_WORKER_SECRET=.+' "$ENV_FILE"; then
+  step "The Oracle's worker"
+  if docker compose --profile oracle up -d --build oracle-worker; then
+    oh=""
+    for i in $(seq 1 45); do
+      oh=$(docker compose exec -T backend wget -qO- http://oracle-worker:8000/healthz 2>/dev/null || true)
+      printf '%s' "$oh" | grep -q '"ok":true' && break
+      sleep 2
+    done
+    if printf '%s' "$oh" | grep -q '"models":true'; then ok "the Oracle's worker answers, with its model keys"
+    elif printf '%s' "$oh" | grep -q '"ok":true'; then bad "the Oracle's worker answers, but has no OPENROUTER_API_KEY (tulmi/.env)"
+    else bad "the Oracle's worker never answered (docker compose logs oracle-worker)"; fi
+  else
+    bad "the Oracle's worker did not build (docker compose --profile oracle up -d --build oracle-worker shows why)"
+  fi
+fi
+
+# The mail worker (docs/mail.md), where it is set up: the same, so a change to it or to tulmi/.env reaches it too.
+if grep -qE '^MAIL_WORKER_URL=.+' "$ENV_FILE" && grep -qE '^MAIL_WORKER_SECRET=.+' "$ENV_FILE"; then
+  step "The mail worker"
+  if docker compose --profile mail up -d --build mail-worker; then
+    mh=""
+    for i in $(seq 1 45); do
+      mh=$(docker compose exec -T backend wget -qO- http://mail-worker:5300/healthz 2>/dev/null || true)
+      printf '%s' "$mh" | grep -q '"ok":true' && break
+      sleep 2
+    done
+    if printf '%s' "$mh" | grep -q '"ready":true'; then ok "the mail worker answers, set up"
+    elif printf '%s' "$mh" | grep -q '"ok":true'; then bad "the mail worker answers but is not set up: $(printf '%s' "$mh" | sed -n 's/.*"missing":\(\[[^]]*\]\).*/\1/p') (./deploy/mail-up.sh)"
+    else bad "the mail worker never answered (docker compose logs mail-worker)"; fi
+  else
+    bad "the mail worker did not build (docker compose --profile mail up -d --build mail-worker shows why)"
+  fi
+fi
 fi
 
 # --------------------------------------------------------------------- serving

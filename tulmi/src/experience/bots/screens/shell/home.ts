@@ -11,7 +11,7 @@ import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, toTab, C, headBar, type PageOpts, hasOutbox,
-  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces,
+  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
 import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
@@ -28,6 +28,8 @@ import { routinesRow, type RoutinesData } from "../routines.js";
 import { names, type Space } from "../spaces/parts.js";
 import { facesLine } from "../spaces/spaceDetail.js";
 import { idleLine as idleLineOf, firstName } from "./parts.js";
+import { oracleTileLook } from "../bots/oraclePage.js";
+import { mailTileLook } from "../bots/mailPage.js";
 
 // ===================================================================== home
 
@@ -85,8 +87,17 @@ function groupTile(s: Space, height: number, padding: number): Node {
  * Home's grid: the first bots, then the groups (a build with the new Spaces: the one Space card; else each group a bot of its own,
  * GROUPS_ON_HOME of them), then Make a bot.
  */
+/** Built-ins with a look of their own, on Home's grid beside the first three wherever they are set up (docs/oracle.md, docs/mail.md). */
+const FEATURED: readonly string[] = ["oracle", "mail"];
+
+/** The bots Home's grid draws: the first three, then the Oracle and the mail bot. */
+export function homeShown(ctx: BotsCtx): LiveBot[] {
+  const first = ctx.live.bots.slice(0, 3);
+  return [...first, ...ctx.live.bots.filter((b) => b.builtin && FEATURED.includes(b.slug) && !first.includes(b))];
+}
+
 export function tiles(ctx: BotsCtx, columns: number, height: number, padding: number, notes?: NotesStats, spacesIn: Space[] = [], planLine = ""): Node {
-  const shown = ctx.live.bots.slice(0, 3);
+  const shown = homeShown(ctx);
   // Plan Ease's tile says the one thing that matters next, as its page does (botsBots/planDay.ts), when it isn't busy with something.
   const idleLine = (b: LiveBot, client: BotsCtx["client"]) => (b.slug === "plan" && planLine && !b.working ? planLine : idleLineOf(b, client));
   // Spaces switched off: no Space card and no group tiles, whatever was read (kit hasSpaces).
@@ -101,7 +112,11 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     // A double tap on a bot's own tile is a voice chat with that bot (Home's thought, canVoice); groups and Make a bot have none.
     const talk = canHomeThought(ctx) && canVoice(ctx);
     const living = botTiles([
-      ...shown.map((b) => ({ ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}) })),
+      ...shown.map((b) => ({
+        ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}),
+        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts); the mail bot, the postie filing letters (mailPage.ts).
+        ...(b.slug === "oracle" && b.builtin ? oracleTileLook(ctx) : b.slug === "mail" && b.builtin ? mailTileLook(ctx) : {}),
+      })),
       ...(canSpaces2(ctx) ? (groups.length ? [spaceCardSpec(groups)] : []) : groupsShown.map(groupTileSpec)),
       makeTileSpec(open(SCREENS.make)),
     ], { columns, height, padding, gap, ...(strip ? { strip, stripHeight: notesStripHeight(ctx) } : {}), ...(surprises ? { surprises } : {}) });
@@ -115,6 +130,20 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
   return withNotes ? col([still, notesStrip(ctx, notes)], { gap }) : still;
 }
 
+/**
+ * The bots Home's grid does not draw (the Travel bot, the ones they made): one chip each, so every bot has a way in on the phone. The
+ * window lists them all in its sidebar.
+ */
+export function moreBots(ctx: BotsCtx): Node[] {
+  const shown = new Set(homeShown(ctx).map((b) => b.slug));
+  const rest = ctx.live.bots.filter((b) => !shown.has(b.slug));
+  if (!rest.length) return [];
+  return [col([
+    sectionLabel("More bots"),
+    row(rest.map((b) => labelled(botChip(b, botRoute(b.slug)), `Open ${b.name}`)), { gap: 8, flexWrap: "wrap" }),
+  ], { gap: 8 })];
+}
+
 /** What Home's state starts with: the first-arrival card's, when it is due. */
 const homeState = (arrival: boolean): Record<string, unknown> => (arrival ? { ...ARRIVAL_STATE } : {});
 
@@ -126,7 +155,7 @@ export interface HomeMore { planLine?: string | undefined; ai?: AiConsent | unde
 
 /**
  * Home's notices, one ask at a time: while the account has a deletion date, that card at the top and nothing else asks; else the AI
- * permission, until the person has agreed (firstRun/aiConsentCard.ts: nothing is sent before); else the first-arrival card when due; else the About you card when due (a few visits in); else, on a phone, the notifications ask once
+ * permission, once per wording (firstRun/aiConsentCard.ts: nothing is sent before a yes); else the first-arrival card when due; else the About you card when due (a few visits in); else, on a phone, the notifications ask once
  * something is working or needs them (its header reads the phone's answer). `state` is what the page starts with.
  */
 export function homeNotices(ctx: BotsCtx, arrival: boolean, more: HomeMore) {
@@ -192,6 +221,8 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
     ...(first ? [needsCard(first)] : []),
     ...n.push,
     tiles(ctx, 2, 132, 16, more.notes, more.groups, more.planLine),
+    // Every bot past the first three, a chip each: the Oracle, the mail bot and their own are never out of reach.
+    ...moreBots(ctx),
     ...routinesRow(ctx, more.routines),
   ];
   // Ask any bot: his thought where the build draws it (a tiny bot walking the foot of Home), else the ask bar.
