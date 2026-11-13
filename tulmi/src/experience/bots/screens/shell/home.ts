@@ -30,6 +30,7 @@ import { facesLine } from "../spaces/spaceDetail.js";
 import { idleLine as idleLineOf, firstName } from "./parts.js";
 import { oracleTileLook } from "../bots/oraclePage.js";
 import { mailTileLook } from "../bots/mailPage.js";
+import { cinemaTileLook } from "../bots/cinemaPage.js";
 
 // ===================================================================== home
 
@@ -88,9 +89,9 @@ function groupTile(s: Space, height: number, padding: number): Node {
  * GROUPS_ON_HOME of them), then Make a bot.
  */
 /** Built-ins with a look of their own, on Home's grid beside the first three wherever they are set up (docs/oracle.md, docs/mail.md). */
-const FEATURED: readonly string[] = ["oracle", "mail"];
+const FEATURED: readonly string[] = ["oracle", "mail", "cinema"];
 
-/** The bots Home's grid draws: the first three, then the Oracle and the mail bot. */
+/** The bots Home's grid draws: the first three, then the Oracle, the mail bot and the cinema bot. */
 export function homeShown(ctx: BotsCtx): LiveBot[] {
   const first = ctx.live.bots.slice(0, 3);
   return [...first, ...ctx.live.bots.filter((b) => b.builtin && FEATURED.includes(b.slug) && !first.includes(b))];
@@ -114,8 +115,9 @@ export function tiles(ctx: BotsCtx, columns: number, height: number, padding: nu
     const living = botTiles([
       ...shown.map((b) => ({
         ...botTileSpec(b, { idle: idleLine(b, ctx.client), onPress: botRoute(b.slug) }), ...(talk ? { doubleTap: tileVoice(ctx, b.slug) } : {}),
-        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts); the mail bot, the postie filing letters (mailPage.ts).
-        ...(b.slug === "oracle" && b.builtin ? oracleTileLook(ctx) : b.slug === "mail" && b.builtin ? mailTileLook(ctx) : {}),
+        // The Oracle wears one of its two characters (screens/bots/oraclePage.ts); the mail bot, the postie filing letters (mailPage.ts);
+        // the cinema bot, the director clapping his board (cinemaPage.ts).
+        ...(b.slug === "oracle" && b.builtin ? oracleTileLook(ctx) : b.slug === "mail" && b.builtin ? mailTileLook(ctx) : b.slug === "cinema" && b.builtin ? cinemaTileLook(ctx) : {}),
       })),
       ...(canSpaces2(ctx) ? (groups.length ? [spaceCardSpec(groups)] : []) : groupsShown.map(groupTileSpec)),
       makeTileSpec(open(SCREENS.make)),

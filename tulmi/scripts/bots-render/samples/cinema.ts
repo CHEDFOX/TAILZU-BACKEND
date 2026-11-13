@@ -46,6 +46,12 @@ function view(status: Film["status"], over: Partial<Film> = {}) {
 }
 
 
+function writing() {
+  const f = filmOf({ id: "f1", status: "writing", aspect: "9:16", script: null, shots: [] });
+  f.idea = "a 24 second vertical ad for my chai stall in the Mumbai rain, warm and a bit funny";
+  return { film: publicFilm(f), title: "New film", links: {} };
+}
+
 function script() {
   const { f, links } = view("script", { budgetPaise: 0, spentPaise: 0 });
   return { film: publicFilm(f), title: "Chai in the Rain", links };
@@ -120,4 +126,4 @@ export const CINEMA_PAGE_API = (overview: unknown): Record<string, unknown> => (
   "GET /v1/cinema/overview": overview,
 });
 
-export const CINEMA_FILMS = { script, board, filming, done };
+export const CINEMA_FILMS = { writing, script, board, filming, done };

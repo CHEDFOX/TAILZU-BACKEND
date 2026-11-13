@@ -60,6 +60,7 @@ async function build(o: { screen?: string; params?: Record<string, string>; clie
   };
   return {
     lint: lintTree(root),
+    nodes,
     texts: nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content)),
     images: nodes.filter((n) => n.type === "Image").map((n) => String((n.props?.source as { url?: string })?.url)),
     paths: nodes.flatMap((n) => Object.values(n.on ?? {}) as ActionSpec[]).flatMap(flat).filter((a) => a.kind === "callEndpoint").map((a) => `${(a as { method: string }).method} ${(a as { path: string }).path}`),
@@ -143,6 +144,17 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     ];
     const words = pages.flatMap((p) => p.texts).join(" ");
     expect(words).not.toMatch(/kling|seedance|veo|wan |hailuo|runway|gemini|nano banana|seedream|gpt|openrouter|\/10\b|prompt|₹|\bcosts?\b|\bprice\b|\bspent\b|\bpaise\b/i);
+  });
+
+  it("wears the director on its Home card and on its empty page, with a moment of his own", async () => {
+    const { cinemaTileLook, DIRECTOR } = await import("../src/experience/bots/screens/bots/cinemaPage.js");
+    const { ctxFor } = await import("../src/experience/bots/fixtures.js");
+    const ctx = ctxFor("bots.home", client, undefined, { can: new Set(DRAWS) });
+    expect(cinemaTileLook(ctx)).toMatchObject({ avatar: DIRECTOR, moment: "c.clap", momentMode: "loop" });
+    const empty = await build({ client });
+    const buddies = empty.nodes.filter((n) => n.type === "BotBuddy" && (n.props as { avatar?: string }).avatar === DIRECTOR);
+    expect(buddies).toHaveLength(1);
+    expect((buddies[0]!.props as { moment?: string }).moment).toBe("c.frame");
   });
 
   it("a shot that cannot be read says so", async () => {

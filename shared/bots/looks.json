@@ -1,5 +1,5 @@
 {
-  "v": 4,
+  "v": 5,
   "format": 2,
   "note": "The bots' looks and moments (docs/bots-app.md, 'Looks and moments'). Data the apps draw and play: change it, raise v by one, and the apps take it at their next start. tulmi/src/experience/bots/looks.ts checks every field; the apps' starter copy is generated from this file.",
   "parts": {
@@ -257,6 +257,28 @@
       {"d": "O 0 0 0.032", "stroke": "$paint", "width": 0.007},
       {"d": "O 0 0 0.021", "stroke": "$paint", "width": 0.005},
       {"d": "M 0.04 -0.012 Q 0.05 -0.02 0.06 -0.012 Q 0.07 -0.004 0.08 -0.012 M 0.04 0 Q 0.05 -0.008 0.06 0 Q 0.07 0.008 0.08 0 M 0.04 0.012 Q 0.05 0.004 0.06 0.012 Q 0.07 0.02 0.08 0.012", "stroke": "$paint", "width": 0.006}
+    ] },
+    "slate": { "note": "A clapperboard's slate, held up in his hand: a dark board with two pale lines for the shot and the take.", "draw": [
+      {"d": "M -0.085 -0.05 L 0.085 -0.05 L 0.085 0.072 L -0.085 0.072 Z", "fill": "ink"},
+      {"d": "M -0.06 0.0 L 0.06 0.0", "stroke": "paper", "width": 0.009, "alpha": 0.8},
+      {"d": "M -0.06 0.034 L 0.022 0.034", "stroke": "paper", "width": 0.009, "alpha": 0.55},
+      {"d": "M -0.085 -0.05 L 0.085 -0.05", "stroke": "$paint", "width": 0.014}
+    ] },
+    "clapstick": { "note": "The clapperboard's arm, drawn from its hinge at the left so a moment can swing it open and clap it shut.", "draw": [
+      {"d": "M 0 0 L 0.17 0", "stroke": "ink", "width": 0.03},
+      {"d": "M 0.014 0 L 0.04 0", "stroke": "paper", "width": 0.022},
+      {"d": "M 0.068 0 L 0.094 0", "stroke": "paper", "width": 0.022},
+      {"d": "M 0.122 0 L 0.148 0", "stroke": "paper", "width": 0.022}
+    ] },
+    "lens": { "note": "A director's viewfinder on a cord at his neck: the cord, a short barrel, and its glass in the bot's colour.", "draw": [
+      {"d": "M -0.032 0.014 Q 0 0.07 0.032 0.014", "stroke": "ink", "width": 0.008, "alpha": 0.75},
+      {"d": "M -0.023 0.062 L 0.023 0.062 L 0.023 0.104 L -0.023 0.104 Z", "fill": "ink"},
+      {"d": "O 0 0.108 0.017", "fill": "$paint"}
+    ] },
+    "filmframe": { "note": "One frame of film with its sprocket holes: what goes up in the air when a film is finished.", "draw": [
+      {"d": "M -0.05 -0.034 L 0.05 -0.034 L 0.05 0.034 L -0.05 0.034 Z", "fill": "ink"},
+      {"d": "M -0.032 -0.021 L 0.032 -0.021 L 0.032 0.021 L -0.032 0.021 Z", "fill": "$paint"},
+      {"d": "M -0.044 -0.029 L -0.037 -0.029 M -0.044 0.029 L -0.037 0.029 M 0.037 -0.029 L 0.044 -0.029 M 0.037 0.029 L 0.044 0.029", "stroke": "paper", "width": 0.008}
     ] }
   },
   "avatars": {
@@ -357,6 +379,11 @@
       "extends": "blip",
       "label": "The postie (a navy cap, a postal-red satchel, a letter peeking out of it)",
       "wear": [{"part": "mailbag", "on": "body", "back": true, "paint": "#8A3B2C"}, {"part": "strap", "on": "body", "paint": "#8A3B2C"}, {"part": "cap", "on": "crown", "y": 0.05, "paint": "#2E3A4B"}]
+    },
+    "director": {
+      "extends": "blip",
+      "label": "The director (a charcoal cap, a viewfinder on a cord at his neck)",
+      "wear": [{"part": "lens", "on": "neck", "paint": "$color"}, {"part": "cap", "on": "crown", "y": 0.05, "paint": "#3B3F47"}]
     }
   },
   "kinds": { "code": "code", "keybot": "keybot", "plan": "plan", "travel": "travel", "notes": "notes", "make": "make", "custom": "custom" },
@@ -1018,6 +1045,55 @@
         {"do": "arm", "at": 3.1, "to": 4.8, "hand": "front", "x": 0.27, "y": "-0.22 + 0.035*sin(tau*(T - 3.1)/0.36)", "k": 700},
         {"do": "mouth", "at": 3.2, "to": 4.9, "state": "smile", "v": 0.75},
         {"do": "eyes", "at": 3.3, "to": 5.2, "state": "happy"}
+      ]
+    },
+    "c.clap": {
+      "label": "Holds the clapperboard up, swings it open and claps it: action", "dur": 4.6, "mode": "loop", "still": 1.3, "fallback": "play",
+      "tracks": [
+        {"note": "the board comes up into his front hand, and he reads it", "do": "prop", "at": 0.25, "to": 4.2, "part": "slate", "on": "hand_front", "x": 0.03, "y": -0.02, "pop": true},
+        {"do": "arm", "at": 0.2, "to": 4.2, "hand": "front", "x": 0.27, "y": -0.2, "k": 560},
+        {"do": "look", "at": 0.3, "to": 1.6, "target": "hand"},
+        {"do": "lean", "at": 0.3, "to": 1.6, "v": 0.05},
+        {"note": "the arm is open from the start and shuts at 1.9: the clap", "do": "prop", "at": 0.25, "to": 4.2, "part": "clapstick", "on": "hand_front", "x": -0.055, "y": -0.075, "rot": "-0.9*clamp((1.9 - T)/1.1, 0, 1)"},
+        {"do": "emit", "at": 1.9, "part": "puff", "from": "hand_front", "x": 0.14, "y": -0.1, "n": 3, "spread": 0.7, "vy": -0.6, "drag": 2, "life": 0.5, "size": 0.45, "alpha": 0.5},
+        {"do": "hop", "at": 1.9, "h": 0.07},
+        {"do": "eyes", "at": 1.9, "to": 3.4, "state": "happy"},
+        {"do": "mouth", "at": 1.95, "to": 2.8, "state": "o", "v": 0.7},
+        {"note": "and he turns to watch what happens", "do": "look", "at": 2.0, "to": 4.2, "target": "ahead", "x": 0.55, "y": -0.2},
+        {"do": "lean", "at": 2.0, "to": 4.2, "v": -0.04}
+      ]
+    },
+    "c.frame": {
+      "label": "Makes a frame with his hands and finds the shot through it", "dur": 5.4, "mode": "loop", "still": 2.4, "fallback": "survey",
+      "tracks": [
+        {"do": "arm", "at": 0.3, "to": 4.3, "hand": "both", "x": 0.17, "y": -0.3, "k": 520},
+        {"do": "crouch", "at": 0.3, "to": 0.9, "v": 0.06},
+        {"do": "eyes", "at": 0.8, "to": 3.4, "state": "squint"},
+        {"note": "he pans across the scene, looking for it", "do": "look", "at": 0.8, "to": 3.4, "target": "ahead", "x": "0.45*sin(tau*(T - 0.8)/2.6)", "y": -0.22},
+        {"do": "tilt", "at": 1.0, "to": 2.2, "v": -0.07},
+        {"do": "tilt", "at": 2.3, "to": 3.4, "v": 0.06},
+        {"note": "there it is", "do": "eyes", "at": 3.5, "to": 5.0, "state": "happy"},
+        {"do": "mouth", "at": 3.5, "to": 5.0, "state": "smile", "v": 0.65},
+        {"do": "look", "at": 3.5, "to": 5.0, "target": "point", "x": 0.3, "y": -0.3},
+        {"do": "crouch", "at": 3.5, "to": 3.9, "v": 0.09},
+        {"do": "hop", "at": 3.95, "h": 0.06}
+      ]
+    },
+    "c.premiere": {
+      "label": "Throws the film up in the air when it is finished", "dur": 3.6, "mode": "once", "still": 0.6, "fallback": "play",
+      "tracks": [
+        {"do": "prop", "at": 0.1, "to": 0.9, "part": "filmframe", "on": "hand_front", "y": -0.04, "pop": true},
+        {"do": "arm", "at": 0.1, "to": 0.85, "hand": "front", "x": 0.2, "y": -0.1, "k": 600},
+        {"do": "look", "at": 0.2, "to": 0.9, "target": "hand"},
+        {"do": "crouch", "at": 0.55, "to": 0.9, "v": 0.12},
+        {"note": "up it goes, and more of them with it", "do": "emit", "at": 0.95, "part": "filmframe", "from": "hand_front", "n": 5, "vy": -1.9, "vx": 0.3, "spread": 0.9, "g": 1.5, "life": 1.9, "spin": 3, "size": 1.1},
+        {"do": "arm", "at": 0.95, "to": 2.0, "hand": "both", "x": 0.16, "y": -0.42, "k": 640},
+        {"do": "hop", "at": 0.95, "h": 0.16},
+        {"do": "look", "at": 0.95, "to": 2.6, "target": "up", "x": 0.2, "y": -0.9},
+        {"do": "eyes", "at": 0.95, "to": 3.4, "state": "happy"},
+        {"do": "mouth", "at": 1.0, "to": 3.2, "state": "smile", "v": 0.8},
+        {"do": "emit", "at": 1.1, "part": "star", "from": "crown", "n": 4, "vy": -1.1, "spread": 1.1, "g": 1.2, "life": 1.2, "size": 0.7, "alpha": 0.9},
+        {"do": "arm", "at": 2.2, "to": 3.5, "hand": "both", "x": 0.1, "y": -0.05, "k": 480}
       ]
     },
     "p.pond": {

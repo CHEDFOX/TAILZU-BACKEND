@@ -206,8 +206,16 @@ media route. Every still, take and film is opened by a signed link of ours (`med
 each time a screen is drawn; never the storage's own address. Refusals are `{ code, message }`: `cinema_off`, `not_found`, `wrong_status`,
 `no_model`, `cinema_film_cap`, `cinema_day`, `quota_exceeded`, `ai_consent_needed`, `bad_photo`, `bad_link`.
 
+**The bot himself.** The cinema bot wears the **director** (`shared/bots/looks.json`): a charcoal cap and a viewfinder on a cord at his
+neck. He has three moments of his own: `c.clap` (he holds the clapperboard up, swings it open and claps it: his Home card, over and over),
+`c.frame` (he makes a frame with his hands and finds the shot: the page before the first film) and `c.premiere` (he throws the film up in
+the air, once, when one is finished). The parts they are drawn from (`slate`, `clapstick`, `lens`, `filmframe`) are in the catalog too, and
+the apps' starter copies are regenerated with it (`TAILZU-FRONTEND/app/src/botTiles/genStarter.mjs`).
+
 **The screens** (`experience/bots/screens/bots/cinemaPage.ts`, `cinemaScreens.ts`; drawn by the apps from the server, no app release):
 
+* **Home** (`screens/shell/home.ts`): a card of its own among the first tiles, wherever the bot is on, with the director clapping his board
+  and the line "Makes your films and pictures".
 * **The bot's page** (`bots.bot`, slug `cinema`): the films waiting for the person first (a script or a storyboard to approve, more money, a
   shot to look at); a new film (their words; Length, Frame and Quality as segmented controls; Write the script); a picture; the other films
   with their first still; the pictures; the cast.
@@ -226,7 +234,7 @@ not even the app's traffic carries them. A shot that cannot be made says what to
 never which models there are; a provider's own error text is never shown. The bot's chat is told never to name the models either. The
 prompts are our craft, and the models are ours to change from one day to the next.
 
-The render check draws every one of them on both clients from `scripts/bots-render/samples/cinema.ts`:
+The render check draws the whole flow on both clients, Home to the finished film, from `scripts/bots-render/samples/cinema.ts`:
 `cd tulmi && npx tsx scripts/bots-render/showcase.ts --only cinema`.
 
 **Pushes** (`push/defaults.ts`): `cinema_board` (the storyboard is ready), `cinema_hold` (the film waits for you), `cinema_ready` (the film is

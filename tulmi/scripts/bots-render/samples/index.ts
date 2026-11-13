@@ -63,6 +63,8 @@ const CINEMA_FAKE = { slug: "cinema", name: "Cinema", colour: "stone", purpose: 
 export const SAMPLES: Sample[] = [
   // screens/shell.ts
   { id: S.home, area: "shell", board: "Main", deskBoard: "DeskHome" },
+  // Home with the cinema bot among the first tiles: the director clapping his board (samples/cinema.ts, screens/bots/cinemaPage.ts).
+  { id: S.home, area: "shell", variant: "cinema", fake: { bots: [CINEMA_FAKE, ...SAMPLE_BOTS.slice(0, 2)], jobs: [], tasks: [] } },
   // The AI permission, due: signed in, not agreed, and not answered since the wording last changed (firstRun/aiConsentCard.ts).
   { id: S.home, area: "shell", variant: "ai", api: { "GET /v1/you/ai-consent": { agreed: false, asked: false } } },
   { id: S.activity, area: "shell", board: "Activity", deskBoard: "DeskActivity" },

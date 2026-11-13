@@ -14,9 +14,10 @@
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import { botTopic } from "../../../../live/topics.js";
+import type { BotTileSpec } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, page, row, col, text, box, icon, labelled, back, grow, card, meta, notice, primaryButton, C, botAvatar, listCard, listRow,
-  sectionLabel, open, SCREENS, call, seq, segmented, picture,
+  type BotsCtx, page, row, col, text, box, icon, labelled, back, grow, card, meta, notice, primaryButton, C, botAvatar, botBuddy, botMoment,
+  canBuddy, canMoments, listCard, listRow, sectionLabel, open, SCREENS, call, seq, segmented, picture,
 } from "../../kit.js";
 import { toast } from "../firstRun/parts.js";
 import { mailField } from "./mailCards.js";
@@ -24,6 +25,19 @@ import { abs, CINEMA, openFilm, statusLine, waitsForYou, type CinemaData } from 
 import { type BotPageData, chatBar, isDesk, lookOf, setState } from "./parts.js";
 
 export type CinemaPageData = BotPageData & { cinema?: CinemaData };
+
+/** The avatar the cinema bot wears (shared/bots/looks.json). */
+export const DIRECTOR = "director";
+
+/**
+ * Its Home tile: the director, clapping his board over and over (the catalog's c.clap), the way the postie files his letters. A build that
+ * plays no moments gets the tile as it was.
+ */
+export function cinemaTileLook(ctx: BotsCtx): Pick<BotTileSpec, "avatar" | "moment" | "momentMode"> {
+  if (!canMoments(ctx)) return {};
+  const m = botMoment(ctx, "c.clap", "loop");
+  return { avatar: DIRECTOR, ...(m.moment ? { moment: m.moment, ...(m.momentMode ? { momentMode: m.momentMode } : {}) } : {}) };
+}
 
 const said = (message: string): ActionSpec => ({ kind: "toast", message, tone: "success" } as ActionSpec);
 const refresh: ActionSpec = { kind: "refresh" };
@@ -93,8 +107,11 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
     ], { gap: 10 }));
 
     if (!o.films.length && !o.pictures.length) {
+      const him = canBuddy(ctx)
+        ? botBuddy({ kind: "custom", color: look.color, life: "page.cinema", width: desk ? 170 : 120, height: desk ? 78 : 66, size: desk ? 42 : 36, state: "idle", avatar: DIRECTOR, ...botMoment(ctx, "c.frame", "loop") })
+        : row([icon("spark", { size: 28, color: look.color })], { justifyContent: "center" });
       body.push(card([
-        row([icon("spark", { size: 28, color: look.color })], { justifyContent: "center" }),
+        row([him], { justifyContent: "center" }),
         text("Say what you want to see. A director writes the shots, you look over the storyboard, and each shot is filmed by the camera that suits it, checked, and cut together with voice-over and music.", { size: 14, color: C.ink, align: "center", lineHeight: 20 }),
       ], { dashed: true, gap: 10, padding: 22, style: { alignItems: "center" } }));
     }
