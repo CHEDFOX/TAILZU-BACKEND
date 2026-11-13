@@ -193,7 +193,7 @@ export function bubble(ctx: BotsCtx, s: string, big = false): Node {
  */
 export function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<typeof botAvatar>[0]["icon"]; head?: string }, t: Turn, big = false,
   draw?: { slug: string; live: boolean; picked?: string }): Node {
-  const drawn = t.show && draw ? showNodes(ctx, t.show, { slug: draw.slug, turn: t.id, color: look.color, live: draw.live, ...(draw.picked !== undefined ? { picked: draw.picked } : {}) }) : [];
+  const drawn = t.show && draw ? showNodes(ctx, t.show, { slug: draw.slug, turn: t.id, live: draw.live, ...(draw.picked !== undefined ? { picked: draw.picked } : {}) }) : [];
   const words = answerBlocks(t.text, look.color, big ? 15 : 14, drawn.length && t.show?.lists === "drawn" ? { lists: false } : {});
   const blocks = [...words, ...drawn, ...turnActions(ctx, t)];
   if (!isDesk(ctx)) return col(blocks, { gap: 12 });

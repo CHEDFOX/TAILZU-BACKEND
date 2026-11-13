@@ -358,6 +358,13 @@ never `borderStyle` with them, which would make the window draw every side. `tes
 checks that no screen of Spaces or Work in space draws an initial, and the sweep in `tests/spaces-family-screens.test.ts` that neither
 reaches a build that doesn't declare it.
 
+**What a bot draws, as dots that obey physics** (sdui 3k; docs/show.md sections 5 and 6). One node: **`DotArt`** (in `KIT_TYPES`, sent
+only by `experience/bots/show.ts` to a build that declares it): a monochrome picture of dots (`w`, `h`, five numbers a dot), every dot a
+point mass on a damped spring, coming in by `enter` (fall, grow, gather), scattered by a touch, pushed by a held finger or the window's
+pointer, trembling with `heat`, asleep once settled, still under Reduce Motion. A build without it gets the same dots as an SVG's
+circles. The physics is one file on both clients (TAILZU-FRONTEND `sdui/bots/dotArtCore.ts`; the window's `dotArt.js` is generated from
+it). The render check draws a build that has it with `--with DotArt`.
+
 ## 9. Rules, and what not to touch
 
 * **Ids** `bots.<area>[.<thing>]`, lower case, hyphens: take them from `ids.ts`. **Files**: only your `screens/<area>.ts` (and tests).

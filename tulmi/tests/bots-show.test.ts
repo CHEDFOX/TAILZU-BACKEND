@@ -33,7 +33,8 @@ const { MemoryEventStore } = await import("../src/shell/events.js");
 const { resetConfigForTests } = await import("../src/config.js");
 const { chatTurns } = await import("../src/experience/bots/screens/bots/parts.js");
 type Turn = import("../src/experience/bots/screens/bots/parts.js").Turn;
-const { showNodes } = await import("../src/experience/bots/show.js");
+const { showNodes, MOTION } = await import("../src/experience/bots/show.js");
+const { PALETTE_HEX } = await import("../src/experience/bots/palette.js");
 const { ctxFor } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { checkShown } = await import("../src/show/check.js");
@@ -171,17 +172,59 @@ describe("on the screen", () => {
     { type: "form", send: "Book it", fields: [{ label: "Guests", kind: "number" }, { label: "Room", kind: "choice", options: ["Sea", "Garden"] }] },
     { type: "suggest", items: ["Make it cheaper"] },
   ] }, { seen: { has: () => false } })!;
-  const o = { slug: "travel", turn: "44444444-4444-4444-8444-444444444444", color: "#3E6E8E" };
+  const o = { slug: "travel", turn: "44444444-4444-4444-8444-444444444444" };
   const actions = (nodes: unknown) => JSON.stringify(nodes);
+  /** A build that draws DotArt, and Blip alive, or neither. */
+  const alive = (client: "phone" | "desktop") => ctxFor("bots.chat", client, undefined, { can: new Set(["BotsKit", "BotsMotion", "BotBuddy", "DotArt"]) });
+  const typeOf = (nodes: unknown[], type: string) => walk({ type: "Stack", children: nodes as never }).filter((n) => n.type === type);
 
-  it("draws with the kit's own parts, on both clients", () => {
+  it("draws with the kit's own parts, on both clients, with physics or without", () => {
     for (const client of ["phone", "desktop"] as const) {
-      for (const s of [shown, asks]) {
-        const nodes = showNodes(ctxFor("bots.chat", client), s, { ...o, live: true });
-        expect(nodes.length, client).toBeGreaterThan(0);
-        expect(lintTree({ type: "Stack", children: nodes }), client).toEqual([]);
+      for (const ctx of [ctxFor("bots.chat", client), alive(client)]) {
+        for (const s of [shown, asks, { ...shown, blip: "survey" as const }]) {
+          const nodes = showNodes(ctx, s, { ...o, live: true });
+          expect(nodes.length, client).toBeGreaterThan(0);
+          expect(lintTree({ type: "Stack", children: nodes }), client).toEqual([]);
+        }
       }
     }
+  });
+
+  it("draws in one look: monochrome, no colour of any palette, the pictures as dots", () => {
+    const json = JSON.stringify(showNodes(alive("phone"), shown, { ...o, live: true }));
+    for (const hex of Object.values(PALETTE_HEX)) expect(json, hex).not.toContain(hex);
+    // the bars, the line and the drawing: one picture of dots each
+    expect(typeOf(showNodes(alive("phone"), shown, { ...o, live: true }), "DotArt")).toHaveLength(3);
+    // a build without DotArt: the very same dots, as circles in ink
+    const still = typeOf(showNodes(ctxFor("bots.chat", "phone"), shown, { ...o, live: true }), "SVG");
+    const circles = still.flatMap((n) => (n.props?.shapes as Array<{ circle?: number[]; fill?: string }> | undefined) ?? []);
+    expect(circles.length).toBeGreaterThan(50);
+    expect(new Set(circles.map((c) => c.fill))).toEqual(new Set(["#0a0a0a"]));
+  });
+
+  it("brings the newest answer's pictures in by physics that suits each, and draws an older one at home", () => {
+    const live = typeOf(showNodes(alive("desktop"), shown, { ...o, live: true }), "DotArt").map((n) => n.props as Record<string, unknown>);
+    expect(live.map((p) => [p.enter, p.heat ?? 0])).toEqual([[MOTION.bars.enter, 0], [MOTION.line.enter, 0], [MOTION.draw.enter, MOTION.draw.heat]]);
+    expect(live.map((p) => p.key)).toEqual([`${o.turn}.4`, `${o.turn}.5`, `${o.turn}.6`]);
+    expect(live[2]!.label).toBe("The route");
+    const old = typeOf(showNodes(alive("desktop"), shown, { ...o, live: false }), "DotArt").map((n) => n.props as Record<string, unknown>);
+    expect(old.every((p) => p.enter === "none" && p.heat === undefined)).toBe(true);
+  });
+
+  it("puts Blip beside the first picture when asked: alive in ink on the newest answer, his pose on an older one or an older build", () => {
+    const withBlip = { ...shown, blip: "survey" as const };
+    const live = showNodes(alive("phone"), withBlip, { ...o, live: true });
+    const buddies = typeOf(live, "BotBuddy");
+    expect(buddies).toHaveLength(1);
+    expect(buddies[0]!.props).toMatchObject({ color: "#0a0a0a", act: "survey", label: "Blip", life: `show.${o.turn}` });
+    // beside the callout, the first block he may stand by
+    expect(typeOf([live[0]!], "BotBuddy")).toHaveLength(1);
+    const old = showNodes(alive("phone"), withBlip, { ...o, live: false });
+    expect(typeOf(old, "BotBuddy")).toHaveLength(0);
+    expect(typeOf(old, "Image").some((n) => n.props?.accessibilityLabel === "Blip" || JSON.stringify(n.props).includes("blip"))).toBe(true);
+    expect(typeOf(showNodes(ctxFor("bots.chat", "phone"), withBlip, { ...o, live: true }), "BotBuddy")).toHaveLength(0);
+    // none asked, none drawn
+    expect(typeOf(showNodes(alive("phone"), shown, { ...o, live: true }), "BotBuddy")).toHaveLength(0);
   });
 
   it("puts a wide table in cards on the phone, and keeps it a table in the window", () => {
@@ -206,8 +249,11 @@ describe("on the screen", () => {
     expect(all.some((n) => n.on?.onPress)).toBe(false);
     expect(all.some((n) => n.type === "TextField")).toBe(false);
     expect(actions(still)).not.toContain("Make it cheaper");
-    const villa = all.find((n) => n.children?.some((c) => c.props?.content === "Villa"))!;
-    expect((villa.style as Record<string, unknown>).backgroundColor).toBe("#0a0a0a");
+    // the pick shown: an ink edge and its dot filled; the one not picked, a grey edge and a hollow ring
+    const chipOf = (label: string) => all.find((n) => n.children?.some((c) => c.props?.content === label))!;
+    expect((chipOf("Villa").style as Record<string, unknown>).borderColor).toBe("#0a0a0a");
+    expect((chipOf("Villa").children![0]!.style as Record<string, unknown>).backgroundColor).toBe("#0a0a0a");
+    expect((chipOf("Beach hut").children![0]!.style as Record<string, unknown>).backgroundColor).toBe("transparent");
   });
 
   it("is live only on the chat's last turn, and leaves the drawn lists out of the words", () => {

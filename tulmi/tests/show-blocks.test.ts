@@ -7,6 +7,7 @@
  *   - anything that looks like a secret drops the whole drawing
  *   - every choice and form gets its key, the same one when the drawing is read back
  *   - what the person picked and typed comes back as plain words, and a pick that names no option is left out
+ *   - Blip only doing one of his acts
  */
 import { describe, expect, it } from "vitest";
 import { checkShown, keptShown } from "../src/show/check.js";
@@ -98,6 +99,14 @@ describe("the blocks", () => {
     expect(check([{ type: "card", children: [{ type: "steps", items: ["a"] }] }], none, "drawn")!.lists).toBe("drawn");
     expect(check([{ type: "callout", text: "Careful." }], none, "drawn")!.lists).toBeUndefined();
     expect(check([{ type: "table", columns: ["a"], rows: [["1"]] }], none, "keep")!.lists).toBeUndefined();
+  });
+
+  it("keeps Blip only doing one of his acts", () => {
+    const text = [{ type: "text", text: "Hi." }];
+    expect(checkShown({ blocks: text, blip: "wave" }, { seen: none })!.blip).toBe("wave");
+    for (const act of ["dance", "carry", 3, null]) expect(checkShown({ blocks: text, blip: act }, { seen: none })!.blip, String(act)).toBeUndefined();
+    // he never stands alone: no blocks, no Blip
+    expect(checkShown({ blocks: [], blip: "wave" }, { seen: none })).toBeNull();
   });
 
   it("keeps a colour only when it is hex or one of the paints, and gives a shape with none a stroke", () => {

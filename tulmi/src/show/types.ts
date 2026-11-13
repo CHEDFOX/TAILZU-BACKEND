@@ -11,7 +11,9 @@
  *   asking     choice (one tap sends it, or several and Send), suggest (next questions), form (a few fields and Send)
  *
  * Every block is plain data, checked on the way in (check.ts) and drawn with the Bots kit's own parts (experience/bots/show.ts),
- * so the phone and the window draw it today, with no release. Nothing here reads the environment, a store or a model.
+ * so the phone and the window draw it today, with no release. Whatever it is, it is drawn in ONE look: monochrome, minimal dot art
+ * (dots.ts), whose dots obey physics on a build that has the DotArt node. Now and then Blip, the app's little bot, stands beside a
+ * drawing (`blip`). Nothing here reads the environment, a store or a model.
  */
 
 /** How a box or a callout is coloured: the natural palette's quiet tones, or the bot's own colour. */
@@ -80,11 +82,20 @@ export const BLOCK_TYPES: readonly BlockType[] = [
 /** The blocks that hold others. */
 export const BOXES: ReadonlySet<BlockType> = new Set(["row", "grid", "card"]);
 
+/**
+ * Blip beside a drawing, now and then, doing what fits it: survey (numbers or a drawing to look at), read (a note to read), think (a
+ * choice to make), wave (a plan done, good news).
+ */
+export const BLIP_ACTS = ["survey", "read", "think", "wave"] as const;
+export type BlipAct = (typeof BLIP_ACTS)[number];
+
 /** What a bot drew for one answer, as it is kept with the turn. */
 export interface Shown {
   blocks: Block[];
   /** "drawn": the answer's own lists are shown by the blocks (a table, a choice, the steps), so the chat leaves them out of the words. */
   lists?: "drawn";
+  /** Blip beside the first drawing, doing this. Absent most of the time. */
+  blip?: BlipAct;
 }
 
 /** The caps. A block over one is cut to it; one that is wrong is dropped alone and the rest stay. */

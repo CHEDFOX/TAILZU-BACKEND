@@ -14,7 +14,7 @@
 import { scanForSecrets } from "../code/policy.js";
 import { safeUrl } from "./links.js";
 import {
-  BOXES, CHART_KINDS, DRAW_COLOURS, FIELD_KINDS, LIST_STYLES, SHOW_LIMITS as L, STEP_STATES, TEXT_STYLES, TONES,
+  BLIP_ACTS, BOXES, CHART_KINDS, DRAW_COLOURS, FIELD_KINDS, LIST_STYLES, SHOW_LIMITS as L, STEP_STATES, TEXT_STYLES, TONES,
   type Block, type DrawShape, type Field, type Option, type Shown,
 } from "./types.js";
 
@@ -225,7 +225,7 @@ function holdsSecret(blocks: Block[]): boolean {
 const listy = (b: Block): boolean => LISTY.has(b.type) || (BOXES.has(b.type) && (b as { children: Block[] }).children.some(listy));
 
 /** The model's `blocks` and `lists`, checked. Null when nothing is left to draw. */
-export function checkShown(raw: { blocks?: unknown; lists?: unknown } | null | undefined, o: { seen: { has(url: string): boolean } }): Shown | null {
+export function checkShown(raw: { blocks?: unknown; lists?: unknown; blip?: unknown } | null | undefined, o: { seen: { has(url: string): boolean } }): Shown | null {
   if (!raw || !Array.isArray(raw.blocks)) return null;
   const w: Walk = { seen: o.seen, count: 0, links: 0, keys: 0, asks: 0, suggests: 0 };
   const blocks: Block[] = [];
@@ -235,7 +235,8 @@ export function checkShown(raw: { blocks?: unknown; lists?: unknown } | null | u
     if (b) blocks.push(b);
   }
   if (!blocks.length || holdsSecret(blocks)) return null;
-  return { blocks, ...(raw.lists === "drawn" && blocks.some(listy) ? { lists: "drawn" as const } : {}) };
+  const blip = oneOf(BLIP_ACTS, raw.blip);
+  return { blocks, ...(raw.lists === "drawn" && blocks.some(listy) ? { lists: "drawn" as const } : {}), ...(blip ? { blip } : {}) };
 }
 
 /** A drawing kept with a turn, read back: checked again (a row is data too), with every address it holds counted as seen. */

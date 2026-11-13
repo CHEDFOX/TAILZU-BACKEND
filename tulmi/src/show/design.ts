@@ -23,7 +23,7 @@ import type { Seen } from "./links.js";
 import type { Shown } from "./types.js";
 
 /** What the model answers. Loose on purpose: check.ts reads every block, and one bad block must not lose the others. */
-export const ShowReply = z.object({ blocks: z.array(z.unknown()), lists: z.unknown().optional() });
+export const ShowReply = z.object({ blocks: z.array(z.unknown()), lists: z.unknown().optional(), blip: z.unknown().optional() });
 
 /** The most one drawing may cost, in paise (the bot's memory note has the same). */
 export const SHOW_CAP_PAISE = 40;
