@@ -89,13 +89,12 @@ describe("the mail page's calls", () => {
 });
 
 describe("one call", () => {
-  it("joins on the app's own call screen, with itself as the panel beside the video", async () => {
+  it("joins into the call's screen, with video or audio only", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const p = await callScreen({ client, room: ROOM(), can: [...DRAWS, ROOM_CAPABILITY] });
       expect(p.lint).toEqual([]);
-      const joins = p.every().filter((a) => a.kind === "roomJoin") as Array<Extract<ActionSpec, { kind: "roomJoin" }>>;
-      expect(joins.map((j) => j.video)).toEqual([true, false]);
-      expect(joins[0]).toMatchObject({ path: `/v1/rooms/${RID}/join`, panel: { screenId: "bots.mail.call", params: { b: "leaf-co", r: RID } } });
+      const opens = p.every().filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.room") as Array<{ params: Record<string, string> }>;
+      expect(opens.map((o) => o.params)).toEqual([{ b: "leaf-co", r: RID, video: "1" }, { b: "leaf-co", r: RID, video: "0" }]);
       expect(p.texts).toEqual(expect.arrayContaining(["Join with video", "Audio only"]));
     }
   });
@@ -103,7 +102,7 @@ describe("one call", () => {
   it("never sends a build without the call screen to a web page", async () => {
     const p = await callScreen({ room: ROOM() });
     expect(p.lint).toEqual([]);
-    expect(p.every().some((a) => a.kind === "roomJoin" || a.kind === "openUrl")).toBe(false);
+    expect(p.every().some((a) => a.kind === "roomJoin" || a.kind === "openUrl" || (a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.room"))).toBe(false);
     expect(p.texts.some((t) => /comes with the app's next update/.test(t))).toBe(true);
   });
 
@@ -143,7 +142,7 @@ describe("one call", () => {
   it("ended, has no way in and no link", async () => {
     const p = await callScreen({ room: ROOM({ status: "ended" }), can: [...DRAWS, ROOM_CAPABILITY] });
     expect(p.lint).toEqual([]);
-    expect(p.every().some((a) => a.kind === "roomJoin")).toBe(false);
+    expect(p.every().some((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.room")).toBe(false);
     expect(p.texts).not.toContain("https://x0bot.com/m/abc-defg-hjk");
     expect(p.texts.some((t) => /has ended/.test(t))).toBe(true);
   });
@@ -156,5 +155,80 @@ describe("one call", () => {
 
   it("is read again as people come and go", () => {
     expect(topicsForScreen("bots.mail.call", { r: RID })).toEqual([`room:${RID}`]);
+  });
+});
+
+describe("in a call", () => {
+  type Spec = ActionSpec & Record<string, unknown>;
+  const inCall = (o: Parameters<typeof build>[0] = {}) =>
+    build({ screen: "bots.room", params: { b: "leaf-co", r: RID, video: "1" }, can: [...DRAWS, ROOM_CAPABILITY], room: ROOM(), ...o });
+  const nodesOf = async (o: Parameters<typeof build>[0] = {}) => {
+    const p = await inCall(o);
+    return { p, nodes: walk(p.s.root as Node), state: (p.s as unknown as { state: Record<string, unknown> }).state, actions: (p.s as unknown as { actions: Record<string, Spec> }).actions };
+  };
+
+  it("is the server's own screen: the app holds the call as it opens, and draws its video where the server puts it", async () => {
+    for (const client of ["phone", "desktop"] as const) {
+      const { p, nodes, state, actions } = await nodesOf({ client });
+      expect(p.lint).toEqual([]);
+      expect(actions.start).toMatchObject({ kind: "roomJoin", path: `/v1/rooms/${RID}/join`, statePath: "call", video: true });
+      expect((actions.start.onEnd as Spec)).toMatchObject({ kind: "navigate", screenId: "bots.mail.call", params: { b: "leaf-co", r: RID }, replace: true });
+      expect(nodes.some((n) => (n.on as Record<string, unknown> | undefined)?.onAppear === "start")).toBe(true);
+      expect(state.call).toMatchObject({ phase: "connecting", mic: true, cam: true });
+      const video = nodes.filter((n) => n.type === "CallVideo");
+      expect(video).toHaveLength(1);
+      expect(video[0]!.props).toMatchObject({ layout: "grid", names: true, empty: "Waiting for others to join" });
+    }
+  });
+
+  it("starts an audio call with the camera off", async () => {
+    const { actions, state } = await nodesOf({ params: { b: "leaf-co", r: RID, video: "0" } });
+    expect(actions.start).toMatchObject({ video: false });
+    expect(state.call).toMatchObject({ cam: false });
+  });
+
+  it("controls the call from the server's buttons, each as the call stands", async () => {
+    const phone = await inCall();
+    const ops = (acts: ActionSpec[]) => acts.filter((a) => a.kind === "roomSet").map((a) => [(a as Spec).op, (a as Spec).value]);
+    expect(ops(phone.every())).toEqual(expect.arrayContaining([["mic", false], ["mic", true], ["cam", false], ["cam", true], ["flip", undefined], ["speaker", true], ["leave", undefined]]));
+    expect(phone.texts).toEqual(expect.arrayContaining(["Mute", "Unmute", "Camera off", "Camera on", "Flip", "Speaker", "Hang up"]));
+    expect(phone.texts).not.toContain("Share screen");
+    const desk = await inCall({ client: "desktop" });
+    expect(desk.texts).toEqual(expect.arrayContaining(["Share screen", "Stop sharing", "Hang up"]));
+    expect(desk.texts).not.toContain("Flip");
+    expect(ops(desk.every())).toEqual(expect.arrayContaining([["share", true], ["share", false]]));
+  });
+
+  it("says where the call stands from the app's state", async () => {
+    const { nodes } = await nodesOf();
+    const shown = nodes.filter((n) => n.visibleIf).map((n) => JSON.stringify(n.visibleIf));
+    for (const phase of ["connecting", "live", "reconnecting", "ended", "failed"]) expect(shown.some((c) => c.includes(`"${phase}"`))).toBe(true);
+    expect(nodes.some((n) => n.type === "Text" && (n.bind as Record<string, unknown> | undefined)?.content === "call.speaking")).toBe(true);
+  });
+
+  it("lets in who waits, without leaving the call", async () => {
+    const p = await inCall({ room: ROOM({ status: "live", waiting: [{ id: "knock-0001", name: "Ravi", since: FIXED_NOW }] }) });
+    expect(p.texts).toContain("Ravi is waiting to join");
+    expect(endpoints(p.every()).map((c) => [c.path, c.body])).toEqual(expect.arrayContaining([
+      [`/v1/rooms/${RID}/admit`, { knock: "knock-0001" }], [`/v1/rooms/${RID}/deny`, { knock: "knock-0001" }],
+    ]));
+    expect(topicsForScreen("bots.room", { r: RID })).toEqual([`room:${RID}`]);
+  });
+
+  it("asks for the microphone when it was refused", async () => {
+    const { p, actions, state } = await nodesOf();
+    expect(actions.start.onBlocked).toEqual({ kind: "setState", path: "micCard", value: true });
+    expect(state.micCard).toBe(false);
+    expect(p.texts).toContain("Let X0 Bot hear you");
+  });
+
+  it("holds no call for a build without it, or a call that has ended or isn't there", async () => {
+    for (const o of [{ can: DRAWS }, { room: ROOM({ status: "ended" }) }, { room: undefined }]) {
+      const { p, nodes, actions } = await nodesOf(o);
+      expect(p.lint).toEqual([]);
+      expect(nodes.some((n) => n.type === "CallVideo")).toBe(false);
+      expect(actions?.start).toBeUndefined();
+      expect(p.every().some((a) => a.kind === "openUrl")).toBe(false);
+    }
   });
 });

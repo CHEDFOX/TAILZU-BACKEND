@@ -1282,10 +1282,13 @@ export const VOICE_LIVE_CAPABILITY = "VoiceLive";
 /** NOT A COMPONENT (the phone, a store build only): the actions voiceCall and voiceCallSet — Plan Ease's call held as one live voice
  *  conversation instead of turn by turn (docs/plan-ease.md "Calls"). A build that does not declare it gets today's call unchanged. */
 export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
-/** NOT A COMPONENT (the phone's store build, the window's release): the action roomJoin — one of our own calls (src/rooms, docs/rooms.md)
- *  on the app's own call screen, drawn by the app, never a web page. Said by the binary, as VoiceRealtime is: the call is native code. A build
- *  that does not declare it is never sent roomJoin, and its screens say the call opens in the app's next update. */
+/** One of our own calls (src/rooms, docs/rooms.md) held by the app: the component CallVideo and the actions roomJoin and roomSet. The call
+ *  screen is the server's, like any other; the app holds the call (LiveKit, over the WebRTC its binary links) and draws its video. Said
+ *  only by a build whose binary links WebRTC (the phone's "realtimeCall" binary feature; the window always can). A build that does not say
+ *  it is never sent these, and its screens say the call comes in the app's next update; it is never sent to a web page. */
 export const ROOM_CAPABILITY = "Room";
+/** ROOM_CAPABILITY. The video of the call this screen holds (CallVideoProps). */
+export const CALL_VIDEO_COMPONENT = "CallVideo";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
 export const DOUBLE_TAP_CAPABILITY = "DoubleTap";
 /** NOT A COMPONENT: TextField keyboard / autoFocus / maxLength; Screen, Scroll and (the window) Stack props.startAtEnd;
@@ -1419,6 +1422,32 @@ export interface LiveWordsProps {
   color?: string;          // settled words, ink
   freshColor?: string;     // the newest words, #b5b5b5
   settleMs?: number;       // 600
+}
+
+/**
+ * ROOM_CAPABILITY. The video of the call this screen holds (the action roomJoin), drawn by the app from the call itself, laid out as the
+ * server says. grid: everyone in equal tiles, as many across as fit; speaker: whoever speaks large, the others in a strip under it; one:
+ * only `who` ("me", "speaker", or someone's identity), for a small picture. A person whose camera is off is the first letter of their name
+ * in a circle on `tile`; whoever speaks has a ring of `speakingColor`; a muted microphone shows a small mark; names under the tiles when
+ * `names`. Before the call is connected, or while nobody else is in it, `empty` is written in the middle (in `nameColor`).
+ */
+export interface CallVideoProps {
+  layout: "grid" | "speaker" | "one";
+  who?: string;
+  /** Leave the person themselves out (a screen that draws them apart with layout "one"). */
+  withoutMe?: boolean;
+  gap?: number;
+  radius?: number;
+  background?: string;
+  tile?: string;
+  nameColor?: string;
+  speakingColor?: string;
+  fontFamily?: string;
+  names?: boolean;
+  /** Their own front camera shown as a mirror (true). */
+  mirrorMe?: boolean;
+  fit?: "cover" | "contain";
+  empty?: string;
 }
 
 /** The window's one key (DESK_TALK_TO_CAPABILITY): with X0 in front, holding it or tapping it twice talks to this screen's bot. */
@@ -1652,14 +1681,18 @@ export type ActionSpec =
   /** VOICE_REALTIME_CAPABILITY. warm: get the mic and the offer ready while the call is answered (only if mic permission is already granted). */
   | { kind: "voiceCallSet"; op: "warm" | "end" }
   // --- one of our own calls (needs ROOM_CAPABILITY) ---
-  /** ROOM_CAPABILITY. Opens the app's own call screen (src/rooms, docs/rooms.md): POST `path` -> { url, pass, identity, name, room: { id,
-   *  title, host }, host, expiresAt }; the app connects to `url` with `pass` (LiveKit) and draws the call itself: each person's video, or their
-   *  name while their camera is off, the one speaking first; mute, camera on or off, flip camera (the phone), speaker (the phone), share the
-   *  screen (the window), hang up. `video` false starts with the camera off (an audio call). `panel`, a screen of ours, is drawn beside the
-   *  video (the window) or in a sheet (the phone) and read again on its live topics: who waits at the door with Let in, who is in, End for
-   *  everyone. Hang up, or the call closed or ended -> onEnd. onBlocked: no microphone permission. Failing to connect -> onError. */
-  | { kind: "roomJoin"; path: string; video?: boolean; panel?: { screenId: string; params?: Record<string, unknown> };
-      onEnd?: ActionRef; onBlocked?: ActionRef; onError?: ActionRef }
+  /** ROOM_CAPABILITY. Holds one of our calls for this screen (src/rooms, docs/rooms.md): POST `path` -> { url, pass, identity, name, room:
+   *  { id, title, host }, host, expiresAt }; connects to `url` with `pass` (LiveKit), the microphone on, the camera on when `video`; the
+   *  screen's CallVideo draws it. Writes into `statePath`: { phase: connecting | live | reconnecting | ended | failed, mic, cam, speaker,
+   *  front, sharing (booleans), people (how many are in, the person among them), speaking (the name of whoever speaks, "" for nobody),
+   *  since (epoch ms it went live) }. Ends on roomSet leave, leaving the screen (another screen id or params; a refresh of the same screen
+   *  keeps it and writes the state again at once: the server redraws the screen as people come and go), or the call closed for everyone
+   *  (then onEnd). The app going to the background keeps the sound and stops the camera until it is back. onBlocked: no microphone
+   *  permission (the camera refused, the call goes on without video). Failing to connect: phase failed, then onError. */
+  | { kind: "roomJoin"; path: string; statePath: string; video?: boolean; onEnd?: ActionRef; onBlocked?: ActionRef; onError?: ActionRef }
+  /** ROOM_CAPABILITY. The call held on this screen: mic, cam, speaker (the phone's loudspeaker) or share (the window's screen) on or off
+   *  (`value`; without it, the other way); flip (the phone's front or back camera); leave (hangs up, then the roomJoin's onEnd). */
+  | { kind: "roomSet"; op: "mic" | "cam" | "speaker" | "share" | "flip" | "leave"; value?: boolean }
   // --- permissions ---
   | {
       kind: "requestPermission";
