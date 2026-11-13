@@ -1487,37 +1487,6 @@ export interface PersonBotProps {
 // MentionFieldProps.people items may carry `bot: { seed, avatar, color }`: a build that declares PersonBot draws that bot in the
 // person's row of the "@" list (size 28), in place of anything else.
 
-// ---------------------------------------------------------------------------
-// 3k. Dot art that obeys physics (what a bot draws under its words: TAILZU-BACKEND src/show)
-// ---------------------------------------------------------------------------
-
-/**
- * Declared by a build that draws DotArt: a picture of dots, monochrome, each a point mass held at its home by a damped spring,
- * coming in by `enter` (fall: from above under gravity, caught by its spring at home; grow: from the left of its row, let go left
- * to right; gather: from scattered places), scattered by a touch's impulse and pushed while a finger (the window: the pointer) is
- * on it, trembling at rest with `heat`, and asleep once settled. Reduce Motion: at home, still. A build without it is sent the same
- * dots as an SVG's circles, still. One file of rules runs on both clients (TAILZU-FRONTEND sdui/bots/dotArtCore.ts, the window's
- * dotArt.js generated from it).
- */
-export const DOT_ART_COMPONENT = "DotArt";
-
-export interface DotArtProps {
-  /** The picture's box, in points. */
-  w: number;
-  h: number;
-  /** Five numbers a dot: home x, home y, radius, tone (0..1 of the ink), group (the order they are let go in). 1,600 dots at most. */
-  d: number[];
-  enter?: "fall" | "grow" | "gather" | "none";
-  /** 0..1: how much the dots tremble at rest (1 is about 1.2 points). */
-  heat?: number;
-  /** The ink (#rrggbb). Default #0a0a0a. */
-  ink?: string;
-  seed?: number;
-  /** Where the picture is kept while the app runs, so a refreshed screen does not bring it in again. */
-  key?: string;
-  /** What a screen reader says. */
-  label?: string;
-}
 
 /** Named layouts for `template` + `blocks` screens. */
 export const CORE_TEMPLATES = [

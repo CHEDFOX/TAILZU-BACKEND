@@ -7,10 +7,9 @@
  *   drawPic(block, w)        a model's drawing: every outline dotted along its length, every fill a hex grid of dots inside it
  *   glyphPic(kind, size)     the small marks the callouts wear (a warning, a note, a tip, a good thing), in dots
  *
- * A picture is its box and five numbers a dot (home x, home y, radius, tone, group): exactly what the DotArt node takes (shared/types
- * /sdui.ts 3k), so a build that has it makes the dots obey physics, and every other build draws the same dots still (an SVG's
- * circles). Tone is how much ink: ink, grey, soft, faint; there is no colour. `group` is the order the dots come in: a bar after
- * the bar above it, a line from left to right, a drawing shape by shape.
+ * A picture is its box and five numbers a dot (home x, home y, radius, tone, group), drawn as an SVG's circles by every build, and
+ * cut into pieces that spring in (experience/bots/show.ts). Tone is how much ink: ink, grey, soft, faint; there is no colour.
+ * `group` is the order the dots come in: a bar after the bar above it, a line from left to right, a drawing shape by shape.
  *
  * Paths are read in the SVG grammar the checker lets through (M L H V C S Q T A Z, absolute and relative), flattened, and dotted at
  * an even pitch, so a drawing reads the same whatever its scale. A picture is held to MAX_PIC_DOTS by spacing its dots wider.

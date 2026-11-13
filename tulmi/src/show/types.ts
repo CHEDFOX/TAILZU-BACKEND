@@ -12,8 +12,8 @@
  *
  * Every block is plain data, checked on the way in (check.ts) and drawn with the Bots kit's own parts (experience/bots/show.ts),
  * so the phone and the window draw it today, with no release. Whatever it is, it is drawn in ONE look: monochrome, minimal dot art
- * (dots.ts), whose dots obey physics on a build that has the DotArt node. Now and then Blip, the app's little bot, stands beside a
- * drawing (`blip`). Nothing here reads the environment, a store or a model.
+ * (dots.ts), whose dots spring in on real springs (experience/bots/show.ts). Now and then Blip, the app's little bot, stands beside
+ * a drawing (`blip`). Nothing here reads the environment, a store or a model.
  */
 
 /** How a box or a callout is coloured: the natural palette's quiet tones, or the bot's own colour. */

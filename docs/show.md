@@ -1,6 +1,6 @@
 # What a bot draws: building blocks, not a list of widgets
 
-A bot writes words. Some answers are clearer drawn: a **selector** when the bot asks the person to pick, a **box for the one thing they must not miss**, the **steps** of a plan, a **table** or a **chart** of the numbers, a few **next questions** to tap, a small **form** when it needs several details, a **drawing** of a shape. No list of components could cover every answer, and none is kept. The pipeline decides, answer by answer, what helps, and draws it from a few building blocks that fit together, the way a page is made of a handful of tags. Whatever it draws wears **one look**: monochrome, minimal dot art whose dots obey physics, with Blip beside it now and then (sections 5 to 7).
+A bot writes words. Some answers are clearer drawn: a **selector** when the bot asks the person to pick, a **box for the one thing they must not miss**, the **steps** of a plan, a **table** or a **chart** of the numbers, a few **next questions** to tap, a small **form** when it needs several details, a **drawing** of a shape. No list of components could cover every answer, and none is kept. The pipeline decides, answer by answer, what helps, and draws it from a few building blocks that fit together, the way a page is made of a handful of tags. Whatever it draws wears **one look**: monochrome, minimal dot art whose dots spring in, with Blip beside it now and then (sections 5 to 7), all of it from the server, with nothing new in the apps.
 
 Code: `tulmi/src/show/` (the blocks, the checker, the designer, picks back into words, every picture as dots), `tulmi/src/experience/bots/show.ts` (the drawing), `tulmi/src/experience/bots/screens/bots/parts.ts` (the chat), `tulmi/src/botsBots/chat.ts` and `routes/bots/botsBots.ts` (kept, answered). The role is `bot_show` in `tulmi/src/principles/roles.ts`, its evals `tulmi/evals/bot_show.jsonl`.
 
@@ -9,7 +9,7 @@ Code: `tulmi/src/show/` (the blocks, the checker, the designer, picks back into 
 * [3. Answering a drawing](#3-answering-a-drawing)
 * [4. On the screen](#4-on-the-screen)
 * [5. The look: monochrome dot art](#5-the-look-monochrome-dot-art)
-* [6. The motion: physics](#6-the-motion-physics)
+* [6. The motion: springs, with nothing new in the apps](#6-the-motion-springs-with-nothing-new-in-the-apps)
 * [7. Blip](#7-blip)
 * [8. Safety](#8-safety)
 * [9. Money](#9-money)
@@ -50,7 +50,7 @@ It runs after the words are whole, so the words stream as before; the drawing co
 
 ## 4. On the screen
 
-`experience/bots/show.ts` draws every block with the kit's own Stack, Text, SVG, Image, Grid and TextField, so **every build that draws the Bots app draws these today, with no release** (`lint.ts` holds it to that); a build that declares `DotArt` gets its pictures as living dots (section 6), and one that declares `BotBuddy` gets Blip alive (section 7). A box hands its children the room it has, so a chart, a drawing or a picture fits the box it is in.
+`experience/bots/show.ts` draws every block with the kit's own Stack, Text, SVG, Image, Grid, TextField and Rise, so **every build that draws the Bots app draws these today, with no release** (`lint.ts` holds it to that); one that moves (BotsMotion) gets its pictures springing in (section 6), and one that has `BotBuddy` gets Blip alive (section 7). A box hands its children the room it has, so a chart, a drawing or a picture fits the box it is in.
 
 Only the chat's **latest** turn is live. An older turn draws the same blocks still: a choice shows what the person picked (read off the turn after it), and its suggestions and form, which were for that moment, are left out. When the drawing shows the answer's own lists (`lists: "drawn"`), the chat leaves those lists out of the words so nothing is shown twice; the words are kept whole for the history, Share and Report.
 
@@ -70,21 +70,22 @@ Whatever a bot draws, it is drawn **one way**: ink on paper, greys for what matt
 | `card`, `stat`, `form` | a dotted edge |
 | `divider` | a row of faint dots |
 
-A picture is five numbers a dot (home x, home y, radius, tone, group), held to `MAX_PIC_DOTS` (1,400) by spacing a busy drawing's dots wider. Paths are read in the SVG grammar the checker lets through (M L H V C S Q T A Z), flattened and dotted, so a drawing reads the same at any scale. Photos (`image`) are shown as they are.
+A picture is five numbers a dot (home x, home y, radius, tone, group), drawn as an SVG's circles, held to `MAX_PIC_DOTS` (1,400) by spacing a busy drawing's dots wider. Paths are read in the SVG grammar the checker lets through (M L H V C S Q T A Z), flattened and dotted, so a drawing reads the same at any scale. Photos (`image`) are shown as they are.
 
-## 6. The motion: physics
+## 6. The motion: springs, with nothing new in the apps
 
-A picture goes to the **DotArt** node (`shared/types/sdui.ts` 3k) on a build that declares it. Every dot is a point mass, and nothing moves it but forces, stepped on a fixed 1/120 s clock (semi-implicit Euler):
+Nothing here asks the apps for anything new: the motion is made from the **Rise** node the apps already draw (the sign-in and Home come in with it). A picture's dots are cut into pieces (`show.ts piecesOf`), the pieces are stacked on one canvas, and each piece is a Rise with its own delay, its own travel and the spring that suits the picture (`show.ts SPRING`):
 
-* **a damped spring** to its home (Hooke's law, damping ratio 0.45: a dot overshoots a little and settles, as a weight on a spring does);
-* **gravity**, for a dot falling in, until it reaches home and its spring catches it, still moving, and takes the fall;
-* **an impulse** where a finger lands (a click in the window), fading with distance: the dots near it scatter, and the springs bring them back;
-* **a push** while a finger stays on the picture (the window: while the pointer rests over it, gently);
-* **heat**: a thermal jitter with the damping it needs to stay at one temperature (fluctuation–dissipation), so a picture trembles about its home by a point or so.
+| Picture | Cut into | How a piece comes in |
+| --- | --- | --- |
+| bars | runs of five dots along each bar, left to right, bar after bar | rising a little and growing from small, quick and lively |
+| a meter | runs of four dots, left to right | the same |
+| a line | its segments, left to right | dropping in from above and settling |
+| a drawing | its shapes, in order | gathering from the picture's middle, softer |
 
-How each picture comes in suits what it is (`show.ts MOTION`): bars and a meter **grow**, their dots let go left to right from the left edge; a line's dots **fall** onto it from above; a drawing **gathers** from scattered places and stays a little warm. Only the newest answer comes in; an older one, and Reduce Motion, are drawn at home and still. A picture sleeps once every dot is home and still, so a settled chat costs nothing, and it is kept by its key (turn and block) while the app runs, so a refresh never brings it in again.
+On the **phone** a Rise is a real damped spring (stiffness, damping and mass, all from the server: it overshoots a little and settles, as a weight on a spring does). The **window** plays the same delay and the same travel eased in CSS; it has no spring of its own, and giving it one would be an app change.
 
-The rules are one file, `TAILZU-FRONTEND/app/src/sdui/bots/dotArtCore.ts`, run by the phone (`DotArt.tsx`, on the tiles' Skia surface and their one frame loop) and generated into the window's `TAILZU-DESKTOP/dotArt.js` (`genDotArt.mjs`; the window's node is `src/app/sdui/dots.js`). A build without `DotArt` gets the very same dots as an SVG's circles, still. The render check draws a build that has it with `--with DotArt`.
+Only an answer that has **just come in** springs in (the chat's newest turn, within two minutes: `parts.ts FRESH_MS`); a refresh later, or an older answer, draws the picture at home, so scrolling the chat never replays it. A **tap** on a picture brings its dots in again on their springs, on any answer: the picture holds three faces, as it came and two that spring in, and the tap swaps them through `taps.<key>` (`setState` in a `condition`, `visibleIf` on each face), so every tap mounts a new face. A picture of more than 400 dots does not answer taps (it would be sent three times), nor is it cut into more than 24 pieces. A build without BotsMotion gets the same dots, still. Reduce Motion is the apps' own: a Rise lands in place.
 
 ## 7. Blip
 
@@ -103,7 +104,7 @@ The call goes through the request's meter, so it comes off the bot's own request
 
 ## 10. Adding a block
 
-Rarely needed: try it as a composition, or as `draw`, first. When one is worth it: its shape in `show/types.ts`, its check in `show/check.ts`, its drawing in `experience/bots/show.ts` from the kit's parts in the look of section 5 (a picture as dots through `show/dots.ts` and `dotsNode`, with a `MOTION` that suits it), one line in the `bot_show` contract, a case in `tests/show-blocks.test.ts`, `tests/show-dots.test.ts` and `tests/bots-show.test.ts`, and the role's size in `tests/principles.test.ts`.
+Rarely needed: try it as a composition, or as `draw`, first. When one is worth it: its shape in `show/types.ts`, its check in `show/check.ts`, its drawing in `experience/bots/show.ts` from the kit's parts in the look of section 5 (a picture as dots through `show/dots.ts` and `dotsNode`, with a `SPRING` that suits it), one line in the `bot_show` contract, a case in `tests/show-blocks.test.ts`, `tests/show-dots.test.ts` and `tests/bots-show.test.ts`, and the role's size in `tests/principles.test.ts`.
 
 ## 11. Settings
 
@@ -111,6 +112,6 @@ Rarely needed: try it as a composition, or as `draw`, first. When one is worth i
 
 ## 12. Tests, and what needs a live check
 
-`tests/show-blocks.test.ts` (the blocks, the caps, the links rule, secrets, the keys, Blip's acts, picks back into words), `tests/show-dots.test.ts` (every picture as dots: shares, tones, the path grammar, fills, the budget), `tests/show-design.test.ts` (whether to ask, what the model reads, the call and its cap, a model that fails), `tests/bots-show.test.ts` (in the run, in the chat and its route, on the screen on both clients: the kit's parts, one monochrome look, DotArt or still dots, the motion by kind, Blip, the actions, live and still). The physics is tested where it runs: `TAILZU-FRONTEND app/src/sdui/bots/dotArtCore.test.ts` (springs, a fall caught and overshooting, an impulse, a push, heat at its temperature, sleep, still, same seed same frames, the window's copy current) and `TAILZU-DESKTOP src/app/dots.test.js` (the node, the one loop, a click, the pointer, a repaint, Reduce Motion, the generated copy untouched). The role is in `tests/principles.test.ts` and `tests/principles-evals.test.ts`.
+`tests/show-blocks.test.ts` (the blocks, the caps, the links rule, secrets, the keys, Blip's acts, picks back into words), `tests/show-dots.test.ts` (every picture as dots: shares, tones, the path grammar, fills, the budget), `tests/show-design.test.ts` (whether to ask, what the model reads, the call and its cap, a model that fails), `tests/bots-show.test.ts` (in the run, in the chat and its route, on the screen on both clients: the kit's parts, one monochrome look, the pieces and their springs by kind, fresh and older answers, a tap's three faces, Blip, the actions, live and still). The role is in `tests/principles.test.ts` and `tests/principles-evals.test.ts`.
 
-The render check draws it with the apps' real renderers: a chat whose turns carry `show` (`npx tsx scripts/bots-render/render.ts bots.chat --params '{"slug":"travel"}' --api '...'`). What needs a real model: how often the role draws, and how well, on `evals/bot_show.jsonl` (`cd tulmi && npm run eval:prompts -- bot_show`, costs money).
+The render check draws it with the apps' real renderers: a chat whose turns carry `show` (`npx tsx scripts/bots-render/render.ts bots.chat --params '{"slug":"travel"}' --api '...'`; `--motion` lets the springs run). What needs a real model: how often the role draws, and how well, on `evals/bot_show.jsonl` (`cd tulmi && npm run eval:prompts -- bot_show`, costs money).

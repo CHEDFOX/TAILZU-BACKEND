@@ -8,30 +8,32 @@
  * outlines and filled with dots (show/dots.ts); steps are beads on a dotted thread, bullets and the marks of a pick are dots, a
  * callout wears a small dotted mark and a dotted edge, a box a dotted edge.
  *
- * THE MOTION IS PHYSICS. A picture goes to the DotArt node (shared/types/sdui.ts 3k) on a build that has it: every dot a point mass on
- * a damped spring, coming in by gravity (a line's dots fall onto it), by springs let go in order (a bar grows from the left, a meter
- * fills), or gathered from scattered places (a drawing), scattered by a touch and brought home again, a drawing trembling a little
- * as if warm. Only the chat's newest answer comes in; an older one is drawn at home. A build without DotArt gets the very same dots,
- * still. Blip, when the drawing asks for him (`shown.blip`), stands beside the first picture: on the newest answer a living bot of
- * the engine's own physics (BotBuddy), in ink; on an older answer, or a build without him alive, his pose's picture.
+ * THE MOTION IS SPRINGS, WITH NOTHING NEW IN THE APPS. A picture is its dots cut into pieces, stacked on one canvas, each piece a
+ * Rise (the node the sign-in and Home come in with): on the phone a real damped spring with the stiffness, damping and mass the
+ * server gives it, its own delay, its own travel; the window plays the same delay and travel eased in CSS. How a picture comes in
+ * suits it (SPRING): a bar and a meter in short runs left to right, growing from small; a line segment by segment, dropping in from
+ * above; a drawing shape by shape, gathering from its middle. Only an answer that has just come in (`fresh`) comes in; any other is
+ * drawn at home. A tap on a picture brings its dots in again on their springs, on any answer (`taps.<key>` swaps two faces of it, so
+ * each tap mounts a new one). A build without BotsMotion gets the same dots, still. Blip, when the drawing asks for him
+ * (`shown.blip`), stands beside the first picture: on the newest answer a living bot of the engine's own physics (BotBuddy), in
+ * ink; on an older answer, or a build without him alive, his pose's picture.
  *
- * Every node is the kit's Stack, Text, SVG, Image, Grid and TextField, or DotArt and BotBuddy for the builds that say them (lint.ts
- * holds it to that). A box hands its children the room it has (`room`, points), so a picture fits the box it is in.
+ * Every node is the kit's Stack, Text, SVG, Image, Grid, TextField and Rise, or BotBuddy for the builds that say it (lint.ts holds it
+ * to that), so no app needs anything new. A box hands its children the room it has (`room`, points), so a picture fits its box.
  *
  * Only the LATEST turn is live (`o.live`): its choices, suggestions and form can be tapped and sent. An older turn draws the same
  * blocks still: a choice shows what the person picked (the turn after it says), and suggestions and forms are left out. Asking blocks
  * send the way the chat bar does (askMoment.ts): a tap sends its own words; several picks or a form send what the screen keeps under
  * `show.<key>` with the turn's id, and the server turns them into words (show/answer.ts).
  */
-import type { ActionRef, ActionSpec, DotArtProps, Node, SvgShape } from "../../../../shared/types/sdui.js";
-import { DOT_ART_COMPONENT } from "../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Condition, Node, SvgShape } from "../../../../shared/types/sdui.js";
 import { BAR_ROW, barsPic, drawPic, glyphPic, linePic, meterPic, type DotPic, type GlyphKind } from "../../show/dots.js";
 import type { Block, BlipAct, Shown } from "../../show/types.js";
 import type { BlipPose } from "./art.js";
 import { done as momentDone, failed, start as momentStart, streamed } from "./askMoment.js";
 import {
-  bigNumber, blip, botBuddy, box, button, C, call, canBuddy, card, chips, col, FACE, grid, heading, listCard, listRow, meta, mono,
-  picture, row, sectionLabel, seq, shapes, table, text, type BotsCtx,
+  bigNumber, blip, botBuddy, box, button, C, call, canBuddy, canMove, card, chips, col, FACE, grid, heading, labelled, listCard, listRow,
+  meta, mono, picture, row, sectionLabel, seq, shapes, table, text, when, type BotsCtx,
 } from "./kit.js";
 import { said } from "./said.js";
 
@@ -40,8 +42,10 @@ export interface ShowOpts {
   slug: string;
   /** The bot turn the drawing is under (its picks are sent with it; its pictures are kept under it). */
   turn: string;
-  /** The chat's latest turn: its asking blocks can be used, and its pictures come in. */
+  /** The chat's latest turn: its asking blocks can be used, and Blip is alive beside it. */
   live: boolean;
+  /** The answer has just come in: its pictures spring in. Any other is drawn at home (a tap still springs its dots). */
+  fresh?: boolean;
   /** What the person said next, for an older turn: which options of a choice they picked. */
   picked?: string;
 }
@@ -49,30 +53,95 @@ export interface ShowOpts {
 /** The screen's state for a live drawing's picks and fields, sent whole with Send. */
 export const SHOW_STATE = "show";
 
-/** How a picture comes in, and how warm it is, by what it is: physics chosen to suit it, never a timed curve. */
-export const MOTION = {
-  bars: { enter: "grow", heat: 0 },
-  line: { enter: "fall", heat: 0 },
-  meter: { enter: "grow", heat: 0 },
-  draw: { enter: "gather", heat: 0.25 },
-} as const satisfies Record<string, { enter: NonNullable<DotArtProps["enter"]>; heat: number }>;
+/**
+ * How each kind of picture springs in: how its dots are cut into pieces (`by`), how far a piece travels (`fromY`, points; below 0 it
+ * drops in from above) and from what size it grows (`scaleFrom`, about the picture's middle), the spring (stiffness, damping, mass:
+ * lower damping overshoots more), and how long after the piece before it it is let go (`stepMs`; `rowMs` more for each bar).
+ */
+export const SPRING = {
+  bars: { by: "runs", run: 5, fromY: 10, scaleFrom: 0.35, stiffness: 220, damping: 11, mass: 0.7, stepMs: 32, rowMs: 70 },
+  meter: { by: "runs", run: 4, fromY: 8, scaleFrom: 0.45, stiffness: 220, damping: 12, mass: 0.7, stepMs: 30, rowMs: 0 },
+  line: { by: "groups", run: 0, fromY: -40, scaleFrom: 1, stiffness: 170, damping: 9, mass: 0.8, stepMs: 70, rowMs: 0 },
+  draw: { by: "groups", run: 0, fromY: 0, scaleFrom: 0.55, stiffness: 140, damping: 9, mass: 0.9, stepMs: 80, rowMs: 0 },
+} as const;
+export type SpringKind = keyof typeof SPRING;
+
+/** The most pieces a picture is cut into (each a Rise), and the most dots a picture may have to answer a tap (it is sent three times). */
+const MAX_PIECES = 24;
+const TAP_DOTS = 400;
 
 /** A dotted edge: the kit's dotted border (a build without KitExtras may draw a dotted radius dashed or solid). */
 const dottedEdge = (color: string = C.dashed, width = 1.5) => ({ borderWidth: width, borderStyle: "dotted", borderColor: color });
 
 // ===================================================================== dots
 
-/** A picture of dots: DotArt where the build has it (physics), else the same dots as an SVG's circles, still. */
-function dotsNode(ctx: BotsCtx, pic: DotPic, o: { motion: keyof typeof MOTION; key: string; live: boolean; label?: string }): Node | null {
-  if (!pic.d.length) return null;
-  if (ctx.can.has(DOT_ART_COMPONENT)) {
-    const m = MOTION[o.motion];
-    const props: DotArtProps = {
-      w: pic.w, h: pic.h, d: pic.d, enter: o.live ? m.enter : "none", ...(o.live && m.heat ? { heat: m.heat } : {}), key: o.key, ...(o.label ? { label: o.label } : {}),
-    };
-    return { type: DOT_ART_COMPONENT, props: { ...props }, style: { width: pic.w, height: pic.h, flexShrink: 0 } };
+/** A picture's dots cut into pieces in the order they come in: runs along each row (bars, a meter) or its groups (a line, a drawing). */
+export function piecesOf(pic: DotPic, kind: SpringKind): Array<{ pic: DotPic; delayMs: number }> {
+  const sp = SPRING[kind];
+  const n = pic.d.length / 5;
+  const keyed = new Map<string, { idx: number[]; delayMs: number; order: number }>();
+  const byGroup = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const g = pic.d[i * 5 + 4]!;
+    (byGroup.get(g) ?? byGroup.set(g, []).get(g)!).push(i);
   }
-  return stillDots(pic, o.label);
+  const groups = [...byGroup.keys()].sort((a, b) => a - b);
+  groups.forEach((g, gi) => {
+    const idx = byGroup.get(g)!;
+    if (sp.by === "runs") {
+      const sorted = [...idx].sort((a, b) => pic.d[a * 5]! - pic.d[b * 5]!);
+      for (let k = 0; k < sorted.length; k += sp.run) {
+        const r = k / sp.run;
+        keyed.set(`${g}:${r}`, { idx: sorted.slice(k, k + sp.run), delayMs: gi * sp.rowMs + r * sp.stepMs, order: keyed.size });
+      }
+    } else {
+      keyed.set(String(g), { idx, delayMs: gi * sp.stepMs, order: keyed.size });
+    }
+  });
+  // Too many pieces: neighbours share one (the earlier one's delay), so a picture is never more than MAX_PIECES springs.
+  const list = [...keyed.values()].sort((a, b) => a.delayMs - b.delayMs || a.order - b.order);
+  const per = Math.ceil(list.length / MAX_PIECES);
+  const out: Array<{ pic: DotPic; delayMs: number }> = [];
+  for (let k = 0; k < list.length; k += per) {
+    const part = list.slice(k, k + per);
+    const d: number[] = [];
+    for (const p of part) for (const i of p.idx) d.push(...pic.d.slice(i * 5, i * 5 + 5));
+    out.push({ pic: { w: pic.w, h: pic.h, d }, delayMs: Math.round(part[0]!.delayMs) });
+  }
+  return out;
+}
+
+/** The picture springing in: its pieces stacked on one canvas, each a Rise with its own delay and the spring that suits the picture. */
+function springIn(pic: DotPic, kind: SpringKind): Node {
+  const sp = SPRING[kind];
+  const at = { position: "absolute", left: 0, top: 0, width: pic.w, height: pic.h };
+  return box(piecesOf(pic, kind).map((p) => ({
+    type: "Rise",
+    props: { delayMs: p.delayMs, fromY: sp.fromY, scaleFrom: sp.scaleFrom, stiffness: sp.stiffness, damping: sp.damping, mass: sp.mass },
+    style: at,
+    children: [stillDots(p.pic)!],
+  })), { width: pic.w, height: pic.h, position: "relative", flexShrink: 0 });
+}
+
+/**
+ * A picture of dots, as the build can: springing in when its answer has just come in, and answering a tap by springing its dots in
+ * again (three faces swapped by `taps.<key>`: as it came, then two springing ones in turn, so every tap mounts a new one); still on a
+ * build without BotsMotion.
+ */
+function dotsNode(ctx: BotsCtx, pic: DotPic, o: { kind: SpringKind; key: string; fresh: boolean; label?: string }): Node | null {
+  if (!pic.d.length) return null;
+  if (!canMove(ctx)) return stillDots(pic, o.label);
+  const first = o.fresh ? springIn(pic, o.kind) : stillDots(pic)!;
+  if (pic.d.length / 5 > TAP_DOTS) return o.label ? labelled(first, o.label) : first;
+  const path = `taps.${o.key.replace(/[^A-Za-z0-9_]/g, "_")}`;
+  const face = (c: Condition, n: Node): Node => when(c, n);
+  const tap: ActionSpec = { kind: "condition", if: { eq: [path, "a"] }, then: { kind: "setState", path, value: "b" }, else: { kind: "setState", path, value: "a" } };
+  const node = box([
+    face({ falsy: path }, first),
+    face({ eq: [path, "a"] }, springIn(pic, o.kind)),
+    face({ eq: [path, "b"] }, springIn(pic, o.kind)),
+  ], { width: pic.w, height: pic.h, flexShrink: 0 }, tap);
+  return o.label ? labelled(node, o.label) : node;
 }
 
 /** The same dots, still: one SVG of circles (a long picture thinned to 700, which an older build draws one by one). */
@@ -168,7 +237,7 @@ function bars(ctx: BotsCtx, b: Extract<Block, { type: "chart" }>, room: number, 
     text(s, { size: 12, weight: strong ? 600 : 400, color: strong ? C.ink : C.meta, lineHeight: BAR_ROW, lines: 1, ...(right ? { align: "right" as const } : {}), style: { height: BAR_ROW } });
   return row([
     col(b.items.map((i) => cell(i.label)), { width: label, flexShrink: 0 }),
-    dotsNode(ctx, pic, { motion: "bars", key, live: o.live, label: spoken(b) }) ?? box([]),
+    dotsNode(ctx, pic, { kind: "bars", key, fresh: !!o.fresh, label: spoken(b) }) ?? box([]),
     col(b.items.map((i) => cell(fmtNum(i.value, b.unit), true, true)), { width: value, flexShrink: 0, alignItems: "flex-end" }),
   ], { gap: gapW, alignItems: "flex-start" });
 }
@@ -180,7 +249,7 @@ function line(ctx: BotsCtx, b: Extract<Block, { type: "chart" }>, room: number, 
   const first = b.items[0]!, last = b.items[b.items.length - 1]!;
   return col([
     row([meta(`${first.label} ${fmtNum(first.value, b.unit)}`, { size: 12 }), box([], { flexGrow: 1 }), meta(`${last.label} ${fmtNum(last.value, b.unit)}`, { size: 12 })]),
-    dotsNode(ctx, linePic(b.items, w), { motion: "line", key, live: o.live, label: spoken(b) }) ?? box([]),
+    dotsNode(ctx, linePic(b.items, w), { kind: "line", key, fresh: !!o.fresh, label: spoken(b) }) ?? box([]),
     row([meta(`low ${fmtNum(Math.min(...vals), b.unit)}`, { size: 11 }), box([], { flexGrow: 1 }), meta(`high ${fmtNum(Math.max(...vals), b.unit)}`, { size: 11 })]),
   ], { gap: 6, width: w, maxWidth: "100%" });
 }
@@ -189,7 +258,7 @@ function line(ctx: BotsCtx, b: Extract<Block, { type: "chart" }>, room: number, 
 function drawing(ctx: BotsCtx, b: Extract<Block, { type: "draw" }>, room: number, o: ShowOpts, key: string): Node | null {
   let w = Math.min(room, Math.max(b.width, 160));
   if ((w * b.height) / b.width > 360) w = (360 * b.width) / b.height;
-  const pic = dotsNode(ctx, drawPic(b, Math.round(w)), { motion: "draw", key, live: o.live, ...(b.label ? { label: b.label } : {}) });
+  const pic = dotsNode(ctx, drawPic(b, Math.round(w)), { kind: "draw", key, fresh: !!o.fresh, ...(b.label ? { label: b.label } : {}) });
   if (!pic) return null;
   return b.label ? col([pic, meta(b.label, { size: 12 })], { gap: 6, alignSelf: "flex-start" }) : pic;
 }
@@ -291,7 +360,7 @@ function node(ctx: BotsCtx, b: Block, o: ShowOpts, room: number, key: string): N
       const pct = Math.round((b.value / b.max) * 100);
       return col([
         row([meta(b.label ?? "", { size: 12 }), box([], { flexGrow: 1 }), text(`${pct}%`, { size: 12, weight: 600, lineHeight: 16 })]),
-        dotsNode(ctx, meterPic(b.value, b.max, w), { motion: "meter", key, live: o.live, label: `${b.label ? `${b.label} ` : ""}${pct}%` }) ?? box([]),
+        dotsNode(ctx, meterPic(b.value, b.max, w), { kind: "meter", key, fresh: !!o.fresh, label: `${b.label ? `${b.label} ` : ""}${pct}%` }) ?? box([]),
       ], { gap: 6, width: w, maxWidth: "100%" });
     }
     case "steps": return steps(b);

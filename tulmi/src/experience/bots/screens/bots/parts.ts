@@ -187,13 +187,18 @@ export function bubble(ctx: BotsCtx, s: string, big = false): Node {
   ], { justifyContent: "flex-end" });
 }
 
+/** How long after it came in an answer's pictures still spring in when the chat is drawn: a refresh later draws them at home. */
+export const FRESH_MS = 120_000;
+
 /**
  * A bot's turn: its words, what it drew under them (show.ts), and what it leaves to do. `draw.live`: the chat's latest turn, whose
- * choices and form can be used; `draw.picked`: what the person said next, for an older one.
+ * choices and form can be used; `draw.picked`: what the person said next, for an older one. The latest turn, just come in, is fresh:
+ * its pictures spring in.
  */
 export function botTurn(ctx: BotsCtx, look: { color: string; icon: Parameters<typeof botAvatar>[0]["icon"]; head?: string }, t: Turn, big = false,
   draw?: { slug: string; live: boolean; picked?: string }): Node {
-  const drawn = t.show && draw ? showNodes(ctx, t.show, { slug: draw.slug, turn: t.id, live: draw.live, ...(draw.picked !== undefined ? { picked: draw.picked } : {}) }) : [];
+  const fresh = !!draw?.live && ctx.live.now - t.at < FRESH_MS;
+  const drawn = t.show && draw ? showNodes(ctx, t.show, { slug: draw.slug, turn: t.id, live: draw.live, fresh, ...(draw.picked !== undefined ? { picked: draw.picked } : {}) }) : [];
   const words = answerBlocks(t.text, look.color, big ? 15 : 14, drawn.length && t.show?.lists === "drawn" ? { lists: false } : {});
   const blocks = [...words, ...drawn, ...turnActions(ctx, t)];
   if (!isDesk(ctx)) return col(blocks, { gap: 12 });

@@ -33,7 +33,8 @@ const { MemoryEventStore } = await import("../src/shell/events.js");
 const { resetConfigForTests } = await import("../src/config.js");
 const { chatTurns } = await import("../src/experience/bots/screens/bots/parts.js");
 type Turn = import("../src/experience/bots/screens/bots/parts.js").Turn;
-const { showNodes, MOTION } = await import("../src/experience/bots/show.js");
+const { showNodes, piecesOf, SPRING } = await import("../src/experience/bots/show.js");
+const { barsPic } = await import("../src/show/dots.js");
 const { PALETTE_HEX } = await import("../src/experience/bots/palette.js");
 const { ctxFor } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
@@ -174,8 +175,8 @@ describe("on the screen", () => {
   ] }, { seen: { has: () => false } })!;
   const o = { slug: "travel", turn: "44444444-4444-4444-8444-444444444444" };
   const actions = (nodes: unknown) => JSON.stringify(nodes);
-  /** A build that draws DotArt, and Blip alive, or neither. */
-  const alive = (client: "phone" | "desktop") => ctxFor("bots.chat", client, undefined, { can: new Set(["BotsKit", "BotsMotion", "BotBuddy", "DotArt"]) });
+  /** A build that moves (Rise, the living bots) with Blip alive, or one that moves nothing (ctxFor's own). */
+  const alive = (client: "phone" | "desktop") => ctxFor("bots.chat", client, undefined, { can: new Set(["BotsKit", "BotsMotion", "BotBuddy"]) });
   const typeOf = (nodes: unknown[], type: string) => walk({ type: "Stack", children: nodes as never }).filter((n) => n.type === type);
 
   it("draws with the kit's own parts, on both clients, with physics or without", () => {
@@ -190,25 +191,69 @@ describe("on the screen", () => {
     }
   });
 
-  it("draws in one look: monochrome, no colour of any palette, the pictures as dots", () => {
-    const json = JSON.stringify(showNodes(alive("phone"), shown, { ...o, live: true }));
-    for (const hex of Object.values(PALETTE_HEX)) expect(json, hex).not.toContain(hex);
-    // the bars, the line and the drawing: one picture of dots each
-    expect(typeOf(showNodes(alive("phone"), shown, { ...o, live: true }), "DotArt")).toHaveLength(3);
-    // a build without DotArt: the very same dots, as circles in ink
-    const still = typeOf(showNodes(ctxFor("bots.chat", "phone"), shown, { ...o, live: true }), "SVG");
-    const circles = still.flatMap((n) => (n.props?.shapes as Array<{ circle?: number[]; fill?: string }> | undefined) ?? []);
-    expect(circles.length).toBeGreaterThan(50);
-    expect(new Set(circles.map((c) => c.fill))).toEqual(new Set(["#0a0a0a"]));
+  it("draws in one look: monochrome, no colour of any palette, the pictures as dots in ink, with nothing new for the apps", () => {
+    for (const ctx of [alive("phone"), ctxFor("bots.chat", "phone")]) {
+      const nodes = showNodes(ctx, shown, { ...o, live: true, fresh: true });
+      const json = JSON.stringify(nodes);
+      for (const hex of Object.values(PALETTE_HEX)) expect(json, hex).not.toContain(hex);
+      const circles = typeOf(nodes, "SVG").flatMap((n) => (n.props?.shapes as Array<{ circle?: number[]; fill?: string }> | undefined) ?? []).filter((c) => c.circle);
+      expect(circles.length).toBeGreaterThan(50);
+      expect(new Set(circles.map((c) => c.fill))).toEqual(new Set(["#0a0a0a"]));
+    }
   });
 
-  it("brings the newest answer's pictures in by physics that suits each, and draws an older one at home", () => {
-    const live = typeOf(showNodes(alive("desktop"), shown, { ...o, live: true }), "DotArt").map((n) => n.props as Record<string, unknown>);
-    expect(live.map((p) => [p.enter, p.heat ?? 0])).toEqual([[MOTION.bars.enter, 0], [MOTION.line.enter, 0], [MOTION.draw.enter, MOTION.draw.heat]]);
-    expect(live.map((p) => p.key)).toEqual([`${o.turn}.4`, `${o.turn}.5`, `${o.turn}.6`]);
-    expect(live[2]!.label).toBe("The route");
-    const old = typeOf(showNodes(alive("desktop"), shown, { ...o, live: false }), "DotArt").map((n) => n.props as Record<string, unknown>);
-    expect(old.every((p) => p.enter === "none" && p.heat === undefined)).toBe(true);
+  it("springs a fresh answer's pictures in, piece by piece, with the spring that suits each; an older one is drawn at home", () => {
+    const fresh = showNodes(alive("desktop"), shown, { ...o, live: true, fresh: true });
+    // every piece of the first face is a Rise carrying its kind's spring, let go in order
+    const firstFaces = typeOf(fresh, "Stack").filter((n) => (n.visibleIf as { falsy?: string } | undefined)?.falsy?.startsWith("taps."));
+    expect(firstFaces).toHaveLength(3);
+    const kinds: Array<keyof typeof SPRING> = ["bars", "line", "draw"];
+    firstFaces.forEach((face, i) => {
+      const rises = typeOf([face], "Rise");
+      // a piece a run (bars), a segment (a line), a shape (this drawing has one)
+      expect(rises.length, kinds[i]).toBeGreaterThanOrEqual(kinds[i] === "draw" ? 1 : 2);
+      const sp = SPRING[kinds[i]!];
+      for (const r of rises) expect(r.props, kinds[i]).toMatchObject({ fromY: sp.fromY, scaleFrom: sp.scaleFrom, stiffness: sp.stiffness, damping: sp.damping, mass: sp.mass });
+      const delays = rises.map((r) => Number(r.props!.delayMs));
+      expect([...delays].sort((a, b) => a - b), kinds[i]).toEqual(delays);
+      // stacked on one canvas
+      expect(rises.every((r) => (r.style as Record<string, unknown>).position === "absolute")).toBe(true);
+    });
+    // an older answer: its first face is the still picture
+    const old = showNodes(alive("desktop"), shown, { ...o, live: false });
+    const oldFirst = typeOf(old, "Stack").filter((n) => (n.visibleIf as { falsy?: string } | undefined)?.falsy?.startsWith("taps."));
+    expect(oldFirst.every((f) => typeOf([f], "Rise").length === 0)).toBe(true);
+    // a build that moves nothing: still, and no tap to answer
+    const none = showNodes(ctxFor("bots.chat", "desktop"), shown, { ...o, live: true, fresh: true });
+    expect(typeOf(none, "Rise")).toHaveLength(0);
+    expect(JSON.stringify(none)).not.toContain("taps.");
+  });
+
+  it("answers a tap on a picture by springing its dots in again, on any answer", () => {
+    for (const fresh of [true, false]) {
+      const nodes = showNodes(alive("phone"), { blocks: [shown.blocks[4]!] }, { ...o, live: true, fresh });
+      const pic = walk({ type: "Stack", children: nodes }).find((n) => n.on?.onPress)!;
+      // kept under the turn and the block's place in the drawing (here the only one)
+      const path = `taps.${o.turn.replace(/-/g, "_")}_0`;
+      expect(pic.on!.onPress).toEqual({ kind: "condition", if: { eq: [path, "a"] }, then: { kind: "setState", path, value: "b" }, else: { kind: "setState", path, value: "a" } });
+      // three faces: as it came, then two that spring in, one mounted at a time
+      expect(pic.children!.map((c) => c.visibleIf)).toEqual([{ falsy: path }, { eq: [path, "a"] }, { eq: [path, "b"] }]);
+      expect(typeOf([pic.children![1]!], "Rise").length).toBeGreaterThan(1);
+      expect(typeOf([pic.children![2]!], "Rise").length).toBeGreaterThan(1);
+      expect(pic.props?.accessibilityLabel).toBe("Stay 6,400, Food 3,200");
+    }
+  });
+
+  it("cuts a picture into pieces that hold every dot once, never more than 24, in the order they come in", () => {
+    const pic = barsPic(Array.from({ length: 8 }, (_v, i) => ({ value: 10 - i })), 400);
+    for (const kind of ["bars", "meter", "line", "draw"] as const) {
+      const ps = piecesOf(pic, kind);
+      expect(ps.length, kind).toBeLessThanOrEqual(24);
+      expect(ps.reduce((n, p) => n + p.pic.d.length, 0), kind).toBe(pic.d.length);
+      const delays = ps.map((p) => p.delayMs);
+      expect([...delays].sort((a, b) => a - b), kind).toEqual(delays);
+      expect(ps.every((p) => p.pic.w === pic.w && p.pic.h === pic.h)).toBe(true);
+    }
   });
 
   it("puts Blip beside the first picture when asked: alive in ink on the newest answer, his pose on an older one or an older build", () => {
