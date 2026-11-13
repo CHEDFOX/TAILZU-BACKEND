@@ -512,8 +512,11 @@ moment needs no app update: change the catalog, and every app with the `BotMomen
 | | |
 | --- | --- |
 | `shared/bots/looks.json` | **the catalog**: `parts`, `avatars`, `moments`, `kinds` (which avatar each kind wears), `idle` (Home's surprises), `v` |
-| `tulmi/src/experience/bots/looks.ts` | `checkLooks` (the apps' rules), `activeLooks`, `pushLooks`, `looksFlags`, `momentProps`, `idleSurprises` |
-| `tulmi/src/routes/bots/botLooks.ts` | `GET /v1/bots/looks`; `PUT` / `DELETE /v1/admin/bots/looks` (ADMIN_SECRET) |
+| `shared/bots/project.mjs` | **the projection**: the catalog cut down to a format, shared with the phone's release script |
+| `shared/bots/engines/*.cjs` | **the real engines**, generated and frozen: every push compiles in each of them (13.1) |
+| `tulmi/src/experience/bots/looks.ts` | `checkLooks` (the apps' rules), `activeLooks`, `servedLooks(f)`, `pushLooks`, `looksFlags(f)`, `momentProps`, `idleSurprises`, `offMoments` |
+| `tulmi/src/experience/bots/looksEngine.ts` | compile and simulate a catalog in every engine beside this build |
+| `tulmi/src/routes/bots/botLooks.ts` | `GET /v1/bots/looks[?v=N&f=F]`; `PUT` / `DELETE /v1/admin/bots/looks`, `PUT /v1/admin/bots/looks/off` (ADMIN_SECRET) |
 | kit | `canMoments(ctx)`, `botMoment(ctx, id, mode?)`, `homeSurprises(ctx)`; `botTiles(…, { surprises })` |
 | apps | phone `src/botTiles/looks.ts` (+ `looksStore.ts`, `starter.ts`), window `sdui.js` `btLooks()` (+ `botLooks.js`) |
 
@@ -570,6 +573,95 @@ gets the recipe's `fallback` act instead (and an app that cannot play a recipe, 
 A new **kind of track or field** is an app update: add it to `core.ts` (and `TRACK_FIELDS` in looks.ts), raise `LOOKS_FORMAT` on both
 sides, have the new build declare `BotMoments2` as well, and give recipes that use it `format: 2`: the kit sends them only to builds that
 declare it (`playsFormat`), and older builds get their fallback act.
+
+### 13.1 Format 2: scenes
+
+A **scene** is a drawn, formula-driven animation beside the rig, interpreted by the same core (`app/src/botTiles/scene.ts`). It is how a
+brand-new kind of animation ships as a push rather than a release. Scenes live in the catalog's `scenes` section, and a moment plays one
+with a `scene` track.
+
+| | |
+| --- | --- |
+| element kinds | `shape` (the format-1 path grammar plus `C`, with `morph` targets and `m` to blend), `dots` (a hex or square grid, or `along` a shape; per-dot `r dx dy paint`), `chain` (a rope, or a closed soft ring with `floor` and `area`), `group` (`els`, and `clip` by a shape), `repeat` (`n`, one `el`, which reads `j` and `nj`, counted through nested repeats), `part` (a catalog part) |
+| every value | a number, an expression, keyframes (`{ k: [[time, value, ease]…], by, loop }`) or a spring (`{ spring, k, damp }`) |
+| names an expression reads | the moment's `t u T D beat k side rnd rnd2 W x px`, his speed `vx`, his voice `level` and `talk`, the last tap `tapx tapy tapt taps`, `seed`, `ev.<name>` (seconds since a moment event), each var; inside a dot field also `i col row n qx qy d ang`; inside a repeat also `j nj` |
+| the bot himself | `rig: { alpha, sx, sy, rot, about, hide: [head face antennae arms legs body wear] }` while the scene is live |
+| back to the moment | `emit: [[event, expression]]` fires a moment event when the expression turns true, at most once every half second |
+
+Four things the format settles that nothing else in this page says, because once the engine is out they can never change inside
+format 2 (the window has no over-the-air update, so an old engine would refuse the catalog for good):
+
+- **A chain's `len` is the whole rope's rest length, end to end** — the perimeter when it is `closed` — not one segment's. One
+  segment is `len / (n - 1)`, or `len / n` closed. So `n` is a resolution knob: lowering it to fit the budget makes a coarser
+  rope, never a shorter one.
+- **A `repeat` may hold a chain or a dot field.** Each copy gets its own rope, and a repeated field keeps every copy's dots in one
+  buffer, so `j` is a per-dot name there, like `i`. The budgets count the copies, and their refusals say so ("3 chains counting
+  repeats", "700 dots counting 7 repeats"). That is what lets a push add a second fish to the pond with no build.
+- **Repeats inside repeats count through.** `j` is the copy's number among *all* the repeats around it (outer × `n` +
+  inner) and `nj` is their product, so a `repeat n: 2` around a `repeat n: 3` runs `j` 0 to 5 with `nj` 6, exactly as a flat
+  `repeat n: 6` would. Nothing is lost: the expression language has `%` and `floor`, so the inner copy is `j % 3` and the outer
+  `floor(j / 3)`. One meaning everywhere — a shape, a chain's rope and a dot field's slice all pick their copy by the same
+  number, which is what keeps the flat dot buffer and the chain slots lined up.
+- **Scenes never use the host's `rotate` or `scale`.** The core works out every scene transform itself, so Skia and Canvas2D draw
+  the same picture and a host without them loses nothing. Only `rig` uses them, around the bot's own drawing: a host without them
+  draws him faded and hidden as asked, but not squashed or turned.
+
+What an app does when a scene misbehaves, which is its own business and not the server's:
+
+- **A scene that goes wrong is dead for that play.** A throw, a non-finite value, a scene that does not fit or one the governor
+  gives up on frees its slot and marks its track dead until the next `playMoment`, so a scene that throws every frame is built
+  once, not rebuilt from nothing 60 times a second. It is reported once (`bad: <id>:throw|nan|fit|slow`).
+- **If it dies before it has finished a single frame**, the moment stops and its **fallback act** plays: nobody sees half a
+  moment. If it dies part way through, the moment's rig tracks finish without it.
+- **The governor times the whole frame** — the step, the evaluation and both draw passes together, one sample a frame into a
+  30-frame rolling average, against `SCENE_LIMITS.ms`. Over it, the scene **freezes at its `still` frame**: its names are not
+  written again, so nothing is evaluated and it draws the frame `settle()` left. Still over it, the scene is dropped and the rig
+  carries on.
+- **The screen's budgets are counted across surfaces** (`liveScreen`, `opsScreen`, `dotsScreen`): a scene that would take the
+  screen over them does not start at all and that bot plays the rig only. Nothing is reported, because nothing is wrong with
+  the scene.
+
+Rules the server enforces, and the apps do not trust it to:
+
+- **Every format-2 recipe declares `fallback`**, and an idle surprise also declares `still`: that is all an older build ever sees.
+- A `PUT` is checked three ways: `checkLooks` on the catalog cut down to format 1; **every engine in `shared/bots/engines/`
+  compiles the projection it would really be served**, with zero errors; and the format-2 engine runs every format-2 moment for its
+  whole length, on three node sizes and both facings, with a level sine, a tap and each listed event, inside `SCENE_LIMITS`
+  (`tulmi/src/experience/bots/looksEngine.ts`).
+- `shared/bots/engines/f2.cjs` is generated with `node src/botTiles/genDesktop.mjs --server` in `TAILZU-FRONTEND/app`; the frozen
+  format-1 engines are kept as the fleet really runs them (today, the released window's `botTiles.js`).
+- **The projection** (`shared/bots/project.mjs`, one implementation shared with the phone's `genStarter.mjs`) cuts a catalog to a
+  format: `GET /v1/bots/looks?v=N&f=F`, `f` from the query only, clamped, **missing means 1**. ETag `looks-<v>` for f=1, unchanged,
+  and `looks-<v>-f<F>` above it.
+- **Each (v, f) URL keeps one content forever**: a push must be above the highest `v` ever served, not only the one served now, so a
+  phone that kept a copy can never be handed different pictures under the same address.
+- **`off`**: `PUT /v1/admin/bots/looks/off` `{ off: [id…] }` switches format-2 moments off one by one. It rides on the bootstrap,
+  which is not cached like the catalog, so it takes effect at the next start. `DELETE /v1/admin/bots/looks` still takes a whole
+  pushed catalog back.
+- **`BOTS_SCENES` (off by default, with `BOTS_SCENES_USERS` for the first accounts) is the switch on the whole format.** Every
+  reader of the format goes through `looksCan()` in `experience/bots/looks.ts`, which drops `BotMoments<n ≥ 2>` from a build's
+  capabilities while the switch is shut: the bootstrap's flag, the moments the screens send, the idle surprises and `canScenes`
+  then all agree that the build plays format 1. Turning it off again needs no change on either client — a flag with no `f` reads
+  as format 1, which is not the (v, 2) they kept, so they fetch the format-1 cut again. `GET …?f=2` stays open: the catalog is
+  public data, and a per-account answer could not be cached.
+- The bootstrap flag stays `{ v, url }` for a format-1 build, byte for byte, and becomes `{ v, f, url, off }` above it. The apps keep
+  their copy under `tz.botLooks.f2` and compare **(v, f)**, not `v` alone.
+- Every app reports `looks: { v, f, ok, why?, bad?, slow? }` with its capabilities, so a push is never a silent no-op. Every
+  surface that plays moments feeds it: BotTiles and BotCrowd as well as BotBuddy, BotCard and BotStage.
+- **Sizes are checked on a push too**: the f=2 projection against `SCENE_LIMITS.catalogBytes`, and each scene's own JSON against
+  `SCENE_LIMITS.bytes`. A catalog above format 1 is refused outright (503) when no engine of that format is beside the build, so
+  scenes nothing has compiled are never served.
+
+**Writing one.** `npx tsx scripts/bots-anim/live.ts <draft.json>` opens a local page that plays the draft with the window's own
+engine (`botTiles.js`): a moment picker, his voice as a slider, a button for each event the moment lists, a tap pad, facing and
+Reduce Motion, the three node sizes, and a meter of ops, dots, drawing calls and milliseconds against `SCENE_LIMITS`. It re-reads
+the file when it is saved. `live.ts --check <draft.json>` runs the publish gate above and prints, per build, whether a moment plays
+or which act it falls back to. `npx tsx scripts/bots-render/render.ts <screen> --catalog <file> --format 2` draws a real screen
+with that catalog on both clients.
+
+**The proof: `p.pond`.** Blip crouches, a dotted pond opens on the ground, its dots swell with travelling ripples that follow his
+voice on a live call, a small dotted fish with a six-point physics tail leaps out and splashes, and a tap on a stage sends a ring out
+from the point it was touched. Its fallback act is `survey`, which is what every build before the engine plays.
 
 
 ## 14. Pull-a-bot

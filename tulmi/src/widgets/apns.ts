@@ -108,8 +108,17 @@ export interface ApnsResult {
 }
 
 export interface LiveActivityPush {
-  event: "update" | "end";
+  /**
+   * "start" is PUSH-TO-START (iOS 17.2 and later): it begins an activity on a phone whose app is shut, against the person's
+   * push-to-start token rather than one activity's own. It is the only event that carries the activity's ATTRIBUTES, because
+   * there is no activity yet to have them, and Apple requires an alert with it.
+   */
+  event: "update" | "end" | "start";
   contentState: Record<string, unknown>;
+  /** "start" only: the ActivityAttributes type's name, exactly as the Swift struct is named. */
+  attributesType?: string;
+  /** "start" only: the attributes themselves ({ jobId }). They never change after the activity begins. */
+  attributes?: Record<string, unknown>;
   /** ms; an "end" leaves the activity on the Lock Screen until then. */
   dismissAt?: number;
   /** ms; what the activity shows is as of then (Apple drops an older one that arrives late). */
@@ -143,6 +152,7 @@ export class ApnsSender {
   async send(deviceToken: string, p: LiveActivityPush, env: ApnsEnv = this.settings.env): Promise<ApnsResult> {
     const aps: Record<string, unknown> = {
       timestamp: Math.floor(p.at / 1000), event: p.event, "content-state": p.contentState,
+      ...(p.event === "start" && p.attributesType ? { "attributes-type": p.attributesType, attributes: p.attributes ?? {} } : {}),
       ...(p.dismissAt ? { "dismissal-date": Math.floor(p.dismissAt / 1000) } : {}),
       ...(p.alert ? { alert: { title: p.alert.title, body: p.alert.body } } : {}),
     };

@@ -1,0 +1,725 @@
+{
+  "note": "Widget design cases. `expect` is the verdict every side must reach (see index.json). `at` names where the drop happens, in plain words, so a failing test says something useful.",
+  "cases": [
+
+    {
+      "id": "ok.minimal",
+      "expect": "ok",
+      "why": "The smallest design that is still a design: one root, one text, one bound path.",
+      "design": {
+        "id": "t.minimal", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "{{greeting.hello}}" } } }
+      }
+    },
+
+    {
+      "id": "ok.allRoots",
+      "expect": "ok",
+      "why": "All six iOS roots. On Android only small, medium and large are planned; inline, rect and circle are ignored there, not an error.",
+      "design": {
+        "id": "t.roots", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "small": { "type": "Text", "props": { "text": "s" } },
+          "medium": { "type": "Text", "props": { "text": "m" } },
+          "large": { "type": "Text", "props": { "text": "l" } },
+          "inline": { "type": "Text", "props": { "text": "{{lock.inline}}" } },
+          "rect": { "type": "Text", "props": { "text": "{{lock.title}}" } },
+          "circle": { "type": "Kit", "props": { "name": "mark" } }
+        }
+      }
+    },
+
+    {
+      "id": "ok.everyNodeType",
+      "expect": "ok",
+      "why": "One of each of the fourteen node types, so no side quietly fails to decode one.",
+      "design": {
+        "id": "t.types", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "large": {
+            "type": "V", "props": { "gap": 4 },
+            "children": [
+              { "type": "H", "children": [ { "type": "Spacer", "props": { "min": 2 } } ] },
+              { "type": "Z", "children": [ { "type": "Text", "props": { "text": "x" } } ] },
+              { "type": "Grid", "props": { "cols": 2, "gap": 4 }, "children": [ { "type": "Text", "props": { "text": "g" } } ] },
+              { "type": "Image", "props": { "src": "pose:blip", "size": 20 } },
+              { "type": "Bot", "props": { "who": "$bot", "moment": "wave", "at": 0.6, "size": 24 } },
+              { "type": "Shape", "props": { "kind": "capsule", "fill": "line" }, "style": { "h": 4 } },
+              { "type": "Bar", "props": { "value": 2, "of": 5, "track": "line" } },
+              { "type": "Ring", "props": { "value": 2, "of": 5, "width": 4 } },
+              { "type": "Kit", "props": { "name": "beads" } },
+              { "type": "Each", "props": { "of": "bots", "max": 3, "as": "it" }, "children": [ { "type": "Text", "props": { "text": "{{it.name}}" } } ] },
+              { "type": "Button", "props": { "open": "tulmi://home" }, "children": [ { "type": "Text", "props": { "text": "open" } } ] }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "unknown.node.usesFallback",
+      "expect": "clamped",
+      "at": "the Sparkline node in roots.small.children[0]",
+      "keep": "its fallback Text, and the sibling Text",
+      "why": "An unknown node type is not an error: it draws its fallback. This is how a design written for format 2 still reads on a format-1 build.",
+      "design": {
+        "id": "t.unknown-node", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "small": {
+            "type": "V",
+            "children": [
+              { "type": "Sparkline", "props": { "of": "week.dots" }, "fallback": { "type": "Text", "props": { "text": "{{week.line}}" } } },
+              { "type": "Text", "props": { "text": "{{greeting.hello}}" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "unknown.node.noFallbackDrawsNothing",
+      "expect": "clamped",
+      "at": "the Sparkline node",
+      "drop": "the node entirely",
+      "keep": "the sibling Text",
+      "why": "No fallback means nothing is drawn there. It never means a blank widget and never an exception.",
+      "design": {
+        "id": "t.unknown-no-fb", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "small": {
+            "type": "V",
+            "children": [
+              { "type": "Sparkline", "props": { "of": "week.dots" } },
+              { "type": "Text", "props": { "text": "{{greeting.hello}}" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "unknown.styleKey.ignored",
+      "expect": "clamped",
+      "at": "style.blur and style.rotate",
+      "drop": "both keys",
+      "keep": "the node, with pad and bg honoured",
+      "why": "An unknown style key is ignored, never a reason to drop the node.",
+      "design": {
+        "id": "t.unknown-style", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "hi" }, "style": { "pad": 8, "bg": "surface", "blur": 12, "rotate": 45 } } }
+      }
+    },
+
+    {
+      "id": "unknown.colour.becomesInk",
+      "expect": "clamped",
+      "at": "style.bg = \"midnight\"",
+      "keep": "the node, drawn in ink",
+      "why": "An unknown colour token becomes ink. A hex, a role, $color, $bot.<slug> and an @alpha suffix are the only other shapes.",
+      "design": {
+        "id": "t.unknown-colour", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "hi" }, "style": { "bg": "midnight" } } }
+      }
+    },
+
+    {
+      "id": "ok.colourGrammar",
+      "expect": "ok",
+      "why": "Every colour shape the grammar allows, including the alpha suffix and a bot's own ink. outline and hollow are roles of format 1, not shades of line: today's views keep all three apart (a secondary pill's ring, the week's open bead and the island's future stages, and a rule).",
+      "design": {
+        "id": "t.colours", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "small": {
+            "type": "V",
+            "children": [
+              { "type": "Shape", "props": { "kind": "rect", "fill": "#0A0A0A" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "#0A0A0ACC" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "ink@0.6" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "$color" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "$bot.code" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "paper" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "outline" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "hollow@0.5" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "role.missingFallsBackToLine",
+      "expect": "ok",
+      "at": "a palette whose schemes have no outline, no hollow and no dim",
+      "keep": "outline and hollow drawn in line, dim drawn in meta",
+      "why": "outline, hollow and dim are OPTIONAL in a scheme. A palette that leaves them out resolves them by ROLE_FALLBACK in nlook.ts — the one table all four renderers read — so an older catalog and a hand-written palette both keep working rather than losing the node.",
+      "palettes": {
+        "bare": {
+          "dark": { "ground": "#0A0A0A", "ink": "#FFFFFF", "meta": "#A3A3A3", "line": "#262626", "surface": "#171717", "accent": "#FFFFFF" },
+          "light": { "ground": "#FFFFFF", "ink": "#0A0A0A", "meta": "#5C5C5C", "line": "#E6E6E6", "surface": "#F5F5F5", "accent": "#0A0A0A" }
+        }
+      },
+      "design": {
+        "id": "t.role-fallback", "format": 1, "surface": "widget", "palette": "bare",
+        "roots": {
+          "small": {
+            "type": "V",
+            "children": [
+              { "type": "Shape", "props": { "kind": "rect", "fill": "outline" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "hollow" } },
+              { "type": "Shape", "props": { "kind": "rect", "fill": "dim" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "ok.align.acrossTheStack",
+      "expect": "ok",
+      "why": "`align` is ACROSS the stack everywhere (NLookAlign in nlook.ts). On this H, \"end\" means the three children sit on the BOTTOM of the row, as boxes, not on a shared text baseline — so Android must set android:baselineAligned=\"false\" to match iOS. On the inner V, \"start\" means leading. On Z it is both axes at once (end = bottom-trailing). style.align places a node's content in its own frame when w/h leave spare room, and Text align is the usual text alignment. Spacing ALONG a stack is gap and Spacer only; there is no justify. This is board.base's medium in miniature.",
+      "design": {
+        "id": "t.align", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "medium": {
+            "type": "H",
+            "props": { "gap": 16, "align": "end" },
+            "style": { "w": "fill" },
+            "children": [
+              {
+                "type": "V",
+                "props": { "gap": 2, "align": "start" },
+                "children": [
+                  { "type": "Text", "props": { "text": "{{counts.needs}}", "font": "display", "size": 34, "lines": 1 } },
+                  { "type": "Text", "props": { "text": "{{words.needsYou}}", "font": "sans", "size": 12, "lines": 1 } }
+                ]
+              },
+              { "type": "Text", "props": { "text": "{{words.working}}", "font": "sans", "size": 12, "align": "start", "lines": 1 } },
+              { "type": "Spacer", "props": { "min": 0 } },
+              { "type": "Z", "props": { "align": "end" }, "style": { "w": 40, "h": 40, "align": "center" }, "children": [ { "type": "Kit", "props": { "name": "mark" } } ] }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "align.alongTheStack.clamped",
+      "expect": "clamped",
+      "at": "roots.medium.props.align = \"between\"",
+      "drop": "the align value",
+      "keep": "the node, laid out as if align were \"start\" (children on the TOP of the row)",
+      "why": "NLookAlign is start | center | end and nothing else. \"between\" and \"around\" would space children ALONG the stack, which nlook does with gap and Spacer, so they are refused at publish. Format 1 is frozen into the binary: a phone that somehow meets one of them draws \"start\" rather than guessing. Same for any other string, and for align on a node that has no align.",
+      "design": {
+        "id": "t.align-bad", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "medium": {
+            "type": "H",
+            "props": { "gap": 8, "align": "between" },
+            "children": [
+              { "type": "Text", "props": { "text": "a" } },
+              { "type": "Text", "props": { "text": "b" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "format.tooNew.skipped",
+      "expect": "skipped",
+      "why": "A format above what the build draws is skipped ALONE. The catalog around it is served as usual, and the server never names it for that build.",
+      "design": {
+        "id": "t.future", "format": 2, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Flip", "children": [ { "type": "Text", "props": { "text": "x" } } ] } }
+      }
+    },
+
+    {
+      "id": "id.bad.dropped",
+      "expect": "dropped",
+      "at": "the id",
+      "why": "Ids are [a-z0-9._-], 1 to 40 characters. A capital, a slash or a space is refused on publish, not cleaned, because an id is a key in a file path.",
+      "design": {
+        "id": "T0 Dusk/Main", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "x" } } }
+      }
+    },
+
+    {
+      "id": "id.capital.dropped",
+      "expect": "dropped",
+      "at": "the id",
+      "why": "A CAPITAL ALONE is enough. Today's other bad-id case also has a space and a slash, so a side that let capitals through would still pass it. Four sides turn the id into a file name (phone JS looksCore, Android NLook, iOS NLookModel, the server's glance store), and a Mac — where the simulator and the test builds run — has a case-insensitive disk, so x0.Dusk and x0.dusk would be one file.",
+      "design": {
+        "id": "t.Dusk", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "x" } } }
+      }
+    },
+
+    {
+      "id": "ok.text.tint",
+      "expect": "ok",
+      "why": "A colour on words. Today's views draw secondary words in `meta` or `dim` two dozen times, and format 1 could not say that: the stage name in the Live Activity's banner came out in `ink` where the view draws p.meta. The name is `tint` because Image already uses `tint` for the colour of what it draws, and iOS already reads it on Text.",
+      "design": {
+        "id": "t.tint", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "V", "props": { "gap": 2 }, "children": [
+          { "type": "Text", "props": { "text": "Understand", "tint": "meta" } },
+          { "type": "Text", "props": { "text": "4 min", "tint": "meta@0.6" } }
+        ] } }
+      }
+    },
+
+    {
+      "id": "text.tint.unknown.clamped",
+      "expect": "clamped",
+      "at": "props.tint",
+      "keep": "ink",
+      "why": "A bad colour on a Text is an issue and draws `ink`, exactly as a bad colour anywhere else does. It never drops the node: words with the wrong colour still read.",
+      "design": {
+        "id": "t.tint-bad", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "x", "tint": "pink" } } }
+      }
+    },
+
+    {
+      "id": "ok.text.tint.defaultFromNearestBg",
+      "expect": "ok",
+      "tint": { "the Text": "ground" },
+      "why": "NO TINT IS NOT AN ERROR: one rule decides, the same in all three renderers. `ground` when the NEAREST bg at or above the Text (its own, else its closest ancestor's) is the ROLE ink or accent, with or without an @alpha; otherwise `ink`. Roles, never luma, so light and dark agree on every platform. Before this, iOS drew `ink` always (so the filled answer pill's label was invisible on iPhone), Android looked only at the node's OWN bg, and the preview renderer switched on luma. The same rule covers timers and a sym: Image with no tint.",
+      "design": {
+        "id": "t.tint-default", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "H", "props": { "gap": 6 }, "style": { "bg": "ink", "corner": 12, "pad": 8 }, "children": [
+          { "type": "Text", "props": { "text": "Yes" } }
+        ] } }
+      }
+    },
+
+    {
+      "id": "android.style.offset.ignored",
+      "expect": "ok",
+      "android": { "offset": false },
+      "why": "`offset` is iOS-only, as the contract says: RemoteViews has no free offset. The design is VALID and draws in full on iPhone, so `clean` says nothing — a publish warning would fire on designs that are perfectly fine and teach authors to skip warnings.",
+      "design": {
+        "id": "t.a-offset", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "medium": { "type": "Z", "children": [
+          { "type": "Text", "props": { "text": "x" }, "style": { "offset": [4, -2] } }
+        ] } }
+      }
+    },
+
+    {
+      "id": "android.style.maxW.textOnly",
+      "expect": "ok",
+      "android": { "maxW": "carried on the Text, ignored on the H" },
+      "why": "TextView.setMaxWidth and setMaxHeight ARE @RemotableViewMethod, so Android carries maxW/maxH on a Text and on a timer, converting dp to px. On every other node they are ignored: a RemoteViews frame cannot be given a maximum.",
+      "design": {
+        "id": "t.a-maxw", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "large": { "type": "H", "props": { "gap": 6 }, "style": { "maxW": 300 }, "children": [
+          { "type": "Text", "props": { "text": "A long line that has to stop somewhere" }, "style": { "maxW": 170 } }
+        ] } }
+      }
+    },
+
+    {
+      "id": "android.style.border.drawn",
+      "expect": "ok",
+      "android": { "ring": true, "levelsAtMost": 8 },
+      "why": "Android DRAWS a border: one wrapper level filled with the border colour, the node inset by `width` on all four sides (setViewLayoutMargin, API 31) with corner max(0, corner - width). It is the same price today's pill already pays for its FrameLayout, and x0.base's secondary pill carries one — so dropping the ring would be a visible regression on every Android X0 medium the moment the parity design goes out to everyone.",
+      "design": {
+        "id": "t.a-border", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "medium": { "type": "H", "props": { "gap": 6 }, "style": { "bg": "surface", "corner": 14, "border": { "color": "outline", "width": 1 }, "pad": 8 }, "children": [
+          { "type": "Text", "props": { "text": "Later" } }
+        ] } }
+      }
+    },
+
+    {
+      "id": "android.style.border.overCap.noRing",
+      "expect": "ok",
+      "android": { "ring": false },
+      "why": "The ring costs a level, so it is the first thing given up: a node whose wrapper would not fit under the 8-level cap, or whose fill is missing or not fully opaque in either scheme, draws WITHOUT its ring rather than not at all. Fail safe is always towards drawing something.",
+      "design": {
+        "id": "t.a-border-deep", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "medium": { "type": "V", "children": [ { "type": "V", "children": [ { "type": "V", "children": [ { "type": "V", "children": [
+          { "type": "V", "children": [ { "type": "V", "children": [ { "type": "V", "children": [
+            { "type": "Text", "props": { "text": "deep" }, "style": { "border": { "color": "outline", "width": 1 }, "corner": 8 } }
+          ] } ] } ] } ] } ] } ] } ] } }
+      }
+    },
+
+    {
+      "id": "android.z.alignEnd.wraps",
+      "expect": "ok",
+      "android": { "align": "end", "levelsAtMost": 8 },
+      "why": "A Z whose align is center or end costs ONE wrapper level per child on Android. Nothing in the catalog uses it today (all six Z nodes are start), so this case is the record of what happens when one does.",
+      "design": {
+        "id": "t.a-z-end", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "medium": { "type": "Z", "props": { "align": "end" }, "children": [
+          { "type": "Shape", "props": { "kind": "rect", "fill": "surface" } },
+          { "type": "Text", "props": { "text": "2" } }
+        ] } }
+      }
+    },
+
+    {
+      "id": "android.z.alignEnd.overCap.drawsStart",
+      "expect": "ok",
+      "android": { "align": "start" },
+      "why": "The same rule as the border: when the wrapper level does not fit, the child is drawn at `start` rather than not drawn. A phone that meets an align it cannot honour draws start, which is also what a phone too old for the value does.",
+      "design": {
+        "id": "t.a-z-end-deep", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "medium": { "type": "V", "children": [ { "type": "V", "children": [ { "type": "V", "children": [ { "type": "V", "children": [
+          { "type": "V", "children": [ { "type": "V", "children": [
+            { "type": "Z", "props": { "align": "end" }, "children": [ { "type": "Text", "props": { "text": "2" } } ] }
+          ] } ] } ] } ] } ] } ] } }
+      }
+    },
+
+    {
+      "id": "limit.textChars.clamped",
+      "expect": "clamped",
+      "at": "roots.small.props.text",
+      "keep": "the first 200 characters",
+      "why": "A text literal or template is 200 characters at most. Longer is cut, not dropped: words are the point of the node.",
+      "design": {
+        "id": "t.long-text", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBBBBBBBCCCCCCCCCC" } } }
+      }
+    },
+
+    {
+      "id": "limit.eachMax.clamped",
+      "expect": "clamped",
+      "at": "Each.max = 40",
+      "keep": "8 copies",
+      "why": "Each is a bounded repeat over data, never a loop: 8 copies at most on a widget, 3 on an activity.",
+      "design": {
+        "id": "t.each-max", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "large": { "type": "Each", "props": { "of": "bots", "max": 40, "as": "it" }, "children": [ { "type": "Text", "props": { "text": "{{it.name}}" } } ] }
+        }
+      }
+    },
+
+    {
+      "id": "limit.eachList.unknown.dropped",
+      "expect": "clamped",
+      "at": "Each.of = \"everything\"",
+      "drop": "the Each node",
+      "why": "Each walks only the lists in EACH_LISTS. An unknown list is not a loop over nothing, it is a node that cannot be drawn.",
+      "design": {
+        "id": "t.each-bad-list", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "large": {
+            "type": "V",
+            "children": [
+              { "type": "Each", "props": { "of": "everything", "max": 3, "as": "it" }, "children": [ { "type": "Text", "props": { "text": "{{it.name}}" } } ] },
+              { "type": "Text", "props": { "text": "{{greeting.hello}}" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "limit.nodes.perRoot.dropped",
+      "expect": "dropped",
+      "at": "roots.large",
+      "why": "A root over 80 nodes (or a design over 150) is refused on publish. The generator for this case repeats a Text 90 times; it is written as a count, not spelled out, so the fixture stays readable.",
+      "generate": { "root": "large", "repeatNode": { "type": "Text", "props": { "text": "n" } }, "times": 90 },
+      "design": {
+        "id": "t.too-many-nodes", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "large": { "type": "V", "children": [] } }
+      }
+    },
+
+    {
+      "id": "limit.depth.ios.dropped",
+      "expect": "clamped",
+      "at": "the 11th nested V",
+      "drop": "everything below depth 10",
+      "why": "iOS caps the tree at depth 10. The generator nests a V 12 deep.",
+      "generate": { "root": "large", "nestNode": { "type": "V" }, "depth": 12, "leaf": { "type": "Text", "props": { "text": "deep" } } },
+      "design": {
+        "id": "t.deep", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "large": { "type": "V", "children": [] } }
+      }
+    },
+
+    {
+      "id": "android.levels.overCap.usesFallback",
+      "expect": "clamped",
+      "at": "the subtree past 8 RemoteViews levels",
+      "keep": "its fallback node",
+      "why": "The Android planner counts REMOTEVIEWS levels, not nlook depth, including the size-map level and every wrapper fragment, and caps at 8. Above the launcher's own MAX_NESTED_VIEWS = 10 the launcher throws \"Too many nested views.\" and our code cannot catch it, so the planner must stop first. iOS draws this same design in full.",
+      "generate": { "root": "medium", "nestNode": { "type": "V" }, "depth": 9, "leaf": { "type": "Text", "props": { "text": "deep" } } },
+      "design": {
+        "id": "t.android-deep", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "medium": { "type": "V", "fallback": { "type": "Text", "props": { "text": "{{lock.line}}" } }, "children": [] } }
+      }
+    },
+
+    {
+      "id": "android.grid.flattens",
+      "expect": "ok",
+      "why": "A Grid becomes rows of one H on Android, which is ONE level, and a Button puts its click on the child's own view with no extra frame. Both exist so a design does not cost levels it does not need.",
+      "design": {
+        "id": "t.grid", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "medium": {
+            "type": "Grid", "props": { "cols": 2, "gap": 6 },
+            "children": [
+              { "type": "Text", "props": { "text": "a" } }, { "type": "Text", "props": { "text": "b" } },
+              { "type": "Text", "props": { "text": "c" } }, { "type": "Text", "props": { "text": "d" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "button.open.foreignScheme.dropped",
+      "expect": "clamped",
+      "at": "Button.open",
+      "drop": "the Button node",
+      "why": "A link opens only our own scheme or the one https shape the allow-list permits. Checked on the server AND again natively: a design can never make a widget, an Activity or a key open someone else's app.",
+      "design": {
+        "id": "t.bad-link", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "small": {
+            "type": "V",
+            "children": [
+              { "type": "Button", "props": { "open": "shortcuts://run?name=pay" }, "children": [ { "type": "Text", "props": { "text": "go" } } ] },
+              { "type": "Text", "props": { "text": "{{greeting.hello}}" } }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "button.open.allowed",
+      "expect": "ok",
+      "why": "Both allowed shapes: our own scheme, and a pull request on the one https host today's allow-list already permits.",
+      "design": {
+        "id": "t.good-link", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "medium": {
+            "type": "H",
+            "children": [
+              { "type": "Button", "props": { "open": "tulmi://home" }, "children": [ { "type": "Text", "props": { "text": "home" } } ] },
+              { "type": "Button", "props": { "open": "https://github.com/tailzu/app/pull/131" }, "children": [ { "type": "Text", "props": { "text": "PR" } } ] }
+            ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "button.act.known",
+      "expect": "ok",
+      "why": "A button answers a needs item with the widget's own token. The App Intent type is compiled in; only its parameters are data, so a design can never widen the token's scope or name a new kind of action.",
+      "design": {
+        "id": "t.act", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "small": {
+            "type": "Button", "props": { "act": { "item": "{{needs.items[0].id}}", "action": "{{needs.items[0].choices[0].id}}" } },
+            "children": [ { "type": "Text", "props": { "text": "{{needs.items[0].choices[0].label}}" } } ]
+          }
+        }
+      }
+    },
+
+    {
+      "id": "art.overLongEdge.dropped",
+      "expect": "clamped",
+      "at": "the art key dusk.huge (1600 px on the long edge)",
+      "drop": "the Image node, which falls to its alt",
+      "keep": "alt = pose:blip",
+      "why": "Art is PNG, at most 512 KB and 1200 px on the long edge, checked by magic bytes, size and sha256 before the file is moved into place. WidgetKit refuses to archive a view whose image is bigger than the family's area, so the renderer also downsamples every file at load; a 1200 px file in systemSmall must still draw.",
+      "catalogArt": [ { "key": "dusk.huge", "w": 1600, "h": 900, "files": [ { "scale": 2, "sha256": "0000000000000000000000000000000000000000000000000000000000000001", "bytes": 180000 }, { "scale": 3, "sha256": "0000000000000000000000000000000000000000000000000000000000000011", "bytes": 240000 } ] } ],
+      "design": {
+        "id": "t.big-art", "format": 1, "surface": "widget", "palette": "ink", "art": ["dusk.huge"],
+        "roots": { "small": { "type": "Image", "props": { "src": "art:dusk.huge", "size": 60, "alt": "pose:blip" } } }
+      }
+    },
+
+    {
+      "id": "art.maxSize.drawsDownsampled",
+      "expect": "ok",
+      "why": "1200 px on the long edge is the LAST allowed size, and it must draw in systemSmall and in accessoryCircular. iOS decodes it with CGImageSourceCreateThumbnailAtIndex at min(node size, displaySize) x displayScale, memoized per (sha, px); it is never handed to Image raw.",
+      "catalogArt": [ { "key": "dusk.sky", "w": 1200, "h": 1146, "files": [ { "scale": 2, "sha256": "0000000000000000000000000000000000000000000000000000000000000002", "bytes": 120000 }, { "scale": 3, "sha256": "0000000000000000000000000000000000000000000000000000000000000022", "bytes": 182000 } ] } ],
+      "design": {
+        "id": "t.max-art", "format": 1, "surface": "widget", "palette": "ink", "art": ["dusk.sky"],
+        "roots": {
+          "small": { "type": "Image", "props": { "src": "art:dusk.sky", "fit": "fill", "alt": "pose:blip" } },
+          "circle": { "type": "Image", "props": { "src": "art:dusk.sky", "fit": "fill", "alt": "pose:blip" } }
+        }
+      }
+    },
+
+    {
+      "id": "art.missing.usesAlt",
+      "expect": "clamped",
+      "at": "art:never.downloaded",
+      "keep": "the alt, a bundled pose",
+      "why": "Missing art uses `alt`, then a bundled pose or symbol, then it hides. The widget extension has no network at all, so a file that is not already on disk can never arrive mid-render.",
+      "design": {
+        "id": "t.missing-art", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "small": { "type": "Image", "props": { "src": "art:never.downloaded", "size": 40, "alt": "pose:blip" } } }
+      }
+    },
+
+    {
+      "id": "fallback.chain.toDesign",
+      "expect": "ok",
+      "why": "A design names another design to use where it cannot be. The chain is: this design, its `fallback` design, then today's hand-written native view. A cycle is refused on publish.",
+      "design": {
+        "id": "t.chain", "format": 1, "surface": "widget", "fallback": "x0.plain", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "{{greeting.hello}}" } } }
+      }
+    },
+
+    {
+      "id": "fallback.cycle.dropped",
+      "expect": "dropped",
+      "at": "fallback",
+      "why": "A fallback that points at itself (or round a ring) would be a loop at render time, on a surface that must never hang. Refused on publish.",
+      "design": {
+        "id": "t.cycle", "format": 1, "surface": "widget", "fallback": "t.cycle", "palette": "ink",
+        "roots": { "small": { "type": "Text", "props": { "text": "x" } } }
+      }
+    },
+
+    {
+      "id": "conditions.allKeys",
+      "expect": "ok",
+      "why": "Every condition key at once: an AND over keys, each key an OR over its values. There are no expressions here and there never will be in format 1.",
+      "design": {
+        "id": "t.conds", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "medium": {
+            "type": "Text",
+            "if": { "family": ["medium", "large"], "appearance": "dark", "mode": ["full"], "reduced": false, "case": ["needs"], "has": "lastDone.pr", "platform": "ios", "canAnswer": true, "standby": false },
+            "props": { "text": "{{summary}}" }
+          }
+        }
+      }
+    },
+
+    {
+      "id": "conditions.unknownKey.ignored",
+      "expect": "clamped",
+      "at": "if.weather",
+      "drop": "the unknown key",
+      "keep": "the node, drawn when family matches",
+      "why": "An unknown condition key is ignored rather than making the node vanish: a design written for a later build still shows.",
+      "design": {
+        "id": "t.cond-unknown", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": { "medium": { "type": "Text", "if": { "family": ["medium"], "weather": "rain" }, "props": { "text": "x" } } }
+      }
+    },
+
+    {
+      "id": "accessory.monochrome",
+      "expect": "ok",
+      "why": "Lock Screen accessories are drawn in one colour by the system, and iOS 18 tinted / iOS 26 clear Home Screens remap colour. A design must be authored for those modes; the preview renders them, and the colours here are simply ignored or dimmed, never an error.",
+      "design": {
+        "id": "t.accessory", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "rect": {
+            "type": "V",
+            "children": [
+              { "type": "Text", "props": { "text": "{{lock.title}}" }, "style": { "accent": "full" } },
+              { "type": "Text", "props": { "text": "{{lock.line}}" }, "style": { "accent": "desat" } }
+            ]
+          },
+          "circle": { "type": "Ring", "props": { "value": "{{job.stage}}", "of": "{{job.of}}", "width": 4 } }
+        }
+      }
+    },
+
+    {
+      "id": "surface.wrongRoot.dropped",
+      "expect": "clamped",
+      "at": "roots.island.leading on a widget design",
+      "drop": "the root",
+      "keep": "roots.small",
+      "why": "A root that does not belong to the design's surface is dropped. A widget has no island; an activity has no systemSmall.",
+      "design": {
+        "id": "t.wrong-root", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "small": { "type": "Text", "props": { "text": "ok" } },
+          "island.leading": { "type": "Text", "props": { "text": "no" } }
+        }
+      }
+    },
+
+    {
+      "id": "palette.missing.usesDefault",
+      "expect": "clamped",
+      "at": "palette = \"autumn\"",
+      "keep": "the design, drawn in the catalog's first palette (ink)",
+      "why": "A palette the catalog does not hold is not a reason to lose the design: roles resolve against the default palette, which is the one source for widget colour on both platforms.",
+      "design": {
+        "id": "t.no-palette", "format": 1, "surface": "widget", "palette": "autumn",
+        "roots": { "small": { "type": "Text", "props": { "text": "x" }, "style": { "bg": "surface" } } }
+      }
+    },
+
+    {
+      "id": "bytes.overDesignCap.dropped",
+      "expect": "dropped",
+      "at": "the design's encoded size",
+      "why": "A widget design is 16 KB at most. The generator pads `note` past the cap; the whole design is refused on publish, and the catalog around it is served as usual.",
+      "generate": { "padNoteToBytes": 17000 },
+      "design": {
+        "id": "t.too-big", "format": 1, "surface": "widget", "palette": "ink", "note": "pad",
+        "roots": { "small": { "type": "Text", "props": { "text": "x" } } }
+      }
+    },
+
+    {
+      "id": "ok.bar.segments.names",
+      "expect": "ok",
+      "bar": {
+        "root": "medium",
+        "data": { "case": "working", "job": { "stage": 2, "of": 3, "stages": ["Read", "Plan", "Check"], "phase": "working" } },
+        "names": [ { "name": "Read", "role": "meta" }, { "name": "Plan", "role": "ink" }, { "name": "Check", "role": "dim" } ]
+      },
+      "why": "THE ONE BAR RULE (shared/types/nlook.ts, above NLOOK_PROPS). `segments` names a list of EXACTLY `of` names, so the names go under the bar, one per segment: the done ones `meta`, the current one bold in `ink`, the rest `dim`. The three renderers had drifted apart here \u2014 iOS drew the names, Android drew none and capped `of` at 12, the preview drew one plain fill \u2014 and format 1 is frozen into the binary, so the rule is settled by this case.",
+      "design": {
+        "id": "t.bar-names", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "medium": {
+            "type": "Bar",
+            "props": { "value": "{{job.stage}}", "of": "{{job.of}}", "segments": "job.stages", "color": "$color", "track": "line" },
+            "style": { "h": 4, "w": "fill", "corner": 2 }
+          }
+        }
+      }
+    },
+
+    {
+      "id": "bar.segments.count.mismatch",
+      "expect": "ok",
+      "bar": {
+        "root": "medium",
+        "data": { "case": "working", "job": { "stage": 2, "of": 3, "stages": ["Read", "Plan"], "phase": "working" } },
+        "names": null
+      },
+      "why": "The same design against a job whose list holds two names for three stages. `segments` is a known list, so clean keeps it: the DATA decides. A half-labelled bar is worse than none, so the names are drawn only on an exact match and this one draws segments alone.",
+      "design": {
+        "id": "t.bar-names-mismatch", "format": 1, "surface": "widget", "palette": "ink",
+        "roots": {
+          "medium": {
+            "type": "Bar",
+            "props": { "value": "{{job.stage}}", "of": "{{job.of}}", "segments": "job.stages", "color": "$color", "track": "line" },
+            "style": { "h": 4, "w": "fill", "corner": 2 }
+          }
+        }
+      }
+    }
+
+  ]
+}

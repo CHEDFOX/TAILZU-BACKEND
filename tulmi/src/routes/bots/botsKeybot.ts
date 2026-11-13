@@ -274,7 +274,7 @@ export function registerBotsKeybotRoutes(app: FastifyInstance, deps: BotsAreaDep
     const user = await who(req, reply);
     if (!user) return reply;
     const [personality, prefs] = await Promise.all([getPersonality(user), getPrefs(user)]);
-    return reply.send(settingsView(personality, prefs));
+    return reply.send(settingsView(personality, prefs, user.id));
   });
 
   app.post("/v1/keybot/language", RL, async (req, reply) => {
@@ -288,7 +288,7 @@ export function registerBotsKeybotRoutes(app: FastifyInstance, deps: BotsAreaDep
         const list = (cur.languages ?? []).map(String).filter((l) => l !== value);
         return { ...cur, languages: on ? [...list, value].slice(0, 12) : list };
       });
-      return reply.send(settingsView(p, await getPrefs(user)));
+      return reply.send(settingsView(p, await getPrefs(user), user.id));
     } catch (err) { return failed(req, reply, err, "Couldn't change your languages"); }
   });
 

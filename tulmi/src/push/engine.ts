@@ -141,6 +141,50 @@ export class PushEngine {
     return (await this.store.candidates(now, userId)).find((c) => c.userId === userId) ?? null;
   }
 
+  /**
+   * This person's phones of one platform whose BINARY said it can do something (PUSH_CAPS), newest first, each with the
+   * person's own language. For a feature that sends its own messages rather than one of the planned kinds — today, the
+   * Android "Bots at work" notice (widgets/notice.ts), drawn by the phone from a data-only push. A name the phone did not
+   * say means nothing is ever sent to it.
+   *
+   * The LOCALE comes from the profile, exactly as every planned push to that phone is worded (`configFor` below), so a
+   * data push needs nothing remembered anywhere for it.
+   */
+  async devicesWith(userId: string, platform: "ios" | "android", cap: string, now = Date.now()): Promise<{ token: string; locale: string | null }[]> {
+    const c = await this.candidate(userId, now).catch(() => null);
+    return (c?.tokens ?? [])
+      .filter((t) => t.platform === platform && (t.caps ?? []).includes(cap))
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map((t) => ({ token: t.token, locale: c?.locale ?? null }));
+  }
+
+  /**
+   * EVERY phone, of any person, whose binary said it can do something — for the one message that is about the SERVER rather
+   * than about a person: the silent nudge that says a new looks catalog is out (experience/native/catalog.ts). `only`
+   * narrows it to a list of people, which is how the testers' stage keeps the nudge to the testers.
+   */
+  async everyoneWith(cap: string, o: { only?: ReadonlySet<string>; now?: number } = {}): Promise<{ userId: string; token: string; platform: "ios" | "android" }[]> {
+    const now = o.now ?? Date.now();
+    const all = await this.store.candidates(now).catch(() => [] as Candidate[]);
+    const out: { userId: string; token: string; platform: "ios" | "android" }[] = [];
+    for (const c of all) {
+      if (o.only && !o.only.has(c.userId)) continue;
+      for (const t of c.tokens) if ((t.caps ?? []).includes(cap)) out.push({ userId: c.userId, token: t.token, platform: t.platform });
+    }
+    return out;
+  }
+
+  /**
+   * Send messages the PLANNER did not make: a data-only push that draws nothing by itself, so none of the quiet hours, daily
+   * caps or one-per-period rules apply to it — there is nothing for a person to be disturbed by. Never use it for anything a
+   * phone would show on its own.
+   */
+  async sendData(messages: PushMessage[]): Promise<Ticket[]> {
+    if (!messages.length) return [];
+    if (messages.some((m) => !m.dataOnly && !m.contentAvailable)) throw new Error("push: sendData takes data-only or content-available messages");
+    return this.sender.send(messages);
+  }
+
   /** The config one person gets, with the control plane's rules applied. */
   configFor(c: Pick<Candidate, "userId" | "tokens" | "locale">, now: number): PushPayload {
     const primary = [...c.tokens].sort((a, b) => b.updatedAt - a.updatedAt)[0];

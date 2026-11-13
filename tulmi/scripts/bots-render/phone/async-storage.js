@@ -1,6 +1,8 @@
 // AsyncStorage for the preview's phone: the living cards' "once" (BotCard: a card closed on this device stays closed)
-// is kept in the page's localStorage; every other key is forgotten, as the do-nothing stub always did.
-const KEEP = /^tz\.botcard\./;
+// and the bots' kept catalog are kept in the page's localStorage; every other key is forgotten, as the do-nothing stub
+// always did.
+// tz.botLooks.f2 is the catalog --catalog seeds: the phone's own LooksStore restores it as the copy the server last sent.
+const KEEP = /^tz\.(botcard\.|botLooks\.)/;
 const store = () => { try { return window.localStorage; } catch { return null; } };
 const known = {
   getItem: async (k) => (KEEP.test(k) && store() ? store().getItem(k) : null),

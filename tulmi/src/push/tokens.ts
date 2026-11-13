@@ -31,9 +31,13 @@ import { z } from "zod";
  * ringtone in its app group's Library/Sounds, so a ring may name it (a new tone comes with a new file name and a new cap). "PushTapSeen":
  * the app's JS tells two pushes that share one notification id apart (categoriesCore.ts tapSeenKey, by push id), so a push may carry a
  * collapse id (a follow's climb replaces itself in the tray); an older JS remembers a tap by notification id alone and would drop the
- * second push's press, so it never gets one.
+ * second push's press, so it never gets one. "LiveUpdate1": an Android binary that can draw the ongoing "Bots at work" notice
+ * (TailzuBotsUpdate.kt), so the server may send it the data-only pushes that repost it while the app is shut; without the name
+ * nothing of it is ever sent, and Android has no notice, which is what it has today. "NativeLook1": the binary carries the nlook
+ * renderer, so a silent nudge may tell it a new looks catalog is out (experience/native/catalog.ts nudgeLooks) instead of making
+ * it wait for the next bootstrap; without the name it simply finds out on its own, which is the behaviour with no nudge at all.
  */
-export const PUSH_CAPS = ["PushTimeSensitive", "BotCall", "BotRingtone", "PushTapSeen"] as const;
+export const PUSH_CAPS = ["PushTimeSensitive", "BotCall", "BotRingtone", "PushTapSeen", "LiveUpdate1", "NativeLook1"] as const;
 export type PushCap = (typeof PUSH_CAPS)[number];
 export const pushCapsOf = (v: unknown): PushCap[] =>
   Array.isArray(v) ? PUSH_CAPS.filter((c) => v.includes(c)) : [];

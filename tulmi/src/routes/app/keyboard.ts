@@ -10,6 +10,8 @@ import type { AppConfig } from "../../config.js";
 import { withControl } from "../../control/index.js";
 import { localizeKeyboardLabels } from "../../experience/i18n.js";
 import { type KeyboardPlatform, buildKeyboardConfig } from "../../experience/keyboard/config.js";
+import { withKeySkin } from "../../experience/keyboard/skin.js";
+import { KEYBOARD_BAD_HEADER, KEYBOARD_CAN_HEADER } from "../../../../shared/types/keyboardFace.js";
 import { activeRollouts, bucketFor } from "../../experience/rollout.js";
 import { withKeybotKeyboard } from "../../keybot/keyboard.js";
 import { type KeybotPrefs, getPrefs } from "../../keybot/prefs.js";
@@ -102,13 +104,22 @@ export function registerKeyboardRoutes(app: FastifyInstance, deps: KeyboardRoute
       "keyboard config",
     );
     const isIosStamp = !!stamp && stamp[1]!.toUpperCase() === "K";
-    // Keylessbord's keyboard choices go over the built config (nothing chosen → the same config, byte for byte), and
-    // under the control rules below, so the console still has the last word.
-    const kbConfig = withKeybotKeyboard(buildKeyboardConfig(personality, userId, {
+    // WHAT THIS KEYBOARD CAN DRAW, as it says so itself: "X-Tulmi-Keyboard-Can: KeySkin1". The skin expansion gates on this list
+    // instead of doing arithmetic on build stamps, so a name is a promise about the BINARY and nothing else. The bad header is the
+    // other half: the crash guard struck on that skin, so this device is sent the unskinned tree until it stops saying so.
+    const can = new Set(String(req.headers[KEYBOARD_CAN_HEADER.toLowerCase()] ?? "").split(/[,\s]+/).filter(Boolean).slice(0, 8));
+    const badSkin = String(req.headers[KEYBOARD_BAD_HEADER.toLowerCase()] ?? "").trim().slice(0, 40) || undefined;
+    // Keylessbord's keyboard choices go over the built config (nothing chosen → the same config, byte for byte), then the person's
+    // skin pick is expanded into the tree, and the control rules go over both, so the console still has the last word.
+    const kbConfig = withKeySkin(withKeybotKeyboard(buildKeyboardConfig(personality, userId, {
       platform: kbPlatform,
       quota,
       ...(isIosStamp ? { kbBuild: Number(stamp![2]) } : {}),
-    }), keybot, personality);
+    }), keybot, personality), {
+      can, ...(keybot?.skin ? { skin: keybot.skin } : {}), ...(badSkin ? { bad: badSkin } : {}),
+      // The keyboard's own testers' stage: while KEYBOARD_SKINS_USERS names anyone, only those accounts get a skinned tree.
+      ...(userId ? { userId } : {}),
+    });
     return reply.send(await localizeKeyboardLabels(withControl(req, reply, kbConfig, {
       surface: "keyboard",
       platform: kbPlatform,

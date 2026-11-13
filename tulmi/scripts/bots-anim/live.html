@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scene workbench</title>
+<style>
+  :root { color-scheme: light dark; --ink: #111; --paper: #fff; --line: #ddd; --dim: #666; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #eee; --paper: #141414; --line: #333; --dim: #999; } }
+  body { margin: 0; padding: 20px; background: var(--paper); color: var(--ink); font: 13px/1.5 ui-sans-serif, system-ui, sans-serif; }
+  h1 { font-size: 15px; margin: 0 0 14px; font-weight: 600; }
+  .row { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .panel { border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 240px; }
+  canvas { border: 1px dashed var(--line); border-radius: 8px; touch-action: none; display: block; }
+  label { display: block; margin: 8px 0 2px; color: var(--dim); }
+  button { font: inherit; padding: 3px 9px; margin: 0 6px 6px 0; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: inherit; cursor: pointer; }
+  button.on { background: var(--ink); color: var(--paper); }
+  select, input[type=range] { font: inherit; width: 100%; }
+  table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  td { padding: 1px 10px 1px 0; }
+  td.over { color: #c0392b; font-weight: 600; }
+  .note { color: var(--dim); margin-top: 10px; max-width: 420px; }
+  .bad { color: #c0392b; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Scene workbench &mdash; the window's own engine (botTiles.js)</h1>
+<div class="row">
+  <div class="panel">
+    <canvas id="stage"></canvas>
+    <div id="sizes" style="margin-top:10px"></div>
+    <div class="note">Click the pond (or whatever takes taps) to send a tap.</div>
+  </div>
+  <div class="panel">
+    <label for="moment">Moment</label>
+    <select id="moment"></select>
+    <label for="level">His voice (level) <span id="levelv">0.00</span></label>
+    <input id="level" type="range" min="0" max="1" step="0.01" value="0">
+    <label>Events</label>
+    <div id="events"></div>
+    <label>The rest</label>
+    <button id="facing">Facing: right</button>
+    <button id="reduce">Reduce Motion: off</button>
+    <button id="replay">Play again</button>
+  </div>
+  <div class="panel">
+    <label>Against SCENE_LIMITS</label>
+    <table id="meter"></table>
+    <div id="trouble" class="bad"></div>
+  </div>
+</div>
+<div class="note" id="state">loading…</div>
+
+<script src="/engine.js"></script>
+<script>
+(() => {
+  const API = window.TailzuBotTiles;
+  const LIM = API.SCENE_LIMITS || {};
+  const SIZES = [["BotTiles", 169, 132, 72], ["BotStage", 340, 200, 150], ["BotBuddy", 150, 56, 44]];
+  const canvas = document.getElementById("stage");
+  const ctx = canvas.getContext("2d");
+  const el = (id) => document.getElementById(id);
+
+  let spec = null, looks = null, tile = null, mtime = 0;
+  let sizeIx = 1, facing = 1, reduce = false, msWorst = 0, drawn = 0, frames = 0;
+
+  /** The scene a moment plays, from the catalog as written (the compiled moment keeps no name). */
+  function sceneOf(id) {
+    const tracks = ((spec.moments || {})[id] || {}).tracks || [];
+    const t = tracks.find((x) => x && x.do === "scene");
+    return t ? String(t.scene || "") : "";
+  }
+
+  function fresh() {
+    const [, w, h, floor] = SIZES[sizeIx];
+    canvas.width = w; canvas.height = h; canvas.style.width = w + "px"; canvas.style.height = h + "px";
+    tile = new API.BotTile({ kind: "custom", color: "#4F7A3A", mood: "idle", seed: 4 });
+    tile.resize(w, h, floor);
+    tile.faceSign = facing;
+    tile.still = reduce;
+    const m = looks.moment(el("moment").value);
+    if (m) tile.playMoment(m, "loop");
+    msWorst = 0; drawn = 0; frames = 0;
+    buttons();
+  }
+
+  function buttons() {
+    el("sizes").innerHTML = "";
+    SIZES.forEach(([name], i) => {
+      const b = document.createElement("button");
+      b.textContent = name; b.className = i === sizeIx ? "on" : "";
+      b.onclick = () => { sizeIx = i; fresh(); };
+      el("sizes").append(b);
+    });
+    const m = looks.moment(el("moment").value);
+    el("events").innerHTML = "";
+    const names = (m && m.events) || [];
+    if (!names.length) el("events").textContent = "this moment lists none";
+    names.forEach((name, i) => {
+      const b = document.createElement("button");
+      b.textContent = name;
+      // The moment's own clock is what a track's event sets: the same thing, by hand.
+      b.onclick = () => { tile.moEv[i] = tile.moT; };
+      el("events").append(b);
+    });
+  }
+
+  function meter() {
+    const sc = looks.scenes && looks.scenes.get(sceneOf(el("moment").value));
+    const rows = [
+      ["expression ops a frame", sc ? sc.ops : 0, LIM.ops],
+      ["dots", sc ? sc.dots : 0, LIM.dotsScene],
+      ["drawing calls", sc ? sc.draws : 0, LIM.draws],
+      ["milliseconds (worst frame here)", msWorst.toFixed(2), LIM.ms],
+      ["frames the scene drew", drawn, ""],
+    ];
+    el("meter").innerHTML = rows.map(([what, is, max]) => {
+      const over = max && Number(is) > Number(max) ? " class=\"over\"" : "";
+      return `<tr><td>${what}</td><td${over}>${is}${max ? " / " + max : ""}</td></tr>`;
+    }).join("");
+    const r = tile.looksReport ? tile.looksReport() : {};
+    const bad = [...(r.bad || []), ...(r.slow || []).map((s) => "the governor slowed " + s)];
+    el("trouble").textContent = bad.join("\n");
+  }
+
+  function frame() {
+    if (tile) {
+      tile.setLevel(Number(el("level").value));
+      const t0 = performance.now();
+      tile.step(1 / 60);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      tile.draw(ctx, 1);
+      const ms = performance.now() - t0;
+      // The first frames of a play make this play's buffers; the meter is about the frames after that.
+      if (++frames > 10 && ms > msWorst) msWorst = ms;
+      if (tile.scenesLive && tile.scenesLive()) drawn++;
+      meter();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  async function load(keep) {
+    const r = await fetch("/catalog.json");
+    const body = await r.json();
+    if (body.error) { el("state").innerHTML = '<span class="bad">' + body.error + "</span>"; return; }
+    spec = body.spec; mtime = body.mtime;
+    looks = API.compileLooks(spec);
+    const ids = Object.keys(spec.moments || {});
+    const scenes = ids.filter((id) => (spec.moments[id].format || 1) >= 2);
+    el("moment").innerHTML = ids.map((id) => `<option${scenes.includes(id) ? "" : " data-f1=1"}>${id}</option>`).join("");
+    el("moment").value = keep && ids.includes(keep) ? keep : (scenes[0] || ids[0] || "");
+    el("state").innerHTML = `v${looks.v} &middot; ${ids.length} moments, ${scenes.length} with a scene`
+      + (looks.errors.length ? ' &middot; <span class="bad">' + looks.errors.join(" | ") + "</span>" : " &middot; it compiles");
+    fresh();
+  }
+
+  el("moment").onchange = () => fresh();
+  el("level").oninput = () => { el("levelv").textContent = Number(el("level").value).toFixed(2); };
+  el("facing").onclick = () => { facing = -facing; el("facing").textContent = "Facing: " + (facing > 0 ? "right" : "left"); tile.faceSign = facing; };
+  el("reduce").onclick = () => { reduce = !reduce; el("reduce").textContent = "Reduce Motion: " + (reduce ? "on" : "off"); el("reduce").className = reduce ? "on" : ""; tile.still = reduce; };
+  el("replay").onclick = () => fresh();
+  canvas.onpointerdown = (e) => { tile.cue("tap", e.offsetX, e.offsetY); };
+
+  // Saved on disk means drawn here: the draft is re-read, recompiled and replayed, keeping the moment chosen.
+  setInterval(async () => {
+    try {
+      const s = await (await fetch("/stamp")).json();
+      if (s.mtime && s.mtime !== mtime) await load(el("moment").value);
+    } catch { /* the file is mid-save: next second */ }
+  }, 1000);
+
+  load().then(() => requestAnimationFrame(frame));
+})();
+</script>
+</body>
+</html>

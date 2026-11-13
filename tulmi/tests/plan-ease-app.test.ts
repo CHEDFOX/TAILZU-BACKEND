@@ -76,6 +76,9 @@ describe("a phone's token and Time Sensitive", () => {
   it("keeps only the caps this server reads, and keeps the token whatever the app sends", async () => {
     expect(pushCapsOf(["PushTimeSensitive", "SomethingNew", 3])).toEqual(["PushTimeSensitive"]);
     expect(pushCapsOf("PushTimeSensitive")).toEqual([]);
+    // The two names the native-looks work added. pushCapsOf FILTERS against PUSH_CAPS, so without the name here the
+    // register route drops it and devicesWith / everyoneWith would find no phone at all.
+    expect(pushCapsOf(["LiveUpdate1", "NativeLook1"])).toEqual(["LiveUpdate1", "NativeLook1"]);
     const tokens = new MemoryPushTokens();
     const app = Fastify();
     registerPushTokenRoutes(app, { resolveUser: async (a) => (a ? { id: U } : null), tokens: () => tokens });

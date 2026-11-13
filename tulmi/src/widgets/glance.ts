@@ -139,6 +139,17 @@ export interface GlanceV2 {
   words: Record<string, string>;
   /** Only for a build that asked (steps=1): lines that take over at their own minute (glanceSteps). */
   steps?: GlanceStep[];
+  /**
+   * THE SERVER-DRAWN LOOK (shared/types/nlook.ts; experience/native/*; docs/native-looks.md), added by the route for a build that
+   * says NativeLook1 and sent the catalog version it holds (`nl=`). `look` names one design per widget kind, `palette` the role
+   * map they resolve against, and `vars` the free map a design may bind.
+   *
+   * ABSENT IS THE NORMAL CASE and the safe one: no switch, no capability, no `nl`, or no design this phone can draw, and the
+   * widget draws the hand-written native view compiled into its own build — exactly what every build does today.
+   */
+  look?: Record<string, string>;
+  palette?: string;
+  vars?: Record<string, string>;
 }
 
 /**
@@ -191,6 +202,26 @@ export function x0Words(payload: WidgetsPayload, hg: boolean): X0Words {
     failed: word("x0.fill.failed", f.failed), idle: word("x0.fill.idle", f.idle),
   };
   return { k, hg, word, fill };
+}
+
+/**
+ * WHAT EACH BOARD IS CALLED. The "X0 Board" widget's settings list comes from the server, in the person's language, because
+ * the catalog has no language axis and neither phone may make a name out of a design id. A board with no name here (and no
+ * `x0.board.<id>` label in the knobs) is simply not offered, which is also how a board is taken out of the picker without a
+ * catalog change. The ids are design ids, so they carry their own dots.
+ */
+export const BOARD_NAMES: Readonly<Record<string, { en: string; hg: string }>> = {
+  "board.night": { en: "Tonight", hg: "Aaj raat" },
+};
+
+/** This person's name for one board design, or null when it has none in their language. At most 40 characters. */
+export function boardNameOf(designId: string, w: X0Words): string | null {
+  const known = BOARD_NAMES[designId];
+  // The knob wins, so a name can be changed or a new board named without a deploy. "\u0000" means the knob is not set.
+  const key = `x0.board.${designId}`;
+  const fallback = known ? (w.hg ? known.hg : known.en) : "\u0000";
+  const name = w.word(key, fallback).trim();
+  return name && name !== "\u0000" ? name.slice(0, 40) : null;
 }
 
 /** "Fix cart total rounding. Also the tax" → "Fix cart total rounding": a job's task as the widget names it (40 at most, at a word). */

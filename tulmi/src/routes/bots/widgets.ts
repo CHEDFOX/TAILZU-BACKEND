@@ -30,10 +30,14 @@ import { parseItem } from "../../widgets/items.js";
 import { livePublish, setJobChangeHook } from "../../live/writes.js";
 import { getConfig } from "../../config.js";
 import { ActivityPusher } from "../../widgets/activity.js";
+import { BotsNoticePusher } from "../../widgets/notice.js";
+import { pushEngine } from "../../push/index.js";
+import type { PushEngine } from "../../push/engine.js";
 import { ApnsSender, apnsSettingsOf, type ApnsSettings } from "../../widgets/apns.js";
 import { isHinglish } from "../../connectors/words.js";
 import { x0Words } from "../../widgets/glance.js";
-import { ACTIVITY_TOKEN_RE, activityTokenStore, JOB_ID_RE, markSeen, type ActivityTokenStore, type GlanceStore } from "../../widgets/glanceStore.js";
+import { ACTIVITY_TOKEN_RE, activityTokenStore, badLookIds, glanceStore, JOB_ID_RE, markSeen, START_TOKEN_JOB, withBadLooks, type ActivityTokenStore, type GlanceStore } from "../../widgets/glanceStore.js";
+import { designSince } from "../../experience/native/catalog.js";
 import { TOPIC, jobTopic } from "../../live/topics.js";
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
 import type { BotsAreaDeps } from "./botsArea.js";
@@ -61,6 +65,8 @@ export interface WidgetRouteOptions {
   glance?: GlanceStore;
   /** Plan Ease, whose buttons answer here too (botsBots/planEase.ts). */
   plan?: PlanEase;
+  /** The push engine the Android ongoing notice sends through; null is off, absent reads the server's own (push/index.ts). */
+  pushEngine?: Pick<PushEngine, "devicesWith" | "sendData"> | null;
 }
 
 /** Said once a process: the Live Activity pushes are off. */
@@ -110,13 +116,37 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
   const apns = o.apns === undefined ? apnsSettingsOf(getConfig()) : o.apns;
   const activityTokens = o.activityTokens ?? activityTokenStore();
   const jobs = deps.jobs;
+  const glance = o.glance ?? glanceStore();
   const pusher = apns && jobs ? new ActivityPusher({
     tokens: activityTokens, sender: o.apnsSender ?? new ApnsSender(apns, undefined, now), now,
     readJob: async (userId, jobId) => jobLite(await jobs.job(userId, jobId)),
     words: (userId, hg) => x0Words(config({ userId, signedIn: true, now: now() }), hg),
+    // The same list the glance reads, so a push and a glance never choose from different inputs.
+    badLooks: async (userId) => badLookIds((await glance.get(userId).catch(() => null)) ?? {}, designSince),
     log: { info: (m) => app.log.info(m), warn: (m) => app.log.warn(m) },
   }) : null;
-  setJobChangeHook(pusher ? (userId, jobId) => pusher.jobChanged(userId, jobId) : null);
+  // THE ANDROID ONGOING NOTICE (src/widgets/notice.ts): the same job change, told to the person's Android phones as a data-only
+  // push they draw themselves. Off unless ANDROID_BOTS_NOTICE is on, and then only to a binary that said LiveUpdate1.
+  const notice = jobs ? new BotsNoticePusher({
+    devices: async (userId) => {
+      const engine = o.pushEngine === undefined ? pushEngine() : o.pushEngine;
+      if (!engine) return [];
+      // `phones`, not `tokens`: the widgets' own answer tokens are a different thing entirely and are already named above.
+      // The language is the PROFILE's, the same one every other push to that phone is worded in, so nothing is remembered
+      // for the notice anywhere. Which design it fills is named on the glance, not here (widgets/notice.ts).
+      const phones = await engine.devicesWith(userId, "android", "LiveUpdate1", now());
+      return phones.map((p) => ({ token: p.token, hg: isHinglish(p.locale ?? "") }));
+    },
+    readJob: async (userId, jobId) => jobLite(await jobs.job(userId, jobId)),
+    words: (userId, hg) => x0Words(config({ userId, signedIn: true, now: now() }), hg),
+    send: async (messages) => {
+      const engine = o.pushEngine === undefined ? pushEngine() : o.pushEngine;
+      return engine ? engine.sendData(messages) : [];
+    },
+    now,
+    log: { info: (m) => app.log.info(m), warn: (m) => app.log.warn(m) },
+  }) : null;
+  setJobChangeHook(pusher || notice ? (userId, jobId) => { pusher?.jobChanged(userId, jobId); notice?.jobChanged(userId, jobId); } : null);
   if (!pusher && !saidApnsOff) {
     saidApnsOff = true;
     app.log.info(jobs ? "widgets: Live Activity pushes are off (APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8 and APNS_TOPIC are not all set)" : "widgets: Live Activity pushes are off (no Xode jobs)");
@@ -274,11 +304,65 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
     if (!job) return reply.code(404).send({ code: "not_found", message: "No such job." });
     try {
       const lang = header(req, "x-app-language") || (typeof b.language === "string" ? b.language : "");
-      await activityTokens.put(user.id, jobId, token, b.env === "sandbox" || b.env === "production" ? b.env : apns!.env, isHinglish(lang), now());
+      // `nl` is the nlook catalog version this phone HOLDS. A design is named in a push only when its `since` is at or below it,
+      // so a push can never name a design the phone has not downloaded. Only a NativeLook1 build sends one.
+      await activityTokens.put(user.id, jobId, token, b.env === "sandbox" || b.env === "production" ? b.env : apns!.env, isHinglish(lang), now(), nlOf(b.nl));
     } catch (err) {
       req.log.error({ err: (err as Error)?.name }, "widgets: activity token not kept");
       return reply.code(503).send({ code: "failed", message: "Couldn't do that just now." });
     }
     return reply.header("cache-control", "no-store").send({ ok: true, push: true });
   });
+
+  // PUSH-TO-START (native/SPEC.md section 1.3): the person's own token for starting a "Bots at work" activity while their app is
+  // shut. One per person, not per job, because it starts an activity for a job that has none. iOS 17.2 and later only, and off
+  // unless ACTIVITY_PUSH_START is on — with the switch off nothing is kept, so turning it on later starts from nothing.
+  app.post("/v1/widgets/activity-start-token", tight(20), async (req, reply) => {
+    const user = await who(req, reply);
+    if (!user) return reply;
+    const b = bodyOf(req.body);
+    const on = getConfig().ACTIVITY_PUSH_START === true;
+    if (b.token === undefined || b.token === null) {
+      await activityTokens.drop(user.id, START_TOKEN_JOB).catch(() => undefined);
+      return reply.header("cache-control", "no-store").send({ ok: true, push: false, removed: true });
+    }
+    const token = typeof b.token === "string" ? b.token.trim().toLowerCase() : "";
+    if (!ACTIVITY_TOKEN_RE.test(token)) return reply.code(400).send({ code: "bad_request", message: "token is the push-to-start token, in hex." });
+    if (b.env !== undefined && b.env !== "production" && b.env !== "sandbox") return reply.code(400).send({ code: "bad_request", message: "env is production or sandbox." });
+    if (!on || !pusher || (b.platform !== undefined && b.platform !== "ios")) return reply.header("cache-control", "no-store").send({ ok: true, push: false });
+    try {
+      const lang = header(req, "x-app-language") || (typeof b.language === "string" ? b.language : "");
+      await activityTokens.put(user.id, START_TOKEN_JOB, token, b.env === "sandbox" || b.env === "production" ? b.env : apns!.env, isHinglish(lang), now(), nlOf(b.nl));
+    } catch (err) {
+      req.log.error({ err: (err as Error)?.name }, "widgets: start token not kept");
+      return reply.code(503).send({ code: "failed", message: "Couldn't do that just now." });
+    }
+    // `push` is the literal `true` only when kept. The phone saves its key on `push === true` alone (pushToStart.ts).
+    return reply.header("cache-control", "no-store").send({ ok: true, push: true });
+  });
+
+  // A DESIGN THAT KILLED A WIDGET. The widget writes a crash marker before it builds a design's root view and clears it after the
+  // snapshot pass; a marker from another launch is a strike, and two strikes mark the design bad (native/SPEC.md 3.7). The app
+  // tells us here, and the server stops naming that design for this person at all — their other phone does not get to find out
+  // the hard way too. Nothing but ids travels: no crash words, no stack, nothing about what was on the screen.
+  app.post("/v1/widgets/looks/bad", tight(10), async (req, reply) => {
+    const user = await who(req, reply);
+    if (!user) return reply;
+    const raw = bodyOf(req.body).ids;
+    const ids = (Array.isArray(raw) ? raw : []).filter((x): x is string => typeof x === "string").slice(0, 8);
+    if (!ids.length) return reply.code(400).send({ code: "bad_request", message: "ids are the design ids a widget marked bad." });
+    try {
+      const after = await glance.update(user.id, (st) => withBadLooks(st, ids, now(), designSince));
+      req.log.warn({ ids }, "widgets: designs marked bad by a phone");
+      return reply.header("cache-control", "no-store").send({ ok: true, bad: Object.keys(after.badLooks ?? {}) });
+    } catch {
+      return reply.code(503).send({ code: "failed", message: "Couldn't do that just now." });
+    }
+  });
+}
+
+/** The nlook catalog version a phone says it holds: a whole number from 0, and never a silly one. */
+function nlOf(v: unknown): number {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 1_000_000) : 0;
 }
