@@ -4,8 +4,8 @@ An AI reads every item added to or changed on a person's Plan and decides whethe
 calling", `docs/plan-ease.md` "Calls"), and when. Everything it judges necessary gets the call. This page is for the owner: what it
 judges, the rules that stay as a floor, the prompt, the table, the logs, and how to roll it out.
 
-It is **off** (`PLAN_CALL_JUDGE=false`) and works for nobody until `PLAN_CALL_JUDGE_ALLOW` names people (comma-separated user ids; empty
-is nobody, `*` is everyone). Nothing in the code turns it on.
+It is **on for everyone** by default (`PLAN_CALL_JUDGE=true`, `PLAN_CALL_JUDGE_ALLOW=*`). `PLAN_CALL_JUDGE=false` in the server's .env
+turns it off; `PLAN_CALL_JUDGE_ALLOW` can narrow it to some people (comma-separated user ids; empty is nobody, `*` is everyone).
 
 Code: `tulmi/src/botsBots/planCallJudge.ts` (the service), `planCallJudgeWords.ts` (the prompt, the answer, the timing: pure),
 `planCallJudgeStore.ts` (the table), `routes/bots/planCallJudge.ts` (boot wiring, no routes), migration

@@ -953,12 +953,13 @@ const EnvSchema = z.object({
   /**
    * THE CALL JUDGE (botsBots/planCallJudge.ts; docs/plan-call-judge.md): with the person's AI yes and their Calls on, an AI reads every
    * item added to or changed on their Plan and decides whether it is important enough to phone them about, and when. Needs migration
-   * 0086. Off: only the floor rings (a leave-by, a bill due today), exactly as today.
+   * 0086. On for everyone by default (the owner's call: every item worth a call gets one). Off: only the floor rings (a leave-by, a bill
+   * due today).
    *   PLAN_CALL_JUDGE        the switch
    *   PLAN_CALL_JUDGE_ALLOW  who it works for while it is on, comma-separated user ids. Empty: nobody. "*": everyone
    */
-  PLAN_CALL_JUDGE: bool(false),
-  PLAN_CALL_JUDGE_ALLOW: z.string().trim().default(""),
+  PLAN_CALL_JUDGE: bool(true),
+  PLAN_CALL_JUDGE_ALLOW: z.string().trim().default("*"),
   /**
    * PLAN_V2_FOLLOW   follow-through (botsBots/planFollow.ts; docs/plan-ease.md "Follow-through"): must-not-miss items and items with
    *                  people on them are followed until someone says done (a push, a louder push, X0 is calling, a real phone call for
