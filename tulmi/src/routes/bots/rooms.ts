@@ -4,7 +4,7 @@
  *
  *   GET    /v1/rooms/:id                       the host's: one call, who is in it, who waits at its door
  *   PUT    /v1/rooms/:id                       { lobby?, title? }: the lobby turned off lets in whoever waits
- *   POST   /v1/rooms/:id/join                  { sdp, audioMid, videoMid? }: the host takes a seat -> { seat, answer, people, … }
+ *   POST   /v1/rooms/:id/join                  the host takes a seat -> { seat, identity, name, host, room, people }
  *   POST   /v1/rooms/:id/admit                 { knock }: someone at the door let in
  *   POST   /v1/rooms/:id/deny                  { knock }: not let in
  *   POST   /v1/rooms/:id/remove                { identity }: someone sent away from the call
@@ -13,12 +13,17 @@
  *   GET    /v1/rooms/guest/:code               THE LINK'S, for anyone holding it: whose call, its title, whether it is on and full
  *   POST   /v1/rooms/guest/:code/knock         { name }: asks to come in -> { knock, state }
  *   GET    /v1/rooms/guest/:code/knock/:key    the answer: waiting, admitted, denied, gone
- *   POST   /v1/rooms/guest/:code/join          { knock, sdp, audioMid, videoMid? }: a guest that was let in takes a seat
+ *   POST   /v1/rooms/guest/:code/join          { knock }: a guest that was let in takes a seat
  *
+ *   POST   /v1/rooms/seat/publish              { seat, sdp, audioMid?, videoMid? }: a microphone or camera turned on -> { answer }
  *   POST   /v1/rooms/seat/pull                 { seat, want: [{ identity, kind }] }: someone else's tracks -> the SFU's offer
  *   POST   /v1/rooms/seat/answer               { seat, sdp }: the answer to that offer
  *   POST   /v1/rooms/seat/live                 { seat, audio?, video? }: the heartbeat -> who is in, who waits, whether they are still in
  *   POST   /v1/rooms/seat/leave                { seat }: hung up
+ *
+ * JOINING CAPTURES NOTHING. A seat starts with no tracks of its own, so no light comes on for walking into a call; the microphone and
+ * the camera are published by `/seat/publish` when the person turns one on, and the permission for them was asked once, after
+ * onboarding, not here.
  *
  * A SEAT IS A BEARER. The four seat routes need nothing else: the seat says which call and which person, and it is handed out only by a
  * join that was allowed (the host signed in, or a guest the host let in). It is never drawn on a screen and only its hash is stored.
@@ -31,13 +36,13 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { getProfile } from "../../profile/store.js";
 import { codeOf } from "../../rooms/link.js";
 import { SDP_MAX } from "../../rooms/sfu.js";
-import type { GuestRoomView, KnockAnswer, PullView, RoomView, SeatLive, SeatView } from "../../rooms/types.js";
+import type { GuestRoomView, KnockAnswer, PublishView, PullView, RoomView, SeatLive, SeatView } from "../../rooms/types.js";
 
 /** What the routes need of src/rooms/service.ts's RoomService. */
 export interface RoomsRoutesService {
   room(userId: string, id: string): Promise<RoomView | null>;
   set(userId: string, id: string, patch: { lobby?: boolean; title?: unknown }): Promise<RoomView | null>;
-  join(userId: string, id: string, o: { sdp: string; audioMid: string; videoMid?: string; name?: string }): Promise<SeatView | null>;
+  join(userId: string, id: string, o: { name?: string }): Promise<SeatView | null>;
   admit(userId: string, id: string, knock: string): Promise<RoomView | null>;
   deny(userId: string, id: string, knock: string): Promise<RoomView | null>;
   remove(userId: string, id: string, identity: string): Promise<RoomView | null>;
@@ -45,7 +50,8 @@ export interface RoomsRoutesService {
   guest(code: string): Promise<GuestRoomView | null>;
   knock(code: string, name: unknown): Promise<KnockAnswer | null>;
   knockAnswer(code: string, key: string): Promise<KnockAnswer>;
-  joinAsGuest(code: string, key: string, o: { sdp: string; audioMid: string; videoMid?: string }): Promise<SeatView | null>;
+  joinAsGuest(code: string, key: string): Promise<SeatView | null>;
+  turnOn(seat: string, o: { sdp: string; audioMid?: string; videoMid?: string }): Promise<PublishView>;
   pull(seat: string, want: Array<{ identity: string; kind: "audio" | "video" }>): Promise<PullView>;
   answer(seat: string, sdp: string): Promise<void>;
   live(seat: string, o: { audio?: boolean; video?: boolean }): Promise<SeatLive>;
@@ -104,13 +110,18 @@ export function registerRoomsRoutes(app: FastifyInstance, deps: RoomsRouteDeps):
 
   const bodyOf = (req: FastifyRequest): Record<string, unknown> => (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
 
-  /** The offer an app sends to take a seat, checked before the service hears of it. */
-  const offerOf = (b: Record<string, unknown>): { sdp: string; audioMid: string; videoMid?: string } | null => {
+  /** The offer an app sends when it turns its microphone or camera on, checked before the service hears of it. */
+  const offerOf = (b: Record<string, unknown>): { sdp: string; audioMid?: string; videoMid?: string } | null => {
     const sdp = typeof b.sdp === "string" ? b.sdp : "";
-    const audioMid = typeof b.audioMid === "string" ? b.audioMid : "";
-    if (!sdp || sdp.length > SDP_MAX || !MID.test(audioMid)) return null;
-    if (b.videoMid !== undefined && (typeof b.videoMid !== "string" || !MID.test(b.videoMid))) return null;
-    return { sdp, audioMid, ...(typeof b.videoMid === "string" ? { videoMid: b.videoMid } : {}) };
+    if (!sdp || sdp.length > SDP_MAX) return null;
+    const out: { sdp: string; audioMid?: string; videoMid?: string } = { sdp };
+    for (const k of ["audioMid", "videoMid"] as const) {
+      if (b[k] === undefined) continue;
+      if (typeof b[k] !== "string" || !MID.test(b[k] as string)) return null;
+      out[k] = b[k] as string;
+    }
+    // One of the two, or there is nothing to turn on.
+    return out.audioMid || out.videoMid ? out : null;
   };
 
   const begin = async (req: FastifyRequest, reply: FastifyReply): Promise<{ user: AuthedUser; s: RoomsRoutesService; id: string } | null> => {
@@ -148,11 +159,9 @@ export function registerRoomsRoutes(app: FastifyInstance, deps: RoomsRouteDeps):
   app.post(`${BASE}/:id/join`, at("join"), async (req, reply) => {
     const got = await begin(req, reply);
     if (!got) return reply;
-    const offer = offerOf(bodyOf(req));
-    if (!offer) return bad(reply, "That call couldn't be started. Try again.");
     try {
       const name = await nameOf(got.user).catch(() => "");
-      const seat = await got.s.join(got.user.id, got.id, { ...offer, ...(name ? { name } : {}) });
+      const seat = await got.s.join(got.user.id, got.id, name ? { name } : {});
       return seat ? send(reply, seat, 201) : notFound(reply);
     } catch (err) { return fail(reply, err); }
   });
@@ -217,10 +226,8 @@ export function registerRoomsRoutes(app: FastifyInstance, deps: RoomsRouteDeps):
     const b = bodyOf(req);
     const key = typeof b.knock === "string" ? b.knock : "";
     if (!KNOCK.test(key)) return bad(reply, "Ask to join first.");
-    const offer = offerOf(b);
-    if (!offer) return bad(reply, "That call couldn't be started. Try again.");
     try {
-      const seat = await got.s.joinAsGuest(got.code, key, offer);
+      const seat = await got.s.joinAsGuest(got.code, key);
       return seat ? send(reply, seat, 201) : noCall(reply);
     } catch (err) { return fail(reply, err); }
   });
@@ -236,6 +243,14 @@ export function registerRoomsRoutes(app: FastifyInstance, deps: RoomsRouteDeps):
     if (!SEAT.test(seat)) { reply.code(404).send({ code: "not_found", message: "You are not in this call." }); return null; }
     return { s, seat, b };
   };
+
+  app.post(`${BASE}/seat/publish`, at("seat"), async (req, reply) => {
+    const got = await seatBegin(req, reply);
+    if (!got) return reply;
+    const offer = offerOf(got.b);
+    if (!offer) return bad(reply, "That couldn't be turned on. Try again.");
+    try { return send(reply, await got.s.turnOn(got.seat, offer)); } catch (err) { return fail(reply, err); }
+  });
 
   app.post(`${BASE}/seat/pull`, at("seat"), async (req, reply) => {
     const got = await seatBegin(req, reply);

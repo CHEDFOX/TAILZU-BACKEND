@@ -94,12 +94,14 @@ describe("the mail page's calls", () => {
 });
 
 describe("one call", () => {
-  it("joins into the call for a client that has the block", async () => {
+  it("joins into the call for a client that has the block, one way in", async () => {
     const p = await callScreen({ room: ROOM(), blocks: ["call"] });
     expect(p.lint).toEqual([]);
     const opens = p.every().filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.room") as Array<{ params: Record<string, string> }>;
-    expect(opens.map((o) => o.params)).toEqual([{ b: "leaf-co", r: RID, video: "1" }, { b: "leaf-co", r: RID, video: "0" }]);
-    expect(p.texts).toEqual(expect.arrayContaining(["Join with video", "Audio only"]));
+    // Everyone walks in muted and dark, so there is nothing to choose before joining.
+    expect(opens.map((o) => o.params)).toEqual([{ b: "leaf-co", r: RID }]);
+    expect(p.texts).toContain("Join the call");
+    expect(p.texts).not.toContain("Audio only");
   });
 
   it("says joining comes with the app's next update for a client without it, and never a web page", async () => {
@@ -167,21 +169,23 @@ describe("one call", () => {
 describe("in a call", () => {
   type Spec = ActionSpec & Record<string, unknown>;
   const inCall = (o: Parameters<typeof build>[0] = {}) =>
-    build({ screen: "bots.mail.room", params: { b: "leaf-co", r: RID, video: "1" }, blocks: ["call"], room: ROOM(), ...o });
+    build({ screen: "bots.mail.room", params: { b: "leaf-co", r: RID }, blocks: ["call"], room: ROOM(), ...o });
   const parts = async (o: Parameters<typeof build>[0] = {}) => {
     const p = await inCall(o);
     const s = p.s as unknown as { state: Record<string, unknown>; actions: Record<string, Spec>; needs?: string[] };
     return { p, nodes: p.nodes, state: s.state, actions: s.actions, needs: s.needs ?? [] };
   };
 
-  it("takes a seat as it opens, and says it needs the call block", async () => {
+  it("takes a seat as it opens, with nothing captured, and says it needs the call block", async () => {
     const { p, nodes, state, actions, needs } = await parts();
     expect(p.lint).toEqual([]);
     expect(needs).toContain("call");
-    expect(actions.start).toMatchObject({ kind: "call.join", join: `/v1/rooms/${RID}/join`, statePath: "c", video: true });
+    expect(actions.start).toMatchObject({ kind: "call.join", join: `/v1/rooms/${RID}/join`, statePath: "c" });
+    expect(actions.start).not.toHaveProperty("video");
     expect((actions.start.onEnd as Spec)).toMatchObject({ kind: "navigate", screenId: "bots.mail.call", replace: true });
     expect(nodes.some((n) => (n.on as Record<string, unknown> | undefined)?.onAppear === "start")).toBe(true);
-    expect(state.c).toMatchObject({ phase: "connecting", mic: true, cam: true });
+    // Muted and dark: joining opens no microphone and no camera.
+    expect(state.c).toMatchObject({ phase: "connecting", mic: false, cam: false });
     // The seat is never in the screen's state.
     expect(JSON.stringify(state)).not.toContain("seat");
   });
@@ -196,10 +200,11 @@ describe("in a call", () => {
     expect(callers.some((n) => JSON.stringify((n.props as Record<string, unknown>)?.who) === JSON.stringify({ $: "item.identity" }))).toBe(true);
   });
 
-  it("starts an audio call with the camera off", async () => {
-    const { actions, state } = await parts({ params: { b: "leaf-co", r: RID, video: "0" } });
-    expect(actions.start).toMatchObject({ video: false });
-    expect(state.c).toMatchObject({ cam: false });
+  it("says plainly when a device cannot be reached, rather than showing a permission card", async () => {
+    const { p, actions } = await parts();
+    // The permissions were granted once, after onboarding, so there is no card here.
+    expect((actions.start.onBlocked as Spec).kind).toBe("toast");
+    expect(p.texts).not.toContain("Let X0 Bot hear you");
   });
 
   it("works the call from the server's own buttons", async () => {
@@ -225,13 +230,6 @@ describe("in a call", () => {
     // Who waits comes from the call, not from reading the page again.
     expect(nodes.some((n) => n.type === "Each" && JSON.stringify((n.props as Record<string, unknown>)?.data) === JSON.stringify({ $: "state.c.waiting" }))).toBe(true);
     expect(endpoints(p.every()).map((c) => c.path)).toEqual(expect.arrayContaining([`/v1/rooms/${RID}/admit`, `/v1/rooms/${RID}/deny`]));
-  });
-
-  it("asks for the microphone when it was refused", async () => {
-    const { p, actions, state } = await parts();
-    expect(actions.start.onBlocked).toEqual({ kind: "setState", path: "micCard", value: true });
-    expect(state.micCard).toBe(false);
-    expect(p.texts).toContain("Let X0 Bot hear you");
   });
 
   it("has nothing to join for a call that ended or isn't there", async () => {

@@ -57,8 +57,7 @@ export interface SeatView {
   name: string;
   host: boolean;
   room: { id: string; title: string; host: string };
-  /** The answer to the offer they sent: their microphone and camera are now live. */
-  answer: string;
+  /** Nothing is captured by joining: their microphone and camera stay shut until they turn one on (the seat's `publish` route). */
   /** Everyone else in the call, and what they are sending. */
   people: PersonView[];
 }
@@ -72,6 +71,9 @@ export interface SeatLive {
   /** The seat is no longer in the call (sent away, the call ended, or it timed out). */
   gone?: boolean;
 }
+
+/** Their microphone or camera turned on for the first time: the answer to the offer their new transceiver made. */
+export interface PublishView { answer: string }
 
 /** Someone else's tracks pulled into a seat's session: the SFU's offer to answer, when it sent one. */
 export interface PullView {

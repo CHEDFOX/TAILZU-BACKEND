@@ -31,19 +31,20 @@ const RID = "3f2b8c1e-5a47-4d0e-9b61-0c7d2e8a1f44";
 const CODE = "abc-defg-hjk";
 const SEAT = `${RID}.AAAABBBBCCCCDDDDEEEE`;
 const VIEW = { id: RID, title: "Order 1234" };
-const OFFER = { sdp: "v=0 OFFER", audioMid: "0", videoMid: "1" };
+const OFFER = { sdp: "v=0 OFFER", audioMid: "0" };
 
 function fakeService(o: { fail?: boolean } = {}) {
   const calls: Array<{ fn: string; args: unknown[] }> = [];
   const rec = <T>(fn: string, out: T) => async (...args: unknown[]): Promise<T | null> => {
     calls.push({ fn, args });
     if (o.fail) throw new RoomsError(409, "The call is full.", "room_full");
-    return args[1] === RID || fn.startsWith("knock") || ["guest", "pull", "answer", "live", "leave", "joinAsGuest"].includes(fn) ? out : null;
+    return args[1] === RID || fn.startsWith("knock") || ["guest", "pull", "answer", "live", "leave", "joinAsGuest", "turnOn"].includes(fn) ? out : null;
   };
   const service = {
     room: rec("room", VIEW), set: rec("set", VIEW), admit: rec("admit", VIEW), deny: rec("deny", VIEW), remove: rec("remove", VIEW), end: rec("end", VIEW),
-    join: rec("join", { seat: SEAT, answer: "ANSWER", identity: "h_1", people: [] }),
-    joinAsGuest: rec("joinAsGuest", { seat: SEAT, answer: "ANSWER", identity: "g_1", people: [] }),
+    join: rec("join", { seat: SEAT, identity: "h_1", people: [] }),
+    joinAsGuest: rec("joinAsGuest", { seat: SEAT, identity: "g_1", people: [] }),
+    turnOn: rec("turnOn", { answer: "ANSWER" }),
     guest: async (code: string) => { calls.push({ fn: "guest", args: [code] }); return code === CODE ? { title: "Order 1234", host: "Leaf & Co", status: "open", lobby: true, full: false } : null; },
     knock: rec("knock", { knock: "k".repeat(24), state: "waiting" }),
     knockAnswer: async (code: string, key: string) => { calls.push({ fn: "knockAnswer", args: [code, key] }); return { knock: key, state: "waiting" }; },
@@ -76,9 +77,10 @@ describe("the host's routes", () => {
     const { a, calls } = await app();
     expect((await a.inject({ method: "GET", url: `/v1/rooms/${RID}`, headers: { authorization: "Bearer aanya" } })).json()).toEqual({ room: VIEW });
     await a.inject({ method: "PUT", url: `/v1/rooms/${RID}`, payload: { lobby: false, title: "New", people: [] } });
-    const joined = await a.inject({ method: "POST", url: `/v1/rooms/${RID}/join`, payload: { ...OFFER, name: "Someone Else" } });
+    // Joining carries no offer at all: nothing is captured until the person turns something on.
+    const joined = await a.inject({ method: "POST", url: `/v1/rooms/${RID}/join`, payload: { name: "Someone Else", sdp: "v=0 SNEAKY" } });
     expect(joined.statusCode).toBe(201);
-    expect(joined.json()).toMatchObject({ seat: SEAT, answer: "ANSWER" });
+    expect(joined.json()).toMatchObject({ seat: SEAT });
     expect(joined.headers["cache-control"]).toBe("no-store");
     await a.inject({ method: "POST", url: `/v1/rooms/${RID}/admit`, payload: { knock: "abcdefghij12" } });
     await a.inject({ method: "POST", url: `/v1/rooms/${RID}/deny`, payload: { knock: "abcdefghij12" } });
@@ -87,8 +89,8 @@ describe("the host's routes", () => {
     expect(calls.map((c) => [c.fn, ...c.args])).toEqual([
       ["room", "aanya", RID],
       ["set", "dev-user", RID, { lobby: false, title: "New" }],
-      // The name is the person's own profile's, never what the body asked for.
-      ["join", "dev-user", RID, { sdp: "v=0 OFFER", audioMid: "0", videoMid: "1", name: "Aanya" }],
+      // The name is the person's own profile's, never what the body asked for; and no offer rides in on a join.
+      ["join", "dev-user", RID, { name: "Aanya" }],
       ["admit", "dev-user", RID, "abcdefghij12"],
       ["deny", "dev-user", RID, "abcdefghij12"],
       ["remove", "dev-user", RID, "g_abc"],
@@ -102,9 +104,10 @@ describe("the host's routes", () => {
     expect((await a.inject({ method: "PUT", url: `/v1/rooms/${RID}`, payload: { lobby: "no" } })).statusCode).toBe(400);
     expect((await a.inject({ method: "POST", url: `/v1/rooms/${RID}/admit`, payload: { knock: "x" } })).statusCode).toBe(400);
     expect((await a.inject({ method: "POST", url: `/v1/rooms/${RID}/remove`, payload: { identity: "a b" } })).statusCode).toBe(400);
-    // An offer with no SDP, no mid, a mid that cannot be one, or an SDP too big to be one.
-    for (const body of [{}, { sdp: "x" }, { sdp: "x", audioMid: "a b" }, { ...OFFER, videoMid: "!!" }, { sdp: "x".repeat(70_000), audioMid: "0" }]) {
-      expect((await a.inject({ method: "POST", url: `/v1/rooms/${RID}/join`, payload: body })).statusCode).toBe(400);
+    // An offer with no SDP, no mid at all, a mid that cannot be one, or an SDP too big to be one: refused on the publish route.
+    for (const body of [{ seat: SEAT }, { seat: SEAT, sdp: "x" }, { seat: SEAT, sdp: "x", audioMid: "a b" },
+      { seat: SEAT, ...OFFER, videoMid: "!!" }, { seat: SEAT, sdp: "x".repeat(70_000), audioMid: "0" }]) {
+      expect((await a.inject({ method: "POST", url: "/v1/rooms/seat/publish", payload: body })).statusCode).toBe(400);
     }
     expect(calls).toEqual([]);
     const other = "11111111-2222-4333-8444-555555555555";
@@ -126,12 +129,12 @@ describe("the link's routes", () => {
     expect((await a.inject({ method: "GET", url: `/v1/rooms/guest/${CODE.toUpperCase()}` })).json()).toMatchObject({ room: { host: "Leaf & Co" } });
     expect((await a.inject({ method: "POST", url: `/v1/rooms/guest/${CODE}/knock`, payload: { name: "Ravi" } })).statusCode).toBe(201);
     expect((await a.inject({ method: "GET", url: `/v1/rooms/guest/${CODE}/knock/${"k".repeat(24)}` })).json()).toMatchObject({ state: "waiting" });
-    const seated = await a.inject({ method: "POST", url: `/v1/rooms/guest/${CODE}/join`, payload: { knock: "k".repeat(24), ...OFFER } });
+    const seated = await a.inject({ method: "POST", url: `/v1/rooms/guest/${CODE}/join`, payload: { knock: "k".repeat(24) } });
     expect(seated.statusCode).toBe(201);
     expect(seated.json()).toMatchObject({ seat: SEAT });
     expect(calls.map((c) => [c.fn, ...c.args])).toEqual([
       ["guest", CODE], ["knock", CODE, "Ravi"], ["knockAnswer", CODE, "k".repeat(24)],
-      ["joinAsGuest", CODE, "k".repeat(24), { sdp: "v=0 OFFER", audioMid: "0", videoMid: "1" }],
+      ["joinAsGuest", CODE, "k".repeat(24)],
     ]);
   });
 
@@ -142,7 +145,7 @@ describe("the link's routes", () => {
     expect((await a.inject({ method: "POST", url: `/v1/rooms/guest/${CODE}/knock`, payload: { name: "  " } })).statusCode).toBe(400);
     expect((await a.inject({ method: "GET", url: `/v1/rooms/guest/${CODE}/knock/x` })).json()).toEqual({ knock: "x", state: "gone" });
     // A guest cannot seat themselves without the knock they were let in on.
-    expect((await a.inject({ method: "POST", url: `/v1/rooms/guest/${CODE}/join`, payload: OFFER })).statusCode).toBe(400);
+    expect((await a.inject({ method: "POST", url: `/v1/rooms/guest/${CODE}/join`, payload: {} })).statusCode).toBe(400);
     expect(calls.map((c) => c.fn)).toEqual(["guest"]);
   });
 });
@@ -152,11 +155,13 @@ describe("the seat's routes", () => {
     const { a, calls } = await app();
     expect((await a.inject({ method: "POST", url: "/v1/rooms/seat/pull", payload: { seat: SEAT, want: [{ identity: "g_1", kind: "audio" }] } })).json())
       .toMatchObject({ offer: "THEIR-OFFER", mustAnswer: true });
+    expect((await a.inject({ method: "POST", url: "/v1/rooms/seat/publish", payload: { seat: SEAT, ...OFFER } })).json()).toEqual({ answer: "ANSWER" });
     expect((await a.inject({ method: "POST", url: "/v1/rooms/seat/answer", payload: { seat: SEAT, sdp: "MY-ANSWER" } })).json()).toEqual({ ok: true });
     expect((await a.inject({ method: "POST", url: "/v1/rooms/seat/live", payload: { seat: SEAT, video: false } })).json()).toMatchObject({ status: "live" });
     expect((await a.inject({ method: "POST", url: "/v1/rooms/seat/leave", payload: { seat: SEAT } })).json()).toEqual({ ok: true });
     expect(calls.map((c) => [c.fn, ...c.args])).toEqual([
       ["pull", SEAT, [{ identity: "g_1", kind: "audio" }]],
+      ["turnOn", SEAT, { sdp: "v=0 OFFER", audioMid: "0" }],
       ["answer", SEAT, "MY-ANSWER"],
       ["live", SEAT, { video: false }],
       ["leave", SEAT],

@@ -82,30 +82,47 @@ describe("a call", () => {
 });
 
 describe("taking a seat", () => {
-  it("publishes the host's own tracks and hands back the answer, naming no account", async () => {
+  it("opens no microphone and no camera, and names no account", async () => {
     const { s, log, store } = rig();
     const r = await s.make(AANYA, { host: "Leaf & Co" });
-    const seat = (await s.join(AANYA, r.id, { ...OFFER, name: "Aanya" }))!;
-    expect(seat).toMatchObject({ identity: hostIdentity(AANYA), name: "Aanya", host: true, answer: "ANSWER-sess-1", people: [] });
+    const seat = (await s.join(AANYA, r.id, { name: "Aanya" }))!;
+    expect(seat).toMatchObject({ identity: hostIdentity(AANYA), name: "Aanya", host: true, people: [] });
     expect(seat.identity).not.toContain(AANYA);
     expect(seat.seat.startsWith(`${r.id}.`)).toBe(true);
-    expect(log).toEqual(["new sess-1", `publish sess-1 ${hostIdentity(AANYA)}-audio,${hostIdentity(AANYA)}-video`]);
+    // Nothing is published by joining: a session, and that is all. So walking into a call lights no camera.
+    expect(log).toEqual(["new sess-1"]);
     // The bearer is kept only as a hash, and the SFU session never reaches a screen.
     const row = (await store.get(r.id))!;
     expect(row.people[0]!.seatHash).toBe(seatHash(seat.seat));
     expect(JSON.stringify(row.people)).not.toContain(seat.seat.split(".")[1]);
     expect(JSON.stringify(await s.room(AANYA, r.id))).not.toContain("sess-1");
-    expect((await s.room(AANYA, r.id))!).toMatchObject({ status: "live", people: [{ name: "Aanya", role: "host", audio: `${hostIdentity(AANYA)}-audio` }] });
+    const me = (await s.room(AANYA, r.id))!.people[0]!;
+    expect(me).toMatchObject({ name: "Aanya", role: "host" });
+    expect(me).not.toHaveProperty("audio");
+    expect(me).not.toHaveProperty("video");
   });
 
-  it("takes an audio-only seat, and refuses an offer that is not one", async () => {
-    const { s } = rig();
+  it("publishes a microphone only when the person turns it on, and refuses an offer that is not one", async () => {
+    const { s, log } = rig();
     const r = await s.make(AANYA, { host: "Leaf & Co" });
-    const seat = (await s.join(AANYA, r.id, { sdp: "OFFER", audioMid: "0" }))!;
-    expect((await s.room(AANYA, r.id))!.people[0]).not.toHaveProperty("video");
-    expect(seat.answer).toBe("ANSWER-sess-1");
-    await expect(s.join(AANYA, r.id, { sdp: "", audioMid: "0" })).rejects.toMatchObject({ status: 400 });
-    await expect(s.join(AANYA, r.id, { sdp: "x", audioMid: "" })).rejects.toMatchObject({ status: 400 });
+    const seat = (await s.join(AANYA, r.id))!;
+    log.length = 0;
+
+    const out = await s.turnOn(seat.seat, { sdp: "OFFER", audioMid: "0" });
+    expect(out.answer).toBe("ANSWER-sess-1");
+    expect(log).toEqual([`publish sess-1 ${hostIdentity(AANYA)}-audio`]);
+    // Now the others may pull it; the camera is still shut.
+    const me = (await s.room(AANYA, r.id))!.people[0]!;
+    expect(me.audio).toBe(`${hostIdentity(AANYA)}-audio`);
+    expect(me).not.toHaveProperty("video");
+
+    // The camera, later and on its own.
+    await s.turnOn(seat.seat, { sdp: "OFFER-2", videoMid: "1" });
+    expect((await s.room(AANYA, r.id))!.people[0]!.video).toBe(`${hostIdentity(AANYA)}-video`);
+
+    await expect(s.turnOn(seat.seat, { sdp: "", audioMid: "0" })).rejects.toMatchObject({ status: 400 });
+    await expect(s.turnOn(seat.seat, { sdp: "OFFER" })).rejects.toMatchObject({ status: 400 });
+    await expect(s.turnOn(`${r.id}.notaseat`, { sdp: "OFFER", audioMid: "0" })).rejects.toMatchObject({ status: 404 });
   });
 
   it("replaces a person's own seat when their app joins again", async () => {
@@ -192,6 +209,7 @@ describe("in the call", () => {
     const r = await s.make(AANYA, { host: "Leaf & Co" });
     const host = (await s.join(AANYA, r.id, OFFER))!;
     const guest = await guestIn(r0, r.code, "Ravi");
+    await s.turnOn(guest.seat, { sdp: "G-OFFER", audioMid: "0" });
 
     log.length = 0;
     const out = await s.pull(host.seat, [{ identity: guest.identity, kind: "audio" }, { identity: host.identity, kind: "audio" }]);
@@ -213,6 +231,7 @@ describe("in the call", () => {
     const host = (await s.join(AANYA, r.id, OFFER))!;
     const guest = await guestIn(r0, r.code, "Ravi");
 
+    await s.turnOn(host.seat, { sdp: "OFFER", audioMid: "0", videoMid: "1" });
     const live = await s.live(host.seat);
     expect(live.status).toBe("live");
     expect(live.people.map((p) => p.name)).toEqual(["Ravi"]);
@@ -296,6 +315,7 @@ describe("sending away and ending", () => {
     const r = await s.make(AANYA, { host: "Leaf & Co" });
     const host = (await s.join(AANYA, r.id, OFFER))!;
     const guest = await guestIn(r0, r.code, "Ravi");
+    await s.turnOn(guest.seat, { sdp: "G-OFFER", audioMid: "0" });
     const v = (await s.remove(AANYA, r.id, guest.identity))!;
     expect(v.people.map((p) => p.name)).toEqual(["Leaf & Co"]);
     expect((await s.live(guest.seat)).gone).toBe(true);
