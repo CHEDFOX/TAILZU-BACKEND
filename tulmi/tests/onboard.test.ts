@@ -719,11 +719,19 @@ describe("the words say only what the product does", () => {
     expect(screen({ formFactor: "desktop" }).actions.askPush).toBeUndefined();
   });
 
-  it("Keyboard: the microphone is asked as Settings opens on iOS; Android opens the keyboard settings", () => {
+  it("Keyboard: the microphone is READ as Settings opens on iOS, and only asked for if it is not granted; Android opens the keyboard settings", () => {
     const cta = (s: any) => find((s.root.children as N[])[1]!, (n) => n.on?.onPress && n.children?.[0]?.props?.content === OB_EN["s3.cta"])[0]!.on!.onPress;
-    expect(cta(screen()).actions.map((a: any) => a.kind)).toEqual(["requestPermission", "openUrl"]);
-    expect(cta(screen()).actions[0]).toMatchObject({ permission: "microphone" });
-    expect(cta(screen()).actions[1]).toEqual({ kind: "openUrl", url: "app-settings:", external: true });
+    // The ask is what makes iOS give the app its own Settings page, so it has to come before `app-settings:`. But
+    // the phone draws its own "One permission first" card in front of every ask that is not `primed` BEFORE it
+    // looks at the permission — so on the ordinary path, where the step before this has already settled the
+    // microphone, that card stood in front of a Settings page and asked nothing. The read answers with no card.
+    const open = { kind: "openUrl", url: "app-settings:", external: true };
+    const c = cta(screen());
+    expect(c).toMatchObject({ kind: "checkPermission", permission: "microphone" });
+    expect(c.onGranted).toEqual(open);
+    expect(c.onDenied.actions.map((a: any) => a.kind)).toEqual(["requestPermission", "openUrl"]);
+    expect(c.onDenied.actions[0]).toMatchObject({ permission: "microphone" });
+    expect(c.onDenied.actions[1]).toEqual(open);
     expect(cta(screen({ platform: "android" }))).toEqual({ kind: "openSettings", target: "keyboard" });
     const text = (s: any) => JSON.stringify((s.root.children as N[])[1]);
     expect(text(screen())).toContain(OB_EN["s3.wh"]);

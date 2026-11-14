@@ -70,7 +70,13 @@ export function permNeeds(p: Plan): Need[] {
   return out;
 }
 
-/** The two the window asks the system for itself. A no says where to turn it on; it never holds the step up. */
+/**
+ * The two the window asks the system for itself. A no says where to turn it on; it never holds the step up.
+ *
+ * Not `primed` (shared/types/sdui.ts): a row's own Ask button fires these, with no card in front of it. The window
+ * ignores the field either way — its renderer has no card of its own — but this step is a window step, and the mark
+ * would be a lie if the same tree ever reached a phone.
+ */
 export function permsActions(): Record<string, ActionSpec> {
   const blocked = toast(EN["wp.blocked"]);
   const ask = (permission: "microphone" | "camera", path: string): ActionSpec => ({

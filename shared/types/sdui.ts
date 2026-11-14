@@ -71,6 +71,15 @@ export interface ClientCapabilities {
   off?: string[];
   /** The safety floor, and what went wrong on this launch. */
   sdui?: { ok?: boolean; safe?: number; bad?: string[]; slow?: string[] };
+  /**
+   * THIS PLAYER DRAWS ITS OWN CARD BEFORE A SYSTEM PROMPT (`primed` on `requestPermission`, section 4).
+   *
+   * `true` means the player puts its own "One permission first" box in front of every `requestPermission` that
+   * does not carry `primed: true` (the phone, app/src/sdui/actions.ts `primedCard`). A player that says nothing
+   * here has no box of its own — the window's renderer, and every phone build older than this field — so on one
+   * of those an unmarked ask has whatever explanation the screen itself gave it, and no more.
+   */
+  primed?: boolean;
 }
 
 // ===========================================================================
@@ -1865,6 +1874,51 @@ export type ActionSpec =
        * distinguish the two keeps the behaviour it has.
        */
       onBlocked?: ActionRef;
+      /**
+       * THE CARD HAS ALREADY BEEN SHOWN (Apple 5.1.1(iv); the phone's own
+       * `primedCard`, app/src/sdui/actions.ts).
+       *
+       * One app card stands before every system prompt, and a player that
+       * declares `primed` in its capabilities makes sure of it: without this
+       * field it draws its own box — "One permission first / The next screen is
+       * your phone asking. Nothing is used until you allow it." with a single
+       * Continue — and asks the system only once that is tapped. Whatever tree
+       * we sent. So on such a player an ask fired by a rule, a switch, a
+       * gesture or a screen appearing is explained whether we remembered to
+       * explain it or not. The box's words are `perm.<permission>.title` and
+       * `perm.<permission>.body` where the bootstrap has them (the server's
+       * own, experience/appKnobs.ts PERM_CARD_LABELS).
+       *
+       * A player that declares nothing has no box: the window's renderer, and
+       * every phone build older than the field (the store build at the time of
+       * writing). There an unmarked ask has whatever the screen itself said,
+       * and no more — which is a reason to explain an ask anyway, not a reason
+       * to mark it.
+       *
+       * `primed: true` says the explaining has been done here, on this screen,
+       * and the phone goes straight to the system. SET IT ONLY ON AN ASK FIRED
+       * BY THE CONTINUE BUTTON OF OUR OWN CARD THAT ALREADY EXPLAINS THIS
+       * PERMISSION: title, why, and that one button with nothing beside it to
+       * put the prompt off. Exactly one explanation before each system prompt,
+       * never two and never none.
+       *
+       * So NOT on: a bare row tap or a switch with no card; an ask on appear;
+       * the idempotent ask that only exists to make iOS give the app its own
+       * Settings page before `app-settings:` is opened; a retry; or a card that
+       * explains something else (the keyboard, Full Access) and happens to ask
+       * for the microphone on the way. Those keep the phone's box, which is the
+       * only explanation they have — so an ask like that is better read first
+       * (`checkPermission`) than asked when the answer is already on record.
+       *
+       * One action object reachable from both a card's Continue and an
+       * unexplained trigger is two actions: split it, and mark only the card's.
+       * tests/primed.test.ts walks the built screens and refuses the rest.
+       *
+       * The window ignores it: TAILZU-DESKTOP's renderer has no card of its own
+       * (sdui/actions.js goes straight to askMic / askCam), so a window-only ask
+       * neither needs the field nor minds it.
+       */
+      primed?: true;
     }
   // Read a permission WITHOUT asking for it. Same shape as requestPermission,
   // but it never shows a system dialog — so a screen can react to a permission

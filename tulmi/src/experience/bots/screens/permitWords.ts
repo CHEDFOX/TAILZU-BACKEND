@@ -373,16 +373,22 @@ export const ARRIVAL_ANDROID = {
 } as const;
 
 /**
- * ANDROID'S SECOND STEP, the Android 11+ hand-off. The system shows NO prompt for "Allow all the time", so the only way on
- * is the phone's own location page — and Play requires the app to explain why FIRST. So: our card, then openSettings. Never
- * Settings with no explanation, and never a second system prompt, which the system would refuse and which would read as a
- * dead button. The iPhone's `approximate` line sits in the same slot and says the same kind of thing.
+ * ANDROID'S SECOND STEP, the Android 11+ hand-off. From Android 11 the system shows NO prompt for "Allow all the time", so
+ * the only way on is the phone's own location page — and Play requires the app to explain why FIRST. So: our card, then the
+ * request, which opens that page. Never Settings with no explanation, and never a second system prompt, which the system
+ * would refuse and which would read as a dead button. On Android 10, the one version between minSdk and 11 that has the
+ * permission at all, the same request draws a system dialog instead, which is why the lines say "asks you, or opens your
+ * phone's own location page" rather than promising the page. The iPhone's `approximate` line sits in the same slot and says
+ * the same kind of thing.
  */
 export const ARRIVAL_BACKGROUND_ANDROID = {
   title: "Let your phone watch for this place",
   lines: [
     "Your phone watches for this place itself and shows the reminder when you arrive. Nothing about where you are, or that you arrived, is sent to X0 Bot's servers.",
-    "For that to work when X0 Bot is closed or not in use, Android needs location set to Allow all the time. Only you can set that, on your phone's own location page, so the next tap takes you there.",
+    // TRUE ON BOTH ANDROIDS. From Android 11 the system shows no prompt for "Allow all the time" and the request opens
+    // the phone's own location page; on Android 10 (minSdk is 26, and background location starts at 29) the same request
+    // draws a system dialog in the app. So the line names both, rather than promising a page that will not open.
+    "For that to work when X0 Bot is closed or not in use, Android needs location set to Allow all the time. Only you can allow that, so the next tap asks you, or opens your phone's own location page.",
     "X0 Bot uses your location in the background for nothing else: no tracking, no route, no history, and nothing about where you are ever leaves your phone.",
   ],
   cta: "Open Settings",

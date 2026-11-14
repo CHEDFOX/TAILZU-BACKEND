@@ -167,8 +167,12 @@ export function holdRows(ctx: BotsCtx, d: NotifyData, o: { desk?: boolean } = {}
       else: turnOn,
     } as ActionSpec;
     // The one thing that asks. `onGranted` saves the switch; a refusal leaves it off and says so.
+    //
+    // `primed`: the driving card below is the explanation (DRIVE.title, its lines, Continue and nothing else), and
+    // its Continue is the only thing that fires this — the switch itself opens the card, it never asks. So the
+    // phone goes to the system prompt instead of drawing its own box in front of a card that has just said it all.
     const ask: ActionSpec = {
-      kind: "requestPermission", permission: "motion",
+      kind: "requestPermission", permission: "motion", primed: true,
       onGranted: seq({ kind: "setState", path: "driveCard", value: false } as ActionSpec, { kind: "setState", path: "motionGranted", value: true } as ActionSpec, saveOn),
       onDenied: seq({ kind: "setState", path: "driveCard", value: false } as ActionSpec, toast(DRIVE.denied)),
       onBlocked: seq({ kind: "setState", path: "driveCard", value: false } as ActionSpec, { kind: "setState", path: "driveBlocked", value: true } as ActionSpec),

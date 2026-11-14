@@ -160,7 +160,13 @@ export function onboardLanguage(profileLanguage: string | undefined, chosen: rea
   return typeof first === "string" && first.trim() && first.trim() !== "auto" ? first.trim() : "auto";
 }
 
-/** What Make me yours does with its three switches (phone). A yes cannot be taken back in the app: only Settings can. */
+/**
+ * What Make me yours does with its three switches (phone). A yes cannot be taken back in the app: only Settings can.
+ *
+ * NOTHING HERE IS `primed` (shared/types/sdui.ts). A switch is what fires these, and a switch is not a card: the row
+ * carries one line of why and no Continue, so the phone's own card is the explanation that stands before the system,
+ * and it has to.
+ */
 export function permActions(): Record<string, ActionSpec> {
   const blocked = toast(EN["s5.blocked"]);
   return {

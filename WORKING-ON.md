@@ -30,9 +30,14 @@ look. The apps are renderers: build server data with the existing blocks and cat
   halves are behind build switches `TULMI_ANDROID_CALENDAR` / `_MOTION` / `_ARRIVAL` (off in every shipping profile; `n0` is the
   proof build) and their own server switches `PERM_*_ANDROID`. Migrations **0093** and **0094**. Owner steps:
   `TAILZU-BACKEND/docs/owner-8.9.1.md`. Every file it held is free again.
-  Open, a decision and not a bug: a server permission card is followed by the phone's own "One permission first" card, because
-  `app/src/sdui/actions.ts` skips its `primedCard` only on `primed: true` and the server never sends it (not in the contract).
-  One card too many, still one Continue path; adding `primed` is a contract field plus a lint rule.
+  Fixed on the server: `primed: true` (`shared/types/sdui.ts`) is set on the seven asks fired by our own explaining card's
+  Continue (planCall `askMic`, `arrivalCard` and `keybotCard` mic, `notifyDesk` motion, `planItem` Android
+  `backgroundLocation`, `keyboard_primer`, and the old onboarding voice step, whose ✕ is gone and whose pill now says
+  Continue); every other ask keeps the phone's own box, which now names the permission (`experience/appKnobs.ts`
+  `PERM_CARD_LABELS`). The asks that only existed to make iOS give the app a Settings page, and `flow_arm`'s ask on appear,
+  read the permission first (`checkPermission`), so a phone that already allowed the microphone sees no box at all. Held by
+  `tests/primed.test.ts`, which refuses both an unmarked ask behind our own card and a marked one anywhere else;
+  `docs/perms.md` rule 2. The field is the phone's half only: the window and any build older than it draw no box.
 
 ## In progress
 
