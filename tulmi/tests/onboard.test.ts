@@ -125,11 +125,14 @@ const ctx = (extra: Record<string, unknown> = {}) => ({
   personality: {}, language: "en", platform: "ios", formFactor: "phone", connectorsOn: true,
   assistant: { apps: APPS, names: {} }, can: new Set(BOTH), ...extra,
 }) as never;
+/** A window that can answer all four of its permissions, on a Mac (perms.ts draws a row per answer it can read). */
+const WINDOW = { formFactor: "desktop", os: "mac", can: new Set([...BOTH, "DeskMicAsk", "DeskCamAsk", "DeskAxState", "DeskSeeState"]) };
+const PERM_PATHS = ["micGranted", "camGranted", "axGranted", "seeGranted"];
 const screen = (extra: Record<string, unknown> = {}) => buildScreen("onboard", ctx(extra)) as any;
 const STEPS = {
   ios: ["languages", "keyboard", "try", "yours", "apps", "careful", "done"],
   android: ["languages", "keyboard", "try", "yours", "apps", "careful", "done"],
-  desktop: ["languages", "try", "apps", "careful", "done"],
+  desktop: ["languages", "terms", "perms", "try", "apps", "careful", "done"],
 };
 const stepIds = (s: any): string[] => s.root.children.map((c: N) => c.props!.stepId);
 
@@ -189,7 +192,7 @@ describe("who gets the new onboarding", () => {
     for (const [formFactor, platform, key] of [["phone", "ios", "ios"], ["phone", "android", "android"], ["desktop", "ios", "desktop"]] as const) {
       for (const connectorsOn of [true, false]) {
         const tree = buildBootstrap({ onboardV2: true, formFactor, connectorsOn } as never).flags!["auth.screen"] as any;
-        const s = screen({ formFactor, platform, connectorsOn });
+        const s = screen({ ...(formFactor === "desktop" ? WINDOW : {}), formFactor, platform, connectorsOn });
         expect(tree.props.of, `${key} ${connectorsOn}`).toBe(s.root.props.of);
         expect(tree.props.first).toBe(0);
         expect(s.root.props.first).toBe(3);
@@ -198,8 +201,8 @@ describe("who gets the new onboarding", () => {
     }
     expect(onboardTotal(false, true)).toBe(10);
     expect(onboardTotal(false, false)).toBe(8);
-    expect(onboardTotal(true, true)).toBe(8);
-    expect(onboardTotal(true, false)).toBe(6);
+    expect(onboardTotal(true, true)).toBe(10);
+    expect(onboardTotal(true, false)).toBe(8);
   });
 });
 
@@ -247,7 +250,7 @@ describe("who gets it, through the server", () => {
     expect(phone.flags["auth.screen"].props.of).toBe(10);
 
     const desk = await boot(T.fresh, [...BOTH, "DeskShell"], DESK);
-    expect(desk.flags["auth.screen"].props.of).toBe(8);
+    expect(desk.flags["auth.screen"].props.of).toBe(10);
     expect(desk.initialScreenId).toBe("onboard");
     // …and the window's sign-in has Apple on a Mac and not elsewhere.
     expect(JSON.stringify(desk.flags["auth.screen"])).toContain("AppleSignIn");
@@ -287,7 +290,7 @@ describe("who gets it, through the server", () => {
     return r.json();
   };
 
-  it("the screen: seven steps on a phone with the apps read from the server, five in a window", async () => {
+  it("the screen: seven steps on a phone with the apps read from the server, seven in a window", async () => {
     const phone = await askScreen(T.fresh, BOTH, { locale: "en-IN" });
     expect(phone.screenId).toBe("onboard");
     expect(stepIds(phone)).toEqual(STEPS.ios);
@@ -299,7 +302,7 @@ describe("who gets it, through the server", () => {
 
     const desk = await askScreen(T.fresh, [...BOTH, "DeskShell"], DESK);
     expect(stepIds(desk)).toEqual(STEPS.desktop);
-    expect(desk.root.props.of).toBe(8);
+    expect(desk.root.props.of).toBe(10);
     expect(desk.actions.finishOk.actions[1]).toEqual({ kind: "switchTab", tabId: "desk_today" });
   });
 
@@ -318,8 +321,9 @@ describe("who gets it, through the server", () => {
     expect(ready.state.step).toBe(STEPS.ios.indexOf("try"));
     const notYet = await askScreen(T.langs, BOTH, { keyboardReady: false });
     expect(notYet.state.step).toBe(STEPS.ios.indexOf("keyboard"));
+    // A window with the languages saved and the terms not answered starts at the terms.
     const desk = await askScreen(T.langs, [...BOTH, "DeskShell"], DESK);
-    expect(desk.state.step).toBe(STEPS.desktop.indexOf("try"));
+    expect(desk.state.step).toBe(STEPS.desktop.indexOf("terms"));
   });
 });
 
@@ -328,7 +332,7 @@ describe("the screen", () => {
     for (const [extra, key, of] of [
       [{ platform: "ios" }, "ios", 10],
       [{ platform: "android" }, "android", 10],
-      [{ formFactor: "desktop" }, "desktop", 8],
+      [{ ...WINDOW }, "desktop", 10],
     ] as const) {
       const s = screen(extra);
       expect(s.screenId).toBe("onboard");
@@ -342,7 +346,7 @@ describe("the screen", () => {
   });
 
   it("leaves out Connect apps and How careful when connected apps are off, or there is nothing to connect", () => {
-    for (const [extra, key, of] of [[{}, "ios", 8], [{ formFactor: "desktop" }, "desktop", 6]] as const) {
+    for (const [extra, key, of] of [[{}, "ios", 8], [{ ...WINDOW }, "desktop", 8]] as const) {
       for (const off of [{ connectorsOn: false }, { assistant: undefined }, { assistant: { apps: [APPS[5], APPS[6]], names: {} } }]) {
         const s = screen({ ...extra, ...off });
         expect(stepIds(s)).toEqual(STEPS[key].filter((id) => id !== "apps" && id !== "careful"));
@@ -392,7 +396,7 @@ describe("exactly one Blip stands in a step", () => {
   const base = { mic: "idle", tried: "", perm: { all: false, n: false, m: false }, keyboardReady: false, langs: ["en"] };
 
   it("on every step, in every state the step can be in", () => {
-    for (const [extra, key] of [[{}, "ios"], [{ platform: "android" }, "android"], [{ formFactor: "desktop" }, "desktop"]] as const) {
+    for (const [extra, key] of [[{}, "ios"], [{ platform: "android" }, "android"], [{ ...WINDOW }, "desktop"]] as const) {
       const s = screen(extra);
       s.root.children.forEach((step: N, i: number) => {
         const id = STEPS[key][i]!;
@@ -404,6 +408,12 @@ describe("exactly one Blip stands in a step", () => {
         if (id === "yours") {
           states.length = 0;
           for (const n of [false, true]) for (const m of [false, true]) states.push({ ...base, perm: { all: n && m, n, m } });
+        }
+        // The window's permissions: he points while anything is still to do, and says so once nothing is.
+        if (id === "perms") {
+          states.length = 0;
+          for (const on of [false, true]) states.push({ ...base, ...Object.fromEntries(PERM_PATHS.map((k) => [k, on])) });
+          states.push({ ...base, micGranted: true });
         }
         for (const st of states) expect(spotsOn(step, st).length, `${key} ${id} ${JSON.stringify(st)}`).toBe(1);
         // A spot that can never show would be a pose nobody sees.
@@ -447,7 +457,7 @@ describe("exactly one Blip stands in a step", () => {
 
 describe("the stage only moves to steps that exist, and forward", () => {
   it("every move is in range, never backward, and the nearest forward move is the next step", () => {
-    for (const [extra, key] of [[{}, "ios"], [{ platform: "android" }, "android"], [{ formFactor: "desktop" }, "desktop"], [{ connectorsOn: false }, "ios"]] as const) {
+    for (const [extra, key] of [[{}, "ios"], [{ platform: "android" }, "android"], [{ ...WINDOW }, "desktop"], [{ connectorsOn: false }, "ios"]] as const) {
       const s = screen(extra);
       const count = s.root.children.length;
       const all = stepMoves(s);
@@ -515,7 +525,9 @@ describe("the stage only moves to steps that exist, and forward", () => {
     for (const keyboardReady of [false, true]) {
       expect(onboardStart({ desktop: false, languagesSet: false, keyboardReady, I: phone })).toBe(phone.languages);
       expect(onboardStart({ desktop: true, languagesSet: false, keyboardReady, I: desk })).toBe(desk.languages);
-      expect(onboardStart({ desktop: true, languagesSet: true, keyboardReady, I: desk })).toBe(desk.try);
+      // A window: the terms while they have not been answered, Try it once they have.
+      expect(onboardStart({ desktop: true, languagesSet: true, keyboardReady, I: desk })).toBe(desk.terms);
+      expect(onboardStart({ desktop: true, languagesSet: true, keyboardReady, agreed: true, I: desk })).toBe(desk.try);
     }
     expect(onboardStart({ desktop: false, languagesSet: true, keyboardReady: false, I: phone })).toBe(phone.keyboard);
     expect(onboardStart({ desktop: false, languagesSet: true, keyboardReady: true, I: phone })).toBe(phone.try);
@@ -890,7 +902,7 @@ describe("the language chips", () => {
     expect(more.children![0]!.props!.content).toBe(`+ ${DAILY_LANGUAGES.length - shown.length} more`);
   });
 
-  it("Continue saves before it moves, and a window goes straight to Try it", () => {
+  it("Continue saves before it moves, and a window goes on to its own terms step", () => {
     const cont = (s: any) => find((s.root.children as N[])[0]!, (n) => n.children?.[0]?.props?.content === OB_EN["ob.cont"])[0]!.on!.onPress;
     const phone = cont(screen());
     expect(phone.actions[0]).toEqual({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { languages: "$state.langs" } });
@@ -901,7 +913,7 @@ describe("the language chips", () => {
     });
     const desk = cont(screen({ formFactor: "desktop" }));
     expect(desk.actions[0].kind).toBe("callEndpoint");
-    expect(desk.actions[1]).toEqual({ kind: "setState", path: "step", value: STEPS.desktop.indexOf("try") });
+    expect(desk.actions[1]).toEqual({ kind: "setState", path: "step", value: STEPS.desktop.indexOf("terms") });
     // …and then asks for the screen again, which is written in the language just
     // saved. The stage keeps the furthest step, so the new copy opens where the person is.
     expect(phone.actions.length).toBe(3);
@@ -925,5 +937,144 @@ describe("the language chips", () => {
     // Junk in the saved list is not a language.
     expect(onboardLanguage("auto", ["auto", "hi"])).toBe("auto");
     expect(onboardLanguage("auto", [null, 3] as unknown[])).toBe("auto");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The window's own two steps: the terms (terms.ts) and this computer's
+// permissions (perms.ts). Neither is ever drawn on a phone.
+// ---------------------------------------------------------------------------
+
+describe("the window's terms step", () => {
+  const stepOf = (id: string, extra: Record<string, unknown> = {}): N => {
+    const s = screen({ ...WINDOW, ...extra });
+    return s.root.children[STEPS.desktop.indexOf(id)] as N;
+  };
+  /** Every action in a tree, inline ones included. */
+  const specs = (n: unknown): any[] => {
+    const out: any[] = [];
+    const walk = (x: any): void => {
+      if (!x || typeof x !== "object") return;
+      if (Array.isArray(x)) { x.forEach(walk); return; }
+      if (typeof x.kind === "string") out.push(x);
+      Object.values(x).forEach(walk);
+    };
+    walk(n);
+    return out;
+  };
+  const calls = (n: unknown) => specs(n).filter((a) => a.kind === "callEndpoint");
+
+  it("is not on a phone, and a phone keeps Make me yours", () => {
+    expect(STEPS.ios).not.toContain("terms");
+    expect(STEPS.ios).not.toContain("perms");
+    expect(STEPS.desktop).not.toContain("yours");
+    expect(JSON.stringify(screen())).not.toContain(OB_EN["tp.h"]);
+    expect(JSON.stringify(screen({ ...WINDOW }))).toContain(OB_EN["tp.h"]);
+  });
+
+  it("Agree saves the yes, then moves on; nothing is sent before it is pressed", () => {
+    const step = stepOf("terms");
+    const put = calls(step);
+    expect(put.length).toBe(2);
+    const agree = put.find((a) => a.body?.agree === true)!;
+    expect(agree).toMatchObject({ method: "PUT", path: "/v1/you/ai-consent", body: { agree: true } });
+    // The move is inside onSuccess: the step does not advance on a failed save.
+    expect(stepMoves(agree.onSuccess)).toEqual([STEPS.desktop.indexOf("perms")]);
+    expect(stepMoves(agree.onError)).toEqual([]);
+    expect(JSON.stringify(agree.onError)).toContain(OB_EN["tp.err"]);
+  });
+
+  it("Not now keeps the answer, grants nothing and skips Try it — there is nothing to try", () => {
+    const step = stepOf("terms");
+    const later = calls(step).find((a) => a.body?.agree === false)!;
+    expect(later).toMatchObject({ method: "PUT", path: "/v1/you/ai-consent", body: { agree: false, later: true } });
+    const moves = stepMoves(step);
+    expect(moves).toContain(STEPS.desktop.indexOf("try") + 1);
+    expect(moves).not.toContain(STEPS.desktop.indexOf("try"));
+    expect(JSON.stringify(step)).toContain(OB_EN["tp.off"]);
+  });
+
+  it("says what goes, to whom one tap away, and the three promises the policy makes", () => {
+    const json = JSON.stringify(stepOf("terms"));
+    for (const k of ["tp.h", "tp.p", "tp.1", "tp.2", "tp.3", "tp.cta", "tp.not"] as const) expect(json, k).toContain(OB_EN[k]);
+    const opens = specs(stepOf("terms")).filter((a) => a.kind === "openUrl").map((a) => a.url);
+    expect(opens).toEqual([POLICY.privacy, POLICY.terms]);
+  });
+
+  it("someone who already agreed is told, not asked again", () => {
+    const step = stepOf("terms", { personality: { aiConsentAt: new Date().toISOString(), aiConsentVersion: 1 } });
+    expect(calls(step)).toEqual([]);
+    expect(JSON.stringify(step)).toContain(OB_EN["tp.yes"]);
+    expect(stepMoves(step)).toEqual([STEPS.desktop.indexOf("perms")]);
+    // …and the cold start puts them past it.
+    const s = screen({ ...WINDOW, personality: { languages: ["en"], aiConsentAt: new Date().toISOString(), aiConsentVersion: 1 } });
+    expect(s.state.step).toBe(STEPS.desktop.indexOf("try"));
+    expect(s.state.agreed).toBe(true);
+  });
+});
+
+describe("the window's permissions step", () => {
+  const step = (extra: Record<string, unknown> = {}): N => {
+    const s = screen({ ...WINDOW, ...extra });
+    return s.root.children[STEPS.desktop.indexOf("perms")] as N;
+  };
+  /** The rows, by the state path each one reads. */
+  const rows = (n: N): string[] => {
+    const out: string[] = [];
+    each(n, (x) => {
+      const path = x.visibleIf && typeof x.visibleIf === "object" && "truthy" in x.visibleIf ? String(x.visibleIf.truthy) : "";
+      if (path && path.endsWith("Granted") && !out.includes(path)) out.push(path);
+    });
+    return out;
+  };
+  const asks = (n: N): any[] => {
+    const out: any[] = [];
+    each(n, (x) => { if (x.on?.onPress) out.push(x.on.onPress); });
+    return out;
+  };
+
+  it("draws a row for every answer this window can read, in order, and the four words with them", () => {
+    expect(rows(step())).toEqual(["micGranted", "camGranted", "axGranted", "seeGranted"]);
+    const json = JSON.stringify(step());
+    for (const k of ["wp.h", "wp.p", "wp.mic", "wp.mic.d", "wp.cam", "wp.cam.d", "wp.ax", "wp.ax.d", "wp.see", "wp.see.d", "wp.on", "wp.foot"] as const) {
+      expect(json, k).toContain(OB_EN[k]);
+    }
+  });
+
+  it("asks for nothing the window cannot answer, and for neither Mac switch anywhere but a Mac", () => {
+    expect(rows(step({ can: new Set([...BOTH, "DeskMicAsk"]) }))).toEqual(["micGranted"]);
+    expect(rows(step({ os: "windows" }))).toEqual(["micGranted", "camGranted"]);
+    expect(JSON.stringify(step({ os: "windows" }))).not.toContain(OB_EN["wp.mac"]);
+    expect(JSON.stringify(step())).toContain(OB_EN["wp.mac"]);
+    // A window that can answer none of them still has a step that passes.
+    const bare = step({ can: new Set(BOTH) });
+    expect(rows(bare)).toEqual([]);
+    expect(stepMoves(bare)).toEqual([STEPS.desktop.indexOf("try")]);
+  });
+
+  it("the microphone and the camera are the system's own prompt; the Mac's two open its settings", () => {
+    const s = screen({ ...WINDOW });
+    const named = asks(step()).filter((a) => typeof a === "string");
+    expect(named).toEqual(["askMicW", "askCamW"]);
+    for (const [name, permission, path] of [["askMicW", "microphone", "micGranted"], ["askCamW", "camera", "camGranted"]] as const) {
+      const a = s.actions[name];
+      expect(a).toMatchObject({ kind: "requestPermission", permission });
+      expect(JSON.stringify(a.onGranted)).toContain(path);
+      // Refused, or refused for good: where to turn it on, and the step still passes.
+      expect(JSON.stringify(a.onDenied)).toContain(OB_EN["wp.blocked"]);
+      expect(JSON.stringify(a.onBlocked)).toContain(OB_EN["wp.blocked"]);
+    }
+    const kinds = asks(step()).filter((a) => a && typeof a === "object").map((a: any) => a.kind);
+    // The row buttons, and the step's own Continue.
+    expect(kinds).toEqual(["ask.openAccessibility", "ask.openScreenRecording", "setState"]);
+  });
+
+  it("the screen declares the four answers for a window to fill in, and only for a window", () => {
+    const s = screen({ ...WINDOW });
+    for (const k of ["micGranted", "camGranted", "axGranted", "seeGranted"]) expect(s.state[k], k).toBe(false);
+    expect(s.state.agreed).toBe(false);
+    const phone = screen();
+    expect(phone.state.micGranted).toBe(false);
+    for (const k of ["camGranted", "axGranted", "seeGranted", "agreed"]) expect(phone.state[k], k).toBeUndefined();
   });
 });

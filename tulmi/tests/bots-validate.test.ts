@@ -22,6 +22,40 @@ const base = { name: "Workout buddy", purpose: "Plans my workouts." };
 const ok = (over: Record<string, unknown> = {}) => parseBotInput({ ...base, ...over });
 const errors = (over: Record<string, unknown>): string[] => { const r = ok(over); return r.ok ? [] : r.errors; };
 
+describe("a bot's colour has ONE answer", () => {
+  it("is decided in builtin.ts, and experience/bots/palette.ts agrees with it", async () => {
+    // These two carried their own copies and disagreed for as long as both existed: builtin.ts said Xode was pine
+    // while palette.ts drew it moss. palette.ts reads from builtin.ts now, and this fails if a copy comes back.
+    const { builtinBots } = await import("../src/bots/builtin.js");
+    const { botLook, PALETTE_HEX } = await import("../src/experience/bots/palette.js");
+    for (const b of builtinBots()) {
+      expect(botLook(b.slug, b.colour).color, b.slug).toBe(PALETTE_HEX[b.colour]);
+    }
+  });
+
+  it("is never stone for a bot Tailzu ships, because stone is the fallback for everyone else's", async () => {
+    const { builtinBots } = await import("../src/bots/builtin.js");
+    const { PALETTE_HEX, botLook } = await import("../src/experience/bots/palette.js");
+    // A bot with no colour of its own falls back to stone, so anything shipped wearing it is indistinguishable.
+    expect(botLook("someones-own-bot").color).toBe(PALETTE_HEX.stone);
+    for (const b of builtinBots()) expect(b.colour, b.slug).not.toBe("stone");
+  });
+
+  it("gives every bot Tailzu ships a different one", async () => {
+    const { builtinBots } = await import("../src/bots/builtin.js");
+    const taken = builtinBots().map((b) => b.colour);
+    expect(new Set(taken).size).toBe(taken.length);
+  });
+
+  it("does not offer ash to anybody: it is kept for a bot Tailzu ships", async () => {
+    const { SHIPPED_ONLY } = await import("../src/bots/types.js");
+    expect([...SHIPPED_ONLY]).toEqual(["ash"]);
+    // Not in the palette, so the picker never shows it, colourFor never hands it out, and a draft asking for it is
+    // refused — which is what keeps somebody's own bot from coming out the same colour as one of ours.
+    for (const c of SHIPPED_ONLY) expect(errors({ colour: c }).join(), c).toMatch(/colour is one of/);
+  });
+});
+
 describe("the palette", () => {
   it("is the eight natural colours, and nothing else", () => {
     expect([...PALETTE]).toEqual(["moss", "clay", "ochre", "sea", "pine", "plum", "sand", "stone"]);

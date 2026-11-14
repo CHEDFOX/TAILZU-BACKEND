@@ -7,8 +7,24 @@
 import type { Shown } from "../show/types.js";
 
 /** The only colours a bot may have: a natural palette, one for each bot. */
+/**
+ * THE COLOURS A PERSON MAY GIVE THEIR OWN BOT: the natural palette, one for each bot. This is also the list the
+ * picker is sent (`/v1/bots` `palette`), what a draft's colour is checked against, and what `colourFor` chooses
+ * from, so adding to it changes all three — which is why `ash` below is NOT in it.
+ */
 export const PALETTE = ["moss", "clay", "ochre", "sea", "pine", "plum", "sand", "stone"] as const;
-export type Colour = (typeof PALETTE)[number];
+
+/**
+ * A NEUTRAL KEPT FOR A BOT TAILZU SHIPS, and not offered to anybody.
+ *
+ * `stone` is what `botLook` falls back to for a bot with no colour of its own, so a bot that ships must not wear it
+ * or it looks like any bot somebody made. `ash` is the neutral for one that needs one (Lingo). It is deliberately
+ * outside PALETTE: in it, it would be offered in the picker, it would change which colour `colourFor` hands every
+ * future bot a person makes, and somebody's own bot could come out the same colour as one of ours.
+ */
+export const SHIPPED_ONLY = ["ash"] as const;
+
+export type Colour = (typeof PALETTE)[number] | (typeof SHIPPED_ONLY)[number];
 
 /** What a bot can do beyond talking. A tool exists only for a skill that is on. */
 export const SKILL_NAMES = ["web", "files", "artifacts", "code", "research"] as const;

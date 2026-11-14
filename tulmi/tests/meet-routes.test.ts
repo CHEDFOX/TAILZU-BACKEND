@@ -350,7 +350,7 @@ describe("the meeting bot among the bots", () => {
     expect(builtinBots().some((b) => b.slug === "meet")).toBe(false);
     process.env.RECALL_API_KEY = "k"; resetConfigForTests();
     const meet = builtinBots().find((b) => b.slug === "meet");
-    expect(meet).toMatchObject({ name: "Meetings", colour: "moss", ownerId: null, visibility: "private" });
+    expect(meet).toMatchObject({ name: "Meetings", colour: "pine", ownerId: null, visibility: "private" });
     expect(isBuiltinSlug("meet")).toBe(true);
     expect(RESERVED_SLUGS).toContain("meet");
   });

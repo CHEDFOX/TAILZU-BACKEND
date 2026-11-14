@@ -1,5 +1,5 @@
 {
-  "v": 4,
+  "v": 5,
   "format": 2,
   "note": "The bots' looks and moments (docs/bots-app.md, 'Looks and moments'). Data the apps draw and play: change it, raise v by one, and the apps take it at their next start. tulmi/src/experience/bots/looks.ts checks every field; the apps' starter copy is generated from this file.",
   "parts": {
@@ -257,6 +257,13 @@
       {"d": "O 0 0 0.032", "stroke": "$paint", "width": 0.007},
       {"d": "O 0 0 0.021", "stroke": "$paint", "width": 0.005},
       {"d": "M 0.04 -0.012 Q 0.05 -0.02 0.06 -0.012 Q 0.07 -0.004 0.08 -0.012 M 0.04 0 Q 0.05 -0.008 0.06 0 Q 0.07 0.008 0.08 0 M 0.04 0.012 Q 0.05 0.004 0.06 0.012 Q 0.07 0.02 0.08 0.012", "stroke": "$paint", "width": 0.006}
+    ] },
+    "accent": { "note": "An acute accent: the mark a learner dropped, handed back to them.", "draw": [
+      { "d": "M -0.024 0.018 L 0.024 -0.018", "stroke": "$paint", "width": 0.018 }
+    ] },
+    "tile": { "note": "A letter tile, blank. Which letter is on it is the learner's business, not ours.", "draw": [
+      { "d": "M -0.04 -0.04 L 0.04 -0.04 L 0.04 0.04 L -0.04 0.04 Z", "fill": "$paint", "alpha": 0.2 },
+      { "d": "M -0.04 -0.04 L 0.04 -0.04 L 0.04 0.04 L -0.04 0.04 Z", "stroke": "$paint", "width": 0.015 }
     ] }
   },
   "avatars": {
@@ -1031,6 +1038,106 @@
         {"do": "emit", "after": "fish.splash", "part": "drop", "from": "ground", "x": 1.4, "n": 8, "vy": -1.5, "spread": 0.8},
         {"do": "eyes", "after": "fish.splash", "state": "happy"},
         {"do": "glow", "after": "pond.loud", "v": 6}
+      ]
+    },
+    "l.accent": {
+      "note": "Lingo, for the grader's `accent`: they knew the word and dropped the mark, so it is handed back rather than marked wrong.",
+      "label": "Plucks the missing accent out of the air and sets it over the word", "dur": 3.2, "mode": "once", "still": 1.2, "fallback": "settle",
+      "tracks": [
+        { "do": "look", "at": 0, "to": 1, "target": "up" },
+        { "do": "eyes", "at": 0.1, "to": 1.2, "state": "wide" },
+        { "note": "reaches up and takes it out of the air", "do": "arm", "at": 0.1, "to": 1.2, "hand": "front", "x": 0.26, "y": -0.3, "k": 620 },
+        { "do": "prop", "at": 0.75, "to": 3.2, "part": "accent", "on": "hand_front", "pop": true },
+        { "note": "down, and a small press to set it in place", "do": "arm", "at": 1.25, "to": 2.5, "hand": "front", "x": 0.2, "y": "-0.12 + 0.05*smooth(0, 0.5, u)", "k": 520 },
+        { "do": "look", "at": 1.25, "to": 2.6, "target": "hand" },
+        { "do": "crouch", "at": 2, "to": 2.5, "v": "0.12*crest(u*pi)" },
+        { "note": "there", "do": "look", "at": 2.6, "to": 3.2, "target": "screen" },
+        { "do": "eyes", "at": 2.6, "to": 3.2, "state": "happy" },
+        { "do": "mouth", "at": 2.6, "to": 3.2, "state": "smile" }
+      ]
+    },
+    "l.swap": {
+      "note": "Lingo, for the grader's `spelling`: one slipped letter, swapped, with a little disgust at the bad one.",
+      "label": "Spits the wrong letter out and catches the right one", "dur": 3.4, "mode": "once", "still": 1.3, "fallback": "settle",
+      "tracks": [
+        { "do": "look", "at": 0, "to": 0.5, "target": "down" },
+        { "do": "eyes", "at": 0.3, "to": 1.1, "state": "squint" },
+        { "do": "mouth", "at": 0.15, "to": 0.9, "state": "o" },
+        { "note": "out it goes. A one-shot emit happens at `at` and takes no `to`.", "do": "emit", "at": 0.45, "part": "tile", "from": "mouth", "n": 1, "vx": 0.55, "vy": -0.18, "g": 1.1, "life": 1.2, "size": 0.7, "spin": 2.2, "floor": true },
+        { "do": "shake", "at": 0.45, "to": 1, "amp": 0.05, "freq": 9, "part": "head" },
+        { "note": "and the right one is taken instead", "do": "arm", "at": 1.3, "to": 2.5, "hand": "back", "x": 0.24, "y": -0.1, "k": 560 },
+        { "do": "prop", "at": 1.7, "to": 2.7, "part": "tile", "on": "hand_back", "pop": true },
+        { "do": "look", "at": 1.3, "to": 2.7, "target": "hand" },
+        { "do": "mouth", "at": 2.7, "to": 3.05, "state": "open" },
+        { "do": "mouth", "at": 3.05, "to": 3.4, "state": "smile" },
+        { "do": "eyes", "at": 2.8, "to": 3.4, "state": "happy" }
+      ]
+    },
+    "l.shuffle": {
+      "note": "Lingo, for the grader's `order`. It corrects itself in front of them, which is the correction.",
+      "label": "Swaps two cards hand to hand: the right words, the wrong way round", "dur": 3.6, "mode": "once", "still": 1.4, "fallback": "settle",
+      "tracks": [
+        { "do": "prop", "at": 0, "to": 3.6, "part": "card", "on": "hand_front" },
+        { "do": "prop", "at": 0, "to": 3.6, "part": "card_up", "on": "hand_back" },
+        { "do": "look", "at": 0, "to": 3, "target": "hand" },
+        { "do": "eyes", "at": 0, "to": 3.4, "state": "open" },
+        { "do": "mouth", "at": 0, "to": 3.4, "state": "line" },
+        { "note": "across each other, slowly enough to be read as a swap", "do": "arm", "at": 0.4, "to": 2.9, "hand": "front", "x": "0.22 - 0.3*smooth(0.2, 0.8, u)", "y": -0.06, "k": 480 },
+        { "do": "arm", "at": 0.4, "to": 2.9, "hand": "back", "x": "0.18 + 0.3*smooth(0.2, 0.8, u)", "y": -0.06, "k": 480 },
+        { "do": "tilt", "at": 0.4, "to": 2.9, "v": "0.18*sin(u*tau)" },
+        { "do": "look", "at": 3.1, "to": 3.6, "target": "screen" },
+        { "do": "eyes", "at": 3.1, "to": 3.6, "state": "happy" }
+      ]
+    },
+    "l.mouthit": {
+      "note": "Lingo, for the grader's `word`. No shake and no buzz: its own rule is never to be sarcastic about a mistake.",
+      "label": "Mouths the word enormously slowly, the way a person does through glass", "dur": 3.4, "mode": "once", "still": 1.2, "fallback": "settle",
+      "tracks": [
+        { "do": "look", "at": 0, "to": 3.4, "target": "screen" },
+        { "do": "lean", "at": 0, "to": 3.4, "v": "0.14*smooth(0, 0.3, u)" },
+        { "do": "eyes", "at": 0, "to": 3.4, "state": "open" },
+        { "note": "o, wide, o: slow enough to lip-read", "do": "mouth", "at": 0.3, "to": 1.2, "state": "o" },
+        { "do": "mouth", "at": 1.2, "to": 2.1, "state": "wide" },
+        { "do": "mouth", "at": 2.1, "to": 3, "state": "o" },
+        { "do": "mouth", "at": 3, "to": 3.4, "state": "line" },
+        { "do": "tilt", "at": 0.3, "to": 3, "v": "0.06*sin(u*tau*2)" }
+      ]
+    },
+    "l.earcup": {
+      "note": "Lingo, for the grader's `silence`: nothing was heard, said without a word of text.",
+      "label": "Cups a hand to where its ear would be and leans right in", "dur": 2.8, "mode": "once", "still": 1, "fallback": "settle",
+      "tracks": [
+        { "do": "arm", "at": 0.1, "to": 2.6, "hand": "back", "x": 0.1, "y": -0.26, "k": 700 },
+        { "do": "prop", "at": 0.3, "to": 2.6, "part": "palm", "on": "head", "x": 0.1, "y": -0.02, "scale": 0.9, "pop": true },
+        { "do": "lean", "at": 0.15, "to": 2.6, "v": "0.26*smooth(0, 0.35, u)" },
+        { "do": "tilt", "at": 0.15, "to": 2.6, "v": "0.22*smooth(0, 0.35, u)" },
+        { "do": "look", "at": 0, "to": 2.8, "target": "screen" },
+        { "do": "eyes", "at": 0.2, "to": 2.6, "state": "squint" },
+        { "do": "mouth", "at": 0.2, "to": 2.6, "state": "line" },
+        { "note": "a nudge closer, as if that would help", "do": "crouch", "at": 1.4, "to": 2.2, "v": "-0.06*crest(u*pi)" }
+      ]
+    },
+    "l.hum": {
+      "note": "An idling for Lingo. Its screens ask for it; it is not in `idle.moments`, which every bot draws from, so no other bot hums.",
+      "label": "Hums to itself, with little notes going up", "dur": 4, "mode": "loop", "still": 3, "fallback": "play",
+      "tracks": [
+        { "do": "eyes", "state": "happy" },
+        { "do": "mouth", "state": "o", "v": "0.4 + 0.3*crest(t*1.6)" },
+        { "do": "emit", "part": "note", "from": "mouth", "every": 0.9, "n": 1, "vx": 0.18, "vy": -0.5, "g": -0.1, "drag": 0.6, "life": 1.6, "size": 0.6, "spin": 0.6, "alpha": 0.8, "spread": 0.3 },
+        { "do": "tilt", "v": "0.1*sin(t*1.1)" },
+        { "do": "crouch", "v": "0.04*crest(t*1.6)" },
+        { "do": "look", "target": "around", "rate": 0.4 }
+      ]
+    },
+    "l.mutter": {
+      "note": "An idling for Lingo: conjugations under its breath. Asked for by its screens, like l.hum.",
+      "label": "Mutters to itself, tiny letters drifting up", "dur": 3.6, "mode": "loop", "still": 2.6, "fallback": "play",
+      "tracks": [
+        { "do": "look", "target": "away", "rate": 0.5 },
+        { "do": "eyes", "state": "half" },
+        { "do": "mouth", "state": "line", "v": "0.5 + 0.5*tri(t*2.2)" },
+        { "do": "emit", "parts": ["bit0", "bit1"], "from": "mouth", "every": 0.55, "n": 1, "alt": true, "vx": 0.1, "vy": -0.42, "drag": 0.7, "life": 1.3, "size": 0.5, "alpha": 0.6, "spread": 0.4 },
+        { "do": "tilt", "v": "0.07*sin(t*0.9)" }
       ]
     }
   }

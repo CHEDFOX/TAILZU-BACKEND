@@ -48,6 +48,9 @@ export const IC = {
   chev: "M6 9l6 6 6-6",
   g: "M17.66 6.34A8 8 0 1 0 20 12h-8",
   eye: "M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12zM12 9.2a2.8 2.8 0 1 0 0 5.6 2.8 2.8 0 0 0 0-5.6z",
+  /** The window's permissions step: a camera (a call turns it on) and a keyboard (Accessibility types where the cursor is). */
+  cam: "M5.5 7.8h2.4l1.2-1.9h5.8l1.2 1.9h2.4a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5.5a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2zM12 10.2a3.1 3.1 0 1 0 0 6.2 3.1 3.1 0 0 0 0-6.2z",
+  keys: "M3.6 7.6h16.8a1.6 1.6 0 0 1 1.6 1.6v5.6a1.6 1.6 0 0 1-1.6 1.6H3.6A1.6 1.6 0 0 1 2 14.8V9.2a1.6 1.6 0 0 1 1.6-1.6zM7 11h.01M11 11h.01M15 11h.01M8.6 13.9h6.8",
 } as const;
 
 export const words = en;
@@ -217,6 +220,19 @@ export interface Plan {
   /** Every app the person can see, and the five the tiles show. */
   apps: ConnectorInfo[];
   five: ConnectorInfo[];
+  /**
+   * THE WINDOW'S TWO STEPS ONLY (terms.ts, perms.ts), so neither is drawn
+   * promising something this build or this computer cannot do:
+   *   can      what the asking build declared, for the permission rows it can
+   *            really answer
+   *   mac      this computer has Accessibility and Screen Recording to grant
+   *   agreed   they have already said yes to the terms (on another device, or
+   *            here before), so that step tells them instead of asking again
+   * A phone never reads them: the store variant leaves all three out.
+   */
+  can?: Set<string>;
+  mac?: boolean;
+  agreed?: boolean;
   /**
    * HOW A STEP AND BLIP ARE DRAWN. Here they are a stage's step and a BlipSpot;
    * the store variant (onboardStore.ts) builds the same steps out of what every
