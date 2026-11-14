@@ -2,7 +2,7 @@
  * Bots app · bots area: the endpoints its screens need beyond the existing routes (src/botsBots, screens in experience/bots/screens/bots.ts).
  *
  *   GET    /v1/botsapp/bots/chat/:slug                 -> { turns }                      the chat with a bot, oldest first
- *   POST   /v1/botsapp/bots/chat/:slug { message }     -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns;
+ *   POST   /v1/botsapp/bots/chat/:slug { message | picks } -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns;
  *                                                      the answer is written down for Activity, as Ask's are (shell/events.ts)
  *   DELETE /v1/botsapp/bots/chat/:slug                 -> { ok }                          start the chat over
  *   GET    /v1/botsapp/bots/draft                      -> { draft }                       Make a bot: the draft in progress, or null
@@ -58,6 +58,7 @@ import { scrub } from "../../bots/run.js";
 import type { BotEvent } from "../../bots/types.js";
 import { registerSpacesRoutes } from "./botsSpaces.js";
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
+import type { Picks } from "../../botsBots/chat.js";
 import { registerWorkRoutes } from "./work.js";
 import { registerBotsTripRoutes } from "./botsTrips.js";
 import { registerCalendarRoutes } from "./botsCalendar.js";
@@ -174,12 +175,15 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     } : {};
     try {
       const out = await guarded(guard(), req, reply, s.user, "ask", async (stop) => {
-        const slug = param(req, "slug").toLowerCase(), message = bodyOf(req.body).message;
+        const slug = param(req, "slug").toLowerCase(), body = bodyOf(req.body);
+        // An answer to a drawing (a choice of several, a form: experience/bots/show.ts) comes as picks; the chat turns them into words.
+        const picks = body.picks && typeof body.picks === "object" ? body.picks as Picks : undefined;
         // With Spaces off a bot reads nothing a space shared (botsBots/spacesSwitch.ts).
         const shared = spacesOn() ? await spacesArea.items.forBot(s.user.id, slug).catch(() => []) : [];
-        const r = await parts.chat!.send(s.user.id, slug, message, stop, shared, live);
+        const r = await parts.chat!.send(s.user.id, slug, body.message, stop, shared, live, picks ? { picks } : {});
+        const said = r.turns.find((t) => t.role === "me")?.text ?? String(body.message);
         // Activity: written down as an answer through Ask is (shell/events.ts), once per answer: a repeat is replayed, not run again.
-        await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: String(message), paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
+        await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: said, paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
           .catch((err) => req.log.warn({ error: (err as Error)?.message }, "bots area: answer not written down"));
         return { status: 200, body: { text: r.answer.text, turns: r.turns, opens: r.answer.opens, approvals: r.answer.approvals, paise: r.answer.paise } };
       }, { replayUnkeyed: false, ...(words ? { signal: words.signal } : {}) });

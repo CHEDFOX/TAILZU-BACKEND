@@ -111,6 +111,8 @@ export interface AskInput {
    * (plan_calls.cost_usd), for the owner to read. False or absent — every build today — and the turn is a chat turn like any other.
    */
   call?: boolean;
+  /** Where the answer is drawn (the app's chat, botsBots/chat.ts): ask what to draw under its words (run.ts step 7, src/show). */
+  draw?: boolean;
 }
 
 export interface KeyAnswer {
@@ -431,7 +433,7 @@ export class Bots {
       ...(i.emit ? { emit: i.emit } : {}), ...(i.ctx ? { ctx: i.ctx } : {}), ...(i.pickedBy ? { pickedBy: i.pickedBy } : {}),
       ...(i.attached?.length ? { attached: i.attached } : {}), ...(i.extraPaise ? { extraPaise: i.extraPaise } : {}),
       ...(i.onText ? { onText: i.onText } : {}), ...(i.onReset ? { onReset: i.onReset } : {}),
-      ...(i.fresh ? { fresh: true } : {}),
+      ...(i.fresh ? { fresh: true } : {}), ...(i.draw ? { draw: true } : {}),
     };
   }
 

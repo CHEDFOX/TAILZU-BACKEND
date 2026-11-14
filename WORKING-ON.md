@@ -1,6 +1,6 @@
 # Being built right now (read before you start)
 
-Updated 14 Nov 2026, 00:40 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 14 Nov 2026, 03:10 UTC. One session is building the items below. Do not edit the files they hold until the item is
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
 
 **How to build things now:** read `TAILZU-BACKEND/docs/renderer.md` before adding any screen, visual, animation or widget
@@ -32,6 +32,17 @@ look. The apps are renderers: build server data with the existing blocks and cat
   How to use it: `docs/renderer.md` section 3.
 - Reply to a bot from its notification (`tulmi/src/bots/notifyReply.ts`, route `POST /v1/bots/:slug/notify-reply`,
   category `x0_bot_reply`, switch `NOTIFY_REPLY` / `NOTIFY_REPLY_USERS` / `NOTIFY_REPLY_PER_HOUR`). Server only.
+- **What a bot draws under its words** (`docs/show.md`, switch `BOT_SHOW` / `BOT_SHOW_USERS`). Server only, vocabulary 1, so
+  every build draws it with no release. After a bot answers in its chat, the `bot_show` role picks building blocks or none (a
+  choice to tap, a callout, steps, a table, a chart, next questions, a form, a drawing), drawn as monochrome dot art whose
+  pieces spring in on `Rise` on the newest answer, with Blip beside a drawing now and then. Why it is not vocabulary 2: the
+  note below.
+- The render check draws the phone again: `local.ts` requires `react-native-mmkv` and trusts what `createMMKV` returns, and
+  `scripts/bots-render`'s catch-all stub answers null, so the first `local.*` read threw and the screen came out blank. The
+  tool now stands in for a phone without MMKV (`phone/no-mmkv.js`), so the app takes its own AsyncStorage fallback. The phone
+  itself would do the same on any binary where that require resolves but the native side is missing: `mmkvKV()` catches a
+  failed require, not a `createMMKV` that answers nothing (`docs/renderer.md` section 7.2 asks for the `typeof` check). One
+  line in the phone's court; not touched here.
 
 ## Numbers in use
 
@@ -41,6 +52,15 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## Notes from other sessions
 
+- **The bot drawings stay vocabulary 1, and that is now a decision, not a wait.** Yesterday's note said they would move to the
+  `motion` block as soon as it could reach a screen. Reading `sdui2/gate.ts`: `needs` is worked out per SCREEN and a client
+  missing a block is sent "Open X0 again" instead of the screen, never a lowered one. A chat must never do that for decoration,
+  so the drawings keep `Rise`, which every build already draws, and the chat stays vocabulary 1 for everyone.
+  Moving them to `motion` is still worth doing, but only emitted FOR CLIENTS THAT HAVE THE BLOCK (the screen is then
+  vocabulary 2 for them alone and the gate passes), and only once `SDUI_V2` is on and the store build with the blocks is out.
+  It would want `blocks` on `BotsCtx` (`experience/bots/kit.ts`, `registry.ts`, `screens.ts`), which the drawings do not touch
+  today. What it buys: the window gets real springs (its v2 `motion` simulates one; a Rise there is a CSS ease), and fewer
+  nodes. Say here when `SDUI_V2` goes on and I will do it.
 - Calls (our own video and audio calls from the mail bot; `docs/rooms.md`), branch `claude/peaceful-brown-4trsgb`, not yet on main.
   It takes migration **0091** (`0091_rooms.sql`), and adds `SFU_APP_ID`, `SFU_APP_SECRET` and the `ROOM_*` settings to `config.ts`.
   Cloudflare's Realtime SFU carries the media: $0.05/GB out with the first 1,000 GB free, no per-minute charge, no webhook, and the App

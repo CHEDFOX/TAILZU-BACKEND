@@ -55,6 +55,7 @@ const { BotPickReply } = await import("../src/bots/door.js");
 const { AskDecideReply } = await import("../src/askDecide/index.js");
 const { readMood } = await import("../src/talk/speak.js");
 const { BotMemoryReply } = await import("../src/bots/memory.js");
+const { ShowReply } = await import("../src/show/design.js");
 const { DigestReply } = await import("../src/widgets/digest.js");
 const { parseLine } = await import("../src/agent/lines.js");
 const { readSend } = await import("../src/pipeline/assistPrompt.js");
@@ -312,6 +313,10 @@ describe("a known-good answer for each role", () => {
     bot_memory: {
       text: '{"add":["Trains at 6am on weekdays.","Is vegetarian."],"drop":[],"summary":"Planning workouts around a 6am weekday routine and a vegetarian diet."}',
       reads: (t) => BotMemoryReply.parse(JSON.parse(t)),
+    },
+    bot_show: {
+      text: '{"blocks":[{"type":"choice","question":"Which one should I plan?","options":[{"label":"Lonavala","note":"1.5 hours"},{"label":"Mahabaleshwar","note":"3 hours"},{"label":"Alibaug","note":"3 hours"}]}],"lists":"drawn"}',
+      reads: (t) => ShowReply.parse(JSON.parse(t)),
     },
     widget_digest: { text: '{"line":"Xode finished the cart fix; Plan Ease needs you"}', reads: (t) => DigestReply.parse(JSON.parse(t)) },
     // The main assistant (agent/, pipeline/). Ask's lines are read by the device's parser, the writer's answer by readSend, the portrait by parsePortraitDraft.

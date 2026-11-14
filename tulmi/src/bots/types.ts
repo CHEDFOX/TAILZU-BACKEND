@@ -4,6 +4,7 @@
  * Plain shapes and the numbers the rest of the module (and the role contracts in principles/roles.ts) share. Nothing here reads the
  * environment, a store or a model.
  */
+import type { Shown } from "../show/types.js";
 
 /** The only colours a bot may have: a natural palette, one for each bot. */
 export const PALETTE = ["moss", "clay", "ochre", "sea", "pine", "plum", "sand", "stone"] as const;
@@ -131,6 +132,8 @@ export interface BotAnswer {
   pickedBy?: "name" | "rules" | "model" | "chosen";
   /** What the everyday tools found, kept for the answer's page: GET /v1/everyday/finds/:id (src/everyday). */
   finds?: string;
+  /** What is drawn under the words (src/show): a choice, a callout, the steps, a table, a chart... Absent when nothing would help. */
+  show?: Shown;
   ms: number;
 }
 
