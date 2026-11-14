@@ -26,7 +26,7 @@ import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../s
 import { getConfig } from "../../../../config.js";
 import type { FeedRow } from "../../../../shell/feed.js";
 import {
-  ASK_PATH, C, FACE, SCREENS, answerParams, botStage, box, canVoice, col, grow, icon, keptOffline, labelled, liveWords, meta, needsCard,
+  ASK_PATH, C, FACE, SCREENS, answerParams, botStage, box, canPeek, canVoice, col, grow, icon, keptOffline, labelled, liveWords, meta, needsCard,
   open, roamFor, roundButton, row, sectionLabel, seq, statusMark, text, voiceLive, voiceStop, when, canScroll, scrollBox, type BotsCtx,
 } from "../../kit.js";
 import type { Node as SduiNode } from "../../../../../../shared/types/sdui.js";
@@ -162,15 +162,31 @@ export function updatesOf(ctx: BotsCtx, rows: readonly FeedRow[] = []): { needs:
   return { needs: ctx.live.needs.slice(0, cap.needs), working, done };
 }
 
-/** The one line he wears at rest: the most pressing thing, in his own short words. */
-export function restLine(ctx: BotsCtx, u: ReturnType<typeof updatesOf>): string {
-  if (u.needs.length) return u.needs.length === 1 ? `${u.needs[0]!.botName} needs you` : `${u.needs.length} need you`;
-  if (u.working.length) {
-    const w = u.working[0]!;
-    return u.working.length === 1 ? `${nameOf(ctx, w.bot)} is on it` : `${u.working.length} bots are working`;
+/**
+ * THE MARK HE CARRIES AT REST. Not a sentence over his head — a mark, the way an unread dot is a mark:
+ *
+ *   needs you     a full dot for each, up to three. The heaviest thing there is, and it is the loudest mark
+ *   working       a small dot for each, up to three: something is cooking, nothing is wanted from them
+ *   just finished one small dot: there is news, it can wait
+ *   nothing       no mark, and no box at all — he simply walks
+ *
+ * `text` is what rides in the box (a bullet a font always has, never a glyph that might come out a square); `label` is the
+ * same thing in words, for the person whose screen reads to them, and it goes on him rather than on the mark.
+ */
+export function restMark(ctx: BotsCtx, u: ReturnType<typeof updatesOf>): { text: string; label: string } {
+  if (u.needs.length) {
+    const n = u.needs.length;
+    return { text: "\u2022".repeat(Math.min(n, 3)), label: n === 1 ? `${u.needs[0]!.botName} needs you` : `${n} need you` };
   }
-  if (u.done.length) return u.done.length === 1 ? u.done[0]!.title : `${u.done.length} things done`;
-  return "Nothing new";
+  if (u.working.length) {
+    const w = u.working[0]!, n = u.working.length;
+    return { text: "\u00b7".repeat(Math.min(n, 3)), label: n === 1 ? `${nameOf(ctx, w.bot)} is on it` : `${n} bots are working` };
+  }
+  if (u.done.length) {
+    const n = u.done.length;
+    return { text: "\u00b7", label: n === 1 ? u.done[0]!.title : `${n} things done` };
+  }
+  return { text: "", label: "Nothing new" };
 }
 
 /** One row of the list: the bot's mark and name, what it is, its stage if it is running, and it opens. */
@@ -195,6 +211,7 @@ export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Nod
   // shut ear and a build that cannot hear are the same bot — updates and a key, nothing that mentions talking.
   const voice = canVoice(ctx) && homeListenOn();
   const u = updatesOf(ctx, rows);
+  const mark = restMark(ctx, u);
   const listening = { truthy: "voice" } satisfies Condition;
   const typing = { truthy: "typing" } satisfies Condition;
   const asking = { truthy: "asking" } satisfies Condition;
@@ -294,12 +311,19 @@ export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Nod
   // close button, which shuts his ear with the box.
   const tapHim: ActionRef = setState("askOpen", true);
 
+  // He does not stand in a strip of his own: he lives behind the bar at the foot of the page, only his head over the line,
+  // wandering, and over the ledge into full view every few moments — so the white band under the page goes, and what is left
+  // is his. A build that cannot do it keeps the stage it has today. `hit: "stage"` makes the whole of that room his, so a tap
+  // anywhere near him opens what is happening, not only a tap on a bot the size of a thumbnail.
+  const peek = canPeek(ctx);
   const stage = botStage({
-    life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: desk ? 140 : 136, toys: false, roam: roamFor(ctx),
+    life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: peek ? 0 : desk ? 140 : 136, toys: false, roam: roamFor(ctx),
+    ...(peek ? { stand: "peek" as const } : {}), hit: "stage",
     thinkWhen: { all: [asking, { falsy: "reply.text" }] }, cheerWhen: answered,
     ...(voice ? { listenWhen: listening } : {}),
-    thought: { style: "home", restText: restLine(ctx, u), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
-    label: voice ? "What's happening. I'm listening — say what you need, or tap the key to type." : "What's happening.",
+    // No words at rest: the mark, or nothing at all. What it stands for is said on him instead, where a screen reader finds it.
+    thought: { style: "home", ...(mark.text ? { restText: mark.text } : {}), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
+    label: voice ? `${mark.label}. I'm listening — say what you need, or tap the key to type.` : `${mark.label}. Tap to see what's happening.`,
   }, [col(children, { padding: 18, gap: 14, flexGrow: 1 })], {
     onPress: tapHim,
     ...(voice ? { onDoubleTap: seq(setState("askBot", "any"), setState("askOpen", true), updatesVoice(ctx)) } : {}),

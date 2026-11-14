@@ -6,6 +6,7 @@ Off by default: with the switch off Home is exactly what it is today, and nothin
 
 Code: `tulmi/src/experience/bots/screens/shell/homeUpdates.ts`; Home picks it in `screens/shell/home.ts` (the phone) and `screens/shell.ts` (the window), which also reads the feed for it. Tests: `tulmi/tests/home-updates.test.ts`.
 
+* [0. Where he lives](#0-where-he-lives)
 * [1. What he shows](#1-what-he-shows)
 * [2. Asking him](#2-asking-him)
 * [3. What he says back](#3-what-he-says-back)
@@ -13,9 +14,19 @@ Code: `tulmi/src/experience/bots/screens/shell/homeUpdates.ts`; Home picks it in
 * [5. Settings](#5-settings)
 * [6. What it does not do yet](#6-what-it-does-not-do-yet)
 
+## 0. Where he lives
+
+He does not stand in a white strip at the bottom of Home. He lives **behind the tab bar**: the ground back there is low, so all that clears the line is his head, and he wanders along it. Every so often he jumps the ledge, stands in full view for a few moments, and drops back behind — and he comes up by himself whenever there is something to say (an answer landing, his ear opening, his thought being opened).
+
+It is one ledge and two floors, the way a platform is, and the jump is his own gravity: he leaves the low ground with enough speed to clear the lip, the ledge becomes his floor the instant his feet are over it, and the low ground is his again the instant he steps off. Nothing about it is tweened (`botTiles/core.ts` `Peek`, tested in `core.test.ts`).
+
+Two things follow. The strip he used to need is gone, so Home keeps that room — the page ends on the tab bar with nothing cut off by a white lid — and **a tap anywhere in what is left of it** opens what is happening, instead of asking for a tap on a bot the size of a thumbnail.
+
+A build that cannot do it (`BotPeek`) gets exactly the stage it has today, with him standing on it.
+
 ## 1. What he shows
 
-At rest his thought is one line, the most pressing thing there is: "Xode needs you", "2 need you", "Xode is on it", "Fix the empty cart crash", or "Nothing new". Tap him and it opens:
+At rest he carries **a mark, not a sentence**: a full dot for each thing that needs them (up to three), a small dot while his bots are busy, one small dot when something has just finished, and **nothing at all** — no box over his head — when there is nothing. What the mark stands for is said on him instead, where a screen that reads aloud finds it ("2 need you", "Xode is on it", "Nothing new"). Tap him and it opens:
 
 | | Where it comes from | What a tap does |
 | --- | --- | --- |

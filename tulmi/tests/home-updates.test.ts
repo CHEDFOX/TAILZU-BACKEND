@@ -13,7 +13,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => { process.env.NODE_ENV = "test"; process.env.OPENROUTER_API_KEY = "k"; process.env.GROQ_API_KEY = "k"; process.env.DEV_SKIP_AUTH = "true"; });
 
-const { homeUpdatesBot, homeUpdatesOn, homeListenOn, restLine, updatesOf, updatesSend, HOME_UPDATES_STATE } = await import("../src/experience/bots/screens/shell/homeUpdates.js");
+const { homeUpdatesBot, homeUpdatesOn, homeListenOn, restMark, updatesOf, updatesSend, HOME_UPDATES_STATE } = await import("../src/experience/bots/screens/shell/homeUpdates.js");
 const { ctxFor, sampleLive, fakeDeps } = await import("../src/experience/bots/fixtures.js");
 const { lintTree, walk } = await import("../src/experience/bots/lint.js");
 const { buildBotsScreen } = await import("../src/experience/bots/index.js");
@@ -24,7 +24,7 @@ type Ctx = ReturnType<typeof ctxFor>;
 const ME = "00000000-0000-4000-8000-00000000aaaa";
 
 /** A build that draws his thought and hears him. */
-const CAN = ["BotsKit", "BotsMotion", "BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "KitExtras", "VoiceLive", "DoubleTap", "PersonBot"];
+const CAN = ["BotsKit", "BotsMotion", "BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "KitExtras", "VoiceLive", "DoubleTap", "PersonBot", "BotPeek"];
 const ctx = (client: "phone" | "desktop" = "phone", o: Partial<Ctx> = {}): Ctx =>
   ctxFor(SCREENS.home, client, sampleLive(), { can: new Set(CAN), ...o });
 /** What the screen door takes (buildBotsScreen), as the other screen tests build it. */
@@ -81,15 +81,35 @@ describe("what his thought holds", () => {
     expect(u.done.some((d) => d.title === "Ancient history")).toBe(false);
   });
 
-  it("wears the one line that matters most at rest", () => {
+  it("wears a mark at rest, never a sentence", () => {
     const live = sampleLive();
     const withNeeds = ctx("phone", { live });
-    expect(restLine(withNeeds, updatesOf(withNeeds, FEED))).toMatch(/needs? you/i);
+    const needs = restMark(withNeeds, updatesOf(withNeeds, FEED));
+    // a full dot for each thing that needs them, and the words only for a screen that reads aloud
+    expect(needs.text).toMatch(/^\u2022+$/);
+    expect(needs.text.length).toBe(Math.min(3, live.needs.length));
+    expect(needs.label).toMatch(/needs? you/i);
+    // bots busy: the small dot, nothing wanted from them
+    const busy = ctx("phone", { live: { ...live, needs: [] } });
+    expect(restMark(busy, updatesOf(busy, FEED)).text).toMatch(/^\u00b7+$/);
+    // only news: one small dot
     const quiet = ctx("phone", { live: { ...live, needs: [], working: [] } });
-    expect(restLine(quiet, updatesOf(quiet, FEED))).toBe("2 things done");
-    expect(restLine(quiet, updatesOf(quiet, [FEED[0]!]))).toBe("Fix the empty cart crash");
+    expect(restMark(quiet, updatesOf(quiet, FEED))).toEqual({ text: "\u00b7", label: "2 things done" });
+    // nothing at all: no mark, so no box over his head
+    expect(restMark(quiet, updatesOf(quiet, [])).text).toBe("");
+  });
+
+  it("puts no box over him when there is nothing, and no words in it when there is", () => {
+    on();
+    const live = sampleLive();
+    const node = homeUpdatesBot(ctx(), FEED);
+    const th = (node.props as { thought: { restText?: string }; label: string }).thought;
+    // the box carries a mark, not a sentence; the words move onto him, where a screen reader finds them
+    expect(th.restText).toBe("\u2022");
+    expect((node.props as { label: string }).label).toMatch(/needs you/i);
     const nothing = ctx("phone", { live: { ...live, needs: [], working: [] } });
-    expect(restLine(nothing, updatesOf(nothing, []))).toBe("Nothing new");
+    expect(JSON.stringify(homeUpdatesBot(nothing, []))).not.toContain("restText");
+    off();
   });
 
   it("has no box to type in at first sight, but a key that opens one", () => {
@@ -189,6 +209,38 @@ describe("his ear", () => {
     expect(shut).not.toContain("voiceLive");
     expect(shut).not.toContain("Listening");
     expect(shut).toContain("Type instead");
+    off();
+  });
+});
+
+describe("where he lives", () => {
+  it("lives behind the bar, with the whole strip his to tap", () => {
+    on();
+    const node = homeUpdatesBot(ctx(), FEED);
+    const props = node.props as { stand?: string; hit?: string; height: number };
+    expect(props.stand).toBe("peek");
+    // no white strip of his own: the app gives him only what he needs over the bar
+    expect(props.height).toBe(0);
+    // a tap anywhere near him opens what is happening, not only a tap on a bot the size of a thumbnail
+    expect(props.hit).toBe("stage");
+    off();
+  });
+
+  it("stands on his stage, as he does today, for a build that cannot do it", () => {
+    on();
+    const old = ctx("phone", { can: new Set(CAN.filter((c) => c !== "BotPeek")) });
+    const props = homeUpdatesBot(old, FEED).props as { stand?: string; hit?: string; height: number };
+    expect(props.stand).toBeUndefined();
+    expect(props.height).toBeGreaterThan(100);
+    expect(props.hit).toBe("stage");
+    off();
+  });
+
+  it("gives his strip no padding of its own, so it sits straight on the tab bar", async () => {
+    on();
+    const screen = await buildBotsScreen(req(), fakeDeps({ api: { "GET /v1/shell/activity?tz=330": { now: Date.UTC(2026, 9, 28, 14), week: { done: 0, paise: 0, minutesSaved: 0 }, rows: FEED } } }));
+    const foot = walk(screen!.root!).find((n) => JSON.stringify(n).includes('"stand":"peek"') && n.type === "Stack")!;
+    expect(foot.style?.paddingBottom ?? 0).toBe(0);
     off();
   });
 });

@@ -1370,6 +1370,9 @@ export const VOICE_LIVE_CAPABILITY = "VoiceLive";
 export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
 export const DOUBLE_TAP_CAPABILITY = "DoubleTap";
+/** NOT A COMPONENT: BotStageProps.stand "peek" — he lives behind the bar at the foot of the page, only his head over the
+ *  line, and jumps the ledge now and then to stand in full view. A build without it gets a stage he stands on. */
+export const BOT_PEEK_CAPABILITY = "BotPeek";
 /** NOT A COMPONENT: TextField keyboard / autoFocus / maxLength; Screen, Scroll and (the window) Stack props.startAtEnd;
  *  callEndpoint.stay; a dotted border with a radius drawn dotted on every platform; a failed call's { code, message } kept at
  *  state `lastError` (the window too, as the phone already does), so a toast can say the server's reason. */
@@ -1456,6 +1459,11 @@ export interface BotStageProps {
   /** What a tap opens: "bot" (default) only his body, the rest of the stage passing touches to the page; "stage" the whole stage
    *  (a top area that is all his). A double tap is always on his body. */
   hit?: "bot" | "stage";
+  /** Where he lives. "floor" (default): he stands on his stage, whole. "peek": he lives behind the bar under the stage — his
+   *  ground is below the stage's own bottom edge, so only his head clears the line, he wanders along it, and every so often he
+   *  jumps the ledge and stands in full view for a few moments before dropping back (BotStage, botTiles/core.ts Peek). Only for
+   *  a build that declares BOT_PEEK_CAPABILITY; every other build is sent a stage he stands on, exactly as before. */
+  stand?: "floor" | "peek";
   /** false: he never plays with props (the person's own bot). */
   toys?: boolean;
   roam?: BotRoam;

@@ -192,7 +192,7 @@ export interface ScreenData {
 
 const USER = { id: "00000000-0000-4000-8000-00000000aaaa", name: "Aanya Sharma", email: "aanya@example.in" };
 /** The new Spaces' and Home's thought's blocks (shared/types/sdui.ts 3i), with the moments they play and live words. */
-export const SPACES_COMPONENTS = ["BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "VoiceLive", "DoubleTap", "KitExtras"];
+export const SPACES_COMPONENTS = ["BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "VoiceLive", "DoubleTap", "KitExtras", "BotPeek"];
 /** People as their own tiny bots, and a space's messages in Bricolage (shared/types/sdui.ts 3j): both builds say these now. */
 export const LOOK_COMPONENTS = ["PersonBot", "FontBricolage"];
 export const DESKTOP_COMPONENTS = ["DeskShell", "DeskNotes", "DeskConnectors", "BotsKit", "BotsMotion", "BotTilesStrip", "BotBuddy", "WriteOn", "LiveMark", "HeadBar", "FileUpload", "AudioPlay", "Outbox", ...SPACES_COMPONENTS, ...LOOK_COMPONENTS, "DeskTalkTo"];

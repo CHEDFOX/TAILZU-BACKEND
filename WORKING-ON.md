@@ -46,7 +46,10 @@ look. The apps are renderers: build server data with the existing blocks and cat
   `HOME_UPDATES_USERS`; his ear is open the whole time Home is up, `HOME_LISTEN=false` shuts it). Instead of a box to type in, his thought holds what needs
   you, what your bots are working on and what just finished, each opening where it belongs. No microphone to press: his ear is open
   while the page is in front, and the key that opens the field is the one thing that shuts it (the ✕ beside the field gives it back;
-  coming back by *speaking* is the wake word, which needs the apps).
+  coming back by *speaking* is the wake word, which needs the apps). At rest he wears a mark, never a sentence, and nothing at all
+  when there is nothing. He no longer stands in a white strip either: he lives behind the tab bar, only his head over the line, and
+  jumps the ledge into full view now and then (`stand: "peek"` / `BotPeek`, the apps' `Peek` in botTiles' core; a tap anywhere in
+  the room that is left opens what is happening). Three repos: the backend, TAILZU-FRONTEND and TAILZU-DESKTOP.
   Vocabulary 1, today's kit only. Built on `claude/keen-allen-podunv`, not on main yet. Holds
   `tulmi/src/experience/bots/screens/shell/homeUpdates.ts` (new), and the foot of Home in `screens/shell/home.ts` and
   `screens/shell.ts` (its load reads the activity feed only when the switch is on). It changes `homeThought.ts` not at all: with

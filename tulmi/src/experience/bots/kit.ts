@@ -22,7 +22,7 @@ import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import {
-  BOT_CROWD_COMPONENT, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
+  BOT_CROWD_COMPONENT, BOT_PEEK_CAPABILITY, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
   MENTION_FIELD_COMPONENT, VANISH_COMPONENT, VOICE_LIVE_CAPABILITY, type BotCrowdProps, type BotRoam, type BotStageProps, type LiveWordsProps,
   type MentionFieldProps, type TalkTo, type VanishProps,
 } from "../../../../shared/types/sdui.js";
@@ -488,6 +488,12 @@ export const canSpaces2 = (ctx: BotsCtx): boolean =>
 export const hasSpaces = (ctx: BotsCtx): boolean => ctx.spaces !== false;
 /** A build that draws Home's Ask as his thought (a tiny bot walking the bottom with "Talk freely" over him). */
 export const canHomeThought = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.can.has(BOT_STAGE_COMPONENT) && ctx.can.has(KIT_EXTRAS_CAPABILITY);
+/**
+ * A build that can have him live behind the bar at the foot of the page instead of standing in a strip of his own
+ * (BOT_PEEK_CAPABILITY, BotStage `stand: "peek"`): only his head over the line, wandering, and over the ledge into full view
+ * every so often. Every other build gets the stage it gets today, with him standing on it.
+ */
+export const canPeek = (ctx: BotsCtx): boolean => ctx.can.has(BOT_PEEK_CAPABILITY) && ctx.can.has(BOT_STAGE_COMPONENT);
 /**
  * A build that listens with live words (voiceLive), draws them (LiveWords) and takes a double tap. Every voice piece (liveWords, the
  * voice actions, onDoubleTap, a tile's doubleTap, listenWhen, the "double-tap me" lines, talkTo) goes only to it: a phone whose stream
@@ -1275,6 +1281,8 @@ export interface PageOpts {
   body: Node[];
   /** Pinned under the content: the ask bar, a screen's one primary button. */
   footer?: Node[];
+  /** The footer with no padding of its own, straight on top of the bar under it (the bot who lives behind that bar). */
+  footerFlush?: boolean;
   state?: Record<string, unknown>;
   actions?: Record<string, ActionSpec>;
   /** Between the body's blocks (22 on the phone, 28 in the window by default). */
@@ -1403,7 +1411,14 @@ export function phonePage(ctx: BotsCtx, o: PageOpts): ScreenResponse {
       },
       // The footer sits outside the scroll, so nothing moved it for the keyboard: its field (the ask bar, "Tell Xode what to do")
       // went under the keyboard as it opened. `keyboard: "above"` keeps it just above the keyboard while one of its fields has it.
-      ...(footer.length ? [{ ...col(footer, { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper }), props: { keyboard: "above" } }] : []),
+      // `footerFlush`: no room round it at all, so what it holds sits straight on the bar under it — the bot who lives behind
+      // that bar is cut off exactly at its edge, instead of hanging in a white strip over it.
+      ...(footer.length ? [{
+        ...col(footer, o.footerFlush
+          ? { gap: 0, backgroundColor: C.paper }
+          : { paddingHorizontal: 20, paddingTop: 8, paddingBottom: o.tab ? 22 : 16, gap: 12, backgroundColor: C.paper }),
+        props: { keyboard: "above" },
+      }] : []),
       ...(o.tab ? [tabBar(o.tab, ctx.live)] : []),
     ],
   };

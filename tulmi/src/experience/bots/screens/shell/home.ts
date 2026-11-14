@@ -11,7 +11,7 @@ import { dayPart } from "../../../touches.js";
 import {
   type BotsCtx, canMove, canStrip, homeSurprises, botTiles, botTileSpec, botRoute, makeTileSpec, open, SCREENS, col, grid, botTile,
   makeBotTile, canHead, writeOn, text, liveMark, tailzuMark, roundButton, row, grow, toTab, C, headBar, type PageOpts, hasOutbox,
-  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
+  needsCard, askBar, page, when, seq, blip, botLook, canHomeThought, canPeek, canVoice, canSpaces2, hasSpaces, botChip, labelled, sectionLabel,
 } from "../../kit.js";
 import { HOME_THOUGHT_STATE, homeTalkTo, homeThought, tileVoice } from "./homeThought.js";
 import { HOME_UPDATES_STATE, homeUpdatesBot, homeUpdatesOn } from "./homeUpdates.js";
@@ -263,6 +263,8 @@ export function homePhone(ctx: BotsCtx, arrival = false, more: HomeMore = {}) {
       // A build without it: the card over Home, and the bot saying hello.
       : [...(n.arrival ? [...arrivalCard(ctx), hello(ctx, more)] : []), ...home],
     footer: footer.map((x, i) => arrive(x, home.length + i)),
+    // He lives behind the tab bar, so his strip sits straight on it with no white room of its own.
+    ...(updates && canPeek(ctx) ? { footerFlush: true } : {}),
   });
 }
 
