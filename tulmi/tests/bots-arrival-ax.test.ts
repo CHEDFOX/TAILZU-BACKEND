@@ -104,6 +104,18 @@ describe("the window's arrival card, with Accessibility in its state", () => {
     expect(rows).toContain("The picture is never kept");
   });
 
+  it("asks only for what a row on screen mentions: no Ask card, no second switch to wait on", async () => {
+    // A window that can read Screen Recording but draws no rows for it (Ask is
+    // off in this copy, so it declares no card): the step is Accessibility's
+    // alone, and the card does not wait on a switch nothing mentions.
+    const s = await build("bots.home", [...MOTION, "DeskMicAsk", AX_STATE, SEE_STATE]);
+    const card = cardOf(s.root!)!;
+    expect(JSON.stringify(card.props?.doneWhen)).not.toContain("seeGranted");
+    expect(JSON.stringify(card.props?.readyWhen)).not.toContain("seeGranted");
+    expect(stepOf(card, MAC_STEP.one)).toBeDefined();
+    expect(stepOf(card, MAC_STEP.two)).toBeUndefined();
+  });
+
   it("without the living tiles: a plain card, gone once it is all on", async () => {
     const s = await build("bots.home", ["DeskMicAsk", AX_STATE]);
     expect(cardOf(s.root!)).toBeUndefined();

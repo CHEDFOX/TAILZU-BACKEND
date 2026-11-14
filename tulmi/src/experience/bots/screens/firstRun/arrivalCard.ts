@@ -49,16 +49,21 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
     // when the person turns it on there, so it is asked for at that moment
     // (the window's own card, sdui/permCard.js) and never up front.
     const hasMic = ctx.can.has("DeskMicAsk"), askCard = ctx.can.has("DeskAskSetup");
-    const axRead = ctx.can.has(AX_STATE), seeRead = ctx.can.has(SEE_STATE);
+    const axRead = ctx.can.has(AX_STATE);
+    // The second switch is only ASKED for where the card that draws its row is
+    // there to draw it (Ask off in this copy, and the window declares no card):
+    // a window that can read the answer but has no row for it would be waiting
+    // on a switch nothing on screen mentions, and the card would never finish.
+    const seeAsk = ctx.can.has(SEE_STATE) && askCard;
     const hasAx = askCard || axRead;
     if (!hasMic && !hasAx) return [];
     const axTurn: Condition = hasMic ? MIC_SETTLED : { falsy: "permitClosed" };
     // What the Mac still owes us, as this window can read it. Off a Mac both
     // answer "nothing to ask for", so the step hides itself there.
-    const macOwed: Condition = seeRead && axRead
+    const macOwed: Condition = seeAsk && axRead
       ? { any: [{ falsy: "axGranted" }, { falsy: "seeGranted" }] }
       : { falsy: "axGranted" };
-    const macOn: Condition[] = [...(axRead ? [{ truthy: "axGranted" } as Condition] : []), ...(seeRead ? [{ truthy: "seeGranted" } as Condition] : [])];
+    const macOn: Condition[] = [...(axRead ? [{ truthy: "axGranted" } as Condition] : []), ...(seeAsk ? [{ truthy: "seeGranted" } as Condition] : [])];
     const allSet: Condition | undefined = axRead
       ? { all: [...(hasMic ? [MIC_SETTLED] : []), ...macOn] }
       : hasMic && !hasAx ? MIC_SETTLED : undefined;
@@ -66,7 +71,7 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
     // names, which is the only way to find the switches in its settings.
     const macRows = [
       { key: "read", title: "Typing for you", sub: "So your words land where your cursor is, in any app, instead of only being copied." },
-      ...(seeRead ? [{ key: "see", title: "Answering about your screen", sub: "So Ask can answer about what's in front of you when you ask it to. The picture is never kept." }] : []),
+      ...(seeAsk ? [{ key: "see", title: "Answering about your screen", sub: "So Ask can answer about what's in front of you when you ask it to. The picture is never kept." }] : []),
     ];
     steps = [
       ...(hasMic ? [mic({ all: [{ falsy: "micGranted" }, { falsy: "micAsked" }] })] : []),
@@ -100,7 +105,7 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
     const known: Condition[] = [
       ...(hasMic ? [{ neq: ["micGranted", null] } as Condition] : []),
       ...(axRead ? [{ neq: ["axGranted", null] } as Condition] : []),
-      ...(seeRead ? [{ neq: ["seeGranted", null] } as Condition] : []),
+      ...(seeAsk ? [{ neq: ["seeGranted", null] } as Condition] : []),
     ];
     ready = known.length > 1 ? { all: known } : known[0];
     done = allSet;
