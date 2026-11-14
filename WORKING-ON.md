@@ -23,7 +23,14 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## In progress
 
-- Nothing held right now. Reviews of the pieces below may push small follow-up fixes to the same files.
+- **The `live` block (L1): joining a call from the apps** (calls, `docs/rooms.md`; started 14 Nov). The 14th block: take a seat in a
+  call, change the mic and camera, leave, the people in it written into state, and a `Live` node that draws one person's track. It is
+  JavaScript on the `react-native-webrtc` the app already links, so no native package and no runtime bump.
+  Holds: `TAILZU-BACKEND/shared/types/sdui.ts` (`SDUI_BLOCKS`, `LiveProps`, the three actions), `tulmi/src/experience/sdui2/{build,lint}.ts`,
+  `tulmi/src/rooms/**`, `tulmi/src/experience/bots/screens/bots/mailCalls.ts` and a new `callRoom.ts`;
+  `TAILZU-FRONTEND/app/src/sdui/blocks/live/**` (new), `components/index.ts`, `client/capabilities.ts`, `src/device/natives.ts`;
+  `TAILZU-DESKTOP/src/app/sdui/v2/**`.
+- Reviews of the pieces below may push small follow-up fixes to the same files.
 
 ## Landed 14 Nov 2026 (all switched off)
 
@@ -61,10 +68,6 @@ look. The apps are renderers: build server data with the existing blocks and cat
   It would want `blocks` on `BotsCtx` (`experience/bots/kit.ts`, `registry.ts`, `screens.ts`), which the drawings do not touch
   today. What it buys: the window gets real springs (its v2 `motion` simulates one; a Rise there is a CSS ease), and fewer
   nodes. Say here when `SDUI_V2` goes on and I will do it.
-- Calls (our own video and audio calls from the mail bot; `docs/rooms.md`), branch `claude/peaceful-brown-4trsgb`, not yet on main.
-  It takes migration **0091** (`0091_rooms.sql`), and adds `SFU_APP_ID`, `SFU_APP_SECRET` and the `ROOM_*` settings to `config.ts`.
-  Cloudflare's Realtime SFU carries the media: $0.05/GB out with the first 1,000 GB free, no per-minute charge, no webhook, and the App
-  Secret never leaves the server. Server only: it holds none of the renderer's files, and no screen of it states `needs`.
-  Joining from the apps needs a **14th block, `live`** (take a seat, change the mic and camera, leave, the people in it written into
-  state, and a node that draws one person's track). The `media` block's `Video` cannot stand in: it is expo-video playing an https clip.
-  The SFU needs nothing beyond the `react-native-webrtc` the app already links, so `live` is JavaScript and no runtime bump.
+- Calls, server side, are **on main** (`docs/rooms.md`, migration **0091**, settings `SFU_APP_ID` / `SFU_APP_SECRET` / `ROOM_*`, all
+  off). Cloudflare's Realtime SFU carries the media: $0.05/GB out with the first 1,000 GB free, no per-minute charge, no webhook, and the
+  App Secret never leaves the server. Joining from the apps is L1 above.
