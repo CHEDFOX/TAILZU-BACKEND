@@ -525,7 +525,7 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
     expect(lintTree(s.root!)).toEqual([]);
   });
 
-  it("in a window: the microphone and Accessibility, only where the window declares them", async () => {
+  it("in a window: the microphone and the Mac's own switch, only where the window declares them", async () => {
     const none = await build("bots.home", "desktop", { api: ARRIVE, can: MOTION });
     expect(cardOf(none.root!)).toBeUndefined();
     expect(JSON.stringify(none.root)).not.toContain("DeskAskSetup");
@@ -533,7 +533,9 @@ describe("after onboarding: one card for the microphone and the keyboard", () =>
     const card = cardOf(real.root!)!;
     expect(card.props).toMatchObject({ overlay: true, readyWhen: { neq: ["micGranted", null] } });
     expect(stepOf(card, "Let X0 Bot hear you")).toBeDefined();
-    expect(walk(stepOf(card, "Let Keylessbord type for you")!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read" }] });
+    // The step is named for what the switch does, with the Mac's own name for it in the line under the rows.
+    const mac = stepOf(card, "One switch in your Mac's settings")!;
+    expect(walk(mac).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ rows: [{ key: "read", title: "Typing for you" }] });
     const keybot = await build("bots.keybot", "desktop", { can: [...MOTION, "DeskAskSetup", "DeskMicAsk"] });
     expect(cardOf(keybot.root!)?.visibleIf).toEqual({ falsy: "micGranted" });
     expect(walk(keybot.root!).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ place: "home" });

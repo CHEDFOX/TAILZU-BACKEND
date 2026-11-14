@@ -485,9 +485,10 @@ export const DEVICE_STATE = { keyboardEnabled: true, keyboardReady: true, micGra
 /**
  * The first arrival (over Home): unknown until the app's readings come in (null), so the card decides only then;
  * `micAsked` once the microphone has been asked (allowed or not: either way on to the keyboard), `permitClosed`
- * once it is answered or put off.
+ * once it is answered or put off. A window fills `axGranted` and `seeGranted` with this computer's own answers
+ * (sdui/permissions.js): the two switches only System Settings can flip.
  */
-export const ARRIVAL_STATE = { keyboardEnabled: null, keyboardReady: null, micGranted: null, axGranted: null, micAsked: false, permitClosed: false };
+export const ARRIVAL_STATE = { keyboardEnabled: null, keyboardReady: null, micGranted: null, axGranted: null, seeGranted: null, micAsked: false, permitClosed: false };
 
 // ===================================================================== the list
 const q = (o: Record<string, unknown>): string => {
