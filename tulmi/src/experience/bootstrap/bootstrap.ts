@@ -813,5 +813,7 @@ export function buildBootstrap(
     })(),
     cacheTtlSeconds: 300,
     warmScreenIds: botsApp ? botsWarmScreenIds() : WARM_SCREEN_IDS,
-  });
+    // Who is asking, so the knobs that are a named person's (the Reply button on a bot's notification, NOTIFY_REPLY_USERS) are
+    // listed for them alone.
+  }, opts.userId ? { userId: opts.userId } : {});
 }

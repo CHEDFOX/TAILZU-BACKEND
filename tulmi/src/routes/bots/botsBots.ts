@@ -102,9 +102,13 @@ export function apiOrigin(): string {
 
 /**
  * Returns `sharedFor`: what the person's spaces shared with a bot (shared.ts forBot), for "Ask any bot" on POST /v1/ask (routes/ask/front.ts),
- * so a bot shared into a space reads it there as it does in its chat.
+ * so a bot shared into a space reads it there as it does in its chat; and `chatShared`, exactly what the chat itself gives the bot, for
+ * a reply typed into a notification (routes/bots/botsNotifyReply.ts).
  */
-export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): { sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>> } {
+export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): {
+  sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
+  chatShared: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
+} {
   const parts = o.parts ?? botsAreaParts({ bots: deps.bots, connectors: deps.connectors });
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
@@ -403,5 +407,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
       const [shared, told] = await Promise.all([spacesArea.items.forBot(userId, slug.toLowerCase()), spacesArea.memory.forBot(userId, slug.toLowerCase()).catch(() => [])]);
       return [...shared, ...told];
     },
+    // Exactly what POST /chat/:slug above gives the bot, for a reply typed into a notification (routes/bots/botsNotifyReply.ts).
+    chatShared: async (userId, slug) => (spacesOn() ? spacesArea.items.forBot(userId, slug.toLowerCase()) : []),
   };
 }

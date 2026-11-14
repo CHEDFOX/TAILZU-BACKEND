@@ -62,6 +62,7 @@ this against `app/native-inputs.lock`; run it with `--write` after an addition.
 | **Widgets, Live Activity, Android notice, key prints** | add a design to the catalog and a `targets` rule naming who sees it | `shared/native/looks.json`; `PUT /v1/admin/native/looks` |
 | **Location, one contact, workouts** | the actions `location.area`, `contact.pick`, `health.sync` | `shared/types/sdui.ts`; `botsPlaces.ts`, `spaces/pickContact.ts`, `screens/bots/health.ts` |
 | **Live reload of a screen** | `page(ctx, { live: [topic] })` plus `live.publish` on the write path | `live/bus.ts` |
+| **Reply to a bot from its notification** | give the push the `x0_bot_reply` category and `data.slug` / `data.thread`; the typed words land on `POST /v1/bots/:slug/notify-reply` (server only, no app update) | `bots/notifyReply.ts`, `routes/bots/botsNotifyReply.ts`; see `docs/widgets.md` §5 |
 
 **Paint, today.** On the phone use `shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset` and `elevation`.
 `boxShadow`, `backgroundImage`, `filter` and `mixBlendMode` are dropped by the phone's style passthrough
@@ -70,7 +71,16 @@ send them today and the phone loses them. The window still draws them as CSS.
 
 ---
 
-## 3. Not usable yet (lands with V1 + S1, and D1 for the window)
+## 3. The blocks (connected 14 Nov 2026, behind `SDUI_V2`)
+
+**Update, 14 Nov 2026:** the blocks are now connected on the phone (`bfe4404`), the window (`af74cd7`) and the server
+(`8446728`: `tulmi/src/experience/sdui2/{build,lint,gate}.ts`). They are behind the server switch `SDUI_V2` (+
+`SDUI_V2_USERS`), off by default. While it is off no client is treated as having any block, so a screen that states `needs`
+is never served. Build new screens with `sdui2/build.ts`, run them through `sdui2/lint.ts`, test on accounts in
+`SDUI_V2_USERS`, and only then ask the owner to turn the switch on. Phones get the blocks with the next over-the-air update
+of the new store build; the window with its next release. Where the text below says "not built" or "V1/S1", read it as
+built and switched off.
+
 
 None of the 13 blocks below is reachable from a screen yet: no client declares `blocks`, and `lintTree`'s `KIT_TYPES`
 rejects `List`, `Each`, `Input`, `Video`, `Audio`, `Camera`, `Use` and `Slot`. **Do not send any of this syntax.**

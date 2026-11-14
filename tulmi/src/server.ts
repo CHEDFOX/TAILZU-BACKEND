@@ -62,6 +62,8 @@ import { registerXodeFlowRoutes } from "./routes/bots/botsXode.js";
 import { registerBotsFirstRunRoutes } from "./routes/bots/botsFirstRun.js";
 import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
+import { registerNotifyReplyRoutes } from "./routes/bots/botsNotifyReply.js";
+import { botSaidPush, setBotSaidHook } from "./bots/notifyReply.js";
 import { registerRoutineRoutes } from "./routes/bots/routines.js";
 import { registerAskDecideRoutes } from "./routes/ask/askDecide.js";
 import { registerTalkRoutes } from "./routes/ask/talk.js";
@@ -86,7 +88,7 @@ import { registerLingoRoutes } from "./routes/bots/lingo.js";
 import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
 import { spacePeople } from "./meet/people.js";
-import { botsAreaParts } from "./botsBots/index.js";
+import { botsAreaParts, type BotsAreaParts } from "./botsBots/index.js";
 import { Blocks } from "./botsBots/blocks.js";
 import { googleEvents, startAutoJoin } from "./meet/calendar.js";
 import { GoogleSession } from "./connectors/google/oauth.js";
@@ -107,7 +109,7 @@ import { registerAssistantRoutes } from "./routes/ask/assistant.js";
 import { RunLedger, runStore, startRunSweeper } from "./runs/index.js";
 import { registerDemoRoutes } from "./routes/site/demo.js";
 import { initControl, registerControlRoutes } from "./control/index.js";
-import { initPush, notifyApproval, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
+import { initPush, notifyApproval, notifyBot, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/account/reviewCode.js";
 import { registerDeviceLinkRoutes } from "./routes/account/deviceLink.js";
@@ -444,9 +446,17 @@ registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
 registerBotHealthRoutes(app, { rateLimit: AUTHED_RL, bots });
 // Routines (src/routines, docs/routines.md): a bot does something on a schedule, without being asked each time. On with the bots platform
 // unless ROUTINES=false; every minute the ones that are due run as their owner, through the bot's own road. Migration 0062 keeps them.
+// The chat a routine's answer is kept in, so a reply typed into its notification has its subject: the bots area's own (botsParts
+// below, made after the routines are). A routine runs on a tick, long after this file has finished, so it is always there by then.
+let routineChat: BotsAreaParts["chat"] = null;
 const routines = createRoutines({
   store: routineStore(), bots, events: routineEvents(), publish: livePublish,
   notify: async (userId, msg) => { try { await pushEngine()?.notify(userId, msg); } catch { /* the answer is still on the routine */ } },
+  // With NOTIFY_REPLY on for the owner, the answer is kept as a quiet bot turn and pushed as the bot's own `bot_ask`, with a Reply
+  // box on it (src/bots/notifyReply.ts, docs/widgets.md §5): the routine is answered from the lock screen. Off: `routine_done`.
+  // The turn carries the run's own confirm card and links, so the chat the push opens shows what the app would.
+  note: async (userId, slug, text, extra) => { await routineChat?.note(userId, slug, text, { quiet: true, ...(extra ? { extra } : {}) }); },
+  askPush: (userId, p, key) => notifyBot(userId, "bot_ask", p, key),
 });
 if (routines) {
   const stopRoutines = startRoutines(routines, app.log);
@@ -479,6 +489,8 @@ registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);
 // The bots area's parts, made once here so the meeting bot reads the same Spaces (who is whose admin) as its routes do.
 const botsParts = botsAreaParts({ bots, connectors });
+// A routine's answer goes into the same chat the app's own shows (above).
+routineChat = botsParts.chat;
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts });
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
@@ -486,6 +498,15 @@ registerBotsCodeRoutes(app, botsAreaDeps);
 registerXodeFlowRoutes(app, botsAreaDeps);
 registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
+// Replying to a bot from its notification (src/bots/notifyReply.ts, docs/widgets.md §5): the words typed into the push go into that
+// bot's own chat and its answer comes back as another push. 404 while NOTIFY_REPLY is off, which is the default.
+registerNotifyReplyRoutes(app, { rateLimit: AUTHED_RL, bots, chat: botsParts.chat, shared: botsArea.chatShared });
+// A bot that said something into a chat on its own (botsBots/chat.ts note, without `quiet`) pings the person with a Reply box on it,
+// so they answer from the lock screen. The hook itself is notifyReply.ts's own (botSaidPush), so it is the same thing under test.
+// Nothing while NOTIFY_REPLY is off (botSaid checks the switch itself); nothing today either, since both of note()'s callers are
+// quiet — the routines above send a `bot_ask` of their own instead.
+setBotSaidHook(botSaidPush(bots, notifyBot));
+app.addHook("onClose", async () => { setBotSaidHook(null); });
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 // The native looks: the nlook catalog the widgets and the Live Activity draw, and the art and fonts they draw with

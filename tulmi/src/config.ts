@@ -1438,6 +1438,12 @@ const EnvSchema = z.object({
    *                        fallback act, and nothing names a scene
    *   BOTS_SCENES_USERS    a comma-separated list of account ids. Set, only those accounts get format 2 even with BOTS_SCENES
    *                        on (the owner's device checks, then internal accounts). Empty (the default): the switch decides
+   *   SDUI_V2              the screen vocabulary 2 (pure/SPEC.md section 2: expressions, templates, rules, motion, gestures,
+   *                        lists, inputs, media, paint, device facts, local values, data, shell). Off: no client is treated as
+   *                        having any block, so a screen that states `needs` is never served as one — a builder's sduiV2Live()
+   *                        check keeps drawing today's screen and nobody sees the "open X0 again" page
+   *   SDUI_V2_USERS        a comma-separated list of account ids. Set, only those accounts are served a vocabulary-2 screen,
+   *                        even with SDUI_V2 on. Empty (the default): the switch alone decides
    */
   NATIVE_LOOKS: bool(false),
   NATIVE_ACTIVITY: bool(false),
@@ -1447,6 +1453,8 @@ const EnvSchema = z.object({
   ANDROID_BOTS_NOTICE: bool(false),
   BOTS_SCENES: bool(false),
   BOTS_SCENES_USERS: orDefault(""),
+  SDUI_V2: bool(false),
+  SDUI_V2_USERS: orDefault(""),
   /**
    * THE PHONE'S OWN THINGS (docs: perms). Each is off, so a server deployed before the store build draws none of the three
    * buttons, and an older binary that declares no capability would not get them anyway.
@@ -1472,6 +1480,18 @@ const EnvSchema = z.object({
   PERM_HEALTH_IOS_USERS: orDefault(""),
   PERM_HEALTH_ANDROID: bool(false),
   PERM_HEALTH_ANDROID_USERS: orDefault(""),
+  /**
+   * REPLYING TO A BOT FROM ITS NOTIFICATION (src/bots/notifyReply.ts, docs/widgets.md §5). Launch dark: off, so no push carries the
+   * new category and POST /v1/bots/:slug/notify-reply answers 404. Nothing on the phone changes either way.
+   *
+   *   NOTIFY_REPLY           the switch
+   *   NOTIFY_REPLY_USERS     a comma-separated list of account ids. Set, only those accounts get the Reply button and the route,
+   *                          even with NOTIFY_REPLY on. Empty (the default) means the switch alone decides
+   *   NOTIFY_REPLY_PER_HOUR  replies one person may send from notifications in an hour (the model runs for each)
+   */
+  NOTIFY_REPLY: bool(false),
+  NOTIFY_REPLY_USERS: orDefault(""),
+  NOTIFY_REPLY_PER_HOUR: z.coerce.number().int().min(1).max(500).default(20),
   /**
    * Shared secret for RevenueCat's webhook.
    *
