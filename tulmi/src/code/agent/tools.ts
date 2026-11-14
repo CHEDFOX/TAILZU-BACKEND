@@ -157,9 +157,11 @@ export const AGENT_TOOLS: readonly ToolDef[] = [
   },
   {
     name: "flag_finding",
-    description: "Record something you noticed outside your task (a bug, a security problem, dead code) for the pull request. Do not fix it unless the task includes it.",
+    description: "Record something you noticed outside your task (a bug, a security problem, dead code) for the pull request. Do not fix it unless the task includes it. "
+      + "A risk needs how it happens, from what someone controls to what comes of it; without that it is kept as worth checking.",
     parameters: obj({
       severity: { type: "string", enum: ["info", "warn", "risk"] }, path: { type: "string", maxLength: 500 }, line: { type: "integer", minimum: 1 }, text: { type: "string", maxLength: 400 },
+      how: { type: "string", maxLength: 400 },
     }, ["severity", "path", "text"]),
   },
   {
@@ -875,12 +877,20 @@ export class Tools {
   // -------------------------------------------------------------- findings
 
   private async flag(call: ToolCall, a: Record<string, unknown>): Promise<ToolOutcome> {
-    const f = cleanFinding({ severity: a.severity, path: a.path, line: a.line, text: a.text });
+    const f = cleanFinding({ severity: a.severity, path: a.path, line: a.line, text: a.text, how: a.how });
     if (!f) throw new Refused("A finding needs a path and a sentence about what you noticed.");
     if (this.env.state.findings.length >= FINDINGS_MAX) throw new Refused(`${FINDINGS_MAX} findings are recorded already; that is enough for one change.`);
     this.env.state.findings.push(f);
-    await this.log(call, "finding", f.text, [f.path], { severity: f.severity, path: f.path, ...(f.line !== undefined ? { line: f.line } : {}) });
-    return { ok: true, content: "Recorded. It will be in the pull request." };
+    await this.log(call, "finding", f.text, [f.path], {
+      severity: f.severity, path: f.path, ...(f.line !== undefined ? { line: f.line } : {}), ...(f.how ? { how: f.how } : {}), ...(f.verdict ? { verdict: f.verdict } : {}),
+    });
+    // A risk claimed without an account of how it happens is kept, and said plainly to be the lesser thing it is.
+    return {
+      ok: true,
+      content: f.verdict === "needs_checking"
+        ? "Recorded as worth checking, not as a risk: a risk needs how it happens, from what someone controls to what comes of it. Call it again with how if you can show that."
+        : "Recorded. It will be in the pull request.",
+    };
   }
 }
 

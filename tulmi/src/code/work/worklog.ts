@@ -162,8 +162,8 @@ export class WorkLog {
   command(cmd: string, result: { kind?: string; exitCode: number; durationMs?: number; summary?: string; verdict?: string }) {
     return this.add("command", { text: cmd, data: { ...result } });
   }
-  finding(f: { severity: "info" | "warn" | "risk"; path: string; line?: number; text: string }) {
-    return this.add("finding", { text: f.text, files: [f.path], data: { severity: f.severity, path: f.path, ...(f.line !== undefined ? { line: f.line } : {}) } });
+  finding(f: { severity: "info" | "warn" | "risk"; path: string; line?: number; text: string; how?: string; verdict?: string }) {
+    return this.add("finding", { text: f.text, files: [f.path], data: { severity: f.severity, path: f.path, ...(f.line !== undefined ? { line: f.line } : {}), ...(f.how ? { how: f.how } : {}), ...(f.verdict ? { verdict: f.verdict } : {}) } });
   }
   decision(text: string) { return this.add("decision", { text }); }
   question(text: string, answer?: string) { return this.add("question", { text, ...(answer ? { data: { answer } } : {}) }); }
@@ -240,7 +240,10 @@ export async function renderWorklog(entriesOrPromise: WorkEntry[] | Promise<Work
     const d = e.data ?? {};
     const where = str(d.path) || e.files?.[0] || "";
     const at = where ? ` \`${esc(where)}${num(d.line) ? `:${num(d.line)}` : ""}\`` : "";
-    return `- **${str(d.severity) || "info"}**${at}: ${line(e.text, 240)}`;
+    // A risk the bot could not account for is marked as the question it is, and how it happens is shown when it could.
+    const how = str(d.how) ? ` _How it happens:_ ${line(str(d.how), 200)}` : "";
+    const mark = str(d.verdict) === "needs_checking" ? " _(worth checking: how it happens was not shown)_" : "";
+    return `- **${str(d.severity) || "info"}**${at}: ${line(e.text, 240)}${mark}${how}`;
   }).concat(found.length > 15 ? [`- and ${found.length - 15} more in the log`] : []));
 
   section("Decisions", entries.filter((e) => e.kind === "decision").slice(0, 12).map((e) => `- ${line(e.text, 260)}`));

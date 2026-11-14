@@ -29,7 +29,7 @@ import type { Approval } from "../approvals.js";
 import type { ContextStrategy } from "./mask.js";
 import type { Classification } from "../brain/types.js";
 import type { BaselineResult } from "../project/types.js";
-import type { ChangePlan, Located } from "../work/index.js";
+import type { ChangePlan, Finding, Located } from "../work/index.js";
 import type { PartContext, TeamMode, TeamState } from "../team/types.js";
 
 export const PHASES = ["prepare", "new_project", "baseline", "merge", "locate", "plan", "split", "team", "work", "verify", "design", "screens", "commit", "pr", "report", "done"] as const;
@@ -195,7 +195,6 @@ export interface Exchange {
   model?: string;
 }
 
-export interface Finding { severity: "info" | "warn" | "risk"; path: string; line?: number; text: string }
 
 export interface CheckSummary { kind: string; exitCode: number; summary: string; failing: string[]; status: string }
 
@@ -534,6 +533,11 @@ export interface AgentState {
     surfaceAsked?: boolean;
     /** What the tests covering the files just edited said, when they were run mid-work and failed (phases.ts spotCheck). Data, wrapped when shown. */
     spotFeedback?: string;
+    /** The one note about files the task did not point at was said (scope.ts); what the funnel pointed at, worked out once; and the paths, for the report. */
+    scopeSaid?: boolean;
+    scopeNote?: string;
+    scopeHints?: string[];
+    outside?: string[];
     /** How many mid-work test runs this job has made, and the staged edits of the last one: the same edits are never checked twice. */
     spotChecks?: number;
     spotAt?: string;

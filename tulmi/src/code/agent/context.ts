@@ -418,6 +418,7 @@ function taskParts(i: ContextInput, k: Knobs, o: { transcript: boolean }): { sta
     add(true, `The checks FAILED on your last attempt (fix round ${s.work.fixRounds} of 3). Fix what this change broke:\n${dataBlock("checks", "", cut(s.work.feedback, 3500))}`);
   }
   if (s.work.testFeedback) add(true, s.work.testFeedback);
+  if (s.work.scopeNote) add(true, s.work.scopeNote);
   if (s.work.spotFeedback) {
     add(true, "The tests covering the files you just edited were run on your staged edits, and they FAILED. This is not the final check; it is what your last "
       + `edit did, while you are still in it. Fix it now, or say with note why it is not this change's doing:\n${dataBlock("tests", "", cut(s.work.spotFeedback, 3000))}`);

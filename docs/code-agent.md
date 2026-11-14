@@ -14,6 +14,7 @@ tulmi/src/code/agent/
   runner.ts        the runner port, and the environment router behind it
   report.ts        the commit message, the pull request body, the final report
   surface.ts       what the change took away: the exported names and routes of the files it touched, before against after
+  scope.ts         the files a change touched that its task never pointed at: said to the model once, then reported
   run.ts           one run of the loop: the state, the claim it writes through, the ways it stops
   phases.ts        prepare ... report, each a function over a Run that can be entered again
   loop.ts          the driver (runLoop), the single-advance entry (advanceLoop), and the budget stop
@@ -47,7 +48,7 @@ prepare ──┬─ a question, research, a library to find ──────�
 | `plan` | `work/plan.ts`. Then the policy is asked in advance what the commit this plan leads to would do (`decide`). A standing "never" ends the job with the reason. A **high-risk** plan, or one the policy would ask about, waits for the person's OK through the approval book. | the OK (`needs_you`) |
 | `split` | **Only for a big goal** (a plan over 12 files or 3 features, a goal over several projects, or the person asked; never a small task): the job becomes a **lead**. The `team_split` role splits the work into parts with disjoint file ownership; code validates them (an overlap is refused and asked again, three rounds at most). A split that cannot be made right leaves the job to do the work itself. `docs/code-team.md` | the budget cannot pay a team (`needs_you`, `budget`) |
 | `team` | The lead's loop over its helpers: it builds part 0 (the shared contracts) first, then starts helpers (child jobs, three at once by default), has each part reviewed by a model of another family (two fix rounds at most), merges the parts in dependency order, and then runs `verify` on the whole branch. One pull request at the end. `docs/code-team.md` | a part's money, a helper's question (shown as a `blocked` part) |
-| `work` | A model with tools (section 3), one turn at a time. Every edit is **staged**, never written. After a round that changed code, the tests covering the changed files are run while the edit is still in front of the model, when that is nearly free (section 4a). | a question from the model; the budget |
+| `work` | A model with tools (section 3), one turn at a time. Every edit is **staged**, never written. After a round that changed code, the tests covering the changed files are run while the edit is still in front of the model, when that is nearly free (section 4a), and what it touched beyond the task is noted once (section 4c). | a question from the model; the budget |
 | `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. Once the checks pass, what the change took away is read (section 4b, `surface.ts`). | |
 | `design` | **Only for a job built from an approved design** (`AgentState.spec`, `docs/artifacts.md` sections 6 and 11), and only if `CODE_DESIGN_CHECK` is on. After the checks pass and before the commit: start the project's dev server on the runner (the preview, `docs/cloudflare-jobs.md` section 11), open the route the design is for, shoot it and the approved design at mobile and desktop, and compare (a cheap pixel gate first, the vision tier only if they differ, metered in the job's budget). **Major** differences send the job back to `work` with the differences and the fix hints in front of the model, **twice at most**, and the checks run again before the next look. After the last round one more look is taken and what still differs is **reported**. It **never blocks the commit**: no live runner, not a web app, no `dev` script, a dev server that will not start, no browser or shot viewer, a budget too small (about 240 paise), a failed shot, a model with no usable answer: the round is skipped with one sentence for the report and the job goes on. Its stages are saved one by one, so a restart or a wait resumes it without doing anything twice | |
 | `commit` | The **server** commits all the staged edits at once through `workspace().commit`, so the policy, the secret scan, the Blip author and the co-author trailer always apply. If the policy asks, the job waits for the person's OK; if it says never, the job stops with the reason. | the OK (`needs_you`) |
@@ -100,7 +101,7 @@ A loop that fails on something unexpected (GitHub down, a bug) is not the person
 | `run {cmd, why}` | Up to 20 commands on a runner, **with the staged edits laid over the checkout** (`overlay` on the step; nothing it changes is kept); the exit code and the end of the output. At most 10 runs in a round of work. With the live session the commands go to a runner kept open for the job (about a second each); otherwise each is a step of its own. |
 | `web_search`, `read_page`, `research` | Layer 3. The page arrives inside `asUntrusted`'s wrapper. |
 | `find_resources {need}` | Layer 6: a ranked shortlist of libraries. |
-| `flag_finding`, `note` | A bug noticed in code it was not asked to change (it goes in the pull request); a line for the work log. |
+| `flag_finding`, `note` | A bug noticed in code it was not asked to change (it goes in the pull request); a line for the work log. **A finding earns its severity:** a `risk` must carry `how` it happens (what someone controls, what it reaches, what comes of it) or it is kept as a `warn` marked *worth checking* instead, and the model is told so. The verdict (`confirmed`, `needs_checking`) is `work/findings.ts cleanFinding`'s word, never the model's, and the two groups are separate in the report and the pull request. After Cloudflare's security-audit skill (MIT; the idea, not its text): only an established boundary failure is confirmed, and a missing hardening measure is not one. |
 | `ask_user {question, options?}` | The job waits for the person; their words come back as the call's result. |
 | `done {summary}` | The work is finished. |
 
@@ -210,6 +211,35 @@ cannot be made says nothing at all.
 Tests: `tests/code-agent-surface.test.ts` (the surface per language, what counts as moved, the words the model is given) and the "what the change took
 away" group in `tests/code-agent-loop.test.ts` (the round through the real loop, the one-round cap with the report and the pull request, and a task that
 asked for the removal).
+
+## 4c. The files a change touched that its task never pointed at
+
+A change should touch what it must and leave the rest alone. An agent reading a lot of code is tempted by what it passes: a tidy-up here, a rename
+there, a lint fix in a file it only opened to understand. Each is defensible alone, and together they turn a two-file change into a twelve-file one
+that nobody can review.
+
+So after every round that has something staged, the staged files are set against what the task pointed at (`scope.ts`), from what the project already
+knows and with **no model**: the plan's files and the located targets, the locate funnel's top files (`work/locate.ts fusedFor`, the free half, run
+once a job and kept), a path the person wrote in the task itself, and what the index connects to those — their importers, what they import, and the
+tests covering them.
+
+Never counted as a detour: a **manifest or lockfile** (a dependency the work needed shows up there), a **test beside a related file**, and a **new**
+file in the same folder as a related one (that is how a project grows). An **edit** to a file that merely shares the folder *is* counted: in a project
+whose source sits in one directory, the folder would otherwise excuse everything.
+
+**It is a note, not a gate.** The funnel is a guess and this is a guess about a guess, so what is left over is never called wrong:
+
+* **once** a job, while the model can still act on it, as a line in its prompt: these are not files the task pointed at, which is often right (a call
+  site, a type, a config, a test), but if one is a tidy-up that is not part of this task, put it back, and `flag_finding` is where something noticed
+  elsewhere belongs. It costs no model and no runner, and saying it once means it cannot nag a model into reverting work it needs;
+* in the **report and the pull request** ("Beyond what the task asked for"), as what a reviewer should look at first. The list is kept up to date after
+  the note has been said, so a detour taken later still shows up there.
+
+Nothing for a merge, a new project or a team's part (a helper's files are already its own, and `team/guard.ts` *refuses* an edit outside them: that is a
+guard, because a part really does own its paths, where here nobody knows better than the model what the change needs).
+
+Tests: `tests/code-agent-scope.test.ts` (what counts as pointed at, the three exemptions and the edit that is not excused by its folder, a brain that
+cannot answer) and the "a file the task never pointed at" group in `tests/code-agent-loop.test.ts`.
 
 ## 5. Money
 

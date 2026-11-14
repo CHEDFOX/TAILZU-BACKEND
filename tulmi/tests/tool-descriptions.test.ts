@@ -3,7 +3,8 @@
  *
  * The tool definitions go to the model with every turn of a job, so they are prompt like any other. They were tightened the way the
  * principles tightened the system prompts: short, the schema says what the schema can say, no example in them. This holds that down:
- *   - the whole list stays inside the size it was measured at (plus 5%), and well under what it was (scripts/prompt-sizes.ts TOOLS_BEFORE);
+ *   - the whole list stays inside the size it was measured at (plus 5%), and well under what it was (scripts/prompt-sizes.ts TOOLS_BEFORE),
+ *     bar the two capabilities deliberately added since (ADDED), which are named and bounded to what they cost;
  *   - no description is a paragraph, none has an example in it, and no parameter carries a description of its own (its name and type do that work);
  *   - the sentences the agent's behaviour leans on are still there: which tool is for what, what is data, what a run costs.
  */
@@ -24,10 +25,21 @@ const { TOOLS_BEFORE, toolSizes } = await import("../scripts/prompt-sizes.js");
  * The measured size of the list as it is now. A tool that grows past it has grown back into a paragraph. Measured again on 2026-10-28, when suggest_files joined
  * (free-form by default: the locate funnel as a tool) and the run tool learned to say that what a command writes is not kept.
  */
-/** Measured with project_map added (19 tools); it was { total: 7538, descriptions: 3301 } with 18. */
-const MEASURED = { total: 8401, descriptions: 3762 };
+/**
+ * Measured with edit_file's replace_all and flag_finding's how added; it was { total: 8401, descriptions: 3762 } before them, and
+ * { total: 7538, descriptions: 3301 } with 18 tools, before project_map.
+ */
+const MEASURED = { total: 8598, descriptions: 3886 };
 /** The tools that were there when TOOLS_BEFORE was measured: the "smaller than it was" comparison is between the same tools. */
 const ORIGINAL = AGENT_TOOLS.filter((t) => t.name !== "suggest_files" && t.name !== "project_map");
+/**
+ * What the two capabilities added since the tightening cost in ORIGINAL: edit_file's `replace_all` (every copy of a name in one file, in one
+ * call) and flag_finding's `how` (a risk shows how it happens or is kept as the lesser thing: work/findings.ts cleanFinding). Each is one
+ * clause of a description and one field of a schema, for capability the tools did not have. They are held to what those cost and NOT A
+ * CHARACTER MORE, so the next thing that wants room has to earn it here. A description drifting back into a paragraph is still caught by
+ * MEASURED above, by the 450-character rule, and by the no-example rules below.
+ */
+const ADDED = { descriptions: 110, schema: 35, total: 160 };
 const room = (n: number) => Math.ceil(n * 1.05);
 
 /** Said where the example would be. The same markers the principles are held to (principles.test.ts). */
@@ -50,13 +62,14 @@ describe("the tool definitions' size", () => {
     expect(now.descriptions).toBeLessThanOrEqual(room(MEASURED.descriptions));
   });
 
-  it("is smaller than it was: the whole list by a tenth, the descriptions by a fifth, and the schemas not bigger (the same seventeen tools)", () => {
+  it("is still what it was, bar the two capabilities added since, each held to what it cost (the same seventeen tools)", () => {
     const total = JSON.stringify(ORIGINAL).length;
     const descriptions = ORIGINAL.reduce((n, t) => n + t.description.length, 0);
     const schema = ORIGINAL.reduce((n, t) => n + JSON.stringify(t.parameters).length, 0);
-    expect(total).toBeLessThan(TOOLS_BEFORE.total * 0.9);
-    expect(descriptions).toBeLessThan(TOOLS_BEFORE.descriptions * 0.8);
-    expect(schema).toBeLessThanOrEqual(TOOLS_BEFORE.schema);
+    // Held to the tightening's own figures plus the named cost of the two capabilities, and nothing else.
+    expect(descriptions).toBeLessThan(TOOLS_BEFORE.descriptions * 0.8 + ADDED.descriptions);
+    expect(schema).toBeLessThanOrEqual(TOOLS_BEFORE.schema + ADDED.schema);
+    expect(total).toBeLessThan(TOOLS_BEFORE.total * 0.9 + ADDED.total);
   });
 
   it("has no description that is a paragraph: 450 characters at most, and the longest is the run tool's", () => {
@@ -89,6 +102,14 @@ describe("the tool definitions' style", () => {
       const props = (t.parameters as { properties: Record<string, Record<string, unknown>> }).properties;
       for (const [name, schema] of Object.entries(props)) expect(schema.description, `${t.name}.${name}`).toBeUndefined();
     }
+  });
+
+  it("make a risk earn its severity: flag_finding takes how, and does not require it (a finding without one is kept as the lesser thing)", () => {
+    const flag = AGENT_TOOLS.find((t) => t.name === "flag_finding")!;
+    const props = (flag.parameters as { properties: Record<string, unknown>; required: string[] });
+    expect(props.properties.how).toEqual({ type: "string", maxLength: 400 });
+    expect(props.required).not.toContain("how");
+    expect(flag.description).toMatch(/A risk needs how/);
   });
 
   it("keep their schema: strict objects, the same required fields, the same bounds", () => {

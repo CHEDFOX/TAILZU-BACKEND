@@ -11,7 +11,8 @@
  *   - what the loop does on its own account: it reads nothing it should not, the route's record of each round is kept;
  *   - a turn's looks answered side by side, in the order asked, with one checkpoint write for them;
  *   - an export the change dropped though the checks pass: one round to put it back, then reported, never a block;
- *   - the tests covering what was just edited, run mid-work when a session is open, and the failure in the next turn.
+ *   - the tests covering what was just edited, run mid-work when a session is open, and the failure in the next turn;
+ *   - a file the task never pointed at, said once and reported; a risk that must show how it happens to stay a risk.
  */
 import { describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
@@ -387,6 +388,72 @@ describe("what the change took away (surface.ts)", () => {
     expect(s.work.surfaceAsked).toBeUndefined();
     expect(s.verify?.lost ?? []).toEqual([]);
     expect(r.model.seen.map((x) => x.messages).join("\n")).not.toContain("Nothing in the task asked for that");
+  });
+});
+
+describe("a file the task never pointed at (scope.ts)", () => {
+  it("is said to the model once, while it can still act, and goes in the report and the pull request", async () => {
+    const r = await agentRig();
+    r.model.push(
+      call("edit_file", UTIL_EDIT),
+      call("write_file", { path: "src/legacy.ts", content: "export const OLD = 2; // tidied\n" }),
+      done("Trimmed the dashes, and tidied legacy on the way."),
+    );
+    const { job } = await run(r);
+
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    const told = r.model.seen.map((x) => x.messages).join("\n---\n");
+    expect(told).toContain("src/legacy.ts");
+    expect(told).toContain("the task did not point at");
+    expect(told).toContain("flag_finding");
+    // Said once only, however many turns follow.
+    expect(told.match(/the task did not point at/g)).toHaveLength(1);
+    const s = await r.stateNow(job.id);
+    expect(s.work.outside).toEqual(["src/legacy.ts"]);
+    expect(s.report?.text).toMatch(/Also changed, beyond what the task pointed at: src\/legacy\.ts/);
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr!.body).toContain("Beyond what the task asked for");
+  });
+
+  it("says nothing when the change keeps to what the task and the index point at", async () => {
+    const r = await agentRig();
+    r.model.push(call("edit_file", UTIL_EDIT), done("Trimmed the dashes."));
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.work.outside ?? []).toEqual([]);
+    expect(r.model.seen.map((x) => x.messages).join("\n")).not.toContain("the task did not point at");
+    expect(s.report?.text ?? "").not.toMatch(/Also changed, beyond/);
+  });
+});
+
+describe("a finding that claims to be a risk (work/findings.ts)", () => {
+  it("is kept as a risk when the model shows how it happens, and the pull request carries the how", async () => {
+    const r = await agentRig();
+    const how = "the id comes straight from the query string and the row is read without checking who owns it";
+    r.model.push(
+      call("flag_finding", { severity: "risk", path: "src/index.ts", line: 2, text: "any signed-in user can read another's row", how }),
+      call("edit_file", UTIL_EDIT), done("Trimmed the dashes."),
+    );
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.findings[0]).toMatchObject({ severity: "risk", verdict: "confirmed", how });
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr!.body).toContain("How it happens:");
+  });
+
+  it("is lowered to worth checking when it does not, and the model is told why in the tool's answer", async () => {
+    const r = await agentRig();
+    r.model.push(
+      call("flag_finding", { severity: "risk", path: "src/index.ts", text: "this looks insecure to me" }),
+      call("edit_file", UTIL_EDIT), done("Trimmed the dashes."),
+    );
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.findings[0]).toMatchObject({ severity: "warn", verdict: "needs_checking" });
+    expect(r.model.seen[1]!.messages).toContain("Recorded as worth checking, not as a risk");
+    expect(s.report?.text).toMatch(/Worth checking/);
+    const [pr] = r.fake.pulls(r.repo);
+    expect(pr!.body).toContain("worth checking: how it happens was not shown");
   });
 });
 

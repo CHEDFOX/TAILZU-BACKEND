@@ -41,6 +41,7 @@ import {
 } from "../work/index.js";
 import { fusedFor, type Fused } from "../work/locate.js";
 import { verifyCommands } from "../work/plan.js";
+import { hintedPaths, outsideScope, scopeNote } from "./scope.js";
 import { fromApprovedPlan } from "../flow/plan.js";
 import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
@@ -562,6 +563,41 @@ async function spotCheck(r: Run): Promise<void> {
   }
 }
 
+/**
+ * THE FILES THIS CHANGE TOUCHED THAT THE TASK NEVER POINTED AT (scope.ts). Worked out after EVERY round that has something staged, because the
+ * drive-by edit comes later than the first one, and SAID to the model ONCE: a guess about a guess, so it is a note and never a refusal. The
+ * paths are kept up to date for the report and the pull request, whether or not the note has been said.
+ *
+ * The funnel behind it (`hintedPaths`) is run once a job and kept, since it only reads the task.
+ */
+async function scopeCheck(r: Run): Promise<void> {
+  const s = r.state;
+  const w = s.work;
+  if (s.merge || s.newProject || s.part || r.tools.changes.empty) return;
+  try {
+    if (w.scopeHints === undefined) {
+      w.scopeHints = s.located?.targets.length || s.plan ? [] : await hintedPaths(s.task, r.brain);
+    }
+    const outside = await outsideScope(s, r.tools.changes.files.map((f) => ({ path: f.path, action: f.action })), r.brain, w.scopeHints);
+    const fresh = outside.filter((p) => !(w.outside ?? []).includes(p));
+    if (!outside.length) {
+      w.outside = undefined;
+      return;
+    }
+    w.outside = outside;
+    if (fresh.length) await r.log.note(`Staged beyond what the task pointed at: ${outside.slice(0, 6).join(", ")}.`);
+    // Said while the model can still act on it, and only once a job: after that the report is where it belongs.
+    if (!w.scopeSaid && !w.finished) {
+      w.scopeSaid = true;
+      w.scopeNote = scopeNote(outside) ?? undefined;
+    }
+    await r.save();
+  } catch (err) {
+    if (err instanceof LostClaim || err instanceof Park || err instanceof Yield || err instanceof BudgetStop || err instanceof EndJob) throw err;
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: the scope note could not be worked out");
+  }
+}
+
 export async function workPhase(r: Run): Promise<void> {
   const s = r.state;
   const w = s.work;
@@ -600,8 +636,10 @@ export async function workPhase(r: Run): Promise<void> {
       }
     }
     if (w.finished) break;
-    // The tests covering what this round changed, while the edit is still the model's last thought (spotCheck).
+    // The tests covering what this round changed, while the edit is still the model's last thought (spotCheck), and once, what it
+    // touched that the task never pointed at (scopeCheck).
     await spotCheck(r);
+    await scopeCheck(r);
   }
   // A question is answered from the values the code holds: what it asks about is in the answer, by name and by value.
   if (s.classification?.type === "question" && r.tools.changes.empty && w.doneSummary) await addMissingValues(r);
@@ -750,6 +788,8 @@ async function modelTurn(r: Run): Promise<void> {
     if (level !== tierSet.reasoning) { reasoning = level; w.lowTurns = (w.lowTurns ?? 0) + 1; }
   }
   w.feedbackSeen = feedback || undefined;
+  // The scope note is said once and is spent: the turn it was shown to has had it.
+  w.scopeNote = undefined;
   let res;
   try {
     res = await call({
