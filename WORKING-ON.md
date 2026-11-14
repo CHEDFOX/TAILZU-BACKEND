@@ -1,6 +1,6 @@
 # Being built right now (read before you start)
 
-Updated 14 Nov 2026, 00:40 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 14 Nov 2026, 03:10 UTC. One session is building the items below. Do not edit the files they hold until the item is
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
 
 **How to build things now:** read `TAILZU-BACKEND/docs/renderer.md` before adding any screen, visual, animation or widget
@@ -23,18 +23,7 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## In progress
 
-- Reviews of the pieces below may push small follow-up fixes to the same files.
-- **What a bot draws under its words** (server; `docs/show.md`, behind `BOT_SHOW`, off, staged by `BOT_SHOW_USERS`). After a
-  bot answers in its chat, the `bot_show` role picks building blocks or none (a choice to tap, a callout, steps, a table, a
-  chart, next questions, a form, a drawing), drawn as monochrome dot art (SVG circles) whose pieces spring in on `Rise` on
-  the newest answer, with Blip (`BotBuddy`) beside a drawing now and then. **Vocabulary 1 on purpose** (see the note below).
-  Every Rise and BotBuddy carries a `fallback`, and a chat screen holds one dot budget, so it keeps to `docs/renderer.md`
-  sections 4 and 5. Built on `claude/keen-allen-podunv`, not on main yet. Holds `tulmi/src/show/**`,
-  `tulmi/src/experience/bots/show.ts`, `tulmi/src/experience/bots/screens/bots/parts.ts` (`botTurn`, `chatTurns`),
-  `tulmi/src/bots/run.ts` (step 7), `tulmi/src/botsBots/chat.ts` (picks), the chat POST in `tulmi/src/routes/bots/botsBots.ts`,
-  the `bot_show` role in `tulmi/src/principles/roles.ts`, `docs/show.md`. It leaves `shared/types/sdui.ts`,
-  `tulmi/src/experience/bots/lint.ts` and `tulmi/src/experience/sdui2/**` exactly as main has them, and puts `BOT_SHOW` /
-  `BOT_SHOW_USERS` in `config.ts` next to `LINGO`, away from `SDUI_V2`.
+- Nothing held right now. Reviews of the pieces below may push small follow-up fixes to the same files.
 
 ## Landed 14 Nov 2026 (all switched off)
 
@@ -43,6 +32,17 @@ look. The apps are renderers: build server data with the existing blocks and cat
   How to use it: `docs/renderer.md` section 3.
 - Reply to a bot from its notification (`tulmi/src/bots/notifyReply.ts`, route `POST /v1/bots/:slug/notify-reply`,
   category `x0_bot_reply`, switch `NOTIFY_REPLY` / `NOTIFY_REPLY_USERS` / `NOTIFY_REPLY_PER_HOUR`). Server only.
+- **What a bot draws under its words** (`docs/show.md`, switch `BOT_SHOW` / `BOT_SHOW_USERS`). Server only, vocabulary 1, so
+  every build draws it with no release. After a bot answers in its chat, the `bot_show` role picks building blocks or none (a
+  choice to tap, a callout, steps, a table, a chart, next questions, a form, a drawing), drawn as monochrome dot art whose
+  pieces spring in on `Rise` on the newest answer, with Blip beside a drawing now and then. Why it is not vocabulary 2: the
+  note below.
+- The render check draws the phone again: `local.ts` requires `react-native-mmkv` and trusts what `createMMKV` returns, and
+  `scripts/bots-render`'s catch-all stub answers null, so the first `local.*` read threw and the screen came out blank. The
+  tool now stands in for a phone without MMKV (`phone/no-mmkv.js`), so the app takes its own AsyncStorage fallback. The phone
+  itself would do the same on any binary where that require resolves but the native side is missing: `mmkvKV()` catches a
+  failed require, not a `createMMKV` that answers nothing (`docs/renderer.md` section 7.2 asks for the `typeof` check). One
+  line in the phone's court; not touched here.
 
 ## Numbers in use
 
