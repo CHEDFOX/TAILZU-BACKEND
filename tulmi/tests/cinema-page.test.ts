@@ -157,6 +157,41 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect((buddies[0]!.props as { moment?: string }).moment).toBe("c.frame");
   });
 
+  it("gives the director a card of his own, doing what matches the film", async () => {
+    const { DIRECTOR } = await import("../src/experience/bots/screens/bots/cinemaPage.js");
+    const buddyOf = (p: { nodes: { type: string; props: Record<string, unknown> }[] }) =>
+      p.nodes.filter((n) => n.type === "BotBuddy" && n.props.avatar === DIRECTOR);
+
+    // A film waiting for a decision: he claps his board, and the card opens it.
+    const waits = await build({ client, overview: OVERVIEW({ films: [ROW] }) });
+    expect(waits.lint).toEqual([]);
+    expect(buddyOf(waits)).toHaveLength(1);
+    expect(buddyOf(waits)[0]!.props.moment).toBe("c.clap");
+    expect(buddyOf(waits)[0]!.props.state).toBe("needs");
+    expect(waits.texts).toContain("Open it");
+
+    // A finished film: he throws it in the air.
+    const ready = await build({ client, overview: OVERVIEW({ films: [{ ...ROW, status: "done", hold: null, done: 4 }] }) });
+    expect(ready.lint).toEqual([]);
+    expect(buddyOf(ready)[0]!.props.moment).toBe("c.premiere");
+    expect(ready.texts).toContain("Watch it");
+    expect(ready.texts).toContain("Ready to watch");
+
+    // One being filmed: he finds the frame with his hands, over and over.
+    const filming = await build({ client, overview: OVERVIEW({ films: [{ ...ROW, status: "rendering", hold: null, done: 2 }] }) });
+    expect(filming.lint).toEqual([]);
+    expect(buddyOf(filming)[0]!.props.moment).toBe("c.frame");
+    expect(buddyOf(filming)[0]!.props.momentMode).toBe("loop");
+    expect(filming.texts).toContain("See how it's going");
+    expect(filming.texts.some((x) => x.includes("Filming: 2 of 4 shots done"))).toBe(true);
+
+    // Nothing to say about: no card, and the invitation keeps its own director.
+    const empty = await build({ client });
+    expect(buddyOf(empty)).toHaveLength(1);
+    expect(buddyOf(empty)[0]!.props.moment).toBe("c.frame");
+    expect(empty.texts).not.toContain("Open it");
+  });
+
   it("a shot that cannot be read says so", async () => {
     const p = await build({ client, screen: "bots.cinema.shot", params: { f: "f1", n: "9" }, film: view() });
     expect(p.lint).toEqual([]);

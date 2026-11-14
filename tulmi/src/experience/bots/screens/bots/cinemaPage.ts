@@ -3,6 +3,10 @@
  * and pictures are made.
  *
  *   the head       back, the bot's name, and a line: what is waiting for the person, else what it does
+ *   his card       one card over the page, the way the postie's and the Oracle's sit over theirs: the one film worth knowing about, and the
+ *                  director doing what matches it - the board clapped for a film that needs the person, the film thrown in the air for one
+ *                  that is ready, the frame found with his hands while one is being filmed. One director to a page: this card, or the
+ *                  invitation at the bottom when there is nothing at all
  *   waiting        first, the films that wait for the person (a script or a storyboard to say go to, a shot to look at, today's limit)
  *   a new film     what the film is (in their words); Length (15, 30, 60 seconds), Frame (wide, vertical, square) and Quality (draft, standard,
  *                  premium) as segmented controls; and Write the script. Nothing is made until they say go to the script, then the storyboard
@@ -22,6 +26,7 @@ import {
 import { toast } from "../firstRun/parts.js";
 import { mailField } from "./mailCards.js";
 import { abs, CINEMA, openFilm, statusLine, waitsForYou, type CinemaData } from "./cinemaScreens.js";
+import type { FilmRow } from "../../../../cinema/types.js";
 import { type BotPageData, chatBar, isDesk, lookOf, setState } from "./parts.js";
 
 export type CinemaPageData = BotPageData & { cinema?: CinemaData };
@@ -37,6 +42,38 @@ export function cinemaTileLook(ctx: BotsCtx): Pick<BotTileSpec, "avatar" | "mome
   if (!canMoments(ctx)) return {};
   const m = botMoment(ctx, "c.clap", "loop");
   return { avatar: DIRECTOR, ...(m.moment ? { moment: m.moment, ...(m.momentMode ? { momentMode: m.momentMode } : {}) } : {}) };
+}
+
+/**
+ * THE DIRECTOR'S OWN CARD, over his page. One film and one thing to do with it, picked in the order they matter: a film that waits for the
+ * person first, then one that is ready to watch, then one being filmed. Nothing to say, no card - the page is the films themselves.
+ *
+ * His moment carries the meaning as much as the words do: the clapperboard for a film that needs a decision, the film thrown in the air for
+ * one that is finished, the frame made with his hands while one is still being shot. A build that draws no moments gets the card without him.
+ */
+function directorCard(ctx: BotsCtx, look: { color: string }, films: readonly FilmRow[], desk: boolean): Node | null {
+  const waiting = films.filter(waitsForYou);
+  const pick = waiting[0]
+    ? { film: waiting[0], moment: "c.clap", mode: "once" as const, label: "Open it" }
+    : films.find((f) => f.status === "done")
+      ? { film: films.find((f) => f.status === "done")!, moment: "c.premiere", mode: "once" as const, label: "Watch it" }
+      : films.find((f) => f.status === "rendering" || f.status === "boarding" || f.status === "cutting" || f.status === "writing")
+        ? { film: films.find((f) => f.status === "rendering" || f.status === "boarding" || f.status === "cutting" || f.status === "writing")!, moment: "c.frame", mode: "loop" as const, label: "See how it's going" }
+        : null;
+  if (!pick) return null;
+  const him = canBuddy(ctx)
+    ? botBuddy({
+      kind: "custom", color: look.color, life: "page.cinema", width: desk ? 150 : 110, height: desk ? 64 : 56, size: desk ? 38 : 32,
+      state: waiting.length ? "needs" : "idle", avatar: DIRECTOR, lookTo: "down", ...botMoment(ctx, pick.moment, pick.mode),
+    })
+    : row([icon("spark", { size: 24, color: look.color })], { justifyContent: "center" });
+  return card([
+    row([him, col([
+      text(plain(pick.film.title) || "Your film", { size: 16, weight: 600, lineHeight: 21, lines: 1 }),
+      meta(statusLine(pick.film), { size: 13, lineHeight: 18, lines: 2 }),
+    ], { gap: 2, flexShrink: 1 }), grow()], { gap: 10, alignItems: "center" }),
+    row([primaryButton(pick.label, openFilm(pick.film.id), { size: "md" })]),
+  ], { gap: 12 });
 }
 
 const said = (message: string): ActionSpec => ({ kind: "toast", message, tone: "success" } as ActionSpec);
@@ -59,7 +96,9 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
     ? row([botAvatar(look, 30), name, grow()], { gap: 10 })
     : row([labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back"), name, grow()], { gap: 6 });
 
-  const body: Node[] = [head];
+  // One director to a page: his card when there is a film to say something about, the invitation below when there is nothing at all.
+  const hero = o ? directorCard(ctx, look, o.films, desk) : null;
+  const body: Node[] = [...(hero ? [hero] : []), head];
   if (!o) {
     body.push(notice("Your films couldn't be read just now. Pull to try again.", { mark: "close" }));
   } else {
@@ -70,6 +109,7 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
       ...(f.poster ? { left: picture(abs(f.poster), 44, 44, { radius: 8, fit: "cover", background: C.surface }) } : {}),
       onPress: openFilm(f.id),
     });
+    // His card names the first of these; the list is still here, so every waiting film has its own row and poster.
     const waiting = o.films.filter(waitsForYou);
     if (waiting.length) body.push(listCard(waiting.map(filmRow), { title: "Waiting for you" }));
 

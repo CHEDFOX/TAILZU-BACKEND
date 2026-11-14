@@ -304,9 +304,12 @@ the apps' starter copies are regenerated with it (`TAILZU-FRONTEND/app/src/botTi
 
 * **Home** (`screens/shell/home.ts`): a card of its own among the first tiles, wherever the bot is on, with the director clapping his board
   and the line "Makes your films and pictures".
-* **The bot's page** (`bots.bot`, slug `cinema`): the films waiting for the person first (a script or a storyboard to approve, more money, a
-  shot to look at); a new film (their words; Length, Frame and Quality as segmented controls; Write the script); a picture; the other films
-  with their first still; the pictures; the cast.
+* **The bot's page** (`bots.bot`, slug `cinema`): **the director's own card** over the page, the way the postie's and the Oracle's sit over
+  theirs - the one film worth knowing about and him doing what matches it: the board clapped for a film that needs a decision (Open it), the
+  film thrown in the air for one that is ready (Watch it), the frame found with his hands while one is being filmed (See how it's going).
+  One director to a page: this card, or the invitation at the bottom when there is nothing at all. Then the films waiting for the person (a
+  script or a storyboard to approve, a shot to look at, today's limit); a new film (their words; Length, Frame and Quality as segmented
+  controls; Write the script); a picture; the other films with their first still; the pictures; the cast.
 * **A film** (`bots.cinema.film`, params `f`): the title and where it stands, then the decision as one card at the top (Make the
   storyboard; Film it; paused for today, with the plans; the finished film's still with a play mark, Watch, Download, Share or Copy link, the
   subtitles; or what is happening now). Then, once it is cut, **Other cuts of this film**: the ones already made, each ready to watch and
