@@ -102,6 +102,15 @@ export const FIX_ROUNDS_MAX = 3;
 export const RUNS_MAX = 10;
 /** Tool calls in one model turn that are carried out; the rest are answered "too many". */
 export const CALLS_PER_TURN = 8;
+
+/**
+ * THE MOST MID-WORK TEST RUNS ONE JOB MAKES (phases.ts spotCheck). The tests covering the files just edited, run while the edit is still
+ * the model's last thought instead of only after done. Two, because the point is to catch a break early, not to run the suite on a loop.
+ */
+export const SPOT_CHECKS_MAX = 2;
+
+/** How long one of those runs may take. A narrowed test command is seconds; one that sits here for minutes is not a spot check. */
+export const SPOT_TIMEOUT_SEC = 180;
 /** Characters of the assembled prompt for one model call. */
 export const CONTEXT_MAX_CHARS = 60_000;
 /** The last this-many tool results go to the model in full; older ones are masked or folded (context.ts, mask.ts). */
@@ -523,6 +532,11 @@ export interface AgentState {
     testFeedback?: string;
     /** The one round asking for a quietly removed export or route to be put back was spent (surface.ts). */
     surfaceAsked?: boolean;
+    /** What the tests covering the files just edited said, when they were run mid-work and failed (phases.ts spotCheck). Data, wrapped when shown. */
+    spotFeedback?: string;
+    /** How many mid-work test runs this job has made, and the staged edits of the last one: the same edits are never checked twice. */
+    spotChecks?: number;
+    spotAt?: string;
     /** What the design check found, for the model to fix: the differences and the fix hints. Data, wrapped when shown. */
     designFeedback?: string;
     /** What a team's reviewer found in this helper's work (code/team): the findings, for the fix round. Data, wrapped when shown. */

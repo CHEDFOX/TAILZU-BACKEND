@@ -10,7 +10,8 @@
  *   - the baseline: recorded on a runner, reused when it is fresh, unknown (and said so) when no computer can run it;
  *   - what the loop does on its own account: it reads nothing it should not, the route's record of each round is kept;
  *   - a turn's looks answered side by side, in the order asked, with one checkpoint write for them;
- *   - an export the change dropped though the checks pass: one round to put it back, then reported, never a block.
+ *   - an export the change dropped though the checks pass: one round to put it back, then reported, never a block;
+ *   - the tests covering what was just edited, run mid-work when a session is open, and the failure in the next turn.
  */
 import { describe, expect, it, vi } from "vitest";
 import { noNetwork } from "./no-network.js";
@@ -252,6 +253,79 @@ describe("the baseline", () => {
     const steps = await r.jobStore.listSteps(job.id);
     expect(steps[0]).toMatchObject({ kind: "exec", status: "cancelled" });
     expect(steps.filter((x) => x.status === "pending" || x.status === "dispatched")).toHaveLength(0);
+  });
+});
+
+describe("the tests covering what was just edited, run mid-work (spotCheck)", () => {
+  const BROKEN = 'export function slug(s: string): string {\n  return "BROKEN";\n}\n';
+  const FIXED = 'export function slug(s: string): string {\n  return s.toLowerCase().replace(/\\s+/g, "-").replace(/^-+|-+$/g, "");\n}\n';
+  /** The project's tests fail while the broken edit is staged, and pass once it is fixed. */
+  const byStaged = (kind: string, run: { overlay: Array<{ path: string; content: string | null }> }) => {
+    const util = run.overlay.find((f) => f.path === "src/util.ts")?.content ?? "";
+    return kind === "test" && util.includes("BROKEN") ? { exit: 1, text: "1 failing: slug trims the dashes" } : { exit: 0, text: "ok" };
+  };
+
+  it("runs them after a round that changed code, puts the failure in the next turn, and lets the model fix it there and then", async () => {
+    const r = await agentRig({ live: { progress: () => undefined } });
+    r.runner.checkResult = byStaged;
+    r.model.push(
+      // The first run opens the job's session, so a check afterwards is about a second.
+      call("run", { cmd: "npm test", why: "see where this starts" }),
+      call("write_file", { path: "src/util.ts", content: BROKEN }),
+      call("write_file", { path: "src/util.ts", content: FIXED }),
+      done("Trimmed the dashes."),
+    );
+    const { job, branch } = await run(r);
+
+    expect((await r.jobNow(job.id)).state).toBe("done");
+    // The turn after the broken edit was told, in its own words, that this was not the final check.
+    const afterBad = r.model.seen[2]!.messages;
+    expect(afterBad).toContain("were run on your staged edits, and they FAILED");
+    expect(afterBad).toContain("while you are still in it");
+    expect(afterBad).toContain("1 failing: slug trims the dashes");
+    // It ran as its own step, and the narrowed test command is what it ran.
+    const spot = r.runner.runs.filter((x) => x.wrapped && x.commands.join(" ").includes("util.test"));
+    expect(spot.length).toBeGreaterThan(0);
+    // Fixed, the next round's run passes and nothing of it is left for verify to repeat.
+    const s = await r.stateNow(job.id);
+    expect(s.work.spotChecks).toBe(2);
+    expect(s.work.spotFeedback).toBeUndefined();
+    expect(s.verify?.ok).toBe(true);
+    expect(r.fake.files(r.repo, branch)["src/util.ts"]).toBe(FIXED);
+  });
+
+  it("is not run at all without a live session, or before the model has run anything itself", async () => {
+    const noLive = await agentRig();
+    noLive.runner.checkResult = byStaged;
+    noLive.model.push(call("write_file", { path: "src/util.ts", content: FIXED }), done("Trimmed."));
+    const a = await run(noLive);
+    expect((await noLive.stateNow(a.job.id)).work.spotChecks).toBeUndefined();
+
+    // With a session, but the model edits without running anything first: nothing is open, so nothing is checked mid-work.
+    const noRun = await agentRig({ live: { progress: () => undefined } });
+    noRun.runner.checkResult = byStaged;
+    noRun.model.push(call("write_file", { path: "src/util.ts", content: FIXED }), done("Trimmed."));
+    const b = await run(noRun);
+    expect((await noRun.stateNow(b.job.id)).work.spotChecks).toBeUndefined();
+    expect((await noRun.jobNow(b.job.id)).state).toBe("done");
+  });
+
+  it("stops after two in a job, and never checks the same staged edits twice", async () => {
+    const r = await agentRig({ live: { progress: () => undefined } });
+    r.runner.checkResult = byStaged;
+    r.model.push(
+      call("run", { cmd: "npm test", why: "start" }),
+      call("write_file", { path: "src/util.ts", content: FIXED }),
+      // The same text again: nothing changed, so there is nothing new to check.
+      call("write_file", { path: "src/util.ts", content: FIXED }),
+      call("write_file", { path: "src/legacy.ts", content: "export const OLD = 2;\n" }),
+      call("write_file", { path: "src/legacy.ts", content: "export const OLD = 3;\n" }),
+      done("Done."),
+    );
+    const { job } = await run(r);
+    const s = await r.stateNow(job.id);
+    expect(s.work.spotChecks).toBe(2);
+    expect((await r.jobNow(job.id)).state).toBe("done");
   });
 });
 

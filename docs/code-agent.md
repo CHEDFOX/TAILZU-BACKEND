@@ -47,8 +47,8 @@ prepare ──┬─ a question, research, a library to find ──────�
 | `plan` | `work/plan.ts`. Then the policy is asked in advance what the commit this plan leads to would do (`decide`). A standing "never" ends the job with the reason. A **high-risk** plan, or one the policy would ask about, waits for the person's OK through the approval book. | the OK (`needs_you`) |
 | `split` | **Only for a big goal** (a plan over 12 files or 3 features, a goal over several projects, or the person asked; never a small task): the job becomes a **lead**. The `team_split` role splits the work into parts with disjoint file ownership; code validates them (an overlap is refused and asked again, three rounds at most). A split that cannot be made right leaves the job to do the work itself. `docs/code-team.md` | the budget cannot pay a team (`needs_you`, `budget`) |
 | `team` | The lead's loop over its helpers: it builds part 0 (the shared contracts) first, then starts helpers (child jobs, three at once by default), has each part reviewed by a model of another family (two fix rounds at most), merges the parts in dependency order, and then runs `verify` on the whole branch. One pull request at the end. `docs/code-team.md` | a part's money, a helper's question (shown as a `blocked` part) |
-| `work` | A model with tools (section 3), one turn at a time. Every edit is **staged**, never written. | a question from the model; the budget |
-| `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. Once the checks pass, what the change took away is read (section 4a, `surface.ts`). | |
+| `work` | A model with tools (section 3), one turn at a time. Every edit is **staged**, never written. After a round that changed code, the tests covering the changed files are run while the edit is still in front of the model, when that is nearly free (section 4a). | a question from the model; the budget |
+| `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. Once the checks pass, what the change took away is read (section 4b, `surface.ts`). | |
 | `design` | **Only for a job built from an approved design** (`AgentState.spec`, `docs/artifacts.md` sections 6 and 11), and only if `CODE_DESIGN_CHECK` is on. After the checks pass and before the commit: start the project's dev server on the runner (the preview, `docs/cloudflare-jobs.md` section 11), open the route the design is for, shoot it and the approved design at mobile and desktop, and compare (a cheap pixel gate first, the vision tier only if they differ, metered in the job's budget). **Major** differences send the job back to `work` with the differences and the fix hints in front of the model, **twice at most**, and the checks run again before the next look. After the last round one more look is taken and what still differs is **reported**. It **never blocks the commit**: no live runner, not a web app, no `dev` script, a dev server that will not start, no browser or shot viewer, a budget too small (about 240 paise), a failed shot, a model with no usable answer: the round is skipped with one sentence for the report and the job goes on. Its stages are saved one by one, so a restart or a wait resumes it without doing anything twice | |
 | `commit` | The **server** commits all the staged edits at once through `workspace().commit`, so the policy, the secret scan, the Blip author and the co-author trailer always apply. If the policy asks, the job waits for the person's OK; if it says never, the job stops with the reason. | the OK (`needs_you`) |
 | `pr` | A draft pull request: the plan, the checks, what was already broken, the **whole work log** (`worklogMarkdown`) and the findings. Taken out of draft **only when the checks ran and found nothing this change broke**, and only if the policy allows it (a standing permission, or the person's yes). | the OK to mark it ready |
@@ -154,7 +154,33 @@ Masking saves model calls and cheap-tier money, and it costs input tokens: the p
 
 **Tiers.** Each turn is routed by `planRoute("write_code", ...)` (`brain/route.ts`): the tier climbs on failures (bad turns and fix rounds), and a tier the remaining budget cannot afford (by its `maxTokens`: 4,096 of answer plus the tier's own room for thinking, `phases.ts workTokens`) is not chosen. A thinking model given 4,096 in all spent them all thinking and wrote nothing. After each round of writing, `recordOutcome` tells the route statistics whether it worked, what it cost and how long it took.
 
-## 4a. What the change took away
+## 4a. The tests covering what was just edited, run mid-work
+
+The project's checks run once, after `done` (`verify`). A break found there is a fix round: the model comes back to it several steps later, with the
+edit that caused it folded into a summary, and works out again what it did. Found at the end of the round that caused it, the edit is still the model's
+last thought and the fix is usually one turn.
+
+So after a round that changed code, the tests that cover the changed files are run on the staged edits (`phases.ts spotCheck`), and a failure goes into
+the **next turn's prompt** in its own words ("not the final check; what your last edit did, while you are still in it"), never as a verify fix round.
+The command is the narrowed one verify runs first (`work/plan.ts affectedTestCommand`, over the brain's `testsFor`), so it runs that file's tests and
+not the suite.
+
+**Only when it is nearly free**, because a runner step is the expensive thing in a job:
+
+* the job has a **live session** (`deps.live`) and the model has **already run a command in this round**, so a runner is open and warm and one more
+  command is about a second. Without that a check is a step of its own, and verify does it at the end as it always has;
+* the command can be **narrowed** to the tests covering the changed files (`scope: "affected"`); a whole suite is not a spot check;
+* at most **`SPOT_CHECKS_MAX`** (2) in a job, never twice on the same staged edits (their fingerprint is kept in `work.spotAt`), and **mid-work only**:
+  once `done` is called, verify is the next thing anyway;
+* a test that was **already failing** on the branch is not this change's doing: the result is compared to the baseline, exactly as verify's is.
+
+It never fails a job and never blocks anything: a runner that does not come, output that cannot be read, no test covering the changed files, or any
+error at all leaves the job as it was. `verify` clears its word when it runs: the verdict is the checks', not the spot check's.
+
+Tests: the "mid-work" group in `tests/code-agent-loop.test.ts` (the failure reaching the next turn and fixed there, nothing run without a session or
+before the model has run anything, and the two-in-a-job cap with the same edits never checked twice).
+
+## 4b. What the change took away
 
 The project's checks prove that what is tested still works. They say nothing about what no test covers, and most projects cover a fraction: an
 exported function dropped in a rewrite, a route no longer registered, a component renamed and its last caller missed. The tests stay green and the

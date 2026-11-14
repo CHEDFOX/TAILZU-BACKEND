@@ -40,6 +40,7 @@ import {
   PlanError, compareToBaseline, locate, logComparison, planChange, redactText, worklogMarkdown, type Located,
 } from "../work/index.js";
 import { fusedFor, type Fused } from "../work/locate.js";
+import { verifyCommands } from "../work/plan.js";
 import { fromApprovedPlan } from "../flow/plan.js";
 import { cut } from "../work/model.js";
 import { checkCommands, parseMarkers, resultsOf, describeCheck, type CheckSpec } from "./checks.js";
@@ -55,7 +56,7 @@ import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
 import { hasConflictMarkers } from "./merge.js";
 import {
-  ANSWER_MAX_CHARS, BASELINE_MAX_AGE_MS, CALLS_PER_TURN, CONTEXT_STRATEGY_DEFAULT, FIX_ROUNDS_MAX, TURNS_MAX, freeformStepCap,
+  ANSWER_MAX_CHARS, BASELINE_MAX_AGE_MS, CALLS_PER_TURN, CONTEXT_STRATEGY_DEFAULT, FIX_ROUNDS_MAX, SPOT_CHECKS_MAX, SPOT_TIMEOUT_SEC, TURNS_MAX, freeformStepCap,
   type AgentState, type Exchange, type Phase, type ResultRecord, type VerifyState,
 } from "./types.js";
 import { GithubRefusal, type CommitFile } from "../github.js";
@@ -491,6 +492,76 @@ async function checkpointStep(r: Run, ex: Exchange): Promise<void> {
   }
 }
 
+/**
+ * THE TESTS COVERING WHAT WAS JUST EDITED, RUN MID-WORK.
+ *
+ * The project's checks run once, after `done` (verify). A break found there is a fix round: the model comes back to it several steps later,
+ * with the edit that caused it folded into a summary, and works out again what it did. Found at the end of the round that caused it, the
+ * edit is still the model's last thought and the fix is usually one turn.
+ *
+ * So after a round that changed code, the tests that cover the changed files (`work/plan.ts affectedTestCommand`, from the project brain's
+ * `testsFor`: the same narrowed command verify runs first) are run on the staged edits, and a failure goes into the next turn's prompt.
+ *
+ * ONLY WHEN IT IS NEARLY FREE, because a runner step is the expensive thing in a job:
+ *   - the job has a LIVE SESSION (`deps.live`) and the model has already run a command in this round, so a runner is open and warm and one
+ *     more command is about a second; without that, a check is a step of its own and verify can do it at the end as it always has;
+ *   - the command can be NARROWED to the tests that cover the changed files (`scope: "affected"`); running a whole suite mid-work is not a
+ *     spot check, and the project's own test step may be minutes long;
+ *   - at most `SPOT_CHECKS_MAX` in a job, and never twice on the same staged edits;
+ *   - mid-work only (the model has not finished): once `done` is called, verify is the next thing anyway.
+ *
+ * It never fails a job and never blocks anything: a runner that does not come, output that cannot be read, a check that was already failing
+ * on the branch (compared against the baseline, as verify does) all leave the job exactly as it was.
+ */
+async function spotCheck(r: Run): Promise<void> {
+  const s = r.state;
+  const w = s.work;
+  if (w.finished || s.merge || s.newProject || r.tools.changes.empty) return;
+  if (!r.deps.live || !w.runs) return;
+  if ((w.spotChecks ?? 0) >= SPOT_CHECKS_MAX) return;
+  const touched = r.tools.changes.paths();
+  if (!touched.some((p) => ["source", "markup"].includes(classOf(p)))) return;
+  const fingerprint = stagedFingerprint(r);
+  if (w.spotAt === fingerprint) return;
+  let overlay;
+  try { overlay = r.tools.changes.toOverlay(); } catch { return; }
+  try {
+    const plan = await r.brain.baselinePlan().catch(() => []);
+    if (!plan.some((x) => x.kind === "test")) return;
+    const view = await r.brain.status().catch(() => null);
+    const tests = [...new Set((await Promise.all(touched.map((p) => r.brain.testsFor(p).catch(() => [])))).flat())];
+    if (!tests.length) return;
+    const commands = verifyCommands(plan, { files: touched, tests }, view?.structure?.testing.frameworks ?? [])
+      .filter((c) => c.kind === "test" && c.scope === "affected");
+    if (!commands.length) return;
+    w.spotChecks = (w.spotChecks ?? 0) + 1;
+    w.spotAt = fingerprint;
+    await r.save();
+    const out = await r.runStep(`spot:${w.spotChecks}`, {
+      commands: checkCommands(commands.slice(0, 1).map((c) => ({ kind: c.kind, cmd: c.cmd, cwd: c.cwd }))),
+      timeoutSec: SPOT_TIMEOUT_SEC, estimateMinutes: 2, overlay, why: "Run the tests covering the files just edited",
+    });
+    if (out.status === "cancelled") throw new LostClaim();
+    if (out.status !== "done") return;
+    const results = resultsOf(parseMarkers(out.outputTail));
+    if (!results.length) return;
+    // A test that was already failing before this job is not this change's doing: the baseline says which, exactly as verify does.
+    const base = s.baseline?.status === "recorded" ? s.baseline.results ?? [] : null;
+    const cmp = compareToBaseline(base, results, { touched });
+    if (cmp.ok) {
+      w.spotFeedback = undefined;
+      await r.log.note(`The tests covering what I just changed pass (${results.map((x) => x.kind).join(", ")}).`);
+      return;
+    }
+    w.spotFeedback = [cmp.summary, ...results.filter((x) => x.exitCode !== 0).map((x) => `--- ${x.kind} (exit ${x.exitCode}) ---\n${x.output.slice(-1200)}`)].join("\n");
+    await r.log.decision(`The tests covering what I just changed fail: ${cut(cmp.summary, 160)}. Fixing it now, before going on.`);
+  } catch (err) {
+    if (err instanceof LostClaim || err instanceof Park || err instanceof Yield || err instanceof BudgetStop || err instanceof EndJob) throw err;
+    // The check is a courtesy, never the job.
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: the mid-work test run could not be made");
+  }
+}
+
 export async function workPhase(r: Run): Promise<void> {
   const s = r.state;
   const w = s.work;
@@ -529,6 +600,8 @@ export async function workPhase(r: Run): Promise<void> {
       }
     }
     if (w.finished) break;
+    // The tests covering what this round changed, while the edit is still the model's last thought (spotCheck).
+    await spotCheck(r);
   }
   // A question is answered from the values the code holds: what it asks about is in the answer, by name and by value.
   if (s.classification?.type === "question" && r.tools.changes.empty && w.doneSummary) await addMissingValues(r);
@@ -669,7 +742,7 @@ async function modelTurn(r: Run): Promise<void> {
   const thinker = route.model ?? tierSet?.models[0];
   const room = Math.max(tierSet?.maxTokens ?? WORK_TOKENS, thinker && tierSet ? WORK_TOKENS + reasoningAllowance(reasoningParam(thinker, tierSet.reasoning)) : WORK_TOKENS);
   // Adaptive effort (agent/effort.ts): a free-form turn that carries out a decision thinks at "low"; one that decides keeps the tier's level.
-  const feedback = feedbackMark(w.feedback ?? w.testFeedback ?? w.designFeedback ?? w.reviewFeedback ?? "");
+  const feedback = feedbackMark(w.feedback ?? w.spotFeedback ?? w.testFeedback ?? w.designFeedback ?? w.reviewFeedback ?? "");
   let reasoning: Reasoning | undefined;
   if (s.mode === "freeform" && (d.effort ?? getConfig().CODE_EFFORT) === "adaptive" && tierSet) {
     const e = turnEffort({ exchanges: w.exchanges, freshFeedback: !!feedback && feedback !== w.feedbackSeen, answered: w.answeredAt === w.turns, said: (w.said?.length ?? 0) > saidBefore });
@@ -891,8 +964,9 @@ export async function verifyPhase(r: Run): Promise<void> {
     await r.save();
     return;
   }
-  // Whatever was verified before is not what is staged now until the checks say so again.
+  // Whatever was verified before is not what is staged now until the checks say so again, and the mid-work run's word is spent: verify's is the verdict.
   s.verified = undefined;
+  w.spotFeedback = undefined;
   const { v, feedback } = await runVerify(r, w.fixRounds);
   s.verify = v;
   // The router learns how this round of writing went.
