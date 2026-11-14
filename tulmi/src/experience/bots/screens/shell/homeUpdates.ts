@@ -26,7 +26,7 @@ import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../s
 import { getConfig } from "../../../../config.js";
 import type { FeedRow } from "../../../../shell/feed.js";
 import {
-  ASK_PATH, C, FACE, SCREENS, answerParams, botStage, box, canPeek, canVoice, col, grow, icon, keptOffline, labelled, liveWords, meta, needsCard,
+  ASK_PATH, C, FACE, SCREENS, answerParams, botStage, box, canMark, canPeek, canVoice, talkFor, col, grow, icon, keptOffline, labelled, liveWords, meta, needsCard,
   open, roamFor, roundButton, row, sectionLabel, seq, statusMark, text, voiceLive, voiceStop, when, canScroll, scrollBox, type BotsCtx,
 } from "../../kit.js";
 import type { Node as SduiNode } from "../../../../../../shared/types/sdui.js";
@@ -170,23 +170,24 @@ export function updatesOf(ctx: BotsCtx, rows: readonly FeedRow[] = []): { needs:
  *   just finished one small dot: there is news, it can wait
  *   nothing       no mark, and no box at all — he simply walks
  *
- * `text` is what rides in the box (a bullet a font always has, never a glyph that might come out a square); `label` is the
- * same thing in words, for the person whose screen reads to them, and it goes on him rather than on the mark.
+ * A build that draws it (BotMark) is sent `dots` and `urgent`, and draws a soft blob of ink dots whose edge wobbles with his
+ * own motion, a ring leaving it now and then while something is waiting. Every other build is sent `text` instead — the same
+ * mark as characters, a bullet a font always has rather than a glyph that might come out a square. `label` is the same thing
+ * in words, for the person whose screen reads to them, and it goes on him rather than on the mark.
  */
-export function restMark(ctx: BotsCtx, u: ReturnType<typeof updatesOf>): { text: string; label: string } {
+export function restMark(ctx: BotsCtx, u: ReturnType<typeof updatesOf>): { dots: number; urgent: boolean; text: string; label: string } {
   if (u.needs.length) {
-    const n = u.needs.length;
-    return { text: "\u2022".repeat(Math.min(n, 3)), label: n === 1 ? `${u.needs[0]!.botName} needs you` : `${n} need you` };
+    const n = Math.min(u.needs.length, 3);
+    return { dots: n, urgent: true, text: "\u2022".repeat(n), label: u.needs.length === 1 ? `${u.needs[0]!.botName} needs you` : `${u.needs.length} need you` };
   }
   if (u.working.length) {
-    const w = u.working[0]!, n = u.working.length;
-    return { text: "\u00b7".repeat(Math.min(n, 3)), label: n === 1 ? `${nameOf(ctx, w.bot)} is on it` : `${n} bots are working` };
+    const w = u.working[0]!, n = Math.min(u.working.length, 3);
+    return { dots: n, urgent: false, text: "\u00b7".repeat(n), label: u.working.length === 1 ? `${nameOf(ctx, w.bot)} is on it` : `${u.working.length} bots are working` };
   }
   if (u.done.length) {
-    const n = u.done.length;
-    return { text: "\u00b7", label: n === 1 ? u.done[0]!.title : `${n} things done` };
+    return { dots: 1, urgent: false, text: "\u00b7", label: u.done.length === 1 ? u.done[0]!.title : `${u.done.length} things done` };
   }
-  return { text: "", label: "Nothing new" };
+  return { dots: 0, urgent: false, text: "", label: "Nothing new" };
 }
 
 /** One row of the list: the bot's mark and name, what it is, its stage if it is running, and it opens. */
@@ -317,12 +318,13 @@ export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Nod
   // anywhere near him opens what is happening, not only a tap on a bot the size of a thumbnail.
   const peek = canPeek(ctx);
   const stage = botStage({
-    life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: peek ? 0 : desk ? 140 : 136, toys: false, roam: roamFor(ctx),
+    life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: peek ? 0 : desk ? 140 : 136, toys: false, roam: roamFor(ctx), talkMoments: talkFor(ctx),
     ...(peek ? { stand: "peek" as const } : {}), hit: "stage",
     thinkWhen: { all: [asking, { falsy: "reply.text" }] }, cheerWhen: answered,
     ...(voice ? { listenWhen: listening } : {}),
     // No words at rest: the mark, or nothing at all. What it stands for is said on him instead, where a screen reader finds it.
-    thought: { style: "home", ...(mark.text ? { restText: mark.text } : {}), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
+    // A build that draws the mark gets it as a blob of dots that wobbles; the rest get the same mark as characters.
+    thought: { style: "home", ...(mark.dots ? canMark(ctx) ? { restMark: { dots: mark.dots, urgent: mark.urgent } } : { restText: mark.text } : {}), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
     label: voice ? `${mark.label}. I'm listening — say what you need, or tap the key to type.` : `${mark.label}. Tap to see what's happening.`,
   }, [col(children, { padding: 18, gap: 14, flexGrow: 1 })], {
     onPress: tapHim,

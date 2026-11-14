@@ -1370,6 +1370,9 @@ export const VOICE_LIVE_CAPABILITY = "VoiceLive";
 export const VOICE_REALTIME_CAPABILITY = "VoiceRealtime";
 /** NOT A COMPONENT: BotStage on.onDoubleTap (the window: a double-click) and BotTileSpec.doubleTap on Home's tiles. */
 export const DOUBLE_TAP_CAPABILITY = "DoubleTap";
+/** NOT A COMPONENT: BotThoughtSpec.restMark — the mark he carries at rest, drawn as a soft blob of ink dots on his own
+ *  canvas instead of a box of words. A build without it is sent `restText` and draws the box it draws today. */
+export const BOT_MARK_CAPABILITY = "BotMark";
 /** NOT A COMPONENT: BotStageProps.stand "peek" — he lives behind the bar at the foot of the page, only his head over the
  *  line, and jumps the ledge now and then to stand in full view. A build without it gets a stage he stands on. */
 export const BOT_PEEK_CAPABILITY = "BotPeek";
@@ -1432,6 +1435,13 @@ export interface BotThoughtSpec {
   style: "home" | "space";
   /** The words in the small box riding over him at rest (a tap on it opens it). None: no box at rest. */
   restText?: string;
+  /** A MARK INSTEAD OF WORDS (BOT_MARK_CAPABILITY, the apps' botTiles core `Mark`): a soft blob of ink dots riding over him,
+   *  holding one dot for each thing that wants them (`dots`, 1..3). It is matter, not a shape — a ring of sprung points tied
+   *  to their neighbours, so a knock runs round the edge as a wave and dies out, and his own turns and landings knock it.
+   *  `urgent`: the dots are full and a ring of dots leaves it now and then, thinning as it spreads; otherwise they are small
+   *  and quiet. It takes `restText`'s place entirely, so nothing is written over him at rest; send `restText` as well for the
+   *  builds that cannot draw it, which simply show the words. */
+  restMark?: { dots: number; urgent?: boolean };
   /** A state path holding true while it is open. The app writes true when the resting box is tapped and false when the veil is
    *  tapped, Escape is pressed or (phone) back is pressed; the server's actions may write it too. */
   openPath: string;
@@ -1467,6 +1477,11 @@ export interface BotStageProps {
   /** false: he never plays with props (the person's own bot). */
   toys?: boolean;
   roam?: BotRoam;
+  /** What he does with himself WHILE HE IS SPEAKING (the `speak` action's own voice): one of these moments every couple of
+   *  seconds, so words never come out of a bot standing perfectly still. Names from the catalog, as `roam.moments` are, and a
+   *  build that cannot play one simply never sees it named. Ignored by a build that does not know the field, which stands as
+   *  it stands today. */
+  talkMoments?: string[];
   /** While it holds he walks out at `outSide` (none: the edge nearer him then, as the prototype does); when it stops he walks back
    *  in from the edge he left by. */
   outWhen?: Condition;

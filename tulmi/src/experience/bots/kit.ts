@@ -22,7 +22,7 @@ import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
 import { PULL_BOT_CAPABILITY, type PullBotSpec } from "../../../../shared/types/sdui.js";
 import {
-  BOT_CROWD_COMPONENT, BOT_PEEK_CAPABILITY, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
+  BOT_CROWD_COMPONENT, BOT_MARK_CAPABILITY, BOT_PEEK_CAPABILITY, BOT_STAGE_COMPONENT, DESK_TALK_TO_CAPABILITY, DOUBLE_TAP_CAPABILITY, KIT_EXTRAS_CAPABILITY, LIVE_WORDS_COMPONENT,
   MENTION_FIELD_COMPONENT, VANISH_COMPONENT, VOICE_LIVE_CAPABILITY, type BotCrowdProps, type BotRoam, type BotStageProps, type LiveWordsProps,
   type MentionFieldProps, type TalkTo, type VanishProps,
 } from "../../../../shared/types/sdui.js";
@@ -495,6 +495,12 @@ export const canHomeThought = (ctx: BotsCtx): boolean => canMoments(ctx) && ctx.
  */
 export const canPeek = (ctx: BotsCtx): boolean => ctx.can.has(BOT_PEEK_CAPABILITY) && ctx.can.has(BOT_STAGE_COMPONENT);
 /**
+ * A build that draws the mark he carries at rest as a blob of ink dots whose edge answers his own motion
+ * (BOT_MARK_CAPABILITY, BotThoughtSpec.restMark). Every other build is sent the same mark as characters in the box it draws
+ * today, so nothing is ever written over him at rest either way.
+ */
+export const canMark = (ctx: BotsCtx): boolean => ctx.can.has(BOT_MARK_CAPABILITY) && ctx.can.has(BOT_STAGE_COMPONENT);
+/**
  * A build that listens with live words (voiceLive), draws them (LiveWords) and takes a double tap. Every voice piece (liveWords, the
  * voice actions, onDoubleTap, a tile's doubleTap, listenWhen, the "double-tap me" lines, talkTo) goes only to it: a phone whose stream
  * module is missing gets the same screens without any of them.
@@ -740,6 +746,14 @@ export const CROWD_MOMENTS = { moments: ["dance", "juggle", "shrug", "hiccup", "
 const playable = (ctx: BotsCtx, ids: string[]): string[] => (canMoments(ctx) ? ids.filter((id) => !!momentProps(ctx.can, id).moment) : []);
 /** ROAM, with the moments this build plays. */
 export const roamFor = (ctx: BotsCtx): BotRoam => ({ ...ROAM, moments: playable(ctx, ROAM.moments) });
+/**
+ * WHAT HE DOES WITH HIMSELF WHILE HE SPEAKS (BotStageProps.talkMoments): small, conversational things — a hum, a mutter, a
+ * look, a shrug — one every couple of seconds, so an answer is never said by a bot standing perfectly still. Never a dance:
+ * he is talking, not performing.
+ */
+export const TALK_MOMENTS = ["l.hum", "l.mutter", "react.look", "shrug", "l.accent"];
+/** TALK_MOMENTS, with only the ones this build plays. */
+export const talkFor = (ctx: BotsCtx): string[] => playable(ctx, TALK_MOMENTS);
 /** CROWD_MOMENTS, with the moments this build plays. */
 export const crowdSurprises = (ctx: BotsCtx): BotCrowdProps["surprises"] => ({ ...CROWD_MOMENTS, moments: playable(ctx, CROWD_MOMENTS.moments) });
 

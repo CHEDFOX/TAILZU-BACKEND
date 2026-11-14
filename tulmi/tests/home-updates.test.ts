@@ -24,7 +24,7 @@ type Ctx = ReturnType<typeof ctxFor>;
 const ME = "00000000-0000-4000-8000-00000000aaaa";
 
 /** A build that draws his thought and hears him. */
-const CAN = ["BotsKit", "BotsMotion", "BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "KitExtras", "VoiceLive", "DoubleTap", "PersonBot", "BotPeek"];
+const CAN = ["BotsKit", "BotsMotion", "BotMoments", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "KitExtras", "VoiceLive", "DoubleTap", "PersonBot", "BotPeek", "BotMark"];
 const ctx = (client: "phone" | "desktop" = "phone", o: Partial<Ctx> = {}): Ctx =>
   ctxFor(SCREENS.home, client, sampleLive(), { can: new Set(CAN), ...o });
 /** What the screen door takes (buildBotsScreen), as the other screen tests build it. */
@@ -88,13 +88,15 @@ describe("what his thought holds", () => {
     // a full dot for each thing that needs them, and the words only for a screen that reads aloud
     expect(needs.text).toMatch(/^\u2022+$/);
     expect(needs.text.length).toBe(Math.min(3, live.needs.length));
+    expect(needs.dots).toBe(Math.min(3, live.needs.length));
+    expect(needs.urgent).toBe(true);
     expect(needs.label).toMatch(/needs? you/i);
     // bots busy: the small dot, nothing wanted from them
     const busy = ctx("phone", { live: { ...live, needs: [] } });
     expect(restMark(busy, updatesOf(busy, FEED)).text).toMatch(/^\u00b7+$/);
     // only news: one small dot
     const quiet = ctx("phone", { live: { ...live, needs: [], working: [] } });
-    expect(restMark(quiet, updatesOf(quiet, FEED))).toEqual({ text: "\u00b7", label: "2 things done" });
+    expect(restMark(quiet, updatesOf(quiet, FEED))).toEqual({ dots: 1, urgent: false, text: "\u00b7", label: "2 things done" });
     // nothing at all: no mark, so no box over his head
     expect(restMark(quiet, updatesOf(quiet, [])).text).toBe("");
   });
@@ -103,9 +105,16 @@ describe("what his thought holds", () => {
     on();
     const live = sampleLive();
     const node = homeUpdatesBot(ctx(), FEED);
-    const th = (node.props as { thought: { restText?: string }; label: string }).thought;
-    // the box carries a mark, not a sentence; the words move onto him, where a screen reader finds them
-    expect(th.restText).toBe("\u2022");
+    const th = (node.props as { thought: { restText?: string; restMark?: { dots: number; urgent: boolean } }; label: string }).thought;
+    // a build that draws it gets the blob of dots, and nothing is written at rest
+    expect(th.restMark).toEqual({ dots: 1, urgent: true });
+    expect(th.restText).toBeUndefined();
+    // one that cannot gets the same mark as characters
+    const old = ctx("phone", { can: new Set(CAN.filter((c) => c !== "BotMark")) });
+    const th2 = (homeUpdatesBot(old, FEED).props as { thought: { restText?: string; restMark?: unknown } }).thought;
+    expect(th2.restText).toBe("\u2022");
+    expect(th2.restMark).toBeUndefined();
+    // either way the words are on him, where a screen reader finds them
     expect((node.props as { label: string }).label).toMatch(/needs you/i);
     const nothing = ctx("phone", { live: { ...live, needs: [], working: [] } });
     expect(JSON.stringify(homeUpdatesBot(nothing, []))).not.toContain("restText");
@@ -214,6 +223,16 @@ describe("his ear", () => {
 });
 
 describe("where he lives", () => {
+  it("gives him something to do with himself while he speaks", () => {
+    on();
+    const props = homeUpdatesBot(ctx(), FEED).props as { talkMoments?: string[] };
+    expect(props.talkMoments?.length).toBeGreaterThan(0);
+    // small, conversational things — never the dance he does when he is playing on his own
+    expect(props.talkMoments).not.toContain("dance");
+    expect(props.talkMoments).not.toContain("celebrate");
+    off();
+  });
+
   it("lives behind the bar, with the whole strip his to tap", () => {
     on();
     const node = homeUpdatesBot(ctx(), FEED);

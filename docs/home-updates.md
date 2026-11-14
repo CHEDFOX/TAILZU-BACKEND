@@ -26,7 +26,11 @@ A build that cannot do it (`BotPeek`) gets exactly the stage it has today, with 
 
 ## 1. What he shows
 
-At rest he carries **a mark, not a sentence**: a full dot for each thing that needs them (up to three), a small dot while his bots are busy, one small dot when something has just finished, and **nothing at all** — no box over his head — when there is nothing. What the mark stands for is said on him instead, where a screen that reads aloud finds it ("2 need you", "Xode is on it", "Nothing new"). Tap him and it opens:
+At rest he carries **a mark, not a sentence**: a full dot for each thing that needs them (up to three), a small dot while his bots are busy, one small dot when something has just finished, and **nothing at all** — no box over his head — when there is nothing. What the mark stands for is said on him instead, where a screen that reads aloud finds it ("2 need you", "Xode is on it", "Nothing new").
+
+The mark itself is **matter, not a shape**: a soft blob whose edge is a ring of ink dots, each sprung back to its resting radius and tied to its neighbours, so a knock runs round it as a wave and dies out. Its own travel knocks it — it wobbles when he turns, lands or jumps, and settles when he stands — and while something is waiting on them a ring of dots leaves it now and then, thinning as it spreads, with the blob taking the kick back (the apps' `Mark`, `BotMark`; a build without it is sent the same mark as characters in the box it draws today).
+
+Tap him and it opens:
 
 | | Where it comes from | What a tap does |
 | --- | --- | --- |
@@ -46,6 +50,8 @@ Nothing new, and he says so and offers to be asked. The list scrolls inside his 
 * A build that cannot hear, and `HOME_LISTEN=false`, give the same bot: updates and a key, nothing that mentions talking.
 
 ## 3. What he says back
+
+**The screen goes quiet behind him while he is busy.** An ask going out opens his thought full, which is veiled, so the page blurs behind it and what he is doing is the only thing in focus — and he comes over the ledge for it and stays up until it is done. **While he speaks he does something with himself** — a hum, a mutter, a look, a shrug, one every couple of seconds (`talkMoments`, played while the phone's own voice is saying his words), so an answer is never read out by a bot standing perfectly still.
 
 A spoken ask goes out marked as spoken, so the front door shapes the answer **for the ear**: short, no table, no page (`front/decide.ts` `spoken`, `handlers.ts` "Spoken: yes."). He says a word while he thinks — "Mm, let me see." — so a spoken question is never answered by silence, and speaks the answer when it lands. A typed ask stays silent and is read, as it always was.
 
