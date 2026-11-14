@@ -7,6 +7,10 @@
  * that would fix them. The rules on what passes and what happens next are here, in code, not in the model's hands:
  *
  *   PASS      no major problem, nothing under 6, and a weighted mean of 7 or more
+ *   EDIT      every problem is a local one on an otherwise good take - a warped sign, a sixth finger, a smear, the wrong shirt - so the
+ *             take is MENDED rather than filmed again: the clip and the fix line go to an edit model (three cents a second against forty
+ *             for a second of Veo), and what comes back is checked like any other take. Tried once per take and only while
+ *             there are tries left, so a mend that fails falls through to a retake rather than looping
  *   RETAKE    a problem the prompt can fix (the action, the camera, the framing, the words in frame) goes back with the fix line added; a
  *             problem of the model's own making (bodies, hands, melting, physics, a face that turns into someone else) blames the model, and
  *             the retake goes to the next model in the router's list
@@ -26,6 +30,9 @@ export const PROVIDER_FAILS = 2;
 
 /** Problems a better prompt does not fix: they are the model's. */
 const MODEL_FAULTS = new Set<IssueKind>(["anatomy", "artifact", "morph", "physics", "identity", "lipsync"]);
+
+/** A take good enough to be worth mending: nothing in it below this, or it is filmed again from the still. */
+export const MEND_FLOOR = 6;
 
 const clamp = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? Math.max(0, Math.min(10, n)) : null);
 
@@ -84,21 +91,33 @@ export function parseVerdict(raw: unknown, people = true): Verdict | null {
 
 export type AfterCheck =
   | { kind: "keep"; take: string }
+  | { kind: "edit"; take: string; fix: string }
   | { kind: "retake"; fix: string | null; blame: string | null }
   | { kind: "best"; take: string; note: string }
   | { kind: "wait"; why: string };
 
 /**
  * What to do once a take of a shot has been checked. `takes` are the shot's takes for its card as it is now, the new one among them;
- * `canAfford` says whether one more take fits in what the film may still spend.
+ * `canAfford` says whether one more take fits in what the film may still spend. `canMend` is told by the caller, which knows whether we
+ * have an edit model today and whether this take's faults are the kind it is trusted with (route.ts editable).
  */
-export function afterCheck(card: ShotCard, shot: Pick<ShotState, "blamed">, takes: readonly Take[], latest: Take, canAfford: boolean): AfterCheck {
+export function afterCheck(
+  card: ShotCard,
+  shot: Pick<ShotState, "blamed">,
+  takes: readonly Take[],
+  latest: Take,
+  canAfford: boolean,
+  canMend = false,
+): AfterCheck {
   const people = card.cast.length > 0;
   const v = latest.verdict;
   if (v && v.pass) return { kind: "keep", take: latest.id };
   const checked = takes.filter((t) => t.verdict);
   const best = bestTake(checked, people);
   const unsafe = v?.issues.some((i) => i.kind === "safety") ?? false;
+  // A mend counts as one of the tries and is only offered while there are tries left: past that the best take is kept, which may not be
+  // this one, and mending the wrong take would be worse than keeping the right one.
+  if (v && canMend && !unsafe && !latest.from && checked.length < MAX_TRIES && mendable(v, people)) return { kind: "edit", take: latest.id, fix: mendLine(v) };
   if (checked.length < MAX_TRIES && canAfford && !unsafe) {
     const faults = v?.issues.filter((i) => MODEL_FAULTS.has(i.kind)) ?? [];
     const sameAgain = v ? repeated(checked, v) : false;
@@ -110,6 +129,22 @@ export function afterCheck(card: ShotCard, shot: Pick<ShotState, "blamed">, take
     return { kind: "best", take: best.id, note: `Shot ${card.n}: ${why}${best.verdict?.issues[0] ? ` (${best.verdict.issues[0].note})` : ""}.` };
   }
   return { kind: "wait", why: unsafe ? "That shot came out as something we won't use. Change its words and try again." : `Shot ${card.n} did not come out right in ${checked.length} takes. Change its words and try again.` };
+}
+
+/** Whether a take is worth mending rather than filming again: good everywhere else, and something to say about what is wrong. */
+export function mendable(v: Verdict, people: boolean): boolean {
+  if (!v.issues.length) return false;
+  const s = v.scores;
+  const marked = people ? [s.identity, s.action, s.quality, s.camera] : [s.action, s.quality, s.camera];
+  return Math.min(...marked) >= MEND_FLOOR;
+}
+
+/** What to tell the edit model: the fix line the eye wrote, else what it saw, as one instruction about the picture. */
+export function mendLine(v: Verdict): string {
+  const notes = v.issues.map((i) => i.note.trim()).filter(Boolean);
+  const said = v.fix?.trim() || notes.join("; ");
+  const line = said || "Remove the flaw in the picture.";
+  return `${line.replace(/\s+/g, " ").slice(0, 400).replace(/[.;]$/, "")}. Change nothing else: the same people, clothes, place, light, framing and camera move.`;
 }
 
 /** The best checked take: the highest mean, never an unsafe one. */

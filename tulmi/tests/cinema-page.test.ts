@@ -186,6 +186,38 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect(p.texts).toContain(client === "desktop" ? "Copy link" : "Share");
   });
 
+  it("offers the same film cut another way, with no price to agree", async () => {
+    const v = view({}, { status: "done", aspect: "16:9", cut: { video: "u/u1/cinema/films/f1/film-x.mp4", srt: null, seconds: 20, of: "x" } });
+    v.links["u/u1/cinema/films/f1/film-x.mp4"] = "/v1/cinema/media/u/u1/cinema/films/f1/film-x.mp4?exp=1&sig=x";
+    const p = await build({ client, ...FILM, film: v });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("Cut it another way, free");
+    expect(p.texts).toContain("Vertical (9:16)");
+    expect(p.texts).toContain("Vertical, words in the picture");
+    expect(p.texts).toContain("This shape, words in the picture");
+    expect(p.texts).not.toContain("Wide (16:9)");
+  });
+
+  it("shows a cut that is already made, ready to watch", async () => {
+    const v = view({}, {
+      status: "done", aspect: "16:9",
+      cut: { video: "u/u1/cinema/films/f1/film-x.mp4", srt: null, seconds: 20, of: "x" },
+      editions: [
+        { aspect: "9:16", captions: true, video: "u/u1/cinema/films/f1/cut-9x16-caps-x.mp4", seconds: 20, of: "x" },
+        { aspect: "1:1", captions: false, video: null, seconds: 0, of: null },
+      ],
+    });
+    v.links["u/u1/cinema/films/f1/film-x.mp4"] = "/v1/cinema/media/u/u1/cinema/films/f1/film-x.mp4?exp=1&sig=x";
+    v.links["u/u1/cinema/films/f1/cut-9x16-caps-x.mp4"] = "/v1/cinema/media/u/u1/cinema/films/f1/cut-9x16-caps-x.mp4?exp=1&sig=x";
+    const p = await build({ client, ...FILM, film: v });
+    expect(p.lint).toEqual([]);
+    expect(p.texts).toContain("Other cuts of this film");
+    expect(p.texts).toContain("Ready · 20s");
+    expect(p.texts).toContain("Cutting it now…");
+    // No shape, no words, no cost: nothing of the machinery.
+    expect(p.texts.join(" ")).not.toMatch(/₹|cost|price/i);
+  });
+
   it("a film that cannot be read says so", async () => {
     const p = await build({ client, ...FILM });
     expect(p.lint).toEqual([]);

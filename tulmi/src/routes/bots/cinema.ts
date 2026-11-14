@@ -8,6 +8,8 @@
  *   POST   /v1/cinema/films/:id/approve-board        Film it: the takes begin -> FilmView
  *   POST   /v1/cinema/films/:id/revise               { note, n? } a change in plain words, to the film or to shot n -> FilmView
  *   POST   /v1/cinema/films/:id/shots/:n/retry       { model? } a shot that gave up, tried again (on that model) -> FilmView
+ *   POST   /v1/cinema/films/:id/edition             { aspect?, captions? } another cut of the same film, free; again to remove it -> FilmView
+ *   POST   /v1/cinema/films/:id/enlarge             the finished film, bigger; again to take it away -> FilmView
  *   POST   /v1/cinema/films/:id/stop                 -> FilmView
  *   DELETE /v1/cinema/films/:id                      the film and its files -> { ok: true }
  *   POST   /v1/cinema/films/:id/cast/:key            keep a person of the film in their cast -> { character }
@@ -122,6 +124,23 @@ export function registerCinemaRoutes(app: FastifyInstance, deps: CinemaRouteDeps
     const n = Number((req.params as { n?: unknown }).n);
     const b = body(req);
     try { return send(reply, await got.s.retry(got.user.id, idOf(req), n, "model" in b ? { model: str(b.model) || null } : {})); } catch (err) { return fail(reply, err); }
+  });
+
+  app.post(`${BASE}/films/:id/edition`, rl, async (req, reply) => {
+    const got = await begin(req, reply);
+    if (!got) return reply;
+    const b = body(req);
+    try {
+      return send(reply, await got.s.edition(got.user.id, idOf(req), { aspect: str(b.aspect), captions: b.captions !== false }));
+    } catch (err) {
+      return fail(reply, err);
+    }
+  });
+
+  app.post(`${BASE}/films/:id/enlarge`, rl, async (req, reply) => {
+    const got = await begin(req, reply);
+    if (!got) return reply;
+    try { return send(reply, await got.s.enlarge(got.user.id, idOf(req))); } catch (err) { return fail(reply, err); }
   });
 
   app.post(`${BASE}/films/:id/stop`, rl, async (req, reply) => {

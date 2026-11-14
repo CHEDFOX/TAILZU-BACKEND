@@ -4,7 +4,7 @@
  *   models and media   OpenRouter's image, video and music APIs (openrouter.ts), the one key the server already has
  *   the director, eye  the model gateway (code/brain/gateway.ts callModel): the strong tier writes, the vision tier looks, the cheap tier reads
  *   voice-over         pipeline/tts.ts synthesize, in the film's voice
- *   ffmpeg             frames, the last frame, a voice-over's length, the cut (ffmpeg.ts)
+ *   ffmpeg             frames, the last frame, a voice-over's length, one take cut apart at the beats, the cut (ffmpeg.ts)
  *   files              R2 (media/blob.ts); in memory when R2 is not set up (a dev server: a restart forgets them)
  *   money              usage/cost chargeUsd as the "cinema" bot; consent privacy/aiGate aiAllowedFor; pushes push/engine; screens live/writes
  *
@@ -20,7 +20,7 @@ import { aiAllowedFor } from "../privacy/aiGate.js";
 import { pushEngine } from "../push/index.js";
 import { chargeUsd, ttsUsd } from "../usage/cost.js";
 import { enforceQuota } from "../usage/metering.js";
-import { contactSheet, cut, frames, seconds } from "./ffmpeg.js";
+import { contactSheet, cut, frames, seconds, slice } from "./ffmpeg.js";
 import { fetchVideo, liveModels, makeImage, makeMusic, startVideo, videoStatus } from "./openrouter.js";
 import type { Think } from "./plan.js";
 import { CinemaService, setCinemaService, type CinemaNotify } from "./service.js";
@@ -54,7 +54,7 @@ export function buildCinemaService(): CinemaService {
     think: thinkAs,
     models: async () => {
       const l = await liveModels();
-      return { video: l.video, image: l.image };
+      return { video: l.video, image: l.image, jobs: l.jobs };
     },
     media: {
       image: makeImage,
@@ -70,6 +70,7 @@ export function buildCinemaService(): CinemaService {
       seconds: (b) => seconds(b),
       cut,
       sheet: contactSheet,
+      slice,
     },
     charge: (userId, usd) => chargeUsd(userId, usd, CINEMA_SLUG),
     aiAllowed: aiAllowedFor,

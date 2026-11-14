@@ -12,10 +12,49 @@ import { rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { cuesOf, cutArgs, frameOf, musicLevel, PEAK_CEILING, readLoudness, readPeak, readSeconds, srtOf, timeline, trim, type CutShot } from "../src/cinema/cut.js";
-import { blackSpans, contactSheet, cut, frames, probe, seconds } from "../src/cinema/ffmpeg.js";
+import { assOf, capsOf, cuesOf, cutArgs, fitFilter, frameOf, musicLevel, PEAK_CEILING, readLoudness, readPeak, readSeconds, srtOf, timeline, trim, type CutShot } from "../src/cinema/cut.js";
+import { blackSpans, contactSheet, cut, frames, probe, seconds, slice } from "../src/cinema/ffmpeg.js";
 
 const shot = (over: Partial<CutShot> = {}): CutShot => ({ video: "a.mp4", seconds: 4, hasAudio: true, link: "cut", vo: null, lines: [], ...over });
+
+describe("the captions drawn into the picture", () => {
+  it("breaks a voice-over into a few words at a time, on the words' own timings", () => {
+    const words = "Har baarish ki ek kahani hoti hai".split(" ").map((word, i) => ({ word, start: i * 0.5, end: i * 0.5 + 0.45 }));
+    const caps = capsOf([shot({ seconds: 4, vo: { file: "v.mp3", text: words.map((w) => w.word).join(" "), seconds: 3.5, words } })]);
+    expect(caps.map((c) => c.text)).toEqual(["Har baarish ki", "ek kahani hoti", "hai"]);
+    expect(caps[0]!.from).toBeCloseTo(0.15, 2);
+    expect(caps[1]!.from).toBeCloseTo(1.65, 2);
+    // Never two at once.
+    for (let i = 0; i < caps.length - 1; i++) expect(caps[i]!.to).toBeLessThanOrEqual(caps[i + 1]!.from);
+  });
+
+  it("spreads a line with no word timings across the time it has", () => {
+    // The speaker's name belongs on a subtitle, not drawn across the picture.
+    const caps = capsOf([shot({ seconds: 3, lines: ["Ravi: Lo, garam chai beta"] })]);
+    expect(caps.map((c) => c.text)).toEqual(["Lo, garam chai", "beta"]);
+    expect(caps[0]!.from).toBe(0);
+    expect(caps.at(-1)!.to).toBeLessThanOrEqual(3.2);
+  });
+
+  it("writes an ASS file sized to the frame, with no overrides a caption could inject", () => {
+    const ass = assOf([shot({ seconds: 3, lines: ["{\\an8}Chai?"] })], 720, 1280)!;
+    expect(ass).toContain("PlayResX: 720");
+    expect(ass).toContain("PlayResY: 1280");
+    // 1280 / 22, and the words sit a seventh of the way up.
+    expect(ass).toContain("Style: Cap,Sans,58,");
+    expect(ass).toMatch(/,183,1$/m);
+    expect(ass).not.toContain("{\\an8}");
+    expect(ass).toContain("Dialogue: 0,0:00:00.00,");
+    expect(assOf([shot({ seconds: 3 })], 720, 1280)).toBeNull();
+  });
+
+  it("crops towards the subject, and never all the way to the edge", () => {
+    expect(fitFilter(720, 1280, "pad", 0)).toContain("pad=720:1280");
+    expect(fitFilter(720, 1280, "crop", 0)).toBe("scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280:(iw-720)/2:(ih-1280)/2");
+    expect(fitFilter(720, 1280, "crop", 1)).toContain("crop=720:1280:(iw-720)/2+(iw-720)/2*0.60:");
+    expect(fitFilter(720, 1280, "crop", -1)).toContain("crop=720:1280:(iw-720)/2-(iw-720)/2*0.60:");
+  });
+});
 
 describe("the timeline and the words", () => {
   it("adds plain cuts and overlaps a dissolve", () => {
@@ -186,6 +225,60 @@ describe.skipIf(!hasFfmpeg)("with ffmpeg", () => {
     expect(info.seconds).toBeGreaterThan(7.2);
     expect(info.seconds).toBeLessThan(7.8);
     expect(out.srt).toContain("Chai?");
+  }, 180_000);
+
+  it("cuts the same takes to another shape by cropping, not by leaving bars", async () => {
+    const shots = [
+      { video: clip(3, true), link: "cut" as const, lines: [], vo: null, bias: 1 },
+      { video: clip(2, false, "480x480"), link: "cut" as const, lines: ["Chai?"], vo: null },
+    ];
+    const out = await cut({ shots, music: null, aspect: "9:16", height: 720, fit: "crop" });
+    const info = await probe(out.video);
+    expect(info.width).toBe(720);
+    expect(info.height).toBe(1280);
+    // Cropped, so the picture fills the frame: no black band down either side.
+    expect(blackSpans("", info.seconds)).toEqual([]);
+    expect(info.seconds).toBeGreaterThan(4.5);
+  }, 180_000);
+
+  it("draws the words into the picture when a font can draw them", async () => {
+    const out = await cut({
+      shots: [{ video: clip(3, true), link: "cut", lines: [], vo: { audio: tone(3, 300), text: "Har baarish ki ek kahani hoti hai", seconds: 3 } }],
+      music: null,
+      aspect: "9:16",
+      height: 720,
+      captions: true,
+      language: "en",
+    });
+    expect(out.captions).toBe(true);
+    const info = await probe(out.video);
+    expect(info.width).toBe(720);
+    // The words are still a subtitle track as well: burning them in does not take them away.
+    expect(out.srt).toContain("Har baarish");
+  }, 180_000);
+
+  it("leaves the words off the picture when nothing can draw them, and says so", async () => {
+    const out = await cut({
+      shots: [{ video: clip(2, true), link: "cut", lines: ["Chai?"], vo: null }],
+      music: null,
+      aspect: "16:9",
+      height: 720,
+      captions: true,
+      language: "zz",
+    });
+    expect(out.captions).toBe(false);
+  }, 180_000);
+
+  it("cuts one take apart at the beats, each piece with its own last frame", async () => {
+    const pieces = await slice(clip(9, true), [0, 3, 6]);
+    expect(pieces).toHaveLength(3);
+    for (const p of pieces) {
+      expect(p.seconds).toBeGreaterThan(2.4);
+      expect(p.seconds).toBeLessThan(3.6);
+      expect(p.last.subarray(1, 4).toString()).toBe("PNG");
+      expect((await probe(p.video)).hasAudio).toBe(true);
+    }
+    expect(await slice(clip(3, false), [0])).toEqual([]);
   }, 180_000);
 
   it("leaves the finished film under the peak ceiling, which one normalising pass does not", async () => {

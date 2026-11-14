@@ -34,7 +34,10 @@ story, sound and the edit are left to the person. This bot works the other way r
 | One clip at a time, no story | A director writes a bible (who, where, the look) and a shot list with film grammar: an establishing shot, varied sizes, one action and one camera move a shot, the 180-degree rule, cutting on action |
 | Every attempt costs video money | Everything is a still first (cheap). The storyboard and the voice-over are looked over before a second of video is made, and every shot is animated *from its agreed still*, so what was agreed is what is filmed |
 | A face changes from clip to clip | Reference sheets for each person and place seen more than once, and one look frame for the colour and light, passed with every still; the motion prompt never re-describes the picture |
-| The person checks every clip and pays for the bad ones | A vision model checks every still and every take against the shot card; a failed take is retaken with a fix line, or on another model when the fault is the model's (bodies, melting, physics). After three takes the best is kept, with a note |
+| The person checks every clip and pays for the bad ones | A vision model checks every still and every take against the shot card. A take with one local fault - a warped sign, a sixth finger, the wrong shirt - is **mended** by an edit model at three cents a second rather than filmed again at forty; anything else is retaken with a fix line, or on another model when the fault is the model's (bodies, melting, physics). After three takes the best is kept, with a note |
+| A mouth that does not match the words | A shot of one person speaking is driven by **our own recording** of the line, in the character's own voice: the mouth says the words that were written, in the language they were written in. This is the part every video model gets wrong outside English, and Hinglish worst of all |
+| A visible join wherever two clips meet | Shots that carry one moment on are filmed as **one unbroken take** and cut apart afterwards at the beats, so between them there is no join at all |
+| One film, one shape | The same film is cut again to another shape for nothing - a 9:16 for a feed from a 16:9 - cropping towards the subject rather than letterboxing, with the words drawn into the picture for the feeds that play without sound |
 | Stitching, voice-over, music and subtitles are done elsewhere | The cut is made here: dissolves where asked, the voice-over placed and measured, the music ducked under it, subtitles, loudness for phones |
 | Change one thing, start again | A change in plain words, to the film or to one shot: only what it touches is made again (a new line is a new take from the same still; a new coat is a new still and a new take; the cut follows) |
 | Credits, and surprise charges | No credits and no prices: the person's plan covers their films. They say go twice (the script, the storyboard); the money is ours to watch, within limits per film, per day and per plan |
@@ -52,8 +55,8 @@ Hindi and Hinglish are first-class: the script, the lines, the voice-over and th
 | `boarding` | the look frame, the reference sheets, the stills (two for a shot with people; the eye keeps the better), the voice-over | by itself |
 | `board` | the storyboard | **the person**: Film it (`approve-board`) |
 | `rendering` | each shot animated from its still, checked, retaken | by itself |
-| `cutting` | the cut | by itself |
-| `done` | the film, ready to watch, download and share | a change sends it back to `rendering` |
+| `cutting` | the cut, and any other shape of it the person asked for | by itself |
+| `done` | the film, ready to watch, download and share | a change sends it back to `rendering`; asking for another cut sends it back to `cutting` |
 
 `failed` (something could not be got past) and `stopped` (the person stopped it) end it. `Film.hold` says why a moving film waits: `budget`
 (the film has reached a limit and is paused for today: it carries on by itself, or sooner with a bigger plan) or `shot` (a shot the eye gave up on:
@@ -67,6 +70,26 @@ take were made from (`compile.ts stillPrint`, `takePrint`), and a step is due wh
 
 **What waits for what.** Sheets and the look frame before the stills that need them; a shot that *continues* the one before waits for that
 shot's chosen take, starts on its last frame and lands on its own still (first and last frame), so the moment carries on with no jump.
+
+**A mouth that says our words** (`route.ts wantsLipSync`, `compile.ts castVoice`, `linePrint`). A shot of one person speaking, close, with
+the camera near enough still, in a language that is not English, is not left to the video model's guess at the words: the line is recorded
+here in the character's own voice and a lip-sync model drives the mouth with it. The character's voice is written in the bible as words ("low,
+warm, unhurried Mumbai Hindi"), which is what the video models are told; those words also choose which of the voices we have records it, so
+the same character sounds the same in every shot of every film, and the narrator's own voice is left to the narrator. The shot is given the
+seconds the line needs, exactly as a voice-over's are. One try per shot: if it does not pass the eye, the shot is filmed the ordinary way.
+
+**Several shots as one take** (`route.ts runFrom`, `compile.ts runPrompt`, `ffmpeg.ts slice`). A frame-to-frame continuation is good, but the
+join is still the weakest moment in a film. Where two or three shots in a row carry one moment on - the same place, the same people, nobody
+speaking, fifteen seconds between them at most - and one model of the film's quality can render the whole length and land on a last frame,
+they are filmed **once**, as one unbroken move, and the take is cut apart afterwards at the beats. The prompt is a labelled timeline (what the
+camera does and where it must be at each boundary, because that is where the cut will fall). Each piece becomes a take of its own and is
+checked on its own; a piece the eye fails is filmed again by itself, the ordinary way, so a bad run never repeats. A run is only ever tried
+before anything in it has been filmed. The film costs the same per second; what it buys is that between those shots there is no join.
+
+One detail worth knowing, because it is the sort of thing that only shows up in a test: a shot that continues the one before carries that
+shot's *chosen take* in its own fingerprint, so each piece of a run is stamped with the fingerprint it will have **once the pieces are the
+chosen takes**. Stamped with the fingerprints of the moment instead, every piece but the first would be thrown away and filmed again as soon
+as the first one passed the eye.
 
 ## 3. The models and the router
 
@@ -88,6 +111,23 @@ motion, rain needs physics, an orbit needs camera, lines need dialogue) times th
 cheaper tiers) and for a duration it cannot quite make. Hard rules first: the film's aspect ratio; a last frame for a shot that continues; sound
 for a shot with lines; never above the film's tier (unless the person pinned the model); a model blamed for this shot is passed over on a retake.
 OpenRouter's prices are read in all three ways it writes them: dollars a second, cents a second, and Seedance's price per video token.
+
+**The one-job models.** A few models do not animate a still at all: they do one job on a clip we already have, so they are kept out of the
+animators' catalog (which asks for a first frame and a list of durations) and picked by their job (`models.ts JOBS`, `route.ts pickJob`):
+
+| Job | What it does | Today |
+| --- | --- | --- |
+| `edit` | a clip and one instruction back: the mend above | FLUX Video Edit, three cents a second; Runway Aleph behind it |
+| `lipsync` | a still and a recording of ours, and the mouth says our words | HeyGen Avatar IV, five cents a second |
+| `upscale` | the finished cut enlarged | FLUX Video Upscale, by the megapixel-second |
+
+Each is an **improvement with a fallback, never a dependency**: OpenRouter documents the fields for sending a clip, a recording or an
+enlargement (`input_references`, `previous_job_id`, `upscale_factor`) but does not say which models read them. So a mend that is refused
+becomes an ordinary retake, a lip sync that is refused becomes an ordinary take, and an enlargement that is refused leaves the film as it was
+with a word to the person. Nothing a person asked for can fail because of them.
+
+**A model that always makes its own sound** (Gemini Omni) publishes only a with-sound price. That is the price, silent or not: `usdPerSecond`
+falls back to it rather than reading the model as unpriced, which would have dropped it from the catalog altogether.
 
 ## 4. The prompts
 
@@ -149,13 +189,21 @@ under 6, a weighted mean of 7.
 | After a take is checked | |
 | --- | --- |
 | it passes | kept |
+| every problem is a local one and the take is good everywhere else (nothing under 6) | **mended**: the clip and one instruction to an edit model, three cents a second against forty for a second of Veo. Tried once per take: a mend that will not start falls through to an ordinary retake, carrying the same fix line |
 | a problem a prompt can fix (the action, the camera, the framing, the words) | retaken with the fix line ("Important: …") |
 | a problem of the model's own (bodies, hands, melting, physics, a face that changes) or the same problem twice from it | retaken on the next model in the router's list |
 | three checked takes, or the money would not cover another | the best is kept, with a note to the person, unless it is unsafe or anything is under 4 |
+| otherwise | the shot waits for the person (`hold: "shot"`); the other shots carry on |
 
 The frames go to the eye as **one tiled picture** in time order, rather than one at a time: it sees the whole movement at once, which is what
 catches a shot that morphs or runs backwards, and it is one image to read instead of five.
-| otherwise | the shot waits for the person (`hold: "shot"`); the other shots carry on |
+
+**What a mend is trusted with** is a short list, in code: a warped sign or label (`text`), a smear or a floating object (`artifact`), a hand or
+a limb gone wrong (`anatomy`), the wrong clothes (`wardrobe`). A melting face, a camera that went the wrong way, an action that never happened
+- those are not mended, because an edit model would have to invent the shot again. The clip is named to the model by the **job of ours that
+made it**, so nothing of the person's is uploaded or left at an address; only where the model will not work that way do the bytes go, as a data
+URL, exactly as a still's do. A retake the money would not quite cover is no longer a reason to settle for a failed take: the film is extended
+by itself first, within its caps, and only then is the decision made.
 
 A take that fails at the provider (an error, not a bad picture) is tried again; after two from one model that model is blamed; after four the
 shot waits. Failed generations are not billed by OpenRouter. Stills are checked the same way, two candidates for a shot with people, the better
@@ -191,6 +239,26 @@ was said. Within one script the words are compared loosely, because Hinglish has
 and the Han and kana scripts are read at very different speeds - and no two are ever on screen at once: a cue that would run into the next one
 ends where that one starts. Where the recogniser reported word timings, the voice-over's subtitle is timed to the speech rather than the clip.
 
+### Other cuts of the same film
+
+Every take and every still is already ours, so the same film can be cut again for nothing: `POST /v1/cinema/films/:id/edition
+{ aspect?, captions? }` adds a row, the next tick makes it, and asking again takes it away (`Film.editions`, at most five).
+
+* **Another shape.** A 9:16 for a feed from a 16:9 film, or a square. It **crops to fill** rather than letterboxing - bars on a phone look
+  like a mistake - and the crop leans towards the subject rather than sitting in the middle: `compile.ts subjectBias` reads the character's
+  name in the card's own composition and the side named just after it, and the crop moves at most 60% of the way towards that side.
+* **The words in the picture**, for the feeds that play without sound: a few words at a time, big, in the lower third, timed to the speech
+  where the recogniser gave us the words (`cut.ts capsOf`, `assOf`, drawn by libass). Not the same thing as the subtitle track, which is kept
+  as well. The speaker's name is dropped: a subtitle's "Ravi: Lo, garam chai" is read on screen as "Lo, garam chai". Where fontconfig has no
+  font for the film's language the words would draw as boxes, so they are left off and the person is told.
+* **Bigger** (`POST /films/:id/enlarge`) is the one thing here that is not free: an upscale model charges by the pixel, so a long film costs
+  more to enlarge than it did to make. The price is worked out first (`models.ts upscaleUsd`) and a film that will not fit inside its own cap
+  is told so plainly instead of being left to pause. Its job id is kept on the film, so a server that restarts waits for the same job rather
+  than paying for another.
+
+The film's music is kept with the cut (`Cut.music`, `musicOf`), so cutting the same film again - after a change, or into another shape - never
+pays for it twice.
+
 ## 7. Pictures
 
 `pictures.ts`: a cheap model reads the ask (what kind of picture, the words that must be spelled right, the frame, a full description with no
@@ -221,8 +289,8 @@ The person never sees a cost: no prices, no rupees, no credits. Their plan cover
 ## 9. What the server answers
 
 Routes in `routes/bots/cinema.ts` (the header lists them all): the overview, a new film, a film, approve the script, approve the storyboard,
-add money, a change, try a shot again (on a model the person picks), stop, delete; keep a character, drop one; a picture, delete one; and the
-media route. Every still, take and film is opened by a signed link of ours (`media.ts`, `/v1/cinema/media/<key>?exp=&sig=`, a day), made fresh
+add money, a change, try a shot again (on a model the person picks), another cut of the same film (`edition`), the film enlarged
+(`enlarge`), stop, delete; keep a character, drop one; a picture, delete one; and the media route. Every still, take and film is opened by a signed link of ours (`media.ts`, `/v1/cinema/media/<key>?exp=&sig=`, a day), made fresh
 each time a screen is drawn; never the storage's own address. Refusals are `{ code, message }`: `cinema_off`, `not_found`, `wrong_status`,
 `no_model`, `cinema_film_cap`, `cinema_day`, `quota_exceeded`, `ai_consent_needed`, `bad_photo`, `bad_link`.
 
@@ -241,7 +309,9 @@ the apps' starter copies are regenerated with it (`TAILZU-FRONTEND/app/src/botTi
   with their first still; the pictures; the cast.
 * **A film** (`bots.cinema.film`, params `f`): the title and where it stands, then the decision as one card at the top (Make the
   storyboard; Film it; paused for today, with the plans; the finished film's still with a play mark, Watch, Download, Share or Copy link, the
-  subtitles; or what is happening now). Then the script (the look, who is in it, the shots as a numbered list) or
+  subtitles; or what is happening now). Then, once it is cut, **Other cuts of this film**: the ones already made, each ready to watch and
+share, and below them the ones that can be - Vertical, Vertical with the words in the picture, Square, this shape with the words - each one
+press and no price, and pressing one again takes it away; and one row for the big version. Then the script (the look, who is in it, the shots as a numbered list) or
   the storyboard as a grid of stills (four across in the window, two on the phone), each tile with its number, size, seconds, a mark for where
   it stands and what happens. A change to the whole film; the cast; the notes; Stop and Delete.
 * **A shot** (`bots.cinema.shot`, params `f`, `n`): its still, large; where it stands; its card in full (what it is for, what happens, the
@@ -289,28 +359,45 @@ Migration 0089 (`cinema_films`, `cinema_pictures`, `cinema_cast`). DEPLOY.md, "C
 
 `tulmi/tests/cinema-*.test.ts`, none of which needs a key or the network:
 
-* `cinema-engine`: OpenRouter's lists read (prices in all three forms, frames, sound), the router's hard rules and choices, the prompts (refs and
-  their roles, empty words, endings, Kling's lines, Seedance's timeline, the caps), the fingerprints, the prices
-* `cinema-flow`: the eye's verdicts and what follows a check; the order of work, the money left, the holds, a change that remakes only what it
-  touches
+* `cinema-engine`: OpenRouter's lists read (prices in all three forms, frames, sound), the router's hard rules and choices, the one-job
+  models found by their job with their own prices, the request for a take in each of its shapes (a still as frames; a clip of ours named by
+  its job; a clip or a recording as references; an enlargement), the prompts (refs and their roles, empty words, endings, Kling's lines,
+  Seedance's timeline, the caps), the fingerprints, the prices
+* `cinema-flow`: the eye's verdicts and what follows a check, the mend and what it is trusted with; the order of work, the money left, the
+  holds, a change that remakes only what it touches; which shots can be filmed as one take
 * `cinema-plan`: a model's script made safe; the director asked once more, a one-shot note changing one shot, sheets kept through a revision
 * `cinema-pictures`: reading an ask, two candidates, a retry on the next model, a logo as SVG
-* `cinema-cut`: the timeline, the reading time and the overlap of subtitles, the two-pass loudness and the peak readers, where a film goes
-  blank, and, where ffmpeg is installed, a real cut of three clips with a voice-over and music, a tiled contact sheet, and a loud film
-  measured after encoding to prove it comes in under the ceiling
+* `cinema-cut`: the timeline, the reading time and the overlap of subtitles, the captions a few words at a time and the ASS they are written
+  to, the crop that leans towards the subject, the two-pass loudness and the peak readers, where a film goes blank, and, where ffmpeg is
+  installed, a real cut of three clips with a voice-over and music, the same takes cut to another shape, the words drawn into the picture (and
+  left off when no font can draw them), one take cut apart at the beats, a tiled contact sheet, and a loud film measured after encoding to
+  prove it comes in under the ceiling
 * `cinema-voice`: the voice-over heard back - numbers across English, Hindi and Hinglish, a line heard in another script, a line cut short
 * `cinema-store`: the store's ownership and the account's deletion; signed links
-* `cinema-service`: a whole film with every model faked, from the idea to the cut, a failed take retaken, a late change, the caps, a picture
+* `cinema-service`: a whole film with every model faked, from the idea to the cut, a failed take retaken, a take mended instead of filmed
+  again (and filmed again when the edit model will not take it), a mouth driven by our own recording (and the ordinary way when the lip-sync
+  model will not take it), another shape cut from the same takes with nothing spent, the music not paid for twice, the film enlarged and one
+  too long refused, a late change, the caps, a picture
 * `cinema-routes`: the doors off and on, refusals, the allowance, photos, links, the bot among the built-ins and the front door's pick
 * `cinema-page`: the page and the film page at each step, on the phone and the window, through the app's linter
 
 ## 13. Still to come
 
-* A live run against OpenRouter with a real key (`tulmi/e2e`-style), to tune the craft scores and the eye's thresholds on real takes.
+* A live run against OpenRouter with a real key (`tulmi/e2e`-style), to tune the craft scores and the eye's thresholds on real takes. This is
+  now the one thing the bot most needs: the craft scores are judgments from each model's published capabilities, not from takes we have
+  watched, and three of the paths (the mend, the lip sync, the enlargement) use request fields OpenRouter documents but does not say those
+  models read. Each has a fallback, so a live run can only improve them - but until it has run, treat the scores as a starting point.
 * The music call (Lyria through OpenRouter's chat API with sound out) is written from the docs and not yet run live; without music the film is
   cut without it.
-* Native multi-shot generation for dialogue coverage inside one scene (Kling, Seedance), and Seedance's draft-then-final mode where OpenRouter
-  offers it, to make retakes cheaper.
+* Seedance's draft-then-final mode where OpenRouter offers it, and its cheaper rate with a video input (`video_tokens_with_video_input`),
+  which would make a mend cheaper still on that family.
+* A hook score for the first two seconds. The research here is real but narrow: engagement is predictable as **one number** - the chance a
+  viewer watches past five seconds - at about 0.71 Spearman on a 120,000-video corpus (SnapUGC, ECCV 2024), and plain CLIP features reach
+  0.677 against the winner's 0.707, so a small head on a CLIP embedding would do. A drop-off *curve* from the picture alone is not predictable
+  by anything published. Saliency (where the eye goes) is worth more per rupee: TASED-Net is MIT-licensed, 82MB, and properly benchmarked, and
+  the per-frame entropy of its map is a cheap flag for a shot that directs the eye nowhere. Memorability and "neural response" are not worth
+  having: every usable model is research-only or non-commercial, and the one real brain-response model predicts fMRI at r≈0.21, which says
+  nothing about whether a film holds anyone.
 * OpenRouter's completion webhooks instead of polling; an in-app player (the Bots kit has no Video node yet: Watch opens the film).
 * A rough-cut pass that trims or drops shots before the cut; exporting the timeline for an editor.
 
@@ -319,4 +406,5 @@ Migration 0089 (`cinema_films`, `cinema_pictures`, `cinema_cast`). DEPLOY.md, "C
 From open projects and guides, ideas only, no code: dependency-aware scheduling and choosing between two keyframes with a judge (HKUDS/ViMax,
 MIT); per-model prompting rules, the ending named, empty words dropped (smixs/visual-skills, CC BY 4.0; Square-Zero-Labs/video-prompting-skill,
 Apache-2.0); a single style frame for every still (wind-comic, MIT); separating a prompt problem from a model limitation when retaking (VISTA);
-audio-first timing (fal-ai-community/skills, MIT).
+audio-first timing (fal-ai-community/skills, MIT); the reading time of a subtitle and never two at once, and mending a clip rather than
+remaking it (lemomo-ai/lemo-opuscar, MIT code with CC BY-NC docs - the ideas, written here from scratch).

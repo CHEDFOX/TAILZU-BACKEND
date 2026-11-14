@@ -5,13 +5,15 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { blankShot } from "../src/cinema/flow.js";
 import { imageCatalog, parseImageLive } from "../src/cinema/imageModels.js";
-import { catalog, parseLive } from "../src/cinema/models.js";
+import { allJobs, catalog, parseLive } from "../src/cinema/models.js";
 import type { Bible, Film, ShotCard, Take, Verdict } from "../src/cinema/types.js";
 
 const fixture = (name: string): unknown => JSON.parse(readFileSync(fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url)), "utf8"));
 
 export const liveVideo = () => parseLive(fixture("openrouter-video-models.json"));
 export const videoModels = () => catalog(liveVideo());
+/** The one-job models: the edit, the lip sync, the enlargement (models.ts allJobs). */
+export const jobModels = () => allJobs(liveVideo());
 export const imageModels = () => imageCatalog(parseImageLive(fixture("openrouter-image-models.json")));
 
 export const bible = (over: Partial<Bible> = {}): Bible => ({

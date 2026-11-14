@@ -12,12 +12,63 @@
 import { describe, expect, it } from "vitest";
 import { motionPrompt, stillPrint, stillPrompt, stillRefs, takePrint } from "../src/cinema/compile.js";
 import { routeImage, stillModel } from "../src/cinema/imageModels.js";
-import { catalog, frameSize, renderRes, snapSeconds, usdPerSecond } from "../src/cinema/models.js";
+import { catalog, frameSize, jobCatalog, renderRes, snapSeconds, usdPerSecond } from "../src/cinema/models.js";
+import { videoBody } from "../src/cinema/openrouter.js";
 import { boardQuote, filmQuote, RESERVE, sheetsNeeded } from "../src/cinema/quote.js";
-import { needs, route, wantsAudio, whyNone } from "../src/cinema/route.js";
+import { editUsd, editable, needs, pickJob, route, wantsAudio, wantsLipSync, whyNone } from "../src/cinema/route.js";
 import { bible, card, imageModels, liveVideo, shots, videoModels } from "./cinema-rig.js";
 
 const FX = 88;
+
+describe("the request for a take", () => {
+  const base = { model: "m", prompt: "p", seconds: 6, res: "1080p", aspect: "16:9" as const, first: "data:image/png;base64,AA", audio: true };
+
+  it("sends a still as the first frame, and the next shot's landing as the last", () => {
+    const b = videoBody({ ...base, last: "data:image/png;base64,BB" });
+    expect(b.frame_images).toEqual([
+      { type: "image_url", image_url: { url: "data:image/png;base64,AA" }, frame_type: "first_frame" },
+      { type: "image_url", image_url: { url: "data:image/png;base64,BB" }, frame_type: "last_frame" },
+    ]);
+    expect(b.duration).toBe(6);
+    expect(b.resolution).toBe("1080p");
+    expect(b.aspect_ratio).toBe("16:9");
+    expect(b.generate_audio).toBe(true);
+    expect(b.input_references).toBeUndefined();
+  });
+
+  it("names a clip of ours by the job that made it, and uploads nothing", () => {
+    const b = videoBody({ ...base, seconds: 0, res: "", aspect: "", first: "", source: { job: "job_123" } });
+    expect(b.previous_job_id).toBe("job_123");
+    expect(b.frame_images).toBeUndefined();
+    expect(b.input_references).toBeUndefined();
+    // Nothing that would have it re-frame, re-time or re-sound the clip it is mending.
+    expect(b.duration).toBeUndefined();
+    expect(b.resolution).toBeUndefined();
+    expect(b.aspect_ratio).toBeUndefined();
+    expect(b.generate_audio).toBeUndefined();
+  });
+
+  it("sends a clip as a reference when the job will not do, never as a frame", () => {
+    const b = videoBody({ ...base, seconds: 0, res: "", aspect: "", first: "", source: { url: "data:video/mp4;base64,CC" } });
+    expect(b.input_references).toEqual([{ type: "video_url", video_url: { url: "data:video/mp4;base64,CC" } }]);
+    expect(b.frame_images).toBeUndefined();
+  });
+
+  /** A frame sent as `frame_images` takes precedence at OpenRouter and the recording would be ignored, so both go as references. */
+  it("sends the still and our own recording together, as references", () => {
+    const b = videoBody({ ...base, seconds: 0, voice: "data:audio/mpeg;base64,DD" });
+    expect(b.input_references).toEqual([
+      { type: "image_url", image_url: { url: "data:image/png;base64,AA" } },
+      { type: "audio_url", audio_url: { url: "data:audio/mpeg;base64,DD" } },
+    ]);
+    expect(b.frame_images).toBeUndefined();
+  });
+
+  it("asks for an enlargement by its factor", () => {
+    const b = videoBody({ ...base, seconds: 0, res: "", aspect: "", first: "", prompt: "", source: { job: "job_9" }, upscale: { factor: 2, creativity: 0 } });
+    expect(b).toEqual({ model: "m", previous_job_id: "job_9", upscale_factor: 2, creativity: 0 });
+  });
+});
 
 describe("the models as OpenRouter lists them", () => {
   const live = liveVideo();
@@ -61,8 +112,35 @@ describe("the models as OpenRouter lists them", () => {
     const ids = catalog(live).map((m) => m.id);
     expect(ids).toContain("kwaivgi/kling-v3.0-std");
     expect(ids).toContain("alibaba/happyhorse-1.1");
+    expect(ids).toContain("google/gemini-omni-1.2-flash");
+    expect(ids).toContain("black-forest-labs/flux-3-video");
+    // The one-job models work on a clip, not a still: they are never in the animators' catalog.
     expect(ids).not.toContain("heygen/avatar-iv");
-    expect(ids).not.toContain("x-ai/grok-imagine-video");
+    expect(ids).not.toContain("black-forest-labs/flux-video-edit");
+    expect(ids).not.toContain("black-forest-labs/flux-video-upscale");
+    expect(ids).not.toContain("runway/aleph-2");
+  });
+
+  it("finds the one-job models by their job, best first, with their own prices", () => {
+    const edit = jobCatalog(live, "edit");
+    expect(edit.map((m) => m.id)).toEqual(["black-forest-labs/flux-video-edit", "runway/aleph-2"]);
+    expect(edit[0]!.usd).toBe(0.03);
+    expect(edit[0]!.minUsd).toBe(0);
+    const aleph = edit.find((m) => m.id === "runway/aleph-2")!;
+    expect(aleph.usd).toBe(0.28);
+    expect(aleph.minUsd).toBe(0.56);
+    expect(jobCatalog(live, "lipsync").map((m) => m.id)).toEqual(["heygen/avatar-iv"]);
+    expect(jobCatalog(live, "lipsync")[0]!.usd).toBe(0.05);
+    expect(jobCatalog(live, "upscale").map((m) => m.id)).toEqual(["black-forest-labs/flux-video-upscale"]);
+    expect(jobCatalog(live, "upscale")[0]!.usd).toBe(0.035);
+  });
+
+  it("charges an edit by the second, never under its floor", () => {
+    const flux = jobCatalog(live, "edit")[0]!;
+    expect(editUsd(flux, 6)).toBe(0.18);
+    const aleph = jobCatalog(live, "edit").find((m) => m.id === "runway/aleph-2")!;
+    expect(editUsd(aleph, 1)).toBe(0.56);
+    expect(editUsd(aleph, 6)).toBe(1.68);
   });
 
   it("snaps a duration to the nearest the model makes, and clamps the resolution to what it has", () => {

@@ -12,8 +12,10 @@ import { describe, expect, it } from "vitest";
 import { voicePrint } from "../src/cinema/compile.js";
 import { prints, refresh, steps, type Step } from "../src/cinema/flow.js";
 import { afterCheck, bestTake, mean, parseVerdict, passes } from "../src/cinema/qc.js";
+import { editable, pickJob, runFrom, wantsLipSync } from "../src/cinema/route.js";
+import { runPrompt } from "../src/cinema/compile.js";
 import type { Film } from "../src/cinema/types.js";
-import { card, film, take, verdict } from "./cinema-rig.js";
+import { bible, card, film, jobModels, take, verdict, videoModels } from "./cinema-rig.js";
 
 const none = new Set<string>();
 const kinds = (s: Step[]) => s.map((x) => (x.kind === "move" ? `move:${x.status}:${x.hold ?? ""}` : x.kind === "sheet" ? `sheet:${x.key}` : "n" in x ? `${x.kind}:${x.n}` : x.kind));
@@ -83,6 +85,9 @@ describe("after a take is checked", () => {
   const c = card(2);
   const bad = (issues: { kind: string; major: boolean }[], fix: string | null = "keep the kettle still") =>
     verdict(5, { pass: false, issues: issues.map((i) => ({ ...i, note: i.kind })) as never, fix });
+  /** A take that fails on one thing but is good everywhere else: what a mend is for. */
+  const flawed = (issues: { kind: string; major: boolean }[], fix: string | null) =>
+    verdict(8, { pass: false, issues: issues.map((i) => ({ ...i, note: i.kind })) as never, fix });
 
   it("keeps a take that passes", () => {
     const t = take(2, "x", { status: "done", verdict: verdict(9) });
@@ -117,12 +122,101 @@ describe("after a take is checked", () => {
     expect(afterCheck(c, { blamed: [] }, [t], t, false)).toMatchObject({ kind: "best", take: t.id });
   });
 
+  it("mends a good take with one local fault instead of filming it again", () => {
+    const t = take(2, "x", { status: "done", verdict: flawed([{ kind: "text", major: false }], "the sign reads CHAI, not CHIA") });
+    const r = afterCheck(c, { blamed: [] }, [t], t, true, true);
+    expect(r).toMatchObject({ kind: "edit", take: t.id });
+    expect(r.kind === "edit" && r.fix).toMatch(/^the sign reads CHAI, not CHIA\. Change nothing else/);
+    // Without an edit model, the same take is filmed again.
+    expect(afterCheck(c, { blamed: [] }, [t], t, true, false).kind).toBe("retake");
+  });
+
+  it("mends only what the eye marked, and says what to leave alone", () => {
+    const t = take(2, "x", { status: "done", verdict: flawed([{ kind: "anatomy", major: false }, { kind: "artifact", major: false }], null) });
+    const r = afterCheck(c, { blamed: [] }, [t], t, true, true);
+    expect(r.kind === "edit" && r.fix).toBe("anatomy; artifact. Change nothing else: the same people, clothes, place, light, framing and camera move.");
+  });
+
+  it("does not mend once the tries are spent: the best take is kept instead", () => {
+    const ts = [7, 6.5, 6].map((s) => take(2, "x", { status: "done", verdict: verdict(s, { pass: false, issues: [{ kind: "text", major: false, note: "warped sign" }], fix: "f" }) }));
+    expect(afterCheck(c, { blamed: [] }, ts, ts[2]!, true, true)).toMatchObject({ kind: "best", take: ts[0]!.id });
+  });
+
+  it("does not mend a poor take, nor a mend of one", () => {
+    const poor = take(2, "x", { status: "done", verdict: verdict(5, { pass: false, issues: [{ kind: "text", major: false, note: "warped sign" }], fix: "f" }) });
+    expect(afterCheck(c, { blamed: [] }, [poor], poor, true, true).kind).toBe("retake");
+    const mended = take(2, "x", { status: "done", from: "t0", verdict: flawed([{ kind: "text", major: false }], "f") });
+    expect(afterCheck(c, { blamed: [] }, [mended], mended, true, true).kind).toBe("retake");
+  });
+
+  it("knows which faults an edit is trusted with", () => {
+    const editor = pickJob(jobModels(), "edit")!;
+    expect(editor.id).toBe("black-forest-labs/flux-video-edit");
+    expect(editable(["text", "artifact", "anatomy", "wardrobe"], editor)).toBe(true);
+    expect(editable(["text", "morph"], editor)).toBe(false);
+    expect(editable(["action"], editor)).toBe(false);
+    expect(editable(["camera"], editor)).toBe(false);
+    expect(editable([], editor)).toBe(false);
+    expect(editable(["text"], null)).toBe(false);
+  });
+
   it("waits for the person when every take is too poor, or unsafe", () => {
     const ts = [3, 2, 3].map((s) => take(2, "x", { status: "done", verdict: verdict(s, { pass: false }) }));
     expect(afterCheck(c, { blamed: [] }, ts, ts[2]!, true).kind).toBe("wait");
     const unsafe = take(2, "x", { status: "done", verdict: bad([{ kind: "safety", major: true }]) });
     expect(afterCheck(c, { blamed: [] }, [unsafe], unsafe, true).kind).toBe("wait");
     expect(bestTake([unsafe], true)).toBeNull();
+  });
+});
+
+describe("which shots can be filmed as one take", () => {
+  const base = { style: "live" as const, aspect: "16:9" as const, tier: "standard" as const, models: videoModels(), filmed: () => false };
+  const three = [
+    card(1, { seconds: 4, link: "cut", place: "stall", cast: ["ravi"] }),
+    card(2, { seconds: 4, link: "continue", place: "stall", cast: ["ravi"] }),
+    card(3, { seconds: 4, link: "continue", place: "stall", cast: ["ravi"] }),
+  ];
+
+  it("takes the shots that carry one moment on, and lands on the last one's still", () => {
+    const run = runFrom({ cards: three, at: 0, ...base })!;
+    expect(run.cards.map((c) => c.n)).toEqual([1, 2, 3]);
+    expect(run.starts).toEqual([0, 4, 8]);
+    expect(run.seconds).toBe(12);
+    // Only a model that can render the whole length and land on a last frame.
+    expect(run.pick.model.last).toBe(true);
+    expect(run.pick.seconds).toBeGreaterThanOrEqual(12);
+  });
+
+  it("stops at a plain cut, a new place, new people, a line, or fifteen seconds", () => {
+    expect(runFrom({ cards: [three[0]!, { ...three[1]!, link: "cut" }], at: 0, ...base })).toBeNull();
+    expect(runFrom({ cards: [three[0]!, { ...three[1]!, place: "street" }], at: 0, ...base })).toBeNull();
+    expect(runFrom({ cards: [three[0]!, { ...three[1]!, cast: ["meera"] }], at: 0, ...base })).toBeNull();
+    expect(runFrom({ cards: [three[0]!, { ...three[1]!, lines: [{ who: "ravi", text: "Chai?" }] }], at: 0, ...base })).toBeNull();
+    const long = runFrom({ cards: [{ ...three[0]!, seconds: 10 }, { ...three[1]!, seconds: 10 }], at: 0, ...base });
+    expect(long).toBeNull();
+  });
+
+  it("is never tried once any of its shots has been filmed", () => {
+    expect(runFrom({ cards: three, at: 0, ...base, filmed: (n) => n === 2 })).toBeNull();
+    expect(runFrom({ cards: three, at: 0, ...base, filmed: (n) => n === 1 })).toBeNull();
+    // The rest of the run can still go together.
+    expect(runFrom({ cards: three, at: 1, ...base, filmed: (n) => n === 1 })!.cards.map((c) => c.n)).toEqual([2, 3]);
+  });
+
+  it("never asks for more than three shots at once", () => {
+    const five = [1, 2, 3, 4, 5].map((n) => card(n, { seconds: 3, link: n === 1 ? "cut" : "continue", place: "stall", cast: ["ravi"] }));
+    expect(runFrom({ cards: five, at: 0, ...base })!.cards).toHaveLength(3);
+  });
+
+  it("writes one timeline for the whole move, with the boundary the cut will fall on", () => {
+    const run = runFrom({ cards: three, at: 0, ...base })!;
+    const p = runPrompt(run.cards, bible(), { starts: run.starts, seconds: run.seconds, maxChars: 2000, audio: false });
+    expect(p).toContain("ONE CONTINUOUS SHOT, 12 seconds");
+    expect(p).toContain("[0-4s]");
+    expect(p).toContain("[4-8s]");
+    expect(p).toContain("[8-12s]");
+    expect(p).toContain("Arrive exactly at the last frame.");
+    expect(p).toContain("Ravi throughout");
   });
 });
 

@@ -25,19 +25,20 @@
 import { randomUUID } from "node:crypto";
 import { usdToPaise } from "../code/brain/money.js";
 import { asPerson } from "../privacy/aiGate.js";
-import { characterSheetPrompt, lookPrompt, motionPrompt, placeSheetPrompt, stillPrompt, stillRefs, voicePrint } from "./compile.js";
+import { castVoice, characterSheetPrompt, linePrint, lipSyncPrompt, lookPrompt, motionPrompt, musicPrint, placeSheetPrompt, runPrompt, stillPrompt, stillRefs, subjectBias, takePrint, voicePrint } from "./compile.js";
 import { blankShot, prints, refresh, shotOf, stepKey, steps, type Step } from "./flow.js";
 import { stillModel, type CatalogImageModel } from "./imageModels.js";
 import { castKey, filmKey, pictureKey, signMedia } from "./media.js";
-import type { CatalogModel } from "./models.js";
+import type { CatalogModel, JobModel } from "./models.js";
 import { makePicture, readAsk } from "./pictures.js";
 import { compareSaid, spellNumbers, type Heard } from "./voiceCheck.js";
 import { publicFilm, publicPicture, type FilmPublic, type PictureView } from "./public.js";
 import { direct, revise, type Think } from "./plan.js";
-import { afterCheck, checkBrief, parseVerdict, PROVIDER_FAILS } from "./qc.js";
+import { afterCheck, checkBrief, MAX_TRIES, parseVerdict, PROVIDER_FAILS } from "./qc.js";
 import { boardQuote, candidatesFor, filmQuote } from "./quote.js";
-import { route, whyNone } from "./route.js";
-import type { Picture, CinemaStore } from "./store.js";
+import { editUsd, editable, pickJob, route, runFrom, wantsLipSync, whyNone } from "./route.js";
+import { upscaleUsd } from "./models.js";
+import { filmKeys, type Picture, type CinemaStore } from "./store.js";
 import { ASPECTS, TIERS, type Aspect, type Character, type Film, type FilmRow, type ShotCard, type Take, type Tier, type Verdict } from "./types.js";
 
 export const TICK_MS = 5_000;
@@ -45,8 +46,19 @@ export const TICK_MS = 5_000;
 export const WRITING_MS = 10 * 60_000;
 /** A storyboard's price is the quote plus this share, for stills the eye sends back. */
 export const BOARD_SPARE = 0.25;
+/** How many other cuts of one film we keep: three shapes, with and without captions, is more than anyone needs. */
+const EDITIONS_MAX = 5;
+/** An enlargement: how much bigger, the largest film we can send as bytes, and how long we wait for it. */
+const BIG_FACTOR = 2;
+const BIG_MAX_BYTES = 24 * 1024 * 1024;
+const BIG_POLLS = 60;
+const BIG_POLL_MS = 10_000;
+/** How long we wait for one take that covers several shots: it is longer than one shot, but not an enlargement. */
+const RUN_POLLS = 40;
 /** Frames the eye is shown from each take. */
 const EYE_FRAMES = 5;
+/** The largest clip we will hand to an edit model as bytes, when it will not work from the job that made it. */
+const MEND_MAX_BYTES = 12 * 1024 * 1024;
 const MAX_FILMS_LISTED = 30;
 
 export class CinemaError extends Error {
@@ -61,7 +73,14 @@ export type CinemaNotify = (userId: string, msg: { kind: CinemaPushKind; key: st
 
 export interface MediaPorts {
   image: (o: { model: string; prompt: string; aspect: string; refs?: string[]; format?: "png" | "jpeg" | "svg" }) => Promise<{ bytes: Buffer; type: string; usd: number }>;
-  startVideo: (a: { model: string; prompt: string; seconds: number; res: string; aspect: Aspect; first: string; last?: string | null; audio: boolean }) => Promise<string>;
+  startVideo: (a: {
+    model: string; prompt: string; seconds: number; res: string; aspect: Aspect | ""; first: string; last?: string | null; audio: boolean;
+    /** A clip to work on rather than a still: the OpenRouter job of ours that made it, or its bytes as a data URL (openrouter.ts VideoAsk). */
+    source?: { job: string } | { url: string } | null;
+    /** Our own recording, as a data URL, for a model that moves a mouth with it. */
+    voice?: string | null;
+    upscale?: { factor: number; creativity?: number } | null;
+  }) => Promise<string>;
   videoStatus: (job: string) => Promise<{ status: "running" } | { status: "done"; url: string; usd: number | null } | { status: "failed"; error: string }>;
   fetchVideo: (url: string) => Promise<Buffer>;
   music: (prompt: string, seconds: number) => Promise<{ bytes: Buffer; usd: number } | null>;
@@ -74,11 +93,20 @@ export interface MediaPorts {
     shots: {
       video: Buffer; link: ShotCard["link"]; lines: string[];
       vo: { audio: Buffer; text: string; seconds: number; words?: { word: string; start: number; end: number }[] } | null;
+      /** Where the subject sits across the frame (-1 to 1), for a cut that crops to another shape. */
+      bias?: number;
     }[];
     music: Buffer | null; aspect: Aspect; height: 720 | 1080;
-  }) => Promise<{ video: Buffer; srt: string | null; seconds: number; blanks?: number[] }>;
+    /** "crop" fills the frame and loses the edges, for another shape of the same film; the film itself pads. */
+    fit?: "pad" | "crop";
+    /** Draw the words into the picture as well. `language` says which letters they are in, so a font for them can be found. */
+    captions?: boolean;
+    language?: string;
+  }) => Promise<{ video: Buffer; srt: string | null; seconds: number; blanks?: number[]; captions?: boolean }>;
   /** Several frames tiled into one picture for the checker; null when they cannot be tiled, and then each is sent on its own. */
   sheet?: (frames: readonly Buffer[]) => Promise<Buffer | null>;
+  /** One take cut apart at the beats, for several shots filmed in one go (ffmpeg.ts slice). Absent: each shot is filmed on its own. */
+  slice?: (bytes: Buffer, starts: readonly number[]) => Promise<{ video: Buffer; last: Buffer; seconds: number }[]>;
 }
 
 export interface CinemaDeps {
@@ -86,7 +114,8 @@ export interface CinemaDeps {
   blobs: { put(key: string, data: Buffer, type: string): Promise<void>; get(key: string): Promise<Buffer | null>; delete(key: string): Promise<void> };
   /** The model gateway, as the person (callModel with json: true). */
   think: (userId: string) => Think;
-  models: () => Promise<{ video: CatalogModel[]; image: CatalogImageModel[] }>;
+  /** The animators' catalog, the image models, and the one-job models (models.ts allJobs: the edit, the lip sync, the enlargement). */
+  models: () => Promise<{ video: CatalogModel[]; image: CatalogImageModel[]; jobs: JobModel[] }>;
   media: MediaPorts;
   /** Onto the person's usage meter, in dollars. */
   charge: (userId: string, usd: number) => void;
@@ -118,6 +147,8 @@ export interface CinemaOverview {
   pictures: PictureView[];
   cast: (Character & { url: string | null })[];
 }
+
+type CutShots = Parameters<MediaPorts["cut"]>[0]["shots"];
 
 const dataUrl = (bytes: Buffer, type: string): string => `data:${type};base64,${bytes.toString("base64")}`;
 const dayOf = (ms: number): number => Math.floor(ms / 86_400_000);
@@ -280,6 +311,57 @@ export class CinemaService {
     return this.view(out);
   }
 
+  /**
+   * Another cut of the same film: another shape (a 9:16 for a feed), or the words drawn into the picture, or both. It costs nothing - every
+   * take is already filmed - so it is asked for and made, with no price to agree. Asking again for one that exists removes it.
+   */
+  async edition(userId: string, id: string, o: { aspect?: string; captions?: boolean } = {}): Promise<FilmView> {
+    const f = await this.mine(userId, id);
+    if (!f.cut.video) throw new CinemaError(409, "The film isn't cut yet.", "not_cut");
+    const aspect = (ASPECTS as readonly string[]).includes(o.aspect ?? "") ? (o.aspect as Aspect) : f.aspect;
+    const captions = o.captions !== false;
+    if (aspect === f.aspect && !captions) throw new CinemaError(400, "That is the film you already have.", "same_cut");
+    const out = await this.update(userId, id, (x) => {
+      const rows = x.editions ?? [];
+      const row = rows.find((e) => e.aspect === aspect && e.captions === captions);
+      if (row) {
+        if (row.video) void this.d.blobs.delete(row.video).catch(() => undefined);
+        x.editions = rows.filter((e) => e !== row);
+        return;
+      }
+      if (rows.length >= EDITIONS_MAX) throw new CinemaError(400, "That's as many cuts as one film can have.", "too_many");
+      x.editions = [...rows, { aspect, captions, video: null, seconds: 0, of: null }];
+      // A finished film is not looked at by the tick, so it goes back to cutting until the new cut is made.
+      if (x.status === "done") x.status = "cutting";
+    });
+    return this.view(out);
+  }
+
+  /**
+   * The finished film enlarged. Unlike another cut, this is a real job at a model and the only thing in the bot priced by the pixel, so it
+   * is weighed before it is offered: a film too long, or one whose money is spent, is told so plainly rather than being left to pause.
+   */
+  async enlarge(userId: string, id: string): Promise<FilmView> {
+    const f = await this.mine(userId, id);
+    if (!f.cut.video) throw new CinemaError(409, "The film isn't cut yet.", "not_cut");
+    const m = pickJob((await this.d.models()).jobs, "upscale");
+    if (!m) throw new CinemaError(503, "Films can't be made bigger just now. Try again later.", "no_model");
+    if (f.wantBig) {
+      return this.view(await this.update(userId, id, (x) => {
+        if (x.cut.big) void this.d.blobs.delete(x.cut.big).catch(() => undefined);
+        x.cut = { ...x.cut, big: null, bigOf: null, bigJob: null };
+        x.wantBig = false;
+      }));
+    }
+    const usd = upscaleUsd(m, { res: f.tier === "draft" ? "720p" : "1080p", aspect: f.aspect, seconds: f.cut.seconds, factor: BIG_FACTOR });
+    const paise = usdToPaise(usd, this.d.fx);
+    const room = Math.max(this.d.filmMaxPaise - f.spentPaise, 0);
+    const today = Math.max(this.d.dailyPaise - this.spentToday(userId), 0);
+    if (paise > room || paise > today) throw new CinemaError(409, "This film is too long to make bigger. A shorter one can be.", "too_long");
+    const out = await this.update(userId, id, (x) => { x.wantBig = true; if (x.status === "done") x.status = "cutting"; });
+    return this.view(out);
+  }
+
   async stop(userId: string, id: string): Promise<FilmView> {
     await this.mine(userId, id);
     return this.view(await this.update(userId, id, (x) => { x.status = "stopped"; x.hold = null; }));
@@ -288,7 +370,7 @@ export class CinemaService {
   async remove(userId: string, id: string): Promise<void> {
     const f = await this.mine(userId, id);
     await this.d.store.deleteFilm(userId, id);
-    for (const key of filmKeysOf(f)) await this.d.blobs.delete(key).catch(() => undefined);
+    for (const key of filmKeys(f)) await this.d.blobs.delete(key).catch(() => undefined);
     this.d.live(userId);
   }
 
@@ -387,7 +469,7 @@ export class CinemaService {
     this.ticking = true;
     try {
       const films = await this.d.store.working(200);
-      const models = await this.d.models().catch(() => ({ video: [], image: [] }));
+      const models = await this.d.models().catch(() => ({ video: [], image: [], jobs: [] }));
       for (const f of films) {
         try {
           await this.advance(f, models);
@@ -405,7 +487,7 @@ export class CinemaService {
     while (this.work.size) await Promise.allSettled([...this.work]);
   }
 
-  private async advance(f: Film, models: { video: CatalogModel[]; image: CatalogImageModel[] }): Promise<void> {
+  private async advance(f: Film, models: { video: CatalogModel[]; image: CatalogImageModel[]; jobs: JobModel[] }): Promise<void> {
     const busy = this.busy.get(f.id) ?? new Set<string>();
     const still = stillModel(models.image, 3);
     const stillPaise = usdToPaise(still?.usd ?? 0.05, this.d.fx);
@@ -413,11 +495,19 @@ export class CinemaService {
       switch (s.kind) {
         case "sheet": return stillPaise;
         case "still": return stillPaise * candidatesFor(f.script?.shots.find((c) => c.n === s.n)?.cast ?? []);
-        case "voice": return usdToPaise(((f.script?.shots.find((c) => c.n === s.n)?.vo?.length ?? 0) / 1000) * 0.03, this.d.fx);
+        case "voice": {
+          const card = f.script?.shots.find((c) => c.n === s.n);
+          const chars = (card?.vo?.length ?? 0) + (card?.lines[0]?.text.length ?? 0);
+          return usdToPaise((chars / 1000) * 0.03, this.d.fx);
+        }
         case "render": {
           const card = f.script?.shots.find((c) => c.n === s.n);
           if (!card || !f.script) return null;
-          const best = route({ card, style: f.script.bible.style, aspect: f.aspect, tier: f.tier, models: models.video, blamed: shotOf(f, s.n)?.blamed ?? [] })[0];
+          const st = shotOf(f, s.n);
+          const mend = st?.mend ? f.takes.find((t) => t.id === st.mend!.take) : undefined;
+          const editor = st?.mend ? pickJob(models.jobs, "edit") : null;
+          if (mend && editor) return usdToPaise(editUsd(editor, mend.seconds), this.d.fx);
+          const best = route({ card, style: f.script.bible.style, aspect: f.aspect, tier: f.tier, models: models.video, blamed: st?.blamed ?? [] })[0];
           return best ? usdToPaise(best.usd * best.seconds, this.d.fx) : null;
         }
         default: return 0;
@@ -463,15 +553,17 @@ export class CinemaService {
     if (hold && hold !== before.hold) await this.push(out.ownerId, { kind: "cinema_hold", key: `${out.id}:hold:${hold}:${out.updatedAt}`, vars: { title }, data });
   }
 
-  private async run(f: Film, s: Step, models: { video: CatalogModel[]; image: CatalogImageModel[] }): Promise<void> {
+  private async run(f: Film, s: Step, models: { video: CatalogModel[]; image: CatalogImageModel[]; jobs: JobModel[] }): Promise<void> {
     switch (s.kind) {
       case "sheet": return this.sheet(f, s.of, s.key, models.image);
       case "still": return this.still(f, s.n, models.image);
       case "voice": return this.voice(f, s.n);
-      case "render": return this.render(f, s.n, models.video);
+      case "render": return this.render(f, s.n, models.video, models.jobs);
       case "poll": return this.poll(f, s.take);
-      case "check": return this.check(f, s.take);
+      case "check": return this.check(f, s.take, models.jobs);
       case "cut": return this.cutFilm(f);
+      case "edition": return this.editionCut(f, s.aspect, s.captions);
+      case "enlarge": return this.enlargeCut(f, models.jobs);
       default: return;
     }
   }
@@ -556,6 +648,7 @@ export class CinemaService {
    */
   private async voice(f: Film, n: number): Promise<void> {
     const card = f.script!.shots.find((c) => c.n === n)!;
+    await this.line(f, n, card);
     if (!card.vo) return;
     const language = f.script!.bible.language;
     let usd = 0;
@@ -595,12 +688,190 @@ export class CinemaService {
     });
   }
 
-  private async render(f: Film, n: number, video: CatalogModel[]): Promise<void> {
+  /**
+   * The shot's spoken line, recorded in the character's own voice (compile.ts castVoice), so a lip-sync model can drive the mouth with it
+   * rather than the video model guessing at the words. Only where the shot is one person speaking, close, in a language a video model gets
+   * wrong (route.ts wantsLipSync). The shot is given the seconds the line needs, as a voice-over's are.
+   */
+  private async line(f: Film, n: number, card: ShotCard): Promise<void> {
+    const bible = f.script!.bible;
+    if (!wantsLipSync(card, bible.language)) return;
+    const want = linePrint(card, bible, f.voice);
+    const st = shotOf(f, n);
+    if (!want || (st?.said && st.saidOf === want)) return;
+    const line = card.lines[0]!;
+    const who = bible.characters.find((c) => c.key === line.who)!;
+    const out = await this.d.media.tts(line.text, castVoice(who, f.voice));
+    const secs = await this.d.media.seconds(out.audio).catch(() => line.text.split(/\s+/).length / 2.6);
+    const mediaKey = filmKey(f.ownerId, f.id, `said-${n}-${this.id().slice(0, 8)}`, "audio/mpeg");
+    await this.d.blobs.put(mediaKey, out.audio, "audio/mpeg");
+    await this.update(f.ownerId, f.id, (x) => {
+      this.spend(f, x, out.usd);
+      const c = x.script!.shots.find((s) => s.n === n);
+      const s = shotOf(x, n);
+      if (!c || !s) return;
+      const need = Math.min(15, Math.ceil(secs + 0.6));
+      if (need > c.seconds) {
+        c.seconds = need;
+        x.notes = [`Shot ${n}: given ${need} seconds so its line fits.`, ...x.notes].slice(0, 20);
+      }
+      Object.assign(s, { said: mediaKey, saidOf: linePrint(c, x.script!.bible, x.voice), saidSeconds: Math.round(secs * 100) / 100 });
+    });
+  }
+
+  /**
+   * A mouth driven by our own recording, rather than the video model's guess at the words: the still and the line to a lip-sync model
+   * (five cents a second). Tried once for a card - if what comes back does not pass, the shot is filmed the ordinary way.
+   */
+  private async lipSync(f: Film, n: number, of: string, jobs: JobModel[]): Promise<boolean> {
+    const st = shotOf(f, n)!;
+    const card = f.script!.shots.find((c) => c.n === n)!;
+    const m = pickJob(jobs, "lipsync");
+    if (!m || !st.said || !st.still) return false;
+    if (st.blamed.includes(m.id) || f.takes.some((t) => t.n === n && t.of === of && t.model === m.id)) return false;
+    const [still, audio] = await Promise.all([this.d.blobs.get(st.still), this.d.blobs.get(st.said)]);
+    if (!still || !audio) return false;
+    const secs = st.saidSeconds || card.seconds;
+    const prompt = lipSyncPrompt(card, f.script!.bible, m.maxPrompt);
+    let job: string | null = null;
+    try {
+      job = await this.d.media.startVideo({
+        model: m.id, prompt, seconds: 0, res: f.tier === "draft" ? "720p" : "1080p", aspect: f.aspect,
+        first: dataUrl(still, "image/png"), audio: false, voice: dataUrl(audio, "audio/mpeg"),
+      });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "busy" || code === "no_credit") throw err;
+      this.d.log?.(`[cinema] lip sync refused: ${code ?? "error"}`);
+      return false;
+    }
+    const take: Take = {
+      id: this.id(), n, model: m.id, of, job, prompt, seconds: Math.round(secs * 10) / 10, status: "running",
+      paise: usdToPaise(m.usd * Math.max(1, secs), this.d.fx), video: null, lastFrame: null, verdict: null, error: null,
+      startedAt: this.now(), endedAt: null, polledAt: null,
+    };
+    await this.update(f.ownerId, f.id, (x) => { x.takes.push(take); });
+    return true;
+  }
+
+  /**
+   * SEVERAL SHOTS AS ONE TAKE, where the shot list says the moment carries straight on (route.ts runFrom): one unbroken generation from the
+   * first shot's still to the last shot's still, cut apart afterwards at the beats. There is then no join between those shots at all, which
+   * is the one thing a frame-to-frame continuation can never quite give.
+   *
+   * The other shots' render locks are held for as long as it takes, so the tick does not film them as well; each piece becomes a take of its
+   * own and is checked on its own, and a piece the eye fails is filmed again by itself, the ordinary way. True when a run was filmed.
+   */
+  private async runTake(f: Film, n: number, video: CatalogModel[]): Promise<boolean> {
+    const script = f.script!;
+    const cards = script.shots;
+    const at = cards.findIndex((c) => c.n === n);
+    if (at < 0) return false;
+    const p = prints(f);
+    const run = runFrom({
+      cards, at, style: script.bible.style, aspect: f.aspect, tier: f.tier, models: video,
+      filmed: (k) => f.takes.some((t) => t.n === k && t.of === p.take.get(k)),
+    });
+    if (!run) return false;
+    const usd = run.pick.usd * run.seconds;
+    const paise = usdToPaise(usd, this.d.fx);
+    if (f.budgetPaise - f.spentPaise < paise) return false;
+    const firstShot = shotOf(f, run.cards[0]!.n);
+    const lastShot = shotOf(f, run.cards.at(-1)!.n);
+    const [openOn, landOn] = await Promise.all([
+      firstShot?.still ? this.d.blobs.get(firstShot.still) : null,
+      lastShot?.still ? this.d.blobs.get(lastShot.still) : null,
+    ]);
+    if (!openOn || !landOn) return false;
+    let first = dataUrl(openOn, "image/png");
+    if (run.cards[0]!.link === "continue" && at > 0) {
+      const prevCard = cards[at - 1]!;
+      const prevTake = f.takes.find((t) => t.id === shotOf(f, prevCard.n)?.take);
+      const lf = prevTake?.lastFrame ? await this.d.blobs.get(prevTake.lastFrame) : null;
+      if (!lf) return false;
+      first = dataUrl(lf, "image/png");
+    }
+    const prompt = runPrompt(run.cards, script.bible, { starts: run.starts, seconds: run.seconds, maxChars: run.pick.model.maxPrompt, audio: run.pick.audio });
+    // The other shots of the run are ours for as long as it takes, so the tick does not start them too.
+    const busy = this.busy.get(f.id) ?? new Set<string>();
+    const held = run.cards.slice(1).map((c) => `render:${c.n}`);
+    for (const k of held) busy.add(k);
+    this.busy.set(f.id, busy);
+    try {
+      let job: string;
+      try {
+        job = await this.d.media.startVideo({
+          model: run.pick.model.id, prompt, seconds: run.pick.seconds, res: run.pick.res, aspect: f.aspect,
+          first, last: dataUrl(landOn, "image/png"), audio: run.pick.audio,
+        });
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === "busy" || code === "no_credit") throw err;
+        this.d.log?.(`[cinema] one take for several shots refused: ${code ?? "error"}`);
+        return false;
+      }
+      const bytes = await this.awaitJob(job, RUN_POLLS);
+      if (!bytes) {
+        this.d.log?.("[cinema] one take for several shots did not come back");
+        return false;
+      }
+      const pieces = await this.d.media.slice!(bytes, run.starts);
+      if (pieces.length !== run.cards.length) return false;
+      // A shot that continues the one before carries that shot's chosen take in its own fingerprint (compile.ts takePrint), so each piece
+      // is stamped with the fingerprint it will have once these pieces ARE the chosen takes - which is what they are about to become.
+      // Stamped with today's fingerprints instead, every piece but the first would be thrown away and filmed again the moment the first
+      // one passed the eye.
+      const ids = run.cards.map(() => this.id());
+      const made: Take[] = [];
+      for (const [i, piece] of pieces.entries()) {
+        const card = run.cards[i]!;
+        const id = ids[i]!;
+        const of = i === 0 ? p.take.get(card.n)! : takePrint(card, script.bible, f.aspect, ids[i - 1]!);
+        const videoKey = filmKey(f.ownerId, f.id, `take-${id}`, "video/mp4");
+        const lastKey = filmKey(f.ownerId, f.id, `last-${id}`, "image/png");
+        await this.d.blobs.put(videoKey, piece.video, "video/mp4");
+        await this.d.blobs.put(lastKey, piece.last, "image/png");
+        made.push({
+          id, n: card.n, model: run.pick.model.id, of, job: null, prompt, seconds: Math.round(piece.seconds * 100) / 100,
+          status: "done", paise: i === 0 ? paise : 0, video: videoKey, lastFrame: lastKey, verdict: null, error: null,
+          startedAt: this.now(), endedAt: this.now(), polledAt: null,
+          run: run.cards.map((c) => c.n), ...(i === 0 ? { cuts: run.starts } : {}),
+        });
+      }
+      await this.update(f.ownerId, f.id, (x) => {
+        this.spend(f, x, usd);
+        x.takes.push(...made);
+      });
+      return true;
+    } finally {
+      for (const k of held) busy.delete(k);
+    }
+  }
+
+  /** Waits for a job that the tick cannot poll for us (one take for several shots, an enlargement): its clip, or null. */
+  private async awaitJob(job: string, polls: number): Promise<Buffer | null> {
+    for (let i = 0; i < polls; i++) {
+      const state = await this.d.media.videoStatus(job).catch(() => null);
+      if (state?.status === "done") return this.d.media.fetchVideo(state.url).catch(() => null);
+      if (state?.status === "failed") return null;
+      await new Promise((r) => setTimeout(r, BIG_POLL_MS));
+    }
+    return null;
+  }
+
+  private async render(f: Film, n: number, video: CatalogModel[], jobs: JobModel[] = []): Promise<void> {
     const script = f.script!;
     const card = script.shots.find((c) => c.n === n)!;
     const st = shotOf(f, n)!;
     const p = prints(f);
     const of = p.take.get(n)!;
+    // A take with one local fault is mended, not filmed again (qc.ts "edit"). When the mend cannot be started we carry straight on and
+    // film it again, so an edit model that will not take our clip costs the film nothing but one refused request.
+    if (st.mend && (await this.mend(f, n, of, st.mend, jobs))) return;
+    // One person, speaking, close, in a language the video models guess at: our own recording drives the mouth instead.
+    if (await this.lipSync(f, n, of, jobs)) return;
+    // Shots that carry one moment on: filmed as one unbroken take and cut apart, so there is no join between them.
+    if (this.d.media.slice && (await this.runTake(f, n, video))) return;
     const pick = route({ card, style: script.bible.style, aspect: f.aspect, tier: f.tier, models: video, blamed: st.blamed })[0];
     if (!pick) {
       await this.update(f.ownerId, f.id, (x) => {
@@ -641,6 +912,44 @@ export class CinemaService {
       x.takes.push(take);
       if (take.status === "failed") this.afterFailure(x, n, of);
     });
+  }
+
+  /**
+   * Mends a take instead of filming it again: the clip and one instruction to an edit model, at three cents a second against forty for a
+   * second of Veo. The clip is named by the job of ours that made it, so nothing of the person's is uploaded or left at an address; when
+   * the model will not work that way the bytes go as a data URL, as a still's do. True when a mend was started; false to film it again.
+   */
+  private async mend(f: Film, n: number, of: string, want: { take: string; fix: string }, jobs: JobModel[]): Promise<boolean> {
+    const editor = pickJob(jobs, "edit");
+    const src = f.takes.find((t) => t.id === want.take);
+    const clear = () => this.update(f.ownerId, f.id, (x) => { const s = shotOf(x, n); if (s) s.mend = null; });
+    if (!editor || !src?.video) { await clear(); return false; }
+    const tries: ({ job: string } | { url: string })[] = src.job ? [{ job: src.job }] : [];
+    const bytes = await this.d.blobs.get(src.video).catch(() => null);
+    if (bytes && bytes.length <= MEND_MAX_BYTES) tries.push({ url: dataUrl(bytes, "video/mp4") });
+    let job: string | null = null;
+    for (const source of tries) {
+      try {
+        job = await this.d.media.startVideo({ model: editor.id, prompt: want.fix, seconds: 0, res: "", aspect: "", first: "", audio: false, source });
+        break;
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === "busy" || code === "no_credit") throw err;
+        this.d.log?.(`[cinema] mend refused: ${code ?? "error"}`);
+      }
+    }
+    if (!job) { await clear(); return false; }
+    const take: Take = {
+      id: this.id(), n, model: editor.id, from: src.id, of, job, prompt: want.fix, seconds: src.seconds, status: "running",
+      paise: usdToPaise(editUsd(editor, src.seconds), this.d.fx), video: null, lastFrame: null, verdict: null, error: null,
+      startedAt: this.now(), endedAt: null, polledAt: null,
+    };
+    await this.update(f.ownerId, f.id, (x) => {
+      x.takes.push(take);
+      const s = shotOf(x, n);
+      if (s) s.mend = null;
+    });
+    return true;
   }
 
   /** A take that failed at the provider: tried again, the model blamed after PROVIDER_FAILS, the shot given up after twice that. */
@@ -686,7 +995,7 @@ export class CinemaService {
     });
   }
 
-  private async check(f: Film, takeId: string): Promise<void> {
+  private async check(f: Film, takeId: string, jobs: JobModel[] = []): Promise<void> {
     const t = f.takes.find((x) => x.id === takeId);
     const script = f.script!;
     const card = script.shots.find((c) => c.n === t?.n);
@@ -721,6 +1030,11 @@ export class CinemaService {
       verdict = r ? parseVerdict(r.json ?? r.text, card.cast.length > 0) : null;
     }
     this.frameCache.delete(takeId);
+    // A retake the money would not quite cover is no reason to settle for a take the eye failed: the film is extended by itself first
+    // (within its caps and the plan's allowance), and only then is the decision made. Without this, a film that ran dearer than its quote
+    // would keep the best of one take while it still had room to grow.
+    const tried = f.takes.filter((k) => k.n === t.n && k.of === t.of && k.verdict).length;
+    if (verdict && !verdict.pass && tried + 1 < MAX_TRIES && f.budgetPaise - f.spentPaise < t.paise) await this.extend(f);
     await this.update(f.ownerId, f.id, (x) => {
       this.spend(f, x, usd);
       const y = x.takes.find((k) => k.id === takeId);
@@ -732,8 +1046,14 @@ export class CinemaService {
       if (y.of !== prints(x).take.get(t.n)) return;
       const mine = x.takes.filter((k) => k.n === t.n && k.of === y.of && k.status === "done");
       const left = x.budgetPaise - x.spentPaise;
-      const next = afterCheck(c, s, mine, y, left >= y.paise);
-      if (next.kind === "keep") Object.assign(s, { take: next.take, takeOf: y.of, error: null });
+      const editor = pickJob(jobs, "edit");
+      const canMend = !!editor
+        && editable(y.verdict.issues.map((i) => i.kind), editor)
+        && left >= usdToPaise(editUsd(editor, y.seconds), this.d.fx);
+      const next = afterCheck(c, s, mine, y, left >= y.paise, canMend);
+      // The eye's own line is kept as well: if the mend cannot be started, the ordinary retake still carries it.
+      if (next.kind === "edit") Object.assign(s, { mend: { take: next.take, fix: next.fix }, fix: y.verdict.fix ?? s.fix });
+      else if (next.kind === "keep") Object.assign(s, { take: next.take, takeOf: y.of, error: null });
       else if (next.kind === "best") {
         Object.assign(s, { take: next.take, takeOf: y.of, error: null });
         x.notes = [next.note, ...x.notes].slice(0, 20);
@@ -744,10 +1064,10 @@ export class CinemaService {
     });
   }
 
-  private async cutFilm(f: Film): Promise<void> {
+  /** The takes in order, each with its own voice-over and where its subject sits: what the cut is built from, read from the film's media. */
+  private async cutShots(f: Film): Promise<CutShots> {
     const script = f.script!;
-    const p = prints(f);
-    const shots = [];
+    const shots: CutShots = [];
     for (const card of script.shots) {
       const st = shotOf(f, card.n)!;
       const take = f.takes.find((t) => t.id === st.take);
@@ -755,20 +1075,43 @@ export class CinemaService {
       if (!video) throw new CinemaError(500, "A take is missing.", "take_missing");
       const audio = st.voice ? await this.d.blobs.get(st.voice) : null;
       const who = (k: string) => script.bible.characters.find((c) => c.key === k)?.name ?? k;
+      const bias = subjectBias(card, script.bible);
       shots.push({
         video, link: card.link, lines: card.lines.map((l) => `${who(l.who)}: ${l.text}`),
         vo: card.vo && audio ? { audio, text: card.vo, seconds: st.voiceSeconds, ...(st.voiceWords?.length ? { words: st.voiceWords } : {}) } : null,
+        ...(bias ? { bias } : {}),
       });
     }
-    let music: Buffer | null = null;
-    let musicUsd = 0;
-    if (script.bible.music) {
-      const total = shots.length ? script.shots.reduce((n, c) => n + c.seconds, 0) : 30;
-      const m = await this.d.media.music(`${script.bible.music}. Mood: ${script.bible.tone}.`, total).catch(() => null);
-      if (m) { music = m.bytes; musicUsd = m.usd; }
+    return shots;
+  }
+
+  /**
+   * The film's music: the one that was made for it, kept so the film can be cut again - after a change, or into another shape - without
+   * paying for it twice. Made again only when its words or the film's length change (compile.ts musicPrint).
+   */
+  private async music(f: Film, seconds: number): Promise<{ bytes: Buffer | null; key: string | null; of: string | null; usd: number }> {
+    const bible = f.script!.bible;
+    const of = musicPrint(bible, seconds);
+    if (!of) return { bytes: null, key: null, of: null, usd: 0 };
+    if (f.cut.music && f.cut.musicOf === of) {
+      const kept = await this.d.blobs.get(f.cut.music).catch(() => null);
+      if (kept) return { bytes: kept, key: f.cut.music, of, usd: 0 };
     }
+    const made = await this.d.media.music(`${bible.music!}. Mood: ${bible.tone}.`, seconds).catch(() => null);
+    if (!made) return { bytes: null, key: null, of: null, usd: 0 };
+    const key = filmKey(f.ownerId, f.id, `music-${this.id().slice(0, 8)}`, "audio/mpeg");
+    await this.d.blobs.put(key, made.bytes, "audio/mpeg");
+    return { bytes: made.bytes, key, of, usd: made.usd };
+  }
+
+  private async cutFilm(f: Film): Promise<void> {
+    const script = f.script!;
+    const p = prints(f);
+    const shots = await this.cutShots(f);
+    const total = shots.length ? script.shots.reduce((n, c) => n + c.seconds, 0) : 30;
+    const music = await this.music(f, total);
     const height = f.tier === "draft" ? 720 : 1080;
-    const out = await this.d.media.cut({ shots, music, aspect: f.aspect, height });
+    const out = await this.d.media.cut({ shots, music: music.bytes, aspect: f.aspect, height });
     const blanks = out.blanks?.length ? `The film goes blank at ${out.blanks.map((s) => `${s}s`).join(", ")}: look at those shots.` : "";
     const videoKey = filmKey(f.ownerId, f.id, `film-${p.cut}`, "video/mp4");
     await this.d.blobs.put(videoKey, out.video, "video/mp4");
@@ -778,10 +1121,88 @@ export class CinemaService {
       await this.d.blobs.put(srtKey, Buffer.from(out.srt, "utf8"), "text/plain");
     }
     await this.update(f.ownerId, f.id, (x) => {
-      this.spend(f, x, musicUsd);
-      for (const old of [x.cut.video, x.cut.srt]) if (old && old !== videoKey && old !== srtKey) void this.d.blobs.delete(old).catch(() => undefined);
-      x.cut = { video: videoKey, srt: srtKey, seconds: Math.round(out.seconds * 10) / 10, of: p.cut };
+      this.spend(f, x, music.usd);
+      const keep = new Set([videoKey, srtKey, music.key]);
+      for (const old of [x.cut.video, x.cut.srt, x.cut.music]) if (old && !keep.has(old)) void this.d.blobs.delete(old).catch(() => undefined);
+      x.cut = { video: videoKey, srt: srtKey, seconds: Math.round(out.seconds * 10) / 10, of: p.cut, music: music.key, musicOf: music.of };
       if (blanks) x.notes = [blanks, ...x.notes].slice(0, 20);
+    });
+  }
+
+  /**
+   * The same film in another shape, or with its words in the picture: cut again from the takes already filmed, so it costs nothing but
+   * ffmpeg. A shape that is not the film's own crops to fill rather than leaving bars, and the crop follows the subject (compile.ts
+   * subjectBias) - bars on a phone look like a mistake.
+   */
+  private async editionCut(f: Film, aspect: Aspect, captions: boolean): Promise<void> {
+    const script = f.script!;
+    const p = prints(f);
+    const shots = await this.cutShots(f);
+    const total = script.shots.reduce((n, c) => n + c.seconds, 0);
+    const music = await this.music(f, total);
+    const height = f.tier === "draft" ? 720 : 1080;
+    const out = await this.d.media.cut({
+      shots, music: music.bytes, aspect, height,
+      fit: aspect === f.aspect ? "pad" : "crop",
+      ...(captions ? { captions: true, language: script.bible.language } : {}),
+    });
+    const key = filmKey(f.ownerId, f.id, `cut-${aspect.replace(":", "x")}-${captions ? "caps" : "plain"}-${p.cut}`, "video/mp4");
+    await this.d.blobs.put(key, out.video, "video/mp4");
+    await this.update(f.ownerId, f.id, (x) => {
+      this.spend(f, x, music.usd);
+      if (music.key && x.cut.music !== music.key) x.cut = { ...x.cut, music: music.key, musicOf: music.of };
+      const rows = x.editions ?? [];
+      const row = rows.find((e) => e.aspect === aspect && e.captions === captions);
+      if (row?.video && row.video !== key) void this.d.blobs.delete(row.video).catch(() => undefined);
+      const made = { aspect, captions: captions && out.captions !== false, video: key, seconds: Math.round(out.seconds * 10) / 10, of: p.cut };
+      x.editions = row ? rows.map((e) => (e === row ? made : e)) : [...rows, made];
+      if (captions && out.captions === false) x.notes = [`The ${aspect} cut is ready, but the words could not be drawn into the picture.`, ...x.notes].slice(0, 20);
+    });
+  }
+
+  /**
+   * The film enlarged by an upscale model. Our own file, so there is no job of ours to name: the bytes go as a data URL, as a still's do,
+   * and a film too big to send that way is left as it is with a word to the person. One try: asking again is the person's to do.
+   */
+  private async enlargeCut(f: Film, jobs: JobModel[]): Promise<void> {
+    const p = prints(f);
+    const m = pickJob(jobs, "upscale");
+    const bytes = f.cut.video ? await this.d.blobs.get(f.cut.video) : null;
+    const give = (note: string) => this.update(f.ownerId, f.id, (x) => {
+      x.wantBig = false;
+      x.notes = [note, ...x.notes].slice(0, 20);
+    });
+    if (!m || !bytes) { await give("This film couldn't be made bigger. Nothing else has changed."); return; }
+    if (bytes.length > BIG_MAX_BYTES) { await give("This film is too long to make bigger. A shorter one can be."); return; }
+    const usd = upscaleUsd(m, { res: f.tier === "draft" ? "720p" : "1080p", aspect: f.aspect, seconds: f.cut.seconds, factor: BIG_FACTOR });
+    let job = f.cut.bigJob ?? "";
+    if (!job) {
+      try {
+        job = await this.d.media.startVideo({
+          model: m.id, prompt: "", seconds: 0, res: "", aspect: "", first: "", audio: false,
+          source: { url: dataUrl(bytes, "video/mp4") }, upscale: { factor: BIG_FACTOR, creativity: 0 },
+        });
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        if (code === "busy" || code === "no_credit") throw err;
+        await give("This film couldn't be made bigger. Nothing else has changed.");
+        return;
+      }
+      await this.update(f.ownerId, f.id, (x) => { x.cut = { ...x.cut, bigJob: job }; });
+    }
+    // The job runs for minutes; the tick is not held waiting for it, so we wait here, as one take for several shots does.
+    const out = await this.awaitJob(job, BIG_POLLS);
+    if (!out) {
+      await this.update(f.ownerId, f.id, (x) => { x.cut = { ...x.cut, bigJob: null }; });
+      await give("This film couldn't be made bigger. Nothing else has changed.");
+      return;
+    }
+    const key = filmKey(f.ownerId, f.id, `big-${p.cut}`, "video/mp4");
+    await this.d.blobs.put(key, out, "video/mp4");
+    await this.update(f.ownerId, f.id, (x) => {
+      this.spend(f, x, usd);
+      if (x.cut.big && x.cut.big !== key) void this.d.blobs.delete(x.cut.big).catch(() => undefined);
+      x.cut = { ...x.cut, big: key, bigOf: p.cut, bigJob: null };
     });
   }
 
@@ -867,21 +1288,18 @@ export class CinemaService {
     link(b?.lookRef);
     b?.characters.forEach((c) => link(c.ref));
     b?.places.forEach((p) => link(p.ref));
-    f.shots.forEach((s) => { link(s.still); link(s.voice); });
+    f.shots.forEach((s) => { link(s.still); link(s.voice); link(s.said); });
     f.takes.forEach((t) => { if (f.shots.some((s) => s.take === t.id)) link(t.video); });
     link(f.cut.video);
     link(f.cut.srt);
+    link(f.cut.big);
+    f.editions?.forEach((e) => link(e.video));
     return { film: publicFilm(f), title: b?.title || "New film", links };
   }
 }
 
 const mean5 = (v: Verdict): number => (v.scores.identity + v.scores.action + v.scores.camera + v.scores.quality + v.scores.continuity) / 5;
 
-function filmKeysOf(f: Film): string[] {
-  const keys = [f.script?.bible.lookRef, ...(f.script?.bible.characters.map((c) => c.ref) ?? []), ...(f.script?.bible.places.map((p) => p.ref) ?? []),
-    ...f.shots.flatMap((s) => [s.still, s.voice]), ...f.takes.flatMap((t) => [t.video, t.lastFrame]), f.cut.video, f.cut.srt];
-  return [...new Set(keys.filter((k): k is string => !!k))];
-}
 
 export function rowOf(f: Film): FilmRow {
   const done = f.shots.filter((s) => s.status === "ok").length;

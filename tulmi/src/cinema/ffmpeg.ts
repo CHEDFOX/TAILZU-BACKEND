@@ -15,7 +15,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cutArgs, PEAK_CEILING, readLoudness, readPeak, srtOf, type CutPlan, type CutShot } from "./cut.js";
+import { assOf, cutArgs, frameOf, PEAK_CEILING, readLoudness, readPeak, srtOf, type CutPlan, type CutShot } from "./cut.js";
 
 const FORMATS_OK = new Set(["mov", "mp4", "m4a", "3gp", "3g2", "mj2", "matroska", "webm", "mp3", "wav", "ogg", "aac", "flac", "image2", "png_pipe", "jpeg_pipe", "webp_pipe"]);
 const COMMON = ["-nostdin", "-hide_banner", "-loglevel", "error", "-protocol_whitelist", "file"];
@@ -105,6 +105,36 @@ export async function contactSheet(shots: readonly Buffer[]): Promise<Buffer | n
   });
 }
 
+/**
+ * One take cut apart at the beats (route.ts runFrom): a clip for each stretch, re-encoded so each piece starts on a keyframe of its own
+ * (copying would leave the first frames of a piece referring to frames it no longer has). `starts` is where each piece begins, in seconds,
+ * the first always 0. Each piece's last frame comes back too, as a take's does, so the shot after a run still has a frame to start on.
+ */
+export async function slice(bytes: Buffer, starts: readonly number[]): Promise<{ video: Buffer; last: Buffer; seconds: number }[]> {
+  if (starts.length < 2) return [];
+  return inFolder(async (dir) => {
+    const src = join(dir, "run.mp4");
+    await writeFile(src, bytes);
+    const info = await probeFile(src);
+    const out: { video: Buffer; last: Buffer; seconds: number }[] = [];
+    for (const [i, from] of starts.entries()) {
+      const to = starts[i + 1] ?? Math.max(info.seconds, from + 0.5);
+      const piece = join(dir, `p${i}.mp4`);
+      const args = [...COMMON, "-ss", from.toFixed(3), "-t", Math.max(0.3, to - from).toFixed(3), "-i", src,
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", ...(info.hasAudio ? ["-c:a", "aac", "-b:a", "160k"] : ["-an"]),
+        "-movflags", "+faststart", "-y", piece];
+      const r = await run("ffmpeg", args, 5 * 60_000);
+      if (r.code !== 0) throw new CutError("The take could not be cut apart.");
+      const got = await readFile(piece);
+      const lastOut = join(dir, `p${i}-last.png`);
+      const l = await run("ffmpeg", [...COMMON, "-sseof", "-0.3", "-i", piece, "-update", "1", "-frames:v", "100", "-y", lastOut], 60_000);
+      if (l.code !== 0) throw new CutError("The take could not be cut apart.");
+      out.push({ video: got, last: await readFile(lastOut), seconds: (await probeFile(piece)).seconds });
+    }
+    return out;
+  });
+}
+
 /** `n` frames spread across a take (JPEG, 768 wide at most) and its last frame (PNG, full size). */
 export async function frames(bytes: Buffer, n: number): Promise<{ frames: Buffer[]; last: Buffer; seconds: number }> {
   return inFolder(async (dir) => {
@@ -134,10 +164,29 @@ export interface CutInput {
   music: Buffer | null;
   aspect: CutPlan["aspect"];
   height: CutPlan["height"];
+  /** How a take that is not this shape is fitted (cut.ts CutPlan.fit). The film pads; another shape of it crops. */
+  fit?: CutPlan["fit"];
+  /** Draw the words into the picture as well as leaving them as a subtitle track. */
+  captions?: boolean;
+  /** The language the words are in, so we can see whether there is a font that draws them at all. */
+  language?: string;
 }
 
-/** Cuts the film. Returns the MP4 and the subtitles (or null when nothing is said). */
-export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string | null; seconds: number; blanks?: number[] }> {
+/** Whether fontconfig has a font that covers a language, asked once: libass draws boxes rather than letters when it has none. */
+const fontSeen = new Map<string, boolean>();
+
+export async function hasFontFor(language: string): Promise<boolean> {
+  const lang = (/^[a-z]{2,3}/i.exec(language.trim()) ?? ["und"])[0]!.toLowerCase();
+  const seen = fontSeen.get(lang);
+  if (seen !== undefined) return seen;
+  const r = await run("fc-list", [`:lang=${lang}`, "family"], 15_000).catch(() => null);
+  const ok = !!r && r.code === 0 && r.stdout.toString("utf8").trim().length > 0;
+  fontSeen.set(lang, ok);
+  return ok;
+}
+
+/** Cuts the film. Returns the MP4 and the subtitles (or null when nothing is said), and says whether captions were drawn in. */
+export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string | null; seconds: number; blanks?: number[]; captions?: boolean }> {
   return inFolder(async (dir) => {
     const shots: CutShot[] = [];
     for (let i = 0; i < input.shots.length; i++) {
@@ -151,7 +200,7 @@ export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string
         await writeFile(file, s.vo.audio);
         vo = { file, text: s.vo.text, seconds: s.vo.seconds, ...(s.vo.words?.length ? { words: s.vo.words } : {}) };
       }
-      shots.push({ video, seconds: Math.max(0.5, info.seconds), hasAudio: info.hasAudio, link: s.link, vo, lines: s.lines });
+      shots.push({ video, seconds: Math.max(0.5, info.seconds), hasAudio: info.hasAudio, link: s.link, vo, lines: s.lines, ...(s.bias ? { bias: s.bias } : {}) });
     }
     let music: string | null = null;
     if (input.music) {
@@ -162,8 +211,18 @@ export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string
     const srt = srtOf(shots);
     const srtFile = srt ? join(dir, "words.srt") : null;
     if (srtFile && srt) await writeFile(srtFile, srt, "utf8");
+    // Captions in the picture, where there is a font that can draw them. Without one libass draws boxes, so we leave them off and say so.
+    let burn: string | null = null;
+    if (input.captions && (await hasFontFor(input.language ?? "en"))) {
+      const { w, h } = frameOf(input.aspect, input.height);
+      const ass = assOf(shots, w, h);
+      if (ass) {
+        burn = join(dir, "caps.ass");
+        await writeFile(burn, ass, "utf8");
+      }
+    }
     const out = join(dir, "film.mp4");
-    const plan: CutPlan = { shots, music, aspect: input.aspect, height: input.height, out, srt: srtFile };
+    const plan: CutPlan = { shots, music, aspect: input.aspect, height: input.height, out, srt: srtFile, ...(input.fit ? { fit: input.fit } : {}), burn };
 
     // 1. Listen to the mix, so the normalising is exact rather than half a unit out. A measure that fails is not fatal: the cut goes
     //    ahead with a single pass, which is what it did before.
@@ -196,7 +255,7 @@ export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string
     const blanks = blackSpans(black.stderr, info.seconds);
 
     const video = await readFile(out);
-    return { video, srt, seconds: info.seconds, ...(blanks.length ? { blanks } : {}) };
+    return { video, srt, seconds: info.seconds, ...(blanks.length ? { blanks } : {}), ...(input.captions ? { captions: !!burn } : {}) };
   });
 }
 

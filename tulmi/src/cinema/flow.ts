@@ -18,9 +18,10 @@
  *   - so many at once of each kind (LIMITS), so one film does not take every slot a provider gives us
  */
 import { createHash } from "node:crypto";
-import { stillPrint, takePrint, voicePrint } from "./compile.js";
+import { linePrint, stillPrint, takePrint, voicePrint } from "./compile.js";
+import { wantsLipSync } from "./route.js";
 import { sheetsNeeded } from "./quote.js";
-import type { Film, FilmStatus, Hold, ShotCard, ShotState, ShotStatus } from "./types.js";
+import type { Aspect, Film, FilmStatus, Hold, ShotCard, ShotState, ShotStatus } from "./types.js";
 
 export interface Limits { sheets: number; stills: number; renders: number; pollMs: number }
 export const LIMITS: Limits = { sheets: 3, stills: 4, renders: 3, pollMs: 20_000 };
@@ -33,6 +34,10 @@ export type Step =
   | { kind: "poll"; take: string }
   | { kind: "check"; take: string }
   | { kind: "cut" }
+  /** The same film in another shape, or with its words in the picture, from the takes already filmed (free: only ffmpeg runs). */
+  | { kind: "edition"; aspect: Aspect; captions: boolean }
+  /** The finished film enlarged (an upscale model: a real job, paid for, asked for once). */
+  | { kind: "enlarge" }
   | { kind: "move"; status: FilmStatus; hold: Hold };
 
 /** The step's lock name: the service runs one of each at a time. */
@@ -45,6 +50,8 @@ export function stepKey(s: Step): string {
     case "poll": return `poll:${s.take}`;
     case "check": return `check:${s.take}`;
     case "cut": return "cut";
+    case "edition": return `edition:${s.aspect}:${s.captions ? "caps" : "plain"}`;
+    case "enlarge": return "enlarge";
     case "move": return "move";
   }
 }
@@ -88,7 +95,7 @@ export const shotOf = (film: Film, n: number): ShotState | undefined => film.sho
 /** A fresh shot's progress. */
 export const blankShot = (n: number): ShotState => ({
   n, status: "planned", still: null, stillVerdict: null, stillOf: null, take: null, takeOf: null, failedOf: null, blamed: [], fix: null, error: null,
-  voice: null, voiceOf: null, voiceSeconds: 0,
+  voice: null, voiceOf: null, voiceSeconds: 0, said: null, saidOf: null, saidSeconds: 0,
 });
 
 /** Whether a film gets a look frame: any film of more than one shot (one still has nothing to match). */
@@ -173,12 +180,16 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
     if (!waits && stillSlots > 0 && !busy.has(stepKey(s)) && afford(s)) { out.push(s); stillSlots--; }
   }
 
-  // 3. The voice-over, recorded before the price, so each shot's seconds fit what is said in it.
+  // 3. The recordings, made before the price, so each shot's seconds fit what is said in it: the voice-over, and a line a mouth will be
+  //    driven by (route.ts wantsLipSync). One step records whatever the shot is missing.
   let voicesReady = true;
   for (const card of cards) {
     const want = voicePrint(card, bible, film.voice);
+    const line = wantsLipSync(card, bible.language) ? linePrint(card, bible, film.voice) : null;
     const st = shotOf(film, card.n);
-    if (!want || (st?.voice && st.voiceOf === want)) continue;
+    const hasVo = !want || (st?.voice && st.voiceOf === want);
+    const hasLine = !line || (st?.said && st.saidOf === line);
+    if (hasVo && hasLine) continue;
     voicesReady = false;
     const s: Step = { kind: "voice", n: card.n };
     if (!busy.has(stepKey(s)) && afford(s)) out.push(s);
@@ -229,6 +240,19 @@ export function steps(film: Film, ctx: FlowCtx): Step[] {
   if (allOk && voicesReady && cards.length) {
     if (film.cut.of !== p.cut || !film.cut.video) {
       if (!busy.has("cut")) out.push({ kind: "cut" });
+      if (film.status !== "cutting") out.push({ kind: "move", status: "cutting", hold: null });
+      return out;
+    }
+    // The other shapes the person asked for, made from the same takes once the film itself is cut, and made again when it changes. The
+    // film stays at "cutting" until they are all made, so that one that fails is tried again on the next tick.
+    const waiting = (film.editions ?? []).filter((e) => !e.video || e.of !== p.cut);
+    for (const e of waiting) {
+      const s: Step = { kind: "edition", aspect: e.aspect, captions: e.captions };
+      if (!busy.has(stepKey(s))) out.push(s);
+    }
+    const big = !!film.wantBig && (!film.cut.big || film.cut.bigOf !== p.cut);
+    if (big && !busy.has("enlarge")) out.push({ kind: "enlarge" });
+    if (waiting.length || big) {
       if (film.status !== "cutting") out.push({ kind: "move", status: "cutting", hold: null });
     } else if (film.status !== "done" || film.hold) {
       out.push({ kind: "move", status: "done", hold: null });

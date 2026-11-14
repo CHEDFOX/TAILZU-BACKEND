@@ -44,12 +44,17 @@ describe("the store", () => {
     const f = film();
     f.script!.bible.lookRef = "k-look";
     f.shots[0]!.still = "k-still";
+    f.shots[0]!.said = "k-said";
     f.cut.video = "k-film";
+    f.cut.music = "k-music";
+    f.cut.big = "k-big";
+    f.editions = [{ aspect: "9:16", captions: true, video: "k-vertical", seconds: 12, of: "x" }];
     await s.createFilm(f);
     await s.addPicture({ id: "p1", ownerId: "u1", words: "x", kind: "photo", model: "m", key: "k-pic", type: "image/png", paise: 4, note: null, createdAt: 1 });
     await s.putCast("u1", { key: "ravi", name: "Ravi", look: "", wardrobe: "", ref: "k-cast" });
-    expect(filmKeys(f).sort()).toEqual(["k-film", "k-look", "k-still"]);
-    expect((await s.forAccountDelete("u1")).sort()).toEqual(["k-cast", "k-film", "k-look", "k-pic", "k-still"]);
+    // Every file a film holds, so none is left behind in storage: the other cuts, the big one, the music and a line we recorded too.
+    expect(filmKeys(f).sort()).toEqual(["k-big", "k-film", "k-look", "k-music", "k-said", "k-still", "k-vertical"]);
+    expect((await s.forAccountDelete("u1")).sort()).toEqual(["k-big", "k-cast", "k-film", "k-look", "k-music", "k-pic", "k-said", "k-still", "k-vertical"]);
     expect(await s.listFilms("u1", 10)).toEqual([]);
     expect(await s.cast("u1")).toEqual([]);
   });

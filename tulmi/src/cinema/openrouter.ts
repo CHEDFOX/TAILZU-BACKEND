@@ -14,7 +14,7 @@
  */
 import { getConfig } from "../config.js";
 import { imageCatalog, parseImageLive, type CatalogImageModel } from "./imageModels.js";
-import { catalog, parseLive, type CatalogModel } from "./models.js";
+import { allJobs, catalog, parseLive, type CatalogModel, type JobModel } from "./models.js";
 import type { Aspect } from "./types.js";
 
 const BASE = "https://openrouter.ai/api/v1";
@@ -65,7 +65,7 @@ function fromStatus(status: number, body: unknown): MediaError {
 // ---------------------------------------------------------------------------------------------------------------------------------------
 // The model lists.
 
-interface Lists { video: CatalogModel[]; image: CatalogImageModel[]; at: number }
+interface Lists { video: CatalogModel[]; image: CatalogImageModel[]; jobs: JobModel[]; at: number }
 let lists: Lists | null = null;
 let reading: Promise<Lists> | null = null;
 
@@ -75,11 +75,12 @@ export async function liveModels(now = Date.now()): Promise<Lists> {
   reading ??= (async () => {
     try {
       const [v, i] = await Promise.all([call("/videos/models", { timeoutMs: 20_000 }), call("/images/models", { timeoutMs: 20_000 })]);
-      const next = { video: catalog(parseLive(v)), image: imageCatalog(parseImageLive(i)), at: now };
+      const live = parseLive(v);
+      const next = { video: catalog(live), image: imageCatalog(parseImageLive(i)), jobs: allJobs(live), at: now };
       if (next.video.length || !lists) lists = next;
       else lists = { ...lists, at: now };
     } catch {
-      lists = lists ? { ...lists, at: now - LIST_TTL_MS + 300_000 } : { video: [], image: [], at: now - LIST_TTL_MS + 60_000 };
+      lists = lists ? { ...lists, at: now - LIST_TTL_MS + 300_000 } : { video: [], image: [], jobs: [], at: now - LIST_TTL_MS + 60_000 };
     } finally {
       reading = null;
     }
@@ -89,8 +90,8 @@ export async function liveModels(now = Date.now()): Promise<Lists> {
 }
 
 /** Tests set the lists directly. */
-export function setLiveModels(l: { video: CatalogModel[]; image: CatalogImageModel[] } | null, now = Date.now()): void {
-  lists = l ? { ...l, at: now } : null;
+export function setLiveModels(l: { video: CatalogModel[]; image: CatalogImageModel[]; jobs?: JobModel[] } | null, now = Date.now()): void {
+  lists = l ? { jobs: [], ...l, at: now } : null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------------
@@ -130,32 +131,68 @@ export async function makeImage(o: { model: string; prompt: string; aspect: stri
 export interface VideoAsk {
   model: string;
   prompt: string;
+  /** The length to render, or 0 to let the model take it from what it is given (an edit, a lip sync, an enlargement). */
   seconds: number;
+  /** The resolution to render, or "" for the model's own. */
   res: string;
-  aspect: Aspect;
-  /** The opening frame (a data URL). */
+  /** The shape to render, or "" to leave it as whatever the model is given (an edit must not re-frame the shot). */
+  aspect: Aspect | "";
+  /** The opening frame (a data URL). Empty for a job that works on a clip and needs no still. */
   first: string;
   /** The closing frame, for a shot that continues the one before and lands on its own still. */
   last?: string | null;
   audio: boolean;
   seed?: number;
+  /**
+   * A clip to work on rather than a still, for the one-job models (models.ts JOBS). `job` is an OpenRouter job of ours that made the clip:
+   * it is already there, so nothing of the person's leaves our hands and nothing is uploaded. `url` is an address, for a model that takes
+   * one instead. OpenRouter documents both fields but does not say which models read them, so every caller carries on without the job when
+   * it is refused.
+   */
+  source?: { job: string } | { url: string } | null;
+  /** Our own recording, as a data URL, for a model that moves a mouth with it. */
+  voice?: string | null;
+  /** An enlargement, for an upscale model. */
+  upscale?: { factor: number; creativity?: number } | null;
+}
+
+type Ref = { type: "image_url"; image_url: { url: string } } | { type: "audio_url"; audio_url: { url: string } } | { type: "video_url"; video_url: { url: string } };
+
+/**
+ * The request for a take. Normally the still goes as `frame_images` and that is all. For a job that works on a clip, what it is given goes
+ * as `input_references` instead, because `frame_images` takes precedence at OpenRouter and would have the rest ignored; a clip of ours is
+ * named by the job that made it (`previous_job_id`) in preference to any address.
+ */
+export function videoBody(a: VideoAsk): Record<string, unknown> {
+  const refs: Ref[] = [];
+  if (a.voice) refs.push({ type: "audio_url", audio_url: { url: a.voice } });
+  if (a.source && "url" in a.source) refs.push({ type: "video_url", video_url: { url: a.source.url } });
+  const asRefs = refs.length > 0;
+  if (asRefs && a.first) refs.unshift({ type: "image_url", image_url: { url: a.first } });
+  const frames = asRefs || !a.first
+    ? []
+    : [
+      { type: "image_url", image_url: { url: a.first }, frame_type: "first_frame" },
+      ...(a.last ? [{ type: "image_url", image_url: { url: a.last }, frame_type: "last_frame" }] : []),
+    ];
+  return {
+    model: a.model,
+    ...(a.prompt ? { prompt: a.prompt } : {}),
+    ...(a.seconds > 0 ? { duration: a.seconds } : {}),
+    ...(a.res ? { resolution: a.res } : {}),
+    ...(a.aspect ? { aspect_ratio: a.aspect } : {}),
+    ...(frames.length ? { frame_images: frames } : {}),
+    ...(refs.length ? { input_references: refs } : {}),
+    ...(a.source && "job" in a.source ? { previous_job_id: a.source.job } : {}),
+    ...(a.upscale ? { upscale_factor: a.upscale.factor, ...(typeof a.upscale.creativity === "number" ? { creativity: a.upscale.creativity } : {}) } : {}),
+    ...(a.source || a.voice || a.upscale ? {} : { generate_audio: a.audio }),
+    ...(typeof a.seed === "number" ? { seed: a.seed } : {}),
+  };
 }
 
 /** Starts a take. Its job id is what `videoStatus` asks about. */
 export async function startVideo(a: VideoAsk): Promise<string> {
-  const frames = [{ type: "image_url", image_url: { url: a.first }, frame_type: "first_frame" }];
-  if (a.last) frames.push({ type: "image_url", image_url: { url: a.last }, frame_type: "last_frame" });
-  const body = {
-    model: a.model,
-    prompt: a.prompt,
-    duration: a.seconds,
-    resolution: a.res,
-    aspect_ratio: a.aspect,
-    frame_images: frames,
-    generate_audio: a.audio,
-    ...(typeof a.seed === "number" ? { seed: a.seed } : {}),
-  };
-  const r = (await call("/videos", { method: "POST", body: JSON.stringify(body), timeoutMs: 90_000 })) as { id?: unknown } | null;
+  const r = (await call("/videos", { method: "POST", body: JSON.stringify(videoBody(a)), timeoutMs: 90_000 })) as { id?: unknown } | null;
   if (!r || typeof r.id !== "string" || !r.id) throw new MediaError("failed", "The take did not start.");
   return r.id;
 }

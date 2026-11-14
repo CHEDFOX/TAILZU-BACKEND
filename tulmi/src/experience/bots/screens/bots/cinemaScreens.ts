@@ -25,7 +25,7 @@
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import type { CardView, FilmPublic, TakeView } from "../../../../cinema/public.js";
 import type { CinemaOverview, FilmView } from "../../../../cinema/service.js";
-import { CINEMA_SLUG, type Film, type FilmRow, type ShotStatus } from "../../../../cinema/types.js";
+import { ASPECTS, CINEMA_SLUG, type Aspect, type Film, type FilmRow, type ShotStatus } from "../../../../cinema/types.js";
 import { botTopic } from "../../../../live/topics.js";
 import {
   type BotsCtx, type Mark, page, row, col, box, text, card, meta, notice, primaryButton, secondaryButton, quietButton, sectionLabel, listCard, listRow,
@@ -139,6 +139,72 @@ function hero(ctx: BotsCtx, v: FilmView, url: string): Node {
   ], { width: w, height: h, alignSelf: "flex-start" }, { kind: "openUrl", url, external: true } as ActionSpec);
 }
 
+const SHAPE_WORDS: Record<Aspect, string> = { "16:9": "Wide", "9:16": "Vertical", "1:1": "Square" };
+
+/**
+ * THE SAME FILM, CUT ANOTHER WAY: a vertical for a feed, a square, or the words drawn into the picture for the places that play without
+ * sound. Made from the takes already filmed, so there is nothing to agree to - one press and it is on its way. The ones already made come
+ * first, each ready to watch, download or share; the rest are offered below, and pressing one of those again takes it away.
+ */
+function otherCuts(v: FilmView, desk: boolean): Node | null {
+  const f = v.film;
+  if (!f.cut.video || (f.status !== "done" && f.status !== "cutting")) return null;
+  const F = `${CINEMA}/films/${f.id}`;
+  const offers: { aspect: Aspect; captions: boolean; label: string }[] = [
+    ...ASPECTS.filter((a) => a !== f.aspect).flatMap((a) => [
+      { aspect: a, captions: false, label: `${SHAPE_WORDS[a]} (${a})` },
+      { aspect: a, captions: true, label: `${SHAPE_WORDS[a]}, words in the picture` },
+    ]),
+    { aspect: f.aspect, captions: true, label: "This shape, words in the picture" },
+  ];
+  const ask = (o: { aspect: Aspect; captions: boolean }, said_: string): ActionSpec =>
+    call("POST", `${F}/edition`, { aspect: o.aspect, captions: o.captions }, { ok: seq(said(said_), refresh), fail: toast("Couldn't do that just now. Try again.") });
+
+  const made: Node[] = [];
+  const rest: Node[] = [];
+  for (const o of offers) {
+    const row_ = (f.editions ?? []).find((e) => e.aspect === o.aspect && e.captions === o.captions);
+    if (!row_) {
+      rest.push(listRow({ label: o.label, sub: "Cut from the shots you already have", onPress: ask(o, "Cutting it now.") }));
+      continue;
+    }
+    const url = row_.video && v.links[row_.video] ? abs(v.links[row_.video]!) : null;
+    made.push(listRow({
+      label: o.label,
+      sub: url ? `Ready · ${Math.round(row_.seconds)}s` : "Cutting it now…",
+      chevron: false,
+      ...(url
+        ? {
+          right: row([
+            quietButton("Watch", { kind: "openUrl", url, external: true } as ActionSpec, { size: "md" }),
+            quietButton(desk ? "Copy link" : "Share", desk
+              ? { kind: "copyText", text: url, message: "Link copied" }
+              : { kind: "share", url, title: v.title } as ActionSpec, { size: "md" }),
+          ], { gap: 6 }),
+        }
+        : {}),
+    }));
+  }
+  // Bigger is not free and not instant, so it is one row of its own, and it says what it is rather than how it is done.
+  const bigUrl = f.cut.big && v.links[f.cut.big] ? abs(v.links[f.cut.big]!) : null;
+  const bigRow = bigUrl
+    ? listRow({
+      label: "The big version", sub: "Ready", chevron: false,
+      right: row([quietButton("Watch", { kind: "openUrl", url: bigUrl, external: true } as ActionSpec, { size: "md" })], { gap: 6 }),
+    })
+    : f.wantBig
+      ? listRow({ label: "The big version", sub: "Making it now… it takes a few minutes", chevron: false })
+      : listRow({
+        label: "Make it bigger", sub: "Twice the size, for a screen rather than a phone",
+        onPress: call("POST", `${F}/enlarge`, {}, { ok: seq(said("Making it bigger. It takes a few minutes."), refresh), fail: toast("This film is too long to make bigger.") }),
+      });
+  return col([
+    ...(made.length ? [listCard(made, { title: "Other cuts of this film" })] : []),
+    ...(rest.length ? [listCard(rest, { title: made.length ? "Cut it another way" : "Cut it another way, free" })] : []),
+    listCard([bigRow]),
+  ], { gap: 12 });
+}
+
 /** What the film waits for, or what is happening now: one card at the top. */
 function decision(ctx: BotsCtx, v: FilmView): Node | null {
   const f = v.film;
@@ -246,6 +312,9 @@ function filmPage(ctx: BotsCtx, d: { view?: FilmView }) {
       meta("Only what the change touches is made again.", { size: 12 }),
     ], { gap: 8 }));
   }
+
+  const cuts = otherCuts(v, desk);
+  if (cuts) body.push(cuts);
 
   const keepers = f.script?.bible.characters.filter((c) => c.ref) ?? [];
   if (keepers.length && (f.status === "board" || f.status === "done")) {

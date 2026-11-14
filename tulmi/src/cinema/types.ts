@@ -186,6 +186,12 @@ export interface Take {
   id: string;
   n: number;
   model: string;
+  /** The take this one was made by mending (route.ts editable), or absent when it was filmed from the still. */
+  from?: string | null;
+  /** The shots this one take covers, when it was filmed as one run and split at the beats; absent for an ordinary take. */
+  run?: number[];
+  /** Where in the clip each shot of a run begins, in seconds, in the same order as `run`. */
+  cuts?: number[];
   /** The card's take print it was made for (compile.ts takePrint): a take of an older card is history, never used. */
   of: string;
   /** The provider's job id while it runs. */
@@ -225,6 +231,8 @@ export interface ShotState {
   blamed: string[];
   /** A fix carried into the next take's prompt (qc.ts). Cleared when the card changes. */
   fix: string | null;
+  /** A take to mend rather than film again (qc.ts "edit"), and what to tell the edit model. Cleared once the mend is started. */
+  mend?: { take: string; fix: string } | null;
   /** Why it failed, for the person. */
   error: string | null;
   /** Media key of the voice-over, recorded before the price so the shot's seconds fit it. */
@@ -233,6 +241,12 @@ export interface ShotState {
   voiceOf: string | null;
   /** How long the voice-over runs, in seconds. */
   voiceSeconds: number;
+  /** Media key of the shot's spoken line, recorded by us so a mouth can be driven by it (route.ts wantsLipSync). */
+  said?: string | null;
+  /** What that recording was made from (compile.ts linePrint). */
+  saidOf?: string | null;
+  /** How long the spoken line runs, in seconds. */
+  saidSeconds?: number;
   /** When the recogniser reported them, each word of the voice-over and when it was said: the subtitles are timed from these (cut.ts). */
   voiceWords?: { word: string; start: number; end: number }[];
 }
@@ -244,6 +258,31 @@ export interface Cut {
   srt: string | null;
   seconds: number;
   /** The fingerprint of what was cut, so a changed shot makes a new cut. */
+  of: string | null;
+  /** Media key of the music, kept so a film cut again does not pay for it twice. */
+  music?: string | null;
+  /** What the music was made from (its words and the film's length): a change makes it again. */
+  musicOf?: string | null;
+  /** Media key of the same film enlarged, once asked for. */
+  big?: string | null;
+  /** The cut the enlargement was made from, so a changed film is enlarged again. */
+  bigOf?: string | null;
+  /** The enlargement's job while it runs, so a server that restarts waits for the same one instead of paying for another. */
+  bigJob?: string | null;
+}
+
+/**
+ * The same film cut to another shape, from the takes already filmed: a 9:16 for Reels from a 16:9 film, or the other way about. It costs
+ * nothing but ffmpeg, because every take and every still is already ours. `burn` is the cut with its words in the picture, for the places
+ * that play without sound.
+ */
+export interface Edition {
+  aspect: Aspect;
+  /** Whether the words are drawn into the picture, for the feeds that play without sound. */
+  captions: boolean;
+  video: string | null;
+  seconds: number;
+  /** The fingerprint of the cut it was made from, so it is made again by itself when the film changes. */
   of: string | null;
 }
 
@@ -267,6 +306,10 @@ export interface Film {
   shots: ShotState[];
   takes: Take[];
   cut: Cut;
+  /** The same film in other shapes, made from the same takes on request (never a cost: the takes are already paid for). */
+  editions?: Edition[];
+  /** The person asked for the film enlarged. Unlike another shape, this is a real job at a model, so it is only started if it fits. */
+  wantBig?: boolean;
   /** Warnings for the person: a shot kept as the best of its tries, a line too long for its shot. */
   notes: string[];
   error: string | null;

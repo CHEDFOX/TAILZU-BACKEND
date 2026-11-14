@@ -55,13 +55,14 @@ const copy = <T>(v: T): T => structuredClone(v);
 
 /** Every media key a film holds. */
 export function filmKeys(f: Film): string[] {
-  const keys: (string | null)[] = [];
+  const keys: (string | null | undefined)[] = [];
   if (f.script) {
     keys.push(f.script.bible.lookRef, ...f.script.bible.characters.map((c) => c.ref), ...f.script.bible.places.map((p) => p.ref));
   }
-  for (const s of f.shots) keys.push(s.still, s.voice);
+  for (const s of f.shots) keys.push(s.still, s.voice, s.said);
   for (const t of f.takes) keys.push(t.video, t.lastFrame);
-  keys.push(f.cut.video, f.cut.srt);
+  keys.push(f.cut.video, f.cut.srt, f.cut.music, f.cut.big);
+  for (const e of f.editions ?? []) keys.push(e.video);
   return [...new Set(keys.filter((k): k is string => !!k))];
 }
 
@@ -142,7 +143,7 @@ interface FilmRow {
   voice: string;
   budget_paise: number;
   spent_paise: number;
-  body: Pick<Film, "script" | "shots" | "takes" | "cut" | "notes">;
+  body: Pick<Film, "script" | "shots" | "takes" | "cut" | "notes" | "editions" | "wantBig">;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -153,7 +154,8 @@ const iso = (ms: number) => new Date(ms).toISOString();
 function toRow(f: Film): FilmRow {
   return {
     id: f.id, user_id: f.ownerId, status: f.status, hold: f.hold, idea: f.idea, aspect: f.aspect, tier: f.tier, length: f.length, voice: f.voice,
-    budget_paise: f.budgetPaise, spent_paise: f.spentPaise, body: { script: f.script, shots: f.shots, takes: f.takes, cut: f.cut, notes: f.notes },
+    budget_paise: f.budgetPaise, spent_paise: f.spentPaise,
+    body: { script: f.script, shots: f.shots, takes: f.takes, cut: f.cut, notes: f.notes, ...(f.editions ? { editions: f.editions } : {}), ...(f.wantBig ? { wantBig: true } : {}) },
     error: f.error, created_at: iso(f.createdAt), updated_at: iso(f.updatedAt),
   };
 }
@@ -163,6 +165,7 @@ function fromRow(r: FilmRow): Film {
     id: r.id, ownerId: r.user_id, status: r.status, hold: r.hold, idea: r.idea, aspect: r.aspect, tier: r.tier, length: r.length, voice: r.voice,
     budgetPaise: r.budget_paise, spentPaise: r.spent_paise, script: r.body?.script ?? null, shots: r.body?.shots ?? [], takes: r.body?.takes ?? [],
     cut: r.body?.cut ?? { video: null, srt: null, seconds: 0, of: null }, notes: r.body?.notes ?? [], error: r.error,
+    ...(r.body?.editions ? { editions: r.body.editions } : {}), ...(r.body?.wantBig ? { wantBig: true } : {}),
     createdAt: Date.parse(r.created_at), updatedAt: Date.parse(r.updated_at),
   };
 }

@@ -15,8 +15,8 @@
  *
  * The answer is a ranked list: the first is used, and a retake that blames the model moves down it.
  */
-import { renderRes, snapSeconds, tierRank, usdPerSecond, type CatalogModel, type Trait } from "./models.js";
-import type { Aspect, ShotCard, Style, Tier } from "./types.js";
+import { renderRes, snapSeconds, tierRank, usdPerSecond, type CatalogModel, type Job, type JobModel, type Trait } from "./models.js";
+import type { Aspect, IssueKind, ShotCard, Style, Tier } from "./types.js";
 
 export interface Choice {
   model: CatalogModel;
@@ -109,4 +109,101 @@ export function whyNone(i: RouteInput): string {
   if (i.card.lines.length && !i.models.some((m) => m.audio && tierRank(m.tier) <= tierRank(i.tier))) return "Spoken lines can't be filmed at this quality; move them to the voice-over or raise the quality.";
   if (i.card.link === "continue" && !i.models.some((m) => m.last)) return "This shot can't carry straight on from the one before; make it a cut.";
   return "This shot can't be made at this quality; raise the quality.";
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------
+// SEVERAL SHOTS AS ONE TAKE. A shot marked "continue" carries the same moment on from the one before it: today that is two generations
+// joined at a frame, and the join is the weakest moment in the film. The long models take fifteen seconds and a last frame, so a run of
+// such shots can be filmed ONCE - the whole move, unbroken - and cut apart afterwards at the beats (ffmpeg.ts slice). The film is the same
+// length and costs the same per second; what it buys is that there is no join at all.
+//
+// A run is only ever tried on a clean slate: not one of its shots may have a take yet. Anything that then goes wrong with one of them is
+// filmed again on its own, the ordinary way, so a bad run cannot repeat itself.
+
+/** The most shots in one take, and the longest run we will ask for. */
+export const RUN_MAX_SHOTS = 3;
+export const RUN_MAX_SECONDS = 15;
+
+export interface RunInput {
+  cards: readonly ShotCard[];
+  /** Where in `cards` the run would start. */
+  at: number;
+  style: Style;
+  aspect: Aspect;
+  tier: Tier;
+  models: readonly CatalogModel[];
+  /** Whether a shot has any take of its own for the card as it stands: a run is only tried before anything is filmed. */
+  filmed: (n: number) => boolean;
+}
+
+export interface Run {
+  cards: ShotCard[];
+  /** Where each card begins inside the one take, in seconds. */
+  starts: number[];
+  seconds: number;
+  pick: Choice;
+}
+
+/**
+ * The run that starts at `at`, or null. Every shot after the first must say it continues the one before; they must share the place and the
+ * people; nobody may speak (a mouth across a cut is a different problem); and one model of the film's tier must be able to render the whole
+ * length in one go, from the first shot's still to the last shot's still.
+ */
+export function runFrom(i: RunInput): Run | null {
+  const first = i.cards[i.at];
+  if (!first || i.filmed(first.n)) return null;
+  const run: ShotCard[] = [first];
+  for (let k = i.at + 1; k < i.cards.length && run.length < RUN_MAX_SHOTS; k++) {
+    const c = i.cards[k]!;
+    if (c.link !== "continue" || i.filmed(c.n)) break;
+    if (c.place !== first.place || c.cast.join(",") !== first.cast.join(",")) break;
+    if (c.lines.length || first.lines.length) break;
+    if (c.pin && c.pin !== first.pin) break;
+    const total = run.reduce((n, x) => n + x.seconds, 0) + c.seconds;
+    if (total > RUN_MAX_SECONDS) break;
+    run.push(c);
+  }
+  if (run.length < 2) return null;
+  const seconds = run.reduce((n, c) => n + c.seconds, 0);
+  // One model for the whole run: it must reach the length, land on a last frame, and be the best of those that can.
+  const whole: ShotCard = { ...first, seconds, motion: Math.max(...run.map((c) => c.motion)) as ShotCard["motion"], physics: run.some((c) => c.physics), crowd: run.some((c) => c.crowd) };
+  const pick = route({ card: whole, style: i.style, aspect: i.aspect, tier: i.tier, models: i.models })
+    .find((p) => p.model.last && p.model.durations.some((d) => d >= seconds) && Math.abs(p.seconds - seconds) < 1.5);
+  if (!pick) return null;
+  const starts: number[] = [];
+  let t = 0;
+  for (const c of run) { starts.push(Math.round(t * 100) / 100); t += c.seconds; }
+  return { cards: run, starts, seconds, pick };
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------
+// The one-job models (models.ts JOBS): mending a take, making a mouth say our own recording, enlarging the finished cut.
+
+/** The model for a job, or null when we have none today. Every caller carries on without it, so a job is never the reason a film stops. */
+export const pickJob = (jobs: readonly JobModel[], job: Job): JobModel | null => jobs.find((m) => m.job === job) ?? null;
+
+/**
+ * Whether a take's faults are the kind an edit mends: all of them local, nothing major outside that list. A melting face, a camera that
+ * went the wrong way or an action that never happened are not mended - the shot is filmed again.
+ */
+export function editable(faults: readonly IssueKind[], m: Pick<JobModel, "fixes"> | null): boolean {
+  if (!m?.fixes?.length || !faults.length) return false;
+  return faults.every((k) => m.fixes!.includes(k));
+}
+
+/** What an edit costs: its seconds at its rate, never less than its floor. */
+export const editUsd = (m: Pick<JobModel, "usd" | "minUsd">, seconds: number): number =>
+  Math.round(Math.max(m.minUsd, m.usd * Math.max(1, seconds)) * 1e6) / 1e6;
+
+/**
+ * Whether a shot's lines are better said by a lip-sync model than by the video model itself: one person speaking, close enough that the
+ * mouth is the shot, and the film's language is one a video model guesses at (every language but English, in practice, and Hinglish worst
+ * of all, because the lines are written in Latin letters and read as Hindi).
+ */
+export function wantsLipSync(card: ShotCard, language: string): boolean {
+  if (card.lines.length !== 1 || card.cast.length !== 1) return false;
+  if (!CLOSE.has(card.size)) return false;
+  if (card.move !== "static" && card.move !== "pan" && card.move !== "tilt") return false;
+  if (card.motion >= 2 || card.crowd) return false;
+  return !/^en\b/i.test(language.trim());
 }

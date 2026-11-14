@@ -376,6 +376,42 @@ function timeline(card: ShotCard, seconds: number): string {
   return `${parts.join(" ")} [${at(act)}-${seconds}s] The movement settles and holds.`;
 }
 
+/**
+ * THE PROMPT FOR SEVERAL SHOTS IN ONE TAKE (route.ts runFrom). One unbroken move, written as the stretches of time it passes through: what
+ * the camera does and what happens in each, and where it must be at the end of each, because that is where the take will be cut apart.
+ * Written the same way for every model: the labelled timeline is the one shape they all follow, and it is what keeps the beats in order.
+ */
+export function runPrompt(cards: readonly ShotCard[], bible: Bible, o: { starts: readonly number[]; seconds: number; maxChars: number; audio: boolean }): string {
+  const at = (x: number) => (Number.isInteger(x) ? String(x) : x.toFixed(1));
+  const legs = cards.map((c, i) => {
+    const from = o.starts[i] ?? 0;
+    const to = i + 1 < cards.length ? (o.starts[i + 1] ?? o.seconds) : o.seconds;
+    const move = `${f(c.camera) || MOVE_WORDS[c.move]}; ${SIZE_WORDS[c.size]}, ${c.lens}mm`;
+    const land = f(c.end) ? ` Lands on: ${sentence(f(c.end))}` : "";
+    return `[${at(from)}-${at(to)}s] ${sentence(f(c.action))} Camera: ${sentence(move)}${land}`;
+  });
+  const who = cards[0]!.cast.map((k) => bible.characters.find((c) => c.key === k)?.name).filter(Boolean).join(" and ");
+  const keep = cards[0]!.cast.length
+    ? `${who || "The same people"} throughout, their faces, hair and clothes exactly as in the first frame.`
+    : "";
+  const air = f(cards[0]!.atmosphere);
+  const sound = cards.map((c) => f(c.sound)).find(Boolean);
+  const parts: Part[] = [
+    { text: `ONE CONTINUOUS SHOT, ${at(o.seconds)} seconds, no cuts and no edits of any kind: the camera never stops moving through all of it.`, weight: 10 },
+    { text: `TIMELINE: ${legs.join(" ")}`, weight: 10 },
+    { text: cards.map((c) => f(c.performance)).filter(Boolean).length ? `PERFORMANCE: ${cards.map((c) => f(c.performance)).filter(Boolean).map(sentence).join(" ")}` : "", weight: 8 },
+    { text: `ENDING STATE: ${f(cards.at(-1)!.end) ? sentence(f(cards.at(-1)!.end)) : "the movement settles and holds."}`, weight: 9 },
+    { text: "Arrive exactly at the last frame.", weight: 9 },
+    { text: `CONTINUITY: ${keep || "the place and its light stay as in the first frame."}`, weight: 7 },
+    { text: cards.some((c) => c.physics) ? "PHYSICS: real weight and momentum; water, cloth, hair and smoke move naturally throughout." : "", weight: 6 },
+    { text: cards.some((c) => c.crowd) ? "Background people move naturally and independently; no merging or repeated faces." : "", weight: 5 },
+    { text: air ? `ATMOSPHERE: ${sentence(air)}` : "", weight: 6 },
+    { text: o.audio ? `AUDIO: ${sound ? sentence(sound).replace(/\.$/, "") : "natural ambience"}; no music, no speech.` : "", weight: 4 },
+    { text: f(cards[0]!.light) ? `LIGHT: ${sentence(f(cards[0]!.light))}` : "", weight: 3 },
+  ];
+  return fit(parts.map((p) => ({ ...p, text: plain(p.text) })), o.maxChars);
+}
+
 /** Joins the parts in their order, dropping the lightest until it fits; the heaviest part is cut at a word if it alone is over. */
 function fit(parts: Part[], maxChars: number): string {
   let keep = parts.filter((p) => p.text.trim());
@@ -405,7 +441,98 @@ export function takePrint(card: ShotCard, bible: Bible, aspect: Aspect, before: 
   return print([stillPrint(card, bible, aspect), card.move, f(card.camera), card.action, f(card.performance), card.end, card.seconds, card.lines, voices, card.sound, card.link, card.motion, card.physics, card.crowd, card.pin, card.link === "continue" ? before : null]);
 }
 
+/** What the music is made from: its words, the film's feel, and roughly how long the film runs (so a small change does not pay for it again). */
+export function musicPrint(bible: Bible, seconds: number): string | null {
+  return bible.music ? print([bible.music, bible.tone, Math.round(seconds / 5)]) : null;
+}
+
 /** What a voice-over is recorded from. */
 export function voicePrint(card: ShotCard, bible: Bible, voice: string): string | null {
   return card.vo ? print([card.vo, bible.language, voice]) : null;
+}
+
+/**
+ * WHERE THE SUBJECT SITS ACROSS THE FRAME, so that cutting the same film to another shape (a 9:16 of a 16:9) crops towards the person
+ * rather than down the middle, which is how a face ends up half out of frame. Read from the card's own words: the character's name in the
+ * composition or the opening frame, and the side named just after it. Nobody in frame, or nothing said about a side, means the middle.
+ */
+const SIDE_REACH = 48;
+
+export function subjectBias(card: ShotCard, bible: Bible): number {
+  const names = card.cast.map((k) => bible.characters.find((c) => c.key === k)?.name).filter((x): x is string => !!x);
+  if (!names.length) return 0;
+  const said = `${f(card.composition)} ${f(card.frame)}`.toLowerCase();
+  let sum = 0;
+  let seen = 0;
+  for (const name of names) {
+    const at = said.indexOf(name.toLowerCase());
+    if (at < 0) continue;
+    const after = said.slice(at, at + SIDE_REACH);
+    const left = /\bleft\b/.test(after);
+    const right = /\bright\b/.test(after);
+    if (left === right) continue;
+    sum += left ? -1 : 1;
+    seen++;
+  }
+  return seen ? Math.max(-1, Math.min(1, Math.round((sum / seen) * 100) / 100)) : 0;
+}
+
+/**
+ * WHAT A LIP-SYNC MODEL IS TOLD. It is given the still and our recording, and it makes the mouth say the words; the prompt is only what the
+ * rest of the face and body do while they are said, and what must not change. Short on purpose: these models take a motion note, not a
+ * shot description, and anything about the camera makes them move a camera that should be still.
+ */
+export function lipSyncPrompt(card: ShotCard, bible: Bible, maxChars: number): string {
+  const who = bible.characters.find((c) => c.key === card.lines[0]?.who);
+  const parts = [
+    f(card.performance) ? sentence(f(card.performance)) : "The face is alive between the words: small shifts of the eyes and the brow.",
+    who ? `${who.name} speaks straight to the moment, not to the camera.` : "",
+    f(card.atmosphere) ? sentence(f(card.atmosphere)) : "",
+    "The head and shoulders move only as speech moves them. Keep the face, hair, clothes, light and background exactly as in the picture.",
+  ].filter(Boolean);
+  let out = parts.join(" ");
+  while (out.length > maxChars && parts.length > 1) {
+    parts.splice(parts.length - 2, 1);
+    out = parts.join(" ");
+  }
+  return out.slice(0, maxChars);
+}
+
+/**
+ * THE CASTING OF A VOICE. A character is written with a voice in words ("low, warm, unhurried Mumbai Hindi"), which is what the video
+ * models are told; a recording needs one of the voices we actually have (experience/ttsVoices.ts). The words decide it, so the same
+ * character sounds the same in every shot of every film, and the narrator's own voice is left to the narrator where there is a choice.
+ */
+const VOICE_WORDS: readonly (readonly [RegExp, string])[] = [
+  [/\b(deep|low|bass|baritone|gravel|gruff|hoarse|heavy)\b/, "onyx"],
+  [/\b(bright|quick|breathless|chirpy|perky|high)\b/, "shimmer"],
+  [/\b(calm|soft|gentle|quiet|hushed|tender)\b/, "sage"],
+  [/\b(warm|kind|motherly|friendly)\b/, "nova"],
+  [/\b(story|theatrical|expressive|dramatic|grand)\b/, "fable"],
+  [/\b(light|young|playful|cheer)\b/, "coral"],
+  [/\b(flat|even|plain|natural|matter)\b/, "ash"],
+  [/\b(cool|measured|clipped|stern|cold|hard)\b/, "echo"],
+];
+
+/** The voices a recording may use, in the order a character is given one when its words say nothing. */
+const VOICE_POOL: readonly string[] = ["onyx", "nova", "sage", "shimmer", "fable", "coral", "ash", "echo", "alloy"];
+
+export function castVoice(c: Pick<Character, "key" | "voice">, narrator: string): string {
+  const said = f(c.voice).toLowerCase();
+  for (const [re, id] of VOICE_WORDS) if (re.test(said)) return id;
+  const pool = VOICE_POOL.filter((v) => v !== narrator);
+  const h = Number.parseInt(print([c.key]).slice(0, 8), 16);
+  return pool[h % pool.length] ?? VOICE_POOL[0]!;
+}
+
+/**
+ * What a shot's spoken line is recorded from, for a mouth to be driven by it (route.ts wantsLipSync), or null when the shot has no single
+ * line to record. The voice is in the print, so a character written a new voice is recorded again.
+ */
+export function linePrint(card: ShotCard, bible: Bible, narrator: string): string | null {
+  const line = card.lines[0];
+  if (!line || card.lines.length !== 1) return null;
+  const who = bible.characters.find((c) => c.key === line.who);
+  if (!who) return null;
+  return print([line.text, bible.language, castVoice(who, narrator)]);
 }
