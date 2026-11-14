@@ -3,6 +3,8 @@
  *
  * Ten short steps with one friend beside you: Welcome, Sign in, Code,
  * Languages, Keyboard, Try it, Make me yours, Connect apps, How careful, Done.
+ * In a window the middle two are its own: Terms and privacy (terms.ts) and the
+ * permissions this computer keeps (perms.ts).
  * The friend is Blip, a persistent dot bot that each app draws once, above
  * everything, and walks to wherever a step says he should stand. A step is only
  * a `BlipSpot` (an empty box that says "Blip stands here, in this pose, saying
@@ -48,6 +50,7 @@
 
 import { type ActionSpec, type ScreenResponse, type Node, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { CATALOG } from "../../connectors/catalog.js";
+import { agreedIn } from "../../privacy/aiConsent.js";
 import { DAILY_LANGUAGES } from "../phone/languages.js";
 import type { ScreenContext } from "../screens.js";
 import { appsStep } from "./apps.js";
@@ -57,6 +60,8 @@ import { doneStep } from "./done.js";
 import { keyboardStep } from "./keyboard.js";
 import { toast, seq, setState, when, bothPerms, haptic, type Plan, STEP, SPOT, stageProps } from "./kit.js";
 import { languagesStep } from "./languages.js";
+import { permsActions, permsStep } from "./perms.js";
+import { termsStep } from "./terms.js";
 import { tryStep } from "./try.js";
 import { yoursStep } from "./yours.js";
 
@@ -92,7 +97,8 @@ export function onboardAppsOn(connectorsOn: boolean): boolean {
  * How many steps there are in all, for the progress bar. The three before the
  * session (Welcome, Sign in, Code) and the ones after it: on a phone Languages,
  * Keyboard, Try it, Make me yours, [Connect apps, How careful,] Done; in a
- * window, no Keyboard (it has none to add) and no Make me yours (the OS asks).
+ * window, no Keyboard (it has none to add), and in place of Make me yours its
+ * own two: Terms and privacy, and the permissions this computer keeps.
  * The bootstrap works this out too, so the bar never changes length at the
  * boundary between the two stages.
  */
@@ -102,27 +108,37 @@ export function onboardTotal(desktop: boolean, appsOn: boolean): number {
 
 export function postAuthSteps(desktop: boolean, appsOn: boolean): string[] {
   const apps = appsOn ? ["apps", "careful"] : [];
+  // THE WINDOW'S TWO, between Languages and Try it. Terms first, because Try it
+  // sends a recording to be written down and the gate refuses that until they
+  // have agreed (terms.ts); then the permissions, so the microphone it asks
+  // them to hold is granted before it does (perms.ts). Both are in the list for
+  // every window, so the bar is the same length in both stages — each step
+  // draws only what this build and this computer can actually answer.
   return desktop
-    ? ["languages", "try", ...apps, "done"]
+    ? ["languages", "terms", "perms", "try", ...apps, "done"]
     : ["languages", "keyboard", "try", "yours", ...apps, "done"];
 }
 
 /**
  * Where a cold start lands inside `onboard`, as an index into the steps built.
  * Languages are asked once: someone who has answered goes on to the next thing
- * still missing (the phone's keyboard, else Try it; a window goes to Try it).
- * Within a running app the stage also remembers the step, so a refetch never
- * moves anyone backward.
+ * still missing (the phone's keyboard, else Try it; a window, the terms while
+ * they have not agreed, else Try it — its permissions step is passed through
+ * once, because what it asks for the computer may be asked for again at any
+ * time from Settings). Within a running app the stage also remembers the step,
+ * so a refetch never moves anyone backward.
  */
 export function onboardStart(f: {
   desktop: boolean;
   languagesSet: boolean;
   keyboardReady: boolean;
+  /** They have already agreed to the terms (a window: the step says so and asks nothing). */
+  agreed?: boolean;
   /** Step id -> index, for the list actually built. */
   I: Record<string, number>;
 }): number {
   if (!f.languagesSet) return f.I.languages!;
-  if (f.desktop) return f.I.try!;
+  if (f.desktop) return f.agreed === true ? f.I.try! : f.I.terms ?? f.I.try!;
   return f.keyboardReady ? f.I.try! : f.I.keyboard!;
 }
 
@@ -183,9 +199,9 @@ export function permActions(): Record<string, ActionSpec> {
 
 /**
  * The screen after sign-in. Phone: Languages, Keyboard, Try it, Make me yours,
- * [Connect apps, How careful,] Done. Window: Languages, Try it, [Connect apps,
- * How careful,] Done. `firstTabId` is where Done lands a window without the
- * desk.
+ * [Connect apps, How careful,] Done. Window: Languages, Terms and privacy, the
+ * permissions this computer keeps, Try it, [Connect apps, How careful,] Done.
+ * `firstTabId` is where Done lands a window without the desk.
  */
 export function onboardScreen(ctx: ScreenContext, firstTabId = "home"): ScreenResponse {
   const desktop = ctx.formFactor === "desktop";
@@ -200,16 +216,23 @@ export function onboardScreen(ctx: ScreenContext, firstTabId = "home"): ScreenRe
   const appsOn = ctx.connectorsOn === true && five.length > 0;
   const ids = postAuthSteps(desktop, appsOn);
   const I = Object.fromEntries(ids.map((id, i) => [id, i]));
+  // The window's two steps: what this build declared, whether this computer has
+  // the Mac's two switches to grant, and whether the terms were already agreed
+  // to (here before, or on a phone).
+  const agreed = agreedIn(ctx.personality);
   const p: Plan = {
     desktop, ios, appsOn, I,
     next: (id) => I[ids[ids.indexOf(id) + 1]!]!,
     apps, five,
     step: STEP, spot: SPOT,
+    ...(desktop ? { can: ctx.can ?? new Set<string>(), mac: ctx.os === "mac" || ctx.os === "darwin", agreed } : {}),
   };
 
   const build: Record<string, () => Node> = {
     languages: () => languagesStep(p),
     keyboard: () => keyboardStep(p),
+    terms: () => termsStep(p),
+    perms: () => permsStep(p),
     try: () => tryStep(p),
     yours: () => yoursStep(p),
     apps: () => appsStep(p),
@@ -224,7 +247,7 @@ export function onboardScreen(ctx: ScreenContext, firstTabId = "home"): ScreenRe
   // The apps' names and first letters are theirs, not ours: in state, so the
   // translator never sees them (assistant.ts says why).
   const state: Record<string, unknown> = {
-    step: onboardStart({ desktop, languagesSet: saved.length > 0, keyboardReady: ctx.keyboardReady === true, I }),
+    step: onboardStart({ desktop, languagesSet: saved.length > 0, keyboardReady: ctx.keyboardReady === true, agreed, I }),
     langs,
     ln: Object.fromEntries(DAILY_LANGUAGES.filter(shownChip).map((l) => [l.value, l.label])),
     // Overwritten live by the app, which re-reads the device on a timer and on
@@ -232,6 +255,11 @@ export function onboardScreen(ctx: ScreenContext, firstTabId = "home"): ScreenRe
     keyboardReady: false, keyboardEnabled: false, micGranted: false,
     mic: "idle", tried: "",
     perm: { all: false, n: false, m: false },
+    // The window's permissions step reads this computer's answers here, and the
+    // window itself keeps them up to date (sdui/permissions.js: on every paint,
+    // and every time the window comes back from System Settings). Declared only
+    // for a window, because a path in a screen's state is what makes it look.
+    ...(desktop ? { agreed, camGranted: false, axGranted: false, seeGranted: false } : {}),
     sheet: Object.fromEntries(five.map((a) => [a.id, false])),
     link: {},
     n: Object.fromEntries(five.map((a) => [a.id, a.name])),
@@ -248,7 +276,9 @@ export function onboardScreen(ctx: ScreenContext, firstTabId = "home"): ScreenRe
     finish: { kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { onboarded: true }, onSuccess: "finishOk", onError: "finishErr" },
     finishOk: landed,
     finishErr: toast(EN["ob.err.finish"], "error"),
-    ...(desktop ? {} : permActions()),
+    // The phone's three switches, or the two permissions a window asks the
+    // system for itself (its terms step carries its own two buttons).
+    ...(desktop ? permsActions() : permActions()),
   };
 
   return {

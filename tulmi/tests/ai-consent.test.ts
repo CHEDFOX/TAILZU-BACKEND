@@ -285,6 +285,21 @@ describe("the app", () => {
     // On, its switch takes it back.
     expect(s).toContain('"path":"/v1/you/ai-consent","body":{"agree":false}');
   });
+
+  it("the window's Settings has the same switch, so its onboarding's terms can promise one", async () => {
+    const { buildScreen } = await import("../src/experience/screens.js");
+    const ctx = (p: Record<string, unknown>) => ({
+      personality: p, language: "en", platform: "ios", formFactor: "desktop", can: new Set(["DeskShell"]),
+    }) as never;
+    const off = JSON.stringify(buildScreen("desk_settings", ctx({})));
+    expect(off).toContain("Send to AI services");
+    expect(off).toContain('"aiAgreed":false');
+    // The switch is the same route as the phone's, and writes what it now reads.
+    expect(off).toContain('"path":"/v1/you/ai-consent","body":{"agree":"$state.aiAgreed"}');
+    expect(off).toContain('"kind":"toggleState","path":"aiAgreed"');
+    const on = JSON.stringify(buildScreen("desk_settings", ctx({ aiConsentAt: new Date().toISOString(), aiConsentVersion: consent.AI_CONSENT_VERSION })));
+    expect(on).toContain('"aiAgreed":true');
+  });
 });
 
 describe("the terms and privacy card, for a build that draws a box that scrolls", () => {
