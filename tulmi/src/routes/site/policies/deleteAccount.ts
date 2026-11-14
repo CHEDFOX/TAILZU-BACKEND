@@ -37,12 +37,13 @@ export function deletePageCsp(nonce: string, captcha: boolean): string {
 const DELETED = [
   "Your account and how you sign in to it (your email address or phone number, and your name)",
   "Your profile and settings, the personality and words Keylessbord learned, and your dictation history",
-  "Your bots, what they remember, their keys, your chats with them, and the steps and workouts any fitness bot of yours counted",
+  "Your bots, what they remember, their keys, your chats with them, and the steps, workouts and sleep any fitness bot of yours counted",
   "Your calendar, to-dos, meeting notes, and the files, photos and videos you uploaded or made",
   "Your Xode projects, and your links to GitHub and to the apps you connected",
   "The spaces you made, with everything in them; your place in other spaces, and everything you shared in them",
   "Your usage records, notification tokens and the record of your purchases on our side",
   "The area your day starts from, the invites you sent, and the invite emails waiting to go out",
+  "The busy times read from your phone's calendars, the links to your X0 Bot Reminders list, and whether a Focus was on",
 ];
 const KEPT = [
   "Messages you sent in chats with other people stay in those chats for them, under the name you had then. Things you shared in other people's spaces are deleted.",
@@ -50,6 +51,8 @@ const KEPT = [
   "Apple, Google and Razorpay keep their own records of what you bought, as the law asks them to. Deleting your account doesn't cancel a subscription: cancel it in the App Store, Google Play or the app first.",
   "Crash reports and diagnostic logs, which can hold your account's ID, are kept for up to 90 days.",
   "Our database backups are encrypted and kept 30 days, so everything above is gone from them within 30 days.",
+  "To stop someone making a new free account straight away, we keep a one-way hash of your email address, and of the random number the app made when it was installed, for 30 days. Neither can be read back into an address or a phone, and neither is kept with your account, your name or anything you wrote.",
+  "If a free plan was started on your iPhone, Apple keeps, for us, a small mark on that phone saying so (DeviceCheck). It holds no account, email or name; we stop reading it after 12 months, and clear it if you ask at support@x0bot.com.",
 ];
 
 const CSS = `

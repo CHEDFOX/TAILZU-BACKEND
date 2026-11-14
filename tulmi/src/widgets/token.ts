@@ -21,8 +21,15 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
 
-/** What a widget token may do. */
-export const WIDGET_SCOPES = ["needs.answer", "task.done"] as const;
+/**
+ * What a widget token may do. "focus.set" (build 8.9.1, docs: perms2 §4.2) is the iPhone Focus Filter's: iOS runs X0 Bot's filter
+ * when a Focus starts and when it ends, in the app's process but outside any screen, with no session at hand — the same place a
+ * widget's button runs from. It reaches `POST /v1/widgets/focus` and nothing else, and all it may say is on or off.
+ *
+ * A token gets every scope AT ISSUE, so tokens already on phones carry no `focus.set` and the filter's post is 403 until the
+ * app next asks for one (a day at most, `widgets.token.ttlMin`). `focus.sync` from the app's own session covers that gap.
+ */
+export const WIDGET_SCOPES = ["needs.answer", "task.done", "focus.set"] as const;
 export type WidgetScope = (typeof WIDGET_SCOPES)[number];
 
 /** The shape of a token: our prefix and 43 base64url characters (32 random bytes). */

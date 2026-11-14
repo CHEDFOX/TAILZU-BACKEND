@@ -27,6 +27,8 @@ import { getNote, listNotes } from "../notes/store.js";
 import { getPersonality } from "../personality/store.js";
 import { getProfile } from "../profile/store.js";
 import type { YouStore } from "./store.js";
+import { planBusy } from "../botsBots/planBusy.js";
+import { remindersGone } from "../calendar/remindersGone.js";
 
 export interface DataDeps {
   bots: Bots | null;
@@ -105,12 +107,18 @@ export async function gatherExport(user: AuthedUser, d: DataDeps, now: number): 
     d.media ? read("files", async () => (await d.media!.store.list(user.id, 500)).map((m) => ({ id: m.id, name: m.name, kind: m.kind, type: m.mime, bytes: m.bytes }))) : undefined,
     read("you", () => d.store.exportRows(user.id)),
   ]);
+  // The busy times read from the phone's own calendars (docs: perms2 §2.4): start, end and all-day, which is all there is.
+  const busy = await read("busy times", async () => {
+    const blocks = await planBusy().inRange(user.id, now - 31 * 86_400_000, now + 31 * 86_400_000);
+    return blocks.map((b) => ({ startsAt: new Date(b.s).toISOString(), endsAt: new Date(b.e).toISOString(), allDay: b.allDay, syncedAt: new Date(b.syncedAt).toISOString() }));
+  });
   return {
     about: "Everything X0 Bot holds for you, as of exportedAt. Times are milliseconds since 1970 (UTC) unless written as a date.",
     exportedAt: new Date(now).toISOString(),
     account: { id: user.id, ...(user.email ? { email: user.email } : {}) },
     profile, writingStyle: personality, bots, code: { projects, jobs }, connectedApps: apps, tasks, notes, history, files,
     budgetAndSettings: you,
+    ...(busy?.length ? { calendarBusyTimes: busy } : {}),
     ...(missing.length ? { missing } : {}),
   };
 }
@@ -127,7 +135,9 @@ export async function deleteMyData(userId: string, d: Pick<DataDeps, "media">, l
   const cleared: string[] = [];
   // The bytes are in a bucket, not in the database: they go first, then the rows below.
   try { await d.media?.forAccountDelete(userId); } catch (err) { log?.error({ err }, "you: delete file bytes"); }
-  for (const table of ["cleanup_history", "bot_facts", "bot_threads", "bot_health_days", "oracle_people", "code_chat_threads", "notes", "media_items"]) {
+  // `plan_busy` (0094): the busy times read from the phone's own calendars go with the chats and the notes, and the switch
+  // behind them is turned off below, so nothing starts reading again by itself (docs: perms2 §2.4).
+  for (const table of ["cleanup_history", "bot_facts", "bot_threads", "bot_health_days", "oracle_people", "code_chat_threads", "notes", "media_items", "plan_busy"]) {
     try {
       const { error } = await admin.from(table).delete().eq("user_id", userId);
       if (error) log?.error({ err: error }, `you: delete ${table}`); else cleared.push(table);
@@ -139,10 +149,24 @@ export async function deleteMyData(userId: string, d: Pick<DataDeps, "media">, l
     const { data, error } = await admin.from("bots").select("id, skills").eq("user_id", userId);
     if (error) log?.error({ err: error }, "you: read bots to switch health off");
     for (const b of (data ?? []) as Array<{ id: string; skills: Record<string, unknown> | null }>) {
-      if (b.skills?.health !== true) continue;
-      const { error: e } = await admin.from("bots").update({ skills: { ...b.skills, health: false } }).eq("id", b.id);
+      if (b.skills?.health !== true && b.skills?.healthSleep !== true) continue;
+      const { error: e } = await admin.from("bots").update({ skills: { ...b.skills, health: false, healthSleep: false } }).eq("id", b.id);
       if (e) log?.error({ err: e }, "you: switch health off");
     }
   } catch (err) { log?.error({ err }, "you: switch health off"); }
+  // The phone's own switches (0094): the busy times and the Reminders links are gone above, so the flags that say they are on
+  // go with them, and the Focus state too. The links on the to-dos are dropped; the to-dos themselves stay, as they always do.
+  try {
+    const { error } = await admin.from("plan_prefs").update({ calendar_busy: false, reminders_on: false, focus: null }).eq("user_id", userId);
+    if (error) log?.error({ err: error }, "you: switch the phone's calendar off");
+    else cleared.push("plan_prefs.phone_switches");
+  } catch (err) { log?.error({ err }, "you: switch the phone's calendar off"); }
+  try {
+    const { error } = await admin.from("calendar_tasks").update({ ext_src: null, ext_ref: null }).eq("user_id", userId).not("ext_ref", "is", null);
+    if (error) log?.error({ err: error }, "you: unlink reminders");
+  } catch (err) { log?.error({ err }, "you: unlink reminders"); }
+  // The marks of to-dos deleted here whose item was still in the list: nothing is linked any more, so there is nothing left
+  // for them to take out (calendar/remindersGone.ts).
+  try { await remindersGone().clear(userId); } catch (err) { log?.error({ err }, "you: clear reminders marks"); }
   return { ok: cleared.length > 0, cleared };
 }

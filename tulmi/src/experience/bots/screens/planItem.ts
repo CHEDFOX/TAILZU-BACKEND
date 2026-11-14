@@ -10,11 +10,14 @@
  * Data: GET /v1/botsapp/calendar/events/:id, /tasks/:id (routes/bots/botsCalendar.ts). Writes are calls, then a short toast and back; the Plan
  * hears the change itself (live "calendar", "tasks").
  */
-import type { ActionRef, ActionSpec, Node } from "../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, ArrivalItem, Node } from "../../../../../shared/types/sdui.js";
 import {
-  back, C, call, canPersonBot, chips, col, emptyState, FACE, icon, labelled, messageText, meta, notice, open, page, personBot, primaryButton, quietButton, row,
-  SCREENS, secondaryButton, sectionLabel, segmented, seq, text, when, type BotsCtx,
+  back, button, C, call, canArrival, canCalendarAdd, canPersonBot, chips, col, emptyState, FACE, icon, labelled, listRow, messageText, meta,
+  notice, open, page, personBot, primaryButton, quietButton, row, SCREENS, secondaryButton, sectionLabel, segmented, seq, switchMark, text,
+  when, type BotsCtx,
 } from "../kit.js";
+import { line as cardLine, permitStep } from "./firstRun/parts.js";
+import { ARRIVAL, ARRIVAL_ANDROID, ARRIVAL_BACKGROUND_ANDROID, CAL_ADD } from "./permitWords.js";
 import { screen, type BotsScreen } from "../registry.js";
 import { followOn, planOn } from "../../../botsBots/planSwitch.js";
 import type { ItemFollow } from "../../../botsBots/planFollow.js";
@@ -40,6 +43,8 @@ export interface EventView {
   id: string; seriesId: string; title: string; notes: string; place: string; where?: string; start: number; end: number; allDay: boolean; day: string;
   repeat: string; remindMin: number | null; from: string | null; source: string; fixed: boolean; spaceId?: string; taskId?: string; spaceName?: string;
   captureId?: string;
+  /** 0094 (docs: perms2 §7): "Remind me when I get there" is on, and the PHONE watches the place itself. */
+  arrive?: boolean;
 }
 /** GET /v1/botsapp/calendar/tasks/:id (CalTask). */
 export interface TaskView {
@@ -58,6 +63,9 @@ interface Details {
   note?: { look: Parameters<typeof personBot>[1]; name: string; text: string };
   /** Follow-through (PLAN_V2_FOLLOW): Must not miss, Who, and the open follow's line. */
   follow?: ItemFollow;
+  /** The armed arrival set as it would be with this item on, and the place's own name (botsBots/planEase.ts ItemDetails). */
+  arrivals?: ArrivalItem[];
+  arrivePlace?: string;
 }
 interface ItemData { event?: EventView; task?: TaskView; meeting?: Meeting; details?: Details }
 
@@ -298,6 +306,125 @@ function sourceLine(x: { from: string | null; source: string; spaceName?: string
   return fromLine(x) || "Added by you";
 }
 
+// ------------------------------------- the phone's own calendar, and arriving (docs: perms2 §2.2, §7.2)
+
+/** What the arrival switch and its card need, merged into the item page's own state. */
+export const ITEM_PHONE_STATE = {
+  arriveCard: false, arriveOn: false, arriveBlocked: false, arriveCoarse: false, locGranted: false,
+  // ANDROID'S SECOND STEP (8.9.1): the card that explains the background use before the phone's location page, and the one
+  // quiet line shown if they come back without it. Both stay false on an iPhone, where neither is ever drawn.
+  arriveBackCard: false, arriveBackStill: false,
+};
+
+/**
+ * "ADD TO MY CALENDAR": the phone's OWN event editor, opened already filled in. No permission, no card, and nothing of the
+ * person's calendar is ever read — the editor runs outside the app on iOS 17+, and on Android it is the calendar app's own
+ * screen. X0 Bot is told only the outcome's name.
+ */
+function addToCalendar(ctx: BotsCtx, e: EventView): Node[] {
+  if (!canCalendarAdd(ctx)) return [];
+  const notes = [e.notes, CAL_ADD.madeWith].filter(Boolean).join("\n\n");
+  const editor: ActionSpec = {
+    kind: "calendar.editor",
+    title: e.title,
+    startsAtIso: new Date(e.start).toISOString(),
+    endsAtIso: new Date(e.end).toISOString(),
+    ...(e.allDay ? { allDay: true } : {}),
+    notes,
+    onSaved: toast(CAL_ADD.saved),
+    onUnavailable: toast(CAL_ADD.unavailable),
+    onError: toast(CAL_ADD.error, true),
+  } as unknown as ActionSpec;
+  return [quietButton(CAL_ADD.button, editor, { size: "md", icon: "calendar" })];
+}
+
+/**
+ * "REMIND ME WHEN I GET THERE" (docs: perms2 §7). The PHONE'S OWN system watches the place and shows the reminder; this server
+ * is never told where the person is, or that they arrived, so all it keeps is the switch.
+ *
+ * Drawn only on a store build's phone that declares Arrival1 while PERM_ARRIVAL is on, and only for an item whose place this
+ * server has already geocoded (`x.arrivals`). Switching it on with location not yet granted opens one card — Continue and
+ * nothing else — and Continue is the only thing that asks. `onArmed` is what writes the switch: the server is told the phone
+ * is watching, never that it has arrived.
+ */
+function arrivalRows(ctx: BotsCtx, e: EventView, x: Details): Node[] {
+  if (!canArrival(ctx) || !x.arrivals?.length) return [];
+  // THE WORDS DIFFER ON ANDROID, AND ONE STATE IS NEW. On the iPhone the SYSTEM watches the region and the app is never
+  // woken, so "never in the background" is true there. On Android the geofence is delivered TO THE APP, which is background
+  // location under Play's Location Permissions policy: the card has to say so, in Play's own words, BEFORE anything is
+  // asked. `canArrival` has already weighed the capability, PERM_ARRIVAL and the Android switch and its list, so the ROW
+  // needs no platform test — only the words and the extra step do.
+  const android = ctx.platform === "android";
+  const W = android ? ARRIVAL_ANDROID : ARRIVAL;
+  const on = e.arrive === true;
+  const base = `${CAL}/events/${enc(e.id)}`;
+  // `arrive` ALONE. With `tz` in the body the event's wall-clock time is re-anchored in the phone's current offset
+  // (calendar/service.ts changeEvent), so toggling this switch while travelling moved the event. Without it the row keeps
+  // its own `tz_min` and the time cannot change.
+  const write = (arrive: boolean): ActionRef => call("PUT", base, { arrive }, {
+    ok: seq(toast(arrive ? ARRIVAL.armed.replace("{place}", x.arrivePlace ?? e.place) : "Off"), { kind: "refresh" }),
+    fail: toast("Couldn't save that. Try again.", true),
+  });
+  const sync = (ask: boolean): ActionSpec => ({
+    kind: "arrival.sync", items: x.arrivals, ...(ask ? { ask: true } : {}),
+    onArmed: seq(setState("arriveCard", false), setState("arriveBackCard", false), write(true)),
+    onApproximate: seq(setState("arriveCard", false), setState("arriveCoarse", true)),
+    // ANDROID'S SECOND STEP, AND NOT A REFUSAL: precise location is held, "Allow all the time" is not. From Android 11 the
+    // system shows no prompt for it, so the only way on is the phone's own location page — and Play wants the app to say
+    // why first. Our card, then the request, which opens that page and answers when they come back. Never a bare Settings
+    // button with no reason, and never a second system prompt, which the system would refuse.
+    onBackground: seq(setState("arriveCard", false), setState("arriveBackCard", true)),
+    onDenied: seq(setState("arriveCard", false), setState("arriveBackCard", false), toast(W.denied)),
+    onBlocked: seq(setState("arriveCard", false), setState("arriveBackCard", false), setState("arriveBlocked", true)),
+    onError: seq(setState("arriveCard", false), setState("arriveBackCard", false), toast("Couldn't set that up just now. Try again.", true)),
+  } as unknown as ActionSpec);
+  // "Allow all the time", as a REQUEST and not a bare openSettings: on API 30+ the system opens the app's own location page
+  // and answers when they come back, so the switch can go on by itself if they allowed it. A refusal leaves it off and says
+  // so once; there is no second card and no nagging.
+  const askBackground: ActionSpec = {
+    kind: "requestPermission", permission: "backgroundLocation",
+    onGranted: seq(setState("arriveBackCard", false), sync(false)),
+    onDenied: seq(setState("arriveBackCard", false), setState("arriveBackStill", true)),
+  } as unknown as ActionSpec;
+  // Granted already: the phone is given the set straight away, with nothing asked. Not yet: the card, whose Continue asks.
+  const turnOn: ActionRef = { kind: "condition", if: { truthy: "locGranted" }, then: sync(false), else: setState("arriveCard", true) } as ActionSpec;
+  const change: ActionRef = on ? seq({ kind: "toggleState", path: "arriveOn" } as ActionSpec, write(false)) : turnOn;
+  const settings = (words: string): Node => col([
+    meta(words, { size: 12 }),
+    button(ARRIVAL.openSettings, { kind: "openSettings", target: "app" } as ActionSpec, { kind: "secondary", size: "md" }),
+  ], { gap: 6 });
+  return [
+    listRow({
+      label: W.row, sub: on ? ARRIVAL.armed.replace("{place}", x.arrivePlace ?? e.place) : W.rowSub,
+      chevron: false, right: switchMark("arriveOn"), onPress: change,
+    }),
+    permitStep({ when: { truthy: "arriveCard" }, title: W.title, lines: W.lines.map((l) => cardLine(l)), cta: { label: W.cta, onPress: sync(true) } }),
+    // ANDROID ONLY: the hand-off card, and the one line left behind if they come back without it.
+    ...(android ? [
+      permitStep({
+        when: { truthy: "arriveBackCard" }, title: ARRIVAL_BACKGROUND_ANDROID.title,
+        lines: ARRIVAL_BACKGROUND_ANDROID.lines.map((l) => cardLine(l)),
+        cta: { label: ARRIVAL_BACKGROUND_ANDROID.cta, onPress: askBackground },
+      }),
+      when({ truthy: "arriveBackStill" }, meta(ARRIVAL_BACKGROUND_ANDROID.still, { size: 12 })),
+    ] : []),
+    // Approximate Location only: the system will watch nothing useful, so the switch stays off and the line says why.
+    when({ truthy: "arriveCoarse" }, settings(ARRIVAL.approximate)),
+    when({ truthy: "arriveBlocked" }, settings(W.blocked)),
+    // Never prompts: it only reads the answer already on record, so the card can be skipped for a phone that said yes.
+    //
+    // THE PERMISSION THAT ACTUALLY ARMS, WHICH IS NOT THE SAME ONE ON ANDROID. The phone's "location" check there is
+    // PermissionsAndroid.check(COARSE) (device/locate.ts), which is true for anyone who ever tapped "Use my location" — so
+    // the switch ran the sync with no ask, `arrivalGrants` found FINE missing and answered "denied", and the person got a
+    // toast instead of the card, for ever. "backgroundLocation" is true only when FINE and background are both held
+    // (device/arrival.ts arrivalBackgroundGranted), which is exactly when the sync can arm with nothing asked.
+    {
+      ...col([], { height: 0 }),
+      on: { onAppear: { kind: "checkPermission", permission: android ? "backgroundLocation" : "location", assignTo: "locGranted" } as ActionSpec },
+    },
+  ];
+}
+
 function detailsShell(ctx: BotsCtx, title: string, lines: Node[], extra: Node[], buttons: Node[], state: Record<string, unknown> = {}) {
   return page(ctx, {
     back: true, ...(isDesk(ctx) ? { backTitle: "Plan Ease" } : {}), nav: "plan", title, maxWidth: 560, gap: 18, state,
@@ -335,7 +462,13 @@ function eventDetails(ctx: BotsCtx, e: EventView, x: Details) {
     ...(place ? [line(place, edit)] : []),
     line(sourceLine(e), undefined, { grey: true }),
     ...(e.notes ? [line(e.notes, edit, { grey: true })] : []),
-  ], [...followSection("event", e.id, x.follow), ...beforeLines(ctx, x.before), ...noteLine(ctx, x.note), ...moving, ...captureFoot(ctx, e.captureId, e.from)], buttons, { moving: false, ...followState(x.follow) });
+  ], [
+    ...followSection("event", e.id, x.follow), ...beforeLines(ctx, x.before), ...noteLine(ctx, x.note), ...moving,
+    // The phone's own things: its event editor (no permission), and the arrival reminder its own system watches.
+    ...arrivalRows(ctx, e, x),
+    ...(addToCalendar(ctx, e).length ? [row(addToCalendar(ctx, e), { gap: 8, flexWrap: "wrap" })] : []),
+    ...captureFoot(ctx, e.captureId, e.from),
+  ], buttons, { moving: false, ...followState(x.follow), ...ITEM_PHONE_STATE, arriveOn: e.arrive === true });
 }
 
 /** A to-do of the person's own: [Done] [Later] [Take it out]. A wait: "Waiting on Rahul", [Send] [Sorted] [Take it out]. */

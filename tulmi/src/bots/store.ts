@@ -263,7 +263,12 @@ function botOf(r: BotRow): StoredBot {
   return {
     id: r.id, ownerId: r.user_id, slug: r.slug, name: r.name, colour: (PALETTE as readonly string[]).includes(r.colour) ? (r.colour as Colour) : "stone", purpose: r.purpose,
     principles: strings(r.principles),
-    skills: { web: s.web === true, files: s.files === true, artifacts: s.artifacts === true, code: s.code === true, research: s.research === true, health: s.health === true, connectors: strings(s.connectors) },
+    skills: {
+      web: s.web === true, files: s.files === true, artifacts: s.artifacts === true, code: s.code === true, research: s.research === true,
+      health: s.health === true, healthSleep: s.healthSleep === true,
+      // 0094: anything but "motion" is "health", the only reader there was before 8.9.1.
+      healthSource: s.healthSource === "motion" ? "motion" : "health", connectors: strings(s.connectors),
+    },
     knowledge: strings(r.knowledge), tone: r.tone ?? "", visibility: "private",
     budgets: { perRequestPaise: Number(b.perRequestPaise) || 1, dailyPaise: Number(b.dailyPaise) || 1 },
     publicCard: r.public_card === true, createdAt: Date.parse(r.created_at) || 0, updatedAt: Date.parse(r.updated_at) || 0,

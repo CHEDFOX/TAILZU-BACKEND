@@ -1,6 +1,6 @@
 # Being built right now (read before you start)
 
-Updated 14 Nov 2026, 03:10 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 14 Nov 2026, 15:50 UTC. One session is building the items below. Do not edit the files they hold until the item is
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
 
 **How to build things now:** read `TAILZU-BACKEND/docs/renderer.md` before adding any screen, visual, animation or widget
@@ -21,29 +21,21 @@ look. The apps are renderers: build server data with the existing blocks and cat
 - **Paint, device facts, phone-local values, shell and data blocks**, frontend `7ddcf31`. Not switched on until V1: no
   screen can reach them.
 
-## In progress (build 8.9.1, started 14 Nov 2026)
+## Landed: build 8.9.1 (14 Nov 2026, every switch off)
 
-Calendar, reminders, focus, motion, sleep, arrival reminders, abuse-prevention signals (server now; App Attest / DeviceCheck /
-Play Integrity in the app), and their Android halves. Six jobs hold:
-- **Server, abuse prevention:** `tulmi/src/trust/**` (new), `tulmi/src/routes/trust/**`, `tulmi/src/routes/admin/trust.ts`,
-  `tulmi/src/routes/app/appScreens.ts`, `tulmi/src/http/hooks.ts`, `tulmi/src/guard/limiter.ts`, `tulmi/src/http/plugins.ts`,
-  `tulmi/src/you/usage.ts`, `tulmi/src/usage/allowance.ts`, `tulmi/src/you/deletion.ts`, `tulmi/src/observability.ts`,
-  `tulmi/src/auth/deviceLink.ts`, `tulmi/src/control/**`, the `TRUST*` lines of `config.ts`, migration 0093.
-- **Server, phone features:** `shared/types/sdui.ts`, `tulmi/src/experience/bots/kit.ts`, the `PERM_*` lines of `config.ts`,
-  plan screens and routes (planHome, planItem, planCall, planBusy, planReminders, planFocus), `bots/health*`, `routines` not
-  touched, `privacy.ts`, `you.ts`, deletion texts, docs/store-privacy.md, docs/perms.md, migration 0094.
-- **Phone:** `app/src/**` (device, sdui actions/types/registry, notifications), `app/app.config.ts`, `app/eas.json`,
-  `app/modules/tulmi-perms/**`, `app/assets/PrivacyInfo.xcprivacy`, `tools/ci/check-*.mjs`, `app/native-inputs.lock`.
-- **Android additions:** new files only under `app/modules/tulmi-perms/android/` and `app/src/device/android*`.
-- **The window's permissions and terms, after onboarding (P1)** (started 14 Nov). The window's onboarding has no terms step and no
-  permissions step at all ("the OS asks"), so a person who finishes it lands on Today and is never shown either. Adding both as steps
-  of the onboarding stage, where Blip already walks from one to the next: terms (the same words and the same
-  `PUT /v1/you/ai-consent` as the phone's card), then one permissions step for everything the window needs — microphone, camera,
-  Accessibility and Screen Recording. **The phone is not touched**, and neither is `docs/perms.md` or `config.ts`, which 8.9.1 holds.
-  It also fixes a gap in calls: the window has no `NSCameraUsageDescription` and no camera entitlement, so a video call there cannot
-  open a camera at all.
-  Holds: `TAILZU-BACKEND/tulmi/src/experience/onboard/**`; `TAILZU-DESKTOP/package.json`, `build/entitlements.mac.plist`,
-  `src/app/sdui/{permissions,core,backend,actions}.js`, `src/main/main.js` and its preload.
+- **Build 8.9.1** (backend `e296bff`, frontend `84b67b0`). Calendar busy times and adding through the system editor, one
+  "X0 Bot" Reminders list, the Focus Filter (iPhone) and Do Not Disturb (Android), steps and the driving check, sleep (Health /
+  Health Connect), arrival reminders, App Attest / DeviceCheck / Play Integrity, and the server's abuse and fraud prevention
+  signals (`docs/trust.md`; `TRUST` off, then shadow, then on; counted, never joined). The Android calendar, motion and arrival
+  halves are behind build switches `TULMI_ANDROID_CALENDAR` / `_MOTION` / `_ARRIVAL` (off in every shipping profile; `n0` is the
+  proof build) and their own server switches `PERM_*_ANDROID`. Migrations **0093** and **0094**. Owner steps:
+  `TAILZU-BACKEND/docs/owner-8.9.1.md`. Every file it held is free again.
+  Open, a decision and not a bug: a server permission card is followed by the phone's own "One permission first" card, because
+  `app/src/sdui/actions.ts` skips its `primedCard` only on `primed: true` and the server never sends it (not in the contract).
+  One card too many, still one Continue path; adding `primed` is a contract field plus a lint rule.
+
+## In progress
+
 - **Lingo, the language bot** (`docs/lingo.md`; switch `LINGO`, off). Re-added after a merge took it: the whole section was rewritten
   for 8.9.1 and git kept that side, so this entry went with it. Nothing of 8.9.1's is held here.
   ON MAIN and tested, nothing user-visible: the scheduler (FSRS), marking done on the SERVER and never in the app, the store, a
@@ -66,6 +58,19 @@ Play Integrity in the app), and their Android halves. Six jobs hold:
   choose them. Not mine to pick.
 
 ## Landed 14 Nov 2026 (all switched off)
+
+- **The window's terms and permissions, after onboarding** (`docs/window-setup.md`). A window finished its onboarding having agreed
+  to nothing and granted nothing: `postAuthSteps` left Make me yours out ("the OS asks") and the AI permission is asked for by a Home
+  card a window that lands on the desk never sees, so the first thing the person tried was refused by the gate. Two steps of the same
+  stage Blip already walks through, between Languages and Try it — **Terms and privacy** (`onboard/terms.ts`: the phone's two answers
+  and the same `PUT /v1/you/ai-consent`; Not now skips Try it, which the gate would refuse) and **Let me in, once**
+  (`onboard/perms.ts`: a row each for the microphone, the camera, Accessibility and Screen recording, drawn only where the window
+  declared the capability that reads it, and the Mac's two only on a Mac) — plus **Send to AI services** in the desk's
+  Settings › Privacy and data, so the terms' promise is true there. Nothing is drawn or asked for on a phone; Make me yours, the Home
+  card and the phone's permissions are exactly as they were.
+  In the window: `NSCameraUsageDescription` and the camera entitlement (without which a hardened build is refused the camera, so the
+  video half of a call could not work there at all), `app:camStatus` and `app:seeStatus` in the main process, `camReading`/`camFollow`,
+  `seeReading`/`seeFollow` and `askCam` in the renderer, and the capabilities `DeskCamAsk` and `DeskSeeState`.
 
 - **Calls, end to end** (`docs/rooms.md`): our own video and audio calls from the mail bot, on Cloudflare's Realtime SFU, and the
   **`call` block** (the 14th) that lets the apps be in one. Migration **0091**; settings `SFU_APP_ID` / `SFU_APP_SECRET` / `ROOM_*`,
@@ -93,19 +98,15 @@ Play Integrity in the app), and their Android halves. Six jobs hold:
 
 ## Numbers in use
 
-- Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days, 0091 rooms. Next free: **0092**. Take the next free number and
+- Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days, 0091 rooms, 0092 lingo left,
+  0093 trust signals, 0094 phone things. Next free: **0095**. Take the next free number and
   check `git log origin/main -- tulmi/supabase/migrations` first: two sessions have collided twice today.
 - Phone runtime: `tailzu-2026-11-x0-blip`. Do not change it.
 
 ## Notes from other sessions
 
-- **For 8.9.1's phone half: `tests/perm-words.test.ts` is failing on main right now, and it is yours, not Lingo's.**
-  "the build says it writes to Health, which nothing here does". That test reads `TAILZU-FRONTEND/app/app.config.ts`
-  across the repos, so it only fails in a container that has both checked out and current — which is why CI is quiet
-  about it. The phone's config declares a Health WRITE usage string while `screens/permitWords.ts` says nothing here
-  writes to Health. One of the two is wrong and both are yours (`app.config.ts` and the `PERM_*` lines are on your
-  holds list), so I have left them alone. Worth running the backend's suite with the phone repo beside it before the
-  next push: two of today's three failures were cross-repo and invisible to either repo on its own.
+- **14 Nov, from the window-permissions session:** the `perm-words.test.ts` failure over `NSHealthUpdateUsageDescription` is
+  fixed by 8.9.1: the test now expects the string and checks it says only that nothing is written.
 
 - **The bot drawings stay vocabulary 1, and that is now a decision, not a wait.** Yesterday's note said they would move to the
   `motion` block as soon as it could reach a screen. Reading `sdui2/gate.ts`: `needs` is worked out per SCREEN and a client

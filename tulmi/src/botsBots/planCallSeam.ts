@@ -43,7 +43,10 @@ export interface ItemSeed {
 /** Why a ring was not placed: planCall.ts ring()'s reasons, and one that only ringItem gives. */
 export type RingNone =
   | "off" | "no_phone" | "desk" | "called" | "quiet" | "busy" | "too_soon" | "not_sent"
-  | "item_recent";  // a call for the same item rang in the last 60 minutes, whatever rang it
+  | "item_recent"   // a call for the same item rang in the last 60 minutes, whatever rang it
+  // The pre-ring check said wait, and this ring has no push of its own to send instead (botsBots/planCallCheck.ts), so
+  // NOTHING is held: the rung is simply not sent, and whatever rang it tries again on its own terms.
+  | "driving" | "focus";
 
 export interface CallRinger {
   /**

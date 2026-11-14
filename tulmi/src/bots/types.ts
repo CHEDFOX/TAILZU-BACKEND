@@ -49,6 +49,24 @@ export interface BotSkills {
    * turn it on is refused. Turning it off deletes the days in the same request. Default false.
    */
   health: boolean;
+  /**
+   * Also count my sleep (0094, docs: perms2 §6): how long the person slept each night, on the bot's own page.
+   *
+   * A SUB-SWITCH OF `health`, and the same lock: only `POST /v1/bots/:slug/health/days { sleep: true }` sets it, because that
+   * is the only request that can have asked the person's phone for the sleep type first. Every other write path forces it
+   * false, and an update that tries to turn it on is refused. Turning it off nulls the nights in the same request.
+   */
+  healthSleep: boolean;
+  /**
+   * WHICH READER THIS BOT'S DAYS COME FROM (0094, docs: perms2 §5.1): "health" (Apple Health / Health Connect) or "motion"
+   * (the iPhone's own Motion & Fitness, chosen instead). One bot has one source at a time.
+   *
+   * The same lock as the two switches: only `POST /v1/bots/:slug/health/days { enable: true, source }` sets it, and every
+   * other write path forces "health". The server needs it because the quiet re-read has to ask the phone for the SAME reader
+   * the person chose — without it a Motion bot was re-read from Apple Health, and its Motion days were deleted as the other
+   * source's — and because the row's words, and whether sleep is offered at all, differ between the two.
+   */
+  healthSource: "health" | "motion";
   /** Connected apps the bot may use, by connector id. A write still asks the person. */
   connectors: string[];
 }

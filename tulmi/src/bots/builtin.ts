@@ -29,9 +29,10 @@ import { getConfig } from "../config.js";
 import { MEET_SLUG } from "../meet/types.js";
 import { PALETTE, type BotDef, type BotSkills } from "./types.js";
 
-// `health` is last and never spread over: a built-in bot is not one a person made, so the health row is never drawn for it and
-// the route that would store days refuses it (docs: perms §4.5).
-const skills = (on: Partial<BotSkills>): BotSkills => ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on, health: false });
+// `health`, `healthSleep` and `healthSource` are last and never spread over: a built-in bot is not one a person made, so the
+// health row is never drawn for it and the route that would store days refuses it (docs: perms §4.5, perms2 §5.1, §6).
+const skills = (on: Partial<BotSkills>): BotSkills =>
+  ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on, health: false, healthSleep: false, healthSource: "health" });
 
 export const CODE_SLUG = "code";
 

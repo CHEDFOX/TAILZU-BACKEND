@@ -109,6 +109,16 @@ import { registerAssistantRoutes } from "./routes/ask/assistant.js";
 import { RunLedger, runStore, startRunSweeper } from "./runs/index.js";
 import { registerDemoRoutes } from "./routes/site/demo.js";
 import { initControl, registerControlRoutes } from "./control/index.js";
+// Abuse and fraud prevention (src/trust, docs/trust.md): the kind of network a request comes from, the counts, and what
+// Apple and Google answer about the app. Everything here is dark until TRUST / TRUST_ATTEST are moved off "off".
+import { heldFreeUse as trustHeldFreeUse, slowedDown as trustSlowedDown, trustMode } from "./trust/actions.js";
+import { startListRefresher } from "./trust/lists.js";
+import { startTrustSweeper } from "./trust/sweeper.js";
+import { TRUST_DEFAULTS } from "./trust/defaults.js";
+import { registerTrustRoutes } from "./routes/trust/trust.js";
+import { registerAdminTrustRoutes } from "./routes/admin/trust.js";
+import { installSlowCheck } from "./guard/limiter.js";
+import { installHoldCheck } from "./you/usage.js";
 import { initPush, notifyApproval, notifyBot, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/account/reviewCode.js";
@@ -150,7 +160,7 @@ import { effectiveLanguage } from "./profile/language.js";
 import { registerErrorHandling } from "./http/errors.js";
 import { registerRequestHooks } from "./http/hooks.js";
 import { registerDeviceScope } from "./http/deviceScope.js";
-import { registerPlugins } from "./http/plugins.js";
+import { registerPlugins, slowAwareMax } from "./http/plugins.js";
 import { registerStaticFileRoutes } from "./routes/app/staticFiles.js";
 
 /**
@@ -177,13 +187,17 @@ const app = Fastify({
   // do NOT use this limit — @fastify/multipart streams them under its own
   // `limits.fileSize` (50 MB) below.
   bodyLimit: 1 * 1024 * 1024,
-  // Trust EXACTLY the reverse proxy in front of us (Caddy) — one hop. With
-  // `true`, Fastify trusted the whole X-Forwarded-For chain and took the
-  // left-most, client-supplied entry as req.ip, so an attacker could spoof
-  // `X-Forwarded-For: <anything>` and mint unlimited fresh rate-limit buckets.
-  // A hop count makes Fastify use the proxy-inserted (real) client IP. If you
-  // add another proxy/LB in front of Caddy, bump this to the total hop count.
-  trustProxy: 1,
+  // Trust the ADDRESSES the reverse proxy in front of us comes from, not a hop
+  // count (TRUST_PROXY_CIDRS; docs/trust.md 8.3 fix 3). A hop count stopped the
+  // old `true`, where Fastify took the left-most client-supplied X-Forwarded-For
+  // entry as req.ip and anyone could mint fresh rate-limit buckets — but a count
+  // still believes whoever is one hop away, so if the backend's port were ever
+  // exposed (FLOW_BIND=0.0.0.0) a direct caller could spoof the header again.
+  // The default list is the compose network's own subnets, which covers both
+  // proxy paths: the bundled Caddy (a container on that network) and a host
+  // nginx (its calls to 127.0.0.1:8770 arrive from that network's gateway).
+  // Another proxy or load balancer in front means adding its range here.
+  trustProxy: cfg.TRUST_PROXY_CIDRS,
 });
 registerErrorHandling(app);
 registerRequestHooks(app);
@@ -311,8 +325,12 @@ registerDemoRoutes(app, {
 });
 registerWellKnownRoutes(app);
 
+// The tier every signed-in app route opts into. `max` is the slow-aware FUNCTION (http/plugins.ts slowAwareMax), not a
+// plain number: @fastify/rate-limit merges a route's options over the plugin's, so a number here would win over the
+// plugin's own function and an account abuse prevention has slowed down would quietly keep the full ceiling. The library
+// takes a number or a function; the route modules' own `rateLimit` types say `number`, which is all the cast is for.
 const AUTHED_RL = {
-  rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
+  rateLimit: { max: slowAwareMax(cfg.RATE_LIMIT_MAX) as unknown as number, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
 };
 
 // --- The control plane ------------------------------------------------------
@@ -320,6 +338,33 @@ const AUTHED_RL = {
 // console is GET /admin; the rules live on the tulmi_control volume.
 initControl({ dir: process.env.CONTROL_DIR || "/data/control" });
 registerControlRoutes(app, { bumpCache: bumpCacheVersion, rateLimit: AUTHED_RL });
+
+// --- Abuse and fraud prevention (src/trust, docs/trust.md) -----------------
+// Registered after the control plane, because its weights, thresholds and
+// action switches are that plane's "trust" surface. Three things happen here:
+// the two places that already decide how fast and how much a person may use
+// are told how to ask whether an account is slowed or held (installed, so
+// neither file has to import any of this); the 30-day sweeper starts; and the
+// public network lists are loaded from their volume and refreshed daily.
+// With TRUST=off nothing is collected, scored or acted on, and the two checks
+// below always answer no — which is how this deploys.
+installSlowCheck(trustSlowedDown);
+installHoldCheck(trustHeldFreeUse);
+registerTrustRoutes(app, { rateLimit: AUTHED_RL });
+registerAdminTrustRoutes(app, { rateLimit: AUTHED_RL });
+// The sweeper runs WHATEVER THE MODE IS, because it only ever deletes: the shadow period's rows, and anything the kill
+// switch leaves behind, still have to go at 30 days as the policy says. Only the list downloads are behind the mode.
+const stopTrustSweep = startTrustSweeper({ log: app.log });
+app.addHook("onClose", async () => { stopTrustSweep(); });
+if (trustMode() !== "off") {
+  const stopLists = startListRefresher({
+    dir: cfg.TRUST_LISTS_DIR,
+    urls: TRUST_DEFAULTS.lists,
+    log: app.log,
+    everyMs: TRUST_DEFAULTS.lists.refreshHours * 3600_000,
+  });
+  app.addHook("onClose", async () => { stopLists(); });
+}
 // Smart notifications: the engine is built here (routes need it), started in
 // main() once the server listens.
 if (cfg.PUSH_ENGINE) initPush({ accessToken: cfg.EXPO_ACCESS_TOKEN });
@@ -628,9 +673,9 @@ registerDraftRoutes(app, { rateLimit: AUTHED_RL, tooLong, personalityProblem, cf
 registerEditRoutes(app, { rateLimit: AUTHED_RL, tooLong, personalityProblem, cfg });
 registerAskRoutes(app, { rateLimit: AUTHED_RL, cfg, frontRoutes, tooLong, personalityProblem });
 
-// Ask's own limit, shared by the desktop's on-screen agent and the phone's Ask.
+// Ask's own limit, shared by the desktop's on-screen agent and the phone's Ask. Slow-aware, as AUTHED_RL is above.
 const AGENT_RL = {
-  rateLimit: { max: cfg.AGENT_RATE_LIMIT_MAX, timeWindow: cfg.AGENT_RATE_LIMIT_WINDOW_MS },
+  rateLimit: { max: slowAwareMax(cfg.AGENT_RATE_LIMIT_MAX) as unknown as number, timeWindow: cfg.AGENT_RATE_LIMIT_WINDOW_MS },
 };
 registerAgentRoutes(app, { rateLimit: AGENT_RL, cfg, ledger, connectors, context: personContext });
 

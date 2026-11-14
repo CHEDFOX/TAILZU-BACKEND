@@ -128,14 +128,20 @@ export type Target =
 
 const notFound = (): BotError => new BotError("not_found", "There is no such bot.", 404);
 
-/** Exactly `{ skills: { health: false } }` and nothing else: the row's own off switch, and no other change riding with it. */
-function onlyHealthOff(p: Record<string, unknown>): boolean {
+/**
+ * Exactly `{ skills: { health: false } }` or `{ skills: { healthSleep: false } }` and nothing else: the row's own off switch,
+ * and no other change riding with it. Which one, or null for anything else.
+ */
+function onlyHealthOff(p: Record<string, unknown>): "health" | "healthSleep" | null {
   const keys = Object.keys(p);
-  if (keys.length !== 1 || keys[0] !== "skills") return false;
+  if (keys.length !== 1 || keys[0] !== "skills") return null;
   const s = p.skills;
-  if (!s || typeof s !== "object" || Array.isArray(s)) return false;
+  if (!s || typeof s !== "object" || Array.isArray(s)) return null;
   const inner = Object.keys(s as Record<string, unknown>);
-  return inner.length === 1 && inner[0] === "health" && (s as { health: unknown }).health === false;
+  if (inner.length !== 1) return null;
+  const only = inner[0];
+  if ((only !== "health" && only !== "healthSleep") || (s as Record<string, unknown>)[only] !== false) return null;
+  return only;
 }
 
 /**
@@ -202,6 +208,8 @@ export class Bots {
   /** Set by `useHealth`. Absent only in a test that made `Bots` by hand; then there are no days to drop either. */
   private healthOff?: (userId: string, botId: string) => Promise<void>;
   private healthExport?: (userId: string) => Promise<unknown[]>;
+  /** 0094: nulls one bot's nights, for the sleep sub-switch going off on its own. */
+  private sleepOff?: (userId: string, botId: string) => Promise<void>;
 
   private async notStopped(userId: string): Promise<void> {
     if (await this.stopped(userId)) throw new BotError("account_leaving", LEAVING_MESSAGE, 403);
@@ -290,7 +298,7 @@ export class Bots {
       id: randomUUID(), ownerId: userId, slug, name: value.name, colour: value.colour ?? colourFor(slug, mine.map((b) => b.colour)), purpose: value.purpose, principles: value.principles,
       // Health is never on at creation, whatever the body said: only the phone's own switch turns it on, through
       // POST /v1/bots/:slug/health/days { enable: true } (docs: perms §4.5). approve() and the Find-a-bot copy go through here.
-      skills: { ...value.skills, health: false }, knowledge: value.knowledge, tone: value.tone, visibility: "private", budgets: value.budgets, publicCard: value.publicCard === true, createdAt: now, updatedAt: now,
+      skills: { ...value.skills, health: false, healthSleep: false, healthSource: "health" }, knowledge: value.knowledge, tone: value.tone, visibility: "private", budgets: value.budgets, publicCard: value.publicCard === true, createdAt: now, updatedAt: now,
     };
     // A slug made from the name is made different until it is free; one the person typed is theirs to fix.
     for (let i = 0; ; i += 1) {
@@ -318,7 +326,8 @@ export class Bots {
     // SWITCHING HEALTH OFF, ON ITS OWN, goes straight through (docs: perms §4.5). The row's words promise the days go in
     // the same request, so stopping must not depend on the rest of the bot still being valid: check() refuses a bot whose
     // connected app has since gone away, and that would leave a person unable to stop the counting.
-    if (onlyHealthOff(p)) return this.healthOffOnly(userId, ref);
+    const offOnly = onlyHealthOff(p);
+    if (offOnly) return this.healthOffOnly(userId, ref, offOnly);
     const cur = await this.mine(userId, ref);
     const merged = {
       name: cur.name, slug: cur.slug, colour: cur.colour, purpose: cur.purpose, principles: cur.principles, skills: cur.skills, knowledge: cur.knowledge, tone: cur.tone,
@@ -333,9 +342,15 @@ export class Bots {
     // Health goes off from here (the row's own switch, and link/unlink and PATCH, which share this path), and never on: turning
     // it on is the phone flow's alone, because it is the only thing that can ask the person's phone first (docs: perms §4.5).
     if (value.skills.health && !cur.skills.health) throw new BotError("health_off", "Turn this on from the switch in the app.", 409);
+    // The same lock on the sleep sub-switch (0094): on is the phone's POST with `sleep: true` alone.
+    if (value.skills.healthSleep && !cur.skills.healthSleep) throw new BotError("health_off", "Turn this on from the switch in the app.", 409);
+    // And on the reader (0094): naming it is the phone's POST alone, so every other path keeps the one already stored.
+    value.skills.healthSource = cur.skills.healthSource;
     // The days go BEFORE the write, so a write that fails never leaves days the export can no longer see (exportAll lists
     // them only for a bot whose switch is on).
     if (cur.skills.health && !value.skills.health) await this.healthOff?.(userId, cur.id);
+    // Sleep off, steps still on: the nights are nulled and nothing else changes. Health off takes the whole days anyway.
+    if (cur.skills.healthSleep && !value.skills.healthSleep && value.skills.health) await this.sleepOff?.(userId, cur.id);
     let next: StoredBot | null;
     try {
       next = await this.store.updateBot(userId, cur.id, {
@@ -351,10 +366,19 @@ export class Bots {
   }
 
   /** The straight off path: the days, then the one field. Nothing else of the bot is read, parsed, checked or written. */
-  private async healthOffOnly(userId: string, ref: string): Promise<{ bot: BotView; warnings: string[] }> {
+  private async healthOffOnly(userId: string, ref: string, which: "health" | "healthSleep"): Promise<{ bot: BotView; warnings: string[] }> {
     const cur = await this.mine(userId, ref);
+    if (which === "healthSleep") {
+      // Only the nights, and only when they were being counted. The steps and workouts stay exactly as they are.
+      if (cur.skills.healthSleep === true) await this.sleepOff?.(userId, cur.id);
+      const only = await this.store.updateBot(userId, cur.id, { skills: { ...cur.skills, healthSleep: false } }, this.now());
+      if (!only) throw notFound();
+      return { bot: viewOf(defOf(only), only), warnings: [] };
+    }
     if (cur.skills.health === true) await this.healthOff?.(userId, cur.id);
-    const next = await this.store.updateBot(userId, cur.id, { skills: { ...cur.skills, health: false } }, this.now());
+    // Health off takes sleep with it: a bot that counts nothing cannot be counting nights. And the reader goes back to the
+    // default, so the next time it is switched on the card the person taps decides the source again.
+    const next = await this.store.updateBot(userId, cur.id, { skills: { ...cur.skills, health: false, healthSleep: false, healthSource: "health" } }, this.now());
     if (!next) throw notFound();
     return { bot: viewOf(defOf(next), next), warnings: [] };
   }
@@ -368,13 +392,28 @@ export class Bots {
    */
   async forHealth(userId: string, ref: string): Promise<HealthBotRef> {
     const b = await this.mine(userId, ref);
-    return { id: b.id, slug: b.slug, name: b.name, purpose: b.purpose, healthOn: b.skills.health === true };
+    return {
+      id: b.id, slug: b.slug, name: b.name, purpose: b.purpose,
+      healthOn: b.skills.health === true, sleepOn: b.skills.healthSleep === true, source: b.skills.healthSource,
+    };
   }
 
-  /** Writes `skills.health` alone. Turning it ON has exactly one caller: the phone's POST, through healthService. */
-  async setHealthSkill(userId: string, ref: string, on: boolean): Promise<boolean> {
+  /**
+   * Writes `skills.health` alone, and the reader with it. Turning it ON has exactly one caller: the phone's POST, through
+   * healthService, which is the only thing that can have shown the card for that reader first.
+   */
+  async setHealthSkill(userId: string, ref: string, on: boolean, source: "health" | "motion" = "health"): Promise<boolean> {
     const cur = await this.mine(userId, ref);
-    return !!(await this.store.updateBot(userId, cur.id, { skills: { ...cur.skills, health: on } }, this.now()));
+    return !!(await this.store.updateBot(userId, cur.id, {
+      skills: { ...cur.skills, health: on, healthSource: on ? source : "health", ...(on ? {} : { healthSleep: false }) },
+    }, this.now()));
+  }
+
+  /** 0094: writes `skills.healthSleep` alone. Turning it ON has one caller too: the POST with `sleep: true`. */
+  async setSleepSkill(userId: string, ref: string, on: boolean): Promise<boolean> {
+    const cur = await this.mine(userId, ref);
+    if (on && cur.skills.health !== true) return false;
+    return !!(await this.store.updateBot(userId, cur.id, { skills: { ...cur.skills, healthSleep: on } }, this.now()));
   }
 
   /** The person's own bots whose switch is on, for the export's list. */
@@ -383,9 +422,10 @@ export class Bots {
   }
 
   /** Filled in once by `attachHealth` (bots/index.ts), so this file can delete days it may not read. */
-  useHealth(o: { off: (userId: string, botId: string) => Promise<void>; exportOf: (userId: string) => Promise<unknown[]> }): void {
+  useHealth(o: { off: (userId: string, botId: string) => Promise<void>; exportOf: (userId: string) => Promise<unknown[]>; sleepOff?: (userId: string, botId: string) => Promise<void> }): void {
     this.healthOff = o.off;
     this.healthExport = o.exportOf;
+    this.sleepOff = o.sleepOff;
   }
 
   async remove(userId: string, ref: string): Promise<void> {
