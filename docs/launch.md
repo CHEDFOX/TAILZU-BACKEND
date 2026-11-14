@@ -77,5 +77,7 @@ of part (a third hand, a hat) or a new field is an app release.
 parser that takes no decimals (`"39.75px 5.49px"` reaches the phone as 75px and 49px), and those builds gave their
 pivots as strings. So on a phone any squeeze (`grip`), turning over (`flip`), twist (`turn`) or shrink (`size`) of a
 glove flung it far off screen, and his feelers went the same way as soon as they swung, while a browser drew all of it
-right. The build after 8.9.1 gives its pivots as numbers (TAILZU-FRONTEND `LaunchCurtain.tsx` `pivot`). Until the older
-builds are gone, keep the gloves to sliding: `dy`, `edge`, `lift`, `gx` and `shown` (launch v4 does).
+right. The build after 8.9.1 gives its pivots as numbers (TAILZU-FRONTEND `LaunchCurtain.tsx` `pivot`). Launch v5 is
+the original motion again (v1's, the owner's choice), so on 8.9.1 and older the gloves and feelers are not seen during
+it; the next build draws all of it. A launch that only slides the gloves (`dy`, `edge`, `lift`, `gx`, `shown`, as v4
+did) is what an older build can draw.
