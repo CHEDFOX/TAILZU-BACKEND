@@ -57,8 +57,8 @@ export interface SeatView {
   name: string;
   host: boolean;
   room: { id: string; title: string; host: string };
-  /** Nothing is captured by joining: their microphone and camera stay shut until they turn one on (the seat's `publish` route). */
-  /** Everyone else in the call, and what they are sending. */
+  /** Everyone else in the call, and what they are sending. Nothing of the person's own: joining captures nothing, and their
+   *  microphone and camera stay shut until they turn one on (the seat's `publish` route). */
   people: PersonView[];
 }
 
