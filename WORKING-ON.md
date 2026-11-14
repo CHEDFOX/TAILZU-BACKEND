@@ -21,31 +21,29 @@ look. The apps are renderers: build server data with the existing blocks and cat
 - **Paint, device facts, phone-local values, shell and data blocks**, frontend `7ddcf31`. Not switched on until V1: no
   screen can reach them.
 
-## In progress
+## In progress (build 8.9.1, started 14 Nov 2026)
 
-- **Lingo, the language bot** (`docs/lingo.md`; started 13 Nov, switch `LINGO`, off). Learning a language by talking rather
-  than tapping. ON MAIN and tested, nothing user-visible: the scheduler (FSRS), marking done on the SERVER and never in the
-  app, the store, a session's seven kinds and the psychological order they are asked in, the shared sentence bank poured in
-  from a public corpus, the bot in the bots list, and six routes under `/v1/lingo/`.
-  Holds: `tulmi/src/lingo/**`, `tulmi/src/routes/bots/lingo.ts`, `tulmi/scripts/lingo-seed.ts`, `tulmi/tests/lingo-*.test.ts`,
-  migrations **0087** and **0089**; small edits made in `bots/builtin.ts`, `bots/run.ts`, `config.ts`, `server.ts`,
-  `routes/account/account.ts`.
-  Next: its screens. They will be **vocabulary 1**, for the reason in the note below about the drawings — a lesson must never
-  answer "Open X0 again" — so no new block and no release.
-  Also next, as DATA in `shared/bots/looks.json`: Lingo's `l.*` moments. The design is **one gesture per grader reason**, so the
-  movement carries the information instead of sentiment — `l.accent` plucks the missing accent out of the air and sets it over
-  the word, `l.swap` spits the wrong letter out and catches the right one, `l.shuffle` swaps two `card` props hand to hand for
-  the right words in the wrong order, `l.mouthit` mouths the right word enormously slowly (no shake, no buzz: the bot's own
-  rule is never to be sarcastic about a mistake), `l.earcup` cups a `palm` to its ear when nothing was heard. Idling:
-  `l.hum` (the `note` parts), `l.mutter`, `l.tongue`. Two new parts wanted, an accent stroke and a letter tile, one `draw`
-  path each. The figure itself is unchanged — Blip, like every bot; only the colour and the movements differ.
-  **Two things I need from whoever owns the design:** (1) Lingo has no colour of its own. The palette's eight are all taken by
-  built-ins and `stone`, which I gave it, is also `botLook`'s FALLBACK for every bot a person makes, so Lingo looks like a
-  generic bot. It wants a ninth colour. (2) While checking that I found `bots/builtin.ts` and `experience/bots/palette.ts`
-  DISAGREE about the four shipped bots' colours (builtin says Xode pine / Keylessbord ochre / Plan sea / Travel clay;
-  palette.ts says moss / clay / ochre / sea), and `oracle`, `meet` and `lingo` have no `palette.ts` entry at all, so they fall
-  through to the fallback colour and the `spark` icon. Not mine to pick; say which is right and I will fix it in one commit.
-- Reviews of the pieces below may push small follow-up fixes to the same files.
+Calendar, reminders, focus, motion, sleep, arrival reminders, abuse-prevention signals (server now; App Attest / DeviceCheck /
+Play Integrity in the app), and their Android halves. Six jobs hold:
+- **Server, abuse prevention:** `tulmi/src/trust/**` (new), `tulmi/src/routes/trust/**`, `tulmi/src/routes/admin/trust.ts`,
+  `tulmi/src/routes/app/appScreens.ts`, `tulmi/src/http/hooks.ts`, `tulmi/src/guard/limiter.ts`, `tulmi/src/http/plugins.ts`,
+  `tulmi/src/you/usage.ts`, `tulmi/src/usage/allowance.ts`, `tulmi/src/you/deletion.ts`, `tulmi/src/observability.ts`,
+  `tulmi/src/auth/deviceLink.ts`, `tulmi/src/control/**`, the `TRUST*` lines of `config.ts`, migration 0093.
+- **Server, phone features:** `shared/types/sdui.ts`, `tulmi/src/experience/bots/kit.ts`, the `PERM_*` lines of `config.ts`,
+  plan screens and routes (planHome, planItem, planCall, planBusy, planReminders, planFocus), `bots/health*`, `routines` not
+  touched, `privacy.ts`, `you.ts`, deletion texts, docs/store-privacy.md, docs/perms.md, migration 0094.
+- **Phone:** `app/src/**` (device, sdui actions/types/registry, notifications), `app/app.config.ts`, `app/eas.json`,
+  `app/modules/tulmi-perms/**`, `app/assets/PrivacyInfo.xcprivacy`, `tools/ci/check-*.mjs`, `app/native-inputs.lock`.
+- **Android additions:** new files only under `app/modules/tulmi-perms/android/` and `app/src/device/android*`.
+- **The window's permissions and terms, after onboarding (P1)** (started 14 Nov). The window's onboarding has no terms step and no
+  permissions step at all ("the OS asks"), so a person who finishes it lands on Today and is never shown either. Adding both as steps
+  of the onboarding stage, where Blip already walks from one to the next: terms (the same words and the same
+  `PUT /v1/you/ai-consent` as the phone's card), then one permissions step for everything the window needs — microphone, camera,
+  Accessibility and Screen Recording. **The phone is not touched**, and neither is `docs/perms.md` or `config.ts`, which 8.9.1 holds.
+  It also fixes a gap in calls: the window has no `NSCameraUsageDescription` and no camera entitlement, so a video call there cannot
+  open a camera at all.
+  Holds: `TAILZU-BACKEND/tulmi/src/experience/onboard/**`; `TAILZU-DESKTOP/package.json`, `build/entitlements.mac.plist`,
+  `src/app/sdui/{permissions,core,backend,actions}.js`, `src/main/main.js` and its preload.
 
 ## Landed 14 Nov 2026 (all switched off)
 
