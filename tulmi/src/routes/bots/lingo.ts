@@ -99,8 +99,16 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const out = [];
     for (const c of courses) {
       const items = await store().items(user.id, c.target).catch(() => []);
-      // The territory draws a card per language from this one call: how it is going, and how far they have got.
-      out.push({ ...c, progress: progress(items, at), mastery: mastery(items, at) });
+      // The territory draws a card per language from this one call: how it is going, how far they have got, and
+      // what the language is CALLED. A card showing "es · from en" is not a card anybody can read, and the server
+      // is the only side that knows the names (src/lingo/languages.ts).
+      out.push({
+        ...c,
+        name: languageOf(c.target)?.name ?? c.target,
+        fromName: languageOf(c.from)?.name ?? c.from,
+        progress: progress(items, at),
+        mastery: mastery(items, at),
+      });
     }
     return reply.header("cache-control", "no-store").send({ courses: out });
   });
@@ -231,7 +239,11 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     // spoken exercise would otherwise travel with its own answer in it.
     const exercises = plan(items, course, at, sentences, shape).map((ex) => wire(ex, refOf(user.id, target, ex.item)));
     return reply.header("cache-control", "no-store")
-      .send({ exercises, progress: progress(items, at), mastery: mastery(items, at) });
+      .send({
+        exercises, progress: progress(items, at), mastery: mastery(items, at),
+        // What the language is called, so a prompt can say "in Español" rather than "in es".
+        name: languageOf(target)?.name ?? target,
+      });
   });
 
   /**

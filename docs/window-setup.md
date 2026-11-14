@@ -63,6 +63,34 @@ The camera needs more than a row: a hardened Mac build is refused the camera out
 `NSCameraUsageDescription` and `com.apple.security.device.camera`, both of which the window now ships — which is also what a
 video call needs there (`docs/rooms.md`).
 
+## When it is missed later: the card over the app
+
+Someone can say "Not now" in the step, or turn a permission off months after. What they met then was a failure with nothing to
+do about it: a dictation that only copied, a look that answered "I can't see your screen", a call whose camera button did
+nothing. So the window has the card the phone has — one permission, over the app, the page behind it blurred
+(`src/app/sdui/permCard.js`; the veil and the card are the overlay `BotCard`'s, so the two surfaces are one thing).
+
+| It goes up when | Who says so |
+|---|---|
+| A paste comes back refused for want of Accessibility | the main process (`notifyAccessibility` → `permNeeded("ax")`) |
+| Ask's look is refused for want of Screen Recording | the main process (`lookPermission(denied)`) |
+| A call cannot turn the microphone or camera on | the window (`sdui/v2/call.js`, on `NotAllowedError`) |
+| A permissions row is refused for good | the window (`askMic` / `askCam`, in place of the page's own line) |
+
+**Only while the window is on screen.** A card drawn behind a hidden window is not an ask, so `permNeeded` returns false there
+and the caller keeps what it did before — the notification. One card at a time; Escape and "Not now" close it; it closes
+itself the moment the answer turns yes, which for the two granted in System Settings is while the person is still away in
+them (it re-reads every second).
+
+**It asks the system itself where the system will ask.** The microphone and the camera: the first press is `getUserMedia`,
+which is macOS's own prompt over our window — Allow there is the whole of it. Told no once, macOS never asks again and
+Windows never asks at all, so the button becomes *Open Settings* and opens that computer's own page
+(`ms-settings:privacy-microphone` / `privacy-webcam`, or the Mac's Privacy_Microphone / Privacy_Camera). Accessibility and
+Screen Recording have no such prompt on any system — no API grants them — so their button opens the exact page, having first
+made macOS list X0 Bot there to be switched on.
+
+The words are the server's (`appKnobsData.ts`, `desktop.perm.*`), so they change with a knob push and no release.
+
 ## Taking the yes back
 
 The terms step promises the AI permission can be turned off whenever they like, so the desk's **Settings › Privacy and data**
@@ -81,5 +109,6 @@ reads two ways.
 
 - **The phone is untouched.** Make me yours, the Home card and the phone's own permissions are exactly as they were.
 - A Bots-app window still gets the first-arrival card on Home (`firstRun/arrivalCard.ts`). It asks for the microphone and
-  Accessibility too, and closes itself once both are on — which, after this step, they are.
+  Accessibility too, and closes itself once both are on — which, after this step, they are. That card is a screen's node, drawn
+  by the server; the one above is the window's own, because only this side knows a paste came back refused.
 - Notifications are not a row: a window shows the server's notices without a grant to ask for.

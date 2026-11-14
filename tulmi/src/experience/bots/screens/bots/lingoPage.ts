@@ -25,6 +25,7 @@ import {
   when, type BotsCtx,
 } from "../../kit.js";
 import { screen, type BotsScreen } from "../../registry.js";
+import { field, inputBox } from "./parts.js";
 import { LINGO_SLUG } from "../../../../bots/builtin.js";
 import type { Exercise } from "../../../../lingo/session.js";
 import type { Gesture, Mastery, Performance } from "../../../../lingo/set.js";
@@ -33,24 +34,29 @@ import type { Progress } from "../../../../lingo/session.js";
 
 const PATH = "/v1/lingo";
 
-/** A course as the territory reads it: what is kept, plus the two numbers the card draws. */
+/** A course as the territory reads it: what is kept, the two numbers the card draws, and what to call it. */
 export interface CourseView extends Learner {
+  /** The language's own name ("Español"), from the server. Falls back to the tag only if it has none. */
+  name?: string;
+  /** The language it is taught in, by its own name ("English"). */
+  fromName?: string;
   progress: Progress;
   mastery: Mastery;
 }
 export interface TerritoryData { courses: CourseView[] }
 export interface LanguageRow { tag: string; name: string; en: string }
 export interface PickerData { from: string | null; fromName: string | null; suggested: LanguageRow[]; languages: LanguageRow[] }
-export interface SetData { exercises: Exercise[]; progress: Progress; mastery: Mastery }
+/** A set, and what the language is called so a prompt can name it. */
+export interface SetData { exercises: Exercise[]; progress: Progress; mastery: Mastery; name?: string }
 
 const toast = (message: string, tone?: "error"): ActionRef => ({ kind: "toast", message, ...(tone ? { tone } : {}) });
 
 /** Lingo's own colour and icon, for a card's mark. */
 const look = (ctx: BotsCtx) => ctx.live.bots.find((b) => b.slug === LINGO_SLUG) ?? botLook(LINGO_SLUG);
 
-/** A language by its own name, which is what somebody looks for. */
-const nameOf = (c: CourseView, langs: readonly LanguageRow[] = []): string =>
-  langs.find((l) => l.tag === c.target)?.name ?? c.target;
+/** A language by its own name. The server sends it; the tag is only ever a last resort. */
+const nameOf = (c: CourseView): string => c.name?.trim() || c.target;
+const fromOf = (c: CourseView): string => c.fromName?.trim() || c.from;
 
 /** "12 due · 41 words · 3 learned", leaving out what is nothing. */
 function countsLine(p: Progress): string {
@@ -75,7 +81,7 @@ function courseCard(ctx: BotsCtx, c: CourseView): Node {
     row([
       col([
         text(name, { size: 17, weight: 700, tracking: -0.2 }),
-        meta(`from ${c.from} · ${streakLine(c)}`, { size: 12 }),
+        meta(`from ${fromOf(c)} · ${streakLine(c)}`, { size: 12 }),
       ], { gap: 2 }),
       grow(),
       roundButton("close", open(SCREENS.lingoLeave, { target: c.target, name }), { size: 28, light: true, label: `Stop learning ${name}` }),
@@ -164,17 +170,16 @@ export function leaving(_ctx: BotsCtx, target: string, name: string): Node[] {
     meta("Its words and its streak go with it. Nothing else of yours is touched.", { size: 13 }),
     col([
       sectionLabel("Why are you stopping?"),
-      box([text("$state.why", { size: 15, color: C.meta })], {
-        minHeight: 84, padding: 12, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line,
-      }),
+      inputBox([field("lingo-why", "why", "A line is plenty. Or none.", { multiline: true })], { radius: RADIUS.card }),
       meta("Optional. It helps us make this better, and nothing else.", { size: 12 }),
     ], { gap: 8 }),
-    row([
-      quietButton("Keep learning", back()),
-      grow(),
-      secondaryButton("Just clean up", stop("")),
+    // Stacked, not a row: three buttons do not fit across a phone, and the render check caught the third running
+    // off the edge. Stopping is the thing they came for, so it leads; the way out without a reason sits under it.
+    col([
       primaryButton("Stop learning", stop("$state.why")),
-    ], { gap: 10, alignItems: "center" }),
+      secondaryButton("Just clean up", stop("")),
+      quietButton("Keep learning", back()),
+    ], { gap: 8 }),
   ];
 }
 
@@ -198,7 +203,7 @@ const END: Record<Performance, { head: string; body: string }> = {
 };
 
 /** One exercise, drawn by its kind. Every node here is vocabulary 1. */
-function exerciseBody(ex: Exercise, target: string): Node[] {
+function exerciseBody(ex: Exercise, target: string, lang: string): Node[] {
   // `ref` and never the word: a typed or spoken exercise must not carry its own answer to the client.
   const answer = (body: Record<string, unknown>): ActionRef => call("POST", `${PATH}/answer`, { target, ref: ex.ref, kind: ex.kind, ...body }, {
     assignTo: "mark",
@@ -223,7 +228,7 @@ function exerciseBody(ex: Exercise, target: string): Node[] {
   if (ex.kind === "chips") {
     return [
       meta(ex.prompt, { size: 14 }),
-      box([text("$state.said", { size: 18, weight: 600 })], { minHeight: 44, padding: 12, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line }),
+      inputBox([field("lingo-chips", "said", "tap the words")], { radius: RADIUS.card }),
       row(ex.chips.map((w) => chip(w, { onPress: { kind: "setState", path: "said", value: `$state.said ${w}` } })), { gap: 8, flexWrap: "wrap" }),
       primaryButton("Check", answer({ chips: "$state.said" })),
     ];
@@ -232,7 +237,7 @@ function exerciseBody(ex: Exercise, target: string): Node[] {
     return [
       head("Type what you hear"),
       secondaryButton("Play it again", { kind: "speak", text: ex.prompt, loud: true }),
-      box([text("$state.said", { size: 17, color: C.meta })], { minHeight: 48, padding: 12, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line }),
+      inputBox([field("lingo-heard", "said", "what you heard")], { radius: RADIUS.card }),
       primaryButton("Check", answer({ said: "$state.said" })),
     ];
   }
@@ -257,7 +262,7 @@ function exerciseBody(ex: Exercise, target: string): Node[] {
   return [
     meta(ex.prompt, { size: 14 }),
     head("Write it"),
-    box([text("$state.said", { size: 17, color: C.meta })], { minHeight: 48, padding: 12, borderRadius: RADIUS.card, borderWidth: 1, borderColor: C.line }),
+    inputBox([field("lingo-write", "said", lang ? `in ${lang}` : "your answer")], { radius: RADIUS.card }),
     primaryButton("Check", answer({ said: "$state.said" })),
   ];
 }
@@ -289,9 +294,9 @@ export function setScreen(ctx: BotsCtx, target: string, data: SetData | undefine
   }
   const first = exs[0]!;
   return [
-    row([meta(`1 of ${exs.length}`, { size: 12 }), grow(), quietButton("Stop for now", open(SCREENS.lingo))], { alignItems: "center" }),
+    row([meta(`1 of ${exs.length}`, { size: 12 }), grow(), meta("Stop for now", { size: 12 })], { alignItems: "center" }, open(SCREENS.lingo)),
     meter(1, exs.length, { color: look(ctx).color, height: 4 }),
-    ...exerciseBody(first, target),
+    ...exerciseBody(first, target, data?.name?.trim() ?? ""),
     markRow(),
     // The whole set is handed over at once, so Continue is the server's word on what comes next, not the app's guess.
     when({ truthy: "mark" }, primaryButton("Next", seq({ kind: "setState", path: "mark", value: null }, { kind: "setState", path: "said", value: "" }, { kind: "refresh" }))),
