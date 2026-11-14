@@ -48,10 +48,17 @@ const minuteOf = (now: number, tzOffsetMinutes: number): number => {
   return d.getUTCHours() * 60 + d.getUTCMinutes();
 };
 
-/** Pure: what to do with one push of `kind` at this minute of the person's day. */
-export function verdict(s: YouSettings, kind: string, minute: number): PushVerdict {
+/**
+ * A bot's own words (push/defaults.ts, src/bots/notifyReply.ts): it asked something, or it answered a reply typed into a
+ * notification. A person is waiting on it, so quiet hours only take the sound away — but a bot they turned off stays off.
+ */
+const BOT_CHAT = new Set(["bot_ask", "bot_reply"]);
+
+/** Pure: what to do with one push of `kind` at this minute of the person's day. `bot` is the push's own bot (data.slug), when it has one. */
+export function verdict(s: YouSettings, kind: string, minute: number, bot?: string): PushVerdict {
   const n = s.notify;
   const quiet = inQuietHours(n, minute);
+  if (BOT_CHAT.has(kind)) return bot && n.botsOff.includes(bot) ? "drop" : quiet ? "silent" : "send";
   if (NEEDS_YOU.has(kind)) return quiet ? "silent" : "send";
   if (kind === "bots_summary") return !n.summary ? "drop" : quiet ? "silent" : "send";
   if (kind === "plan_reminder") return n.botsOff.includes("plan") ? "drop" : quiet ? "silent" : "send";
@@ -81,10 +88,11 @@ export function verdict(s: YouSettings, kind: string, minute: number): PushVerdi
 
 /** The gate the push engine asks, over the stored settings. */
 export function pushGate(spending: Spending) {
-  return async (p: { userId: string; kind: string; tzOffsetMin: number | null; now: number }): Promise<PushVerdict> => {
+  return async (p: { userId: string; kind: string; data?: Record<string, string>; tzOffsetMin: number | null; now: number }): Promise<PushVerdict> => {
     const s = await spending.store.getSettings(p.userId);
     const tz = p.tzOffsetMin ?? spending.tzOf(p.userId);
-    return verdict(s, p.kind, minuteOf(p.now, tz));
+    // A bot's push says which bot it is (data.slug), so the one the person turned off stays off.
+    return verdict(s, p.kind, minuteOf(p.now, tz), p.data?.slug);
   };
 }
 

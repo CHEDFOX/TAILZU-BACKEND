@@ -1,0 +1,334 @@
+/**
+ * REPLYING TO A BOT FROM ITS NOTIFICATION (src/bots/notifyReply.ts, routes/bots/botsNotifyReply.ts; docs/widgets.md §5).
+ *
+ *   - the category is in the bootstrap's push.categories while NOTIFY_REPLY is on, and passes the phone's own cleanCategories rules
+ *   - a bot's push carries the category, its data and its conversation only while the switch is on
+ *   - the route: another person's bot, nothing typed, too much typed, too many in an hour
+ *   - one press, one reply: the same key again is the first answer, not a second model run
+ *   - no AI permission: no model is asked, and a push says to open X0
+ *   - the bot's answer comes back as a push on the same conversation
+ *   - the switch off: 404 and no category anywhere
+ *
+ * The model is never asked: the bot's chat is a fake throughout.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import Fastify from "fastify";
+
+vi.hoisted(() => {
+  process.env.OPENROUTER_API_KEY = "k";
+  process.env.GROQ_API_KEY = "k";
+  process.env.DEV_SKIP_AUTH = "true";
+  process.env.NODE_ENV = "test";
+});
+
+const A_ = "11111111-1111-4111-8111-111111111111"; // Aanya
+const B_ = "22222222-2222-4222-8222-222222222222"; // somebody else
+const EMAIL: Record<string, string> = { [A_]: "aanya@example.in", [B_]: "other@example.in" };
+
+vi.mock("../src/auth/supabase.js", async (orig) => {
+  const real = await orig<typeof import("../src/auth/supabase.js")>();
+  return { ...real, resolveUser: async (h: string | undefined) => { const id = h?.replace(/^Bearer\s+/i, "").trim(); return id && EMAIL[id] ? { id, email: EMAIL[id], emailConfirmed: true } : null; } };
+});
+
+/** What the route pushes. The real push/index.ts needs an engine and Supabase; this is the one seam it uses. */
+const pushes: Array<{ userId: string; kind: string; p: Record<string, unknown>; key: string }> = [];
+vi.mock("../src/push/index.js", () => ({
+  notifyBot: async (userId: string, kind: string, p: Record<string, unknown>, key: string) => { pushes.push({ userId, kind, p, key }); },
+  pushEngine: () => null,
+}));
+
+const notifyReply = await import("../src/bots/notifyReply.js");
+const { BOT_REPLY_CATEGORIES, BOT_REPLY_CATEGORY, NotifyReplies, NotifyReplyError, REPLY_MAX, askMessage, lineOf, notifyReplyOn, resetNotifyReplyForTests, threadIdOf } = notifyReply;
+const { registerNotifyReplyRoutes } = await import("../src/routes/bots/botsNotifyReply.js");
+const { withAppKnobs } = await import("../src/experience/appKnobs.js");
+const { resetConfigForTests } = await import("../src/config.js");
+const { verdict } = await import("../src/you/push.js");
+const { DEFAULT_SETTINGS } = await import("../src/you/settings.js");
+
+const RL = { rateLimit: { max: 10_000, timeWindow: 60_000 } };
+
+/** NOTIFY_REPLY and its friends, for one block of tests. */
+function switches(o: { on: boolean; users?: string; perHour?: number }): void {
+  process.env.NOTIFY_REPLY = o.on ? "true" : "false";
+  process.env.NOTIFY_REPLY_USERS = o.users ?? "";
+  process.env.NOTIFY_REPLY_PER_HOUR = String(o.perHour ?? 20);
+  resetConfigForTests();
+}
+
+// ------------------------------------------------------------------ the phone's own rules, mirrored
+
+/**
+ * cleanCategories, as the phone has it (F:app/src/notifications/categoriesCore.ts): a category id of letters, digits and _, at most
+ * 40; a button id [a-z0-9_] at most 24, unique across every category; at most 4 buttons; and a `call` to a /v1/ path with nothing in
+ * it that could leave the API. A category whose every button is dropped is not registered at all, so a bad one is simply invisible.
+ */
+const CAT_ID = /^[A-Za-z0-9_]{1,40}$/;
+const BUTTON_ID = /^[a-z0-9_]{1,24}$/;
+const METHODS = new Set(["GET", "POST", "PUT", "DELETE"]);
+// eslint-disable-next-line no-control-regex
+const apiPath = (p: unknown): boolean => typeof p === "string" && p.startsWith("/v1/") && !/[\\@\s\u0000-\u001f\u007f]|\/\/|\/\.\.?(\/|$)/.test(p);
+
+/** What the phone would keep of one category: null when it would register nothing. */
+function phoneWouldKeep(c: Record<string, any>, seenButtons: Set<string>): { id: string; buttons: string[] } | null {
+  if (typeof c?.id !== "string" || !CAT_ID.test(c.id)) return null;
+  const kept: string[] = [];
+  for (const a of (Array.isArray(c.actions) ? c.actions : []).slice(0, 4)) {
+    if (typeof a?.id !== "string" || !BUTTON_ID.test(a.id) || seenButtons.has(a.id)) continue;
+    if (typeof a.title !== "string" || !a.title.trim()) continue;
+    const ok = (typeof a.act === "string" && BUTTON_ID.test(a.act)) || a.open === true
+      || (a.call && typeof a.call.method === "string" && METHODS.has(String(a.call.method).toUpperCase()) && apiPath(a.call.path));
+    if (!ok) continue;
+    kept.push(a.id);
+    seenButtons.add(a.id);
+  }
+  return kept.length ? { id: c.id, buttons: kept } : null;
+}
+
+/** The templates the phone can fill: "{data.<field>}" and "{text}", nothing else (fillTemplate). */
+const TEMPLATE = /\{(data\.[A-Za-z0-9_]+|text)\}/g;
+const templatesIn = (v: unknown): string[] => {
+  if (typeof v === "string") return [...v.matchAll(TEMPLATE)].map((m) => m[0]!);
+  if (Array.isArray(v)) return v.flatMap(templatesIn);
+  if (v && typeof v === "object") return Object.values(v).flatMap(templatesIn);
+  return [];
+};
+/** Anything in braces at all, so a template the phone could NOT fill is caught rather than sent as literal text. */
+const bracedIn = (v: unknown): string[] => {
+  if (typeof v === "string") return [...v.matchAll(/\{[^}]*\}/g)].map((m) => m[0]!);
+  if (Array.isArray(v)) return v.flatMap(bracedIn);
+  if (v && typeof v === "object") return Object.values(v).flatMap(bracedIn);
+  return [];
+};
+
+// ------------------------------------------------------------------ the fake bot and its chat
+
+const BOTS: Record<string, Array<{ slug: string; name: string; ownerId: string | null }>> = {
+  [A_]: [{ slug: "plan", name: "Plan Ease", ownerId: null }, { slug: "nani", name: "Nani", ownerId: A_ }],
+  [B_]: [{ slug: "plan", name: "Plan Ease", ownerId: null }],
+};
+
+function fakes() {
+  const said: Array<{ userId: string; slug: string; text: string }> = [];
+  const bots = {
+    resolve: async (userId: string, ref: string) => {
+      const def = (BOTS[userId] ?? []).find((b) => b.slug === ref);
+      return def ? { def: { ...def, id: def.slug }, stored: null } : null;
+    },
+  };
+  const chat = {
+    send: async (userId: string, slug: string, text: string) => {
+      said.push({ userId, slug, text });
+      return { answer: { text: `heard: ${text}` }, turns: [] };
+    },
+  };
+  return { said, bots, chat };
+}
+
+async function server(o: { aiOk?: boolean } = {}) {
+  const { said, bots, chat } = fakes();
+  const app = Fastify();
+  registerNotifyReplyRoutes(app, { rateLimit: RL, bots: bots as never, chat: chat as never });
+  // The AI permission check the route's service uses; the real one is privacy/aiGate.ts.
+  if (o.aiOk === false) {
+    const { installAiCheck } = await import("../src/privacy/aiGate.js");
+    installAiCheck(async () => false);
+  }
+  await app.ready();
+  return { app, said };
+}
+
+const post = (app: any, who: string, slug: string, body: unknown) =>
+  app.inject({ method: "POST", url: `/v1/bots/${slug}/notify-reply`, headers: { authorization: `Bearer ${who}` }, payload: body });
+
+beforeEach(async () => {
+  pushes.length = 0;
+  resetNotifyReplyForTests();
+  const { installAiCheck } = await import("../src/privacy/aiGate.js");
+  installAiCheck(null);
+  switches({ on: true });
+});
+
+// ------------------------------------------------------------------
+
+describe("the category", () => {
+  it("is in the bootstrap's push.categories while the switch is on, and passes the phone's rules", () => {
+    switches({ on: true });
+    const boot = withAppKnobs({ labels: {}, flags: {} } as never, { userId: A_ }) as { flags: Record<string, any> };
+    const cats = boot.flags["push.categories"] as Array<Record<string, any>>;
+    const ours = cats.find((c) => c.id === BOT_REPLY_CATEGORY);
+    expect(ours).toBeTruthy();
+    // Every category the server lists survives the phone's own cleaning, ours among them, and no two share a button id.
+    const seen = new Set<string>();
+    const kept = cats.map((c) => phoneWouldKeep(c, seen));
+    expect(kept.filter((k) => k === null)).toEqual([]);
+    expect(kept.find((k) => k!.id === BOT_REPLY_CATEGORY)!.buttons).toEqual(["b_reply"]);
+  });
+
+  it("asks for a typing box and calls a /v1/ path with only templates the phone can fill", () => {
+    const [cat] = BOT_REPLY_CATEGORIES;
+    const [a] = cat!.actions;
+    expect(a!.input).toEqual({ placeholder: "Reply…", send: "Send" });
+    // Not a foreground button: the whole point is answering without the app.
+    expect(a!.foreground).toBe(false);
+    expect(a!.call.method).toBe("POST");
+    expect(apiPath(a!.call.path.replace("{data.slug}", "nani"))).toBe(true);
+    expect(templatesIn(a!.call)).toEqual(expect.arrayContaining(["{data.slug}", "{text}", "{data.thread}", "{data.pushId}"]));
+    // Nothing in braces that fillTemplate would not fill (a "{{slug}}" would be sent as those characters).
+    expect(bracedIn(a!.call).sort()).toEqual(templatesIn(a!.call).sort());
+  });
+
+  it("is listed for nobody while the switch is off, and only for the named accounts while it names any", () => {
+    switches({ on: false });
+    const off = withAppKnobs({ labels: {}, flags: {} } as never, { userId: A_ }) as { flags: Record<string, any> };
+    expect((off.flags["push.categories"] as Array<{ id: string }>).some((c) => c.id === BOT_REPLY_CATEGORY)).toBe(false);
+    switches({ on: true, users: A_ });
+    const mine = withAppKnobs({ labels: {}, flags: {} } as never, { userId: A_ }) as { flags: Record<string, any> };
+    const theirs = withAppKnobs({ labels: {}, flags: {} } as never, { userId: B_ }) as { flags: Record<string, any> };
+    expect((mine.flags["push.categories"] as Array<{ id: string }>).some((c) => c.id === BOT_REPLY_CATEGORY)).toBe(true);
+    expect((theirs.flags["push.categories"] as Array<{ id: string }>).some((c) => c.id === BOT_REPLY_CATEGORY)).toBe(false);
+    expect(notifyReplyOn(B_)).toBe(false);
+  });
+});
+
+describe("a bot's push", () => {
+  it("carries the category, the data and the conversation only while the switch is on", () => {
+    switches({ on: true });
+    const on = askMessage(A_, "bot_ask", { slug: "nani", name: "Nani", line: "Shall I book it?" }, "k1");
+    expect(on.category).toBe(BOT_REPLY_CATEGORY);
+    expect(on.data).toEqual({ slug: "nani", thread: "nani" });
+    expect(on.collapseId).toBe(threadIdOf("nani"));
+    expect(on.vars).toEqual({ bot: "Nani", line: "Shall I book it?" });
+    switches({ on: false });
+    const off = askMessage(A_, "bot_ask", { slug: "nani", name: "Nani", line: "Shall I book it?" }, "k1");
+    expect(off.category).toBeUndefined();
+    expect(off.collapseId).toBeUndefined();
+    // The push still goes, with the data the screen needs; it simply has no buttons, as a bot's push had none before.
+    expect(off.data).toEqual({ slug: "nani", thread: "nani" });
+  });
+
+  it("never puts a private bot's words on the lock screen", () => {
+    expect(lineOf({ slug: "nani", name: "Nani", line: "The scan came back clear." })).toBe("The scan came back clear.");
+    expect(lineOf({ slug: "nani", name: "Nani", line: "The scan came back clear.", private: true })).toBe("Sent you a message.");
+  });
+
+  it("reaches the engine with its category on the message", async () => {
+    const { PushEngine } = await import("../src/push/engine.js");
+    const { MemoryPushStore } = await import("../src/push/store.js");
+    const { PUSH_DEFAULTS } = await import("../src/push/defaults.js");
+    const store = new MemoryPushStore();
+    store.candidatesList = [{ userId: A_, tokens: [{ platform: "ios", token: "ExponentPushToken[a]", updatedAt: 0 }], lastSeenAt: null, createdAt: 0, locale: null, entitled: false, tzOffsetMin: 0 }];
+    const sent: Array<Record<string, any>> = [];
+    const sender = { send: async (m: Array<Record<string, any>>) => { sent.push(...m); return m.map(() => ({ status: "ok" as const, id: "t" })); }, receipts: async () => ({}) };
+    const engine = new PushEngine(store, sender, () => structuredClone(PUSH_DEFAULTS), { info: () => {}, warn: () => {} });
+    switches({ on: true });
+    await engine.notify(A_, askMessage(A_, "bot_ask", { slug: "nani", name: "Nani", line: "Shall I book it?" }, "k1"));
+    expect(sent[0]!.categoryId).toBe(BOT_REPLY_CATEGORY);
+    expect(sent[0]!.title).toBe("Nani");
+    expect(sent[0]!.body).toBe("Shall I book it?");
+    expect(sent[0]!.data).toMatchObject({ slug: "nani", thread: "nani", screenId: "bots.chat" });
+  });
+
+  it("stays muted when the person turned that bot off, and loses its sound in quiet hours", () => {
+    const s = structuredClone(DEFAULT_SETTINGS);
+    s.notify.quiet = true; s.notify.quietFrom = 23 * 60; s.notify.quietTo = 7 * 60;
+    expect(verdict(s, "bot_ask", 12 * 60, "nani")).toBe("send");
+    expect(verdict(s, "bot_reply", 2 * 60, "nani")).toBe("silent");
+    s.notify.botsOff = ["nani"];
+    expect(verdict(s, "bot_ask", 12 * 60, "nani")).toBe("drop");
+    expect(verdict(s, "bot_ask", 12 * 60, "plan")).toBe("send");
+  });
+});
+
+describe("the route", () => {
+  it("feeds the typed words into the bot's chat and pushes the answer back on the same conversation", async () => {
+    const { app, said } = await server();
+    const r = await post(app, A_, "nani", { text: "  yes please  ", key: "p-abcdefgh:b_reply", thread: "nani" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ ok: true, state: "sent" });
+    expect(said).toEqual([{ userId: A_, slug: "nani", text: "yes please" }]);
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0]).toMatchObject({ userId: A_, kind: "bot_reply", p: { slug: "nani", name: "Nani", line: "heard: yes please", thread: "nani", private: true } });
+  });
+
+  it("is a 404 for another person's bot, never a 403", async () => {
+    const { app, said } = await server();
+    const r = await post(app, B_, "nani", { text: "hello", key: "p-abcdefgh:b_reply" });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().code).toBe("not_found");
+    expect(said).toEqual([]);
+    expect(pushes).toEqual([]);
+  });
+
+  it("refuses nothing typed and more than the box holds", async () => {
+    const { app, said } = await server();
+    expect((await post(app, A_, "nani", { text: "   ", key: "p-abcdefgh:b_reply" })).statusCode).toBe(400);
+    expect((await post(app, A_, "nani", { text: "x".repeat(REPLY_MAX + 1), key: "p-abcdefgh:b_reply" })).statusCode).toBe(413);
+    expect(said).toEqual([]);
+  });
+
+  it("stops a flood: over the hour's count it is 429, and nothing is asked of the model", async () => {
+    switches({ on: true, perHour: 2 });
+    const { app, said } = await server();
+    expect((await post(app, A_, "nani", { text: "one", key: "p-aaaaaaaa:b_reply" })).statusCode).toBe(200);
+    expect((await post(app, A_, "nani", { text: "two", key: "p-bbbbbbbb:b_reply" })).statusCode).toBe(200);
+    const third = await post(app, A_, "nani", { text: "three", key: "p-cccccccc:b_reply" });
+    expect(third.statusCode).toBe(429);
+    expect(third.json().code).toBe("too_many");
+    expect(said).toHaveLength(2);
+  });
+
+  it("answers a retried press once: the same key is the first reply, not a second run", async () => {
+    const { app, said } = await server();
+    const body = { text: "same words", key: "p-abcdefgh:b_reply", thread: "nani" };
+    const a = await post(app, A_, "nani", body);
+    const b = await post(app, A_, "nani", body);
+    expect([a.statusCode, b.statusCode]).toEqual([200, 200]);
+    expect(said).toHaveLength(1);
+    expect(pushes).toHaveLength(1);
+  });
+
+  it("asks no model before the person has agreed to AI, and says to open X0", async () => {
+    const { app, said } = await server({ aiOk: false });
+    const r = await post(app, A_, "nani", { text: "go on", key: "p-abcdefgh:b_reply" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ ok: true, state: "open" });
+    expect(said).toEqual([]);
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0]!.p).toMatchObject({ slug: "nani", line: "Open X0 to continue." });
+  });
+});
+
+describe("the switch off", () => {
+  it("is a 404 before anything, and no push carries the category", async () => {
+    switches({ on: false });
+    const { app, said } = await server();
+    const r = await post(app, A_, "nani", { text: "hello", key: "p-abcdefgh:b_reply" });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().code).toBe("notify_reply_off");
+    expect(said).toEqual([]);
+    expect(askMessage(A_, "bot_ask", { slug: "nani", name: "Nani", line: "hi" }, "k").category).toBeUndefined();
+  });
+
+  it("is a 404 for a person the list does not name", async () => {
+    switches({ on: true, users: B_ });
+    const { app } = await server();
+    const r = await post(app, A_, "nani", { text: "hello", key: "p-abcdefgh:b_reply" });
+    expect(r.statusCode).toBe(404);
+    expect(r.json().code).toBe("notify_reply_off");
+  });
+});
+
+describe("the press's own rules", () => {
+  it("keeps a key the phone sends and makes one when there is none", () => {
+    expect(NotifyReplies.keyOf("p-abcdefgh:b_reply", "fresh")).toBe("p-abcdefgh:b_reply");
+    expect(NotifyReplies.keyOf("short", "fresh")).toBe("fresh");
+    expect(NotifyReplies.keyOf(undefined, "fresh")).toBe("fresh");
+    expect(NotifyReplies.keyOf("p-ab/cd efgh!!", "fresh")).toBe("p-abcdefgh");
+  });
+
+  it("trims and caps what was typed", () => {
+    expect(NotifyReplies.textOf("  hi  ")).toBe("hi");
+    expect(() => NotifyReplies.textOf("")).toThrow(NotifyReplyError);
+    expect(() => NotifyReplies.textOf("x".repeat(REPLY_MAX + 1))).toThrow(NotifyReplyError);
+  });
+});

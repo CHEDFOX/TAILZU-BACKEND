@@ -13,6 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { BotError, LIMITS, type AskInput, type BotAnswer, type Bots } from "../bots/index.js";
 import { table, type Table } from "./rows.js";
+import { botSaid } from "../bots/notifyReply.js";
 
 export interface ChatTurnRow {
   [k: string]: unknown;
@@ -92,14 +93,17 @@ export class BotChat {
 
   /**
    * A bot turn that no message asked for: what Plan Ease said when a call was answered (botsBots/planCall.ts). The chat page then shows
-   * how the call began, and the history gives the person's next words ("move it") their subject.
+   * how the call began, and the history gives the person's next words ("move it") their subject. `quiet` leaves the push alone.
    */
-  async note(userId: string, slug: string, text: string): Promise<void> {
+  async note(userId: string, slug: string, text: string, o: { quiet?: boolean } = {}): Promise<void> {
     const said = String(text ?? "").trim();
     if (!said) return;
     const bot = slug.toLowerCase();
     await this.turns.insert({ id: randomUUID(), user_id: userId, bot, role: "bot", text: said.slice(0, LIMITS.message), extra: {}, at_ms: this.now() });
     await this.prune(userId, bot);
+    // A bot that spoke first invites an answer: its push carries a Reply box, so the person answers without opening the app
+    // (src/bots/notifyReply.ts). `quiet` is for a turn the person is already hearing, like a call's opening line.
+    if (!o.quiet) botSaid(userId, bot, said);
   }
 
   /**

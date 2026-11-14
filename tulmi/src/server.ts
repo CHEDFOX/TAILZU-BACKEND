@@ -62,6 +62,8 @@ import { registerXodeFlowRoutes } from "./routes/bots/botsXode.js";
 import { registerBotsFirstRunRoutes } from "./routes/bots/botsFirstRun.js";
 import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
+import { registerNotifyReplyRoutes } from "./routes/bots/botsNotifyReply.js";
+import { setBotSaidHook } from "./bots/notifyReply.js";
 import { registerRoutineRoutes } from "./routes/bots/routines.js";
 import { registerAskDecideRoutes } from "./routes/ask/askDecide.js";
 import { registerTalkRoutes } from "./routes/ask/talk.js";
@@ -105,7 +107,7 @@ import { registerAssistantRoutes } from "./routes/ask/assistant.js";
 import { RunLedger, runStore, startRunSweeper } from "./runs/index.js";
 import { registerDemoRoutes } from "./routes/site/demo.js";
 import { initControl, registerControlRoutes } from "./control/index.js";
-import { initPush, notifyApproval, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
+import { initPush, notifyApproval, notifyBot, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/account/reviewCode.js";
 import { registerDeviceLinkRoutes } from "./routes/account/deviceLink.js";
@@ -484,6 +486,22 @@ registerBotsCodeRoutes(app, botsAreaDeps);
 registerXodeFlowRoutes(app, botsAreaDeps);
 registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
+// Replying to a bot from its notification (src/bots/notifyReply.ts, docs/widgets.md §5): the words typed into the push go into that
+// bot's own chat and its answer comes back as another push. 404 while NOTIFY_REPLY is off, which is the default.
+registerNotifyReplyRoutes(app, { rateLimit: AUTHED_RL, bots, chat: botsParts.chat });
+// A bot that said something into a chat on its own (botsBots/chat.ts note) pings the person with a Reply box on it, so they answer
+// from the lock screen. Nothing while NOTIFY_REPLY is off (botSaid checks the switch itself).
+setBotSaidHook((userId, slug, text) => {
+  void (async () => {
+    const found = await bots?.resolve(userId, slug);
+    if (!found) return;
+    await notifyBot(userId, "bot_ask", {
+      slug: found.def.slug, name: found.def.name, line: text, thread: found.def.slug,
+      ...(found.def.ownerId !== null ? { private: true as const } : {}),
+    }, `said:${slug}:${Date.now()}`);
+  })().catch(() => undefined);
+});
+app.addHook("onClose", async () => { setBotSaidHook(null); });
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 // The native looks: the nlook catalog the widgets and the Live Activity draw, and the art and fonts they draw with

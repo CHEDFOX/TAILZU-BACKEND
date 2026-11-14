@@ -157,6 +157,7 @@ The person's open screens are told (`livePublish`).
   | `plan_todo` | `x0_todo` (Done, Later; `x0_todo_last`, Done only, after Later three times) |
   | `plan_leave` | `x0_leave` (Open map: it opens `bots.plan.go`, which hands off to Maps) |
   | `plan_evening` | none, or `x0_move` (Move it, Keep) when it asks the Move card's question |
+  | `bot_ask`, `bot_reply` | `x0_bot_reply` (Reply, with a typing box) — put on each push by the sender, not by `push.<kind>.category`, so nothing carries it while `NOTIFY_REPLY` is off |
 
   The engine sends `categoryId` to Expo and adds `data.item`, the item the buttons answer. One push may carry its own category
   (`notify({ category })`). A kind with no category gets no buttons. Plan Ease's categories and Android channels are listed once in
@@ -171,6 +172,28 @@ The person's open screens are told (`livePublish`).
 * **Sending.** A press is written down first, then sent. If the phone is offline, or the app was put away first, it goes again
   on the next foreground with the same key, so the server does it once. A refusal is not retried: a quiet notification says to
   finish in the app.
+### Replying to a bot from its notification
+
+`src/bots/notifyReply.ts`, `src/routes/bots/botsNotifyReply.ts`. A bot says something that invites an answer; its push carries
+`x0_bot_reply`, whose one button has a typing box, so the person answers from the lock screen with the app shut. **No app update:**
+the category is a bootstrap knob and its button is a `call`, which the phone has been able to make since the categories landed.
+
+* **The push.** Kinds `bot_ask` (the bot spoke first — `botsBots/chat.ts` `note()`, unless the caller passes `quiet`) and
+  `bot_reply` (its answer to a reply typed into a notification). Both open `bots.chat` and carry `data.slug` and `data.thread`.
+  One bot conversation is one notification: the engine's collapse id (`botchat-<slug>`) is the iOS collapse id and the Android
+  tag, so a back-and-forth stacks instead of piling up. A person's own bot is private, so its body says *Sent you a message.*
+  rather than the words; a built-in says its line.
+* **The button.** `POST /v1/bots/{data.slug}/notify-reply` with `{ text: "{text}", thread: "{data.thread}", key: "{data.pushId}" }`
+  — only templates `fillTemplate` / `fillBody` can fill.
+* **The route.** The session's own bots only (anyone else's is a 404, never a 403); the text is trimmed and capped at 2000; the
+  `key` makes one press one reply, so the phone's offline retry never runs the model twice; `NOTIFY_REPLY_PER_HOUR` (20) replies an
+  hour per person. The words go into that bot's chat through the same door the app uses — same history, same tools, same rules —
+  and the answer comes back as a `bot_reply` push on the same conversation. **No AI permission yet** (`privacy/aiGate.ts`): no
+  model is asked, and a push says *Open X0 to continue.* Quiet hours and "What pings you" apply as for any push
+  (`you/push.ts`: quiet hours take the sound away, a bot the person turned off is dropped).
+* **Launch dark.** `NOTIFY_REPLY` (off), `NOTIFY_REPLY_USERS` (comma list of accounts; empty means everyone, with the switch on).
+  While off, the category is in nobody's bootstrap, no push carries it, and the route answers 404 `notify_reply_off`.
+
 * **iOS** asks for background time while it sends (the bridge's `beginBackgroundWork`).
 * **Android** runs a press with the app closed in an expo-task-manager task (`src/notifications/backgroundTask.ts`), switched by
   `push.actions.backgroundTask`.
@@ -216,7 +239,7 @@ Its labels:
 | `widgets.action.*` | the buttons' words |
 | `widgets.time.*` | how a time is written |
 
-**The push engine**: `push.<kind>.category`.
+**The push engine**: `push.<kind>.category`; `push.bot_ask.*` and `push.bot_reply.*` (enabled, screenId, title, body).
 
 **App knobs** (bootstrap; `tools/knobs/app-knobs.json`):
 
@@ -237,6 +260,10 @@ Its labels:
 * a reply's key;
 * the item ids;
 * categories per push kind.
+
+`npx vitest run tests/notify-reply.test.ts` covers replying to a bot from its notification: the category in the bootstrap and
+against the phone's own `cleanCategories` rules, the push's category / data / conversation on and off the switch, the route's
+refusals, one press one reply, the AI permission gate, and the answer coming back.
 
 The phone's pure parts have `node --test` tests: `src/widgets/nowCore.test.ts`, `src/notifications/categoriesCore.test.ts` and
 `src/quickActions/quickActionsCore.test.ts`.

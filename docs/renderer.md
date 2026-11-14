@@ -62,6 +62,7 @@ this against `app/native-inputs.lock`; run it with `--write` after an addition.
 | **Widgets, Live Activity, Android notice, key prints** | add a design to the catalog and a `targets` rule naming who sees it | `shared/native/looks.json`; `PUT /v1/admin/native/looks` |
 | **Location, one contact, workouts** | the actions `location.area`, `contact.pick`, `health.sync` | `shared/types/sdui.ts`; `botsPlaces.ts`, `spaces/pickContact.ts`, `screens/bots/health.ts` |
 | **Live reload of a screen** | `page(ctx, { live: [topic] })` plus `live.publish` on the write path | `live/bus.ts` |
+| **Reply to a bot from its notification** | give the push the `x0_bot_reply` category and `data.slug` / `data.thread`; the typed words land on `POST /v1/bots/:slug/notify-reply` (server only, no app update) | `bots/notifyReply.ts`, `routes/bots/botsNotifyReply.ts`; see `docs/widgets.md` §5 |
 
 **Paint, today.** On the phone use `shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset` and `elevation`.
 `boxShadow`, `backgroundImage`, `filter` and `mixBlendMode` are dropped by the phone's style passthrough
