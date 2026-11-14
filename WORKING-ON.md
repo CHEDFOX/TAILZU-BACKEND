@@ -23,6 +23,15 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## In progress
 
+- **The window's permissions and terms, after onboarding (P1)** (started 14 Nov). The window's onboarding has no terms step and no
+  permissions step at all ("the OS asks"), so a person who finishes it lands on Today and is never shown either. Adding both as steps
+  of the onboarding stage, where Blip already walks from one to the next: terms (the same words and the same
+  `PUT /v1/you/ai-consent` as the phone's card), then one permissions step for everything the window needs — microphone, camera,
+  Accessibility and Screen Recording. **The phone is not touched.**
+  It also fixes a gap in calls: the window has no `NSCameraUsageDescription` and no camera entitlement, so a video call there cannot
+  open a camera at all.
+  Holds: `TAILZU-BACKEND/tulmi/src/experience/onboard/**`; `TAILZU-DESKTOP/package.json`, `build/entitlements.mac.plist`,
+  `src/app/sdui/{permissions,core,backend,actions}.js`, `src/main/main.js` and its preload.
 - Reviews of the pieces below may push small follow-up fixes to the same files.
 
 ## Landed 14 Nov 2026 (all switched off)
