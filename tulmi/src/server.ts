@@ -546,9 +546,10 @@ if (connectors && meetService()) {
   });
   app.addHook("onClose", async () => { stopAutoJoin(); });
 }
-// Calls (src/rooms, docs/rooms.md): our own video and audio rooms, carried by LiveKit. The mail bot makes its calls under a business
-// (routes/bots/mail.ts); the host's call, the link's way in and LiveKit's webhook are here. Every minute: calls too long or over the day's
-// minutes closed, rooms unused for a month ended, the lobby swept.
+// Calls (src/rooms, docs/rooms.md): our own video and audio rooms, carried by Cloudflare's Realtime SFU. The mail bot makes its calls
+// under a business (routes/bots/mail.ts); the host's call, the link's way in and each seat's signalling are here. Every minute: seats gone
+// quiet dropped (the SFU has no webhook, so presence is ours to hold), calls too long or over the day's minutes closed, rooms unused for a
+// month ended, the lobby swept.
 registerRoomsRoutes(app, { rateLimit: AUTHED_RL });
 if (roomService()) {
   const roomTick = setInterval(() => { void roomService()!.tick().catch((err) => app.log.warn({ err: (err as Error)?.message }, "rooms: tick failed")); }, 60_000);

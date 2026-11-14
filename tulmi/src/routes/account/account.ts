@@ -117,7 +117,7 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     if (!(await mailForAccountDelete(user.id))) req.log.error("account delete: the mail worker could not remove the businesses' mailboxes");
     // Their meetings' bots are called off and their notes' calls forgotten (src/meet); best effort, it never fails the delete.
     try { await meetService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: the meeting bot could not be called off"); }
-    // Their calls going on are closed at LiveKit (src/rooms); the rows go with the account. Best effort, it never fails the delete.
+    // Their calls are ended and emptied (src/rooms); the rows go with the account. Best effort, it never fails the delete.
     try { await roomService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: calls could not be closed"); }
 
     const summary = {

@@ -265,7 +265,7 @@ waits on the page.
 
 **Calls** (docs/rooms.md): video and audio calls of our own under the business's name. On the page, **Calls** has Start a call and the
 latest calls; one call has Join (on the app's own call screen), its link with Copy and Share, who waits with Let in, who is in, and End. Anyone
-with the link asks to come in; nobody needs an app or an account. Only while calls are switched on (`LIVEKIT_URL`), and only for the business's
+with the link asks to come in; nobody needs an app or an account. Only while calls are switched on (`SFU_APP_ID`), and only for the business's
 owner and their space's admin, never a member who answers addresses. The push `room_waiting` ("Ravi is waiting to join your call.") is with
 the mail bot's own pushes.
 

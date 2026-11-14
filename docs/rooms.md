@@ -18,39 +18,38 @@ them in. X0 Bot's apps will join from a call screen that is server data like eve
 ## 1. How it fits
 
 ```
-X0 Bot's call screen ──pass──> LiveKit <──pass── a guest (to come: our join page at x0bot.com/m/<code>)
-        │                         │
-        │ POST /v1/rooms/:id/join  │ signed webhook: who joins and leaves, a room closed
-        v                         v
-    the backend: rooms, links, the lobby, who may join, the minutes (src/rooms)
+   an app, or the link's page                          the app's own WebRTC
+        │  its offer                                            │
+        ▼                                                       ▼
+   the backend (src/rooms): the rooms, the links, the lobby, who may join, the minutes
+        │  the App Secret, which never leaves here
+        ▼
+   Cloudflare Realtime SFU: one session a person, their tracks pulled into each other's
 ```
 
-* **Hosting.** The calls themselves are on our server: the rooms, their links, the lobby, who may join, the minutes (`src/rooms`, the
-  `rooms` table). **LiveKit** carries the video and the sound between the people in a call. It is open source, so it runs in one of two
-  places, and the server doesn't mind which:
-  * **LiveKit Cloud** (to start): their servers around the world, nothing to run, a free tier and then by the minute.
-  * **A LiveKit server of our own** (later): the same software on a machine of ours. It needs bandwidth and open UDP ports, so it goes on its
-    own machine, not on the shared VPS.
-
-  Moving from one to the other is the three settings (section 8).
-* **Passes.** Nobody joins a LiveKit room without a pass, a short JWT the server signs with the project's secret for one room
-  (`rooms/livekit.ts`). A host's pass may send people away; a guest's may not. A pass names nobody: a host is `h_` and a hash of their
-  account, a guest `g_` and random letters. It lasts minutes, only until the app or the page has connected; LiveKit keeps a connected one
-  fresh.
-* **No SDK.** The passes, the server's calls to LiveKit (make a room, close it, send someone away) and its webhook's signature are plain
-  fetch and `node:crypto`.
+* **Hosting.** The calls themselves are on our server: the rooms and their links, the lobby, who may join, the minutes (`src/rooms`, the
+  `rooms` table). **Cloudflare's Realtime SFU** moves the video and the sound between the people in a call. It is the same Cloudflare the
+  Xode jobs Worker already runs on (`docs/cloudflare-jobs.md`).
+* **No client ever talks to the SFU.** The App Secret is the SFU's only credential and it has no scopes, so it stays here: an app sends us
+  its offer, we make the session and hand back the answer (`rooms/sfu.ts`, `routes/bots/rooms.ts`). That is also what keeps the lobby and
+  the day's minutes ours to enforce — there is no way round us.
+* **The SFU knows nothing of rooms.** It moves *tracks* between *sessions*: one session per person, their microphone and camera published
+  as "local" tracks named `<identity>-audio` and `<identity>-video`, and everyone else's pulled in as "remote" tracks by name. Which
+  sessions belong together is ours. That is why there is no webhook to miss, and why presence is something we hold rather than are told
+  (section 3).
+* **No SDK.** The SFU's API is plain HTTPS and `node:crypto` is not even needed: `rooms/sfu.ts` is `fetch` with a bearer header.
 
 ## 2. A call, from Start to End
 
 1. **Start a call** on the mail bot's page (Calls). The call is made under the business's own name, as the mail worker has it. The person
    can't type another name, so a call can't claim to be someone else's. It opens on its screen with its link.
 2. **Share the link**: Copy, or Share. Later the mail bot puts it in its replies with a calendar invite (section 10).
-3. **People join.** The host joins from the app's call screen (Join with video, or Audio only). Someone with the link asks to come in and
-   waits (section 3).
-4. **LiveKit tells us who is in.** Its webhook keeps who is in now, and each stretch of time people were in (a session), so the minutes are
-   known. One event is kept once however often it comes.
-5. **End the call for everyone** (on a second yes): everyone is sent away, the lobby empties, and the link stops working. A call nobody ends
-   keeps its link: people can come back to it. It is ended after 30 days unused.
+3. **Someone takes a seat.** Their app opens its microphone and camera, makes an offer, and sends it with the mids its own tracks are on.
+   We make their SFU session, publish those tracks, and hand back the answer and a **seat**.
+4. **They pull each other in.** The seat's heartbeat says who else is in the call and what each is sending; the app asks for the tracks it
+   does not have yet, answers the SFU's offer, and draws them.
+5. **End the call for everyone** (on a second yes): the seats go, the lobby empties, and the link stops working. A call nobody ends keeps
+   its link: people can come back to it. It is ended after 30 days unused.
 
 | Status | |
 | --- | --- |
@@ -58,17 +57,31 @@ X0 Bot's call screen ──pass──> LiveKit <──pass── a guest (to com
 | `live` | someone is in |
 | `ended` | its host ended it (or it went unused for 30 days); the link is dead |
 
-## 3. The lobby
+**A seat** is one person in one call: their SFU session, the tracks they send, and a bearer their app holds. Everything after joining is the
+seat's and needs nothing else — no sign-in, no room id. It is handed out only by a join that was allowed (the host signed in, or a guest the
+host let in), it is never drawn on a screen, and only its hash is stored.
+
+## 3. The lobby, and how we know who is in
 
 On by default ("Ask before letting people in").
 
-* A guest gives their name and **knocks**. They get a key that only they hold, and ask with it, every few seconds, whether they are let in.
+* A guest gives their name and **knocks**. They get a key only they hold, and ask with it every few seconds whether they are let in.
 * The host sees who waits, by name, with **Let in** and **Not now**. When the host is not in the call, they get a push: "Ravi is waiting
   to join your call." (`room_waiting`, at most every 2 minutes a call, with the mail bot's other pushes in the person's switches).
-* Let in, the guest's next ask gets their pass. Not let in, or **Removed** from the call later: their knock never gives another pass.
+* Let in, the guest may take a seat — one knock, one seat. Not let in, or **Removed** later: no seat, and their app is told it is out.
 * A knock nobody answers is forgotten after 15 minutes. At most 20 people wait at one call's door. Knocks are kept in memory: one lost to a
   restart is a guest who knocks again.
-* **Off**, people with the link come straight in, and whoever was waiting is let in at once (as many as there is room for).
+* **Off**, people with the link are let straight in, and whoever was waiting is let in at once.
+
+**Presence is held, not received.** There is no webhook from the SFU, so a seat says it is still there every couple of seconds
+(`POST /v1/rooms/seat/live`, which is also how the app learns who else is in and what they are sending). A seat that has said nothing for
+**20 seconds** is not in the call any more: the next heartbeat or the minute's tick drops it. That is how someone closing their phone, losing
+the network or force-quitting leaves a call, without anything having to tell us. Whoever is calling `live` is in the call by the fact of
+calling, so a quiet network drops only the person who went quiet.
+
+**Sending someone away** takes their seat: nobody pulls their tracks any more, and their own app is told it is out. The SFU has no way to
+shut a session someone else opened, so a client that ignored that would still be publishing into the void — nobody in the call subscribes to
+it.
 
 ## 4. In the apps
 
@@ -88,29 +101,35 @@ https clip, and a call's track is not a URL.
 
 | Piece of `live` | What it is |
 | --- | --- |
-| `live.join`, `live.set`, `live.leave` | join a session from a pass the server gives (`POST /v1/rooms/:id/join`); change the mic, camera, speaker, screen or facing; hang up |
-| What it writes into state | where the session stands, the person's own mic and camera, and the people in it (name, speaking, mic, camera) — so every word and button on the screen is an expression over that state |
-| `Live`, a node | draws one person's live track: the person themselves, whoever is speaking, or someone named. A tile is `Each` over the people with a `Live` inside, so the layout is the server's |
+| `live.join`, `live.set`, `live.leave` | take a seat (the app's own offer in, the answer out); change the mic, camera, speaker or facing; hang up |
+| What it writes into state | where the call stands, the person's own mic and camera, and the people in it (name, speaking, mic, camera) — so every word and button on the screen is an expression over that state |
+| `Live`, a node | draws one person's live track: the person themselves, whoever is speaking, or someone named. A tile grid is `Each` over the people with a `Live` inside, so the layout is the server's |
 
-One block serves every live thing to come (a call, a voice bot, a live room in a space), not only this one. A phone says it has `live` only
-where its binary links WebRTC: the next store build does (Plan Ease's live call added it), so the block itself arrives over the air after
-that build, and the window gets it in a release. LiveKit's JavaScript client runs on the library already linked; LiveKit's own copy of
-WebRTC cannot come in, because changing a native package already linked would change the phone's runtime, which stays as it is
-(`docs/renderer.md`, "The runtime rule"). That needs one check on a real phone first.
+The block does the signalling loop of section 2 against the four seat routes: join, then heartbeat, pull, answer, leave. One block serves
+every live thing to come (a call, a voice bot, a live room in a space), not only this one.
+
+**Why this needs no second copy of WebRTC.** The SFU needs nothing a browser has that React Native does not: `addTransceiver` with a
+direction, offer and answer, `ontrack` carrying its transceiver, `mid`, `getStats`, data channels with `negotiated` and an `id`, and ICE
+gathering (it is not trickle: the whole offer is sent at once). All of that is in the `react-native-webrtc` the app already links for Plan
+Ease's live call, so the block is JavaScript on a library that is already there — no new native package, no runtime change
+(`docs/renderer.md`, "The runtime rule"), and it arrives over the air after the next store build. The window has WebRTC of its own.
 
 Until `live` is built, a call's page says joining comes with the app's next update. The link, the lobby and everything else already work.
 
 ## 5. Limits and the money
 
-LiveKit bills by the minute. Our limits:
+Cloudflare bills **$0.05 a gigabyte of what leaves the SFU**, with the first 1,000 GB each month free; what is published *into* it is free,
+and there is no charge per person or per minute. A two-person video call is roughly 0.9 GB an hour, so the free allowance is about a thousand
+hours of calls a month. Our limits:
 
 | | |
 | --- | --- |
 | A person's call minutes, in any 24 hours | `ROOM_DAILY_MINUTES`, 600. Over it nobody new comes in, and the minute's tick closes calls going on |
 | One call, at most | 4 hours; then it is closed (its link still works) |
-| People in one call | `ROOM_MAX_PEOPLE`, 10, the host among them; LiveKit holds the same limit |
+| People in one call | `ROOM_MAX_PEOPLE`, 10, the host among them |
 | Calls a person makes in a day | 100 |
-| The link's routes, per address | 30 looks, 10 knocks and 60 asks for an answer a minute |
+| A seat gone quiet | 20 seconds |
+| The link's routes, per address | 30 looks, 10 knocks, 60 answers and 20 joins a minute; a seat's own routes 90 a minute |
 
 ## 6. What the server answers
 
@@ -122,7 +141,7 @@ The host's (signed in, theirs alone: a call that is not theirs is `404`). The ma
 | `POST /v1/mail/businesses/:id/calls` | `{ title? }`: a call under the business's name (`201 { call }`) |
 | `GET /v1/rooms/:id` | one call: who is in, who waits |
 | `PUT /v1/rooms/:id` | `{ lobby?, title? }` |
-| `POST /v1/rooms/:id/join` | a host's pass: `{ url, pass, identity, name, room, host, expiresAt }` |
+| `POST /v1/rooms/:id/join` | `{ sdp, audioMid, videoMid? }` -> `201 { seat, identity, name, host, room, answer, people }` |
 | `POST /v1/rooms/:id/admit`, `/deny` | `{ knock }` |
 | `POST /v1/rooms/:id/remove` | `{ identity }`: a guest sent away (never the host) |
 | `POST /v1/rooms/:id/end` | ended for everyone |
@@ -132,64 +151,74 @@ The link's (public; a code that cannot be one is the same `404` as a code of no 
 | Route | |
 | --- | --- |
 | `GET /v1/rooms/guest/:code` | `{ room: { title, host, status, lobby, full } }` |
-| `POST /v1/rooms/guest/:code/knock` | `{ name }` -> `{ knock, state }`, with a pass when the lobby is off |
-| `GET /v1/rooms/guest/:code/knock/:key` | `{ knock, state: waiting \| admitted \| denied \| gone, pass? }` |
+| `POST /v1/rooms/guest/:code/knock` | `{ name }` -> `{ knock, state }` |
+| `GET /v1/rooms/guest/:code/knock/:key` | `{ knock, state: waiting \| admitted \| denied \| gone }` |
+| `POST /v1/rooms/guest/:code/join` | `{ knock, sdp, audioMid, videoMid? }` -> the same seat as above |
 
-LiveKit's: `POST /v1/rooms/livekit` (`application/webhook+json`, its `Authorization` a JWT signed with the API secret whose `sha256` is the
-body's). Unsigned: `401`. An event that could not be kept: `500`, so LiveKit sends it again.
+The seat's (the seat is the whole credential):
+
+| Route | |
+| --- | --- |
+| `POST /v1/rooms/seat/pull` | `{ seat, want: [{ identity, kind }] }` -> `{ offer, mustAnswer, tracks }` |
+| `POST /v1/rooms/seat/answer` | `{ seat, sdp }` |
+| `POST /v1/rooms/seat/live` | `{ seat, audio?, video? }` -> `{ status, people, waiting?, gone? }`. The heartbeat |
+| `POST /v1/rooms/seat/leave` | `{ seat }` |
 
 Without calls set up every route is `404 { code: "rooms_off" }`. Errors are `{ code, message }`, the message in words for a person ("The
-call is full.", "Today's call minutes are used up…").
+call is full.", "Today's call minutes are used up…"). One change at a time per seat: the SFU answers 406 to a second offer while the first is
+unanswered, so the service holds a lock per seat and a lost race is `409 room_busy`.
 
 ## 7. Privacy
 
-* **Nothing said or shown in a call reaches our server.** The video and the sound go between the people and LiveKit, encrypted on the way,
-  and nothing is recorded.
+* **Nothing said or shown in a call reaches our server.** The video and the sound go between the people and the SFU, encrypted on the way,
+  and nothing is recorded. What passes through us is the SDP of the connection, which is never logged.
 * **A link is not guessable** (ten letters, about 49 bits), and one found only lets its holder knock. The row keeps the code hashed, to find
   the call, and sealed (AES-256-GCM under a key made from `CONNECTOR_TOKEN_KEY` for this use only), so the host can share it again.
-* **Identities name nobody.** Everyone in a call sees each other's identity: a host's is a hash, a guest's random. The names shown are the
-  ones people give.
+* **A seat is a bearer**, so only its hash is stored, it never appears on a screen, and the SFU session behind it is never sent to anyone.
+* **Identities name nobody.** Everyone in a call sees each other's identity: a host's is a hash of their account, a guest's random. The names
+  shown are the ones people give.
 * **A push says the name typed and the call's title**, nothing more. Nothing a person typed is logged.
-* **The rows are the server's alone** (row level security, no policy) and go with the account. An account deleted closes its calls going on.
+* **The rows are the server's alone** (row level security, no policy) and go with the account. An account deleted ends its calls.
 
 ## 8. Configuration and deploy
 
 | Where | Key | |
 | --- | --- | --- |
-| `tulmi/.env` | `LIVEKIT_URL` | the project's address, `wss://<project>.livekit.cloud` (or our own server's) |
-| `tulmi/.env` | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | **secret**: the project's key pair. All three set: calls are on |
+| `tulmi/.env` | `SFU_APP_ID` | the Realtime app's id, from Cloudflare's dashboard |
+| `tulmi/.env` | `SFU_APP_SECRET` | **secret**: its App Secret. Both set: calls are on |
 | `tulmi/.env` | `ROOM_LINK_ORIGIN` | optional: where links point, `https://x0bot.com` |
 | `tulmi/.env` | `ROOM_DAILY_MINUTES`, `ROOM_MAX_PEOPLE` | optional: 600 and 10 |
-| LiveKit's dashboard | Webhooks | `https://api.x0bot.com/v1/rooms/livekit`, set once |
 
-Migration 0091 (`rooms`), run by the deploy with the others. Steps: DEPLOY.md, "Calls".
+There is no webhook to register. Migration 0091 (`rooms`), run by the deploy with the others. Steps: DEPLOY.md, "Calls".
 
 ## 9. Tests
 
 All in `tulmi/tests/`.
 
-* `rooms-livekit.test.ts`: a pass for one room, a host's with the room's admin and a guest's without; a JWT refused tampered, unsigned,
-  expired or of another secret; the webhook only when signed over the exact body; the server's calls to LiveKit, each signed for just what it
-  does, a room already gone taken as gone, a refusal or a failure in words without the secret; a link's code made, read back from what a
-  person pastes, and sealed.
-* `rooms-service.test.ts`: a call made with its link, sealed; the lobby (waiting, the host told once and not while in the call, let in with a
-  guest's pass, not let in, forgotten); the lobby off; the host's pass naming no account; another person's call none of theirs; the webhook's
-  people and minutes, once per event; the day's minutes; a full call; a guest sent away; a call ended; the tick; an account deleted.
-* `rooms-routes.test.ts`: off without calls; the host's routes with the person's own id and only the checked fields; the link's routes; the
-  webhook signed over the exact bytes; the mail bot's calls under the business's own name, for its owner and their space's admin, never for a
-  member who only answers addresses.
+* `rooms-sfu.test.ts`: a session made, tracks published by the mids of an offer, someone else's pulled in, the answer sent, tracks closed;
+  the App Secret in every header and in no error; a refusal, a busy session (406) and a network failure each in words for a person; an
+  answer that is not one refused; a link's code made, read back from what a person pastes, and sealed.
+* `rooms-service.test.ts`: a call made with its link sealed; a seat taken (the answer out, the bearer kept only as a hash, the SFU session
+  never on a screen), audio-only, and an app that joins again replacing its own seat; the lobby (waiting, the host told once and not while
+  in the call, a seat only once let in, one knock one seat, the lobby off); pulling someone else's tracks and never one's own; the heartbeat
+  carrying who is in and what each sends, a camera turned off, and a seat gone quiet leaving by itself; the day's minutes; a full call;
+  someone sent away; a call ended; the tick; an account deleted.
+* `rooms-routes.test.ts`: off without calls; the host's routes with the person's own id and only the checked fields (the name is their
+  profile's, never the body's); a bad offer refused before the service hears of it; the link's routes; the seat routes taking the seat as
+  their one credential and refusing anything that is not one; the mail bot's calls under the business's own name, for its owner and their
+  space's admin, never for a member who only answers addresses.
 * `rooms-page.test.ts`: Calls on the mail page, only when on; one call's screen: the link, the lobby, who is in, End on a second yes,
   joining said to come with the next update and never a web page, an ended call, one that isn't there; every tree through the app's linter.
 
-**Needs a live check**: a LiveKit project set up, a call made from the mail page, its webhook reaching the server signed.
+**Needs a live check**: a Cloudflare Realtime app set up, and a real call between two devices once the `live` block is built.
 
 ## 10. Still to come
 
-1. **Joining from the apps**: the `live` block (section 4), then the call screen as server data over its state. Vocabulary 2 has landed,
-   so nothing blocks it but the block itself. First, one check on a real phone: LiveKit's JavaScript client on the WebRTC the next store
-   build links.
+1. **Joining from the apps**: the `live` block (section 4), then the call screen as server data over its state. Vocabulary 2 has landed, so
+   nothing blocks it but the block itself.
 2. **The mail bot puts calls in emails**: the AI sees when a customer wants to talk and its reply carries the link and a calendar invite
    from the business's address; Add a call when writing. And **our join page** at `x0bot.com/m/<code>` for people without X0 Bot (the
    website sends `/m/*` to this server), using the link's routes above.
-3. **AI notes from a call** (a silent participant, the transcript into Notes) and the follow-up email.
+3. **AI notes from a call**: a WebSocket adapter on the SFU sends the call's audio to us as PCM, which is what the Notes pipeline needs. The
+   meeting bot pays Recall.ai $0.65–0.75 an hour for the same thing (`docs/meet.md`).
 4. Later: joining by phone number, recordings, and a space's admin seeing their people's calls.

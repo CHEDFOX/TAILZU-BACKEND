@@ -48,8 +48,8 @@ export function registerRequestHooks(app: FastifyInstance): void {
     "application/json",
     { parseAs: "string", bodyLimit: 1 * 1024 * 1024 },
     (req, body, done) => {
-      // Razorpay, GitHub and LiveKit sign the body exactly as sent, so their webhooks keep it (LiveKit's own type is kept by routes/bots/rooms.ts).
-      if (typeof body === "string" && (req.url.startsWith("/v1/billing/razorpay") || req.url.startsWith("/v1/code/github/webhook") || req.url.startsWith("/v1/rooms/livekit"))) {
+      // Razorpay and GitHub sign the body exactly as sent, so their webhooks keep it.
+      if (typeof body === "string" && (req.url.startsWith("/v1/billing/razorpay") || req.url.startsWith("/v1/code/github/webhook"))) {
         (req as unknown as { rawBody?: string }).rawBody = body;
       }
       const raw = typeof body === "string" ? body.trim() : "";

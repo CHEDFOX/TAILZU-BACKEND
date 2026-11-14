@@ -1,19 +1,39 @@
 /**
  * CALLS' ROWS (migration 0091_rooms.sql): one row a room. Its link's code is kept twice: hashed, to find the room by a link, and sealed, so its
- * host can see and share the link again (rooms/link.ts). Who is in it now and every time people were in it are on the row, from LiveKit's
- * webhook; who waits in the lobby is not (rooms/lobby.ts, in memory: a knock lasts minutes).
+ * host can see and share the link again (rooms/link.ts). Who is in it now, and every time people were in it, are on the row; who waits in
+ * the lobby is not (rooms/lobby.ts, in memory: a knock lasts minutes).
+ *
+ * A SEAT is one person in the call: their connection at the SFU, the tracks they send, and the hash of the bearer their app holds. The
+ * bearer itself is never stored, and a seat is never drawn on a screen (service.ts `view` turns seats into PersonView).
  *
  * The server's alone (no policy lets a token read or write them); they go with the account. The memory twin is what tests and a server with
  * no Supabase use; it is bounded.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "../auth/supabase.js";
-import type { PersonView, RoomStatus } from "./types.js";
+import type { RoomStatus } from "./types.js";
 
 /** One stretch of time people were in the room: from the first in to the last out (end null while it goes on). */
 export interface Session { start: number; end: number | null }
 /** A room keeps its last this many sessions (the minutes of older ones stay in `minutes`). */
 export const SESSIONS_MAX = 50;
+
+/** One person in a call, as the row keeps them. */
+export interface Seat {
+  identity: string;
+  /** sha256 of the bearer their app holds (service.ts seatHash). */
+  seatHash: string;
+  /** Their own connection at the SFU. */
+  sessionId: string;
+  name: string;
+  role: "host" | "guest";
+  /** The names of the tracks they publish; absent while that one is off. */
+  audio?: string;
+  video?: string;
+  since: number;
+  /** Their last word from the call (the live poll). A seat that goes quiet is dropped. */
+  seen: number;
+}
 
 export interface Room {
   id: string;
@@ -25,7 +45,7 @@ export interface Room {
   title: string;
   lobby: boolean;
   status: RoomStatus;
-  people: PersonView[];
+  people: Seat[];
   sessions: Session[];
   /** Minutes of sessions that ended and fell off `sessions`. */
   pastMinutes: number;
@@ -82,7 +102,7 @@ export class MemoryRoomStore implements RoomStore {
 
 interface Row {
   id: string; user_id: string; code_hash: string; code_enc: string; business_id: string | null; host: string; title: string; lobby: boolean;
-  status: RoomStatus; people: PersonView[] | null; sessions: Session[] | null; past_minutes: number | null; created_at: string; updated_at: string;
+  status: RoomStatus; people: Seat[] | null; sessions: Session[] | null; past_minutes: number | null; created_at: string; updated_at: string;
   ended_at: string | null;
 }
 

@@ -1199,16 +1199,16 @@ mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/pos
    `docker compose --profile mail stop mail-worker`. The mailboxes and their mail stay on the mail server.
 
 
-### Calls: our own video and audio calls (`LIVEKIT_URL`)
+### Calls: our own video and audio calls (`SFU_APP_ID`)
 
 Video and audio calls of our own, started from the mail bot ("Start a call" on a business's page). Its link (`x0bot.com/m/<code>`) lets anyone
-ask to come in, and the host lets them in. X0 Bot's apps join from their own call screen. The rooms, the links, the lobby and the minutes are
-on this server. LiveKit carries the video and the sound. Without the three settings there are no calls, and `/v1/rooms/*` answers
-`404 rooms_off`. Full story: `docs/rooms.md`.
+ask to come in, and the host lets them in. The rooms, the links, the lobby, who may join and the minutes are on this server; Cloudflare's
+Realtime SFU moves the video and the sound. Without the two settings there are no calls, and `/v1/rooms/*` answers `404 rooms_off`. Full
+story: `docs/rooms.md`.
 
-1. **A LiveKit project.** Sign up at livekit.io (LiveKit Cloud) and make a project. In its settings, under Keys, make an API key. Copy three
-   things: the project's URL (`wss://<project>.livekit.cloud`), the API key and the API secret. (Later, a LiveKit server of our own on its
-   own machine takes the same three settings, so nothing else changes. Not on this VPS: video needs a lot of bandwidth and open UDP ports.)
+1. **A Cloudflare Realtime app.** In the Cloudflare dashboard, Realtime, create an app (the SFU, not RealtimeKit). Copy its **App ID** and
+   its **App Secret**. Billing is $0.05 a gigabyte of what leaves the SFU, with the first 1,000 GB a month free and nothing charged per
+   person or per minute; about a thousand hours of two-person calls a month cost nothing.
 2. **Put them in `tulmi/.env` on the server.** The secret by hand, so it never sits in the shell's history:
 
    ```bash
@@ -1216,24 +1216,24 @@ on this server. LiveKit carries the video and the sound. Without the three setti
    ```
 
    ```
-   LIVEKIT_URL=wss://<project>.livekit.cloud
-   LIVEKIT_API_KEY=<the API key>
-   LIVEKIT_API_SECRET=<the API secret>
+   SFU_APP_ID=<the App ID>
+   SFU_APP_SECRET=<the App Secret>
    ```
 
    Optional: `ROOM_LINK_ORIGIN` (where links point, `https://x0bot.com`), `ROOM_DAILY_MINUTES` (a person's call minutes per 24 hours, 600) and
-   `ROOM_MAX_PEOPLE` (the most people in one call, 10). With only some of the three set, the server warns at start.
-3. **Tell LiveKit where to send who joins and leaves.** In the project's settings, Webhooks, add `https://api.x0bot.com/v1/rooms/livekit`,
-   signed with the same API key. This is set once.
+   `ROOM_MAX_PEOPLE` (the most people in one call, 10). With only one of the two set, the server warns at start.
+3. **No webhook to register.** The SFU has no idea of a room, so there is nothing to call back: who is in a call is held here, by a
+   heartbeat from each person's app (`docs/rooms.md` section 3). The App Secret never leaves the server — an app sends us its offer and we
+   hand back the answer — so there is nothing to put in a phone either.
 4. **Migration and deploy.** 0091 makes `rooms`, the server's alone and deleted with the account. It runs on deploy with the others
    (`tulmi/supabase/migrate-pending.sh`; by hand: `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0091"`).
 
    ```bash
    ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/ship.sh'
    ```
-5. **Check.** On the mail bot's page, Calls has Start a call. A new call shows its link with Copy and Share. Joining needs an app build that
-   has the call screen (the `Room` capability). Until then the call's screen says so.
-6. **Back out:** remove the three settings from `tulmi/.env` and `./deploy/ship.sh` (Calls leaves the mail page). The rows stay.
+5. **Check.** On the mail bot's page, Calls has Start a call. A new call shows its link with Copy and Share. Joining needs the `live` block
+   in the apps (`docs/rooms.md` section 4); until then the call's screen says so.
+6. **Back out:** remove the two settings from `tulmi/.env` and `./deploy/ship.sh` (Calls leaves the mail page). The rows stay.
 
 ### Meetings: a bot in your video calls (`RECALL_API_KEY`)
 

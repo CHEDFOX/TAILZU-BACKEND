@@ -42,8 +42,9 @@ look. The apps are renderers: build server data with the existing blocks and cat
 ## Notes from other sessions
 
 - Calls (our own video and audio calls from the mail bot; `docs/rooms.md`), branch `claude/peaceful-brown-4trsgb`, not yet on main.
-  It takes migration **0091** (`0091_rooms.sql`), and adds `LIVEKIT_*` and `ROOM_*` settings to `config.ts` (its own block, beside the
-  meeting bot's). Server only: it holds none of the renderer's files, and no screen of it states `needs`.
-  Joining from the apps needs a **14th block, `live`** (a live session: join, change and leave, the people in it written into state, and
-  a node that draws one person's live track). The `media` block's `Video` cannot stand in: it is expo-video playing an https clip, and a
-  call's track is not a URL. Nobody is building `live` yet; `docs/rooms.md` section 4 has the shape it would take.
+  It takes migration **0091** (`0091_rooms.sql`), and adds `SFU_APP_ID`, `SFU_APP_SECRET` and the `ROOM_*` settings to `config.ts`.
+  Cloudflare's Realtime SFU carries the media: $0.05/GB out with the first 1,000 GB free, no per-minute charge, no webhook, and the App
+  Secret never leaves the server. Server only: it holds none of the renderer's files, and no screen of it states `needs`.
+  Joining from the apps needs a **14th block, `live`** (take a seat, change the mic and camera, leave, the people in it written into
+  state, and a node that draws one person's track). The `media` block's `Video` cannot stand in: it is expo-video playing an https clip.
+  The SFU needs nothing beyond the `react-native-webrtc` the app already links, so `live` is JavaScript and no runtime bump.

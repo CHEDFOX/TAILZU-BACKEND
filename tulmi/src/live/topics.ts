@@ -15,7 +15,7 @@
  *   code       Xode's lists: jobs, projects, rules, PR care
  *   job:<id>   one Xode job: its progress, its question, its end
  *   notes      the meeting notes list;  note:<id>  one meeting's notes (its transcript grows while it records)
- *   room:<id>  one call (src/rooms): who is in it, who waits at its door (published by rooms/service.ts, from LiveKit's webhook and the lobby)
+ *   room:<id>  one call (src/rooms): who is in it, who waits at its door (published by rooms/service.ts, from the seats and the lobby)
  *   keybot     Keylessbord: its settings, words, voices, history, stats
  *   you        You and account settings: profile, plan, notifications, connected apps
  *
