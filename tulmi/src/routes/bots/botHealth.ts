@@ -1,7 +1,12 @@
 /**
  * A FITNESS BOT'S DAYS, OVER HTTP (src/bots/healthService.ts; docs: perms §4.5).
  *
- *   POST /v1/bots/:slug/health/days { enable?, platform?, tz, days[] }  -> { on: true, kept }
+ *   POST /v1/bots/:slug/health/days { enable?, platform?, source?, sleep?, tz, days[] }  -> { on: true, kept }
+ *                                     `source` (0094): "health" (Apple Health / Health Connect) or "motion" (the iPhone's own
+ *                                     Motion & Fitness, when the person chose it instead). One bot has one source at a time.
+ *                                     `sleep` (0094): this POST asked the phone for the SLEEP type, in a request of its own, so
+ *                                     a refusal of sleep leaves steps working. Only then is a night stored, and only then does
+ *                                     `skills.healthSleep` go on.
  *   GET  /v1/bots/:slug/health/moves                                    -> { moves }   the counts the Moves line draws
  *
  * These two live here, away from `routes/bots/bots.ts`, for the same reason `bots/healthService.ts` lives away from
@@ -14,7 +19,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { resolveUser } from "../../auth/supabase.js";
 import { type Bots, isBotError } from "../../bots/index.js";
-import { healthAllowed } from "../../bots/healthGate.js";
+import { healthAllowed, motionAllowed, sleepAllowed } from "../../bots/healthGate.js";
 import { startHealthSweeper } from "../../bots/healthDays.js";
 import { attachHealth } from "../../bots/healthService.js";
 import { looksLikeKey } from "../../bots/keys.js";
@@ -77,11 +82,24 @@ export function registerBotHealthRoutes(app: FastifyInstance, deps: BotHealthRou
     const b = bodyOf(req.body);
     if (b.enable !== undefined && typeof b.enable !== "boolean") return reply.code(400).send({ code: "bad_request", message: "enable is true or false." });
     if (b.platform !== undefined && b.platform !== "ios" && b.platform !== "android") return reply.code(400).send({ code: "bad_request", message: 'platform is "ios" or "android".' });
+    if (b.source !== undefined && b.source !== "health" && b.source !== "motion") return reply.code(400).send({ code: "bad_request", message: 'source is "health" or "motion".' });
+    if (b.sleep !== undefined && typeof b.sleep !== "boolean") return reply.code(400).send({ code: "bad_request", message: "sleep is true or false." });
     const platform = phoneOf(b.platform, req.headers["user-agent"]);
-    if (!healthAllowed(platform, user.id)) return reply.code(403).send({ code: "health_off", message: "This isn't switched on yet." });
+    // THE SWITCH THAT DREW THE ROW IS THE SWITCH THAT TAKES THE DAYS (docs: perms2 §5.1). Motion & Fitness (iPhone) and the
+    // phone's own step counter (Android, 8.9.1) are their own row, behind PERM_MOTION and — on Android — PERM_MOTION_ANDROID,
+    // so a Motion POST is weighed against those and not against the Apple Health / Health Connect ones: with PERM_HEALTH_IOS
+    // off, a person who tapped Continue on the Motion card saw the prompt and then a 403.
+    if (b.source === "motion") {
+      if (!motionAllowed(platform)) return reply.code(403).send({ code: "motion_off", message: "This isn't switched on yet." });
+    } else if (!healthAllowed(platform, user.id)) {
+      return reply.code(403).send({ code: "health_off", message: "This isn't switched on yet." });
+    }
+    // Sleep has its own pair of switches (docs: perms2 §6.2): a POST that asks to count nights for a phone whose sleep switch
+    // is off is refused, so a night can never arrive behind a row the server would not have drawn.
+    if (b.sleep === true && !sleepAllowed(platform, user.id)) return reply.code(403).send({ code: "sleep_off", message: "This isn't switched on yet." });
     try {
-      const r = await health.sync(user.id, slugOf(req), b, { enable: b.enable === true });
-      req.log.info({ bot: slugOf(req), days: r.kept }, "bots: health days stored");
+      const r = await health.sync(user.id, slugOf(req), b, { enable: b.enable === true, source: b.source, sleep: b.sleep === true });
+      req.log.info({ bot: slugOf(req), days: r.kept, source: b.source === "motion" ? "motion" : "health", sleep: b.sleep === true }, "bots: health days stored");
       return reply.send(r);
     } catch (err) { return fail(req, reply, err); }
   });

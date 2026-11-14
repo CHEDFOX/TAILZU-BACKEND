@@ -15,6 +15,8 @@ import type { MediaService } from "../../media/service.js";
 import { registerAccountDeletionRoutes } from "./accountDeletion.js";
 import { mailForAccountDelete } from "../../mail/worker.js";
 import { meetService } from "../../meet/service.js";
+import { roomService } from "../../rooms/service.js";
+import { tombstoneAccount } from "../../trust/store.js";
 import { unauthorized } from "../../http/helpers.js";
 
 export interface AccountRouteDeps {
@@ -116,6 +118,8 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     if (!(await mailForAccountDelete(user.id))) req.log.error("account delete: the mail worker could not remove the businesses' mailboxes");
     // Their meetings' bots are called off and their notes' calls forgotten (src/meet); best effort, it never fails the delete.
     try { await meetService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: the meeting bot could not be called off"); }
+    // Their calls are ended and emptied (src/rooms); the rows go with the account. Best effort, it never fails the delete.
+    try { await roomService()?.forAccountDelete(user.id); } catch (err) { req.log.error({ err: (err as Error)?.message }, "account delete: calls could not be closed"); }
 
     const summary = {
       personality: false, profile: false, usageEvents: 0,
@@ -170,6 +174,16 @@ export function registerAccountRoutes(app: FastifyInstance, deps: AccountRouteDe
     // own: an invite cascades from its SPACE, and an outbox row has no foreign key to anyone. Both hold someone else's address,
     // kept only because this person typed or picked it, so both go with this person.
     try { await forgetInvitesOf(user.id); } catch (err) { req.log.error({ err }, "forget invites and their mail"); }
+
+    // WHAT THE ACCOUNT LEAVES FOR 30 DAYS (abuse prevention, docs/trust.md §tombstones): a one-way hash of its email
+    // address, and of the install number the app made, so deleting and signing up again does not reset the free plan.
+    // No user id, nothing readable, swept away at 30 days, and named in the privacy policy and on the delete screen.
+    //
+    // It is written HERE, and not in the seven-day sweep, because both ways out go through this function: the sweep on
+    // its day, and the immediate DELETE /v1/account the phone's delete screen calls. Just before the auth record goes,
+    // so a deletion that was cancelled, or one that fails earlier, leaves nothing. With TRUST off it writes nothing at
+    // all, and it is never in the way of the delete itself.
+    try { await tombstoneAccount(user.id); } catch (err) { req.log.error({ err }, "trust: the deletion tombstone was not written"); }
 
     // Deleting the auth user takes anything missed above with it (cascade).
     try {

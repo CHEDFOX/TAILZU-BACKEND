@@ -155,7 +155,7 @@ describe("the Supabase twin", () => {
       created_at: "2026-10-27T00:00:00.000Z", updated_at: "2026-10-27T00:00:00.000Z",
     });
     expect(made).toMatchObject({ id: ID, ownerId: ALICE, slug: "workout-buddy", colour: "sea", publicCard: false, visibility: "private" });
-    expect(made.skills).toEqual({ web: true, files: false, artifacts: false, code: false, research: false, health: false, connectors: ["google-calendar"] });
+    expect(made.skills).toEqual({ web: true, files: false, artifacts: false, code: false, research: false, health: false, healthSleep: false, healthSource: "health", connectors: ["google-calendar"] });
   });
 
   it("says a slug is taken when the unique index does", async () => {
@@ -185,7 +185,8 @@ describe("the Supabase twin", () => {
     const t = stub([{ data: row({ colour: "neon", skills: null, principles: null, knowledge: "x", budgets: null, public_card: null }), error: null }]);
     const b = (await new SupabaseBotStore(t.sb).getBot(ALICE, ID))!;
     expect(b).toMatchObject({ colour: "stone", principles: [], knowledge: [], publicCard: false, budgets: { perRequestPaise: 1, dailyPaise: 1 } });
-    expect(b.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, health: false, connectors: [] });
+    // 0094: a row with no `healthSource` in its skills reads as "health", the only reader there was before 9.0.
+    expect(b.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, health: false, healthSleep: false, healthSource: "health", connectors: [] });
     expect(await new SupabaseBotStore(stub([{ data: null, error: null }]).sb).getBot(ALICE, ID)).toBeNull();
     await expect(new SupabaseBotStore(stub([{ data: null, error: { message: "connection reset" } }]).sb).getBot(ALICE, ID)).rejects.toThrow(/bot store: read: connection reset/);
   });
@@ -275,7 +276,9 @@ describe("the migration (supabase/migrations/0038_bots.sql)", () => {
   it("is appended to the whole schema, after 0037, whole", () => {
     expect(full).toContain("-- 0038_bots.sql");
     expect(full.indexOf("-- 0038_bots.sql")).toBeGreaterThan(full.indexOf("-- 0037_code_team.sql"));
-    expect(full.endsWith(`${sql.trimEnd()}\n`) || full.trimEnd().endsWith(sql.trimEnd())).toBe(true);
+    // Appended WHOLE, which is what matters; no longer necessarily at the end, because every migration since is appended
+    // after it (0093_trust_signals.sql, and 9.0's own).
+    expect(full).toContain(sql.trimEnd());
     expect(full.endsWith("\n")).toBe(true);
   });
 

@@ -70,14 +70,31 @@ export function onboardingKeyboard(): ScreenResponse {
       // has been requested — before that, iOS has no per-app Settings surface
       // and the URL resolves silently. The VOICE PERMISSION screen right
       // before this one fires that prompt, so Settings opens DIRECTLY here.
-      // The leading requestPermission is an idempotent belt-and-suspenders for
-      // the "Not now" path (already-decided permissions return instantly with
-      // no prompt).
+      // The ask behind the read is an idempotent belt-and-suspenders for the
+      // "Not now" path (already-decided permissions return instantly with no
+      // prompt). The READ is in front of it because the phone draws its own
+      // "One permission first" card before every ask that is not `primed`,
+      // without looking at the permission first — so on the ordinary path,
+      // where the step before this one has already settled the microphone,
+      // that card stood in front of a Settings page and asked nothing.
+      // Not `primed` (shared/types/sdui.ts): this screen is about the
+      // keyboard, and on the one path where the ask really does draw a prompt,
+      // the phone's own card is all the explanation it has.
       openSettings: {
         kind: "sequence",
         actions: [
-          { kind: "requestPermission", permission: "microphone" },
-          { kind: "openUrl", url: "app-settings:", external: true },
+          {
+            kind: "checkPermission",
+            permission: "microphone",
+            onGranted: { kind: "openUrl", url: "app-settings:", external: true },
+            onDenied: {
+              kind: "sequence",
+              actions: [
+                { kind: "requestPermission", permission: "microphone" },
+                { kind: "openUrl", url: "app-settings:", external: true },
+              ],
+            },
+          },
           { kind: "toast", tone: "info", message: "In Settings: General → Keyboard → Keyboards → Add New → X0 Bot" },
         ],
       },

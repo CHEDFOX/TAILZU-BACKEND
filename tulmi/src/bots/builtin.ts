@@ -18,15 +18,21 @@
  * and out loud; its chat here runs the usual loop with their meetings as its knowledge (meet/digest.ts). Its name is a placeholder too. It is
  * listed only where RECALL_API_KEY is set.
  *
- * One colour each, from the natural palette.
+ * ONE COLOUR EACH, from the natural palette, and this file is where a bot's colour is decided. experience/bots/palette.ts
+ * turns the name into a hex and used to carry its own copy of these four, which disagreed with this file for as long as both
+ * existed; it now reads them from here, so there is one answer to what colour a bot is.
+ *
+ * No built-in wears `stone`: it is what botLook falls back to for a bot with no colour of its own, so a built-in in stone
+ * looks like any bot somebody made. `ash` is the neutral for a built-in that wants one.
  */
 import { getConfig } from "../config.js";
 import { MEET_SLUG } from "../meet/types.js";
 import { PALETTE, type BotDef, type BotSkills } from "./types.js";
 
-// `health` is last and never spread over: a built-in bot is not one a person made, so the health row is never drawn for it and
-// the route that would store days refuses it (docs: perms §4.5).
-const skills = (on: Partial<BotSkills>): BotSkills => ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on, health: false });
+// `health`, `healthSleep` and `healthSource` are last and never spread over: a built-in bot is not one a person made, so the
+// health row is never drawn for it and the route that would store days refuses it (docs: perms §4.5, perms2 §5.1, §6).
+const skills = (on: Partial<BotSkills>): BotSkills =>
+  ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on, health: false, healthSleep: false, healthSource: "health" });
 
 export const CODE_SLUG = "code";
 
@@ -44,7 +50,7 @@ const PURPOSE = {
 
 const DEFS: readonly BotDef[] = [
   {
-    id: "code", ownerId: null, slug: "code", name: "Xode", colour: "pine",
+    id: "code", ownerId: null, slug: "code", name: "Xode", colour: "moss",
     purpose: PURPOSE.code,
     principles: [
       "Match the project's conventions before suggesting a change.",
@@ -56,7 +62,7 @@ const DEFS: readonly BotDef[] = [
     knowledge: [], tone: "precise and brief", visibility: "private", budgets: { perRequestPaise: 3000, dailyPaise: 5000 },
   },
   {
-    id: "keybot", ownerId: null, slug: "keybot", name: "Keylessbord", colour: "ochre",
+    id: "keybot", ownerId: null, slug: "keybot", name: "Keylessbord", colour: "clay",
     purpose: PURPOSE.keybot,
     principles: [
       "Write only what they asked for; add no fact of your own.",
@@ -68,7 +74,7 @@ const DEFS: readonly BotDef[] = [
     knowledge: [], tone: "the owner's own voice", visibility: "private", budgets: { perRequestPaise: 100, dailyPaise: 500 },
   },
   {
-    id: "plan", ownerId: null, slug: "plan", name: "Plan Ease", colour: "sea",
+    id: "plan", ownerId: null, slug: "plan", name: "Plan Ease", colour: "ochre",
     purpose: PURPOSE.plan,
     principles: [
       "Three to ten steps, each one action.",
@@ -82,7 +88,7 @@ const DEFS: readonly BotDef[] = [
     knowledge: [], tone: "calm and practical", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 800 },
   },
   {
-    id: "travel", ownerId: null, slug: "travel", name: "Travel bot", colour: "clay",
+    id: "travel", ownerId: null, slug: "travel", name: "Travel bot", colour: "sea",
     purpose: PURPOSE.travel,
     principles: [
       "Give dates with their source and the day they were read.",
@@ -129,7 +135,7 @@ const MAIL: BotDef = {
 export const LINGO_SLUG = "lingo";
 
 const LINGO: BotDef = {
-  id: LINGO_SLUG, ownerId: null, slug: LINGO_SLUG, name: "Lingo", colour: "stone",
+  id: LINGO_SLUG, ownerId: null, slug: LINGO_SLUG, name: "Lingo", colour: "ash",
   purpose: PURPOSE.lingo,
   principles: [
     "Speak the language they are learning, at the level they are at, and translate only what they are stuck on.",
@@ -147,7 +153,7 @@ const LINGO: BotDef = {
 export { MEET_SLUG };
 
 const MEET: BotDef = {
-  id: MEET_SLUG, ownerId: null, slug: MEET_SLUG, name: "Meetings", colour: "moss",
+  id: MEET_SLUG, ownerId: null, slug: MEET_SLUG, name: "Meetings", colour: "pine",
   purpose: PURPOSE.meet,
   principles: [
     "Answer from what was said in their meetings; never invent who said what, a number or a decision.",

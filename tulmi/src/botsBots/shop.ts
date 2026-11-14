@@ -54,8 +54,10 @@ interface Template {
   id: string; name: string; colour: Colour; purpose: string; about: string; principles: string[]; skills: BotSkills; tone: string; will: string; wont: string;
 }
 
-// `health` last and never spread over: a copy added from Find a bot starts with it off, whatever the listing says.
-const skills = (on: Partial<BotSkills>): BotSkills => ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on, health: false });
+// `health`, `healthSleep` and `healthSource` last and never spread over: a copy added from Find a bot starts with both
+// switches off and the default reader, whatever the listing says.
+const skills = (on: Partial<BotSkills>): BotSkills =>
+  ({ web: false, files: false, artifacts: false, code: false, research: false, connectors: [], ...on, health: false, healthSleep: false, healthSource: "health" });
 
 /** Tailzu's ready-made bots: real definitions, added as the person's own copy. */
 const READY_MADE: readonly Template[] = [

@@ -15,6 +15,10 @@ import type { AppConfig } from "../../config.js";
 import type { Connectors } from "../../connectors/index.js";
 import { assistantView } from "../../connectors/list.js";
 import { withControl, requireAdmin } from "../../control/index.js";
+import { lookAtLaunch, trustSurface } from "../../trust/actions.js";
+import { askFor, attestMode } from "../../trust/ask.js";
+import { tlsHints } from "../../trust/signals.js";
+import { trustStore } from "../../trust/store.js";
 import { isOurPayPage } from "../../domains.js";
 import { deskVoices } from "../../experience/appLists.js";
 import { ASSISTANT_SCREENS } from "../../experience/assistant/screens.js";
@@ -40,7 +44,7 @@ import { markSeen } from "../../widgets/glanceStore.js";
 import { AUTH_RESUME_SCHEME_URL } from "../site/demo.js";
 import { noStoreSdui, clip, gzipLargeJson } from "../../http/helpers.js";
 import { getMediaRegistry } from "./media.js";
-import { serveScreen } from "../../experience/sdui2/gate.js";
+import { clientVocab, serveScreen } from "../../experience/sdui2/gate.js";
 
 export interface AppScreenRouteDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -93,6 +97,20 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
    */
   function platformOf(raw: unknown): "ios" | "android" {
     return String(raw ?? "").toLowerCase() === "android" ? "android" : "ios";
+  }
+
+  /**
+   * The two things abuse prevention's ask needs from the store (src/trust, docs/trust.md §the ask): this account's last
+   * score, and whether it already holds an App Attest key. Read only when `TRUST_ATTEST` is on at all, so a launch does
+   * no extra work in the state this deploys in. Never throws: a launch is never held up by this.
+   */
+  async function trustScore(userId: string): Promise<{ score: number; hasAttestKey: boolean }> {
+    const store = trustStore();
+    const [row, keys] = await Promise.all([
+      store.score(userId).catch(() => null),
+      store.countAttestKeys(userId).catch(() => 0),
+    ]);
+    return { score: row?.score ?? 0, hasAttestKey: keys > 0 };
   }
 
   // SDUI endpoints intentionally use the AUTHED_RL tier even though the routes
@@ -399,6 +417,55 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         })).catch(() => { /* a lost stamp costs one repeat, never the boot */ });
       }
     }
+    // ABUSE AND FRAUD PREVENTION (src/trust, docs/trust.md). The launch is the one request that has already read the
+    // entitlement and the account's address, which is what the "never act on a payer or the review account" rule needs
+    // before anything can be slowed or held — so this is where the score is worked out and where an action is decided.
+    // Nothing of the phone's own network, keyboards, locale or screen is read: only the four fields below, the user agent,
+    // and the install number the app made (while its flag is on). Fire and forget, so a launch is never held up for it,
+    // and with TRUST=off it does nothing at all.
+    //
+    // Then, separately (TRUST_ATTEST, its own switch): whether to ask this phone to prove it is our real app on a real
+    // device. The ask is only ever added for a build that declared it can do a step, and it blocks nothing on the phone.
+    if (user && !isReviewer) {
+      const installHeader = req.headers["x-app-install"];
+      void lookAtLaunch({
+        userId: user.id,
+        ip: req.ip,
+        email: user.email,
+        paid: entitled,
+        createdAt: user.createdAt,
+        provider: user.provider,
+        platform: clip(reqBody.capabilities?.platform, 20),
+        bundle: clip(reqBody.capabilities?.bundle, 40),
+        appVersion: clip(reqBody.capabilities?.appVersion, 40),
+        hasCapabilities: !!reqBody.capabilities,
+        userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
+        tls: tlsHints(req.headers as Record<string, unknown>),
+        ...(typeof installHeader === "string" ? { install: installHeader.slice(0, 64) } : {}),
+        components: reqBody.capabilities?.components,
+        realUse: (usage?.total?.words ?? 0) > 0,
+        log: req.log,
+        ctx: { platform: platformOf(reqBody.capabilities?.platform), appVersion: reqBody.capabilities?.appVersion, userId: user.id },
+      }).catch(() => undefined);
+      // Whether this phone may send the install number it made at first launch (8.4). Launch dark: the flag is false in the
+      // defaults, so an app that already carries the header stops sending it, and no row is written until a console rule
+      // turns it on — which the owner does only once App Privacy lists Device ID.
+      if (bootstrap.flags) bootstrap.flags["trust.installId"] = trustSurface({ platform: platformOf(reqBody.capabilities?.platform), userId: user.id }).installId;
+      // What the ask needs that only this route can read: the last score (the "30 or more" trigger), and whether this
+      // account already has an App Attest key — one key per account per install, so after the first pass the phone is
+      // asked to SIGN with that key, not to make another. Both reads are skipped entirely while TRUST_ATTEST is off.
+      const stored = attestMode() === "off" ? null : await trustScore(user.id);
+      const ask = askFor({
+        userId: user.id,
+        platform: platformOf(reqBody.capabilities?.platform),
+        components: reqBody.capabilities?.components,
+        score: stored?.score,
+        hasAttestKey: stored?.hasAttestKey,
+        createdAt: user.createdAt,
+        ctx: { platform: platformOf(reqBody.capabilities?.platform), userId: user.id },
+      });
+      if (ask) (bootstrap as unknown as { trust?: unknown }).trust = ask;
+    }
     // Attach the current media registry so clients can resolve keys → URLs
     // without a separate roundtrip. Keys are semantic ("brand.mark",
     // "onboarding.hero.png"); each entry has { url, contentType, size,
@@ -516,6 +583,10 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         : emptyDeps();
       const screen = await buildBotsScreen({
         screenId: botsId, client: screenFormFactor, params: botsParams, tzOffsetMinutes: tz, can: comps,
+        // The vocabulary-2 blocks this client really has, so a builder can tell before it writes a screen that needs one
+        // (empty while SDUI_V2 is off). The same reading `serveScreen` gates with below.
+        blocks: new Set(clientVocab({ ...body.capabilities, platform: platformOf(body.capabilities?.platform) },
+          { client: screenFormFactor, ...(user ? { userId: user.id } : {}) }).blocks),
         ...(screenFormFactor === "desktop" ? {} : { platform: platformOf(body.capabilities?.platform) }),
         // The name they are greeted by: their own, else the one Google or Apple gave (botsFirstRun.ts greetingName).
         user: user ? { id: user.id, ...(greetingName(user, profile?.fullName) ? { name: greetingName(user, profile?.fullName) } : {}), ...(user.email ? { email: user.email } : {}) } : null,

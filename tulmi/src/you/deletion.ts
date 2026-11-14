@@ -196,6 +196,9 @@ export async function sweepDeletions(o: { store: DeletionStore; erase: Erase; no
   for (const id of ids) {
     const still = await o.store.get(id).catch(() => null);
     if (!still || still.deleteAt > o.now) continue;
+    // What the account leaves for 30 days (abuse prevention, docs/trust.md §tombstones) is written by `erase` itself
+    // (routes/account/account.ts eraseAccount), because that is the one place BOTH ways out go through: this seven-day
+    // sweep, and the immediate DELETE /v1/account the phone's delete screen calls.
     let ok = false;
     try { ok = await o.erase(id); } catch (err) { o.log?.warn({ error: (err as Error)?.name }, "account deletion: erase threw"); }
     if (ok) { deleted++; continue; }

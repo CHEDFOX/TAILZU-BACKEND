@@ -13,7 +13,7 @@ cd "$(dirname "$0")/.." || exit 1
 ENV_FILE="${ENV_FILE:-tulmi/.env}"
 [ -f "$ENV_FILE" ] || { echo "No $ENV_FILE here. Run this from the repo on the server."; exit 1; }
 
-secretish() { [[ "$1" =~ (KEY|TOKEN|SECRET|PASSWORD|PASSPHRASE|PRIVATE) ]]; }
+secretish() { [[ "$1" =~ (KEY|TOKEN|SECRET|PASSWORD|PASSPHRASE|PRIVATE|SERVICE_ACCOUNT|CREDENTIAL) ]]; }
 
 if [ "${1:-}" = "--show" ]; then
   shift

@@ -19,6 +19,8 @@
  * consent and budget.
  */
 import { BotError } from "../bots/types.js";
+import { hasAiConsent } from "../privacy/aiConsent.js";
+import { youStore } from "../you/store.js";
 import { calendar as ownCalendar, type Calendar, type CalEvent } from "../calendar/index.js";
 import { dayName as calDayName, dayOf, dayWords as calDayWords, shiftDay, startOfDay } from "../calendar/words.js";
 import { botTopic, TOPIC } from "../live/topics.js";
@@ -32,7 +34,12 @@ import { seenOf } from "./planInBox.js";
 import { clockOf, longDate, nextThing, planPage, weekday, weekLines, widgetLine, widgetSteps, type Leave, type PlanPage, type WidgetLine } from "./planDay.js";
 import { HOME_SHOWN, clashesOf, freeTimes, movable, needsYou, noteLinesOf, type NeedsCard, type NeedsCtx } from "./planNeeds.js";
 import { changesSince, eveningMinute, eveningNote, morningAt, morningNote, OPENS_KEPT, signature, type NoteWords } from "./planNotes.js";
-import { planPrefs, type PlanPrefs, type PlanPrefsRow } from "./planPrefs.js";
+import { focusHolding, planPrefs, type PlanPrefs, type PlanPrefsRow } from "./planPrefs.js";
+import { busyOverlap, planBusy, type BusyBlock } from "./planBusy.js";
+import { countryForOffset, places } from "../places/index.js";
+import { Later } from "./later.js";
+import { lookNow, type Look } from "./look.js";
+import type { ArrivalItem } from "../../../shared/types/sdui.js";
 import type { PersonLook } from "./personLook.js";
 import { dayItems, rowOf, taskItem, type DayItem, type RowCtx, type RowNote, type RowView } from "./planRows.js";
 import { ADDED_MS, addedOf, dayLabel, dayParam, defaultDay, emptyWords, followOpen, shareOf, stripOf, threadOf, type PlanDayData } from "./planThread.js";
@@ -49,8 +56,31 @@ import type { CalTask, FollowCandidate } from "../calendar/index.js";
 import { beforeNote, sourceEvening, sourceItems, sourceMore, sourceMorning, sourceSeen, type SourceWindow } from "./planSources.js";
 
 const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
+/** What an item inside a busy time from the phone's calendars says (docs: perms2 §2.3). Never what the busy time is. */
+export const BUSY_LINE = "This overlaps something in your calendar";
+/** The arrival reminders the phone may watch at once, and how near counts as arrived (the knob's default, perms2 §7.2). */
+export const ARRIVE_MAX = 10;
+export const ARRIVE_RADIUS_M = 150;
+/**
+ * The screen an arrival reminder's tap opens: Plan Ease's home, which needs no params (SCREENS.plan, shared/types/sdui.ts
+ * has no id export the engine may import, so the one string lives here). The item screen would need the item's own id, which
+ * `ArrivalItem` has no room for, and the phone passes `userInfo` straight in as params — so it would open the add form.
+ */
+export const SCREEN_PLAN = "bots.plan";
+/** An arrival reminder's id, which the phone prefixes "x0.arrive.": the event's own id, kept to the contract's shape. */
+export const arrivalIdOf = (eventId: string): string => eventId.toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 64);
+/** The clash lines win: a busy line is only set where there is none (docs: perms2 §2.3). */
+const withBusy = (clashes: Map<string, string>, busy: Map<string, string>): Map<string, string> => {
+  for (const [id, line] of busy) if (!clashes.has(id)) clashes.set(id, line);
+  return clashes;
+};
 /** How far the page reads: today and the week after it. */
 const READ_DAYS = 8;
+/**
+ * How many people one tick sends to at a time (docs: perms2 §5.3). A send can wait on the pre-ring check, so the ticks go a
+ * handful of people at a time rather than one after another — each person's own reminders still go in order.
+ */
+export const TICK_AT_ONCE = 20;
 /** Plan Ease's own pushes a day, besides the day note and the person's own timed reminders. */
 export const DAY_CAP = 6;
 /** A note more than this late (the server was down) is not sent: the moment has gone. */
@@ -70,6 +100,14 @@ export interface ItemDetails {
   note?: RowNote;
   /** Follow-through (PLAN_V2_FOLLOW, planFollow.ts): how important it is, who does it, and its open follow's line. */
   follow?: ItemFollow;
+  /**
+   * THE ARMED ARRIVAL SET AS IT WOULD BE WITH THIS ITEM ON (docs: perms2 §7.2), so the item's own card can hand the phone the
+   * whole set at once rather than this one alone — `arrival.sync` REPLACES what the phone watches. Absent when the item has no
+   * place this server has geocoded, which is also when the switch is not drawn.
+   */
+  arrivals?: ArrivalItem[];
+  /** The place's own name, as the server geocoded it ("Koramangala Market"), for the row's "Reminds you at …". */
+  arrivePlace?: string;
 }
 
 /**
@@ -111,6 +149,8 @@ export interface PlanEaseDeps {
   skips?: Table<PlanSkipRow>;
   travel?: PlanTravelling | null;
   now?: () => number;
+  /** Lookups that finish after the screen did (botsBots/later.ts): the arrival set's missing places. Its own by default. */
+  later?: Later;
   send?: PlanSend;
   /** Whether the app is in Hinglish for this person (the notes' few fixed words). */
   hinglish?: (userId: string) => Promise<boolean>;
@@ -123,6 +163,21 @@ export interface PlanAct {
 }
 
 const taskId = (item: QuickItem): string => (item.kind === "pt" ? item.taskId : "");
+
+/**
+ * "Hold calls during a Focus", the person's own switch, for the home page's quiet `focus.sync`. Without it on, nothing
+ * reads what the phone would answer, so the phone is not asked — one less thing learned about them for no purpose.
+ *
+ * Anything that goes wrong reads as OFF, including a settings store that is not configured at all: the fallback has to be
+ * "do not ask", never "ask anyway".
+ */
+async function focusHoldOn(userId: string): Promise<boolean> {
+  try {
+    return (await youStore().getSettings(userId))?.notify?.focusHold === true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * EVERY BUTTON PLAN EASE HAS, by item kind and action (widgets/items.ts pt: / pe: / pm: / pc:). A later step adds its own here (a due's
@@ -166,6 +221,7 @@ export class PlanEase {
   private readonly skips: Table<PlanSkipRow>;
   private travel: PlanTravelling | null;
   private readonly now: () => number;
+  private readonly later: Later;
   private send: PlanSend | null;
   private hinglish: ((userId: string) => Promise<boolean>) | null;
   /** Follow-through's arming (planFollow.ts arm), wired at boot: asked by the calendar before a reminder goes. */
@@ -179,6 +235,9 @@ export class PlanEase {
     this.now = d.now ?? Date.now;
     this.prefs = d.prefs ?? planPrefs(this.now);
     this.skips = d.skips ?? table<PlanSkipRow>("plan_skips");
+    // Its own, unless a test hands one in: a `Later` is only job de-duplication plus a live publish, so one here costs
+    // nothing and means no wiring change where PlanEase is made.
+    this.later = d.later ?? new Later();
     this.travel = d.travel ?? null;
     this.send = d.send ?? null;
     this.hinglish = d.hinglish ?? null;
@@ -233,7 +292,7 @@ export class PlanEase {
    * Today and the days after (or `range`: the home's week, planThread.ts), as DayItems, and today's and tomorrow's leave-by times when
    * places are on, with each of those two days' whole travel (legs, weather, credits, pending, home) for the home.
    */
-  private async load(userId: string, tz: number, o: { travel?: boolean; range?: { from: string; to: string } } = {}): Promise<{ items: DayItem[]; leaves: Map<string, Leave>; today: string; tomorrow: string; row: PlanPrefsRow | null; events: CalEvent[]; more: Record<string, unknown>; open: CalTask[]; travels: Record<string, PlanTravel> }> {
+  private async load(userId: string, tz: number, o: { travel?: boolean; range?: { from: string; to: string } } = {}): Promise<{ items: DayItem[]; leaves: Map<string, Leave>; today: string; tomorrow: string; row: PlanPrefsRow | null; events: CalEvent[]; more: Record<string, unknown>; open: CalTask[]; travels: Record<string, PlanTravel>; busy: Array<BusyBlock & { syncedAt: number }> }> {
     const now = this.now();
     const today = dayOf(now, tz), tomorrow = shiftDay(today, 1);
     const from = o.range?.from ?? today, to = o.range?.to ?? shiftDay(today, READ_DAYS);
@@ -245,6 +304,11 @@ export class PlanEase {
       sourceItems(userId, w),
       sourceMore(userId, w),
     ]);
+    // THE BUSY TIMES FROM THE PHONE'S OWN CALENDARS (docs: perms2 §2.3), only for a person who switched them on. Times and
+    // nothing else: no event name, place or person is read, because none ever left their phone.
+    const busy = row?.calendar_busy === true
+      ? await planBusy().inRange(userId, startOfDay(from, tz), startOfDay(shiftDay(to, 1), tz)).catch(() => [])
+      : [];
     const items = [...dayItems(listed), ...extra];
     const leaves = new Map<string, Leave>();
     for (const l of row?.leaves ?? []) if (l.start > now) leaves.set(l.eventId, { leaveBy: l.leaveBy, minutes: l.minutes, mode: l.mode, to: l.to });
@@ -259,7 +323,7 @@ export class PlanEase {
       for (const r of got) for (const leg of r?.travel.legs ?? []) leaves.set(leg.toId, { leaveBy: leg.leaveBy, minutes: leg.minutes, mode: leg.mode, to: leg.to });
       got.forEach((r, i) => { if (r) travels[days[i]!] = r.travel; });
     }
-    return { items, leaves, today, tomorrow, row, events: listed.events, more, open: listed.open, travels };
+    return { items, leaves, today, tomorrow, row, events: listed.events, more, open: listed.open, travels, busy };
   }
 
   /** The days the page reads, for the sources. */
@@ -297,6 +361,26 @@ export class PlanEase {
     return out;
   }
 
+  /**
+   * "THIS OVERLAPS SOMETHING IN YOUR CALENDAR" (docs: perms2 §2.3), on an item that sits inside a busy time read from the
+   * phone's own calendars. The line says no more than that: we know when they are busy and nothing else — not what it is, not
+   * where, not with whom — so the line cannot say more either. Blocks from a sync more than a day old are treated as unknown.
+   *
+   * It never overwrites a clash line: two booked things of their own that cannot both happen is the more useful sentence.
+   */
+  private busyLines(items: readonly DayItem[], busy: ReadonlyArray<BusyBlock & { syncedAt: number }>, days: string[]): Map<string, string> {
+    const out = new Map<string, string>();
+    if (!busy.length) return out;
+    const now = this.now();
+    const want = new Set(days);
+    for (const it of items) {
+      if (!want.has(it.day) || it.done || it.start === null) continue;
+      const end = it.end ?? it.start + HOUR;
+      if (busyOverlap(busy, it.start, end, now)) out.set(it.id, BUSY_LINE);
+    }
+    return out;
+  }
+
   /** The cards there are now, the first shown. The Home card's first showing is kept (left alone, not again for 30 days). */
   private async cards(userId: string, l: Awaited<ReturnType<PlanEase["load"]>>, tz: number): Promise<{ cards: NeedsCard[]; ctx: NeedsCtx }> {
     const skipped = await this.skipped(userId);
@@ -316,7 +400,7 @@ export class PlanEase {
     const l = await this.load(userId, tz);
     const { cards, ctx } = await this.cards(userId, l, tz);
     return {
-      ...planPage({ now: this.now(), tz, today: l.today, tomorrow: l.tomorrow, items: l.items, leaves: l.leaves, clashes: this.clashLines(ctx), needs: cards[0] ?? null, notes: notesOf(l.more), follow: followLinesOf(l.more), me: userId }),
+      ...planPage({ now: this.now(), tz, today: l.today, tomorrow: l.tomorrow, items: l.items, leaves: l.leaves, clashes: withBusy(this.clashLines(ctx), this.busyLines(l.items, l.busy, [l.today, l.tomorrow])), needs: cards[0] ?? null, notes: notesOf(l.more), follow: followLinesOf(l.more), me: userId }),
       travel: { on: !!this.travel?.on },
     };
   }
@@ -343,8 +427,21 @@ export class PlanEase {
       if (follow) out.follow = follow;
     }
     if (it && kind === "event") {
+      // The set the item's own card would hand the phone: every armed item, and this one as if it were on (perms2 §7.2).
+      const set = (await this.armedArrivals(userId, l.items, l.events, tz, { alsoOn: id.split("@")[0] })).items;
+      // The set is keyed by the SERIES, so this item's own arrival is found by its series id and not by the occurrence's.
+      const mine = set.find((a) => a.id === arrivalIdOf(id.split("@")[0] ?? id));
+      if (mine) {
+        out.arrivals = set;
+        // "You're at Koramangala Market" is the title the phone will show; the row says the place out of it.
+        out.arrivePlace = mine.title.replace(/^You're at /, "");
+      }
       const ctx = this.needsCtx({ tz, today: l.today, tomorrow: l.tomorrow, items: l.items, skipped: new Map(), leaves: l.leaves, row: l.row, more: l.more });
-      out.moves = freeTimes(ctx, it).map((at) => {
+      // KEEP MOVE'S TIMES CLEAR OF THE BUSY TIMES the person turned on (docs: perms2 §2.3(1)): a time inside one of their
+      // own calendar's blocks is not offered, so the card's promise to "keep your plan clear of them" holds where this
+      // server picks a time. Plan Make's own slot choice is a separate file and still ignores them (HANDOFFS).
+      const length = it.start !== null && it.end !== null && it.end > it.start ? it.end - it.start : 30 * MIN;
+      out.moves = freeTimes(ctx, it).filter((at) => !busyOverlap(l.busy, at, at + length, this.now())).map((at) => {
         const day = dayOf(at, tz);
         return { at, day, time: hhmm(at, tz), label: `${day === l.today ? "Today" : day === l.tomorrow ? "Tomorrow" : weekday(day)} ${clockOf(at, tz)}` };
       });
@@ -405,7 +502,7 @@ export class PlanEase {
     const near = (it: DayItem) => it.day >= today && it.day <= shiftDay(today, READ_DAYS);
     const { cards } = await this.cards(userId, { ...l, items: l.items.filter(near) }, tz);
     const clashCtx = this.needsCtx({ tz, today, tomorrow, items: l.items, skipped: new Map(), leaves: l.leaves, row: l.row, more: l.more });
-    const clashes = this.clashLines(clashCtx, [day, today, tomorrow]);
+    const clashes = withBusy(this.clashLines(clashCtx, [day, today, tomorrow]), this.busyLines(l.items, l.busy, [day, today, tomorrow]));
     const notes = notesOf(l.more);
     // People as their space shows them (follow-through's looksOf), the same tiny bot on a row as in "Plan something" and their space.
     const looks = this.peopleLooks ? await this.peopleLooks(userId).catch(() => new Map<string, PersonLook>()) : new Map<string, PersonLook>();
@@ -416,6 +513,7 @@ export class PlanEase {
     // The head line is today's and tomorrow's whatever day is shown, with the travel saved this week.
     const next = nextThing({ now, tz, today, tomorrow, items: l.items.filter((it) => it.day === today || it.day === tomorrow), leaves: l.leaves, clashes, follow, notes, me: userId });
     const saved = (l.travels[today] ?? l.travels[tomorrow])?.savedWeekMin ?? 0;
+    const arrivals = await this.armedArrivals(userId, l.items, l.events, tz);
     return {
       v: 3, today, tomorrow, day, label, date,
       head: `${next.big}${saved ? ` · ${saved} min saved` : ""}`,
@@ -429,7 +527,100 @@ export class PlanEase {
       ...(travel ? { travel } : {}),
       share: shareOf(label, date, thread, l.items),
       ...(added && made ? { added: { line: added.line, key: made, n } } : {}),
+      // The arrival reminders the phone's own system should be watching, so `arrival.sync` on page appear can make its set
+      // match this one: the places go out, and nothing about an arrival ever comes back (docs: perms2 §7.2).
+      // `arrivalsPending` says a place is still being looked up, which is what stops the sync replacing the phone's set with
+      // one that is missing it.
+      arrivals: arrivals.items,
+      ...(arrivals.pending ? { arrivalsPending: true as const } : {}),
+      phone: {
+        busy: l.row?.calendar_busy === true,
+        busyAt: l.busy.reduce((n, b) => Math.max(n, b.syncedAt), 0),
+        reminders: l.row?.reminders_on === true,
+        focusOn: focusHolding(l.row?.focus, now),
+        // WHETHER TO ASK THE PHONE ABOUT A FOCUS AT ALL. The quiet `focus.sync` on page appear is only worth running for
+        // someone who turned "Hold calls during a Focus" on — with it off nothing reads the answer, so asking the phone
+        // for it on every page would be a thing learned about them for no purpose.
+        focusHold: await focusHoldOn(userId),
+        // Which half of the Reminders card's AI clause is true for this person (App Review 5.1.2(i), docs: perms2 §3.2).
+        ai: await hasAiConsent(userId).catch(() => false),
+      },
     };
+  }
+
+  /**
+   * THE ARMED SET (docs: perms2 §7.4): at most 10, nearest in time, each an event of the person's own that is still to come,
+   * has "Remind me when I get there" on, and whose place this server can point at.
+   *
+   * A PLACE NOT LOOKED UP YET IS NOT A PLACE WE CANNOT FIND. `peekPlace` answers from memory, so after a restart — and for
+   * any place nobody has looked up — it says "don't know yet" (undefined), which read as "cannot find" left the set empty:
+   * the item's switch was not drawn at all, and the home's `arrival.sync` sent `items: []`, taking every armed trigger off
+   * the phone. So the lookups missing are made in the background (botsBots/look.ts), the live channel brings the page back,
+   * and `pending` says the set is not the whole truth yet — which is what stops `arrivalSync` replacing anything this round.
+   *
+   * A place the geocoder really cannot find (null, and that includes every place while PLACES_GEOCODER is off) is simply not
+   * armed, as before, and the row says so.
+   */
+  private async armedArrivals(
+    userId: string, items: readonly DayItem[], events: readonly CalEvent[], tz: number, o: { alsoOn?: string } = {},
+  ): Promise<{ items: ArrivalItem[]; pending: boolean }> {
+    const on = new Map<string, CalEvent>();
+    for (const e of events) if (e.arrive === true || (o.alsoOn && (e.id === o.alsoOn || e.seriesId === o.alsoOn))) on.set(e.id, e);
+    if (!on.size) return { items: [], pending: false };
+    const now = this.now();
+    const country = countryForOffset(tz);
+    const hints = country ? { country } : undefined;
+    // The events to arm, worked out once; the lookup is the only thing that can be missing.
+    //
+    // ONE PLACE IS ARMED ONCE, NOT ONCE A DAY. A repeating event has one occurrence per day in the 8-day read, each with its
+    // own `<uuid>@<day>` id — nine of them for a daily event. Arming each filled nine of the ten slots with the same place
+    // and fired nine identical reminders on arrival (and on Android nine NEVER_EXPIRE geofences, which fire on every entry).
+    // So the occurrences are walked in time order and the SERIES is the thing armed: its id is the arrival's id, which also
+    // stops the id changing from one day to the next.
+    const wanted: Array<{ at: number; id: string; text: string; title: string }> = [];
+    const armed = new Set<string>();
+    const due = [...items].filter((it) => it.ref === "event" && !it.done && it.start !== null && it.start >= now)
+      .sort((a, b) => (a.start ?? 0) - (b.start ?? 0));
+    for (const it of due) {
+      const e = on.get(it.id) ?? on.get(it.id.split("@")[0] ?? "");
+      if (!e) continue;
+      // The series id, which every occurrence of one event shares (calendar/service.ts eventView).
+      const key = e.seriesId || e.id;
+      if (armed.has(key)) continue;
+      const text = it.place || it.where || e.place || "";
+      if (!text) continue;
+      armed.add(key);
+      wanted.push({ at: it.start!, id: key, text, title: it.title });
+    }
+    if (!wanted.length) return { items: [], pending: false };
+    const compute = (look: Look): { items: ArrivalItem[]; pending: boolean } => {
+      const out: Array<{ at: number; item: ArrivalItem }> = [];
+      let pending = false;
+      for (const w of wanted) {
+        const point = look.place(w.text, hints);
+        if (point === undefined) { pending = true; continue; }
+        if (!point) continue;
+        out.push({
+          at: w.at,
+          item: {
+            id: arrivalIdOf(w.id),
+            lat: point.lat, lon: point.lon, radiusM: ARRIVE_RADIUS_M,
+            title: safeTitle(`You're at ${point.label || w.text}`).slice(0, 60),
+            body: safeTitle(w.title).slice(0, 140),
+            // THE HOME, which needs no params. The phone turns `userInfo` into the screen's params, so "bots.plan.item"
+            // would arrive with no item id and open the add form; the home opens on the day and the item is on it.
+            screen: SCREEN_PLAN,
+          },
+        });
+      }
+      return { items: out.sort((a, b) => a.at - b.at).slice(0, ARRIVE_MAX).map((x) => x.item), pending };
+    };
+    // Nothing waits on a geocoder here (`waitMs: 0`): the page draws what is known and the job tells the person's open
+    // screens when it has learned the rest, exactly as the travel times do.
+    const { value } = await lookNow({
+      places: places(), later: this.later, userId, key: "arrive", topics: [botTopic("plan")], waitMs: 0, compute,
+    });
+    return value;
   }
 
   async box(userId: string, wordsIn: unknown, tzIn: unknown, seenIn?: unknown): Promise<BoxReply> {
@@ -761,17 +952,26 @@ export class PlanEase {
     await this.send(userId, { kind, key, vars: { title: w.title, body: w.body }, data: { ...data, ...(w.item ? { item: w.item } : {}) }, ...(w.category ? { category: w.category } : {}) });
   }
 
-  /** Every minute: the leave-by reminders that are due ("Leave by 5:30 pm for the dentist" [Open map]), 10 minutes before. */
+  /**
+   * Every minute: the leave-by reminders that are due ("Leave by 5:30 pm for the dentist" [Open map]), 10 minutes before.
+   *
+   * ONE PERSON AT A TIME, BUT NOT ONE PERSON AFTER ANOTHER. Each person's own reminders go in order, but the people go a
+   * handful at a time: a send can wait on the pre-ring check (botsBots/planCallCheck.ts asks the phone and waits up to 20
+   * seconds), and done one after another that wait was added up across everyone — a sleeping phone delayed every later
+   * person's leave-by, and past 15 minutes a leave-by is not sent at all (`l.leaveBy < now - 5 * MIN` below).
+   */
   async leavesTick(limit = 200): Promise<number> {
     if (!planOn("reminders")) return 0;
     const now = this.now();
     let sent = 0;
-    for (const row of await this.prefs.leavesDue(now, limit)) {
+    const rows = await this.prefs.leavesDue(now, limit);
+    const onePerson = async (row: PlanPrefsRow): Promise<number> => {
+      let mine = 0;
       const was = row.next_leave_ms!;
       const leaves = row.leaves ?? [];
       const due = leaves.filter((l) => !l.sent && l.leaveBy - 10 * MIN <= now);
       const rest = leaves.filter((l) => !l.sent && l.leaveBy - 10 * MIN > now).map((l) => l.leaveBy - 10 * MIN).sort((a, b) => a - b)[0] ?? null;
-      if (!(await this.prefs.claim(row.user_id, "next_leave_ms", was, rest))) continue;
+      if (!(await this.prefs.claim(row.user_id, "next_leave_ms", was, rest))) return 0;
       const tz = row.tz_min ?? 330;
       for (const l of due) {
         if (l.leaveBy < now - 5 * MIN || !this.send) continue;
@@ -789,10 +989,15 @@ export class PlanEase {
             title: l.title, place: l.to, start: l.start, leaveBy: l.leaveBy, minutes: l.minutes, mode: l.mode === "walk" ? "walk" : "drive",
           },
         }).catch(() => undefined);
-        sent += 1;
+        mine += 1;
       }
       const marked = leaves.map((l) => (due.includes(l) ? { ...l, sent: true } : l));
       await this.prefs.patch(row.user_id, { leaves: marked }).catch(() => undefined);
+      return mine;
+    };
+    for (let i = 0; i < rows.length; i += TICK_AT_ONCE) {
+      const batch = await Promise.all(rows.slice(i, i + TICK_AT_ONCE).map((row) => onePerson(row).catch(() => 0)));
+      for (const n of batch) sent += n;
     }
     return sent;
   }

@@ -71,6 +71,15 @@ export interface ClientCapabilities {
   off?: string[];
   /** The safety floor, and what went wrong on this launch. */
   sdui?: { ok?: boolean; safe?: number; bad?: string[]; slow?: string[] };
+  /**
+   * THIS PLAYER DRAWS ITS OWN CARD BEFORE A SYSTEM PROMPT (`primed` on `requestPermission`, section 4).
+   *
+   * `true` means the player puts its own "One permission first" box in front of every `requestPermission` that
+   * does not carry `primed: true` (the phone, app/src/sdui/actions.ts `primedCard`). A player that says nothing
+   * here has no box of its own — the window's renderer, and every phone build older than this field — so on one
+   * of those an unmarked ask has whatever explanation the screen itself gave it, and no more.
+   */
+  primed?: boolean;
 }
 
 // ===========================================================================
@@ -391,7 +400,29 @@ export interface BootstrapResponse {
    * reachable set; this is it. Absent = the client warms its tabs, as before.
    */
   warmScreenIds?: string[];
+  /** Abuse and fraud prevention (docs: trust). Present only when the server wants a check now. The phone runs each step once, in
+   *  the background, never blocking a screen, and only the steps its capabilities allow. */
+  trust?: TrustAsk;
 }
+
+/**
+ * WHAT THE PHONE IS ASKED TO PROVE (docs: trust, the perms2 design's §8.5). Never a tracking signal and never an identity: each
+ * step asks Apple or Google whether this is the real app on a real device, and the server keeps only the answer.
+ */
+export interface TrustAsk {
+  /** Single use, 5 minutes, base64url of 32 random bytes. Hashed by the phone as "x0|<step>|" + challenge. */
+  challenge: string;
+  do: ("appAttest" | "appAssert" | "deviceCheck" | "playIntegrity")[];
+  /** Play Integrity's Cloud project number (not a secret). */
+  cloudProject?: string;
+}
+/** POST /v1/trust/ios/attest, /ios/assert, /ios/devicecheck, /android/integrity. Each answers 204; nothing comes back to act on. */
+export interface TrustAttestBody { challenge: string; keyId: string; attestation: string }      // base64
+export interface TrustAssertBody { challenge: string; keyId: string; assertion: string }        // base64
+export interface TrustDeviceCheckBody { token: string }                                         // base64
+export interface TrustIntegrityBody { challenge: string; token: string }
+/** On failure the phone posts the same route with { challenge, failed: "<code>" } (unsupported, throttled, no_play, timeout, …). */
+export interface TrustFailedBody { challenge: string; failed: string }
 
 export interface LanguageOption {
   code: string;
@@ -1355,6 +1386,34 @@ export const CONTACT_PICK_CAPABILITY = "ContactPick1";
  *  Health Connect, read on the phone and posted straight to the server. */
 export const HEALTH_CAPABILITY = "Health1";
 
+/** NOT A COMPONENT (the phone, build 8.9.1+). Each is declared by the phone's own check that the native function, the usage key
+ *  or Android permission, and the OS are all there (docs: perms2), so an older binary declares none. */
+export const CALENDAR_ADD_CAPABILITY = "CalendarAdd1";       // calendar.editor
+export const CALENDAR_READ_CAPABILITY = "CalendarRead1";     // calendar.sync (iPhone 17+; Android behind TULMI_ANDROID_CALENDAR)
+export const REMINDERS_CAPABILITY = "Reminders1";            // reminders.sync (iPhone 17+)
+export const FOCUS_CAPABILITY = "Focus1";                    // focus.sync; the Focus Filter (iPhone) / Do Not Disturb (Android)
+export const MOTION_CAPABILITY = "Motion1";                  // health.sync source "motion"; motion.watch; requestPermission "motion"
+export const HEALTH_SLEEP_CAPABILITY = "HealthSleep1";       // health.sync sleep: true
+export const ARRIVAL_CAPABILITY = "Arrival1";                // arrival.sync (iPhone; Android behind TULMI_ANDROID_ARRIVAL)
+export const APP_ATTEST_CAPABILITY = "AppAttest1";           // TrustAsk "appAttest" | "appAssert"
+export const DEVICE_CHECK_CAPABILITY = "DeviceCheck1";       // TrustAsk "deviceCheck"
+export const PLAY_INTEGRITY_CAPABILITY = "PlayIntegrity1";   // TrustAsk "playIntegrity"
+
+/** One arrival reminder (arrival.sync). Bounds are checked on the phone too. */
+export interface ArrivalItem {
+  /** ^[a-z0-9_-]{1,64}$; the phone prefixes "x0.arrive.". */
+  id: string;
+  lat: number; lon: number;
+  /** 100-500. */
+  radiusM: number;
+  /** <= 60 characters, e.g. "You're at Koramangala Market". */
+  title: string;
+  /** <= 140 characters, the item's own words. */
+  body: string;
+  /** The screen a tap opens, <= 120 characters. */
+  screen?: string;
+}
+
 /** How a bot wanders: walk to a random spot in `span` (fractions of the stage's width), pause, play a random moment, again. */
 export interface BotRoam {
   moments: string[];
@@ -1713,6 +1772,28 @@ export type ActionSpec =
       onEnded?: ActionRef; onIdle?: ActionRef; onFallback?: ActionRef; onBlocked?: ActionRef }
   /** VOICE_REALTIME_CAPABILITY. warm: get the mic and the offer ready while the call is answered (only if mic permission is already granted). */
   | { kind: "voiceCallSet"; op: "warm" | "end" }
+  // --- one of our own calls, block `call` (src/rooms, docs/rooms.md) ---
+  /**
+   * Block `call`. Take a seat in a call and hold it for this screen. The app opens its microphone (and its camera when `video`), makes
+   * an offer, and POSTs `{ sdp, audioMid, videoMid? }` to `join` — the host's `/v1/rooms/:id/join`, or a guest's
+   * `/v1/rooms/guest/:code/join` with `knock` added. It gets back a seat, sets the answer, and from then on runs the call by itself
+   * against `/v1/rooms/seat/{live,pull,answer,leave}`: the heartbeat every couple of seconds, pulling in whoever is new, answering the
+   * SFU, and dropping whoever left. The seat never reaches the screen's state.
+   *
+   * It writes into `statePath`: `{ phase: connecting | live | reconnecting | ended | failed, mic, cam, speaker, front (booleans),
+   * people: [{ identity, name, role, speaking, mic, cam }], waiting: [{ id, name }] (the host's own), me: { identity, name } }`. The
+   * screen's words, tiles and buttons are expressions over that, and `Caller` nodes draw the pictures.
+   *
+   * It ends on `live.leave`, on leaving the screen, or when the call ends or the seat is sent away (then `onEnd`). The app going to the
+   * background keeps the sound and stops the camera until it is back. `onBlocked`: no microphone permission. Failing to join or losing
+   * the call for good: phase `failed`, then `onError`.
+   */
+  | { kind: "call.join"; join: string; statePath: string; knock?: string; video?: boolean;
+      onEnd?: ActionRef; onBlocked?: ActionRef; onError?: ActionRef }
+  /** Block `call`. The call this screen holds: mic, cam or speaker on or off (`value`; without it, the other way), or flip the camera. */
+  | { kind: "call.set"; op: "mic" | "cam" | "speaker" | "flip"; value?: boolean }
+  /** Block `call`. Hang up, then the join's `onEnd`. */
+  | { kind: "call.leave" }
   // --- the phone's own things: where you are, one contact, your workouts ---
   /** Phone, LOCATION_CAPABILITY (docs: perms). One foreground fix, named by the phone's OS geocoder (which sends the point to
    *  Apple or Google, as part of the phone's own system); only the area's words reach `assignTo`. Asks the system first only
@@ -1727,14 +1808,57 @@ export type ActionSpec =
    *  screen bug can never send health data to a route that reaches an AI service). Asks only when `ask`; `enable` rides on the
    *  first POST. No health value ever reaches state. */
   | { kind: "health.sync"; path: string; days?: number; ask?: boolean; enable?: boolean;
+      /** MOTION_CAPABILITY only: read the steps and the walks, runs and rides from Motion & Fitness instead of Apple Health. */
+      source?: "health" | "motion";
+      /** HEALTH_SLEEP_CAPABILITY only: ask for the sleep type in a request OF ITS OWN, so a refusal leaves steps working. */
+      sleep?: boolean;
       onSynced?: ActionRef; onEmpty?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef;
+      onUnavailable?: ActionRef; onError?: ActionRef }
+  // --- the phone's own things, build 8.9.1 (docs: perms2) ---
+  /** Phone, CALENDAR_ADD_CAPABILITY. The phone's own event editor, filled in. No permission (iPhone 17+: out of process; Android:
+   *  the calendar app's screen). Nothing is read. Android cannot tell saved from cancelled, so it reports onOpened. */
+  | { kind: "calendar.editor"; title: string; startsAtIso: string; endsAtIso?: string; allDay?: boolean; notes?: string;
+      onSaved?: ActionRef; onCancel?: ActionRef; onOpened?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, CALENDAR_READ_CAPABILITY. BUSY TIMES ONLY ({s, e, allDay}; free, declined and cancelled events skipped) for `days`
+   *  (14 at most), POSTed to `path`, which must equal "/v1/botsapp/plan/busy" (else refused before any read). No title, place,
+   *  note, attendee or calendar name crosses into JavaScript. Asks only when `ask`; `enable` rides on the first POST. */
+  | { kind: "calendar.sync"; path: string; days?: number; ask?: boolean; enable?: boolean;
+      onSynced?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, REMINDERS_CAPABILITY. Two-way sync of ONE list, "X0 Bot" (made on first sync), through `path`, which must equal
+   *  "/v1/botsapp/plan/reminders/sync": read that list, POST, apply the reply's {add, update, remove} to that list only, POST
+   *  {applied}. No other list's items are fetched. Nothing reaches state. */
+  | { kind: "reminders.sync"; path: string; ask?: boolean; enable?: boolean;
+      onSynced?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, FOCUS_CAPABILITY. Whether a Focus (iPhone: what X0 Bot's Focus Filter last saw) or Do Not Disturb (Android, no
+   *  permission) is on, POSTed as {on, hold?, source} to `path`, which must equal "/v1/botsapp/plan/focus". Never which one. */
+  | { kind: "focus.sync"; path: string; onSynced?: ActionRef; onError?: ActionRef }
+  /** Phone, MOTION_CAPABILITY. "Wait while I'm driving", on or off — the person's own switch, and nothing is read or sent.
+   *  ANDROID needs this both ways: it can only answer the driving check while it is registered for car transitions, and
+   *  `on: false` deletes that registration and the one line it kept (perms2 5.2). On the iPhone the system answers the
+   *  question from its own motion history, so the native side answers true and does nothing. Both switch paths send it. */
+  | { kind: "motion.watch"; on: boolean; onDone?: ActionRef; onUnsupported?: ActionRef }
+  /** Phone, ARRIVAL_CAPABILITY. Replaces the arrival reminders the phone's OWN system watches with `items` (10 at most). The
+   *  places come from this server; the phone's position never reaches JavaScript or this server, and nobody is told of an
+   *  arrival. Asks for location (While Using) only when `ask`. onApproximate: Precise Location is off. */
+  | { kind: "arrival.sync"; items: ArrivalItem[]; ask?: boolean;
+      onArmed?: ActionRef; onApproximate?: ActionRef;
+      /** ANDROID ONLY: precise location is held, "Allow all the time" is not. NOT a denial — the server's own card explains
+       *  the background use (Play's prominent disclosure) and then offers Settings, which is the only way on from Android 11. */
+      onBackground?: ActionRef;
+      onDenied?: ActionRef; onBlocked?: ActionRef;
       onUnavailable?: ActionRef; onError?: ActionRef }
   // --- permissions ---
   | {
       kind: "requestPermission";
       permission:
         | "microphone" | "camera" | "notifications" | "photoLibrary"
-        | "contacts" | "calendar" | "location" | "tracking";
+        | "contacts" | "calendar" | "location" | "tracking"
+        /** MOTION_CAPABILITY only: Motion & Fitness (iPhone) / Physical activity (Android), for the driving check before a
+         *  Plan Ease call. */
+        | "motion"
+        /** ARRIVAL_CAPABILITY on Android only: "Allow all the time", as a REQUEST and not a bare openSettings. The iPhone
+         *  has no such kind and answers unsupported. */
+        | "backgroundLocation";
       onGranted?: ActionRef;
       onDenied?: ActionRef;
       /**
@@ -1750,6 +1874,51 @@ export type ActionSpec =
        * distinguish the two keeps the behaviour it has.
        */
       onBlocked?: ActionRef;
+      /**
+       * THE CARD HAS ALREADY BEEN SHOWN (Apple 5.1.1(iv); the phone's own
+       * `primedCard`, app/src/sdui/actions.ts).
+       *
+       * One app card stands before every system prompt, and a player that
+       * declares `primed` in its capabilities makes sure of it: without this
+       * field it draws its own box — "One permission first / The next screen is
+       * your phone asking. Nothing is used until you allow it." with a single
+       * Continue — and asks the system only once that is tapped. Whatever tree
+       * we sent. So on such a player an ask fired by a rule, a switch, a
+       * gesture or a screen appearing is explained whether we remembered to
+       * explain it or not. The box's words are `perm.<permission>.title` and
+       * `perm.<permission>.body` where the bootstrap has them (the server's
+       * own, experience/appKnobs.ts PERM_CARD_LABELS).
+       *
+       * A player that declares nothing has no box: the window's renderer, and
+       * every phone build older than the field (the store build at the time of
+       * writing). There an unmarked ask has whatever the screen itself said,
+       * and no more — which is a reason to explain an ask anyway, not a reason
+       * to mark it.
+       *
+       * `primed: true` says the explaining has been done here, on this screen,
+       * and the phone goes straight to the system. SET IT ONLY ON AN ASK FIRED
+       * BY THE CONTINUE BUTTON OF OUR OWN CARD THAT ALREADY EXPLAINS THIS
+       * PERMISSION: title, why, and that one button with nothing beside it to
+       * put the prompt off. Exactly one explanation before each system prompt,
+       * never two and never none.
+       *
+       * So NOT on: a bare row tap or a switch with no card; an ask on appear;
+       * the idempotent ask that only exists to make iOS give the app its own
+       * Settings page before `app-settings:` is opened; a retry; or a card that
+       * explains something else (the keyboard, Full Access) and happens to ask
+       * for the microphone on the way. Those keep the phone's box, which is the
+       * only explanation they have — so an ask like that is better read first
+       * (`checkPermission`) than asked when the answer is already on record.
+       *
+       * One action object reachable from both a card's Continue and an
+       * unexplained trigger is two actions: split it, and mark only the card's.
+       * tests/primed.test.ts walks the built screens and refuses the rest.
+       *
+       * The window ignores it: TAILZU-DESKTOP's renderer has no card of its own
+       * (sdui/actions.js goes straight to askMic / askCam), so a window-only ask
+       * neither needs the field nor minds it.
+       */
+      primed?: true;
     }
   // Read a permission WITHOUT asking for it. Same shape as requestPermission,
   // but it never shows a system dialog — so a screen can react to a permission
@@ -1760,7 +1929,7 @@ export type ActionSpec =
       kind: "checkPermission";
       permission:
         | "microphone" | "camera" | "notifications" | "photoLibrary"
-        | "contacts" | "calendar" | "location" | "tracking";
+        | "contacts" | "calendar" | "location" | "tracking" | "motion" | "backgroundLocation";
       onGranted?: ActionRef;
       onDenied?: ActionRef;
       /** Optional: also write the boolean answer to this state path. */
@@ -2492,7 +2661,7 @@ export const SDUI_VOCAB = 2;
 
 /** The closed list of block names, in the order of pure/SPEC.md 2.1. Mirrors kernel/blocks.ts BLOCKS exactly. */
 export const SDUI_BLOCKS = [
-  "expr", "defs", "rules", "device", "local", "paint", "motion", "gesture", "list", "input", "media", "data", "shell",
+  "expr", "defs", "rules", "device", "local", "paint", "motion", "gesture", "list", "input", "media", "data", "shell", "call",
 ] as const;
 
 export type BlockName = (typeof SDUI_BLOCKS)[number];
@@ -2762,6 +2931,25 @@ export interface VideoProps {
   tickMs?: number;
 }
 
+/**
+ * `Caller` (block `call`): one person in the call this screen holds, drawn from the call itself — their camera, or their name's first
+ * letter while it is off. `who` is "me", "speaker" (whoever is talking) or someone's `identity` as the call's state lists them.
+ *
+ * It draws nothing and takes no room until the call is up, so a tile can be laid out before anyone is in it.
+ */
+export interface CallerProps {
+  who: Val<string>;
+  /** Their own front camera shown as a mirror (true for "me"). */
+  mirror?: boolean;
+  fit?: "cover" | "contain";
+  radius?: number;
+  /** Behind the picture, and what a letter sits on while a camera is off. */
+  background?: string;
+  /** The letter's colour. */
+  nameColor?: string;
+  fontFamily?: string;
+}
+
 /** `Audio`: a sound, played by expo-audio. It draws its children; the player is behind them. */
 export interface AudioProps {
   source: string;
@@ -2804,6 +2992,7 @@ export const BLOCK_NODES: Record<string, readonly string[]> = {
   list: ["List", "Each"],
   input: ["Input"],
   media: ["Video", "Audio", "Camera"],
+  call: ["Caller"],
 };
 
 // --------------------------------------------------------------------------- 8i. paint on any box (`paint`)

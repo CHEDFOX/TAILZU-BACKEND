@@ -24,7 +24,7 @@
  */
 import type {
   ActionRef, ActionSpec, AudioProps, BlockName, CameraProps, Defs, EachProps, ExprCondition, GestureSpec,
-  InputProps, ListProps, MotionEase, MotionKeys, Node, NodeMotion, RuleSpec, ScreenResponse, SubscribeSpec,
+  CallerProps, InputProps, ListProps, MotionEase, MotionKeys, Node, NodeMotion, RuleSpec, ScreenResponse, SubscribeSpec,
   TextTemplate, ValueBinding, VideoProps,
 } from "../../../../shared/types/sdui.js";
 import { lintScreen } from "./lint.js";
@@ -41,6 +41,9 @@ export const t = (template: string): TextTemplate => ({ $t: template });
 
 /** A condition as an expression: `cond("device.keyboard.enabled && !state.dismissed")`. */
 export const cond = (expr: string): ExprCondition => ({ expr });
+
+/** `whenExpr("c.mic", node)`: the kit's `when`, with an expression instead of a vocabulary-1 condition. */
+export const whenExpr = (expr: string, n: Node): Node => ({ ...n, visibleIf: cond(expr) });
 
 // ===================================================================== templates (B2)
 
@@ -100,6 +103,19 @@ export const audio = (props: AudioProps, o: PlayerOpts = {}): Node => player("Au
 
 /** The viewfinder, or the code scanner. Its children draw until the permission is granted, and over it after. */
 export const camera = (props: CameraProps, o: PlayerOpts = {}): Node => player("Camera", props, o);
+
+// ===================================================================== a call (B14, docs/rooms.md)
+
+/** One person in the call this screen holds: "me", "speaker", or someone's identity from the call's state. */
+export const caller = (props: CallerProps, o: PlayerOpts = {}): Node => player("Caller", props, o);
+
+/** Take a seat in the call and hold it for this screen (the `call` block). */
+export const callJoin = (o: Omit<Extract<ActionSpec, { kind: "call.join" }>, "kind">): ActionSpec => ({ kind: "call.join", ...o });
+/** The call this screen holds: mic, camera or speaker on or off (value, else the other way), or flip the camera. */
+export const callSet = (op: Extract<ActionSpec, { kind: "call.set" }>["op"], value?: boolean): ActionSpec =>
+  ({ kind: "call.set", op, ...(value === undefined ? {} : { value }) });
+/** Hang up. */
+export const callLeave = (): ActionSpec => ({ kind: "call.leave" });
 
 function player(type: string, props: object, o: PlayerOpts): Node {
   return {

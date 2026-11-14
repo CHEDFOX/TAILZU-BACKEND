@@ -22,6 +22,40 @@ const base = { name: "Workout buddy", purpose: "Plans my workouts." };
 const ok = (over: Record<string, unknown> = {}) => parseBotInput({ ...base, ...over });
 const errors = (over: Record<string, unknown>): string[] => { const r = ok(over); return r.ok ? [] : r.errors; };
 
+describe("a bot's colour has ONE answer", () => {
+  it("is decided in builtin.ts, and experience/bots/palette.ts agrees with it", async () => {
+    // These two carried their own copies and disagreed for as long as both existed: builtin.ts said Xode was pine
+    // while palette.ts drew it moss. palette.ts reads from builtin.ts now, and this fails if a copy comes back.
+    const { builtinBots } = await import("../src/bots/builtin.js");
+    const { botLook, PALETTE_HEX } = await import("../src/experience/bots/palette.js");
+    for (const b of builtinBots()) {
+      expect(botLook(b.slug, b.colour).color, b.slug).toBe(PALETTE_HEX[b.colour]);
+    }
+  });
+
+  it("is never stone for a bot Tailzu ships, because stone is the fallback for everyone else's", async () => {
+    const { builtinBots } = await import("../src/bots/builtin.js");
+    const { PALETTE_HEX, botLook } = await import("../src/experience/bots/palette.js");
+    // A bot with no colour of its own falls back to stone, so anything shipped wearing it is indistinguishable.
+    expect(botLook("someones-own-bot").color).toBe(PALETTE_HEX.stone);
+    for (const b of builtinBots()) expect(b.colour, b.slug).not.toBe("stone");
+  });
+
+  it("gives every bot Tailzu ships a different one", async () => {
+    const { builtinBots } = await import("../src/bots/builtin.js");
+    const taken = builtinBots().map((b) => b.colour);
+    expect(new Set(taken).size).toBe(taken.length);
+  });
+
+  it("does not offer ash to anybody: it is kept for a bot Tailzu ships", async () => {
+    const { SHIPPED_ONLY } = await import("../src/bots/types.js");
+    expect([...SHIPPED_ONLY]).toEqual(["ash"]);
+    // Not in the palette, so the picker never shows it, colourFor never hands it out, and a draft asking for it is
+    // refused — which is what keeps somebody's own bot from coming out the same colour as one of ours.
+    for (const c of SHIPPED_ONLY) expect(errors({ colour: c }).join(), c).toMatch(/colour is one of/);
+  });
+});
+
 describe("the palette", () => {
   it("is the eight natural colours, and nothing else", () => {
     expect([...PALETTE]).toEqual(["moss", "clay", "ochre", "sea", "pine", "plum", "sand", "stone"]);
@@ -74,15 +108,19 @@ describe("the caps", () => {
 });
 
 describe("the skills schema", () => {
-  it("is five switches and a list of apps, off unless turned on", () => {
+  it("is five switches, the health ones and a list of apps, off unless turned on", () => {
+    // 0094 (docs: perms2 §5.1) adds `healthSource`: which reader a fitness bot's days come from. Like the two health
+    // switches it is never a person's to set, so it parses to the default here and the service forces it on every path
+    // but the phone's own POST.
     const r = ok();
-    expect(r.ok && r.value.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, health: false, connectors: [] });
+    expect(r.ok && r.value.skills).toEqual({ web: false, files: false, artifacts: false, code: false, research: false, health: false, healthSleep: false, healthSource: "health", connectors: [] });
     const on = ok({ skills: { web: true, connectors: ["google-calendar", "google-calendar", "c_0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f"] } });
-    expect(on.ok && on.value.skills).toEqual({ web: true, files: false, artifacts: false, code: false, research: false, health: false, connectors: ["google-calendar", "c_0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f"] });
+    expect(on.ok && on.value.skills).toEqual({ web: true, files: false, artifacts: false, code: false, research: false, health: false, healthSleep: false, healthSource: "health", connectors: ["google-calendar", "c_0f0f0f0f-0f0f-4f0f-8f0f-0f0f0f0f0f0f"] });
   });
 
   it("refuses a skill that does not exist, a switch that is not a boolean, and an app that is not named by its id", () => {
-    expect(errors({ skills: { teleport: true } }).join()).toMatch(/skills has web, files, artifacts, code, research, health and connectors, and nothing else/);
+    expect(errors({ skills: { teleport: true } }).join()).toMatch(/skills has web, files, artifacts, code, research, health, healthSleep, healthSource and connectors, and nothing else/);
+    expect(errors({ skills: { healthSource: "guesswork" } }).join()).toMatch(/skills\.healthSource is "health" or "motion"/);
     expect(errors({ skills: { web: "yes" } }).join()).toMatch(/skills\.web is true or false/);
     expect(errors({ skills: { connectors: ["Google Calendar"] } }).join()).toMatch(/a connector is named by its id/);
     expect(errors({ skills: { connectors: Array.from({ length: 13 }, (_, i) => `app-${i}`) } }).join()).toMatch(/at most 12 connected apps/);

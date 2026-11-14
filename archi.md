@@ -176,12 +176,18 @@ oracle/            the Oracle bot: birth details from words, the birthplace sear
 mail/              the mail bot: the mail worker's signed client and the account's hash (worker.ts), which person a hash is, for the
                    push (owners.ts), what its chat knows (digest.ts), whose each business is and who else reaches it in a space
                    (access.ts) (docs/mail.md)
+rooms/             calls: our own video and audio rooms carried by Cloudflare's Realtime SFU (sfu.ts: sessions, tracks, the App Secret that
+                   never leaves the server), a call's link (link.ts), the lobby (lobby.ts), the rows and seats (store.ts), the shapes
+                   (types.ts) and the service, which holds who is in a call because the SFU has no webhook (docs/rooms.md)
 lingo/             Lingo, the language bot: the shapes (types.ts), when to ask something again (schedule.ts, FSRS),
                    marking an answer on the server and never in the app (grade.ts), what is kept (store.ts), a day's
                    session and how an item climbs towards being said (session.ts), and what its chat knows
-                   (digest.ts), and the shared bank of real sentences with the licence and author kept per row
-                   (sentences.ts). Conversation is the lesson; a word is not learned until it has been said out
-                   loud. No language is built in: a course is a pair of tags (docs/lingo.md)
+                   (digest.ts), the order a session is put in (order.ts: interleaving, hardest early, ending on a
+                   win, a miss back after a gap), the languages the picker offers and finding one in them
+                   (languages.ts: the list is the SERVER's, so a language is a deploy and not a release), a set and what
+                   follows it (set.ts: the celebration scaled to how it went, and the next set shaped by it), and the shared bank of real sentences with the licence and author
+                   kept per row (sentences.ts). Conversation is the lesson; a word is not learned until it has been
+                   said out loud. No language is built in: a course is a pair of tags (docs/lingo.md)
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
@@ -250,8 +256,9 @@ ads/               Meta and Google Tag Manager events
 | The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
 | The Oracle bot (a reading of the person's sky) | `tulmi/src/oracle/`, `routes/bots/oracle.ts`, the page `experience/bots/screens/bots/oraclePage.ts` and its cards `oracleCards.ts`, the engine `oracle-worker/`, migration 0078 (docs/oracle.md) |
 | The mail bot (a business's email: mailboxes, filing, AI replies) | `tulmi/src/mail/`, `routes/bots/mail.ts`, the page `experience/bots/screens/bots/mailPage.ts`, its cards `mailCards.ts`, its other screens `mailScreens.ts`, its mailbox `mailInbox.ts` (a folder, a conversation, writing), a domain's addresses and rules `mailAliases.ts` (shared parts `mailParts.ts`), the engine `mail-worker/` (its API `mail-worker/server/routes/x0.ts`, its mailbox `mail-worker/server/inbox.ts`), `deploy/mail-up.sh`, migration 0080, the mail bot in a space `tulmi/src/mail/access.ts` and migration 0084 (docs/mail.md) |
+| Calls (our own video and audio calls, started from the mail bot) | `tulmi/src/rooms/`, `routes/bots/rooms.ts` (the host's call, the link's way in, and each seat's signalling), the mail bot's calls in `routes/bots/mail.ts`, the screens `experience/bots/screens/bots/mailCalls.ts` (Calls on the mail page, bots.mail.call) and `callRoom.ts` (in a call, bots.mail.room, a vocabulary-2 screen), the apps' `call` block (`TAILZU-FRONTEND/app/src/sdui/call/`, `TAILZU-DESKTOP/src/app/sdui/v2/call.js`), migration 0091 (docs/rooms.md) |
 | The meeting bot (a bot in video calls: notes, answers, auto-join) | `tulmi/src/meet/` (`types.ts`, `recall.ts` Recall's client, `store.ts`, `words.ts`, `brain.ts`, `stage.ts` the speaking bot's page, `calendar.ts` auto-join, `digest.ts` the chat's knowledge, `service.ts` the engine, `room.ts` one meeting's live state, `people.ts` a space's admin and their people), `notes/finish.ts` (a finished note organised, shared with the note-taker), `routes/bots/meet.ts`, the page `experience/bots/screens/bots/meetPage.ts`, its meeting `meetScreens.ts`, migrations 0082 and 0083 (docs/meet.md) |
-| Lingo (the language bot: spaced repetition, marking on the server, talking rather than tapping) | `tulmi/src/lingo/` (`types.ts`, `schedule.ts` the FSRS scheduler, `grade.ts` the marking, `store.ts`, `session.ts` a day's session, `digest.ts` the chat's knowledge), `sentences.ts` the shared sentence bank), `routes/bots/lingo.ts`, the bot in `bots/builtin.ts` (slug `lingo`, `LINGO=true`), `scripts/lingo-seed.ts` (pour a corpus in), migrations 0087 and 0089 (docs/lingo.md) |
+| Lingo (the language bot: spaced repetition, marking on the server, talking rather than tapping) | `tulmi/src/lingo/` (`types.ts`, `schedule.ts` the FSRS scheduler, `grade.ts` the marking, `store.ts`, `session.ts` a day's session, `digest.ts` the chat's knowledge), `sentences.ts` the shared sentence bank, `set.ts` a set and the scaled celebration), `routes/bots/lingo.ts`, its screens `experience/bots/screens/bots/lingoPage.ts` (the territory, a set, the picker, leaving one), the bot in `bots/builtin.ts` (slug `lingo`, `LINGO=true`), `scripts/lingo-seed.ts` (pour a corpus in), migrations 0087, 0089 and 0092 (docs/lingo.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
 | The phone's own three (where the day starts, one contact, a fitness bot's workouts) | the contract `shared/types/sdui.ts` (`location.area`, `contact.pick`, `health.sync`), the card words `experience/bots/screens/permitWords.ts`, location in `experience/bots/screens/botsPlaces.ts`, the contact picker `screens/spaces/pickContact.ts` with the invite preview `botsBots/inviteMail.ts` and its retention `botsBots/inviteSweeper.ts`, health in `bots/healthDays.ts` + `bots/healthGate.ts` + `bots/door.ts` `isFitnessBot` + `screens/bots/health.ts` + `POST /v1/bots/:slug/health/days`, migration 0089; all five switches off in `config.ts` (docs/perms.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
@@ -340,7 +347,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/everyday.md`, `docs/show.md`, `docs/home-updates.md`, `docs/artifacts.md`, `docs/spaces.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/rooms.md`, `docs/everyday.md`, `docs/show.md`, `docs/home-updates.md`, `docs/artifacts.md`, `docs/spaces.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
 `docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers), `docs/perms.md`,
 `viewer/docs/artifact-viewer.md`.

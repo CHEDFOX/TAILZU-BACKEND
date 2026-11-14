@@ -3,10 +3,13 @@
  */
 
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
+import { MOTION_CAPABILITY } from "../../../../../../shared/types/sdui.js";
 import {
   call, seq, row, icon, C, meta, box, text, whenEq, type IconName, labelled, when, col, grow, button, type BotsCtx, botAvatar, page, card,
-  table, switchMark, divider, sectionLabel,
+  table, switchMark, divider, sectionLabel, canFocus, canMotionDrive, switchRow, listRow,
 } from "../../kit.js";
+import { line as cardLine, permitStep } from "../firstRun/parts.js";
+import { DRIVE, FOCUS } from "../permitWords.js";
 import { type Settings, toast, refresh, oops, clock, botOf, heading, couldNot, columns, glyph, G } from "./parts.js";
 
 /** `name`: the name Plan Ease calls as ("Zara", else "X0"); `calls`: calls can come here (BOT_CALLS), so the Calls row is drawn. */
@@ -16,6 +19,8 @@ export interface NotifyData {
   follow?: boolean;
   /** The people whose must-not-miss items may ring this person louder and call them, by name. */
   followFrom?: Array<{ id: string; name: string }>;
+  /** Whether a Focus with X0 Bot's own filter is on right now (docs: perms2 §4.2). Never which Focus. */
+  focusOn?: boolean;
   /** A real phone call can go here (the phone channel set up), and this person's own number as they see it. */
   phone?: { number: { state: "none" | "pending" | "verified" | "stopped"; display: string; setup?: { screen: string; params?: Record<string, string> } } | null } | null;
 }
@@ -87,6 +92,10 @@ export function timePicker(key: ClockKey, field: "summaryAt" | "quietFrom" | "qu
 
 export const notifyState = (s: Settings, ctx: BotsCtx) => ({
   done: s.notify.done, summary: s.notify.summary, quiet: s.notify.quiet, calls: s.notify.calls !== false, edit: "",
+  // Build 8.9.1's two holds (docs: perms2 §4, §5.2): both off until the person turns the row on. The driving row's own card,
+  // the Settings line it falls back to, and whether Motion & Fitness is already granted (read, never asked, on appear).
+  focusHold: s.notify.focusHold === true, driveWait: s.notify.driveWait === true,
+  driveCard: false, driveBlocked: false, motionGranted: false,
   follow: s.notify.follow !== false, followTell: s.notify.followTell !== false, ringMax: String(s.notify.ringMax ?? 6), phoneCall: s.notify.phoneCall === true,
   ...clockState("sum", s.notify.summaryAt), ...clockState("qf", s.notify.quietFrom), ...clockState("qt", s.notify.quietTo),
   ...Object.fromEntries(ctx.live.bots.map((b) => [`bot_${b.slug.replace(/-/g, "_")}`, !s.notify.botsOff.includes(b.slug)])),
@@ -99,6 +108,111 @@ export const callsSave = (): ActionRef => when2("calls", save({ notify: { calls:
 export const callsSwitch = () => seq({ kind: "toggleState", path: "calls" }, callsSave());
 /** What the Calls row says: "Zara calls you when it's time to leave or a bill is due today" (and must-not-miss reminders, with follow-through). */
 export const callsLine = (d: NotifyData): string => `${d.name || "X0"} calls you when it's time to leave or a bill is due today${d.follow ? ", and for must-not-miss reminders" : ""}`;
+
+// ------------------------------------------- when a call waits: a Focus, and driving (docs: perms2 §4, §5.2)
+
+/**
+ * THE TWO HOLDS, under Calls. Each is drawn only on a store build's phone that declares its capability and only while its own
+ * switch is on (kit canFocus / canMotionDrive); the window and every older binary get this card exactly as it is today.
+ *
+ * THE FOCUS ROW HAS NO CARD, because it asks nothing at all: on iPhone the person adds X0 Bot's own Focus Filter in Settings
+ * (the row tells them the three steps, because iOS gives an app no way to open a Focus), and on Android reading Do Not
+ * Disturb needs no permission.
+ *
+ * THE DRIVING ROW DOES ASK, so it has one (docs: perms2 §5.2). Turning it on reads whether Motion & Fitness is already
+ * granted — `checkPermission` never prompts — and with it granted the switch just saves. Without it, one card opens, with
+ * Continue and nothing else (App Review 5.1.1(iv)), and Continue is the only thing that reaches the iPhone's own prompt. The
+ * switch does NOT move until the answer is in: a switch that said "calls wait while you drive" with no Motion grant behind
+ * it would promise something nothing does, and `NSMotionUsageDescription`'s driving clause would never be shown in context.
+ */
+export function holdRows(ctx: BotsCtx, d: NotifyData, o: { desk?: boolean } = {}): Node[] {
+  const rows: Node[] = [];
+  const sub = (words: string): Node => meta(words, { size: 12, ...(o.desk ? {} : { style: { paddingHorizontal: 16, paddingBottom: 6 } }) });
+  if (canFocus(ctx)) {
+    const label = ctx.platform === "android" ? FOCUS.androidRow : FOCUS.row;
+    const press = flipHold("focusHold", "Calls wait during a Focus", "Calls come as usual");
+    rows.push(o.desk
+      ? row([
+        col([text(label, { size: 14 }), meta(FOCUS.rowSub, { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }),
+        box([switchMark("focusHold")], {}, press),
+      ], { gap: 12 })
+      : switchRow(label, "focusHold", { left: glyph(G.bell, 18), sub: FOCUS.rowSub, onChange: saveOnly("focusHold", "Calls wait during a Focus", "Calls come as usual", "focusHold") }));
+    // iPhone only: the three steps, and what the server last heard. Which Focus it is, is never known.
+    if (ctx.platform !== "android") {
+      rows.push(when({ truthy: "focusHold" }, col([
+        ...FOCUS.steps.map((t, i) => sub(`${i + 1}. ${t}`)),
+        sub(d.focusOn ? FOCUS.live : FOCUS.idle),
+      ], { gap: 2, ...(o.desk ? { paddingTop: 2 } : {}) })));
+    }
+  }
+  if (canMotionDrive(ctx)) {
+    const android = ctx.platform === "android";
+    // THE WATCH, BOTH WAYS (8.9.1, `motion.watch`). Nothing is read and nothing comes back: it only tells the phone whether
+    // it may watch for getting into a car. ANDROID NEEDS BOTH ENDS — on registers the two IN_VEHICLE transitions, which is
+    // the only way it can answer the check at all, and off unregisters and deletes the one line it kept, so with the switch
+    // off nothing about driving is left on the phone. The iPhone reads its own motion history at question time, so there is
+    // nothing to register and the phone answers true, which is why both paths can send it unconditionally.
+    const watch = (on: boolean): ActionSpec => ({ kind: "motion.watch", on } as unknown as ActionSpec);
+    // On -> off at once, and the switch moves with the tap. Off -> granted already, so it just saves; else the card, and the
+    // switch stays where it is until `onGranted` has saved it (the save ends in a refresh, which draws it on).
+    const saveOn: ActionRef = seq(watch(true), save({ notify: { driveWait: true } }, "Calls wait while you drive"));
+    const turnOn: ActionRef = { kind: "condition", if: { truthy: "motionGranted" }, then: saveOn, else: { kind: "setState", path: "driveCard", value: true } } as ActionSpec;
+    const press: ActionRef = {
+      kind: "condition", if: { truthy: "driveWait" },
+      then: seq(
+        { kind: "toggleState", path: "driveWait" } as ActionSpec,
+        watch(false),
+        save({ notify: { driveWait: false } }, "Calls come as usual"),
+      ),
+      else: turnOn,
+    } as ActionSpec;
+    // The one thing that asks. `onGranted` saves the switch; a refusal leaves it off and says so.
+    //
+    // `primed`: the driving card below is the explanation (DRIVE.title, its lines, Continue and nothing else), and
+    // its Continue is the only thing that fires this — the switch itself opens the card, it never asks. So the
+    // phone goes to the system prompt instead of drawing its own box in front of a card that has just said it all.
+    const ask: ActionSpec = {
+      kind: "requestPermission", permission: "motion", primed: true,
+      onGranted: seq({ kind: "setState", path: "driveCard", value: false } as ActionSpec, { kind: "setState", path: "motionGranted", value: true } as ActionSpec, saveOn),
+      onDenied: seq({ kind: "setState", path: "driveCard", value: false } as ActionSpec, toast(DRIVE.denied)),
+      onBlocked: seq({ kind: "setState", path: "driveCard", value: false } as ActionSpec, { kind: "setState", path: "driveBlocked", value: true } as ActionSpec),
+    } as unknown as ActionSpec;
+    // Android's answer is sometimes neither "driving" nor "not driving", and the row and the card say so rather than
+    // promise a check that will not always come.
+    const driveSub = android ? DRIVE.rowSubAndroid : DRIVE.rowSub;
+    rows.push(o.desk
+      ? row([
+        col([text(DRIVE.row, { size: 14 }), meta(driveSub, { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }),
+        box([switchMark("driveWait")], {}, press),
+      ], { gap: 12 })
+      : listRow({ label: DRIVE.row, sub: driveSub, left: glyph(G.bell, 18), right: switchMark("driveWait"), chevron: false, onPress: press }));
+    rows.push(permitStep({
+      when: { truthy: "driveCard" }, title: DRIVE.title,
+      lines: (android ? DRIVE.linesAndroid : DRIVE.lines).map((l) => cardLine(l)),
+      cta: { label: DRIVE.cta, onPress: ask },
+    }));
+    // Refused once already: the system will not ask again, so Settings is the only useful thing left to offer.
+    rows.push(when({ truthy: "driveBlocked" }, col([
+      sub(android ? DRIVE.blockedAndroid : DRIVE.blocked),
+      button(DRIVE.openSettings, { kind: "openSettings", target: "app" } as ActionSpec, { kind: "secondary", size: "md" }),
+    ], { gap: 6, ...(o.desk ? {} : { paddingHorizontal: 16, paddingBottom: 10 }) })));
+    // Never prompts: it only reads the answer already on record, so the card is skipped for a phone that said yes before.
+    rows.push({ ...box([], { height: 0 }), on: { onAppear: { kind: "checkPermission", permission: "motion", assignTo: "motionGranted" } as ActionSpec } });
+  } else if (
+    ctx.client === "phone" && ctx.platform === "android" && ctx.can.has(MOTION_CAPABILITY) && d.settings.notify.driveWait === true
+  ) {
+    // THE SWITCH WENT OFF ON THE SERVER, SO THE PHONE'S REGISTRATION GOES TOO (docs: perms2 §5.2). An Android phone that
+    // turned the row on registered the two IN_VEHICLE transitions; with `PERM_MOTION_DRIVE_ANDROID` off there is no row left
+    // to turn it off from, so this page quietly unregisters it and deletes the one line it kept. Nothing is read, nothing
+    // comes back, and no permission is asked. The iPhone registers nothing, so it needs none of this.
+    rows.push({ ...box([], { height: 0 }), on: { onAppear: { kind: "motion.watch", on: false } as unknown as ActionSpec } });
+  }
+  return rows;
+}
+
+/** A hold switch: the phone flips it, then the one PUT saves it. */
+const flipHold = (key: "focusHold" | "driveWait", on: string, off: string): ActionRef =>
+  seq({ kind: "toggleState", path: key }, when2(key, save({ notify: { [key]: true } }, on), save({ notify: { [key]: false } }, off)));
 
 // ------------------------------------------------------------------ Must not miss (follow-through)
 
@@ -203,6 +317,8 @@ export function notifyDesk(ctx: BotsCtx, d: NotifyData | undefined) {
           ...(d.calls ? [
             divider(),
             row([col([text("Calls", { size: 15, weight: 600 }), meta(callsLine(d), { size: 12 })], { flexGrow: 1, flexShrink: 1, gap: 2 }), box([switchMark("calls")], {}, callsSwitch())], { gap: 12 }),
+            // When a call waits instead of ringing (docs: perms2): a Focus, and driving. Drawn only on a phone that can answer.
+            ...holdRows(ctx, d, { desk: true }).flatMap((r) => [divider(), r]),
           ] : []),
         ], { padding: 20, gap: 14 }),
         // Must not miss (follow-through, botsBots/planFollow.ts): only while it is on here.

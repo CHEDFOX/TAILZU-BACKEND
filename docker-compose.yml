@@ -38,6 +38,9 @@ services:
       CONTROL_DIR: /data/control
       # Each Xode project's code, kept for the chat to search all of it (tulmi/src/code/project/copies.ts).
       CODE_COPY_DIR: /data/code
+      # The public network lists abuse prevention downloads itself (docs/trust.md): kept on a volume, so a restart keeps
+      # the last good copy and a server that cannot reach a list is not left with nothing.
+      TRUST_LISTS_DIR: /data/trust
       # Public URL clients see for uploaded media. Empty: the server's own
       # PUBLIC_ORIGIN + /media (tulmi/.env), so it moves when that does.
       MEDIA_PUBLIC_URL: ${MEDIA_PUBLIC_URL:-}
@@ -60,7 +63,17 @@ services:
       # The landing page, served at /. Same shape as the installers:
       #   scp index.html server:~/tulmi/site/
       - ./site:/data/site
+      # The downloaded network lists (abuse prevention, docs/trust.md), kept across deploys like the media.
+      - tulmi_trust:/data/trust
     restart: unless-stopped
+    # LOGS DO NOT GROW FOR EVER (docs/trust.md 8.3 fix 1). Nothing rotated these files, so a request line written on every
+    # call was kept until the disk filled. Size rotation bounds the disk, not the time, which is exactly why the client's
+    # address had to leave the line itself (src/observability.ts writes the keyed network hash instead).
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
     # Docker uses the image's HEALTHCHECK directive by default; restate it here
     # so a misconfigured base image can't silently disable liveness probing.
     healthcheck:
@@ -105,6 +118,11 @@ services:
     cpus: ${MEDIA_WORKER_CPUS:-2}
     pids_limit: 512
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   # THE ORACLE WORKER (oracle-worker/, docs/oracle.md, DEPLOY.md): Plutto's oracle for the Oracle bot. OPTIONAL: it only starts with the `oracle` profile,
   #
@@ -135,6 +153,11 @@ services:
     cpus: ${ORACLE_WORKER_CPUS:-1}
     pids_limit: 256
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   # THE MAIL WORKER (mail-worker/, docs/mail.md, DEPLOY.md): the mail bot's engine, copied from Xooteq Mail and tuned for any business.
   # OPTIONAL: it only starts with the `mail` profile,
@@ -175,6 +198,11 @@ services:
     cpus: ${MAIL_WORKER_CPUS:-1}
     pids_limit: 256
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   # OPTIONAL reverse proxy with automatic HTTPS. It claims ports 80 and 443, so
   # ONLY use this if nothing else on the VPS is using them. If you already run
@@ -182,7 +210,8 @@ services:
   # subdomain to that existing proxy pointing at 127.0.0.1:8770 (see DEPLOY.md).
   # It never starts on a plain `docker compose up` (profile-gated).
   caddy:
-    image: caddy:2
+    # Pinned: an unpinned caddy:2 could change the proxy under a deploy that was only meant to ship the backend.
+    image: caddy:2.8
     profiles: ["https"]
     depends_on:
       backend:
@@ -197,6 +226,11 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
 networks:
   # Only the backend and the media worker are on it, and it has no route out: a file cannot make the worker call anything.
@@ -220,6 +254,8 @@ volumes:
   tulmi_control:
   # Xode's copy of each project's code (one gzipped file a project; swept after 30 days unused).
   tulmi_code:
+  # The public network lists abuse prevention reads (ASN ranges, the clouds' prefixes, Tor's exits, iCloud Private Relay).
+  tulmi_trust:
 
 # tulmi/.env for the image build's migrate stage only (backend.build.secrets above): mounted for that one step, never in the image.
 secrets:

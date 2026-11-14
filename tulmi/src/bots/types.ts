@@ -7,8 +7,24 @@
 import type { Shown } from "../show/types.js";
 
 /** The only colours a bot may have: a natural palette, one for each bot. */
+/**
+ * THE COLOURS A PERSON MAY GIVE THEIR OWN BOT: the natural palette, one for each bot. This is also the list the
+ * picker is sent (`/v1/bots` `palette`), what a draft's colour is checked against, and what `colourFor` chooses
+ * from, so adding to it changes all three — which is why `ash` below is NOT in it.
+ */
 export const PALETTE = ["moss", "clay", "ochre", "sea", "pine", "plum", "sand", "stone"] as const;
-export type Colour = (typeof PALETTE)[number];
+
+/**
+ * A NEUTRAL KEPT FOR A BOT TAILZU SHIPS, and not offered to anybody.
+ *
+ * `stone` is what `botLook` falls back to for a bot with no colour of its own, so a bot that ships must not wear it
+ * or it looks like any bot somebody made. `ash` is the neutral for one that needs one (Lingo). It is deliberately
+ * outside PALETTE: in it, it would be offered in the picker, it would change which colour `colourFor` hands every
+ * future bot a person makes, and somebody's own bot could come out the same colour as one of ours.
+ */
+export const SHIPPED_ONLY = ["ash"] as const;
+
+export type Colour = (typeof PALETTE)[number] | (typeof SHIPPED_ONLY)[number];
 
 /** What a bot can do beyond talking. A tool exists only for a skill that is on. */
 export const SKILL_NAMES = ["web", "files", "artifacts", "code", "research"] as const;
@@ -33,6 +49,24 @@ export interface BotSkills {
    * turn it on is refused. Turning it off deletes the days in the same request. Default false.
    */
   health: boolean;
+  /**
+   * Also count my sleep (0094, docs: perms2 §6): how long the person slept each night, on the bot's own page.
+   *
+   * A SUB-SWITCH OF `health`, and the same lock: only `POST /v1/bots/:slug/health/days { sleep: true }` sets it, because that
+   * is the only request that can have asked the person's phone for the sleep type first. Every other write path forces it
+   * false, and an update that tries to turn it on is refused. Turning it off nulls the nights in the same request.
+   */
+  healthSleep: boolean;
+  /**
+   * WHICH READER THIS BOT'S DAYS COME FROM (0094, docs: perms2 §5.1): "health" (Apple Health / Health Connect) or "motion"
+   * (the iPhone's own Motion & Fitness, chosen instead). One bot has one source at a time.
+   *
+   * The same lock as the two switches: only `POST /v1/bots/:slug/health/days { enable: true, source }` sets it, and every
+   * other write path forces "health". The server needs it because the quiet re-read has to ask the phone for the SAME reader
+   * the person chose — without it a Motion bot was re-read from Apple Health, and its Motion days were deleted as the other
+   * source's — and because the row's words, and whether sleep is offered at all, differ between the two.
+   */
+  healthSource: "health" | "motion";
   /** Connected apps the bot may use, by connector id. A write still asks the person. */
   connectors: string[];
 }

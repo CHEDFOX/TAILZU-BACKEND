@@ -61,6 +61,10 @@ export const SW = {
   "d.live": sentence("I show your words above the pill as you speak", "Aap bolte ho toh main aapke shabd pill ke upar dikhata hoon"),
   "d.auto": sentence("I’ll be ready when you sign in", "Aap sign in karoge toh main taiyaar milunga"),
   "d.audio": sentence("I delete it as soon as it’s written", "Likhte hi main ise delete kar deta hoon"),
+  // The window's Privacy and data: the switch that takes the terms' yes back,
+  // and gives it again (the onboarding's terms step promises this is here).
+  "d.ai": sentence("What you share with me goes to our AI partners, only to answer you. Off: bots, dictation and Ask stop.",
+    "Jo aap mere saath share karte ho, woh sirf aapko jawab dene ke liye hamare AI partners ke paas jaata hai. Band: bots, dictation aur Ask ruk jaate hain."),
   "d.history": sentence("I keep it so you can copy a note again", "Main ise rakhta hoon taaki aap note phir se copy kar sako"),
   "d.tone.go": label("Open", "Kholo"),
   "d.name.give": label("Give me a name", "Mujhe ek naam do"),

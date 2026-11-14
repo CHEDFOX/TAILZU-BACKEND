@@ -25,8 +25,15 @@ export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 // ===================================================================== what the screens read
 export interface BotView {
   slug: string; name: string; colour: string; purpose: string; principles: string[]; tone: string; builtin: boolean; publicCard: boolean;
-  /** `health`: Apple Health / Health Connect on a fitness bot the person made (docs: perms §4). Absent on an old answer. */
-  skills: { web: boolean; files: boolean; artifacts: boolean; code: boolean; research: boolean; health?: boolean; connectors: string[] };
+  /**
+   * `health`: Apple Health / Health Connect on a fitness bot the person made (docs: perms §4). Absent on an old answer.
+   * `healthSleep` and `healthSource` are 8.9.1's (0094, docs: perms2 §5.1, §6): whether it counts the nights, and which reader
+   * its days come from, so the row's words follow the one the person really chose.
+   */
+  skills: {
+    web: boolean; files: boolean; artifacts: boolean; code: boolean; research: boolean;
+    health?: boolean; healthSleep?: boolean; healthSource?: "health" | "motion"; connectors: string[];
+  };
 }
 interface Fact { id: string; text: string; createdAt: number }
 export interface Memory { facts: Fact[]; summary: string; turns: number }

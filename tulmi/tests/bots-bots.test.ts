@@ -295,7 +295,7 @@ describe("the routes", () => {
     expect((await s.call("PUT", `${AREA}/spaces/${id}/members/${BOB}`, ALICE, { canApprove: true })).statusCode).toBe(410);
     await s.call("POST", `${AREA}/spaces/${id}/bots`, BOB, { slug: "plan" });
     home = (await s.call("GET", `${AREA}/spaces`, BOB)).json().spaces[0];
-    expect(home.bots).toEqual([{ slug: "plan", name: "Plan Ease", colour: "sea", addedBy: "Rohan", byYou: true }]);
+    expect(home.bots).toEqual([{ slug: "plan", name: "Plan Ease", colour: "ochre", addedBy: "Rohan", byYou: true }]);
     expect(home.members.find((m: { you: boolean }) => m.you).canApprove).toBe(true);
     expect((await s.call("GET", `${AREA}/spaces`, "33333333-3333-4333-8333-333333333333")).json().spaces).toEqual([]);
     expect((await s.call("DELETE", `${AREA}/spaces/${id}`, BOB)).json()).toEqual({ deleted: false });

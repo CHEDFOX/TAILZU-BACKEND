@@ -19,8 +19,8 @@
  *                the meeting bot to a meeting (to the space's admin) or sent it to theirs (to a member), set up mail for a business (to
  *                the space's admin) or gave them one of its addresses to answer (to a member): sent; in quiet hours without a sound. A
  *                person's word, not a bot's: no bot being off stops it (a muted chat sends none: botsBots/threads.ts)
- *   mail         the mail bot: a business's message needs their answer, an urgent one has a draft, or its AI paused for the day: sent; in
- *                quiet hours without a sound; not with the mail bot turned off
+ *   mail         the mail bot: a business's message needs their answer, an urgent one has a draft, its AI paused for the day, or someone
+ *                waits to join one of its calls: sent; in quiet hours without a sound; not with the mail bot turned off
  *   meet         the meeting bot: the notes are ready, it waits to be let in, or it could not join: sent; in quiet hours without a sound;
  *                not with the meeting bot turned off
  *
@@ -36,8 +36,9 @@ import type { Spending } from "./limits.js";
 
 const NEEDS_YOU = new Set(["approval", "code_needs_you", "code_compute_ask", "code_commit_ask"]);
 const DONE = new Set(["code_job_done", "code_job_failed", "code_job_moved", "code_compute_paused", "code_minutes_low"]);
-/** The mail bot's (push/defaults.ts): a customer is waiting, so they go, quietly in quiet hours; not with the mail bot off. */
-const MAIL = new Set(["mail_needs_you", "mail_urgent", "mail_paused"]);
+/** The mail bot's (push/defaults.ts), its calls' too (someone at a call's door): a customer is waiting, so they go, quietly in quiet hours;
+ *  not with the mail bot off. */
+const MAIL = new Set(["mail_needs_you", "mail_urgent", "mail_paused", "room_waiting"]);
 /** The meeting bot's (push/defaults.ts): a call is waiting or its notes are ready, so they go, quietly in quiet hours; not with the meeting bot off. */
 const MEET = new Set(["meet_ready", "meet_waiting", "meet_failed"]);
 /** From people in a space (push/defaults.ts): quiet hours apply, Keylessbord being off does not. */

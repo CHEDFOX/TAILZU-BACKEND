@@ -48,7 +48,7 @@ describe("the generated kernel", () => {
   it("says which vocabulary and which blocks it speaks", () => {
     expect(kernel.VOCAB).toBe(2);
     expect([...kernel.BLOCKS]).toEqual([
-      "expr", "defs", "rules", "device", "local", "paint", "motion", "gesture", "list", "input", "media", "data", "shell",
+      "expr", "defs", "rules", "device", "local", "paint", "motion", "gesture", "list", "input", "media", "data", "shell", "call",
     ]);
     expect(kernel.canDraw(["expr"], ["expr"])).toBe(true);
     expect(kernel.missingBlocks(["expr"], ["expr", "list"])).toEqual(["list"]);

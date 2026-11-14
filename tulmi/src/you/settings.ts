@@ -46,6 +46,17 @@ export interface NotifySettings {
    * number (botsBots/planFollowChannels.ts). Off unless they turn it on, and it never rings while the phone channel isn't set up.
    */
   phoneCall: boolean;
+  /**
+   * BUILD 8.9.1 (docs: perms2 §4 and §5.2). Both off until the person turns the row on, and both only ever HOLD a call back:
+   *
+   *   focusHold   "Hold calls during a Focus" (iPhone: they added X0 Bot's Focus Filter to a Focus in Settings; Android: the
+   *               switch). A leave-by or a bill due today then arrives as a notice instead of a call, and the rest waits for
+   *               the Focus to end, when one notice lists what waited. A must-not-miss item still rings.
+   *   driveWait   "Wait while I'm driving". Just before a call, the phone answers "driving" or "not driving" and nothing else:
+   *               a leave-by call is skipped (they are on their way) and anything else waits.
+   */
+  focusHold: boolean;
+  driveWait: boolean;
 }
 
 export interface YouSettings {
@@ -61,7 +72,7 @@ export const DEFAULT_SETTINGS: YouSettings = {
   stopAtLimit: false,
   notify: {
     done: "ping", summary: false, summaryAt: 21 * 60, quiet: false, quietFrom: 23 * 60, quietTo: 7 * 60, botsOff: [], calls: true,
-    follow: true, followTell: true, ringMax: 6, followFrom: [], phoneCall: false,
+    follow: true, followTell: true, ringMax: 6, followFrom: [], phoneCall: false, focusHold: false, driveWait: false,
   },
   privacy: { personalise: true },
 };
@@ -107,6 +118,9 @@ export function cleanSettings(raw: unknown): YouSettings {
       ringMax: (RING_MAX_CHOICES as readonly number[]).includes(n.ringMax as number) ? (n.ringMax as number) : 6,
       followFrom: cleanFollowFrom(n.followFrom),
       phoneCall: n.phoneCall === true,
+      // Build 8.9.1's two holds (perms2): off unless the row was turned on, so an older row reads as off.
+      focusHold: n.focusHold === true,
+      driveWait: n.driveWait === true,
     },
     privacy: {
       personalise: p.personalise !== false,
@@ -157,7 +171,7 @@ export function applyPatch(cur: YouSettings, raw: unknown): Patched {
     if (n.done !== "quiet" && n.done !== "ping") return { ok: false, message: 'done is "quiet" or "ping".' };
     next.notify.done = n.done;
   }
-  for (const k of ["summary", "quiet", "calls", "follow", "followTell", "phoneCall"] as const) {
+  for (const k of ["summary", "quiet", "calls", "follow", "followTell", "phoneCall", "focusHold", "driveWait"] as const) {
     if (n[k] !== undefined) {
       if (typeof n[k] !== "boolean") return { ok: false, message: `${k} is true or false.` };
       next.notify[k] = n[k] as boolean;

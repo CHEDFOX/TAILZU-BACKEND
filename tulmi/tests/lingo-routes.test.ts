@@ -29,6 +29,7 @@ vi.mock("../src/auth/supabase.js", async (orig) => {
 
 const { MemoryLingoStore } = await import("../src/lingo/store.js");
 const { registerLingoRoutes } = await import("../src/routes/bots/lingo.js");
+const { refOf } = await import("../src/lingo/session.js");
 
 const T0 = Date.UTC(2026, 0, 1);
 
@@ -137,19 +138,28 @@ describe("a session and an answer", () => {
     for (const e of exercises) {
       expect(e.kind).toBe("choose");          // nothing has been met yet
       expect(e.options.length).toBeGreaterThan(1);
-      expect(e.options[e.correct]).toBeTruthy();
+      expect(e.ref).toMatch(/^[0-9a-f]{16}$/);
+      // Deliberately not sent: a test cannot read which answer is right either, which is the whole point.
+      expect(e.correct).toBeUndefined();
+      expect(e.item).toBeUndefined();
     }
   });
 
   it("marks a right answer right, and writes the scheduling back", async () => {
     const { app, store } = await start();
     const { exercises } = (await call(app, "POST", "/v1/lingo/session", { target: "es" })).json();
-    const first = exercises[0];
-    const r = await call(app, "POST", "/v1/lingo/answer", { target: "es", item: first.item, kind: "choose", picked: first.correct });
+    // Which exercise is "hola"? By its ref, worked out the way the route does. Its right option is its meaning,
+    // which this test knows because it seeded it — not because the payload gave it away.
+    const ref = refOf("u1", "es", "hola");
+    const hola = exercises.find((e: { ref: string }) => e.ref === ref);
+    expect(hola, "hola is in the set").toBeTruthy();
+    const picked = (hola.options as string[]).indexOf("hello");
+    expect(picked).toBeGreaterThanOrEqual(0);
+    const r = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "choose", picked });
     expect(r.json().mark).toMatchObject({ verdict: "right" });
     expect(r.json().dueMs).toBeGreaterThan(T0);
     expect(r.json().streakDays).toBe(1);
-    const kept = (await store.items("u1", "es")).find((i) => i.item === first.item)!;
+    const kept = (await store.items("u1", "es")).find((i) => i.item === "hola")!;
     expect(kept.memory.reps).toBe(1);
     expect(kept.memory.state).not.toBe("new");
   });
@@ -157,25 +167,65 @@ describe("a session and an answer", () => {
   it("marks a wrong answer wrong", async () => {
     const { app } = await start();
     const { exercises } = (await call(app, "POST", "/v1/lingo/session", { target: "es" })).json();
-    const first = exercises[0];
-    const wrong = first.correct === 0 ? 1 : 0;
-    expect((await call(app, "POST", "/v1/lingo/answer", { target: "es", item: first.item, kind: "choose", picked: wrong })).json().mark)
+    const ref = refOf("u1", "es", "hola");
+    const hola = exercises.find((e: { ref: string }) => e.ref === ref);
+    const wrong = (hola.options as string[]).findIndex((o) => o !== "hello");
+    expect((await call(app, "POST", "/v1/lingo/answer", { target: "es", ref, kind: "choose", wrong })).json().mark)
       .toMatchObject({ verdict: "wrong" });
+  });
+
+  it("sends no answer to the client, and takes the word back as an opaque ref", async () => {
+    const { app } = await start();
+    const r = await call(app, "POST", "/v1/lingo/session", { target: "es" });
+    const body = JSON.stringify(r.json());
+    // Nothing a client is sent may contain the answer, the accepted answers, or which option is right.
+    expect(body).not.toContain('"item"');
+    expect(body).not.toContain('"accepted"');
+    expect(body).not.toContain('"correct"');
+    for (const e of r.json().exercises) {
+      expect(e.ref, "every exercise is named by a ref").toMatch(/^[0-9a-f]{16}$/);
+    }
+    // And the ref is what answers it.
+    const first = r.json().exercises[0];
+    const ok = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref: first.ref, kind: first.kind, picked: 0 });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().mark.verdict).toMatch(/right|wrong/);
+  });
+
+  it("refuses a ref that is not this person's", async () => {
+    const { app } = await start();
+    const r = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref: "f".repeat(16), kind: "write", said: "x" });
+    expect(r.statusCode).toBe(400);
   });
 
   it("DOES NOT LET THE APP MARK ITSELF", async () => {
     const { app } = await start();
     const { exercises } = (await call(app, "POST", "/v1/lingo/session", { target: "es" })).json();
-    const first = exercises[0];
-    const wrong = first.correct === 0 ? 1 : 0;
-    // Everything an app could send to claim it was right: a verdict, its own accepted answers, a count of times said.
+    const ref = refOf("u1", "es", "hola");
+    const hola = exercises.find((e: { ref: string }) => e.ref === ref);
+    const wrong = (hola.options as string[]).findIndex((o) => o !== "hello");
+    // Everything an app could send to claim it was right: a verdict, its own accepted answers, which option is
+    // right, a count of times said, and the word itself alongside the ref.
     const r = await call(app, "POST", "/v1/lingo/answer", {
-      target: "es", item: first.item, kind: "choose", picked: wrong,
+      target: "es", ref, item: "hola", kind: "choose", picked: wrong,
       correct: wrong, mark: { verdict: "right" }, verdict: "right", accepted: ["anything"], spoken: 99, learned: true,
     });
     expect(r.json().mark.verdict).toBe("wrong");
     expect(r.json().spoken).toBe(0);
     expect(r.json().learned).toBe(false);
+  });
+
+  it("sends no answer to the client at all", async () => {
+    const { app } = await start();
+    const body = JSON.stringify((await call(app, "POST", "/v1/lingo/session", { target: "es" })).json());
+    // Marking on the server is worth nothing if the word is readable in what the server sent.
+    for (const leak of ['"item"', '"accepted"', '"correct"']) expect(body, leak).not.toContain(leak);
+  });
+
+  it("refuses a ref that is not this person's", async () => {
+    const { app } = await start();
+    const r = await call(app, "POST", "/v1/lingo/answer", { target: "es", ref: "f".repeat(16), kind: "write", said: "x" });
+    expect(r.statusCode).toBe(400);
   });
 
   it("will not answer for a word that is not in the course", async () => {

@@ -71,6 +71,14 @@ import { registerPlanCallJudge } from "./planCallJudge.js";
 import { registerPlanFollowRoutes } from "./planFollows.js";
 import { registerFollowChannelRoutes } from "./followChannels.js";
 import { registerPlanMakeRoutes } from "./planMake.js";
+import { registerPlanBusyRoutes } from "./planBusy.js";
+import { registerPlanRemindersRoutes } from "./planReminders.js";
+import { registerPlanFocusRoutes } from "./planFocus.js";
+import { registerPlanCallCheckRoutes } from "./planCallCheck.js";
+import { askCheck, setWaitedSummary, startHoldSweeper, waitedWords } from "../../botsBots/planCallCheck.js";
+import { checkWantFor } from "../../botsBots/planCall.js";
+import { busyOverlap, planBusy } from "../../botsBots/planBusy.js";
+import { focusHolding } from "../../botsBots/planPrefs.js";
 import { planOn } from "../../botsBots/planSwitch.js";
 import { pushEngine } from "../../push/index.js";
 import { setPushOpenHook } from "../../push/engine.js";
@@ -354,6 +362,53 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   registerFollowChannelRoutes(app, deps);
   // "Plan something" (botsBots/planMakeService.ts): the card, Check, Done and Undo; after follow-through, whose setItem Done uses.
   registerPlanMakeRoutes(app, deps, { ease: parts.ease });
+  // THE PHONE'S OWN THINGS (build 8.9.1, docs: perms2). Each is off until its own PERM_* switch is on, and each route reads that
+  // same switch, so a row the server would not draw is a route it refuses:
+  //   /v1/botsapp/plan/busy            the busy times read from the phone's calendars (times only, never an event's name)
+  //   /v1/botsapp/plan/reminders/*     the one X0 Bot list in Reminders, merged with the to-dos
+  //   /v1/botsapp/plan/focus           whether a Focus or Do Not Disturb is on, so Plan Ease's calls wait
+  //   /v1/botsapp/plan/calls/:id/check the phone's two words before a call rings: driving, and a Focus
+  registerPlanBusyRoutes(app, deps, { prefs: parts.ease.prefs });
+  registerPlanRemindersRoutes(app, deps, { calendar: parts.ease.calendar, prefs: parts.ease.prefs });
+  registerPlanFocusRoutes(app, deps, { prefs: parts.ease.prefs });
+  registerPlanCallCheckRoutes(app, deps);
+  // What a held call turns into when its wait is over: the ONE notice listing what waited while a Focus was on (perms2 §4.1).
+  setWaitedSummary(async (userId, lines) => {
+    const words = waitedWords(lines);
+    return pushEngine()?.notify(userId, { kind: "plan_many", key: `waited:${Date.now()}`, vars: { title: words.title, body: words.body } });
+  });
+  /**
+   * IS IT STILL HOLDING? (docs: perms2 §4.1, §5.3) Asked every 10 minutes of each held call, so a hold is let go when the
+   * reason goes and not before.
+   *
+   *   a Focus    what the filter last told us (plan_prefs.focus, 12 hours at most) or a busy calendar block right now. The
+   *              phone is NOT woken for this: the filter posts the end of a Focus itself, and `focusEnded` lets those go
+   *              early, so a hold still sitting here is one we have heard nothing about
+   *   driving    the phone itself, the same silent push as the pre-ring check, so a hold is let go when the car stops
+   */
+  const stillHolding = async (h: { userId: string; why: "driving" | "focus" }): Promise<{ driving?: boolean; focus?: boolean }> => {
+    const now = Date.now();
+    const engine = pushEngine();
+    if (h.why === "focus") {
+      const row = await parts.ease.prefs.get(h.userId).catch(() => null);
+      // ANDROID'S DO NOT DISTURB IS NOT POSTED WHEN IT ENDS (only on Plan Ease page appear), so a `dnd` row says nothing
+      // about now: the phone is asked, exactly as the pre-ring check asks it (botsBots/planCall.ts beforeRing).
+      if (focusHolding(row?.focus, now)) {
+        if (row?.focus?.source !== "dnd") return { focus: true };
+        if (engine) return askCheck({ userId: h.userId, want: ["focus"], push: engine, now });
+      }
+      const blocks = await planBusy().inRange(h.userId, now, now + 1).catch(() => []);
+      return { focus: busyOverlap(blocks, now, now + 1, now) };
+    }
+    if (!engine) return {};
+    // The same per-platform rule as the pre-ring check: an Android phone is not asked about driving behind an off switch.
+    return askCheck({ userId: h.userId, want: ["driving"], push: engine, now, wantFor: checkWantFor(["driving"]) });
+  };
+  const stopHolds = startHoldSweeper({
+    recheck: stillHolding,
+    log: { info: (o, m) => app.log.info(o, m), warn: (o, m) => app.log.warn(o, m) },
+  });
+  app.addHook("onClose", async () => { stopHolds(); setWaitedSummary(null); });
 
   // ------------------------------------------------------------------ the travel bot's trip
 

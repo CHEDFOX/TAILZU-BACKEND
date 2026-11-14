@@ -191,6 +191,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.mail_urgent.screenId": "bots.mail.reply",
     "push.mail_paused.enabled": true,
     "push.mail_paused.screenId": "bots.bot",
+    // A call (src/rooms, docs/rooms.md): someone with its link waits to be let in, and its host is not in it. It opens the call (data.r, data.b);
+    // it says the name they typed and the call's title, nothing more.
+    "push.room_waiting.enabled": true,
+    "push.room_waiting.screenId": "bots.mail.call",
     // The meeting bot (src/meet, docs/meet.md): the notes are ready (they open the note), it waits to be let in, or it could not join (both
     // open the meeting). Never a word of what was said.
     "push.meet_ready.enabled": true,
@@ -281,6 +285,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.mail_urgent.body": "{what} has a draft waiting for you.",
     "push.mail_paused.title": "{business}",
     "push.mail_paused.body": "Today's AI allowance is used up. New mail waits for you.",
+    "push.room_waiting.title": "{title}",
+    "push.room_waiting.body": "{name} is waiting to join your call.",
     "push.meet_ready.title": "{title}",
     "push.meet_ready.body": "Your meeting notes are ready.",
     "push.meet_waiting.title": "{title}",
@@ -314,7 +320,7 @@ export const EVENT_PUSH_KINDS = [
   "space_mail", "space_mail_handle",
   "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
-  "mail_needs_you", "mail_urgent", "mail_paused",
+  "mail_needs_you", "mail_urgent", "mail_paused", "room_waiting",
   "meet_ready", "meet_waiting", "meet_failed",
   "ops_alert",
 ] as const;

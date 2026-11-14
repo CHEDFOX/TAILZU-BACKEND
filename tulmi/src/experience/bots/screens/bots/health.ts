@@ -17,9 +17,11 @@
 import type { ActionRef, ActionSpec, Condition, Node } from "../../../../../../shared/types/sdui.js";
 import type { Moves } from "../../../../bots/healthDays.js";
 import { isFitnessBot } from "../../../../bots/door.js";
-import { box, button, canHealth, col, grow, listRow, meta, row, seq, switchMark, text, when, C, type BotsCtx } from "../../kit.js";
+import {
+  box, button, canHealth, canHealthSleep, canMotion, col, grow, listRow, meta, row, seq, switchMark, text, when, C, type BotsCtx,
+} from "../../kit.js";
 import { line, permitStep } from "../firstRun/parts.js";
-import { HEALTH, HEALTH_SOURCE, healthLines } from "../permitWords.js";
+import { HEALTH, HEALTH_SOURCE, MOTION, SLEEP, healthLines, motionLines, sleepLines } from "../permitWords.js";
 import { clock, dayLabel } from "../keybotParts.js";
 
 const enc = encodeURIComponent;
@@ -30,7 +32,11 @@ const ANDROID: Condition = { platform: "android" };
 const IOS: Condition = { not: ANDROID };
 
 /** The state the row and its card need, to merge into the edit page's own. */
-export const HEALTH_STATE = { healthCard: false, healthOn: false, healthBlocked: false, healthGone: false, healthEmpty: false };
+export const HEALTH_STATE = {
+  healthCard: false, healthOn: false, healthBlocked: false, healthGone: false, healthEmpty: false,
+  // Build 8.9.1 (docs: perms2 §5.1, §6.1): the Motion choice and its card, and the sleep sub-row and its card.
+  motionCard: false, motionOn: false, motionBlocked: false, sleepCard: false, sleepOn: false,
+};
 
 /** What the bot's OWN page needs, for the quiet re-read's own answer. Merged in only while the switch is on. */
 export const HEALTH_PAGE_STATE = { healthNotHere: false };
@@ -38,7 +44,14 @@ export const HEALTH_PAGE_STATE = { healthNotHere: false };
 /** How many days the phone reads and sends. Kept here and in the table's own 31 (bots/healthDays.ts HEALTH_KEEP_DAYS). */
 const DAYS = 31;
 
-export interface HealthBot { slug: string; name: string; purpose: string; builtin: boolean; skills: { health?: boolean } }
+export interface HealthBot {
+  slug: string; name: string; purpose: string; builtin: boolean;
+  /** `healthSource` (0094) says which reader the days come from, so the row's words and the sleep sub-row follow it. */
+  skills: { health?: boolean; healthSleep?: boolean; healthSource?: "health" | "motion" };
+}
+
+/** Is this bot counting from the iPhone's own Motion & Fitness rather than Apple Health / Health Connect (0094)? */
+const fromMotion = (bot: HealthBot): boolean => bot.skills.healthSource === "motion";
 
 /**
  * Does this bot get the row at all, and which row?
@@ -57,9 +70,13 @@ export function healthRowKind(ctx: BotsCtx, bot: HealthBot): "on" | "off" | null
   return bot.skills.health === true ? "off" : null;
 }
 
-/** Does this bot get the row at all? A bot already counting keeps it, whatever it was renamed to and wherever it is read. */
+/**
+ * Does this bot get the row at all? A bot already counting keeps it, whatever it was renamed to and wherever it is read. From
+ * 8.9.1 the Motion choice and the sleep sub-row count too: either can be the only thing drawn (Motion with the health switches
+ * off, sleep with them on), and the group has to exist for them.
+ */
 export function hasHealthRow(ctx: BotsCtx, bot: HealthBot): boolean {
-  return healthRowKind(ctx, bot) !== null;
+  return healthRows(ctx, bot).length > 0;
 }
 
 /**
@@ -80,7 +97,10 @@ function cardWords(bot: string): { title: string; lines: Node[] } {
  */
 export function healthRows(ctx: BotsCtx, bot: HealthBot): Node[] {
   const kind = healthRowKind(ctx, bot);
-  if (!kind) return [];
+  // Build 8.9.1's two (docs: perms2): the Motion choice, drawn while health is off, and the sleep sub-row, drawn while it is on.
+  // Either can be the only row there is, so they are not inside the `kind` branches.
+  const more = [...motionRows(ctx, bot), ...sleepRows(ctx, bot)];
+  if (!kind) return more;
   const on = bot.skills.health === true;
   const off: ActionRef = {
     kind: "callEndpoint", method: "PUT", path: `/v1/bots/${enc(bot.slug)}`, body: { skills: { health: false } },
@@ -112,13 +132,34 @@ export function healthRows(ctx: BotsCtx, bot: HealthBot): Node[] {
     label: label(where), sub: HEALTH.rowSub, chevron: false,
     right: switchMark("healthOn"), onPress: change,
   });
+  // COUNTING FROM MOTION & FITNESS (0094): one row, whose words name THAT reader. Apple Health is never mentioned, because
+  // it is not where these numbers come from, and there is no card: the only thing left to do is stop.
+  if (on && fromMotion(bot)) {
+    // On Android the same bot counts steps and nothing else, so the row must not promise walks, runs and rides. The phone
+    // that turned it on may not be the one reading, so this names what THIS reader's phone would count.
+    const motionAndroid = ctx.platform === "android";
+    // SWITCHING IT OFF DELETES THE PHONE'S OWN STEP LEDGER TOO (8.9.1), which is what the row promises. Android keeps a
+    // ledger because its step counter is a since-boot total with no history, and `health.sync` with `source: "motion"` and
+    // `enable: false` is the one thing that tells the phone to forget it; the iPhone keeps none and answers true. It goes
+    // BEFORE the PUT, so the PUT's own deletion is still the last word if this phone posts a last read on its way out, and
+    // `ask: false` means it can never be a way to a prompt.
+    const forget: ActionSpec = {
+      kind: "health.sync", ask: false, enable: false, source: "motion", days: DAYS,
+      path: `/v1/bots/${enc(bot.slug)}/health/days`,
+    } as unknown as ActionSpec;
+    return [listRow({
+      label: motionAndroid ? MOTION.rowOnAndroid : MOTION.rowOn, sub: motionAndroid ? MOTION.rowOnSubAndroid : MOTION.rowOnSub,
+      chevron: false,
+      right: switchMark("healthOn"), onPress: seq({ kind: "toggleState", path: "healthOn" } as ActionSpec, forget, off),
+    }), ...more];
+  }
   // STOP ONLY. No source is named (the phone that turned it on may not be the one reading), no card and no health.sync: the
   // one thing here is the PUT that switches it off and deletes the days.
   if (kind === "off") {
     return [listRow({
       label: HEALTH.rowOff, sub: HEALTH.rowSub, chevron: false,
       right: switchMark("healthOn"), onPress: seq({ kind: "toggleState", path: "healthOn" } as ActionSpec, off),
-    })];
+    }), ...more];
   }
   return [
     when(IOS, switchRowFor("ios")),
@@ -139,6 +180,92 @@ export function healthRows(ctx: BotsCtx, bot: HealthBot): Node[] {
       meta(HEALTH.unavailable, { size: 12 }),
       button(HEALTH.getHealthConnect, { kind: "openUrl", url: HEALTH.healthConnectUrl, external: true } as ActionSpec, { kind: "secondary", size: "md" }),
     ], { gap: 6, paddingHorizontal: 16, paddingVertical: 10 })),
+    ...more,
+  ];
+}
+
+/**
+ * "COUNT MY STEPS WITH MOTION & FITNESS INSTEAD" (docs: perms2 §5.1): for a person who does not want Apple Health, or has not
+ * got it set up. Only a phone that declares Motion1 while its platform's switch is on (kit `canMotion`), only a fitness bot
+ * they made, and only while health is OFF — one bot has one source at a time, and the server deletes the other source's days
+ * when it changes.
+ *
+ * ON ANDROID IT IS THE PHONE'S OWN STEP COUNTER AND NO WORKOUTS AT ALL (8.9.1, behind PERM_MOTION_ANDROID). There is no
+ * reliable workout source there, and a guessed ride on a streak is worse than none, so the row, the card's first line and
+ * the Moves line all promise steps only. "Motion & Fitness" is iOS's name for the grant and never shows on Android, where
+ * it is called Physical activity.
+ *
+ * The payload is the health one, exactly, with `source: "motion"`: the same route, the same 31 days, the same deletions, and
+ * the same import line keeping it away from every AI service.
+ */
+export function motionRows(ctx: BotsCtx, bot: HealthBot): Node[] {
+  if (!canMotion(ctx) || bot.builtin || bot.skills.health === true || !isFitnessBot(bot.name, bot.purpose)) return [];
+  const android = ctx.platform === "android";
+  const sync: ActionSpec = {
+    kind: "health.sync", ask: true, enable: true, source: "motion", days: DAYS, path: `/v1/bots/${enc(bot.slug)}/health/days`,
+    onSynced: seq(setState("motionCard", false), refresh),
+    onEmpty: seq(setState("motionCard", false), refresh),
+    onDenied: seq(setState("motionCard", false), toast(MOTION.denied.replace("{bot}", bot.name))),
+    onBlocked: seq(setState("motionCard", false), setState("motionBlocked", true)),
+    onUnavailable: seq(setState("motionCard", false), toast(android ? MOTION.unavailableAndroid : "This iPhone can't count steps.")),
+    onError: seq(setState("motionCard", false), toast("Couldn't read that just now. Try again.", true)),
+  } as unknown as ActionSpec;
+  const words = motionLines(bot.name, android ? "android" : "ios");
+  // THE WATCH, AND ITS OFF SWITCH (8.9.1). The driving check reads the same grant, so it is registered the moment the grant
+  // lands and taken off the moment the steps go: on Android that is a real Play-services registration, on iPhone there is
+  // nothing to register and the phone answers true. See `driveRows` for the switch of its own.
+  return [
+    listRow({
+      label: android ? MOTION.rowAndroid : MOTION.row, sub: android ? MOTION.rowSubAndroid : MOTION.phoneOnly,
+      chevron: false, right: switchMark("motionOn"), onPress: setState("motionCard", true),
+    }),
+    permitStep({ when: { truthy: "motionCard" }, title: words.title, lines: words.lines.map((l) => line(l)), cta: { label: MOTION.cta, onPress: sync } }),
+    when({ truthy: "motionBlocked" }, col([
+      meta(android ? MOTION.blockedAndroid : MOTION.blocked, { size: 12 }),
+      button(MOTION.openSettings, { kind: "openSettings", target: "app" } as ActionSpec, { kind: "secondary", size: "md" }),
+    ], { gap: 6, paddingHorizontal: 16, paddingVertical: 10 })),
+  ];
+}
+
+/**
+ * "ALSO COUNT MY SLEEP" (docs: perms2 §6.1): a sub-row of the health switch, drawn only while that one is already ON, and only
+ * where the sleep capability and this platform's own sleep switch are on too (kit canHealthSleep).
+ *
+ * The sleep type is asked for in a REQUEST OF ITS OWN (`sleep: true`), so the steps-and-workouts grant is not shown again and a
+ * refusal of sleep leaves the steps counting. Switching it off nulls the nights in the same request; the steps stay.
+ */
+export function sleepRows(ctx: BotsCtx, bot: HealthBot): Node[] {
+  if (bot.skills.health !== true || !canHealthSleep(ctx)) return [];
+  // Motion & Fitness counts steps and movement, never sleep (0094): a bot counting from it is not offered the row at all,
+  // and the route refuses `sleep: true` for one, so the card could never be a way in either.
+  if (fromMotion(bot)) return [];
+  const on = bot.skills.healthSleep === true;
+  const off: ActionRef = {
+    kind: "callEndpoint", method: "PUT", path: `/v1/bots/${enc(bot.slug)}`, body: { skills: { healthSleep: false } },
+    onSuccess: seq(toast(SLEEP.off), refresh),
+    onError: toast("Couldn't switch that off. Try again.", true),
+  } as unknown as ActionSpec;
+  const sync: ActionSpec = {
+    kind: "health.sync", ask: true, sleep: true, days: DAYS, path: `/v1/bots/${enc(bot.slug)}/health/days`,
+    onSynced: seq(setState("sleepCard", false), refresh),
+    onEmpty: seq(setState("sleepCard", false), refresh),
+    onDenied: seq(setState("sleepCard", false), toast(SLEEP.denied.replace("{source}", HEALTH_SOURCE[ctx.platform === "android" ? "android" : "ios"]))),
+    onBlocked: seq(setState("sleepCard", false), setState("healthBlocked", true)),
+    onUnavailable: seq(setState("sleepCard", false), setState("healthGone", true)),
+    onError: seq(setState("sleepCard", false), toast("Couldn't read that just now. Try again.", true)),
+  } as unknown as ActionSpec;
+  const change: ActionRef = on
+    ? seq({ kind: "toggleState", path: "sleepOn" } as ActionSpec, off)
+    : setState("sleepCard", true);
+  const ios = sleepLines(bot.name, "ios"), android = sleepLines(bot.name, "android");
+  return [
+    listRow({ label: SLEEP.row, sub: SLEEP.rowSub, chevron: false, right: switchMark("sleepOn"), onPress: change }),
+    permitStep({
+      when: { truthy: "sleepCard" }, title: ios.title,
+      // Only the line that names the source differs, so iOS and Android are sent one tree with two `visibleIf` lines in it.
+      lines: [when(IOS, line(ios.lines[0]!)), when(ANDROID, line(android.lines[0]!)), ...ios.lines.slice(1).map((l) => line(l))],
+      cta: { label: SLEEP.cta, onPress: sync },
+    }),
   ];
 }
 
@@ -157,9 +284,21 @@ export function healthRows(ctx: BotsCtx, bot: HealthBot): Node[] {
  * `ask: false` comes back denied, and without this the page would quietly stop counting while the row still said on.
  */
 export function healthRefresh(ctx: BotsCtx, bot: HealthBot): Node[] {
-  if (bot.skills.health !== true || !canHealth(ctx)) return [];
+  if (bot.skills.health !== true) return [];
+  const motion = fromMotion(bot);
+  // The switch the row itself is drawn behind, for THIS bot's reader: a Motion bot is behind PERM_MOTION, so a quiet re-read
+  // is never asked of a phone whose Motion row the server has since switched off.
+  if (!(motion ? canMotion(ctx) : canHealth(ctx))) return [];
   const sync: ActionSpec = {
     kind: "health.sync", ask: false, days: DAYS, path: `/v1/bots/${enc(bot.slug)}/health/days`,
+    // WHICH READER TO RE-READ (0094). Without it the phone read Apple Health for a Motion bot, so the Motion days never
+    // refreshed — and if Apple Health had anything, it posted source "health" and the Motion days were deleted as the
+    // other source's.
+    source: motion ? "motion" : "health",
+    // AND THE NIGHTS, for a bot that counts them. The server strips `sleepMinutes` from any POST that did not ask for the
+    // sleep type, so without this only the first sleep POST ever stored a night and "Slept X last night" froze. `ask: false`
+    // never prompts, so the card rule still holds.
+    ...(!motion && bot.skills.healthSleep === true && canHealthSleep(ctx) ? { sleep: true } : {}),
     onSynced: seq(setState("healthNotHere", false), refresh),
     // Nothing came back, which on iPhone is also what a refusal looks like. The Moves line already says so; a refresh here
     // would only be a second read of the same nothing.
@@ -167,6 +306,16 @@ export function healthRefresh(ctx: BotsCtx, bot: HealthBot): Node[] {
     onDenied: setState("healthNotHere", true),
   } as unknown as ActionSpec;
   return [{ ...box([], { height: 0 }), on: { onAppear: sync } }];
+}
+
+/** "Slept 7 h 10 min last night", and the average when there is more than one night. Nothing finer than a night, ever. */
+function sleepWords(m: Moves): string[] {
+  if (m.sleepLast === null) return [];
+  const words = (min: number) => (min >= 60 ? `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ""}` : `${min} min`);
+  return [
+    `slept ${words(m.sleepLast)} last night`,
+    ...(m.sleepNights > 1 && m.sleepAvg !== null ? [`${words(m.sleepAvg)} a night`] : []),
+  ];
 }
 
 /** "9 workouts this month" / "no workouts yet". */
@@ -195,6 +344,10 @@ const asOfWords = (ctx: BotsCtx, at: number): string => `${dayWords(ctx, at)} ${
  */
 export function movesLine(ctx: BotsCtx, bot: HealthBot, moves: Moves | undefined): Node[] {
   if (bot.skills.health !== true || !moves) return [];
+  // AN ANDROID BOT COUNTING FROM THE STEP COUNTER HAS NO WORKOUTS AT ALL (8.9.1): the phone sends none, so "0 workouts this
+  // month" would be a count of something nobody measured. The line says steps and nothing else, and where to look when
+  // there are none is the phone's own permission page, not Health Connect.
+  const steppedOnly = fromMotion(bot) && ctx.platform === "android";
   if (!moves.workouts && !moves.steps) {
     // Where to look is the phone's own place, and the two phones have different ones. Both lines go in the same bytes, as
     // the row itself does, so iOS and Android are sent one tree.
@@ -202,11 +355,14 @@ export function movesLine(ctx: BotsCtx, bot: HealthBot, moves: Moves | undefined
       text("Moves", { size: 13, weight: 600, lineHeight: 18 }),
       meta(words, { size: 12, style: { flexShrink: 1 } }),
     ], { gap: 8, alignItems: "center", paddingVertical: 10, paddingHorizontal: 16 }));
+    if (steppedOnly) return [empty(ANDROID, MOTION.emptyAndroid), ...notHereLine()];
     return [empty(IOS, HEALTH.emptyIos), empty(ANDROID, HEALTH.emptyAndroid), ...notHereLine()];
   }
   const bits = [
-    workoutWords(moves),
-    ...(moves.lastDay ? [`${lastWords(ctx, moves.lastDay)}, ${moves.lastMinutes} min`] : []),
+    ...(steppedOnly ? [] : [workoutWords(moves)]),
+    // The nights, only for a bot that counts them: "Slept 7 h 10 min last night · 6 h 50 min a night this week".
+    ...(bot.skills.healthSleep === true ? sleepWords(moves) : []),
+    ...(moves.lastDay && !steppedOnly ? [`${lastWords(ctx, moves.lastDay)}, ${moves.lastMinutes} min`] : []),
     ...(moves.stepDays ? [`${Math.round(moves.steps / moves.stepDays).toLocaleString("en-IN")} steps a day`] : []),
     // The day AND the time: "as of today 9:40 am". Without background delivery this is the whole honesty of the line, and a
     // bare day would read as if the numbers were fresh all day.
