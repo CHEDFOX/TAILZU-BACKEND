@@ -1,6 +1,6 @@
 # Being built right now (read before you start)
 
-Updated 14 Nov 2026, 03:10 UTC. One session is building the items below. Do not edit the files they hold until the item is
+Updated 14 Nov 2026, 12:00 UTC. One session is building the items below. Do not edit the files they hold until the item is
 marked landed here; if you must, write a line under "Notes from other sessions" first. Remove an item when it lands.
 
 **How to build things now:** read `TAILZU-BACKEND/docs/renderer.md` before adding any screen, visual, animation or widget
@@ -24,7 +24,7 @@ look. The apps are renderers: build server data with the existing blocks and cat
 ## In progress (build 8.9.1, started 14 Nov 2026)
 
 Calendar, reminders, focus, motion, sleep, arrival reminders, abuse-prevention signals (server now; App Attest / DeviceCheck /
-Play Integrity in the app), and their Android halves. Six jobs hold:
+Play Integrity in the app), and their Android halves. Five jobs hold:
 - **Server, abuse prevention:** `tulmi/src/trust/**` (new), `tulmi/src/routes/trust/**`, `tulmi/src/routes/admin/trust.ts`,
   `tulmi/src/routes/app/appScreens.ts`, `tulmi/src/http/hooks.ts`, `tulmi/src/guard/limiter.ts`, `tulmi/src/http/plugins.ts`,
   `tulmi/src/you/usage.ts`, `tulmi/src/usage/allowance.ts`, `tulmi/src/you/deletion.ts`, `tulmi/src/observability.ts`,
@@ -35,15 +35,6 @@ Play Integrity in the app), and their Android halves. Six jobs hold:
 - **Phone:** `app/src/**` (device, sdui actions/types/registry, notifications), `app/app.config.ts`, `app/eas.json`,
   `app/modules/tulmi-perms/**`, `app/assets/PrivacyInfo.xcprivacy`, `tools/ci/check-*.mjs`, `app/native-inputs.lock`.
 - **Android additions:** new files only under `app/modules/tulmi-perms/android/` and `app/src/device/android*`.
-- **The window's permissions and terms, after onboarding (P1)** (started 14 Nov). The window's onboarding has no terms step and no
-  permissions step at all ("the OS asks"), so a person who finishes it lands on Today and is never shown either. Adding both as steps
-  of the onboarding stage, where Blip already walks from one to the next: terms (the same words and the same
-  `PUT /v1/you/ai-consent` as the phone's card), then one permissions step for everything the window needs — microphone, camera,
-  Accessibility and Screen Recording. **The phone is not touched**, and neither is `docs/perms.md` or `config.ts`, which 8.9.1 holds.
-  It also fixes a gap in calls: the window has no `NSCameraUsageDescription` and no camera entitlement, so a video call there cannot
-  open a camera at all.
-  Holds: `TAILZU-BACKEND/tulmi/src/experience/onboard/**`; `TAILZU-DESKTOP/package.json`, `build/entitlements.mac.plist`,
-  `src/app/sdui/{permissions,core,backend,actions}.js`, `src/main/main.js` and its preload.
 - **Lingo, the language bot** (`docs/lingo.md`; switch `LINGO`, off). Re-added after a merge took it: the whole section was rewritten
   for 8.9.1 and git kept that side, so this entry went with it. Nothing of 8.9.1's is held here.
   ON MAIN and tested, nothing user-visible: the scheduler (FSRS), marking done on the SERVER and never in the app, the store, a
@@ -66,6 +57,19 @@ Play Integrity in the app), and their Android halves. Six jobs hold:
   choose them. Not mine to pick.
 
 ## Landed 14 Nov 2026 (all switched off)
+
+- **The window's terms and permissions, after onboarding** (`docs/window-setup.md`). A window finished its onboarding having agreed
+  to nothing and granted nothing: `postAuthSteps` left Make me yours out ("the OS asks") and the AI permission is asked for by a Home
+  card a window that lands on the desk never sees, so the first thing the person tried was refused by the gate. Two steps of the same
+  stage Blip already walks through, between Languages and Try it — **Terms and privacy** (`onboard/terms.ts`: the phone's two answers
+  and the same `PUT /v1/you/ai-consent`; Not now skips Try it, which the gate would refuse) and **Let me in, once**
+  (`onboard/perms.ts`: a row each for the microphone, the camera, Accessibility and Screen recording, drawn only where the window
+  declared the capability that reads it, and the Mac's two only on a Mac) — plus **Send to AI services** in the desk's
+  Settings › Privacy and data, so the terms' promise is true there. Nothing is drawn or asked for on a phone; Make me yours, the Home
+  card and the phone's permissions are exactly as they were.
+  In the window: `NSCameraUsageDescription` and the camera entitlement (without which a hardened build is refused the camera, so the
+  video half of a call could not work there at all), `app:camStatus` and `app:seeStatus` in the main process, `camReading`/`camFollow`,
+  `seeReading`/`seeFollow` and `askCam` in the renderer, and the capabilities `DeskCamAsk` and `DeskSeeState`.
 
 - **Calls, end to end** (`docs/rooms.md`): our own video and audio calls from the mail bot, on Cloudflare's Realtime SFU, and the
   **`call` block** (the 14th) that lets the apps be in one. Migration **0091**; settings `SFU_APP_ID` / `SFU_APP_SECRET` / `ROOM_*`,
@@ -98,6 +102,12 @@ Play Integrity in the app), and their Android halves. Six jobs hold:
 - Phone runtime: `tailzu-2026-11-x0-blip`. Do not change it.
 
 ## Notes from other sessions
+
+- **14 Nov, from the window-permissions session:** `tulmi/tests/perm-words.test.ts` fails on main — "the build says it writes to
+  Health, which nothing here does". The phone's `app.config.ts` gained `NSHealthUpdateUsageDescription` in `f2a6def` ("the Apple
+  Health update text Apple's upload check requires") and that test asserts the key is absent, since nothing on the server writes to
+  Health. Both halves are 8.9.1's (the phone, `docs/perms.md`, `permitWords.ts`), so it is left alone here: either the test learns
+  that Apple's upload check requires the string, or the string goes. It is the only failure in the suite.
 
 - **The bot drawings stay vocabulary 1, and that is now a decision, not a wait.** Yesterday's note said they would move to the
   `motion` block as soon as it could reach a screen. Reading `sdui2/gate.ts`: `needs` is worked out per SCREEN and a client
