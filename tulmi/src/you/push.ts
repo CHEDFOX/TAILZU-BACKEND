@@ -10,7 +10,11 @@
  *   reminders    what they asked to be reminded of (their calendar, a to-do): sent; in quiet hours without a sound; not with Plan Ease off.
  *                Plan Ease's own kinds (botsBots/planKinds.ts: plan_event, plan_todo, the day notes...) are told apart there, each
  *                with its group: Plan Ease's (as the reminders), a person's word (as people), or never a sound (the morning note)
- *   routines     a routine they set up ran, or paused itself: sent (they asked for it at that time); in quiet hours without a sound
+ *   routines     a routine they set up ran, or paused itself: sent (they asked for it at that time); in quiet hours without a sound.
+ *                With NOTIFY_REPLY on, a run's answer comes as the bot's own `bot_ask` carrying `data.routineId` instead, and keeps
+ *                this rule rather than the bot-chat one below: the reply box never changes which pushes go
+ *   bot chat     a bot asked something of its own, or answered a reply typed into a notification: sent; in quiet hours without a
+ *                sound; not for a bot they turned off
  *   people       someone in a space gave them a task, planned something for them, messaged them, asked to join or let them in, took
  *                the meeting bot to a meeting (to the space's admin) or sent it to theirs (to a member), set up mail for a business (to
  *                the space's admin) or gave them one of its addresses to answer (to a member): sent; in quiet hours without a sound. A
@@ -51,13 +55,22 @@ const minuteOf = (now: number, tzOffsetMinutes: number): number => {
 /**
  * A bot's own words (push/defaults.ts, src/bots/notifyReply.ts): it asked something, or it answered a reply typed into a
  * notification. A person is waiting on it, so quiet hours only take the sound away — but a bot they turned off stays off.
+ *
+ * ONE EXCEPTION: a routine's answer, which comes as a `bot_ask` carrying the routine's id (routines/service.ts `told`, with
+ * NOTIFY_REPLY on). That is a routine, not a bot speaking out of the blue, so it keeps the routines rule below: they asked for it at
+ * that time, so a muted bot does not swallow it. Turning the reply box on therefore changes nothing about what "What pings you"
+ * sends — only whether it can be answered from the lock screen.
  */
 const BOT_CHAT = new Set(["bot_ask", "bot_reply"]);
 
-/** Pure: what to do with one push of `kind` at this minute of the person's day. `bot` is the push's own bot (data.slug), when it has one. */
-export function verdict(s: YouSettings, kind: string, minute: number, bot?: string): PushVerdict {
+/**
+ * Pure: what to do with one push of `kind` at this minute of the person's day. `bot` is the push's own bot (data.slug), when it has
+ * one, and `routine` the routine whose answer it is (data.routineId), when it is one.
+ */
+export function verdict(s: YouSettings, kind: string, minute: number, bot?: string, routine?: string): PushVerdict {
   const n = s.notify;
   const quiet = inQuietHours(n, minute);
+  if (BOT_CHAT.has(kind) && routine) return quiet ? "silent" : "send";
   if (BOT_CHAT.has(kind)) return bot && n.botsOff.includes(bot) ? "drop" : quiet ? "silent" : "send";
   if (NEEDS_YOU.has(kind)) return quiet ? "silent" : "send";
   if (kind === "bots_summary") return !n.summary ? "drop" : quiet ? "silent" : "send";
@@ -91,8 +104,9 @@ export function pushGate(spending: Spending) {
   return async (p: { userId: string; kind: string; data?: Record<string, string>; tzOffsetMin: number | null; now: number }): Promise<PushVerdict> => {
     const s = await spending.store.getSettings(p.userId);
     const tz = p.tzOffsetMin ?? spending.tzOf(p.userId);
-    // A bot's push says which bot it is (data.slug), so the one the person turned off stays off.
-    return verdict(s, p.kind, minuteOf(p.now, tz), p.data?.slug);
+    // A bot's push says which bot it is (data.slug), so the one the person turned off stays off — unless it is a routine's answer
+    // (data.routineId), which they asked for at that time and which went before the reply box existed.
+    return verdict(s, p.kind, minuteOf(p.now, tz), p.data?.slug, p.data?.routineId);
   };
 }
 

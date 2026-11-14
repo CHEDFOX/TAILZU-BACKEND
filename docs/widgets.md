@@ -178,7 +178,7 @@ The person's open screens are told (`livePublish`).
 `x0_bot_reply`, whose one button has a typing box, so the person answers from the lock screen with the app shut. **No app update:**
 the category is a bootstrap knob and its button is a `call`, which the phone has been able to make since the categories landed.
 
-* **The push.** Kinds `bot_ask` (the bot spoke first — `botsBots/chat.ts` `note()`, unless the caller passes `quiet`) and
+* **The push.** Kinds `bot_ask` (the bot spoke first: a routine's answer, or a note into the chat — below) and
   `bot_reply` (its answer to a reply typed into a notification). Both open `bots.chat` and carry `data.slug` and `data.thread`.
   A bot's `bot_ask` pushes share one collapse id (`botchat-<slug>`: the iOS collapse id and the Android tag), so they stack instead
   of piling up. A `bot_reply` never takes it: the phone dismisses the notification it answered, by its identifier (which the collapse
@@ -199,12 +199,25 @@ the category is a bootstrap knob and its button is a `call`, which the phone has
 * **Launch dark.** `NOTIFY_REPLY` (off), `NOTIFY_REPLY_USERS` (comma list of accounts; empty means everyone, with the switch on).
   While off, the category is in nobody's bootstrap, no push carries it, and the route answers 404 `notify_reply_off` before the
   session. On with a list, an account it does not name gets the same 404 after the session; one it names gets through.
-* **Not wired yet: the first push.** Nothing sends a `bot_ask`, so with the switch on the back-and-forth can only be answered,
-  never started. `note()` is its one door (`server.ts` `setBotSaidHook` pushes what it is told), and its one caller,
-  `botsBots/planCall.ts`, passes `quiet` — rightly, since the person is on the call and already hearing it. Which of a bot's
-  messages should invite a reply is a product call: a routine's answer (`routines/service.ts` `run()`, recorded with
-  `chat.note(..., { quiet: true })` and pushed as a `bot_ask` in place of `routine_done`) is the obvious first one, behind
-  `notifyReplyOn(userId)`.
+* **Which of a bot's messages start a reply-able conversation.** Two, both only while the switch is on for that person
+  (`notifyReplyOn(userId)`); with it off, each sends exactly what it sent before, byte for byte.
+
+  | What happened | On | Off |
+  | --- | --- | --- |
+  | A routine ran (`routines/service.ts` `told`) | the answer is kept as a quiet turn in that bot's chat (`chat.note(..., { quiet: true })`) with the run's confirm card and links on it, and pushed as a `bot_ask`, keyed `<routineId>:<at>`, threaded on the bot and carrying `data.routineId` | `routine_done`, same body, keyed the same |
+  | A bot said something into a chat on its own (`botsBots/chat.ts` `note()`, no `quiet`) | `botSaid` → `server.ts` `setBotSaidHook(botSaidPush(…))` → a `bot_ask` on that bot's chat. **Nothing calls `note()` without `quiet` today**, so this door is wired and unused: both callers (`planCall.ts`, and the routines wiring, which pushes its own `bot_ask`) are quiet | nothing, as before |
+
+  A routine's answer is pushed in the bot's own words — *It needs your OK.* first when the run is waiting for a yes, with the same
+  confirm card on the chat turn the push opens, so the yes is pressed where it works. The notification's **body** is the same as
+  `routine_done`'s; the lock screen is not: a `bot_ask` of a person's own bot says only *Sent you a message.*, its title is the
+  bot's name without the task, and one bot's `bot_ask` pushes replace each other in the tray (the chat and the routine keep every
+  answer). A routine that failed three times running still pushes `routine_failed`, which invites no answer. `note()`'s `quiet`
+  callers are left alone: `botsBots/planCall.ts` passes it rightly, since the person is on the call and already hearing the line.
+  Everything else is the engine's as for any push: the owner must have agreed to AI before a routine runs at all
+  (`privacy/aiGate.ts`), quiet hours take the sound away, a private bot's words stay off the lock screen, and the run's key is sent
+  once. **"What pings you" is untouched by the switch:** a bot turned off there drops its `bot_ask` (`you/push.ts`, per bot on
+  `data.slug`), but a routine's answer carries `data.routineId` and keeps the routines rule it always had — they asked for it at
+  that time, so turning the Reply box on never changes which pushes go.
 
 * **iOS** asks for background time while it sends (the bridge's `beginBackgroundWork`).
 * **Android** runs a press with the app closed in an expo-task-manager task (`src/notifications/backgroundTask.ts`), switched by

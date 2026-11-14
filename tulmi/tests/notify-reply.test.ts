@@ -8,6 +8,8 @@
  *   - no AI permission: no model is asked, and a push says to open X0
  *   - the bot's answer comes back as a push on the same conversation
  *   - the switch off: 404 and no category anywhere
+ *   - THE FIRST PUSH: a routine's answer, and a bot's own note, start the conversation — `bot_ask`, with the answer kept in the
+ *     bot's chat; with the switch off a routine pushes `routine_done` exactly as it did before; a muted bot sends nothing
  *
  * The model is never asked: the bot's chat is a fake throughout.
  */
@@ -44,6 +46,11 @@ const { withAppKnobs } = await import("../src/experience/appKnobs.js");
 const { resetConfigForTests } = await import("../src/config.js");
 const { verdict } = await import("../src/you/push.js");
 const { DEFAULT_SETTINGS } = await import("../src/you/settings.js");
+// The first push's two senders: a routine's answer, and a bot's own note into a chat.
+const { Routines, MemoryRoutineStore } = await import("../src/routines/index.js");
+const { BotChat } = await import("../src/botsBots/chat.js");
+const { MemoryTable } = await import("../src/botsBots/rows.js");
+const { setPushGate } = await import("../src/push/engine.js");
 
 const RL = { rateLimit: { max: 10_000, timeWindow: 60_000 } };
 
@@ -439,5 +446,218 @@ describe("review fixes", () => {
     const rows = await events.list(A_, 0);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ kind: "ask", bot: "nani", title: "yes", paise: 7 });
+  });
+});
+
+// ------------------------------------------------------------------ the first push
+
+/**
+ * WHAT STARTS THE CONVERSATION (src/routines/service.ts `told`, botsBots/chat.ts `note`). Both go through the push the server
+ * wires them to (`server.ts`: notifyBot with `bot_ask`), which is the mock above, so what the phone would get is read back with
+ * askMessage, exactly as the route's own tests do.
+ */
+describe("the first push", () => {
+  const AT = Date.parse("2026-11-14T08:00:00+05:30");
+  const EVERY_DAY = { every: "day" as const, minute: 8 * 60 };
+  /** A bot as the platform hands it over: "nani" is Aanya's own (private), "plan" is a built-in (ownerId null). */
+  const defOf = (slug: string, name: string, ownerId: string | null) => ({
+    id: slug, ownerId, slug, name, colour: "sea", purpose: "", principles: [],
+    skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] },
+    knowledge: [], tone: "", visibility: "private", budgets: { perRequestPaise: 150, dailyPaise: 800 },
+  });
+
+  /** A routine of Aanya's on one bot, with the answer kept in a real chat over a memory table, wired as server.ts wires it. */
+  async function routine(o: { slug?: string; name?: string; owner?: string | null; answer?: string; approvals?: unknown[] } = {}) {
+    const slug = o.slug ?? "nani";
+    const def = defOf(slug, o.name ?? "Nani", o.owner === undefined ? A_ : o.owner);
+    const bots = {
+      ask: async () => ({ bot: { slug, name: def.name, colour: "sea", builtin: false }, text: o.answer ?? "3 emails matter: the bank and the landlord.", paise: 12, tools: [], approvals: o.approvals ?? [], artifacts: [], opens: [], notes: [], ms: 5 }),
+      resolve: async (_u: string, ref: string) => (ref === slug ? { def } : null),
+      target: async () => ({ kind: "bot" as const, bot: def }),
+      list: async () => [{ slug, name: def.name, builtin: false }],
+    };
+    const { notifyBot } = await import("../src/push/index.js");
+    const chat = new BotChat(bots as never, () => AT, new MemoryTable());
+    const dones: Array<{ kind: string; key: string; vars: Record<string, string>; data: Record<string, string> }> = [];
+    const r = new Routines({
+      store: new MemoryRoutineStore(), bots: bots as never, now: () => AT,
+      notify: async (_u, msg) => { dones.push(msg); },
+      // Wired as server.ts wires it: quiet (the push below is the one that goes), with the run's own card and links on the turn.
+      note: async (userId, s, text, extra) => { await chat.note(userId, s, text, { quiet: true, ...(extra ? { extra } : {}) }); },
+      askPush: (userId, p, key) => notifyBot(userId, "bot_ask", p as never, key),
+    });
+    const view = await r.create(A_, { task: "Check my email and tell me what matters", schedule: EVERY_DAY, tz: 330, bot: slug });
+    return { r, chat, dones, id: view.id, run: () => r.runNow(A_, view.id) };
+  }
+
+  it("sends one bot_ask for a routine's answer while the switch is on, and keeps the answer in that bot's chat", async () => {
+    switches({ on: true });
+    const w = await routine();
+    await w.run();
+    // One push, the bot's own, with the words, the conversation and the key of this run.
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0]).toMatchObject({
+      userId: A_, kind: "bot_ask", key: `${w.id}:${AT}`,
+      p: { slug: "nani", name: "Nani", line: "3 emails matter: the bank and the landlord.", thread: "nani", private: true, routineId: w.id },
+    });
+    // What the phone is handed: the category, the Reply button's data, and one notification per bot chat. `routineId` rides along so
+    // "What pings you" can still tell a routine's answer from a bot speaking out of the blue (below).
+    const m = askMessage(A_, pushes[0]!.kind as never, pushes[0]!.p as never, pushes[0]!.key);
+    expect(m.category).toBe(BOT_REPLY_CATEGORY);
+    expect(m.data).toEqual({ slug: "nani", thread: "nani", routineId: w.id });
+    expect(m.collapseId).toBe(threadIdOf("nani"));
+    // Aanya's own bot, so the lock screen says only that there is something to read.
+    expect(m.vars).toEqual({ bot: "Nani", line: "Sent you a message." });
+    // The answer is a turn in that bot's chat, so a reply typed into the notification has its subject — and it was quiet, so the
+    // note itself pushed nothing (one push, above).
+    const turns = await w.chat.recent(A_, "nani");
+    expect(turns.map((t) => [t.role, t.text])).toEqual([["bot", "3 emails matter: the bank and the landlord."]]);
+    // routine_done never went.
+    expect(w.dones).toEqual([]);
+  });
+
+  it("says a built-in's words on the lock screen, says first that an answer needs a yes, and puts the card on that turn", async () => {
+    switches({ on: true });
+    const w = await routine({ slug: "plan", name: "Plan Ease", owner: null, answer: "Drafted the reply to Riya.", approvals: [{ taskId: "t1", connector: "gmail", tool: "send", preview: "To Riya" }] });
+    await w.run();
+    expect(pushes[0]!.p).toMatchObject({ slug: "plan", name: "Plan Ease", line: "It needs your OK. Drafted the reply to Riya.", thread: "plan" });
+    expect(pushes[0]!.p.private).toBeUndefined();
+    expect(askMessage(A_, "bot_ask", pushes[0]!.p as never, "k").vars.line).toBe("It needs your OK. Drafted the reply to Riya.");
+    // The chat turn the push opens carries the run's own confirm card, so the yes is pressed where it works rather than typed as a
+    // reply, which could only start a fresh turn and make a second card.
+    const turns = await w.chat.recent(A_, "plan");
+    expect(turns).toHaveLength(1);
+    expect(turns[0]!.approvals).toEqual([{ taskId: "t1", connector: "gmail", preview: "To Riya" }]);
+    expect(turns[0]!.paise).toBe(12);
+  });
+
+  it("sends routine_done exactly as before while the switch is off, and nothing of the bot's own", async () => {
+    switches({ on: false });
+    const w = await routine();
+    await w.run();
+    expect(pushes).toEqual([]);
+    expect(w.dones).toEqual([{
+      kind: "routine_done", key: `${w.id}:${AT}`,
+      vars: { bot: "Nani", task: "Check my email and tell me what matters", line: "3 emails matter: the bank and the landlord." },
+      data: { routineId: w.id },
+    }]);
+    // Off, the answer is on the routine and in Activity, as before: nothing is written into the chat.
+    expect(await w.chat.recent(A_, "nani")).toEqual([]);
+  });
+
+  /**
+   * The hook the server installs, not a copy of it: `botSaidPush` is what `server.ts` passes to `setBotSaidHook`, so what is read
+   * back here is what a phone would really get (that is the whole point — a hook written out again in the test would pass whatever
+   * the server did).
+   */
+  async function saidHook(known: Record<string, { name: string; owner: string | null }>) {
+    const { notifyBot } = await import("../src/push/index.js");
+    const bots = { resolve: async (_u: string, ref: string) => (known[ref] ? { def: defOf(ref, known[ref]!.name, known[ref]!.owner) } : null) };
+    notifyReply.setBotSaidHook(notifyReply.botSaidPush(bots as never, notifyBot as never, () => AT));
+    return new BotChat(bots as never, () => AT, new MemoryTable());
+  }
+
+  it("sends a bot_ask with the category for a note the bot made on its own, and nothing for a quiet one", async () => {
+    switches({ on: true });
+    const chat = await saidHook({ nani: { name: "Nani", owner: A_ } });
+    try {
+      await chat.note(A_, "nani", "Shall I book the 9am?");
+      await Promise.resolve();
+      expect(pushes).toHaveLength(1);
+      expect(pushes[0]).toMatchObject({ userId: A_, kind: "bot_ask", key: `said:nani:${AT}`, p: { slug: "nani", name: "Nani", line: "Shall I book the 9am?", thread: "nani" } });
+      // Their own bot, so the words stay off the lock screen.
+      expect(pushes[0]!.p.private).toBe(true);
+      expect(askMessage(A_, "bot_ask", pushes[0]!.p as never, pushes[0]!.key).category).toBe(BOT_REPLY_CATEGORY);
+      // A turn the person is already hearing (a call's opening line) pushes nothing, switch on or not.
+      await chat.note(A_, "nani", "I'm on the call now.", { quiet: true });
+      await Promise.resolve();
+      expect(pushes).toHaveLength(1);
+      // And with the switch off, a note of its own pushes nothing either (botSaid asks the switch itself).
+      switches({ on: false });
+      await chat.note(A_, "nani", "Shall I book the 10am?");
+      await Promise.resolve();
+      expect(pushes).toHaveLength(1);
+    } finally {
+      notifyReply.setBotSaidHook(null);
+    }
+  });
+
+  it("says a built-in's words on the lock screen, and pushes nothing at all for a bot that is not the person's", async () => {
+    switches({ on: true });
+    const chat = await saidHook({ plan: { name: "Plan Ease", owner: null } });
+    try {
+      await chat.note(A_, "plan", "Your day is ready.");
+      await Promise.resolve();
+      expect(pushes).toHaveLength(1);
+      // A built-in is nobody's own, so its line is shown.
+      expect(pushes[0]!.p.private).toBeUndefined();
+      expect(askMessage(A_, "bot_ask", pushes[0]!.p as never, pushes[0]!.key).vars.line).toBe("Your day is ready.");
+      // A slug the platform does not hand over (another person's, or one that was deleted) is never pushed about.
+      notifyReply.botSaidPush({ resolve: async () => null } as never, (await import("../src/push/index.js")).notifyBot as never)(A_, "someone-elses", "Hello?");
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(pushes).toHaveLength(1);
+    } finally {
+      notifyReply.setBotSaidHook(null);
+    }
+  });
+
+  /** The real engine over one phone, with the person's own "What pings you" as the gate: what a phone would really be handed. */
+  async function phone(settings: { botsOff?: string[] } = {}) {
+    const { PushEngine } = await import("../src/push/engine.js");
+    const { MemoryPushStore } = await import("../src/push/store.js");
+    const { PUSH_DEFAULTS } = await import("../src/push/defaults.js");
+    const store = new MemoryPushStore();
+    store.candidatesList = [{ userId: A_, tokens: [{ platform: "ios", token: "ExponentPushToken[a]", updatedAt: 0 }], lastSeenAt: null, createdAt: 0, locale: null, entitled: false, tzOffsetMin: 0 }];
+    const sent: Array<Record<string, any>> = [];
+    const sender = { send: async (m: Array<Record<string, any>>) => { sent.push(...m); return m.map(() => ({ status: "ok" as const, id: "t" })); }, receipts: async () => ({}) };
+    const engine = new PushEngine(store, sender, () => structuredClone(PUSH_DEFAULTS), { info: () => {}, warn: () => {} });
+    const s = structuredClone(DEFAULT_SETTINGS);
+    s.notify.botsOff = settings.botsOff ?? [];
+    setPushGate((p) => verdict(s, p.kind, 12 * 60, p.data?.slug, p.data?.routineId));
+    return { engine, sent };
+  }
+
+  /**
+   * THE SWITCH CHANGES NOTHING IN "WHAT PINGS YOU". A routine's answer always went for a bot the person muted — they asked for it at
+   * that time — and it still does now that it comes as a `bot_ask`, because the push says which routine it is (`data.routineId`).
+   * Without that, turning the Reply box on would silently drop the answers of every routine on a muted bot.
+   */
+  it("still delivers a routine's answer for a bot the person muted, as routine_done always did", async () => {
+    switches({ on: true });
+    const w = await routine();
+    await w.run();
+    expect(pushes).toHaveLength(1);
+    const { engine, sent } = await phone({ botsOff: ["nani"] });
+    try {
+      await engine.notify(A_, askMessage(A_, "bot_ask", pushes[0]!.p as never, pushes[0]!.key));
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.categoryId).toBe(BOT_REPLY_CATEGORY);
+      // And the same run with the switch off is the one push it always was, through the same muted setting.
+      switches({ on: false });
+      const off = await routine();
+      await off.run();
+      await engine.notify(A_, { kind: "routine_done", key: off.dones[0]!.key, vars: off.dones[0]!.vars, data: off.dones[0]!.data });
+      expect(sent).toHaveLength(2);
+    } finally {
+      setPushGate(null);
+    }
+  });
+
+  it("sends nothing at all for a bot the person muted in What pings you", async () => {
+    switches({ on: true });
+    // The person's own say, as the Bots app keeps it: this bot is off. A bot asking of its own accord is not a routine, so it stays
+    // off — the switch does not make a muted bot speak.
+    const { engine, sent } = await phone({ botsOff: ["nani"] });
+    try {
+      await engine.notify(A_, askMessage(A_, "bot_ask", { slug: "nani", name: "Nani", line: "Shall I book it?" }, "k1"));
+      expect(sent).toEqual([]);
+      // Another bot of theirs is untouched.
+      await engine.notify(A_, askMessage(A_, "bot_ask", { slug: "plan", name: "Plan Ease", line: "Your day is ready." }, "k2"));
+      expect(sent).toHaveLength(1);
+      expect(sent[0]!.categoryId).toBe(BOT_REPLY_CATEGORY);
+    } finally {
+      setPushGate(null);
+    }
   });
 });

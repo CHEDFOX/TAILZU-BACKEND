@@ -114,6 +114,12 @@ export interface BotPush {
   private?: boolean;
   /** A push that only says to open X0 (no AI agreement yet): no Reply box on it, since a reply typed there could not be answered. */
   noReply?: boolean;
+  /**
+   * THE ROUTINE WHOSE ANSWER THIS IS (routines/service.ts `told`), when it is one. It rides in the push's `data`, so "What pings
+   * you" can tell a routine's answer from a bot speaking out of the blue: a routine was asked for at that time, so it goes even for
+   * a bot the person muted, exactly as `routine_done` always has (you/push.ts verdict). Nothing else sets it.
+   */
+  routineId?: string;
 }
 
 /** The words a push of a bot's may show. A private one says only that there is something to read. */
@@ -141,8 +147,9 @@ export function askMessage(userId: string, kind: BotReplyKind, p: BotPush, key: 
   return {
     kind, key,
     vars: { bot: p.name, line: lineOf(p) },
-    // The screen the tap opens is the chat with this bot; slug and thread are what the Reply button's call is filled from.
-    data: { slug: p.slug, thread },
+    // The screen the tap opens is the chat with this bot; slug and thread are what the Reply button's call is filled from. A
+    // routine's answer says so, which is how "What pings you" keeps giving it the routine's rule (you/push.ts verdict).
+    data: { slug: p.slug, thread, ...(p.routineId ? { routineId: p.routineId } : {}) },
     ...(on ? { category: BOT_REPLY_CATEGORY } : {}),
     ...(on && kind === "bot_ask" ? { collapseId: threadIdOf(thread) } : {}),
   };
@@ -157,9 +164,11 @@ export function askMessage(userId: string, kind: BotReplyKind, p: BotPush, key: 
  *
  * It is a hook rather than a plain import so chat.ts keeps no road to the push engine, which reads this file itself.
  *
- * NOTHING CALLS IT YET. `note()`'s one caller (botsBots/planCall.ts) passes `quiet`, so no `bot_ask` is sent and, with the switch on,
- * the back-and-forth can only be answered, never started. Which of a bot's messages should invite a reply is a product call: see
- * docs/widgets.md §5 "Not wired yet: the first push".
+ * THIS IS THE DOOR FOR A NON-QUIET `note()`, AND NOBODY USES IT TODAY. Both of `note()`'s callers pass `quiet`:
+ * botsBots/planCall.ts (the person is on the call and already hearing the line) and the routines wiring in server.ts, which sends a
+ * `bot_ask` of its own instead (routines/service.ts `told`) and keeps the turn quietly so a reply has its subject. So the hook is
+ * live and wired (server.ts `setBotSaidHook(botSaidPush(...))`), and the first `note()` written without `quiet` starts a reply-able
+ * conversation with no further work. Which of a bot's messages should is a product call: see docs/widgets.md §5.
  */
 export type BotSaidHook = (userId: string, slug: string, text: string) => void;
 let saidHook: BotSaidHook | null = null;
@@ -169,6 +178,32 @@ export function setBotSaidHook(fn: BotSaidHook | null): void { saidHook = fn; }
 export function botSaid(userId: string, slug: string, text: string): void {
   if (!saidHook || !notifyReplyOn(userId)) return;
   try { saidHook(userId, slug, text); } catch { /* the turn is in the chat either way */ }
+}
+
+/**
+ * THE HOOK THE SERVER INSTALLS, made here so it is the same thing in the server and under test: what a bot saying something of its
+ * own turns into. The bot is looked up as the person's (another person's is never pushed about, and one that isn't there sends
+ * nothing), and its own words go out as a `bot_ask` with a Reply box on it. Its own bot is private, so the lock screen says only
+ * that there is something to read.
+ *
+ * `bots` and `push` are passed in rather than imported: this file is read by the push engine's own, so it keeps no road back.
+ * Never throws and never waits: a missed push is not a lost turn, the chat has it.
+ */
+export function botSaidPush(
+  bots: { resolve(userId: string, ref: string): Promise<{ def: { slug: string; name: string; ownerId: string | null } } | null> } | null,
+  push: (userId: string, kind: BotReplyKind, p: BotPush, key: string) => Promise<void>,
+  now: () => number = Date.now,
+): BotSaidHook {
+  return (userId, slug, text) => {
+    void (async () => {
+      const found = await bots?.resolve(userId, slug);
+      if (!found) return;
+      await push(userId, "bot_ask", {
+        slug: found.def.slug, name: found.def.name, line: text, thread: found.def.slug,
+        ...(found.def.ownerId !== null ? { private: true as const } : {}),
+      }, `said:${found.def.slug}:${now()}`);
+    })().catch(() => undefined);
+  };
 }
 
 // ------------------------------------------------------------------ one press, one reply

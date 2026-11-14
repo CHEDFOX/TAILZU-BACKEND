@@ -9,7 +9,8 @@
  *   runNow   once now, its schedule unchanged ("Run now" on the list)
  *   tick     every minute: each routine that is due runs once, as its owner, through the bot's own road (bots/service.ts ask): the bot's
  *            rules, skills, apps, memory and budget, and the same confirm card for anything that sends, deletes or pays. Its answer is
- *            kept on the routine, written down for Activity and pushed to the phone.
+ *            kept on the routine, written down for Activity and pushed to the phone — as `routine_done`, or, with NOTIFY_REPLY on for
+ *            the owner, as the bot's own `bot_ask` with a Reply box on it, the answer kept in that bot's chat (`told` below).
  *
  * A run that is late by more than LATE_MS (the server was down) is skipped, not run hours after it meant anything: the next one is
  * worked out from now. Three failed runs in a row pause it, with why; so does its bot being deleted.
@@ -22,6 +23,7 @@ import { CODE_SLUG } from "../bots/builtin.js";
 import type { FrontCtx } from "../front/types.js";
 import type { EventStore } from "../shell/events.js";
 import type { Routine, RoutinePatch, RoutineStore, RunStatus } from "./store.js";
+import { notifyReplyOn, type BotPush } from "../bots/notifyReply.js";
 import { cleanSchedule, nextRun, nextWords, readRoutine, scheduleWords, TASK_MAX, type Schedule } from "./words.js";
 
 /** What routines need of the bots platform (bots/service.ts Bots). */
@@ -34,11 +36,34 @@ export interface RoutineBots {
 
 export type RoutineNotify = (userId: string, msg: { kind: "routine_done" | "routine_failed"; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<unknown>;
 
+/**
+ * THE ANSWER AS A BOT TURN, so a reply typed into its notification has its subject (botsBots/chat.ts note, always `quiet`: the push
+ * is sent here, as a `bot_ask`, and never again by the note).
+ *
+ * `extra` is the run's own: the changes waiting for a yes and the links it opened, exactly as a typed turn carries them. Without it
+ * the chat the push opens would show an answer saying it needs a yes with nothing to press, and the obvious reply ("yes") would only
+ * start a fresh turn and make a second card.
+ */
+export type RoutineNote = (
+  userId: string, slug: string, text: string,
+  extra?: { approvals?: Array<{ taskId: string; connector: string; preview: string }>; opens?: Array<{ label: string; url: string }>; paise?: number },
+) => Promise<unknown>;
+
+/**
+ * THE BOT'S OWN PUSH, WITH A REPLY BOX ON IT (push/index.ts notifyBot, kind `bot_ask`; src/bots/notifyReply.ts). Used in place of
+ * `routine_done` while NOTIFY_REPLY is on for the owner, so the answer can be replied to from the lock screen.
+ */
+export type RoutineAsk = (userId: string, p: BotPush, key: string) => Promise<unknown>;
+
 export interface RoutinesOptions {
   store: RoutineStore;
   bots: RoutineBots;
   events?: EventStore;
   notify?: RoutineNotify;
+  /** Keep the answer as a bot turn in that bot's chat. Only with `askPush`, and only for the push that replaces `routine_done`. */
+  note?: RoutineNote;
+  /** The reply-able push. Absent, or the switch off for this person: `routine_done` goes, exactly as it did before. */
+  askPush?: RoutineAsk;
   /** Tell the person's open screens (live/writes.ts livePublish). */
   publish?: (userId: string, topics: string[]) => void;
   now?: () => number;
@@ -302,11 +327,17 @@ export class Routines {
       status = answer.approvals.length ? "needs" : "done";
       patch = { lastAt: at, lastStatus: status, lastText: (answer.text || "").slice(0, TEXT_MAX), lastPaise: Math.max(0, Math.round(answer.paise)), runs: r.runs + 1, fails: 0, botName: found.def.name };
       await this.o.events?.add(r.userId, { kind: "ask", bot: r.bot, title: r.task, paise: patch.lastPaise ?? 0, amountPaise: 0, payee: "" }, at).catch(() => undefined);
-      await this.o.notify?.(r.userId, {
-        kind: "routine_done", key: `${r.id}:${at}`,
-        vars: { bot: found.def.name, task: oneLine(r.task, 80), line: oneLine(status === "needs" ? `It needs your OK. ${answer.text}` : answer.text, 140) || "Done." },
-        data: { routineId: r.id },
-      }).catch(() => undefined);
+      // What the person is told, in the bot's own words: an answer that needs their yes says so first. The two pushes `told` picks
+      // between say the same thing in the notification's body, but NOT the same thing on the lock screen: a `bot_ask` of a person's
+      // own bot shows only "Sent you a message.", and its title is the bot's name without the task (notifyReply.ts lineOf,
+      // docs/routines.md §3 step 4). The words kept on the routine, in Activity and in the chat are the same either way.
+      const text = answer.text || "";
+      const said = (status === "needs" ? `It needs your OK. ${text}` : text).trim() || "Done.";
+      await this.told(r, found.def, said, at, {
+        ...(answer.approvals.length ? { approvals: answer.approvals.slice(0, 6).map(({ taskId, connector, preview }) => ({ taskId, connector, preview })) } : {}),
+        ...(answer.opens.length ? { opens: answer.opens.slice(0, 6) } : {}),
+        paise: patch.lastPaise ?? 0,
+      });
     } catch (err) {
       status = "failed";
       const fails = r.fails + 1;
@@ -325,6 +356,40 @@ export class Routines {
     const out = await this.store.update(r.userId, r.id, patch, at);
     this.tell(r.userId);
     return out ?? { ...r, ...patch };
+  }
+
+  /**
+   * WHAT A FINISHED RUN PUSHES. One of two, by the owner's own switch (src/bots/notifyReply.ts, docs/widgets.md §5):
+   *
+   *   NOTIFY_REPLY on for them   the answer is kept as a bot turn in that bot's chat, quietly, with the run's own confirm card and
+   *                              links on it, and the push is the bot's own `bot_ask`: the Reply box on it goes into that chat, so
+   *                              they answer the routine without opening the app, and the chat gives their words their subject
+   *   off (the default)          `routine_done`, with the same words, exactly as before
+   *
+   * The de-dup key is the run's either way, so neither is sent twice, and the push carries the routine's id so "What pings you"
+   * still gives it the routines rule rather than the bot-chat one: a bot the person muted does not swallow a routine they asked for
+   * (you/push.ts verdict). What the LOCK SCREEN shows does differ: a `bot_ask` of their own bot says only "Sent you a message.",
+   * and its title is the bot's name without the task. A missed push is not a lost run: the answer is on the routine, in Activity
+   * and, with the switch on, in the chat.
+   */
+  private async told(r: Routine, def: BotDef, said: string, at: number, extra: Parameters<RoutineNote>[3]): Promise<void> {
+    const key = `${r.id}:${at}`;
+    if (this.o.askPush && notifyReplyOn(r.userId)) {
+      // First the turn, so a reply that comes straight back finds it; a `quiet` note never pushes, this does.
+      await this.o.note?.(r.userId, r.bot, said, extra).catch(() => undefined);
+      const p: BotPush = {
+        slug: r.bot, name: def.name, line: said, thread: r.bot, routineId: r.id,
+        // A person's own bot is private: its words stay off the lock screen, as everywhere else (notifyReply.ts lineOf).
+        ...(def.ownerId !== null ? { private: true as const } : {}),
+      };
+      await this.o.askPush(r.userId, p, key).catch(() => undefined);
+      return;
+    }
+    await this.o.notify?.(r.userId, {
+      kind: "routine_done", key,
+      vars: { bot: def.name, task: oneLine(r.task, 80), line: oneLine(said, 140) },
+      data: { routineId: r.id },
+    }).catch(() => undefined);
   }
 
   private tell(userId: string): void { try { this.o.publish?.(userId, ROUTINE_TOPICS); } catch { /* a screen refreshed later */ } }
