@@ -1,7 +1,7 @@
 {
-  "v": 1,
+  "v": 3,
   "format": 1,
-  "note": "The phone's launch: the splash's bot pulls himself up over his bar and is gone, hands and all; half a second later his hands come back and grab the bar's middle, one from above and one from below, and twist as the bar is pulled in to them. t is ms since the motion began. docs/launch.md has the format.",
+  "note": "The phone's launch: the splash's bot pulls himself up over his bar and is gone, hands and all; half a second later his hands come back and grab the bar's middle, on its face, one from above and one from below, and twist as the bar is pulled in to them. t is ms since the motion began. docs/launch.md has the format.",
   "length": 2200,
   "fade": 220,
   "pinchAt": 1730,
@@ -42,8 +42,8 @@
       ["held", "side ? mid + half + 1 : mid - half - 1"]
     ],
     "grip": "ease(K(t, 560, 680))*0.22 + sin(K(t, landed - 30, landed + 110)*pi)*0.12",
-    "dy": "coming ? 0 : -away*Z*0.06",
-    "edge": "coming ? (side ? 0 : -Z*0.45) : away*(barBottom - barTop)",
+    "dy": "coming ? -31*U : -away*Z*0.06",
+    "edge": "coming ? -Z*0.45 : away*(barBottom - barTop)",
     "lift": "coming ? (1 - back)*Z*0.25*(side ? 1 : -1) : 0",
     "flip": "coming && !side ? -1 : 1",
     "gx": "coming ? held + (mid - held)*close - cx : 0",

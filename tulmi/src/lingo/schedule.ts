@@ -84,9 +84,22 @@ export function ratingFor(verdict: Verdict, spoken: boolean): FsrsGrade {
   return spoken ? Rating.Easy : Rating.Good;
 }
 
+/**
+ * A memory whose numbers cannot be true, treated as never asked instead of thrown out.
+ *
+ * The scheduler refuses a card that claims to be held while having no difficulty, and it is right to: those numbers
+ * describe nothing. But a row like that can only come from a bug or an older shape of this table, and throwing would
+ * lose the answer the person just gave. Starting that ONE word again is the smaller harm, and the only one they see.
+ */
+function sane(m: Memory, now: number): Memory {
+  if (m.state === "new") return m;
+  const ok = Number.isFinite(m.stability) && m.stability > 0 && Number.isFinite(m.difficulty) && m.difficulty >= 1 && m.difficulty <= 10;
+  return ok ? m : freshMemory(now);
+}
+
 /** An item after it has been answered. Pure: the same item, mark and clock always give the same result. */
 export function review(item: LingoItem, verdict: Verdict, spoken: boolean, now: number): LingoItem {
-  const next = engine.next(toCard(item.memory), new Date(now), ratingFor(verdict, spoken));
+  const next = engine.next(toCard(sane(item.memory, now)), new Date(now), ratingFor(verdict, spoken));
   return {
     ...item,
     spoken: item.spoken + (spoken && verdict === "right" ? 1 : 0),
@@ -104,9 +117,10 @@ export function learned(item: LingoItem): boolean {
 
 /** How likely they are to still have it, 0 to 1. Used to order a session and to say how a course is going. */
 export function recall(memory: Memory, now: number): number {
-  if (memory.state === "new" || memory.lastMs === null || memory.stability <= 0) return 0;
-  const days = Math.max(0, (now - memory.lastMs) / DAY_MS);
-  return engine.get_retrievability(toCard(memory), new Date(now), false) ?? Math.exp(-days / memory.stability);
+  const m = sane(memory, now);
+  if (m.state === "new" || m.lastMs === null || m.stability <= 0) return 0;
+  const days = Math.max(0, (now - m.lastMs) / DAY_MS);
+  return engine.get_retrievability(toCard(m), new Date(now), false) ?? Math.exp(-days / m.stability);
 }
 
 /** The items that are due, the most forgotten first. `limit` of 0 means all of them. */

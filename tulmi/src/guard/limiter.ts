@@ -99,6 +99,19 @@ export interface LimiterOptions {
   clearTimer?: (h: unknown) => void;
 }
 
+/**
+ * SLOWED DOWN (abuse prevention, docs/trust.md §actions): whether this person's requests take the free plan's single slot
+ * and wait their turn alone, whatever plan they are on. Installed by the server at start (src/trust/actions.ts
+ * `slowedDown`), exactly as the AI permission's check is installed on its gate — so this file still reads no environment,
+ * no store and nothing else, and every rule in it stays a test. With nothing installed, nobody is slowed.
+ */
+export type SlowCheck = (userId: string) => boolean;
+let slowCheck: SlowCheck | null = null;
+export function installSlowCheck(c: SlowCheck | null): void { slowCheck = c; }
+const isSlowed = (userId: string): boolean => {
+  try { return slowCheck ? slowCheck(userId) : false; } catch { return false; }
+};
+
 export class ConcurrencyLimiter {
   readonly config: LimiterConfig;
   private active = 0;
@@ -130,17 +143,21 @@ export class ConcurrencyLimiter {
   /** Waits for a permit; Overloaded when the queue cannot take the request or it waited too long. */
   acquire(userId: string, plan: Plan, o: { signal?: AbortSignal } = {}): Promise<Permit> {
     if (o.signal?.aborted) return Promise.reject(abortError());
-    if (this.canRun(userId, plan)) return Promise.resolve(this.take(userId, 0));
+    // A slowed person's request counts as a free one (one at a time, no paid priority, no ageing) and waits alone.
+    const slowed = isSlowed(userId);
+    const held: Plan = slowed ? "free" : plan;
+    const queueMine = slowed ? 1 : this.config.queuePerUser;
+    if (this.canRun(userId, held)) return Promise.resolve(this.take(userId, 0));
     const mine = this.queue.filter((w) => w.userId === userId).length;
-    if (this.queue.length >= this.config.queueMax || mine >= this.config.queuePerUser) {
+    if (this.queue.length >= this.config.queueMax || mine >= queueMine) {
       this.rejected += 1;
-      const user = mine >= this.config.queuePerUser;
+      const user = mine >= queueMine;
       const position = user ? this.positionOfUser(userId) : this.queue.length + 1;
       return Promise.reject(new Overloaded(user ? "user_queue_full" : "queue_full", position, this.retryAfter(position, user)));
     }
     return new Promise<Permit>((resolve, reject) => {
       const w: Waiter = {
-        seq: (this.seq += 1), userId, plan, at: this.now(), grant: resolve, fail: reject, timer: undefined,
+        seq: (this.seq += 1), userId, plan: held, at: this.now(), grant: resolve, fail: reject, timer: undefined,
         ...(o.signal ? { signal: o.signal } : {}),
       };
       w.timer = this.setTimer(() => {

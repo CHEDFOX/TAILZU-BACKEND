@@ -11,6 +11,8 @@ vi.hoisted(() => {
   process.env.OPENROUTER_API_KEY = "k";
   process.env.GROQ_API_KEY = "k";
   process.env.NODE_ENV = "test";
+  // Privacy reads the launch-dark PERM_* switches (docs: perms §7.4), and reading any config needs auth set up or this.
+  process.env.DEV_SKIP_AUTH = "true";
 });
 
 const { buildBotsScreen, BOTS_SCREENS } = await import("../src/experience/bots/index.js");

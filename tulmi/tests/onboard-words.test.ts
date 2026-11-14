@@ -66,7 +66,7 @@ describe("the lines", () => {
     expect(Object.keys(OB_HG).sort()).toEqual(Object.keys(OB_EN).sort());
     for (const [k, v] of Object.entries(OB_EN)) expect(v.trim(), k).not.toBe("");
     for (const [k, v] of Object.entries(OB_HG)) expect(v.trim(), k).not.toBe("");
-    expect(Object.keys(OB_EN).length).toBe(106);
+    expect(Object.keys(OB_EN).length).toBe(138);
   });
 
   it("a line with parts has the same parts in both voices; a line with a slot has the same slot", () => {

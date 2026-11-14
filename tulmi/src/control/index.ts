@@ -23,6 +23,7 @@ import { ControlStore } from "./store.js";
 import { CONSOLE_HTML } from "./console.js";
 import { PUSH_DEFAULTS } from "../push/defaults.js";
 import { WIDGETS_DEFAULTS } from "../widgets/defaults.js";
+import { TRUST_DEFAULTS } from "../trust/defaults.js";
 import { getConfig } from "../config.js";
 import { sameSecret } from "../auth/secret.js";
 
@@ -191,9 +192,10 @@ export function registerControlRoutes(app: FastifyInstance, opts: {
     const surface = b.surface;
     if (!surface || !SURFACES.includes(surface)) return reply.code(400).send({ code: "invalid", message: "surface?" });
     const ctx = b.ctx ?? {};
-    // The push engine's config has no route, nor the widgets' (GET /v1/widgets/now needs a person): build each here, as they do.
-    if (surface === "push" || surface === "widgets") {
-      const base = structuredClone(surface === "push" ? PUSH_DEFAULTS : WIDGETS_DEFAULTS);
+    // The push engine's config has no route, nor the widgets' (GET /v1/widgets/now needs a person) or abuse prevention's
+    // (src/trust reads it while scoring a request): build each here, as they do.
+    if (surface === "push" || surface === "widgets" || surface === "trust") {
+      const base = structuredClone(surface === "push" ? PUSH_DEFAULTS : surface === "widgets" ? WIDGETS_DEFAULTS : TRUST_DEFAULTS);
       let rules: readonly Rule[] = store!.rules();
       let draftError: string | undefined;
       if (b.draft !== undefined) {

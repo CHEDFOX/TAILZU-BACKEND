@@ -25,9 +25,14 @@ describe("app knobs", () => {
     const out = withAppKnobs({ labels: { [k!]: "from catalog" }, flags: {} });
     expect(out.labels?.[k!]).toBe("from catalog");
   });
-  it("Meta is on for iPhones: the catalog's value wins over the app's off fallback, so Apple's tracking prompt is asked", () => {
-    expect(APP_KNOB_FLAGS["ads.meta.ios.enabled"]).toBe(false);
-    for (const botsApp of [true, false]) expect(buildBootstrap({ onboarded: true, botsApp }).flags?.["ads.meta.ios.enabled"], `botsApp ${botsApp}`).toBe(true);
+  it("Meta on iPhone cannot be turned on from here: the knob is gone, and the bootstrap never sends it", () => {
+    // The iPhone build holds no Meta SDK and no tracking prompt from 8.9.1, so a server switch for it would be a dormant
+    // feature (App Review 2.5.19). Android keeps its own "ads.meta.enabled".
+    expect(APP_KNOB_FLAGS).not.toHaveProperty("ads.meta.ios.enabled");
+    expect(APP_KNOB_FLAGS["ads.meta.enabled"]).toBe(true);
+    for (const botsApp of [true, false]) {
+      expect(buildBootstrap({ onboarded: true, botsApp }).flags?.["ads.meta.ios.enabled"], `botsApp ${botsApp}`).toBeUndefined();
+    }
   });
 });
 

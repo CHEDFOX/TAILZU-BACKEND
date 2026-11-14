@@ -806,6 +806,21 @@ const EnvSchema = z.object({
   MEET_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(240),
   /** The language Recall's live transcript listens for (its recallai_streaming language_code). */
   MEET_LANGUAGE: z.string().trim().default("en"),
+  /**
+   * CALLS (src/rooms, docs/rooms.md): our own video and audio rooms. The mail bot's calls start here; a link (ROOM_LINK_ORIGIN/m/<code>)
+   * lets anyone in after the host lets them in, and X0 Bot's own apps join from a call screen built as server data. The media goes through
+   * Cloudflare's Realtime SFU: SFU_APP_ID is the Realtime app's id and SFU_APP_SECRET (SECRET: .env only) its App Secret, which never
+   * leaves this server — a phone never calls the SFU, it sends us its offer and we hand back the answer. Without both there are no calls
+   * anywhere. The SFU has no webhook and no idea of a room: who is in a call is ours to hold (rooms/service.ts).
+   */
+  SFU_APP_ID: z.string().trim().optional().transform((v) => v || undefined),
+  SFU_APP_SECRET: z.string().trim().optional().transform((v) => v || undefined),
+  /** Where a call's link points: <origin>/m/<code> (the website sends /m/* to this server). */
+  ROOM_LINK_ORIGIN: z.string().trim().default("https://x0bot.com"),
+  /** How many minutes of calls one person's rooms may hold, in any 24 hours (the SFU bills by the gigabyte that leaves it). */
+  ROOM_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(600),
+  /** How many people one call may hold, the host among them. */
+  ROOM_MAX_PEOPLE: z.coerce.number().int().min(2).max(50).default(10),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -824,6 +839,21 @@ const EnvSchema = z.object({
    * minute, and BOT_KEY_DAILY_PAISE what one key may spend in a day.
    */
   BOTS: bool(false),
+  /**
+   * LINGO, THE LANGUAGE BOT (src/lingo, docs/lingo.md): learning a language by talking rather than tapping. Off unless LINGO=true, and then it is
+   * among the bots like any other. It needs no service of its own: the words come from the model, the voice from the server's own speech, and the
+   * screens from node kinds the apps already draw, so turning it on needs no release. No language is built in; a course is a pair of tags.
+   */
+  LINGO: bool(false),
+  /**
+   * WHAT A BOT DRAWS UNDER ITS WORDS (src/show, docs/show.md): after a bot answers in the app's chat, one small call decides whether a choice to tap, a
+   * callout, the steps, a table, a chart, next questions or a drawing would help, and draws it from the building blocks the apps already draw (no
+   * release). An answer it would not help (a greeting, "Done.") is never asked about, and what it costs comes off the bot's request. Off by
+   * default (the words alone, as before); BOT_SHOW=true turns it on. BOT_SHOW_USERS, a comma-separated list of account ids, is the stage
+   * before that: while it has any name in it, only those accounts get drawings, even with BOT_SHOW on. Empty, the switch alone decides.
+   */
+  BOT_SHOW: bool(false),
+  BOT_SHOW_USERS: orDefault(""),
   /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which
@@ -1416,6 +1446,12 @@ const EnvSchema = z.object({
    *                        fallback act, and nothing names a scene
    *   BOTS_SCENES_USERS    a comma-separated list of account ids. Set, only those accounts get format 2 even with BOTS_SCENES
    *                        on (the owner's device checks, then internal accounts). Empty (the default): the switch decides
+   *   SDUI_V2              the screen vocabulary 2 (pure/SPEC.md section 2: expressions, templates, rules, motion, gestures,
+   *                        lists, inputs, media, paint, device facts, local values, data, shell). Off: no client is treated as
+   *                        having any block, so a screen that states `needs` is never served as one — a builder's sduiV2Live()
+   *                        check keeps drawing today's screen and nobody sees the "open X0 again" page
+   *   SDUI_V2_USERS        a comma-separated list of account ids. Set, only those accounts are served a vocabulary-2 screen,
+   *                        even with SDUI_V2 on. Empty (the default): the switch alone decides
    */
   NATIVE_LOOKS: bool(false),
   NATIVE_ACTIVITY: bool(false),
@@ -1425,6 +1461,110 @@ const EnvSchema = z.object({
   ANDROID_BOTS_NOTICE: bool(false),
   BOTS_SCENES: bool(false),
   BOTS_SCENES_USERS: orDefault(""),
+  SDUI_V2: bool(false),
+  SDUI_V2_USERS: orDefault(""),
+  /**
+   * THE PHONE'S OWN THINGS (docs: perms). Each is off, so a server deployed before the store build draws none of the three
+   * buttons, and an older binary that declares no capability would not get them anyway.
+   *
+   *   PERM_LOCATION            "Use my location" on Plan Ease's "Where does your day start?" card. Off: the card is today's,
+   *                            with the field alone
+   *   PERM_CONTACT_PICK        "Add from contacts" on a space's Invite page and on Spaces' start screen (the system's own
+   *                            picker, no permission). Off: the email field alone, as today
+   *   PERM_HEALTH_IOS          the fitness bot's "Count my workouts from Apple Health" row, on iPhone
+   *   PERM_HEALTH_IOS_USERS    a comma-separated list of account ids. Set, only those accounts get the row on iPhone, even
+   *                            with PERM_HEALTH_IOS on. Empty (the default) means the switch alone decides
+   *   PERM_HEALTH_ANDROID      the same row on Android, where it reads Health Connect. Stays off until Google has approved
+   *                            the Health Connect form and a build carries the library
+   *   PERM_HEALTH_ANDROID_USERS  the account list for the stage between the first Health Connect build and Google's own list
+   *                            reaching Health Connect: Play's review account and our test accounts reach the row (so the
+   *                            reviewer sees the screen the declaration is for), nobody else does
+   *
+   * The route that stores the days reads the same pair, so a row the server would not draw is a row the route refuses.
+   */
+  PERM_LOCATION: bool(false),
+  PERM_CONTACT_PICK: bool(false),
+  PERM_HEALTH_IOS: bool(false),
+  PERM_HEALTH_IOS_USERS: orDefault(""),
+  PERM_HEALTH_ANDROID: bool(false),
+  PERM_HEALTH_ANDROID_USERS: orDefault(""),
+  /**
+   * BUILD 8.9.1'S OWN THINGS (docs: perms2). Each is off, so a server deployed before the store build draws none of the new rows,
+   * and an older binary, which declares none of the capabilities, would not get them anyway. Each row is drawn only when the
+   * phone declared its capability AND its switch is on (experience/bots/kit.ts), and each route that stores something reads the
+   * same switch, so a row the server would not draw is a row the route refuses.
+   *
+   *   PERM_CALENDAR_ADD        "Add to my calendar" on a plan item: the phone's OWN event editor, already filled in. No
+   *                            permission on either phone, and nothing of the phone's calendar is ever read
+   *   PERM_CALENDAR_READ       "Plan around my calendar" on Plan Ease (iPhone 17+, and Android from 8.9.1 behind
+   *                            PERM_CALENDAR_READ_ANDROID): BUSY TIMES ONLY for 14 days, never an event's name, place, notes
+   *                            or people. An Android phone without that half shows Connect Google Calendar instead
+   *   PERM_REMINDERS           "Sync with Reminders" (iPhone 17+): the one list X0 Bot makes, called X0 Bot, and no other
+   *   PERM_FOCUS               "Hold calls during a Focus" (iPhone's own Focus Filter) / "during Do Not Disturb" (Android).
+   *                            On or off and the choice only; never which Focus
+   *   PERM_MOTION              "Count my steps with Motion & Fitness" on a fitness bot, when Apple Health is not used (iPhone)
+   *   PERM_MOTION_DRIVE        "Wait while I'm driving": the same Motion grant answers "driving" or "not driving" just before a
+   *                            Plan Ease call. Its own switch, because N0 may cut the check and its words with it
+   *   PERM_HEALTH_SLEEP_IOS    "Also count my sleep" on a fitness bot whose health is already on, on iPhone
+   *   PERM_HEALTH_SLEEP_IOS_USERS      a comma-separated list of account ids; empty means the switch alone decides
+   *   PERM_HEALTH_SLEEP_ANDROID        the same row on Android, where it reads Health Connect's sleep. Stays off until Play has
+   *                            approved the refiled Health Connect form AND a build carries READ_SLEEP
+   *   PERM_HEALTH_SLEEP_ANDROID_USERS  the account list for the stage between that build and Google's own list propagating
+   *   PERM_ARRIVAL             "Remind me when I get there" on a plan item with a place (iPhone): the phone's own system
+   *                            watches the place; this server is never told where the person is, or that they arrived
+   */
+  PERM_CALENDAR_ADD: bool(false),
+  PERM_CALENDAR_READ: bool(false),
+  PERM_REMINDERS: bool(false),
+  PERM_FOCUS: bool(false),
+  PERM_MOTION: bool(false),
+  PERM_MOTION_DRIVE: bool(false),
+  PERM_HEALTH_SLEEP_IOS: bool(false),
+  PERM_HEALTH_SLEEP_IOS_USERS: orDefault(""),
+  PERM_HEALTH_SLEEP_ANDROID: bool(false),
+  PERM_HEALTH_SLEEP_ANDROID_USERS: orDefault(""),
+  PERM_ARRIVAL: bool(false),
+  /**
+   * THE ANDROID HALVES OF 8.9.1 (docs: perms2). The same shape as PERM_HEALTH_IOS / PERM_HEALTH_ANDROID, and for the same
+   * reason: Android's half of each feature arrives in its own build, behind its own build switch, and for arrival reminders
+   * behind Play's own review. One switch for both phones would mean turning a row on for iPhone people turns it on for
+   * Android people whose binary cannot do it.
+   *
+   *   PERM_CALENDAR_READ_ANDROID   "Plan around my calendar" on Android: READ_CALENDAR, busy times only, 14 days. No Play
+   *                                declaration, so this is the first of the three that can go on — once an Android build
+   *                                carries TULMI_ANDROID_CALENDAR
+   *   PERM_MOTION_ANDROID          "Count my steps" on an Android fitness bot, and the "in a car?" check, both behind
+   *                                ACTIVITY_RECOGNITION. Android sends NO workouts, ever (there is no reliable source), so
+   *                                the row's words differ and the Moves line says steps only
+   *   PERM_MOTION_DRIVE_ANDROID    "Wait while I'm driving" on Android, SEPARATELY from the steps half. It needs its own
+   *                                switch because Android's answer is often "unknown" (there is no motion history to query,
+   *                                only transitions the phone was awake for), so the honest move may be to ship the steps and
+   *                                leave the driving check off — and PERM_MOTION_DRIVE is shared with the iPhone, where the
+   *                                answer is good, so turning THAT off to spare Android would take it from iPhone people too
+   *   PERM_ARRIVAL_ANDROID         "Remind me when I get there" on Android. STAYS OFF until Play has approved the
+   *                                background-location declaration AND an Android build carries TULMI_ANDROID_ARRIVAL
+   *   PERM_ARRIVAL_ANDROID_USERS   an account list for a private test only; empty in production (the default), which means
+   *                                the switch alone decides. Play approves background location for the whole app at once,
+   *                                so there is no stage to hold back, and a list left in it hides the row from everyone
+   *                                not on it — the Play reviewer included
+   */
+  PERM_CALENDAR_READ_ANDROID: bool(false),
+  PERM_MOTION_ANDROID: bool(false),
+  PERM_MOTION_DRIVE_ANDROID: bool(false),
+  PERM_ARRIVAL_ANDROID: bool(false),
+  PERM_ARRIVAL_ANDROID_USERS: orDefault(""),
+  /**
+   * REPLYING TO A BOT FROM ITS NOTIFICATION (src/bots/notifyReply.ts, docs/widgets.md §5). Launch dark: off, so no push carries the
+   * new category and POST /v1/bots/:slug/notify-reply answers 404. Nothing on the phone changes either way.
+   *
+   *   NOTIFY_REPLY           the switch
+   *   NOTIFY_REPLY_USERS     a comma-separated list of account ids. Set, only those accounts get the Reply button and the route,
+   *                          even with NOTIFY_REPLY on. Empty (the default) means the switch alone decides
+   *   NOTIFY_REPLY_PER_HOUR  replies one person may send from notifications in an hour (the model runs for each)
+   */
+  NOTIFY_REPLY: bool(false),
+  NOTIFY_REPLY_USERS: orDefault(""),
+  NOTIFY_REPLY_PER_HOUR: z.coerce.number().int().min(1).max(500).default(20),
   /**
    * Shared secret for RevenueCat's webhook.
    *
@@ -1771,6 +1911,41 @@ const EnvSchema = z.object({
    */
   QUOTA_EXEMPT_USER_IDS: z.string().optional(),
   /**
+   * ABUSE AND FRAUD PREVENTION (src/trust, docs/trust.md). Not tracking, not ads, not analytics: the server looks at the KIND of
+   * network a request comes from (home, mobile, data centre, VPN, Tor) and how many accounts come from it, and asks Apple and
+   * Google whether a request is our real app on a real device. No device or person id is ever built from device or network traits.
+   *
+   *   TRUST               off (the default) | shadow | on. Off: nothing is collected, scored or acted on. Shadow: rows and scores
+   *                       are written and the action it WOULD take is logged; nothing is held or slowed. On: the actions whose own
+   *                       switch is true in the `trust` control surface happen.
+   *   TRUST_HASH_KEY      the key the network, email and install hashes are keyed with (32+ characters, openssl rand -hex 32). A
+   *                       SECRET: .env only, never in Supabase, a backup, a log or the repo. Missing, TRUST stays effectively off
+   *                       and the server warns at start, as BOT_KEY_PEPPER does. Changing it forgets every count.
+   *   TRUST_LISTS_DIR     where the public network lists the server downloads itself are kept (a volume, so a restart keeps the
+   *                       last good copy).
+   *   TRUST_PROXY_CIDRS   which addresses may set X-Forwarded-For: the proxy's own ranges, not a hop count (docs/trust.md).
+   *                       The compose network's subnet by default, which covers both the bundled Caddy and a host nginx.
+   *   TRUST_ATTEST        off (the default) | shadow | on: App Attest, DeviceCheck and Play Integrity. Needs the keys below.
+   *
+   * The attestation keys are SECRETS and go into .env by hand in an SSH session (docs/trust.md, never through chat or a ticket).
+   * PLAY_INTEGRITY_CLOUD_PROJECT is not a secret (it is also sent to the phone in the bootstrap's trust ask).
+   */
+  TRUST: z.preprocess((v) => {
+    const s = String(v ?? "").trim().toLowerCase();
+    return s === "on" || s === "shadow" ? s : "off";
+  }, z.enum(["off", "shadow", "on"])),
+  TRUST_HASH_KEY: z.string().optional(),
+  TRUST_LISTS_DIR: orDefault("/data/trust"),
+  TRUST_PROXY_CIDRS: orDefault("172.16.0.0/12,192.168.0.0/16,10.0.0.0/8,127.0.0.1/32,::1/128"),
+  TRUST_ATTEST: z.preprocess((v) => {
+    const s = String(v ?? "").trim().toLowerCase();
+    return s === "on" || s === "shadow" ? s : "off";
+  }, z.enum(["off", "shadow", "on"])),
+  APPLE_DEVICECHECK_KEY_ID: z.string().optional(),
+  APPLE_DEVICECHECK_PRIVATE_KEY: z.string().optional(),
+  PLAY_INTEGRITY_SERVICE_ACCOUNT: z.string().optional(),
+  PLAY_INTEGRITY_CLOUD_PROJECT: z.string().trim().optional(),
+  /**
    * TAILZU IS FREE, FOR NOW: no word limit for anyone, and nothing anywhere
    * that sells — no paywall, no plans, no "upgrade", no out-of-words or
    * low-words prompts, no prices on the site. The meters still count, so the
@@ -2005,11 +2180,25 @@ export function getConfig(): AppConfig {
   if (Boolean(env.MAIL_WORKER_URL) !== Boolean(env.MAIL_WORKER_SECRET)) console.warn("[config] MAIL_WORKER_URL and MAIL_WORKER_SECRET go together: without both the mail bot is not among the bots.");
   if (env.MAIL_WORKER_SECRET && env.MAIL_WORKER_SECRET.length < 32) console.warn("[config] MAIL_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   if (env.RECALL_API_KEY && !env.RECALL_WEBHOOK_SECRET) console.warn("[config] RECALL_API_KEY without RECALL_WEBHOOK_SECRET: the meeting bot can join calls, but Recall's status webhook is refused (it cannot be checked). Add the workspace verification secret (whsec_…) from Recall's dashboard.");
+  if (Boolean(env.SFU_APP_ID) !== Boolean(env.SFU_APP_SECRET)) console.warn("[config] SFU_APP_ID and SFU_APP_SECRET go together: without both there are no calls.");
 
   // Bots: a pepper that is missing or short makes keys that a leaked table could be tested against. Warned, not refused: the rest of the server is unaffected.
   if (env.BOTS) {
     if (!env.BOT_KEY_PEPPER) console.warn("[config] BOTS=true but BOT_KEY_PEPPER is not set: nobody can make an API key for a bot until it is (openssl rand -hex 32).");
     else if (env.BOT_KEY_PEPPER.length < 32) console.warn("[config] BOT_KEY_PEPPER is under 32 characters. Use a long random value (openssl rand -hex 32).");
+  }
+
+  // Abuse prevention with no key to hash with: nothing is collected, so the counts would all read zero. Warned, not refused.
+  if (env.TRUST !== "off") {
+    if (!env.TRUST_HASH_KEY) console.warn("[config] TRUST is not off but TRUST_HASH_KEY is not set: nothing is collected or scored until it is (openssl rand -hex 32, docs/trust.md).");
+    else if (env.TRUST_HASH_KEY.length < 32) console.warn("[config] TRUST_HASH_KEY is under 32 characters. Use a long random value (openssl rand -hex 32).");
+  }
+  if (env.TRUST_ATTEST !== "off") {
+    const half = Boolean(env.APPLE_DEVICECHECK_KEY_ID) !== Boolean(env.APPLE_DEVICECHECK_PRIVATE_KEY);
+    if (half) console.warn("[config] APPLE_DEVICECHECK_KEY_ID and APPLE_DEVICECHECK_PRIVATE_KEY go together: without both, DeviceCheck is skipped (no signal, never a penalty).");
+    if (Boolean(env.PLAY_INTEGRITY_SERVICE_ACCOUNT) !== Boolean(env.PLAY_INTEGRITY_CLOUD_PROJECT)) {
+      console.warn("[config] PLAY_INTEGRITY_SERVICE_ACCOUNT and PLAY_INTEGRITY_CLOUD_PROJECT go together: without both, Play Integrity is skipped (no signal, never a penalty).");
+    }
   }
 
   // Jobs on Cloudflare with no way to reach the Worker: every job would be failed with a reason. Warned, not refused: the rest of the server is unaffected.

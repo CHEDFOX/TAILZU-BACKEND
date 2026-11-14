@@ -14,6 +14,8 @@ export interface Settings {
     done: "quiet" | "ping"; summary: boolean; summaryAt: number; quiet: boolean; quietFrom: number; quietTo: number; botsOff: string[]; calls?: boolean;
     /** Follow-through (absent from an older server): Keep at it, Tell the next person, louder pings a day, who may ring louder, a real call. */
     follow?: boolean; followTell?: boolean; ringMax?: number; followFrom?: string[]; phoneCall?: boolean;
+    /** Build 8.9.1 (docs: perms2 §4, §5.2), absent from an older server: calls wait during a Focus, and while driving. */
+    focusHold?: boolean; driveWait?: boolean;
   };
   privacy: { personalise?: boolean };
 }

@@ -37,6 +37,8 @@
  *   POST   /v1/mail/businesses/:id/rules                      { name?, field, op, value, action, target? }
  *   DELETE /v1/mail/businesses/:id/rules/:rid
  *   POST   /v1/mail/businesses/:id/rules/:rid/toggle
+ *   GET    /v1/mail/businesses/:id/calls                      the business's calls (src/rooms, docs/rooms.md), newest first
+ *   POST   /v1/mail/businesses/:id/calls                      { title? }: a call made under the business's name, its link to share (201)
  *
  *   POST   /v1/mail/notice                                    THE WORKER'S, signed with MAIL_WORKER_SECRET: { owner, business, name, status,
  *                                                             run?, kind?, priority?, address? }. The person behind the owner (mail/owners.ts)
@@ -73,9 +75,16 @@ import { MailError, mailWorker, OWNER, ownerOf, verifyWorkerCall, type MailWorke
 import { NO_PEOPLE, type MeetPeople } from "../../meet/people.js";
 import { getProfile } from "../../profile/store.js";
 import { pushEngine } from "../../push/index.js";
+import type { RoomView } from "../../rooms/types.js";
 
 export type MailPushKind = "mail_needs_you" | "mail_urgent" | "mail_paused" | "space_mail" | "space_mail_handle";
 export type MailNotify = (userId: string, msg: { kind: MailPushKind; key: string; vars: Record<string, string>; data: Record<string, string> }) => Promise<unknown>;
+
+/** What the mail bot's calls need of src/rooms/service.ts's RoomService. */
+export interface MailRooms {
+  make(userId: string, input: { title?: unknown; host: string; businessId: string }): Promise<RoomView>;
+  list(userId: string, o: { businessId: string }): Promise<RoomView[]>;
+}
 
 export interface MailRouteDeps {
   rateLimit: unknown;
@@ -93,6 +102,8 @@ export interface MailRouteDeps {
   nameOf?: (userId: string) => Promise<string>;
   /** The push (push/index.ts's engine when not given). */
   notify?: MailNotify;
+  /** Calls (src/rooms/service.ts, the server's when not given); null: calls are not set up. */
+  rooms?: MailRooms | null;
   nonces?: NonceStore;
   /** The secret the worker's notice is signed with (MAIL_WORKER_SECRET when not given). */
   secret?: string;
@@ -611,6 +622,63 @@ export function registerMailRoutes(app: FastifyInstance, deps: MailRouteDeps): v
       return answer(reply, { business: await dress(view, reach) });
     } catch (err) {
       return fail(reply, err);
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------------------------- calls (src/rooms)
+
+  /**
+   * A business's calls: made by its owner or their space's admin, in their own account, under the business's own name (read from the worker,
+   * so a call can't claim a name that isn't the business's). A member who answers addresses has none: 404, as for its settings.
+   */
+  const rooms = async (): Promise<MailRooms | null> => {
+    if (deps.rooms !== undefined) return deps.rooms;
+    return (await import("../../rooms/service.js")).roomService();
+  };
+  const roomsOff = (reply: FastifyReply) => reply.code(404).send({ code: "rooms_off", message: "Calls are not switched on." });
+  /** A RoomsError (status, message, code), by duck typing. */
+  const roomFail = (reply: FastifyReply, err: unknown) => {
+    const e = err as { status?: unknown; code?: unknown; message?: unknown };
+    if (!(err instanceof MailError) && typeof e?.status === "number" && e.status >= 400 && e.status < 600 && typeof e.code === "string") {
+      return reply.code(e.status).send({ code: e.code, message: String(e.message ?? "") });
+    }
+    return fail(reply, err);
+  };
+
+  app.get(`${B}/calls`, rl, async (req, reply) => {
+    const got = await begin(req, reply);
+    if (!got) return reply;
+    const id = (req.params as { id?: string }).id ?? "";
+    if (!ID.test(id)) return reply.code(404).send(NOT_FOUND);
+    const r = await rooms();
+    if (!r) return roomsOff(reply);
+    try {
+      if (!(await changeable(reply, got.user.id, id))) return reply;
+      return answer(reply, { calls: await r.list(got.user.id, { businessId: id }) });
+    } catch (err) {
+      return roomFail(reply, err);
+    }
+  });
+
+  app.post(`${B}/calls`, rl, async (req, reply) => {
+    const got = await begin(req, reply);
+    if (!got) return reply;
+    const id = (req.params as { id?: string }).id ?? "";
+    if (!ID.test(id)) return reply.code(404).send(NOT_FOUND);
+    const b = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+    if (b.title !== undefined && (typeof b.title !== "string" || b.title.length > 200)) return reply.code(400).send({ code: "bad_request", message: "The title is too long." });
+    const r = await rooms();
+    if (!r) return roomsOff(reply);
+    try {
+      const reach = await changeable(reply, got.user.id, id);
+      if (!reach) return reply;
+      const biz = (await got.w.call<{ business?: unknown }>(ownerOf(reach.ownerId), "GET", `/businesses/${id}`)).business;
+      if (!isBusiness(biz)) return reply.code(404).send(NO_BUSINESS);
+      const host = (typeof biz.name === "string" && biz.name.trim()) || (typeof biz.domain === "string" ? biz.domain : "") || "X0 Bot";
+      const call = await r.make(got.user.id, { ...(typeof b.title === "string" ? { title: b.title } : {}), host, businessId: id });
+      return answer(reply, { call }, 201);
+    } catch (err) {
+      return roomFail(reply, err);
     }
   });
 

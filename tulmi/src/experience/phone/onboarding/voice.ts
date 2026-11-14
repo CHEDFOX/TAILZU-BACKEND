@@ -76,9 +76,17 @@ export function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
       // CTA — fire the system mic prompt. Either answer moves forward; the
       // permission REQUEST itself (not the grant) is what creates the per-app
       // Settings page the next screen deep-links to.
+      //
+      // `primed` (shared/types/sdui.ts): this screen IS the card — it names
+      // the microphone, says what it is for, and says the phone asks next —
+      // and its one pill is the only thing that fires the ask. The ✕ that used
+      // to sit beside that pill is gone, because a way to put the prompt off
+      // is the one shape 5.1.1(iv) forbids in front of it; the way out is not
+      // tapping, and a refusal moves on by itself (deniedNext).
       allowMic: {
         kind: "requestPermission",
         permission: "microphone",
+        primed: true,
         onGranted: "goKeyboard",
         onDenied: "deniedNext",
         // ALREADY ANSWERED MEANS THE DIALOG IS NEVER COMING.
@@ -229,13 +237,15 @@ export function onboardingVoice(ctx?: ScreenContext): ScreenResponse {
         },
         {
           type: "Paragraph",
-          props: { content: "The mic is what makes that possible — in every app you type in." },
+          props: { content: "X0 Bot uses the microphone so you can talk in every app you type in. Next, your phone asks you." },
           style: { textAlign: "center", fontSize: 13, lineHeight: 21, marginBottom: 21 },
         },
-        // ONE CONTROL, TWO ANSWERS. The dark pill is the whole width of the
-        // thing and the way past is a ✕ — because these are not two equal
-        // offers. One of them is the microphone the product runs on.
-        allowPill("Allow access", "allowMic", "goKeyboard"),
+        // ONE CONTROL, ONE ANSWER (App Review 5.1.1(iv); `primed` on allowMic).
+        // The dark pill is the whole width of the thing and there is nothing
+        // beside it: this screen is the one explanation the system's prompt
+        // gets, so a ✕ here would be a way to put that prompt off. Saying no
+        // is the prompt's own job, and it moves the step on.
+        allowPill("Continue", "allowMic"),
         // THE WATCHER. Draws nothing; exists to notice.
         //
         // visibleIf + onAppear means "run this when the condition becomes

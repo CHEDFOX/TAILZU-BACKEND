@@ -8,6 +8,9 @@
  *   POST   /v1/bots/test { definition, message, history?, projectId? }  -> { answer }   the test console: chat with a draft that was never saved
  *   GET    /v1/bots/export                   -> everything you hold here: bots, keys (masked), commands, what your bots remember
  *   GET    /v1/bots/:slug                    -> { bot }  yours (or a built-in);  anyone else: the public card, only if its owner turned it on, else 404
+ *
+ * A fitness bot's days and its Moves counts are NOT here: they are routes/bots/botHealth.ts, so nothing in this file —
+ * which hosts POST .../ask, the road to an AI service — can reach a health number (docs: perms §4.6).
  *   PUT    /v1/bots/:slug { ...changes }     -> { bot, warnings }   (a built-in can't be changed: 403)
  *   DELETE /v1/bots/:slug                    -> { ok }  with its keys, commands and memory
  *   POST   /v1/bots/:slug/ask { message, history?, projectId?, stream? }
@@ -42,7 +45,6 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 type Body = Record<string, unknown>;
 const bodyOf = (b: unknown): Body => (b && typeof b === "object" && !Array.isArray(b) ? (b as Body) : {});
 const isAbort = (err: unknown): boolean => (err as { name?: unknown } | null)?.name === "AbortError";
-
 /** What an app gets back: the bot's answer, and what the key may still spend today. */
 function apiBody(a: BotAnswer, usage?: { leftTodayPaise: number }) {
   return {
@@ -170,6 +172,8 @@ export function registerBotRoutes(app: FastifyInstance, deps: BotRoutesDeps): vo
         const user = await resolveUser(auth);
         if (!user) return noSession(reply);
         const mine = await bots.resolve(user.id, slugOf(req));
+        // The Moves line's counts are NOT here: they are their own route (routes/bots/botHealth.ts), because this file
+        // hosts POST .../ask and may never be able to reach a health number (docs: perms §4.6).
         if (mine) return reply.send({ bot: await bots.get(user.id, slugOf(req)) });
       }
       const card = await bots.card(slugOf(req));

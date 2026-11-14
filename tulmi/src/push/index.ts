@@ -20,6 +20,7 @@ import { controlStore, requireAdmin } from "../control/index.js";
 import { supabase } from "../auth/supabase.js";
 import type { NotifyData, NotifyKind } from "../code/jobs/types.js";
 import { PUSH_DEFAULTS, PUSH_KINDS, type EventPushKind, type PushKind, type PushPayload } from "./defaults.js";
+import { askMessage, type BotPush, type BotReplyKind } from "../bots/notifyReply.js";
 import { ExpoSender, type PushSender } from "./expo.js";
 import { PushEngine, type ConfigFor } from "./engine.js";
 import { knobsOf } from "./plan.js";
@@ -55,6 +56,17 @@ export async function notifyApproval(userId: string, taskId: string, app: string
   try {
     await engine?.notify(userId, { kind: "approval", key: taskId, vars: { app }, data: { taskId } });
   } catch { /* a missed push is not a failed task: the card is still in the app */ }
+}
+
+/**
+ * A BOT'S OWN PUSH, WITH A REPLY BOX ON IT (src/bots/notifyReply.ts, docs/widgets.md §5). A bot asking the person something, or
+ * answering a reply they typed into a notification. While NOTIFY_REPLY is off for this person the push still goes, with no category
+ * and so no buttons, exactly as a bot's push went before. Never throws; a private bot's words never reach the lock screen.
+ */
+export async function notifyBot(userId: string, kind: BotReplyKind, p: BotPush, key: string): Promise<void> {
+  try {
+    await engine?.notify(userId, askMessage(userId, kind, p, key));
+  } catch { /* a missed push is not a lost message: the chat has it */ }
 }
 
 /** Xode's job events (code/jobs/types.ts NotifyKind) as push kinds. */

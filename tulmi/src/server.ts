@@ -52,6 +52,7 @@ import { registerCodeInternalRoutes } from "./routes/code/codeInternal.js";
 import { createBots } from "./bots/index.js";
 import { botPorts } from "./bots/wire.js";
 import { registerBotRoutes } from "./routes/bots/bots.js";
+import { registerBotHealthRoutes } from "./routes/bots/botHealth.js";
 import { registerBotsShellRoutes } from "./routes/bots/botsShell.js";
 import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
@@ -61,6 +62,8 @@ import { registerXodeFlowRoutes } from "./routes/bots/botsXode.js";
 import { registerBotsFirstRunRoutes } from "./routes/bots/botsFirstRun.js";
 import { createAppleSignIn } from "./auth/appleSignIn.js";
 import { registerBotsPushAskRoutes } from "./routes/bots/botsPushAsk.js";
+import { registerNotifyReplyRoutes } from "./routes/bots/botsNotifyReply.js";
+import { botSaidPush, setBotSaidHook } from "./bots/notifyReply.js";
 import { registerRoutineRoutes } from "./routes/bots/routines.js";
 import { registerAskDecideRoutes } from "./routes/ask/askDecide.js";
 import { registerTalkRoutes } from "./routes/ask/talk.js";
@@ -79,10 +82,13 @@ import { registerNativeLooksRoutes } from "./routes/app/nativeLooks.js";
 import { registerOracleRoutes } from "./routes/bots/oracle.js";
 import { registerMailRoutes } from "./routes/bots/mail.js";
 import { registerMeetRoutes } from "./routes/bots/meet.js";
+import { registerRoomsRoutes } from "./routes/bots/rooms.js";
+import { roomService } from "./rooms/service.js";
+import { registerLingoRoutes } from "./routes/bots/lingo.js";
 import { meetService, setMeetPeople } from "./meet/service.js";
 import { meetStore } from "./meet/store.js";
 import { spacePeople } from "./meet/people.js";
-import { botsAreaParts } from "./botsBots/index.js";
+import { botsAreaParts, type BotsAreaParts } from "./botsBots/index.js";
 import { Blocks } from "./botsBots/blocks.js";
 import { googleEvents, startAutoJoin } from "./meet/calendar.js";
 import { GoogleSession } from "./connectors/google/oauth.js";
@@ -103,7 +109,17 @@ import { registerAssistantRoutes } from "./routes/ask/assistant.js";
 import { RunLedger, runStore, startRunSweeper } from "./runs/index.js";
 import { registerDemoRoutes } from "./routes/site/demo.js";
 import { initControl, registerControlRoutes } from "./control/index.js";
-import { initPush, notifyApproval, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
+// Abuse and fraud prevention (src/trust, docs/trust.md): the kind of network a request comes from, the counts, and what
+// Apple and Google answer about the app. Everything here is dark until TRUST / TRUST_ATTEST are moved off "off".
+import { heldFreeUse as trustHeldFreeUse, slowedDown as trustSlowedDown, trustMode } from "./trust/actions.js";
+import { startListRefresher } from "./trust/lists.js";
+import { startTrustSweeper } from "./trust/sweeper.js";
+import { TRUST_DEFAULTS } from "./trust/defaults.js";
+import { registerTrustRoutes } from "./routes/trust/trust.js";
+import { registerAdminTrustRoutes } from "./routes/admin/trust.js";
+import { installSlowCheck } from "./guard/limiter.js";
+import { installHoldCheck } from "./you/usage.js";
+import { initPush, notifyApproval, notifyBot, notifyCodeJob, pushEngine, registerPushRoutes } from "./push/index.js";
 import { registerPushTokenRoutes, SupabasePushTokens } from "./push/tokens.js";
 import { registerReviewCodeRoute } from "./routes/account/reviewCode.js";
 import { registerDeviceLinkRoutes } from "./routes/account/deviceLink.js";
@@ -144,7 +160,7 @@ import { effectiveLanguage } from "./profile/language.js";
 import { registerErrorHandling } from "./http/errors.js";
 import { registerRequestHooks } from "./http/hooks.js";
 import { registerDeviceScope } from "./http/deviceScope.js";
-import { registerPlugins } from "./http/plugins.js";
+import { registerPlugins, slowAwareMax } from "./http/plugins.js";
 import { registerStaticFileRoutes } from "./routes/app/staticFiles.js";
 
 /**
@@ -171,13 +187,17 @@ const app = Fastify({
   // do NOT use this limit — @fastify/multipart streams them under its own
   // `limits.fileSize` (50 MB) below.
   bodyLimit: 1 * 1024 * 1024,
-  // Trust EXACTLY the reverse proxy in front of us (Caddy) — one hop. With
-  // `true`, Fastify trusted the whole X-Forwarded-For chain and took the
-  // left-most, client-supplied entry as req.ip, so an attacker could spoof
-  // `X-Forwarded-For: <anything>` and mint unlimited fresh rate-limit buckets.
-  // A hop count makes Fastify use the proxy-inserted (real) client IP. If you
-  // add another proxy/LB in front of Caddy, bump this to the total hop count.
-  trustProxy: 1,
+  // Trust the ADDRESSES the reverse proxy in front of us comes from, not a hop
+  // count (TRUST_PROXY_CIDRS; docs/trust.md 8.3 fix 3). A hop count stopped the
+  // old `true`, where Fastify took the left-most client-supplied X-Forwarded-For
+  // entry as req.ip and anyone could mint fresh rate-limit buckets — but a count
+  // still believes whoever is one hop away, so if the backend's port were ever
+  // exposed (FLOW_BIND=0.0.0.0) a direct caller could spoof the header again.
+  // The default list is the compose network's own subnets, which covers both
+  // proxy paths: the bundled Caddy (a container on that network) and a host
+  // nginx (its calls to 127.0.0.1:8770 arrive from that network's gateway).
+  // Another proxy or load balancer in front means adding its range here.
+  trustProxy: cfg.TRUST_PROXY_CIDRS,
 });
 registerErrorHandling(app);
 registerRequestHooks(app);
@@ -305,8 +325,12 @@ registerDemoRoutes(app, {
 });
 registerWellKnownRoutes(app);
 
+// The tier every signed-in app route opts into. `max` is the slow-aware FUNCTION (http/plugins.ts slowAwareMax), not a
+// plain number: @fastify/rate-limit merges a route's options over the plugin's, so a number here would win over the
+// plugin's own function and an account abuse prevention has slowed down would quietly keep the full ceiling. The library
+// takes a number or a function; the route modules' own `rateLimit` types say `number`, which is all the cast is for.
 const AUTHED_RL = {
-  rateLimit: { max: cfg.RATE_LIMIT_MAX, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
+  rateLimit: { max: slowAwareMax(cfg.RATE_LIMIT_MAX) as unknown as number, timeWindow: cfg.RATE_LIMIT_WINDOW_MS },
 };
 
 // --- The control plane ------------------------------------------------------
@@ -314,6 +338,33 @@ const AUTHED_RL = {
 // console is GET /admin; the rules live on the tulmi_control volume.
 initControl({ dir: process.env.CONTROL_DIR || "/data/control" });
 registerControlRoutes(app, { bumpCache: bumpCacheVersion, rateLimit: AUTHED_RL });
+
+// --- Abuse and fraud prevention (src/trust, docs/trust.md) -----------------
+// Registered after the control plane, because its weights, thresholds and
+// action switches are that plane's "trust" surface. Three things happen here:
+// the two places that already decide how fast and how much a person may use
+// are told how to ask whether an account is slowed or held (installed, so
+// neither file has to import any of this); the 30-day sweeper starts; and the
+// public network lists are loaded from their volume and refreshed daily.
+// With TRUST=off nothing is collected, scored or acted on, and the two checks
+// below always answer no — which is how this deploys.
+installSlowCheck(trustSlowedDown);
+installHoldCheck(trustHeldFreeUse);
+registerTrustRoutes(app, { rateLimit: AUTHED_RL });
+registerAdminTrustRoutes(app, { rateLimit: AUTHED_RL });
+// The sweeper runs WHATEVER THE MODE IS, because it only ever deletes: the shadow period's rows, and anything the kill
+// switch leaves behind, still have to go at 30 days as the policy says. Only the list downloads are behind the mode.
+const stopTrustSweep = startTrustSweeper({ log: app.log });
+app.addHook("onClose", async () => { stopTrustSweep(); });
+if (trustMode() !== "off") {
+  const stopLists = startListRefresher({
+    dir: cfg.TRUST_LISTS_DIR,
+    urls: TRUST_DEFAULTS.lists,
+    log: app.log,
+    everyMs: TRUST_DEFAULTS.lists.refreshHours * 3600_000,
+  });
+  app.addHook("onClose", async () => { stopLists(); });
+}
 // Smart notifications: the engine is built here (routes need it), started in
 // main() once the server listens.
 if (cfg.PUSH_ENGINE) initPush({ accessToken: cfg.EXPO_ACCESS_TOKEN });
@@ -436,11 +487,21 @@ const front = createFront({ artifacts, code, jobs: codeJobs, agent: codeAgent, l
 // apps (same permission tiers), the files, the artifact core, Xode's chat and the web; migration 0038 keeps the bots, their keys (hashed), commands and memory.
 const bots = createBots({ ports: botPorts({ connectors, media, artifacts, code }), ...(front ? { guard: front.guard } : {}) });
 registerBotRoutes(app, { rateLimit: AUTHED_RL, bots });
+// A fitness bot's days, on their own, away from the file that hosts POST .../ask (docs: perms §4.6).
+registerBotHealthRoutes(app, { rateLimit: AUTHED_RL, bots });
 // Routines (src/routines, docs/routines.md): a bot does something on a schedule, without being asked each time. On with the bots platform
 // unless ROUTINES=false; every minute the ones that are due run as their owner, through the bot's own road. Migration 0062 keeps them.
+// The chat a routine's answer is kept in, so a reply typed into its notification has its subject: the bots area's own (botsParts
+// below, made after the routines are). A routine runs on a tick, long after this file has finished, so it is always there by then.
+let routineChat: BotsAreaParts["chat"] = null;
 const routines = createRoutines({
   store: routineStore(), bots, events: routineEvents(), publish: livePublish,
   notify: async (userId, msg) => { try { await pushEngine()?.notify(userId, msg); } catch { /* the answer is still on the routine */ } },
+  // With NOTIFY_REPLY on for the owner, the answer is kept as a quiet bot turn and pushed as the bot's own `bot_ask`, with a Reply
+  // box on it (src/bots/notifyReply.ts, docs/widgets.md §5): the routine is answered from the lock screen. Off: `routine_done`.
+  // The turn carries the run's own confirm card and links, so the chat the push opens shows what the app would.
+  note: async (userId, slug, text, extra) => { await routineChat?.note(userId, slug, text, { quiet: true, ...(extra ? { extra } : {}) }); },
+  askPush: (userId, p, key) => notifyBot(userId, "bot_ask", p, key),
 });
 if (routines) {
   const stopRoutines = startRoutines(routines, app.log);
@@ -473,6 +534,8 @@ registerBotsShellRoutes(app, botsAreaDeps);
 const you = registerBotsYouRoutes(app, botsAreaDeps);
 // The bots area's parts, made once here so the meeting bot reads the same Spaces (who is whose admin) as its routes do.
 const botsParts = botsAreaParts({ bots, connectors });
+// A routine's answer goes into the same chat the app's own shows (above).
+routineChat = botsParts.chat;
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts });
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
@@ -480,6 +543,15 @@ registerBotsCodeRoutes(app, botsAreaDeps);
 registerXodeFlowRoutes(app, botsAreaDeps);
 registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
+// Replying to a bot from its notification (src/bots/notifyReply.ts, docs/widgets.md §5): the words typed into the push go into that
+// bot's own chat and its answer comes back as another push. 404 while NOTIFY_REPLY is off, which is the default.
+registerNotifyReplyRoutes(app, { rateLimit: AUTHED_RL, bots, chat: botsParts.chat, shared: botsArea.chatShared });
+// A bot that said something into a chat on its own (botsBots/chat.ts note, without `quiet`) pings the person with a Reply box on it,
+// so they answer from the lock screen. The hook itself is notifyReply.ts's own (botSaidPush), so it is the same thing under test.
+// Nothing while NOTIFY_REPLY is off (botSaid checks the switch itself); nothing today either, since both of note()'s callers are
+// quiet — the routines above send a `bot_ask` of their own instead.
+setBotSaidHook(botSaidPush(bots, notifyBot));
+app.addHook("onClose", async () => { setBotSaidHook(null); });
 // The bots' looks and moments: the catalog the apps draw and play, and pushing a new one (experience/bots/looks.ts).
 registerBotLooksRoutes(app, { rateLimit: AUTHED_RL });
 // The native looks: the nlook catalog the widgets and the Live Activity draw, and the art and fonts they draw with
@@ -494,6 +566,10 @@ const spacesPeople = spacePeople({ spaces: botsParts.spaces, blocks: new Blocks(
 // worker's signed notice that mail needs a person (src/mail, docs/mail.md). In a space, an admin reaches a member's businesses whole, and a
 // member answers only the addresses its owner gave them (mail/access.ts).
 registerMailRoutes(app, { rateLimit: AUTHED_RL, bots, people: spacesPeople });
+// Lingo (src/lingo, docs/lingo.md): the language bot. The course a person is on, the session in front of them, and the answers, which are
+// marked here and never in the app. Off unless LINGO is set; it needs no service of its own.
+registerLingoRoutes(app, { rateLimit: AUTHED_RL, bots });
+
 // The meeting bot (src/meet, docs/meet.md): a bot in a person's video calls through Recall.ai, Recall's two signed webhooks and the stage page
 // its voice plays through. With a Google Calendar connected it joins their calendar's meetings by itself (the sweep, every five minutes).
 registerMeetRoutes(app, {
@@ -514,6 +590,16 @@ if (connectors && meetService()) {
     cancel: (u, id) => meetService()!.cancel(u, id),
   });
   app.addHook("onClose", async () => { stopAutoJoin(); });
+}
+// Calls (src/rooms, docs/rooms.md): our own video and audio rooms, carried by Cloudflare's Realtime SFU. The mail bot makes its calls
+// under a business (routes/bots/mail.ts); the host's call, the link's way in and each seat's signalling are here. Every minute: seats gone
+// quiet dropped (the SFU has no webhook, so presence is ours to hold), calls too long or over the day's minutes closed, rooms unused for a
+// month ended, the lobby swept.
+registerRoomsRoutes(app, { rateLimit: AUTHED_RL });
+if (roomService()) {
+  const roomTick = setInterval(() => { void roomService()!.tick().catch((err) => app.log.warn({ err: (err as Error)?.message }, "rooms: tick failed")); }, 60_000);
+  roomTick.unref();
+  app.addHook("onClose", async () => { clearInterval(roomTick); });
 }
 registerBotSoundsRoutes(app, { rateLimit: AUTHED_RL });
 // Blip on the desktop: his moves and poses, and pushing new ones (experience/bots/blip.ts).
@@ -587,9 +673,9 @@ registerDraftRoutes(app, { rateLimit: AUTHED_RL, tooLong, personalityProblem, cf
 registerEditRoutes(app, { rateLimit: AUTHED_RL, tooLong, personalityProblem, cfg });
 registerAskRoutes(app, { rateLimit: AUTHED_RL, cfg, frontRoutes, tooLong, personalityProblem });
 
-// Ask's own limit, shared by the desktop's on-screen agent and the phone's Ask.
+// Ask's own limit, shared by the desktop's on-screen agent and the phone's Ask. Slow-aware, as AUTHED_RL is above.
 const AGENT_RL = {
-  rateLimit: { max: cfg.AGENT_RATE_LIMIT_MAX, timeWindow: cfg.AGENT_RATE_LIMIT_WINDOW_MS },
+  rateLimit: { max: slowAwareMax(cfg.AGENT_RATE_LIMIT_MAX) as unknown as number, timeWindow: cfg.AGENT_RATE_LIMIT_WINDOW_MS },
 };
 registerAgentRoutes(app, { rateLimit: AGENT_RL, cfg, ledger, connectors, context: personContext });
 

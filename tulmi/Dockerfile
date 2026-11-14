@@ -74,7 +74,9 @@ COPY --from=migrate /migrated /app/.migrated
 # upload; pre-creating /data with node ownership means the writable-under-mount
 # strategy works even though the mount point overlays this later.
 # /data/control holds the control plane's live rules (tulmi_control volume).
-RUN mkdir -p /data/media /data/control /data/code && chown -R node:node /app /data
+# /data/trust holds the public network lists abuse prevention downloads itself (tulmi_trust volume, docs/trust.md): without
+# this line the daily download cannot write, every network reads "unknown", and nothing is countable.
+RUN mkdir -p /data/media /data/control /data/code /data/trust && chown -R node:node /app /data
 USER node
 
 EXPOSE 8080

@@ -474,7 +474,7 @@ describe("Ask any bot (POST /v1/ask with a bot)", () => {
     const res = await s.post("/v1/ask", ALICE, { ...BODY, message: "Neha ko reply likh do ki main late hoon", bot: "any" });
     expect(res.statusCode).toBe(200);
     const body = res.json();
-    expect(body.bot).toEqual({ slug: "keybot", name: "Keylessbord", colour: "ochre", builtin: true, pickedBy: "rules" });
+    expect(body.bot).toEqual({ slug: "keybot", name: "Keylessbord", colour: "clay", builtin: true, pickedBy: "rules" });
     expect(body.result.text).toBe("Reply drafted.");
     expect(body.id).toBeNull();
     expect(body.decision).toMatchObject({ intent: "answer", route: "reply", reasons: expect.arrayContaining(["bot:keybot", "keybot:write"]) });

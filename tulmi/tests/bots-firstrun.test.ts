@@ -109,22 +109,24 @@ describe("after sign-in: straight to Home, nothing asked (App Review 4)", () => 
 
 describe("About you: a card on Home after a few visits, never in the first run", () => {
   const about = (o: Record<string, unknown>) => ({ ...API, "GET /v1/bots/first-run/about": { due: true, name: "Aanya Rao", via: "google", source: "provider", gender: null, ...o } });
-  it("the card: the name filled in from the sign-in, the three genders, Save writes the profile; no way to skip it", async () => {
+  it("the card: the name filled in from the sign-in, the three genders, Save writes whatever there is, and a quiet Not now", async () => {
+    // App Review 5.1.1(v) and (x): nothing on this card is required and it can never lock Home. Save goes through with no name
+    // and no gender (the profile route keeps only what is there), and "Not now" records the skip so it never comes back.
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.home", client, { api: about({}) });
-      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Tell your bots about you", "Male", "Female", "Other", "So your bots know how to address you.", "Save"]));
-      expect(texts(s.root!), client).not.toContain("Not now");
+      expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Tell your bots about you", "Male", "Female", "Other", "So your bots know how to address you. Both are up to you.", "Save", "Not now"]));
       expect(JSON.stringify(s.root)).toContain('"placeholder":"Your name"');
       expect(s.state).toMatchObject({ aboutName: "Aanya Rao", aboutGender: "", aboutSaved: false, aboutClosed: false, aboutBotName: "", aboutBotDone: false });
       const all = actions(s.root);
       expect(all).toEqual(expect.arrayContaining([
         expect.objectContaining({ kind: "setState", path: "aboutGender", value: "female" }),
-        expect.objectContaining({
-          kind: "condition", if: { all: [{ truthy: "aboutName" }, { truthy: "aboutGender" }] }, else: expect.objectContaining({ kind: "toast", message: "Add your name and pick one." }),
-        }),
+        // Save: no condition in front of it at all.
         expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } }),
+        // Not now: the card closes and the skip is kept.
+        expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/bots/first-run/about", body: { skip: true } }),
       ]));
-      expect(all.some((x) => (x as { path?: string }).path === "/v1/bots/first-run/about"), client).toBe(false);
+      expect(JSON.stringify(all), client).not.toContain("Add your name and pick one.");
+      expect(JSON.stringify(all), client).not.toContain("Pick one to save.");
       expect(lintTree(s.root!), client).toEqual([]);
     }
   });
@@ -133,24 +135,24 @@ describe("About you: a card on Home after a few visits, never in the first run",
     const given = await build("bots.home", "phone", { api: about({ name: "Aanya Rao", via: "apple", source: "provider" }) });
     expect(JSON.stringify(given.root)).toContain('"id":"aboutName"');
     expect(given.state).toMatchObject({ aboutName: "Aanya Rao" });
-    const save = actions(given.root).find((x) => x.kind === "condition" && JSON.stringify((x as { if?: unknown }).if) === '{"truthy":"aboutGender"}') as { then?: unknown; else?: unknown } | undefined;
-    expect(save?.else).toMatchObject({ kind: "toast", message: "Pick one to save." });
-    expect(save?.then).toMatchObject({
-      kind: "condition", if: { truthy: "aboutName" },
-      then: { kind: "callEndpoint", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } },
-      else: { kind: "callEndpoint", path: "/v1/profile", body: { gender: "$state.aboutGender" } },
-    });
+    // One Save, no gate in front of it: the route keeps the name only when it is not empty and the gender only when it is one of
+    // the three, so an Apple sign-in that gave no gender still saves and still moves on.
+    expect(actions(given.root)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } }),
+    ]));
+    expect(JSON.stringify(actions(given.root))).not.toContain("Pick one to save.");
     // Apple gave none (or only a guess from a relay address could be made): no name field at all, and the gender alone is saved.
     for (const [name, source] of [["", null], ["Aanya", "email"]] as const) {
       const s = await build("bots.home", "phone", { api: about({ name, via: "apple", source }) });
       // Home has its own fields (the ask bar): the card's name field is the one that must not be there.
       expect(JSON.stringify(s.root)).not.toContain('"id":"aboutName"');
       expect(JSON.stringify(s.root)).not.toContain("Your name");
-      const only = actions(s.root).find((x) => x.kind === "condition" && JSON.stringify((x as { if?: unknown }).if) === '{"truthy":"aboutGender"}') as { then?: { body?: unknown } } | undefined;
-      expect(only?.then?.body).toEqual({ gender: "$state.aboutGender" });
+      expect(actions(s.root)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/profile", body: { full_name: "$state.aboutName", gender: "$state.aboutGender" } }),
+      ]));
     }
   });
-  it("then a name for the assistant, the card's second step: filled with the one it has, a name needed, and the card goes after", async () => {
+  it("then a name for the assistant, the card's second step: filled with the one it has, optional, and the card goes after", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const s = await build("bots.home", client, { api: about({ botName: "Zara" }) });
       expect(texts(s.root!), client).toEqual(expect.arrayContaining(["Give X0 a name of its own", "Save name"]));
@@ -163,11 +165,17 @@ describe("About you: a card on Home after a few visits, never in the first run",
       const all = actions(s.root);
       expect(all).toEqual(expect.arrayContaining([
         expect.objectContaining({ kind: "callEndpoint", method: "PUT", path: "/v1/personality", body: { assistantName: "$state.aboutBotName" } }),
-        expect.objectContaining({ kind: "toast", message: "Type a name for X0." }),
       ]));
-      // Only a saved name closes the step: its one way on is the write's success.
+      // The name is optional (X0 stays its name), so nothing nags for one.
+      expect(JSON.stringify(all), client).not.toContain("Type a name for X0.");
+      // A saved name closes the step, and the skip goes with it so a gender left out cannot bring the card back.
       const write = all.find((x) => (x as { path?: string }).path === "/v1/personality") as { onSuccess?: unknown } | undefined;
       expect(JSON.stringify(write?.onSuccess)).toContain('"path":"aboutBotDone"');
+      expect(JSON.stringify(write?.onSuccess)).toContain('"/v1/bots/first-run/about"');
+      // Nothing typed: the step still finishes, and still records the skip.
+      const name = all.find((x) => x.kind === "condition" && JSON.stringify((x as { if?: unknown }).if) === '{"truthy":"aboutBotName"}') as { else?: unknown } | undefined;
+      expect(JSON.stringify(name?.else)).toContain('"/v1/bots/first-run/about"');
+      expect(JSON.stringify(name?.else)).toContain('"path":"aboutBotDone"');
       // Never worded as a question about the person: no "What will you call me?", no "your name" in this step.
       expect(texts(step)).not.toContain("What will you call me?");
       expect(lintTree(s.root!), client).toEqual([]);
@@ -572,7 +580,7 @@ describe("the routes", () => {
   });
   afterAll(async () => { await server?.close(); });
   const auth = { authorization: "Bearer test-static-token-0123456789" };
-  it("the About you card: due from the third visit once onboarded, until the name, the gender and the assistant's name are all saved; no putting it off", async () => {
+  it("the About you card: due from the third visit once onboarded, and done with for good once the skip is sent", async () => {
     expect((await server.inject({ method: "GET", url: "/v1/bots/first-run/about" })).statusCode).toBe(401);
     const about = async () => (await server.inject({ method: "GET", url: "/v1/bots/first-run/about", headers: auth })).json();
     // A static token has no sign-in to read, so no name is suggested.
@@ -586,8 +594,9 @@ describe("the routes", () => {
       expect((await about()).due).toBe(false);
       await visit();
       expect((await about()).due).toBe(true);
-      // There is no "Not now" to send.
-      expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: {} })).statusCode).toBe(404);
+      // The skip is the one thing the card writes here, and it must say so: nothing else is accepted.
+      expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: {} })).statusCode).toBe(400);
+      expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: { skip: "yes" } })).statusCode).toBe(400);
       // The pick alone is not enough for someone who did not sign in with Apple: the name too; and then the assistant's name.
       await server.inject({ method: "PUT", url: "/v1/profile", headers: auth, payload: { gender: "female" } });
       expect((await about()).due).toBe(true);
@@ -597,6 +606,13 @@ describe("the routes", () => {
       expect((await about()).due).toBe(true);
       expect((await server.inject({ method: "PUT", url: "/v1/personality", headers: auth, payload: { assistantName: "Zara" } })).statusCode).toBe(200);
       expect(await about()).toMatchObject({ due: false, botName: "Zara" });
+      // "Not now", with nothing saved at all: the card is never due again (App Review 5.1.1(v): it can never lock Home).
+      await server.inject({ method: "PUT", url: "/v1/personality", headers: auth, payload: { assistantName: "X0" } });
+      expect((await about()).due).toBe(true);
+      expect((await server.inject({ method: "PUT", url: "/v1/bots/first-run/about", headers: auth, payload: { skip: true } })).statusCode).toBe(200);
+      expect((await about()).due).toBe(false);
+      await visit();
+      expect((await about()).due).toBe(false);
     } finally {
       vi.useRealTimers();
     }

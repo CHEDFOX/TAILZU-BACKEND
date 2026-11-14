@@ -44,6 +44,16 @@ export function keyboardStep(p: Plan): Node {
   // permission, so the microphone is first asked HERE, as Open Settings is
   // tapped (the reasoning of the old onboardingKeyboard). The box beside the
   // button says why the keyboard needs Full Access.
+  //
+  // READ BEFORE ASKING, though: a microphone already allowed on the step
+  // before this one has nothing left to ask, and the phone draws its own
+  // "One permission first" card in front of every ask that is not `primed`
+  // BEFORE it looks — so Open Settings put a card in front of a Settings page.
+  // The read answers with no prompt and no card.
+  //
+  // What is left is NOT `primed` (shared/types/sdui.ts): this step explains
+  // the keyboard, not the microphone, and a Done sits beside its button. The
+  // phone's own card is the one explanation the microphone gets.
   const why: Node = {
     type: "Stack",
     style: { backgroundColor: OB.white, borderWidth: 1.5, borderColor: OB.ink, borderRadius: 16, paddingTop: 11, paddingHorizontal: 14, paddingBottom: 12, marginTop: 6 },
@@ -68,7 +78,11 @@ export function keyboardStep(p: Plan): Node {
     BTN(
       EN["s3.cta"],
       p.ios
-        ? seq({ kind: "requestPermission", permission: "microphone" }, { kind: "openUrl", url: "app-settings:", external: true })
+        ? {
+            kind: "checkPermission", permission: "microphone",
+            onGranted: { kind: "openUrl", url: "app-settings:", external: true },
+            onDenied: seq({ kind: "requestPermission", permission: "microphone" }, { kind: "openUrl", url: "app-settings:", external: true }),
+          }
         : { kind: "openSettings", target: "keyboard" },
     ),
     BTN2(EN["s3.done"], SET(p.I.try!)),

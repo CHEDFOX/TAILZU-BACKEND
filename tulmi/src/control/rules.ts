@@ -24,7 +24,11 @@ import { z } from "zod";
 // config (src/push/defaults.ts), edited per person before each plan.
 // "widgets" is the config GET /v1/widgets/now and POST /v1/widgets/act read
 // (src/widgets/defaults.ts), edited per person before each answer.
-export const SURFACES = ["bootstrap", "screen", "keyboard", "site", "push", "widgets"] as const;
+// "trust" is not sent to a client either: it is abuse prevention's own weights,
+// thresholds and action switches (src/trust/defaults.ts), read before a request
+// is scored — so a weight, a threshold or turning an action on is a rule here,
+// never a deploy.
+export const SURFACES = ["bootstrap", "screen", "keyboard", "site", "push", "widgets", "trust"] as const;
 export type Surface = (typeof SURFACES)[number];
 
 /** What is known about the request a payload is being built for. */

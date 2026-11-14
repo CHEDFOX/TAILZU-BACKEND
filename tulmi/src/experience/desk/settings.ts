@@ -5,6 +5,7 @@
 import type { Node, ScreenResponse } from "../../../../shared/types/sdui.js";
 import type { AssistantView } from "../../connectors/list.js";
 import { LANGUAGE_NAMES } from "../../history/writtenIn.js";
+import { AI_CONSENT_PATH, agreedIn } from "../../privacy/aiConsent.js";
 import { nicknameOf } from "../assistantName.js";
 import { sw as say } from "../settingsWords.js";
 import { isValidTtsVoice, DEFAULT_TTS_VOICE, ttsVoiceById } from "../ttsVoices.js";
@@ -39,7 +40,7 @@ const sw = (key: string, labelText: string): Node => ({
  *   Writing           languages, voice and tone, the read-aloud voice, its name
  *   Connected apps    the assistant's apps (only while they are switched on here)
  *   This computer     the shortcut, the pill, listening (Ask and Xode need no switch here: privacy policy 10.5, 12.6)
- *   Privacy and data  what is kept, the privacy policy
+ *   Privacy and data  sending to AI services, what is kept, the privacy policy
  *   Help and about    write to us, the terms
  * Every section is spaced the same (a heading, a line, its rows) and every row
  * is a defRow, so no row is taller than its neighbours.
@@ -112,6 +113,19 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
 
     // ---- Privacy and data --------------------------------------------------
     part(say("priv.h"), say("priv.p"), [
+      // THE TERMS' YES, AND THE WAY TO TAKE IT BACK (App Review 5.1.1(ii):
+      // consent withdrawn as easily as it was given). The window asks for it in
+      // the onboarding (experience/onboard/terms.ts) and promises it can be
+      // turned off here; the phone's own switch is in You › Privacy
+      // (bots/screens/you.ts), the same route, the same words.
+      defRow("Send to AI services", say("d.ai"), {
+        type: "Switch", props: { cls: "d-switch", accessibilityLabel: "Send to AI services" },
+        bind: { value: "aiAgreed" },
+        on: { onChange: { kind: "sequence", actions: [
+          { kind: "toggleState", path: "aiAgreed" },
+          { kind: "callEndpoint", method: "PUT", path: AI_CONSENT_PATH, body: { agree: "$state.aiAgreed" } },
+        ] } },
+      }),
       defRow("Your audio", say("d.audio"), text("Always", "d-margin")),
       defRow("History", say("d.history"), {
         type: "Switch", props: { cls: "d-switch", accessibilityLabel: "Keep history" },
@@ -129,7 +143,11 @@ export function deskSettings(ctx: DeskContext): ScreenResponse {
       defRow("Questions", "support@x0bot.com", link(say("r.mail"), { kind: "openUrl", url: "mailto:support@x0bot.com" })),
       ...(legal ? [defRow(say("r.terms"), "The rules of using me", link("Read them", { kind: "openUrl", url: legal.terms }))] : []),
     ], true),
-  ], { maxWidth: 820 })], { retainHistory: ctx.personality.retainHistory !== false, ...appsState(ctx.assistant) });
+  ], { maxWidth: 820 })], {
+    retainHistory: ctx.personality.retainHistory !== false,
+    aiAgreed: agreedIn(ctx.personality),
+    ...appsState(ctx.assistant),
+  });
 }
 
 /** What the rows and forms below read: each added app's name and hosts, the add form, the search. */

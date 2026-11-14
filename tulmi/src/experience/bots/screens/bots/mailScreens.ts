@@ -13,6 +13,7 @@
  * Every write goes to routes/bots/mail.ts, which passes it to the worker inside the person's own account.
  */
 import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
+import type { RoomView } from "../../../../rooms/types.js";
 import {
   type BotsCtx, page, row, col, text, C, card, chip, meta, notice, primaryButton, secondaryButton, quietButton, listCard, listRow, sectionLabel,
   call, seq, when, SCREENS, infoChip, meter, statusMark, divider,
@@ -44,14 +45,16 @@ export async function loadMail(ctx: BotsCtx, deps: Deps): Promise<MailData> {
   const b = shownBusiness(ctx, overview);
   if (!b) return { overview };
   const setup = !needsBusiness(ctx, { overview }) && needsSetup(ctx, { overview });
-  const [runs, dns, brief, folders] = await Promise.all([
+  const [runs, dns, brief, folders, calls] = await Promise.all([
     deps.api<{ runs: MailRunView[] }>("GET", `${MAIL}/businesses/${b.id}/activity?limit=40`).then((r) => r.runs).catch(() => [] as MailRunView[]),
     setup ? deps.api<DnsView>("GET", `${MAIL}/businesses/${b.id}/dns`).catch(() => undefined) : Promise.resolve(undefined),
     setup ? deps.api<{ profile: BriefView; saved: boolean }>("GET", `${MAIL}/businesses/${b.id}/brief`).catch(() => undefined) : Promise.resolve(undefined),
     // The mailbox's rows on the page: all mail, the main address's, each alias's, with what is unread.
     deps.api<{ folders: FolderView[] }>("GET", `${MAIL}/businesses/${b.id}/folders`).then((r) => r.folders).catch(() => undefined),
+    // Its calls (src/rooms): none when calls are off, or the business is not theirs to call from (the route says 404).
+    deps.api<{ calls: RoomView[] }>("GET", `${MAIL}/businesses/${b.id}/calls`).then((r) => (Array.isArray(r.calls) ? r.calls : undefined)).catch(() => undefined),
   ]);
-  return { overview, runs, ...(dns ? { dns } : {}), ...(brief ? { brief } : {}), ...(folders ? { folders } : {}) };
+  return { overview, runs, ...(dns ? { dns } : {}), ...(brief ? { brief } : {}), ...(folders ? { folders } : {}), ...(calls ? { calls } : {}) };
 }
 
 // ===================================================================== a reply

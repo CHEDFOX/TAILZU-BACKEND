@@ -1,10 +1,57 @@
 /**
- * Hooks every request passes through: its cost tally, the HTML pages' safety headers, and the JSON body parser.
+ * Hooks every request passes through: its cost tally, abuse prevention's collection, the HTML pages' safety headers, and the
+ * JSON body parser.
  */
 
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
+import { localUserId } from "../auth/jwt.js";
 import { aiScopeHook } from "../privacy/aiGate.js";
 import { costTallyHook, settleCostTally } from "../usage/cost.js";
+import { look, trustMode } from "../trust/actions.js";
+import { needsWriting, shapeOf, skipCollection, tlsHints } from "../trust/signals.js";
+
+/** How often one account's requests are looked at here. The bootstrap looks every launch; this is the quiet background pass. */
+const LOOK_EVERY_MS = 60 * 60_000;
+
+/**
+ * ABUSE PREVENTION'S COLLECTION POINT FOR SIGNED-IN REQUESTS (docs/trust.md §collection).
+ *
+ * What it does: for a signed-in request to an app route, once an hour per account, it writes the (account, network, day) row
+ * and this account's score. What it does NOT do: take any action. This hook knows the account id from the locally verified
+ * JWT and nothing else — not whether they pay, not whether they are the review account — and rule 5 says no action without
+ * that, so the decision belongs to the bootstrap, which has already read both.
+ *
+ * Fire and forget, always: the request is not held up for it, and a failure anywhere inside it cannot fail a request.
+ * A request carrying `x-vercel-forwarded-for` is skipped outright (forgeable on a direct call, docs/trust.md rule 5).
+ */
+export async function trustCollectHook(req: FastifyRequest): Promise<void> {
+  if (trustMode() === "off") return;
+  // The bootstrap is skipped: it does the whole pass itself, with the entitlement, the email and the account's age in
+  // hand, and this one would only write the same row again from less.
+  if (!req.url.startsWith("/v1/") || req.url.startsWith("/v1/admin/") || req.url.startsWith("/v1/trust/")) return;
+  if (req.url.startsWith("/v1/app/bootstrap")) return;
+  if (skipCollection(req.headers as Record<string, unknown>)) return;
+  const auth = req.headers["authorization"];
+  if (typeof auth !== "string" || !auth) return;
+  const userId = await localUserId(auth).catch(() => null);
+  if (!userId) return;
+  const now = Date.now();
+  if (!needsWriting(`look|${userId}`, now, LOOK_EVERY_MS)) return;
+  const platform = req.headers["x-app-platform"];
+  void look({
+    userId,
+    ip: req.ip,
+    collectOnly: true,
+    shape: shapeOf({
+      userAgent: typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined,
+      platform: typeof platform === "string" ? platform : undefined,
+      appRoute: true,
+      tls: tlsHints(req.headers as Record<string, unknown>),
+    }),
+    now,
+    log: req.log,
+  }).catch(() => undefined);
+}
 
 export function registerRequestHooks(app: FastifyInstance): void {
   // What each request really cost us, for the usage meter (usage/cost.ts): a tally of its own that the calls it makes outside the brain's
@@ -13,6 +60,10 @@ export function registerRequestHooks(app: FastifyInstance): void {
   app.addHook("preHandler", costTallyHook);
   // Whose request this is, for the AI permission (privacy/aiGate.ts): nothing of theirs goes to an AI service before they agree.
   app.addHook("preHandler", aiScopeHook);
+  // Abuse prevention (src/trust, docs/trust.md): the kind of network a signed-in request came from, and how many accounts
+  // come from it. Started and let go of, so not even the JWT check inside it is in the request's way; no action is taken
+  // here; and with TRUST=off it does nothing at all.
+  app.addHook("onRequest", async (req) => { void trustCollectHook(req).catch(() => undefined); });
   app.addHook("onResponse", async (req) => { await settleCostTally(req); });
 
   // Every HTML page this server renders (the site, the policies, the SEO pages,

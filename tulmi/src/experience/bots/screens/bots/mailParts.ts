@@ -3,6 +3,7 @@
  */
 import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
 import type { MailAddressView, MailBusinessView, MailCounts, MailOverview, MailPerson, MailRunView } from "../../../../mail/digest.js";
+import type { RoomView } from "../../../../rooms/types.js";
 import { type BotsCtx, C, col, icon, row, SCREENS, statusMark, text } from "../../kit.js";
 import { clockOf, DAY, MIN, shortDate } from "./parts.js";
 
@@ -78,6 +79,8 @@ export interface MailData {
   down?: boolean;
   /** The business shown's folders, for its mailbox's rows (all mail, the main address's, each alias's). */
   folders?: FolderView[];
+  /** The business shown's calls (src/rooms), newest first; absent when calls are not switched on, or the business is not theirs to call from. */
+  calls?: RoomView[];
 }
 
 /** A business id as it may stand in a path or a param. */

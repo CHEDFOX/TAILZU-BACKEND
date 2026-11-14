@@ -55,8 +55,8 @@ const google = policy.slice(policy.indexOf("11. Google apps you connect"), polic
 
 describe("the policy's date and shape", () => {
   it("is effective from the day Plan Ease could call and be talked back to", () => {
-    expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 12, 2026");
-    expect(PRIVACY_POLICY_HTML).toContain("Effective: November 12, 2026");
+    expect(PRIVACY_POLICY_EFFECTIVE).toBe("November 14, 2026");
+    expect(PRIVACY_POLICY_HTML).toContain("Effective: November 14, 2026");
   });
 
   it("numbers its sections 1 to 17, once each, in order", () => {
@@ -358,18 +358,23 @@ describe("served at /privacy", () => {
     // The anchor the Google verification pack links to (docs/google-verification.md).
     expect(res.body).toContain(`<h2 id="google-user-data">11. Google apps you connect</h2>`);
     expect(res.body).toContain("including the Limited Use requirements.");
-    expect(res.body).toContain("Effective: November 12, 2026");
+    expect(res.body).toContain("Effective: November 14, 2026");
     const meta = await app.inject({ method: "GET", url: "/policies.json" });
-    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "November 12, 2026" });
+    expect(meta.json().privacy).toEqual({ url: "https://x0bot.com/privacy", effective: "November 14, 2026" });
   });
 });
 
 describe("Service providers (/privacy/providers), part of the policy", () => {
-  it("is where each AI company is named; the policy itself names none and links there", () => {
-    for (const name of ["OpenAI", "Anthropic", "Gemini", "Groq", "Deepgram", "Sarvam", "OpenRouter", "DeepSeek", "Claude"]) {
-      expect(policy, name).not.toContain(name);
+  it("names each AI company itself, where the AI permission is, and links to the page that lists every one", () => {
+    // App Review 5.1.2(i): the policy must SAY who personal data goes to, not only point at another page (which was a dead link
+    // on the live site). So "Who receives it" names them inline, and Service providers still carries what each does and its link.
+    const who = policy.slice(policy.indexOf("Who receives it:"), policy.indexOf("Never sent:"));
+    for (const name of ["OpenAI", "Anthropic", "Google", "Groq", "Deepgram", "Sarvam AI", "OpenRouter", "DeepSeek"]) {
+      expect(who, name).toContain(name);
       expect(providers, name).toContain(name);
     }
+    for (const name of ["Gemini", "Claude"]) expect(providers, name).toContain(name);
+    expect(who).toContain("each only for its part of the answer");
     expect(PRIVACY_POLICY_HTML).toContain('href="/privacy/providers#ai"');
     expect(providers).toContain("Part of the X0 Bot Privacy Policy");
     expect(providers).toContain("only after you agree in the app");

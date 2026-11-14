@@ -16,7 +16,7 @@
  *   - images are { url } sources inside a sized box (`picture()`), so neither client guesses a size.
  *   - colour is only for bots (palette.ts). Errors, success and links are ink.
  */
-import type { ActionRef, ActionSpec, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, BlockName, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
 import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
@@ -28,6 +28,12 @@ import {
 } from "../../../../shared/types/sdui.js";
 import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
 import { BOT_CALL_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
+import {
+  ARRIVAL_CAPABILITY, CALENDAR_ADD_CAPABILITY, CALENDAR_READ_CAPABILITY, CONTACT_PICK_CAPABILITY, FOCUS_CAPABILITY,
+  HEALTH_CAPABILITY, HEALTH_SLEEP_CAPABILITY, LOCATION_CAPABILITY, MOTION_CAPABILITY, REMINDERS_CAPABILITY,
+} from "../../../../shared/types/sdui.js";
+import { getConfig } from "../../config.js";
+import { healthAllowed, sleepAllowed } from "../../bots/healthGate.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -61,6 +67,19 @@ export interface BotsCtx {
   user: { id: string; name?: string; email?: string } | null;
   /** What the asking build can draw (capabilities.components). */
   can: ReadonlySet<string>;
+  /**
+   * The vocabulary-2 blocks this client really has (sdui2/gate.ts clientVocab), EMPTY while SDUI_V2 is off. A screen that wants one
+   * asks here first and builds the vocabulary-1 screen otherwise: a screen must never state `needs` for a block the asker lacks, or
+   * the gate sends them "Open X0 again" instead of the page (docs/renderer.md section 4).
+   */
+  blocks?: ReadonlySet<string>;
+  /**
+   * Which phone is asking. Absent (the window, a client that does not say) reads as iOS, as experience/screens.ts does.
+   *
+   * Only for a decision the server must make, not for words on a screen: a card that says "Apple Health" on one and "Health
+   * Connect" on the other uses `visibleIf: { platform }`, so iOS and Android are sent the same bytes.
+   */
+  platform?: "ios" | "android";
   /** The window's own pages that exist for it (the desk: Today, Notes, its settings). */
   desk: { pages: boolean; notes: boolean };
   tzOffsetMinutes: number;
@@ -486,8 +505,130 @@ export const canCall = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.
  * client). Every other build — and every older binary — gets today's turn-by-turn call, byte for byte.
  */
 export const canRealtimeCall = (ctx: BotsCtx): boolean => canCall(ctx) && canVoice(ctx) && ctx.can.has(VOICE_REALTIME_CAPABILITY);
+/** This client has that vocabulary-2 block, and may be sent a screen that needs it (BotsCtx.blocks; empty while SDUI_V2 is off). */
+export const hasBlock = (ctx: BotsCtx, block: BlockName): boolean => !!ctx.blocks?.has(block);
+
 /** The window whose one key talks to the bot on screen while X0 is in front (ScreenResponse.talkTo). */
 export const canDeskTalk = (ctx: BotsCtx): boolean => ctx.client === "desktop" && canVoice(ctx) && ctx.can.has(DESK_TALK_TO_CAPABILITY);
+
+/**
+ * THE THREE THINGS ONLY A STORE BUILD'S PHONE CAN DO (docs: perms). Each is declared by the phone's own check that the native
+ * module is there, so an over-the-air update on an older binary declares none of them and no screen draws the button.
+ *
+ * The window never gets any of them: nothing here is drawn for `ctx.client === "desktop"`, so window renders are unchanged.
+ */
+/** "Use my location" on the day-starts card: one foreground fix, named by the phone's own geocoder. */
+export const canLocate = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(LOCATION_CAPABILITY) && permOn("PERM_LOCATION");
+/** "Add from contacts" on the invite screens: the system's own picker, no permission. */
+export const canPickContact = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(CONTACT_PICK_CAPABILITY) && permOn("PERM_CONTACT_PICK");
+/**
+ * The fitness bot's "Count my workouts" row. Apple Health on iPhone (PERM_HEALTH_IOS), Health Connect on Android
+ * (PERM_HEALTH_ANDROID, which also has an account list for the stage while Google's own list is still propagating: Play's review
+ * account and our test accounts reach the row, nobody else does).
+ */
+export function canHealth(ctx: BotsCtx): boolean {
+  if (ctx.client !== "phone" || !ctx.can.has(HEALTH_CAPABILITY)) return false;
+  return healthAllowed(ctx.platform === "android" ? "android" : "ios", ctx.user?.id);
+}
+
+/** A launch-dark switch: off unless its own PERM_* is on. */
+const permOn = (key: PermKey): boolean => getConfig()[key] === true;
+type PermKey =
+  | "PERM_LOCATION" | "PERM_CONTACT_PICK"
+  | "PERM_CALENDAR_ADD" | "PERM_CALENDAR_READ" | "PERM_REMINDERS" | "PERM_FOCUS" | "PERM_MOTION" | "PERM_MOTION_DRIVE"
+  | "PERM_ARRIVAL"
+  // The Android halves (docs: perms2).
+  | "PERM_CALENDAR_READ_ANDROID" | "PERM_MOTION_ANDROID" | "PERM_MOTION_DRIVE_ANDROID"
+  | "PERM_ARRIVAL_ANDROID";
+
+/**
+ * BUILD 8.9.1'S OWN THINGS (docs: perms2). The same shape as the three above: a phone that declared the capability, and the
+ * feature's own launch-dark switch.
+ *
+ * AND, WHERE THE TWO PHONES ARRIVE IN DIFFERENT BUILDS, THIS SERVER'S OWN PLATFORM TEST. Busy times, steps, the driving
+ * check and arrival reminders each have an Android half that lands in its own build — and for arrival, behind Play's own
+ * review — so each weighs the shared switch AND the platform's own (`bothOn` below). The capability alone is not enough
+ * to hold that: an Android build declares a name as soon as its build switch is on, which is earlier than we are ready to
+ * draw the row for everyone. Reminders has no Android half at all in 8.9.1, so it stays `iPhoneOnly`.
+ */
+const iPhoneOnly = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.platform !== "android";
+/**
+ * A feature whose Android half arrives in its own build: the shared switch AND this platform's own. `ctx.platform` reads
+ * the client's platform, and the capability has already said the binary can do it.
+ */
+const bothOn = (ctx: BotsCtx, shared: PermKey, android: PermKey): boolean =>
+  permOn(shared) && (ctx.platform === "android" ? permOn(android) : true);
+/** "Add to my calendar" on a plan item: the phone's own event editor, no permission, nothing read. */
+export const canCalendarAdd = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(CALENDAR_ADD_CAPABILITY) && permOn("PERM_CALENDAR_ADD");
+/** "Plan around my calendar": busy times only, for 14 days. Android reads its own calendars from 8.9.1. */
+export const canCalendarRead = (ctx: BotsCtx): boolean =>
+  ctx.client === "phone" && ctx.can.has(CALENDAR_READ_CAPABILITY) && bothOn(ctx, "PERM_CALENDAR_READ", "PERM_CALENDAR_READ_ANDROID");
+/** "Sync with Reminders": the one X0 Bot list. */
+export const canReminders = (ctx: BotsCtx): boolean => iPhoneOnly(ctx) && ctx.can.has(REMINDERS_CAPABILITY) && permOn("PERM_REMINDERS");
+/** "Hold calls during a Focus" (iPhone's Focus Filter) / "during Do Not Disturb" (Android). No permission either way. */
+export const canFocus = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(FOCUS_CAPABILITY) && permOn("PERM_FOCUS");
+/** "Count my steps with Motion & Fitness" on a fitness bot, instead of Apple Health / Health Connect. Android: steps only. */
+export const canMotion = (ctx: BotsCtx): boolean =>
+  ctx.client === "phone" && ctx.can.has(MOTION_CAPABILITY) && bothOn(ctx, "PERM_MOTION", "PERM_MOTION_ANDROID");
+/**
+ * "Wait while I'm driving": the same Motion grant, its own switch (cut with the driving check if N0 measures it badly) — and
+ * on Android its own ANDROID switch, separate from the steps half. Android's answer is often "unknown", so the steps may be
+ * worth shipping when the driving check is not; `PERM_MOTION_DRIVE` is shared with the iPhone, where the answer is good, so
+ * it must not be the thing turned off to spare Android. The steps half gates it too: the grant is the same one.
+ */
+export const canMotionDrive = (ctx: BotsCtx): boolean =>
+  ctx.client === "phone" && ctx.can.has(MOTION_CAPABILITY) &&
+  bothOn(ctx, "PERM_MOTION_DRIVE", "PERM_MOTION_DRIVE_ANDROID") &&
+  (ctx.platform !== "android" || permOn("PERM_MOTION_ANDROID"));
+/**
+ * "Remind me when I get there": the phone's own system watches the place; this server is never told of an arrival. On
+ * Android it is the app that is woken by a geofence, which is background location under Play's policy, so this one waits on
+ * Play: its own switch, and an account list for a private test of your own, which is empty in production (Play approves the
+ * whole app at once, so a list left in it would only hide the row from everyone not on it).
+ */
+export function canArrival(ctx: BotsCtx): boolean {
+  if (ctx.client !== "phone" || !ctx.can.has(ARRIVAL_CAPABILITY) || !permOn("PERM_ARRIVAL")) return false;
+  if (ctx.platform !== "android") return true;
+  const c = getConfig();
+  if (c.PERM_ARRIVAL_ANDROID !== true) return false;
+  const only = String(c.PERM_ARRIVAL_ANDROID_USERS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return only.length === 0 ? true : !!ctx.user?.id && only.includes(ctx.user.id);
+}
+/**
+ * "Also count my sleep" on a fitness bot whose health is already on: the sleep capability AND health itself (the sleep type is
+ * read through the same Apple Health / Health Connect grant), weighed against this platform's own sleep switch and its list.
+ */
+export function canHealthSleep(ctx: BotsCtx): boolean {
+  if (!canHealth(ctx) || !ctx.can.has(HEALTH_SLEEP_CAPABILITY)) return false;
+  return sleepAllowed(ctx.platform === "android" ? "android" : "ios", ctx.user?.id);
+}
+
+/**
+ * IS THE FEATURE LIVE FOR THIS PERSON AT ALL, whatever they are reading on? Not the same question as `canLocate` and its
+ * two neighbours, which ask whether to draw a BUTTON on this phone. These ask whether to say the feature exists — the
+ * words on You › Privacy, which the window shows too. With the switches off (every production binary before the store
+ * build is out, and the window always) Privacy must not describe three things the person cannot do.
+ */
+export const locationLive = (): boolean => permOn("PERM_LOCATION");
+export const contactPickLive = (): boolean => permOn("PERM_CONTACT_PICK");
+/**
+ * Build 8.9.1's twins (docs: perms2): is the feature live for this person at all, whatever they are reading on? The SHARED
+ * switch is the gate for the WORDS, on either platform. What the Android switches decide is whether an Android phone gets
+ * the ROW, which is `canCalendarRead` and its neighbours above.
+ */
+export const calendarAddLive = (): boolean => permOn("PERM_CALENDAR_ADD");
+export const calendarReadLive = (): boolean => permOn("PERM_CALENDAR_READ");
+export const remindersLive = (): boolean => permOn("PERM_REMINDERS");
+export const focusLive = (): boolean => permOn("PERM_FOCUS");
+export const motionLive = (): boolean => permOn("PERM_MOTION");
+export const motionDriveLive = (): boolean => permOn("PERM_MOTION_DRIVE");
+export const arrivalLive = (): boolean => permOn("PERM_ARRIVAL");
+/** Either platform's sleep switch, weighed against this account's own list, because Privacy is read on any client. */
+export const healthSleepLive = (ctx: BotsCtx): boolean =>
+  sleepAllowed("ios", ctx.user?.id) || sleepAllowed("android", ctx.user?.id);
+/** Either platform's health switch, weighed against this account's own list, because Privacy is read on any client. */
+export const healthLive = (ctx: BotsCtx): boolean =>
+  healthAllowed("ios", ctx.user?.id) || healthAllowed("android", ctx.user?.id);
 
 /** Where a stage's own actions go. They run from his hit area only, never from a press inside his thought. */
 export interface StageOn { onPress?: ActionRef; onDoubleTap?: ActionRef; onDismiss?: ActionRef }
@@ -1173,6 +1314,12 @@ export interface PageOpts {
   dock?: Node[];
   /** The window's one key talks to this screen's bot (only for canDeskTalk; every other build gets none). */
   talkTo?: TalkTo;
+  /**
+   * Never kept on the device: `cacheTtlSeconds: 0`, whatever the screen id would otherwise get. The phone writes every page with a
+   * cache time to AsyncStorage, which goes into the device backup, so a page that draws something that must not be backed up (a
+   * bot's health numbers) passes this. Per page, not per screen id: the same screen for a bot with health off is kept as before.
+   */
+  keep?: false;
 }
 
 /** A phone whose build pulls a bot in its pull to refresh (PULL_BOT_CAPABILITY). */
@@ -1221,7 +1368,8 @@ function response(ctx: BotsCtx, o: PageOpts, root: Node): ScreenResponse {
     // Kept, but stale after a second: a page opened before shows at once from what the phone kept and is fetched again
     // behind it (SduiApp's show-then-revalidate), so nothing waits on the network twice and nothing stays stale. At 0 the
     // phone kept nothing, every tap waited on the server, and even the tabs it warmed at launch were thrown away.
-    hideChrome: true, look: "bots", theme: BOTS_THEME, cacheTtlSeconds: NEVER_KEPT.test(ctx.screenId) ? 0 : STEADY.test(ctx.screenId) ? STEADY_SECONDS : 1,
+    hideChrome: true, look: "bots", theme: BOTS_THEME,
+    cacheTtlSeconds: o.keep === false || NEVER_KEPT.test(ctx.screenId) ? 0 : STEADY.test(ctx.screenId) ? STEADY_SECONDS : 1,
     state: { ask: "", asking: false, ...(o.state ?? {}) }, ...(o.actions ? { actions: o.actions } : {}), root,
     ...(o.live?.length ? { liveTopics: o.live } : {}),
     ...(pullBot ? { pullBot } : {}),

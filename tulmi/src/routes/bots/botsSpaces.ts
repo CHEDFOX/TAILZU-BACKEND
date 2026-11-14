@@ -82,6 +82,7 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { BotError, isBotError } from "../../bots/index.js";
 import { attachmentKindOf, type MediaService } from "../../media/index.js";
 import { Blocks } from "../../botsBots/blocks.js";
+import { startInviteSweeper } from "../../botsBots/inviteSweeper.js";
 import { startMailSender } from "../../botsBots/mail.js";
 import { Payments } from "../../botsBots/payments.js";
 import { Safety } from "../../botsBots/safety.js";
@@ -233,7 +234,10 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
   const tight = (max: number) => ({ config: limit(max), onRequest: spacesGate });
 
   const stopMail = startMailSender({ outbox: spaces.outbox, mailer: spaces.mailer, log: app.log });
-  app.addHook("onClose", async () => { stopMail(); });
+  // An invite's address and its mail do not outlive what they were for (botsBots/inviteSweeper.ts): expired invites go seven
+  // days after they expire, finished outbox rows seven days after they were queued. Queued mail is never touched.
+  const stopSweep = startInviteSweeper({ log: app.log });
+  app.addHook("onClose", async () => { stopMail(); stopSweep(); });
 
   const fail = (req: FastifyRequest, reply: FastifyReply, err: unknown): FastifyReply => {
     if (isBotError(err)) return reply.code(err.status).send({ code: err.code, message: err.message });
@@ -291,7 +295,12 @@ export function registerSpacesRoutes(app: FastifyInstance, deps: BotsAreaDeps, o
       // The person's open draft (Create, Call Your People): its read sweeps their drafts left a day.
       full ? spaces.draftOf(user.id).catch(() => null) : null,
     ]);
-    return { spaces: rows, you: shownName(user), unread, ...(full ? { invitations, requests, asked, draft } : {}) };
+    // The invite mail as it will read, for the start screen's Add from contacts BEFORE the first Invite has made a draft
+    // (App Review 5.1.2(v): the preview comes before anything is sent). The draft's own preview wins once there is one.
+    return {
+      spaces: rows, you: shownName(user), unread,
+      ...(full ? { invitations, requests, asked, draft, mailPreview: spaces.blankPreview(shownName(user)) } : {}),
+    };
   }));
   app.post(`${AREA}/spaces`, RL, run(async (user, req, reply) => { const r = await spaces.create(user.id, bodyOf(req.body).name, shownName(user)); reply.code(201); return r; }));
   // Create on the new Spaces screen (a draft until Done). These, and invitations, come before /spaces/:id.

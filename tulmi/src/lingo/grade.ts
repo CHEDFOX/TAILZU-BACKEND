@@ -55,6 +55,19 @@ const isOptionalMark = (cp: number): boolean => OPTIONAL_MARKS.some(([lo, hi]) =
 /** Scripts written a character at a time, each one a word or a piece of one, chosen off a list rather than spelt. */
 const BY_CHARACTER = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
+/**
+ * Scripts that do not put spaces between words. A WIDER SET than the one above, and the difference matters: Thai,
+ * Khmer, Lao and Burmese are alphabets, spelt out letter by letter, so a slipped letter is a real thing there and
+ * they get an ordinary slip budget — they simply cannot be counted or split on spaces.
+ */
+const SPACELESS = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\p{Script=Thai}\p{Script=Khmer}\p{Script=Lao}\p{Script=Myanmar}]/u;
+
+/** Whether this text is in a script where one character is a word, so a slipped letter cannot happen. */
+export const byCharacter = (text: string): boolean => BY_CHARACTER.test(text);
+
+/** Whether this text is in a script that does not separate its words with spaces, so it cannot be split on them. */
+export const spaceless = (text: string): boolean => SPACELESS.test(text);
+
 /** Lower case, no punctuation, single spaces. Keeps every mark, so a word in any script survives it whole. */
 export function tidy(s: string): string {
   return s.normalize("NFC").toLowerCase().replace(NOT_WORD, " ").replace(/\s+/g, " ").trim();

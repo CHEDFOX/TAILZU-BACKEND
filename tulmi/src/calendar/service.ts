@@ -37,6 +37,7 @@ import type { CallSeed } from "../botsBots/planCallWords.js";
 import {
   DAY, MIN, REPEATS, clockAt, dayFrom, dayName, dayOf, isDayKey, minuteOf, readLine, shiftDay, startOfDay, timeOf, tzOf, type Repeat,
 } from "./words.js";
+import { remindersGone } from "./remindersGone.js";
 
 export interface CalEvent {
   /** The row's id, or "<id>@<day>" for one start of a series. */
@@ -62,6 +63,11 @@ export interface CalEvent {
   /** Follow-through (0081, botsBots/planFollow.ts): how important it is as set (absent: the rules decide) and who does it. Only when kept. */
   importance?: "normal" | "must";
   people?: PersonRef[];
+  /**
+   * 0094 (docs: perms2 §7): "Remind me when I get there" is on for this event. THE PHONE'S OWN system watches the place and
+   * shows the reminder; this server is never told where the person is, or that they arrived, so this switch is all there is.
+   */
+  arrive?: boolean;
 }
 
 export interface CalTask {
@@ -100,6 +106,8 @@ export interface TaskMore {
   kind?: TaskKind; amount_paise?: number | null; payee?: string | null; pay_link?: string | null; repeat?: "" | "monthly";
   prep_for?: string | null; capture_id?: string | null;
   importance?: "normal" | "must" | null; people?: PersonRef[];
+  /** 0094: the item in the X0 Bot Reminders list this to-do was made from (calendar/remindersSync.ts). */
+  ext_src?: "apple_reminders"; ext_ref?: string;
 }
 
 export interface Listed { events: CalEvent[]; tasks: CalTask[]; open: CalTask[] }
@@ -155,6 +163,11 @@ export const FLIGHT_REMIND_MIN = 120;
 const REMIND_MAX = 7 * 24 * 60;
 /** A reminder this late (the server was down) is not sent: the moment has passed. */
 const LATE_MS = 6 * 60 * MIN;
+/**
+ * How many people one reminder pass sends to at a time. A send can wait on the pre-ring check (a bill due today may ring,
+ * and botsBots/planCallCheck.ts asks the phone and waits), so they go a handful at a time rather than one after another.
+ */
+const DUE_AT_ONCE = 20;
 /** Plan Ease's reminders: a to-do with a day and no time is reminded at 10 am that day. */
 const TASK_DAY_MINUTE = 10 * 60;
 /** Reminders due this close together go as one push. */
@@ -302,6 +315,7 @@ export class Calendar {
       start: r.all_day ? startOfDay(day, tz) : start, end: r.all_day ? startOfDay(day, tz) + Math.max(DAY, end - start) : end, allDay: r.all_day, day,
       repeat: r.repeat, remindMin: r.remind_min, from: fromOf(r.source), source: r.source.kind, fixed: fixedOf(r.source), ...spaceBits(r.source),
       ...(r.capture_id ? { captureId: r.capture_id } : {}), ...followView(r),
+      ...(r.arrive === true ? { arrive: true as const } : {}),
     };
   }
 
@@ -494,6 +508,9 @@ export class Calendar {
       start_ms: w.start, end_ms: w.end, all_day: w.allDay, tz_min: b.tz !== undefined && !w.allDay ? tz : row.tz_min,
       repeat: this.repeatOf(b.repeat, row.repeat), repeat_until: this.untilOf(b.until, tz, row.repeat_until),
       remind_min: remindOf(b.remind, row.remind_min), updated_ms: this.now(),
+      // "Remind me when I get there" (0094): written only when the body says so, so a change of anything else leaves it alone
+      // and a server before the migration never writes a column that isn't there.
+      ...(b.arrive !== undefined ? { arrive: b.arrive === true } : {}),
     };
     if (!next.repeat) next.skips = [];
     next.next_remind_ms = this.reminderFor(next);
@@ -633,6 +650,12 @@ export class Calendar {
     const row = await this.taskRowOf(userId, id);
     this.noChange(row);
     await this.rows.tasks.remove({ id: row.id, user_id: userId });
+    // It was linked to an item in the X0 Bot Reminders list (0094): the item is to go at the next sync, so the deletion is
+    // remembered here (calendar/remindersGone.ts). Once the row is gone nothing else says the item ever had a to-do, and the
+    // merge would read the item as a new one and copy it straight back in.
+    if (typeof row.ext_ref === "string" && row.ext_ref) {
+      await remindersGone().mark(userId, row.ext_ref, this.now()).catch(() => undefined);
+    }
     this.publish(userId);
     this.ticked(userId, row.id, "gone");
     this.changed(userId, { kind: "task", id: row.id }, "gone");
@@ -949,18 +972,22 @@ export class Calendar {
     let sent = 0;
     const byUser = new Map<string, DueReminder[]>();
     for (const d of due) byUser.set(d.userId, [...(byUser.get(d.userId) ?? []), d]);
-    for (const [userId, all] of byUser) {
+    /**
+     * ONE PERSON AT A TIME, BUT NOT ONE PERSON AFTER ANOTHER. A send can wait on the pre-ring check (a bill due today may
+     * ring, and botsBots/planCallCheck.ts asks the phone and waits for its answer), so the people go a handful at a time:
+     * done one after another that wait was added up across everyone, and a reminder more than LATE_MS late is dropped.
+     */
+    const onePerson = async ([userId, all]: [string, DueReminder[]]): Promise<number> => {
       all.sort((a, b) => a.at - b.at);
       // A push with any of Plan Ease's own reminders in it counts once toward the day's six; past them, only the person's own go.
       const ours = all.some((d) => !d.own);
       const day = dayOf(now, this.tzFor(userId));
       const fits = !ours || !this.policy || await this.policy.spend(userId, day).catch(() => true);
       const list = fits ? all : all.filter((d) => d.own);
-      if (!list.length) continue;
+      if (!list.length) return 0;
       if (list.length === 1) {
         await send(userId, list[0]!.msg).catch(() => undefined);
-        sent += 1;
-        continue;
+        return 1;
       }
       // One push for all of them, with no buttons: a Done on "2 things at 6 pm" couldn't say which one.
       const first = list[0]!;
@@ -973,7 +1000,12 @@ export class Calendar {
         },
         data: { day: String(first.msg.data.day ?? "") },
       }).catch(() => undefined);
-      sent += 1;
+      return 1;
+    };
+    const people = [...byUser.entries()];
+    for (let i = 0; i < people.length; i += DUE_AT_ONCE) {
+      const batch = await Promise.all(people.slice(i, i + DUE_AT_ONCE).map((p) => onePerson(p).catch(() => 0)));
+      for (const n of batch) sent += n;
     }
     return sent;
   }

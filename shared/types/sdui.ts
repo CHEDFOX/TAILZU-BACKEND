@@ -55,6 +55,31 @@ export interface ClientCapabilities {
   };
   /** The bots' catalog as this build has it (anim/SPEC.md 3.9): at most 512 bytes, no person data. */
   looks?: { v: number; f: number; ok: boolean; why?: string; bad?: string[]; slow?: string[] };
+
+  // --- vocabulary 2 (section 8; pure/SPEC.md 2.11). Absent on every build before V1, which reads as vocab 1. ---
+  /** 2 when this build carries the screen kernel. Absent or 1: the old fixed node list, no expressions. */
+  vocab?: number;
+  /** The sha of the kernel this build carries, for telling one OTA from another. */
+  kernel?: string;
+  /** The building blocks this build really has, by the names in SDUI_BLOCKS. They arrive over several updates, so one
+   *  number could never say which of them a phone holds. */
+  blocks?: BlockName[];
+  /** The binary's runtime string (app.config.ts runtimeVersion), so the server can tell "open X0 again" (an update is
+   *  waiting on the same runtime) from "update X0" (a store build is needed). */
+  runtime?: string;
+  /** Only what the DEVICE switched off for itself (a kill switch, the crash guard). Never "not built yet". */
+  off?: string[];
+  /** The safety floor, and what went wrong on this launch. */
+  sdui?: { ok?: boolean; safe?: number; bad?: string[]; slow?: string[] };
+  /**
+   * THIS PLAYER DRAWS ITS OWN CARD BEFORE A SYSTEM PROMPT (`primed` on `requestPermission`, section 4).
+   *
+   * `true` means the player puts its own "One permission first" box in front of every `requestPermission` that
+   * does not carry `primed: true` (the phone, app/src/sdui/actions.ts `primedCard`). A player that says nothing
+   * here has no box of its own — the window's renderer, and every phone build older than this field — so on one
+   * of those an unmarked ask has whatever explanation the screen itself gave it, and no more.
+   */
+  primed?: boolean;
 }
 
 // ===========================================================================
@@ -375,7 +400,29 @@ export interface BootstrapResponse {
    * reachable set; this is it. Absent = the client warms its tabs, as before.
    */
   warmScreenIds?: string[];
+  /** Abuse and fraud prevention (docs: trust). Present only when the server wants a check now. The phone runs each step once, in
+   *  the background, never blocking a screen, and only the steps its capabilities allow. */
+  trust?: TrustAsk;
 }
+
+/**
+ * WHAT THE PHONE IS ASKED TO PROVE (docs: trust, the perms2 design's §8.5). Never a tracking signal and never an identity: each
+ * step asks Apple or Google whether this is the real app on a real device, and the server keeps only the answer.
+ */
+export interface TrustAsk {
+  /** Single use, 5 minutes, base64url of 32 random bytes. Hashed by the phone as "x0|<step>|" + challenge. */
+  challenge: string;
+  do: ("appAttest" | "appAssert" | "deviceCheck" | "playIntegrity")[];
+  /** Play Integrity's Cloud project number (not a secret). */
+  cloudProject?: string;
+}
+/** POST /v1/trust/ios/attest, /ios/assert, /ios/devicecheck, /android/integrity. Each answers 204; nothing comes back to act on. */
+export interface TrustAttestBody { challenge: string; keyId: string; attestation: string }      // base64
+export interface TrustAssertBody { challenge: string; keyId: string; assertion: string }        // base64
+export interface TrustDeviceCheckBody { token: string }                                         // base64
+export interface TrustIntegrityBody { challenge: string; token: string }
+/** On failure the phone posts the same route with { challenge, failed: "<code>" } (unsupported, throttled, no_play, timeout, …). */
+export interface TrustFailedBody { challenge: string; failed: string }
 
 export interface LanguageOption {
   code: string;
@@ -619,6 +666,20 @@ export interface ScreenResponse {
   pullBot?: PullBotSpec;
   /** DESK_TALK_TO_CAPABILITY only (section 3i). */
   talkTo?: TalkTo;
+
+  // --- vocabulary 2 (section 8; pure/SPEC.md 2.12). A screen that says nothing here is a vocab-1 screen and is
+  //     served exactly as it is today, to every client.
+  /**
+   * The building blocks this screen cannot be drawn without. A client that declared them all gets the screen; one
+   * that did not gets its frozen earlier version, or the short "Open X0 again" / "Update X0" screen — never a
+   * lowered one (SPEC 2.0 principle 6). `sdui2/lint.ts` works this list out from the tree and refuses a screen
+   * that uses a block it did not declare here.
+   */
+  needs?: BlockName[];
+  /** `defs` block: the screen's own templates, drawn by `Use`. They live in the screen, not in a catalog. */
+  defs?: Defs;
+  /** `rules` block: when / every / after for the screen as a whole. A node's own `rules` live only while it does. */
+  rules?: RuleSpec[];
 }
 
 // ===========================================================================
@@ -648,12 +709,30 @@ export interface Node {
   bind?: Record<string, string>;
   /** Event handlers → action references. e.g. { onPress: "submit" }. */
   on?: Partial<Record<NodeEvent, ActionRef>>;
-  /** Entry/exit animation for this node. */
-  motion?: MotionSpec;
-  /** Render only when this condition is truthy (flag/state driven). */
-  visibleIf?: Condition;
+  /** Entry/exit animation for this node. Vocabulary 2 (a screen whose `needs` holds "motion") sends NodeMotion
+   *  instead: the animation spec's value model on any style key (section 8). */
+  motion?: MotionSpec | NodeMotion;
+  /** Render only when this condition is truthy (flag/state driven). `{ expr }` needs the `expr` block (section 8). */
+  visibleIf?: Condition | ExprCondition;
   /** Rendered if the client can't draw `type` (forward-compat safety net). */
   fallback?: Node;
+
+  // --- vocabulary 2 (section 8). Every one of these is OFF unless the screen's `needs` names its block and the
+  //     client declared it; a client without the block is never sent the screen at all (no lowering, SPEC 2.0).
+  /** `rules` block: when / every / after on this node, live only while it is on screen. */
+  rules?: RuleSpec[];
+  /** `gesture` block: fingers on this node, their values written under `ui.`. */
+  gestures?: GestureSpec[];
+  /** `gesture` block: a Screen's or a Scroll's own offset, under `ui.` (so a motion can drive off it). */
+  scrollInto?: string;
+  /** `defs` block, on a `Use`: which of the screen's definitions to draw. */
+  def?: string;
+  /** `defs` block, on a `Use`: the values its parameters take, read inside as `args.*`. */
+  args?: Record<string, unknown>;
+  /** `defs` block, on a `Use`: what goes into the template's named `Slot`s. */
+  slots?: Record<string, Node | Node[]>;
+  /** `defs` block, on a `Slot`: its name. */
+  name?: string;
 }
 
 export type NodeEvent =
@@ -679,10 +758,17 @@ export type NodeEvent =
   | "onError"; // async component failed
 
 /**
- * The component registry the renderer ships. The server discovers the real
- * set from capabilities.components. Grouped by role so future additions land
- * in the right bucket. Every entry here has an implementation in the RN
- * renderer; no aspirational names.
+ * THIS LIST IS HISTORY, NOT THE CONTRACT. It was written when every name here had an implementation; commit
+ * `e4d8861` removed most of them. The real contract is what a client declares in `capabilities.components`, and
+ * what the clients actually hold:
+ *
+ *   TAILZU-FRONTEND/app/src/sdui/components/index.ts   the phone's node types
+ *   TAILZU-FRONTEND/app/src/sdui/registry.ts           what the phone declares
+ *   TAILZU-DESKTOP/src/app/sdui/core.js                the window's
+ *
+ * Nothing may be sent because it appears below. The kit's own set is `KIT_TYPES` in
+ * `tulmi/src/experience/bots/lint.ts`, and `lintTree` refuses anything outside it. Kept here because older
+ * builds still name these in their capabilities (pure/SPEC.md 2.0, "Ground truth").
  */
 export const CORE_COMPONENTS = [
   // v1 primitives — always present.
@@ -1291,6 +1377,43 @@ export const KIT_EXTRAS_CAPABILITY = "KitExtras";
 /** NOT A COMPONENT, the window only: ScreenResponse.talkTo (the one key, with X0 in front, talks to the bot on screen). */
 export const DESK_TALK_TO_CAPABILITY = "DeskTalkTo";
 
+/** NOT A COMPONENT (the phone, a store build only): the action location.area — one foreground fix, named by the phone's own
+ *  geocoder. Declared by a JS check that the build's native module has `locationArea` (docs: perms). */
+export const LOCATION_CAPABILITY = "Location1";
+/** NOT A COMPONENT (the phone, a store build only): the action contact.pick — the system's own contact picker, no permission. */
+export const CONTACT_PICK_CAPABILITY = "ContactPick1";
+/** NOT A COMPONENT (the phone, a store build only): the action health.sync — daily steps and workouts from Apple Health or
+ *  Health Connect, read on the phone and posted straight to the server. */
+export const HEALTH_CAPABILITY = "Health1";
+
+/** NOT A COMPONENT (the phone, build 8.9.1+). Each is declared by the phone's own check that the native function, the usage key
+ *  or Android permission, and the OS are all there (docs: perms2), so an older binary declares none. */
+export const CALENDAR_ADD_CAPABILITY = "CalendarAdd1";       // calendar.editor
+export const CALENDAR_READ_CAPABILITY = "CalendarRead1";     // calendar.sync (iPhone 17+; Android behind TULMI_ANDROID_CALENDAR)
+export const REMINDERS_CAPABILITY = "Reminders1";            // reminders.sync (iPhone 17+)
+export const FOCUS_CAPABILITY = "Focus1";                    // focus.sync; the Focus Filter (iPhone) / Do Not Disturb (Android)
+export const MOTION_CAPABILITY = "Motion1";                  // health.sync source "motion"; motion.watch; requestPermission "motion"
+export const HEALTH_SLEEP_CAPABILITY = "HealthSleep1";       // health.sync sleep: true
+export const ARRIVAL_CAPABILITY = "Arrival1";                // arrival.sync (iPhone; Android behind TULMI_ANDROID_ARRIVAL)
+export const APP_ATTEST_CAPABILITY = "AppAttest1";           // TrustAsk "appAttest" | "appAssert"
+export const DEVICE_CHECK_CAPABILITY = "DeviceCheck1";       // TrustAsk "deviceCheck"
+export const PLAY_INTEGRITY_CAPABILITY = "PlayIntegrity1";   // TrustAsk "playIntegrity"
+
+/** One arrival reminder (arrival.sync). Bounds are checked on the phone too. */
+export interface ArrivalItem {
+  /** ^[a-z0-9_-]{1,64}$; the phone prefixes "x0.arrive.". */
+  id: string;
+  lat: number; lon: number;
+  /** 100-500. */
+  radiusM: number;
+  /** <= 60 characters, e.g. "You're at Koramangala Market". */
+  title: string;
+  /** <= 140 characters, the item's own words. */
+  body: string;
+  /** The screen a tap opens, <= 120 characters. */
+  screen?: string;
+}
+
 /** How a bot wanders: walk to a random spot in `span` (fractions of the stage's width), pause, play a random moment, again. */
 export interface BotRoam {
   moments: string[];
@@ -1513,7 +1636,9 @@ export type ActionSpec =
   | { kind: "switchTab"; tabId: string }
   /** `handoff: true` holds the link to the assistant's hand-off list (the phone's isHandoffUrl), not every link openUrl takes. A build without it ignores it. */
   | { kind: "openUrl"; url: string; external?: boolean; handoff?: boolean }
-  | { kind: "openSettings"; target?: "app" | "keyboard" }
+  /** `healthConnect` (Android, a build with Health Connect): its own permissions page, where a person who refused twice
+   *  turns the bot's reading back on. Anywhere else it falls back to the app's own settings. */
+  | { kind: "openSettings"; target?: "app" | "keyboard" | "healthConnect" }
   | { kind: "openInAppBrowser"; url: string }
   | { kind: "dismiss" }
   // --- data & network ---
@@ -1647,12 +1772,93 @@ export type ActionSpec =
       onEnded?: ActionRef; onIdle?: ActionRef; onFallback?: ActionRef; onBlocked?: ActionRef }
   /** VOICE_REALTIME_CAPABILITY. warm: get the mic and the offer ready while the call is answered (only if mic permission is already granted). */
   | { kind: "voiceCallSet"; op: "warm" | "end" }
+  // --- one of our own calls, block `call` (src/rooms, docs/rooms.md) ---
+  /**
+   * Block `call`. Take a seat in a call and hold it for this screen. The app opens its microphone (and its camera when `video`), makes
+   * an offer, and POSTs `{ sdp, audioMid, videoMid? }` to `join` — the host's `/v1/rooms/:id/join`, or a guest's
+   * `/v1/rooms/guest/:code/join` with `knock` added. It gets back a seat, sets the answer, and from then on runs the call by itself
+   * against `/v1/rooms/seat/{live,pull,answer,leave}`: the heartbeat every couple of seconds, pulling in whoever is new, answering the
+   * SFU, and dropping whoever left. The seat never reaches the screen's state.
+   *
+   * It writes into `statePath`: `{ phase: connecting | live | reconnecting | ended | failed, mic, cam, speaker, front (booleans),
+   * people: [{ identity, name, role, speaking, mic, cam }], waiting: [{ id, name }] (the host's own), me: { identity, name } }`. The
+   * screen's words, tiles and buttons are expressions over that, and `Caller` nodes draw the pictures.
+   *
+   * It ends on `live.leave`, on leaving the screen, or when the call ends or the seat is sent away (then `onEnd`). The app going to the
+   * background keeps the sound and stops the camera until it is back. `onBlocked`: no microphone permission. Failing to join or losing
+   * the call for good: phase `failed`, then `onError`.
+   */
+  | { kind: "call.join"; join: string; statePath: string; knock?: string; video?: boolean;
+      onEnd?: ActionRef; onBlocked?: ActionRef; onError?: ActionRef }
+  /** Block `call`. The call this screen holds: mic, cam or speaker on or off (`value`; without it, the other way), or flip the camera. */
+  | { kind: "call.set"; op: "mic" | "cam" | "speaker" | "flip"; value?: boolean }
+  /** Block `call`. Hang up, then the join's `onEnd`. */
+  | { kind: "call.leave" }
+  // --- the phone's own things: where you are, one contact, your workouts ---
+  /** Phone, LOCATION_CAPABILITY (docs: perms). One foreground fix, named by the phone's OS geocoder (which sends the point to
+   *  Apple or Google, as part of the phone's own system); only the area's words reach `assignTo`. Asks the system first only
+   *  when `ask` (the card's Continue). The point never reaches JavaScript, and never reaches this server. */
+  | { kind: "location.area"; assignTo: string; ask?: boolean;
+      onFound?: ActionRef; onNone?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef; onError?: ActionRef }
+  /** Phone, CONTACT_PICK_CAPABILITY. The system's own contact picker; no permission, so no card in front of it. Only the ONE
+   *  email the person tapped reaches `assignTo`; the address book is never read. */
+  | { kind: "contact.pick"; assignTo: string; onPicked?: ActionRef; onCancel?: ActionRef; onError?: ActionRef }
+  /** Phone, HEALTH_CAPABILITY. Reads daily step totals and workouts for `days` (31 at most), sums them on the phone, and POSTs
+   *  them to `path`, which must match /^\/v1\/bots\/[a-z0-9]+(?:-[a-z0-9]+)*\/health\/days$/ (else refused before any read, so a
+   *  screen bug can never send health data to a route that reaches an AI service). Asks only when `ask`; `enable` rides on the
+   *  first POST. No health value ever reaches state. */
+  | { kind: "health.sync"; path: string; days?: number; ask?: boolean; enable?: boolean;
+      /** MOTION_CAPABILITY only: read the steps and the walks, runs and rides from Motion & Fitness instead of Apple Health. */
+      source?: "health" | "motion";
+      /** HEALTH_SLEEP_CAPABILITY only: ask for the sleep type in a request OF ITS OWN, so a refusal leaves steps working. */
+      sleep?: boolean;
+      onSynced?: ActionRef; onEmpty?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef;
+      onUnavailable?: ActionRef; onError?: ActionRef }
+  // --- the phone's own things, build 8.9.1 (docs: perms2) ---
+  /** Phone, CALENDAR_ADD_CAPABILITY. The phone's own event editor, filled in. No permission (iPhone 17+: out of process; Android:
+   *  the calendar app's screen). Nothing is read. Android cannot tell saved from cancelled, so it reports onOpened. */
+  | { kind: "calendar.editor"; title: string; startsAtIso: string; endsAtIso?: string; allDay?: boolean; notes?: string;
+      onSaved?: ActionRef; onCancel?: ActionRef; onOpened?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, CALENDAR_READ_CAPABILITY. BUSY TIMES ONLY ({s, e, allDay}; free, declined and cancelled events skipped) for `days`
+   *  (14 at most), POSTed to `path`, which must equal "/v1/botsapp/plan/busy" (else refused before any read). No title, place,
+   *  note, attendee or calendar name crosses into JavaScript. Asks only when `ask`; `enable` rides on the first POST. */
+  | { kind: "calendar.sync"; path: string; days?: number; ask?: boolean; enable?: boolean;
+      onSynced?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, REMINDERS_CAPABILITY. Two-way sync of ONE list, "X0 Bot" (made on first sync), through `path`, which must equal
+   *  "/v1/botsapp/plan/reminders/sync": read that list, POST, apply the reply's {add, update, remove} to that list only, POST
+   *  {applied}. No other list's items are fetched. Nothing reaches state. */
+  | { kind: "reminders.sync"; path: string; ask?: boolean; enable?: boolean;
+      onSynced?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, FOCUS_CAPABILITY. Whether a Focus (iPhone: what X0 Bot's Focus Filter last saw) or Do Not Disturb (Android, no
+   *  permission) is on, POSTed as {on, hold?, source} to `path`, which must equal "/v1/botsapp/plan/focus". Never which one. */
+  | { kind: "focus.sync"; path: string; onSynced?: ActionRef; onError?: ActionRef }
+  /** Phone, MOTION_CAPABILITY. "Wait while I'm driving", on or off — the person's own switch, and nothing is read or sent.
+   *  ANDROID needs this both ways: it can only answer the driving check while it is registered for car transitions, and
+   *  `on: false` deletes that registration and the one line it kept (perms2 5.2). On the iPhone the system answers the
+   *  question from its own motion history, so the native side answers true and does nothing. Both switch paths send it. */
+  | { kind: "motion.watch"; on: boolean; onDone?: ActionRef; onUnsupported?: ActionRef }
+  /** Phone, ARRIVAL_CAPABILITY. Replaces the arrival reminders the phone's OWN system watches with `items` (10 at most). The
+   *  places come from this server; the phone's position never reaches JavaScript or this server, and nobody is told of an
+   *  arrival. Asks for location (While Using) only when `ask`. onApproximate: Precise Location is off. */
+  | { kind: "arrival.sync"; items: ArrivalItem[]; ask?: boolean;
+      onArmed?: ActionRef; onApproximate?: ActionRef;
+      /** ANDROID ONLY: precise location is held, "Allow all the time" is not. NOT a denial — the server's own card explains
+       *  the background use (Play's prominent disclosure) and then offers Settings, which is the only way on from Android 11. */
+      onBackground?: ActionRef;
+      onDenied?: ActionRef; onBlocked?: ActionRef;
+      onUnavailable?: ActionRef; onError?: ActionRef }
   // --- permissions ---
   | {
       kind: "requestPermission";
       permission:
         | "microphone" | "camera" | "notifications" | "photoLibrary"
-        | "contacts" | "calendar" | "location" | "tracking";
+        | "contacts" | "calendar" | "location" | "tracking"
+        /** MOTION_CAPABILITY only: Motion & Fitness (iPhone) / Physical activity (Android), for the driving check before a
+         *  Plan Ease call. */
+        | "motion"
+        /** ARRIVAL_CAPABILITY on Android only: "Allow all the time", as a REQUEST and not a bare openSettings. The iPhone
+         *  has no such kind and answers unsupported. */
+        | "backgroundLocation";
       onGranted?: ActionRef;
       onDenied?: ActionRef;
       /**
@@ -1668,6 +1874,51 @@ export type ActionSpec =
        * distinguish the two keeps the behaviour it has.
        */
       onBlocked?: ActionRef;
+      /**
+       * THE CARD HAS ALREADY BEEN SHOWN (Apple 5.1.1(iv); the phone's own
+       * `primedCard`, app/src/sdui/actions.ts).
+       *
+       * One app card stands before every system prompt, and a player that
+       * declares `primed` in its capabilities makes sure of it: without this
+       * field it draws its own box — "One permission first / The next screen is
+       * your phone asking. Nothing is used until you allow it." with a single
+       * Continue — and asks the system only once that is tapped. Whatever tree
+       * we sent. So on such a player an ask fired by a rule, a switch, a
+       * gesture or a screen appearing is explained whether we remembered to
+       * explain it or not. The box's words are `perm.<permission>.title` and
+       * `perm.<permission>.body` where the bootstrap has them (the server's
+       * own, experience/appKnobs.ts PERM_CARD_LABELS).
+       *
+       * A player that declares nothing has no box: the window's renderer, and
+       * every phone build older than the field (the store build at the time of
+       * writing). There an unmarked ask has whatever the screen itself said,
+       * and no more — which is a reason to explain an ask anyway, not a reason
+       * to mark it.
+       *
+       * `primed: true` says the explaining has been done here, on this screen,
+       * and the phone goes straight to the system. SET IT ONLY ON AN ASK FIRED
+       * BY THE CONTINUE BUTTON OF OUR OWN CARD THAT ALREADY EXPLAINS THIS
+       * PERMISSION: title, why, and that one button with nothing beside it to
+       * put the prompt off. Exactly one explanation before each system prompt,
+       * never two and never none.
+       *
+       * So NOT on: a bare row tap or a switch with no card; an ask on appear;
+       * the idempotent ask that only exists to make iOS give the app its own
+       * Settings page before `app-settings:` is opened; a retry; or a card that
+       * explains something else (the keyboard, Full Access) and happens to ask
+       * for the microphone on the way. Those keep the phone's box, which is the
+       * only explanation they have — so an ask like that is better read first
+       * (`checkPermission`) than asked when the answer is already on record.
+       *
+       * One action object reachable from both a card's Continue and an
+       * unexplained trigger is two actions: split it, and mark only the card's.
+       * tests/primed.test.ts walks the built screens and refuses the rest.
+       *
+       * The window ignores it: TAILZU-DESKTOP's renderer has no card of its own
+       * (sdui/actions.js goes straight to askMic / askCam), so a window-only ask
+       * neither needs the field nor minds it.
+       */
+      primed?: true;
     }
   // Read a permission WITHOUT asking for it. Same shape as requestPermission,
   // but it never shows a system dialog — so a screen can react to a permission
@@ -1678,7 +1929,7 @@ export type ActionSpec =
       kind: "checkPermission";
       permission:
         | "microphone" | "camera" | "notifications" | "photoLibrary"
-        | "contacts" | "calendar" | "location" | "tracking";
+        | "contacts" | "calendar" | "location" | "tracking" | "motion" | "backgroundLocation";
       onGranted?: ActionRef;
       onDenied?: ActionRef;
       /** Optional: also write the boolean answer to this state path. */
@@ -2376,3 +2627,493 @@ export type KeyboardActionSpec =
   | { kind: "delay"; ms: number }
   // ----- extensibility (forward-compat slot) -----
   | { kind: "extension"; name: string; params?: Record<string, unknown> };
+
+// ===========================================================================
+// 8. Vocabulary 2 — the building blocks (pure/SPEC.md section 2)
+// ===========================================================================
+//
+// Vocabulary 1 is the fixed node list above: one node type per feature, so every new construction needed a new
+// client build. Vocabulary 2 is about ten GENERAL blocks — expressions, templates, rules, motion, gestures, lists,
+// inputs, media, paint, device facts, phone-local values, data and the shell — after which a new screen, flow or
+// interaction is new server data and nothing else.
+//
+// WHERE THE TRUTH LIVES. Every shape below mirrors a spec object in the phone's own code, which is what the
+// renderer implements. These are the TypeScript mirrors; when one disagrees with the phone, the phone is right:
+//
+//   kernel/limits.ts LIMITS       the numbers (the server reads them from the generated shared/sdui/kernel.cjs,
+//                                 never from a copy here, so there is one set and not two that drift)
+//   kernel/blocks.ts BLOCKS       the closed list of block names
+//   components/v3Spec.ts SPEC     List, Each, Input, Video, Audio, Camera
+//   motion/spec.ts MOTION_SPEC    motion on any node
+//   gesture/spec.ts GESTURE_SPEC  gestures on any node
+//   theme/paintCore.ts PAINT_SPEC paint on any box
+//   device/factsCore.ts           the device facts, and DEVICE_SPEC
+//   localCore.ts LOCAL_SPEC       phone-local values
+//   shell/blocks/index.ts SPEC    the shell trees and presentations
+//   data/index.ts SPEC            callEndpoint's new options, and subscribe
+//
+// THE GATE. `tulmi/src/experience/sdui2/lint.ts` checks a screen against the generated kernel and works out its
+// `needs`; `gate.ts` serves it only to a client that declared every one of them. Nothing here is reachable until
+// a screen says `needs` and a client says `blocks` (SPEC 2.0 principles 2 and 6).
+
+/** The vocabulary the blocks below belong to. A client says `vocab: 2` once it carries the kernel. */
+export const SDUI_VOCAB = 2;
+
+/** The closed list of block names, in the order of pure/SPEC.md 2.1. Mirrors kernel/blocks.ts BLOCKS exactly. */
+export const SDUI_BLOCKS = [
+  "expr", "defs", "rules", "device", "local", "paint", "motion", "gesture", "list", "input", "media", "data", "shell", "call",
+] as const;
+
+export type BlockName = (typeof SDUI_BLOCKS)[number];
+
+/** Planned, but owned by another spec: `scene` is the standalone drawing node, which arrives with animation format 3. */
+export const SDUI_LATER_BLOCKS = ["scene"] as const;
+
+// --------------------------------------------------------------------------- 8a. expressions (`expr`)
+//
+// ONLY TWO OBJECT SHAPES ARE EVER EVALUATED. A bare string is never looked at for "{{ }}", because the server puts
+// people's own words into string props — a note's title, a stranger's calendar invite — and a title reading
+// "{{ state.token }}" must draw as those characters. A value that arrives through the store, a `bind`, a list row
+// or an endpoint is data too: it is never parsed a second time.
+
+/** Text with holes: `{ "$t": "{{ count(state.done) }} of {{ count(state.items) }} done" }`. */
+export interface TextTemplate { $t: string }
+
+/** One value: `{ "$": "state.busy ? 0.4 : 1" }`. */
+export interface ValueBinding { $: string }
+
+/** A condition written as an expression: `{ "expr": "device.perm.mic == 'granted' && !state.dismissed" }`. */
+export interface ExprCondition { expr: string }
+
+/** A prop that may be written as data or worked out on the device. */
+export type Val<T> = T | ValueBinding;
+/** A text prop: as written (and shown as written), or text with holes, or one value. */
+export type Txt = string | TextTemplate | ValueBinding;
+
+// --------------------------------------------------------------------------- 8b. templates (`defs`)
+
+/** One screen-local template: the names it takes, and the tree it draws. Read inside as `args.<name>`. */
+export interface DefSpec {
+  params?: string[];
+  root: Node;
+}
+
+/** A screen's templates, by name. No recursion, direct or indirect; the kernel refuses it at compile. */
+export type Defs = Record<string, DefSpec>;
+
+/** `{ type: "Use", def, args, slots }` draws a template. A `Use` leaves nothing of itself behind, so a `visibleIf`,
+ *  an `id` or a `style` on it would simply disappear: lint refuses those rather than let them go quiet. */
+export const USE_NODE = "Use";
+/** `{ type: "Slot", name }` marks where a `Use`'s `slots` content goes inside a template. */
+export const SLOT_NODE = "Slot";
+
+// --------------------------------------------------------------------------- 8c. rules and timers (`rules`)
+
+/** A rule: exactly one of `when`, `every` or `after`, and what to do. Mirrors kernel/rules.ts RuleSpec. */
+export interface RuleSpec {
+  /** This rule's own name on the screen. */
+  id: string;
+  /** Fired on the change from false to true. */
+  when?: ExprCondition;
+  /** Milliseconds between fires. */
+  every?: number;
+  /** Milliseconds after the rule starts, once. */
+  after?: number;
+  /** The action to run. */
+  do: ActionRef;
+  /** Fire at most once, ever. */
+  once?: boolean;
+  /** `when` must hold this long before it fires. */
+  debounceMs?: number;
+  /** Live only while the node is on screen. A node's rules always are. */
+  whileVisible?: boolean;
+}
+
+// --------------------------------------------------------------------------- 8d. motion on any node (`motion`)
+
+/** One ease by name, or a cubic `[x1, y1, x2, y2]`. */
+export type MotionEase = "lin" | "in" | "out" | "inout" | "step" | [number, number, number, number];
+
+/** Keyframes over a clock in seconds: `[[time, value], [time, value, ease]]`. */
+export interface MotionKeys { k: Array<[number, number] | [number, number, MotionEase]>; loop?: boolean }
+
+/** A damped spring, mass 1, damping = 2 * damp * sqrt(k). */
+export interface MotionSpring { spring: number; k?: number; damp?: number; from?: number }
+
+/** A value: hold a number, run keyframes, or settle through a spring. */
+export type MotionValue = number | MotionKeys | MotionSpring;
+
+/** ONE input, mapped piecewise — `ui.scrollY`, a gesture's own `ui.<into>.x | y | scale | progress`, or a state
+ *  path. One input and no expressions, deliberately: that is what keeps it on the UI thread. */
+export interface MotionDrive { by: string; k: Array<[number, number] | [number, number, MotionEase]> }
+
+/** The style keys motion may move, and nothing else. An unknown key is ignored, never an error. */
+export const MOTION_KEYS = [
+  "opacity", "translateX", "translateY", "scale", "scaleX", "scaleY", "rotate", "skewX", "skewY",
+] as const;
+export type MotionKey = (typeof MOTION_KEYS)[number];
+
+/** `motion` on a node, in vocabulary 2. Mirrors motion/spec.ts MOTION_SPEC. */
+export interface NodeMotion {
+  /** Played once when the node arrives. */
+  enter?: Partial<Record<MotionKey, MotionValue>>;
+  /** Played once as it leaves. Keyframes only: a spring has no end to leave on. */
+  exit?: Partial<Record<MotionKey, MotionKeys>>;
+  /** Played round and round. */
+  loop?: Partial<Record<MotionKey, MotionValue>>;
+  /** Follows one input, piecewise. */
+  drive?: Partial<Record<MotionKey, MotionDrive>>;
+  /** The node settles into its new box through a spring. */
+  layout?: true | { k?: number; damp?: number } | { spring: false; ms: number };
+  /** A shared-element id: the same id on two screens flies from one box to the other (drawn as a JS overlay). */
+  shared?: string;
+}
+
+// --------------------------------------------------------------------------- 8e. gestures on any node (`gesture`)
+
+export const GESTURE_KINDS = ["tap", "doubleTap", "longPress", "drag", "pan", "swipe", "pinch", "hover"] as const;
+export type GestureKind = (typeof GESTURE_KINDS)[number];
+
+/**
+ * One gesture on a node. Mirrors gesture/spec.ts GESTURE_SPEC.
+ *
+ * THE TWO KINDS OF `ui.*` VALUE, which is the whole design: while a finger moves, `ui.<into>.x | y | scale |
+ * progress` live only on the UI thread, and only `motion.drive` reads them; when it lifts, those four are written
+ * to the store, once. In expressions, in `commitIf` and in rules, `ui.*` always means that value at the end.
+ */
+export interface GestureSpec {
+  kind: GestureKind;
+  /** This gesture's own name, so another can ask to run after it. */
+  id?: string;
+  /** Where its values go, under `ui.`. A plain name. */
+  into?: string;
+  /** How it gets on with the others. */
+  claim?: "exclusive" | "simultaneous" | `after:${string}`;
+  axis?: "x" | "y" | "both";
+  /** A drag's run. NUMBERS: the device reads these through a finite check that takes numbers only, so V1 resolves
+   *  any `{ "$": … }` before the gesture is compiled. */
+  min?: number;
+  max?: number;
+  snap?: number[];
+  rubber?: boolean | number;
+  springK?: number;
+  springDamp?: number;
+  projectMs?: number;
+  taps?: number;
+  window?: number;
+  hold?: number;
+  slop?: number;
+  distance?: number;
+  velocity?: number;
+  minScale?: number;
+  maxScale?: number;
+  do?: ActionRef;
+  /** Asked after the end values are in the store. */
+  commitIf?: ExprCondition;
+  onCommit?: ActionRef;
+  onCancel?: ActionRef | { kind: "spring"; to: number };
+  onLeft?: ActionRef;
+  onRight?: ActionRef;
+  onUp?: ActionRef;
+  onDown?: ActionRef;
+}
+
+// --------------------------------------------------------------------------- 8f. lists (`list`)
+
+/** Where a list's next page comes from, and where its rows go. `cursor` and `into` are plain store dot-paths
+ *  (`feedCursor`), not `state.feedCursor`. */
+export interface ListPage {
+  endpoint: string;
+  cursor?: string;
+  into: string;
+  mode?: "append" | "prepend" | "replace";
+}
+
+/** `List`: rows from an array, one template each, windowed, paged. A List in a Screen becomes the screen's
+ *  scroller — the nodes above it become its header, the ones below its footer. Mirrors v3Spec.ts SPEC.List. */
+export interface ListProps {
+  data?: Val<unknown[]>;
+  item: Node;
+  key?: string;
+  estimatedSize?: number;
+  uniform?: boolean;
+  horizontal?: boolean;
+  /** This List is its own bounded scroller; it then needs a numeric `height` or `maxHeight` in its style too. */
+  scroll?: boolean;
+  page?: ListPage;
+  pageMode?: "append" | "prepend" | "replace";
+  onEndReached?: "page" | "none";
+  endThreshold?: number;
+  refresh?: boolean;
+  /** Which rows stick to the top: an expression asked ONCE PER ROW, with `item` and `index` in scope
+   *  (blocks/scope.ts itemBool) — `"item.isHeader"`, or the same source as `{ "$": "item.isHeader" }`. The List
+   *  never works it out itself (nodeCore.ts keeps `sticky` and `item` out of compileMap, because the List's own
+   *  scope holds no row), so it arrives at the list as written. Not a `{ "expr" }` and not a `{ "$t" }`: itemBool
+   *  reads no source out of either, which is silently no sticky rows at all. */
+  sticky?: string | ValueBinding;
+  clip?: boolean;
+}
+
+/** `Each`: one template repeated over a small array. Everything is drawn; nothing is windowed. */
+export interface EachProps {
+  data?: Val<unknown[]>;
+  item: Node;
+  key?: string;
+  max?: number;
+}
+
+// --------------------------------------------------------------------------- 8g. one Input node (`input`)
+
+export const INPUT_KINDS_WAVE1 = [
+  "text", "multiline", "number", "code", "search", "switch", "toggle", "slider", "segmented", "slideToConfirm",
+] as const;
+export const INPUT_KINDS_WAVE2 = ["stepper", "picker", "date", "time", "rating", "chips"] as const;
+export const INPUT_KINDS = [...INPUT_KINDS_WAVE1, ...INPUT_KINDS_WAVE2] as const;
+export type InputKind = (typeof INPUT_KINDS)[number];
+
+/**
+ * `Input`: one field node with a `kind`. The value is sanitized, capped and written to the node's bound path —
+ * never evaluated. Mirrors v3Spec.ts SPEC.Input.
+ *
+ * Formats: number → number | null; switch → boolean; chips → string[]; date → YYYY-MM-DD; time → HH:MM (24h);
+ * segmented and picker → one of the option values.
+ */
+export interface InputProps {
+  kind: InputKind;
+  label?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  maxLength?: number;
+  /** code: how many boxes. */
+  length?: number;
+  digitsOnly?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  decimals?: number;
+  /** slider: write while the finger moves, at most ten times a second. */
+  live?: boolean;
+  /** slideToConfirm: how far across counts (0.5..1). */
+  threshold?: number;
+  options?: Array<string | { value: string; label: string }>;
+  stars?: number;
+  minuteStep?: number;
+  /** Where to write when the node has no `bind.value`. */
+  into?: string;
+  autoFocus?: boolean;
+}
+
+// --------------------------------------------------------------------------- 8h. media (`media`)
+
+/** Where a player writes what it is doing. Every field is a store dot-path. */
+export interface MediaInto {
+  playing?: string;
+  time?: string;
+  duration?: string;
+  progress?: string;
+  ended?: string;
+  loading?: string;
+}
+
+/** `Video`: a clip, played by expo-video. */
+export interface VideoProps {
+  source: string;
+  contentFit?: "contain" | "cover" | "fill";
+  loop?: boolean;
+  muted?: boolean;
+  volume?: number;
+  rate?: number;
+  autoplay?: boolean;
+  playing?: Val<boolean>;
+  controls?: boolean;
+  fullscreen?: boolean;
+  into?: MediaInto;
+  tickMs?: number;
+}
+
+/**
+ * `Caller` (block `call`): one person in the call this screen holds, drawn from the call itself — their camera, or their name's first
+ * letter while it is off. `who` is "me", "speaker" (whoever is talking) or someone's `identity` as the call's state lists them.
+ *
+ * It draws nothing and takes no room until the call is up, so a tile can be laid out before anyone is in it.
+ */
+export interface CallerProps {
+  who: Val<string>;
+  /** Their own front camera shown as a mirror (true for "me"). */
+  mirror?: boolean;
+  fit?: "cover" | "contain";
+  radius?: number;
+  /** Behind the picture, and what a letter sits on while a camera is off. */
+  background?: string;
+  /** The letter's colour. */
+  nameColor?: string;
+  fontFamily?: string;
+}
+
+/** `Audio`: a sound, played by expo-audio. It draws its children; the player is behind them. */
+export interface AudioProps {
+  source: string;
+  loop?: boolean;
+  muted?: boolean;
+  volume?: number;
+  rate?: number;
+  playing?: Val<boolean>;
+  into?: MediaInto;
+}
+
+export const BARCODE_TYPES = [
+  "qr", "ean13", "ean8", "upc_a", "upc_e", "code39", "code93", "code128", "codabar", "itf14", "pdf417", "aztec",
+  "datamatrix",
+] as const;
+export type BarcodeType = (typeof BARCODE_TYPES)[number];
+
+/** `Camera`: the viewfinder, and the code scanner. It never asks for the permission itself — the screen draws its
+ *  own card first (the children), and `requestPermission` asks. */
+export interface CameraProps {
+  mode?: "photo" | "scan";
+  facing?: "back" | "front";
+  zoom?: number;
+  torch?: boolean;
+  active?: boolean;
+  quality?: number;
+  /** Usually bound: false to true takes one picture, and the node puts it back to false. */
+  capture?: Val<boolean>;
+  barcodeTypes?: BarcodeType[];
+  /** The last scan, `{ type, data }`. */
+  scanInto?: string;
+  readyInto?: string;
+  /** granted | unasked | blocked. */
+  permissionInto?: string;
+}
+
+/** The node types each block brings. Mirrors v3Spec.ts BLOCK_NODES, with `defs`' two. */
+export const BLOCK_NODES: Record<string, readonly string[]> = {
+  defs: ["Use", "Slot"],
+  list: ["List", "Each"],
+  input: ["Input"],
+  media: ["Video", "Audio", "Camera"],
+  call: ["Caller"],
+};
+
+// --------------------------------------------------------------------------- 8i. paint on any box (`paint`)
+
+/** The paint keys a box's `style` may carry. React Native 0.85's own keys; the window maps them to CSS.
+ *  Mirrors theme/paintCore.ts PAINT_SPEC. */
+export const PAINT_KEYS = ["backgroundImage", "boxShadow", "filter", "mixBlendMode", "blur"] as const;
+export type PaintKey = (typeof PAINT_KEYS)[number];
+
+/** The filter functions BOTH iOS and Android draw on RN 0.85. Lint keeps `filter` to these. */
+export const PAINT_FILTERS = ["brightness", "opacity"] as const;
+
+export const PAINT_BLEND_MODES = [
+  "normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light",
+  "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity",
+] as const;
+
+export const PAINT_BLUR_TINTS = ["light", "dark", "default", "extraLight", "regular", "prominent"] as const;
+
+export interface PaintGradientStop { color: string; at?: number }
+export interface PaintGradient { kind: "linear" | "radial"; angle?: number; stops: PaintGradientStop[] }
+export interface PaintShadow {
+  offsetX?: number; offsetY?: number; blurRadius?: number; spreadDistance?: number; color?: string; inset?: boolean;
+}
+
+/** The paint half of a style. Everything else in `style` stays what it is today. */
+export interface PaintStyle {
+  backgroundImage?: string | PaintGradient | Array<string | PaintGradient>;
+  boxShadow?: string | PaintShadow | PaintShadow[];
+  filter?: string | Array<Partial<Record<(typeof PAINT_FILTERS)[number], number>>>;
+  mixBlendMode?: (typeof PAINT_BLEND_MODES)[number];
+  /** A real blur of what is BEHIND the box (expo-blur), not of the box itself. */
+  blur?: number | { intensity?: number; tint?: (typeof PAINT_BLUR_TINTS)[number] };
+}
+
+// --------------------------------------------------------------------------- 8j. device facts, phone-local (`device`, `local`)
+
+/** What a permission reads. `photos` is iPhone only; on Android it reads `unsupported`, on purpose. */
+export type PermState = "granted" | "denied" | "blocked" | "unasked" | "unsupported";
+
+/**
+ * Every `device.*` an expression may read. A FIXED LIST: no identifiers, no advertising ids, no location values
+ * (only whether location is allowed), and no installed-app list beyond the six payment schemes a "pay with…"
+ * chooser needs. Mirrors device/factsCore.ts FACT_PATHS.
+ *
+ * `canOpen.*` is for drawing a chooser ON THE PHONE. Lint refuses it in a request body, so the server never
+ * collects a list of what someone has installed. On Android only `canOpen.upi` is real; the other five read null
+ * (unknown), because the binary's <queries> lists only that one.
+ */
+export const DEVICE_FACTS = [
+  "insets.top", "insets.bottom", "insets.left", "insets.right",
+  "keyboard.visible", "keyboard.height", "keyboard.enabled", "keyboard.ready",
+  "reduceMotion", "scheme", "locale", "fontScale", "width", "height", "sizeClass", "online", "appState",
+  "perm.mic", "perm.camera", "perm.notifications", "perm.location", "perm.photos",
+  "canOpen.upi", "canOpen.phonepe", "canOpen.gpay", "canOpen.paytm", "canOpen.cred", "canOpen.bhim",
+  "platform", "appVersion", "runtime", "blocks",
+] as const;
+export type DeviceFact = (typeof DEVICE_FACTS)[number];
+
+/** The `device.canOpen.*` names, and the scheme each one probes (declared in LSApplicationQueriesSchemes). */
+export const CAN_OPEN_SCHEMES: Record<string, string> = {
+  upi: "upi://", phonepe: "phonepe://", gpay: "tez://", paytm: "paytmmp://", cred: "credpay://", bhim: "bhim://",
+};
+
+/** `local`: what this phone remembers between launches — a hint dismissed, a draft, a last choice. Its own
+ *  namespace per account, cleared on sign-out, never for secrets (lint refuses a name that reads like one). */
+export interface LocalSetSpec { kind: "local.set"; path: string; value: unknown; onError?: ActionRef }
+export interface LocalRemoveSpec { kind: "local.remove"; path: string; onError?: ActionRef }
+
+// --------------------------------------------------------------------------- 8k. data and streams (`data`)
+
+export interface MultipartFile { field: string; uri: string; name?: string; type?: string }
+/** What `callEndpoint` gains with the `data` block. Paths stay relative, under /v1/, our API origin only. */
+export interface CallDataOptions {
+  multipart?: { files: MultipartFile[]; fields?: Record<string, string | number | boolean> };
+  /** A state path; it gets `{ loaded, total, pct }`. */
+  progressInto?: string;
+  retry?: { times?: number; backoff?: "exp" | "fixed" | number; idempotent?: boolean };
+  /** "outbox": kept offline and sent in order. */
+  queue?: "outbox";
+  /** GET only; emptied by any successful write and by sign-out. */
+  cache?: { key: string; ttlMs: number };
+  /** Applied at once and undone if the call fails. */
+  optimistic?: { path: string; value: unknown };
+}
+
+/** `subscribe`: a live topic on the socket we already keep open. A topic, not a path, so the /v1/ rules do not
+ *  apply to it; it has its own grammar instead. Mirrors live/subscribe.ts. */
+export interface SubscribeSpec {
+  topic: string;
+  into: string;
+  mode?: "replace" | "append" | "merge";
+  max?: number;
+}
+
+// --------------------------------------------------------------------------- 8l. shell and presentations (`shell`)
+
+export const PRESENTATIONS = ["push", "sheet", "modal", "overlay", "fade"] as const;
+export type Presentation = (typeof PRESENTATIONS)[number];
+
+export const SHELL_TRANSITIONS = ["default", "slide", "fade", "none"] as const;
+export type ShellTransition = (typeof SHELL_TRANSITIONS)[number];
+
+/** A sheet's resting heights: these names, or a fraction 0.1..1. At most four. */
+export const DETENT_NAMES: Record<string, number> = { small: 0.25, medium: 0.5, large: 0.9 };
+
+/** What `navigate` gains with the `shell` block. A missing or wrong value is `push`, which is today's behaviour. */
+export interface NavigatePresentation {
+  presentation?: Presentation;
+  detents?: Array<keyof typeof DETENT_NAMES | number>;
+  transition?: ShellTransition | NodeMotion;
+  dismissible?: boolean;
+}
+
+/** The shell's own trees, sent in the bootstrap. Nothing here replaces today's tab bar, header or toast: they draw
+ *  when the server sends no tree. Mirrors shell/blocks/index.ts SPEC. */
+export interface ShellTrees {
+  "shell.tabBar"?: Node;
+  "shell.header"?: Node;
+  "shell.toast"?: Node;
+}
+
+/** The shell's node types, drawn only inside those trees. */
+export const SHELL_NODES = ["TabBar", "Header", "Toast", "Modal", "Sheet"] as const;

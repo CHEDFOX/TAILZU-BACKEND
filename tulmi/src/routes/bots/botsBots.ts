@@ -2,7 +2,7 @@
  * Bots app · bots area: the endpoints its screens need beyond the existing routes (src/botsBots, screens in experience/bots/screens/bots.ts).
  *
  *   GET    /v1/botsapp/bots/chat/:slug                 -> { turns }                      the chat with a bot, oldest first
- *   POST   /v1/botsapp/bots/chat/:slug { message }     -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns;
+ *   POST   /v1/botsapp/bots/chat/:slug { message | picks } -> { text, turns, opens, approvals, paise }   asks it (Bots.ask) and keeps both turns;
  *                                                      the answer is written down for Activity, as Ask's are (shell/events.ts)
  *   DELETE /v1/botsapp/bots/chat/:slug                 -> { ok }                          start the chat over
  *   GET    /v1/botsapp/bots/draft                      -> { draft }                       Make a bot: the draft in progress, or null
@@ -58,6 +58,7 @@ import { scrub } from "../../bots/run.js";
 import type { BotEvent } from "../../bots/types.js";
 import { registerSpacesRoutes } from "./botsSpaces.js";
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
+import type { Picks } from "../../botsBots/chat.js";
 import { registerWorkRoutes } from "./work.js";
 import { registerBotsTripRoutes } from "./botsTrips.js";
 import { registerCalendarRoutes } from "./botsCalendar.js";
@@ -70,6 +71,14 @@ import { registerPlanCallJudge } from "./planCallJudge.js";
 import { registerPlanFollowRoutes } from "./planFollows.js";
 import { registerFollowChannelRoutes } from "./followChannels.js";
 import { registerPlanMakeRoutes } from "./planMake.js";
+import { registerPlanBusyRoutes } from "./planBusy.js";
+import { registerPlanRemindersRoutes } from "./planReminders.js";
+import { registerPlanFocusRoutes } from "./planFocus.js";
+import { registerPlanCallCheckRoutes } from "./planCallCheck.js";
+import { askCheck, setWaitedSummary, startHoldSweeper, waitedWords } from "../../botsBots/planCallCheck.js";
+import { checkWantFor } from "../../botsBots/planCall.js";
+import { busyOverlap, planBusy } from "../../botsBots/planBusy.js";
+import { focusHolding } from "../../botsBots/planPrefs.js";
 import { planOn } from "../../botsBots/planSwitch.js";
 import { pushEngine } from "../../push/index.js";
 import { setPushOpenHook } from "../../push/engine.js";
@@ -102,9 +111,13 @@ export function apiOrigin(): string {
 
 /**
  * Returns `sharedFor`: what the person's spaces shared with a bot (shared.ts forBot), for "Ask any bot" on POST /v1/ask (routes/ask/front.ts),
- * so a bot shared into a space reads it there as it does in its chat.
+ * so a bot shared into a space reads it there as it does in its chat; and `chatShared`, exactly what the chat itself gives the bot, for
+ * a reply typed into a notification (routes/bots/botsNotifyReply.ts).
  */
-export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): { sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>> } {
+export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps, o: { parts?: BotsAreaParts; events?: EventStore } = {}): {
+  sharedFor: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
+  chatShared: (userId: string, slug: string) => Promise<Array<{ name: string; kind: string; text: string }>>;
+} {
   const parts = o.parts ?? botsAreaParts({ bots: deps.bots, connectors: deps.connectors });
   const RL = { config: deps.rateLimit };
   const tight = (max: number) => ({ config: { rateLimit: { max: Math.min(max, deps.rateLimit.rateLimit.max), timeWindow: deps.rateLimit.rateLimit.timeWindow } } });
@@ -170,12 +183,15 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     } : {};
     try {
       const out = await guarded(guard(), req, reply, s.user, "ask", async (stop) => {
-        const slug = param(req, "slug").toLowerCase(), message = bodyOf(req.body).message;
+        const slug = param(req, "slug").toLowerCase(), body = bodyOf(req.body);
+        // An answer to a drawing (a choice of several, a form: experience/bots/show.ts) comes as picks; the chat turns them into words.
+        const picks = body.picks && typeof body.picks === "object" ? body.picks as Picks : undefined;
         // With Spaces off a bot reads nothing a space shared (botsBots/spacesSwitch.ts).
         const shared = spacesOn() ? await spacesArea.items.forBot(s.user.id, slug).catch(() => []) : [];
-        const r = await parts.chat!.send(s.user.id, slug, message, stop, shared, live);
+        const r = await parts.chat!.send(s.user.id, slug, body.message, stop, shared, live, picks ? { picks } : {});
+        const said = r.turns.find((t) => t.role === "me")?.text ?? String(body.message);
         // Activity: written down as an answer through Ask is (shell/events.ts), once per answer: a repeat is replayed, not run again.
-        await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: String(message), paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
+        await (o.events ?? eventStore()).add(s.user.id, { kind: "ask", bot: slug, title: said, paise: r.answer.paise, amountPaise: 0, payee: "" }, Date.now())
           .catch((err) => req.log.warn({ error: (err as Error)?.message }, "bots area: answer not written down"));
         return { status: 200, body: { text: r.answer.text, turns: r.turns, opens: r.answer.opens, approvals: r.answer.approvals, paise: r.answer.paise } };
       }, { replayUnkeyed: false, ...(words ? { signal: words.signal } : {}) });
@@ -346,6 +362,53 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
   registerFollowChannelRoutes(app, deps);
   // "Plan something" (botsBots/planMakeService.ts): the card, Check, Done and Undo; after follow-through, whose setItem Done uses.
   registerPlanMakeRoutes(app, deps, { ease: parts.ease });
+  // THE PHONE'S OWN THINGS (build 8.9.1, docs: perms2). Each is off until its own PERM_* switch is on, and each route reads that
+  // same switch, so a row the server would not draw is a route it refuses:
+  //   /v1/botsapp/plan/busy            the busy times read from the phone's calendars (times only, never an event's name)
+  //   /v1/botsapp/plan/reminders/*     the one X0 Bot list in Reminders, merged with the to-dos
+  //   /v1/botsapp/plan/focus           whether a Focus or Do Not Disturb is on, so Plan Ease's calls wait
+  //   /v1/botsapp/plan/calls/:id/check the phone's two words before a call rings: driving, and a Focus
+  registerPlanBusyRoutes(app, deps, { prefs: parts.ease.prefs });
+  registerPlanRemindersRoutes(app, deps, { calendar: parts.ease.calendar, prefs: parts.ease.prefs });
+  registerPlanFocusRoutes(app, deps, { prefs: parts.ease.prefs });
+  registerPlanCallCheckRoutes(app, deps);
+  // What a held call turns into when its wait is over: the ONE notice listing what waited while a Focus was on (perms2 §4.1).
+  setWaitedSummary(async (userId, lines) => {
+    const words = waitedWords(lines);
+    return pushEngine()?.notify(userId, { kind: "plan_many", key: `waited:${Date.now()}`, vars: { title: words.title, body: words.body } });
+  });
+  /**
+   * IS IT STILL HOLDING? (docs: perms2 §4.1, §5.3) Asked every 10 minutes of each held call, so a hold is let go when the
+   * reason goes and not before.
+   *
+   *   a Focus    what the filter last told us (plan_prefs.focus, 12 hours at most) or a busy calendar block right now. The
+   *              phone is NOT woken for this: the filter posts the end of a Focus itself, and `focusEnded` lets those go
+   *              early, so a hold still sitting here is one we have heard nothing about
+   *   driving    the phone itself, the same silent push as the pre-ring check, so a hold is let go when the car stops
+   */
+  const stillHolding = async (h: { userId: string; why: "driving" | "focus" }): Promise<{ driving?: boolean; focus?: boolean }> => {
+    const now = Date.now();
+    const engine = pushEngine();
+    if (h.why === "focus") {
+      const row = await parts.ease.prefs.get(h.userId).catch(() => null);
+      // ANDROID'S DO NOT DISTURB IS NOT POSTED WHEN IT ENDS (only on Plan Ease page appear), so a `dnd` row says nothing
+      // about now: the phone is asked, exactly as the pre-ring check asks it (botsBots/planCall.ts beforeRing).
+      if (focusHolding(row?.focus, now)) {
+        if (row?.focus?.source !== "dnd") return { focus: true };
+        if (engine) return askCheck({ userId: h.userId, want: ["focus"], push: engine, now });
+      }
+      const blocks = await planBusy().inRange(h.userId, now, now + 1).catch(() => []);
+      return { focus: busyOverlap(blocks, now, now + 1, now) };
+    }
+    if (!engine) return {};
+    // The same per-platform rule as the pre-ring check: an Android phone is not asked about driving behind an off switch.
+    return askCheck({ userId: h.userId, want: ["driving"], push: engine, now, wantFor: checkWantFor(["driving"]) });
+  };
+  const stopHolds = startHoldSweeper({
+    recheck: stillHolding,
+    log: { info: (o, m) => app.log.info(o, m), warn: (o, m) => app.log.warn(o, m) },
+  });
+  app.addHook("onClose", async () => { stopHolds(); setWaitedSummary(null); });
 
   // ------------------------------------------------------------------ the travel bot's trip
 
@@ -403,5 +466,7 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
       const [shared, told] = await Promise.all([spacesArea.items.forBot(userId, slug.toLowerCase()), spacesArea.memory.forBot(userId, slug.toLowerCase()).catch(() => [])]);
       return [...shared, ...told];
     },
+    // Exactly what POST /chat/:slug above gives the bot, for a reply typed into a notification (routes/bots/botsNotifyReply.ts).
+    chatShared: async (userId, slug) => (spacesOn() ? spacesArea.items.forBot(userId, slug.toLowerCase()) : []),
   };
 }

@@ -200,6 +200,7 @@ in and he catches it, reads who it is from and tucks it away (`m.catch`); in the
 | A reply, the records, the company personality, a business's settings | `experience/bots/screens/bots/mailScreens.ts` (bots.mail.reply, .dns, .brief, .settings) |
 | The mailbox: a folder, a conversation, writing | `experience/bots/screens/bots/mailInbox.ts` (bots.mail.inbox, .thread, .compose) |
 | A domain's addresses (aliases) and its rules | `experience/bots/screens/bots/mailAliases.ts` (bots.mail.addresses, .address, .rules) |
+| Its calls: Calls on the page, one call | `experience/bots/screens/bots/mailCalls.ts` (bots.mail.call), `src/rooms` (docs/rooms.md) |
 
 **Set-up**, one card over the page with its stage on top (the Oracle's way), each step kept as it is answered:
 
@@ -262,6 +263,12 @@ everyday word; given a real name, it moves to NAME_ONLY).
 you.") opens the page. They come as a customer is waiting: quietly in quiet hours, never with the mail bot turned off. Every other draft
 waits on the page.
 
+**Calls** (docs/rooms.md): video and audio calls of our own under the business's name. On the page, **Calls** has Start a call and the
+latest calls; one call has Join (on the app's own call screen), its link with Copy and Share, who waits with Let in, who is in, and End. Anyone
+with the link asks to come in; nobody needs an app or an account. Only while calls are switched on (`SFU_APP_ID`), and only for the business's
+owner and their space's admin, never a member who answers addresses. The push `room_waiting` ("Ravi is waiting to join your call.") is with
+the mail bot's own pushes.
+
 **Share** (on a conversation, under its actions): the conversation as text, to a space or a person, the way a meeting's notes are shared
 (docs/spaces.md "Sharing one thing"). None while Spaces is off.
 
@@ -297,5 +304,6 @@ worker is then made inside the business owner's account, whoever asks. Anything 
 
 ## 10. Still to come
 
-Its name (the owner's, later). A live check on the VPS: a business made from the app, its records added, a message received, its push, a
+Calls in its replies: the AI sees when a customer wants to talk, and its reply carries the call's link and a calendar invite
+(docs/rooms.md section 10). Its name (the owner's, later). A live check on the VPS: a business made from the app, its records added, a message received, its push, a
 reply sent from the app. A message filed while the AI was paused has no draft yet: it is answered from a mail app for now.

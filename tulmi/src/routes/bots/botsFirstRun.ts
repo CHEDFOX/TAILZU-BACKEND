@@ -2,13 +2,16 @@
  * Bots app · first run: what its screens read beyond the existing routes (screens/firstRun.ts).
  *
  *   GET /v1/bots/first-run/about       the About you card on Home: { due, name, source, via, gender, botName }. Due once the
- *                                      account is onboarded, from the ABOUT_AFTER_VISITS-th (3rd) visit, while the answer is
- *                                      owed (the gender, and the name unless they signed in with Apple: App Review 4),
+ *                                      account is onboarded, from the ABOUT_AFTER_VISITS-th (3rd) visit, while something is
+ *                                      still unsaid (the gender, and the name unless they signed in with Apple: App Review 4),
  *                                      or the assistant still has no name of its own. The name to start from: the account's own, else the
  *                                      sign-in provider's, else one suggested from the email
- *                                      It cannot be put off: it stays due until the name and gender are saved
- *                                      (PUT /v1/profile { full_name, gender }) and the assistant has a name of its own (the
- *                                      card's second step, PUT /v1/personality { assistantName }; botName is the one it has)
+ *   PUT /v1/bots/first-run/about       { skip: true }: the card is answered and never due again (personality.botsAboutSkipped).
+ *                                      Sent by "Not now" on either step, and by the card finishing however much was filled in.
+ *                                      NOTHING ON THE CARD IS REQUIRED (App Review 5.1.1(v), 5.1.1(x)): it can never lock Home.
+ *                                      What it does save goes to the routes that own it: PUT /v1/profile { full_name, gender },
+ *                                      which keeps only what is there, and PUT /v1/personality { assistantName } (botName is
+ *                                      the name it has)
  *   GET /v1/bots/first-run/languages   the Language page's chips (the onboarding's own list) and what is picked
  *   GET /v1/bots/first-run/words       the account's spoken words and audio seconds, all time; with ?w=&s= (a baseline
  *                                      taken when the step opened) also what was said since: First words' numbers
@@ -136,8 +139,9 @@ export function startingName(user: Pick<AuthedUser, "provider" | "providerName" 
   if (saved && saved.trim()) return { name: saved.trim(), source: "saved" };
   const via = signedInVia(user);
   if (via !== "phone" && via !== "email" && user.providerName?.trim()) return { name: user.providerName.trim(), source: "provider" };
-  // Apple's "Hide my email" address is random letters, not a name.
-  if (via === "phone" || /@privaterelay\.appleid\.com$/i.test(user.email ?? "")) return { name: "", source: null };
+  // Apple's "Hide my email" address is random letters, not a name. Apple added private.icloud.com beside privaterelay.appleid.com
+  // (News, 24 Aug 2026), so both relay domains are read the same way.
+  if (via === "phone" || /@(?:privaterelay\.appleid\.com|private\.icloud\.com)$/i.test(user.email ?? "")) return { name: "", source: null };
   const guess = nameFromEmail(user.email);
   return guess ? { name: guess, source: "email" } : { name: "", source: null };
 }
@@ -255,11 +259,31 @@ export function registerBotsFirstRunRoutes(app: FastifyInstance, deps: BotsAreaD
     const gender = profile?.gender && GENDER_VALUES.has(profile.gender) ? profile.gender : null;
     const via = signedInVia(user);
     const visits = p?.botsVisits ?? 0;
-    // Owed: the gender, the name (unless Apple signed them in: App Review 4), or a name for the assistant.
-    const due = !!profile?.onboarded && !!p
+    // Still worth asking: the gender, the name (unless Apple signed them in: App Review 4), or a name for the assistant. Never
+    // once the card has been answered (botsAboutSkipped): the card asks for nothing and never comes back.
+    const due = !!profile?.onboarded && !!p && p.botsAboutSkipped !== true
       && (!gender || (!profile.fullName?.trim() && via !== "apple") || !nicknameOf(p))
       && visits >= ABOUT_AFTER_VISITS;
     return reply.send({ due, ...startingName(user, profile?.fullName), via, gender, botName: nicknameOf(p) ?? "" });
+  });
+
+  /**
+   * The card is done with: "Not now" on either step, and the card finished however much was filled in. Nothing is required of
+   * anyone (App Review 5.1.1(v), 5.1.1(x)), so this is the one thing the card must be able to say.
+   */
+  app.put("/v1/bots/first-run/about", rl, async (req, reply) => {
+    const user = await resolveUser(req.headers["authorization"]);
+    if (!user) return unauthorized(reply);
+    if ((req.body as { skip?: unknown } | null)?.skip !== true) {
+      return reply.code(400).send({ code: "bad_request", message: "skip must be true." });
+    }
+    try {
+      await updatePersonality(user, (p) => ({ ...p, botsAboutSkipped: true }));
+      return reply.send({ ok: true });
+    } catch (err) {
+      req.log.error(err);
+      return reply.code(500).send({ code: "internal", message: "Couldn't save that" });
+    }
   });
 
 

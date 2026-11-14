@@ -8,10 +8,24 @@ import websocket from "@fastify/websocket";
 import type { FastifyInstance } from "fastify";
 import { localUserId } from "../auth/jwt.js";
 import type { AppConfig } from "../config.js";
+import { slowedDown } from "../trust/actions.js";
 
 export interface PluginDeps {
   cfg: AppConfig;
 }
+
+/**
+ * A per-bucket ceiling of `n`, a quarter of it for an account abuse prevention has slowed down (src/trust,
+ * docs/trust.md §actions).
+ *
+ * It is a function, and every route that sets its own `max` has to use this one, because @fastify/rate-limit merges a
+ * route's options over the plugin's: a plain number on the route wins outright, and the slow would quietly never apply.
+ * With TRUST off, or no action taken, every bucket gets exactly the number it always did.
+ */
+export const slowAwareMax = (n: number) => (_req: unknown, key: string): number => {
+  if (!key.startsWith("u:")) return n;
+  return slowedDown(key.slice(2)) ? Math.max(1, Math.floor(n / 4)) : n;
+};
 
 export async function registerPlugins(app: FastifyInstance, deps: PluginDeps): Promise<void> {
   const { cfg } = deps;
@@ -31,7 +45,9 @@ export async function registerPlugins(app: FastifyInstance, deps: PluginDeps): P
   // routes below need this plugin already in place to be throttleable.
   await app.register(rateLimit, {
     global: false,
-    max: cfg.RATE_LIMIT_MAX,
+    // The ceiling, per bucket, slow-aware (slowAwareMax above). A function `max` is supported from
+    // @fastify/rate-limit 9.x; the slow list is in memory, so this never waits on anything.
+    max: slowAwareMax(cfg.RATE_LIMIT_MAX),
     timeWindow: cfg.RATE_LIMIT_WINDOW_MS,
     keyGenerator: async (req) => {
       // Key by the VERIFIED user id when we can prove it, else by client IP.

@@ -53,6 +53,7 @@ import { talkSessions } from "../../talk/session.js";
 import { applyPatch, clock } from "../../you/settings.js";
 import { ASSISTANT_NAME, nicknameOf } from "../../experience/assistantName.js";
 import { getPersonality } from "../../personality/store.js";
+import { focusHolding, planPrefs } from "../../botsBots/planPrefs.js";
 import { callsOn, followOn } from "../../botsBots/planSwitch.js";
 import { planFollows } from "../../botsBots/planFollow.js";
 import { followChannels, phoneReady } from "../../botsBots/planFollowChannels.js";
@@ -277,9 +278,14 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
       const names = follow && settings.notify.followFrom.length ? await planFollows().contactsOf(user.id).catch(() => new Map<string, string>()) : new Map<string, string>();
       const phone = follow && phoneReady() ? { number: await followChannels().phone?.numberOf?.(user.id).catch(() => null) ?? null } : null;
       // The Calls row says the name it calls as (Keylessbord's "What you call it", else X0), and shows only while calls can come.
+      // Whether a Focus with X0 Bot's own filter is on right now (docs: perms2 §4.2), read only while that row is on. Never
+      // which Focus: the row cannot say more than "one is on", because that is all iOS ever tells us.
+      const focusOn = settings.notify.focusHold === true
+        ? focusHolding((await planPrefs().get(user.id).catch(() => null))?.focus, Date.now())
+        : false;
       return reply.header("cache-control", "no-store").send({
         settings, today, line: today ? summaryLine(today) : null, name: nicknameOf(personality) ?? ASSISTANT_NAME, calls: callsOn(),
-        follow, followFrom: follow ? settings.notify.followFrom.map((id) => ({ id, name: names.get(id) ?? "Someone" })) : [], phone,
+        follow, followFrom: follow ? settings.notify.followFrom.map((id) => ({ id, name: names.get(id) ?? "Someone" })) : [], phone, focusOn,
       });
     } catch (err) { return fail(reply, err); }
   });

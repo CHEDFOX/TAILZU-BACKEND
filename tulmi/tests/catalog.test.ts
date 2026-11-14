@@ -69,10 +69,13 @@ describe("the arrival prompt", () => {
   });
 });
 
-describe("the mic step asks with one control, not two offers", () => {
-  // Two full-width buttons read as two offers of equal weight. One control —
-  // a light track carrying a small ✕ and a dark pill — says the same thing
-  // with the answer and the way past at different sizes.
+describe("the mic step asks with one control, and nothing beside it", () => {
+  // Two full-width buttons read as two offers of equal weight, so this was one
+  // control: a light track carrying a small ✕ and a dark pill. The ✕ is gone
+  // now. This screen is the ONE explanation in front of the system's microphone
+  // prompt (`primed` on allowMic, shared/types/sdui.ts), and a way past that
+  // prompt is the one shape App Review 5.1.1(iv) forbids there. Saying no is
+  // the prompt's own job, and it moves the step on by itself.
   const pill = () => {
     const s = buildScreen("onboarding", { personality: {}, language: "en" } as never) as {
       root: { children: Array<Record<string, any>> };
@@ -82,24 +85,22 @@ describe("the mic step asks with one control, not two offers", () => {
     )!;
   };
 
-  it("puts the way past first and the answer second", () => {
-    const [dismiss, accept] = pill().children;
-    expect(dismiss.on.onPress).toBe("goKeyboard");
-    expect(accept.on.onPress).toBe("allowMic");
-    expect(accept.children[0].props.content).toBe("Allow Access");
+  it("is one thing to tap, and it is the ask", () => {
+    const kids = pill().children;
+    expect(kids.length).toBe(1);
+    const [accept] = kids;
+    expect(accept!.on.onPress).toBe("allowMic");
+    expect(accept!.children[0].props.content).toBe("Continue");
   });
 
-  it("gives the answer the room and the dismiss a fixed corner", () => {
-    const [dismiss, accept] = pill().children;
-    // The action takes whatever is left; the ✕ never grows into it.
-    expect(accept.style.flex).toBe(1);
-    expect(Number(dismiss.style.width)).toBeGreaterThan(0);
-    expect(dismiss.style.flex).toBeUndefined();
+  it("the dark pill takes the whole track, and there is no ✕ to put the prompt off", () => {
+    const [accept] = pill().children;
+    expect(accept!.style.flex).toBe(1);
     // Dark pill in a light track — the contrast IS the hierarchy, so neither
     // may drift toward the other.
-    expect(accept.style.backgroundColor).toBe("#0D0D0F");
-    // The ✕ is drawn, not typed, so it keeps its weight at any size.
-    expect(dismiss.children[0].type).toBe("SVG");
+    expect(accept!.style.backgroundColor).toBe("#0D0D0F");
+    // The ✕ was an SVG, drawn rather than typed. Nothing in the track draws one.
+    expect(JSON.stringify(pill())).not.toContain("SVG");
   });
 });
 

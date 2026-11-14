@@ -83,6 +83,8 @@ export const SCREENS = {
   mailAddresses: "bots.mail.addresses", // a domain's addresses (aliases): each with its folder, sender name, AI mode, auto-reply; add one (params: b)
   mailAddress: "bots.mail.address",  // one address: folder name, sender name, how it answers, auto-reply, removing it (params: b, aid)
   mailRules: "bots.mail.rules",      // a domain's rules: each as a sentence, on or off, removed; add one (params: b)
+  mailRoom: "bots.mail.room",        // in a call: the tiles (Caller), who waits with Let in, mic, camera, hang up (screens/bots/callRoom.ts; needs the `call` block; params: b, r, video)
+  mailCall: "bots.mail.call",        // one call (src/rooms): its link, Join, who waits with Let in, who is in, the lobby, End (screens/bots/mailCalls.ts; params: b, r)
   // screens/bots/meetScreens.ts: the meeting bot (its page is bots.bot with slug "meet", screens/bots/meetPage.ts)
   meetMeeting: "bots.meet.meeting",  // one meeting: where it stands, who is in it, Leave, Answer out loud, the notes so far, what it answered (params: m)
   spaces: "bots.spaces",             // Spaces / DSpaces
@@ -140,11 +142,16 @@ export const SCREENS = {
   design: "bots.code.design",        // Design / DeskDesign
   team: "bots.code.team",            // TeamBoard / DTeamBoard
   codeStart: "bots.code.start",      // Enter1-4 / DEnter1-4 (params: step)
+  // screens/bots/lingoPage.ts: Lingo, the language bot (docs/lingo.md)
+  lingo: "bots.lingo",               // the territory: a card per language, Continue on each, Add a language
+  lingoSet: "bots.lingo.set",        // a set: one exercise at a time (params: target)
+  lingoAdd: "bots.lingo.add",        // the picker: search at the top, the suggested few, then all of them (params: q)
+  lingoLeave: "bots.lingo.leave",    // stop learning one: a box for why, and Just clean up (params: target, name)
 } as const;
 
 /** Where a bot opens: the built-ins have their own pages, a person's own bot the shared bot page. */
 export function botRoute(slug: string): ActionSpec {
-  const own: Record<string, string> = { code: SCREENS.code, keybot: SCREENS.keybot, plan: SCREENS.plan, travel: SCREENS.travel };
+  const own: Record<string, string> = { code: SCREENS.code, keybot: SCREENS.keybot, plan: SCREENS.plan, travel: SCREENS.travel, lingo: SCREENS.lingo };
   return own[slug] ? { kind: "navigate", screenId: own[slug]! } : { kind: "navigate", screenId: SCREENS.bot, params: { slug } };
 }
 

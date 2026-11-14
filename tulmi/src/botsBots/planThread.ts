@@ -17,6 +17,7 @@
  * Nothing here is handed to the widget, the glance or a push: `head` and `added.line` are drawn in the app only. The widget keeps
  * GET .../plan/line. Pure: no reads.
  */
+import type { ArrivalItem } from "../../../shared/types/sdui.js";
 import { directionsLink } from "../connectors/handoffs/links.js";
 import { isDayKey, minuteOf, shiftDay, weekdayOf } from "../calendar/words.js";
 import { rowOf, type DayItem, type RowCtx, type RowView } from "./planRows.js";
@@ -85,6 +86,27 @@ export interface PlanDayData {
   share: { title: string; text: string } | null;
   /** After Done (params made and n): "Added: Dentist, Fri 13 Nov, 5 pm" with Undo's key and n, for 10 minutes. In the app only. */
   added?: { line: string; key: string; n: number };
+  /**
+   * THE ARRIVAL REMINDERS THE PHONE'S OWN SYSTEM SHOULD BE WATCHING (docs: perms2 §7; `arrival.sync` on page appear). Present
+   * only for a phone that declared Arrival1 while PERM_ARRIVAL is on, and empty for everyone else, which is every client today.
+   *
+   * The places go OUT, from the server that geocoded them; nothing ever comes back. The phone watches each place itself and
+   * shows the reminder, so this server is never told where the person is, or that they arrived.
+   */
+  arrivals?: ArrivalItem[];
+  /**
+   * A place in the armed set is still being looked up, so `arrivals` is not the whole set yet (docs: perms2 §7.2). The sync
+   * on page appear REPLACES what the phone watches, so it sends nothing this round rather than take an armed trigger off a
+   * phone over a lookup that has not come back. The live channel brings the page again when it has.
+   */
+  arrivalsPending?: boolean;
+  /**
+   * WHAT THE PHONE'S OWN SWITCHES SAY (docs: perms2 §2, §3, §4), so the rows draw themselves on or off: whether busy times and
+   * the Reminders list are on, when the busy times last came in, and whether a Focus with X0 Bot's filter is on right now.
+   * Never which Focus, and never anything of what is in the calendar or the list.
+   */
+  /** `focusHold` is the person's own "Hold calls during a Focus" switch: without it on, nothing asks the phone about a Focus. */
+  phone?: { busy: boolean; busyAt: number; reminders: boolean; focusOn: boolean; focusHold: boolean; ai: boolean };
 }
 
 /** What threadOf reads beyond the items. `fresh`: the row ids just added ("e:<id>", "t:<id>"), outlined. */

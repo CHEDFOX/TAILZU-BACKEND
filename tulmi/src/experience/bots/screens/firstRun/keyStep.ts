@@ -64,7 +64,20 @@ export function keyOnPhone(ctx: BotsCtx, w: Words | undefined): ScreenResponse {
   const chipPath = (s: string): Node => box([text(s, { size: 11.5, mono: true, color: C.grey70, lineHeight: 15 })], {
     alignSelf: "flex-start", backgroundColor: C.surface, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 8,
   });
-  const openIos = seq(setState("opened", true), { kind: "requestPermission", permission: "microphone" } as ActionSpec, { kind: "openUrl", url: "app-settings:", external: true });
+  // READ FIRST, AND ASK ONLY IF THERE IS ANYTHING TO ASK. The ask here is the idempotent one that makes iOS give the
+  // app its own Settings page before `app-settings:` is opened — and by the time anyone is on this step the
+  // microphone has usually been settled already, so there was nothing to ask and the phone drew "One permission
+  // first" in front of a Settings page anyway. The read answers with no prompt and no card.
+  //
+  // What is left is NOT `primed` (shared/types/sdui.ts): this screen explains the keyboard and Full Access, not the
+  // microphone, and there is a "Not now" at the top. So where the ask does happen, the phone's own card stays the
+  // explanation for it.
+  const openApp: ActionSpec = { kind: "openUrl", url: "app-settings:", external: true } as ActionSpec;
+  const openIos = seq(setState("opened", true), {
+    kind: "checkPermission", permission: "microphone",
+    onGranted: openApp,
+    onDenied: seq({ kind: "requestPermission", permission: "microphone" } as ActionSpec, openApp),
+  } as ActionSpec);
   const openAndroid = seq(setState("opened", true), { kind: "openSettings", target: "keyboard" });
   return phoneFrame(ctx, {
     title: W.keyH,

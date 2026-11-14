@@ -211,8 +211,10 @@ function talkActions(v: CallView, voice: boolean, rt: boolean): Record<string, A
     })) as ActionSpec,
     // A tap never asks for the microphone by itself: without it, the Continue card says why first (Apple 5.1.1(iv)).
     talk: { kind: "checkPermission", permission: "microphone", onGranted: "listen", onDenied: setState("micCard", true) },
+    // `primed`: the card above ("Let X name hear you") is the one explanation, and its Continue is the only thing
+    // that reaches here — so the phone goes straight to the system instead of drawing its own box first.
     askMic: {
-      kind: "requestPermission", permission: "microphone", onGranted: "listen",
+      kind: "requestPermission", permission: "microphone", primed: true, onGranted: "listen",
       onDenied: seq(setState("micCard", false), toast(`${v.name} can't hear you yet. Allow the microphone to talk.`)),
       onBlocked: setState("micBlocked", true),
     },

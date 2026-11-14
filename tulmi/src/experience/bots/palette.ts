@@ -10,6 +10,7 @@
  * the design, so a built-in's colour here is by SLUG and a person's own bot's is its palette name.
  */
 import { headUrl } from "./art.js";
+import { builtinBot } from "../../bots/builtin.js";
 import type { IconName } from "./glyphs.js";
 
 /** Ink, greys and lines. */
@@ -40,20 +41,35 @@ export const C = {
 export const PALETTE_HEX: Record<string, string> = {
   moss: "#4F7A3A", clay: "#A9573A", ochre: "#8F6A1F", sea: "#3E6E8E",
   pine: "#2F5D50", plum: "#6E4A6B", sand: "#7A6440", stone: "#5F6B6E",
+  // A neutral for a built-in that wants one, warmer than stone so the two do not read as the same grey. stone is
+  // also the fallback colour below, so nothing that ships may wear it.
+  ash: "#6B6762",
 };
 
 /** The built-ins, in the order the app lists them. */
 export const BUILTIN_SLUGS = ["code", "keybot", "plan", "travel"] as const;
 
-const BUILTIN: Record<string, { color: string; icon: IconName }> = {
-  code: { color: PALETTE_HEX.moss!, icon: "code" },
-  keybot: { color: PALETTE_HEX.clay!, icon: "keyboard" },
-  plan: { color: PALETTE_HEX.ochre!, icon: "calendar" },
-  travel: { color: PALETTE_HEX.sea!, icon: "pin" },
-  // The mail bot (src/mail), where its service is set up: a colour no other built-in wears.
-  mail: { color: PALETTE_HEX.sand!, icon: "mail" },
-  tailzu: { color: C.ink, icon: "spark" },
+/**
+ * THE LINE ICON OF EACH BUILT-IN. Only the icon: a bot's COLOUR is decided in src/bots/builtin.ts and read from
+ * there (`builtinColour` below), because this table used to carry its own copy of the four and the two disagreed —
+ * builtin.ts said Xode was pine while this said moss — for as long as both existed. One answer now.
+ */
+const BUILTIN_ICON: Record<string, IconName> = {
+  code: "code",
+  keybot: "keyboard",
+  plan: "calendar",
+  travel: "pin",
+  // Each listed only where its own service is set up, but its icon costs nothing to know.
+  mail: "mail",
+  lingo: "book",
+  tailzu: "spark",
 };
+
+/** A built-in's colour, from its own definition. Null for a slug that is not a built-in. */
+function builtinColour(slug: string): string | null {
+  const def = builtinBot(slug);
+  return def ? (PALETTE_HEX[def.colour] ?? null) : null;
+}
 
 /** How a bot looks: its colour, its line icon, and its head (a built-in's) or none (a person's own). */
 export interface BotLook {
@@ -73,7 +89,13 @@ function ownIcon(slug: string): IconName {
 }
 
 export function botLook(slug: string, colour?: string): BotLook {
-  const b = BUILTIN[slug];
-  if (b) return { ...b, ...(headUrl(slug) ? { head: headUrl(slug)! } : {}) };
-  return { color: (colour && PALETTE_HEX[colour]) || PALETTE_HEX.stone!, icon: ownIcon(slug) };
+  // Tailzu itself is not a bot in builtin.ts, so it keeps its own ink.
+  if (slug === "tailzu") return { color: C.ink, icon: BUILTIN_ICON.tailzu!, ...(headUrl(slug) ? { head: headUrl(slug)! } : {}) };
+  // The icon is looked up FIRST and outside the branch below, because it does not depend on configuration. A bot
+  // whose service is not set up is not in builtinBot() at all, and it was that which used to leave the Oracle, the
+  // meeting bot and Lingo wearing the generic spark: their icon is known whether or not their service is.
+  const icon = BUILTIN_ICON[slug] ?? ownIcon(slug);
+  const own = builtinColour(slug);
+  if (own) return { color: own, icon, ...(headUrl(slug) ? { head: headUrl(slug)! } : {}) };
+  return { color: (colour && PALETTE_HEX[colour]) || PALETTE_HEX.stone!, icon };
 }

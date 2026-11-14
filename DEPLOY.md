@@ -106,6 +106,11 @@ forwards to Flow; your other sites are untouched. First point DNS:
 server {
     listen 80;
     server_name flow.yourdomain.com;
+    # NO ACCESS LOG ON THE API (docs/trust.md 8.3 fix 1). nginx's default access log writes every client's IP address to
+    # disk and keeps it for as long as your logrotate says — weeks, usually. The backend itself no longer logs an address
+    # (it logs a keyed hash instead), so the proxy in front is the only place they would still pile up. Turn it off here,
+    # or, if you want the traffic lines, use a log_format with no $remote_addr in it.
+    access_log off;
     location / {
         proxy_pass http://127.0.0.1:8770;
         proxy_http_version 1.1;
@@ -114,6 +119,10 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_read_timeout 300s;
+        # Abuse prevention reads the address this proxy puts here, and ONLY from a proxy whose own address is in
+        # TRUST_PROXY_CIDRS (tulmi/.env). Keep FLOW_BIND at 127.0.0.1 so nothing else can reach the backend directly.
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```
@@ -1198,6 +1207,42 @@ mailbox lives on the mail server Xooteq Mail already runs on this VPS (`/opt/pos
 6. **Back out:** remove `MAIL_WORKER_URL` from `tulmi/.env` and `./deploy/ship.sh` (the mail bot leaves X0 Bot); then
    `docker compose --profile mail stop mail-worker`. The mailboxes and their mail stay on the mail server.
 
+
+### Calls: our own video and audio calls (`SFU_APP_ID`)
+
+Video and audio calls of our own, started from the mail bot ("Start a call" on a business's page). Its link (`x0bot.com/m/<code>`) lets anyone
+ask to come in, and the host lets them in. The rooms, the links, the lobby, who may join and the minutes are on this server; Cloudflare's
+Realtime SFU moves the video and the sound. Without the two settings there are no calls, and `/v1/rooms/*` answers `404 rooms_off`. Full
+story: `docs/rooms.md`.
+
+1. **A Cloudflare Realtime app.** In the Cloudflare dashboard, Realtime, create an app (the SFU, not RealtimeKit). Copy its **App ID** and
+   its **App Secret**. Billing is $0.05 a gigabyte of what leaves the SFU, with the first 1,000 GB a month free and nothing charged per
+   person or per minute; about a thousand hours of two-person calls a month cost nothing.
+2. **Put them in `tulmi/.env` on the server.** The secret by hand, so it never sits in the shell's history:
+
+   ```bash
+   ssh -t root@91.108.104.168 'cd ~/tulmi && nano tulmi/.env'
+   ```
+
+   ```
+   SFU_APP_ID=<the App ID>
+   SFU_APP_SECRET=<the App Secret>
+   ```
+
+   Optional: `ROOM_LINK_ORIGIN` (where links point, `https://x0bot.com`), `ROOM_DAILY_MINUTES` (a person's call minutes per 24 hours, 600) and
+   `ROOM_MAX_PEOPLE` (the most people in one call, 10). With only one of the two set, the server warns at start.
+3. **No webhook to register.** The SFU has no idea of a room, so there is nothing to call back: who is in a call is held here, by a
+   heartbeat from each person's app (`docs/rooms.md` section 3). The App Secret never leaves the server — an app sends us its offer and we
+   hand back the answer — so there is nothing to put in a phone either.
+4. **Migration and deploy.** 0091 makes `rooms`, the server's alone and deleted with the account. It runs on deploy with the others
+   (`tulmi/supabase/migrate-pending.sh`; by hand: `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh 0091"`).
+
+   ```bash
+   ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/ship.sh'
+   ```
+5. **Check.** On the mail bot's page, Calls has Start a call. A new call shows its link with Copy and Share. Joining needs the `live` block
+   in the apps (`docs/rooms.md` section 4); until then the call's screen says so.
+6. **Back out:** remove the two settings from `tulmi/.env` and `./deploy/ship.sh` (Calls leaves the mail page). The rows stay.
 
 ### Meetings: a bot in your video calls (`RECALL_API_KEY`)
 

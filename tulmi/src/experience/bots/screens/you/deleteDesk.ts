@@ -42,7 +42,8 @@ export function goesAway(ctx: BotsCtx, d: AccountData): Node[] {
 }
 export const planWarning = (ctx: BotsCtx, d: AccountData): Node[] =>
   d.plan.active && d.plan.renews ? [card([
-    row([glyph(G.never, 16), text(`Cancel Pro first. You're on Pro, and it would still renew${d.plan.until ? ` on ${dayMonth(ctx, d.plan.until)}` : ""}.`, { size: 13, weight: 500, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 10, alignItems: "flex-start" }),
+    // Never "Pro": the plans are Lite and Elite. The plan is not named here, so the line is true on either.
+    row([glyph(G.never, 16), text(`Cancel your plan first. Deleting your account doesn't cancel it: your app store keeps billing it${d.plan.until ? `, and it would renew on ${dayMonth(ctx, d.plan.until)}` : ""}.`, { size: 13, weight: 500, lineHeight: 18, style: { flexShrink: 1 } })], { gap: 10, alignItems: "flex-start" }),
     text("Plan and billing", { size: 13, weight: 500, style: { textDecorationLine: "underline" } }),
   ], { gap: 8, padding: 14, style: { backgroundColor: C.surface, borderWidth: 0 }, onPress: open(SCREENS.billing) })] : [];
 

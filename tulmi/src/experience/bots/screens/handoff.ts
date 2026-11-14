@@ -129,7 +129,9 @@ export function botsKeyboardPrimer(base: ScreenResponse): ScreenResponse {
       body("Swipe back to your app now and tap the keyboard mic. It'll work from here on out.", { color: C.grey70 }),
     ], { marginBottom: 12 })), motion: { appear: "fadeInUp" } },
     gap(10),
-    when({ not: { truthy: "micGranted" } }, secondaryButton("Open X0 Bot Settings", "openMainSettings", { wide: true })),
+    // Only once the prompt has been answered: before that Continue stands alone (phone/keyboardPrimer.ts, and
+    // bots-handoff.test.ts holds the two trees' conditions the same).
+    when({ all: [{ not: { truthy: "micGranted" } }, { truthy: "micAsked" }] }, secondaryButton("Open X0 Bot Settings", "openMainSettings", { wide: true })),
     gap(8),
     when({ truthy: "micGranted" }, secondaryButton("Done", "dismiss", { wide: true })),
   ]));

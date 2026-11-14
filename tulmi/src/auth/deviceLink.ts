@@ -94,6 +94,14 @@ export interface LinkStore {
   transition(id: string, from: StoredStatus, to: StoredStatus, patch: Partial<Pick<LinkRow, "userId" | "decidedAt" | "usedAt">>, now: number): Promise<LinkRow | null>;
   /** Deletes requests that ran out unused a day ago. */
   sweep(now: number): Promise<void>;
+  /**
+   * The address and user agent on USED rows last used before `before`: both blanked, the row itself kept. How many.
+   *
+   * Why (abuse prevention, docs/trust.md 8.3 fix 2): a used row is the record of which computer was signed in, and it is
+   * worth keeping — but the address and the browser string it also held were kept for ever, for no purpose anybody could
+   * name past the first few weeks. The trust sweeper calls this every six hours.
+   */
+  blankOld(before: number): Promise<number>;
 }
 
 export type Minted = { tokenHash: string; type: string } | { error: "no_email" | "failed" };
@@ -308,6 +316,17 @@ export function memoryLinkStore(): LinkStore & { rows: Map<string, LinkRow> } {
     async sweep(at) {
       for (const [id, r] of rows) if (r.status !== "used" && r.expiresAt < at - KEEP_UNUSED_MS) rows.delete(id);
     },
+    async blankOld(before) {
+      let n = 0;
+      for (const r of rows.values()) {
+        if (r.status !== "used" || (r.usedAt ?? r.createdAt) >= before) continue;
+        if (r.ip === null && r.userAgent === null) continue;
+        r.ip = null;
+        r.userAgent = null;
+        n += 1;
+      }
+      return n;
+    },
   };
 }
 
@@ -371,7 +390,22 @@ function supabaseLinkStore(): LinkStore | null {
       const { error } = await sb.from(T).delete().neq("status", "used").lt("expires_at", iso(at - KEEP_UNUSED_MS));
       fail("sweep", error);
     },
+    async blankOld(before) {
+      const { data, error } = await sb.from(T).update({ ip: null, user_agent: null })
+        .eq("status", "used").lt("used_at", iso(before)).not("ip", "is", null).select("id");
+      fail("blankOld", error);
+      return (data ?? []).length;
+    },
   };
+}
+
+/**
+ * The address and user agent on used sign-in rows, blanked 30 days after the sign-in (the trust sweeper's last step,
+ * trust/sweeper.ts). With no database there is nothing to blank, and the answer is 0.
+ */
+export async function blankOldDeviceLinks(before: number, store?: LinkStore): Promise<number> {
+  const s = store ?? supabaseLinkStore();
+  return s ? s.blankOld(before) : 0;
 }
 
 /**

@@ -10,6 +10,9 @@
  *   POST   /v1/widgets/act { item, action, text?, key? }   -> { ok, state, repeat? }   an answer (src/widgets/act.ts): with the
  *                                             widget's `X-Widget-Token` (needs-you answers and Done only), or the session
  *                                             (a notification's buttons and its reply)
+ *   POST   /v1/widgets/focus { on, hold?, source? }   -> { ok, on }   the iPhone's X0 Bot Focus Filter, with the widgets'
+ *                                             token and its "focus.set" scope (src/widgets/focus.ts; docs: perms2 §4): a Focus
+ *                                             started or ended, so Plan Ease's calls wait. Never which Focus
  *   POST   /v1/widgets/activity-token { jobId, token, platform?, env? }   -> { ok, push, removed? }   the "Bots at work" Live Activity's
  *                                             APNs push token for one of the person's Xode jobs (session), so the server can move it
  *                                             while the app is shut (src/widgets/activity.ts). `push` false: server pushes are off (APNS_*
@@ -40,6 +43,10 @@ import { ACTIVITY_TOKEN_RE, activityTokenStore, badLookIds, glanceStore, JOB_ID_
 import { designSince } from "../../experience/native/catalog.js";
 import { TOPIC, jobTopic } from "../../live/topics.js";
 import { spacesOn } from "../../botsBots/spacesSwitch.js";
+import { readFocusPost, setFocus } from "../../widgets/focus.js";
+import { planPrefs } from "../../botsBots/planPrefs.js";
+import { focusEnded } from "../../botsBots/planCallCheck.js";
+import { focusLive } from "../../experience/bots/kit.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 import type { SpaceParts } from "./botsSpaces.js";
 import type { PlanEase } from "../../botsBots/planEase.js";
@@ -281,6 +288,32 @@ export function registerWidgetRoutes(app: FastifyInstance, deps: BotsAreaDeps, p
       void markSeen(userId, { ids: [item.kind === "job" ? item.jobId : item.taskId] }, now(), o.glance);
     }
     return reply.code(out.status).header("cache-control", "no-store").send(out.body);
+  });
+
+  /**
+   * THE iPHONE FOCUS FILTER'S OWN DOOR (src/widgets/focus.ts; docs: perms2 §4.2). iOS runs X0 Bot's Focus Filter when a Focus
+   * starts and when it ends, outside any screen and with no session to use, so it posts with the WIDGETS' token — and only
+   * with the "focus.set" scope, which a token gets at its next issue. All it may say is on or off and which of the two holds
+   * the person picked; never which Focus, and never anything else.
+   */
+  app.post("/v1/widgets/focus", tight(60), async (req, reply) => {
+    const widgetToken = header(req, "x-widget-token");
+    if (!widgetToken) return reply.code(401).send({ code: "widget_token", message: "Open X0 to finish." });
+    const v = await tokens.verify(widgetToken).catch(() => null);
+    if (!v) return reply.code(401).send({ code: "widget_token", message: "Open X0 to finish." });
+    if (!v.scopes.includes("focus.set")) return reply.code(403).send({ code: "open_app", message: "Open X0 to finish." });
+    if (!focusLive()) return reply.code(403).send({ code: "focus_off", message: "That isn't switched on here." });
+    const post = readFocusPost(req.body);
+    if ("error" in post) return reply.code(400).send({ code: "bad_request", message: post.error });
+    try {
+      const r = await setFocus(planPrefs(), v.userId, post, now());
+      // The Focus has just ended: the one notice about everything that waited goes now (botsBots/planCallCheck.ts).
+      if (r.ended) void focusEnded(v.userId, now()).catch(() => undefined);
+      return reply.header("cache-control", "no-store").send({ ok: true, on: r.on });
+    } catch (err) {
+      req.log.error({ err: (err as Error)?.name }, "widgets: focus failed");
+      return reply.code(503).send({ code: "failed", message: "Couldn't do that just now." });
+    }
   });
 
   app.post("/v1/widgets/activity-token", tight(30), async (req, reply) => {

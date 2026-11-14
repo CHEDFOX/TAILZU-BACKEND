@@ -10,6 +10,7 @@
  *                  from its website, theirs to change), how it answers
  *   the mailbox    All mail, the main address's own and each alias's (once there are aliases), with what is unread, then Sent and the other
  *                  folders; each opens the mailbox (mailInbox.ts), and Write writes from any of its addresses
+ *   calls          Start a call and the latest calls (mailCalls.ts), when calls are switched on and the business is theirs to call from
  *   needs you      what waits for a person, most important first: a message the AI thinks a person should answer, then drafts, then replies about
  *                  to go by themselves. Each opens its reply (mailScreens.ts): the message, the draft, Send
  *   answered       the latest replies that went
@@ -24,6 +25,7 @@ import {
   listRow, sectionLabel, open, SCREENS, canMoments, botMoment, canBuddy, botBuddy,
 } from "../../kit.js";
 import { addBusiness, mailCards, mailCardsDue, mailCardsState } from "./mailCards.js";
+import { callsSection } from "./mailCalls.js";
 import { openInbox, writeButton } from "./mailInbox.js";
 import {
   accessLine, accessOf, businessChip, type FolderView, MAIL_SLUG, type MailBusinessView, MODE_WORDS, type MailData, type MailRunView, runRow, shownBusiness,
@@ -148,6 +150,7 @@ export function mailPage(ctx: BotsCtx, d: MailPageData) {
       ], { gap: 10 }));
     }
     body.push(mailbox(b, m.folders));
+    body.push(...callsSection(ctx, b.id, m.calls));
     body.push(section("Needs you", waiting.map((r) => runRow(ctx, b.id, r)), "Nothing waits for you."));
     body.push(section("Answered", runs.filter((r) => r.status === "sent").slice(0, SHOWN).map((r) => runRow(ctx, b.id, r)), "No replies have gone yet."));
     body.push(section("Filed", runs.filter((r) => r.status === "skipped").slice(0, SHOWN).map((r) => runRow(ctx, b.id, r)), "Nothing filed yet."));

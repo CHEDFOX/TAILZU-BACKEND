@@ -2794,3 +2794,220 @@ create policy "users read own bot threads"
 -- A token may read a key's id, prefix, label and times; the hash is for the server alone.
 revoke select on public.bot_keys from anon, authenticated;
 grant select (id, bot_id, user_id, prefix, label, created_at, last_used_at, revoked_at) on public.bot_keys to authenticated;
+
+
+-- ############################################################################
+-- 0093_trust_signals.sql
+-- ############################################################################
+
+-- Abuse and fraud prevention (docs/trust.md): the KIND of network a request comes from, how many accounts come from it, and
+-- what Apple and Google answer about the app. Not tracking, not ads, not analytics, and never a device or person id built
+-- from device or network traits.
+--
+-- NO RAW ADDRESS IS STORED ANYWHERE. A network is held as HMAC-SHA256(TRUST_HASH_KEY, "n1|" + address) cut to 16 bytes: the
+-- whole address for IPv4, the /64 for IPv6. The same keyed hash makes the email and install keys. Be honest about what that
+-- is: it is pseudonymous, not anonymous — IPv4 has only 2^32 values, so whoever holds the key could test an address against a
+-- row. So the key lives only in the server's .env, these rows are treated as personal data (30 days, deleted with the
+-- account, named in the privacy policy), and the policy says "keyed hash", never "anonymous".
+--
+-- COUNTED, NEVER JOINED. These tables are read for COUNTS and for the one account being looked at. Nothing in the server can
+-- list the other accounts behind a network key, an install key or an email hash, no action on one account spreads to the
+-- accounts that shared a key with it, and the admin route answers counts only.
+--
+-- A sweeper (src/trust/sweeper.ts) drops everything older than 30 days, whether or not anyone opens the app. Row level
+-- security is on with NO policy on every table, so only the service key reaches them: no client, signed in or not, can read
+-- a row. Deleting the account takes its rows with it (every user_id cascades); the tombstones hold no user id at all.
+
+-- One row a (network, account, day): which kind of network, which operator, how many requests, first and last seen.
+create table if not exists public.trust_net_seen (
+  net_key    bytea not null,
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  day        date not null,
+  asn        integer,
+  net_class  text not null default 'unknown'
+             check (net_class in ('home', 'mobile', 'hosting', 'vpn', 'tor', 'relay', 'unknown')),
+  -- Whether this account was NEW (under a week old) when it was seen here. The counts count only these rows, because the
+  -- signal is "accounts are being MADE on this line" — counting every account on it would score a shared home, an office
+  -- or a mobile operator for being busy, and the honest new sign-up in that house for its neighbours.
+  new_acct   boolean not null default false,
+  hits       integer not null default 1 check (hits >= 0),
+  first_at   timestamptz not null default now(),
+  last_at    timestamptz not null default now(),
+  primary key (net_key, user_id, day)
+);
+
+-- The sweeper's read, and the "this account's own rows" read.
+create index if not exists trust_net_seen_day_idx on public.trust_net_seen (day);
+create index if not exists trust_net_seen_user_idx on public.trust_net_seen (user_id);
+
+-- The install number the app made at first launch (docs/trust.md 8.4), hashed. A random v4 UUID with no input from the
+-- device, which resets on reinstall; written only while the `trust.installId` flag is on.
+create table if not exists public.trust_device_seen (
+  device_key bytea not null,
+  kind       text not null check (kind in ('install')),
+  user_id    uuid not null references auth.users (id) on delete cascade,
+  first_at   timestamptz not null default now(),
+  last_at    timestamptz not null default now(),
+  primary key (device_key, kind, user_id)
+);
+
+create index if not exists trust_device_seen_last_idx on public.trust_device_seen (last_at);
+create index if not exists trust_device_seen_user_idx on public.trust_device_seen (user_id);
+
+-- What a deleted account leaves for 30 days, so deleting and signing up again does not reset the free plan: a one-way hash
+-- of its email address, and of that install number. NO USER ID, and nothing else. Nothing attestation-derived is ever
+-- tombstoned (docs/trust.md §tombstones).
+create table if not exists public.trust_tombstones (
+  key        bytea not null,
+  kind       text not null check (kind in ('email', 'install')),
+  deleted_at timestamptz not null default now(),
+  primary key (key, kind)
+);
+
+create index if not exists trust_tombstones_deleted_idx on public.trust_tombstones (deleted_at);
+
+-- App Attest's keys: one per account per install, made in the phone's Secure Enclave. The public key and the counter it
+-- signs with, never the attestation itself and never a device id (Apple's licence forbids deriving one).
+create table if not exists public.trust_attest_keys (
+  key_id       text primary key,
+  user_id      uuid not null references auth.users (id) on delete cascade,
+  public_key   bytea not null,
+  sign_count   bigint not null default 0 check (sign_count >= 0),
+  env          text not null default 'production' check (env in ('production', 'development')),
+  receipt      bytea,
+  created_at   timestamptz not null default now(),
+  last_used_at timestamptz not null default now()
+);
+
+create index if not exists trust_attest_keys_user_idx on public.trust_attest_keys (user_id);
+create index if not exists trust_attest_keys_used_idx on public.trust_attest_keys (last_used_at);
+
+-- The latest score for one account, the reasons it is made of, the action it reached, and the verdict SUMMARIES: never a
+-- device token, an integrity token or anything that could be turned into an id.
+--   verdicts: { "appAttest": "ok" | "fail" | "none",
+--               "deviceCheck": { "bit0": bool, "bit1": bool, "month": "2026-11", "setByUs": bool },
+--               "integrity": { "app": "...", "device": ["..."], "licence": "..." },
+--               "at": { "appAttest": ms, "deviceCheck": ms, "integrity": ms },
+--               "deviceReset": bool }
+--
+-- The row lives as long as the account and is worked out again on every launch, but the ANSWERS on it do not: the policy
+-- says Apple's and Google's answers are kept 30 days, so each is stamped in `at` and the sweeper drops it when it is due.
+-- `verdicts_at` is the oldest of those stamps, so the sweeper can find the rows that need it without reading every one;
+-- `updated_at` cannot do that job, because every launch refreshes it. `deviceReset` is not an answer but an instruction:
+-- an admin cleared this account for a second-hand phone, so Apple's own two bits are cleared at the next pass.
+create table if not exists public.trust_scores (
+  user_id     uuid primary key references auth.users (id) on delete cascade,
+  score       smallint not null default 0,
+  reasons     text[] not null default '{}',
+  action      text not null default 'none' check (action in ('none', 'log', 'slow', 'hold', 'ask')),
+  verdicts    jsonb not null default '{}'::jsonb check (jsonb_typeof(verdicts) = 'object'),
+  verdicts_at timestamptz,
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists trust_scores_verdicts_at_idx on public.trust_scores (verdicts_at);
+
+alter table public.trust_net_seen     enable row level security;   -- no policy: service key only
+alter table public.trust_device_seen  enable row level security;   -- no policy: service key only
+alter table public.trust_tombstones   enable row level security;   -- no policy: service key only
+alter table public.trust_attest_keys  enable row level security;   -- no policy: service key only
+alter table public.trust_scores       enable row level security;   -- no policy: service key only
+
+
+-- ############################################################################
+-- 0094_phone_things.sql
+-- ############################################################################
+
+-- BUILD 8.9.1: the things the phone itself can do, and the little this server keeps of them (docs: perms2).
+--
+-- Five pieces, all of them the person's own and all of them off until they turn one on:
+--
+--   plan_busy                     the BUSY TIMES read from the iPhone's calendars: start, end and all-day, and nothing else.
+--                                 Never an event's name, place, notes, people or calendar name — those never leave the phone.
+--   calendar_tasks.ext_src/_ref   a to-do linked to an item in the one Reminders list X0 Bot makes, called X0 Bot
+--   reminders_gone                a linked to-do deleted HERE, so its item goes out of that list at the next sync. The item's
+--                                 opaque identifier only, kept until the item has gone (a week at most)
+--   bot_health_days.source        where a day's steps came from: Apple Health / Health Connect ("health") or, with Health
+--                                 off, Motion & Fitness on iPhone and the phone's own step counter on Android ("motion").
+--                                 A bot's own `skills.healthSource` says the same thing on the bot row, which is JSON, so
+--                                 there is no column for it here
+--   bot_health_days.sleep_minutes how long the person slept that night, in minutes. No stages, no bed or wake times
+--   calendar_events.arrive        "Remind me when I get there" is on for this event. THE PHONE watches the place itself and
+--                                 shows the reminder; this server is never told where the person is, or that they arrived, so
+--                                 there is nothing here but the switch
+--   plan_prefs.calendar_busy      the busy-times switch, written in the same transaction as the first blocks
+--   plan_prefs.reminders_on       the Reminders switch
+--   plan_prefs.focus              { on, hold, source, until }: whether a Focus or Do Not Disturb is on, and whether calls alone
+--                                 or calls and pings wait. NEVER which Focus, and it reads as off past `until` (12 hours)
+--
+-- Row level security stays as each table has it: plan_busy is service-key only (on, with no policy), and the columns added to
+-- existing tables inherit their table's rules.
+
+-- ---------------------------------------------------------------- busy times from the phone's calendars
+--
+-- Replaced whole at each sync for the window it covers, and each block is deleted a day after it ends (so 15 days at most).
+-- Switching the row off deletes every block and the flag in one request; Delete my data and deleting the account take them too.
+create table if not exists public.plan_busy (
+  user_id   uuid not null references auth.users (id) on delete cascade,
+  starts_at timestamptz not null,
+  ends_at   timestamptz not null,
+  all_day   boolean not null default false,
+  synced_at timestamptz not null default now(),
+  check (ends_at > starts_at and ends_at - starts_at <= interval '2 days')
+);
+
+-- The Plan's own read (one person, a range), and the sweeper's (every block whose end has gone, across everyone).
+create index if not exists plan_busy_user_starts_idx on public.plan_busy (user_id, starts_at);
+create index if not exists plan_busy_ends_idx on public.plan_busy (ends_at);
+
+alter table public.plan_busy enable row level security;   -- no policy: service key only
+
+-- ---------------------------------------------------------------- a to-do linked to the X0 Bot Reminders list
+alter table public.calendar_tasks add column if not exists ext_src text check (ext_src in ('apple_reminders'));
+alter table public.calendar_tasks add column if not exists ext_ref text;
+
+-- One to-do a Reminders item, and one item a to-do: a second sync never adds the same item twice.
+create unique index if not exists calendar_tasks_ext_idx
+  on public.calendar_tasks (user_id, ext_src, ext_ref)
+  where ext_src is not null and ext_ref is not null;
+
+-- ---------------------------------------------------------------- a to-do deleted HERE whose item is still in the list
+--
+-- "A to-do deleted in X0 removes its item" needs a memory of the deletion: once the row has gone nothing is left to say the
+-- item ever had one, and the merge would read the item as a new to-do and copy it straight back in. Written by
+-- Calendar.removeTask for a row that had a link, dropped the moment the item has gone from the list, and swept after a week
+-- for a person who switched the row off in between. The item's own opaque identifier and nothing else: no title, no due date.
+create table if not exists public.reminders_gone (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  ext_ref text not null,
+  at      timestamptz not null default now(),
+  primary key (user_id, ext_ref)
+);
+
+-- The sweeper's read (every mark older than a week, across everyone).
+create index if not exists reminders_gone_at_idx on public.reminders_gone (at);
+
+alter table public.reminders_gone enable row level security;   -- no policy: service key only
+
+-- ---------------------------------------------------------------- an event the phone reminds them at
+alter table public.calendar_events add column if not exists arrive boolean not null default false;
+
+-- ---------------------------------------------------------------- where a day's steps came from, and the night's sleep
+alter table public.bot_health_days add column if not exists source text not null default 'health'
+  check (source in ('health', 'motion'));
+alter table public.bot_health_days add column if not exists sleep_minutes smallint
+  check (sleep_minutes between 0 and 1440);
+
+-- 0090's own note said "no ... sleep" and "nothing that says which device or app the numbers came from". Both have changed, in
+-- the one direction the cards, the policy and the store forms describe, so the note is written again here rather than left to
+-- contradict the table.
+comment on table public.bot_health_days is
+  'A fitness bot''s day: steps, workouts, and (only when the person switched it on) how long they slept that night. Nothing '
+  'finer than a day: no heart rate, weight, route, sleep stage, bed or wake time, or raw sample. `source` says which of the '
+  'two readers the phone used — Apple Health / Health Connect, or Motion & Fitness — and nothing about the device itself.';
+
+-- ---------------------------------------------------------------- the switches, on the person's one Plan Ease row
+alter table public.plan_prefs add column if not exists calendar_busy boolean not null default false;
+alter table public.plan_prefs add column if not exists reminders_on boolean not null default false;
+-- { on: boolean, hold: "calls" | "callsAndPings", source: "filter" | "dnd", until: epoch ms }. Overwritten at each change.
+alter table public.plan_prefs add column if not exists focus jsonb;

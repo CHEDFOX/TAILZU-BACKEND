@@ -59,6 +59,25 @@ export interface PlanPrefsRow {
   leaves?: LeaveRow[];
   next_leave_ms?: number | null;
   sent?: { day?: string; n?: number };
+  /**
+   * 0094's columns (build 8.9.1, docs: perms2), written only when the person turns one of them on, so a server ahead of its
+   * migration still writes rows: the busy-times switch, the Reminders switch, and what the phone last said about a Focus.
+   */
+  calendar_busy?: boolean;
+  reminders_on?: boolean;
+  focus?: FocusState | null;
+}
+
+/**
+ * WHAT THE PHONE LAST SAID ABOUT A FOCUS (docs: perms2 §4.4): whether one is on, and whether calls alone or calls and other
+ * pings wait. NEVER which Focus, and never its mode. `until` is `at` + 12 hours: past it this reads as off, because a Focus
+ * that ended while the phone was away would otherwise hold a person's calls for ever.
+ */
+export interface FocusState {
+  on: boolean;
+  hold: "calls" | "callsAndPings";
+  source: "filter" | "dnd";
+  until: number;
 }
 
 export const EVENING_MIN = 20 * 60 + 30;
@@ -69,6 +88,22 @@ const numOrNull = (v: unknown): number | null => (v === null || v === undefined 
 const obj = <T>(v: unknown, d: T): T => (v && typeof v === "object" && !Array.isArray(v) ? (v as T) : d);
 const arr = <T>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
+/** The focus column as this code reads it: anything that is not the shape above is "nothing said". */
+export function focusOf(v: unknown): FocusState | null {
+  const o = (v && typeof v === "object" && !Array.isArray(v) ? v : null) as Partial<FocusState> | null;
+  if (!o || typeof o.on !== "boolean") return null;
+  const until = Number(o.until);
+  return {
+    on: o.on,
+    hold: o.hold === "callsAndPings" ? "callsAndPings" : "calls",
+    source: o.source === "dnd" ? "dnd" : "filter",
+    until: Number.isFinite(until) ? until : 0,
+  };
+}
+
+/** Is a Focus holding this person's calls right now? False past `until`, and false when nothing was ever said. */
+export const focusHolding = (f: FocusState | null | undefined, now: number): boolean => !!f && f.on && f.until > now;
+
 /** Supabase hands bigints back as strings or numbers, and an older row has none of 0070's columns: one shape either way. */
 export function prefsRow(r: Partial<PlanPrefsRow> & { user_id: string }): PlanPrefsRow {
   return {
@@ -78,6 +113,10 @@ export function prefsRow(r: Partial<PlanPrefsRow> & { user_id: string }): PlanPr
     notes: r.notes === "evening" || r.notes === "morning" || r.notes === "off" ? r.notes : "both", unopened: numOr(r.unopened, 0),
     next_note_ms: numOrNull(r.next_note_ms), note: obj<NoteMemory>(r.note, {}), shown: r.shown ? obj<ShownMove | null>(r.shown, null) : null,
     opens: arr(r.opens), leaves: arr(r.leaves), next_leave_ms: numOrNull(r.next_leave_ms), sent: obj(r.sent, {}),
+    // 0094's columns, only when the row has them (a server ahead of the migration never writes a column that isn't there).
+    ...(r.calendar_busy !== undefined ? { calendar_busy: r.calendar_busy === true } : {}),
+    ...(r.reminders_on !== undefined ? { reminders_on: r.reminders_on === true } : {}),
+    ...(r.focus !== undefined ? { focus: focusOf(r.focus) } : {}),
   };
 }
 

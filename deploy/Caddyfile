@@ -32,9 +32,25 @@
     header Strict-Transport-Security "max-age=31536000"
 }
 
+# COARSE TLS HINTS, FOR ABUSE PREVENTION ONLY (docs/trust.md §request shape). A real phone's TLS looks different from a
+# script's. Caddy knows what it negotiated, so it passes three coarse facts to the backend, which uses them for that
+# request's own score and NEVER stores them. Each client-sent header of the same name is removed first, so a caller cannot
+# claim to be a phone. (A full JA3/JA4 fingerprint would need a third-party Caddy module or Cloudflare Enterprise; we have
+# neither, and it is not worth either.)
+(tlshints) {
+    header_up -X-Tz-Tls-Version
+    header_up -X-Tz-Tls-Cipher
+    header_up -X-Tz-Tls-Proto
+    header_up X-Tz-Tls-Version {http.request.tls.version}
+    header_up X-Tz-Tls-Cipher {http.request.tls.cipher_suite}
+    header_up X-Tz-Tls-Proto {http.request.proto}
+}
+
 api.x0bot.com, api.tailzu.space {
     import hsts
-    reverse_proxy backend:8080
+    reverse_proxy backend:8080 {
+        import tlshints
+    }
 }
 
 app.x0bot.com, app.tailzu.space {

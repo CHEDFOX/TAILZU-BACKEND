@@ -243,6 +243,23 @@ export function tiersOf(spec: string | undefined): Map<string, number[]> {
   return out;
 }
 
+/**
+ * IS THIS ACCOUNT'S FREE USE HELD RIGHT NOW (abuse prevention, docs/trust.md §actions)?
+ *
+ * The answer belongs to src/trust, but this file stays pure — no store, no environment, no imports beyond the types — so the
+ * check is INSTALLED here by the server at start (`installHoldCheck(slowedOrHeld)`), the way the AI permission's check is
+ * installed on its own gate. Nothing installed means nobody is held, which is what every test and every server with TRUST off
+ * sees. usage/allowance.ts reads the same answer through this one function, so the plan and the earned words can never
+ * disagree about whether a hold is on.
+ */
+export type HoldCheck = (userId: string) => boolean;
+let holdCheck: HoldCheck | null = null;
+export function installHoldCheck(c: HoldCheck | null): void { holdCheck = c; }
+export function heldFreeUse(userId: string): boolean {
+  if (!userId || !holdCheck) return false;
+  try { return holdCheck(userId); } catch { return false; }
+}
+
 export interface PlanConfig {
   /** The free plan's month, in US dollars: one allowance, no stretches. */
   USAGE_FREE_MONTH_USD: number;
@@ -258,8 +275,20 @@ export interface PlanConfig {
   CODE_USD_INR: number;
 }
 
-/** The plan a person is on, from their entitlement (null: free) and our config. */
-export function planOf(entitlement: { entitlement: string; active: boolean; product?: string } | null, c: PlanConfig): UsagePlan {
+/**
+ * The plan a person is on, from their entitlement (null: free) and our config.
+ *
+ * `o.userId` is only for abuse prevention's hold (src/trust, docs/trust.md §actions): while that account's free use is held,
+ * it gets the free plan's ONE allowance for the month instead of Lite's five stretches — and nothing else changes. The
+ * refusal past it is the 429 `quota_exceeded` the apps have always shown, so there is no new screen and no app update, and
+ * the hold itself lives in memory for an hour at a time. A payer is never held (rule 5), which is why the paid branches
+ * below are reached first. Called without `o`, this function behaves exactly as it always did.
+ */
+export function planOf(
+  entitlement: { entitlement: string; active: boolean; product?: string } | null,
+  c: PlanConfig,
+  o: { userId?: string } = {},
+): UsagePlan {
   const carryOver = c.USAGE_CARRY_OVER;
   const paise = (usd: number) => usdToMeterPaise(usd, c.CODE_USD_INR);
   const inStretches = (usd: readonly number[]) => {
@@ -274,6 +303,12 @@ export function planOf(entitlement: { entitlement: string; active: boolean; prod
     const tier = tiersOf(c.USAGE_TIERS).get(entitlement.entitlement.trim().toLowerCase());
     return { id: tier ? entitlement.entitlement : "paid", name: "Lite", paid: true, ...inStretches(tier ?? c.USAGE_LITE_STRETCHES_USD), carryOver, upgrade: false };
   }
+  // Free use held: the free month's one allowance, under the same name and screens as any free account.
+  const theFreeMonth: UsagePlan = {
+    id: c.FREE_FOR_ALL ? "everyone" : "free", name: "Free", paid: false,
+    monthPaise: paise(c.USAGE_FREE_MONTH_USD), stretchPaise: null, windows: false, carryOver, upgrade: !c.FREE_FOR_ALL,
+  };
+  if (o.userId && heldFreeUse(o.userId)) return theFreeMonth;
   // Free for everyone, for now: everyone has Lite's stretches, and nothing is for sale.
   if (c.FREE_FOR_ALL) return { id: "everyone", name: "Free", paid: false, ...inStretches(c.USAGE_LITE_STRETCHES_USD), carryOver, upgrade: false };
   // The free plan: one allowance for the month, no stretches.
