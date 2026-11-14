@@ -951,7 +951,8 @@ describe("review fixes", () => {
     expect(r.pushes[0]!.vars).toEqual({ title: "A reminder from Rahul", body: "9 pm" });
     const mom = await r.ease.line(M, IST);
     expect(mom.needs?.question).toBe("A reminder from Rahul");
-    expect(JSON.stringify(mom.needs)).not.toMatch(/insulin|540/);
+    // The amount on its own, not the digits inside an id or a time (a random uuid like "…-5402-…" is not ₹540).
+    expect(JSON.stringify(mom.needs)).not.toMatch(/insulin|(?<![\w-])540(?![\w-])/);
     // In the app the card keeps its words (the person opened X0).
     expect(mom.card?.question).toBe("Mom's insulin ₹540 refill");
     // The asker's own medicine: "Reminder" on their lock screen, as their push says.
