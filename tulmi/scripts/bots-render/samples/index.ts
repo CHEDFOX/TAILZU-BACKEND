@@ -59,7 +59,7 @@ const codeVariant = (v: keyof typeof CODE.variants): Record<string, unknown> => 
 
 const S = SCREENS;
 /** The cinema bot among the person's bots (it is listed only where CINEMA=true). */
-const CINEMA_FAKE = { slug: "cinema", name: "Cinema", colour: "stone", purpose: "Makes films and videos shot by shot from your idea, and pictures.", builtin: true } as (typeof SAMPLE_BOTS)[number];
+const CINEMA_FAKE = { slug: "cinema", name: "Cinema", colour: "plum", purpose: "Makes films and videos shot by shot from your idea, and pictures.", builtin: true } as (typeof SAMPLE_BOTS)[number];
 export const SAMPLES: Sample[] = [
   // screens/shell.ts
   { id: S.home, area: "shell", board: "Main", deskBoard: "DeskHome" },

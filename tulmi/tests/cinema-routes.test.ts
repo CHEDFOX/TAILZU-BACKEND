@@ -113,7 +113,8 @@ describe("the bot among the built-ins", () => {
     resetConfigForTests();
     expect(cinemaOn()).toBe(true);
     const bot = builtinBots().find((b) => b.slug === "cinema")!;
-    expect(bot.colour).toBe("stone");
+    // Plum: the one natural tone no other built-in wears, and not the grey a bot gets when nobody has chosen for it.
+    expect(bot.colour).toBe("plum");
     expect(bot.purpose.length).toBeLessThanOrEqual(140);
     expect(isBuiltinSlug("cinema")).toBe(true);
     expect(RESERVED_SLUGS).toContain("cinema");

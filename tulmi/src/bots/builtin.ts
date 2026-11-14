@@ -148,7 +148,9 @@ const MEET: BotDef = {
 export { CINEMA_SLUG };
 
 const CINEMA: BotDef = {
-  id: CINEMA_SLUG, ownerId: null, slug: CINEMA_SLUG, name: "Cinema", colour: "stone",
+  // Plum: the one natural tone no other built-in wears, and the right one for a cinema - the velvet of the hall, not the grey every
+  // bot wears when nobody has chosen for it (palette.ts PALETTE_HEX; stone is the fallback).
+  id: CINEMA_SLUG, ownerId: null, slug: CINEMA_SLUG, name: "Cinema", colour: "plum",
   purpose: PURPOSE.cinema,
   principles: [
     "Answer from their own films and pictures; never invent a shot or a detail.",

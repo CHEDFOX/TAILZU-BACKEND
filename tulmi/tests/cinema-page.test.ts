@@ -18,7 +18,7 @@ const { publicFilm } = await import("../src/cinema/public.js");
 const DRAWS = ["BotsKit", "BotsMotion", "BotBuddy", "BotMoments"];
 const PURPOSE = "Makes films and videos shot by shot from your idea, and pictures.";
 const BOT = {
-  slug: "cinema", name: "Cinema", colour: "stone", builtin: true, publicCard: false, tone: "", principles: [], purpose: PURPOSE,
+  slug: "cinema", name: "Cinema", colour: "plum", builtin: true, publicCard: false, tone: "", principles: [], purpose: PURPOSE,
   skills: { web: false, files: false, artifacts: false, code: false, research: false, connectors: [] },
 };
 const ROW = { id: "f1", title: "Chai in the Rain", status: "board", hold: null, aspect: "9:16", shots: 4, done: 0, seconds: 20, poster: "/v1/cinema/media/u/u1/cinema/films/f1/still-1.png?exp=1&sig=x", updatedAt: 1 };
@@ -39,7 +39,7 @@ type Client = "phone" | "desktop";
 async function build(o: { screen?: string; params?: Record<string, string>; client?: Client; overview?: unknown; film?: unknown } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
   const deps = fakeDeps({
-    bots: [...SAMPLE_BOTS, { slug: "cinema", name: "Cinema", colour: "stone", purpose: PURPOSE, builtin: true }], calls,
+    bots: [...SAMPLE_BOTS, { slug: "cinema", name: "Cinema", colour: "plum", purpose: PURPOSE, builtin: true }], calls,
     api: {
       "GET /v1/bots/cinema": { bot: BOT }, "GET /v1/bots/cinema/memory": { facts: [], summary: "", turns: 0 }, "GET /v1/bots/cinema/connectors": { connectors: [] },
       "GET /v1/botsapp/bots/chat/cinema?limit=1": { turns: [] },
