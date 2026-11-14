@@ -4,9 +4,10 @@
  *   GET    /v1/lingo/languages?q=      { suggested, languages }: what the picker shows, and what a search in it finds
    GET    /v1/lingo/courses           { courses: [{ ...course, progress }] }, the one opened last first
  *   PUT    /v1/lingo/course            start or change one: { target, from, level?, goalMin?, calls?, voice? }
- *   DELETE /v1/lingo/course/:target    the course and every word of it, forgotten
+ *   DELETE /v1/lingo/course/:target    { reason? } the course and its words, gone; the reason kept as one line
  *   POST   /v1/lingo/words             { target, items: [{ item, gloss, kind?, source? }] } -> { added }
- *   POST   /v1/lingo/session           { target } -> { exercises, progress }: what to do now
+ *   POST   /v1/lingo/session           { target, shape? } -> { exercises, progress, mastery }: the next set
+ *   POST   /v1/lingo/set               { target, answers } -> { result, performance, gesture, next }: a set finished
  *   POST   /v1/lingo/answer            { target, item, kind, said? | picked? | chips? } -> { mark, dueMs, spoken, learned }
  *
  * THE ANSWER IS MARKED HERE AND NOWHERE ELSE. The app sends what the person did, never whether it was right, so there
@@ -22,9 +23,10 @@ import { gradeChips, gradeChoice, gradeSpoken, gradeText } from "../../lingo/gra
 import { learned } from "../../lingo/schedule.js";
 import { answered, dayOf, pick, plan, progress, shapeFor, streakAfter, type Exercise, type SentenceLookup } from "../../lingo/session.js";
 import { againAfter } from "../../lingo/order.js";
+import { gestureFor, mastery, performanceOf, readSet, shapeNext, SET_SIZE, type Answered, type SetShape } from "../../lingo/set.js";
 import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sentences.js";
 import { keyOf, lingoStore, type LingoStore, type NewItem } from "../../lingo/store.js";
-import { EXERCISE_KINDS, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level } from "../../lingo/types.js";
+import { EXERCISE_KINDS, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level, type Verdict } from "../../lingo/types.js";
 import { languageOf, search as searchLanguages, suggested } from "../../lingo/languages.js";
 
 export interface LingoRouteDeps {
@@ -97,7 +99,8 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const out = [];
     for (const c of courses) {
       const items = await store().items(user.id, c.target).catch(() => []);
-      out.push({ ...c, progress: progress(items, at) });
+      // The territory draws a card per language from this one call: how it is going, and how far they have got.
+      out.push({ ...c, progress: progress(items, at), mastery: mastery(items, at) });
     }
     return reply.header("cache-control", "no-store").send({ courses: out });
   });
@@ -132,11 +135,34 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     return reply.send({ course: saved });
   });
 
+  /**
+   * STOP LEARNING A LANGUAGE. The course and every word of it go.
+   *
+   * A reason is OPTIONAL and an empty one is a complete answer — that is what "Just clean up" means, and a person
+   * who does not want to explain themselves must not be made to. What they do write is kept as one line after the
+   * course has gone (migration 0092), with the counts they had reached so it can be read against something, because
+   * why people stop is the one thing a learning app is never told.
+   */
   app.delete<{ Params: { target: string } }>("/v1/lingo/course/:target", rl, async (req, reply) => {
     const user = await begin(req, reply);
     if (!user) return reply;
     const target = str(req.params.target, TAG_MAX);
     if (!isTag(target)) return bad(reply, "No such course.");
+
+    const at = now();
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const reason = str(b["reason"], 1000);
+    const course = await store().course(user.id, target).catch(() => null);
+    if (course) {
+      const items = await store().items(user.id, target).catch(() => []);
+      const m = mastery(items, at);
+      const days = Math.max(1, Math.round((at - course.updatedMs) / 86_400_000) || 1);
+      // Kept before the course goes, and never allowed to stop the removal: somebody who asked to be rid of a
+      // language is rid of it whether or not we managed to write our note about why.
+      await store().left(user.id, {
+        target, reason, words: items.length, learned: m.learned, streak: course.streakDays, days, leftMs: at,
+      }).catch(() => undefined);
+    }
     await store().forget(user.id, target);
     return reply.send({ forgotten: true });
   });
@@ -193,13 +219,74 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
 
     const at = now();
     const items = await store().items(user.id, target).catch(() => []);
+    // The shape of this set, as the last one's performance left it. The app hands back what /v1/lingo/set gave it
+    // and never invents one; anything that cannot be read as a shape means the first set of a sitting.
+    const shape = readShape(b["shape"]);
     // Only the words the ladder would put into a sentence are looked up in the bank.
     const wants = items.filter((i) => shapeFor(i, at) === "blank").map((i) => i.item);
-    const sentences = await lookupFor(target, course.from, pick(items, course, at), wants);
+    const sentences = await lookupFor(target, course.from, pick(items, course, at, shape), wants);
     // Opening a session is what makes this the course the app shows next time.
     await store().setCourse(user.id, { ...course, usedMs: at }, at).catch(() => undefined);
     return reply.header("cache-control", "no-store")
-      .send({ exercises: plan(items, course, at, sentences), progress: progress(items, at) });
+      .send({ exercises: plan(items, course, at, sentences, shape), progress: progress(items, at), mastery: mastery(items, at) });
+  });
+
+  /**
+   * A set's shape as the app hands it back. Read defensively and never trusted: a shape can only make the next set
+   * GENTLER or sized differently, so the worst a bad one can do is ask an easier question.
+   */
+  const readShape = (v: unknown): SetShape | undefined => {
+    const o = (v ?? null) as Record<string, unknown> | null;
+    if (!o || typeof o !== "object") return undefined;
+    const size = num(o["size"]);
+    const room = num(o["newRoom"]);
+    const cap = str(o["rungCap"], 8);
+    return {
+      size: size === null ? SET_SIZE : Math.max(4, Math.min(40, Math.round(size))),
+      newRoom: room === null ? 3 : Math.max(0, Math.min(20, Math.round(room))),
+      rungCap: (EXERCISE_KINDS as readonly string[]).includes(cap) ? (cap as ExerciseKind) : null,
+      pushSpoken: o["pushSpoken"] === true,
+      revisit: Array.isArray(o["revisit"]) ? (o["revisit"] as unknown[]).map((x) => keyOf(str(x, TEXT_MAX))).filter(Boolean).slice(0, 20) : [],
+    };
+  };
+
+  /**
+   * A SET IS FINISHED. What happened, what the bot does about it, and the shape of the next one — all decided here.
+   * The app sends what was answered and gets back the gesture to play and the shape to ask for next, so the
+   * difficulty follows the person and the app works none of it out for itself.
+   */
+  app.post("/v1/lingo/set", rl, async (req, reply) => {
+    const user = await begin(req, reply);
+    if (!user) return reply;
+    const b = (req.body ?? {}) as Record<string, unknown>;
+    const target = str(b["target"], TAG_MAX);
+    const course = isTag(target) ? await store().course(user.id, target).catch(() => null) : null;
+    if (!course) return bad(reply, "That course has not been started.");
+
+    const raw = Array.isArray(b["answers"]) ? (b["answers"] as unknown[]).slice(0, 80) : [];
+    const answers: Answered[] = [];
+    for (const r of raw) {
+      const o = (r ?? {}) as Record<string, unknown>;
+      const item = keyOf(str(o["item"], TEXT_MAX));
+      const kind = str(o["kind"], 8);
+      const verdict = str(o["verdict"], 8);
+      if (!item || !(EXERCISE_KINDS as readonly string[]).includes(kind)) continue;
+      if (!["right", "close", "wrong"].includes(verdict)) continue;
+      answers.push({ item, kind: kind as ExerciseKind, verdict: verdict as Verdict, learnedNow: o["learnedNow"] === true });
+    }
+    if (!answers.length) return bad(reply, "Nothing was answered.");
+
+    const at = now();
+    const items = await store().items(user.id, target).catch(() => []);
+    const result = readSet(answers);
+    const performance = performanceOf(result);
+    return reply.send({
+      result,
+      performance,
+      gesture: gestureFor(performance),
+      next: shapeNext(performance, result),
+      mastery: mastery(items, at),
+    });
   });
 
   app.post("/v1/lingo/answer", rl, async (req, reply) => {

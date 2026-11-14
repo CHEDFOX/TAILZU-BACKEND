@@ -20,6 +20,7 @@ import { due, learned, recall, SPOKEN_TO_LEARN, unseen, review } from "./schedul
 import { order, type Entry } from "./order.js";
 import { fold } from "./grade.js";
 import type { Sentence } from "./sentences.js";
+import { underCap, type SetShape } from "./set.js";
 import type { ExerciseKind, Learner, LingoItem, Mark, Verdict } from "./types.js";
 
 /**
@@ -191,12 +192,25 @@ export function exerciseFor(item: LingoItem, pool: readonly LingoItem[], now: nu
  * WHAT TO ASK THIS TIME. The nearly-forgotten first, then a few never seen, each in the shape it has earned.
  * An item that is finished (`learned`) is not dropped, but it is only ever revision and never crowds out the rest.
  */
-export function pick(items: readonly LingoItem[], learner: Learner, now: number): LingoItem[] {
-  const size = sizeFor(learner.goalMin);
+export function pick(items: readonly LingoItem[], learner: Learner, now: number, shape?: SetShape): LingoItem[] {
+  const size = shape?.size ?? sizeFor(learner.goalMin);
   const ready = due(items, now);
-  const room = Math.max(1, Math.round(size * NEW_SHARE));
-  const fresh = unseen(items, Math.max(0, Math.min(room, size - Math.min(ready.length, size - room))));
-  return [...ready.slice(0, size - fresh.length), ...fresh];
+
+  // The words that went wrong in the LAST set come first, ahead of everything else that is due. They are the most
+  // recent evidence there is about this person, and a set that ignores them is not following them at all.
+  const again = (shape?.revisit ?? []).map((w) => items.find((i) => i.item === w)).filter((i): i is LingoItem => !!i);
+  const rest = ready.filter((i) => !again.some((a) => a.item === i.item));
+
+  // How many never-seen words may come in. `shape` decides it when there is one — zero while somebody is
+  // struggling, because new material is the last thing a person losing their grip needs.
+  const room = shape ? shape.newRoom : Math.max(1, Math.round(size * NEW_SHARE));
+  const revision = [...again, ...rest];
+  // NO new words means NO new words. `unseen`'s limit of 0 means "all of them", which is the opposite of what is
+  // wanted here, and asking for none has to be asked for by not asking at all: a struggling learner given a set
+  // made entirely of words they have never seen is the exact failure this is meant to prevent.
+  const want = Math.max(0, Math.min(room, size - Math.min(revision.length, size - room)));
+  const fresh = want > 0 ? unseen(items, want) : [];
+  return [...revision.slice(0, size - fresh.length), ...fresh];
 }
 
 /**
@@ -206,13 +220,19 @@ export function pick(items: readonly LingoItem[], learner: Learner, now: number)
  * then everything new — was blocked practice twice over and ended every session on the easiest tap there is. The
  * reasoning for the shape it has now is written out in order.ts.
  */
-export function plan(items: readonly LingoItem[], learner: Learner, now: number, sentences?: SentenceLookup): Exercise[] {
-  const picked = pick(items, learner, now);
-  const entries: Entry[] = picked.map((it) => ({
-    ex: exerciseFor(it, items, now, undefined, sentences),
-    // A word never met is a recognition question, which is easy; anything else is what the scheduler thinks they hold.
-    ease: it.memory.state === "new" ? 0.72 : recall(it.memory, now),
-  }));
+export function plan(items: readonly LingoItem[], learner: Learner, now: number, sentences?: SentenceLookup, shape?: SetShape): Exercise[] {
+  const picked = pick(items, learner, now, shape);
+  const entries: Entry[] = picked.map((it) => {
+    // The ladder says what this item has earned; the shape may hold it gentler, never harder (set.ts underCap).
+    let kind = underCap(shapeFor(it, now), shape?.rungCap ?? null);
+    // Flying: where an item can already be produced, ask for it out loud instead of in writing.
+    if (shape?.pushSpoken && (kind === "write" || kind === "chips") && it.memory.state === "review") kind = "say";
+    return {
+      ex: exerciseFor(it, items, now, kind, sentences),
+      // A word never met is a recognition question, which is easy; anything else is what the scheduler thinks they hold.
+      ease: it.memory.state === "new" ? 0.72 : recall(it.memory, now),
+    };
+  });
   return order(entries);
 }
 

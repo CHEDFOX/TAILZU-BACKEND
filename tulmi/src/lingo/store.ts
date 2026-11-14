@@ -16,7 +16,7 @@ import { freshMemory } from "./schedule.js";
 import type { ItemKind, ItemSource, Learner, Level, LingoItem, MemoryState } from "./types.js";
 
 /** The tables an account owns, for deleting an account and their data. */
-export const LINGO_USER_TABLES = ["lingo_learners", "lingo_items"] as const;
+export const LINGO_USER_TABLES = ["lingo_learners", "lingo_items", "lingo_left"] as const;
 
 /** At most this many items a person a course. Past it the weakest unseen ones are dropped before more are added. */
 export const ITEMS_MAX = 5_000;
@@ -42,6 +42,22 @@ export interface LingoStore {
   /** Write back items that have just been answered. */
   save(userId: string, target: string, items: readonly LingoItem[], now: number): Promise<void>;
   forget(userId: string, target?: string): Promise<void>;
+  /**
+   * Why they stopped a language, kept as one line after the course has gone (migration 0092). An empty reason is a
+   * complete answer: it is what "Just clean up" means.
+   */
+  left(userId: string, row: Left): Promise<void>;
+}
+
+/** One line about a course somebody stopped. Counts only — not a word of what they were learning. */
+export interface Left {
+  target: string;
+  reason: string;
+  words: number;
+  learned: number;
+  streak: number;
+  days: number;
+  leftMs: number;
 }
 
 /** The thing itself, tidied the one way everything here agrees on, so the same word is never learned twice. */
@@ -102,6 +118,12 @@ export class MemoryLingoStore implements LingoStore {
     const pre = target === undefined ? `${userId}\u0000` : `${userId}\u0000${target}`;
     for (const k of [...this.learners.keys()]) if (k.startsWith(pre)) this.learners.delete(k);
     for (const k of [...this.rows.keys()]) if (k.startsWith(pre)) this.rows.delete(k);
+  }
+
+  readonly leftRows: (Left & { userId: string })[] = [];
+
+  async left(userId: string, row: Left): Promise<void> {
+    this.leftRows.push({ ...row, userId });
   }
 }
 
@@ -193,12 +215,22 @@ export class SupabaseLingoStore implements LingoStore {
   }
 
   async forget(userId: string, target?: string): Promise<void> {
-    for (const table of LINGO_USER_TABLES) {
+    // lingo_left is deliberately NOT cleared here: it outlives the course, which is the whole point of it. It goes
+    // with the account (cascade) and with "delete my data".
+    for (const table of ["lingo_items", "lingo_learners"] as const) {
       let q = this.db.from(table).delete().eq("user_id", userId);
       if (target !== undefined) q = q.eq("target", target);
       const { error } = await q;
       if (error) throw new Error(`${table} delete failed`);
     }
+  }
+
+  async left(userId: string, row: Left): Promise<void> {
+    const { error } = await this.db.from("lingo_left").insert({
+      user_id: userId, target: row.target, reason: row.reason.slice(0, 1000),
+      words: row.words, learned: row.learned, streak: row.streak, days: row.days, left_ms: row.leftMs,
+    });
+    if (error) throw new Error("lingo_left write failed");
   }
 }
 

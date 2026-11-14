@@ -295,7 +295,79 @@ When the bank holds no sentence for a word, **the ladder closes over the gap** a
 rather than showing a hole with nothing round it. A server with no bank at all never reaches this kind, and nothing
 breaks.
 
-## 13. What is built
+## 13. Sets, and learning that keeps going
+
+Learning is **continuous**, not a session that ends: a set of a dozen exercises, then what the bot makes of it, then
+Continue. Each set is built from the one before, so the difficulty follows the person instead of a tree. `set.ts`
+decides all of it, on the server.
+
+### How a set went, in four bands
+
+| | |
+| --- | --- |
+| **flying** | nearly all right, **and** some of it said out loud — speaking is what flying has to mean here |
+| **solid** | mostly right, little wrong |
+| **shaky** | more *close* than wrong: they nearly had it |
+| **struggling** | a lot wrong |
+
+Coarse on purpose. A person can feel the difference between four bands, and no honest reading of twelve answers
+supports more than that.
+
+### The celebration is scaled, and a bad set gets none
+
+| Performance | What the bot does | Scale |
+| --- | --- | --- |
+| flying | `celebrate`, the big one | 1 |
+| solid | `cheer()`, smaller | 0.5 |
+| shaky | settles. **No cheer** | 0.15 |
+| struggling | settles. **Nothing at all** | 0 |
+
+Confetti for everything is the commonest mistake in this kind of app. It makes the celebration worthless, and it
+tells somebody who has just failed half a set that they did well — which they can see is untrue. **The bot is warm
+about a bad set and does not lie about it.** A test asserts the scale never rises when the performance falls.
+
+### The next set follows the person
+
+`shapeNext()` returns the shape of what comes next, and the app asks for it rather than deciding anything:
+
+| | New words | Hardest allowed | |
+| --- | --- | --- | --- |
+| flying | 40% of the set | no cap | push for the spoken kinds |
+| solid | 25% | no cap | |
+| shaky | 10% | `blank` | not asked to produce what they nearly lost |
+| struggling | **none** | `listen` | and a shorter set |
+
+A cap only ever makes an exercise **gentler**, never harder (`underCap`). And the words that went wrong last set come
+back **first** in the next one, ahead of everything else due: they are the most recent evidence about this person,
+and a set that ignores them is not following them at all.
+
+### Mastery
+
+`mastery(items, now)` is what they can do, not a percentage of a course — there is no course to be a percentage of.
+It is how much of what they have met they would still have right now, how much they have ever **said**, and how much
+has crossed into learned, with **speaking weighted double** because it is the thing being taught.
+
+## 14. The territory, and leaving a language
+
+Coming back to Lingo does **not** drop somebody into where they left off. The first screen is a territory: a card per
+language they are learning, each with its progress, a **Continue** on it, and **Add a language** beside them. Several
+at once, by choice. `GET /v1/lingo/courses` carries `progress` and `mastery` per course, so the territory draws from
+one call.
+
+**Leaving one** is a bin icon on its card. It opens a card with a box to write why, and a button that says **Just
+clean up** — which removes it with no reason given, because a person who does not want to explain themselves must
+not be made to.
+
+`DELETE /v1/lingo/course/:target` takes an optional `reason`. The course and every word of it go; one line is kept
+(`lingo_left`, migration 0092) with the reason and the counts they had reached, so a reason can be read against
+something — a language given up in week one is not the same as one given up at two hundred words. Not one word of
+what they were learning is kept. And writing that line is never allowed to stop the removal: somebody who asked to
+be rid of a language is rid of it whether or not the note got written.
+
+Why keep it at all: **why people stop is the most useful thing a learning app can be told, and the one thing it is
+never told**, because stopping is silent.
+
+## 15. What is built
 
 Built, tested and typechecked: the tables, the shapes (`types.ts`), the scheduler (`schedule.ts`), the marking
 (`grade.ts`), what is kept (`store.ts`), a session (`session.ts`), the chat's knowledge (`digest.ts`), the doors
@@ -314,8 +386,8 @@ the items come from the model and from use: `source` records which, and the tabl
 actually reaches for. A word list for a particular pair can be poured in later where one exists, but nothing waits
 on it and no pair is anybody's first.
 
-## 14. Tests
+## 16. Tests
 
 `lingo-schedule.test.ts`, `lingo-grade.test.ts`, `lingo-session.test.ts`, `lingo-order.test.ts` and
-`lingo-sentences.test.ts` and `lingo-languages.test.ts` are pure: no store, no model, no clock of their own, and nothing in them needs a key.
+`lingo-sentences.test.ts` and `lingo-languages.test.ts` and `lingo-set.test.ts` are pure: no store, no model, no clock of their own, and nothing in them needs a key.
 `lingo-routes.test.ts` runs the real routes over the memory store.
