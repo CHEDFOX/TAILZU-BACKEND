@@ -1713,6 +1713,28 @@ export type ActionSpec =
       onEnded?: ActionRef; onIdle?: ActionRef; onFallback?: ActionRef; onBlocked?: ActionRef }
   /** VOICE_REALTIME_CAPABILITY. warm: get the mic and the offer ready while the call is answered (only if mic permission is already granted). */
   | { kind: "voiceCallSet"; op: "warm" | "end" }
+  // --- one of our own calls, block `call` (src/rooms, docs/rooms.md) ---
+  /**
+   * Block `call`. Take a seat in a call and hold it for this screen. The app opens its microphone (and its camera when `video`), makes
+   * an offer, and POSTs `{ sdp, audioMid, videoMid? }` to `join` — the host's `/v1/rooms/:id/join`, or a guest's
+   * `/v1/rooms/guest/:code/join` with `knock` added. It gets back a seat, sets the answer, and from then on runs the call by itself
+   * against `/v1/rooms/seat/{live,pull,answer,leave}`: the heartbeat every couple of seconds, pulling in whoever is new, answering the
+   * SFU, and dropping whoever left. The seat never reaches the screen's state.
+   *
+   * It writes into `statePath`: `{ phase: connecting | live | reconnecting | ended | failed, mic, cam, speaker, front (booleans),
+   * people: [{ identity, name, role, speaking, mic, cam }], waiting: [{ id, name }] (the host's own), me: { identity, name } }`. The
+   * screen's words, tiles and buttons are expressions over that, and `Caller` nodes draw the pictures.
+   *
+   * It ends on `live.leave`, on leaving the screen, or when the call ends or the seat is sent away (then `onEnd`). The app going to the
+   * background keeps the sound and stops the camera until it is back. `onBlocked`: no microphone permission. Failing to join or losing
+   * the call for good: phase `failed`, then `onError`.
+   */
+  | { kind: "call.join"; join: string; statePath: string; knock?: string; video?: boolean;
+      onEnd?: ActionRef; onBlocked?: ActionRef; onError?: ActionRef }
+  /** Block `call`. The call this screen holds: mic, cam or speaker on or off (`value`; without it, the other way), or flip the camera. */
+  | { kind: "call.set"; op: "mic" | "cam" | "speaker" | "flip"; value?: boolean }
+  /** Block `call`. Hang up, then the join's `onEnd`. */
+  | { kind: "call.leave" }
   // --- the phone's own things: where you are, one contact, your workouts ---
   /** Phone, LOCATION_CAPABILITY (docs: perms). One foreground fix, named by the phone's OS geocoder (which sends the point to
    *  Apple or Google, as part of the phone's own system); only the area's words reach `assignTo`. Asks the system first only
@@ -2492,7 +2514,7 @@ export const SDUI_VOCAB = 2;
 
 /** The closed list of block names, in the order of pure/SPEC.md 2.1. Mirrors kernel/blocks.ts BLOCKS exactly. */
 export const SDUI_BLOCKS = [
-  "expr", "defs", "rules", "device", "local", "paint", "motion", "gesture", "list", "input", "media", "data", "shell",
+  "expr", "defs", "rules", "device", "local", "paint", "motion", "gesture", "list", "input", "media", "data", "shell", "call",
 ] as const;
 
 export type BlockName = (typeof SDUI_BLOCKS)[number];
@@ -2762,6 +2784,25 @@ export interface VideoProps {
   tickMs?: number;
 }
 
+/**
+ * `Caller` (block `call`): one person in the call this screen holds, drawn from the call itself — their camera, or their name's first
+ * letter while it is off. `who` is "me", "speaker" (whoever is talking) or someone's `identity` as the call's state lists them.
+ *
+ * It draws nothing and takes no room until the call is up, so a tile can be laid out before anyone is in it.
+ */
+export interface CallerProps {
+  who: Val<string>;
+  /** Their own front camera shown as a mirror (true for "me"). */
+  mirror?: boolean;
+  fit?: "cover" | "contain";
+  radius?: number;
+  /** Behind the picture, and what a letter sits on while a camera is off. */
+  background?: string;
+  /** The letter's colour. */
+  nameColor?: string;
+  fontFamily?: string;
+}
+
 /** `Audio`: a sound, played by expo-audio. It draws its children; the player is behind them. */
 export interface AudioProps {
   source: string;
@@ -2804,6 +2845,7 @@ export const BLOCK_NODES: Record<string, readonly string[]> = {
   list: ["List", "Each"],
   input: ["Input"],
   media: ["Video", "Audio", "Camera"],
+  call: ["Caller"],
 };
 
 // --------------------------------------------------------------------------- 8i. paint on any box (`paint`)

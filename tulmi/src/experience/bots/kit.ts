@@ -16,7 +16,7 @@
  *   - images are { url } sources inside a sized box (`picture()`), so neither client guesses a size.
  *   - colour is only for bots (palette.ts). Errors, success and links are ink.
  */
-import type { ActionRef, ActionSpec, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, BlockName, BotBuddyProps, BotCardProps, BotTileKind, BotTileSpec, BotTilesProps, BuddyAct, Condition, Node, ScreenResponse, ThemeTokens } from "../../../../shared/types/sdui.js";
 import { BOT_BUDDY_COMPONENT, BOT_MOMENTS_CAPABILITY, BOT_TILES_STRIP, BOTS_MOTION_CAPABILITY, HOME_HEAD_COMPONENTS, SDUI_SCHEMA_VERSION } from "../../../../shared/types/sdui.js";
 import { idleSurprises, momentProps } from "./looks.js";
 import { LIVE_VIEW_COMPONENT, OUTBOX_CAPABILITY, type LiveViewProps } from "../../../../shared/types/sdui.js";
@@ -64,6 +64,12 @@ export interface BotsCtx {
   user: { id: string; name?: string; email?: string } | null;
   /** What the asking build can draw (capabilities.components). */
   can: ReadonlySet<string>;
+  /**
+   * The vocabulary-2 blocks this client really has (sdui2/gate.ts clientVocab), EMPTY while SDUI_V2 is off. A screen that wants one
+   * asks here first and builds the vocabulary-1 screen otherwise: a screen must never state `needs` for a block the asker lacks, or
+   * the gate sends them "Open X0 again" instead of the page (docs/renderer.md section 4).
+   */
+  blocks?: ReadonlySet<string>;
   /**
    * Which phone is asking. Absent (the window, a client that does not say) reads as iOS, as experience/screens.ts does.
    *
@@ -496,6 +502,9 @@ export const canCall = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.
  * client). Every other build — and every older binary — gets today's turn-by-turn call, byte for byte.
  */
 export const canRealtimeCall = (ctx: BotsCtx): boolean => canCall(ctx) && canVoice(ctx) && ctx.can.has(VOICE_REALTIME_CAPABILITY);
+/** This client has that vocabulary-2 block, and may be sent a screen that needs it (BotsCtx.blocks; empty while SDUI_V2 is off). */
+export const hasBlock = (ctx: BotsCtx, block: BlockName): boolean => !!ctx.blocks?.has(block);
+
 /** The window whose one key talks to the bot on screen while X0 is in front (ScreenResponse.talkTo). */
 export const canDeskTalk = (ctx: BotsCtx): boolean => ctx.client === "desktop" && canVoice(ctx) && ctx.can.has(DESK_TALK_TO_CAPABILITY);
 

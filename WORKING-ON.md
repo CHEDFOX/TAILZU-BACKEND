@@ -23,16 +23,16 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## In progress
 
-- **The `live` block (L1): joining a call from the apps** (calls, `docs/rooms.md`; started 14 Nov). The 14th block: take a seat in a
-  call, change the mic and camera, leave, the people in it written into state, and a `Live` node that draws one person's track. It is
-  JavaScript on the `react-native-webrtc` the app already links, so no native package and no runtime bump.
-  Holds: `TAILZU-BACKEND/shared/types/sdui.ts` (`SDUI_BLOCKS`, `LiveProps`, the three actions), `tulmi/src/experience/sdui2/{build,lint}.ts`,
-  `tulmi/src/rooms/**`, `tulmi/src/experience/bots/screens/bots/mailCalls.ts` and a new `callRoom.ts`;
-  `TAILZU-FRONTEND/app/src/sdui/blocks/live/**` (new), `components/index.ts`, `client/capabilities.ts`, `src/device/natives.ts`;
-  `TAILZU-DESKTOP/src/app/sdui/v2/**`.
 - Reviews of the pieces below may push small follow-up fixes to the same files.
 
 ## Landed 14 Nov 2026 (all switched off)
+
+- **Calls, end to end** (`docs/rooms.md`): our own video and audio calls from the mail bot, on Cloudflare's Realtime SFU, and the
+  **`call` block** (the 14th) that lets the apps be in one. Migration **0091**; settings `SFU_APP_ID` / `SFU_APP_SECRET` / `ROOM_*`,
+  all off, so nothing is drawn until the owner turns them on. The kernel's block list grew by one, so
+  `TAILZU-DESKTOP/src/app/sdui/kernel.js` and `TAILZU-BACKEND/shared/sdui/kernel.cjs` were regenerated
+  (`node src/sdui/kernel/genKernel.mjs`). `BotsCtx` now carries `blocks`, the vocabulary-2 blocks the asking client really has, so a
+  builder can tell before it writes a screen that states `needs`.
 
 - Screen vocabulary 2 connected: phone renderer wiring (`app/src/sdui/blocks/**`, Renderer, actions, state), the server's
   checker (`tulmi/src/experience/sdui2/**`, switch `SDUI_V2` / `SDUI_V2_USERS`) and the window (`src/app/sdui/v2/**`).

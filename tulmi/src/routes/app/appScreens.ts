@@ -40,7 +40,7 @@ import { markSeen } from "../../widgets/glanceStore.js";
 import { AUTH_RESUME_SCHEME_URL } from "../site/demo.js";
 import { noStoreSdui, clip, gzipLargeJson } from "../../http/helpers.js";
 import { getMediaRegistry } from "./media.js";
-import { serveScreen } from "../../experience/sdui2/gate.js";
+import { clientVocab, serveScreen } from "../../experience/sdui2/gate.js";
 
 export interface AppScreenRouteDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -516,6 +516,10 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         : emptyDeps();
       const screen = await buildBotsScreen({
         screenId: botsId, client: screenFormFactor, params: botsParams, tzOffsetMinutes: tz, can: comps,
+        // The vocabulary-2 blocks this client really has, so a builder can tell before it writes a screen that needs one
+        // (empty while SDUI_V2 is off). The same reading `serveScreen` gates with below.
+        blocks: new Set(clientVocab({ ...body.capabilities, platform: platformOf(body.capabilities?.platform) },
+          { client: screenFormFactor, ...(user ? { userId: user.id } : {}) }).blocks),
         ...(screenFormFactor === "desktop" ? {} : { platform: platformOf(body.capabilities?.platform) }),
         // The name they are greeted by: their own, else the one Google or Apple gave (botsFirstRun.ts greetingName).
         user: user ? { id: user.id, ...(greetingName(user, profile?.fullName) ? { name: greetingName(user, profile?.fullName) } : {}), ...(user.email ? { email: user.email } : {}) } : null,
