@@ -57,7 +57,12 @@ export function checkLaunch(spec: unknown): string[] {
   if (c.fade !== undefined && !(Number.isFinite(c.fade) && c.fade >= 0 && c.fade <= 2000)) errs.push("fade: ms, up to 2000");
   const macros = (c.macros ?? {}) as Record<string, [string[], string]>;
   if (typeof macros !== "object" || Array.isArray(macros)) errs.push("macros: name: [[parameters], body]");
-  const top = checkLets(c.let, NAMES.slice(), macros, errs, "launch").slice(NAMES.length);
+  // A launch's own lets are compiled AGAIN FOR EACH PART on the phone (launchCore.ts launchPart), with that part's own
+  // names already in its slots — so a top-level `let side` or `let i` has nowhere to go there and the app refuses the
+  // whole launch (launchCore.ts launchLets, "… is already a name here"). Checking them against NAMES alone let the
+  // server publish one the phone would then throw away, so every part's names are in the base here too.
+  const LET_BASE = [...NAMES, ...Object.values(PARTS).flatMap((p) => p.names)];
+  const top = checkLets(c.let, LET_BASE.slice(), macros, errs, "launch").slice(LET_BASE.length);
   for (const [p, { names, fields }] of Object.entries(PARTS)) {
     const body = (c as unknown as Record<string, unknown>)[p];
     if (body === undefined) continue;

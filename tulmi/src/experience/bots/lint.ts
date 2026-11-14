@@ -7,7 +7,7 @@
  * or Bricolage for a space's messages) or with a weight of its own or no line height, a border width with no colour, an image without a { url } source,
  * and a pressable inside a pressable (the window would run both; a BotStage's own press is on the bot, so its thought may hold buttons).
  */
-import type { Node } from "../../../../shared/types/sdui.js";
+import { BLOCK_NODES, type Node } from "../../../../shared/types/sdui.js";
 import { BRICOLAGE, FACE } from "./kit.js";
 
 /** Every node of a tree, depth first. */
@@ -27,14 +27,32 @@ const KIT_TYPES: ReadonlySet<string> = new Set([
   "HeadBar", "LiveView", "Rise", "MorphOut", "BlipWalkOut", "BotStage", "BotCrowd", "Vanish", "MentionField", "LiveWords", "PersonBot",
 ]);
 
+/**
+ * The vocabulary-2 nodes, and the block each one needs (shared/types/sdui.ts BLOCK_NODES, which mirrors the phone's
+ * v3Spec). They are NOT in KIT_TYPES: one is drawn only by a screen that states it needs that block, and only for a
+ * client that declared it (pure/SPEC.md 2.0 principle 2). A screen that sends one without saying so is refused here,
+ * because the clients that have no blocks — every one of them today — would draw nothing in its place.
+ */
+const BLOCK_OF_TYPE: Readonly<Record<string, string>> = Object.freeze(
+  Object.fromEntries(Object.entries(BLOCK_NODES).flatMap(([block, types]) => types.map((t) => [t, block]))),
+);
+
 /** A BotStage's press is on the bot (his hit area), never on the thought it holds: a button in the box is not inside a pressable. */
 const PRESS_ON_ITSELF: ReadonlySet<string> = new Set(["BotStage"]);
 
-export function lintTree(root: Node): string[] {
+export interface LintOpts {
+  /** The screen's `needs` (ScreenResponse.needs). A block named here lets its own node types through. */
+  needs?: readonly string[];
+}
+
+export function lintTree(root: Node, opts: LintOpts = {}): string[] {
   const bad: string[] = [];
   const faces = new Set<string>([...Object.values(FACE), ...Object.values(BRICOLAGE)]);
+  const needs = new Set(opts.needs ?? []);
   const visit = (n: Node, pressed: boolean) => {
-    if (!KIT_TYPES.has(n.type)) bad.push(`type ${n.type}`);
+    const block = BLOCK_OF_TYPE[n.type];
+    if (block) { if (!needs.has(block)) bad.push(`type ${n.type} needs the ${block} block in the screen's needs`); }
+    else if (!KIT_TYPES.has(n.type)) bad.push(`type ${n.type}`);
     const st = (n.style ?? {}) as Record<string, unknown>;
     if (n.type === "Text") {
       const what = `text "${String(n.props?.content ?? "").slice(0, 30)}"`;
@@ -49,7 +67,14 @@ export function lintTree(root: Node): string[] {
     if (n.type === "Image" && !(n.props?.source as { url?: string } | undefined)?.url) bad.push("an image without a { url } source");
     const press = !!n.on?.onPress;
     if (press && pressed) bad.push(`a pressable inside a pressable (${n.type})`);
-    for (const c of n.children ?? []) visit(c, pressed || (press && !PRESS_ON_ITSELF.has(n.type)));
+    const inside = pressed || (press && !PRESS_ON_ITSELF.has(n.type));
+    for (const c of n.children ?? []) visit(c, inside);
+    // A row template and a Use's slots are drawn like any other node, so they are held to the same rules.
+    const item = n.props?.item as Node | undefined;
+    if (item && typeof item.type === "string") visit(item, inside);
+    for (const s of Object.values(n.slots ?? {})) for (const c of Array.isArray(s) ? s : [s]) {
+      if (c && typeof c.type === "string") visit(c, inside);
+    }
   };
   visit(root, false);
   return bad;
