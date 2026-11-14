@@ -44,11 +44,15 @@ them in. X0 Bot's apps join from a call screen that is server data like every ot
 1. **Start a call** on the mail bot's page (Calls). The call is made under the business's own name, as the mail worker has it. The person
    can't type another name, so a call can't claim to be someone else's. It opens on its screen with its link.
 2. **Share the link**: Copy, or Share. Later the mail bot puts it in its replies with a calendar invite (section 10).
-3. **Someone takes a seat.** Their app opens its microphone and camera, makes an offer, and sends it with the mids its own tracks are on.
-   We make their SFU session, publish those tracks, and hand back the answer and a **seat**.
-4. **They pull each other in.** The seat's heartbeat says who else is in the call and what each is sending; the app asks for the tracks it
+3. **Someone takes a seat.** Their app asks for a seat, and that is all: we make their SFU session and hand the seat back.
+   **Nothing is captured.** They walk in muted, with their camera off, so joining never opens a device or lights a camera.
+4. **They turn on what they want.** The microphone or the camera is opened at that moment and published then
+   (`/v1/rooms/seat/publish`), which is also the only time anything is asked of the device. The permissions themselves were granted
+   once, after onboarding, so turning one on just works. Turning the microphone off only mutes its track, so it comes back instantly;
+   turning the camera off really lets it go, because its light has to go out, and it comes back on the m-line it already has.
+5. **They pull each other in.** The seat's heartbeat says who else is in the call and what each is sending; the app asks for the tracks it
    does not have yet, answers the SFU's offer, and draws them.
-5. **End the call for everyone** (on a second yes): the seats go, the lobby empties, and the link stops working. A call nobody ends keeps
+6. **End the call for everyone** (on a second yes): the seats go, the lobby empties, and the link stops working. A call nobody ends keeps
    its link: people can come back to it. It is ended after 30 days unused.
 
 | Status | |
@@ -90,7 +94,7 @@ Every screen is the server's, drawn by both apps (`experience/bots/screens/bots/
 * **Calls on the mail page**: Start a call, and the latest three calls (on now, someone waiting, when it was last on). Shown only while
   calls are switched on and the business is the person's to call from (their own, or a member's as their space's admin; never addresses
   given to them).
-* **One call** (`bots.mail.call`, params `b`, `r`): who waits, with Let in and Not now; who is in, a guest with Remove; the link with Copy
+* **One call** (`bots.mail.call`, params `b`, `r`): **Join the call** (one way in: everyone arrives muted and dark); who waits, with Let in and Not now; who is in, a guest with Remove; the link with Copy
   and Share; "Ask before letting people in"; End the call for everyone. A push that someone waits opens it. It is read again as people come
   and go (live topic `room:<id>`). Joining from the app says it comes with the app's next update.
 
@@ -100,8 +104,8 @@ say goes into the vocabulary as data every screen can use, never a component for
 
 | Piece of `call` | What it is |
 | --- | --- |
-| `call.join` | take a seat: the app opens its microphone (and camera), makes an offer, POSTs it to the join path, sets the answer, and from then on runs the call itself against the four seat routes |
-| `call.set`, `call.leave` | the mic, the camera, the speaker and the facing; hang up |
+| `call.join` | take a seat and run the call from then on against the seat's routes. It opens no device: the person arrives muted and dark |
+| `call.set`, `call.leave` | the mic, the camera, the speaker and the facing; hang up. Turning the mic or the camera on is what opens that device and publishes it |
 | What it writes into `statePath` | `phase`, `mic`, `cam`, `speaker`, `front`, `me`, `people` (each with `speaking`, `mic`, `cam`) and `waiting`. Every word, tile and button on the call screen is an expression over that |
 | `Caller`, a node | one person's picture, or the first letter of their name while their camera is off. `who` is "me", "speaker" or an identity, so a grid is `Each` over `state.c.people` with a `Caller` inside and the layout stays the server's |
 
@@ -115,6 +119,13 @@ Where it lives:
 | The phone | `TAILZU-FRONTEND/app/src/sdui/call/`: `callCore.ts` the arithmetic, `session.ts` the one file that names the live client, `Caller.tsx`, `holder.ts` (one call at a time), `index.ts` (the block and the three actions) |
 | The window | `TAILZU-DESKTOP/src/app/sdui/v2/call.js`, the same loop in the window's own style |
 | The screen | `tulmi/src/experience/bots/screens/bots/callRoom.ts` (`bots.mail.room`), a vocabulary-2 screen that states `needs` |
+
+* **In a call** (`bots.mail.room`, params `b`, `r`): the tiles, who waits with Let in, and Mute, Camera, Flip and Speaker (the phone),
+  Share screen (the window), Hang up. The mic and camera buttons read the call's own state, so each says what it will do next.
+
+**The permissions are not asked for here.** The microphone and the camera are granted once, with the rest, on the card that follows
+onboarding. A call never puts a permission card in the way: if a device cannot be reached at all, the screen says so in a line and the
+call carries on without it.
 
 **Why this needs no second copy of WebRTC.** The SFU asks for nothing a browser has that React Native does not: `addTransceiver` with a
 direction, offer and answer, `ontrack` carrying its transceiver, `mid`, `getStats`, data channels with `negotiated` and an `id`, and ICE
@@ -152,7 +163,7 @@ The host's (signed in, theirs alone: a call that is not theirs is `404`). The ma
 | `POST /v1/mail/businesses/:id/calls` | `{ title? }`: a call under the business's name (`201 { call }`) |
 | `GET /v1/rooms/:id` | one call: who is in, who waits |
 | `PUT /v1/rooms/:id` | `{ lobby?, title? }` |
-| `POST /v1/rooms/:id/join` | `{ sdp, audioMid, videoMid? }` -> `201 { seat, identity, name, host, room, answer, people }` |
+| `POST /v1/rooms/:id/join` | nothing -> `201 { seat, identity, name, host, room, people }`. No offer: joining captures nothing |
 | `POST /v1/rooms/:id/admit`, `/deny` | `{ knock }` |
 | `POST /v1/rooms/:id/remove` | `{ identity }`: a guest sent away (never the host) |
 | `POST /v1/rooms/:id/end` | ended for everyone |
@@ -164,12 +175,13 @@ The link's (public; a code that cannot be one is the same `404` as a code of no 
 | `GET /v1/rooms/guest/:code` | `{ room: { title, host, status, lobby, full } }` |
 | `POST /v1/rooms/guest/:code/knock` | `{ name }` -> `{ knock, state }` |
 | `GET /v1/rooms/guest/:code/knock/:key` | `{ knock, state: waiting \| admitted \| denied \| gone }` |
-| `POST /v1/rooms/guest/:code/join` | `{ knock, sdp, audioMid, videoMid? }` -> the same seat as above |
+| `POST /v1/rooms/guest/:code/join` | `{ knock }` -> the same seat as above |
 
 The seat's (the seat is the whole credential):
 
 | Route | |
 | --- | --- |
+| `POST /v1/rooms/seat/publish` | `{ seat, sdp, audioMid?, videoMid? }` -> `{ answer }`: a microphone or camera turned on |
 | `POST /v1/rooms/seat/pull` | `{ seat, want: [{ identity, kind }] }` -> `{ offer, mustAnswer, tracks }` |
 | `POST /v1/rooms/seat/answer` | `{ seat, sdp }` |
 | `POST /v1/rooms/seat/live` | `{ seat, audio?, video? }` -> `{ status, people, waiting?, gone? }`. The heartbeat |

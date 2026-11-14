@@ -7,7 +7,7 @@
  *   make(user, { title, host, businessId? })   a room and its link (the mail bot's routes make its calls, with the business's name)
  *   list(user, { businessId? })                newest first
  *   room(user, id)                             one, with who is in and who waits
- *   join(user, id, { sdp, … })                 the host takes a seat: their offer in, the answer out
+ *   join(user, id)                             the host takes a seat (no microphone, no camera: see below)
  *   admit(user, id, knock) / deny(...)         someone at the door let in, or not
  *   remove(user, id, identity)                 someone sent away: their seat goes, so nobody pulls them any more
  *   set(user, id, { lobby?, title? })          the lobby turned off lets in whoever waits
@@ -17,14 +17,19 @@
  *   guest(code)                  what it shows first: whose call, its title, whether it is on and full
  *   knock(code, name)            asks to come in -> waiting (the host is told), or let in at once when the lobby is off
  *   knockAnswer(code, key)       waiting, let in, not let in, or gone
- *   joinAsGuest(code, key, …)    a guest that was let in takes a seat
+ *   joinAsGuest(code, key)       a guest that was let in takes a seat
  *
  * A SEAT is one person in one call: their session at the SFU, the tracks they send, and a bearer their app holds (kept only as a hash).
  * Everything after joining is the seat's, and needs nothing else:
+ *   turnOn(seat, …)    their microphone or camera turned on for the first time: that track published, the answer back
  *   pull(seat, want)   someone else's tracks into their session -> the SFU's offer, when it sends one
  *   answer(seat, sdp)  the answer to that offer
  *   live(seat)         every couple of seconds: who is in, who waits, and whether they are still in the call. This is the heartbeat
  *   leave(seat)        hung up
+ *
+ * NOTHING IS CAPTURED BY JOINING. A seat starts with no tracks of its own: the person hears and sees the others, and their own
+ * microphone and camera stay shut until they turn one on. The permissions were asked for once, after onboarding, so turning one on asks
+ * nothing and opens nothing before it is wanted — and walking into a call never lights a camera.
  *
  * WHY THERE IS NO WEBHOOK. The SFU knows nothing of rooms: it moves tracks between sessions, and which sessions belong together is ours.
  * So presence is not something we are told, it is something we hold: a seat that stops calling `live` for 20 seconds is dropped by the
@@ -207,10 +212,10 @@ export class RoomService {
   }
 
   /** The host takes a seat. Their name in the call is theirs ("Aanya"), else the room's host ("Leaf & Co"). */
-  async join(userId: string, id: string, o: JoinInput & { name?: string }): Promise<SeatView | null> {
+  async join(userId: string, id: string, o: { name?: string } = {}): Promise<SeatView | null> {
     const r = await this.mine(userId, id);
     if (!r) return null;
-    return this.take(r, { identity: hostIdentity(userId), name: cleanName(o.name) || r.host, role: "host" }, o);
+    return this.take(r, { identity: hostIdentity(userId), name: cleanName(o.name) || r.host, role: "host" });
   }
 
   async admit(userId: string, id: string, knockId: string): Promise<RoomView | null> {
@@ -312,13 +317,13 @@ export class RoomService {
   }
 
   /** A guest that was let in takes their seat. The knock's key is what proves it, and it is spent: one knock, one seat. */
-  async joinAsGuest(rawCode: string, key: string, o: JoinInput): Promise<SeatView | null> {
+  async joinAsGuest(rawCode: string, key: string): Promise<SeatView | null> {
     const r = await this.byCode(rawCode);
     if (!r) return null;
     const k = this.lobby.byKey(key);
     if (!k || k.roomId !== r.id || k.state !== "admitted") throw new RoomsError(403, "You haven't been let into this call yet.", "room_wait");
     if (this.fresh(r).people.some((s) => s.identity === k.identity)) throw new RoomsError(409, "You are already in this call.", "room_twice");
-    return this.take(r, { identity: k.identity, name: k.name, role: "guest" }, o);
+    return this.take(r, { identity: k.identity, name: k.name, role: "guest" });
   }
 
   // ------------------------------------------------------------------------------------------------------------------- a seat's
@@ -481,28 +486,20 @@ export class RoomService {
   }
 
   /** Someone takes a seat: the SFU session made, their own tracks published, the seat written. */
-  private async take(r: Room, who: { identity: string; name: string; role: "host" | "guest" }, o: JoinInput): Promise<SeatView> {
+  private async take(r: Room, who: { identity: string; name: string; role: "host" | "guest" }): Promise<SeatView> {
     this.open(r);
-    const sdp = typeof o.sdp === "string" ? o.sdp : "";
-    if (!sdp || sdp.length > SDP_MAX) throw new RoomsError(400, "That call couldn't be started. Try again.", "bad_request");
-    if (!o.audioMid) throw new RoomsError(400, "That call couldn't be started. Try again.", "bad_request");
     const now = this.now();
     const fresh = this.fresh(r, now);
     const already = fresh.people.find((s) => s.identity === who.identity);
     if (!already && fresh.people.length >= this.maxPeople) throw full();
     await this.underCap(r.userId);
 
+    // NOTHING IS CAPTURED BY JOINING. The seat starts with a session and no tracks of its own: the person hears and sees the others,
+    // and their own microphone and camera stay shut until they turn one on (`turnOn`). So no light comes on for walking into a call.
     const sessionId = await this.sfu.newSession();
-    const tracks = [
-      { mid: o.audioMid, trackName: trackName(who.identity, "audio") },
-      ...(o.videoMid ? [{ mid: o.videoMid, trackName: trackName(who.identity, "video") }] : []),
-    ];
-    const answer = await this.sfu.publish(sessionId, { type: "offer", sdp }, tracks);
-
     const seat = newSeat(r.id);
     const mine: Seat = {
       identity: who.identity, seatHash: seatHash(seat), sessionId, name: who.name, role: who.role,
-      audio: trackName(who.identity, "audio"), ...(o.videoMid ? { video: trackName(who.identity, "video") } : {}),
       since: already?.since ?? now, seen: now,
     };
     // Someone joining again (the app was killed and reopened) replaces their own seat; the old session is left to die at the SFU.
@@ -512,9 +509,37 @@ export class RoomService {
     return {
       seat, identity: mine.identity, name: mine.name, host: who.role === "host",
       room: { id: r.id, title: r.title, host: r.host },
-      answer: answer.sdp,
       people: saved.people.filter((s) => s.identity !== who.identity).map(personOf),
     };
+  }
+
+  /**
+   * The person turned their microphone or camera on for the first time: that track is published now, and only now. The app sends the
+   * offer its new transceiver made; the answer comes back. Turning the same one on again later needs none of this — the track is
+   * already there, and the heartbeat's `audio` / `video` is what says whether anyone may pull it.
+   */
+  async turnOn(seat: string, o: { sdp: string; audioMid?: string; videoMid?: string }): Promise<{ answer: string }> {
+    return this.locked(seat, async () => {
+      const { room, me } = await this.seatOf(seat);
+      const sdp = typeof o.sdp === "string" ? o.sdp : "";
+      if (!sdp || sdp.length > SDP_MAX) throw new RoomsError(400, "That couldn't be turned on. Try again.", "bad_request");
+      const tracks = [
+        ...(o.audioMid ? [{ mid: o.audioMid, trackName: trackName(me.identity, "audio") }] : []),
+        ...(o.videoMid ? [{ mid: o.videoMid, trackName: trackName(me.identity, "video") }] : []),
+      ];
+      if (!tracks.length) throw new RoomsError(400, "That couldn't be turned on. Try again.", "bad_request");
+      const answer = await this.sfu.publish(me.sessionId, { type: "offer", sdp }, tracks);
+      // What they are sending now. The heartbeat carries it to everyone else, who then pull it.
+      const next: Seat = {
+        ...me,
+        ...(o.audioMid ? { audio: trackName(me.identity, "audio") } : {}),
+        ...(o.videoMid ? { video: trackName(me.identity, "video") } : {}),
+        seen: this.now(),
+      };
+      const people = room.people.map((x) => (x.seatHash === me.seatHash ? next : x));
+      this.changed(await this.store.update(room.id, { people }) ?? { ...room, people });
+      return { answer: answer.sdp };
+    });
   }
 
   /** Seats taken out, and the room closed when that empties it. */
@@ -576,9 +601,6 @@ export class RoomService {
     };
   }
 }
-
-/** What an app sends to take a seat: its offer, and the mids its own microphone and camera are on. */
-export interface JoinInput { sdp: string; audioMid: string; videoMid?: string }
 
 const full = (): RoomsError => new RoomsError(409, "The call is full.", "room_full");
 const gone = (): RoomsError => new RoomsError(404, "They're no longer waiting.", "not_found");

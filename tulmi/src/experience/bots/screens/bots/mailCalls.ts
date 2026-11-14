@@ -74,8 +74,8 @@ export function callsSection(ctx: BotsCtx, business: string, calls: RoomView[] |
 export type CallData = { room?: RoomView };
 
 /**
- * Joining. A client that has the `call` block (ROOM-side: the live client is in its binary) goes into the call's own screen
- * (callRoom.ts), with video or audio only. Every other build is told it comes with the app's next update — never a web page, and never
+ * Joining. A client that has the `call` block (the live client is in its binary) goes into the call's own screen (callRoom.ts), where
+ * it starts muted with its camera off. Every other build is told it comes with the app's next update — never a web page, and never
  * the screen itself, which the gate would answer with "Open X0 again" instead of a page (docs/renderer.md section 4).
  */
 function joinButtons(ctx: BotsCtx, b: string, r: RoomView): Node[] {
@@ -83,10 +83,8 @@ function joinButtons(ctx: BotsCtx, b: string, r: RoomView): Node[] {
   if (!hasBlock(ctx, "call")) {
     return [notice("Joining from X0 Bot comes with the app's next update. Your link is ready to share now.", { mark: "phone" })];
   }
-  return [row([
-    primaryButton("Join with video", openRoom(b, r.id, true), { size: "md" }),
-    secondaryButton("Audio only", openRoom(b, r.id, false), { size: "md" }),
-  ], { gap: 8, flexWrap: "wrap" })];
+  // One way in: everyone joins muted and dark, and turns on what they want once they are there.
+  return [primaryButton("Join the call", openRoom(b, r.id), { size: "md" })];
 }
 
 function linkCard(ctx: BotsCtx, r: RoomView): Node {
