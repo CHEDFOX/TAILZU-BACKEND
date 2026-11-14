@@ -30,6 +30,28 @@ look. The apps are renderers: build server data with the existing blocks and cat
   `tulmi/src/rooms/**`, `tulmi/src/experience/bots/screens/bots/mailCalls.ts` and a new `callRoom.ts`;
   `TAILZU-FRONTEND/app/src/sdui/blocks/live/**` (new), `components/index.ts`, `client/capabilities.ts`, `src/device/natives.ts`;
   `TAILZU-DESKTOP/src/app/sdui/v2/**`.
+- **Lingo, the language bot** (`docs/lingo.md`; started 13 Nov, switch `LINGO`, off). Learning a language by talking rather
+  than tapping. ON MAIN and tested, nothing user-visible: the scheduler (FSRS), marking done on the SERVER and never in the
+  app, the store, a session's seven kinds and the psychological order they are asked in, the shared sentence bank poured in
+  from a public corpus, the bot in the bots list, and six routes under `/v1/lingo/`.
+  Holds: `tulmi/src/lingo/**`, `tulmi/src/routes/bots/lingo.ts`, `tulmi/scripts/lingo-seed.ts`, `tulmi/tests/lingo-*.test.ts`,
+  migrations **0087** and **0089**; small edits made in `bots/builtin.ts`, `bots/run.ts`, `config.ts`, `server.ts`,
+  `routes/account/account.ts`.
+  Next: its screens. They will be **vocabulary 1**, for the reason in the note below about the drawings — a lesson must never
+  answer "Open X0 again" — so no new block and no release.
+  Also next, as DATA in `shared/bots/looks.json`: Lingo's `l.*` moments. The design is **one gesture per grader reason**, so the
+  movement carries the information instead of sentiment — `l.accent` plucks the missing accent out of the air and sets it over
+  the word, `l.swap` spits the wrong letter out and catches the right one, `l.shuffle` swaps two `card` props hand to hand for
+  the right words in the wrong order, `l.mouthit` mouths the right word enormously slowly (no shake, no buzz: the bot's own
+  rule is never to be sarcastic about a mistake), `l.earcup` cups a `palm` to its ear when nothing was heard. Idling:
+  `l.hum` (the `note` parts), `l.mutter`, `l.tongue`. Two new parts wanted, an accent stroke and a letter tile, one `draw`
+  path each. The figure itself is unchanged — Blip, like every bot; only the colour and the movements differ.
+  **Two things I need from whoever owns the design:** (1) Lingo has no colour of its own. The palette's eight are all taken by
+  built-ins and `stone`, which I gave it, is also `botLook`'s FALLBACK for every bot a person makes, so Lingo looks like a
+  generic bot. It wants a ninth colour. (2) While checking that I found `bots/builtin.ts` and `experience/bots/palette.ts`
+  DISAGREE about the four shipped bots' colours (builtin says Xode pine / Keylessbord ochre / Plan sea / Travel clay;
+  palette.ts says moss / clay / ochre / sea), and `oracle`, `meet` and `lingo` have no `palette.ts` entry at all, so they fall
+  through to the fallback colour and the `spark` icon. Not mine to pick; say which is right and I will fix it in one commit.
 - Reviews of the pieces below may push small follow-up fixes to the same files.
 
 ## Landed 14 Nov 2026 (all switched off)
@@ -53,7 +75,7 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## Numbers in use
 
-- Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days. Take the next free number and
+- Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days, 0091 rooms. Next free: **0092**. Take the next free number and
   check `git log origin/main -- tulmi/supabase/migrations` first: two sessions have collided twice today.
 - Phone runtime: `tailzu-2026-11-x0-blip`. Do not change it.
 
