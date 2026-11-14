@@ -28,6 +28,9 @@ import {
 } from "../../../../shared/types/sdui.js";
 import { FONT_BRICOLAGE_CAPABILITY, PERSON_BOT_COMPONENT, type PersonBotProps } from "../../../../shared/types/sdui.js";
 import { BOT_CALL_CAPABILITY, VOICE_REALTIME_CAPABILITY } from "../../../../shared/types/sdui.js";
+import { CONTACT_PICK_CAPABILITY, HEALTH_CAPABILITY, LOCATION_CAPABILITY } from "../../../../shared/types/sdui.js";
+import { getConfig } from "../../config.js";
+import { healthAllowed } from "../../bots/healthGate.js";
 import { blipLoopFor, type BlipPose } from "./art.js";
 import { blipSize, blipUrl as blipLoopUrl } from "../blipLoops.js";
 import { icon, peekKey, statusMark, tabGlyph, tailzuMark, type IconName, type Mark, type TabId } from "./glyphs.js";
@@ -61,6 +64,13 @@ export interface BotsCtx {
   user: { id: string; name?: string; email?: string } | null;
   /** What the asking build can draw (capabilities.components). */
   can: ReadonlySet<string>;
+  /**
+   * Which phone is asking. Absent (the window, a client that does not say) reads as iOS, as experience/screens.ts does.
+   *
+   * Only for a decision the server must make, not for words on a screen: a card that says "Apple Health" on one and "Health
+   * Connect" on the other uses `visibleIf: { platform }`, so iOS and Android are sent the same bytes.
+   */
+  platform?: "ios" | "android";
   /** The window's own pages that exist for it (the desk: Today, Notes, its settings). */
   desk: { pages: boolean; notes: boolean };
   tzOffsetMinutes: number;
@@ -488,6 +498,41 @@ export const canCall = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.
 export const canRealtimeCall = (ctx: BotsCtx): boolean => canCall(ctx) && canVoice(ctx) && ctx.can.has(VOICE_REALTIME_CAPABILITY);
 /** The window whose one key talks to the bot on screen while X0 is in front (ScreenResponse.talkTo). */
 export const canDeskTalk = (ctx: BotsCtx): boolean => ctx.client === "desktop" && canVoice(ctx) && ctx.can.has(DESK_TALK_TO_CAPABILITY);
+
+/**
+ * THE THREE THINGS ONLY A STORE BUILD'S PHONE CAN DO (docs: perms). Each is declared by the phone's own check that the native
+ * module is there, so an over-the-air update on an older binary declares none of them and no screen draws the button.
+ *
+ * The window never gets any of them: nothing here is drawn for `ctx.client === "desktop"`, so window renders are unchanged.
+ */
+/** "Use my location" on the day-starts card: one foreground fix, named by the phone's own geocoder. */
+export const canLocate = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(LOCATION_CAPABILITY) && permOn("PERM_LOCATION");
+/** "Add from contacts" on the invite screens: the system's own picker, no permission. */
+export const canPickContact = (ctx: BotsCtx): boolean => ctx.client === "phone" && ctx.can.has(CONTACT_PICK_CAPABILITY) && permOn("PERM_CONTACT_PICK");
+/**
+ * The fitness bot's "Count my workouts" row. Apple Health on iPhone (PERM_HEALTH_IOS), Health Connect on Android
+ * (PERM_HEALTH_ANDROID, which also has an account list for the stage while Google's own list is still propagating: Play's review
+ * account and our test accounts reach the row, nobody else does).
+ */
+export function canHealth(ctx: BotsCtx): boolean {
+  if (ctx.client !== "phone" || !ctx.can.has(HEALTH_CAPABILITY)) return false;
+  return healthAllowed(ctx.platform === "android" ? "android" : "ios", ctx.user?.id);
+}
+
+/** A launch-dark switch: off unless its own PERM_* is on. */
+const permOn = (key: "PERM_LOCATION" | "PERM_CONTACT_PICK"): boolean => getConfig()[key] === true;
+
+/**
+ * IS THE FEATURE LIVE FOR THIS PERSON AT ALL, whatever they are reading on? Not the same question as `canLocate` and its
+ * two neighbours, which ask whether to draw a BUTTON on this phone. These ask whether to say the feature exists — the
+ * words on You › Privacy, which the window shows too. With the switches off (every production binary before the store
+ * build is out, and the window always) Privacy must not describe three things the person cannot do.
+ */
+export const locationLive = (): boolean => permOn("PERM_LOCATION");
+export const contactPickLive = (): boolean => permOn("PERM_CONTACT_PICK");
+/** Either platform's health switch, weighed against this account's own list, because Privacy is read on any client. */
+export const healthLive = (ctx: BotsCtx): boolean =>
+  healthAllowed("ios", ctx.user?.id) || healthAllowed("android", ctx.user?.id);
 
 /** Where a stage's own actions go. They run from his hit area only, never from a press inside his thought. */
 export interface StageOn { onPress?: ActionRef; onDoubleTap?: ActionRef; onDismiss?: ActionRef }
@@ -1173,6 +1218,12 @@ export interface PageOpts {
   dock?: Node[];
   /** The window's one key talks to this screen's bot (only for canDeskTalk; every other build gets none). */
   talkTo?: TalkTo;
+  /**
+   * Never kept on the device: `cacheTtlSeconds: 0`, whatever the screen id would otherwise get. The phone writes every page with a
+   * cache time to AsyncStorage, which goes into the device backup, so a page that draws something that must not be backed up (a
+   * bot's health numbers) passes this. Per page, not per screen id: the same screen for a bot with health off is kept as before.
+   */
+  keep?: false;
 }
 
 /** A phone whose build pulls a bot in its pull to refresh (PULL_BOT_CAPABILITY). */
@@ -1221,7 +1272,8 @@ function response(ctx: BotsCtx, o: PageOpts, root: Node): ScreenResponse {
     // Kept, but stale after a second: a page opened before shows at once from what the phone kept and is fetched again
     // behind it (SduiApp's show-then-revalidate), so nothing waits on the network twice and nothing stays stale. At 0 the
     // phone kept nothing, every tap waited on the server, and even the tabs it warmed at launch were thrown away.
-    hideChrome: true, look: "bots", theme: BOTS_THEME, cacheTtlSeconds: NEVER_KEPT.test(ctx.screenId) ? 0 : STEADY.test(ctx.screenId) ? STEADY_SECONDS : 1,
+    hideChrome: true, look: "bots", theme: BOTS_THEME,
+    cacheTtlSeconds: o.keep === false || NEVER_KEPT.test(ctx.screenId) ? 0 : STEADY.test(ctx.screenId) ? STEADY_SECONDS : 1,
     state: { ask: "", asking: false, ...(o.state ?? {}) }, ...(o.actions ? { actions: o.actions } : {}), root,
     ...(o.live?.length ? { liveTopics: o.live } : {}),
     ...(pullBot ? { pullBot } : {}),

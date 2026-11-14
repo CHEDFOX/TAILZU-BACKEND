@@ -40,6 +40,7 @@ import { markSeen } from "../../widgets/glanceStore.js";
 import { AUTH_RESUME_SCHEME_URL } from "../site/demo.js";
 import { noStoreSdui, clip, gzipLargeJson } from "../../http/helpers.js";
 import { getMediaRegistry } from "./media.js";
+import { serveScreen } from "../../experience/sdui2/gate.js";
 
 export interface AppScreenRouteDeps {
   rateLimit: { rateLimit: { max: number; timeWindow: number } };
@@ -455,6 +456,11 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         /** What this bundle can render. Absence is the only honest signal that a
          *  screen needing something new must not be sent to it. */
         components?: string[];
+        /** Vocabulary 2 (shared/types/sdui.ts section 8): the kernel, the blocks this build really has, and the
+         *  binary's runtime, which tells "open X0 again" from "update X0". Absent on every build before V1. */
+        vocab?: number;
+        blocks?: string[];
+        runtime?: string;
       };
     };
     const screenId = body.screenId;
@@ -510,11 +516,17 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
         : emptyDeps();
       const screen = await buildBotsScreen({
         screenId: botsId, client: screenFormFactor, params: botsParams, tzOffsetMinutes: tz, can: comps,
+        ...(screenFormFactor === "desktop" ? {} : { platform: platformOf(body.capabilities?.platform) }),
         // The name they are greeted by: their own, else the one Google or Apple gave (botsFirstRun.ts greetingName).
         user: user ? { id: user.id, ...(greetingName(user, profile?.fullName) ? { name: greetingName(user, profile?.fullName) } : {}), ...(user.email ? { email: user.email } : {}) } : null,
         desk: { pages: comps.has("DeskShell"), notes: comps.has("DeskNotes") },
       }, deps);
-      return reply.send(await localize(withControl(req, reply, screen, screenCtx(botsId)), profile?.language ?? "auto"));
+      // Vocabulary 2's one door: a screen that states `needs` is checked with the device's own compiler and
+      // served only to a client that declared every block it needs (experience/sdui2). A screen that says
+      // nothing comes back untouched, which is every screen today.
+      const gated = serveScreen(screen, { ...body.capabilities, platform: platformOf(body.capabilities?.platform) }, { client: screenFormFactor, ...(user ? { userId: user.id } : {}) });
+      if (gated.audit) req.log.info(gated.audit);
+      return reply.send(await localize(withControl(req, reply, gated.screen, screenCtx(botsId)), profile?.language ?? "auto"));
     }
 
     // Load per-screen aggregates only for the screens that need them.
@@ -746,7 +758,9 @@ export function registerAppScreenRoutes(app: FastifyInstance, deps: AppScreenRou
     if (!screen) {
       return reply.code(404).send({ code: "bad_request", message: `Unknown screen '${screenId}'` });
     }
-    return reply.send(await localize(withControl(req, reply, screen, screenCtx(screenId)),
+    const gatedOld = serveScreen(screen, { ...body.capabilities, platform: platformOf(body.capabilities?.platform) }, { client: screenFormFactor, ...(user ? { userId: user.id } : {}) });
+    if (gatedOld.audit) req.log.info(gatedOld.audit);
+    return reply.send(await localize(withControl(req, reply, gatedOld.screen, screenCtx(screenId)),
       // The onboarding speaks the first language its Languages step saved, until
       // the profile says one (see onboardLanguage). Every other screen: the profile's.
       screenId === "onboard"

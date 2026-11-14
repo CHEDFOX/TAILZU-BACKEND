@@ -57,6 +57,31 @@ describe("the launch", () => {
     expect(errs.some((e) => e.startsWith("gloves: at most 32 names"))).toBe(true);
     expect(checkLaunch("x")).toEqual(["a launch: an object"]);
   });
+
+  it("refuses a top-level let named like a part's own name, as the app does", () => {
+    // The app compiles a launch's lets AGAIN FOR EACH PART, with that part's names already in its slots, so
+    // `let side` or `let i` makes it throw the whole launch away (launchCore.ts launchLets). Checking them
+    // against the common names alone let the server publish one no phone would play.
+    const small = { v: 1, length: 900, pinchAt: 400 };
+    for (const name of ["side", "cx", "half", "i", "n", "x", "d"]) {
+      // The name is said, as launchCore.ts says it, so whoever pushed the launch knows which let to rename.
+      expect(checkLaunch({ ...small, let: [["hundred", "100"], [name, "1"]] }), name)
+        .toContain(`launch.let: a new name and an expression (${name} is already a name here)`);
+    }
+    // A name of its own still works, and is still readable inside a part.
+    expect(checkLaunch({ ...small, let: [["hundred", "100"]], bar: { dy: "hundred * 0" } })).toEqual([]);
+    // A top-level FORMULA may read only the common names: the bar and the head have no `side` or `i`, so the app
+    // refuses `side * 0` there ("unknown name side") even though the gloves could compile it. Checked against the
+    // phone itself: launchCore.ts launchMotion refuses all seven and plays `t * 0` and `barTop * 0`.
+    for (const name of ["side", "cx", "half", "i", "n", "x", "d"]) {
+      expect(checkLaunch({ ...small, let: [["k", `${name} * 0`]] }).length, name).toBeGreaterThan(0);
+    }
+    for (const name of ["t", "barTop", "mid", "Z"]) {
+      expect(checkLaunch({ ...small, let: [["k", `${name} * 0`]] }), name).toEqual([]);
+    }
+    // And the file itself, whose lets are real, still passes.
+    expect(checkLaunch(launch())).toEqual([]);
+  });
 });
 
 describe("served, pushed and carried", () => {

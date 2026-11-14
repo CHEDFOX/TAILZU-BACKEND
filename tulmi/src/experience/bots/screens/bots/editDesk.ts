@@ -10,6 +10,7 @@ import {
 import {
   type BotPageData, write, enc, ifFilled, toast, refresh, A, clearState, inputBox, field, colourDot, labelledIcon, lookOf, chatTurns,
 } from "./parts.js";
+import { HEALTH_STATE, healthRows } from "./health.js";
 
 const ALL_COLOURS = ["moss", "clay", "ochre", "sea", "pine", "plum", "sand", "stone"] as const;
 /** The design gives the built-ins these colours (palette.ts), whatever src/bots calls them. */
@@ -56,7 +57,10 @@ export function editParts(_ctx: BotsCtx, d: EditData) {
   // Tailzu's own calendar and to-dos: always there, nothing to connect (the Google ones are no longer offered).
   for (const id of ["calendar", "tasks"]) if (!apps.has(id) && !apps.has(`google-${id}`)) apps.set(id, { name: id === "calendar" ? "Calendar" : "Tasks", sub: OWN_APP_LINE[id]!, on: false, connected: true });
   for (const a of d.apps ?? []) if (a.connected && !apps.has(a.id) && !NOT_OFFERED_APPS.has(a.id)) apps.set(a.id, { name: a.name, sub: a.oneLine ?? "Connected", on: linkedIds.has(a.id), connected: true });
-  const state: Record<string, unknown> = { name: bot.name, rule: "", s_web: bot.skills.web, s_files: bot.skills.files, s_listed: d.listed === true };
+  const state: Record<string, unknown> = {
+    name: bot.name, rule: "", s_web: bot.skills.web, s_files: bot.skills.files, s_listed: d.listed === true,
+    ...HEALTH_STATE, healthOn: bot.skills.health === true,
+  };
   const toolRows: Node[] = [
     switchRow("Search the web", "s_web", { sub: bot.skills.web ? "Finds and reads pages for you" : "Off · it never goes online", onChange: botPut(slug, { skills: { web: !bot.skills.web } }) }),
     switchRow("Your files", "s_files", { sub: bot.skills.files ? "Reads files you give it" : "Off · it never reads your files", onChange: botPut(slug, { skills: { files: !bot.skills.files } }) }),
@@ -64,6 +68,8 @@ export function editParts(_ctx: BotsCtx, d: EditData) {
       state[`a_${i}`] = a.on;
       return switchRow(a.name, `a_${i}`, { sub: a.sub, onChange: write(a.on ? "DELETE" : "PUT", `/v1/bots/${enc(slug)}/connectors/${enc(id)}`, undefined, { fail: "Couldn't change that app. Try again." }) });
     }),
+    // Apple Health / Health Connect, for a fitness bot the person made, on a phone that can read it (docs: perms §4.3).
+    ...healthRows(_ctx, bot),
   ];
   const memRows: Node[] = facts.map((f) => row([text(f.text, { size: 14, lineHeight: 19, style: { flexShrink: 1 } }), grow(), labelledIcon("close", write("DELETE", `/v1/bots/${enc(slug)}/memory/${enc(f.id)}`, undefined, { ok: "Forgotten" }), "Forget this")], { gap: 8, paddingVertical: 8, paddingLeft: 16, paddingRight: 8, minHeight: 44 }));
   const memory = memRows.length
@@ -110,6 +116,8 @@ export function editDesk(ctx: BotsCtx, d: EditData) {
   ], { flexGrow: 1, flexShrink: 1, minWidth: 0 });
   return page(ctx, {
     title: `Edit ${bot.name}`, nav: bot.slug, maxWidth: 1080, state: p.state,
+    // Same rule as the phone's edit page: a page that can draw the health row is never kept (docs: perms §4.6).
+    ...(bot.skills.health ? { keep: false as const } : {}),
     body: [
       row([
         col([

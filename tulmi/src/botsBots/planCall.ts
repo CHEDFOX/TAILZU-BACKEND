@@ -268,7 +268,7 @@ export class PlanCalls {
   private readonly consent: (userId: string) => Promise<boolean>;
   private log: Log;
   /** What the call's voice route reads aloud and the note of how a call began: the server's chat and voice (routes/bots/planCalls.ts). */
-  private chat: { note(userId: string, slug: string, text: string): Promise<void> } | null = null;
+  private chat: { note(userId: string, slug: string, text: string, o?: { quiet?: boolean }): Promise<void> } | null = null;
   private speak: ((user: AuthedUser, text: string) => Promise<CallAudio>) | null = null;
   /** The realtime session manager, when this build has one (routes/bots/planCalls.ts wires it). */
   private live: LiveCalls | null = null;
@@ -688,7 +688,7 @@ export class PlanCalls {
         await this.table.update({ id, user_id: user.id }, { opening: line });
         if (ai) {
           if (!rt) this.prepare(user, id, 0, line);
-          await this.chat?.note(user.id, "plan", line).catch(() => undefined);
+          await this.chat?.note(user.id, "plan", line, { quiet: true }).catch(() => undefined);
         }
       }
       opening = line;

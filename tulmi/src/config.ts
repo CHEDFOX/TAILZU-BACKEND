@@ -806,6 +806,21 @@ const EnvSchema = z.object({
   MEET_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(240),
   /** The language Recall's live transcript listens for (its recallai_streaming language_code). */
   MEET_LANGUAGE: z.string().trim().default("en"),
+  /**
+   * CALLS (src/rooms, docs/rooms.md): our own video and audio rooms. The mail bot's calls start here; a link (ROOM_LINK_ORIGIN/m/<code>)
+   * lets anyone in after the host lets them in, and X0 Bot's own apps join from a call screen built as server data. The media goes through
+   * Cloudflare's Realtime SFU: SFU_APP_ID is the Realtime app's id and SFU_APP_SECRET (SECRET: .env only) its App Secret, which never
+   * leaves this server — a phone never calls the SFU, it sends us its offer and we hand back the answer. Without both there are no calls
+   * anywhere. The SFU has no webhook and no idea of a room: who is in a call is ours to hold (rooms/service.ts).
+   */
+  SFU_APP_ID: z.string().trim().optional().transform((v) => v || undefined),
+  SFU_APP_SECRET: z.string().trim().optional().transform((v) => v || undefined),
+  /** Where a call's link points: <origin>/m/<code> (the website sends /m/* to this server). */
+  ROOM_LINK_ORIGIN: z.string().trim().default("https://x0bot.com"),
+  /** How many minutes of calls one person's rooms may hold, in any 24 hours (the SFU bills by the gigabyte that leaves it). */
+  ROOM_DAILY_MINUTES: z.coerce.number().int().min(10).max(1440).default(600),
+  /** How many people one call may hold, the host among them. */
+  ROOM_MAX_PEOPLE: z.coerce.number().int().min(2).max(50).default(10),
   R2_ACCOUNT_ID: z.string().trim().optional(),
   R2_ACCESS_KEY_ID: z.string().trim().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
@@ -830,6 +845,15 @@ const EnvSchema = z.object({
    * screens from node kinds the apps already draw, so turning it on needs no release. No language is built in; a course is a pair of tags.
    */
   LINGO: bool(false),
+  /**
+   * WHAT A BOT DRAWS UNDER ITS WORDS (src/show, docs/show.md): after a bot answers in the app's chat, one small call decides whether a choice to tap, a
+   * callout, the steps, a table, a chart, next questions or a drawing would help, and draws it from the building blocks the apps already draw (no
+   * release). An answer it would not help (a greeting, "Done.") is never asked about, and what it costs comes off the bot's request. Off by
+   * default (the words alone, as before); BOT_SHOW=true turns it on. BOT_SHOW_USERS, a comma-separated list of account ids, is the stage
+   * before that: while it has any name in it, only those accounts get drawings, even with BOT_SHOW on. Empty, the switch alone decides.
+   */
+  BOT_SHOW: bool(false),
+  BOT_SHOW_USERS: orDefault(""),
   /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which
@@ -1422,6 +1446,12 @@ const EnvSchema = z.object({
    *                        fallback act, and nothing names a scene
    *   BOTS_SCENES_USERS    a comma-separated list of account ids. Set, only those accounts get format 2 even with BOTS_SCENES
    *                        on (the owner's device checks, then internal accounts). Empty (the default): the switch decides
+   *   SDUI_V2              the screen vocabulary 2 (pure/SPEC.md section 2: expressions, templates, rules, motion, gestures,
+   *                        lists, inputs, media, paint, device facts, local values, data, shell). Off: no client is treated as
+   *                        having any block, so a screen that states `needs` is never served as one — a builder's sduiV2Live()
+   *                        check keeps drawing today's screen and nobody sees the "open X0 again" page
+   *   SDUI_V2_USERS        a comma-separated list of account ids. Set, only those accounts are served a vocabulary-2 screen,
+   *                        even with SDUI_V2 on. Empty (the default): the switch alone decides
    */
   NATIVE_LOOKS: bool(false),
   NATIVE_ACTIVITY: bool(false),
@@ -1431,6 +1461,45 @@ const EnvSchema = z.object({
   ANDROID_BOTS_NOTICE: bool(false),
   BOTS_SCENES: bool(false),
   BOTS_SCENES_USERS: orDefault(""),
+  SDUI_V2: bool(false),
+  SDUI_V2_USERS: orDefault(""),
+  /**
+   * THE PHONE'S OWN THINGS (docs: perms). Each is off, so a server deployed before the store build draws none of the three
+   * buttons, and an older binary that declares no capability would not get them anyway.
+   *
+   *   PERM_LOCATION            "Use my location" on Plan Ease's "Where does your day start?" card. Off: the card is today's,
+   *                            with the field alone
+   *   PERM_CONTACT_PICK        "Add from contacts" on a space's Invite page and on Spaces' start screen (the system's own
+   *                            picker, no permission). Off: the email field alone, as today
+   *   PERM_HEALTH_IOS          the fitness bot's "Count my workouts from Apple Health" row, on iPhone
+   *   PERM_HEALTH_IOS_USERS    a comma-separated list of account ids. Set, only those accounts get the row on iPhone, even
+   *                            with PERM_HEALTH_IOS on. Empty (the default) means the switch alone decides
+   *   PERM_HEALTH_ANDROID      the same row on Android, where it reads Health Connect. Stays off until Google has approved
+   *                            the Health Connect form and a build carries the library
+   *   PERM_HEALTH_ANDROID_USERS  the account list for the stage between the first Health Connect build and Google's own list
+   *                            reaching Health Connect: Play's review account and our test accounts reach the row (so the
+   *                            reviewer sees the screen the declaration is for), nobody else does
+   *
+   * The route that stores the days reads the same pair, so a row the server would not draw is a row the route refuses.
+   */
+  PERM_LOCATION: bool(false),
+  PERM_CONTACT_PICK: bool(false),
+  PERM_HEALTH_IOS: bool(false),
+  PERM_HEALTH_IOS_USERS: orDefault(""),
+  PERM_HEALTH_ANDROID: bool(false),
+  PERM_HEALTH_ANDROID_USERS: orDefault(""),
+  /**
+   * REPLYING TO A BOT FROM ITS NOTIFICATION (src/bots/notifyReply.ts, docs/widgets.md §5). Launch dark: off, so no push carries the
+   * new category and POST /v1/bots/:slug/notify-reply answers 404. Nothing on the phone changes either way.
+   *
+   *   NOTIFY_REPLY           the switch
+   *   NOTIFY_REPLY_USERS     a comma-separated list of account ids. Set, only those accounts get the Reply button and the route,
+   *                          even with NOTIFY_REPLY on. Empty (the default) means the switch alone decides
+   *   NOTIFY_REPLY_PER_HOUR  replies one person may send from notifications in an hour (the model runs for each)
+   */
+  NOTIFY_REPLY: bool(false),
+  NOTIFY_REPLY_USERS: orDefault(""),
+  NOTIFY_REPLY_PER_HOUR: z.coerce.number().int().min(1).max(500).default(20),
   /**
    * Shared secret for RevenueCat's webhook.
    *
@@ -2011,6 +2080,7 @@ export function getConfig(): AppConfig {
   if (Boolean(env.MAIL_WORKER_URL) !== Boolean(env.MAIL_WORKER_SECRET)) console.warn("[config] MAIL_WORKER_URL and MAIL_WORKER_SECRET go together: without both the mail bot is not among the bots.");
   if (env.MAIL_WORKER_SECRET && env.MAIL_WORKER_SECRET.length < 32) console.warn("[config] MAIL_WORKER_SECRET is under 32 characters. Use a long random value (openssl rand -hex 32), the same on the VPS and the worker.");
   if (env.RECALL_API_KEY && !env.RECALL_WEBHOOK_SECRET) console.warn("[config] RECALL_API_KEY without RECALL_WEBHOOK_SECRET: the meeting bot can join calls, but Recall's status webhook is refused (it cannot be checked). Add the workspace verification secret (whsec_…) from Recall's dashboard.");
+  if (Boolean(env.SFU_APP_ID) !== Boolean(env.SFU_APP_SECRET)) console.warn("[config] SFU_APP_ID and SFU_APP_SECRET go together: without both there are no calls.");
 
   // Bots: a pepper that is missing or short makes keys that a leaked table could be tested against. Warned, not refused: the rest of the server is unaffected.
   if (env.BOTS) {

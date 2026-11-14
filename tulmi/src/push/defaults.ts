@@ -125,6 +125,16 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.code_minutes_low.enabled": true,
     "push.code_minutes_low.screenId": "home",
 
+    // A bot that said something worth an answer, and its answer to a reply typed into a notification (src/bots/notifyReply.ts,
+    // docs/widgets.md §5). Both open the chat with that bot (data.slug, data.thread). The Reply button's category is NOT set here:
+    // the sender puts it on each push while NOTIFY_REPLY is on for that person, so nothing carries it while the switch is off.
+    "push.bot_ask.enabled": true,
+    "push.bot_ask.screenId": "bots.chat",
+    "push.bot_ask.category": "",
+    "push.bot_reply.enabled": true,
+    "push.bot_reply.screenId": "bots.chat",
+    "push.bot_reply.category": "",
+
     // The Bots app's daily summary (src/you/push.ts): sent only to a person who turned it on, at the hour they chose, on a day something happened.
     "push.bots_summary.enabled": true,
     "push.bots_summary.screenId": "bots.activity",
@@ -181,6 +191,10 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.mail_urgent.screenId": "bots.mail.reply",
     "push.mail_paused.enabled": true,
     "push.mail_paused.screenId": "bots.bot",
+    // A call (src/rooms, docs/rooms.md): someone with its link waits to be let in, and its host is not in it. It opens the call (data.r, data.b);
+    // it says the name they typed and the call's title, nothing more.
+    "push.room_waiting.enabled": true,
+    "push.room_waiting.screenId": "bots.mail.call",
     // The meeting bot (src/meet, docs/meet.md): the notes are ready (they open the note), it waits to be let in, or it could not join (both
     // open the meeting). Never a word of what was said.
     "push.meet_ready.enabled": true,
@@ -234,6 +248,11 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.code_needs_you.body": "“{task}”: {reason}",
     "push.code_minutes_low.title": "GitHub minutes running low",
     "push.code_minutes_low.body": "{reason} Past 95% X0 Bot uses your own computer instead, or waits.",
+    // A bot's own words. A private bot's push says only that there is something to read (notifyReply.ts lineOf).
+    "push.bot_ask.title": "{bot}",
+    "push.bot_ask.body": "{line}",
+    "push.bot_reply.title": "{bot}",
+    "push.bot_reply.body": "{line}",
     "push.bots_summary.title": "Today, {time}",
     "push.bots_summary.body": "{line}",
     "push.space_task.title": "{name} gave you a task",
@@ -266,6 +285,8 @@ export const PUSH_DEFAULTS: PushPayload = {
     "push.mail_urgent.body": "{what} has a draft waiting for you.",
     "push.mail_paused.title": "{business}",
     "push.mail_paused.body": "Today's AI allowance is used up. New mail waits for you.",
+    "push.room_waiting.title": "{title}",
+    "push.room_waiting.body": "{name} is waiting to join your call.",
     "push.meet_ready.title": "{title}",
     "push.meet_ready.body": "Your meeting notes are ready.",
     "push.meet_waiting.title": "{title}",
@@ -294,11 +315,12 @@ export const EVENT_PUSH_KINDS = [
   "approval",
   "code_compute_ask", "code_compute_paused", "code_commit_ask", "code_job_moved", "code_job_done", "code_job_failed", "code_needs_you", "code_minutes_low",
   "bots_summary",
+  "bot_ask", "bot_reply",
   "space_task", "space_plan", "space_message", "space_joined", "space_request", "space_accepted", "space_feed", "space_meet", "space_meet_sent",
   "space_mail", "space_mail_handle",
   "plan_reminder", ...PLAN_KIND_IDS, ...CALL_KIND_IDS,
   "routine_done", "routine_failed",
-  "mail_needs_you", "mail_urgent", "mail_paused",
+  "mail_needs_you", "mail_urgent", "mail_paused", "room_waiting",
   "meet_ready", "meet_waiting", "meet_failed",
   "ops_alert",
 ] as const;

@@ -2,6 +2,8 @@
 
 ## Working rules (every change, every session)
 
+- **Read `WORKING-ON.md` first.** It says what other sessions are building right now and which files they hold. Add your own
+  item when you start something big, keep off files another item holds, and remove your item when it lands.
 - **Branch.** Work on `main` in all four repos (TAILZU-BACKEND, TAILZU-FRONTEND, TAILZU-DESKTOP, TAILZU-WEB), starting from the latest
   `main`. No pull requests unless the owner asks.
 - **Organising.** One feature or component per file, in folders by area; no catch-all files. Adding, moving or removing a file means
@@ -9,6 +11,8 @@
   replace: no unused files, exports or commented-out code.
 - **Server first.** Screens and logic go on the server (TAILZU-BACKEND, server-driven screens) when they can, so no app release is
   needed. Render new screens (`tulmi/scripts/bots-render`) and look at them.
+- **Build the renderer way.** Before adding a screen, a visual or anything a client draws, read `docs/renderer.md`: use the
+  blocks and catalogs, not new client components.
 - **Data.** A new table needs the next numbered migration in `tulmi/supabase/migrations`, safe to run again; give the owner the command:
   `ssh root@91.108.104.168 "cd ~/tulmi && git pull --ff-only && ./deploy/migrate.sh <number>"`.
 - **Commits.** Author `CHEDFOX <madefox6666@gmail.com>`, with no trailers (no co-author or session lines). Commits, code, comments and
@@ -127,7 +131,9 @@ experience/        everything the apps draw, built as SDUI JSON
                    one file per screen and parts.ts; small areas such as notes, routines are one file), looks, sounds,
                    live data; screens/finds.ts draws what the everyday tools found; the new Spaces in screens/spaces/
                    (start.ts his thought and the crowd, feed.ts inside a space, peoplePage.ts), Work in space in
-                   screens/work.ts and screens/work/workTab.ts, Home's Ask as his thought in screens/shell/homeThought.ts
+                   screens/work.ts and screens/work/workTab.ts, Home's Ask as his thought in screens/shell/homeThought.ts;
+                   show.ts draws what a bot drew under its words (src/show) in one look, monochrome dot art, its
+                   pictures springing in piece by piece (Rise), Blip beside them when asked
   keyboard/        buildKeyboardConfig (GET /v1/keyboard/config): keys, tools row, mic
   assistant/       the phone's Connected apps, Tasks, approval sheet, Ask and the You card
   onboard/         the onboarding: sign-in stage, one file per step, the store builds' variant
@@ -169,6 +175,9 @@ oracle/            the Oracle bot: birth details from words, the birthplace sear
 mail/              the mail bot: the mail worker's signed client and the account's hash (worker.ts), which person a hash is, for the
                    push (owners.ts), what its chat knows (digest.ts), whose each business is and who else reaches it in a space
                    (access.ts) (docs/mail.md)
+rooms/             calls: our own video and audio rooms carried by Cloudflare's Realtime SFU (sfu.ts: sessions, tracks, the App Secret that
+                   never leaves the server), a call's link (link.ts), the lobby (lobby.ts), the rows and seats (store.ts), the shapes
+                   (types.ts) and the service, which holds who is in a call because the SFU has no webhook (docs/rooms.md)
 lingo/             Lingo, the language bot: the shapes (types.ts), when to ask something again (schedule.ts, FSRS),
                    marking an answer on the server and never in the app (grade.ts), what is kept (store.ts), a day's
                    session and how an item climbs towards being said (session.ts), and what its chat knows
@@ -179,6 +188,11 @@ lingo/             Lingo, the language bot: the shapes (types.ts), when to ask s
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)
+show/              what a bot draws under its words, from building blocks that compose rather than a list of widgets:
+                   the blocks and their caps (types.ts), the checker (check.ts), the addresses a turn read (links.ts),
+                   the step that decides after each answer whether a drawing helps and which, and when Blip stands by
+                   it (design.ts, role bot_show), the person's picks back into words (answer.ts), and every picture as
+                   monochrome dots (dots.ts: bars, lines, meters, any SVG path dotted) (docs/show.md)
 botsBots/          the Bots app's own bots behind their screens: plan, travel, shop, spaces (members, codes and joining, the feed,
                    things shared from a bot, Work in space, how people look: docs/spaces.md), threads, safety, usage
 botsCode/          the Code bot's rules, intake and history as the Bots app keeps them
@@ -239,11 +253,14 @@ ads/               Meta and Google Tag Manager events
 | The voice chat (POST /v1/talk) | `tulmi/src/talk/`, `routes/ask/talk.ts` (docs/talk.md) |
 | The Oracle bot (a reading of the person's sky) | `tulmi/src/oracle/`, `routes/bots/oracle.ts`, the page `experience/bots/screens/bots/oraclePage.ts` and its cards `oracleCards.ts`, the engine `oracle-worker/`, migration 0078 (docs/oracle.md) |
 | The mail bot (a business's email: mailboxes, filing, AI replies) | `tulmi/src/mail/`, `routes/bots/mail.ts`, the page `experience/bots/screens/bots/mailPage.ts`, its cards `mailCards.ts`, its other screens `mailScreens.ts`, its mailbox `mailInbox.ts` (a folder, a conversation, writing), a domain's addresses and rules `mailAliases.ts` (shared parts `mailParts.ts`), the engine `mail-worker/` (its API `mail-worker/server/routes/x0.ts`, its mailbox `mail-worker/server/inbox.ts`), `deploy/mail-up.sh`, migration 0080, the mail bot in a space `tulmi/src/mail/access.ts` and migration 0084 (docs/mail.md) |
+| Calls (our own video and audio calls, started from the mail bot) | `tulmi/src/rooms/`, `routes/bots/rooms.ts` (the host's call, the link's way in, and each seat's signalling), the mail bot's calls in `routes/bots/mail.ts`, the screens `experience/bots/screens/bots/mailCalls.ts` (Calls on the mail page, bots.mail.call), migration 0091 (docs/rooms.md) |
 | The meeting bot (a bot in video calls: notes, answers, auto-join) | `tulmi/src/meet/` (`types.ts`, `recall.ts` Recall's client, `store.ts`, `words.ts`, `brain.ts`, `stage.ts` the speaking bot's page, `calendar.ts` auto-join, `digest.ts` the chat's knowledge, `service.ts` the engine, `room.ts` one meeting's live state, `people.ts` a space's admin and their people), `notes/finish.ts` (a finished note organised, shared with the note-taker), `routes/bots/meet.ts`, the page `experience/bots/screens/bots/meetPage.ts`, its meeting `meetScreens.ts`, migrations 0082 and 0083 (docs/meet.md) |
 | Lingo (the language bot: spaced repetition, marking on the server, talking rather than tapping) | `tulmi/src/lingo/` (`types.ts`, `schedule.ts` the FSRS scheduler, `grade.ts` the marking, `store.ts`, `session.ts` a day's session, `digest.ts` the chat's knowledge), `sentences.ts` the shared sentence bank), `routes/bots/lingo.ts`, the bot in `bots/builtin.ts` (slug `lingo`, `LINGO=true`), `scripts/lingo-seed.ts` (pour a corpus in), migrations 0087 and 0089 (docs/lingo.md) |
 | Routines | `tulmi/src/routines/`, `routes/bots/routines.ts`, screens `experience/bots/screens/routines.ts` (docs/routines.md) |
+| The phone's own three (where the day starts, one contact, a fitness bot's workouts) | the contract `shared/types/sdui.ts` (`location.area`, `contact.pick`, `health.sync`), the card words `experience/bots/screens/permitWords.ts`, location in `experience/bots/screens/botsPlaces.ts`, the contact picker `screens/spaces/pickContact.ts` with the invite preview `botsBots/inviteMail.ts` and its retention `botsBots/inviteSweeper.ts`, health in `bots/healthDays.ts` + `bots/healthGate.ts` + `bots/door.ts` `isFitnessBot` + `screens/bots/health.ts` + `POST /v1/bots/:slug/health/days`, migration 0089; all five switches off in `config.ts` (docs/perms.md) |
 | Spaces (family and friends) | `tulmi/src/botsBots/spaces.ts` (members, codes, drafts), `spaceJoin.ts` (invitations, join requests), `spaceFeed.ts` and `threads.ts` (the feed, a message to one person), `grants.ts` and `work.ts` (one thing shared from a bot, Work in space), `personLook.ts` (each person's own tiny bot); routes `routes/bots/botsSpaces.ts`, `routes/bots/work.ts`; migrations 0068, 0069 (docs/spaces.md) |
 | Plan Ease's calls ("X0 is calling") | `tulmi/src/botsBots/planCall.ts` and `planCallWords.ts` (the ring, the limits, the words), `planCallLive.ts` and `planCallLiveWords.ts` (the live voice call), `planCallSeam.ts` (the one seam with the call judge), `src/realtime/` (the link to OpenAI), the judge that decides which things are worth a call `planCallJudge.ts`, `planCallJudgeWords.ts` and `planCallJudgeStore.ts` with `routes/bots/planCallJudge.ts` and migration 0086 (docs/plan-call-judge.md), routes `routes/bots/planCalls.ts`, the screen `experience/bots/screens/bots/planCall.ts`, migrations 0079 and 0085 (docs/plan-ease.md "Calls") |
+| What a bot draws under its words (a choice to tap, a callout, steps, a table, a chart, next questions, a form, a drawing), its one look (monochrome dot art springing in, Blip now and then) | `tulmi/src/show/` (blocks, checker, the designer step, picks into words, `dots.ts` every picture as dots), the step in `bots/run.ts`, kept in `botsBots/chat.ts`, drawn by `experience/bots/show.ts` (`SPRING`, `piecesOf`) from `screens/bots/parts.ts`, role `bot_show`; nothing new in the apps (docs/show.md) |
 | Everyday tools (flights, hotels, currency, weather) | `tulmi/src/everyday/`, the bot tools in `bots/tools.ts`, `routes/bots/everyday.ts`, cards `experience/bots/screens/finds.ts` (docs/everyday.md) |
 | The website's own pages (privacy, terms, support, pricing, delete account) | `tulmi/src/routes/site/policies/` (their look in `policies/shell.ts`); the pay page `routes/billing/pay.ts` |
 | Xode | `tulmi/src/code/` and `routes/code/`; jobs on Cloudflare in `jobs/` (docs/code-*.md, docs/cloudflare-jobs.md, docs/github-app.md) |
@@ -326,7 +343,7 @@ with signed calls both ways (`code/jobs/handoff/`).
 `docs/bots-gaps.md`, `docs/bots-keybot-parity.md`, `docs/code-agent.md`, `docs/code-brain.md`, `docs/code-chat.md`,
 `docs/code-project-brain.md`, `docs/code-router.md`, `docs/code-team.md`, `docs/code-work.md`,
 `docs/cloudflare-jobs.md`, `docs/desktop-runner-session.md`, `docs/xode-cli.md`, `docs/github-app.md`, `docs/pr-care.md`,
-`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/everyday.md`, `docs/artifacts.md`, `docs/spaces.md`,
+`docs/front-door.md`, `docs/ask-decide.md`, `docs/context.md`, `docs/talk.md`, `docs/long-jobs.md`, `docs/principles.md`, `docs/routines.md`, `docs/oracle.md`, `docs/mail.md`, `docs/lingo.md`, `docs/rooms.md`, `docs/everyday.md`, `docs/show.md`, `docs/artifacts.md`, `docs/spaces.md`,
 `docs/media.md`, `docs/web-reader.md`, `docs/web-search.md`, `docs/widgets.md`, `docs/widget-glance-v2.md`, `docs/server-push-audit.md`,
-`docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers),
+`docs/domain-x0bot.md`, `docs/google-verification.md`, `docs/store-privacy.md` (the store privacy answers), `docs/perms.md`,
 `viewer/docs/artifact-viewer.md`.
