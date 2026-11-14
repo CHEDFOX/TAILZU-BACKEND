@@ -150,28 +150,26 @@ function otherCuts(v: FilmView, desk: boolean): Node | null {
   const f = v.film;
   if (!f.cut.video || (f.status !== "done" && f.status !== "cutting")) return null;
   const F = `${CINEMA}/films/${f.id}`;
-  const offers: { aspect: Aspect; captions: boolean; label: string }[] = [
-    ...ASPECTS.filter((a) => a !== f.aspect).flatMap((a) => [
-      { aspect: a, captions: false, label: `${SHAPE_WORDS[a]} (${a})` },
-      { aspect: a, captions: true, label: `${SHAPE_WORDS[a]}, words in the picture` },
-    ]),
-    { aspect: f.aspect, captions: true, label: "This shape, words in the picture" },
-  ];
+  // The shapes it is not in, and - on their own, because they are a different thing - the ones with the words drawn in.
+  const shapes = ASPECTS.filter((a) => a !== f.aspect).map((a) => ({ aspect: a, captions: false, label: `${SHAPE_WORDS[a]} (${a})` }));
+  const burned = [f.aspect, ...ASPECTS.filter((a) => a !== f.aspect)].map((a) => ({ aspect: a, captions: true, label: SHAPE_WORDS[a] }));
+  const offers: { aspect: Aspect; captions: boolean; label: string }[] = [...shapes, ...burned];
   const ask = (o: { aspect: Aspect; captions: boolean }, said_: string): ActionSpec =>
     call("POST", `${F}/edition`, { aspect: o.aspect, captions: o.captions }, { ok: seq(said(said_), refresh), fail: toast("Couldn't do that just now. Try again.") });
 
   const made: Node[] = [];
   const rest: Node[] = [];
+  const burnedRest: Node[] = [];
   for (const o of offers) {
     const row_ = (f.editions ?? []).find((e) => e.aspect === o.aspect && e.captions === o.captions);
     if (!row_) {
-      rest.push(listRow({ label: o.label, sub: "Cut from the shots you already have", onPress: ask(o, "Cutting it now.") }));
+      (o.captions ? burnedRest : rest).push(listRow({ label: o.label, onPress: ask(o, "Cutting it now.") }));
       continue;
     }
     const url = row_.video && v.links[row_.video] ? abs(v.links[row_.video]!) : null;
     made.push(listRow({
       label: o.label,
-      sub: url ? `Ready · ${Math.round(row_.seconds)}s` : "Cutting it now…",
+      sub: url ? `${o.captions ? "Words in the picture · " : ""}Ready · ${Math.round(row_.seconds)}s` : "Cutting it now…",
       chevron: false,
       ...(url
         ? {
@@ -200,7 +198,12 @@ function otherCuts(v: FilmView, desk: boolean): Node | null {
       });
   return col([
     ...(made.length ? [listCard(made, { title: "Other cuts of this film" })] : []),
-    ...(rest.length ? [listCard(rest, { title: made.length ? "Cut it another way" : "Cut it another way, free" })] : []),
+    ...(rest.length
+      ? [col([listCard(rest, { title: "Cut it another way" }), meta("From the shots you already have, so there is nothing to agree to.", { size: 12 })], { gap: 6 })]
+      : []),
+    ...(burnedRest.length
+      ? [col([listCard(burnedRest, { title: "With the words in the picture" }), meta("For the feeds that play without sound.", { size: 12 })], { gap: 6 })]
+      : []),
     listCard([bigRow]),
   ], { gap: 12 });
 }

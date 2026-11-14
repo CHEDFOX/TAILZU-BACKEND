@@ -116,6 +116,7 @@ export const SAMPLES: Sample[] = [
   ...(Object.keys(CINEMA_FILMS) as (keyof typeof CINEMA_FILMS)[]).map((step) => ({
     id: S.cinemaFilm, area: "bots" as const, variant: step, params: { f: "f1" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS[step]() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] },
   })),
+  { id: S.cinemaFilm, area: "bots", variant: "cuts", params: { f: "f1" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS.cuts() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   { id: S.cinemaShot, area: "bots", variant: "board", params: { f: "f1", n: "2" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS.board() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   { id: S.cinemaShot, area: "bots", variant: "needs-you", params: { f: "f1", n: "3" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS.filming() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   { id: S.make, area: "bots", board: "MakeBot", deskBoard: "DMakeBot" },

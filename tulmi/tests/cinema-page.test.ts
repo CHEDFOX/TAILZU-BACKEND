@@ -229,11 +229,13 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     v.links["u/u1/cinema/films/f1/film-x.mp4"] = "/v1/cinema/media/u/u1/cinema/films/f1/film-x.mp4?exp=1&sig=x";
     const p = await build({ client, ...FILM, film: v });
     expect(p.lint).toEqual([]);
-    expect(p.texts).toContain("Cut it another way, free");
+    // The shapes it is not in; and, on their own, the ones with the words drawn in (its own shape first).
+    expect(p.texts).toContain("Cut it another way");
     expect(p.texts).toContain("Vertical (9:16)");
-    expect(p.texts).toContain("Vertical, words in the picture");
-    expect(p.texts).toContain("This shape, words in the picture");
+    expect(p.texts).toContain("Square (1:1)");
     expect(p.texts).not.toContain("Wide (16:9)");
+    expect(p.texts).toContain("With the words in the picture");
+    expect(p.texts).toContain("For the feeds that play without sound.");
   });
 
   it("shows a cut that is already made, ready to watch", async () => {
@@ -250,7 +252,7 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     const p = await build({ client, ...FILM, film: v });
     expect(p.lint).toEqual([]);
     expect(p.texts).toContain("Other cuts of this film");
-    expect(p.texts).toContain("Ready · 20s");
+    expect(p.texts).toContain("Words in the picture · Ready · 20s");
     expect(p.texts).toContain("Cutting it now…");
     // No shape, no words, no cost: nothing of the machinery.
     expect(p.texts.join(" ")).not.toMatch(/₹|cost|price/i);

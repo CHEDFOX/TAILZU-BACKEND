@@ -96,6 +96,19 @@ function done() {
   return { film: publicFilm(f), title: "Chai in the Rain", links };
 }
 
+/** The finished film with another cut of it already made, and one still being cut: the "other cuts" card at work. */
+function cuts() {
+  const v = done();
+  const f = v.film as unknown as Film;
+  const key = "u/u1/cinema/films/f1/cut-16x9-caps-x.mp4";
+  f.editions = [
+    { aspect: "16:9", captions: true, video: key, seconds: 24, of: "x" },
+    { aspect: "1:1", captions: false, video: null, seconds: 0, of: null },
+  ];
+  f.wantBig = true;
+  return { ...v, links: { ...v.links, [key]: "https://api.local/v1/cinema/media/u/u1/cinema/films/f1/cut-16x9-caps-x.mp4?exp=1&sig=x" } };
+}
+
 const row = (id: string, title: string, status: Film["status"], o: Record<string, unknown> = {}) => ({
   id, title, status, hold: null, aspect: "9:16", shots: 4, done: 0, seconds: 24, poster: still(Number(id.slice(1)) || 1, "1:1"), updatedAt: 1, ...o,
 });
@@ -126,4 +139,4 @@ export const CINEMA_PAGE_API = (overview: unknown): Record<string, unknown> => (
   "GET /v1/cinema/overview": overview,
 });
 
-export const CINEMA_FILMS = { writing, script, board, filming, done };
+export const CINEMA_FILMS = { writing, script, board, filming, done, cuts };
