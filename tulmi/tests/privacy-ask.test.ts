@@ -365,11 +365,16 @@ describe("served at /privacy", () => {
 });
 
 describe("Service providers (/privacy/providers), part of the policy", () => {
-  it("is where each AI company is named; the policy itself names none and links there", () => {
-    for (const name of ["OpenAI", "Anthropic", "Gemini", "Groq", "Deepgram", "Sarvam", "OpenRouter", "DeepSeek", "Claude"]) {
-      expect(policy, name).not.toContain(name);
+  it("names each AI company itself, where the AI permission is, and links to the page that lists every one", () => {
+    // App Review 5.1.2(i): the policy must SAY who personal data goes to, not only point at another page (which was a dead link
+    // on the live site). So "Who receives it" names them inline, and Service providers still carries what each does and its link.
+    const who = policy.slice(policy.indexOf("Who receives it:"), policy.indexOf("Never sent:"));
+    for (const name of ["OpenAI", "Anthropic", "Google", "Groq", "Deepgram", "Sarvam AI", "OpenRouter", "DeepSeek"]) {
+      expect(who, name).toContain(name);
       expect(providers, name).toContain(name);
     }
+    for (const name of ["Gemini", "Claude"]) expect(providers, name).toContain(name);
+    expect(who).toContain("each only for its part of the answer");
     expect(PRIVACY_POLICY_HTML).toContain('href="/privacy/providers#ai"');
     expect(providers).toContain("Part of the X0 Bot Privacy Policy");
     expect(providers).toContain("only after you agree in the app");

@@ -1543,8 +1543,10 @@ const EnvSchema = z.object({
    *                                answer is good, so turning THAT off to spare Android would take it from iPhone people too
    *   PERM_ARRIVAL_ANDROID         "Remind me when I get there" on Android. STAYS OFF until Play has approved the
    *                                background-location declaration AND an Android build carries TULMI_ANDROID_ARRIVAL
-   *   PERM_ARRIVAL_ANDROID_USERS   the account list for the stage between that build and the approval propagating: empty
-   *                                (the default) means the switch alone decides
+   *   PERM_ARRIVAL_ANDROID_USERS   an account list for a private test only; empty in production (the default), which means
+   *                                the switch alone decides. Play approves background location for the whole app at once,
+   *                                so there is no stage to hold back, and a list left in it hides the row from everyone
+   *                                not on it — the Play reviewer included
    */
   PERM_CALENDAR_READ_ANDROID: bool(false),
   PERM_MOTION_ANDROID: bool(false),

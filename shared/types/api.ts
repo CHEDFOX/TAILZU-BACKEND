@@ -196,12 +196,12 @@ export interface Personality {
 
   /**
    * The About you card (name and gender, on Home after a few visits; routes/bots/botsFirstRun.ts, GET/PUT
-   * /v1/bots/first-run/about): how many visits so far (counted with botsHomeSeenAt, at most one a half hour), the visit
-   * from which it may come again after a "Not now", and how many times it was put off.
+   * /v1/bots/first-run/about): how many visits so far (counted with botsHomeSeenAt, at most one a half hour), and whether
+   * the card is done with. The card asks for nothing (App Review 5.1.1(v), (x)): "Not now" on either of its steps, and
+   * finishing it however much was filled in, set `botsAboutSkipped`, and it is never due again.
    */
   botsVisits?: number;
-  botsAboutFrom?: number;
-  botsAboutPutOff?: number;
+  botsAboutSkipped?: boolean;
 
   /**
    * When the Bots app's "turn on notifications" card (on a phone's Home, once a bot is working or needs them) was answered:

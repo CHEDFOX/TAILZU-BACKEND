@@ -155,6 +155,50 @@ export const FEED = {
     decidedBy: "", decidedAt: null, paidAt: null, upi: null, canDecide: true, canCancel: false, canMarkPaid: false }],
   tasks: [] as unknown[],
 };
+/**
+ * THE SAME FEED WITH MOM NO LONGER THERE (her account deleted, or no space shared with the viewer any more: threads.ts says
+ * `gone`). Her messages stay; her name is drawn faded and nothing about her opens.
+ */
+export const FEED_GONE = {
+  ...FEED,
+  people: FEED.people.filter((p) => p.userId !== "m"),
+  // EVERY message stays, the viewer's own ones TO her as well: to_id has no foreign key (0068_spaces_family.sql), by design,
+  // and sees() still shows them to their sender and to the admin. So "To Mom" is still drawn, and faded like her own name.
+  messages: FEED.messages.map((m) => ({
+    ...m,
+    ...(m.from.userId === "m" ? { from: { ...m.from, gone: true } } : {}),
+    ...(m.to && m.to.userId === "m" ? { to: { ...m.to, gone: true } } : {}),
+  })),
+};
+/**
+ * THE ONE-TO-ONE CHAT WITH MOM NO LONGER THERE. No message in a one-to-one carries a name, so her name is the chat's own: the head
+ * is where it fades, and the way to her page goes. Her look is the neutral one the server gives a gone person (goneLook).
+ */
+export const MOM_CHAT_GONE = {
+  thread: {
+    ...THREADS[1], unread: 0,
+    people: THREADS[1]!.people.map((p) => (p.userId === "m" ? { ...p, gone: true, bot: { seed: "m", avatar: "dot", color: "#8a8a8a" } } : p)),
+  },
+  more: false, before: null,
+  messages: [
+    { id: "d1", from: { userId: "m", name: "Mom", you: false, gone: true }, text: "On my way", at: FIXED_NOW - 2 * HOUR, files: [], item: null },
+    { id: "d2", from: { userId: "u", name: "Aanya", you: true }, text: "See you", at: FIXED_NOW - HOUR, files: [], item: null },
+  ],
+};
+/** The chats list with Mom no longer there: her one-to-one row is her name, so the list fades it as the chat's head does. */
+export const THREADS_GONE = { threads: THREADS.map((t) => (t.id === "th-mom" ? MOM_CHAT_GONE.thread : t)), unread: 2 };
+/** The space's chat with Mom no longer there, for the chat screen (GET /threads/th-home). */
+export const HOME_CHAT_GONE = {
+  ...HOME_CHAT,
+  thread: { ...HOME_CHAT.thread, people: HOME_CHAT.thread.people.map((p) => (p.userId === "m" ? { ...p, gone: true } : p)) },
+  // msg3 is the viewer's own, to Mom alone (the space's chat is the thread its feed writes to): it stays, with a faded line.
+  messages: HOME_CHAT.messages.map((m) => ({
+    ...m,
+    ...(m.from.userId === "m" ? { from: { ...m.from, gone: true } } : {}),
+    ...(m.id === "msg3" ? { to: { userId: "m", name: "Mom", you: false, gone: true } } : {}),
+  })),
+};
+
 /** The same feed as Rohan sees it (a member): Mom's message to him is a plain one; his own to Mom says "To Mom". */
 export const FEED_ROHAN = {
   ...FEED,
