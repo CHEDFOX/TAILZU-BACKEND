@@ -23,7 +23,18 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## In progress
 
-- Nothing held right now. Reviews of the pieces below may push small follow-up fixes to the same files.
+- Reviews of the pieces below may push small follow-up fixes to the same files.
+- **What a bot draws under its words** (server; `docs/show.md`, behind `BOT_SHOW`, off, staged by `BOT_SHOW_USERS`). After a
+  bot answers in its chat, the `bot_show` role picks building blocks or none (a choice to tap, a callout, steps, a table, a
+  chart, next questions, a form, a drawing), drawn as monochrome dot art (SVG circles) whose pieces spring in on `Rise` on
+  the newest answer, with Blip (`BotBuddy`) beside a drawing now and then. **Vocabulary 1 on purpose** (see the note below).
+  Every Rise and BotBuddy carries a `fallback`, and a chat screen holds one dot budget, so it keeps to `docs/renderer.md`
+  sections 4 and 5. Built on `claude/keen-allen-podunv`, not on main yet. Holds `tulmi/src/show/**`,
+  `tulmi/src/experience/bots/show.ts`, `tulmi/src/experience/bots/screens/bots/parts.ts` (`botTurn`, `chatTurns`),
+  `tulmi/src/bots/run.ts` (step 7), `tulmi/src/botsBots/chat.ts` (picks), the chat POST in `tulmi/src/routes/bots/botsBots.ts`,
+  the `bot_show` role in `tulmi/src/principles/roles.ts`, `docs/show.md`. It leaves `shared/types/sdui.ts`,
+  `tulmi/src/experience/bots/lint.ts` and `tulmi/src/experience/sdui2/**` exactly as main has them, and puts `BOT_SHOW` /
+  `BOT_SHOW_USERS` in `config.ts` next to `LINGO`, away from `SDUI_V2`.
 
 ## Landed 14 Nov 2026 (all switched off)
 
@@ -33,19 +44,6 @@ look. The apps are renderers: build server data with the existing blocks and cat
 - Reply to a bot from its notification (`tulmi/src/bots/notifyReply.ts`, route `POST /v1/bots/:slug/notify-reply`,
   category `x0_bot_reply`, switch `NOTIFY_REPLY` / `NOTIFY_REPLY_USERS` / `NOTIFY_REPLY_PER_HOUR`). Server only.
 
-## In progress (server: the bot drawings, started 13 Nov 2026)
-
-- **What a bot draws under its words** (`docs/show.md`; behind `BOT_SHOW`, off, staged by `BOT_SHOW_USERS`; server only,
-  today's kit only, per `docs/renderer.md` section 2): after a bot answers in its chat, the `bot_show` role picks building
-  blocks or none, drawn as monochrome dot art (SVG circles) whose pieces spring in on `Rise` on the newest answer, with Blip
-  (`BotBuddy`) beside a drawing now and then; every Rise and BotBuddy carries a `fallback`, and a chat screen holds a dot budget
-  so it stays inside the screen limits. Built on `claude/keen-allen-podunv`, not on main yet. Holds `tulmi/src/show/**`,
-  `tulmi/src/experience/bots/show.ts`, `tulmi/src/experience/bots/screens/bots/parts.ts` (`botTurn`, `chatTurns`),
-  `tulmi/src/bots/run.ts` (step 7), `tulmi/src/botsBots/chat.ts` (picks), the chat POST in `tulmi/src/routes/bots/botsBots.ts`,
-  the `bot_show` role in `tulmi/src/principles/roles.ts`, `docs/show.md`. It leaves `shared/types/sdui.ts` and
-  `tulmi/src/experience/bots/lint.ts` exactly as main has them, and adds `BOT_SHOW` / `BOT_SHOW_USERS` to `config.ts` next to
-  `LINGO`, away from where S1 adds `SDUI_V2`.
-
 ## Numbers in use
 
 - Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days. Take the next free number and
@@ -54,6 +52,12 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## Notes from other sessions
 
-- From the bot drawings (server), for S1 and V1: the drawings use `Rise` pieces for their motion today. Once `motion` (SPEC 2.5)
-  can reach a screen, they move to it and stop sending Rise, inside the 64 animated nodes; nothing to do on your side but say
-  here when it is on main.
+- **The bot drawings stay vocabulary 1, and that is now a decision, not a wait.** Yesterday's note said they would move to the
+  `motion` block as soon as it could reach a screen. Reading `sdui2/gate.ts`: `needs` is worked out per SCREEN and a client
+  missing a block is sent "Open X0 again" instead of the screen, never a lowered one. A chat must never do that for decoration,
+  so the drawings keep `Rise`, which every build already draws, and the chat stays vocabulary 1 for everyone.
+  Moving them to `motion` is still worth doing, but only emitted FOR CLIENTS THAT HAVE THE BLOCK (the screen is then
+  vocabulary 2 for them alone and the gate passes), and only once `SDUI_V2` is on and the store build with the blocks is out.
+  It would want `blocks` on `BotsCtx` (`experience/bots/kit.ts`, `registry.ts`, `screens.ts`), which the drawings do not touch
+  today. What it buys: the window gets real springs (its v2 `motion` simulates one; a Rise there is a CSS ease), and fewer
+  nodes. Say here when `SDUI_V2` goes on and I will do it.

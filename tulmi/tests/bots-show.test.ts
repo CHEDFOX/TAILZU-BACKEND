@@ -138,7 +138,7 @@ describe("in the chat", () => {
     await app.ready();
     const post = (payload: Record<string, unknown>) => app.inject({ method: "POST", url: `${AREA}/chat/plan`, headers: { authorization: `Bearer ${ALICE}` }, payload });
     const turns = async (): Promise<Turn[]> => (await app.inject({ method: "GET", url: `${AREA}/chat/plan`, headers: { authorization: `Bearer ${ALICE}` } })).json().turns;
-    return { r, post, turns, events };
+    return { r, post, turns, events, chat: parts.chat! };
   }
 
   it("keeps the drawing with the bot's turn, and gives it back checked", async () => {
@@ -159,6 +159,14 @@ describe("in the chat", () => {
     expect(s.r.model.of("bot.run").at(-1)!.user).toContain("Scuba, Night market\nGuests: 3");
     // Activity keeps a title on one line.
     expect((await s.events.list(ALICE, 0))[0]).toMatchObject({ title: "Scuba, Night market Guests: 3" });
+  });
+
+  it("draws a reply typed into the bot's notification too: it comes through the same chat door", async () => {
+    const s = await served();
+    // exactly as routes/bots/botsNotifyReply.ts calls it: no live, no options
+    const r = await s.chat.send(ALICE, "plan", "what else is there?", undefined, []);
+    expect(r.answer.show).toBeDefined();
+    expect((await s.turns())[1]!.show).toBeDefined();
   });
 
   it("refuses picks for nothing, for a turn that is not theirs, or one with no drawing", async () => {

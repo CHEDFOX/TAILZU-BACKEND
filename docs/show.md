@@ -39,7 +39,7 @@ After a bot has its words, in `bots/run.ts` (step 7), beside its memory:
 2. **One small call**: the `bot_show` role on the tiny tier reads the person's words, the answer and the links the turn read, each fenced as data, and answers `{"blocks":[...],"lists":"drawn"|null}`. The role is told what the blocks are and when each helps, and that most answers need nothing; it is never given an example to copy.
 3. **The checker** (`show/check.ts`) reads what came back (section 5), and the answer carries it as `show`.
 
-It is asked only where the answer is drawn: the app's chat asks for it (`draw` on the ask, `botsBots/chat.ts`), so a routine, the front door, a voice call and an API caller pay for none. Never over a change waiting for the owner's yes (the approval card is that answer's drawing); never for words cut for a secret. The bot's own prompt and tools are not touched, so "the skills are the gate" stays true.
+It is asked only where the answer is drawn: the app's chat asks for it (`draw` on the ask, `botsBots/chat.ts`), so a routine, the front door, a voice call and an API caller pay for none. A reply typed into a bot's **notification** (`NOTIFY_REPLY`, `routes/bots/botsNotifyReply.ts`) goes through that same chat door, so its answer is drawn too and waits in the chat; the push itself carries the words only. A bot turn no message asked for (a routine's answer, a call's opening line: `chat.note`) is never drawn. Never over a change waiting for the owner's yes (the approval card is that answer's drawing); never for words cut for a secret. The bot's own prompt and tools are not touched, so "the skills are the gate" stays true.
 
 It runs after the words are whole, so the words stream as before; the drawing comes with the chat's refresh at the end.
 
@@ -93,7 +93,9 @@ It keeps to `docs/renderer.md`:
 * **A fallback on every node a client might not have** (section 4): every Rise carries its piece's dots, still, and Blip's BotBuddy his pose's picture, so a client that has either switched off (`sdui.off`) draws the picture all the same.
 * **The screen limits** (section 5): a chat screen hands its turns one dot budget (`parts.ts SCREEN_DOTS`, 5,000 dots, every copy counted, about 275 KB at most), the newest answer first; an older picture is thinned to what is left (`dots.ts thinPic`), and one that would keep fewer than 24 dots leaves only its words (labels, values, caption). Only the newest answer sends a picture twice (the tap's face) or with its fallbacks.
 * **Launch dark** (section 6): `BOT_SHOW` off, staged by `BOT_SHOW_USERS`.
-* **Rise is a single-feature node** (section 7.1, being undone): once `motion` (SPEC 2.5) can reach a screen, the pieces move to it and Rise goes, inside its 64 animated nodes; then the window gets real springs too.
+* **Vocabulary 1, on purpose.** The blocks landed on 14 Nov behind `SDUI_V2` (section 3), and `motion` (SPEC 2.5) would express these springs better than `Rise` does. The drawings still do not use it, because `needs` is worked out per **screen** and a client missing a block is served "Open X0 again" in place of the screen, never a lowered one (`sdui2/gate.ts`). A chat must not do that for decoration. So the chat stays vocabulary 1 and every build draws it.
+
+  **When to move them** (worth doing, not yet): once `SDUI_V2` is on and the store build carrying the blocks is out. Then emit the motion form **only for a client that declares the `motion` block**, so the screen is vocabulary 2 for those clients alone and the gate passes, and keep the `Rise` form for everyone else. It needs `blocks` on `BotsCtx` (`experience/bots/kit.ts`, `registry.ts`, `experience/screens.ts`), which nothing here touches today. What it buys: the **window gets real springs** (its v2 `motion` simulates one — `TAILZU-DESKTOP/src/app/sdui/v2/motion.js`; a `Rise` there is only a CSS ease), fewer nodes, and `Rise` is on section 7.1's list of single-feature nodes being undone.
 
 ## 7. Blip
 

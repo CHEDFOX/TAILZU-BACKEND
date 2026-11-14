@@ -117,6 +117,8 @@ export async function buildPhoneBundle(entry = path.join(HERE, "phone/entry.jsx"
     "expo-audio": path.join(HERE, "phone/expo-audio.js"),
     // Remembers only the living cards' "once", in the page (BotCard).
     "@react-native-async-storage/async-storage": path.join(HERE, "phone/async-storage.js"),
+    // A phone without MMKV: `local.*` falls back to its AsyncStorage mirror, as it does on a build that lacks it.
+    "react-native-mmkv": path.join(HERE, "phone/no-mmkv.js"),
   };
   const plugin = {
     name: "phone",
