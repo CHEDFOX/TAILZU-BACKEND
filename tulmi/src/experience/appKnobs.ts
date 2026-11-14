@@ -84,6 +84,25 @@ function withBotReply(flags: Record<string, unknown>, userId?: string): Record<s
   return out;
 }
 
+/**
+ * WHAT THE PHONE'S OWN PERMISSION CARD SAYS (`primed`, shared/types/sdui.ts; docs/perms.md rule 2).
+ *
+ * Every `requestPermission` that is not marked `primed` gets a card drawn by the phone itself, and that card is the
+ * only explanation the system's prompt has. It reads `perm.<permission>.title` and `perm.<permission>.body` first
+ * and falls back to "One permission first / The next screen is your phone asking." — which names neither the
+ * permission nor the reason. These say both, per permission, so a switch, an ask on appear or a keyboard step is
+ * explained as well as one of our own cards would explain it.
+ *
+ * NOT in appKnobsData.ts: that file is generated from the app's own knob manifest (scripts/sync-knobs.mjs) and the
+ * next sync would drop anything added there. These are the server's words, so they live here.
+ */
+export const PERM_CARD_LABELS: Record<string, string> = {
+  "perm.microphone.title": "Let X0 Bot hear you",
+  "perm.microphone.body": "X0 Bot uses the microphone to turn what you say into text. Next, your phone asks you.",
+  "perm.motion.title": "Wait while you're driving",
+  "perm.motion.body": "X0 Bot is told only “driving” or “not driving”, never where. Next, your phone asks you.",
+};
+
 export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags">>(boot: T, who: { userId?: string } = {}): T {
   const fill: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(APP_KNOB_FLAGS)) if (!CATALOG_CONDITIONAL.has(k)) fill[k] = v;
@@ -100,7 +119,7 @@ export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags
   }
   return {
     ...boot,
-    labels: { ...APP_KNOB_LABELS, ...(boot.labels ?? {}) },
+    labels: { ...APP_KNOB_LABELS, ...PERM_CARD_LABELS, ...(boot.labels ?? {}) },
     flags: withBotReply(withPlanPush(withoutSpacesAction({ ...fill, ...(boot.flags ?? {}) })), who.userId) as T["flags"],
   };
 }

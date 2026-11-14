@@ -24,8 +24,10 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
   const desk = ctx.client === "desktop";
   const close = seq(setState("permitClosed", true), call("PUT", ARRIVAL_PATH, {}, {}));
   const notNow = { label: "Not now", onPress: close };
+  // `primed`: the step below is the explanation, and its Continue is the only way here, so the phone asks the
+  // system straight away rather than putting its own box in front of ours.
   const askMic = (onGranted: ActionRef, extra: ActionRef): ActionSpec => ({
-    kind: "requestPermission", permission: "microphone",
+    kind: "requestPermission", permission: "microphone", primed: true,
     onGranted, onDenied: extra, onBlocked: extra,
   } as ActionSpec);
   const mic = (whenMic: Condition) => permitStep({

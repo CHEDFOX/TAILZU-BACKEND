@@ -381,8 +381,12 @@ function arrivalRows(ctx: BotsCtx, e: EventView, x: Details): Node[] {
   // "Allow all the time", as a REQUEST and not a bare openSettings: on API 30+ the system opens the app's own location page
   // and answers when they come back, so the switch can go on by itself if they allowed it. A refusal leaves it off and says
   // so once; there is no second card and no nagging.
+  //
+  // `primed`: the hand-off card below is Play's prominent disclosure, and its one button is the only way here. It
+  // says "Open Settings" rather than Continue because that is where Android takes them, but it is the same shape —
+  // one explanation of this exact permission, one thing to tap — so the phone's own box would be a second one.
   const askBackground: ActionSpec = {
-    kind: "requestPermission", permission: "backgroundLocation",
+    kind: "requestPermission", permission: "backgroundLocation", primed: true,
     onGranted: seq(setState("arriveBackCard", false), sync(false)),
     onDenied: seq(setState("arriveBackCard", false), setState("arriveBackStill", true)),
   } as unknown as ActionSpec;

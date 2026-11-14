@@ -27,6 +27,17 @@ seven); this is the server's half, so the next person to touch one of these file
 2. **One card before every system prompt, Continue and no second choice** (App Review 5.1.1(iv)). The cards use `permitStep`
    with a `cta` and no `quiet`; the way out is not tapping. The contact picker has **no** card: there is no prompt to
    introduce. Words: `src/experience/bots/screens/permitWords.ts`.
+   **Exactly one card, though, which is the phone's half.** On a player that declares `primed` in its capabilities, a
+   `requestPermission` without `primed: true` gets that player's OWN box first ("One permission first", one Continue)
+   whatever tree we sent, so an ask fired by a rule, a switch or a screen appearing is explained even when we forgot to
+   explain it; its words are `perm.<permission>.title` / `.body` from the bootstrap (`experience/appKnobs.ts`
+   `PERM_CARD_LABELS`). `primed: true` says this screen has already explained THIS permission and its Continue is what
+   fired the ask, so the phone goes straight to the system. Set it nowhere else: `shared/types/sdui.ts` has the rule,
+   `tests/primed.test.ts` walks the built screens and refuses the rest both ways — an ask our own card fired must carry
+   it, and nothing else may — and `scripts/bots-render/primed-shots.mts` draws every screen either side of the line.
+   A player that declares nothing (the window, and any build older than the field) has no box at all, so an ask there has
+   only what the screen said: read a permission before asking for it where the answer may already be on record
+   (`checkPermission`), rather than asking and drawing a card over nothing.
 3. **No raw value enters the screen's state.** The coordinate never reaches JavaScript at all (the native function returns
    address parts); health numbers go from the phone's action straight to the POST. State holds the area's **name**, the chosen
    **email**, and nothing about health.
