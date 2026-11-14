@@ -163,9 +163,10 @@ export function permsStep(p: Plan): Node {
           children: needs.map((n, i) => needRow(n, i === needs.length - 1)),
         }
       : null,
-    // Where to go for the Mac's two, while either is still off.
+    // Where to go for the Mac's two, while either is still off. (The lede
+    // above already says nothing is on until they say so, so no second line
+    // under the card says it again.)
     mac ? { ...FINE("wp.mac"), visibleIf: { not: all } } : null,
-    FINE("wp.foot"),
     PUSH(),
     BTN(EN["ob.cont"], SET(p.next("perms"))),
   ]);

@@ -30,10 +30,15 @@ agreed. The permissions come next, so the microphone Try it asks them to hold is
 
 | row | what it is for | how it is asked | the state it reads |
 |---|---|---|---|
-| Microphone | dictation, a bot, a call | `requestPermission` → the system's prompt | `micGranted` |
-| Camera | only a call, only while they have it on | `requestPermission` → the system's prompt | `camGranted` |
-| Accessibility (Mac) | typing the words where the cursor is | `ask.openAccessibility` → System Settings | `axGranted` |
-| Screen recording (Mac) | Ask seeing the window; a note hearing a call | `ask.openScreenRecording` → System Settings | `seeGranted` |
+| Hearing you | dictation, a bot, a call | `requestPermission` → the system's prompt | `micGranted` |
+| Your camera, in a call | only a call, only while they switch it on there | `requestPermission` → the system's prompt | `camGranted` |
+| Typing for you (Mac) | the words landing where the cursor is | `ask.openAccessibility` → System Settings | `axGranted` |
+| Reading the window in front of you (Mac) | Ask answering about the screen | `ask.openScreenRecording` → System Settings | `seeGranted` |
+
+**A row is named for what it does, not for what the OS calls it.** "Screen recording" is the Mac's name for a switch and a
+fair description of nothing we do: Ask looks when it is asked a question, and the picture is not kept (privacy policy,
+section 10.4). So the row says what it is for, and the Mac's own labels appear once, in the line under the card, because
+without them nobody can find the switch in System Settings.
 
 ## What is on is the computer's answer, not ours
 
@@ -43,8 +48,11 @@ process can read these answers, so each is an IPC handler of its own (`app:micSt
 to the front, which is when System Settings may have turned one on. A row therefore ticks itself while the person is away in
 Settings, and Blip says so once they all have ("That's everything.").
 
-`"unknown"` — a system that keeps no such answer, Linux for all four — reads as **nothing to ask for**, so the row shows as
-allowed rather than as a switch nobody can turn on.
+**What an answer means is that system's own** (`permAnswer`). A Mac keeps one answer per app and asks for it once, so
+"not-determined" there is a question still to put and the row shows its button. Windows has no prompt for an app to show at
+all: a desktop app records unless the person turned it off in Settings, where the answer becomes "denied". So on Windows
+anything short of that no reads as **nothing to ask for** — otherwise the row would send someone to Settings to switch on
+what already worked. `"unknown"` (Linux keeps no such answer) reads the same way.
 
 ## A row is only drawn where the window can answer it
 
@@ -59,9 +67,11 @@ The two Mac rows need `device.os === "mac"` as well: no other system has either 
 can answer and nothing else, and a window that can answer none of them still has a step that passes. Both steps are in the list
 for **every** window all the same, so the progress bar is the same length in the sign-in stage and in the screen.
 
-The camera needs more than a row: a hardened Mac build is refused the camera outright without
-`NSCameraUsageDescription` and `com.apple.security.device.camera`, both of which the window now ships — which is also what a
-video call needs there (`docs/rooms.md`).
+The camera needs more than a row. A hardened Mac build is refused the camera outright without `NSCameraUsageDescription` and
+`com.apple.security.device.camera`, both of which the window now ships — and the window's own permission handler
+(`main.js setPermissionRequestHandler`) refused **video to everyone**, which was right while nothing in the app had a camera
+and meant a call's camera button could not have worked on any system, whatever the person answered. The app window may ask
+for a camera now; nothing else may, and recording the screen comes through a different permission, which is still nobody's.
 
 ## When it is missed later: the card over the app
 

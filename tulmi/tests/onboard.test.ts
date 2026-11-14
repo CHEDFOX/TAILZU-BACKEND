@@ -1044,7 +1044,7 @@ describe("the window's permissions step", () => {
   it("draws a row for every answer this window can read, in order, and the four words with them", () => {
     expect(rows(step())).toEqual(["micGranted", "camGranted", "axGranted", "seeGranted"]);
     const json = JSON.stringify(step());
-    for (const k of ["wp.h", "wp.p", "wp.mic", "wp.mic.d", "wp.cam", "wp.cam.d", "wp.ax", "wp.ax.d", "wp.see", "wp.see.d", "wp.on", "wp.foot"] as const) {
+    for (const k of ["wp.h", "wp.p", "wp.mic", "wp.mic.d", "wp.cam", "wp.cam.d", "wp.ax", "wp.ax.d", "wp.see", "wp.see.d", "wp.on"] as const) {
       expect(json, k).toContain(OB_EN[k]);
     }
   });

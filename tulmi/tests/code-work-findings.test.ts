@@ -16,7 +16,7 @@ vi.hoisted(() => {
   process.env.NODE_ENV = "test";
 });
 
-const { compareToBaseline, identityOf, pathOfFailure, flagFinding, cleanFinding, logComparison } = await import("../src/code/work/findings.js");
+const { compareToBaseline, identityOf, pathOfFailure, flagFinding, cleanFinding, logComparison, HOW_MIN_CHARS } = await import("../src/code/work/findings.js");
 const { WorkLog, MemoryWorklogStore } = await import("../src/code/work/worklog.js");
 type BaselineResult = import("../src/code/project/types.js").BaselineResult;
 
@@ -142,9 +142,12 @@ describe("logComparison and flagFinding", () => {
   it("flagFinding cleans what the bot noticed, and writes it to the log", async () => {
     const store = new MemoryWorklogStore();
     const log = new WorkLog(JOB, { store });
-    const f = await flagFinding({ severity: "risk", path: "src/lib/api.ts", line: 12, text: "  SQL is built\nby joining strings  " }, { log });
-    expect(f).toEqual({ severity: "risk", path: "src/lib/api.ts", line: 12, text: "SQL is built by joining strings" });
-    expect(await store.list(JOB)).toEqual([expect.objectContaining({ kind: "finding", files: ["src/lib/api.ts"], data: { severity: "risk", path: "src/lib/api.ts", line: 12 } })]);
+    const how = "the search box's text is put straight into the query, so a visitor can end the string and add their own SQL";
+    const f = await flagFinding({ severity: "risk", path: "src/lib/api.ts", line: 12, text: "  SQL is built\nby joining strings  ", how }, { log });
+    expect(f).toEqual({ severity: "risk", path: "src/lib/api.ts", line: 12, text: "SQL is built by joining strings", how, verdict: "confirmed" });
+    expect(await store.list(JOB)).toEqual([expect.objectContaining({
+      kind: "finding", files: ["src/lib/api.ts"], data: { severity: "risk", path: "src/lib/api.ts", line: 12, how, verdict: "confirmed" },
+    })]);
   });
 
   it("an unknown severity is info, a bad line is left out, and a finding with no words or no path is nothing", () => {
@@ -159,5 +162,37 @@ describe("logComparison and flagFinding", () => {
     const key = ["gh", "p_"].join("") + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8";
     const f = await flagFinding({ severity: "risk", path: "src/config.ts", line: 3, text: `a token is committed: ${key}` });
     expect(f!.text).toBe("a token is committed: [redacted]");
+  });
+});
+
+// -------------------------------------------------- a risk earns its severity
+
+describe("a finding that claims to be a risk", () => {
+  const HOW = "a signed-out visitor sends any id in the path and the handler reads that row without checking the owner";
+
+  it("is kept as a risk, and marked confirmed, when it shows how it happens", () => {
+    expect(HOW.length).toBeGreaterThanOrEqual(HOW_MIN_CHARS);
+    expect(cleanFinding({ severity: "risk", path: "src/api.ts", line: 12, text: "any user can read another's row", how: HOW }))
+      .toEqual({ severity: "risk", path: "src/api.ts", line: 12, text: "any user can read another's row", how: HOW, verdict: "confirmed" });
+  });
+
+  it("is lowered to a warning worth checking when it does not, and the thing noticed is still kept", () => {
+    const out = cleanFinding({ severity: "risk", path: "src/api.ts", text: "this looks insecure" })!;
+    expect(out).toEqual({ severity: "warn", path: "src/api.ts", text: "this looks insecure", verdict: "needs_checking" });
+  });
+
+  it("is lowered by a how that is a few words rather than an account", () => {
+    expect(cleanFinding({ severity: "risk", path: "src/api.ts", text: "unsafe", how: "it is unsafe" }))
+      .toEqual({ severity: "warn", path: "src/api.ts", text: "unsafe", verdict: "needs_checking" });
+  });
+
+  it("leaves an info or a warning alone: only a risk has to be earned, and neither carries a verdict", () => {
+    expect(cleanFinding({ severity: "warn", path: "a.ts", text: "dead code" })).toEqual({ severity: "warn", path: "a.ts", text: "dead code" });
+    expect(cleanFinding({ severity: "info", path: "a.ts", text: "a typo", how: HOW })).toEqual({ severity: "info", path: "a.ts", text: "a typo", how: HOW });
+  });
+
+  it("keeps a secret out of how, as it does out of the words", () => {
+    const out = cleanFinding({ severity: "risk", path: "a.ts", text: "the key is in the source", how: `${HOW} sk_live_${"a".repeat(30)}` })!;
+    expect(JSON.stringify(out)).not.toContain("sk_live_a");
   });
 });

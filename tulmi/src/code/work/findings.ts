@@ -182,7 +182,24 @@ export async function logComparison(log: WorkLog, c: Comparison, results: readon
 
 export type Severity = "info" | "warn" | "risk";
 
-export interface Finding { severity: Severity; path: string; line?: number; text: string }
+/**
+ * Something the bot noticed in code it was not asked to change. A finding CARRIES ITS EVIDENCE or it does not claim to be a risk: `how` is the
+ * way it happens, from what someone controls to what comes of it. After Cloudflare's security-audit skill (MIT; the idea, not its
+ * text), whose rule is that only an established boundary failure is confirmed and a missing hardening measure is not one. `verdict` is this code's word and
+ * never the model's: "confirmed" needs a `how`, and a risk claimed without one is lowered to "needs_checking" (cleanFinding).
+ */
+export interface Finding {
+  severity: Severity;
+  path: string;
+  line?: number;
+  text: string;
+  /** How it happens: what someone controls, what it reaches, what comes of it. */
+  how?: string;
+  verdict?: "confirmed" | "needs_checking";
+}
+
+/** The shortest `how` that can be an account of anything: less is an assertion with a word or two after it. */
+export const HOW_MIN_CHARS = 40;
 
 const SEVERITIES: readonly Severity[] = ["info", "warn", "risk"];
 
@@ -191,14 +208,25 @@ const SEVERITIES: readonly Severity[] = ["info", "warn", "risk"];
  * is anything else), a path, a line if it is a whole number, and one short line of
  * words, cut, with nothing a secret scan flags. Null for a finding with no words
  * or no path.
+ *
+ * AND THE SEVERITY IS EARNED, NOT ASSERTED. A "risk" with an account of how it happens (`how`, from what someone controls to what comes of it) is
+ * kept as a risk and marked `confirmed`. One without is kept as a `warn` marked `needs_checking`: the thing noticed is not thrown away, it just
+ * stops being reported as a vulnerability on the model's word alone. A model cannot set either mark.
  */
-export function cleanFinding(f: { severity?: unknown; path?: unknown; line?: unknown; text?: unknown }): Finding | null {
+export function cleanFinding(f: { severity?: unknown; path?: unknown; line?: unknown; text?: unknown; how?: unknown }): Finding | null {
   const path = typeof f.path === "string" ? redactText(f.path, 300).trim() : "";
   const text = redactText(oneLine(f.text, 400), 300);
   if (!path || !text) return null;
-  const severity = SEVERITIES.find((s) => s === f.severity) ?? "info";
+  const asked = SEVERITIES.find((s) => s === f.severity) ?? "info";
   const line = typeof f.line === "number" && Number.isInteger(f.line) && f.line > 0 ? f.line : undefined;
-  return { severity, path, ...(line !== undefined ? { line } : {}), text };
+  const howText = typeof f.how === "string" ? redactText(oneLine(f.how, 400), 300) : "";
+  const shown = howText.length >= HOW_MIN_CHARS ? howText : "";
+  const severity: Severity = asked === "risk" && !shown ? "warn" : asked;
+  const verdict: Finding["verdict"] = asked === "risk" ? (shown ? "confirmed" : "needs_checking") : undefined;
+  return {
+    severity, path, ...(line !== undefined ? { line } : {}), text,
+    ...(shown ? { how: shown } : {}), ...(verdict ? { verdict } : {}),
+  };
 }
 
 /**
