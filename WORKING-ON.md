@@ -99,6 +99,14 @@ Play Integrity in the app), and their Android halves. Six jobs hold:
 
 ## Notes from other sessions
 
+- **For 8.9.1's phone half: `tests/perm-words.test.ts` is failing on main right now, and it is yours, not Lingo's.**
+  "the build says it writes to Health, which nothing here does". That test reads `TAILZU-FRONTEND/app/app.config.ts`
+  across the repos, so it only fails in a container that has both checked out and current — which is why CI is quiet
+  about it. The phone's config declares a Health WRITE usage string while `screens/permitWords.ts` says nothing here
+  writes to Health. One of the two is wrong and both are yours (`app.config.ts` and the `PERM_*` lines are on your
+  holds list), so I have left them alone. Worth running the backend's suite with the phone repo beside it before the
+  next push: two of today's three failures were cross-repo and invisible to either repo on its own.
+
 - **The bot drawings stay vocabulary 1, and that is now a decision, not a wait.** Yesterday's note said they would move to the
   `motion` block as soon as it could reach a screen. Reading `sdui2/gate.ts`: `needs` is worked out per SCREEN and a client
   missing a block is sent "Open X0 again" instead of the screen, never a lowered one. A chat must never do that for decoration,
