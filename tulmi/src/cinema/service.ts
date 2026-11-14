@@ -31,6 +31,7 @@ import { stillModel, type CatalogImageModel } from "./imageModels.js";
 import { castKey, filmKey, pictureKey, signMedia } from "./media.js";
 import type { CatalogModel } from "./models.js";
 import { makePicture, readAsk } from "./pictures.js";
+import { compareSaid, spellNumbers, type Heard } from "./voiceCheck.js";
 import { publicFilm, publicPicture, type FilmPublic, type PictureView } from "./public.js";
 import { direct, revise, type Think } from "./plan.js";
 import { afterCheck, checkBrief, parseVerdict, PROVIDER_FAILS } from "./qc.js";
@@ -65,12 +66,19 @@ export interface MediaPorts {
   fetchVideo: (url: string) => Promise<Buffer>;
   music: (prompt: string, seconds: number) => Promise<{ bytes: Buffer; usd: number } | null>;
   tts: (text: string, voice: string) => Promise<{ audio: Buffer; usd: number }>;
+  /** The voice-over heard back, to check it says what it should (voiceCheck.ts). Absent: the recording is kept unheard. */
+  hear?: (audio: Buffer, language: string) => Promise<Heard>;
   frames: (bytes: Buffer, n: number) => Promise<{ frames: Buffer[]; last: Buffer; seconds: number }>;
   seconds: (bytes: Buffer) => Promise<number>;
   cut: (input: {
-    shots: { video: Buffer; link: ShotCard["link"]; lines: string[]; vo: { audio: Buffer; text: string; seconds: number } | null }[];
+    shots: {
+      video: Buffer; link: ShotCard["link"]; lines: string[];
+      vo: { audio: Buffer; text: string; seconds: number; words?: { word: string; start: number; end: number }[] } | null;
+    }[];
     music: Buffer | null; aspect: Aspect; height: 720 | 1080;
-  }) => Promise<{ video: Buffer; srt: string | null; seconds: number }>;
+  }) => Promise<{ video: Buffer; srt: string | null; seconds: number; blanks?: number[] }>;
+  /** Several frames tiled into one picture for the checker; null when they cannot be tiled, and then each is sent on its own. */
+  sheet?: (frames: readonly Buffer[]) => Promise<Buffer | null>;
 }
 
 export interface CinemaDeps {
@@ -540,24 +548,50 @@ export class CinemaService {
     });
   }
 
+  /**
+   * The shot's voice-over, read and then HEARD BACK: a machine reads the line, the recording is transcribed, and the two are compared
+   * (voiceCheck.ts). A number read as another number, or a line cut short, is read again once — the second time the numbers are written
+   * out in words, which is what makes a voice engine say "ninety-nine" instead of "nineteen". If it is still wrong the better of the two
+   * is kept and the person is told, because a voice-over that is slightly off is better than a film with a silent shot.
+   */
   private async voice(f: Film, n: number): Promise<void> {
     const card = f.script!.shots.find((c) => c.n === n)!;
     if (!card.vo) return;
-    const out = await this.d.media.tts(card.vo, f.voice);
-    const secs = await this.d.media.seconds(out.audio).catch(() => card.vo!.split(/\s+/).length / 2.6);
+    const language = f.script!.bible.language;
+    let usd = 0;
+    let best: { audio: Buffer; secs: number; words?: Heard["words"]; why: string } | null = null;
+    for (const words of [false, true]) {
+      const text = words ? spellNumbers(card.vo) : card.vo;
+      const out = await this.d.media.tts(text, f.voice);
+      usd += out.usd;
+      const secs = await this.d.media.seconds(out.audio).catch(() => card.vo!.split(/\s+/).length / 2.6);
+      const heard = this.d.media.hear ? await this.d.media.hear(out.audio, language).catch(() => null) : null;
+      const said = heard ? compareSaid(card.vo, heard.text) : null;
+      const take = { audio: out.audio, secs, ...(heard?.words ? { words: heard.words } : {}), why: said?.why ?? "" };
+      if (!said || said.ok) { best = take; break; }
+      // The first reading was wrong: keep it only until the second is in.
+      if (!best) best = take;
+      if (words) break;
+    }
+    if (!best) return;
+    const kept = best;
     const mediaKey = filmKey(f.ownerId, f.id, `voice-${n}-${this.id().slice(0, 8)}`, "audio/mpeg");
-    await this.d.blobs.put(mediaKey, out.audio, "audio/mpeg");
+    await this.d.blobs.put(mediaKey, kept.audio, "audio/mpeg");
     await this.update(f.ownerId, f.id, (x) => {
-      this.spend(f, x, out.usd);
+      this.spend(f, x, usd);
       const c = x.script!.shots.find((s) => s.n === n);
       const st = shotOf(x, n);
       if (!c || !st) return;
-      const need = Math.min(15, Math.ceil(secs + 0.5));
+      const need = Math.min(15, Math.ceil(kept.secs + 0.5));
       if (need > c.seconds) {
         c.seconds = need;
         x.notes = [`Shot ${n}: given ${need} seconds so its voice-over fits.`, ...x.notes].slice(0, 20);
       }
-      Object.assign(st, { voice: mediaKey, voiceOf: voicePrint(c, x.script!.bible, x.voice), voiceSeconds: Math.round(secs * 100) / 100 });
+      if (kept.why) x.notes = [`Shot ${n}: the voice-over is not quite right. ${kept.why}`, ...x.notes].slice(0, 20);
+      Object.assign(st, {
+        voice: mediaKey, voiceOf: voicePrint(c, x.script!.bible, x.voice), voiceSeconds: Math.round(kept.secs * 100) / 100,
+        ...(kept.words?.length ? { voiceWords: kept.words } : {}),
+      });
     });
   }
 
@@ -668,9 +702,16 @@ export class CinemaService {
     const prevCard = idx > 0 ? script.shots[idx - 1] : undefined;
     const prevTake = prevCard && (card.link === "continue" || prevCard.place === card.place) ? f.takes.find((x) => x.id === shotOf(f, prevCard.n)?.take) : undefined;
     const prevLast = prevTake?.lastFrame ? await this.d.blobs.get(prevTake.lastFrame) : null;
-    const user: Exclude<Parameters<Think>[0]["user"], string> = [{ type: "text", text: `Check this take.${prevLast ? " The last image is the previous shot's last frame." : ""}` }];
+    // The frames go as ONE picture where they can: the checker sees the whole movement at once, which is what catches a shot that morphs
+    // or runs backwards, and it is one image to pay for instead of five.
+    const sheet = this.d.media.sheet ? await this.d.media.sheet(frameBytes).catch(() => null) : null;
+    const how = sheet
+      ? `Check this take. The second picture holds ${frameBytes.length} frames of it in time order, left to right and top to bottom; say which frame is wrong by its number.`
+      : "Check this take.";
+    const user: Exclude<Parameters<Think>[0]["user"], string> = [{ type: "text", text: `${how}${prevLast ? " The last image is the previous shot's last frame." : ""}` }];
     if (still) user.push({ type: "image_url", image_url: { url: dataUrl(still, "image/png") } });
-    for (const fr of frameBytes) user.push({ type: "image_url", image_url: { url: dataUrl(fr, "image/jpeg") } });
+    if (sheet) user.push({ type: "image_url", image_url: { url: dataUrl(sheet, "image/jpeg") } });
+    else for (const fr of frameBytes) user.push({ type: "image_url", image_url: { url: dataUrl(fr, "image/jpeg") } });
     if (prevLast) user.push({ type: "image_url", image_url: { url: dataUrl(prevLast, "image/png") } });
     let verdict: Verdict | null = null;
     let usd = 0;
@@ -714,7 +755,10 @@ export class CinemaService {
       if (!video) throw new CinemaError(500, "A take is missing.", "take_missing");
       const audio = st.voice ? await this.d.blobs.get(st.voice) : null;
       const who = (k: string) => script.bible.characters.find((c) => c.key === k)?.name ?? k;
-      shots.push({ video, link: card.link, lines: card.lines.map((l) => `${who(l.who)}: ${l.text}`), vo: card.vo && audio ? { audio, text: card.vo, seconds: st.voiceSeconds } : null });
+      shots.push({
+        video, link: card.link, lines: card.lines.map((l) => `${who(l.who)}: ${l.text}`),
+        vo: card.vo && audio ? { audio, text: card.vo, seconds: st.voiceSeconds, ...(st.voiceWords?.length ? { words: st.voiceWords } : {}) } : null,
+      });
     }
     let music: Buffer | null = null;
     let musicUsd = 0;
@@ -725,6 +769,7 @@ export class CinemaService {
     }
     const height = f.tier === "draft" ? 720 : 1080;
     const out = await this.d.media.cut({ shots, music, aspect: f.aspect, height });
+    const blanks = out.blanks?.length ? `The film goes blank at ${out.blanks.map((s) => `${s}s`).join(", ")}: look at those shots.` : "";
     const videoKey = filmKey(f.ownerId, f.id, `film-${p.cut}`, "video/mp4");
     await this.d.blobs.put(videoKey, out.video, "video/mp4");
     let srtKey: string | null = null;
@@ -736,6 +781,7 @@ export class CinemaService {
       this.spend(f, x, musicUsd);
       for (const old of [x.cut.video, x.cut.srt]) if (old && old !== videoKey && old !== srtKey) void this.d.blobs.delete(old).catch(() => undefined);
       x.cut = { video: videoKey, srt: srtKey, seconds: Math.round(out.seconds * 10) / 10, of: p.cut };
+      if (blanks) x.notes = [blanks, ...x.notes].slice(0, 20);
     });
   }
 

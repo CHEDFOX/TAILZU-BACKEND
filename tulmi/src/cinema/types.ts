@@ -233,6 +233,8 @@ export interface ShotState {
   voiceOf: string | null;
   /** How long the voice-over runs, in seconds. */
   voiceSeconds: number;
+  /** When the recogniser reported them, each word of the voice-over and when it was said: the subtitles are timed from these (cut.ts). */
+  voiceWords?: { word: string; start: number; end: number }[];
 }
 
 export interface Cut {

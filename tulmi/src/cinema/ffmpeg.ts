@@ -4,17 +4,18 @@
  *   probe(bytes)          what a clip or a sound is: its container, length, size, whether it has sound
  *   frames(bytes, n)      n frames spread across a take for the eye (qc.ts), and its very last frame (the next shot's first, when it continues)
  *   seconds(bytes)        how long a voice-over runs
- *   cut(plan, files)      the whole film (cut.ts cutArgs), to MP4
+ *   cut(plan, files)      the whole film (cut.ts cutArgs), to MP4: the mix listened to, then cut, then the finished file listened to again
+ *                         and its sound encoded once more, lower, while it still peaks too high (AAC adds peaks no filter saw)
  *
  * The clips come from the video providers, not from people, but they are still read carefully: only real media containers (checked with
  * ffprobe first), `-protocol_whitelist file` so a container cannot make ffmpeg open another address, `-nostdin`, a time limit, and every
  * file in a folder of the job's own that is removed afterwards.
  */
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cutArgs, srtOf, type CutPlan, type CutShot } from "./cut.js";
+import { cutArgs, PEAK_CEILING, readLoudness, readPeak, srtOf, type CutPlan, type CutShot } from "./cut.js";
 
 const FORMATS_OK = new Set(["mov", "mp4", "m4a", "3gp", "3g2", "mj2", "matroska", "webm", "mp3", "wav", "ogg", "aac", "flac", "image2", "png_pipe", "jpeg_pipe", "webp_pipe"]);
 const COMMON = ["-nostdin", "-hide_banner", "-loglevel", "error", "-protocol_whitelist", "file"];
@@ -81,6 +82,29 @@ export async function seconds(bytes: Buffer, ext = "mp3"): Promise<number> {
   return (await probe(bytes, ext)).seconds;
 }
 
+/** How wide one frame is on the contact sheet, and how many across. */
+const SHEET_TILE = 512;
+const SHEET_COLS = 3;
+
+/**
+ * Several frames as one picture, in time order, left to right and top to bottom. The checker is shown this instead of a frame at a time:
+ * one picture instead of five, and it can see the whole movement at once, which is what catches a shot that morphs or runs backwards.
+ * Null when the frames cannot be tiled, and then the caller sends them as they are.
+ */
+export async function contactSheet(shots: readonly Buffer[]): Promise<Buffer | null> {
+  if (shots.length < 2) return null;
+  return inFolder(async (dir) => {
+    for (const [i, b] of shots.entries()) await writeFile(join(dir, `f${String(i).padStart(2, "0")}.jpg`), b);
+    const cols = Math.min(SHEET_COLS, shots.length);
+    const rows = Math.ceil(shots.length / cols);
+    const out = join(dir, "sheet.jpg");
+    const r = await run("ffmpeg", [...COMMON, "-i", join(dir, "f%02d.jpg"),
+      "-vf", `scale=${SHEET_TILE}:-2,tile=${cols}x${rows}:margin=6:padding=4:color=#14161a`, "-frames:v", "1", "-q:v", "4", "-y", out], 60_000);
+    if (r.code !== 0) return null;
+    return readFile(out).catch(() => null);
+  });
+}
+
 /** `n` frames spread across a take (JPEG, 768 wide at most) and its last frame (PNG, full size). */
 export async function frames(bytes: Buffer, n: number): Promise<{ frames: Buffer[]; last: Buffer; seconds: number }> {
   return inFolder(async (dir) => {
@@ -103,14 +127,17 @@ export async function frames(bytes: Buffer, n: number): Promise<{ frames: Buffer
 }
 
 export interface CutInput {
-  shots: (Omit<CutShot, "video" | "seconds" | "hasAudio" | "vo"> & { video: Buffer; vo: { audio: Buffer; text: string; seconds: number } | null })[];
+  shots: (Omit<CutShot, "video" | "seconds" | "hasAudio" | "vo"> & {
+    video: Buffer;
+    vo: { audio: Buffer; text: string; seconds: number; words?: { word: string; start: number; end: number }[] } | null;
+  })[];
   music: Buffer | null;
   aspect: CutPlan["aspect"];
   height: CutPlan["height"];
 }
 
 /** Cuts the film. Returns the MP4 and the subtitles (or null when nothing is said). */
-export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string | null; seconds: number }> {
+export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string | null; seconds: number; blanks?: number[] }> {
   return inFolder(async (dir) => {
     const shots: CutShot[] = [];
     for (let i = 0; i < input.shots.length; i++) {
@@ -122,7 +149,7 @@ export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string
       if (s.vo) {
         const file = join(dir, `vo${i}.mp3`);
         await writeFile(file, s.vo.audio);
-        vo = { file, text: s.vo.text, seconds: s.vo.seconds };
+        vo = { file, text: s.vo.text, seconds: s.vo.seconds, ...(s.vo.words?.length ? { words: s.vo.words } : {}) };
       }
       shots.push({ video, seconds: Math.max(0.5, info.seconds), hasAudio: info.hasAudio, link: s.link, vo, lines: s.lines });
     }
@@ -136,10 +163,56 @@ export async function cut(input: CutInput): Promise<{ video: Buffer; srt: string
     const srtFile = srt ? join(dir, "words.srt") : null;
     if (srtFile && srt) await writeFile(srtFile, srt, "utf8");
     const out = join(dir, "film.mp4");
-    const r = await run("ffmpeg", [...COMMON, ...cutArgs({ shots, music, aspect: input.aspect, height: input.height, out, srt: srtFile })], 15 * 60_000);
+    const plan: CutPlan = { shots, music, aspect: input.aspect, height: input.height, out, srt: srtFile };
+
+    // 1. Listen to the mix, so the normalising is exact rather than half a unit out. A measure that fails is not fatal: the cut goes
+    //    ahead with a single pass, which is what it did before.
+    const heard = await run("ffmpeg", [...COMMON.filter((x) => x !== "error"), "-loglevel", "info", ...cutArgs(plan, { measureOnly: true })], 5 * 60_000);
+    const measured = heard.code === 0 ? readLoudness(heard.stderr) : null;
+
+    // 2. The film.
+    const r = await run("ffmpeg", [...COMMON, ...cutArgs(plan, measured ? { measured } : {})], 15 * 60_000);
     if (r.code !== 0) throw new CutError("The film could not be cut.");
-    const video = await readFile(out);
+
+    // 3. AAC adds peaks that no filter saw before encoding. Listen to the finished file; while it is still too loud, encode the sound
+    //    again (the picture copied, which is quick) with the limiter lower by as much as it was over.
+    let limit = -1.6;
+    for (let round = 0; round < 3; round++) {
+      const peak = readPeak((await run("ffmpeg", [...COMMON, "-i", out, "-map", "0:a", "-af", "ebur128=peak=true", "-f", "null", "-"], 3 * 60_000)).stderr);
+      if (peak === null || peak <= PEAK_CEILING) break;
+      limit -= peak + 1.3;
+      const lower = join(dir, `film-${round}.mp4`);
+      const again = await run("ffmpeg", [...COMMON, "-i", out, "-map", "0", "-c", "copy", "-c:a", "aac", "-b:a", "160k",
+        "-af", `aresample=192000,alimiter=limit=${limit.toFixed(2)}dB:attack=10:release=200:level=disabled:latency=1,aresample=48000`,
+        "-movflags", "+faststart", "-y", lower], 5 * 60_000);
+      if (again.code !== 0) break;
+      await rename(lower, out);
+    }
+
+    // 4. A blank stretch in the middle of the film: a take that came back black, or a dissolve that went through nothing. The checker
+    //    looks at each take on its own and cannot see this by construction. The opening and closing fades are expected.
+    const black = await run("ffmpeg", [...COMMON.filter((x) => x !== "error"), "-loglevel", "info", "-i", out, "-vf", "blackdetect=d=0.25:pix_th=0.10", "-f", "null", "-"], 3 * 60_000);
     const info = await probeFile(out);
-    return { video, srt, seconds: info.seconds };
+    const blanks = blackSpans(black.stderr, info.seconds);
+
+    const video = await readFile(out);
+    return { video, srt, seconds: info.seconds, ...(blanks.length ? { blanks } : {}) };
   });
 }
+
+/**
+ * Where the finished film goes blank, in seconds, leaving out the fades it is supposed to have at either end. ffmpeg prints a line a
+ * span: "black_start:3.5 black_end:4.2 black_duration:0.7".
+ */
+export function blackSpans(stderr: string, total: number, fadeIn = 0.6, fadeOut = 0.9): number[] {
+  const out: number[] = [];
+  for (const m of stderr.matchAll(/black_start:([\d.]+)\s+black_end:([\d.]+)/g)) {
+    const from = Number(m[1]);
+    const to = Number(m[2]);
+    if (!Number.isFinite(from) || !Number.isFinite(to)) continue;
+    if (to <= fadeIn || from >= total - fadeOut) continue;   // the fades at either end
+    out.push(Math.round(from * 100) / 100);
+  }
+  return out;
+}
+

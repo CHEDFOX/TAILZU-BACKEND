@@ -152,6 +152,9 @@ under 6, a weighted mean of 7.
 | a problem a prompt can fix (the action, the camera, the framing, the words) | retaken with the fix line ("Important: …") |
 | a problem of the model's own (bodies, hands, melting, physics, a face that changes) or the same problem twice from it | retaken on the next model in the router's list |
 | three checked takes, or the money would not cover another | the best is kept, with a note to the person, unless it is unsafe or anything is under 4 |
+
+The frames go to the eye as **one tiled picture** in time order, rather than one at a time: it sees the whole movement at once, which is what
+catches a shot that morphs or runs backwards, and it is one image to read instead of five.
 | otherwise | the shot waits for the person (`hold: "shot"`); the other shots carry on |
 
 A take that fails at the provider (an error, not a bad picture) is tried again; after two from one model that model is blamed; after four the
@@ -163,13 +166,30 @@ one kept, one more pair with the fix when neither passes.
 `cut.ts` works out the edit and ffmpeg's arguments; `ffmpeg.ts` runs them on the server (its image has ffmpeg):
 
 * **picture**: every take scaled and padded to the frame (1080p, 720p for a draft), 24 frames a second; plain cuts, a half-second dissolve
-  where the shot list says so; a short fade in and out;
+  where the shot list says so; a short fade in and out. The finished film is then looked at for a blank stretch in the middle
+  (`blackdetect`), which the per-shot eye cannot see by construction - a take that came back black, or a dissolve that went through nothing;
 * **sound**: each take's own sound (its lines and ambience, or silence), the voice-over placed at the start of its shot, the music (Lyria,
-  through OpenRouter) looped to length and ducked under the voice with a sidechain compressor, the mix brought to -16 LUFS;
+  through OpenRouter) looped to length and ducked under the voice with a sidechain compressor, the mix brought to -16 LUFS. The mix is
+  **listened to first** and then normalised with what that heard, because one pass alone lands about half a unit out, through a limiter
+  running at four times the sample rate so it sees the peaks that fall between samples. Then the **finished file** is listened to again: AAC
+  adds peaks that no filter could see before encoding, so while it is still over -1 dBTP the sound alone is encoded again, lower, with the
+  picture copied across;
 * **words**: the lines and the voice-over as a soft subtitle track and an `.srt` beside it.
 
 The voice-over is recorded while the storyboard is drawn (`pipeline/tts.ts`, in the film's voice) and measured: a shot whose words need more
 seconds is given them before anything is filmed, so words are never cut to fit.
+
+**And heard back** (`voiceCheck.ts`). A machine reads the line and nobody listens before it is cut in, so every recording is transcribed with
+the server's own speech-to-text and compared with what it should say. A number read as another number ("ninety-nine" as "nineteen") always
+fails, and so does a line cut short; the second reading writes the numbers out in words, which is what stops a voice engine guessing. Hindi and
+Hinglish are the hard part, and are handled in the comparison itself: a Hinglish line written in Latin letters comes back in Devanagari about
+half the time, so when the scripts differ the letters are not compared at all - only the numbers, which survive transliteration, and how much
+was said. Within one script the words are compared loosely, because Hinglish has no settled spelling. Number words that are ordinary words too
+("do", "no", "ek") are read as numbers when the two readings are compared, but never failed on.
+
+**Subtitles are timed to be read.** Every cue is held for the time its characters take to read - counted by script, because Latin, Devanagari
+and the Han and kana scripts are read at very different speeds - and no two are ever on screen at once: a cue that would run into the next one
+ends where that one starts. Where the recogniser reported word timings, the voice-over's subtitle is timed to the speech rather than the clip.
 
 ## 7. Pictures
 
@@ -275,7 +295,10 @@ Migration 0089 (`cinema_films`, `cinema_pictures`, `cinema_cast`). DEPLOY.md, "C
   touches
 * `cinema-plan`: a model's script made safe; the director asked once more, a one-shot note changing one shot, sheets kept through a revision
 * `cinema-pictures`: reading an ask, two candidates, a retry on the next model, a logo as SVG
-* `cinema-cut`: the timeline and subtitles, and, where ffmpeg is installed, a real cut of three clips with a voice-over and music
+* `cinema-cut`: the timeline, the reading time and the overlap of subtitles, the two-pass loudness and the peak readers, where a film goes
+  blank, and, where ffmpeg is installed, a real cut of three clips with a voice-over and music, a tiled contact sheet, and a loud film
+  measured after encoding to prove it comes in under the ceiling
+* `cinema-voice`: the voice-over heard back - numbers across English, Hindi and Hinglish, a line heard in another script, a line cut short
 * `cinema-store`: the store's ownership and the account's deletion; signed links
 * `cinema-service`: a whole film with every model faked, from the idea to the cut, a failed take retaken, a late change, the caps, a picture
 * `cinema-routes`: the doors off and on, refusals, the allowance, photos, links, the bot among the built-ins and the front door's pick

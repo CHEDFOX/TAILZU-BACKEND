@@ -6,8 +6,15 @@
  *             short fade in at the start and out at the end
  *   sound     three layers, as a mixer would keep them: each take's own sound (its lines and ambience, or silence), the voice-over placed at
  *             the start of its shot, and the music looped to length and ducked under the voice (a sidechain compressor), the whole mix brought
- *             to -16 LUFS, the loudness phones and social apps play at
- *   words     the lines and the voice-over as subtitles, timed to their shots: a soft subtitle track in the film and an .srt beside it
+ *             to -16 LUFS, the loudness phones and social apps play at.
+ *
+ *             MEASURED, NOT GUESSED. The mix is listened to once (`measureArgs`) and then normalised with what that heard
+ *             (`linear=true`): one pass on its own is about half a loudness unit out, which is audible between one film and the next.
+ *             The limiter after it runs at four times the sample rate, so it sees the peaks that appear between samples, and its
+ *             look-ahead is compensated so the sound stays level with the picture. Even then AAC adds peaks of its own that no filter can
+ *             see before encoding, so ffmpeg.ts listens to the FINISHED file and encodes the sound again, lower, if it is still too loud.
+ *   words     the lines and the voice-over as subtitles, timed to their shots, each held long enough to be read and never two at once
+ *             (readable, trimmed): a soft subtitle track in the film and an .srt beside it
  *
  * Output is H.264 and AAC in MP4 with the index at the front, which every phone and browser plays.
  */
@@ -19,6 +26,33 @@ const FADE_OUT = 0.6;
 /** The voice-over starts this long after its shot does, so it never clips the cut. */
 const VO_LEAD = 0.15;
 
+/**
+ * HOW LONG A SUBTITLE MUST STAY UP TO BE READ. A line is held for the time it takes to read it plus a moment to notice it and look away:
+ * characters divided by a rate for the script it is written in, plus READ_PAD, and never less than READ_MIN. The rates are the usual
+ * reading speeds: an alphabet is read fastest, Devanagari a little slower (longer words, and the matras are read as one unit), and the
+ * Han and kana scripts slowest per character because each character carries far more.
+ */
+const READ_PAD = 1.2;
+const READ_MIN = 1.4;
+const CPS = { latin: 15, indic: 11, cjk: 4.5 } as const;
+
+/** How long this text needs on screen, in seconds. */
+export function readSeconds(text: string): number {
+  const s = text.replace(/\s+/g, " ").trim();
+  let cjk = 0, indic = 0, other = 0;
+  for (const ch of s) {
+    const c = ch.codePointAt(0)!;
+    if (ch === " ") continue;
+    // Han, hiragana, katakana, hangul: one character is a word's worth.
+    if ((c >= 0x3040 && c <= 0x30ff) || (c >= 0x3400 && c <= 0x9fff) || (c >= 0xac00 && c <= 0xd7af) || (c >= 0xf900 && c <= 0xfaff)) cjk++;
+    // Devanagari, and the other Indian scripts beside it.
+    else if (c >= 0x0900 && c <= 0x0dff) indic++;
+    else other++;
+  }
+  const need = cjk / CPS.cjk + indic / CPS.indic + other / CPS.latin + READ_PAD;
+  return Math.max(READ_MIN, Math.round(need * 100) / 100);
+}
+
 export interface CutShot {
   /** The take's file. */
   video: string;
@@ -26,9 +60,12 @@ export interface CutShot {
   seconds: number;
   hasAudio: boolean;
   link: Link;
-  vo: { file: string; text: string; seconds: number } | null;
+  vo: { file: string; text: string; seconds: number; words?: { word: string; start: number; end: number }[] } | null;
   lines: string[];
 }
+
+/** What listening to the mix heard (ffmpeg's loudnorm, first pass). */
+export interface Loudness { input_i: string; input_tp: string; input_lra: string; input_thresh: string; target_offset: string }
 
 export interface CutPlan {
   shots: CutShot[];
@@ -67,20 +104,47 @@ const stamp = (s: number): string => {
   return `${p(Math.floor(ms / 3_600_000))}:${p(Math.floor(ms / 60_000) % 60)}:${p(Math.floor(ms / 1000) % 60)},${p(ms % 1000, 3)}`;
 };
 
-/** The subtitles: the voice-over over its shot for as long as it is spoken, the lines spread across their shot. Null when nothing is said. */
-export function srtOf(shots: readonly CutShot[]): string | null {
+export interface Cue { from: number; to: number; text: string }
+
+/**
+ * The subtitles: the voice-over over its shot for as long as it is spoken, the lines spread across their shot, each held long enough to be
+ * read (readSeconds) and then trimmed so that two are never on screen at once. Null when nothing is said.
+ *
+ * `words`, when the voice-over was measured word by word (voiceCheck.ts), times its subtitle to the speech instead of the clip's length.
+ */
+export function cuesOf(shots: readonly CutShot[]): Cue[] {
   const { starts } = timeline(shots);
-  const cues: { from: number; to: number; text: string }[] = [];
+  const cues: Cue[] = [];
   shots.forEach((s, i) => {
     const at = starts[i]!;
-    if (s.vo) cues.push({ from: at + VO_LEAD, to: at + VO_LEAD + Math.min(s.vo.seconds, s.seconds + 2), text: s.vo.text });
+    if (s.vo) {
+      const spoken = s.vo.words?.length ? s.vo.words[s.vo.words.length - 1]!.end : s.vo.seconds;
+      cues.push({ from: at + VO_LEAD, to: at + VO_LEAD + Math.max(spoken, readSeconds(s.vo.text)), text: s.vo.text });
+    }
     if (s.lines.length) {
       const each = s.seconds / s.lines.length;
-      s.lines.forEach((l, k) => cues.push({ from: at + k * each, to: at + (k + 1) * each - 0.05, text: l }));
+      s.lines.forEach((l, k) => cues.push({ from: at + k * each, to: at + k * each + Math.max(each - 0.05, readSeconds(l)), text: l }));
     }
   });
+  return trim(cues);
+}
+
+/**
+ * In time order, with no two on screen at once: a cue that runs into the next one ends where that one starts. A cue left shorter than it
+ * takes to read is kept as it is, held as long as there is room: the line is still better seen than dropped.
+ */
+export function trim(cues: readonly Cue[]): Cue[] {
+  const out = [...cues].sort((a, b) => a.from - b.from || a.to - b.to);
+  for (let i = 0; i < out.length - 1; i++) {
+    const next = out[i + 1]!;
+    if (out[i]!.to > next.from) out[i] = { ...out[i]!, to: Math.max(next.from - 0.04, out[i]!.from + 0.2) };
+  }
+  return out;
+}
+
+export function srtOf(shots: readonly CutShot[]): string | null {
+  const cues = cuesOf(shots);
   if (!cues.length) return null;
-  cues.sort((a, b) => a.from - b.from);
   return cues.map((c, i) => `${i + 1}\n${stamp(c.from)} --> ${stamp(c.to)}\n${wrap(c.text)}\n`).join("\n");
 }
 
@@ -95,8 +159,29 @@ function wrap(text: string): string {
   return at < 0 ? t : `${t.slice(0, at)}\n${t.slice(at + 1)}`;
 }
 
-/** ffmpeg's arguments for the whole cut. Inputs: the takes, then the voice-overs, then the music, then the subtitles. */
-export function cutArgs(p: CutPlan): string[] {
+/** How loud the music sits under a voice. A film with narration keeps the music well under it; without one, the music carries the film. */
+export const musicLevel = (hasVoice: boolean): number => (hasVoice ? 0.22 : 0.5);
+/** The loudness every film is brought to, and the ceiling the limiter holds. */
+export const TARGET_LUFS = -16;
+const LIMIT_DB = -1.6;
+
+/** What the mix must not pass in the finished file, measured after encoding. Above this, the sound is encoded again, lower. */
+export const PEAK_CEILING = -1;
+
+export interface CutOpts {
+  /** What the first pass heard, so the second can be exact. Absent: one pass, which is about half a unit out. */
+  measured?: Loudness;
+  /** The limiter's ceiling in dB, lowered on each re-encode (ffmpeg.ts). */
+  limit?: number;
+  /** Build the arguments for listening to the mix only: no picture, no file written. */
+  measureOnly?: boolean;
+}
+
+/**
+ * ffmpeg's arguments for the whole cut. Inputs: the takes, then the voice-overs, then the music, then the subtitles.
+ * With `measureOnly`, the same sound is built but nothing is written: ffmpeg prints what it heard and exits.
+ */
+export function cutArgs(p: CutPlan, o: CutOpts = {}): string[] {
   const { w, h } = frameOf(p.aspect, p.height);
   const { starts, total } = timeline(p.shots);
   const args: string[] = [];
@@ -155,7 +240,7 @@ export function cutArgs(p: CutPlan): string[] {
     layers.push("[vomix]");
   }
   if (musicIdx >= 0) {
-    f.push(`[${musicIdx}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=0:${T},asetpts=PTS-STARTPTS,volume=0.3,afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, total - 2).toFixed(3)}:d=2[mus]`);
+    f.push(`[${musicIdx}:a]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,atrim=0:${T},asetpts=PTS-STARTPTS,volume=${musicLevel(voIdx.length > 0)},afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, total - 2).toFixed(3)}:d=2[mus]`);
     if (voIdx.length) {
       f.push(`[mus][vokey]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=500[duck]`);
       layers.push("[duck]");
@@ -165,9 +250,20 @@ export function cutArgs(p: CutPlan): string[] {
   } else if (voIdx.length) {
     f.push(`[vokey]anullsink`);
   }
-  f.push(`${layers.join("")}amix=inputs=${layers.length}:normalize=0:duration=first,atrim=0:${T},loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[aout]`);
+  const m = o.measured;
+  const heard = m ? `:measured_I=${m.input_i}:measured_TP=${m.input_tp}:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}:offset=${m.target_offset}:linear=true` : "";
+  const norm = `loudnorm=I=${TARGET_LUFS}:TP=-1.5:LRA=11${o.measureOnly ? ":print_format=json" : heard}`;
+  // Four times the sample rate, so the limiter sees the peaks that fall between samples; latency=1 gives back its look-ahead, so the
+  // sound stays level with the picture.
+  const limit = `aresample=192000,alimiter=limit=${(o.limit ?? LIMIT_DB).toFixed(2)}dB:attack=10:release=200:level=disabled:latency=1,aresample=48000`;
+  f.push(`${layers.join("")}amix=inputs=${layers.length}:normalize=0:duration=first,atrim=0:${T},${norm}${o.measureOnly ? "" : `,${limit}`}[aout]`);
 
-  args.push("-filter_complex", f.join(";"), "-map", "[vout]", "-map", "[aout]");
+  args.push("-filter_complex", f.join(";"));
+  if (o.measureOnly) {
+    args.push("-map", "[aout]", "-t", T, "-f", "null", "-");
+    return args;
+  }
+  args.push("-map", "[vout]", "-map", "[aout]");
   if (srtIdx >= 0) args.push("-map", `${srtIdx}:s`, "-c:s", "mov_text", "-metadata:s:s:0", "language=und");
   args.push(
     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "24",
@@ -175,4 +271,25 @@ export function cutArgs(p: CutPlan): string[] {
     "-t", T, "-movflags", "+faststart", "-y", p.out,
   );
   return args;
+}
+
+/** What ffmpeg printed after listening to the mix, or null when it said nothing we can use. */
+export function readLoudness(stderr: string): Loudness | null {
+  const at = stderr.lastIndexOf("{");
+  if (at < 0) return null;
+  try {
+    const got = JSON.parse(stderr.slice(at, stderr.lastIndexOf("}") + 1)) as Record<string, string>;
+    const need = ["input_i", "input_tp", "input_lra", "input_thresh", "target_offset"] as const;
+    if (need.some((k) => typeof got[k] !== "string" || !Number.isFinite(Number(got[k])))) return null;
+    return { input_i: got.input_i!, input_tp: got.input_tp!, input_lra: got.input_lra!, input_thresh: got.input_thresh!, target_offset: got.target_offset! };
+  } catch {
+    return null;
+  }
+}
+
+/** The true peak ffmpeg measured in a finished file, in dB, or null when it reported none. */
+export function readPeak(stderr: string): number | null {
+  const all = [...stderr.matchAll(/Peak:\s*(-?[\d.]+|-inf)\s*dBFS/gi)].map((x) => (x[1] === "-inf" ? -99 : Number(x[1])));
+  const ok = all.filter((n) => Number.isFinite(n));
+  return ok.length ? Math.max(...ok) : null;
 }
