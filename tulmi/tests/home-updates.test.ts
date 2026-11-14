@@ -6,7 +6,7 @@
  *     row opens where it belongs; at rest he wears the one line that matters most
  *   - typing is still there, behind a key, and sending it is the ask bar's own road
  *   - a spoken ask goes out as "voice", so the answer comes back short for the ear; he says a word while he thinks and speaks it
- *   - a tap on him while he listens stops him
+ *   - his ear is open the whole time the page is in front, with no mic to press; the keyboard is the one thing that shuts it
  *   - it stays inside the kit (lintTree) on both clients, old builds included
  */
 import { describe, expect, it, vi } from "vitest";
@@ -46,7 +46,8 @@ describe("the switch", () => {
   it("is off by default, and stages by account", () => {
     off();
     expect(homeUpdatesOn(ME)).toBe(false);
-    expect(homeListenOn()).toBe(false);
+    // his ear is part of him: on wherever the updates are, and false is the way to shut it
+    expect(homeListenOn()).toBe(true);
     on();
     expect(homeUpdatesOn(ME)).toBe(true);
     process.env.HOME_UPDATES_USERS = "someone-else";
@@ -55,9 +56,9 @@ describe("the switch", () => {
     process.env.HOME_UPDATES_USERS = `someone-else, ${ME}`;
     resetConfigForTests();
     expect(homeUpdatesOn(ME)).toBe(true);
-    process.env.HOME_LISTEN = "true";
+    process.env.HOME_LISTEN = "false";
     resetConfigForTests();
-    expect(homeListenOn()).toBe(true);
+    expect(homeListenOn()).toBe(false);
     off();
   });
 
@@ -127,23 +128,67 @@ describe("his ear", () => {
     expect(j).not.toContain('"kind":"speak"');
   });
 
-  it("listens turn after turn, and a tap on him stops it", () => {
+  it("listens turn after turn, with no mic to press, and a tap on him opens his thought", () => {
     on();
     const node = homeUpdatesBot(ctx(), FEED);
     const j = JSON.stringify(node);
     expect(j).toContain('"kind":"voiceLive"');
     expect(j).toContain('"mode":"chat"');
-    // his own tap: stop while listening, else open
-    expect(JSON.stringify(node.on?.onPress)).toContain('"kind":"voiceStop"');
+    // no mic: nothing in the whole tree is a microphone to press
+    expect(j).not.toContain('"mic"');
+    // a tap on him opens his thought — it cannot mean "stop", now that he always listens
+    expect(JSON.stringify(node.on?.onPress)).not.toContain("voiceStop");
+    expect(JSON.stringify(node.on?.onPress)).toContain('"path":"askOpen","value":true');
     off();
   });
 
-  it("says nothing of a microphone to a build that cannot hear", () => {
+  it("shuts his ear at the keyboard, and opens it again when they stop typing", () => {
+    on();
+    const all = walk(homeUpdatesBot(ctx(), FEED));
+    // the key that opens the field also stops his ear
+    const key = all.find((n) => JSON.stringify(n.on?.onPress ?? "").includes('"path":"typing","value":true'))!;
+    expect(JSON.stringify(key.on!.onPress)).toContain('"kind":"voiceStop"');
+    // and the one beside the field hands it back
+    const back = all.find((n) => JSON.stringify(n.on?.onPress ?? "").includes('"path":"ask"'))!;
+    expect(JSON.stringify(back.on!.onPress)).toContain('"path":"typing","value":false');
+    expect(JSON.stringify(back.on!.onPress)).toContain('"kind":"voiceLive"');
+    off();
+  });
+
+  it("goes back to listening when his thought is closed, instead of going deaf", () => {
+    on();
+    const all = walk(homeUpdatesBot(ctx(), FEED));
+    const closeBtn = all.find((n) => JSON.stringify(n.on?.onPress ?? "").includes('"path":"askOpen","value":false'))!;
+    const j = JSON.stringify(closeBtn.on!.onPress);
+    expect(j).not.toContain("voiceStop");
+    expect(j).toContain('"kind":"voiceLive"');
+    off();
+  });
+
+  it("keeps the list in his thought while he listens", () => {
+    on();
+    const all = walk(homeUpdatesBot(ctx(), FEED));
+    // nothing is hidden on "not listening" any more: his ear being open is the resting state
+    expect(all.filter((n) => JSON.stringify(n.visibleIf ?? "").includes('"falsy":"voice"'))).toEqual([]);
+    // and the list itself stands until something is asked
+    const list = all.find((n) => JSON.stringify(n.visibleIf ?? "").includes('"falsy":"asking"') && JSON.stringify(n.visibleIf ?? "").includes('"falsy":"sent"'))!;
+    expect(list).toBeDefined();
+    off();
+  });
+
+  it("says nothing of a microphone to a build that cannot hear, nor with his ear shut", () => {
     on();
     const deaf = ctx("phone", { can: new Set(["BotsKit", "BotsMotion", "BotMoments", "BotStage", "KitExtras"]) });
     const j = JSON.stringify(homeUpdatesBot(deaf, FEED));
     expect(j).not.toContain("voiceLive");
-    expect(j).not.toContain("Talk to me");
+    expect(j).not.toContain("Listening");
+    // HOME_LISTEN=false is the same bot: updates and a key, nothing that mentions talking
+    process.env.HOME_LISTEN = "false";
+    resetConfigForTests();
+    const shut = JSON.stringify(homeUpdatesBot(ctx(), FEED));
+    expect(shut).not.toContain("voiceLive");
+    expect(shut).not.toContain("Listening");
+    expect(shut).toContain("Type instead");
     off();
   });
 });
@@ -171,17 +216,20 @@ describe("on the screen", () => {
   });
 });
 
-describe("listening as soon as Home is in front", () => {
-  it("is off by default, and when it is on his ear opens with the page", () => {
+describe("his ear opens with the page", () => {
+  it("opens as soon as Home is in front, unless they are typing, and HOME_LISTEN=false shuts it", () => {
     on();
-    expect(JSON.stringify(homeUpdatesBot(ctx(), FEED).on?.onAppear ?? null)).toBe("null");
-    process.env.HOME_LISTEN = "true";
-    resetConfigForTests();
     const j = JSON.stringify(homeUpdatesBot(ctx(), FEED).on?.onAppear);
     expect(j).toContain('"kind":"voiceLive"');
+    // not over the keyboard: typing is the one thing that keeps his ear shut
+    expect(j).toContain('"falsy":"typing"');
     // never on a build that cannot hear
     const deaf = ctx("phone", { can: new Set(["BotsKit", "BotsMotion", "BotMoments", "BotStage", "KitExtras"]) });
     expect(homeUpdatesBot(deaf, FEED).on?.onAppear).toBeUndefined();
+    // and the one way to shut an open microphone without turning him off
+    process.env.HOME_LISTEN = "false";
+    resetConfigForTests();
+    expect(homeUpdatesBot(ctx(), FEED).on?.onAppear).toBeUndefined();
     off();
   });
 });

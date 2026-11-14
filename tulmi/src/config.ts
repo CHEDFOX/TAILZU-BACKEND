@@ -860,13 +860,14 @@ const EnvSchema = z.object({
    * one opening where it belongs, with a way to speak to him and a small key for typing when they cannot. Off by default, so Home is
    * exactly as it is today; HOME_UPDATES_USERS stages it by account, as the other switches do.
    *
-   * HOME_LISTEN: with the updates on, he starts listening the moment Home is in front, instead of waiting for a double tap. It is its
-   * own switch because it means an open microphone the whole time that page is up: the phone shows its own mark, it costs battery, and
-   * everything said near it is heard. Off by default. A tap on him always stops him.
+   * HOME_LISTEN: his ear is open the whole time Home is in front, with nothing to press — which is what the updates bot is, so it is on
+   * wherever HOME_UPDATES is. Setting it false is the way to shut an open microphone without turning him off: it means the phone shows
+   * its own mark the whole time that page is up, it costs battery, and everything said near it is heard. Opening the keyboard shuts his
+   * ear either way.
    */
   HOME_UPDATES: bool(false),
   HOME_UPDATES_USERS: orDefault(""),
-  HOME_LISTEN: bool(false),
+  HOME_LISTEN: bool(true),
   /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which

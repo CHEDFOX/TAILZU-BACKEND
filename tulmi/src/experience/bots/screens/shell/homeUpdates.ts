@@ -9,9 +9,10 @@
  *   at rest      one line of the most pressing thing — "2 need you", "Xode is building the cart fix", "Nothing new" — not "Talk freely"
  *   open         what needs them, with the same two buttons the decision card has; what their bots are working on, with its stage;
  *                what just finished. Every row opens where it belongs (the job, the approval, the bot's page, the chat)
- *   his ear      a mic that listens turn after turn (canVoice); while he listens the words he hears stand above the list, and a tap
- *                on him stops. With HOME_LISTEN he starts the moment Home is in front, without being asked
- *   typing       a small key, out of the way: it opens the field for the times they cannot speak. Not the first thing they see
+ *   his ear      open the whole time Home is in front (canVoice), with nothing to press: turn after turn, each pause sending what he
+ *                heard, the words standing at his foot as he hears them. HOME_LISTEN=false keeps it shut
+ *   typing       a small key, out of the way: it opens the field AND closes his ear — one voice at a time — for the times they cannot
+ *                speak. The key again hands his ear back (coming back by speaking is the wake word: docs/home-updates.md section 6)
  *
  * WHAT HE SAYS BACK. A voice ask goes out as `mode: "voice"`, so the front door shapes it for the ear (front/decide.ts `spoken`,
  * handlers.ts "Spoken: yes."): a short answer, no table, no page. He says a filler while it is out ("mm, let me see…") and then
@@ -64,10 +65,14 @@ export function homeUpdatesOn(userId?: string): boolean {
   }
 }
 
-/** Whether he listens as soon as Home is in front (HOME_LISTEN): an open microphone for as long as the page is up. */
+/**
+ * Whether his ear is open the whole time Home is in front: what he does, not a thing to ask for, so it is on wherever the updates are
+ * on. HOME_LISTEN=false shuts it (the one way to turn off an open microphone without turning him off), and it is never read on a build
+ * that cannot hear.
+ */
 export function homeListenOn(): boolean {
   try {
-    return getConfig().HOME_LISTEN === true;
+    return getConfig().HOME_LISTEN !== false;
   } catch {
     return false;
   }
@@ -186,17 +191,23 @@ function updateRow(ctx: BotsCtx, u: Update): Node {
 /** Home's foot: him, walking, with what is happening in his thought and his ear open to a question. */
 export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Node {
   const desk = ctx.client === "desktop";
-  const voice = canVoice(ctx);
+  // His ear, in one word: a build that can hear, with it not shut (HOME_LISTEN=false). Everything about speaking hangs off it, so a
+  // shut ear and a build that cannot hear are the same bot — updates and a key, nothing that mentions talking.
+  const voice = canVoice(ctx) && homeListenOn();
   const u = updatesOf(ctx, rows);
   const listening = { truthy: "voice" } satisfies Condition;
   const typing = { truthy: "typing" } satisfies Condition;
   const asking = { truthy: "asking" } satisfies Condition;
   const sent = { truthy: "sent" } satisfies Condition;
   const answered = { truthy: "asked.shell.text" } satisfies Condition;
-  const quiet = { all: [{ falsy: "sent" }, { falsy: "voice" }, { falsy: "asking" }] } satisfies Condition;
+  // His ear is open the whole time, so "quiet" can no longer mean "not listening": the list stands until something is asked.
+  const quiet = { all: [{ falsy: "sent" }, { falsy: "asking" }] } satisfies Condition;
 
   const reset = seq(clear("sent"), clear("reply"), clear("asked"), setState("askBot", "any"), setState("typing", false));
-  const close = seq(setState("askOpen", false), ...(voice ? [voiceStop()] : []), reset);
+  // His ear, opened if it is not already: his resting state, so it is what closing the box and leaving the keyboard both go back to.
+  const earOpen: ActionSpec = { kind: "condition", if: { falsy: "voice" }, then: updatesVoice(ctx) };
+  // Closing his thought puts him back to walking and listening — it does not shut his ear, which only the keyboard does.
+  const close = seq(setState("askOpen", false), reset, ...(voice ? [earOpen] : []));
 
   // What he was asked, and what came back.
   const bubble = row([box([text("", { size: 15, lineHeight: 21, color: C.paper, bind: "sent", lines: 4 })], {
@@ -218,7 +229,7 @@ export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Nod
   if (!list.length) {
     list.push(col([
       text("Nothing new", { size: 16, lineHeight: 22 }),
-      meta(voice ? "Ask me anything — tap the mic, or the key to type." : "Ask me anything — tap the key to type.", { size: 13 }),
+      meta(voice ? "Ask me anything — just say it, or tap the key to type." : "Ask me anything — tap the key to type.", { size: 13 }),
     ], { gap: 4, paddingVertical: 6 }));
   }
   const all = labelled(row([meta("See everything", { size: 13 }), icon("chevron", { size: 14, color: C.meta })], { gap: 4, minHeight: 32 }, open(SCREENS.activity)), "See everything in Activity");
@@ -237,27 +248,36 @@ export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Nod
     },
   };
 
-  const keyboardKey = labelled(box([icon("keyboard", { size: 18, color: C.meta })], {
+  const smallKey = (child: Node, press: ActionRef, label: string): Node => labelled(box([child], {
     width: 40, height: 40, borderRadius: 20, borderWidth: 1, borderColor: C.line, alignItems: "center", justifyContent: "center", flexShrink: 0,
-  }, setState("typing", true)), "Type instead");
+  }, press), label);
+  // Typing closes his ear: one voice at a time, and nothing said at the keyboard is heard. The key again, and he has it back.
+  const keyboardKey = smallKey(icon("keyboard", { size: 18, color: C.meta }),
+    seq(...(voice ? [voiceStop()] : []), setState("typing", true)), "Type instead");
+  const earBack = smallKey(icon("close", { size: 16, color: C.meta }),
+    seq(setState("typing", false), clear("ask"), ...(voice ? [earOpen] : [])), voice ? "Stop typing and talk instead" : "Stop typing");
 
-  const foot = row([
-    when(typing, box([field], { flexGrow: 1, flexShrink: 1, minWidth: 0 })),
-    when({ falsy: "typing" }, box([meta(voice ? "Talk to me" : "Ask me", { size: 13 })], { flexGrow: 1, flexShrink: 1, minWidth: 0 })),
-    when({ falsy: "typing" }, keyboardKey),
-    when(typing, roundButton("send", updatesSend(ctx), { size: 40, label: "Send" })),
-    ...(voice ? [when({ falsy: "typing" }, roundButton("mic", { kind: "condition", if: listening, then: voiceStop(), else: updatesVoice(ctx) }, { size: 44, label: "Talk to me" }))] : []),
-  ], { gap: 10, alignItems: "center" });
+  // No button to speak: while he is not being typed at his ear is open, and this says so. The words he hears stand right above it.
+  const earLine = row([
+    ...(voice ? [statusMark("working", { color: C.ink })] : []),
+    meta(voice ? "Listening" : "Ask me", { size: 13 }),
+  ], { gap: 8, flexGrow: 1, flexShrink: 1, minWidth: 0 });
+
+  const foot = col([
+    ...(voice ? [when({ all: [listening, { falsy: "typing" }] }, liveWords({ size: 17, lineHeight: 24 }))] : []),
+    row([
+      when(typing, box([field], { flexGrow: 1, flexShrink: 1, minWidth: 0 })),
+      when({ falsy: "typing" }, earLine),
+      when({ falsy: "typing" }, keyboardKey),
+      when(typing, earBack),
+      when(typing, roundButton("send", updatesSend(ctx), { size: 40, label: "Send" })),
+    ], { gap: 10, alignItems: "center" }),
+  ], { gap: 8 });
 
   const children: Node[] = [
     row([sectionLabel("What's happening"), grow(), labelled(box([icon("close", { size: 16 })], {
       width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: C.outline, alignItems: "center", justifyContent: "center",
     }, close), "Close")], { gap: 8 }),
-    // While he listens, the words he hears stand where the list is; the list comes back when he stops.
-    ...(voice ? [when(listening, col([
-      row([statusMark("working", { color: C.ink }), meta("Listening", { size: 13 })], { gap: 8 }),
-      liveWords({ size: 17, lineHeight: 24 }),
-    ], { gap: 8 }))] : []),
     when(sent, bubble),
     when({ all: [asking, { falsy: "reply.text" }] }, row([statusMark("working", { color: C.ink }), meta("Thinking", { size: 13 })], { gap: 8 })),
     when({ any: [{ truthy: "reply.text" }, answered] }, answer),
@@ -270,23 +290,25 @@ export function homeUpdatesBot(ctx: BotsCtx, rows: readonly FeedRow[] = []): Nod
     foot,
   ];
 
-  const tapHim: ActionRef = voice
-    ? { kind: "condition", if: listening, then: voiceStop(), else: setState("askOpen", true) }
-    : setState("askOpen", true);
+  // A tap opens his thought. It cannot mean "stop listening" any more, now that he always is: that is what the key is for, and the
+  // close button, which shuts his ear with the box.
+  const tapHim: ActionRef = setState("askOpen", true);
 
   const stage = botStage({
     life: "home.ask", kind: "custom", color: C.ink, size: desk ? 30 : 26, height: desk ? 140 : 136, toys: false, roam: roamFor(ctx),
     thinkWhen: { all: [asking, { falsy: "reply.text" }] }, cheerWhen: answered,
     ...(voice ? { listenWhen: listening } : {}),
     thought: { style: "home", restText: restLine(ctx, u), openPath: "askOpen", fullWhen: { any: [sent, { truthy: "askOpen" }] }, shape: "square", veil: true, place: "follow" },
-    label: voice ? `What's happening. ${desk ? "Double-click" : "Double-tap"} me to talk.` : "What's happening.",
+    label: voice ? "What's happening. I'm listening — say what you need, or tap the key to type." : "What's happening.",
   }, [col(children, { padding: 18, gap: 14, flexGrow: 1 })], {
     onPress: tapHim,
     ...(voice ? { onDoubleTap: seq(setState("askBot", "any"), setState("askOpen", true), updatesVoice(ctx)) } : {}),
     onDismiss: reset,
   });
-  // HOME_LISTEN: his ear opens the moment Home is in front, without being asked. It is its own switch because it is an open
-  // microphone for as long as the page is up; a tap on him stops it, and it falls quiet by itself after a while with nothing said.
-  if (!voice || !homeListenOn()) return stage;
-  return { ...stage, on: { ...(stage.on ?? {}), onAppear: updatesVoice(ctx) } } satisfies SduiNode;
+  // His ear opens with the page and stays open, with nothing to press — unless they are at the keyboard, which is the one thing that
+  // shuts it. HOME_LISTEN=false shuts it everywhere. It falls quiet by itself after a long while with nothing said, and the next time
+  // the page comes to the front it opens again.
+  if (!voice) return stage;
+  const onAppear: ActionSpec = { kind: "condition", if: { all: [{ falsy: "typing" }, { falsy: "voice" }] }, then: updatesVoice(ctx) };
+  return { ...stage, on: { ...(stage.on ?? {}), onAppear } } satisfies SduiNode;
 }

@@ -1,6 +1,6 @@
 # The bot at the foot of Home, as what is happening
 
-The tiny bot who walks the bottom of Home used to carry a box to type in. With `HOME_UPDATES` on he carries **what is going on** instead: what needs you, what your bots are working on, what just finished — each one opening where it belongs — and he listens when you want to ask something. Typing is still there, behind a small key, for the times you cannot speak.
+The tiny bot who walks the bottom of Home used to carry a box to type in. With `HOME_UPDATES` on he carries **what is going on** instead: what needs you, what your bots are working on, what just finished — each one opening where it belongs. And he is **listening the whole time that page is in front**: no microphone to press, nothing to hold, just talk to him. Typing is still there, behind a small key, for the times you cannot speak — and opening that key is the one thing that shuts his ear.
 
 Off by default: with the switch off Home is exactly what it is today, and nothing extra is read.
 
@@ -28,10 +28,11 @@ Nothing new, and he says so and offers to be asked. The list scrolls inside his 
 
 ## 2. Asking him
 
-* **His ear.** A mic at the foot of the box, and a double tap on him, both start a voice chat: turn after turn, each pause sending what he heard. While he listens the words stand where the list was, and **a tap on him stops** him. He falls quiet by himself after a while with nothing said; tap again and he carries on.
-* **With `HOME_LISTEN`** he starts listening the moment Home is in front, without being asked. It is its own switch because it means an open microphone for as long as that page is up: the phone shows its own mark, it costs battery, and everything said near it is heard and sent to be understood. Off by default.
-* **Typing** is the small key beside the mic: it opens the field, and Send goes down exactly the same road. Nothing is typed by default and the field is not what you see first.
-* A build that cannot hear (no voice) is sent no mic and no mention of talking — only the key.
+* **His ear is open, and there is nothing to press.** It opens as soon as Home is in front and stays open: turn after turn, each pause sending what he heard. A quiet "Listening" at the foot of the box is the only sign of it, and the words he hears stand just above it. Speak to him with his thought shut and he opens it himself to answer. He falls quiet by himself after a long while with nothing said, and opens again the next time the page comes to the front; a double tap is a way to wake him there and then.
+* **A tap on him opens his thought.** It no longer means "stop listening" — he always is — so the list is always reachable.
+* **Typing shuts his ear.** The small key opens the field and stops him hearing, because there is one voice at a time and nothing said at a keyboard is meant for him. Send goes down exactly the same road as a spoken ask. The ✕ beside the field ends typing and gives him his ear back, as does closing the box.
+* **Coming back to voice by speaking** — saying something while the keyboard is open and having him take it — is the wake word, and it is not here (section 6). The ✕ is the way back.
+* A build that cannot hear, and `HOME_LISTEN=false`, give the same bot: updates and a key, nothing that mentions talking.
 
 ## 3. What he says back
 
@@ -49,7 +50,7 @@ Nothing here decides who answers. The words go to the same door the ask bar uses
 | --- | --- | --- |
 | `HOME_UPDATES` | off | the bot at the foot of Home carries what is happening, instead of a box to type in |
 | `HOME_UPDATES_USERS` | empty | comma-separated account ids: while it names anyone, only they get it |
-| `HOME_LISTEN` | off | he listens the moment Home is in front (an open microphone while that page is up) |
+| `HOME_LISTEN` | **on** | his ear is open the whole time Home is in front. It is his nature, not an extra, so it rides with `HOME_UPDATES`; `false` is the way to shut an open microphone (the phone shows its own mark, it costs battery, everything said near it is heard) without turning him off |
 
 ```
 ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/set-env.sh HOME_UPDATES=true HOME_UPDATES_USERS=<your account id> && ./deploy/ship.sh'
@@ -57,6 +58,6 @@ ssh root@91.108.104.168 'cd ~/tulmi && ./deploy/set-env.sh HOME_UPDATES=true HOM
 
 ## 6. What it does not do yet
 
-* **A wake word** ("hey X0" with the microphone otherwise shut) is not here. It needs the app itself to listen locally, which is native work in both apps, a permission, battery tuning and store review. `HOME_LISTEN` is the nearest thing the server can do on its own.
+* **A wake word** ("hey X0" with the microphone otherwise shut, and the way back to voice while the keyboard is open) is not here. The server can open an ear and read every word in it; it cannot ask the app to sleep until one phrase is said. That is native work in both apps — local listening, a permission, battery tuning, store review. The open ear while Home is in front is the nearest thing the server can do on its own, and the ✕ beside the field is the way back from typing.
 * **Holding him to make him listen** is not here either: neither app reports a press and hold on him today, only a tap and a double tap. The gesture block that landed on 14 Nov (`docs/renderer.md` section 3) does carry a hold, so once `SDUI_V2` is on and the builds that have it are out, this can be done from the server, for the clients that have it — a hold anywhere on the strip he walks, not pinpointed to his body.
 * **His voice is the app's own.** The pauses and the "mm" are words we send, not a way of speaking; a slower, more human delivery with real hesitation is the speech service's to give.

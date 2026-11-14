@@ -43,8 +43,10 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 - Reviews of the pieces below may push small follow-up fixes to the same files.
 - **The bot at the foot of Home, as what is happening** (server; `docs/home-updates.md`, behind `HOME_UPDATES`, off, staged by
-  `HOME_UPDATES_USERS`; `HOME_LISTEN` for an open ear while Home is up). Instead of a box to type in, his thought holds what needs
-  you, what your bots are working on and what just finished, each opening where it belongs, with his ear and typing behind a key.
+  `HOME_UPDATES_USERS`; his ear is open the whole time Home is up, `HOME_LISTEN=false` shuts it). Instead of a box to type in, his thought holds what needs
+  you, what your bots are working on and what just finished, each opening where it belongs. No microphone to press: his ear is open
+  while the page is in front, and the key that opens the field is the one thing that shuts it (the ✕ beside the field gives it back;
+  coming back by *speaking* is the wake word, which needs the apps).
   Vocabulary 1, today's kit only. Built on `claude/keen-allen-podunv`, not on main yet. Holds
   `tulmi/src/experience/bots/screens/shell/homeUpdates.ts` (new), and the foot of Home in `screens/shell/home.ts` and
   `screens/shell.ts` (its load reads the activity feed only when the switch is on). It changes `homeThought.ts` not at all: with
