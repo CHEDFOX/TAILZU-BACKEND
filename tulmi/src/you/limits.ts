@@ -118,7 +118,11 @@ export class Spending {
       ...rows.map((r) => ({ at: r.at, paise: r.paise })),
     ];
     const anchor = ent?.active && ent.expiresAt ? Date.parse(ent.expiresAt) || null : null;
-    const read: MeterRead = { at: now, events, plan: planOf(ent, c), anchor };
+    // `userId` is what lets abuse prevention's hold reach the meter (src/trust, docs/trust.md §actions): while an
+    // account's free use is held, planOf gives it the free month's one allowance instead of Lite's five stretches. This
+    // is the only place the plan is read, so without it the hold would change nothing about what may be spent. A payer
+    // is never held (planOf reaches the paid branches first), and the read is kept for CACHE_MS like everything here.
+    const read: MeterRead = { at: now, events, plan: planOf(ent, c, { userId }), anchor };
     this.meters.set(userId, read);
     return read;
   }

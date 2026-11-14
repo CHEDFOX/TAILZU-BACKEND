@@ -391,7 +391,29 @@ export interface BootstrapResponse {
    * reachable set; this is it. Absent = the client warms its tabs, as before.
    */
   warmScreenIds?: string[];
+  /** Abuse and fraud prevention (docs: trust). Present only when the server wants a check now. The phone runs each step once, in
+   *  the background, never blocking a screen, and only the steps its capabilities allow. */
+  trust?: TrustAsk;
 }
+
+/**
+ * WHAT THE PHONE IS ASKED TO PROVE (docs: trust, the perms2 design's §8.5). Never a tracking signal and never an identity: each
+ * step asks Apple or Google whether this is the real app on a real device, and the server keeps only the answer.
+ */
+export interface TrustAsk {
+  /** Single use, 5 minutes, base64url of 32 random bytes. Hashed by the phone as "x0|<step>|" + challenge. */
+  challenge: string;
+  do: ("appAttest" | "appAssert" | "deviceCheck" | "playIntegrity")[];
+  /** Play Integrity's Cloud project number (not a secret). */
+  cloudProject?: string;
+}
+/** POST /v1/trust/ios/attest, /ios/assert, /ios/devicecheck, /android/integrity. Each answers 204; nothing comes back to act on. */
+export interface TrustAttestBody { challenge: string; keyId: string; attestation: string }      // base64
+export interface TrustAssertBody { challenge: string; keyId: string; assertion: string }        // base64
+export interface TrustDeviceCheckBody { token: string }                                         // base64
+export interface TrustIntegrityBody { challenge: string; token: string }
+/** On failure the phone posts the same route with { challenge, failed: "<code>" } (unsupported, throttled, no_play, timeout, …). */
+export interface TrustFailedBody { challenge: string; failed: string }
 
 export interface LanguageOption {
   code: string;
@@ -1355,6 +1377,34 @@ export const CONTACT_PICK_CAPABILITY = "ContactPick1";
  *  Health Connect, read on the phone and posted straight to the server. */
 export const HEALTH_CAPABILITY = "Health1";
 
+/** NOT A COMPONENT (the phone, build 8.9.1+). Each is declared by the phone's own check that the native function, the usage key
+ *  or Android permission, and the OS are all there (docs: perms2), so an older binary declares none. */
+export const CALENDAR_ADD_CAPABILITY = "CalendarAdd1";       // calendar.editor
+export const CALENDAR_READ_CAPABILITY = "CalendarRead1";     // calendar.sync (iPhone 17+; Android behind TULMI_ANDROID_CALENDAR)
+export const REMINDERS_CAPABILITY = "Reminders1";            // reminders.sync (iPhone 17+)
+export const FOCUS_CAPABILITY = "Focus1";                    // focus.sync; the Focus Filter (iPhone) / Do Not Disturb (Android)
+export const MOTION_CAPABILITY = "Motion1";                  // health.sync source "motion"; motion.watch; requestPermission "motion"
+export const HEALTH_SLEEP_CAPABILITY = "HealthSleep1";       // health.sync sleep: true
+export const ARRIVAL_CAPABILITY = "Arrival1";                // arrival.sync (iPhone; Android behind TULMI_ANDROID_ARRIVAL)
+export const APP_ATTEST_CAPABILITY = "AppAttest1";           // TrustAsk "appAttest" | "appAssert"
+export const DEVICE_CHECK_CAPABILITY = "DeviceCheck1";       // TrustAsk "deviceCheck"
+export const PLAY_INTEGRITY_CAPABILITY = "PlayIntegrity1";   // TrustAsk "playIntegrity"
+
+/** One arrival reminder (arrival.sync). Bounds are checked on the phone too. */
+export interface ArrivalItem {
+  /** ^[a-z0-9_-]{1,64}$; the phone prefixes "x0.arrive.". */
+  id: string;
+  lat: number; lon: number;
+  /** 100-500. */
+  radiusM: number;
+  /** <= 60 characters, e.g. "You're at Koramangala Market". */
+  title: string;
+  /** <= 140 characters, the item's own words. */
+  body: string;
+  /** The screen a tap opens, <= 120 characters. */
+  screen?: string;
+}
+
 /** How a bot wanders: walk to a random spot in `span` (fractions of the stage's width), pause, play a random moment, again. */
 export interface BotRoam {
   moments: string[];
@@ -1749,14 +1799,57 @@ export type ActionSpec =
    *  screen bug can never send health data to a route that reaches an AI service). Asks only when `ask`; `enable` rides on the
    *  first POST. No health value ever reaches state. */
   | { kind: "health.sync"; path: string; days?: number; ask?: boolean; enable?: boolean;
+      /** MOTION_CAPABILITY only: read the steps and the walks, runs and rides from Motion & Fitness instead of Apple Health. */
+      source?: "health" | "motion";
+      /** HEALTH_SLEEP_CAPABILITY only: ask for the sleep type in a request OF ITS OWN, so a refusal leaves steps working. */
+      sleep?: boolean;
       onSynced?: ActionRef; onEmpty?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef;
+      onUnavailable?: ActionRef; onError?: ActionRef }
+  // --- the phone's own things, build 8.9.1 (docs: perms2) ---
+  /** Phone, CALENDAR_ADD_CAPABILITY. The phone's own event editor, filled in. No permission (iPhone 17+: out of process; Android:
+   *  the calendar app's screen). Nothing is read. Android cannot tell saved from cancelled, so it reports onOpened. */
+  | { kind: "calendar.editor"; title: string; startsAtIso: string; endsAtIso?: string; allDay?: boolean; notes?: string;
+      onSaved?: ActionRef; onCancel?: ActionRef; onOpened?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, CALENDAR_READ_CAPABILITY. BUSY TIMES ONLY ({s, e, allDay}; free, declined and cancelled events skipped) for `days`
+   *  (14 at most), POSTed to `path`, which must equal "/v1/botsapp/plan/busy" (else refused before any read). No title, place,
+   *  note, attendee or calendar name crosses into JavaScript. Asks only when `ask`; `enable` rides on the first POST. */
+  | { kind: "calendar.sync"; path: string; days?: number; ask?: boolean; enable?: boolean;
+      onSynced?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, REMINDERS_CAPABILITY. Two-way sync of ONE list, "X0 Bot" (made on first sync), through `path`, which must equal
+   *  "/v1/botsapp/plan/reminders/sync": read that list, POST, apply the reply's {add, update, remove} to that list only, POST
+   *  {applied}. No other list's items are fetched. Nothing reaches state. */
+  | { kind: "reminders.sync"; path: string; ask?: boolean; enable?: boolean;
+      onSynced?: ActionRef; onDenied?: ActionRef; onBlocked?: ActionRef; onUnavailable?: ActionRef; onError?: ActionRef }
+  /** Phone, FOCUS_CAPABILITY. Whether a Focus (iPhone: what X0 Bot's Focus Filter last saw) or Do Not Disturb (Android, no
+   *  permission) is on, POSTed as {on, hold?, source} to `path`, which must equal "/v1/botsapp/plan/focus". Never which one. */
+  | { kind: "focus.sync"; path: string; onSynced?: ActionRef; onError?: ActionRef }
+  /** Phone, MOTION_CAPABILITY. "Wait while I'm driving", on or off — the person's own switch, and nothing is read or sent.
+   *  ANDROID needs this both ways: it can only answer the driving check while it is registered for car transitions, and
+   *  `on: false` deletes that registration and the one line it kept (perms2 5.2). On the iPhone the system answers the
+   *  question from its own motion history, so the native side answers true and does nothing. Both switch paths send it. */
+  | { kind: "motion.watch"; on: boolean; onDone?: ActionRef; onUnsupported?: ActionRef }
+  /** Phone, ARRIVAL_CAPABILITY. Replaces the arrival reminders the phone's OWN system watches with `items` (10 at most). The
+   *  places come from this server; the phone's position never reaches JavaScript or this server, and nobody is told of an
+   *  arrival. Asks for location (While Using) only when `ask`. onApproximate: Precise Location is off. */
+  | { kind: "arrival.sync"; items: ArrivalItem[]; ask?: boolean;
+      onArmed?: ActionRef; onApproximate?: ActionRef;
+      /** ANDROID ONLY: precise location is held, "Allow all the time" is not. NOT a denial — the server's own card explains
+       *  the background use (Play's prominent disclosure) and then offers Settings, which is the only way on from Android 11. */
+      onBackground?: ActionRef;
+      onDenied?: ActionRef; onBlocked?: ActionRef;
       onUnavailable?: ActionRef; onError?: ActionRef }
   // --- permissions ---
   | {
       kind: "requestPermission";
       permission:
         | "microphone" | "camera" | "notifications" | "photoLibrary"
-        | "contacts" | "calendar" | "location" | "tracking";
+        | "contacts" | "calendar" | "location" | "tracking"
+        /** MOTION_CAPABILITY only: Motion & Fitness (iPhone) / Physical activity (Android), for the driving check before a
+         *  Plan Ease call. */
+        | "motion"
+        /** ARRIVAL_CAPABILITY on Android only: "Allow all the time", as a REQUEST and not a bare openSettings. The iPhone
+         *  has no such kind and answers unsupported. */
+        | "backgroundLocation";
       onGranted?: ActionRef;
       onDenied?: ActionRef;
       /**
@@ -1782,7 +1875,7 @@ export type ActionSpec =
       kind: "checkPermission";
       permission:
         | "microphone" | "camera" | "notifications" | "photoLibrary"
-        | "contacts" | "calendar" | "location" | "tracking";
+        | "contacts" | "calendar" | "location" | "tracking" | "motion" | "backgroundLocation";
       onGranted?: ActionRef;
       onDenied?: ActionRef;
       /** Optional: also write the boolean answer to this state path. */

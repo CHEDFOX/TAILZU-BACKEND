@@ -39,14 +39,17 @@ const flag = (name: string) => z.boolean({ invalid_type_error: `skills.${name} i
 /**
  * The skills: five switches, the health switch, and the connected apps the bot may use. Anything else is refused.
  *
- * `health` is here so a body carrying it is not refused outright, but it is never a skill a person may set: the service forces
- * it false on every path but the phone's own `POST .../health/days`, which is the only thing that turns it on.
+ * `health`, `healthSleep` and `healthSource` are here so a body carrying one is not refused outright, but none is ever a skill
+ * a person may set: the service forces both switches false, and the source back to "health", on every path but the phone's own
+ * `POST .../health/days`, which is the only thing that turns either on (`sleep: true` for the second) or names the reader.
  */
 const SkillsSchema = z.object({
   web: flag("web"), files: flag("files"), artifacts: flag("artifacts"), code: flag("code"), research: flag("research"), health: flag("health"),
+  healthSleep: flag("healthSleep"),
+  healthSource: z.enum(["health", "motion"], { errorMap: () => ({ message: 'skills.healthSource is "health" or "motion"' }) }).default("health"),
   connectors: z.array(z.string().regex(CONNECTOR_ID, "a connector is named by its id")).max(LIMITS.connectors, `at most ${LIMITS.connectors} connected apps`).default([])
     .transform((l) => [...new Set(l)]),
-}).strict("skills has web, files, artifacts, code, research, health and connectors, and nothing else");
+}).strict("skills has web, files, artifacts, code, research, health, healthSleep, healthSource and connectors, and nothing else");
 
 /** The owner's rules: at most 12, each one short line. A rule over its cap is refused, not cut. */
 const RulesSchema = z.array(text(LIMITS.rule, "a rule")).max(LIMITS.rules, `at most ${LIMITS.rules} rules`)

@@ -106,6 +106,11 @@ forwards to Flow; your other sites are untouched. First point DNS:
 server {
     listen 80;
     server_name flow.yourdomain.com;
+    # NO ACCESS LOG ON THE API (docs/trust.md 8.3 fix 1). nginx's default access log writes every client's IP address to
+    # disk and keeps it for as long as your logrotate says — weeks, usually. The backend itself no longer logs an address
+    # (it logs a keyed hash instead), so the proxy in front is the only place they would still pile up. Turn it off here,
+    # or, if you want the traffic lines, use a log_format with no $remote_addr in it.
+    access_log off;
     location / {
         proxy_pass http://127.0.0.1:8770;
         proxy_http_version 1.1;
@@ -114,6 +119,10 @@ server {
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_read_timeout 300s;
+        # Abuse prevention reads the address this proxy puts here, and ONLY from a proxy whose own address is in
+        # TRUST_PROXY_CIDRS (tulmi/.env). Keep FLOW_BIND at 127.0.0.1 so nothing else can reach the backend directly.
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```

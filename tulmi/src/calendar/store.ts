@@ -40,6 +40,11 @@ export interface EventRow {
    */
   importance?: "normal" | "must" | null;
   people?: PersonRef[];
+  /**
+   * 0094 (build 8.9.1, docs: perms2 §7): "Remind me when I get there" is on for this event. The phone's own system watches the
+   * place; nothing about an arrival is ever kept, here or anywhere. Written only when given, read only when the row has it.
+   */
+  arrive?: boolean;
 }
 
 /** What a to-do is (migration 0070): a to-do, a bill to pay (step 3), or waiting on someone (step 4). planRows.ts draws each. */
@@ -73,6 +78,13 @@ export interface TaskRow {
   /** 0081 (follow-through): as on EventRow, written only when given, read only when there. */
   importance?: "normal" | "must" | null;
   people?: PersonRef[];
+  /**
+   * 0094 (build 8.9.1, docs: perms2 §3): the one Reminders list this to-do is linked to an item in. `ext_src` is the only source
+   * there is, 'apple_reminders'; `ext_ref` is that item's own opaque identifier. Written only by the Reminders sync and read
+   * only there, and only when the row has the columns (a server ahead of its migration never writes one that isn't there).
+   */
+  ext_src?: "apple_reminders" | null;
+  ext_ref?: string | null;
 }
 
 export interface EventTable extends Table<EventRow> {
@@ -83,6 +95,8 @@ export interface TaskTable extends Table<TaskRow> {
   between(userId: string, fromKey: string, toKey: string, limit: number): Promise<TaskRow[]>;
   open(userId: string, limit: number): Promise<TaskRow[]>;
   due(nowMs: number, limit: number): Promise<TaskRow[]>;
+  /** 0094: the person's to-dos linked to an item in the X0 Bot Reminders list, done or not (calendar/remindersSync.ts). */
+  linked(userId: string, limit: number): Promise<TaskRow[]>;
 }
 export interface CalendarRows { events: EventTable; tasks: TaskTable }
 
@@ -105,6 +119,7 @@ export function eventRow(r: EventRow): EventRow {
     skips: Array.isArray(r.skips) ? r.skips : [], repeat: (r.repeat ?? "") as Repeat, all_day: r.all_day === true,
     source: r.source && typeof r.source === "object" ? r.source : { kind: "me" },
     ...followBits(r),
+    ...(r.arrive !== undefined ? { arrive: r.arrive === true } : {}),
   };
 }
 export function taskRow(r: TaskRow): TaskRow {
@@ -116,6 +131,9 @@ export function taskRow(r: TaskRow): TaskRow {
     // Only when the row has them (a server ahead of 0072 never writes a column that isn't there).
     ...(r.amount_paise !== undefined ? { amount_paise: numOrNull(r.amount_paise) } : {}),
     ...followBits(r),
+    // 0094's two, the same way: a row from before the migration has neither, and reads as linked to nothing.
+    ...(r.ext_src !== undefined ? { ext_src: r.ext_src === "apple_reminders" ? "apple_reminders" as const : null } : {}),
+    ...(r.ext_ref !== undefined ? { ext_ref: typeof r.ext_ref === "string" && r.ext_ref ? r.ext_ref : null } : {}),
   };
 }
 
@@ -143,6 +161,9 @@ class MemoryTasks extends MemoryTable<TaskRow> implements TaskTable {
   async due(nowMs: number, limit: number): Promise<TaskRow[]> {
     return this.rows.filter((r) => r.next_remind_ms !== null && r.next_remind_ms !== undefined && r.next_remind_ms <= nowMs)
       .sort((a, b) => Number(a.next_remind_ms) - Number(b.next_remind_ms)).slice(0, limit).map((r) => JSON.parse(JSON.stringify(r)) as TaskRow);
+  }
+  async linked(userId: string, limit: number): Promise<TaskRow[]> {
+    return (await this.select({ user_id: userId })).filter((r) => typeof r.ext_ref === "string" && !!r.ext_ref).slice(0, limit);
   }
 }
 
@@ -181,6 +202,11 @@ class SupabaseTasks extends SupabaseTable<TaskRow> implements TaskTable {
   }
   async due(nowMs: number, limit: number): Promise<TaskRow[]> {
     const { data, error } = await this.client.from("calendar_tasks").select("*").not("next_remind_ms", "is", null).lte("next_remind_ms", nowMs).order("next_remind_ms").limit(limit);
+    if (error) fail("calendar_tasks", error);
+    return (data ?? []) as TaskRow[];
+  }
+  async linked(userId: string, limit: number): Promise<TaskRow[]> {
+    const { data, error } = await this.client.from("calendar_tasks").select("*").eq("user_id", userId).not("ext_ref", "is", null).limit(limit);
     if (error) fail("calendar_tasks", error);
     return (data ?? []) as TaskRow[];
   }

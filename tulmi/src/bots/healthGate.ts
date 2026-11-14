@@ -21,6 +21,37 @@ export function healthAllowed(platform: "ios" | "android", userId?: string): boo
   const [on, only] = platform === "android"
     ? [c.PERM_HEALTH_ANDROID === true, list(c.PERM_HEALTH_ANDROID_USERS)]
     : [c.PERM_HEALTH_IOS === true, list(c.PERM_HEALTH_IOS_USERS)];
+  return allowed(on, only, userId);
+}
+
+/**
+ * Is "Also count my sleep" on for this phone and this account (docs: perms2 §6)? Its own pair of switches, so sleep can wait
+ * for Play's refiled Health Connect form while steps and workouts are already live — and, on either phone, so sleep is turned
+ * on after steps rather than with them. Health itself must be on too: the sleep row is a sub-row of that one.
+ */
+export function sleepAllowed(platform: "ios" | "android", userId?: string): boolean {
+  if (!healthAllowed(platform, userId)) return false;
+  const c = getConfig();
+  const [on, only] = platform === "android"
+    ? [c.PERM_HEALTH_SLEEP_ANDROID === true, list(c.PERM_HEALTH_SLEEP_ANDROID_USERS)]
+    : [c.PERM_HEALTH_SLEEP_IOS === true, list(c.PERM_HEALTH_SLEEP_IOS_USERS)];
+  return allowed(on, only, userId);
+}
+
+/**
+ * Is "Count my steps" on for this phone (docs: perms2 §5.1)? The shared switch, and on Android its own half too: Android's
+ * step counter arrives in a build of its own (TULMI_ANDROID_MOTION), so a server ready for iPhone is not yet ready for it.
+ * The same test `experience/bots/kit.ts canMotion` draws the row behind, so a row the server would not draw is a row the
+ * route refuses. No account list: neither half has one, because neither waits on a store's review.
+ */
+export function motionAllowed(platform: "ios" | "android"): boolean {
+  const c = getConfig();
+  if (c.PERM_MOTION !== true) return false;
+  return platform === "android" ? c.PERM_MOTION_ANDROID === true : true;
+}
+
+/** A switch and its account list: off is off; a list set means only those accounts; an empty list means the switch alone decides. */
+function allowed(on: boolean, only: string[], userId?: string): boolean {
   if (!on) return false;
   return only.length === 0 ? true : !!userId && only.includes(userId);
 }

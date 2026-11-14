@@ -59,7 +59,9 @@ export function editParts(_ctx: BotsCtx, d: EditData) {
   for (const a of d.apps ?? []) if (a.connected && !apps.has(a.id) && !NOT_OFFERED_APPS.has(a.id)) apps.set(a.id, { name: a.name, sub: a.oneLine ?? "Connected", on: linkedIds.has(a.id), connected: true });
   const state: Record<string, unknown> = {
     name: bot.name, rule: "", s_web: bot.skills.web, s_files: bot.skills.files, s_listed: d.listed === true,
-    ...HEALTH_STATE, healthOn: bot.skills.health === true,
+    // The health switch and its 8.9.1 sub-rows read these marks, so each starts at what the bot says: a sleep row seeded off
+    // while sleep is on would draw OFF and its tap — which is the off action — would flip it to ON while the nights go.
+    ...HEALTH_STATE, healthOn: bot.skills.health === true, sleepOn: bot.skills.healthSleep === true,
   };
   const toolRows: Node[] = [
     switchRow("Search the web", "s_web", { sub: bot.skills.web ? "Finds and reads pages for you" : "Off · it never goes online", onChange: botPut(slug, { skills: { web: !bot.skills.web } }) }),

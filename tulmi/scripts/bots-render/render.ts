@@ -182,6 +182,12 @@ export interface ScreenData {
   state?: Record<string, unknown>;
   /** A catalog to draw instead of the build's own starter pack, already cut down to the format `f` (--catalog). */
   looks?: { v: number; f: number; spec: unknown };
+  /**
+   * Which phone this is (`--platform android`). The default is the iPhone, as it was. Several screens read it — the
+   * calendar place on Plan Ease, the Motion row's words, the arrival card — so an Android shot is the only way to see what
+   * an Android phone is really sent. It is ignored for the window, which is neither.
+   */
+  platform?: "ios" | "android";
 }
 
 const USER = { id: "00000000-0000-4000-8000-00000000aaaa", name: "Aanya Sharma", email: "aanya@example.in" };
@@ -213,6 +219,7 @@ function builder(target: string, data: ScreenData, misses: string[]) {
     const screen = await buildBotsScreen({
       screenId: id, client, params: p as Record<string, string>, tzOffsetMinutes: IST, user: USER,
       can: new Set(["BotsKit", ...said]), desk: { pages: said.includes("DeskShell"), notes: said.includes("DeskNotes") },
+      ...(data.platform && client === "phone" ? { platform: data.platform } : {}),
     }, deps);
     return data.state && id === target ? withState(screen, data.state) : screen;
   };
@@ -485,7 +492,7 @@ async function main(): Promise<void> {
   const has = (name: string): boolean => argv.includes(`--${name}`);
   const screenId = argv[0];
   if (!screenId || screenId.startsWith("--")) {
-    console.error("usage: npx tsx scripts/bots-render/render.ts <bots.screen> [--board Main] [--desk-board DeskHome] [--client phone|desktop|both] [--params JSON] [--quiet] [--json file] [--motion] [--catalog looks.json] [--format 2]");
+    console.error("usage: npx tsx scripts/bots-render/render.ts <bots.screen> [--board Main] [--desk-board DeskHome] [--client phone|desktop|both] [--platform android] [--params JSON] [--quiet] [--json file] [--motion] [--catalog looks.json] [--format 2]");
     process.exit(1);
   }
   const clients: Client[] = (flag("client") ?? "both") === "both" ? ["phone", "desktop"] : [flag("client") as Client];
@@ -494,6 +501,7 @@ async function main(): Promise<void> {
   const boards: Record<Client, string | undefined> = { phone: flag("board"), desktop: flag("desk-board") };
   const data: ScreenData = {
     api: flag("api") ? JSON.parse(flag("api")!) as Record<string, unknown> : {},
+    ...(flag("platform") === "android" ? { platform: "android" as const } : {}),
     quiet: has("quiet"),
     ...(flag("json") ? { served: JSON.parse(fs.readFileSync(flag("json")!, "utf8")) } : {}),
     ...(flag("without") ? { without: flag("without")!.split(",").map((n) => n.trim()).filter(Boolean) } : {}),

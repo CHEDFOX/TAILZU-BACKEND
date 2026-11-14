@@ -49,6 +49,7 @@
  * signed into one account agree. Uncertainty for the user, determinism for us.
  */
 import { getConfig } from "../config.js";
+import { heldFreeUse } from "../you/usage.js";
 
 /** How big a day's roll came out. Named so the app can style the good ones. */
 export type Tier = "small" | "good" | "big" | "huge";
@@ -175,7 +176,11 @@ export function computeAllowance(
 ): Allowance {
   const cfg = getConfig();
   const base = cfg.FREE_MONTHLY_WORDS;
-  const maxEarn = cfg.EARN_MAX_WORDS;
+  // ABUSE PREVENTION'S HOLD (docs/trust.md §actions). While an account's free use is held, the plan drops to the free
+  // month's one allowance (you/usage.ts planOf) and nothing is earned on top of it: a sign-up made to farm the free plan
+  // cannot earn its way up while it is held. `seed` is the account id at both call sites, and with nothing installed — every
+  // test, and every server with TRUST off — this is false and the sums below are exactly as they were.
+  const maxEarn = heldFreeUse(seed) ? 0 : cfg.EARN_MAX_WORDS;
 
   const used = moments.reduce((n, m) => n + (m.words || 0), 0);
 
@@ -242,6 +247,9 @@ export function computeAllowance(
 
   const maxed = earned >= maxEarn;
   const total = base + earned;
+  // Held (above): nothing was earned, so nothing is shown as earned either — a list of grants that add up to more than the
+  // number beside them is worse than an empty one.
+  const held = maxEarn === 0;
   return {
     base,
     earned,
@@ -249,8 +257,8 @@ export function computeAllowance(
     used,
     remaining: Math.max(0, total - used),
     streakDays,
-    grants: grants.reverse(),
-    perVisit,
+    grants: held ? [] : grants.reverse(),
+    perVisit: held ? [] : perVisit,
     maxed,
   };
 }
