@@ -172,9 +172,10 @@ mail/              the mail bot: the mail worker's signed client and the account
 lingo/             Lingo, the language bot: the shapes (types.ts), when to ask something again (schedule.ts, FSRS),
                    marking an answer on the server and never in the app (grade.ts), what is kept (store.ts), a day's
                    session and how an item climbs towards being said (session.ts), and what its chat knows
-                   (digest.ts), and the shared bank of real sentences with the licence and author kept per row
-                   (sentences.ts). Conversation is the lesson; a word is not learned until it has been said out
-                   loud. No language is built in: a course is a pair of tags (docs/lingo.md)
+                   (digest.ts), the order a session is put in (order.ts: interleaving, hardest early, ending on a
+                   win, a miss back after a gap), and the shared bank of real sentences with the licence and author
+                   kept per row (sentences.ts). Conversation is the lesson; a word is not learned until it has been
+                   said out loud. No language is built in: a course is a pair of tags (docs/lingo.md)
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)
 everyday/          the everyday tools every fitting bot gets, free, no sign-in: flights (Kiwi.com), hotels (trivago),
                    currency (Frankfurter), weather (MET Norway) (docs/everyday.md)

@@ -79,13 +79,14 @@ export interface Learner {
  * exist to get an item ready to be said.
  *
  *   choose  pick the meaning out of a few
+ *   blank   the word taken out of a real sentence, and put back
  *   write   type it, graded against every answer we accept
  *   listen  it is spoken, they type what they heard
  *   chips   put the given words in order
  *   say     say it out loud; speech-to-text marks it
  *   talk    a turn of real conversation, with the item expected somewhere in it
  */
-export const EXERCISE_KINDS = ["choose", "write", "listen", "chips", "say", "talk"] as const;
+export const EXERCISE_KINDS = ["choose", "blank", "write", "listen", "chips", "say", "talk"] as const;
 export type ExerciseKind = (typeof EXERCISE_KINDS)[number];
 
 /** The kinds that need the person to speak. An item is not learned until it has been passed out loud. */

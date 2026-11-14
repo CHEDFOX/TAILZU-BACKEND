@@ -19,7 +19,9 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { lingoOn } from "../../bots/builtin.js";
 import { gradeChips, gradeChoice, gradeSpoken, gradeText } from "../../lingo/grade.js";
 import { learned } from "../../lingo/schedule.js";
-import { answered, dayOf, plan, progress, streakAfter, type Exercise } from "../../lingo/session.js";
+import { answered, dayOf, pick, plan, progress, shapeFor, streakAfter, type Exercise, type SentenceLookup } from "../../lingo/session.js";
+import { againAfter } from "../../lingo/order.js";
+import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sentences.js";
 import { keyOf, lingoStore, type LingoStore, type NewItem } from "../../lingo/store.js";
 import { EXERCISE_KINDS, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level } from "../../lingo/types.js";
 
@@ -28,6 +30,8 @@ export interface LingoRouteDeps {
   /** Null when BOTS is off. */
   bots: unknown;
   store?: LingoStore;
+  /** The shared sentence bank (src/lingo/sentences.ts); the server's own when not given. */
+  bank?: SentenceBank;
   now?: () => number;
 }
 
@@ -35,6 +39,8 @@ const TAG_MAX = 16;
 const TEXT_MAX = 200;
 const GLOSS_MAX = 300;
 const WORDS_PER_CALL = 50;
+/** Sentences fetched per word that needs one. A handful is plenty: the shortest usable one is taken. */
+const SENTENCES_PER_WORD = 4;
 
 /** A language tag, as loosely as BCP-47 allows and no looser. No list of languages exists anywhere in Lingo. */
 const isTag = (s: string): boolean => /^[A-Za-z]{2,8}(-[A-Za-z0-9]{2,8})*$/.test(s) && s.length <= TAG_MAX;
@@ -45,6 +51,7 @@ const num = (v: unknown): number | null => (typeof v === "number" && Number.isFi
 export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps): void {
   const rl = { config: deps.rateLimit as never };
   const store = (): LingoStore => deps.store ?? lingoStore();
+  const bank = (): SentenceBank => deps.bank ?? sentenceBank();
   const now = deps.now ?? Date.now;
 
   const begin = async (req: FastifyRequest, reply: FastifyReply): Promise<AuthedUser | null> => {
@@ -135,6 +142,20 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     return reply.send({ added });
   });
 
+  /**
+   * A real sentence for each word that is at the stage of being put back into one. Only those words are looked up,
+   * so a session costs one small query per word that actually needs it and none for the rest.
+   */
+  const lookupFor = async (target: string, from: string, items: readonly { item: string }[], want: readonly string[]): Promise<SentenceLookup> => {
+    const found = new Map<string, readonly Sentence[]>();
+    const need = items.filter((i) => want.includes(i.item)).slice(0, 40);
+    await Promise.all(need.map(async (i) => {
+      const rows = await bank().using(target, from, i.item, SENTENCES_PER_WORD).catch(() => []);
+      if (rows.length) found.set(i.item, rows);
+    }));
+    return (item: string) => found.get(item) ?? [];
+  };
+
   app.post("/v1/lingo/session", rl, async (req, reply) => {
     const user = await begin(req, reply);
     if (!user) return reply;
@@ -145,9 +166,13 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
 
     const at = now();
     const items = await store().items(user.id, target).catch(() => []);
+    // Only the words the ladder would put into a sentence are looked up in the bank.
+    const wants = items.filter((i) => shapeFor(i, at) === "blank").map((i) => i.item);
+    const sentences = await lookupFor(target, course.from, pick(items, course, at), wants);
     // Opening a session is what makes this the course the app shows next time.
     await store().setCourse(user.id, { ...course, usedMs: at }, at).catch(() => undefined);
-    return reply.header("cache-control", "no-store").send({ exercises: plan(items, course, at), progress: progress(items, at) });
+    return reply.header("cache-control", "no-store")
+      .send({ exercises: plan(items, course, at, sentences), progress: progress(items, at) });
   });
 
   app.post("/v1/lingo/answer", rl, async (req, reply) => {
@@ -169,17 +194,22 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     if (!item) return bad(reply, "That word is not in this course.");
 
     // The exercise is rebuilt here from the item itself, so what is accepted comes from the table and never from the
-    // app: an app that asked to be marked against its own answers could mark itself right.
+    // app: an app that asked to be marked against its own answers could mark itself right. A sentence with a gap in
+    // it is rebuilt from the bank the same way, and the options come out in the same order, because the shuffle is
+    // seeded by the word and the day.
     const { exerciseFor } = await import("../../lingo/session.js");
-    const ex: Exercise = exerciseFor(item, items, at, kind);
+    const sentences = kind === "blank" ? await lookupFor(target, course.from, [item], [item.item]) : undefined;
+    const ex: Exercise = exerciseFor(item, items, at, kind, sentences);
 
     const said = str(b["said"], TEXT_MAX * 2);
     const picked = num(b["picked"]);
     const chips = Array.isArray(b["chips"]) ? (b["chips"] as unknown[]).map((c) => str(c, TEXT_MAX)).filter(Boolean).slice(0, 40) : [];
 
     const mark =
-      kind === "choose" ? gradeChoice(picked ?? -1, ex.correct, ex.options)
-      : kind === "chips" ? gradeChips(chips, [ex.item.split(" ").filter(Boolean)])
+      // A gap in a sentence is answered by choosing a word; when the bank had no sentence for it, exerciseFor fell
+      // back to writing, and `ex.kind` says so, so it is marked the way it was actually asked.
+      kind === "choose" || ex.kind === "blank" ? gradeChoice(picked ?? -1, ex.correct, ex.options)
+      : kind === "chips" || ex.kind === "chips" ? gradeChips(chips, [ex.item.split(" ").filter(Boolean)])
       : kind === "say" || kind === "talk" ? gradeSpoken(said, ex.accepted)
       : gradeText(said, ex.accepted);
 
@@ -200,6 +230,11 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
       spoken: next.spoken,
       learned: learned(next),
       streakDays: streak.streakDays,
+      // How many exercises later this one should be asked again in this same sitting, 0 for not at all (order.ts).
+      // The server decides it, so the app never has to work out what a miss is worth.
+      againAfter: againAfter(mark.verdict),
+      // What it was actually asked as, which differs from `kind` only when a gap had no sentence to sit in.
+      asked: ex.kind,
     });
   });
 }
