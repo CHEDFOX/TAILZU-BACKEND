@@ -35,7 +35,7 @@ import {
   type SpacesData, plural, spaceCount, spaceDetail, taskRow, WEEKDAYS, dayKeyOf, key, ago, link,
   openChat, dayWords, clockOf, type JoinInvite, facesLine, spaceDetailState, countDot, quietLinks,
 } from "./spaces/spaceDetail.js";
-import { type FeedRead, feedScreen, fileNode, lined, overLine, setIn, sharedItemNode } from "./spaces/feed.js";
+import { type FeedRead, GONE_COLOR, GONE_FADE, GONE_HINT, feedScreen, fileNode, goneLine, lined, overLine, setIn, sharedItemNode } from "./spaces/feed.js";
 import { joinParam, type SpacesFull, startScreen } from "./spaces/start.js";
 import { peoplePage } from "./spaces/peoplePage.js";
 import { said } from "../said.js";
@@ -45,13 +45,18 @@ interface Thread {
    * A one to one chat's people carry `bot`, their tiny bot (src/botsBots/threads.ts viewOf); read one chat at a time, a group's and a
    * space chat's people too, as their space has them (each message's line is in its sender's colour).
    */
-  id: string; kind: "direct" | "group" | "space"; name: string; spaceId: string | null; spaceName: string; people: Array<{ userId: string; name: string; you: boolean; bot?: PersonLookSpec }>;
+  id: string; kind: "direct" | "group" | "space"; name: string; spaceId: string | null; spaceName: string;
+  /** `gone`: no longer connected to the viewer, so their name is faded here too and nothing about them opens. */
+  people: Array<{ userId: string; name: string; you: boolean; bot?: PersonLookSpec; gone?: boolean }>;
   last: { text: string; at: number } | null; unread: number; muted: boolean; canPost: boolean; why: string;
 }
 interface Message {
-  id: string; from: { userId: string | null; name: string; you: boolean }; text: string; at: number;
-  /** A message to one person (only its sender, they and the space's admin read it); absent from older servers. */
-  to?: { userId: string; name: string; you: boolean } | null;
+  /** `from.gone`: the sender is no longer here — their account was deleted, or they and the viewer share no space any more
+   *  (src/botsBots/threads.ts). The message stays; the name is faded, with a hint, and never opens their page. */
+  id: string; from: { userId: string | null; name: string; you: boolean; gone?: boolean }; text: string; at: number;
+  /** A message to one person (only its sender, they and the space's admin read it); absent from older servers. `gone`: they
+   *  are no longer here, so the "To Mom" line is faded, as a gone sender's name over their own message is. */
+  to?: { userId: string; name: string; you: boolean; gone?: boolean } | null;
   files: Array<{ id: string; name: string; mime: string; bytes: number; kind: string; url: string }>; item: { id: string; kind: string; title: string } | null;
 }
 /** People: `bot`, their tiny bot (as the first space you share has them: src/botsBots/threads.ts contacts). */
@@ -336,6 +341,18 @@ function newTaskPage(ctx: BotsCtx, s: Space, kind: "task" | "plan") {
 interface ChatsData { threads?: Thread[]; unread?: number; contacts?: Contacts; open?: ThreadRead }
 interface ThreadRead { thread: Thread; messages: Message[]; more: boolean; before: number | null }
 
+/**
+ * A ONE-TO-ONE CHAT WITH SOMEONE NO LONGER HERE: their account was deleted, or they and the viewer share no space any more
+ * (threads.ts says `gone` either way, and puts a deleted account in `people` so it reads the same). Their name IS the chat's
+ * name, so it is the chat's head and its row in the list that fade. A chat with no other person in `people` at all is one of
+ * these too — an older answer, or one with nothing to read a name off — and fades rather than standing in full ink.
+ */
+const goneDirect = (t: Thread): boolean => {
+  if (t.kind !== "direct") return false;
+  const other = t.people.find((p) => !p.you);
+  return !other || other.gone === true;
+};
+
 function threadAvatar(ctx: BotsCtx, t: Thread, size = 40): Node {
   // One to one: the other person, as their own tiny bot.
   const other = t.kind === "direct" ? t.people.find((p) => !p.you) : undefined;
@@ -345,9 +362,12 @@ function threadAvatar(ctx: BotsCtx, t: Thread, size = 40): Node {
 
 function threadRow(ctx: BotsCtx, t: Thread, selected = false): Node {
   const sub = t.last?.text || (t.kind === "space" ? `Everyone in ${t.spaceName}` : t.kind === "group" ? `${names(t.people.filter((p) => !p.you).map((p) => p.name))} · ${t.spaceName}` : "Say hello");
+  // A one-to-one chat with someone no longer here: the row's name is their name, so it fades as the chat's head does
+  // (threadHead). The row still opens the chat — it never opened their page.
+  const gone = goneDirect(t);
   return row([
     threadAvatar(ctx, t),
-    col([row([text(t.name, { size: 15, weight: t.unread ? 600 : 500, lineHeight: 20, lines: 1, style: { flexShrink: 1 } }), ...(t.muted ? [meta("Muted", { size: 11 })] : [])], { gap: 6 }),
+    col([row([text(t.name, { size: 15, weight: t.unread ? 600 : 500, lineHeight: 20, lines: 1, ...(gone ? { color: C.idle, style: { flexShrink: 1, opacity: GONE_FADE } } : { style: { flexShrink: 1 } }) }), ...(t.muted ? [meta("Muted", { size: 11 })] : [])], { gap: 6 }),
       meta(sub, { size: 13, lines: 1 })], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     col([meta(t.last ? ago(ctx, t.last.at) : "", { size: 12, lines: 1 }), ...(t.unread && !t.muted ? [countDot(t.unread)] : [])], { gap: 4, alignItems: "flex-end", flexShrink: 0 }),
   ], { ...rowPad, ...(selected ? { backgroundColor: C.surface } : {}) }, open(isDesk(ctx) ? SCREENS.chats : SCREENS.thread, { id: t.id }));
@@ -409,14 +429,21 @@ function linedMessage(ctx: BotsCtx, r: ThreadRead, m: Message): Node {
   const mine = m.from.you;
   const desk = isDesk(ctx);
   const over: Node[] = [];
-  if (!mine && r.thread.kind !== "direct") over.push(setIn(overLine(m.from.name), false, m.from.userId ? open(SCREENS.person, { id: m.from.userId }) : undefined));
+  // Someone no longer here: faded, with the hint, and no way through to them (no page, no profile).
+  if (!mine && r.thread.kind !== "direct") {
+    over.push(m.from.gone
+      ? setIn(goneLine(m.from.name), false)
+      : setIn(overLine(m.from.name), false, m.from.userId ? open(SCREENS.person, { id: m.from.userId }) : undefined));
+  }
   // A message to one person, read by its sender or the space's admin: say who it went to, so it never reads as one for everyone.
-  if (m.to && !m.to.you) over.push(setIn(overLine(`To ${m.to.name}`), mine));
+  if (m.to && !m.to.you) over.push(setIn(m.to.gone ? goneLine(`To ${m.to.name}`) : overLine(`To ${m.to.name}`), mine));
   const parts: Node[] = [];
   for (const f of m.files) parts.push(fileNode(f, desk, true));
   if (m.item) parts.push(sharedItemNode(m.item, true));
   if (m.text) parts.push(messageText(ctx, m.text));
-  const color = mine ? C.ink : (m.from.userId ? r.thread.people.find((p) => p.userId === m.from.userId)?.bot?.color ?? lookOf(m.from.userId).color : C.idle);
+  const color = mine ? C.ink
+    : m.from.gone ? GONE_COLOR
+      : (m.from.userId ? r.thread.people.find((p) => p.userId === m.from.userId)?.bot?.color ?? lookOf(m.from.userId).color : C.idle);
   return row([col([...over, lined(parts, mine, color), setIn(underMessage(ctx, r, m), mine)], {
     gap: 4, maxWidth: desk ? "78%" : "82%", alignItems: mine ? "flex-end" : "flex-start", minWidth: 0,
   })], { justifyContent: mine ? "flex-end" : "flex-start" });
@@ -437,10 +464,17 @@ function messageNodes(ctx: BotsCtx, r: ThreadRead): Node[] {
     const parts: Node[] = [];
     // A name in a group opens that person's page (bots.person: Message, Report, Block), over the first of a run.
     if (!mine && r.thread.kind !== "direct" && lastFrom !== (m.from.userId ?? "")) {
-      parts.push(m.from.userId ? row([small(m.from.name)], { minHeight: 20 }, open(SCREENS.person, { id: m.from.userId })) : small(m.from.name));
+      // Someone no longer here: the name faded, the hint beside it, and nothing to tap.
+      parts.push(m.from.gone
+        ? row([meta(m.from.name, { size: 12, color: C.idle }), meta(`\u00b7 ${GONE_HINT}`, { size: 11, color: C.idle })], { gap: 4, alignItems: "center", opacity: GONE_FADE })
+        : m.from.userId ? row([small(m.from.name)], { minHeight: 20 }, open(SCREENS.person, { id: m.from.userId })) : small(m.from.name));
     }
     // A message to one person, read by its sender or the space's admin: say who it went to, so it never reads as one for everyone.
-    if (m.to && !m.to.you) parts.push(small(`To ${m.to.name}`));
+    if (m.to && !m.to.you) {
+      parts.push(m.to.gone
+        ? row([meta(`To ${m.to.name}`, { size: 12, color: C.idle }), meta(`\u00b7 ${GONE_HINT}`, { size: 11, color: C.idle })], { gap: 4, alignItems: "center", opacity: GONE_FADE })
+        : small(`To ${m.to.name}`));
+    }
     for (const f of m.files) parts.push(fileNode(f, desk));
     if (m.item) parts.push(sharedItemNode(m.item));
     if (m.text) {
@@ -474,15 +508,18 @@ function composer(ctx: BotsCtx, t: Thread): Node {
 
 function threadHead(ctx: BotsCtx, t: Thread): Node {
   const tid = enc(t.id);
-  const people = t.kind === "direct" ? (t.spaceName || "One to one") : `${names(t.people.map((p) => (p.you ? "you" : p.name)))}${t.spaceName ? ` · ${t.spaceName}` : ""}`;
   // One to one: the other person's page, where they can be reported or blocked.
   const other = t.kind === "direct" ? t.people.find((p) => !p.you) : undefined;
+  // A one-to-one chat with someone no longer here: their name IS the chat's name, so this head is where it fades. (No message in
+  // such a chat carries a name.) Every message keeps its own Report, so a message can still be reported.
+  const gone = goneDirect(t);
+  const people = t.kind === "direct" ? (gone ? GONE_HINT : (t.spaceName || "One to one")) : `${names(t.people.map((p) => (p.you ? "you" : p.name)))}${t.spaceName ? ` · ${t.spaceName}` : ""}`;
   return row([
     ...(isDesk(ctx) ? [] : [labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back")]),
     threadAvatar(ctx, t, 36),
-    col([text(t.name, { size: 17, weight: 600, lineHeight: 22, lines: 1 }), meta(people, { size: 12, lines: 1 })], { gap: 1, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+    col([text(t.name, { size: 17, weight: 600, lineHeight: 22, lines: 1, ...(gone ? { color: C.idle, style: { opacity: GONE_FADE } } : {}) }), meta(people, { size: 12, lines: 1 })], { gap: 1, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
     link(t.muted ? "Unmute" : "Mute", write("PUT", `${A}/threads/${tid}`, { muted: !t.muted }, { ok: t.muted ? "Unmuted" : "Muted" })),
-    ...(other ? [iconButton("more", open(SCREENS.person, { id: other.userId }), `Report or block ${other.name}`, 40)] : []),
+    ...(other && !gone ? [iconButton("more", open(SCREENS.person, { id: other.userId }), `Report or block ${other.name}`, 40)] : []),
     ...(t.kind === "group" ? [link("Leave", call("DELETE", `${A}/threads/${tid}`, undefined, { ok: seq(toast("You left the group"), { kind: "navigate", screenId: SCREENS.chats, replace: true }), fail: toast("Couldn't leave. Try again.", true) }))] : []),
   ], { gap: 8 });
 }

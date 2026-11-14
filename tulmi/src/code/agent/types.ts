@@ -29,7 +29,7 @@ import type { Approval } from "../approvals.js";
 import type { ContextStrategy } from "./mask.js";
 import type { Classification } from "../brain/types.js";
 import type { BaselineResult } from "../project/types.js";
-import type { ChangePlan, Located } from "../work/index.js";
+import type { ChangePlan, Finding, Located } from "../work/index.js";
 import type { PartContext, TeamMode, TeamState } from "../team/types.js";
 
 export const PHASES = ["prepare", "new_project", "baseline", "merge", "locate", "plan", "split", "team", "work", "verify", "design", "screens", "commit", "pr", "report", "done"] as const;
@@ -102,6 +102,15 @@ export const FIX_ROUNDS_MAX = 3;
 export const RUNS_MAX = 10;
 /** Tool calls in one model turn that are carried out; the rest are answered "too many". */
 export const CALLS_PER_TURN = 8;
+
+/**
+ * THE MOST MID-WORK TEST RUNS ONE JOB MAKES (phases.ts spotCheck). The tests covering the files just edited, run while the edit is still
+ * the model's last thought instead of only after done. Two, because the point is to catch a break early, not to run the suite on a loop.
+ */
+export const SPOT_CHECKS_MAX = 2;
+
+/** How long one of those runs may take. A narrowed test command is seconds; one that sits here for minutes is not a spot check. */
+export const SPOT_TIMEOUT_SEC = 180;
 /** Characters of the assembled prompt for one model call. */
 export const CONTEXT_MAX_CHARS = 60_000;
 /** The last this-many tool results go to the model in full; older ones are masked or folded (context.ts, mask.ts). */
@@ -186,7 +195,6 @@ export interface Exchange {
   model?: string;
 }
 
-export interface Finding { severity: "info" | "warn" | "risk"; path: string; line?: number; text: string }
 
 export interface CheckSummary { kind: string; exitCode: number; summary: string; failing: string[]; status: string }
 
@@ -211,6 +219,8 @@ export interface VerifyState {
   fixed: string[];
   note?: string;
   round: number;
+  /** What the change took away that no test covers and the task did not ask for, after its one round of fixing (surface.ts). Reported, never a block. */
+  lost?: string[];
 }
 
 export interface NewProjectState {
@@ -519,6 +529,18 @@ export interface AgentState {
     /** The model was asked, once, for a focused test of the change before the checks ran (phases.ts testWanted), and what it was told. Cleared once the checks run. */
     testAsked?: boolean;
     testFeedback?: string;
+    /** The one round asking for a quietly removed export or route to be put back was spent (surface.ts). */
+    surfaceAsked?: boolean;
+    /** What the tests covering the files just edited said, when they were run mid-work and failed (phases.ts spotCheck). Data, wrapped when shown. */
+    spotFeedback?: string;
+    /** The one note about files the task did not point at was said (scope.ts); what the funnel pointed at, worked out once; and the paths, for the report. */
+    scopeSaid?: boolean;
+    scopeNote?: string;
+    scopeHints?: string[];
+    outside?: string[];
+    /** How many mid-work test runs this job has made, and the staged edits of the last one: the same edits are never checked twice. */
+    spotChecks?: number;
+    spotAt?: string;
     /** What the design check found, for the model to fix: the differences and the fix hints. Data, wrapped when shown. */
     designFeedback?: string;
     /** What a team's reviewer found in this helper's work (code/team): the findings, for the fix round. Data, wrapped when shown. */

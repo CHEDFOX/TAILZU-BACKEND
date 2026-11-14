@@ -583,7 +583,8 @@ export const canMotionDrive = (ctx: BotsCtx): boolean =>
 /**
  * "Remind me when I get there": the phone's own system watches the place; this server is never told of an arrival. On
  * Android it is the app that is woken by a geofence, which is background location under Play's policy, so this one waits on
- * Play: its own switch AND an account list for the stage between the first geofencing build and the approval propagating.
+ * Play: its own switch, and an account list for a private test of your own, which is empty in production (Play approves the
+ * whole app at once, so a list left in it would only hide the row from everyone not on it).
  */
 export function canArrival(ctx: BotsCtx): boolean {
   if (ctx.client !== "phone" || !ctx.can.has(ARRIVAL_CAPABILITY) || !permOn("PERM_ARRIVAL")) return false;

@@ -8,6 +8,8 @@
  *                       goes to the one who joined later, who takes the next avatar and the next colour nobody there has yet
  *   seen(look, viewer)  what the viewer is shown: anyone else's look as it is; themself, their own X0 bot (ink, Blip)
  *   shownLook(looks, id, viewer)   one person of a space's looks, as the viewer is shown them
+ *   goneLook(seed)      someone no longer here (their account deleted, or no longer connected to the viewer): a neutral grey bot,
+ *                       no colour of their own. Their messages stay; their name is drawn faded and nothing about them opens
  *
  * The avatar and the colour are picked apart, so in a space of up to five everyone has a colour of their own, and up to seven an
  * avatar of their own. Ids hash with FNV-1a, so the look of an id never changes between deploys or machines.
@@ -24,6 +26,12 @@ export const PERSON_COLORS = ["#5B7DB1", "#B5654A", "#6B8E4E", "#8A6BB1", "#B18A
 /** The viewer, to themself: their own X0 bot. */
 export const SELF_AVATAR = "blip";
 export const SELF_COLOR = "#0a0a0a";
+/**
+ * SOMEONE NO LONGER HERE: the plainest avatar in a neutral grey (the kit's C.idle), so a message from a deleted account, or from
+ * someone no longer connected to the viewer, keeps none of that person's own colour. Their words stay; the person goes quiet.
+ */
+export const GONE_AVATAR = "dot";
+export const GONE_COLOR = "#8a8a8a";
 
 function fnv1a(s: string): number {
   let h = 0x811c9dc5;
@@ -90,6 +98,9 @@ export function looksIn(ids: readonly string[]): Map<string, PersonLook> {
 
 /** The viewer's own bot: ink, Blip. */
 export const selfLook = (id: string): PersonLook => ({ seed: id, avatar: SELF_AVATAR, color: SELF_COLOR });
+
+/** Someone no longer here: a neutral grey bot, whatever their id would otherwise give them. */
+export const goneLook = (id: string): PersonLook => ({ seed: id, avatar: GONE_AVATAR, color: GONE_COLOR });
 
 /** What `viewer` is shown for this look: theirs is their own X0 bot. */
 export const seen = (look: PersonLook, viewer: string | null | undefined): PersonLook => (viewer && look.seed === viewer ? selfLook(viewer) : look);
