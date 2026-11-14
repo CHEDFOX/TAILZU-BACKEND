@@ -12,6 +12,7 @@ import { KEYBOARD_KNOBS } from "./keyboardKnobsData.js";
 import { spacesOn } from "../botsBots/spacesSwitch.js";
 import { CALL_CATEGORIES, FOLLOW_CATEGORIES, PLAN_CATEGORIES, PLAN_CHANNELS } from "../botsBots/planKinds.js";
 import { callsOn, followOn, planOn } from "../botsBots/planSwitch.js";
+import { BOT_REPLY_CATEGORIES, notifyReplyOn } from "../bots/notifyReply.js";
 
 /** The Home Screen's long-press actions, a list per platform (appKnobsData.ts). */
 const QUICK_ACTIONS = ["app.quickActions.android", "app.quickActions.ios"] as const;
@@ -69,7 +70,21 @@ export const CATALOG_CONDITIONAL: ReadonlySet<string> = new Set([
   "native.looks",
 ]);
 
-export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags">>(boot: T): T {
+/**
+ * The Reply button on a bot's notification (src/bots/notifyReply.ts, docs/widgets.md §5): its category is listed only while
+ * NOTIFY_REPLY is on for this person, so while the switch is off no phone registers it and no push can carry it. Its button is a
+ * `call`, so nothing on the phone has to change for it to work.
+ */
+function withBotReply(flags: Record<string, unknown>, userId?: string): Record<string, unknown> {
+  if (!notifyReplyOn(userId)) return flags;
+  const out = { ...flags };
+  const cats = Array.isArray(out["push.categories"]) ? (out["push.categories"] as Array<{ id?: unknown }>) : [];
+  const have = new Set(cats.map((c) => c?.id));
+  out["push.categories"] = [...cats, ...BOT_REPLY_CATEGORIES.filter((c) => !have.has(c.id)).map((c) => structuredClone(c) as unknown)];
+  return out;
+}
+
+export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags">>(boot: T, who: { userId?: string } = {}): T {
   const fill: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(APP_KNOB_FLAGS)) if (!CATALOG_CONDITIONAL.has(k)) fill[k] = v;
   // The offline card's colours read with the theme's as their fallback (OfflineScreen.tsx), so the manifest has
@@ -86,7 +101,7 @@ export function withAppKnobs<T extends Pick<BootstrapResponse, "labels" | "flags
   return {
     ...boot,
     labels: { ...APP_KNOB_LABELS, ...(boot.labels ?? {}) },
-    flags: withPlanPush(withoutSpacesAction({ ...fill, ...(boot.flags ?? {}) })) as T["flags"],
+    flags: withBotReply(withPlanPush(withoutSpacesAction({ ...fill, ...(boot.flags ?? {}) })), who.userId) as T["flags"],
   };
 }
 

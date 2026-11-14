@@ -34,6 +34,7 @@ Every minute (`startRoutines`) the server finds the routines that are on and due
 2. **Skips** it if it is more than 3 hours late (the server was down): a morning briefing at 3 pm helps nobody. The next run is worked out from now.
 3. **Runs** it as its owner through the bot's own road (`Bots.ask`): the bot's rules, skills, connected apps, memory and **budget**. Anything that sends, deletes or pays becomes the same confirm card as always, and the push for it goes out as always.
 4. **Keeps** the answer on the routine (4,000 characters), writes it down for Activity, and pushes `routine_done`: "Plan Ease: Sum up my week" with the answer's first line, or "It needs your OK." first when something waits for a yes.
+   With `NOTIFY_REPLY` on for the owner (docs/widgets.md §5) that one push is the bot's own `bot_ask` instead, with a **Reply box** on it: the answer is also kept as a quiet turn in that bot's chat, with the run's confirm card and links on it, so the person answers the routine from the lock screen and their words have their subject. Same key, and it still goes for a bot they turned off in What pings you (it carries `data.routineId`, so `you/push.ts` keeps giving it the routines rule, not the bot-chat one). **Not the same words on the lock screen:** for a person's own bot the body says only "Sent you a message." (`notifyReply.ts` `lineOf`) and the title is the bot's name without the task, where `routine_done` says "Nani: Check my email" with the answer. Pushes from one bot also replace each other in the tray (they share the collapse id `botchat-<slug>`), where each `routine_done` stood on its own; the chat and the routine keep every answer. Off (the default), `routine_done` exactly as before.
 
 At most 50 routines a tick, 3 at a time.
 
@@ -62,7 +63,7 @@ A schedule is `{ every: "day" | "weekdays" | "week" | "month", minute, days?, mo
 * **Ask's card** (above).
 * **`bots.routines`**: each routine's bot, task, when, next run and last answer, with Run now, Pause / Turn on and Delete (asked twice). New routines are made in Ask. It reloads on the `routines` live topic.
 * **Home**: a Routines row under the bots once there is one ("2 on · next tomorrow at 8 am").
-* A routine's push opens `bots.routines`.
+* A routine's push opens `bots.routines`; the `bot_ask` that replaces it with `NOTIFY_REPLY` on opens that bot's chat.
 
 ## 5. Not yet
 

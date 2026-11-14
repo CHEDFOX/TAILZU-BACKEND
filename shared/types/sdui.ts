@@ -55,6 +55,22 @@ export interface ClientCapabilities {
   };
   /** The bots' catalog as this build has it (anim/SPEC.md 3.9): at most 512 bytes, no person data. */
   looks?: { v: number; f: number; ok: boolean; why?: string; bad?: string[]; slow?: string[] };
+
+  // --- vocabulary 2 (section 8; pure/SPEC.md 2.11). Absent on every build before V1, which reads as vocab 1. ---
+  /** 2 when this build carries the screen kernel. Absent or 1: the old fixed node list, no expressions. */
+  vocab?: number;
+  /** The sha of the kernel this build carries, for telling one OTA from another. */
+  kernel?: string;
+  /** The building blocks this build really has, by the names in SDUI_BLOCKS. They arrive over several updates, so one
+   *  number could never say which of them a phone holds. */
+  blocks?: BlockName[];
+  /** The binary's runtime string (app.config.ts runtimeVersion), so the server can tell "open X0 again" (an update is
+   *  waiting on the same runtime) from "update X0" (a store build is needed). */
+  runtime?: string;
+  /** Only what the DEVICE switched off for itself (a kill switch, the crash guard). Never "not built yet". */
+  off?: string[];
+  /** The safety floor, and what went wrong on this launch. */
+  sdui?: { ok?: boolean; safe?: number; bad?: string[]; slow?: string[] };
 }
 
 // ===========================================================================
@@ -619,6 +635,20 @@ export interface ScreenResponse {
   pullBot?: PullBotSpec;
   /** DESK_TALK_TO_CAPABILITY only (section 3i). */
   talkTo?: TalkTo;
+
+  // --- vocabulary 2 (section 8; pure/SPEC.md 2.12). A screen that says nothing here is a vocab-1 screen and is
+  //     served exactly as it is today, to every client.
+  /**
+   * The building blocks this screen cannot be drawn without. A client that declared them all gets the screen; one
+   * that did not gets its frozen earlier version, or the short "Open X0 again" / "Update X0" screen — never a
+   * lowered one (SPEC 2.0 principle 6). `sdui2/lint.ts` works this list out from the tree and refuses a screen
+   * that uses a block it did not declare here.
+   */
+  needs?: BlockName[];
+  /** `defs` block: the screen's own templates, drawn by `Use`. They live in the screen, not in a catalog. */
+  defs?: Defs;
+  /** `rules` block: when / every / after for the screen as a whole. A node's own `rules` live only while it does. */
+  rules?: RuleSpec[];
 }
 
 // ===========================================================================
@@ -648,12 +678,30 @@ export interface Node {
   bind?: Record<string, string>;
   /** Event handlers → action references. e.g. { onPress: "submit" }. */
   on?: Partial<Record<NodeEvent, ActionRef>>;
-  /** Entry/exit animation for this node. */
-  motion?: MotionSpec;
-  /** Render only when this condition is truthy (flag/state driven). */
-  visibleIf?: Condition;
+  /** Entry/exit animation for this node. Vocabulary 2 (a screen whose `needs` holds "motion") sends NodeMotion
+   *  instead: the animation spec's value model on any style key (section 8). */
+  motion?: MotionSpec | NodeMotion;
+  /** Render only when this condition is truthy (flag/state driven). `{ expr }` needs the `expr` block (section 8). */
+  visibleIf?: Condition | ExprCondition;
   /** Rendered if the client can't draw `type` (forward-compat safety net). */
   fallback?: Node;
+
+  // --- vocabulary 2 (section 8). Every one of these is OFF unless the screen's `needs` names its block and the
+  //     client declared it; a client without the block is never sent the screen at all (no lowering, SPEC 2.0).
+  /** `rules` block: when / every / after on this node, live only while it is on screen. */
+  rules?: RuleSpec[];
+  /** `gesture` block: fingers on this node, their values written under `ui.`. */
+  gestures?: GestureSpec[];
+  /** `gesture` block: a Screen's or a Scroll's own offset, under `ui.` (so a motion can drive off it). */
+  scrollInto?: string;
+  /** `defs` block, on a `Use`: which of the screen's definitions to draw. */
+  def?: string;
+  /** `defs` block, on a `Use`: the values its parameters take, read inside as `args.*`. */
+  args?: Record<string, unknown>;
+  /** `defs` block, on a `Use`: what goes into the template's named `Slot`s. */
+  slots?: Record<string, Node | Node[]>;
+  /** `defs` block, on a `Slot`: its name. */
+  name?: string;
 }
 
 export type NodeEvent =
@@ -679,10 +727,17 @@ export type NodeEvent =
   | "onError"; // async component failed
 
 /**
- * The component registry the renderer ships. The server discovers the real
- * set from capabilities.components. Grouped by role so future additions land
- * in the right bucket. Every entry here has an implementation in the RN
- * renderer; no aspirational names.
+ * THIS LIST IS HISTORY, NOT THE CONTRACT. It was written when every name here had an implementation; commit
+ * `e4d8861` removed most of them. The real contract is what a client declares in `capabilities.components`, and
+ * what the clients actually hold:
+ *
+ *   TAILZU-FRONTEND/app/src/sdui/components/index.ts   the phone's node types
+ *   TAILZU-FRONTEND/app/src/sdui/registry.ts           what the phone declares
+ *   TAILZU-DESKTOP/src/app/sdui/core.js                the window's
+ *
+ * Nothing may be sent because it appears below. The kit's own set is `KIT_TYPES` in
+ * `tulmi/src/experience/bots/lint.ts`, and `lintTree` refuses anything outside it. Kept here because older
+ * builds still name these in their capabilities (pure/SPEC.md 2.0, "Ground truth").
  */
 export const CORE_COMPONENTS = [
   // v1 primitives — always present.
@@ -2403,3 +2458,473 @@ export type KeyboardActionSpec =
   | { kind: "delay"; ms: number }
   // ----- extensibility (forward-compat slot) -----
   | { kind: "extension"; name: string; params?: Record<string, unknown> };
+
+// ===========================================================================
+// 8. Vocabulary 2 — the building blocks (pure/SPEC.md section 2)
+// ===========================================================================
+//
+// Vocabulary 1 is the fixed node list above: one node type per feature, so every new construction needed a new
+// client build. Vocabulary 2 is about ten GENERAL blocks — expressions, templates, rules, motion, gestures, lists,
+// inputs, media, paint, device facts, phone-local values, data and the shell — after which a new screen, flow or
+// interaction is new server data and nothing else.
+//
+// WHERE THE TRUTH LIVES. Every shape below mirrors a spec object in the phone's own code, which is what the
+// renderer implements. These are the TypeScript mirrors; when one disagrees with the phone, the phone is right:
+//
+//   kernel/limits.ts LIMITS       the numbers (the server reads them from the generated shared/sdui/kernel.cjs,
+//                                 never from a copy here, so there is one set and not two that drift)
+//   kernel/blocks.ts BLOCKS       the closed list of block names
+//   components/v3Spec.ts SPEC     List, Each, Input, Video, Audio, Camera
+//   motion/spec.ts MOTION_SPEC    motion on any node
+//   gesture/spec.ts GESTURE_SPEC  gestures on any node
+//   theme/paintCore.ts PAINT_SPEC paint on any box
+//   device/factsCore.ts           the device facts, and DEVICE_SPEC
+//   localCore.ts LOCAL_SPEC       phone-local values
+//   shell/blocks/index.ts SPEC    the shell trees and presentations
+//   data/index.ts SPEC            callEndpoint's new options, and subscribe
+//
+// THE GATE. `tulmi/src/experience/sdui2/lint.ts` checks a screen against the generated kernel and works out its
+// `needs`; `gate.ts` serves it only to a client that declared every one of them. Nothing here is reachable until
+// a screen says `needs` and a client says `blocks` (SPEC 2.0 principles 2 and 6).
+
+/** The vocabulary the blocks below belong to. A client says `vocab: 2` once it carries the kernel. */
+export const SDUI_VOCAB = 2;
+
+/** The closed list of block names, in the order of pure/SPEC.md 2.1. Mirrors kernel/blocks.ts BLOCKS exactly. */
+export const SDUI_BLOCKS = [
+  "expr", "defs", "rules", "device", "local", "paint", "motion", "gesture", "list", "input", "media", "data", "shell",
+] as const;
+
+export type BlockName = (typeof SDUI_BLOCKS)[number];
+
+/** Planned, but owned by another spec: `scene` is the standalone drawing node, which arrives with animation format 3. */
+export const SDUI_LATER_BLOCKS = ["scene"] as const;
+
+// --------------------------------------------------------------------------- 8a. expressions (`expr`)
+//
+// ONLY TWO OBJECT SHAPES ARE EVER EVALUATED. A bare string is never looked at for "{{ }}", because the server puts
+// people's own words into string props — a note's title, a stranger's calendar invite — and a title reading
+// "{{ state.token }}" must draw as those characters. A value that arrives through the store, a `bind`, a list row
+// or an endpoint is data too: it is never parsed a second time.
+
+/** Text with holes: `{ "$t": "{{ count(state.done) }} of {{ count(state.items) }} done" }`. */
+export interface TextTemplate { $t: string }
+
+/** One value: `{ "$": "state.busy ? 0.4 : 1" }`. */
+export interface ValueBinding { $: string }
+
+/** A condition written as an expression: `{ "expr": "device.perm.mic == 'granted' && !state.dismissed" }`. */
+export interface ExprCondition { expr: string }
+
+/** A prop that may be written as data or worked out on the device. */
+export type Val<T> = T | ValueBinding;
+/** A text prop: as written (and shown as written), or text with holes, or one value. */
+export type Txt = string | TextTemplate | ValueBinding;
+
+// --------------------------------------------------------------------------- 8b. templates (`defs`)
+
+/** One screen-local template: the names it takes, and the tree it draws. Read inside as `args.<name>`. */
+export interface DefSpec {
+  params?: string[];
+  root: Node;
+}
+
+/** A screen's templates, by name. No recursion, direct or indirect; the kernel refuses it at compile. */
+export type Defs = Record<string, DefSpec>;
+
+/** `{ type: "Use", def, args, slots }` draws a template. A `Use` leaves nothing of itself behind, so a `visibleIf`,
+ *  an `id` or a `style` on it would simply disappear: lint refuses those rather than let them go quiet. */
+export const USE_NODE = "Use";
+/** `{ type: "Slot", name }` marks where a `Use`'s `slots` content goes inside a template. */
+export const SLOT_NODE = "Slot";
+
+// --------------------------------------------------------------------------- 8c. rules and timers (`rules`)
+
+/** A rule: exactly one of `when`, `every` or `after`, and what to do. Mirrors kernel/rules.ts RuleSpec. */
+export interface RuleSpec {
+  /** This rule's own name on the screen. */
+  id: string;
+  /** Fired on the change from false to true. */
+  when?: ExprCondition;
+  /** Milliseconds between fires. */
+  every?: number;
+  /** Milliseconds after the rule starts, once. */
+  after?: number;
+  /** The action to run. */
+  do: ActionRef;
+  /** Fire at most once, ever. */
+  once?: boolean;
+  /** `when` must hold this long before it fires. */
+  debounceMs?: number;
+  /** Live only while the node is on screen. A node's rules always are. */
+  whileVisible?: boolean;
+}
+
+// --------------------------------------------------------------------------- 8d. motion on any node (`motion`)
+
+/** One ease by name, or a cubic `[x1, y1, x2, y2]`. */
+export type MotionEase = "lin" | "in" | "out" | "inout" | "step" | [number, number, number, number];
+
+/** Keyframes over a clock in seconds: `[[time, value], [time, value, ease]]`. */
+export interface MotionKeys { k: Array<[number, number] | [number, number, MotionEase]>; loop?: boolean }
+
+/** A damped spring, mass 1, damping = 2 * damp * sqrt(k). */
+export interface MotionSpring { spring: number; k?: number; damp?: number; from?: number }
+
+/** A value: hold a number, run keyframes, or settle through a spring. */
+export type MotionValue = number | MotionKeys | MotionSpring;
+
+/** ONE input, mapped piecewise — `ui.scrollY`, a gesture's own `ui.<into>.x | y | scale | progress`, or a state
+ *  path. One input and no expressions, deliberately: that is what keeps it on the UI thread. */
+export interface MotionDrive { by: string; k: Array<[number, number] | [number, number, MotionEase]> }
+
+/** The style keys motion may move, and nothing else. An unknown key is ignored, never an error. */
+export const MOTION_KEYS = [
+  "opacity", "translateX", "translateY", "scale", "scaleX", "scaleY", "rotate", "skewX", "skewY",
+] as const;
+export type MotionKey = (typeof MOTION_KEYS)[number];
+
+/** `motion` on a node, in vocabulary 2. Mirrors motion/spec.ts MOTION_SPEC. */
+export interface NodeMotion {
+  /** Played once when the node arrives. */
+  enter?: Partial<Record<MotionKey, MotionValue>>;
+  /** Played once as it leaves. Keyframes only: a spring has no end to leave on. */
+  exit?: Partial<Record<MotionKey, MotionKeys>>;
+  /** Played round and round. */
+  loop?: Partial<Record<MotionKey, MotionValue>>;
+  /** Follows one input, piecewise. */
+  drive?: Partial<Record<MotionKey, MotionDrive>>;
+  /** The node settles into its new box through a spring. */
+  layout?: true | { k?: number; damp?: number } | { spring: false; ms: number };
+  /** A shared-element id: the same id on two screens flies from one box to the other (drawn as a JS overlay). */
+  shared?: string;
+}
+
+// --------------------------------------------------------------------------- 8e. gestures on any node (`gesture`)
+
+export const GESTURE_KINDS = ["tap", "doubleTap", "longPress", "drag", "pan", "swipe", "pinch", "hover"] as const;
+export type GestureKind = (typeof GESTURE_KINDS)[number];
+
+/**
+ * One gesture on a node. Mirrors gesture/spec.ts GESTURE_SPEC.
+ *
+ * THE TWO KINDS OF `ui.*` VALUE, which is the whole design: while a finger moves, `ui.<into>.x | y | scale |
+ * progress` live only on the UI thread, and only `motion.drive` reads them; when it lifts, those four are written
+ * to the store, once. In expressions, in `commitIf` and in rules, `ui.*` always means that value at the end.
+ */
+export interface GestureSpec {
+  kind: GestureKind;
+  /** This gesture's own name, so another can ask to run after it. */
+  id?: string;
+  /** Where its values go, under `ui.`. A plain name. */
+  into?: string;
+  /** How it gets on with the others. */
+  claim?: "exclusive" | "simultaneous" | `after:${string}`;
+  axis?: "x" | "y" | "both";
+  /** A drag's run. NUMBERS: the device reads these through a finite check that takes numbers only, so V1 resolves
+   *  any `{ "$": … }` before the gesture is compiled. */
+  min?: number;
+  max?: number;
+  snap?: number[];
+  rubber?: boolean | number;
+  springK?: number;
+  springDamp?: number;
+  projectMs?: number;
+  taps?: number;
+  window?: number;
+  hold?: number;
+  slop?: number;
+  distance?: number;
+  velocity?: number;
+  minScale?: number;
+  maxScale?: number;
+  do?: ActionRef;
+  /** Asked after the end values are in the store. */
+  commitIf?: ExprCondition;
+  onCommit?: ActionRef;
+  onCancel?: ActionRef | { kind: "spring"; to: number };
+  onLeft?: ActionRef;
+  onRight?: ActionRef;
+  onUp?: ActionRef;
+  onDown?: ActionRef;
+}
+
+// --------------------------------------------------------------------------- 8f. lists (`list`)
+
+/** Where a list's next page comes from, and where its rows go. `cursor` and `into` are plain store dot-paths
+ *  (`feedCursor`), not `state.feedCursor`. */
+export interface ListPage {
+  endpoint: string;
+  cursor?: string;
+  into: string;
+  mode?: "append" | "prepend" | "replace";
+}
+
+/** `List`: rows from an array, one template each, windowed, paged. A List in a Screen becomes the screen's
+ *  scroller — the nodes above it become its header, the ones below its footer. Mirrors v3Spec.ts SPEC.List. */
+export interface ListProps {
+  data?: Val<unknown[]>;
+  item: Node;
+  key?: string;
+  estimatedSize?: number;
+  uniform?: boolean;
+  horizontal?: boolean;
+  /** This List is its own bounded scroller; it then needs a numeric `height` or `maxHeight` in its style too. */
+  scroll?: boolean;
+  page?: ListPage;
+  pageMode?: "append" | "prepend" | "replace";
+  onEndReached?: "page" | "none";
+  endThreshold?: number;
+  refresh?: boolean;
+  /** Which rows stick to the top: an expression asked ONCE PER ROW, with `item` and `index` in scope
+   *  (blocks/scope.ts itemBool) — `"item.isHeader"`, or the same source as `{ "$": "item.isHeader" }`. The List
+   *  never works it out itself (nodeCore.ts keeps `sticky` and `item` out of compileMap, because the List's own
+   *  scope holds no row), so it arrives at the list as written. Not a `{ "expr" }` and not a `{ "$t" }`: itemBool
+   *  reads no source out of either, which is silently no sticky rows at all. */
+  sticky?: string | ValueBinding;
+  clip?: boolean;
+}
+
+/** `Each`: one template repeated over a small array. Everything is drawn; nothing is windowed. */
+export interface EachProps {
+  data?: Val<unknown[]>;
+  item: Node;
+  key?: string;
+  max?: number;
+}
+
+// --------------------------------------------------------------------------- 8g. one Input node (`input`)
+
+export const INPUT_KINDS_WAVE1 = [
+  "text", "multiline", "number", "code", "search", "switch", "toggle", "slider", "segmented", "slideToConfirm",
+] as const;
+export const INPUT_KINDS_WAVE2 = ["stepper", "picker", "date", "time", "rating", "chips"] as const;
+export const INPUT_KINDS = [...INPUT_KINDS_WAVE1, ...INPUT_KINDS_WAVE2] as const;
+export type InputKind = (typeof INPUT_KINDS)[number];
+
+/**
+ * `Input`: one field node with a `kind`. The value is sanitized, capped and written to the node's bound path —
+ * never evaluated. Mirrors v3Spec.ts SPEC.Input.
+ *
+ * Formats: number → number | null; switch → boolean; chips → string[]; date → YYYY-MM-DD; time → HH:MM (24h);
+ * segmented and picker → one of the option values.
+ */
+export interface InputProps {
+  kind: InputKind;
+  label?: string;
+  placeholder?: string;
+  disabled?: boolean;
+  maxLength?: number;
+  /** code: how many boxes. */
+  length?: number;
+  digitsOnly?: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  decimals?: number;
+  /** slider: write while the finger moves, at most ten times a second. */
+  live?: boolean;
+  /** slideToConfirm: how far across counts (0.5..1). */
+  threshold?: number;
+  options?: Array<string | { value: string; label: string }>;
+  stars?: number;
+  minuteStep?: number;
+  /** Where to write when the node has no `bind.value`. */
+  into?: string;
+  autoFocus?: boolean;
+}
+
+// --------------------------------------------------------------------------- 8h. media (`media`)
+
+/** Where a player writes what it is doing. Every field is a store dot-path. */
+export interface MediaInto {
+  playing?: string;
+  time?: string;
+  duration?: string;
+  progress?: string;
+  ended?: string;
+  loading?: string;
+}
+
+/** `Video`: a clip, played by expo-video. */
+export interface VideoProps {
+  source: string;
+  contentFit?: "contain" | "cover" | "fill";
+  loop?: boolean;
+  muted?: boolean;
+  volume?: number;
+  rate?: number;
+  autoplay?: boolean;
+  playing?: Val<boolean>;
+  controls?: boolean;
+  fullscreen?: boolean;
+  into?: MediaInto;
+  tickMs?: number;
+}
+
+/** `Audio`: a sound, played by expo-audio. It draws its children; the player is behind them. */
+export interface AudioProps {
+  source: string;
+  loop?: boolean;
+  muted?: boolean;
+  volume?: number;
+  rate?: number;
+  playing?: Val<boolean>;
+  into?: MediaInto;
+}
+
+export const BARCODE_TYPES = [
+  "qr", "ean13", "ean8", "upc_a", "upc_e", "code39", "code93", "code128", "codabar", "itf14", "pdf417", "aztec",
+  "datamatrix",
+] as const;
+export type BarcodeType = (typeof BARCODE_TYPES)[number];
+
+/** `Camera`: the viewfinder, and the code scanner. It never asks for the permission itself — the screen draws its
+ *  own card first (the children), and `requestPermission` asks. */
+export interface CameraProps {
+  mode?: "photo" | "scan";
+  facing?: "back" | "front";
+  zoom?: number;
+  torch?: boolean;
+  active?: boolean;
+  quality?: number;
+  /** Usually bound: false to true takes one picture, and the node puts it back to false. */
+  capture?: Val<boolean>;
+  barcodeTypes?: BarcodeType[];
+  /** The last scan, `{ type, data }`. */
+  scanInto?: string;
+  readyInto?: string;
+  /** granted | unasked | blocked. */
+  permissionInto?: string;
+}
+
+/** The node types each block brings. Mirrors v3Spec.ts BLOCK_NODES, with `defs`' two. */
+export const BLOCK_NODES: Record<string, readonly string[]> = {
+  defs: ["Use", "Slot"],
+  list: ["List", "Each"],
+  input: ["Input"],
+  media: ["Video", "Audio", "Camera"],
+};
+
+// --------------------------------------------------------------------------- 8i. paint on any box (`paint`)
+
+/** The paint keys a box's `style` may carry. React Native 0.85's own keys; the window maps them to CSS.
+ *  Mirrors theme/paintCore.ts PAINT_SPEC. */
+export const PAINT_KEYS = ["backgroundImage", "boxShadow", "filter", "mixBlendMode", "blur"] as const;
+export type PaintKey = (typeof PAINT_KEYS)[number];
+
+/** The filter functions BOTH iOS and Android draw on RN 0.85. Lint keeps `filter` to these. */
+export const PAINT_FILTERS = ["brightness", "opacity"] as const;
+
+export const PAINT_BLEND_MODES = [
+  "normal", "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn", "hard-light",
+  "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity",
+] as const;
+
+export const PAINT_BLUR_TINTS = ["light", "dark", "default", "extraLight", "regular", "prominent"] as const;
+
+export interface PaintGradientStop { color: string; at?: number }
+export interface PaintGradient { kind: "linear" | "radial"; angle?: number; stops: PaintGradientStop[] }
+export interface PaintShadow {
+  offsetX?: number; offsetY?: number; blurRadius?: number; spreadDistance?: number; color?: string; inset?: boolean;
+}
+
+/** The paint half of a style. Everything else in `style` stays what it is today. */
+export interface PaintStyle {
+  backgroundImage?: string | PaintGradient | Array<string | PaintGradient>;
+  boxShadow?: string | PaintShadow | PaintShadow[];
+  filter?: string | Array<Partial<Record<(typeof PAINT_FILTERS)[number], number>>>;
+  mixBlendMode?: (typeof PAINT_BLEND_MODES)[number];
+  /** A real blur of what is BEHIND the box (expo-blur), not of the box itself. */
+  blur?: number | { intensity?: number; tint?: (typeof PAINT_BLUR_TINTS)[number] };
+}
+
+// --------------------------------------------------------------------------- 8j. device facts, phone-local (`device`, `local`)
+
+/** What a permission reads. `photos` is iPhone only; on Android it reads `unsupported`, on purpose. */
+export type PermState = "granted" | "denied" | "blocked" | "unasked" | "unsupported";
+
+/**
+ * Every `device.*` an expression may read. A FIXED LIST: no identifiers, no advertising ids, no location values
+ * (only whether location is allowed), and no installed-app list beyond the six payment schemes a "pay with…"
+ * chooser needs. Mirrors device/factsCore.ts FACT_PATHS.
+ *
+ * `canOpen.*` is for drawing a chooser ON THE PHONE. Lint refuses it in a request body, so the server never
+ * collects a list of what someone has installed. On Android only `canOpen.upi` is real; the other five read null
+ * (unknown), because the binary's <queries> lists only that one.
+ */
+export const DEVICE_FACTS = [
+  "insets.top", "insets.bottom", "insets.left", "insets.right",
+  "keyboard.visible", "keyboard.height", "keyboard.enabled", "keyboard.ready",
+  "reduceMotion", "scheme", "locale", "fontScale", "width", "height", "sizeClass", "online", "appState",
+  "perm.mic", "perm.camera", "perm.notifications", "perm.location", "perm.photos",
+  "canOpen.upi", "canOpen.phonepe", "canOpen.gpay", "canOpen.paytm", "canOpen.cred", "canOpen.bhim",
+  "platform", "appVersion", "runtime", "blocks",
+] as const;
+export type DeviceFact = (typeof DEVICE_FACTS)[number];
+
+/** The `device.canOpen.*` names, and the scheme each one probes (declared in LSApplicationQueriesSchemes). */
+export const CAN_OPEN_SCHEMES: Record<string, string> = {
+  upi: "upi://", phonepe: "phonepe://", gpay: "tez://", paytm: "paytmmp://", cred: "credpay://", bhim: "bhim://",
+};
+
+/** `local`: what this phone remembers between launches — a hint dismissed, a draft, a last choice. Its own
+ *  namespace per account, cleared on sign-out, never for secrets (lint refuses a name that reads like one). */
+export interface LocalSetSpec { kind: "local.set"; path: string; value: unknown; onError?: ActionRef }
+export interface LocalRemoveSpec { kind: "local.remove"; path: string; onError?: ActionRef }
+
+// --------------------------------------------------------------------------- 8k. data and streams (`data`)
+
+export interface MultipartFile { field: string; uri: string; name?: string; type?: string }
+/** What `callEndpoint` gains with the `data` block. Paths stay relative, under /v1/, our API origin only. */
+export interface CallDataOptions {
+  multipart?: { files: MultipartFile[]; fields?: Record<string, string | number | boolean> };
+  /** A state path; it gets `{ loaded, total, pct }`. */
+  progressInto?: string;
+  retry?: { times?: number; backoff?: "exp" | "fixed" | number; idempotent?: boolean };
+  /** "outbox": kept offline and sent in order. */
+  queue?: "outbox";
+  /** GET only; emptied by any successful write and by sign-out. */
+  cache?: { key: string; ttlMs: number };
+  /** Applied at once and undone if the call fails. */
+  optimistic?: { path: string; value: unknown };
+}
+
+/** `subscribe`: a live topic on the socket we already keep open. A topic, not a path, so the /v1/ rules do not
+ *  apply to it; it has its own grammar instead. Mirrors live/subscribe.ts. */
+export interface SubscribeSpec {
+  topic: string;
+  into: string;
+  mode?: "replace" | "append" | "merge";
+  max?: number;
+}
+
+// --------------------------------------------------------------------------- 8l. shell and presentations (`shell`)
+
+export const PRESENTATIONS = ["push", "sheet", "modal", "overlay", "fade"] as const;
+export type Presentation = (typeof PRESENTATIONS)[number];
+
+export const SHELL_TRANSITIONS = ["default", "slide", "fade", "none"] as const;
+export type ShellTransition = (typeof SHELL_TRANSITIONS)[number];
+
+/** A sheet's resting heights: these names, or a fraction 0.1..1. At most four. */
+export const DETENT_NAMES: Record<string, number> = { small: 0.25, medium: 0.5, large: 0.9 };
+
+/** What `navigate` gains with the `shell` block. A missing or wrong value is `push`, which is today's behaviour. */
+export interface NavigatePresentation {
+  presentation?: Presentation;
+  detents?: Array<keyof typeof DETENT_NAMES | number>;
+  transition?: ShellTransition | NodeMotion;
+  dismissible?: boolean;
+}
+
+/** The shell's own trees, sent in the bootstrap. Nothing here replaces today's tab bar, header or toast: they draw
+ *  when the server sends no tree. Mirrors shell/blocks/index.ts SPEC. */
+export interface ShellTrees {
+  "shell.tabBar"?: Node;
+  "shell.header"?: Node;
+  "shell.toast"?: Node;
+}
+
+/** The shell's node types, drawn only inside those trees. */
+export const SHELL_NODES = ["TabBar", "Header", "Toast", "Modal", "Sheet"] as const;
