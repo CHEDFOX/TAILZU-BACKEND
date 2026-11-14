@@ -43,5 +43,7 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 - Calls (our own video and audio calls from the mail bot; `docs/rooms.md`), branch `claude/peaceful-brown-4trsgb`, not yet on main.
   It takes migration **0091** (`0091_rooms.sql`), and adds `LIVEKIT_*` and `ROOM_*` settings to `config.ts` (its own block, beside the
-  meeting bot's). It touches none of the held files. Joining from the apps waits for V1, S1 and D1: it will be a live-session block
-  (join, change, leave; the session's people in state) and `Video` playing a live track, not a call component (`docs/rooms.md` section 4).
+  meeting bot's). Server only: it holds none of the renderer's files, and no screen of it states `needs`.
+  Joining from the apps needs a **14th block, `live`** (a live session: join, change and leave, the people in it written into state, and
+  a node that draws one person's live track). The `media` block's `Video` cannot stand in: it is expo-video playing an https clip, and a
+  call's track is not a URL. Nobody is building `live` yet; `docs/rooms.md` section 4 has the shape it would take.

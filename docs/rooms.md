@@ -81,20 +81,24 @@ Every screen is the server's, drawn by both apps (`experience/bots/screens/bots/
   and Share; "Ask before letting people in"; End the call for everyone. A push that someone waits opens it. It is read again as people come
   and go (live topic `room:<id>`). Joining from the app says it comes with the app's next update.
 
-**Joining from the apps comes as a block, not a call component** (`docs/renderer.md`: the apps are renderers, and a new kind of thing a
-screen can say goes in the vocabulary as data every screen can use). The plan, built once the renderer wiring (V1), the server's screen
-checker (S1) and the desktop copy (D1) have landed (`WORKING-ON.md`):
+**Joining from the apps is a block of its own, `live`** (`docs/renderer.md`: the apps are renderers, and a new kind of thing a screen can
+say goes into the vocabulary as data every screen can use, never a component for one feature). Vocabulary 2 landed on 14 Nov with thirteen
+blocks; none of them can hold a call, so calls add the fourteenth. The `media` block's `Video` cannot stand in: it is expo-video playing an
+https clip, and a call's track is not a URL.
 
-| Piece | What it is |
+| Piece of `live` | What it is |
 | --- | --- |
-| A live-session block | actions to join, change (mic, camera, speaker, screen, flip) and leave a live session, from a pass the server gives (`POST /v1/rooms/:id/join`); the session written into the screen's state: where it stands, the person's own mic and camera, and the people in it (name, speaking, mic, camera) |
-| `Video` playing a live track | the media block's `Video` given the person's own camera or someone's in the session |
-| The call screen | server data: `Each` over the people, each a tile whose name, ring and marks are expressions on that state; the buttons read it too |
+| `live.join`, `live.set`, `live.leave` | join a session from a pass the server gives (`POST /v1/rooms/:id/join`); change the mic, camera, speaker, screen or facing; hang up |
+| What it writes into state | where the session stands, the person's own mic and camera, and the people in it (name, speaking, mic, camera) — so every word and button on the screen is an expression over that state |
+| `Live`, a node | draws one person's live track: the person themselves, whoever is speaking, or someone named. A tile is `Each` over the people with a `Live` inside, so the layout is the server's |
 
-The same block serves every live thing to come (a call, a voice bot, a live room in a space), not only this one. A phone says it only where
-its binary links WebRTC: the next store build does (Plan Ease's live call added it), so the block itself comes over the air. LiveKit's
-JavaScript client runs on that library; LiveKit's own copy of WebRTC cannot come in, because changing a native package already linked would
-change the phone's runtime, which stays as it is (`docs/renderer.md`, "The runtime rule"). That needs one check on a real phone first.
+One block serves every live thing to come (a call, a voice bot, a live room in a space), not only this one. A phone says it has `live` only
+where its binary links WebRTC: the next store build does (Plan Ease's live call added it), so the block itself arrives over the air after
+that build, and the window gets it in a release. LiveKit's JavaScript client runs on the library already linked; LiveKit's own copy of
+WebRTC cannot come in, because changing a native package already linked would change the phone's runtime, which stays as it is
+(`docs/renderer.md`, "The runtime rule"). That needs one check on a real phone first.
+
+Until `live` is built, a call's page says joining comes with the app's next update. The link, the lobby and everything else already work.
 
 ## 5. Limits and the money
 
@@ -181,8 +185,9 @@ All in `tulmi/tests/`.
 
 ## 10. Still to come
 
-1. **Joining from the apps**: the live-session block and `Video` playing a live track (section 4), after V1, S1 and D1 land; then the call
-   screen as server data. First, one check on a real phone: LiveKit's JavaScript client on the WebRTC the next store build links.
+1. **Joining from the apps**: the `live` block (section 4), then the call screen as server data over its state. Vocabulary 2 has landed,
+   so nothing blocks it but the block itself. First, one check on a real phone: LiveKit's JavaScript client on the WebRTC the next store
+   build links.
 2. **The mail bot puts calls in emails**: the AI sees when a customer wants to talk and its reply carries the link and a calendar invite
    from the business's address; Add a call when writing. And **our join page** at `x0bot.com/m/<code>` for people without X0 Bot (the
    website sends `/m/*` to this server), using the link's routes above.
