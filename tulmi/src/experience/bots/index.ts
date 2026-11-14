@@ -127,6 +127,8 @@ export interface BotsRequest {
   params?: Record<string, string | number | boolean | undefined>;
   user: BotsCtx["user"];
   can: ReadonlySet<string>;
+  /** The vocabulary-2 blocks this client has (sdui2/gate.ts clientVocab). Absent or empty: every screen is vocabulary 1, as before. */
+  blocks?: ReadonlySet<string>;
   desk: BotsCtx["desk"];
   tzOffsetMinutes?: number;
   /** Which phone is asking (capabilities.platform). Absent for the window and for a client that does not say. */
@@ -148,7 +150,7 @@ export async function buildBotsScreen(req: BotsRequest, deps: BotsDeps): Promise
   const screenId = away ? "bots.home" : req.screenId;
   const ctx: BotsCtx = {
     screenId, client: req.client, params: away ? {} : req.params ?? {}, live, user: req.user, can: req.can,
-    desk: req.desk, tzOffsetMinutes: tz, ...(req.platform ? { platform: req.platform } : {}), ...(spaces ? {} : { spaces: false }),
+    ...(req.blocks?.size ? { blocks: req.blocks } : {}), desk: req.desk, tzOffsetMinutes: tz, ...(req.platform ? { platform: req.platform } : {}), ...(spaces ? {} : { spaces: false }),
   };
   const def = BOTS_SCREENS.get(screenId);
   if (!def) return comingSoon(ctx);

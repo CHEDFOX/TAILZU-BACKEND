@@ -31,7 +31,7 @@ const ROOM = (o: Record<string, unknown> = {}) => ({
   people: [], waiting: [], businessId: "leaf-co", createdAt: FIXED_NOW - 3_600_000, lastAt: FIXED_NOW - 3_600_000, minutes: 0, ...o,
 });
 
-async function build(o: { screen?: string; params?: Record<string, string>; client?: "phone" | "desktop"; can?: string[]; calls?: unknown[] | null; room?: unknown } = {}) {
+async function build(o: { screen?: string; params?: Record<string, string>; client?: "phone" | "desktop"; can?: string[]; blocks?: string[]; calls?: unknown[] | null; room?: unknown } = {}) {
   const calls: Array<{ method: string; path: string }> = [];
   const deps = fakeDeps({
     bots: [...SAMPLE_BOTS, { slug: "mail", name: "Mail", colour: "sand", purpose: BOT.purpose, builtin: true }], calls,
@@ -46,17 +46,24 @@ async function build(o: { screen?: string; params?: Record<string, string>; clie
   });
   const s = await buildBotsScreen({
     screenId: o.screen ?? "bots.bot", client: o.client ?? "phone", params: { slug: "mail", ...(o.params ?? {}) }, tzOffsetMinutes: IST,
-    user: { id: "u1", name: "Aanya" }, can: new Set(o.can ?? DRAWS), desk: { pages: false, notes: false },
+    user: { id: "u1", name: "Aanya" }, can: new Set(o.can ?? DRAWS), ...(o.blocks ? { blocks: new Set(o.blocks) } : {}),
+    desk: { pages: false, notes: false },
   }, deps);
   const root = s.root as Node;
-  const nodes = walk(root);
+  const needs = (s as unknown as { needs?: string[] }).needs ?? [];
+  // walk() follows children; a List's or an Each's row template lives in its props, so that subtree is walked too.
+  const expand = (ns: Node[]): Node[] => ns.flatMap((n) => {
+    const item = (n.props as { item?: Node } | undefined)?.item;
+    return item && typeof item === "object" ? [n, ...expand(walk(item))] : [n];
+  });
+  const nodes = expand(walk(root));
   const flat = (a: unknown): ActionSpec[] => {
     if (!a || typeof a !== "object") return [];
     const x = a as ActionSpec & { actions?: unknown[]; then?: unknown; else?: unknown; ok?: unknown; fail?: unknown };
     return [x, ...(x.actions ?? []).flatMap(flat), ...flat(x.then), ...flat(x.else), ...flat(x.ok), ...flat(x.fail)];
   };
   return {
-    s, lint: lintTree(root),
+    s, lint: lintTree(root, { needs }), nodes,
     texts: nodes.filter((n) => n.type === "Text").map((n) => String(n.props?.content)),
     every: () => nodes.flatMap((n) => Object.values(n.on ?? {}) as ActionSpec[]).flatMap(flat),
   };
@@ -87,11 +94,20 @@ describe("the mail page's calls", () => {
 });
 
 describe("one call", () => {
-  it("says joining comes with the app's next update, and never sends anyone to a web page", async () => {
+  it("joins into the call for a client that has the block", async () => {
+    const p = await callScreen({ room: ROOM(), blocks: ["call"] });
+    expect(p.lint).toEqual([]);
+    const opens = p.every().filter((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.room") as Array<{ params: Record<string, string> }>;
+    expect(opens.map((o) => o.params)).toEqual([{ b: "leaf-co", r: RID, video: "1" }, { b: "leaf-co", r: RID, video: "0" }]);
+    expect(p.texts).toEqual(expect.arrayContaining(["Join with video", "Audio only"]));
+  });
+
+  it("says joining comes with the app's next update for a client without it, and never a web page", async () => {
     for (const client of ["phone", "desktop"] as const) {
       const p = await callScreen({ client, room: ROOM() });
+      expect(p.every().some((a) => a.kind === "navigate" && (a as { screenId: string }).screenId === "bots.mail.room")).toBe(false);
       expect(p.lint).toEqual([]);
-      expect(p.texts).toContain("Joining from X0 Bot comes with the app's next update.");
+      expect(p.texts.some((t) => /comes with the app's next update/.test(t))).toBe(true);
       expect(p.every().some((a) => a.kind === "openUrl")).toBe(false);
     }
   });
@@ -132,7 +148,7 @@ describe("one call", () => {
   it("ended, has no link and nothing to join", async () => {
     const p = await callScreen({ room: ROOM({ status: "ended" }) });
     expect(p.lint).toEqual([]);
-    expect(p.texts).not.toContain("Joining from X0 Bot comes with the app's next update.");
+    expect(p.texts.some((t) => /comes with the app's next update/.test(t))).toBe(false);
     expect(p.texts).not.toContain("https://x0bot.com/m/abc-defg-hjk");
     expect(p.texts.some((t) => /has ended/.test(t))).toBe(true);
   });
@@ -145,5 +161,91 @@ describe("one call", () => {
 
   it("is read again as people come and go", () => {
     expect(topicsForScreen("bots.mail.call", { r: RID })).toEqual([`room:${RID}`]);
+  });
+});
+
+describe("in a call", () => {
+  type Spec = ActionSpec & Record<string, unknown>;
+  const inCall = (o: Parameters<typeof build>[0] = {}) =>
+    build({ screen: "bots.mail.room", params: { b: "leaf-co", r: RID, video: "1" }, blocks: ["call"], room: ROOM(), ...o });
+  const parts = async (o: Parameters<typeof build>[0] = {}) => {
+    const p = await inCall(o);
+    const s = p.s as unknown as { state: Record<string, unknown>; actions: Record<string, Spec>; needs?: string[] };
+    return { p, nodes: p.nodes, state: s.state, actions: s.actions, needs: s.needs ?? [] };
+  };
+
+  it("takes a seat as it opens, and says it needs the call block", async () => {
+    const { p, nodes, state, actions, needs } = await parts();
+    expect(p.lint).toEqual([]);
+    expect(needs).toContain("call");
+    expect(actions.start).toMatchObject({ kind: "call.join", join: `/v1/rooms/${RID}/join`, statePath: "c", video: true });
+    expect((actions.start.onEnd as Spec)).toMatchObject({ kind: "navigate", screenId: "bots.mail.call", replace: true });
+    expect(nodes.some((n) => (n.on as Record<string, unknown> | undefined)?.onAppear === "start")).toBe(true);
+    expect(state.c).toMatchObject({ phase: "connecting", mic: true, cam: true });
+    // The seat is never in the screen's state.
+    expect(JSON.stringify(state)).not.toContain("seat");
+  });
+
+  it("draws one tile per person, and their own picture", async () => {
+    const { nodes } = await parts();
+    const callers = nodes.filter((n) => n.type === "Caller");
+    expect(callers.length).toBeGreaterThanOrEqual(2);
+    // One tile inside an Each over the people, and their own with who "me".
+    expect(nodes.some((n) => n.type === "Each" && JSON.stringify((n.props as Record<string, unknown>)?.data) === JSON.stringify({ $: "state.c.people" }))).toBe(true);
+    expect(callers.some((n) => (n.props as Record<string, unknown>)?.who === "me")).toBe(true);
+    expect(callers.some((n) => JSON.stringify((n.props as Record<string, unknown>)?.who) === JSON.stringify({ $: "item.identity" }))).toBe(true);
+  });
+
+  it("starts an audio call with the camera off", async () => {
+    const { actions, state } = await parts({ params: { b: "leaf-co", r: RID, video: "0" } });
+    expect(actions.start).toMatchObject({ video: false });
+    expect(state.c).toMatchObject({ cam: false });
+  });
+
+  it("works the call from the server's own buttons", async () => {
+    const phone = await inCall();
+    const ops = (acts: ActionSpec[]) => acts.filter((a) => a.kind === "call.set" || a.kind === "call.leave")
+      .map((a) => [(a as Spec).kind, (a as Spec).op, (a as Spec).value]);
+    expect(ops(phone.every())).toEqual(expect.arrayContaining([
+      ["call.set", "mic", false], ["call.set", "mic", true], ["call.set", "cam", false], ["call.set", "cam", true],
+      ["call.set", "flip", undefined], ["call.set", "speaker", true], ["call.leave", undefined, undefined],
+    ]));
+    expect(phone.texts).toEqual(expect.arrayContaining(["Mute", "Unmute", "Camera off", "Camera on", "Flip", "Speaker", "Hang up"]));
+    const desk = await inCall({ client: "desktop" });
+    expect(desk.texts).not.toContain("Flip");
+    expect(desk.texts).toContain("Hang up");
+  });
+
+  it("says where the call stands, and lets in who waits, from the call's own state", async () => {
+    const { p, nodes } = await parts();
+    const shown = nodes.filter((n) => n.visibleIf).map((n) => JSON.stringify(n.visibleIf));
+    for (const phase of ["connecting", "live", "reconnecting", "ended", "failed"]) {
+      expect(shown.some((c) => c.includes(`state.c.phase == '${phase}'`))).toBe(true);
+    }
+    // Who waits comes from the call, not from reading the page again.
+    expect(nodes.some((n) => n.type === "Each" && JSON.stringify((n.props as Record<string, unknown>)?.data) === JSON.stringify({ $: "state.c.waiting" }))).toBe(true);
+    expect(endpoints(p.every()).map((c) => c.path)).toEqual(expect.arrayContaining([`/v1/rooms/${RID}/admit`, `/v1/rooms/${RID}/deny`]));
+  });
+
+  it("asks for the microphone when it was refused", async () => {
+    const { p, actions, state } = await parts();
+    expect(actions.start.onBlocked).toEqual({ kind: "setState", path: "micCard", value: true });
+    expect(state.micCard).toBe(false);
+    expect(p.texts).toContain("Let X0 Bot hear you");
+  });
+
+  it("has nothing to join for a call that ended or isn't there", async () => {
+    for (const o of [{ room: ROOM({ status: "ended" }) }, { room: undefined }]) {
+      const { p, nodes, actions, needs } = await parts(o);
+      expect(p.lint).toEqual([]);
+      expect(nodes.some((n) => n.type === "Caller")).toBe(false);
+      expect(actions?.start).toBeUndefined();
+      // Nothing to need: it is a plain vocabulary-1 card, so every build can read it.
+      expect(needs).toEqual([]);
+    }
+  });
+
+  it("is read again as people come and go", () => {
+    expect(topicsForScreen("bots.mail.room", { r: RID })).toEqual([`room:${RID}`]);
   });
 });

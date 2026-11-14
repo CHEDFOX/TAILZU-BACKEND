@@ -2,7 +2,7 @@
 
 Video and audio calls of our own, with nothing to connect: no Zoom, Meet or Teams account, no app or sign-up for the people invited. The mail
 bot starts them under a business's name. A call has a link (`x0bot.com/m/abc-defg-hij`). Anyone holding it asks to come in, and the host lets
-them in. X0 Bot's apps will join from a call screen that is server data like every other (section 4), never a web page.
+them in. X0 Bot's apps join from a call screen that is server data like every other (section 4), never a web page.
 
 * [1. How it fits](#1-how-it-fits)
 * [2. A call, from Start to End](#2-a-call-from-start-to-end)
@@ -94,27 +94,38 @@ Every screen is the server's, drawn by both apps (`experience/bots/screens/bots/
   and Share; "Ask before letting people in"; End the call for everyone. A push that someone waits opens it. It is read again as people come
   and go (live topic `room:<id>`). Joining from the app says it comes with the app's next update.
 
-**Joining from the apps is a block of its own, `live`** (`docs/renderer.md`: the apps are renderers, and a new kind of thing a screen can
-say goes into the vocabulary as data every screen can use, never a component for one feature). Vocabulary 2 landed on 14 Nov with thirteen
-blocks; none of them can hold a call, so calls add the fourteenth. The `media` block's `Video` cannot stand in: it is expo-video playing an
-https clip, and a call's track is not a URL.
+**Joining from the apps is a block of its own, `call`** (`docs/renderer.md`: the apps are renderers, and a new kind of thing a screen can
+say goes into the vocabulary as data every screen can use, never a component for one feature). It is the 14th block. The `media` block's
+`Video` could not stand in: it is expo-video playing an https clip, and a call's track is not a URL.
 
-| Piece of `live` | What it is |
+| Piece of `call` | What it is |
 | --- | --- |
-| `live.join`, `live.set`, `live.leave` | take a seat (the app's own offer in, the answer out); change the mic, camera, speaker or facing; hang up |
-| What it writes into state | where the call stands, the person's own mic and camera, and the people in it (name, speaking, mic, camera) — so every word and button on the screen is an expression over that state |
-| `Live`, a node | draws one person's live track: the person themselves, whoever is speaking, or someone named. A tile grid is `Each` over the people with a `Live` inside, so the layout is the server's |
+| `call.join` | take a seat: the app opens its microphone (and camera), makes an offer, POSTs it to the join path, sets the answer, and from then on runs the call itself against the four seat routes |
+| `call.set`, `call.leave` | the mic, the camera, the speaker and the facing; hang up |
+| What it writes into `statePath` | `phase`, `mic`, `cam`, `speaker`, `front`, `me`, `people` (each with `speaking`, `mic`, `cam`) and `waiting`. Every word, tile and button on the call screen is an expression over that |
+| `Caller`, a node | one person's picture, or the first letter of their name while their camera is off. `who` is "me", "speaker" or an identity, so a grid is `Each` over `state.c.people` with a `Caller` inside and the layout stays the server's |
 
-The block does the signalling loop of section 2 against the four seat routes: join, then heartbeat, pull, answer, leave. One block serves
-every live thing to come (a call, a voice bot, a live room in a space), not only this one.
+The seat is a bearer and never reaches the screen's state. One block serves every live thing to come (a call, a voice bot, a live room in
+a space), not only this one.
 
-**Why this needs no second copy of WebRTC.** The SFU needs nothing a browser has that React Native does not: `addTransceiver` with a
+Where it lives:
+
+| | |
+| --- | --- |
+| The phone | `TAILZU-FRONTEND/app/src/sdui/call/`: `callCore.ts` the arithmetic, `session.ts` the one file that names the live client, `Caller.tsx`, `holder.ts` (one call at a time), `index.ts` (the block and the three actions) |
+| The window | `TAILZU-DESKTOP/src/app/sdui/v2/call.js`, the same loop in the window's own style |
+| The screen | `tulmi/src/experience/bots/screens/bots/callRoom.ts` (`bots.mail.room`), a vocabulary-2 screen that states `needs` |
+
+**Why this needs no second copy of WebRTC.** The SFU asks for nothing a browser has that React Native does not: `addTransceiver` with a
 direction, offer and answer, `ontrack` carrying its transceiver, `mid`, `getStats`, data channels with `negotiated` and an `id`, and ICE
-gathering (it is not trickle: the whole offer is sent at once). All of that is in the `react-native-webrtc` the app already links for Plan
+gathering (it is not trickle: the whole offer is sent at once). All of it is in the `react-native-webrtc` the app already links for Plan
 Ease's live call, so the block is JavaScript on a library that is already there — no new native package, no runtime change
-(`docs/renderer.md`, "The runtime rule"), and it arrives over the air after the next store build. The window has WebRTC of its own.
+(`docs/renderer.md`, "The runtime rule"), and it arrives over the air after the next store build. The window has WebRTC of its own and
+always declares the block.
 
-Until `live` is built, a call's page says joining comes with the app's next update. The link, the lobby and everything else already work.
+**A build without it is never sent the screen.** The phone declares `call` only where the live client really loads
+(`blocks/registry.ts`), so the gate would answer anyone else with "Open X0 again" rather than a page. That is why the call's own page
+offers Join only to a client that has the block, and tells everyone else that joining comes with the app's next update.
 
 ## 5. Limits and the money
 
@@ -207,18 +218,25 @@ All in `tulmi/tests/`.
   profile's, never the body's); a bad offer refused before the service hears of it; the link's routes; the seat routes taking the seat as
   their one credential and refusing anything that is not one; the mail bot's calls under the business's own name, for its owner and their
   space's admin, never for a member who only answers addresses.
-* `rooms-page.test.ts`: Calls on the mail page, only when on; one call's screen: the link, the lobby, who is in, End on a second yes,
-  joining said to come with the next update and never a web page, an ended call, one that isn't there; every tree through the app's linter.
+* `rooms-page.test.ts`: Calls on the mail page, only when on; one call's screen (the link, the lobby, who is in, End on a second yes, an
+  ended call, one that isn't there), Join offered only to a client with the `call` block and everyone else told it is coming, never a web
+  page; and in a call: the seat taken as the screen opens, `needs` stating the block, a `Caller` per person inside an `Each` over the
+  call's own people, the controls as `call.set`, where the call stands read from its state, who waits let in without leaving, the
+  microphone asked for, and nothing to join for a call that ended. Every tree through the app's linter.
+* `TAILZU-FRONTEND/app/src/sdui/call/callCore.test.ts`: what to pull and what to let go as people come, go and turn a camera off; the hold
+  that stops a tile flickering between words; what the screen reads, and that the seat is never in it; who a tile means by "me",
+  "speaker" and a name; the wait before trying a dropped call again.
+* `TAILZU-DESKTOP/src/app/sdui/v2/blocks.test.js`: the window declares `call`; a `Caller` draws its ground before anyone is in the call
+  and a letter once someone is; the screen reads the call and never its seat.
 
-**Needs a live check**: a Cloudflare Realtime app set up, and a real call between two devices once the `live` block is built.
+**Needs a live check**: a Cloudflare Realtime app set up, and a real call between two devices. Everything up to the media itself is
+covered here, but no test in this repo opens a microphone.
 
 ## 10. Still to come
 
-1. **Joining from the apps**: the `live` block (section 4), then the call screen as server data over its state. Vocabulary 2 has landed, so
-   nothing blocks it but the block itself.
-2. **The mail bot puts calls in emails**: the AI sees when a customer wants to talk and its reply carries the link and a calendar invite
+1. **The mail bot puts calls in emails**: the AI sees when a customer wants to talk and its reply carries the link and a calendar invite
    from the business's address; Add a call when writing. And **our join page** at `x0bot.com/m/<code>` for people without X0 Bot (the
    website sends `/m/*` to this server), using the link's routes above.
-3. **AI notes from a call**: a WebSocket adapter on the SFU sends the call's audio to us as PCM, which is what the Notes pipeline needs. The
+2. **AI notes from a call**: a WebSocket adapter on the SFU sends the call's audio to us as PCM, which is what the Notes pipeline needs. The
    meeting bot pays Recall.ai $0.65–0.75 an hour for the same thing (`docs/meet.md`).
-4. Later: joining by phone number, recordings, and a space's admin seeing their people's calls.
+3. Later: joining by phone number, recordings, and a space's admin seeing their people's calls.

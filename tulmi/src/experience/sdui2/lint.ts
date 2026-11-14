@@ -57,6 +57,7 @@ const NODE_PROPS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   Audio: ["source", "loop", "muted", "volume", "rate", "playing", "into"],
   Camera: ["mode", "facing", "zoom", "torch", "active", "quality", "capture", "barcodeTypes", "scanInto",
     "readyInto", "permissionInto"],
+  Caller: ["who", "mirror", "fit", "radius", "background", "nameColor", "fontFamily"],
   TabBar: ["height", "background", "borderColor", "bottomInset"],
   Header: ["height", "background"],
   Toast: ["bottom", "background", "ms"],
@@ -349,6 +350,26 @@ function checkAction(a: ActionRef | undefined, where: string, w: Work, opts: Lin
       checkStatePath(o.into, `${where}.into`, w);
       break;
     }
+    // The call this screen holds (the `call` block, docs/rooms.md). `join` is a path of ours like any other endpoint's, so the same
+    // check runs on it; the seat it gets back never reaches the screen, so there is no state path to check but the one it writes.
+    case "call.join": {
+      w.needs.add("call");
+      checkStatePath(o.statePath, `${where}.statePath`, w);
+      const join = o.join;
+      if (typeof join !== "string" || !join.startsWith("/v1/")) w.errors.push(`${where}.join: a path of ours under /v1/`);
+      if (o.knock !== undefined && typeof o.knock !== "string") w.errors.push(`${where}.knock: the key the guest was let in on`);
+      if (o.video !== undefined && typeof o.video !== "boolean") w.errors.push(`${where}.video: true or false`);
+      break;
+    }
+    case "call.set": {
+      w.needs.add("call");
+      if (!["mic", "cam", "speaker", "flip"].includes(String(o.op))) w.errors.push(`${where}.op: mic, cam, speaker or flip`);
+      if (o.value !== undefined && typeof o.value !== "boolean") w.errors.push(`${where}.value: true or false`);
+      break;
+    }
+    case "call.leave":
+      w.needs.add("call");
+      break;
     case "local.set":
     case "local.remove": {
       w.needs.add("local");
