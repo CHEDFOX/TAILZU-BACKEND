@@ -44,6 +44,26 @@ Play Integrity in the app), and their Android halves. Six jobs hold:
   open a camera at all.
   Holds: `TAILZU-BACKEND/tulmi/src/experience/onboard/**`; `TAILZU-DESKTOP/package.json`, `build/entitlements.mac.plist`,
   `src/app/sdui/{permissions,core,backend,actions}.js`, `src/main/main.js` and its preload.
+- **Lingo, the language bot** (`docs/lingo.md`; switch `LINGO`, off). Re-added after a merge took it: the whole section was rewritten
+  for 8.9.1 and git kept that side, so this entry went with it. Nothing of 8.9.1's is held here.
+  ON MAIN and tested, nothing user-visible: the scheduler (FSRS), marking done on the SERVER and never in the app, the store, a
+  session's seven kinds and the order they are asked in, sets whose difficulty follows the person, the shared sentence bank, the
+  language picker (85 languages, the list is the server's), and seven routes under `/v1/lingo/`. 165 tests.
+  Holds: `tulmi/src/lingo/**`, `tulmi/src/routes/bots/lingo.ts`, `tulmi/scripts/lingo-seed.ts`, `tulmi/tests/lingo-*.test.ts`,
+  migrations **0087**, **0089**, **0092**.
+  Next, none of it client code: Lingo's `l.*` moments as data in `shared/bots/looks.json` (one gesture per grader reason, so the
+  movement carries the information: the missing accent plucked out of the air and set over the word, the wrong letter spat out and
+  the right one caught, two cards swapped for the wrong order, the right word mouthed slowly, a hand cupped to the ear when nothing
+  was heard), then its screens in `experience/bots/screens/bots/lingoPage.ts`, **vocabulary 1** so a lesson can never answer
+  "Open X0 again", then sentences from the bank into sessions.
+  **A colour question that was open here is now answered and done** (`6222f21`): `bots/builtin.ts` and `experience/bots/palette.ts`
+  each carried their own copy of the four shipped bots' colours and had disagreed for as long as both existed — builtin.ts said Xode
+  was pine while palette.ts drew it moss. palette.ts keeps the icons and reads the colour from builtin.ts now, and builtin.ts was set
+  to the colours people actually SEE, so nothing shipped changed appearance; the API stopped contradicting the screen. Meetings moved
+  off moss to pine, and Lingo wears `ash`, a neutral kept in `SHIPPED_ONLY` and out of `PALETTE` so it is never offered to anybody —
+  in the palette it would change which colour `colourFor` hands every future bot a person makes. **The Oracle and the meeting bot
+  still have no icon of their own** and get the generic `spark`: one line each in `palette.ts` `BUILTIN_ICON` when somebody wants to
+  choose them. Not mine to pick.
 
 ## Landed 14 Nov 2026 (all switched off)
 
