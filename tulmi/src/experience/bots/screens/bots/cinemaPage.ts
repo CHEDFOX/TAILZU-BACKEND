@@ -51,29 +51,31 @@ export function cinemaTileLook(ctx: BotsCtx): Pick<BotTileSpec, "avatar" | "mome
  * His moment carries the meaning as much as the words do: the clapperboard for a film that needs a decision, the film thrown in the air for
  * one that is finished, the frame made with his hands while one is still being shot. A build that draws no moments gets the card without him.
  */
-function directorCard(ctx: BotsCtx, look: { color: string }, films: readonly FilmRow[], desk: boolean): Node | null {
-  const waiting = films.filter(waitsForYou);
-  const pick = waiting[0]
-    ? { film: waiting[0], moment: "c.clap", mode: "once" as const, label: "Open it" }
-    : films.find((f) => f.status === "done")
-      ? { film: films.find((f) => f.status === "done")!, moment: "c.premiere", mode: "once" as const, label: "Watch it" }
-      : films.find((f) => f.status === "rendering" || f.status === "boarding" || f.status === "cutting" || f.status === "writing")
-        ? { film: films.find((f) => f.status === "rendering" || f.status === "boarding" || f.status === "cutting" || f.status === "writing")!, moment: "c.frame", mode: "loop" as const, label: "See how it's going" }
-        : null;
+function directorCard(ctx: BotsCtx, look: { color: string }, films: readonly FilmRow[], desk: boolean): { card: Node; film: FilmRow } | null {
+  const made = (f: FilmRow | undefined, moment: string, mode: "once" | "loop", label: string) => (f ? { film: f, moment, mode, label } : null);
+  const working = (f: FilmRow) => f.status === "rendering" || f.status === "boarding" || f.status === "cutting" || f.status === "writing";
+  const pick = made(films.find(waitsForYou), "c.clap", "once", "Open it")
+    ?? made(films.find((f) => f.status === "done"), "c.premiere", "once", "Watch it")
+    ?? made(films.find(working), "c.frame", "loop", "See how it's going");
   if (!pick) return null;
+  // He stands at the right of the card as the postie stands at the right of his head, with the film's own still beside the words.
   const him = canBuddy(ctx)
-    ? botBuddy({
-      kind: "custom", color: look.color, life: "page.cinema", width: desk ? 150 : 110, height: desk ? 64 : 56, size: desk ? 38 : 32,
-      state: waiting.length ? "needs" : "idle", avatar: DIRECTOR, lookTo: "down", ...botMoment(ctx, pick.moment, pick.mode),
-    })
-    : row([icon("spark", { size: 24, color: look.color })], { justifyContent: "center" });
-  return card([
-    row([him, col([
-      text(plain(pick.film.title) || "Your film", { size: 16, weight: 600, lineHeight: 21, lines: 1 }),
-      meta(statusLine(pick.film), { size: 13, lineHeight: 18, lines: 2 }),
-    ], { gap: 2, flexShrink: 1 }), grow()], { gap: 10, alignItems: "center" }),
-    row([primaryButton(pick.label, openFilm(pick.film.id), { size: "md" })]),
-  ], { gap: 12 });
+    ? [botBuddy({
+      kind: "custom", color: look.color, life: "page.cinema", width: desk ? 120 : 76, height: desk ? 60 : 52, size: desk ? 36 : 30,
+      state: "idle", avatar: DIRECTOR, lookTo: "down", ...botMoment(ctx, pick.moment, pick.mode),
+    })]
+    : [];
+  const poster = pick.film.poster ? [picture(abs(pick.film.poster), 52, 52, { radius: 10, fit: "cover", background: C.surface })] : [];
+  return {
+    film: pick.film,
+    card: card([
+      row([...poster, col([
+        text(plain(pick.film.title) || "Your film", { size: 16, weight: 600, lineHeight: 21, lines: 1 }),
+        meta(statusLine(pick.film), { size: 13, lineHeight: 18, lines: 2 }),
+      ], { gap: 2, flexShrink: 1 }), grow(), ...him], { gap: 10, alignItems: "center" }),
+      row([primaryButton(pick.label, openFilm(pick.film.id), { size: "md" })]),
+    ], { gap: 12 }),
+  };
 }
 
 const said = (message: string): ActionSpec => ({ kind: "toast", message, tone: "success" } as ActionSpec);
@@ -86,7 +88,9 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
   const o = d.cinema?.overview;
   const desk = isDesk(ctx);
 
-  const waiting = o?.films.find((f) => f.hold || f.status === "script" || f.status === "board");
+  // His card says what is waiting, so the head does not say it twice.
+  const hero = o ? directorCard(ctx, look, o.films, desk) : null;
+  const waiting = hero ? undefined : o?.films.find(waitsForYou);
   const line = waiting ? `${plain(waiting.title)}: ${statusLine(waiting)}` : "Films and pictures from your words";
   const name = col([
     text(bot.name, { size: desk ? 17 : 19, weight: 600, lineHeight: desk ? 22 : 24 }),
@@ -97,8 +101,7 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
     : row([labelled(box([icon("back", { size: 24 })], { width: 44, height: 44, marginLeft: -10, alignItems: "center", justifyContent: "center" }, back()), "Back"), name, grow()], { gap: 6 });
 
   // One director to a page: his card when there is a film to say something about, the invitation below when there is nothing at all.
-  const hero = o ? directorCard(ctx, look, o.films, desk) : null;
-  const body: Node[] = [...(hero ? [hero] : []), head];
+  const body: Node[] = [head, ...(hero ? [hero.card] : [])];
   if (!o) {
     body.push(notice("Your films couldn't be read just now. Pull to try again.", { mark: "close" }));
   } else {
@@ -109,8 +112,8 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
       ...(f.poster ? { left: picture(abs(f.poster), 44, 44, { radius: 8, fit: "cover", background: C.surface }) } : {}),
       onPress: openFilm(f.id),
     });
-    // His card names the first of these; the list is still here, so every waiting film has its own row and poster.
-    const waiting = o.films.filter(waitsForYou);
+    // The one his card already shows is not listed again; the others are.
+    const waiting = o.films.filter((f) => waitsForYou(f) && f.id !== hero?.film.id);
     if (waiting.length) body.push(listCard(waiting.map(filmRow), { title: "Waiting for you" }));
 
     const write = {
@@ -156,7 +159,7 @@ export function cinemaPage(ctx: BotsCtx, d: CinemaPageData) {
       ], { dashed: true, gap: 10, padding: 22, style: { alignItems: "center" } }));
     }
 
-    const rest = o.films.filter((f) => !waitsForYou(f));
+    const rest = o.films.filter((f) => !waitsForYou(f) && f.id !== hero?.film.id);
     if (rest.length) body.push(listCard(rest.map(filmRow), { title: "Your films" }));
 
     if (o.pictures.length) {

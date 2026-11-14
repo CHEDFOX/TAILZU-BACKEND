@@ -167,8 +167,11 @@ describe.each<Client>(["phone", "desktop"])("the cinema bot on the %s", (client)
     expect(waits.lint).toEqual([]);
     expect(buddyOf(waits)).toHaveLength(1);
     expect(buddyOf(waits)[0]!.props.moment).toBe("c.clap");
-    expect(buddyOf(waits)[0]!.props.state).toBe("needs");
     expect(waits.texts).toContain("Open it");
+    // The film's own still is in the card, and the head and the lists do not say the same thing again.
+    expect(waits.images.some((u) => u.includes("still-1.png"))).toBe(true);
+    expect(waits.texts.filter((x) => x.includes("Storyboard ready"))).toHaveLength(1);
+    expect(waits.texts).not.toContain("Waiting for you");
 
     // A finished film: he throws it in the air.
     const ready = await build({ client, overview: OVERVIEW({ films: [{ ...ROW, status: "done", hold: null, done: 4 }] }) });
