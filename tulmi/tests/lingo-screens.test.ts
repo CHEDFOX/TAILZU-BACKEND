@@ -76,6 +76,31 @@ describe("every tree the kit would draw", () => {
   });
 });
 
+describe("Lingo in the bots list", () => {
+  it("appears on Home once the platform lists it, beside the four that always show", async () => {
+    const { liveFrom } = await import("../src/experience/bots/live.js");
+    const { SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
+    const withLingo = [...SAMPLE_BOTS, { slug: "lingo", name: "Lingo", colour: "ash", purpose: "Teaches you a language by talking with you.", builtin: true }];
+    const model = liveFrom({ bots: withLingo, jobs: [], tasks: [], minutesSaved: 0, budgetPaise: 0, now: Date.UTC(2026, 9, 28), tzOffsetMinutes: 330 });
+    const lingo = model.bots.find((b) => b.slug === "lingo");
+    expect(lingo, "Lingo is in the Home list").toBeTruthy();
+    expect(lingo!.name).toBe("Lingo");
+    // Its own colour, not the fallback grey every unknown bot wears.
+    const { PALETTE_HEX } = await import("../src/experience/bots/palette.js");
+    expect(lingo!.color).toBe(PALETTE_HEX.ash);
+    expect(lingo!.color).not.toBe(PALETTE_HEX.stone);
+  });
+
+  it("is simply absent when the platform does not list it, and nothing else moves", async () => {
+    const { liveFrom } = await import("../src/experience/bots/live.js");
+    const { SAMPLE_BOTS } = await import("../src/experience/bots/fixtures.js");
+    const model = liveFrom({ bots: SAMPLE_BOTS, jobs: [], tasks: [], minutesSaved: 0, budgetPaise: 0, now: Date.UTC(2026, 9, 28), tzOffsetMinutes: 330 });
+    expect(model.bots.find((b) => b.slug === "lingo")).toBeUndefined();
+    // The four that are always there are still the first four, in order.
+    expect(model.bots.slice(0, 4).map((b) => b.slug)).toEqual(["code", "keybot", "plan", "travel"]);
+  });
+});
+
 describe("the territory", () => {
   it("gives each language its own Continue, rather than dropping them into a lesson", () => {
     const s = json(territory(ctx(), { courses: [course(), course({ target: "ja", streakDays: 2, progress: { items: 8, learned: 0, due: 0, unseen: 8, held: 0.06 } })] }));
