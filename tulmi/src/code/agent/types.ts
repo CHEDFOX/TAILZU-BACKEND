@@ -211,6 +211,8 @@ export interface VerifyState {
   fixed: string[];
   note?: string;
   round: number;
+  /** What the change took away that no test covers and the task did not ask for, after its one round of fixing (surface.ts). Reported, never a block. */
+  lost?: string[];
 }
 
 export interface NewProjectState {
@@ -519,6 +521,8 @@ export interface AgentState {
     /** The model was asked, once, for a focused test of the change before the checks ran (phases.ts testWanted), and what it was told. Cleared once the checks run. */
     testAsked?: boolean;
     testFeedback?: string;
+    /** The one round asking for a quietly removed export or route to be put back was spent (surface.ts). */
+    surfaceAsked?: boolean;
     /** What the design check found, for the model to fix: the differences and the fix hints. Data, wrapped when shown. */
     designFeedback?: string;
     /** What a team's reviewer found in this helper's work (code/team): the findings, for the fix round. Data, wrapped when shown. */

@@ -49,6 +49,7 @@ import { buildContext, digestOf, fold, projectContext } from "./context.js";
 import { isStrategy, type ContextStrategy } from "./mask.js";
 import { designDue, designLines } from "./design.js";
 import { WITHHELD_ARGS, argsHoldSecret, type ToolOutcome } from "./tools.js";
+import { REMOVAL_ASKED, lostFeedback, lostSurface, surfaceInput, type Lost } from "./surface.js";
 import { SAID_KEEP } from "../live/limits.js";
 import { commitMessage, prBody, prTitle, reportText } from "./report.js";
 import { BudgetStop, EndJob, LostClaim, Park, Yield, type Run } from "./run.js";
@@ -843,6 +844,25 @@ export async function testWanted(r: Run): Promise<boolean> {
   return s.mode === "freeform" || w.turns + 3 <= TURNS_MAX;
 }
 
+/**
+ * WHAT THE CHANGE TOOK AWAY (surface.ts), once the checks have passed: an exported name or a route the branch had and the
+ * staged edits do not, that no test missed and the task did not ask to remove. Nothing for a merge (the removals in a
+ * merged-in branch are other people's commits) and nothing when the task asked for something to go.
+ */
+async function lostOnBranch(r: Run): Promise<Lost[]> {
+  const s = r.state;
+  if (s.merge || s.newProject) return [];
+  if (REMOVAL_ASKED.test(s.task)) return [];
+  try {
+    const files = await surfaceInput(r.tools.changes.files, (path) => r.tools.onBranch(path));
+    return lostSurface(files);
+  } catch (err) {
+    // The check is a courtesy, never the job: what it cannot read it says nothing about.
+    r.deps.log?.warn({ jobId: r.jobId, error: (err as Error)?.name }, "code agent: the surface check could not be made");
+    return [];
+  }
+}
+
 export async function verifyPhase(r: Run): Promise<void> {
   const s = r.state;
   const w = s.work;
@@ -883,6 +903,27 @@ export async function verifyPhase(r: Run): Promise<void> {
   }, { ...(r.deps.routeStats ? { store: r.deps.routeStats } : {}), ...(r.deps.log ? { log: r.deps.log } : {}) });
   if (v.ok) {
     w.feedback = undefined;
+    // The checks pass on what they cover. One round, once, for what they do not: something the project showed the rest of
+    // itself and this change quietly dropped (surface.ts). It never blocks the commit; after its round it is reported.
+    const lost = await lostOnBranch(r);
+    if (lost.length && !w.surfaceAsked) {
+      w.surfaceAsked = true;
+      w.feedback = lostFeedback(lost) ?? undefined;
+      w.finished = false;
+      w.runs = 0;
+      w.nudged = false;
+      w.badTurns = 0;
+      w.roundStartPaise = money.spent;
+      w.roundStartedAt = r.now();
+      await r.log.decision(`The checks passed, but the change takes away ${lost.length === 1 ? "one thing" : `${lost.length} things`} no test covers: ${lost.slice(0, 4).map((l) => l.label).join(", ")}. Asked for ${lost.length === 1 ? "it" : "them"} back.`);
+      s.phase = "work";
+      await r.save();
+      return;
+    }
+    if (lost.length) {
+      v.lost = lost.map((l) => `${l.label} (${l.path})`);
+      await r.log.note(`Still missing after the round, so it is in the report: ${v.lost.slice(0, 4).join("; ")}.`);
+    }
     // What the checks passed on is written down: the commit is made of exactly this, and of nothing the checks did not see.
     s.verified = stagedFingerprint(r);
     // A job built from an approved design runs the app and looks at it before it is committed (design.ts); every other job commits.

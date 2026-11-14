@@ -13,6 +13,7 @@ tulmi/src/code/agent/
   tools.ts         read_file ... done: what each tool really does
   runner.ts        the runner port, and the environment router behind it
   report.ts        the commit message, the pull request body, the final report
+  surface.ts       what the change took away: the exported names and routes of the files it touched, before against after
   run.ts           one run of the loop: the state, the claim it writes through, the ways it stops
   phases.ts        prepare ... report, each a function over a Run that can be entered again
   loop.ts          the driver (runLoop), the single-advance entry (advanceLoop), and the budget stop
@@ -47,7 +48,7 @@ prepare ──┬─ a question, research, a library to find ──────�
 | `split` | **Only for a big goal** (a plan over 12 files or 3 features, a goal over several projects, or the person asked; never a small task): the job becomes a **lead**. The `team_split` role splits the work into parts with disjoint file ownership; code validates them (an overlap is refused and asked again, three rounds at most). A split that cannot be made right leaves the job to do the work itself. `docs/code-team.md` | the budget cannot pay a team (`needs_you`, `budget`) |
 | `team` | The lead's loop over its helpers: it builds part 0 (the shared contracts) first, then starts helpers (child jobs, three at once by default), has each part reviewed by a model of another family (two fix rounds at most), merges the parts in dependency order, and then runs `verify` on the whole branch. One pull request at the end. `docs/code-team.md` | a part's money, a helper's question (shown as a `blocked` part) |
 | `work` | A model with tools (section 3), one turn at a time. Every edit is **staged**, never written. | a question from the model; the budget |
-| `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. | |
+| `verify` | The plan's checks (the affected tests first, then typecheck and lint) run in one runner step **with the staged edits laid over a fresh checkout**; the result is compared to the baseline (`work/findings.ts compareToBaseline`). What this change broke goes back to `work` as a fix round, with the failing output in front of the model. Three rounds at most, then the job stops with a report and **nothing committed**. A check that was already failing is **flagged and does not block**. Once the checks pass, what the change took away is read (section 4a, `surface.ts`). | |
 | `design` | **Only for a job built from an approved design** (`AgentState.spec`, `docs/artifacts.md` sections 6 and 11), and only if `CODE_DESIGN_CHECK` is on. After the checks pass and before the commit: start the project's dev server on the runner (the preview, `docs/cloudflare-jobs.md` section 11), open the route the design is for, shoot it and the approved design at mobile and desktop, and compare (a cheap pixel gate first, the vision tier only if they differ, metered in the job's budget). **Major** differences send the job back to `work` with the differences and the fix hints in front of the model, **twice at most**, and the checks run again before the next look. After the last round one more look is taken and what still differs is **reported**. It **never blocks the commit**: no live runner, not a web app, no `dev` script, a dev server that will not start, no browser or shot viewer, a budget too small (about 240 paise), a failed shot, a model with no usable answer: the round is skipped with one sentence for the report and the job goes on. Its stages are saved one by one, so a restart or a wait resumes it without doing anything twice | |
 | `commit` | The **server** commits all the staged edits at once through `workspace().commit`, so the policy, the secret scan, the Blip author and the co-author trailer always apply. If the policy asks, the job waits for the person's OK; if it says never, the job stops with the reason. | the OK (`needs_you`) |
 | `pr` | A draft pull request: the plan, the checks, what was already broken, the **whole work log** (`worklogMarkdown`) and the findings. Taken out of draft **only when the checks ran and found nothing this change broke**, and only if the policy allows it (a standing permission, or the person's yes). | the OK to mark it ready |
@@ -152,6 +153,37 @@ Masking saves model calls and cheap-tier money, and it costs input tokens: the p
 **Data is never instructions.** A file the model read, a command's output, a search result and the folded summary go in `<tool_data>`; a web page arrives in the web code's `<web_page>`. Both wrappers are ones their own text cannot close. Our one-line answers ("Edited src/a.ts.") are the only text outside a wrapper in a tool message. Nothing run on a runner comes from anything but a `run` call of the model.
 
 **Tiers.** Each turn is routed by `planRoute("write_code", ...)` (`brain/route.ts`): the tier climbs on failures (bad turns and fix rounds), and a tier the remaining budget cannot afford (by its `maxTokens`: 4,096 of answer plus the tier's own room for thinking, `phases.ts workTokens`) is not chosen. A thinking model given 4,096 in all spent them all thinking and wrote nothing. After each round of writing, `recordOutcome` tells the route statistics whether it worked, what it cost and how long it took.
+
+## 4a. What the change took away
+
+The project's checks prove that what is tested still works. They say nothing about what no test covers, and most projects cover a fraction: an
+exported function dropped in a rewrite, a route no longer registered, a component renamed and its last caller missed. The tests stay green and the
+feature is gone; the person finds it, not the job. (`testlock.ts` guards the project's own tests the same way, by counting.)
+
+So once the checks have passed, before the commit (`surface.ts`): for every staged file the **exported names and the HTTP routes** are read from the
+text on the work branch and from the staged text (`project/symbols.ts extractSymbols`: regexes over blanked comments, **no model and no parser**, every
+pattern with a fixture), and anything that was there and is not any more is a **removal**.
+
+It is narrow on purpose, because a false alarm costs a round of the person's money:
+
+* only what is visible from outside the file (`exported`) and routes; a private helper is the file's own business;
+* the **name**, not its kind: an exported function that becomes an exported const of the same name is the refactor it is;
+* a name that **moved** is not a removal: gone from one staged file and present in another is what a refactor looks like, and a file the job **deleted**
+  is read the same way, so moving a module's contents elsewhere is fine and dropping them is not;
+* a test file is the test lock's business, and a file that cannot be read (binary, too big, gone) is left out rather than called a removal;
+* a task that asks for something to go (`REMOVAL_ASKED`: remove, delete, drop, rename, replace, deprecate, clean up, dead code...) turns the check
+  **off**, as the test lock's `TESTS_ASKED` does: the person asked;
+* nothing for a `merge` (the removals in a merged-in branch are other people's commits) or a new project.
+
+**One round, and it never blocks the commit.** A removal the task did not ask for goes back to `work` once (`work.surfaceAsked`), with the names and
+their files, told to put it back or, if it was renamed on purpose, to update every use and say so with `note`. That round is its own, outside the three
+fix rounds, so it cannot eat them. If the name is still missing after it, the job **goes on and commits**: what is gone is named in the report and in
+the pull request ("Gone from this branch, and no test covers it", `VerifyState.lost`), and the report's next steps offer to put it back. A check that
+cannot be made says nothing at all.
+
+Tests: `tests/code-agent-surface.test.ts` (the surface per language, what counts as moved, the words the model is given) and the "what the change took
+away" group in `tests/code-agent-loop.test.ts` (the round through the real loop, the one-round cap with the report and the pull request, and a task that
+asked for the removal).
 
 ## 5. Money
 

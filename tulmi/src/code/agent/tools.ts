@@ -283,6 +283,11 @@ export class Tools {
     for (const k of keys) this.logged.add(k);
   }
 
+  /** A staged file's text as the work branch has it, or null when the branch has no such file. For the surface check (surface.ts) in verify. */
+  async onBranch(path: string): Promise<string | null> {
+    return this.branchText(path);
+  }
+
   /** Whether a path is a file on the work branch now (the tree), or, for a huge repo the tree is cut short of, readable. */
   async exists(path: string): Promise<boolean> {
     const staged = this.changes.get(path);
