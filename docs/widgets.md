@@ -180,19 +180,31 @@ the category is a bootstrap knob and its button is a `call`, which the phone has
 
 * **The push.** Kinds `bot_ask` (the bot spoke first — `botsBots/chat.ts` `note()`, unless the caller passes `quiet`) and
   `bot_reply` (its answer to a reply typed into a notification). Both open `bots.chat` and carry `data.slug` and `data.thread`.
-  One bot conversation is one notification: the engine's collapse id (`botchat-<slug>`) is the iOS collapse id and the Android
-  tag, so a back-and-forth stacks instead of piling up. A person's own bot is private, so its body says *Sent you a message.*
+  A bot's `bot_ask` pushes share one collapse id (`botchat-<slug>`: the iOS collapse id and the Android tag), so they stack instead
+  of piling up. A `bot_reply` never takes it: the phone dismisses the notification it answered, by its identifier (which the collapse
+  id is), once the call succeeds, and the answer is pushed before the call is answered, so a shared id could see the answer
+  dismissed in its place. A person's own bot is private, so its body says *Sent you a message.*
   rather than the words; a built-in says its line.
 * **The button.** `POST /v1/bots/{data.slug}/notify-reply` with `{ text: "{text}", thread: "{data.thread}", key: "{data.pushId}" }`
   — only templates `fillTemplate` / `fillBody` can fill.
 * **The route.** The session's own bots only (anyone else's is a 404, never a 403); the text is trimmed and capped at 2000; the
   `key` makes one press one reply, so the phone's offline retry never runs the model twice; `NOTIFY_REPLY_PER_HOUR` (20) replies an
-  hour per person. The words go into that bot's chat through the same door the app uses — same history, same tools, same rules —
-  and the answer comes back as a `bot_reply` push on the same conversation. **No AI permission yet** (`privacy/aiGate.ts`): no
-  model is asked, and a push says *Open X0 to continue.* Quiet hours and "What pings you" apply as for any push
+  hour per person; the key and the words together are one press, so a second, different reply on the same push is answered too.
+  The words go into that bot's chat through the same door the app uses — same history, same tools, same rules, what the spaces
+  shared with it, a permit from the guard (`guard/limiter.ts`) and the answer written down for Activity — and the answer comes back
+  as a `bot_reply` push on the same conversation. The bot's own refusals keep their status (its day budget is a 429, Xode a 409),
+  never a 500 the phone would retry. **No AI permission yet** (`privacy/aiGate.ts`): no
+  model is asked, and a push with no Reply box says *Open X0 to continue.* Quiet hours and "What pings you" apply as for any push
   (`you/push.ts`: quiet hours take the sound away, a bot the person turned off is dropped).
 * **Launch dark.** `NOTIFY_REPLY` (off), `NOTIFY_REPLY_USERS` (comma list of accounts; empty means everyone, with the switch on).
-  While off, the category is in nobody's bootstrap, no push carries it, and the route answers 404 `notify_reply_off`.
+  While off, the category is in nobody's bootstrap, no push carries it, and the route answers 404 `notify_reply_off` before the
+  session. On with a list, an account it does not name gets the same 404 after the session; one it names gets through.
+* **Not wired yet: the first push.** Nothing sends a `bot_ask`, so with the switch on the back-and-forth can only be answered,
+  never started. `note()` is its one door (`server.ts` `setBotSaidHook` pushes what it is told), and its one caller,
+  `botsBots/planCall.ts`, passes `quiet` — rightly, since the person is on the call and already hearing it. Which of a bot's
+  messages should invite a reply is a product call: a routine's answer (`routines/service.ts` `run()`, recorded with
+  `chat.note(..., { quiet: true })` and pushed as a `bot_ask` in place of `routine_done`) is the obvious first one, behind
+  `notifyReplyOn(userId)`.
 
 * **iOS** asks for background time while it sends (the bridge's `beginBackgroundWork`).
 * **Android** runs a press with the app closed in an expo-task-manager task (`src/notifications/backgroundTask.ts`), switched by

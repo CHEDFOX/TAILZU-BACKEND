@@ -488,7 +488,7 @@ registerBotsFirstRunRoutes(app, botsAreaDeps);
 registerBotsPushAskRoutes(app, botsAreaDeps);
 // Replying to a bot from its notification (src/bots/notifyReply.ts, docs/widgets.md §5): the words typed into the push go into that
 // bot's own chat and its answer comes back as another push. 404 while NOTIFY_REPLY is off, which is the default.
-registerNotifyReplyRoutes(app, { rateLimit: AUTHED_RL, bots, chat: botsParts.chat });
+registerNotifyReplyRoutes(app, { rateLimit: AUTHED_RL, bots, chat: botsParts.chat, shared: botsArea.chatShared });
 // A bot that said something into a chat on its own (botsBots/chat.ts note) pings the person with a Reply box on it, so they answer
 // from the lock screen. Nothing while NOTIFY_REPLY is off (botSaid checks the switch itself).
 setBotSaidHook((userId, slug, text) => {

@@ -138,12 +138,131 @@ describe("the publish gate compiles a screen the way the device does", () => {
     expect(away.errors.join(" ")).toContain("carries no scheme");
   });
 
-  it("takes a path with holes, because every hole is encoded", () => {
+  it("takes a call's path with holes, because the device works that one out and encodes every hole", () => {
+    // A path the server wrote by hand, with $state.x tokens the device fills (actions.ts callPath).
+    const plain = lintScreen(page([], {
+      needs: ["defs"], defs: {},
+      actions: { go: { kind: "callEndpoint", method: "GET", path: "/v1/notes/$state.note.id" } },
+    }));
+    expect(plain.errors).toEqual([]);
+    // And SPEC 2.2's own shape: callPath runs an evaluable path through the kernel with `encode`.
     const r = lintScreen(page([], {
       needs: ["expr"],
       actions: { go: { kind: "callEndpoint", method: "GET", path: t("/v1/notes/{{ state.note.id }}") as never } },
     }));
     expect(r.errors).toEqual([]);
+    // The literal half still has to be ours: the holes are encoded, so only the literals pick the endpoint.
+    const away = lintScreen(page([], {
+      needs: ["expr"],
+      actions: { go: { kind: "callEndpoint", method: "GET", path: t("/v2/notes/{{ state.note.id }}") as never } },
+    }));
+    expect(away.errors.join(" ")).toContain("/v1/");
+    // A LIST is the other way round: List.tsx hands page.endpoint to listCore.ts apiPath, which takes a string or
+    // nothing, so an expression there is a list that silently never pages.
+    const feed = lintScreen(page([list({ data: v("state.rows"), item: { type: "Text" }, page: { endpoint: t("/v1/feed/{{ state.u }}") as never, into: "rows" } })], { needs: ["expr", "list"] }));
+    expect(feed.errors.join(" ")).toContain("page.endpoint: a plain string");
+  });
+
+  it("refuses { $ } and { $t } where the device passes them on as objects, and takes them where it works them out", () => {
+    // A NODE is compiled key by key (blocks/nodeCore.ts compileMap): a whole prop, a whole style key, a whole Use
+    // argument, and nothing nested inside one. A label inside an `options` array and a `rotate` inside a transform
+    // are walked past, so the component would be handed the object itself.
+    const bad = lintScreen(page([
+      input({ kind: "picker", options: [{ value: "a", label: t("{{ state.a }}") as never }] }, { value: "pick" }),
+      { type: "Stack", style: { transform: [{ rotate: v("state.r") }] } as never },
+    ], { needs: ["expr", "input"], state: { n: v("1 + 1") } }));
+    const said = bad.errors.join(" | ");
+    expect(said).toContain("props.options[0].label: the device works out");
+    expect(said).toContain("style.transform[0].rotate: the device works out");
+    // The screen's FIRST state is data: state.ts seeds the store with a JSON round-trip, so an expression there
+    // would just be stored as the object.
+    expect(said).toContain("state.n: the device works out");
+    const good = lintScreen(page([
+      { type: "Text", props: { content: t("{{ state.a }}") }, style: { opacity: v("state.busy ? 0.4 : 1") } },
+    ], { needs: ["expr"] }));
+    expect(good.errors).toEqual([]);
+    expect(good.counts.exprs).toBe(2);
+  });
+
+  it("works out an action's own values, at any depth, because fill.ts reaches every one of them", () => {
+    // SPEC 2.2's own example is a rule's `value: { "$": "now()" }`: fill.ts resolveValue hands an evaluable value
+    // to the kernel wherever it sits, so these compile here and count against the screen.
+    const r = lintScreen(page([
+      { type: "Stack", on: { onPress: { kind: "setState", path: "n", value: v("state.n + 1") } as never } },
+    ], {
+      needs: ["expr"],
+      actions: { save: { kind: "callEndpoint", method: "POST", path: "/v1/notes", body: { note: { title: t("{{ state.title }}") } } } as never },
+    }));
+    expect(r.errors).toEqual([]);
+    expect(r.counts.exprs).toBe(2);
+    // A broken one is still refused, rather than reaching the store as the object.
+    const broken = lintScreen(page([
+      { type: "Stack", on: { onPress: { kind: "setState", path: "n", value: v("state.n +") } as never } },
+    ], { needs: ["expr"] }));
+    expect(broken.errors.join(" ")).toContain("on.onPress.value: an expression ends too early");
+    // And it has to be declared: an action expression needs the `expr` block like any other.
+    const undeclared = lintScreen(page([
+      { type: "Stack", on: { onPress: { kind: "setState", path: "n", value: v("state.n + 1") } as never } },
+    ], { needs: ["defs"], defs: {} }));
+    expect(undeclared.errors.join(" ")).toContain('uses the "expr" block');
+  });
+
+  it("compiles an { expr } inside today's all / any / not, and counts the block", () => {
+    const r = lintScreen(page([
+      { type: "Text", props: { content: "x" }, visibleIf: { all: [{ truthy: "a" }, { expr: "state.a +" }] } as never },
+      { type: "Stack", on: { onPress: { kind: "condition", if: { not: { expr: "device.online" } }, then: "go" } as never } },
+    ], { needs: ["defs"], defs: {} }));
+    const said = r.errors.join(" | ");
+    expect(said).toContain("visibleIf.all[1]: an expression ends too early");
+    expect(said).toContain('uses the "expr" block');
+    expect(said).toContain('uses the "device" block');
+  });
+
+  it("takes List.sticky in the two shapes the device reads a source out of, and refuses the two it does not", () => {
+    // nodeCore.ts keeps `sticky` out of compileMap (ROW_PROPS), so it reaches the list as written and
+    // blocks/scope.ts itemBool takes the source from a plain string or a { "$" } — never from { "expr" }/{ "$t" },
+    // where it would quietly be no sticky rows at all.
+    const at = (sticky: unknown) => lintScreen(page([
+      list({ data: v("state.rows"), item: { type: "Text" }, sticky: sticky as never }),
+    ], { needs: ["expr", "list"] }));
+    expect(at("item.header == true").errors).toEqual([]);
+    expect(at(v("item.header")).errors).toEqual([]);
+    // Either shape is compiled, so a broken one is refused here rather than falling to `false` on the device.
+    expect(at("item.header +").errors.join(" ")).toContain("sticky: an expression ends too early");
+    expect(at(v("item.header +")).errors.join(" ")).toContain("sticky: an expression ends too early");
+    expect(at({ expr: "item.header" }).errors.join(" ")).toContain('sticky: the expression as a plain string or { "$" }');
+    expect(at(t("{{ item.header }}")).errors.join(" ")).toContain('sticky: the expression as a plain string or { "$" }');
+    // It costs the screen an expression either way, and the `expr` block is not one of its needs: itemBool runs
+    // inside the list's own host with the kernel every vocabulary-2 build carries.
+    const one = lintScreen(page([
+      list({ data: [], item: { type: "Text" }, sticky: "item.header" as never }),
+    ], { needs: ["list"] }));
+    expect(one.errors).toEqual([]);
+    expect(one.needs).toEqual(["list"]);
+    expect(one.counts.exprs).toBe(1);
+  });
+
+  it("refuses a subscription to the answer stream's ask:* topics, which the device refuses", () => {
+    const r = lintScreen(page([], {
+      needs: ["data"],
+      actions: { listen: { kind: "subscribe", topic: "ask:abc", into: "answer" } as never },
+    }));
+    expect(r.errors.join(" ")).toContain("ask:* belongs to the answer stream");
+  });
+
+  it("takes a bind as a dot-path or as an expression whose answer is the value", () => {
+    // nodeCore.ts compiles a whole `bind` key exactly as it compiles a prop, and leaves a bare string alone as
+    // the path it is (probed against the phone's own compileNode).
+    const both = lintScreen(page([
+      input({ kind: "text" }, { value: "form.email" }),
+      { type: "TextField", bind: { value: v("state.draft") } as never },
+    ], { needs: ["expr", "input"] }));
+    expect(both.errors).toEqual([]);
+    expect(both.counts.exprs).toBe(1);
+    // A path that is not a path is still refused, and so is an expression that will not compile.
+    expect(lintScreen(page([{ type: "TextField", bind: { value: "__proto__.x" } as never }])).errors.join(" ")).toContain("bind.value");
+    expect(lintScreen(page([{ type: "TextField", bind: { value: v("state.a +") } as never }], { needs: ["expr"] })).errors.join(" "))
+      .toContain("bind.value: an expression ends too early");
   });
 
   it("refuses a local key that reads like a secret", () => {
@@ -288,6 +407,19 @@ describe("who gets a vocabulary-2 screen", () => {
     expect(JSON.stringify(r.screen)).toContain("x0bot.com/download");
   });
 
+  it("gates on what the screen SAYS it needs too, not only on what lint can see", () => {
+    // vocab2()'s own `needs` option is for blocks lint cannot read off the tree, and the phone gates on the
+    // screen's `needs` (blocks/blocksCore.ts screenNeeds). Lint-computed needs alone served this to everyone.
+    const s = vocab2(page([{ type: "Text", props: { content: "plain" } }]), { needs: ["shell"] });
+    v2off();
+    const off = serveScreen(s, { vocab: 2, blocks: ["shell"], runtime: PHONE_RUNTIME }, { client: "phone", userId: "u1" });
+    expect(off.result.served).toBe("open-again");
+    expect(off.result.needs).toEqual(["shell"]);
+    v2();
+    expect(gateScreen(s, phone([])).missing).toEqual(["shell"]);
+    expect(gateScreen(s, phone(["shell"])).served).toBe("screen");
+  });
+
   it("never lowers: the screen that goes out is the short one, not a trimmed version of the real one", () => {
     v2();
     const r = gateScreen(needy(), phone([]));
@@ -373,5 +505,31 @@ describe("today's screens and today's clients", () => {
     const tree = stack([row]);
     expect(lintTree(tree).join(" ")).toContain("type List needs the list block");
     expect(lintTree(tree, { needs: ["list"] }).filter((x) => x.startsWith("type"))).toEqual([]);
+  });
+
+  it("the kit's own lint also refuses vocabulary-2 SYNTAX in a screen that declares no block", () => {
+    // A screen with no `needs` never reaches the publish gate — that is what keeps today's screens free — so this
+    // check is the only thing between vocabulary-2 syntax and a client that cannot draw it. One case per piece.
+    const cases: Array<[string, Node, string]> = [
+      ["an expression in a prop", { type: "Text", props: { content: t("{{ state.a }}") } }, "expr"],
+      ["an expression in a style key", { type: "Stack", style: { opacity: v("state.busy ? 0.4 : 1") } }, "expr"],
+      ["an expression in bind", { type: "Stack", bind: { value: v("state.a") } as never }, "expr"],
+      ["an { expr } visibleIf", { type: "Stack", visibleIf: { expr: "state.a" } }, "expr"],
+      ["gestures", { type: "Stack", gestures: [{ kind: "pan", into: "p" }] as never }, "gesture"],
+      ["scrollInto", { type: "Screen", scrollInto: "y" }, "gesture"],
+      ["node rules", { type: "Stack", rules: [{ kind: "every", every: 1000, do: "tick" }] as never }, "rules"],
+      ["vocabulary-2 motion", { type: "Stack", motion: { enter: { opacity: [0, 1] } } as never }, "motion"],
+    ];
+    for (const [what, node, block] of cases) {
+      const said = lintTree(stack([node])).join(" | ");
+      expect(said, what).toContain(`needs the ${block} block`);
+      // A screen that DOES declare the block may use it.
+      expect(lintTree(stack([node]), { needs: [block] }).join(" | "), what).not.toContain(`needs the ${block} block`);
+    }
+    // Vocabulary 1's own motion is a preset and some milliseconds, and is left alone.
+    expect(lintTree(stack([{ type: "Stack", motion: { appear: "fade", durationMs: 200, loop: true } }]))).toEqual([]);
+    // It reaches a row template and a Use's slots too, which are drawn like any other node.
+    const hidden = list({ data: [], item: { type: "Text", props: { content: t("{{ state.a }}") } } });
+    expect(lintTree(stack([hidden]), { needs: ["list"] }).join(" | ")).toContain("needs the expr block");
   });
 });

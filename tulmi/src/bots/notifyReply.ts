@@ -21,6 +21,7 @@
  *   - quiet hours and "What pings you" are the engine's and you/push.ts's, as for every push: a muted bot stays muted
  *   - a private bot's push never shows the words on the lock screen, only that there is something to read
  */
+import { createHash } from "node:crypto";
 import { getConfig } from "../config.js";
 import { aiAllowedFor, asPerson } from "../privacy/aiGate.js";
 
@@ -69,18 +70,24 @@ export const BOT_REPLY_CATEGORIES = [{
 
 // ------------------------------------------------------------------ the switch
 
-/** Is replying from a notification on at all? Read on every call, so a test can flip it with resetConfigForTests. */
-export function notifyReplyOn(userId?: string | null): boolean {
-  let on: boolean;
-  let only: string;
+function switches(): { on: boolean; only: string } {
   try {
     const c = getConfig();
-    on = c.NOTIFY_REPLY;
-    only = c.NOTIFY_REPLY_USERS;
+    return { on: c.NOTIFY_REPLY, only: c.NOTIFY_REPLY_USERS };
   } catch {
-    on = (process.env.NOTIFY_REPLY ?? "").toLowerCase() === "true";
-    only = process.env.NOTIFY_REPLY_USERS ?? "";
+    return { on: (process.env.NOTIFY_REPLY ?? "").toLowerCase() === "true", only: process.env.NOTIFY_REPLY_USERS ?? "" };
   }
+}
+
+/**
+ * The switch alone, whoever asks: what the route checks before the session, when it does not know who is asking yet. A person the
+ * NOTIFY_REPLY_USERS list names must get past this, so it never reads the list (notifyReplyOn does, once the session is known).
+ */
+export function notifyReplySwitchOn(): boolean { return switches().on; }
+
+/** Is replying from a notification on for this person? Read on every call, so a test can flip it with resetConfigForTests. */
+export function notifyReplyOn(userId?: string | null): boolean {
+  const { on, only } = switches();
   if (!on) return false;
   const list = only.split(",").map((s) => s.trim()).filter(Boolean);
   if (!list.length) return true;
@@ -105,30 +112,39 @@ export interface BotPush {
   thread?: string;
   /** A bot or a message the person keeps to themselves: the body says there is something, not what. */
   private?: boolean;
+  /** A push that only says to open X0 (no AI agreement yet): no Reply box on it, since a reply typed there could not be answered. */
+  noReply?: boolean;
 }
 
 /** The words a push of a bot's may show. A private one says only that there is something to read. */
 export const lineOf = (p: BotPush): string => (p.private ? "Sent you a message." : p.line.replace(/\s+/g, " ").trim().slice(0, 140));
 
 /**
- * One bot conversation, as one notification: iOS replaces the one already shown (the collapse id) and Android the one with the same
- * tag, so a back-and-forth is one thing in the tray instead of a pile. Only a phone whose JS tells its handled presses apart by push
- * id gets one (push/engine.ts), so an older build simply sees each push on its own.
+ * A bot's pushes that spoke first, as one notification: iOS replaces the one already shown (the collapse id) and Android the one with
+ * the same tag, so they are one thing in the tray instead of a pile. Only a phone whose JS tells its handled presses apart by push id
+ * gets one (push/engine.ts), so an older build simply sees each push on its own.
+ *
+ * ONLY `bot_ask`. The phone dismisses the notification it answered, by its identifier, once the reply call succeeds (the app's
+ * notifications/actions.ts), and a collapse id IS that identifier on iOS (and the tag on Android). The route pushes the bot's answer
+ * before it answers the call, so an answer under the same collapse id could replace the notification first and then be dismissed in
+ * its place. An answer (`bot_reply`) therefore has an identifier of its own; the one it answers is dismissed by the phone, so the
+ * tray still shows one at a time.
  */
 export const threadIdOf = (slug: string): string => `botchat-${slug}`;
 
-/** What engine.notify is given for a bot's push. Null while the switch is off for this person: then it carries no category. */
+/** What engine.notify is given for a bot's push. While the switch is off for this person it carries no category. */
 export function askMessage(userId: string, kind: BotReplyKind, p: BotPush, key: string): {
   kind: BotReplyKind; key: string; vars: Record<string, string>; data: Record<string, string>; category?: string; collapseId?: string;
 } {
   const thread = p.thread || p.slug;
-  const on = notifyReplyOn(userId);
+  const on = !p.noReply && notifyReplyOn(userId);
   return {
     kind, key,
     vars: { bot: p.name, line: lineOf(p) },
     // The screen the tap opens is the chat with this bot; slug and thread are what the Reply button's call is filled from.
     data: { slug: p.slug, thread },
-    ...(on ? { category: BOT_REPLY_CATEGORY, collapseId: threadIdOf(thread) } : {}),
+    ...(on ? { category: BOT_REPLY_CATEGORY } : {}),
+    ...(on && kind === "bot_ask" ? { collapseId: threadIdOf(thread) } : {}),
   };
 }
 
@@ -140,6 +156,10 @@ export function askMessage(userId: string, kind: BotReplyKind, p: BotPush, key: 
  * off, nothing happens and the turn is only kept, as before. A live call's notes pass `quiet`, since the person is already talking.
  *
  * It is a hook rather than a plain import so chat.ts keeps no road to the push engine, which reads this file itself.
+ *
+ * NOTHING CALLS IT YET. `note()`'s one caller (botsBots/planCall.ts) passes `quiet`, so no `bot_ask` is sent and, with the switch on,
+ * the back-and-forth can only be answered, never started. Which of a bot's messages should invite a reply is a product call: see
+ * docs/widgets.md §5 "Not wired yet: the first push".
  */
 export type BotSaidHook = (userId: string, slug: string, text: string) => void;
 let saidHook: BotSaidHook | null = null;
@@ -155,7 +175,7 @@ export function botSaid(userId: string, slug: string, text: string): void {
 
 interface Answered { at: number; reply: ReplyResult }
 
-/** The presses already answered, by person and key. In memory: a retry lands on the same server within the minute. */
+/** The presses already answered, by person, key and words. In memory, for KEY_KEEP_MS: a restart forgets, which only costs a repeat. */
 const answered = new Map<string, Answered>();
 /** A press still being answered, so two copies of it (Android hands one to the background task and to a running app) wait on one run. */
 const running = new Map<string, Promise<ReplyResult>>();
@@ -228,13 +248,15 @@ export class NotifyReplies {
   }
 
   /**
-   * One reply. The same key again gets the first answer back, so a press retried from the phone's owed list is one reply, one model
-   * run and one push.
+   * One reply. The same key and the same words again get the first answer back, so a press retried from the phone's owed list (it
+   * keeps the body it first sent) is one reply, one model run and one push. The key is the push's id, so the words are part of what
+   * is remembered: a second, different reply typed into the same notification (the first had not landed, so it was not dismissed) is
+   * a second message, never answered with the first one's reply and dropped.
    */
   async reply(userId: string, slug: string, body: { text: unknown; key: unknown; thread?: unknown }): Promise<ReplyResult> {
     const text = NotifyReplies.textOf(body.text);
     const key = NotifyReplies.keyOf(body.key, `${userId}:${this.now()}`);
-    const at = `${userId}:${key}`;
+    const at = `${userId}:${key}:${createHash("sha256").update(text).digest("base64url").slice(0, 16)}`;
     const now = this.now();
     const had = answered.get(at);
     if (had && now - had.at < KEY_KEEP_MS) return had.reply;
@@ -255,9 +277,11 @@ export class NotifyReplies {
     if (!withinRate(userId, this.now())) {
       throw new NotifyReplyError(429, "too_many", "That's a lot of replies from notifications. Open X0 to carry on.");
     }
-    // The person has not agreed to AI yet: nothing is asked of a model, and the push says where to finish it.
+    // The person has not agreed to AI yet: nothing is asked of a model, and the push says where to finish it. It has no Reply box
+    // (another reply from it could only be turned away the same way), and it is an answer, so it never takes the collapse id of the
+    // notification the phone is about to dismiss.
     if (!(await this.aiAllowed(userId))) {
-      await this.d.push(userId, "bot_ask", { slug: bot.slug, name: bot.name, line: "Open X0 to continue.", thread: bot.slug }, `open:${this.now()}`)
+      await this.d.push(userId, "bot_reply", { slug: bot.slug, name: bot.name, line: "Open X0 to continue.", thread: bot.slug, noReply: true }, `open:${bot.slug}:${this.now()}`)
         .catch(() => undefined);
       return { state: "open", text: "" };
     }

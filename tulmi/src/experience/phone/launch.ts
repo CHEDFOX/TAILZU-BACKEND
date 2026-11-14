@@ -59,10 +59,13 @@ export function checkLaunch(spec: unknown): string[] {
   if (typeof macros !== "object" || Array.isArray(macros)) errs.push("macros: name: [[parameters], body]");
   // A launch's own lets are compiled AGAIN FOR EACH PART on the phone (launchCore.ts launchPart), with that part's own
   // names already in its slots — so a top-level `let side` or `let i` has nowhere to go there and the app refuses the
-  // whole launch (launchCore.ts launchLets, "… is already a name here"). Checking them against NAMES alone let the
-  // server publish one the phone would then throw away, so every part's names are in the base here too.
-  const LET_BASE = [...NAMES, ...Object.values(PARTS).flatMap((p) => p.names)];
-  const top = checkLets(c.let, LET_BASE.slice(), macros, errs, "launch").slice(LET_BASE.length);
+  // whole launch (launchCore.ts launchLets, "… is already a name here"). And because the bar and the head have no
+  // names of their own, a top-level formula may READ only NAMES: `side * 2` compiles for the gloves and is an
+  // unknown name for the bar. So the formulas are checked against NAMES, and the new names against every part's.
+  const PART_OWN = Object.values(PARTS).flatMap((p) => p.names);
+  const top = checkLets(c.let, NAMES.slice(), macros, errs, "launch").slice(NAMES.length);
+  // The name is said, as the phone says it, so whoever pushed the launch can see which let has to be renamed.
+  for (const n of top) if (PART_OWN.includes(n)) errs.push(`launch.let: a new name and an expression (${n} is already a name here)`);
   for (const [p, { names, fields }] of Object.entries(PARTS)) {
     const body = (c as unknown as Record<string, unknown>)[p];
     if (body === undefined) continue;

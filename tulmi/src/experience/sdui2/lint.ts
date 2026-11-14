@@ -7,7 +7,12 @@
  * Everything a screen says is checked here with THE DEVICE'S OWN COMPILER (sdui2/kernel.ts), so the server refuses
  * exactly what the phone would refuse and there is one set of numbers, not two that drift. What it finds:
  *
- *   • every expression and every text with holes compiles, inside the op and character caps;
+ *   • every expression and every text with holes compiles, inside the op and character caps, and sits somewhere
+ *     the device actually works one out: a WHOLE prop, style key or `Use` argument (a node is compiled key by
+ *     key, so a `{ $t }` nested in an `options` array is not); any value an action carries, however deep (they
+ *     are filled in by fill.ts); a `{ expr }` condition, however deep in an `all` / `any` / `not`; a
+ *     `callEndpoint.path`, with its holes encoded. Anywhere else — the screen's first state, a List's
+ *     `page.endpoint`, `List.sticky` as a `{ expr }` — it would arrive as the object itself, and is refused;
  *   • the limits of SPEC 5.1 — the screen's bytes, its nodes, its depth, its expressions, rules, timers, gestures,
  *     animated nodes, live topics;
  *   • paths: a state path is plain segments, a `local` key is not a secret, a network path is relative, under
@@ -154,9 +159,18 @@ function compileOne(v: unknown, where: string, w: Work, opts: { encode?: boolean
   }
 }
 
-/** A `{ expr }` condition. */
-function compileCondition(v: unknown, where: string, w: Work): void {
+/**
+ * A `{ expr }` condition, wherever it sits in one. Today's `not` / `all` / `any` may hold either language, and the
+ * device asks every one of them (actions.ts evalCondition), so a broken expression inside an `all` is as broken as
+ * one on its own — and needs the `expr` block just the same.
+ */
+function compileCondition(v: unknown, where: string, w: Work, depth = 0): void {
   const k = kernel();
+  if (!isObj(v) || depth > k.LIMITS.depth) return;
+  if (owns(v, "not")) compileCondition(v.not, `${where}.not`, w, depth + 1);
+  for (const key of ["all", "any"]) {
+    if (Array.isArray(v[key])) (v[key] as unknown[]).forEach((c, i) => compileCondition(c, `${where}.${key}[${i}]`, w, depth + 1));
+  }
   if (!k.isExprCondition(v)) return;
   w.counts.exprs += 1;
   w.needs.add("expr");
@@ -169,8 +183,23 @@ function compileCondition(v: unknown, where: string, w: Work): void {
 /**
  * Everything inside one value: the expressions it holds, the strings it holds, however deep. A screen is data, so
  * this never follows anything but plain arrays and plain objects, and it stops at the tree's own depth limit.
+ *
+ * `live` says the device works out a `{ "$" }` / `{ "$t" }` HERE. Where it does and where it does not is not a
+ * matter of taste; it is two different pieces of the device:
+ *
+ *   • A NODE is compiled key by key (blocks/nodeCore.ts compileMap): a whole prop, a whole style key and a whole
+ *     `Use` argument, and nothing nested inside one of them. `options[0].label` and a transform's `rotate` are
+ *     walked past, so the component is handed the object itself — an option labelled "[object Object]". Those
+ *     levels are `live: false` and refused here.
+ *   • An ACTION's own values are filled in by fill.ts resolveValue, which works out an evaluable value WHEREVER
+ *     it sits, however deep, for a screen that has the `expr` block. So every level of an action is `live`.
+ *
+ * The screen's first state is neither: state.ts seeds the store with `JSON.parse(JSON.stringify(initial))`, so an
+ * expression there would simply be stored as the object.
+ *
+ * `deep` keeps `live` for everything under this value, which is what an action needs.
  */
-function scanValue(v: unknown, where: string, w: Work, opts: LintOptions, depth = 0): void {
+function scanValue(v: unknown, where: string, w: Work, opts: LintOptions, depth = 0, live = false, deep = false): void {
   const k = kernel();
   if (depth > k.LIMITS.depth) { w.errors.push(`${where}: nested deeper than ${k.LIMITS.depth}`); return; }
   if (typeof v === "string") {
@@ -181,15 +210,37 @@ function scanValue(v: unknown, where: string, w: Work, opts: LintOptions, depth 
     }
     return;
   }
-  if (k.isEvaluable(v)) { compileOne(v, where, w); return; }
-  if (Array.isArray(v)) { v.forEach((x, i) => scanValue(x, `${where}[${i}]`, w, opts, depth + 1)); return; }
-  if (isObj(v)) for (const key of Object.keys(v)) scanValue(v[key], `${where}.${key}`, w, opts, depth + 1);
+  if (k.isEvaluable(v)) {
+    if (live) compileOne(v, where, w);
+    else w.errors.push(`${where}: the device works out { "$" } and { "$t" } only as a whole prop, a whole style key or a Use argument; here it would arrive as the object itself`);
+    return;
+  }
+  const under = deep && live;
+  if (Array.isArray(v)) { v.forEach((x, i) => scanValue(x, `${where}[${i}]`, w, opts, depth + 1, under, deep)); return; }
+  if (isObj(v)) for (const key of Object.keys(v)) scanValue(v[key], `${where}.${key}`, w, opts, depth + 1, under, deep);
 }
 
-/** A path that goes out to our API: relative, under /v1/, each hole encoded. */
-function checkNetworkPath(v: unknown, where: string, w: Work): void {
+/** Each key of a map the device compiles key by key (props, style, a Use's args): its whole value may be worked out. */
+function scanMap(map: unknown, where: string, w: Work, opts: LintOptions): void {
+  if (!isObj(map)) { scanValue(map, where, w, opts); return; }
+  for (const key of Object.keys(map)) scanValue(map[key], `${where}.${key}`, w, opts, 1, true);
+}
+
+/**
+ * A path that goes out to our API: relative, under /v1/, each hole encoded (docs/renderer.md section 5).
+ *
+ * `worked` says the device works the path out before it calls: a `callEndpoint.path` is (actions.ts `callPath`
+ * runs an evaluable path through the kernel with `encode`, then holds the filled path to the same `/v1/` rule),
+ * and a List's `page.endpoint` is NOT — List.tsx hands it straight to listCore.ts `apiPath`, which takes a
+ * string or nothing, so an expression there is a list that silently never pages.
+ */
+function checkNetworkPath(v: unknown, where: string, w: Work, worked = false): void {
   const k = kernel();
   if (k.isEvaluable(v)) {
+    if (!worked) {
+      w.errors.push(`${where}: a plain string; this one is read as written (listCore.ts apiPath), so an expression here is a list that never pages`);
+      return;
+    }
     compileOne(v, where, w, { encode: true });
     if (k.isTextTemplate(v)) {
       // The literal half decides which endpoint is reached; the holes are encoded, so a filled value cannot climb
@@ -219,6 +270,32 @@ function checkMediaUrl(v: unknown, where: string, w: Work): void {
   if (v.length > 2048) w.errors.push(`${where}: at most 2048 characters`);
 }
 
+/**
+ * `List.sticky`: an expression asked ONCE PER ROW, with that row in scope (blocks/scope.ts itemBool).
+ *
+ * It is the one prop the node itself never works out: nodeCore.ts keeps `sticky` and `item` out of compileMap
+ * (ROW_PROPS) exactly because the List's own scope holds no row, so what the server wrote arrives at the list as
+ * written. itemBool then takes the source from a plain string or from a `{ "$" }`, and from nothing else — a
+ * `{ "expr" }` or a `{ "$t" }` reads as no source at all, which is `false` for every row and a list with no
+ * sticky headers, silently. So both of the first two are fine here and the rest is refused.
+ *
+ * The `expr` block is not needed for it: itemBool lives inside the list's own host (blocks/ScreenTree.tsx) and
+ * compiles with the kernel every vocabulary-2 build carries. The ops still count against the screen's ceiling.
+ */
+function checkSticky(v: unknown, where: string, w: Work): void {
+  const k = kernel();
+  const src = typeof v === "string" ? v : k.isValueBinding(v) ? (v as { $: string }).$ : null;
+  if (src === null) {
+    w.errors.push(`${where}: the expression as a plain string or { "$" }, asked for each row with item and index; the device reads no source out of { "expr" } or { "$t" } and the list would have no sticky rows`);
+    return;
+  }
+  w.counts.exprs += 1;
+  const c = k.tryCompileExpr(src);
+  if (!c.ok) { w.errors.push(`${where}: ${c.error}`); return; }
+  w.counts.ops += c.expr.ops;
+  depBlocks(c.expr.deps, w);
+}
+
 // ===================================================================== actions
 
 /** Does any expression in here read `device.canOpen.*`? That list never goes to the server (SPEC 2.9). */
@@ -246,7 +323,7 @@ function checkAction(a: ActionRef | undefined, where: string, w: Work, opts: Lin
 
   switch (kind) {
     case "callEndpoint": {
-      checkNetworkPath(o.path, `${where}.path`, w);
+      checkNetworkPath(o.path, `${where}.path`, w, true);
       if (readsCanOpen(o.body)) w.errors.push(`${where}.body: device.canOpen.* is for drawing a chooser on the phone; it is never sent to the server`);
       for (const key of ["multipart", "progressInto", "retry", "queue", "cache", "optimistic"]) {
         if (o[key] !== undefined) w.needs.add("data");
@@ -263,6 +340,9 @@ function checkAction(a: ActionRef | undefined, where: string, w: Work, opts: Lin
       if (w.counts.topics > k.LIMITS.topics) w.errors.push(`a screen listens to at most ${k.LIMITS.topics} topics`);
       const topic = o.topic;
       if (typeof topic !== "string" || !TOPIC.test(topic)) w.errors.push(`${where}.topic: letters, digits and : _ - . *, at most 64`);
+      // The answer stream's own topics: live/subscribe.ts normalizeSubscribe refuses them, so the screen would
+      // listen to nothing.
+      else if (topic.startsWith("ask:")) w.errors.push(`${where}.topic: ask:* belongs to the answer stream; a screen cannot subscribe to it`);
       else if (topic.includes("*") && !(topic === "*" || (topic.endsWith(":*") && topic.indexOf("*") === topic.length - 1))) {
         w.errors.push(`${where}.topic: a wildcard is the whole topic or a trailing ":*"`);
       }
@@ -307,8 +387,12 @@ function checkAction(a: ActionRef | undefined, where: string, w: Work, opts: Lin
   for (const key of ["actions"]) {
     if (Array.isArray(o[key])) (o[key] as ActionRef[]).forEach((x, i) => checkAction(x, `${where}.${key}[${i}]`, w, opts, depth + 1));
   }
-  if (k.isExprCondition(o.if)) { compileCondition(o.if, `${where}.if`, w); }
-  scanValue(rest(o), where, w, opts);
+  if (o.if !== undefined) compileCondition(o.if, `${where}.if`, w);
+  // An action's own values ARE worked out, at any depth: fill.ts resolveValue reaches every value an action
+  // carries and hands an evaluable one to the kernel (SPEC 2.2's own example is a rule's
+  // `value: { "$": "now()" }`). So they are scanned live and deep — which also means a broken one is refused
+  // here, and the screen has to say it needs `expr`, rather than the store quietly holding the object.
+  scanValue(rest(o), where, w, opts, 0, true, true);
 }
 
 /** Keys an action's own checks above have already read: the actions hanging off it, and the paths and names each
@@ -525,10 +609,17 @@ function checkNode(n: Node, at: Where, w: Work, opts: LintOptions, depth: number
   if (n.style) {
     checkPaint(n.style as Record<string, unknown>, `${at.path}.style`, w);
     // A style key may be an expression too (`"opacity": { "$": "state.busy ? 0.4 : 1" }`), so the style is read
-    // for them exactly as the props are.
-    scanValue(n.style, `${at.path}.style`, w, opts);
+    // for them exactly as the props are: a whole key, never a value inside one (a transform's rotate).
+    scanMap(n.style, `${at.path}.style`, w, opts);
   }
-  if (n.bind) for (const key of Object.keys(n.bind)) checkStatePath(n.bind[key], `${at.path}.bind.${key}`, w);
+  // `bind` holds a dot-path per key — or, on a vocabulary-2 screen, an expression whose ANSWER is the value
+  // (SPEC 2.2). nodeCore.ts compiles a whole `bind` key exactly as it compiles a prop, and leaves a bare string
+  // alone as the path it is, so both are read that way here.
+  if (n.bind) for (const key of Object.keys(n.bind)) {
+    const b = (n.bind as Record<string, unknown>)[key];
+    if (kernel().isEvaluable(b)) compileOne(b, `${at.path}.bind.${key}`, w);
+    else checkStatePath(b, `${at.path}.bind.${key}`, w);
+  }
   if (n.on) for (const event of Object.keys(n.on)) {
     checkAction((n.on as Record<string, ActionRef>)[event], `${at.path}.on.${event}`, w, opts);
   }
@@ -539,9 +630,10 @@ function checkNode(n: Node, at: Where, w: Work, opts: LintOptions, depth: number
     if (key === "item" && isNode(v)) { checkNode(v, { ...at, path: `${at.path}.item` }, w, opts, depth + 1); continue; }
     if (key === "page" || key === "into" || (STATE_PATH_PROPS[type] ?? []).includes(key)) continue;
     if ((key === "source") && (type === "Video" || type === "Audio")) continue;
-    scanValue(v, `${at.path}.props.${key}`, w, opts);
+    if (key === "sticky" && type === "List") { checkSticky(v, `${at.path}.props.sticky`, w); continue; }
+    scanValue(v, `${at.path}.props.${key}`, w, opts, 1, true);
   }
-  if (n.args) scanValue(n.args, `${at.path}.args`, w, opts);
+  if (n.args) scanMap(n.args, `${at.path}.args`, w, opts);
   if (n.slots) for (const name of Object.keys(n.slots)) {
     const s = n.slots[name];
     for (const c of Array.isArray(s) ? s : [s]) if (isNode(c)) checkNode(c, { ...at, path: `${at.path}.slots.${name}` }, w, opts, depth + 1);
@@ -591,6 +683,7 @@ export function lintScreen(screen: ScreenResponse, opts: LintOptions = {}): Lint
   if (screen.actions) for (const name of Object.keys(screen.actions)) {
     checkAction(screen.actions[name]!, `actions.${name}`, w, opts);
   }
+  // The store's first values are data: the device never works an expression out in them.
   if (screen.state) scanValue(screen.state, "state", w, opts);
 
   const root = screen.root;

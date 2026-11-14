@@ -64,11 +64,21 @@ describe("the launch", () => {
     // against the common names alone let the server publish one no phone would play.
     const small = { v: 1, length: 900, pinchAt: 400 };
     for (const name of ["side", "cx", "half", "i", "n", "x", "d"]) {
+      // The name is said, as launchCore.ts says it, so whoever pushed the launch knows which let to rename.
       expect(checkLaunch({ ...small, let: [["hundred", "100"], [name, "1"]] }), name)
-        .toContain("launch.let: a new name and an expression");
+        .toContain(`launch.let: a new name and an expression (${name} is already a name here)`);
     }
     // A name of its own still works, and is still readable inside a part.
     expect(checkLaunch({ ...small, let: [["hundred", "100"]], bar: { dy: "hundred * 0" } })).toEqual([]);
+    // A top-level FORMULA may read only the common names: the bar and the head have no `side` or `i`, so the app
+    // refuses `side * 0` there ("unknown name side") even though the gloves could compile it. Checked against the
+    // phone itself: launchCore.ts launchMotion refuses all seven and plays `t * 0` and `barTop * 0`.
+    for (const name of ["side", "cx", "half", "i", "n", "x", "d"]) {
+      expect(checkLaunch({ ...small, let: [["k", `${name} * 0`]] }).length, name).toBeGreaterThan(0);
+    }
+    for (const name of ["t", "barTop", "mid", "Z"]) {
+      expect(checkLaunch({ ...small, let: [["k", `${name} * 0`]] }), name).toEqual([]);
+    }
     // And the file itself, whose lets are real, still passes.
     expect(checkLaunch(launch())).toEqual([]);
   });

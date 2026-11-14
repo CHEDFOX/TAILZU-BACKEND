@@ -2676,7 +2676,12 @@ export interface ListProps {
   onEndReached?: "page" | "none";
   endThreshold?: number;
   refresh?: boolean;
-  sticky?: ExprCondition | ValueBinding;
+  /** Which rows stick to the top: an expression asked ONCE PER ROW, with `item` and `index` in scope
+   *  (blocks/scope.ts itemBool) — `"item.isHeader"`, or the same source as `{ "$": "item.isHeader" }`. The List
+   *  never works it out itself (nodeCore.ts keeps `sticky` and `item` out of compileMap, because the List's own
+   *  scope holds no row), so it arrives at the list as written. Not a `{ "expr" }` and not a `{ "$t" }`: itemBool
+   *  reads no source out of either, which is silently no sticky rows at all. */
+  sticky?: string | ValueBinding;
   clip?: boolean;
 }
 

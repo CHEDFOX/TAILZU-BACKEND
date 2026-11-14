@@ -332,3 +332,112 @@ describe("the press's own rules", () => {
     expect(() => NotifyReplies.textOf("x".repeat(REPLY_MAX + 1))).toThrow(NotifyReplyError);
   });
 });
+
+describe("review fixes", () => {
+  it("lets an account NOTIFY_REPLY_USERS names through the route (the list is read after the session, not before)", async () => {
+    switches({ on: true, users: A_ });
+    const { app, said } = await server();
+    const r = await post(app, A_, "nani", { text: "yes", key: "p-abcdefgh:b_reply" });
+    expect(r.statusCode).toBe(200);
+    expect(said).toHaveLength(1);
+    expect((await post(app, B_, "plan", { text: "yes", key: "p-abcdefgh:b_reply" })).json().code).toBe("notify_reply_off");
+  });
+
+  /** A route whose chat is this one and nothing else: for the answers a refusal from the chat turns into. */
+  async function routeWith(chat: unknown, extra: Record<string, unknown> = {}) {
+    const app = Fastify();
+    const { bots } = fakes();
+    registerNotifyReplyRoutes(app, { rateLimit: RL, bots: bots as never, chat: chat as never, ...extra });
+    await app.ready();
+    return app;
+  }
+
+  it("keeps every one of the bot's own refusals, instead of a 500 the phone would retry for a day", async () => {
+    const { BotError } = await import("../src/bots/index.js");
+    // The three the app's chat answers with its own status: a bot's day budget, Xode's own page, an account on its way out.
+    const refusals = [
+      ["bot_daily_limit", "Nani has used its budget for today.", 429],
+      ["code_bot", "Xode answers on its own page.", 409],
+      ["account_closing", "This account is being deleted.", 403],
+    ] as const;
+    for (const [code, message, status] of refusals) {
+      const app = await routeWith({ send: async () => { throw new BotError(code, message, status); } });
+      const r = await post(app, A_, "nani", { text: "yes", key: `p-abcdefgh:${code}` });
+      expect([r.statusCode, r.json().code, r.json().message]).toEqual([status, code, message]);
+    }
+  });
+
+  it("asks the phone to come back later when the guard is full, with the wait it named", async () => {
+    const { Overloaded } = await import("../src/guard/index.js");
+    const app = await routeWith({ send: async () => { throw new Overloaded("queue_full", 3, 7); } });
+    const r = await post(app, A_, "nani", { text: "yes", key: "p-abcdefgh:busy" });
+    expect(r.statusCode).toBe(429);
+    expect(r.headers["retry-after"]).toBe("7");
+    expect(r.json().code).toBe("overloaded");
+  });
+
+  it("answers the AI gate's own no with its 403, not a 500", async () => {
+    const { AiConsentNeeded, AI_CONSENT_CODE } = await import("../src/privacy/aiGate.js");
+    const app = await routeWith({ send: async () => { throw new AiConsentNeeded(); } });
+    const r = await post(app, A_, "nani", { text: "yes", key: "p-abcdefgh:consent" });
+    expect(r.statusCode).toBe(403);
+    expect(r.json().code).toBe(AI_CONSENT_CODE);
+  });
+
+  it("runs the reply under a permit of the guard's, as the app's chat does", async () => {
+    const { defaultGuard } = await import("../src/guard/index.js");
+    const before = defaultGuard().limiter.stats().active;
+    let held = -1;
+    const app = await routeWith({
+      // While the bot is answering, this reply is holding one of the limits' permits.
+      send: async () => { held = defaultGuard().limiter.stats().active; return { answer: { text: "ok", paise: 1 }, turns: [] }; },
+    });
+    expect((await post(app, A_, "nani", { text: "yes", key: "p-abcdefgh:permit" })).statusCode).toBe(200);
+    expect(held).toBe(before + 1);
+    expect(defaultGuard().limiter.stats().active).toBe(before);
+  });
+
+  it("puts no Reply box on the push that says to open X0", async () => {
+    const { app } = await server({ aiOk: false });
+    await post(app, A_, "nani", { text: "go on", key: "p-abcdefgh:b_reply" });
+    const p = pushes[0]!;
+    const m = askMessage(A_, p.kind as never, p.p as never, p.key);
+    expect(m.category).toBeUndefined();
+    expect(m.collapseId).toBeUndefined();
+  });
+
+  it("answers a second, different reply on the same push, and still runs a retried one once", async () => {
+    const { app, said } = await server();
+    await post(app, A_, "nani", { text: "book the 9am", key: "p-abcdefgh" });
+    await post(app, A_, "nani", { text: "book the 9am", key: "p-abcdefgh" });
+    await post(app, A_, "nani", { text: "actually cancel it", key: "p-abcdefgh" });
+    expect(said.map((s) => s.text)).toEqual(["book the 9am", "actually cancel it"]);
+  });
+
+  it("gives the bot's answer an identifier of its own, so the phone's dismissal of the answered notification never takes it", () => {
+    switches({ on: true });
+    expect(askMessage(A_, "bot_ask", { slug: "nani", name: "Nani", line: "hi" }, "k").collapseId).toBe(threadIdOf("nani"));
+    const answer = askMessage(A_, "bot_reply", { slug: "nani", name: "Nani", line: "hi" }, "k");
+    expect(answer.category).toBe(BOT_REPLY_CATEGORY);
+    expect(answer.collapseId).toBeUndefined();
+  });
+
+  it("goes through the app's chat door: what the spaces shared, and the answer written down for Activity", async () => {
+    const { MemoryEventStore } = await import("../src/shell/events.js");
+    const events = new MemoryEventStore();
+    const seen: unknown[] = [];
+    const { bots } = fakes();
+    const chat = { send: async (_u: string, _s: string, t: string, _sig: unknown, shared: unknown) => { seen.push(shared); return { answer: { text: `heard: ${t}`, paise: 7 }, turns: [] }; } };
+    const app = Fastify();
+    registerNotifyReplyRoutes(app, {
+      rateLimit: RL, bots: bots as never, chat: chat as never, events,
+      shared: async () => [{ name: "Trip", kind: "note", text: "Goa, 3 nights" }],
+    });
+    await app.ready();
+    expect((await post(app, A_, "nani", { text: "yes", key: "p-abcdefgh" })).statusCode).toBe(200);
+    expect(seen).toEqual([[{ name: "Trip", kind: "note", text: "Goa, 3 nights" }]]);
+    const rows = await events.list(A_, 0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "ask", bot: "nani", title: "yes", paise: 7 });
+  });
+});

@@ -20,7 +20,7 @@
  * a screen builder's `sduiV2Live()` check keeps building the vocabulary-1 screen and nobody sees the short one.
  */
 import {
-  SDUI_SCHEMA_VERSION, SDUI_VOCAB, type BlockName, type Node, type ScreenResponse,
+  SDUI_BLOCKS, SDUI_SCHEMA_VERSION, SDUI_VOCAB, type BlockName, type Node, type ScreenResponse,
 } from "../../../../shared/types/sdui.js";
 import { getConfig } from "../../config.js";
 import { BOTS_THEME, C, button, text } from "../bots/kit.js";
@@ -206,14 +206,20 @@ export function gateScreen(screen: ScreenResponse, c: ClientVocab): GateResult {
     };
   }
 
-  const gap = missing(c, checked.needs);
+  // What the screen SAYS it needs counts as much as what lint read off the tree: the phone gates on the screen's own
+  // `needs` (blocks/blocksCore.ts screenNeeds), and vocab2()'s `needs` option exists for blocks lint cannot see. Lint
+  // has already refused any name that is not a block, and any used block left out, so this is the declared list.
+  const k = kernel();
+  const said = (Array.isArray(screen.needs) ? screen.needs : []).filter((b) => k.isBlock(b));
+  const needs = SDUI_BLOCKS.filter((b) => checked.needs.includes(b) || said.includes(b));
+  const gap = missing(c, needs);
   if (gap.length) {
     return {
       screen: waitingScreen(screen.screenId, c), served: waitingKind(c), missing: gap,
-      errors: [], warnings: checked.warnings, needs: checked.needs,
+      errors: [], warnings: checked.warnings, needs,
     };
   }
-  return { screen, served: "screen", missing: [], errors: [], warnings: checked.warnings, needs: checked.needs };
+  return { screen, served: "screen", missing: [], errors: [], warnings: checked.warnings, needs };
 }
 
 /**
