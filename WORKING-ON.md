@@ -21,18 +21,29 @@ look. The apps are renderers: build server data with the existing blocks and cat
 - **Paint, device facts, phone-local values, shell and data blocks**, frontend `7ddcf31`. Not switched on until V1: no
   screen can reach them.
 
-## In progress
+## In progress (build 8.9.1, started 14 Nov 2026)
 
+Calendar, reminders, focus, motion, sleep, arrival reminders, abuse-prevention signals (server now; App Attest / DeviceCheck /
+Play Integrity in the app), and their Android halves. Six jobs hold:
+- **Server, abuse prevention:** `tulmi/src/trust/**` (new), `tulmi/src/routes/trust/**`, `tulmi/src/routes/admin/trust.ts`,
+  `tulmi/src/routes/app/appScreens.ts`, `tulmi/src/http/hooks.ts`, `tulmi/src/guard/limiter.ts`, `tulmi/src/http/plugins.ts`,
+  `tulmi/src/you/usage.ts`, `tulmi/src/usage/allowance.ts`, `tulmi/src/you/deletion.ts`, `tulmi/src/observability.ts`,
+  `tulmi/src/auth/deviceLink.ts`, `tulmi/src/control/**`, the `TRUST*` lines of `config.ts`, migration 0093.
+- **Server, phone features:** `shared/types/sdui.ts`, `tulmi/src/experience/bots/kit.ts`, the `PERM_*` lines of `config.ts`,
+  plan screens and routes (planHome, planItem, planCall, planBusy, planReminders, planFocus), `bots/health*`, `routines` not
+  touched, `privacy.ts`, `you.ts`, deletion texts, docs/store-privacy.md, docs/perms.md, migration 0094.
+- **Phone:** `app/src/**` (device, sdui actions/types/registry, notifications), `app/app.config.ts`, `app/eas.json`,
+  `app/modules/tulmi-perms/**`, `app/assets/PrivacyInfo.xcprivacy`, `tools/ci/check-*.mjs`, `app/native-inputs.lock`.
+- **Android additions:** new files only under `app/modules/tulmi-perms/android/` and `app/src/device/android*`.
 - **The window's permissions and terms, after onboarding (P1)** (started 14 Nov). The window's onboarding has no terms step and no
   permissions step at all ("the OS asks"), so a person who finishes it lands on Today and is never shown either. Adding both as steps
   of the onboarding stage, where Blip already walks from one to the next: terms (the same words and the same
   `PUT /v1/you/ai-consent` as the phone's card), then one permissions step for everything the window needs — microphone, camera,
-  Accessibility and Screen Recording. **The phone is not touched.**
+  Accessibility and Screen Recording. **The phone is not touched**, and neither is `docs/perms.md` or `config.ts`, which 8.9.1 holds.
   It also fixes a gap in calls: the window has no `NSCameraUsageDescription` and no camera entitlement, so a video call there cannot
   open a camera at all.
   Holds: `TAILZU-BACKEND/tulmi/src/experience/onboard/**`; `TAILZU-DESKTOP/package.json`, `build/entitlements.mac.plist`,
   `src/app/sdui/{permissions,core,backend,actions}.js`, `src/main/main.js` and its preload.
-- Reviews of the pieces below may push small follow-up fixes to the same files.
 
 ## Landed 14 Nov 2026 (all switched off)
 
@@ -62,7 +73,7 @@ look. The apps are renderers: build server data with the existing blocks and cat
 
 ## Numbers in use
 
-- Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days. Take the next free number and
+- Migrations: 0087 lingo, 0088 native looks, 0089 lingo sentences, 0090 bot health days, 0091 rooms. Next free: **0092**. Take the next free number and
   check `git log origin/main -- tulmi/supabase/migrations` first: two sessions have collided twice today.
 - Phone runtime: `tailzu-2026-11-x0-blip`. Do not change it.
 
