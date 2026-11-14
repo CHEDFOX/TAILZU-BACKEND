@@ -142,11 +142,16 @@ export const SCREENS = {
   design: "bots.code.design",        // Design / DeskDesign
   team: "bots.code.team",            // TeamBoard / DTeamBoard
   codeStart: "bots.code.start",      // Enter1-4 / DEnter1-4 (params: step)
+  // screens/bots/lingoPage.ts: Lingo, the language bot (docs/lingo.md)
+  lingo: "bots.lingo",               // the territory: a card per language, Continue on each, Add a language
+  lingoSet: "bots.lingo.set",        // a set: one exercise at a time (params: target)
+  lingoAdd: "bots.lingo.add",        // the picker: search at the top, the suggested few, then all of them (params: q)
+  lingoLeave: "bots.lingo.leave",    // stop learning one: a box for why, and Just clean up (params: target, name)
 } as const;
 
 /** Where a bot opens: the built-ins have their own pages, a person's own bot the shared bot page. */
 export function botRoute(slug: string): ActionSpec {
-  const own: Record<string, string> = { code: SCREENS.code, keybot: SCREENS.keybot, plan: SCREENS.plan, travel: SCREENS.travel };
+  const own: Record<string, string> = { code: SCREENS.code, keybot: SCREENS.keybot, plan: SCREENS.plan, travel: SCREENS.travel, lingo: SCREENS.lingo };
   return own[slug] ? { kind: "navigate", screenId: own[slug]! } : { kind: "navigate", screenId: SCREENS.bot, params: { slug } };
 }
 

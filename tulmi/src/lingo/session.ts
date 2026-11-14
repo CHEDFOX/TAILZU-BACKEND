@@ -19,6 +19,7 @@
 import { due, learned, recall, SPOKEN_TO_LEARN, unseen, review } from "./schedule.js";
 import { order, type Entry } from "./order.js";
 import { fold } from "./grade.js";
+import { createHash } from "node:crypto";
 import type { Sentence } from "./sentences.js";
 import { underCap, type SetShape } from "./set.js";
 import type { ExerciseKind, Learner, LingoItem, Mark, Verdict } from "./types.js";
@@ -36,10 +37,26 @@ export const GAP = "\u2014\u2014\u2014";
 export type SentenceLookup = (item: string) => readonly Sentence[];
 
 /** One thing to do, as the session hands it over. The screens turn it into nodes; the routes mark the answer. */
+/**
+ * AN OPAQUE NAME FOR AN ITEM, so an exercise can be answered without the ANSWER being in the exercise.
+ *
+ * Marking on the server is worth nothing if the word is readable in what the server sent: somebody who opens the
+ * payload would simply see it. So a typed or spoken exercise names its item by this instead, and the route finds
+ * which item it is by hashing the person's own items and comparing (routes/bots/lingo.ts). It is per person, so one
+ * learner's ref says nothing about anybody else's.
+ *
+ * `listen` is the exception and cannot be helped: the word has to reach the phone for it to be spoken aloud.
+ */
+export function refOf(userId: string, target: string, item: string): string {
+  return createHash("sha256").update(`${userId}\u0000${target}\u0000${item}`).digest("hex").slice(0, 16);
+}
+
 export interface Exercise {
   kind: ExerciseKind;
-  /** The item this is about, by its own text. */
+  /** The item this is about, by its own text. STRIPPED before it goes to a client (see `wire`). */
   item: string;
+  /** How a client names the item back to us. Set by the route, which knows who is asking. */
+  ref: string;
   /** What is shown as the question: the item, or its meaning, depending on the direction. */
   prompt: string;
   /** Everything we will accept. The list is the point: one prompt almost always has several right answers. */
@@ -147,7 +164,7 @@ function distractors(item: LingoItem, pool: readonly LingoItem[], seed: string):
 export function exerciseFor(item: LingoItem, pool: readonly LingoItem[], now: number, kind?: ExerciseKind, sentences?: SentenceLookup): Exercise {
   let k = kind ?? shapeFor(item, now);
   const seed = `${item.item}|${Math.floor(now / 86_400_000)}`;
-  const base: Exercise = { kind: k, item: item.item, prompt: item.item, accepted: [item.item], options: [], correct: 0, chips: [], spoken: k === "say" || k === "talk", sentence: "" };
+  const base: Exercise = { kind: k, item: item.item, ref: "", prompt: item.item, accepted: [item.item], options: [], correct: 0, chips: [], spoken: k === "say" || k === "talk", sentence: "" };
 
   if (k === "blank") {
     // A real sentence that uses the word, with the word taken out. The shortest one is used: a beginner should not
@@ -274,6 +291,18 @@ export function streakAfter(learner: Learner, today: string): { streakDays: numb
   if (learner.lastDay === today) return { streakDays: learner.streakDays, lastDay: today };
   const yesterday = new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
   return { streakDays: learner.lastDay === yesterday ? learner.streakDays + 1 : 1, lastDay: today };
+}
+
+/**
+ * AN EXERCISE AS IT GOES TO A CLIENT. The item's own text and the answers we accept are taken out and the opaque ref
+ * put in: a `write` or a `say` would otherwise carry its own answer, and anybody could read it.
+ *
+ * `choose` and `blank` keep their options, because the options ARE the question — but not which one is right, which
+ * is why `correct` goes too. `listen` keeps its prompt, because the word has to reach the phone to be spoken.
+ */
+export function wire(ex: Exercise, ref: string): Omit<Exercise, "item" | "accepted" | "correct"> & { ref: string } {
+  const { item: _item, accepted: _accepted, correct: _correct, ...rest } = ex;
+  return { ...rest, ref };
 }
 
 /** Re-exported so a caller marking an answer never has to reach past the session for the verdict type. */

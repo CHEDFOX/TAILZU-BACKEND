@@ -8,7 +8,7 @@
  *   POST   /v1/lingo/words             { target, items: [{ item, gloss, kind?, source? }] } -> { added }
  *   POST   /v1/lingo/session           { target, shape? } -> { exercises, progress, mastery }: the next set
  *   POST   /v1/lingo/set               { target, answers } -> { result, performance, gesture, next }: a set finished
- *   POST   /v1/lingo/answer            { target, item, kind, said? | picked? | chips? } -> { mark, dueMs, spoken, learned }
+ *   POST   /v1/lingo/answer            { target, ref, kind, said? | picked? | chips? } -> { mark, dueMs, spoken, learned }
  *
  * THE ANSWER IS MARKED HERE AND NOWHERE ELSE. The app sends what the person did, never whether it was right, so there
  * is no message it can send that says so. That is the whole difference from an app that marks itself.
@@ -21,7 +21,7 @@ import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
 import { lingoOn } from "../../bots/builtin.js";
 import { gradeChips, gradeChoice, gradeSpoken, gradeText } from "../../lingo/grade.js";
 import { learned } from "../../lingo/schedule.js";
-import { answered, dayOf, pick, plan, progress, shapeFor, streakAfter, type Exercise, type SentenceLookup } from "../../lingo/session.js";
+import { answered, dayOf, pick, plan, progress, refOf, shapeFor, streakAfter, wire, type Exercise, type SentenceLookup } from "../../lingo/session.js";
 import { againAfter } from "../../lingo/order.js";
 import { gestureFor, mastery, performanceOf, readSet, shapeNext, SET_SIZE, type Answered, type SetShape } from "../../lingo/set.js";
 import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sentences.js";
@@ -227,8 +227,11 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const sentences = await lookupFor(target, course.from, pick(items, course, at, shape), wants);
     // Opening a session is what makes this the course the app shows next time.
     await store().setCourse(user.id, { ...course, usedMs: at }, at).catch(() => undefined);
+    // Wired: the item's own text, the accepted answers and which option is right are all taken out. A typed or
+    // spoken exercise would otherwise travel with its own answer in it.
+    const exercises = plan(items, course, at, sentences, shape).map((ex) => wire(ex, refOf(user.id, target, ex.item)));
     return reply.header("cache-control", "no-store")
-      .send({ exercises: plan(items, course, at, sentences, shape), progress: progress(items, at), mastery: mastery(items, at) });
+      .send({ exercises, progress: progress(items, at), mastery: mastery(items, at) });
   });
 
   /**
@@ -297,14 +300,19 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     const course = isTag(target) ? await store().course(user.id, target).catch(() => null) : null;
     if (!course) return bad(reply, "That course has not been started.");
 
-    const key = keyOf(str(b["item"], TEXT_MAX));
     const kind = str(b["kind"], 8) as ExerciseKind;
-    if (!key) return bad(reply, "Which word was that?");
     if (!(EXERCISE_KINDS as readonly string[]).includes(kind)) return bad(reply, "That is not a kind of exercise.");
 
     const at = now();
     const items = await store().items(user.id, target).catch(() => []);
-    const item = items.find((i) => i.item === key);
+    // Which item: by its opaque ref, found by hashing this person's own items. `item` is still read for a caller
+    // that has the word (the chat adding one, a test), but the apps send the ref and never the answer.
+    const ref = str(b["ref"], 64);
+    const key = keyOf(str(b["item"], TEXT_MAX));
+    const item = ref
+      ? items.find((i) => refOf(user.id, target, i.item) === ref)
+      : key ? items.find((i) => i.item === key) : undefined;
+    if (!ref && !key) return bad(reply, "Which word was that?");
     if (!item) return bad(reply, "That word is not in this course.");
 
     // The exercise is rebuilt here from the item itself, so what is accepted comes from the table and never from the

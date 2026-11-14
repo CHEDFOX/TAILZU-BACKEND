@@ -367,7 +367,43 @@ be rid of a language is rid of it whether or not the note got written.
 Why keep it at all: **why people stop is the most useful thing a learning app can be told, and the one thing it is
 never told**, because stopping is silent.
 
-## 15. What is built
+## 15. The screens
+
+`experience/bots/screens/bots/lingoPage.ts`, four of them, **vocabulary 1** — every node is one each installed build
+already draws, so none of this needs a release. A lesson must never be the screen that answers "Open X0 again",
+which is what the gate sends a client missing a block.
+
+| | |
+| --- | --- |
+| `bots.lingo` | the territory: a card per language with its own meter, counts, Continue and a bin; Add a language beside them |
+| `bots.lingo.set` | a set, one exercise at a time, with the verdict under it |
+| `bots.lingo.add` | the picker: search at the top, the suggested few, then all of them |
+| `bots.lingo.leave` | stop learning one: a box for why, and **Just clean up** |
+
+Lingo's tile in the bots list opens the first of these: `ids.ts` `botRoute` now has `lingo` among the built-ins with
+a page of their own. Everyone's own bots still go to the shared bot page.
+
+**A verdict is said with the app's own marks, not with colour.** The palette has no green and no red
+(`kit.ts` `C`), which is right: `right` is the `done` mark, `close` is `waiting` — *not* `failed`, because it is not
+a failure — and `wrong` is `needs`. The words for the five reasons live here (`whyWords`), because the grader
+returns a code and no English.
+
+### The answer is not in the exercise
+
+Marking on the server is worth nothing if the word is readable in what the server sent: somebody could open the
+payload and simply see it. So an exercise goes to a client through `wire()`, which takes out **the item's own text,
+the answers we accept, and which option is right**, and puts in `ref` — an opaque 16-hex name for the item
+(`refOf`, a hash of the person, the course and the word). The answer route finds which item a `ref` is by hashing
+that person's own items, so one learner's ref says nothing about anybody else's.
+
+`choose` and `blank` keep their options, because the options **are** the question — but not which one is right.
+`listen` is the one exception and cannot be helped: the word has to reach the phone to be spoken aloud.
+
+The route tests had to be rewritten for this, which is the strongest thing about it: **they can no longer read the
+answer either.** A test works out which exercise a word is by computing its `ref` the way the route does, then
+answers with the option it knows to be right because it seeded it.
+
+## 16. What is built
 
 Built, tested and typechecked: the tables, the shapes (`types.ts`), the scheduler (`schedule.ts`), the marking
 (`grade.ts`), what is kept (`store.ts`), a session (`session.ts`), the chat's knowledge (`digest.ts`), the doors
@@ -377,16 +413,15 @@ Turn it on with `LINGO=true` in the server's `.env` and Lingo is in the bots lis
 chat. Every exercise is drawn with node kinds the apps ALREADY draw — `Chip`, `TextField`, `WordChips`, `AudioPlay`,
 `VoiceButton`, `VoiceLive`, `BotCall` — so none of this needs an app release, now or later.
 
-Not built yet: a page of its own (it uses the standard bot page until it earns one), the screens that draw an
-exercise, drawing a session's sentences from the bank rather than from the person's own items, and the call that
-rings somebody to talk.
+Not built yet: drawing a session's sentences from the bank rather than from the person's own items, and the call
+that rings somebody to talk.
 
 There is no seeded course and there is not going to be one. A course cannot be hand-written a hundred times over, so
 the items come from the model and from use: `source` records which, and the table fills with what this person
 actually reaches for. A word list for a particular pair can be poured in later where one exists, but nothing waits
 on it and no pair is anybody's first.
 
-## 16. Tests
+## 17. Tests
 
 `lingo-schedule.test.ts`, `lingo-grade.test.ts`, `lingo-session.test.ts`, `lingo-order.test.ts` and
 `lingo-sentences.test.ts` and `lingo-languages.test.ts` and `lingo-set.test.ts` are pure: no store, no model, no clock of their own, and nothing in them needs a key.
