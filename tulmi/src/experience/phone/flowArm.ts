@@ -87,8 +87,28 @@ export function flowArmScreen(_ctx: ScreenContext): ScreenResponse {
     hideChrome: true,
     state: { armed: false },
     actions: {
-      // Fired on appear: get mic permission, then arm the background session.
+      // Fired on appear: READ the microphone, and arm straight away if it is
+      // already allowed.
+      //
+      // The reading matters. The phone draws its own card in front of every
+      // requestPermission that is not `primed` (shared/types/sdui.ts), BEFORE
+      // it looks at the permission at all — so an ask on appear put "One
+      // permission first" and a Continue in front of a phone that allowed the
+      // microphone months ago and then asked it nothing. This screen is not a
+      // one-off: the keyboard comes back here every time the flow session
+      // idles out. So: read first, arm with nothing drawn, and only ask when
+      // there is really something to ask.
       arm: {
+        kind: "checkPermission",
+        permission: "microphone",
+        onGranted: "doArm",
+        onDenied: "askMic",
+      },
+      // The first ask, and NOT `primed`: nothing was tapped and no card of
+      // ours said why, so the phone's own box is the only explanation there
+      // is before the system asks. This is exactly the trigger it was written
+      // for.
+      askMic: {
         kind: "requestPermission",
         permission: "microphone",
         onGranted: "doArm",

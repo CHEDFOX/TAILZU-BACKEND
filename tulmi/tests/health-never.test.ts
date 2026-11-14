@@ -371,24 +371,38 @@ describe("Delete my data takes the days and leaves no switch on", () => {
   it("deletes bot_health_days by name and switches health off on every bot of theirs", async () => {
     const { deleteMyData } = await import("../src/you/data.js");
     const deleted: string[] = [];
-    const updated: Array<{ id: string; skills: Record<string, unknown> }> = [];
+    const updated: Array<{ table: string; id: string; patch: Record<string, unknown> }> = [];
     const rows = [
       { id: "b1", skills: { web: true, health: true } },
       { id: "b2", skills: { web: false, health: false } },
     ];
+    // An update may be narrowed by more than one thing (build 9.0 unlinks the Reminders items with `.eq().not()`), so the
+    // answer is a promise that also answers the rest of the chain.
+    const done = () => {
+      const p = Promise.resolve({ error: null }) as Promise<{ error: null }> & Record<string, unknown>;
+      p.not = () => Promise.resolve({ error: null });
+      p.eq = () => p;
+      return p;
+    };
     DB.admin = {
       from: (t: string) => ({
         delete: () => ({ eq: async () => { deleted.push(t); return { error: null }; } }),
         select: () => ({ eq: async () => ({ data: rows, error: null }) }),
-        update: (patch: { skills: Record<string, unknown> }) => ({
-          eq: async (_c: string, id: string) => { updated.push({ id, skills: patch.skills }); return { error: null }; },
+        update: (patch: Record<string, unknown>) => ({
+          eq: (_c: string, id: string) => { updated.push({ table: t, id, patch }); return done(); },
         }),
       }),
     };
     const out = await deleteMyData(OWNER, {} as never);
     expect(out.cleared).toContain("bot_health_days");
     expect(deleted).toContain("bot_health_days");
-    // Only the bot that had it on is written, and its other skills are kept.
-    expect(updated).toEqual([{ id: "b1", skills: { web: true, health: false } }]);
+    // The busy times read from the phone's own calendars go the same way (build 9.0, docs: perms2 §2.4).
+    expect(deleted).toContain("plan_busy");
+    // Only the bot that had it on is written, and its other skills are kept. Sleep goes with it: a bot that counts nothing
+    // cannot be counting nights.
+    expect(updated.filter((u) => u.table === "bots")).toEqual([{ table: "bots", id: "b1", patch: { skills: { web: true, health: false, healthSleep: false } } }]);
+    // And the phone's own switches are turned off, so nothing starts reading again by itself.
+    expect(updated.find((u) => u.table === "plan_prefs")?.patch).toEqual({ calendar_busy: false, reminders_on: false, focus: null });
+    expect(updated.some((u) => u.table === "calendar_tasks")).toBe(true);
   });
 });

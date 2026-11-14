@@ -43,6 +43,32 @@ import { callsOn, planOn } from "./planSwitch.js";
 import { GOODBYE_LEAD_SEC, inAllowList, maxSecOf } from "./planCallLiveWords.js";
 import { callJudge, type ItemSeed, type RingNone } from "./planCallSeam.js";
 import {
+  CHECK_CAP, CHECK_WAIT_MS, askCheck, holdCall, holdOf, holdWhy, type CheckState, type CheckWant,
+} from "./planCallCheck.js";
+import { busyOverlap, planBusy } from "./planBusy.js";
+import { focusHolding, planPrefs } from "./planPrefs.js";
+
+/**
+ * BUILD 8.9.1'S LAUNCH-DARK SWITCHES, read here rather than through `experience/bots/kit.ts` (which draws screens and must not
+ * be reachable from the call engine). The same `PERM_*` the rows are drawn behind: with one off there is no row to turn the
+ * hold off from, so nothing may be held behind it either (docs: perms2 §1 rule 3).
+ */
+const focusLive = (): boolean => getConfig().PERM_FOCUS === true;
+const motionDriveLive = (): boolean => getConfig().PERM_MOTION_DRIVE === true;
+const calendarReadLive = (): boolean => getConfig().PERM_CALENDAR_READ === true;
+/** The driving check's Android half: its own switch AND the steps switch, because the grant behind both is the same one. */
+export const motionDriveAndroidLive = (): boolean =>
+  getConfig().PERM_MOTION_DRIVE_ANDROID === true && getConfig().PERM_MOTION_ANDROID === true;
+/**
+ * WHICH WORDS EACH PLATFORM IS ASKED (docs: perms2 §5.2, OWNER.md warning 1). Every 8.9.1 Android binary declares
+ * `CallCheck1`, because the Focus half is always live there — so asking it `want` whole asked Android phones whether they
+ * were driving while `PERM_MOTION_DRIVE_ANDROID` was off, and their answer held the call behind a row they cannot see.
+ * The Focus word has no Android half, so it goes to both. A platform left with no word is sent no push at all.
+ */
+export const checkWantFor = (want: readonly CheckWant[]) => (p: "ios" | "android"): CheckWant[] =>
+  (p === "android" && !motionDriveAndroidLive() ? want.filter((w) => w !== "driving") : [...want]);
+import { youStore } from "../you/store.js";
+import {
   BACK_MAX, CALLS, FRESH_MS, GRACE_MS, RING2_MS, RING_MS, SWEEP_MS, TALK_IDLE_MS, backsToday, blockedBy, callContext, cardOf,
   missedBody, openingLine, type CallSeed, type CallState, type CallView,
 } from "./planCallWords.js";
@@ -212,6 +238,8 @@ export interface PlanCallsDeps {
   name?: (userId: string) => Promise<string>;
   /** Whether the person agreed to AI (privacy/aiConsent.ts): the server voice and talking back. */
   consent?: (userId: string) => Promise<boolean>;
+  /** "Wait while I'm driving" and "Hold calls during a Focus", as the person set them (you/settings.ts). */
+  holds?: (userId: string) => Promise<{ driveWait: boolean; focusHold: boolean }>;
   log?: Log;
 }
 type Log = { info(o: object, m: string): void; warn(o: object, m: string): void };
@@ -266,6 +294,7 @@ export class PlanCalls {
   private readonly now: () => number;
   private readonly name: (userId: string) => Promise<string>;
   private readonly consent: (userId: string) => Promise<boolean>;
+  private readonly holds: (userId: string) => Promise<{ driveWait: boolean; focusHold: boolean }>;
   private log: Log;
   /** What the call's voice route reads aloud and the note of how a call began: the server's chat and voice (routes/bots/planCalls.ts). */
   private chat: { note(userId: string, slug: string, text: string, o?: { quiet?: boolean }): Promise<void> } | null = null;
@@ -284,6 +313,12 @@ export class PlanCalls {
     this.now = d.now ?? (() => Date.now());
     this.name = d.name ?? defaultName;
     this.consent = d.consent ?? hasAiConsent;
+    // Each hold is the person's own switch AND the server's own, live (docs: perms2 §1 rule 3). A switch the server turns off
+    // takes its row off the screen, so a hold still acting behind it would be one the person could no longer turn off.
+    this.holds = d.holds ?? (async (userId) => {
+      const n = (await youStore().getSettings(userId).catch(() => null))?.notify;
+      return { driveWait: n?.driveWait === true && motionDriveLive(), focusHold: n?.focusHold === true && focusLive() };
+    });
     this.log = d.log ?? QUIET;
   }
 
@@ -327,8 +362,24 @@ export class PlanCalls {
       // The call judge's say about this very item (planCallSeam.ts). It can only ADD: a floor ring the judge wants is placed judged,
       // so the 3 a day neither stops it nor counts it. No verdict ever refuses a leave-by or a bill due today.
       const judged = await this.judged(c.userId, seed.item);
-      const r = await this.placeCall(c, seed, { key: msg.key, line: String(msg.vars?.title ?? ""), more: String(msg.vars?.body ?? ""), tokens, now, judged });
-      if ("none" in r) return this.none(r.none);
+      // What goes INSTEAD of the call when the phone says the person is driving or in a Focus, and the reminder must wait: the
+      // very push this hook was asked about, re-sent under its own key once the wait is over (botsBots/planCallCheck.ts).
+      const held = c;
+      const notice = async () => this.engine()?.notify(held.userId, {
+        // The reminder's own kind, so its words, screen, category and the person's own say for it are all the ones it had.
+        kind: msg.kind as Parameters<PushEngine["notify"]>[1]["kind"],
+        key: `${msg.key}:held`, ...(msg.vars ? { vars: msg.vars } : {}), ...(msg.data ? { data: msg.data } : {}),
+      }, this.now());
+      const r = await this.placeCall(c, seed, { key: msg.key, line: String(msg.vars?.title ?? ""), more: String(msg.vars?.body ?? ""), tokens, now, judged, notice });
+      if ("none" in r) {
+        // "driving" (a leave-by, skipped) and "held" (it waits) both take the PUSH away too: the reminder is not a call now and
+        // is not a notification now either. "notice" and every other reason let the push go exactly as it always did.
+        if (r.none === "driving" || r.none === "held") {
+          this.none(r.none);
+          return { rang: new Set(c.tokens.map((t) => t.token)) };
+        }
+        return this.none(r.none);
+      }
       // Another server got there between the look above and this insert.
       if ("taken" in r) return this.again(r.taken, tokens);
       // Only the phones that took the ring skip the push: one whose ticket failed still hears the reminder.
@@ -343,12 +394,16 @@ export class PlanCalls {
    * What the hook and ring() share once a call may ring: the limits (one at a time, 3 a day, 15 minutes apart), the row, ring 1, the
    * phones that took it, ring 2 and the missed call on their timers. `none` says why not; `taken` is a call another server placed first.
    */
-  private async placeCall(c: Candidate, seed: CallSeed, o: { key: string; line: string; more: string; tokens: Token[]; now: number; judged?: boolean }):
+  private async placeCall(c: Candidate, seed: CallSeed, o: { key: string; line: string; more: string; tokens: Token[]; now: number; judged?: boolean; notice?: () => Promise<unknown> }):
     Promise<{ row: CallRow; ok: ReadonlySet<string> } | { taken: CallRow } | { none: string }> {
     const now = o.now;
     const rows = (await this.table.select({ user_id: c.userId }, { order: "ring_at_ms", desc: true, limit: 20 })).map(callRowOf);
     const blocked = blockedBy(rows, now, seed.tz, { judged: !!o.judged });
     if (blocked) return { none: blocked };
+    // THE PRE-RING CHECK (botsBots/planCallCheck.ts): is the person in a car, or in a Focus? Asked of the phone itself, and
+    // only when they turned one of those on. No answer means ring, exactly as today.
+    const check = await this.beforeRing(c, seed, { key: o.key, line: o.line, notice: o.notice, now });
+    if (check) return check;
     const row: CallRow = {
       id: randomUUID(), user_id: c.userId, source: seed.source, source_key: o.key, origin: "server", parent_id: null, state: "ringing", why: null,
       name: (await this.name(c.userId).catch(() => ASSISTANT_NAME)) || ASSISTANT_NAME, item: seed.item, seed,
@@ -423,6 +478,85 @@ export class PlanCalls {
       this.log.warn({ err: (err as Error)?.message }, `[calls] ${w.where} ring failed`);
       return { none: "not_sent" };
     }
+  }
+
+  /**
+   * THE PRE-RING CHECK (docs: perms2 §4.1 and §5.3). Null means ring; anything else is the reason not to.
+   *
+   *   nothing turned on      no push, no wait, no change: this is every person until they turn one of the two rows on
+   *   no phone with CallCheck1  the same: an older binary answers nothing, so nothing is asked of it
+   *   no answer in 20 s      RING. A silent push never arrives after a force quit, and a check may simply not come back, so a
+   *                          phone that says nothing gets the call it would have got before this code existed
+   *   driving, a leave-by    skipped, and no notice either: they are already on their way
+   *   driving, anything else held, looked at again every 10 minutes, and sent as a notice after an hour
+   *   a Focus, must-not-miss RINGS. Time Sensitive breaks through a Focus today and keeps doing so
+   *   a Focus, anything else held: it arrives as a notice instead of a call, and one notice lists what waited when it ends
+   *
+   * `notice` is how the reminder goes as an ordinary notification instead (the hook's own push, re-sent under its own key). A
+   * ring with no push of its own (follow-through's ladder, the judge's) has none, and a hold there simply places no call.
+   */
+  private async beforeRing(c: Candidate, seed: CallSeed, o: { key: string; line: string; notice?: () => Promise<unknown>; now: number }): Promise<{ none: string } | null> {
+    // A FOLLOW-THROUGH RING IS ALWAYS MUST-NOT-MISS. The ladder's call rung exists only for items the person marked must not
+    // miss (planFollow.ts), and `ItemSeed` is the only seed shape with a `must` field — so without this a followed item was
+    // held inside a Focus or a busy block, against "a must-not-miss item still rings" (perms2 §2.3).
+    const must = seed.source === "follow" || ("must" in seed && seed.must === true);
+    const state: CheckState = {};
+    // The person's own busy times, if they turned "Plan around my calendar" on AND the switch is still live: a call inside a
+    // block is a notice, not a ring (perms2 §2.3). One indexed read, and a failure means "not busy", which is today's
+    // behaviour. Behind `calendarReadLive()` because a switch the server has turned off must stop holding calls back.
+    if (calendarReadLive()) {
+      try {
+        const blocks = await planBusy().inRange(c.userId, o.now, o.now + 1);
+        if (busyOverlap(blocks, o.now, o.now + 1, o.now)) state.inBlock = true;
+      } catch { /* not busy, as far as we know */ }
+    }
+    const want: CheckWant[] = [];
+    let holds = { driveWait: false, focusHold: false };
+    try { holds = await this.holds(c.userId); } catch { /* no switches read: the check is simply not made */ }
+    if (holds.driveWait) want.push("driving");
+    if (holds.focusHold) {
+      // THE FILTER ALREADY TOLD US, usually: iOS runs X0 Bot's Focus Filter when a Focus starts and when it ends, and that
+      // post is what plan_prefs.focus holds (widgets/focus.ts). So the phone is asked only when nothing is on the row — which
+      // is Android (Do Not Disturb, read at this moment) and the days before a phone's widgets token carries "focus.set".
+      try {
+        const row = await planPrefs().get(c.userId);
+        // AN ANDROID ROW IS A SNAPSHOT, NOT A FEED. The iPhone's Focus Filter posts the END of a Focus itself, so a row it
+        // wrote can be trusted for its 12 hours. Android only posts Do Not Disturb on Plan Ease page appear, so a row that
+        // says `on` is stale the moment DND is switched off — and trusting it held calls for up to 12 hours after. A `dnd`
+        // row is therefore never trusted on its own: the phone is asked at ring time, as it is when the row is empty.
+        if (focusHolding(row?.focus, o.now) && row?.focus?.source !== "dnd") {
+          state.focus = true;
+          // Which of the filter's two choices they picked: "calls and other pings" holds the reminder too (perms2 §4.2).
+          state.hold = row?.focus?.hold === "callsAndPings" ? "callsAndPings" : "calls";
+        }
+      } catch { /* nothing said */ }
+      if (state.focus === undefined) want.push("focus");
+    }
+    const engine = this.engine();
+    // Only a binary that said it answers these pushes is ever sent one.
+    if (want.length && engine && c.tokens.some((t) => t.caps?.includes(CHECK_CAP))) {
+      const waitMs = knobsOf(engine.configFor(c, o.now)).flag("push.plan_call.checkWaitMs", CHECK_WAIT_MS);
+      try {
+        const ans = await askCheck({ userId: c.userId, want, push: engine, waitMs, now: o.now, wantFor: checkWantFor(want) });
+        if (ans.driving !== undefined) state.driving = ans.driving;
+        if (ans.focus !== undefined) state.focus = ans.focus;
+      } catch { /* no answer is a ring, as today */ }
+    }
+    const decided = holdOf(state, { source: seed.source, must });
+    if (decided === "ring") return null;
+    this.log.info({}, `[calls] not ringing: ${holdWhy(decided, state)}`);
+    if (decided === "hold") {
+      if (o.notice) {
+        holdCall({ userId: c.userId, why: state.driving === true ? "driving" : "focus", line: o.line, notice: o.notice, now: o.now });
+        return { none: "held" };
+      }
+      // NO PUSH OF ITS OWN (the ladder's call rung, the judge's), so there is nothing to send when the wait is over and
+      // nothing is queued. Saying "held" here would have claimed a wait that did not exist and the rung would have vanished;
+      // the reason goes back instead, and whatever rang it records the rung as not sent and climbs again on its own terms.
+      return { none: state.driving === true ? "driving" : "focus" };
+    }
+    // Skipped: no call and no push either. A notice: no call, and the reminder's own push goes as it always did.
+    return { none: decided === "skip" ? "driving" : "notice" };
   }
 
   /** The judged ring's one guard: a call about the same item rang in the last hour. There is no cap on judged rings in a day. */

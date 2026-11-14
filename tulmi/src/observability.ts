@@ -13,6 +13,7 @@
  * getConfig).
  */
 import { getConfig } from "./config.js";
+import { netKeyForLog } from "./trust/netKey.js";
 
 let sentryReady = false;
 
@@ -74,9 +75,15 @@ export function fastifyLoggerOptions() {
     },
     // Trim request logs to safe fields (Fastify's default includes the whole
     // req/res which can accidentally serialize a huge JSON body).
+    //
+    // NO ADDRESS IN A LOG LINE (docs/trust.md 8.3 fix 1). This line used to carry req.ip, on every request, in files that
+    // nothing rotates by time: a month of everybody's addresses, kept for no reason anybody could name. What goes in its
+    // place is the first 12 characters of the KEYED network hash (src/trust/netKey.ts): it still says "these two requests
+    // came from one network", which is all a log is ever read for, and it cannot be turned back into an address. With no
+    // TRUST_HASH_KEY set the field is simply absent.
     serializers: {
       req(req: { method: string; url: string; ip?: string; id?: string }) {
-        return { id: req.id, method: req.method, url: logUrl(req.url), ip: req.ip };
+        return { id: req.id, method: req.method, url: logUrl(req.url), net: netKeyForLog(req.ip) };
       },
     },
   };

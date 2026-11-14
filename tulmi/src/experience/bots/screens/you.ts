@@ -28,12 +28,15 @@ import { PUSH_STATE, withPushCheck, pushOffRow } from "./pushAsk.js";
 import { type AiConsent, AI_CONSENT_PATH } from "./firstRun/aiConsentCard.js";
 import { type DeleteData, goesAway, planWarning, type AccountData, deleteDesk } from "./you/deleteDesk.js";
 import {
-  when2, type NotifyData, notifyState, alwaysOn, doneSeg, timeChip, summarySwitch, timePicker, summaryPreview, botSwitch, botSub,
+  when2, type NotifyData, notifyState, alwaysOn, doneSeg, timeChip, summarySwitch, timePicker, summaryPreview, botSwitch, botSub, holdRows,
   quietSwitch, quietTimes, save, notifyDesk, callsSave, callsLine, followRows, followFromRows,
 } from "./you/notifyDesk.js";
 import { type SettingsData, settingsCard } from "./you/settingsCard.js";
-import { CONTACTS, HEALTH, LOCATE } from "./permitWords.js";
-import { contactPickLive, healthLive, locationLive } from "../kit.js";
+import { ARRIVAL, ARRIVAL_ANDROID, CAL_ADD, CAL_BUSY, CONTACTS, DRIVE, FOCUS, HEALTH, LOCATE, MOTION, REMINDERS, SLEEP } from "./permitWords.js";
+import {
+  arrivalLive, calendarAddLive, calendarReadLive, canArrival, canCalendarRead, canMotion, canMotionDrive, contactPickLive,
+  focusLive, healthLive, healthSleepLive, locationLive, motionDriveLive, motionLive, remindersLive,
+} from "../kit.js";
 import { glyph, G, couldNot, heading, columns, openUrl, toast, refresh, oops, dayMonth, exportAction, plural } from "./you/parts.js";
 import {
   type UsageMeter, spanLabel, resetsLine, meterOf, ring, type YouData, ago, face, youName, signOut, appsLine, youDesk,
@@ -226,6 +229,8 @@ function notifyPhone(ctx: BotsCtx, d: NotifyData | undefined) {
         listRow({ left: box([], { width: 8, height: 8, borderRadius: 4, borderWidth: 1.5, borderColor: C.ink }), label: "Done", sub: "Quiet: no sound. Ping: with sound", right: doneSeg(116), chevron: false }),
         // "X0 is calling" (botsBots/planCall.ts): only while calls can come here. switchRow flips `calls` first, so only the save goes.
         ...(d.calls ? [switchRow("Calls", "calls", { left: glyph(G.bell, 18), sub: callsLine(d), onChange: callsSave() })] : []),
+        // When a call waits instead of ringing (docs: perms2 §4, §5.2): a Focus, and driving. Only on a phone that can answer.
+        ...(d.calls ? holdRows(ctx, d) : []),
         row([
           glyph(G.rules, 18),
           col([text("Daily summary", { size: 15 }), row([meta("One note at", { size: 12 }), timeChip("sum", s.notify.summaryAt)], { gap: 8 })], { flexGrow: 1, flexShrink: 1, gap: 6 }),
@@ -275,6 +280,17 @@ const keptRows = (ctx: BotsCtx): Array<[string, string, string]> => [
   ...(locationLive() ? [["Where your day starts", "The area's name, if you tapped Use my location", "Till you forget it"] as [string, string, string]] : []),
   ["An invite's email", contactPickLive() ? "Only the one you typed or picked, to send it" : "Only the one you typed, to send it", "14 days"],
   ...(healthLive(ctx) ? [["Steps and workouts", "Only for a fitness bot you switched on", "31 days"] as [string, string, string]] : []),
+  // Build 8.9.1 (docs: perms2 §11.4), each row only while its own feature is live for this person.
+  ...(calendarReadLive() ? [["When you're busy", "Start and end times from your phone's calendars", "15 days"] as [string, string, string]] : []),
+  ...(remindersLive() ? [["Your X0 Bot Reminders list", "That one list's items, as to-dos", "Till you delete"] as [string, string, string]] : []),
+  ...(focusLive() ? [["Whether a Focus is on", "On or off, never which Focus", "12 hours"] as [string, string, string]] : []),
+  // "Motion & Fitness" is iOS's own name for the grant; on Android the same steps come from the phone's step counter.
+  ...(motionLive()
+    ? [[ctx.client === "phone" && ctx.platform === "android" ? "Steps from your phone's step counter" : "Steps from Motion & Fitness",
+      "Only for a fitness bot you switched on", "31 days"] as [string, string, string]]
+    : []),
+  ...(healthSleepLive(ctx) ? [["How long you slept", "Nightly minutes, for a fitness bot you switched on", "31 days"] as [string, string, string]] : []),
+  ...(arrivalLive() ? [["Reminding you when you arrive", "Nothing: your phone watches the place itself", "Not kept"] as [string, string, string]] : []),
 ];
 const NEVER = ["Sell your data, to anyone", "Train AI models on your data", "Open folders you didn't share"];
 
@@ -334,12 +350,32 @@ type PrivacyData = YouData & { ai?: AiConsent | undefined; stats?: boolean };
  * nobody is told about a button that is not there. The whole card goes when no row is left.
  */
 function phoneSharesCard(ctx: BotsCtx): Node[] {
+  const android = ctx.client === "phone" && ctx.platform === "android";
   const forget: ActionRef = call("PUT", "/v1/botsapp/bots/plan/home", { home: "" }, { ok: seq(toast("Forgotten"), refresh), fail: oops("forget that") });
   const shareRow = (label: string, sub: string, right?: Node): Node => listRow({ label, sub, chevron: false, ...(right ? { right } : {}) });
   const rows = [
     ...(locationLive() ? [shareRow(LOCATE.shareRow, LOCATE.shareSub, quietButton(LOCATE.forget, forget, { size: "md" }))] : []),
     ...(contactPickLive() ? [shareRow(CONTACTS.shareRow, CONTACTS.shareSub)] : []),
     ...(healthLive(ctx) ? [shareRow(HEALTH.shareRow, HEALTH.shareSub)] : []),
+    // Build 8.9.1 (docs: perms2 §11.4): what is read, what is kept, and (in the policy) how to turn each one off. Each row is
+    // drawn only while its own feature is live for this person, so Privacy never describes something they cannot do.
+    //
+    // THREE OF THEM READ DIFFERENTLY ON AN ANDROID PHONE: steps come from the phone's own counter and bring no workouts, the
+    // driving check can answer neither word, and an arrival reminder is watched by the app being woken rather than by the
+    // system alone. The window and the iPhone keep the words they had — those are true of them and not of Android.
+    ...(calendarAddLive() ? [shareRow(CAL_ADD.shareRow, CAL_ADD.shareSub)] : []),
+    //
+    // AND ON THIS PHONE, ITS OWN HALF HAS TO BE ON TOO. The shared switch is the gate for the WORDS on the window and the
+    // iPhone, but an Android phone whose half is off has no row and no manifest entry — so without this, every Android
+    // 8.9.1 reader was told their phone wakes X0 Bot and needs "Allow all the time", of a build with no background
+    // location in it at all, and was shown the iPhone-only Reminders list. Reminders has no Android half, so it goes.
+    ...(calendarReadLive() && (!android || canCalendarRead(ctx)) ? [shareRow(CAL_BUSY.shareRow, CAL_BUSY.shareSub)] : []),
+    ...(remindersLive() && !android ? [shareRow(REMINDERS.shareRow, REMINDERS.shareSub)] : []),
+    ...(focusLive() ? [shareRow(FOCUS.shareRow, FOCUS.shareSub)] : []),
+    ...(motionLive() && (!android || canMotion(ctx)) ? [shareRow(android ? MOTION.shareRowAndroid : MOTION.shareRow, android ? MOTION.shareSubAndroid : MOTION.shareSub)] : []),
+    ...(motionDriveLive() && (!android || canMotionDrive(ctx)) ? [shareRow(DRIVE.shareRow, android ? DRIVE.shareSubAndroid : DRIVE.shareSub)] : []),
+    ...(healthSleepLive(ctx) ? [shareRow(SLEEP.shareRow, SLEEP.shareSub)] : []),
+    ...(arrivalLive() && (!android || canArrival(ctx)) ? [shareRow(ARRIVAL.shareRow, android ? ARRIVAL_ANDROID.shareSub : ARRIVAL.shareSub)] : []),
   ];
   if (!rows.length) return [];
   return [col([

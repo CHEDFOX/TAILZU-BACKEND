@@ -15,11 +15,17 @@
  * After "Plan something"'s Done the home opens on the new item's day with `made` and `n`: the server says "Added: …" (with Undo, for 10
  * minutes) and outlines the new rows.
  */
-import type { ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
+import type { ActionRef, ActionSpec, Node } from "../../../../../../shared/types/sdui.js";
+import { ARRIVAL_CAPABILITY } from "../../../../../../shared/types/sdui.js";
 import {
-  type BotsCtx, SCREENS, back, botAvatar, box, C, call, card, col, emptyState, headerBuddy, icon, labelled, messageText, meta, open,
-  page, personBot, roundButton, row, secondaryButton, sectionLabel, seq, statusMark, text,
+  type BotsCtx, SCREENS, back, botAvatar, box, button, C, call, canArrival, canCalendarRead, canFocus, canReminders, card, col,
+  calendarReadLive, emptyState, headerBuddy, icon, labelled, listCard, listRow, messageText, meta, open, page, personBot,
+  remindersLive, roundButton, row,
+  secondaryButton, sectionLabel, seq, statusMark, switchMark, text, when,
 } from "../../kit.js";
+import { line, permitStep } from "../firstRun/parts.js";
+import { CAL_BUSY, REMINDERS, remindersLines } from "../permitWords.js";
+import { setState } from "./parts.js";
 import { shareButtonsFor } from "../../shareAction.js";
 import * as places from "../botsPlaces.js";
 import { itemAction, tickBox } from "../planItem.js";
@@ -30,6 +36,9 @@ import type { PlanDayData, RowView, ThreadStep } from "../../../../botsBots/plan
 
 export type { PlanDayData } from "../../../../botsBots/planThread.js";
 
+/** What the two switches of "From this phone" and their cards need, merged into the home's own state (docs: perms2). */
+export const PHONE_STATE = { busyCard: false, busyOn: false, busyBlocked: false, remCard: false, remOn: false, remBlocked: false };
+
 const OCHRE = lookOf("plan").color;
 const WEEKDAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const isDesk = (ctx: BotsCtx) => ctx.client === "desktop";
@@ -37,7 +46,18 @@ const isDesk = (ctx: BotsCtx) => ctx.client === "desktop";
 const labelWidth = (ctx: BotsCtx) => (isDesk(ctx) ? 64 : 58);
 
 /** The home's state: a Needs-you answer's grey line (planDid), its field (planHome), and where the day starts (places). */
-export const HOME_STATE = { ...places.PLAN_STATE, planDid: null, planHome: "" };
+export const HOME_STATE = { ...places.PLAN_STATE, planDid: null, planHome: "", ...PHONE_STATE };
+
+/**
+ * THE HOME'S STATE FOR THIS PERSON. The two switch marks read `busyOn` and `remOn`, so the state has to START at what the
+ * data says: with the flat `PHONE_STATE` both drew OFF while the feature was on, and tapping the switch — which is really the
+ * off action — flipped the mark to ON on screen while the server deleted what it had.
+ */
+const homeState = (d: PlanDayData | undefined): Record<string, unknown> => ({
+  ...HOME_STATE,
+  busyOn: d?.phone?.busy === true,
+  remOn: d?.phone?.reminders === true,
+});
 
 /** Another day on the home (the strip, its arrows, the window's week lines). */
 const goDay = (day: string): ActionSpec => ({ kind: "navigate", screenId: SCREENS.plan, params: { day }, replace: true } as ActionSpec);
@@ -238,11 +258,156 @@ const noRead = () => emptyState({ pose: "think", title: "Couldn't read your days
 const shownDay = (ctx: BotsCtx, d: PlanDayData | undefined): string =>
   (d ? (d.day >= d.today ? d.day : "") : /^\d{4}-\d{2}-\d{2}$/.test(String(ctx.params.day ?? "")) ? String(ctx.params.day) : "");
 
+// --------------------------------------------- the phone's own calendar and Reminders (docs: perms2 §2.3, §3.2, §7.2)
+
+const BUSY_PATH = "/v1/botsapp/plan/busy";
+const REM_PATH = "/v1/botsapp/plan/reminders";
+
+/**
+ * "PLAN AROUND MY CALENDAR" AND "SYNC WITH REMINDERS", and the quiet sync that keeps them current.
+ *
+ * Each row is drawn only on a store build's phone that declares its capability and only while its own switch is on (kit
+ * canCalendarRead / canReminders); the window and every older binary get the page exactly as it is today.
+ *
+ * THE CALENDAR PLACE HAS THREE WAYS FROM 8.9.1, not two:
+ *   - a phone that declared CalendarRead1 — an iPhone 17+, or an Android build carrying TULMI_ANDROID_CALENDAR while
+ *     PERM_CALENDAR_READ_ANDROID is on: the switch, the card and the sync. `canCalendarRead` weighs all of it, so there is
+ *     no platform test for the ROW; the card's words do differ, which is `android` below;
+ *   - any other Android phone: the server's own Google Calendar connector row, as before, which asks the phone for nothing;
+ *   - the window: neither.
+ * Reminders has no Android half in 8.9.1, so its place stays two-way.
+ *
+ * Switching one ON opens one card — Continue and nothing else (App Review 5.1.1(iv)) — and Continue is the only thing that
+ * reaches the phone's own prompt. The switch does NOT move until the phone has answered and the first sync has landed: a
+ * switch that said "on" while the person was still reading the card would be a lie. Switching one OFF is the plain DELETE,
+ * which deletes the times (or drops the links) in the same request, as the row's own words promise.
+ */
+export function phoneRows(ctx: BotsCtx, d: PlanDayData | undefined): Node[] {
+  const android = ctx.platform === "android" && ctx.client === "phone";
+  const busy = canCalendarRead(ctx), rem = canReminders(ctx);
+  /** The switch rows go in the one list card; the cards, the Settings lines and the quiet syncs go under it. */
+  const switches: Node[] = [];
+  const under: Node[] = [];
+  if (busy) { const r = busyRows(d, android); switches.push(r[0]!); under.push(...r.slice(1)); }
+  if (rem) { const r = remRows(d); switches.push(r[0]!); under.push(...r.slice(1)); }
+  // ANDROID'S OWN PLACE, for the phones whose binary cannot read a calendar: the connectors the server already has, which
+  // ask this phone for nothing and need no capability. The feature's own switch still decides, so nothing is offered for
+  // something that is not live — and it is drawn only when the phone's own row was NOT, so the two never both appear.
+  if (android && !busy && calendarReadLive()) switches.push(connectorRow(CAL_BUSY.androidRow, CAL_BUSY.androidSub, "google-calendar"));
+  if (android && remindersLive()) switches.push(connectorRow(REMINDERS.androidRow, REMINDERS.androidSub, "google-tasks"));
+  if (!switches.length) return [];
+  return [col([sectionLabel("From this phone"), listCard(switches), ...under], { gap: 8 })];
+}
+
+const connectorRow = (label: string, sub: string, id: string): Node =>
+  listRow({ label, sub, onPress: open(SCREENS.appConnect, { id }) });
+
+function busyRows(d: PlanDayData | undefined, android = false): Node[] {
+  const on = d?.phone?.busy === true;
+  const off: ActionRef = call("DELETE", BUSY_PATH, undefined, {
+    ok: seq(toast(CAL_BUSY.off), refresh), fail: toast("Couldn't switch that off. Try again.", true),
+  });
+  const sync = (ask: boolean): ActionSpec => ({
+    kind: "calendar.sync", path: BUSY_PATH, days: 14, ...(ask ? { ask: true, enable: true } : {}),
+    onSynced: seq(setState("busyCard", false), refresh),
+    onDenied: seq(setState("busyCard", false), toast(CAL_BUSY.denied)),
+    onBlocked: seq(setState("busyCard", false), setState("busyBlocked", true)),
+    onError: seq(setState("busyCard", false), toast("Couldn't read your calendar just now. Try again.", true)),
+  } as unknown as ActionSpec);
+  const change: ActionRef = on
+    ? seq({ kind: "toggleState", path: "busyOn" } as ActionSpec, off)
+    : setState("busyCard", true);
+  return [
+    listRow({ label: CAL_BUSY.row, sub: on && d?.phone?.busyAt ? CAL_BUSY.on : CAL_BUSY.rowSub, chevron: false, right: switchMark("busyOn"), onPress: change }),
+    // Two of the card's three lines differ on Android: no "full access" grant to explain, the PHONE'S calendars rather than
+    // "your iPhone's", and a last line that must not say iPhone.
+    permitStep({
+      when: { truthy: "busyCard" }, title: CAL_BUSY.title,
+      lines: (android ? CAL_BUSY.linesAndroid : CAL_BUSY.lines).map((l) => line(l)),
+      cta: { label: CAL_BUSY.cta, onPress: sync(true) },
+    }),
+    // Turned off in Settings: iOS will not ask again, so Settings is the only useful thing left to offer.
+    when({ truthy: "busyBlocked" }, col([
+      meta(CAL_BUSY.blocked, { size: 12 }),
+      button(CAL_BUSY.openSettings, { kind: "openSettings", target: "app" } as ActionSpec, { kind: "secondary", size: "md" }),
+    ], { gap: 6, paddingHorizontal: 16, paddingVertical: 10 })),
+    // THE QUIET RE-SYNC: with no `ask` it never prompts, so it can never be a way round the card. Only while it is on.
+    ...(on ? [{ ...box([], { height: 0 }), on: { onAppear: sync(false) } }] : []),
+  ];
+}
+
+function remRows(d: PlanDayData | undefined): Node[] {
+  const on = d?.phone?.reminders === true;
+  const off: ActionRef = call("DELETE", REM_PATH, undefined, {
+    ok: seq(toast(REMINDERS.off), refresh), fail: toast("Couldn't switch that off. Try again.", true),
+  });
+  const sync = (ask: boolean): ActionSpec => ({
+    kind: "reminders.sync", path: `${REM_PATH}/sync`, ...(ask ? { ask: true, enable: true } : {}),
+    onSynced: seq(setState("remCard", false), refresh),
+    onDenied: seq(setState("remCard", false), toast(REMINDERS.denied)),
+    onBlocked: seq(setState("remCard", false), setState("remBlocked", true)),
+    onError: seq(setState("remCard", false), toast("Couldn't reach Reminders just now. Try again.", true)),
+  } as unknown as ActionSpec);
+  const change: ActionRef = on
+    ? seq({ kind: "toggleState", path: "remOn" } as ActionSpec, off)
+    : setState("remCard", true);
+  // The AI clause is the one that is true for this person (App Review 5.1.2(i)): the server knows their answer, so the card
+  // never says their to-dos go to a model when they have not allowed it, and never hides it when they have.
+  const lines = remindersLines(d?.phone?.ai === true).map((l) => line(l));
+  return [
+    listRow({ label: REMINDERS.row, sub: on ? REMINDERS.on : REMINDERS.rowSub, chevron: false, right: switchMark("remOn"), onPress: change }),
+    permitStep({ when: { truthy: "remCard" }, title: REMINDERS.title, lines, cta: { label: REMINDERS.cta, onPress: sync(true) } }),
+    when({ truthy: "remBlocked" }, col([
+      meta(REMINDERS.blocked, { size: 12 }),
+      button(REMINDERS.openSettings, { kind: "openSettings", target: "app" } as ActionSpec, { kind: "secondary", size: "md" }),
+    ], { gap: 6, paddingHorizontal: 16, paddingVertical: 10 })),
+    ...(on ? [{ ...box([], { height: 0 }), on: { onAppear: sync(false) } }] : []),
+  ];
+}
+
+/**
+ * THE ARRIVAL REMINDERS, MADE TO MATCH (docs: perms2 §7.2). On every page appear the phone is given the whole armed set, so
+ * an item that is done, deleted or switched off drops off the phone by itself. With no `ask` it never prompts: the card on the
+ * item is the only thing that does. The places go out; nothing of an arrival ever comes back.
+ */
+export function arrivalSync(ctx: BotsCtx, d: PlanDayData | undefined): Node[] {
+  if (!d) return [];
+  // THE SWITCH GOING OFF HAS TO REACH THE PHONES IT ARMED. The phone's set is replaced only by an `arrival.sync`, so with no
+  // sync at all the triggers armed while the switch was on simply stay — and on Android they are geofences armed with
+  // NEVER_EXPIRE that fire on every entry and wake the app (TulmiArrivalGeofences.kt), which is exactly what must stop after
+  // a Play rejection. So a phone whose binary declares the capability is still sent one sync: the empty set. `arrivalCore`
+  // clears an empty set with no permission and no prompt, and a binary without geofencing answers "unavailable".
+  if (!canArrival(ctx)) {
+    if (ctx.client !== "phone" || !ctx.can.has(ARRIVAL_CAPABILITY)) return [];
+    const clear: ActionSpec = { kind: "arrival.sync", items: [] } as unknown as ActionSpec;
+    return [{ ...box([], { height: 0 }), on: { onAppear: clear } }];
+  }
+  // A place still being looked up (`arrivalsPending`): nothing is sent this round. The sync REPLACES what the phone watches,
+  // so sending a set that is missing an armed item would take that item's trigger off the phone over a lookup that has not
+  // come back yet. The live channel brings the page again when it has.
+  if (d.arrivalsPending) return [];
+  const items = d.arrivals ?? [];
+  const sync: ActionSpec = { kind: "arrival.sync", items } as unknown as ActionSpec;
+  return [{ ...box([], { height: 0 }), on: { onAppear: sync } }];
+}
+
+/**
+ * Whether a Focus with X0 Bot's filter is on, caught up from the App Group on every page appear (docs: perms2 §4.2).
+ *
+ * ONLY WHILE THE PERSON'S OWN HOLD SWITCH IS ON. Nothing reads the answer with "Hold calls during a Focus" off, so asking
+ * the phone for it on every page would be one more thing learned about them for no purpose at all.
+ */
+export function focusSync(ctx: BotsCtx, d?: PlanDayData): Node[] {
+  if (!canFocus(ctx) || d?.phone?.focusHold !== true) return [];
+  const sync: ActionSpec = { kind: "focus.sync", path: "/v1/botsapp/plan/focus" } as unknown as ActionSpec;
+  return [{ ...box([], { height: 0 }), on: { onAppear: sync } }];
+}
+
 // ------------------------------------------------------------------ the home, phone and window
 
 export function planHomePhone(ctx: BotsCtx, d: PlanDayData | undefined) {
   return page(ctx, {
-    title: "Plan Ease", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: { ...HOME_STATE }, gap: 22,
+    title: "Plan Ease", nav: "plan", live: ["bot:plan", "calendar", "tasks"], state: homeState(d), gap: 22,
     body: [
       homeHead(ctx, d, shownDay(ctx, d)),
       ...(!d ? [noRead()] : [
@@ -252,6 +417,10 @@ export function planHomePhone(ctx: BotsCtx, d: PlanDayData | undefined) {
         dayPart(ctx, d),
         ...openPart(ctx, d),
         ...places.homePart(ctx, d.travel),
+        // The phone's own things (docs: perms2): the two switches, and the quiet syncs that keep the rest in step.
+        ...phoneRows(ctx, d),
+        ...arrivalSync(ctx, d),
+        ...focusSync(ctx, d),
       ]),
     ],
   });
@@ -270,7 +439,7 @@ export function planHomeDesk(ctx: BotsCtx, d: PlanDayData | undefined) {
   const rail = col(d ? [...week, ...openPart(ctx, d), ...places.homePart(ctx, d.travel)] : [], { gap: 20, width: 320, flexShrink: 0 });
   // The header first and across (Work in space's tabs go under it, workTab.ts), then the day and the rail.
   return page(ctx, {
-    title: "Plan Ease", nav: "plan", maxWidth: 1080, live: ["bot:plan", "calendar", "tasks"], state: { ...HOME_STATE }, gap: 24,
+    title: "Plan Ease", nav: "plan", maxWidth: 1080, live: ["bot:plan", "calendar", "tasks"], state: homeState(d), gap: 24,
     body: [
       homeHead(ctx, d, shownDay(ctx, d)),
       ...(!d ? [noRead()] : [row([

@@ -36,6 +36,7 @@ const { registerSpacesRoutes } = await import("../src/routes/bots/botsSpaces.js"
 const { registerWidgetRoutes, actPartsOf } = await import("../src/routes/bots/widgets.js");
 const { resetCalendarForTests } = await import("../src/calendar/index.js");
 const { WidgetTokens, MemoryWidgetTokenStore, TOKEN_RE, hashToken } = await import("../src/widgets/token.js");
+const { resetConfigForTests } = await import("../src/config.js");
 const { QuickActs, MemoryQuickActionStore } = await import("../src/widgets/act.js");
 const { WIDGETS_DEFAULTS } = await import("../src/widgets/defaults.js");
 const { parseItem, itemId, questionMark, pushItemOf } = await import("../src/widgets/items.js");
@@ -230,12 +231,38 @@ describe("GET /v1/widgets/now", () => {
   });
 });
 
+describe("POST /v1/widgets/focus: X0 Bot's own Focus Filter (docs: perms2 §4.2)", () => {
+  const post = (s: Awaited<ReturnType<typeof served>>, token: string, body: unknown = { on: true, hold: "calls" }) =>
+    s.call("POST", "/v1/widgets/focus", null, body, { "x-widget-token": token });
+
+  it("needs the focus.set scope, and the switch, and takes only the two words", async () => {
+    process.env.PERM_FOCUS = "true"; resetConfigForTests();
+    const s = await served();
+    const good = (await s.tokenFor()).token as string;
+    // A token issued BEFORE the scope existed: the same token, with the old scopes on its row. iOS's filter posts with
+    // whatever the phone last got, so this is the real state of every phone until its token is reissued.
+    const row = s.tokenStore.rows.find((r) => r.hash === hashToken(good))!;
+    s.tokenStore.rows.push({ ...row, id: "old-1", hash: hashToken("xwt_" + "o".repeat(43)), scopes: ["needs.answer", "task.done"] });
+    const old = "xwt_" + "o".repeat(43);
+    expect((await post(s, old)).status).toBe(403);
+    expect((await post(s, good)).status).toBe(200);
+    // Only on/off and which of the two holds; anything else is refused rather than guessed at.
+    expect((await post(s, good, { on: true, hold: "everything" })).status).toBe(400);
+    expect((await post(s, good, {})).status).toBe(400);
+    // No token at all is 401, and the session's own bearer is not a way in here.
+    expect((await s.call("POST", "/v1/widgets/focus", A_, { on: true, hold: "calls" })).status).toBe(401);
+    // And with the switch off there is no row to add the filter for, so there is no door either.
+    process.env.PERM_FOCUS = ""; resetConfigForTests();
+    expect((await post(s, good)).status).toBe(403);
+  });
+});
+
 describe("the widget's own token", () => {
   it("is issued for one phone, kept only as a hash, and replaces that phone's last one", async () => {
     const s = await served();
     const t1 = await s.tokenFor();
     expect(t1.token).toMatch(TOKEN_RE);
-    expect(t1).toMatchObject({ scopes: ["needs.answer", "task.done"], path: "/v1/widgets/act", renewAt: 0.5 });
+    expect(t1).toMatchObject({ scopes: ["needs.answer", "task.done", "focus.set"], path: "/v1/widgets/act", renewAt: 0.5 });
     expect(t1.expiresAt).toBe(s.clock.t + 1440 * MIN);
     expect(JSON.stringify(s.tokenStore.rows)).not.toContain(t1.token);
     expect(s.tokenStore.rows[0]!.hash).toBe(hashToken(t1.token));

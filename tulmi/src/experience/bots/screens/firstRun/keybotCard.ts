@@ -22,8 +22,10 @@ export function keybotCard(ctx: BotsCtx): Node[] {
   const off = desk
     ? toast("The microphone is off for X0 Bot. Turn it on in your computer's Privacy settings.")
     : seq(toast("The microphone is off for X0 Bot. Turn it on in Settings."), { kind: "openSettings", target: "app" } as ActionSpec);
+  // `primed`: the only thing that fires this is the Continue of the step below, which says what the microphone is
+  // for and has nothing beside it. One explanation, ours, and then the system — not the phone's own box as well.
   const ask = {
-    kind: "requestPermission", permission: "microphone",
+    kind: "requestPermission", permission: "microphone", primed: true,
     onGranted: seq(setState("micGranted", true), go(SCREENS.firstWords, FROM_APP)),
     onDenied: seq(setState("micAsked", true), toast("Keylessbord can't hear you yet. Allow the microphone to speak.")),
     onBlocked: seq(setState("micAsked", true), off),
