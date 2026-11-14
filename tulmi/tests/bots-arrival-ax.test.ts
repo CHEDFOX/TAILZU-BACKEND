@@ -102,6 +102,9 @@ describe("the window's arrival card, with Accessibility in its state", () => {
     const rows = JSON.stringify(walk(mac).find((n) => n.type === "DeskAskSetup")?.props?.rows);
     expect(rows).not.toMatch(/recording/i);
     expect(rows).toContain("The picture is never kept");
+    // Allow, not "Open Settings": the first press is the system's own dialog
+    // over the window, and the window swaps the label itself once it has been.
+    expect(walk(mac).find((n) => n.type === "DeskAskSetup")?.props).toMatchObject({ allow: "Allow", allowAgain: "Open Settings" });
   });
 
   it("asks only for what a row on screen mentions: no Ask card, no second switch to wait on", async () => {

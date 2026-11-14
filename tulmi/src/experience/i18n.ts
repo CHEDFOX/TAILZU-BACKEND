@@ -213,7 +213,7 @@ const NODE_TYPE_TEXT_PROPS: Record<string, { props: readonly string[]; rows?: { 
   // The Mac's own Accessibility row on Keylessbord's first-run steps (firstRun/keyStep.ts, keybotCard.ts, arrivalCard.ts).
   // Its rows' `key` is an identifier and stays as it is.
   DeskAskSetup: {
-    props: ["eyebrow", "titleEm", "lede", "on", "allow", "turnOff", "restart", "restartButton"],
+    props: ["eyebrow", "titleEm", "lede", "on", "allow", "allowAgain", "turnOff", "restart", "restartButton"],
     rows: { key: "rows", fields: ["title", "sub"] },
   },
 };

@@ -74,11 +74,19 @@ already worked. `"unknown"` (Linux keeps no such answer) reads the same way.
 
 ## How far an ask can go, by permission
 
-| | can the app grant it? |
-|---|---|
-| microphone, camera (macOS) | **Yes.** `getUserMedia` *is* the system's prompt, over our window. Told no once, macOS never asks again. |
-| microphone, camera (Windows) | No prompt exists for an app to show. The button opens `ms-settings:privacy-microphone` / `privacy-webcam`. |
-| Accessibility, Screen Recording | No system lets an app grant these. The button opens the exact page, having first made macOS list X0 Bot there so there is a switch to flip. |
+**Every ask starts in the app, wherever the system has a dialog to show.** Nothing sends anyone to Settings on a first
+press.
+
+| | the first press | the press after |
+|---|---|---|
+| microphone, camera (macOS) | `getUserMedia` *is* the system's prompt, over our window. Allow there is the whole of it. | macOS never asks twice, so the button opens its page. |
+| microphone, camera (Windows, Linux) | nothing to grant: a desktop app records unless the person turned it off in Settings. | only if Windows says "denied": `ms-settings:privacy-microphone` / `privacy-webcam`. |
+| typing for you, answering about your screen (macOS) | macOS's own dialog, over the app (`isTrustedAccessibilityClient(true)`, and asking for the window list). It shows once and never again. | the exact page in System Settings, where the switch is. |
+
+**No system lets an app grant the last two** — macOS keeps that for the person, in System Settings, and no API or entitlement
+changes it. The dialog is as far as any app gets, ours included; what we can do is ask in the app first and only then open the
+page, which is also what puts X0 Bot in that page's list at all. The row's button says **Allow** until it has been pressed and
+**Open Settings** after (`allow` / `allowAgain`), so the words always match what the press will do.
 
 The camera needs more than permission. A hardened Mac build is refused the camera outright without `NSCameraUsageDescription`
 and `com.apple.security.device.camera`, both of which the window now ships — and the window's own permission handler

@@ -86,7 +86,10 @@ export function arrivalCard(ctx: BotsCtx, o: { after?: string } = {}): Node[] {
             type: "DeskAskSetup",
             props: {
               place: "settings", eyebrow: "", title: "", titleEm: "", lede: "",
-              on: "Allowed", allow: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
+              // Allow, because the first press is the system's own dialog over the
+              // window; only the press after it opens the page (the window swaps the
+              // label itself, askSetupCard.js).
+              on: "Allowed", allow: "Allow", allowAgain: "Open Settings", turnOff: "Turn off", restart: "Restart X0 Bot to finish", restartButton: "Restart",
               rows: macRows,
             },
           }],
