@@ -840,6 +840,19 @@ const EnvSchema = z.object({
   BOT_SHOW: bool(false),
   BOT_SHOW_USERS: orDefault(""),
   /**
+   * THE BOT AT THE FOOT OF HOME, AS WHAT IS HAPPENING (experience/bots/screens/shell/homeThought.ts, docs/home-updates.md): instead of a
+   * box to type in, his thought holds the updates — what needs the person, what their bots are working on, what just finished — each
+   * one opening where it belongs, with a way to speak to him and a small key for typing when they cannot. Off by default, so Home is
+   * exactly as it is today; HOME_UPDATES_USERS stages it by account, as the other switches do.
+   *
+   * HOME_LISTEN: with the updates on, he starts listening the moment Home is in front, instead of waiting for a double tap. It is its
+   * own switch because it means an open microphone the whole time that page is up: the phone shows its own mark, it costs battery, and
+   * everything said near it is heard. Off by default. A tap on him always stops him.
+   */
+  HOME_UPDATES: bool(false),
+  HOME_UPDATES_USERS: orDefault(""),
+  HOME_LISTEN: bool(false),
+  /**
    * THE BOTS APP (experience/bots, docs/bots-app.md): the new design of the phone and desktop apps, "everything is a bot" (tabs Bots / Activity / You,
    * Home is your bots). On by default: a build that declares "BotsKit" (it draws the kit's pieces) is booted into it, and an older build, which
    * cannot draw it, keeps the app it has. The phone's builds declare BotsOnly and get it whatever this says; it is the desktop this decides.
