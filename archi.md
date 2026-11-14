@@ -182,7 +182,8 @@ lingo/             Lingo, the language bot: the shapes (types.ts), when to ask s
                    marking an answer on the server and never in the app (grade.ts), what is kept (store.ts), a day's
                    session and how an item climbs towards being said (session.ts), and what its chat knows
                    (digest.ts), the order a session is put in (order.ts: interleaving, hardest early, ending on a
-                   win, a miss back after a gap), and the shared bank of real sentences with the licence and author
+                   win, a miss back after a gap), the languages the picker offers and finding one in them
+                   (languages.ts: the list is the SERVER's, so a language is a deploy and not a release), and the shared bank of real sentences with the licence and author
                    kept per row (sentences.ts). Conversation is the lesson; a word is not learned until it has been
                    said out loud. No language is built in: a course is a pair of tags (docs/lingo.md)
 routines/          routines: a bot does something on a schedule (reading the words, the store, the minute tick) (docs/routines.md)

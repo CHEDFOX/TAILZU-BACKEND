@@ -149,6 +149,7 @@ question. The wrong answers offered in `choose` are taken from the person's own 
 `routes/bots/lingo.ts`. Off unless `BOTS` and `LINGO` are both set, and then every route is 404 `lingo_off`.
 
 ```
+GET    /v1/lingo/languages?q=     what the picker shows, and what a search in it finds
 GET    /v1/lingo/courses          every course, the one opened last first, each with its progress
 PUT    /v1/lingo/course           start or change one: { target, from, level?, goalMin?, calls?, voice? }
 DELETE /v1/lingo/course/:target   the course and every word of it
@@ -244,7 +245,37 @@ quiet exercises do not outnumber them, the opener is chosen on the odds alone.
 twice that (they knew it — that is worth correcting, not drilling), a right answer never. **The server decides it**,
 so the app never has to work out what a miss is worth.
 
-## 11. A word put back into a sentence
+## 11. Picking a language
+
+A card with a search box at the top, the suggested few, then all of them. `src/lingo/languages.ts` holds the list
+and the search; `GET /v1/lingo/languages?q=` serves it.
+
+**The list lives on the server, and that is the point of it being a list at all.** The picker is a screen the server
+draws and the search runs here, so adding a language, fixing a name or reordering the suggestions is a **deploy and
+never an app release**. Nothing about it is compiled into a phone.
+
+**Every language is named twice** — in itself and in English — because somebody looks for the word they call their
+own language by, not the word English calls it by. "Deutsch" has to be findable as Deutsch.
+
+**Where one name covers two languages, there are two rows.** Mandarin and Cantonese, Português (Brasil) and
+Português (Portugal), Norsk bokmål and Nynorsk. A picker can simply show both, which beats asking afterwards: the
+choice is made where it is visible, and it changes every sentence the person will ever be taught.
+
+**Search folds both sides through `grade.ts` `fold()`** — the very function that decides whether a typed answer was
+right — so "espanol" finds Español, "turkce" finds Türkçe, "francais" finds Français, and **the picker and the
+marking can never disagree about what a word is**. It matches the language's own name, the English name, the other
+names people use (`mandarin`, `farsi`, `castellano`, `tagalog`, `bangla`) and the tag. Ranked, because a picker that
+puts the right answer third is a worse picker: the exact tag, then a name that starts with what was typed, then a
+word inside a longer name, then anything containing it — alphabetical inside each band, so the list does not jitter
+between keystrokes.
+
+The language they already speak is never offered as one to learn, and it is not asked for: the server knows it from
+`profile.language`, or from their newest course.
+
+**The list is not a gate.** A course is still a pair of tags and `routes/bots/lingo.ts` checks only the SHAPE of a
+tag, so a language nobody has added still works if it is asked for by tag.
+
+## 12. A word put back into a sentence
 
 The seventh kind, `blank`, and the one the sentence bank was for. A real sentence that uses the word, with the word
 taken out:
@@ -264,7 +295,7 @@ When the bank holds no sentence for a word, **the ladder closes over the gap** a
 rather than showing a hole with nothing round it. A server with no bank at all never reaches this kind, and nothing
 breaks.
 
-## 12. What is built
+## 13. What is built
 
 Built, tested and typechecked: the tables, the shapes (`types.ts`), the scheduler (`schedule.ts`), the marking
 (`grade.ts`), what is kept (`store.ts`), a session (`session.ts`), the chat's knowledge (`digest.ts`), the doors
@@ -283,8 +314,8 @@ the items come from the model and from use: `source` records which, and the tabl
 actually reaches for. A word list for a particular pair can be poured in later where one exists, but nothing waits
 on it and no pair is anybody's first.
 
-## 13. Tests
+## 14. Tests
 
 `lingo-schedule.test.ts`, `lingo-grade.test.ts`, `lingo-session.test.ts`, `lingo-order.test.ts` and
-`lingo-sentences.test.ts` are pure: no store, no model, no clock of their own, and nothing in them needs a key.
+`lingo-sentences.test.ts` and `lingo-languages.test.ts` are pure: no store, no model, no clock of their own, and nothing in them needs a key.
 `lingo-routes.test.ts` runs the real routes over the memory store.

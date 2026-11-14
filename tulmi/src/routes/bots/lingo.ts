@@ -1,7 +1,8 @@
 /**
  * LINGO'S DOORS (src/lingo, docs/lingo.md): the course a person is on, the session in front of them, and the answers.
  *
- *   GET    /v1/lingo/courses           { courses: [{ ...course, progress }] }, the one opened last first
+ *   GET    /v1/lingo/languages?q=      { suggested, languages }: what the picker shows, and what a search in it finds
+   GET    /v1/lingo/courses           { courses: [{ ...course, progress }] }, the one opened last first
  *   PUT    /v1/lingo/course            start or change one: { target, from, level?, goalMin?, calls?, voice? }
  *   DELETE /v1/lingo/course/:target    the course and every word of it, forgotten
  *   POST   /v1/lingo/words             { target, items: [{ item, gloss, kind?, source? }] } -> { added }
@@ -24,6 +25,7 @@ import { againAfter } from "../../lingo/order.js";
 import { sentenceBank, type Sentence, type SentenceBank } from "../../lingo/sentences.js";
 import { keyOf, lingoStore, type LingoStore, type NewItem } from "../../lingo/store.js";
 import { EXERCISE_KINDS, LEVELS, type ExerciseKind, type ItemKind, type ItemSource, type Learner, type Level } from "../../lingo/types.js";
+import { languageOf, search as searchLanguages, suggested } from "../../lingo/languages.js";
 
 export interface LingoRouteDeps {
   rateLimit: unknown;
@@ -61,6 +63,31 @@ export function registerLingoRoutes(app: FastifyInstance, deps: LingoRouteDeps):
     return user;
   };
   const bad = (reply: FastifyReply, message: string) => reply.code(400).send({ code: "bad_request", message });
+
+  /**
+   * WHAT THE PICKER SHOWS. The list and the search both live on the server, so adding a language, fixing a name or
+   * changing what is suggested is a deploy and never an app release — and nothing about the list is compiled into a
+   * phone. Each row carries the language's own name and the English one, because somebody looks for the word they
+   * call their language by.
+   *
+   * `q` empty: the suggested few, then every language by name. `q` set: what it finds, best first, folded so the
+   * marks over letters cannot hide a match ("espanol" finds Español).
+   */
+  app.get<{ Querystring: { q?: string; from?: string } }>("/v1/lingo/languages", rl, async (req, reply) => {
+    const user = await begin(req, reply);
+    if (!user) return reply;
+    const q = str(req.query.q, 60);
+    // The language they already speak is never offered as one to learn. Theirs is whatever they say, else their
+    // newest course's, else nothing — a picker that has to guess simply offers everything.
+    const from = str(req.query.from, TAG_MAX) || (await store().courses(user.id).catch(() => []))[0]?.from || "";
+    const row = (l: { tag: string; name: string; en: string }) => ({ tag: l.tag, name: l.name, en: l.en });
+    return reply.header("cache-control", "no-store").send({
+      from: from || null,
+      fromName: from ? (languageOf(from)?.name ?? null) : null,
+      suggested: q ? [] : suggested(from).map(row),
+      languages: searchLanguages(q, { from }).map(row),
+    });
+  });
 
   app.get("/v1/lingo/courses", rl, async (req, reply) => {
     const user = await begin(req, reply);
