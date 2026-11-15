@@ -21,6 +21,7 @@ import type { TabLive } from "./glyphs.js";
 import { SCREENS } from "./ids.js";
 import { BUILTIN_SLUGS, botLook, type BotLook } from "./palette.js";
 import { WIDGET_LIMITS, clauseOf, cutAtWord, type NeedsWords } from "../../widgets/botWords.js";
+import { loadShare, planAskNeeds, type PlanShareAsk } from "./planShare.js";
 
 // ------------------------------------------------------------------ what the deps return
 
@@ -171,15 +172,20 @@ export interface BotsLive {
 
 // ------------------------------------------------------------------ reading
 
-/** Reads everything at once; a read that fails counts as empty. */
-export async function loadLive(deps: BotsDeps, tzOffsetMinutes = 0): Promise<BotsLive> {
+/** Reads everything at once; a read that fails counts as empty. `userId` only stages sharing a plan (PLAN_SHARE_USERS). */
+export async function loadLive(deps: BotsDeps, tzOffsetMinutes = 0, userId?: string | null): Promise<BotsLive> {
   const safe = <T>(p: Promise<T>, empty: T): Promise<T> => p.catch(() => empty);
-  const [bots, jobs, tasks, saved, budget, stored] = await Promise.all([
+  const [bots, jobs, tasks, saved, budget, stored, share] = await Promise.all([
     safe(deps.bots(), [] as BotLite[]), safe(deps.jobs(), [] as JobLite[]), safe(deps.tasks(), [] as TaskLite[]),
     safe(deps.minutesSaved(), 0), safe(deps.budgetPaise(), DEFAULT_MONTH_BUDGET_PAISE),
     spendSource ? safe(spendSource(deps, tzOffsetMinutes), null) : Promise.resolve(null),
+    // Sharing a plan (planShare.ts): nothing is read at all while PLAN_SHARE is off, so every screen costs what it cost before.
+    safe(loadShare(deps, userId), undefined),
   ]);
-  return liveFrom({ bots, jobs, tasks, minutesSaved: saved, budgetPaise: budget, now: deps.now(), tzOffsetMinutes, ...(stored ? { stored } : {}) });
+  return liveFrom({
+    bots, jobs, tasks, minutesSaved: saved, budgetPaise: budget, now: deps.now(), tzOffsetMinutes, ...(stored ? { stored } : {}),
+    ...(share ? { planShare: { canShare: share.canShare, asks: share.asks } } : {}),
+  });
 }
 
 const ACTIVE_JOB = new Set<JobLite["state"]>(["queued", "running", "waiting_for_compute"]);
@@ -253,6 +259,11 @@ export interface LiveInput {
   tzOffsetMinutes?: number;
   /** The month over every bot and the usage meter (SpendSource), when known: they win over budgetPaise and the jobs' sum. */
   stored?: { limitPaise: number; monthPaise: number; usage?: UsageLive };
+  /**
+   * Sharing a plan (planShare.ts), when PLAN_SHARE is on: the asks waiting on this person, and whether they have a plan of
+   * their own to say yes with. Absent — which is every request while the switch is off — adds nothing anywhere.
+   */
+  planShare?: { canShare: boolean; asks: readonly PlanShareAsk[] };
 }
 
 /** The model from what the deps returned. Pure. */
@@ -267,6 +278,13 @@ export function liveFrom(i: LiveInput): BotsLive {
   ];
   const look = (slug: string, colour?: string) => botLook(slug, colour);
   const nameOf = (slug: string) => bots.find((b) => b.slug === slug)?.name ?? (slug === "tailzu" ? "X0" : slug);
+
+  // The month and the meter are worked out first, because a plan ask says how much of this month is left (planShare.ts).
+  const monthPaise = i.stored && Number.isFinite(i.stored.monthPaise) ? Math.max(0, Math.round(i.stored.monthPaise))
+    : i.jobs.filter((j) => j.updatedAt >= month).reduce((n, j) => n + Math.max(0, j.spentPaise || 0), 0);
+  const budgetPaise = i.stored && i.stored.limitPaise > 0 ? i.stored.limitPaise : i.budgetPaise > 0 ? i.budgetPaise : DEFAULT_MONTH_BUDGET_PAISE;
+  const usage: UsageLive = i.stored?.usage && Number.isFinite(i.stored.usage.used) ? i.stored.usage
+    : { used: monthPaise / budgetPaise, month: monthPaise / budgetPaise, state: monthPaise >= budgetPaise ? "out" : monthPaise >= budgetPaise * 0.8 ? "near" : "ok", resetsAt: null, windows: false };
 
   const needs: NeedsItem[] = [];
   const working: WorkingItem[] = [];
@@ -294,6 +312,15 @@ export function liveFrom(i: LiveInput): BotsLive {
       working.push({ id: `task:${t.id}`, bot, title: t.title, at: t.updatedAt });
     }
   }
+  // The third source: someone asking to be put on this person's plan (planShare.ts). It is a NeedsItem like any other, so
+  // the Activity tab, Home's first card and the window all draw it with nothing added to any of them.
+  if (i.planShare?.asks.length) {
+    needs.push(...planAskNeeds({
+      asks: i.planShare.asks, canShare: i.planShare.canShare,
+      monthLeftPct: (1 - Math.max(0, Math.min(1, usage.month))) * 100,
+      botName: nameOf("tailzu"), color: look("tailzu").color,
+    }));
+  }
   needs.sort((a, b) => b.at - a.at);
   working.sort((a, b) => b.at - a.at);
 
@@ -313,11 +340,6 @@ export function liveFrom(i: LiveInput): BotsLive {
 
   const done = i.jobs.filter((j) => j.state === "done" && j.updatedAt >= week).length
     + i.tasks.filter((t) => t.state === "done" && t.updatedAt >= week).length;
-  const monthPaise = i.stored && Number.isFinite(i.stored.monthPaise) ? Math.max(0, Math.round(i.stored.monthPaise))
-    : i.jobs.filter((j) => j.updatedAt >= month).reduce((n, j) => n + Math.max(0, j.spentPaise || 0), 0);
-  const budgetPaise = i.stored && i.stored.limitPaise > 0 ? i.stored.limitPaise : i.budgetPaise > 0 ? i.budgetPaise : DEFAULT_MONTH_BUDGET_PAISE;
-  const usage: UsageLive = i.stored?.usage && Number.isFinite(i.stored.usage.used) ? i.stored.usage
-    : { used: monthPaise / budgetPaise, month: monthPaise / budgetPaise, state: monthPaise >= budgetPaise ? "out" : monthPaise >= budgetPaise * 0.8 ? "near" : "ok", resetsAt: null, windows: false };
   // The tab icons' four dots are the first four bots in their own order, so a dot never moves when a bot gets busy.
   const tab: TabLive = {
     dots: bots.slice(0, 4).map((b) => ({ color: look(b.slug, b.colour).color, working: working.some((w) => w.bot === b.slug) })),

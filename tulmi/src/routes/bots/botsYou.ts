@@ -93,7 +93,11 @@ export function registerBotsYouRoutes(app: FastifyInstance, deps: BotsAreaDeps):
 
   if (deps.bots) wrapBots(deps.bots, spending);
   if (deps.jobs) holdJobsToUsage(app, spending, deps.jobs);
-  setUsageGate(async (userId) => (await spending.refusal(userId))?.message ?? null);
+  // The month's own refusal in its own words, and — since the gate answers a whole body now, not a sentence — the burn brake in
+  // its own too (you/limits.ts `quota`). Before this the brake guarded only the bots platform and Xode's jobs; everything that
+  // goes through metering.enforceQuota (Keylessbord's dictation and rewrites, the old Ask, notes, the front door) was unbraked,
+  // because a busy message sent down a sentence-shaped pipe would have come out wearing `quota_exceeded`.
+  setUsageGate((userId) => spending.quota(userId));
   // What Keylessbord, Ask and notes really cost (usage/cost.ts), written down for the meter.
   setCostSink((userId, usd, bot) => spending.recordUsd(userId, bot, usd));
   // Whether a person's month is used in stretches, for a Xode job's pause ("this month" on the free plan).

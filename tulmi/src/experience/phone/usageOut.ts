@@ -21,7 +21,7 @@ export function usageOutScreen(screenId: string): ScreenResponse {
         style: { flex: 1, justifyContent: "center", alignItems: "center", gap: 14, padding: 32 },
         children: [
           { type: "Text", props: { content: "You've reached your limit for now" }, style: { fontSize: 26, fontWeight: "600", textAlign: "center" } },
-          { type: "Text", props: { content: "The keyboard still types. Keylessbord writes for you again when your stretch resets: see when in You, under Usage." }, style: { fontSize: 15, textAlign: "center", opacity: 0.75 } },
+          { type: "Text", props: { content: "The keyboard still types. Keylessbord writes for you again once your usage resets: see when in You, under Usage." }, style: { fontSize: 15, textAlign: "center", opacity: 0.75 } },
           { type: "Button", props: { label: "Back" }, on: { onPress: { kind: "navigateBack" } }, style: { marginTop: 10 } },
         ],
       }],

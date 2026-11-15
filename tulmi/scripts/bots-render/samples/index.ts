@@ -25,6 +25,10 @@ import { CAPTURE_API, CIRCULAR_WORDS, PHOTO_ID, RULES_ID } from "./planCapture.j
 import { FOLLOW_API, TASK_ID } from "./planFollow.js";
 import { phoneApi } from "./followPhone.js";
 import { MAKE_API, MAKE_OFF_API, MAKE_PARAMS, MAKE_STATES, MADE_KEY, PLAN_DAY_API } from "./planMake.js";
+import {
+  ON_API, PERSON_ASK_API, PERSON_SHARE_API, REFUSED_API, SHARE_ASKED_FREE, SHARE_ASKED_OWNER, SHARE_EMPTY, SHARE_FREE,
+  SHARE_ASKED_NEWEST, SHARE_ASKED_NEWEST_FREE, SHARE_OWNER, SHARE_WAITING, person, share,
+} from "./planShare.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -90,6 +94,23 @@ export const SAMPLES: Sample[] = [
   { id: S.you, area: "you", board: "You", deskBoard: "DYou" },
   { id: S.budget, area: "you", board: "Budget", deskBoard: "DBudget" },
   { id: S.billing, area: "you", board: "Billing", deskBoard: "DBilling" },
+  // Sharing a plan (samples/planShare.ts; switch PLAN_SHARE): Plan and billing with two people on your plan, with
+  // nobody on it yet, and while you are on Rahul's instead; the two readings of "Share with someone"; the refused
+  // screen with both ways out; an ask waiting in Activity from someone with a plan and from someone on Free; and
+  // someone's page read either way round.
+  { id: S.billing, area: "you", variant: "sharing", api: share(SHARE_OWNER) },
+  { id: S.billing, area: "you", variant: "sharing-none", api: share(SHARE_EMPTY) },
+  { id: S.billing, area: "you", variant: "on-theirs", api: ON_API },
+  { id: S.planShare, area: "you", api: share(SHARE_OWNER) },
+  { id: S.planShare, area: "you", variant: "ask", params: { ask: "1" }, api: share(SHARE_FREE) },
+  { id: S.usage, area: "you", variant: "refused", api: REFUSED_API },
+  { id: S.activity, area: "you", variant: "plan-ask", api: share(SHARE_ASKED_OWNER) },
+  { id: S.home, area: "you", variant: "plan-ask", api: share(SHARE_ASKED_NEWEST) },
+  { id: S.home, area: "you", variant: "plan-ask-free", api: share(SHARE_ASKED_NEWEST_FREE) },
+  { id: S.activity, area: "you", variant: "plan-ask-free", api: share(SHARE_ASKED_FREE) },
+  { id: S.person, area: "you", variant: "share", params: { id: "i" }, api: PERSON_SHARE_API },
+  { id: S.person, area: "you", variant: "ask", params: { id: "d" }, api: PERSON_ASK_API },
+  { id: S.person, area: "you", variant: "asked", params: { id: "d" }, api: { ...person("d", "Dev", ["Studio"]), ...share(SHARE_WAITING) } },
   // screens/you/space.ts (tests/space-data.ts): no boards of their own
   { id: S.youSpace, area: "you" },
   ...["about", "day", "people", "money", "timeline"].map((id) => ({ id: S.youSpaceSection, area: "you" as const, variant: id, params: { id } })),

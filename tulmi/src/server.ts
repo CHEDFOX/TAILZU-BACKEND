@@ -55,6 +55,7 @@ import { registerBotRoutes } from "./routes/bots/bots.js";
 import { registerBotHealthRoutes } from "./routes/bots/botHealth.js";
 import { registerBotsShellRoutes } from "./routes/bots/botsShell.js";
 import { registerBotsYouRoutes } from "./routes/bots/botsYou.js";
+import { registerPlanShareRoutes } from "./routes/bots/botsPlanShare.js";
 import { registerBotsBotsRoutes } from "./routes/bots/botsBots.js";
 import { registerBotsKeybotRoutes } from "./routes/bots/botsKeybot.js";
 import { registerBotsCodeRoutes } from "./routes/bots/botsCode.js";
@@ -537,6 +538,11 @@ const botsParts = botsAreaParts({ bots, connectors });
 // A routine's answer goes into the same chat the app's own shows (above).
 routineChat = botsParts.chat;
 const botsArea = registerBotsBotsRoutes(app, botsAreaDeps, { parts: botsParts });
+// Sharing a plan with friends and family (src/billing/planShare.ts, docs/plan-share.md): a plan is a month's allowance on one
+// account, and sharing it means other accounts draw on that same allowance. Over the same Spaces the rest of the area reads (a
+// plan can only be shared with someone you already share a space with) and the same meter the You tab shows. Every route answers
+// 404 while PLAN_SHARE is off, which is the default.
+registerPlanShareRoutes(app, botsAreaDeps, { spaces: botsParts.spaces, spending: you.spending });
 registerBotsKeybotRoutes(app, botsAreaDeps);
 registerBotsCodeRoutes(app, botsAreaDeps);
 // The Xode flow (code/flow, routes/bots/botsXode.ts): read and hear the direction, agree a plan, approve it, judge each message against it.

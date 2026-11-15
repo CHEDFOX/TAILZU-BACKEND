@@ -5,7 +5,12 @@
  * guarded routes take a permit before they start and give it back when they end:
  *
  *   GLOBAL     at most `global` permits out at once, all people together (64)
- *   PER PERSON at most `perUser` out at once for one person (3), `perUserFree` on the free plan (1)
+ *   PER PERSON at most `perUser` out at once for one person (3), free or paying alike; `perUserSlowed` (1) for one abuse prevention
+ *              has slowed down
+ *
+ * FREE AND PAYING RUN THE SAME NUMBER AT ONCE. `perUserFree` is still here and a server may set it lower, but it defaults to `perUser`:
+ * while X0 Bot is free for everyone, nearly every person is "free", and one request at a time made the app feel broken for them. What
+ * paying buys here is a place in the queue ahead of a free request, which is the rule below, not a smaller cap.
  *
  * A request that finds no permit WAITS, in a queue that is bounded three ways: `queueMax` waiting in all, `queuePerUser` waiting for one
  * person, and `waitMs` for how long any one waits. Past any of those the answer is Overloaded: 429, with the place the request would have had in the
@@ -28,9 +33,14 @@ export type Plan = "free" | "paid";
 export interface LimiterConfig {
   /** Permits out at once, all people. */
   global: number;
-  /** Permits out at once for one person; the free plan's is `perUserFree`. */
+  /** Permits out at once for one person; the free plan's is `perUserFree`, which defaults to the same. */
   perUser: number;
   perUserFree: number;
+  /**
+   * Permits out at once for one person abuse prevention has slowed down (src/trust, docs/trust.md §actions). Its own setting, because
+   * the free plan's cap no longer differs from the paid one: borrowing it would have left a slowed account running three at a time.
+   */
+  perUserSlowed: number;
   /** Requests waiting in all, and for one person. */
   queueMax: number;
   queuePerUser: number;
@@ -43,7 +53,7 @@ export interface LimiterConfig {
 }
 
 export const LIMITER_DEFAULTS: Readonly<LimiterConfig> = {
-  global: 64, perUser: 3, perUserFree: 1, queueMax: 256, queuePerUser: 4, waitMs: 8_000, agingMs: 10_000, holdGuessMs: 6_000,
+  global: 64, perUser: 3, perUserFree: 3, perUserSlowed: 1, queueMax: 256, queuePerUser: 4, waitMs: 8_000, agingMs: 10_000, holdGuessMs: 6_000,
 };
 
 /** The most people whose last turn is remembered for the interleaving. */
@@ -85,6 +95,8 @@ interface Waiter {
   seq: number;
   userId: string;
   plan: Plan;
+  /** Permits this person may hold at once, worked out when they asked: their plan's, or one when they are slowed. */
+  cap: number;
   at: number;
   grant: (p: Permit) => void;
   fail: (e: Error) => void;
@@ -100,7 +112,7 @@ export interface LimiterOptions {
 }
 
 /**
- * SLOWED DOWN (abuse prevention, docs/trust.md §actions): whether this person's requests take the free plan's single slot
+ * SLOWED DOWN (abuse prevention, docs/trust.md §actions): whether this person's requests run one at a time (`perUserSlowed`)
  * and wait their turn alone, whatever plan they are on. Installed by the server at start (src/trust/actions.ts
  * `slowedDown`), exactly as the AI permission's check is installed on its gate — so this file still reads no environment,
  * no store and nothing else, and every rule in it stays a test. With nothing installed, nobody is slowed.
@@ -134,20 +146,25 @@ export class ConcurrencyLimiter {
     this.clearTimer = o.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
   }
 
-  private capFor(plan: Plan): number { return plan === "paid" ? this.config.perUser : this.config.perUserFree; }
+  /** How many one person may hold at once: their plan's cap, or `perUserSlowed` when abuse prevention has slowed them. */
+  private capFor(plan: Plan, slowed: boolean): number {
+    const own = plan === "paid" ? this.config.perUser : this.config.perUserFree;
+    return slowed ? Math.min(this.config.perUserSlowed, own) : own;
+  }
 
-  private canRun(userId: string, plan: Plan): boolean {
-    return this.active < this.config.global && (this.byUser.get(userId) ?? 0) < this.capFor(plan);
+  private canRun(userId: string, cap: number): boolean {
+    return this.active < this.config.global && (this.byUser.get(userId) ?? 0) < cap;
   }
 
   /** Waits for a permit; Overloaded when the queue cannot take the request or it waited too long. */
   acquire(userId: string, plan: Plan, o: { signal?: AbortSignal } = {}): Promise<Permit> {
     if (o.signal?.aborted) return Promise.reject(abortError());
-    // A slowed person's request counts as a free one (one at a time, no paid priority, no ageing) and waits alone.
+    // A slowed person's request counts as a free one (no paid priority), runs one at a time whatever they pay, and waits alone.
     const slowed = isSlowed(userId);
     const held: Plan = slowed ? "free" : plan;
+    const cap = this.capFor(held, slowed);
     const queueMine = slowed ? 1 : this.config.queuePerUser;
-    if (this.canRun(userId, held)) return Promise.resolve(this.take(userId, 0));
+    if (this.canRun(userId, cap)) return Promise.resolve(this.take(userId, 0));
     const mine = this.queue.filter((w) => w.userId === userId).length;
     if (this.queue.length >= this.config.queueMax || mine >= queueMine) {
       this.rejected += 1;
@@ -157,7 +174,7 @@ export class ConcurrencyLimiter {
     }
     return new Promise<Permit>((resolve, reject) => {
       const w: Waiter = {
-        seq: (this.seq += 1), userId, plan: held, at: this.now(), grant: resolve, fail: reject, timer: undefined,
+        seq: (this.seq += 1), userId, plan: held, cap, at: this.now(), grant: resolve, fail: reject, timer: undefined,
         ...(o.signal ? { signal: o.signal } : {}),
       };
       w.timer = this.setTimer(() => {
@@ -221,7 +238,7 @@ export class ConcurrencyLimiter {
     const now = this.now();
     let best: Waiter | null = null;
     for (const w of this.queue) {
-      if ((this.byUser.get(w.userId) ?? 0) >= this.capFor(w.plan)) continue;
+      if ((this.byUser.get(w.userId) ?? 0) >= w.cap) continue;
       if (!best || this.before(w, best, now)) best = w;
     }
     return best;

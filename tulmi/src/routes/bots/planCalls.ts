@@ -45,7 +45,7 @@ import { openAskStream } from "../../live/askStream.js";
 import { AI_CONSENT_CODE, AI_CONSENT_TEXT, aiAllowedFor } from "../../privacy/aiGate.js";
 import { setCallHook } from "../../push/engine.js";
 import { SDP_MAX } from "../../realtime/openaiCalls.js";
-import { enforceQuota } from "../../usage/metering.js";
+import { enforceQuota, quotaBody, quotaHeaders } from "../../usage/metering.js";
 import { speakFor } from "../writing/speak.js";
 import type { BotsAreaDeps } from "./botsArea.js";
 
@@ -259,14 +259,14 @@ export function registerPlanCallRoutes(app: FastifyInstance, deps: Pick<BotsArea
     try {
       if (!realtimeFor(user.id)) {
         const quota = await enforceQuota(user);
-        if (quota) return reply.code(429).send({ code: "quota_exceeded", message: quota });
+        if (quota) return reply.code(429).headers(quotaHeaders(quota)).send(quotaBody(quota));
       }
       const out = await calls.voice(user, id, n);
       if (!out) return reply.code(404).send(NO_CALL);
       // Where the live call is on there is no 429 to answer: speakFor asked no quota, and what the read cost went on the call's row.
       if ("status" in out) {
         return out.status === 429
-          ? reply.code(429).send({ code: "quota_exceeded", message: out.message })
+          ? reply.code(429).send({ code: out.code, message: out.message })
           : reply.code(500).send({ code: "tts_failed", message: "Couldn't read that aloud." });
       }
       return reply.header("content-type", out.contentType).header("cache-control", "no-store").send(out.audio);

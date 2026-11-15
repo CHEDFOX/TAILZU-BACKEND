@@ -161,15 +161,19 @@ export function activityDesk(ctx: BotsCtx, data: ActivityData | undefined) {
       ...(data ? [] : [couldNot("your activity")]),
       ...(live.needs.length ? [col([
         sectionLabel(`Needs you · ${live.needs.length}`),
+        // Two of these sit side by side, so a card is half the page wide: the bot stays beside the words, and the
+        // buttons keep their size and drop under them when they do not fit, instead of being cut off at the edge.
         grid(live.needs.map((n) => row([
-          avatarOf(ctx, n.bot, 30),
-          col([
-            row([statusMark("needs"), meta(`${n.botName} · ${clockOf(n.at, tz)}`)], { gap: 6 }),
-            text(n.question, { size: 14, weight: 600, lineHeight: 19, lines: 2 }),
-            ...(n.detail ? [meta(n.detail, { lines: 1 })] : []),
-          ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
-          row(n.choices.filter((c) => c.kind !== "quiet").slice(0, 2).map((c) => button(c.label, c.action, { kind: c.kind, size: "md" })), { gap: 8 }),
-        ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line })), live.needs.length > 1 ? 2 : 1, 12),
+          row([
+            avatarOf(ctx, n.bot, 30),
+            col([
+              row([statusMark("needs"), meta(`${n.botName} · ${clockOf(n.at, tz)}`)], { gap: 6 }),
+              text(n.question, { size: 14, weight: 600, lineHeight: 19, lines: 2 }),
+              ...(n.detail ? [meta(n.detail, { lines: 2 })] : []),
+            ], { gap: 2, flexGrow: 1, flexShrink: 1, minWidth: 0 }),
+          ], { gap: 12, flexGrow: 1, flexShrink: 1, minWidth: 240 }),
+          row(n.choices.filter((c) => c.kind !== "quiet").slice(0, 2).map((c) => button(c.label, c.action, { kind: c.kind, size: "md" })), { gap: 8, flexShrink: 0, flexWrap: "wrap" }),
+        ], { gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 18, borderWidth: 1, borderColor: C.line, flexWrap: "wrap" })), live.needs.length > 1 ? 2 : 1, 12),
       ], { gap: 10 })] : []),
       col([
         row([

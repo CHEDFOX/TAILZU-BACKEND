@@ -38,6 +38,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import type { AgentEvent, AgentTurn, AssistantAskResponse } from "../../../../shared/types/api.js";
 import { resolveUser, type AuthedUser } from "../../auth/supabase.js";
+import { quotaBody, quotaHeaders, type Quota } from "../../usage/metering.js";
 import type { CallRecord, PictureCall, PlanChunk, SystemPrompt, UserPrompt } from "../../agent/llm.js";
 import { EventSink, LIMITS, oneLine } from "../../agent/protocol.js";
 import { runCommand, type StepResult } from "../../agent/run.js";
@@ -59,8 +60,9 @@ export interface AssistantRoutesDeps {
   ledger?: RunLedger;
   /** The profile's language: a Hinglish profile is answered in Hinglish. */
   profileLanguage?: (user: AuthedUser) => Promise<string | undefined>;
-  /** The plan's allowance: a reason to refuse (429), or null. */
-  quota?: (user: AuthedUser) => Promise<string | null>;
+  /** The plan's allowance: a reason to refuse (429) — a sentence, or a whole body where the ordinary "you have run out" would be
+   *  wrong (the burn brake's; usage/metering.ts `Quota`) — or null. */
+  quota?: (user: AuthedUser) => Promise<Quota | null>;
   /** Metered after the answer has gone, like an Ask step. */
   record?: (user: AuthedUser, result: StepResult) => Promise<void>;
   now?: () => number;
@@ -115,7 +117,7 @@ export function registerAssistantRoutes(app: FastifyInstance, deps: AssistantRou
     const text = oneLine(body.text, LIMITS.utterance);
     if (!text) return reply.code(400).send({ code: "bad_request", message: "text is what they asked, up to 1000 characters" });
     const refused = await deps.quota?.(user);
-    if (refused) return reply.code(429).send({ code: "quota_exceeded", message: refused });
+    if (refused) return reply.code(429).headers(quotaHeaders(refused)).send(quotaBody(refused));
 
     const header = req.headers["x-app-language"];
     const lang = oneLine(typeof body.lang === "string" ? body.lang : typeof header === "string" ? header : "", 32) || undefined;

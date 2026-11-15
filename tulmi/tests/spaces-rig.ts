@@ -37,7 +37,12 @@ export const FILE_M = "aaaaaaaa-0000-4000-8000-00000000000b";
 
 export interface OwnItem { id: string; title: string; line: string; at: number | null }
 
-export async function spacesServer(o: { pushes: Push[]; clock?: { t: number }; sources?: Record<string, { list(userId: string): Promise<OwnItem[]> }>; routes?: Array<{ method: string; url: string }> } ) {
+export async function spacesServer(o: {
+  pushes: Push[]; clock?: { t: number }; sources?: Record<string, { list(userId: string): Promise<OwnItem[]> }>;
+  routes?: Array<{ method: string; url: string }>;
+  /** More routes on the same app, over the same Spaces and the same clock, registered before `ready` (plan-share.test.ts). */
+  extra?: (app: import("fastify").FastifyInstance, deps: never, spaces: import("../src/botsBots/spaces.js").Spaces, now: () => number) => void;
+}) {
   const Fastify = (await import("fastify")).default;
   const { Spaces } = await import("../src/botsBots/spaces.js");
   const { MailOutbox, NOT_CONFIGURED } = await import("../src/botsBots/mail.js");
@@ -69,6 +74,7 @@ export async function spacesServer(o: { pushes: Push[]; clock?: { t: number }; s
   const parts = spaceParts(spaces, { now, media: media as never, origin: "https://api.example.in", ...(o.sources ? { sources: o.sources as never } : {}) });
   registerSpacesRoutes(app, deps, { spaces, parts });
   registerWorkRoutes(app, deps, parts);
+  o.extra?.(app, deps, spaces, now);
   await app.ready();
   const call = async (method: "GET" | "POST" | "PUT" | "DELETE", url: string, user: string | null = A_, payload?: unknown) => {
     const r = await app.inject({ method, url: url.replace(/^https?:\/\/[^/]+/, ""), headers: user ? { authorization: `Bearer ${user}` } : {}, ...(payload !== undefined ? { payload: payload as object } : {}) });
