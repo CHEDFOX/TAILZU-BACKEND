@@ -25,7 +25,7 @@ import { CAPTURE_API, CIRCULAR_WORDS, PHOTO_ID, RULES_ID } from "./planCapture.j
 import { FOLLOW_API, TASK_ID } from "./planFollow.js";
 import { phoneApi } from "./followPhone.js";
 import { MAKE_API, MAKE_OFF_API, MAKE_PARAMS, MAKE_STATES, MADE_KEY, PLAN_DAY_API } from "./planMake.js";
-import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API } from "./cinema.js";
+import { CINEMA_FILMS, CINEMA_OVERVIEW, CINEMA_PAGE_API, CINEMA_SESSION, CINEMA_SESSION_AT } from "./cinema.js";
 
 export type Area = "shell" | "bots" | "you" | "keybot" | "firstrun" | "code" | "codework";
 type Params = Record<string, string | number | boolean>;
@@ -117,6 +117,18 @@ export const SAMPLES: Sample[] = [
     id: S.cinemaFilm, area: "bots" as const, variant: step, params: { f: "f1" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS[step]() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] },
   })),
   { id: S.cinemaFilm, area: "bots", variant: "cuts", params: { f: "f1" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS.cuts() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
+  // screens/bots/cinemaSession.ts: one conversation, picked up twice, with a film being made in it and the card the bot proposed.
+  { id: S.session, area: "bots" as const, params: { s: "s1" }, api: { "GET /v1/botsapp/bots/session/s1": CINEMA_SESSION }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
+  // The making, as it shows in the talk: the script to say go to, the storyboard, filming, and the film itself.
+  ...(["writing", "script", "board", "rendering", "cutting", "done"] as const).map((step) => ({
+    id: S.session, area: "bots" as const, variant: `made-${step}`, params: { s: "s1" },
+    api: {
+      "GET /v1/botsapp/bots/session/s1": CINEMA_SESSION_AT(step, {
+        ...(step === "rendering" ? { done: 2 } : step === "done" ? { done: 4, film: "https://api.local/v1/cinema/media/u/u1/cinema/films/f1/film.mp4?exp=1&sig=x" } : {}),
+      }),
+    },
+    fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] },
+  })),
   { id: S.cinemaShot, area: "bots", variant: "board", params: { f: "f1", n: "2" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS.board() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   { id: S.cinemaShot, area: "bots", variant: "needs-you", params: { f: "f1", n: "3" }, api: { "GET /v1/cinema/films/f1": CINEMA_FILMS.filming() }, fake: { bots: [...SAMPLE_BOTS, CINEMA_FAKE] } },
   { id: S.make, area: "bots", board: "MakeBot", deskBoard: "DMakeBot" },

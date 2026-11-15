@@ -58,6 +58,7 @@ import { meetPage, type MeetPageData } from "./bots/meetPage.js";
 import { loadMeet, meetScreens, type MeetData } from "./bots/meetScreens.js";
 import { cinemaPage, type CinemaPageData } from "./bots/cinemaPage.js";
 import { cinemaScreens, loadCinema, type CinemaData } from "./bots/cinemaScreens.js";
+import { sessionScreens } from "./bots/cinemaSession.js";
 import type { About } from "./firstRun/parts.js";
 
 /** Plan Ease's simpler page: on while PLAN_V2_PAGE is, for a build that draws people as their tiny bots; an older one keeps the week. */
@@ -834,6 +835,7 @@ export const botsScreens: BotsScreen[] = [
   ...mailAliasScreens,
   ...meetScreens,
   ...cinemaScreens,
+  ...sessionScreens,
   // A wait's hand-off: WhatsApp with the follow-up (screens/bots/planSend.ts).
   ...planPeopleScreens,
   // Follow-through (botsBots/planFollow.ts): one followed item, and who does an item.

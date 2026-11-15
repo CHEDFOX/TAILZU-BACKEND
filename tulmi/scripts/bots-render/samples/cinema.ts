@@ -140,3 +140,44 @@ export const CINEMA_PAGE_API = (overview: unknown): Record<string, unknown> => (
 });
 
 export const CINEMA_FILMS = { writing, script, board, filming, done, cuts };
+
+/**
+ * A SESSION, as its screen draws it: the talk, picked up twice, with a film being made inside it and the card the bot proposed. The
+ * times are the boards' day (Tuesday 28 October), so the breaks in the talk read as "9 Nov" and "today".
+ */
+const T0 = Date.UTC(2026, 9, 28, 16, 10);
+const DAY = 86_400_000;
+const turn = (id: string, role: "me" | "bot", text: string, at: number) => ({ id, role, text, at, opens: [], approvals: [], paise: 0 });
+
+/** The same session at each stage of the making, so the showcase has a shot of every one. */
+export const CINEMA_SESSION_AT = (status: Film["status"], over: Record<string, unknown> = {}) => {
+  const base = CINEMA_SESSION;
+  const film = { ...(base.made[0] as Record<string, unknown>), status, ...over };
+  return { ...base, made: [film], proposal: undefined };
+};
+
+export const CINEMA_SESSION = {
+  session: { id: "s1", bot: "cinema", title: "a short one for reels, the first rain", startedAt: T0, touchedAt: T0 + 18 * DAY },
+  turns: [
+    turn("t1", "me", "something for my chai stall", T0),
+    turn("t2", "bot", "Happy to. Is it for a feed, or a screen? And what should someone feel watching it?", T0 + 4000),
+    turn("t3", "me", "reels. the first rain, warm, people sheltering", T0 + 70_000),
+    turn("t4", "bot", "Twenty-four seconds, 4:5 — here is what I have.", T0 + 74_000),
+    turn("t5", "me", "go on then", T0 + 120_000),
+    turn("t6", "bot", "Writing the script. Four shots, and I will show you the storyboard before anything is filmed.", T0 + 124_000),
+    turn("t7", "me", "make shot 3 slower, she should look up", T0 + 12 * DAY),
+    turn("t8", "bot", "Changed. Only that shot is being filmed again.", T0 + 12 * DAY + 5000),
+    turn("t9", "me", "give me a vertical one for reels too", T0 + 18 * DAY),
+    turn("t10", "bot", "Cut from the shots you already have. Nothing was filmed again.", T0 + 18 * DAY + 6000),
+  ],
+  made: [
+    {
+      kind: "film", id: "f1", at: T0 + 130_000, title: "Chai in the Rain", status: "rendering", hold: null, aspect: "4:5",
+      seconds: 24, shots: 4, done: 2, poster: still(1, "9:16"),
+    },
+  ],
+  proposal: {
+    concept: "A 24-second film for Ravi's chai stall as the first monsoon rain falls — three shots, tall for a feed, warm and unhurried.",
+    seconds: 24, aspect: "4:5", because: "you said under half a minute, and the feed",
+  },
+};

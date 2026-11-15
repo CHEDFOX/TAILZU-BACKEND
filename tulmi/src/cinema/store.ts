@@ -36,6 +36,8 @@ export interface CinemaStore {
   getFilm(userId: string, id: string): Promise<Film | null>;
   saveFilm(f: Film): Promise<void>;
   listFilms(userId: string, limit: number): Promise<Film[]>;
+  /** What one session made, oldest first: the session's screen draws these in the talk, where they happened. */
+  inSession(userId: string, session: string): Promise<{ films: Film[]; pictures: Picture[] }>;
   /** Films, anyone's, that the tick has work on. */
   working(limit: number): Promise<Film[]>;
   deleteFilm(userId: string, id: string): Promise<void>;
@@ -84,6 +86,13 @@ export class MemoryCinemaStore implements CinemaStore {
   }
   async listFilms(userId: string, limit: number): Promise<Film[]> {
     return [...this.films.values()].filter((f) => f.ownerId === userId).sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit).map(copy);
+  }
+  async inSession(userId: string, session: string): Promise<{ films: Film[]; pictures: Picture[] }> {
+    const mine = (x: { ownerId: string; session?: string | null }) => x.ownerId === userId && x.session === session;
+    return {
+      films: [...this.films.values()].filter(mine).sort((a, b) => a.createdAt - b.createdAt).map(copy),
+      pictures: [...this.pictures.values()].filter(mine).sort((a, b) => a.createdAt - b.createdAt).map((p) => ({ ...p })),
+    };
   }
   async working(limit: number): Promise<Film[]> {
     return [...this.films.values()].filter((f) => WORKING.includes(f.status)).slice(0, limit).map(copy);
@@ -200,6 +209,14 @@ export class SupabaseCinemaStore implements CinemaStore {
     const { data, error } = await this.db.from("cinema_films").select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(Math.min(100, limit));
     if (error) throw new Error("cinema_films list failed");
     return (data as FilmRow[]).map(fromRow);
+  }
+  async inSession(userId: string, session: string): Promise<{ films: Film[]; pictures: Picture[] }> {
+    const [f, p] = await Promise.all([
+      this.db.from("cinema_films").select("*").eq("user_id", userId).eq("session_id", session).order("created_at", { ascending: true }).limit(50),
+      this.db.from("cinema_pictures").select("*").eq("user_id", userId).eq("session_id", session).order("created_at", { ascending: true }).limit(50),
+    ]);
+    if (f.error || p.error) throw new Error("cinema session read failed");
+    return { films: (f.data as FilmRow[]).map(fromRow), pictures: (p.data as PictureRow[]).map(pictureOf) };
   }
   async working(limit: number): Promise<Film[]> {
     const { data, error } = await this.db.from("cinema_films").select("*").in("status", [...WORKING]).order("updated_at", { ascending: true }).limit(Math.min(500, limit));

@@ -143,6 +143,14 @@ export interface FilmView {
   links: Record<string, string>;
 }
 
+/** One thing a session made, as its screen draws it: a film at whatever stage it has reached, or a picture. Never a model or a cost. */
+export type MadeInSession =
+  | {
+    kind: "film"; id: string; at: number; title: string; status: Film["status"]; hold: Film["hold"]; aspect: Aspect;
+    seconds: number; shots: number; done: number; poster?: string; film?: string;
+  }
+  | { kind: "picture"; id: string; at: number; title: string; url: string };
+
 export interface CinemaOverview {
   films: FilmRow[];
   pictures: PictureView[];
@@ -410,6 +418,26 @@ export class CinemaService {
     const out = await asPerson(userId, () => propose(this.d.think(userId), turns));
     if (out.usd > 0) this.d.charge(userId, out.usd);
     return out.proposal;
+  }
+
+  /**
+   * What a session made, oldest first: the session's screen draws each where it happened in the talk, and a film still being made draws
+   * as itself - the script to say go to, the storyboard, the shots as they are filmed, the finished film. Never a cost, as everywhere.
+   */
+  async madeIn(userId: string, session: string): Promise<MadeInSession[]> {
+    const { films, pictures } = await this.d.store.inSession(userId, session);
+    const out: MadeInSession[] = films.map((f) => {
+      const poster = f.shots.find((s) => s.still)?.still ?? null;
+      return {
+        kind: "film" as const, id: f.id, at: f.createdAt, title: f.script?.bible.title || f.idea.slice(0, 60),
+        status: f.status, hold: f.hold, aspect: f.aspect, seconds: f.cut.seconds || f.length,
+        shots: f.script?.shots.length ?? 0, done: f.shots.filter((s) => s.status === "ok").length,
+        ...(poster ? { poster: signMedia(poster) } : {}),
+        ...(f.cut.video ? { film: signMedia(f.cut.video) } : {}),
+      };
+    });
+    for (const p of pictures) out.push({ kind: "picture", id: p.id, at: p.createdAt, title: p.words.slice(0, 60), url: signMedia(p.key) });
+    return out.sort((a, b) => a.at - b.at);
   }
 
   async picture(userId: string, o: { words: string; photos?: { url: string; type: string }[]; tier?: string }): Promise<PictureView> {

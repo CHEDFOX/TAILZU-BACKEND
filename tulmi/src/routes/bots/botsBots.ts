@@ -7,9 +7,9 @@
  *   DELETE /v1/botsapp/bots/chat/:slug                 -> { ok }                          start the chat over
  *   GET    /v1/botsapp/bots/sessions/:slug             -> { sessions }                    the bot's thread, newest first
  *   POST   /v1/botsapp/bots/sessions/:slug             -> { session }                     the + : a new session, whatever is open
- *   GET    /v1/botsapp/bots/session/:id                -> { session, turns, proposal? }   one session, oldest first; with the cinema
- *                                                      bot, what it thinks they want so far (src/cinema/propose.ts), which the session's
- *                                                      screen draws as a card
+ *   GET    /v1/botsapp/bots/session/:id                -> { session, turns, proposal?, made? }  one session, oldest first; with the
+ *                                                      cinema bot, what it thinks they want so far (src/cinema/propose.ts), which the
+ *                                                      screen draws as a card, and what the session has made
  *   GET    /v1/botsapp/bots/draft                      -> { draft }                       Make a bot: the draft in progress, or null
  *   POST   /v1/botsapp/bots/draft { sentence }         -> { draft }                       Bots.draft, kept while it is shaped (nothing is a bot yet)
  *   PUT    /v1/botsapp/bots/draft { name?, colour?, addRule?, dropRule?, files?, web?, connector? }   -> { draft }
@@ -220,9 +220,14 @@ export function registerBotsBotsRoutes(app: FastifyInstance, deps: BotsAreaDeps,
     const session = await parts.sessions.get(user.id, id);
     if (!session) throw new BotError("not_found", "There is no such session.", 404);
     const turns = await parts.chat!.ofSession(user.id, id);
-    // The cinema bot's session also carries what it thinks they want: the card is drawn from it, and it is null until enough is said.
-    const proposal = session.bot === CINEMA_SLUG ? await cinemaService()?.proposal(user.id, turns).catch(() => null) ?? null : null;
-    return { session, turns, ...(proposal ? { proposal } : {}) };
+    // The cinema bot's session also carries what it thinks they want (the card is drawn from it, null until enough is said) and what the
+    // session has made so far, which the screen draws in the talk where each happened.
+    const cinema = session.bot === CINEMA_SLUG ? cinemaService() : null;
+    const [proposal, made] = await Promise.all([
+      cinema?.proposal(user.id, turns).catch(() => null) ?? null,
+      cinema?.madeIn(user.id, id).catch(() => []) ?? [],
+    ]);
+    return { session, turns, ...(proposal ? { proposal } : {}), ...(made.length ? { made } : {}) };
   }));
 
   // ------------------------------------------------------------------ make a bot
